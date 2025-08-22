@@ -22,9 +22,6 @@ pub struct SetAccessPassCliCommand {
     /// Specifies the last access epoch of the access pass or MAX.
     #[arg(long)]
     pub last_access_epoch: String,
-    /// Specifies the amount of lamports to airdrop for operating transaction
-    #[arg(long)]
-    pub airdrop_lamports: u64,
 }
 
 impl SetAccessPassCliCommand {
@@ -50,7 +47,6 @@ impl SetAccessPassCliCommand {
             client_ip: self.client_ip,
             user_payer,
             last_access_epoch,
-            airdrop_lamports: self.airdrop_lamports,
         })?;
         writeln!(out, "Signature: {signature}")?;
 
@@ -98,7 +94,6 @@ mod tests {
                 client_ip,
                 user_payer: payer,
                 last_access_epoch: 0,
-                airdrop_lamports: 40_000,
             }))
             .returning(move |_| Ok(signature));
 
@@ -108,7 +103,6 @@ mod tests {
             client_ip,
             user_payer: payer.to_string(),
             last_access_epoch: "0".into(),
-            airdrop_lamports: 40_000,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

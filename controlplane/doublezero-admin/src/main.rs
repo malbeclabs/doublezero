@@ -7,7 +7,9 @@ use crate::cli::{
     config::ConfigCommands,
     device::{DeviceAllowlistCommands, DeviceCommands, InterfaceCommands},
     exchange::ExchangeCommands,
-    globalconfig::{AuthorityCommands, FoundationAllowlistCommands, GlobalConfigCommands},
+    globalconfig::{
+        AirdropCommands, AuthorityCommands, FoundationAllowlistCommands, GlobalConfigCommands,
+    },
     link::LinkCommands,
     location::LocationCommands,
     user::{UserAllowlistCommands, UserCommands},
@@ -65,6 +67,10 @@ async fn main() -> eyre::Result<()> {
         Command::GlobalConfig(command) => match command.command {
             GlobalConfigCommands::Set(args) => args.execute(&client, &mut handle),
             GlobalConfigCommands::Get(args) => args.execute(&client, &mut handle),
+            GlobalConfigCommands::Airdrop(command) => match command.command {
+                AirdropCommands::Set(args) => args.execute(&client, &mut handle),
+                AirdropCommands::Get(args) => args.execute(&client, &mut handle),
+            },
             GlobalConfigCommands::Authority(command) => match command.command {
                 AuthorityCommands::Set(args) => args.execute(&client, &mut handle),
                 AuthorityCommands::Get(args) => args.execute(&client, &mut handle),

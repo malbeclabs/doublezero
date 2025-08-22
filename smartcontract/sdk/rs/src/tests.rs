@@ -34,6 +34,8 @@ pub mod utils {
             user_allowlist: vec![],
             activator_authority_pk: Pubkey::new_unique(),
             sentinel_authority_pk: Pubkey::new_unique(),
+            contributor_airdrop_lamports: 1_000_000_000,
+            user_airdrop_lamports: 40_000,
         };
         client
             .expect_get()

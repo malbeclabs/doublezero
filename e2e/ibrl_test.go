@@ -237,7 +237,7 @@ func checkIBRLPostConnect(t *testing.T, dn *TestDevnet, device *devnet.Device, c
 			dn.CreateMulticastGroupOnchain(t, client, "mg01")
 
 			// Set access pass for the client.
-			_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type Prepaid --client-ip " + client.CYOANetworkIP + " --user-payer " + client.Pubkey + " --last-access-epoch 99999 --airdrop-lamports 40000"})
+			_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type Prepaid --client-ip " + client.CYOANetworkIP + " --user-payer " + client.Pubkey + " --last-access-epoch 99999"})
 			require.NoError(t, err)
 
 			_, err = client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast publisher mg01 --client-ip " + client.CYOANetworkIP})

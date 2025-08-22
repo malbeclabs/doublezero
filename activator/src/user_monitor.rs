@@ -49,7 +49,7 @@ pub fn process_user_monitor_thread(
         let users_to_disconnect = get_users_to_disconnect(epoch, &users, &accesspass, program_id)?;
 
         if !users_to_disconnect.is_empty() {
-            info!("users_to_disconnect: {:?}", users_to_disconnect);
+            info!("users_to_disconnect: {users_to_disconnect:?}");
             // Disconnect users
 
             for user in users_to_disconnect {

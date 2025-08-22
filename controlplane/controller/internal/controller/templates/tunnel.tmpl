@@ -40,6 +40,11 @@ ntp server 1.pool.ntp.org
 ntp server 2.pool.ntp.org
 {{- end }}
 !
+{{- if $.Device.Vpn4vLoopbackIntfName }}
+mpls icmp ttl-exceeded tunneling
+mpls icmp ip source-interface {{ $.Device.Vpn4vLoopbackIntfName }}
+!
+{{- end }}
 {{- if not .NoHardware }}
 hardware access-list update default-result permit
 !

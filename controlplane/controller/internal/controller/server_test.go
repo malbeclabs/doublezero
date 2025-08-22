@@ -439,6 +439,7 @@ func TestGetConfig(t *testing.T) {
 				Devices: map[string]*Device{
 					"abc123": {
 						PublicIP:    net.IP{7, 7, 7, 7},
+						Vpn4vLoopbackIntfName: "Loopback255",
 						Tunnels:     []*Tunnel{},
 						TunnelSlots: 0,
 					},

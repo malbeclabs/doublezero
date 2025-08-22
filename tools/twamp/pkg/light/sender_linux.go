@@ -64,10 +64,17 @@ func NewLinuxSender(ctx context.Context, iface string, local *net.UDPAddr, remot
 		return nil, fmt.Errorf("epoll_ctl: %w", err)
 	}
 
-	if err := unix.SetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_TIMESTAMPNS, 1); err != nil {
-		unix.Close(fd)
-		unix.Close(epfd)
-		return nil, fmt.Errorf("SO_TIMESTAMPNS: %w", err)
+	if err := unix.SetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_TIMESTAMPNS_NEW, 1); err != nil {
+		if err != unix.ENOPROTOOPT && err != unix.EINVAL {
+			unix.Close(fd)
+			unix.Close(epfd)
+			return nil, fmt.Errorf("SO_TIMESTAMPNS_NEW: %w", err)
+		}
+		if err := unix.SetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_TIMESTAMPNS, 1); err != nil {
+			unix.Close(fd)
+			unix.Close(epfd)
+			return nil, fmt.Errorf("SO_TIMESTAMPNS: %w", err)
+		}
 	}
 
 	ip4 := remote.IP.To4()
@@ -184,11 +191,17 @@ func (s *LinuxSender) Probe(ctx context.Context) (time.Duration, error) {
 
 		// Parse timestamp from control message.
 		for _, cmsg := range cmsgs {
-			if cmsg.Header.Level == syscall.SOL_SOCKET && cmsg.Header.Type == syscall.SO_TIMESTAMPNS {
+			if cmsg.Header.Level != syscall.SOL_SOCKET {
+				continue
+			}
+
+			switch cmsg.Header.Type {
+			case unix.SO_TIMESTAMPNS, unix.SO_TIMESTAMPNS_NEW:
 				if len(cmsg.Data) < int(unsafe.Sizeof(syscall.Timespec{})) {
 					continue
 				}
 				ts := *(*syscall.Timespec)(unsafe.Pointer(&cmsg.Data[0]))
+
 				rtt := time.Unix(int64(ts.Sec), int64(ts.Nsec)).Sub(sendTime)
 
 				// The send timestamp is captured in user space using CLOCK_REALTIME, while the receive
@@ -199,6 +212,8 @@ func (s *LinuxSender) Probe(ctx context.Context) (time.Duration, error) {
 				rtt = max(rtt, 0)
 
 				return rtt, nil
+
+			default:
 			}
 		}
 		return 0, fmt.Errorf("no timestamp in control message")

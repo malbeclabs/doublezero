@@ -27,14 +27,18 @@ foundation_allowlist: {:?}, \
 device_allowlist: {:?}, \
 user_allowlist: {:?}, \
 activator_authority_pk: {:?}, \
-sentinel_authority_pk: {:?}",
+sentinel_authority_pk: {:?}, \
+contributor_airdrop_lamports: {}, \
+user_airdrop_lamports: {}",
             self.account_type,
             self.account_index,
             self.foundation_allowlist,
             self.device_allowlist,
             self.user_allowlist,
             self.activator_authority_pk,
-            self.sentinel_authority_pk
+            self.sentinel_authority_pk,
+            self.contributor_airdrop_lamports,
+            self.user_airdrop_lamports,
         )
     }
 }

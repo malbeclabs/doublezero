@@ -33,7 +33,10 @@ use doublezero_sdk::{
             update::UpdateExchangeCommand,
         },
         globalconfig::set::SetGlobalConfigCommand,
-        globalstate::{init::InitGlobalStateCommand, setauthority::SetAuthorityCommand},
+        globalstate::{
+            init::InitGlobalStateCommand, setairdrop::SetAirdropCommand,
+            setauthority::SetAuthorityCommand,
+        },
         link::{
             accept::AcceptLinkCommand, activate::ActivateLinkCommand,
             closeaccount::CloseAccountLinkCommand, create::CreateLinkCommand,
@@ -103,6 +106,7 @@ pub trait CliCommand {
     fn get_globalstate(&self, cmd: GetGlobalStateCommand) -> eyre::Result<(Pubkey, GlobalState)>;
     fn get_globalconfig(&self, cmd: GetGlobalConfigCommand)
         -> eyre::Result<(Pubkey, GlobalConfig)>;
+    fn set_airdrop(&self, cmd: SetAirdropCommand) -> eyre::Result<Signature>;
     fn set_authority(&self, cmd: SetAuthorityCommand) -> eyre::Result<Signature>;
     fn set_globalconfig(&self, cmd: SetGlobalConfigCommand) -> eyre::Result<Signature>;
 
@@ -293,6 +297,9 @@ impl CliCommand for CliCommandImpl<'_> {
         &self,
         cmd: GetGlobalConfigCommand,
     ) -> eyre::Result<(Pubkey, GlobalConfig)> {
+        cmd.execute(self.client)
+    }
+    fn set_airdrop(&self, cmd: SetAirdropCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
     fn set_authority(&self, cmd: SetAuthorityCommand) -> eyre::Result<Signature> {

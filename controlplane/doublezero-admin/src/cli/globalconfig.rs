@@ -5,6 +5,7 @@ use doublezero_cli::{
         remove::RemoveFoundationAllowlistCliCommand,
     },
     globalconfig::{
+        airdrop::{get::GetAirdropCliCommand, set::SetAirdropCliCommand},
         authority::{get::GetAuthorityCliCommand, set::SetAuthorityCliCommand},
         get::GetGlobalConfigCliCommand,
         set::SetGlobalConfigCliCommand,
@@ -25,6 +26,9 @@ pub enum GlobalConfigCommands {
     /// Set the global configuration
     #[clap()]
     Set(SetGlobalConfigCliCommand),
+    /// Set the global configuration airdrops
+    #[clap()]
+    Airdrop(AirdropCommand),
     /// Set the global configuration authority
     #[clap()]
     Authority(AuthorityCommand),
@@ -47,6 +51,22 @@ pub enum AuthorityCommands {
     /// Get the global configuration authority
     #[clap()]
     Get(GetAuthorityCliCommand),
+}
+
+#[derive(Args, Debug)]
+pub struct AirdropCommand {
+    #[command(subcommand)]
+    pub command: AirdropCommands,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum AirdropCommands {
+    /// Set the global configuration airdrops
+    #[clap()]
+    Set(SetAirdropCliCommand),
+    /// Get the global configuration airdrops
+    #[clap()]
+    Get(GetAirdropCliCommand),
 }
 
 #[derive(Args, Debug)]

@@ -20,7 +20,7 @@ use crate::processors::{
         setdevice::ExchangeSetDeviceArgs, suspend::ExchangeSuspendArgs, update::ExchangeUpdateArgs,
     },
     globalconfig::set::SetGlobalConfigArgs,
-    globalstate::setauthority::SetAuthorityArgs,
+    globalstate::{setairdrop::SetAirdropArgs, setauthority::SetAuthorityArgs},
     link::{
         accept::LinkAcceptArgs, activate::LinkActivateArgs, closeaccount::LinkCloseAccountArgs,
         create::LinkCreateArgs, delete::LinkDeleteArgs, reject::LinkRejectArgs,
@@ -144,6 +144,7 @@ pub enum DoubleZeroInstruction {
     SetDeviceExchange(ExchangeSetDeviceArgs), // variant 65
     AcceptLink(LinkAcceptArgs),               // variant 66
     SetAccessPass(SetAccessPassArgs),         // variant 67
+    SetAirdrop(SetAirdropArgs),               // variant 68
 }
 
 impl DoubleZeroInstruction {
@@ -235,6 +236,7 @@ impl DoubleZeroInstruction {
             65 => Ok(Self::SetDeviceExchange(from_slice::<ExchangeSetDeviceArgs>(rest).unwrap())),
             66 => Ok(Self::AcceptLink(from_slice::<LinkAcceptArgs>(rest).unwrap())),
             67 => Ok(Self::SetAccessPass(from_slice::<SetAccessPassArgs>(rest).unwrap())),
+            68 => Ok(Self::SetAirdrop(from_slice::<SetAirdropArgs>(rest).unwrap())),
 
             _ => Err(ProgramError::InvalidInstructionData),
         }
@@ -326,6 +328,7 @@ impl DoubleZeroInstruction {
             Self::SetDeviceExchange(_) => "SetDeviceExchange".to_string(), // variant 65
             Self::AcceptLink(_) => "AcceptLink".to_string(),               // variant 66
             Self::SetAccessPass(_) => "SetAccessPass".to_string(),         // variant 67
+            Self::SetAirdrop(_) => "SetAirdrop".to_string(),               // variant 68
         }
     }
 
@@ -409,6 +412,7 @@ impl DoubleZeroInstruction {
             Self::SetDeviceExchange(args) => format!("{args:?}"), // variant 65
             Self::AcceptLink(args) => format!("{args:?}"),        // variant 66
             Self::SetAccessPass(args) => format!("{args:?}"),     // variant 67
+            Self::SetAirdrop(args) => format!("{args:?}"),        // variant 68
         }
     }
 }

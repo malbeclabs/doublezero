@@ -30,7 +30,10 @@ use crate::{
             suspend::process_suspend_exchange, update::process_update_exchange,
         },
         globalconfig::set::process_set_globalconfig,
-        globalstate::{initialize::initialize_global_state, setauthority::process_set_authority},
+        globalstate::{
+            initialize::initialize_global_state, setairdrop::process_set_airdrop,
+            setauthority::process_set_authority,
+        },
         link::{
             accept::process_accept_link, activate::process_activate_link,
             closeaccount::process_closeaccount_link, create::process_create_link,
@@ -93,6 +96,9 @@ pub fn process_instruction(
     match instruction {
         DoubleZeroInstruction::None() => {}
         DoubleZeroInstruction::InitGlobalState() => initialize_global_state(program_id, accounts)?,
+        DoubleZeroInstruction::SetAirdrop(value) => {
+            process_set_airdrop(program_id, accounts, &value)?
+        }
         DoubleZeroInstruction::SetAuthority(value) => {
             process_set_authority(program_id, accounts, &value)?
         }

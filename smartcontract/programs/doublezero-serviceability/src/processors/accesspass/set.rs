@@ -33,15 +33,14 @@ pub struct SetAccessPassArgs {
     pub accesspass_type: AccessPassType, // 1
     pub client_ip: Ipv4Addr,             // 4
     pub last_access_epoch: u64,          // 8
-    pub airdrop_lamports: u64,           // 8
 }
 
 impl fmt::Debug for SetAccessPassArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "accesspass_type: {}, ip: {}, last_access_epoch: {}, airdrop_lamports: {}",
-            self.accesspass_type, self.client_ip, self.last_access_epoch, self.airdrop_lamports,
+            "accesspass_type: {}, ip: {}, last_access_epoch: {}",
+            self.accesspass_type, self.client_ip, self.last_access_epoch,
         )
     }
 }
@@ -156,7 +155,7 @@ pub fn process_set_accesspass(
     }
 
     let deposit = AIRDROP_USER_RENT_LAMPORTS
-        .saturating_add(value.airdrop_lamports)
+        .saturating_add(globalstate.user_airdrop_lamports)
         .saturating_sub(user_payer.lamports());
     if deposit != 0 {
         invoke_signed_unchecked(

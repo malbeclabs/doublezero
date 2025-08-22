@@ -13,6 +13,8 @@ pub struct GlobalState {
     pub user_allowlist: Vec<Pubkey>,       // 4 + 32 * len
     pub activator_authority_pk: Pubkey,    // 32
     pub sentinel_authority_pk: Pubkey,     // 32
+    pub contributor_airdrop_lamports: u64, // 4
+    pub user_airdrop_lamports: u64,        // 4
 }
 
 impl fmt::Display for GlobalState {
@@ -49,6 +51,8 @@ impl GlobalState {
             + (self.user_allowlist.len() * 32)
             + 32
             + 32
+            + 4
+            + 4
     }
 }
 
@@ -65,6 +69,8 @@ impl From<&[u8]> for GlobalState {
             user_allowlist: parser.read_pubkey_vec(),
             activator_authority_pk: parser.read_pubkey(),
             sentinel_authority_pk: parser.read_pubkey(),
+            contributor_airdrop_lamports: parser.read_u64(),
+            user_airdrop_lamports: parser.read_u64(),
         };
 
         assert_eq!(
@@ -101,6 +107,8 @@ mod tests {
             user_allowlist: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             activator_authority_pk: Pubkey::new_unique(),
             sentinel_authority_pk: Pubkey::new_unique(),
+            contributor_airdrop_lamports: 1_000_000_000,
+            user_airdrop_lamports: 40_000,
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -114,5 +122,10 @@ mod tests {
         assert_eq!(val.activator_authority_pk, val2.activator_authority_pk);
         assert_eq!(val.sentinel_authority_pk, val2.sentinel_authority_pk);
         assert_eq!(data.len(), val.size(), "Invalid Size");
+        assert_eq!(
+            val.contributor_airdrop_lamports,
+            val2.contributor_airdrop_lamports
+        );
+        assert_eq!(val.user_airdrop_lamports, val2.user_airdrop_lamports);
     }
 }

@@ -20,8 +20,6 @@ use std::fmt;
 #[cfg(test)]
 use solana_program::msg;
 
-const CONTRIBUTOR_AIRDROP_LAMPORTS: u64 = 1_000_000_000;
-
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct ContributorCreateArgs {
     pub code: String,
@@ -101,7 +99,7 @@ pub fn process_create_contributor(
         &system_instruction::transfer(
             payer_account.key,
             owner_account.key,
-            CONTRIBUTOR_AIRDROP_LAMPORTS,
+            globalstate.contributor_airdrop_lamports,
         ),
         &[
             payer_account.clone(),

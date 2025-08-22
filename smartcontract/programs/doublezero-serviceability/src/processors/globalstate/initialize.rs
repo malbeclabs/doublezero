@@ -64,6 +64,8 @@ pub fn initialize_global_state(program_id: &Pubkey, accounts: &[AccountInfo]) ->
         user_allowlist: vec![*payer_account.key],
         activator_authority_pk: *payer_account.key,
         sentinel_authority_pk: *payer_account.key,
+        contributor_airdrop_lamports: 1_000_000_000,
+        user_airdrop_lamports: 40_000,
     };
 
     // Size of our index account

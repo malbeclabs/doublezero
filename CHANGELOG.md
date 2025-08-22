@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+### Device Agent
+
+#### Breaking
+
+#### Changes
+
+- Update TWAMP sender to read `SCM_TIMESTAMPNS_NEW` from socket control messages in addition `SCM_TIMESTAMPNS` that was already being checked.
+
 ## [v0.5.3](https://github.com/malbeclabs/doublezero/compare/client/v0.5.0...client/v0.5.3) – 2025-08-19
 
 - **CLI & UX Improvements**

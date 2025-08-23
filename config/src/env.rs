@@ -1,4 +1,5 @@
 use solana_sdk::pubkey::Pubkey;
+use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Environment {
@@ -19,6 +20,16 @@ impl std::str::FromStr for Environment {
                 "Invalid environment {}, must be one of: mainnet-beta, testnet, devnet",
                 s
             )),
+        }
+    }
+}
+
+impl fmt::Display for Environment {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Environment::Mainnet => write!(f, "mainnet"),
+            Environment::Testnet => write!(f, "testnet"),
+            Environment::Devnet => write!(f, "devnet"),
         }
     }
 }

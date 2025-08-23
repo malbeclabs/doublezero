@@ -33,6 +33,7 @@ const (
 	defaultTWAMPReflectorTimeout = 1 * time.Second
 	defaultPeersRefreshInterval  = 10 * time.Second
 	defaultTWAMPSenderTimeout    = 1 * time.Second
+	defaultSenderTTL             = 5 * time.Minute
 	defaultLedgerRPCURL          = ""
 	defaultProgramId             = ""
 	defaultLocalDevicePubkey     = ""
@@ -54,6 +55,7 @@ var (
 	twampSenderTimeout      = flag.Duration("twamp-sender-timeout", defaultTWAMPSenderTimeout, "The timeout for sending twamp probes.")
 	twampReflectorTimeout   = flag.Duration("twamp-reflector-timeout", defaultTWAMPReflectorTimeout, "The timeout for the twamp reflector.")
 	peersRefreshInterval    = flag.Duration("peers-refresh-interval", defaultPeersRefreshInterval, "The interval to refresh the peer discovery.")
+	senderTTL               = flag.Duration("sender-ttl", defaultSenderTTL, "The time to live for a sender instance until it's recreated.")
 	managementNamespace     = flag.String("management-namespace", "", "The name of the management namespace to use for ledger communication. If not provided, the default namespace will be used. (default: '')")
 	verbose                 = flag.Bool("verbose", false, "Enable verbose logging.")
 	showVersion             = flag.Bool("version", false, "Print the version of the doublezero-agent and exit.")
@@ -158,6 +160,7 @@ func main() {
 		"probeInterval", *probeInterval,
 		"submissionInterval", *submissionInterval,
 		"twampListenPort", *twampListenPort,
+		"senderTTL", *senderTTL,
 	)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -268,6 +271,7 @@ func main() {
 			}
 			return epochInfo.Epoch, nil
 		},
+		SenderTTL: *senderTTL,
 	})
 	if err != nil {
 		log.Error("failed to create telemetry collector", "error", err)

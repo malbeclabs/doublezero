@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"maps"
 	"net"
+	"sync"
 	"testing"
 	"time"
 
@@ -270,6 +271,7 @@ func TestAgentTelemetry_Collector(t *testing.T) {
 			ProbeInterval:          100 * time.Millisecond,
 			SubmissionInterval:     250 * time.Millisecond,
 			TWAMPSenderTimeout:     250 * time.Millisecond,
+			SenderTTL:              1 * time.Millisecond,
 			TWAMPReflector:         reflector,
 			PeerDiscovery:          peerDiscovery,
 			TelemetryProgramClient: telemetryProgram,
@@ -414,6 +416,140 @@ func TestAgentTelemetry_Collector(t *testing.T) {
 		require.Len(t, program.GetAccounts(t), 1, "expected only one sender to be used for logically equal peers")
 	})
 
+	t.Run("recreates_sender_after_ttl", func(t *testing.T) {
+		t.Parallel()
+
+		log := log.With("test", t.Name())
+		devicePK := stringToPubkey("device-ttl")
+		peerPK := stringToPubkey("peer-ttl")
+		linkPK := stringToPubkey("link-ttl")
+
+		// Start a real reflector
+		reflector := newTestReflector(t)
+		telemetryProgram := newMemoryTelemetryProgramClient()
+		peerDiscovery := newMockPeerDiscovery()
+
+		// Controlled clock for TTL checks
+		now := time.Now()
+		var nowMu sync.Mutex
+		advance := func(d time.Duration) {
+			nowMu.Lock()
+			now = now.Add(d)
+			nowMu.Unlock()
+		}
+
+		// Initially: working address (points to real reflector)
+		peerDiscovery.UpdatePeers(t, []*telemetry.Peer{
+			{
+				DevicePK: peerPK,
+				LinkPK:   linkPK,
+				Tunnel: &netutil.LocalTunnel{
+					Interface: loopbackInterface(t),
+					SourceIP:  net.ParseIP("127.0.0.1"),
+					TargetIP:  reflector.LocalAddr().IP,
+				},
+				TWAMPPort: uint16(reflector.LocalAddr().Port),
+			},
+		})
+
+		// Small TTL so we can force rotation quickly; run fast probes.
+		collector, err := telemetry.New(log, telemetry.Config{
+			LocalDevicePK:          devicePK,
+			ProbeInterval:          75 * time.Millisecond,
+			SubmissionInterval:     200 * time.Millisecond,
+			TWAMPSenderTimeout:     200 * time.Millisecond,
+			TWAMPReflector:         reflector,
+			PeerDiscovery:          peerDiscovery,
+			TelemetryProgramClient: telemetryProgram,
+			GetCurrentEpochFunc:    func(ctx context.Context) (uint64, error) { return 100, nil },
+			SenderTTL:              250 * time.Millisecond,
+			NowFunc: func() time.Time {
+				nowMu.Lock()
+				defer nowMu.Unlock()
+				return now
+			},
+		})
+		require.NoError(t, err)
+
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		go func() { require.NoError(t, collector.Run(ctx)) }()
+
+		accountKey := telemetry.PartitionKey{
+			OriginDevicePK: devicePK,
+			TargetDevicePK: peerPK,
+			LinkPK:         linkPK,
+			Epoch:          100,
+		}
+
+		// 1) Prove we have a working sender (success, not loss).
+		require.Eventually(t, func() bool {
+			s := telemetryProgram.GetAccounts(t)[accountKey]
+			return len(s) > 0 && !s[len(s)-1].Loss
+		}, 3*time.Second, 50*time.Millisecond, "should collect successful RTT samples first")
+
+		// 2) Change the peer to a non-working address BUT only expect the failure
+		// after TTL has elapsed, which requires the collector to recreate the sender.
+		peerDiscovery.UpdatePeers(t, []*telemetry.Peer{
+			{
+				DevicePK: peerPK,
+				LinkPK:   linkPK,
+				Tunnel: &netutil.LocalTunnel{
+					Interface: loopbackInterface(t),
+					SourceIP:  net.ParseIP("127.0.0.1"),
+					TargetIP:  net.IPv4(203, 0, 113, 1), // blackhole test-net IP
+				},
+				TWAMPPort: 9999,
+			},
+		})
+
+		// Fast-forward logical time beyond TTL so getOrCreateSender rotates.
+		advance(300 * time.Millisecond)
+
+		require.Eventually(t, func() bool {
+			s := telemetryProgram.GetAccounts(t)[accountKey]
+			if len(s) == 0 {
+				return false
+			}
+			// expect to observe at least one loss after rotation
+			for i := range s {
+				if s[i].Loss {
+					return true
+				}
+			}
+			return false
+		}, 4*time.Second, 50*time.Millisecond, "should observe loss after TTL forces sender recreation")
+
+		// 3) Restore a working address; advance time again so the stale/failing sender
+		// is rotated to a working one, and verify we resume success.
+		peerDiscovery.UpdatePeers(t, []*telemetry.Peer{
+			{
+				DevicePK: peerPK,
+				LinkPK:   linkPK,
+				Tunnel: &netutil.LocalTunnel{
+					Interface: loopbackInterface(t),
+					SourceIP:  net.IPv4(10, 241, 1, 1),
+					TargetIP:  reflector.LocalAddr().IP,
+				},
+				TWAMPPort: uint16(reflector.LocalAddr().Port),
+			},
+		})
+		advance(300 * time.Millisecond)
+
+		require.Eventually(t, func() bool {
+			s := telemetryProgram.GetAccounts(t)[accountKey]
+			if len(s) == 0 {
+				return false
+			}
+			// look for a non-loss sample after the revert
+			for i := len(s) - 1; i >= 0 && i >= len(s)-6; i-- { // check tail
+				if !s[i].Loss {
+					return true
+				}
+			}
+			return false
+		}, 4*time.Second, 50*time.Millisecond, "should resume success after TTL rotation to working address")
+	})
 }
 
 func newTestReflector(t *testing.T) twamplight.Reflector {
@@ -436,6 +572,7 @@ func newTestCollector(t *testing.T, log *slog.Logger, localDevicePK solana.Publi
 		ProbeInterval:          100 * time.Millisecond,
 		SubmissionInterval:     submissionInterval,
 		TWAMPSenderTimeout:     1 * time.Second,
+		SenderTTL:              1 * time.Millisecond,
 		TWAMPReflector:         reflector,
 		PeerDiscovery:          peerDiscovery,
 		TelemetryProgramClient: telemetryProgramClient,

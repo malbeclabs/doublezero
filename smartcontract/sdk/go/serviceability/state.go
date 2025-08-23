@@ -210,6 +210,10 @@ const (
 	UserStatusActivated
 	UserStatusSuspended
 	UserStatusDeleted
+	UserStatusRejected
+	UserStatusPendingBan
+	UserStatusBanned
+	UserStatusUpdating
 )
 
 type User struct {

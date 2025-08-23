@@ -58,7 +58,8 @@ use crate::processors::{
         suspend::UserSuspendArgs, update::UserUpdateArgs,
     },
 };
-use borsh::{from_slice, BorshDeserialize, BorshSerialize};
+use borsh::{BorshDeserialize, BorshSerialize};
+use doublezero_program_common::compat_deserialize;
 use solana_program::program_error::ProgramError;
 use std::cmp::PartialEq;
 
@@ -145,6 +146,11 @@ pub enum DoubleZeroInstruction {
     AcceptLink(LinkAcceptArgs),               // variant 66
     SetAccessPass(SetAccessPassArgs),         // variant 67
     SetAirdrop(SetAirdropArgs),               // variant 68
+}
+
+#[inline]
+pub fn from_slice<T: BorshDeserialize>(data: &[u8]) -> Result<T, ProgramError> {
+    compat_deserialize(data).map_err(|_| ProgramError::InvalidInstructionData)
 }
 
 impl DoubleZeroInstruction {
@@ -430,6 +436,29 @@ mod tests {
     use solana_program::pubkey::Pubkey;
 
     use super::*;
+
+    #[test]
+    fn test_instruction_unpack_ignores_trailing_bytes() {
+        use crate::processors::globalconfig::set::SetGlobalConfigArgs;
+
+        let args = SetGlobalConfigArgs {
+            local_asn: 100,
+            remote_asn: 200,
+            device_tunnel_block: "1.2.3.4/1".parse().unwrap(),
+            user_tunnel_block: "1.2.3.4/1".parse().unwrap(),
+            multicastgroup_block: "1.2.3.4/1".parse().unwrap(),
+        };
+
+        let mut data = vec![3u8]; // discriminant for SetGlobalConfig in your unpack()
+        data.extend(borsh::to_vec(&args).unwrap());
+        data.extend([0xDE, 0xAD, 0xBE, 0xEF]);
+
+        let unpacked = DoubleZeroInstruction::unpack(&data).expect("unpack should succeed");
+        match unpacked {
+            DoubleZeroInstruction::SetGlobalConfig(decoded) => assert_eq!(decoded, args),
+            other => panic!("expected SetGlobalConfig, got {:?}", other),
+        }
+    }
 
     fn test_instruction(instruction: DoubleZeroInstruction, expected_name: &str) {
         let unpacked = DoubleZeroInstruction::unpack(&instruction.pack()).unwrap();

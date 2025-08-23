@@ -4,7 +4,8 @@ use crate::processors::telemetry::{
     write_device_latency_samples::WriteDeviceLatencySamplesArgs,
     write_internet_latency_samples::WriteInternetLatencySamplesArgs,
 };
-use borsh::{from_slice, BorshDeserialize, BorshSerialize};
+use borsh::{BorshDeserialize, BorshSerialize};
+use doublezero_program_common::compat_deserialize;
 use solana_program::program_error::ProgramError;
 use std::cmp::PartialEq;
 
@@ -24,6 +25,11 @@ pub const INITIALIZE_DEVICE_LATENCY_SAMPLES_INSTRUCTION_INDEX: u8 = 0;
 pub const WRITE_DEVICE_LATENCY_SAMPLES_INSTRUCTION_INDEX: u8 = 1;
 pub const INITIALIZE_INTERNET_LATENCY_SAMPLES_INSTRUCTION_INDEX: u8 = 2;
 pub const WRITE_INTERNET_LATENCY_SAMPLES_INSTRUCTION_INDEX: u8 = 3;
+
+#[inline]
+pub fn from_slice<T: BorshDeserialize>(data: &[u8]) -> Result<T, ProgramError> {
+    compat_deserialize(data).map_err(|_| ProgramError::InvalidInstructionData)
+}
 
 impl TelemetryInstruction {
     pub fn pack(&self) -> Result<Vec<u8>, ProgramError> {

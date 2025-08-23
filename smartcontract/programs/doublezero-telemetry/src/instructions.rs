@@ -27,7 +27,7 @@ pub const INITIALIZE_INTERNET_LATENCY_SAMPLES_INSTRUCTION_INDEX: u8 = 2;
 pub const WRITE_INTERNET_LATENCY_SAMPLES_INSTRUCTION_INDEX: u8 = 3;
 
 #[inline]
-pub fn from_slice<T: BorshDeserialize>(data: &[u8]) -> Result<T, ProgramError> {
+fn from_slice<T: BorshDeserialize>(data: &[u8]) -> Result<T, ProgramError> {
     compat_deserialize(data).map_err(|_| ProgramError::InvalidInstructionData)
 }
 

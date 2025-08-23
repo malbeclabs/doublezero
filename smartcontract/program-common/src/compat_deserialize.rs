@@ -1,7 +1,7 @@
 use borsh::BorshDeserialize;
 use std::io::{Cursor, Result as IoResult};
 
-pub fn compat_deserialize<T: BorshDeserialize>(data: &[u8]) -> IoResult<T> {
+pub fn compat_deserialize<R: AsRef<[u8]>, T: BorshDeserialize>(data: R) -> IoResult<T> {
     let mut cur = Cursor::new(data);
     T::deserialize_reader(&mut cur)
 }
@@ -67,7 +67,7 @@ mod tests {
 
     #[test]
     fn test_empty_slice_errors() {
-        let err: IoResult<FooV1> = compat_deserialize(&[]);
+        let err: IoResult<FooV1> = compat_deserialize([]);
         assert!(is_decode_err(&err));
     }
 

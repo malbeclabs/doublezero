@@ -149,7 +149,7 @@ pub enum DoubleZeroInstruction {
 }
 
 #[inline]
-pub fn from_slice<T: BorshDeserialize>(data: &[u8]) -> Result<T, ProgramError> {
+fn from_slice<T: BorshDeserialize>(data: &[u8]) -> Result<T, ProgramError> {
     compat_deserialize(data).map_err(|_| ProgramError::InvalidInstructionData)
 }
 

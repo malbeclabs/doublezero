@@ -5,6 +5,7 @@ import (
 	"log/slog"
 
 	devicetelemetry "github.com/malbeclabs/doublezero/controlplane/monitor/internal/device-telemetry"
+	internettelemetry "github.com/malbeclabs/doublezero/controlplane/monitor/internal/internet-telemetry"
 )
 
 type Watcher interface {
@@ -23,6 +24,7 @@ func New(cfg *Config) (*Worker, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
+
 	deviceTelemetryWatcher, err := devicetelemetry.NewDeviceTelemetryWatcher(&devicetelemetry.Config{
 		Logger:          cfg.Logger,
 		LedgerRPCClient: cfg.LedgerRPCClient,
@@ -33,8 +35,22 @@ func New(cfg *Config) (*Worker, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	internetTelemetryWatcher, err := internettelemetry.NewInternetTelemetryWatcher(&internettelemetry.Config{
+		Logger:                     cfg.Logger,
+		LedgerRPCClient:            cfg.LedgerRPCClient,
+		Serviceability:             cfg.Serviceability,
+		Telemetry:                  cfg.Telemetry,
+		Interval:                   cfg.Interval,
+		InternetLatencyCollectorPK: cfg.InternetLatencyCollectorPK,
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	watchers := []Watcher{
 		deviceTelemetryWatcher,
+		internetTelemetryWatcher,
 	}
 	return &Worker{
 		log:      cfg.Logger,

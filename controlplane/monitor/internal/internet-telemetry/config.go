@@ -1,4 +1,4 @@
-package worker
+package internettelemetry
 
 import (
 	"context"
@@ -12,6 +12,10 @@ import (
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 )
 
+const (
+	defaultMaxConcurrency = 16
+)
+
 type LedgerRPCClient interface {
 	GetEpochInfo(ctx context.Context, commitment solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error)
 }
@@ -21,17 +25,17 @@ type ServiceabilityClient interface {
 }
 
 type TelemetryProgramClient interface {
-	GetDeviceLatencySamples(ctx context.Context, originDevicePubKey, targetDevicePubKey, linkPubKey solana.PublicKey, epoch uint64) (*telemetry.DeviceLatencySamples, error)
-	GetInternetLatencySamples(ctx context.Context, dataProviderName string, originExchangePubKey, targetExchangePubKey, linkPubKey solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error)
+	GetInternetLatencySamples(ctx context.Context, dataProviderName string, originExchangePK, targetExchangePK, agentPK solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error)
 }
 
 type Config struct {
 	Logger                     *slog.Logger
 	LedgerRPCClient            LedgerRPCClient
 	Serviceability             ServiceabilityClient
-	Telemetry                  TelemetryProgramClient
 	InternetLatencyCollectorPK solana.PublicKey
+	Telemetry                  TelemetryProgramClient
 	Interval                   time.Duration
+	MaxConcurrency             int
 }
 
 func (c *Config) Validate() error {
@@ -48,10 +52,13 @@ func (c *Config) Validate() error {
 		return errors.New("telemetry client is required")
 	}
 	if c.InternetLatencyCollectorPK.IsZero() {
-		return errors.New("internet latency collector pk is required")
+		return errors.New("internet latency collector public key is required")
 	}
 	if c.Interval <= 0 {
 		return errors.New("interval must be greater than 0")
+	}
+	if c.MaxConcurrency <= 0 {
+		c.MaxConcurrency = defaultMaxConcurrency
 	}
 	return nil
 }

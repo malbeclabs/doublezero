@@ -30,6 +30,7 @@ All notable changes to this project will be documented in this file.
 - Onchain monitor
     - Initial implementation and component release
     - Monitor onchain device telemetry metrics
+    - Monitor onchain internet latency metrics
 - E2E tests
     - Simplify fixtures with loop rollups
     - Add user ban workflow test

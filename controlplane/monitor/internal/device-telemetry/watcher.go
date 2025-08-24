@@ -2,6 +2,7 @@ package devicetelemetry
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -10,6 +11,7 @@ import (
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	telemetrycircuits "github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/circuits"
+	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 )
 
 const (
@@ -107,6 +109,10 @@ func (w *DeviceTelemetryWatcher) Tick(ctx context.Context) error {
 
 			account, err := w.cfg.Telemetry.GetDeviceLatencySamples(ctx, originPK, targetPK, linkPK, epoch)
 			if err != nil {
+				if errors.Is(err, telemetry.ErrAccountNotFound) {
+					w.log.Debug("device latency samples account not found", "error", err, "circuit_code", circuit.Code)
+					return
+				}
 				MetricErrors.WithLabelValues(MetricErrorTypeGetLatencySamples).Inc()
 				w.log.Error("failed to get device latency samples", "error", err)
 				errorChan <- err

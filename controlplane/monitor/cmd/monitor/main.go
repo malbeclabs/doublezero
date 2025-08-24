@@ -26,14 +26,15 @@ const (
 )
 
 var (
-	env                     = flag.String("env", "", "the environment to run the component in (devnet, testnet, mainnet)")
-	ledgerRPCURL            = flag.String("ledger-rpc-url", "", "the url of the ledger rpc")
-	serviceabilityProgramID = flag.String("serviceability-program-id", "", "the id of the serviceability program")
-	telemetryProgramID      = flag.String("telemetry-program-id", "", "the id of the telemetry program")
-	interval                = flag.Duration("interval", defaultInterval, "the interval to execute watcher ticks")
-	verbose                 = flag.Bool("verbose", false, "enable verbose logging")
-	showVersion             = flag.Bool("version", false, "Print the version of the doublezero-agent and exit")
-	metricsAddr             = flag.String("metrics-addr", ":8080", "Address to listen on for prometheus metrics")
+	env                        = flag.String("env", "", "the environment to run the component in (devnet, testnet, mainnet)")
+	ledgerRPCURL               = flag.String("ledger-rpc-url", "", "the url of the ledger rpc")
+	serviceabilityProgramID    = flag.String("serviceability-program-id", "", "the id of the serviceability program")
+	telemetryProgramID         = flag.String("telemetry-program-id", "", "the id of the telemetry program")
+	internetLatencyCollectorPK = flag.String("internet-latency-collector-pk", "", "the public key of the internet latency collector")
+	interval                   = flag.Duration("interval", defaultInterval, "the interval to execute watcher ticks")
+	verbose                    = flag.Bool("verbose", false, "enable verbose logging")
+	showVersion                = flag.Bool("version", false, "Print the version of the doublezero-agent and exit")
+	metricsAddr                = flag.String("metrics-addr", ":8080", "Address to listen on for prometheus metrics")
 
 	// Set by LDFLAGS
 	version = "dev"
@@ -76,6 +77,11 @@ func main() {
 			flag.Usage()
 			os.Exit(1)
 		}
+		if *internetLatencyCollectorPK == "" {
+			log.Error("Missing required flag", "flag", "internet-latency-collector-pk")
+			flag.Usage()
+			os.Exit(1)
+		}
 		serviceabilityProgramID, err := solana.PublicKeyFromBase58(*serviceabilityProgramID)
 		if err != nil {
 			log.Error("Failed to parse serviceability program id", "error", err)
@@ -88,10 +94,17 @@ func main() {
 			flag.Usage()
 			os.Exit(1)
 		}
+		internetLatencyCollectorPK, err := solana.PublicKeyFromBase58(*internetLatencyCollectorPK)
+		if err != nil {
+			log.Error("Failed to parse internet latency collector pk", "error", err)
+			flag.Usage()
+			os.Exit(1)
+		}
 		networkConfig = &config.NetworkConfig{
-			LedgerPublicRPCURL:      *ledgerRPCURL,
-			ServiceabilityProgramID: serviceabilityProgramID,
-			TelemetryProgramID:      telemetryProgramID,
+			LedgerPublicRPCURL:         *ledgerRPCURL,
+			ServiceabilityProgramID:    serviceabilityProgramID,
+			TelemetryProgramID:         telemetryProgramID,
+			InternetLatencyCollectorPK: internetLatencyCollectorPK,
 		}
 	} else {
 		var err error
@@ -125,11 +138,12 @@ func main() {
 
 	// Initialize worker.
 	worker, err := worker.New(&worker.Config{
-		Logger:          log,
-		LedgerRPCClient: rpcClient,
-		Serviceability:  serviceabilityClient,
-		Telemetry:       telemetryClient,
-		Interval:        *interval,
+		Logger:                     log,
+		LedgerRPCClient:            rpcClient,
+		Serviceability:             serviceabilityClient,
+		Telemetry:                  telemetryClient,
+		InternetLatencyCollectorPK: networkConfig.InternetLatencyCollectorPK,
+		Interval:                   *interval,
 	})
 	if err != nil {
 		log.Error("Failed to create worker", "error", err)

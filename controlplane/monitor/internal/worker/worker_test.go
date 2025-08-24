@@ -33,8 +33,12 @@ func TestMonitor_Worker(t *testing.T) {
 			GetDeviceLatencySamplesFunc: func(context.Context, solana.PublicKey, solana.PublicKey, solana.PublicKey, uint64) (*telemetry.DeviceLatencySamples, error) {
 				return &telemetry.DeviceLatencySamples{Samples: []uint32{}}, nil
 			},
+			GetInternetLatencySamplesFunc: func(ctx context.Context, d string, o, t, l solana.PublicKey, e uint64) (*telemetry.InternetLatencySamples, error) {
+				return &telemetry.InternetLatencySamples{Samples: []uint32{}}, nil
+			},
 		},
-		Interval: 10 * time.Millisecond,
+		InternetLatencyCollectorPK: solana.NewWallet().PublicKey(),
+		Interval:                   10 * time.Millisecond,
 	}
 
 	t.Run("New_setsUpDeviceTelemetryWatcher", func(t *testing.T) {
@@ -42,8 +46,9 @@ func TestMonitor_Worker(t *testing.T) {
 		w, err := New(validCfg)
 		require.NoError(t, err)
 		require.NotNil(t, w)
-		require.Len(t, w.watchers, 1)
+		require.Len(t, w.watchers, 2)
 		require.Equal(t, "device-telemetry", w.watchers[0].Name())
+		require.Equal(t, "internet-telemetry", w.watchers[1].Name())
 	})
 
 	t.Run("New_failsOnBadConfig", func(t *testing.T) {

@@ -33,8 +33,12 @@ func TestMonitor_Worker_Config(t *testing.T) {
 			GetDeviceLatencySamplesFunc: func(ctx context.Context, o, t, l solana.PublicKey, e uint64) (*telemetry.DeviceLatencySamples, error) {
 				return &telemetry.DeviceLatencySamples{}, nil
 			},
+			GetInternetLatencySamplesFunc: func(ctx context.Context, d string, o, t, l solana.PublicKey, e uint64) (*telemetry.InternetLatencySamples, error) {
+				return &telemetry.InternetLatencySamples{}, nil
+			},
 		},
-		Interval: 50 * time.Millisecond,
+		Interval:                   50 * time.Millisecond,
+		InternetLatencyCollectorPK: solana.NewWallet().PublicKey(),
 	}
 
 	t.Run("valid config passes", func(t *testing.T) {
@@ -70,6 +74,13 @@ func TestMonitor_Worker_Config(t *testing.T) {
 		require.Error(t, c.Validate())
 	})
 
+	t.Run("missing internet latency collector pk fails", func(t *testing.T) {
+		t.Parallel()
+		c := *valid
+		c.InternetLatencyCollectorPK = solana.PublicKey{}
+		require.Error(t, c.Validate())
+	})
+
 	t.Run("non-positive interval fails", func(t *testing.T) {
 		t.Parallel()
 		c := *valid
@@ -99,9 +110,14 @@ func (m *mockServiceabilityClient) GetProgramData(ctx context.Context) (*service
 }
 
 type mockTelemetryProgramClient struct {
-	GetDeviceLatencySamplesFunc func(context.Context, solana.PublicKey, solana.PublicKey, solana.PublicKey, uint64) (*telemetry.DeviceLatencySamples, error)
+	GetDeviceLatencySamplesFunc   func(context.Context, solana.PublicKey, solana.PublicKey, solana.PublicKey, uint64) (*telemetry.DeviceLatencySamples, error)
+	GetInternetLatencySamplesFunc func(context.Context, string, solana.PublicKey, solana.PublicKey, solana.PublicKey, uint64) (*telemetry.InternetLatencySamples, error)
 }
 
 func (m *mockTelemetryProgramClient) GetDeviceLatencySamples(ctx context.Context, o, t, l solana.PublicKey, e uint64) (*telemetry.DeviceLatencySamples, error) {
 	return m.GetDeviceLatencySamplesFunc(ctx, o, t, l, e)
+}
+
+func (m *mockTelemetryProgramClient) GetInternetLatencySamples(ctx context.Context, d string, o, t, l solana.PublicKey, e uint64) (*telemetry.InternetLatencySamples, error) {
+	return m.GetInternetLatencySamplesFunc(ctx, d, o, t, l, e)
 }

@@ -147,3 +147,15 @@ func DeserializeMulticastGroup(reader *ByteReader, multicastgroup *MulticastGrou
 	multicastgroup.Subscribers = reader.ReadPubkeySlice()
 	multicastgroup.PubKey = reader.ReadPubkey()
 }
+
+func DeserializeProgramConfig(reader *ByteReader, programconfig *ProgramConfig) {
+	programconfig.AccountType = AccountType(reader.ReadU8())
+	programconfig.BumpSeed = reader.ReadU8()
+	DeserializeProgramVersion(reader, &programconfig.Version)
+}
+
+func DeserializeProgramVersion(reader *ByteReader, programversion *ProgramVersion) {
+	programversion.Major = reader.ReadU32()
+	programversion.Minor = reader.ReadU32()
+	programversion.Patch = reader.ReadU32()
+}

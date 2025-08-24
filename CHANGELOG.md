@@ -9,7 +9,8 @@ All notable changes to this project will be documented in this file.
 ### Changes
 
 - Onchain monitor
-    - Emit metric with 0 samples when account not found in device and internet telemetry watchers
+    - Emit metric for telemetry account not found in device and internet telemetry watchers
+    - Emit metric with serviceability program onchain version
 - Telemetry
     - Fix dashboard API to handle partitioned query with no samples
     - Add summary view with committed RTT and jitter, compared to measured values

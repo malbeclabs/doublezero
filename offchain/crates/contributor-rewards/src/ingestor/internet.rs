@@ -15,7 +15,7 @@ use solana_client::{
     rpc_filter::{Memcmp, RpcFilterType},
 };
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
-use std::{collections::HashSet, str::FromStr, time::Duration};
+use std::{collections::BTreeSet, str::FromStr, time::Duration};
 use tracing::{debug, error, info, warn};
 
 // Use the correct discriminator value from the AccountType enum
@@ -144,7 +144,7 @@ fn calculate_coverage(data: &DZInternetData, expected_links: usize, min_samples:
     }
 
     // Count unique origin-target pairs with sufficient samples
-    let valid_links: HashSet<(Pubkey, Pubkey)> = data
+    let valid_links: BTreeSet<(Pubkey, Pubkey)> = data
         .internet_latency_samples
         .iter()
         .filter(|sample| sample.samples.len() >= min_samples)

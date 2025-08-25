@@ -1,6 +1,6 @@
 use crate::ingestor::demand::CityStats;
 use network_shapley::types::{Demand, Device, PrivateLink, PublicLink};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use tabled::{builder::Builder as TableBuilder, settings::Style};
 
 /// Calculate normalized weights for each city based on stake
@@ -9,8 +9,8 @@ use tabled::{builder::Builder as TableBuilder, settings::Style};
 /// * `city_stats` - Map of city to CityStat containing stake information
 ///
 /// # Returns
-/// HashMap mapping city names to their normalized weights (0.0 to 1.0, sum = 1.0)
-pub fn calculate_city_weights(city_stats: &CityStats) -> HashMap<String, f64> {
+/// BTreeMap mapping city names to their normalized weights (0.0 to 1.0, sum = 1.0)
+pub fn calculate_city_weights(city_stats: &CityStats) -> BTreeMap<String, f64> {
     // Calculate total stake across all cities
     let total_stake: f64 = city_stats
         .values()

@@ -4,7 +4,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use chrono::Utc;
 use network_shapley::types::{Demands, Devices, PrivateLinks, PublicLinks};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use svm_hash::sha2::{Hash, double_hash};
 
 // Domain separation prefixes for telemetry checksums
@@ -28,7 +28,7 @@ pub struct ShapleyInputs {
     pub public_links: PublicLinks,
     pub demands: Demands,
     pub city_stats: CityStats,
-    pub city_weights: HashMap<String, f64>, // Pre-calculated weights for consistency
+    pub city_weights: BTreeMap<String, f64>, // Pre-calculated weights for consistency
 }
 
 /// Complete input configuration for reward calculations
@@ -47,7 +47,7 @@ pub struct RewardInput {
     pub private_links: PrivateLinks,
     pub public_links: PublicLinks,
     pub demands: Demands,
-    pub city_summaries: HashMap<String, CitySummary>,
+    pub city_summaries: BTreeMap<String, CitySummary>,
 
     // Checksums for telemetry data verification
     pub device_telemetry_checksum: Hash,
@@ -71,7 +71,7 @@ impl RewardInput {
         let city_stats = &shapley_inputs.city_stats;
 
         // Use pre-calculated weights from ShapleyInputs for consistency
-        let city_summaries: HashMap<String, CitySummary> = city_stats
+        let city_summaries: BTreeMap<String, CitySummary> = city_stats
             .iter()
             .map(|(city, stat)| {
                 // Get weight from pre-calculated weights
@@ -182,7 +182,7 @@ mod tests {
         let private_links = vec![];
         let public_links = vec![];
         let demands = vec![];
-        let city_stats: crate::ingestor::demand::CityStats = HashMap::new();
+        let city_stats: crate::ingestor::demand::CityStats = BTreeMap::new();
         let city_weights = crate::calculator::util::calculate_city_weights(&city_stats);
         let shapley_inputs = ShapleyInputs {
             devices,

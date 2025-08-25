@@ -9,13 +9,13 @@ use doublezero_serviceability::state::{
 use network_shapley::types::{
     Demands, Device, Devices, PrivateLink, PrivateLinks, PublicLink, PublicLinks,
 };
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use tracing::debug;
 
 // (city1_code, city2_code)
 type CityPair = (String, String);
 // key: city_pair, val: vec of latencies
-type CityPairLatencies = HashMap<CityPair, Vec<f64>>;
+type CityPairLatencies = BTreeMap<CityPair, Vec<f64>>;
 
 pub fn build_devices(fetch_data: &FetchData) -> Result<Devices> {
     let mut devices = Vec::new();
@@ -55,7 +55,7 @@ pub fn build_public_links(
 ) -> Result<PublicLinks> {
     // Build exchange to location mapping via devices
     // exchange_pk -> device -> location_pk -> location_code
-    let mut exchange_to_location: HashMap<String, String> = HashMap::new();
+    let mut exchange_to_location: BTreeMap<String, String> = BTreeMap::new();
 
     for device in fetch_data.dz_serviceability.devices.values() {
         // Find the exchange for this device

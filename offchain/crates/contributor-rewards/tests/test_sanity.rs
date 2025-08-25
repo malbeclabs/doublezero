@@ -5,7 +5,7 @@ mod tests {
         calculator::keypair_loader::load_keypair,
         processor::{internet::InternetTelemetryStatMap, telemetry::DZDTelemetryStatMap},
     };
-    use std::{collections::HashMap, fs, path::PathBuf};
+    use std::{collections::BTreeMap, fs, path::PathBuf};
     use tempfile::TempDir;
 
     #[test]
@@ -115,7 +115,7 @@ mod tests {
     #[test]
     fn test_borsh_serialization_dzd_telemetry() {
         // Create an empty test telemetry map
-        let stat_map: DZDTelemetryStatMap = HashMap::new();
+        let stat_map: DZDTelemetryStatMap = BTreeMap::new();
 
         // Serialize
         let serialized = borsh::to_vec(&stat_map).unwrap();
@@ -130,7 +130,7 @@ mod tests {
     #[test]
     fn test_borsh_serialization_internet_telemetry() {
         // Create an empty test telemetry map
-        let stat_map: InternetTelemetryStatMap = HashMap::new();
+        let stat_map: InternetTelemetryStatMap = BTreeMap::new();
 
         // Serialize
         let serialized = borsh::to_vec(&stat_map).unwrap();

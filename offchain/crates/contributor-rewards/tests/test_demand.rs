@@ -8,7 +8,7 @@ use doublezero_serviceability::state::{
 };
 use serde::{Deserialize, Serialize};
 use solana_sdk::pubkey::Pubkey;
-use std::{collections::HashMap, fs, path::Path, str::FromStr};
+use std::{collections::BTreeMap, fs, path::Path, str::FromStr};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct TestUser {
@@ -32,11 +32,11 @@ struct TestLocation {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct TestData {
-    users: HashMap<String, TestUser>,
-    devices: HashMap<String, TestDevice>,
-    locations: HashMap<String, TestLocation>,
+    users: BTreeMap<String, TestUser>,
+    devices: BTreeMap<String, TestDevice>,
+    locations: BTreeMap<String, TestLocation>,
     // validator_pubkey -> schedule_length (stake proxy)
-    leader_schedule: HashMap<String, usize>,
+    leader_schedule: BTreeMap<String, usize>,
     epoch_info: TestEpochInfo,
 }
 
@@ -57,9 +57,9 @@ fn load_test_data(data_path: &Path) -> Result<TestData> {
 
 /// Convert test data to production types
 fn convert_to_fetch_data(test_data: &TestData) -> Result<FetchData> {
-    let mut users = HashMap::new();
-    let mut devices = HashMap::new();
-    let mut locations = HashMap::new();
+    let mut users = BTreeMap::new();
+    let mut devices = BTreeMap::new();
+    let mut locations = BTreeMap::new();
 
     // Convert locations
     for (pk_str, test_loc) in test_data.locations.iter() {
@@ -146,12 +146,12 @@ fn convert_to_fetch_data(test_data: &TestData) -> Result<FetchData> {
 
     let serviceability_data = DZServiceabilityData {
         locations,
-        exchanges: HashMap::new(),
+        exchanges: BTreeMap::new(),
         devices,
-        links: HashMap::new(),
+        links: BTreeMap::new(),
         users,
-        multicast_groups: HashMap::new(),
-        contributors: HashMap::new(),
+        multicast_groups: BTreeMap::new(),
+        contributors: BTreeMap::new(),
     };
 
     Ok(FetchData {

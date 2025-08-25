@@ -16,7 +16,7 @@ use anyhow::Result;
 use network_shapley::{shapley::ShapleyInput, types::Demand};
 use rayon::prelude::*;
 use solana_sdk::pubkey::Pubkey;
-use std::{collections::HashMap, path::PathBuf, time::Instant};
+use std::{collections::BTreeMap, path::PathBuf, time::Instant};
 use tabled::{builder::Builder as TableBuilder, settings::Style};
 use tracing::info;
 
@@ -70,7 +70,7 @@ impl Orchestrator {
         }
 
         // Group demands by start city
-        let mut demands_by_city: HashMap<String, Vec<Demand>> = HashMap::new();
+        let mut demands_by_city: BTreeMap<String, Vec<Demand>> = BTreeMap::new();
         for demand in shapley_inputs.demands.clone() {
             demands_by_city
                 .entry(demand.start.clone())
@@ -81,7 +81,7 @@ impl Orchestrator {
 
         // Collect per-city Shapley outputs in parallel
         let start_time = Instant::now();
-        let per_city_shapley_outputs: HashMap<String, Vec<(String, f64)>> = demand_groups
+        let per_city_shapley_outputs: BTreeMap<String, Vec<(String, f64)>> = demand_groups
             .par_iter()
             .map(|(city, demands)| {
                 info!(

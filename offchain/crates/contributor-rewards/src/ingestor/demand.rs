@@ -4,11 +4,11 @@ use doublezero_serviceability::state::user::User as DZUser;
 use network_shapley::types::{Demand, Demands};
 use rayon::prelude::*;
 use solana_sdk::system_program::ID as SystemProgramID;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use tracing::info;
 
 // key: location code, val: city stat
-pub type CityStats = HashMap<String, CityStat>;
+pub type CityStats = BTreeMap<String, CityStat>;
 
 /// Statistics for validators in a city
 #[derive(Debug, Clone)]
@@ -72,7 +72,7 @@ pub async fn build(fetcher: &Fetcher, fetch_data: &FetchData) -> Result<DemandBu
         .ok_or_else(|| anyhow!("No leader schedule found for Solana epoch {}", solana_epoch))?;
 
     // Convert leader schedule to map
-    let leader_schedule_map: HashMap<String, usize> = leader_schedule
+    let leader_schedule_map: BTreeMap<String, usize> = leader_schedule
         .into_iter()
         .map(|(pk, schedule)| (pk, schedule.len()))
         .collect();
@@ -84,10 +84,10 @@ pub async fn build(fetcher: &Fetcher, fetch_data: &FetchData) -> Result<DemandBu
 /// NOTE: This allows testing without RPC calls
 pub fn build_with_schedule(
     fetch_data: &FetchData,
-    leader_schedule: HashMap<String, usize>,
+    leader_schedule: BTreeMap<String, usize>,
 ) -> Result<DemandBuildOutput> {
     // Build validator to user mapping
-    let validator_to_user: HashMap<String, &DZUser> = fetch_data
+    let validator_to_user: BTreeMap<String, &DZUser> = fetch_data
         .dz_serviceability
         .users
         .par_iter()
@@ -123,8 +123,8 @@ pub fn build_with_schedule(
 /// Build city statistics from fetch data and leader schedule
 pub fn build_city_stats(
     fetch_data: &FetchData,
-    validator_to_user: &HashMap<String, &DZUser>,
-    leader_schedule: HashMap<String, usize>,
+    validator_to_user: &BTreeMap<String, &DZUser>,
+    leader_schedule: BTreeMap<String, usize>,
 ) -> Result<CityStats> {
     let mut city_stats = CityStats::new();
 

@@ -7,12 +7,12 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use doublezero_program_common::serializer;
 use serde::{Deserialize, Serialize};
 use solana_sdk::pubkey::Pubkey;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use tabled::{Table, Tabled, settings::Style};
 use tracing::{debug, warn};
 
 // Key format: "{origin_code} → {target_code} ({data_provider})"
-pub type InternetTelemetryStatMap = HashMap<String, InternetTelemetryStats>;
+pub type InternetTelemetryStatMap = BTreeMap<String, InternetTelemetryStats>;
 
 #[derive(Debug, Clone, Tabled, Serialize, BorshSerialize, BorshDeserialize, Deserialize)]
 pub struct InternetTelemetryStats {
@@ -86,7 +86,7 @@ pub fn print_internet_stats(map: &InternetTelemetryStatMap) -> String {
 impl InternetTelemetryProcessor {
     pub fn process(fetch_data: &FetchData) -> Result<InternetTelemetryStatMap> {
         // Build exchange PK to xchange code mapping (internet telemetry uses exchange PKs)
-        let exchange_pk_to_code: HashMap<Pubkey, String> = fetch_data
+        let exchange_pk_to_code: BTreeMap<Pubkey, String> = fetch_data
             .dz_serviceability
             .exchanges
             .iter()
@@ -106,10 +106,10 @@ impl InternetTelemetryProcessor {
         );
 
         // Convert from generic TelemetryStatistics to InternetTelemetryStats
-        let mut result = HashMap::new();
+        let mut result = BTreeMap::new();
 
         // Need to get the first sample from each group to extract oracle agent
-        let mut sample_by_key: HashMap<String, &DZInternetLatencySamples> = HashMap::new();
+        let mut sample_by_key: BTreeMap<String, &DZInternetLatencySamples> = BTreeMap::new();
         for sample in &fetch_data.dz_internet.internet_latency_samples {
             let key = format!(
                 "{}:{}:{}",

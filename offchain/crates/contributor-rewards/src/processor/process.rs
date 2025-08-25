@@ -12,7 +12,7 @@ use crate::{
     },
 };
 use anyhow::Result;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use tracing::debug;
 
 /// Process device telemetry samples into statistics
@@ -20,9 +20,9 @@ pub fn process_device_samples(
     samples: &[DZDeviceLatencySamples],
     start_us: u64,
     end_us: u64,
-) -> Result<HashMap<String, TelemetryStatistics>> {
+) -> Result<BTreeMap<String, TelemetryStatistics>> {
     // Group samples by circuit
-    let mut grouped_samples: HashMap<String, Vec<&DZDeviceLatencySamples>> = HashMap::new();
+    let mut grouped_samples: BTreeMap<String, Vec<&DZDeviceLatencySamples>> = BTreeMap::new();
 
     for sample in samples {
         grouped_samples
@@ -37,7 +37,7 @@ pub fn process_device_samples(
     );
 
     // Process each group
-    let mut results = HashMap::new();
+    let mut results = BTreeMap::new();
 
     for (key, sample_group) in grouped_samples {
         let stats = calculate_device_group_statistics(&sample_group, start_us, end_us)?;
@@ -52,9 +52,9 @@ pub fn process_internet_samples(
     samples: &[DZInternetLatencySamples],
     start_us: u64,
     end_us: u64,
-) -> Result<HashMap<String, TelemetryStatistics>> {
+) -> Result<BTreeMap<String, TelemetryStatistics>> {
     // Group samples by route
-    let mut grouped_samples: HashMap<String, Vec<&DZInternetLatencySamples>> = HashMap::new();
+    let mut grouped_samples: BTreeMap<String, Vec<&DZInternetLatencySamples>> = BTreeMap::new();
 
     for sample in samples {
         grouped_samples
@@ -69,7 +69,7 @@ pub fn process_internet_samples(
     );
 
     // Process each group
-    let mut results = HashMap::new();
+    let mut results = BTreeMap::new();
 
     for (key, sample_group) in grouped_samples {
         let stats = calculate_internet_group_statistics(&sample_group, start_us, end_us)?;

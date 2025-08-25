@@ -7,12 +7,12 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use doublezero_program_common::serializer;
 use serde::{Deserialize, Serialize};
 use solana_sdk::pubkey::Pubkey;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use tabled::{Table, Tabled, settings::Style};
 use tracing::debug;
 
 // Key: link_pk
-pub type DZDTelemetryStatMap = HashMap<String, DZDTelemetryStats>;
+pub type DZDTelemetryStatMap = BTreeMap<String, DZDTelemetryStats>;
 
 #[derive(Debug, Clone, Tabled, Serialize, BorshSerialize, BorshDeserialize, Deserialize)]
 pub struct DZDTelemetryStats {
@@ -80,7 +80,7 @@ pub fn print_telemetry_stats(map: &DZDTelemetryStatMap) -> String {
 impl DZDTelemetryProcessor {
     pub fn process(fetch_data: &FetchData) -> Result<DZDTelemetryStatMap> {
         // Build device pubkey to code mapping
-        let device_pk_to_code: HashMap<Pubkey, String> = fetch_data
+        let device_pk_to_code: BTreeMap<Pubkey, String> = fetch_data
             .dz_serviceability
             .devices
             .iter()

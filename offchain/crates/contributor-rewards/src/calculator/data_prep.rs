@@ -12,7 +12,7 @@ use crate::{
 };
 use anyhow::Result;
 use network_shapley::types::{Demand, Devices, PrivateLinks, PublicLinks};
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 use tracing::{info, warn};
 
 pub struct PreparedData {
@@ -159,7 +159,7 @@ async fn build_and_log_demands(
 /// based on the current serviceability data
 fn calculate_expected_links(fetch_data: &FetchData) -> usize {
     // Build set of unique location PKs that have exchanges
-    let mut location_pks = HashSet::new();
+    let mut location_pks = BTreeSet::new();
 
     // Build location_pks
     for device in fetch_data.dz_serviceability.devices.values() {

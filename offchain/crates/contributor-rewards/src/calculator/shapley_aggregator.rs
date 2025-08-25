@@ -1,6 +1,6 @@
 use anyhow::Result;
 use network_shapley::shapley::{ShapleyOutput, ShapleyValue};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use tracing::info;
 
 /// Aggregates per-city Shapley outputs using pre-calculated stake-share weights
@@ -12,8 +12,8 @@ use tracing::info;
 /// # Returns
 /// Vec of consolidated outputs sorted by value descending
 pub fn aggregate_shapley_outputs(
-    per_city_outputs: &HashMap<String, Vec<(String, f64)>>,
-    city_weights: &HashMap<String, f64>,
+    per_city_outputs: &BTreeMap<String, Vec<(String, f64)>>,
+    city_weights: &BTreeMap<String, f64>,
 ) -> Result<ShapleyOutput> {
     // Log the weights being used
     let weights_sum: f64 = city_weights.values().sum();
@@ -28,7 +28,7 @@ pub fn aggregate_shapley_outputs(
     );
 
     // Aggregate values for each operator across all cities
-    let mut operator_values: HashMap<String, f64> = HashMap::new();
+    let mut operator_values: BTreeMap<String, f64> = BTreeMap::new();
 
     for (city, outputs) in per_city_outputs {
         let weight = city_weights.get(city).copied().unwrap_or(0.0);
@@ -83,7 +83,7 @@ mod tests {
     #[test]
     fn test_fra_nyc_weighted_aggregation() {
         // Setup: FRA with 60% stake, NYC with 40% stake
-        let mut city_stats = HashMap::new();
+        let mut city_stats = BTreeMap::new();
         city_stats.insert(
             "FRA".to_string(),
             CityStat {
@@ -100,7 +100,7 @@ mod tests {
         );
 
         // Per-city Shapley outputs
-        let mut per_city_outputs = HashMap::new();
+        let mut per_city_outputs = BTreeMap::new();
         per_city_outputs.insert(
             "FRA".to_string(),
             vec![
@@ -142,7 +142,7 @@ mod tests {
 
     #[test]
     fn test_single_city() {
-        let mut city_stats = HashMap::new();
+        let mut city_stats = BTreeMap::new();
         city_stats.insert(
             "LON".to_string(),
             CityStat {
@@ -151,7 +151,7 @@ mod tests {
             },
         );
 
-        let mut per_city_outputs = HashMap::new();
+        let mut per_city_outputs = BTreeMap::new();
         per_city_outputs.insert(
             "LON".to_string(),
             vec![("OpX".to_string(), 75.0), ("OpY".to_string(), 25.0)],
@@ -173,7 +173,7 @@ mod tests {
 
     #[test]
     fn test_missing_operator_in_city() {
-        let mut city_stats = HashMap::new();
+        let mut city_stats = BTreeMap::new();
         city_stats.insert(
             "BER".to_string(),
             CityStat {
@@ -189,7 +189,7 @@ mod tests {
             },
         );
 
-        let mut per_city_outputs = HashMap::new();
+        let mut per_city_outputs = BTreeMap::new();
         per_city_outputs.insert("BER".to_string(), vec![("OpA".to_string(), 100.0)]);
         per_city_outputs.insert("PAR".to_string(), vec![("OpB".to_string(), 100.0)]);
 
@@ -209,7 +209,7 @@ mod tests {
 
     #[test]
     fn test_zero_stake_city() {
-        let mut city_stats = HashMap::new();
+        let mut city_stats = BTreeMap::new();
         city_stats.insert(
             "MAD".to_string(),
             CityStat {
@@ -225,7 +225,7 @@ mod tests {
             },
         );
 
-        let mut per_city_outputs = HashMap::new();
+        let mut per_city_outputs = BTreeMap::new();
         per_city_outputs.insert("MAD".to_string(), vec![("OpIgnored".to_string(), 999.0)]);
         per_city_outputs.insert("ROM".to_string(), vec![("OpActive".to_string(), 50.0)]);
 
@@ -241,7 +241,7 @@ mod tests {
 
     #[test]
     fn test_all_zero_values() {
-        let mut city_stats = HashMap::new();
+        let mut city_stats = BTreeMap::new();
         city_stats.insert(
             "ZRH".to_string(),
             CityStat {
@@ -250,7 +250,7 @@ mod tests {
             },
         );
 
-        let mut per_city_outputs = HashMap::new();
+        let mut per_city_outputs = BTreeMap::new();
         per_city_outputs.insert(
             "ZRH".to_string(),
             vec![("Op1".to_string(), 0.0), ("Op2".to_string(), 0.0)],
@@ -271,7 +271,7 @@ mod tests {
 
     #[test]
     fn test_negative_values_passthrough() {
-        let mut city_stats = HashMap::new();
+        let mut city_stats = BTreeMap::new();
         city_stats.insert(
             "HEL".to_string(),
             CityStat {
@@ -280,7 +280,7 @@ mod tests {
             },
         );
 
-        let mut per_city_outputs = HashMap::new();
+        let mut per_city_outputs = BTreeMap::new();
         per_city_outputs.insert(
             "HEL".to_string(),
             vec![
@@ -305,7 +305,7 @@ mod tests {
 
     #[test]
     fn test_proportions_sum_to_100() {
-        let mut city_stats = HashMap::new();
+        let mut city_stats = BTreeMap::new();
         city_stats.insert(
             "AMS".to_string(),
             CityStat {
@@ -328,7 +328,7 @@ mod tests {
             },
         );
 
-        let mut per_city_outputs = HashMap::new();
+        let mut per_city_outputs = BTreeMap::new();
         per_city_outputs.insert(
             "AMS".to_string(),
             vec![

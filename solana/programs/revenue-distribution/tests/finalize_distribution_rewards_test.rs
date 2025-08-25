@@ -6,7 +6,8 @@ use doublezero_program_tools::instruction::try_build_instruction;
 use doublezero_revenue_distribution::{
     instruction::{
         account::{ConfigureDistributionRewardsAccounts, FinalizeDistributionRewardsAccounts},
-        ProgramConfiguration, ProgramFlagConfiguration, RevenueDistributionInstructionData,
+        DistributionPaymentsConfiguration, ProgramConfiguration, ProgramFlagConfiguration,
+        RevenueDistributionInstructionData,
     },
     state::{self, Distribution},
     types::{BurnRate, DoubleZeroEpoch, ValidatorFee},
@@ -43,10 +44,13 @@ async fn test_finalize_distribution_rewards() {
     // Relay settings.
     let contributor_reward_claim_relay_lamports = 10_000;
 
-    // Distribution rewards.
+    // Distribution.
 
     let dz_epoch = DoubleZeroEpoch::new(1);
 
+    let total_solana_validators = 2_048;
+    let total_solana_validator_debt = 69;
+    let solana_validator_payments_merkle_root = Hash::new_unique();
     let total_contributors = 69;
     let rewards_merkle_root = Hash::new_unique();
 
@@ -97,6 +101,19 @@ async fn test_finalize_distribution_rewards() {
             &rewards_accountant_signer,
             total_contributors,
             rewards_merkle_root,
+        )
+        .await
+        .unwrap()
+        .configure_distribution_payments(
+            dz_epoch,
+            &payments_accountant_signer,
+            [
+                DistributionPaymentsConfiguration::UpdateSolanaValidatorPayments {
+                    total_validators: total_solana_validators,
+                    total_debt: total_solana_validator_debt,
+                    merkle_root: solana_validator_payments_merkle_root,
+                },
+            ],
         )
         .await
         .unwrap();
@@ -215,8 +232,13 @@ async fn test_finalize_distribution_rewards() {
     expected_distribution
         .solana_validator_fee_parameters
         .base_block_rewards = ValidatorFee::new(solana_validator_base_block_rewards_fee).unwrap();
+    expected_distribution.total_solana_validators = total_solana_validators;
+    expected_distribution.total_solana_validator_debt = total_solana_validator_debt;
+    expected_distribution.solana_validator_payments_merkle_root =
+        solana_validator_payments_merkle_root;
     expected_distribution.total_contributors = total_contributors;
     expected_distribution.rewards_merkle_root = rewards_merkle_root;
+    expected_distribution.processed_rewards_index = total_solana_validators / 8;
     assert_eq!(distribution, expected_distribution);
 
     let expected_distribution_remaining_data_len =

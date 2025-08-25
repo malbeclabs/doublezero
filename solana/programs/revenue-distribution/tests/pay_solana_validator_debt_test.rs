@@ -56,7 +56,7 @@ async fn test_pay_solana_validator_debt() {
         })
         .collect::<Vec<_>>();
 
-    let total_validators = payments_data.len() as u32;
+    let total_solana_validators = payments_data.len() as u32;
     let total_solana_validator_debt = payments_data.iter().map(|payment| payment.amount).sum();
     let solana_validator_payments_merkle_root = merkle_root_from_indexed_pod_leaves(
         &payments_data,
@@ -111,7 +111,7 @@ async fn test_pay_solana_validator_debt() {
             &payments_accountant_signer,
             [
                 DistributionPaymentsConfiguration::UpdateSolanaValidatorPayments {
-                    total_validators,
+                    total_validators: total_solana_validators,
                     total_debt: total_solana_validator_debt,
                     merkle_root: solana_validator_payments_merkle_root,
                 },
@@ -285,7 +285,7 @@ async fn test_pay_solana_validator_debt() {
     expected_distribution
         .solana_validator_fee_parameters
         .base_block_rewards = ValidatorFee::new(solana_validator_base_block_rewards_fee).unwrap();
-    expected_distribution.total_validators = total_validators;
+    expected_distribution.total_solana_validators = total_solana_validators;
     expected_distribution.total_solana_validator_debt = total_solana_validator_debt;
     expected_distribution.collected_solana_validator_payments = total_solana_validator_debt;
     expected_distribution.solana_validator_payments_merkle_root =

@@ -13,8 +13,9 @@ use doublezero_revenue_distribution::{
             GrantPrepaidConnectionAccessAccounts, InitializeContributorRewardsAccounts,
             InitializeDistributionAccounts, InitializeJournalAccounts,
             InitializePrepaidConnectionAccounts, InitializeProgramAccounts,
-            InitializeSolanaValidatorDepositAccounts, LoadPrepaidConnectionAccounts,
-            PaySolanaValidatorDebtAccounts, SetAdminAccounts, SetRewardsManagerAccounts,
+            InitializeSolanaValidatorDepositAccounts, InitializeSwapDestinationAccounts,
+            LoadPrepaidConnectionAccounts, PaySolanaValidatorDebtAccounts, SetAdminAccounts,
+            SetRewardsManagerAccounts, SweepDistributionTokensAccounts,
             TerminatePrepaidConnectionAccounts, VerifyDistributionMerkleRootAccounts,
         },
         ContributorRewardsConfiguration, DistributionMerkleRootKind,
@@ -865,6 +866,54 @@ impl ProgramTestWithOwner {
             &mut self.banks_client,
             &self.cached_blockhash,
             &[pay_solana_validator_debt_ix],
+            &[payer_signer],
+        )
+        .await?;
+
+        Ok(self)
+    }
+
+    pub async fn initialize_swap_destination(
+        &mut self,
+        mint_key: &Pubkey,
+    ) -> Result<&mut Self, BanksClientError> {
+        let payer_signer = &self.payer_signer;
+
+        let initialize_swap_destination_ix = try_build_instruction(
+            &ID,
+            InitializeSwapDestinationAccounts::new(&payer_signer.pubkey(), mint_key),
+            &RevenueDistributionInstructionData::InitializeSwapDestination,
+        )
+        .unwrap();
+
+        self.cached_blockhash = process_instructions_for_test(
+            &mut self.banks_client,
+            &self.cached_blockhash,
+            &[initialize_swap_destination_ix],
+            &[payer_signer],
+        )
+        .await?;
+
+        Ok(self)
+    }
+
+    pub async fn sweep_distribution_tokens(
+        &mut self,
+        dz_epoch: DoubleZeroEpoch,
+    ) -> Result<&mut Self, BanksClientError> {
+        let payer_signer = &self.payer_signer;
+
+        let sweep_distribution_tokens_ix = try_build_instruction(
+            &ID,
+            SweepDistributionTokensAccounts::new(dz_epoch),
+            &RevenueDistributionInstructionData::SweepDistributionTokens,
+        )
+        .unwrap();
+
+        self.cached_blockhash = process_instructions_for_test(
+            &mut self.banks_client,
+            &self.cached_blockhash,
+            &[sweep_distribution_tokens_ix],
             &[payer_signer],
         )
         .await?;

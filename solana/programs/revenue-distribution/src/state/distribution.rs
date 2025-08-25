@@ -41,7 +41,7 @@ pub struct Distribution {
 
     pub solana_validator_payments_merkle_root: Hash,
 
-    pub total_validators: u32,
+    pub total_solana_validators: u32,
     pub num_validators_paid: u32,
 
     pub total_solana_validator_debt: u64,
@@ -72,6 +72,9 @@ pub struct Distribution {
     /// total amount owed to the system.
     pub uncollectible_sol_debt: u64,
 
+    pub processed_solana_validator_payments_index: u32,
+    pub processed_rewards_index: u32,
+
     _storage_gap: StorageGap<8>,
 }
 
@@ -85,6 +88,7 @@ impl Distribution {
     pub const FLAG_RESERVED_BIT: usize = 0;
     pub const FLAG_ARE_PAYMENTS_FINALIZED_BIT: usize = 1;
     pub const FLAG_ARE_REWARDS_FINALIZED_BIT: usize = 2;
+    pub const FLAG_HAS_SWEPT_2Z_TOKENS_BIT: usize = 3;
 
     pub fn find_address(dz_epoch: DoubleZeroEpoch) -> (Pubkey, u8) {
         Pubkey::find_program_address(&[Self::SEED_PREFIX, &dz_epoch.as_seed()], &crate::ID)
@@ -108,12 +112,25 @@ impl Distribution {
             .set_bit(Self::FLAG_ARE_REWARDS_FINALIZED_BIT, should_finalize);
     }
 
-    pub fn checked_total_sol_debt(&self) -> Option<u64> {
+    pub fn has_swept_2z_tokens(&self) -> bool {
+        self.flags.bit(Self::FLAG_HAS_SWEPT_2Z_TOKENS_BIT)
+    }
+
+    pub fn set_has_swept_2z_tokens(&mut self, has_swept: bool) {
+        self.flags
+            .set_bit(Self::FLAG_HAS_SWEPT_2Z_TOKENS_BIT, has_swept);
+    }
+
+    pub fn total_sol_debt(&self) -> u64 {
         self.total_solana_validator_debt
+    }
+
+    pub fn checked_total_sol_debt(&self) -> Option<u64> {
+        self.total_sol_debt()
             .checked_sub(self.uncollectible_sol_debt)
     }
 
-    pub fn checked_remaining_sol_debt(&self) -> Option<u64> {
+    pub fn checked_outstanding_sol_debt(&self) -> Option<u64> {
         self.checked_total_sol_debt()?
             .checked_sub(self.collected_solana_validator_payments)
     }
@@ -122,6 +139,6 @@ impl Distribution {
 //
 
 const _: () = assert!(
-    size_of::<Distribution>() == 440,
+    size_of::<Distribution>() == 448,
     "`Distribution` size changed"
 );

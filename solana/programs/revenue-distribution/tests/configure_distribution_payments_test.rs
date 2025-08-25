@@ -120,7 +120,7 @@ async fn test_configure_distribution_payments() {
     expected_distribution
         .solana_validator_fee_parameters
         .base_block_rewards = ValidatorFee::new(solana_validator_base_block_rewards_fee).unwrap();
-    expected_distribution.total_validators = 2;
+    expected_distribution.total_solana_validators = 2;
     expected_distribution.total_solana_validator_debt = total_solana_validator_debt;
     expected_distribution.solana_validator_payments_merkle_root =
         solana_validator_payments_merkle_root;

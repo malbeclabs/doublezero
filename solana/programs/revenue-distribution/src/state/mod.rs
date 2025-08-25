@@ -18,6 +18,7 @@ use solana_pubkey::Pubkey;
 
 use crate::ID;
 
+pub const SWAP_AUTHORITY_SEED_PREFIX: &[u8] = b"swap_authority";
 pub const TOKEN_2Z_PDA_SEED_PREFIX: &[u8] = b"2z_token";
 
 pub fn find_2z_token_pda_address(token_owner: &Pubkey) -> (Pubkey, u8) {
@@ -30,4 +31,8 @@ pub fn checked_2z_token_pda_address(token_owner: &Pubkey, bump_seed: u8) -> Opti
         &ID,
     )
     .ok()
+}
+
+pub fn find_swap_authority_address() -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[SWAP_AUTHORITY_SEED_PREFIX], &ID)
 }

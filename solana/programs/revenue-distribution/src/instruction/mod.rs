@@ -9,7 +9,7 @@ use doublezero_program_tools::{Discriminator, DISCRIMINATOR_LEN};
 use solana_pubkey::Pubkey;
 use svm_hash::{merkle::MerkleProof, sha2::Hash};
 
-use crate::types::{DoubleZeroEpoch, EpochDuration, SolanaValidatorPayment};
+use crate::types::{DoubleZeroEpoch, EpochDuration, RewardShare, SolanaValidatorPayment};
 
 #[derive(Debug, BorshDeserialize, BorshSerialize, Clone, PartialEq, Eq)]
 pub enum ProgramConfiguration {
@@ -71,9 +71,7 @@ pub enum ContributorRewardsConfiguration {
 #[derive(Debug, BorshDeserialize, BorshSerialize, Clone, PartialEq, Eq)]
 pub enum DistributionMerkleRootKind {
     SolanaValidatorPayment(SolanaValidatorPayment),
-    RewardShare(
-        // TODO: Add rewards share struct when created
-    ),
+    RewardShare(RewardShare),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -115,6 +113,8 @@ pub enum RevenueDistributionInstructionData {
         amount: u64,
         proof: MerkleProof,
     },
+    InitializeSwapDestination,
+    SweepDistributionTokens,
 }
 
 impl RevenueDistributionInstructionData {
@@ -162,6 +162,10 @@ impl RevenueDistributionInstructionData {
         Discriminator::new_sha2(b"dz::ix::initialize_solana_validator_deposit");
     pub const PAY_SOLANA_VALIDATOR_DEBT: Discriminator<DISCRIMINATOR_LEN> =
         Discriminator::new_sha2(b"dz::ix::pay_solana_validator_debt");
+    pub const INITIALIZE_SWAP_DESTINATION: Discriminator<DISCRIMINATOR_LEN> =
+        Discriminator::new_sha2(b"dz::ix::initialize_swap_destination");
+    pub const SWEEP_DISTRIBUTION_TOKENS: Discriminator<DISCRIMINATOR_LEN> =
+        Discriminator::new_sha2(b"dz::ix::sweep_distribution_tokens");
 }
 
 impl BorshDeserialize for RevenueDistributionInstructionData {
@@ -237,6 +241,8 @@ impl BorshDeserialize for RevenueDistributionInstructionData {
 
                 Ok(Self::PaySolanaValidatorDebt { amount, proof })
             }
+            Self::INITIALIZE_SWAP_DESTINATION => Ok(Self::InitializeSwapDestination),
+            Self::SWEEP_DISTRIBUTION_TOKENS => Ok(Self::SweepDistributionTokens),
             _ => Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "Invalid discriminator",
@@ -330,6 +336,8 @@ impl BorshSerialize for RevenueDistributionInstructionData {
                 amount.serialize(writer)?;
                 proof.serialize(writer)
             }
+            Self::InitializeSwapDestination => Self::INITIALIZE_SWAP_DESTINATION.serialize(writer),
+            Self::SweepDistributionTokens => Self::SWEEP_DISTRIBUTION_TOKENS.serialize(writer),
         }
     }
 }

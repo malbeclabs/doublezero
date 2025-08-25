@@ -9,7 +9,7 @@ use doublezero_revenue_distribution::{
         DistributionPaymentsConfiguration, ProgramConfiguration, ProgramFlagConfiguration,
         RevenueDistributionInstructionData,
     },
-    types::{DoubleZeroEpoch, SolanaValidatorPayment},
+    types::{DoubleZeroEpoch, RewardShare, SolanaValidatorPayment},
     ID,
 };
 use solana_program_test::tokio;
@@ -57,7 +57,7 @@ async fn test_verify_distribution_merkle_root() {
         .collect::<Vec<_>>();
     assert_eq!(payments_data.len() % 2, 1);
 
-    let merkle_root = merkle_root_from_indexed_pod_leaves(
+    let solana_validator_payments_merkle_root = merkle_root_from_indexed_pod_leaves(
         &payments_data,
         Some(SolanaValidatorPayment::LEAF_PREFIX),
     )
@@ -114,7 +114,7 @@ async fn test_verify_distribution_merkle_root() {
                 DistributionPaymentsConfiguration::UpdateSolanaValidatorPayments {
                     total_validators: payments_data.len() as u32,
                     total_debt,
-                    merkle_root,
+                    merkle_root: solana_validator_payments_merkle_root,
                 },
             ],
         )
@@ -155,7 +155,7 @@ async fn test_verify_distribution_merkle_root() {
         Some(SolanaValidatorPayment::LEAF_PREFIX),
     )
     .unwrap();
-    assert_ne!(merkle_root, invalid_merkle_root);
+    assert_ne!(solana_validator_payments_merkle_root, invalid_merkle_root);
 
     let spoofed_proof = MerkleProof::from_indexed_pod_leaves(
         &payments_data,
@@ -183,6 +183,70 @@ async fn test_verify_distribution_merkle_root() {
     );
     assert_eq!(
         program_logs.get(2).unwrap(),
+        "Program log: Solana validator payment 511"
+    );
+    assert_eq!(
+        program_logs.get(3).unwrap(),
         &format!("Program log: Invalid computed merkle root: {invalid_merkle_root}")
     );
+
+    // Distribution rewards.
+
+    let mut rewards_data = [
+        RewardShare::new(Pubkey::new_unique(), 100_000_000),
+        RewardShare::new(Pubkey::new_unique(), 200_000_000),
+        RewardShare::new(Pubkey::new_unique(), 300_000_000),
+        RewardShare::new(Pubkey::new_unique(), 150_000_000),
+        RewardShare::new(Pubkey::new_unique(), 250_000_000),
+    ];
+    assert_eq!(
+        rewards_data
+            .iter()
+            .map(|rewards| rewards.unit_share)
+            .sum::<u32>(),
+        1_000_000_000
+    );
+
+    // Arbitrarily set one of the rewards to be blocked.
+    rewards_data[2].set_is_blocked(true);
+
+    let total_contributors = rewards_data.len() as u32;
+    let rewards_merkle_root =
+        merkle_root_from_indexed_pod_leaves(&rewards_data, Some(RewardShare::LEAF_PREFIX)).unwrap();
+
+    // Finalize distribution payments so we can post the rewards merkle root.
+    test_setup
+        .finalize_distribution_payments(dz_epoch, &payments_accountant_signer)
+        .await
+        .unwrap()
+        .configure_distribution_rewards(
+            dz_epoch,
+            &rewards_accountant_signer,
+            total_contributors,
+            rewards_merkle_root,
+        )
+        .await
+        .unwrap();
+
+    let kinds_and_proofs = rewards_data
+        .iter()
+        .copied()
+        .enumerate()
+        .map(|(i, reward_share)| {
+            let kind = DistributionMerkleRootKind::RewardShare(reward_share);
+            let proof = MerkleProof::from_indexed_pod_leaves(
+                &rewards_data,
+                i.try_into().unwrap(),
+                Some(RewardShare::LEAF_PREFIX),
+            )
+            .unwrap();
+
+            (kind, proof)
+        })
+        .collect::<Vec<_>>();
+
+    test_setup
+        .verify_distribution_merkle_root(dz_epoch, kinds_and_proofs)
+        .await
+        .unwrap();
 }

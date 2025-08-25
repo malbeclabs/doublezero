@@ -28,12 +28,13 @@ use crate::{
         ProgramFlagConfiguration, RevenueDistributionInstructionData,
     },
     state::{
-        self, CommunityBurnRateParameters, ContributorRewards, Distribution, Journal,
-        JournalEntries, PrepaidConnection, ProgramConfig, RecipientShares, RelayParameters,
-        SolanaValidatorDeposit, TOKEN_2Z_PDA_SEED_PREFIX,
+        self, find_swap_authority_address, CommunityBurnRateParameters, ContributorRewards,
+        Distribution, Journal, JournalEntries, PrepaidConnection, ProgramConfig, RecipientShares,
+        RelayParameters, SolanaValidatorDeposit, TOKEN_2Z_PDA_SEED_PREFIX,
     },
     types::{
-        BurnRate, DoubleZeroEpoch, ReplayProtectionByte, SolanaValidatorPayment, ValidatorFee,
+        BurnRate, ByteFlags, DoubleZeroEpoch, RewardShare, SolanaValidatorPayment, UnitShare32,
+        ValidatorFee,
     },
     DOUBLEZERO_MINT_DECIMALS, DOUBLEZERO_MINT_KEY, ID,
 };
@@ -118,6 +119,12 @@ fn try_process_instruction(
         }
         RevenueDistributionInstructionData::PaySolanaValidatorDebt { amount, proof } => {
             try_pay_solana_validator_debt(accounts, amount, proof)
+        }
+        RevenueDistributionInstructionData::InitializeSwapDestination => {
+            try_initialize_swap_destination(accounts)
+        }
+        RevenueDistributionInstructionData::SweepDistributionTokens => {
+            try_sweep_distribution_tokens(accounts)
         }
     }
 }
@@ -879,8 +886,8 @@ fn try_configure_distribution_payments(
         } => {
             try_require_unfinalized_distribution_payments(&distribution)?;
 
-            msg!("Set total_validators: {}", total_validators);
-            distribution.total_validators = total_validators;
+            msg!("Set total_solana_validators: {}", total_validators);
+            distribution.total_solana_validators = total_validators;
 
             msg!("Set total_solana_validator_debt: {}", total_debt);
             distribution.total_solana_validator_debt = total_debt;
@@ -889,11 +896,10 @@ fn try_configure_distribution_payments(
             distribution.solana_validator_payments_merkle_root = merkle_root;
         }
         DistributionPaymentsConfiguration::UpdateUncollectibleSol(amount) => {
-            // TODO: We will not want to allow this to be updated after we sweep the 2Z swapped from
-            // SOL into this distribution because that will cause chaos.
-            //
-            // We will need to add a flag to indicate that the distribution has been swept. This
-            // setting will require that the flag has not been set yet.
+            // Make sure the distribution has not already swept 2Z tokens. If
+            // 2Z was already swept into the distribution, the distribution has
+            // accounted for all of its SOL debt.
+            try_require_has_not_swept_2z_tokens(&distribution)?;
 
             msg!("Set uncollectible_sol_amount: {}", amount);
             distribution.uncollectible_sol_debt = amount;
@@ -936,11 +942,16 @@ fn try_finalize_distribution_payments(accounts: &[AccountInfo]) -> ProgramResult
 
     // We need to realloc the distribution account to add the number of bits
     // needed to store whether a Solana validator has paid.
-    let additional_data_len = if distribution.total_validators % 8 == 0 {
-        distribution.total_validators / 8
+    let additional_data_len = if distribution.total_solana_validators % 8 == 0 {
+        distribution.total_solana_validators / 8
     } else {
-        distribution.total_validators / 8 + 1
+        distribution.total_solana_validators / 8 + 1
     };
+
+    // Set the index of where to find the bits start to indicate which Solana
+    // validator payments have been processed.
+    distribution.processed_solana_validator_payments_index =
+        distribution.remaining_data.len() as u32;
 
     // Avoid borrowing while in mutable borrow state.
     let distribution_info = distribution.info;
@@ -1007,7 +1018,7 @@ fn try_configure_distribution_rewards(
     // If the distribution rewards have already been finalized, we have nothing to do.
     try_require_unfinalized_distribution_rewards(&distribution)?;
 
-    msg!("set total_contributors: {}", total_contributors);
+    msg!("Set total_contributors: {}", total_contributors);
     distribution.total_contributors = total_contributors;
 
     msg!("Set rewards_merkle_root: {}", merkle_root);
@@ -1082,6 +1093,14 @@ fn try_finalize_distribution_rewards(accounts: &[AccountInfo]) -> ProgramResult 
     } else {
         total_contributors / 8 + 1
     };
+
+    // Set the index of where to find the bits start to indicate which rewards
+    // have been distributed.
+    distribution.processed_rewards_index = distribution.remaining_data.len() as u32;
+    msg!(
+        "Set processed_rewards_index: {}",
+        distribution.processed_rewards_index
+    );
 
     // Avoid borrowing while in mutable borrow state.
     let distribution_info = distribution.info;
@@ -1857,10 +1876,10 @@ fn try_verify_distribution_merkle_root(
     msg!("Verify distribution payment");
 
     // Enforce that the merkle proof uses an indexed tree.
-    if !proof.is_indexed() {
+    let leaf_index = proof.leaf_index.ok_or_else(|| {
         msg!("Merkle proof must use an indexed tree");
-        return Err(ProgramError::InvalidInstructionData);
-    }
+        ProgramError::InvalidInstructionData
+    })?;
 
     // We expect only the distribution account for this instruction.
     let mut accounts_iter = accounts.iter().enumerate();
@@ -1869,7 +1888,8 @@ fn try_verify_distribution_merkle_root(
 
     match kind {
         DistributionMerkleRootKind::SolanaValidatorPayment(payment) => {
-            let leaf_index = proof.leaf_index.unwrap();
+            msg!("Solana validator payment {}", leaf_index);
+
             let computed_merkle_root =
                 proof.root_from_pod_leaf(&payment, Some(SolanaValidatorPayment::LEAF_PREFIX));
 
@@ -1878,12 +1898,28 @@ fn try_verify_distribution_merkle_root(
                 return Err(ProgramError::InvalidInstructionData);
             }
 
-            msg!("Solana validator {}", leaf_index);
             msg!("  node_id: {}", payment.node_id);
             msg!("  amount: {}", payment.amount);
         }
-        DistributionMerkleRootKind::RewardShare() => {
-            todo!()
+        DistributionMerkleRootKind::RewardShare(reward) => {
+            msg!("Reward share {}", leaf_index);
+
+            UnitShare32::new(reward.unit_share).ok_or_else(|| {
+                msg!("Invalid unit share {}", reward.unit_share);
+                ProgramError::InvalidInstructionData
+            })?;
+
+            let computed_merkle_root =
+                proof.root_from_pod_leaf(&reward, Some(RewardShare::LEAF_PREFIX));
+
+            if computed_merkle_root != distribution.rewards_merkle_root {
+                msg!("Invalid computed merkle root: {}", computed_merkle_root);
+                return Err(ProgramError::InvalidInstructionData);
+            }
+
+            msg!("  contributor_key: {}", reward.contributor_key);
+            msg!("  unit_share: {}", reward.unit_share);
+            msg!("  is_blocked: {}", reward.is_blocked());
         }
     }
     Ok(())
@@ -1998,19 +2034,22 @@ fn try_pay_solana_validator_debt(
 
     // Bits indicating whether debt has been paid for specific leaf indices are
     // stored in the distribution's remaining data.
-    let mut remaining_data = distribution.remaining_data;
+    let processed_index = distribution.processed_solana_validator_payments_index as usize;
+    let processed_payments_data = &mut distribution.remaining_data[processed_index..];
 
     let leaf_byte_index = leaf_index as usize / 8;
 
-    // First, we have to grab the relevant byte from the remaining data.
-    let mut leaf_byte = remaining_data
-        .get(leaf_byte_index)
-        .copied()
-        .map(ReplayProtectionByte::from)
+    // First, we have to grab the relevant byte from the processed payments
+    //data.
+    let leaf_byte_ref = processed_payments_data
+        .get_mut(leaf_byte_index)
         .ok_or_else(|| {
             msg!("Invalid leaf index");
             ProgramError::InvalidInstructionData
         })?;
+
+    // Create a ByteFlag from the byte value to check the bit.
+    let mut leaf_byte = ByteFlags::new(*leaf_byte_ref);
 
     // Then, we have to grab the relevant bit from the byte and check whether
     // it is set already.
@@ -2026,7 +2065,7 @@ fn try_pay_solana_validator_debt(
 
     // Set the bit to true to indicate that the debt has been paid.
     leaf_byte.set_bit(leaf_bit, true);
-    remaining_data[leaf_byte_index] = leaf_byte.to_le_bytes::<1>()[0];
+    *leaf_byte_ref = leaf_byte.into();
 
     // Account 2 must be the Solana validator deposit.
     let solana_validator_deposit = ZeroCopyMutAccount::<SolanaValidatorDeposit>::try_next_accounts(
@@ -2078,6 +2117,216 @@ fn try_pay_solana_validator_debt(
     Ok(())
 }
 
+fn try_initialize_swap_destination(accounts: &[AccountInfo]) -> ProgramResult {
+    msg!("Initialize swap destination");
+
+    // We expect the following accounts for this instruction:
+    // - 0: Payer (funder for new accounts).
+    // - 1: Swap authority.
+    // - 2: New swap destination 2Z token account.
+    // - 3: 2Z mint.
+    // - 4: SPL Token program.
+    // - 5: System program.
+    let mut accounts_iter = accounts.iter().enumerate();
+
+    // Account 0 must be a signer and writable (i.e., payer) because it will be
+    // sending lamports to the new journal account when the system program
+    // allocates data to it. But because the create-program instruction requires
+    // that this account is a signer and is writable, we do not need to
+    // explicitly check these fields in its account info.
+    let (_, payer_info) = try_next_enumerated_account(&mut accounts_iter, Default::default())?;
+
+    // Account 1 must be the swap authority. We do not store any data in this
+    // account. It is purely used as a signer for token transfers.
+    let (account_index, swap_authority_info) =
+        try_next_enumerated_account(&mut accounts_iter, Default::default())?;
+
+    let (expected_swap_authority_key, _) = find_swap_authority_address();
+
+    // Enforce this account location.
+    if swap_authority_info.key != &expected_swap_authority_key {
+        msg!(
+            "Invalid seeds for swap authority (account {})",
+            account_index
+        );
+        return Err(ProgramError::InvalidSeeds);
+    }
+
+    // Account 2 must be the new swap destination 2Z token account. This account
+    // should not exist yet.
+    let (_, new_swap_dst_2z_token_pda_info, swap_dst_2z_token_pda_bump) =
+        try_next_2z_token_pda_info(
+            &mut accounts_iter,
+            &expected_swap_authority_key,
+            "swap destination",
+            None, // bump_seed
+        )?;
+
+    // Account 3 must be the 2Z mint.
+    //
+    // NOTE: Enforcing this account to be the 2Z mint can be removed if this
+    // program supports swap destination accounts for other mints.
+    try_next_2z_mint_info(&mut accounts_iter)?;
+
+    // Account 4 must be the SPL Token program.
+    try_next_token_program_info(&mut accounts_iter)?;
+
+    try_create_token_account(
+        Invoker::Signer(payer_info.key),
+        Invoker::Pda {
+            key: new_swap_dst_2z_token_pda_info.key,
+            signer_seeds: &[
+                TOKEN_2Z_PDA_SEED_PREFIX,
+                expected_swap_authority_key.as_ref(),
+                &[swap_dst_2z_token_pda_bump],
+            ],
+        },
+        &DOUBLEZERO_MINT_KEY,
+        &expected_swap_authority_key,
+        new_swap_dst_2z_token_pda_info.lamports(),
+        accounts,
+        None, // rent_sysvar
+    )?;
+
+    Ok(())
+}
+
+fn try_sweep_distribution_tokens(accounts: &[AccountInfo]) -> ProgramResult {
+    msg!("Sweep distribution tokens");
+
+    #[cfg(feature = "development")]
+    {
+        try_sweep_distribution_tokens_development(accounts)
+    }
+
+    #[cfg(not(feature = "development"))]
+    {
+        let _ = accounts;
+        unimplemented!()
+    }
+}
+
+#[cfg(feature = "development")]
+fn try_sweep_distribution_tokens_development(accounts: &[AccountInfo]) -> ProgramResult {
+    use crate::{state::SWAP_AUTHORITY_SEED_PREFIX, FIXED_SOL_2Z_SWAP_RATE_FOR_DEVELOPMENT};
+
+    //
+
+    // We expect the following accounts for this instruction:
+    // - 0: Program config.
+    // - 1: Distribution.
+    // - 2: Journal.
+    // - 3: Distribution 2Z token account.
+    // - 4: Swap authority.
+    // - 5: Swap 2Z destination account.
+    let mut accounts_iter = accounts.iter().enumerate();
+
+    // Account 0 must be the program config.
+    let program_config =
+        ZeroCopyAccount::<ProgramConfig>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+
+    // Make sure the program is not paused.
+    try_require_unpaused(&program_config)?;
+
+    // Account 1 must be the distribution.
+    let mut distribution =
+        ZeroCopyMutAccount::<Distribution>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+
+    // Make sure the distribution has not already swept 2Z tokens.
+    try_require_has_not_swept_2z_tokens(&distribution)?;
+    distribution.set_has_swept_2z_tokens(true);
+
+    // Make sure the distribution is finalized.
+    try_require_finalized_distribution_payments(&distribution)?;
+
+    // Account 2 must be the journal.
+    let mut journal =
+        ZeroCopyMutAccount::<Journal>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+
+    // We will attempt to account for the total SOL debt and account for this
+    // amount by reducing the SOL balance of the journal. The SOL that this
+    // balance tracks will have already been swapped by the swap program.
+    let total_sol_debt = distribution.total_sol_debt();
+
+    if journal.total_sol_balance < total_sol_debt {
+        msg!("Journal does not have enough SOL to cover the SOL debt");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    msg!(
+        "Journal's SOL balance before: {}",
+        journal.total_sol_balance
+    );
+    journal.total_sol_balance -= total_sol_debt;
+
+    // Record the swept amount to the distribution. This amount will also be
+    // used to token transfer the 2Z tokens to the distribution.
+    let token_2z_amount = distribution
+        .collected_solana_validator_payments
+        .saturating_mul(FIXED_SOL_2Z_SWAP_RATE_FOR_DEVELOPMENT);
+    distribution.collected_sol_converted_to_2z += token_2z_amount;
+
+    // Account 3 must be the distribution's 2Z token account.
+    let (_, distribution_2z_token_pda_info, _) = try_next_2z_token_pda_info(
+        &mut accounts_iter,
+        distribution.info.key,
+        "distribution's",
+        Some(distribution.token_2z_pda_bump_seed),
+    )?;
+
+    // Account 4 must be the swap authority. It is assumed to be a signer
+    // because it is the authority that will be used to transfer 2Z from its
+    // token account to the distribution's token account.
+    let (account_index, swap_authority_info) =
+        try_next_enumerated_account(&mut accounts_iter, Default::default())?;
+
+    let (expected_swap_authority_key, swap_authority_bump) = find_swap_authority_address();
+
+    // Enforce this account location.
+    if swap_authority_info.key != &expected_swap_authority_key {
+        msg!(
+            "Invalid address for swap authority (account {})",
+            account_index
+        );
+        return Err(ProgramError::InvalidSeeds);
+    }
+
+    // Account 5 must be the swap destination 2Z token account.
+    let (_, swap_dst_2z_info, _) = try_next_2z_token_pda_info(
+        &mut accounts_iter,
+        &expected_swap_authority_key,
+        "swap destination",
+        None, // bump_seed
+    )?;
+
+    let token_transfer_ix = spl_token::instruction::transfer(
+        &spl_token::ID,
+        swap_dst_2z_info.key,
+        distribution_2z_token_pda_info.key,
+        swap_authority_info.key,
+        &[], // signer_pubkeys
+        token_2z_amount,
+    )
+    .unwrap();
+
+    invoke_signed_unchecked(
+        &token_transfer_ix,
+        accounts,
+        &[&[SWAP_AUTHORITY_SEED_PREFIX, &[swap_authority_bump]]],
+    )?;
+
+    let outstanding_sol_debt = distribution.checked_outstanding_sol_debt().ok_or_else(|| {
+        msg!("Uncollectible SOL debt is misconfigured");
+        ProgramError::ArithmeticOverflow
+    })?;
+
+    msg!("Outstanding SOL debt: {}", outstanding_sol_debt);
+    msg!("Journal's SOL balance after: {}", journal.total_sol_balance);
+    msg!("Transferred {} 2Z tokens to distribution", token_2z_amount);
+
+    Ok(())
+}
+
 //
 // Account info handling.
 //
@@ -2091,6 +2340,7 @@ enum Authority {
 }
 
 impl Authority {
+    #[inline(always)]
     fn try_next_as_authorized_account<'b, 'c>(
         &self,
         accounts_iter: &mut EnumeratedAccountInfoIter<'b, 'c>,
@@ -2312,6 +2562,15 @@ fn try_require_finalized_distribution_payments(distribution: &Distribution) -> P
 fn try_require_unfinalized_distribution_rewards(distribution: &Distribution) -> ProgramResult {
     if distribution.are_rewards_finalized() {
         msg!("Distribution rewards have already been finalized");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    Ok(())
+}
+
+fn try_require_has_not_swept_2z_tokens(distribution: &Distribution) -> ProgramResult {
+    if distribution.has_swept_2z_tokens() {
+        msg!("Distribution has already swept 2Z tokens");
         return Err(ProgramError::InvalidAccountData);
     }
 

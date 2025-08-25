@@ -48,7 +48,7 @@ async fn test_finalize_distribution_payments() {
 
     let dz_epoch = DoubleZeroEpoch::new(1);
 
-    let total_validators = 2;
+    let total_solana_validators = 2;
     let total_solana_validator_debt = 100 * u64::pow(10, 9);
     let solana_validator_payments_merkle_root = Hash::new_unique();
     let uncollectible_sol_amount = 10 * u64::pow(10, 9);
@@ -100,7 +100,7 @@ async fn test_finalize_distribution_payments() {
             &payments_accountant_signer,
             [
                 DistributionPaymentsConfiguration::UpdateSolanaValidatorPayments {
-                    total_validators,
+                    total_validators: total_solana_validators,
                     total_debt: total_solana_validator_debt,
                     merkle_root: solana_validator_payments_merkle_root,
                 },
@@ -130,7 +130,7 @@ async fn test_finalize_distribution_payments() {
     expected_distribution
         .solana_validator_fee_parameters
         .base_block_rewards = ValidatorFee::new(solana_validator_base_block_rewards_fee).unwrap();
-    expected_distribution.total_validators = total_validators;
+    expected_distribution.total_solana_validators = total_solana_validators;
     expected_distribution.total_solana_validator_debt = total_solana_validator_debt;
     expected_distribution.solana_validator_payments_merkle_root =
         solana_validator_payments_merkle_root;
@@ -140,7 +140,7 @@ async fn test_finalize_distribution_payments() {
     let expected_remaining_distribution_data_len = 1;
     assert_eq!(
         expected_remaining_distribution_data_len,
-        total_validators as usize / 8 + 1
+        total_solana_validators as usize / 8 + 1
     );
     assert_eq!(
         remaining_distribution_data,

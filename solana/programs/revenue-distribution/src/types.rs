@@ -171,9 +171,83 @@ impl SolanaValidatorPayment {
     pub const LEAF_PREFIX: &'static [u8] = b"solana_validator_payment";
 }
 
-/// A byte used to prevent replay attacks. Each bit set to 1 indicates that the
-/// corresponding leaf has been processed.
-pub type ReplayProtectionByte = ruint::aliases::U8;
+#[derive(
+    Debug, BorshDeserialize, BorshSerialize, Clone, Copy, Default, PartialEq, Eq, Pod, Zeroable,
+)]
+#[repr(C)]
+pub struct RewardShare {
+    pub contributor_key: Pubkey,
+    pub unit_share: u32,
+    pub flags: ByteFlags,
+    pub _unused: [u8; 3],
+}
+
+impl RewardShare {
+    pub const LEAF_PREFIX: &'static [u8] = b"reward_share";
+
+    pub const FLAG_IS_BLOCKED_BIT: u8 = 0;
+
+    pub fn new(contributor_key: Pubkey, unit_share: u32) -> Self {
+        Self {
+            contributor_key,
+            unit_share,
+            ..Default::default()
+        }
+    }
+
+    pub fn is_blocked(&self) -> bool {
+        self.flags.bit(Self::FLAG_IS_BLOCKED_BIT as usize)
+    }
+
+    pub fn set_is_blocked(&mut self, should_block: bool) {
+        self.flags
+            .set_bit(Self::FLAG_IS_BLOCKED_BIT as usize, should_block);
+    }
+
+    pub fn checked_unit_share(&self) -> Option<UnitShare32> {
+        UnitShare32::new(self.unit_share)
+    }
+}
+
+/// A byte wrapper for bit flag operations. Each bit can be individually set or
+/// checked. This type can be used for both flags and replay protection.
+#[derive(
+    Debug, BorshDeserialize, BorshSerialize, Clone, Copy, Default, PartialEq, Eq, Pod, Zeroable,
+)]
+#[repr(C)]
+pub struct ByteFlags(u8);
+
+impl ByteFlags {
+    pub const fn new(value: u8) -> Self {
+        Self(value)
+    }
+
+    /// Check if a specific bit is set (1)
+    pub const fn bit(&self, index: usize) -> bool {
+        if index >= 8 {
+            false
+        } else {
+            (self.0 & (1 << index)) != 0
+        }
+    }
+
+    /// Set a specific bit to the given value
+    pub fn set_bit(&mut self, index: usize, value: bool) {
+        if index < 8 {
+            if value {
+                self.0 |= 1 << index;
+            } else {
+                self.0 &= !(1 << index);
+            }
+        }
+    }
+}
+
+impl From<ByteFlags> for u8 {
+    fn from(value: ByteFlags) -> Self {
+        value.0
+    }
+}
 
 #[cfg(test)]
 mod tests {

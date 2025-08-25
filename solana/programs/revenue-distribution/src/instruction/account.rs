@@ -5,8 +5,8 @@ use solana_system_interface::program as system_program;
 
 use crate::{
     state::{
-        find_2z_token_pda_address, ContributorRewards, Distribution, Journal, PrepaidConnection,
-        ProgramConfig, SolanaValidatorDeposit,
+        find_2z_token_pda_address, find_swap_authority_address, ContributorRewards, Distribution,
+        Journal, PrepaidConnection, ProgramConfig, SolanaValidatorDeposit,
     },
     types::DoubleZeroEpoch,
 };
@@ -858,3 +858,120 @@ impl From<PaySolanaValidatorDebtAccounts> for Vec<AccountMeta> {
         ]
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InitializeSwapDestinationAccounts {
+    pub payer_key: Pubkey,
+    pub swap_authority_key: Pubkey,
+    pub new_swap_destination_key: Pubkey,
+    pub mint_key: Pubkey,
+}
+
+impl InitializeSwapDestinationAccounts {
+    pub fn new(payer_key: &Pubkey, mint_key: &Pubkey) -> Self {
+        let swap_authority_key = find_swap_authority_address().0;
+
+        Self {
+            payer_key: *payer_key,
+            swap_authority_key,
+            new_swap_destination_key: find_2z_token_pda_address(&swap_authority_key).0,
+            mint_key: *mint_key,
+        }
+    }
+}
+
+impl From<InitializeSwapDestinationAccounts> for Vec<AccountMeta> {
+    fn from(accounts: InitializeSwapDestinationAccounts) -> Self {
+        let InitializeSwapDestinationAccounts {
+            payer_key,
+            swap_authority_key,
+            new_swap_destination_key,
+            mint_key,
+        } = accounts;
+
+        vec![
+            AccountMeta::new(payer_key, true),
+            AccountMeta::new_readonly(swap_authority_key, false),
+            AccountMeta::new(new_swap_destination_key, false),
+            AccountMeta::new_readonly(mint_key, false),
+            AccountMeta::new_readonly(spl_token::ID, false),
+            AccountMeta::new_readonly(system_program::ID, false),
+        ]
+    }
+}
+
+#[cfg(not(feature = "development"))]
+mod sweep_distribution_tokens {
+    use super::*;
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct SweepDistributionTokensAccounts;
+
+    impl SweepDistributionTokensAccounts {
+        pub fn new(_dz_epoch: DoubleZeroEpoch) -> Self {
+            Self
+        }
+    }
+
+    impl From<SweepDistributionTokensAccounts> for Vec<AccountMeta> {
+        fn from(_accounts: SweepDistributionTokensAccounts) -> Self {
+            vec![]
+        }
+    }
+}
+
+#[cfg(feature = "development")]
+mod sweep_distribution_tokens {
+    use super::*;
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct SweepDistributionTokensAccounts {
+        pub program_config_key: Pubkey,
+        pub distribution_key: Pubkey,
+        pub journal_key: Pubkey,
+        pub distribution_2z_token_pda_key: Pubkey,
+        pub swap_authority_key: Pubkey,
+        pub swap_2z_token_pda_key: Pubkey,
+    }
+
+    impl SweepDistributionTokensAccounts {
+        pub fn new(dz_epoch: DoubleZeroEpoch) -> Self {
+            let distribution_key = Distribution::find_address(dz_epoch).0;
+            let swap_authority_key = find_swap_authority_address().0;
+
+            Self {
+                program_config_key: ProgramConfig::find_address().0,
+                distribution_key,
+                journal_key: Journal::find_address().0,
+                distribution_2z_token_pda_key: find_2z_token_pda_address(&distribution_key).0,
+                swap_authority_key,
+                swap_2z_token_pda_key: find_2z_token_pda_address(&swap_authority_key).0,
+            }
+        }
+    }
+
+    impl From<SweepDistributionTokensAccounts> for Vec<AccountMeta> {
+        fn from(accounts: SweepDistributionTokensAccounts) -> Self {
+            let SweepDistributionTokensAccounts {
+                program_config_key,
+                distribution_key,
+                journal_key,
+                distribution_2z_token_pda_key,
+                swap_authority_key,
+                swap_2z_token_pda_key,
+            } = accounts;
+
+            vec![
+                AccountMeta::new_readonly(program_config_key, false),
+                AccountMeta::new(distribution_key, false),
+                AccountMeta::new(journal_key, false),
+                AccountMeta::new(distribution_2z_token_pda_key, false),
+                AccountMeta::new_readonly(swap_authority_key, false),
+                AccountMeta::new(swap_2z_token_pda_key, false),
+                AccountMeta::new_readonly(spl_token::ID, false),
+            ]
+        }
+    }
+}
+
+pub use sweep_distribution_tokens::*;

@@ -4,7 +4,7 @@ use crate::types::{
 };
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use solana_program::pubkey::Pubkey;
-use std::str::FromStr;
+use std::{collections::BTreeMap, str::FromStr};
 
 // ----------------------------------------------
 // Serializers
@@ -135,6 +135,43 @@ where
             Pubkey::from_str(&k)
                 .map(|pubkey| (pubkey, v))
                 .map_err(|e| serde::de::Error::custom(format!("Invalid pubkey key '{k}': {e}")))
+        })
+        .collect()
+}
+
+// ----------------------------------------------
+// Custom serialization where Pubkey is a key in a BTreeMap
+// ----------------------------------------------
+
+/// Serialize a BTreeMap with Pubkey as keys
+pub fn serialize_pubkey_btreemap<S, T>(
+    map: &BTreeMap<Pubkey, T>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+    T: Serialize,
+{
+    let string_map: BTreeMap<String, &T> = map.iter().map(|(k, v)| (k.to_string(), v)).collect();
+    string_map.serialize(serializer)
+}
+
+/// Deserialize a BTreeMap with Pubkey as keys
+pub fn deserialize_pubkey_btreemap<'de, D, T>(
+    deserializer: D,
+) -> Result<BTreeMap<Pubkey, T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    let string_map: BTreeMap<String, T> = BTreeMap::deserialize(deserializer)?;
+
+    string_map
+        .into_iter()
+        .map(|(k, v)| {
+            Pubkey::from_str(&k)
+                .map(|pubkey| (pubkey, v))
+                .map_err(|e| serde::de::Error::custom(format!("Invalid pubkey: {}", e)))
         })
         .collect()
 }
@@ -331,5 +368,148 @@ mod tests {
             let deserialized: TestBandwidth = serde_json::from_str(&json).unwrap();
             assert_eq!(original, deserialized);
         }
+    }
+
+    // Test struct for BTreeMap with Pubkey keys
+    #[derive(Debug, Serialize, Deserialize, PartialEq)]
+    struct TestPubkeyBTreeMap {
+        #[serde(
+            serialize_with = "serialize_pubkey_btreemap",
+            deserialize_with = "deserialize_pubkey_btreemap"
+        )]
+        data: BTreeMap<Pubkey, String>,
+    }
+
+    #[test]
+    fn test_pubkey_btreemap_serialization_roundtrip() {
+        let mut data = BTreeMap::new();
+        let key1 = Pubkey::new_unique();
+        let key2 = Pubkey::new_unique();
+        let key3 = Pubkey::new_unique();
+        data.insert(key1, "value1".to_string());
+        data.insert(key2, "value2".to_string());
+        data.insert(key3, "value3".to_string());
+
+        let original = TestPubkeyBTreeMap { data };
+
+        let json = serde_json::to_string(&original).unwrap();
+        let deserialized: TestPubkeyBTreeMap = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(original, deserialized);
+    }
+
+    #[test]
+    fn test_empty_pubkey_btreemap() {
+        let original = TestPubkeyBTreeMap {
+            data: BTreeMap::new(),
+        };
+
+        let json = serde_json::to_string(&original).unwrap();
+        assert_eq!(json, "{\"data\":{}}");
+
+        let deserialized: TestPubkeyBTreeMap = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, deserialized);
+    }
+
+    #[test]
+    fn test_pubkey_btreemap_json_structure() {
+        let mut data = BTreeMap::new();
+        let key = Pubkey::new_unique();
+        data.insert(key, "test_value".to_string());
+
+        let test = TestPubkeyBTreeMap { data };
+        let json = serde_json::to_string(&test).unwrap();
+
+        // Verify the JSON has string keys
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert!(parsed["data"].is_object());
+        assert!(parsed["data"][key.to_string()].is_string());
+        assert_eq!(parsed["data"][key.to_string()], "test_value");
+    }
+
+    #[test]
+    fn test_pubkey_btreemap_ordering() {
+        let mut data = BTreeMap::new();
+
+        // Create pubkeys and insert them in random order
+        let key1 = Pubkey::new_unique();
+        let key2 = Pubkey::new_unique();
+        let key3 = Pubkey::new_unique();
+
+        data.insert(key2, "second".to_string());
+        data.insert(key1, "first".to_string());
+        data.insert(key3, "third".to_string());
+
+        let original = TestPubkeyBTreeMap { data };
+
+        // Serialize and deserialize
+        let json = serde_json::to_string(&original).unwrap();
+        let deserialized: TestPubkeyBTreeMap = serde_json::from_str(&json).unwrap();
+
+        // BTreeMap should maintain its ordering
+        assert_eq!(original.data.len(), deserialized.data.len());
+        assert_eq!(original, deserialized);
+
+        // Verify keys are preserved
+        for (key, value) in &original.data {
+            assert_eq!(deserialized.data.get(key), Some(value));
+        }
+    }
+
+    #[test]
+    fn test_invalid_pubkey_in_btreemap() {
+        let json = "{\"data\":{\"invalid_pubkey\":\"value\"}}";
+        let result: Result<TestPubkeyBTreeMap, _> = serde_json::from_str(json);
+
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("Invalid pubkey"));
+    }
+
+    #[test]
+    fn test_pubkey_btreemap_with_complex_values() {
+        #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+        struct ComplexValue {
+            id: u32,
+            name: String,
+            active: bool,
+        }
+
+        #[derive(Debug, Serialize, Deserialize, PartialEq)]
+        struct TestComplexBTreeMap {
+            #[serde(
+                serialize_with = "serialize_pubkey_btreemap",
+                deserialize_with = "deserialize_pubkey_btreemap"
+            )]
+            data: BTreeMap<Pubkey, ComplexValue>,
+        }
+
+        let mut data = BTreeMap::new();
+        let key1 = Pubkey::new_unique();
+        let key2 = Pubkey::new_unique();
+
+        data.insert(
+            key1,
+            ComplexValue {
+                id: 1,
+                name: "Alice".to_string(),
+                active: true,
+            },
+        );
+        data.insert(
+            key2,
+            ComplexValue {
+                id: 2,
+                name: "Bob".to_string(),
+                active: false,
+            },
+        );
+
+        let original = TestComplexBTreeMap { data };
+
+        let json = serde_json::to_string(&original).unwrap();
+        let deserialized: TestComplexBTreeMap = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(original, deserialized);
     }
 }

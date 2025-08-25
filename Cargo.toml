@@ -8,6 +8,7 @@ members = [
     "smartcontract/sdk/rs",
     "smartcontract/programs/doublezero-record",
     "smartcontract/programs/doublezero-serviceability",
+    "smartcontract/programs/doublezero-scheduler",
     "smartcontract/programs/doublezero-telemetry",
     "smartcontract/program-common",
 ]
@@ -30,6 +31,7 @@ anyhow = "1"
 assert_cmd = "2"
 async-trait = "0"
 # NOTE: We need to maintain base64 version 0.22.1
+backon = "1"
 base64 = "0.22.1"
 bincode = { version = "2", features = ["serde"] }
 bitvec = "1"
@@ -41,6 +43,7 @@ clap = { version = "4", features = ["derive"] }
 clap_complete = { version = "4", features = ["unstable-dynamic"] }
 console = "0"
 ctor = "0"
+dashmap = "6"
 directories-next = "2"
 dirs-next = "2"
 env_logger = "0"
@@ -85,6 +88,9 @@ tokio = { version = "1", default-features = false, features = [
     "rt-multi-thread",
     "signal",
 ] }
+tokio-util = "0"
+tracing = "0"
+uuid = { version = "1", features = ["v4"] }
 
 # Dependencies from this workspace
 doublezero = { path = "client/doublezero" }

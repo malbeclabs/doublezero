@@ -1,0 +1,34 @@
+[package]
+name = "doublezero-scheduler"
+
+# Workspace inherited keys
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+backon.workspace = true
+borsh.workspace = true
+chrono.workspace = true
+dashmap.workspace = true
+doublezero-record = { path = "../doublezero-record" }
+futures.workspace = true
+metrics.workspace = true
+uuid.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+solana-client.workspace = true
+solana-sdk.workspace = true
+
+[dev-dependencies]
+tokio-test = "0.4"
+mockito = "1.0"

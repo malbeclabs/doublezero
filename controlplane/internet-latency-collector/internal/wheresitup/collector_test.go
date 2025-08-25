@@ -999,3 +999,62 @@ func TestInternetLatency_Wheresitup_Run_TickerExecution(t *testing.T) {
 	remainingJobs := state.GetJobIDs()
 	require.NotContains(t, remainingJobs, exportedJobID, "Exported job should be removed from state")
 }
+
+func TestInitializeCreditBalance(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Success", func(t *testing.T) {
+		t.Parallel()
+
+		mockClient := &MockWheresitupClient{
+			GetCreditFunc: func(ctx context.Context) (int, error) {
+				return 15000, nil
+			},
+		}
+
+		c := &Collector{
+			client: mockClient,
+			log:    logger,
+		}
+
+		err := c.InitializeCreditBalance(context.Background())
+		require.NoError(t, err)
+	})
+
+	t.Run("Low credit warning", func(t *testing.T) {
+		t.Parallel()
+
+		mockClient := &MockWheresitupClient{
+			GetCreditFunc: func(ctx context.Context) (int, error) {
+				return 500, nil // Below CreditWarningThreshold
+			},
+		}
+
+		c := &Collector{
+			client: mockClient,
+			log:    logger,
+		}
+
+		err := c.InitializeCreditBalance(context.Background())
+		require.NoError(t, err)
+	})
+
+	t.Run("API error", func(t *testing.T) {
+		t.Parallel()
+
+		mockClient := &MockWheresitupClient{
+			GetCreditFunc: func(ctx context.Context) (int, error) {
+				return 0, errors.New("API error")
+			},
+		}
+
+		c := &Collector{
+			client: mockClient,
+			log:    logger,
+		}
+
+		err := c.InitializeCreditBalance(context.Background())
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "failed to get Wheresitup credit balance")
+	})
+}

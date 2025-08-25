@@ -82,6 +82,18 @@ func NewCollector(logger *slog.Logger, exporter exporter.Exporter, env string, g
 	}
 }
 
+func (c *Collector) InitializeCreditBalance(ctx context.Context) error {
+	balance, err := c.client.GetCreditBalance(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get RIPE Atlas credit balance: %w", err)
+	}
+
+	metrics.RipeatlasCreditBalance.Set(balance)
+	c.log.Info("Initialized RIPE Atlas credit balance metric", slog.Float64("balance", balance))
+
+	return nil
+}
+
 func calculateAndSortProbeDistances(probes []Probe, lat, lng float64) []ProbeDistance {
 	// Convert to CoordinatesGetter slice
 	var sources []collector.CoordinatesGetter

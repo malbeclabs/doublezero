@@ -1218,3 +1218,44 @@ func TestInternetLatency_RIPEAtlas_Run(t *testing.T) {
 	_, err = os.Stat(timestampFile)
 	require.NoError(t, err, "Timestamp file should exist")
 }
+
+func TestInitializeCreditBalance(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Success", func(t *testing.T) {
+		t.Parallel()
+
+		mockClient := &MockClient{
+			GetCreditBalanceFunc: func(ctx context.Context) (float64, error) {
+				return 1000.0, nil
+			},
+		}
+
+		c := &Collector{
+			client: mockClient,
+			log:    logger,
+		}
+
+		err := c.InitializeCreditBalance(context.Background())
+		require.NoError(t, err)
+	})
+
+	t.Run("API error", func(t *testing.T) {
+		t.Parallel()
+
+		mockClient := &MockClient{
+			GetCreditBalanceFunc: func(ctx context.Context) (float64, error) {
+				return 0, errors.New("API error")
+			},
+		}
+
+		c := &Collector{
+			client: mockClient,
+			log:    logger,
+		}
+
+		err := c.InitializeCreditBalance(context.Background())
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "failed to get RIPE Atlas credit balance")
+	})
+}

@@ -55,6 +55,22 @@ func (c *Collector) SetJobWaitTimeout(timeout time.Duration) {
 	c.jobWaitTimeout = timeout
 }
 
+func (c *Collector) InitializeCreditBalance(ctx context.Context) error {
+	credit, err := c.client.GetCredit(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get Wheresitup credit balance: %w", err)
+	}
+
+	metrics.WheresitupCreditBalance.Set(float64(credit))
+	c.log.Info("Initialized Wheresitup credit balance metric", slog.Int("credits", credit))
+
+	if credit < CreditWarningThreshold {
+		c.log.Warn("Low Wheresitup credit balance", slog.Int("credits", credit), slog.Int("threshold", CreditWarningThreshold))
+	}
+
+	return nil
+}
+
 func (c *Collector) PrintSources(ctx context.Context, locations []collector.LocationMatch) error {
 	if len(locations) == 0 {
 		c.log.Warn("Wheresitup - No locations found")

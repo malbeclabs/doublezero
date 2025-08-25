@@ -9,10 +9,12 @@ import (
 
 type WheresitupCollectorInterface interface {
 	Run(ctx context.Context, interval time.Duration, dryRun bool, jobIDsFile, stateDir string) error
+	InitializeCreditBalance(ctx context.Context) error
 }
 
 type RipeAtlasCollectorInterface interface {
 	Run(ctx context.Context, dryRun bool, probesPerLocation int, stateDir string, samplingInterval, measurementInterval, exportInterval time.Duration) error
+	InitializeCreditBalance(ctx context.Context) error
 }
 
 type Config struct {

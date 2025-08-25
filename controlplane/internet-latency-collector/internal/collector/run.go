@@ -19,9 +19,18 @@ func (c *Collector) Run(ctx context.Context) error {
 		slog.String("state_dir", c.cfg.StateDir),
 		slog.String("metrics_addr", c.cfg.MetricsAddr))
 
-	// Create a cancellable context for early termination
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+
+	c.log.Info("Initializing credit balance metrics")
+
+	if err := c.cfg.Wheresitup.InitializeCreditBalance(ctx); err != nil {
+		c.log.Warn("Failed to initialize Wheresitup credit balance metric", slog.String("error", err.Error()))
+	}
+
+	if err := c.cfg.RipeAtlas.InitializeCreditBalance(ctx); err != nil {
+		c.log.Warn("Failed to initialize RIPE Atlas credit balance metric", slog.String("error", err.Error()))
+	}
 
 	// Start Prometheus metrics endpoint
 	go func() {

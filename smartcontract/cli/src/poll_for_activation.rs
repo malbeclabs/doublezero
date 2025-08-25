@@ -96,7 +96,7 @@ pub fn poll_for_user_activated(
     user_pubkey: &Pubkey,
 ) -> eyre::Result<User> {
     let start_time = std::time::Instant::now();
-    let timeout = std::time::Duration::from_secs(20);
+    let timeout = std::time::Duration::from_secs(50);
     let poll_interval = std::time::Duration::from_secs(1);
     let mut last_error: Option<eyre::Error> = None;
 
@@ -104,10 +104,10 @@ pub fn poll_for_user_activated(
         if start_time.elapsed() >= timeout {
             return Err(match last_error {
                 Some(e) => eyre::eyre!(
-                    "Timeout waiting for user activation after 20 seconds. Last error: {}",
+                    "Timeout waiting for user activation after 50 seconds. Last error: {}",
                     e
                 ),
-                None => eyre::eyre!("Timeout waiting for user activation after 20 seconds"),
+                None => eyre::eyre!("Timeout waiting for user activation after 50 seconds"),
             });
         }
 

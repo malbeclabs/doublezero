@@ -155,12 +155,12 @@ echo "Accepting external link"
 
 # create access pass
 echo "Create AccessPass for users"
-./target/doublezero access-pass set --accesspass-type PrePaid --client-ip 177.54.159.95 --user-payer me --last-access-epoch MAX
-./target/doublezero access-pass set --accesspass-type PrePaid --client-ip 147.28.171.51 --user-payer me --last-access-epoch MAX
-./target/doublezero access-pass set --accesspass-type PrePaid --client-ip 100.100.100.100 --user-payer me --last-access-epoch MAX
-./target/doublezero access-pass set --accesspass-type PrePaid --client-ip 200.200.200.200 --user-payer me --last-access-epoch MAX
-./target/doublezero access-pass set --accesspass-type PrePaid --client-ip 100.0.0.5 --user-payer me --last-access-epoch MAX
-./target/doublezero access-pass set --accesspass-type PrePaid --client-ip 100.0.0.6 --user-payer me --last-access-epoch MAX
+./target/doublezero access-pass set --accesspass-type PrePaid --client-ip 177.54.159.95 --user-payer me 
+./target/doublezero access-pass set --accesspass-type PrePaid --client-ip 147.28.171.51 --user-payer me 
+./target/doublezero access-pass set --accesspass-type PrePaid --client-ip 100.100.100.100 --user-payer me 
+./target/doublezero access-pass set --accesspass-type PrePaid --client-ip 200.200.200.200 --user-payer me
+./target/doublezero access-pass set --accesspass-type PrePaid --client-ip 100.0.0.5 --user-payer me
+./target/doublezero access-pass set --accesspass-type PrePaid --client-ip 100.0.0.6 --user-payer me
 
 # create a user
 echo "Creating users"

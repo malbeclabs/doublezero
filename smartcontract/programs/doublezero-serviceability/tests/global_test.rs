@@ -616,6 +616,7 @@ async fn test_doublezero_program() {
         DoubleZeroInstruction::ActivateUser(update1),
         vec![
             AccountMeta::new(user1_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,

@@ -1,7 +1,9 @@
 use crate::{
     instructions::*,
     processors::{
-        accesspass::set::process_set_accesspass,
+        accesspass::{
+            check_status::process_check_status_access_pass, set::process_set_access_pass,
+        },
         allowlist::{
             device::{
                 add::process_add_device_allowlist_globalconfig,
@@ -68,6 +70,7 @@ use crate::{
         },
         user::{
             activate::process_activate_user, ban::process_ban_user,
+            check_access_pass::process_check_access_pass_user,
             closeaccount::process_closeaccount_user, create::process_create_user,
             create_subscribe::process_create_subscribe_user, delete::process_delete_user,
             reject::process_reject_user, requestban::process_request_ban_user,
@@ -293,7 +296,13 @@ pub fn process_instruction(
             process_accept_link(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::SetAccessPass(value) => {
-            process_set_accesspass(program_id, accounts, &value)?
+            process_set_access_pass(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::CheckUserAccessPass(value) => {
+            process_check_access_pass_user(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::CheckStatusAccessPass(value) => {
+            process_check_status_access_pass(program_id, accounts, &value)?
         }
     };
     Ok(())

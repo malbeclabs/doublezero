@@ -320,6 +320,7 @@ async fn test_user() {
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
@@ -366,7 +367,10 @@ async fn test_user() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::ResumeUser(UserResumeArgs {}),
-        vec![AccountMeta::new(user_pubkey, false)],
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+        ],
         &payer,
     )
     .await;

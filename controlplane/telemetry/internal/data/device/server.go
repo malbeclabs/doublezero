@@ -47,6 +47,8 @@ func (s *Server) provider(env string) (Provider, error) {
 	switch env {
 	case config.EnvMainnetBeta:
 		return s.mainnet, nil
+	case config.EnvMainnet:
+		return s.mainnet, nil
 	case config.EnvTestnet:
 		return s.testnet, nil
 	case config.EnvDevnet:
@@ -171,6 +173,7 @@ func (s *Server) handleDeviceCircuitLatencies(w http.ResponseWriter, r *http.Req
 				s.log.Warn("failed to get circuit latencies", "error", err, "circuit", circuitCode)
 				return
 			}
+			s.log.Debug("Got circuit latencies", "circuit", circuitCode, "series", len(series))
 			mu.Lock()
 			output = append(output, series...)
 			mu.Unlock()

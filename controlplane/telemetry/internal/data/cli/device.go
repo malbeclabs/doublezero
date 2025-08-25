@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"sort"
+	"sync"
 	"syscall"
 	"time"
 
@@ -168,51 +169,64 @@ func (c *DeviceCmd) Command() *cobra.Command {
 					os.Exit(1)
 				}
 
-				for _, circuit := range circuits {
-					samples, err := provider.GetCircuitLatencies(ctx, devicedata.GetCircuitLatenciesConfig{
-						Circuit: circuit.Code,
-						Time:    timeRange,
-						Epochs:  epochRange,
-						Unit:    unit,
-					})
-					if err != nil {
-						log.Error("Failed to get raw data", "error", err, "circuit", circuit.Code)
-						os.Exit(1)
-					}
+				var wg sync.WaitGroup
 
-					for _, sample := range samples {
-						_, err := fmt.Fprintf(file, "%s,%s,%f\n",
-							circuit.Code,
-							sample.Timestamp, // Already formatted as time.RFC3339Nano
-							sample.RTTMean,
-						)
+				for _, circuit := range circuits {
+					wg.Add(1)
+					go func(circuit devicedata.Circuit) {
+						defer wg.Done()
+						samples, err := provider.GetCircuitLatencies(ctx, devicedata.GetCircuitLatenciesConfig{
+							Circuit: circuit.Code,
+							Time:    timeRange,
+							Epochs:  epochRange,
+							Unit:    unit,
+						})
 						if err != nil {
-							log.Error("Failed to write CSV row", "error", err, "path", rawCSVPath)
+							log.Error("Failed to get raw data", "error", err, "circuit", circuit.Code)
 							os.Exit(1)
 						}
-					}
+
+						for _, sample := range samples {
+							_, err := fmt.Fprintf(file, "%s,%s,%f\n",
+								circuit.Code,
+								sample.Timestamp, // Already formatted as time.RFC3339Nano
+								sample.RTTMean,
+							)
+							if err != nil {
+								log.Error("Failed to write CSV row", "error", err, "path", rawCSVPath)
+								return
+							}
+						}
+					}(circuit)
 				}
+				wg.Wait()
 				return nil
 			}
 
 			var allStats []stats.CircuitLatencyStat
+			var wg sync.WaitGroup
 			for _, circuit := range circuits {
-				stats, err := provider.GetCircuitLatencies(
-					ctx,
-					devicedata.GetCircuitLatenciesConfig{
-						Circuit:   circuit.Code,
-						Time:      timeRange,
-						Epochs:    epochRange,
-						MaxPoints: 1,
-						Unit:      unit,
-					},
-				)
-				if err != nil {
-					log.Warn("Failed to get circuit latencies", "error", err, "circuit", circuit.Code)
-					continue
-				}
-				allStats = append(allStats, stats...)
+				wg.Add(1)
+				go func(circuit devicedata.Circuit) {
+					defer wg.Done()
+					stats, err := provider.GetCircuitLatencies(
+						ctx,
+						devicedata.GetCircuitLatenciesConfig{
+							Circuit:   circuit.Code,
+							Time:      timeRange,
+							Epochs:    epochRange,
+							MaxPoints: 1,
+							Unit:      unit,
+						},
+					)
+					if err != nil {
+						log.Warn("Failed to get circuit latencies", "error", err, "circuit", circuit.Code)
+						return
+					}
+					allStats = append(allStats, stats...)
+				}(circuit)
 			}
+			wg.Wait()
 
 			printDeviceSummaries(allStats, env, recentTime, epochRange, unit)
 

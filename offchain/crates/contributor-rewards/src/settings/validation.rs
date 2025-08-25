@@ -118,6 +118,31 @@ pub fn validate_config(settings: &Settings) -> Result<()> {
         bail!("Reward input prefix cannot be empty");
     }
 
+    // Validate internet telemetry settings
+    if settings.internet_telemetry.min_coverage_threshold < 0.0
+        || settings.internet_telemetry.min_coverage_threshold > 1.0
+    {
+        bail!(
+            "Internet telemetry min_coverage_threshold must be between 0.0 and 1.0, got {}",
+            settings.internet_telemetry.min_coverage_threshold
+        );
+    }
+
+    if settings.internet_telemetry.max_epochs_lookback == 0 {
+        bail!("Internet telemetry max_epochs_lookback must be greater than 0");
+    }
+
+    if settings.internet_telemetry.max_epochs_lookback > 10 {
+        bail!(
+            "Internet telemetry max_epochs_lookback should not exceed 10 epochs (5 days), got {}",
+            settings.internet_telemetry.max_epochs_lookback
+        );
+    }
+
+    if settings.internet_telemetry.min_samples_per_link == 0 {
+        bail!("Internet telemetry min_samples_per_link must be greater than 0");
+    }
+
     Ok(())
 }
 
@@ -125,8 +150,8 @@ pub fn validate_config(settings: &Settings) -> Result<()> {
 mod tests {
     use super::*;
     use crate::settings::{
-        OperationalSettings, PrefixSettings, ProgramSettings, RpcSettings, ShapleySettings,
-        network::Network,
+        InternetTelemetrySettings, OperationalSettings, PrefixSettings, ProgramSettings,
+        RpcSettings, ShapleySettings, network::Network,
     };
 
     fn create_valid_config() -> Settings {
@@ -162,6 +187,11 @@ mod tests {
                 internet_telemetry: "doublezero_internet_telemetry_aggregate".to_string(),
                 contributor_rewards: "dz_contributor_rewards".to_string(),
                 reward_input: "dz_reward_input".to_string(),
+            },
+            internet_telemetry: InternetTelemetrySettings {
+                min_coverage_threshold: 0.8,
+                max_epochs_lookback: 5,
+                min_samples_per_link: 100,
             },
         }
     }

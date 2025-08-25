@@ -18,6 +18,7 @@ pub struct Settings {
     pub programs: ProgramSettings,
     pub operational: OperationalSettings,
     pub prefixes: PrefixSettings,
+    pub internet_telemetry: InternetTelemetrySettings,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
@@ -58,6 +59,21 @@ pub struct OperationalSettings {
     pub telemetry_batch_size: usize,
     pub default_latency_ms: f64,
     pub slot_duration_us: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+pub struct InternetTelemetrySettings {
+    /// Minimum coverage threshold (0.0-1.0)
+    /// e.g., 0.7 means at least 70% of expected links must have data
+    pub min_coverage_threshold: f64,
+
+    /// Maximum number of epochs to look back
+    /// e.g., 5 means check up to 5 previous epochs
+    pub max_epochs_lookback: u64,
+
+    /// Minimum samples per link to consider it valid
+    /// e.g., 10 means each link needs at least 10 samples
+    pub min_samples_per_link: usize,
 }
 
 impl Settings {

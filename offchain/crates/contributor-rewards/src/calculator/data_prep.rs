@@ -4,7 +4,7 @@ use crate::{
         shapley_handler::{build_demands, build_devices, build_private_links, build_public_links},
         util::{calculate_city_weights, print_devices, print_private_links, print_public_links},
     },
-    ingestor::{demand::CityStats, fetcher::Fetcher, types::FetchData},
+    ingestor::{demand::CityStats, fetcher::Fetcher, internet, types::FetchData},
     processor::{
         internet::{InternetTelemetryProcessor, InternetTelemetryStatMap, print_internet_stats},
         telemetry::{DZDTelemetryProcessor, DZDTelemetryStatMap, print_telemetry_stats},
@@ -12,7 +12,8 @@ use crate::{
 };
 use anyhow::Result;
 use network_shapley::types::{Demand, Devices, PrivateLinks, PublicLinks};
-use tracing::info;
+use std::collections::HashSet;
+use tracing::{info, warn};
 
 pub struct PreparedData {
     pub epoch: u64,
@@ -25,11 +26,39 @@ impl PreparedData {
     /// Fetches and prepares all data needed for reward calculations
     /// Returns: (epoch, device_telemetry, internet_telemetry, shapley_inputs)
     pub async fn new(fetcher: &Fetcher, epoch: Option<u64>) -> Result<PreparedData> {
-        // Fetch data based on filter mode
-        let (fetch_epoch, fetch_data) = match epoch {
+        // NOTE: Always fetch current epoch's serviceability data first
+        // This ensures we have the correct exchange_pk -> device -> location mappings
+        let (fetch_epoch, mut fetch_data) = match epoch {
             None => fetcher.fetch().await?,
             Some(epoch_num) => fetcher.with_epoch(epoch_num).await?,
         };
+
+        // Calculate expected links based on current serviceability data
+        let expected_links = calculate_expected_links(&fetch_data);
+
+        // Fetch internet data with threshold checking
+        // NOTE: May return historical telem data, but mappings use current serviceability
+        let (inet_epoch, internet_data) = internet::fetch_with_threshold(
+            &fetcher.rpc_client,
+            &fetcher.settings,
+            fetch_epoch,
+            expected_links,
+        )
+        .await?;
+
+        if inet_epoch != fetch_epoch {
+            warn!(
+                "Using historical internet telemetry from epoch {} (target was {})",
+                inet_epoch, fetch_epoch
+            );
+            info!(
+                "Using serviceability mapping from current epoch {} with telemetry data from epoch {}",
+                fetch_epoch, inet_epoch
+            );
+        }
+
+        // Update fetch_data with the potentially historical internet data
+        fetch_data.dz_internet = internet_data;
 
         // Process device telemetry
         let device_telemetry = process_device_telemetry(&fetch_data)?;
@@ -124,4 +153,34 @@ async fn build_and_log_demands(
     fetch_data: &FetchData,
 ) -> Result<(Vec<Demand>, CityStats)> {
     build_demands(fetcher, fetch_data).await
+}
+
+/// Calculate expected number of unique internet telemetry links
+/// based on the current serviceability data
+fn calculate_expected_links(fetch_data: &FetchData) -> usize {
+    // Build set of unique location PKs that have exchanges
+    let mut location_pks = HashSet::new();
+
+    // Build location_pks
+    for device in fetch_data.dz_serviceability.devices.values() {
+        if fetch_data
+            .dz_serviceability
+            .exchanges
+            .contains_key(&device.exchange_pk)
+        {
+            location_pks.insert(device.location_pk);
+        }
+    }
+
+    // Calculate number of bidirectional links
+    let n = location_pks.len();
+    if n <= 1 {
+        return 0;
+    }
+
+    // For internet telemetry, we track bidirectional performance metrics.
+    // Since network performance can differ by direction (A -> B latency != B -> A latency),
+    // we count both directions separately: n * (n - 1) total directional links.
+    // This includes both A -> B and B -> A for each pair of distinct locations.
+    n * (n - 1)
 }

@@ -3,7 +3,7 @@ use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Environment {
-    Mainnet,
+    MainnetBeta,
     Testnet,
     Devnet,
 }
@@ -13,7 +13,7 @@ impl std::str::FromStr for Environment {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "mainnet-beta" => Ok(Environment::Mainnet),
+            "mainnet-beta" => Ok(Environment::MainnetBeta),
             "testnet" => Ok(Environment::Testnet),
             "devnet" => Ok(Environment::Devnet),
             _ => Err(eyre::eyre!(
@@ -27,7 +27,7 @@ impl std::str::FromStr for Environment {
 impl fmt::Display for Environment {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Environment::Mainnet => write!(f, "mainnet"),
+            Environment::MainnetBeta => write!(f, "mainnet-beta"),
             Environment::Testnet => write!(f, "testnet"),
             Environment::Devnet => write!(f, "devnet"),
         }
@@ -37,7 +37,7 @@ impl fmt::Display for Environment {
 impl Environment {
     pub fn config(&self) -> eyre::Result<NetworkConfig> {
         let mut config = match self {
-            Environment::Mainnet => NetworkConfig {
+            Environment::MainnetBeta => NetworkConfig {
                 ledger_public_rpc_url: "https://doublezero-mainnet-beta.rpcpool.com/db336024-e7a8-46b1-80e5-352dd77060ab".to_string(),
                 ledger_public_ws_rpc_url: "wss://doublezero-mainnet-beta.rpcpool.com/db336024-e7a8-46b1-80e5-352dd77060ab".to_string(),
                 serviceability_program_id: "ser2VaTMAcYTaauMrTSfSrxBaUDq7BLNs2xfUugTAGv".parse()?,
@@ -109,7 +109,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_network_config_mainnet() {
-        let config = Environment::Mainnet.config().unwrap();
+        let config = Environment::MainnetBeta.config().unwrap();
         assert_eq!(
             config.ledger_public_rpc_url,
             "https://doublezero-mainnet-beta.rpcpool.com/db336024-e7a8-46b1-80e5-352dd77060ab"
@@ -189,7 +189,7 @@ mod tests {
     fn test_network_config_rpc_url_env_override() {
         std::env::set_var("DZ_LEDGER_RPC_URL", "https://other-rpc-url.com");
         std::env::set_var("DZ_LEDGER_WS_RPC_URL", "wss://other-ws-rpc-url.com");
-        let config = Environment::Mainnet.config().unwrap();
+        let config = Environment::MainnetBeta.config().unwrap();
         assert_eq!(config.ledger_public_rpc_url, "https://other-rpc-url.com");
         assert_eq!(
             config.ledger_public_ws_rpc_url,

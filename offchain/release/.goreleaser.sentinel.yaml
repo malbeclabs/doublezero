@@ -15,7 +15,7 @@ builds:
     tool: cargo
     command: build
     flags:
-      - --package=doublezero-sentinel
+      - --package=doublezero-ledger-sentinel
       - --release
     targets:
        - x86_64-unknown-linux-gnu

@@ -1766,7 +1766,7 @@ dependencies = [
 [[package]]
 name = "doublezero-config"
 version = "0.5.3"
-source = "git+ssh://git@github.com/malbeclabs/doublezero#7dfaa9ad1531ce505dfecef4a547004e8d0ab117"
+source = "git+ssh://git@github.com/malbeclabs/doublezero#8bfa3fb48cccf572633aa89954fb9fd0c60a0eff"
 dependencies = [
  "eyre",
  "solana-sdk",
@@ -1809,7 +1809,7 @@ dependencies = [
 [[package]]
 name = "doublezero-passport"
 version = "0.1.0"
-source = "git+ssh://git@github.com/doublezerofoundation/doublezero-solana#e71c7101a98f71d94dc99831a069dabdee8ee144"
+source = "git+ssh://git@github.com/doublezerofoundation/doublezero-solana#b2cc6ae20ba39e446d6d63677cf3e0f20caf171c"
 dependencies = [
  "borsh 1.5.7",
  "bytemuck",
@@ -1827,7 +1827,7 @@ dependencies = [
 [[package]]
 name = "doublezero-program-common"
 version = "0.5.3"
-source = "git+ssh://git@github.com/malbeclabs/doublezero#7dfaa9ad1531ce505dfecef4a547004e8d0ab117"
+source = "git+ssh://git@github.com/malbeclabs/doublezero#8bfa3fb48cccf572633aa89954fb9fd0c60a0eff"
 dependencies = [
  "borsh 1.5.7",
  "byteorder",
@@ -1839,7 +1839,7 @@ dependencies = [
 [[package]]
 name = "doublezero-program-tools"
 version = "0.1.0"
-source = "git+ssh://git@github.com/doublezerofoundation/doublezero-solana#e71c7101a98f71d94dc99831a069dabdee8ee144"
+source = "git+ssh://git@github.com/doublezerofoundation/doublezero-solana#b2cc6ae20ba39e446d6d63677cf3e0f20caf171c"
 dependencies = [
  "bincode 1.3.3",
  "borsh 1.5.7",
@@ -1861,7 +1861,7 @@ dependencies = [
 [[package]]
 name = "doublezero-record"
 version = "0.5.3"
-source = "git+ssh://git@github.com/malbeclabs/doublezero#7dfaa9ad1531ce505dfecef4a547004e8d0ab117"
+source = "git+ssh://git@github.com/malbeclabs/doublezero#8bfa3fb48cccf572633aa89954fb9fd0c60a0eff"
 dependencies = [
  "bytemuck",
  "solana-program",
@@ -1871,12 +1871,11 @@ dependencies = [
 [[package]]
 name = "doublezero-revenue-distribution"
 version = "0.1.0"
-source = "git+ssh://git@github.com/doublezerofoundation/doublezero-solana#e71c7101a98f71d94dc99831a069dabdee8ee144"
+source = "git+ssh://git@github.com/doublezerofoundation/doublezero-solana#b2cc6ae20ba39e446d6d63677cf3e0f20caf171c"
 dependencies = [
  "borsh 1.5.7",
  "bytemuck",
  "doublezero-program-tools",
- "ruint",
  "solana-account-info",
  "solana-cpi",
  "solana-instruction",
@@ -1895,7 +1894,7 @@ dependencies = [
 [[package]]
 name = "doublezero-serviceability"
 version = "0.5.3"
-source = "git+ssh://git@github.com/malbeclabs/doublezero#7dfaa9ad1531ce505dfecef4a547004e8d0ab117"
+source = "git+ssh://git@github.com/malbeclabs/doublezero#8bfa3fb48cccf572633aa89954fb9fd0c60a0eff"
 dependencies = [
  "borsh 1.5.7",
  "doublezero-program-common",
@@ -1930,7 +1929,7 @@ dependencies = [
 [[package]]
 name = "doublezero-telemetry"
 version = "0.5.3"
-source = "git+ssh://git@github.com/malbeclabs/doublezero#7dfaa9ad1531ce505dfecef4a547004e8d0ab117"
+source = "git+ssh://git@github.com/malbeclabs/doublezero#8bfa3fb48cccf572633aa89954fb9fd0c60a0eff"
 dependencies = [
  "borsh 1.5.7",
  "doublezero-program-common",
@@ -1943,7 +1942,7 @@ dependencies = [
 [[package]]
 name = "doublezero_sdk"
 version = "0.5.3"
-source = "git+ssh://git@github.com/malbeclabs/doublezero#7dfaa9ad1531ce505dfecef4a547004e8d0ab117"
+source = "git+ssh://git@github.com/malbeclabs/doublezero#8bfa3fb48cccf572633aa89954fb9fd0c60a0eff"
 dependencies = [
  "base64 0.22.1",
  "bincode 2.0.1",

@@ -1,11 +1,9 @@
-//go:build e2e && tribble
+//go:build e2e && stress
 
 package e2e_test
 
-// All tribbles do is consume resources and reproduce (and make cute sounds).
-// TestE2E_Tribble stress tests the system by spawning many client containers
-// (tribbles) that all connect to a single device container. This test is designed
-// to find the breaking point where the system starts to fail under load.
+// TestE2E_DeviceStress stress tests the system by spawning many client containers
+// that all connect to a single device container.
 
 import (
 	"context"
@@ -13,7 +11,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -24,8 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TribbleConfig holds configuration for the tribble stress test
-type TribbleConfig struct {
+type DeviceStressConfig struct {
 	NumClients int
 }
 
@@ -36,14 +32,14 @@ type clientMetrics struct {
 	connectedAt time.Time
 }
 
-func TestE2E_Tribble(t *testing.T) {
+func TestE2E_DeviceStress(t *testing.T) {
 	t.Parallel()
 
 	// Skip individual client airdrops to avoid rate limits
 	os.Setenv("SKIP_CLIENT_AIRDROP", "true")
 	defer os.Unsetenv("SKIP_CLIENT_AIRDROP")
 
-	config := TribbleConfig{
+	config := DeviceStressConfig{
 		NumClients: 4,
 	}
 
@@ -110,7 +106,7 @@ func TestE2E_Tribble(t *testing.T) {
 
 		// Create client
 		log.Info(fmt.Sprintf("Creating client %d", i+1))
-		keypairPath := fmt.Sprintf("/tmp/tribble-client-%d.json", i)
+		keypairPath := fmt.Sprintf("/tmp/device-stress-client-%d.json", i)
 
 		// Generate keypair file
 		keypairJSON, err := solana.GenerateKeypairJSON()
@@ -160,14 +156,21 @@ func TestE2E_Tribble(t *testing.T) {
 		cm.connectedAt = time.Now()
 		log.Info(fmt.Sprintf("✅ Client %d connected successfully", i+1))
 
-		time.Sleep(500 * time.Millisecond)
-	}
+		err = client.WaitForTunnelUp(t.Context(), 60*time.Second)
+		require.NoError(t, err)
 
-	// Report final results
-	log.Info("\n" + strings.Repeat("=", 80))
-	log.Info("TRIBBLE STRESS TEST COMPLETED SUCCESSFULLY")
-	log.Info(strings.Repeat("=", 80))
-	log.Info(fmt.Sprintf("Successfully connected all %d clients", config.NumClients))
+		// Ping test
+		log.Info(fmt.Sprintf("Testing connectivity from client %d to other clients with fping", i+1))
+		if i >= 2 {
+			cmdOutput, err = client.Exec(t.Context(), []string{
+				"bash", "-c", "ip --json r list dev doublezero0 proto bgp  | jq -r '.[].dst' | xargs fping -I doublezero0 2>&1",
+			})
+			if err != nil {
+				log.Error("Failed to ping all other clients with error ", "error", err.Error(), "output", string(cmdOutput))
+			}
+			require.NoError(t, err)
+		}
+	}
 }
 
 func connectClientWithRetry(t *testing.T, i int, client *devnet.Client, log *slog.Logger) {

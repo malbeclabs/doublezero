@@ -423,6 +423,7 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 	c.log.Info("Found tracked jobs to check", slog.Int("job_count", len(jobIDs)))
 
 	processedCount := 0
+	failedCount := 0
 	var completedJobIDs []string
 
 	records := make([]exporter.Record, 0, len(jobIDs))
@@ -448,9 +449,10 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 					slog.String("job_id", jobID))
 				continue
 			}
-			c.log.Warn("Wheresitup failed to get results for job",
+			c.log.Info("Wheresitup failed to get results for job",
 				slog.String("job_id", jobID),
 				slog.String("error", err.Error()))
+			failedCount++
 			continue
 		}
 
@@ -479,7 +481,7 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 		}
 
 		if minLatency == "" {
-			c.log.Warn("Wheresitup - no min latency found for job",
+			c.log.Info("Wheresitup - no min latency found for job",
 				slog.String("job_id", jobID))
 			completedJobIDs = append(completedJobIDs, jobID)
 			continue
@@ -487,7 +489,7 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 
 		latency, err := parseMillisString(minLatency)
 		if err != nil {
-			c.log.Warn("Wheresitup - failed to parse min latency",
+			c.log.Info("Wheresitup - failed to parse min latency",
 				slog.String("job_id", jobID),
 				slog.String("error", err.Error()))
 			continue
@@ -525,9 +527,27 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 		}
 	}
 
-	c.log.Info("Operation completed: Wheresitup export_job_results",
-		slog.Int("processed_count", processedCount),
-		slog.Int("removed_job_count", len(completedJobIDs)))
+	// Calculate failure rate and log appropriately
+	totalJobs := len(jobIDs)
+	failureRate := float64(failedCount) / float64(totalJobs)
+
+	if failureRate > 0.10 && totalJobs > 0 {
+		// Log error if more than 10% of jobs failed
+		c.log.Error("High failure rate for Wheresitup job results",
+			slog.Int("processed_count", processedCount),
+			slog.Int("failed_count", failedCount),
+			slog.Int("total_jobs", totalJobs),
+			slog.Int("removed_job_count", len(completedJobIDs)),
+			slog.Float64("failure_rate", failureRate))
+	} else {
+		// Normal info log when failure rate is acceptable
+		c.log.Info("Operation completed: Wheresitup export_job_results",
+			slog.Int("processed_count", processedCount),
+			slog.Int("failed_count", failedCount),
+			slog.Int("removed_job_count", len(completedJobIDs)),
+			slog.Int("total_jobs", totalJobs),
+			slog.Float64("failure_rate", failureRate))
+	}
 
 	return nil
 }

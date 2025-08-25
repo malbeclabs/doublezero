@@ -3,6 +3,7 @@ use solana_sdk::{
     hash::Hash,
     instruction::Instruction,
     message::{VersionedMessage, v0::Message},
+    offchain_message::OffchainMessage,
     pubkey::Pubkey,
     signature::{Keypair, Signature},
     signer::Signer,
@@ -30,10 +31,15 @@ pub fn verify_access_request(
         validator_id,
     }: &AccessMode,
 ) -> Result<()> {
-    let message = AccessRequest::access_request_message(&service_key);
+    const OFFCHAIN_MSG_SUPPORTED_VSN: u8 = 0;
+
+    let raw_message = AccessRequest::access_request_message(&service_key);
+    let offchain_msg = OffchainMessage::new(OFFCHAIN_MSG_SUPPORTED_VSN, raw_message.as_bytes())?;
+    let serialized_msg = offchain_msg.serialize()?;
+
     let signature: Signature = ed25519_signature.into();
 
-    if !signature.verify(validator_id.as_array(), message.as_bytes()) {
+    if !signature.verify(validator_id.as_array(), &serialized_msg) {
         return Err(Error::SignatureVerify);
     }
 
@@ -61,8 +67,11 @@ mod tests {
         let service_key = Pubkey::new_unique();
         let validator_id = Keypair::new();
 
-        let message = AccessRequest::access_request_message(&service_key);
-        let signature_bytes: [u8; 64] = validator_id.sign_message(message.as_bytes()).into();
+        let raw_message = AccessRequest::access_request_message(&service_key);
+        let offchain_msg = OffchainMessage::new(0u8, raw_message.as_bytes()).unwrap();
+        let signature_bytes: [u8; 64] = validator_id
+            .sign_message(&offchain_msg.serialize().unwrap())
+            .into();
 
         let access_mode = AccessMode::SolanaValidator {
             validator_id: validator_id.pubkey(),

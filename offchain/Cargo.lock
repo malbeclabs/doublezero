@@ -1772,6 +1772,7 @@ dependencies = [
  "solana-account-decoder-client-types",
  "solana-client",
  "solana-commitment-config",
+ "solana-sanitize",
  "solana-sdk",
  "solana-system-interface",
  "solana-transaction-status-client-types",

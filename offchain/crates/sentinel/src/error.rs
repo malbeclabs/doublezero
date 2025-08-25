@@ -34,6 +34,8 @@ pub enum Error {
     SignatureVerify,
     #[error("invalid transaction encoding: {0}")]
     TransactionEncoding(Signature),
+    #[error("solana offchain message error: {0}")]
+    OffchainSanitize(#[from] solana_sanitize::SanitizeError),
 }
 
 impl From<ClientError> for Error {

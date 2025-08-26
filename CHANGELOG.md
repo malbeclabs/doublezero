@@ -6,11 +6,35 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+- Onchain programs
+    - Implement access pass management commands and global state authority updates
+    - Update access pass PDA function to include payer parameter
+
 ### Changes
 
-- Client
+- Onchain programs
+    - Introducing new link instruction processor acceptance criteria
+    - Add support for custom deserializers and add for pubkey fields
+    - Move serialization and network_v4 to program-common
+    - Refactor account type assertions in processors and state modules in serviceability program
+- User client
+    - Add access pass management commands to CLI
+    - Restructuring device and global config CLI commands for better authority and interface management
+    - Enhance the handling and display of access pass epoch information in the CLI
     - Configure CLI network settings with shorthand network code. Usage: `doublezero config set --env <testnet|mainnet-beta>`
     - Configure `doublezerod` network settings with shorthand network code. Usage `doublezerod --env <testnet|mainnet-beta>`
+- Activator
+    - Introduce new user monitoring thread in activator for access pass functionality
+- Device controller
+    - Implement user tunnel ACLs in device agent configuration
+- Onchain monitor
+    - Initial implementation and component release
+    - Monitor onchain device telemetry metrics
+- E2E tests
+    - Simplify fixtures with loop rollups
+    - Add user ban workflow test
+    - Deflake user reconnect race and device interface assigned IP race
+    - Add single device stress test
 
 ## [v0.5.3](https://github.com/malbeclabs/doublezero/compare/client/v0.5.0...client/v0.5.3) – 2025-08-19
 

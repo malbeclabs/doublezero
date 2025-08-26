@@ -100,3 +100,8 @@ cloudsmiths:
     distributions:
       deb: "any-distro/any-version"
       rpm: "any-distro/any-version"
+  - organization: malbeclabs
+    repository: doublezero-devnet
+    distributions:
+      deb: "any-distro/any-version"
+      rpm: "any-distro/any-version"

@@ -86,7 +86,9 @@ mod tests {
     async fn test_write_to_read_from_ledger() -> anyhow::Result<()> {
         let validator_id = "devgM7SXHvoHH6jPXRsjn97gygPUo58XEnc9bqY1jpj";
         let commitment_config = CommitmentConfig::processed();
-        let rpc_client =
+        let solana_rpc_client =
+            RpcClient::new_with_commitment("http://localhost:8899".to_string(), commitment_config);
+        let ledger_rpc_client =
             RpcClient::new_with_commitment("http://localhost:8899".to_string(), commitment_config);
         let vote_account_config = RpcGetVoteAccountsConfig {
             vote_pubkey: Some(validator_id.to_string()),
@@ -102,8 +104,13 @@ mod tests {
             commitment: None,
             max_supported_transaction_version: Some(0),
         };
-        let fpc = FeePaymentCalculator::new(rpc_client, rpc_block_config, vote_account_config);
-        let rpc_client = fpc.rpc_client;
+        let fpc = FeePaymentCalculator::new(
+            ledger_rpc_client,
+            solana_rpc_client,
+            rpc_block_config,
+            vote_account_config,
+        );
+        let rpc_client = fpc.ledger_rpc_client;
         let epoch_info = rpc_client.get_epoch_info().await?;
         let payer_signer = Keypair::new();
 

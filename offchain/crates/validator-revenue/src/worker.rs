@@ -8,13 +8,15 @@
 
 use crate::{
     fee_payment_calculator::ValidatorRewards,
-    rewards,
+    rewards, transaction,
     validator_payment::{ComputedSolanaValidatorPayments, SolanaValidatorPayment},
 };
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use solana_sdk::pubkey::Pubkey;
+use doublezero_revenue_distribution::instruction::DistributionPaymentsConfiguration::UpdateSolanaValidatorPayments;
+use solana_sdk::{pubkey::Pubkey, signature::Signature, signer::keypair::Keypair};
 use std::str::FromStr;
+
 use svm_hash::sha2::Hash;
 
 #[derive(Debug)]
@@ -23,24 +25,32 @@ pub struct RecordResult {
     pub last_check: Option<DateTime<Utc>>,
     pub data_written: Option<Hash>,
     pub computed_payments: Option<ComputedSolanaValidatorPayments>,
+    pub tx_initialized_sig: Option<Signature>,
+    pub tx_submitted_sig: Option<Signature>,
 }
 
 pub async fn write_payments<T: ValidatorRewards>(
     fee_payment_calculator: &T,
+    signer: Keypair,
     validator_ids: Vec<String>,
 ) -> Result<RecordResult> {
-    let fetched_epoch_info = fee_payment_calculator.get_epoch_info().await?;
     let record_result: RecordResult;
+    let fetched_epoch_info = fee_payment_calculator.get_epoch_info().await?;
 
-    // TODO: fetch record from ledger
     let now = Utc::now();
-    let fake_fetched_epoch: u64 = 820; // 819 is the mock
-    if fetched_epoch_info.epoch == fake_fetched_epoch {
+    let dz_fetch_epoch_info = fee_payment_calculator
+        .ledger_rpc_client()
+        .get_epoch_info()
+        .await?;
+
+    if fetched_epoch_info.epoch == dz_fetch_epoch_info.epoch {
         record_result = RecordResult {
-            last_written_epoch: Some(fake_fetched_epoch),
+            last_written_epoch: Some(dz_fetch_epoch_info.epoch),
             last_check: Some(now),
             data_written: None, // probably will be something if we want to record "heartbeats"
             computed_payments: None,
+            tx_initialized_sig: None,
+            tx_submitted_sig: None,
         };
         // maybe write last check time or maybe epoch + counter ?
         // return early as there's nothing to write
@@ -74,11 +84,58 @@ pub async fn write_payments<T: ValidatorRewards>(
 
     let data = computed_solana_validator_payments.merkle_root();
 
+    // TODO: need to comment out until local validator running in CI
+    let transaction = transaction::Transaction::new(signer, false);
+    let initialized_transaction = transaction
+        .initialize_distribution(
+            fee_payment_calculator.ledger_rpc_client(),
+            fee_payment_calculator.solana_rpc_client(),
+            fetched_epoch_info.epoch,
+        )
+        .await?;
+    let tx_initialized_sig = transaction
+        .send_or_simulate_transaction(
+            fee_payment_calculator.solana_rpc_client(),
+            &initialized_transaction,
+        )
+        .await?;
+    let total_validators: u32 = validator_rewards.rewards.len() as u32;
+    let total_debt: u64 = validator_rewards
+        .rewards
+        .into_iter()
+        .map(|reward| reward.total)
+        .sum();
+    let debt = UpdateSolanaValidatorPayments {
+        total_validators,
+        total_debt,
+        merkle_root: data.unwrap(),
+    };
+
+    let submitted_distribution = transaction
+        .submit_distribution(
+            fee_payment_calculator.solana_rpc_client(),
+            fetched_epoch_info.epoch,
+            debt,
+        )
+        .await?;
+    let tx_submitted_sig = transaction
+        .send_or_simulate_transaction(
+            fee_payment_calculator.solana_rpc_client(),
+            &submitted_distribution,
+        )
+        .await?;
+
     record_result = RecordResult {
-        last_written_epoch: Some(fake_fetched_epoch),
+        last_written_epoch: Some(dz_fetch_epoch_info.epoch),
         last_check: Some(now),
         data_written: data,
         computed_payments: Some(computed_solana_validator_payments),
+        tx_submitted_sig: Some(tx_submitted_sig.ok_or_else(|| {
+            anyhow::anyhow!("send_or_simulate_transaction returned None for tx_submitted_sig")
+        })?),
+        tx_initialized_sig: Some(tx_initialized_sig.ok_or_else(|| {
+            anyhow::anyhow!("send_or_simulate_transaction returned None for tx_initialized_sig")
+        })?),
     };
     Ok(record_result)
 }
@@ -96,8 +153,28 @@ mod tests {
     use solana_sdk::commitment_config::CommitmentConfig;
     use solana_sdk::{epoch_info::EpochInfo, reward_type::RewardType::Fee};
     use solana_transaction_status_client_types::UiConfirmedBlock;
-    use std::collections::HashMap;
+    use std::{collections::HashMap, path::PathBuf};
 
+    /// Taken from a Solana cookbook to load a keypair from a user's Solana config
+    /// location.
+    fn try_load_keypair(path: Option<PathBuf>) -> Result<Keypair> {
+        let home_path = std::env::var_os("HOME").unwrap();
+        let default_keypair_path = ".config/solana/id.json";
+
+        let keypair_path =
+            path.unwrap_or_else(|| PathBuf::from(home_path).join(default_keypair_path));
+        try_load_specified_keypair(&keypair_path)
+    }
+
+    fn try_load_specified_keypair(path: &PathBuf) -> Result<Keypair> {
+        let keypair_file = std::fs::read_to_string(path)?;
+        let keypair_bytes = serde_json::from_str::<Vec<u8>>(&keypair_file)?;
+        let default_keypair = Keypair::try_from(keypair_bytes.as_slice())?;
+
+        Ok(default_keypair)
+    }
+
+    #[ignore] // this will fail without local validator
     #[tokio::test]
     async fn test_execute_worker() -> Result<()> {
         let mut mock_fee_payment_calculator = MockValidatorRewards::new();
@@ -126,7 +203,14 @@ mod tests {
         };
 
         mock_fee_payment_calculator
-            .expect_rpc_client()
+            .expect_solana_rpc_client()
+            .return_const(RpcClient::new_with_commitment(
+                "http://localhost:8899".to_string(),
+                commitment_config,
+            ));
+
+        mock_fee_payment_calculator
+            .expect_ledger_rpc_client()
             .return_const(RpcClient::new_with_commitment(
                 "http://localhost:8899".to_string(),
                 commitment_config,
@@ -209,7 +293,10 @@ mod tests {
                 })
             });
 
-        let record_result = write_payments(&mock_fee_payment_calculator, validator_ids).await?;
+        let signer = try_load_keypair(None).unwrap();
+
+        let record_result =
+            write_payments(&mock_fee_payment_calculator, signer, validator_ids).await?;
 
         assert_eq!(
             record_result.last_written_epoch.unwrap(),

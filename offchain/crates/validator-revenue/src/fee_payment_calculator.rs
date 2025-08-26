@@ -15,7 +15,8 @@ use solana_transaction_status_client_types::UiConfirmedBlock;
 #[automock]
 #[async_trait]
 pub trait ValidatorRewards {
-    fn rpc_client(&self) -> &RpcClient;
+    fn solana_rpc_client(&self) -> &RpcClient;
+    fn ledger_rpc_client(&self) -> &RpcClient;
     async fn get_epoch_info(&self) -> Result<EpochInfo, solana_client::client_error::ClientError>;
     async fn get_leader_schedule(&self) -> Result<HashMap<String, Vec<usize>>>;
     async fn get_block_with_config(
@@ -43,20 +44,23 @@ pub trait ValidatorRewards {
 }
 
 pub struct FeePaymentCalculator {
-    pub rpc_client: RpcClient,
+    pub ledger_rpc_client: RpcClient,
+    pub solana_rpc_client: RpcClient,
     pub vote_accounts_config: RpcGetVoteAccountsConfig,
     pub rpc_block_config: RpcBlockConfig,
 }
 
 impl FeePaymentCalculator {
     pub fn new(
-        rpc_client: RpcClient,
+        ledger_rpc_client: RpcClient,
+        solana_rpc_client: RpcClient,
         rpc_block_config: RpcBlockConfig,
         vote_accounts_config: RpcGetVoteAccountsConfig,
     ) -> Self {
         Self {
             rpc_block_config,
-            rpc_client,
+            solana_rpc_client,
+            ledger_rpc_client,
             vote_accounts_config,
         }
     }
@@ -64,14 +68,18 @@ impl FeePaymentCalculator {
 
 #[async_trait]
 impl ValidatorRewards for FeePaymentCalculator {
-    fn rpc_client(&self) -> &RpcClient {
-        &self.rpc_client
+    fn solana_rpc_client(&self) -> &RpcClient {
+        &self.solana_rpc_client
+    }
+
+    fn ledger_rpc_client(&self) -> &RpcClient {
+        &self.ledger_rpc_client
     }
     async fn get_epoch_info(&self) -> Result<EpochInfo, solana_client::client_error::ClientError> {
-        self.rpc_client.get_epoch_info().await
+        self.solana_rpc_client.get_epoch_info().await
     }
     async fn get_leader_schedule(&self) -> Result<HashMap<String, Vec<usize>>> {
-        let schedule = self.rpc_client.get_leader_schedule(None).await?;
+        let schedule = self.solana_rpc_client.get_leader_schedule(None).await?;
         schedule.ok_or(anyhow!("No leader schedule found"))
     }
 
@@ -79,7 +87,7 @@ impl ValidatorRewards for FeePaymentCalculator {
         &self,
         slot: u64,
     ) -> Result<UiConfirmedBlock, solana_client::client_error::ClientError> {
-        self.rpc_client
+        self.solana_rpc_client
             .get_block_with_config(slot, self.rpc_block_config)
             .await
     }
@@ -97,7 +105,7 @@ impl ValidatorRewards for FeePaymentCalculator {
     async fn get_vote_accounts_with_config(
         &self,
     ) -> Result<RpcVoteAccountStatus, solana_client::client_error::ClientError> {
-        self.rpc_client
+        self.solana_rpc_client
             .get_vote_accounts_with_config(self.vote_accounts_config.clone())
             .await
     }
@@ -106,18 +114,18 @@ impl ValidatorRewards for FeePaymentCalculator {
         vote_keys: Vec<Pubkey>,
         epoch: u64,
     ) -> Result<Vec<Option<RpcInflationReward>>, solana_client::client_error::ClientError> {
-        self.rpc_client
+        self.solana_rpc_client
             .get_inflation_reward(&vote_keys, Some(epoch))
             .await
     }
     async fn get_slot(&self) -> Result<u64, solana_client::client_error::ClientError> {
-        self.rpc_client.get_slot().await
+        self.solana_rpc_client.get_slot().await
     }
 
     async fn get_block_time(
         &self,
         slot: u64,
     ) -> Result<i64, solana_client::client_error::ClientError> {
-        self.rpc_client.get_block_time(slot).await
+        self.solana_rpc_client.get_block_time(slot).await
     }
 }

@@ -9,5 +9,6 @@ pub mod inflation;
 pub mod jito;
 pub mod ledger;
 pub mod rewards;
+pub mod transaction;
 pub mod validator_payment;
 pub mod worker;

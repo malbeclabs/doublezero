@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+### Breaking
+
+### Changes
+
+- Client
+    - Configure CLI network settings with shorthand network code. Usage: `doublezero config set --env <testnet|mainnet-beta>`
+
 ## [v0.5.3](https://github.com/malbeclabs/doublezero/compare/client/v0.5.0...client/v0.5.3) – 2025-08-19
 
 - **CLI & UX Improvements**

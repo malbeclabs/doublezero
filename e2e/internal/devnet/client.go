@@ -189,6 +189,13 @@ func (c *Client) Start(ctx context.Context) error {
 		},
 		Privileged: true,
 		Labels:     c.dn.labels,
+		// NOTE: We intentionally use the deprecated Resources field here instead of the HostConfigModifier
+		// because the latter has issues with setting SHM memory and other constraints to 0, which can cause
+		// unexpected behavior.
+		Resources: dockercontainer.Resources{
+			NanoCPUs: defaultContainerNanoCPUs,
+			Memory:   defaultContainerMemory,
+		},
 	}
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: req,

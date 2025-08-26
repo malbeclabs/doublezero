@@ -21,7 +21,7 @@ const (
 	defaultCurrentEpochLatenciesCacheTTL  = 1 * time.Minute
 	defaultHistoricEpochLatenciesCacheTTL = 24 * time.Hour
 
-	defaultGetCircuitLatenciesPoolSize = 16
+	defaultGetCircuitLatenciesPoolSize = 64
 )
 
 type Unit string

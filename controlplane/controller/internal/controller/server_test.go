@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"bytes"
 	"context"
 	"log"
 	"net"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"text/template"
 	"time"
 
 	"google.golang.org/grpc"
@@ -18,7 +20,6 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	pb "github.com/malbeclabs/doublezero/controlplane/proto/controller/gen/pb-go"
-	"github.com/malbeclabs/doublezero/e2e/fixtures"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
@@ -30,6 +31,46 @@ func generateEmptyTunnelSlots(startID, count int) []*Tunnel {
 		tunnels[i] = &Tunnel{Id: startID + i}
 	}
 	return tunnels
+}
+
+// seq generates a sequence of integers from start to end (inclusive)
+func seq(start, end int) []int {
+	if start > end {
+		return []int{}
+	}
+	result := make([]int, end-start+1)
+	for i := range result {
+		result[i] = start + i
+	}
+	return result
+}
+
+// add returns the sum of two integers
+func add(a, b int) int {
+	return a + b
+}
+
+// renderTemplateFile reads a file and renders it as a template with the given data
+func renderTemplateFile(filepath string, data any) (string, error) {
+	content, err := os.ReadFile(filepath)
+	if err != nil {
+		return "", err
+	}
+
+	var buf bytes.Buffer
+	tmpl := template.New("").Funcs(template.FuncMap{
+		"seq": seq,
+		"add": add,
+	})
+	tmpl, err = tmpl.Parse(string(content))
+	if err != nil {
+		return "", err
+	}
+	err = tmpl.Execute(&buf, data)
+	if err != nil {
+		return "", err
+	}
+	return buf.String(), nil
 }
 
 func TestGetConfig(t *testing.T) {
@@ -531,7 +572,7 @@ func TestGetConfig(t *testing.T) {
 					"StartTunnel": StartUserTunnelNum,
 					"EndTunnel":   StartUserTunnelNum + MaxTunnelSlots - 1,
 				}
-				rendered, err := fixtures.RenderFile(test.Want, templateData)
+				rendered, err := renderTemplateFile(test.Want, templateData)
 				if err != nil {
 					t.Fatalf("error rendering test fixture %s: %v", test.Want, err)
 				}
@@ -1359,7 +1400,7 @@ func TestEndToEnd(t *testing.T) {
 					"StartTunnel": StartUserTunnelNum,
 					"EndTunnel":   StartUserTunnelNum + MaxTunnelSlots - 1,
 				}
-				rendered, err := fixtures.RenderFile(test.Want, templateData)
+				rendered, err := renderTemplateFile(test.Want, templateData)
 				if err != nil {
 					t.Fatalf("error rendering test fixture %s: %v", test.Want, err)
 				}

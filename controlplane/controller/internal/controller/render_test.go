@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/malbeclabs/doublezero/e2e/fixtures"
 )
 
 func TestRenderConfig(t *testing.T) {
@@ -528,7 +527,7 @@ func TestRenderConfig(t *testing.T) {
 					"StartTunnel": StartUserTunnelNum,
 					"EndTunnel":   StartUserTunnelNum + MaxTunnelSlots - 1,
 				}
-				rendered, err := fixtures.RenderFile(test.Want, templateData)
+				rendered, err := renderTemplateFile(test.Want, templateData)
 				if err != nil {
 					t.Fatalf("error rendering test fixture %s: %v", test.Want, err)
 				}

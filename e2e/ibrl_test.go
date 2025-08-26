@@ -13,8 +13,7 @@ import (
 	"github.com/malbeclabs/doublezero/e2e/internal/arista"
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
 	"github.com/malbeclabs/doublezero/e2e/internal/docker"
-	"github.com/malbeclabs/doublezero/e2e/fixtures"
-	internalfixtures "github.com/malbeclabs/doublezero/e2e/internal/fixtures"
+	"github.com/malbeclabs/doublezero/e2e/internal/fixtures"
 	"github.com/malbeclabs/doublezero/e2e/internal/netlink"
 	"github.com/stretchr/testify/require"
 )
@@ -131,7 +130,7 @@ func checkIBRLPostConnect(t *testing.T, dn *TestDevnet, device *devnet.Device, c
 				want, err := fixtures.Render(test.fixturePath, test.data)
 				require.NoError(t, err, "error reading fixture")
 
-				diff := internalfixtures.DiffCLITable(got, []byte(want))
+				diff := fixtures.DiffCLITable(got, []byte(want))
 				if diff != "" {
 					fmt.Println(string(got))
 					t.Fatalf("output mismatch: -(want), +(got):%s", diff)
@@ -307,7 +306,7 @@ func checkIBRLPostDisconnect(t *testing.T, dn *TestDevnet, device *devnet.Device
 				want, err := fixtures.Render(test.fixturePath, test.data)
 				require.NoError(t, err, "error reading fixture")
 
-				diff := internalfixtures.DiffCLITable(got, []byte(want))
+				diff := fixtures.DiffCLITable(got, []byte(want))
 				if diff != "" {
 					fmt.Println(string(got))
 					t.Fatalf("output mismatch: -(want), +(got):%s", diff)
@@ -336,7 +335,7 @@ func checkIBRLPostDisconnect(t *testing.T, dn *TestDevnet, device *devnet.Device
 			want, err := e2e.FS.ReadFile("fixtures/ibrl/doublezero_user_list_user_removed.txt")
 			require.NoError(t, err, "error reading user list fixture")
 
-			diff := internalfixtures.DiffCLITable(got, want)
+			diff := fixtures.DiffCLITable(got, want)
 			if diff != "" {
 				fmt.Println(string(got))
 				t.Fatalf("output mismatch: -(want), +(got):%s", diff)

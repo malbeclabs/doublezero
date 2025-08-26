@@ -12,9 +12,10 @@ import (
 
 // MockWheresitupCollector for testing
 type MockWheresitupCollector struct {
-	RunFunc   func(ctx context.Context, interval time.Duration, dryRun bool, jobIDsFile, stateDir string) error
-	runCalled bool
-	mu        sync.Mutex
+	RunFunc                     func(ctx context.Context, interval time.Duration, dryRun bool, jobIDsFile, stateDir string) error
+	InitializeCreditBalanceFunc func(ctx context.Context) error
+	runCalled                   bool
+	mu                          sync.Mutex
 }
 
 func (m *MockWheresitupCollector) Run(ctx context.Context, interval time.Duration, dryRun bool, jobIDsFile, stateDir string) error {
@@ -30,6 +31,13 @@ func (m *MockWheresitupCollector) Run(ctx context.Context, interval time.Duratio
 	return nil
 }
 
+func (m *MockWheresitupCollector) InitializeCreditBalance(ctx context.Context) error {
+	if m.InitializeCreditBalanceFunc != nil {
+		return m.InitializeCreditBalanceFunc(ctx)
+	}
+	return nil
+}
+
 func (m *MockWheresitupCollector) wasRunCalled() bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -38,9 +46,10 @@ func (m *MockWheresitupCollector) wasRunCalled() bool {
 
 // MockRipeAtlasCollector for testing
 type MockRipeAtlasCollector struct {
-	RunFunc   func(ctx context.Context, dryRun bool, probesPerLocation int, stateDir string, samplingInterval, measurementInterval, exportInterval time.Duration) error
-	runCalled bool
-	mu        sync.Mutex
+	RunFunc                     func(ctx context.Context, dryRun bool, probesPerLocation int, stateDir string, samplingInterval, measurementInterval, exportInterval time.Duration) error
+	InitializeCreditBalanceFunc func(ctx context.Context) error
+	runCalled                   bool
+	mu                          sync.Mutex
 }
 
 func (m *MockRipeAtlasCollector) Run(ctx context.Context, dryRun bool, probesPerLocation int, stateDir string, samplingInterval, measurementInterval, exportInterval time.Duration) error {
@@ -53,6 +62,13 @@ func (m *MockRipeAtlasCollector) Run(ctx context.Context, dryRun bool, probesPer
 	}
 	// Simulate running for a short time
 	time.Sleep(10 * time.Millisecond)
+	return nil
+}
+
+func (m *MockRipeAtlasCollector) InitializeCreditBalance(ctx context.Context) error {
+	if m.InitializeCreditBalanceFunc != nil {
+		return m.InitializeCreditBalanceFunc(ctx)
+	}
 	return nil
 }
 

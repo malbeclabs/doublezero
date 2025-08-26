@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
@@ -21,6 +22,46 @@ func mockLocationsFetcher(locations []collector.LocationMatch) func(ctx context.
 	return func(ctx context.Context) []collector.LocationMatch {
 		return locations
 	}
+}
+
+// MockExporter implements exporter.Exporter for testing
+type MockExporter struct {
+	WriteRecordsFunc func(ctx context.Context, records []exporter.Record) error
+}
+
+func (m *MockExporter) WriteRecords(ctx context.Context, records []exporter.Record) error {
+	if m.WriteRecordsFunc != nil {
+		return m.WriteRecordsFunc(ctx, records)
+	}
+	return nil
+}
+
+func (m *MockExporter) Close() error {
+	return nil
+}
+
+// testLogHandler is a simple slog handler for testing that captures messages and levels
+type testLogHandler struct {
+	messages *[]string
+	levels   *[]slog.Level
+}
+
+func (h *testLogHandler) Enabled(ctx context.Context, level slog.Level) bool {
+	return true
+}
+
+func (h *testLogHandler) Handle(ctx context.Context, r slog.Record) error {
+	*h.messages = append(*h.messages, r.Message)
+	*h.levels = append(*h.levels, r.Level)
+	return nil
+}
+
+func (h *testLogHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return h
+}
+
+func (h *testLogHandler) WithGroup(name string) slog.Handler {
+	return h
 }
 
 // MockWheresitupClient implements wheresitupClientInterface for testing
@@ -774,11 +815,11 @@ func TestInternetLatency_Wheresitup_ParseLocationFromUrl(t *testing.T) {
 func TestInternetLatency_Wheresitup_ExportJobResults_ErrorScenarios(t *testing.T) {
 	t.Parallel()
 
-	tempDir := t.TempDir()
-	jobIDsFile := filepath.Join(tempDir, "jobs.json")
-
 	t.Run("BuildLocationMapping Error", func(t *testing.T) {
 		t.Parallel()
+
+		tempDir := t.TempDir()
+		jobIDsFile := filepath.Join(tempDir, "jobs.json")
 
 		log := logger.With("test", t.Name())
 
@@ -798,6 +839,9 @@ func TestInternetLatency_Wheresitup_ExportJobResults_ErrorScenarios(t *testing.T
 
 	t.Run("JobResults In Progress", func(t *testing.T) {
 		t.Parallel()
+
+		tempDir := t.TempDir()
+		jobIDsFile := filepath.Join(tempDir, "jobs.json")
 
 		log := logger.With("test", t.Name())
 
@@ -835,6 +879,91 @@ func TestInternetLatency_Wheresitup_ExportJobResults_ErrorScenarios(t *testing.T
 		_ = state2.Load()
 		remainingJobs := state2.GetJobIDs()
 		require.Len(t, remainingJobs, 1, "Expected job to remain for in-progress status, got %v", remainingJobs)
+	})
+
+	t.Run("High Failure Rate Logs Error", func(t *testing.T) {
+		t.Parallel()
+
+		tempDir := t.TempDir()
+		jobIDsFile := filepath.Join(tempDir, "jobs.json")
+
+		// Create a custom log handler to capture log messages
+		var logMessages []string
+		var logLevels []slog.Level
+		captureHandler := &testLogHandler{
+			messages: &logMessages,
+			levels:   &logLevels,
+		}
+
+		log := slog.New(captureHandler)
+
+		mockExporter := &MockExporter{
+			WriteRecordsFunc: func(ctx context.Context, records []exporter.Record) error {
+				return nil
+			},
+		}
+
+		c := &Collector{
+			client: &MockWheresitupClient{
+				GetNearestSourcesForLocationsFunc: func(ctx context.Context, locations []collector.LocationMatch) ([]LocationSourceMatch, error) {
+					return []LocationSourceMatch{
+						{
+							LocationMatch:  collector.LocationMatch{LocationCode: "NYC"},
+							NearestSources: []Source{{ID: "src1", Name: "new_york"}},
+						},
+					}, nil
+				},
+				GetJobResultsFunc: func(ctx context.Context, jobID string) (*JobResultResponse, error) {
+					// Make most jobs fail to trigger the >10% failure rate
+					if jobID == "job-success-1" || jobID == "job-success-2" {
+						// 2 out of 15 succeed (13.3% success rate, 86.7% failure rate)
+						// Create a successful response with minimal structure
+						response := &JobResultResponse{}
+						response.Request.StartTime = 1234567890
+
+						// Create the ping result with min latency
+						pingResult := PingResult{}
+						pingResult.Summary.Summary.Min = "10.5"
+
+						response.Response.Complete = map[string]ServiceResult{
+							"new_york": {
+								Ping: pingResult,
+							},
+						}
+						return response, nil
+					}
+					// All other jobs fail
+					return nil, errors.New("job failed")
+				},
+			},
+			log:              log,
+			exporter:         mockExporter,
+			getLocationsFunc: mockLocationsFetcher([]collector.LocationMatch{{LocationCode: "NYC"}}),
+		}
+
+		// Save 15 job IDs (2 will succeed, 13 will fail = 86.7% failure rate)
+		state := NewState(jobIDsFile)
+		jobIDs := []string{
+			"job-fail-1", "job-fail-2", "job-fail-3", "job-fail-4", "job-fail-5",
+			"job-fail-6", "job-fail-7", "job-fail-8", "job-fail-9", "job-fail-10",
+			"job-fail-11", "job-fail-12", "job-fail-13",
+			"job-success-1", "job-success-2",
+		}
+		_ = state.AddJobIDs(jobIDs)
+
+		err := c.ExportJobResults(t.Context(), jobIDsFile)
+		require.NoError(t, err, "ExportJobResults() should not return error")
+
+		// Check that an error was logged due to high failure rate
+		foundErrorLog := false
+		for i, msg := range logMessages {
+			if msg == "High failure rate for Wheresitup job results" {
+				require.Equal(t, slog.LevelError, logLevels[i], "High failure rate should be logged at ERROR level")
+				foundErrorLog = true
+				break
+			}
+		}
+		require.True(t, foundErrorLog, "Expected to find error log for high failure rate, but didn't find it. Logs: %v", logMessages)
 	})
 }
 
@@ -998,4 +1127,63 @@ func TestInternetLatency_Wheresitup_Run_TickerExecution(t *testing.T) {
 	require.NoError(t, err, "Failed to load state")
 	remainingJobs := state.GetJobIDs()
 	require.NotContains(t, remainingJobs, exportedJobID, "Exported job should be removed from state")
+}
+
+func TestInitializeCreditBalance(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Success", func(t *testing.T) {
+		t.Parallel()
+
+		mockClient := &MockWheresitupClient{
+			GetCreditFunc: func(ctx context.Context) (int, error) {
+				return 15000, nil
+			},
+		}
+
+		c := &Collector{
+			client: mockClient,
+			log:    logger,
+		}
+
+		err := c.InitializeCreditBalance(context.Background())
+		require.NoError(t, err)
+	})
+
+	t.Run("Low credit warning", func(t *testing.T) {
+		t.Parallel()
+
+		mockClient := &MockWheresitupClient{
+			GetCreditFunc: func(ctx context.Context) (int, error) {
+				return 500, nil // Below CreditWarningThreshold
+			},
+		}
+
+		c := &Collector{
+			client: mockClient,
+			log:    logger,
+		}
+
+		err := c.InitializeCreditBalance(context.Background())
+		require.NoError(t, err)
+	})
+
+	t.Run("API error", func(t *testing.T) {
+		t.Parallel()
+
+		mockClient := &MockWheresitupClient{
+			GetCreditFunc: func(ctx context.Context) (int, error) {
+				return 0, errors.New("API error")
+			},
+		}
+
+		c := &Collector{
+			client: mockClient,
+			log:    logger,
+		}
+
+		err := c.InitializeCreditBalance(context.Background())
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "failed to get Wheresitup credit balance")
+	})
 }

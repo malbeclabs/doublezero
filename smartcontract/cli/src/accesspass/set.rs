@@ -11,7 +11,7 @@ use std::{io::Write, net::Ipv4Addr, str::FromStr};
 #[derive(Args, Debug)]
 pub struct SetAccessPassCliCommand {
     /// Specifies the type of access pass being set [prepaid|postpaid].
-    #[arg(long)]
+    #[arg(long, default_value = "prepaid")]
     pub accesspass_type: AccessPassType,
     /// Client IP address in IPv4 format
     #[arg(long)]
@@ -19,9 +19,9 @@ pub struct SetAccessPassCliCommand {
     /// Specifies the payer of the access pass.
     #[arg(long)]
     pub user_payer: String,
-    /// Specifies the last access epoch of the access pass or MAX.
-    #[arg(long)]
-    pub last_access_epoch: String,
+    /// Specifies the number of epochs for the access pass.
+    #[arg(long, default_value = "max")]
+    pub epochs: String,
 }
 
 impl SetAccessPassCliCommand {
@@ -37,9 +37,11 @@ impl SetAccessPassCliCommand {
             }
         };
 
-        let last_access_epoch = match self.last_access_epoch.to_ascii_lowercase().as_str() {
+        let current_epoch = client.get_epoch()?;
+        let last_access_epoch = match self.epochs.to_ascii_lowercase().as_str() {
+            "0" => 0,
             "max" => u64::MAX,
-            _ => self.last_access_epoch.parse()?,
+            _ => current_epoch + self.epochs.parse::<u64>()?,
         };
 
         let signature = client.set_accesspass(SetAccessPassCommand {
@@ -83,6 +85,8 @@ mod tests {
             100, 221, 20, 137, 4, 5,
         ]);
 
+        client.expect_get_epoch().returning(|| Ok(10));
+
         client
             .expect_check_requirements()
             .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
@@ -93,7 +97,7 @@ mod tests {
                 accesspass_type: AccessPassType::SolanaValidator,
                 client_ip,
                 user_payer: payer,
-                last_access_epoch: 0,
+                last_access_epoch: 11,
             }))
             .returning(move |_| Ok(signature));
 
@@ -102,7 +106,7 @@ mod tests {
             accesspass_type: AccessPassType::SolanaValidator,
             client_ip,
             user_payer: payer.to_string(),
-            last_access_epoch: "0".into(),
+            epochs: "1".into(),
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

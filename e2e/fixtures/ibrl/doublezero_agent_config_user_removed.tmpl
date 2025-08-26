@@ -64,6 +64,7 @@ interface Ethernet2
    pim ipv4 sparse-mode
    isis enable 1
    isis circuit-type level-2
+   isis hello-interval 1
    isis hello padding
    isis network point-to-point
 !
@@ -82,6 +83,7 @@ interface Vlan4001
    pim ipv4 sparse-mode
    isis enable 1
    isis circuit-type level-2
+   isis hello-interval 1
    isis hello padding
    isis network point-to-point
 !
@@ -104,84 +106,98 @@ router bgp 65342
    neighbor 172.16.0.14 next-hop-self
    neighbor 172.16.0.14 update-source Loopback256
    neighbor 172.16.0.14 description ty2-dz01-ipv4
+   neighbor 172.16.0.14 timers 3 9
    neighbor 172.16.0.14 send-community
    no neighbor 172.16.0.11
    neighbor 172.16.0.11 remote-as 65342
    neighbor 172.16.0.11 next-hop-self
    neighbor 172.16.0.11 update-source Loopback256
    neighbor 172.16.0.11 description ld4-dz01-ipv4
+   neighbor 172.16.0.11 timers 3 9
    neighbor 172.16.0.11 send-community
    no neighbor 172.16.0.10
    neighbor 172.16.0.10 remote-as 65342
    neighbor 172.16.0.10 next-hop-self
    neighbor 172.16.0.10 update-source Loopback256
    neighbor 172.16.0.10 description la2-dz01-ipv4
+   neighbor 172.16.0.10 timers 3 9
    neighbor 172.16.0.10 send-community
    no neighbor 172.16.0.13
    neighbor 172.16.0.13 remote-as 65342
    neighbor 172.16.0.13 next-hop-self
    neighbor 172.16.0.13 update-source Loopback256
    neighbor 172.16.0.13 description sg1-dz01-ipv4
+   neighbor 172.16.0.13 timers 3 9
    neighbor 172.16.0.13 send-community
    no neighbor 172.16.0.16
    neighbor 172.16.0.16 remote-as 65342
    neighbor 172.16.0.16 next-hop-self
    neighbor 172.16.0.16 update-source Loopback256
    neighbor 172.16.0.16 description ams-dz001-ipv4
+   neighbor 172.16.0.16 timers 3 9
    neighbor 172.16.0.16 send-community
    no neighbor 172.16.0.12
    neighbor 172.16.0.12 remote-as 65342
    neighbor 172.16.0.12 next-hop-self
    neighbor 172.16.0.12 update-source Loopback256
    neighbor 172.16.0.12 description frk-dz01-ipv4
+   neighbor 172.16.0.12 timers 3 9
    neighbor 172.16.0.12 send-community
    no neighbor 172.16.0.15
    neighbor 172.16.0.15 remote-as 65342
    neighbor 172.16.0.15 next-hop-self
    neighbor 172.16.0.15 update-source Loopback256
    neighbor 172.16.0.15 description pit-dzd01-ipv4
+   neighbor 172.16.0.15 timers 3 9
    neighbor 172.16.0.15 send-community
    no neighbor 172.16.0.6
    neighbor 172.16.0.6 remote-as 65342
    neighbor 172.16.0.6 next-hop-self
    neighbor 172.16.0.6 update-source Loopback255
    neighbor 172.16.0.6 description ty2-dz01-vpnv4
+   neighbor 172.16.0.6 timers 3 9
    neighbor 172.16.0.6 send-community
    no neighbor 172.16.0.3
    neighbor 172.16.0.3 remote-as 65342
    neighbor 172.16.0.3 next-hop-self
    neighbor 172.16.0.3 update-source Loopback255
    neighbor 172.16.0.3 description ld4-dz01-vpnv4
+   neighbor 172.16.0.3 timers 3 9
    neighbor 172.16.0.3 send-community
    no neighbor 172.16.0.2
    neighbor 172.16.0.2 remote-as 65342
    neighbor 172.16.0.2 next-hop-self
    neighbor 172.16.0.2 update-source Loopback255
    neighbor 172.16.0.2 description la2-dz01-vpnv4
+   neighbor 172.16.0.2 timers 3 9
    neighbor 172.16.0.2 send-community
    no neighbor 172.16.0.5
    neighbor 172.16.0.5 remote-as 65342
    neighbor 172.16.0.5 next-hop-self
    neighbor 172.16.0.5 update-source Loopback255
    neighbor 172.16.0.5 description sg1-dz01-vpnv4
+   neighbor 172.16.0.5 timers 3 9
    neighbor 172.16.0.5 send-community
    no neighbor 172.16.0.8
    neighbor 172.16.0.8 remote-as 65342
    neighbor 172.16.0.8 next-hop-self
    neighbor 172.16.0.8 update-source Loopback255
    neighbor 172.16.0.8 description ams-dz001-vpnv4
+   neighbor 172.16.0.8 timers 3 9
    neighbor 172.16.0.8 send-community
    no neighbor 172.16.0.4
    neighbor 172.16.0.4 remote-as 65342
    neighbor 172.16.0.4 next-hop-self
    neighbor 172.16.0.4 update-source Loopback255
    neighbor 172.16.0.4 description frk-dz01-vpnv4
+   neighbor 172.16.0.4 timers 3 9
    neighbor 172.16.0.4 send-community
    no neighbor 172.16.0.7
    neighbor 172.16.0.7 remote-as 65342
    neighbor 172.16.0.7 next-hop-self
    neighbor 172.16.0.7 update-source Loopback255
    neighbor 172.16.0.7 description pit-dzd01-vpnv4
+   neighbor 172.16.0.7 timers 3 9
    neighbor 172.16.0.7 send-community
    address-family ipv4
       neighbor 172.16.0.14 activate

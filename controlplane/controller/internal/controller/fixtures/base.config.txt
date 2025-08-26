@@ -82,12 +82,14 @@ router bgp 65342
    neighbor 12.12.12.12 next-hop-self
    neighbor 12.12.12.12 update-source Loopback256
    neighbor 12.12.12.12 description remote-dzd-ipv4
+   neighbor 12.12.12.12 timers 3 9
    neighbor 12.12.12.12 send-community
    no neighbor 15.15.15.15
    neighbor 15.15.15.15 remote-as 65342
    neighbor 15.15.15.15 next-hop-self
    neighbor 15.15.15.15 update-source Loopback255
    neighbor 15.15.15.15 description remote-dzd-vpnv4
+   neighbor 15.15.15.15 timers 3 9
    neighbor 15.15.15.15 send-community
    address-family ipv4
       neighbor 12.12.12.12 activate

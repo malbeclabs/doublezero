@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/malbeclabs/doublezero/config"
+	controllerconfig "github.com/malbeclabs/doublezero/controlplane/controller/config"
 	"github.com/malbeclabs/doublezero/e2e/internal/arista"
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
 	"github.com/malbeclabs/doublezero/e2e/internal/docker"
@@ -71,8 +71,8 @@ func checkMulticastPublisherPostConnect(t *testing.T, dn *TestDevnet, device *de
 				"ClientIP":                  client.CYOANetworkIP,
 				"DeviceIP":                  device.CYOANetworkIP,
 				"ExpectedAllocatedClientIP": expectedAllocatedClientIP,
-				"StartTunnel":               config.StartUserTunnelNum,
-				"EndTunnel":                 config.EndUserTunnelNum,
+				"StartTunnel":               controllerconfig.StartUserTunnelNum,
+				"EndTunnel":                 controllerconfig.EndUserTunnelNum,
 			})
 			require.NoError(t, err, "error reading agent configuration fixture")
 			err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))
@@ -235,8 +235,8 @@ func checkMulticastPublisherPostDisconnect(t *testing.T, dn *TestDevnet, device 
 		if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {
 			config, err := fixtures.Render("fixtures/multicast_publisher/doublezero_agent_config_user_removed.tmpl", map[string]any{
 				"DeviceIP":    device.CYOANetworkIP,
-				"StartTunnel": config.StartUserTunnelNum,
-				"EndTunnel":   config.EndUserTunnelNum,
+				"StartTunnel": controllerconfig.StartUserTunnelNum,
+				"EndTunnel":   controllerconfig.EndUserTunnelNum,
 			})
 			require.NoError(t, err, "error reading agent configuration fixture")
 			err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))

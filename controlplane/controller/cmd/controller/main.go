@@ -120,6 +120,7 @@ func NewControllerCommand() *ControllerCommand {
 	c.fs.Uint64Var(&c.deviceLocalASN, "device-local-asn", 0, "device local ASN (required when env is not set)")
 	c.fs.BoolVar(&c.noHardware, "no-hardware", false, "exclude config commands that will fail when not running on the real hardware")
 	c.fs.BoolVar(&c.enableInterfacesAndPeers, "enable-interfaces-and-peers", false, "enable processing of device interfaces and BGP peers")
+	c.fs.IntVar(&c.maxTunnelSlots, "max-tunnel-slots", controller.MaxTunnelSlots, "maximum number of tunnel slots to provision on a device")
 	c.fs.BoolVar(&c.showVersion, "version", false, "show version information and exit")
 	c.fs.StringVar(&c.tlsCertFile, "tls-cert", "", "path to tls cert file")
 	c.fs.StringVar(&c.tlsKeyFile, "tls-key", "", "path to tls key file")
@@ -137,6 +138,7 @@ type ControllerCommand struct {
 	deviceLocalASN           uint64
 	noHardware               bool
 	enableInterfacesAndPeers bool
+	maxTunnelSlots           int
 	showVersion              bool
 	tlsCertFile              string
 	tlsKeyFile               string
@@ -166,6 +168,11 @@ func (c *ControllerCommand) Run() error {
 
 	// set build info prometheus metric
 	controller.BuildInfo.WithLabelValues(version, commit, date).Set(1)
+
+	// Override MaxTunnelSlots if a different value was provided via command-line flag
+	if c.maxTunnelSlots != controller.MaxTunnelSlots {
+		controller.MaxTunnelSlots = c.maxTunnelSlots
+	}
 
 	// start controller
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

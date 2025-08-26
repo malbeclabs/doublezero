@@ -8,13 +8,15 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/malbeclabs/doublezero/config"
+	"github.com/malbeclabs/doublezero/controlplane/controller/config"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
 var (
-	// maximum number of tunnels to provision on a given device
-	MaxTunnelSlots     = config.MaxTunnelSlots
+	// MaxTunnelSlots is the maximum number of tunnels to provision on a given device.
+	// This defaults to DefaultMaxTunnelSlots but can be overridden via command-line flag
+	MaxTunnelSlots = config.DefaultMaxTunnelSlots
+	// StartUserTunnelNum is the starting tunnel number for user tunnels
 	StartUserTunnelNum = config.StartUserTunnelNum
 )
 

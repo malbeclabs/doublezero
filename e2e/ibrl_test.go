@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/malbeclabs/doublezero/config"
+	controllerconfig "github.com/malbeclabs/doublezero/controlplane/controller/config"
 	e2e "github.com/malbeclabs/doublezero/e2e"
 	"github.com/malbeclabs/doublezero/e2e/internal/arista"
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
@@ -60,8 +60,8 @@ func checkIbgpMsdpPeerRemoved(t *testing.T, dn *TestDevnet, device *devnet.Devic
 		// This fixture should have pit-dzd01's BGP and MSDP peer configurations removed
 		config, err := fixtures.Render("fixtures/ibrl/doublezero_agent_config_peer_removed.tmpl", map[string]any{
 			"DeviceIP":    device.CYOANetworkIP,
-			"StartTunnel": config.StartUserTunnelNum,
-			"EndTunnel":   config.EndUserTunnelNum,
+			"StartTunnel": controllerconfig.StartUserTunnelNum,
+			"EndTunnel":   controllerconfig.EndUserTunnelNum,
 		})
 		require.NoError(t, err, "error reading agent configuration fixture for peer removal")
 		err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))
@@ -85,8 +85,8 @@ func checkIBRLPostConnect(t *testing.T, dn *TestDevnet, device *devnet.Device, c
 			config, err := fixtures.Render("fixtures/ibrl/doublezero_agent_config_user_added.tmpl", map[string]any{
 				"ClientIP":    client.CYOANetworkIP,
 				"DeviceIP":    device.CYOANetworkIP,
-				"StartTunnel": config.StartUserTunnelNum,
-				"EndTunnel":   config.EndUserTunnelNum,
+				"StartTunnel": controllerconfig.StartUserTunnelNum,
+				"EndTunnel":   controllerconfig.EndUserTunnelNum,
 			})
 			require.NoError(t, err, "error reading agent configuration fixture")
 			err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))
@@ -267,8 +267,8 @@ func checkIBRLPostDisconnect(t *testing.T, dn *TestDevnet, device *devnet.Device
 		if !t.Run("wait_for_agent_config_from_controller_post_disconnect", func(t *testing.T) {
 			config, err := fixtures.Render("fixtures/ibrl/doublezero_agent_config_user_removed.tmpl", map[string]any{
 				"DeviceIP":    device.CYOANetworkIP,
-				"StartTunnel": config.StartUserTunnelNum,
-				"EndTunnel":   config.EndUserTunnelNum,
+				"StartTunnel": controllerconfig.StartUserTunnelNum,
+				"EndTunnel":   controllerconfig.EndUserTunnelNum,
 			})
 			require.NoError(t, err, "error reading agent configuration fixture")
 			err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))

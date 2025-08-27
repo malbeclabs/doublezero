@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"flag"
 	"fmt"
@@ -119,6 +120,8 @@ func NewControllerCommand() *ControllerCommand {
 	c.fs.BoolVar(&c.noHardware, "no-hardware", false, "exclude config commands that will fail when not running on the real hardware")
 	c.fs.BoolVar(&c.enableInterfacesAndPeers, "enable-interfaces-and-peers", false, "enable processing of device interfaces and BGP peers")
 	c.fs.BoolVar(&c.showVersion, "version", false, "show version information and exit")
+	c.fs.StringVar(&c.tlsCertFile, "tls-cert", "", "path to tls cert file")
+	c.fs.StringVar(&c.tlsKeyFile, "tls-key", "", "path to tls key file")
 	return c
 }
 
@@ -133,6 +136,8 @@ type ControllerCommand struct {
 	noHardware               bool
 	enableInterfacesAndPeers bool
 	showVersion              bool
+	tlsCertFile              string
+	tlsKeyFile               string
 }
 
 func (c *ControllerCommand) Fs() *flag.FlagSet {
@@ -191,6 +196,20 @@ func (c *ControllerCommand) Run() error {
 
 	if c.enableInterfacesAndPeers {
 		options = append(options, controller.WithEnableInterfacesAndPeers())
+	}
+
+	if c.tlsCertFile != "" && c.tlsKeyFile != "" {
+		cert, err := tls.LoadX509KeyPair(c.tlsCertFile, c.tlsKeyFile)
+		if err != nil {
+			slog.Error("error loading tls cert", "error", err)
+			os.Exit(1)
+		}
+		tlsConfig := &tls.Config{
+			Certificates: []tls.Certificate{cert},
+			MinVersion:   tls.VersionTLS12,
+			NextProtos:   []string{"h2"},
+		}
+		options = append(options, controller.WithTLSConfig(tlsConfig))
 	}
 
 	lis, err := net.Listen("tcp", net.JoinHostPort(c.listenAddr, c.listenPort))

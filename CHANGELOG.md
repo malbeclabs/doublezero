@@ -28,11 +28,11 @@ All notable changes to this project will be documented in this file.
 - Activator
     - Introduce new user monitoring thread in activator for access pass functionality
     - Remove validator verification via gossip. This functionality is migrated to AccessPass.
-
 - Device controller
     - Implement user tunnel ACLs in device agent configuration
     - Add "mpls icmp ttl-exceeded tunneling" config statement so intermediate hops in the doublezero network respond to traceroutes.
     - Set protocol timers for ibgp and isis to improve to speed up network re-convergence
+    - Add TLS support to gRPC server
 - Onchain monitor
     - Initial implementation and component release
     - Monitor onchain device telemetry metrics

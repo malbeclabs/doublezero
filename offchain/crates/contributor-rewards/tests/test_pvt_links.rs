@@ -32,7 +32,7 @@ fn create_expected_results() -> HashMap<(String, String), ExpectedLink> {
     expected.insert(
         ("fra-dz001".to_string(), "fra-dz-001-x".to_string()),
         ExpectedLink {
-            latency_ms: 0.0,
+            latency_ms: 1000.0, // Dead link penalty
             bandwidth_gbps: 10.0,
             uptime: 0.9992076620475003,
         },
@@ -200,14 +200,12 @@ mod tests {
             let actual = result_map.get(&(device1.clone(), device2.clone()));
             assert!(
                 actual.is_some(),
-                "Missing expected link: {} -> {}",
-                device1,
-                device2
+                "Missing expected link: {device1} -> {device2}",
             );
 
             let (actual_latency, actual_bandwidth, actual_uptime) = actual.unwrap();
 
-            println!("\nChecking link {} -> {}:", device1, device2);
+            println!("\nChecking link {device1} -> {device2}:");
             println!(
                 "  Latency: expected {:.6}ms, got {:.6}ms",
                 expected_link.latency_ms, actual_latency
@@ -235,8 +233,7 @@ mod tests {
             // Bandwidth should be exact
             assert_eq!(
                 *actual_bandwidth, expected_link.bandwidth_gbps,
-                "Bandwidth mismatch for {} -> {}",
-                device1, device2
+                "Bandwidth mismatch for {device1} -> {device2}",
             );
 
             // Check uptime with very small tolerance for floating point precision

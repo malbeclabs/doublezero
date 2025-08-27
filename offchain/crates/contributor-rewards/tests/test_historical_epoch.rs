@@ -269,8 +269,7 @@ mod mock_tests {
             let calculated = num_locations * num_locations.saturating_sub(1);
             assert_eq!(
                 calculated, expected_links,
-                "For {} locations, expected {} links",
-                num_locations, expected_links
+                "For {num_locations} locations, expected {expected_links} links",
             );
         }
     }

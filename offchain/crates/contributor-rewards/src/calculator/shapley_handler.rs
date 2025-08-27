@@ -1,6 +1,9 @@
 use crate::{
     ingestor::{demand, fetcher::Fetcher, types::FetchData},
-    processor::{internet::InternetTelemetryStatMap, telemetry::DZDTelemetryStatMap},
+    processor::{
+        constants::PENALTY_RTT_US, internet::InternetTelemetryStatMap,
+        telemetry::DZDTelemetryStatMap,
+    },
 };
 use anyhow::Result;
 use doublezero_serviceability::state::{
@@ -178,8 +181,7 @@ pub fn build_private_links(
         let latency_us = if let Some(stats) = stats {
             stats.rtt_mean_us
         } else {
-            // Default to 1000ms
-            1_000_000.0
+            PENALTY_RTT_US
         };
 
         let uptime = stats

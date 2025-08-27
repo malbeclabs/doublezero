@@ -142,8 +142,7 @@ mod tests {
                 // Allow very small difference due to floating point precision
                 let diff = (actual_latency - expected_latency).abs();
                 println!(
-                    "Checking {}->{}: expected {:.3}, got {:.3}, diff {:.6}",
-                    city1, city2, expected_latency, actual_latency, diff
+                    "Checking {city1}->{city2}: expected {expected_latency:.3}, got {actual_latency:.3}, diff {diff:.6}",
                 );
 
                 // We should get exact or very close values since we're using the same test data
@@ -176,8 +175,7 @@ mod tests {
         for city in expected_cities {
             assert!(
                 location_codes.contains(&city.to_string()),
-                "Missing expected city: {}",
-                city
+                "Missing expected city: {city}",
             );
         }
 

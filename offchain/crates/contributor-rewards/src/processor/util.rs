@@ -1,3 +1,4 @@
+use crate::processor::constants::{PENALTY_JITTER_US, PENALTY_RTT_US};
 use anyhow::{Result, ensure};
 use std::cmp::Ordering;
 
@@ -15,6 +16,24 @@ pub struct RttStats {
     pub mad_us: f64,
 }
 
+impl RttStats {
+    pub fn new_dead() -> Self {
+        Self {
+            mean_us: PENALTY_RTT_US,
+            median_us: PENALTY_RTT_US,
+            min_us: PENALTY_RTT_US,
+            max_us: PENALTY_RTT_US,
+            p90_us: PENALTY_RTT_US,
+            p95_us: PENALTY_RTT_US,
+            p99_us: PENALTY_RTT_US,
+            // No variation in dead link
+            stddev_us: 0.0,
+            variance_us: 0.0,
+            mad_us: 0.0,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct JitterStats {
     pub avg_jitter_us: f64,
@@ -22,6 +41,18 @@ pub struct JitterStats {
     pub ewma_jitter_us: f64,
     pub delta_stddev_us: f64,
     pub peak_to_peak_us: f64,
+}
+
+impl JitterStats {
+    pub fn new_dead() -> Self {
+        Self {
+            avg_jitter_us: PENALTY_JITTER_US,
+            max_jitter_us: PENALTY_JITTER_US,
+            ewma_jitter_us: PENALTY_JITTER_US,
+            delta_stddev_us: PENALTY_JITTER_US,
+            peak_to_peak_us: PENALTY_JITTER_US,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -38,18 +69,7 @@ pub fn display_us_as_ms(us: &f64) -> String {
 
 pub fn calculate_rtt_statistics(values: &[f64]) -> Result<RttStats> {
     if values.is_empty() {
-        return Ok(RttStats {
-            mean_us: 0.0,
-            median_us: 0.0,
-            min_us: 0.0,
-            max_us: 0.0,
-            p90_us: 0.0,
-            p95_us: 0.0,
-            p99_us: 0.0,
-            stddev_us: 0.0,
-            variance_us: 0.0,
-            mad_us: 0.0,
-        });
+        return Ok(RttStats::new_dead());
     }
 
     // Validate all values are finite
@@ -130,13 +150,7 @@ pub fn calculate_jitter_statistics(
     );
 
     if start_idx >= end_idx || start_idx >= samples.len() {
-        return Ok(JitterStats {
-            avg_jitter_us: 0.0,
-            max_jitter_us: 0.0,
-            ewma_jitter_us: 0.0,
-            delta_stddev_us: 0.0,
-            peak_to_peak_us: 0.0,
-        });
+        return Ok(JitterStats::new_dead());
     }
 
     let actual_end_idx = end_idx.min(samples.len());
@@ -150,13 +164,7 @@ pub fn calculate_jitter_statistics(
     }
 
     if ordered.len() < 2 {
-        return Ok(JitterStats {
-            avg_jitter_us: 0.0,
-            max_jitter_us: 0.0,
-            ewma_jitter_us: 0.0,
-            delta_stddev_us: 0.0,
-            peak_to_peak_us: 0.0,
-        });
+        return Ok(JitterStats::new_dead());
     }
 
     // Calculate deltas and absolute deltas (IPDV methodology)
@@ -264,21 +272,6 @@ pub fn calculate_packet_loss_stats(samples: &[u32]) -> PacketLossStats {
     }
 }
 
-pub fn haversine_distance(lat1: f64, lng1: f64, lat2: f64, lng2: f64) -> f64 {
-    const EARTH_RADIUS_KM: f64 = 6371.0;
-
-    let lat1_rad = lat1.to_radians();
-    let lat2_rad = lat2.to_radians();
-    let delta_lat = (lat2 - lat1).to_radians();
-    let delta_lng = (lng2 - lng1).to_radians();
-
-    let a = (delta_lat / 2.0).sin().powi(2)
-        + lat1_rad.cos() * lat2_rad.cos() * (delta_lng / 2.0).sin().powi(2);
-    let c = 2.0 * a.sqrt().atan2((1.0 - a).sqrt());
-
-    EARTH_RADIUS_KM * c
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -307,12 +300,13 @@ mod tests {
         let values = vec![];
         let stats = calculate_rtt_statistics(&values).unwrap();
 
-        assert_eq!(stats.mean_us, 0.0);
-        assert_eq!(stats.median_us, 0.0);
-        assert_eq!(stats.p90_us, 0.0);
-        assert_eq!(stats.stddev_us, 0.0);
-        assert_eq!(stats.variance_us, 0.0);
-        assert_eq!(stats.mad_us, 0.0);
+        // Empty values should return penalty values for dead links
+        assert_eq!(stats.mean_us, PENALTY_RTT_US);
+        assert_eq!(stats.median_us, PENALTY_RTT_US);
+        assert_eq!(stats.p90_us, PENALTY_RTT_US);
+        assert_eq!(stats.stddev_us, 0.0); // No variation in dead link
+        assert_eq!(stats.variance_us, 0.0); // No variation in dead link
+        assert_eq!(stats.mad_us, 0.0); // No variation in dead link
     }
 
     #[test]
@@ -355,9 +349,10 @@ mod tests {
         let samples = vec![100];
         let stats = calculate_jitter_statistics(&samples, 0, 1).unwrap();
 
-        assert_eq!(stats.avg_jitter_us, 0.0);
-        assert_eq!(stats.max_jitter_us, 0.0);
-        assert_eq!(stats.ewma_jitter_us, 0.0);
+        // Single sample should return penalty values (dead link) since jitter requires 2+ samples
+        assert_eq!(stats.avg_jitter_us, PENALTY_JITTER_US);
+        assert_eq!(stats.max_jitter_us, PENALTY_JITTER_US);
+        assert_eq!(stats.ewma_jitter_us, PENALTY_JITTER_US);
     }
 
     #[test]

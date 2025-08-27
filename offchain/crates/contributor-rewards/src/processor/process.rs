@@ -217,13 +217,7 @@ fn calculate_combined_jitter(jitter_indices: &[(&[u32], usize, usize)]) -> Resul
     }
 
     if all_avg_jitters.is_empty() {
-        return Ok(JitterStats {
-            avg_jitter_us: 0.0,
-            max_jitter_us: 0.0,
-            ewma_jitter_us: 0.0,
-            delta_stddev_us: 0.0,
-            peak_to_peak_us: 0.0,
-        });
+        return Ok(JitterStats::new_dead());
     }
 
     // Calculate overall jitter statistics

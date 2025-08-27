@@ -93,6 +93,9 @@ interface Loopback1000
 !
 mpls ip
 !
+mpls icmp ttl-exceeded tunneling
+mpls icmp ip source-interface Loopback255
+!
 default interface Tunnel500
 !
 {{- range $i := seq 501 627}}

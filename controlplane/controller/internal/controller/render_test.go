@@ -24,10 +24,11 @@ func TestRenderConfig(t *testing.T) {
 				TelemetryTWAMPListenPort: 862,
 				InterfacesAndPeers:       true,
 				Device: &Device{
-					PublicIP:        net.IP{7, 7, 7, 7},
-					Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
-					Interfaces:      []Interface{},
-					IsisNet:         "49.0000.0e0e.0e0e.0000.00",
+					PublicIP:              net.IP{7, 7, 7, 7},
+					Vpn4vLoopbackIP:       net.IP{14, 14, 14, 14},
+					Vpn4vLoopbackIntfName: "Loopback255",
+					Interfaces:            []Interface{},
+					IsisNet:               "49.0000.0e0e.0e0e.0000.00",
 					Tunnels: []*Tunnel{
 						{
 							Id:            500,
@@ -70,10 +71,11 @@ func TestRenderConfig(t *testing.T) {
 				TelemetryTWAMPListenPort: 862,
 				InterfacesAndPeers:       true,
 				Device: &Device{
-					Interfaces:      []Interface{},
-					PublicIP:        net.IP{7, 7, 7, 7},
-					Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
-					IsisNet:         "49.0000.0e0e.0e0e.0000.00",
+					Interfaces:            []Interface{},
+					PublicIP:              net.IP{7, 7, 7, 7},
+					Vpn4vLoopbackIP:       net.IP{14, 14, 14, 14},
+					Vpn4vLoopbackIntfName: "Loopback255",
+					IsisNet:               "49.0000.0e0e.0e0e.0000.00",
 					Tunnels: []*Tunnel{
 						{
 							Id:            500,
@@ -118,10 +120,11 @@ func TestRenderConfig(t *testing.T) {
 				TelemetryTWAMPListenPort: 862,
 				InterfacesAndPeers:       true,
 				Device: &Device{
-					Interfaces:      []Interface{},
-					PublicIP:        net.IP{7, 7, 7, 7},
-					Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
-					IsisNet:         "49.0000.0e0e.0e0e.0000.00",
+					Interfaces:            []Interface{},
+					PublicIP:              net.IP{7, 7, 7, 7},
+					Vpn4vLoopbackIP:       net.IP{14, 14, 14, 14},
+					Vpn4vLoopbackIntfName: "Loopback255",
+					IsisNet:               "49.0000.0e0e.0e0e.0000.00",
 					Tunnels: []*Tunnel{
 						{
 							Id:            500,
@@ -197,10 +200,11 @@ func TestRenderConfig(t *testing.T) {
 				TelemetryTWAMPListenPort: 862,
 				InterfacesAndPeers:       true,
 				Device: &Device{
-					Interfaces:      []Interface{},
-					PublicIP:        net.IP{7, 7, 7, 7},
-					Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
-					IsisNet:         "49.0000.0e0e.0e0e.0000.00",
+					Interfaces:            []Interface{},
+					PublicIP:              net.IP{7, 7, 7, 7},
+					Vpn4vLoopbackIP:       net.IP{14, 14, 14, 14},
+					Vpn4vLoopbackIntfName: "Loopback255",
+					IsisNet:               "49.0000.0e0e.0e0e.0000.00",
 					Tunnels: []*Tunnel{
 						{
 							Id:            500,
@@ -288,10 +292,11 @@ func TestRenderConfig(t *testing.T) {
 				TelemetryTWAMPListenPort: 862,
 				InterfacesAndPeers:       true,
 				Device: &Device{
-					Interfaces:      []Interface{},
-					PublicIP:        net.IP{7, 7, 7, 7},
-					Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
-					IsisNet:         "49.0000.0e0e.0e0e.0000.00",
+					Interfaces:            []Interface{},
+					PublicIP:              net.IP{7, 7, 7, 7},
+					Vpn4vLoopbackIP:       net.IP{14, 14, 14, 14},
+					Vpn4vLoopbackIntfName: "Loopback255",
+					IsisNet:               "49.0000.0e0e.0e0e.0000.00",
 					Tunnels: []*Tunnel{
 						{
 							Id:            500,
@@ -378,10 +383,11 @@ func TestRenderConfig(t *testing.T) {
 				TelemetryTWAMPListenPort: 862,
 				InterfacesAndPeers:       true,
 				Device: &Device{
-					PublicIP:        net.IP{7, 7, 7, 7},
-					Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
-					IsisNet:         "49.0000.0e0e.0e0e.0000.00",
-					Ipv4LoopbackIP:  net.IP{13, 13, 13, 13},
+					PublicIP:              net.IP{7, 7, 7, 7},
+					Vpn4vLoopbackIP:       net.IP{14, 14, 14, 14},
+					Vpn4vLoopbackIntfName: "Loopback255",
+					IsisNet:               "49.0000.0e0e.0e0e.0000.00",
+					Ipv4LoopbackIP:        net.IP{13, 13, 13, 13},
 					Interfaces: []Interface{
 						{
 							Name:           "Loopback255",

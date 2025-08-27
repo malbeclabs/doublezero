@@ -70,6 +70,9 @@ interface Loopback1000
 !
 mpls ip
 !
+mpls icmp ttl-exceeded tunneling
+mpls icmp ip source-interface Loopback255
+!
 router bgp 65342
    address-family ipv4
    !

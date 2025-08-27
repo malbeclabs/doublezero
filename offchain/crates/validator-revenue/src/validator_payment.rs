@@ -1,6 +1,6 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_sdk::pubkey::Pubkey;
-use svm_hash::merkle::{MerkleProof, merkle_root_from_byte_ref_leaves};
+use svm_hash::merkle::{MerkleProof, merkle_root_from_indexed_byte_ref_leaves};
 
 #[derive(Debug, BorshDeserialize, BorshSerialize, Clone)]
 pub struct ComputedSolanaValidatorPayments {
@@ -19,10 +19,8 @@ impl ComputedSolanaValidatorPayments {
             .position(|payment| &payment.node_id == validator_id)?;
 
         let solana_validator_payment_entry = &self.payments[index];
-
         let leaves = self.to_byte_leaves();
-
-        let proof = MerkleProof::from_byte_ref_leaves(
+        let proof = MerkleProof::from_indexed_byte_ref_leaves(
             &leaves,
             index as u32,
             Some(SolanaValidatorPayment::LEAF_PREFIX),
@@ -32,7 +30,7 @@ impl ComputedSolanaValidatorPayments {
 
     pub fn merkle_root(&self) -> Option<svm_hash::sha2::Hash> {
         let leaves = self.to_byte_leaves();
-        merkle_root_from_byte_ref_leaves(&leaves, Some(SolanaValidatorPayment::LEAF_PREFIX))
+        merkle_root_from_indexed_byte_ref_leaves(&leaves, Some(SolanaValidatorPayment::LEAF_PREFIX))
     }
 
     fn to_byte_leaves(&self) -> Vec<Vec<u8>> {

@@ -100,13 +100,11 @@ pub fn process_set_accesspass(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    if value.accesspass_type == AccessPassType::SolanaValidator
-        && value.solana_validator.is_none()
+    if value.accesspass_type == AccessPassType::SolanaValidator && value.solana_validator.is_none()
     {
         msg!("Solana validator access pass type requires a validator pubkey");
         return Err(DoubleZeroError::InvalidSolanaValidatorPubkey.into());
     }
-
 
     let clock = Clock::get()?;
     let current_epoch = clock.epoch;

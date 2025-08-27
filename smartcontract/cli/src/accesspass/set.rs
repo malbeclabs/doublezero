@@ -50,9 +50,7 @@ impl SetAccessPassCliCommand {
         if self.accesspass_type == AccessPassType::SolanaValidator
             && self.solana_validator.is_none()
         {
-            eyre::bail!(
-                "Solana validator access pass type requires --solana-validator <PUBKEY>"
-            );
+            eyre::bail!("Solana validator access pass type requires --solana-validator <PUBKEY>");
         }
 
         let signature = client.set_accesspass(SetAccessPassCommand {
@@ -130,7 +128,6 @@ mod tests {
             res.err().unwrap().to_string(),
             "Solana validator access pass type requires --solana-validator <PUBKEY>"
         );
-
 
         let mut output = Vec::new();
         let res = SetAccessPassCliCommand {

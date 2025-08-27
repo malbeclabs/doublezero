@@ -184,12 +184,13 @@ async fn test_verify_distribution_merkle_root() {
 
     // Distribution rewards.
 
-    let mut rewards_data = [
-        RewardShare::new(Pubkey::new_unique(), 100_000_000),
-        RewardShare::new(Pubkey::new_unique(), 200_000_000),
-        RewardShare::new(Pubkey::new_unique(), 300_000_000),
-        RewardShare::new(Pubkey::new_unique(), 150_000_000),
-        RewardShare::new(Pubkey::new_unique(), 250_000_000),
+    // Arbitrarily set one of the rewards to be blocked.
+    let rewards_data = [
+        RewardShare::new(Pubkey::new_unique(), 100_000_000, false, 0).unwrap(),
+        RewardShare::new(Pubkey::new_unique(), 200_000_000, false, 0).unwrap(),
+        RewardShare::new(Pubkey::new_unique(), 300_000_000, true, 0).unwrap(),
+        RewardShare::new(Pubkey::new_unique(), 150_000_000, false, 0).unwrap(),
+        RewardShare::new(Pubkey::new_unique(), 250_000_000, false, 0).unwrap(),
     ];
     assert_eq!(
         rewards_data
@@ -198,9 +199,6 @@ async fn test_verify_distribution_merkle_root() {
             .sum::<u32>(),
         1_000_000_000
     );
-
-    // Arbitrarily set one of the rewards to be blocked.
-    rewards_data[2].set_is_blocked(true);
 
     let total_contributors = rewards_data.len() as u32;
     let rewards_merkle_root =

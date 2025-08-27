@@ -123,6 +123,12 @@ macro_rules! impl_unit_share {
             }
         }
 
+        impl From<$name> for $inner_type {
+            fn from(value: $name) -> Self {
+                value.0
+            }
+        }
+
         impl From<$name> for u64 {
             fn from(value: $name) -> Self {
                 u64::from(value.0)
@@ -178,34 +184,74 @@ impl SolanaValidatorDebt {
 pub struct RewardShare {
     pub contributor_key: Pubkey,
     pub unit_share: u32,
-    pub flags: ByteFlags,
-    pub _unused: [u8; 3],
+    pub remaining_bytes: [u8; 4],
 }
 
 impl RewardShare {
     pub const LEAF_PREFIX: &'static [u8] = b"reward_share";
 
-    pub const FLAG_IS_BLOCKED_BIT: u8 = 0;
+    pub const FLAG_IS_BLOCKED_BIT: usize = 31;
+    pub const FLAG_IS_BLOCKED_MASK: u32 = 1 << Self::FLAG_IS_BLOCKED_BIT;
+    pub const ECONOMIC_BURN_RATE_MASK: u32 = 0x3FFFFFFF;
 
-    pub fn new(contributor_key: Pubkey, unit_share: u32) -> Self {
-        Self {
-            contributor_key,
-            unit_share,
-            ..Default::default()
+    pub fn new(
+        contributor_key: Pubkey,
+        unit_share: u32,
+        should_block: bool,
+        economic_burn_rate: u32,
+    ) -> Option<Self> {
+        // Check that the rates are valid.
+        let unit_share = UnitShare32::new(unit_share)?;
+        let economic_burn_rate = UnitShare32::new(economic_burn_rate)?;
+
+        // Start with the economic burn rate (first 30 bits).
+        let mut combined_value = economic_burn_rate.0;
+
+        // Set the blocked flag.
+        if should_block {
+            combined_value |= Self::FLAG_IS_BLOCKED_MASK;
         }
-    }
 
-    pub fn is_blocked(&self) -> bool {
-        self.flags.bit(Self::FLAG_IS_BLOCKED_BIT as usize)
-    }
-
-    pub fn set_is_blocked(&mut self, should_block: bool) {
-        self.flags
-            .set_bit(Self::FLAG_IS_BLOCKED_BIT as usize, should_block);
+        Some(Self {
+            contributor_key,
+            unit_share: unit_share.0,
+            remaining_bytes: combined_value.to_le_bytes(),
+        })
     }
 
     pub fn checked_unit_share(&self) -> Option<UnitShare32> {
         UnitShare32::new(self.unit_share)
+    }
+
+    pub fn is_blocked(&self) -> bool {
+        let combined_value = u32::from_le_bytes(self.remaining_bytes);
+        combined_value & Self::FLAG_IS_BLOCKED_MASK != 0
+    }
+
+    pub fn set_is_blocked(&mut self, should_block: bool) {
+        let mut combined_value = u32::from_le_bytes(self.remaining_bytes);
+        if should_block {
+            combined_value |= Self::FLAG_IS_BLOCKED_MASK;
+        } else {
+            combined_value &= !Self::FLAG_IS_BLOCKED_MASK;
+        }
+        self.remaining_bytes = combined_value.to_le_bytes();
+    }
+
+    pub fn economic_burn_rate(&self) -> u32 {
+        let combined_value = u32::from_le_bytes(self.remaining_bytes);
+        combined_value & Self::ECONOMIC_BURN_RATE_MASK
+    }
+
+    pub fn checked_economic_burn_rate(&self) -> Option<UnitShare32> {
+        UnitShare32::new(self.economic_burn_rate())
+    }
+
+    pub fn set_economic_burn_rate(&mut self, economic_burn_rate: UnitShare32) {
+        let mut combined_value = u32::from_le_bytes(self.remaining_bytes);
+        combined_value &= !Self::ECONOMIC_BURN_RATE_MASK;
+        combined_value |= economic_burn_rate.0;
+        self.remaining_bytes = combined_value.to_le_bytes();
     }
 }
 
@@ -222,7 +268,6 @@ impl ByteFlags {
         Self(value)
     }
 
-    /// Check if a specific bit is set (1)
     pub const fn bit(&self, index: usize) -> bool {
         if index >= 8 {
             false
@@ -231,7 +276,6 @@ impl ByteFlags {
         }
     }
 
-    /// Set a specific bit to the given value
     pub fn set_bit(&mut self, index: usize, value: bool) {
         if index < 8 {
             if value {
@@ -516,5 +560,39 @@ mod tests {
         // Test multiplication edge cases.
         assert_eq!(UnitShare32::MAX.mul_scalar(u64::MAX), u64::MAX);
         assert_eq!(UnitShare32::MIN.mul_scalar(u64::MAX), 0_u64);
+    }
+
+    #[test]
+    fn test_reward_share_new() {
+        let contributor_key = Pubkey::new_unique();
+        let unit_share = UnitShare32(500_000_000);
+        let should_block = true;
+        let economic_burn_rate = 100_000_000;
+
+        let mut reward_share = RewardShare::new(
+            contributor_key,
+            unit_share.0,
+            should_block,
+            economic_burn_rate,
+        )
+        .unwrap();
+
+        assert_eq!(reward_share.contributor_key, contributor_key);
+        assert_eq!(reward_share.checked_unit_share().unwrap(), unit_share);
+        assert_eq!(
+            reward_share.checked_economic_burn_rate().unwrap(),
+            UnitShare32(100_000_000)
+        );
+        assert!(reward_share.is_blocked());
+
+        // Test setters.
+        reward_share.set_is_blocked(false);
+        assert!(!reward_share.is_blocked());
+
+        reward_share.set_economic_burn_rate(UnitShare32(200_000_000));
+        assert_eq!(
+            reward_share.checked_economic_burn_rate().unwrap(),
+            UnitShare32(200_000_000)
+        );
     }
 }

@@ -31,10 +31,7 @@ use crate::{
         Distribution, Journal, JournalEntries, PrepaidConnection, ProgramConfig, RecipientShares,
         RelayParameters, SolanaValidatorDeposit, TOKEN_2Z_PDA_SEED_PREFIX,
     },
-    types::{
-        BurnRate, ByteFlags, DoubleZeroEpoch, RewardShare, SolanaValidatorDebt, UnitShare32,
-        ValidatorFee,
-    },
+    types::{BurnRate, ByteFlags, DoubleZeroEpoch, RewardShare, SolanaValidatorDebt, ValidatorFee},
     DOUBLEZERO_MINT_DECIMALS, DOUBLEZERO_MINT_KEY, ID,
 };
 
@@ -1915,8 +1912,13 @@ fn try_verify_distribution_merkle_root(
         DistributionMerkleRootKind::RewardShare(reward) => {
             msg!("Reward share {}", leaf_index);
 
-            UnitShare32::new(reward.unit_share).ok_or_else(|| {
+            let unit_share = reward.checked_unit_share().ok_or_else(|| {
                 msg!("Invalid unit share {}", reward.unit_share);
+                ProgramError::InvalidInstructionData
+            })?;
+
+            let economic_burn_rate = reward.checked_economic_burn_rate().ok_or_else(|| {
+                msg!("Invalid economic burn rate {}", reward.economic_burn_rate());
                 ProgramError::InvalidInstructionData
             })?;
 
@@ -1929,8 +1931,9 @@ fn try_verify_distribution_merkle_root(
             }
 
             msg!("  contributor_key: {}", reward.contributor_key);
-            msg!("  unit_share: {}", reward.unit_share);
+            msg!("  unit_share: {}", unit_share);
             msg!("  is_blocked: {}", reward.is_blocked());
+            msg!("  economic_burn_rate: {}", economic_burn_rate);
         }
     }
     Ok(())

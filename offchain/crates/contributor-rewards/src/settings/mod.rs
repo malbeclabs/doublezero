@@ -31,7 +31,8 @@ pub struct ShapleySettings {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RpcSettings {
     pub dz_url: String,
-    pub solana_url: String,
+    pub solana_mainnet_url: String,
+    pub solana_testnet_url: String,
     pub commitment: String,
     pub rps_limit: u32,
 }
@@ -148,7 +149,8 @@ impl fmt::Display for Settings {
              \tNetwork: {:?}\n\
              \tLog Level: {}\n\
              \tDZ RPC URL: {}\n\
-             \tSolana RPC URL: {}\n\
+             \tSolana Mainnet RPC URL: {}\n\
+             \tSolana Testnet RPC URL: {}\n\
              \tRPS Limit: {}\n\
              \tShapley Operator Uptime: {}\n\
              \tShapley Contiguity Bonus: {}\n\
@@ -157,7 +159,8 @@ impl fmt::Display for Settings {
             self.network,
             self.log_level,
             self.rpc.dz_url,
-            self.rpc.solana_url,
+            self.rpc.solana_mainnet_url,
+            self.rpc.solana_testnet_url,
             self.rpc.rps_limit,
             self.shapley.operator_uptime,
             self.shapley.contiguity_bonus,

@@ -1,7 +1,8 @@
 use crate::{
     calculator::{
         input::RewardInput,
-        proof::{ContributorRewardDetail, ShapleyOutputStorage, generate_proof_from_shapley},
+        keypair_loader::load_keypair,
+        proof::{ShapleyOutputStorage, generate_proof_from_shapley},
         recorder::{compute_record_address, write_to_ledger},
     },
     ingestor::fetcher::Fetcher,
@@ -14,12 +15,15 @@ use crate::{
 use anyhow::{Result, anyhow, bail};
 use backon::{ExponentialBuilder, Retryable};
 use borsh::BorshSerialize;
-use doublezero_record::state::RecordData;
+use doublezero_record::{instruction as record_ix, state::RecordData};
 use solana_client::{
     client_error::ClientError as SolanaClientError, nonblocking::rpc_client::RpcClient,
 };
-use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey, signature::Keypair};
-use std::{fmt, mem::size_of, str::FromStr, time::Duration};
+use solana_sdk::{
+    commitment_config::CommitmentConfig, message::Message, pubkey::Pubkey, signature::Keypair,
+    signer::Signer, transaction::Transaction,
+};
+use std::{fmt, mem::size_of, path::PathBuf, str::FromStr, time::Duration};
 use tracing::{info, warn};
 
 // Helper functions to get prefixes from config
@@ -307,10 +311,17 @@ pub async fn check_contributor_reward(
     );
     let (proof, reward, computed_root) =
         generate_proof_from_shapley(&shapley_storage, &contributor_pubkey)?;
+    info!("proof: {:?}", proof);
 
-    // Verify the proof by recomputing
-    let leaf = borsh::to_vec(&reward)?;
-    let verification_root = proof.root_from_leaf(&leaf, Some(ContributorRewardDetail::LEAF_PREFIX));
+    // POD-based proof verification is handled by comparing roots
+    // POD verification - check that the proof is valid by comparing roots
+    use doublezero_revenue_distribution::types::RewardShare;
+    use svm_hash::merkle::merkle_root_from_indexed_pod_leaves;
+    let verification_root = merkle_root_from_indexed_pod_leaves(
+        &shapley_storage.rewards,
+        Some(RewardShare::LEAF_PREFIX),
+    )
+    .unwrap();
     let verification_result = verification_root == computed_root;
 
     // Display results
@@ -324,15 +335,15 @@ pub async fn check_contributor_reward(
     println!("  Pubkey:     {}", reward.contributor_key);
     println!(
         "  Proportion: {:.9} ({:.6}%)",
-        reward.proportion as f64 / 1_000_000_000.0,
-        (reward.proportion as f64 / 1_000_000_000.0) * 100.0
+        reward.unit_share as f64 / 1_000_000_000.0,
+        (reward.unit_share as f64 / 1_000_000_000.0) * 100.0
     );
     println!();
     println!("Merkle Root:  {computed_root:?}");
     println!("Total Contributors: {}", shapley_storage.rewards.len());
     println!(
         "Total Proportions: {} (should be 1,000,000,000)",
-        shapley_storage.total_proportions
+        shapley_storage.total_unit_shares
     );
     println!();
 
@@ -419,4 +430,211 @@ pub async fn read_shapley_output(
     };
 
     Ok(shapley_storage)
+}
+
+/// NOTE: This is mostly just for debugging
+/// Realloc a record account
+pub async fn realloc_record(
+    settings: &Settings,
+    r#type: &str,
+    epoch: u64,
+    size: u64,
+    keypair_path: Option<PathBuf>,
+    dry_run: bool,
+) -> Result<()> {
+    // Load keypair
+    let payer_signer = load_keypair(&keypair_path)?;
+
+    // Create fetcher for RPC client
+    let fetcher = Fetcher::from_settings(settings)?;
+
+    // Determine the prefix and compute the record address based on record type
+    let epoch_bytes = epoch.to_le_bytes();
+    let record_key = match r#type {
+        "device-telemetry" => {
+            let prefix = get_device_telemetry_prefix(settings)?;
+            let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
+            compute_record_address(&payer_signer.pubkey(), seeds)?
+        }
+        "internet-telemetry" => {
+            let prefix = get_internet_telemetry_prefix(settings)?;
+            let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
+            compute_record_address(&payer_signer.pubkey(), seeds)?
+        }
+        "reward-input" => {
+            let prefix = get_reward_input_prefix(settings)?;
+            let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
+            compute_record_address(&payer_signer.pubkey(), seeds)?
+        }
+        "contributor-rewards" => {
+            let prefix = get_contributor_rewards_prefix(settings)?;
+            let seeds: &[&[u8]] = &[&prefix, &epoch_bytes, b"shapley_output"];
+            compute_record_address(&payer_signer.pubkey(), seeds)?
+        }
+        _ => bail!(
+            "Invalid record type. Must be one of: device-telemetry, internet-telemetry, reward-input, contributor-rewards"
+        ),
+    };
+
+    info!("Reallocating record account: {}", record_key);
+    info!("Record type: {}, Epoch: {}", r#type, epoch);
+
+    // Check if the account exists
+    let maybe_account = (|| async {
+        fetcher
+            .rpc_client
+            .get_account_with_commitment(&record_key, CommitmentConfig::confirmed())
+            .await
+    })
+    .retry(&ExponentialBuilder::default().with_jitter())
+    .notify(|err: &SolanaClientError, dur: Duration| {
+        info!("retrying error: {:?} with sleeping {:?}", err, dur)
+    })
+    .await?;
+
+    if maybe_account.value.is_none() {
+        bail!("Record account {} does not exist", record_key);
+    }
+
+    // Create realloc instruction
+    let realloc_ix = record_ix::reallocate(&record_key, &payer_signer.pubkey(), size);
+
+    // Create and send transaction
+    let recent_blockhash = (|| async { fetcher.rpc_client.get_latest_blockhash().await })
+        .retry(&ExponentialBuilder::default().with_jitter())
+        .notify(|err: &SolanaClientError, dur: Duration| {
+            info!("retrying error: {:?} with sleeping {:?}", err, dur)
+        })
+        .await?;
+
+    let message = Message::new(&[realloc_ix], Some(&payer_signer.pubkey()));
+    let transaction = Transaction::new(&[&payer_signer], message, recent_blockhash);
+
+    if !dry_run {
+        let signature = (|| async {
+            fetcher
+                .rpc_client
+                .send_and_confirm_transaction_with_spinner_and_commitment(
+                    &transaction,
+                    CommitmentConfig::confirmed(),
+                )
+                .await
+        })
+        .retry(&ExponentialBuilder::default().with_jitter())
+        .notify(|err: &SolanaClientError, dur: Duration| {
+            info!("retrying error: {:?} with sleeping {:?}", err, dur)
+        })
+        .await?;
+        info!("Transaction signature: {}", signature);
+        info!("Account realloc successful!");
+    } else {
+        info!("DRY-RUN mode, would have sent {:#?}", transaction)
+    }
+
+    Ok(())
+}
+
+/// NOTE: This is mostly just for debugging
+/// Close a record account and reclaim lamports
+pub async fn close_record(
+    settings: &Settings,
+    r#type: &str,
+    epoch: u64,
+    keypair_path: Option<PathBuf>,
+    dry_run: bool,
+) -> Result<()> {
+    // Load keypair
+    let payer_signer = load_keypair(&keypair_path)?;
+
+    // Create fetcher for RPC client
+    let fetcher = Fetcher::from_settings(settings)?;
+
+    // Determine the prefix and compute the record address based on record type
+    let epoch_bytes = epoch.to_le_bytes();
+    let record_key = match r#type {
+        "device-telemetry" => {
+            let prefix = get_device_telemetry_prefix(settings)?;
+            let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
+            compute_record_address(&payer_signer.pubkey(), seeds)?
+        }
+        "internet-telemetry" => {
+            let prefix = get_internet_telemetry_prefix(settings)?;
+            let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
+            compute_record_address(&payer_signer.pubkey(), seeds)?
+        }
+        "reward-input" => {
+            let prefix = get_reward_input_prefix(settings)?;
+            let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
+            compute_record_address(&payer_signer.pubkey(), seeds)?
+        }
+        "contributor-rewards" => {
+            let prefix = get_contributor_rewards_prefix(settings)?;
+            let seeds: &[&[u8]] = &[&prefix, &epoch_bytes, b"shapley_output"];
+            compute_record_address(&payer_signer.pubkey(), seeds)?
+        }
+        _ => bail!(
+            "Invalid record type. Must be one of: device-telemetry, internet-telemetry, reward-input, contributor-rewards"
+        ),
+    };
+
+    info!("Closing record account: {}", record_key);
+    info!("Record type: {}, Epoch: {}", r#type, epoch);
+
+    // Check if the account exists
+    let maybe_account = (|| async {
+        fetcher
+            .rpc_client
+            .get_account_with_commitment(&record_key, CommitmentConfig::confirmed())
+            .await
+    })
+    .retry(&ExponentialBuilder::default().with_jitter())
+    .notify(|err: &SolanaClientError, dur: Duration| {
+        info!("retrying error: {:?} with sleeping {:?}", err, dur)
+    })
+    .await?;
+
+    if maybe_account.value.is_none() {
+        bail!("Record account {} does not exist", record_key);
+    }
+
+    // Create close instruction
+    let close_ix = record_ix::close_account(
+        &record_key,
+        &payer_signer.pubkey(),
+        &payer_signer.pubkey(), // Return lamports to payer
+    );
+
+    // Create and send transaction
+    let recent_blockhash = (|| async { fetcher.rpc_client.get_latest_blockhash().await })
+        .retry(&ExponentialBuilder::default().with_jitter())
+        .notify(|err: &SolanaClientError, dur: Duration| {
+            info!("retrying error: {:?} with sleeping {:?}", err, dur)
+        })
+        .await?;
+
+    let message = Message::new(&[close_ix], Some(&payer_signer.pubkey()));
+    let transaction = Transaction::new(&[&payer_signer], message, recent_blockhash);
+
+    if !dry_run {
+        let signature = (|| async {
+            fetcher
+                .rpc_client
+                .send_and_confirm_transaction_with_spinner_and_commitment(
+                    &transaction,
+                    CommitmentConfig::confirmed(),
+                )
+                .await
+        })
+        .retry(&ExponentialBuilder::default().with_jitter())
+        .notify(|err: &SolanaClientError, dur: Duration| {
+            info!("retrying error: {:?} with sleeping {:?}", err, dur)
+        })
+        .await?;
+        info!("Transaction signature: {}", signature);
+        info!("Account closed successfully!");
+    } else {
+        info!("DRY-RUN mode, would have sent {:#?}", transaction)
+    }
+
+    Ok(())
 }

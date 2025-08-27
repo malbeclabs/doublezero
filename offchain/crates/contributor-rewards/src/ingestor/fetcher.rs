@@ -13,7 +13,8 @@ use tracing::info;
 #[derive(Clone)]
 pub struct Fetcher {
     pub rpc_client: Arc<RpcClient>,
-    pub solana_client: Arc<RpcClient>,
+    pub solana_mainnet_client: Arc<RpcClient>,
+    pub solana_testnet_client: Arc<RpcClient>,
     pub settings: Settings,
 }
 
@@ -23,13 +24,18 @@ impl Fetcher {
             settings.rpc.dz_url.to_string(),
             CommitmentConfig::finalized(),
         );
-        let solana_client = RpcClient::new_with_commitment(
-            settings.rpc.solana_url.to_string(),
+        let solana_mainnet_client = RpcClient::new_with_commitment(
+            settings.rpc.solana_mainnet_url.to_string(),
+            CommitmentConfig::finalized(),
+        );
+        let solana_testnet_client = RpcClient::new_with_commitment(
+            settings.rpc.solana_testnet_url.to_string(),
             CommitmentConfig::finalized(),
         );
         Ok(Self {
             rpc_client: Arc::new(rpc_client),
-            solana_client: Arc::new(solana_client),
+            solana_mainnet_client: Arc::new(solana_mainnet_client),
+            solana_testnet_client: Arc::new(solana_testnet_client),
             settings: settings.clone(),
         })
     }

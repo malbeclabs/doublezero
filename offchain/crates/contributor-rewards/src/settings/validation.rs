@@ -29,16 +29,25 @@ pub fn validate_config(settings: &Settings) -> Result<()> {
     if settings.rpc.dz_url.is_empty() {
         bail!("DZ RPC URL cannot be empty");
     }
-    if settings.rpc.solana_url.is_empty() {
-        bail!("Solana RPC URL cannot be empty");
+    if settings.rpc.solana_mainnet_url.is_empty() {
+        bail!("Solana Mainnet RPC URL cannot be empty");
+    }
+    if settings.rpc.solana_testnet_url.is_empty() {
+        bail!("Solana Testnet RPC URL cannot be empty");
     }
 
     if !settings.rpc.dz_url.starts_with("http://") && !settings.rpc.dz_url.starts_with("https://") {
         bail!("DZ RPC URL must start with http:// or https://");
     }
 
-    if !settings.rpc.solana_url.starts_with("http://")
-        && !settings.rpc.solana_url.starts_with("https://")
+    if !settings.rpc.solana_mainnet_url.starts_with("http://")
+        && !settings.rpc.solana_mainnet_url.starts_with("https://")
+    {
+        bail!("Solana RPC URL must start with http:// or https://");
+    }
+
+    if !settings.rpc.solana_testnet_url.starts_with("http://")
+        && !settings.rpc.solana_testnet_url.starts_with("https://")
     {
         bail!("Solana RPC URL must start with http:// or https://");
     }
@@ -165,7 +174,8 @@ mod tests {
             },
             rpc: RpcSettings {
                 dz_url: "https://api.mainnet-beta.solana.com".to_string(),
-                solana_url: "https://api.mainnet-beta.solana.com".to_string(),
+                solana_mainnet_url: "https://api.mainnet-beta.solana.com".to_string(),
+                solana_testnet_url: "https://api.testnet.solana.com".to_string(),
                 commitment: "finalized".to_string(),
                 rps_limit: 10,
             },
@@ -222,9 +232,9 @@ mod tests {
         config.rpc.dz_url = "https://api.mainnet-beta.solana.com".to_string();
 
         // Test empty Solana URL
-        config.rpc.solana_url = "".to_string();
+        config.rpc.solana_mainnet_url = "".to_string();
         assert!(validate_config(&config).is_err());
-        config.rpc.solana_url = "https://api.mainnet-beta.solana.com".to_string();
+        config.rpc.solana_mainnet_url = "https://api.mainnet-beta.solana.com".to_string();
 
         // Test invalid DZ URL
         config.rpc.dz_url = "not-a-url".to_string();
@@ -232,7 +242,7 @@ mod tests {
         config.rpc.dz_url = "https://api.mainnet-beta.solana.com".to_string();
 
         // Test invalid Solana URL
-        config.rpc.solana_url = "not-a-url".to_string();
+        config.rpc.solana_mainnet_url = "not-a-url".to_string();
         assert!(validate_config(&config).is_err());
     }
 

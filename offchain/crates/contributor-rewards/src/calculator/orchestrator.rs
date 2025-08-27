@@ -6,6 +6,7 @@ use crate::{
         keypair_loader::load_keypair,
         ledger_operations::{self, WriteSummary, write_and_track, write_shapley_output},
         proof::{ContributorRewardsMerkleTree, ShapleyOutputStorage},
+        revenue_distribution::post_rewards_merkle_root,
         shapley_aggregator::aggregate_shapley_outputs,
         util::print_demands,
     },
@@ -18,7 +19,7 @@ use rayon::prelude::*;
 use solana_sdk::pubkey::Pubkey;
 use std::{collections::BTreeMap, path::PathBuf, time::Instant};
 use tabled::{builder::Builder as TableBuilder, settings::Style};
-use tracing::info;
+use tracing::{info, warn};
 
 #[derive(Debug)]
 pub struct Orchestrator {
@@ -214,7 +215,7 @@ impl Orchestrator {
                 let shapley_storage = ShapleyOutputStorage {
                     epoch: fetch_epoch,
                     rewards: merkle_tree.rewards().to_vec(),
-                    total_proportions: merkle_tree.rewards().iter().map(|r| r.proportion).sum(),
+                    total_unit_shares: merkle_tree.rewards().iter().map(|r| r.unit_share).sum(),
                 };
 
                 write_shapley_output(
@@ -228,12 +229,31 @@ impl Orchestrator {
 
                 summary.add_success("shapley output storage".to_string());
 
-                // Note: Merkle root will be posted to Solana chain separately
-                // For now, just log it
+                // Post merkle root to revenue distribution program
                 info!(
-                    "Merkle root for epoch {}: {:?} (will be posted to Solana)",
+                    "Posting merkle root for epoch {}: {:?}",
                     fetch_epoch, merkle_root
                 );
+
+                match post_rewards_merkle_root(
+                    // TODO: Switch to mainnet client (and/or have some way to switch on demand)
+                    &fetcher.solana_testnet_client,
+                    &payer_signer,
+                    fetch_epoch,
+                    merkle_tree.len() as u32,
+                    merkle_root,
+                )
+                .await
+                {
+                    Ok(_) => {
+                        info!("✅ Successfully posted merkle root to revenue distribution program");
+                        summary.add_success("merkle root posting".to_string());
+                    }
+                    Err(e) => {
+                        warn!("❌ Failed to post merkle root: {}", e);
+                        summary.add_failure("merkle root posting".to_string(), e.to_string());
+                    }
+                }
 
                 // Log final summary
                 info!("{}", summary);
@@ -266,14 +286,15 @@ impl Orchestrator {
                 let shapley_storage = ShapleyOutputStorage {
                     epoch: fetch_epoch,
                     rewards: merkle_tree.rewards().to_vec(),
-                    total_proportions: merkle_tree.rewards().iter().map(|r| r.proportion).sum(),
+                    total_unit_shares: merkle_tree.rewards().iter().map(|r| r.unit_share).sum(),
                 };
                 info!(
                     "  - Shapley output storage: {} bytes ({} contributors)",
                     borsh::to_vec(&shapley_storage)?.len(),
                     merkle_tree.len()
                 );
-                info!("  - Merkle root (for Solana): {:?}", merkle_root);
+                info!("  - Merkle root to post: {:?}", merkle_root);
+                info!("  - Would post merkle root to revenue distribution program");
             }
         }
 
@@ -301,5 +322,27 @@ impl Orchestrator {
 
     pub async fn read_reward_input(&self, epoch: u64, payer_pubkey: &Pubkey) -> Result<()> {
         ledger_operations::read_reward_input(&self.settings, epoch, payer_pubkey).await
+    }
+
+    pub async fn realloc_record(
+        &self,
+        r#type: String,
+        epoch: u64,
+        size: u64,
+        keypair: Option<PathBuf>,
+        dry_run: bool,
+    ) -> Result<()> {
+        ledger_operations::realloc_record(&self.settings, &r#type, epoch, size, keypair, dry_run)
+            .await
+    }
+
+    pub async fn close_record(
+        &self,
+        r#type: String,
+        epoch: u64,
+        keypair_path: Option<PathBuf>,
+        dry_run: bool,
+    ) -> Result<()> {
+        ledger_operations::close_record(&self.settings, &r#type, epoch, keypair_path, dry_run).await
     }
 }

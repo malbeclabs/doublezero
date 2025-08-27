@@ -196,6 +196,7 @@ func (s *LinuxSender) Probe(ctx context.Context) (time.Duration, error) {
 				// syscall latency, or NTP adjustments, the kernel timestamp can occasionally appear earlier
 				// than the user-space send time. This results in a spurious negative RTT, which we
 				// conservatively clamp to 0.
+				// This can also happen if the interface is misconfigured.
 				rtt = max(rtt, 0)
 
 				return rtt, nil

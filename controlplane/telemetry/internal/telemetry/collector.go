@@ -202,19 +202,30 @@ func (c *Collector) Close(ctx context.Context) error {
 }
 
 type senderEntry struct {
-	sender   twamplight.Sender
-	lastUsed time.Time
+	sender    twamplight.Sender
+	lastUsed  time.Time
+	createdAt time.Time
 }
 
 func (c *Collector) getOrCreateSender(ctx context.Context, peer *Peer) twamplight.Sender {
-	c.sendersMu.Lock()
-	defer c.sendersMu.Unlock()
+	key := peer.String()
+	now := c.cfg.NowFunc()
 
-	entry, ok := c.senders[peer.String()]
+	c.sendersMu.Lock()
+	entry, ok := c.senders[key]
 	if ok {
-		entry.lastUsed = time.Now()
-		return entry.sender
+		entry.lastUsed = now
+		ttl := c.cfg.SenderTTL
+		if ttl > 0 && now.Sub(entry.createdAt) >= ttl {
+			_ = entry.sender.Close()
+			delete(c.senders, key)
+		} else {
+			s := entry.sender
+			c.sendersMu.Unlock()
+			return s
+		}
 	}
+	c.sendersMu.Unlock()
 
 	sourceAddr := &net.UDPAddr{IP: peer.Tunnel.SourceIP, Port: 0}
 	targetAddr := &net.UDPAddr{IP: peer.Tunnel.TargetIP, Port: int(peer.TWAMPPort)}
@@ -223,12 +234,20 @@ func (c *Collector) getOrCreateSender(ctx context.Context, peer *Peer) twampligh
 		c.log.Error("Failed to create sender", "error", err)
 		return nil
 	}
-	c.senders[peer.String()] = &senderEntry{sender: sender, lastUsed: time.Now()}
+
+	c.sendersMu.Lock()
+	c.senders[peer.String()] = &senderEntry{
+		sender:    sender,
+		lastUsed:  c.cfg.NowFunc(),
+		createdAt: c.cfg.NowFunc(),
+	}
+	c.sendersMu.Unlock()
+
 	return sender
 }
 
 func (c *Collector) cleanupIdleSenders(maxIdle time.Duration) {
-	now := time.Now()
+	now := c.cfg.NowFunc()
 
 	c.sendersMu.Lock()
 	defer c.sendersMu.Unlock()

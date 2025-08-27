@@ -36,6 +36,12 @@ type Config struct {
 
 	// TWAMPSenderTimeout is the timeout for sending TWAMP probes.
 	TWAMPSenderTimeout time.Duration
+
+	// NowFunc is the function to get the current time.
+	NowFunc func() time.Time
+
+	// SenderTTL is the time to live for a sender instance until it's recreated.
+	SenderTTL time.Duration
 }
 
 func (c *Config) Validate() error {
@@ -62,6 +68,14 @@ func (c *Config) Validate() error {
 	}
 	if c.TelemetryProgramClient == nil {
 		return errors.New("telemetry program client is required")
+	}
+	if c.NowFunc == nil {
+		c.NowFunc = func() time.Time {
+			return time.Now().UTC()
+		}
+	}
+	if c.SenderTTL <= 0 {
+		return errors.New("sender ttl must be greater than 0")
 	}
 	return nil
 }

@@ -37,6 +37,8 @@ All notable changes to this project will be documented in this file.
     - Add single device stress test
 - CLI
     - Refactor: Updated `SetAccessPassCliCommand` (`doublezero access-pass set`) to use `--epochs` instead of `--last_access_epoch`, with sensible default values.
+- Device Agents
+    - Periodically recreate telemetry agent sender instances in case of interface reconfiguration.
 
 ## [v0.5.3](https://github.com/malbeclabs/doublezero/compare/client/v0.5.0...client/v0.5.3) – 2025-08-19
 

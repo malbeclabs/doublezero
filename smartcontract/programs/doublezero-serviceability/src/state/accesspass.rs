@@ -4,8 +4,8 @@ use crate::{
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
-    account_info::AccountInfo, entrypoint::ProgramResult, program_error::ProgramError,
-    pubkey::Pubkey,
+    account_info::AccountInfo, clock::Clock, entrypoint::ProgramResult,
+    program_error::ProgramError, pubkey::Pubkey, sysvar::Sysvar,
 };
 use std::{fmt, net::Ipv4Addr};
 
@@ -55,6 +55,7 @@ pub enum AccessPassStatus {
     Requested = 0,
     Connected = 1,
     Disconnected = 2,
+    Expired = 3,
 }
 
 impl From<u8> for AccessPassStatus {
@@ -63,6 +64,7 @@ impl From<u8> for AccessPassStatus {
             0 => AccessPassStatus::Requested,
             1 => AccessPassStatus::Connected,
             2 => AccessPassStatus::Disconnected,
+            3 => AccessPassStatus::Expired,
             _ => AccessPassStatus::Requested,
         }
     }
@@ -74,6 +76,7 @@ impl fmt::Display for AccessPassStatus {
             AccessPassStatus::Requested => write!(f, "requested"),
             AccessPassStatus::Connected => write!(f, "connected"),
             AccessPassStatus::Disconnected => write!(f, "disconnected"),
+            AccessPassStatus::Expired => write!(f, "expired"),
         }
     }
 }
@@ -173,6 +176,26 @@ impl AccessPass {
     pub fn try_serialize(&self, account: &AccountInfo) -> ProgramResult {
         let mut data = &mut account.data.borrow_mut()[..];
         self.serialize(&mut data)?;
+
+        Ok(())
+    }
+
+    pub fn update_status(&mut self) -> ProgramResult {
+        let clock = Clock::get()?;
+        let mut current_epoch = clock.epoch;
+
+        // Ensure current_epoch is never zero
+        if current_epoch == 0 {
+            current_epoch = 1;
+        }
+
+        self.status = if self.last_access_epoch < current_epoch {
+            AccessPassStatus::Expired
+        } else if self.connection_count > 0 {
+            AccessPassStatus::Connected
+        } else {
+            AccessPassStatus::Requested
+        };
 
         Ok(())
     }

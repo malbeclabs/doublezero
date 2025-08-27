@@ -2,45 +2,34 @@ use crate::{
     error::DoubleZeroError,
     globalstate::globalstate_get,
     helper::account_write,
+    pda::get_accesspass_pda,
     state::{
-        accesspass::AccessPass,
+        accesspass::{AccessPass, AccessPassStatus},
         user::{User, UserStatus},
     },
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
-use doublezero_program_common::types::NetworkV4;
-#[cfg(test)]
-use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
+    msg,
     pubkey::Pubkey,
 };
-use std::net::Ipv4Addr;
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
-pub struct UserActivateArgs {
-    pub tunnel_id: u16,
-    pub tunnel_net: NetworkV4,
-    pub dz_ip: Ipv4Addr,
-    pub validator_pubkey: Option<Pubkey>,
-}
+pub struct CheckUserAccessPassArgs {}
 
-impl fmt::Debug for UserActivateArgs {
+impl fmt::Debug for CheckUserAccessPassArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "tunnel_id: {}, tunnel_net: {}, dz_ip: {}",
-            self.tunnel_id, &self.tunnel_net, &self.dz_ip,
-        )
+        write!(f, "")
     }
 }
 
-pub fn process_activate_user(
+pub fn process_check_access_pass_user(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    value: &UserActivateArgs,
+    _value: &CheckUserAccessPassArgs,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
@@ -51,14 +40,10 @@ pub fn process_activate_user(
     let system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
-    msg!("process_activate_user({:?})", value);
+    msg!("process_check_access_pass_user({:?})", _value);
 
     // Check the owner of the accounts
-    assert_eq!(user_account.owner, program_id, "Invalid User Account Owner");
-    assert_eq!(
-        accesspass_account.owner, program_id,
-        "Invalid AccessPass Account Owner"
-    );
+    assert_eq!(user_account.owner, program_id, "Invalid PDA Account Owner");
     assert_eq!(
         globalstate_account.owner, program_id,
         "Invalid GlobalState Account Owner"
@@ -78,26 +63,37 @@ pub fn process_activate_user(
 
     let mut user: User = User::try_from(user_account)?;
 
-    if user.status != UserStatus::Pending && user.status != UserStatus::Updating {
+    let (accesspass_pda, _) = get_accesspass_pda(program_id, &user.client_ip, &user.owner);
+    assert_eq!(
+        accesspass_account.key, &accesspass_pda,
+        "Invalid AccessPass PDA"
+    );
+
+    // Invalid Access Pass
+    if accesspass_account.data_is_empty() {
+        msg!("Invalid Access Pass");
+        return Err(DoubleZeroError::Unauthorized.into());
+    }
+
+    // Read Access Pass
+    let mut accesspass = AccessPass::try_from(accesspass_account)?;
+    accesspass.update_status()?;
+
+    if user.status != UserStatus::Activated && user.status != UserStatus::OutOfCredits {
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 
-    let mut accesspass = AccessPass::try_from(accesspass_account)?;
-    assert_eq!(accesspass.client_ip, user.client_ip, "Invalid AccessPass");
-    assert_eq!(accesspass.user_payer, user.owner, "Invalid AccessPass");
-
-    user.tunnel_id = value.tunnel_id;
-    user.tunnel_net = value.tunnel_net;
-    user.dz_ip = value.dz_ip;
-    user.try_activate(&mut accesspass)?;
-
-    user.validator_pubkey = value.validator_pubkey.unwrap_or_default();
+    user.status = if accesspass.status == AccessPassStatus::Expired {
+        UserStatus::OutOfCredits
+    } else {
+        UserStatus::Activated
+    };
 
     account_write(user_account, &user, payer_account, system_program)?;
     accesspass.try_serialize(accesspass_account)?;
 
     #[cfg(test)]
-    msg!("Activated: {:?}", user);
+    msg!("OutOfCredits: {:?}", user);
 
     Ok(())
 }

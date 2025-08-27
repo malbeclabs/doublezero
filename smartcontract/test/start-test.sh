@@ -5,10 +5,14 @@ killall solana-test-validator > /dev/null 2>&1
 killall doublezero-activator > /dev/null 2>&1
 killall solana > /dev/null 2>&1
 
+kill -9 $(ps -ef | grep activator | grep -v grep | awk '{print $2}')
+
 set -e
 set -x
 
 mkdir -p ./logs ./target
+
+export OPENSSL_NO_VENDOR=1
 
 # Build the program
 echo "Build the program"

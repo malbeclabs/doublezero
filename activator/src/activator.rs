@@ -4,7 +4,8 @@ use crate::{
     ipblockallocator::IPBlockAllocator,
     metrics_service::MetricsService,
     process::{
-        device::process_device_event, exchange::process_exchange_event, link::process_tunnel_event,
+        accesspass::process_access_pass_event, device::process_device_event,
+        exchange::process_exchange_event, link::process_tunnel_event,
         location::process_location_event, multicastgroup::process_multicastgroup_event,
         user::process_user_event,
     },
@@ -272,6 +273,19 @@ impl Activator {
                         )
                         .inspect_err(|e| {
                             error!("Error processing multicast group event: {e}");
+                        });
+                    }
+                    AccountData::AccessPass(access_pass) => {
+                        let users = ListUserCommand.execute(client).unwrap_or_default();
+                        let _ = process_access_pass_event(
+                            client,
+                            pubkey,
+                            access_pass,
+                            &users,
+                            state_transitions,
+                        )
+                        .inspect_err(|e| {
+                            error!("Error processing access pass event: {e}");
                         });
                     }
                     _ => {}

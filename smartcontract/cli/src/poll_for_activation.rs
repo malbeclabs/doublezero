@@ -14,7 +14,7 @@ pub fn poll_for_device_activated(
     device_pubkey: &Pubkey,
 ) -> eyre::Result<Device> {
     let start_time = std::time::Instant::now();
-    let timeout = std::time::Duration::from_secs(20);
+    let timeout = std::time::Duration::from_secs(60);
     let poll_interval = std::time::Duration::from_secs(1);
     let mut last_error: Option<eyre::Error> = None;
 
@@ -22,10 +22,14 @@ pub fn poll_for_device_activated(
         if start_time.elapsed() >= timeout {
             return Err(match last_error {
                 Some(e) => eyre::eyre!(
-                    "Timeout waiting for device activation after 20 seconds. Last error: {}",
+                    "Timeout waiting for device activation after {} seconds. Last error: {}",
+                    timeout.as_secs(),
                     e
                 ),
-                None => eyre::eyre!("Timeout waiting for device activation after 20 seconds"),
+                None => eyre::eyre!(
+                    "Timeout waiting for device activation after {} seconds",
+                    timeout.as_secs()
+                ),
             });
         }
 
@@ -56,7 +60,7 @@ pub fn poll_for_link_activated(
     link_pubkey: &Pubkey,
 ) -> eyre::Result<Link> {
     let start_time = std::time::Instant::now();
-    let timeout = std::time::Duration::from_secs(20);
+    let timeout = std::time::Duration::from_secs(60);
     let poll_interval = std::time::Duration::from_secs(1);
     let mut last_error: Option<eyre::Error> = None;
 
@@ -64,10 +68,14 @@ pub fn poll_for_link_activated(
         if start_time.elapsed() >= timeout {
             return Err(match last_error {
                 Some(e) => eyre::eyre!(
-                    "Timeout waiting for link activation after 20 seconds. Last error: {}",
+                    "Timeout waiting for link activation after {} seconds. Last error: {}",
+                    timeout.as_secs(),
                     e
                 ),
-                None => eyre::eyre!("Timeout waiting for link activation after 20 seconds"),
+                None => eyre::eyre!(
+                    "Timeout waiting for link activation after {} seconds",
+                    timeout.as_secs()
+                ),
             });
         }
 
@@ -96,7 +104,7 @@ pub fn poll_for_user_activated(
     user_pubkey: &Pubkey,
 ) -> eyre::Result<User> {
     let start_time = std::time::Instant::now();
-    let timeout = std::time::Duration::from_secs(50);
+    let timeout = std::time::Duration::from_secs(60);
     let poll_interval = std::time::Duration::from_secs(1);
     let mut last_error: Option<eyre::Error> = None;
 
@@ -104,10 +112,14 @@ pub fn poll_for_user_activated(
         if start_time.elapsed() >= timeout {
             return Err(match last_error {
                 Some(e) => eyre::eyre!(
-                    "Timeout waiting for user activation after 50 seconds. Last error: {}",
+                    "Timeout waiting for user activation after {} seconds. Last error: {}",
+                    timeout.as_secs(),
                     e
                 ),
-                None => eyre::eyre!("Timeout waiting for user activation after 50 seconds"),
+                None => eyre::eyre!(
+                    "Timeout waiting for user activation after {} seconds",
+                    timeout.as_secs()
+                ),
             });
         }
 
@@ -136,7 +148,7 @@ pub fn poll_for_multicastgroup_activated(
     mgroup_pubkey: &Pubkey,
 ) -> eyre::Result<MulticastGroup> {
     let start_time = std::time::Instant::now();
-    let timeout = std::time::Duration::from_secs(20);
+    let timeout = std::time::Duration::from_secs(60);
     let poll_interval = std::time::Duration::from_secs(1);
     let mut last_error: Option<eyre::Error> = None;
 
@@ -144,10 +156,13 @@ pub fn poll_for_multicastgroup_activated(
         if start_time.elapsed() >= timeout {
             return Err(match last_error {
                 Some(e) => eyre::eyre!(
-                    "Timeout waiting for multicast group activation after 20 seconds. Last error: {}",
+                    "Timeout waiting for multicast group activation after {} seconds. Last error: {}",
+                    timeout.as_secs(),
                     e
                 ),
-                None => eyre::eyre!("Timeout waiting for multicast group activation after 20 seconds"),
+                None => eyre::eyre!("Timeout waiting for multicast group activation after {} seconds", 
+                    timeout.as_secs()
+                ),
             });
         }
 

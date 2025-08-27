@@ -1,5 +1,5 @@
 use crate::processors::{
-    accesspass::set::SetAccessPassArgs,
+    accesspass::{check_status::CheckStatusAccessPassArgs, set::SetAccessPassArgs},
     allowlist::{
         device::{add::AddDeviceAllowlistArgs, remove::RemoveDeviceAllowlistArgs},
         foundation::{add::AddFoundationAllowlistArgs, remove::RemoveFoundationAllowlistArgs},
@@ -52,10 +52,11 @@ use crate::processors::{
         update::MulticastGroupUpdateArgs,
     },
     user::{
-        activate::UserActivateArgs, ban::UserBanArgs, closeaccount::UserCloseAccountArgs,
-        create::UserCreateArgs, create_subscribe::UserCreateSubscribeArgs, delete::UserDeleteArgs,
-        reject::UserRejectArgs, requestban::UserRequestBanArgs, resume::UserResumeArgs,
-        suspend::UserSuspendArgs, update::UserUpdateArgs,
+        activate::UserActivateArgs, ban::UserBanArgs, check_access_pass::CheckUserAccessPassArgs,
+        closeaccount::UserCloseAccountArgs, create::UserCreateArgs,
+        create_subscribe::UserCreateSubscribeArgs, delete::UserDeleteArgs, reject::UserRejectArgs,
+        requestban::UserRequestBanArgs, resume::UserResumeArgs, suspend::UserSuspendArgs,
+        update::UserUpdateArgs,
     },
 };
 use borsh::{from_slice, BorshDeserialize, BorshSerialize};
@@ -144,7 +145,10 @@ pub enum DoubleZeroInstruction {
     SetDeviceExchange(ExchangeSetDeviceArgs), // variant 65
     AcceptLink(LinkAcceptArgs),               // variant 66
     SetAccessPass(SetAccessPassArgs),         // variant 67
-    SetAirdrop(SetAirdropArgs),               // variant 68
+
+    SetAirdrop(SetAirdropArgs),                       // variant 68
+    CheckUserAccessPass(CheckUserAccessPassArgs),     // variant 69
+    CheckStatusAccessPass(CheckStatusAccessPassArgs), // variant 70
 }
 
 impl DoubleZeroInstruction {
@@ -236,7 +240,10 @@ impl DoubleZeroInstruction {
             65 => Ok(Self::SetDeviceExchange(from_slice::<ExchangeSetDeviceArgs>(rest).unwrap())),
             66 => Ok(Self::AcceptLink(from_slice::<LinkAcceptArgs>(rest).unwrap())),
             67 => Ok(Self::SetAccessPass(from_slice::<SetAccessPassArgs>(rest).unwrap())),
+
             68 => Ok(Self::SetAirdrop(from_slice::<SetAirdropArgs>(rest).unwrap())),
+            69 => Ok(Self::CheckUserAccessPass(from_slice::<CheckUserAccessPassArgs>(rest).unwrap())),
+            70 => Ok(Self::CheckStatusAccessPass(from_slice::<CheckStatusAccessPassArgs>(rest).unwrap())),
 
             _ => Err(ProgramError::InvalidInstructionData),
         }
@@ -328,7 +335,10 @@ impl DoubleZeroInstruction {
             Self::SetDeviceExchange(_) => "SetDeviceExchange".to_string(), // variant 65
             Self::AcceptLink(_) => "AcceptLink".to_string(),               // variant 66
             Self::SetAccessPass(_) => "SetAccessPass".to_string(),         // variant 67
-            Self::SetAirdrop(_) => "SetAirdrop".to_string(),               // variant 68
+
+            Self::SetAirdrop(_) => "SetAirdrop".to_string(), // variant 68
+            Self::CheckUserAccessPass(_) => "CheckUserAccessPass".to_string(), // variant 69
+            Self::CheckStatusAccessPass(_) => "CheckStatusAccessPass".to_string(), // variant 70
         }
     }
 
@@ -412,7 +422,10 @@ impl DoubleZeroInstruction {
             Self::SetDeviceExchange(args) => format!("{args:?}"), // variant 65
             Self::AcceptLink(args) => format!("{args:?}"),        // variant 66
             Self::SetAccessPass(args) => format!("{args:?}"),     // variant 67
-            Self::SetAirdrop(args) => format!("{args:?}"),        // variant 68
+
+            Self::SetAirdrop(args) => format!("{args:?}"), // variant 68
+            Self::CheckUserAccessPass(args) => format!("{args:?}"), // variant 69
+            Self::CheckStatusAccessPass(args) => format!("{args:?}"), // variant 70
         }
     }
 }
@@ -866,6 +879,15 @@ mod tests {
                 last_access_epoch: 123,
             }),
             "SetAccessPass",
+        );
+
+        test_instruction(
+            DoubleZeroInstruction::CheckUserAccessPass(CheckUserAccessPassArgs {}),
+            "CheckUserAccessPass",
+        );
+        test_instruction(
+            DoubleZeroInstruction::CheckStatusAccessPass(CheckStatusAccessPassArgs {}),
+            "CheckStatusAccessPass",
         );
     }
 }

@@ -13,6 +13,7 @@ use std::{
 };
 use tokio::signal;
 
+mod accesspass_monitor;
 mod activator;
 mod activator_metrics;
 mod constants;
@@ -24,7 +25,6 @@ mod process;
 mod states;
 mod tenants;
 pub mod tests;
-mod user_monitor;
 mod utils;
 
 #[derive(Parser, Debug)]
@@ -131,9 +131,9 @@ async fn main() -> eyre::Result<()> {
             .unwrap_or_default()
     });
 
-    let user_monitor_handle = tokio::task::spawn_blocking(move || {
+    let accesspass_monitor_handle = tokio::task::spawn_blocking(move || {
         info!("User monitor thread started");
-        user_monitor::process_user_monitor_thread(
+        accesspass_monitor::process_access_pass_monitor_thread(
             rpc_url,
             ws_url,
             program_id,
@@ -155,9 +155,9 @@ async fn main() -> eyre::Result<()> {
                 error!("Activator thread exited unexpectedly with reason: {err:?}");
             }
         }
-        user_monitor_res = user_monitor_handle => {
-            if let Err(err) = user_monitor_res {
-                error!("User monitor thread exited unexpectedly with reason: {err:?}");
+        accesspass_monitor_res = accesspass_monitor_handle => {
+            if let Err(err) = accesspass_monitor_res {
+                error!("AccessPass monitor thread exited unexpectedly with reason: {err:?}");
             }
         }
         _ = metrics_submitter.run(shutdown.clone()) => {}

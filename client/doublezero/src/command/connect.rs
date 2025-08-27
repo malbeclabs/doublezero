@@ -505,10 +505,14 @@ Disconnect and connect again!"#,
             if start_time.elapsed() >= timeout {
                 return Err(match last_error {
                     Some(e) => eyre::eyre!(
-                        "Timeout waiting for user activation after 50 seconds. Last error: {}",
+                        "Timeout waiting for user activation after {} seconds. Last error: {}",
+                        timeout.as_secs(),
                         e
                     ),
-                    None => eyre::eyre!("Timeout waiting for user activation after 50 seconds"),
+                    None => eyre::eyre!(
+                        "Timeout waiting for user activation after {} seconds",
+                        timeout.as_secs()
+                    ),
                 });
             }
 

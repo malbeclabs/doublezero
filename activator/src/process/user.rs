@@ -517,6 +517,14 @@ mod tests {
             validator_pubkey: Pubkey::default(),
         };
 
+        let user_clonned = user.clone();
+        client
+            .expect_get()
+            .times(1)
+            .in_sequence(&mut seq)
+            .with(predicate::eq(user_pubkey))
+            .returning(move |_| Ok(AccountData::User(user_clonned.clone())));
+
         client
             .expect_execute_transaction()
             .times(1)
@@ -646,6 +654,14 @@ mod tests {
             subscribers: vec![Pubkey::default()],
             validator_pubkey,
         };
+
+        let user_cloned = user.clone();
+        client
+            .expect_get()
+            .times(1)
+            .in_sequence(&mut seq)
+            .with(predicate::eq(user_pubkey))
+            .returning(move |_| Ok(AccountData::User(user_cloned.clone())));
 
         client
             .expect_execute_transaction()

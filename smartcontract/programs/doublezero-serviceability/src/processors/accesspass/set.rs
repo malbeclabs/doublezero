@@ -45,7 +45,7 @@ impl fmt::Debug for SetAccessPassArgs {
     }
 }
 
-pub fn process_set_accesspass(
+pub fn process_set_access_pass(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
     value: &SetAccessPassArgs,

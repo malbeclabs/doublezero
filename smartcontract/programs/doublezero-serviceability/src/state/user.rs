@@ -1,11 +1,17 @@
 use crate::{
     bytereader::ByteReader,
     seeds::SEED_USER,
-    state::accounttype::{AccountType, AccountTypeInfo},
+    state::{
+        accesspass::{AccessPass, AccessPassStatus},
+        accounttype::{AccountType, AccountTypeInfo},
+    },
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use doublezero_program_common::types::NetworkV4;
-use solana_program::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
+use solana_program::{
+    account_info::AccountInfo, entrypoint::ProgramResult, program_error::ProgramError,
+    pubkey::Pubkey,
+};
 use std::{fmt, net::Ipv4Addr};
 
 #[repr(u8)]
@@ -95,6 +101,7 @@ pub enum UserStatus {
     PendingBan = 5,
     Banned = 6,
     Updating = 7,
+    OutOfCredits = 8,
 }
 
 impl From<u8> for UserStatus {
@@ -108,6 +115,7 @@ impl From<u8> for UserStatus {
             5 => UserStatus::PendingBan,
             6 => UserStatus::Banned,
             7 => UserStatus::Updating,
+            8 => UserStatus::OutOfCredits,
             _ => UserStatus::Pending,
         }
     }
@@ -124,6 +132,7 @@ impl fmt::Display for UserStatus {
             UserStatus::PendingBan => write!(f, "pending ban"),
             UserStatus::Updating => write!(f, "updating"),
             UserStatus::Banned => write!(f, "banned"),
+            UserStatus::OutOfCredits => write!(f, "out_of_credits"),
         }
     }
 }
@@ -302,6 +311,18 @@ impl User {
         }
 
         groups
+    }
+
+    pub fn try_activate(&mut self, accesspass: &mut AccessPass) -> ProgramResult {
+        accesspass.update_status()?;
+
+        self.status = if accesspass.status == AccessPassStatus::Expired {
+            UserStatus::OutOfCredits
+        } else {
+            UserStatus::Activated
+        };
+
+        Ok(())
     }
 }
 

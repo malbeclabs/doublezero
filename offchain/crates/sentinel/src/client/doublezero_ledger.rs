@@ -2,6 +2,7 @@ use crate::{Result, new_transaction};
 
 use doublezero_program_tools::instruction::try_build_instruction;
 use doublezero_serviceability::{
+    instructions::DoubleZeroInstruction,
     pda::{get_accesspass_pda, get_globalstate_pda},
     processors::accesspass::set::SetAccessPassArgs,
     state::accesspass::AccessPassType,
@@ -43,11 +44,11 @@ impl DzRpcClient {
     ) -> Result<Signature> {
         let (globalstate_pk, _) = get_globalstate_pda(&self.serviceability_id);
         let (pass_pk, _) = get_accesspass_pda(&self.serviceability_id, client_ip, service_key);
-        let args = SetAccessPassArgs {
+        let args = DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
             accesspass_type: AccessPassType::SolanaValidator,
             client_ip: *client_ip,
             last_access_epoch: u64::MAX,
-        };
+        });
         let accounts = vec![
             AccountMeta::new(pass_pk, false),
             AccountMeta::new_readonly(globalstate_pk, false),

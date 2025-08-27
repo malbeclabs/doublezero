@@ -26,9 +26,6 @@ ntp server 0.pool.ntp.org
 ntp server 1.pool.ntp.org
 ntp server 2.pool.ntp.org
 !
-mpls icmp ttl-exceeded tunneling
-mpls icmp ip source-interface Loopback255
-!
 hardware access-list update default-result permit
 !
 no ip access-list MAIN-CONTROL-PLANE-ACL

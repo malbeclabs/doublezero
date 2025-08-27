@@ -22,6 +22,9 @@ pub struct SetAccessPassCliCommand {
     /// Specifies the number of epochs for the access pass.
     #[arg(long, default_value = "max")]
     pub epochs: String,
+    /// Specifies the Solana validator for the access pass.
+    #[arg(long)]
+    pub solana_validator: Option<Pubkey>,
 }
 
 impl SetAccessPassCliCommand {
@@ -44,11 +47,20 @@ impl SetAccessPassCliCommand {
             _ => current_epoch + self.epochs.parse::<u64>()?,
         };
 
+        if self.accesspass_type == AccessPassType::SolanaValidator
+            && self.solana_validator.is_none()
+        {
+            eyre::bail!(
+                "Solana validator access pass type requires --solana-validator <PUBKEY>"
+            );
+        }
+
         let signature = client.set_accesspass(SetAccessPassCommand {
             accesspass_type: self.accesspass_type,
             client_ip: self.client_ip,
             user_payer,
             last_access_epoch,
+            solana_validator: self.solana_validator,
         })?;
         writeln!(out, "Signature: {signature}")?;
 
@@ -87,6 +99,8 @@ mod tests {
 
         client.expect_get_epoch().returning(|| Ok(10));
 
+        let solana_validator = Pubkey::new_unique();
+
         client
             .expect_check_requirements()
             .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
@@ -98,6 +112,7 @@ mod tests {
                 client_ip,
                 user_payer: payer,
                 last_access_epoch: 11,
+                solana_validator: Some(solana_validator),
             }))
             .returning(move |_| Ok(signature));
 
@@ -107,6 +122,23 @@ mod tests {
             client_ip,
             user_payer: payer.to_string(),
             epochs: "1".into(),
+            solana_validator: None,
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_err());
+        assert_eq!(
+            res.err().unwrap().to_string(),
+            "Solana validator access pass type requires --solana-validator <PUBKEY>"
+        );
+
+
+        let mut output = Vec::new();
+        let res = SetAccessPassCliCommand {
+            accesspass_type: AccessPassType::SolanaValidator,
+            client_ip,
+            user_payer: payer.to_string(),
+            epochs: "1".into(),
+            solana_validator: Some(solana_validator),
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

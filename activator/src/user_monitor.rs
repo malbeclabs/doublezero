@@ -130,7 +130,6 @@ mod tests {
             status: doublezero_sdk::UserStatus::Activated,
             publishers: Vec::new(),
             subscribers: Vec::new(),
-            validator_pubkey: Pubkey::default(),
         };
         users.insert(user1_pk, user1.clone());
 
@@ -145,6 +144,7 @@ mod tests {
             status: AccessPassStatus::Requested,
             last_access_epoch: 15,
             connection_count: 1,
+            solana_validator: Pubkey::default(),
             user_payer,
         };
         accesspass.insert(accesspass1_pk, accesspass1);

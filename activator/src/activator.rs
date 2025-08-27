@@ -9,7 +9,6 @@ use crate::{
         user::process_user_event,
     },
     states::devicestate::DeviceState,
-    tenants::solana::{SolanaInfo, SolanaRpcInfo},
 };
 use doublezero_cli::{checkversion::check_version, doublezerocommand::CliCommandImpl};
 use doublezero_sdk::{
@@ -49,7 +48,6 @@ pub struct Activator {
     multicastgroups: HashMap<Pubkey, MulticastGroup>,
     metrics: ActivatorMetrics,
     state_transitions: HashMap<&'static str, usize>,
-    solana_info: SolanaRpcInfo,
 }
 
 impl Activator {
@@ -103,9 +101,6 @@ impl Activator {
             exchanges: HashMap::new(),
             multicastgroups: HashMap::new(),
             state_transitions: HashMap::new(),
-            solana_info: SolanaRpcInfo {
-                url: "https://api.mainnet-beta.solana.com".to_string(),
-            },
         })
     }
 
@@ -207,7 +202,6 @@ impl Activator {
         let locations = &mut self.locations;
         let exchanges = &mut self.exchanges;
         let multicastgroups = &mut self.multicastgroups;
-        let solana_info = &self.solana_info;
         let state_transitions = &mut self.state_transitions;
         let segment_routing_ids = &mut self.segment_routing_ids;
 
@@ -237,24 +231,17 @@ impl Activator {
                             state_transitions,
                         );
                     }
-                    AccountData::User(user) => match solana_info.get_cluster_nodes() {
-                        Ok(clusters) => {
-                            process_user_event(
-                                client,
-                                pubkey,
-                                devices,
-                                user_tunnel_ips,
-                                link_ids,
-                                user,
-                                clusters,
-                                state_transitions,
-                            );
-                        }
-                        Err(e) => {
-                            error!("Error fetching cluster nodes: {e}");
-                            return;
-                        }
-                    },
+                    AccountData::User(user) => {
+                        process_user_event(
+                            client,
+                            pubkey,
+                            devices,
+                            user_tunnel_ips,
+                            link_ids,
+                            user,
+                            state_transitions,
+                        );
+                    }
                     AccountData::Location(location) => {
                         process_location_event(pubkey, locations, location);
                     }

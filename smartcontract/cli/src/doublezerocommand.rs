@@ -1,6 +1,8 @@
 use doublezero_sdk::{
     commands::{
-        accesspass::{list::ListAccessPassCommand, set::SetAccessPassCommand},
+        accesspass::{
+            get::GetAccessPassCommand, list::ListAccessPassCommand, set::SetAccessPassCommand,
+        },
         allowlist::{
             device::{
                 add::AddDeviceAllowlistCommand, list::ListDeviceAllowlistCommand,
@@ -243,6 +245,7 @@ pub trait CliCommand {
     ) -> eyre::Result<Vec<Pubkey>>;
 
     fn set_accesspass(&self, cmd: SetAccessPassCommand) -> eyre::Result<Signature>;
+    fn get_accesspass(&self, cmd: GetAccessPassCommand) -> eyre::Result<(Pubkey, AccessPass)>;
     fn list_accesspass(
         &self,
         cmd: ListAccessPassCommand,
@@ -572,6 +575,9 @@ impl CliCommand for CliCommandImpl<'_> {
         cmd.execute(self.client)
     }
     fn set_accesspass(&self, cmd: SetAccessPassCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn get_accesspass(&self, cmd: GetAccessPassCommand) -> eyre::Result<(Pubkey, AccessPass)> {
         cmd.execute(self.client)
     }
     fn list_accesspass(

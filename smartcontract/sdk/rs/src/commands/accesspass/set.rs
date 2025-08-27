@@ -14,6 +14,7 @@ pub struct SetAccessPassCommand {
     pub client_ip: Ipv4Addr,
     pub user_payer: Pubkey,
     pub last_access_epoch: u64,
+    pub solana_validator: Option<Pubkey>,
 }
 
 impl SetAccessPassCommand {
@@ -41,6 +42,7 @@ impl SetAccessPassCommand {
                 accesspass_type: self.accesspass_type,
                 client_ip: self.client_ip,
                 last_access_epoch: self.last_access_epoch,
+                solana_validator: self.solana_validator
             }),
             vec![
                 AccountMeta::new(pda_pubkey, false),
@@ -83,6 +85,7 @@ mod tests {
                     accesspass_type: AccessPassType::Prepaid,
                     client_ip,
                     last_access_epoch: 0,
+                    solana_validator: None
                 })),
                 predicate::eq(vec![
                     AccountMeta::new(pda_pubkey, false),
@@ -97,6 +100,7 @@ mod tests {
             client_ip,
             user_payer: payer,
             last_access_epoch: 0,
+            solana_validator: None
         }
         .execute(&client);
         assert!(res.is_ok());

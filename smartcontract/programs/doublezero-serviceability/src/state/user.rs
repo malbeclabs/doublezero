@@ -181,14 +181,6 @@ pub struct User {
         )
     )]
     pub subscribers: Vec<Pubkey>, // 4 + 32 * len
-    #[cfg_attr(
-        feature = "serde",
-        serde(
-            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string",
-            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
-        )
-    )]
-    pub validator_pubkey: Pubkey, // 32
 }
 
 impl fmt::Display for User {
@@ -232,7 +224,6 @@ impl AccountTypeInfo for User {
             + self.publishers.len() * 32
             + 4
             + self.subscribers.len() * 32
-            + 32
     }
     fn index(&self) -> u128 {
         self.index
@@ -265,7 +256,6 @@ impl From<&[u8]> for User {
             status: parser.read_enum(),
             publishers: parser.read_pubkey_vec(),
             subscribers: parser.read_pubkey_vec(),
-            validator_pubkey: parser.read_pubkey(),
         };
 
         assert_eq!(
@@ -327,7 +317,6 @@ mod tests {
             status: UserStatus::Activated,
             publishers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
-            validator_pubkey: Pubkey::default(),
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -341,7 +330,6 @@ mod tests {
         assert_eq!(val.tunnel_net, val2.tunnel_net);
         assert_eq!(val.subscribers, val2.subscribers);
         assert_eq!(val.publishers, val2.publishers);
-        assert_eq!(val.validator_pubkey, val2.validator_pubkey);
         assert_eq!(data.len(), val.size(), "Invalid Size");
     }
 }

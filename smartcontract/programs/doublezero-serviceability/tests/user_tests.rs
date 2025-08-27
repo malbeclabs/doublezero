@@ -249,6 +249,7 @@ async fn test_user() {
             accesspass_type: AccessPassType::Prepaid,
             client_ip: user_ip,
             last_access_epoch: 9999,
+            solana_validator: Some(Pubkey::new_unique()),
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -316,7 +317,6 @@ async fn test_user() {
             tunnel_id: 500,
             tunnel_net: "10.1.2.3/21".parse().unwrap(),
             dz_ip: [200, 0, 0, 1].into(),
-            validator_pubkey: None,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),

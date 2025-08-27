@@ -49,6 +49,8 @@ pub enum DoubleZeroError {
     InvalidLastAccessEpoch, // variant 21
     #[error("Unauthorized")]
     Unauthorized, // variant 22
+    #[error("Invalid Solana Validator Pubkey")]
+    InvalidSolanaValidatorPubkey,
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -77,6 +79,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::MaxUsersExceeded => ProgramError::Custom(20),
             DoubleZeroError::InvalidLastAccessEpoch => ProgramError::Custom(21),
             DoubleZeroError::Unauthorized => ProgramError::Custom(22),
+            DoubleZeroError::InvalidSolanaValidatorPubkey => ProgramError::Custom(23),
         }
     }
 }
@@ -106,6 +109,7 @@ impl From<u32> for DoubleZeroError {
             20 => DoubleZeroError::MaxUsersExceeded,
             21 => DoubleZeroError::InvalidLastAccessEpoch,
             22 => DoubleZeroError::Unauthorized,
+            23 => DoubleZeroError::InvalidSolanaValidatorPubkey,
 
             _ => DoubleZeroError::Custom(e),
         }
@@ -138,6 +142,7 @@ impl From<ProgramError> for DoubleZeroError {
                 20 => DoubleZeroError::MaxUsersExceeded,
                 21 => DoubleZeroError::InvalidLastAccessEpoch,
                 22 => DoubleZeroError::Unauthorized,
+                23 => DoubleZeroError::InvalidSolanaValidatorPubkey,
 
                 _ => DoubleZeroError::Custom(e),
             },

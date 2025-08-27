@@ -22,7 +22,6 @@ mod ipblockallocator;
 mod metrics_service;
 mod process;
 mod states;
-mod tenants;
 pub mod tests;
 mod user_monitor;
 mod utils;

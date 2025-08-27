@@ -3,11 +3,13 @@ use clap::Args;
 use doublezero_program_common::{serializer, types::NetworkV4};
 use doublezero_sdk::{
     commands::{
-        device::list::ListDeviceCommand, location::list::ListLocationCommand,
-        multicastgroup::list::ListMulticastGroupCommand, user::list::ListUserCommand,
+        accesspass::list::ListAccessPassCommand, device::list::ListDeviceCommand,
+        location::list::ListLocationCommand, multicastgroup::list::ListMulticastGroupCommand,
+        user::list::ListUserCommand,
     },
     MulticastGroup, User, UserCYOA, UserStatus, UserType,
 };
+use doublezero_serviceability::pda::get_accesspass_pda;
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::{collections::HashMap, io::Write, net::Ipv4Addr};
@@ -48,6 +50,7 @@ pub struct UserDisplay {
     pub cyoa_type: UserCYOA,
     pub client_ip: Ipv4Addr,
     pub dz_ip: Ipv4Addr,
+    pub accesspass: String,
     pub tunnel_id: u16,
     pub tunnel_net: NetworkV4,
     pub status: UserStatus,
@@ -60,6 +63,7 @@ impl ListUserCliCommand {
         let devices = client.list_device(ListDeviceCommand)?;
         let locations = client.list_location(ListLocationCommand)?;
         let mgroups = client.list_multicastgroup(ListMulticastGroupCommand)?;
+        let accesspasses = client.list_accesspass(ListAccessPassCommand {})?;
         let users = client.list_user(ListUserCommand)?;
 
         let mut users_displays: Vec<UserDisplay> = users
@@ -90,6 +94,10 @@ impl ListUserCliCommand {
                     None => "".to_string(),
                 };
 
+                let (accesspass_pk, _) =
+                    get_accesspass_pda(&client.get_program_id(), &user.client_ip, &user.owner);
+                let accesspass = accesspasses.get(&accesspass_pk);
+
                 UserDisplay {
                     account: pubkey,
                     user_type: user.user_type,
@@ -103,6 +111,11 @@ impl ListUserCliCommand {
                     cyoa_type: user.cyoa_type,
                     client_ip: user.client_ip,
                     dz_ip: user.dz_ip,
+                    accesspass: if let Some(accesspass) = accesspass {
+                        accesspass.to_string()
+                    } else {
+                        "none".to_string()
+                    },
                     tunnel_id: user.tunnel_id,
                     tunnel_net: user.tunnel_net,
                     status: user.status,
@@ -162,6 +175,7 @@ mod tests {
     use std::collections::HashMap;
 
     use crate::{
+        doublezerocommand::CliCommand,
         tests::utils::create_test_client,
         user::list::{
             ListUserCliCommand, UserCYOA::GREOverDIA, UserStatus::Activated, UserType::IBRL,
@@ -170,6 +184,10 @@ mod tests {
     use doublezero_sdk::{
         AccountType, Device, DeviceStatus, DeviceType, Exchange, ExchangeStatus, Location,
         LocationStatus, MulticastGroup, MulticastGroupStatus, User, UserType,
+    };
+    use doublezero_serviceability::{
+        pda::get_accesspass_pda,
+        state::accesspass::{AccessPass, AccessPassStatus, AccessPassType},
     };
     use solana_sdk::pubkey::Pubkey;
 
@@ -346,7 +364,21 @@ mod tests {
             status: Activated,
             publishers: vec![],
             subscribers: vec![],
-            validator_pubkey: Pubkey::default(),
+        };
+
+        let (accesspass1_pubkey, _) =
+            get_accesspass_pda(&client.get_program_id(), &user1.client_ip, &user1.owner);
+        let accesspass1 = AccessPass {
+            account_type: AccountType::AccessPass,
+            bump_seed: 255,
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip: user1.client_ip,
+            user_payer: user1.owner,
+            last_access_epoch: 10,
+            solana_validator: Pubkey::default(),
+            connection_count: 0,
+            status: AccessPassStatus::Connected,
+            owner: client.get_payer(),
         };
 
         let user2 = User {
@@ -365,7 +397,21 @@ mod tests {
             status: Activated,
             publishers: vec![],
             subscribers: vec![mgroup1_pubkey],
-            validator_pubkey: Pubkey::default(),
+        };
+
+        let (accesspass2_pubkey, _) =
+            get_accesspass_pda(&client.get_program_id(), &user2.client_ip, &user2.owner);
+        let accesspass2 = AccessPass {
+            account_type: AccountType::AccessPass,
+            bump_seed: 255,
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip: user2.client_ip,
+            user_payer: user2.owner,
+            last_access_epoch: 10,
+            solana_validator: Pubkey::default(),
+            connection_count: 0,
+            status: AccessPassStatus::Connected,
+            owner: client.get_payer(),
         };
 
         client.expect_list_user().returning(move |_| {
@@ -375,6 +421,15 @@ mod tests {
             Ok(users)
         });
 
+        client.expect_list_accesspass().returning(move |_| {
+            let mut accesspasses = HashMap::new();
+            accesspasses.insert(accesspass1_pubkey, accesspass1.clone());
+            accesspasses.insert(accesspass2_pubkey, accesspass2.clone());
+            Ok(accesspasses)
+        });
+
+        /*****************************************************************************************************/
+
         let mut output = Vec::new();
         let res = ListUserCliCommand {
             json: false,
@@ -383,7 +438,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | user_type | groups      | device       | location       | cyoa_type  | client_ip | dz_ip   | tunnel_id | tunnel_net | status    | owner                                     \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | Multicast | m_code (Rx) | device1_code | location1_name | GREOverDIA | 1.2.3.4   | 2.3.4.5 | 500       | 1.2.3.5/32 | activated | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
+        assert_eq!(output_str, " account                                   | user_type | groups      | device       | location       | cyoa_type  | client_ip | dz_ip   | accesspass                  | tunnel_id | tunnel_net | status    | owner                                     \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | Multicast | m_code (Rx) | device1_code | location1_name | GREOverDIA | 1.2.3.4   | 2.3.4.5 | Prepaid: (expires epoch 10) | 500       | 1.2.3.5/32 | activated | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
 
         let mut output = Vec::new();
         let res = ListUserCliCommand {
@@ -394,6 +449,6 @@ mod tests {
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\",\"user_type\":\"Multicast\",\"device_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"multicast\":\"m_code (Rx)\",\"publishers\":\"\",\"subscribers\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo8\",\"device_name\":\"device1_code\",\"location_code\":\"location1_code\",\"location_name\":\"location1_name\",\"cyoa_type\":\"GREOverDIA\",\"client_ip\":\"1.2.3.4\",\"dz_ip\":\"2.3.4.5\",\"tunnel_id\":500,\"tunnel_net\":\"1.2.3.5/32\",\"status\":\"Activated\",\"owner\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\"}]\n");
+        assert_eq!(output_str, "[{\"account\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\",\"user_type\":\"Multicast\",\"device_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"multicast\":\"m_code (Rx)\",\"publishers\":\"\",\"subscribers\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo8\",\"device_name\":\"device1_code\",\"location_code\":\"location1_code\",\"location_name\":\"location1_name\",\"cyoa_type\":\"GREOverDIA\",\"client_ip\":\"1.2.3.4\",\"dz_ip\":\"2.3.4.5\",\"accesspass\":\"Prepaid: (expires epoch 10)\",\"tunnel_id\":500,\"tunnel_net\":\"1.2.3.5/32\",\"status\":\"Activated\",\"owner\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\"}]\n");
     }
 }

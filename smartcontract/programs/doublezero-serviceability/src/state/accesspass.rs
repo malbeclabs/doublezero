@@ -104,15 +104,23 @@ pub struct AccessPass {
     pub last_access_epoch: u64,    // 8 / 0-Rejected / u64::MAX unlimited
     pub connection_count: u16,     // 2
     pub status: AccessPassStatus,  // 1
+    pub solana_validator: Pubkey,  // 32
 }
 
 impl fmt::Display for AccessPass {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "account_type: {}, owner: {}, ip: {}, bump_seed: {}, accesspass_type: {}, user_payer: {}, last_access_epoch: {}, status: {}",
-            self.account_type, self.owner, self.client_ip, self.bump_seed, self.accesspass_type, self.user_payer, self.last_access_epoch, self.status
-        )
+        match self.accesspass_type {
+            AccessPassType::Prepaid => {
+                if self.last_access_epoch == u64::MAX {
+                    write!(f, "Prepaid: (MAX)")
+                } else {
+                    write!(f, "Prepaid: (expires epoch {})", self.last_access_epoch)
+                }
+            }
+            AccessPassType::SolanaValidator => {
+                write!(f, "SolanaValidator: ({})", self.solana_validator)
+            }
+        }
     }
 }
 
@@ -121,7 +129,7 @@ impl AccountTypeInfo for AccessPass {
         crate::seeds::SEED_ACCESS_PASS
     }
     fn size(&self) -> usize {
-        1 + 32 + 1 + 1 + 4 + 32 + 8 + 2 + 1
+        1 + 32 + 1 + 1 + 4 + 32 + 8 + 2 + 1 + 32
     }
     fn bump_seed(&self) -> u8 {
         self.bump_seed
@@ -148,6 +156,7 @@ impl From<&[u8]> for AccessPass {
             last_access_epoch: parser.read_u64(),
             connection_count: parser.read_u16(),
             status: parser.read_enum(),
+            solana_validator: parser.read_pubkey(),
         };
 
         assert_eq!(
@@ -194,6 +203,7 @@ mod tests {
             last_access_epoch: 0,
             connection_count: 0,
             status: AccessPassStatus::Connected,
+            solana_validator: Pubkey::new_unique(),
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -208,6 +218,7 @@ mod tests {
         assert_eq!(val.last_access_epoch, val2.last_access_epoch);
         assert_eq!(val.connection_count, val2.connection_count);
         assert_eq!(val.status, val2.status);
+        assert_eq!(val.solana_validator, val2.solana_validator);
         assert_eq!(data.len(), val.size(), "Invalid Size");
     }
 }

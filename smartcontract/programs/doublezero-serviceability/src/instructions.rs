@@ -619,7 +619,6 @@ mod tests {
                 tunnel_id: 1,
                 tunnel_net: "1.2.3.4/1".parse().unwrap(),
                 dz_ip: [1, 2, 3, 4].into(),
-                validator_pubkey: Some(Pubkey::new_unique()),
             }),
             "ActivateUser",
         );
@@ -864,6 +863,7 @@ mod tests {
                 accesspass_type: crate::state::accesspass::AccessPassType::SolanaValidator,
                 client_ip: [1, 2, 3, 4].into(),
                 last_access_epoch: 123,
+                solana_validator: Some(Pubkey::new_unique()),
             }),
             "SetAccessPass",
         );

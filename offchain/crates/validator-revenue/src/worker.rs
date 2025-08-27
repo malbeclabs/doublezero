@@ -144,7 +144,7 @@ pub async fn write_payments<T: ValidatorRewards>(
 mod tests {
     use super::*;
     use crate::block;
-    use crate::fee_payment_calculator::MockValidatorRewards;
+    use crate::fee_payment_calculator::{MockValidatorRewards, ledger_rpc, solana_rpc};
     use crate::jito::{JitoReward, JitoRewards};
     use solana_client::nonblocking::rpc_client::RpcClient;
     use solana_client::rpc_response::{
@@ -205,14 +205,14 @@ mod tests {
         mock_fee_payment_calculator
             .expect_solana_rpc_client()
             .return_const(RpcClient::new_with_commitment(
-                "http://localhost:8899".to_string(),
+                solana_rpc(),
                 commitment_config,
             ));
 
         mock_fee_payment_calculator
             .expect_ledger_rpc_client()
             .return_const(RpcClient::new_with_commitment(
-                "http://localhost:8899".to_string(),
+                ledger_rpc(),
                 commitment_config,
             ));
 

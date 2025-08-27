@@ -69,7 +69,7 @@ pub async fn read_from_ledger(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fee_payment_calculator::FeePaymentCalculator;
+    use crate::fee_payment_calculator::{FeePaymentCalculator, ledger_rpc, solana_rpc};
     use crate::rewards::{EpochRewards, Reward};
 
     use solana_client::{
@@ -86,10 +86,8 @@ mod tests {
     async fn test_write_to_read_from_ledger() -> anyhow::Result<()> {
         let validator_id = "devgM7SXHvoHH6jPXRsjn97gygPUo58XEnc9bqY1jpj";
         let commitment_config = CommitmentConfig::processed();
-        let solana_rpc_client =
-            RpcClient::new_with_commitment("http://localhost:8899".to_string(), commitment_config);
-        let ledger_rpc_client =
-            RpcClient::new_with_commitment("http://localhost:8899".to_string(), commitment_config);
+        let solana_rpc_client = RpcClient::new_with_commitment(solana_rpc(), commitment_config);
+        let ledger_rpc_client = RpcClient::new_with_commitment(ledger_rpc(), commitment_config);
         let vote_account_config = RpcGetVoteAccountsConfig {
             vote_pubkey: Some(validator_id.to_string()),
             commitment: CommitmentConfig::finalized().into(),

@@ -4,7 +4,6 @@ use doublezero_program_tools::{instruction::try_build_instruction, zero_copy};
 use doublezero_revenue_distribution::{
     ID,
     // TODO: add env var to load correct key
-    env::development::DOUBLEZERO_MINT_KEY,
     instruction::{
         account::{ConfigureDistributionPaymentsAccounts, InitializeDistributionAccounts},
         {DistributionPaymentsConfiguration, RevenueDistributionInstructionData},
@@ -20,12 +19,26 @@ use solana_sdk::{
     signer::Signer,
     transaction::VersionedTransaction,
 };
+use std::env;
 
 #[derive(Debug)]
 pub struct Transaction {
     signer: Keypair,
 
     pub dry_run: bool,
+}
+
+fn mint_key() -> Pubkey {
+    match env::var("MINT_KEY_ENVIRONMENT") {
+        Ok(val) => {
+            if val == "mainnet-beta" {
+                doublezero_revenue_distribution::env::mainnet::DOUBLEZERO_MINT_KEY
+            } else {
+                doublezero_revenue_distribution::env::development::DOUBLEZERO_MINT_KEY
+            }
+        }
+        Err(_) => doublezero_revenue_distribution::env::development::DOUBLEZERO_MINT_KEY,
+    }
 }
 
 impl Transaction {
@@ -67,7 +80,7 @@ impl Transaction {
                 &keypair,
                 &keypair,
                 program_config.next_dz_epoch,
-                &DOUBLEZERO_MINT_KEY,
+                &mint_key(),
             ),
             &RevenueDistributionInstructionData::InitializeDistribution,
         )

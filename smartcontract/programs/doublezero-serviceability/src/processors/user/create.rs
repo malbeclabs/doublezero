@@ -106,12 +106,13 @@ pub fn process_create_user(
     // Check Initial epoch
     let clock = Clock::get()?;
     let current_epoch = clock.epoch;
-    if accesspass.last_access_epoch > 0 && accesspass.last_access_epoch < current_epoch {
+    if accesspass.last_access_epoch < current_epoch {
         msg!(
-            "Invalid epoch current_epoch: {current_epoch} < last_access_epoch: {}",
-            accesspass.last_access_epoch
+            "Invalid epoch last_access_epoch: {} < current_epoch: {}",
+            accesspass.last_access_epoch,
+            current_epoch
         );
-        return Err(DoubleZeroError::Unauthorized.into());
+        return Err(DoubleZeroError::AccessPassUnauthorized.into());
     }
 
     accesspass.connection_count += 1;

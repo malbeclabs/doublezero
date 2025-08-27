@@ -80,6 +80,7 @@ interface Switch1/1/1
    pim ipv4 sparse-mode
    isis enable 1
    isis circuit-type level-2
+   isis hello-interval 1
    isis hello padding
    isis network point-to-point
 !
@@ -94,6 +95,7 @@ interface Switch1/1/2.100
    pim ipv4 sparse-mode
    isis enable 1
    isis circuit-type level-2
+   isis hello-interval 1
    isis hello padding
    isis network point-to-point
 !
@@ -103,6 +105,7 @@ interface Vlan4001
    pim ipv4 sparse-mode
    isis enable 1
    isis circuit-type level-2
+   isis hello-interval 1
    isis hello padding
    isis network point-to-point
 !

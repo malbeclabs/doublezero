@@ -27,6 +27,7 @@ All notable changes to this project will be documented in this file.
     - Introduce new user monitoring thread in activator for access pass functionality
 - Device controller
     - Implement user tunnel ACLs in device agent configuration
+    - Set protocol timers for ibgp and isis to improve to speed up network re-convergence
 - Onchain monitor
     - Initial implementation and component release
     - Monitor onchain device telemetry metrics

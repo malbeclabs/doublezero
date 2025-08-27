@@ -15,7 +15,7 @@ use serde::Deserialize;
 use solana_sdk::clock::DEFAULT_SLOTS_PER_EPOCH;
 use std::collections::HashMap;
 
-use crate::fee_payment_calculator::ValidatorRewards;
+use crate::solana_debt_calculator::ValidatorRewards;
 
 const SLOT_TIME_DURATION_SECONDS: f64 = 0.4;
 
@@ -37,20 +37,20 @@ pub struct Reward {
 }
 
 pub async fn get_rewards_between_timestamps(
-    fee_payment_calculator: &impl ValidatorRewards,
+    solana_debt_calculator: &impl ValidatorRewards,
     start_timestamp: u64,
     end_timestamp: u64,
     validator_ids: &[String],
 ) -> Result<HashMap<u64, Vec<Reward>>> {
     let mut rewards: HashMap<u64, Vec<Reward>> = HashMap::new();
-    let current_slot = fee_payment_calculator.get_slot().await?;
-    let block_time = fee_payment_calculator.get_block_time(current_slot).await?;
+    let current_slot = solana_debt_calculator.get_slot().await?;
+    let block_time = solana_debt_calculator.get_block_time(current_slot).await?;
     let block_time: u64 = block_time as u64;
 
     let start_epoch = epoch_from_timestamp(block_time, current_slot, start_timestamp)?;
     let end_epoch = epoch_from_timestamp(block_time, current_slot, end_timestamp)?;
     for epoch in start_epoch..=end_epoch {
-        let reward = get_total_rewards(fee_payment_calculator, validator_ids, epoch).await?;
+        let reward = get_total_rewards(solana_debt_calculator, validator_ids, epoch).await?;
         rewards.insert(epoch, reward.rewards);
     }
     Ok(rewards)
@@ -58,16 +58,16 @@ pub async fn get_rewards_between_timestamps(
 
 // this function will return a hashmap of total rewards keyed by validator pubkey
 pub async fn get_total_rewards(
-    fee_payment_calculator: &impl ValidatorRewards,
+    solana_debt_calculator: &impl ValidatorRewards,
     validator_ids: &[String],
     epoch: u64,
 ) -> Result<EpochRewards> {
     let mut validator_rewards: Vec<Reward> = Vec::with_capacity(validator_ids.len());
 
     let (inflation_rewards, jito_rewards, block_rewards) = tokio::join!(
-        inflation::get_inflation_rewards(fee_payment_calculator, validator_ids, epoch,),
-        jito::get_jito_rewards(fee_payment_calculator, validator_ids, epoch),
-        block::get_block_rewards(fee_payment_calculator, validator_ids, epoch,)
+        inflation::get_inflation_rewards(solana_debt_calculator, validator_ids, epoch,),
+        jito::get_jito_rewards(solana_debt_calculator, validator_ids, epoch),
+        block::get_block_rewards(solana_debt_calculator, validator_ids, epoch,)
     );
 
     let inflation_rewards = inflation_rewards?;
@@ -126,7 +126,7 @@ mod tests {
     use crate::jito::{JitoReward, JitoRewards};
 
     use super::*;
-    use crate::fee_payment_calculator::MockValidatorRewards;
+    use crate::solana_debt_calculator::MockValidatorRewards;
     use solana_client::rpc_response::{
         RpcInflationReward, RpcVoteAccountInfo, RpcVoteAccountStatus,
     };
@@ -146,16 +146,16 @@ mod tests {
         let start_timestamp = 1752727180;
         let end_timestamp = 1752727280;
 
-        let mut mock_fee_payment_calculator = MockValidatorRewards::new();
+        let mut mock_solana_debt_calculator = MockValidatorRewards::new();
 
         // Set up mock expectations for the ValidatorRewards trait.
         // These mocks simulate the behavior of external dependencies.
-        mock_fee_payment_calculator
+        mock_solana_debt_calculator
             .expect_get_slot()
             .times(1)
             .returning(move || Ok(356170122));
 
-        mock_fee_payment_calculator
+        mock_solana_debt_calculator
             .expect_get_block_time()
             .times(1)
             .returning(move |_| Ok(1752728180));
@@ -197,7 +197,7 @@ mod tests {
         let slot_index: usize = 10;
         let slot = first_slot + slot_index as u64;
 
-        mock_fee_payment_calculator
+        mock_solana_debt_calculator
             .expect_get_block_with_config()
             .withf(move |s| *s == slot)
             .times(1)
@@ -217,7 +217,7 @@ mod tests {
             delinquent: vec![],
         };
 
-        mock_fee_payment_calculator
+        mock_solana_debt_calculator
             .expect_get_vote_accounts_with_config()
             .withf(move || true)
             .times(1)
@@ -231,12 +231,12 @@ mod tests {
             commission: Some(1),
         })];
 
-        mock_fee_payment_calculator
+        mock_solana_debt_calculator
             .expect_get_inflation_reward()
             .times(1)
             .returning(move |_, _| Ok(mock_rpc_inflation_reward.clone()));
 
-        mock_fee_payment_calculator
+        mock_solana_debt_calculator
             .expect_get::<JitoRewards>()
             .withf(move |url| url.contains(&format!("epoch={epoch}")))
             .times(1)
@@ -253,14 +253,14 @@ mod tests {
         let mut leader_schedule = HashMap::new();
         leader_schedule.insert(validator_id.to_string(), vec![slot_index]);
 
-        mock_fee_payment_calculator
+        mock_solana_debt_calculator
             .expect_get_leader_schedule()
             .times(1)
             .returning(move || Ok(leader_schedule.clone()));
 
         // Call the function under test with the prepared data and mocks.
         let rewards = get_rewards_between_timestamps(
-            &mock_fee_payment_calculator,
+            &mock_solana_debt_calculator,
             start_timestamp,
             end_timestamp,
             validator_ids,
@@ -293,7 +293,7 @@ mod tests {
         let inflation_reward = 2500;
         let jito_reward = 10000;
 
-        let mut mock_fee_payment_calculator = MockValidatorRewards::new();
+        let mut mock_solana_debt_calculator = MockValidatorRewards::new();
 
         // Set up mock expectations for the ValidatorRewards trait.
         // These mocks simulate the behavior of external dependencies.
@@ -311,7 +311,7 @@ mod tests {
             delinquent: vec![],
         };
 
-        mock_fee_payment_calculator
+        mock_solana_debt_calculator
             .expect_get_vote_accounts_with_config()
             .withf(move || true)
             .times(1)
@@ -325,7 +325,7 @@ mod tests {
             commission: Some(1),
         })];
 
-        mock_fee_payment_calculator
+        mock_solana_debt_calculator
             .expect_get_inflation_reward()
             .times(1)
             .returning(move |_, _| Ok(mock_rpc_inflation_reward.clone()));
@@ -337,7 +337,7 @@ mod tests {
         let mut leader_schedule = HashMap::new();
         leader_schedule.insert(validator_id.to_string(), vec![slot_index]);
 
-        mock_fee_payment_calculator
+        mock_solana_debt_calculator
             .expect_get_leader_schedule()
             .times(1)
             .returning(move || Ok(leader_schedule.clone()));
@@ -360,13 +360,13 @@ mod tests {
             block_height: None,
         };
 
-        mock_fee_payment_calculator
+        mock_solana_debt_calculator
             .expect_get_block_with_config()
             .withf(move |s| *s == slot)
             .times(1)
             .returning(move |_| Ok(mock_block.clone()));
 
-        mock_fee_payment_calculator
+        mock_solana_debt_calculator
             .expect_get::<JitoRewards>()
             .withf(move |url| url.contains(&format!("epoch={epoch}")))
             .times(1)
@@ -381,7 +381,7 @@ mod tests {
             });
 
         // Call the function under test with the prepared data and mocks.
-        let rewards = get_total_rewards(&mock_fee_payment_calculator, validator_ids, epoch)
+        let rewards = get_total_rewards(&mock_solana_debt_calculator, validator_ids, epoch)
             .await
             .unwrap();
 

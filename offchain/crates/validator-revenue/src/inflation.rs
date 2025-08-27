@@ -1,16 +1,16 @@
-use crate::fee_payment_calculator::ValidatorRewards;
+use crate::solana_debt_calculator::ValidatorRewards;
 use anyhow::{Result, anyhow};
 use solana_sdk::pubkey::Pubkey;
 use std::{collections::HashMap, str::FromStr};
 
 pub async fn get_inflation_rewards<T: ValidatorRewards + ?Sized>(
-    fee_payment_calculator: &T,
+    solana_debt_calculator: &T,
     validator_ids: &[String],
     epoch: u64,
 ) -> Result<HashMap<String, u64>> {
     let mut vote_keys: Vec<Pubkey> = Vec::with_capacity(validator_ids.len());
 
-    let vote_accounts = fee_payment_calculator
+    let vote_accounts = solana_debt_calculator
         .get_vote_accounts_with_config()
         .await?;
 
@@ -34,7 +34,7 @@ pub async fn get_inflation_rewards<T: ValidatorRewards + ?Sized>(
         };
     }
 
-    let inflation_rewards = fee_payment_calculator
+    let inflation_rewards = solana_debt_calculator
         .get_inflation_reward(vote_keys, epoch)
         .await?;
 
@@ -55,14 +55,14 @@ pub async fn get_inflation_rewards<T: ValidatorRewards + ?Sized>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fee_payment_calculator::MockValidatorRewards;
+    use crate::solana_debt_calculator::MockValidatorRewards;
     use solana_client::rpc_response::{
         RpcInflationReward, RpcVoteAccountInfo, RpcVoteAccountStatus,
     };
 
     #[tokio::test]
     async fn test_get_inflation_rewards() {
-        let mut mock_fee_payment_calculator = MockValidatorRewards::new();
+        let mut mock_solana_debt_calculator = MockValidatorRewards::new();
         let validator_id = "some_validator_pubkey".to_string();
         let validator_ids = &[validator_id.clone()];
         let epoch = 100;
@@ -79,7 +79,7 @@ mod tests {
             }],
             delinquent: vec![],
         };
-        mock_fee_payment_calculator
+        mock_solana_debt_calculator
             .expect_get_vote_accounts_with_config()
             .withf(move || true)
             .times(1)
@@ -93,13 +93,13 @@ mod tests {
             commission: Some(1),
         })];
 
-        mock_fee_payment_calculator
+        mock_solana_debt_calculator
             .expect_get_inflation_reward()
             .times(1)
             .returning(move |_, _| Ok(mock_rpc_inflation_reward.clone()));
 
         let inflation_reward: u64 = 2500;
-        let rewards = get_inflation_rewards(&mock_fee_payment_calculator, validator_ids, epoch)
+        let rewards = get_inflation_rewards(&mock_solana_debt_calculator, validator_ids, epoch)
             .await
             .unwrap();
         assert_eq!(rewards.get(&validator_id), Some(&(inflation_reward)));

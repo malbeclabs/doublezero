@@ -1,4 +1,4 @@
-use crate::fee_payment_calculator::ValidatorRewards;
+use crate::solana_debt_calculator::ValidatorRewards;
 use anyhow::{Result, bail};
 use futures::{StreamExt, TryStreamExt, stream};
 use solana_sdk::{clock::DEFAULT_SLOTS_PER_EPOCH, reward_type::RewardType::Fee};
@@ -82,7 +82,7 @@ pub async fn get_block_rewards<T: ValidatorRewards>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fee_payment_calculator::MockValidatorRewards;
+    use crate::solana_debt_calculator::MockValidatorRewards;
     use solana_transaction_status_client_types::{Reward, UiConfirmedBlock};
 
     #[tokio::test]

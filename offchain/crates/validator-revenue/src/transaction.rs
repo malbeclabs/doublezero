@@ -175,7 +175,7 @@ impl Transaction {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fee_payment_calculator::FeePaymentCalculator;
+    use crate::solana_debt_calculator::SolanaDebtCalculator;
     use solana_client::{
         nonblocking::rpc_client::RpcClient,
         rpc_config::{RpcBlockConfig, RpcGetVoteAccountsConfig},
@@ -231,7 +231,7 @@ mod tests {
             commitment: None,
             max_supported_transaction_version: Some(0),
         };
-        let fpc = FeePaymentCalculator::new(
+        let fpc = SolanaDebtCalculator::new(
             ledger_rpc_client,
             solana_rpc_client,
             rpc_block_config,

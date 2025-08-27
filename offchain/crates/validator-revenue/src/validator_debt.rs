@@ -3,38 +3,41 @@ use solana_sdk::pubkey::Pubkey;
 use svm_hash::merkle::{MerkleProof, merkle_root_from_indexed_byte_ref_leaves};
 
 #[derive(Debug, BorshDeserialize, BorshSerialize, Clone)]
-pub struct ComputedSolanaValidatorPayments {
+pub struct ComputedSolanaValidatorDebts {
     pub epoch: u64,
-    pub payments: Vec<SolanaValidatorPayment>,
+    pub debts: Vec<ComputedSolanaValidatorDebt>,
 }
 
-impl ComputedSolanaValidatorPayments {
+impl ComputedSolanaValidatorDebts {
     pub fn find_payment_proof(
         &self,
         validator_id: &Pubkey,
-    ) -> Option<(&SolanaValidatorPayment, MerkleProof)> {
+    ) -> Option<(&ComputedSolanaValidatorDebt, MerkleProof)> {
         let index = self
-            .payments
+            .debts
             .iter()
-            .position(|payment| &payment.node_id == validator_id)?;
+            .position(|debt| &debt.node_id == validator_id)?;
 
-        let solana_validator_payment_entry = &self.payments[index];
+        let solana_validator_debt_entry = &self.debts[index];
         let leaves = self.to_byte_leaves();
         let proof = MerkleProof::from_indexed_byte_ref_leaves(
             &leaves,
             index as u32,
-            Some(SolanaValidatorPayment::LEAF_PREFIX),
+            Some(ComputedSolanaValidatorDebt::LEAF_PREFIX),
         )?;
-        Some((solana_validator_payment_entry, proof))
+        Some((solana_validator_debt_entry, proof))
     }
 
     pub fn merkle_root(&self) -> Option<svm_hash::sha2::Hash> {
         let leaves = self.to_byte_leaves();
-        merkle_root_from_indexed_byte_ref_leaves(&leaves, Some(SolanaValidatorPayment::LEAF_PREFIX))
+        merkle_root_from_indexed_byte_ref_leaves(
+            &leaves,
+            Some(ComputedSolanaValidatorDebt::LEAF_PREFIX),
+        )
     }
 
     fn to_byte_leaves(&self) -> Vec<Vec<u8>> {
-        self.payments
+        self.debts
             .iter()
             .map(|payment| borsh::to_vec(&payment).unwrap())
             .collect()
@@ -42,12 +45,12 @@ impl ComputedSolanaValidatorPayments {
 }
 
 #[derive(Debug, BorshDeserialize, BorshSerialize, Clone, Copy, Default, PartialEq, Eq)]
-pub struct SolanaValidatorPayment {
+pub struct ComputedSolanaValidatorDebt {
     pub node_id: Pubkey,
     pub amount: u64,
 }
 
-impl SolanaValidatorPayment {
+impl ComputedSolanaValidatorDebt {
     pub const LEAF_PREFIX: &'static [u8] = b"solana_validator_payment";
 
     pub fn merkle_root(&self, proof: MerkleProof) -> svm_hash::sha2::Hash {
@@ -67,40 +70,38 @@ mod tests {
 
     #[test]
     fn test_add_rewards_to_tree() -> Result<()> {
-        let payments = ComputedSolanaValidatorPayments {
+        let debts = ComputedSolanaValidatorDebts {
             epoch: 822,
-            payments: vec![
-                SolanaValidatorPayment {
+            debts: vec![
+                ComputedSolanaValidatorDebt {
                     node_id: Pubkey::new_unique(),
                     amount: 1343542456,
                 },
-                SolanaValidatorPayment {
+                ComputedSolanaValidatorDebt {
                     node_id: Pubkey::new_unique(),
                     amount: 234234324,
                 },
             ],
         };
 
-        let leaf_prefix = Some(SolanaValidatorPayment::LEAF_PREFIX);
-        let leaves = payments.to_byte_leaves();
+        let leaf_prefix = Some(ComputedSolanaValidatorDebt::LEAF_PREFIX);
+        let leaves = debts.to_byte_leaves();
         let leaves_ref: Vec<&[u8]> = leaves.iter().map(|v| v.as_slice()).collect();
-        let root = payments.merkle_root().unwrap();
+        let root = debts.merkle_root().unwrap();
 
-        let proof_left = payments
-            .find_payment_proof(&payments.payments[0].node_id)
-            .unwrap();
+        let proof_left = debts.find_payment_proof(&debts.debts[0].node_id).unwrap();
 
-        let computed_proof_left = proof_left
-            .1
-            .root_from_byte_ref_leaf(&leaves_ref[0], Some(SolanaValidatorPayment::LEAF_PREFIX));
+        let computed_proof_left = proof_left.1.root_from_byte_ref_leaf(
+            &leaves_ref[0],
+            Some(ComputedSolanaValidatorDebt::LEAF_PREFIX),
+        );
 
-        let proof_right = payments
-            .find_payment_proof(&payments.payments[1].node_id)
-            .unwrap();
+        let proof_right = debts.find_payment_proof(&debts.debts[1].node_id).unwrap();
 
-        let computed_proof_right = proof_right
-            .1
-            .root_from_byte_ref_leaf(&leaves_ref[1], Some(SolanaValidatorPayment::LEAF_PREFIX));
+        let computed_proof_right = proof_right.1.root_from_byte_ref_leaf(
+            &leaves_ref[1],
+            Some(ComputedSolanaValidatorDebt::LEAF_PREFIX),
+        );
 
         assert_eq!(
             proof_left.1.root_from_leaf(leaves_ref[0], leaf_prefix),
@@ -120,8 +121,8 @@ mod tests {
             root
         );
 
-        assert_eq!(proof_left.0.node_id, payments.payments[0].node_id);
-        assert_eq!(proof_right.0.node_id, payments.payments[1].node_id);
+        assert_eq!(proof_left.0.node_id, debts.debts[0].node_id);
+        assert_eq!(proof_right.0.node_id, debts.debts[1].node_id);
 
         Ok(())
     }

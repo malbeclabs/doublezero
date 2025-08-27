@@ -7,9 +7,10 @@
 // write record
 
 use crate::{
-    fee_payment_calculator::ValidatorRewards,
-    rewards, transaction,
-    validator_payment::{ComputedSolanaValidatorPayments, SolanaValidatorPayment},
+    rewards,
+    solana_debt_calculator::ValidatorRewards,
+    transaction,
+    validator_debt::{ComputedSolanaValidatorDebt, ComputedSolanaValidatorDebts},
 };
 use anyhow::Result;
 use chrono::{DateTime, Utc};
@@ -24,21 +25,21 @@ pub struct RecordResult {
     pub last_written_epoch: Option<u64>,
     pub last_check: Option<DateTime<Utc>>,
     pub data_written: Option<Hash>,
-    pub computed_payments: Option<ComputedSolanaValidatorPayments>,
+    pub computed_debts: Option<ComputedSolanaValidatorDebts>,
     pub tx_initialized_sig: Option<Signature>,
     pub tx_submitted_sig: Option<Signature>,
 }
 
 pub async fn write_payments<T: ValidatorRewards>(
-    fee_payment_calculator: &T,
+    solana_debt_calculator: &T,
     signer: Keypair,
     validator_ids: Vec<String>,
 ) -> Result<RecordResult> {
     let record_result: RecordResult;
-    let fetched_epoch_info = fee_payment_calculator.get_epoch_info().await?;
+    let fetched_epoch_info = solana_debt_calculator.get_epoch_info().await?;
 
     let now = Utc::now();
-    let dz_fetch_epoch_info = fee_payment_calculator
+    let dz_fetch_epoch_info = solana_debt_calculator
         .ledger_rpc_client()
         .get_epoch_info()
         .await?;
@@ -48,7 +49,7 @@ pub async fn write_payments<T: ValidatorRewards>(
             last_written_epoch: Some(dz_fetch_epoch_info.epoch),
             last_check: Some(now),
             data_written: None, // probably will be something if we want to record "heartbeats"
-            computed_payments: None,
+            computed_debts: None,
             tx_initialized_sig: None,
             tx_submitted_sig: None,
         };
@@ -59,7 +60,7 @@ pub async fn write_payments<T: ValidatorRewards>(
 
     // fetch rewards for validators
     let validator_rewards = rewards::get_total_rewards(
-        fee_payment_calculator,
+        solana_debt_calculator,
         validator_ids.as_slice(),
         fetched_epoch_info.epoch,
     )
@@ -68,34 +69,34 @@ pub async fn write_payments<T: ValidatorRewards>(
     // TODO: post rewards to ledger
 
     // gather rewards into payments
-    let computed_solana_validator_payment_vec: Vec<SolanaValidatorPayment> = validator_rewards
+    let computed_solana_validator_debt_vec: Vec<ComputedSolanaValidatorDebt> = validator_rewards
         .rewards
         .iter()
-        .map(|reward| SolanaValidatorPayment {
+        .map(|reward| ComputedSolanaValidatorDebt {
             node_id: Pubkey::from_str(&reward.validator_id).unwrap(),
             amount: reward.total,
         })
         .collect();
 
-    let computed_solana_validator_payments = ComputedSolanaValidatorPayments {
+    let computed_solana_validator_debts = ComputedSolanaValidatorDebts {
         epoch: fetched_epoch_info.epoch,
-        payments: computed_solana_validator_payment_vec,
+        debts: computed_solana_validator_debt_vec,
     };
 
-    let data = computed_solana_validator_payments.merkle_root();
+    let data = computed_solana_validator_debts.merkle_root();
 
     // TODO: need to comment out until local validator running in CI
     let transaction = transaction::Transaction::new(signer, false);
     let initialized_transaction = transaction
         .initialize_distribution(
-            fee_payment_calculator.ledger_rpc_client(),
-            fee_payment_calculator.solana_rpc_client(),
+            solana_debt_calculator.ledger_rpc_client(),
+            solana_debt_calculator.solana_rpc_client(),
             fetched_epoch_info.epoch,
         )
         .await?;
     let tx_initialized_sig = transaction
         .send_or_simulate_transaction(
-            fee_payment_calculator.solana_rpc_client(),
+            solana_debt_calculator.solana_rpc_client(),
             &initialized_transaction,
         )
         .await?;
@@ -113,14 +114,14 @@ pub async fn write_payments<T: ValidatorRewards>(
 
     let submitted_distribution = transaction
         .submit_distribution(
-            fee_payment_calculator.solana_rpc_client(),
+            solana_debt_calculator.solana_rpc_client(),
             fetched_epoch_info.epoch,
             debt,
         )
         .await?;
     let tx_submitted_sig = transaction
         .send_or_simulate_transaction(
-            fee_payment_calculator.solana_rpc_client(),
+            solana_debt_calculator.solana_rpc_client(),
             &submitted_distribution,
         )
         .await?;
@@ -129,7 +130,7 @@ pub async fn write_payments<T: ValidatorRewards>(
         last_written_epoch: Some(dz_fetch_epoch_info.epoch),
         last_check: Some(now),
         data_written: data,
-        computed_payments: Some(computed_solana_validator_payments),
+        computed_debts: Some(computed_solana_validator_debts),
         tx_submitted_sig: Some(tx_submitted_sig.ok_or_else(|| {
             anyhow::anyhow!("send_or_simulate_transaction returned None for tx_submitted_sig")
         })?),
@@ -144,8 +145,8 @@ pub async fn write_payments<T: ValidatorRewards>(
 mod tests {
     use super::*;
     use crate::block;
-    use crate::fee_payment_calculator::{MockValidatorRewards, ledger_rpc, solana_rpc};
     use crate::jito::{JitoReward, JitoRewards};
+    use crate::solana_debt_calculator::{MockValidatorRewards, ledger_rpc, solana_rpc};
     use solana_client::nonblocking::rpc_client::RpcClient;
     use solana_client::rpc_response::{
         RpcInflationReward, RpcVoteAccountInfo, RpcVoteAccountStatus,
@@ -177,7 +178,7 @@ mod tests {
     #[ignore] // this will fail without local validator
     #[tokio::test]
     async fn test_execute_worker() -> Result<()> {
-        let mut mock_fee_payment_calculator = MockValidatorRewards::new();
+        let mut mock_solana_debt_calculator = MockValidatorRewards::new();
         let commitment_config = CommitmentConfig::processed();
 
         let validator_id = "devgM7SXHvoHH6jPXRsjn97gygPUo58XEnc9bqY1jpj";
@@ -202,21 +203,21 @@ mod tests {
             delinquent: vec![],
         };
 
-        mock_fee_payment_calculator
+        mock_solana_debt_calculator
             .expect_solana_rpc_client()
             .return_const(RpcClient::new_with_commitment(
                 solana_rpc(),
                 commitment_config,
             ));
 
-        mock_fee_payment_calculator
+        mock_solana_debt_calculator
             .expect_ledger_rpc_client()
             .return_const(RpcClient::new_with_commitment(
                 ledger_rpc(),
                 commitment_config,
             ));
 
-        mock_fee_payment_calculator
+        mock_solana_debt_calculator
             .expect_get_vote_accounts_with_config()
             .withf(move || true)
             .returning(move || Ok(mock_rpc_vote_account_status.clone()));
@@ -229,7 +230,7 @@ mod tests {
             commission: Some(1),
         })];
 
-        mock_fee_payment_calculator
+        mock_solana_debt_calculator
             .expect_get_inflation_reward()
             .returning(move |_, _| Ok(mock_rpc_inflation_reward.clone()));
 
@@ -240,7 +241,7 @@ mod tests {
         let mut leader_schedule = HashMap::new();
         leader_schedule.insert(validator_id.to_string(), vec![slot_index]);
 
-        mock_fee_payment_calculator
+        mock_solana_debt_calculator
             .expect_get_leader_schedule()
             .returning(move || Ok(leader_schedule.clone()));
 
@@ -271,16 +272,16 @@ mod tests {
             transaction_count: Some(0),
         };
 
-        mock_fee_payment_calculator
+        mock_solana_debt_calculator
             .expect_get_epoch_info()
             .returning(move || Ok(epoch_info.clone()));
 
-        mock_fee_payment_calculator
+        mock_solana_debt_calculator
             .expect_get_block_with_config()
             .withf(move |s| *s == slot)
             .returning(move |_| Ok(mock_block.clone()));
 
-        mock_fee_payment_calculator
+        mock_solana_debt_calculator
             .expect_get::<JitoRewards>()
             .withf(move |url| url.contains(&format!("epoch={epoch}")))
             .returning(move |_| {
@@ -296,17 +297,17 @@ mod tests {
         let signer = try_load_keypair(None).unwrap();
 
         let record_result =
-            write_payments(&mock_fee_payment_calculator, signer, validator_ids).await?;
+            write_payments(&mock_solana_debt_calculator, signer, validator_ids).await?;
 
         assert_eq!(
             record_result.last_written_epoch.unwrap(),
             fake_fetched_epoch
         );
 
-        let computed_payments = record_result.computed_payments.unwrap();
+        let computed_debts = record_result.computed_debts.unwrap();
 
-        let first_validator_payment_proof = computed_payments
-            .find_payment_proof(&computed_payments.payments[0].node_id)
+        let first_validator_payment_proof = computed_debts
+            .find_payment_proof(&computed_debts.debts[0].node_id)
             .unwrap();
 
         assert_eq!(

@@ -1,4 +1,4 @@
-use crate::fee_payment_calculator::ValidatorRewards;
+use crate::solana_debt_calculator::ValidatorRewards;
 use anyhow::{Result, anyhow};
 use futures::{StreamExt, stream};
 use serde::Deserialize;
@@ -24,7 +24,7 @@ pub struct JitoReward {
 
 // may need to add in pagination
 pub async fn get_jito_rewards<T: ValidatorRewards>(
-    fee_payment_calculator: &T,
+    solana_debt_calculator: &T,
     validator_ids: &[String],
     epoch: u64,
 ) -> Result<HashMap<String, u64>> {
@@ -34,7 +34,7 @@ pub async fn get_jito_rewards<T: ValidatorRewards>(
         "{JITO_BASE_URL}validator_rewards?epoch={epoch}&limit={JITO_REWARDS_LIMIT}"
     );
 
-    let rewards = match fee_payment_calculator.get::<JitoRewards>(&url).await {
+    let rewards = match solana_debt_calculator.get::<JitoRewards>(&url).await {
         Ok(jito_rewards) => {
             if jito_rewards.total_count > JITO_REWARDS_LIMIT {
                 println!(
@@ -75,7 +75,7 @@ pub async fn get_jito_rewards<T: ValidatorRewards>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fee_payment_calculator::MockValidatorRewards;
+    use crate::solana_debt_calculator::MockValidatorRewards;
 
     #[tokio::test]
     async fn test_get_jito_rewards() {

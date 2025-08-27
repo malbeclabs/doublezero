@@ -47,6 +47,9 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 				received = append(received, samples...)
 				return solana.Signature{}, nil, nil
 			},
+			GetSignerPublicKeyFunc: func() (solana.PublicKey, error) {
+				return solana.PublicKey{}, nil
+			},
 		}
 
 		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
@@ -86,6 +89,9 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 					return solana.Signature{}, nil, errors.New("temporary failure")
 				}
 				return solana.Signature{}, nil, nil
+			},
+			GetSignerPublicKeyFunc: func() (solana.PublicKey, error) {
+				return solana.PublicKey{}, nil
 			},
 		}
 
@@ -129,6 +135,9 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 				defer mu.Unlock()
 				callCount++
 				return solana.Signature{}, nil, errors.New("still failing")
+			},
+			GetSignerPublicKeyFunc: func() (solana.PublicKey, error) {
+				return solana.PublicKey{}, nil
 			},
 		}
 
@@ -175,6 +184,9 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 				atomic.AddInt32(&attempts, 1)
 				return solana.Signature{}, nil, errors.New("permanent failure")
 			},
+			GetSignerPublicKeyFunc: func() (solana.PublicKey, error) {
+				return solana.PublicKey{}, nil
+			},
 		}
 
 		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
@@ -219,6 +231,9 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			WriteDeviceLatencySamplesFunc: func(ctx context.Context, config sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
 				atomic.AddInt32(&attempts, 1)
 				return solana.Signature{}, nil, nil
+			},
+			GetSignerPublicKeyFunc: func() (solana.PublicKey, error) {
+				return solana.PublicKey{}, nil
 			},
 		}
 
@@ -265,6 +280,9 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 				}
 				return solana.Signature{}, nil, nil
 			},
+			GetSignerPublicKeyFunc: func() (solana.PublicKey, error) {
+				return solana.PublicKey{}, nil
+			},
 		}
 
 		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
@@ -306,6 +324,9 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			WriteDeviceLatencySamplesFunc: func(ctx context.Context, config sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
 				atomic.AddInt32(&attempts, 1)
 				return solana.Signature{}, nil, errors.New("still failing")
+			},
+			GetSignerPublicKeyFunc: func() (solana.PublicKey, error) {
+				return solana.PublicKey{}, nil
 			},
 		}
 
@@ -360,6 +381,9 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			WriteDeviceLatencySamplesFunc: func(ctx context.Context, _ sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
 				t.Fatalf("should not call WriteDeviceLatencySamples for empty samples")
 				return solana.Signature{}, nil, nil
+			},
+			GetSignerPublicKeyFunc: func() (solana.PublicKey, error) {
+				return solana.PublicKey{}, nil
 			},
 		}
 
@@ -434,6 +458,9 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 				calls++
 				samplesPerCall = append(samplesPerCall, len(config.Samples))
 				return solana.Signature{}, nil, nil
+			},
+			GetSignerPublicKeyFunc: func() (solana.PublicKey, error) {
+				return solana.PublicKey{}, nil
 			},
 		}
 
@@ -511,6 +538,9 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 				receivedRTTs = append(receivedRTTs, config.Samples...)
 				return solana.Signature{}, nil, nil
 			},
+			GetSignerPublicKeyFunc: func() (solana.PublicKey, error) {
+				return solana.PublicKey{}, nil
+			},
 		}
 
 		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
@@ -553,6 +583,9 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			ProgramClient: &mockTelemetryProgramClient{
 				WriteDeviceLatencySamplesFunc: func(ctx context.Context, _ sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
 					return solana.Signature{}, nil, nil
+				},
+				GetSignerPublicKeyFunc: func() (solana.PublicKey, error) {
+					return solana.PublicKey{}, nil
 				},
 			},
 			GetCurrentEpoch: func(ctx context.Context) (uint64, error) {
@@ -624,6 +657,9 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			WriteDeviceLatencySamplesFunc: func(ctx context.Context, config sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
 				return solana.Signature{}, nil, sdktelemetry.ErrSamplesAccountFull
 			},
+			GetSignerPublicKeyFunc: func() (solana.PublicKey, error) {
+				return solana.PublicKey{}, nil
+			},
 		}
 
 		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
@@ -671,6 +707,9 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 				atomic.StoreInt32(&initCalled, 1)
 				return solana.Signature{}, nil, nil
 			},
+			GetSignerPublicKeyFunc: func() (solana.PublicKey, error) {
+				return solana.PublicKey{}, nil
+			},
 		}
 
 		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
@@ -708,6 +747,9 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			WriteDeviceLatencySamplesFunc: func(ctx context.Context, _ sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
 				return solana.Signature{}, nil, errors.New("permanent failure")
 			},
+			GetSignerPublicKeyFunc: func() (solana.PublicKey, error) {
+				return solana.PublicKey{}, nil
+			},
 		}
 
 		buf := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
@@ -743,13 +785,19 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			WriteDeviceLatencySamplesFunc: func(context.Context, sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
 				return solana.Signature{}, nil, errors.New("perm fail")
 			},
+			GetSignerPublicKeyFunc: func() (solana.PublicKey, error) {
+				return solana.PublicKey{}, nil
+			},
 		}
 
 		buf := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](2) // intentionally small to test overflow/blocking behavior
 		buf.Add(key, first)
 
 		s, _ := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
-			Interval: time.Hour, Buffer: buf, ProgramClient: prog, MaxAttempts: 1,
+			Interval:        time.Hour,
+			Buffer:          buf,
+			ProgramClient:   prog,
+			MaxAttempts:     1,
 			BackoffFunc:     func(int) time.Duration { return 0 },
 			GetCurrentEpoch: func(context.Context) (uint64, error) { return 100, nil },
 		})
@@ -772,12 +820,18 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			WriteDeviceLatencySamplesFunc: func(context.Context, sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
 				return solana.Signature{}, nil, errors.New("fail")
 			},
+			GetSignerPublicKeyFunc: func() (solana.PublicKey, error) {
+				return solana.PublicKey{}, nil
+			},
 		}
 		buf := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1)
 		buf.Add(key, newTestSample())
 
 		s, _ := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
-			Interval: time.Hour, Buffer: buf, ProgramClient: prog, MaxAttempts: 1,
+			Interval:        time.Hour,
+			Buffer:          buf,
+			ProgramClient:   prog,
+			MaxAttempts:     1,
 			BackoffFunc:     func(int) time.Duration { return 0 },
 			GetCurrentEpoch: func(context.Context) (uint64, error) { return 100, nil },
 		})

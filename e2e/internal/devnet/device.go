@@ -269,7 +269,7 @@ func (d *Device) Start(ctx context.Context) error {
 
 	// If the metrics publisher pubkey is not set, try to use the telemetry keypair.
 	if spec.MetricsPublisherPK == "" && spec.Telemetry.KeypairPath != "" {
-		if _, err := os.Stat(spec.Telemetry.KeypairPath); os.IsExist(err) {
+		if _, err := os.Stat(spec.Telemetry.KeypairPath); err == nil {
 			keypairJSON, err := os.ReadFile(spec.Telemetry.KeypairPath)
 			if err != nil {
 				return fmt.Errorf("failed to read telemetry keypair: %w", err)
@@ -278,6 +278,7 @@ func (d *Device) Start(ctx context.Context) error {
 			if err != nil {
 				return fmt.Errorf("failed to get telemetry keypair: %w", err)
 			}
+			d.log.Info("--> Using existing telemetry keypair for metrics publisher pubkey", "path", spec.Telemetry.KeypairPath)
 		}
 	}
 

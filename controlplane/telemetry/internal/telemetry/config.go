@@ -19,14 +19,11 @@ type Config struct {
 	// GetCurrentEpochFunc is the function to get the current epoch.
 	GetCurrentEpochFunc func(ctx context.Context) (uint64, error)
 
-	// TelemetryProgramClient is the client to the telemetry program.
+	// TelemetryProgramClient is the telemetry program client.
 	TelemetryProgramClient TelemetryProgramClient
 
 	// LocalDevicePK is the public key of the local device PDA onchain.
 	LocalDevicePK solana.PublicKey
-
-	// MetricsPublisherPK is the public key of the metrics publisher.
-	MetricsPublisherPK solana.PublicKey
 
 	// ProbeInterval is the interval at which to probe peers.
 	ProbeInterval time.Duration

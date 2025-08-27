@@ -26,7 +26,14 @@ func (c *AddDeviceCmd) Command() *cobra.Command {
 		Use:   "add-device",
 		Short: "Create and start a device on the devnet",
 		RunE: withDevnet(func(ctx context.Context, dn *LocalDevnet, cmd *cobra.Command, args []string) error {
-			err := dn.Start(ctx, nil)
+			verbose, err := cmd.Root().PersistentFlags().GetBool("verbose")
+			if err != nil {
+				return fmt.Errorf("failed to get verbose flag: %w", err)
+			}
+
+			err = dn.Start(ctx, &devnet.BuildConfig{
+				Verbose: verbose,
+			})
 			if err != nil {
 				return fmt.Errorf("failed to start devnet: %w", err)
 			}

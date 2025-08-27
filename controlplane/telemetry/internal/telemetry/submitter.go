@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v5"
-	"github.com/gagliardetto/solana-go"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/metrics"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/buffer"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
@@ -20,14 +19,13 @@ const (
 )
 
 type SubmitterConfig struct {
-	Interval           time.Duration
-	Buffer             buffer.PartitionedBuffer[PartitionKey, Sample]
-	MetricsPublisherPK solana.PublicKey
-	ProbeInterval      time.Duration
-	ProgramClient      TelemetryProgramClient
-	BackoffFunc        func(attempt int) time.Duration // optional, defaults to exponential backoff
-	MaxAttempts        int                             // optional, defaults to 5
-	GetCurrentEpoch    func(ctx context.Context) (uint64, error)
+	Interval        time.Duration
+	Buffer          buffer.PartitionedBuffer[PartitionKey, Sample]
+	ProbeInterval   time.Duration
+	ProgramClient   TelemetryProgramClient
+	BackoffFunc     func(attempt int) time.Duration // optional, defaults to exponential backoff
+	MaxAttempts     int                             // optional, defaults to 5
+	GetCurrentEpoch func(ctx context.Context) (uint64, error)
 }
 
 // Submitter periodically flushes collected telemetry samples from the sample
@@ -56,7 +54,11 @@ func NewSubmitter(log *slog.Logger, cfg *SubmitterConfig) (*Submitter, error) {
 }
 
 func (s *Submitter) Run(ctx context.Context) error {
-	s.log.Info("Starting submission loop", "interval", s.cfg.Interval, "maxRetries", s.cfg.MaxAttempts, "metricsPublisherPK", s.cfg.MetricsPublisherPK)
+	metricsPublisherPK, err := s.cfg.ProgramClient.GetSignerPublicKey()
+	if err != nil {
+		return fmt.Errorf("failed to get metrics publisher key: %w", err)
+	}
+	s.log.Info("Starting submission loop", "interval", s.cfg.Interval, "maxRetries", s.cfg.MaxAttempts, "metricsPublisherPK", metricsPublisherPK)
 
 	ticker := time.NewTicker(s.cfg.Interval)
 	defer ticker.Stop()
@@ -104,8 +106,13 @@ func (s *Submitter) SubmitSamples(ctx context.Context, partitionKey PartitionKey
 			}
 		}
 
+		metricsPublisherPK, err := s.cfg.ProgramClient.GetSignerPublicKey()
+		if err != nil {
+			return fmt.Errorf("failed to get metrics publisher key: %w", err)
+		}
+
 		writeConfig := telemetry.WriteDeviceLatencySamplesInstructionConfig{
-			AgentPK:                    s.cfg.MetricsPublisherPK,
+			AgentPK:                    metricsPublisherPK,
 			OriginDevicePK:             partitionKey.OriginDevicePK,
 			TargetDevicePK:             partitionKey.TargetDevicePK,
 			LinkPK:                     partitionKey.LinkPK,
@@ -114,12 +121,12 @@ func (s *Submitter) SubmitSamples(ctx context.Context, partitionKey PartitionKey
 			Samples:                    rtts,
 		}
 
-		_, _, err := s.cfg.ProgramClient.WriteDeviceLatencySamples(ctx, writeConfig)
+		_, _, err = s.cfg.ProgramClient.WriteDeviceLatencySamples(ctx, writeConfig)
 		if err != nil {
 			if errors.Is(err, telemetry.ErrAccountNotFound) {
 				log.Debug("Account not found, initializing")
 				_, _, err = s.cfg.ProgramClient.InitializeDeviceLatencySamples(ctx, telemetry.InitializeDeviceLatencySamplesInstructionConfig{
-					AgentPK:                      s.cfg.MetricsPublisherPK,
+					AgentPK:                      metricsPublisherPK,
 					OriginDevicePK:               partitionKey.OriginDevicePK,
 					TargetDevicePK:               partitionKey.TargetDevicePK,
 					LinkPK:                       partitionKey.LinkPK,

@@ -25,4 +25,7 @@ type TelemetryProgramClient interface {
 
 	// WriteDeviceLatencySamples writes the device latency samples to the account.
 	WriteDeviceLatencySamples(ctx context.Context, config telemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error)
+
+	// GetSignerPublicKey returns the public key of the signer.
+	GetSignerPublicKey() (solana.PublicKey, error)
 }

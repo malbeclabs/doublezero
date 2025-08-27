@@ -77,6 +77,7 @@ type mockTelemetryProgramClient struct {
 	InitializeDeviceLatencySamplesFunc func(ctx context.Context, config sdktelemetry.InitializeDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error)
 	WriteDeviceLatencySamplesFunc      func(ctx context.Context, config sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error)
 	GetDeviceLatencySamplesFunc        func(ctx context.Context, originDevicePK solana.PublicKey, targetDevicePK solana.PublicKey, linkPK solana.PublicKey, epoch uint64) (*sdktelemetry.DeviceLatencySamples, error)
+	GetSignerPublicKeyFunc             func() (solana.PublicKey, error)
 }
 
 func (c *mockTelemetryProgramClient) InitializeDeviceLatencySamples(ctx context.Context, config sdktelemetry.InitializeDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
@@ -91,8 +92,13 @@ func (c *mockTelemetryProgramClient) GetDeviceLatencySamples(ctx context.Context
 	return c.GetDeviceLatencySamplesFunc(ctx, originDevicePK, targetDevicePK, linkPK, epoch)
 }
 
+func (c *mockTelemetryProgramClient) GetSignerPublicKey() (solana.PublicKey, error) {
+	return c.GetSignerPublicKeyFunc()
+}
+
 type memoryTelemetryProgramClient struct {
 	accounts map[telemetry.PartitionKey][]telemetry.Sample
+	signer   solana.PrivateKey
 
 	mu sync.RWMutex
 }
@@ -100,6 +106,7 @@ type memoryTelemetryProgramClient struct {
 func newMemoryTelemetryProgramClient() *memoryTelemetryProgramClient {
 	return &memoryTelemetryProgramClient{
 		accounts: make(map[telemetry.PartitionKey][]telemetry.Sample),
+		signer:   solana.NewWallet().PrivateKey,
 	}
 }
 
@@ -145,6 +152,13 @@ func (c *memoryTelemetryProgramClient) WriteDeviceLatencySamples(ctx context.Con
 	c.accounts[partitionKey] = append(c.accounts[partitionKey], samples...)
 
 	return solana.Signature{}, nil, nil
+}
+
+func (c *memoryTelemetryProgramClient) GetSignerPublicKey() (solana.PublicKey, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	return c.signer.PublicKey(), nil
 }
 
 func (c *memoryTelemetryProgramClient) GetAccounts(t *testing.T) map[telemetry.PartitionKey][]telemetry.Sample {

@@ -53,12 +53,11 @@ func New(log *slog.Logger, cfg Config) (*Collector, error) {
 
 	var err error
 	c.submitter, err = NewSubmitter(log, &SubmitterConfig{
-		Interval:           cfg.SubmissionInterval,
-		Buffer:             buffer,
-		MetricsPublisherPK: cfg.MetricsPublisherPK,
-		ProbeInterval:      cfg.ProbeInterval,
-		ProgramClient:      cfg.TelemetryProgramClient,
-		GetCurrentEpoch:    cfg.GetCurrentEpochFunc,
+		Interval:        cfg.SubmissionInterval,
+		Buffer:          buffer,
+		ProbeInterval:   cfg.ProbeInterval,
+		ProgramClient:   cfg.TelemetryProgramClient,
+		GetCurrentEpoch: cfg.GetCurrentEpochFunc,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create submitter: %w", err)

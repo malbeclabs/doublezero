@@ -21,7 +21,6 @@ import (
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/telemetry"
 	telemetryconfig "github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/config"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
-	sdktelemetry "github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 	twamplight "github.com/malbeclabs/doublezero/tools/twamp/pkg/light"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -144,7 +143,7 @@ func main() {
 	}
 
 	// Check that the metrics publisher keypair is valid.
-	keypair, err := solana.PrivateKeyFromSolanaKeygenFile(*keypairPath)
+	_, err = solana.PrivateKeyFromSolanaKeygenFile(*keypairPath)
 	if err != nil {
 		log.Error("Failed to load metrics publisher keypair", "error", err)
 		os.Exit(1)
@@ -155,7 +154,6 @@ func main() {
 		"ledgerRPCURL", *ledgerRPCURL,
 		"serviceabilityProgramID", *serviceabilityProgramID,
 		"telemetryProgramID", *telemetryProgramID,
-		"keypairPath", *keypairPath,
 		"devicePubkey", localDevicePK,
 		"probeInterval", *probeInterval,
 		"submissionInterval", *submissionInterval,
@@ -253,17 +251,21 @@ func main() {
 		log.Error("failed to parse program ID", "error", err)
 		os.Exit(1)
 	}
+	telemetryProgramClient, err := telemetry.NewTelemetryClient(log, rpcClient, telemetryProgramID, *keypairPath)
+	if err != nil {
+		log.Error("failed to create telemetry program client", "error", err)
+		os.Exit(1)
+	}
 
 	// Initialize collector.
 	collector, err := telemetry.New(log, telemetry.Config{
 		LocalDevicePK:          localDevicePK,
-		MetricsPublisherPK:     keypair.PublicKey(),
 		ProbeInterval:          *probeInterval,
 		SubmissionInterval:     *submissionInterval,
 		TWAMPSenderTimeout:     *twampSenderTimeout,
 		TWAMPReflector:         reflector,
 		PeerDiscovery:          peerDiscovery,
-		TelemetryProgramClient: sdktelemetry.New(log, rpcClient, &keypair, telemetryProgramID),
+		TelemetryProgramClient: telemetryProgramClient,
 		GetCurrentEpochFunc: func(ctx context.Context) (uint64, error) {
 			epochInfo, err := rpcClient.GetEpochInfo(ctx, solanarpc.CommitmentFinalized)
 			if err != nil {

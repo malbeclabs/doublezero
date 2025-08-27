@@ -2,7 +2,8 @@ use crate::{
     instructions::*,
     processors::{
         accesspass::{
-            check_status::process_check_status_access_pass, set::process_set_access_pass,
+            check_status::process_check_status_access_pass, close::process_close_access_pass,
+            set::process_set_access_pass,
         },
         allowlist::{
             device::{
@@ -298,11 +299,14 @@ pub fn process_instruction(
         DoubleZeroInstruction::SetAccessPass(value) => {
             process_set_access_pass(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::CheckUserAccessPass(value) => {
-            process_check_access_pass_user(program_id, accounts, &value)?
+        DoubleZeroInstruction::CloseAccessPass(value) => {
+            process_close_access_pass(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::CheckStatusAccessPass(value) => {
             process_check_status_access_pass(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::CheckUserAccessPass(value) => {
+            process_check_access_pass_user(program_id, accounts, &value)?
         }
     };
     Ok(())

@@ -1,6 +1,6 @@
 use crate::{doublezerocommand::CliCommand, validators::validate_pubkey};
 use clap::Args;
-use doublezero_sdk::commands::user::get::GetUserCommand;
+use doublezero_sdk::commands::{accesspass::get::GetAccessPassCommand, user::get::GetUserCommand};
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, str::FromStr};
 
@@ -16,21 +16,46 @@ impl GetUserCliCommand {
         let pubkey = Pubkey::from_str(&self.pubkey)?;
         let (pubkey, user) = client.get_user(GetUserCommand { pubkey })?;
 
-        writeln!(out,
-                "account: {}\r\nuser_type: {}\r\ndevice: {}\r\ncyoa_type: {}\r\nclient_ip: {}\r\ntunnel_net: {}\r\ndz_ip: {}\r\npublishers: {}\r\nsubscribers: {}\r\nstatus: {}\r\nvalidator_pubkey: {}\r\nowner: {}",
-                pubkey,
-                user.user_type,
-                user.device_pk,
-                user.cyoa_type,
-                &user.client_ip,
-                &user.tunnel_net,
-                &user.dz_ip,
-                user.publishers.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(", "),
-                user.subscribers.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(", "),
-                user.status,
-                user.validator_pubkey,
-                user.owner
-            )?;
+        let (_, accesspass) = client.get_accesspass(GetAccessPassCommand {
+            client_ip: user.client_ip,
+            user_payer: user.owner,
+        })?;
+
+        writeln!(
+            out,
+            "account: {}\r\n\
+        user_type: {}\r\n\
+        device: {}\r\n\
+        cyoa_type: {}\r\n\
+        client_ip: {}\r\n\
+        tunnel_net: {}\r\n\
+        dz_ip: {}\r\n\
+        accesspass: {}\r\n\
+        publishers: {}\r\n\
+        subscribers: {}\r\n\
+        status: {}\r\n\
+        owner: {}",
+            pubkey,
+            user.user_type,
+            user.device_pk,
+            user.cyoa_type,
+            &user.client_ip,
+            &user.tunnel_net,
+            &user.dz_ip,
+            accesspass,
+            user.publishers
+                .iter()
+                .map(|p| p.to_string())
+                .collect::<Vec<_>>()
+                .join(", "),
+            user.subscribers
+                .iter()
+                .map(|p| p.to_string())
+                .collect::<Vec<_>>()
+                .join(", "),
+            user.status,
+            user.owner
+        )?;
 
         Ok(())
     }
@@ -43,10 +68,16 @@ mod tests {
         user::get::GetUserCliCommand,
     };
     use doublezero_sdk::{
-        commands::user::{delete::DeleteUserCommand, get::GetUserCommand},
+        commands::{
+            accesspass,
+            user::{delete::DeleteUserCommand, get::GetUserCommand},
+        },
         AccountType, User, UserCYOA, UserStatus, UserType,
     };
-    use doublezero_serviceability::pda::get_user_pda;
+    use doublezero_serviceability::{
+        pda::{get_accesspass_pda, get_user_pda},
+        state::accesspass::{AccessPass, AccessPassStatus, AccessPassType},
+    };
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
@@ -78,8 +109,29 @@ mod tests {
             owner: pda_pubkey,
             publishers: vec![],
             subscribers: vec![],
-            validator_pubkey: Pubkey::default(),
         };
+
+        let (accesspass_pubkey, _) =
+            get_accesspass_pda(&client.get_program_id(), &user.client_ip, &user.owner);
+        let accesspass = AccessPass {
+            account_type: AccountType::AccessPass,
+            bump_seed: 255,
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip: user.client_ip,
+            user_payer: user.owner,
+            last_access_epoch: 10,
+            connection_count: 0,
+            status: AccessPassStatus::Connected,
+            owner: client.get_payer(),
+        };
+
+        client
+            .expect_get_accesspass()
+            .with(predicate::eq(accesspass::get::GetAccessPassCommand {
+                client_ip: user.client_ip,
+                user_payer: user.owner,
+            }))
+            .returning(move |_| Ok((accesspass_pubkey, accesspass.clone())));
 
         client
             .expect_get_user()
@@ -100,6 +152,6 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by code");
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: CwpwPjV6LsVxHQ1Ye5bizyrXSa9j2Gk5C6y3WyMyYaA1\r\nuser_type: IBRL\r\ndevice: 11111111111111111111111111111111\r\ncyoa_type: GREOverDIA\r\nclient_ip: 10.0.0.1\r\ntunnel_net: 10.2.3.4/24\r\ndz_ip: 10.0.0.2\r\npublishers: \r\nsubscribers: \r\nstatus: activated\r\nvalidator_pubkey: 11111111111111111111111111111111\r\nowner: CwpwPjV6LsVxHQ1Ye5bizyrXSa9j2Gk5C6y3WyMyYaA1\n");
+        assert_eq!(output_str, "account: CwpwPjV6LsVxHQ1Ye5bizyrXSa9j2Gk5C6y3WyMyYaA1\r\nuser_type: IBRL\r\ndevice: 11111111111111111111111111111111\r\ncyoa_type: GREOverDIA\r\nclient_ip: 10.0.0.1\r\ntunnel_net: 10.2.3.4/24\r\ndz_ip: 10.0.0.2\r\naccesspass: Prepaid: (expires epoch 10)\r\npublishers: \r\nsubscribers: \r\nstatus: activated\r\nowner: CwpwPjV6LsVxHQ1Ye5bizyrXSa9j2Gk5C6y3WyMyYaA1\n");
     }
 }

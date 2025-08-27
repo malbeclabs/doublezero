@@ -3,10 +3,11 @@ use solana_program::pubkey::Pubkey;
 use std::fmt;
 
 #[repr(u8)]
-#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Default, Copy, Clone, PartialEq)]
 #[borsh(use_discriminant = true)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum AccountType {
+    #[default]
     None = 0,
     GlobalState = 1,
     Config = 2,

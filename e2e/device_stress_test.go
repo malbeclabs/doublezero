@@ -141,7 +141,7 @@ func TestE2E_DeviceStress(t *testing.T) {
 		require.NoError(t, err)
 
 		// Set access pass
-		cmd := fmt.Sprintf("doublezero access-pass set --accesspass-type Prepaid --client-ip %s --user-payer %s --last-access-epoch 99999",
+		cmd := fmt.Sprintf("doublezero access-pass set --accesspass-type prepaid --client-ip %s --user-payer %s --last-access-epoch 99999",
 			client.CYOANetworkIP, client.Pubkey)
 		log.Info(fmt.Sprintf("Setting access pass for client %d with command '%s'", i+1, cmd))
 		cmdOutput, err2 := dn.Manager.Exec(t.Context(), []string{

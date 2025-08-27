@@ -44,7 +44,7 @@ impl ListAccessPassCliCommand {
             .into_iter()
             .map(|(pubkey, access_pass)| AccessPassDisplay {
                 account: pubkey,
-                accesspass_type: access_pass.accesspass_type.to_string(),
+                accesspass_type: access_pass.accesspass_type.to_discriminant_string(),
                 ip: access_pass.client_ip,
                 user_payer: access_pass.user_payer,
                 last_access_epoch: if access_pass.last_access_epoch == u64::MAX {
@@ -103,7 +103,22 @@ mod tests {
             account_type: AccountType::AccessPass,
             bump_seed: 2,
             client_ip: Ipv4Addr::new(1, 2, 3, 4),
-            accesspass_type: AccessPassType::SolanaValidator,
+            accesspass_type: AccessPassType::Prepaid,
+            user_payer: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB"),
+            last_access_epoch: 123,
+            owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB"),
+            connection_count: 0,
+            status: AccessPassStatus::Connected,
+        };
+
+        let access2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
+        let access2 = AccessPass {
+            account_type: AccountType::AccessPass,
+            bump_seed: 2,
+            client_ip: Ipv4Addr::new(1, 2, 3, 4),
+            accesspass_type: AccessPassType::SolanaValidator(Pubkey::from_str_const(
+                "1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB",
+            )),
             user_payer: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB"),
             last_access_epoch: 123,
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB"),
@@ -115,6 +130,7 @@ mod tests {
         client.expect_list_accesspass().returning(move |_| {
             let mut access_passes = HashMap::new();
             access_passes.insert(access1_pubkey, access1.clone());
+            access_passes.insert(access2_pubkey, access2.clone());
             Ok(access_passes)
         });
 
@@ -126,7 +142,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | accesspass_type | ip      | user_payer                                | last_access_epoch | remaining_epoch | connections | status    | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | solanavalidator | 1.2.3.4 | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | 123               | 0               | 0           | connected | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
+        assert_eq!(output_str, " account                                   | accesspass_type  | ip      | user_payer                                | last_access_epoch | remaining_epoch | connections | status    | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | solana_validator | 1.2.3.4 | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | 123               | 0               | 0           | connected | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
 
         let mut output = Vec::new();
         let res = ListAccessPassCliCommand {
@@ -136,6 +152,6 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"accesspass_type\":\"solanavalidator\",\"ip\":\"1.2.3.4\",\"user_payer\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"last_access_epoch\":\"123\",\"remaining_epoch\":\"0\",\"connections\":0,\"status\":\"Connected\",\"owner\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\"}]\n");
+        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"accesspass_type\":\"solana_validator\",\"ip\":\"1.2.3.4\",\"user_payer\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"last_access_epoch\":\"123\",\"remaining_epoch\":\"0\",\"connections\":0,\"status\":\"Connected\",\"owner\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\"}]\n");
     }
 }

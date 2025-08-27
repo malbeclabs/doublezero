@@ -33,7 +33,7 @@ func TestE2E_Multicast_Publisher(t *testing.T) {
 		dn.CreateMulticastGroupOnchain(t, client, "mg02")
 
 		// Set access pass for the client.
-		_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type Prepaid --client-ip " + client.CYOANetworkIP + " --user-payer " + client.Pubkey})
+		_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + client.CYOANetworkIP + " --user-payer " + client.Pubkey})
 		require.NoError(t, err)
 
 		output, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast publisher mg02 --client-ip " + client.CYOANetworkIP})
@@ -207,7 +207,7 @@ func checkMulticastPublisherPostConnect(t *testing.T, dn *TestDevnet, device *de
 
 		if !t.Run("only_one_tunnel_allowed", func(t *testing.T) {
 			// Set access pass for the client.
-			_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type Prepaid --client-ip " + client.CYOANetworkIP + " --user-payer " + client.Pubkey})
+			_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + client.CYOANetworkIP + " --user-payer " + client.Pubkey})
 			require.NoError(t, err)
 
 			_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect ibrl --client-ip " + client.CYOANetworkIP})

@@ -153,7 +153,6 @@ pub fn process_create_user(
         status: UserStatus::Pending,
         publishers: vec![],
         subscribers: vec![],
-        validator_pubkey: Pubkey::default(),
     };
 
     account_create(

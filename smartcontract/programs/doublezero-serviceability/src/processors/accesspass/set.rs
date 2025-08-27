@@ -12,7 +12,7 @@ use crate::{
     },
 };
 use borsh::{BorshDeserialize, BorshSerialize};
-use doublezero_program_common::try_create_account;
+use doublezero_program_common::{resize_account::resize_account_if_needed, try_create_account};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     clock::Clock,
@@ -30,7 +30,7 @@ const AIRDROP_USER_RENT_LAMPORTS: u64 = 236 * 2;
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct SetAccessPassArgs {
-    pub accesspass_type: AccessPassType, // 1
+    pub accesspass_type: AccessPassType, // 1 or 33
     pub client_ip: Ipv4Addr,             // 4
     pub last_access_epoch: u64,          // 8
 }
@@ -99,6 +99,13 @@ pub fn process_set_access_pass(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
+    if let AccessPassType::SolanaValidator(node_id) = value.accesspass_type {
+        if node_id == Pubkey::default() {
+            msg!("Solana validator access pass type requires a validator pubkey");
+            return Err(DoubleZeroError::InvalidSolanaValidatorPubkey.into());
+        }
+    }
+
     let clock = Clock::get()?;
     let current_epoch = clock.epoch;
 
@@ -134,7 +141,6 @@ pub fn process_set_access_pass(
                 &[bump_seed],
             ],
         )?;
-
         accesspass.try_serialize(accesspass_account)?;
 
         #[cfg(test)]
@@ -146,8 +152,17 @@ pub fn process_set_access_pass(
         );
 
         let mut accesspass = AccessPass::try_from(accesspass_account)?;
+
         accesspass.accesspass_type = value.accesspass_type;
         accesspass.last_access_epoch = value.last_access_epoch;
+
+        resize_account_if_needed(
+            accesspass_account,
+            payer_account,
+            accounts,
+            accesspass.size(),
+        )?;
+
         accesspass.try_serialize(accesspass_account)?;
 
         #[cfg(test)]

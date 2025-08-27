@@ -72,7 +72,6 @@ mod tests {
             owner: pda_pubkey,
             publishers: vec![],
             subscribers: vec![],
-            validator_pubkey: Pubkey::default(),
         };
 
         client

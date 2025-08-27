@@ -1,3 +1,4 @@
+use borsh::object_length;
 use doublezero_program_common::types::{NetworkV4, NetworkV4List};
 use solana_program::pubkey::Pubkey;
 use std::mem::size_of;
@@ -14,6 +15,17 @@ impl<'a> ByteReader<'a> {
 
     pub fn has_no_space(&self, length: usize) -> bool {
         self.position + length > self.data.len()
+    }
+
+    pub fn read_borsh<T>(&mut self) -> T
+    where
+        T: borsh::BorshDeserialize + borsh::BorshSerialize + Default,
+    {
+        let value = borsh::from_slice::<T>(&self.data[self.position..]).unwrap();
+        // Calculate the size of the serialized value
+        self.position += object_length(&value).unwrap();
+
+        value
     }
 
     pub fn read_enum<T: From<u8>>(&mut self) -> T {

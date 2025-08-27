@@ -104,10 +104,10 @@ func TestE2E_MultiClient(t *testing.T) {
 	log.Info("--> Clients added to user allowlist")
 
 	// Set access pass for the client.
-	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type Prepaid --client-ip " + client1.CYOANetworkIP + " --user-payer " + client1.Pubkey})
+	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + client1.CYOANetworkIP + " --user-payer " + client1.Pubkey})
 	require.NoError(t, err)
 	// Set access pass for the client.
-	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type Prepaid --client-ip " + client2.CYOANetworkIP + " --user-payer " + client2.Pubkey})
+	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + client2.CYOANetworkIP + " --user-payer " + client2.Pubkey})
 	require.NoError(t, err)
 
 	// Run IBRL workflow test.

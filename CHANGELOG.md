@@ -17,14 +17,18 @@ All notable changes to this project will be documented in this file.
     - Add support for custom deserializers and add for pubkey fields
     - Move serialization and network_v4 to program-common
     - Refactor account type assertions in processors and state modules in serviceability program
+    - Add validator identity to `SolanaValidator` type AccessPass.
 - User client
     - Add access pass management commands to CLI
     - Restructuring device and global config CLI commands for better authority and interface management
     - Enhance the handling and display of access pass epoch information in the CLI
     - Configure CLI network settings with shorthand network code. Usage: `doublezero config set --env <testnet|mainnet-beta>`
     - Configure `doublezerod` network settings with shorthand network code. Usage `doublezerod --env <testnet|mainnet-beta>`
+    - Add associated AccessPass to user commands.
 - Activator
     - Introduce new user monitoring thread in activator for access pass functionality
+    - Remove validator verification via gossip. This functionality is migrated to AccessPass.
+
 - Device controller
     - Implement user tunnel ACLs in device agent configuration
     - Add "mpls icmp ttl-exceeded tunneling" config statement so intermediate hops in the doublezero network respond to traceroutes.
@@ -37,8 +41,10 @@ All notable changes to this project will be documented in this file.
     - Add user ban workflow test
     - Deflake user reconnect race and device interface assigned IP race
     - Add single device stress test
+    - Adjust user validation commands to use the new AccessPass column.
 - CLI
     - Refactor: Updated `SetAccessPassCliCommand` (`doublezero access-pass set`) to use `--epochs` instead of `--last_access_epoch`, with sensible default values.
+    - AccessPass now requires passing the validator identity for the `SolanaValidator` type.
 - Device Agents
     - Periodically recreate telemetry agent sender instances in case of interface reconfiguration.
 - Telemetry

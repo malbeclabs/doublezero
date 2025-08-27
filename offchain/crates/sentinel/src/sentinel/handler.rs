@@ -11,7 +11,7 @@ use solana_sdk::{
 use std::{net::Ipv4Addr, sync::Arc, time::Duration};
 use tokio::{sync::mpsc::UnboundedReceiver, time::interval};
 use tokio_util::sync::CancellationToken;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 use url::Url;
 
 const BACKFILL_TIMER: Duration = Duration::from_secs(60 * 60);
@@ -48,6 +48,7 @@ impl Sentinel {
                 biased;
                 _ = shutdown_listener.cancelled() => break,
                 _ = backfill_timer.tick() => {
+                    info!("fetching outstanding access requests");
                     let access_ids = self.sol_rpc_client.get_access_requests().await?;
 
                     info!(count = access_ids.len(), "processing unhandled access requests");
@@ -99,14 +100,28 @@ impl Sentinel {
 
     async fn verify_qualifiers(&self, access_mode: &AccessMode) -> Result<Option<Ipv4Addr>> {
         let AccessMode::SolanaValidator { validator_id, .. } = access_mode;
-        if verify_access_request(access_mode).is_ok()
-            && self
-                .sol_rpc_client
-                .check_leader_schedule(validator_id, self.previous_leader_epochs)
-                .await?
+        if verify_access_request(access_mode).is_err() {
+            debug!(%validator_id, "Validator failed signature validation");
+            return Ok(None);
+        }
+        if !self
+            .sol_rpc_client
+            .check_leader_schedule(validator_id, self.previous_leader_epochs)
+            .await?
         {
-            self.sol_rpc_client.get_validator_ip(validator_id).await
+            debug!(
+                %validator_id,
+                "Validator failed leader schedule qualification"
+            );
+            return Ok(None);
+        }
+        if let Some(validator_ip) = self.sol_rpc_client.get_validator_ip(validator_id).await? {
+            Ok(Some(validator_ip))
         } else {
+            debug!(
+                %validator_id,
+                "Validator failed gossip protocol ip qualification"
+            );
             Ok(None)
         }
     }

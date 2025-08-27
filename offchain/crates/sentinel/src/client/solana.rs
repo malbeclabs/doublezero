@@ -18,17 +18,17 @@ use solana_client::{
     nonblocking::{pubsub_client::PubsubClient, rpc_client::RpcClient},
     rpc_config::{
         RpcAccountInfoConfig, RpcLeaderScheduleConfig, RpcProgramAccountsConfig,
-        RpcTransactionLogsConfig, RpcTransactionLogsFilter,
+        RpcTransactionConfig, RpcTransactionLogsConfig, RpcTransactionLogsFilter,
     },
     rpc_filter::{Memcmp, RpcFilterType},
     rpc_response::{Response, RpcLogsResponse},
 };
-use solana_commitment_config::CommitmentConfig;
+use solana_commitment_config::{CommitmentConfig, CommitmentLevel};
 use solana_sdk::{
     pubkey::Pubkey,
     signature::{Keypair, Signature},
     signer::Signer,
-    transaction::Transaction,
+    transaction::VersionedTransaction,
 };
 use solana_transaction_status_client_types::{
     EncodedTransaction, TransactionBinaryEncoding, UiTransactionEncoding,
@@ -98,14 +98,23 @@ impl SolRpcClient {
     ) -> Result<AccessIds> {
         let txn = self
             .client
-            .get_transaction(&signature, UiTransactionEncoding::Binary)
+            .get_transaction_with_config(
+                &signature,
+                RpcTransactionConfig {
+                    encoding: Some(UiTransactionEncoding::Base64),
+                    commitment: Some(CommitmentConfig {
+                        commitment: CommitmentLevel::Confirmed,
+                    }),
+                    max_supported_transaction_version: Some(0),
+                },
+            )
             .await?;
 
         if let EncodedTransaction::Binary(data, TransactionBinaryEncoding::Base64) =
             txn.transaction.transaction
         {
             let data: &[u8] = &BASE64_STD.decode(data)?;
-            let tx: Transaction = bincode::deserialize(data)?;
+            let tx: VersionedTransaction = bincode::deserialize(data)?;
 
             deserialize_access_request_ids(tx)
         } else {
@@ -218,18 +227,18 @@ impl SolPubsubClient {
     }
 }
 
-fn deserialize_access_request_ids(txn: Transaction) -> Result<AccessIds> {
+fn deserialize_access_request_ids(txn: VersionedTransaction) -> Result<AccessIds> {
     let signature = txn.signatures.first().ok_or(Error::MissingTxnSignature)?;
     let compiled_ix = txn
         .message
-        .instructions
+        .instructions()
         .iter()
-        .find(|ix| ix.program_id(&txn.message.account_keys) == &passport_id())
+        .find(|ix| ix.program_id(txn.message.static_account_keys()) == &passport_id())
         .ok_or(Error::InstructionNotFound(*signature))?;
     let accounts = compiled_ix
         .accounts
         .iter()
-        .map(|&idx| txn.message.account_keys.get(idx as usize).copied())
+        .map(|&idx| txn.message.static_account_keys().get(idx as usize).copied())
         .collect::<Option<Vec<_>>>()
         .ok_or(Error::MissingAccountKeys(*signature))?;
     let Ok(PassportInstructionData::RequestAccess(mode)) =

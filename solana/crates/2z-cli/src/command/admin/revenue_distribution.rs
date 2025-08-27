@@ -480,18 +480,19 @@ pub async fn execute_configure_program(
     ) {
         (Some(base_str), Some(priority_str), Some(inflation_str), Some(jito_str)) => {
             // Parse all fee percentages.
-            let base_block_rewards = parse_fee_percentage(base_str)?;
-            let priority_block_rewards = parse_fee_percentage(priority_str)?;
-            let inflation_rewards = parse_fee_percentage(inflation_str)?;
-            let jito_tips = parse_fee_percentage(jito_str)?;
+            let base_block_rewards_pct = parse_fee_percentage(base_str)?;
+            let priority_block_rewards_pct = parse_fee_percentage(priority_str)?;
+            let inflation_rewards_pct = parse_fee_percentage(inflation_str)?;
+            let jito_tips_pct = parse_fee_percentage(jito_str)?;
 
             let configure_program_ix = try_build_configure_program_instruction(
                 &wallet_key,
                 ProgramConfiguration::SolanaValidatorFeeParameters {
-                    base_block_rewards,
-                    priority_block_rewards,
-                    inflation_rewards,
-                    jito_tips,
+                    base_block_rewards_pct,
+                    priority_block_rewards_pct,
+                    inflation_rewards_pct,
+                    jito_tips_pct,
+                    fixed_sol_amount: 0,
                     _unused: Default::default(),
                 },
             )?;

@@ -69,9 +69,10 @@ async fn test_initialize_contributor_rewards() {
         .configure_contributor_rewards(
             &service_key,
             &rewards_manager_signer,
-            [ContributorRewardsConfiguration::Recipients(
-                recipients.to_vec(),
-            )],
+            [
+                ContributorRewardsConfiguration::Recipients(recipients.to_vec()),
+                ContributorRewardsConfiguration::IsSetRewardsManagerBlocked(true),
+            ],
         )
         .await
         .unwrap();
@@ -79,6 +80,7 @@ async fn test_initialize_contributor_rewards() {
     let (_, contributor_rewards) = test_setup.fetch_contributor_rewards(&service_key).await;
 
     let mut expected_contributor_rewards = ContributorRewards::default();
+    expected_contributor_rewards.set_is_set_rewards_manager_blocked(true);
     expected_contributor_rewards.service_key = service_key;
     expected_contributor_rewards.rewards_manager_key = rewards_manager_signer.pubkey();
     expected_contributor_rewards.recipient_shares = RecipientShares::new(&recipients).unwrap();

@@ -6,10 +6,9 @@ use doublezero_program_tools::instruction::try_build_instruction;
 use doublezero_revenue_distribution::{
     instruction::{
         account::VerifyDistributionMerkleRootAccounts, DistributionMerkleRootKind,
-        DistributionPaymentsConfiguration, ProgramConfiguration, ProgramFlagConfiguration,
-        RevenueDistributionInstructionData,
+        ProgramConfiguration, ProgramFlagConfiguration, RevenueDistributionInstructionData,
     },
-    types::{DoubleZeroEpoch, RewardShare, SolanaValidatorPayment},
+    types::{DoubleZeroEpoch, RewardShare, SolanaValidatorDebt},
     ID,
 };
 use solana_program_test::tokio;
@@ -33,7 +32,7 @@ async fn test_verify_distribution_merkle_root() {
 
     let payments_accountant_signer = Keypair::new();
     let rewards_accountant_signer = Keypair::new();
-    let solana_validator_base_block_rewards_fee = 500; // 5%.
+    let solana_validator_base_block_rewards_pct_fee = 500; // 5%.
 
     // Community burn rate.
     let initial_cbr = 100_000_000; // 10%.
@@ -50,18 +49,16 @@ async fn test_verify_distribution_merkle_root() {
 
     // Odd-leaf merkle tree.
     let mut payments_data = (0..511)
-        .map(|i| SolanaValidatorPayment {
+        .map(|i| SolanaValidatorDebt {
             node_id: Pubkey::new_unique(),
             amount: 100_000_000_000 * (i + 1),
         })
         .collect::<Vec<_>>();
     assert_eq!(payments_data.len() % 2, 1);
 
-    let solana_validator_payments_merkle_root = merkle_root_from_indexed_pod_leaves(
-        &payments_data,
-        Some(SolanaValidatorPayment::LEAF_PREFIX),
-    )
-    .unwrap();
+    let solana_validator_payments_merkle_root =
+        merkle_root_from_indexed_pod_leaves(&payments_data, Some(SolanaValidatorDebt::LEAF_PREFIX))
+            .unwrap();
 
     let total_debt = payments_data.iter().map(|payment| payment.amount).sum();
 
@@ -81,11 +78,12 @@ async fn test_verify_distribution_merkle_root() {
                 ProgramConfiguration::PaymentsAccountant(payments_accountant_signer.pubkey()),
                 ProgramConfiguration::RewardsAccountant(rewards_accountant_signer.pubkey()),
                 ProgramConfiguration::SolanaValidatorFeeParameters {
-                    base_block_rewards: solana_validator_base_block_rewards_fee,
-                    priority_block_rewards: 0,
-                    inflation_rewards: 0,
-                    jito_tips: 0,
-                    _unused: [0; 32],
+                    base_block_rewards_pct: solana_validator_base_block_rewards_pct_fee,
+                    priority_block_rewards_pct: 0,
+                    inflation_rewards_pct: 0,
+                    jito_tips_pct: 0,
+                    fixed_sol_amount: 0,
+                    _unused: Default::default(),
                 },
                 ProgramConfiguration::CommunityBurnRateParameters {
                     limit: cbr_limit,
@@ -107,16 +105,12 @@ async fn test_verify_distribution_merkle_root() {
         .initialize_distribution(&payments_accountant_signer)
         .await
         .unwrap()
-        .configure_distribution_payments(
+        .configure_distribution_debt(
             dz_epoch,
             &payments_accountant_signer,
-            [
-                DistributionPaymentsConfiguration::UpdateSolanaValidatorPayments {
-                    total_validators: payments_data.len() as u32,
-                    total_debt,
-                    merkle_root: solana_validator_payments_merkle_root,
-                },
-            ],
+            payments_data.len() as u32,
+            total_debt,
+            solana_validator_payments_merkle_root,
         )
         .await
         .unwrap();
@@ -130,7 +124,7 @@ async fn test_verify_distribution_merkle_root() {
         let proof = MerkleProof::from_indexed_pod_leaves(
             &payments_data,
             i.try_into().unwrap(),
-            Some(SolanaValidatorPayment::LEAF_PREFIX),
+            Some(SolanaValidatorDebt::LEAF_PREFIX),
         )
         .unwrap();
 
@@ -150,17 +144,15 @@ async fn test_verify_distribution_merkle_root() {
     let last_leaf = *payments_data.last().unwrap();
     payments_data.push(last_leaf);
 
-    let invalid_merkle_root = merkle_root_from_indexed_pod_leaves(
-        &payments_data,
-        Some(SolanaValidatorPayment::LEAF_PREFIX),
-    )
-    .unwrap();
+    let invalid_merkle_root =
+        merkle_root_from_indexed_pod_leaves(&payments_data, Some(SolanaValidatorDebt::LEAF_PREFIX))
+            .unwrap();
     assert_ne!(solana_validator_payments_merkle_root, invalid_merkle_root);
 
     let spoofed_proof = MerkleProof::from_indexed_pod_leaves(
         &payments_data,
         payments_data.len() as u32 - 1,
-        Some(SolanaValidatorPayment::LEAF_PREFIX),
+        Some(SolanaValidatorDebt::LEAF_PREFIX),
     )
     .unwrap();
 
@@ -216,7 +208,7 @@ async fn test_verify_distribution_merkle_root() {
 
     // Finalize distribution payments so we can post the rewards merkle root.
     test_setup
-        .finalize_distribution_payments(dz_epoch, &payments_accountant_signer)
+        .finalize_distribution_debt(dz_epoch, &payments_accountant_signer)
         .await
         .unwrap()
         .configure_distribution_rewards(

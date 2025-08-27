@@ -162,13 +162,13 @@ impl_unit_share!(
     Debug, BorshDeserialize, BorshSerialize, Clone, Copy, Default, PartialEq, Eq, Pod, Zeroable,
 )]
 #[repr(C)]
-pub struct SolanaValidatorPayment {
+pub struct SolanaValidatorDebt {
     pub node_id: Pubkey,
     pub amount: u64,
 }
 
-impl SolanaValidatorPayment {
-    pub const LEAF_PREFIX: &'static [u8] = b"solana_validator_payment";
+impl SolanaValidatorDebt {
+    pub const LEAF_PREFIX: &'static [u8] = b"solana_validator_debt";
 }
 
 #[derive(

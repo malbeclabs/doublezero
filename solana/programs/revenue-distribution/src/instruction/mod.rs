@@ -9,7 +9,7 @@ use doublezero_program_tools::{Discriminator, DISCRIMINATOR_LEN};
 use solana_pubkey::Pubkey;
 use svm_hash::{merkle::MerkleProof, sha2::Hash};
 
-use crate::types::{DoubleZeroEpoch, EpochDuration, RewardShare, SolanaValidatorPayment};
+use crate::types::{DoubleZeroEpoch, EpochDuration, RewardShare, SolanaValidatorDebt};
 
 #[derive(Debug, BorshDeserialize, BorshSerialize, Clone, PartialEq, Eq)]
 pub enum ProgramConfiguration {
@@ -20,11 +20,12 @@ pub enum ProgramConfiguration {
     DoubleZeroLedgerSentinel(Pubkey),
     Sol2zSwapProgram(Pubkey),
     SolanaValidatorFeeParameters {
-        base_block_rewards: u16,
-        priority_block_rewards: u16,
-        inflation_rewards: u16,
-        jito_tips: u16,
-        _unused: [u8; 32],
+        base_block_rewards_pct: u16,
+        priority_block_rewards_pct: u16,
+        inflation_rewards_pct: u16,
+        jito_tips_pct: u16,
+        fixed_sol_amount: u32,
+        _unused: [u8; 28],
     },
     CalculationGracePeriodSeconds(u32),
     CommunityBurnRateParameters {
@@ -54,23 +55,14 @@ pub enum ProgramFlagConfiguration {
 }
 
 #[derive(Debug, BorshDeserialize, BorshSerialize, Clone, PartialEq, Eq)]
-pub enum DistributionPaymentsConfiguration {
-    UpdateSolanaValidatorPayments {
-        total_validators: u32,
-        total_debt: u64,
-        merkle_root: Hash,
-    },
-    UpdateUncollectibleSol(u64),
-}
-
-#[derive(Debug, BorshDeserialize, BorshSerialize, Clone, PartialEq, Eq)]
 pub enum ContributorRewardsConfiguration {
     Recipients(Vec<(Pubkey, u16)>),
+    IsSetRewardsManagerBlocked(bool),
 }
 
 #[derive(Debug, BorshDeserialize, BorshSerialize, Clone, PartialEq, Eq)]
 pub enum DistributionMerkleRootKind {
-    SolanaValidatorPayment(SolanaValidatorPayment),
+    SolanaValidatorPayment(SolanaValidatorDebt),
     RewardShare(RewardShare),
 }
 
@@ -83,8 +75,12 @@ pub enum RevenueDistributionInstructionData {
     InitializeJournal,
     ConfigureJournal(JournalConfiguration),
     InitializeDistribution,
-    ConfigureDistributionPayments(DistributionPaymentsConfiguration),
-    FinalizeDistributionPayments,
+    ConfigureDistributionDebt {
+        total_validators: u32,
+        total_debt: u64,
+        merkle_root: Hash,
+    },
+    FinalizeDistributionDebt,
     ConfigureDistributionRewards {
         total_contributors: u32,
         merkle_root: Hash,
@@ -113,6 +109,10 @@ pub enum RevenueDistributionInstructionData {
         amount: u64,
         proof: MerkleProof,
     },
+    ForgiveSolanaValidatorDebt {
+        debt: SolanaValidatorDebt,
+        proof: MerkleProof,
+    },
     InitializeSwapDestination,
     SweepDistributionTokens,
 }
@@ -132,10 +132,10 @@ impl RevenueDistributionInstructionData {
         Discriminator::new_sha2(b"dz::ix::configure_journal");
     pub const INITIALIZE_DISTRIBUTION: Discriminator<DISCRIMINATOR_LEN> =
         Discriminator::new_sha2(b"dz::ix::initialize_distribution");
-    pub const CONFIGURE_DISTRIBUTION_PAYMENTS: Discriminator<DISCRIMINATOR_LEN> =
-        Discriminator::new_sha2(b"dz::ix::configure_distribution_payments");
-    pub const FINALIZE_DISTRIBUTION_PAYMENTS: Discriminator<DISCRIMINATOR_LEN> =
-        Discriminator::new_sha2(b"dz::ix::finalize_distribution_payments");
+    pub const CONFIGURE_DISTRIBUTION_DEBT: Discriminator<DISCRIMINATOR_LEN> =
+        Discriminator::new_sha2(b"dz::ix::configure_distribution_debt");
+    pub const FINALIZE_DISTRIBUTION_DEBT: Discriminator<DISCRIMINATOR_LEN> =
+        Discriminator::new_sha2(b"dz::ix::finalize_distribution_debt");
     pub const CONFIGURE_DISTRIBUTION_REWARDS: Discriminator<DISCRIMINATOR_LEN> =
         Discriminator::new_sha2(b"dz::ix::configure_distribution_rewards");
     pub const FINALIZE_DISTRIBUTION_REWARDS: Discriminator<DISCRIMINATOR_LEN> =
@@ -162,6 +162,8 @@ impl RevenueDistributionInstructionData {
         Discriminator::new_sha2(b"dz::ix::initialize_solana_validator_deposit");
     pub const PAY_SOLANA_VALIDATOR_DEBT: Discriminator<DISCRIMINATOR_LEN> =
         Discriminator::new_sha2(b"dz::ix::pay_solana_validator_debt");
+    pub const FORGIVE_SOLANA_VALIDATOR_DEBT: Discriminator<DISCRIMINATOR_LEN> =
+        Discriminator::new_sha2(b"dz::ix::forgive_solana_validator_debt");
     pub const INITIALIZE_SWAP_DESTINATION: Discriminator<DISCRIMINATOR_LEN> =
         Discriminator::new_sha2(b"dz::ix::initialize_swap_destination");
     pub const SWEEP_DISTRIBUTION_TOKENS: Discriminator<DISCRIMINATOR_LEN> =
@@ -182,11 +184,18 @@ impl BorshDeserialize for RevenueDistributionInstructionData {
             }
             Self::INITIALIZE_JOURNAL => Ok(Self::InitializeJournal),
             Self::INITIALIZE_DISTRIBUTION => Ok(Self::InitializeDistribution),
-            Self::CONFIGURE_DISTRIBUTION_PAYMENTS => {
-                DistributionPaymentsConfiguration::deserialize_reader(reader)
-                    .map(Self::ConfigureDistributionPayments)
+            Self::CONFIGURE_DISTRIBUTION_DEBT => {
+                let total_validators = BorshDeserialize::deserialize_reader(reader)?;
+                let total_debt = BorshDeserialize::deserialize_reader(reader)?;
+                let merkle_root = BorshDeserialize::deserialize_reader(reader)?;
+
+                Ok(Self::ConfigureDistributionDebt {
+                    total_validators,
+                    total_debt,
+                    merkle_root,
+                })
             }
-            Self::FINALIZE_DISTRIBUTION_PAYMENTS => Ok(Self::FinalizeDistributionPayments),
+            Self::FINALIZE_DISTRIBUTION_DEBT => Ok(Self::FinalizeDistributionDebt),
             Self::CONFIGURE_DISTRIBUTION_REWARDS => {
                 let total_contributors = BorshDeserialize::deserialize_reader(reader)?;
                 let merkle_root = BorshDeserialize::deserialize_reader(reader)?;
@@ -241,6 +250,12 @@ impl BorshDeserialize for RevenueDistributionInstructionData {
 
                 Ok(Self::PaySolanaValidatorDebt { amount, proof })
             }
+            Self::FORGIVE_SOLANA_VALIDATOR_DEBT => {
+                let debt = BorshDeserialize::deserialize_reader(reader)?;
+                let proof = BorshDeserialize::deserialize_reader(reader)?;
+
+                Ok(Self::ForgiveSolanaValidatorDebt { debt, proof })
+            }
             Self::INITIALIZE_SWAP_DESTINATION => Ok(Self::InitializeSwapDestination),
             Self::SWEEP_DISTRIBUTION_TOKENS => Ok(Self::SweepDistributionTokens),
             _ => Err(io::Error::new(
@@ -270,13 +285,17 @@ impl BorshSerialize for RevenueDistributionInstructionData {
             }
             Self::InitializeJournal => Self::INITIALIZE_JOURNAL.serialize(writer),
             Self::InitializeDistribution => Self::INITIALIZE_DISTRIBUTION.serialize(writer),
-            Self::ConfigureDistributionPayments(setting) => {
-                Self::CONFIGURE_DISTRIBUTION_PAYMENTS.serialize(writer)?;
-                setting.serialize(writer)
+            Self::ConfigureDistributionDebt {
+                total_validators,
+                total_debt,
+                merkle_root,
+            } => {
+                Self::CONFIGURE_DISTRIBUTION_DEBT.serialize(writer)?;
+                total_validators.serialize(writer)?;
+                total_debt.serialize(writer)?;
+                merkle_root.serialize(writer)
             }
-            Self::FinalizeDistributionPayments => {
-                Self::FINALIZE_DISTRIBUTION_PAYMENTS.serialize(writer)
-            }
+            Self::FinalizeDistributionDebt => Self::FINALIZE_DISTRIBUTION_DEBT.serialize(writer),
             Self::ConfigureDistributionRewards {
                 total_contributors,
                 merkle_root,
@@ -334,6 +353,11 @@ impl BorshSerialize for RevenueDistributionInstructionData {
             Self::PaySolanaValidatorDebt { amount, proof } => {
                 Self::PAY_SOLANA_VALIDATOR_DEBT.serialize(writer)?;
                 amount.serialize(writer)?;
+                proof.serialize(writer)
+            }
+            Self::ForgiveSolanaValidatorDebt { debt, proof } => {
+                Self::FORGIVE_SOLANA_VALIDATOR_DEBT.serialize(writer)?;
+                debt.serialize(writer)?;
                 proof.serialize(writer)
             }
             Self::InitializeSwapDestination => Self::INITIALIZE_SWAP_DESTINATION.serialize(writer),

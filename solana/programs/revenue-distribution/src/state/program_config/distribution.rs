@@ -39,10 +39,21 @@ pub struct DistributionParameters {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Pod, Zeroable)]
 #[repr(C, align(8))]
 pub struct SolanaValidatorFeeParameters {
-    pub base_block_rewards: ValidatorFee,
-    pub priority_block_rewards: ValidatorFee,
-    pub inflation_rewards: ValidatorFee,
-    pub jito_tips: ValidatorFee,
+    /// Percentage of rewards from base transaction fees.
+    pub base_block_rewards_pct: ValidatorFee,
 
-    _storage_gap: StorageGap<1>,
+    /// Percentage of rewards from priority transaction fees.
+    pub priority_block_rewards_pct: ValidatorFee,
+
+    /// Percentage of rewards from inflation.
+    pub inflation_rewards_pct: ValidatorFee,
+
+    /// Percentage of rewards from Jito tips.
+    pub jito_tips_pct: ValidatorFee,
+
+    /// Fixed amount of SOL charged to each validator. Maximum configurable
+    /// amount is the bound of `u32::MAX`, so about 4.2 SOL.
+    pub fixed_sol_amount: u32,
+
+    _storage_gap: [u32; 7],
 }

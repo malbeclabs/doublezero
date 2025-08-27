@@ -5,9 +5,8 @@ mod common;
 use doublezero_program_tools::instruction::try_build_instruction;
 use doublezero_revenue_distribution::{
     instruction::{
-        account::{ConfigureDistributionPaymentsAccounts, FinalizeDistributionPaymentsAccounts},
-        DistributionPaymentsConfiguration, ProgramConfiguration, ProgramFlagConfiguration,
-        RevenueDistributionInstructionData,
+        account::{ConfigureDistributionDebtAccounts, FinalizeDistributionDebtAccounts},
+        ProgramConfiguration, ProgramFlagConfiguration, RevenueDistributionInstructionData,
     },
     state::{self, Distribution},
     types::{BurnRate, DoubleZeroEpoch, ValidatorFee},
@@ -22,18 +21,18 @@ use solana_sdk::{
 use svm_hash::sha2::Hash;
 
 //
-// Finalize distribution payments.
+// Finalize distribution debt.
 //
 
 #[tokio::test]
-async fn test_finalize_distribution_payments() {
+async fn test_finalize_distribution_debt() {
     let mut test_setup = common::start_test().await;
 
     let admin_signer = Keypair::new();
 
     let payments_accountant_signer = Keypair::new();
     let rewards_accountant_signer = Keypair::new();
-    let solana_validator_base_block_rewards_fee = 500; // 5%.
+    let solana_validator_base_block_rewards_pct_fee = 500; // 5%.
 
     // Community burn rate.
     let initial_cbr = 100_000_000; // 10%.
@@ -51,7 +50,6 @@ async fn test_finalize_distribution_payments() {
     let total_solana_validators = 2;
     let total_solana_validator_debt = 100 * u64::pow(10, 9);
     let solana_validator_payments_merkle_root = Hash::new_unique();
-    let uncollectible_sol_amount = 10 * u64::pow(10, 9);
 
     test_setup
         .initialize_program()
@@ -69,11 +67,12 @@ async fn test_finalize_distribution_payments() {
                 ProgramConfiguration::PaymentsAccountant(payments_accountant_signer.pubkey()),
                 ProgramConfiguration::RewardsAccountant(rewards_accountant_signer.pubkey()),
                 ProgramConfiguration::SolanaValidatorFeeParameters {
-                    base_block_rewards: solana_validator_base_block_rewards_fee,
-                    priority_block_rewards: 0,
-                    inflation_rewards: 0,
-                    jito_tips: 0,
-                    _unused: [0; 32],
+                    base_block_rewards_pct: solana_validator_base_block_rewards_pct_fee,
+                    priority_block_rewards_pct: 0,
+                    inflation_rewards_pct: 0,
+                    jito_tips_pct: 0,
+                    fixed_sol_amount: 0,
+                    _unused: Default::default(),
                 },
                 ProgramConfiguration::CommunityBurnRateParameters {
                     limit: cbr_limit,
@@ -95,17 +94,12 @@ async fn test_finalize_distribution_payments() {
         .initialize_distribution(&payments_accountant_signer)
         .await
         .unwrap()
-        .configure_distribution_payments(
+        .configure_distribution_debt(
             dz_epoch,
             &payments_accountant_signer,
-            [
-                DistributionPaymentsConfiguration::UpdateSolanaValidatorPayments {
-                    total_validators: total_solana_validators,
-                    total_debt: total_solana_validator_debt,
-                    merkle_root: solana_validator_payments_merkle_root,
-                },
-                DistributionPaymentsConfiguration::UpdateUncollectibleSol(uncollectible_sol_amount),
-            ],
+            total_solana_validators,
+            total_solana_validator_debt,
+            solana_validator_payments_merkle_root,
         )
         .await
         .unwrap();
@@ -113,7 +107,7 @@ async fn test_finalize_distribution_payments() {
     //
 
     test_setup
-        .finalize_distribution_payments(dz_epoch, &payments_accountant_signer)
+        .finalize_distribution_debt(dz_epoch, &payments_accountant_signer)
         .await
         .unwrap();
 
@@ -121,7 +115,7 @@ async fn test_finalize_distribution_payments() {
         test_setup.fetch_distribution(dz_epoch).await;
 
     let mut expected_distribution = Distribution::default();
-    expected_distribution.set_are_payments_finalized(true);
+    expected_distribution.set_is_debt_calculation_finalized(true);
     expected_distribution.bump_seed = Distribution::find_address(dz_epoch).1;
     expected_distribution.token_2z_pda_bump_seed =
         state::find_2z_token_pda_address(&distribution_key).1;
@@ -129,12 +123,12 @@ async fn test_finalize_distribution_payments() {
     expected_distribution.community_burn_rate = BurnRate::new(initial_cbr).unwrap();
     expected_distribution
         .solana_validator_fee_parameters
-        .base_block_rewards = ValidatorFee::new(solana_validator_base_block_rewards_fee).unwrap();
+        .base_block_rewards_pct =
+        ValidatorFee::new(solana_validator_base_block_rewards_pct_fee).unwrap();
     expected_distribution.total_solana_validators = total_solana_validators;
     expected_distribution.total_solana_validator_debt = total_solana_validator_debt;
     expected_distribution.solana_validator_payments_merkle_root =
         solana_validator_payments_merkle_root;
-    expected_distribution.uncollectible_sol_debt = uncollectible_sol_amount;
     assert_eq!(distribution, expected_distribution);
 
     let expected_remaining_distribution_data_len = 1;
@@ -154,14 +148,12 @@ async fn test_finalize_distribution_payments() {
 
     let configure_distribution_rewards_ix = try_build_instruction(
         &ID,
-        ConfigureDistributionPaymentsAccounts::new(&payments_accountant_signer.pubkey(), dz_epoch),
-        &RevenueDistributionInstructionData::ConfigureDistributionPayments(
-            DistributionPaymentsConfiguration::UpdateSolanaValidatorPayments {
-                total_validators: 3,
-                total_debt: 1,
-                merkle_root: Hash::new_unique(),
-            },
-        ),
+        ConfigureDistributionDebtAccounts::new(&payments_accountant_signer.pubkey(), dz_epoch),
+        &RevenueDistributionInstructionData::ConfigureDistributionDebt {
+            total_validators: 3,
+            total_debt: 1,
+            merkle_root: Hash::new_unique(),
+        },
     )
     .unwrap();
 
@@ -177,7 +169,7 @@ async fn test_finalize_distribution_payments() {
     );
     assert_eq!(
         program_logs.get(2).unwrap(),
-        "Program log: Distribution payments have already been finalized"
+        "Program log: Distribution debt calculation has already been finalized"
     );
 
     // Cannot finalize again.
@@ -186,12 +178,12 @@ async fn test_finalize_distribution_payments() {
 
     let finalize_distribution_rewards_ix = try_build_instruction(
         &ID,
-        FinalizeDistributionPaymentsAccounts::new(
+        FinalizeDistributionDebtAccounts::new(
             &payments_accountant_signer.pubkey(),
             dz_epoch,
             &payer_key,
         ),
-        &RevenueDistributionInstructionData::FinalizeDistributionPayments,
+        &RevenueDistributionInstructionData::FinalizeDistributionDebt,
     )
     .unwrap();
 
@@ -207,6 +199,6 @@ async fn test_finalize_distribution_payments() {
     );
     assert_eq!(
         program_logs.get(2).unwrap(),
-        "Program log: Distribution payments have already been finalized"
+        "Program log: Distribution debt calculation has already been finalized"
     );
 }

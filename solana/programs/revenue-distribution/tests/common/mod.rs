@@ -6,27 +6,27 @@ use doublezero_program_tools::{
 use doublezero_revenue_distribution::{
     instruction::{
         account::{
-            ConfigureContributorRewardsAccounts, ConfigureDistributionPaymentsAccounts,
+            ConfigureContributorRewardsAccounts, ConfigureDistributionDebtAccounts,
             ConfigureDistributionRewardsAccounts, ConfigureJournalAccounts,
             ConfigureProgramAccounts, DenyPrepaidConnectionAccessAccounts,
-            FinalizeDistributionPaymentsAccounts, FinalizeDistributionRewardsAccounts,
-            GrantPrepaidConnectionAccessAccounts, InitializeContributorRewardsAccounts,
-            InitializeDistributionAccounts, InitializeJournalAccounts,
-            InitializePrepaidConnectionAccounts, InitializeProgramAccounts,
-            InitializeSolanaValidatorDepositAccounts, InitializeSwapDestinationAccounts,
-            LoadPrepaidConnectionAccounts, PaySolanaValidatorDebtAccounts, SetAdminAccounts,
-            SetRewardsManagerAccounts, SweepDistributionTokensAccounts,
-            TerminatePrepaidConnectionAccounts, VerifyDistributionMerkleRootAccounts,
+            FinalizeDistributionDebtAccounts, FinalizeDistributionRewardsAccounts,
+            ForgiveSolanaValidatorDebtAccounts, GrantPrepaidConnectionAccessAccounts,
+            InitializeContributorRewardsAccounts, InitializeDistributionAccounts,
+            InitializeJournalAccounts, InitializePrepaidConnectionAccounts,
+            InitializeProgramAccounts, InitializeSolanaValidatorDepositAccounts,
+            InitializeSwapDestinationAccounts, LoadPrepaidConnectionAccounts,
+            PaySolanaValidatorDebtAccounts, SetAdminAccounts, SetRewardsManagerAccounts,
+            SweepDistributionTokensAccounts, TerminatePrepaidConnectionAccounts,
+            VerifyDistributionMerkleRootAccounts,
         },
-        ContributorRewardsConfiguration, DistributionMerkleRootKind,
-        DistributionPaymentsConfiguration, JournalConfiguration, ProgramConfiguration,
-        RevenueDistributionInstructionData,
+        ContributorRewardsConfiguration, DistributionMerkleRootKind, JournalConfiguration,
+        ProgramConfiguration, RevenueDistributionInstructionData,
     },
     state::{
         self, ContributorRewards, Distribution, Journal, JournalEntries, PrepaidConnection,
         ProgramConfig, SolanaValidatorDeposit,
     },
-    types::DoubleZeroEpoch,
+    types::{DoubleZeroEpoch, SolanaValidatorDebt},
     DOUBLEZERO_MINT_KEY, ID,
 };
 use solana_loader_v3_interface::{get_program_data_address, state::UpgradeableLoaderState};
@@ -427,33 +427,31 @@ impl ProgramTestWithOwner {
         Ok(self)
     }
 
-    pub async fn configure_distribution_payments<const N: usize>(
+    pub async fn configure_distribution_debt(
         &mut self,
         dz_epoch: DoubleZeroEpoch,
         payments_accountant_signer: &Keypair,
-        setting: [DistributionPaymentsConfiguration; N],
+        total_validators: u32,
+        total_debt: u64,
+        merkle_root: Hash,
     ) -> Result<&mut Self, BanksClientError> {
         let payer_signer = &self.payer_signer;
 
-        let configure_distribution_payments_ixs = setting
-            .into_iter()
-            .map(|setting| {
-                try_build_instruction(
-                    &ID,
-                    ConfigureDistributionPaymentsAccounts::new(
-                        &payments_accountant_signer.pubkey(),
-                        dz_epoch,
-                    ),
-                    &RevenueDistributionInstructionData::ConfigureDistributionPayments(setting),
-                )
-                .unwrap()
-            })
-            .collect::<Vec<_>>();
+        let configure_distribution_debt_ix = try_build_instruction(
+            &ID,
+            ConfigureDistributionDebtAccounts::new(&payments_accountant_signer.pubkey(), dz_epoch),
+            &RevenueDistributionInstructionData::ConfigureDistributionDebt {
+                total_validators,
+                total_debt,
+                merkle_root,
+            },
+        )
+        .unwrap();
 
         self.cached_blockhash = process_instructions_for_test(
             &mut self.banks_client,
             &self.cached_blockhash,
-            &configure_distribution_payments_ixs,
+            &[configure_distribution_debt_ix],
             &[payer_signer, payments_accountant_signer],
         )
         .await?;
@@ -461,28 +459,28 @@ impl ProgramTestWithOwner {
         Ok(self)
     }
 
-    pub async fn finalize_distribution_payments(
+    pub async fn finalize_distribution_debt(
         &mut self,
         dz_epoch: DoubleZeroEpoch,
         payments_accountant_signer: &Keypair,
     ) -> Result<&mut Self, BanksClientError> {
         let payer_signer = &self.payer_signer;
 
-        let finalize_distribution_payments_ix = try_build_instruction(
+        let finalize_distribution_debt_ix = try_build_instruction(
             &ID,
-            FinalizeDistributionPaymentsAccounts::new(
+            FinalizeDistributionDebtAccounts::new(
                 &payments_accountant_signer.pubkey(),
                 dz_epoch,
                 &payer_signer.pubkey(),
             ),
-            &RevenueDistributionInstructionData::FinalizeDistributionPayments,
+            &RevenueDistributionInstructionData::FinalizeDistributionDebt,
         )
         .unwrap();
 
         self.cached_blockhash = process_instructions_for_test(
             &mut self.banks_client,
             &self.cached_blockhash,
-            &[finalize_distribution_payments_ix],
+            &[finalize_distribution_debt_ix],
             &[payer_signer, payments_accountant_signer],
         )
         .await?;
@@ -867,6 +865,38 @@ impl ProgramTestWithOwner {
             &self.cached_blockhash,
             &[pay_solana_validator_debt_ix],
             &[payer_signer],
+        )
+        .await?;
+
+        Ok(self)
+    }
+
+    pub async fn forgive_solana_validator_debt(
+        &mut self,
+        dz_epoch: DoubleZeroEpoch,
+        next_dz_epoch: DoubleZeroEpoch,
+        payments_accountant_signer: &Keypair,
+        debt: &SolanaValidatorDebt,
+        proof: MerkleProof,
+    ) -> Result<&mut Self, BanksClientError> {
+        let payer_signer = &self.payer_signer;
+
+        let forgive_solana_validator_debt_ix = try_build_instruction(
+            &ID,
+            ForgiveSolanaValidatorDebtAccounts::new(
+                &payments_accountant_signer.pubkey(),
+                dz_epoch,
+                next_dz_epoch,
+            ),
+            &RevenueDistributionInstructionData::ForgiveSolanaValidatorDebt { debt: *debt, proof },
+        )
+        .unwrap();
+
+        self.cached_blockhash = process_instructions_for_test(
+            &mut self.banks_client,
+            &self.cached_blockhash,
+            &[forgive_solana_validator_debt_ix],
+            &[payer_signer, payments_accountant_signer],
         )
         .await?;
 

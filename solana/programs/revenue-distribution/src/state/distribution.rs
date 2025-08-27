@@ -86,30 +86,35 @@ impl Distribution {
     pub const SEED_PREFIX: &'static [u8] = b"distribution";
 
     pub const FLAG_RESERVED_BIT: usize = 0;
-    pub const FLAG_ARE_PAYMENTS_FINALIZED_BIT: usize = 1;
-    pub const FLAG_ARE_REWARDS_FINALIZED_BIT: usize = 2;
+    pub const FLAG_IS_DEBT_CALCULATION_FINALIZED_BIT: usize = 1;
+    pub const FLAG_IS_REWARDS_CALCULATION_FINALIZED_BIT: usize = 2;
     pub const FLAG_HAS_SWEPT_2Z_TOKENS_BIT: usize = 3;
 
     pub fn find_address(dz_epoch: DoubleZeroEpoch) -> (Pubkey, u8) {
         Pubkey::find_program_address(&[Self::SEED_PREFIX, &dz_epoch.as_seed()], &crate::ID)
     }
 
-    pub fn are_payments_finalized(&self) -> bool {
-        self.flags.bit(Self::FLAG_ARE_PAYMENTS_FINALIZED_BIT)
+    pub fn is_debt_calculation_finalized(&self) -> bool {
+        self.flags.bit(Self::FLAG_IS_DEBT_CALCULATION_FINALIZED_BIT)
     }
 
-    pub fn set_are_payments_finalized(&mut self, should_finalize: bool) {
+    pub fn set_is_debt_calculation_finalized(&mut self, should_finalize: bool) {
+        self.flags.set_bit(
+            Self::FLAG_IS_DEBT_CALCULATION_FINALIZED_BIT,
+            should_finalize,
+        );
+    }
+
+    pub fn is_rewards_calculation_finalized(&self) -> bool {
         self.flags
-            .set_bit(Self::FLAG_ARE_PAYMENTS_FINALIZED_BIT, should_finalize);
+            .bit(Self::FLAG_IS_REWARDS_CALCULATION_FINALIZED_BIT)
     }
 
-    pub fn are_rewards_finalized(&self) -> bool {
-        self.flags.bit(Self::FLAG_ARE_REWARDS_FINALIZED_BIT)
-    }
-
-    pub fn set_are_rewards_finalized(&mut self, should_finalize: bool) {
-        self.flags
-            .set_bit(Self::FLAG_ARE_REWARDS_FINALIZED_BIT, should_finalize);
+    pub fn set_is_rewards_calculation_finalized(&mut self, should_finalize: bool) {
+        self.flags.set_bit(
+            Self::FLAG_IS_REWARDS_CALCULATION_FINALIZED_BIT,
+            should_finalize,
+        );
     }
 
     pub fn has_swept_2z_tokens(&self) -> bool {
@@ -121,18 +126,9 @@ impl Distribution {
             .set_bit(Self::FLAG_HAS_SWEPT_2Z_TOKENS_BIT, has_swept);
     }
 
-    pub fn total_sol_debt(&self) -> u64 {
-        self.total_solana_validator_debt
-    }
-
     pub fn checked_total_sol_debt(&self) -> Option<u64> {
-        self.total_sol_debt()
+        self.total_solana_validator_debt
             .checked_sub(self.uncollectible_sol_debt)
-    }
-
-    pub fn checked_outstanding_sol_debt(&self) -> Option<u64> {
-        self.checked_total_sol_debt()?
-            .checked_sub(self.collected_solana_validator_payments)
     }
 }
 

@@ -23,9 +23,8 @@ use svm_hash::{merkle::MerkleProof, sha2::Hash};
 
 use crate::{
     instruction::{
-        ContributorRewardsConfiguration, DistributionMerkleRootKind,
-        DistributionPaymentsConfiguration, JournalConfiguration, ProgramConfiguration,
-        ProgramFlagConfiguration, RevenueDistributionInstructionData,
+        ContributorRewardsConfiguration, DistributionMerkleRootKind, JournalConfiguration,
+        ProgramConfiguration, ProgramFlagConfiguration, RevenueDistributionInstructionData,
     },
     state::{
         self, find_swap_authority_address, CommunityBurnRateParameters, ContributorRewards,
@@ -33,7 +32,7 @@ use crate::{
         RelayParameters, SolanaValidatorDeposit, TOKEN_2Z_PDA_SEED_PREFIX,
     },
     types::{
-        BurnRate, ByteFlags, DoubleZeroEpoch, RewardShare, SolanaValidatorPayment, UnitShare32,
+        BurnRate, ByteFlags, DoubleZeroEpoch, RewardShare, SolanaValidatorDebt, UnitShare32,
         ValidatorFee,
     },
     DOUBLEZERO_MINT_DECIMALS, DOUBLEZERO_MINT_KEY, ID,
@@ -73,11 +72,13 @@ fn try_process_instruction(
         RevenueDistributionInstructionData::InitializeDistribution => {
             try_initialize_distribution(accounts)
         }
-        RevenueDistributionInstructionData::ConfigureDistributionPayments(setting) => {
-            try_configure_distribution_payments(accounts, setting)
-        }
-        RevenueDistributionInstructionData::FinalizeDistributionPayments => {
-            try_finalize_distribution_payments(accounts)
+        RevenueDistributionInstructionData::ConfigureDistributionDebt {
+            total_validators,
+            total_debt,
+            merkle_root,
+        } => try_configure_distribution_debt(accounts, total_validators, total_debt, merkle_root),
+        RevenueDistributionInstructionData::FinalizeDistributionDebt => {
+            try_finalize_distribution_debt(accounts)
         }
         RevenueDistributionInstructionData::ConfigureDistributionRewards {
             total_contributors,
@@ -119,6 +120,9 @@ fn try_process_instruction(
         }
         RevenueDistributionInstructionData::PaySolanaValidatorDebt { amount, proof } => {
             try_pay_solana_validator_debt(accounts, amount, proof)
+        }
+        RevenueDistributionInstructionData::ForgiveSolanaValidatorDebt { debt, proof } => {
+            try_forgive_solana_validator_debt(accounts, debt, proof)
         }
         RevenueDistributionInstructionData::InitializeSwapDestination => {
             try_initialize_swap_destination(accounts)
@@ -289,41 +293,44 @@ fn try_configure_program(accounts: &[AccountInfo], setting: ProgramConfiguration
             program_config.sol_2z_swap_program_id = sol_2z_swap_program_id;
         }
         ProgramConfiguration::SolanaValidatorFeeParameters {
-            base_block_rewards,
-            priority_block_rewards,
-            inflation_rewards,
-            jito_tips,
+            base_block_rewards_pct,
+            priority_block_rewards_pct,
+            inflation_rewards_pct,
+            jito_tips_pct,
+            fixed_sol_amount,
             _unused,
         } => {
-            let base_block_rewards = ValidatorFee::new(base_block_rewards).ok_or_else(|| {
-                msg!(
-                    "Invalid Solana validator base block rewards fee parameter: {}",
-                    base_block_rewards
-                );
-                ProgramError::InvalidInstructionData
-            })?;
-
-            let priority_block_rewards =
-                ValidatorFee::new(priority_block_rewards).ok_or_else(|| {
+            let base_block_rewards_pct =
+                ValidatorFee::new(base_block_rewards_pct).ok_or_else(|| {
                     msg!(
-                        "Invalid Solana validator priority block rewards fee parameter: {}",
-                        priority_block_rewards
+                        "Invalid Solana validator base block rewards percentage fee parameter: {}",
+                        base_block_rewards_pct
                     );
                     ProgramError::InvalidInstructionData
                 })?;
 
-            let inflation_rewards = ValidatorFee::new(inflation_rewards).ok_or_else(|| {
-                msg!(
-                    "Invalid Solana validator inflation rewards fee parameter: {}",
-                    inflation_rewards
-                );
-                ProgramError::InvalidInstructionData
-            })?;
+            let priority_block_rewards_pct = ValidatorFee::new(priority_block_rewards_pct)
+                .ok_or_else(|| {
+                    msg!(
+                        "Invalid Solana validator priority block rewards percentage fee parameter: {}",
+                        priority_block_rewards_pct
+                    );
+                    ProgramError::InvalidInstructionData
+                })?;
 
-            let jito_tips = ValidatorFee::new(jito_tips).ok_or_else(|| {
+            let inflation_rewards_pct =
+                ValidatorFee::new(inflation_rewards_pct).ok_or_else(|| {
+                    msg!(
+                        "Invalid Solana validator inflation rewards percentage fee parameter: {}",
+                        inflation_rewards_pct
+                    );
+                    ProgramError::InvalidInstructionData
+                })?;
+
+            let jito_tips_pct = ValidatorFee::new(jito_tips_pct).ok_or_else(|| {
                 msg!(
-                    "Invalid Solana validator Jito tips fee parameter: {}",
-                    jito_tips
+                    "Invalid Solana validator Jito tips percentage fee parameter: {}",
+                    jito_tips_pct
                 );
                 ProgramError::InvalidInstructionData
             })?;
@@ -333,17 +340,23 @@ fn try_configure_program(accounts: &[AccountInfo], setting: ProgramConfiguration
                 .distribution_parameters
                 .solana_validator_fee_parameters;
 
-            msg!("  base_block_rewards: {}", base_block_rewards);
-            fee_params.base_block_rewards = base_block_rewards;
+            msg!("  base_block_rewards_pct: {}", base_block_rewards_pct);
+            fee_params.base_block_rewards_pct = base_block_rewards_pct;
 
-            msg!("  priority_block_rewards: {}", priority_block_rewards);
-            fee_params.priority_block_rewards = priority_block_rewards;
+            msg!(
+                "  priority_block_rewards_pct: {}",
+                priority_block_rewards_pct
+            );
+            fee_params.priority_block_rewards_pct = priority_block_rewards_pct;
 
-            msg!("  inflation_rewards: {}", inflation_rewards);
-            fee_params.inflation_rewards = inflation_rewards;
+            msg!("  inflation_rewards_pct: {}", inflation_rewards_pct);
+            fee_params.inflation_rewards_pct = inflation_rewards_pct;
 
-            msg!("  jito_tips: {}", jito_tips);
-            fee_params.jito_tips = jito_tips;
+            msg!("  jito_tips_pct: {}", jito_tips_pct);
+            fee_params.jito_tips_pct = jito_tips_pct;
+
+            msg!("  fixed_sol_amount: {}", fixed_sol_amount);
+            fee_params.fixed_sol_amount = fixed_sol_amount;
         }
         ProgramConfiguration::CalculationGracePeriodSeconds(calculation_grace_period_seconds) => {
             msg!(
@@ -675,7 +688,7 @@ fn try_initialize_distribution(accounts: &[AccountInfo]) -> ProgramResult {
     let mut program_config = authorized_use.program_config;
 
     // Make sure the program is not paused.
-    try_require_unpaused(&program_config)?;
+    program_config.try_require_unpaused()?;
 
     let solana_validator_fee_params = program_config
         .checked_solana_validator_fee_parameters()
@@ -850,11 +863,13 @@ fn try_initialize_distribution(accounts: &[AccountInfo]) -> ProgramResult {
     Ok(())
 }
 
-fn try_configure_distribution_payments(
+fn try_configure_distribution_debt(
     accounts: &[AccountInfo],
-    setting: DistributionPaymentsConfiguration,
+    total_validators: u32,
+    total_debt: u64,
+    merkle_root: Hash,
 ) -> ProgramResult {
-    msg!("Configure distribution payments");
+    msg!("Configure distribution debt");
 
     // We expect the following accounts for this instruction:
     // - 0: Program config.
@@ -872,45 +887,28 @@ fn try_configure_distribution_payments(
     )?;
 
     // Make sure the program is not paused.
-    try_require_unpaused(&authorized_use.program_config)?;
+    authorized_use.program_config.try_require_unpaused()?;
 
     // Account 2 must be the distribution.
     let mut distribution =
         ZeroCopyMutAccount::<Distribution>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
 
-    match setting {
-        DistributionPaymentsConfiguration::UpdateSolanaValidatorPayments {
-            total_validators,
-            total_debt,
-            merkle_root,
-        } => {
-            try_require_unfinalized_distribution_payments(&distribution)?;
+    distribution.try_require_unfinalized_debt_calculation()?;
 
-            msg!("Set total_solana_validators: {}", total_validators);
-            distribution.total_solana_validators = total_validators;
+    msg!("Set total_solana_validators: {}", total_validators);
+    distribution.total_solana_validators = total_validators;
 
-            msg!("Set total_solana_validator_debt: {}", total_debt);
-            distribution.total_solana_validator_debt = total_debt;
+    msg!("Set total_solana_validator_debt: {}", total_debt);
+    distribution.total_solana_validator_debt = total_debt;
 
-            msg!("Set solana_validator_payments_merkle_root: {}", merkle_root);
-            distribution.solana_validator_payments_merkle_root = merkle_root;
-        }
-        DistributionPaymentsConfiguration::UpdateUncollectibleSol(amount) => {
-            // Make sure the distribution has not already swept 2Z tokens. If
-            // 2Z was already swept into the distribution, the distribution has
-            // accounted for all of its SOL debt.
-            try_require_has_not_swept_2z_tokens(&distribution)?;
-
-            msg!("Set uncollectible_sol_amount: {}", amount);
-            distribution.uncollectible_sol_debt = amount;
-        }
-    }
+    msg!("Set solana_validator_payments_merkle_root: {}", merkle_root);
+    distribution.solana_validator_payments_merkle_root = merkle_root;
 
     Ok(())
 }
 
-fn try_finalize_distribution_payments(accounts: &[AccountInfo]) -> ProgramResult {
-    msg!("Finalize distribution payments");
+fn try_finalize_distribution_debt(accounts: &[AccountInfo]) -> ProgramResult {
+    msg!("Finalize distribution debt");
 
     // We expect the following accounts for this instruction:
     // - 0: Program config.
@@ -930,15 +928,14 @@ fn try_finalize_distribution_payments(accounts: &[AccountInfo]) -> ProgramResult
     )?;
 
     // Make sure the program is not paused.
-    try_require_unpaused(&authorized_use.program_config)?;
+    authorized_use.program_config.try_require_unpaused()?;
 
     // Account 2 must be the distribution.
     let mut distribution =
         ZeroCopyMutAccount::<Distribution>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
 
-    try_require_unfinalized_distribution_payments(&distribution)?;
-
-    distribution.set_are_payments_finalized(true);
+    distribution.try_require_unfinalized_debt_calculation()?;
+    distribution.set_is_debt_calculation_finalized(true);
 
     // We need to realloc the distribution account to add the number of bits
     // needed to store whether a Solana validator has paid.
@@ -991,7 +988,7 @@ fn try_configure_distribution_rewards(
     total_contributors: u32,
     merkle_root: Hash,
 ) -> ProgramResult {
-    msg!("Configure distribution");
+    msg!("Configure distribution rewards");
 
     // We expect the following accounts for this instruction:
     // - 0: Program config.
@@ -1009,14 +1006,15 @@ fn try_configure_distribution_rewards(
     )?;
 
     // Make sure the program is not paused.
-    try_require_unpaused(&authorized_use.program_config)?;
+    authorized_use.program_config.try_require_unpaused()?;
 
     // Account 2 must be the distribution.
     let mut distribution =
         ZeroCopyMutAccount::<Distribution>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
 
-    // If the distribution rewards have already been finalized, we have nothing to do.
-    try_require_unfinalized_distribution_rewards(&distribution)?;
+    // If the distribution rewards calculation has already been finalized,
+    // we have nothing to do.
+    distribution.try_require_unfinalized_rewards_calculation()?;
 
     msg!("Set total_contributors: {}", total_contributors);
     distribution.total_contributors = total_contributors;
@@ -1042,7 +1040,7 @@ fn try_finalize_distribution_rewards(accounts: &[AccountInfo]) -> ProgramResult 
         ZeroCopyAccount::<ProgramConfig>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
 
     // Make sure the program is not paused.
-    try_require_unpaused(&program_config)?;
+    program_config.try_require_unpaused()?;
 
     // In order to finalize contributor rewards, the program config must have a non-zero
     // amount of lamports to pay for each contributor reward claim. By providing these
@@ -1059,13 +1057,13 @@ fn try_finalize_distribution_rewards(accounts: &[AccountInfo]) -> ProgramResult 
     let mut distribution =
         ZeroCopyMutAccount::<Distribution>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
 
-    // If the distribution rewards have already been finalized, we have nothing to do.
-    try_require_unfinalized_distribution_rewards(&distribution)?;
+    // If the distribution rewards calculation has already been finalized,
+    // we have nothing to do.
+    distribution.try_require_unfinalized_rewards_calculation()?;
+    distribution.set_is_rewards_calculation_finalized(true);
 
-    distribution.set_are_rewards_finalized(true);
-
-    // Payments must have been finalized before rewards can be finalized.
-    try_require_finalized_distribution_payments(&distribution)?;
+    // Debt calculation must have been finalized before rewards can be finalized.
+    distribution.try_require_finalized_debt_calculation()?;
 
     // The distribution must have been created at least the minimum number of epochs ago.
     let minimum_dz_epoch_to_finalize = program_config
@@ -1178,7 +1176,7 @@ fn try_initialize_prepaid_connection(
         ZeroCopyAccount::<ProgramConfig>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
 
     // Make sure the program is not paused.
-    try_require_unpaused(&program_config)?;
+    program_config.try_require_unpaused()?;
 
     // Account 1 must be the journal. We need the activation cost to determine how much to transfer
     // to the reserve.
@@ -1471,7 +1469,7 @@ fn try_load_prepaid_connection(
         ZeroCopyAccount::<ProgramConfig>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
 
     // Make sure the program is not paused.
-    try_require_unpaused(&program_config)?;
+    program_config.try_require_unpaused()?;
 
     // Account 1 must be the journal. The journal specifies the min and max entry constraints. When
     // the constraint checks pass, we update the existing journal entries to reflect the payment.
@@ -1800,11 +1798,16 @@ fn try_set_rewards_manager(accounts: &[AccountInfo], rewards_manager_key: Pubkey
     )?;
 
     // Make sure the program is not paused.
-    try_require_unpaused(&authorized_use.program_config)?;
+    authorized_use.program_config.try_require_unpaused()?;
 
     // Account 2 must be the contributor rewards.
     let mut contributor_rewards =
         ZeroCopyMutAccount::<ContributorRewards>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+
+    if contributor_rewards.is_set_rewards_manager_blocked() {
+        msg!("Blocked");
+        return Err(ProgramError::InvalidAccountData);
+    }
 
     msg!("rewards_manager_key: {}", rewards_manager_key);
     contributor_rewards.rewards_manager_key = rewards_manager_key;
@@ -1829,7 +1832,7 @@ fn try_configure_contributor_rewards(
         ZeroCopyAccount::<ProgramConfig>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
 
     // Make sure the program is not paused.
-    try_require_unpaused(&program_config)?;
+    program_config.try_require_unpaused()?;
 
     // Account 1 must be the contributor rewards.
     let mut contributor_rewards =
@@ -1858,10 +1861,18 @@ fn try_configure_contributor_rewards(
             })?;
 
             msg!("Recipients");
-            recipients.iter().for_each(|recipient| {
-                msg!("{}: {}", recipient.recipient_key, recipient.share);
-            });
+            recipients
+                .iter()
+                .filter(|recipient| recipient.recipient_key != Pubkey::default())
+                .for_each(|recipient| {
+                    msg!("{}: {}", recipient.recipient_key, recipient.share);
+                });
             contributor_rewards.recipient_shares = recipients;
+        }
+        ContributorRewardsConfiguration::IsSetRewardsManagerBlocked(should_block) => {
+            msg!("Set flag");
+            msg!("is_set_rewards_manager_blocked: {}", should_block);
+            contributor_rewards.set_is_set_rewards_manager_blocked(should_block);
         }
     }
 
@@ -1891,7 +1902,7 @@ fn try_verify_distribution_merkle_root(
             msg!("Solana validator payment {}", leaf_index);
 
             let computed_merkle_root =
-                proof.root_from_pod_leaf(&payment, Some(SolanaValidatorPayment::LEAF_PREFIX));
+                proof.root_from_pod_leaf(&payment, Some(SolanaValidatorDebt::LEAF_PREFIX));
 
             if computed_merkle_root != distribution.solana_validator_payments_merkle_root {
                 msg!("Invalid computed merkle root: {}", computed_merkle_root);
@@ -1990,15 +2001,10 @@ fn try_pay_solana_validator_debt(
 ) -> ProgramResult {
     msg!("Pay Solana validator debt");
 
-    if amount == 0 {
-        msg!("No debt to pay");
-        return Err(ProgramError::InvalidInstructionData);
-    }
-
-    if !proof.is_indexed() {
+    let leaf_index = proof.leaf_index.ok_or_else(|| {
         msg!("Merkle proof must use an indexed tree");
-        return Err(ProgramError::InvalidInstructionData);
-    }
+        ProgramError::InvalidInstructionData
+    })?;
 
     // We expect the following accounts for this instruction:
     // - 0: Program config.
@@ -2012,15 +2018,15 @@ fn try_pay_solana_validator_debt(
         ZeroCopyAccount::<ProgramConfig>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
 
     // Make sure the program is not paused.
-    try_require_unpaused(&program_config)?;
+    program_config.try_require_unpaused()?;
 
     // Account 1 must be the distribution.
     let mut distribution =
         ZeroCopyMutAccount::<Distribution>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
 
-    // We cannot pay Solana validator debt until the payments accountant has
-    // finalized the payments.
-    try_require_finalized_distribution_payments(&distribution)?;
+    // We cannot pay Solana validator debt until the Payments Accountant has
+    // finalized the debt calculation.
+    distribution.try_require_finalized_debt_calculation()?;
 
     // Update the collected payments amount now to avoid a borrow issue later
     // in this instruction.
@@ -2030,42 +2036,18 @@ fn try_pay_solana_validator_debt(
     // the debt has not already been paid.
     let expected_merkle_root = distribution.solana_validator_payments_merkle_root;
 
-    let leaf_index = proof.leaf_index.unwrap();
-
     // Bits indicating whether debt has been paid for specific leaf indices are
     // stored in the distribution's remaining data.
     let processed_index = distribution.processed_solana_validator_payments_index as usize;
-    let processed_payments_data = &mut distribution.remaining_data[processed_index..];
 
-    let leaf_byte_index = leaf_index as usize / 8;
-
-    // First, we have to grab the relevant byte from the processed payments
-    //data.
-    let leaf_byte_ref = processed_payments_data
-        .get_mut(leaf_byte_index)
-        .ok_or_else(|| {
-            msg!("Invalid leaf index");
-            ProgramError::InvalidInstructionData
-        })?;
-
-    // Create a ByteFlag from the byte value to check the bit.
-    let mut leaf_byte = ByteFlags::new(*leaf_byte_ref);
-
-    // Then, we have to grab the relevant bit from the byte and check whether
-    // it is set already.
-    let leaf_bit = leaf_index as usize % 8;
-
-    if leaf_byte.bit(leaf_bit) {
-        msg!(
-            "Debt already paid for Solana validator index {}",
-            leaf_index
-        );
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    // Set the bit to true to indicate that the debt has been paid.
-    leaf_byte.set_bit(leaf_bit, true);
-    *leaf_byte_ref = leaf_byte.into();
+    try_process_remaining_data_leaf_index(
+        &mut distribution.remaining_data,
+        processed_index,
+        leaf_index,
+    )
+    .inspect_err(|_| {
+        msg!("Solana validator debt already processed");
+    })?;
 
     // Account 2 must be the Solana validator deposit.
     let solana_validator_deposit = ZeroCopyMutAccount::<SolanaValidatorDeposit>::try_next_accounts(
@@ -2073,13 +2055,13 @@ fn try_pay_solana_validator_debt(
         Some(&ID),
     )?;
 
-    let payment = SolanaValidatorPayment {
+    let debt = SolanaValidatorDebt {
         node_id: solana_validator_deposit.node_id,
         amount,
     };
 
     let computed_merkle_root =
-        proof.root_from_pod_leaf(&payment, Some(SolanaValidatorPayment::LEAF_PREFIX));
+        proof.root_from_pod_leaf(&debt, Some(SolanaValidatorDebt::LEAF_PREFIX));
 
     if computed_merkle_root != expected_merkle_root {
         msg!("Invalid computed merkle root: {}", computed_merkle_root);
@@ -2112,6 +2094,130 @@ fn try_pay_solana_validator_debt(
     msg!(
         "Updated journal's SOL balance to {}",
         journal.total_sol_balance
+    );
+
+    Ok(())
+}
+
+fn try_forgive_solana_validator_debt(
+    accounts: &[AccountInfo],
+    debt: SolanaValidatorDebt,
+    proof: MerkleProof,
+) -> ProgramResult {
+    msg!("Forgive Solana validator debt");
+
+    let leaf_index = proof.leaf_index.ok_or_else(|| {
+        msg!("Merkle proof must use an indexed tree");
+        ProgramError::InvalidInstructionData
+    })?;
+
+    // We expect the following accounts for this instruction:
+    // - 0: Program config.
+    // - 1: Payments accountant.
+    // - 2: Distribution.
+    // - 3: Next distribution.
+    let mut accounts_iter = accounts.iter().enumerate();
+
+    // Account 0 must be the program config.
+    let authorized_use = VerifiedProgramAuthority::try_next_accounts(
+        &mut accounts_iter,
+        Authority::PaymentsAccountant,
+    )?;
+
+    // Make sure the program is not paused.
+    authorized_use.program_config.try_require_unpaused()?;
+
+    // Account 2 must be the distribution.
+    let mut distribution =
+        ZeroCopyMutAccount::<Distribution>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+
+    // We cannot pay Solana validator debt until the Payments Accountant has
+    // finalized the debt calculation.
+    distribution
+        .try_require_finalized_debt_calculation()
+        .inspect_err(|_| {
+            msg!("Epoch {} has unfinalized debt", distribution.dz_epoch);
+        })?;
+
+    // This merkle root will be used to verify the payment after we determine
+    // the debt has not already been paid.
+    let expected_merkle_root = distribution.solana_validator_payments_merkle_root;
+
+    // Bits indicating whether debt has been paid for specific leaf indices are
+    // stored in the distribution's remaining data.
+    let processed_index = distribution.processed_solana_validator_payments_index as usize;
+
+    try_process_remaining_data_leaf_index(
+        &mut distribution.remaining_data,
+        processed_index,
+        leaf_index,
+    )
+    .inspect_err(|_| {
+        msg!(
+            "Solana validator debt already processed for epoch {}",
+            distribution.dz_epoch
+        );
+    })?;
+
+    let computed_merkle_root =
+        proof.root_from_pod_leaf(&debt, Some(SolanaValidatorDebt::LEAF_PREFIX));
+
+    if computed_merkle_root != expected_merkle_root {
+        msg!("Invalid computed merkle root: {}", computed_merkle_root);
+        return Err(ProgramError::InvalidInstructionData);
+    }
+
+    // Account 3 must be the distribution reflecting an epoch ahead of the
+    // current distribution's epoch.
+    let mut next_distribution =
+        ZeroCopyMutAccount::<Distribution>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+
+    if next_distribution.dz_epoch <= distribution.dz_epoch {
+        msg!("Next distribution's epoch must be ahead of the current distribution's epoch");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // We cannot account for uncollectible debt if the next distribution has
+    // already swept 2Z tokens.
+    next_distribution
+        .try_require_has_not_swept_2z_tokens()
+        .inspect_err(|_| {
+            msg!(
+                "Epoch {} has already swept 2Z tokens",
+                next_distribution.dz_epoch
+            );
+        })?;
+
+    // Out of paranoia, prevent accounting for uncollectible debt if the next
+    // distribution is not finalized.
+    next_distribution
+        .try_require_finalized_debt_calculation()
+        .inspect_err(|_| {
+            msg!("Epoch {} has unfinalized debt", next_distribution.dz_epoch);
+        })?;
+
+    // Update the uncollectible SOL debt amount of the next distribution.
+    //
+    // We make the assumption that with the existence of this distribution, the
+    // last distribution may have swept 2Z tokens so rewards can be distributed
+    // for that epoch.
+    //
+    // By tracking the uncollectible debt here, the rewards paid to contributors
+    // will be reduced for this distribution by the amount of SOL debt that was
+    // forgiven.
+    next_distribution.uncollectible_sol_debt += debt.amount;
+
+    // Double-check that the uncollectible debt does not exceed the total debt
+    // for this distribution.
+    next_distribution.checked_total_sol_debt().ok_or_else(|| {
+        msg!("Uncollectible SOL debt exceeds total debt");
+        ProgramError::ArithmeticOverflow
+    })?;
+
+    msg!(
+        "Updated uncollectible SOL debt to {} for distribution epoch {}",
+        next_distribution.uncollectible_sol_debt,
+        next_distribution.dz_epoch
     );
 
     Ok(())
@@ -2226,18 +2332,18 @@ fn try_sweep_distribution_tokens_development(accounts: &[AccountInfo]) -> Progra
         ZeroCopyAccount::<ProgramConfig>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
 
     // Make sure the program is not paused.
-    try_require_unpaused(&program_config)?;
+    program_config.try_require_unpaused()?;
 
     // Account 1 must be the distribution.
     let mut distribution =
         ZeroCopyMutAccount::<Distribution>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
 
     // Make sure the distribution has not already swept 2Z tokens.
-    try_require_has_not_swept_2z_tokens(&distribution)?;
+    distribution.try_require_has_not_swept_2z_tokens()?;
     distribution.set_has_swept_2z_tokens(true);
 
-    // Make sure the distribution is finalized.
-    try_require_finalized_distribution_payments(&distribution)?;
+    // Make sure the distribution debt calculation is finalized.
+    distribution.try_require_finalized_debt_calculation()?;
 
     // Account 2 must be the journal.
     let mut journal =
@@ -2246,7 +2352,7 @@ fn try_sweep_distribution_tokens_development(accounts: &[AccountInfo]) -> Progra
     // We will attempt to account for the total SOL debt and account for this
     // amount by reducing the SOL balance of the journal. The SOL that this
     // balance tracks will have already been swapped by the swap program.
-    let total_sol_debt = distribution.total_sol_debt();
+    let total_sol_debt = distribution.checked_total_sol_debt().unwrap();
 
     if journal.total_sol_balance < total_sol_debt {
         msg!("Journal does not have enough SOL to cover the SOL debt");
@@ -2261,9 +2367,7 @@ fn try_sweep_distribution_tokens_development(accounts: &[AccountInfo]) -> Progra
 
     // Record the swept amount to the distribution. This amount will also be
     // used to token transfer the 2Z tokens to the distribution.
-    let token_2z_amount = distribution
-        .collected_solana_validator_payments
-        .saturating_mul(FIXED_SOL_2Z_SWAP_RATE_FOR_DEVELOPMENT);
+    let token_2z_amount = total_sol_debt.saturating_mul(FIXED_SOL_2Z_SWAP_RATE_FOR_DEVELOPMENT);
     distribution.collected_sol_converted_to_2z += token_2z_amount;
 
     // Account 3 must be the distribution's 2Z token account.
@@ -2315,12 +2419,7 @@ fn try_sweep_distribution_tokens_development(accounts: &[AccountInfo]) -> Progra
         &[&[SWAP_AUTHORITY_SEED_PREFIX, &[swap_authority_bump]]],
     )?;
 
-    let outstanding_sol_debt = distribution.checked_outstanding_sol_debt().ok_or_else(|| {
-        msg!("Uncollectible SOL debt is misconfigured");
-        ProgramError::ArithmeticOverflow
-    })?;
-
-    msg!("Outstanding SOL debt: {}", outstanding_sol_debt);
+    msg!("Total SOL debt accounted for: {}", total_sol_debt);
     msg!("Journal's SOL balance after: {}", journal.total_sol_balance);
     msg!("Transferred {} 2Z tokens to distribution", token_2z_amount);
 
@@ -2528,51 +2627,96 @@ fn try_serialize_journal_entries(
     })
 }
 
-#[inline(always)]
-fn try_require_unpaused(program_config: &ProgramConfig) -> ProgramResult {
-    if program_config.is_paused() {
-        msg!("Program is paused");
-        return Err(ProgramError::InvalidAccountData);
-    }
+impl ProgramConfig {
+    #[inline(always)]
+    fn try_require_unpaused(&self) -> ProgramResult {
+        if self.is_paused() {
+            msg!("Program is paused");
+            return Err(ProgramError::InvalidAccountData);
+        }
 
-    Ok(())
+        Ok(())
+    }
 }
 
-#[inline(always)]
-fn try_require_unfinalized_distribution_payments(distribution: &Distribution) -> ProgramResult {
-    if distribution.are_payments_finalized() {
-        msg!("Distribution payments have already been finalized");
-        return Err(ProgramError::InvalidAccountData);
+impl Distribution {
+    #[inline(always)]
+    fn try_require_unfinalized_debt_calculation(&self) -> ProgramResult {
+        if self.is_debt_calculation_finalized() {
+            msg!("Distribution debt calculation has already been finalized");
+            return Err(ProgramError::InvalidAccountData);
+        }
+
+        Ok(())
     }
 
-    Ok(())
+    #[inline(always)]
+    fn try_require_finalized_debt_calculation(&self) -> ProgramResult {
+        if !self.is_debt_calculation_finalized() {
+            msg!("Distribution debt calculation is not finalized yet");
+            return Err(ProgramError::InvalidAccountData);
+        }
+
+        Ok(())
+    }
+
+    #[inline(always)]
+    fn try_require_unfinalized_rewards_calculation(&self) -> ProgramResult {
+        if self.is_rewards_calculation_finalized() {
+            msg!("Distribution rewards have already been finalized");
+            return Err(ProgramError::InvalidAccountData);
+        }
+
+        Ok(())
+    }
+
+    #[inline(always)]
+    fn try_require_has_not_swept_2z_tokens(&self) -> ProgramResult {
+        if self.has_swept_2z_tokens() {
+            msg!("Distribution has already swept 2Z tokens");
+            return Err(ProgramError::InvalidAccountData);
+        }
+
+        Ok(())
+    }
 }
 
-#[inline(always)]
-fn try_require_finalized_distribution_payments(distribution: &Distribution) -> ProgramResult {
-    if !distribution.are_payments_finalized() {
-        msg!("Distribution payments are not finalized yet");
+fn try_process_remaining_data_leaf_index(
+    remaining_data: &mut [u8],
+    processed_index: usize,
+    leaf_index: u32,
+) -> ProgramResult {
+    let processed_payments_data = &mut remaining_data[processed_index..];
+
+    let leaf_byte_index = leaf_index as usize / 8;
+
+    // First, we have to grab the relevant byte from the processed payments
+    //data.
+    let leaf_byte_ref = processed_payments_data
+        .get_mut(leaf_byte_index)
+        .ok_or_else(|| {
+            msg!("Invalid leaf index");
+            ProgramError::InvalidInstructionData
+        })?;
+
+    // Create a ByteFlag from the byte value to check the bit.
+    let mut leaf_byte = ByteFlags::new(*leaf_byte_ref);
+
+    // Then, we have to grab the relevant bit from the byte and check whether
+    // it is set already.
+    let leaf_bit = leaf_index as usize % 8;
+
+    if leaf_byte.bit(leaf_bit) {
+        msg!(
+            "Merkle leaf index {} has already been processed",
+            leaf_index
+        );
         return Err(ProgramError::InvalidAccountData);
     }
 
-    Ok(())
-}
-
-#[inline(always)]
-fn try_require_unfinalized_distribution_rewards(distribution: &Distribution) -> ProgramResult {
-    if distribution.are_rewards_finalized() {
-        msg!("Distribution rewards have already been finalized");
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    Ok(())
-}
-
-fn try_require_has_not_swept_2z_tokens(distribution: &Distribution) -> ProgramResult {
-    if distribution.has_swept_2z_tokens() {
-        msg!("Distribution has already swept 2Z tokens");
-        return Err(ProgramError::InvalidAccountData);
-    }
+    // Set the bit to true to indicate that the leaf has been processed.
+    leaf_byte.set_bit(leaf_bit, true);
+    *leaf_byte_ref = leaf_byte.into();
 
     Ok(())
 }

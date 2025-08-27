@@ -6,8 +6,7 @@ use doublezero_program_tools::instruction::try_build_instruction;
 use doublezero_revenue_distribution::{
     instruction::{
         account::{ConfigureDistributionRewardsAccounts, FinalizeDistributionRewardsAccounts},
-        DistributionPaymentsConfiguration, ProgramConfiguration, ProgramFlagConfiguration,
-        RevenueDistributionInstructionData,
+        ProgramConfiguration, ProgramFlagConfiguration, RevenueDistributionInstructionData,
     },
     state::{self, Distribution},
     types::{BurnRate, DoubleZeroEpoch, ValidatorFee},
@@ -33,7 +32,7 @@ async fn test_finalize_distribution_rewards() {
 
     let payments_accountant_signer = Keypair::new();
     let rewards_accountant_signer = Keypair::new();
-    let solana_validator_base_block_rewards_fee = 500; // 5%.
+    let solana_validator_base_block_rewards_pct_fee = 500; // 5%.
 
     // Community burn rate.
     let initial_cbr = 100_000_000; // 10%.
@@ -70,11 +69,12 @@ async fn test_finalize_distribution_rewards() {
                 ProgramConfiguration::PaymentsAccountant(payments_accountant_signer.pubkey()),
                 ProgramConfiguration::RewardsAccountant(rewards_accountant_signer.pubkey()),
                 ProgramConfiguration::SolanaValidatorFeeParameters {
-                    base_block_rewards: solana_validator_base_block_rewards_fee,
-                    priority_block_rewards: 0,
-                    inflation_rewards: 0,
-                    jito_tips: 0,
-                    _unused: [0; 32],
+                    base_block_rewards_pct: solana_validator_base_block_rewards_pct_fee,
+                    priority_block_rewards_pct: 0,
+                    inflation_rewards_pct: 0,
+                    jito_tips_pct: 0,
+                    fixed_sol_amount: 0,
+                    _unused: Default::default(),
                 },
                 ProgramConfiguration::CommunityBurnRateParameters {
                     limit: cbr_limit,
@@ -104,16 +104,12 @@ async fn test_finalize_distribution_rewards() {
         )
         .await
         .unwrap()
-        .configure_distribution_payments(
+        .configure_distribution_debt(
             dz_epoch,
             &payments_accountant_signer,
-            [
-                DistributionPaymentsConfiguration::UpdateSolanaValidatorPayments {
-                    total_validators: total_solana_validators,
-                    total_debt: total_solana_validator_debt,
-                    merkle_root: solana_validator_payments_merkle_root,
-                },
-            ],
+            total_solana_validators,
+            total_solana_validator_debt,
+            solana_validator_payments_merkle_root,
         )
         .await
         .unwrap();
@@ -128,11 +124,11 @@ async fn test_finalize_distribution_rewards() {
     );
     assert_eq!(
         program_logs.get(2).unwrap(),
-        "Program log: Distribution payments are not finalized yet"
+        "Program log: Distribution debt calculation is not finalized yet"
     );
 
     test_setup
-        .finalize_distribution_payments(dz_epoch, &payments_accountant_signer)
+        .finalize_distribution_debt(dz_epoch, &payments_accountant_signer)
         .await
         .unwrap();
 
@@ -222,8 +218,8 @@ async fn test_finalize_distribution_rewards() {
     );
 
     let mut expected_distribution = Distribution::default();
-    expected_distribution.set_are_payments_finalized(true);
-    expected_distribution.set_are_rewards_finalized(true);
+    expected_distribution.set_is_debt_calculation_finalized(true);
+    expected_distribution.set_is_rewards_calculation_finalized(true);
     expected_distribution.bump_seed = Distribution::find_address(dz_epoch).1;
     expected_distribution.token_2z_pda_bump_seed =
         state::find_2z_token_pda_address(&distribution_key).1;
@@ -231,7 +227,8 @@ async fn test_finalize_distribution_rewards() {
     expected_distribution.community_burn_rate = BurnRate::new(initial_cbr).unwrap();
     expected_distribution
         .solana_validator_fee_parameters
-        .base_block_rewards = ValidatorFee::new(solana_validator_base_block_rewards_fee).unwrap();
+        .base_block_rewards_pct =
+        ValidatorFee::new(solana_validator_base_block_rewards_pct_fee).unwrap();
     expected_distribution.total_solana_validators = total_solana_validators;
     expected_distribution.total_solana_validator_debt = total_solana_validator_debt;
     expected_distribution.solana_validator_payments_merkle_root =

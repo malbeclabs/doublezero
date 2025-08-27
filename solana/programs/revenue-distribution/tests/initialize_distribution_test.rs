@@ -22,7 +22,7 @@ async fn test_initialize_distribution() {
     let admin_signer = Keypair::new();
 
     let payments_accountant_signer = Keypair::new();
-    let solana_validator_base_block_rewards_fee = 500; // 5%.
+    let solana_validator_base_block_rewards_pct_fee = 500; // 5%.
 
     // Community burn rate.
     let initial_cbr = 100_000_000; // 10%.
@@ -45,11 +45,12 @@ async fn test_initialize_distribution() {
             [
                 ProgramConfiguration::PaymentsAccountant(payments_accountant_signer.pubkey()),
                 ProgramConfiguration::SolanaValidatorFeeParameters {
-                    base_block_rewards: solana_validator_base_block_rewards_fee,
-                    priority_block_rewards: 0,
-                    inflation_rewards: 0,
-                    jito_tips: 0,
-                    _unused: [0; 32],
+                    base_block_rewards_pct: solana_validator_base_block_rewards_pct_fee,
+                    priority_block_rewards_pct: 0,
+                    inflation_rewards_pct: 0,
+                    jito_tips_pct: 0,
+                    fixed_sol_amount: 0,
+                    _unused: Default::default(),
                 },
                 ProgramConfiguration::CommunityBurnRateParameters {
                     limit: cbr_limit,
@@ -94,7 +95,8 @@ async fn test_initialize_distribution() {
     expected_distribution.community_burn_rate = expected_cbr;
     expected_distribution
         .solana_validator_fee_parameters
-        .base_block_rewards = ValidatorFee::new(solana_validator_base_block_rewards_fee).unwrap();
+        .base_block_rewards_pct =
+        ValidatorFee::new(solana_validator_base_block_rewards_pct_fee).unwrap();
     assert_eq!(distribution, expected_distribution);
     assert_eq!(distribution_custody.amount, 0);
 
@@ -111,7 +113,8 @@ async fn test_initialize_distribution() {
     let expected_distribution_params = &mut expected_program_config.distribution_parameters;
     expected_distribution_params
         .solana_validator_fee_parameters
-        .base_block_rewards = ValidatorFee::new(solana_validator_base_block_rewards_fee).unwrap();
+        .base_block_rewards_pct =
+        ValidatorFee::new(solana_validator_base_block_rewards_pct_fee).unwrap();
     expected_distribution_params.community_burn_rate_parameters = cbr_params;
     assert_eq!(program_config, expected_program_config);
 
@@ -142,7 +145,8 @@ async fn test_initialize_distribution() {
     expected_distribution.community_burn_rate = expected_cbr;
     expected_distribution
         .solana_validator_fee_parameters
-        .base_block_rewards = ValidatorFee::new(solana_validator_base_block_rewards_fee).unwrap();
+        .base_block_rewards_pct =
+        ValidatorFee::new(solana_validator_base_block_rewards_pct_fee).unwrap();
     assert_eq!(distribution, expected_distribution);
     assert_eq!(distribution_custody.amount, 0);
 
@@ -159,7 +163,8 @@ async fn test_initialize_distribution() {
     let expected_distribution_params = &mut expected_program_config.distribution_parameters;
     expected_distribution_params
         .solana_validator_fee_parameters
-        .base_block_rewards = ValidatorFee::new(solana_validator_base_block_rewards_fee).unwrap();
+        .base_block_rewards_pct =
+        ValidatorFee::new(solana_validator_base_block_rewards_pct_fee).unwrap();
     expected_distribution_params.community_burn_rate_parameters = cbr_params;
     assert_eq!(program_config, expected_program_config);
 }

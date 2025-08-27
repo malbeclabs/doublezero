@@ -33,8 +33,20 @@ impl PrecomputedDiscriminator for ContributorRewards {
 impl ContributorRewards {
     pub const SEED_PREFIX: &'static [u8] = b"contributor_rewards";
 
+    pub const FLAG_IS_SET_REWARDS_MANAGER_BLOCKED_BIT: usize = 0;
+
     pub fn find_address(service_key: &Pubkey) -> (Pubkey, u8) {
         Pubkey::find_program_address(&[Self::SEED_PREFIX, service_key.as_ref()], &crate::ID)
+    }
+
+    pub fn is_set_rewards_manager_blocked(&self) -> bool {
+        self.flags
+            .bit(Self::FLAG_IS_SET_REWARDS_MANAGER_BLOCKED_BIT)
+    }
+
+    pub fn set_is_set_rewards_manager_blocked(&mut self, should_block: bool) {
+        self.flags
+            .set_bit(Self::FLAG_IS_SET_REWARDS_MANAGER_BLOCKED_BIT, should_block);
     }
 }
 

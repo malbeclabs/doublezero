@@ -21,9 +21,6 @@ ntp server 0.pool.ntp.org
 ntp server 1.pool.ntp.org
 ntp server 2.pool.ntp.org
 !
-mpls icmp ttl-exceeded tunneling
-mpls icmp ip source-interface Loopback255
-!
 no ip access-list MAIN-CONTROL-PLANE-ACL
 ip access-list MAIN-CONTROL-PLANE-ACL
    counters per-entry
@@ -65,6 +62,9 @@ interface Loopback1000
    ip address 10.0.0.0/32
 !
 mpls ip
+!
+mpls icmp ttl-exceeded tunneling
+mpls icmp ip source-interface Loopback255
 !
 default interface Tunnel500
 interface Tunnel500

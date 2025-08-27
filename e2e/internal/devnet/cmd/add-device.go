@@ -20,6 +20,7 @@ func (c *AddDeviceCmd) Command() *cobra.Command {
 	var exchange string
 	var cyoaNetworkHostID uint32
 	var cyoaNetworkAllocatablePrefix uint32
+	var additionalNetworks []string
 
 	cmd := &cobra.Command{
 		Use:   "add-device",
@@ -28,6 +29,13 @@ func (c *AddDeviceCmd) Command() *cobra.Command {
 			err := dn.Start(ctx, nil)
 			if err != nil {
 				return fmt.Errorf("failed to start devnet: %w", err)
+			}
+
+			for _, network := range additionalNetworks {
+				_, err = devnet.NewMiscNetwork(dn.Devnet, dn.log, network).CreateIfNotExists(ctx)
+				if err != nil {
+					return fmt.Errorf("failed to create or get additional network %s: %w", network, err)
+				}
 			}
 
 			_, err = dn.AddDevice(ctx, devnet.DeviceSpec{
@@ -48,6 +56,7 @@ func (c *AddDeviceCmd) Command() *cobra.Command {
 					"Loopback255": "vpnv4",
 					"Loopback256": "ipv4",
 				},
+				AdditionalNetworks: additionalNetworks,
 			})
 			if err != nil {
 				return fmt.Errorf("failed to add device: %w", err)
@@ -62,6 +71,7 @@ func (c *AddDeviceCmd) Command() *cobra.Command {
 	cmd.Flags().StringVar(&exchange, "exchange", "", "Device exchange")
 	cmd.Flags().Uint32Var(&cyoaNetworkHostID, "cyoa-network-host-id", 0, "CYOA network host ID; if the subnet CIDR prefix is 24 (default), this represents the last octet of the IP address")
 	cmd.Flags().Uint32Var(&cyoaNetworkAllocatablePrefix, "cyoa-network-allocatable-prefix", 0, "CYOA network allocatable prefix; the prefix length of the block of IPs that are available for allocation to clients for this device in the CYOA subnet (default 29)")
+	cmd.Flags().StringSliceVar(&additionalNetworks, "additional-networks", []string{}, "Additional docker networks for this device")
 	_ = cmd.MarkFlagRequired("code")
 	_ = cmd.MarkFlagRequired("location")
 	_ = cmd.MarkFlagRequired("exchange")

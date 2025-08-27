@@ -860,10 +860,11 @@ mod tests {
         );
         test_instruction(
             DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
-                accesspass_type: crate::state::accesspass::AccessPassType::SolanaValidator,
+                accesspass_type: crate::state::accesspass::AccessPassType::SolanaValidator(
+                    Pubkey::new_unique(),
+                ),
                 client_ip: [1, 2, 3, 4].into(),
                 last_access_epoch: 123,
-                solana_validator: Some(Pubkey::new_unique()),
             }),
             "SetAccessPass",
         );

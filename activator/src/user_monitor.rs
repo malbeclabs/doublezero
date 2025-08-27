@@ -144,7 +144,6 @@ mod tests {
             status: AccessPassStatus::Requested,
             last_access_epoch: 15,
             connection_count: 1,
-            solana_validator: Pubkey::default(),
             user_payer,
         };
         accesspass.insert(accesspass1_pk, accesspass1);

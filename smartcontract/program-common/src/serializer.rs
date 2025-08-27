@@ -171,7 +171,7 @@ where
         .map(|(k, v)| {
             Pubkey::from_str(&k)
                 .map(|pubkey| (pubkey, v))
-                .map_err(|e| serde::de::Error::custom(format!("Invalid pubkey: {}", e)))
+                .map_err(|e| serde::de::Error::custom(format!("Invalid pubkey: {e}")))
         })
         .collect()
 }

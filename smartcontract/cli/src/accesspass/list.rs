@@ -2,7 +2,7 @@ use crate::doublezerocommand::CliCommand;
 use clap::Args;
 use doublezero_program_common::serializer;
 use doublezero_sdk::commands::accesspass::list::ListAccessPassCommand;
-use doublezero_serviceability::state::accesspass::AccessPassStatus;
+use doublezero_serviceability::state::accesspass::{AccessPassStatus, AccessPassType};
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, net::Ipv4Addr};
@@ -45,7 +45,7 @@ impl ListAccessPassCliCommand {
             .into_iter()
             .map(|(pubkey, access_pass)| AccessPassDisplay {
                 account: pubkey,
-                accesspass_type: access_pass.accesspass_type.to_string(),
+                accesspass_type: access_pass.accesspass_type.to_discriminant_string(),
                 ip: access_pass.client_ip,
                 user_payer: access_pass.user_payer,
                 last_access_epoch: if access_pass.last_access_epoch == u64::MAX {
@@ -61,10 +61,9 @@ impl ListAccessPassCliCommand {
                         .saturating_sub(epoch)
                         .to_string()
                 },
-                solana_validator: if access_pass.solana_validator == Pubkey::default() {
-                    "".to_string()
-                } else {
-                    access_pass.solana_validator.to_string()
+                solana_validator: match access_pass.accesspass_type {
+                    AccessPassType::SolanaValidator(node_id) => node_id.to_string(),
+                    _ => "".to_string(),
                 },
                 connections: access_pass.connection_count,
                 status: access_pass.status,
@@ -109,12 +108,11 @@ mod tests {
             account_type: AccountType::AccessPass,
             bump_seed: 2,
             client_ip: Ipv4Addr::new(1, 2, 3, 4),
-            accesspass_type: AccessPassType::SolanaValidator,
+            accesspass_type: AccessPassType::SolanaValidator(Pubkey::default()),
             user_payer: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB"),
             last_access_epoch: 123,
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB"),
             connection_count: 0,
-            solana_validator: Pubkey::default(),
             status: AccessPassStatus::Connected,
         };
 
@@ -133,7 +131,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | accesspass_type | ip      | user_payer                                | last_access_epoch | solana_validator | remaining_epoch | connections | status    | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | solanavalidator | 1.2.3.4 | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | 123               |                  | 0               | 0           | connected | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
+        assert_eq!(output_str, " account                                   | accesspass_type  | ip      | user_payer                                | last_access_epoch | solana_validator                 | remaining_epoch | connections | status    | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | solana_validator | 1.2.3.4 | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | 123               | 11111111111111111111111111111111 | 0               | 0           | connected | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
 
         let mut output = Vec::new();
         let res = ListAccessPassCliCommand {
@@ -143,6 +141,6 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"accesspass_type\":\"solanavalidator\",\"ip\":\"1.2.3.4\",\"user_payer\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"last_access_epoch\":\"123\",\"solana_validator\":\"\",\"remaining_epoch\":\"0\",\"connections\":0,\"status\":\"Connected\",\"owner\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\"}]\n");
+        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"accesspass_type\":\"solana_validator\",\"ip\":\"1.2.3.4\",\"user_payer\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"last_access_epoch\":\"123\",\"solana_validator\":\"11111111111111111111111111111111\",\"remaining_epoch\":\"0\",\"connections\":0,\"status\":\"Connected\",\"owner\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\"}]\n");
     }
 }

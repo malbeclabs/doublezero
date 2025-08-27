@@ -120,7 +120,6 @@ mod tests {
             client_ip: user.client_ip,
             user_payer: user.owner,
             last_access_epoch: 10,
-            solana_validator: Pubkey::default(),
             connection_count: 0,
             status: AccessPassStatus::Connected,
             owner: client.get_payer(),

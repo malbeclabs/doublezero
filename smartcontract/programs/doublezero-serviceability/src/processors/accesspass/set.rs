@@ -30,10 +30,9 @@ const AIRDROP_USER_RENT_LAMPORTS: u64 = 236 * 2;
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct SetAccessPassArgs {
-    pub accesspass_type: AccessPassType,  // 1
-    pub client_ip: Ipv4Addr,              // 4
-    pub last_access_epoch: u64,           // 8
-    pub solana_validator: Option<Pubkey>, // 32
+    pub accesspass_type: AccessPassType, // 1 or 33
+    pub client_ip: Ipv4Addr,             // 4
+    pub last_access_epoch: u64,          // 8
 }
 
 impl fmt::Debug for SetAccessPassArgs {
@@ -100,10 +99,11 @@ pub fn process_set_accesspass(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    if value.accesspass_type == AccessPassType::SolanaValidator && value.solana_validator.is_none()
-    {
-        msg!("Solana validator access pass type requires a validator pubkey");
-        return Err(DoubleZeroError::InvalidSolanaValidatorPubkey.into());
+    if let AccessPassType::SolanaValidator(node_id) = value.accesspass_type {
+        if node_id == Pubkey::default() {
+            msg!("Solana validator access pass type requires a validator pubkey");
+            return Err(DoubleZeroError::InvalidSolanaValidatorPubkey.into());
+        }
     }
 
     let clock = Clock::get()?;
@@ -124,7 +124,6 @@ pub fn process_set_accesspass(
             connection_count: 0,
             status: AccessPassStatus::Requested,
             owner: *payer_account.key,
-            solana_validator: value.solana_validator.unwrap_or_default(),
         };
 
         try_create_account(

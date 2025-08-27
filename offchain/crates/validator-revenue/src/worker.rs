@@ -2,8 +2,8 @@
 // fetch last record
 // if epoch from last record is the same as initial record, shut down
 // maybe write the last time the remote record was checked
-// if epoch is greater than fetched record, calculate validator payments for the local epoch
-// generate merkle tree from payments
+// if epoch is greater than fetched record, calculate validator debts for the local epoch
+// generate merkle tree from debts
 // write record
 
 use crate::{
@@ -30,7 +30,7 @@ pub struct RecordResult {
     pub tx_submitted_sig: Option<Signature>,
 }
 
-pub async fn write_payments<T: ValidatorRewards>(
+pub async fn write_debts<T: ValidatorRewards>(
     solana_debt_calculator: &T,
     signer: Keypair,
     validator_ids: Vec<String>,
@@ -68,7 +68,7 @@ pub async fn write_payments<T: ValidatorRewards>(
 
     // TODO: post rewards to ledger
 
-    // gather rewards into payments
+    // gather rewards into debts
     let computed_solana_validator_debt_vec: Vec<ComputedSolanaValidatorDebt> = validator_rewards
         .rewards
         .iter()
@@ -297,7 +297,7 @@ mod tests {
         let signer = try_load_keypair(None).unwrap();
 
         let record_result =
-            write_payments(&mock_solana_debt_calculator, signer, validator_ids).await?;
+            write_debts(&mock_solana_debt_calculator, signer, validator_ids).await?;
 
         assert_eq!(
             record_result.last_written_epoch.unwrap(),
@@ -306,17 +306,17 @@ mod tests {
 
         let computed_debts = record_result.computed_debts.unwrap();
 
-        let first_validator_payment_proof = computed_debts
-            .find_payment_proof(&computed_debts.debts[0].node_id)
+        let first_validator_debt_proof = computed_debts
+            .find_debt_proof(&computed_debts.debts[0].node_id)
             .unwrap();
 
         assert_eq!(
-            first_validator_payment_proof.0.amount,
+            first_validator_debt_proof.0.amount,
             block_reward + inflation_reward + jito_reward
         );
 
         assert_eq!(
-            first_validator_payment_proof.0.node_id,
+            first_validator_debt_proof.0.node_id,
             Pubkey::from_str(validator_id).clone().unwrap()
         );
 

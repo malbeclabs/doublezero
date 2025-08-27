@@ -9,7 +9,7 @@ pub struct ComputedSolanaValidatorDebts {
 }
 
 impl ComputedSolanaValidatorDebts {
-    pub fn find_payment_proof(
+    pub fn find_debt_proof(
         &self,
         validator_id: &Pubkey,
     ) -> Option<(&ComputedSolanaValidatorDebt, MerkleProof)> {
@@ -39,7 +39,7 @@ impl ComputedSolanaValidatorDebts {
     fn to_byte_leaves(&self) -> Vec<Vec<u8>> {
         self.debts
             .iter()
-            .map(|payment| borsh::to_vec(&payment).unwrap())
+            .map(|debt| borsh::to_vec(&debt).unwrap())
             .collect()
     }
 }
@@ -51,7 +51,7 @@ pub struct ComputedSolanaValidatorDebt {
 }
 
 impl ComputedSolanaValidatorDebt {
-    pub const LEAF_PREFIX: &'static [u8] = b"solana_validator_payment";
+    pub const LEAF_PREFIX: &'static [u8] = b"solana_validator_debt";
 
     pub fn merkle_root(&self, proof: MerkleProof) -> svm_hash::sha2::Hash {
         let mut leaf = [0; 40];
@@ -89,14 +89,14 @@ mod tests {
         let leaves_ref: Vec<&[u8]> = leaves.iter().map(|v| v.as_slice()).collect();
         let root = debts.merkle_root().unwrap();
 
-        let proof_left = debts.find_payment_proof(&debts.debts[0].node_id).unwrap();
+        let proof_left = debts.find_debt_proof(&debts.debts[0].node_id).unwrap();
 
         let computed_proof_left = proof_left.1.root_from_byte_ref_leaf(
             &leaves_ref[0],
             Some(ComputedSolanaValidatorDebt::LEAF_PREFIX),
         );
 
-        let proof_right = debts.find_payment_proof(&debts.debts[1].node_id).unwrap();
+        let proof_right = debts.find_debt_proof(&debts.debts[1].node_id).unwrap();
 
         let computed_proof_right = proof_right.1.root_from_byte_ref_leaf(
             &leaves_ref[1],

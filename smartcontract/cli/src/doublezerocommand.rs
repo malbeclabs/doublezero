@@ -1,7 +1,8 @@
 use doublezero_sdk::{
     commands::{
         accesspass::{
-            get::GetAccessPassCommand, list::ListAccessPassCommand, set::SetAccessPassCommand,
+            close::CloseAccessPassCommand, get::GetAccessPassCommand, list::ListAccessPassCommand,
+            set::SetAccessPassCommand,
         },
         allowlist::{
             device::{
@@ -250,6 +251,7 @@ pub trait CliCommand {
         &self,
         cmd: ListAccessPassCommand,
     ) -> eyre::Result<HashMap<Pubkey, AccessPass>>;
+    fn close_accesspass(&self, cmd: CloseAccessPassCommand) -> eyre::Result<Signature>;
 }
 
 pub struct CliCommandImpl<'a> {
@@ -584,6 +586,9 @@ impl CliCommand for CliCommandImpl<'_> {
         &self,
         cmd: ListAccessPassCommand,
     ) -> eyre::Result<HashMap<Pubkey, AccessPass>> {
+        cmd.execute(self.client)
+    }
+    fn close_accesspass(&self, cmd: CloseAccessPassCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
 }

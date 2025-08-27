@@ -1,7 +1,7 @@
 use crate::{
     instructions::*,
     processors::{
-        accesspass::set::process_set_accesspass,
+        accesspass::{close::process_close_accesspass, set::process_set_accesspass},
         allowlist::{
             device::{
                 add::process_add_device_allowlist_globalconfig,
@@ -294,6 +294,9 @@ pub fn process_instruction(
         }
         DoubleZeroInstruction::SetAccessPass(value) => {
             process_set_accesspass(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::CloseAccessPass(value) => {
+            process_close_accesspass(program_id, accounts, &value)?
         }
     };
     Ok(())

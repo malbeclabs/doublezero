@@ -1,5 +1,5 @@
 use crate::processors::{
-    accesspass::set::SetAccessPassArgs,
+    accesspass::{close::CloseAccessPassArgs, set::SetAccessPassArgs},
     allowlist::{
         device::{add::AddDeviceAllowlistArgs, remove::RemoveDeviceAllowlistArgs},
         foundation::{add::AddFoundationAllowlistArgs, remove::RemoveFoundationAllowlistArgs},
@@ -145,6 +145,7 @@ pub enum DoubleZeroInstruction {
     AcceptLink(LinkAcceptArgs),               // variant 66
     SetAccessPass(SetAccessPassArgs),         // variant 67
     SetAirdrop(SetAirdropArgs),               // variant 68
+    CloseAccessPass(CloseAccessPassArgs),     // variant 69
 }
 
 impl DoubleZeroInstruction {
@@ -237,6 +238,7 @@ impl DoubleZeroInstruction {
             66 => Ok(Self::AcceptLink(from_slice::<LinkAcceptArgs>(rest).unwrap())),
             67 => Ok(Self::SetAccessPass(from_slice::<SetAccessPassArgs>(rest).unwrap())),
             68 => Ok(Self::SetAirdrop(from_slice::<SetAirdropArgs>(rest).unwrap())),
+            69 => Ok(Self::CloseAccessPass(from_slice::<CloseAccessPassArgs>(rest).unwrap())),
 
             _ => Err(ProgramError::InvalidInstructionData),
         }
@@ -329,6 +331,7 @@ impl DoubleZeroInstruction {
             Self::AcceptLink(_) => "AcceptLink".to_string(),               // variant 66
             Self::SetAccessPass(_) => "SetAccessPass".to_string(),         // variant 67
             Self::SetAirdrop(_) => "SetAirdrop".to_string(),               // variant 68
+            Self::CloseAccessPass(_) => "CloseAccessPass".to_string(),     // variant 69
         }
     }
 
@@ -413,6 +416,7 @@ impl DoubleZeroInstruction {
             Self::AcceptLink(args) => format!("{args:?}"),        // variant 66
             Self::SetAccessPass(args) => format!("{args:?}"),     // variant 67
             Self::SetAirdrop(args) => format!("{args:?}"),        // variant 68
+            Self::CloseAccessPass(args) => format!("{args:?}"),   // variant 69
         }
     }
 }
@@ -422,6 +426,7 @@ mod tests {
     use crate::{
         processors::exchange::setdevice::SetDeviceOption,
         state::{
+            accesspass::AccessPassType,
             device::DeviceType,
             link::LinkLinkType,
             user::{UserCYOA, UserType},
@@ -860,12 +865,22 @@ mod tests {
         );
         test_instruction(
             DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
-                accesspass_type: crate::state::accesspass::AccessPassType::SolanaValidator,
+                accesspass_type: AccessPassType::Prepaid,
                 client_ip: [1, 2, 3, 4].into(),
                 last_access_epoch: 123,
-                solana_validator: Some(Pubkey::new_unique()),
             }),
             "SetAccessPass",
+        );
+        test_instruction(
+            DoubleZeroInstruction::SetAirdrop(SetAirdropArgs {
+                contributor_airdrop_lamports: Some(1),
+                user_airdrop_lamports: Some(2),
+            }),
+            "SetAirdrop",
+        );
+        test_instruction(
+            DoubleZeroInstruction::CloseAccessPass(CloseAccessPassArgs {}),
+            "CloseAccessPass",
         );
     }
 }

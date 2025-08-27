@@ -1,51 +1,25 @@
-use std::net::Ipv4Addr;
-
+use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_accesspass_pda,
-    processors::accesspass::set::SetAccessPassArgs, state::accesspass::AccessPassType,
+    instructions::DoubleZeroInstruction, processors::accesspass::close::CloseAccessPassArgs,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
-use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
-
 #[derive(Debug, PartialEq, Clone)]
-pub struct SetAccessPassCommand {
-    pub accesspass_type: AccessPassType,
-    pub client_ip: Ipv4Addr,
-    pub user_payer: Pubkey,
-    pub last_access_epoch: u64,
+pub struct CloseAccessPassCommand {
+    pub pubkey: Pubkey,
 }
 
-impl SetAccessPassCommand {
+impl CloseAccessPassCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
         let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        if self.last_access_epoch > 0 && self.last_access_epoch != u64::MAX {
-            let epoch = client.get_epoch()?;
-            if self.last_access_epoch < epoch {
-                return Err(eyre::eyre!(
-                    "last_access_epoch {} cannot be in the past (current epoch is {})",
-                    self.last_access_epoch,
-                    epoch
-                ));
-            }
-        }
-
-        let (pda_pubkey, _) =
-            get_accesspass_pda(&client.get_program_id(), &self.client_ip, &self.user_payer);
-
         client.execute_transaction(
-            DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
-                accesspass_type: self.accesspass_type,
-                client_ip: self.client_ip,
-                last_access_epoch: self.last_access_epoch,
-            }),
+            DoubleZeroInstruction::CloseAccessPass(CloseAccessPassArgs {}),
             vec![
-                AccountMeta::new(pda_pubkey, false),
+                AccountMeta::new(self.pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
-                AccountMeta::new(self.user_payer, false),
             ],
         )
     }

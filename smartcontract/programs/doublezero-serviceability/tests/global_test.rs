@@ -536,7 +536,6 @@ async fn test_doublezero_program() {
             accesspass_type: AccessPassType::Prepaid,
             client_ip: user_ip,
             last_access_epoch: 9999,
-            solana_validator: Some(Pubkey::new_unique()),
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),

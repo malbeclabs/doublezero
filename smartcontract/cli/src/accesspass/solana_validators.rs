@@ -9,10 +9,9 @@ use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, net::Ipv4Addr, str::FromStr};
 
 #[derive(Args, Debug)]
-pub struct SetAccessPassCliCommand {
-    /// Specifies the type of access pass being set [prepaid|postpaid].
-    #[arg(long, default_value = "prepaid")]
-    pub accesspass_type: AccessPassType,
+pub struct SetAccessPassSolanaValidatorCliCommand {
+    /// Specifies the Solana validator for the access pass.
+    pub identity_pubkey: Pubkey,
     /// Client IP address in IPv4 format
     #[arg(long)]
     pub client_ip: Ipv4Addr,
@@ -22,12 +21,9 @@ pub struct SetAccessPassCliCommand {
     /// Specifies the number of epochs for the access pass.
     #[arg(long, default_value = "max")]
     pub epochs: String,
-    /// Specifies the Solana validator for the access pass.
-    #[arg(long)]
-    pub solana_validator: Option<Pubkey>,
 }
 
-impl SetAccessPassCliCommand {
+impl SetAccessPassSolanaValidatorCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
@@ -47,18 +43,11 @@ impl SetAccessPassCliCommand {
             _ => current_epoch + self.epochs.parse::<u64>()?,
         };
 
-        if self.accesspass_type == AccessPassType::SolanaValidator
-            && self.solana_validator.is_none()
-        {
-            eyre::bail!("Solana validator access pass type requires --solana-validator <PUBKEY>");
-        }
-
         let signature = client.set_accesspass(SetAccessPassCommand {
-            accesspass_type: self.accesspass_type,
+            accesspass_type: AccessPassType::SolanaValidator(self.identity_pubkey),
             client_ip: self.client_ip,
             user_payer,
             last_access_epoch,
-            solana_validator: self.solana_validator,
         })?;
         writeln!(out, "Signature: {signature}")?;
 
@@ -69,7 +58,7 @@ impl SetAccessPassCliCommand {
 #[cfg(test)]
 mod tests {
     use crate::{
-        accesspass::set::SetAccessPassCliCommand,
+        accesspass::solana_validators::SetAccessPassSolanaValidatorCliCommand,
         doublezerocommand::CliCommand,
         requirements::{CHECK_BALANCE, CHECK_ID_JSON},
         tests::utils::create_test_client,
@@ -106,36 +95,19 @@ mod tests {
         client
             .expect_set_accesspass()
             .with(predicate::eq(SetAccessPassCommand {
-                accesspass_type: AccessPassType::SolanaValidator,
+                accesspass_type: AccessPassType::SolanaValidator(solana_validator),
                 client_ip,
                 user_payer: payer,
                 last_access_epoch: 11,
-                solana_validator: Some(solana_validator),
             }))
             .returning(move |_| Ok(signature));
 
         let mut output = Vec::new();
-        let res = SetAccessPassCliCommand {
-            accesspass_type: AccessPassType::SolanaValidator,
+        let res = SetAccessPassSolanaValidatorCliCommand {
             client_ip,
             user_payer: payer.to_string(),
             epochs: "1".into(),
-            solana_validator: None,
-        }
-        .execute(&client, &mut output);
-        assert!(res.is_err());
-        assert_eq!(
-            res.err().unwrap().to_string(),
-            "Solana validator access pass type requires --solana-validator <PUBKEY>"
-        );
-
-        let mut output = Vec::new();
-        let res = SetAccessPassCliCommand {
-            accesspass_type: AccessPassType::SolanaValidator,
-            client_ip,
-            user_payer: payer.to_string(),
-            epochs: "1".into(),
-            solana_validator: Some(solana_validator),
+            identity_pubkey: solana_validator,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

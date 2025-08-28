@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+### Changes
+
+## [v0.6.0](https://github.com/malbeclabs/doublezero/compare/client/v0.5.3...client/v0.6.0) – 2025-08-28
+
+### Breaking
+
 - Onchain programs
     - Implement access pass management commands and global state authority updates
     - Update access pass PDA function to include payer parameter

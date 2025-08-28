@@ -27,7 +27,7 @@ pub struct Journal {
 
     /// Cache this seed to validate token PDA address.
     pub token_2z_pda_bump_seed: u8,
-    _padding: [u8; 6],
+    _padding_0: [u8; 6],
 
     pub prepaid_connection_parameters: PrepaidConnectionParameters,
 
@@ -40,8 +40,11 @@ pub struct Journal {
     /// difference between the token account balance and this.
     pub total_2z_balance: u64,
 
+    pub swap_2z_destination_balance: u64,
+    _padding: [u64; 3],
+
     /// 8 * 32 bytes of a storage gap in case we need more fields.
-    _storage_gap: StorageGap<8>,
+    _storage_gap: StorageGap<7>,
 }
 
 impl PrecomputedDiscriminator for Journal {

@@ -27,9 +27,10 @@ use crate::{
         ProgramConfiguration, ProgramFlagConfiguration, RevenueDistributionInstructionData,
     },
     state::{
-        self, find_swap_authority_address, CommunityBurnRateParameters, ContributorRewards,
-        Distribution, Journal, JournalEntries, PrepaidConnection, ProgramConfig, RecipientShares,
-        RelayParameters, SolanaValidatorDeposit, TOKEN_2Z_PDA_SEED_PREFIX,
+        self, find_swap_authority_address, find_withdraw_sol_authority_address,
+        CommunityBurnRateParameters, ContributorRewards, Distribution, Journal, JournalEntries,
+        PrepaidConnection, ProgramConfig, RecipientShares, RelayParameters, SolanaValidatorDeposit,
+        TOKEN_2Z_PDA_SEED_PREFIX,
     },
     types::{BurnRate, ByteFlags, DoubleZeroEpoch, RewardShare, SolanaValidatorDebt, ValidatorFee},
     DOUBLEZERO_MINT_DECIMALS, DOUBLEZERO_MINT_KEY, ID,
@@ -126,6 +127,9 @@ fn try_process_instruction(
         }
         RevenueDistributionInstructionData::SweepDistributionTokens => {
             try_sweep_distribution_tokens(accounts)
+        }
+        RevenueDistributionInstructionData::WithdrawSol(amount) => {
+            try_withdraw_sol(accounts, amount)
         }
     }
 }
@@ -288,6 +292,17 @@ fn try_configure_program(accounts: &[AccountInfo], setting: ProgramConfiguration
         ProgramConfiguration::Sol2zSwapProgram(sol_2z_swap_program_id) => {
             msg!("Set sol_2z_swap_program_id: {}", sol_2z_swap_program_id);
             program_config.sol_2z_swap_program_id = sol_2z_swap_program_id;
+
+            // The SOL/2Z swap program will use its withdraw SOL authority to
+            // invoke the withdraw SOL instruction. We cache the bump seed for
+            // the withdraw SOL authority to validate the authority account.
+            let (withdraw_sol_authority_key, withdraw_sol_authority_bump) =
+                find_withdraw_sol_authority_address(&sol_2z_swap_program_id);
+            msg!(
+                "Established withdraw SOL authority: {}",
+                withdraw_sol_authority_key
+            );
+            program_config.withdraw_sol_authority_bump_seed = withdraw_sol_authority_bump;
         }
         ProgramConfiguration::SolanaValidatorFeeParameters {
             base_block_rewards_pct,
@@ -2230,27 +2245,33 @@ fn try_initialize_swap_destination(accounts: &[AccountInfo]) -> ProgramResult {
     msg!("Initialize swap destination");
 
     // We expect the following accounts for this instruction:
-    // - 0: Payer (funder for new accounts).
-    // - 1: Swap authority.
-    // - 2: New swap destination 2Z token account.
-    // - 3: 2Z mint.
-    // - 4: SPL Token program.
-    // - 5: System program.
+    // - 0: Program config.
+    // - 1: Payer (funder for new accounts).
+    // - 2: Swap authority.
+    // - 3: New swap destination 2Z token account.
+    // - 4: 2Z mint.
+    // - 5: SPL Token program.
+    // - 6: System program.
     let mut accounts_iter = accounts.iter().enumerate();
 
-    // Account 0 must be a signer and writable (i.e., payer) because it will be
+    // Account 0 must be the program config.
+    let mut program_config =
+        ZeroCopyMutAccount::<ProgramConfig>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+
+    // Account 1 must be a signer and writable (i.e., payer) because it will be
     // sending lamports to the new journal account when the system program
     // allocates data to it. But because the create-program instruction requires
     // that this account is a signer and is writable, we do not need to
     // explicitly check these fields in its account info.
     let (_, payer_info) = try_next_enumerated_account(&mut accounts_iter, Default::default())?;
 
-    // Account 1 must be the swap authority. We do not store any data in this
+    // Account 2 must be the swap authority. We do not store any data in this
     // account. It is purely used as a signer for token transfers.
     let (account_index, swap_authority_info) =
         try_next_enumerated_account(&mut accounts_iter, Default::default())?;
 
-    let (expected_swap_authority_key, _) = find_swap_authority_address();
+    let (expected_swap_authority_key, swap_authority_bump) = find_swap_authority_address();
+    program_config.swap_authority_bump_seed = swap_authority_bump;
 
     // Enforce this account location.
     if swap_authority_info.key != &expected_swap_authority_key {
@@ -2261,38 +2282,35 @@ fn try_initialize_swap_destination(accounts: &[AccountInfo]) -> ProgramResult {
         return Err(ProgramError::InvalidSeeds);
     }
 
-    // Account 2 must be the new swap destination 2Z token account. This account
+    // Account 3 must be the new swap destination 2Z token account. This account
     // should not exist yet.
-    let (_, new_swap_dst_2z_token_pda_info, swap_dst_2z_token_pda_bump) =
-        try_next_2z_token_pda_info(
-            &mut accounts_iter,
-            &expected_swap_authority_key,
-            "swap destination",
-            None, // bump_seed
-        )?;
+    let (_, new_swap_destination_2z_info, swap_destination_2z_bump) = try_next_2z_token_pda_info(
+        &mut accounts_iter,
+        &expected_swap_authority_key,
+        "swap destination",
+        None, // bump_seed
+    )?;
+    program_config.swap_destination_2z_bump_seed = swap_destination_2z_bump;
 
-    // Account 3 must be the 2Z mint.
-    //
-    // NOTE: Enforcing this account to be the 2Z mint can be removed if this
-    // program supports swap destination accounts for other mints.
+    // Account 4 must be the 2Z mint.
     try_next_2z_mint_info(&mut accounts_iter)?;
 
-    // Account 4 must be the SPL Token program.
+    // Account 5 must be the SPL Token program.
     try_next_token_program_info(&mut accounts_iter)?;
 
     try_create_token_account(
         Invoker::Signer(payer_info.key),
         Invoker::Pda {
-            key: new_swap_dst_2z_token_pda_info.key,
+            key: new_swap_destination_2z_info.key,
             signer_seeds: &[
                 TOKEN_2Z_PDA_SEED_PREFIX,
                 expected_swap_authority_key.as_ref(),
-                &[swap_dst_2z_token_pda_bump],
+                &[swap_destination_2z_bump],
             ],
         },
         &DOUBLEZERO_MINT_KEY,
         &expected_swap_authority_key,
-        new_swap_dst_2z_token_pda_info.lamports(),
+        new_swap_destination_2z_info.lamports(),
         accounts,
         None, // rent_sysvar
     )?;
@@ -2399,7 +2417,7 @@ fn try_sweep_distribution_tokens_development(accounts: &[AccountInfo]) -> Progra
     }
 
     // Account 5 must be the swap destination 2Z token account.
-    let (_, swap_dst_2z_info, _) = try_next_2z_token_pda_info(
+    let (_, swap_destination_2z_info, _) = try_next_2z_token_pda_info(
         &mut accounts_iter,
         &expected_swap_authority_key,
         "swap destination",
@@ -2408,7 +2426,7 @@ fn try_sweep_distribution_tokens_development(accounts: &[AccountInfo]) -> Progra
 
     let token_transfer_ix = spl_token::instruction::transfer(
         &spl_token::ID,
-        swap_dst_2z_info.key,
+        swap_destination_2z_info.key,
         distribution_2z_token_pda_info.key,
         swap_authority_info.key,
         &[], // signer_pubkeys
@@ -2425,6 +2443,153 @@ fn try_sweep_distribution_tokens_development(accounts: &[AccountInfo]) -> Progra
     msg!("Total SOL debt accounted for: {}", total_sol_debt);
     msg!("Journal's SOL balance after: {}", journal.total_sol_balance);
     msg!("Transferred {} 2Z tokens to distribution", token_2z_amount);
+
+    Ok(())
+}
+
+fn try_withdraw_sol(accounts: &[AccountInfo], amount: u64) -> ProgramResult {
+    const MINT_2Z_ACCOUNT_INDEX: usize = 2;
+    const DESTINATION_ACCOUNT_INDEX: usize = 3;
+
+    msg!("Withdraw SOL");
+
+    // We expect the following accounts for this instruction:
+    // - 0: Program config.
+    // - 1: Withdraw SOL authority.
+    // - 2: Journal.
+    // - 3: SOL destination.
+    let mut accounts_iter = accounts.iter().enumerate();
+
+    // Account 0 must be the program config.
+    let program_config =
+        ZeroCopyAccount::<ProgramConfig>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+
+    // Make sure the program is not paused.
+    program_config.try_require_unpaused()?;
+
+    // Make sure the SOL/2Z swap program ID is set by checking if the bump seed
+    // for the withdraw SOL authority is set.
+    if program_config.withdraw_sol_authority_bump_seed == 0 {
+        msg!("SOL/2Z swap program ID is not set");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Account 1 must be the withdraw SOL authority.
+    let (account_index, withdraw_sol_authority_info) = try_next_enumerated_account(
+        &mut accounts_iter,
+        NextAccountOptions {
+            must_be_signer: true,
+            ..Default::default()
+        },
+    )?;
+
+    let expected_withdraw_sol_authority_key = program_config
+        .checked_withdraw_sol_authority_address()
+        .unwrap();
+
+    // Enforce this account location.
+    if withdraw_sol_authority_info.key != &expected_withdraw_sol_authority_key {
+        msg!(
+            "Invalid address for withdraw SOL authority (account {})",
+            account_index
+        );
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Check for a sibling instruction immediately before the invocation of this
+    // instruction.
+    let sibling_ix = solana_instruction::syscalls::get_processed_sibling_instruction(1)
+        .ok_or_else(|| {
+            msg!("No processed sibling instruction found");
+            ProgramError::InvalidAccountData
+        })?;
+
+    // We are enforcing that the sibling instruction is an SPL Token transfer
+    // to the swap destination account.
+    //
+    // First, check that the program is the SPL Token program.
+    if sibling_ix.program_id != spl_token::ID {
+        msg!("Sibling instruction's program ID is not SPL Token");
+        return Err(ProgramError::InvalidInstructionData);
+    }
+
+    // Next, make sure that the instruction is a transfer checked call. Transfer
+    // checked requires the mint account, which we will verify is the 2Z mint.
+    // We will need the transfer amount to update the journal's balance of the
+    // swap destination account.
+    let transfer_amount = if let Ok(spl_token::instruction::TokenInstruction::TransferChecked {
+        amount,
+        decimals: _,
+    }) = spl_token::instruction::TokenInstruction::unpack(&sibling_ix.data)
+    {
+        amount
+    } else {
+        msg!("Sibling instruction is not a token transfer checked call");
+        return Err(ProgramError::InvalidInstructionData);
+    };
+
+    // Generate the swap destination key so we can validate the destination
+    // token account in the sibling instruction. Presumably, the swap
+    // destination account has already been created if the token transfer was
+    // successful.
+    let expected_swap_destination_2z_key = program_config
+        .checked_swap_destination_2z_address()
+        .unwrap();
+
+    // Make sure the mint of the transfer checked call is 2Z.
+    if sibling_ix.accounts[MINT_2Z_ACCOUNT_INDEX].pubkey != DOUBLEZERO_MINT_KEY {
+        msg!("Sibling transfer checked call is not for 2Z mint");
+        return Err(ProgramError::InvalidInstructionData);
+    }
+
+    // Finally, make sure that the transfer is to the swap destination account.
+    if sibling_ix.accounts[DESTINATION_ACCOUNT_INDEX].pubkey != expected_swap_destination_2z_key {
+        msg!("Sibling transfer not for 2Z swap destination");
+        return Err(ProgramError::InvalidInstructionData);
+    }
+
+    // Account 2 must be the journal. We need to update the SOL balance and
+    // the 2Z swap destination balance.
+    let mut journal =
+        ZeroCopyMutAccount::<Journal>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+
+    // Make sure the journal has enough SOL to cover the amount.
+    if journal.total_sol_balance < amount {
+        msg!("Journal does not have enough SOL to cover the amount");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Update balances.
+
+    journal.total_sol_balance -= amount;
+    msg!(
+        "SOL balance now {} after withdrawal of {}",
+        journal.total_sol_balance,
+        amount
+    );
+
+    journal.swap_2z_destination_balance += transfer_amount;
+    msg!(
+        "2Z swap destination balance now {} after transfer of {}",
+        journal.swap_2z_destination_balance,
+        transfer_amount
+    );
+
+    // Move lamports from the journal to the SOL destination.
+    let (_, sol_destination_info) = try_next_enumerated_account(
+        &mut accounts_iter,
+        NextAccountOptions {
+            must_be_writable: true,
+            ..Default::default()
+        },
+    )?;
+
+    // TODO: We may be able to remove this when we test this instruction.
+    let journal_info = journal.info;
+    drop(journal);
+
+    **journal_info.lamports.borrow_mut() -= amount;
+    **sol_destination_info.lamports.borrow_mut() += amount;
 
     Ok(())
 }

@@ -4,9 +4,10 @@ mod common;
 
 use doublezero_revenue_distribution::{
     instruction::{ProgramConfiguration, ProgramFlagConfiguration},
-    state::{self, CommunityBurnRateParameters, ProgramConfig},
-    types::BurnRate,
-    types::ValidatorFee,
+    state::{
+        self, find_withdraw_sol_authority_address, CommunityBurnRateParameters, ProgramConfig,
+    },
+    types::{BurnRate, ValidatorFee},
 };
 use solana_program_test::tokio;
 use solana_pubkey::Pubkey;
@@ -104,12 +105,16 @@ async fn test_configure_program() {
         .await
         .unwrap();
 
+    let (_, withdraw_sol_authority_bump) =
+        find_withdraw_sol_authority_address(&sol_2z_swap_program_id);
+
     let (program_config_key, program_config, _) = test_setup.fetch_program_config().await;
 
     let mut expected_program_config = ProgramConfig::default();
     expected_program_config.bump_seed = ProgramConfig::find_address().1;
     expected_program_config.reserve_2z_bump_seed =
         state::find_2z_token_pda_address(&program_config_key).1;
+    expected_program_config.withdraw_sol_authority_bump_seed = withdraw_sol_authority_bump;
     expected_program_config.admin_key = admin_signer.pubkey();
     expected_program_config.contributor_manager_key = contributor_manager_key;
     expected_program_config.set_is_paused(should_pause);

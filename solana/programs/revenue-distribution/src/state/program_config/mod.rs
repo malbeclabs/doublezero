@@ -17,6 +17,8 @@ use solana_pubkey::Pubkey;
 
 use crate::types::{DoubleZeroEpoch, EpochDuration};
 
+use super::checked_2z_token_pda_address;
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Pod, Zeroable)]
 #[repr(C, align(8))]
 pub struct ProgramConfig {
@@ -29,7 +31,19 @@ pub struct ProgramConfig {
 
     /// Cache this seed to validate token PDA address.
     pub reserve_2z_bump_seed: u8,
-    _padding: [u8; 6],
+
+    /// This seed will be used to sign for token transfers from the swap
+    /// destination token account.
+    pub swap_authority_bump_seed: u8,
+
+    /// Cache this seed to validate token PDA address.
+    pub swap_destination_2z_bump_seed: u8,
+
+    /// Cache this seed to validate withdraw SOL authority address, which is
+    /// the required signer of [Self::sol_2z_swap_program_id] to withdraw SOL.
+    pub withdraw_sol_authority_bump_seed: u8,
+
+    _padding: [u8; 3],
 
     pub admin_key: Pubkey,
 
@@ -72,6 +86,52 @@ impl ProgramConfig {
 
     pub fn find_address() -> (Pubkey, u8) {
         Pubkey::find_program_address(&[Self::SEED_PREFIX], &crate::ID)
+    }
+
+    pub fn checked_reserve_2z_address(&self) -> Option<Pubkey> {
+        if self.reserve_2z_bump_seed == 0 {
+            return None;
+        }
+
+        let key =
+            Pubkey::create_program_address(&[Self::SEED_PREFIX, &[self.bump_seed]], &crate::ID)
+                .ok()?;
+        checked_2z_token_pda_address(&key, self.reserve_2z_bump_seed)
+    }
+
+    pub fn checked_swap_authority_address(&self) -> Option<Pubkey> {
+        if self.swap_authority_bump_seed == 0 {
+            return None;
+        }
+
+        Pubkey::create_program_address(
+            &[
+                super::SWAP_AUTHORITY_SEED_PREFIX,
+                &[self.swap_authority_bump_seed],
+            ],
+            &crate::ID,
+        )
+        .ok()
+    }
+
+    pub fn checked_swap_destination_2z_address(&self) -> Option<Pubkey> {
+        let swap_authority_key = self.checked_swap_authority_address()?;
+        checked_2z_token_pda_address(&swap_authority_key, self.swap_destination_2z_bump_seed)
+    }
+
+    pub fn checked_withdraw_sol_authority_address(&self) -> Option<Pubkey> {
+        if self.sol_2z_swap_program_id == Pubkey::default() {
+            return None;
+        }
+
+        Pubkey::create_program_address(
+            &[
+                super::WITHDRAW_SOL_AUTHORITY_SEED_PREFIX,
+                &[self.withdraw_sol_authority_bump_seed],
+            ],
+            &self.sol_2z_swap_program_id,
+        )
+        .ok()
     }
 
     pub fn is_paused(&self) -> bool {

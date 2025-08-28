@@ -115,6 +115,7 @@ pub enum RevenueDistributionInstructionData {
     },
     InitializeSwapDestination,
     SweepDistributionTokens,
+    WithdrawSol(u64),
 }
 
 impl RevenueDistributionInstructionData {
@@ -168,6 +169,8 @@ impl RevenueDistributionInstructionData {
         Discriminator::new_sha2(b"dz::ix::initialize_swap_destination");
     pub const SWEEP_DISTRIBUTION_TOKENS: Discriminator<DISCRIMINATOR_LEN> =
         Discriminator::new_sha2(b"dz::ix::sweep_distribution_tokens");
+    pub const WITHDRAW_SOL: Discriminator<DISCRIMINATOR_LEN> =
+        Discriminator::new_sha2(b"dz::ix::withdraw_sol");
 }
 
 impl BorshDeserialize for RevenueDistributionInstructionData {
@@ -258,6 +261,9 @@ impl BorshDeserialize for RevenueDistributionInstructionData {
             }
             Self::INITIALIZE_SWAP_DESTINATION => Ok(Self::InitializeSwapDestination),
             Self::SWEEP_DISTRIBUTION_TOKENS => Ok(Self::SweepDistributionTokens),
+            Self::WITHDRAW_SOL => {
+                BorshDeserialize::deserialize_reader(reader).map(Self::WithdrawSol)
+            }
             _ => Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "Invalid discriminator",
@@ -362,6 +368,10 @@ impl BorshSerialize for RevenueDistributionInstructionData {
             }
             Self::InitializeSwapDestination => Self::INITIALIZE_SWAP_DESTINATION.serialize(writer),
             Self::SweepDistributionTokens => Self::SWEEP_DISTRIBUTION_TOKENS.serialize(writer),
+            Self::WithdrawSol(amount) => {
+                Self::WITHDRAW_SOL.serialize(writer)?;
+                amount.serialize(writer)
+            }
         }
     }
 }

@@ -11,7 +11,7 @@ use doublezero_sdk::{
 use ipnetwork::Ipv4Network;
 use log::info;
 use solana_sdk::pubkey::Pubkey;
-use std::{collections::HashMap, fmt::Write};
+use std::fmt::Write;
 
 pub fn process_link_event(
     client: &dyn DoubleZeroClient,
@@ -19,7 +19,6 @@ pub fn process_link_event(
     link_ips: &mut IPBlockAllocator,
     link_ids: &mut IDAllocator,
     link: &Link,
-    state_transitions: &mut HashMap<&'static str, usize>,
 ) {
     match link.status {
         LinkStatus::Pending => {
@@ -46,9 +45,7 @@ pub fn process_link_event(
                         Ok(signature) => {
                             write!(&mut log_msg, " Activated {signature}").unwrap();
 
-                            *state_transitions
-                                .entry("tunnel-pending-to-activated")
-                                .or_insert(0) += 1;
+                            metrics::counter!("doublezero_activator_state_transition", "state_transition" => "link-pending-to-activated").increment(1);
 
                             // get the first and second ips in the network, but don't throw away
                             // the netmask/prefix. unwraps are safe below because we already have
@@ -92,9 +89,7 @@ pub fn process_link_event(
                         Ok(signature) => {
                             write!(&mut log_msg, " Rejected {signature}").unwrap();
 
-                            *state_transitions
-                                .entry("tunnel-pending-to-rejected")
-                                .or_insert(0) += 1;
+                            metrics::counter!("doublezero_activator_state_transition", "state_transition" => "link-pending-to-rejected").increment(1);
                         }
                         Err(e) => write!(&mut log_msg, " Error {e}").unwrap(),
                     }
@@ -138,9 +133,7 @@ pub fn process_link_event(
                     link_ids.unassign(link.tunnel_id);
                     link_ips.unassign_block(link.tunnel_net.into());
 
-                    *state_transitions
-                        .entry("tunnel-deleting-to-deactivated")
-                        .or_insert(0) += 1;
+                    metrics::counter!("doublezero_activator_state_transition", "state_transition" => "link-deleting-to-deactivated").increment(1);
                 }
                 Err(e) => write!(&mut log_msg, " Error {e}").unwrap(),
             }
@@ -171,228 +164,247 @@ mod tests {
             },
         },
     };
+    use metrics_util::debugging::DebuggingRecorder;
     use mockall::{predicate, Sequence};
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
-    use std::collections::HashMap;
 
     #[test]
     fn test_process_link_event_pending_to_deleted() {
-        let mut link_ips = IPBlockAllocator::new("10.0.0.0/16".parse().unwrap());
-        let mut link_ids = IDAllocator::new(500, vec![500, 501, 503]);
-        let mut client = create_test_client();
+        let recorder = DebuggingRecorder::new();
+        let snapshotter = recorder.snapshotter();
 
-        let owner_pubkey = Pubkey::new_unique();
-        let device1_pubkey = Pubkey::new_unique();
-        let device2_pubkey = Pubkey::new_unique();
+        metrics::with_local_recorder(&recorder, || {
+            let mut link_ips = IPBlockAllocator::new("10.0.0.0/16".parse().unwrap());
+            let mut link_ids = IDAllocator::new(500, vec![500, 501, 503]);
+            let mut client = create_test_client();
 
-        let tunnel_pubkey = Pubkey::new_unique();
-        let tunnel = Link {
-            account_type: AccountType::Link,
-            owner: owner_pubkey,
-            index: 0,
-            bump_seed: get_tunnel_bump_seed(&client),
-            contributor_pk: Pubkey::new_unique(),
-            side_a_pk: device1_pubkey,
-            side_z_pk: device2_pubkey,
-            link_type: LinkLinkType::WAN,
-            bandwidth: 10_000_000_000,
-            mtu: 1500,
-            delay_ns: 20_000,
-            jitter_ns: 100,
-            tunnel_id: 1,
-            tunnel_net: NetworkV4::default(),
-            status: LinkStatus::Pending,
-            code: "TestLink".to_string(),
-            side_a_iface_name: "Ethernet0".to_string(),
-            side_z_iface_name: "Ethernet1".to_string(),
-        };
+            let owner_pubkey = Pubkey::new_unique();
+            let device1_pubkey = Pubkey::new_unique();
+            let device2_pubkey = Pubkey::new_unique();
 
-        let tunnel_cloned = tunnel.clone();
-        client
-            .expect_get()
-            .with(predicate::eq(tunnel_pubkey))
-            .times(1)
-            .returning(move |_| Ok(AccountData::Link(tunnel_cloned.clone())));
+            let tunnel_pubkey = Pubkey::new_unique();
+            let tunnel = Link {
+                account_type: AccountType::Link,
+                owner: owner_pubkey,
+                index: 0,
+                bump_seed: get_tunnel_bump_seed(&client),
+                contributor_pk: Pubkey::new_unique(),
+                side_a_pk: device1_pubkey,
+                side_z_pk: device2_pubkey,
+                link_type: LinkLinkType::WAN,
+                bandwidth: 10_000_000_000,
+                mtu: 1500,
+                delay_ns: 20_000,
+                jitter_ns: 100,
+                tunnel_id: 1,
+                tunnel_net: NetworkV4::default(),
+                status: LinkStatus::Pending,
+                code: "TestLink".to_string(),
+                side_a_iface_name: "Ethernet0".to_string(),
+                side_z_iface_name: "Ethernet1".to_string(),
+            };
 
-        client
-            .expect_execute_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::ActivateLink(LinkActivateArgs {
-                    tunnel_id: 502,
-                    tunnel_net: "10.0.0.0/31".parse().unwrap(),
-                })),
-                predicate::always(),
-            )
-            .times(1)
-            .returning(|_, _| Ok(Signature::new_unique()));
+            let tunnel_cloned = tunnel.clone();
+            client
+                .expect_get()
+                .with(predicate::eq(tunnel_pubkey))
+                .times(1)
+                .returning(move |_| Ok(AccountData::Link(tunnel_cloned.clone())));
 
-        client
-            .expect_execute_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::ActivateDeviceInterface(
-                    DeviceInterfaceActivateArgs {
-                        name: "Ethernet0".to_string(),
-                        ip_net: "10.0.0.0/31".parse().unwrap(),
-                        node_segment_idx: 0,
-                    },
-                )),
-                predicate::always(),
-            )
-            .times(1)
-            .returning(|_, _| Ok(Signature::new_unique()));
+            client
+                .expect_execute_transaction()
+                .with(
+                    predicate::eq(DoubleZeroInstruction::ActivateLink(LinkActivateArgs {
+                        tunnel_id: 502,
+                        tunnel_net: "10.0.0.0/31".parse().unwrap(),
+                    })),
+                    predicate::always(),
+                )
+                .times(1)
+                .returning(|_, _| Ok(Signature::new_unique()));
 
-        client
-            .expect_execute_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::ActivateDeviceInterface(
-                    DeviceInterfaceActivateArgs {
-                        name: "Ethernet1".to_string(),
-                        ip_net: "10.0.0.1/31".parse().unwrap(),
-                        node_segment_idx: 0,
-                    },
-                )),
-                predicate::always(),
-            )
-            .times(1)
-            .returning(|_, _| Ok(Signature::new_unique()));
+            client
+                .expect_execute_transaction()
+                .with(
+                    predicate::eq(DoubleZeroInstruction::ActivateDeviceInterface(
+                        DeviceInterfaceActivateArgs {
+                            name: "Ethernet0".to_string(),
+                            ip_net: "10.0.0.0/31".parse().unwrap(),
+                            node_segment_idx: 0,
+                        },
+                    )),
+                    predicate::always(),
+                )
+                .times(1)
+                .returning(|_, _| Ok(Signature::new_unique()));
 
-        let mut state_transitions: HashMap<&'static str, usize> = HashMap::new();
+            client
+                .expect_execute_transaction()
+                .with(
+                    predicate::eq(DoubleZeroInstruction::ActivateDeviceInterface(
+                        DeviceInterfaceActivateArgs {
+                            name: "Ethernet1".to_string(),
+                            ip_net: "10.0.0.1/31".parse().unwrap(),
+                            node_segment_idx: 0,
+                        },
+                    )),
+                    predicate::always(),
+                )
+                .times(1)
+                .returning(|_, _| Ok(Signature::new_unique()));
 
-        process_link_event(
-            &client,
-            &tunnel_pubkey,
-            &mut link_ips,
-            &mut link_ids,
-            &tunnel,
-            &mut state_transitions,
-        );
+            process_link_event(
+                &client,
+                &tunnel_pubkey,
+                &mut link_ips,
+                &mut link_ids,
+                &tunnel,
+            );
 
-        assert!(link_ids.assigned.contains(&502_u16));
-        assert!(link_ips.contains("10.0.0.42".parse().unwrap()));
+            assert!(link_ids.assigned.contains(&502_u16));
+            assert!(link_ips.contains("10.0.0.42".parse().unwrap()));
 
-        let mut tunnel = tunnel.clone();
-        tunnel.status = LinkStatus::Deleting;
-        tunnel.tunnel_id = 502;
-        tunnel.tunnel_net = "10.0.0.0/31".parse().unwrap();
+            let mut tunnel = tunnel.clone();
+            tunnel.status = LinkStatus::Deleting;
+            tunnel.tunnel_id = 502;
+            tunnel.tunnel_net = "10.0.0.0/31".parse().unwrap();
 
-        let tunnel2 = tunnel.clone();
-        client
-            .expect_get()
-            .withf(move |pk| *pk == tunnel_pubkey)
-            .times(1)
-            .returning(move |_| Ok(AccountData::Link(tunnel2.clone())));
+            let tunnel2 = tunnel.clone();
+            client
+                .expect_get()
+                .withf(move |pk| *pk == tunnel_pubkey)
+                .times(1)
+                .returning(move |_| Ok(AccountData::Link(tunnel2.clone())));
 
-        client
-            .expect_execute_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::CloseAccountLink(
-                    LinkCloseAccountArgs {},
-                )),
-                predicate::always(),
-            )
-            .times(1)
-            .returning(|_, _| Ok(Signature::new_unique()));
+            client
+                .expect_execute_transaction()
+                .with(
+                    predicate::eq(DoubleZeroInstruction::CloseAccountLink(
+                        LinkCloseAccountArgs {},
+                    )),
+                    predicate::always(),
+                )
+                .times(1)
+                .returning(|_, _| Ok(Signature::new_unique()));
 
-        client
-            .expect_execute_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::UnlinkDeviceInterface(
-                    DeviceInterfaceUnlinkArgs {
-                        name: "Ethernet0".to_string(),
-                    },
-                )),
-                predicate::always(),
-            )
-            .times(1)
-            .returning(|_, _| Ok(Signature::new_unique()));
+            client
+                .expect_execute_transaction()
+                .with(
+                    predicate::eq(DoubleZeroInstruction::UnlinkDeviceInterface(
+                        DeviceInterfaceUnlinkArgs {
+                            name: "Ethernet0".to_string(),
+                        },
+                    )),
+                    predicate::always(),
+                )
+                .times(1)
+                .returning(|_, _| Ok(Signature::new_unique()));
 
-        client
-            .expect_execute_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::UnlinkDeviceInterface(
-                    DeviceInterfaceUnlinkArgs {
-                        name: "Ethernet1".to_string(),
-                    },
-                )),
-                predicate::always(),
-            )
-            .times(1)
-            .returning(|_, _| Ok(Signature::new_unique()));
+            client
+                .expect_execute_transaction()
+                .with(
+                    predicate::eq(DoubleZeroInstruction::UnlinkDeviceInterface(
+                        DeviceInterfaceUnlinkArgs {
+                            name: "Ethernet1".to_string(),
+                        },
+                    )),
+                    predicate::always(),
+                )
+                .times(1)
+                .returning(|_, _| Ok(Signature::new_unique()));
 
-        let assigned_ips = link_ips.assigned_ips.clone();
+            let assigned_ips = link_ips.assigned_ips.clone();
 
-        process_link_event(
-            &client,
-            &tunnel_pubkey,
-            &mut link_ips,
-            &mut link_ids,
-            &tunnel,
-            &mut state_transitions,
-        );
+            process_link_event(
+                &client,
+                &tunnel_pubkey,
+                &mut link_ips,
+                &mut link_ids,
+                &tunnel,
+            );
 
-        assert!(!link_ids.assigned.contains(&502_u16));
-        assert_ne!(link_ips.assigned_ips, assigned_ips);
+            assert!(!link_ids.assigned.contains(&502_u16));
+            assert_ne!(link_ips.assigned_ips, assigned_ips);
 
-        assert_eq!(state_transitions.len(), 2);
-        assert_eq!(state_transitions["tunnel-pending-to-activated"], 1);
-        assert_eq!(state_transitions["tunnel-deleting-to-deactivated"], 1);
+            let mut snapshot = crate::test_helpers::MetricsSnapshot::new(snapshotter.snapshot());
+            snapshot
+                .expect_counter(
+                    "doublezero_activator_state_transition",
+                    vec![("state_transition", "link-pending-to-activated")],
+                    1,
+                )
+                .expect_counter(
+                    "doublezero_activator_state_transition",
+                    vec![("state_transition", "link-deleting-to-deactivated")],
+                    1,
+                )
+                .verify();
+        });
     }
 
     #[test]
     fn test_process_link_event_rejected() {
-        let mut seq = Sequence::new();
-        let mut link_ips = IPBlockAllocator::new("10.0.0.0/32".parse().unwrap());
-        let mut link_ids = IDAllocator::new(500, vec![500, 501, 503]);
-        let mut client = create_test_client();
+        let recorder = DebuggingRecorder::new();
+        let snapshotter = recorder.snapshotter();
 
-        let tunnel_pubkey = Pubkey::new_unique();
-        let tunnel = Link {
-            account_type: AccountType::Link,
-            owner: Pubkey::new_unique(),
-            index: 0,
-            bump_seed: get_tunnel_bump_seed(&client),
-            contributor_pk: Pubkey::new_unique(),
-            side_a_pk: Pubkey::new_unique(),
-            side_z_pk: Pubkey::new_unique(),
-            link_type: LinkLinkType::WAN,
-            bandwidth: 10_000_000_000,
-            mtu: 1500,
-            delay_ns: 20_000,
-            jitter_ns: 100,
-            tunnel_id: 1,
-            tunnel_net: NetworkV4::default(),
-            status: LinkStatus::Pending,
-            code: "TestLink".to_string(),
-            side_a_iface_name: "Ethernet0".to_string(),
-            side_z_iface_name: "Ethernet1".to_string(),
-        };
+        metrics::with_local_recorder(&recorder, || {
+            let mut seq = Sequence::new();
+            let mut link_ips = IPBlockAllocator::new("10.0.0.0/32".parse().unwrap());
+            let mut link_ids = IDAllocator::new(500, vec![500, 501, 503]);
+            let mut client = create_test_client();
 
-        let _ = link_ips.next_available_block(0, 2);
+            let tunnel_pubkey = Pubkey::new_unique();
+            let tunnel = Link {
+                account_type: AccountType::Link,
+                owner: Pubkey::new_unique(),
+                index: 0,
+                bump_seed: get_tunnel_bump_seed(&client),
+                contributor_pk: Pubkey::new_unique(),
+                side_a_pk: Pubkey::new_unique(),
+                side_z_pk: Pubkey::new_unique(),
+                link_type: LinkLinkType::WAN,
+                bandwidth: 10_000_000_000,
+                mtu: 1500,
+                delay_ns: 20_000,
+                jitter_ns: 100,
+                tunnel_id: 1,
+                tunnel_net: NetworkV4::default(),
+                status: LinkStatus::Pending,
+                code: "TestLink".to_string(),
+                side_a_iface_name: "Ethernet0".to_string(),
+                side_z_iface_name: "Ethernet1".to_string(),
+            };
 
-        client
-            .expect_execute_transaction()
-            .times(1)
-            .in_sequence(&mut seq)
-            .with(
-                predicate::eq(DoubleZeroInstruction::RejectLink(LinkRejectArgs {
-                    reason: "Error: No available tunnel block".to_string(),
-                })),
-                predicate::always(),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            let _ = link_ips.next_available_block(0, 2);
 
-        let mut state_transitions: HashMap<&'static str, usize> = HashMap::new();
+            client
+                .expect_execute_transaction()
+                .times(1)
+                .in_sequence(&mut seq)
+                .with(
+                    predicate::eq(DoubleZeroInstruction::RejectLink(LinkRejectArgs {
+                        reason: "Error: No available tunnel block".to_string(),
+                    })),
+                    predicate::always(),
+                )
+                .returning(|_, _| Ok(Signature::new_unique()));
 
-        process_link_event(
-            &client,
-            &tunnel_pubkey,
-            &mut link_ips,
-            &mut link_ids,
-            &tunnel,
-            &mut state_transitions,
-        );
+            process_link_event(
+                &client,
+                &tunnel_pubkey,
+                &mut link_ips,
+                &mut link_ids,
+                &tunnel,
+            );
 
-        assert_eq!(state_transitions.len(), 1);
-        assert_eq!(state_transitions["tunnel-pending-to-rejected"], 1);
+            let mut snapshot = crate::test_helpers::MetricsSnapshot::new(snapshotter.snapshot());
+            snapshot
+                .expect_counter(
+                    "doublezero_activator_state_transition",
+                    vec![("state_transition", "link-pending-to-rejected")],
+                    1,
+                )
+                .verify();
+        });
     }
 }

@@ -12,7 +12,6 @@ pub fn process_access_pass_event(
     _pubkey: &Pubkey,
     accesspass: &AccessPass,
     users: &HashMap<Pubkey, User>,
-    state_transitions: &mut HashMap<&'static str, usize>,
 ) -> eyre::Result<()> {
     let mut epoch = client.get_epoch()?;
 
@@ -32,7 +31,7 @@ pub fn process_access_pass_event(
                 user_pubkey: *user_pubkey,
             }
             .execute(client);
-            *state_transitions.entry("user-out-of-credits").or_insert(0) += 1;
+            metrics::counter!("doublezero_activator_state_transition", "state_transition" => "access-pass-user-suspend").increment(1);
 
             if res.is_ok() {
                 info!(
@@ -54,7 +53,7 @@ pub fn process_access_pass_event(
                 user_pubkey: *user_pubkey,
             }
             .execute(client);
-            *state_transitions.entry("user-out-of-credits").or_insert(0) += 1;
+            metrics::counter!("doublezero_activator_state_transition", "state_transition" => "access-pass-user-reactivate").increment(1);
 
             if res.is_ok() {
                 info!(

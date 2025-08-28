@@ -1,8 +1,6 @@
 use crate::{
-    activator_metrics::ActivatorMetrics,
     idallocator::IDAllocator,
     ipblockallocator::IPBlockAllocator,
-    metrics_service::MetricsService,
     process::{
         accesspass::process_access_pass_event, device::process_device_event,
         exchange::process_exchange_event, link::process_link_event,
@@ -47,8 +45,6 @@ pub struct Activator {
     locations: HashMap<Pubkey, Location>,
     exchanges: HashMap<Pubkey, Exchange>,
     multicastgroups: HashMap<Pubkey, MulticastGroup>,
-    metrics: ActivatorMetrics,
-    state_transitions: HashMap<&'static str, usize>,
 }
 
 impl Activator {
@@ -59,7 +55,6 @@ impl Activator {
         websocket_url: Option<String>,
         program_id: Option<String>,
         keypair: Option<PathBuf>,
-        metrics_service: Box<dyn MetricsService + Send + Sync>,
     ) -> eyre::Result<Self> {
         let client = DZClient::new(rpc_url, websocket_url, program_id, keypair)?;
 
@@ -97,11 +92,9 @@ impl Activator {
             multicastgroup_tunnel_ips: IPBlockAllocator::new(config.multicastgroup_block.into()),
             user_tunnel_ips: IPBlockAllocator::new(config.user_tunnel_block.into()),
             devices: HashMap::new(),
-            metrics: ActivatorMetrics::new(metrics_service),
             locations: HashMap::new(),
             exchanges: HashMap::new(),
             multicastgroups: HashMap::new(),
-            state_transitions: HashMap::new(),
         })
     }
 
@@ -174,13 +167,6 @@ impl Activator {
     }
 
     pub fn process_events_thread(&mut self, stop_signal: Arc<AtomicBool>) -> eyre::Result<()> {
-        self.metrics.record_metrics(
-            &self.devices,
-            &self.locations,
-            &self.exchanges,
-            &self.state_transitions,
-        )?;
-
         self.devices.iter().for_each(|(_pubkey, device)| {
             info!(
                 "Device code: {} public_ip: {} dz_prefixes: {} tunnels: {} tunnel_net: {} assigned: {}",
@@ -199,11 +185,9 @@ impl Activator {
         let link_ids = &mut self.link_ids;
         let multicastgroup_tunnel_ips = &mut self.multicastgroup_tunnel_ips;
         let user_tunnel_ips = &mut self.user_tunnel_ips;
-        let metrics = &self.metrics;
         let locations = &mut self.locations;
         let exchanges = &mut self.exchanges;
         let multicastgroups = &mut self.multicastgroups;
-        let state_transitions = &mut self.state_transitions;
         let segment_routing_ids = &mut self.segment_routing_ids;
 
         self.client.gets_and_subscribe(
@@ -217,20 +201,12 @@ impl Activator {
                             pubkey,
                             devices,
                             device,
-                            state_transitions,
                             segment_routing_ids,
                             link_ips,
                         );
                     }
                     AccountData::Link(tunnel) => {
-                        process_link_event(
-                            client,
-                            pubkey,
-                            link_ips,
-                            link_ids,
-                            tunnel,
-                            state_transitions,
-                        );
+                        process_link_event(client, pubkey, link_ips, link_ids, tunnel);
                     }
                     AccountData::User(user) => {
                         process_user_event(
@@ -240,7 +216,8 @@ impl Activator {
                             user_tunnel_ips,
                             link_ids,
                             user,
-                            state_transitions,
+                            locations,
+                            exchanges,
                         );
                     }
                     AccountData::Location(location) => {
@@ -256,7 +233,6 @@ impl Activator {
                             multicastgroup,
                             multicastgroups,
                             multicastgroup_tunnel_ips,
-                            state_transitions,
                         )
                         .inspect_err(|e| {
                             error!("Error processing multicast group event: {e}");
@@ -264,26 +240,14 @@ impl Activator {
                     }
                     AccountData::AccessPass(access_pass) => {
                         let users = ListUserCommand.execute(client).unwrap_or_default();
-                        let _ = process_access_pass_event(
-                            client,
-                            pubkey,
-                            access_pass,
-                            &users,
-                            state_transitions,
-                        )
-                        .inspect_err(|e| {
-                            error!("Error processing access pass event: {e}");
-                        });
+                        let _ = process_access_pass_event(client, pubkey, access_pass, &users)
+                            .inspect_err(|e| {
+                                error!("Error processing access pass event: {e}");
+                            });
                     }
                     _ => {}
                 };
                 metrics::counter!("doublezero_activator_event_handled").increment(1);
-                if let Err(e) =
-                    metrics.record_metrics(devices, locations, exchanges, state_transitions)
-                {
-                    // Just log the error
-                    error!("error on record_metrics: {e}")
-                }
             },
             stop_signal,
         )?;

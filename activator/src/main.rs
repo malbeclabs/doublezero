@@ -18,13 +18,11 @@ mod activator;
 mod activator_metrics;
 mod constants;
 mod idallocator;
-mod influxdb_metrics_service;
 mod ipblockallocator;
-mod metrics_service;
 mod process;
 mod states;
+pub mod test_helpers;
 pub mod tests;
-mod utils;
 
 #[derive(Parser, Debug)]
 #[command(term_width = 0)]
@@ -47,18 +45,6 @@ struct AppArgs {
     #[arg(long)]
     keypair: Option<PathBuf>,
 
-    #[arg(long)]
-    influxdb_url: Option<String>,
-
-    #[arg(long)]
-    influxdb_org: Option<String>,
-
-    #[arg(long)]
-    influxdb_token: Option<String>,
-
-    #[arg(long)]
-    influxdb_bucket: Option<String>,
-
     #[arg(long, default_value = "info")]
     log_level: String,
 }
@@ -73,14 +59,6 @@ async fn main() -> eyre::Result<()> {
     export_build_info();
 
     info!("DoubleZero Activator");
-
-    let (metrics_service, mut metrics_submitter) =
-        influxdb_metrics_service::create_influxdb_metrics_service(
-            args.influxdb_url.as_deref(),
-            args.influxdb_org.as_deref(),
-            args.influxdb_token.as_deref(),
-            args.influxdb_bucket.as_deref(),
-        )?;
 
     let (rpc_url, ws_url, program_id) = if let Some(env) = args.env {
         let config = env.parse::<Environment>()?.config()?;
@@ -109,7 +87,6 @@ async fn main() -> eyre::Result<()> {
         Some(ws_url.clone()),
         Some(program_id.clone()),
         Some(keypair.clone()),
-        metrics_service,
     )
     .await?;
 
@@ -142,8 +119,6 @@ async fn main() -> eyre::Result<()> {
         .unwrap_or_default()
     });
 
-    info!("Activator metrics submitter started");
-
     tokio::select! {
         biased;
         _ = listen_for_shutdown()? => {
@@ -159,11 +134,9 @@ async fn main() -> eyre::Result<()> {
                 error!("AccessPass monitor thread exited unexpectedly with reason: {err:?}");
             }
         }
-        _ = metrics_submitter.run(shutdown.clone()) => {}
     }
 
     info!("Activator handler finished");
-    info!("Activator metrics submitter finished");
 
     Ok(())
 }

@@ -82,7 +82,7 @@ type CircuitTelemetryStats struct {
 func (w *InternetTelemetryWatcher) Tick(ctx context.Context) error {
 	circuits, err := telemetrycircuits.GetInternetExchangeCircuits(ctx, w.log, w.cfg.Serviceability)
 	if err != nil {
-		MetricErrors.WithLabelValues(MetricErrorTypeGetCircuits).Inc()
+		w.cfg.Metrics.Errors.WithLabelValues(MetricErrorTypeGetCircuits).Inc()
 		return fmt.Errorf("failed to get circuits: %w", err)
 	}
 	if len(circuits) == 0 {
@@ -91,7 +91,7 @@ func (w *InternetTelemetryWatcher) Tick(ctx context.Context) error {
 
 	epochInfo, err := w.cfg.LedgerRPCClient.GetEpochInfo(ctx, solanarpc.CommitmentFinalized)
 	if err != nil {
-		MetricErrors.WithLabelValues(MetricErrorTypeGetEpochInfo).Inc()
+		w.cfg.Metrics.Errors.WithLabelValues(MetricErrorTypeGetEpochInfo).Inc()
 		w.log.Error("failed to get epoch info", "error", err)
 		return err
 	}
@@ -118,9 +118,10 @@ func (w *InternetTelemetryWatcher) Tick(ctx context.Context) error {
 				if err != nil {
 					if errors.Is(err, telemetry.ErrAccountNotFound) {
 						w.log.Debug("internet latency samples account not found", "error", err, "circuit_code", circuit.Code, "data_provider", dataProvider)
+						w.cfg.Metrics.AccountNotFound.WithLabelValues(dataProvider, circuit.Code).Add(1)
 						return
 					}
-					MetricErrors.WithLabelValues(MetricErrorTypeGetLatencySamples).Inc()
+					w.cfg.Metrics.Errors.WithLabelValues(MetricErrorTypeGetLatencySamples).Inc()
 					w.log.Error("failed to get internet latency samples", "error", err)
 					errorChan <- err
 					return
@@ -165,13 +166,13 @@ func (w *InternetTelemetryWatcher) Tick(ctx context.Context) error {
 					samplesDelta = successCountDelta + lossCountDelta
 
 					if successCountDelta > 0 {
-						MetricSuccesses.WithLabelValues(dataProvider, circuit.Code).Add(float64(successCountDelta))
+						w.cfg.Metrics.Successes.WithLabelValues(dataProvider, circuit.Code).Add(float64(successCountDelta))
 					}
 					if lossCountDelta > 0 {
-						MetricLosses.WithLabelValues(dataProvider, circuit.Code).Add(float64(lossCountDelta))
+						w.cfg.Metrics.Losses.WithLabelValues(dataProvider, circuit.Code).Add(float64(lossCountDelta))
 					}
 					if samplesDelta > 0 {
-						MetricSamples.WithLabelValues(dataProvider, circuit.Code).Add(float64(samplesDelta))
+						w.cfg.Metrics.Samples.WithLabelValues(dataProvider, circuit.Code).Add(float64(samplesDelta))
 					}
 				}
 				w.mu.RUnlock()

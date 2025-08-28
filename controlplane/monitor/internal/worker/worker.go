@@ -6,6 +6,7 @@ import (
 
 	devicetelemetry "github.com/malbeclabs/doublezero/controlplane/monitor/internal/device-telemetry"
 	internettelemetry "github.com/malbeclabs/doublezero/controlplane/monitor/internal/internet-telemetry"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 type Watcher interface {
@@ -25,8 +26,11 @@ func New(cfg *Config) (*Worker, error) {
 		return nil, err
 	}
 
+	deviceTelemetryMetrics := devicetelemetry.NewMetrics()
+	deviceTelemetryMetrics.Register(prometheus.DefaultRegisterer)
 	deviceTelemetryWatcher, err := devicetelemetry.NewDeviceTelemetryWatcher(&devicetelemetry.Config{
 		Logger:          cfg.Logger,
+		Metrics:         deviceTelemetryMetrics,
 		LedgerRPCClient: cfg.LedgerRPCClient,
 		Serviceability:  cfg.Serviceability,
 		Telemetry:       cfg.Telemetry,
@@ -36,8 +40,11 @@ func New(cfg *Config) (*Worker, error) {
 		return nil, err
 	}
 
+	internetTelemetryMetrics := internettelemetry.NewMetrics()
+	internetTelemetryMetrics.Register(prometheus.DefaultRegisterer)
 	internetTelemetryWatcher, err := internettelemetry.NewInternetTelemetryWatcher(&internettelemetry.Config{
 		Logger:                     cfg.Logger,
+		Metrics:                    internetTelemetryMetrics,
 		LedgerRPCClient:            cfg.LedgerRPCClient,
 		Serviceability:             cfg.Serviceability,
 		Telemetry:                  cfg.Telemetry,

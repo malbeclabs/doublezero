@@ -113,7 +113,7 @@ pub fn process_set_access_pass(
         return Err(DoubleZeroError::InvalidLastAccessEpoch.into());
     }
 
-    if accesspass_account.data_is_empty() {
+    if accesspass_account.data_is_empty() && accesspass_account.lamports() == 0 {
         let accesspass = AccessPass {
             account_type: AccountType::AccessPass,
             bump_seed,
@@ -151,7 +151,21 @@ pub fn process_set_access_pass(
             "Invalid PDA Account Owner"
         );
 
-        let mut accesspass = AccessPass::try_from(accesspass_account)?;
+        let mut accesspass = if !accesspass_account.data_is_empty() {
+            AccessPass::try_from(accesspass_account)?
+        } else {
+            AccessPass {
+                account_type: AccountType::AccessPass,
+                bump_seed,
+                accesspass_type: value.accesspass_type,
+                client_ip: value.client_ip,
+                user_payer: *user_payer.key,
+                last_access_epoch: value.last_access_epoch,
+                connection_count: 0,
+                status: AccessPassStatus::Requested,
+                owner: *payer_account.key,
+            }
+        };
 
         accesspass.accesspass_type = value.accesspass_type;
         accesspass.last_access_epoch = value.last_access_epoch;

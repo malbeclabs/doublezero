@@ -65,44 +65,6 @@ pub fn validate_config(settings: &Settings) -> Result<()> {
         bail!("Telemetry program ID cannot be empty");
     }
 
-    // Validate operational settings
-    if settings.operational.edge_bandwidth_gbps == 0 {
-        bail!("Edge bandwidth must be greater than 0");
-    }
-
-    if settings.operational.traffic_factor < 0.0 || settings.operational.traffic_factor > 1.0 {
-        bail!(
-            "Traffic factor must be between 0.0 and 1.0, got {}",
-            settings.operational.traffic_factor
-        );
-    }
-
-    if settings.operational.slots_in_epoch <= 0.0 {
-        bail!(
-            "Slots in epoch must be positive, got {}",
-            settings.operational.slots_in_epoch
-        );
-    }
-
-    if settings.operational.chunk_size == 0 {
-        bail!("Chunk size must be greater than 0");
-    }
-
-    if settings.operational.telemetry_batch_size == 0 {
-        bail!("Telemetry batch size must be greater than 0");
-    }
-
-    if settings.operational.default_latency_ms <= 0.0 {
-        bail!(
-            "Default latency must be positive, got {}",
-            settings.operational.default_latency_ms
-        );
-    }
-
-    if settings.operational.slot_duration_us == 0 {
-        bail!("Slot duration must be greater than 0");
-    }
-
     // Validate log level
     let valid_log_levels = ["trace", "debug", "info", "warn", "error"];
     if !valid_log_levels.contains(&settings.log_level.to_lowercase().as_str()) {
@@ -163,8 +125,8 @@ pub fn validate_config(settings: &Settings) -> Result<()> {
 mod tests {
     use super::*;
     use crate::settings::{
-        InetLookbackSettings, OperationalSettings, PrefixSettings, ProgramSettings, RpcSettings,
-        ShapleySettings, network::Network,
+        InetLookbackSettings, PrefixSettings, ProgramSettings, RpcSettings, ShapleySettings,
+        network::Network,
     };
 
     fn create_valid_config() -> Settings {
@@ -186,15 +148,6 @@ mod tests {
             programs: ProgramSettings {
                 serviceability_program_id: "11111111111111111111111111111111".to_string(),
                 telemetry_program_id: "11111111111111111111111111111111".to_string(),
-            },
-            operational: OperationalSettings {
-                edge_bandwidth_gbps: 10,
-                traffic_factor: 0.05,
-                slots_in_epoch: 432000.0,
-                chunk_size: 1013,
-                telemetry_batch_size: 100,
-                default_latency_ms: 1000.0,
-                slot_duration_us: 400_000,
             },
             prefixes: PrefixSettings {
                 device_telemetry: "doublezero_device_telemetry_aggregate".to_string(),

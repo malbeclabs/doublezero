@@ -13,7 +13,7 @@ use crate::{
     ingestor::fetcher::Fetcher,
     settings::Settings,
 };
-use anyhow::Result;
+use anyhow::{Result, bail};
 use network_shapley::{shapley::ShapleyInput, types::Demand};
 use rayon::prelude::*;
 use solana_sdk::pubkey::Pubkey;
@@ -246,11 +246,13 @@ impl Orchestrator {
                 .await
                 {
                     Ok(_) => {
-                        info!("✅ Successfully posted merkle root to revenue distribution program");
+                        info!(
+                            "[OK] Successfully posted merkle root to revenue distribution program"
+                        );
                         summary.add_success("merkle root posting".to_string());
                     }
                     Err(e) => {
-                        warn!("❌ Failed to post merkle root: {}", e);
+                        warn!("[FAILED] Failed to post merkle root: {}", e);
                         summary.add_failure("merkle root posting".to_string(), e.to_string());
                     }
                 }
@@ -260,7 +262,7 @@ impl Orchestrator {
 
                 // Return error if not all successful
                 if !summary.all_successful() {
-                    anyhow::bail!(
+                    bail!(
                         "Some writes failed: {}/{} successful",
                         summary.successful_count(),
                         summary.total_count()
@@ -301,13 +303,26 @@ impl Orchestrator {
         Ok(())
     }
 
-    pub async fn read_telemetry_aggregates(&self, epoch: u64, payer_pubkey: &Pubkey) -> Result<()> {
-        ledger_operations::read_telemetry_aggregates(&self.settings, epoch, payer_pubkey).await
+    pub async fn read_telemetry_aggregates(
+        &self,
+        epoch: u64,
+        payer_pubkey: &Pubkey,
+        telemetry_type: &str,
+        output_csv: Option<PathBuf>,
+    ) -> Result<()> {
+        ledger_operations::read_telemetry_aggregates(
+            &self.settings,
+            epoch,
+            payer_pubkey,
+            telemetry_type,
+            output_csv,
+        )
+        .await
     }
 
     pub async fn check_contributor_reward(
         &self,
-        contributor: &str,
+        contributor: &Pubkey,
         epoch: u64,
         payer_pubkey: &Pubkey,
     ) -> Result<()> {
@@ -344,5 +359,102 @@ impl Orchestrator {
         dry_run: bool,
     ) -> Result<()> {
         ledger_operations::close_record(&self.settings, &r#type, epoch, keypair_path, dry_run).await
+    }
+
+    pub async fn write_telemetry_aggregates(
+        &self,
+        epoch: Option<u64>,
+        keypair_path: Option<PathBuf>,
+        dry_run: bool,
+        telemetry_type: String,
+    ) -> Result<()> {
+        let fetcher = Fetcher::from_settings(&self.settings)?;
+
+        // Prepare telemetry data (similar to calculate_rewards but stop before reward calculation)
+        let prep_data = PreparedData::new(&fetcher, epoch).await?;
+        let fetch_epoch = prep_data.epoch;
+        let device_telemetry = prep_data.device_telemetry;
+        let internet_telemetry = prep_data.internet_telemetry;
+
+        info!(
+            "Writing telemetry aggregates for epoch {} (type: {})",
+            fetch_epoch, telemetry_type
+        );
+
+        if !dry_run {
+            use crate::calculator::keypair_loader::load_keypair;
+            let payer_signer = load_keypair(&keypair_path)?;
+            let mut summary = ledger_operations::WriteSummary::default();
+
+            // Write device telemetry if requested
+            if telemetry_type == "device" || telemetry_type == "all" {
+                let device_prefix = self.settings.prefixes.device_telemetry.as_bytes();
+                ledger_operations::write_and_track(
+                    &fetcher.rpc_client,
+                    &payer_signer,
+                    &[device_prefix, &fetch_epoch.to_le_bytes()],
+                    &device_telemetry,
+                    "device telemetry aggregates",
+                    &mut summary,
+                    self.settings.rpc.rps_limit,
+                )
+                .await;
+            }
+
+            // Write internet telemetry if requested
+            if telemetry_type == "internet" || telemetry_type == "all" {
+                let inet_prefix = self.settings.prefixes.internet_telemetry.as_bytes();
+                ledger_operations::write_and_track(
+                    &fetcher.rpc_client,
+                    &payer_signer,
+                    &[inet_prefix, &fetch_epoch.to_le_bytes()],
+                    &internet_telemetry,
+                    "internet telemetry aggregates",
+                    &mut summary,
+                    self.settings.rpc.rps_limit,
+                )
+                .await;
+            }
+
+            // Log final summary
+            info!("{}", summary);
+
+            // Return error if not all successful
+            if !summary.all_successful() {
+                bail!(
+                    "Some writes failed: {}/{} successful",
+                    summary.successful_count(),
+                    summary.total_count()
+                );
+            }
+        } else {
+            info!(
+                "DRY-RUN: Would write telemetry aggregates for epoch {}",
+                fetch_epoch
+            );
+            if telemetry_type == "device" || telemetry_type == "all" {
+                info!(
+                    "  - Device telemetry: {} bytes",
+                    borsh::to_vec(&device_telemetry)?.len()
+                );
+            }
+            if telemetry_type == "internet" || telemetry_type == "all" {
+                info!(
+                    "  - Internet telemetry: {} bytes",
+                    borsh::to_vec(&internet_telemetry)?.len()
+                );
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn inspect_records(
+        &self,
+        epoch: u64,
+        payer_pubkey: &Pubkey,
+        record_type: Option<String>,
+    ) -> Result<()> {
+        ledger_operations::inspect_records(&self.settings, epoch, payer_pubkey, record_type).await
     }
 }

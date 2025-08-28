@@ -9,78 +9,93 @@ use serde::{Deserialize, Serialize};
 use std::{env, fmt};
 use validation::validate_config;
 
+/// Main settings configuration for contributor-rewards
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
+    /// Log level for application logging (e.g., "info", "debug", "warn", "error")
     pub log_level: String,
+    /// Network configuration (mainnet, testnet, devnet, or localnet)
     pub network: Network,
+    /// Shapley value calculation parameters
     pub shapley: ShapleySettings,
+    /// RPC endpoint configuration
     pub rpc: RpcSettings,
+    /// Solana program IDs
     pub programs: ProgramSettings,
-    pub operational: OperationalSettings,
+    /// Prefixes for data organization on-chain
     pub prefixes: PrefixSettings,
+    /// Internet telemetry lookback configuration
     pub inet_lookback: InetLookbackSettings,
 }
 
+/// Shapley value calculation parameters for reward distribution
 #[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct ShapleySettings {
+    /// Base uptime requirement for operators (0.0-1.0)
+    /// e.g., 0.95 means 95% uptime required
     pub operator_uptime: f64,
+    /// Bonus multiplier for contiguous network coverage
+    /// Applied when nodes provide continuous coverage across regions
     pub contiguity_bonus: f64,
+    /// Multiplier for demand-based rewards
+    /// Increases rewards in high-demand areas
     pub demand_multiplier: f64,
 }
 
+/// RPC endpoint configuration for blockchain interactions
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RpcSettings {
+    /// DoubleZero ledger RPC URL
     pub dz_url: String,
+    /// Solana mainnet RPC endpoint
     pub solana_mainnet_url: String,
+    /// Solana testnet RPC endpoint (for development/testing)
     pub solana_testnet_url: String,
+    /// Transaction commitment level ("confirmed", "finalized", etc.)
     pub commitment: String,
+    /// Rate limit for RPC requests per second
     pub rps_limit: u32,
 }
 
+/// Solana program IDs for on-chain interactions
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProgramSettings {
+    /// DZ Serviceability program ID
     pub serviceability_program_id: String,
+    /// DZ Telemetry program ID
     pub telemetry_program_id: String,
 }
 
+/// Prefixes for organizing DZ records on-chain
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PrefixSettings {
+    /// Prefix for device telemetry record account
     pub device_telemetry: String,
+    /// Prefix for internet telemetry record account
     pub internet_telemetry: String,
+    /// Prefix for contributor rewards record account
     pub contributor_rewards: String,
+    /// Prefix for reward input configuration record account
     pub reward_input: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OperationalSettings {
-    pub edge_bandwidth_gbps: u32,
-    pub traffic_factor: f64,
-    pub slots_in_epoch: f64,
-    pub chunk_size: usize,
-    pub telemetry_batch_size: usize,
-    pub default_latency_ms: f64,
-    pub slot_duration_us: u64,
-}
-
+/// Configuration for internet telemetry historical data lookback
+/// Used when current epoch data is insufficient
 #[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct InetLookbackSettings {
     /// Minimum coverage threshold (0.0-1.0)
     /// e.g., 0.7 means at least 70% of expected links must have data
     pub min_coverage_threshold: f64,
-
     /// Maximum number of epochs to look back
     /// e.g., 5 means check up to 5 previous epochs
     pub max_epochs_lookback: u64,
-
     /// Minimum samples per link to consider it valid
     /// e.g., 10 means each link needs at least 10 samples
     pub min_samples_per_link: usize,
-
     /// Enable lookback accumulator
     /// When true, combines data from multiple epochs to meet coverage threshold
     /// This should be defaulted to true (false only when testing)
     pub enable_accumulator: bool,
-
     /// Deduplication window in microseconds
     /// Samples within this time window are considered duplicates
     pub dedup_window_us: u64,

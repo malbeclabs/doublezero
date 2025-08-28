@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/malbeclabs/doublezero/config"
+	datajson "github.com/malbeclabs/doublezero/controlplane/telemetry/internal/data/json"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/data/stats"
 )
 
@@ -46,6 +48,8 @@ func NewServer(log *slog.Logger, mainnetProvider, testnetProvider, devnetProvide
 func (s *Server) provider(env string) (Provider, error) {
 	switch env {
 	case config.EnvMainnetBeta:
+		return s.mainnet, nil
+	case config.EnvMainnet:
 		return s.mainnet, nil
 	case config.EnvTestnet:
 		return s.testnet, nil
@@ -112,6 +116,7 @@ func (s *Server) handleInternetCircuitLatencies(w http.ResponseWriter, r *http.R
 	intervalStr := r.URL.Query().Get("interval")
 	unit := r.URL.Query().Get("unit")
 	dataProvider := r.URL.Query().Get("data_provider")
+	metrics := parseMultiParam(r, "metrics")
 
 	s.log.Debug("[/location-internet/circuit-latencies]", "env", env, "from", fromStr, "to", toStr, "circuits", circuits, "max_points", maxPointsStr, "interval", intervalStr, "unit", unit, "full", r.URL.String())
 
@@ -198,7 +203,20 @@ func (s *Server) handleInternetCircuitLatencies(w http.ResponseWriter, r *http.R
 		return output[i].Timestamp < output[j].Timestamp
 	})
 
-	if err := json.NewEncoder(w).Encode(output); err != nil {
+	var encoder datajson.Encoder
+	if len(metrics) > 0 {
+		if !slices.Contains(metrics, "timestamp") {
+			metrics = append([]string{"timestamp"}, metrics...)
+		}
+		if !slices.Contains(metrics, "circuit") {
+			metrics = append([]string{"circuit"}, metrics...)
+		}
+		encoder = datajson.NewFieldFilteringEncoder(w, metrics)
+	} else {
+		encoder = json.NewEncoder(w)
+	}
+
+	if err := encoder.Encode(output); err != nil {
 		s.log.Error("failed to encode latencies", "error", err)
 		http.Error(w, fmt.Sprintf("failed to encode latencies: %v", err), http.StatusInternalServerError)
 		return

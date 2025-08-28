@@ -4,7 +4,7 @@
 FROM ubuntu:24.04 AS builder
 
 # Install build dependencies and other utilities
-RUN apt update -qq && \
+RUN apt update && \
     apt install --no-install-recommends -y \
     ca-certificates \
     curl \
@@ -37,7 +37,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # ----------------------------------------------------------------------------
 FROM ubuntu:24.04
 
-RUN apt update -qq && \
+RUN apt update && \
     apt install --no-install-recommends -y \
     ca-certificates \
     curl

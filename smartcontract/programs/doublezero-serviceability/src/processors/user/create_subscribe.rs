@@ -109,8 +109,13 @@ pub fn process_create_subscribe_user(
     // Check Initial epoch
     let clock = Clock::get()?;
     let current_epoch = clock.epoch;
-    if accesspass.last_access_epoch > 0 && accesspass.last_access_epoch < current_epoch {
-        return Err(DoubleZeroError::Unauthorized.into());
+    if accesspass.last_access_epoch < current_epoch {
+        msg!(
+            "Invalid epoch last_access_epoch: {} < current_epoch: {}",
+            accesspass.last_access_epoch,
+            current_epoch
+        );
+        return Err(DoubleZeroError::AccessPassUnauthorized.into());
     }
 
     accesspass.connection_count += 1;

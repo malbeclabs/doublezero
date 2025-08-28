@@ -1,7 +1,7 @@
 use anyhow::Result;
 use contributor_rewards::{
     ingestor::types::{DZInternetData, DZInternetLatencySamples},
-    settings::InternetTelemetrySettings,
+    settings::InetLookbackSettings,
 };
 use solana_sdk::pubkey::Pubkey;
 
@@ -15,11 +15,13 @@ mod mock_tests {
         min_coverage: f64,
         max_lookback: u64,
         min_samples: usize,
-    ) -> InternetTelemetrySettings {
-        InternetTelemetrySettings {
+    ) -> InetLookbackSettings {
+        InetLookbackSettings {
             min_coverage_threshold: min_coverage,
             max_epochs_lookback: max_lookback,
             min_samples_per_link: min_samples,
+            enable_accumulator: false,
+            dedup_window_us: 10_000_000,
         }
     }
 

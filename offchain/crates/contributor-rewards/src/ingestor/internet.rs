@@ -1,8 +1,11 @@
 use crate::{
-    ingestor::types::{DZInternetData, DZInternetLatencySamples},
+    ingestor::{
+        inet_accumulator::{EpochData, InetLookbackAccumulator, InetLookbackConfig},
+        types::{DZInternetData, DZInternetLatencySamples},
+    },
     settings::Settings,
 };
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use backon::{ExponentialBuilder, Retryable};
 use doublezero_telemetry::state::{
     accounttype::AccountType, internet_latency_samples::InternetLatencySamples,
@@ -15,8 +18,8 @@ use solana_client::{
     rpc_filter::{Memcmp, RpcFilterType},
 };
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
-use std::{collections::BTreeSet, str::FromStr, time::Duration};
-use tracing::{debug, error, info, warn};
+use std::{str::FromStr, time::Duration};
+use tracing::{debug, info, warn};
 
 // Use the correct discriminator value from the AccountType enum
 // AccountType::InternetLatencySamples = 4
@@ -136,139 +139,114 @@ pub async fn fetch(
     })
 }
 
-/// Calculate coverage of internet telemetry data
-/// Returns a value between 0.0 and 1.0 representing the percentage of expected links with valid data
-fn calculate_coverage(data: &DZInternetData, expected_links: usize, min_samples: usize) -> f64 {
-    if expected_links == 0 {
-        return 0.0;
-    }
-
-    // Count unique origin-target pairs with sufficient samples
-    let valid_links: BTreeSet<(Pubkey, Pubkey)> = data
-        .internet_latency_samples
-        .iter()
-        .filter(|sample| sample.samples.len() >= min_samples)
-        .map(|sample| (sample.origin_exchange_pk, sample.target_exchange_pk))
-        .collect();
-
-    valid_links.len() as f64 / expected_links as f64
-}
-
-/// Fetch internet telemetry data with threshold checking
-/// Will attempt to fetch data from the target epoch, and if coverage is insufficient,
-/// will look back through previous epochs up to max_epochs_lookback
-pub async fn fetch_with_threshold(
+/// Fetch internet telemetry data using the lookback accumulator
+/// Intelligently combines data from multiple epochs to meet coverage threshold
+pub async fn fetch_with_accumulator(
     rpc_client: &RpcClient,
     settings: &Settings,
     target_epoch: u64,
     expected_links: usize,
 ) -> Result<(u64, DZInternetData)> {
-    let min_coverage = settings.internet_telemetry.min_coverage_threshold;
-    let max_lookback = settings.internet_telemetry.max_epochs_lookback;
-    let min_samples = settings.internet_telemetry.min_samples_per_link;
+    let config = InetLookbackConfig {
+        min_coverage_ratio: settings.inet_lookback.min_coverage_threshold,
+        min_samples_per_route: settings.inet_lookback.min_samples_per_link,
+        dedup_window_us: settings.inet_lookback.dedup_window_us,
+    };
+
+    let mut accumulator = InetLookbackAccumulator::new(config, expected_links);
 
     info!(
-        "Checking internet telemetry for target epoch {}...",
-        target_epoch
+        "Using lookback accumulator for target epoch {} (threshold: {:.0}%)",
+        target_epoch,
+        settings.inet_lookback.min_coverage_threshold * 100.0
     );
 
-    let mut best_epoch = target_epoch;
-    let mut best_data = DZInternetData::default();
-    let mut best_coverage = 0.0;
-
     // Try epochs from target_epoch down to (target_epoch - max_lookback + 1)
-    for i in 0..max_lookback {
+    for i in 0..settings.inet_lookback.max_epochs_lookback {
         let current_epoch = target_epoch.saturating_sub(i);
 
         // Fetch data for this epoch
         let data = fetch(rpc_client, settings, current_epoch).await?;
 
-        // Calculate coverage
-        let coverage = calculate_coverage(&data, expected_links, min_samples);
-
-        // Track best coverage seen so far
-        if coverage > best_coverage {
-            best_epoch = current_epoch;
-            best_data = data.clone();
-            best_coverage = coverage;
+        if data.internet_latency_samples.is_empty() {
+            warn!(
+                "Epoch {} has no internet telemetry data. Continuing...",
+                current_epoch
+            );
+            continue;
         }
 
-        if data.internet_latency_samples.is_empty() {
-            if i == 0 {
-                warn!(
-                    "Epoch {} has no internet telemetry data. Looking back...",
-                    current_epoch
-                );
-            } else {
-                warn!(
-                    "Epoch {} has no internet telemetry data. Continuing search...",
-                    current_epoch
-                );
-            }
-        } else {
-            let coverage_pct = coverage * 100.0;
-            let threshold_pct = min_coverage * 100.0;
+        let epoch_data = EpochData::new(current_epoch, data);
 
-            if coverage >= min_coverage {
-                if i == 0 {
-                    info!(
-                        "Epoch {} coverage is {:.1}% (meets {:.0}% threshold). Using current epoch data.",
-                        current_epoch, coverage_pct, threshold_pct
-                    );
-                } else {
-                    info!(
-                        "Epoch {current_epoch} coverage is {coverage_pct:.1}% (meets {threshold_pct:.0}% threshold)"
-                    );
-                    info!(
-                        "Using historical data from epoch {current_epoch} (target was {target_epoch})."
-                    );
-                }
-                return Ok((current_epoch, data));
-            } else {
-                warn!(
-                    "Epoch {} coverage is {:.1}% (below {:.0}% threshold).{}",
-                    current_epoch,
-                    coverage_pct,
-                    threshold_pct,
-                    if i < max_lookback - 1 {
-                        " Looking back..."
-                    } else {
-                        " Reached max lookback."
-                    }
-                );
-            }
+        // Calculate coverage gain (how many NEW routes this epoch would add)
+        let gain = accumulator.calculate_coverage_gain(&epoch_data);
+        let current_coverage = accumulator.coverage_ratio() * 100.0;
+
+        if gain > 0.0 {
+            info!(
+                "Epoch {} adds {:.1}% new route coverage (current: {:.1}%)",
+                current_epoch,
+                gain * 100.0,
+                current_coverage
+            );
+        } else {
+            info!(
+                "Epoch {} adds no new routes but may pad sample gaps (current: {:.1}%)",
+                current_epoch, current_coverage
+            );
+        }
+
+        // Always add epoch - even with 0% new routes, it helps fill temporal gaps
+        // Example: epoch 80 has lax->nyc at times 1000-1200, epoch 79 has lax->nyc at 1400-1600
+        // We combine both to get better (not necessarily complete) temporal coverage
+        accumulator.add_epoch(epoch_data);
+
+        // Check if we've met the route coverage threshold (e.g., 80% of expected routes)
+        // Note: This is about route coverage, not temporal coverage within routes
+        if accumulator.is_threshold_met() {
+            let final_coverage = accumulator.coverage_ratio() * 100.0;
+            let epochs_used = accumulator.get_epochs_used();
+
+            info!(
+                "Route coverage threshold met at {:.1}% using epochs: {:?}",
+                final_coverage, epochs_used
+            );
+
+            // Merge all epochs - combines samples, deduplicates temporal overlaps
+            // Missing time windows are OK - we don't need 100% temporal coverage
+            let merged_data = accumulator.merge_all()?;
+
+            // Return the most recent epoch used
+            let effective_epoch = epochs_used.into_iter().max().unwrap_or(target_epoch);
+            return Ok((effective_epoch, merged_data));
         }
     }
 
-    // No epoch met the threshold, use best available
-    if best_coverage > 0.0 {
-        let coverage_pct = best_coverage * 100.0;
-        error!(
-            "No suitable internet telemetry found within max lookback of {} epochs. Using best available data from epoch {} with {:.1}% coverage.",
-            max_lookback, best_epoch, coverage_pct
-        );
+    // Didn't reach threshold, use what we have
+    let final_coverage = accumulator.coverage_ratio() * 100.0;
+    let epochs_used = accumulator.get_epochs_used();
+
+    if !epochs_used.is_empty() {
         warn!(
-            "Rewards calculation proceeding with incomplete data. Results may not fully reflect network performance."
+            "Coverage threshold not met. Using {:.1}% coverage from epochs: {:?}",
+            final_coverage, epochs_used
         );
-        Ok((best_epoch, best_data))
+
+        let merged_data = accumulator.merge_all()?;
+        let effective_epoch = epochs_used.into_iter().max().unwrap_or(target_epoch);
+        Ok((effective_epoch, merged_data))
     } else {
-        error!(
-            "CRITICAL: No internet telemetry data found in any of the last {} epochs. Cannot proceed with rewards calculation.",
-            max_lookback
-        );
-        Err(anyhow::anyhow!(
+        bail!(
             "No internet telemetry data available within {} epochs of epoch {}",
-            max_lookback,
+            settings.inet_lookback.max_epochs_lookback,
             target_epoch
-        ))
+        )
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ingestor::types::DZInternetLatencySamples;
-    use solana_sdk::pubkey::Pubkey;
 
     #[test]
     fn test_account_type_discriminator() {
@@ -280,165 +258,5 @@ mod tests {
 
         // Also verify the AccountType enum value
         assert_eq!(AccountType::InternetLatencySamples as u8, 4);
-    }
-
-    // Helper function to create test internet data
-    fn create_test_internet_data(num_links: usize, samples_per_link: usize) -> DZInternetData {
-        let mut samples = Vec::new();
-
-        // Simply create num_links unique origin-target pairs
-        for _i in 0..num_links {
-            let origin = Pubkey::new_unique();
-            let target = Pubkey::new_unique();
-
-            // Create Vec<u32> for latency samples (microseconds as u32)
-            let mut latency_samples = Vec::new();
-            for j in 0..samples_per_link {
-                latency_samples.push(50000 + (j as u32 * 1000)); // 50ms + variance in microseconds
-            }
-
-            samples.push(DZInternetLatencySamples {
-                pubkey: Pubkey::new_unique(),
-                epoch: 100,
-                data_provider_name: "test_provider".to_string(),
-                oracle_agent_pk: Pubkey::new_unique(),
-                origin_exchange_pk: origin,
-                target_exchange_pk: target,
-                sampling_interval_us: 1000000,  // 1 second
-                start_timestamp_us: 1000000000, // arbitrary start time
-                samples: latency_samples,
-                sample_count: samples_per_link as u32,
-            });
-        }
-
-        DZInternetData {
-            internet_latency_samples: samples,
-        }
-    }
-
-    #[test]
-    fn test_calculate_coverage_full_coverage() {
-        // Test with all expected links having sufficient samples
-        let data = create_test_internet_data(6, 10); // 6 unique links with 10 samples each
-        let coverage = calculate_coverage(&data, 6, 5);
-
-        assert_eq!(
-            coverage, 1.0,
-            "Should have 100% coverage with all links present"
-        );
-    }
-
-    #[test]
-    fn test_calculate_coverage_partial_coverage() {
-        // Test with only some links having data
-        let data = create_test_internet_data(3, 10); // Only 3 out of 6 expected links
-        let coverage = calculate_coverage(&data, 6, 5);
-
-        assert_eq!(
-            coverage, 0.5,
-            "Should have 50% coverage with half the links"
-        );
-    }
-
-    #[test]
-    fn test_calculate_coverage_insufficient_samples() {
-        // Test with links that have too few samples
-        let data = create_test_internet_data(6, 3); // Only 3 samples per link
-        let coverage = calculate_coverage(&data, 6, 5); // Require 5 samples minimum
-
-        assert_eq!(
-            coverage, 0.0,
-            "Should have 0% coverage when samples are below minimum"
-        );
-    }
-
-    #[test]
-    fn test_calculate_coverage_mixed_samples() {
-        // Test with some links having enough samples, others not
-        let mut data = create_test_internet_data(4, 10); // 4 links with 10 samples each
-
-        // Add 2 more links with insufficient samples
-        let exchange4 = Pubkey::new_unique();
-        let exchange5 = Pubkey::new_unique();
-
-        data.internet_latency_samples
-            .push(DZInternetLatencySamples {
-                pubkey: Pubkey::new_unique(),
-                epoch: 100,
-                data_provider_name: "test_provider".to_string(),
-                oracle_agent_pk: Pubkey::new_unique(),
-                origin_exchange_pk: exchange4,
-                target_exchange_pk: exchange5,
-                sampling_interval_us: 1000000,
-                start_timestamp_us: 1000000000,
-                samples: vec![50000, 51000], // Only 2 samples (as u32 microseconds)
-                sample_count: 2,
-            });
-
-        let coverage = calculate_coverage(&data, 6, 5);
-        assert!(
-            (coverage - 0.666).abs() < 0.01,
-            "Should have ~66.6% coverage with 4 out of 6 valid links"
-        );
-    }
-
-    #[test]
-    fn test_calculate_coverage_empty_data() {
-        // Test with no data
-        let data = DZInternetData {
-            internet_latency_samples: vec![],
-        };
-        let coverage = calculate_coverage(&data, 6, 5);
-
-        assert_eq!(coverage, 0.0, "Should have 0% coverage with no data");
-    }
-
-    #[test]
-    fn test_calculate_coverage_zero_expected_links() {
-        // Test edge case with zero expected links
-        let data = create_test_internet_data(6, 10);
-        let coverage = calculate_coverage(&data, 0, 5);
-
-        assert_eq!(coverage, 0.0, "Should return 0% when no links are expected");
-    }
-
-    #[test]
-    fn test_calculate_coverage_duplicate_links() {
-        // Test that duplicate links are counted only once
-        let exchange1 = Pubkey::new_unique();
-        let exchange2 = Pubkey::new_unique();
-
-        let data = DZInternetData {
-            internet_latency_samples: vec![
-                DZInternetLatencySamples {
-                    pubkey: Pubkey::new_unique(),
-                    epoch: 100,
-                    data_provider_name: "test_provider".to_string(),
-                    oracle_agent_pk: Pubkey::new_unique(),
-                    origin_exchange_pk: exchange1,
-                    target_exchange_pk: exchange2,
-                    sampling_interval_us: 1000000,
-                    start_timestamp_us: 1000000000,
-                    samples: vec![50000, 51000, 52000, 53000, 54000], // 5 samples
-                    sample_count: 5,
-                },
-                // Duplicate of the same link
-                DZInternetLatencySamples {
-                    pubkey: Pubkey::new_unique(),
-                    epoch: 100,
-                    data_provider_name: "test_provider".to_string(),
-                    oracle_agent_pk: Pubkey::new_unique(),
-                    origin_exchange_pk: exchange1,
-                    target_exchange_pk: exchange2,
-                    sampling_interval_us: 1000000,
-                    start_timestamp_us: 2000000000,
-                    samples: vec![55000, 56000, 57000, 58000, 59000], // 5 samples
-                    sample_count: 5,
-                },
-            ],
-        };
-
-        let coverage = calculate_coverage(&data, 2, 5);
-        assert_eq!(coverage, 0.5, "Duplicate links should only be counted once");
     }
 }

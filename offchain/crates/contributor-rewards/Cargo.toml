@@ -17,6 +17,7 @@ path = "src/lib.rs"
 [dependencies]
 anyhow.workspace = true
 backon.workspace = true
+bitvec.workspace = true
 borsh.workspace = true
 chrono.workspace = true
 clap.workspace = true

@@ -18,7 +18,7 @@ pub struct Settings {
     pub programs: ProgramSettings,
     pub operational: OperationalSettings,
     pub prefixes: PrefixSettings,
-    pub internet_telemetry: InternetTelemetrySettings,
+    pub inet_lookback: InetLookbackSettings,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
@@ -63,7 +63,7 @@ pub struct OperationalSettings {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
-pub struct InternetTelemetrySettings {
+pub struct InetLookbackSettings {
     /// Minimum coverage threshold (0.0-1.0)
     /// e.g., 0.7 means at least 70% of expected links must have data
     pub min_coverage_threshold: f64,
@@ -75,6 +75,15 @@ pub struct InternetTelemetrySettings {
     /// Minimum samples per link to consider it valid
     /// e.g., 10 means each link needs at least 10 samples
     pub min_samples_per_link: usize,
+
+    /// Enable lookback accumulator
+    /// When true, combines data from multiple epochs to meet coverage threshold
+    /// This should be defaulted to true (false only when testing)
+    pub enable_accumulator: bool,
+
+    /// Deduplication window in microseconds
+    /// Samples within this time window are considered duplicates
+    pub dedup_window_us: u64,
 }
 
 impl Settings {

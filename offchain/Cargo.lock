@@ -1234,6 +1234,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "backon",
+ "bitvec",
  "borsh 1.5.7",
  "chrono",
  "clap",

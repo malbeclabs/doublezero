@@ -33,32 +33,31 @@ impl PreparedData {
             Some(epoch_num) => fetcher.with_epoch(epoch_num).await?,
         };
 
-        // Calculate expected links based on current serviceability data
-        let expected_links = calculate_expected_links(&fetch_data);
+        if fetcher.settings.inet_lookback.enable_accumulator {
+            // Calculate expected internet telemetry links
+            let expected_inet_samples = expected_inet_links(&fetch_data);
+            let (inet_epoch, internet_data) = internet::fetch_with_accumulator(
+                &fetcher.rpc_client,
+                &fetcher.settings,
+                fetch_epoch,
+                expected_inet_samples,
+            )
+            .await?;
 
-        // Fetch internet data with threshold checking
-        // NOTE: May return historical telem data, but mappings use current serviceability
-        let (inet_epoch, internet_data) = internet::fetch_with_threshold(
-            &fetcher.rpc_client,
-            &fetcher.settings,
-            fetch_epoch,
-            expected_links,
-        )
-        .await?;
+            if inet_epoch != fetch_epoch {
+                warn!(
+                    "Using historical internet telemetry from epoch {} (target was {})",
+                    inet_epoch, fetch_epoch
+                );
+                info!(
+                    "Using serviceability mapping from current epoch {} with telemetry data from epoch {}",
+                    fetch_epoch, inet_epoch
+                );
+            }
 
-        if inet_epoch != fetch_epoch {
-            warn!(
-                "Using historical internet telemetry from epoch {} (target was {})",
-                inet_epoch, fetch_epoch
-            );
-            info!(
-                "Using serviceability mapping from current epoch {} with telemetry data from epoch {}",
-                fetch_epoch, inet_epoch
-            );
-        }
-
-        // Update fetch_data with the potentially historical internet data
-        fetch_data.dz_internet = internet_data;
+            // Update fetch_data with the potentially historical internet data
+            fetch_data.dz_internet = internet_data;
+        };
 
         // Process device telemetry
         let device_telemetry = process_device_telemetry(&fetch_data)?;
@@ -155,32 +154,22 @@ async fn build_and_log_demands(
     build_demands(fetcher, fetch_data).await
 }
 
-/// Calculate expected number of unique internet telemetry links
-/// based on the current serviceability data
-fn calculate_expected_links(fetch_data: &FetchData) -> usize {
-    // Build set of unique location PKs that have exchanges
-    let mut location_pks = BTreeSet::new();
+/// Calculate expected number of internet telemetry links
+/// based on the actual route coverage from internet telemetry data
+fn expected_inet_links(fetch_data: &FetchData) -> usize {
+    // Count unique directional location pairs from the internet telemetry data
+    // We look at what routes actually exist in the network rather than assuming full connectivity
+    let mut unique_routes = BTreeSet::new();
 
-    // Build location_pks
-    for device in fetch_data.dz_serviceability.devices.values() {
-        if fetch_data
-            .dz_serviceability
-            .exchanges
-            .contains_key(&device.exchange_pk)
-        {
-            location_pks.insert(device.location_pk);
-        }
+    for sample in &fetch_data.dz_internet.internet_latency_samples {
+        // Get the exchange PKs from the sample
+        let origin = sample.origin_exchange_pk;
+        let target = sample.target_exchange_pk;
+        let provider = sample.data_provider_name.clone();
+
+        // Add the directional route (origin, target, provider)
+        unique_routes.insert((origin, target, provider));
     }
 
-    // Calculate number of bidirectional links
-    let n = location_pks.len();
-    if n <= 1 {
-        return 0;
-    }
-
-    // For internet telemetry, we track bidirectional performance metrics.
-    // Since network performance can differ by direction (A -> B latency != B -> A latency),
-    // we count both directions separately: n * (n - 1) total directional links.
-    // This includes both A -> B and B -> A for each pair of distinct locations.
-    n * (n - 1)
+    unique_routes.len()
 }

@@ -68,12 +68,12 @@ impl ContributorRewardsMerkleTree {
     /// Generate a proof for a specific contributor by index
     pub fn generate_proof(&self, contributor_index: usize) -> Result<MerkleProof> {
         if contributor_index >= self.rewards.len() {
-            return Err(anyhow!(
+            bail!(
                 "Invalid contributor index {} for epoch {}. Total contributors: {}",
                 contributor_index,
                 self.epoch,
                 self.rewards.len()
-            ));
+            );
         }
 
         MerkleProof::from_indexed_pod_leaves(

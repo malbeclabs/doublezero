@@ -151,6 +151,7 @@ func (s *LinuxSender) Probe(ctx context.Context) (time.Duration, error) {
 			}
 			return 0, fmt.Errorf("recvmsg: %w", err)
 		}
+		fallbackRecvTime := time.Now()
 
 		// Validate packet size.
 		if n != PacketSize {
@@ -189,16 +190,8 @@ func (s *LinuxSender) Probe(ctx context.Context) (time.Duration, error) {
 					continue
 				}
 				ts := *(*syscall.Timespec)(unsafe.Pointer(&cmsg.Data[0]))
-				rtt := time.Unix(int64(ts.Sec), int64(ts.Nsec)).Sub(sendTime)
-
-				// The send timestamp is captured in user space using CLOCK_REALTIME, while the receive
-				// timestamp comes from the kernel via SO_TIMESTAMPNS. Due to clock sampling differences,
-				// syscall latency, or NTP adjustments, the kernel timestamp can occasionally appear earlier
-				// than the user-space send time. This results in a spurious negative RTT, which we
-				// conservatively clamp to 0.
-				// This can also happen if the interface is misconfigured.
-				rtt = max(rtt, 0)
-
+				kernelRecvTime := time.Unix(int64(ts.Sec), int64(ts.Nsec))
+				rtt := decideRTT(sendTime, kernelRecvTime, fallbackRecvTime)
 				return rtt, nil
 			}
 		}
@@ -243,4 +236,22 @@ func (s *LinuxSender) cleanUpReceived(ctx context.Context) {
 			s.receivedMu.Unlock()
 		}
 	}
+}
+
+// decideRTT chooses RTT from userspace send time, kernel recv timestamp, or userspace recv fallback.
+// Rules:
+//   - kernel RTT < -100µs: use userspace recv (interface misconfigured)
+//   - -100µs ≤ kernel RTT < 0: clamp to 0 (clock drift/syscall latency)
+//   - else: use kernel RTT
+//
+// Kernel timestamps via SO_TIMESTAMPNS can appear earlier than userspace CLOCK_REALTIME
+// due to clock sampling, syscall latency, or NTP adjustments.
+func decideRTT(sendTime, kernelRecvTime, fallbackRecvTime time.Time) time.Duration {
+	rtt := kernelRecvTime.Sub(sendTime)
+	if rtt < -100*time.Microsecond {
+		rtt = fallbackRecvTime.Sub(sendTime)
+	}
+	rtt = max(rtt, 0)
+
+	return rtt
 }

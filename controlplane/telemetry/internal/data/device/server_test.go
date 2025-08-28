@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sort"
+	"sync"
 	"testing"
 	"time"
 
@@ -211,6 +213,206 @@ func TestTelemetry_Data_Device_Server(t *testing.T) {
 			"max_points": {"10"},
 		})
 		assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+	})
+
+	t.Run("GET /device-link/circuit-latencies expands circuits via GetCircuits when circuit=all", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
+		from, to := now.Format(time.RFC3339), now.Add(10*time.Second).Format(time.RFC3339)
+
+		var got []string
+		var mu sync.Mutex
+
+		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{
+			GetCircuitsFunc: func(context.Context) ([]data.Circuit, error) {
+				// Intentionally unsorted to ensure handler sorts before partitioning/querying
+				return []data.Circuit{{Code: "b"}, {Code: "a"}, {Code: "c"}}, nil
+			},
+			GetCircuitLatenciesFunc: func(_ context.Context, cfg data.GetCircuitLatenciesConfig) ([]stats.CircuitLatencyStat, error) {
+				mu.Lock()
+				got = append(got, cfg.Circuit)
+				mu.Unlock()
+				return []stats.CircuitLatencyStat{{Circuit: cfg.Circuit, RTTMean: 1}}, nil
+			},
+		}, &mockProvider{})
+		defer closeFn()
+
+		res, body := get(t, baseURL, "/device-link/circuit-latencies", url.Values{
+			"env":     {"testnet"},
+			"from":    {from},
+			"to":      {to},
+			"circuit": {"all"},
+		})
+		assert.Equal(t, http.StatusOK, res.StatusCode)
+
+		var out []stats.CircuitLatencyStat
+		require.NoError(t, json.Unmarshal(body, &out))
+		assert.Len(t, out, 3)
+
+		// Order is not guaranteed (timestamps may tie); compare as sets.
+		toSet := func(ss []string) map[string]struct{} {
+			m := make(map[string]struct{}, len(ss))
+			for _, s := range ss {
+				m[s] = struct{}{}
+			}
+			return m
+		}
+		outSet := make([]string, 0, len(out))
+		for _, s := range out {
+			outSet = append(outSet, s.Circuit)
+		}
+
+		assert.Equal(t, toSet([]string{"a", "b", "c"}), toSet(outSet))
+		assert.Equal(t, toSet([]string{"a", "b", "c"}), toSet(got))
+	})
+
+	t.Run("GET /device-link/circuit-latencies expands circuits via GetCircuits when circuit omitted", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
+		from, to := now.Format(time.RFC3339), now.Add(10*time.Second).Format(time.RFC3339)
+
+		var got []string
+		var mu sync.Mutex
+
+		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{
+			GetCircuitsFunc: func(context.Context) ([]data.Circuit, error) {
+				return []data.Circuit{{Code: "x"}, {Code: "y"}}, nil
+			},
+			GetCircuitLatenciesFunc: func(_ context.Context, cfg data.GetCircuitLatenciesConfig) ([]stats.CircuitLatencyStat, error) {
+				mu.Lock()
+				got = append(got, cfg.Circuit)
+				mu.Unlock()
+				return []stats.CircuitLatencyStat{{Circuit: cfg.Circuit, RTTMean: 2}}, nil
+			},
+		}, &mockProvider{})
+		defer closeFn()
+
+		res, body := get(t, baseURL, "/device-link/circuit-latencies", url.Values{
+			"env":  {"testnet"},
+			"from": {from},
+			"to":   {to},
+		})
+		assert.Equal(t, http.StatusOK, res.StatusCode)
+
+		var out []stats.CircuitLatencyStat
+		require.NoError(t, json.Unmarshal(body, &out))
+		assert.Len(t, out, 2)
+
+		gotSet := map[string]struct{}{}
+		for _, c := range got {
+			gotSet[c] = struct{}{}
+		}
+		outSet := map[string]struct{}{}
+		for _, s := range out {
+			outSet[s.Circuit] = struct{}{}
+		}
+		want := map[string]struct{}{"x": {}, "y": {}}
+
+		assert.Equal(t, want, gotSet)
+		assert.Equal(t, want, outSet)
+	})
+
+	t.Run("GET /device-link/circuit-latencies circuit list retrieval error", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
+		from, to := now.Format(time.RFC3339), now.Add(10*time.Second).Format(time.RFC3339)
+
+		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{
+			GetCircuitsFunc: func(context.Context) ([]data.Circuit, error) {
+				return nil, errors.New("boom")
+			},
+		}, &mockProvider{})
+		defer closeFn()
+
+		// Using "all" triggers the GetCircuits path.
+		res, _ := get(t, baseURL, "/device-link/circuit-latencies", url.Values{
+			"env":     {"testnet"},
+			"from":    {from},
+			"to":      {to},
+			"circuit": {"all"},
+		})
+		assert.Equal(t, http.StatusInternalServerError, res.StatusCode)
+	})
+
+	t.Run("GET /device-link/circuit-latencies partitions circuits deterministically", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
+		from, to := now.Format(time.RFC3339), now.Add(10*time.Second).Format(time.RFC3339)
+
+		var mu sync.Mutex
+		var gotCircuits []string
+		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{
+			GetCircuitLatenciesFunc: func(_ context.Context, cfg data.GetCircuitLatenciesConfig) ([]stats.CircuitLatencyStat, error) {
+				mu.Lock()
+				gotCircuits = append(gotCircuits, cfg.Circuit)
+				mu.Unlock()
+				return []stats.CircuitLatencyStat{{Circuit: cfg.Circuit, RTTMean: 1}}, nil
+			},
+		}, &mockProvider{})
+		defer closeFn()
+
+		// circuits unsorted; handler should sort -> a,b,c,d,e
+		// total_partitions=3 => sizes: [2,2,1], partition=1 => [c,d]
+		res, body := get(t, baseURL, "/device-link/circuit-latencies", url.Values{
+			"env":              {"testnet"},
+			"from":             {from},
+			"to":               {to},
+			"circuit":          {"{e,d,c,b,a}"},
+			"partition":        {"1"},
+			"total_partitions": {"3"},
+		})
+		assert.Equal(t, http.StatusOK, res.StatusCode)
+
+		var out []stats.CircuitLatencyStat
+		require.NoError(t, json.Unmarshal(body, &out))
+		require.Len(t, out, 2)
+
+		wantSet := map[string]struct{}{"c": {}, "d": {}}
+		for _, s := range out {
+			_, ok := wantSet[s.Circuit]
+			assert.True(t, ok, "unexpected circuit %q", s.Circuit)
+			delete(wantSet, s.Circuit)
+		}
+		assert.Empty(t, wantSet, "missing expected circuits")
+
+		sort.Strings(gotCircuits)
+		assert.Equal(t, []string{"c", "d"}, gotCircuits)
+	})
+
+	t.Run("GET /device-link/circuit-latencies with only one of partition/total_partitions errors", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
+		from, to := now.Format(time.RFC3339), now.Add(10*time.Second).Format(time.RFC3339)
+
+		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{
+			GetCircuitLatenciesFunc: func(_ context.Context, _ data.GetCircuitLatenciesConfig) ([]stats.CircuitLatencyStat, error) {
+				return []stats.CircuitLatencyStat{{Circuit: "should-not-be-called"}}, nil
+			},
+		}, &mockProvider{})
+		defer closeFn()
+
+		res1, _ := get(t, baseURL, "/device-link/circuit-latencies", url.Values{
+			"env":       {"testnet"},
+			"from":      {from},
+			"to":        {to},
+			"circuit":   {"{a,b}"},
+			"partition": {"0"},
+		})
+		assert.Equal(t, http.StatusBadRequest, res1.StatusCode)
+
+		res2, _ := get(t, baseURL, "/device-link/circuit-latencies", url.Values{
+			"env":              {"testnet"},
+			"from":             {from},
+			"to":               {to},
+			"circuit":          {"{a,b}"},
+			"total_partitions": {"2"},
+		})
+		assert.Equal(t, http.StatusBadRequest, res2.StatusCode)
 	})
 
 }

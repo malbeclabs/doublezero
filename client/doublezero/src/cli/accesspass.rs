@@ -1,5 +1,7 @@
 use clap::{Args, Subcommand};
-use doublezero_cli::accesspass::{list::ListAccessPassCliCommand, set::SetAccessPassCliCommand};
+use doublezero_cli::accesspass::{
+    close::CloseAccessPassCliCommand, list::ListAccessPassCliCommand, set::SetAccessPassCliCommand,
+};
 
 #[derive(Args, Debug)]
 pub struct AccessPassCliCommand {
@@ -12,6 +14,10 @@ pub enum AccessPassCommands {
     /// Set access pass
     #[clap()]
     Set(SetAccessPassCliCommand),
+    /// Close access pass
+    #[clap()]
+    Close(CloseAccessPassCliCommand),
+    /// List access passes
     #[clap()]
     List(ListAccessPassCliCommand),
 }

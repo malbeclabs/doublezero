@@ -292,9 +292,7 @@ mod tests {
         assert!(rpc_line.is_some(), "RPC URL line not found");
         assert!(
             rpc_line.unwrap().contains(expected_rpc_url),
-            "RPC URL mismatch. Expected: {}, Found: {:?}",
-            expected_rpc_url,
-            rpc_line
+            "RPC URL mismatch. Expected: {expected_rpc_url}, Found: {rpc_line:?}"
         );
 
         // Check Program ID
@@ -302,9 +300,7 @@ mod tests {
         assert!(program_id_line.is_some(), "Program ID line not found");
         assert!(
             program_id_line.unwrap().contains(expected_program_id),
-            "Program ID mismatch. Expected: {}, Found: {:?}",
-            expected_program_id,
-            program_id_line
+            "Program ID mismatch. Expected: {expected_program_id}, Found: {program_id_line:?}"
         );
 
         // Verify the output contains expected structure

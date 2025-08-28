@@ -533,7 +533,7 @@ async fn test_doublezero_program() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
-            accesspass_type: AccessPassType::Prepaid,
+            accesspass_type: AccessPassType::SolanaValidator(Pubkey::new_unique()),
             client_ip: user_ip,
             last_access_epoch: 9999,
         }),
@@ -599,13 +599,11 @@ async fn test_doublezero_program() {
 
     let tunnel_net: NetworkV4 = "10.0.0.0/24".parse().unwrap();
     let dz_ip: std::net::Ipv4Addr = "10.2.0.1".parse().unwrap();
-    let validator_pubkey = Pubkey::new_unique();
 
     let update1: UserActivateArgs = UserActivateArgs {
         tunnel_id: 1,
         tunnel_net,
         dz_ip,
-        validator_pubkey: Some(validator_pubkey),
     };
 
     println!("Testing User1 activation...");
@@ -634,7 +632,6 @@ async fn test_doublezero_program() {
     assert_eq!(user1.tunnel_id, 1);
     assert_eq!(user1.tunnel_net, tunnel_net);
     assert_eq!(user1.dz_ip, dz_ip);
-    assert_eq!(user1.validator_pubkey, validator_pubkey);
     assert_eq!(user1.status, UserStatus::Activated);
     println!(
         "✅ User initialized successfully with index: {}",

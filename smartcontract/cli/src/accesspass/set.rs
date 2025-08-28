@@ -2,17 +2,23 @@ use crate::{
     doublezerocommand::CliCommand,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
 };
-use clap::Args;
+use clap::{Args, ValueEnum};
 use doublezero_sdk::commands::accesspass::set::SetAccessPassCommand;
 use doublezero_serviceability::state::accesspass::AccessPassType;
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, net::Ipv4Addr, str::FromStr};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum CliAccessPassType {
+    Prepaid,
+    SolanaValidator,
+}
+
 #[derive(Args, Debug)]
 pub struct SetAccessPassCliCommand {
     /// Specifies the type of access pass being set [prepaid|postpaid].
     #[arg(long, default_value = "prepaid")]
-    pub accesspass_type: AccessPassType,
+    pub accesspass_type: CliAccessPassType,
     /// Client IP address in IPv4 format
     #[arg(long)]
     pub client_ip: Ipv4Addr,
@@ -22,6 +28,9 @@ pub struct SetAccessPassCliCommand {
     /// Specifies the number of epochs for the access pass.
     #[arg(long, default_value = "max")]
     pub epochs: String,
+    /// Specifies the solana validator node id for the access pass. Required if accesspass_type is solana_validator
+    #[arg(long)]
+    pub solana_validator: Option<Pubkey>,
 }
 
 impl SetAccessPassCliCommand {
@@ -44,8 +53,18 @@ impl SetAccessPassCliCommand {
             _ => current_epoch + self.epochs.parse::<u64>()?,
         };
 
+        let accesspass_type = match self.accesspass_type {
+            CliAccessPassType::Prepaid => AccessPassType::Prepaid,
+            CliAccessPassType::SolanaValidator => match self.solana_validator {
+                Some(solana_validator) => AccessPassType::SolanaValidator(solana_validator),
+                None => eyre::bail!(
+                    "Solana validator access pass type requires --solana-validator <PUBKEY>"
+                ),
+            },
+        };
+
         let signature = client.set_accesspass(SetAccessPassCommand {
-            accesspass_type: self.accesspass_type,
+            accesspass_type,
             client_ip: self.client_ip,
             user_payer,
             last_access_epoch,
@@ -59,7 +78,6 @@ impl SetAccessPassCliCommand {
 #[cfg(test)]
 mod tests {
     use crate::{
-        accesspass::set::SetAccessPassCliCommand,
         doublezerocommand::CliCommand,
         requirements::{CHECK_BALANCE, CHECK_ID_JSON},
         tests::utils::create_test_client,
@@ -68,6 +86,8 @@ mod tests {
     use doublezero_serviceability::{pda::get_accesspass_pda, state::accesspass::AccessPassType};
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
+
+    use super::*;
 
     #[test]
     fn test_cli_device_create() {
@@ -87,6 +107,8 @@ mod tests {
 
         client.expect_get_epoch().returning(|| Ok(10));
 
+        let solana_validator = Pubkey::new_unique();
+
         client
             .expect_check_requirements()
             .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
@@ -94,7 +116,7 @@ mod tests {
         client
             .expect_set_accesspass()
             .with(predicate::eq(SetAccessPassCommand {
-                accesspass_type: AccessPassType::SolanaValidator,
+                accesspass_type: AccessPassType::SolanaValidator(solana_validator),
                 client_ip,
                 user_payer: payer,
                 last_access_epoch: 11,
@@ -103,10 +125,26 @@ mod tests {
 
         let mut output = Vec::new();
         let res = SetAccessPassCliCommand {
-            accesspass_type: AccessPassType::SolanaValidator,
+            accesspass_type: CliAccessPassType::SolanaValidator,
             client_ip,
             user_payer: payer.to_string(),
             epochs: "1".into(),
+            solana_validator: None,
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_err());
+        assert_eq!(
+            res.err().unwrap().to_string(),
+            "Solana validator access pass type requires --solana-validator <PUBKEY>"
+        );
+
+        let mut output = Vec::new();
+        let res = SetAccessPassCliCommand {
+            accesspass_type: CliAccessPassType::SolanaValidator,
+            client_ip,
+            user_payer: payer.to_string(),
+            epochs: "1".into(),
+            solana_validator: Some(solana_validator),
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

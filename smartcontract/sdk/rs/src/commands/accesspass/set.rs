@@ -67,7 +67,7 @@ mod tests {
     use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
     #[test]
-    fn test_commands_setaccesspass_command() {
+    fn test_commands_set_accesspass_command() {
         let mut client = create_test_client();
 
         let client_ip = [10, 0, 0, 1].into();

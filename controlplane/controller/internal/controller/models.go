@@ -13,11 +13,7 @@ import (
 )
 
 var (
-	// MaxTunnelSlots is the maximum number of tunnels to provision on a given device.
-	// This defaults to DefaultMaxTunnelSlots but can be overridden via command-line flag
-	MaxTunnelSlots = config.DefaultMaxTunnelSlots
-	// StartUserTunnelNum is the starting tunnel number for user tunnels
-	StartUserTunnelNum = config.StartUserTunnelNum
+	startUserTunnelNum = config.StartUserTunnelNum
 )
 
 type InterfaceType uint8
@@ -190,10 +186,10 @@ type Device struct {
 	IsisNet               string
 }
 
-func NewDevice(ip net.IP, publicKey string) *Device {
+func NewDevice(ip net.IP, publicKey string, maxUsers uint16) *Device {
 	tunnels := []*Tunnel{}
-	for i := 0; i < MaxTunnelSlots; i++ {
-		id := StartUserTunnelNum + i
+	for i := 0; i < int(maxUsers); i++ {
+		id := startUserTunnelNum + i
 		tunnel := &Tunnel{
 			Id:        id,
 			Allocated: false,
@@ -204,7 +200,7 @@ func NewDevice(ip net.IP, publicKey string) *Device {
 		PublicIP:    ip,
 		PubKey:      publicKey,
 		Tunnels:     tunnels,
-		TunnelSlots: MaxTunnelSlots,
+		TunnelSlots: int(maxUsers),
 	}
 }
 

@@ -96,7 +96,7 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *d
 				"DeviceIP":                  device.CYOANetworkIP,
 				"ExpectedAllocatedClientIP": expectedAllocatedClientIP,
 				"StartTunnel":               controllerconfig.StartUserTunnelNum,
-				"EndTunnel":                 controllerconfig.EndUserTunnelNum,
+				"EndTunnel":                 controllerconfig.StartUserTunnelNum + int(device.Spec.MaxUsers) - 1,
 			})
 			require.NoError(t, err, "error reading agent configuration fixture")
 			err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))
@@ -271,7 +271,7 @@ func checkIBRLWithAllocatedIPPostDisconnect(t *testing.T, dn *TestDevnet, device
 			config, err := fixtures.Render("fixtures/ibrl_with_allocated_addr/doublezero_agent_config_user_removed.tmpl", map[string]any{
 				"DeviceIP":    device.CYOANetworkIP,
 				"StartTunnel": controllerconfig.StartUserTunnelNum,
-				"EndTunnel":   controllerconfig.EndUserTunnelNum,
+				"EndTunnel":   controllerconfig.StartUserTunnelNum + int(device.Spec.MaxUsers) - 1,
 			})
 			require.NoError(t, err, "error reading agent configuration fixture")
 			err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))

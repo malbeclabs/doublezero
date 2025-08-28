@@ -242,7 +242,7 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 		}
 
 		devicePubKey := base58.Encode(device.PubKey[:])
-		d := NewDevice(ip, devicePubKey)
+		d := NewDevice(ip, devicePubKey, device.MaxUsers)
 
 		if c.enableInterfacesAndPeers {
 			candidateVpnv4BgpPeer, candidateIpv4BgpPeer := c.processDeviceInterfacesAndPeers(device, d, devicePubKey)
@@ -354,7 +354,10 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 
 		tunnel := cache.Devices[devicePubKey].findTunnel(int(user.TunnelId))
 		if tunnel == nil {
-			slog.Error("unable to find tunnel slot %d on device %s for user %s\n", "tunnel slot", user.TunnelId, "device pubkey", devicePubKey, "user pubkey", userPubKey)
+			slog.Error("unable to find tunnel slot on device for user",
+				"tunnel slot", user.TunnelId,
+				"device pubkey", devicePubKey,
+				"user pubkey", userPubKey)
 			continue
 		}
 		tunnel.UnderlayDstIP = net.IP(user.ClientIp[:])

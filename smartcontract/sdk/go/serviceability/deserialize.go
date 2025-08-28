@@ -87,7 +87,10 @@ func DeserializeDevice(reader *ByteReader, dev *Device) {
 		DeserializeInterface(reader, &iface)
 		dev.Interfaces = append(dev.Interfaces, iface)
 	}
-	dev.PubKey = reader.ReadPubkey()
+	dev.ReferenceCount = reader.ReadU32()
+	dev.UsersCount = reader.ReadU16()
+	dev.MaxUsers = reader.ReadU16()
+	// Note: dev.PubKey is set separately in client.go after deserialization
 }
 
 func DeserializeLink(reader *ByteReader, link *Link) {

@@ -60,7 +60,7 @@ func checkIbgpMsdpPeerRemoved(t *testing.T, dn *TestDevnet, device *devnet.Devic
 		config, err := fixtures.Render("fixtures/ibrl/doublezero_agent_config_peer_removed.tmpl", map[string]any{
 			"DeviceIP":    device.CYOANetworkIP,
 			"StartTunnel": controllerconfig.StartUserTunnelNum,
-			"EndTunnel":   controllerconfig.EndUserTunnelNum,
+			"EndTunnel":   controllerconfig.StartUserTunnelNum + int(device.Spec.MaxUsers) - 1,
 		})
 		require.NoError(t, err, "error reading agent configuration fixture for peer removal")
 		err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))
@@ -85,7 +85,7 @@ func checkIBRLPostConnect(t *testing.T, dn *TestDevnet, device *devnet.Device, c
 				"ClientIP":    client.CYOANetworkIP,
 				"DeviceIP":    device.CYOANetworkIP,
 				"StartTunnel": controllerconfig.StartUserTunnelNum,
-				"EndTunnel":   controllerconfig.EndUserTunnelNum,
+				"EndTunnel":   controllerconfig.StartUserTunnelNum + int(device.Spec.MaxUsers) - 1,
 			})
 			require.NoError(t, err, "error reading agent configuration fixture")
 			err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))
@@ -267,7 +267,7 @@ func checkIBRLPostDisconnect(t *testing.T, dn *TestDevnet, device *devnet.Device
 			config, err := fixtures.Render("fixtures/ibrl/doublezero_agent_config_user_removed.tmpl", map[string]any{
 				"DeviceIP":    device.CYOANetworkIP,
 				"StartTunnel": controllerconfig.StartUserTunnelNum,
-				"EndTunnel":   controllerconfig.EndUserTunnelNum,
+				"EndTunnel":   controllerconfig.StartUserTunnelNum + int(device.Spec.MaxUsers) - 1,
 			})
 			require.NoError(t, err, "error reading agent configuration fixture")
 			err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))

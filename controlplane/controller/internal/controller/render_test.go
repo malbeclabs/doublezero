@@ -10,6 +10,10 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
+const (
+	TestMaxUsers = 128
+)
+
 func TestRenderConfig(t *testing.T) {
 	tests := []struct {
 		Name        string
@@ -524,8 +528,8 @@ func TestRenderConfig(t *testing.T) {
 			var want []byte
 			if strings.HasSuffix(test.Want, ".tmpl") {
 				templateData := map[string]int{
-					"StartTunnel": StartUserTunnelNum,
-					"EndTunnel":   StartUserTunnelNum + MaxTunnelSlots - 1,
+					"StartTunnel": startUserTunnelNum,
+					"EndTunnel":   startUserTunnelNum + TestMaxUsers - 1,
 				}
 				rendered, err := renderTemplateFile(test.Want, templateData)
 				if err != nil {

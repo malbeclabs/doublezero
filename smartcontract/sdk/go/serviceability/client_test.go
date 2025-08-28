@@ -44,7 +44,7 @@ var devicePayload = `
 0000000000000000000000000000000000000000000000070000
 0064656661756c740200000000020b000000737769746368312f
 312f3102002a000a0102031d7b00000002030000006c6f300101
-0f000a0203041d2a000100000000
+0f000a0203041d2a0001d20400006e008000
 `
 
 var tunnelPayload = `
@@ -245,7 +245,10 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 								UserTunnelEndpoint: true,
 							},
 						},
-						PubKey: pubkeys[2],
+						ReferenceCount: 1234,
+						UsersCount:     110,
+						MaxUsers:       128,
+						PubKey:         pubkeys[2],
 					},
 				},
 				Locations:       []Location{},

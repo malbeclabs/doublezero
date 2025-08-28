@@ -67,6 +67,9 @@ type DeviceSpec struct {
 	// Interfaces is a map of interface names to types.
 	Interfaces map[string]string
 
+	// MaxUsers is the maximum number of users that can connect to this device
+	MaxUsers uint16
+
 	// LoopbackInterfaces is a map of interface names to loopback types.
 	LoopbackInterfaces map[string]string
 }
@@ -287,6 +290,11 @@ func (d *Device) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to create device %s onchain: %w", spec.Code, err)
 	}
 	d.log.Info("--> Created device onchain", "code", spec.Code, "cyoaNetworkIP", cyoaNetworkIP, "devicePK", devicePK)
+
+	err = d.fetchMaxUsersFromBlockchain(ctx, devicePK)
+	if err != nil {
+		return fmt.Errorf("failed to fetch MaxUsers from blockchain: %w", err)
+	}
 
 	// Create interfaces onchain.
 	for name, ifaceType := range spec.Interfaces {
@@ -621,6 +629,31 @@ func (d *Device) setState(ctx context.Context, containerID string) error {
 	d.ID = onchainID
 	d.CYOANetworkIP = ip
 
+	err = d.fetchMaxUsersFromBlockchain(ctx, onchainID)
+	if err != nil {
+		return fmt.Errorf("failed to fetch MaxUsers from blockchain: %w", err)
+	}
+
+	return nil
+}
+
+func (d *Device) fetchMaxUsersFromBlockchain(ctx context.Context, devicePK string) error {
+	serviceabilityClient, err := d.dn.Ledger.GetServiceabilityClient()
+	if err != nil {
+		return fmt.Errorf("failed to get serviceability client: %w", err)
+	}
+	data, err := serviceabilityClient.GetProgramData(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get program data: %w", err)
+	}
+	for _, device := range data.Devices {
+		pk := solana.PublicKeyFromBytes(device.PubKey[:])
+		if pk.String() == devicePK {
+			d.Spec.MaxUsers = device.MaxUsers
+			d.log.Info("--> Device MaxUsers from blockchain", "maxUsers", d.Spec.MaxUsers)
+			break
+		}
+	}
 	return nil
 }
 

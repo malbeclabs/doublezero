@@ -147,7 +147,10 @@ type Device struct {
 	ContributorPubKey      [32]byte
 	MgmtVrf                string
 	Interfaces             []Interface
-	PubKey                 [32]byte
+	ReferenceCount         uint32
+	UsersCount             uint16
+	MaxUsers               uint16
+	PubKey                 [32]byte // Set separately after deserialization, not part of on-chain data
 }
 
 type LinkLinkType uint8

@@ -569,8 +569,8 @@ func TestGetConfig(t *testing.T) {
 			var want []byte
 			if strings.HasSuffix(test.Want, ".tmpl") {
 				templateData := map[string]int{
-					"StartTunnel": StartUserTunnelNum,
-					"EndTunnel":   StartUserTunnelNum + MaxTunnelSlots - 1,
+					"StartTunnel": startUserTunnelNum,
+					"EndTunnel":   startUserTunnelNum + TestMaxUsers - 1,
 				}
 				rendered, err := renderTemplateFile(test.Want, templateData)
 				if err != nil {
@@ -697,9 +697,10 @@ func TestStateCache(t *testing.T) {
 							Status:        serviceability.InterfaceStatusActivated,
 						},
 					},
-					Status: serviceability.DeviceStatusActivated,
-					Code:   "abc01",
-					PubKey: [32]byte{1},
+					Status:   serviceability.DeviceStatusActivated,
+					Code:     "abc01",
+					MaxUsers: TestMaxUsers,
+					PubKey:   [32]byte{1},
 				},
 			},
 			Links: []serviceability.Link{
@@ -785,8 +786,8 @@ func TestStateCache(t *testing.T) {
 									{239, 0, 0, 1},
 								},
 							},
-						}, generateEmptyTunnelSlots(StartUserTunnelNum+2, MaxTunnelSlots-2)...),
-						TunnelSlots: MaxTunnelSlots,
+						}, generateEmptyTunnelSlots(startUserTunnelNum+2, TestMaxUsers-2)...),
+						TunnelSlots: TestMaxUsers,
 						Interfaces: []Interface{
 							{
 								InterfaceType: InterfaceTypePhysical,
@@ -851,6 +852,7 @@ func TestStateCache(t *testing.T) {
 					Interfaces:     []serviceability.Interface{}, // No VPNv4 loopback interface
 					Status:         serviceability.DeviceStatusActivated,
 					Code:           "abc02",
+					MaxUsers:       TestMaxUsers,
 					PubKey:         [32]byte{1},
 				},
 			},
@@ -1010,6 +1012,7 @@ func TestEndToEnd(t *testing.T) {
 					PublicIp:       [4]uint8{2, 2, 2, 2},
 					Status:         serviceability.DeviceStatusActivated,
 					Code:           "abc01",
+					MaxUsers:       TestMaxUsers,
 					PubKey:         [32]byte{1},
 					Interfaces: []serviceability.Interface{
 						{
@@ -1137,9 +1140,10 @@ func TestEndToEnd(t *testing.T) {
 							Name:          "Loopback256",
 						},
 					},
-					Status: serviceability.DeviceStatusActivated,
-					Code:   "abc01",
-					PubKey: [32]byte{1},
+					Status:   serviceability.DeviceStatusActivated,
+					Code:     "abc01",
+					MaxUsers: TestMaxUsers,
+					PubKey:   [32]byte{1},
 				},
 				{
 					AccountType:    serviceability.AccountType(0),
@@ -1157,9 +1161,10 @@ func TestEndToEnd(t *testing.T) {
 							Name:          "Loopback255",
 						},
 					},
-					Status: serviceability.DeviceStatusActivated,
-					Code:   "abc02",
-					PubKey: [32]byte{1},
+					Status:   serviceability.DeviceStatusActivated,
+					Code:     "abc02",
+					MaxUsers: TestMaxUsers,
+					PubKey:   [32]byte{1},
 				},
 				{
 					AccountType:    serviceability.AccountType(0),
@@ -1177,9 +1182,10 @@ func TestEndToEnd(t *testing.T) {
 							Name:          "Loopback256",
 						},
 					},
-					Status: serviceability.DeviceStatusActivated,
-					Code:   "abc03",
-					PubKey: [32]byte{1},
+					Status:   serviceability.DeviceStatusActivated,
+					Code:     "abc03",
+					MaxUsers: TestMaxUsers,
+					PubKey:   [32]byte{1},
 				},
 			},
 			AgentRequest: &pb.ConfigRequest{
@@ -1225,9 +1231,10 @@ func TestEndToEnd(t *testing.T) {
 							Name:          "Loopback256",
 						},
 					},
-					Status: serviceability.DeviceStatusActivated,
-					Code:   "abc01",
-					PubKey: [32]byte{1},
+					Status:   serviceability.DeviceStatusActivated,
+					Code:     "abc01",
+					MaxUsers: TestMaxUsers,
+					PubKey:   [32]byte{1},
 				},
 				{
 					AccountType:    serviceability.AccountType(0),
@@ -1308,9 +1315,10 @@ func TestEndToEnd(t *testing.T) {
 							Name:          "Loopback256",
 						},
 					},
-					Status: serviceability.DeviceStatusActivated,
-					Code:   "abc01",
-					PubKey: [32]byte{1},
+					Status:   serviceability.DeviceStatusActivated,
+					Code:     "abc01",
+					MaxUsers: TestMaxUsers,
+					PubKey:   [32]byte{1},
 				},
 			},
 			AgentRequest: &pb.ConfigRequest{
@@ -1397,8 +1405,8 @@ func TestEndToEnd(t *testing.T) {
 			var want []byte
 			if strings.HasSuffix(test.Want, ".tmpl") {
 				templateData := map[string]int{
-					"StartTunnel": StartUserTunnelNum,
-					"EndTunnel":   StartUserTunnelNum + MaxTunnelSlots - 1,
+					"StartTunnel": startUserTunnelNum,
+					"EndTunnel":   startUserTunnelNum + TestMaxUsers - 1,
 				}
 				rendered, err := renderTemplateFile(test.Want, templateData)
 				if err != nil {

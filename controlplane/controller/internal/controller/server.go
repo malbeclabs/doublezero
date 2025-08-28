@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -19,6 +20,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
 )
 
@@ -56,6 +58,7 @@ type Controller struct {
 	noHardware               bool
 	enableInterfacesAndPeers bool
 	updateDone               chan struct{}
+	tlsConfig                *tls.Config
 }
 
 type Option func(*Controller)
@@ -91,6 +94,13 @@ func WithServiceabilityProgramClient(s ServiceabilityProgramClient) Option {
 func WithListener(listener net.Listener) Option {
 	return func(c *Controller) {
 		c.listener = listener
+	}
+}
+
+// WithTLSConfig provides a way to assign a custom tls config for the gRPC server.
+func WithTLSConfig(tlsConfig *tls.Config) Option {
+	return func(c *Controller) {
+		c.tlsConfig = tlsConfig
 	}
 }
 
@@ -399,7 +409,11 @@ func (c *Controller) Run(ctx context.Context) error {
 	}()
 
 	// start gRPC server
-	server := grpc.NewServer()
+	opts := []grpc.ServerOption{}
+	if c.tlsConfig != nil {
+		opts = append(opts, grpc.Creds(credentials.NewTLS(c.tlsConfig)))
+	}
+	server := grpc.NewServer(opts...)
 	pb.RegisterControllerServer(server, c)
 
 	errChan := make(chan error)

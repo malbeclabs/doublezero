@@ -1,11 +1,10 @@
 use crate::{
     accounts::{AccountSeed, AccountSize},
-    bytereader::ByteReader,
     programversion::ProgramVersion,
     seeds::{SEED_PREFIX, SEED_PROGRAM_CONFIG},
     state::accounttype::AccountType,
 };
-use borsh::BorshSerialize;
+use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
 use solana_program::{account_info::AccountInfo, program_error::ProgramError};
 
@@ -42,27 +41,25 @@ impl AccountSize for ProgramConfig {
     }
 }
 
-impl From<&[u8]> for ProgramConfig {
-    fn from(data: &[u8]) -> Self {
-        let mut parser = ByteReader::new(data);
+impl TryFrom<&[u8]> for ProgramConfig {
+    type Error = ProgramError;
 
+    fn try_from(mut data: &[u8]) -> Result<Self, Self::Error> {
         let out = Self {
-            account_type: parser.read_enum(),
-            bump_seed: parser.read_u8(),
+            account_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            bump_seed: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             version: ProgramVersion {
-                major: parser.read_u32(),
-                minor: parser.read_u32(),
-                patch: parser.read_u32(),
+                major: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+                minor: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+                patch: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             },
         };
 
-        assert_eq!(
-            out.account_type,
-            AccountType::ProgramConfig,
-            "Invalid ProgramConfig Account Type"
-        );
+        if out.account_type != AccountType::ProgramConfig {
+            return Err(ProgramError::InvalidAccountData);
+        }
 
-        out
+        Ok(out)
     }
 }
 
@@ -71,7 +68,7 @@ impl TryFrom<&AccountInfo<'_>> for ProgramConfig {
 
     fn try_from(account: &AccountInfo) -> Result<Self, Self::Error> {
         let data = account.try_borrow_data()?;
-        Ok(Self::from(&data[..]))
+        Self::try_from(&data[..])
     }
 }
 
@@ -92,7 +89,7 @@ mod tests {
         };
 
         let data = borsh::to_vec(&val).unwrap();
-        let val2 = ProgramConfig::from(&data[..]);
+        let val2 = ProgramConfig::try_from(&data[..]).unwrap();
 
         assert_eq!(val.size(), val2.size());
         assert_eq!(val.version.major, val2.version.major);

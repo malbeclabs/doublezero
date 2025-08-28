@@ -1,5 +1,5 @@
-use crate::{bytereader::ByteReader, state::accounttype::AccountType};
-use borsh::BorshSerialize;
+use crate::state::accounttype::AccountType;
+use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
 use solana_program::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
 
@@ -60,30 +60,29 @@ impl GlobalState {
     }
 }
 
-impl From<&[u8]> for GlobalState {
-    fn from(data: &[u8]) -> Self {
-        let mut parser = ByteReader::new(data);
+impl TryFrom<&[u8]> for GlobalState {
+    type Error = ProgramError;
 
+    fn try_from(mut data: &[u8]) -> Result<Self, Self::Error> {
         let out = Self {
-            account_type: parser.read_enum(),
-            bump_seed: parser.read_u8(),
-            account_index: parser.read_u128(),
-            foundation_allowlist: parser.read_pubkey_vec(),
-            device_allowlist: parser.read_pubkey_vec(),
-            user_allowlist: parser.read_pubkey_vec(),
-            activator_authority_pk: parser.read_pubkey(),
-            sentinel_authority_pk: parser.read_pubkey(),
-            contributor_airdrop_lamports: parser.read_u64(),
-            user_airdrop_lamports: parser.read_u64(),
+            account_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            bump_seed: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            account_index: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            foundation_allowlist: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            device_allowlist: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            user_allowlist: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            activator_authority_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            sentinel_authority_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            contributor_airdrop_lamports: BorshDeserialize::deserialize(&mut data)
+                .unwrap_or_default(),
+            user_airdrop_lamports: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
-        assert_eq!(
-            out.account_type,
-            AccountType::GlobalState,
-            "Invalid GlobalState Account Type"
-        );
+        if out.account_type != AccountType::GlobalState {
+            return Err(ProgramError::InvalidAccountData);
+        }
 
-        out
+        Ok(out)
     }
 }
 
@@ -92,7 +91,7 @@ impl TryFrom<&AccountInfo<'_>> for GlobalState {
 
     fn try_from(account: &AccountInfo) -> Result<Self, Self::Error> {
         let data = account.try_borrow_data()?;
-        Ok(Self::from(&data[..]))
+        Self::try_from(&data[..])
     }
 }
 
@@ -116,7 +115,7 @@ mod tests {
         };
 
         let data = borsh::to_vec(&val).unwrap();
-        let val2 = GlobalState::from(&data[..]);
+        let val2 = GlobalState::try_from(&data[..]).unwrap();
 
         assert_eq!(val.size(), val2.size());
         assert_eq!(val.account_index, val2.account_index);

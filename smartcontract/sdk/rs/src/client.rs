@@ -140,7 +140,7 @@ impl DZClient {
             .get_program_accounts_with_config(&self.program_id, options)?;
 
         for (pubkey, account) in accounts {
-            list.insert(pubkey, AccountData::from(&account.data[..]));
+            list.insert(pubkey, AccountData::try_from(&account.data[..])?);
         }
 
         Ok(list)
@@ -205,7 +205,7 @@ impl DZClient {
                         let bytes = BASE64_STANDARD
                             .decode(data.clone())
                             .map_err(|e| eyre!("Unable decode data: {e}"))?;
-                        let account = AccountData::from(&bytes[..]);
+                        let account = AccountData::try_from(&bytes[..])?;
 
                         action(self, &pubkey, &account);
                     }
@@ -351,7 +351,7 @@ impl DoubleZeroClient for DZClient {
 
         for (pubkey, account) in accounts {
             assert!(account.data[0] == account_type, "Invalid account type");
-            list.insert(pubkey, AccountData::from(&account.data[..]));
+            list.insert(pubkey, AccountData::try_from(&account.data[..])?);
         }
 
         Ok(list)
@@ -362,7 +362,7 @@ impl DoubleZeroClient for DZClient {
             Ok(account) => {
                 if account.owner == self.program_id {
                     let data = account.data;
-                    Ok(AccountData::from(&data[..]))
+                    Ok(AccountData::try_from(&data[..])?)
                 } else {
                     Ok(AccountData::None)
                 }

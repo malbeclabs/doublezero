@@ -21,7 +21,7 @@ pub async fn get_globalstate(
     match banks_client.get_account(globalstate_pubkey).await {
         Ok(account) => match account {
             Some(account_data) => {
-                let globalstate = GlobalState::from(&account_data.data[..]);
+                let globalstate = GlobalState::try_from(&account_data.data[..]).unwrap();
                 assert_eq!(globalstate.account_type, AccountType::GlobalState);
 
                 println!("⬅️  Read {globalstate:?}");
@@ -54,7 +54,7 @@ pub async fn get_account_data(
     match banks_client.get_account(pubkey).await {
         Ok(account) => match account {
             Some(account_data) => {
-                let object = AccountData::from(&account_data.data[..]);
+                let object = AccountData::try_from(&account_data.data[..]).unwrap();
                 println!("{object:?}");
 
                 Some(object)

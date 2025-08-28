@@ -1,5 +1,4 @@
 use crate::{
-    bytereader::ByteReader,
     seeds::SEED_USER,
     state::{
         accesspass::{AccessPass, AccessPassStatus},
@@ -15,10 +14,11 @@ use solana_program::{
 use std::{fmt, net::Ipv4Addr};
 
 #[repr(u8)]
-#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Default)]
 #[borsh(use_discriminant = true)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum UserType {
+    #[default]
     IBRL = 0,
     IBRLWithAllocatedIP = 1,
     EdgeFiltering = 2,
@@ -50,10 +50,11 @@ impl fmt::Display for UserType {
 }
 
 #[repr(u8)]
-#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Default)]
 #[borsh(use_discriminant = true)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum UserCYOA {
+    #[default]
     None = 0,
     GREOverDIA = 1,
     GREOverFabric = 2,
@@ -89,10 +90,11 @@ impl fmt::Display for UserCYOA {
 }
 
 #[repr(u8)]
-#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Default)]
 #[borsh(use_discriminant = true)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum UserStatus {
+    #[default]
     Pending = 0,
     Activated = 1,
     Suspended = 2,
@@ -245,35 +247,33 @@ impl AccountTypeInfo for User {
     }
 }
 
-impl From<&[u8]> for User {
-    fn from(data: &[u8]) -> Self {
-        let mut parser = ByteReader::new(data);
+impl TryFrom<&[u8]> for User {
+    type Error = ProgramError;
 
+    fn try_from(mut data: &[u8]) -> Result<Self, ProgramError> {
         let out = Self {
-            account_type: parser.read_enum(),
-            owner: parser.read_pubkey(),
-            index: parser.read_u128(),
-            bump_seed: parser.read_u8(),
-            user_type: parser.read_enum(),
-            tenant_pk: parser.read_pubkey(),
-            device_pk: parser.read_pubkey(),
-            cyoa_type: parser.read_enum(),
-            client_ip: parser.read_ipv4(),
-            dz_ip: parser.read_ipv4(),
-            tunnel_id: parser.read_u16(),
-            tunnel_net: parser.read_networkv4(),
-            status: parser.read_enum(),
-            publishers: parser.read_pubkey_vec(),
-            subscribers: parser.read_pubkey_vec(),
+            account_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            owner: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            index: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            bump_seed: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            user_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            tenant_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            device_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            cyoa_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            client_ip: BorshDeserialize::deserialize(&mut data).unwrap_or([0, 0, 0, 0].into()),
+            dz_ip: BorshDeserialize::deserialize(&mut data).unwrap_or([0, 0, 0, 0].into()),
+            tunnel_id: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            tunnel_net: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            status: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            publishers: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            subscribers: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
-        assert_eq!(
-            out.account_type,
-            AccountType::User,
-            "Invalid User Account Type"
-        );
+        if out.account_type != AccountType::User {
+            return Err(ProgramError::InvalidAccountData);
+        }
 
-        out
+        Ok(out)
     }
 }
 
@@ -282,7 +282,7 @@ impl TryFrom<&AccountInfo<'_>> for User {
 
     fn try_from(account: &AccountInfo) -> Result<Self, Self::Error> {
         let data = account.try_borrow_data()?;
-        Ok(Self::from(&data[..]))
+        Self::try_from(&data[..])
     }
 }
 
@@ -341,7 +341,7 @@ mod tests {
         };
 
         let data = borsh::to_vec(&val).unwrap();
-        let val2 = User::from(&data[..]);
+        let val2 = User::try_from(&data[..]).unwrap();
 
         assert_eq!(val.size(), val2.size());
         assert_eq!(val.owner, val2.owner);

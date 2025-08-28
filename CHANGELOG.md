@@ -28,7 +28,6 @@ All notable changes to this project will be documented in this file.
 - Activator
     - Introduce new user monitoring thread in activator for access pass functionality
     - Remove validator verification via gossip. This functionality is migrated to AccessPass.
-
 - Device controller
     - Implement user tunnel ACLs in device agent configuration
     - Add "mpls icmp ttl-exceeded tunneling" config statement so intermediate hops in the doublezero network respond to traceroutes.
@@ -50,6 +49,7 @@ All notable changes to this project will be documented in this file.
 - Telemetry
     - Optimize onchain data dashboard API responses with field filtering
     - Optimize onchain data data CLI execution with parallel queries
+    - Dashboard API support for circuit set partitioning using query parameters
 
 ## [v0.5.3](https://github.com/malbeclabs/doublezero/compare/client/v0.5.0...client/v0.5.3) – 2025-08-19
 

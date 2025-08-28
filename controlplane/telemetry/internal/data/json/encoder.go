@@ -46,44 +46,7 @@ func (e *FieldFilteringEncoder) encodeFromDecoder(dec *json.Decoder) error {
 	case json.Delim:
 		switch d {
 		case '{':
-			if _, err := e.w.Write([]byte{'{'}); err != nil {
-				return err
-			}
-			first := true
-			for dec.More() {
-				kt, err := dec.Token()
-				if err != nil {
-					return err
-				}
-				k := kt.(string)
-				if _, ok := e.fields[k]; ok {
-					if !first {
-						if _, err := e.w.Write([]byte{','}); err != nil {
-							return err
-						}
-					}
-					first = false
-					if err := writeString(e.w, k); err != nil {
-						return err
-					}
-					if _, err := e.w.Write([]byte{':'}); err != nil {
-						return err
-					}
-					if err := copyValue(dec, e.w); err != nil {
-						return err
-					}
-				} else {
-					if err := skipValue(dec); err != nil {
-						return err
-					}
-				}
-			}
-			_, err = dec.Token()
-			if err != nil {
-				return err
-			}
-			_, err = e.w.Write([]byte{'}'})
-			return err
+			return copyFilteredObject(dec, e.w, e.fields)
 		case '[':
 			if _, err := e.w.Write([]byte{'['}); err != nil {
 				return err
@@ -96,12 +59,11 @@ func (e *FieldFilteringEncoder) encodeFromDecoder(dec *json.Decoder) error {
 					}
 				}
 				first = false
-				if err := copyValue(dec, e.w); err != nil {
+				if err := copyFilteredValue(dec, e.w, e.fields); err != nil {
 					return err
 				}
 			}
-			_, err = dec.Token()
-			if err != nil {
+			if _, err := dec.Token(); err != nil {
 				return err
 			}
 			_, err = e.w.Write([]byte{']'})
@@ -115,7 +77,7 @@ func (e *FieldFilteringEncoder) encodeFromDecoder(dec *json.Decoder) error {
 	}
 }
 
-func copyValue(dec *json.Decoder, w io.Writer) error {
+func copyFilteredValue(dec *json.Decoder, w io.Writer, fields map[string]struct{}) error {
 	tok, err := dec.Token()
 	if err != nil {
 		return err
@@ -124,37 +86,7 @@ func copyValue(dec *json.Decoder, w io.Writer) error {
 	case json.Delim:
 		switch d {
 		case '{':
-			if _, err := w.Write([]byte{'{'}); err != nil {
-				return err
-			}
-			first := true
-			for dec.More() {
-				if !first {
-					if _, err := w.Write([]byte{','}); err != nil {
-						return err
-					}
-				}
-				first = false
-				kt, err := dec.Token()
-				if err != nil {
-					return err
-				}
-				if err := writeString(w, kt.(string)); err != nil {
-					return err
-				}
-				if _, err := w.Write([]byte{':'}); err != nil {
-					return err
-				}
-				if err := copyValue(dec, w); err != nil {
-					return err
-				}
-			}
-			_, err = dec.Token()
-			if err != nil {
-				return err
-			}
-			_, err = w.Write([]byte{'}'})
-			return err
+			return copyFilteredObject(dec, w, fields)
 		case '[':
 			if _, err := w.Write([]byte{'['}); err != nil {
 				return err
@@ -167,12 +99,11 @@ func copyValue(dec *json.Decoder, w io.Writer) error {
 					}
 				}
 				first = false
-				if err := copyValue(dec, w); err != nil {
+				if err := copyFilteredValue(dec, w, fields); err != nil {
 					return err
 				}
 			}
-			_, err = dec.Token()
-			if err != nil {
+			if _, err := dec.Token(); err != nil {
 				return err
 			}
 			_, err = w.Write([]byte{']'})
@@ -186,6 +117,47 @@ func copyValue(dec *json.Decoder, w io.Writer) error {
 	}
 }
 
+func copyFilteredObject(dec *json.Decoder, w io.Writer, fields map[string]struct{}) error {
+	if _, err := w.Write([]byte{'{'}); err != nil {
+		return err
+	}
+	firstOut := true
+	for dec.More() {
+		kt, err := dec.Token()
+		if err != nil {
+			return err
+		}
+		k := kt.(string)
+		_, allowed := fields[k]
+		if !allowed {
+			if err := skipValue(dec); err != nil {
+				return err
+			}
+			continue
+		}
+		if !firstOut {
+			if _, err := w.Write([]byte{','}); err != nil {
+				return err
+			}
+		}
+		firstOut = false
+		if err := writeString(w, k); err != nil {
+			return err
+		}
+		if _, err := w.Write([]byte{':'}); err != nil {
+			return err
+		}
+		if err := copyFilteredValue(dec, w, fields); err != nil {
+			return err
+		}
+	}
+	if _, err := dec.Token(); err != nil {
+		return err
+	} // consume '}'
+	_, err := w.Write([]byte{'}'})
+	return err
+}
+
 func skipValue(dec *json.Decoder) error {
 	tok, err := dec.Token()
 	if err != nil {
@@ -195,11 +167,15 @@ func skipValue(dec *json.Decoder) error {
 		switch d {
 		case '{':
 			for dec.More() {
+				if _, err := dec.Token(); err != nil {
+					return err
+				} // key
 				if err := skipValue(dec); err != nil {
 					return err
-				}
+				} // value
 			}
 			_, err = dec.Token()
+			return err
 		case '[':
 			for dec.More() {
 				if err := skipValue(dec); err != nil {
@@ -207,9 +183,10 @@ func skipValue(dec *json.Decoder) error {
 				}
 			}
 			_, err = dec.Token()
+			return err
 		}
 	}
-	return err
+	return nil
 }
 
 func writeString(w io.Writer, s string) error {

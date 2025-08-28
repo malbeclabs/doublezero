@@ -44,7 +44,7 @@ impl ListAccessPassCliCommand {
             .into_iter()
             .map(|(pubkey, access_pass)| AccessPassDisplay {
                 account: pubkey,
-                accesspass_type: access_pass.accesspass_type.to_string(),
+                accesspass_type: access_pass.accesspass_type.to_discriminant_string(),
                 ip: access_pass.client_ip,
                 user_payer: access_pass.user_payer,
                 last_access_epoch: if access_pass.last_access_epoch == u64::MAX {
@@ -142,7 +142,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | accesspass_type                                            | ip      | user_payer                                | last_access_epoch | remaining_epoch | connections | status    | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | SolanaValidator(1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB) | 1.2.3.4 | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | 123               | 0               | 0           | connected | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
+        assert_eq!(output_str, " account                                   | accesspass_type  | ip      | user_payer                                | last_access_epoch | remaining_epoch | connections | status    | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | solana_validator | 1.2.3.4 | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | 123               | 0               | 0           | connected | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
 
         let mut output = Vec::new();
         let res = ListAccessPassCliCommand {
@@ -152,6 +152,6 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"accesspass_type\":\"SolanaValidator(1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB)\",\"ip\":\"1.2.3.4\",\"user_payer\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"last_access_epoch\":\"123\",\"remaining_epoch\":\"0\",\"connections\":0,\"status\":\"Connected\",\"owner\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\"}]\n");
+        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"accesspass_type\":\"solana_validator\",\"ip\":\"1.2.3.4\",\"user_payer\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"last_access_epoch\":\"123\",\"remaining_epoch\":\"0\",\"connections\":0,\"status\":\"Connected\",\"owner\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\"}]\n");
     }
 }

@@ -152,6 +152,6 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by code");
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: CwpwPjV6LsVxHQ1Ye5bizyrXSa9j2Gk5C6y3WyMyYaA1\r\nuser_type: IBRL\r\ndevice: 11111111111111111111111111111111\r\ncyoa_type: GREOverDIA\r\nclient_ip: 10.0.0.1\r\ntunnel_net: 10.2.3.4/24\r\ndz_ip: 10.0.0.2\r\naccesspass: account_type: Prepaid, owner: DDddB7bhR9azxLAUEH7ZVtW168wRdreiDKhi4McDfKZt, client_ip: 10.0.0.1, status: connected\r\npublishers: \r\nsubscribers: \r\nstatus: activated\r\nowner: CwpwPjV6LsVxHQ1Ye5bizyrXSa9j2Gk5C6y3WyMyYaA1\n");
+        assert_eq!(output_str, "account: CwpwPjV6LsVxHQ1Ye5bizyrXSa9j2Gk5C6y3WyMyYaA1\r\nuser_type: IBRL\r\ndevice: 11111111111111111111111111111111\r\ncyoa_type: GREOverDIA\r\nclient_ip: 10.0.0.1\r\ntunnel_net: 10.2.3.4/24\r\ndz_ip: 10.0.0.2\r\naccesspass: Prepaid: (expires epoch 10)\r\npublishers: \r\nsubscribers: \r\nstatus: activated\r\nowner: CwpwPjV6LsVxHQ1Ye5bizyrXSa9j2Gk5C6y3WyMyYaA1\n");
     }
 }

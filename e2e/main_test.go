@@ -236,7 +236,7 @@ func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 	require.NoError(t, err)
 
 	// Set access pass for the client.
-	_, err = dn.Manager.Exec(ctx, []string{"bash", "-c", "doublezero access-pass set prepaid --client-ip " + client.CYOANetworkIP + " --user-payer " + client.Pubkey})
+	_, err = dn.Manager.Exec(ctx, []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + client.CYOANetworkIP + " --user-payer " + client.Pubkey})
 	require.NoError(t, err)
 
 	// Add null routes to test latency selection to ny5-dz01.
@@ -351,7 +351,7 @@ func (dn *TestDevnet) ConnectIBRLUserTunnel(t *testing.T, client *devnet.Client)
 	dn.log.Info("==> Connecting IBRL user tunnel")
 
 	// Set access pass for the client.
-	_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set prepaid --client-ip " + client.CYOANetworkIP + " --user-payer " + client.Pubkey})
+	_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + client.CYOANetworkIP + " --user-payer " + client.Pubkey})
 	require.NoError(t, err)
 
 	_, err = client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect ibrl --client-ip " + client.CYOANetworkIP})
@@ -365,7 +365,7 @@ func (dn *TestDevnet) ConnectUserTunnelWithAllocatedIP(t *testing.T, client *dev
 	dn.log.Info("==> Connecting user tunnel with allocated IP")
 
 	// Set access pass for the client.
-	_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set prepaid --client-ip " + client.CYOANetworkIP + " --user-payer " + client.Pubkey})
+	_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + client.CYOANetworkIP + " --user-payer " + client.Pubkey})
 	require.NoError(t, err)
 
 	_, err = client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect ibrl --client-ip " + client.CYOANetworkIP + " --allocate-addr"})
@@ -378,7 +378,7 @@ func (dn *TestDevnet) ConnectMulticastPublisher(t *testing.T, client *devnet.Cli
 	dn.log.Info("==> Connecting multicast publisher", "clientIP", client.CYOANetworkIP)
 
 	// Set access pass for the client.
-	_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set prepaid --client-ip " + client.CYOANetworkIP + " --user-payer " + client.Pubkey})
+	_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + client.CYOANetworkIP + " --user-payer " + client.Pubkey})
 	require.NoError(t, err)
 
 	_, err = client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast publisher " + multicastGroupCode + " --client-ip " + client.CYOANetworkIP})
@@ -392,7 +392,7 @@ func (dn *TestDevnet) DisconnectMulticastPublisher(t *testing.T, client *devnet.
 	dn.log.Info("==> Disconnecting multicast publisher", "clientIP", client.CYOANetworkIP)
 
 	// Set access pass for the client.
-	_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set prepaid --client-ip " + client.CYOANetworkIP + " --user-payer " + client.Pubkey})
+	_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + client.CYOANetworkIP + " --user-payer " + client.Pubkey})
 	require.NoError(t, err)
 
 	_, err = client.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect multicast --client-ip " + client.CYOANetworkIP})
@@ -405,7 +405,7 @@ func (dn *TestDevnet) ConnectMulticastSubscriber(t *testing.T, client *devnet.Cl
 	dn.log.Info("==> Connecting multicast subscriber", "clientIP", client.CYOANetworkIP)
 
 	// Set access pass for the client.
-	_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set prepaid --client-ip " + client.CYOANetworkIP + " --user-payer " + client.Pubkey})
+	_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + client.CYOANetworkIP + " --user-payer " + client.Pubkey})
 	require.NoError(t, err)
 
 	_, err = client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast subscriber " + multicastGroupCode + " --client-ip " + client.CYOANetworkIP})
@@ -418,7 +418,7 @@ func (dn *TestDevnet) DisconnectMulticastSubscriber(t *testing.T, client *devnet
 	dn.log.Info("==> Disconnecting multicast subscriber", "clientIP", client.CYOANetworkIP)
 
 	// Set access pass for the client.
-	_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set prepaid --client-ip " + client.CYOANetworkIP + " --user-payer " + client.Pubkey})
+	_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + client.CYOANetworkIP + " --user-payer " + client.Pubkey})
 	require.NoError(t, err)
 
 	_, err = client.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect multicast --client-ip " + client.CYOANetworkIP})

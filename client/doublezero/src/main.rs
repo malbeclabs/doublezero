@@ -164,14 +164,7 @@ async fn main() -> eyre::Result<()> {
             LinkCommands::Delete(args) => args.execute(&client, &mut handle),
         },
         Command::AccessPass(command) => match command.command {
-            cli::accesspass::AccessPassCommands::Set(args) => match args.command {
-                cli::accesspass::SetAccessPassCliCommands::Prepaid(args) => {
-                    args.execute(&client, &mut handle)
-                }
-                cli::accesspass::SetAccessPassCliCommands::SolanaValidator(args) => {
-                    args.execute(&client, &mut handle)
-                }
-            },
+            cli::accesspass::AccessPassCommands::Set(args) => args.execute(&client, &mut handle),
             cli::accesspass::AccessPassCommands::Close(args) => args.execute(&client, &mut handle),
             cli::accesspass::AccessPassCommands::List(args) => args.execute(&client, &mut handle),
         },

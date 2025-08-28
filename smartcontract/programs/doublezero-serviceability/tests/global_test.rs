@@ -533,7 +533,7 @@ async fn test_doublezero_program() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
-            accesspass_type: AccessPassType::Prepaid,
+            accesspass_type: AccessPassType::SolanaValidator(Pubkey::new_unique()),
             client_ip: user_ip,
             last_access_epoch: 9999,
         }),

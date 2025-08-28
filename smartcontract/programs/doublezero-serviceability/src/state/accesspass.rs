@@ -1,15 +1,13 @@
-use crate::{
-    bytereader::ByteReader,
-    state::accounttype::{AccountType, AccountTypeInfo},
-};
-use borsh::{object_length, BorshDeserialize, BorshSerialize};
+use crate::state::accounttype::{AccountType, AccountTypeInfo};
+use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::AccountInfo, entrypoint::ProgramResult, program_error::ProgramError,
     pubkey::Pubkey,
 };
 use std::{fmt, net::Ipv4Addr};
 
-#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Default)]
+#[repr(u8)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Default, Copy, Clone, PartialEq)]
 #[borsh(use_discriminant = true)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum AccessPassType {
@@ -18,22 +16,30 @@ pub enum AccessPassType {
     SolanaValidator(Pubkey),
 }
 
+impl AccessPassType {
+    pub fn to_discriminant_string(&self) -> String {
+        match self {
+            AccessPassType::Prepaid => "prepaid".to_string(),
+            AccessPassType::SolanaValidator(_) => "solana_validator".to_string(),
+        }
+    }
+}
+
 impl fmt::Display for AccessPassType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            AccessPassType::Prepaid => write!(f, "Prepaid"),
-            AccessPassType::SolanaValidator(solana_validator) => {
-                write!(f, "SolanaValidator({solana_validator})")
-            }
+            AccessPassType::Prepaid => write!(f, "prepaid"),
+            AccessPassType::SolanaValidator(node_id) => write!(f, "solana_validator: {node_id}"),
         }
     }
 }
 
 #[repr(u8)]
-#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Default, Copy, Clone, PartialEq)]
 #[borsh(use_discriminant = true)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum AccessPassStatus {
+    #[default]
     Requested = 0,
     Connected = 1,
     Disconnected = 2,
@@ -73,7 +79,7 @@ pub struct AccessPass {
     )]
     pub owner: Pubkey, // 32
     pub bump_seed: u8,             // 1
-    pub accesspass_type: AccessPassType, // *
+    pub accesspass_type: AccessPassType, // 1 or 33
     pub client_ip: Ipv4Addr,       // 4
     #[cfg_attr(
         feature = "serde",
@@ -90,11 +96,18 @@ pub struct AccessPass {
 
 impl fmt::Display for AccessPass {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "account_type: {}, owner: {}, client_ip: {}, status: {}",
-            self.accesspass_type, self.owner, self.client_ip, self.status
-        )
+        match self.accesspass_type {
+            AccessPassType::Prepaid => {
+                if self.last_access_epoch == u64::MAX {
+                    write!(f, "Prepaid: (MAX)")
+                } else {
+                    write!(f, "Prepaid: (expires epoch {})", self.last_access_epoch)
+                }
+            }
+            AccessPassType::SolanaValidator(node_id) => {
+                write!(f, "SolanaValidator: ({node_id})")
+            }
+        }
     }
 }
 
@@ -103,7 +116,8 @@ impl AccountTypeInfo for AccessPass {
         crate::seeds::SEED_ACCESS_PASS
     }
     fn size(&self) -> usize {
-        1 + 32 + 1 + object_length(&self.accesspass_type).unwrap() + 4 + 32 + 8 + 2 + 1
+        // This operation is safe because we will never overflow usize.
+        borsh::object_length(self).unwrap()
     }
     fn bump_seed(&self) -> u8 {
         self.bump_seed
@@ -117,19 +131,18 @@ impl AccountTypeInfo for AccessPass {
 }
 
 impl From<&[u8]> for AccessPass {
-    fn from(data: &[u8]) -> Self {
-        let mut parser = ByteReader::new(data);
-
+    fn from(mut data: &[u8]) -> Self {
         let out = Self {
-            account_type: parser.read_enum(),
-            owner: parser.read_pubkey(),
-            bump_seed: parser.read_u8(),
-            accesspass_type: parser.read_borsh(),
-            client_ip: parser.read_ipv4(),
-            user_payer: parser.read_pubkey(),
-            last_access_epoch: parser.read_u64(),
-            connection_count: parser.read_u16(),
-            status: parser.read_enum(),
+            account_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            owner: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            bump_seed: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            accesspass_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            client_ip: BorshDeserialize::deserialize(&mut data)
+                .unwrap_or(std::net::Ipv4Addr::UNSPECIFIED),
+            user_payer: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            last_access_epoch: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            connection_count: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            status: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         assert_eq!(
@@ -163,6 +176,7 @@ impl AccessPass {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use borsh::object_length;
 
     #[test]
     fn test_state_accesspass_types() {

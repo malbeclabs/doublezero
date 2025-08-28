@@ -155,12 +155,14 @@ echo "Accepting external link"
 
 # create access pass
 echo "Create AccessPass for users"
-./target/doublezero access-pass set prepaid --client-ip 177.54.159.95 --user-payer me 
-./target/doublezero access-pass set prepaid --client-ip 147.28.171.51 --user-payer me 
-./target/doublezero access-pass set prepaid --client-ip 100.100.100.100 --user-payer me 
-./target/doublezero access-pass set prepaid --client-ip 200.200.200.200 --user-payer me
-./target/doublezero access-pass set prepaid --client-ip 100.0.0.5 --user-payer me
-./target/doublezero access-pass set prepaid --client-ip 100.0.0.6 --user-payer me
+./target/doublezero access-pass set --accesspass-type prepaid --client-ip 177.54.159.95 --user-payer me
+./target/doublezero access-pass set --accesspass-type prepaid --client-ip 147.28.171.51 --user-payer me
+./target/doublezero access-pass set --accesspass-type prepaid --client-ip 100.100.100.100 --user-payer me
+./target/doublezero access-pass set --accesspass-type prepaid --client-ip 200.200.200.200 --user-payer me
+./target/doublezero access-pass set --accesspass-type prepaid --client-ip 100.0.0.5 --user-payer me
+./target/doublezero access-pass set --accesspass-type prepaid --client-ip 100.0.0.6 --user-payer me
+
+./target/doublezero access-pass set --accesspass-type solana-validator --solana-validator 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX --client-ip 177.54.159.95 --user-payer me
 
 # create a user
 echo "Creating users"

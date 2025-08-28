@@ -49,19 +49,19 @@ func createMultipleIBRLUsersOnSameDeviceWithAllocatedIPs(t *testing.T, dn *TestD
 	dn.log.Info("==> Creating multiple IBRL users on a single device with allocated IP addresses")
 
 	// Set access pass for the client.
-	_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set prepaid --client-ip 1.2.3.4 --user-payer " + client.Pubkey})
+	_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip 1.2.3.4 --user-payer " + client.Pubkey})
 	require.NoError(t, err)
 	// Set access pass for the client.
-	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set prepaid --client-ip 2.3.4.5 --user-payer " + client.Pubkey})
+	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip 2.3.4.5 --user-payer " + client.Pubkey})
 	require.NoError(t, err)
 	// Set access pass for the client.
-	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set prepaid --client-ip 3.4.5.6 --user-payer " + client.Pubkey})
+	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip 3.4.5.6 --user-payer " + client.Pubkey})
 	require.NoError(t, err)
 	// Set access pass for the client.
-	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set prepaid --client-ip 4.5.6.7 --user-payer " + client.Pubkey})
+	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip 4.5.6.7 --user-payer " + client.Pubkey})
 	require.NoError(t, err)
 	// Set access pass for the client.
-	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set prepaid --client-ip 5.6.7.8 --user-payer " + client.Pubkey})
+	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip 5.6.7.8 --user-payer " + client.Pubkey})
 	require.NoError(t, err)
 
 	_, err = client.Exec(t.Context(), []string{"bash", "-c", `

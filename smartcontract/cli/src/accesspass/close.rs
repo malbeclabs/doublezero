@@ -31,13 +31,13 @@ impl CloseAccessPassCliCommand {
 #[cfg(test)]
 mod tests {
     use crate::{
-        accesspass::prepaid::SetAccessPassPrepaidCliCommand,
+        accesspass::close::CloseAccessPassCliCommand,
         doublezerocommand::CliCommand,
         requirements::{CHECK_BALANCE, CHECK_ID_JSON},
         tests::utils::create_test_client,
     };
-    use doublezero_sdk::commands::accesspass::set::SetAccessPassCommand;
-    use doublezero_serviceability::{pda::get_accesspass_pda, state::accesspass::AccessPassType};
+    use doublezero_sdk::commands::accesspass::close::CloseAccessPassCommand;
+    use doublezero_serviceability::pda::get_accesspass_pda;
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
@@ -57,27 +57,22 @@ mod tests {
             100, 221, 20, 137, 4, 5,
         ]);
 
-        client.expect_get_epoch().returning(|| Ok(10));
+        let accesspass_pubkey = Pubkey::new_unique();
 
         client
             .expect_check_requirements()
             .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
             .returning(|_| Ok(()));
         client
-            .expect_set_accesspass()
-            .with(predicate::eq(SetAccessPassCommand {
-                accesspass_type: AccessPassType::Prepaid,
-                client_ip,
-                user_payer: payer,
-                last_access_epoch: 11,
+            .expect_close_accesspass()
+            .with(predicate::eq(CloseAccessPassCommand {
+                pubkey: accesspass_pubkey,
             }))
             .returning(move |_| Ok(signature));
 
         let mut output = Vec::new();
-        let res = SetAccessPassPrepaidCliCommand {
-            client_ip,
-            user_payer: payer.to_string(),
-            epochs: "1".into(),
+        let res = CloseAccessPassCliCommand {
+            pubkey: accesspass_pubkey,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

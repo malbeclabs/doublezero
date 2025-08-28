@@ -426,7 +426,6 @@ mod tests {
     use crate::{
         processors::exchange::setdevice::SetDeviceOption,
         state::{
-            accesspass::AccessPassType,
             device::DeviceType,
             link::LinkLinkType,
             user::{UserCYOA, UserType},
@@ -865,7 +864,9 @@ mod tests {
         );
         test_instruction(
             DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
-                accesspass_type: AccessPassType::Prepaid,
+                accesspass_type: crate::state::accesspass::AccessPassType::SolanaValidator(
+                    Pubkey::new_unique(),
+                ),
                 client_ip: [1, 2, 3, 4].into(),
                 last_access_epoch: 123,
             }),

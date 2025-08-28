@@ -1,4 +1,4 @@
-use crate::{bytereader::ByteReader, state::accounttype::AccountType};
+use crate::state::accounttype::AccountType;
 use borsh::{BorshDeserialize, BorshSerialize};
 use doublezero_program_common::types::NetworkV4;
 use solana_program::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
@@ -29,28 +29,26 @@ impl fmt::Display for GlobalConfig {
     }
 }
 
-impl From<&[u8]> for GlobalConfig {
-    fn from(data: &[u8]) -> Self {
-        let mut parser = ByteReader::new(data);
+impl TryFrom<&[u8]> for GlobalConfig {
+    type Error = ProgramError;
 
+    fn try_from(mut data: &[u8]) -> Result<Self, Self::Error> {
         let out = Self {
-            account_type: parser.read_enum(),
-            owner: parser.read_pubkey(),
-            bump_seed: parser.read_u8(),
-            local_asn: parser.read_u32(),
-            remote_asn: parser.read_u32(),
-            device_tunnel_block: parser.read_networkv4(),
-            user_tunnel_block: parser.read_networkv4(),
-            multicastgroup_block: parser.read_networkv4(),
+            account_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            owner: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            bump_seed: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            local_asn: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            remote_asn: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            device_tunnel_block: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            user_tunnel_block: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            multicastgroup_block: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
-        assert_eq!(
-            out.account_type,
-            AccountType::Config,
-            "Invalid GlobalConfig Account Type"
-        );
+        if out.account_type != AccountType::Config {
+            return Err(ProgramError::InvalidAccountData);
+        }
 
-        out
+        Ok(out)
     }
 }
 
@@ -59,7 +57,7 @@ impl TryFrom<&AccountInfo<'_>> for GlobalConfig {
 
     fn try_from(account: &AccountInfo) -> Result<Self, Self::Error> {
         let data = account.try_borrow_data()?;
-        Ok(Self::from(&data[..]))
+        Self::try_from(&data[..])
     }
 }
 

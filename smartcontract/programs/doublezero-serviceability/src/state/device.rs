@@ -1,5 +1,4 @@
 use crate::{
-    bytereader::ByteReader,
     seeds::SEED_DEVICE,
     state::accounttype::{AccountType, AccountTypeInfo},
 };
@@ -9,10 +8,11 @@ use solana_program::{account_info::AccountInfo, program_error::ProgramError, pub
 use std::{fmt, net::Ipv4Addr};
 
 #[repr(u8)]
-#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Default)]
 #[borsh(use_discriminant = true)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum DeviceType {
+    #[default]
     Switch = 0,
 }
 
@@ -34,10 +34,11 @@ impl fmt::Display for DeviceType {
 }
 
 #[repr(u8)]
-#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Default)]
 #[borsh(use_discriminant = true)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum DeviceStatus {
+    #[default]
     Pending = 0,
     Activated = 1,
     Suspended = 2,
@@ -71,10 +72,11 @@ impl fmt::Display for DeviceStatus {
 }
 
 #[repr(u8)]
-#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Default)]
 #[borsh(use_discriminant = true)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum InterfaceStatus {
+    #[default]
     Invalid = 0,
     Unmanaged = 1,
     Pending = 2,
@@ -95,10 +97,11 @@ impl From<u8> for InterfaceStatus {
 }
 
 #[repr(u8)]
-#[derive(BorshDeserialize, BorshSerialize, Debug, PartialEq, Clone, Copy)]
+#[derive(BorshDeserialize, BorshSerialize, Debug, PartialEq, Clone, Copy, Default)]
 #[borsh(use_discriminant = true)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum InterfaceType {
+    #[default]
     Invalid = 0,
     Loopback = 1,
     Physical = 2,
@@ -125,10 +128,11 @@ impl fmt::Display for InterfaceType {
 }
 
 #[repr(u8)]
-#[derive(BorshDeserialize, BorshSerialize, Debug, PartialEq, Clone, Copy)]
+#[derive(BorshDeserialize, BorshSerialize, Debug, PartialEq, Clone, Copy, Default)]
 #[borsh(use_discriminant = true)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum LoopbackType {
+    #[default]
     None = 0,
     Vpnv4 = 1,
     Ipv4 = 2,
@@ -180,18 +184,23 @@ impl InterfaceV1 {
     }
 }
 
-impl From<&mut ByteReader<'_>> for InterfaceV1 {
-    fn from(parser: &mut ByteReader<'_>) -> Self {
-        Self {
-            status: parser.read_enum(),
-            name: parser.read_string(),
-            interface_type: parser.read_enum(),
-            loopback_type: parser.read_enum(),
-            vlan_id: parser.read_u16(),
-            ip_net: parser.read_networkv4(),
-            node_segment_idx: parser.read_u16(),
-            user_tunnel_endpoint: (parser.read_u8() != 0),
-        }
+impl TryFrom<&[u8]> for InterfaceV1 {
+    type Error = ProgramError;
+
+    fn try_from(mut data: &[u8]) -> Result<Self, Self::Error> {
+        Ok(Self {
+            status: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            name: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            interface_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            loopback_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            vlan_id: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            ip_net: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            node_segment_idx: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            user_tunnel_endpoint: {
+                let val: u8 = BorshDeserialize::deserialize(&mut data).unwrap_or_default();
+                val != 0
+            },
+        })
     }
 }
 
@@ -236,11 +245,13 @@ impl Interface {
     }
 }
 
-impl From<&mut ByteReader<'_>> for Interface {
-    fn from(parser: &mut ByteReader<'_>) -> Self {
-        match parser.read_u8() {
-            0 => Interface::V1(InterfaceV1::from(parser)),
-            _ => Interface::V1(InterfaceV1::default()), // Default case
+impl TryFrom<&[u8]> for Interface {
+    type Error = ProgramError;
+
+    fn try_from(mut data: &[u8]) -> Result<Self, Self::Error> {
+        match BorshDeserialize::deserialize(&mut data) {
+            Ok(0) => Ok(Interface::V1(InterfaceV1::try_from(data)?)),
+            _ => Ok(Interface::V1(InterfaceV1::default())), // Default case
         }
     }
 }
@@ -359,38 +370,36 @@ impl AccountTypeInfo for Device {
     }
 }
 
-impl From<&[u8]> for Device {
-    fn from(data: &[u8]) -> Self {
-        let mut parser = ByteReader::new(data);
+impl TryFrom<&[u8]> for Device {
+    type Error = ProgramError;
 
+    fn try_from(mut data: &[u8]) -> Result<Self, Self::Error> {
         let out = Self {
-            account_type: parser.read_enum(),
-            owner: parser.read_pubkey(),
-            index: parser.read_u128(),
-            bump_seed: parser.read_u8(),
-            location_pk: parser.read_pubkey(),
-            exchange_pk: parser.read_pubkey(),
-            device_type: parser.read_enum(),
-            public_ip: parser.read_ipv4(),
-            status: parser.read_enum(),
-            code: parser.read_string(),
-            dz_prefixes: parser.read_networkv4_list(),
-            metrics_publisher_pk: parser.read_pubkey(),
-            contributor_pk: parser.read_pubkey(),
-            mgmt_vrf: parser.read_string(),
-            interfaces: parser.read_vec(),
-            reference_count: parser.read_u32(),
-            users_count: parser.read_u16(),
-            max_users: parser.read_u16(),
+            account_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            owner: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            index: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            bump_seed: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            location_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            exchange_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            device_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            public_ip: BorshDeserialize::deserialize(&mut data).unwrap_or([0, 0, 0, 0].into()),
+            status: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            code: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            dz_prefixes: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            metrics_publisher_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            contributor_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            mgmt_vrf: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            interfaces: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            reference_count: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            users_count: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            max_users: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
-        assert_eq!(
-            out.account_type,
-            AccountType::Device,
-            "Invalid Device Account Type"
-        );
+        if out.account_type != AccountType::Device {
+            return Err(ProgramError::InvalidAccountData);
+        }
 
-        out
+        Ok(out)
     }
 }
 
@@ -399,7 +408,7 @@ impl TryFrom<&AccountInfo<'_>> for Device {
 
     fn try_from(account: &AccountInfo) -> Result<Self, Self::Error> {
         let data = account.try_borrow_data()?;
-        Ok(Self::from(&data[..]))
+        Device::try_from(&data[..])
     }
 }
 
@@ -452,7 +461,7 @@ mod tests {
         };
 
         let data = borsh::to_vec(&val).unwrap();
-        let val2 = Device::from(&data[..]);
+        let val2 = Device::try_from(&data[..]).unwrap();
 
         assert_eq!(val.size(), val2.size());
         assert_eq!(val.owner, val2.owner);
@@ -506,7 +515,7 @@ mod tests {
         let data = borsh::to_vec(&val).unwrap();
 
         // trim data to oldsize
-        let val2 = Device::from(&data[..oldsize]);
+        let val2 = Device::try_from(&data[..oldsize]).unwrap();
 
         assert_eq!(val.size(), val2.size());
         assert_eq!(val, val2);

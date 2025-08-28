@@ -133,8 +133,10 @@ impl AccountTypeInfo for AccessPass {
     }
 }
 
-impl From<&[u8]> for AccessPass {
-    fn from(mut data: &[u8]) -> Self {
+impl TryFrom<&[u8]> for AccessPass {
+    type Error = ProgramError;
+
+    fn try_from(mut data: &[u8]) -> Result<Self, Self::Error> {
         let out = Self {
             account_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             owner: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
@@ -148,13 +150,11 @@ impl From<&[u8]> for AccessPass {
             status: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
-        assert_eq!(
-            out.account_type,
-            AccountType::AccessPass,
-            "Invalid AccessPass Account Type"
-        );
+        if out.account_type != AccountType::AccessPass {
+            return Err(ProgramError::InvalidAccountData);
+        }
 
-        out
+        Ok(out)
     }
 }
 
@@ -163,7 +163,7 @@ impl TryFrom<&AccountInfo<'_>> for AccessPass {
 
     fn try_from(account: &AccountInfo) -> Result<Self, Self::Error> {
         let data = account.try_borrow_data()?;
-        Ok(Self::from(&data[..]))
+        Self::try_from(&data[..])
     }
 }
 
@@ -225,7 +225,7 @@ mod tests {
         };
 
         let data = borsh::to_vec(&val).unwrap();
-        let val2 = AccessPass::from(&data[..]);
+        let val2 = AccessPass::try_from(&data[..]).unwrap();
 
         assert_eq!(val.size(), val2.size());
         assert_eq!(val.owner, val2.owner);
@@ -255,7 +255,7 @@ mod tests {
 
         let data = borsh::to_vec(&val).unwrap();
         let len = data.len();
-        let val2 = AccessPass::from(&data[..]);
+        let val2 = AccessPass::try_from(&data[..]).unwrap();
 
         assert_eq!(val.size(), len, "Invalid val.size()");
         assert_eq!(len, val2.size(), "Invalid val2.size() {val2}");

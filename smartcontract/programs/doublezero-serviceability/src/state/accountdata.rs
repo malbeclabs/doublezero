@@ -7,6 +7,7 @@ use crate::{
         user::User,
     },
 };
+use solana_program::program_error::ProgramError;
 
 #[derive(Debug, PartialEq)]
 pub enum AccountData {
@@ -148,21 +149,27 @@ impl AccountData {
     }
 }
 
-impl From<&[u8]> for AccountData {
-    fn from(bytes: &[u8]) -> Self {
+impl TryFrom<&[u8]> for AccountData {
+    type Error = ProgramError;
+
+    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
         match AccountType::from(bytes[0]) {
-            AccountType::None => AccountData::None,
-            AccountType::GlobalState => AccountData::GlobalState(GlobalState::from(bytes)),
-            AccountType::Config => AccountData::GlobalConfig(GlobalConfig::from(bytes)),
-            AccountType::Location => AccountData::Location(Location::from(bytes)),
-            AccountType::Exchange => AccountData::Exchange(Exchange::from(bytes)),
-            AccountType::Device => AccountData::Device(Device::from(bytes)),
-            AccountType::Link => AccountData::Link(Link::from(bytes)),
-            AccountType::User => AccountData::User(User::from(bytes)),
-            AccountType::MulticastGroup => AccountData::MulticastGroup(MulticastGroup::from(bytes)),
-            AccountType::ProgramConfig => AccountData::ProgramConfig(ProgramConfig::from(bytes)),
-            AccountType::Contributor => AccountData::Contributor(Contributor::from(bytes)),
-            AccountType::AccessPass => AccountData::AccessPass(AccessPass::from(bytes)),
+            AccountType::None => Ok(AccountData::None),
+            AccountType::GlobalState => Ok(AccountData::GlobalState(GlobalState::try_from(bytes)?)),
+            AccountType::Config => Ok(AccountData::GlobalConfig(GlobalConfig::try_from(bytes)?)),
+            AccountType::Location => Ok(AccountData::Location(Location::try_from(bytes)?)),
+            AccountType::Exchange => Ok(AccountData::Exchange(Exchange::try_from(bytes)?)),
+            AccountType::Device => Ok(AccountData::Device(Device::try_from(bytes)?)),
+            AccountType::Link => Ok(AccountData::Link(Link::try_from(bytes)?)),
+            AccountType::User => Ok(AccountData::User(User::try_from(bytes)?)),
+            AccountType::MulticastGroup => Ok(AccountData::MulticastGroup(
+                MulticastGroup::try_from(bytes)?,
+            )),
+            AccountType::ProgramConfig => {
+                Ok(AccountData::ProgramConfig(ProgramConfig::try_from(bytes)?))
+            }
+            AccountType::Contributor => Ok(AccountData::Contributor(Contributor::try_from(bytes)?)),
+            AccountType::AccessPass => Ok(AccountData::AccessPass(AccessPass::try_from(bytes)?)),
         }
     }
 }

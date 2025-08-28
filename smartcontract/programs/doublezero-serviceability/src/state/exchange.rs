@@ -1,14 +1,15 @@
 use super::accounttype::{AccountType, AccountTypeInfo};
-use crate::{bytereader::ByteReader, seeds::SEED_EXCHANGE};
+use crate::seeds::SEED_EXCHANGE;
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
 use std::fmt;
 
 #[repr(u8)]
-#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Default)]
 #[borsh(use_discriminant = true)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ExchangeStatus {
+    #[default]
     Pending = 0,
     Activated = 1,
     Suspended = 2,
@@ -102,33 +103,31 @@ impl AccountTypeInfo for Exchange {
     }
 }
 
-impl From<&[u8]> for Exchange {
-    fn from(data: &[u8]) -> Self {
-        let mut parser = ByteReader::new(data);
+impl TryFrom<&[u8]> for Exchange {
+    type Error = ProgramError;
 
+    fn try_from(mut data: &[u8]) -> Result<Self, Self::Error> {
         let out = Self {
-            account_type: parser.read_enum(),
-            owner: parser.read_pubkey(),
-            index: parser.read_u128(),
-            bump_seed: parser.read_u8(),
-            lat: parser.read_f64(),
-            lng: parser.read_f64(),
-            loc_id: parser.read_u32(),
-            status: parser.read_enum(),
-            code: parser.read_string(),
-            name: parser.read_string(),
-            reference_count: parser.read_u32(),
-            device1_pk: parser.read_pubkey(),
-            device2_pk: parser.read_pubkey(),
+            account_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            owner: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            index: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            bump_seed: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            lat: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            lng: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            loc_id: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            status: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            code: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            name: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            reference_count: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            device1_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            device2_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
-        assert_eq!(
-            out.account_type,
-            AccountType::Exchange,
-            "Invalid Exchange Account Type"
-        );
+        if out.account_type != AccountType::Exchange {
+            return Err(ProgramError::InvalidAccountData);
+        }
 
-        out
+        Ok(out)
     }
 }
 
@@ -137,7 +136,7 @@ impl TryFrom<&AccountInfo<'_>> for Exchange {
 
     fn try_from(account: &AccountInfo) -> Result<Self, Self::Error> {
         let data = account.try_borrow_data()?;
-        Ok(Self::from(&data[..]))
+        Self::try_from(&data[..])
     }
 }
 
@@ -164,7 +163,7 @@ mod tests {
         };
 
         let data = borsh::to_vec(&val).unwrap();
-        let val2 = Exchange::from(&data[..]);
+        let val2 = Exchange::try_from(&data[..]).unwrap();
 
         assert_eq!(val.size(), val2.size());
         assert_eq!(val.owner, val2.owner);

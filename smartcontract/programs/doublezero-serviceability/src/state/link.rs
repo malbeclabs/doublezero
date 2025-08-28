@@ -1,5 +1,4 @@
 use crate::{
-    bytereader::ByteReader,
     seeds::SEED_LINK,
     state::accounttype::{AccountType, AccountTypeInfo},
 };
@@ -9,10 +8,11 @@ use solana_program::{account_info::AccountInfo, program_error::ProgramError, pub
 use std::{fmt, str::FromStr};
 
 #[repr(u8)]
-#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Default)]
 #[borsh(use_discriminant = true)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum LinkLinkType {
+    #[default]
     WAN = 1,
     DZX = 127,
 }
@@ -49,10 +49,11 @@ impl fmt::Display for LinkLinkType {
 }
 
 #[repr(u8)]
-#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Default)]
 #[borsh(use_discriminant = true)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum LinkStatus {
+    #[default]
     Pending = 0,
     Activated = 1,
     Suspended = 2,
@@ -186,30 +187,36 @@ impl AccountTypeInfo for Link {
     }
 }
 
-impl From<&[u8]> for Link {
-    fn from(data: &[u8]) -> Self {
-        let mut parser = ByteReader::new(data);
+impl TryFrom<&[u8]> for Link {
+    type Error = ProgramError;
 
-        Self {
-            account_type: parser.read_enum(),
-            owner: parser.read_pubkey(),
-            index: parser.read_u128(),
-            bump_seed: parser.read_u8(),
-            side_a_pk: parser.read_pubkey(),
-            side_z_pk: parser.read_pubkey(),
-            link_type: parser.read_enum(),
-            bandwidth: parser.read_u64(),
-            mtu: parser.read_u32(),
-            delay_ns: parser.read_u64(),
-            jitter_ns: parser.read_u64(),
-            tunnel_id: parser.read_u16(),
-            tunnel_net: parser.read_networkv4(),
-            status: parser.read_enum(),
-            code: parser.read_string(),
-            contributor_pk: parser.read_pubkey(),
-            side_a_iface_name: parser.read_string(),
-            side_z_iface_name: parser.read_string(),
+    fn try_from(mut data: &[u8]) -> Result<Self, Self::Error> {
+        let out = Self {
+            account_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            owner: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            index: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            bump_seed: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            side_a_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            side_z_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            link_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            bandwidth: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            mtu: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            delay_ns: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            jitter_ns: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            tunnel_id: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            tunnel_net: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            status: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            code: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            contributor_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            side_a_iface_name: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            side_z_iface_name: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+        };
+
+        if out.account_type != AccountType::Link {
+            return Err(ProgramError::InvalidAccountData);
         }
+
+        Ok(out)
     }
 }
 
@@ -218,7 +225,7 @@ impl TryFrom<&AccountInfo<'_>> for Link {
 
     fn try_from(account: &AccountInfo) -> Result<Self, Self::Error> {
         let data = account.try_borrow_data()?;
-        Ok(Self::from(&data[..]))
+        Self::try_from(&data[..])
     }
 }
 
@@ -250,7 +257,7 @@ mod tests {
         };
 
         let data = borsh::to_vec(&val).unwrap();
-        let val2 = Link::from(&data[..]);
+        let val2 = Link::try_from(&data[..]).unwrap();
 
         assert_eq!(val.size(), val2.size());
         assert_eq!(val.owner, val2.owner);

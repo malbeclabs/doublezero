@@ -1,9 +1,4 @@
 #![allow(dead_code)]
-use std::{
-    net::Ipv4Addr,
-    sync::{Arc, Mutex},
-};
-
 use doublezero_program_common::types::{NetworkV4, NetworkV4List};
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
@@ -53,6 +48,10 @@ use solana_sdk::{
     signature::{Keypair, Signer},
     system_program,
     transaction::{Transaction, TransactionError, VersionedTransaction},
+};
+use std::{
+    net::Ipv4Addr,
+    sync::{Arc, Mutex},
 };
 
 #[ctor::ctor]
@@ -812,7 +811,7 @@ impl ServiceabilityProgramHelper {
             .ok_or(BanksClientError::ClientError(
                 "Global state account not found",
             ))?;
-        let global_state = GlobalState::from(&account.data[..]);
+        let global_state = GlobalState::try_from(&account.data[..]).unwrap();
         Ok(global_state.account_index + 1)
     }
 
@@ -938,7 +937,7 @@ impl ServiceabilityProgramHelper {
             context.banks_client.clone()
         };
         let device = banks_client.get_account(pubkey).await.unwrap().unwrap();
-        Ok(Device::from(&device.data[..]))
+        Ok(Device::try_from(&device.data[..]).unwrap())
     }
 
     pub async fn suspend_device(
@@ -963,7 +962,7 @@ impl ServiceabilityProgramHelper {
             context.banks_client.clone()
         };
         let location = banks_client.get_account(pubkey).await.unwrap().unwrap();
-        Ok(Location::from(&location.data[..]))
+        Ok(Location::try_from(&location.data[..]).unwrap())
     }
 
     pub async fn suspend_location(&mut self, pubkey: Pubkey) -> Result<(), BanksClientError> {
@@ -983,7 +982,7 @@ impl ServiceabilityProgramHelper {
             context.banks_client.clone()
         };
         let exchange = banks_client.get_account(pubkey).await.unwrap().unwrap();
-        Ok(Exchange::from(&exchange.data[..]))
+        Ok(Exchange::try_from(&exchange.data[..]).unwrap())
     }
 
     pub async fn suspend_exchange(&mut self, pubkey: Pubkey) -> Result<(), BanksClientError> {
@@ -1070,7 +1069,7 @@ impl ServiceabilityProgramHelper {
             context.banks_client.clone()
         };
         let link = banks_client.get_account(pubkey).await.unwrap().unwrap();
-        Ok(Link::from(&link.data[..]))
+        Ok(Link::try_from(&link.data[..]).unwrap())
     }
 
     pub async fn suspend_link(

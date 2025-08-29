@@ -170,12 +170,20 @@ impl Orchestrator {
             // Perform batch writes to ledger
             if !dry_run {
                 let payer_signer = load_keypair(&keypair_path)?;
+
+                // Validate keypair matches ProgramConfig
+                ledger_operations::validate_rewards_accountant_keypair(
+                    &fetcher.solana_testnet_client,
+                    &payer_signer,
+                )
+                .await?;
+
                 let mut summary = WriteSummary::default();
 
                 // Write device telemetry
                 let device_prefix = self.settings.prefixes.device_telemetry.as_bytes();
                 write_and_track(
-                    &fetcher.rpc_client,
+                    &fetcher.dz_rpc_client,
                     &payer_signer,
                     &[device_prefix, &fetch_epoch.to_le_bytes()],
                     &device_telemetry,
@@ -188,7 +196,7 @@ impl Orchestrator {
                 // Write internet telemetry
                 let internet_prefix = self.settings.prefixes.internet_telemetry.as_bytes();
                 write_and_track(
-                    &fetcher.rpc_client,
+                    &fetcher.dz_rpc_client,
                     &payer_signer,
                     &[internet_prefix, &fetch_epoch.to_le_bytes()],
                     &internet_telemetry,
@@ -201,7 +209,7 @@ impl Orchestrator {
                 // Write reward input
                 let reward_prefix = self.settings.prefixes.reward_input.as_bytes();
                 write_and_track(
-                    &fetcher.rpc_client,
+                    &fetcher.dz_rpc_client,
                     &payer_signer,
                     &[reward_prefix, &fetch_epoch.to_le_bytes()],
                     &input_config,
@@ -219,7 +227,7 @@ impl Orchestrator {
                 };
 
                 write_shapley_output(
-                    &fetcher.rpc_client,
+                    &fetcher.dz_rpc_client,
                     &payer_signer,
                     fetch_epoch,
                     &shapley_storage,
@@ -306,14 +314,14 @@ impl Orchestrator {
     pub async fn read_telemetry_aggregates(
         &self,
         epoch: u64,
-        payer_pubkey: &Pubkey,
+        rewards_accountant: Option<Pubkey>,
         telemetry_type: &str,
         output_csv: Option<PathBuf>,
     ) -> Result<()> {
         ledger_operations::read_telemetry_aggregates(
             &self.settings,
             epoch,
-            payer_pubkey,
+            rewards_accountant,
             telemetry_type,
             output_csv,
         )
@@ -324,19 +332,23 @@ impl Orchestrator {
         &self,
         contributor: &Pubkey,
         epoch: u64,
-        payer_pubkey: &Pubkey,
+        rewards_accountant: Option<Pubkey>,
     ) -> Result<()> {
         ledger_operations::check_contributor_reward(
             &self.settings,
             contributor,
             epoch,
-            payer_pubkey,
+            rewards_accountant,
         )
         .await
     }
 
-    pub async fn read_reward_input(&self, epoch: u64, payer_pubkey: &Pubkey) -> Result<()> {
-        ledger_operations::read_reward_input(&self.settings, epoch, payer_pubkey).await
+    pub async fn read_reward_input(
+        &self,
+        epoch: u64,
+        rewards_accountant: Option<Pubkey>,
+    ) -> Result<()> {
+        ledger_operations::read_reward_input(&self.settings, epoch, rewards_accountant).await
     }
 
     pub async fn realloc_record(
@@ -384,13 +396,21 @@ impl Orchestrator {
         if !dry_run {
             use crate::calculator::keypair_loader::load_keypair;
             let payer_signer = load_keypair(&keypair_path)?;
+
+            // Validate keypair matches ProgramConfig
+            ledger_operations::validate_rewards_accountant_keypair(
+                &fetcher.solana_testnet_client,
+                &payer_signer,
+            )
+            .await?;
+
             let mut summary = ledger_operations::WriteSummary::default();
 
             // Write device telemetry if requested
             if telemetry_type == "device" || telemetry_type == "all" {
                 let device_prefix = self.settings.prefixes.device_telemetry.as_bytes();
                 ledger_operations::write_and_track(
-                    &fetcher.rpc_client,
+                    &fetcher.dz_rpc_client,
                     &payer_signer,
                     &[device_prefix, &fetch_epoch.to_le_bytes()],
                     &device_telemetry,
@@ -405,7 +425,7 @@ impl Orchestrator {
             if telemetry_type == "internet" || telemetry_type == "all" {
                 let inet_prefix = self.settings.prefixes.internet_telemetry.as_bytes();
                 ledger_operations::write_and_track(
-                    &fetcher.rpc_client,
+                    &fetcher.dz_rpc_client,
                     &payer_signer,
                     &[inet_prefix, &fetch_epoch.to_le_bytes()],
                     &internet_telemetry,
@@ -452,9 +472,10 @@ impl Orchestrator {
     pub async fn inspect_records(
         &self,
         epoch: u64,
-        payer_pubkey: &Pubkey,
+        rewards_accountant: Option<Pubkey>,
         record_type: Option<String>,
     ) -> Result<()> {
-        ledger_operations::inspect_records(&self.settings, epoch, payer_pubkey, record_type).await
+        ledger_operations::inspect_records(&self.settings, epoch, rewards_accountant, record_type)
+            .await
     }
 }

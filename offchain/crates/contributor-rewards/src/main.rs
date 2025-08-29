@@ -35,13 +35,13 @@ pub enum Commands {
         #[arg(short, long)]
         output_dir: Option<PathBuf>,
 
-        /// Path to the keypair file to use for signing transactions. Optional.
-        #[arg(short = 'k', long)]
-        keypair: Option<PathBuf>,
-
         /// Run in dry-run mode (skip writing to ledger, show what would be written). Optional.
         #[arg(long)]
         dry_run: bool,
+
+        /// Path to the keypair file to use for signing transactions. Required unless --dry-run is set.
+        #[arg(short = 'k', long, required_unless_present = "dry_run")]
+        keypair: Option<PathBuf>,
     },
     /// Read telemetry aggregates from the ledger
     ReadTelemAgg {
@@ -49,9 +49,9 @@ pub enum Commands {
         #[arg(short, long)]
         epoch: u64,
 
-        /// Payer's public key (e.g., DZF's public key) used for address derivation. Required.
-        #[arg(short = 'p', long)]
-        payer_pubkey: Pubkey,
+        /// Rewards accountant public key used for address derivation (auto-fetched if not provided). Optional.
+        #[arg(short = 'r', long)]
+        rewards_accountant: Option<Pubkey>,
 
         /// Type of telemetry to read (choose between: device, internet, or all). Optional. Default to all.
         #[arg(short = 't', long, default_value = "all")]
@@ -71,9 +71,9 @@ pub enum Commands {
         #[arg(short, long)]
         epoch: u64,
 
-        /// Payer's public key (e.g., DZF's public key) used for address derivation (base58 string). Required.
-        #[arg(short = 'p', long)]
-        payer_pubkey: Pubkey,
+        /// Rewards accountant public key used for address derivation (auto-fetched if not provided). Optional.
+        #[arg(short = 'r', long)]
+        rewards_accountant: Option<Pubkey>,
     },
     /// Read reward input configuration from the ledger
     ReadRewardInput {
@@ -81,9 +81,9 @@ pub enum Commands {
         #[arg(short, long)]
         epoch: u64,
 
-        /// Payer's public key (e.g., DZF's public key) used for address derivation (base58 string). Required.
-        #[arg(short = 'p', long)]
-        payer_pubkey: Pubkey,
+        /// Rewards accountant public key used for address derivation (auto-fetched if not provided). Optional.
+        #[arg(short = 'r', long)]
+        rewards_accountant: Option<Pubkey>,
     },
     /// Realloc a record account
     ReallocRecord {
@@ -103,8 +103,8 @@ pub enum Commands {
         #[arg(long)]
         dry_run: bool,
 
-        /// Path to the keypair file to use for signing transactions. Optional.
-        #[arg(short, long)]
+        /// Path to the keypair file to use for signing transactions. Required unless --dry-run is set.
+        #[arg(short = 'k', long, required_unless_present = "dry_run")]
         keypair: Option<PathBuf>,
     },
     /// Close a record account
@@ -121,8 +121,8 @@ pub enum Commands {
         #[arg(long)]
         dry_run: bool,
 
-        /// Path to the keypair file to use for signing transactions. Optional.
-        #[arg(short = 'k', long)]
+        /// Path to the keypair file to use for signing transactions. Required unless --dry-run is set.
+        #[arg(short, long, required_unless_present = "dry_run")]
         keypair: Option<PathBuf>,
     },
     /// Write telemetry aggregates to the ledger (without calculating rewards)
@@ -131,10 +131,6 @@ pub enum Commands {
         #[arg(short, long)]
         epoch: Option<u64>,
 
-        /// Path to the keypair file to use for signing transactions. Optional.
-        #[arg(short = 'k', long)]
-        keypair: Option<PathBuf>,
-
         /// Run in dry-run mode (skip writing to ledger, show what would be written). Optional.
         #[arg(long)]
         dry_run: bool,
@@ -142,6 +138,10 @@ pub enum Commands {
         /// Type of telemetry to write (device, internet, or all). Required.
         #[arg(short = 't', long, default_value = "all")]
         r#type: String,
+
+        /// Path to the keypair file to use for signing transactions. Required unless --dry-run is set.
+        #[arg(short = 'k', long, required_unless_present = "dry_run")]
+        keypair: Option<PathBuf>,
     },
     /// Inspect record accounts for a given epoch
     Inspect {
@@ -149,9 +149,9 @@ pub enum Commands {
         #[arg(short, long)]
         epoch: u64,
 
-        /// Payer's public key (e.g., DZF's public key) used for address derivation (base58 string). Required.
-        #[arg(short = 'p', long)]
-        payer_pubkey: Pubkey,
+        /// Rewards accountant public key used for address derivation (auto-fetched if not provided). Optional.
+        #[arg(short = 'r', long)]
+        rewards_accountant: Option<Pubkey>,
 
         /// Type of record to inspect (optional, shows all if not specified). Optional.
         #[arg(short = 't', long)]
@@ -174,27 +174,31 @@ impl Cli {
         match self.command {
             Commands::ReadTelemAgg {
                 epoch,
-                payer_pubkey,
+                rewards_accountant,
                 r#type,
                 output_csv,
             } => {
                 orchestrator
-                    .read_telemetry_aggregates(epoch, &payer_pubkey, &r#type, output_csv)
+                    .read_telemetry_aggregates(epoch, rewards_accountant, &r#type, output_csv)
                     .await
             }
             Commands::CheckReward {
                 contributor,
                 epoch,
-                payer_pubkey,
+                rewards_accountant,
             } => {
                 orchestrator
-                    .check_contributor_reward(&contributor, epoch, &payer_pubkey)
+                    .check_contributor_reward(&contributor, epoch, rewards_accountant)
                     .await
             }
             Commands::ReadRewardInput {
                 epoch,
-                payer_pubkey,
-            } => orchestrator.read_reward_input(epoch, &payer_pubkey).await,
+                rewards_accountant,
+            } => {
+                orchestrator
+                    .read_reward_input(epoch, rewards_accountant)
+                    .await
+            }
             Commands::CalculateRewards {
                 epoch,
                 output_dir,
@@ -238,11 +242,11 @@ impl Cli {
             }
             Commands::Inspect {
                 epoch,
-                payer_pubkey,
+                rewards_accountant,
                 r#type,
             } => {
                 orchestrator
-                    .inspect_records(epoch, &payer_pubkey, r#type)
+                    .inspect_records(epoch, rewards_accountant, r#type)
                     .await
             }
         }

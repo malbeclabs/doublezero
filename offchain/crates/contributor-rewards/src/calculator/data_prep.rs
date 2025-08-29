@@ -37,7 +37,7 @@ impl PreparedData {
             // Calculate expected internet telemetry links
             let expected_inet_samples = expected_inet_links(&fetch_data);
             let (inet_epoch, internet_data) = internet::fetch_with_accumulator(
-                &fetcher.rpc_client,
+                &fetcher.dz_rpc_client,
                 &fetcher.settings,
                 fetch_epoch,
                 expected_inet_samples,

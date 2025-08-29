@@ -12,7 +12,7 @@ use tracing::info;
 /// Combined network and telemetry data
 #[derive(Clone)]
 pub struct Fetcher {
-    pub rpc_client: Arc<RpcClient>,
+    pub dz_rpc_client: Arc<RpcClient>,
     pub solana_mainnet_client: Arc<RpcClient>,
     pub solana_testnet_client: Arc<RpcClient>,
     pub settings: Settings,
@@ -20,7 +20,7 @@ pub struct Fetcher {
 
 impl Fetcher {
     pub fn from_settings(settings: &Settings) -> Result<Self> {
-        let rpc_client = RpcClient::new_with_commitment(
+        let dz_rpc_client = RpcClient::new_with_commitment(
             settings.rpc.dz_url.to_string(),
             CommitmentConfig::finalized(),
         );
@@ -33,7 +33,7 @@ impl Fetcher {
             CommitmentConfig::finalized(),
         );
         Ok(Self {
-            rpc_client: Arc::new(rpc_client),
+            dz_rpc_client: Arc::new(dz_rpc_client),
             solana_mainnet_client: Arc::new(solana_mainnet_client),
             solana_testnet_client: Arc::new(solana_testnet_client),
             settings: settings.clone(),
@@ -43,7 +43,7 @@ impl Fetcher {
     /// Fetch all data for the previous epoch
     pub async fn fetch(&self) -> Result<(u64, FetchData)> {
         // Get DZ epoch info from DZ RPC
-        let dz_epoch_info = self.rpc_client.get_epoch_info().await?;
+        let dz_epoch_info = self.dz_rpc_client.get_epoch_info().await?;
         info!("Current dz_epoch: {}", dz_epoch_info.epoch);
         let dz_prev_epoch = dz_epoch_info.epoch.saturating_sub(1);
         info!("Fetching data for previous DZ epoch: {}", dz_prev_epoch);
@@ -63,9 +63,9 @@ impl Fetcher {
 
         // Fetch all data in parallel
         let (serviceability_data, telemetry_data, internet_data) = tokio::try_join!(
-            serviceability::fetch(&self.rpc_client, &self.settings),
-            telemetry::fetch(&self.rpc_client, &self.settings, epoch),
-            internet::fetch(&self.rpc_client, &self.settings, epoch)
+            serviceability::fetch(&self.dz_rpc_client, &self.settings),
+            telemetry::fetch(&self.dz_rpc_client, &self.settings, epoch),
+            internet::fetch(&self.dz_rpc_client, &self.settings, epoch)
         )?;
 
         let (start_us, end_us) = telemetry_data.start_end_us()?;

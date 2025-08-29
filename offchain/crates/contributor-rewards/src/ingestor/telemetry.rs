@@ -27,7 +27,7 @@ const ACCOUNT_TYPE_DISCRIMINATOR: u8 = AccountType::DeviceLatencySamples as u8;
 
 /// Fetch telemetry data for a specific epoch using RPC filtering
 pub async fn fetch(
-    rpc_client: &RpcClient,
+    dz_rpc_client: &RpcClient,
     settings: &Settings,
     epoch: u64,
 ) -> Result<DZDTelemetryData> {
@@ -57,7 +57,7 @@ pub async fn fetch(
 
     let start = Instant::now();
     let accounts = (|| async {
-        rpc_client
+        dz_rpc_client
             .get_program_accounts_with_config(&program_pubkey, config.clone())
             .await
     })

@@ -15,7 +15,9 @@ use crate::{
 use anyhow::{Result, anyhow, bail};
 use backon::{ExponentialBuilder, Retryable};
 use borsh::BorshSerialize;
+use doublezero_program_tools::zero_copy;
 use doublezero_record::{instruction as record_ix, state::RecordData};
+use doublezero_revenue_distribution::state::ProgramConfig;
 use solana_client::{
     client_error::ClientError as SolanaClientError, nonblocking::rpc_client::RpcClient,
 };
@@ -42,6 +44,60 @@ fn get_contributor_rewards_prefix(settings: &Settings) -> Result<Vec<u8>> {
 
 fn get_reward_input_prefix(settings: &Settings) -> Result<Vec<u8>> {
     Ok(settings.prefixes.reward_input.as_bytes().to_vec())
+}
+
+// ========== PROGRAMCONFIG HELPERS ==========
+
+/// Fetch the rewards_accountant from ProgramConfig, with optional override
+pub async fn get_rewards_accountant(
+    rpc_client: &RpcClient,
+    override_pubkey: Option<Pubkey>,
+) -> Result<Pubkey> {
+    if let Some(pubkey) = override_pubkey {
+        info!("Using provided rewards_accountant: {}", pubkey);
+        return Ok(pubkey);
+    }
+
+    let (program_config_address, _) = ProgramConfig::find_address();
+    debug!(
+        "Fetching rewards_accountant from ProgramConfig PDA: {}",
+        program_config_address
+    );
+
+    let account = rpc_client.get_account(&program_config_address).await?;
+
+    let program_config =
+        zero_copy::checked_from_bytes_with_discriminator::<ProgramConfig>(&account.data)
+            .ok_or_else(|| anyhow!("Failed to deserialize ProgramConfig"))?
+            .0;
+
+    let rewards_accountant = program_config.rewards_accountant_key;
+    info!(
+        "Retrieved rewards_accountant from ProgramConfig: {}",
+        rewards_accountant
+    );
+
+    Ok(rewards_accountant)
+}
+
+/// Validate that a keypair matches the rewards_accountant in ProgramConfig
+pub async fn validate_rewards_accountant_keypair(
+    rpc_client: &RpcClient,
+    keypair: &Keypair,
+) -> Result<()> {
+    let expected = get_rewards_accountant(rpc_client, None).await?;
+    let actual = keypair.pubkey();
+
+    if actual != expected {
+        bail!(
+            "Keypair pubkey {} doesn't match ProgramConfig rewards_accountant {}",
+            actual,
+            expected
+        );
+    }
+
+    info!("Keypair validated: matches rewards_accountant in ProgramConfig");
+    Ok(())
 }
 
 /// Result of a write operation
@@ -91,7 +147,6 @@ impl WriteSummary {
 
 impl fmt::Display for WriteSummary {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "=========================================")?;
         writeln!(f, "Ledger Write Summary")?;
         writeln!(f, "=========================================")?;
         writeln!(
@@ -159,7 +214,7 @@ pub async fn write_and_track<T: BorshSerialize>(
 pub async fn read_telemetry_aggregates(
     settings: &Settings,
     epoch: u64,
-    payer_pubkey: &Pubkey,
+    rewards_accountant: Option<Pubkey>,
     telemetry_type: &str,
     output_csv: Option<PathBuf>,
 ) -> Result<()> {
@@ -174,6 +229,10 @@ pub async fn read_telemetry_aggregates(
     // Create fetcher
     let fetcher = Fetcher::from_settings(settings)?;
 
+    // Auto-fetch rewards_accountant if not provided
+    let rewards_accountant =
+        get_rewards_accountant(&fetcher.solana_testnet_client, rewards_accountant).await?;
+
     let mut device_stats: Option<DZDTelemetryStatMap> = None;
     let mut internet_stats: Option<InternetTelemetryStatMap> = None;
 
@@ -182,13 +241,13 @@ pub async fn read_telemetry_aggregates(
         let prefix = get_device_telemetry_prefix(settings)?;
         let epoch_bytes = epoch.to_le_bytes();
         let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
-        let record_key = compute_record_address(payer_pubkey, seeds)?;
+        let record_key = compute_record_address(&rewards_accountant, seeds)?;
 
         debug!("Re-created record_key: {record_key}");
 
         let maybe_account = (|| async {
             fetcher
-                .rpc_client
+                .dz_rpc_client
                 .get_account_with_commitment(&record_key, CommitmentConfig::confirmed())
                 .await
         })
@@ -217,13 +276,13 @@ pub async fn read_telemetry_aggregates(
         let prefix = get_internet_telemetry_prefix(settings)?;
         let epoch_bytes = epoch.to_le_bytes();
         let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
-        let record_key = compute_record_address(payer_pubkey, seeds)?;
+        let record_key = compute_record_address(&rewards_accountant, seeds)?;
 
         debug!("Re-created record_key: {record_key}");
 
         let maybe_account = (|| async {
             fetcher
-                .rpc_client
+                .dz_rpc_client
                 .get_account_with_commitment(&record_key, CommitmentConfig::confirmed())
                 .await
         })
@@ -341,21 +400,25 @@ pub async fn read_telemetry_aggregates(
 pub async fn read_reward_input(
     settings: &Settings,
     epoch: u64,
-    payer_pubkey: &Pubkey,
+    rewards_accountant: Option<Pubkey>,
 ) -> Result<()> {
     // Create fetcher
     let fetcher = Fetcher::from_settings(settings)?;
 
+    // Auto-fetch rewards_accountant if not provided
+    let rewards_accountant =
+        get_rewards_accountant(&fetcher.solana_testnet_client, rewards_accountant).await?;
+
     let prefix = get_reward_input_prefix(settings)?;
     let epoch_bytes = epoch.to_le_bytes();
     let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
-    let record_key = compute_record_address(payer_pubkey, seeds)?;
+    let record_key = compute_record_address(&rewards_accountant, seeds)?;
 
     debug!("Fetching calculation input from: {}", record_key);
 
     let maybe_account = (|| async {
         fetcher
-            .rpc_client
+            .dz_rpc_client
             .get_account_with_commitment(&record_key, CommitmentConfig::confirmed())
             .await
     })
@@ -443,10 +506,10 @@ pub async fn check_contributor_reward(
     settings: &Settings,
     contributor_pubkey: &Pubkey,
     epoch: u64,
-    payer_pubkey: &Pubkey,
+    rewards_accountant: Option<Pubkey>,
 ) -> Result<()> {
     // Fetch the shapley output storage
-    let shapley_storage = read_shapley_output(settings, epoch, payer_pubkey).await?;
+    let shapley_storage = read_shapley_output(settings, epoch, rewards_accountant).await?;
 
     // Generate proof dynamically
     debug!(
@@ -561,19 +624,24 @@ pub async fn write_shapley_output(
 pub async fn read_shapley_output(
     settings: &Settings,
     epoch: u64,
-    payer_pubkey: &Pubkey,
+    rewards_accountant: Option<Pubkey>,
 ) -> Result<ShapleyOutputStorage> {
     let fetcher = Fetcher::from_settings(settings)?;
+
+    // Auto-fetch rewards_accountant if not provided
+    let rewards_accountant =
+        get_rewards_accountant(&fetcher.solana_testnet_client, rewards_accountant).await?;
+
     let prefix = get_contributor_rewards_prefix(settings)?;
     let epoch_bytes = epoch.to_le_bytes();
     let seeds: &[&[u8]] = &[&prefix, &epoch_bytes, b"shapley_output"];
-    let storage_key = compute_record_address(payer_pubkey, seeds)?;
+    let storage_key = compute_record_address(&rewards_accountant, seeds)?;
 
     debug!("Fetching shapley output from: {}", storage_key);
 
     let maybe_account = (|| async {
         fetcher
-            .rpc_client
+            .dz_rpc_client
             .get_account_with_commitment(&storage_key, CommitmentConfig::confirmed())
             .await
     })
@@ -615,6 +683,9 @@ pub async fn realloc_record(
     // Create fetcher for RPC client
     let fetcher = Fetcher::from_settings(settings)?;
 
+    // Validate keypair matches ProgramConfig
+    validate_rewards_accountant_keypair(&fetcher.solana_testnet_client, &payer_signer).await?;
+
     // Determine the prefix and compute the record address based on record type
     let epoch_bytes = epoch.to_le_bytes();
     let record_key = match r#type {
@@ -649,7 +720,7 @@ pub async fn realloc_record(
     // Check if the account exists
     let maybe_account = (|| async {
         fetcher
-            .rpc_client
+            .dz_rpc_client
             .get_account_with_commitment(&record_key, CommitmentConfig::confirmed())
             .await
     })
@@ -667,7 +738,7 @@ pub async fn realloc_record(
     let realloc_ix = record_ix::reallocate(&record_key, &payer_signer.pubkey(), size);
 
     // Create and send transaction
-    let recent_blockhash = (|| async { fetcher.rpc_client.get_latest_blockhash().await })
+    let recent_blockhash = (|| async { fetcher.dz_rpc_client.get_latest_blockhash().await })
         .retry(&ExponentialBuilder::default().with_jitter())
         .notify(|err: &SolanaClientError, dur: Duration| {
             info!("retrying error: {:?} with sleeping {:?}", err, dur)
@@ -680,7 +751,7 @@ pub async fn realloc_record(
     if !dry_run {
         let signature = (|| async {
             fetcher
-                .rpc_client
+                .dz_rpc_client
                 .send_and_confirm_transaction_with_spinner_and_commitment(
                     &transaction,
                     CommitmentConfig::confirmed(),
@@ -716,6 +787,9 @@ pub async fn close_record(
     // Create fetcher for RPC client
     let fetcher = Fetcher::from_settings(settings)?;
 
+    // Validate keypair matches ProgramConfig
+    validate_rewards_accountant_keypair(&fetcher.solana_testnet_client, &payer_signer).await?;
+
     // Determine the prefix and compute the record address based on record type
     let epoch_bytes = epoch.to_le_bytes();
     let record_key = match r#type {
@@ -750,7 +824,7 @@ pub async fn close_record(
     // Check if the account exists
     let maybe_account = (|| async {
         fetcher
-            .rpc_client
+            .dz_rpc_client
             .get_account_with_commitment(&record_key, CommitmentConfig::confirmed())
             .await
     })
@@ -772,7 +846,7 @@ pub async fn close_record(
     );
 
     // Create and send transaction
-    let recent_blockhash = (|| async { fetcher.rpc_client.get_latest_blockhash().await })
+    let recent_blockhash = (|| async { fetcher.dz_rpc_client.get_latest_blockhash().await })
         .retry(&ExponentialBuilder::default().with_jitter())
         .notify(|err: &SolanaClientError, dur: Duration| {
             info!("retrying error: {:?} with sleeping {:?}", err, dur)
@@ -785,7 +859,7 @@ pub async fn close_record(
     if !dry_run {
         let signature = (|| async {
             fetcher
-                .rpc_client
+                .dz_rpc_client
                 .send_and_confirm_transaction_with_spinner_and_commitment(
                     &transaction,
                     CommitmentConfig::confirmed(),
@@ -810,10 +884,14 @@ pub async fn close_record(
 pub async fn inspect_records(
     settings: &Settings,
     epoch: u64,
-    payer_pubkey: &Pubkey,
+    rewards_accountant: Option<Pubkey>,
     record_type: Option<String>,
 ) -> Result<()> {
     let fetcher = Fetcher::from_settings(settings)?;
+
+    // Auto-fetch rewards_accountant if not provided
+    let rewards_accountant =
+        get_rewards_accountant(&fetcher.solana_testnet_client, rewards_accountant).await?;
     let epoch_bytes = epoch.to_le_bytes();
 
     // Define all record types to inspect
@@ -850,22 +928,22 @@ pub async fn inspect_records(
             "device-telemetry" => {
                 let prefix = get_device_telemetry_prefix(settings)?;
                 let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
-                compute_record_address(payer_pubkey, seeds)?
+                compute_record_address(&rewards_accountant, seeds)?
             }
             "internet-telemetry" => {
                 let prefix = get_internet_telemetry_prefix(settings)?;
                 let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
-                compute_record_address(payer_pubkey, seeds)?
+                compute_record_address(&rewards_accountant, seeds)?
             }
             "reward-input" => {
                 let prefix = get_reward_input_prefix(settings)?;
                 let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
-                compute_record_address(payer_pubkey, seeds)?
+                compute_record_address(&rewards_accountant, seeds)?
             }
             "contributor-rewards" => {
                 let prefix = get_contributor_rewards_prefix(settings)?;
                 let seeds: &[&[u8]] = &[&prefix, &epoch_bytes, b"shapley_output"];
-                compute_record_address(payer_pubkey, seeds)?
+                compute_record_address(&rewards_accountant, seeds)?
             }
             _ => bail!("Unknown record type: {}", r_type),
         };
@@ -873,7 +951,7 @@ pub async fn inspect_records(
         // Try to fetch the account
         let maybe_account = (|| async {
             fetcher
-                .rpc_client
+                .dz_rpc_client
                 .get_account_with_commitment(&record_key, CommitmentConfig::confirmed())
                 .await
         })

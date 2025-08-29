@@ -14,6 +14,9 @@ All notable changes to this project will be documented in this file.
     - Updated command arguments and logic, with tests adjusted to cover new options.
     - Contributors: Interface creation no longer takes an "interface type (physical/loopback)" argument. The type is now inferred from the interface name.
 
+- Device controller
+    - Use serviceability onchain delay for link metrics
+
 ## [v0.6.0](https://github.com/malbeclabs/doublezero/compare/client/v0.5.3...client/v0.6.0) – 2025-08-28
 
 ### Breaking

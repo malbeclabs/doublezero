@@ -49,6 +49,20 @@ var (
 		Name: "controller_cache_update_ops_total",
 		Help: "The total number of cache update ops",
 	})
+
+	// link metrics
+	linkMetrics = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "controller_link_metrics",
+		Help: "Metrics for device links",
+	},
+		[]string{"device_code", "interface", "device_pubkey"},
+	)
+	linkMetricInvalid = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "controller_link_metrics_invalid_total",
+		Help: "The total number of invalid link metrics",
+	},
+		[]string{"link_pubkey", "device_code", "interface"},
+	)
 )
 
 func init() {

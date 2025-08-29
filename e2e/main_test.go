@@ -318,7 +318,7 @@ func (dn *TestDevnet) WaitForAgentConfigMatchViaController(t *testing.T, deviceA
 		if err != nil {
 			return fmt.Errorf("error while fetching config: %w", err)
 		}
-		diff = cmp.Diff(config, got.Config)
+		diff = cmp.Diff(got.Config, config)
 		if diff == "" {
 			return nil
 		}

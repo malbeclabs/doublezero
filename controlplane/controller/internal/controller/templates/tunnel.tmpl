@@ -100,12 +100,14 @@ interface {{ .Name }}
    {{- if and .IsVpnv4Loopback .NodeSegmentIdx}}
    node-segment ipv4 index {{ .NodeSegmentIdx }}
    {{- end }}
-   {{- if and .Ip.IsValid (or .IsLoopback .IsPhysical (not .IsSubInterfaceParent)) }}
+   {{- if and .Ip.IsValid .IsLoopback }}
    isis enable 1
    {{- end }}
-   {{- if and .IsPhysical .Ip.IsValid (not .IsSubInterfaceParent) }}
+   {{- if and .Ip.IsValid .IsPhysical .Metric .IsLink (not .IsSubInterfaceParent) }}
+   isis enable 1
    isis circuit-type level-2
    isis hello-interval 1
+   isis metric {{ .Metric }}
    isis hello padding
    isis network point-to-point
    {{- end }}

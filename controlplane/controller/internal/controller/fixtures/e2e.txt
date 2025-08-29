@@ -81,6 +81,7 @@ interface Switch1/1/1
    isis enable 1
    isis circuit-type level-2
    isis hello-interval 1
+   isis metric 400000
    isis hello padding
    isis network point-to-point
 !
@@ -96,6 +97,7 @@ interface Switch1/1/2.100
    isis enable 1
    isis circuit-type level-2
    isis hello-interval 1
+   isis metric 1
    isis hello padding
    isis network point-to-point
 !

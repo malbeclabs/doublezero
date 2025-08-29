@@ -65,6 +65,7 @@ interface Ethernet2
    isis enable 1
    isis circuit-type level-2
    isis hello-interval 1
+   isis metric 40000
    isis hello padding
    isis network point-to-point
 !
@@ -84,6 +85,7 @@ interface Vlan4001
    isis enable 1
    isis circuit-type level-2
    isis hello-interval 1
+   isis metric 30000
    isis hello padding
    isis network point-to-point
 !

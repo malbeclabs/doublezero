@@ -69,6 +69,24 @@ interface Loopback255
    node-segment ipv4 index 15
    isis enable 1
 !
+interface Ethernet1/1
+   mtu 2048
+   no switchport
+   ip address 172.16.0.2/31
+   pim ipv4 sparse-mode
+   isis enable 1
+   isis circuit-type level-2
+   isis hello-interval 1
+   isis metric 40000
+   isis hello padding
+   isis network point-to-point
+!
+interface Ethernet1/2
+   mtu 2048
+   no switchport
+   ip address 172.16.0.4/31
+   pim ipv4 sparse-mode
+!
 interface Loopback1000
    description RP Address
    ip address 10.0.0.0/32

@@ -388,6 +388,20 @@ func TestGetConfig(t *testing.T) {
 								Ip:             netip.MustParsePrefix("14.14.14.14/32"),
 								NodeSegmentIdx: 15,
 							},
+							{
+								Name:          "Ethernet1/1",
+								InterfaceType: InterfaceTypePhysical,
+								Ip:            netip.MustParsePrefix("172.16.0.2/31"),
+								Metric:        40000,
+								IsLink:        true,
+							},
+							{
+								Name:          "Ethernet1/2",
+								InterfaceType: InterfaceTypePhysical,
+								Ip:            netip.MustParsePrefix("172.16.0.4/31"),
+								Metric:        40000,
+								IsLink:        false, // make sure we don't render an isis config since it's not in a link
+							},
 						},
 					},
 				},
@@ -534,6 +548,7 @@ func TestStateCache(t *testing.T) {
 		Config          serviceability.Config
 		Users           []serviceability.User
 		Devices         []serviceability.Device
+		Links           []serviceability.Link
 		MulticastGroups []serviceability.MulticastGroup
 		StateCache      stateCache
 	}{
@@ -600,10 +615,44 @@ func TestStateCache(t *testing.T) {
 							IpNet:         [5]uint8{12, 12, 12, 12, 32},
 							Name:          "Loopback256",
 						},
+						{
+							InterfaceType: serviceability.InterfaceTypePhysical,
+							Name:          "Ethernet1/1",
+							IpNet:         [5]uint8{172, 16, 0, 2, 31},
+							Status:        serviceability.InterfaceStatusActivated,
+						},
+						{
+							InterfaceType: serviceability.InterfaceTypePhysical,
+							Name:          "Ethernet1/2",
+							IpNet:         [5]uint8{172, 16, 0, 4, 31},
+							Status:        serviceability.InterfaceStatusActivated,
+						},
 					},
 					Status: serviceability.DeviceStatusActivated,
 					Code:   "abc01",
 					PubKey: [32]byte{1},
+				},
+			},
+			Links: []serviceability.Link{
+				{
+					AccountType:    serviceability.LinkType,
+					Owner:          [32]uint8{},
+					SideAPubKey:    [32]uint8{1},
+					SideZPubKey:    [32]uint8{2},
+					DelayNs:        400000000,
+					Status:         serviceability.LinkStatusActivated,
+					SideAIfaceName: "Ethernet1/1",
+					SideZIfaceName: "Ethernet1/1",
+				},
+				{
+					AccountType:    serviceability.LinkType,
+					Owner:          [32]uint8{},
+					SideAPubKey:    [32]uint8{1},
+					SideZPubKey:    [32]uint8{2},
+					DelayNs:        1000,
+					Status:         serviceability.LinkStatusActivated,
+					SideAIfaceName: "Ethernet1/2",
+					SideZIfaceName: "Ethernet1/2",
 				},
 			},
 			StateCache: stateCache{
@@ -797,6 +846,20 @@ func TestStateCache(t *testing.T) {
 						TunnelSlots: 128,
 						Interfaces: []Interface{
 							{
+								InterfaceType: InterfaceTypePhysical,
+								Ip:            netip.MustParsePrefix("172.16.0.2/31"),
+								Name:          "Ethernet1/1",
+								IsLink:        true,
+								Metric:        400000,
+							},
+							{
+								InterfaceType: InterfaceTypePhysical,
+								Ip:            netip.MustParsePrefix("172.16.0.4/31"),
+								Name:          "Ethernet1/2",
+								IsLink:        true,
+								Metric:        1,
+							},
+							{
 								InterfaceType: InterfaceTypeLoopback,
 								LoopbackType:  LoopbackTypeVpnv4,
 								Ip:            netip.MustParsePrefix("14.14.14.14/32"),
@@ -872,6 +935,7 @@ func TestStateCache(t *testing.T) {
 						Config:          test.Config,
 						Users:           test.Users,
 						Devices:         test.Devices,
+						Links:           test.Links,
 						MulticastGroups: test.MulticastGroups,
 					}, nil
 				},
@@ -942,6 +1006,7 @@ func TestEndToEnd(t *testing.T) {
 		Config             serviceability.Config
 		Users              []serviceability.User
 		Devices            []serviceability.Device
+		Links              []serviceability.Link
 		MulticastGroups    []serviceability.MulticastGroup
 		InterfacesAndPeers bool
 		AgentRequest       *pb.ConfigRequest
@@ -1030,6 +1095,28 @@ func TestEndToEnd(t *testing.T) {
 							IpNet:         [5]uint8{172, 16, 0, 2, 31},
 						},
 					},
+				},
+			},
+			Links: []serviceability.Link{
+				{
+					AccountType:    serviceability.LinkType,
+					Owner:          [32]uint8{},
+					SideAPubKey:    [32]uint8{1},
+					SideZPubKey:    [32]uint8{2},
+					DelayNs:        400000000,
+					Status:         serviceability.LinkStatusActivated,
+					SideAIfaceName: "Switch1/1/1",
+					SideZIfaceName: "Switch1/1/1",
+				},
+				{
+					AccountType:    serviceability.LinkType,
+					Owner:          [32]uint8{},
+					SideAPubKey:    [32]uint8{1},
+					SideZPubKey:    [32]uint8{2},
+					DelayNs:        1000,
+					Status:         serviceability.LinkStatusActivated,
+					SideAIfaceName: "Switch1/1/2.100",
+					SideZIfaceName: "Switch1/1/2.100",
 				},
 			},
 			AgentRequest: &pb.ConfigRequest{
@@ -1302,6 +1389,7 @@ func TestEndToEnd(t *testing.T) {
 						Config:          test.Config,
 						Users:           test.Users,
 						Devices:         test.Devices,
+						Links:           test.Links,
 						MulticastGroups: test.MulticastGroups,
 					}, nil
 				},

@@ -4,7 +4,7 @@ use crate::requirements::check_doublezero;
 use doublezero_cli::{
     doublezerocommand::CliCommand,
     helpers::init_command,
-    requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON, CHECK_USER_ALLOWLIST},
+    requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON},
 };
 
 use crate::servicecontroller::{RemoveTunnelCliCommand, ServiceController, ServiceControllerImpl};
@@ -44,11 +44,7 @@ impl DecommissioningCliCommand {
         let controller = ServiceControllerImpl::new(None);
 
         // Check that have your id.json
-        check_requirements(
-            client,
-            Some(&spinner),
-            CHECK_ID_JSON | CHECK_BALANCE | CHECK_USER_ALLOWLIST,
-        )?;
+        check_requirements(client, Some(&spinner), CHECK_ID_JSON | CHECK_BALANCE)?;
         check_doublezero(&controller, Some(&spinner))?;
         // READY
         spinner.println("🔍  Decommissioning User");

@@ -71,7 +71,16 @@ async fn main() -> eyre::Result<()> {
     let stdout = std::io::stdout();
     let mut handle = stdout.lock();
 
-    check_version(&client, &mut handle, ProgramVersion::current())?;
+    // Skip version check for Status command to allow checking status of services when the program is running
+    if !matches!(app.command, Command::Status(_))
+        && !matches!(app.command, Command::Address(_))
+        && !matches!(app.command, Command::Balance(_))
+        && !matches!(app.command, Command::Export(_))
+        && !matches!(app.command, Command::Completion(_))
+    {
+        check_version(&client, &mut handle, ProgramVersion::current())?;
+    }
+
     let res = match app.command {
         Command::Address(args) => args.execute(&client, &mut handle),
         Command::Balance(args) => args.execute(&client, &mut handle),

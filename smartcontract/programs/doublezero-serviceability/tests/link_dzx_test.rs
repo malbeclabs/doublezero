@@ -13,7 +13,7 @@ use doublezero_serviceability::{
     state::{
         accounttype::AccountType,
         contributor::ContributorStatus,
-        device::{CurrentInterfaceVersion, DeviceStatus, DeviceType, Interface},
+        device::{DeviceStatus, DeviceType, LoopbackType},
         link::*,
     },
 };
@@ -220,16 +220,33 @@ async fn test_dzx_link() {
             dz_prefixes: "10.1.0.0/24".parse().unwrap(),
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
-            interfaces: vec![Interface::V1(CurrentInterfaceVersion {
-                name: "eth0".to_string(),
-                ..CurrentInterfaceVersion::default()
-            })],
         }),
         vec![
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(contributor1_pubkey, false),
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(exchange_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateDeviceInterface(
+            device::interface::create::DeviceInterfaceCreateArgs {
+                name: "Ethernet0".to_string(),
+                loopback_type: LoopbackType::None,
+                vlan_id: 0,
+                user_tunnel_endpoint: false,
+            },
+        ),
+        vec![
+            AccountMeta::new(device_a_pubkey, false),
+            AccountMeta::new(contributor1_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
@@ -286,16 +303,33 @@ async fn test_dzx_link() {
             dz_prefixes: "11.1.0.0/23".parse().unwrap(),
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
-            interfaces: vec![Interface::V1(CurrentInterfaceVersion {
-                name: "eth1".to_string(),
-                ..CurrentInterfaceVersion::default()
-            })],
         }),
         vec![
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(contributor2_pubkey, false),
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(exchange_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateDeviceInterface(
+            device::interface::create::DeviceInterfaceCreateArgs {
+                name: "Ethernet1".to_string(),
+                loopback_type: LoopbackType::None,
+                vlan_id: 0,
+                user_tunnel_endpoint: false,
+            },
+        ),
+        vec![
+            AccountMeta::new(device_z_pubkey, false),
+            AccountMeta::new(contributor2_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
@@ -356,7 +390,7 @@ async fn test_dzx_link() {
             mtu: 9000,
             delay_ns: 150000,
             jitter_ns: 5000,
-            side_a_iface_name: "eth0".to_string(),
+            side_a_iface_name: "Ethernet0".to_string(),
             side_z_iface_name: None,
         }),
         vec![
@@ -411,7 +445,7 @@ async fn test_dzx_link() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::AcceptLink(LinkAcceptArgs {
-            side_z_iface_name: "eth1".to_string(),
+            side_z_iface_name: "Ethernet1".to_string(),
         }),
         vec![
             AccountMeta::new(tunnel_pubkey, false),
@@ -442,7 +476,7 @@ async fn test_dzx_link() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::AcceptLink(LinkAcceptArgs {
-            side_z_iface_name: "eth1".to_string(),
+            side_z_iface_name: "Ethernet1".to_string(),
         }),
         vec![
             AccountMeta::new(tunnel_pubkey, false),

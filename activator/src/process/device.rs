@@ -2,10 +2,13 @@ use crate::{idallocator::IDAllocator, ipblockallocator::IPBlockAllocator};
 use doublezero_program_common::types::NetworkV4;
 use doublezero_sdk::{
     commands::device::{
-        activate::ActivateDeviceCommand, closeaccount::CloseAccountDeviceCommand,
-        update::UpdateDeviceCommand,
+        activate::ActivateDeviceCommand,
+        closeaccount::CloseAccountDeviceCommand,
+        interface::{
+            activate::ActivateDeviceInterfaceCommand, remove::RemoveDeviceInterfaceCommand,
+        },
     },
-    Device, DeviceStatus, DoubleZeroClient, Interface, InterfaceType, LoopbackType,
+    Device, DeviceStatus, DoubleZeroClient, InterfaceType, LoopbackType,
 };
 use log::{error, info};
 use solana_sdk::pubkey::Pubkey;
@@ -96,11 +99,11 @@ pub fn process_device_event(
         return;
     }
 
-    let mut do_update = false;
-    let mut interfaces = device.interfaces.clone();
-    for interface in interfaces.iter_mut() {
-        let mut iface = interface.into_current_version().clone();
-        if iface.interface_type == InterfaceType::Loopback {
+    for interface in device.interfaces.iter() {
+        let mut iface = interface.into_current_version();
+        if iface.status == doublezero_sdk::InterfaceStatus::Pending
+            && iface.interface_type == InterfaceType::Loopback
+        {
             if iface.node_segment_idx == 0 && iface.loopback_type == LoopbackType::Vpnv4 {
                 let id = segment_routing_ids.next_available();
                 info!(
@@ -108,7 +111,6 @@ pub fn process_device_event(
                     id, device.code, iface.name
                 );
                 iface.node_segment_idx = id;
-                do_update = true;
             }
             if iface.ip_net == NetworkV4::default() {
                 // Assign a loopback IP if not already set
@@ -126,31 +128,50 @@ pub fn process_device_event(
                     "Assigning IP {} to device {} interface {}",
                     iface.ip_net, device.code, iface.name
                 );
-                do_update = true;
             }
-            *interface = Interface::V1(iface);
-        }
-    }
 
-    if do_update {
-        info!("Updating device {}", device.code);
-        UpdateDeviceCommand {
-            pubkey: *pubkey,
-            code: None,
-            device_type: None,
-            public_ip: None,
-            dz_prefixes: None,
-            metrics_publisher: None,
-            contributor_pk: None,
-            mgmt_vrf: None,
-            interfaces: Some(interfaces),
-            max_users: None,
+            let activate = ActivateDeviceInterfaceCommand {
+                pubkey: *pubkey,
+                name: iface.name.clone(),
+                ip_net: iface.ip_net,
+                node_segment_idx: iface.node_segment_idx,
+            };
+
+            if let Err(e) = activate.execute(client) {
+                error!(
+                    "Failed to activate interface {} on device {}: {}",
+                    iface.name, device.code, e
+                );
+            }
+        } else if iface.status == doublezero_sdk::InterfaceStatus::Deleting {
+            if iface.node_segment_idx != 0 {
+                info!(
+                    "Releasing segment routing ID {} from device {} interface {}",
+                    iface.node_segment_idx, device.code, iface.name
+                );
+                segment_routing_ids.unassign(iface.node_segment_idx);
+            }
+
+            if iface.ip_net != NetworkV4::default() {
+                info!(
+                    "Releasing IP {} from device {} interface {}",
+                    iface.node_segment_idx, device.code, iface.name
+                );
+                link_ips.unassign_block(iface.ip_net.into());
+            }
+
+            let removecmd = RemoveDeviceInterfaceCommand {
+                pubkey: *pubkey,
+                name: iface.name.clone(),
+            };
+
+            if let Err(e) = removecmd.execute(client) {
+                error!(
+                    "Failed to remove interface {} on device {}: {}",
+                    iface.name, device.code, e
+                );
+            }
         }
-        .execute(client)
-        .map_err(|err| {
-            error!("Failed to update device {}: {}", device.code, err);
-        })
-        .ok();
     }
 }
 
@@ -166,7 +187,7 @@ mod tests {
         instructions::DoubleZeroInstruction,
         processors::device::{
             activate::DeviceActivateArgs, closeaccount::DeviceCloseAccountArgs,
-            update::DeviceUpdateArgs,
+            interface::activate::DeviceInterfaceActivateArgs,
         },
     };
     use mockall::{predicate, Sequence};
@@ -200,7 +221,7 @@ mod tests {
             interfaces: vec![
                 Interface::V1(CurrentInterfaceVersion {
                     status: InterfaceStatus::Pending,
-                    name: "eth0".to_string(),
+                    name: "Ethernet0".to_string(),
                     interface_type: InterfaceType::Physical,
                     loopback_type: LoopbackType::None,
                     vlan_id: 0,
@@ -210,7 +231,7 @@ mod tests {
                 }),
                 Interface::V1(CurrentInterfaceVersion {
                     status: InterfaceStatus::Pending,
-                    name: "lo0".to_string(),
+                    name: "Loopback0".to_string(),
                     interface_type: InterfaceType::Loopback,
                     loopback_type: LoopbackType::Vpnv4,
                     vlan_id: 0,
@@ -222,13 +243,6 @@ mod tests {
             max_users: 255,
             users_count: 0,
         };
-
-        let mut expected_interfaces = [
-            device.interfaces[0].into_current_version().clone(),
-            device.interfaces[1].into_current_version().clone(),
-        ];
-        expected_interfaces[1].ip_net = "1.1.1.1/32".parse().unwrap();
-        expected_interfaces[1].node_segment_idx = 1;
 
         let mut state_transitions: HashMap<&'static str, usize> = HashMap::new();
 
@@ -242,34 +256,18 @@ mod tests {
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
-        let device_cloned = device.clone();
-        client
-            .expect_get()
-            .times(1)
-            .with(predicate::eq(device_pubkey))
-            .returning(move |_| Ok(AccountData::Device(device_cloned.clone())));
-
         client
             .expect_execute_transaction()
             .times(1)
             .in_sequence(&mut seq)
             .with(
-                predicate::eq(DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
-                    code: None,
-                    device_type: None,
-                    public_ip: None,
-                    dz_prefixes: None,
-                    metrics_publisher_pk: None,
-                    contributor_pk: None,
-                    mgmt_vrf: None,
-                    interfaces: Some(
-                        expected_interfaces
-                            .iter()
-                            .map(|iface| Interface::V1(iface.clone()))
-                            .collect::<Vec<_>>(),
-                    ),
-                    max_users: None,
-                })),
+                predicate::eq(DoubleZeroInstruction::ActivateDeviceInterface(
+                    DeviceInterfaceActivateArgs {
+                        name: "Loopback0".to_string(),
+                        ip_net: "1.1.1.1/32".parse().unwrap(),
+                        node_segment_idx: 1,
+                    },
+                )),
                 predicate::always(),
             )
             .returning(|_, _| Ok(Signature::new_unique()));
@@ -353,8 +351,8 @@ mod tests {
             mgmt_vrf: "default".to_string(),
             interfaces: vec![
                 Interface::V1(CurrentInterfaceVersion {
-                    status: InterfaceStatus::Activated,
-                    name: "eth0".to_string(),
+                    status: InterfaceStatus::Pending,
+                    name: "Ethernet0".to_string(),
                     interface_type: InterfaceType::Physical,
                     loopback_type: LoopbackType::None,
                     vlan_id: 0,
@@ -363,8 +361,8 @@ mod tests {
                     user_tunnel_endpoint: false,
                 }),
                 Interface::V1(CurrentInterfaceVersion {
-                    status: InterfaceStatus::Activated,
-                    name: "lo0".to_string(),
+                    status: InterfaceStatus::Pending,
+                    name: "Loopback0".to_string(),
                     interface_type: InterfaceType::Loopback,
                     loopback_type: LoopbackType::Vpnv4,
                     vlan_id: 0,
@@ -380,40 +378,17 @@ mod tests {
         let mut state_transitions: HashMap<&'static str, usize> = HashMap::new();
         let mut ip_block_allocator = IPBlockAllocator::new("1.1.1.0/24".parse().unwrap());
 
-        let mut expected_interfaces = [
-            device.interfaces[0].into_current_version().clone(),
-            device.interfaces[1].into_current_version().clone(),
-        ];
-        expected_interfaces[1].ip_net = "1.1.1.1/32".parse().unwrap();
-        expected_interfaces[1].node_segment_idx = 1;
-
-        let device_cloned = device.clone();
-        client
-            .expect_get()
-            .times(1)
-            .with(predicate::eq(pubkey))
-            .returning(move |_| Ok(AccountData::Device(device_cloned.clone())));
-
         client
             .expect_execute_transaction()
             .times(1)
             .with(
-                predicate::eq(DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
-                    code: None,
-                    device_type: None,
-                    public_ip: None,
-                    dz_prefixes: None,
-                    metrics_publisher_pk: None,
-                    contributor_pk: None,
-                    mgmt_vrf: None,
-                    interfaces: Some(
-                        expected_interfaces
-                            .iter()
-                            .map(|iface| Interface::V1(iface.clone()))
-                            .collect::<Vec<_>>(),
-                    ),
-                    max_users: None,
-                })),
+                predicate::eq(DoubleZeroInstruction::ActivateDeviceInterface(
+                    DeviceInterfaceActivateArgs {
+                        name: "Loopback0".to_string(),
+                        ip_net: "1.1.1.1/32".parse().unwrap(),
+                        node_segment_idx: 1,
+                    },
+                )),
                 predicate::always(),
             )
             .returning(|_, _| Ok(Signature::new_unique()));
@@ -432,6 +407,16 @@ mod tests {
         assert_eq!(devices.get(&pubkey).unwrap().device, device);
 
         device.dz_prefixes.push("10.0.1.1/24".parse().unwrap());
+
+        let mut expected_interfaces = [
+            device.interfaces[0].into_current_version().clone(),
+            device.interfaces[1].into_current_version().clone(),
+        ];
+
+        expected_interfaces[1].status = InterfaceStatus::Activated;
+        expected_interfaces[1].ip_net = "1.1.1.1/32".parse().unwrap();
+        expected_interfaces[1].node_segment_idx = 1;
+
         device.interfaces = expected_interfaces
             .iter()
             .map(|iface| Interface::V1(iface.clone()))

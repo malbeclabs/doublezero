@@ -1,8 +1,6 @@
-use crate::{
-    doublezerocommand::CliCommand,
-    validators::{validate_iface, validate_pubkey_or_code},
-};
+use crate::{doublezerocommand::CliCommand, validators::validate_pubkey_or_code};
 use clap::Args;
+use doublezero_program_common::validate_iface;
 use doublezero_sdk::commands::device::get::GetDeviceCommand;
 use std::io::Write;
 

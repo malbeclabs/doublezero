@@ -6,7 +6,11 @@ use doublezero_serviceability::{
     processors::{
         accesspass::set::SetAccessPassArgs,
         contributor::create::ContributorCreateArgs,
-        device::{activate::DeviceActivateArgs, create::*},
+        device::{
+            activate::DeviceActivateArgs,
+            create::*,
+            interface::{DeviceInterfaceActivateArgs, DeviceInterfaceCreateArgs},
+        },
         exchange::create::*,
         globalconfig::set::SetGlobalConfigArgs,
         link::{activate::*, create::*},
@@ -306,10 +310,6 @@ async fn test_doublezero_program() {
         dz_prefixes: NetworkV4List::default(),
         metrics_publisher_pk: Pubkey::default(), // Assuming no metrics publisher for this test
         mgmt_vrf: "mgmt".to_string(),
-        interfaces: vec![Interface::V1(CurrentInterfaceVersion {
-            name: "eth0".to_string(),
-            ..CurrentInterfaceVersion::default()
-        })],
     };
 
     println!("Testing Device LA initialization...");
@@ -341,6 +341,48 @@ async fn test_doublezero_program() {
         device_la.index
     );
 
+    println!("Creating LA Device Interfaces...");
+    let device_interface_la = DeviceInterfaceCreateArgs {
+        name: "Ethernet0".to_string(),
+        loopback_type: LoopbackType::None,
+        vlan_id: 0,
+        user_tunnel_endpoint: false,
+    };
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateDeviceInterface(device_interface_la),
+        vec![
+            AccountMeta::new(device_la_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    println!("Activating LA Device Interfaces...");
+    let activate_device_interface_la = DeviceInterfaceActivateArgs {
+        name: "Ethernet0".to_string(),
+        ip_net: "10.0.0.0/31".parse().unwrap(),
+        node_segment_idx: 0,
+    };
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateDeviceInterface(activate_device_interface_la),
+        vec![
+            AccountMeta::new(device_la_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
     println!("Testing Device NY initialization...");
     // Device _ny
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
@@ -355,10 +397,6 @@ async fn test_doublezero_program() {
         dz_prefixes: vec!["10.1.0.1/24".parse().unwrap()].into(),
         metrics_publisher_pk: Pubkey::default(), // Assuming no metrics publisher for this test
         mgmt_vrf: "mgmt".to_string(),
-        interfaces: vec![Interface::V1(CurrentInterfaceVersion {
-            name: "eth1".to_string(),
-            ..CurrentInterfaceVersion::default()
-        })],
     };
 
     execute_transaction(
@@ -437,6 +475,48 @@ async fn test_doublezero_program() {
         device_ny.index
     );
 
+    println!("Creating NY Device Interfaces...");
+    let device_interface_ny = DeviceInterfaceCreateArgs {
+        name: "Ethernet1".to_string(),
+        loopback_type: LoopbackType::None,
+        vlan_id: 0,
+        user_tunnel_endpoint: false,
+    };
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateDeviceInterface(device_interface_ny),
+        vec![
+            AccountMeta::new(device_ny_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    println!("Activating NY Device Interfaces...");
+    let activate_device_interface_ny = DeviceInterfaceActivateArgs {
+        name: "Ethernet1".to_string(),
+        ip_net: "10.0.0.1/31".parse().unwrap(),
+        node_segment_idx: 0,
+    };
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateDeviceInterface(activate_device_interface_ny),
+        vec![
+            AccountMeta::new(device_ny_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
     /***********************************************************************************************************************************/
 
     // Device _la
@@ -452,8 +532,8 @@ async fn test_doublezero_program() {
         mtu: 1900,
         delay_ns: 12_000_000,
         jitter_ns: 1_000_000,
-        side_a_iface_name: "eth0".to_string(),
-        side_z_iface_name: Some("eth1".to_string()),
+        side_a_iface_name: "Ethernet0".to_string(),
+        side_z_iface_name: Some("Ethernet1".to_string()),
     };
 
     println!("Testing Link LA-NY initialization...");

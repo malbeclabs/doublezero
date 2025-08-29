@@ -1698,7 +1698,6 @@ dependencies = [
  "indicatif",
  "ipnetwork",
  "mockall",
- "regex",
  "serde",
  "serde_json",
  "serde_yaml",

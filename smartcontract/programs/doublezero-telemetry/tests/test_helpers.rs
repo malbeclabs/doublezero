@@ -9,7 +9,8 @@ use doublezero_serviceability::{
     processors::{
         contributor::create::ContributorCreateArgs,
         device::{
-            activate::DeviceActivateArgs, create::DeviceCreateArgs, suspend::DeviceSuspendArgs,
+            activate::DeviceActivateArgs, create::DeviceCreateArgs,
+            interface::create::DeviceInterfaceCreateArgs, suspend::DeviceSuspendArgs,
         },
         exchange::{create::ExchangeCreateArgs, suspend::ExchangeSuspendArgs},
         globalconfig::set::SetGlobalConfigArgs,
@@ -17,7 +18,7 @@ use doublezero_serviceability::{
         location::{create::LocationCreateArgs, suspend::LocationSuspendArgs},
     },
     state::{
-        device::{CurrentInterfaceVersion, Device, DeviceType, Interface},
+        device::{Device, DeviceType, LoopbackType},
         exchange::Exchange,
         globalstate::GlobalState,
         link::{Link, LinkLinkType},
@@ -119,7 +120,6 @@ impl DeviceCreateArgsExt for DeviceCreateArgs {
             dz_prefixes: NetworkV4List::default(),
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: String::default(),
-            interfaces: vec![],
         }
     }
 }
@@ -323,16 +323,16 @@ impl LedgerHelper {
                     public_ip: [1, 2, 3, 4].into(),
                     dz_prefixes: NetworkV4List::default(),
                     metrics_publisher_pk: origin_device_agent_pk,
-                    interfaces: vec![Interface::V1(CurrentInterfaceVersion {
-                        name: "eth0".to_string(),
-                        ..CurrentInterfaceVersion::default()
-                    })],
                     ..DeviceCreateArgs::default()
                 },
                 contributor_pk,
                 location_pk,
                 exchange_pk,
             )
+            .await?;
+
+        self.serviceability
+            .create_interface(origin_device_pk, contributor_pk, "Ethernet0".to_string())
             .await?;
 
         // Create and activate target device.
@@ -344,16 +344,16 @@ impl LedgerHelper {
                     device_type: DeviceType::Switch,
                     public_ip: [5, 6, 7, 8].into(),
                     metrics_publisher_pk: Pubkey::new_unique(),
-                    interfaces: vec![Interface::V1(CurrentInterfaceVersion {
-                        name: "eth1".to_string(),
-                        ..CurrentInterfaceVersion::default()
-                    })],
                     ..DeviceCreateArgs::default()
                 },
                 contributor_pk,
                 location_pk,
                 exchange_pk,
             )
+            .await?;
+
+        self.serviceability
+            .create_interface(target_device_pk, contributor_pk, "Ethernet1".to_string())
             .await?;
 
         // Create and activate link.
@@ -367,8 +367,8 @@ impl LedgerHelper {
                     mtu: 1500,
                     delay_ns: 10,
                     jitter_ns: 1,
-                    side_a_iface_name: "eth0".to_string(),
-                    side_z_iface_name: Some("eth1".to_string()),
+                    side_a_iface_name: "Ethernet0".to_string(),
+                    side_z_iface_name: Some("Ethernet1".to_string()),
                 },
                 contributor_pk,
                 origin_device_pk,
@@ -905,7 +905,6 @@ impl ServiceabilityProgramHelper {
                 dz_prefixes: device.dz_prefixes,
                 metrics_publisher_pk: device.metrics_publisher_pk,
                 mgmt_vrf: device.mgmt_vrf,
-                interfaces: device.interfaces.clone(),
             }),
             vec![
                 AccountMeta::new(device_pk, false),
@@ -949,6 +948,28 @@ impl ServiceabilityProgramHelper {
             DoubleZeroInstruction::SuspendDevice(DeviceSuspendArgs),
             vec![
                 AccountMeta::new(pubkey, false),
+                AccountMeta::new(contributor_pk, false),
+                AccountMeta::new(self.global_state_pubkey, false),
+            ],
+        )
+        .await
+    }
+
+    pub async fn create_interface(
+        &mut self,
+        device_pk: Pubkey,
+        contributor_pk: Pubkey,
+        name: String,
+    ) -> Result<(), BanksClientError> {
+        self.execute_transaction(
+            DoubleZeroInstruction::CreateDeviceInterface(DeviceInterfaceCreateArgs {
+                name,
+                loopback_type: LoopbackType::None,
+                vlan_id: 0,
+                user_tunnel_endpoint: false,
+            }),
+            vec![
+                AccountMeta::new(device_pk, false),
                 AccountMeta::new(contributor_pk, false),
                 AccountMeta::new(self.global_state_pubkey, false),
             ],

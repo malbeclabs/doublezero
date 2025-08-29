@@ -1,14 +1,14 @@
 use crate::{
-    device::interface::types::{InterfaceType, LoopbackType},
+    device::interface::types,
     doublezerocommand::CliCommand,
     poll_for_activation::poll_for_device_activated,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
-    validators::{validate_iface, validate_pubkey_or_code},
+    validators::validate_pubkey_or_code,
 };
 use clap::Args;
-use doublezero_sdk::{
-    commands::device::{get::GetDeviceCommand, update::UpdateDeviceCommand},
-    Interface,
+use doublezero_program_common::validate_iface;
+use doublezero_sdk::commands::device::{
+    get::GetDeviceCommand, interface::update::UpdateDeviceInterfaceCommand,
 };
 use std::io::Write;
 
@@ -20,12 +20,9 @@ pub struct UpdateDeviceInterfaceCliCommand {
     /// Interface name
     #[arg(value_parser = validate_iface, required = true)]
     pub name: String,
-    /// Interface type (Loopback or Physical)
-    #[arg(long)]
-    pub interface_type: Option<InterfaceType>,
     /// Loopback type (if applicable)
     #[arg(long)]
-    pub loopback_type: Option<LoopbackType>,
+    pub loopback_type: Option<types::LoopbackType>,
     /// VLAN ID (default: 0, i.e. not set)
     #[arg(long)]
     pub vlan_id: Option<u16>,
@@ -42,7 +39,7 @@ impl UpdateDeviceInterfaceCliCommand {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
-        let (device_pk, mut device) = client
+        let (device_pk, device) = client
             .get_device(GetDeviceCommand {
                 pubkey_or_code: self.pubkey_or_code.clone(),
             })
@@ -53,32 +50,21 @@ impl UpdateDeviceInterfaceCliCommand {
                 )
             })?;
 
-        let idx = device
+        let mut interface = device
             .interfaces
             .iter()
-            .position(|i| i.into_current_version().name.to_lowercase() == self.name.to_lowercase())
+            .find(|i| i.into_current_version().name.to_lowercase() == self.name.to_lowercase())
             .ok_or_else(|| {
                 eyre::eyre!(
                     "Interface with name '{}' does not exist on device '{}'",
                     self.name,
                     self.pubkey_or_code
                 )
-            })?;
+            })?
+            .into_current_version();
 
-        // Take ownership, update, and put back. This will promote old versions to current.
-        let mut interface = device.interfaces[idx].into_current_version();
-
-        if let Some(interface_type) = self.interface_type {
-            interface.interface_type = interface_type.into();
-        }
-        if let Some(loopback_type) = self.loopback_type {
+        if let Some(loopback_type) = self.loopback_type.clone() {
             interface.loopback_type = loopback_type.into();
-        }
-        if let Some(vlan_id) = self.vlan_id {
-            interface.vlan_id = vlan_id;
-        }
-        if let Some(user_tunnel_endpoint) = self.user_tunnel_endpoint {
-            interface.user_tunnel_endpoint = user_tunnel_endpoint;
         }
 
         if interface.interface_type
@@ -101,20 +87,12 @@ impl UpdateDeviceInterfaceCliCommand {
             ));
         }
 
-        // Put the updated interface back
-        device.interfaces[idx] = Interface::V1(interface.clone());
-
-        let signature = client.update_device(UpdateDeviceCommand {
+        let signature = client.update_device_interface(UpdateDeviceInterfaceCommand {
             pubkey: device_pk,
-            code: None,
-            device_type: None,
-            public_ip: None,
-            dz_prefixes: None,
-            metrics_publisher: None,
-            contributor_pk: None,
-            mgmt_vrf: None,
-            interfaces: Some(device.interfaces),
-            max_users: None,
+            name: self.name,
+            loopback_type: self.loopback_type.map(|lt| lt.into()),
+            vlan_id: self.vlan_id,
+            user_tunnel_endpoint: self.user_tunnel_endpoint,
         })?;
         writeln!(out, "Signature: {signature}")?;
 
@@ -129,15 +107,9 @@ impl UpdateDeviceInterfaceCliCommand {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        device::interface::update::UpdateDeviceInterfaceCliCommand,
-        requirements::{CHECK_BALANCE, CHECK_ID_JSON},
-        tests::utils::create_test_client,
-    };
-    use doublezero_sdk::{
-        commands::device::{get::GetDeviceCommand, update::UpdateDeviceCommand},
-        AccountType, CurrentInterfaceVersion, Device, DeviceStatus, DeviceType,
-    };
+    use super::*;
+    use crate::tests::utils::create_test_client;
+    use doublezero_sdk::{AccountType, CurrentInterfaceVersion, Device, DeviceStatus, DeviceType};
     use doublezero_serviceability::state::device::{
         Interface, InterfaceStatus, InterfaceType, LoopbackType,
     };
@@ -170,7 +142,7 @@ mod tests {
             interfaces: vec![
                 Interface::V1(CurrentInterfaceVersion {
                     status: InterfaceStatus::Activated,
-                    name: "eth0".to_string(),
+                    name: "Ethernet0".to_string(),
                     interface_type: InterfaceType::Physical,
                     loopback_type: LoopbackType::None,
                     vlan_id: 0,
@@ -180,7 +152,7 @@ mod tests {
                 }),
                 Interface::V1(CurrentInterfaceVersion {
                     status: InterfaceStatus::Activated,
-                    name: "lo0".to_string(),
+                    name: "Loopback0".to_string(),
                     interface_type: InterfaceType::Loopback,
                     loopback_type: LoopbackType::Vpnv4,
                     vlan_id: 16,
@@ -205,39 +177,13 @@ mod tests {
             .returning(move |_| Ok((device1_pubkey, device1.clone())));
 
         client
-            .expect_update_device()
-            .with(predicate::eq(UpdateDeviceCommand {
+            .expect_update_device_interface()
+            .with(predicate::eq(UpdateDeviceInterfaceCommand {
                 pubkey: device1_pubkey,
-                code: None,
-                device_type: None,
-                public_ip: None,
-                dz_prefixes: None,
-                metrics_publisher: None,
-                contributor_pk: None,
-                mgmt_vrf: None,
-                interfaces: Some(vec![
-                    Interface::V1(CurrentInterfaceVersion {
-                        status: InterfaceStatus::Activated,
-                        name: "eth0".to_string(),
-                        interface_type: InterfaceType::Physical,
-                        loopback_type: LoopbackType::None,
-                        vlan_id: 0,
-                        ip_net: "10.0.0.1/24".parse().unwrap(),
-                        node_segment_idx: 0,
-                        user_tunnel_endpoint: true,
-                    }),
-                    Interface::V1(CurrentInterfaceVersion {
-                        status: InterfaceStatus::Activated,
-                        name: "lo0".to_string(),
-                        interface_type: InterfaceType::Loopback,
-                        loopback_type: LoopbackType::Ipv4,
-                        vlan_id: 20,
-                        ip_net: "10.0.1.1/24".parse().unwrap(),
-                        node_segment_idx: 0,
-                        user_tunnel_endpoint: false,
-                    }),
-                ]),
-                max_users: None,
+                name: "Loopback0".to_string(),
+                loopback_type: Some(LoopbackType::Ipv4),
+                vlan_id: Some(20),
+                user_tunnel_endpoint: None,
             }))
             .times(1)
             .returning(move |_| Ok(signature));
@@ -246,9 +192,8 @@ mod tests {
         let mut output = Vec::new();
         let res = UpdateDeviceInterfaceCliCommand {
             pubkey_or_code: device1_pubkey.to_string(),
-            name: "Lo0".to_string(),
-            interface_type: None,
-            loopback_type: Some(super::LoopbackType::Ipv4),
+            name: "Loopback0".to_string(),
+            loopback_type: Some(types::LoopbackType::Ipv4),
             vlan_id: Some(20),
             user_tunnel_endpoint: None,
             wait: false,

@@ -22,10 +22,19 @@ use crate::{
             update::process_update_contributor,
         },
         device::{
-            activate::process_activate_device, closeaccount::process_closeaccount_device,
-            create::process_create_device, delete::process_delete_device,
-            reject::process_reject_device, resume::process_resume_device,
-            suspend::process_suspend_device, update::process_update_device,
+            activate::process_activate_device,
+            closeaccount::process_closeaccount_device,
+            create::process_create_device,
+            delete::process_delete_device,
+            interface::{
+                activate::process_activate_device_interface,
+                create::process_create_device_interface, delete::process_delete_device_interface,
+                remove::process_remove_device_interface, update::process_update_device_interface,
+            },
+            reject::process_reject_device,
+            resume::process_resume_device,
+            suspend::process_suspend_device,
+            update::process_update_device,
         },
         exchange::{
             create::process_create_exchange, delete::process_delete_exchange,
@@ -307,6 +316,21 @@ pub fn process_instruction(
         }
         DoubleZeroInstruction::CheckUserAccessPass(value) => {
             process_check_access_pass_user(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::ActivateDeviceInterface(value) => {
+            process_activate_device_interface(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::CreateDeviceInterface(value) => {
+            process_create_device_interface(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::DeleteDeviceInterface(value) => {
+            process_delete_device_interface(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::RemoveDeviceInterface(value) => {
+            process_remove_device_interface(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::UpdateDeviceInterface(value) => {
+            process_update_device_interface(program_id, accounts, &value)?
         }
     };
     Ok(())

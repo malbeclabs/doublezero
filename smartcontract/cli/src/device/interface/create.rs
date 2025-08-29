@@ -1,17 +1,15 @@
 use crate::{
-    device::interface::types::{InterfaceType, LoopbackType},
+    device::interface::types,
     doublezerocommand::CliCommand,
     poll_for_activation::poll_for_device_activated,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
-    validators::{validate_iface, validate_pubkey_or_code},
+    validators::validate_pubkey_or_code,
 };
 use clap::Args;
-use doublezero_program_common::types::NetworkV4;
-use doublezero_sdk::{
-    commands::device::{get::GetDeviceCommand, update::UpdateDeviceCommand},
-    CurrentInterfaceVersion,
+use doublezero_program_common::validate_iface;
+use doublezero_sdk::commands::device::{
+    get::GetDeviceCommand, interface::create::CreateDeviceInterfaceCommand,
 };
-use doublezero_serviceability::state::device;
 use std::io::Write;
 
 #[derive(Args, Debug)]
@@ -22,12 +20,9 @@ pub struct CreateDeviceInterfaceCliCommand {
     /// Interface name
     #[arg(value_parser = validate_iface, required = true)]
     pub name: String,
-    /// Interface type
-    #[arg()]
-    pub interface_type: InterfaceType,
     /// Loopback type (if applicable)
     #[arg(long, default_value = "none")]
-    pub loopback_type: LoopbackType,
+    pub loopback_type: types::LoopbackType,
     /// VLAN ID (default: 0, i.e. not set)
     #[arg(long, default_value = "0")]
     pub vlan_id: u16,
@@ -61,50 +56,24 @@ impl CreateDeviceInterfaceCliCommand {
                 ))
             })?;
 
-        if self.interface_type == InterfaceType::Loopback
-            && self.loopback_type == LoopbackType::None
-        {
+        if self.name.starts_with("Loopback") && self.loopback_type == types::LoopbackType::None {
             return Err(eyre::eyre!(
                 "Loopback type must be specified for Loopback interface type"
             ));
         }
 
-        if self.interface_type == InterfaceType::Physical
-            && self.loopback_type != LoopbackType::None
-        {
+        if !self.name.starts_with("Loopback") && self.loopback_type != types::LoopbackType::None {
             return Err(eyre::eyre!(
                 "Loopback type must be None for Physical interface type"
             ));
         }
 
-        let mut interfaces = device.interfaces;
-        interfaces.push(device::Interface::V1(CurrentInterfaceVersion {
-            status: device::InterfaceStatus::Pending,
-            name: self.name.clone(),
-            interface_type: self.interface_type.into(),
+        let (signature, _) = client.create_device_interface(CreateDeviceInterfaceCommand {
+            pubkey: device_pk,
+            name: self.name,
             loopback_type: self.loopback_type.into(),
             vlan_id: self.vlan_id,
-            ip_net: NetworkV4::default(),
-            node_segment_idx: 0,
             user_tunnel_endpoint: self.user_tunnel_endpoint,
-        }));
-        interfaces.sort_by(|a, b| {
-            a.into_current_version()
-                .name
-                .cmp(&b.into_current_version().name)
-        });
-
-        let signature = client.update_device(UpdateDeviceCommand {
-            pubkey: device_pk,
-            code: None,
-            device_type: None,
-            public_ip: None,
-            dz_prefixes: None,
-            metrics_publisher: None,
-            contributor_pk: None,
-            mgmt_vrf: None,
-            interfaces: Some(interfaces),
-            max_users: None,
         })?;
         writeln!(out, "Signature: {signature}")?;
 
@@ -121,9 +90,9 @@ impl CreateDeviceInterfaceCliCommand {
 mod tests {
     use super::*;
     use crate::tests::utils::create_test_client;
-    use doublezero_sdk::{AccountType, Device, DeviceStatus, DeviceType};
-    use doublezero_serviceability::state::device::{
-        Interface, InterfaceStatus, InterfaceType, LoopbackType,
+    use doublezero_sdk::{
+        AccountType, CurrentInterfaceVersion, Device, DeviceStatus, DeviceType, Interface,
+        InterfaceStatus, InterfaceType, LoopbackType,
     };
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
@@ -155,7 +124,7 @@ mod tests {
             mgmt_vrf: "default".to_string(),
             interfaces: vec![Interface::V1(CurrentInterfaceVersion {
                 status: InterfaceStatus::Pending,
-                name: "eth0".to_string(),
+                name: "Ethernet0".to_string(),
                 interface_type: InterfaceType::Physical,
                 loopback_type: LoopbackType::None,
                 vlan_id: 16,
@@ -179,49 +148,22 @@ mod tests {
             .times(1)
             .returning(move |_| Ok((device1_pubkey, device1.clone())));
         client
-            .expect_update_device()
-            .with(predicate::eq(UpdateDeviceCommand {
+            .expect_create_device_interface()
+            .with(predicate::eq(CreateDeviceInterfaceCommand {
                 pubkey: device1_pubkey,
-                code: None,
-                device_type: None,
-                public_ip: None,
-                dz_prefixes: None,
-                metrics_publisher: None,
-                contributor_pk: None,
-                mgmt_vrf: None,
-                interfaces: Some(vec![
-                    Interface::V1(CurrentInterfaceVersion {
-                        status: InterfaceStatus::Pending,
-                        name: "eth0".to_string(),
-                        interface_type: InterfaceType::Physical,
-                        loopback_type: LoopbackType::None,
-                        vlan_id: 16,
-                        ip_net: "10.0.0.1/24".parse().unwrap(),
-                        node_segment_idx: 0,
-                        user_tunnel_endpoint: true,
-                    }),
-                    Interface::V1(CurrentInterfaceVersion {
-                        status: InterfaceStatus::Pending,
-                        name: "lo0".to_string(),
-                        interface_type: InterfaceType::Loopback,
-                        loopback_type: LoopbackType::Ipv4,
-                        vlan_id: 20,
-                        ip_net: NetworkV4::default(),
-                        node_segment_idx: 0,
-                        user_tunnel_endpoint: false,
-                    }),
-                ]),
-                max_users: None,
+                name: "Loopback0".to_string(),
+                loopback_type: LoopbackType::Ipv4,
+                vlan_id: 20,
+                user_tunnel_endpoint: false,
             }))
             .times(1)
-            .returning(move |_| Ok(signature));
+            .returning(move |_| Ok((signature, device1_pubkey)));
 
         let mut output = Vec::new();
         let res = CreateDeviceInterfaceCliCommand {
             device: device1_pubkey.to_string(),
-            name: "lo0".to_string(),
-            interface_type: super::InterfaceType::Loopback,
-            loopback_type: super::LoopbackType::Ipv4,
+            name: "Loopback0".to_string(),
+            loopback_type: types::LoopbackType::Ipv4,
             vlan_id: 20,
             user_tunnel_endpoint: false,
             wait: false,

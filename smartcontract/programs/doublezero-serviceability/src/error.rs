@@ -51,8 +51,10 @@ pub enum DoubleZeroError {
     Unauthorized, // variant 22
     #[error("Invalid Solana Validator Pubkey")]
     InvalidSolanaValidatorPubkey, // variant 23
+    #[error("InterfaceNotFound")]
+    InterfaceNotFound, // variant 24
     #[error("Invalid Access Pass")]
-    AccessPassUnauthorized,
+    AccessPassUnauthorized, // variant 25
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -82,7 +84,8 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::InvalidLastAccessEpoch => ProgramError::Custom(21),
             DoubleZeroError::Unauthorized => ProgramError::Custom(22),
             DoubleZeroError::InvalidSolanaValidatorPubkey => ProgramError::Custom(23),
-            DoubleZeroError::AccessPassUnauthorized => ProgramError::Custom(24),
+            DoubleZeroError::InterfaceNotFound => ProgramError::Custom(24),
+            DoubleZeroError::AccessPassUnauthorized => ProgramError::Custom(25),
         }
     }
 }
@@ -113,7 +116,8 @@ impl From<u32> for DoubleZeroError {
             21 => DoubleZeroError::InvalidLastAccessEpoch,
             22 => DoubleZeroError::Unauthorized,
             23 => DoubleZeroError::InvalidSolanaValidatorPubkey,
-            24 => DoubleZeroError::AccessPassUnauthorized,
+            24 => DoubleZeroError::InterfaceNotFound,
+            25 => DoubleZeroError::AccessPassUnauthorized,
             _ => DoubleZeroError::Custom(e),
         }
     }
@@ -146,7 +150,8 @@ impl From<ProgramError> for DoubleZeroError {
                 21 => DoubleZeroError::InvalidLastAccessEpoch,
                 22 => DoubleZeroError::Unauthorized,
                 23 => DoubleZeroError::InvalidSolanaValidatorPubkey,
-                24 => DoubleZeroError::AccessPassUnauthorized,
+                24 => DoubleZeroError::InterfaceNotFound,
+                25 => DoubleZeroError::AccessPassUnauthorized,
                 _ => DoubleZeroError::Custom(e),
             },
             _ => DoubleZeroError::Custom(0),

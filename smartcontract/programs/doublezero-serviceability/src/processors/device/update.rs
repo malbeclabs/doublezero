@@ -24,7 +24,6 @@ pub struct DeviceUpdateArgs {
     pub dz_prefixes: Option<NetworkV4List>,
     pub metrics_publisher_pk: Option<Pubkey>,
     pub mgmt_vrf: Option<String>,
-    pub interfaces: Option<Vec<Interface>>,
     pub max_users: Option<u16>,
 }
 
@@ -50,9 +49,6 @@ impl fmt::Debug for DeviceUpdateArgs {
         }
         if self.mgmt_vrf.is_some() {
             write!(f, "mgmt_vrf: {:?}, ", self.mgmt_vrf)?;
-        }
-        if self.interfaces.is_some() {
-            write!(f, "interfaces: {:?}, ", self.interfaces)?;
         }
         if self.max_users.is_some() {
             write!(f, "max_users: {:?}, ", self.max_users)?;
@@ -132,9 +128,6 @@ pub fn process_update_device(
     }
     if let Some(mgmt_vrf) = &value.mgmt_vrf {
         device.mgmt_vrf = mgmt_vrf.clone();
-    }
-    if let Some(interfaces) = &value.interfaces {
-        device.interfaces = interfaces.clone();
     }
     if let Some(max_users) = value.max_users {
         device.max_users = max_users;

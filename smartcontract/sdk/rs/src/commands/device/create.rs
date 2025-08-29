@@ -41,7 +41,6 @@ impl CreateDeviceCommand {
                     dz_prefixes: self.dz_prefixes.clone(),
                     metrics_publisher_pk: self.metrics_publisher,
                     mgmt_vrf: self.mgmt_vrf.clone(),
-                    interfaces: vec![],
                 }),
                 vec![
                     AccountMeta::new(pda_pubkey, false),
@@ -139,7 +138,6 @@ mod tests {
                     dz_prefixes: "10.0.0.0/8".parse().unwrap(),
                     metrics_publisher_pk: pubmetrics_publisher,
                     mgmt_vrf: "mgmt".to_string(),
-                    interfaces: vec![],
                 })),
                 predicate::eq(vec![
                     AccountMeta::new(device_pubkey, false),

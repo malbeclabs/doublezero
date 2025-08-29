@@ -10,7 +10,7 @@ use doublezero_serviceability::{
     state::{
         accounttype::AccountType,
         contributor::ContributorStatus,
-        device::{CurrentInterfaceVersion, DeviceStatus, DeviceType, Interface},
+        device::{DeviceStatus, DeviceType, InterfaceStatus, InterfaceType, LoopbackType},
         link::*,
     },
 };
@@ -182,16 +182,33 @@ async fn test_wan_link() {
             dz_prefixes: "10.1.0.0/24".parse().unwrap(),
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
-            interfaces: vec![Interface::V1(CurrentInterfaceVersion {
-                name: "eth0".to_string(),
-                ..CurrentInterfaceVersion::default()
-            })],
         }),
         vec![
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(contributor_pubkey, false),
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(exchange_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateDeviceInterface(
+            device::interface::create::DeviceInterfaceCreateArgs {
+                name: "Ethernet0".to_string(),
+                loopback_type: LoopbackType::None,
+                vlan_id: 0,
+                user_tunnel_endpoint: false,
+            },
+        ),
+        vec![
+            AccountMeta::new(device_a_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
@@ -206,6 +223,44 @@ async fn test_wan_link() {
     assert_eq!(device_a.account_type, AccountType::Device);
     assert_eq!(device_a.code, "A".to_string());
     assert_eq!(device_a.status, DeviceStatus::Pending);
+
+    let iface = device_a.interfaces.first().unwrap().into_current_version();
+    assert_eq!(iface.name, "Ethernet0".to_string());
+    assert_eq!(iface.interface_type, InterfaceType::Physical);
+    assert_eq!(iface.loopback_type, LoopbackType::None);
+    assert_eq!(iface.vlan_id, 0);
+    assert_eq!(iface.status, InterfaceStatus::Pending);
+    assert!(!iface.user_tunnel_endpoint);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateDeviceInterface(
+            device::interface::activate::DeviceInterfaceActivateArgs {
+                name: "Ethernet0".to_string(),
+                ip_net: "10.0.0.0/31".parse().unwrap(),
+                node_segment_idx: 0,
+            },
+        ),
+        vec![
+            AccountMeta::new(device_a_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let device_a = get_account_data(&mut banks_client, device_a_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_device()
+        .unwrap();
+
+    let iface = device_a.interfaces.first().unwrap().into_current_version();
+    assert_eq!(iface.name, "Ethernet0".to_string());
+    assert_eq!(iface.ip_net, "10.0.0.0/31".parse().unwrap());
+    assert_eq!(iface.status, InterfaceStatus::Activated);
 
     // check reference counts
     let contributor = get_account_data(&mut banks_client, contributor_pubkey)
@@ -248,16 +303,33 @@ async fn test_wan_link() {
             dz_prefixes: "11.1.0.0/23".parse().unwrap(),
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
-            interfaces: vec![Interface::V1(CurrentInterfaceVersion {
-                name: "eth1".to_string(),
-                ..CurrentInterfaceVersion::default()
-            })],
         }),
         vec![
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(contributor_pubkey, false),
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(exchange_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateDeviceInterface(
+            device::interface::create::DeviceInterfaceCreateArgs {
+                name: "Ethernet1".to_string(),
+                loopback_type: LoopbackType::None,
+                vlan_id: 0,
+                user_tunnel_endpoint: false,
+            },
+        ),
+        vec![
+            AccountMeta::new(device_z_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
@@ -272,6 +344,44 @@ async fn test_wan_link() {
     assert_eq!(device_z.account_type, AccountType::Device);
     assert_eq!(device_z.code, "Z".to_string());
     assert_eq!(device_z.status, DeviceStatus::Pending);
+
+    let iface = device_z.interfaces.first().unwrap().into_current_version();
+    assert_eq!(iface.name, "Ethernet1".to_string());
+    assert_eq!(iface.interface_type, InterfaceType::Physical);
+    assert_eq!(iface.loopback_type, LoopbackType::None);
+    assert_eq!(iface.vlan_id, 0);
+    assert_eq!(iface.status, InterfaceStatus::Pending);
+    assert!(!iface.user_tunnel_endpoint);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateDeviceInterface(
+            device::interface::activate::DeviceInterfaceActivateArgs {
+                name: "Ethernet1".to_string(),
+                ip_net: "10.0.0.1/31".parse().unwrap(),
+                node_segment_idx: 0,
+            },
+        ),
+        vec![
+            AccountMeta::new(device_z_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let device_z = get_account_data(&mut banks_client, device_z_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_device()
+        .unwrap();
+
+    let iface = device_z.interfaces.first().unwrap().into_current_version();
+    assert_eq!(iface.name, "Ethernet1".to_string());
+    assert_eq!(iface.ip_net, "10.0.0.1/31".parse().unwrap());
+    assert_eq!(iface.status, InterfaceStatus::Activated);
 
     // check reference counts
     let contributor = get_account_data(&mut banks_client, contributor_pubkey)
@@ -318,8 +428,8 @@ async fn test_wan_link() {
             mtu: 9000,
             delay_ns: 150000,
             jitter_ns: 5000,
-            side_a_iface_name: "eth0".to_string(),
-            side_z_iface_name: Some("eth1".to_string()),
+            side_a_iface_name: "Ethernet0".to_string(),
+            side_z_iface_name: Some("Ethernet1".to_string()),
         }),
         vec![
             AccountMeta::new(tunnel_pubkey, false),

@@ -811,7 +811,7 @@ func (d *Devnet) CreateDeviceLoopbackInterface(ctx context.Context, deviceCode s
 	d.onchainWriteMutex.Lock()
 	defer d.onchainWriteMutex.Unlock()
 
-	_, err := d.Manager.Exec(ctx, []string{"doublezero", "device", "interface", "create", deviceCode, interfaceName, "loopback", "--loopback-type", loopbackType})
+	_, err := d.Manager.Exec(ctx, []string{"doublezero", "device", "interface", "create", deviceCode, interfaceName, "--loopback-type", loopbackType})
 	if err != nil {
 		return fmt.Errorf("failed to create loopback interface %s of type %s for device %s: %w", interfaceName, loopbackType, deviceCode, err)
 	}

@@ -177,41 +177,41 @@ func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 
 		echo "==> Populate device interface information onchain"
 		# TODO: When the controller supports dzd metadata, this will have to be updated to reflect actual interfaces
-		doublezero device interface create ny5-dz01 "Ethernet2" physical
-		doublezero device interface create ny5-dz01 "Vlan4001" physical
-		doublezero device interface create la2-dz01 "Ethernet2" physical
-		doublezero device interface create la2-dz01 "Ethernet3" physical
-		doublezero device interface create ld4-dz01 "Vlan4001" physical
-		doublezero device interface create ld4-dz01 "Ethernet3" physical
-		doublezero device interface create ld4-dz01 "Ethernet4" physical
-		doublezero device interface create frk-dz01 "Ethernet2" physical
-		doublezero device interface create frk-dz01 "Ethernet3" physical
-		doublezero device interface create sg1-dz01 "Ethernet2" physical
-		doublezero device interface create sg1-dz01 "Ethernet3" physical
-		doublezero device interface create ty2-dz01 "Ethernet2" physical
-		doublezero device interface create ty2-dz01 "Ethernet3" physical
-		doublezero device interface create pit-dzd01 "Ethernet2" physical
-		doublezero device interface create pit-dzd01 "Ethernet3" physical
-		doublezero device interface create ams-dz001 "Ethernet2" physical
-		doublezero device interface create ams-dz001 "Ethernet3" physical
+		doublezero device interface create ny5-dz01 "Ethernet2"
+		doublezero device interface create ny5-dz01 "Vlan4001"
+		doublezero device interface create la2-dz01 "Ethernet2"
+		doublezero device interface create la2-dz01 "Ethernet3"
+		doublezero device interface create ld4-dz01 "Vlan4001"
+		doublezero device interface create ld4-dz01 "Ethernet3"
+		doublezero device interface create ld4-dz01 "Ethernet4"
+		doublezero device interface create frk-dz01 "Ethernet2"
+		doublezero device interface create frk-dz01 "Ethernet3"
+		doublezero device interface create sg1-dz01 "Ethernet2"
+		doublezero device interface create sg1-dz01 "Ethernet3"
+		doublezero device interface create ty2-dz01 "Ethernet2"
+		doublezero device interface create ty2-dz01 "Ethernet3"
+		doublezero device interface create pit-dzd01 "Ethernet2"
+		doublezero device interface create pit-dzd01 "Ethernet3"
+		doublezero device interface create ams-dz001 "Ethernet2"
+		doublezero device interface create ams-dz001 "Ethernet3"
 
-		doublezero device interface create ny5-dz01 "Loopback255" loopback --loopback-type vpnv4
-		doublezero device interface create la2-dz01 "Loopback255" loopback --loopback-type vpnv4
-		doublezero device interface create ld4-dz01 "Loopback255" loopback --loopback-type vpnv4
-		doublezero device interface create frk-dz01 "Loopback255" loopback --loopback-type vpnv4
-		doublezero device interface create sg1-dz01 "Loopback255" loopback --loopback-type vpnv4
-		doublezero device interface create ty2-dz01 "Loopback255" loopback --loopback-type vpnv4
-		doublezero device interface create pit-dzd01 "Loopback255" loopback --loopback-type vpnv4
-		doublezero device interface create ams-dz001 "Loopback255" loopback --loopback-type vpnv4
+		doublezero device interface create ny5-dz01 "Loopback255" --loopback-type vpnv4
+		doublezero device interface create la2-dz01 "Loopback255" --loopback-type vpnv4
+		doublezero device interface create ld4-dz01 "Loopback255" --loopback-type vpnv4
+		doublezero device interface create frk-dz01 "Loopback255" --loopback-type vpnv4
+		doublezero device interface create sg1-dz01 "Loopback255" --loopback-type vpnv4
+		doublezero device interface create ty2-dz01 "Loopback255" --loopback-type vpnv4
+		doublezero device interface create pit-dzd01 "Loopback255" --loopback-type vpnv4
+		doublezero device interface create ams-dz001 "Loopback255" --loopback-type vpnv4
 
-		doublezero device interface create ny5-dz01 "Loopback256" loopback --loopback-type ipv4
-		doublezero device interface create la2-dz01 "Loopback256" loopback --loopback-type ipv4
-		doublezero device interface create ld4-dz01 "Loopback256" loopback --loopback-type ipv4
-		doublezero device interface create frk-dz01 "Loopback256" loopback --loopback-type ipv4
-		doublezero device interface create sg1-dz01 "Loopback256" loopback --loopback-type ipv4
-		doublezero device interface create ty2-dz01 "Loopback256" loopback --loopback-type ipv4
-		doublezero device interface create pit-dzd01 "Loopback256" loopback --loopback-type ipv4
-		doublezero device interface create ams-dz001 "Loopback256" loopback --loopback-type ipv4
+		doublezero device interface create ny5-dz01 "Loopback256" --loopback-type ipv4
+		doublezero device interface create la2-dz01 "Loopback256" --loopback-type ipv4
+		doublezero device interface create ld4-dz01 "Loopback256" --loopback-type ipv4
+		doublezero device interface create frk-dz01 "Loopback256" --loopback-type ipv4
+		doublezero device interface create sg1-dz01 "Loopback256" --loopback-type ipv4
+		doublezero device interface create ty2-dz01 "Loopback256" --loopback-type ipv4
+		doublezero device interface create pit-dzd01 "Loopback256" --loopback-type ipv4
+		doublezero device interface create ams-dz001 "Loopback256" --loopback-type ipv4
 
 		echo "==> Populate link information onchain"
 		doublezero link create wan --code "la2-dz01:ny5-dz01" --contributor co01 --side-a la2-dz01 --side-a-interface Ethernet2 --side-z ny5-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3

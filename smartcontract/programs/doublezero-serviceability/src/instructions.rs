@@ -13,9 +13,19 @@ use crate::processors::{
         update::ContributorUpdateArgs,
     },
     device::{
-        activate::DeviceActivateArgs, closeaccount::DeviceCloseAccountArgs,
-        create::DeviceCreateArgs, delete::DeviceDeleteArgs, reject::DeviceRejectArgs,
-        resume::DeviceResumeArgs, suspend::DeviceSuspendArgs, update::DeviceUpdateArgs,
+        activate::DeviceActivateArgs,
+        closeaccount::DeviceCloseAccountArgs,
+        create::DeviceCreateArgs,
+        delete::DeviceDeleteArgs,
+        interface::{
+            activate::DeviceInterfaceActivateArgs, create::DeviceInterfaceCreateArgs,
+            delete::DeviceInterfaceDeleteArgs, remove::DeviceInterfaceRemoveArgs,
+            update::DeviceInterfaceUpdateArgs,
+        },
+        reject::DeviceRejectArgs,
+        resume::DeviceResumeArgs,
+        suspend::DeviceSuspendArgs,
+        update::DeviceUpdateArgs,
     },
     exchange::{
         create::ExchangeCreateArgs, delete::ExchangeDeleteArgs, resume::ExchangeResumeArgs,
@@ -151,6 +161,12 @@ pub enum DoubleZeroInstruction {
     CloseAccessPass(CloseAccessPassArgs),     // variant 69
     CheckStatusAccessPass(CheckStatusAccessPassArgs), // variant 70
     CheckUserAccessPass(CheckUserAccessPassArgs), // variant 71
+
+    ActivateDeviceInterface(DeviceInterfaceActivateArgs), // variant 72
+    CreateDeviceInterface(DeviceInterfaceCreateArgs),     // variant 73
+    DeleteDeviceInterface(DeviceInterfaceDeleteArgs),     // variant 74
+    RemoveDeviceInterface(DeviceInterfaceRemoveArgs),     // variant 75
+    UpdateDeviceInterface(DeviceInterfaceUpdateArgs),     // variant 76
 }
 
 impl DoubleZeroInstruction {
@@ -248,6 +264,12 @@ impl DoubleZeroInstruction {
             70 => Ok(Self::CheckStatusAccessPass(from_slice::<CheckStatusAccessPassArgs>(rest).unwrap())),
             71 => Ok(Self::CheckUserAccessPass(from_slice::<CheckUserAccessPassArgs>(rest).unwrap())),
 
+            72 => Ok(Self::ActivateDeviceInterface(from_slice::<DeviceInterfaceActivateArgs>(rest).unwrap())),
+            73 => Ok(Self::CreateDeviceInterface(from_slice::<DeviceInterfaceCreateArgs>(rest).unwrap())),
+            74 => Ok(Self::DeleteDeviceInterface(from_slice::<DeviceInterfaceDeleteArgs>(rest).unwrap())),
+            75 => Ok(Self::RemoveDeviceInterface(from_slice::<DeviceInterfaceRemoveArgs>(rest).unwrap())),
+            76 => Ok(Self::UpdateDeviceInterface(from_slice::<DeviceInterfaceUpdateArgs>(rest).unwrap())),
+
             _ => Err(ProgramError::InvalidInstructionData),
         }
     }
@@ -342,6 +364,12 @@ impl DoubleZeroInstruction {
             Self::CloseAccessPass(_) => "CloseAccessPass".to_string(),     // variant 69
             Self::CheckStatusAccessPass(_) => "CheckStatusAccessPass".to_string(), // variant 70
             Self::CheckUserAccessPass(_) => "CheckUserAccessPass".to_string(), // variant 71
+
+            Self::ActivateDeviceInterface(_) => "ActivateDeviceInterface".to_string(), // variant 72
+            Self::CreateDeviceInterface(_) => "CreateDeviceInterface".to_string(),     // variant 73
+            Self::DeleteDeviceInterface(_) => "DeleteDeviceInterface".to_string(),     // variant 74
+            Self::RemoveDeviceInterface(_) => "RemoveDeviceInterface".to_string(),     // variant 75
+            Self::UpdateDeviceInterface(_) => "UpdateDeviceInterface".to_string(),     // variant 76
         }
     }
 
@@ -429,6 +457,12 @@ impl DoubleZeroInstruction {
             Self::CloseAccessPass(args) => format!("{args:?}"),   // variant 69
             Self::CheckStatusAccessPass(args) => format!("{args:?}"), // variant 70
             Self::CheckUserAccessPass(args) => format!("{args:?}"), // variant 71
+
+            Self::ActivateDeviceInterface(args) => format!("{args:?}"), // variant 72
+            Self::CreateDeviceInterface(args) => format!("{args:?}"),   // variant 73
+            Self::DeleteDeviceInterface(args) => format!("{args:?}"),   // variant 74
+            Self::RemoveDeviceInterface(args) => format!("{args:?}"),   // variant 75
+            Self::UpdateDeviceInterface(args) => format!("{args:?}"),   // variant 76
         }
     }
 }
@@ -438,7 +472,7 @@ mod tests {
     use crate::{
         processors::exchange::setdevice::SetDeviceOption,
         state::{
-            device::DeviceType,
+            device::{DeviceType, LoopbackType},
             link::LinkLinkType,
             user::{UserCYOA, UserType},
         },
@@ -544,7 +578,6 @@ mod tests {
                 dz_prefixes: "1.2.3.4/1".parse().unwrap(),
                 metrics_publisher_pk: Pubkey::new_unique(),
                 mgmt_vrf: "mgmt".to_string(),
-                interfaces: vec![],
             }),
             "CreateDevice",
         );
@@ -561,7 +594,6 @@ mod tests {
                 dz_prefixes: Some("1.2.3.4/1".parse().unwrap()),
                 metrics_publisher_pk: Some(Pubkey::new_unique()),
                 mgmt_vrf: Some("mgmt".to_string()),
-                interfaces: None,
                 max_users: None,
             }),
             "UpdateDevice",
@@ -902,6 +934,44 @@ mod tests {
         test_instruction(
             DoubleZeroInstruction::CheckUserAccessPass(CheckUserAccessPassArgs {}),
             "CheckUserAccessPass",
+        );
+        test_instruction(
+            DoubleZeroInstruction::ActivateDeviceInterface(DeviceInterfaceActivateArgs {
+                name: "name".to_string(),
+                ip_net: "10.0.0.0/3".parse().unwrap(),
+                node_segment_idx: 1,
+            }),
+            "ActivateDeviceInterface",
+        );
+        test_instruction(
+            DoubleZeroInstruction::CreateDeviceInterface(DeviceInterfaceCreateArgs {
+                name: "name".to_string(),
+                loopback_type: LoopbackType::None,
+                vlan_id: 0,
+                user_tunnel_endpoint: false,
+            }),
+            "CreateDeviceInterface",
+        );
+        test_instruction(
+            DoubleZeroInstruction::DeleteDeviceInterface(DeviceInterfaceDeleteArgs {
+                name: "name".to_string(),
+            }),
+            "DeleteDeviceInterface",
+        );
+        test_instruction(
+            DoubleZeroInstruction::RemoveDeviceInterface(DeviceInterfaceRemoveArgs {
+                name: "name".to_string(),
+            }),
+            "RemoveDeviceInterface",
+        );
+        test_instruction(
+            DoubleZeroInstruction::UpdateDeviceInterface(DeviceInterfaceUpdateArgs {
+                name: "name".to_string(),
+                loopback_type: Some(LoopbackType::None),
+                vlan_id: Some(0),
+                user_tunnel_endpoint: Some(false),
+            }),
+            "UpdateDeviceInterface",
         );
     }
 }

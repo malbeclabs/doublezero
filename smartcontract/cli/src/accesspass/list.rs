@@ -13,7 +13,7 @@ pub struct ListAccessPassCliCommand {
     /// List prepaid access passes
     #[arg(long, default_value_t = false)]
     pub prepaid: bool,
-    /// List prepaid access passes
+    /// List Solana validator access passes
     #[arg(long, default_value_t = false)]
     pub solana_validator: bool,
     /// Solana identity public key

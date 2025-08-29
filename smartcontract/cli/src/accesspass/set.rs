@@ -16,7 +16,7 @@ pub enum CliAccessPassType {
 
 #[derive(Args, Debug)]
 pub struct SetAccessPassCliCommand {
-    /// Specifies the type of access pass being set [prepaid|postpaid].
+    /// Specifies the type of access pass being set.
     #[arg(long, default_value = "prepaid")]
     pub accesspass_type: CliAccessPassType,
     /// Client IP address in IPv4 format

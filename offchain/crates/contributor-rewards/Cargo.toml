@@ -23,6 +23,7 @@ chrono.workspace = true
 clap.workspace = true
 config.workspace = true
 csv.workspace = true
+dotenvy.workspace = true
 doublezero-record.workspace = true
 doublezero-program-common.workspace = true
 doublezero-program-tools.workspace = true

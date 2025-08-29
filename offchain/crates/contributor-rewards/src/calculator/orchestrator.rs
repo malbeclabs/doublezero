@@ -173,7 +173,7 @@ impl Orchestrator {
 
                 // Validate keypair matches ProgramConfig
                 ledger_operations::validate_rewards_accountant_keypair(
-                    &fetcher.solana_testnet_client,
+                    &fetcher.solana_write_client,
                     &payer_signer,
                 )
                 .await?;
@@ -244,8 +244,7 @@ impl Orchestrator {
                 );
 
                 match post_rewards_merkle_root(
-                    // TODO: Switch to mainnet client (and/or have some way to switch on demand)
-                    &fetcher.solana_testnet_client,
+                    &fetcher.solana_write_client,
                     &payer_signer,
                     fetch_epoch,
                     merkle_tree.len() as u32,
@@ -399,7 +398,7 @@ impl Orchestrator {
 
             // Validate keypair matches ProgramConfig
             ledger_operations::validate_rewards_accountant_keypair(
-                &fetcher.solana_testnet_client,
+                &fetcher.solana_write_client,
                 &payer_signer,
             )
             .await?;

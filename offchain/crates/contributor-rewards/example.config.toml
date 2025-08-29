@@ -1,0 +1,86 @@
+# DoubleZero Contributor Rewards - Example Configuration
+#
+# This file has all available configuration options.
+# Copy this file and modify values as needed, or use environment variables (recommended)
+#
+# Environment variables take precedence over this file.
+# Use DZ__ prefix with double underscores for nested values.
+# Example: DZ__RPC__DZ_URL=https://api.doublezero.com
+
+# Network Configuration
+# Options: devnet, testnet, mainnet-beta, mainnet
+network = "testnet"
+
+# Logging level
+# Options: trace, debug, info, warn, error
+log_level = "info"
+
+# ========== RPC Configuration ==========
+[rpc]
+# DoubleZero ledger RPC endpoint
+dz_url = "https://api.doublezero.com"
+
+# Solana read client - for reading chain data (leader schedules, epoch info)
+# Typically points to mainnet for production data
+solana_read_url = "https://api.mainnet-beta.solana.com"
+
+# Solana write client - for writing rewards data (merkle roots)
+# Can point to testnet for testing or mainnet for production
+solana_write_url = "https://api.testnet.solana.com"
+
+# Transaction commitment level
+# Options: processed, confirmed, finalized
+commitment = "confirmed"
+
+# Rate limit for RPC requests per second
+rps_limit = 10
+
+# ========== Shapley Value Parameters ==========
+[shapley]
+# Base uptime requirement for operators (0.0-1.0)
+# Example: 0.98 means 98% uptime required
+operator_uptime = 0.98
+
+# Bonus multiplier for contiguous network coverage
+# Applied when nodes provide continuous coverage across regions
+contiguity_bonus = 5.0
+
+# Multiplier for demand-based rewards
+# Increases rewards in high-demand areas
+demand_multiplier = 1.2
+
+# ========== Program IDs ==========
+[programs]
+# DZ Serviceability program ID
+serviceability_program_id = "DZServ1111111111111111111111111111111111111"
+
+# DZ Telemetry program ID
+telemetry_program_id = "DZTelem111111111111111111111111111111111111"
+
+# ========== Record Prefixes ==========
+[prefixes]
+# Prefixes for organizing DZ records on-chain
+device_telemetry = "doublezero_device_telemetry_aggregate"
+internet_telemetry = "doublezero_internet_telemetry_aggregate"
+contributor_rewards = "dz_contributor_rewards"
+reward_input = "dz_reward_input"
+
+# ========== Internet Telemetry Lookback Configuration ==========
+[inet_lookback]
+# Minimum coverage threshold (0.0-1.0)
+# Example: 0.8 means at least 80% of expected links must have data
+min_coverage_threshold = 0.8
+
+# Maximum number of epochs to look back when current data is insufficient
+max_epochs_lookback = 5
+
+# Minimum samples per link to consider it valid
+min_samples_per_link = 20
+
+# Enable lookback accumulator
+# When true, combines data from multiple epochs to meet coverage threshold
+enable_accumulator = true
+
+# Deduplication window in microseconds
+# Samples within this time window are considered duplicates
+dedup_window_us = 10000000

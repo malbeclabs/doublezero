@@ -19,10 +19,6 @@ use svm_hash::sha2::Hash;
 use tracing::info;
 
 /// Post the contributor rewards merkle root to the revenue distribution program
-///
-/// TODO: Implement source/destination client architecture to better handle
-/// mainnet vs testnet RPC clients. The destination client config could be optional,
-/// defaulting to the source client when not specified.
 pub async fn post_rewards_merkle_root(
     rpc_client: &RpcClient,
     payer_signer: &Keypair,

@@ -37,6 +37,7 @@ doublezero-revenue-distribution = { git = "ssh://git@github.com/doublezerofounda
 doublezero_sdk = { git = "ssh://git@github.com/malbeclabs/doublezero" }
 doublezero-serviceability = { git = "ssh://git@github.com/malbeclabs/doublezero", features = [ "no-entrypoint", "serde"] }
 doublezero-telemetry = { git = "ssh://git@github.com/malbeclabs/doublezero", features = [ "no-entrypoint", "serde" ] }
+dotenvy = "0"
 futures = "0"
 futures-util = "0"
 governor = "0"

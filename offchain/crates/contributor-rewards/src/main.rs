@@ -12,11 +12,31 @@ use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitEx
     name = "contributor-rewards",
     about = "Off-chain contributor-rewards calculation for DoubleZero network",
     version,
-    author
+    author,
+    after_help = r#"Configuration:
+    Configuration can be provided via:
+    1. Environment variables with DZ__ prefix (e.g., DZ__RPC__DZ_URL)
+    2. .env file in the current directory (see .env.example)
+    3. Config file with -c option (see example.config.toml)
+
+Examples:
+    # Dry run for a specific epoch
+    contributor-rewards calculate-rewards --epoch 123 --dry-run
+
+    # Calculate rewards for the previous epoch
+    contributor-rewards calculate-rewards -k keypair.json
+
+    # Read telemetry aggregates
+    contributor-rewards read-telem-agg --epoch 123
+
+    # Check a contributor's reward
+    contributor-rewards check-reward --contributor <PUBKEY> --epoch 123"#
 )]
 pub struct Cli {
-    // Path to the config file
-    #[clap(short = 'c', long)]
+    /// Path to the configuration file (TOML format)
+    ///
+    /// If not provided, will attempt to load from environment variables
+    #[clap(short = 'c', long, value_name = "FILE")]
     pub config: Option<PathBuf>,
 
     #[command(subcommand)]
@@ -25,136 +45,232 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
-    /// Calculate epoch rewards
+    #[command(
+        about = "Calculate Shapley value-based rewards for network contributors",
+        after_help = r#"Examples:
+    # Calculate rewards for the previous epoch
+    calculate-rewards -k keypair.json
+
+    # Calculate for a specific epoch with CSV export
+    calculate-rewards --epoch 123 -k keypair.json --output-dir ./reports
+
+    # Dry run to preview without writing to DZ ledger
+    calculate-rewards --epoch 123 --dry-run"#
+    )]
     CalculateRewards {
-        /// Epoch to calculate rewards for. Optional.
-        #[arg(short, long)]
+        /// DZ epoch to calculate rewards for (defaults to previous epoch)
+        #[arg(short, long, value_name = "EPOCH")]
         epoch: Option<u64>,
 
-        /// Output directory for exported CSV files (debugging). Optional.
-        #[arg(short, long)]
+        /// Directory to export CSV files for debugging and analysis
+        #[arg(short, long, value_name = "DIR")]
         output_dir: Option<PathBuf>,
 
-        /// Run in dry-run mode (skip writing to ledger, show what would be written). Optional.
+        /// Skip writing to ledger and show what would be written
         #[arg(long)]
         dry_run: bool,
 
-        /// Path to the keypair file to use for signing transactions. Required unless --dry-run is set.
-        #[arg(short = 'k', long, required_unless_present = "dry_run")]
+        /// Path to keypair file for signing transactions
+        #[arg(
+            short = 'k',
+            long,
+            value_name = "FILE",
+            required_unless_present = "dry_run"
+        )]
         keypair: Option<PathBuf>,
     },
-    /// Read telemetry aggregates from the ledger
+    #[command(
+        about = "Read and display telemetry aggregate statistics from the ledger",
+        after_help = r#"Examples:
+    # Read all telemetry for epoch 123
+    read-telem-agg --epoch 123
+
+    # Export device telemetry to CSV
+    read-telem-agg --epoch 123 --type device -o device_stats.csv
+
+    # Read internet telemetry only
+    read-telem-agg --epoch 123 --type internet"#
+    )]
     ReadTelemAgg {
-        /// DZ Epoch (e.g. 79). Required.
-        #[arg(short, long)]
+        /// DZ epoch number to read telemetry from
+        #[arg(short, long, value_name = "EPOCH")]
         epoch: u64,
 
-        /// Rewards accountant public key used for address derivation (auto-fetched if not provided). Optional.
-        #[arg(short = 'r', long)]
+        /// Rewards accountant public key (auto-fetched from ProgramConfig if not provided)
+        #[arg(short = 'r', long, value_name = "PUBKEY")]
         rewards_accountant: Option<Pubkey>,
 
-        /// Type of telemetry to read (choose between: device, internet, or all). Optional. Default to all.
-        #[arg(short = 't', long, default_value = "all")]
+        /// Type of telemetry to read: 'device', 'internet', or 'all'
+        #[arg(short = 't', long, default_value = "all", value_name = "TYPE")]
         r#type: String,
 
-        /// Export results to CSV file. Optional.
-        #[arg(short = 'o', long)]
+        /// Export results to CSV file
+        #[arg(short = 'o', long, value_name = "FILE")]
         output_csv: Option<PathBuf>,
     },
-    /// Check and verify contributor reward
+    #[command(
+        about = "Check and verify a specific contributor's reward for an epoch",
+        after_help = r#"Examples:
+    # Check reward for a contributor
+    check-reward --contributor 7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV --epoch 123
+
+    # Check with explicit rewards accountant
+    check-reward -c 7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV -e 123 -r <ACCOUNTANT_PUBKEY>"#
+    )]
     CheckReward {
-        /// Contributor public key (base58 string). Required.
-        #[arg(short, long)]
+        /// Contributor's public key (base58 encoded)
+        #[arg(short, long, value_name = "PUBKEY")]
         contributor: Pubkey,
 
-        /// DZ Epoch (e.g. 79). Required.
-        #[arg(short, long)]
+        /// DZ epoch number to check reward for
+        #[arg(short, long, value_name = "EPOCH")]
         epoch: u64,
 
-        /// Rewards accountant public key used for address derivation (auto-fetched if not provided). Optional.
-        #[arg(short = 'r', long)]
+        /// Rewards accountant public key (auto-fetched from ProgramConfig if not provided)
+        #[arg(short = 'r', long, value_name = "PUBKEY")]
         rewards_accountant: Option<Pubkey>,
     },
-    /// Read reward input configuration from the ledger
+    #[command(
+        about = "Read and display the reward input configuration for an epoch",
+        after_help = r#"Examples:
+    # Read reward input for epoch 123
+    read-reward-input --epoch 123
+
+    # Read with specific rewards accountant
+    read-reward-input --epoch 123 --rewards-accountant <PUBKEY>"#
+    )]
     ReadRewardInput {
-        /// DZ Epoch (e.g. 79). Required.
-        #[arg(short, long)]
+        /// DZ epoch number to read configuration from
+        #[arg(short, long, value_name = "EPOCH")]
         epoch: u64,
 
-        /// Rewards accountant public key used for address derivation (auto-fetched if not provided). Optional.
-        #[arg(short = 'r', long)]
+        /// Rewards accountant public key (auto-fetched from ProgramConfig if not provided)
+        #[arg(short = 'r', long, value_name = "PUBKEY")]
         rewards_accountant: Option<Pubkey>,
     },
-    /// Realloc a record account
+    #[command(
+        about = "Reallocate a record account to change its size",
+        after_help = r#"Examples:
+    # Increase device telemetry record size
+    realloc-record --type device-telemetry --epoch 123 --size 100000 -k keypair.json
+
+    # Dry run to check the operation
+    realloc-record --type internet-telemetry --epoch 123 --size 50000 --dry-run"#
+    )]
     ReallocRecord {
-        /// Type of record to realloc (device-telemetry, internet-telemetry, reward-input, contributor-rewards). Required.
-        #[arg(short = 't', long)]
+        /// Record type: 'device-telemetry', 'internet-telemetry', 'reward-input', or 'contributor-rewards'
+        #[arg(short = 't', long, value_name = "TYPE")]
         r#type: String,
 
-        /// DZ Epoch (e.g. 79). Required.
-        #[arg(short, long)]
+        /// DZ epoch number of the record to reallocate
+        #[arg(short, long, value_name = "EPOCH")]
         epoch: u64,
 
-        /// New size (in bytes). Required.
-        #[arg(short, long)]
+        /// New size in bytes for the record account
+        #[arg(short, long, value_name = "BYTES")]
         size: u64,
 
-        /// Run in dry-run mode. Optional.
+        /// Skip the actual reallocation and show what would happen
         #[arg(long)]
         dry_run: bool,
 
-        /// Path to the keypair file to use for signing transactions. Required unless --dry-run is set.
-        #[arg(short = 'k', long, required_unless_present = "dry_run")]
+        /// Path to keypair file for signing transactions
+        #[arg(
+            short = 'k',
+            long,
+            value_name = "FILE",
+            required_unless_present = "dry_run"
+        )]
         keypair: Option<PathBuf>,
     },
-    /// Close a record account
+    #[command(
+        about = "Close a record account and reclaim its rent",
+        after_help = r#"Examples:
+    # Close an old telemetry record
+    close-record --type device-telemetry --epoch 100 -k keypair.json
+
+    # Dry run to verify the account exists
+    close-record --type contributor-rewards --epoch 100 --dry-run"#
+    )]
     CloseRecord {
-        /// Type of record to close (device-telemetry, internet-telemetry, reward-input, contributor-rewards). Required.
-        #[arg(short = 't', long)]
+        /// Record type: 'device-telemetry', 'internet-telemetry', 'reward-input', or 'contributor-rewards'
+        #[arg(short = 't', long, value_name = "TYPE")]
         r#type: String,
 
-        /// DZ Epoch (e.g. 79). Required.
-        #[arg(short, long)]
+        /// DZ epoch number of the record to close
+        #[arg(short, long, value_name = "EPOCH")]
         epoch: u64,
 
-        /// Run in dry-run mode. Optional.
+        /// Skip the actual closure and show what would happen
         #[arg(long)]
         dry_run: bool,
 
-        /// Path to the keypair file to use for signing transactions. Required unless --dry-run is set.
-        #[arg(short, long, required_unless_present = "dry_run")]
+        /// Path to keypair file for signing transactions
+        #[arg(
+            short = 'k',
+            long,
+            value_name = "FILE",
+            required_unless_present = "dry_run"
+        )]
         keypair: Option<PathBuf>,
     },
-    /// Write telemetry aggregates to the ledger (without calculating rewards)
+    #[command(
+        about = "Write telemetry aggregate statistics to the ledger without calculating rewards",
+        after_help = r#"Examples:
+    # Write all telemetry for previous epoch
+    write-telem-agg -k keypair.json
+
+    # Write only device telemetry for epoch 123
+    write-telem-agg --epoch 123 --type device -k keypair.json
+
+    # Dry run to preview the data
+    write-telem-agg --epoch 123 --dry-run"#
+    )]
     WriteTelemAgg {
-        /// Epoch to calculate rewards for. Optional.
-        #[arg(short, long)]
+        /// DZ epoch to process telemetry for (defaults to previous epoch)
+        #[arg(short, long, value_name = "EPOCH")]
         epoch: Option<u64>,
 
-        /// Run in dry-run mode (skip writing to ledger, show what would be written). Optional.
+        /// Skip writing to ledger and show what would be written
         #[arg(long)]
         dry_run: bool,
 
-        /// Type of telemetry to write (device, internet, or all). Required.
-        #[arg(short = 't', long, default_value = "all")]
+        /// Type of telemetry to write: 'device', 'internet', or 'all'
+        #[arg(short = 't', long, default_value = "all", value_name = "TYPE")]
         r#type: String,
 
-        /// Path to the keypair file to use for signing transactions. Required unless --dry-run is set.
-        #[arg(short = 'k', long, required_unless_present = "dry_run")]
+        /// Path to keypair file for signing transactions
+        #[arg(
+            short = 'k',
+            long,
+            value_name = "FILE",
+            required_unless_present = "dry_run"
+        )]
         keypair: Option<PathBuf>,
     },
-    /// Inspect record accounts for a given epoch
+    #[command(
+        about = "Inspect and display information about record accounts for an epoch",
+        after_help = r#"Examples:
+    # Inspect all records for epoch 123
+    inspect --epoch 123
+
+    # Inspect only device telemetry records
+    inspect --epoch 123 --type device-telemetry
+
+    # Inspect with specific rewards accountant
+    inspect --epoch 123 --rewards-accountant <PUBKEY>"#
+    )]
     Inspect {
-        /// DZ Epoch (e.g. 79). Required.
-        #[arg(short, long)]
+        /// DZ epoch number to inspect records for
+        #[arg(short, long, value_name = "EPOCH")]
         epoch: u64,
 
-        /// Rewards accountant public key used for address derivation (auto-fetched if not provided). Optional.
-        #[arg(short = 'r', long)]
+        /// Rewards accountant public key (auto-fetched from ProgramConfig if not provided)
+        #[arg(short = 'r', long, value_name = "PUBKEY")]
         rewards_accountant: Option<Pubkey>,
 
-        /// Type of record to inspect (optional, shows all if not specified). Optional.
-        #[arg(short = 't', long)]
+        /// Specific record type to inspect (shows all if not specified)
+        #[arg(short = 't', long, value_name = "TYPE")]
         r#type: Option<String>,
     },
 }

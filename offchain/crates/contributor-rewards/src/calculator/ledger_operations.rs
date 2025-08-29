@@ -231,7 +231,7 @@ pub async fn read_telemetry_aggregates(
 
     // Auto-fetch rewards_accountant if not provided
     let rewards_accountant =
-        get_rewards_accountant(&fetcher.solana_testnet_client, rewards_accountant).await?;
+        get_rewards_accountant(&fetcher.solana_write_client, rewards_accountant).await?;
 
     let mut device_stats: Option<DZDTelemetryStatMap> = None;
     let mut internet_stats: Option<InternetTelemetryStatMap> = None;
@@ -407,7 +407,7 @@ pub async fn read_reward_input(
 
     // Auto-fetch rewards_accountant if not provided
     let rewards_accountant =
-        get_rewards_accountant(&fetcher.solana_testnet_client, rewards_accountant).await?;
+        get_rewards_accountant(&fetcher.solana_write_client, rewards_accountant).await?;
 
     let prefix = get_reward_input_prefix(settings)?;
     let epoch_bytes = epoch.to_le_bytes();
@@ -630,7 +630,7 @@ pub async fn read_shapley_output(
 
     // Auto-fetch rewards_accountant if not provided
     let rewards_accountant =
-        get_rewards_accountant(&fetcher.solana_testnet_client, rewards_accountant).await?;
+        get_rewards_accountant(&fetcher.solana_write_client, rewards_accountant).await?;
 
     let prefix = get_contributor_rewards_prefix(settings)?;
     let epoch_bytes = epoch.to_le_bytes();
@@ -684,7 +684,7 @@ pub async fn realloc_record(
     let fetcher = Fetcher::from_settings(settings)?;
 
     // Validate keypair matches ProgramConfig
-    validate_rewards_accountant_keypair(&fetcher.solana_testnet_client, &payer_signer).await?;
+    validate_rewards_accountant_keypair(&fetcher.solana_write_client, &payer_signer).await?;
 
     // Determine the prefix and compute the record address based on record type
     let epoch_bytes = epoch.to_le_bytes();
@@ -788,7 +788,7 @@ pub async fn close_record(
     let fetcher = Fetcher::from_settings(settings)?;
 
     // Validate keypair matches ProgramConfig
-    validate_rewards_accountant_keypair(&fetcher.solana_testnet_client, &payer_signer).await?;
+    validate_rewards_accountant_keypair(&fetcher.solana_write_client, &payer_signer).await?;
 
     // Determine the prefix and compute the record address based on record type
     let epoch_bytes = epoch.to_le_bytes();
@@ -891,7 +891,7 @@ pub async fn inspect_records(
 
     // Auto-fetch rewards_accountant if not provided
     let rewards_accountant =
-        get_rewards_accountant(&fetcher.solana_testnet_client, rewards_accountant).await?;
+        get_rewards_accountant(&fetcher.solana_write_client, rewards_accountant).await?;
     let epoch_bytes = epoch.to_le_bytes();
 
     // Define all record types to inspect

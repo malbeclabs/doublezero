@@ -6,6 +6,10 @@
 # Secrets
 .env
 .envrc
+config.toml
+mainnet-beta.toml
+testnet.toml
+devnet.toml
 
 # Local configuration
 config/local.toml

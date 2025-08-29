@@ -48,7 +48,7 @@ pub async fn build(fetcher: &Fetcher, fetch_data: &FetchData) -> Result<DemandBu
     assert_ne!(0, timestamp_us, "First sample timestamp is 0!");
 
     // Create an EpochFinder to handle epoch calculations
-    let mut epoch_finder = EpochFinder::new(&fetcher.solana_mainnet_client);
+    let mut epoch_finder = EpochFinder::new(&fetcher.solana_read_client);
 
     // Find the corresponding Solana epoch for this timestamp
     let solana_epoch = epoch_finder.find_epoch_at_timestamp(timestamp_us).await?;
@@ -66,7 +66,7 @@ pub async fn build(fetcher: &Fetcher, fetch_data: &FetchData) -> Result<DemandBu
 
     // Get leader schedule for the corresponding Solana epoch
     let leader_schedule = fetcher
-        .solana_mainnet_client
+        .solana_read_client
         .get_leader_schedule(Some(first_slot_of_epoch))
         .await?
         .ok_or_else(|| anyhow!("No leader schedule found for Solana epoch {}", solana_epoch))?;

@@ -6,7 +6,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use config::{Config as ConfigBuilder, Environment, File};
 use network::Network;
 use serde::{Deserialize, Serialize};
-use std::{env, fmt};
+use std::{fmt, path::Path};
 use validation::validate_config;
 
 /// Main settings configuration for contributor-rewards
@@ -47,10 +47,10 @@ pub struct ShapleySettings {
 pub struct RpcSettings {
     /// DoubleZero ledger RPC URL
     pub dz_url: String,
-    /// Solana mainnet RPC endpoint
-    pub solana_mainnet_url: String,
-    /// Solana testnet RPC endpoint (for development/testing)
-    pub solana_testnet_url: String,
+    /// Solana read RPC endpoint (for reading chain data like leader schedules)
+    pub solana_read_url: String,
+    /// Solana write RPC endpoint (for writing rewards and merkle roots)
+    pub solana_write_url: String,
     /// Transaction commitment level ("confirmed", "finalized", etc.)
     pub commitment: String,
     /// Rate limit for RPC requests per second
@@ -103,20 +103,15 @@ pub struct InetLookbackSettings {
 
 impl Settings {
     /// Load configuration from a specific config file path
-    pub fn from_path<P: AsRef<std::path::Path>>(path: P) -> Result<Self> {
-        let mut builder = ConfigBuilder::builder();
-
-        // Load from the specified config file
-        builder = builder.add_source(File::with_name(&path.as_ref().to_string_lossy()));
-
-        // Also load from environment variables (they override file settings)
-        builder = builder.add_source(
-            Environment::with_prefix("DZ")
-                .separator("__")
-                .try_parsing(true),
-        );
-
-        let settings: Settings = builder
+    pub fn from_path<P: AsRef<Path>>(path: P) -> Result<Self> {
+        // Construct settings, env vars take priority still
+        let settings = ConfigBuilder::builder()
+            .add_source(File::with_name(&path.as_ref().to_string_lossy()))
+            .add_source(
+                Environment::with_prefix("DZ")
+                    .separator("__")
+                    .try_parsing(true),
+            )
             .build()
             .context("Failed to build configuration")?
             .try_deserialize()
@@ -130,29 +125,17 @@ impl Settings {
 
     /// Load configuration from environment variables and optional config file
     pub fn from_env() -> Result<Self> {
-        let mut builder = ConfigBuilder::builder();
+        // Load .env file if it exists
+        // NOTE: It's ok if this fails (file might not exist)
+        let _ = dotenvy::dotenv();
 
-        // Try to load from .env file if it exists
-        if std::path::Path::new(".env").exists() {
-            builder = builder.add_source(File::with_name(".env").required(false));
-        }
-
-        // Load from environment variables with prefix
-        builder = builder.add_source(
-            Environment::with_prefix("DZ")
-                .separator("__")
-                .try_parsing(true),
-        );
-
-        // Also support unprefixed environment variables for backward compatibility
-        builder = builder.add_source(Environment::default().separator("_").try_parsing(true));
-
-        // Check for legacy config files for backward compatibility
-        if let Ok(config_path) = env::var("CONFIG_PATH") {
-            builder = builder.add_source(File::with_name(&config_path));
-        }
-
-        let settings: Settings = builder
+        // Construct settings
+        let settings: Settings = ConfigBuilder::builder()
+            .add_source(
+                Environment::with_prefix("DZ")
+                    .separator("__")
+                    .try_parsing(true),
+            )
             .build()
             .context("Failed to build configuration")?
             .try_deserialize()
@@ -173,8 +156,8 @@ impl fmt::Display for Settings {
              \tNetwork: {:?}\n\
              \tLog Level: {}\n\
              \tDZ RPC URL: {}\n\
-             \tSolana Mainnet RPC URL: {}\n\
-             \tSolana Testnet RPC URL: {}\n\
+             \tSolana Read RPC URL: {}\n\
+             \tSolana Write RPC URL: {}\n\
              \tRPS Limit: {}\n\
              \tShapley Operator Uptime: {}\n\
              \tShapley Contiguity Bonus: {}\n\
@@ -183,8 +166,8 @@ impl fmt::Display for Settings {
             self.network,
             self.log_level,
             self.rpc.dz_url,
-            self.rpc.solana_mainnet_url,
-            self.rpc.solana_testnet_url,
+            self.rpc.solana_read_url,
+            self.rpc.solana_write_url,
             self.rpc.rps_limit,
             self.shapley.operator_uptime,
             self.shapley.contiguity_bonus,

@@ -3,10 +3,12 @@ use doublezero_program_tools::{instruction::try_build_instruction, zero_copy};
 
 use doublezero_revenue_distribution::{
     ID,
-    // TODO: add env var to load correct key
     instruction::{
-        account::{ConfigureDistributionPaymentsAccounts, InitializeDistributionAccounts},
-        {DistributionPaymentsConfiguration, RevenueDistributionInstructionData},
+        DistributionPaymentsConfiguration, RevenueDistributionInstructionData,
+        account::{
+            ConfigureDistributionPaymentsAccounts, FinalizeDistributionPaymentsAccounts,
+            InitializeDistributionAccounts,
+        },
     },
     state::{Distribution, ProgramConfig},
     types::DoubleZeroEpoch,
@@ -24,7 +26,6 @@ use std::env;
 #[derive(Debug)]
 pub struct Transaction {
     signer: Keypair,
-
     pub dry_run: bool,
 }
 
@@ -126,7 +127,42 @@ impl Transaction {
                         .unwrap();
                 Ok(new_transaction)
             }
-            Err(err) => Err(anyhow!("Failed to build distribution: {err:?}")),
+            Err(err) => Err(anyhow!(
+                "Failed to build initialize distribution instruction: {err:?}"
+            )),
+        }
+    }
+
+    pub async fn finalize_distribution(
+        &self,
+        solana_rpc_client: &RpcClient,
+        dz_epoch: u64,
+    ) -> Result<VersionedTransaction> {
+        let dz_epoch = DoubleZeroEpoch::new(dz_epoch);
+
+        match try_build_instruction(
+            &ID,
+            FinalizeDistributionPaymentsAccounts::new(&self.pubkey(), dz_epoch, &self.pubkey()),
+            &RevenueDistributionInstructionData::FinalizeDistributionPayments,
+        ) {
+            Ok(instruction) => {
+                let recent_blockhash = solana_rpc_client.get_latest_blockhash().await?;
+                let message = Message::try_compile(
+                    &self.signer.pubkey(),
+                    &[instruction],
+                    &[],
+                    recent_blockhash,
+                )
+                .unwrap();
+
+                let finalized_transaction =
+                    VersionedTransaction::try_new(VersionedMessage::V0(message), &[&self.signer])
+                        .unwrap();
+                Ok(finalized_transaction)
+            }
+            Err(err) => Err(anyhow!(
+                "Failed to build finalize distribution instuction: {err:?}"
+            )),
         }
     }
 
@@ -205,7 +241,105 @@ mod tests {
         Ok(default_keypair)
     }
 
-    #[ignore] // this will fail without local validator
+    #[ignore = "needs local validator"]
+    #[tokio::test]
+    async fn test_initialize_distribution() -> anyhow::Result<()> {
+        let keypair = try_load_keypair(None).unwrap();
+        let commitment_config = CommitmentConfig::processed();
+        let ledger_rpc_client =
+            RpcClient::new_with_commitment("http://localhost:8899".to_string(), commitment_config);
+
+        let solana_rpc_client =
+            RpcClient::new_with_commitment("http://localhost:8899".to_string(), commitment_config);
+        let vote_account_config = RpcGetVoteAccountsConfig {
+            vote_pubkey: None,
+            commitment: CommitmentConfig::finalized().into(),
+            keep_unstaked_delinquents: None,
+            delinquent_slot_distance: None,
+        };
+
+        let rpc_block_config = RpcBlockConfig {
+            encoding: Some(UiTransactionEncoding::Base58),
+            transaction_details: Some(TransactionDetails::None),
+            rewards: Some(true),
+            commitment: None,
+            max_supported_transaction_version: Some(0),
+        };
+        let fpc = SolanaDebtCalculator::new(
+            ledger_rpc_client,
+            solana_rpc_client,
+            rpc_block_config,
+            vote_account_config,
+        );
+        let solana_rpc_client = fpc.solana_rpc_client;
+        let ledger_rpc_client = fpc.ledger_rpc_client;
+
+        let transaction = Transaction::new(keypair, false);
+
+        let dz_epoch_info = ledger_rpc_client.get_epoch_info().await?;
+
+        let new_transaction = transaction
+            .initialize_distribution(&ledger_rpc_client, &solana_rpc_client, dz_epoch_info.epoch)
+            .await?;
+
+        let _sent_transaction = transaction
+            .send_or_simulate_transaction(&solana_rpc_client, &new_transaction)
+            .await?;
+
+        Ok(())
+    }
+
+    #[ignore = "needs local validator"]
+    #[tokio::test]
+    async fn test_finalize_distribution() -> anyhow::Result<()> {
+        let keypair = try_load_keypair(None).unwrap();
+        let commitment_config = CommitmentConfig::processed();
+        let ledger_rpc_client = RpcClient::new_with_commitment(
+            "https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16"
+                .to_string(),
+            commitment_config,
+        );
+
+        let solana_rpc_client = RpcClient::new_with_commitment(
+            "https://api.testnet.solana.com".to_string(),
+            commitment_config,
+        );
+        let vote_account_config = RpcGetVoteAccountsConfig {
+            vote_pubkey: None,
+            commitment: CommitmentConfig::finalized().into(),
+            keep_unstaked_delinquents: None,
+            delinquent_slot_distance: None,
+        };
+
+        let rpc_block_config = RpcBlockConfig {
+            encoding: Some(UiTransactionEncoding::Base58),
+            transaction_details: Some(TransactionDetails::None),
+            rewards: Some(true),
+            commitment: None,
+            max_supported_transaction_version: Some(0),
+        };
+        let fpc = SolanaDebtCalculator::new(
+            ledger_rpc_client,
+            solana_rpc_client,
+            rpc_block_config,
+            vote_account_config,
+        );
+        let solana_rpc_client = fpc.solana_rpc_client;
+
+        let transaction = Transaction::new(keypair, false);
+
+        let dz_epoch: u64 = 0;
+        let finalize_transaction = transaction
+            .finalize_distribution(&solana_rpc_client, dz_epoch)
+            .await?;
+
+        let _sent_transaction = transaction
+            .send_or_simulate_transaction(&solana_rpc_client, &finalize_transaction)
+            .await?;
+        Ok(())
+    }
+
+    #[ignore = "needs local validator"]
     #[tokio::test]
     async fn test_write_to_read_from_chain() -> anyhow::Result<()> {
         let keypair = try_load_keypair(None).unwrap();

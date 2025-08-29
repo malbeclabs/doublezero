@@ -34,9 +34,13 @@ pub async fn write_debts<T: ValidatorRewards>(
     solana_debt_calculator: &T,
     signer: Keypair,
     validator_ids: Vec<String>,
+    dz_epoch: u64,
 ) -> Result<RecordResult> {
     let record_result: RecordResult;
-    let fetched_epoch_info = solana_debt_calculator.get_epoch_info().await?;
+    let fetched_dz_epoch_info = solana_debt_calculator
+        .ledger_rpc_client()
+        .get_epoch_info()
+        .await?;
 
     let now = Utc::now();
     let dz_fetch_epoch_info = solana_debt_calculator
@@ -44,7 +48,7 @@ pub async fn write_debts<T: ValidatorRewards>(
         .get_epoch_info()
         .await?;
 
-    if fetched_epoch_info.epoch == dz_fetch_epoch_info.epoch {
+    if fetched_dz_epoch_info.epoch == dz_epoch {
         record_result = RecordResult {
             last_written_epoch: Some(dz_fetch_epoch_info.epoch),
             last_check: Some(now),
@@ -59,12 +63,9 @@ pub async fn write_debts<T: ValidatorRewards>(
     };
 
     // fetch rewards for validators
-    let validator_rewards = rewards::get_total_rewards(
-        solana_debt_calculator,
-        validator_ids.as_slice(),
-        fetched_epoch_info.epoch,
-    )
-    .await?;
+    let validator_rewards =
+        rewards::get_total_rewards(solana_debt_calculator, validator_ids.as_slice(), dz_epoch)
+            .await?;
 
     // TODO: post rewards to ledger
 
@@ -79,7 +80,7 @@ pub async fn write_debts<T: ValidatorRewards>(
         .collect();
 
     let computed_solana_validator_debts = ComputedSolanaValidatorDebts {
-        epoch: fetched_epoch_info.epoch,
+        epoch: dz_epoch,
         debts: computed_solana_validator_debt_vec,
     };
 
@@ -91,7 +92,7 @@ pub async fn write_debts<T: ValidatorRewards>(
         .initialize_distribution(
             solana_debt_calculator.ledger_rpc_client(),
             solana_debt_calculator.solana_rpc_client(),
-            fetched_epoch_info.epoch,
+            dz_epoch,
         )
         .await?;
     let tx_initialized_sig = transaction
@@ -113,11 +114,7 @@ pub async fn write_debts<T: ValidatorRewards>(
     };
 
     let submitted_distribution = transaction
-        .submit_distribution(
-            solana_debt_calculator.solana_rpc_client(),
-            fetched_epoch_info.epoch,
-            debt,
-        )
+        .submit_distribution(solana_debt_calculator.solana_rpc_client(), dz_epoch, debt)
         .await?;
     let tx_submitted_sig = transaction
         .send_or_simulate_transaction(
@@ -146,14 +143,22 @@ mod tests {
     use super::*;
     use crate::block;
     use crate::jito::{JitoReward, JitoRewards};
-    use crate::solana_debt_calculator::{MockValidatorRewards, ledger_rpc, solana_rpc};
-    use solana_client::nonblocking::rpc_client::RpcClient;
+    use crate::solana_debt_calculator::{
+        MockValidatorRewards, SolanaDebtCalculator, ledger_rpc, solana_rpc,
+    };
+    use doublezero_revenue_distribution::instruction::DistributionPaymentsConfiguration;
     use solana_client::rpc_response::{
         RpcInflationReward, RpcVoteAccountInfo, RpcVoteAccountStatus,
     };
-    use solana_sdk::commitment_config::CommitmentConfig;
+    use solana_client::{
+        nonblocking::rpc_client::RpcClient,
+        rpc_config::{RpcBlockConfig, RpcGetVoteAccountsConfig},
+    };
+    use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey, signature::Keypair};
     use solana_sdk::{epoch_info::EpochInfo, reward_type::RewardType::Fee};
-    use solana_transaction_status_client_types::UiConfirmedBlock;
+    use solana_transaction_status_client_types::{
+        TransactionDetails, UiConfirmedBlock, UiTransactionEncoding,
+    };
     use std::{collections::HashMap, path::PathBuf};
 
     /// Taken from a Solana cookbook to load a keypair from a user's Solana config
@@ -175,7 +180,46 @@ mod tests {
         Ok(default_keypair)
     }
 
-    #[ignore] // this will fail without local validator
+    #[ignore = "need local validator"]
+    #[tokio::test]
+    async fn test_distribution_flow() -> Result<()> {
+        let keypair = try_load_keypair(None).unwrap();
+        let commitment_config = CommitmentConfig::confirmed();
+        let ledger_rpc_client = RpcClient::new_with_commitment(ledger_rpc(), commitment_config);
+
+        let solana_rpc_client = RpcClient::new_with_commitment(solana_rpc(), commitment_config);
+        let vote_account_config = RpcGetVoteAccountsConfig {
+            vote_pubkey: None,
+            commitment: CommitmentConfig::finalized().into(),
+            keep_unstaked_delinquents: None,
+            delinquent_slot_distance: None,
+        };
+
+        let rpc_block_config = RpcBlockConfig {
+            encoding: Some(UiTransactionEncoding::Base58),
+            transaction_details: Some(TransactionDetails::None),
+            rewards: Some(true),
+            commitment: None,
+            max_supported_transaction_version: Some(0),
+        };
+        let fpc = SolanaDebtCalculator::new(
+            ledger_rpc_client,
+            solana_rpc_client,
+            rpc_block_config,
+            vote_account_config,
+        );
+
+        let _res = write_debts(
+            &fpc,
+            keypair,
+            vec!["va1i6T6vTcijrCz6G8r89H6igKjwkLfF6g5fnpvZu1b".to_string()],
+            832,
+        )
+        .await?;
+
+        Ok(())
+    }
+    #[ignore = "this will fail without local validator"]
     #[tokio::test]
     async fn test_execute_worker() -> Result<()> {
         let mut mock_solana_debt_calculator = MockValidatorRewards::new();
@@ -183,7 +227,7 @@ mod tests {
 
         let validator_id = "devgM7SXHvoHH6jPXRsjn97gygPUo58XEnc9bqY1jpj";
         let validator_ids: Vec<String> = vec![String::from(validator_id)];
-        let epoch = 819;
+        let epoch = 0;
         let fake_fetched_epoch = 820;
         let block_reward: u64 = 5000;
         let inflation_reward = 2500;
@@ -297,7 +341,7 @@ mod tests {
         let signer = try_load_keypair(None).unwrap();
 
         let record_result =
-            write_debts(&mock_solana_debt_calculator, signer, validator_ids).await?;
+            write_debts(&mock_solana_debt_calculator, signer, validator_ids, 0).await?;
 
         assert_eq!(
             record_result.last_written_epoch.unwrap(),

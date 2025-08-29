@@ -117,6 +117,7 @@ func NewControllerCommand() *ControllerCommand {
 	c.fs.StringVar(&c.env, "env", "", "environment to run controller in (devnet, testnet, mainnet-beta)")
 	c.fs.StringVar(&c.programID, "program-id", "", "smartcontract program id to monitor")
 	c.fs.StringVar(&c.rpcEndpoint, "solana-rpc-endpoint", "", "override solana rpc endpoint (default: devnet)")
+	c.fs.Uint64Var(&c.deviceLocalASN, "device-local-asn", 0, "device local ASN (required when env is not set)")
 	c.fs.BoolVar(&c.noHardware, "no-hardware", false, "exclude config commands that will fail when not running on the real hardware")
 	c.fs.BoolVar(&c.enableInterfacesAndPeers, "enable-interfaces-and-peers", false, "enable processing of device interfaces and BGP peers")
 	c.fs.BoolVar(&c.showVersion, "version", false, "show version information and exit")
@@ -133,6 +134,7 @@ type ControllerCommand struct {
 	env                      string
 	programID                string
 	rpcEndpoint              string
+	deviceLocalASN           uint64
 	noHardware               bool
 	enableInterfacesAndPeers bool
 	showVersion              bool
@@ -171,16 +173,23 @@ func (c *ControllerCommand) Run() error {
 
 	options := []controller.Option{}
 	var serviceabilityClient controller.ServiceabilityProgramClient
+	var deviceLocalASN uint32
+
 	if c.env == "" {
 		if c.programID == "" {
-			slog.Error("program-id is required")
+			slog.Error("program-id is required when env is not set")
 			os.Exit(1)
 		}
 		if c.rpcEndpoint == "" {
-			slog.Error("rpc-endpoint is required")
+			slog.Error("rpc-endpoint is required when env is not set")
+			os.Exit(1)
+		}
+		if c.deviceLocalASN == 0 {
+			slog.Error("device-local-asn is required when env is not set")
 			os.Exit(1)
 		}
 		serviceabilityClient = serviceability.New(rpc.New(c.rpcEndpoint), solana.MustPublicKeyFromBase58(c.programID))
+		deviceLocalASN = uint32(c.deviceLocalASN)
 	} else {
 		networkConfig, err := config.NetworkConfigForEnv(c.env)
 		if err != nil {
@@ -188,7 +197,10 @@ func (c *ControllerCommand) Run() error {
 			os.Exit(1)
 		}
 		serviceabilityClient = serviceability.New(rpc.New(networkConfig.LedgerPublicRPCURL), networkConfig.ServiceabilityProgramID)
+		deviceLocalASN = networkConfig.DeviceLocalASN
 	}
+
+	options = append(options, controller.WithDeviceLocalASN(deviceLocalASN))
 
 	if c.noHardware {
 		options = append(options, controller.WithNoHardware())

@@ -243,4 +243,5 @@ type templateData struct {
 	NoHardware               bool
 	InterfacesAndPeers       bool
 	TelemetryTWAMPListenPort int
+	LocalASN                 uint32
 }

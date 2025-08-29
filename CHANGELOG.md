@@ -50,6 +50,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Controller
+    - Make device Autonomous System Number (ASN) configurable per environment
+    - Added `--device-local-asn` flag for e2e tests
 - Onchain programs
     - Introducing new link instruction processor acceptance criteria
     - Add support for custom deserializers and add for pubkey fields
@@ -71,6 +74,7 @@ All notable changes to this project will be documented in this file.
     - Add "mpls icmp ttl-exceeded tunneling" config statement so intermediate hops in the doublezero network respond to traceroutes.
     - Set protocol timers for ibgp and isis to improve to speed up network re-convergence
     - Add TLS support to gRPC server
+    - Read BGP ASN from serviceability global-config so it can have different values in different environments
 - Onchain monitor
     - Initial implementation and component release
     - Monitor onchain device telemetry metrics

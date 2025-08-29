@@ -19,6 +19,7 @@ type NetworkConfig struct {
 	ServiceabilityProgramID    solana.PublicKey
 	TelemetryProgramID         solana.PublicKey
 	InternetLatencyCollectorPK solana.PublicKey
+	DeviceLocalASN             uint32
 }
 
 func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
@@ -42,6 +43,7 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 			ServiceabilityProgramID:    serviceabilityProgramID,
 			TelemetryProgramID:         telemetryProgramID,
 			InternetLatencyCollectorPK: internetLatencyCollectorPK,
+			DeviceLocalASN:             MainnetDeviceLocalASN,
 		}
 	case EnvTestnet:
 		serviceabilityProgramID, err := solana.PublicKeyFromBase58(TestnetServiceabilityProgramID)
@@ -61,6 +63,7 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 			ServiceabilityProgramID:    serviceabilityProgramID,
 			TelemetryProgramID:         telemetryProgramID,
 			InternetLatencyCollectorPK: internetLatencyCollectorPK,
+			DeviceLocalASN:             TestnetDeviceLocalASN,
 		}
 	case EnvDevnet:
 		serviceabilityProgramID, err := solana.PublicKeyFromBase58(DevnetServiceabilityProgramID)
@@ -80,6 +83,7 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 			ServiceabilityProgramID:    serviceabilityProgramID,
 			TelemetryProgramID:         telemetryProgramID,
 			InternetLatencyCollectorPK: internetLatencyCollectorPK,
+			DeviceLocalASN:             DevnetDeviceLocalASN,
 		}
 	default:
 		return nil, fmt.Errorf("invalid environment %q, must be one of: %s, %s, %s", env, EnvMainnetBeta, EnvTestnet, EnvDevnet)

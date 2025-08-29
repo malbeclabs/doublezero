@@ -17,6 +17,16 @@ use tabled::{settings::Style, Table, Tabled};
 
 #[derive(Args, Debug)]
 pub struct ListUserCliCommand {
+    /// List prepaid access passes
+    #[arg(long, default_value_t = false)]
+    pub prepaid: bool,
+    /// List prepaid access passes
+    #[arg(long, default_value_t = false)]
+    pub solana_validator: bool,
+    /// Solana identity public key
+    #[arg(long)]
+    pub solana_identity: Option<Pubkey>,
+
     /// Output as pretty JSON.
     #[arg(long, default_value_t = false)]
     pub json: bool,
@@ -64,11 +74,58 @@ impl ListUserCliCommand {
         let locations = client.list_location(ListLocationCommand)?;
         let mgroups = client.list_multicastgroup(ListMulticastGroupCommand)?;
         let accesspasses = client.list_accesspass(ListAccessPassCommand {})?;
-        let users = client.list_user(ListUserCommand)?;
+        let binding = client.list_user(ListUserCommand)?;
+
+        let mut users = binding
+            .iter()
+            .map(|(pk, user)| {
+                let (accesspass_pk, _) =
+                    get_accesspass_pda(&client.get_program_id(), &user.client_ip, &user.owner);
+                let accesspass = accesspasses.get(&accesspass_pk);
+
+                (*pk, user.clone(), accesspass.cloned())
+            })
+            .collect::<Vec<_>>();
+
+        // Filter users by access pass type
+        if self.prepaid {
+            users.retain(|(_, _, accesspass)| {
+                if let Some(accesspass) = accesspass {
+                    accesspass.accesspass_type
+                        == doublezero_serviceability::state::accesspass::AccessPassType::Prepaid
+                } else {
+                    false
+                }
+            });
+        }
+        // Filter users by access pass type
+        if self.solana_validator {
+            users.retain(|(_, _, accesspass)| {
+                if let Some(accesspass) = accesspass {
+                    matches!(
+                        accesspass.accesspass_type,
+                        doublezero_serviceability::state::accesspass::AccessPassType::SolanaValidator(_)
+                    )
+                } else {
+                    false
+                }
+            });
+        }
+
+        if let Some(solana_identity) = self.solana_identity {
+            users.retain(|(_, _, accesspass)| {
+                if let Some(accesspass) = accesspass {
+                    accesspass.accesspass_type ==
+                        doublezero_serviceability::state::accesspass::AccessPassType::SolanaValidator(solana_identity)
+                } else {
+                    false
+                }
+            });
+        }
 
         let mut users_displays: Vec<UserDisplay> = users
             .into_iter()
-            .map(|(pubkey, user)| {
+            .map(|(pubkey, user, accesspass)| {
                 let device = devices.get(&user.device_pk);
                 let location = match device {
                     Some(device) => locations.get(&device.location_pk),
@@ -93,10 +150,6 @@ impl ListUserCliCommand {
                     },
                     None => "".to_string(),
                 };
-
-                let (accesspass_pk, _) =
-                    get_accesspass_pda(&client.get_program_id(), &user.client_ip, &user.owner);
-                let accesspass = accesspasses.get(&accesspass_pk);
 
                 UserDisplay {
                     account: pubkey,
@@ -430,6 +483,9 @@ mod tests {
 
         let mut output = Vec::new();
         let res = ListUserCliCommand {
+            prepaid: false,
+            solana_validator: false,
+            solana_identity: None,
             json: false,
             json_compact: false,
         }
@@ -440,6 +496,9 @@ mod tests {
 
         let mut output = Vec::new();
         let res = ListUserCliCommand {
+            prepaid: false,
+            solana_validator: false,
+            solana_identity: None,
             json: false,
             json_compact: true,
         }

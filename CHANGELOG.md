@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
     - Added filtering options to `access-pass list` and `user list` CLI commands.
     - New filters include access pass type (`prepaid` or `solana-validator`) and Solana identity public key.
     - Updated command arguments and logic, with tests adjusted to cover new options.
+    - Contributors: Interface creation no longer takes an "interface type (physical/loopback)" argument. The type is now inferred from the interface name.
 
 ## [v0.6.0](https://github.com/malbeclabs/doublezero/compare/client/v0.5.3...client/v0.6.0) – 2025-08-28
 

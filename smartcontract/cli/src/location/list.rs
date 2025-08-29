@@ -26,6 +26,7 @@ pub struct LocationDisplay {
     pub country: String,
     pub lat: f64,
     pub lng: f64,
+    pub loc_id: u32,
     pub status: LocationStatus,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub owner: Pubkey,
@@ -37,15 +38,16 @@ impl ListLocationCliCommand {
 
         let mut location_displays: Vec<LocationDisplay> = locations
             .into_iter()
-            .map(|(pubkey, tunnel)| LocationDisplay {
+            .map(|(pubkey, link)| LocationDisplay {
                 account: pubkey,
-                code: tunnel.code,
-                name: tunnel.name,
-                country: tunnel.country,
-                lat: tunnel.lat,
-                lng: tunnel.lng,
-                status: tunnel.status,
-                owner: tunnel.owner,
+                code: link.code,
+                name: link.name,
+                country: link.country,
+                lat: link.lat,
+                lng: link.lng,
+                loc_id: link.loc_id,
+                status: link.status,
+                owner: link.owner,
             })
             .collect();
 
@@ -110,7 +112,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | code      | name      | country      | lat | lng | status    | owner                                     \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | some code | some name | some country | 15  | 15  | activated | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
+        assert_eq!(output_str, " account                                   | code      | name      | country      | lat | lng | loc_id | status    | owner                                     \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | some code | some name | some country | 15  | 15  | 7      | activated | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
 
         let mut output = Vec::new();
         let res = ListLocationCliCommand {
@@ -121,6 +123,6 @@ mod tests {
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\",\"code\":\"some code\",\"name\":\"some name\",\"country\":\"some country\",\"lat\":15.0,\"lng\":15.0,\"status\":\"Activated\",\"owner\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\"}]\n");
+        assert_eq!(output_str, "[{\"account\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\",\"code\":\"some code\",\"name\":\"some name\",\"country\":\"some country\",\"lat\":15.0,\"lng\":15.0,\"loc_id\":7,\"status\":\"Activated\",\"owner\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\"}]\n");
     }
 }

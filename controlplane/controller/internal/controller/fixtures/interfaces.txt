@@ -81,6 +81,7 @@ interface Switch1/1/1
    isis enable 1
    isis circuit-type level-2
    isis hello-interval 1
+   isis metric 40000
    isis hello padding
    isis network point-to-point
 !
@@ -93,9 +94,22 @@ interface Switch1/1/2.100
    encapsulation dot1q vlan 100
    ip address 172.16.0.2/31
    pim ipv4 sparse-mode
+!
+interface Switch1/1/2.200
+   mtu 2048
+   encapsulation dot1q vlan 200
+   ip address 172.16.0.6/31
+   pim ipv4 sparse-mode
+!
+interface Switch1/1/2.300
+   mtu 2048
+   encapsulation dot1q vlan 300
+   ip address 172.16.0.8/31
+   pim ipv4 sparse-mode
    isis enable 1
    isis circuit-type level-2
    isis hello-interval 1
+   isis metric 40000
    isis hello padding
    isis network point-to-point
 !
@@ -106,6 +120,7 @@ interface Vlan4001
    isis enable 1
    isis circuit-type level-2
    isis hello-interval 1
+   isis metric 10000
    isis hello padding
    isis network point-to-point
 !

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"net"
 	"net/http"
 	"sort"
@@ -202,6 +203,10 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 	if len(users) == 0 {
 		slog.Debug("0 users found on-chain")
 	}
+	links := data.Links
+	if len(links) == 0 {
+		slog.Debug("0 links found on-chain")
+	}
 	cache := stateCache{
 		Config:          data.Config,
 		Devices:         make(map[string]*Device),
@@ -254,6 +259,39 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 
 			cache.Vpnv4BgpPeers = append(cache.Vpnv4BgpPeers, candidateVpnv4BgpPeer)
 			cache.Ipv4BgpPeers = append(cache.Ipv4BgpPeers, candidateIpv4BgpPeer)
+
+			// determine if interface is in an onchain link and assign metrics
+			findLink := func(intf Interface) serviceability.Link {
+				for _, link := range links {
+					if d.PubKey == base58.Encode(link.SideAPubKey[:]) && intf.Name == link.SideAIfaceName {
+						return link
+					}
+					if d.PubKey == base58.Encode(link.SideZPubKey[:]) && intf.Name == link.SideZIfaceName {
+						return link
+					}
+				}
+				return serviceability.Link{}
+			}
+
+			for i, iface := range d.Interfaces {
+				link := findLink(iface)
+
+				if link == (serviceability.Link{}) || link.Status != serviceability.LinkStatusActivated {
+					d.Interfaces[i].IsLink = false
+					d.Interfaces[i].Metric = 0
+					continue
+				}
+
+				if link.DelayNs <= 0 {
+					linkMetricInvalid.WithLabelValues(base58.Encode(link.PubKey[:]), device.Code, iface.Name).Inc()
+					continue
+				}
+
+				microseconds := math.Ceil(float64(link.DelayNs) / 1000.0)
+				d.Interfaces[i].Metric = uint32(microseconds)
+				d.Interfaces[i].IsLink = true
+				linkMetrics.WithLabelValues(device.Code, iface.Name, d.PubKey).Set(float64(d.Interfaces[i].Metric))
+			}
 		}
 		d.MgmtVrf = device.MgmtVrf
 

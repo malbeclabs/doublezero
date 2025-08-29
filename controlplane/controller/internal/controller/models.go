@@ -44,6 +44,8 @@ type Interface struct {
 	IsSubInterfaceParent bool
 	InterfaceType        InterfaceType
 	LoopbackType         LoopbackType
+	Metric               uint32
+	IsLink               bool
 }
 
 // toInterface validates onchain data for a serviceability interface and converts it to a controller interface.
@@ -95,6 +97,7 @@ func toInterface(iface serviceability.Interface) (Interface, error) {
 		IsSubInterfaceParent: false,
 		InterfaceType:        ifType,
 		LoopbackType:         loopbackType,
+		IsLink:               false,
 	}, nil
 
 }
@@ -118,6 +121,7 @@ func NewInterface(
 		IsSubInterfaceParent: isSubInterfaceParent,
 		InterfaceType:        interfaceType,
 		LoopbackType:         loopbackType,
+		IsLink:               false,
 	}
 }
 

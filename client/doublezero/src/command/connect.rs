@@ -7,7 +7,7 @@ use clap::{Args, Subcommand, ValueEnum};
 use doublezero_cli::{
     doublezerocommand::CliCommand,
     helpers::init_command,
-    requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON, CHECK_USER_ALLOWLIST},
+    requirements::{check_accesspass, check_requirements, CHECK_BALANCE, CHECK_ID_JSON},
 };
 use doublezero_program_common::types::NetworkV4;
 use doublezero_sdk::{
@@ -87,17 +87,23 @@ impl ProvisioningCliCommand {
         let spinner = init_command(4);
 
         // Check requirements
-        check_requirements(
-            client,
-            Some(&spinner),
-            CHECK_ID_JSON | CHECK_BALANCE | CHECK_USER_ALLOWLIST,
-        )?;
+        check_requirements(client, Some(&spinner), CHECK_ID_JSON | CHECK_BALANCE)?;
 
         check_doublezero(controller, Some(&spinner))?;
 
         spinner.println("🔗  Start Provisioning User...");
         // Get public IP
         let (client_ip, client_ip_str) = look_for_ip(&self.client_ip, &spinner).await?;
+
+        if !check_accesspass(client, client_ip)? {
+            println!(
+                "❌  Unable to find a valid Access Pass for the IP: {}",
+                client_ip_str
+            );
+            return Err(eyre::eyre!(
+                "You need to have a valid Access Pass to connect. Please contact support."
+            ));
+        }
 
         spinner.inc(1);
         spinner.println(format!("🔍  Provisioning User for IP: {client_ip_str}"));
@@ -653,12 +659,19 @@ mod tests {
     use super::*;
     use crate::servicecontroller::{LatencyRecord, MockServiceController, ProvisioningResponse};
     use doublezero_cli::{doublezerocommand::MockCliCommand, tests::utils::create_test_client};
-    use doublezero_sdk::{tests::utils::create_temp_config, utils::parse_pubkey};
-    use doublezero_serviceability::state::{
-        accounttype::AccountType,
-        device::{Device, DeviceStatus, DeviceType},
-        globalconfig::GlobalConfig,
-        multicastgroup::{MulticastGroup, MulticastGroupStatus},
+    use doublezero_sdk::{
+        commands::accesspass::get::GetAccessPassCommand, tests::utils::create_temp_config,
+        utils::parse_pubkey,
+    };
+    use doublezero_serviceability::{
+        pda::get_accesspass_pda,
+        state::{
+            accesspass::{AccessPass, AccessPassStatus, AccessPassType},
+            accounttype::AccountType,
+            device::{Device, DeviceStatus, DeviceType},
+            globalconfig::GlobalConfig,
+            multicastgroup::{MulticastGroup, MulticastGroupStatus},
+        },
     };
     use mockall::predicate;
     use solana_sdk::signature::Signature;
@@ -735,6 +748,31 @@ mod tests {
                 .client
                 .expect_list_user_allowlist()
                 .returning_st(move |_| Ok(vec![payer]));
+
+            let (accesspass_pk, _) = get_accesspass_pda(
+                &fixture.client.get_program_id(),
+                &Ipv4Addr::new(1, 2, 3, 4),
+                &payer,
+            );
+            let accesspass = AccessPass {
+                account_type: AccountType::AccessPass,
+                owner: payer,
+                bump_seed: 1,
+                client_ip: Ipv4Addr::new(1, 2, 3, 4),
+                user_payer: payer,
+                last_access_epoch: u64::MAX,
+                accesspass_type: AccessPassType::Prepaid,
+                connection_count: 0,
+                status: AccessPassStatus::Requested,
+            };
+            fixture
+                .client
+                .expect_get_accesspass()
+                .with(predicate::eq(GetAccessPassCommand {
+                    client_ip: Ipv4Addr::new(1, 2, 3, 4),
+                    user_payer: payer,
+                }))
+                .returning_st(move |_| Ok((accesspass_pk, accesspass.clone())));
 
             let users = fixture.users.clone();
             fixture

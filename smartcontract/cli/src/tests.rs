@@ -10,6 +10,7 @@ pub mod utils {
         let program_id = Pubkey::from_str_const("GYhQDKuESrasNZGyhMJhGYFtbzNijYhcrN9poSqCQVah");
         client.expect_get_payer().returning(move || payer);
         client.expect_get_balance().returning(|| Ok(10));
+        client.expect_get_epoch().returning(|| Ok(10));
         client.expect_get_program_id().returning(move || program_id);
 
         client

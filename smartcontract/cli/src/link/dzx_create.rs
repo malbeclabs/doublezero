@@ -9,6 +9,7 @@ use crate::{
     },
 };
 use clap::Args;
+use doublezero_program_common::validate_iface;
 use doublezero_sdk::{
     commands::{
         contributor::get::GetContributorCommand, device::get::GetDeviceCommand,
@@ -31,7 +32,7 @@ pub struct CreateDZXLinkCliCommand {
     #[arg(long, value_parser = validate_pubkey_or_code)]
     pub side_a: String,
     /// Device interface name for side A.
-    #[arg(long)]
+    #[arg(long, value_parser = validate_iface)]
     pub side_a_interface: String,
     /// Device Pubkey or code for side Z.
     #[arg(long, value_parser = validate_pubkey_or_code)]

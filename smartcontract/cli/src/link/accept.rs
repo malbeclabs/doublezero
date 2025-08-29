@@ -5,6 +5,7 @@ use crate::{
     validators::validate_pubkey_or_code,
 };
 use clap::Args;
+use doublezero_program_common::validate_iface;
 use doublezero_sdk::commands::{
     device::get::GetDeviceCommand,
     link::{accept::AcceptLinkCommand, get::GetLinkCommand},
@@ -18,7 +19,7 @@ pub struct AcceptLinkCliCommand {
     #[arg(long, value_parser = validate_pubkey_or_code)]
     pub code: String,
     /// Device interface name for side Z.
-    #[arg(long)]
+    #[arg(long, value_parser = validate_iface)]
     pub side_z_interface: String,
     /// Wait for the device to be activated
     #[arg(short, long, default_value_t = false)]

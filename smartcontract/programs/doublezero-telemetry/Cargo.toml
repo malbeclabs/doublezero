@@ -28,7 +28,14 @@ log.workspace = true
 solana-sdk.workspace = true
 solana-program-test.workspace = true
 
+[build-dependencies]
+doublezero-config.workspace = true
+
 [features]
-default = []
+default = ["localnet"]
+localnet = []
+testnet = []
+devnet = []
+mainnet-beta = []
 no-entrypoint = []
 serde = ["dep:serde", "dep:serde_bytes"]

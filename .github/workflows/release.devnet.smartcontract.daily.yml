@@ -34,7 +34,7 @@ jobs:
             target/deploy/doublezero_serviceability.so
       - name: Build telemetry program
         run: |
-          SERVICEABILITY_PROGRAM_ID=devnet cargo build-sbf
+          cargo build-sbf --features devnet
         working-directory: smartcontract/programs/doublezero-telemetry
       - name: Deploy telemetry program to DevNet
         run: |

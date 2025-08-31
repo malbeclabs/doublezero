@@ -83,10 +83,10 @@ async fn main() -> eyre::Result<()> {
         )?;
 
     let (rpc_url, ws_url, program_id) = if let Some(env) = args.env {
-        let config = env.parse::<Environment>()?.config()?;
+        let config = env.parse::<Environment>()?.config_with_override();
         (
-            config.ledger_public_rpc_url,
-            config.ledger_public_ws_rpc_url,
+            config.ledger_public_rpc_url.to_string(),
+            config.ledger_public_ws_rpc_url.to_string(),
             config.serviceability_program_id.to_string(),
         )
     } else {

@@ -1620,6 +1620,7 @@ dependencies = [
  "eyre",
  "serial_test",
  "solana-sdk",
+ "url",
 ]
 
 [[package]]

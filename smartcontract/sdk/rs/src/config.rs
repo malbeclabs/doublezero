@@ -43,8 +43,8 @@ impl Default for ClientConfig {
         ClientConfig {
             json_rpc_url: doublezero_config::Environment::Testnet
                 .config()
-                .unwrap()
-                .ledger_public_rpc_url,
+                .ledger_public_rpc_url
+                .to_string(),
             websocket_url: None,
             keypair_path: {
                 let mut keypair_path = dirs_next::home_dir().unwrap_or_default();
@@ -89,12 +89,10 @@ pub fn write_doublezero_config(config: &ClientConfig) -> eyre::Result<()> {
 
 pub fn convert_url_moniker(url: String) -> String {
     match url.as_str() {
-        "doublezero" => {
-            doublezero_config::Environment::Testnet
-                .config()
-                .unwrap()
-                .ledger_public_rpc_url
-        }
+        "doublezero" => doublezero_config::Environment::Testnet
+            .config()
+            .ledger_public_rpc_url
+            .to_string(),
         "localhost" => crate::consts::LOCALHOST_URL.to_string(),
         "devnet" => crate::consts::DEVNET_URL.to_string(),
         "testnet" => crate::consts::TESTNET_URL.to_string(),
@@ -105,12 +103,10 @@ pub fn convert_url_moniker(url: String) -> String {
 
 pub fn convert_ws_moniker(url: String) -> String {
     match url.as_str() {
-        "doublezero" => {
-            doublezero_config::Environment::Testnet
-                .config()
-                .unwrap()
-                .ledger_public_ws_rpc_url
-        }
+        "doublezero" => doublezero_config::Environment::Testnet
+            .config()
+            .ledger_public_ws_rpc_url
+            .to_string(),
         "localhost" => crate::consts::LOCALHOST_WS.to_string(),
         "devnet" => crate::consts::DEVNET_WS.to_string(),
         "testnet" => crate::consts::TESTNET_WS.to_string(),
@@ -130,12 +126,14 @@ pub fn convert_program_moniker(pubkey: String) -> String {
 pub fn convert_url_to_ws(url: &str) -> eyre::Result<String> {
     if url
         == doublezero_config::Environment::Testnet
-            .config()?
+            .config()
             .ledger_public_rpc_url
+            .to_string()
     {
         return Ok(doublezero_config::Environment::Testnet
-            .config()?
-            .ledger_public_ws_rpc_url);
+            .config()
+            .ledger_public_ws_rpc_url
+            .to_string());
     }
 
     let mut url = Url::parse(url)?;

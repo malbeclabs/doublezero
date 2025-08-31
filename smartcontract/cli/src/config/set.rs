@@ -43,10 +43,10 @@ impl SetConfigCliCommand {
                 return Ok(());
             }
 
-            let config = env.parse::<Environment>()?.config()?;
+            let config = env.parse::<Environment>()?.config();
             (
-                Some(config.ledger_public_rpc_url),
-                Some(config.ledger_public_ws_rpc_url),
+                Some(config.ledger_public_rpc_url.to_string()),
+                Some(config.ledger_public_ws_rpc_url.to_string()),
                 Some(config.serviceability_program_id.to_string()),
             )
         } else {
@@ -133,10 +133,10 @@ mod tests {
             .execute(&client, &mut output)
             .unwrap();
             let output_str = String::from_utf8(output).unwrap();
-            let devnet_config = Environment::Devnet.config().unwrap();
+            let devnet_config = Environment::Devnet.config();
             validate_config_output(
                 &output_str,
-                &devnet_config.ledger_public_rpc_url,
+                devnet_config.ledger_public_rpc_url.as_ref(),
                 &devnet_config.serviceability_program_id.to_string(),
             );
         });
@@ -191,10 +191,10 @@ mod tests {
             .unwrap();
             let output_str = String::from_utf8(output).unwrap();
 
-            let devnet_config = Environment::Devnet.config().unwrap();
+            let devnet_config = Environment::Devnet.config();
             validate_config_output(
                 &output_str,
-                &devnet_config.ledger_public_rpc_url,
+                devnet_config.ledger_public_rpc_url.as_ref(),
                 &devnet_config.serviceability_program_id.to_string(),
             );
         });
@@ -223,7 +223,7 @@ mod tests {
             .unwrap();
             let output_str = String::from_utf8(output).unwrap();
 
-            let devnet_config = Environment::Devnet.config().unwrap();
+            let devnet_config = Environment::Devnet.config();
             validate_config_output(
                 &output_str,
                 "https://example.com",
@@ -255,10 +255,10 @@ mod tests {
             .unwrap();
             let output_str = String::from_utf8(output).unwrap();
 
-            let devnet_config = Environment::Devnet.config().unwrap();
+            let devnet_config = Environment::Devnet.config();
             validate_config_output(
                 &output_str,
-                &devnet_config.ledger_public_rpc_url,
+                devnet_config.ledger_public_rpc_url.as_ref(),
                 "1234567890",
             );
         });
@@ -269,11 +269,11 @@ mod tests {
         let keypair_path = tmp.path().join("id.json");
         let config_path = tmp.path().join("config.yml");
 
-        let devnet_config = Environment::Devnet.config().unwrap();
+        let devnet_config = Environment::Devnet.config();
 
         let mut cfg = ClientConfig {
-            json_rpc_url: devnet_config.ledger_public_rpc_url.clone(),
-            websocket_url: Some(devnet_config.ledger_public_ws_rpc_url.clone()),
+            json_rpc_url: devnet_config.ledger_public_rpc_url.to_string(),
+            websocket_url: Some(devnet_config.ledger_public_ws_rpc_url.to_string()),
             keypair_path: keypair_path.clone(),
             program_id: Some(devnet_config.serviceability_program_id.to_string()),
             address_labels: Default::default(),

@@ -1,11 +1,15 @@
 use solana_sdk::pubkey::Pubkey;
 use std::fmt;
+use url::Url;
+
+use crate::constants::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Environment {
     MainnetBeta,
     Testnet,
     Devnet,
+    Localnet,
 }
 
 impl std::str::FromStr for Environment {
@@ -16,6 +20,7 @@ impl std::str::FromStr for Environment {
             "mainnet-beta" => Ok(Environment::MainnetBeta),
             "testnet" => Ok(Environment::Testnet),
             "devnet" => Ok(Environment::Devnet),
+            "localnet" => Ok(Environment::Localnet),
             _ => Err(eyre::eyre!(
                 "Invalid environment {}, must be one of: mainnet-beta, testnet, devnet",
                 s
@@ -30,51 +35,72 @@ impl fmt::Display for Environment {
             Environment::MainnetBeta => write!(f, "mainnet-beta"),
             Environment::Testnet => write!(f, "testnet"),
             Environment::Devnet => write!(f, "devnet"),
+            Environment::Localnet => write!(f, "localnet"),
         }
     }
 }
 
 impl Environment {
-    pub fn config(&self) -> eyre::Result<NetworkConfig> {
-        let mut config = match self {
+    pub fn moniker(&self) -> String {
+        self.to_string()
+    }
+}
+
+impl Environment {
+    pub fn config(&self) -> NetworkConfig {
+        match self {
             Environment::MainnetBeta => NetworkConfig {
-                ledger_public_rpc_url: "https://doublezero-mainnet-beta.rpcpool.com/db336024-e7a8-46b1-80e5-352dd77060ab".to_string(),
-                ledger_public_ws_rpc_url: "wss://doublezero-mainnet-beta.rpcpool.com/db336024-e7a8-46b1-80e5-352dd77060ab".to_string(),
-                serviceability_program_id: "ser2VaTMAcYTaauMrTSfSrxBaUDq7BLNs2xfUugTAGv".parse()?,
-                telemetry_program_id: "tE1exJ5VMyoC9ByZeSmgtNzJCFF74G9JAv338sJiqkC".parse()?,
-                internet_latency_collector_pk: "8xHn4r7oQuqNZ5cLYwL5YZcDy1JjDQcpVkyoA8Dw5uXH".parse()?,
+                ledger_public_rpc_url: MAINNET_BETA_LEDGER_PUBLIC_RPC_URL.clone(),
+                ledger_public_ws_rpc_url: MAINNET_BETA_LEDGER_PUBLIC_WS_RPC_URL.clone(),
+                serviceability_program_id: *MAINNET_BETA_SERVICEABILITY_PROGRAM_ID,
+                telemetry_program_id: *MAINNET_BETA_TELEMETRY_PROGRAM_ID,
+                internet_latency_collector_pk: *MAINNET_BETA_INTERNET_LATENCY_COLLECTOR_PK,
             },
             Environment::Testnet => NetworkConfig {
-                ledger_public_rpc_url: "https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16".to_string(),
-                ledger_public_ws_rpc_url: "wss://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16/whirligig".to_string(),
-                serviceability_program_id: "DZtnuQ839pSaDMFG5q1ad2V95G82S5EC4RrB3Ndw2Heb".parse()?,
-                telemetry_program_id: "3KogTMmVxc5eUHtjZnwm136H5P8tvPwVu4ufbGPvM7p1".parse()?,
-                internet_latency_collector_pk: "HWGQSTmXWMB85NY2vFLhM1nGpXA8f4VCARRyeGNbqDF1".parse()?,
+                ledger_public_rpc_url: TESTNET_LEDGER_PUBLIC_RPC_URL.clone(),
+                ledger_public_ws_rpc_url: TESTNET_LEDGER_PUBLIC_WS_RPC_URL.clone(),
+                serviceability_program_id: *TESTNET_SERVICEABILITY_PROGRAM_ID,
+                telemetry_program_id: *TESTNET_TELEMETRY_PROGRAM_ID,
+                internet_latency_collector_pk: *TESTNET_INTERNET_LATENCY_COLLECTOR_PK,
             },
             Environment::Devnet => NetworkConfig {
-                ledger_public_rpc_url: "https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16".to_string(),
-                ledger_public_ws_rpc_url: "wss://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16/whirligig".to_string(),
-                serviceability_program_id: "GYhQDKuESrasNZGyhMJhGYFtbzNijYhcrN9poSqCQVah".parse()?,
-                telemetry_program_id: "C9xqH76NSm11pBS6maNnY163tWHT8Govww47uyEmSnoG".parse()?,
-                internet_latency_collector_pk: "3fXen9LP5JUAkaaDJtyLo1ohPiJ2LdzVqAnmhtGgAmwJ".parse()?,
+                ledger_public_rpc_url: DEVNET_LEDGER_PUBLIC_RPC_URL.clone(),
+                ledger_public_ws_rpc_url: DEVNET_LEDGER_PUBLIC_WS_RPC_URL.clone(),
+                serviceability_program_id: *DEVNET_SERVICEABILITY_PROGRAM_ID,
+                telemetry_program_id: *DEVNET_TELEMETRY_PROGRAM_ID,
+                internet_latency_collector_pk: *DEVNET_INTERNET_LATENCY_COLLECTOR_PK,
             },
-        };
+            Environment::Localnet => NetworkConfig {
+                ledger_public_rpc_url: LOCALNET_LEDGER_PUBLIC_RPC_URL.clone(),
+                ledger_public_ws_rpc_url: LOCALNET_LEDGER_PUBLIC_WS_RPC_URL.clone(),
+                serviceability_program_id: *LOCALNET_SERVICEABILITY_PROGRAM_ID,
+                telemetry_program_id: *LOCALNET_TELEMETRY_PROGRAM_ID,
+                internet_latency_collector_pk: *LOCALNET_INTERNET_LATENCY_COLLECTOR_PK,
+            },
+        }
+    }
+
+    pub fn config_with_override(&self) -> NetworkConfig {
+        let mut config = self.config();
 
         if std::env::var("DZ_LEDGER_RPC_URL").is_ok() {
-            config.ledger_public_rpc_url = std::env::var("DZ_LEDGER_RPC_URL").unwrap();
-        }
-        if std::env::var("DZ_LEDGER_WS_RPC_URL").is_ok() {
-            config.ledger_public_ws_rpc_url = std::env::var("DZ_LEDGER_WS_RPC_URL").unwrap();
+            config.ledger_public_rpc_url =
+                Url::parse(&std::env::var("DZ_LEDGER_RPC_URL").unwrap()).unwrap();
         }
 
-        Ok(config)
+        if std::env::var("DZ_LEDGER_WS_RPC_URL").is_ok() {
+            config.ledger_public_ws_rpc_url =
+                Url::parse(&std::env::var("DZ_LEDGER_WS_RPC_URL").unwrap()).unwrap();
+        }
+
+        config
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct NetworkConfig {
-    pub ledger_public_rpc_url: String,
-    pub ledger_public_ws_rpc_url: String,
+    pub ledger_public_rpc_url: Url,
+    pub ledger_public_ws_rpc_url: Url,
     pub serviceability_program_id: Pubkey,
     pub telemetry_program_id: Pubkey,
     pub internet_latency_collector_pk: Pubkey,
@@ -108,79 +134,90 @@ mod tests {
 
     #[test]
     #[serial]
-    fn test_network_config_mainnet() {
-        let config = Environment::MainnetBeta.config().unwrap();
+    fn test_network_config_mainnet_beta() {
+        let config = Environment::MainnetBeta.config();
         assert_eq!(
             config.ledger_public_rpc_url,
-            "https://doublezero-mainnet-beta.rpcpool.com/db336024-e7a8-46b1-80e5-352dd77060ab"
+            *MAINNET_BETA_LEDGER_PUBLIC_RPC_URL,
         );
         assert_eq!(
             config.ledger_public_ws_rpc_url,
-            "wss://doublezero-mainnet-beta.rpcpool.com/db336024-e7a8-46b1-80e5-352dd77060ab"
+            *MAINNET_BETA_LEDGER_PUBLIC_WS_RPC_URL,
         );
         assert_eq!(
-            config.serviceability_program_id.to_string(),
-            "ser2VaTMAcYTaauMrTSfSrxBaUDq7BLNs2xfUugTAGv"
+            config.serviceability_program_id,
+            *MAINNET_BETA_SERVICEABILITY_PROGRAM_ID,
         );
         assert_eq!(
-            config.telemetry_program_id.to_string(),
-            "tE1exJ5VMyoC9ByZeSmgtNzJCFF74G9JAv338sJiqkC"
+            config.telemetry_program_id,
+            *MAINNET_BETA_TELEMETRY_PROGRAM_ID,
         );
         assert_eq!(
-            config.internet_latency_collector_pk.to_string(),
-            "8xHn4r7oQuqNZ5cLYwL5YZcDy1JjDQcpVkyoA8Dw5uXH"
+            config.internet_latency_collector_pk,
+            *MAINNET_BETA_INTERNET_LATENCY_COLLECTOR_PK,
         );
     }
 
     #[test]
     #[serial]
     fn test_network_config_testnet() {
-        let config = Environment::Testnet.config().unwrap();
-        assert_eq!(
-            config.ledger_public_rpc_url,
-            "https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16"
-        );
+        let config = Environment::Testnet.config();
+        assert_eq!(config.ledger_public_rpc_url, *TESTNET_LEDGER_PUBLIC_RPC_URL,);
         assert_eq!(
             config.ledger_public_ws_rpc_url,
-            "wss://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16/whirligig"
+            *TESTNET_LEDGER_PUBLIC_WS_RPC_URL,
         );
         assert_eq!(
-            config.serviceability_program_id.to_string(),
-            "DZtnuQ839pSaDMFG5q1ad2V95G82S5EC4RrB3Ndw2Heb"
+            config.serviceability_program_id,
+            *TESTNET_SERVICEABILITY_PROGRAM_ID,
         );
+        assert_eq!(config.telemetry_program_id, *TESTNET_TELEMETRY_PROGRAM_ID,);
         assert_eq!(
-            config.telemetry_program_id.to_string(),
-            "3KogTMmVxc5eUHtjZnwm136H5P8tvPwVu4ufbGPvM7p1"
-        );
-        assert_eq!(
-            config.internet_latency_collector_pk.to_string(),
-            "HWGQSTmXWMB85NY2vFLhM1nGpXA8f4VCARRyeGNbqDF1"
+            config.internet_latency_collector_pk,
+            *TESTNET_INTERNET_LATENCY_COLLECTOR_PK,
         );
     }
 
     #[test]
     #[serial]
     fn test_network_config_devnet() {
-        let config = Environment::Devnet.config().unwrap();
+        let config = Environment::Devnet.config();
+        assert_eq!(config.ledger_public_rpc_url, *DEVNET_LEDGER_PUBLIC_RPC_URL,);
+        assert_eq!(
+            config.ledger_public_ws_rpc_url,
+            *DEVNET_LEDGER_PUBLIC_WS_RPC_URL,
+        );
+        assert_eq!(
+            config.serviceability_program_id,
+            *DEVNET_SERVICEABILITY_PROGRAM_ID,
+        );
+        assert_eq!(config.telemetry_program_id, *DEVNET_TELEMETRY_PROGRAM_ID,);
+        assert_eq!(
+            config.internet_latency_collector_pk,
+            *DEVNET_INTERNET_LATENCY_COLLECTOR_PK,
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn test_network_config_localnet() {
+        let config = Environment::Localnet.config();
         assert_eq!(
             config.ledger_public_rpc_url,
-            "https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16"
+            *LOCALNET_LEDGER_PUBLIC_RPC_URL,
         );
         assert_eq!(
             config.ledger_public_ws_rpc_url,
-            "wss://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16/whirligig"
+            *LOCALNET_LEDGER_PUBLIC_WS_RPC_URL,
         );
         assert_eq!(
-            config.serviceability_program_id.to_string(),
-            "GYhQDKuESrasNZGyhMJhGYFtbzNijYhcrN9poSqCQVah"
+            config.serviceability_program_id,
+            *LOCALNET_SERVICEABILITY_PROGRAM_ID,
         );
+        assert_eq!(config.telemetry_program_id, *LOCALNET_TELEMETRY_PROGRAM_ID,);
         assert_eq!(
-            config.telemetry_program_id.to_string(),
-            "C9xqH76NSm11pBS6maNnY163tWHT8Govww47uyEmSnoG"
-        );
-        assert_eq!(
-            config.internet_latency_collector_pk.to_string(),
-            "3fXen9LP5JUAkaaDJtyLo1ohPiJ2LdzVqAnmhtGgAmwJ"
+            config.internet_latency_collector_pk,
+            *LOCALNET_INTERNET_LATENCY_COLLECTOR_PK,
         );
     }
 
@@ -189,11 +226,14 @@ mod tests {
     fn test_network_config_rpc_url_env_override() {
         std::env::set_var("DZ_LEDGER_RPC_URL", "https://other-rpc-url.com");
         std::env::set_var("DZ_LEDGER_WS_RPC_URL", "wss://other-ws-rpc-url.com");
-        let config = Environment::MainnetBeta.config().unwrap();
-        assert_eq!(config.ledger_public_rpc_url, "https://other-rpc-url.com");
+        let config = Environment::MainnetBeta.config_with_override();
         assert_eq!(
-            config.ledger_public_ws_rpc_url,
-            "wss://other-ws-rpc-url.com"
+            config.ledger_public_rpc_url.to_string(),
+            "https://other-rpc-url.com/"
+        );
+        assert_eq!(
+            config.ledger_public_ws_rpc_url.to_string(),
+            "wss://other-ws-rpc-url.com/"
         );
 
         // reset the values in the environment when complete

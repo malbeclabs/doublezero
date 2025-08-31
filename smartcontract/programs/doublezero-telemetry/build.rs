@@ -24,11 +24,7 @@ fn main() {
     let (env_code, serviceability_program_id) = match environment {
         Some(environment) => (
             environment.to_string(),
-            environment
-                .config()
-                .unwrap()
-                .serviceability_program_id
-                .to_string(),
+            environment.config().serviceability_program_id.to_string(),
         ),
         None => (
             "localnet".to_string(),

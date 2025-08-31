@@ -734,7 +734,72 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		require.Equal(t, []telemetry.Sample{first, second}, got)
 	})
 
-	t.Run("failed_retries_priority_prepend_front_no_drop", func(t *testing.T) {
+	t.Run("failed_retries_drop_when_over_capacity", func(t *testing.T) {
+		t.Parallel()
+
+		key := newTestPartitionKey()
+		first := telemetry.Sample{Timestamp: time.Now(), RTT: time.Millisecond}
+
+		prog := &mockTelemetryProgramClient{
+			WriteDeviceLatencySamplesFunc: func(context.Context, sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				return solana.Signature{}, nil, errors.New("perm fail")
+			},
+		}
+
+		// Capacity 1, tmp will be len=1; 0+1 >= 1 => drop (no requeue).
+		buf := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1)
+		buf.Add(key, first)
+
+		s, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
+			Interval: time.Hour, Buffer: buf, ProgramClient: prog, MaxAttempts: 1,
+			BackoffFunc:     func(int) time.Duration { return 0 },
+			GetCurrentEpoch: func(context.Context) (uint64, error) { return 100, nil },
+		})
+		require.NoError(t, err)
+
+		s.Tick(context.Background())
+
+		got := buf.CopyAndReset(key)
+		assert.Len(t, got, 0, "failed sample should be dropped when capacity would be met or exceeded")
+	})
+
+	t.Run("no_backpressure_when_drop_on_overcapacity", func(t *testing.T) {
+		t.Parallel()
+
+		key := newTestPartitionKey()
+		prog := &mockTelemetryProgramClient{
+			WriteDeviceLatencySamplesFunc: func(context.Context, sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				return solana.Signature{}, nil, errors.New("fail")
+			},
+		}
+
+		// Capacity 1; failed batch len=1 triggers drop (no requeue), so Add should not block.
+		buf := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1)
+		buf.Add(key, newTestSample())
+
+		s, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
+			Interval: time.Hour, Buffer: buf, ProgramClient: prog, MaxAttempts: 1,
+			BackoffFunc:     func(int) time.Duration { return 0 },
+			GetCurrentEpoch: func(context.Context) (uint64, error) { return 100, nil },
+		})
+		require.NoError(t, err)
+
+		s.Tick(context.Background())
+
+		done := make(chan struct{})
+		go func() { buf.Add(key, newTestSample()); close(done) }()
+
+		select {
+		case <-done:
+			// good: producer did not block
+		case <-time.After(200 * time.Millisecond):
+			t.Fatal("producer Add should NOT block when failed batch is dropped on over-capacity")
+		}
+	})
+
+	t.Run("drops_failed_samples_when_requeue_would_meet_capacity", func(t *testing.T) {
+		t.Parallel()
+
 		key := newTestPartitionKey()
 		first := telemetry.Sample{Timestamp: time.Now(), RTT: time.Millisecond}
 		second := telemetry.Sample{Timestamp: time.Now().Add(time.Second), RTT: 2 * time.Millisecond}
@@ -745,69 +810,24 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			},
 		}
 
-		buf := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](2) // intentionally small to test overflow/blocking behavior
+		// Capacity == len(tmp) (2). Since Len(key) is 0 after CopyAndReset, check is 0+2 >= 2 -> drop.
+		buf := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](2)
 		buf.Add(key, first)
+		buf.Add(key, second)
 
-		s, _ := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
-			Interval: time.Hour, Buffer: buf, ProgramClient: prog, MaxAttempts: 1,
+		s, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
+			Interval: time.Hour, Buffer: buf, ProgramClient: prog, MaxAttempts: 2,
 			BackoffFunc:     func(int) time.Duration { return 0 },
 			GetCurrentEpoch: func(context.Context) (uint64, error) { return 100, nil },
 		})
+		require.NoError(t, err)
 
-		s.Tick(context.Background()) // fails; PriorityPrepend([first]) -> len may exceed cap
-		buf.Add(key, second)         // likely blocked until next drain; but since we didn't drain yet, Add may block
-
-		got := buf.CopyAndReset(key) // drain to check order
-		// second might not have made it in if Add blocked; assert prefix at least
-		require.GreaterOrEqual(t, len(got), 1)
-		require.Equal(t, first.RTT, got[0].RTT)
-		if len(got) > 1 {
-			require.Equal(t, second.RTT, got[1].RTT)
-		}
-	})
-
-	t.Run("priority_prepend_backpressures_producers_until_submitter_drains", func(t *testing.T) {
-		key := newTestPartitionKey()
-		prog := &mockTelemetryProgramClient{
-			WriteDeviceLatencySamplesFunc: func(context.Context, sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
-				return solana.Signature{}, nil, errors.New("fail")
-			},
-		}
-		buf := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1)
-		buf.Add(key, newTestSample())
-
-		s, _ := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
-			Interval: time.Hour, Buffer: buf, ProgramClient: prog, MaxAttempts: 1,
-			BackoffFunc:     func(int) time.Duration { return 0 },
-			GetCurrentEpoch: func(context.Context) (uint64, error) { return 100, nil },
-		})
-
-		// This tick will PriorityPrepend and exceed capacity
 		s.Tick(context.Background())
 
-		// Now try to Add from producer; should block until we drain
-		done := make(chan struct{})
-		go func() {
-			buf.Add(key, newTestSample())
-			close(done)
-		}()
-
-		select {
-		case <-done:
-			t.Fatal("producer Add should block while over capacity")
-		case <-time.After(20 * time.Millisecond):
-		}
-
-		// Drain
-		_ = buf.CopyAndReset(key)
-
-		// Now Add unblocks
-		select {
-		case <-done:
-		case <-time.After(200 * time.Millisecond):
-			t.Fatal("producer Add should unblock after drain")
-		}
+		got := buf.CopyAndReset(key)
+		assert.Len(t, got, 0, "failed samples should be dropped when requeue would meet capacity exactly")
 	})
+
 }
 
 func waitTimeout(wg *sync.WaitGroup, timeout time.Duration) bool {

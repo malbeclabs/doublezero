@@ -16,6 +16,7 @@ All notable changes to this project will be documented in this file.
     - Add summary view with committed RTT and jitter, compared to measured values
 - Device agents
     - Remove log of keypair path on telemetry agent start up
+    - Drop device telemetry samples if submission attempts exhausted and buffer is at capacity
 
 ## [v0.6.2](https://github.com/malbeclabs/doublezero/compare/client/v0.6.0...client/v0.6.2) – 2025-09-02
 

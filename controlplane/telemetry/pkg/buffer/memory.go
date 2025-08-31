@@ -17,6 +17,21 @@ func NewMemoryPartitionedBuffer[K PartitionKey, R Record](partitionBufferCapacit
 	}
 }
 
+func (b *MemoryPartitionedBuffer[K, R]) Capacity(key K) int {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return b.partitionBufferCapacity
+}
+
+func (b *MemoryPartitionedBuffer[K, R]) Len(key K) int {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	if _, ok := b.partitions[key]; !ok {
+		return 0
+	}
+	return b.partitions[key].Len()
+}
+
 func (b *MemoryPartitionedBuffer[K, R]) Add(key K, record R) uint64 {
 	b.mu.RLock()
 	pb, ok := b.partitions[key]

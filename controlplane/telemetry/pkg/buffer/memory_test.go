@@ -95,6 +95,16 @@ func TestInternetLatency_Buffer_PartitionBuffer(t *testing.T) {
 		}
 	})
 
+	t.Run("Capacity returns expected value", func(t *testing.T) {
+		buf := buffer.NewMemoryPartitionedBuffer[testPartitionKey, testRecord](128)
+		require.Equal(t, 128, buf.Capacity(testPartitionKey{key: "test"}))
+	})
+
+	t.Run("Len returns expected value", func(t *testing.T) {
+		buf := buffer.NewMemoryPartitionedBuffer[testPartitionKey, testRecord](128)
+		buf.Add(testPartitionKey{key: "test"}, testRecord{value: "test"})
+		require.Equal(t, 1, buf.Len(testPartitionKey{key: "test"}))
+	})
 }
 
 func TestInternetLatency_Buffer_AccountsBuffer(t *testing.T) {

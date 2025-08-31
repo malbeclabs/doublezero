@@ -231,6 +231,9 @@ func (s *Server) handleDeviceCircuitLatencies(w http.ResponseWriter, r *http.Req
 				return
 			}
 			s.log.Debug("Got circuit latencies", "circuit", circuitCode, "series", len(series))
+			if len(series) == 0 {
+				return
+			}
 			mu.Lock()
 			if partOutOfRange {
 				// If the current partition is greater than or equal to the number of circuits, due

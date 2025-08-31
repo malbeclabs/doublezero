@@ -249,6 +249,9 @@ func (s *Server) handleInternetCircuitLatencies(w http.ResponseWriter, r *http.R
 				s.log.Warn("failed to get circuit latencies", "error", err, "circuit", circuitCode)
 				return
 			}
+			if len(series) == 0 {
+				return
+			}
 			mu.Lock()
 			if partOutOfRange {
 				// If the current partition is greater than or equal to the number of circuits, due

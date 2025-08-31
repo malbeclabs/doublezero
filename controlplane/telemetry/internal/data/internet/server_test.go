@@ -417,6 +417,66 @@ func TestTelemetry_Data_Internet_Server(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, res2.StatusCode)
 	})
 
+	t.Run("GET /location-internet/circuit-latencies handles out-of-range partition with empty series (no panic)", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
+		from, to := now.Format(time.RFC3339), now.Add(10*time.Second).Format(time.RFC3339)
+
+		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{
+			GetCircuitLatenciesFunc: func(_ context.Context, _ data.GetCircuitLatenciesConfig) ([]stats.CircuitLatencyStat, error) {
+				return nil, nil
+			},
+		}, &mockProvider{})
+		defer closeFn()
+
+		res, body := get(t, baseURL, "/location-internet/circuit-latencies", url.Values{
+			"env":              {"testnet"},
+			"from":             {from},
+			"to":               {to},
+			"circuit":          {"{a,b}"},
+			"partition":        {"5"},
+			"total_partitions": {"10"},
+		})
+		assert.Equal(t, http.StatusOK, res.StatusCode)
+
+		var out []stats.CircuitLatencyStat
+		require.NoError(t, json.Unmarshal(body, &out))
+		assert.Len(t, out, 0)
+	})
+
+	t.Run("GET /location-internet/circuit-latencies out-of-range with zero-sample first series", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
+		from, to := now.Format(time.RFC3339), now.Add(10*time.Second).Format(time.RFC3339)
+
+		zero := stats.CircuitLatencyStat{Circuit: "a"} // minimal entry; assumes empty/zero samples allowed
+
+		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{
+			GetCircuitLatenciesFunc: func(_ context.Context, cfg data.GetCircuitLatenciesConfig) ([]stats.CircuitLatencyStat, error) {
+				_ = cfg
+				return []stats.CircuitLatencyStat{zero}, nil
+			},
+		}, &mockProvider{})
+		defer closeFn()
+
+		res, body := get(t, baseURL, "/location-internet/circuit-latencies", url.Values{
+			"env":              {"testnet"},
+			"from":             {from},
+			"to":               {to},
+			"circuit":          {"{a,b}"},
+			"data_provider":    {"foo"},
+			"partition":        {"5"},
+			"total_partitions": {"10"},
+		})
+		assert.Equal(t, http.StatusOK, res.StatusCode)
+
+		var out []stats.CircuitLatencyStat
+		require.NoError(t, json.Unmarshal(body, &out))
+		require.Len(t, out, 1)
+		assert.Equal(t, "a", out[0].Circuit)
+	})
 }
 
 func startServer(t *testing.T, mainnet, testnet, devnet data.Provider) (baseURL string, closeFn func()) {

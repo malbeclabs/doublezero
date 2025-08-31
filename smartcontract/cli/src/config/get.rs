@@ -22,7 +22,9 @@ impl GetConfigCliCommand {
             config.keypair_path.display(),
             config.program_id.unwrap_or(format!(
                 "{} (computed)",
-                doublezero_sdk::testnet::program_id::id()
+                doublezero_config::Environment::Testnet
+                    .config()
+                    .serviceability_program_id
             ))
         )?;
 

@@ -117,8 +117,14 @@ pub fn convert_ws_moniker(url: String) -> String {
 
 pub fn convert_program_moniker(pubkey: String) -> String {
     match pubkey.as_str() {
-        "devnet" => crate::devnet::program_id::id().to_string(),
-        "testnet" => crate::testnet::program_id::id().to_string(),
+        "devnet" => doublezero_config::Environment::Devnet
+            .config()
+            .serviceability_program_id
+            .to_string(),
+        "testnet" => doublezero_config::Environment::Testnet
+            .config()
+            .serviceability_program_id
+            .to_string(),
         _ => pubkey,
     }
 }

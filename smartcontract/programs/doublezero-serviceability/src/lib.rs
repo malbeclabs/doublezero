@@ -5,7 +5,6 @@ mod globalstate;
 mod helper;
 
 pub mod accounts;
-pub mod addresses;
 pub mod error;
 pub mod instructions;
 pub mod pda;

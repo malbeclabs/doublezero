@@ -3,7 +3,6 @@ pub use crate::config::{
     ClientConfig,
 };
 pub use doublezero_serviceability::{
-    addresses::*,
     pda::{
         get_contributor_pda, get_device_pda, get_exchange_pda, get_globalconfig_pda, get_link_pda,
         get_location_pda, get_multicastgroup_pda, get_user_pda,

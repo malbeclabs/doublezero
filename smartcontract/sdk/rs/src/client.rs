@@ -68,7 +68,11 @@ impl DZClient {
 
         let program_id = match program_id {
             None => match config.program_id.as_ref() {
-                None => doublezero_serviceability::addresses::testnet::program_id::id(),
+                None => {
+                    doublezero_config::Environment::Testnet
+                        .config()
+                        .serviceability_program_id
+                }
                 Some(config_pg_id) => {
                     Pubkey::from_str(config_pg_id).map_err(|_| eyre!("Invalid program ID"))?
                 }

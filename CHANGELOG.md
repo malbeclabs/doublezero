@@ -18,6 +18,7 @@ All notable changes to this project will be documented in this file.
     - Use serviceability onchain delay for link metrics
 - Onchain programs
     - Telemetry program: embed serviceability program ID via build feature instead of env variable
+    - Remove redundant program IDs module in serviceability crate in favor of doublezero-config
 
 ## [v0.6.0](https://github.com/malbeclabs/doublezero/compare/client/v0.5.3...client/v0.6.0) – 2025-08-28
 

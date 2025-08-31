@@ -25,6 +25,7 @@ import (
 	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
 	"github.com/malbeclabs/doublezero/e2e/internal/poll"
 	"github.com/malbeclabs/doublezero/e2e/internal/prometheus"
+	solanautil "github.com/malbeclabs/doublezero/e2e/internal/solana"
 	"github.com/testcontainers/testcontainers-go"
 )
 
@@ -266,6 +267,20 @@ func (d *Device) Start(ctx context.Context) error {
 	}
 	cyoaNetworkIP := ip.To4().String()
 
+	// If the metrics publisher pubkey is not set, try to use the telemetry keypair.
+	if spec.MetricsPublisherPK == "" && spec.Telemetry.KeypairPath != "" {
+		if _, err := os.Stat(spec.Telemetry.KeypairPath); os.IsExist(err) {
+			keypairJSON, err := os.ReadFile(spec.Telemetry.KeypairPath)
+			if err != nil {
+				return fmt.Errorf("failed to read telemetry keypair: %w", err)
+			}
+			spec.MetricsPublisherPK, err = solanautil.PubkeyFromKeypairJSON(keypairJSON)
+			if err != nil {
+				return fmt.Errorf("failed to get telemetry keypair: %w", err)
+			}
+		}
+	}
+
 	// Create the device onchain.
 	devicePK, err := d.dn.GetOrCreateDeviceOnchain(ctx, spec.Code, spec.Location, spec.Exchange, spec.MetricsPublisherPK, cyoaNetworkIP, []string{cyoaNetworkIP + "/" + strconv.Itoa(int(spec.CYOANetworkAllocatablePrefix))}, "mgmt")
 	if err != nil {
@@ -275,10 +290,15 @@ func (d *Device) Start(ctx context.Context) error {
 
 	// Create interfaces onchain.
 	for name, ifaceType := range spec.Interfaces {
-		_, err := d.dn.Manager.Exec(ctx, []string{
+		out, err := d.dn.Manager.Exec(ctx, []string{
 			"doublezero", "device", "interface", "create", spec.Code, name,
-		})
+		}, docker.NoPrintOnError())
 		if err != nil {
+			if strings.Contains(string(out), "already exists") {
+				d.log.Info("--> Interface already exists onchain", "code", spec.Code, "name", name, "ifaceType", ifaceType)
+				continue
+			}
+			fmt.Println(string(out))
 			return fmt.Errorf("failed to create interface %s for device %s: %w", name, spec.Code, err)
 		}
 
@@ -313,8 +333,13 @@ func (d *Device) Start(ctx context.Context) error {
 
 	// Create loopback interfaces onchain.
 	for name, loopbackType := range spec.LoopbackInterfaces {
-		err = d.dn.CreateDeviceLoopbackInterface(ctx, spec.Code, name, loopbackType)
+		out, err := d.dn.Manager.Exec(ctx, []string{"doublezero", "device", "interface", "create", spec.Code, name, "--loopback-type", loopbackType}, docker.NoPrintOnError())
 		if err != nil {
+			if strings.Contains(string(out), "already exists") {
+				d.log.Info("--> Loopback interface already exists onchain", "code", spec.Code, "name", name, "loopbackType", loopbackType)
+				continue
+			}
+			fmt.Println(string(out))
 			return fmt.Errorf("failed to create loopback interface %s for device %s: %w", name, spec.Code, err)
 		}
 

@@ -65,8 +65,8 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	err = dn.Start(t.Context(), nil)
 	require.NoError(t, err)
 
-	link := devnet.NewMiscNetwork(dn, log, "la2-dz01:ny5-dz01")
-	_, err = link.CreateIfNotExists(t.Context())
+	linkNetwork := devnet.NewMiscNetwork(dn, log, "la2-dz01:ny5-dz01")
+	_, err = linkNetwork.CreateIfNotExists(t.Context())
 	require.NoError(t, err)
 
 	// Add and start the 2 devices in parallel.
@@ -105,7 +105,7 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 				MetricsEnable:        true,
 				MetricsAddr:          "0.0.0.0:2114",
 			},
-			AdditionalNetworks: []string{link.Name},
+			AdditionalNetworks: []string{linkNetwork.Name},
 			Interfaces: map[string]string{
 				"Ethernet2": "physical",
 			},
@@ -150,7 +150,7 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 				MetricsEnable:        true,
 				MetricsAddr:          "0.0.0.0:2114",
 			},
-			AdditionalNetworks: []string{link.Name},
+			AdditionalNetworks: []string{linkNetwork.Name},
 			Interfaces: map[string]string{
 				"Ethernet2": "physical",
 				"Ethernet3": "physical",

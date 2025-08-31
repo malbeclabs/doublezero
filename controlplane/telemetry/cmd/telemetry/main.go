@@ -155,7 +155,6 @@ func main() {
 		"ledgerRPCURL", *ledgerRPCURL,
 		"serviceabilityProgramID", *serviceabilityProgramID,
 		"telemetryProgramID", *telemetryProgramID,
-		"keypairPath", *keypairPath,
 		"devicePubkey", localDevicePK,
 		"probeInterval", *probeInterval,
 		"submissionInterval", *submissionInterval,

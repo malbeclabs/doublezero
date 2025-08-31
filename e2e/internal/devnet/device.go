@@ -534,8 +534,7 @@ func (d *Device) Start(ctx context.Context) error {
 	}
 
 	for _, additionalNetwork := range spec.AdditionalNetworks {
-		name := d.dn.Spec.DeployID + "-" + additionalNetwork
-		err = d.dn.dockerClient.NetworkConnect(ctx, name, containerID, nil)
+		err = d.dn.dockerClient.NetworkConnect(ctx, additionalNetwork, containerID, nil)
 		if err != nil {
 			return fmt.Errorf("failed to attach device %s to additional network %s: %w", spec.Code, additionalNetwork, err)
 		}

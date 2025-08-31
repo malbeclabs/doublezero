@@ -415,6 +415,69 @@ func TestTelemetry_Data_Device_Server(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, res2.StatusCode)
 	})
 
+	t.Run("GET /device-link/circuit-latencies handles out-of-range partition with empty series (no panic)", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
+		from, to := now.Format(time.RFC3339), now.Add(10*time.Second).Format(time.RFC3339)
+
+		// Return an empty series to exercise the branch that used to panic
+		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{
+			GetCircuitLatenciesFunc: func(_ context.Context, _ data.GetCircuitLatenciesConfig) ([]stats.CircuitLatencyStat, error) {
+				return nil, nil
+			},
+		}, &mockProvider{})
+		defer closeFn()
+
+		// part=5 with only 2 circuits -> triggers the "partOutOfRange" hack path
+		// tparts can be any valid number > part
+		res, body := get(t, baseURL, "/device-link/circuit-latencies", url.Values{
+			"env":              {"testnet"},
+			"from":             {from},
+			"to":               {to},
+			"circuit":          {"{a,b}"},
+			"partition":        {"5"},
+			"total_partitions": {"10"},
+		})
+
+		assert.Equal(t, http.StatusOK, res.StatusCode, "expected OK even when partition is out of range")
+
+		var out []stats.CircuitLatencyStat
+		require.NoError(t, json.Unmarshal(body, &out), "response should be valid JSON")
+		assert.Len(t, out, 0, "with empty provider series, handler should return an empty result without panicking")
+	})
+
+	t.Run("GET /device-link/circuit-latencies out-of-range with zero-sample first series", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
+		from, to := now.Format(time.RFC3339), now.Add(10*time.Second).Format(time.RFC3339)
+
+		zero := stats.CircuitLatencyStat{Circuit: "a"} // assumes zero/empty samples is allowed
+
+		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{
+			GetCircuitLatenciesFunc: func(_ context.Context, cfg data.GetCircuitLatenciesConfig) ([]stats.CircuitLatencyStat, error) {
+				_ = cfg
+				return []stats.CircuitLatencyStat{zero}, nil
+			},
+		}, &mockProvider{})
+		defer closeFn()
+
+		res, body := get(t, baseURL, "/device-link/circuit-latencies", url.Values{
+			"env":              {"testnet"},
+			"from":             {from},
+			"to":               {to},
+			"circuit":          {"{a,b}"},
+			"partition":        {"5"},
+			"total_partitions": {"10"},
+		})
+		assert.Equal(t, http.StatusOK, res.StatusCode)
+
+		var out []stats.CircuitLatencyStat
+		require.NoError(t, json.Unmarshal(body, &out))
+		require.Len(t, out, 1)
+		assert.Equal(t, "a", out[0].Circuit)
+	})
 }
 
 func startServer(t *testing.T, mainnet, testnet, devnet data.Provider) (baseURL string, closeFn func()) {

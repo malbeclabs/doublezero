@@ -28,7 +28,7 @@ require (
 	github.com/prometheus/client_model v0.6.2
 	github.com/prometheus/common v0.65.0
 	github.com/spf13/cobra v1.10.0
-	github.com/stretchr/testify v1.11.0
+	github.com/stretchr/testify v1.11.1
 	github.com/testcontainers/testcontainers-go v0.38.0
 	github.com/testcontainers/testcontainers-go/modules/clickhouse v0.38.0
 	github.com/testcontainers/testcontainers-go/modules/redpanda v0.38.0

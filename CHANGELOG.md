@@ -13,10 +13,11 @@ All notable changes to this project will be documented in this file.
     - New filters include access pass type (`prepaid` or `solana-validator`) and Solana identity public key.
     - Updated command arguments and logic, with tests adjusted to cover new options.
     - Contributors: Interface creation no longer takes an "interface type (physical/loopback)" argument. The type is now inferred from the interface name.
-
+    - Skip client version check in `status` command to prevent version errors during automated state checks.
 - Device controller
     - Use serviceability onchain delay for link metrics
-- Fix: Skip client version check in `status` command to prevent version errors during automated state checks.
+- Device agents
+    - Support metrics publisher keypair rotation without restarting agent
 
 ## [v0.6.0](https://github.com/malbeclabs/doublezero/compare/client/v0.5.3...client/v0.6.0) – 2025-08-28
 

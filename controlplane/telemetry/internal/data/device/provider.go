@@ -59,9 +59,34 @@ type GetCircuitLatenciesConfig struct {
 	Circuit   string
 }
 
+type GetSummaryForCircuitsConfig struct {
+	Epochs   *EpochRange
+	Time     *TimeRange
+	Unit     Unit
+	Circuits []string
+}
+
+type CircuitSummary struct {
+	Circuit                  string
+	stats.CircuitLatencyStat `json:",inline"`
+	CommittedRTT             float64 `json:"committed_rtt"`
+	CommittedJitter          float64 `json:"committed_jitter"`
+
+	// Committed RTT and jitter deltas calculated as: committed - measured
+	// Positive values mean the measured values are greater than the committed values.
+	CommittedRTTDelta    float64 `json:"committed_rtt_delta"`
+	CommittedJitterDelta float64 `json:"committed_jitter_delta"`
+
+	// Committed RTT and jitter change ratios calcuated as: committed - measured / committed
+	// Positive values mean the measured values are greater than the committed values.
+	CommittedRTTChangeRatio    float64 `json:"committed_rtt_change_ratio"`
+	CommittedJitterChangeRatio float64 `json:"committed_jitter_change_ratio"`
+}
+
 type Provider interface {
 	GetCircuits(ctx context.Context) ([]Circuit, error)
 	GetCircuitLatencies(ctx context.Context, cfg GetCircuitLatenciesConfig) ([]stats.CircuitLatencyStat, error)
+	GetSummaryForCircuits(ctx context.Context, cfg GetSummaryForCircuitsConfig) ([]CircuitSummary, error)
 }
 
 type provider struct {

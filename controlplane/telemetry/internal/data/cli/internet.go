@@ -304,7 +304,10 @@ func printInternetSummaries(stats []stats.CircuitLatencyStat, env string, dataPr
 	fmt.Println("* RTT aggregates are in", unit)
 
 	sort.Slice(stats, func(i, j int) bool {
-		return stats[i].Timestamp < stats[j].Timestamp
+		if stats[i].Circuit == stats[j].Circuit {
+			return stats[i].Timestamp < stats[j].Timestamp
+		}
+		return stats[i].Circuit < stats[j].Circuit
 	})
 
 	table := tablewriter.NewWriter(os.Stdout)

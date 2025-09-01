@@ -17,6 +17,10 @@ type Device struct {
 type Link struct {
 	PK   solana.PublicKey `json:"pk"`
 	Code string           `json:"code"`
+
+	// Committed RTT and jitter are in microseconds.
+	CommittedRTT    float64 `json:"committed_rtt"`
+	CommittedJitter float64 `json:"committed_jitter"`
 }
 
 type Location struct {
@@ -64,8 +68,10 @@ func (p *provider) GetCircuits(ctx context.Context) ([]Circuit, error) {
 				},
 			},
 			Link: Link{
-				PK:   circuit.Link.PubKey,
-				Code: circuit.Link.Code,
+				PK:              circuit.Link.PubKey,
+				Code:            circuit.Link.Code,
+				CommittedRTT:    float64(circuit.Link.DelayNs) / 1000.0,
+				CommittedJitter: float64(circuit.Link.JitterNs) / 1000.0,
 			},
 		})
 	}

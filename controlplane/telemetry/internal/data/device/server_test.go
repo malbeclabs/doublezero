@@ -480,6 +480,157 @@ func TestTelemetry_Data_Device_Server(t *testing.T) {
 	})
 }
 
+func TestTelemetry_Data_Device_Server_Summary(t *testing.T) {
+	t.Parallel()
+
+	t.Run("GET /device-link/summary with valid params (passthrough + response)", func(t *testing.T) {
+		t.Parallel()
+
+		fromT := time.Date(2024, 11, 1, 12, 0, 0, 0, time.UTC)
+		toT := fromT.Add(5 * time.Minute)
+		from, to := fromT.Format(time.RFC3339), toT.Format(time.RFC3339)
+
+		var gotCfg data.GetSummaryForCircuitsConfig
+		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{
+			GetSummaryForCircuitsFunc: func(_ context.Context, cfg data.GetSummaryForCircuitsConfig) ([]data.CircuitSummary, error) {
+				gotCfg = cfg
+				return []data.CircuitSummary{{
+					Circuit: "foo",
+					// minimal fields; handler just encodes
+				}}, nil
+			},
+		}, &mockProvider{})
+		defer closeFn()
+
+		res, body := get(t, baseURL, "/device-link/summary", url.Values{
+			"env":     {"testnet"},
+			"from":    {from},
+			"to":      {to},
+			"circuit": {"{foo}"},
+			"unit":    {"us"},
+		})
+		assert.Equal(t, http.StatusOK, res.StatusCode)
+
+		var out []data.CircuitSummary
+		require.NoError(t, json.Unmarshal(body, &out))
+		require.Len(t, out, 1)
+		assert.Equal(t, "foo", out[0].Circuit)
+
+		// passthrough assertions
+		assert.Equal(t, []string{"foo"}, gotCfg.Circuits)
+		require.NotNil(t, gotCfg.Time)
+		assert.True(t, gotCfg.Time.From.Equal(fromT))
+		assert.True(t, gotCfg.Time.To.Equal(toT))
+		assert.Equal(t, data.UnitMicrosecond, gotCfg.Unit)
+	})
+
+	t.Run("GET /device-link/summary invalid unit", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Date(2024, 5, 1, 0, 0, 0, 0, time.UTC)
+		from, to := now.Format(time.RFC3339), now.Add(time.Minute).Format(time.RFC3339)
+
+		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{}, &mockProvider{})
+		defer closeFn()
+
+		res, _ := get(t, baseURL, "/device-link/summary", url.Values{
+			"env":     {"testnet"},
+			"from":    {from},
+			"to":      {to},
+			"circuit": {"{foo}"},
+			"unit":    {"ns"},
+		})
+		assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+	})
+
+	t.Run("GET /device-link/summary invalid from/to", func(t *testing.T) {
+		t.Parallel()
+
+		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{}, &mockProvider{})
+		defer closeFn()
+
+		res, _ := get(t, baseURL, "/device-link/summary", url.Values{
+			"env":     {"testnet"},
+			"from":    {"not-a-time"},
+			"to":      {"also-not-a-time"},
+			"circuit": {"{foo}"},
+		})
+		assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+	})
+
+	t.Run("GET /device-link/summary expands circuits when circuit=all", func(t *testing.T) {
+		t.Parallel()
+
+		fromT := time.Date(2024, 12, 2, 0, 0, 0, 0, time.UTC)
+		toT := fromT.Add(2 * time.Minute)
+		from, to := fromT.Format(time.RFC3339), toT.Format(time.RFC3339)
+
+		var gotCircuits []string
+		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{
+			GetCircuitsFunc: func(context.Context) ([]data.Circuit, error) {
+				// unsorted on purpose; handler just forwards the list to provider method
+				return []data.Circuit{{Code: "b"}, {Code: "a"}}, nil
+			},
+			GetSummaryForCircuitsFunc: func(_ context.Context, cfg data.GetSummaryForCircuitsConfig) ([]data.CircuitSummary, error) {
+				gotCircuits = append([]string{}, cfg.Circuits...)
+				return []data.CircuitSummary{
+					{Circuit: "a"},
+					{Circuit: "b"},
+				}, nil
+			},
+		}, &mockProvider{})
+		defer closeFn()
+
+		res, body := get(t, baseURL, "/device-link/summary", url.Values{
+			"env":     {"testnet"},
+			"from":    {from},
+			"to":      {to},
+			"circuit": {"all"},
+			"unit":    {"ms"},
+		})
+		assert.Equal(t, http.StatusOK, res.StatusCode)
+
+		var out []data.CircuitSummary
+		require.NoError(t, json.Unmarshal(body, &out))
+		require.Len(t, out, 2)
+
+		asSet := func(ss []string) map[string]struct{} {
+			m := make(map[string]struct{}, len(ss))
+			for _, s := range ss {
+				m[s] = struct{}{}
+			}
+			return m
+		}
+		gotSet := asSet([]string{out[0].Circuit, out[1].Circuit})
+		wantSet := asSet([]string{"a", "b"})
+		assert.Equal(t, wantSet, gotSet)
+		assert.Equal(t, wantSet, asSet(gotCircuits))
+	})
+
+	t.Run("GET /device-link/summary provider error -> 500", func(t *testing.T) {
+		t.Parallel()
+
+		fromT := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+		toT := fromT.Add(time.Minute)
+		from, to := fromT.Format(time.RFC3339), toT.Format(time.RFC3339)
+
+		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{
+			GetSummaryForCircuitsFunc: func(context.Context, data.GetSummaryForCircuitsConfig) ([]data.CircuitSummary, error) {
+				return nil, errors.New("boom")
+			},
+		}, &mockProvider{})
+		defer closeFn()
+
+		res, _ := get(t, baseURL, "/device-link/summary", url.Values{
+			"env":     {"testnet"},
+			"from":    {from},
+			"to":      {to},
+			"circuit": {"{x,y}"},
+		})
+		assert.Equal(t, http.StatusInternalServerError, res.StatusCode)
+	})
+}
+
 func startServer(t *testing.T, mainnet, testnet, devnet data.Provider) (baseURL string, closeFn func()) {
 	t.Helper()
 

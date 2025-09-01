@@ -57,8 +57,9 @@ func (m *mockTelemetryClient) GetDeviceLatencySamples(ctx context.Context, origi
 }
 
 type mockProvider struct {
-	GetCircuitsFunc         func(context.Context) ([]data.Circuit, error)
-	GetCircuitLatenciesFunc func(context.Context, data.GetCircuitLatenciesConfig) ([]stats.CircuitLatencyStat, error)
+	GetCircuitsFunc           func(context.Context) ([]data.Circuit, error)
+	GetCircuitLatenciesFunc   func(context.Context, data.GetCircuitLatenciesConfig) ([]stats.CircuitLatencyStat, error)
+	GetSummaryForCircuitsFunc func(context.Context, data.GetSummaryForCircuitsConfig) ([]data.CircuitSummary, error)
 }
 
 func (m *mockProvider) GetCircuits(ctx context.Context) ([]data.Circuit, error) {
@@ -67,6 +68,10 @@ func (m *mockProvider) GetCircuits(ctx context.Context) ([]data.Circuit, error) 
 
 func (m *mockProvider) GetCircuitLatencies(ctx context.Context, cfg data.GetCircuitLatenciesConfig) ([]stats.CircuitLatencyStat, error) {
 	return m.GetCircuitLatenciesFunc(ctx, cfg)
+}
+
+func (m *mockProvider) GetSummaryForCircuits(ctx context.Context, cfg data.GetSummaryForCircuitsConfig) ([]data.CircuitSummary, error) {
+	return m.GetSummaryForCircuitsFunc(ctx, cfg)
 }
 
 type mockEpochFinder struct {

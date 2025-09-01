@@ -63,6 +63,7 @@ func (s *Server) provider(env string) (Provider, error) {
 func (s *Server) registerRoutes() {
 	s.Mux.HandleFunc("/device-link/circuits", s.handleDeviceCircuits)
 	s.Mux.HandleFunc("/device-link/circuit-latencies", s.handleDeviceCircuitLatencies)
+	s.Mux.HandleFunc("/device-link/summary", s.handlSummary)
 }
 
 func (s *Server) handleDeviceCircuits(w http.ResponseWriter, r *http.Request) {
@@ -86,6 +87,71 @@ func (s *Server) handleDeviceCircuits(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(circuits); err != nil {
 		s.log.Error("failed to encode circuits", "error", err)
 		http.Error(w, fmt.Sprintf("failed to encode circuits: %v", err), http.StatusInternalServerError)
+		return
+	}
+}
+
+func (s *Server) handlSummary(w http.ResponseWriter, r *http.Request) {
+	env := r.URL.Query().Get("env")
+	fromStr := r.URL.Query().Get("from")
+	toStr := r.URL.Query().Get("to")
+	circuits := parseMultiParam(r, "circuit")
+	unit := r.URL.Query().Get("unit")
+	s.log.Debug("[/device-link/summary]", "env", env, "from", fromStr, "to", toStr, "circuits", circuits, "unit", unit, "full", r.URL.String())
+
+	provider, err := s.provider(env)
+	if err != nil {
+		s.log.Warn("invalid environment", "env", env)
+		http.Error(w, fmt.Sprintf("invalid environment %q", env), http.StatusBadRequest)
+		return
+	}
+
+	if unit == "" {
+		unit = string(UnitMicrosecond)
+	}
+	switch Unit(unit) {
+	case UnitMillisecond, UnitMicrosecond:
+	default:
+		http.Error(w, "invalid unit (must be ms or us)", http.StatusBadRequest)
+		return
+	}
+
+	fromTime, errFrom := time.Parse(time.RFC3339, fromStr)
+	toTime, errTo := time.Parse(time.RFC3339, toStr)
+	if errFrom != nil || errTo != nil {
+		s.log.Warn("invalid from/to", "from", fromStr, "to", toStr)
+		http.Error(w, "invalid from/to", http.StatusBadRequest)
+		return
+	}
+
+	if len(circuits) == 0 || (len(circuits) == 1 && circuits[0] == "all") {
+		allCircuits, err := provider.GetCircuits(r.Context())
+		if err != nil {
+			s.log.Error("failed to get circuits", "error", err)
+			http.Error(w, fmt.Sprintf("failed to get circuits: %v", err), http.StatusInternalServerError)
+			return
+		}
+		circuits = make([]string, 0, len(allCircuits))
+		for _, circuit := range allCircuits {
+			circuits = append(circuits, circuit.Code)
+		}
+	}
+
+	output, err := provider.GetSummaryForCircuits(r.Context(), GetSummaryForCircuitsConfig{
+		Circuits: circuits,
+		Time:     &TimeRange{From: fromTime, To: toTime},
+		Unit:     Unit(unit),
+	})
+	if err != nil {
+		s.log.Error("failed to get summary for circuits", "error", err)
+		http.Error(w, fmt.Sprintf("failed to get summary for circuits: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	encoder := json.NewEncoder(w)
+	if err := encoder.Encode(output); err != nil {
+		s.log.Error("failed to encode latencies", "error", err)
+		http.Error(w, fmt.Sprintf("failed to encode latencies: %v", err), http.StatusInternalServerError)
 		return
 	}
 }

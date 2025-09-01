@@ -3,7 +3,9 @@ package controller
 import (
 	"bytes"
 	"context"
+	"io"
 	"log"
+	"log/slog"
 	"net"
 	"net/netip"
 	"os"
@@ -535,6 +537,7 @@ func TestGetConfig(t *testing.T) {
 				}
 			} else {
 				controller = &Controller{
+					log:            slog.New(slog.NewTextHandler(io.Discard, nil)),
 					noHardware:     test.NoHardware,
 					deviceLocalASN: 65342,
 				}
@@ -888,6 +891,7 @@ func TestStateCache(t *testing.T) {
 				},
 			}
 			controller, err := NewController(
+				WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))),
 				WithServiceabilityProgramClient(m),
 				WithListener(lis),
 				WithEnableInterfacesAndPeers(),
@@ -931,6 +935,7 @@ func TestServiceabilityProgramClientArg(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			opts := []Option{
+				WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))),
 				WithListener(bufconn.Listen(1024 * 1024)),
 			}
 
@@ -1346,6 +1351,7 @@ func TestEndToEnd(t *testing.T) {
 			var err error
 			if test.InterfacesAndPeers {
 				controller, err = NewController(
+					WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))),
 					WithServiceabilityProgramClient(m),
 					WithListener(listener),
 					WithSignalChan(make(chan struct{})),
@@ -1354,6 +1360,7 @@ func TestEndToEnd(t *testing.T) {
 				)
 			} else {
 				controller, err = NewController(
+					WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))),
 					WithServiceabilityProgramClient(m),
 					WithListener(listener),
 					WithSignalChan(make(chan struct{})),

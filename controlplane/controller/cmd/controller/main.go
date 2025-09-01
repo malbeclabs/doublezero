@@ -6,12 +6,12 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"log"
 	"log/slog"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"slices"
 	"strings"
 	"syscall"
 	"text/tabwriter"
@@ -117,7 +117,7 @@ func NewControllerCommand() *ControllerCommand {
 		description: "command set for starting controller",
 	}
 	c.fs.StringVar(&c.listenAddr, "listen-addr", "localhost", "listening address for controller grpc server")
-	c.fs.StringVar(&c.listenPort, "listen-port", "443", "listening port for controller grpc server")
+	c.fs.StringVar(&c.listenPort, "listen-port", "8080", "listening port for controller grpc server")
 	c.fs.StringVar(&c.env, "env", "", "environment to run controller in (devnet, testnet, mainnet-beta)")
 	c.fs.StringVar(&c.programID, "program-id", "", "smartcontract program id to monitor")
 	c.fs.StringVar(&c.rpcEndpoint, "solana-rpc-endpoint", "", "override solana rpc endpoint (default: devnet)")
@@ -128,6 +128,7 @@ func NewControllerCommand() *ControllerCommand {
 	c.fs.StringVar(&c.tlsCertFile, "tls-cert", "", "path to tls cert file")
 	c.fs.StringVar(&c.tlsKeyFile, "tls-key", "", "path to tls key file")
 	c.fs.BoolVar(&c.enablePprof, "enable-pprof", false, "enable pprof server")
+	c.fs.StringVar(&c.tlsListenPort, "tls-listen-port", "", "listening port for controller grpc server")
 	return c
 }
 
@@ -145,6 +146,7 @@ type ControllerCommand struct {
 	showVersion              bool
 	tlsCertFile              string
 	tlsKeyFile               string
+	tlsListenPort            string
 	enablePprof              bool
 }
 
@@ -170,13 +172,20 @@ func (c *ControllerCommand) Run() error {
 		os.Exit(0)
 	}
 
+	log := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	}))
+
 	// set build info prometheus metric
 	controller.BuildInfo.WithLabelValues(version, commit, date).Set(1)
 
 	// Start pprof server
 	if c.enablePprof {
 		go func() {
-			log.Println(http.ListenAndServe("localhost:6060", nil))
+			err := http.ListenAndServe("localhost:6060", nil)
+			if err != nil {
+				log.Error("failed to start pprof server", "error", err)
+			}
 		}()
 	}
 
@@ -190,15 +199,15 @@ func (c *ControllerCommand) Run() error {
 
 	if c.env == "" {
 		if c.programID == "" {
-			slog.Error("program-id is required when env is not set")
+			log.Error("program-id is required when env is not set")
 			os.Exit(1)
 		}
 		if c.rpcEndpoint == "" {
-			slog.Error("rpc-endpoint is required when env is not set")
+			log.Error("rpc-endpoint is required when env is not set")
 			os.Exit(1)
 		}
 		if c.deviceLocalASN == 0 {
-			slog.Error("device-local-asn is required when env is not set")
+			log.Error("device-local-asn is required when env is not set")
 			os.Exit(1)
 		}
 		serviceabilityClient = serviceability.New(rpc.New(c.rpcEndpoint), solana.MustPublicKeyFromBase58(c.programID))
@@ -206,7 +215,7 @@ func (c *ControllerCommand) Run() error {
 	} else {
 		networkConfig, err := config.NetworkConfigForEnv(c.env)
 		if err != nil {
-			slog.Error("failed to get network config", "error", err)
+			log.Error("failed to get network config", "error", err)
 			os.Exit(1)
 		}
 		serviceabilityClient = serviceability.New(rpc.New(networkConfig.LedgerPublicRPCURL), networkConfig.ServiceabilityProgramID)
@@ -223,36 +232,85 @@ func (c *ControllerCommand) Run() error {
 		options = append(options, controller.WithEnableInterfacesAndPeers())
 	}
 
-	if c.tlsCertFile != "" && c.tlsKeyFile != "" {
-		cert, err := tls.LoadX509KeyPair(c.tlsCertFile, c.tlsKeyFile)
-		if err != nil {
-			slog.Error("error loading tls cert", "error", err)
-			os.Exit(1)
+	options = append(options, controller.WithServiceabilityProgramClient(serviceabilityClient))
+
+	if c.tlsListenPort != "" {
+		options := slices.Clone(options)
+		go func(options []controller.Option) {
+			log := log.With("mode", "tls")
+			options = append(options, controller.WithLogger(log))
+
+			if c.tlsCertFile == "" && c.tlsKeyFile == "" {
+				log.Error("tls-cert and tls-key are required when tls-listen-port is provided")
+				os.Exit(1)
+			}
+
+			cert, err := tls.LoadX509KeyPair(c.tlsCertFile, c.tlsKeyFile)
+			if err != nil {
+				log.Error("error loading tls cert", "error", err)
+				os.Exit(1)
+			}
+			tlsConfig := &tls.Config{
+				Certificates: []tls.Certificate{cert},
+				MinVersion:   tls.VersionTLS12,
+				NextProtos:   []string{"h2"},
+			}
+			options = append(options, controller.WithTLSConfig(tlsConfig))
+
+			addr := net.JoinHostPort(c.listenAddr, c.tlsListenPort)
+			listener, err := net.Listen("tcp", addr)
+			if err != nil {
+				log.Error("failed to listen", "error", err)
+				os.Exit(1)
+			}
+			options = append(options, controller.WithListener(listener))
+
+			server, err := controller.NewController(options...)
+			if err != nil {
+				log.Error("error creating controller", "error", err)
+				os.Exit(1)
+			}
+
+			log.Info("starting tls controller", "address", addr)
+			if err := server.Run(ctx); err != nil {
+				log.Error("runtime error", "error", err)
+				os.Exit(1)
+			}
+		}(options)
+	} else {
+		if c.tlsCertFile != "" && c.tlsKeyFile != "" {
+			cert, err := tls.LoadX509KeyPair(c.tlsCertFile, c.tlsKeyFile)
+			if err != nil {
+				log.Error("error loading tls cert", "error", err)
+				os.Exit(1)
+			}
+			tlsConfig := &tls.Config{
+				Certificates: []tls.Certificate{cert},
+				MinVersion:   tls.VersionTLS12,
+				NextProtos:   []string{"h2"},
+			}
+			options = append(options, controller.WithTLSConfig(tlsConfig))
 		}
-		tlsConfig := &tls.Config{
-			Certificates: []tls.Certificate{cert},
-			MinVersion:   tls.VersionTLS12,
-			NextProtos:   []string{"h2"},
-		}
-		options = append(options, controller.WithTLSConfig(tlsConfig))
 	}
+
+	log = log.With("mode", "no-tls")
+	options = append(options, controller.WithLogger(log))
 
 	lis, err := net.Listen("tcp", net.JoinHostPort(c.listenAddr, c.listenPort))
 	if err != nil {
-		slog.Error("failed to listen", "error", err)
+		log.Error("failed to listen", "error", err)
 		os.Exit(1)
 	}
 	options = append(options, controller.WithListener(lis))
-	options = append(options, controller.WithServiceabilityProgramClient(serviceabilityClient))
 	control, err := controller.NewController(options...)
 	if err != nil {
-		slog.Error("error creating controller", "error", err)
+		log.Error("error creating controller", "error", err)
 		os.Exit(1)
 	}
 
-	slog.Log(ctx, slog.LevelInfo, fmt.Sprintf("starting controller on %s", net.JoinHostPort(c.listenAddr, c.listenPort)))
+	log.Info("starting controller", "address", net.JoinHostPort(c.listenAddr, c.listenPort))
 	if err := control.Run(ctx); err != nil {
-		slog.Error("runtime error", "error", err)
+		log.Error("runtime error", "error", err)
 		os.Exit(1)
 	}
 	return nil

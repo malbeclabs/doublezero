@@ -36,6 +36,7 @@ const (
 
 var (
 	ErrServiceabilityRequired = errors.New("serviceability program client is required")
+	ErrLoggerRequired         = errors.New("logger is required")
 )
 
 type ServiceabilityProgramClient interface {
@@ -54,6 +55,7 @@ type stateCache struct {
 type Controller struct {
 	pb.UnimplementedControllerServer
 
+	log                      *slog.Logger
 	cache                    stateCache
 	mu                       sync.RWMutex
 	serviceability           ServiceabilityProgramClient
@@ -85,7 +87,16 @@ func NewController(options ...Option) (*Controller, error) {
 	if controller.serviceability == nil {
 		return nil, ErrServiceabilityRequired
 	}
+	if controller.log == nil {
+		return nil, ErrLoggerRequired
+	}
 	return controller, nil
+}
+
+func WithLogger(log *slog.Logger) Option {
+	return func(c *Controller) {
+		c.log = log
+	}
 }
 
 func WithServiceabilityProgramClient(s ServiceabilityProgramClient) Option {
@@ -151,14 +162,14 @@ func (c *Controller) processDeviceInterfacesAndPeers(device serviceability.Devic
 		intf, err := toInterface(iface)
 		if err != nil {
 			// TODO: metric
-			slog.Error("failed to convert serviceability interface to controller interface", "device pubkey", devicePubKey, "iface", iface, "error", err)
+			c.log.Error("failed to convert serviceability interface to controller interface", "device pubkey", devicePubKey, "iface", iface, "error", err)
 			continue
 		}
 		// Create a parent interface since they're not defined on-chain.
 		if intf.IsSubInterface {
 			parent, err := intf.GetParent()
 			if err != nil {
-				slog.Error("failed to get parent interface for subinterface", "device pubkey", devicePubKey, "iface", intf.Name, "error", err)
+				c.log.Error("failed to get parent interface for subinterface", "device pubkey", devicePubKey, "iface", intf.Name, "error", err)
 				continue
 			}
 			d.Interfaces = append(d.Interfaces, parent)
@@ -182,7 +193,7 @@ func (c *Controller) processDeviceInterfacesAndPeers(device serviceability.Devic
 				systemID := fmt.Sprintf("%02x%02x.%02x%02x", vpnIP[0], vpnIP[1], vpnIP[2], vpnIP[3])
 				d.IsisNet = fmt.Sprintf("%s.%s.%s.%s.%s", ISISAreaID, ISISAreaNumber, systemID, ISISSystemIDPadding, ISISNSelector)
 			} else {
-				slog.Error("Can't assign ISIS NET because VPNv4 loopback IP is invalid or empty", "device pubkey", devicePubKey, "interface", iface.Name, "ip length", len(vpnIP))
+				c.log.Error("Can't assign ISIS NET because VPNv4 loopback IP is invalid or empty", "device pubkey", devicePubKey, "interface", iface.Name, "ip length", len(vpnIP))
 			}
 			candidateVpnv4BgpPeer = BgpPeer{
 				PeerIP:   d.Vpn4vLoopbackIP,
@@ -217,11 +228,11 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 	}
 	users := data.Users
 	if len(users) == 0 {
-		slog.Debug("0 users found on-chain")
+		c.log.Debug("0 users found on-chain")
 	}
 	links := data.Links
 	if len(links) == 0 {
-		slog.Debug("0 links found on-chain")
+		c.log.Debug("0 links found on-chain")
 	}
 	cache := stateCache{
 		Config:          data.Config,
@@ -238,7 +249,7 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 		ip := net.IP(device.PublicIp[:])
 		if ip == nil {
 			// TODO: metric
-			slog.Error("invalid public ip for device", "device pubkey", device.PubKey)
+			c.log.Error("invalid public ip for device", "device pubkey", device.PubKey)
 			continue
 		}
 
@@ -248,28 +259,28 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 		if c.enableInterfacesAndPeers {
 			candidateVpnv4BgpPeer, candidateIpv4BgpPeer := c.processDeviceInterfacesAndPeers(device, d, devicePubKey)
 
-			if d.Vpn4vLoopbackIP == nil || len(d.Vpn4vLoopbackIP) == 0 {
-				slog.Error("not adding device to cache", "device pubkey", devicePubKey, "reason", "no or invalid VPNv4 loopback interface found for device")
+			if len(d.Vpn4vLoopbackIP) == 0 {
+				c.log.Error("not adding device to cache", "device pubkey", devicePubKey, "reason", "no or invalid VPNv4 loopback interface found for device")
 				continue
 			}
 
-			if d.Ipv4LoopbackIP == nil || len(d.Ipv4LoopbackIP) == 0 {
-				slog.Error("not adding device to cache", "device pubkey", devicePubKey, "reason", "no or invalid IPv4 loopback interface found for device")
+			if len(d.Ipv4LoopbackIP) == 0 {
+				c.log.Error("not adding device to cache", "device pubkey", devicePubKey, "reason", "no or invalid IPv4 loopback interface found for device")
 				continue
 			}
 
 			if d.Vpn4vLoopbackIP.Equal(net.IPv4(0, 0, 0, 0)) {
-				slog.Error("not adding device to cache", "device pubkey", devicePubKey, "reason", "VPNv4 loopback interface is unassigned (0.0.0.0)")
+				c.log.Error("not adding device to cache", "device pubkey", devicePubKey, "reason", "VPNv4 loopback interface is unassigned (0.0.0.0)")
 				continue
 			}
 
 			if d.Ipv4LoopbackIP.Equal(net.IPv4(0, 0, 0, 0)) {
-				slog.Error("not adding device to cache", "device pubkey", devicePubKey, "reason", "IPv4 loopback interface is unassigned (0.0.0.0)")
+				c.log.Error("not adding device to cache", "device pubkey", devicePubKey, "reason", "IPv4 loopback interface is unassigned (0.0.0.0)")
 				continue
 			}
 
 			if d.IsisNet == "" {
-				slog.Error("not adding device to cache", "device pubkey", devicePubKey, "reason", "ISIS NET could not be generated")
+				c.log.Error("not adding device to cache", "device pubkey", devicePubKey, "reason", "ISIS NET could not be generated")
 				continue
 			}
 
@@ -331,19 +342,19 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 		validUser := func() bool {
 			if _, ok := cache.Devices[devicePubKey]; !ok {
 				// TODO: add metric
-				slog.Error("device pubkey could be found for activated user pubkey", "device pubkey", devicePubKey, "user pubkey", userPubKey)
+				c.log.Error("device pubkey could be found for activated user pubkey", "device pubkey", devicePubKey, "user pubkey", userPubKey)
 				return false
 			}
 			if user.TunnelId == 0 {
-				slog.Error("tunnel id is not set for user", "user pubkey", userPubKey)
+				c.log.Error("tunnel id is not set for user", "user pubkey", userPubKey)
 				return false
 			}
 			if user.ClientIp == [4]byte{} {
-				slog.Error("client ip is not set for user", "user pubkey", userPubKey)
+				c.log.Error("client ip is not set for user", "user pubkey", userPubKey)
 				return false
 			}
 			if user.TunnelNet[4] != 31 {
-				slog.Error("tunnel network mask is not 31\n", "tunnel network mask", user.TunnelNet[4])
+				c.log.Error("tunnel network mask is not 31\n", "tunnel network mask", user.TunnelNet[4])
 				return false
 			}
 			return true
@@ -355,7 +366,7 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 
 		tunnel := cache.Devices[devicePubKey].findTunnel(int(user.TunnelId))
 		if tunnel == nil {
-			slog.Error("unable to find tunnel slot on device for user",
+			c.log.Error("unable to find tunnel slot on device for user",
 				"tunnel slot", user.TunnelId,
 				"device pubkey", devicePubKey,
 				"user pubkey", userPubKey)
@@ -415,7 +426,7 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 	}
 
 	// swap out state cache with new version
-	slog.Debug("updating state cache", "state cache", cache)
+	c.log.Debug("updating state cache", "state cache", cache)
 	c.swapCache(cache)
 	return nil
 }
@@ -443,10 +454,10 @@ func (c *Controller) Run(ctx context.Context) error {
 
 	// start on-chain fetcher
 	go func() {
-		slog.Info("starting fetch of on-chain data", "program-id", c.serviceability.ProgramID())
+		c.log.Info("starting fetch of on-chain data", "program-id", c.serviceability.ProgramID())
 		if err := c.updateStateCache(ctx); err != nil {
 			cacheUpdateErrors.Inc()
-			slog.Error("error fetching accounts", "error", err)
+			c.log.Error("error fetching accounts", "error", err)
 		}
 		cacheUpdateOps.Inc()
 		ticker := time.NewTicker(10 * time.Second)
@@ -455,10 +466,10 @@ func (c *Controller) Run(ctx context.Context) error {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				slog.Debug("updating state cache on clock tick")
+				c.log.Debug("updating state cache on clock tick")
 				if err := c.updateStateCache(ctx); err != nil {
 					cacheUpdateErrors.Inc()
-					slog.Error("error fetching accounts", "error", err)
+					c.log.Error("error fetching accounts", "error", err)
 				}
 				cacheUpdateOps.Inc()
 			}
@@ -538,7 +549,7 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 	}
 
 	if len(unknownPeers) != 0 {
-		slog.Error("device returned unknown peers", "device pubkey", req.GetPubkey(), "number of unknown peers", len(unknownPeers), "peers", unknownPeers)
+		c.log.Error("device returned unknown peers", "device pubkey", req.GetPubkey(), "number of unknown peers", len(unknownPeers), "peers", unknownPeers)
 	}
 
 	multicastGroupBlock := formatCIDR(&c.cache.Config.MulticastGroupBlock)

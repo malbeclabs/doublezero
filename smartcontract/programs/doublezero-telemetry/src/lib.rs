@@ -11,16 +11,14 @@ pub mod seeds;
 pub mod state;
 
 use solana_program::pubkey::Pubkey;
-use std::str::FromStr;
 
 #[cfg(not(test))]
 mod build_constants {
     include!(concat!(env!("OUT_DIR"), "/build_constants.rs"));
 }
 
-pub fn serviceability_program_id() -> Pubkey {
-    Pubkey::from_str(crate::build_constants::SERVICEABILITY_PROGRAM_ID)
-        .expect("SERVICEABILITY_PROGRAM_ID is not a valid Pubkey")
+pub const fn serviceability_program_id() -> Pubkey {
+    Pubkey::from_str_const(crate::build_constants::SERVICEABILITY_PROGRAM_ID)
 }
 
 #[cfg(test)]

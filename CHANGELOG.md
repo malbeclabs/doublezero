@@ -8,9 +8,6 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
-- Onchain programs
-    - Restored the `validator_pubkey` field from AccessPass. This field had been removed in the previous version but is required by Sentinel.
-    - Telemetry program: embed serviceability program ID via build feature instead of env variable
 - Telemetry
     - Fix dashboard API to handle partitioned query with no samples
     - Add summary view with committed RTT and jitter, compared to measured values

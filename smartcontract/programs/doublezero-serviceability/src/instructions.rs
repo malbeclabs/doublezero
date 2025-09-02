@@ -595,6 +595,7 @@ mod tests {
                 metrics_publisher_pk: Some(Pubkey::new_unique()),
                 mgmt_vrf: Some("mgmt".to_string()),
                 max_users: None,
+                users_count: None,
             }),
             "UpdateDevice",
         );
@@ -678,6 +679,7 @@ mod tests {
                 dz_ip: Some([1, 2, 3, 4].into()),
                 tunnel_id: Some(1),
                 tunnel_net: Some("1.2.3.4/1".parse().unwrap()),
+                validator_pubkey: Some(Pubkey::new_unique()),
             }),
             "UpdateUser",
         );

@@ -23,6 +23,7 @@ pub struct UpdateDeviceCommand {
     pub mgmt_vrf: Option<String>,
     pub interfaces: Option<Vec<Interface>>,
     pub max_users: Option<u16>,
+    pub users_count: Option<u16>,
 }
 
 impl UpdateDeviceCommand {
@@ -53,6 +54,7 @@ impl UpdateDeviceCommand {
                 metrics_publisher_pk: self.metrics_publisher,
                 mgmt_vrf: self.mgmt_vrf.clone(),
                 max_users: self.max_users,
+                users_count: self.users_count,
             }),
             vec![
                 AccountMeta::new(self.pubkey, false),
@@ -126,6 +128,7 @@ mod tests {
                     mgmt_vrf: Some("mgmt".to_string()),
                     contributor_pk: None,
                     max_users: None,
+                    users_count: None,
                 })),
                 predicate::always(),
             )
@@ -142,6 +145,7 @@ mod tests {
             mgmt_vrf: Some("mgmt".to_string()),
             interfaces: None,
             max_users: None,
+            users_count: None,
         };
 
         let update_invalid = UpdateDeviceCommand {

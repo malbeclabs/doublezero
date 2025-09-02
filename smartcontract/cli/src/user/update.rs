@@ -26,6 +26,9 @@ pub struct UpdateUserCliCommand {
     /// New Tunnel Network in CIDR format
     #[arg(long)]
     pub tunnel_net: Option<NetworkV4>,
+    /// New Validator Pubkey
+    #[arg(long, value_parser = validate_pubkey)]
+    pub validator_pubkey: Option<String>,
 }
 
 impl UpdateUserCliCommand {
@@ -42,6 +45,10 @@ impl UpdateUserCliCommand {
             dz_ip: self.dz_ip,
             tunnel_id: self.tunnel_id,
             tunnel_net: self.tunnel_net,
+            validator_pubkey: self
+                .validator_pubkey
+                .map(|s| Pubkey::from_str(&s))
+                .transpose()?,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -121,6 +128,7 @@ mod tests {
                 dz_ip: Some([2, 3, 4, 5].into()),
                 tunnel_id: Some(1),
                 tunnel_net: Some("10.2.2.3/24".parse().unwrap()),
+                validator_pubkey: None,
             }))
             .returning(move |_| Ok(signature));
 
@@ -132,6 +140,7 @@ mod tests {
             dz_ip: Some([2, 3, 4, 5].into()),
             tunnel_id: Some(1),
             tunnel_net: Some("10.2.2.3/24".parse().unwrap()),
+            validator_pubkey: None,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

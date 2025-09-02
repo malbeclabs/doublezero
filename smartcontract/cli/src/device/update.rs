@@ -41,6 +41,9 @@ pub struct UpdateDeviceCliCommand {
     /// Maximum number of users for the device (optional)
     #[arg(long)]
     pub max_users: Option<u16>,
+    /// Number of users connected to the device (optional)
+    #[arg(long)]
+    pub users_count: Option<u16>,
     /// Wait for the device to be activated
     #[arg(short, long, default_value_t = false)]
     pub wait: bool,
@@ -113,6 +116,7 @@ impl UpdateDeviceCliCommand {
             mgmt_vrf: self.mgmt_vrf,
             interfaces: None,
             max_users: self.max_users,
+            users_count: self.users_count,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -257,6 +261,7 @@ mod tests {
                 mgmt_vrf: Some("default".to_string()),
                 interfaces: None,
                 max_users: Some(1025),
+                users_count: Some(0),
             }))
             .times(1)
             .returning(move |_| Ok(signature));
@@ -272,6 +277,7 @@ mod tests {
             contributor: Some("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx".to_string()),
             mgmt_vrf: Some("default".to_string()),
             max_users: Some(1025),
+            users_count: Some(0),
             wait: false,
         }
         .execute(&client, &mut output);
@@ -354,6 +360,7 @@ mod tests {
             contributor: None,
             mgmt_vrf: None,
             max_users: Some(255),
+            users_count: Some(0),
             wait: false,
         }
         .execute(&client, &mut output);
@@ -436,6 +443,7 @@ mod tests {
             contributor: None,
             mgmt_vrf: None,
             max_users: None,
+            users_count: None,
             wait: false,
         }
         .execute(&client, &mut output);

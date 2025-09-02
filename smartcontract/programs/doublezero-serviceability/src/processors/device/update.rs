@@ -25,6 +25,7 @@ pub struct DeviceUpdateArgs {
     pub metrics_publisher_pk: Option<Pubkey>,
     pub mgmt_vrf: Option<String>,
     pub max_users: Option<u16>,
+    pub users_count: Option<u16>,
 }
 
 impl fmt::Debug for DeviceUpdateArgs {
@@ -52,6 +53,9 @@ impl fmt::Debug for DeviceUpdateArgs {
         }
         if self.max_users.is_some() {
             write!(f, "max_users: {:?}, ", self.max_users)?;
+        }
+        if self.users_count.is_some() {
+            write!(f, "users: {:?}, ", self.users_count)?;
         }
         Ok(())
     }
@@ -107,15 +111,22 @@ pub fn process_update_device(
 
     let mut device: Device = Device::try_from(device_account)?;
 
+    // Only allow updates from the foundation allowlist
+    if globalstate.foundation_allowlist.contains(payer_account.key) {
+        if let Some(contributor_pk) = value.contributor_pk {
+            device.contributor_pk = contributor_pk;
+        }
+        if let Some(users_count) = value.users_count {
+            device.users_count = users_count;
+        }
+    }
+
     if let Some(ref code) = value.code {
         device.code =
             validate_account_code(code).map_err(|_| DoubleZeroError::InvalidAccountCode)?;
     }
     if let Some(device_type) = value.device_type {
         device.device_type = device_type;
-    }
-    if let Some(contributor_pk) = value.contributor_pk {
-        device.contributor_pk = contributor_pk;
     }
     if let Some(public_ip) = value.public_ip {
         device.public_ip = public_ip;

@@ -13,12 +13,12 @@ All notable changes to this project will be documented in this file.
     - New filters include access pass type (`prepaid` or `solana-validator`) and Solana identity public key.
     - Updated command arguments and logic, with tests adjusted to cover new options.
     - Contributors: Interface creation no longer takes an "interface type (physical/loopback)" argument. The type is now inferred from the interface name.
-    - Skip client version check in `status` command to prevent version errors during automated state checks.
+
 - Device controller
     - Use serviceability onchain delay for link metrics
-- Onchain programs
-    - Restored the `validator_pubkey` field from AccessPass. This field had been removed in the previous version but is required by Sentinel.
-    - Telemetry program: embed serviceability program ID via build feature instead of env variable
+- Fix: Skip client version check in `status` command to prevent version errors during automated state checks.
+- Fix: Restored the `validator_pubkey` field from AccessPass. This field had been removed in the previous version but is required by Sentinel.
+
 
 ## [v0.6.0](https://github.com/malbeclabs/doublezero/compare/client/v0.5.3...client/v0.6.0) – 2025-08-28
 

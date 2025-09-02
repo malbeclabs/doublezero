@@ -11,6 +11,7 @@ jobs:
       image: ghcr.io/malbeclabs/doublezero-base:latest
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
       - name: Set up keypairs
         run: |
           echo "${{ secrets.DEVNET_KEYPAIR }}" > id.json

@@ -17,6 +17,7 @@ pub struct UpdateUserCommand {
     pub dz_ip: Option<Ipv4Addr>,
     pub tunnel_id: Option<u16>,
     pub tunnel_net: Option<NetworkV4>,
+    pub validator_pubkey: Option<Pubkey>,
 }
 
 impl UpdateUserCommand {
@@ -33,6 +34,7 @@ impl UpdateUserCommand {
                 dz_ip: self.dz_ip,
                 tunnel_id: self.tunnel_id,
                 tunnel_net: self.tunnel_net,
+                validator_pubkey: self.validator_pubkey,
             }),
             vec![
                 AccountMeta::new(self.pubkey, false),

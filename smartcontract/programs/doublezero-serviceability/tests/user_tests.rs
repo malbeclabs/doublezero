@@ -395,6 +395,7 @@ async fn test_user() {
             dz_ip: Some([200, 0, 0, 4].into()),
             tunnel_id: Some(501),
             tunnel_net: Some("10.1.2.4/22".parse().unwrap()),
+            validator_pubkey: None,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),

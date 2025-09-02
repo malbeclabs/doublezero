@@ -20,6 +20,7 @@ pub struct UserUpdateArgs {
     pub dz_ip: Option<std::net::Ipv4Addr>,
     pub tunnel_id: Option<u16>,
     pub tunnel_net: Option<NetworkV4>,
+    pub validator_pubkey: Option<Pubkey>,
 }
 
 impl fmt::Debug for UserUpdateArgs {
@@ -89,6 +90,10 @@ pub fn process_update_user(
     if let Some(value) = value.client_ip {
         user.client_ip = value;
     }
+    if let Some(value) = value.validator_pubkey {
+        user.validator_pubkey = value;
+    }
+
     account_write(user_account, &user, payer_account, system_program)?;
     #[cfg(test)]
     msg!("Updated: {:?}", user);

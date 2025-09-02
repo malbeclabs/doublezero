@@ -150,7 +150,7 @@ pub fn process_create_subscribe_user(
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 
-    if device.max_users > 0 && device.users_count >= device.max_users {
+    if device.users_count >= device.max_users {
         msg!("{:?}", device);
         return Err(DoubleZeroError::MaxUsersExceeded.into());
     }

@@ -126,6 +126,7 @@ impl Settings {
             "devnet" => Ok(devnet::program_id::id()),
             "testnet" => Ok(testnet::program_id::id()),
             "mainnet" => Ok(mainnet::program_id::id()),
+            "mainnet-beta" => Ok(mainnet::program_id::id()),
             other => Pubkey::from_str(other),
         }
     }

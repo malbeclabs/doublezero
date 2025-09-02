@@ -132,6 +132,7 @@ mod tests {
             status: UserStatus::Activated,
             publishers: vec![],
             subscribers: vec![],
+            validator_pubkey: Pubkey::default(),
         };
         client
             .expect_get()

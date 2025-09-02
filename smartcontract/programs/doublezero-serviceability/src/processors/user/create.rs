@@ -4,7 +4,7 @@ use crate::{
     helper::*,
     pda::{get_accesspass_pda, get_user_pda},
     state::{
-        accesspass::{AccessPass, AccessPassStatus},
+        accesspass::{AccessPass, AccessPassStatus, AccessPassType},
         accounttype::AccountType,
         device::{Device, DeviceStatus},
         user::*,
@@ -118,6 +118,12 @@ pub fn process_create_user(
     accesspass.connection_count += 1;
     accesspass.status = AccessPassStatus::Connected;
 
+    // Read validator_pubkey from AccessPass
+    let validator_pubkey = match accesspass.accesspass_type {
+        AccessPassType::SolanaValidator(pk) => pk,
+        AccessPassType::Prepaid => Pubkey::default(),
+    };
+
     let mut device = Device::try_from(device_account)?;
 
     if device.status == DeviceStatus::Suspended {
@@ -154,6 +160,7 @@ pub fn process_create_user(
         status: UserStatus::Pending,
         publishers: vec![],
         subscribers: vec![],
+        validator_pubkey,
     };
 
     account_create(

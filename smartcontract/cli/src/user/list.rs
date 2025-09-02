@@ -417,6 +417,7 @@ mod tests {
             status: Activated,
             publishers: vec![],
             subscribers: vec![],
+            validator_pubkey: Pubkey::default(),
         };
 
         let (accesspass1_pubkey, _) =
@@ -449,6 +450,7 @@ mod tests {
             status: Activated,
             publishers: vec![],
             subscribers: vec![mgroup1_pubkey],
+            validator_pubkey: Pubkey::default(),
         };
 
         let (accesspass2_pubkey, _) =

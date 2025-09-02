@@ -383,7 +383,7 @@ async fn test_user() {
 
     println!("✅ User resumed");
     /*****************************************************************************************************************************************************/
-    println!("🟢 11. Testing User update...");
+    println!("🟢 11a. Testing User update...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -417,6 +417,41 @@ async fn test_user() {
 
     println!("✅ User updated");
     /*****************************************************************************************************************************************************/
+    println!("🟢 11b. Testing User update (regression test: unspecified dz_ip should not clear the dz_ip)...");
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateUser(UserUpdateArgs {
+            client_ip: Some([10, 2, 3, 5].into()),
+            user_type: Some(UserType::IBRL),
+            cyoa_type: Some(UserCYOA::GREOverPrivatePeering),
+            dz_ip: None,
+            tunnel_id: Some(505),
+            tunnel_net: Some("10.1.2.5/22".parse().unwrap()),
+            validator_pubkey: None,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_user()
+        .unwrap();
+    assert_eq!(user.account_type, AccountType::User);
+    assert_eq!(user.client_ip.to_string(), "10.2.3.5");
+    assert_eq!(user.cyoa_type, UserCYOA::GREOverPrivatePeering);
+    assert_eq!(user.status, UserStatus::Activated);
+    assert_eq!(user.dz_ip.to_string(), "200.0.0.4");
+
+    println!("✅ User updated");
+    /*****************************************************************************************************************************************************/
     println!("🟢 12. Testing User deletion...");
     execute_transaction(
         &mut banks_client,
@@ -438,7 +473,7 @@ async fn test_user() {
         .get_user()
         .unwrap();
     assert_eq!(user.account_type, AccountType::User);
-    assert_eq!(user.client_ip.to_string(), "10.2.3.4");
+    assert_eq!(user.client_ip.to_string(), "10.2.3.5");
     assert_eq!(user.cyoa_type, UserCYOA::GREOverPrivatePeering);
     assert_eq!(user.status, UserStatus::Deleting);
 

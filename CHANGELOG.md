@@ -17,6 +17,8 @@ All notable changes to this project will be documented in this file.
 - Device controller
     - Use serviceability onchain delay for link metrics
 - Fix: Skip client version check in `status` command to prevent version errors during automated state checks.
+- Fix: Restored the `validator_pubkey` field from AccessPass. This field had been removed in the previous version but is required by Sentinel.
+
 
 ## [v0.6.0](https://github.com/malbeclabs/doublezero/compare/client/v0.5.3...client/v0.6.0) – 2025-08-28
 

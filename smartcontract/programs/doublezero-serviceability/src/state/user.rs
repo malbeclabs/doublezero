@@ -1,7 +1,7 @@
 use crate::{
     seeds::SEED_USER,
     state::{
-        accesspass::{AccessPass, AccessPassStatus},
+        accesspass::{AccessPass, AccessPassStatus, AccessPassType},
         accounttype::{AccountType, AccountTypeInfo},
     },
 };
@@ -192,6 +192,7 @@ pub struct User {
         )
     )]
     pub subscribers: Vec<Pubkey>, // 4 + 32 * len
+    pub validator_pubkey: Pubkey,  // 32
 }
 
 impl fmt::Display for User {
@@ -235,6 +236,7 @@ impl AccountTypeInfo for User {
             + self.publishers.len() * 32
             + 4
             + self.subscribers.len() * 32
+            + 32
     }
     fn index(&self) -> u128 {
         self.index
@@ -267,6 +269,7 @@ impl TryFrom<&[u8]> for User {
             status: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             publishers: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             subscribers: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            validator_pubkey: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::User {
@@ -306,6 +309,11 @@ impl User {
     pub fn try_activate(&mut self, accesspass: &mut AccessPass) -> ProgramResult {
         accesspass.update_status()?;
 
+        self.validator_pubkey = match accesspass.accesspass_type {
+            AccessPassType::SolanaValidator(pk) => pk,
+            AccessPassType::Prepaid => Pubkey::default(),
+        };
+
         self.status = if accesspass.status == AccessPassStatus::Expired {
             UserStatus::OutOfCredits
         } else {
@@ -338,6 +346,7 @@ mod tests {
             status: UserStatus::Activated,
             publishers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
+            validator_pubkey: Pubkey::new_unique(),
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -351,6 +360,7 @@ mod tests {
         assert_eq!(val.tunnel_net, val2.tunnel_net);
         assert_eq!(val.subscribers, val2.subscribers);
         assert_eq!(val.publishers, val2.publishers);
+        assert_eq!(val.validator_pubkey, val2.validator_pubkey);
         assert_eq!(data.len(), val.size(), "Invalid Size");
     }
 }

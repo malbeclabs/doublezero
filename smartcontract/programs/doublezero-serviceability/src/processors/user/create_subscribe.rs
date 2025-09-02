@@ -4,7 +4,7 @@ use crate::{
     helper::*,
     pda::{get_accesspass_pda, get_user_pda},
     state::{
-        accesspass::{AccessPass, AccessPassStatus},
+        accesspass::{AccessPass, AccessPassStatus, AccessPassType},
         accounttype::AccountType,
         device::{Device, DeviceStatus},
         multicastgroup::{MulticastGroup, MulticastGroupStatus},
@@ -121,6 +121,12 @@ pub fn process_create_subscribe_user(
     accesspass.connection_count += 1;
     accesspass.status = AccessPassStatus::Connected;
 
+    // Read validator_pubkey from AccesPass
+    let validator_pubkey = match accesspass.accesspass_type {
+        AccessPassType::SolanaValidator(pk) => pk,
+        AccessPassType::Prepaid => Pubkey::default(),
+    };
+
     let mut mgroup: MulticastGroup = MulticastGroup::try_from(mgroup_account)?;
     assert_eq!(mgroup.status, MulticastGroupStatus::Activated);
 
@@ -174,6 +180,7 @@ pub fn process_create_subscribe_user(
             true => vec![*mgroup_account.key],
             false => vec![],
         },
+        validator_pubkey,
     };
 
     if value.publisher && !mgroup.publishers.contains(user_account.key) {

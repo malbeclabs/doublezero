@@ -32,7 +32,7 @@ solana-program-test.workspace = true
 doublezero-config.workspace = true
 
 [features]
-default = ["localnet"]
+default = []
 localnet = []
 testnet = []
 devnet = []

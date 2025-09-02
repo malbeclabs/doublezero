@@ -1,4 +1,4 @@
-SERVICEABILITY_PROGRAM_ID ?= local
+env ?= localnet
 
 # -----------------------------------------------------------------------------
 # Combined targets
@@ -59,18 +59,18 @@ go-ci: go-build go-lint go-test go-fuzz
 # Rust targets
 # -----------------------------------------------------------------------------
 .PHONY: rust-build
-rust-build: rust-build-sbf
-	SERVICEABILITY_PROGRAM_ID=$(SERVICEABILITY_PROGRAM_ID) cargo build -v --workspace
+rust-build: rust-build-programs
+	cargo build -v --workspace
 
-.PHONY: rust-build-sbf
-rust-build-sbf:
-	cd smartcontract && SERVICEABILITY_PROGRAM_ID=$(SERVICEABILITY_PROGRAM_ID) $(MAKE) build-sbf
+.PHONY: rust-build-programs
+rust-build-programs:
+	cd smartcontract && $(MAKE) build-programs env=$(env)
 
 .PHONY: rust-lint
 rust-lint: rust-fmt-check
 	@cargo +stable install cargo-hack
 	cargo hack clippy --workspace --all-targets --exclude doublezero-telemetry --exclude doublezero-serviceability -- -Dclippy::all -Dwarnings
-	cd smartcontract && SERVICEABILITY_PROGRAM_ID=$(SERVICEABILITY_PROGRAM_ID) $(MAKE) lint-programs
+	cd smartcontract && $(MAKE) lint-programs
 
 .PHONY: rust-fmt
 rust-fmt:
@@ -85,11 +85,11 @@ rust-fmt-check:
 .PHONY: rust-test
 rust-test:
 	cargo test --workspace --exclude doublezero-telemetry --exclude doublezero-serviceability --all-features
-	cd smartcontract && SERVICEABILITY_PROGRAM_ID=$(SERVICEABILITY_PROGRAM_ID) $(MAKE) test-programs
+	cd smartcontract && $(MAKE) test-programs
 
-.PHONY: rust-test-sbf
-rust-test-sbf:
-	cd smartcontract && SERVICEABILITY_PROGRAM_ID=$(SERVICEABILITY_PROGRAM_ID) $(MAKE) test-sbf
+.PHONY: rust-test-programs
+rust-test-programs:
+	cd smartcontract && $(MAKE) test-programs
 
 .PHONY: rust-validator-test
 rust-validator-test:
@@ -109,3 +109,26 @@ e2e-test:
 .PHONY: e2e-build
 e2e-build:
 	cd e2e && $(MAKE) build
+
+# -----------------------------------------------------------------------------
+# Build programs for specific environments
+# -----------------------------------------------------------------------------
+.PHONY: build-programs
+build-programs:
+	$(MAKE) -C smartcontract build-programs env=$(env)
+
+.PHONY: build-programs-localnet
+build-programs-localnet:
+	$(MAKE) build-programs env=localnet
+
+.PHONY: build-programs-devnet
+build-programs-devnet:
+	$(MAKE) build-programs env=devnet
+
+.PHONY: build-programs-testnet
+build-programs-testnet:
+	$(MAKE) build-programs env=testnet
+
+.PHONY: build-programs-mainnet-beta
+build-programs-mainnet-beta:
+	$(MAKE) build-programs env=mainnet-beta

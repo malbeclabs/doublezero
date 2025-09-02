@@ -36,7 +36,3 @@ ENV DIND_LOCALHOST=host.docker.internal
 # Tell Testcontainers to connect to the Docker daemon via host.docker.internal,
 # so sidecar containers like Ryuk can reach the DinD container hosting the daemon.
 ENV TESTCONTAINERS_HOST_OVERRIDE=${DIND_LOCALHOST}
-
-# Set default program IDs
-ENV SERVICEABILITY_PROGRAM_ID=local
-ENV TELEMETRY_PROGRAM_ID=local

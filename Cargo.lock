@@ -1668,6 +1668,7 @@ dependencies = [
  "bincode 2.0.1",
  "borsh 1.5.7",
  "ctor",
+ "doublezero-config",
  "doublezero-program-common",
  "doublezero-serviceability",
  "env_logger",

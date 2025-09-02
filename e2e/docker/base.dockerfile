@@ -143,14 +143,11 @@ RUN --mount=type=cache,target=/cargo-sbf \
     cargo build-sbf && \
     cp /target-sbf/deploy/doublezero_serviceability.so ${BIN_DIR}/doublezero_serviceability.so
 
-# This serviceability program ID is required by the telemetry program at build-time, and
-# corresponds to the keypair in e2e/data/serviceability-program-keypair.json
-ENV SERVICEABILITY_PROGRAM_ID=7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX
 RUN --mount=type=cache,target=/cargo-sbf \
     --mount=type=cache,target=/target-sbf \
     --mount=type=cache,target=/root/.cache/solana \
     cd smartcontract/programs/doublezero-telemetry && \
-    cargo build-sbf && \
+    cargo build-sbf --features localnet && \
     cp /target-sbf/deploy/doublezero_telemetry.so ${BIN_DIR}/doublezero_telemetry.so
 
 # Force COPY in later stages to always copy the programs, even if they appear to be the same.

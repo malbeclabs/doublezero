@@ -1,5 +1,5 @@
 use crate::{seeds::*, state::accounttype::*};
-use borsh::BorshSerialize;
+use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::AccountInfo,
     entrypoint::ProgramResult,
@@ -149,4 +149,16 @@ macro_rules! format_option {
     ($opt:expr) => {
         format_option_displayable($opt)
     };
+}
+
+pub fn deserialize_vec_with_capacity<T: BorshDeserialize>(
+    data: &mut &[u8],
+) -> Result<Vec<T>, ProgramError> {
+    let len = u32::from_le_bytes(data[..4].try_into().unwrap());
+    *data = &data[4..];
+    let mut vec = Vec::with_capacity(len as usize + 1);
+    for _ in 0..len {
+        vec.push(T::deserialize(data)?);
+    }
+    Ok(vec)
 }

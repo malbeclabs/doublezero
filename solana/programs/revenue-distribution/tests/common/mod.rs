@@ -9,15 +9,15 @@ use doublezero_revenue_distribution::{
             ConfigureContributorRewardsAccounts, ConfigureDistributionDebtAccounts,
             ConfigureDistributionRewardsAccounts, ConfigureJournalAccounts,
             ConfigureProgramAccounts, DenyPrepaidConnectionAccessAccounts,
-            FinalizeDistributionDebtAccounts, FinalizeDistributionRewardsAccounts,
-            ForgiveSolanaValidatorDebtAccounts, GrantPrepaidConnectionAccessAccounts,
-            InitializeContributorRewardsAccounts, InitializeDistributionAccounts,
-            InitializeJournalAccounts, InitializePrepaidConnectionAccounts,
-            InitializeProgramAccounts, InitializeSolanaValidatorDepositAccounts,
-            InitializeSwapDestinationAccounts, LoadPrepaidConnectionAccounts,
-            PaySolanaValidatorDebtAccounts, SetAdminAccounts, SetRewardsManagerAccounts,
-            SweepDistributionTokensAccounts, TerminatePrepaidConnectionAccounts,
-            VerifyDistributionMerkleRootAccounts,
+            DistributeRewardsAccounts, FinalizeDistributionDebtAccounts,
+            FinalizeDistributionRewardsAccounts, ForgiveSolanaValidatorDebtAccounts,
+            GrantPrepaidConnectionAccessAccounts, InitializeContributorRewardsAccounts,
+            InitializeDistributionAccounts, InitializeJournalAccounts,
+            InitializePrepaidConnectionAccounts, InitializeProgramAccounts,
+            InitializeSolanaValidatorDepositAccounts, InitializeSwapDestinationAccounts,
+            LoadPrepaidConnectionAccounts, PaySolanaValidatorDebtAccounts, SetAdminAccounts,
+            SetRewardsManagerAccounts, SweepDistributionTokensAccounts,
+            TerminatePrepaidConnectionAccounts, VerifyDistributionMerkleRootAccounts,
         },
         ContributorRewardsConfiguration, DistributionMerkleRootKind, JournalConfiguration,
         ProgramConfiguration, RevenueDistributionInstructionData,
@@ -26,7 +26,7 @@ use doublezero_revenue_distribution::{
         self, ContributorRewards, Distribution, Journal, JournalEntries, PrepaidConnection,
         ProgramConfig, SolanaValidatorDeposit,
     },
-    types::{DoubleZeroEpoch, SolanaValidatorDebt},
+    types::{DoubleZeroEpoch, RewardShare, SolanaValidatorDebt},
     DOUBLEZERO_MINT_KEY, ID,
 };
 use solana_loader_v3_interface::{get_program_data_address, state::UpgradeableLoaderState};
@@ -223,6 +223,32 @@ impl ProgramTestWithOwner {
             &mut self.banks_client,
             &self.cached_blockhash,
             &[transfer_ix],
+            &[payer_signer],
+        )
+        .await?;
+
+        Ok(self)
+    }
+
+    pub async fn create_2z_ata(
+        &mut self,
+        owner_key: &Pubkey,
+    ) -> Result<&mut Self, BanksClientError> {
+        let payer_signer = &self.payer_signer;
+        let payer_key = payer_signer.pubkey();
+
+        // No consequence if the ATA already exists.
+        let create_ix = spl_associated_token_account_interface::instruction::create_associated_token_account_idempotent(
+            &payer_key,
+            owner_key,
+            &DOUBLEZERO_MINT_KEY,
+            &spl_token::ID,
+        );
+
+        self.cached_blockhash = process_instructions_for_test(
+            &mut self.banks_client,
+            &self.cached_blockhash,
+            &[create_ix],
             &[payer_signer],
         )
         .await?;
@@ -535,6 +561,49 @@ impl ProgramTestWithOwner {
             &mut self.banks_client,
             &self.cached_blockhash,
             &[finalize_distribution_rewards_ix],
+            &[payer_signer],
+        )
+        .await?;
+
+        Ok(self)
+    }
+
+    pub async fn distribute_rewards(
+        &mut self,
+        dz_epoch: DoubleZeroEpoch,
+        reward_share: &RewardShare,
+        dz_mint_key: &Pubkey,
+        relayer_key: &Pubkey,
+        recipient_keys: &[&Pubkey],
+        proof: MerkleProof,
+    ) -> Result<&mut Self, BanksClientError> {
+        let payer_signer = &self.payer_signer;
+
+        let contributor_key = &reward_share.contributor_key;
+        let unit_share = reward_share.unit_share;
+        let economic_burn_rate = reward_share.economic_burn_rate();
+
+        let distribute_rewards_ix = try_build_instruction(
+            &ID,
+            DistributeRewardsAccounts::new(
+                dz_epoch,
+                contributor_key,
+                dz_mint_key,
+                relayer_key,
+                recipient_keys,
+            ),
+            &RevenueDistributionInstructionData::DistributeRewards {
+                unit_share,
+                economic_burn_rate,
+                proof,
+            },
+        )
+        .unwrap();
+
+        self.cached_blockhash = process_instructions_for_test(
+            &mut self.banks_client,
+            &self.cached_blockhash,
+            &[distribute_rewards_ix],
             &[payer_signer],
         )
         .await?;

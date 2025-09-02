@@ -42,7 +42,9 @@ async fn test_terminate_prepaid_connection() {
     let prepaid_minimum_prepaid_dz_epochs = 1;
     let prepaid_maximum_entries = 100;
 
+    // Relay settings.
     let prepaid_connection_termination_relay_lamports = 42_069;
+    let distribute_rewards_relay_lamports = 10_000;
 
     let user_key = Pubkey::new_unique();
     let valid_through_dz_epoch = DoubleZeroEpoch::new(1);
@@ -94,6 +96,9 @@ async fn test_terminate_prepaid_connection() {
                 },
                 ProgramConfiguration::PrepaidConnectionTerminationRelayLamports(
                     prepaid_connection_termination_relay_lamports,
+                ),
+                ProgramConfiguration::DistributeRewardsRelayLamports(
+                    distribute_rewards_relay_lamports,
                 ),
                 ProgramConfiguration::Flag(ProgramFlagConfiguration::IsPaused(false)),
             ],

@@ -18,6 +18,7 @@ use solana_program_error::{ProgramError, ProgramResult};
 use solana_pubkey::Pubkey;
 use solana_system_interface::instruction as system_instruction;
 use solana_sysvar::{rent::Rent, Sysvar};
+use spl_associated_token_account_interface::address::get_associated_token_address;
 use spl_token::instruction as token_instruction;
 use svm_hash::{merkle::MerkleProof, sha2::Hash};
 
@@ -29,8 +30,8 @@ use crate::{
     state::{
         self, find_swap_authority_address, find_withdraw_sol_authority_address,
         CommunityBurnRateParameters, ContributorRewards, Distribution, Journal, JournalEntries,
-        PrepaidConnection, ProgramConfig, RecipientShares, RelayParameters, SolanaValidatorDeposit,
-        TOKEN_2Z_PDA_SEED_PREFIX,
+        PrepaidConnection, ProgramConfig, RecipientShare, RecipientShares, RelayParameters,
+        SolanaValidatorDeposit, TOKEN_2Z_PDA_SEED_PREFIX,
     },
     types::{BurnRate, ByteFlags, DoubleZeroEpoch, RewardShare, SolanaValidatorDebt, ValidatorFee},
     DOUBLEZERO_MINT_DECIMALS, DOUBLEZERO_MINT_KEY, ID,
@@ -85,6 +86,11 @@ fn try_process_instruction(
         RevenueDistributionInstructionData::FinalizeDistributionRewards => {
             try_finalize_distribution_rewards(accounts)
         }
+        RevenueDistributionInstructionData::DistributeRewards {
+            unit_share,
+            economic_burn_rate,
+            proof,
+        } => try_distribute_rewards(accounts, unit_share, economic_burn_rate, proof),
         RevenueDistributionInstructionData::InitializePrepaidConnection { user_key, decimals } => {
             try_initialize_prepaid_connection(accounts, user_key, decimals)
         }
@@ -483,7 +489,7 @@ fn try_configure_program(accounts: &[AccountInfo], setting: ProgramConfiguration
                 .relay_parameters
                 .prepaid_connection_termination_lamports = relay_lamports;
         }
-        ProgramConfiguration::ContributorRewardClaimLamports(relay_lamports) => {
+        ProgramConfiguration::DistributeRewardsRelayLamports(relay_lamports) => {
             // The specified lamports must be greater than the cost of a transaction signature.
             if relay_lamports < RelayParameters::MIN_LAMPORTS {
                 msg!("Relay lamports must be greater than the cost of a transaction signature");
@@ -491,12 +497,10 @@ fn try_configure_program(accounts: &[AccountInfo], setting: ProgramConfiguration
             }
 
             msg!(
-                "Set relay_parameters.contributor_reward_claim_lamports: {}",
+                "Set relay_parameters.distribute_rewards_lamports: {}",
                 relay_lamports
             );
-            program_config
-                .relay_parameters
-                .contributor_reward_claim_lamports = relay_lamports;
+            program_config.relay_parameters.distribute_rewards_lamports = relay_lamports;
         }
         ProgramConfiguration::MinimumEpochDurationToFinalizeRewards(epoch_duration) => {
             msg!(
@@ -719,13 +723,15 @@ fn try_initialize_distribution(accounts: &[AccountInfo]) -> ProgramResult {
         return Err(ProgramError::InvalidAccountData);
     }
 
-    // Account 2 must be a signer and writable (i.e., payer) because it will be sending lamports
-    // to the new journal account when the system program allocates data to it. But because the
-    // create-program instruction requires that this account is a signer and is writable, we do
-    // not need to explicitly check these fields in its account info.
+    // Account 2 must be a signer and writable (i.e., payer) because it will be
+    // sending lamports to the new journal account when the system program
+    // allocates data to it. But because the create-program instruction requires
+    // that this account is a signer and is writable, we do not need to
+    //explicitly check these fields in its account info.
     let (_, payer_info) = try_next_enumerated_account(&mut accounts_iter, Default::default())?;
 
-    // Account 3 must be the new distribution account. This account should not exist yet.
+    // Account 3 must be the new distribution account. This account should not
+    // exist yet.
     let (account_index, new_distribution_info) =
         try_next_enumerated_account(&mut accounts_iter, Default::default())?;
 
@@ -738,6 +744,18 @@ fn try_initialize_distribution(accounts: &[AccountInfo]) -> ProgramResult {
         .checked_compute()
         .ok_or_else(|| {
             msg!("Community burn rate parameters are misconfigured");
+            ProgramError::InvalidAccountData
+        })?;
+
+    // In order to finalize contributor rewards, the program config must have a
+    // non-zero amount of lamports to pay for each contributor reward
+    // distribution. By providing these lamports to the distribution account,
+    // the contributor reward distributions will not cost any gas to the
+    // invoker of this distribution.
+    let distribute_rewards_relay_lamports = program_config
+        .checked_distribute_rewards_relay_lamports()
+        .ok_or_else(|| {
+            msg!("Distribute rewards relay lamports not configured");
             ProgramError::InvalidAccountData
         })?;
 
@@ -821,6 +839,7 @@ fn try_initialize_distribution(accounts: &[AccountInfo]) -> ProgramResult {
     distribution.token_2z_pda_bump_seed = distribution_2z_token_pda_bump;
     distribution.community_burn_rate = community_burn_rate;
     distribution.solana_validator_fee_parameters = solana_validator_fee_params;
+    distribution.distribute_rewards_relay_lamports = distribute_rewards_relay_lamports;
 
     // We need to move prepaid 2Z from the journal to the distribution.
     let mut journal =
@@ -959,8 +978,11 @@ fn try_finalize_distribution_debt(accounts: &[AccountInfo]) -> ProgramResult {
 
     // Set the index of where to find the bits start to indicate which Solana
     // validator payments have been processed.
-    distribution.processed_solana_validator_payments_index =
+    distribution.processed_solana_validator_payments_start_index =
         distribution.remaining_data.len() as u32;
+    distribution.processed_solana_validator_payments_end_index = distribution
+        .processed_solana_validator_payments_start_index
+        .saturating_add(additional_data_len);
 
     // Avoid borrowing while in mutable borrow state.
     let distribution_info = distribution.info;
@@ -1043,7 +1065,7 @@ fn try_finalize_distribution_rewards(accounts: &[AccountInfo]) -> ProgramResult 
     // We expect the following accounts for this instruction:
     // - 0: Program config.
     // - 1: Distribution.
-    // - 2: Payer (to pay for contributor claim relay lamports).
+    // - 2: Payer (to pay for distribute rewards relay lamports).
     // - 3: System program.
     let mut accounts_iter = accounts.iter().enumerate();
 
@@ -1053,17 +1075,6 @@ fn try_finalize_distribution_rewards(accounts: &[AccountInfo]) -> ProgramResult 
 
     // Make sure the program is not paused.
     program_config.try_require_unpaused()?;
-
-    // In order to finalize contributor rewards, the program config must have a non-zero
-    // amount of lamports to pay for each contributor reward claim. By providing these
-    // lamports to the distribution account, the contributor reward claims will not cost any
-    // gas to the invoker of this claim.
-    let contributor_reward_claim_lamports = program_config
-        .checked_relay_contributor_reward_claim_lamports()
-        .ok_or_else(|| {
-            msg!("Contributor reward claim relay lamports are misconfigured");
-            ProgramError::InvalidAccountData
-        })?;
 
     // Account 0 must be the distribution.
     let mut distribution =
@@ -1096,7 +1107,7 @@ fn try_finalize_distribution_rewards(accounts: &[AccountInfo]) -> ProgramResult 
     }
 
     // We need to realloc the distribution account to add the number of bits
-    // needed to store whether a contributor has claimed rewards.
+    // needed to store whether a contributor has distributed rewards.
     let total_contributors = distribution.total_contributors;
     let additional_data_len = if total_contributors % 8 == 0 {
         total_contributors / 8
@@ -1106,11 +1117,12 @@ fn try_finalize_distribution_rewards(accounts: &[AccountInfo]) -> ProgramResult 
 
     // Set the index of where to find the bits start to indicate which rewards
     // have been distributed.
-    distribution.processed_rewards_index = distribution.remaining_data.len() as u32;
-    msg!(
-        "Set processed_rewards_index: {}",
-        distribution.processed_rewards_index
-    );
+    distribution.processed_rewards_start_index = distribution.remaining_data.len() as u32;
+    distribution.processed_rewards_end_index = distribution
+        .processed_rewards_start_index
+        .saturating_add(additional_data_len);
+
+    let distribute_rewards_relay_lamports = distribution.distribute_rewards_relay_lamports;
 
     // Avoid borrowing while in mutable borrow state.
     let distribution_info = distribution.info;
@@ -1138,21 +1150,233 @@ fn try_finalize_distribution_rewards(accounts: &[AccountInfo]) -> ProgramResult 
     // the transfer CPI call will fail if this account is not writable).
     let (_, payer_info) = try_next_enumerated_account(&mut accounts_iter, Default::default())?;
 
-    let additional_lamports_for_claims =
-        contributor_reward_claim_lamports.saturating_mul(total_contributors.into());
+    let additional_lamports_for_distributing =
+        u64::from(distribute_rewards_relay_lamports).saturating_mul(total_contributors.into());
 
     let transfer_ix = system_instruction::transfer(
         payer_info.key,
         distribution_info.key,
-        additional_lamports_for_claims.saturating_add(additional_lamports_for_resize),
+        additional_lamports_for_distributing.saturating_add(additional_lamports_for_resize),
     );
 
     invoke_signed_unchecked(&transfer_ix, accounts, &[])?;
 
     msg!(
-        "Transferred {} lamports to distribution for {} contributor claims",
-        additional_lamports_for_claims,
+        "Transferred {} lamports to distribution for {} contributors",
+        additional_lamports_for_distributing,
         total_contributors
+    );
+
+    Ok(())
+}
+
+fn try_distribute_rewards(
+    accounts: &[AccountInfo],
+    unit_share: u32,
+    economic_burn_rate: u32,
+    proof: MerkleProof,
+) -> ProgramResult {
+    msg!("Distribute rewards");
+
+    // Enforce that the merkle proof uses an indexed tree. This index will be
+    // referenced later in this instruction processor.
+    let leaf_index = try_leaf_index(&proof)?;
+
+    // We expect the following accounts for this instruction:
+    // - 0: Program config.
+    // - 1: Distribution.
+    // - 2: Contributor rewards.
+    // - 3: Distribution 2Z token account.
+    // - 4: 2Z mint.
+    // - 5: Relayer.
+    // - 6: SPL Token program.
+    //
+    // Remaining accounts are recipient ATAs, whose owners are specified in
+    // the contributor rewards account. Because this account specifies a
+    // maximum number of 8 recipients, there will be at most 15 accounts passed
+    // to this instruction.
+    let mut accounts_iter = accounts.iter().enumerate();
+
+    // Account 0 must be the program config.
+    let program_config =
+        ZeroCopyAccount::<ProgramConfig>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+
+    // Make sure the program is not paused.
+    //
+    // TODO: Do we want to pause?
+    program_config.try_require_unpaused()?;
+
+    // Account 1 must be the distribution.
+    let mut distribution =
+        ZeroCopyMutAccount::<Distribution>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+
+    // Make sure the distribution rewards calculation is finalized.
+    if !distribution.is_rewards_calculation_finalized() {
+        msg!("Distribution rewards have not been finalized");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Make sure 2Z tokens have been swept.
+    if !distribution.has_swept_2z_tokens() {
+        msg!("Distribution has not swept 2Z tokens");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Bits indicating whether rewards have been distributed for specific leaf
+    // indices are stored in the distribution's remaining data.
+    let processed_start_index = distribution.processed_rewards_start_index as usize;
+    let processed_end_index = distribution.processed_rewards_end_index as usize;
+
+    try_process_remaining_data_leaf_index(
+        &mut distribution.remaining_data[processed_start_index..processed_end_index],
+        leaf_index,
+    )
+    .inspect_err(|_| {
+        msg!("Rewards already distributed");
+    })?;
+
+    let contributor_rewards =
+        ZeroCopyAccount::<ContributorRewards>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+
+    let reward_share = RewardShare::new(
+        contributor_rewards.service_key,
+        unit_share,
+        false, // should_block,
+        economic_burn_rate,
+    )
+    .ok_or_else(|| {
+        msg!("Invalid reward share");
+        msg!("  unit_share: {}", unit_share);
+        msg!("  economic_burn_rate: {}", economic_burn_rate);
+        ProgramError::InvalidInstructionData
+    })?;
+
+    let computed_merkle_root =
+        proof.root_from_pod_leaf(&reward_share, Some(RewardShare::LEAF_PREFIX));
+
+    if computed_merkle_root != distribution.rewards_merkle_root {
+        msg!("Invalid computed merkle root: {}", computed_merkle_root);
+        return Err(ProgramError::InvalidInstructionData);
+    }
+
+    // Account 3 must be the distribution 2Z token account.
+    let (_, distribution_2z_token_pda_info, _) = try_next_2z_token_pda_info(
+        &mut accounts_iter,
+        distribution.info.key,
+        "distribution's",
+        Some(distribution.token_2z_pda_bump_seed),
+    )?;
+
+    // Account 4 must be the 2Z mint. This account needs to be writable because
+    // the burn instruction will be invoked near the end of this instruction.
+    try_next_2z_mint_info(&mut accounts_iter)?;
+
+    // Account 5 must be the relayer. This account will receive lamports for
+    // invoking this instruction.
+    //
+    // To avoid a potential lamport accounting issue, moving lamports to this
+    // account will happen at the end of this instruction.
+    let (_, relayer_info) = try_next_enumerated_account(
+        &mut accounts_iter,
+        NextAccountOptions {
+            must_be_writable: true,
+            ..Default::default()
+        },
+    )?;
+
+    // Account 6 must be the SPL Token program.
+    try_next_token_program_info(&mut accounts_iter)?;
+
+    // This operation is safe to unwrap because under the hood, the unit share
+    // and economic burn rate are checked, but these values do not need to be
+    // checked since they were already checked in the `RewardShare::new` call.
+    let (mut burn_share_amount, remaining_share_amount) =
+        distribution.split_2z_amount(&reward_share).unwrap();
+
+    let distribution_signer_seeds = &[
+        Distribution::SEED_PREFIX,
+        &distribution.dz_epoch.as_seed(),
+        &[distribution.bump_seed],
+    ];
+
+    let mut total_transferred_share_amount = 0;
+
+    // Now split up the remaining share amount across the recipient ATAs. For
+    // each recipient, take the Associated Token Account (ATA) and transfer the
+    // share of 2Z tokens to it.
+    for RecipientShare {
+        recipient_key,
+        share,
+    } in contributor_rewards.recipient_shares.active_iter()
+    {
+        // Account 7 + i must be the ATA owned by the recipient. This account
+        // must be writable, but we do not need to check this because the
+        // transfer CPI call will fail if this account is not.
+        let (account_index, ata_info) =
+            try_next_enumerated_account(&mut accounts_iter, Default::default())?;
+        let ata_key = get_associated_token_address(recipient_key, &DOUBLEZERO_MINT_KEY);
+
+        // Enforce this account location.
+        if ata_info.key != &ata_key {
+            msg!(
+                "Expected ATA for recipient {} (account {})",
+                recipient_key,
+                account_index
+            );
+            return Err(ProgramError::InvalidAccountData);
+        }
+
+        let recipient_share_amount = share.mul_scalar(remaining_share_amount);
+        total_transferred_share_amount += recipient_share_amount;
+
+        let token_transfer_ix = token_instruction::transfer(
+            &spl_token::ID,
+            distribution_2z_token_pda_info.key,
+            &ata_key,
+            distribution.info.key,
+            &[], // signer_pubkeys
+            recipient_share_amount,
+        )
+        .unwrap();
+
+        invoke_signed_unchecked(&token_transfer_ix, accounts, &[distribution_signer_seeds])?;
+        msg!(
+            "Transferred {} 2Z tokens to {}",
+            recipient_share_amount,
+            recipient_key
+        );
+    }
+
+    // Add any dust to the burn amount.
+    burn_share_amount += remaining_share_amount - total_transferred_share_amount;
+
+    distribution.distributed_2z_amount += total_transferred_share_amount;
+    distribution.burned_2z_amount += burn_share_amount;
+    distribution.distributed_rewards_count += 1;
+
+    let token_burn_ix = token_instruction::burn(
+        &spl_token::ID,
+        distribution_2z_token_pda_info.key,
+        &DOUBLEZERO_MINT_KEY,
+        distribution.info.key,
+        &[],
+        burn_share_amount,
+    )
+    .unwrap();
+
+    invoke_signed_unchecked(&token_burn_ix, accounts, &[distribution_signer_seeds])?;
+    msg!("Burned {} 2Z tokens", burn_share_amount);
+
+    // Finally, pay the relayer for invoking this instruction.
+
+    let distribute_rewards_relay_lamports = distribution.distribute_rewards_relay_lamports as u64;
+
+    **relayer_info.lamports.borrow_mut() += distribute_rewards_relay_lamports;
+    **distribution.info.lamports.borrow_mut() -= distribute_rewards_relay_lamports;
+
+    msg!(
+        "Moved {} lamports to relayer",
+        distribute_rewards_relay_lamports
     );
 
     Ok(())
@@ -1414,7 +1638,8 @@ fn try_deny_prepaid_connection_access(accounts: &[AccountInfo]) -> ProgramResult
     )?;
 
     let termination_relay_lamports = program_config
-        .checked_relay_prepaid_connection_termination_lamports()
+        .checked_prepaid_connection_termination_relay_lamports()
+        .map(u64::from)
         .ok_or_else(|| {
             msg!("Prepaid connection termination relay lamports are misconfigured");
             ProgramError::InvalidAccountData
@@ -1867,19 +2092,16 @@ fn try_configure_contributor_rewards(
 
     match setting {
         ContributorRewardsConfiguration::Recipients(recipients) => {
-            let recipients = RecipientShares::new(&recipients).ok_or_else(|| {
+            let recipient_shares = RecipientShares::new(&recipients).ok_or_else(|| {
                 msg!("Invalid recipients");
                 ProgramError::InvalidAccountData
             })?;
 
             msg!("Recipients");
-            recipients
-                .iter()
-                .filter(|recipient| recipient.recipient_key != Pubkey::default())
-                .for_each(|recipient| {
-                    msg!("{}: {}", recipient.recipient_key, recipient.share);
-                });
-            contributor_rewards.recipient_shares = recipients;
+            recipient_shares.active_iter().for_each(|recipient| {
+                msg!("{}: {}", recipient.recipient_key, recipient.share);
+            });
+            contributor_rewards.recipient_shares = recipient_shares;
         }
         ContributorRewardsConfiguration::IsSetRewardsManagerBlocked(should_block) => {
             msg!("Set flag");
@@ -1898,11 +2120,9 @@ fn try_verify_distribution_merkle_root(
 ) -> ProgramResult {
     msg!("Verify distribution payment");
 
-    // Enforce that the merkle proof uses an indexed tree.
-    let leaf_index = proof.leaf_index.ok_or_else(|| {
-        msg!("Merkle proof must use an indexed tree");
-        ProgramError::InvalidInstructionData
-    })?;
+    // Enforce that the merkle proof uses an indexed tree. This index will be
+    // referenced later in this instruction processor.
+    let leaf_index = try_leaf_index(&proof)?;
 
     // We expect only the distribution account for this instruction.
     let mut accounts_iter = accounts.iter().enumerate();
@@ -2019,10 +2239,9 @@ fn try_pay_solana_validator_debt(
 ) -> ProgramResult {
     msg!("Pay Solana validator debt");
 
-    let leaf_index = proof.leaf_index.ok_or_else(|| {
-        msg!("Merkle proof must use an indexed tree");
-        ProgramError::InvalidInstructionData
-    })?;
+    // Enforce that the merkle proof uses an indexed tree. This index will be
+    // referenced later in this instruction processor.
+    let leaf_index = try_leaf_index(&proof)?;
 
     // We expect the following accounts for this instruction:
     // - 0: Program config.
@@ -2049,6 +2268,7 @@ fn try_pay_solana_validator_debt(
     // Update the collected payments amount now to avoid a borrow issue later
     // in this instruction.
     distribution.collected_solana_validator_payments += amount;
+    distribution.solana_validator_payments_count += 1;
 
     // This merkle root will be used to verify the payment after we determine
     // the debt has not already been paid.
@@ -2056,11 +2276,12 @@ fn try_pay_solana_validator_debt(
 
     // Bits indicating whether debt has been paid for specific leaf indices are
     // stored in the distribution's remaining data.
-    let processed_index = distribution.processed_solana_validator_payments_index as usize;
+    let processed_start_index =
+        distribution.processed_solana_validator_payments_start_index as usize;
+    let processed_end_index = distribution.processed_solana_validator_payments_end_index as usize;
 
     try_process_remaining_data_leaf_index(
-        &mut distribution.remaining_data,
-        processed_index,
+        &mut distribution.remaining_data[processed_start_index..processed_end_index],
         leaf_index,
     )
     .inspect_err(|_| {
@@ -2124,10 +2345,9 @@ fn try_forgive_solana_validator_debt(
 ) -> ProgramResult {
     msg!("Forgive Solana validator debt");
 
-    let leaf_index = proof.leaf_index.ok_or_else(|| {
-        msg!("Merkle proof must use an indexed tree");
-        ProgramError::InvalidInstructionData
-    })?;
+    // Enforce that the merkle proof uses an indexed tree. This index will be
+    // referenced later in this instruction processor.
+    let leaf_index = try_leaf_index(&proof)?;
 
     // We expect the following accounts for this instruction:
     // - 0: Program config.
@@ -2163,11 +2383,12 @@ fn try_forgive_solana_validator_debt(
 
     // Bits indicating whether debt has been paid for specific leaf indices are
     // stored in the distribution's remaining data.
-    let processed_index = distribution.processed_solana_validator_payments_index as usize;
+    let processed_start_index =
+        distribution.processed_solana_validator_payments_start_index as usize;
+    let processed_end_index = distribution.processed_solana_validator_payments_end_index as usize;
 
     try_process_remaining_data_leaf_index(
-        &mut distribution.remaining_data,
-        processed_index,
+        &mut distribution.remaining_data[processed_start_index..processed_end_index],
         leaf_index,
     )
     .inspect_err(|_| {
@@ -2389,7 +2610,7 @@ fn try_sweep_distribution_tokens_development(accounts: &[AccountInfo]) -> Progra
     // Record the swept amount to the distribution. This amount will also be
     // used to token transfer the 2Z tokens to the distribution.
     let token_2z_amount = total_sol_debt.saturating_mul(FIXED_SOL_2Z_SWAP_RATE_FOR_DEVELOPMENT);
-    distribution.collected_sol_converted_to_2z += token_2z_amount;
+    distribution.collected_2z_converted_from_sol += token_2z_amount;
 
     // Account 3 must be the distribution's 2Z token account.
     let (_, distribution_2z_token_pda_info, _) = try_next_2z_token_pda_info(
@@ -2795,6 +3016,14 @@ fn try_serialize_journal_entries(
     })
 }
 
+#[inline(always)]
+fn try_leaf_index(proof: &MerkleProof) -> Result<u32, ProgramError> {
+    proof.leaf_index.ok_or_else(|| {
+        msg!("Merkle proof must use an indexed tree");
+        ProgramError::InvalidInstructionData
+    })
+}
+
 impl ProgramConfig {
     #[inline(always)]
     fn try_require_unpaused(&self) -> ProgramResult {
@@ -2850,17 +3079,14 @@ impl Distribution {
 }
 
 fn try_process_remaining_data_leaf_index(
-    remaining_data: &mut [u8],
-    processed_index: usize,
+    processed_leaf_data: &mut [u8],
     leaf_index: u32,
 ) -> ProgramResult {
-    let processed_payments_data = &mut remaining_data[processed_index..];
-
     let leaf_byte_index = leaf_index as usize / 8;
 
     // First, we have to grab the relevant byte from the processed payments
     //data.
-    let leaf_byte_ref = processed_payments_data
+    let leaf_byte_ref = processed_leaf_data
         .get_mut(leaf_byte_index)
         .ok_or_else(|| {
             msg!("Invalid leaf index");

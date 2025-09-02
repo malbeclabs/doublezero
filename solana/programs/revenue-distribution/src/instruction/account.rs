@@ -2,6 +2,7 @@ use doublezero_program_tools::get_program_data_address;
 use solana_instruction::AccountMeta;
 use solana_pubkey::Pubkey;
 use solana_system_interface::program as system_program;
+use spl_associated_token_account_interface::address::get_associated_token_address;
 
 use crate::{
     state::{
@@ -424,6 +425,75 @@ impl From<FinalizeDistributionRewardsAccounts> for Vec<AccountMeta> {
             AccountMeta::new(payer_key, true),
             AccountMeta::new_readonly(system_program::ID, false),
         ]
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DistributeRewardsAccounts {
+    pub program_config_key: Pubkey,
+    pub distribution_key: Pubkey,
+    pub contributor_rewards_key: Pubkey,
+    pub distribution_2z_token_pda_key: Pubkey,
+    pub dz_mint_key: Pubkey,
+    pub relayer_key: Pubkey,
+    pub recipient_ata_keys: Vec<Pubkey>,
+}
+
+impl DistributeRewardsAccounts {
+    pub fn new(
+        dz_epoch: DoubleZeroEpoch,
+        service_key: &Pubkey,
+        dz_mint_key: &Pubkey,
+        relayer_key: &Pubkey,
+        recipient_keys: &[&Pubkey],
+    ) -> Self {
+        let distribution_key = Distribution::find_address(dz_epoch).0;
+        let recipient_ata_keys = recipient_keys
+            .iter()
+            .map(|owner_key| get_associated_token_address(owner_key, dz_mint_key))
+            .collect();
+
+        Self {
+            program_config_key: ProgramConfig::find_address().0,
+            distribution_key,
+            contributor_rewards_key: ContributorRewards::find_address(service_key).0,
+            distribution_2z_token_pda_key: find_2z_token_pda_address(&distribution_key).0,
+            dz_mint_key: *dz_mint_key,
+            relayer_key: *relayer_key,
+            recipient_ata_keys,
+        }
+    }
+}
+
+impl From<DistributeRewardsAccounts> for Vec<AccountMeta> {
+    fn from(accounts: DistributeRewardsAccounts) -> Self {
+        let DistributeRewardsAccounts {
+            program_config_key,
+            distribution_key,
+            contributor_rewards_key,
+            distribution_2z_token_pda_key,
+            dz_mint_key,
+            relayer_key,
+            recipient_ata_keys,
+        } = accounts;
+
+        let mut accounts = vec![
+            AccountMeta::new_readonly(program_config_key, false),
+            AccountMeta::new(distribution_key, false),
+            AccountMeta::new_readonly(contributor_rewards_key, false),
+            AccountMeta::new(distribution_2z_token_pda_key, false),
+            AccountMeta::new(dz_mint_key, false),
+            AccountMeta::new(relayer_key, false),
+            AccountMeta::new_readonly(spl_token::ID, false),
+        ];
+
+        let recipient_ata_accounts = recipient_ata_keys
+            .into_iter()
+            .map(|key| AccountMeta::new(key, false));
+
+        accounts.extend(recipient_ata_accounts);
+
+        accounts
     }
 }
 

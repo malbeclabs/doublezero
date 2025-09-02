@@ -23,6 +23,7 @@ solana-program-pack.workspace = true
 solana-pubkey = { workspace = true, features = ["borsh", "bytemuck"] }
 solana-system-interface.workspace = true
 solana-sysvar.workspace = true
+spl-associated-token-account-interface.workspace = true
 spl-token.workspace = true
 svm-hash = { workspace = true, features = ["borsh", "bytemuck"] }
 

@@ -35,7 +35,7 @@ pub enum ProgramConfiguration {
         initial_rate: Option<u32>,
     },
     PrepaidConnectionTerminationRelayLamports(u32),
-    ContributorRewardClaimLamports(u32),
+    DistributeRewardsRelayLamports(u32),
     MinimumEpochDurationToFinalizeRewards(u16),
 }
 
@@ -86,6 +86,11 @@ pub enum RevenueDistributionInstructionData {
         merkle_root: Hash,
     },
     FinalizeDistributionRewards,
+    DistributeRewards {
+        unit_share: u32,
+        economic_burn_rate: u32,
+        proof: MerkleProof,
+    },
     InitializePrepaidConnection {
         user_key: Pubkey,
         decimals: u8,
@@ -141,6 +146,8 @@ impl RevenueDistributionInstructionData {
         Discriminator::new_sha2(b"dz::ix::configure_distribution_rewards");
     pub const FINALIZE_DISTRIBUTION_REWARDS: Discriminator<DISCRIMINATOR_LEN> =
         Discriminator::new_sha2(b"dz::ix::finalize_distribution_rewards");
+    pub const DISTRIBUTE_REWARDS: Discriminator<DISCRIMINATOR_LEN> =
+        Discriminator::new_sha2(b"dz::ix::distribute_rewards");
     pub const INITIALIZE_PREPAID_CONNECTION: Discriminator<DISCRIMINATOR_LEN> =
         Discriminator::new_sha2(b"dz::ix::initialize_prepaid_connection");
     pub const GRANT_PREPAID_CONNECTION_ACCESS: Discriminator<DISCRIMINATOR_LEN> =
@@ -209,6 +216,17 @@ impl BorshDeserialize for RevenueDistributionInstructionData {
                 })
             }
             Self::FINALIZE_DISTRIBUTION_REWARDS => Ok(Self::FinalizeDistributionRewards),
+            Self::DISTRIBUTE_REWARDS => {
+                let unit_share = BorshDeserialize::deserialize_reader(reader)?;
+                let economic_burn_rate = BorshDeserialize::deserialize_reader(reader)?;
+                let proof = BorshDeserialize::deserialize_reader(reader)?;
+
+                Ok(Self::DistributeRewards {
+                    unit_share,
+                    economic_burn_rate,
+                    proof,
+                })
+            }
             Self::INITIALIZE_PREPAID_CONNECTION => {
                 let user_key = BorshDeserialize::deserialize_reader(reader)?;
                 let decimals = BorshDeserialize::deserialize_reader(reader)?;
@@ -312,6 +330,16 @@ impl BorshSerialize for RevenueDistributionInstructionData {
             }
             Self::FinalizeDistributionRewards => {
                 Self::FINALIZE_DISTRIBUTION_REWARDS.serialize(writer)
+            }
+            Self::DistributeRewards {
+                unit_share,
+                economic_burn_rate,
+                proof,
+            } => {
+                Self::DISTRIBUTE_REWARDS.serialize(writer)?;
+                unit_share.serialize(writer)?;
+                economic_burn_rate.serialize(writer)?;
+                proof.serialize(writer)
             }
             Self::InitializePrepaidConnection { user_key, decimals } => {
                 Self::INITIALIZE_PREPAID_CONNECTION.serialize(writer)?;

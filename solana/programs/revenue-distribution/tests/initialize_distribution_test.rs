@@ -24,6 +24,9 @@ async fn test_initialize_distribution() {
     let payments_accountant_signer = Keypair::new();
     let solana_validator_base_block_rewards_pct_fee = 500; // 5%.
 
+    // Relay settings.
+    let distribute_rewards_relay_lamports = 10_000;
+
     // Community burn rate.
     let initial_cbr = 100_000_000; // 10%.
     let cbr_limit = 500_000_000; // 50%.
@@ -58,6 +61,9 @@ async fn test_initialize_distribution() {
                     dz_epochs_to_limit: dz_epochs_to_cbr_limit,
                     initial_rate: Some(initial_cbr),
                 },
+                ProgramConfiguration::DistributeRewardsRelayLamports(
+                    distribute_rewards_relay_lamports,
+                ),
                 ProgramConfiguration::Flag(ProgramFlagConfiguration::IsPaused(false)),
             ],
         )
@@ -97,6 +103,7 @@ async fn test_initialize_distribution() {
         .solana_validator_fee_parameters
         .base_block_rewards_pct =
         ValidatorFee::new(solana_validator_base_block_rewards_pct_fee).unwrap();
+    expected_distribution.distribute_rewards_relay_lamports = distribute_rewards_relay_lamports;
     assert_eq!(distribution, expected_distribution);
     assert_eq!(distribution_custody.amount, 0);
 
@@ -116,6 +123,9 @@ async fn test_initialize_distribution() {
         .base_block_rewards_pct =
         ValidatorFee::new(solana_validator_base_block_rewards_pct_fee).unwrap();
     expected_distribution_params.community_burn_rate_parameters = cbr_params;
+
+    let expected_relay_params = &mut expected_program_config.relay_parameters;
+    expected_relay_params.distribute_rewards_lamports = distribute_rewards_relay_lamports;
     assert_eq!(program_config, expected_program_config);
 
     // Create another distribution.
@@ -147,6 +157,7 @@ async fn test_initialize_distribution() {
         .solana_validator_fee_parameters
         .base_block_rewards_pct =
         ValidatorFee::new(solana_validator_base_block_rewards_pct_fee).unwrap();
+    expected_distribution.distribute_rewards_relay_lamports = distribute_rewards_relay_lamports;
     assert_eq!(distribution, expected_distribution);
     assert_eq!(distribution_custody.amount, 0);
 
@@ -166,5 +177,8 @@ async fn test_initialize_distribution() {
         .base_block_rewards_pct =
         ValidatorFee::new(solana_validator_base_block_rewards_pct_fee).unwrap();
     expected_distribution_params.community_burn_rate_parameters = cbr_params;
+
+    let expected_relay_params = &mut expected_program_config.relay_parameters;
+    expected_relay_params.distribute_rewards_lamports = distribute_rewards_relay_lamports;
     assert_eq!(program_config, expected_program_config);
 }

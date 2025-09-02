@@ -62,7 +62,7 @@ async fn test_configure_program() {
 
     // Relay settings.
     let prepaid_connection_termination_relay_lamports = 8 * 6_960;
-    let contributor_reward_claim_relay_lamports = 10_000;
+    let distribute_rewards_relay_lamports = 10_000;
 
     test_setup
         .configure_program(
@@ -94,8 +94,8 @@ async fn test_configure_program() {
                 ProgramConfiguration::PrepaidConnectionTerminationRelayLamports(
                     prepaid_connection_termination_relay_lamports,
                 ),
-                ProgramConfiguration::ContributorRewardClaimLamports(
-                    contributor_reward_claim_relay_lamports,
+                ProgramConfiguration::DistributeRewardsRelayLamports(
+                    distribute_rewards_relay_lamports,
                 ),
                 ProgramConfiguration::MinimumEpochDurationToFinalizeRewards(
                     minimum_epoch_duration_to_finalize_rewards,
@@ -151,7 +151,6 @@ async fn test_configure_program() {
     let expected_relay_params = &mut expected_program_config.relay_parameters;
     expected_relay_params.prepaid_connection_termination_lamports =
         prepaid_connection_termination_relay_lamports;
-    expected_relay_params.contributor_reward_claim_lamports =
-        contributor_reward_claim_relay_lamports;
+    expected_relay_params.distribute_rewards_lamports = distribute_rewards_relay_lamports;
     assert_eq!(program_config, expected_program_config);
 }

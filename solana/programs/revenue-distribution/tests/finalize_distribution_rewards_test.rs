@@ -41,7 +41,7 @@ async fn test_finalize_distribution_rewards() {
     let dz_epochs_to_cbr_limit = 20;
 
     // Relay settings.
-    let contributor_reward_claim_relay_lamports = 10_000;
+    let distribute_rewards_relay_lamports = 10_000;
 
     // Distribution.
 
@@ -82,8 +82,8 @@ async fn test_finalize_distribution_rewards() {
                     dz_epochs_to_limit: dz_epochs_to_cbr_limit,
                     initial_rate: Some(initial_cbr),
                 },
-                ProgramConfiguration::ContributorRewardClaimLamports(
-                    contributor_reward_claim_relay_lamports,
+                ProgramConfiguration::DistributeRewardsRelayLamports(
+                    distribute_rewards_relay_lamports,
                 ),
                 ProgramConfiguration::Flag(ProgramFlagConfiguration::IsPaused(false)),
             ],
@@ -235,7 +235,12 @@ async fn test_finalize_distribution_rewards() {
         solana_validator_payments_merkle_root;
     expected_distribution.total_contributors = total_contributors;
     expected_distribution.rewards_merkle_root = rewards_merkle_root;
-    expected_distribution.processed_rewards_index = total_solana_validators / 8;
+    expected_distribution.processed_solana_validator_payments_end_index =
+        total_solana_validators / 8;
+    expected_distribution.processed_rewards_start_index = total_solana_validators / 8;
+    expected_distribution.processed_rewards_end_index =
+        (total_solana_validators / 8) + (total_contributors / 8 + 1);
+    expected_distribution.distribute_rewards_relay_lamports = distribute_rewards_relay_lamports;
     assert_eq!(distribution, expected_distribution);
 
     let expected_distribution_remaining_data_len =

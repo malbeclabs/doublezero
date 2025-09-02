@@ -32,7 +32,7 @@ async fn test_configure_distribution_rewards() {
     let dz_epochs_to_cbr_limit = 20;
 
     // Relay settings.
-    let contributor_reward_claim_relay_lamports = 10_000;
+    let distribute_rewards_relay_lamports = 10_000;
 
     test_setup
         .initialize_program()
@@ -63,8 +63,8 @@ async fn test_configure_distribution_rewards() {
                     dz_epochs_to_limit: dz_epochs_to_cbr_limit,
                     initial_rate: Some(initial_cbr),
                 },
-                ProgramConfiguration::ContributorRewardClaimLamports(
-                    contributor_reward_claim_relay_lamports,
+                ProgramConfiguration::DistributeRewardsRelayLamports(
+                    distribute_rewards_relay_lamports,
                 ),
                 ProgramConfiguration::Flag(ProgramFlagConfiguration::IsPaused(false)),
             ],
@@ -109,5 +109,6 @@ async fn test_configure_distribution_rewards() {
         ValidatorFee::new(solana_validator_base_block_rewards_pct_fee).unwrap();
     expected_distribution.total_contributors = total_contributors;
     expected_distribution.rewards_merkle_root = rewards_merkle_root;
+    expected_distribution.distribute_rewards_relay_lamports = distribute_rewards_relay_lamports;
     assert_eq!(distribution, expected_distribution);
 }

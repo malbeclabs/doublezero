@@ -47,6 +47,7 @@ solana-sha256-hasher = "2"
 solana-system-interface = "1"
 solana-sysvar = "2"
 solana-transaction-status-client-types = "2"
+spl-associated-token-account-interface = "1"
 spl-token = { version = "8", features = ["no-entrypoint"] }
 svm-hash = "0.1.0-beta.6"
 thiserror = "2"

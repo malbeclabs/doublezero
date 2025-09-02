@@ -161,17 +161,17 @@ impl ProgramConfig {
         }
     }
 
-    pub fn checked_relay_contributor_reward_claim_lamports(&self) -> Option<u64> {
-        let lamports = self.relay_parameters.contributor_reward_claim_lamports;
+    pub fn checked_distribute_rewards_relay_lamports(&self) -> Option<u32> {
+        let lamports = self.relay_parameters.distribute_rewards_lamports;
 
         if lamports == 0 {
             None
         } else {
-            Some(lamports.into())
+            Some(lamports)
         }
     }
 
-    pub fn checked_relay_prepaid_connection_termination_lamports(&self) -> Option<u64> {
+    pub fn checked_prepaid_connection_termination_relay_lamports(&self) -> Option<u32> {
         let lamports = self
             .relay_parameters
             .prepaid_connection_termination_lamports;
@@ -179,7 +179,7 @@ impl ProgramConfig {
         if lamports == 0 {
             None
         } else {
-            Some(lamports.into())
+            Some(lamports)
         }
     }
 

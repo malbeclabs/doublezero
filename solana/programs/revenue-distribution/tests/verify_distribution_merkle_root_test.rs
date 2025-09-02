@@ -41,7 +41,7 @@ async fn test_verify_distribution_merkle_root() {
     let dz_epochs_to_cbr_limit = 20;
 
     // Relay settings.
-    let contributor_reward_claim_relay_lamports = 10_000;
+    let distribute_rewards_relay_lamports = 10_000;
 
     // Distribution.
 
@@ -91,8 +91,8 @@ async fn test_verify_distribution_merkle_root() {
                     dz_epochs_to_limit: dz_epochs_to_cbr_limit,
                     initial_rate: Some(initial_cbr),
                 },
-                ProgramConfiguration::ContributorRewardClaimLamports(
-                    contributor_reward_claim_relay_lamports,
+                ProgramConfiguration::DistributeRewardsRelayLamports(
+                    distribute_rewards_relay_lamports,
                 ),
                 ProgramConfiguration::Flag(ProgramFlagConfiguration::IsPaused(false)),
             ],

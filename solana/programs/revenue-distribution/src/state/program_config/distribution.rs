@@ -17,12 +17,12 @@ pub struct DistributionParameters {
     /// This field also acts as an indication of whether the program config is
     /// initialized. If a grace period has not been configured, the program will
     /// not allow new Merkle roots (which are necessary for validators to pay
-    /// their dues and contributors to claim rewards).
+    /// their dues and contributors to have rewards distributed).
     pub calculation_grace_period_seconds: u32,
 
     /// The minimum duration that must pass before rewards can be finalized.
     /// This field is used to ensure that rewards are not finalized (and
-    /// claimed) too early.
+    /// distributed) too early.
     pub minimum_epoch_duration_to_finalize_rewards: u16,
     _padding: [u8; 2],
 

@@ -401,6 +401,9 @@ async fn test_load_prepaid_connection() {
     let dz_epochs_to_increasing_cbr = 10;
     let dz_epochs_to_cbr_limit = 20;
 
+    // Relay settings.
+    let distribute_rewards_relay_lamports = 5_001;
+
     test_setup
         .configure_program(
             &admin_signer,
@@ -420,6 +423,9 @@ async fn test_load_prepaid_connection() {
                     dz_epochs_to_limit: dz_epochs_to_cbr_limit,
                     initial_rate: Some(initial_cbr),
                 },
+                ProgramConfiguration::DistributeRewardsRelayLamports(
+                    distribute_rewards_relay_lamports,
+                ),
                 ProgramConfiguration::Flag(ProgramFlagConfiguration::IsPaused(false)),
             ],
         )

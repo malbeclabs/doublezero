@@ -9,6 +9,7 @@ use crate::{
         internet::{InternetTelemetryProcessor, InternetTelemetryStatMap, print_internet_stats},
         telemetry::{DZDTelemetryProcessor, DZDTelemetryStatMap, print_telemetry_stats},
     },
+    settings::Settings,
 };
 use anyhow::Result;
 use network_shapley::types::{Demand, Devices, PrivateLinks, PublicLinks};
@@ -24,8 +25,7 @@ pub struct PreparedData {
 
 impl PreparedData {
     /// Fetches and prepares all data needed for reward calculations
-    /// Returns: (epoch, device_telemetry, internet_telemetry, shapley_inputs)
-    pub async fn new(fetcher: &Fetcher, epoch: Option<u64>) -> Result<PreparedData> {
+    pub async fn new(fetcher: &Fetcher, epoch: Option<u64>) -> Result<Self> {
         // NOTE: Always fetch current epoch's serviceability data first
         // This ensures we have the correct exchange_pk -> device -> location mappings
         let (fetch_epoch, mut fetch_data) = match epoch {
@@ -72,7 +72,8 @@ impl PreparedData {
         let private_links = build_and_log_private_links(&fetch_data, &device_telemetry);
 
         // Build public links
-        let public_links = build_and_log_public_links(&internet_telemetry, &fetch_data)?;
+        let public_links =
+            build_and_log_public_links(&fetcher.settings, &internet_telemetry, &fetch_data)?;
 
         // Build demands and city stats
         let (demands, city_stats) = build_and_log_demands(fetcher, &fetch_data).await?;
@@ -90,7 +91,7 @@ impl PreparedData {
             city_weights,
         };
 
-        Ok(PreparedData {
+        Ok(Self {
             epoch: fetch_epoch,
             device_telemetry,
             internet_telemetry,
@@ -138,10 +139,11 @@ fn build_and_log_private_links(
 
 /// Build public links and log output
 fn build_and_log_public_links(
+    settings: &Settings,
     internet_stat_map: &InternetTelemetryStatMap,
     fetch_data: &FetchData,
 ) -> Result<PublicLinks> {
-    let public_links = build_public_links(internet_stat_map, fetch_data)?;
+    let public_links = build_public_links(settings, internet_stat_map, fetch_data)?;
     info!("Public Links:\n{}", print_public_links(&public_links));
     Ok(public_links)
 }

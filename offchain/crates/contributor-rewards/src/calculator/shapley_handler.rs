@@ -4,6 +4,7 @@ use crate::{
         constants::PENALTY_RTT_US, internet::InternetTelemetryStatMap,
         telemetry::DZDTelemetryStatMap,
     },
+    settings::{Settings, network::Network},
 };
 use anyhow::Result;
 use doublezero_serviceability::state::{
@@ -12,6 +13,7 @@ use doublezero_serviceability::state::{
 use network_shapley::types::{
     Demands, Device, Devices, PrivateLink, PrivateLinks, PublicLink, PublicLinks,
 };
+use solana_sdk::pubkey::Pubkey;
 use std::collections::BTreeMap;
 use tracing::debug;
 
@@ -53,13 +55,14 @@ pub async fn build_demands(
 }
 
 pub fn build_public_links(
+    settings: &Settings,
     internet_stats: &InternetTelemetryStatMap,
     fetch_data: &FetchData,
 ) -> Result<PublicLinks> {
-    // Build exchange to location mapping via devices
-    // exchange_pk -> device -> location_pk -> location_code
-    let mut exchange_to_location: BTreeMap<String, String> = BTreeMap::new();
+    let mut exchange_to_location: BTreeMap<Pubkey, String> = BTreeMap::new();
 
+    // Build exchange to location mapping via devices
+    // device -> exchange_pk -> exchange_code
     for device in fetch_data.dz_serviceability.devices.values() {
         // Find the exchange for this device
         if let Some(exchange) = fetch_data
@@ -67,14 +70,23 @@ pub fn build_public_links(
             .exchanges
             .get(&device.exchange_pk)
         {
-            // Find the location for this device
-            if let Some(location) = fetch_data
-                .dz_serviceability
-                .locations
-                .get(&device.location_pk)
-            {
-                // Map exchange code to location code
-                exchange_to_location.insert(exchange.code.clone(), location.code.clone());
+            match settings.network {
+                Network::MainnetBeta | Network::Mainnet => {
+                    // NOTE: On mainnet-beta, the exchange struct has the city itself as its code
+                    // so we can directly use device's exchange pk -> exchange code
+                    exchange_to_location.insert(device.exchange_pk, exchange.code.clone());
+                }
+                Network::Testnet | Network::Devnet => {
+                    // NOTE: On testnet, the exchange codes are prefixed by 'x', we can strip and use that
+                    // This is unwise to be fair, but if we "standardize" that the exchanges which are on
+                    // testnet will always have the 'x' prefix, this will be just fine
+                    let ex_code = if let Some(c) = exchange.code.strip_prefix('x') {
+                        c.to_string()
+                    } else {
+                        exchange.code.clone()
+                    };
+                    exchange_to_location.insert(device.exchange_pk, ex_code);
+                }
             }
         }
     }
@@ -87,7 +99,7 @@ pub fn build_public_links(
         // Since we're now only processing valid exchange codes in the processor,
         // we should always have a mapping. If not, skip this entry.
         // Skipping is safer than defaults.
-        let origin_location = match exchange_to_location.get(&stats.origin_exchange_code) {
+        let origin_location = match exchange_to_location.get(&stats.origin_exchange_pk) {
             Some(loc) => loc.clone(),
             None => {
                 debug!(
@@ -98,7 +110,7 @@ pub fn build_public_links(
             }
         };
 
-        let target_location = match exchange_to_location.get(&stats.target_exchange_code) {
+        let target_location = match exchange_to_location.get(&stats.target_exchange_pk) {
             Some(loc) => loc.clone(),
             None => {
                 debug!(

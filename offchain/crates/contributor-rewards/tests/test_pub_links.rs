@@ -1,7 +1,7 @@
 use anyhow::Result;
 use contributor_rewards::{
     calculator::shapley_handler::build_public_links, ingestor::types::FetchData,
-    processor::internet::InternetTelemetryProcessor,
+    processor::internet::InternetTelemetryProcessor, settings,
 };
 use serde_json::Value;
 use std::{collections::HashMap, fs, path::Path};
@@ -14,6 +14,43 @@ fn load_test_data() -> Result<FetchData> {
     // Parse the JSON into FetchData manually
     let fetch_data: FetchData = serde_json::from_value(data)?;
     Ok(fetch_data)
+}
+
+fn test_settings() -> settings::Settings {
+    // Create test settings with testnet network (since data is from testnet)
+    settings::Settings {
+        log_level: "info".to_string(),
+        network: settings::network::Network::Testnet,
+        shapley: settings::ShapleySettings {
+            operator_uptime: 0.98,
+            contiguity_bonus: 5.0,
+            demand_multiplier: 1.2,
+        },
+        rpc: settings::RpcSettings {
+            dz_url: "https://test.com".to_string(),
+            solana_read_url: "https://test.com".to_string(),
+            solana_write_url: "https://test.com".to_string(),
+            commitment: "confirmed".to_string(),
+            rps_limit: 10,
+        },
+        programs: settings::ProgramSettings {
+            serviceability_program_id: "test".to_string(),
+            telemetry_program_id: "test".to_string(),
+        },
+        prefixes: settings::PrefixSettings {
+            device_telemetry: "device".to_string(),
+            internet_telemetry: "internet".to_string(),
+            contributor_rewards: "rewards".to_string(),
+            reward_input: "input".to_string(),
+        },
+        inet_lookback: settings::InetLookbackSettings {
+            min_coverage_threshold: 0.8,
+            max_epochs_lookback: 5,
+            min_samples_per_link: 20,
+            enable_accumulator: true,
+            dedup_window_us: 10000000,
+        },
+    }
 }
 
 fn create_expected_results() -> HashMap<(String, String), f64> {
@@ -66,6 +103,10 @@ mod tests {
     fn test_public_links_generation() -> Result<()> {
         // Load test data from JSON file
         let fetch_data = load_test_data()?;
+
+        // Test settings
+        let settings = test_settings();
+
         println!(
             "Loaded snapshot with {} exchanges, {} locations, {} devices",
             fetch_data.dz_serviceability.exchanges.len(),
@@ -85,7 +126,7 @@ mod tests {
         );
 
         // Generate public links
-        let public_links = build_public_links(&internet_stats, &fetch_data)?;
+        let public_links = build_public_links(&settings, &internet_stats, &fetch_data)?;
 
         // Print results for verification
         println!("\nPublic Links Generated:");

@@ -334,7 +334,7 @@ impl ProvisioningCliCommand {
 
         // Filter devices activated
         devices.retain(|_, d| {
-            d.status == DeviceStatus::Activated && (d.max_users == 0 || d.users_count < d.max_users)
+            d.status == DeviceStatus::Activated && (d.max_users > 0 && d.users_count < d.max_users)
         });
 
         let matched_users = users

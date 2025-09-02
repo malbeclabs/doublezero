@@ -41,7 +41,7 @@ pub struct UpdateDeviceCliCommand {
     /// Maximum number of users for the device (optional)
     #[arg(long)]
     pub max_users: Option<u16>,
-    /// Maximum number of users for the device (optional)
+    /// Number of users connected to the device (optional)
     #[arg(long)]
     pub users_count: Option<u16>,
     /// Wait for the device to be activated

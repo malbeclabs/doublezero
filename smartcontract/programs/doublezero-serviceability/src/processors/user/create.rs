@@ -118,7 +118,7 @@ pub fn process_create_user(
     accesspass.connection_count += 1;
     accesspass.status = AccessPassStatus::Connected;
 
-    // Read validator_pubkey from AccesPass
+    // Read validator_pubkey from AccessPass
     let validator_pubkey = match accesspass.accesspass_type {
         AccessPassType::SolanaValidator(pk) => pk,
         AccessPassType::Prepaid => Pubkey::default(),

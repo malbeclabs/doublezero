@@ -19,6 +19,7 @@ All notable changes to this project will be documented in this file.
     - Fix: Serviceability now correctly enforces device.max_users
     - Fix: Restored the `validator_pubkey` field from AccessPass. This field had been removed in the previous version but is required by Sentinel.
     - Fix: Skip client version check in `status` command to prevent version errors during automated state checks.
+    - Fix: New instructions were added to support device interface create/update/delete that prevents a race condition that could cause some updates to be lost when changes were made in quick succession.
 - CLI
     - Added filtering options to `access-pass list` and `user list` CLI commands.
     - New filters include access pass type (`prepaid` or `solana-validator`) and Solana identity public key.

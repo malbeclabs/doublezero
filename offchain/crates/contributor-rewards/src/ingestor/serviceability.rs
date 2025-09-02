@@ -57,37 +57,37 @@ pub async fn fetch(rpc_client: &RpcClient, settings: &Settings) -> Result<DZServ
 
                     match account_type {
                         AccountType::Location => {
-                            let location = Location::from(&account_data[..]);
+                            let location = Location::try_from(&account_data[..])?;
                             serviceability_data.locations.insert(pubkey, location);
                             total_processed += 1;
                         }
                         AccountType::Exchange => {
-                            let exchange = Exchange::from(&account_data[..]);
+                            let exchange = Exchange::try_from(&account_data[..])?;
                             serviceability_data.exchanges.insert(pubkey, exchange);
                             total_processed += 1;
                         }
                         AccountType::Device => {
-                            let device = Device::from(&account_data[..]);
+                            let device = Device::try_from(&account_data[..])?;
                             serviceability_data.devices.insert(pubkey, device);
                             total_processed += 1;
                         }
                         AccountType::Link => {
-                            let link = Link::from(&account_data[..]);
+                            let link = Link::try_from(&account_data[..])?;
                             serviceability_data.links.insert(pubkey, link);
                             total_processed += 1;
                         }
                         AccountType::User => {
-                            let user = User::from(&account_data[..]);
+                            let user = User::try_from(&account_data[..])?;
                             serviceability_data.users.insert(pubkey, user);
                             total_processed += 1;
                         }
                         AccountType::MulticastGroup => {
-                            let group = MulticastGroup::from(&account_data[..]);
+                            let group = MulticastGroup::try_from(&account_data[..])?;
                             serviceability_data.multicast_groups.insert(pubkey, group);
                             total_processed += 1;
                         }
                         AccountType::Contributor => {
-                            let contributor = Contributor::from(&account_data[..]);
+                            let contributor = Contributor::try_from(&account_data[..])?;
                             serviceability_data.contributors.insert(pubkey, contributor);
                             total_processed += 1;
                         }

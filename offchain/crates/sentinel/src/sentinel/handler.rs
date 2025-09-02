@@ -75,10 +75,14 @@ impl Sentinel {
     }
 
     async fn handle_access_request(&self, access_ids: AccessIds) -> Result<()> {
-        let AccessMode::SolanaValidator { service_key, .. } = access_ids.mode;
+        let AccessMode::SolanaValidator {
+            service_key,
+            validator_id,
+            ..
+        } = access_ids.mode;
         if let Some(validator_ip) = self.verify_qualifiers(&access_ids.mode).await? {
             self.dz_rpc_client
-                .issue_access_pass(&service_key, &validator_ip)
+                .issue_access_pass(&service_key, &validator_ip, &validator_id)
                 .await?;
             let signature = self
                 .sol_rpc_client

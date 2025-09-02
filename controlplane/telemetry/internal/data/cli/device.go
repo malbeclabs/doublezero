@@ -14,7 +14,6 @@ import (
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/config"
 	devicedata "github.com/malbeclabs/doublezero/controlplane/telemetry/internal/data/device"
-	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/data/stats"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/epoch"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
@@ -203,32 +202,22 @@ func (c *DeviceCmd) Command() *cobra.Command {
 				return nil
 			}
 
-			var allStats []stats.CircuitLatencyStat
-			var wg sync.WaitGroup
+			circuitCodes := make([]string, 0, len(circuits))
 			for _, circuit := range circuits {
-				wg.Add(1)
-				go func(circuit devicedata.Circuit) {
-					defer wg.Done()
-					stats, err := provider.GetCircuitLatencies(
-						ctx,
-						devicedata.GetCircuitLatenciesConfig{
-							Circuit:   circuit.Code,
-							Time:      timeRange,
-							Epochs:    epochRange,
-							MaxPoints: 1,
-							Unit:      unit,
-						},
-					)
-					if err != nil {
-						log.Warn("Failed to get circuit latencies", "error", err, "circuit", circuit.Code)
-						return
-					}
-					allStats = append(allStats, stats...)
-				}(circuit)
+				circuitCodes = append(circuitCodes, circuit.Code)
 			}
-			wg.Wait()
+			stats, err := provider.GetSummaryForCircuits(ctx, devicedata.GetSummaryForCircuitsConfig{
+				Circuits: circuitCodes,
+				Epochs:   epochRange,
+				Time:     timeRange,
+				Unit:     unit,
+			})
+			if err != nil {
+				log.Error("Failed to get summary for circuits", "error", err)
+				return nil
+			}
 
-			printDeviceSummaries(allStats, env, recentTime, epochRange, unit)
+			printDeviceSummaries(stats, env, recentTime, epochRange, unit)
 
 			return nil
 		},
@@ -271,7 +260,7 @@ func newDeviceProvider(log *slog.Logger, env string) (devicedata.Provider, *sola
 	return provider, rpcClient, nil
 }
 
-func printDeviceSummaries(stats []stats.CircuitLatencyStat, env string, recentTime time.Duration, epochRange *devicedata.EpochRange, unit devicedata.Unit) {
+func printDeviceSummaries(stats []devicedata.CircuitSummary, env string, recentTime time.Duration, epochRange *devicedata.EpochRange, unit devicedata.Unit) {
 	fmt.Println("Environment:", env)
 	if recentTime > 0 {
 		fmt.Println("Recent time:", recentTime)
@@ -286,7 +275,10 @@ func printDeviceSummaries(stats []stats.CircuitLatencyStat, env string, recentTi
 	fmt.Println("* RTT aggregates are in", unit)
 
 	sort.Slice(stats, func(i, j int) bool {
-		return stats[i].Timestamp < stats[j].Timestamp
+		if stats[i].Circuit == stats[j].Circuit {
+			return stats[i].Timestamp < stats[j].Timestamp
+		}
+		return stats[i].Circuit < stats[j].Circuit
 	})
 
 	table := tablewriter.NewWriter(os.Stdout)
@@ -298,31 +290,57 @@ func printDeviceSummaries(stats []stats.CircuitLatencyStat, env string, recentTi
 	table.SetHeader([]string{
 		"Circuit",
 		"RTT Mean\n(" + string(unit) + ")",
-		"Jitter Avg\n(" + string(unit) + ")", "Jitter\nEWMA", "Jitter\nMax",
+		"Committed\nRTT\n(" + string(unit) + ")",
+		"Committed RTT\nChange\n(%)",
+		"Jitter Avg\n(" + string(unit) + ")",
+		"Committed\nJitter\n(" + string(unit) + ")",
+		"Committed\nJitter Change\n(%)",
+		"Jitter\nMax",
 		"RTT\nStdDev",
+		"RTT\nP50",
 		"RTT\nP90", "RTT\nP95", "RTT\nP99", "RTT\nMin", "RTT\nMax",
-		"RTT\nMedian",
 		"Success\n(#)", "Loss\n(#)", "Loss\n(%)",
 	})
 
 	for _, s := range stats {
+		f := NewValueFormatter(s.LossRate)
 		table.Append([]string{
 			s.Circuit,
-			fmt.Sprintf("%.3f", s.RTTMean),
-			fmt.Sprintf("%.5f", s.JitterAvg),
-			fmt.Sprintf("%.3f", s.JitterEWMA),
-			fmt.Sprintf("%.3f", s.JitterMax),
-			fmt.Sprintf("%.3f", s.RTTStdDev),
-			fmt.Sprintf("%.3f", s.RTTP90),
-			fmt.Sprintf("%.3f", s.RTTP95),
-			fmt.Sprintf("%.3f", s.RTTP99),
-			fmt.Sprintf("%.3f", s.RTTMin),
-			fmt.Sprintf("%.3f", s.RTTMax),
-			fmt.Sprintf("%.3f", s.RTTMedian),
+			f.Format(s.RTTMean),
+			f.Format(s.CommittedRTT),
+			f.Format(s.CommittedRTTChangeRatio * 100),
+			f.Format(s.JitterAvg),
+			f.Format(s.CommittedJitter),
+			f.Format(s.CommittedJitterChangeRatio * 100),
+			f.Format(s.JitterMax),
+			f.Format(s.RTTStdDev),
+			f.Format(s.RTTMedian),
+			f.Format(s.RTTP90),
+			f.Format(s.RTTP95),
+			f.Format(s.RTTP99),
+			f.Format(s.RTTMin),
+			f.Format(s.RTTMax),
 			fmt.Sprintf("%d", s.SuccessCount),
 			fmt.Sprintf("%d", s.LossCount),
 			fmt.Sprintf("%.1f%%", s.LossRate*100),
 		})
 	}
 	table.Render()
+}
+
+type ValueFormatter struct {
+	LossRate float64
+}
+
+func NewValueFormatter(lossRate float64) *ValueFormatter {
+	return &ValueFormatter{
+		LossRate: lossRate,
+	}
+}
+
+func (f *ValueFormatter) Format(v float64) string {
+	if f.LossRate == 1 {
+		return "-"
+	}
+	return fmt.Sprintf("%.3f", v)
 }

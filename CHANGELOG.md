@@ -8,6 +8,13 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Onchain programs
+    - Restored the `validator_pubkey` field from AccessPass. This field had been removed in the previous version but is required by Sentinel.
+    - Telemetry program: embed serviceability program ID via build feature instead of env variable
+- Telemetry
+    - Fix dashboard API to handle partitioned query with no samples
+    - Add summary view with committed RTT and jitter, compared to measured values
+
 ## [v0.6.2](https://github.com/malbeclabs/doublezero/compare/client/v0.6.0...client/v0.6.2) – 2025-09-02
 
 ### Breaking

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"sort"
+	"sync"
 	"syscall"
 	"time"
 
@@ -181,53 +182,66 @@ func (c *InternetCmd) Command() *cobra.Command {
 					os.Exit(1)
 				}
 
-				for _, circuit := range circuits {
-					samples, err := provider.GetCircuitLatencies(ctx, internetdata.GetCircuitLatenciesConfig{
-						Circuit:      circuit.Code,
-						Time:         timeRange,
-						Epochs:       epochRange,
-						Unit:         unit,
-						DataProvider: dataProvider,
-					})
-					if err != nil {
-						log.Error("Failed to get raw data", "error", err, "circuit", circuit.Code)
-						os.Exit(1)
-					}
+				var wg sync.WaitGroup
 
-					for _, sample := range samples {
-						_, err := fmt.Fprintf(file, "%s,%s,%f\n",
-							circuit.Code,
-							sample.Timestamp, // Already formatted as time.RFC3339Nano
-							sample.RTTMean,
-						)
+				for _, circuit := range circuits {
+					wg.Add(1)
+					go func(circuit internetdata.Circuit) {
+						defer wg.Done()
+						samples, err := provider.GetCircuitLatencies(ctx, internetdata.GetCircuitLatenciesConfig{
+							Circuit:      circuit.Code,
+							Time:         timeRange,
+							Epochs:       epochRange,
+							Unit:         unit,
+							DataProvider: dataProvider,
+						})
 						if err != nil {
-							log.Error("Failed to write CSV row", "error", err, "path", rawCSVPath)
+							log.Error("Failed to get raw data", "error", err, "circuit", circuit.Code)
 							os.Exit(1)
 						}
-					}
+
+						for _, sample := range samples {
+							_, err := fmt.Fprintf(file, "%s,%s,%f\n",
+								circuit.Code,
+								sample.Timestamp, // Already formatted as time.RFC3339Nano
+								sample.RTTMean,
+							)
+							if err != nil {
+								log.Error("Failed to write CSV row", "error", err, "path", rawCSVPath)
+								os.Exit(1)
+							}
+						}
+					}(circuit)
 				}
+				wg.Wait()
 				return nil
 			}
 
 			var allStats []stats.CircuitLatencyStat
+			var wg sync.WaitGroup
 			for _, circuit := range circuits {
-				stats, err := provider.GetCircuitLatencies(
-					ctx,
-					internetdata.GetCircuitLatenciesConfig{
-						Circuit:      circuit.Code,
-						Time:         timeRange,
-						Epochs:       epochRange,
-						Unit:         unit,
-						MaxPoints:    1,
-						DataProvider: dataProvider,
-					},
-				)
-				if err != nil {
-					log.Warn("Failed to get circuit latencies", "error", err, "circuit", circuit.Code)
-					continue
-				}
-				allStats = append(allStats, stats...)
+				wg.Add(1)
+				go func(circuit internetdata.Circuit) {
+					defer wg.Done()
+					stats, err := provider.GetCircuitLatencies(
+						ctx,
+						internetdata.GetCircuitLatenciesConfig{
+							Circuit:      circuit.Code,
+							Time:         timeRange,
+							Epochs:       epochRange,
+							Unit:         unit,
+							MaxPoints:    1,
+							DataProvider: dataProvider,
+						},
+					)
+					if err != nil {
+						log.Warn("Failed to get circuit latencies", "error", err, "circuit", circuit.Code)
+						return
+					}
+					allStats = append(allStats, stats...)
+				}(circuit)
 			}
+			wg.Wait()
 
 			printInternetSummaries(allStats, env, dataProvider, recentTime, epochRange, unit)
 
@@ -290,7 +304,10 @@ func printInternetSummaries(stats []stats.CircuitLatencyStat, env string, dataPr
 	fmt.Println("* RTT aggregates are in", unit)
 
 	sort.Slice(stats, func(i, j int) bool {
-		return stats[i].Timestamp < stats[j].Timestamp
+		if stats[i].Circuit == stats[j].Circuit {
+			return stats[i].Timestamp < stats[j].Timestamp
+		}
+		return stats[i].Circuit < stats[j].Circuit
 	})
 
 	table := tablewriter.NewWriter(os.Stdout)

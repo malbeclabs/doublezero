@@ -595,6 +595,7 @@ mod tests {
                 metrics_publisher_pk: Some(Pubkey::new_unique()),
                 mgmt_vrf: Some("mgmt".to_string()),
                 max_users: None,
+                users_count: None,
             }),
             "UpdateDevice",
         );

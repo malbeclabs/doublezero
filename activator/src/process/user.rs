@@ -468,6 +468,7 @@ mod tests {
             status: UserStatus::Pending,
             publishers: vec![],
             subscribers: vec![],
+            validator_pubkey: Pubkey::default(),
         };
 
         let user_clonned = user.clone();
@@ -584,6 +585,7 @@ mod tests {
             status: UserStatus::Updating,
             publishers: vec![Pubkey::default()],
             subscribers: vec![Pubkey::default()],
+            validator_pubkey: Pubkey::default(),
         };
 
         let user_cloned = user.clone();
@@ -656,6 +658,7 @@ mod tests {
             status: UserStatus::Pending,
             publishers: vec![],
             subscribers: vec![],
+            validator_pubkey: Pubkey::default(),
         };
 
         client
@@ -741,6 +744,7 @@ mod tests {
             status: UserStatus::Pending,
             publishers: vec![],
             subscribers: vec![],
+            validator_pubkey: Pubkey::default(),
         };
 
         client
@@ -830,6 +834,7 @@ mod tests {
             status: UserStatus::Pending,
             publishers: vec![],
             subscribers: vec![],
+            validator_pubkey: Pubkey::default(),
         };
 
         client
@@ -899,6 +904,7 @@ mod tests {
             status: user_status,
             publishers: vec![],
             subscribers: vec![],
+            validator_pubkey: Pubkey::default(),
         };
 
         let user2 = user.clone();

@@ -192,7 +192,14 @@ pub struct User {
         )
     )]
     pub subscribers: Vec<Pubkey>, // 4 + 32 * len
-    pub validator_pubkey: Pubkey,  // 32
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string",
+            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
+        )
+    )]
+    pub validator_pubkey: Pubkey, // 32
 }
 
 impl fmt::Display for User {

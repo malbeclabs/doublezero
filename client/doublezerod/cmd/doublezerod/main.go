@@ -31,6 +31,7 @@ var (
 	enableVerboseLogging = flag.Bool("v", false, "enables verbose logging")
 	metricsEnable        = flag.Bool("metrics-enable", false, "Enable prometheus metrics")
 	metricsAddr          = flag.String("metrics-addr", "localhost:0", "Address to listen on for prometheus metrics")
+	bgpHoldTime          = flag.Int("bgp-hold-time", 90, "BGP hold time in seconds (must be >=3)")
 
 	// set by LDFLAGS
 	version = "dev"
@@ -55,6 +56,11 @@ func main() {
 		fmt.Printf("version: %s\n", version)
 		fmt.Printf("date: %s\n", date)
 		os.Exit(0)
+	}
+
+	if *bgpHoldTime < 3 {
+		slog.Error("BGP hold time must be at least 3 seconds", "value", *bgpHoldTime)
+		os.Exit(1)
 	}
 
 	if *env == "" && *programId == "" && *rpcEndpoint == "" {
@@ -113,7 +119,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := runtime.Run(ctx, *sockFile, *enableLatencyProbing, *programId, *rpcEndpoint, *probeInterval, *cacheUpdateInterval); err != nil {
+	if err := runtime.Run(ctx, *sockFile, *enableLatencyProbing, *programId, *rpcEndpoint, *probeInterval, *cacheUpdateInterval, *bgpHoldTime); err != nil {
 		slog.Error("runtime error", "error", err)
 		os.Exit(1)
 	}

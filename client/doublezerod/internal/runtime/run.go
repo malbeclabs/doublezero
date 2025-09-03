@@ -17,9 +17,9 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func Run(ctx context.Context, sockFile string, enableLatencyProbing bool, programId string, rpcEndpoint string, probeInterval, cacheUpdateInterval int) error {
+func Run(ctx context.Context, sockFile string, enableLatencyProbing bool, programId string, rpcEndpoint string, probeInterval, cacheUpdateInterval, bgpHoldTime int) error {
 	nlr := routing.Netlink{}
-	bgp, err := bgp.NewBgpServer(net.IPv4(1, 1, 1, 1), nlr)
+	bgp, err := bgp.NewBgpServer(net.IPv4(1, 1, 1, 1), nlr, uint16(bgpHoldTime))
 	if err != nil {
 		return fmt.Errorf("error creating bgp server: %v", err)
 	}

@@ -65,13 +65,13 @@ func TestRenderConfig(t *testing.T) {
 			Want: "fixtures/unicast.tunnel.txt",
 		},
 		{
-			Name:        "render_peer_removal_successfully",
+			Name:        "render_peer_removal_successful",
 			Description: "render config for removal of unknown peers successfully",
 			Data: templateData{
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
 				InterfacesAndPeers:       true,
-				LocalASN:                 65342,
+				LocalASN:                 21682,
 				Device: &Device{
 					Interfaces:            []Interface{},
 					PublicIP:              net.IP{7, 7, 7, 7},

@@ -368,6 +368,7 @@ router bgp 65342
    router-id 14.14.14.14
    no neighbor 169.254.0.3
    neighbor 169.254.0.3 remote-as 65000
+   neighbor 169.254.0.3 local-as 65342 no-prepend replace-as
    neighbor 169.254.0.3 passive
    neighbor 169.254.0.3 description USER-501
    neighbor 169.254.0.3 route-map RM-USER-501-IN in
@@ -390,6 +391,7 @@ router bgp 65342
       router-id 2.2.2.2
       no neighbor 169.254.0.1
       neighbor 169.254.0.1 remote-as 65000
+      neighbor 169.254.0.1 local-as 65342 no-prepend replace-as
       neighbor 169.254.0.1 passive
       neighbor 169.254.0.1 description USER-500
       neighbor 169.254.0.1 route-map RM-USER-500-IN in

@@ -20,5 +20,5 @@ const (
 	DevnetServiceabilityProgramID    = "GYhQDKuESrasNZGyhMJhGYFtbzNijYhcrN9poSqCQVah"
 	DevnetTelemetryProgramID         = "C9xqH76NSm11pBS6maNnY163tWHT8Govww47uyEmSnoG"
 	DevnetInternetLatencyCollectorPK = "3fXen9LP5JUAkaaDJtyLo1ohPiJ2LdzVqAnmhtGgAmwJ"
-	DevnetDeviceLocalASN             = 65342
+	DevnetDeviceLocalASN             = 21682
 )

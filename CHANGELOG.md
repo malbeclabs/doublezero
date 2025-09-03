@@ -17,6 +17,8 @@ All notable changes to this project will be documented in this file.
 - Device agents
     - Remove log of keypair path on telemetry agent start up
     - Drop device telemetry samples if submission attempts exhausted and buffer is at capacity
+- Device controller
+    - Each environment can now have a different device BGP Autonomous System Number (ASN) per environment. (This is the remote ASN from the client's perspective.)
 
 ## [v0.6.2](https://github.com/malbeclabs/doublezero/compare/client/v0.6.0...client/v0.6.2) – 2025-09-02
 
@@ -50,9 +52,6 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
-- Controller
-    - Make device Autonomous System Number (ASN) configurable per environment
-    - Added `--device-local-asn` flag for e2e tests
 - Onchain programs
     - Introducing new link instruction processor acceptance criteria
     - Add support for custom deserializers and add for pubkey fields
@@ -74,7 +73,6 @@ All notable changes to this project will be documented in this file.
     - Add "mpls icmp ttl-exceeded tunneling" config statement so intermediate hops in the doublezero network respond to traceroutes.
     - Set protocol timers for ibgp and isis to improve to speed up network re-convergence
     - Add TLS support to gRPC server
-    - Read BGP ASN from serviceability global-config so it can have different values in different environments
 - Onchain monitor
     - Initial implementation and component release
     - Monitor onchain device telemetry metrics

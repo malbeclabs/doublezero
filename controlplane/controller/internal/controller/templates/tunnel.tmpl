@@ -161,13 +161,13 @@ interface Tunnel{{ .Id }}
 {{- end }}
 !
 {{- end }}
-router bgp {{ .LocalASN }}
+router bgp 65342
    {{- if $.InterfacesAndPeers }}
    router-id {{ .Device.Vpn4vLoopbackIP }}
    {{- range .Ipv4BgpPeers }}
    {{- if ne .PeerIP.String $.Device.Ipv4LoopbackIP.String }}
    no neighbor {{ .PeerIP }}
-   neighbor {{ .PeerIP }} remote-as {{ $.LocalASN }}
+   neighbor {{ .PeerIP }} remote-as 65342
    neighbor {{ .PeerIP }} next-hop-self
    neighbor {{ .PeerIP }} update-source {{ $.Device.Ipv4LoopbackIntfName }}
    neighbor {{ .PeerIP }} description {{ .PeerName }}-ipv4
@@ -178,7 +178,7 @@ router bgp {{ .LocalASN }}
    {{- range .Vpnv4BgpPeers }}
    {{- if ne .PeerIP.String $.Device.Vpn4vLoopbackIP.String }}
    no neighbor {{ .PeerIP }}
-   neighbor {{ .PeerIP }} remote-as {{ $.LocalASN }}
+   neighbor {{ .PeerIP }} remote-as 65342
    neighbor {{ .PeerIP }} next-hop-self
    neighbor {{ .PeerIP }} update-source {{ $.Device.Vpn4vLoopbackIntfName }}
    neighbor {{ .PeerIP }} description {{ .PeerName }}-vpnv4
@@ -191,6 +191,7 @@ router bgp {{ .LocalASN }}
    {{- if and .IsMulticast .Allocated }}
    no neighbor {{ .OverlayDstIP }}
    neighbor {{ .OverlayDstIP }} remote-as 65000
+   neighbor {{ .OverlayDstIP }} local-as {{ $.LocalASN }} no-prepend replace-as
    neighbor {{ .OverlayDstIP }} passive
    neighbor {{ .OverlayDstIP }} description USER-{{ .Id  }}
    neighbor {{ .OverlayDstIP }} route-map RM-USER-{{ .Id }}-IN in
@@ -230,15 +231,16 @@ router bgp {{ .LocalASN }}
       {{- end }}
    !
    vrf vrf1
-      rd {{ $.LocalASN }}:1
-      route-target import vpn-ipv4 {{ $.LocalASN }}:1
-      route-target export vpn-ipv4 {{ $.LocalASN }}:1
+      rd 65342:1
+      route-target import vpn-ipv4 65342:1
+      route-target export vpn-ipv4 65342:1
       router-id {{ .Device.PublicIP }}
       {{- range .Device.Tunnels }}
       {{- if eq true .Allocated }}
       {{- if not .IsMulticast }}
       no neighbor {{ .OverlayDstIP }}
       neighbor {{ .OverlayDstIP }} remote-as 65000
+      neighbor {{ .OverlayDstIP }} local-as {{ $.LocalASN }} no-prepend replace-as
       neighbor {{ .OverlayDstIP }} passive
       neighbor {{ .OverlayDstIP }} description USER-{{ .Id  }}
       neighbor {{ .OverlayDstIP }} route-map RM-USER-{{ .Id }}-IN in

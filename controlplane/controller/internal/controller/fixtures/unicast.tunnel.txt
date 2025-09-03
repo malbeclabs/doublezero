@@ -128,6 +128,7 @@ router bgp 65342
       router-id 7.7.7.7
       no neighbor 169.254.0.1
       neighbor 169.254.0.1 remote-as 65000
+      neighbor 169.254.0.1 local-as 65342 no-prepend replace-as
       neighbor 169.254.0.1 passive
       neighbor 169.254.0.1 description USER-500
       neighbor 169.254.0.1 route-map RM-USER-500-IN in
@@ -136,6 +137,7 @@ router bgp 65342
       neighbor 169.254.0.1 maximum-accepted-routes 1
       no neighbor 169.254.0.3
       neighbor 169.254.0.3 remote-as 65000
+      neighbor 169.254.0.3 local-as 65342 no-prepend replace-as
       neighbor 169.254.0.3 passive
       neighbor 169.254.0.3 description USER-501
       neighbor 169.254.0.3 route-map RM-USER-501-IN in
@@ -144,6 +146,7 @@ router bgp 65342
       neighbor 169.254.0.3 maximum-accepted-routes 1
       no neighbor 169.254.0.5
       neighbor 169.254.0.5 remote-as 65000
+      neighbor 169.254.0.5 local-as 65342 no-prepend replace-as
       neighbor 169.254.0.5 passive
       neighbor 169.254.0.5 description USER-502
       neighbor 169.254.0.5 route-map RM-USER-502-IN in

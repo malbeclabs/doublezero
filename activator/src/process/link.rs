@@ -1,4 +1,6 @@
-use crate::{idallocator::IDAllocator, ipblockallocator::IPBlockAllocator, process::utils::*};
+use crate::{
+    idallocator::IDAllocator, ipblockallocator::IPBlockAllocator, process::iface_mgr::InterfaceMgr,
+};
 use doublezero_sdk::{
     commands::link::{
         activate::ActivateLinkCommand, closeaccount::CloseAccountLinkCommand,
@@ -58,22 +60,20 @@ pub fn process_link_event(
                                 Ipv4Network::new(tunnel_net.nth(1).unwrap(), tunnel_net.prefix())
                                     .unwrap();
 
-                            activate_interface(
-                                client,
+                            let mut mgr = InterfaceMgr::new(client, None, link_ips);
+                            mgr.process_link_interface(
                                 &link.side_a_pk,
-                                format!("link:{} side A", link.code).as_str(),
+                                &link.code,
+                                "A",
                                 &link.side_a_iface_name,
                                 &side_a_ip.into(),
-                                0,
                             );
-
-                            activate_interface(
-                                client,
+                            mgr.process_link_interface(
                                 &link.side_z_pk,
-                                format!("link:{} side Z", link.code).as_str(),
+                                &link.code,
+                                "Z",
                                 &link.side_z_iface_name,
                                 &side_z_ip.into(),
-                                0,
                             );
                         }
                         Err(e) => write!(&mut log_msg, " Error {e}").unwrap(),
@@ -121,21 +121,22 @@ pub fn process_link_event(
                 Ok(signature) => {
                     write!(&mut log_msg, " Deactivated {signature}").unwrap();
 
-                    link_ids.unassign(link.tunnel_id);
-                    link_ips.unassign_block(link.tunnel_net.into());
-
-                    unlink_interface(
-                        client,
+                    let mut mgr = InterfaceMgr::new(client, None, link_ips);
+                    mgr.unlink_link_interface(
                         &link.side_a_pk,
-                        format!("link:{} side A", link.code).as_str(),
+                        &link.code,
+                        "A",
                         &link.side_a_iface_name,
                     );
-                    unlink_interface(
-                        client,
+                    mgr.unlink_link_interface(
                         &link.side_z_pk,
-                        format!("link:{} side A", link.code).as_str(),
+                        &link.code,
+                        "Z",
                         &link.side_z_iface_name,
                     );
+
+                    link_ids.unassign(link.tunnel_id);
+                    link_ips.unassign_block(link.tunnel_net.into());
 
                     *state_transitions
                         .entry("tunnel-deleting-to-deactivated")

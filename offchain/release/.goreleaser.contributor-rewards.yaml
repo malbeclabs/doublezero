@@ -1,0 +1,107 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema-pro.json
+# vim: set ts=2 sw=2 tw=0 fo=cnqoj
+
+version: 2
+
+project_name: doublezero-contributor-rewards
+
+monorepo:
+  tag_prefix: contributor-rewards/
+
+builds:
+  - id: doublezero-contributor-rewards
+    binary: doublezero-contributor-rewards
+    builder: rust
+    tool: cargo
+    command: build
+    flags:
+      - --package=doublezero-contributor-rewards
+      - --release
+    targets:
+      - x86_64-unknown-linux-gnu
+    env:
+      - RUSTFLAGS=-C linker=x86_64-linux-gnu-gcc
+      - BUILD_VERSION={{ .Version }}
+      - BUILD_COMMIT={{ .ShortCommit }}
+      - DATE={{ .Date }}
+
+archives:
+  - id: contributor_rewards_archive
+    formats: ["tar.gz"]
+    ids: [doublezero-contributor-rewards]
+    # this name template makes the OS and Arch compatible with the results of `uname`
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+
+nfpms:
+  - id: doublezero-contributor-rewards
+    package_name: doublezero-contributor-rewards
+    ids: [doublezero-contributor-rewards]
+    vendor: doublezero
+    homepage: doublezero.xyz
+    maintainer: tech <tech@malbeclabs.com>
+    description: |-
+      DoubleZero Contributor Rewards
+    license: Apache 2.0
+    formats:
+      - deb
+    bindir: /usr/local/bin
+    release: 1
+    section: default
+    contents:
+      - src: release/packaging/systemd/doublezero-contributor-rewards.service
+        dst: /lib/systemd/system/doublezero-contributor-rewards.service
+        type: config
+    overrides:
+      rpm:
+        contents:
+          - src: release/packaging/systemd/doublezero-contributor-rewards.service
+            dst: /usr/lib/systemd/system/doublezero-contributor-rewards.service
+            type: config
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+release:
+  github:
+    owner: doublezerofoundation
+    name: doublezero-offchain
+  draft: false
+  replace_existing_artifacts: true
+
+announce:
+  slack:
+    enabled: true
+    message_template: "DoubleZero Contributor Rewards {{ .Tag }} has been released! Check it out at {{ .ReleaseURL }}"
+    channel: "#bots"
+
+git:
+  ignore_tags:
+    - contributor-rewards/daily
+
+nightly:
+  publish_release: true
+  keep_single_release: true
+  version_template: "{{ incpatch .Version }}~git{{ .Env.BUILD_DATE }}.{{ .ShortCommit }}"
+  tag_name: "contributor-rewards/daily"
+
+cloudsmiths:
+  - organization: malbeclabs
+    repository: doublezero
+    distributions:
+      deb: "any-distro/any-version"
+      rpm: "any-distro/any-version"
+  - organization: malbeclabs
+    repository: doublezero-devnet
+    distributions:
+      deb: "any-distro/any-version"
+      rpm: "any-distro/any-version"

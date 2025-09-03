@@ -120,7 +120,7 @@ func (s *Submitter) SubmitSamples(ctx context.Context, partitionKey PartitionKey
 		_, _, err := s.cfg.Telemetry.WriteInternetLatencySamples(ctx, writeConfig)
 		if err != nil {
 			if errors.Is(err, telemetry.ErrAccountNotFound) {
-				log.Debug("Account not found, initializing")
+				log.Info("Account not found, initializing new account")
 				samplingInterval, ok := s.cfg.DataProviderSamplingIntervals[partitionKey.DataProvider]
 				if !ok {
 					return fmt.Errorf("no sampling interval found for data provider: %s", partitionKey.DataProvider)
@@ -138,7 +138,7 @@ func (s *Submitter) SubmitSamples(ctx context.Context, partitionKey PartitionKey
 				_, _, err = s.cfg.Telemetry.WriteInternetLatencySamples(ctx, writeConfig)
 				if err != nil {
 					if errors.Is(err, telemetry.ErrSamplesAccountFull) {
-						log.Debug("Partition account is full, dropping samples from buffer and moving on", "droppedSamples", len(samples))
+						log.Warn("Partition account is full, dropping samples from buffer and moving on", "droppedSamples", len(samples))
 						metrics.ExporterSubmitterAccountFull.WithLabelValues(string(partitionKey.DataProvider), partitionKey.SourceExchangePK.String(), partitionKey.TargetExchangePK.String(), strconv.FormatUint(partitionKey.Epoch, 10)).Inc()
 						s.cfg.Buffer.Remove(partitionKey)
 						return nil
@@ -146,7 +146,7 @@ func (s *Submitter) SubmitSamples(ctx context.Context, partitionKey PartitionKey
 					return fmt.Errorf("failed to write internet latency samples after init: %w", err)
 				}
 			} else if errors.Is(err, telemetry.ErrSamplesAccountFull) {
-				log.Debug("Partition account is full, dropping samples from buffer and moving on", "droppedSamples", len(samples))
+				log.Warn("Partition account is full, dropping samples from buffer and moving on", "droppedSamples", len(samples))
 				metrics.ExporterSubmitterAccountFull.WithLabelValues(string(partitionKey.DataProvider), partitionKey.SourceExchangePK.String(), partitionKey.TargetExchangePK.String(), strconv.FormatUint(partitionKey.Epoch, 10)).Inc()
 				s.cfg.Buffer.Remove(partitionKey)
 				return nil

@@ -15,4 +15,6 @@ type PartitionedBuffer[K PartitionKey, R Record] interface {
 	Has(key K) bool
 	CopyAndReset(key K) []R
 	Read(key K) []R
+	Capacity(key K) int
+	Len(key K) int
 }

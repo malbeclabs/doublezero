@@ -117,7 +117,7 @@ func (s *Submitter) SubmitSamples(ctx context.Context, partitionKey PartitionKey
 		_, _, err := s.cfg.ProgramClient.WriteDeviceLatencySamples(ctx, writeConfig)
 		if err != nil {
 			if errors.Is(err, telemetry.ErrAccountNotFound) {
-				log.Debug("Account not found, initializing")
+				log.Info("Account not found, initializing new account")
 				_, _, err = s.cfg.ProgramClient.InitializeDeviceLatencySamples(ctx, telemetry.InitializeDeviceLatencySamplesInstructionConfig{
 					AgentPK:                      s.cfg.MetricsPublisherPK,
 					OriginDevicePK:               partitionKey.OriginDevicePK,
@@ -133,7 +133,7 @@ func (s *Submitter) SubmitSamples(ctx context.Context, partitionKey PartitionKey
 				_, _, err = s.cfg.ProgramClient.WriteDeviceLatencySamples(ctx, writeConfig)
 				if err != nil {
 					if errors.Is(err, telemetry.ErrSamplesAccountFull) {
-						log.Debug("Partition account is full, dropping samples from buffer and moving on", "droppedSamples", len(samples))
+						log.Warn("Partition account is full, dropping samples from buffer and moving on", "droppedSamples", len(samples))
 						s.cfg.Buffer.Remove(partitionKey)
 						return nil
 					}
@@ -141,7 +141,7 @@ func (s *Submitter) SubmitSamples(ctx context.Context, partitionKey PartitionKey
 					return fmt.Errorf("failed to write device latency samples after init: %w", err)
 				}
 			} else if errors.Is(err, telemetry.ErrSamplesAccountFull) {
-				log.Debug("Partition account is full, dropping samples from buffer and moving on", "droppedSamples", len(samples))
+				log.Warn("Partition account is full, dropping samples from buffer and moving on", "droppedSamples", len(samples))
 				s.cfg.Buffer.Remove(partitionKey)
 				return nil
 			} else {
@@ -215,7 +215,11 @@ func (s *Submitter) Tick(ctx context.Context) {
 			}
 		}
 
-		if !success {
+		// If submission failed and the buffer is not at capacity, prepend the samples back to the
+		// buffer. If the buffer is at capacity and we have failed all attempts, don't prepend the
+		// samples back to the buffer.
+		overCapacity := s.cfg.Buffer.Len(partitionKey)+len(tmp) >= s.cfg.Buffer.Capacity(partitionKey)
+		if !success && !overCapacity {
 			s.cfg.Buffer.PriorityPrepend(partitionKey, tmp)
 		}
 

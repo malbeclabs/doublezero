@@ -20,12 +20,20 @@ pub struct PreparedData {
     pub epoch: u64,
     pub device_telemetry: DZDTelemetryStatMap,
     pub internet_telemetry: InternetTelemetryStatMap,
-    pub shapley_inputs: ShapleyInputs,
+    pub shapley_inputs: Option<ShapleyInputs>,
 }
 
 impl PreparedData {
-    /// Fetches and prepares all data needed for reward calculations
-    pub async fn new(fetcher: &Fetcher, epoch: Option<u64>) -> Result<Self> {
+    /// Fetches and prepares all data needed for reward calculations.
+    /// # Args
+    ///
+    /// * `fetcher` - `Fetcher` instance (construct via settings)
+    /// * `epoch` - Optional epoch, uses current - 1 if None
+    /// * `require_shapley` - Attach shapley_inputs output if set to true
+    ///
+    /// # Returns
+    /// Result<PreparedData>
+    pub async fn new(fetcher: &Fetcher, epoch: Option<u64>, require_shapley: bool) -> Result<Self> {
         // NOTE: Always fetch current epoch's serviceability data first
         // This ensures we have the correct exchange_pk -> device -> location mappings
         let (fetch_epoch, mut fetch_data) = match epoch {
@@ -65,6 +73,15 @@ impl PreparedData {
         // Process internet telemetry
         let internet_telemetry = process_internet_telemetry(&fetch_data)?;
 
+        if !require_shapley {
+            return Ok(Self {
+                epoch: fetch_epoch,
+                device_telemetry,
+                internet_telemetry,
+                shapley_inputs: None,
+            });
+        }
+
         // Build devices
         let devices = build_and_log_devices(&fetch_data)?;
 
@@ -95,7 +112,7 @@ impl PreparedData {
             epoch: fetch_epoch,
             device_telemetry,
             internet_telemetry,
-            shapley_inputs,
+            shapley_inputs: Some(shapley_inputs),
         })
     }
 }

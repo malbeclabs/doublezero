@@ -36,6 +36,7 @@ jobs:
           distribution: goreleaser-pro
           args: release -f release/.goreleaser.contributor-rewards.yaml --clean
         env:
+          SERVICEABILITY_PROGRAM_ID: devnet
           SLACK_WEBHOOK: ${{ secrets.SLACK_BOTS_WEBHOOK }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}

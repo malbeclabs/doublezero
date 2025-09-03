@@ -43,11 +43,14 @@ impl Orchestrator {
         let fetcher = Fetcher::from_settings(&self.settings)?;
 
         // Prepare all data
-        let prep_data = PreparedData::new(&fetcher, epoch).await?;
+        let prep_data = PreparedData::new(&fetcher, epoch, true).await?;
         let fetch_epoch = prep_data.epoch;
         let device_telemetry = prep_data.device_telemetry;
         let internet_telemetry = prep_data.internet_telemetry;
-        let shapley_inputs = prep_data.shapley_inputs;
+
+        let Some(shapley_inputs) = prep_data.shapley_inputs else {
+            bail!("Shapley inputs required for reward calculation but were not prepared")
+        };
 
         let input_config = RewardInput::new(
             fetch_epoch,
@@ -381,8 +384,9 @@ impl Orchestrator {
     ) -> Result<()> {
         let fetcher = Fetcher::from_settings(&self.settings)?;
 
-        // Prepare telemetry data (similar to calculate_rewards but stop before reward calculation)
-        let prep_data = PreparedData::new(&fetcher, epoch).await?;
+        // NOTE: Prepare telemetry data
+        // This is same as calculate_rewards but without shapley_inputs
+        let prep_data = PreparedData::new(&fetcher, epoch, false).await?;
         let fetch_epoch = prep_data.epoch;
         let device_telemetry = prep_data.device_telemetry;
         let internet_telemetry = prep_data.internet_telemetry;
@@ -393,7 +397,6 @@ impl Orchestrator {
         );
 
         if !dry_run {
-            use crate::calculator::keypair_loader::load_keypair;
             let payer_signer = load_keypair(&keypair_path)?;
 
             // Validate keypair matches ProgramConfig

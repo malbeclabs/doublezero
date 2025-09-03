@@ -341,6 +341,14 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 				slog.Error("client ip is not set for user", "user pubkey", userPubKey)
 				return false
 			}
+			if user.ClientIp == [4]byte{0, 0, 0, 0} {
+				slog.Error("client ip is set to 0.0.0.0 for user", "user pubkey", userPubKey)
+				return false
+			}
+			if user.DzIp == [4]byte{0, 0, 0, 0} {
+				slog.Error("DZ IP is set to 0.0.0.0 for user", "user pubkey", userPubKey)
+				return false
+			}
 			if user.TunnelNet[4] != 31 {
 				slog.Error("tunnel network mask is not 31\n", "tunnel network mask", user.TunnelNet[4])
 				return false
@@ -537,7 +545,7 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 	}
 
 	if len(unknownPeers) != 0 {
-		slog.Error("device returned unknown peers", "device pubkey", req.GetPubkey(), "number of unknown peers", len(unknownPeers), "peers", unknownPeers)
+		slog.Info("device returned unknown peers to be removed", "device pubkey", req.GetPubkey(), "number of unknown peers", len(unknownPeers), "peers", unknownPeers)
 	}
 
 	multicastGroupBlock := formatCIDR(&c.cache.Config.MulticastGroupBlock)

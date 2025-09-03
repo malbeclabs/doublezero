@@ -663,6 +663,48 @@ func TestStateCache(t *testing.T) {
 					Status:       serviceability.UserStatusActivated,
 					Subscribers:  [][32]uint8{{1}},
 				},
+				{
+					// Should not be added to StateCache due to invalid ClientIp
+					AccountType:  serviceability.AccountType(0),
+					Owner:        [32]uint8{},
+					UserType:     serviceability.UserUserType(serviceability.UserTypeMulticast),
+					DevicePubKey: [32]uint8{1},
+					CyoaType:     serviceability.CyoaTypeGREOverDIA,
+					ClientIp:     [4]uint8{0, 0, 0, 0},
+					DzIp:         [4]uint8{100, 100, 100, 102},
+					TunnelId:     uint16(502),
+					TunnelNet:    [5]uint8{10, 1, 1, 3, 31},
+					Status:       serviceability.UserStatusActivated,
+					Subscribers:  [][32]uint8{{1}},
+				},
+				{
+					// Should not be added to StateCache due to invalid DzIp
+					AccountType:  serviceability.AccountType(0),
+					Owner:        [32]uint8{},
+					UserType:     serviceability.UserUserType(serviceability.UserTypeMulticast),
+					DevicePubKey: [32]uint8{1},
+					CyoaType:     serviceability.CyoaTypeGREOverDIA,
+					ClientIp:     [4]uint8{5, 5, 5, 5},
+					DzIp:         [4]uint8{0, 0, 0, 0},
+					TunnelId:     uint16(502),
+					TunnelNet:    [5]uint8{10, 1, 1, 4, 31},
+					Status:       serviceability.UserStatusActivated,
+					Subscribers:  [][32]uint8{{1}},
+				},
+				{
+					// Should not be added to StateCache due to invalid ClientIp and DzIp
+					AccountType:  serviceability.AccountType(0),
+					Owner:        [32]uint8{},
+					UserType:     serviceability.UserUserType(serviceability.UserTypeMulticast),
+					DevicePubKey: [32]uint8{1},
+					CyoaType:     serviceability.CyoaTypeGREOverDIA,
+					ClientIp:     [4]uint8{0, 0, 0, 0},
+					DzIp:         [4]uint8{0, 0, 0, 0},
+					TunnelId:     uint16(502),
+					TunnelNet:    [5]uint8{10, 1, 1, 5, 31},
+					Status:       serviceability.UserStatusActivated,
+					Subscribers:  [][32]uint8{{1}},
+				},
 			},
 			Devices: []serviceability.Device{
 				{

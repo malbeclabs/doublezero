@@ -336,6 +336,10 @@ func (c *Client) WaitForTunnelDisconnected(ctx context.Context, timeout time.Dur
 	return c.WaitForTunnelStatus(ctx, ClientSessionStatusDisconnected, timeout)
 }
 
+func (c *Client) WaitForTunnelDown(ctx context.Context, timeout time.Duration) error {
+	return c.WaitForTunnelStatus(ctx, ClientSessionStatusDown, timeout)
+}
+
 func (c *Client) WaitForTunnelStatus(ctx context.Context, wantStatus ClientSessionStatus, timeout time.Duration) error {
 	c.log.Info("==> Waiting for client tunnel status", "wantStatus", wantStatus, "timeout", timeout)
 

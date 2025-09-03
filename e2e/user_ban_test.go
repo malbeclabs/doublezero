@@ -120,6 +120,12 @@ func TestE2E_UserBan(t *testing.T) {
 	}) {
 		t.Fail()
 	}
+
+	if !t.Run("user-ban-invalid-client-ip", func(t *testing.T) {
+		runInvalidDZIPTest(t, log, client1, dn)
+	}) {
+		t.Fail()
+	}
 }
 
 func runUserBanIBRLWorkflowTest(t *testing.T, log *slog.Logger, client1 *devnet.Client, client2 *devnet.Client, dn *devnet.Devnet) {
@@ -264,6 +270,61 @@ func runUserBanIBRLWorkflowTest(t *testing.T, log *slog.Logger, client1 *devnet.
 	log.Info("--> Confirmed clients are disconnected and do not have a DZ IP allocated")
 }
 
+func runInvalidDZIPTest(t *testing.T, log *slog.Logger, client1 *devnet.Client, dn *devnet.Devnet) {
+	// Check that device config is removed and the client tunnel goes down when client-ip is 0.0.0.0
+	log.Info("==> Checking that the clients are disconnected when dzip is set to 0.0.0.0")
+	status, err := client1.GetTunnelStatus(t.Context())
+	require.NoError(t, err)
+	require.Len(t, status, 1, status)
+	require.Nil(t, status[0].DoubleZeroIP, status)
+	require.Equal(t, devnet.ClientSessionStatusDisconnected, status[0].DoubleZeroStatus.SessionStatus)
+	log.Info("--> Confirmed clients are disconnected and do not have a DZ IP allocated")
+
+	// Connect client1 in IBRL mode.
+	log.Info("==> Connecting client1 in IBRL mode")
+	_, err = client1.Exec(t.Context(), []string{"doublezero", "connect", "ibrl", "--client-ip", client1.CYOANetworkIP})
+	require.NoError(t, err)
+	err = client1.WaitForTunnelUp(t.Context(), 90*time.Second)
+	require.NoError(t, err)
+	log.Info("--> Client1 connected in IBRL mode")
+
+	// Set client-ip to 0.0.0.0
+	log.Info("==> Setting client1 client-ip to 0.0.0.0")
+
+	log.Info("--> waiting 30 for client1 pubkey to update on-chain")
+	time.Sleep(30 * time.Second)
+
+	log.Info("--> getting user account pk for client1 again to see wassup")
+	user_pk := getUserAccountPk(t, log, client1, dn)
+	log.Info("--> got user_pk", "user_pk", user_pk)
+
+	// Get the current DoubleZero IP from tunnel status
+	status, err = client1.GetTunnelStatus(t.Context())
+	require.NoError(t, err)
+	require.Len(t, status, 1)
+	require.NotNil(t, status[0].DoubleZeroIP)
+	user_dzip := status[0].DoubleZeroIP.String()
+
+	log.Info("--> Setting DZIP to 0.0.0.0 for client1", "user_pk", user_pk)
+	_, err = dn.Manager.Exec(t.Context(), []string{"doublezero", "user", "update", "--pubkey", user_pk, "--dz-ip", "0.0.0.0"})
+	require.NoError(t, err)
+	log.Info("--> Set client1 client-ip to 0.0.0.0")
+
+	log.Info("==> Wait for client1 tunnel to go down")
+	err = client1.WaitForTunnelDown(t.Context(), 60*time.Second)
+	require.NoError(t, err)
+
+	log.Info("--> Setting DZIP back to original value for client1", "user_pk", user_pk, "user_dzip", user_dzip)
+	_, err = dn.Manager.Exec(t.Context(), []string{"doublezero", "user", "update", "--pubkey", user_pk, "--dz-ip", user_dzip})
+	require.NoError(t, err)
+
+	log.Info("==> Wait for client1 tunnel to come back up")
+	err = client1.WaitForTunnelUp(t.Context(), 60*time.Second)
+	require.NoError(t, err)
+
+	log.Info("==> Confirmed client1 tunnel is back up after reverting DZIP to original value")
+}
+
 func getUserAccountPk(t *testing.T, log *slog.Logger, client *devnet.Client, dn *devnet.Devnet) string {
 	log.Info("==> Getting user account pk for client", "clientIP", client.CYOANetworkIP)
 	serviceabilityClient, err := dn.Ledger.GetServiceabilityClient()
@@ -271,6 +332,8 @@ func getUserAccountPk(t *testing.T, log *slog.Logger, client *devnet.Client, dn 
 	data, err := serviceabilityClient.GetProgramData(t.Context())
 	require.NoError(t, err)
 	for pubkey, user := range data.Users {
+		log.Info("Considering user", "user_pk", base58.Encode(user.PubKey[:]), "client-ip", user.ClientIp, "cyoanetworkip", client.CYOANetworkIP)
+
 		if bytesIPToString(user.ClientIp) == client.CYOANetworkIP {
 			log.Info("Found user account", "userAccountPk", pubkey)
 			return base58.Encode(user.PubKey[:])

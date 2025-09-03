@@ -14,7 +14,7 @@ use crate::{
 };
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use doublezero_revenue_distribution::instruction::DistributionPaymentsConfiguration::UpdateSolanaValidatorPayments;
+use doublezero_revenue_distribution::instruction::RevenueDistributionInstructionData::ConfigureDistributionDebt;
 use solana_sdk::{pubkey::Pubkey, signature::Signature, signer::keypair::Keypair};
 use std::str::FromStr;
 
@@ -107,7 +107,8 @@ pub async fn write_debts<T: ValidatorRewards>(
         .into_iter()
         .map(|reward| reward.total)
         .sum();
-    let debt = UpdateSolanaValidatorPayments {
+
+    let debt = ConfigureDistributionDebt {
         total_validators,
         total_debt,
         merkle_root: data.unwrap(),

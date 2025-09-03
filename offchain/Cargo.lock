@@ -738,7 +738,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "115e54d64eb62cdebad391c19efc9dce4981c690c85a33a12199d99bb9546fee"
 dependencies = [
  "borsh-derive 0.10.4",
- "hashbrown 0.13.2",
+ "hashbrown 0.12.3",
 ]
 
 [[package]]
@@ -1743,7 +1743,7 @@ dependencies = [
  "doublezero-serviceability",
  "doublezero-telemetry",
  "governor",
- "itertools 0.10.5",
+ "itertools 0.11.0",
  "network-shapley",
  "rayon",
  "rust_decimal",
@@ -1799,7 +1799,7 @@ dependencies = [
 [[package]]
 name = "doublezero-passport"
 version = "0.1.0"
-source = "git+ssh://git@github.com/doublezerofoundation/doublezero-solana#b2cc6ae20ba39e446d6d63677cf3e0f20caf171c"
+source = "git+ssh://git@github.com/doublezerofoundation/doublezero-solana#e849caf9dd7871b94db1574df516d16aff7d1f5f"
 dependencies = [
  "borsh 1.5.7",
  "bytemuck",
@@ -1829,7 +1829,7 @@ dependencies = [
 [[package]]
 name = "doublezero-program-tools"
 version = "0.1.0"
-source = "git+ssh://git@github.com/doublezerofoundation/doublezero-solana#b2cc6ae20ba39e446d6d63677cf3e0f20caf171c"
+source = "git+ssh://git@github.com/doublezerofoundation/doublezero-solana#e849caf9dd7871b94db1574df516d16aff7d1f5f"
 dependencies = [
  "bincode 1.3.3",
  "borsh 1.5.7",
@@ -1861,7 +1861,7 @@ dependencies = [
 [[package]]
 name = "doublezero-revenue-distribution"
 version = "0.1.0"
-source = "git+ssh://git@github.com/doublezerofoundation/doublezero-solana#b2cc6ae20ba39e446d6d63677cf3e0f20caf171c"
+source = "git+ssh://git@github.com/doublezerofoundation/doublezero-solana#e849caf9dd7871b94db1574df516d16aff7d1f5f"
 dependencies = [
  "borsh 1.5.7",
  "bytemuck",
@@ -1877,6 +1877,7 @@ dependencies = [
  "solana-pubkey",
  "solana-system-interface",
  "solana-sysvar",
+ "spl-associated-token-account-interface",
  "spl-token",
  "svm-hash",
 ]
@@ -7772,6 +7773,16 @@ name = "spl-associated-token-account-client"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f8349dbcbe575f354f9a533a21f272f3eb3808a49e2fdc1c34393b88ba76cb"
+dependencies = [
+ "solana-instruction",
+ "solana-pubkey",
+]
+
+[[package]]
+name = "spl-associated-token-account-interface"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5e6bbe0794e532ac08428d3abf5bf8ae75bd81dfddd785c388e326c00c92c6f5"
 dependencies = [
  "solana-instruction",
  "solana-pubkey",

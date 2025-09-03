@@ -142,19 +142,23 @@ pub struct ConfigureRevenueDistributionOptions {
 
     /// Solana validator base block rewards fee percentage (max: 100%).
     #[arg(long, value_name = "PERCENTAGE")]
-    pub solana_validator_base_block_rewards_fee: Option<String>,
+    pub solana_validator_base_block_rewards_fee_pct: Option<String>,
 
     /// Solana validator priority block rewards fee percentage (max: 100%).
     #[arg(long, value_name = "PERCENTAGE")]
-    pub solana_validator_priority_block_rewards_fee: Option<String>,
+    pub solana_validator_priority_block_rewards_fee_pct: Option<String>,
 
     /// Solana validator inflation rewards fee percentage (max: 100%).
     #[arg(long, value_name = "PERCENTAGE")]
-    pub solana_validator_inflation_rewards_fee: Option<String>,
+    pub solana_validator_inflation_rewards_fee_pct: Option<String>,
 
     /// Solana validator Jito tips fee percentage (max: 100%).
     #[arg(long, value_name = "PERCENTAGE")]
-    pub solana_validator_jito_tips_fee: Option<String>,
+    pub solana_validator_jito_tips_fee_pct: Option<String>,
+
+    /// Solana validator fixed SOL fee amount. (max: 4,294,967,295).
+    #[arg(long, value_name = "LAMPORTS")]
+    pub solana_validator_fixed_sol_fee_amount: Option<u32>,
 
     /// How long the accountant must wait to fetch telemetry data for reward calculations.
     #[arg(long, value_name = "SECONDS")]
@@ -360,10 +364,11 @@ pub async fn execute_configure_program(
         contributor_manager,
         sentinel,
         sol_2z_swap_program,
-        solana_validator_base_block_rewards_fee,
-        solana_validator_priority_block_rewards_fee,
-        solana_validator_inflation_rewards_fee,
-        solana_validator_jito_tips_fee,
+        solana_validator_base_block_rewards_fee_pct,
+        solana_validator_priority_block_rewards_fee_pct,
+        solana_validator_inflation_rewards_fee_pct,
+        solana_validator_jito_tips_fee_pct,
+        solana_validator_fixed_sol_fee_amount,
         calculation_grace_period_seconds,
         prepaid_connection_termination_relay_lamports,
         community_burn_rate_limit,
@@ -473,35 +478,43 @@ pub async fn execute_configure_program(
     // All Solana validator fee parameters must be specified together in order to
     // construct the configure program instruction.
     match (
-        solana_validator_base_block_rewards_fee,
-        solana_validator_priority_block_rewards_fee,
-        solana_validator_inflation_rewards_fee,
-        solana_validator_jito_tips_fee,
+        solana_validator_base_block_rewards_fee_pct,
+        solana_validator_priority_block_rewards_fee_pct,
+        solana_validator_inflation_rewards_fee_pct,
+        solana_validator_jito_tips_fee_pct,
+        solana_validator_fixed_sol_fee_amount,
     ) {
-        (Some(base_str), Some(priority_str), Some(inflation_str), Some(jito_str)) => {
+        (
+            Some(base_str),
+            Some(priority_str),
+            Some(inflation_str),
+            Some(jito_str),
+            Some(fixed_sol_amount),
+        ) => {
             // Parse all fee percentages.
-            let base_block_rewards = parse_fee_percentage(base_str)?;
-            let priority_block_rewards = parse_fee_percentage(priority_str)?;
-            let inflation_rewards = parse_fee_percentage(inflation_str)?;
-            let jito_tips = parse_fee_percentage(jito_str)?;
+            let base_block_rewards_pct = parse_fee_percentage(base_str)?;
+            let priority_block_rewards_pct = parse_fee_percentage(priority_str)?;
+            let inflation_rewards_pct = parse_fee_percentage(inflation_str)?;
+            let jito_tips_pct = parse_fee_percentage(jito_str)?;
 
             let configure_program_ix = try_build_configure_program_instruction(
                 &wallet_key,
                 ProgramConfiguration::SolanaValidatorFeeParameters {
-                    base_block_rewards,
-                    priority_block_rewards,
-                    inflation_rewards,
-                    jito_tips,
+                    base_block_rewards_pct,
+                    priority_block_rewards_pct,
+                    inflation_rewards_pct,
+                    jito_tips_pct,
+                    fixed_sol_amount,
                     _unused: Default::default(),
                 },
             )?;
             instructions.push(configure_program_ix);
             compute_unit_limit += 4_000;
         }
-        (None, None, None, None) => {}
+        (None, None, None, None, None) => {}
         _ => {
             bail!(
-                "Must specify all Solana validator fee parameters together (--solana-validator-base-block-rewards-fee, --solana-validator-priority-block-rewards-fee, --solana-validator-inflation-rewards-fee, --solana-validator-jito-tips-fee)"
+                "Must specify all Solana validator fee parameters together (--solana-validator-base-block-rewards-fee, --solana-validator-priority-block-rewards-fee, --solana-validator-inflation-rewards-fee, --solana-validator-jito-tips-fee, --solana-validator-fixed-sol-amount)"
             );
         }
     }

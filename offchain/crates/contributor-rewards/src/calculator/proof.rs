@@ -1,6 +1,6 @@
 use anyhow::{Result, anyhow, bail};
 use borsh::{BorshDeserialize, BorshSerialize};
-use doublezero_revenue_distribution::types::RewardShare;
+use doublezero_revenue_distribution::types::{RewardShare, UnitShare32};
 use network_shapley::shapley::ShapleyOutput;
 use solana_sdk::pubkey::Pubkey;
 use std::str::FromStr;
@@ -33,28 +33,41 @@ pub struct ContributorRewardsMerkleTree {
 
 impl ContributorRewardsMerkleTree {
     pub fn new(epoch: u64, shapley_output: &ShapleyOutput) -> Result<Self> {
+        if shapley_output.is_empty() {
+            bail!("Empty Shapley output");
+        }
+
         let mut rewards = Vec::new();
-        let mut total_unit_shares: u32 = 0;
+        let mut total_unit_shares = UnitShare32::default();
 
         for (operator_pubkey_str, val) in shapley_output.iter() {
             // Parse the operator string as a Pubkey
             let contributor_key = Pubkey::from_str(operator_pubkey_str)
                 .map_err(|e| anyhow!("Invalid pubkey string '{}': {}", operator_pubkey_str, e))?;
 
-            // Convert f64 proportion to u32 with 9 decimal places
-            let unit_share = (val.proportion * 1_000_000_000.0).round() as u32;
-            total_unit_shares = total_unit_shares.saturating_add(unit_share);
+            // Convert f64 proportion to u32 with 9 decimal places. Validate
+            // with UnitShare32::new.
+            let unit_share = UnitShare32::new((val.proportion * 1_000_000_000.0).round() as u32)
+                .ok_or_else(|| anyhow!("Invalid unit share"))?;
+            total_unit_shares = total_unit_shares
+                .checked_add(unit_share)
+                .ok_or_else(|| anyhow!("Total unit shares overflow"))?;
 
-            rewards.push(RewardShare::new(contributor_key, unit_share));
-        }
-
-        // Validate that unit_shares sum to approximately 1_000_000_000 (allowing small rounding errors)
-        if !(999_999_000..=1_000_001_000).contains(&total_unit_shares) {
-            bail!(
-                "Total unit_shares {} not equal to 1_000_000_000 (±0.0001%)",
-                total_unit_shares
+            // Unwrapping is safe because we know the proportion is valid.
+            rewards.push(
+                RewardShare::new(
+                    contributor_key,
+                    unit_share.into(),
+                    false, // should_block
+                    0,
+                )
+                .unwrap(),
             );
         }
+
+        // Modify the first reward to ensure the total shares exactly equals
+        // 1_000_000_000.
+        rewards[0].unit_share += u32::from(UnitShare32::MAX.saturating_sub(total_unit_shares));
 
         Ok(Self { epoch, rewards })
     }
@@ -262,12 +275,7 @@ mod tests {
         // Empty tree will fail validation because proportions sum to 0, not 1_000_000_000
         let result = ContributorRewardsMerkleTree::new(789, &output);
         assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("Total unit_shares")
-        )
+        assert_eq!(result.unwrap_err().to_string(), "Empty Shapley output")
     }
 
     #[test]

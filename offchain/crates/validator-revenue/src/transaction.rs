@@ -4,9 +4,9 @@ use doublezero_program_tools::{instruction::try_build_instruction, zero_copy};
 use doublezero_revenue_distribution::{
     ID,
     instruction::{
-        DistributionPaymentsConfiguration, RevenueDistributionInstructionData,
+        RevenueDistributionInstructionData,
         account::{
-            ConfigureDistributionPaymentsAccounts, FinalizeDistributionPaymentsAccounts,
+            ConfigureDistributionDebtAccounts, FinalizeDistributionDebtAccounts,
             InitializeDistributionAccounts,
         },
     },
@@ -104,13 +104,13 @@ impl Transaction {
         &self,
         solana_rpc_client: &RpcClient,
         dz_epoch: u64,
-        debts: DistributionPaymentsConfiguration,
+        debts: RevenueDistributionInstructionData,
     ) -> Result<VersionedTransaction> {
         let doublezero_epoch = DoubleZeroEpoch::new(dz_epoch);
         match try_build_instruction(
             &ID,
-            ConfigureDistributionPaymentsAccounts::new(&self.signer.pubkey(), doublezero_epoch),
-            &RevenueDistributionInstructionData::ConfigureDistributionPayments(debts),
+            ConfigureDistributionDebtAccounts::new(&self.signer.pubkey(), doublezero_epoch),
+            &debts,
         ) {
             Ok(instruction) => {
                 let recent_blockhash = solana_rpc_client.get_latest_blockhash().await?;
@@ -142,8 +142,8 @@ impl Transaction {
 
         match try_build_instruction(
             &ID,
-            FinalizeDistributionPaymentsAccounts::new(&self.pubkey(), dz_epoch, &self.pubkey()),
-            &RevenueDistributionInstructionData::FinalizeDistributionPayments,
+            FinalizeDistributionDebtAccounts::new(&self.pubkey(), dz_epoch, &self.pubkey()),
+            &RevenueDistributionInstructionData::FinalizeDistributionDebt,
         ) {
             Ok(instruction) => {
                 let recent_blockhash = solana_rpc_client.get_latest_blockhash().await?;
@@ -410,7 +410,7 @@ mod tests {
             .send_or_simulate_transaction(&solana_rpc_client, &new_transaction)
             .await?;
 
-        let debt = DistributionPaymentsConfiguration::UpdateSolanaValidatorPayments {
+        let debt = RevenueDistributionInstructionData::ConfigureDistributionDebt {
             total_validators: 5,
             total_debt: 100_000,
             merkle_root: Hash::from_str("7biGoeW59qKyVEqL2iWAm6H4hhRCExk6LxbgGrpXptci").unwrap(),

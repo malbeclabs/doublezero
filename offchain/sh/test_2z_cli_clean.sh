@@ -148,9 +148,11 @@ echo "2z admin revenue-distribution configure -u l -v --pause" \
      "--contributor-manager $DUMMY_KEY --sentinel $DUMMY_KEY" \
      "--sol-2z-swap-program $DUMMY_KEY --calculation-grace-period-seconds 3600" \
      "--prepaid-connection-termination-relay-lamports 100000" \
-     "--solana-validator-base-block-rewards-fee 1.23" \
-     "--solana-validator-priority-block-rewards-fee 45.67" \
-     "--solana-validator-inflation-rewards-fee 0.89 --solana-validator-jito-tips-fee 100" \
+     "--solana-validator-base-block-rewards-fee-pct 1.23" \
+     "--solana-validator-priority-block-rewards-fee-pct 45.67" \
+     "--solana-validator-inflation-rewards-fee-pct 0.89 " \
+     "--solana-validator-jito-tips-fee-pct 100" \
+     "--solana-validator-fixed-sol-fee-amount 100000000" \
      "--community-burn-rate-limit 50.0 --epochs-to-increasing-community-burn-rate 100" \
      "--epochs-to-community-burn-rate-limit 200 --initial-community-burn-rate 10.0"
 $CLI_BIN admin revenue-distribution configure \
@@ -164,10 +166,11 @@ $CLI_BIN admin revenue-distribution configure \
     --sol-2z-swap-program $DUMMY_KEY \
     --calculation-grace-period-seconds 3600 \
     --prepaid-connection-termination-relay-lamports 100000 \
-    --solana-validator-base-block-rewards-fee 1.23 \
-    --solana-validator-priority-block-rewards-fee 45.67 \
-    --solana-validator-inflation-rewards-fee 0.89 \
-    --solana-validator-jito-tips-fee 100 \
+    --solana-validator-base-block-rewards-fee-pct 1.23 \
+    --solana-validator-priority-block-rewards-fee-pct 45.67 \
+    --solana-validator-inflation-rewards-fee-pct 0.89 \
+    --solana-validator-jito-tips-fee-pct 100 \
+    --solana-validator-fixed-sol-fee-amount 100000000 \
     --community-burn-rate-limit 50.0 \
     --epochs-to-increasing-community-burn-rate 100 \
     --epochs-to-community-burn-rate-limit 200 \

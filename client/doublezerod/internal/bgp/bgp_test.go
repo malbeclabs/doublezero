@@ -114,7 +114,7 @@ func (p *dummyPlugin) handleUpdate(peer corebgp.PeerConfig, u []byte) *corebgp.N
 
 func TestBgpServer(t *testing.T) {
 	nlr := &mockRouteReaderWriter{}
-	b, err := bgp.NewBgpServer(net.IP{1, 1, 1, 1}, nlr)
+	b, err := bgp.NewBgpServer(net.IP{1, 1, 1, 1}, nlr, 90)
 	if err != nil {
 		t.Fatalf("error creating bgp server: %v", err)
 	}

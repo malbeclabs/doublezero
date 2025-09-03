@@ -107,9 +107,10 @@ type BgpServer struct {
 	peerStatus        map[string]Session
 	peerStatusLock    sync.Mutex
 	routeReaderWriter RouteReaderWriter
+	holdTime          uint16
 }
 
-func NewBgpServer(routerID net.IP, r RouteReaderWriter) (*BgpServer, error) {
+func NewBgpServer(routerID net.IP, r RouteReaderWriter, holdTime uint16) (*BgpServer, error) {
 	corebgp.SetLogger(log.Print)
 	srv, err := corebgp.NewServer(netip.MustParseAddr(routerID.String()))
 	if err != nil {
@@ -121,6 +122,7 @@ func NewBgpServer(routerID net.IP, r RouteReaderWriter) (*BgpServer, error) {
 		peerStatus:        make(map[string]Session),
 		peerStatusLock:    sync.Mutex{},
 		routeReaderWriter: r,
+		holdTime:          holdTime,
 	}, nil
 }
 
@@ -142,6 +144,8 @@ func (b *BgpServer) AddPeer(p *PeerConfig, advertised []NLRI) error {
 	if p.Port != 0 {
 		peerOpts = append(peerOpts, corebgp.WithPort(p.Port))
 	}
+	peerOpts = append(peerOpts, corebgp.WithHoldTime(b.holdTime))
+
 	plugin := NewBgpPlugin(advertised, p.RouteSrc, p.RouteTable, b.peerStatusChan, p.FlushRoutes, p.NoInstall, b.routeReaderWriter)
 	err := b.server.AddPeer(corebgp.PeerConfig{
 		RemoteAddress: netip.MustParseAddr(p.RemoteAddress.String()),

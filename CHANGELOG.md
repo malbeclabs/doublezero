@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Onchain monitor
+    - Emit metric with 0 samples when account not found in device and internet telemetry watchers
 - Telemetry
     - Fix dashboard API to handle partitioned query with no samples
     - Add summary view with committed RTT and jitter, compared to measured values
@@ -15,6 +17,7 @@ All notable changes to this project will be documented in this file.
 ## [v0.6.2](https://github.com/malbeclabs/doublezero/compare/client/v0.6.0...client/v0.6.2) – 2025-09-02
 
 ### Breaking
+
 - None for this release
 
 ### Changes

@@ -14,26 +14,25 @@ import (
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 )
 
-func TestMonitor_DeviceTelemetry_Watcher_NewAndName(t *testing.T) {
+func TestWatcher_NewAndName(t *testing.T) {
 	t.Parallel()
 
-	cfg := &Config{
-		Logger: newTestLogger(t),
-		LedgerRPCClient: &mockLedgerRPC{
-			GetEpochInfoFunc: func(ctx context.Context, c solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
-				return &solanarpc.GetEpochInfoResult{Epoch: 1}, nil
-			}},
-		Serviceability: &mockServiceabilityClient{
-			GetProgramDataFunc: func(context.Context) (*serviceability.ProgramData, error) { return &serviceability.ProgramData{}, nil }},
-		Telemetry: &mockTelemetryProgramClient{
-			GetDeviceLatencySamplesFunc: func(ctx context.Context, _, _, _ solana.PublicKey, _ uint64) (*telemetry.DeviceLatencySamples, error) {
-				return &telemetry.DeviceLatencySamples{Samples: []uint32{}}, nil
-			}},
-		Interval: 10 * time.Millisecond,
-	}
+	cfg, _ := baseCfg(t)
+	cfg.LedgerRPCClient = &mockLedgerRPC{
+		GetEpochInfoFunc: func(ctx context.Context, c solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
+			return &solanarpc.GetEpochInfoResult{Epoch: 1}, nil
+		}}
+	cfg.Serviceability = &mockServiceabilityClient{
+		GetProgramDataFunc: func(context.Context) (*serviceability.ProgramData, error) { return &serviceability.ProgramData{}, nil }}
+	cfg.Telemetry = &mockTelemetryProgramClient{
+		GetDeviceLatencySamplesFunc: func(ctx context.Context, _, _, _ solana.PublicKey, _ uint64) (*telemetry.DeviceLatencySamples, error) {
+			return &telemetry.DeviceLatencySamples{Samples: []uint32{}}, nil
+		}}
 
 	w, err := NewDeviceTelemetryWatcher(cfg)
 	require.NoError(t, err)
@@ -41,31 +40,29 @@ func TestMonitor_DeviceTelemetry_Watcher_NewAndName(t *testing.T) {
 	require.Equal(t, watcherName, w.Name())
 }
 
-func TestMonitor_DeviceTelemetry_Watcher_RunStopsOnCancel(t *testing.T) {
+func TestWatcher_RunStopsOnCancel(t *testing.T) {
 	t.Parallel()
 
-	cfg := &Config{
-		Logger: newTestLogger(t),
-		LedgerRPCClient: &mockLedgerRPC{
-			GetEpochInfoFunc: func(ctx context.Context, c solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
-				return &solanarpc.GetEpochInfoResult{Epoch: 1}, nil
-			}},
-		Serviceability: &mockServiceabilityClient{
-			GetProgramDataFunc: func(context.Context) (*serviceability.ProgramData, error) { return &serviceability.ProgramData{}, nil }},
-		Telemetry: &mockTelemetryProgramClient{
-			GetDeviceLatencySamplesFunc: func(ctx context.Context, _, _, _ solana.PublicKey, _ uint64) (*telemetry.DeviceLatencySamples, error) {
-				return &telemetry.DeviceLatencySamples{Samples: []uint32{}}, nil
-			}},
-		Interval: 5 * time.Millisecond,
-	}
+	cfg, _ := baseCfg(t)
+	cfg.LedgerRPCClient = &mockLedgerRPC{
+		GetEpochInfoFunc: func(ctx context.Context, c solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
+			return &solanarpc.GetEpochInfoResult{Epoch: 1}, nil
+		}}
+	cfg.Serviceability = &mockServiceabilityClient{
+		GetProgramDataFunc: func(context.Context) (*serviceability.ProgramData, error) { return &serviceability.ProgramData{}, nil }}
+	cfg.Telemetry = &mockTelemetryProgramClient{
+		GetDeviceLatencySamplesFunc: func(ctx context.Context, _, _, _ solana.PublicKey, _ uint64) (*telemetry.DeviceLatencySamples, error) {
+			return &telemetry.DeviceLatencySamples{Samples: []uint32{}}, nil
+		}}
+
 	w, err := NewDeviceTelemetryWatcher(cfg)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() { _ = w.Run(ctx); close(done) }()
-	time.Sleep(10 * time.Millisecond)
 	cancel()
+
 	select {
 	case <-done:
 	case <-time.After(500 * time.Millisecond):
@@ -73,23 +70,21 @@ func TestMonitor_DeviceTelemetry_Watcher_RunStopsOnCancel(t *testing.T) {
 	}
 }
 
-func TestMonitor_DeviceTelemetry_Watcher_Tick_NoCircuits(t *testing.T) {
+func TestWatcher_Tick_NoCircuits(t *testing.T) {
 	t.Parallel()
 
-	cfg := &Config{
-		Logger: newTestLogger(t),
-		LedgerRPCClient: &mockLedgerRPC{
-			GetEpochInfoFunc: func(ctx context.Context, c solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
-				return &solanarpc.GetEpochInfoResult{Epoch: 9}, nil
-			}},
-		Serviceability: &mockServiceabilityClient{
-			GetProgramDataFunc: func(context.Context) (*serviceability.ProgramData, error) { return &serviceability.ProgramData{}, nil }},
-		Telemetry: &mockTelemetryProgramClient{
-			GetDeviceLatencySamplesFunc: func(ctx context.Context, _, _, _ solana.PublicKey, _ uint64) (*telemetry.DeviceLatencySamples, error) {
-				return &telemetry.DeviceLatencySamples{Samples: []uint32{}}, nil
-			}},
-		Interval: 10 * time.Millisecond,
-	}
+	cfg, _ := baseCfg(t)
+	cfg.LedgerRPCClient = &mockLedgerRPC{
+		GetEpochInfoFunc: func(ctx context.Context, c solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
+			return &solanarpc.GetEpochInfoResult{Epoch: 9}, nil
+		}}
+	cfg.Serviceability = &mockServiceabilityClient{
+		GetProgramDataFunc: func(context.Context) (*serviceability.ProgramData, error) { return &serviceability.ProgramData{}, nil }}
+	cfg.Telemetry = &mockTelemetryProgramClient{
+		GetDeviceLatencySamplesFunc: func(ctx context.Context, _, _, _ solana.PublicKey, _ uint64) (*telemetry.DeviceLatencySamples, error) {
+			return &telemetry.DeviceLatencySamples{Samples: []uint32{}}, nil
+		}}
+
 	w, err := NewDeviceTelemetryWatcher(cfg)
 	require.NoError(t, err)
 
@@ -101,265 +96,232 @@ func TestMonitor_DeviceTelemetry_Watcher_Tick_NoCircuits(t *testing.T) {
 	require.Empty(t, w.stats)
 }
 
-func TestMonitor_DeviceTelemetry_Watcher_Tick_ErrorFromGetProgramData(t *testing.T) {
+func TestWatcher_Tick_ErrorFromGetProgramData(t *testing.T) {
 	t.Parallel()
 
-	cfg := &Config{
-		Logger: newTestLogger(t),
-		LedgerRPCClient: &mockLedgerRPC{
-			GetEpochInfoFunc: func(ctx context.Context, c solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
-				return &solanarpc.GetEpochInfoResult{Epoch: 9}, nil
-			}},
-		Serviceability: &mockServiceabilityClient{
-			GetProgramDataFunc: func(context.Context) (*serviceability.ProgramData, error) { return nil, errors.New("boom") }},
-		Telemetry: &mockTelemetryProgramClient{
-			GetDeviceLatencySamplesFunc: func(ctx context.Context, _, _, _ solana.PublicKey, _ uint64) (*telemetry.DeviceLatencySamples, error) {
-				return &telemetry.DeviceLatencySamples{Samples: []uint32{}}, nil
-			}},
-		Interval: 10 * time.Millisecond,
-	}
+	cfg, _ := baseCfg(t)
+	cfg.LedgerRPCClient = &mockLedgerRPC{
+		GetEpochInfoFunc: func(ctx context.Context, c solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
+			return &solanarpc.GetEpochInfoResult{Epoch: 9}, nil
+		}}
+	cfg.Serviceability = &mockServiceabilityClient{
+		GetProgramDataFunc: func(context.Context) (*serviceability.ProgramData, error) { return nil, errors.New("boom") }}
+	cfg.Telemetry = &mockTelemetryProgramClient{
+		GetDeviceLatencySamplesFunc: func(ctx context.Context, _, _, _ solana.PublicKey, _ uint64) (*telemetry.DeviceLatencySamples, error) {
+			return &telemetry.DeviceLatencySamples{Samples: []uint32{}}, nil
+		}}
+
 	w, err := NewDeviceTelemetryWatcher(cfg)
 	require.NoError(t, err)
 	require.Error(t, w.Tick(context.Background()))
+
+	got := testutil.ToFloat64(cfg.Metrics.Errors.WithLabelValues(MetricErrorTypeGetCircuits))
+	require.Equal(t, 1.0, got)
 }
 
-func TestMonitor_DeviceTelemetry_Watcher_Tick_ErrorFromGetEpochInfo(t *testing.T) {
+func TestWatcher_Tick_ErrorFromGetEpochInfo(t *testing.T) {
 	t.Parallel()
+
+	cfg, _ := baseCfg(t)
 
 	origin := solana.NewWallet().PublicKey()
 	target := solana.NewWallet().PublicKey()
 	link := solana.NewWallet().PublicKey()
 
-	cfg := &Config{
-		Logger: newTestLogger(t),
-		LedgerRPCClient: &mockLedgerRPC{
-			GetEpochInfoFunc: func(ctx context.Context, c solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
-				return nil, errors.New("epoch fail")
-			}},
-		Serviceability: &mockServiceabilityClient{
-			GetProgramDataFunc: func(context.Context) (*serviceability.ProgramData, error) {
-				return makeProgramData("OR-A", "TG-A", origin, target, link, "LK-A"), nil
-			}},
-		Telemetry: &mockTelemetryProgramClient{
-			GetDeviceLatencySamplesFunc: func(ctx context.Context, _, _, _ solana.PublicKey, _ uint64) (*telemetry.DeviceLatencySamples, error) {
-				return &telemetry.DeviceLatencySamples{Samples: []uint32{1}}, nil
-			}},
-		Interval: 10 * time.Millisecond,
-	}
+	cfg.LedgerRPCClient = &mockLedgerRPC{
+		GetEpochInfoFunc: func(ctx context.Context, c solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
+			return nil, errors.New("epoch fail")
+		}}
+	cfg.Serviceability = &mockServiceabilityClient{
+		GetProgramDataFunc: func(context.Context) (*serviceability.ProgramData, error) {
+			return makeProgramData("OR-A", "TG-A", origin, target, link, "LK-A"), nil
+		}}
+	cfg.Telemetry = &mockTelemetryProgramClient{
+		GetDeviceLatencySamplesFunc: func(ctx context.Context, _, _, _ solana.PublicKey, _ uint64) (*telemetry.DeviceLatencySamples, error) {
+			return &telemetry.DeviceLatencySamples{Samples: []uint32{1}}, nil
+		}}
+
 	w, err := NewDeviceTelemetryWatcher(cfg)
 	require.NoError(t, err)
 	require.Error(t, w.Tick(context.Background()))
+
+	got := testutil.ToFloat64(cfg.Metrics.Errors.WithLabelValues(MetricErrorTypeGetEpochInfo))
+	require.Equal(t, 1.0, got)
 }
 
-func TestMonitor_DeviceTelemetry_Watcher_Tick_ErrorFromGetDeviceLatencySamples(t *testing.T) {
+func TestWatcher_Tick_ErrorFromGetDeviceLatencySamples(t *testing.T) {
 	t.Parallel()
+
+	cfg, _ := baseCfg(t)
 
 	origin := solana.NewWallet().PublicKey()
 	target := solana.NewWallet().PublicKey()
 	link := solana.NewWallet().PublicKey()
 
-	cfg := &Config{
-		Logger: newTestLogger(t),
-		LedgerRPCClient: &mockLedgerRPC{
-			GetEpochInfoFunc: func(ctx context.Context, c solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
-				return &solanarpc.GetEpochInfoResult{Epoch: 10}, nil
-			}},
-		Serviceability: &mockServiceabilityClient{
-			GetProgramDataFunc: func(context.Context) (*serviceability.ProgramData, error) {
-				return makeProgramData("OR-A", "TG-A", origin, target, link, "LK-A"), nil
-			}},
-		Telemetry: &mockTelemetryProgramClient{
-			GetDeviceLatencySamplesFunc: func(ctx context.Context, _, _, _ solana.PublicKey, _ uint64) (*telemetry.DeviceLatencySamples, error) {
+	cfg.LedgerRPCClient = &mockLedgerRPC{
+		GetEpochInfoFunc: func(ctx context.Context, c solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
+			return &solanarpc.GetEpochInfoResult{Epoch: 10}, nil
+		}}
+	cfg.Serviceability = &mockServiceabilityClient{
+		GetProgramDataFunc: func(context.Context) (*serviceability.ProgramData, error) {
+			return makeProgramData("OR-A", "TG-A", origin, target, link, "LK-A"), nil
+		}}
+	cfg.Telemetry = &mockTelemetryProgramClient{
+		GetDeviceLatencySamplesFunc: func(ctx context.Context, o, tpk, _ solana.PublicKey, _ uint64) (*telemetry.DeviceLatencySamples, error) {
+			if o == origin && tpk == target { // FAIL forward only
 				return nil, errors.New("telemetry fail")
-			}},
-		Interval: 10 * time.Millisecond,
-	}
+			}
+			return &telemetry.DeviceLatencySamples{Samples: []uint32{1}}, nil // succeed reverse
+		}}
+
 	w, err := NewDeviceTelemetryWatcher(cfg)
 	require.NoError(t, err)
 	require.Error(t, w.Tick(context.Background()))
+
+	got := testutil.ToFloat64(cfg.Metrics.Errors.WithLabelValues(MetricErrorTypeGetLatencySamples))
+	require.Equal(t, 1.0, got)
 }
 
-func TestMonitor_DeviceTelemetry_Watcher_Tick_SameEpoch_BaselineThenUpdate(t *testing.T) {
+func TestWatcher_Tick_SameEpoch_EmitsMetricDeltas_AggregatedPerLink(t *testing.T) {
 	t.Parallel()
+
+	cfg, reg := baseCfg(t)
+
+	origin := solana.NewWallet().PublicKey()
+	target := solana.NewWallet().PublicKey()
+	link := solana.NewWallet().PublicKey()
+	originCode, targetCode := "OR-A", "TG-A"
+	var step int32
+
+	cfg.LedgerRPCClient = &mockLedgerRPC{
+		GetEpochInfoFunc: func(context.Context, solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
+			return &solanarpc.GetEpochInfoResult{Epoch: 10}, nil
+		}}
+	cfg.Serviceability = &mockServiceabilityClient{
+		GetProgramDataFunc: func(context.Context) (*serviceability.ProgramData, error) {
+			return makeProgramData(originCode, targetCode, origin, target, link, "LK-A"), nil
+		}}
+	cfg.Telemetry = stepTelemetryMock(origin, target, &step)
+
+	w, err := NewDeviceTelemetryWatcher(cfg)
+	require.NoError(t, err)
+
+	// Tick 1: seed only → no deltas
+	require.NoError(t, w.Tick(context.Background()))
+	require.Equal(t, 0.0, counterTotal(t, reg, MetricNameSuccesses))
+	require.Equal(t, 0.0, counterTotal(t, reg, MetricNameLosses))
+	require.Equal(t, 0.0, counterTotal(t, reg, MetricNameSamples))
+
+	// Tick 2 same epoch: forward +1 success; reverse +1 success +1 loss (totals: succ=2, loss=1, samples=3)
+	atomic.StoreInt32(&step, 1)
+	require.NoError(t, w.Tick(context.Background()))
+	require.Equal(t, 2.0, counterTotal(t, reg, MetricNameSuccesses))
+	require.Equal(t, 1.0, counterTotal(t, reg, MetricNameLosses))
+	require.Equal(t, 3.0, counterTotal(t, reg, MetricNameSamples))
+}
+
+func TestWatcher_Tick_EpochRollover_NoMetricDeltas(t *testing.T) {
+	t.Parallel()
+
+	cfg, reg := baseCfg(t)
 
 	origin := solana.NewWallet().PublicKey()
 	target := solana.NewWallet().PublicKey()
 	link := solana.NewWallet().PublicKey()
 	originCode, targetCode := "OR-A", "TG-A"
 
-	// local step only toggled BETWEEN ticks (never during a tick)
-	step := 0
-
-	cfg := &Config{
-		Logger: newTestLogger(t),
-		LedgerRPCClient: &mockLedgerRPC{
-			GetEpochInfoFunc: func(ctx context.Context, c solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
-				return &solanarpc.GetEpochInfoResult{Epoch: 10}, nil
-			}},
-		Serviceability: &mockServiceabilityClient{
-			GetProgramDataFunc: func(context.Context) (*serviceability.ProgramData, error) {
-				return makeProgramData(originCode, targetCode, origin, target, link, "LK-A"), nil
-			}},
-		Telemetry: &mockTelemetryProgramClient{
-			GetDeviceLatencySamplesFunc: func(ctx context.Context, o, t, l solana.PublicKey, e uint64) (*telemetry.DeviceLatencySamples, error) {
+	epochVal := uint64(10)
+	cfg.LedgerRPCClient = &mockLedgerRPC{
+		GetEpochInfoFunc: func(ctx context.Context, c solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
+			return &solanarpc.GetEpochInfoResult{Epoch: epochVal}, nil
+		}}
+	cfg.Serviceability = &mockServiceabilityClient{
+		GetProgramDataFunc: func(context.Context) (*serviceability.ProgramData, error) {
+			return makeProgramData(originCode, targetCode, origin, target, link, "LK-A"), nil
+		}}
+	cfg.Telemetry = &mockTelemetryProgramClient{
+		GetDeviceLatencySamplesFunc: func(ctx context.Context, o, t, l solana.PublicKey, e uint64) (*telemetry.DeviceLatencySamples, error) {
+			if e == 10 {
 				if o == origin && t == target {
-					if step == 0 {
-						return &telemetry.DeviceLatencySamples{Samples: []uint32{1, 2, 0, 5}}, nil
-					} // 3/1
-					return &telemetry.DeviceLatencySamples{Samples: []uint32{1, 2, 0, 5, 9}}, nil // 4/1
+					return &telemetry.DeviceLatencySamples{Samples: []uint32{1, 2, 0, 5}}, nil // 3/1
 				}
-				if step == 0 {
-					return &telemetry.DeviceLatencySamples{Samples: []uint32{0, 0, 7}}, nil
-				} // 1/2
-				return &telemetry.DeviceLatencySamples{Samples: []uint32{0, 0, 7, 3, 0}}, nil // 2/3
-			}},
-		Interval: 10 * time.Millisecond,
-	}
+				return &telemetry.DeviceLatencySamples{Samples: []uint32{0, 0, 7}}, nil // 1/2
+			}
+			if o == origin && t == target {
+				return &telemetry.DeviceLatencySamples{Samples: []uint32{8, 8, 0}}, nil // 2/1
+			}
+			return &telemetry.DeviceLatencySamples{Samples: []uint32{0}}, nil // 0/1
+		}}
+
 	w, err := NewDeviceTelemetryWatcher(cfg)
 	require.NoError(t, err)
 
-	ctx := context.Background()
-	keyFwd := "10-" + circuitKey(originCode, targetCode, link)
-	keyRev := "10-" + circuitKey(targetCode, originCode, link)
+	// Baseline at epoch 10
+	require.NoError(t, w.Tick(context.Background()))
 
-	require.NoError(t, w.Tick(ctx))
-	w.mu.RLock()
-	require.Equal(t, uint64(10), w.lastEpoch)
-	require.True(t, w.epochSet)
-	require.Equal(t, CircuitTelemetryStats{SuccessCount: 3, LossCount: 1}, w.stats[keyFwd])
-	require.Equal(t, CircuitTelemetryStats{SuccessCount: 1, LossCount: 2}, w.stats[keyRev])
-	w.mu.RUnlock()
-
-	step = 1
-	require.NoError(t, w.Tick(ctx))
-	w.mu.RLock()
-	require.Equal(t, CircuitTelemetryStats{SuccessCount: 4, LossCount: 1}, w.stats[keyFwd])
-	require.Equal(t, CircuitTelemetryStats{SuccessCount: 2, LossCount: 3}, w.stats[keyRev])
-	w.mu.RUnlock()
-}
-
-func TestMonitor_DeviceTelemetry_Watcher_Tick_EpochRollover(t *testing.T) {
-	t.Parallel()
-
-	origin := solana.NewWallet().PublicKey()
-	target := solana.NewWallet().PublicKey()
-	link := solana.NewWallet().PublicKey()
-	originCode, targetCode := "OR-A", "TG-A"
-
-	epochVal := uint64(10) // changed only between ticks
-
-	cfg := &Config{
-		Logger: newTestLogger(t),
-		LedgerRPCClient: &mockLedgerRPC{
-			GetEpochInfoFunc: func(ctx context.Context, c solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
-				return &solanarpc.GetEpochInfoResult{Epoch: epochVal}, nil
-			}},
-		Serviceability: &mockServiceabilityClient{
-			GetProgramDataFunc: func(context.Context) (*serviceability.ProgramData, error) {
-				return makeProgramData(originCode, targetCode, origin, target, link, "LK-A"), nil
-			}},
-		Telemetry: &mockTelemetryProgramClient{
-			GetDeviceLatencySamplesFunc: func(ctx context.Context, o, t, l solana.PublicKey, e uint64) (*telemetry.DeviceLatencySamples, error) {
-				if e == 10 {
-					if o == origin && t == target {
-						return &telemetry.DeviceLatencySamples{Samples: []uint32{1, 2, 0, 5}}, nil
-					} // 3/1
-					return &telemetry.DeviceLatencySamples{Samples: []uint32{0, 0, 7}}, nil // 1/2
-				}
-				if o == origin && t == target {
-					return &telemetry.DeviceLatencySamples{Samples: []uint32{8, 8, 0}}, nil
-				} // 2/1
-				return &telemetry.DeviceLatencySamples{Samples: []uint32{0}}, nil // 0/1
-			}},
-		Interval: 10 * time.Millisecond,
-	}
-	w, err := NewDeviceTelemetryWatcher(cfg)
-	require.NoError(t, err)
-
-	ctx := context.Background()
-	key10F := "10-" + circuitKey(originCode, targetCode, link)
-	key10R := "10-" + circuitKey(targetCode, originCode, link)
-	key11F := "11-" + circuitKey(originCode, targetCode, link)
-	key11R := "11-" + circuitKey(targetCode, originCode, link)
-
-	require.NoError(t, w.Tick(ctx))
-	w.mu.RLock()
-	require.Equal(t, uint64(10), w.lastEpoch)
-	require.True(t, w.epochSet)
-	require.Equal(t, CircuitTelemetryStats{SuccessCount: 3, LossCount: 1}, w.stats[key10F])
-	require.Equal(t, CircuitTelemetryStats{SuccessCount: 1, LossCount: 2}, w.stats[key10R])
-	w.mu.RUnlock()
-
+	// Rollover to epoch 11 → no deltas emitted for new epoch
 	epochVal = 11
-	require.NoError(t, w.Tick(ctx))
-	w.mu.RLock()
-	require.Equal(t, uint64(11), w.lastEpoch)
-	require.True(t, w.epochSet)
-	require.Equal(t, CircuitTelemetryStats{SuccessCount: 2, LossCount: 1}, w.stats[key11F])
-	require.Equal(t, CircuitTelemetryStats{SuccessCount: 0, LossCount: 1}, w.stats[key11R])
-	// old totals remain
-	require.Equal(t, CircuitTelemetryStats{SuccessCount: 3, LossCount: 1}, w.stats[key10F])
-	require.Equal(t, CircuitTelemetryStats{SuccessCount: 1, LossCount: 2}, w.stats[key10R])
-	w.mu.RUnlock()
+	require.NoError(t, w.Tick(context.Background()))
+
+	require.Equal(t, 0.0, counterTotal(t, reg, MetricNameSuccesses))
+	require.Equal(t, 0.0, counterTotal(t, reg, MetricNameLosses))
+	require.Equal(t, 0.0, counterTotal(t, reg, MetricNameSamples))
 }
 
-func TestMonitor_DeviceTelemetry_Watcher_Tick_MixedCircuits_ErrorBubbles(t *testing.T) {
+func TestWatcher_Tick_MixedCircuits_ErrorBubbles(t *testing.T) {
 	t.Parallel()
+
+	cfg, _ := baseCfg(t)
 
 	a := solana.NewWallet().PublicKey()
 	b := solana.NewWallet().PublicKey()
 	link := solana.NewWallet().PublicKey()
 
-	cfg := &Config{
-		Logger: newTestLogger(t),
-		LedgerRPCClient: &mockLedgerRPC{
-			GetEpochInfoFunc: func(ctx context.Context, c solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
-				return &solanarpc.GetEpochInfoResult{Epoch: 42}, nil
-			}},
-		Serviceability: &mockServiceabilityClient{
-			// one link → two circuits (A→B and B→A)
-			GetProgramDataFunc: func(context.Context) (*serviceability.ProgramData, error) {
-				return makeProgramData("A", "B", a, b, link, "L"), nil
-			}},
-		Telemetry: &mockTelemetryProgramClient{
-			// succeed for one direction, fail for the other
-			GetDeviceLatencySamplesFunc: func(ctx context.Context, o, t, l solana.PublicKey, e uint64) (*telemetry.DeviceLatencySamples, error) {
-				if o == a && t == b {
-					return &telemetry.DeviceLatencySamples{Samples: []uint32{1, 2, 3}}, nil
-				}
-				return nil, errors.New("reflector timeout")
-			}},
-		Interval: 10 * time.Millisecond,
-	}
+	cfg.LedgerRPCClient = &mockLedgerRPC{
+		GetEpochInfoFunc: func(ctx context.Context, c solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
+			return &solanarpc.GetEpochInfoResult{Epoch: 42}, nil
+		}}
+	cfg.Serviceability = &mockServiceabilityClient{
+		// one link → two circuits (A→B and B→A)
+		GetProgramDataFunc: func(context.Context) (*serviceability.ProgramData, error) {
+			return makeProgramData("A", "B", a, b, link, "L"), nil
+		}}
+	cfg.Telemetry = &mockTelemetryProgramClient{
+		// succeed for one direction, fail for the other
+		GetDeviceLatencySamplesFunc: func(ctx context.Context, o, t, l solana.PublicKey, e uint64) (*telemetry.DeviceLatencySamples, error) {
+			if o == a && t == b {
+				return &telemetry.DeviceLatencySamples{Samples: []uint32{1, 2, 3}}, nil
+			}
+			return nil, errors.New("reflector timeout")
+		}}
+
 	w, err := NewDeviceTelemetryWatcher(cfg)
 	require.NoError(t, err)
 	require.Error(t, w.Tick(context.Background()))
 }
 
-func TestMonitor_DeviceTelemetry_Watcher_Run_ContinuesAfterTickError(t *testing.T) {
+func TestWatcher_Run_ContinuesAfterTickError(t *testing.T) {
 	t.Parallel()
+
+	cfg, _ := baseCfg(t)
 
 	var step atomic.Int32 // 0=failing, 1=success
 
-	cfg := &Config{
-		Logger: newTestLogger(t),
-		LedgerRPCClient: &mockLedgerRPC{
-			GetEpochInfoFunc: func(ctx context.Context, ct solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
-				return &solanarpc.GetEpochInfoResult{Epoch: 777}, nil
-			}},
-		Serviceability: &mockServiceabilityClient{
-			GetProgramDataFunc: func(context.Context) (*serviceability.ProgramData, error) {
-				if step.Load() == 0 {
-					return nil, errors.New("boom")
-				}
-				return &serviceability.ProgramData{}, nil
-			}},
-		Telemetry: &mockTelemetryProgramClient{
-			GetDeviceLatencySamplesFunc: func(context.Context, solana.PublicKey, solana.PublicKey, solana.PublicKey, uint64) (*telemetry.DeviceLatencySamples, error) {
-				return &telemetry.DeviceLatencySamples{Samples: []uint32{}}, nil
-			}},
-		Interval: 5 * time.Millisecond,
-	}
+	cfg.LedgerRPCClient = &mockLedgerRPC{
+		GetEpochInfoFunc: func(ctx context.Context, ct solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
+			return &solanarpc.GetEpochInfoResult{Epoch: 777}, nil
+		}}
+	cfg.Serviceability = &mockServiceabilityClient{
+		GetProgramDataFunc: func(context.Context) (*serviceability.ProgramData, error) {
+			if step.Load() == 0 {
+				return nil, errors.New("boom")
+			}
+			return &serviceability.ProgramData{}, nil
+		}}
+	cfg.Telemetry = &mockTelemetryProgramClient{
+		GetDeviceLatencySamplesFunc: func(context.Context, solana.PublicKey, solana.PublicKey, solana.PublicKey, uint64) (*telemetry.DeviceLatencySamples, error) {
+			return &telemetry.DeviceLatencySamples{Samples: []uint32{}}, nil
+		}}
 
 	w, err := NewDeviceTelemetryWatcher(cfg)
 	require.NoError(t, err)
@@ -385,30 +347,29 @@ func TestMonitor_DeviceTelemetry_Watcher_Run_ContinuesAfterTickError(t *testing.
 	require.Empty(t, w.stats)
 }
 
-func TestMonitor_DeviceTelemetry_Watcher_Tick_EmptySamples_WritesZeroStatsAndSetsEpoch(t *testing.T) {
+func TestWatcher_Tick_EmptySamples_WritesZeroStatsAndSetsEpoch(t *testing.T) {
 	t.Parallel()
+
+	cfg, _ := baseCfg(t)
 
 	origin := solana.NewWallet().PublicKey()
 	target := solana.NewWallet().PublicKey()
 	link := solana.NewWallet().PublicKey()
 	originCode, targetCode := "OR-Z", "TG-Z"
 
-	cfg := &Config{
-		Logger: newTestLogger(t),
-		LedgerRPCClient: &mockLedgerRPC{
-			GetEpochInfoFunc: func(ctx context.Context, ct solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
-				return &solanarpc.GetEpochInfoResult{Epoch: 77}, nil
-			}},
-		Serviceability: &mockServiceabilityClient{
-			GetProgramDataFunc: func(context.Context) (*serviceability.ProgramData, error) {
-				return makeProgramData(originCode, targetCode, origin, target, link, "LK-Z"), nil
-			}},
-		Telemetry: &mockTelemetryProgramClient{
-			GetDeviceLatencySamplesFunc: func(context.Context, solana.PublicKey, solana.PublicKey, solana.PublicKey, uint64) (*telemetry.DeviceLatencySamples, error) {
-				return &telemetry.DeviceLatencySamples{Samples: []uint32{}}, nil
-			}},
-		Interval: 10 * time.Millisecond,
-	}
+	cfg.LedgerRPCClient = &mockLedgerRPC{
+		GetEpochInfoFunc: func(ctx context.Context, ct solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
+			return &solanarpc.GetEpochInfoResult{Epoch: 77}, nil
+		}}
+	cfg.Serviceability = &mockServiceabilityClient{
+		GetProgramDataFunc: func(context.Context) (*serviceability.ProgramData, error) {
+			return makeProgramData(originCode, targetCode, origin, target, link, "LK-Z"), nil
+		}}
+	cfg.Telemetry = &mockTelemetryProgramClient{
+		GetDeviceLatencySamplesFunc: func(context.Context, solana.PublicKey, solana.PublicKey, solana.PublicKey, uint64) (*telemetry.DeviceLatencySamples, error) {
+			return &telemetry.DeviceLatencySamples{Samples: []uint32{}}, nil
+		}}
+
 	w, err := NewDeviceTelemetryWatcher(cfg)
 	require.NoError(t, err)
 
@@ -423,6 +384,36 @@ func TestMonitor_DeviceTelemetry_Watcher_Tick_EmptySamples_WritesZeroStatsAndSet
 	require.Equal(t, uint64(77), w.lastEpoch)
 	require.Equal(t, CircuitTelemetryStats{SuccessCount: 0, LossCount: 0}, w.stats[keyFwd])
 	require.Equal(t, CircuitTelemetryStats{SuccessCount: 0, LossCount: 0}, w.stats[keyRev])
+}
+
+func TestWatcher_Tick_AccountNotFound_IncrementsAccountNotFoundMetric(t *testing.T) {
+	t.Parallel()
+
+	cfg, _ := baseCfg(t)
+
+	a := solana.NewWallet().PublicKey()
+	b := solana.NewWallet().PublicKey()
+	link := solana.NewWallet().PublicKey()
+
+	cfg.LedgerRPCClient = &mockLedgerRPC{
+		GetEpochInfoFunc: func(ctx context.Context, c solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
+			return &solanarpc.GetEpochInfoResult{Epoch: 5}, nil
+		}}
+	cfg.Serviceability = &mockServiceabilityClient{
+		GetProgramDataFunc: func(context.Context) (*serviceability.ProgramData, error) {
+			return makeProgramData("A", "B", a, b, link, "L"), nil
+		}}
+	cfg.Telemetry = &mockTelemetryProgramClient{
+		GetDeviceLatencySamplesFunc: func(ctx context.Context, _, _, _ solana.PublicKey, _ uint64) (*telemetry.DeviceLatencySamples, error) {
+			return nil, telemetry.ErrAccountNotFound
+		}}
+
+	w, err := NewDeviceTelemetryWatcher(cfg)
+	require.NoError(t, err)
+	require.NoError(t, w.Tick(context.Background()))
+
+	circuitKey := circuitKey("A", "B", link)
+	require.Equal(t, 1.0, testutil.ToFloat64(cfg.Metrics.AccountNotFound.WithLabelValues(circuitKey)))
 }
 
 type mockLedgerRPC struct {
@@ -481,4 +472,57 @@ func makeProgramData(devA, devZ string, pkA, pkZ, linkPK solana.PublicKey, linkC
 func pkAsBytes(pk solana.PublicKey) (out [32]byte) {
 	copy(out[:], pk[:])
 	return
+}
+
+func newTestMetrics() (*prometheus.Registry, *Metrics) {
+	reg := prometheus.NewRegistry()
+	m := NewMetrics()
+	m.Register(reg)
+	return reg, m
+}
+
+func baseCfg(t *testing.T) (*Config, *prometheus.Registry) {
+	reg, metrics := newTestMetrics()
+	return &Config{
+		Logger:   newTestLogger(t),
+		Metrics:  metrics,
+		Interval: 5 * time.Millisecond,
+	}, reg
+}
+
+func stepTelemetryMock(origin, target solana.PublicKey, step *int32) *mockTelemetryProgramClient {
+	return &mockTelemetryProgramClient{
+		GetDeviceLatencySamplesFunc: func(_ context.Context, o, tpk, _ solana.PublicKey, _ uint64) (*telemetry.DeviceLatencySamples, error) {
+			if o == origin && tpk == target {
+				if atomic.LoadInt32(step) == 0 {
+					return &telemetry.DeviceLatencySamples{Samples: []uint32{1, 2, 0, 5}}, nil // 3/1
+				}
+				return &telemetry.DeviceLatencySamples{Samples: []uint32{1, 2, 0, 5, 9}}, nil // +1 success
+			}
+			if o == target && tpk == origin {
+				if atomic.LoadInt32(step) == 0 {
+					return &telemetry.DeviceLatencySamples{Samples: []uint32{0, 0, 7}}, nil // 1/2
+				}
+				return &telemetry.DeviceLatencySamples{Samples: []uint32{0, 0, 7, 3, 0}}, nil // +1 success, +1 loss
+			}
+			return &telemetry.DeviceLatencySamples{Samples: nil}, nil
+		},
+	}
+}
+
+func counterTotal(t *testing.T, g prometheus.Gatherer, metric string) float64 {
+	mfs, err := g.Gather()
+	require.NoError(t, err)
+	var total float64
+	for _, mf := range mfs {
+		if mf.GetName() != metric {
+			continue
+		}
+		for _, m := range mf.GetMetric() {
+			if c := m.GetCounter(); c != nil {
+				total += c.GetValue()
+			}
+		}
+	}
+	return total
 }

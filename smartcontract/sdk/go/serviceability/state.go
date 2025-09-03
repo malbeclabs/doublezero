@@ -11,6 +11,9 @@ const (
 	LinkType
 	UserType
 	MulticastGroupType
+	ProgramConfigType
+	ContributorType
+	AccessPassType
 )
 
 type LocationStatus uint8
@@ -259,4 +262,16 @@ type MulticastGroup struct {
 	Publishers   [][32]uint8
 	Subscribers  [][32]uint8
 	PubKey       [32]byte
+}
+
+type ProgramVersion struct {
+	Major uint32
+	Minor uint32
+	Patch uint32
+}
+
+type ProgramConfig struct {
+	AccountType AccountType
+	BumpSeed    uint8
+	Version     ProgramVersion
 }

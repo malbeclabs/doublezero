@@ -6,6 +6,7 @@ import (
 
 	devicetelemetry "github.com/malbeclabs/doublezero/controlplane/monitor/internal/device-telemetry"
 	internettelemetry "github.com/malbeclabs/doublezero/controlplane/monitor/internal/internet-telemetry"
+	"github.com/malbeclabs/doublezero/controlplane/monitor/internal/serviceability"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -23,6 +24,15 @@ type Worker struct {
 
 func New(cfg *Config) (*Worker, error) {
 	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+
+	serviceabilityWatcher, err := serviceability.NewServiceabilityWatcher(&serviceability.Config{
+		Logger:         cfg.Logger,
+		Serviceability: cfg.Serviceability,
+		Interval:       cfg.Interval,
+	})
+	if err != nil {
 		return nil, err
 	}
 
@@ -56,6 +66,7 @@ func New(cfg *Config) (*Worker, error) {
 	}
 
 	watchers := []Watcher{
+		serviceabilityWatcher,
 		deviceTelemetryWatcher,
 		internetTelemetryWatcher,
 	}

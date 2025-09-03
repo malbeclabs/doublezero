@@ -3,19 +3,19 @@
 
 version: 2
 
-project_name: doublezero-contributor-rewards
+project_name: doublezero-2z
 
 monorepo:
-  tag_prefix: contributor-rewards/
+  tag_prefix: 2z/
 
 builds:
-  - id: doublezero-contributor-rewards
-    binary: doublezero-contributor-rewards
+  - id: doublezero-2z
+    binary: doublezero-2z
     builder: rust
     tool: cargo
     command: build
     flags:
-      - --package=doublezero-contributor-rewards
+      - --package=doublezero-2z
       - --release
     targets:
       - x86_64-unknown-linux-gnu
@@ -26,9 +26,9 @@ builds:
       - DATE={{ .Date }}
 
 archives:
-  - id: contributor_rewards_archive
+  - id: 2z_archive
     formats: ["tar.gz"]
-    ids: [doublezero-contributor-rewards]
+    ids: [2z]
     # this name template makes the OS and Arch compatible with the results of `uname`
     name_template: >-
       {{ .ProjectName }}_
@@ -39,30 +39,21 @@ archives:
       {{- if .Arm }}v{{ .Arm }}{{ end }}
 
 nfpms:
-  - id: doublezero-contributor-rewards
-    package_name: doublezero-contributor-rewards
-    ids: [doublezero-contributor-rewards]
+  - id: doublezero-2z
+    package_name: doublezero-2z
+    ids: [doublezero-2z]
     vendor: doublezero
     homepage: doublezero.xyz
     maintainer: tech <tech@malbeclabs.com>
     description: |-
-      DoubleZero Contributor Rewards
+      DoubleZero 2Z CLI
     license: Apache 2.0
     formats:
       - deb
     bindir: /usr/local/bin
     release: 1
     section: default
-    contents:
-      - src: release/packaging/systemd/doublezero-contributor-rewards.service
-        dst: /lib/systemd/system/doublezero-contributor-rewards.service
-        type: config
-    overrides:
-      rpm:
-        contents:
-          - src: release/packaging/systemd/doublezero-contributor-rewards.service
-            dst: /usr/lib/systemd/system/doublezero-contributor-rewards.service
-            type: config
+    # NOTE: 2z does not required to be a systemd service
 
 changelog:
   sort: asc
@@ -81,18 +72,18 @@ release:
 announce:
   slack:
     enabled: true
-    message_template: "DoubleZero Contributor Rewards {{ .Tag }} has been released! Check it out at {{ .ReleaseURL }}"
+    message_template: "DoubleZero 2Z CLI {{ .Tag }} has been released! Check it out at {{ .ReleaseURL }}"
     channel: "#bots"
 
 git:
   ignore_tags:
-    - contributor-rewards/daily
+    - doublezero-2z/daily
 
 nightly:
   publish_release: true
   keep_single_release: true
   version_template: "{{ incpatch .Version }}~git{{ .Env.BUILD_DATE }}.{{ .ShortCommit }}"
-  tag_name: "contributor-rewards/daily"
+  tag_name: "doublezero-2z/daily"
 
 cloudsmiths:
   - organization: malbeclabs

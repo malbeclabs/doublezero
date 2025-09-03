@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::Parser;
-use doublezero_2z_cli::command::DoubleZero2zSolanaCommand;
+use doublezero_2z::command::DoubleZero2zSolanaCommand;
 
 #[derive(Debug, Parser)]
 #[command(term_width = 0)]

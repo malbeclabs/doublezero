@@ -1,5 +1,5 @@
 [package]
-name = "doublezero-2z-cli"
+name = "doublezero-2z"
 edition.workspace = true
 homepage.workspace = true
 license.workspace = true

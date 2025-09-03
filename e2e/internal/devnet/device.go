@@ -381,6 +381,7 @@ func (d *Device) Start(ctx context.Context) error {
 	commandArgs := []string{
 		"-controller", controllerAddr,
 		"-pubkey", devicePK,
+		"-sleep-interval-in-seconds", "2",
 	}
 
 	// Configure telemetry/metrics publisher keypair if set.

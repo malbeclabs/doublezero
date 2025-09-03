@@ -123,6 +123,7 @@ func NewControllerCommand() *ControllerCommand {
 	c.fs.BoolVar(&c.showVersion, "version", false, "show version information and exit")
 	c.fs.StringVar(&c.tlsCertFile, "tls-cert", "", "path to tls cert file")
 	c.fs.StringVar(&c.tlsKeyFile, "tls-key", "", "path to tls key file")
+	c.fs.DurationVar(&c.stateUpdateInterval, "state-update-interval", 10*time.Second, "interval for updating controller state from blockchain")
 	return c
 }
 
@@ -140,6 +141,7 @@ type ControllerCommand struct {
 	showVersion              bool
 	tlsCertFile              string
 	tlsKeyFile               string
+	stateUpdateInterval      time.Duration
 }
 
 func (c *ControllerCommand) Fs() *flag.FlagSet {
@@ -231,6 +233,7 @@ func (c *ControllerCommand) Run() error {
 	}
 	options = append(options, controller.WithListener(lis))
 	options = append(options, controller.WithServiceabilityProgramClient(serviceabilityClient))
+	options = append(options, controller.WithStateUpdateInterval(c.stateUpdateInterval))
 	control, err := controller.NewController(options...)
 	if err != nil {
 		slog.Error("error creating controller", "error", err)

@@ -63,13 +63,15 @@ type Controller struct {
 	tlsConfig                *tls.Config
 	environment              string
 	deviceLocalASN           uint32
+	stateUpdateInterval      time.Duration
 }
 
 type Option func(*Controller)
 
 func NewController(options ...Option) (*Controller, error) {
 	controller := &Controller{
-		cache: stateCache{},
+		cache:               stateCache{},
+		stateUpdateInterval: 2 * time.Second, // Default to 2 seconds
 	}
 	for _, o := range options {
 		o(controller)
@@ -131,15 +133,17 @@ func WithEnableInterfacesAndPeers() Option {
 	}
 }
 
-func WithEnvironment(env string) Option {
-	return func(c *Controller) {
-		c.environment = env
-	}
-}
-
+// WithDeviceLocalASN provides a way to set the local ASN for devices
 func WithDeviceLocalASN(asn uint32) Option {
 	return func(c *Controller) {
 		c.deviceLocalASN = asn
+	}
+}
+
+// WithStateUpdateInterval provides a way to set the interval for updating the state cache.
+func WithStateUpdateInterval(interval time.Duration) Option {
+	return func(c *Controller) {
+		c.stateUpdateInterval = interval
 	}
 }
 
@@ -450,13 +454,13 @@ func (c *Controller) Run(ctx context.Context) error {
 
 	// start on-chain fetcher
 	go func() {
-		slog.Info("starting fetch of on-chain data", "program-id", c.serviceability.ProgramID())
+		slog.Info("starting fetch of on-chain data", "program-id", c.serviceability.ProgramID(), "update-interval", c.stateUpdateInterval)
 		if err := c.updateStateCache(ctx); err != nil {
 			cacheUpdateErrors.Inc()
 			slog.Error("error fetching accounts", "error", err)
 		}
 		cacheUpdateOps.Inc()
-		ticker := time.NewTicker(10 * time.Second)
+		ticker := time.NewTicker(c.stateUpdateInterval)
 		for {
 			select {
 			case <-ctx.Done():

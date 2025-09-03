@@ -39,8 +39,9 @@ func TestMain(m *testing.M) {
 }
 
 type mockDeviceProvider struct {
-	GetCircuitsFunc         func(context.Context) ([]devicedata.Circuit, error)
-	GetCircuitLatenciesFunc func(context.Context, devicedata.GetCircuitLatenciesConfig) ([]stats.CircuitLatencyStat, error)
+	GetCircuitsFunc           func(context.Context) ([]devicedata.Circuit, error)
+	GetCircuitLatenciesFunc   func(context.Context, devicedata.GetCircuitLatenciesConfig) ([]stats.CircuitLatencyStat, error)
+	GetSummaryForCircuitsFunc func(context.Context, devicedata.GetSummaryForCircuitsConfig) ([]devicedata.CircuitSummary, error)
 }
 
 func (m *mockDeviceProvider) GetCircuits(ctx context.Context) ([]devicedata.Circuit, error) {
@@ -49,6 +50,10 @@ func (m *mockDeviceProvider) GetCircuits(ctx context.Context) ([]devicedata.Circ
 
 func (m *mockDeviceProvider) GetCircuitLatencies(ctx context.Context, cfg devicedata.GetCircuitLatenciesConfig) ([]stats.CircuitLatencyStat, error) {
 	return m.GetCircuitLatenciesFunc(ctx, cfg)
+}
+
+func (m *mockDeviceProvider) GetSummaryForCircuits(ctx context.Context, cfg devicedata.GetSummaryForCircuitsConfig) ([]devicedata.CircuitSummary, error) {
+	return m.GetSummaryForCircuitsFunc(ctx, cfg)
 }
 
 type mockInternetProvider struct {

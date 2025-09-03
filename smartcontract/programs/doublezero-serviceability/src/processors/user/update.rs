@@ -74,7 +74,9 @@ pub fn process_update_user(
 
     let mut user: User = User::try_from(user_account)?;
 
-    user.dz_ip = value.dz_ip.unwrap_or(std::net::Ipv4Addr::UNSPECIFIED);
+    if let Some(value) = value.dz_ip {
+        user.dz_ip = value;
+    }
     if let Some(value) = value.tunnel_id {
         user.tunnel_id = value;
     }

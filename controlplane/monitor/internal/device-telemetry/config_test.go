@@ -16,7 +16,8 @@ func TestMonitor_DeviceTelemetry_Config(t *testing.T) {
 	t.Parallel()
 
 	valid := &Config{
-		Logger: newTestLogger(t),
+		Logger:  newTestLogger(t),
+		Metrics: NewMetrics(),
 		LedgerRPCClient: &mockLedgerRPC{
 			GetEpochInfoFunc: func(ctx context.Context, c solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
 				return &solanarpc.GetEpochInfoResult{Epoch: 1}, nil
@@ -39,6 +40,12 @@ func TestMonitor_DeviceTelemetry_Config(t *testing.T) {
 	t.Run("missing logger fails", func(t *testing.T) {
 		c := *valid
 		c.Logger = nil
+		require.Error(t, c.Validate())
+	})
+
+	t.Run("missing metrics fails", func(t *testing.T) {
+		c := *valid
+		c.Metrics = nil
 		require.Error(t, c.Validate())
 	})
 

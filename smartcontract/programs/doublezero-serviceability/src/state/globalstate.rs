@@ -1,4 +1,4 @@
-use crate::state::accounttype::AccountType;
+use crate::{helper::deserialize_vec_with_capacity, state::accounttype::AccountType};
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
 use solana_program::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
@@ -68,9 +68,9 @@ impl TryFrom<&[u8]> for GlobalState {
             account_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             bump_seed: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             account_index: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            foundation_allowlist: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            device_allowlist: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            user_allowlist: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            foundation_allowlist: deserialize_vec_with_capacity(&mut data)?,
+            device_allowlist: deserialize_vec_with_capacity(&mut data)?,
+            user_allowlist: deserialize_vec_with_capacity(&mut data)?,
             activator_authority_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             sentinel_authority_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             contributor_airdrop_lamports: BorshDeserialize::deserialize(&mut data)

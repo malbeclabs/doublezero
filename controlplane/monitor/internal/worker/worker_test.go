@@ -46,9 +46,10 @@ func TestMonitor_Worker(t *testing.T) {
 		w, err := New(validCfg)
 		require.NoError(t, err)
 		require.NotNil(t, w)
-		require.Len(t, w.watchers, 2)
-		require.Equal(t, "device-telemetry", w.watchers[0].Name())
-		require.Equal(t, "internet-telemetry", w.watchers[1].Name())
+		require.Len(t, w.watchers, 3)
+		require.Equal(t, "serviceability", w.watchers[0].Name())
+		require.Equal(t, "device-telemetry", w.watchers[1].Name())
+		require.Equal(t, "internet-telemetry", w.watchers[2].Name())
 	})
 
 	t.Run("New_failsOnBadConfig", func(t *testing.T) {

@@ -30,6 +30,7 @@ type TelemetryProgramClient interface {
 
 type Config struct {
 	Logger          *slog.Logger
+	Metrics         *Metrics
 	LedgerRPCClient LedgerRPCClient
 	Serviceability  ServiceabilityClient
 	Telemetry       TelemetryProgramClient
@@ -40,6 +41,9 @@ type Config struct {
 func (c *Config) Validate() error {
 	if c.Logger == nil {
 		return errors.New("logger is required")
+	}
+	if c.Metrics == nil {
+		return errors.New("metrics is required")
 	}
 	if c.LedgerRPCClient == nil {
 		return errors.New("ledger rpc client is required")

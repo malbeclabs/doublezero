@@ -6,8 +6,13 @@ on:
     - cron: '0 14 * * 1-5'  # Every weekday at 10AM ET/9AM CT
 
 jobs:
+  smartcontract:
+    uses: ./.github/workflows/release.devnet.smartcontract.daily.yml
+    secrets: inherit
   release:
     uses: ./.github/workflows/release.daily.yml
+    needs:
+      - smartcontract
     strategy:
       matrix:
         include:
@@ -36,9 +41,6 @@ jobs:
     permissions:
       contents: write
       packages: write
-  smartcontract:
-    uses: ./.github/workflows/release.devnet.smartcontract.daily.yml
-    secrets: inherit
   qa:
     uses: ./.github/workflows/qa.devnet.yml
     needs:

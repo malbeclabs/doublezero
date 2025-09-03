@@ -8,17 +8,34 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Onchain monitor
+    - Emit metric for telemetry account not found in device and internet telemetry watchers
+    - Emit metric with serviceability program onchain version
+- Telemetry
+    - Fix dashboard API to handle partitioned query with no samples
+    - Add summary view with committed RTT and jitter, compared to measured values
+
+## [v0.6.2](https://github.com/malbeclabs/doublezero/compare/client/v0.6.0...client/v0.6.2) – 2025-09-02
+
+### Breaking
+
+- None for this release
+
+### Changes
+
+- Onchain programs
+    - Fix: Serviceability now correctly enforces device.max_users
+    - Fix: Restored the `validator_pubkey` field from AccessPass. This field had been removed in the previous version but is required by Sentinel.
+    - Fix: Skip client version check in `status` command to prevent version errors during automated state checks.
+    - New instructions were added to support device interface create/update/delete that prevents a race condition that could cause some updates to be lost when changes were made in quick succession.
+    - Add deserialization vector with capacity + 1 to avoid `memory allocation failed, out of memory` error
 - CLI
     - Added filtering options to `access-pass list` and `user list` CLI commands.
     - New filters include access pass type (`prepaid` or `solana-validator`) and Solana identity public key.
     - Updated command arguments and logic, with tests adjusted to cover new options.
     - Contributors: Interface creation no longer takes an "interface type (physical/loopback)" argument. The type is now inferred from the interface name.
-
 - Device controller
     - Use serviceability onchain delay for link metrics
-- Fix: Skip client version check in `status` command to prevent version errors during automated state checks.
-- Fix: Restored the `validator_pubkey` field from AccessPass. This field had been removed in the previous version but is required by Sentinel.
-
 
 ## [v0.6.0](https://github.com/malbeclabs/doublezero/compare/client/v0.5.3...client/v0.6.0) – 2025-08-28
 

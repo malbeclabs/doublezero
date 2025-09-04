@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,6 +27,8 @@ type DeviceTelemetryWatcher struct {
 	epochSet  bool
 	stats     map[string]CircuitTelemetryStats
 	mu        sync.RWMutex
+
+	prevCircuits map[string]struct{}
 }
 
 func NewDeviceTelemetryWatcher(cfg *Config) (*DeviceTelemetryWatcher, error) {
@@ -33,9 +36,10 @@ func NewDeviceTelemetryWatcher(cfg *Config) (*DeviceTelemetryWatcher, error) {
 		return nil, err
 	}
 	return &DeviceTelemetryWatcher{
-		log:   cfg.Logger.With("watcher", watcherName),
-		cfg:   cfg,
-		stats: map[string]CircuitTelemetryStats{},
+		log:          cfg.Logger.With("watcher", watcherName),
+		cfg:          cfg,
+		stats:        map[string]CircuitTelemetryStats{},
+		prevCircuits: map[string]struct{}{},
 	}, nil
 }
 
@@ -77,9 +81,6 @@ func (w *DeviceTelemetryWatcher) Tick(ctx context.Context) error {
 		w.cfg.Metrics.Errors.WithLabelValues(MetricErrorTypeGetCircuits).Inc()
 		return fmt.Errorf("failed to get circuits: %w", err)
 	}
-	if len(circuits) == 0 {
-		return nil
-	}
 
 	epochInfo, err := w.cfg.LedgerRPCClient.GetEpochInfo(ctx, solanarpc.CommitmentFinalized)
 	if err != nil {
@@ -88,6 +89,44 @@ func (w *DeviceTelemetryWatcher) Tick(ctx context.Context) error {
 		return err
 	}
 	epoch := epochInfo.Epoch
+
+	// prune old epoch entries once epoch advances; keep only keys for current epoch
+	if w.epochSet && w.lastEpoch != epoch {
+		w.mu.Lock()
+		prefix := fmt.Sprintf("%d-", epoch)
+		for k := range w.stats {
+			if !strings.HasPrefix(k, prefix) {
+				delete(w.stats, k)
+			}
+		}
+		w.mu.Unlock()
+	}
+
+	// if no circuits, delete metrics for everything we saw previously and return
+	if len(circuits) == 0 {
+		w.mu.Lock()
+		for code := range w.prevCircuits {
+			w.cfg.Metrics.Successes.DeleteLabelValues(code)
+			w.cfg.Metrics.Losses.DeleteLabelValues(code)
+			w.cfg.Metrics.Samples.DeleteLabelValues(code)
+			w.cfg.Metrics.AccountNotFound.DeleteLabelValues(code)
+			for k := range w.stats {
+				if strings.HasSuffix(k, "-"+code) {
+					delete(w.stats, k)
+				}
+			}
+			w.log.Debug("deleted metrics for absent circuit", "code", code)
+		}
+		w.prevCircuits = map[string]struct{}{}
+		w.mu.Unlock()
+		return nil
+	}
+
+	// build the current set of circuits for diffing
+	currCircuits := make(map[string]struct{}, len(circuits))
+	for _, c := range circuits {
+		currCircuits[c.Code] = struct{}{}
+	}
 
 	var wg sync.WaitGroup
 	errorChan := make(chan error, len(circuits))
@@ -175,8 +214,6 @@ func (w *DeviceTelemetryWatcher) Tick(ctx context.Context) error {
 				SuccessCount: successCount,
 				LossCount:    lossCount,
 			}
-			w.epochSet = true
-			w.lastEpoch = epoch
 			w.mu.Unlock()
 
 			w.log.Debug("circuit telemetry",
@@ -202,6 +239,27 @@ func (w *DeviceTelemetryWatcher) Tick(ctx context.Context) error {
 		return err
 	default:
 	}
+
+	// delete metrics for circuits that disappeared since the previous tick
+	w.mu.Lock()
+	for code := range w.prevCircuits {
+		if _, ok := currCircuits[code]; !ok {
+			w.cfg.Metrics.Successes.DeleteLabelValues(code)
+			w.cfg.Metrics.Losses.DeleteLabelValues(code)
+			w.cfg.Metrics.Samples.DeleteLabelValues(code)
+			w.cfg.Metrics.AccountNotFound.DeleteLabelValues(code)
+			for k := range w.stats {
+				if strings.HasSuffix(k, "-"+code) {
+					delete(w.stats, k)
+				}
+			}
+			w.log.Debug("deleted metrics for absent circuit", "code", code)
+		}
+	}
+	w.prevCircuits = currCircuits
+	w.epochSet = true
+	w.lastEpoch = epoch
+	w.mu.Unlock()
 
 	return nil
 }

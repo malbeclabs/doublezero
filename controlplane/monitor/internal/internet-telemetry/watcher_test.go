@@ -406,6 +406,98 @@ func TestWatcher_Tick_AccountNotFound_IncrementsAccountNotFoundMetric(t *testing
 	require.Equal(t, 1.0, testutil.ToFloat64(cfg.Metrics.AccountNotFound.WithLabelValues("ripeatlas", "A → B")))
 }
 
+func TestMonitor_InternetTelemetry_Watcher_Tick_DeletesMetrics_WhenCircuitDisappears(t *testing.T) {
+	t.Parallel()
+
+	cfg, reg := baseCfg(t)
+
+	origin := solana.NewWallet().PublicKey()
+	target := solana.NewWallet().PublicKey()
+	originCode, targetCode := "OR-A", "TG-A"
+	code := circuitKey(originCode, targetCode) // label value for circuit
+
+	var step int32    // 0=seed, 1=emit deltas
+	var present int32 // 0=absent, 1=present
+	atomic.StoreInt32(&present, 1)
+
+	cfg.LedgerRPCClient = &mockLedgerRPC{
+		GetEpochInfoFunc: func(context.Context, solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
+			return &solanarpc.GetEpochInfoResult{Epoch: 10}, nil
+		},
+	}
+	cfg.Serviceability = &mockServiceabilityClient{
+		GetProgramDataFunc: func(context.Context) (*serviceability.ProgramData, error) {
+			if atomic.LoadInt32(&present) == 0 {
+				return &serviceability.ProgramData{}, nil
+			}
+			return makeProgramData(originCode, targetCode, origin, target), nil
+		},
+	}
+	cfg.Telemetry = providerStepTelemetryMock(origin, target, &step)
+
+	w, err := NewInternetTelemetryWatcher(cfg)
+	require.NoError(t, err)
+
+	// Tick 1: circuits present, baseline only → no deltas yet
+	require.NoError(t, w.Tick(context.Background()))
+	require.Equal(t, 0.0, counterTotal(t, reg, MetricNameSuccesses))
+	require.Equal(t, 0.0, counterTotal(t, reg, MetricNameLosses))
+	require.Equal(t, 0.0, counterTotal(t, reg, MetricNameSamples))
+
+	// Tick 2: emit deltas to create series for both providers
+	atomic.StoreInt32(&step, 1)
+	require.NoError(t, w.Tick(context.Background()))
+	require.Greater(t, counterTotal(t, reg, MetricNameSuccesses), 0.0)
+	require.Greater(t, counterTotal(t, reg, MetricNameSamples), 0.0)
+	require.True(t, hasMetricWithLabelValues(t, reg, MetricNameSuccesses, "ripeatlas", code))
+	require.True(t, hasMetricWithLabelValues(t, reg, MetricNameSuccesses, "wheresitup", code))
+
+	// Tick 3: circuits disappear → metrics for that circuit should be deleted (both providers)
+	atomic.StoreInt32(&present, 0)
+	require.NoError(t, w.Tick(context.Background()))
+
+	require.False(t, hasMetricWithLabelValues(t, reg, MetricNameSuccesses, "ripeatlas", code))
+	require.False(t, hasMetricWithLabelValues(t, reg, MetricNameSuccesses, "wheresitup", code))
+	require.False(t, hasMetricWithLabelValues(t, reg, MetricNameLosses, "ripeatlas", code))
+	require.False(t, hasMetricWithLabelValues(t, reg, MetricNameLosses, "wheresitup", code))
+	require.False(t, hasMetricWithLabelValues(t, reg, MetricNameSamples, "ripeatlas", code))
+	require.False(t, hasMetricWithLabelValues(t, reg, MetricNameSamples, "wheresitup", code))
+	require.False(t, hasMetricWithLabelValues(t, reg, MetricNameAccountNotFound, "ripeatlas", code))
+	require.False(t, hasMetricWithLabelValues(t, reg, MetricNameAccountNotFound, "wheresitup", code))
+
+	// Internal stats entries for this circuit should be scrubbed
+	w.mu.RLock()
+	for k := range w.stats {
+		require.NotContains(t, k, ", circuit="+code)
+	}
+	w.mu.RUnlock()
+}
+
+func hasMetricWithLabelValues(t *testing.T, g prometheus.Gatherer, metric, labelA, labelB string) bool {
+	mfs, err := g.Gather()
+	require.NoError(t, err)
+	for _, mf := range mfs {
+		if mf.GetName() != metric {
+			continue
+		}
+		for _, m := range mf.GetMetric() {
+			var seenA, seenB bool
+			for _, lp := range m.GetLabel() {
+				if lp.GetValue() == labelA {
+					seenA = true
+				}
+				if lp.GetValue() == labelB {
+					seenB = true
+				}
+			}
+			if seenA && seenB {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 type mockLedgerRPC struct {
 	GetEpochInfoFunc func(ctx context.Context, c solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error)
 }

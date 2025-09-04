@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -416,6 +417,166 @@ func TestWatcher_Tick_AccountNotFound_IncrementsAccountNotFoundMetric(t *testing
 	require.Equal(t, 1.0, testutil.ToFloat64(cfg.Metrics.AccountNotFound.WithLabelValues(circuitKey)))
 }
 
+func TestWatcher_Tick_DeletesMetrics_WhenCircuitDisappears(t *testing.T) {
+	t.Parallel()
+
+	cfg, reg := baseCfg(t)
+
+	origin := solana.NewWallet().PublicKey()
+	target := solana.NewWallet().PublicKey()
+	link := solana.NewWallet().PublicKey()
+	originCode, targetCode := "OR-A", "TG-A"
+	codeFwd := circuitKey(originCode, targetCode, link)
+	codeRev := circuitKey(targetCode, originCode, link)
+
+	var step int32
+	var present int32
+	atomic.StoreInt32(&present, 1)
+
+	cfg.LedgerRPCClient = &mockLedgerRPC{
+		GetEpochInfoFunc: func(context.Context, solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
+			return &solanarpc.GetEpochInfoResult{Epoch: 10}, nil
+		},
+	}
+	cfg.Serviceability = &mockServiceabilityClient{
+		GetProgramDataFunc: func(context.Context) (*serviceability.ProgramData, error) {
+			if atomic.LoadInt32(&present) == 0 {
+				return &serviceability.ProgramData{}, nil
+			}
+			return makeProgramData(originCode, targetCode, origin, target, link, "LK-A"), nil
+		},
+	}
+	cfg.Telemetry = stepTelemetryMock(origin, target, &step)
+
+	w, err := NewDeviceTelemetryWatcher(cfg)
+	require.NoError(t, err)
+
+	// Tick 1: circuits present, baseline only → no deltas yet
+	require.NoError(t, w.Tick(context.Background()))
+	require.False(t, hasMetricWithLabelValue(t, reg, MetricNameSuccesses, codeFwd))
+	require.False(t, hasMetricWithLabelValue(t, reg, MetricNameSuccesses, codeRev))
+
+	// Tick 2: emit deltas to create series
+	atomic.StoreInt32(&step, 1)
+	require.NoError(t, w.Tick(context.Background()))
+	require.Greater(t, counterTotal(t, reg, MetricNameSuccesses), 0.0)
+	require.Greater(t, counterTotal(t, reg, MetricNameSamples), 0.0)
+	require.True(t, hasMetricWithLabelValue(t, reg, MetricNameSuccesses, codeFwd))
+	require.True(t, hasMetricWithLabelValue(t, reg, MetricNameSuccesses, codeRev))
+
+	// Tick 3: circuits disappear → metrics for those circuits should be deleted
+	atomic.StoreInt32(&present, 0)
+	require.NoError(t, w.Tick(context.Background()))
+
+	require.False(t, hasMetricWithLabelValue(t, reg, MetricNameSuccesses, codeFwd))
+	require.False(t, hasMetricWithLabelValue(t, reg, MetricNameSuccesses, codeRev))
+	require.False(t, hasMetricWithLabelValue(t, reg, MetricNameLosses, codeFwd))
+	require.False(t, hasMetricWithLabelValue(t, reg, MetricNameLosses, codeRev))
+	require.False(t, hasMetricWithLabelValue(t, reg, MetricNameSamples, codeFwd))
+	require.False(t, hasMetricWithLabelValue(t, reg, MetricNameSamples, codeRev))
+	require.False(t, hasMetricWithLabelValue(t, reg, MetricNameAccountNotFound, codeFwd))
+	require.False(t, hasMetricWithLabelValue(t, reg, MetricNameAccountNotFound, codeRev))
+
+	// Internal stats entries for these circuits should be scrubbed
+	w.mu.RLock()
+	for k := range w.stats {
+		require.NotContains(t, k, "-"+codeFwd)
+		require.NotContains(t, k, "-"+codeRev)
+	}
+	w.mu.RUnlock()
+}
+
+func TestWatcher_Tick_DeletesOnlyDisappeared_Circuit(t *testing.T) {
+	t.Parallel()
+
+	cfg, reg := baseCfg(t)
+
+	// Two links → four circuits; later we "remove" only linkA
+	oa, za := solana.NewWallet().PublicKey(), solana.NewWallet().PublicKey()
+	ob, zb := solana.NewWallet().PublicKey(), solana.NewWallet().PublicKey()
+	linkA, linkB := solana.NewWallet().PublicKey(), solana.NewWallet().PublicKey()
+	oaCode, zaCode := "OA", "ZA"
+	obCode, zbCode := "OB", "ZB"
+
+	codeA1 := circuitKey(oaCode, zaCode, linkA)
+	codeA2 := circuitKey(zaCode, oaCode, linkA)
+	codeB1 := circuitKey(obCode, zbCode, linkB)
+	codeB2 := circuitKey(zbCode, obCode, linkB)
+
+	var step atomic.Int32
+	var keepA atomic.Bool
+	keepA.Store(true)
+
+	cfg.LedgerRPCClient = &mockLedgerRPC{
+		GetEpochInfoFunc: func(context.Context, solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
+			return &solanarpc.GetEpochInfoResult{Epoch: 12}, nil
+		},
+	}
+	cfg.Serviceability = &mockServiceabilityClient{
+		GetProgramDataFunc: func(context.Context) (*serviceability.ProgramData, error) {
+			// both links initially; then drop linkA
+			pd := &serviceability.ProgramData{
+				Devices: []serviceability.Device{
+					{Code: oaCode, PubKey: pkAsBytes(oa)}, {Code: zaCode, PubKey: pkAsBytes(za)},
+					{Code: obCode, PubKey: pkAsBytes(ob)}, {Code: zbCode, PubKey: pkAsBytes(zb)},
+				},
+			}
+			if keepA.Load() {
+				pd.Links = append(pd.Links, serviceability.Link{
+					Code: "LA", PubKey: pkAsBytes(linkA), SideAPubKey: pkAsBytes(oa), SideZPubKey: pkAsBytes(za),
+				})
+			}
+			pd.Links = append(pd.Links, serviceability.Link{
+				Code: "LB", PubKey: pkAsBytes(linkB), SideAPubKey: pkAsBytes(ob), SideZPubKey: pkAsBytes(zb),
+			})
+			return pd, nil
+		},
+	}
+	// simple telemetry: always returns at least one success so deltas are emitted
+	cfg.Telemetry = &mockTelemetryProgramClient{
+		GetDeviceLatencySamplesFunc: func(_ context.Context, o, t, _ solana.PublicKey, _ uint64) (*telemetry.DeviceLatencySamples, error) {
+			switch {
+			case (o == oa && t == za) || (o == za && t == oa) || (o == ob && t == zb) || (o == zb && t == ob):
+				// two samples so on the second tick we emit +1 success (+1 sample)
+				if step.Load() == 0 {
+					return &telemetry.DeviceLatencySamples{Samples: []uint32{1}}, nil
+				}
+				return &telemetry.DeviceLatencySamples{Samples: []uint32{1, 2}}, nil
+			default:
+				return &telemetry.DeviceLatencySamples{Samples: nil}, nil
+			}
+		},
+	}
+
+	w, err := NewDeviceTelemetryWatcher(cfg)
+	require.NoError(t, err)
+
+	// Tick 1: baseline
+	require.NoError(t, w.Tick(context.Background()))
+	// Tick 2: create series for both links
+	step.Store(1)
+	require.NoError(t, w.Tick(context.Background()))
+	require.True(t, hasMetricWithLabelValue(t, reg, MetricNameSuccesses, codeA1))
+	require.True(t, hasMetricWithLabelValue(t, reg, MetricNameSuccesses, codeB1))
+
+	// Tick 3: drop linkA → only A* series should be deleted; B* should remain
+	keepA.Store(false)
+	require.NoError(t, w.Tick(context.Background()))
+
+	require.False(t, hasMetricWithLabelValue(t, reg, MetricNameSuccesses, codeA1))
+	require.False(t, hasMetricWithLabelValue(t, reg, MetricNameSuccesses, codeA2))
+	require.True(t, hasMetricWithLabelValue(t, reg, MetricNameSuccesses, codeB1))
+	require.True(t, hasMetricWithLabelValue(t, reg, MetricNameSuccesses, codeB2))
+
+	// stats for A* should be scrubbed
+	w.mu.RLock()
+	for k := range w.stats {
+		requireNotSuffix(t, k, "-"+codeA1)
+		requireNotSuffix(t, k, "-"+codeA2)
+	}
+	w.mu.RUnlock()
+}
+
 type mockLedgerRPC struct {
 	GetEpochInfoFunc func(ctx context.Context, c solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error)
 }
@@ -525,4 +686,28 @@ func counterTotal(t *testing.T, g prometheus.Gatherer, metric string) float64 {
 		}
 	}
 	return total
+}
+
+func hasMetricWithLabelValue(t *testing.T, g prometheus.Gatherer, metric, wantLabelValue string) bool {
+	mfs, err := g.Gather()
+	require.NoError(t, err)
+	for _, mf := range mfs {
+		if mf.GetName() != metric {
+			continue
+		}
+		for _, m := range mf.GetMetric() {
+			for _, lp := range m.GetLabel() {
+				if lp.GetValue() == wantLabelValue {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func requireNotSuffix(t require.TestingT, s, suf string, msgAndArgs ...any) {
+	if strings.HasSuffix(s, suf) {
+		require.Fail(t, fmt.Sprintf("expected %q to NOT have suffix %q", s, suf), msgAndArgs...)
+	}
 }

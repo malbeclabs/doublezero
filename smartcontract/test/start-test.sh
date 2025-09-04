@@ -51,7 +51,7 @@ solana logs >./logs/instruction.log 2>&1 &
 
 ### Configure global setting
 ./target/doublezero global-config set --local-asn 65100 --remote-asn 65001 --device-tunnel-block 172.16.0.0/16 --user-tunnel-block 169.254.0.0/16 \
-    --multicastgroup-block 223.0.0.0/4 
+    --multicastgroup-block 233.84.178.0/24 
 
 ./target/doublezero global-config authority set --activator-authority me --sentinel-authority me
 

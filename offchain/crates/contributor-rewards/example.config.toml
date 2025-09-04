@@ -84,3 +84,17 @@ enable_accumulator = true
 # Deduplication window in microseconds
 # Samples within this time window are considered duplicates
 dedup_window_us = 10000000
+
+# ========== Telemetry Default Handling Configuration ==========
+[telemetry_defaults]
+# Threshold for missing data (0.0-1.0)
+# Example: 0.7 means if >70% of samples are missing, use defaults
+missing_data_threshold = 0.7
+
+# Default latency for private links when data is missing (in milliseconds)
+# Example: 1000.0 means use 1000ms for circuits with insufficient data
+private_default_latency_ms = 1000.0
+
+# Enable previous epoch lookup for public links
+# When true, fetches previous epoch's average when current has insufficient data
+enable_previous_epoch_lookup = true

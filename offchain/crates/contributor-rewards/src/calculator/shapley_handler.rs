@@ -15,12 +15,71 @@ use network_shapley::types::{
 };
 use solana_sdk::pubkey::Pubkey;
 use std::collections::BTreeMap;
-use tracing::debug;
+use tracing::{debug, info};
 
 // (city1_code, city2_code)
 type CityPair = (String, String);
 // key: city_pair, val: vec of latencies
 type CityPairLatencies = BTreeMap<CityPair, Vec<f64>>;
+
+/// Cache for previous epoch telemetry stats
+#[derive(Default)]
+pub struct PreviousEpochCache {
+    pub internet_stats: Option<InternetTelemetryStatMap>,
+    pub device_stats: Option<DZDTelemetryStatMap>,
+}
+
+impl PreviousEpochCache {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Fetch and cache previous epoch stats if not already cached
+    pub async fn fetch_if_needed(&mut self, fetcher: &Fetcher, current_epoch: u64) -> Result<()> {
+        if self.internet_stats.is_none() || self.device_stats.is_none() {
+            let previous_epoch = current_epoch.saturating_sub(1);
+            if previous_epoch == 0 {
+                info!("No previous epoch available (current epoch is 1)");
+                return Ok(());
+            }
+
+            info!(
+                "Fetching previous epoch {} telemetry for default handling",
+                previous_epoch
+            );
+
+            // Fetch previous epoch data
+            let (_epoch, prev_data) = fetcher.with_epoch(previous_epoch).await?;
+
+            // Process the telemetry data
+            use crate::processor::{
+                internet::InternetTelemetryProcessor, telemetry::DZDTelemetryProcessor,
+            };
+
+            self.device_stats = Some(DZDTelemetryProcessor::process(&prev_data)?);
+            self.internet_stats = Some(InternetTelemetryProcessor::process(&prev_data)?);
+
+            info!("Cached previous epoch telemetry stats");
+        }
+        Ok(())
+    }
+
+    /// Get previous epoch average for a specific internet circuit
+    pub fn get_internet_circuit_average(&self, circuit_key: &str) -> Option<f64> {
+        self.internet_stats
+            .as_ref()?
+            .get(circuit_key)
+            .map(|stats| stats.rtt_mean_us)
+    }
+
+    /// Get previous epoch average for a specific device circuit
+    pub fn get_device_circuit_average(&self, circuit_key: &str) -> Option<f64> {
+        self.device_stats
+            .as_ref()?
+            .get(circuit_key)
+            .map(|stats| stats.rtt_mean_us)
+    }
+}
 
 pub fn build_devices(fetch_data: &FetchData) -> Result<Devices> {
     let mut devices = Vec::new();
@@ -58,6 +117,7 @@ pub fn build_public_links(
     settings: &Settings,
     internet_stats: &InternetTelemetryStatMap,
     fetch_data: &FetchData,
+    previous_epoch_cache: &PreviousEpochCache,
 ) -> Result<PublicLinks> {
     let mut exchange_to_location: BTreeMap<Pubkey, String> = BTreeMap::new();
 
@@ -94,7 +154,7 @@ pub fn build_public_links(
     // Group latencies by normalized city pairs
     let mut city_pair_latencies = CityPairLatencies::new();
 
-    for stats in internet_stats.values() {
+    for (circuit_key, stats) in internet_stats.iter() {
         // Map exchange codes to location codes
         // Since we're now only processing valid exchange codes in the processor,
         // we should always have a mapping. If not, skip this entry.
@@ -128,8 +188,40 @@ pub fn build_public_links(
             (target_location, origin_location)
         };
 
-        // Convert p95 RTT from microseconds to milliseconds
-        let latency_ms = stats.rtt_p95_us / 1000.0;
+        // Check if this circuit has too much missing data
+        let latency_us = if stats.missing_data_ratio
+            > settings.telemetry_defaults.missing_data_threshold
+        {
+            // Try to get previous epoch average for this circuit
+            if settings.telemetry_defaults.enable_previous_epoch_lookup {
+                if let Some(prev_avg) =
+                    previous_epoch_cache.get_internet_circuit_average(circuit_key)
+                {
+                    info!(
+                        "Circuit {} has {:.1}% missing data, using previous epoch average: {:.2}ms",
+                        stats.circuit,
+                        stats.missing_data_ratio * 100.0,
+                        prev_avg / 1000.0
+                    );
+                    prev_avg
+                } else {
+                    info!(
+                        "Circuit {} has {:.1}% missing data, no previous epoch data available, using current p95: {:.2}ms",
+                        stats.circuit,
+                        stats.missing_data_ratio * 100.0,
+                        stats.rtt_p95_us / 1000.0
+                    );
+                    stats.rtt_p95_us
+                }
+            } else {
+                stats.rtt_p95_us
+            }
+        } else {
+            stats.rtt_p95_us
+        };
+
+        // Convert from microseconds to milliseconds
+        let latency_ms = latency_us / 1000.0;
 
         city_pair_latencies
             .entry((city1, city2))
@@ -157,8 +249,10 @@ pub fn build_public_links(
 }
 
 pub fn build_private_links(
+    settings: &Settings,
     fetch_data: &FetchData,
     telemetry_stats: &DZDTelemetryStatMap,
+    previous_epoch_cache: &PreviousEpochCache,
 ) -> PrivateLinks {
     let mut private_links = Vec::new();
 
@@ -191,8 +285,59 @@ pub fn build_private_links(
             .or_else(|| telemetry_stats.get(&reverse_circuit_key));
 
         let latency_us = if let Some(stats) = stats {
-            stats.rtt_mean_us
+            // Check if this circuit has too much missing data
+            if stats.missing_data_ratio > settings.telemetry_defaults.missing_data_threshold {
+                // Try to get previous epoch average for this circuit
+                if settings.telemetry_defaults.enable_previous_epoch_lookup {
+                    // Try both forward and reverse circuit keys
+                    if let Some(prev_avg) = previous_epoch_cache
+                        .get_device_circuit_average(&circuit_key)
+                        .or_else(|| {
+                            previous_epoch_cache.get_device_circuit_average(&reverse_circuit_key)
+                        })
+                    {
+                        info!(
+                            "Private circuit {} has {:.1}% missing data, using previous epoch average: {:.2}ms",
+                            stats.circuit,
+                            stats.missing_data_ratio * 100.0,
+                            prev_avg / 1000.0
+                        );
+                        prev_avg
+                    } else {
+                        // No previous epoch data, fall back to configured default
+                        let default_latency_us =
+                            settings.telemetry_defaults.private_default_latency_ms * 1000.0;
+                        info!(
+                            "Private circuit {} has {:.1}% missing data, no previous epoch data, using default: {:.2}ms",
+                            stats.circuit,
+                            stats.missing_data_ratio * 100.0,
+                            settings.telemetry_defaults.private_default_latency_ms
+                        );
+                        default_latency_us
+                    }
+                } else {
+                    // Previous epoch lookup disabled, use configured default
+                    let default_latency_us =
+                        settings.telemetry_defaults.private_default_latency_ms * 1000.0;
+                    info!(
+                        "Private circuit {} has {:.1}% missing data, using default: {:.2}ms",
+                        stats.circuit,
+                        stats.missing_data_ratio * 100.0,
+                        settings.telemetry_defaults.private_default_latency_ms
+                    );
+                    default_latency_us
+                }
+            } else {
+                stats.rtt_mean_us
+            }
         } else {
+            // No stats at all - use penalty
+            info!(
+                "Private circuit {} → {} has no telemetry data, using penalty: {:.2}ms",
+                from_device.code,
+                to_device.code,
+                PENALTY_RTT_US / 1000.0
+            );
             PENALTY_RTT_US
         };
 

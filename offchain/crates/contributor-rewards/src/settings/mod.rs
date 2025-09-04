@@ -26,6 +26,8 @@ pub struct Settings {
     pub prefixes: PrefixSettings,
     /// Internet telemetry lookback configuration
     pub inet_lookback: InetLookbackSettings,
+    /// Telemetry default handling configuration
+    pub telemetry_defaults: TelemetryDefaultSettings,
 }
 
 /// Shapley value calculation parameters for reward distribution
@@ -99,6 +101,21 @@ pub struct InetLookbackSettings {
     /// Deduplication window in microseconds
     /// Samples within this time window are considered duplicates
     pub dedup_window_us: u64,
+}
+
+/// Telemetry default handling configuration
+/// Controls how missing telemetry data is handled per circuit
+#[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+pub struct TelemetryDefaultSettings {
+    /// Threshold for missing data (0.0-1.0)
+    /// e.g., 0.7 means if >70% of samples are missing, use defaults
+    pub missing_data_threshold: f64,
+    /// Default latency for private links when data is missing (in milliseconds)
+    /// e.g., 1000.0 means use 1000ms for circuits with insufficient data
+    pub private_default_latency_ms: f64,
+    /// Enable previous epoch lookup for public links
+    /// If true, fetches previous epoch's average when current has insufficient data
+    pub enable_previous_epoch_lookup: bool,
 }
 
 impl Settings {

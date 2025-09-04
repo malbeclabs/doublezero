@@ -1,7 +1,10 @@
 use crate::{
     calculator::{
         input::ShapleyInputs,
-        shapley_handler::{build_demands, build_devices, build_private_links, build_public_links},
+        shapley_handler::{
+            PreviousEpochCache, build_demands, build_devices, build_private_links,
+            build_public_links,
+        },
         util::{calculate_city_weights, print_devices, print_private_links, print_public_links},
     },
     ingestor::{demand::CityStats, fetcher::Fetcher, internet, types::FetchData},
@@ -40,6 +43,20 @@ impl PreparedData {
             None => fetcher.fetch().await?,
             Some(epoch_num) => fetcher.with_epoch(epoch_num).await?,
         };
+
+        // Create cache for previous epoch data
+        let mut previous_epoch_cache = PreviousEpochCache::new();
+        if fetcher
+            .settings
+            .telemetry_defaults
+            .enable_previous_epoch_lookup
+            && fetch_epoch > 1
+        {
+            // Preemptively fetch previous epoch data for default handling
+            previous_epoch_cache
+                .fetch_if_needed(fetcher, fetch_epoch)
+                .await?;
+        }
 
         if fetcher.settings.inet_lookback.enable_accumulator {
             // Calculate expected internet telemetry links
@@ -86,11 +103,20 @@ impl PreparedData {
         let devices = build_and_log_devices(&fetch_data)?;
 
         // Build private links
-        let private_links = build_and_log_private_links(&fetch_data, &device_telemetry);
+        let private_links = build_and_log_private_links(
+            &fetcher.settings,
+            &fetch_data,
+            &device_telemetry,
+            &previous_epoch_cache,
+        );
 
         // Build public links
-        let public_links =
-            build_and_log_public_links(&fetcher.settings, &internet_telemetry, &fetch_data)?;
+        let public_links = build_and_log_public_links(
+            &fetcher.settings,
+            &internet_telemetry,
+            &fetch_data,
+            &previous_epoch_cache,
+        )?;
 
         // Build demands and city stats
         let (demands, city_stats) = build_and_log_demands(fetcher, &fetch_data).await?;
@@ -146,10 +172,12 @@ fn build_and_log_devices(fetch_data: &FetchData) -> Result<Devices> {
 
 /// Build private links and log output
 fn build_and_log_private_links(
+    settings: &Settings,
     fetch_data: &FetchData,
     stat_map: &DZDTelemetryStatMap,
+    previous_epoch_cache: &PreviousEpochCache,
 ) -> PrivateLinks {
-    let private_links = build_private_links(fetch_data, stat_map);
+    let private_links = build_private_links(settings, fetch_data, stat_map, previous_epoch_cache);
     info!("Private Links:\n{}", print_private_links(&private_links));
     private_links
 }
@@ -159,8 +187,14 @@ fn build_and_log_public_links(
     settings: &Settings,
     internet_stat_map: &InternetTelemetryStatMap,
     fetch_data: &FetchData,
+    previous_epoch_cache: &PreviousEpochCache,
 ) -> Result<PublicLinks> {
-    let public_links = build_public_links(settings, internet_stat_map, fetch_data)?;
+    let public_links = build_public_links(
+        settings,
+        internet_stat_map,
+        fetch_data,
+        previous_epoch_cache,
+    )?;
     info!("Public Links:\n{}", print_public_links(&public_links));
     Ok(public_links)
 }

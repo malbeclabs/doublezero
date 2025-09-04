@@ -5,14 +5,14 @@
 //! - Estimate slots from timestamps
 //! - Find epochs corresponding to specific timestamps
 
-use anyhow::{Result, bail};
+use anyhow::{Result, anyhow, bail};
 use backon::{ExponentialBuilder, Retryable};
 use chrono::Utc;
 use solana_client::{
     client_error::ClientError as SolanaClientError, nonblocking::rpc_client::RpcClient,
 };
 use solana_sdk::epoch_schedule::EpochSchedule;
-use std::time::Duration;
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use tracing::{debug, info};
 
 /// Approximate slot duration in microseconds (400ms)
@@ -53,25 +53,40 @@ pub fn estimate_slot_from_timestamp(
 ///
 /// This struct manages the epoch schedule and provides methods for
 /// converting between timestamps and epochs. It caches the epoch schedule
-/// to avoid redundant RPC calls but only within a single execution context.
-pub struct EpochFinder<'a> {
-    client: &'a RpcClient,
-    schedule: Option<EpochSchedule>,
+/// to avoid redundant RPC calls but ONLY within a single execution context.
+///
+/// The struct takes explicit RPC clients to make it clear which network
+/// is being queried for epoch calculations.
+pub struct EpochFinder {
+    /// DZ network RPC client for getting current slot and timestamps
+    dz_rpc_client: Arc<RpcClient>,
+    /// Solana network RPC client for getting leader schedules
+    solana_read_client: Arc<RpcClient>,
+    /// Cached DZ epoch schedule
+    dz_schedule: Option<EpochSchedule>,
+    /// Cached Solana epoch schedule
+    solana_schedule: Option<EpochSchedule>,
 }
 
-impl<'a> EpochFinder<'a> {
-    /// Create a new EpochFinder with the given RPC client
-    pub fn new(client: &'a RpcClient) -> Self {
+impl EpochFinder {
+    /// Create a new EpochFinder with explicit RPC clients
+    ///
+    /// # Arguments
+    /// * `dz_rpc_client` - RPC client for the DZ network (for timestamps and current slot)
+    /// * `solana_read_client` - RPC client for Solana network (for leader schedules)
+    pub fn new(dz_rpc_client: Arc<RpcClient>, solana_read_client: Arc<RpcClient>) -> Self {
         Self {
-            client,
-            schedule: None,
+            dz_rpc_client,
+            solana_read_client,
+            dz_schedule: None,
+            solana_schedule: None,
         }
     }
 
-    /// Get the epoch schedule, fetching it if not already cached
-    pub async fn get_schedule(&mut self) -> Result<&EpochSchedule> {
-        if self.schedule.is_none() {
-            let schedule = (|| async { self.client.get_epoch_schedule().await })
+    /// Get the DZ epoch schedule, fetching it if not already cached
+    pub async fn get_dz_schedule(&mut self) -> Result<&EpochSchedule> {
+        if self.dz_schedule.is_none() {
+            let schedule = (|| async { self.dz_rpc_client.get_epoch_schedule().await })
                 .retry(&ExponentialBuilder::default().with_jitter())
                 .notify(|err: &SolanaClientError, dur: Duration| {
                     info!(
@@ -80,16 +95,42 @@ impl<'a> EpochFinder<'a> {
                     )
                 })
                 .await?;
-            self.schedule = Some(schedule);
+            self.dz_schedule = Some(schedule);
         }
 
-        Ok(self.schedule.as_ref().expect("schedule cannot be none"))
+        Ok(self
+            .dz_schedule
+            .as_ref()
+            .expect("dz_schedule cannot be none"))
+    }
+
+    /// Get the Solana epoch schedule, fetching it if not already cached
+    pub async fn get_solana_schedule(&mut self) -> Result<&EpochSchedule> {
+        if self.solana_schedule.is_none() {
+            let schedule = (|| async { self.solana_read_client.get_epoch_schedule().await })
+                .retry(&ExponentialBuilder::default().with_jitter())
+                .notify(|err: &SolanaClientError, dur: Duration| {
+                    info!(
+                        "retrying get_epoch_schedule error: {:?} with sleeping {:?}",
+                        err, dur
+                    )
+                })
+                .await?;
+            self.solana_schedule = Some(schedule);
+        }
+
+        Ok(self
+            .solana_schedule
+            .as_ref()
+            .expect("solana_schedule cannot be none"))
     }
 
     /// Find the Solana epoch that was active at a given timestamp
+    ///
+    /// This uses the Solana network to map timestamps to Solana epochs
     pub async fn find_epoch_at_timestamp(&mut self, timestamp_us: u64) -> Result<u64> {
-        // Get current slot
-        let current_slot = (|| async { self.client.get_slot().await })
+        // Get current slot from Solana
+        let current_slot = (|| async { self.solana_read_client.get_slot().await })
             .retry(&ExponentialBuilder::default().with_jitter())
             .notify(|err: &SolanaClientError, dur: Duration| {
                 info!("retrying get_slot error: {:?} with sleeping {:?}", err, dur)
@@ -102,8 +143,8 @@ impl<'a> EpochFinder<'a> {
         let target_slot =
             estimate_slot_from_timestamp(timestamp_us, current_slot, current_time_us)?;
 
-        // Get epoch schedule and calculate epoch
-        let schedule = self.get_schedule().await?;
+        // Get SOLANA epoch schedule and calculate epoch
+        let schedule = self.get_solana_schedule().await?;
         let epoch = calculate_epoch_from_slot(target_slot, schedule);
 
         debug!(
@@ -111,6 +152,71 @@ impl<'a> EpochFinder<'a> {
             timestamp_us, epoch
         );
         Ok(epoch)
+    }
+
+    /// Fetch leader schedule for a DZ epoch
+    ///
+    /// This method:
+    /// 1. Takes a DZ epoch and timestamp as input
+    /// 2. Maps it to a Solana epoch
+    /// 3. Gets the first slot of that Solana epoch
+    /// 4. Fetches the leader schedule using the slot number
+    ///
+    /// Returns the leader schedule as a map of validator pubkey to slot count
+    pub async fn fetch_leader_schedule(
+        &mut self,
+        dz_epoch: u64,
+        timestamp_us: u64,
+    ) -> Result<BTreeMap<String, usize>> {
+        info!("Fetching leader schedule for DZ epoch {}", dz_epoch);
+
+        // Find the corresponding Solana epoch for this timestamp
+        let solana_epoch = self.find_epoch_at_timestamp(timestamp_us).await?;
+
+        info!(
+            "DZ epoch {} corresponds to Solana epoch {} (based on timestamp {})",
+            dz_epoch, solana_epoch, timestamp_us
+        );
+
+        // Get Solana epoch schedule
+        let solana_schedule = self.get_solana_schedule().await?;
+
+        // Get the first slot of the Solana epoch
+        let first_slot_of_epoch = solana_schedule.get_first_slot_in_epoch(solana_epoch);
+
+        debug!(
+            "Fetching leader schedule for Solana epoch {} using slot {}",
+            solana_epoch, first_slot_of_epoch
+        );
+
+        // Get leader schedule using slot number (not epoch number)
+        let leader_schedule = (|| async {
+            self.solana_read_client
+                .get_leader_schedule(Some(first_slot_of_epoch))
+                .await
+        })
+        .retry(&ExponentialBuilder::default().with_jitter())
+        .notify(|err: &SolanaClientError, dur: Duration| {
+            info!(
+                "retrying get_leader_schedule error: {:?} with sleeping {:?}",
+                err, dur
+            )
+        })
+        .await?
+        .ok_or_else(|| anyhow!("No leader schedule found for Solana epoch {}", solana_epoch))?;
+
+        // Convert leader schedule to map of validator -> slot count
+        let leader_schedule_map: BTreeMap<String, usize> = leader_schedule
+            .into_iter()
+            .map(|(pk, schedule)| (pk, schedule.len()))
+            .collect();
+
+        info!(
+            "Retrieved leader schedule with {} validators",
+            leader_schedule_map.len()
+        );
+
+        Ok(leader_schedule_map)
     }
 }
 

@@ -163,6 +163,14 @@ fn calculate_statistics_common(
     // Calculate packet loss statistics
     let packet_loss_stats = calculate_packet_loss_stats(&all_raw_samples);
 
+    // Calculate missing data ratio
+    // Total samples includes both successful (non-zero) and failed (zero) samples
+    let missing_data_ratio = if total_samples_in_range > 0 {
+        packet_loss_stats.loss_rate
+    } else {
+        1.0 // If no samples, consider it 100% missing
+    };
+
     // Build the statistics
     Ok(TelemetryStatistics {
         circuit: String::new(), // Will be set by specific implementations
@@ -192,6 +200,8 @@ fn calculate_statistics_common(
         loss_rate: packet_loss_stats.loss_rate,
         // Total samples
         total_samples: total_samples_in_range,
+        // Missing data tracking
+        missing_data_ratio,
     })
 }
 

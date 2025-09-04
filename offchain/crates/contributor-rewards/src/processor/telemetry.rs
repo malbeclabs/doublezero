@@ -65,6 +65,8 @@ pub struct DZDTelemetryStats {
     pub success_count: u64,
     #[tabled(rename = "samples")]
     pub total_samples: usize,
+    #[tabled(skip)]
+    pub missing_data_ratio: f64,
 }
 
 pub struct DZDTelemetryProcessor;
@@ -152,6 +154,7 @@ impl DZDTelemetryProcessor {
                     loss_count: stats.loss_count,
                     success_count: stats.success_count,
                     total_samples: stats.total_samples,
+                    missing_data_ratio: stats.missing_data_ratio,
                 };
 
                 result.insert(circuit_key, dz_stats);

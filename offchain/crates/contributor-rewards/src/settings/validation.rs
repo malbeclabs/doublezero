@@ -118,6 +118,23 @@ pub fn validate_config(settings: &Settings) -> Result<()> {
         bail!("Inet lookback min_samples_per_link must be greater than 0");
     }
 
+    // Validate telemetry default settings
+    if settings.telemetry_defaults.missing_data_threshold < 0.0
+        || settings.telemetry_defaults.missing_data_threshold > 1.0
+    {
+        bail!(
+            "Telemetry defaults missing_data_threshold must be between 0.0 and 1.0, got {}",
+            settings.telemetry_defaults.missing_data_threshold
+        );
+    }
+
+    if settings.telemetry_defaults.private_default_latency_ms <= 0.0 {
+        bail!(
+            "Telemetry defaults private_default_latency_ms must be greater than 0, got {}",
+            settings.telemetry_defaults.private_default_latency_ms
+        );
+    }
+
     Ok(())
 }
 
@@ -126,7 +143,7 @@ mod tests {
     use super::*;
     use crate::settings::{
         InetLookbackSettings, PrefixSettings, ProgramSettings, RpcSettings, ShapleySettings,
-        network::Network,
+        TelemetryDefaultSettings, network::Network,
     };
 
     fn create_valid_config() -> Settings {
@@ -161,6 +178,11 @@ mod tests {
                 min_samples_per_link: 100,
                 enable_accumulator: true,
                 dedup_window_us: 10_000_000,
+            },
+            telemetry_defaults: TelemetryDefaultSettings {
+                missing_data_threshold: 0.7,
+                private_default_latency_ms: 1000.0,
+                enable_previous_epoch_lookup: true,
             },
         }
     }

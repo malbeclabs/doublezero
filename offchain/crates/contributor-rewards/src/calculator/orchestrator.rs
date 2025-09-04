@@ -1,6 +1,5 @@
 use crate::{
     calculator::{
-        csv_exporter,
         data_prep::PreparedData,
         input::RewardInput,
         keypair_loader::load_keypair,
@@ -33,10 +32,13 @@ impl Orchestrator {
         }
     }
 
+    pub fn settings(&self) -> &Settings {
+        &self.settings
+    }
+
     pub async fn calculate_rewards(
         &self,
         epoch: Option<u64>,
-        output_dir: Option<PathBuf>,
         keypair_path: Option<PathBuf>,
         dry_run: bool,
     ) -> Result<()> {
@@ -60,19 +62,6 @@ impl Orchestrator {
             &borsh::to_vec(&internet_telemetry)?,
         );
 
-        // Optionally write CSVs
-        if let Some(ref output_dir) = output_dir {
-            info!("Writing CSV files to {}", output_dir.display());
-            csv_exporter::export_to_csv(
-                output_dir,
-                &shapley_inputs.devices,
-                &shapley_inputs.private_links,
-                &shapley_inputs.public_links,
-                &shapley_inputs.city_stats,
-            )?;
-            info!("Exported CSV files successfully!");
-        }
-
         // Group demands by start city
         let mut demands_by_city: BTreeMap<String, Vec<Demand>> = BTreeMap::new();
         for demand in shapley_inputs.demands.clone() {
@@ -92,12 +81,6 @@ impl Orchestrator {
                     "City: {city}, Demand: \n{}",
                     print_demands(demands, 1_000_000)
                 );
-
-                // Optionally write demands per city
-                if let Some(ref output_dir) = output_dir {
-                    csv_exporter::write_demands_csv(output_dir, city, demands)
-                        .expect("Failed to write demands CSV");
-                }
 
                 // Build shapley inputs
                 let input = ShapleyInput {
@@ -159,11 +142,6 @@ impl Orchestrator {
                 .with(Style::psql().remove_horizontals())
                 .to_string();
             info!("Shapley Output:\n{}", table);
-
-            // Write shapley output CSV if output directory is specified
-            if let Some(ref output_dir) = output_dir {
-                csv_exporter::write_consolidated_shapley_csv(output_dir, &shapley_output)?;
-            }
 
             // Construct merkle tree
             let merkle_tree = ContributorRewardsMerkleTree::new(fetch_epoch, &shapley_output)?;

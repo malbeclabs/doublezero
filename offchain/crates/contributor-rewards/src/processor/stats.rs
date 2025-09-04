@@ -30,6 +30,8 @@ pub struct TelemetryStatistics {
     pub loss_rate: f64,
     // Total samples
     pub total_samples: usize,
+    // Missing data tracking
+    pub missing_data_ratio: f64,
 }
 
 /// Metadata about a circuit/route

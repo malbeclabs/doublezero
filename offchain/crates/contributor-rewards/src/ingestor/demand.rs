@@ -47,35 +47,16 @@ pub async fn build(fetcher: &Fetcher, fetch_data: &FetchData) -> Result<DemandBu
     let timestamp_us = first_sample.start_timestamp_us;
     assert_ne!(0, timestamp_us, "First sample timestamp is 0!");
 
-    // Create an EpochFinder to handle epoch calculations
-    let mut epoch_finder = EpochFinder::new(&fetcher.solana_read_client);
-
-    // Find the corresponding Solana epoch for this timestamp
-    let solana_epoch = epoch_finder.find_epoch_at_timestamp(timestamp_us).await?;
-
-    info!(
-        "DZ epoch {} corresponds to Solana epoch {} (based on timestamp {})",
-        dz_epoch, solana_epoch, timestamp_us
+    // Create an EpochFinder with explicit RPC clients
+    let mut epoch_finder = EpochFinder::new(
+        fetcher.dz_rpc_client.clone(),
+        fetcher.solana_read_client.clone(),
     );
 
-    // Get epoch schedule (reusing the cached one from EpochFinder)
-    let epoch_schedule = epoch_finder.get_schedule().await?;
-
-    // Get the first slot of the Solana epoch
-    let first_slot_of_epoch = epoch_schedule.get_first_slot_in_epoch(solana_epoch);
-
-    // Get leader schedule for the corresponding Solana epoch
-    let leader_schedule = fetcher
-        .solana_read_client
-        .get_leader_schedule(Some(first_slot_of_epoch))
-        .await?
-        .ok_or_else(|| anyhow!("No leader schedule found for Solana epoch {}", solana_epoch))?;
-
-    // Convert leader schedule to map
-    let leader_schedule_map: BTreeMap<String, usize> = leader_schedule
-        .into_iter()
-        .map(|(pk, schedule)| (pk, schedule.len()))
-        .collect();
+    // Fetch leader schedule for this DZ epoch
+    let leader_schedule_map = epoch_finder
+        .fetch_leader_schedule(dz_epoch, timestamp_us)
+        .await?;
 
     build_with_schedule(fetch_data, leader_schedule_map)
 }

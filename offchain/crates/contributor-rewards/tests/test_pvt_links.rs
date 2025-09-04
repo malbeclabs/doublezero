@@ -1,7 +1,9 @@
 use anyhow::Result;
 use contributor_rewards::{
-    calculator::shapley_handler::build_private_links, ingestor::types::FetchData,
+    calculator::shapley_handler::{PreviousEpochCache, build_private_links},
+    ingestor::types::FetchData,
     processor::telemetry::DZDTelemetryProcessor,
+    settings,
 };
 use serde_json::Value;
 use std::{collections::HashMap, fs, path::Path};
@@ -104,6 +106,48 @@ fn create_expected_results() -> HashMap<(String, String), ExpectedLink> {
     expected
 }
 
+fn test_settings() -> settings::Settings {
+    // Create test settings with testnet network
+    settings::Settings {
+        log_level: "info".to_string(),
+        network: settings::network::Network::Testnet,
+        shapley: settings::ShapleySettings {
+            operator_uptime: 0.98,
+            contiguity_bonus: 5.0,
+            demand_multiplier: 1.2,
+        },
+        rpc: settings::RpcSettings {
+            dz_url: "https://test.com".to_string(),
+            solana_read_url: "https://test.com".to_string(),
+            solana_write_url: "https://test.com".to_string(),
+            commitment: "confirmed".to_string(),
+            rps_limit: 10,
+        },
+        programs: settings::ProgramSettings {
+            serviceability_program_id: "test".to_string(),
+            telemetry_program_id: "test".to_string(),
+        },
+        prefixes: settings::PrefixSettings {
+            device_telemetry: "device".to_string(),
+            internet_telemetry: "internet".to_string(),
+            contributor_rewards: "rewards".to_string(),
+            reward_input: "input".to_string(),
+        },
+        inet_lookback: settings::InetLookbackSettings {
+            min_coverage_threshold: 0.8,
+            max_epochs_lookback: 5,
+            min_samples_per_link: 20,
+            enable_accumulator: true,
+            dedup_window_us: 10000000,
+        },
+        telemetry_defaults: settings::TelemetryDefaultSettings {
+            missing_data_threshold: 0.7,
+            private_default_latency_ms: 1000.0,
+            enable_previous_epoch_lookup: true,
+        },
+    }
+}
+
 #[derive(Debug, Clone)]
 struct ExpectedLink {
     latency_ms: f64,
@@ -129,12 +173,23 @@ mod tests {
             fetch_data.dz_telemetry.device_latency_samples.len()
         );
 
+        // Test settings
+        let settings = test_settings();
+
         // Process device telemetry to get stats
         let telemetry_stats = DZDTelemetryProcessor::process(&fetch_data)?;
         println!("Processed {} device telemetry stats", telemetry_stats.len());
 
+        // Create an empty cache for tests
+        let previous_epoch_cache = PreviousEpochCache::new();
+
         // Generate private links
-        let private_links = build_private_links(&fetch_data, &telemetry_stats);
+        let private_links = build_private_links(
+            &settings,
+            &fetch_data,
+            &telemetry_stats,
+            &previous_epoch_cache,
+        );
 
         // Print results for verification
         println!("\nPrivate Links Generated:");

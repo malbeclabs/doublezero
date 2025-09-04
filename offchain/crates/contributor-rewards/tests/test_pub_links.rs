@@ -1,7 +1,9 @@
 use anyhow::Result;
 use contributor_rewards::{
-    calculator::shapley_handler::build_public_links, ingestor::types::FetchData,
-    processor::internet::InternetTelemetryProcessor, settings,
+    calculator::shapley_handler::{PreviousEpochCache, build_public_links},
+    ingestor::types::FetchData,
+    processor::internet::InternetTelemetryProcessor,
+    settings,
 };
 use serde_json::Value;
 use std::{collections::HashMap, fs, path::Path};
@@ -49,6 +51,11 @@ fn test_settings() -> settings::Settings {
             min_samples_per_link: 20,
             enable_accumulator: true,
             dedup_window_us: 10000000,
+        },
+        telemetry_defaults: settings::TelemetryDefaultSettings {
+            missing_data_threshold: 0.7,
+            private_default_latency_ms: 1000.0,
+            enable_previous_epoch_lookup: true,
         },
     }
 }
@@ -125,8 +132,16 @@ mod tests {
             internet_stats.len()
         );
 
+        // Create an empty cache for tests
+        let previous_epoch_cache = PreviousEpochCache::new();
+
         // Generate public links
-        let public_links = build_public_links(&settings, &internet_stats, &fetch_data)?;
+        let public_links = build_public_links(
+            &settings,
+            &internet_stats,
+            &fetch_data,
+            &previous_epoch_cache,
+        )?;
 
         // Print results for verification
         println!("\nPublic Links Generated:");

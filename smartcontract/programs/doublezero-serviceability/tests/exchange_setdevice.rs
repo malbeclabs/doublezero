@@ -174,8 +174,8 @@ async fn exchange_setdevice() {
         DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
             code: "la".to_string(),
             device_type: DeviceType::Switch,
-            public_ip: [10, 0, 0, 1].into(),
-            dz_prefixes: "10.1.0.0/23".parse().unwrap(),
+            public_ip: [100, 0, 0, 1].into(),
+            dz_prefixes: "100.1.0.0/23".parse().unwrap(),
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
         }),

@@ -178,8 +178,8 @@ async fn test_wan_link() {
         DoubleZeroInstruction::CreateDevice(device::create::DeviceCreateArgs {
             code: "A".to_string(),
             device_type: DeviceType::Switch,
-            public_ip: [10, 0, 0, 1].into(),
-            dz_prefixes: "10.1.0.0/24".parse().unwrap(),
+            public_ip: [110, 0, 0, 1].into(),
+            dz_prefixes: "100.1.0.0/24".parse().unwrap(),
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
         }),
@@ -424,7 +424,7 @@ async fn test_wan_link() {
         DoubleZeroInstruction::CreateLink(LinkCreateArgs {
             code: "la".to_string(),
             link_type: LinkLinkType::WAN,
-            bandwidth: 100000000,
+            bandwidth: 20000000000,
             mtu: 9000,
             delay_ns: 150000,
             jitter_ns: 5000,
@@ -564,7 +564,7 @@ async fn test_wan_link() {
             code: Some("la2".to_string()),
             contributor_pk: Some(contributor_pubkey),
             tunnel_type: Some(LinkLinkType::WAN),
-            bandwidth: Some(2000000000),
+            bandwidth: Some(20000000000),
             mtu: Some(8900),
             delay_ns: Some(15000),
             jitter_ns: Some(5000),
@@ -585,7 +585,7 @@ async fn test_wan_link() {
         .unwrap();
     assert_eq!(tunnel_la.account_type, AccountType::Link);
     assert_eq!(tunnel_la.code, "la2".to_string());
-    assert_eq!(tunnel_la.bandwidth, 2000000000);
+    assert_eq!(tunnel_la.bandwidth, 20000000000);
     assert_eq!(tunnel_la.mtu, 8900);
     assert_eq!(tunnel_la.delay_ns, 15000);
     assert_eq!(tunnel_la.status, LinkStatus::Activated);
@@ -615,7 +615,7 @@ async fn test_wan_link() {
         .unwrap();
     assert_eq!(tunnel_la.account_type, AccountType::Link);
     assert_eq!(tunnel_la.code, "la2".to_string());
-    assert_eq!(tunnel_la.bandwidth, 2000000000);
+    assert_eq!(tunnel_la.bandwidth, 20000000000);
     assert_eq!(tunnel_la.mtu, 8900);
     assert_eq!(tunnel_la.delay_ns, 15000);
     assert_eq!(tunnel_la.status, LinkStatus::Deleting);

@@ -1,4 +1,5 @@
 use crate::{
+    error::{DoubleZeroError, Validate},
     seeds::SEED_CONTRIBUTOR,
     state::accounttype::{AccountType, AccountTypeInfo},
 };
@@ -144,6 +145,21 @@ impl TryFrom<&AccountInfo<'_>> for Contributor {
     }
 }
 
+impl Validate for Contributor {
+    fn validate(&self) -> Result<(), DoubleZeroError> {
+        // Account type must be Contributor
+        if self.account_type != AccountType::Contributor {
+            return Err(DoubleZeroError::InvalidAccountType);
+        }
+        // Code must be less than or equal to 32 bytes
+        if self.code.len() > 32 {
+            return Err(DoubleZeroError::CodeTooLong);
+        }
+
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -163,6 +179,9 @@ mod tests {
         let data = borsh::to_vec(&val).unwrap();
         let val2 = Contributor::try_from(&data[..]).unwrap();
 
+        val.validate().unwrap();
+        val2.validate().unwrap();
+
         assert_eq!(val.size(), val2.size());
         assert_eq!(val.owner, val2.owner);
         assert_eq!(val.code, val2.code);
@@ -171,5 +190,37 @@ mod tests {
         assert_eq!(val.status, val2.status);
         assert_eq!(val.account_type, val2.account_type);
         assert_eq!(data.len(), val.size(), "Invalid Size");
+    }
+
+    #[test]
+    fn test_state_contributor_validate_error_invalid_account_type() {
+        let val = Contributor {
+            account_type: AccountType::Device, // Should be Contributor
+            owner: Pubkey::default(),
+            index: 123,
+            bump_seed: 1,
+            reference_count: 0,
+            status: ContributorStatus::Activated,
+            code: "test".to_string(),
+        };
+        let err = val.validate();
+        assert!(err.is_err());
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidAccountType);
+    }
+
+    #[test]
+    fn test_state_contributor_validate_error_code_too_long() {
+        let val = Contributor {
+            account_type: AccountType::Contributor,
+            owner: Pubkey::default(),
+            index: 123,
+            bump_seed: 1,
+            reference_count: 0,
+            status: ContributorStatus::Activated,
+            code: "a".repeat(33), // More than 32
+        };
+        let err = val.validate();
+        assert!(err.is_err());
+        assert_eq!(err.unwrap_err(), DoubleZeroError::CodeTooLong);
     }
 }

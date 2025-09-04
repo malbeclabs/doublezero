@@ -1,4 +1,5 @@
 use crate::{
+    error::{DoubleZeroError, Validate},
     seeds::SEED_LINK,
     state::accounttype::{AccountType, AccountTypeInfo},
 };
@@ -229,6 +230,39 @@ impl TryFrom<&AccountInfo<'_>> for Link {
     }
 }
 
+impl Validate for Link {
+    fn validate(&self) -> Result<(), DoubleZeroError> {
+        // Account type must be Link
+        if self.account_type != AccountType::Link {
+            return Err(DoubleZeroError::InvalidAccountType);
+        }
+        // Tunnel network must be private
+        if self.status != LinkStatus::Requested
+            && self.status != LinkStatus::Pending
+            && !self.tunnel_net.ip().is_private()
+        {
+            return Err(DoubleZeroError::InvalidTunnelNet);
+        }
+        // Tunnel ID must be less than or equal to 1024
+        if self.tunnel_id > 1024 {
+            return Err(DoubleZeroError::InvalidTunnelId);
+        }
+        // Bandwidth must be between 10 Gbps and 400 Gbps
+        if self.bandwidth < 10_000_000_000 || self.bandwidth > 400_000_000_000 {
+            return Err(DoubleZeroError::InvalidBandwidth);
+        }
+        // Delay must be between 1 and 1000 ms
+        if self.delay_ns < 1_000_000 || self.delay_ns > 1_000_000_000 {
+            return Err(DoubleZeroError::InvalidDelay);
+        }
+        // Jitter must be between 0.01 and 1000 ms
+        if self.jitter_ns < 10_000 || self.jitter_ns > 1_000_000_000 {
+            return Err(DoubleZeroError::InvalidJitter);
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -244,12 +278,12 @@ mod tests {
             side_a_pk: Pubkey::new_unique(),
             side_z_pk: Pubkey::new_unique(),
             link_type: LinkLinkType::WAN,
-            bandwidth: 1234,
+            bandwidth: 15_000_000_000,
             mtu: 1566,
-            delay_ns: 1234,
-            jitter_ns: 1121,
-            tunnel_id: 1234,
-            tunnel_net: "1.2.3.4/32".parse().unwrap(),
+            delay_ns: 1000000,
+            jitter_ns: 100000,
+            tunnel_id: 55,
+            tunnel_net: "10.0.0.1/25".parse().unwrap(),
             code: "test-123".to_string(),
             status: LinkStatus::Activated,
             side_a_iface_name: "eth0".to_string(),
@@ -258,6 +292,9 @@ mod tests {
 
         let data = borsh::to_vec(&val).unwrap();
         let val2 = Link::try_from(&data[..]).unwrap();
+
+        val.validate().unwrap();
+        val2.validate().unwrap();
 
         assert_eq!(val.size(), val2.size());
         assert_eq!(val.owner, val2.owner);
@@ -271,5 +308,191 @@ mod tests {
         assert_eq!(val.side_a_iface_name, val2.side_a_iface_name);
         assert_eq!(val.side_z_iface_name, val2.side_z_iface_name);
         assert_eq!(data.len(), val.size(), "Invalid Size");
+    }
+
+    #[test]
+    fn test_state_link_validate_error_invalid_account_type() {
+        let val = Link {
+            account_type: AccountType::User, // Should be Link
+            owner: Pubkey::new_unique(),
+            index: 123,
+            bump_seed: 1,
+            contributor_pk: Pubkey::new_unique(),
+            side_a_pk: Pubkey::new_unique(),
+            side_z_pk: Pubkey::new_unique(),
+            link_type: LinkLinkType::WAN,
+            bandwidth: 10_000_000_000,
+            mtu: 1566,
+            delay_ns: 1_000_000,
+            jitter_ns: 1_000_000,
+            tunnel_id: 1,
+            tunnel_net: "10.0.0.1/25".parse().unwrap(),
+            code: "test-123".to_string(),
+            status: LinkStatus::Activated,
+            side_a_iface_name: "eth0".to_string(),
+            side_z_iface_name: "eth1".to_string(),
+        };
+        let err = val.validate();
+        assert!(err.is_err());
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidAccountType);
+    }
+
+    #[test]
+    fn test_state_link_validate_error_invalid_tunnel_net() {
+        let val = Link {
+            account_type: AccountType::Link,
+            owner: Pubkey::new_unique(),
+            index: 123,
+            bump_seed: 1,
+            contributor_pk: Pubkey::new_unique(),
+            side_a_pk: Pubkey::new_unique(),
+            side_z_pk: Pubkey::new_unique(),
+            link_type: LinkLinkType::WAN,
+            bandwidth: 10_000_000_000,
+            mtu: 1566,
+            delay_ns: 1_000_000,
+            jitter_ns: 1_000_000,
+            tunnel_id: 1,
+            tunnel_net: "8.8.8.8/25".parse().unwrap(), // Not private
+            code: "test-123".to_string(),
+            status: LinkStatus::Activated,
+            side_a_iface_name: "eth0".to_string(),
+            side_z_iface_name: "eth1".to_string(),
+        };
+        let err = val.validate();
+        assert!(err.is_err());
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidTunnelNet);
+    }
+
+    #[test]
+    fn test_state_link_validate_error_invalid_tunnel_id() {
+        let val = Link {
+            account_type: AccountType::Link,
+            owner: Pubkey::new_unique(),
+            index: 123,
+            bump_seed: 1,
+            contributor_pk: Pubkey::new_unique(),
+            side_a_pk: Pubkey::new_unique(),
+            side_z_pk: Pubkey::new_unique(),
+            link_type: LinkLinkType::WAN,
+            bandwidth: 10_000_000_000,
+            mtu: 1566,
+            delay_ns: 1_000_000,
+            jitter_ns: 1_000_000,
+            tunnel_id: 2048, // Invalid
+            tunnel_net: "10.0.0.1/25".parse().unwrap(),
+            code: "test-123".to_string(),
+            status: LinkStatus::Activated,
+            side_a_iface_name: "eth0".to_string(),
+            side_z_iface_name: "eth1".to_string(),
+        };
+        let err = val.validate();
+        assert!(err.is_err());
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidTunnelId);
+    }
+
+    #[test]
+    fn test_state_link_validate_error_invalid_bandwidth() {
+        let val_low = Link {
+            account_type: AccountType::Link,
+            owner: Pubkey::new_unique(),
+            index: 123,
+            bump_seed: 1,
+            contributor_pk: Pubkey::new_unique(),
+            side_a_pk: Pubkey::new_unique(),
+            side_z_pk: Pubkey::new_unique(),
+            link_type: LinkLinkType::WAN,
+            bandwidth: 1_000_000_000, // Less than minimum
+            mtu: 1566,
+            delay_ns: 1_000_000,
+            jitter_ns: 1_000_000,
+            tunnel_id: 1,
+            tunnel_net: "10.0.0.1/25".parse().unwrap(),
+            code: "test-123".to_string(),
+            status: LinkStatus::Activated,
+            side_a_iface_name: "eth0".to_string(),
+            side_z_iface_name: "eth1".to_string(),
+        };
+        let err_low = val_low.validate();
+        assert!(err_low.is_err());
+        assert_eq!(err_low.unwrap_err(), DoubleZeroError::InvalidBandwidth);
+
+        let val_high = Link {
+            bandwidth: 500_000_000_000, // Greater than maximum
+            ..val_low
+        };
+        let err_high = val_high.validate();
+        assert!(err_high.is_err());
+        assert_eq!(err_high.unwrap_err(), DoubleZeroError::InvalidBandwidth);
+    }
+
+    #[test]
+    fn test_state_link_validate_error_invalid_delay() {
+        let val_low = Link {
+            account_type: AccountType::Link,
+            owner: Pubkey::new_unique(),
+            index: 123,
+            bump_seed: 1,
+            contributor_pk: Pubkey::new_unique(),
+            side_a_pk: Pubkey::new_unique(),
+            side_z_pk: Pubkey::new_unique(),
+            link_type: LinkLinkType::WAN,
+            bandwidth: 10_000_000_000,
+            mtu: 1566,
+            delay_ns: 99, // Less than minimum
+            jitter_ns: 1_000_000,
+            tunnel_id: 1,
+            tunnel_net: "10.0.0.1/25".parse().unwrap(),
+            code: "test-123".to_string(),
+            status: LinkStatus::Activated,
+            side_a_iface_name: "eth0".to_string(),
+            side_z_iface_name: "eth1".to_string(),
+        };
+        let err_low = val_low.validate();
+        assert!(err_low.is_err());
+        assert_eq!(err_low.unwrap_err(), DoubleZeroError::InvalidDelay);
+
+        let val_high = Link {
+            delay_ns: 2_000_000_000, // Greater than maximum
+            ..val_low
+        };
+        let err_high = val_high.validate();
+        assert!(err_high.is_err());
+        assert_eq!(err_high.unwrap_err(), DoubleZeroError::InvalidDelay);
+    }
+
+    #[test]
+    fn test_state_link_validate_error_invalid_jitter() {
+        let val_low = Link {
+            account_type: AccountType::Link,
+            owner: Pubkey::new_unique(),
+            index: 123,
+            bump_seed: 1,
+            contributor_pk: Pubkey::new_unique(),
+            side_a_pk: Pubkey::new_unique(),
+            side_z_pk: Pubkey::new_unique(),
+            link_type: LinkLinkType::WAN,
+            bandwidth: 10_000_000_000,
+            mtu: 1566,
+            delay_ns: 1_000_000,
+            jitter_ns: 9, // Less than minimum
+            tunnel_id: 1,
+            tunnel_net: "10.0.0.1/25".parse().unwrap(),
+            code: "test-123".to_string(),
+            status: LinkStatus::Activated,
+            side_a_iface_name: "eth0".to_string(),
+            side_z_iface_name: "eth1".to_string(),
+        };
+        let err_low = val_low.validate();
+        assert!(err_low.is_err());
+        assert_eq!(err_low.unwrap_err(), DoubleZeroError::InvalidJitter);
+
+        let val_high = Link {
+            jitter_ns: 2_000_000_000, // Greater than maximum
+            ..val_low
+        };
+        let err_high = val_high.validate();
+        assert!(err_high.is_err());
+        assert_eq!(err_high.unwrap_err(), DoubleZeroError::InvalidJitter);
     }
 }

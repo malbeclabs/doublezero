@@ -101,7 +101,7 @@ async fn test_multicast_subscriber_allowlist() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::ActivateMulticastGroup(MulticastGroupActivateArgs {
-            multicast_ip: "223.0.0.1".parse().unwrap(),
+            multicast_ip: "224.254.0.1".parse().unwrap(),
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -118,7 +118,7 @@ async fn test_multicast_subscriber_allowlist() {
         .unwrap();
 
     assert_eq!(mgroup.account_type, AccountType::MulticastGroup);
-    assert_eq!(mgroup.multicast_ip.to_string(), "223.0.0.1");
+    assert_eq!(mgroup.multicast_ip.to_string(), "224.254.0.1");
     assert_eq!(mgroup.status, MulticastGroupStatus::Activated);
 
     println!("✅");

@@ -43,7 +43,7 @@ func NewLocalDevnet(log *slog.Logger, deployID string) (*LocalDevnet, error) {
 	}
 
 	// Initialize a subnet allocator.
-	subnetAllocator := docker.NewSubnetAllocator("10.128.0.0/9", subnetCIDRPrefix, dockerClient)
+	subnetAllocator := docker.NewSubnetAllocator("9.128.0.0/9", subnetCIDRPrefix, dockerClient)
 
 	// Disable the default testcontainers behavior of automatically removing containers on exit.
 	err = os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")

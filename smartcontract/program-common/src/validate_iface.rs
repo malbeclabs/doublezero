@@ -14,6 +14,10 @@ pub fn validate_iface(val: &str) -> Result<String, String> {
     if is_valid_interface_name(val) {
         return Ok(capitalize(val.to_string()));
     } else {
+        if val.len() < 3 {
+            return Err(String::from("Invalid interface shorthand"));
+        }
+
         let alt = match val[0..2].to_lowercase().as_str() {
             "et" => format!("Ethernet{}", &val[2..]),
             "sw" => format!("Switch{}", &val[2..]),

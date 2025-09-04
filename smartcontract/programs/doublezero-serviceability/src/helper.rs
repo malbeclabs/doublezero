@@ -1,4 +1,4 @@
-use crate::{seeds::*, state::accounttype::*};
+use crate::{error::Validate, seeds::*, state::accounttype::*};
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::AccountInfo,
@@ -9,7 +9,10 @@ use solana_program::{
     system_instruction, system_program,
     sysvar::{rent::Rent, Sysvar},
 };
-use std::{fmt, fmt::Debug};
+use std::{
+    fmt::{self, Debug},
+    net::Ipv4Addr,
+};
 
 use doublezero_program_common::create_account::try_create_account;
 #[cfg(test)]
@@ -23,8 +26,11 @@ pub fn account_create<'a, T>(
     program_id: &Pubkey,
 ) -> ProgramResult
 where
-    T: AccountTypeInfo + BorshSerialize + Debug,
+    T: AccountTypeInfo + BorshSerialize + Validate + Debug,
 {
+    // Validate the instance
+    instance.validate()?;
+
     let account_space = AccountTypeInfo::size(instance);
 
     #[cfg(test)]
@@ -69,8 +75,11 @@ pub fn account_write<'a, T>(
     system_program: &AccountInfo<'a>,
 ) -> ProgramResult
 where
-    T: AccountTypeInfo + BorshSerialize,
+    T: AccountTypeInfo + BorshSerialize + Validate + Debug,
 {
+    // Validate the instance
+    instance.validate()?;
+
     let actual_len = account.data_len();
     let new_len = instance.size();
     {
@@ -167,4 +176,13 @@ pub fn deserialize_vec_with_capacity<T: BorshDeserialize>(
         vec.push(T::deserialize(data)?);
     }
     Ok(vec)
+}
+
+pub fn is_global(ip: Ipv4Addr) -> bool {
+    !ip.is_private()
+        && !ip.is_loopback()
+        && !ip.is_link_local()
+        && !ip.is_broadcast()
+        && !ip.is_documentation()
+        && !ip.is_unspecified()
 }

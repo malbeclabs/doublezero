@@ -183,8 +183,8 @@ async fn test_user() {
         DoubleZeroInstruction::CreateDevice(device::create::DeviceCreateArgs {
             code: "la".to_string(),
             device_type: DeviceType::Switch,
-            public_ip: [10, 0, 0, 1].into(),
-            dz_prefixes: "10.1.0.0/23".parse().unwrap(),
+            public_ip: [100, 0, 0, 1].into(),
+            dz_prefixes: "100.1.0.0/23".parse().unwrap(),
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
         }),
@@ -236,7 +236,7 @@ async fn test_user() {
     /***********************************************************************************************************************************/
     println!("🟢 6. Testing Access Pass creation...");
 
-    let user_ip = [10, 0, 0, 1].into();
+    let user_ip = [100, 0, 0, 1].into();
     let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &user_ip, &payer.pubkey());
 
     println!("Testing AccessPass User1 initialization...");
@@ -299,7 +299,7 @@ async fn test_user() {
         .get_user()
         .unwrap();
     assert_eq!(user.account_type, AccountType::User);
-    assert_eq!(user.client_ip.to_string(), "10.0.0.1");
+    assert_eq!(user.client_ip.to_string(), "100.0.0.1");
     assert_eq!(user.device_pk, device_pubkey);
     assert_eq!(user.status, UserStatus::Pending);
 
@@ -313,7 +313,7 @@ async fn test_user() {
         program_id,
         DoubleZeroInstruction::ActivateUser(UserActivateArgs {
             tunnel_id: 500,
-            tunnel_net: "10.1.2.3/21".parse().unwrap(),
+            tunnel_net: "169.254.0.0/25".parse().unwrap(),
             dz_ip: [200, 0, 0, 1].into(),
         }),
         vec![
@@ -332,7 +332,7 @@ async fn test_user() {
         .unwrap();
     assert_eq!(user.account_type, AccountType::User);
     assert_eq!(user.tunnel_id, 500);
-    assert_eq!(user.tunnel_net.to_string(), "10.1.2.3/21");
+    assert_eq!(user.tunnel_net.to_string(), "169.254.0.0/25");
     assert_eq!(user.dz_ip.to_string(), "200.0.0.1");
     assert_eq!(user.status, UserStatus::Activated);
 
@@ -389,12 +389,12 @@ async fn test_user() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateUser(UserUpdateArgs {
-            client_ip: Some([10, 2, 3, 4].into()),
+            client_ip: Some([100, 2, 3, 4].into()),
             user_type: Some(UserType::IBRL),
             cyoa_type: Some(UserCYOA::GREOverPrivatePeering),
             dz_ip: Some([200, 0, 0, 4].into()),
             tunnel_id: Some(501),
-            tunnel_net: Some("10.1.2.4/22".parse().unwrap()),
+            tunnel_net: Some("169.254.0.2/25".parse().unwrap()),
             validator_pubkey: None,
         }),
         vec![
@@ -411,7 +411,7 @@ async fn test_user() {
         .get_user()
         .unwrap();
     assert_eq!(user.account_type, AccountType::User);
-    assert_eq!(user.client_ip.to_string(), "10.2.3.4");
+    assert_eq!(user.client_ip.to_string(), "100.2.3.4");
     assert_eq!(user.cyoa_type, UserCYOA::GREOverPrivatePeering);
     assert_eq!(user.status, UserStatus::Activated);
 
@@ -423,12 +423,12 @@ async fn test_user() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateUser(UserUpdateArgs {
-            client_ip: Some([10, 2, 3, 5].into()),
+            client_ip: Some([100, 2, 3, 5].into()),
             user_type: Some(UserType::IBRL),
             cyoa_type: Some(UserCYOA::GREOverPrivatePeering),
             dz_ip: None,
             tunnel_id: Some(505),
-            tunnel_net: Some("10.1.2.5/22".parse().unwrap()),
+            tunnel_net: Some("169.254.0.2/25".parse().unwrap()),
             validator_pubkey: None,
         }),
         vec![
@@ -445,7 +445,7 @@ async fn test_user() {
         .get_user()
         .unwrap();
     assert_eq!(user.account_type, AccountType::User);
-    assert_eq!(user.client_ip.to_string(), "10.2.3.5");
+    assert_eq!(user.client_ip.to_string(), "100.2.3.5");
     assert_eq!(user.cyoa_type, UserCYOA::GREOverPrivatePeering);
     assert_eq!(user.status, UserStatus::Activated);
     assert_eq!(user.dz_ip.to_string(), "200.0.0.4");
@@ -473,7 +473,7 @@ async fn test_user() {
         .get_user()
         .unwrap();
     assert_eq!(user.account_type, AccountType::User);
-    assert_eq!(user.client_ip.to_string(), "10.2.3.5");
+    assert_eq!(user.client_ip.to_string(), "100.2.3.5");
     assert_eq!(user.cyoa_type, UserCYOA::GREOverPrivatePeering);
     assert_eq!(user.status, UserStatus::Deleting);
 

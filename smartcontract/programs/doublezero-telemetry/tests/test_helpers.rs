@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use doublezero_program_common::types::{NetworkV4, NetworkV4List};
+use doublezero_program_common::types::NetworkV4;
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
     pda::{
@@ -50,10 +50,7 @@ use solana_sdk::{
     system_program,
     transaction::{Transaction, TransactionError, VersionedTransaction},
 };
-use std::{
-    net::Ipv4Addr,
-    sync::{Arc, Mutex},
-};
+use std::sync::{Arc, Mutex};
 
 #[ctor::ctor]
 fn init_logger() {
@@ -116,8 +113,8 @@ impl DeviceCreateArgsExt for DeviceCreateArgs {
         DeviceCreateArgs {
             code: "".to_string(),
             device_type: DeviceType::Switch,
-            public_ip: Ipv4Addr::UNSPECIFIED,
-            dz_prefixes: NetworkV4List::default(),
+            public_ip: "100.0.0.1".parse().unwrap(),
+            dz_prefixes: vec!["110.0.0.0/24".parse().unwrap()].into(),
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: String::default(),
         }
@@ -133,10 +130,10 @@ impl LinkCreateArgsExt for LinkCreateArgs {
         LinkCreateArgs {
             code: "".to_string(),
             link_type: LinkLinkType::WAN,
-            bandwidth: 0,
-            mtu: 0,
-            delay_ns: 0,
-            jitter_ns: 0,
+            bandwidth: 10_000_000_000,
+            mtu: 4500,
+            delay_ns: 1000,
+            jitter_ns: 1000,
             side_a_iface_name: String::default(),
             side_z_iface_name: Some(String::default()),
         }
@@ -320,8 +317,8 @@ impl LedgerHelper {
                 DeviceCreateArgs {
                     code: "origin_device".to_string(),
                     device_type: DeviceType::Switch,
-                    public_ip: [1, 2, 3, 4].into(),
-                    dz_prefixes: NetworkV4List::default(),
+                    public_ip: [100, 0, 0, 1].into(),
+                    dz_prefixes: vec!["108.0.0.0/24".parse().unwrap()].into(),
                     metrics_publisher_pk: origin_device_agent_pk,
                     ..DeviceCreateArgs::default()
                 },
@@ -342,7 +339,8 @@ impl LedgerHelper {
                 DeviceCreateArgs {
                     code: "target_device".to_string(),
                     device_type: DeviceType::Switch,
-                    public_ip: [5, 6, 7, 8].into(),
+                    public_ip: [100, 0, 0, 2].into(),
+                    dz_prefixes: vec!["108.0.0.0/24".parse().unwrap()].into(),
                     metrics_publisher_pk: Pubkey::new_unique(),
                     ..DeviceCreateArgs::default()
                 },
@@ -363,10 +361,10 @@ impl LedgerHelper {
                 LinkCreateArgs {
                     code: "LINK1".to_string(),
                     link_type: LinkLinkType::WAN,
-                    bandwidth: 1000,
-                    mtu: 1500,
-                    delay_ns: 10,
-                    jitter_ns: 1,
+                    bandwidth: 10_000_000_000,
+                    mtu: 4500,
+                    delay_ns: 1000,
+                    jitter_ns: 1000,
                     side_a_iface_name: "Ethernet0".to_string(),
                     side_z_iface_name: Some("Ethernet1".to_string()),
                 },

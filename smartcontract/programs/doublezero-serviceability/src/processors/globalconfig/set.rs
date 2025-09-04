@@ -66,7 +66,7 @@ pub fn process_set_globalconfig(
     );
 
     let data: GlobalConfig = GlobalConfig {
-        account_type: AccountType::Config,
+        account_type: AccountType::GlobalConfig,
         owner: *payer_account.key,
         bump_seed,
         local_asn: value.local_asn,

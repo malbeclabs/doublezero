@@ -1,7 +1,7 @@
 use solana_program::program_error::ProgramError;
 use thiserror::Error;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq, Clone)]
 pub enum DoubleZeroError {
     #[error("Custom program error: {0:#x}")]
     Custom(u32), // variant 0
@@ -55,6 +55,58 @@ pub enum DoubleZeroError {
     InterfaceNotFound, // variant 24
     #[error("Invalid Access Pass")]
     AccessPassUnauthorized, // variant 25
+    #[error("Invalid Client IP")]
+    InvalidClientIp, // variant 26
+    #[error("Invalid DZ IP")]
+    InvalidDzIp, // variant 27
+    #[error("Invalid Tunnel Network")]
+    InvalidTunnelNet, // variant 28
+    #[error("Invalid Tunnel ID")]
+    InvalidTunnelId, // variant 29
+    #[error("Invalid Tunnel IP")]
+    InvalidTunnelIp, // variant 30
+    #[error("Invalid Bandwidth")]
+    InvalidBandwidth, // variant 31
+    #[error("Invalid Delay")]
+    InvalidDelay, // variant 32
+    #[error("Invalid Jitter")]
+    InvalidJitter, // variant 33
+    #[error("Code too long")]
+    CodeTooLong, // variant 34
+    #[error("No DZ Prefixes")]
+    NoDzPrefixes, // variant 35
+    #[error("Invalid Location")]
+    InvalidLocation, // variant 36
+    #[error("Invalid Exchange")]
+    InvalidExchange, // variant 37
+    #[error("Invalid DZ Prefix")]
+    InvalidDzPrefix, // variant 38
+    #[error("Name too long")]
+    NameTooLong, // variant 39
+    #[error("Invalid Latitude")]
+    InvalidLatitude, // variant 40
+    #[error("Invalid Longitude")]
+    InvalidLongitude, // variant 41
+    #[error("Invalid Location ID")]
+    InvalidLocId, // variant 42
+    #[error("Invalid Country Code")]
+    InvalidCountryCode, // variant 43
+    #[error("Invalid Local ASN")]
+    InvalidLocalAsn, // variant 44
+    #[error("Invalid Remote ASN")]
+    InvalidRemoteAsn, // variant 45
+    #[error("Invalid MTU")]
+    InvalidMtu, // variant 46
+    #[error("Invalid Interface IP")]
+    InvalidInterfaceIp, // variant 47
+    #[error("Invalid Interface IP Net")]
+    InvalidInterfaceIpNet, // variant 48
+    #[error("Invalid VLAN ID")]
+    InvalidVlanId, // variant 49
+    #[error("Invalid Max Bandwidth")]
+    InvalidMaxBandwidth, // variant 50
+    #[error("Invalid Multicast IP")]
+    InvalidMulticastIp, // variant 51
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -86,6 +138,32 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::InvalidSolanaValidatorPubkey => ProgramError::Custom(23),
             DoubleZeroError::InterfaceNotFound => ProgramError::Custom(24),
             DoubleZeroError::AccessPassUnauthorized => ProgramError::Custom(25),
+            DoubleZeroError::InvalidClientIp => ProgramError::Custom(26),
+            DoubleZeroError::InvalidDzIp => ProgramError::Custom(27),
+            DoubleZeroError::InvalidTunnelNet => ProgramError::Custom(28),
+            DoubleZeroError::InvalidTunnelId => ProgramError::Custom(29),
+            DoubleZeroError::InvalidTunnelIp => ProgramError::Custom(30),
+            DoubleZeroError::InvalidBandwidth => ProgramError::Custom(31),
+            DoubleZeroError::InvalidDelay => ProgramError::Custom(32),
+            DoubleZeroError::InvalidJitter => ProgramError::Custom(33),
+            DoubleZeroError::CodeTooLong => ProgramError::Custom(34),
+            DoubleZeroError::NoDzPrefixes => ProgramError::Custom(35),
+            DoubleZeroError::InvalidLocation => ProgramError::Custom(36),
+            DoubleZeroError::InvalidExchange => ProgramError::Custom(37),
+            DoubleZeroError::InvalidDzPrefix => ProgramError::Custom(38),
+            DoubleZeroError::NameTooLong => ProgramError::Custom(39),
+            DoubleZeroError::InvalidLatitude => ProgramError::Custom(40),
+            DoubleZeroError::InvalidLongitude => ProgramError::Custom(41),
+            DoubleZeroError::InvalidLocId => ProgramError::Custom(42),
+            DoubleZeroError::InvalidCountryCode => ProgramError::Custom(43),
+            DoubleZeroError::InvalidLocalAsn => ProgramError::Custom(44),
+            DoubleZeroError::InvalidRemoteAsn => ProgramError::Custom(45),
+            DoubleZeroError::InvalidMtu => ProgramError::Custom(46),
+            DoubleZeroError::InvalidInterfaceIp => ProgramError::Custom(47),
+            DoubleZeroError::InvalidInterfaceIpNet => ProgramError::Custom(48),
+            DoubleZeroError::InvalidVlanId => ProgramError::Custom(49),
+            DoubleZeroError::InvalidMaxBandwidth => ProgramError::Custom(50),
+            DoubleZeroError::InvalidMulticastIp => ProgramError::Custom(51),
         }
     }
 }
@@ -118,6 +196,33 @@ impl From<u32> for DoubleZeroError {
             23 => DoubleZeroError::InvalidSolanaValidatorPubkey,
             24 => DoubleZeroError::InterfaceNotFound,
             25 => DoubleZeroError::AccessPassUnauthorized,
+            26 => DoubleZeroError::InvalidClientIp,
+            27 => DoubleZeroError::InvalidDzIp,
+            28 => DoubleZeroError::InvalidTunnelNet,
+            29 => DoubleZeroError::InvalidTunnelId,
+            30 => DoubleZeroError::InvalidTunnelIp,
+            31 => DoubleZeroError::InvalidBandwidth,
+            32 => DoubleZeroError::InvalidDelay,
+            33 => DoubleZeroError::InvalidJitter,
+            34 => DoubleZeroError::CodeTooLong,
+            35 => DoubleZeroError::NoDzPrefixes,
+            36 => DoubleZeroError::InvalidLocation,
+            37 => DoubleZeroError::InvalidExchange,
+            38 => DoubleZeroError::InvalidDzPrefix,
+            39 => DoubleZeroError::NameTooLong,
+            40 => DoubleZeroError::InvalidLatitude,
+            41 => DoubleZeroError::InvalidLongitude,
+            42 => DoubleZeroError::InvalidLocId,
+            43 => DoubleZeroError::InvalidCountryCode,
+            44 => DoubleZeroError::InvalidLocalAsn,
+            45 => DoubleZeroError::InvalidRemoteAsn,
+            46 => DoubleZeroError::InvalidMtu,
+            47 => DoubleZeroError::InvalidInterfaceIp,
+            48 => DoubleZeroError::InvalidInterfaceIpNet,
+            49 => DoubleZeroError::InvalidVlanId,
+            50 => DoubleZeroError::InvalidMaxBandwidth,
+            51 => DoubleZeroError::InvalidMulticastIp,
+
             _ => DoubleZeroError::Custom(e),
         }
     }
@@ -126,35 +231,81 @@ impl From<u32> for DoubleZeroError {
 impl From<ProgramError> for DoubleZeroError {
     fn from(e: ProgramError) -> Self {
         match e {
-            ProgramError::Custom(e) => match e {
-                1 => DoubleZeroError::InvalidOwnerPubkey,
-                2 => DoubleZeroError::InvalidLocationPubkey,
-                3 => DoubleZeroError::InvalidExchangePubkey,
-                4 => DoubleZeroError::InvalidDeviceAPubkey,
-                5 => DoubleZeroError::InvalidDeviceZPubkey,
-                6 => DoubleZeroError::InvalidDevicePubkey,
-                7 => DoubleZeroError::InvalidStatus,
-                8 => DoubleZeroError::NotAllowed,
-                9 => DoubleZeroError::InvalidAccountType,
-                10 => DoubleZeroError::InvalidContributorPubkey,
-                11 => DoubleZeroError::InvalidInterfaceVersion,
-                12 => DoubleZeroError::InvalidInterfaceName,
-                13 => DoubleZeroError::ReferenceCountNotZero,
-                14 => DoubleZeroError::InvalidContributor,
-                15 => DoubleZeroError::InvalidInterfaceZForExternal,
-                16 => DoubleZeroError::InvalidIndex,
-                17 => DoubleZeroError::DeviceAlreadySet,
-                18 => DoubleZeroError::DeviceNotSet,
-                19 => DoubleZeroError::InvalidAccountCode,
-                20 => DoubleZeroError::MaxUsersExceeded,
-                21 => DoubleZeroError::InvalidLastAccessEpoch,
-                22 => DoubleZeroError::Unauthorized,
-                23 => DoubleZeroError::InvalidSolanaValidatorPubkey,
-                24 => DoubleZeroError::InterfaceNotFound,
-                25 => DoubleZeroError::AccessPassUnauthorized,
-                _ => DoubleZeroError::Custom(e),
-            },
+            ProgramError::Custom(e) => e.into(),
             _ => DoubleZeroError::Custom(0),
+        }
+    }
+}
+
+pub trait Validate {
+    fn validate(&self) -> Result<(), DoubleZeroError>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_error_enum_conversions() {
+        use DoubleZeroError::*;
+        let variants = vec![
+            Custom(123),
+            InvalidOwnerPubkey,
+            InvalidExchangePubkey,
+            InvalidDevicePubkey,
+            InvalidLocationPubkey,
+            InvalidDeviceAPubkey,
+            InvalidDeviceZPubkey,
+            InvalidStatus,
+            NotAllowed,
+            InvalidAccountType,
+            InvalidContributorPubkey,
+            InvalidInterfaceVersion,
+            InvalidInterfaceName,
+            ReferenceCountNotZero,
+            InvalidContributor,
+            InvalidInterfaceZForExternal,
+            InvalidIndex,
+            DeviceAlreadySet,
+            DeviceNotSet,
+            InvalidAccountCode,
+            MaxUsersExceeded,
+            InvalidLastAccessEpoch,
+            Unauthorized,
+            InvalidSolanaValidatorPubkey,
+            InterfaceNotFound,
+            AccessPassUnauthorized,
+            InvalidClientIp,
+            InvalidDzIp,
+            InvalidTunnelNet,
+            InvalidTunnelId,
+            InvalidTunnelIp,
+            InvalidBandwidth,
+            InvalidDelay,
+            InvalidJitter,
+            CodeTooLong,
+            NoDzPrefixes,
+            InvalidLocation,
+            InvalidExchange,
+            InvalidDzPrefix,
+            NameTooLong,
+            InvalidLatitude,
+            InvalidLongitude,
+            InvalidLocId,
+            InvalidCountryCode,
+            InvalidLocalAsn,
+            InvalidRemoteAsn,
+            InvalidMtu,
+            InvalidInterfaceIp,
+            InvalidInterfaceIpNet,
+            InvalidVlanId,
+            InvalidMaxBandwidth,
+            InvalidMulticastIp,
+        ];
+        for err in variants {
+            let pe: ProgramError = err.clone().into();
+            let err2: DoubleZeroError = pe.into();
+            assert_eq!(err, err2, "Error conversion failed for {:?}", err);
         }
     }
 }

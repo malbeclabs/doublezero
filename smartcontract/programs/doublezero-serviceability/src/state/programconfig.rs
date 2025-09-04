@@ -1,5 +1,6 @@
 use crate::{
     accounts::{AccountSeed, AccountSize},
+    error::{DoubleZeroError, Validate},
     programversion::ProgramVersion,
     seeds::{SEED_PREFIX, SEED_PROGRAM_CONFIG},
     state::accounttype::AccountType,
@@ -72,6 +73,16 @@ impl TryFrom<&AccountInfo<'_>> for ProgramConfig {
     }
 }
 
+impl Validate for ProgramConfig {
+    fn validate(&self) -> Result<(), DoubleZeroError> {
+        // Account type must be ProgramConfig
+        if self.account_type != AccountType::ProgramConfig {
+            return Err(DoubleZeroError::InvalidAccountType);
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -91,10 +102,29 @@ mod tests {
         let data = borsh::to_vec(&val).unwrap();
         let val2 = ProgramConfig::try_from(&data[..]).unwrap();
 
+        val.validate().unwrap();
+        val2.validate().unwrap();
+
         assert_eq!(val.size(), val2.size());
         assert_eq!(val.version.major, val2.version.major);
         assert_eq!(val.version.minor, val2.version.minor);
         assert_eq!(val.version.patch, val2.version.patch);
         assert_eq!(data.len(), val.size(), "Invalid Size");
+    }
+
+    #[test]
+    fn test_state_programconfig_validate_error_invalid_account_type() {
+        let val = ProgramConfig {
+            account_type: AccountType::Device, //  Should be ProgramConfig
+            bump_seed: 1,
+            version: ProgramVersion {
+                major: 1,
+                minor: 2,
+                patch: 3,
+            },
+        };
+        let err = val.validate();
+        assert!(err.is_err());
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidAccountType);
     }
 }

@@ -1,12 +1,15 @@
 package controller
 
 import (
+	"bytes"
 	"context"
 	"log"
 	"net"
 	"net/netip"
 	"os"
+	"strings"
 	"testing"
+	"text/template"
 	"time"
 
 	"google.golang.org/grpc"
@@ -16,9 +19,60 @@ import (
 	"github.com/gagliardetto/solana-go"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	"github.com/malbeclabs/doublezero/controlplane/controller/config"
 	pb "github.com/malbeclabs/doublezero/controlplane/proto/controller/gen/pb-go"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
+
+// helper that creates a slice of Tunnel structs with sequential IDs. We can use this to populate
+// a list of tunnel slots so we don't have to update tests by hand when MaxUserTunnelSlots changes.
+func generateEmptyTunnelSlots(startID, count int) []*Tunnel {
+	tunnels := make([]*Tunnel, count)
+	for i := 0; i < count; i++ {
+		tunnels[i] = &Tunnel{Id: startID + i}
+	}
+	return tunnels
+}
+
+// seq generates a sequence of integers from start to end (inclusive)
+func seq(start, end int) []int {
+	if start > end {
+		return []int{}
+	}
+	result := make([]int, end-start+1)
+	for i := range result {
+		result[i] = start + i
+	}
+	return result
+}
+
+// add returns the sum of two integers
+func add(a, b int) int {
+	return a + b
+}
+
+// renderTemplateFile reads a file and renders it as a template with the given data
+func renderTemplateFile(filepath string, data any) (string, error) {
+	content, err := os.ReadFile(filepath)
+	if err != nil {
+		return "", err
+	}
+
+	var buf bytes.Buffer
+	tmpl := template.New("").Funcs(template.FuncMap{
+		"seq": seq,
+		"add": add,
+	})
+	tmpl, err = tmpl.Parse(string(content))
+	if err != nil {
+		return "", err
+	}
+	err = tmpl.Execute(&buf, data)
+	if err != nil {
+		return "", err
+	}
+	return buf.String(), nil
+}
 
 func TestGetConfig(t *testing.T) {
 	tests := []struct {
@@ -78,7 +132,7 @@ func TestGetConfig(t *testing.T) {
 				},
 			},
 			Pubkey: "abc123",
-			Want:   "fixtures/unicast.tunnel.txt",
+			Want:   "fixtures/unicast.tunnel.tmpl",
 		},
 		{
 			Name:               "render_multicast_config_successfully",
@@ -161,7 +215,7 @@ func TestGetConfig(t *testing.T) {
 				},
 			},
 			Pubkey: "abc123",
-			Want:   "fixtures/multicast.tunnel.txt",
+			Want:   "fixtures/multicast.tunnel.tmpl",
 		},
 		{
 			Name:               "get_config_mixed_tunnels_successfully",
@@ -254,7 +308,7 @@ func TestGetConfig(t *testing.T) {
 				},
 			},
 			Pubkey: "abc123",
-			Want:   "fixtures/mixed.tunnel.txt",
+			Want:   "fixtures/mixed.tunnel.tmpl",
 		},
 		{
 			Name:               "get_config_nohardware_tunnels_successfully",
@@ -348,7 +402,7 @@ func TestGetConfig(t *testing.T) {
 				},
 			},
 			Pubkey: "abc123",
-			Want:   "fixtures/nohardware.tunnel.txt",
+			Want:   "fixtures/nohardware.tunnel.tmpl",
 		},
 		{
 			Name:               "render_base_config_successfully",
@@ -513,9 +567,23 @@ func TestGetConfig(t *testing.T) {
 			controller.swapCache(test.StateCache)
 
 			// grab the test fixture for the expected rendered config
-			want, err := os.ReadFile(test.Want)
-			if err != nil {
-				t.Fatalf("error reading test fixture %s: %v", test.Want, err)
+			var want []byte
+			if strings.HasSuffix(test.Want, ".tmpl") {
+				templateData := map[string]int{
+					"StartTunnel": config.StartUserTunnelNum,
+					"EndTunnel":   config.StartUserTunnelNum + config.MaxUserTunnelSlots - 1,
+				}
+				rendered, err := renderTemplateFile(test.Want, templateData)
+				if err != nil {
+					t.Fatalf("error rendering test fixture %s: %v", test.Want, err)
+				}
+				want = []byte(rendered)
+			} else {
+				var err error
+				want, err = os.ReadFile(test.Want)
+				if err != nil {
+					t.Fatalf("error reading test fixture %s: %v", test.Want, err)
+				}
 			}
 
 			// get fetch the rendered config for the device's pubkey
@@ -524,7 +592,7 @@ func TestGetConfig(t *testing.T) {
 				t.Errorf("error while fetching config: %v", err)
 			}
 			if diff := cmp.Diff(string(want), got.GetConfig()); diff != "" {
-				t.Errorf("GetConfig mismatch (-want +got): %s\n", diff)
+				t.Errorf("GetConfig mismatch in fixture %s (-want +got): %s\n", test.Want, diff)
 			}
 		})
 	}
@@ -690,7 +758,7 @@ func TestStateCache(t *testing.T) {
 						Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
 						IsisNet:         "49.0000.0e0e.0e0e.0000.00",
 						Ipv4LoopbackIP:  net.IP{12, 12, 12, 12},
-						Tunnels: []*Tunnel{
+						Tunnels: append([]*Tunnel{
 							{
 								Id:            500,
 								UnderlaySrcIP: net.IP{2, 2, 2, 2},
@@ -718,134 +786,8 @@ func TestStateCache(t *testing.T) {
 									{239, 0, 0, 1},
 								},
 							},
-							{Id: 502},
-							{Id: 503},
-							{Id: 504},
-							{Id: 505},
-							{Id: 506},
-							{Id: 507},
-							{Id: 508},
-							{Id: 509},
-							{Id: 510},
-							{Id: 511},
-							{Id: 512},
-							{Id: 513},
-							{Id: 514},
-							{Id: 515},
-							{Id: 516},
-							{Id: 517},
-							{Id: 518},
-							{Id: 519},
-							{Id: 520},
-							{Id: 521},
-							{Id: 522},
-							{Id: 523},
-							{Id: 524},
-							{Id: 525},
-							{Id: 526},
-							{Id: 527},
-							{Id: 528},
-							{Id: 529},
-							{Id: 530},
-							{Id: 531},
-							{Id: 532},
-							{Id: 533},
-							{Id: 534},
-							{Id: 535},
-							{Id: 536},
-							{Id: 537},
-							{Id: 538},
-							{Id: 539},
-							{Id: 540},
-							{Id: 541},
-							{Id: 542},
-							{Id: 543},
-							{Id: 544},
-							{Id: 545},
-							{Id: 546},
-							{Id: 547},
-							{Id: 548},
-							{Id: 549},
-							{Id: 550},
-							{Id: 551},
-							{Id: 552},
-							{Id: 553},
-							{Id: 554},
-							{Id: 555},
-							{Id: 556},
-							{Id: 557},
-							{Id: 558},
-							{Id: 559},
-							{Id: 560},
-							{Id: 561},
-							{Id: 562},
-							{Id: 563},
-							{Id: 564},
-							{Id: 565},
-							{Id: 566},
-							{Id: 567},
-							{Id: 568},
-							{Id: 569},
-							{Id: 570},
-							{Id: 571},
-							{Id: 572},
-							{Id: 573},
-							{Id: 574},
-							{Id: 575},
-							{Id: 576},
-							{Id: 577},
-							{Id: 578},
-							{Id: 579},
-							{Id: 580},
-							{Id: 581},
-							{Id: 582},
-							{Id: 583},
-							{Id: 584},
-							{Id: 585},
-							{Id: 586},
-							{Id: 587},
-							{Id: 588},
-							{Id: 589},
-							{Id: 590},
-							{Id: 591},
-							{Id: 592},
-							{Id: 593},
-							{Id: 594},
-							{Id: 595},
-							{Id: 596},
-							{Id: 597},
-							{Id: 598},
-							{Id: 599},
-							{Id: 600},
-							{Id: 601},
-							{Id: 602},
-							{Id: 603},
-							{Id: 604},
-							{Id: 605},
-							{Id: 606},
-							{Id: 607},
-							{Id: 608},
-							{Id: 609},
-							{Id: 610},
-							{Id: 611},
-							{Id: 612},
-							{Id: 613},
-							{Id: 614},
-							{Id: 615},
-							{Id: 616},
-							{Id: 617},
-							{Id: 618},
-							{Id: 619},
-							{Id: 620},
-							{Id: 621},
-							{Id: 622},
-							{Id: 623},
-							{Id: 624},
-							{Id: 625},
-							{Id: 626},
-							{Id: 627},
-						},
-						TunnelSlots: 128,
+						}, generateEmptyTunnelSlots(config.StartUserTunnelNum+2, config.MaxUserTunnelSlots-2)...),
+						TunnelSlots: config.MaxUserTunnelSlots,
 						Interfaces: []Interface{
 							{
 								InterfaceType: InterfaceTypePhysical,
@@ -1126,7 +1068,7 @@ func TestEndToEnd(t *testing.T) {
 				Pubkey:   "4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM",
 				BgpPeers: []string{},
 			},
-			Want: "fixtures/e2e.txt",
+			Want: "fixtures/e2e.tmpl",
 		},
 		{
 			Name: "remove_unknown_peers_successfully",
@@ -1251,7 +1193,7 @@ func TestEndToEnd(t *testing.T) {
 					"169.254.0.3", // In UserTunnelBlock, but associated with a user - should not be flagged for removal
 				},
 			},
-			Want: "fixtures/e2e.peer.removal.txt",
+			Want: "fixtures/e2e.peer.removal.tmpl",
 		},
 		{
 			Name: "base_config_without_interfaces_and_peers",
@@ -1333,7 +1275,7 @@ func TestEndToEnd(t *testing.T) {
 				Pubkey:   "4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM",
 				BgpPeers: []string{},
 			},
-			Want: "fixtures/e2e.without.interfaces.peers.txt",
+			Want: "fixtures/e2e.without.interfaces.peers.tmpl",
 		},
 		{
 			Name: "remove_last_user_from_device",
@@ -1380,7 +1322,7 @@ func TestEndToEnd(t *testing.T) {
 					"169.254.0.13",
 				},
 			},
-			Want: "fixtures/e2e.last.user.txt",
+			Want: "fixtures/e2e.last.user.tmpl",
 		},
 	}
 	for _, test := range tests {
@@ -1453,9 +1395,23 @@ func TestEndToEnd(t *testing.T) {
 				t.Fatalf("timed out waiting for state cache update")
 			}
 
-			want, err := os.ReadFile(test.Want)
-			if err != nil {
-				t.Fatalf("error reading test fixture %s: %v", test.Want, err)
+			var want []byte
+			if strings.HasSuffix(test.Want, ".tmpl") {
+				templateData := map[string]int{
+					"StartTunnel": config.StartUserTunnelNum,
+					"EndTunnel":   config.StartUserTunnelNum + config.MaxUserTunnelSlots - 1,
+				}
+				rendered, err := renderTemplateFile(test.Want, templateData)
+				if err != nil {
+					t.Fatalf("error rendering test fixture %s: %v", test.Want, err)
+				}
+				want = []byte(rendered)
+			} else {
+				var err error
+				want, err = os.ReadFile(test.Want)
+				if err != nil {
+					t.Fatalf("error reading test fixture %s: %v", test.Want, err)
+				}
 			}
 
 			got, err := agent.GetConfig(ctx, test.AgentRequest)
@@ -1463,7 +1419,7 @@ func TestEndToEnd(t *testing.T) {
 				t.Fatalf("error while fetching config: %v", err)
 			}
 			if diff := cmp.Diff(string(want), got.Config); diff != "" {
-				t.Errorf("Config mismatch (-want +got): %s\n", diff)
+				t.Errorf("Config mismatch in fixture %s (-want +got):\n%s", test.Want, diff)
 			}
 		})
 	}

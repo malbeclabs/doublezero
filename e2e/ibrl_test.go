@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	controllerconfig "github.com/malbeclabs/doublezero/controlplane/controller/config"
 	e2e "github.com/malbeclabs/doublezero/e2e"
 	"github.com/malbeclabs/doublezero/e2e/internal/arista"
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
@@ -56,8 +57,10 @@ func checkIbgpMsdpPeerRemoved(t *testing.T, dn *TestDevnet, device *devnet.Devic
 	if !t.Run("wait_for_agent_config_after_peer_removal", func(t *testing.T) {
 		// We need a new fixture that shows the config after pit-dzd01's Loopback255 is removed
 		// This fixture should have pit-dzd01's BGP and MSDP peer configurations removed
-		config, err := fixtures.Render("fixtures/ibrl/doublezero_agent_config_peer_removed.tmpl", map[string]string{
-			"DeviceIP": device.CYOANetworkIP,
+		config, err := fixtures.Render("fixtures/ibrl/doublezero_agent_config_peer_removed.tmpl", map[string]any{
+			"DeviceIP":    device.CYOANetworkIP,
+			"StartTunnel": controllerconfig.StartUserTunnelNum,
+			"EndTunnel":   controllerconfig.StartUserTunnelNum + controllerconfig.MaxUserTunnelSlots - 1,
 		})
 		require.NoError(t, err, "error reading agent configuration fixture for peer removal")
 		err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))
@@ -78,9 +81,11 @@ func checkIBRLPostConnect(t *testing.T, dn *TestDevnet, device *devnet.Device, c
 		dn.log.Info("==> Checking IBRL post-connect requirements")
 
 		if !t.Run("wait_for_agent_config_from_controller_post_connect", func(t *testing.T) {
-			config, err := fixtures.Render("fixtures/ibrl/doublezero_agent_config_user_added.tmpl", map[string]string{
-				"ClientIP": client.CYOANetworkIP,
-				"DeviceIP": device.CYOANetworkIP,
+			config, err := fixtures.Render("fixtures/ibrl/doublezero_agent_config_user_added.tmpl", map[string]any{
+				"ClientIP":    client.CYOANetworkIP,
+				"DeviceIP":    device.CYOANetworkIP,
+				"StartTunnel": controllerconfig.StartUserTunnelNum,
+				"EndTunnel":   controllerconfig.StartUserTunnelNum + controllerconfig.MaxUserTunnelSlots - 1,
 			})
 			require.NoError(t, err, "error reading agent configuration fixture")
 			err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))
@@ -92,13 +97,13 @@ func checkIBRLPostConnect(t *testing.T, dn *TestDevnet, device *devnet.Device, c
 		tests := []struct {
 			name        string
 			fixturePath string
-			data        map[string]string
+			data        map[string]any
 			cmd         []string
 		}{
 			{
 				name:        "doublezero_user_list",
 				fixturePath: "fixtures/ibrl/doublezero_user_list_user_added.tmpl",
-				data: map[string]string{
+				data: map[string]any{
 					"ClientIP":            client.CYOANetworkIP,
 					"ClientPubkeyAddress": client.Pubkey,
 				},
@@ -107,7 +112,7 @@ func checkIBRLPostConnect(t *testing.T, dn *TestDevnet, device *devnet.Device, c
 			{
 				name:        "doublezero_status",
 				fixturePath: "fixtures/ibrl/doublezero_status_connected.tmpl",
-				data: map[string]string{
+				data: map[string]any{
 					"ClientIP": client.CYOANetworkIP,
 					"DeviceIP": device.CYOANetworkIP,
 				},
@@ -259,8 +264,10 @@ func checkIBRLPostDisconnect(t *testing.T, dn *TestDevnet, device *devnet.Device
 		dn.log.Info("==> Checking IBRL post-disconnect requirements")
 
 		if !t.Run("wait_for_agent_config_from_controller_post_disconnect", func(t *testing.T) {
-			config, err := fixtures.Render("fixtures/ibrl/doublezero_agent_config_user_removed.tmpl", map[string]string{
-				"DeviceIP": device.CYOANetworkIP,
+			config, err := fixtures.Render("fixtures/ibrl/doublezero_agent_config_user_removed.tmpl", map[string]any{
+				"DeviceIP":    device.CYOANetworkIP,
+				"StartTunnel": controllerconfig.StartUserTunnelNum,
+				"EndTunnel":   controllerconfig.StartUserTunnelNum + controllerconfig.MaxUserTunnelSlots - 1,
 			})
 			require.NoError(t, err, "error reading agent configuration fixture")
 			err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))
@@ -272,19 +279,19 @@ func checkIBRLPostDisconnect(t *testing.T, dn *TestDevnet, device *devnet.Device
 		tests := []struct {
 			name        string
 			fixturePath string
-			data        map[string]string
+			data        map[string]any
 			cmd         []string
 		}{
 			{
 				name:        "doublezero_user_list",
 				fixturePath: "fixtures/ibrl/doublezero_user_list_user_removed.txt",
-				data:        map[string]string{},
+				data:        map[string]any{},
 				cmd:         []string{"doublezero", "user", "list"},
 			},
 			{
 				name:        "doublezero_status",
 				fixturePath: "fixtures/ibrl/doublezero_status_disconnected.txt",
-				data:        map[string]string{},
+				data:        map[string]any{},
 				cmd:         []string{"doublezero", "status"},
 			},
 		}

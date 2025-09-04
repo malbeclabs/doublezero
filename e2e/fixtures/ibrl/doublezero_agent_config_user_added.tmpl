@@ -111,7 +111,7 @@ interface Tunnel500
    tunnel ttl 32
    no shutdown
 !
-{{- range $i := seq 501 627}}
+{{- range $i := seq (add .StartTunnel 1) .EndTunnel}}
 default interface Tunnel{{$i}}
 !
 {{- end}}
@@ -272,7 +272,7 @@ no route-map RM-USER-500-OUT
 route-map RM-USER-500-OUT permit 10
    match community COMM-ALL_USERS
 !
-{{- range $i := seq 501 627}}
+{{- range $i := seq (add .StartTunnel 1) .EndTunnel}}
 no route-map RM-USER-{{$i}}-OUT
 !
 {{- end}}
@@ -282,14 +282,14 @@ route-map RM-USER-500-IN permit 10
    match as-path length = 1
    set community 21682:1200
 !
-{{- range $i := seq 501 627}}
+{{- range $i := seq (add .StartTunnel 1) .EndTunnel}}
 no route-map RM-USER-{{$i}}-IN
 !
 {{- end}}
 no ip prefix-list PL-USER-500
 ip prefix-list PL-USER-500 seq 10 permit {{ .ClientIP }}/32
 !
-{{- range $i := seq 501 627}}
+{{- range $i := seq (add .StartTunnel 1) .EndTunnel}}
 no ip prefix-list PL-USER-{{$i}}
 !
 {{- end}}
@@ -308,10 +308,10 @@ ip access-list SEC-USER-500-IN
    permit ip {{ .ClientIP }}/32 any
    deny ip any any
 !
-{{- range $i := seq 501 627}}
+{{- range $i := seq (add .StartTunnel 1) .EndTunnel}}
 no ip access-list SEC-USER-{{$i}}-IN
 {{- end}}
-{{- range $i := seq 500 627}}
+{{- range $i := seq .StartTunnel .EndTunnel}}
 no ip access-list standard SEC-USER-MCAST-BOUNDARY-{{$i}}-OUT
 {{- end}}
 no ip access-list SEC-USER-PUB-MCAST-IN

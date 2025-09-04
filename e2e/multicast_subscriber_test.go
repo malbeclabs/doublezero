@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	controllerconfig "github.com/malbeclabs/doublezero/controlplane/controller/config"
 	"github.com/malbeclabs/doublezero/e2e/internal/arista"
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
 	"github.com/malbeclabs/doublezero/e2e/internal/docker"
@@ -62,9 +63,11 @@ func checkMulticastSubscriberPostConnect(t *testing.T, dn *TestDevnet, device *d
 		dn.log.Info("==> Checking multicast subscriber post-connect requirements")
 
 		if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {
-			config, err := fixtures.Render("fixtures/multicast_subscriber/doublezero_agent_config_user_added.tmpl", map[string]string{
-				"ClientIP": client.CYOANetworkIP,
-				"DeviceIP": device.CYOANetworkIP,
+			config, err := fixtures.Render("fixtures/multicast_subscriber/doublezero_agent_config_user_added.tmpl", map[string]any{
+				"ClientIP":    client.CYOANetworkIP,
+				"DeviceIP":    device.CYOANetworkIP,
+				"StartTunnel": controllerconfig.StartUserTunnelNum,
+				"EndTunnel":   controllerconfig.StartUserTunnelNum + controllerconfig.MaxUserTunnelSlots - 1,
 			})
 			require.NoError(t, err, "error reading agent configuration fixture")
 			err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))
@@ -76,13 +79,13 @@ func checkMulticastSubscriberPostConnect(t *testing.T, dn *TestDevnet, device *d
 		tests := []struct {
 			name        string
 			fixturePath string
-			data        map[string]string
+			data        map[string]any
 			cmd         []string
 		}{
 			{
 				name:        "doublezero_multicast_group_list",
 				fixturePath: "fixtures/multicast_subscriber/doublezero_multicast_group_list.tmpl",
-				data: map[string]string{
+				data: map[string]any{
 					"ManagerPubkey": dn.Manager.Pubkey,
 				},
 				cmd: []string{"doublezero", "multicast", "group", "list"},
@@ -90,7 +93,7 @@ func checkMulticastSubscriberPostConnect(t *testing.T, dn *TestDevnet, device *d
 			{
 				name:        "doublezero_status",
 				fixturePath: "fixtures/multicast_subscriber/doublezero_status_connected.tmpl",
-				data: map[string]string{
+				data: map[string]any{
 					"ClientIP": client.CYOANetworkIP,
 					"DeviceIP": device.CYOANetworkIP,
 				},
@@ -241,8 +244,10 @@ func checkMulticastSubscriberPostDisconnect(t *testing.T, dn *TestDevnet, device
 		dn.log.Info("==> Checking multicast subscriber post-disconnect requirements")
 
 		if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {
-			config, err := fixtures.Render("fixtures/multicast_subscriber/doublezero_agent_config_user_removed.tmpl", map[string]string{
-				"DeviceIP": device.CYOANetworkIP,
+			config, err := fixtures.Render("fixtures/multicast_subscriber/doublezero_agent_config_user_removed.tmpl", map[string]any{
+				"DeviceIP":    device.CYOANetworkIP,
+				"StartTunnel": controllerconfig.StartUserTunnelNum,
+				"EndTunnel":   controllerconfig.StartUserTunnelNum + controllerconfig.MaxUserTunnelSlots - 1,
 			})
 			require.NoError(t, err, "error reading agent configuration fixture")
 			err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))
@@ -254,13 +259,13 @@ func checkMulticastSubscriberPostDisconnect(t *testing.T, dn *TestDevnet, device
 		tests := []struct {
 			name        string
 			fixturePath string
-			data        map[string]string
+			data        map[string]any
 			cmd         []string
 		}{
 			{
 				name:        "doublezero_status",
 				fixturePath: "fixtures/multicast_subscriber/doublezero_status_disconnected.txt",
-				data:        map[string]string{},
+				data:        map[string]any{},
 				cmd:         []string{"doublezero", "status"},
 			},
 		}

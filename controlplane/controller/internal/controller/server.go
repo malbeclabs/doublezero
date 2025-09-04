@@ -354,7 +354,10 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 
 		tunnel := cache.Devices[devicePubKey].findTunnel(int(user.TunnelId))
 		if tunnel == nil {
-			slog.Error("unable to find tunnel slot %d on device %s for user %s\n", "tunnel slot", user.TunnelId, "device pubkey", devicePubKey, "user pubkey", userPubKey)
+			slog.Error("unable to find tunnel slot on device for user",
+				"tunnel slot", user.TunnelId,
+				"device pubkey", devicePubKey,
+				"user pubkey", userPubKey)
 			continue
 		}
 		tunnel.UnderlayDstIP = net.IP(user.ClientIp[:])

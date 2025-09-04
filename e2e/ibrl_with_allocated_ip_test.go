@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	controllerconfig "github.com/malbeclabs/doublezero/controlplane/controller/config"
 	"github.com/malbeclabs/doublezero/e2e/internal/arista"
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
 	"github.com/malbeclabs/doublezero/e2e/internal/docker"
@@ -90,10 +91,12 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *d
 		dn.log.Info("--> Expected allocated client IP", "expectedAllocatedClientIP", expectedAllocatedClientIP, "deviceCYOAIP", device.CYOANetworkIP)
 
 		if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {
-			config, err := fixtures.Render("fixtures/ibrl_with_allocated_addr/doublezero_agent_config_user_added.tmpl", map[string]string{
+			config, err := fixtures.Render("fixtures/ibrl_with_allocated_addr/doublezero_agent_config_user_added.tmpl", map[string]any{
 				"ClientIP":                  client.CYOANetworkIP,
 				"DeviceIP":                  device.CYOANetworkIP,
 				"ExpectedAllocatedClientIP": expectedAllocatedClientIP,
+				"StartTunnel":               controllerconfig.StartUserTunnelNum,
+				"EndTunnel":                 controllerconfig.StartUserTunnelNum + controllerconfig.MaxUserTunnelSlots - 1,
 			})
 			require.NoError(t, err, "error reading agent configuration fixture")
 			err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))
@@ -112,13 +115,13 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *d
 		tests := []struct {
 			name        string
 			fixturePath string
-			data        map[string]string
+			data        map[string]any
 			cmd         []string
 		}{
 			{
 				name:        "doublezero_user_list",
 				fixturePath: "fixtures/ibrl_with_allocated_addr/doublezero_user_list_user_added.tmpl",
-				data: map[string]string{
+				data: map[string]any{
 					"ClientIP":                  client.CYOANetworkIP,
 					"ClientPubkeyAddress":       client.Pubkey,
 					"DeviceIP":                  device.CYOANetworkIP,
@@ -129,7 +132,7 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *d
 			{
 				name:        "doublezero_device_list",
 				fixturePath: "fixtures/ibrl_with_allocated_addr/doublezero_device_list.tmpl",
-				data: map[string]string{
+				data: map[string]any{
 					"DeviceIP":                device.CYOANetworkIP,
 					"ManagerPubkey":           dn.Manager.Pubkey,
 					"DeviceAllocatablePrefix": strconv.Itoa(int(device.Spec.CYOANetworkAllocatablePrefix)),
@@ -139,7 +142,7 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *d
 			{
 				name:        "doublezero_status",
 				fixturePath: "fixtures/ibrl_with_allocated_addr/doublezero_status_connected.tmpl",
-				data: map[string]string{
+				data: map[string]any{
 					"ClientIP":                  client.CYOANetworkIP,
 					"DeviceIP":                  device.CYOANetworkIP,
 					"ExpectedAllocatedClientIP": expectedAllocatedClientIP,
@@ -265,8 +268,10 @@ func checkIBRLWithAllocatedIPPostDisconnect(t *testing.T, dn *TestDevnet, device
 		dn.log.Info("==> Checking IBRL with allocated IP post-disconnect requirements")
 
 		if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {
-			config, err := fixtures.Render("fixtures/ibrl_with_allocated_addr/doublezero_agent_config_user_removed.tmpl", map[string]string{
-				"DeviceIP": device.CYOANetworkIP,
+			config, err := fixtures.Render("fixtures/ibrl_with_allocated_addr/doublezero_agent_config_user_removed.tmpl", map[string]any{
+				"DeviceIP":    device.CYOANetworkIP,
+				"StartTunnel": controllerconfig.StartUserTunnelNum,
+				"EndTunnel":   controllerconfig.StartUserTunnelNum + controllerconfig.MaxUserTunnelSlots - 1,
 			})
 			require.NoError(t, err, "error reading agent configuration fixture")
 			err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))
@@ -278,13 +283,13 @@ func checkIBRLWithAllocatedIPPostDisconnect(t *testing.T, dn *TestDevnet, device
 		tests := []struct {
 			name        string
 			fixturePath string
-			data        map[string]string
+			data        map[string]any
 			cmd         []string
 		}{
 			{
 				name:        "doublezero_status",
 				fixturePath: "fixtures/ibrl_with_allocated_addr/doublezero_status_disconnected.txt",
-				data:        map[string]string{},
+				data:        map[string]any{},
 				cmd:         []string{"doublezero", "status"},
 			},
 		}
@@ -325,7 +330,7 @@ func checkIBRLWithAllocatedIPPostDisconnect(t *testing.T, dn *TestDevnet, device
 			got, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero user list"})
 			require.NoError(t, err)
 
-			want, err := fixtures.Render("fixtures/ibrl_with_allocated_addr/doublezero_user_list_user_removed.tmpl", map[string]string{
+			want, err := fixtures.Render("fixtures/ibrl_with_allocated_addr/doublezero_user_list_user_removed.tmpl", map[string]any{
 				"ClientPubkeyAddress": client.Pubkey,
 			})
 			require.NoError(t, err, "error reading user list fixture")

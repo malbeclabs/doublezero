@@ -20,6 +20,7 @@ import (
 	dockerfilters "github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/network"
 	"github.com/gagliardetto/solana-go"
+	controllerconfig "github.com/malbeclabs/doublezero/controlplane/controller/config"
 	"github.com/malbeclabs/doublezero/e2e/internal/docker"
 	"github.com/malbeclabs/doublezero/e2e/internal/logging"
 	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
@@ -287,6 +288,9 @@ func (d *Device) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to create device %s onchain: %w", spec.Code, err)
 	}
 	d.log.Info("--> Created device onchain", "code", spec.Code, "cyoaNetworkIP", cyoaNetworkIP, "devicePK", devicePK)
+
+	// MaxUserTunnelSlots is now a constant from config package
+	d.log.Info("--> Using MaxUserTunnelSlots constant", "maxUsers", controllerconfig.MaxUserTunnelSlots)
 
 	// Create interfaces onchain.
 	for name, ifaceType := range spec.Interfaces {
@@ -620,6 +624,9 @@ func (d *Device) setState(ctx context.Context, containerID string) error {
 	d.ContainerID = shortContainerID(container.ID)
 	d.ID = onchainID
 	d.CYOANetworkIP = ip
+
+	// MaxUserTunnelSlots is now a constant from config package
+	d.log.Info("--> Using MaxUserTunnelSlots constant", "maxUsers", controllerconfig.MaxUserTunnelSlots)
 
 	return nil
 }

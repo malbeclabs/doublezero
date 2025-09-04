@@ -4,6 +4,16 @@ LDFLAGS=
 CLIPPY_FLAGS=-- -Dclippy::all -D warnings
 env ?= localnet
 
+UNAME_S := $(shell uname -s)
+
+# On macOS, some Rust crates (e.g. blake3) compile C code and need system headers
+# from the macOS SDK. By exporting CC and SDKROOT via xcrun, we ensure Apple’s
+# clang is used with the correct SDK path. This avoids 'assert.h not found' errors.
+ifeq ($(UNAME_S),Darwin)
+  export CC      := $(shell xcrun -find clang)
+  export SDKROOT := $(shell xcrun --sdk macosx --show-sdk-path)
+endif
+
 .PHONY: test
 test: test-programs
 	cargo test --manifest-path ./sdk/rs/Cargo.toml

@@ -15,6 +15,7 @@ type WheresitupCollectorInterface interface {
 type RipeAtlasCollectorInterface interface {
 	Run(ctx context.Context, dryRun bool, probesPerLocation int, stateDir string, samplingInterval, measurementInterval, exportInterval time.Duration) error
 	InitializeCreditBalance(ctx context.Context) error
+	InitializeMeasurementMetrics(stateDir string) error
 }
 
 type Config struct {

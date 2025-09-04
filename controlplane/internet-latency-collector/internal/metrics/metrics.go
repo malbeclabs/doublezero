@@ -55,6 +55,16 @@ var (
 		Help: "Current RIPE Atlas credit balance",
 	})
 
+	RipeatlasTotalMeasurements = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "doublezero_internet_latency_collector_ripeatlas_total_measurements",
+		Help: "Total number of RIPE Atlas measurements being tracked",
+	})
+
+	RipeatlasProbesPerMeasurement = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "doublezero_internet_latency_collector_ripeatlas_probes_per_location",
+		Help: "Number of source probes per location (exchanges minus 1)",
+	})
+
 	// Wheresitup specific metrics
 	WheresitupJobCreationRunsTotal = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "doublezero_internet_latency_collector_wheresitup_job_creation_runs_total",

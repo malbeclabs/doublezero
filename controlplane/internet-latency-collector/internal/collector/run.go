@@ -22,7 +22,7 @@ func (c *Collector) Run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	c.log.Info("Initializing credit balance metrics")
+	c.log.Info("Initializing metrics")
 
 	if err := c.cfg.Wheresitup.InitializeCreditBalance(ctx); err != nil {
 		c.log.Warn("Failed to initialize Wheresitup credit balance metric", slog.String("error", err.Error()))
@@ -30,6 +30,10 @@ func (c *Collector) Run(ctx context.Context) error {
 
 	if err := c.cfg.RipeAtlas.InitializeCreditBalance(ctx); err != nil {
 		c.log.Warn("Failed to initialize RIPE Atlas credit balance metric", slog.String("error", err.Error()))
+	}
+
+	if err := c.cfg.RipeAtlas.InitializeMeasurementMetrics(c.cfg.StateDir); err != nil {
+		c.log.Warn("Failed to initialize RIPE Atlas measurement metrics", slog.String("error", err.Error()))
 	}
 
 	// Start Prometheus metrics endpoint

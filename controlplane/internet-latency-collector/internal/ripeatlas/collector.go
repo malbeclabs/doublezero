@@ -99,6 +99,43 @@ func (c *Collector) InitializeCreditBalance(ctx context.Context) error {
 	return nil
 }
 
+func (c *Collector) InitializeMeasurementMetrics(stateDir string) error {
+	timestampFile := filepath.Join(stateDir, TimestampFileName)
+	measurementState := NewMeasurementState(timestampFile)
+
+	if err := measurementState.Load(); err != nil {
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("failed to load measurement state: %w", err)
+		}
+		// File doesn't exist yet, no measurements to track
+		metrics.RipeatlasTotalMeasurements.Set(0)
+		metrics.RipeatlasProbesPerMeasurement.Set(0)
+		c.log.Info("No measurement state file found, initializing metrics to zero")
+		return nil
+	}
+
+	// Count total measurements and determine probes per location
+	totalMeasurements := 0
+	probesPerLocation := 0
+	for _, meta := range measurementState.tracker.Metadata {
+		if len(meta.Sources) > 0 {
+			totalMeasurements++
+			// All measurements should have the same number of sources (n-1 where n is number of exchanges)
+			if probesPerLocation == 0 {
+				probesPerLocation = len(meta.Sources)
+			}
+		}
+	}
+
+	metrics.RipeatlasTotalMeasurements.Set(float64(totalMeasurements))
+	metrics.RipeatlasProbesPerMeasurement.Set(float64(probesPerLocation))
+	c.log.Info("Initialized RIPE Atlas measurement metrics",
+		slog.Int("total_measurements", totalMeasurements),
+		slog.Int("probes_per_location", probesPerLocation))
+
+	return nil
+}
+
 func calculateAndSortProbeDistances(probes []Probe, lat, lng float64) []ProbeDistance {
 	// Convert to CoordinatesGetter slice
 	var sources []collector.CoordinatesGetter
@@ -657,6 +694,7 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 						slog.String("error", err.Error()))
 				} else {
 					measurementState.RemoveMetadata(measurement.ID)
+					metrics.RipeatlasTotalMeasurements.Dec()
 				}
 				time.Sleep(CallDelay) // Rate limiting
 			}
@@ -750,6 +788,10 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 				measurementState.SetMetadata(measurementID, meta)
 				if err := measurementState.Save(); err != nil {
 					c.log.Warn("Failed to save measurement metadata", slog.String("error", err.Error()))
+				} else {
+					// Update metrics
+					metrics.RipeatlasTotalMeasurements.Inc()
+					metrics.RipeatlasProbesPerMeasurement.Set(float64(len(sources)))
 				}
 			}
 			time.Sleep(CallDelay)

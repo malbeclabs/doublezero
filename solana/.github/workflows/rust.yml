@@ -31,7 +31,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo test --lib --all-features
+      - run: cargo test --lib --features development
 
   doc:
     runs-on: ubuntu-latest
@@ -51,7 +51,8 @@ jobs:
         run: |
           sh -c "$(curl -sSfL https://release.anza.xyz/$SOLANA_CLI/install)"
           echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
-      - run: cargo test-sbf --test '*' --features entrypoint -- --test-threads 1
+      - run: cd mock/swap-sol-2z && cargo build-sbf --features entrypoint
+      - run: cargo test-sbf --features entrypoint
 
   test-sbf-development:
     runs-on: ubuntu-latest
@@ -63,4 +64,5 @@ jobs:
         run: |
           sh -c "$(curl -sSfL https://release.anza.xyz/$SOLANA_CLI/install)"
           echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
-      - run: cargo test-sbf --test '*' --features development,entrypoint -- --test-threads 1
+      - run: cd mock/swap-sol-2z && cargo build-sbf --features development,entrypoint
+      - run: cargo test-sbf --features development,entrypoint

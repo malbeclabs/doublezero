@@ -4,6 +4,7 @@ use doublezero_program_tools::{
         try_next_enumerated_account, EnumeratedAccountInfoIter, NextAccountOptions,
         TryNextAccounts, UpgradeAuthority,
     },
+    instruction::try_build_instruction,
     recipe::{
         create_account::{try_create_account, CreateAccountOptions},
         create_token_account::try_create_token_account,
@@ -24,14 +25,15 @@ use svm_hash::{merkle::MerkleProof, sha2::Hash};
 
 use crate::{
     instruction::{
-        ContributorRewardsConfiguration, DistributionMerkleRootKind, JournalConfiguration,
-        ProgramConfiguration, ProgramFlagConfiguration, RevenueDistributionInstructionData,
+        account::DequeueFillsCpiAccounts, ContributorRewardsConfiguration,
+        DistributionMerkleRootKind, JournalConfiguration, ProgramConfiguration,
+        ProgramFlagConfiguration, RevenueDistributionInstructionData,
     },
     state::{
         self, find_swap_authority_address, find_withdraw_sol_authority_address,
         CommunityBurnRateParameters, ContributorRewards, Distribution, Journal, JournalEntries,
         PrepaidConnection, ProgramConfig, RecipientShare, RecipientShares, RelayParameters,
-        SolanaValidatorDeposit, TOKEN_2Z_PDA_SEED_PREFIX,
+        SolanaValidatorDeposit, SWAP_AUTHORITY_SEED_PREFIX, TOKEN_2Z_PDA_SEED_PREFIX,
     },
     types::{BurnRate, ByteFlags, DoubleZeroEpoch, RewardShare, SolanaValidatorDebt, ValidatorFee},
     DOUBLEZERO_MINT_DECIMALS, DOUBLEZERO_MINT_KEY, ID,
@@ -2542,31 +2544,17 @@ fn try_initialize_swap_destination(accounts: &[AccountInfo]) -> ProgramResult {
 fn try_sweep_distribution_tokens(accounts: &[AccountInfo]) -> ProgramResult {
     msg!("Sweep distribution tokens");
 
-    #[cfg(feature = "development")]
-    {
-        try_sweep_distribution_tokens_development(accounts)
-    }
-
-    #[cfg(not(feature = "development"))]
-    {
-        let _ = accounts;
-        unimplemented!()
-    }
-}
-
-#[cfg(feature = "development")]
-fn try_sweep_distribution_tokens_development(accounts: &[AccountInfo]) -> ProgramResult {
-    use crate::{state::SWAP_AUTHORITY_SEED_PREFIX, FIXED_SOL_2Z_SWAP_RATE_FOR_DEVELOPMENT};
-
-    //
-
     // We expect the following accounts for this instruction:
     // - 0: Program config.
     // - 1: Distribution.
     // - 2: Journal.
-    // - 3: Distribution 2Z token account.
-    // - 4: Swap authority.
-    // - 5: Swap 2Z destination account.
+    // - 3: SOL/2Z Swap configuration registry.
+    // - 4: SOL/2Z Swap program state.
+    // - 5: SOL/2Z Swap fills registry.
+    // - 6: SOL/2Z Swap program.
+    // - 7: Distribution 2Z token account.
+    // - 8: Swap authority.
+    // - 9: Swap 2Z destination account.
     let mut accounts_iter = accounts.iter().enumerate();
 
     // Account 0 must be the program config.
@@ -2596,23 +2584,111 @@ fn try_sweep_distribution_tokens_development(accounts: &[AccountInfo]) -> Progra
     // balance tracks will have already been swapped by the swap program.
     let total_sol_debt = distribution.checked_total_sol_debt().unwrap();
 
-    if journal.total_sol_balance < total_sol_debt {
-        msg!("Journal does not have enough SOL to cover the SOL debt");
+    if journal.swapped_sol_amount < total_sol_debt {
+        msg!("Journal does not have enough swapped SOL to cover the SOL debt");
         return Err(ProgramError::InvalidAccountData);
     }
 
     msg!(
-        "Journal's SOL balance before: {}",
-        journal.total_sol_balance
+        "Journal's swapped SOL balance before: {}",
+        journal.swapped_sol_amount
     );
-    journal.total_sol_balance -= total_sol_debt;
+    journal.swapped_sol_amount -= total_sol_debt;
+
+    ////////////////////////////////////////////////////////////////////////////
+    //
+    // Integration with SOL/2Z Swap program. We need to dequeue fills from the
+    // SOL/2Z Swap program to account for the amount of 2Z that corresponds to
+    // the total SOL debt.
+    //
+    // The first three accounts of the CPI call are owned by the SOL/2Z Swap
+    // program. The fourth account is the journal, which will act as a signer.
+    // Because we already have the journal account, we only need to take three
+    // more accounts.
+    //
+    // CPI accounts must have the following properties:
+    // - 0: Read-only.
+    // - 1: Read-only.
+    // - 2: Writable.
+    // - 3: Read-only signer.
+    //
+    ////////////////////////////////////////////////////////////////////////////
+
+    let sol_2z_swap_program_id = program_config.sol_2z_swap_program_id;
+
+    let (_, sol_2z_swap_configuration_registry_info) =
+        try_next_enumerated_account(&mut accounts_iter, Default::default())?;
+    let (_, sol_2z_swap_program_state_info) =
+        try_next_enumerated_account(&mut accounts_iter, Default::default())?;
+    let (_, sol_2z_swap_fills_registry_info) =
+        try_next_enumerated_account(&mut accounts_iter, Default::default())?;
+    let (account_index, sol_2z_swap_program_info) =
+        try_next_enumerated_account(&mut accounts_iter, Default::default())?;
+
+    // Enforce SOL/2Z Swap program's location.
+    if sol_2z_swap_program_info.key != &sol_2z_swap_program_id {
+        msg!("Invalid SOL/2Z Swap program (account {})", account_index);
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    const DEQUEUE_FILLS_SELECTOR: [u8; 8] = [146, 69, 6, 12, 174, 95, 136, 61];
+
+    let mut dequeue_fills_ix_data = [0; 16];
+    dequeue_fills_ix_data[..8].copy_from_slice(&DEQUEUE_FILLS_SELECTOR);
+    dequeue_fills_ix_data[8..16].copy_from_slice(&total_sol_debt.to_le_bytes());
+
+    let dequeue_fills_ix = try_build_instruction(
+        &sol_2z_swap_program_id,
+        DequeueFillsCpiAccounts {
+            configuration_registry_key: *sol_2z_swap_configuration_registry_info.key,
+            program_state_key: *sol_2z_swap_program_state_info.key,
+            fills_registry_key: *sol_2z_swap_fills_registry_info.key,
+            journal_key: *journal.info.key,
+            sol_2z_swap_program_id: None,
+        },
+        &dequeue_fills_ix_data,
+    )
+    .unwrap();
+
+    invoke_signed_unchecked(
+        &dequeue_fills_ix,
+        accounts,
+        &[&[Journal::SEED_PREFIX, &[journal.bump_seed]]],
+    )?;
+
+    let (return_data_program_id, return_data) = solana_cpi::get_return_data().ok_or_else(|| {
+        msg!("No return data found after CPI to SOL/2Z Swap program");
+        ProgramError::InvalidAccountData
+    })?;
+
+    // Make sure the SOL/2Z Swap program set the data.
+    if return_data_program_id != sol_2z_swap_program_id {
+        msg!("Return data program ID is not the SOL/2Z Swap program");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    let (return_sol_amount, token_2z_amount, _) =
+        <(u64, u64, u64) as BorshDeserialize>::try_from_slice(&return_data).map_err(|_| {
+            msg!("Failed to deserialize return data from SOL/2Z Swap program");
+            ProgramError::InvalidAccountData
+        })?;
+
+    if return_sol_amount != total_sol_debt {
+        msg!("SOL amount in return data does not equal total SOL debt");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    ////////////////////////////////////////////////////////////////////////////
+    //
+    // End integration with SOL/2Z Swap program.
+    //
+    ////////////////////////////////////////////////////////////////////////////
 
     // Record the swept amount to the distribution. This amount will also be
     // used to token transfer the 2Z tokens to the distribution.
-    let token_2z_amount = total_sol_debt.saturating_mul(FIXED_SOL_2Z_SWAP_RATE_FOR_DEVELOPMENT);
     distribution.collected_2z_converted_from_sol += token_2z_amount;
 
-    // Account 3 must be the distribution's 2Z token account.
+    // Account 6 must be the distribution's 2Z token account.
     let (_, distribution_2z_token_pda_info, _) = try_next_2z_token_pda_info(
         &mut accounts_iter,
         distribution.info.key,
@@ -2620,7 +2696,7 @@ fn try_sweep_distribution_tokens_development(accounts: &[AccountInfo]) -> Progra
         Some(distribution.token_2z_pda_bump_seed),
     )?;
 
-    // Account 4 must be the swap authority. It is assumed to be a signer
+    // Account 7 must be the swap authority. It is assumed to be a signer
     // because it is the authority that will be used to transfer 2Z from its
     // token account to the distribution's token account.
     let (account_index, swap_authority_info) =
@@ -2637,7 +2713,7 @@ fn try_sweep_distribution_tokens_development(accounts: &[AccountInfo]) -> Progra
         return Err(ProgramError::InvalidSeeds);
     }
 
-    // Account 5 must be the swap destination 2Z token account.
+    // Account 8 must be the swap destination 2Z token account.
     let (_, swap_destination_2z_info, _) = try_next_2z_token_pda_info(
         &mut accounts_iter,
         &expected_swap_authority_key,
@@ -2662,15 +2738,18 @@ fn try_sweep_distribution_tokens_development(accounts: &[AccountInfo]) -> Progra
     )?;
 
     msg!("Total SOL debt accounted for: {}", total_sol_debt);
-    msg!("Journal's SOL balance after: {}", journal.total_sol_balance);
+    msg!(
+        "Journal's swapped SOL balance after: {}",
+        journal.swapped_sol_amount
+    );
     msg!("Transferred {} 2Z tokens to distribution", token_2z_amount);
 
     Ok(())
 }
 
 fn try_withdraw_sol(accounts: &[AccountInfo], amount: u64) -> ProgramResult {
-    const MINT_2Z_ACCOUNT_INDEX: usize = 2;
-    const DESTINATION_ACCOUNT_INDEX: usize = 3;
+    const MINT_2Z_ACCOUNT_INDEX: usize = 1;
+    const DESTINATION_ACCOUNT_INDEX: usize = 2;
 
     msg!("Withdraw SOL");
 
@@ -2719,7 +2798,7 @@ fn try_withdraw_sol(accounts: &[AccountInfo], amount: u64) -> ProgramResult {
 
     // Check for a sibling instruction immediately before the invocation of this
     // instruction.
-    let sibling_ix = solana_instruction::syscalls::get_processed_sibling_instruction(1)
+    let sibling_ix = solana_instruction::syscalls::get_processed_sibling_instruction(0)
         .ok_or_else(|| {
             msg!("No processed sibling instruction found");
             ProgramError::InvalidAccountData
@@ -2783,11 +2862,10 @@ fn try_withdraw_sol(accounts: &[AccountInfo], amount: u64) -> ProgramResult {
     // Update balances.
 
     journal.total_sol_balance -= amount;
-    msg!(
-        "SOL balance now {} after withdrawal of {}",
-        journal.total_sol_balance,
-        amount
-    );
+    msg!("Journal's SOL balance now {}", journal.total_sol_balance);
+
+    journal.swapped_sol_amount += amount;
+    msg!("Swapped SOL balance now {}", journal.swapped_sol_amount);
 
     journal.swap_2z_destination_balance += transfer_amount;
     msg!(

@@ -1,4 +1,3 @@
-#![allow(unused_imports)]
 mod common;
 
 //
@@ -11,10 +10,7 @@ use doublezero_revenue_distribution::{
         ContributorRewardsConfiguration, DistributionMerkleRootKind, ProgramConfiguration,
         ProgramFlagConfiguration,
     },
-    state::{
-        self, find_2z_token_pda_address, find_swap_authority_address, Distribution,
-        SolanaValidatorDeposit,
-    },
+    state::{self, Distribution, SolanaValidatorDeposit},
     types::{BurnRate, DoubleZeroEpoch, RewardShare, SolanaValidatorDebt, ValidatorFee},
     DOUBLEZERO_MINT_KEY,
 };
@@ -27,23 +23,17 @@ use svm_hash::merkle::{merkle_root_from_indexed_pod_leaves, MerkleProof};
 // Distribute rewards.
 //
 
-#[cfg_attr(not(feature = "development"), ignore)]
 #[tokio::test]
 async fn test_distribute_rewards() {
-    #[cfg(feature = "development")]
-    test_distribute_rewards_development().await;
+    let transfer_authority_signer = Keypair::new();
 
-    #[cfg(not(feature = "development"))]
-    test_distribute_rewards_mainnet().await;
-}
+    let bootstrapped_accounts = common::generate_token_accounts_for_test(
+        &DOUBLEZERO_MINT_KEY,
+        &[transfer_authority_signer.pubkey()],
+    );
+    let src_token_account_key = bootstrapped_accounts.first().unwrap().key;
 
-#[cfg(feature = "development")]
-async fn test_distribute_rewards_development() {
-    use doublezero_revenue_distribution::FIXED_SOL_2Z_SWAP_RATE_FOR_DEVELOPMENT;
-
-    //
-
-    let mut test_setup = common::start_test().await;
+    let mut test_setup = common::start_test_with_accounts(bootstrapped_accounts).await;
 
     let admin_signer = Keypair::new();
 
@@ -82,27 +72,22 @@ async fn test_distribute_rewards_development() {
         merkle_root_from_indexed_pod_leaves(&debt_data, Some(SolanaValidatorDebt::LEAF_PREFIX))
             .unwrap();
 
-    let swap_authority_key = find_swap_authority_address().0;
-    let swap_destination_key = find_2z_token_pda_address(&swap_authority_key).0;
-
     // Do not pay all debt. Forgive one poor soul.
     let uncollectible_index = 2;
     let uncollectible_debt = debt_data[uncollectible_index];
 
-    // Swap destination has more than enough 2Z tokens to cover the SOL debt.
-    let swap_destination_balance_before = 42_069_420 * u64::pow(10, 8);
-
-    let expected_swept_2z_amount_1 =
-        total_solana_validator_debt * FIXED_SOL_2Z_SWAP_RATE_FOR_DEVELOPMENT;
-    let expected_swept_2z_amount_2 = (total_solana_validator_debt - uncollectible_debt.amount)
-        * FIXED_SOL_2Z_SWAP_RATE_FOR_DEVELOPMENT;
-    assert!(
-        swap_destination_balance_before >= expected_swept_2z_amount_1 + expected_swept_2z_amount_2
-    );
+    let expected_swept_2z_amount_1 = 69 * u64::pow(10, 8);
+    let expected_swept_2z_amount_2 = 420 * u64::pow(10, 8);
 
     let minimum_epoch_duration_to_finalize_rewards = 1;
 
     test_setup
+        .transfer_2z(
+            &src_token_account_key,
+            expected_swept_2z_amount_1 + expected_swept_2z_amount_2,
+        )
+        .await
+        .unwrap()
         .initialize_program()
         .await
         .unwrap()
@@ -112,15 +97,13 @@ async fn test_distribute_rewards_development() {
         .initialize_swap_destination(&DOUBLEZERO_MINT_KEY)
         .await
         .unwrap()
-        .transfer_2z(&swap_destination_key, swap_destination_balance_before)
-        .await
-        .unwrap()
         .set_admin(&admin_signer.pubkey())
         .await
         .unwrap()
         .configure_program(
             &admin_signer,
             [
+                ProgramConfiguration::Sol2zSwapProgram(mock_swap_sol_2z::ID),
                 ProgramConfiguration::ContributorManager(contributor_manager_signer.pubkey()),
                 ProgramConfiguration::PaymentsAccountant(payments_accountant_signer.pubkey()),
                 ProgramConfiguration::RewardsAccountant(rewards_accountant_signer.pubkey()),
@@ -237,7 +220,27 @@ async fn test_distribute_rewards_development() {
         }
     }
 
+    let sol_destination_key = Pubkey::new_unique();
+
     test_setup
+        .mock_buy_sol(
+            &src_token_account_key,
+            &transfer_authority_signer,
+            &sol_destination_key,
+            expected_swept_2z_amount_1,
+            total_solana_validator_debt,
+        )
+        .await
+        .unwrap()
+        .mock_buy_sol(
+            &src_token_account_key,
+            &transfer_authority_signer,
+            &sol_destination_key,
+            expected_swept_2z_amount_2,
+            total_solana_validator_debt - uncollectible_debt.amount,
+        )
+        .await
+        .unwrap()
         .sweep_distribution_tokens(dz_epoch)
         .await
         .unwrap()
@@ -488,8 +491,8 @@ async fn test_distribute_rewards_development() {
     expected_distribution.total_contributors = total_contributors;
     expected_distribution.rewards_merkle_root = rewards_merkle_root;
     expected_distribution.distributed_rewards_count = total_contributors;
-    expected_distribution.distributed_2z_amount = 3_240_000_000_000;
-    expected_distribution.burned_2z_amount = 360_000_000_000;
+    expected_distribution.distributed_2z_amount = 6_210_000_000;
+    expected_distribution.burned_2z_amount = 690_000_000;
     expected_distribution.processed_solana_validator_payments_end_index =
         total_solana_validators / 8;
     expected_distribution.processed_rewards_start_index = total_solana_validators / 8;
@@ -555,8 +558,8 @@ async fn test_distribute_rewards_development() {
     expected_distribution.total_contributors = total_contributors;
     expected_distribution.rewards_merkle_root = rewards_merkle_root;
     expected_distribution.distributed_rewards_count = total_contributors;
-    expected_distribution.distributed_2z_amount = 2_970_000_000_000;
-    expected_distribution.burned_2z_amount = 330_000_000_000;
+    expected_distribution.distributed_2z_amount = 37_800_000_000;
+    expected_distribution.burned_2z_amount = 4_200_000_000;
     expected_distribution.processed_solana_validator_payments_end_index =
         total_solana_validators / 8;
     expected_distribution.processed_rewards_start_index = total_solana_validators / 8;
@@ -588,9 +591,4 @@ async fn test_distribute_rewards_development() {
 
     // All tokens should have been transferred to all recipients.
     assert_eq!(distribution_2z_token_pda.amount, 0);
-}
-
-#[cfg(not(feature = "development"))]
-async fn test_distribute_rewards_mainnet() {
-    todo!()
 }

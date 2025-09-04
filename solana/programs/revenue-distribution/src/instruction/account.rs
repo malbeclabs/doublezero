@@ -1036,61 +1036,130 @@ mod sweep_distribution_tokens {
     }
 }
 
-#[cfg(feature = "development")]
-mod sweep_distribution_tokens {
-    use super::*;
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DequeueFillsCpiAccounts {
+    pub configuration_registry_key: Pubkey,
+    pub program_state_key: Pubkey,
+    pub fills_registry_key: Pubkey,
+    pub journal_key: Pubkey,
+    pub sol_2z_swap_program_id: Option<Pubkey>,
+}
 
-    #[derive(Debug, Clone, PartialEq, Eq)]
-    pub struct SweepDistributionTokensAccounts {
-        pub program_config_key: Pubkey,
-        pub distribution_key: Pubkey,
-        pub journal_key: Pubkey,
-        pub distribution_2z_token_pda_key: Pubkey,
-        pub swap_authority_key: Pubkey,
-        pub swap_2z_token_pda_key: Pubkey,
-    }
-
-    impl SweepDistributionTokensAccounts {
-        pub fn new(dz_epoch: DoubleZeroEpoch) -> Self {
-            let distribution_key = Distribution::find_address(dz_epoch).0;
-            let swap_authority_key = find_swap_authority_address().0;
-
-            Self {
-                program_config_key: ProgramConfig::find_address().0,
-                distribution_key,
-                journal_key: Journal::find_address().0,
-                distribution_2z_token_pda_key: find_2z_token_pda_address(&distribution_key).0,
-                swap_authority_key,
-                swap_2z_token_pda_key: find_2z_token_pda_address(&swap_authority_key).0,
-            }
-        }
-    }
-
-    impl From<SweepDistributionTokensAccounts> for Vec<AccountMeta> {
-        fn from(accounts: SweepDistributionTokensAccounts) -> Self {
-            let SweepDistributionTokensAccounts {
-                program_config_key,
-                distribution_key,
-                journal_key,
-                distribution_2z_token_pda_key,
-                swap_authority_key,
-                swap_2z_token_pda_key,
-            } = accounts;
-
-            vec![
-                AccountMeta::new_readonly(program_config_key, false),
-                AccountMeta::new(distribution_key, false),
-                AccountMeta::new(journal_key, false),
-                AccountMeta::new(distribution_2z_token_pda_key, false),
-                AccountMeta::new_readonly(swap_authority_key, false),
-                AccountMeta::new(swap_2z_token_pda_key, false),
-                AccountMeta::new_readonly(spl_token::ID, false),
-            ]
+impl DequeueFillsCpiAccounts {
+    pub fn new(sol_2z_swap_program_id: &Pubkey, fills_registery_key: &Pubkey) -> Self {
+        Self {
+            configuration_registry_key: Pubkey::find_program_address(
+                &[b"system_config_v1"],
+                sol_2z_swap_program_id,
+            )
+            .0,
+            program_state_key: Pubkey::find_program_address(&[b"state_v1"], sol_2z_swap_program_id)
+                .0,
+            fills_registry_key: *fills_registery_key,
+            journal_key: Journal::find_address().0,
+            sol_2z_swap_program_id: Some(*sol_2z_swap_program_id),
         }
     }
 }
 
-pub use sweep_distribution_tokens::*;
+impl From<DequeueFillsCpiAccounts> for Vec<AccountMeta> {
+    fn from(accounts: DequeueFillsCpiAccounts) -> Self {
+        let DequeueFillsCpiAccounts {
+            configuration_registry_key,
+            program_state_key,
+            fills_registry_key,
+            journal_key,
+            sol_2z_swap_program_id: _,
+        } = accounts;
+
+        vec![
+            AccountMeta::new_readonly(configuration_registry_key, false),
+            AccountMeta::new_readonly(program_state_key, false),
+            AccountMeta::new(fills_registry_key, false),
+            AccountMeta::new(journal_key, true),
+        ]
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SweepDistributionTokensAccounts {
+    pub program_config_key: Pubkey,
+    pub distribution_key: Pubkey,
+    pub journal_key: Pubkey,
+    pub dequeue_fills_cpi_keys: DequeueFillsCpiAccounts,
+    pub distribution_2z_token_pda_key: Pubkey,
+    pub swap_authority_key: Pubkey,
+    pub swap_2z_token_pda_key: Pubkey,
+}
+
+impl SweepDistributionTokensAccounts {
+    pub fn new(
+        dz_epoch: DoubleZeroEpoch,
+        sol_2z_swap_program_id: &Pubkey,
+        sol_2z_swap_fills_registry_key: &Pubkey,
+    ) -> Self {
+        let distribution_key = Distribution::find_address(dz_epoch).0;
+        let swap_authority_key = find_swap_authority_address().0;
+
+        let dequeue_fills_cpi_keys =
+            DequeueFillsCpiAccounts::new(sol_2z_swap_program_id, sol_2z_swap_fills_registry_key);
+
+        Self {
+            program_config_key: ProgramConfig::find_address().0,
+            distribution_key,
+            journal_key: Journal::find_address().0,
+            dequeue_fills_cpi_keys,
+            distribution_2z_token_pda_key: find_2z_token_pda_address(&distribution_key).0,
+            swap_authority_key,
+            swap_2z_token_pda_key: find_2z_token_pda_address(&swap_authority_key).0,
+        }
+    }
+}
+
+impl From<SweepDistributionTokensAccounts> for Vec<AccountMeta> {
+    fn from(accounts: SweepDistributionTokensAccounts) -> Self {
+        let SweepDistributionTokensAccounts {
+            program_config_key,
+            distribution_key,
+            journal_key,
+            dequeue_fills_cpi_keys,
+            distribution_2z_token_pda_key,
+            swap_authority_key,
+            swap_2z_token_pda_key,
+        } = accounts;
+
+        // This method assumes that the dequeue fills CPI accounts were created
+        // using the `new` method, so this unwrap could fail if the struct were
+        // created by populating its members directly and the SOL/2Z Swap
+        // program ID was not provided.
+        let sol_2z_swap_program_id = dequeue_fills_cpi_keys.sol_2z_swap_program_id.unwrap();
+
+        let mut dequeue_fills_cpi_accounts = Vec::from(dequeue_fills_cpi_keys);
+
+        // Drop the journal account from the dequeue fills CPI accounts.
+        dequeue_fills_cpi_accounts.pop().unwrap();
+
+        let sol_2z_swap_fills_registry_account_meta = dequeue_fills_cpi_accounts.pop().unwrap();
+        let sol_2z_swap_program_state_account_meta = dequeue_fills_cpi_accounts.pop().unwrap();
+        let sol_2z_swap_configuration_registry_account_meta =
+            dequeue_fills_cpi_accounts.pop().unwrap();
+        debug_assert!(dequeue_fills_cpi_accounts.is_empty());
+
+        vec![
+            AccountMeta::new_readonly(program_config_key, false),
+            AccountMeta::new(distribution_key, false),
+            AccountMeta::new(journal_key, false),
+            sol_2z_swap_configuration_registry_account_meta,
+            sol_2z_swap_program_state_account_meta,
+            sol_2z_swap_fills_registry_account_meta,
+            AccountMeta::new_readonly(sol_2z_swap_program_id, false),
+            AccountMeta::new(distribution_2z_token_pda_key, false),
+            AccountMeta::new_readonly(swap_authority_key, false),
+            AccountMeta::new(swap_2z_token_pda_key, false),
+            AccountMeta::new_readonly(spl_token::ID, false),
+        ]
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WithdrawSolAccounts {
@@ -1132,5 +1201,23 @@ impl From<WithdrawSolAccounts> for Vec<AccountMeta> {
             AccountMeta::new(journal_key, false),
             AccountMeta::new(sol_destination_key, false),
         ]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_from_sweep_distribution_tokens() {
+        let accounts = SweepDistributionTokensAccounts::new(
+            DoubleZeroEpoch::new(69),
+            &Pubkey::new_unique(),
+            &Pubkey::new_unique(),
+        );
+
+        // Debug assert should not panic.
+        let accounts = Vec::from(accounts);
+        assert_eq!(accounts.len(), 11);
     }
 }

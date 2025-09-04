@@ -1,5 +1,6 @@
 [package]
-name = "doublezero-revenue-distribution"
+name = "mock-swap-sol-2z"
+publish = false
 
 edition.workspace = true
 homepage.workspace = true
@@ -12,32 +13,21 @@ rust-version.workspace = true
 borsh = { workspace = true, features = ["derive"] }
 bytemuck = { workspace = true, features = ["derive", "min_const_generics"] }
 doublezero-program-tools = { workspace = true, features = ["entrypoint"] }
+doublezero-revenue-distribution.workspace = true
 solana-account-info.workspace = true
 solana-cpi.workspace = true
-solana-instruction = { workspace = true, features = ["syscalls"] }
+solana-instruction.workspace = true
 solana-msg.workspace = true
 solana-program-entrypoint.workspace = true
 solana-program-error.workspace = true
-solana-program-memory.workspace = true
-solana-program-pack.workspace = true
-solana-pubkey = { workspace = true, features = ["borsh", "bytemuck"] }
+solana-pubkey = { workspace = true, features = ["borsh"] }
 solana-system-interface.workspace = true
 solana-sysvar.workspace = true
-spl-associated-token-account-interface.workspace = true
 spl-token.workspace = true
-svm-hash = { workspace = true, features = ["borsh", "bytemuck"] }
-
-[dev-dependencies]
-bincode.workspace = true
-mock-swap-sol-2z.workspace = true
-solana-loader-v3-interface.workspace = true
-solana-program-test.workspace = true
-solana-sdk.workspace = true
 
 [features]
 default = []
-### Build with this feature for Solana devnet and localnet.
-development = []
+development = ["doublezero-revenue-distribution/development"]
 entrypoint = []
 
 [lib]
@@ -45,5 +35,3 @@ crate-type = ["cdylib", "lib"]
 
 [lints.rust]
 unexpected_cfgs = { level = "allow", check-cfg = ['cfg(custom_heap)'] }
-
-### TODO: Add release profile.

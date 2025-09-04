@@ -1,4 +1,3 @@
-#![allow(unused_imports)]
 mod common;
 
 //
@@ -6,8 +5,8 @@ mod common;
 use doublezero_program_tools::instruction::try_build_instruction;
 use doublezero_revenue_distribution::{
     instruction::{
-        account::SweepDistributionTokensAccounts, DistributionMerkleRootKind, ProgramConfiguration,
-        ProgramFlagConfiguration, RevenueDistributionInstructionData,
+        account::SweepDistributionTokensAccounts, ProgramConfiguration, ProgramFlagConfiguration,
+        RevenueDistributionInstructionData,
     },
     state::{
         self, find_2z_token_pda_address, find_swap_authority_address, Distribution,
@@ -29,23 +28,17 @@ use svm_hash::merkle::{merkle_root_from_indexed_pod_leaves, MerkleProof};
 // Sweep distribution tokens.
 //
 
-#[cfg_attr(not(feature = "development"), ignore)]
 #[tokio::test]
 async fn test_sweep_distribution_tokens() {
-    #[cfg(feature = "development")]
-    test_sweep_distribution_tokens_development().await;
+    let transfer_authority_signer = Keypair::new();
 
-    #[cfg(not(feature = "development"))]
-    test_sweep_distribution_tokens_mainnet().await;
-}
+    let bootstrapped_accounts = common::generate_token_accounts_for_test(
+        &DOUBLEZERO_MINT_KEY,
+        &[transfer_authority_signer.pubkey()],
+    );
+    let src_token_account_key = bootstrapped_accounts.first().unwrap().key;
 
-#[cfg(feature = "development")]
-async fn test_sweep_distribution_tokens_development() {
-    use doublezero_revenue_distribution::FIXED_SOL_2Z_SWAP_RATE_FOR_DEVELOPMENT;
-
-    //
-
-    let mut test_setup = common::start_test().await;
+    let mut test_setup = common::start_test_with_accounts(bootstrapped_accounts).await;
 
     let admin_signer = Keypair::new();
 
@@ -79,25 +72,20 @@ async fn test_sweep_distribution_tokens_development() {
         merkle_root_from_indexed_pod_leaves(&payments_data, Some(SolanaValidatorDebt::LEAF_PREFIX))
             .unwrap();
 
-    let swap_authority_key = find_swap_authority_address().0;
-    let swap_destination_key = find_2z_token_pda_address(&swap_authority_key).0;
-
     // Do not pay all debt. Forgive one poor soul.
     let uncollectible_index = 2;
     let uncollectible_debt = payments_data[uncollectible_index];
 
-    // Swap destination has more than enough 2Z tokens to cover the SOL debt.
-    let swap_destination_balance_before = 42_069_420 * u64::pow(10, 8);
-
-    let expected_swept_2z_amount_1 =
-        total_solana_validator_debt * FIXED_SOL_2Z_SWAP_RATE_FOR_DEVELOPMENT;
-    let expected_swept_2z_amount_2 = (total_solana_validator_debt - uncollectible_debt.amount)
-        * FIXED_SOL_2Z_SWAP_RATE_FOR_DEVELOPMENT;
-    assert!(
-        swap_destination_balance_before >= expected_swept_2z_amount_1 + expected_swept_2z_amount_2
-    );
+    let expected_swept_2z_amount_1 = 69 * u64::pow(10, 8);
+    let expected_swept_2z_amount_2 = 420 * u64::pow(10, 8);
 
     test_setup
+        .transfer_2z(
+            &src_token_account_key,
+            expected_swept_2z_amount_1 + expected_swept_2z_amount_2,
+        )
+        .await
+        .unwrap()
         .initialize_program()
         .await
         .unwrap()
@@ -110,6 +98,7 @@ async fn test_sweep_distribution_tokens_development() {
         .configure_program(
             &admin_signer,
             [
+                ProgramConfiguration::Sol2zSwapProgram(mock_swap_sol_2z::ID),
                 ProgramConfiguration::PaymentsAccountant(payments_accountant_signer.pubkey()),
                 ProgramConfiguration::RewardsAccountant(rewards_accountant_signer.pubkey()),
                 ProgramConfiguration::SolanaValidatorFeeParameters {
@@ -154,9 +143,6 @@ async fn test_sweep_distribution_tokens_development() {
         .unwrap()
         .initialize_swap_destination(&DOUBLEZERO_MINT_KEY)
         .await
-        .unwrap()
-        .transfer_2z(&swap_destination_key, swap_destination_balance_before)
-        .await
         .unwrap();
 
     // 1. Initialize Solana validator deposit accounts.
@@ -200,9 +186,15 @@ async fn test_sweep_distribution_tokens_development() {
 
     // Cannot sweep yet.
 
+    let sol_2z_swap_fills_registry_key = test_setup.sol_2z_swap_fills_registry_key;
+
     let sweep_distribution_tokens_ix = try_build_instruction(
         &ID,
-        SweepDistributionTokensAccounts::new(dz_epoch),
+        SweepDistributionTokensAccounts::new(
+            dz_epoch,
+            &mock_swap_sol_2z::ID,
+            &sol_2z_swap_fills_registry_key,
+        ),
         &RevenueDistributionInstructionData::SweepDistributionTokens,
     )
     .unwrap();
@@ -216,7 +208,7 @@ async fn test_sweep_distribution_tokens_development() {
     );
     assert_eq!(
         program_logs.get(2).unwrap(),
-        "Program log: Journal does not have enough SOL to cover the SOL debt"
+        "Program log: Journal does not have enough swapped SOL to cover the SOL debt"
     );
 
     // Initialize another distribution. Out of convenience, use the same debt
@@ -265,10 +257,42 @@ async fn test_sweep_distribution_tokens_development() {
             .unwrap();
     }
 
+    let sol_destination_key = Pubkey::new_unique();
+
+    // Swap twice to satisfy both distributions.
+    test_setup
+        .mock_buy_sol(
+            &src_token_account_key,
+            &transfer_authority_signer,
+            &sol_destination_key,
+            expected_swept_2z_amount_1,
+            total_solana_validator_debt,
+        )
+        .await
+        .unwrap()
+        .mock_buy_sol(
+            &src_token_account_key,
+            &transfer_authority_signer,
+            &sol_destination_key,
+            expected_swept_2z_amount_2,
+            total_solana_validator_debt - uncollectible_debt.amount,
+        )
+        .await
+        .unwrap();
+
     // Test.
 
+    let swap_authority_key = find_swap_authority_address().0;
+    let swap_destination_key = find_2z_token_pda_address(&swap_authority_key).0;
+
+    let swap_destination_balance_before = test_setup
+        .fetch_token_account(&swap_destination_key)
+        .await
+        .unwrap()
+        .amount;
+
     let (_, journal, _, _) = test_setup.fetch_journal().await;
-    let journal_sol_balance_before = journal.total_sol_balance;
+    let journal_sol_balance_before = journal.swapped_sol_amount;
 
     test_setup
         .sweep_distribution_tokens(dz_epoch)
@@ -277,7 +301,7 @@ async fn test_sweep_distribution_tokens_development() {
 
     let (_, journal, _, _) = test_setup.fetch_journal().await;
     assert_eq!(
-        journal_sol_balance_before - journal.total_sol_balance,
+        journal_sol_balance_before - journal.swapped_sol_amount,
         total_solana_validator_debt
     );
 
@@ -394,9 +418,4 @@ async fn test_sweep_distribution_tokens_development() {
     assert_eq!(distribution, expected_distribution);
 
     assert_eq!(remaining_distribution_data, vec![0b11111111]);
-}
-
-#[cfg(not(feature = "development"))]
-async fn test_sweep_distribution_tokens_mainnet() {
-    todo!()
 }

@@ -1,8 +1,8 @@
 [workspace]
 exclude = []
 members = [
-    "crates/2z-cli",
     "crates/program-tools",
+    "mock/swap-sol-2z",
     "programs/passport",
     "programs/revenue-distribution",
 ]
@@ -67,3 +67,6 @@ path = "crates/program-tools"
 
 [workspace.dependencies.doublezero-revenue-distribution]
 path = "programs/revenue-distribution"
+
+[workspace.dependencies.mock-swap-sol-2z]
+path = "mock/swap-sol-2z"

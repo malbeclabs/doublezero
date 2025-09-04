@@ -174,10 +174,15 @@ impl RevenueDistributionInstructionData {
         Discriminator::new_sha2(b"dz::ix::forgive_solana_validator_debt");
     pub const INITIALIZE_SWAP_DESTINATION: Discriminator<DISCRIMINATOR_LEN> =
         Discriminator::new_sha2(b"dz::ix::initialize_swap_destination");
-    pub const SWEEP_DISTRIBUTION_TOKENS: Discriminator<DISCRIMINATOR_LEN> =
-        Discriminator::new_sha2(b"dz::ix::sweep_distribution_tokens");
     pub const WITHDRAW_SOL: Discriminator<DISCRIMINATOR_LEN> =
         Discriminator::new_sha2(b"dz::ix::withdraw_sol");
+
+    //
+    // Versioned instruction selectors.
+    //
+
+    pub const SWEEP_DISTRIBUTION_TOKENS_V1: Discriminator<DISCRIMINATOR_LEN> =
+        Discriminator::new_sha2(b"dz::ix::sweep_distribution_tokens::v1");
 }
 
 impl BorshDeserialize for RevenueDistributionInstructionData {
@@ -278,7 +283,7 @@ impl BorshDeserialize for RevenueDistributionInstructionData {
                 Ok(Self::ForgiveSolanaValidatorDebt { debt, proof })
             }
             Self::INITIALIZE_SWAP_DESTINATION => Ok(Self::InitializeSwapDestination),
-            Self::SWEEP_DISTRIBUTION_TOKENS => Ok(Self::SweepDistributionTokens),
+            Self::SWEEP_DISTRIBUTION_TOKENS_V1 => Ok(Self::SweepDistributionTokens),
             Self::WITHDRAW_SOL => {
                 BorshDeserialize::deserialize_reader(reader).map(Self::WithdrawSol)
             }
@@ -395,7 +400,7 @@ impl BorshSerialize for RevenueDistributionInstructionData {
                 proof.serialize(writer)
             }
             Self::InitializeSwapDestination => Self::INITIALIZE_SWAP_DESTINATION.serialize(writer),
-            Self::SweepDistributionTokens => Self::SWEEP_DISTRIBUTION_TOKENS.serialize(writer),
+            Self::SweepDistributionTokens => Self::SWEEP_DISTRIBUTION_TOKENS_V1.serialize(writer),
             Self::WithdrawSol(amount) => {
                 Self::WITHDRAW_SOL.serialize(writer)?;
                 amount.serialize(writer)

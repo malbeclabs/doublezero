@@ -39,6 +39,12 @@ pub trait PrecomputedDiscriminator {
 #[derive(Debug, BorshDeserialize, BorshSerialize, Clone, Copy, PartialEq, Eq)]
 pub struct Discriminator<const N: usize>([u8; N]);
 
+impl<const N: usize> Discriminator<N> {
+    pub const fn new(value: [u8; N]) -> Self {
+        Self(value)
+    }
+}
+
 impl<const N: usize> Display for Discriminator<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for byte in &self.0 {

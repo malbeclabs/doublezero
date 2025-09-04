@@ -60,11 +60,14 @@ pub struct ProgramTestWithOwner {
     pub cached_blockhash: Hash,
     pub owner_signer: Keypair,
     pub treasury_2z_key: Pubkey,
+    pub sol_2z_swap_fills_registry_key: Pubkey,
 }
 
 pub async fn start_test_with_accounts(accounts: Vec<TestAccount>) -> ProgramTestWithOwner {
     let mut program_test = ProgramTest::new("doublezero_revenue_distribution", ID, None);
     program_test.prefer_bpf(true);
+
+    program_test.add_program("mock_swap_sol_2z", mock_swap_sol_2z::ID, None);
 
     let owner_signer = Keypair::new();
 
@@ -126,7 +129,28 @@ pub async fn start_test_with_accounts(accounts: Vec<TestAccount>) -> ProgramTest
         program_test.add_account(key, info);
     }
 
-    let (banks_client, payer_signer, cached_blockhash) = program_test.start().await;
+    let (mut banks_client, payer_signer, cached_blockhash) = program_test.start().await;
+
+    let sol_2z_swap_fills_registry_signer = Keypair::new();
+    let sol_2z_swap_fills_registry_key = sol_2z_swap_fills_registry_signer.pubkey();
+
+    // Initialize the mock swap sol 2z program's fills tracker.
+    let cached_blockhash = {
+        let (create_account_ix, initialize_fills_tracker_ix) =
+            mock_swap_sol_2z::instruction::create_and_initialize_fills_tracker(
+                &payer_signer.pubkey(),
+                &sol_2z_swap_fills_registry_key,
+            );
+
+        process_instructions_for_test(
+            &mut banks_client,
+            &cached_blockhash,
+            &[create_account_ix, initialize_fills_tracker_ix],
+            &[&payer_signer, &sol_2z_swap_fills_registry_signer],
+        )
+        .await
+        .unwrap()
+    };
 
     ProgramTestWithOwner {
         banks_client,
@@ -134,6 +158,7 @@ pub async fn start_test_with_accounts(accounts: Vec<TestAccount>) -> ProgramTest
         cached_blockhash,
         owner_signer,
         treasury_2z_key,
+        sol_2z_swap_fills_registry_key,
     }
 }
 
@@ -1001,10 +1026,15 @@ impl ProgramTestWithOwner {
         dz_epoch: DoubleZeroEpoch,
     ) -> Result<&mut Self, BanksClientError> {
         let payer_signer = &self.payer_signer;
+        let sol_2z_swap_fills_registry_key = self.sol_2z_swap_fills_registry_key;
 
         let sweep_distribution_tokens_ix = try_build_instruction(
             &ID,
-            SweepDistributionTokensAccounts::new(dz_epoch),
+            SweepDistributionTokensAccounts::new(
+                dz_epoch,
+                &mock_swap_sol_2z::ID,
+                &sol_2z_swap_fills_registry_key,
+            ),
             &RevenueDistributionInstructionData::SweepDistributionTokens,
         )
         .unwrap();
@@ -1014,6 +1044,41 @@ impl ProgramTestWithOwner {
             &self.cached_blockhash,
             &[sweep_distribution_tokens_ix],
             &[payer_signer],
+        )
+        .await?;
+
+        Ok(self)
+    }
+
+    //
+    // Mock Swap SOL/2Z integration.
+    //
+
+    pub async fn mock_buy_sol(
+        &mut self,
+        source_2z_token_account_key: &Pubkey,
+        transfer_authority_signer: &Keypair,
+        sol_destination_key: &Pubkey,
+        amount_2z_in: u64,
+        amount_sol_out: u64,
+    ) -> Result<&mut Self, BanksClientError> {
+        let payer_signer = &self.payer_signer;
+        let fills_tracker_key = self.sol_2z_swap_fills_registry_key;
+
+        let buy_sol_ix = mock_swap_sol_2z::instruction::buy_sol(
+            &fills_tracker_key,
+            source_2z_token_account_key,
+            &transfer_authority_signer.pubkey(),
+            sol_destination_key,
+            amount_2z_in,
+            amount_sol_out,
+        );
+
+        self.cached_blockhash = process_instructions_for_test(
+            &mut self.banks_client,
+            &self.cached_blockhash,
+            &[buy_sol_ix],
+            &[payer_signer, transfer_authority_signer],
         )
         .await?;
 

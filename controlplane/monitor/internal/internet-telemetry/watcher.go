@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -34,6 +35,8 @@ type InternetTelemetryWatcher struct {
 	epochSet  bool
 	stats     map[string]CircuitTelemetryStats
 	mu        sync.RWMutex
+
+	prevCircuits map[string]struct{}
 }
 
 func NewInternetTelemetryWatcher(cfg *Config) (*InternetTelemetryWatcher, error) {
@@ -41,9 +44,10 @@ func NewInternetTelemetryWatcher(cfg *Config) (*InternetTelemetryWatcher, error)
 		return nil, err
 	}
 	return &InternetTelemetryWatcher{
-		log:   cfg.Logger.With("watcher", watcherName),
-		cfg:   cfg,
-		stats: map[string]CircuitTelemetryStats{},
+		log:          cfg.Logger.With("watcher", watcherName),
+		cfg:          cfg,
+		stats:        map[string]CircuitTelemetryStats{},
+		prevCircuits: map[string]struct{}{},
 	}, nil
 }
 
@@ -85,9 +89,6 @@ func (w *InternetTelemetryWatcher) Tick(ctx context.Context) error {
 		w.cfg.Metrics.Errors.WithLabelValues(MetricErrorTypeGetCircuits).Inc()
 		return fmt.Errorf("failed to get circuits: %w", err)
 	}
-	if len(circuits) == 0 {
-		return nil
-	}
 
 	epochInfo, err := w.cfg.LedgerRPCClient.GetEpochInfo(ctx, solanarpc.CommitmentFinalized)
 	if err != nil {
@@ -97,6 +98,46 @@ func (w *InternetTelemetryWatcher) Tick(ctx context.Context) error {
 	}
 	epoch := epochInfo.Epoch
 
+	// prune stats for old epochs if we rolled over
+	if w.epochSet && w.lastEpoch != epoch {
+		w.mu.Lock()
+		prefix := fmt.Sprintf("epoch=%d, ", epoch)
+		for k := range w.stats {
+			if !strings.HasPrefix(k, prefix) {
+				delete(w.stats, k)
+			}
+		}
+		w.mu.Unlock()
+	}
+
+	// if no circuits: delete metrics for everything we had last tick (for all providers) and return
+	if len(circuits) == 0 {
+		w.mu.Lock()
+		for code := range w.prevCircuits {
+			for _, dp := range dataProviders {
+				w.cfg.Metrics.Successes.DeleteLabelValues(dp, code)
+				w.cfg.Metrics.Losses.DeleteLabelValues(dp, code)
+				w.cfg.Metrics.Samples.DeleteLabelValues(dp, code)
+				w.cfg.Metrics.AccountNotFound.DeleteLabelValues(dp, code)
+			}
+			for k := range w.stats {
+				if strings.HasSuffix(k, ", circuit="+code) {
+					delete(w.stats, k)
+				}
+			}
+			w.log.Debug("deleted metrics for absent circuit", "code", code)
+		}
+		w.prevCircuits = map[string]struct{}{}
+		w.mu.Unlock()
+		return nil
+	}
+
+	// build the current set of circuits for diffing
+	currCircuits := make(map[string]struct{}, len(circuits))
+	for _, c := range circuits {
+		currCircuits[c.Code] = struct{}{}
+	}
+
 	var wg sync.WaitGroup
 	errorChan := make(chan error, len(dataProviders)*len(circuits))
 	sem := make(chan struct{}, w.cfg.MaxConcurrency)
@@ -105,7 +146,7 @@ func (w *InternetTelemetryWatcher) Tick(ctx context.Context) error {
 		for _, circuit := range circuits {
 			wg.Add(1)
 			sem <- struct{}{}
-			go func(circuit telemetrycircuits.InternetExchangeCircuit) {
+			go func(circuit telemetrycircuits.InternetExchangeCircuit, dataProvider string) {
 				defer wg.Done()
 				defer func() { <-sem }()
 
@@ -182,8 +223,6 @@ func (w *InternetTelemetryWatcher) Tick(ctx context.Context) error {
 					SuccessCount: successCount,
 					LossCount:    lossCount,
 				}
-				w.epochSet = true
-				w.lastEpoch = epoch
 				w.mu.Unlock()
 
 				w.log.Debug("circuit telemetry",
@@ -199,7 +238,7 @@ func (w *InternetTelemetryWatcher) Tick(ctx context.Context) error {
 					"success_count_delta", successCountDelta,
 					"loss_count_delta", lossCountDelta,
 				)
-			}(circuit)
+			}(circuit, dataProvider)
 		}
 	}
 
@@ -210,6 +249,29 @@ func (w *InternetTelemetryWatcher) Tick(ctx context.Context) error {
 		return err
 	default:
 	}
+
+	// delete metrics for circuits that disappeared since the previous tick
+	w.mu.Lock()
+	for code := range w.prevCircuits {
+		if _, ok := currCircuits[code]; !ok {
+			for _, dp := range dataProviders {
+				w.cfg.Metrics.Successes.DeleteLabelValues(dp, code)
+				w.cfg.Metrics.Losses.DeleteLabelValues(dp, code)
+				w.cfg.Metrics.Samples.DeleteLabelValues(dp, code)
+				w.cfg.Metrics.AccountNotFound.DeleteLabelValues(dp, code)
+			}
+			for k := range w.stats {
+				if strings.HasSuffix(k, ", circuit="+code) {
+					delete(w.stats, k)
+				}
+			}
+			w.log.Debug("deleted metrics for absent circuit", "code", code)
+		}
+	}
+	w.prevCircuits = currCircuits
+	w.epochSet = true
+	w.lastEpoch = epoch
+	w.mu.Unlock()
 
 	return nil
 }

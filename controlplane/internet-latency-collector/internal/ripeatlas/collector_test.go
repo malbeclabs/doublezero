@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -139,80 +138,6 @@ func TestInternetLatency_RIPEAtlas_CalculateAndSortProbeDistances(t *testing.T) 
 	}
 }
 
-func TestInternetLatency_RIPEAtlas_ParseProbeIDsFromDescription(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name        string
-		description string
-		sourceProbe int
-		targetProbe int
-		locationA   string
-		locationZ   string
-	}{
-		{
-			name:        "Valid description",
-			description: "DoubleZero New York probe 123 to London probe 456",
-			sourceProbe: 123,
-			targetProbe: 456,
-			locationA:   "New York",
-			locationZ:   "London",
-		},
-		{
-			name:        "Complex location names",
-			description: "DoubleZero San Francisco, CA probe 789 to Tokyo, Japan probe 101",
-			sourceProbe: 789,
-			targetProbe: 101,
-			locationA:   "San Francisco, CA",
-			locationZ:   "Tokyo, Japan",
-		},
-		{
-			name:        "Invalid format - missing 'to'",
-			description: "DoubleZero Location probe 123",
-			sourceProbe: 0,
-			targetProbe: 0,
-			locationA:   "",
-			locationZ:   "",
-		},
-		{
-			name:        "Invalid format - no probes",
-			description: "DoubleZero Location A to Location B",
-			sourceProbe: 0,
-			targetProbe: 0,
-			locationA:   "",
-			locationZ:   "",
-		},
-		{
-			name:        "Invalid probe IDs",
-			description: "DoubleZero Location A probe abc to Location B probe xyz",
-			sourceProbe: 0,
-			targetProbe: 0,
-			locationA:   "Location A",
-			locationZ:   "Location B",
-		},
-		{
-			name:        "Empty description",
-			description: "",
-			sourceProbe: 0,
-			targetProbe: 0,
-			locationA:   "",
-			locationZ:   "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			sourceProbe, targetProbe, locationA, locationZ := parseProbeIDsFromDescription(tt.description)
-			require.Equal(t, tt.sourceProbe, sourceProbe, "sourceProbe mismatch")
-			require.Equal(t, tt.targetProbe, targetProbe, "targetProbe mismatch")
-			require.Equal(t, tt.locationA, locationA, "locationA mismatch")
-			require.Equal(t, tt.locationZ, locationZ, "locationZ mismatch")
-		})
-	}
-}
-
 func TestInternetLatency_RIPEAtlas_FilterValidProbes(t *testing.T) {
 	t.Parallel()
 
@@ -270,9 +195,10 @@ func TestInternetLatency_RIPEAtlas_ParseLatencyFromResult(t *testing.T) {
 		},
 	}
 
-	latency, timestamp := c.parseLatencyFromResult(result)
+	latency, timestamp, probeID := c.parseLatencyFromResult(result)
 	require.Equal(t, 25500*time.Microsecond, latency, "Expected latency 25.5")
 	require.Equal(t, timestamp, timestamp, "Expected timestamp 2021-01-01T00:00:00.000000")
+	require.Equal(t, 0, probeID, "Expected probe ID 0 when not present")
 
 	// No RTT values
 	result = map[string]any{
@@ -280,13 +206,14 @@ func TestInternetLatency_RIPEAtlas_ParseLatencyFromResult(t *testing.T) {
 		"result":    []any{},
 	}
 
-	latency, _ = c.parseLatencyFromResult(result)
+	latency, _, _ = c.parseLatencyFromResult(result)
 	require.Equal(t, 0*time.Microsecond, latency, "Expected latency 0 for no results")
 
 	// Invalid result structure
-	latency, timestamp = c.parseLatencyFromResult("invalid")
+	latency, timestamp, probeID = c.parseLatencyFromResult("invalid")
 	require.Equal(t, 0*time.Microsecond, latency, "Expected zero latency for invalid result")
 	require.Empty(t, timestamp, "Expected empty timestamp for invalid result")
+	require.Equal(t, 0, probeID, "Expected zero probe ID for invalid result")
 }
 
 func TestInternetLatency_RIPEAtlas_ClearAllMeasurements(t *testing.T) {
@@ -388,15 +315,7 @@ func TestInternetLatency_RIPEAtlas_ExportMeasurementResults(t *testing.T) {
 			return []Measurement{
 				{
 					ID:          1,
-					Description: "DoubleZero NYC probe 100 to LAX probe 200",
-					Status: struct {
-						Name string `json:"name"`
-						ID   int    `json:"id"`
-					}{Name: "Running"},
-				},
-				{
-					ID:          1,
-					Description: "DoubleZero CHI probe 101 to LAX probe 200",
+					Description: "DoubleZero combined to LAX probe 200",
 					Status: struct {
 						Name string `json:"name"`
 						ID   int    `json:"id"`
@@ -407,12 +326,14 @@ func TestInternetLatency_RIPEAtlas_ExportMeasurementResults(t *testing.T) {
 		GetMeasurementResultsIncrementalFunc: func(ctx context.Context, measurementID int, startTimestamp int64) ([]any, error) {
 			return []any{
 				map[string]any{
-					"timestamp": float64(1609459200),
+					"prb_id":    float64(100), // NYC probe
+					"timestamp": float64(1609459260),
 					"result": []any{
-						map[string]any{"rtt": float64(25.0)},
+						map[string]any{"rtt": float64(26.0)},
 					},
 				},
 				map[string]any{
+					"prb_id":    float64(101), // CHI probe
 					"timestamp": float64(1609459260),
 					"result": []any{
 						map[string]any{"rtt": float64(26.0)},
@@ -425,7 +346,29 @@ func TestInternetLatency_RIPEAtlas_ExportMeasurementResults(t *testing.T) {
 	outputDir := t.TempDir()
 	e, err := exporter.NewCSVExporter(log, "ripe_atlas_measurements", outputDir)
 	require.NoError(t, err)
-	c := &Collector{client: mockClient, log: log, exporter: e}
+	c := &Collector{
+		client:   mockClient,
+		log:      log,
+		exporter: e,
+		probeToLocation: map[int]string{
+			100: "nyc",
+			101: "chi",
+		},
+	}
+
+	timestampFile := filepath.Join(outputDir, TimestampFileName)
+	measurementState := NewMeasurementState(timestampFile)
+	measurementState.SetMetadata(1, MeasurementMeta{
+		TargetLocation: "lax",
+		TargetProbeID:  200,
+		Sources: []SourceProbeMeta{
+			{LocationCode: "nyc", ProbeID: 100},
+			{LocationCode: "chi", ProbeID: 101},
+		},
+		CreatedAt: time.Now().Unix(),
+	})
+	err = measurementState.Save()
+	require.NoError(t, err)
 
 	err = c.ExportMeasurementResults(t.Context(), outputDir)
 	require.NoError(t, err)
@@ -465,8 +408,8 @@ func TestInternetLatency_RIPEAtlas_ExportMeasurementResults(t *testing.T) {
 
 		sourcesSeen[src] = struct{}{}
 	}
-	require.Contains(t, sourcesSeen, "NYC")
-	require.Contains(t, sourcesSeen, "CHI")
+	require.Contains(t, sourcesSeen, "nyc")
+	require.Contains(t, sourcesSeen, "chi")
 }
 
 func TestInternetLatency_RIPEAtlas_ExportMeasurementResults_DeduplicatesByMeasurementSourceKey(t *testing.T) {
@@ -479,7 +422,7 @@ func TestInternetLatency_RIPEAtlas_ExportMeasurementResults_DeduplicatesByMeasur
 			return []Measurement{
 				{
 					ID:          1,
-					Description: "DoubleZero NYC probe 100 to LAX probe 200",
+					Description: "DoubleZero combined to LAX probe 200",
 					Status: struct {
 						Name string `json:"name"`
 						ID   int    `json:"id"`
@@ -490,18 +433,21 @@ func TestInternetLatency_RIPEAtlas_ExportMeasurementResults_DeduplicatesByMeasur
 		GetMeasurementResultsIncrementalFunc: func(ctx context.Context, measurementID int, startTimestamp int64) ([]any, error) {
 			return []any{
 				map[string]any{
+					"prb_id":    float64(100), // NYC probe
 					"timestamp": float64(1609459200),
 					"result": []any{
 						map[string]any{"rtt": float64(24.0)},
 					},
 				},
 				map[string]any{
+					"prb_id":    float64(100), // Same probe, later time
 					"timestamp": float64(1609459260),
 					"result": []any{
 						map[string]any{"rtt": float64(25.0)},
 					},
 				},
 				map[string]any{
+					"prb_id":    float64(100), // Same probe, even later
 					"timestamp": float64(1609459320),
 					"result": []any{
 						map[string]any{"rtt": float64(26.0)},
@@ -515,7 +461,27 @@ func TestInternetLatency_RIPEAtlas_ExportMeasurementResults_DeduplicatesByMeasur
 	e, err := exporter.NewCSVExporter(log, "ripe_atlas_measurements", outputDir)
 	require.NoError(t, err)
 
-	c := &Collector{client: mockClient, log: log, exporter: e}
+	c := &Collector{
+		client:   mockClient,
+		log:      log,
+		exporter: e,
+		probeToLocation: map[int]string{
+			100: "nyc",
+		},
+	}
+
+	timestampFile := filepath.Join(outputDir, TimestampFileName)
+	measurementState := NewMeasurementState(timestampFile)
+	measurementState.SetMetadata(1, MeasurementMeta{
+		TargetLocation: "lax",
+		TargetProbeID:  200,
+		Sources: []SourceProbeMeta{
+			{LocationCode: "nyc", ProbeID: 100},
+		},
+		CreatedAt: time.Now().Unix(),
+	})
+	err = measurementState.Save()
+	require.NoError(t, err)
 
 	err = c.ExportMeasurementResults(t.Context(), outputDir)
 	require.NoError(t, err)
@@ -644,8 +610,8 @@ func TestInternetLatency_RIPEAtlas_ListAtlasProbes(t *testing.T) {
 	c := &Collector{client: mockClient, log: log}
 
 	locations := []collector.LocationMatch{
-		{LocationCode: "NYC", Latitude: 40.7128, Longitude: -74.0060},
-		{LocationCode: "LAX", Latitude: 34.0522, Longitude: -118.2437},
+		{LocationCode: "nyc", Latitude: 40.7128, Longitude: -74.0060},
+		{LocationCode: "lax", Latitude: 34.0522, Longitude: -118.2437},
 	}
 
 	// Capture output (ListAtlasProbes is an interactive function that uses fmt.Print)
@@ -666,8 +632,8 @@ func TestInternetLatency_RIPEAtlas_ListAtlasProbes(t *testing.T) {
 
 	require.Contains(t, outputStr, "Found 2 locations", "Output should mention finding 2 locations")
 	require.Contains(t, outputStr, "=== RIPE Atlas Probe Discovery Results ===", "Output should contain results header")
-	require.Contains(t, outputStr, "Location: NYC", "Output should contain NYC location")
-	require.Contains(t, outputStr, "Location: LAX", "Output should contain LAX location")
+	require.Contains(t, outputStr, "Location: nyc", "Output should contain nyc location")
+	require.Contains(t, outputStr, "Location: lax", "Output should contain lax location")
 	require.Contains(t, outputStr, "IPv6:", "Output should show IPv6 addresses")
 }
 
@@ -698,7 +664,7 @@ func TestInternetLatency_RIPEAtlas_GenerateWantedMeasurements_Deterministic(t *t
 	locations := []LocationProbeMatch{
 		{
 			LocationMatch: collector.LocationMatch{
-				LocationCode: "NYC",
+				LocationCode: "nyc",
 				Latitude:     40.7128,
 				Longitude:    -74.0060,
 			},
@@ -709,7 +675,7 @@ func TestInternetLatency_RIPEAtlas_GenerateWantedMeasurements_Deterministic(t *t
 		},
 		{
 			LocationMatch: collector.LocationMatch{
-				LocationCode: "LON",
+				LocationCode: "lon",
 				Latitude:     51.5074,
 				Longitude:    -0.1278,
 			},
@@ -741,50 +707,50 @@ func TestInternetLatency_RIPEAtlas_GenerateWantedMeasurements_Deterministic(t *t
 	// Should have same number of measurements
 	require.Equal(t, len(measurements1), len(measurements2), "Different number of measurements")
 
-	// Convert to map for easy comparison
-	measurementMap1 := make(map[string]bool)
+	// We expect one measurement per target location.
+	// Since we have 3 locations (AMS, lon, nyc), and we create measurements from all others to each target:
+	// - Measurement to AMS from lon,nyc
+	// - Measurement to lon from nyc (AMS already measured to lon)
+	// - No measurement to nyc (both AMS and lon already measured to nyc)
+	// Total: 2 measurements
+	require.Len(t, measurements1, 2, "Expected 2 combined measurements")
+
+	// Verify measurements have the expected structure
+	targetLocations := make(map[string]bool)
 	for _, m := range measurements1 {
-		key := fmt.Sprintf("%s->%s:%d->%d", m.SourceLocationCode, m.TargetLocationCode, m.SourceProbe.ID, m.TargetProbe.ID)
-		measurementMap1[key] = true
-	}
+		targetLocations[m.TargetLocationCode] = true
 
-	measurementMap2 := make(map[string]bool)
-	for _, m := range measurements2 {
-		key := fmt.Sprintf("%s->%s:%d->%d", m.SourceLocationCode, m.TargetLocationCode, m.SourceProbe.ID, m.TargetProbe.ID)
-		measurementMap2[key] = true
-	}
+		// Each measurement should have multiple source specs
+		require.Greater(t, len(m.SourceSpecs), 0, "Measurement to %s should have sources", m.TargetLocationCode)
 
-	// Should have identical measurements
-	for key := range measurementMap1 {
-		require.True(t, measurementMap2[key], "Measurement %s found in first run but not second", key)
-	}
-
-	// Verify all measurements follow the pattern where source comes before target alphabetically
-	// This is ensured by the sorting and the i >= j check in generateWantedMeasurements
-
-	// Expected measurements (alphabetical order):
-	// AMS -> LON (2 probes each = 2 measurements)
-	// AMS -> NYC (2 probes each = 2 measurements)
-	// LON -> NYC (2 probes each = 2 measurements)
-	// Total: 6 measurements
-	require.Len(t, measurements1, 6, "Expected 6 measurements")
-
-	// Verify specific expected measurements exist
-	expectedPairs := map[string]bool{
-		"AMS->LON": false,
-		"AMS->NYC": false,
-		"LON->NYC": false,
-	}
-
-	for _, m := range measurements1 {
-		key := m.SourceLocationCode + "->" + m.TargetLocationCode
-		if _, exists := expectedPairs[key]; exists {
-			expectedPairs[key] = true
+		// Verify all sources come after the target alphabetically
+		for _, source := range m.SourceSpecs {
+			require.Greater(t, source.LocationCode, m.TargetLocationCode,
+				"Source %s should come after target %s alphabetically", source.LocationCode, m.TargetLocationCode)
 		}
 	}
 
-	for pair, found := range expectedPairs {
-		require.True(t, found, "Expected measurement pair %s not found", pair)
+	// Should have measurements to AMS and LON
+	require.True(t, targetLocations["AMS"], "Should have measurement to AMS")
+	require.True(t, targetLocations["lon"], "Should have measurement to LON")
+	require.False(t, targetLocations["nyc"], "Should not have measurement to NYC")
+
+	// Verify the specific structure of measurements
+	for _, m := range measurements1 {
+		if m.TargetLocationCode == "AMS" {
+			// AMS gets measurements from LON and NYC
+			require.Len(t, m.SourceSpecs, 2, "AMS should have 2 sources")
+			sourceCodes := make(map[string]bool)
+			for _, s := range m.SourceSpecs {
+				sourceCodes[s.LocationCode] = true
+			}
+			require.True(t, sourceCodes["lon"], "AMS should have lon as source")
+			require.True(t, sourceCodes["nyc"], "AMS should have nyc as source")
+		} else if m.TargetLocationCode == "lon" {
+			// lon gets measurement only from nyc (AMS already measured to lon)
+			require.Len(t, m.SourceSpecs, 1, "lon should have 1 source")
+			require.Equal(t, "nyc", m.SourceSpecs[0].LocationCode, "lon should have nyc as source")
+		}
 	}
 }
 
@@ -894,7 +860,7 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_CreateNew(t *testing.T)
 	locationMatches := []LocationProbeMatch{
 		{
 			LocationMatch: collector.LocationMatch{
-				LocationCode: "NYC",
+				LocationCode: "nyc",
 				Latitude:     40.7128,
 				Longitude:    -74.0060,
 			},
@@ -905,7 +871,7 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_CreateNew(t *testing.T)
 		},
 		{
 			LocationMatch: collector.LocationMatch{
-				LocationCode: "LON",
+				LocationCode: "lon",
 				Latitude:     51.5074,
 				Longitude:    -0.1278,
 			},
@@ -919,7 +885,7 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_CreateNew(t *testing.T)
 	err := c.configureMeasurements(t.Context(), locationMatches, false, 1, t.TempDir(), 1*time.Minute)
 	require.NoError(t, err, "configureMeasurements should succeed")
 
-	// Verify measurement was created (NYC->LON due to alphabetical ordering)
+	// With combined measurements, LON (first alphabetically) gets a measurement from NYC
 	mu.Lock()
 	finalCreated := createdMeasurements
 	mu.Unlock()
@@ -931,11 +897,11 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_CreateNew(t *testing.T)
 	require.Len(t, measurement.Definitions, 1, "Expected 1 definition")
 	require.Equal(t, "ping", measurement.Definitions[0].Type)
 	require.Equal(t, 4, measurement.Definitions[0].AF)
-	require.Equal(t, "1.1.1.1", measurement.Definitions[0].Target) // NYC probe address (target)
-	require.Contains(t, measurement.Definitions[0].Description, "DoubleZero LON probe 200 to NYC probe 100")
+	require.Equal(t, "2.2.2.2", measurement.Definitions[0].Target) // LON probe address (target)
+	require.Contains(t, measurement.Definitions[0].Description, "combined to lon")
 
 	require.Len(t, measurement.Probes, 1, "Expected 1 probe")
-	require.Equal(t, 200, measurement.Probes[0].Value) // LON probe ID (source)
+	require.Equal(t, 100, measurement.Probes[0].Value) // NYC probe ID (source)
 }
 
 func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_RemoveUnwanted(t *testing.T) {
@@ -1019,12 +985,8 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_RemoveUnwanted(t *testi
 	mu.Unlock()
 
 	require.ElementsMatch(t, []int{1001, 1002}, finalRemoved, "Both measurements should be removed")
-	require.ElementsMatch(t, []int{1001, 1002}, finalExported, "Both measurements should be exported before removal")
-
-	// Verify CSV file was created
-	files, err := filepath.Glob(filepath.Join(outputDir, "ripe_atlas_measurements_*.csv"))
-	require.NoError(t, err, "Failed to glob CSV files")
-	require.Len(t, files, 1, "Expected 1 CSV file")
+	// Without metadata, measurements won't be exported
+	require.Empty(t, finalExported, "No measurements should be exported without metadata")
 }
 
 func TestInternetLatency_RIPEAtlas_Run_ErrorHandling(t *testing.T) {
@@ -1115,29 +1077,8 @@ func TestInternetLatency_RIPEAtlas_Run(t *testing.T) {
 			mu.Lock()
 			exportCalls++
 			mu.Unlock()
-			// Return measurements to trigger export logic
-			return []Measurement{
-				{
-					ID:          1001,
-					Description: "DoubleZero NYC probe 100 to LON probe 200",
-					Target:      "2.2.2.2",
-					Status: struct {
-						Name string `json:"name"`
-						ID   int    `json:"id"`
-					}{Name: "Running"},
-					Type: "ping",
-				},
-				{
-					ID:          1002,
-					Description: "DoubleZero PAR probe 300 to NYC probe 100",
-					Target:      "1.1.1.1",
-					Status: struct {
-						Name string `json:"name"`
-						ID   int    `json:"id"`
-					}{Name: "Running"},
-					Type: "ping",
-				},
-			}, nil
+			// Return no measurements since we don't have metadata for them
+			return []Measurement{}, nil
 		},
 		GetMeasurementResultsIncrementalFunc: func(ctx context.Context, measurementID int, startTimestamp int64) ([]any, error) {
 			mu.Lock()
@@ -1188,35 +1129,8 @@ func TestInternetLatency_RIPEAtlas_Run(t *testing.T) {
 	require.Greater(t, finalExportCalls, 0, "Export should have been called at least once")
 	t.Logf("Measurement calls: %d, Export calls: %d", finalMeasurementCalls, finalExportCalls)
 
-	// Verify data export occurred
-	require.Greater(t, len(finalExportedIDs), 0, "Measurements should have been exported")
-	require.Contains(t, finalExportedIDs, 1001, "Measurement 1001 should have been exported")
-
-	// Verify CSV file was created
-	csvFiles, err := filepath.Glob(filepath.Join(outputDir, "ripe_atlas_measurements_*.csv"))
-	require.NoError(t, err, "Failed to glob CSV files")
-	require.Greater(t, len(csvFiles), 0, "At least one CSV file should be created")
-
-	// Read the most recent CSV file
-	sort.Strings(csvFiles)
-	latestCSV := csvFiles[len(csvFiles)-1]
-	csvData, err := os.ReadFile(latestCSV)
-	require.NoError(t, err, "Failed to read CSV file")
-	csvContent := string(csvData)
-
-	// Check header
-	require.Contains(t, csvContent, "source_exchange_code,target_exchange_code,timestamp,latency",
-		"CSV header should be correct")
-
-	// Check data rows contain expected values
-	require.Contains(t, csvContent, "42.5ms", "CSV should contain latency value")
-	require.Contains(t, csvContent, "NYC", "CSV should contain NYC location")
-	require.Contains(t, csvContent, "LON", "CSV should contain LON location")
-
-	// Verify timestamp file was created
-	timestampFile := filepath.Join(stateDir, TimestampFileName)
-	_, err = os.Stat(timestampFile)
-	require.NoError(t, err, "Timestamp file should exist")
+	// Since we return no measurements (no metadata), no export should occur
+	require.Equal(t, 0, len(finalExportedIDs), "No measurements should be exported without metadata")
 }
 
 func TestInitializeCreditBalance(t *testing.T) {

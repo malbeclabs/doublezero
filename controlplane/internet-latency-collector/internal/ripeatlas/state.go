@@ -12,19 +12,27 @@ type MeasurementState struct {
 }
 
 type TimestampTracker struct {
-	Timestamps map[int]int64 `json:"timestamps"`
+	Metadata map[int]MeasurementMeta `json:"metadata"`
 }
 
-type MeasurementTimestamp struct {
-	MeasurementID int   `json:"measurement_id"`
-	LastTimestamp int64 `json:"last_timestamp"`
+type MeasurementMeta struct {
+	TargetLocation string            `json:"target_location"`
+	TargetProbeID  int               `json:"target_probe_id"`
+	Sources        []SourceProbeMeta `json:"sources"`
+	CreatedAt      int64             `json:"created_at"`
+	LastExportAt   int64             `json:"last_export_at,omitempty"`
+}
+
+type SourceProbeMeta struct {
+	LocationCode string `json:"location_code"`
+	ProbeID      int    `json:"probe_id"`
 }
 
 func NewMeasurementState(filename string) *MeasurementState {
 	return &MeasurementState{
 		filename: filename,
 		tracker: &TimestampTracker{
-			Timestamps: make(map[int]int64),
+			Metadata: make(map[int]MeasurementMeta),
 		},
 	}
 }
@@ -46,8 +54,8 @@ func (ms *MeasurementState) Load() error {
 		return fmt.Errorf("failed to decode timestamp file: %w", err)
 	}
 
-	if tracker.Timestamps == nil {
-		tracker.Timestamps = make(map[int]int64)
+	if tracker.Metadata == nil {
+		tracker.Metadata = make(map[int]MeasurementMeta)
 	}
 
 	ms.tracker = &tracker
@@ -71,18 +79,43 @@ func (ms *MeasurementState) Save() error {
 }
 
 func (ms *MeasurementState) GetLastTimestamp(measurementID int) (int64, bool) {
-	timestamp, exists := ms.tracker.Timestamps[measurementID]
-	return timestamp, exists
+	if meta, exists := ms.tracker.Metadata[measurementID]; exists {
+		return meta.LastExportAt, meta.LastExportAt > 0
+	}
+	return 0, false
 }
 
 func (ms *MeasurementState) UpdateTimestamp(measurementID int, timestamp int64) {
-	ms.tracker.Timestamps[measurementID] = timestamp
+	if meta, exists := ms.tracker.Metadata[measurementID]; exists {
+		meta.LastExportAt = timestamp
+		ms.tracker.Metadata[measurementID] = meta
+	} else {
+		// Create minimal metadata with just the timestamp
+		ms.tracker.Metadata[measurementID] = MeasurementMeta{
+			LastExportAt: timestamp,
+		}
+	}
+}
+
+func (ms *MeasurementState) SetMetadata(measurementID int, meta MeasurementMeta) {
+	ms.tracker.Metadata[measurementID] = meta
+}
+
+func (ms *MeasurementState) GetMetadata(measurementID int) (MeasurementMeta, bool) {
+	meta, exists := ms.tracker.Metadata[measurementID]
+	return meta, exists
+}
+
+func (ms *MeasurementState) RemoveMetadata(measurementID int) {
+	delete(ms.tracker.Metadata, measurementID)
 }
 
 func (ms *MeasurementState) GetAllTimestamps() map[int]int64 {
 	result := make(map[int]int64)
-	for k, v := range ms.tracker.Timestamps {
-		result[k] = v
+	for id, meta := range ms.tracker.Metadata {
+		if meta.LastExportAt > 0 {
+			result[id] = meta.LastExportAt
+		}
 	}
 	return result
 }

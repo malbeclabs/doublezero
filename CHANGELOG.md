@@ -12,9 +12,14 @@ All notable changes to this project will be documented in this file.
     - Add Validate trait for core types (AccessPass, Contributor, Interface, etc.) and enforce runtime checks before account operations.
     - Expand DoubleZeroError with granular variants (invalid IPs, ASN, MTU, VLAN, etc.) and derive PartialEq for easier testing.
     - Rename Config account type to GlobalConfig for clarity and consistency.
+    - Fix bug in user update that caused DZ IP to be 0.0.0.0
+    - Add more descriptive error logging
+- Activator
+    Support for interface IP reclamation
 - Onchain monitor
     - Emit metric for telemetry account not found in device and internet telemetry watchers
     - Emit metric with serviceability program onchain version
+    - Delete telemetry counter metrics if circuit was deleted
 - Telemetry
     - Fix dashboard API to handle partitioned query with no samples
     - Add summary view with committed RTT and jitter, compared to measured values

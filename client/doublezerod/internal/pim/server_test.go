@@ -1,3 +1,5 @@
+//go:build container_tests
+
 package pim_test
 
 import (

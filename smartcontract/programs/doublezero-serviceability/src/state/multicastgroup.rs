@@ -1,4 +1,6 @@
 use crate::{
+    error::{DoubleZeroError, Validate},
+    helper::deserialize_vec_with_capacity,
     seeds::SEED_MULTICAST_GROUP,
     state::accounttype::{AccountType, AccountTypeInfo},
 };
@@ -162,10 +164,10 @@ impl TryFrom<&[u8]> for MulticastGroup {
             max_bandwidth: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             status: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             code: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            pub_allowlist: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            sub_allowlist: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            publishers: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            subscribers: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            pub_allowlist: deserialize_vec_with_capacity(&mut data).unwrap_or_default(),
+            sub_allowlist: deserialize_vec_with_capacity(&mut data).unwrap_or_default(),
+            publishers: deserialize_vec_with_capacity(&mut data).unwrap_or_default(),
+            subscribers: deserialize_vec_with_capacity(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::MulticastGroup {
@@ -185,8 +187,52 @@ impl TryFrom<&AccountInfo<'_>> for MulticastGroup {
     }
 }
 
+impl Validate for MulticastGroup {
+    fn validate(&self) -> Result<(), DoubleZeroError> {
+        // Account type must be MulticastGroup
+        if self.account_type != AccountType::MulticastGroup {
+            return Err(DoubleZeroError::InvalidAccountType);
+        }
+        // Multicast IP must be in the range
+        if self.status != MulticastGroupStatus::Pending && !self.multicast_ip.is_multicast() {
+            return Err(DoubleZeroError::InvalidMulticastIp);
+        }
+        if self.max_bandwidth == 0 {
+            return Err(DoubleZeroError::InvalidMaxBandwidth);
+        }
+        // Code must be less than or equal to 32 bytes
+        if self.code.len() > 32 {
+            return Err(DoubleZeroError::CodeTooLong);
+        }
+
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn test_state_multicastgroup_validate_error_invalid_account_type() {
+        // Should fail because account_type is not MulticastGroup
+        let val = MulticastGroup {
+            account_type: AccountType::Device, // Should be MulticastGroup
+            owner: Pubkey::new_unique(),
+            index: 123,
+            bump_seed: 1,
+            tenant_pk: Pubkey::new_unique(),
+            multicast_ip: [239, 1, 1, 1].into(),
+            max_bandwidth: 1000,
+            status: MulticastGroupStatus::Activated,
+            code: "test".to_string(),
+            pub_allowlist: vec![Pubkey::new_unique()],
+            sub_allowlist: vec![Pubkey::new_unique()],
+            publishers: vec![Pubkey::new_unique()],
+            subscribers: vec![Pubkey::new_unique()],
+        };
+        let err = val.validate();
+        assert!(err.is_err());
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidAccountType);
+    }
     use super::*;
 
     #[test]
@@ -209,6 +255,9 @@ mod tests {
 
         let data = borsh::to_vec(&val).unwrap();
         let val2 = MulticastGroup::try_from(&data[..]).unwrap();
+
+        val.validate().unwrap();
+        val2.validate().unwrap();
 
         assert_eq!(val.size(), val2.size());
         assert_eq!(val.owner, val2.owner);

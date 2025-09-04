@@ -156,7 +156,9 @@ impl TryFrom<&[u8]> for AccountData {
         match AccountType::from(bytes[0]) {
             AccountType::None => Ok(AccountData::None),
             AccountType::GlobalState => Ok(AccountData::GlobalState(GlobalState::try_from(bytes)?)),
-            AccountType::Config => Ok(AccountData::GlobalConfig(GlobalConfig::try_from(bytes)?)),
+            AccountType::GlobalConfig => {
+                Ok(AccountData::GlobalConfig(GlobalConfig::try_from(bytes)?))
+            }
             AccountType::Location => Ok(AccountData::Location(Location::try_from(bytes)?)),
             AccountType::Exchange => Ok(AccountData::Exchange(Exchange::try_from(bytes)?)),
             AccountType::Device => Ok(AccountData::Device(Device::try_from(bytes)?)),

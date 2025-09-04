@@ -1,9 +1,14 @@
 use crate::{
+    error::{DoubleZeroError, Validate},
+    helper::is_global,
     seeds::SEED_DEVICE,
     state::accounttype::{AccountType, AccountTypeInfo},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
-use doublezero_program_common::types::{NetworkV4, NetworkV4List};
+use doublezero_program_common::{
+    types::{NetworkV4, NetworkV4List},
+    validate_iface,
+};
 use solana_program::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
 use std::{fmt, net::Ipv4Addr};
 
@@ -263,6 +268,31 @@ impl Interface {
     }
 }
 
+impl Validate for Interface {
+    fn validate(&self) -> Result<(), DoubleZeroError> {
+        // Validate each interface
+        let interface = self.into_current_version();
+
+        // Name must be valid
+        validate_iface(interface.name.as_str())
+            .map_err(|_| DoubleZeroError::InvalidInterfaceName)?;
+
+        // VLAN ID must be between 0 and 4094
+        if interface.vlan_id > 4094 {
+            return Err(DoubleZeroError::InvalidVlanId);
+        }
+        // IP net must be valid
+        if interface.ip_net != NetworkV4::default()
+            && !interface.ip_net.ip().is_private()
+            && !interface.ip_net.ip().is_link_local()
+        {
+            return Err(DoubleZeroError::InvalidInterfaceIp);
+        }
+
+        Ok(())
+    }
+}
+
 impl TryFrom<&[u8]> for Interface {
     type Error = ProgramError;
 
@@ -441,9 +471,274 @@ impl TryFrom<&AccountInfo<'_>> for Device {
     }
 }
 
+impl Validate for Device {
+    fn validate(&self) -> Result<(), DoubleZeroError> {
+        // Account type must be Device
+        if self.account_type != AccountType::Device {
+            return Err(DoubleZeroError::InvalidAccountType);
+        }
+        // Code must be less than or equal to 32 bytes
+        if self.code.len() > 32 {
+            return Err(DoubleZeroError::CodeTooLong);
+        }
+        // Location ID must be valid
+        if self.location_pk == Pubkey::default() {
+            return Err(DoubleZeroError::InvalidLocation);
+        }
+        // Exchange ID must be valid
+        if self.exchange_pk == Pubkey::default() {
+            return Err(DoubleZeroError::InvalidExchange);
+        }
+        // Public IP must be a global address
+        if !is_global(self.public_ip) {
+            return Err(DoubleZeroError::InvalidClientIp);
+        }
+        // Device prefixes must be present
+        if self.dz_prefixes.is_empty() {
+            return Err(DoubleZeroError::NoDzPrefixes);
+        }
+        // Device prefixes must be global unicast
+        if self.dz_prefixes.iter().any(|p| !is_global(p.ip())) {
+            return Err(DoubleZeroError::InvalidDzPrefix);
+        }
+        // validate Interfaces
+        for interface in &self.interfaces {
+            interface.validate()?;
+        }
+
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_state_device_validate_error_invalid_account_type() {
+        let val = Device {
+            account_type: AccountType::User, // Should be Device
+            owner: Pubkey::new_unique(),
+            index: 123,
+            bump_seed: 1,
+            reference_count: 0,
+            contributor_pk: Pubkey::new_unique(),
+            code: "test-321".to_string(),
+            device_type: DeviceType::Switch,
+            location_pk: Pubkey::new_unique(),
+            exchange_pk: Pubkey::new_unique(),
+            dz_prefixes: "10.0.0.1/24".parse().unwrap(),
+            public_ip: [1, 2, 3, 4].into(),
+            status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::new_unique(),
+            mgmt_vrf: "default".to_string(),
+            interfaces: vec![],
+            users_count: 1,
+            max_users: 2,
+        };
+        let err = val.validate();
+        assert!(err.is_err());
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidAccountType);
+    }
+
+    #[test]
+    fn test_state_device_validate_error_code_too_long() {
+        let val = Device {
+            account_type: AccountType::Device,
+            owner: Pubkey::new_unique(),
+            index: 123,
+            bump_seed: 1,
+            reference_count: 0,
+            contributor_pk: Pubkey::new_unique(),
+            code: "a".repeat(33), // More than 32 bytes
+            device_type: DeviceType::Switch,
+            location_pk: Pubkey::new_unique(),
+            exchange_pk: Pubkey::new_unique(),
+            dz_prefixes: "10.0.0.1/24".parse().unwrap(),
+            public_ip: [1, 2, 3, 4].into(),
+            status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::new_unique(),
+            mgmt_vrf: "default".to_string(),
+            interfaces: vec![],
+            users_count: 1,
+            max_users: 2,
+        };
+        let err = val.validate();
+        assert!(err.is_err());
+        assert_eq!(err.unwrap_err(), DoubleZeroError::CodeTooLong);
+    }
+
+    #[test]
+    fn test_state_device_validate_error_invalid_location() {
+        let val = Device {
+            account_type: AccountType::Device,
+            owner: Pubkey::new_unique(),
+            index: 123,
+            bump_seed: 1,
+            reference_count: 0,
+            contributor_pk: Pubkey::new_unique(),
+            code: "test-321".to_string(),
+            device_type: DeviceType::Switch,
+            location_pk: Pubkey::default(), // Invalid
+            exchange_pk: Pubkey::new_unique(),
+            dz_prefixes: "10.0.0.1/24".parse().unwrap(),
+            public_ip: [1, 2, 3, 4].into(),
+            status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::new_unique(),
+            mgmt_vrf: "default".to_string(),
+            interfaces: vec![],
+            users_count: 1,
+            max_users: 2,
+        };
+        let err = val.validate();
+        assert!(err.is_err());
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidLocation);
+    }
+
+    #[test]
+    fn test_state_device_validate_error_invalid_exchange() {
+        let val = Device {
+            account_type: AccountType::Device,
+            owner: Pubkey::new_unique(),
+            index: 123,
+            bump_seed: 1,
+            reference_count: 0,
+            contributor_pk: Pubkey::new_unique(),
+            code: "test-321".to_string(),
+            device_type: DeviceType::Switch,
+            location_pk: Pubkey::new_unique(),
+            exchange_pk: Pubkey::default(), // Invalid
+            dz_prefixes: "10.0.0.1/24".parse().unwrap(),
+            public_ip: [1, 2, 3, 4].into(),
+            status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::new_unique(),
+            mgmt_vrf: "default".to_string(),
+            interfaces: vec![],
+            users_count: 1,
+            max_users: 2,
+        };
+        let err = val.validate();
+        assert!(err.is_err());
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidExchange);
+    }
+
+    #[test]
+    fn test_state_device_validate_error_invalid_client_ip() {
+        let val = Device {
+            account_type: AccountType::Device,
+            owner: Pubkey::new_unique(),
+            index: 123,
+            bump_seed: 1,
+            reference_count: 0,
+            contributor_pk: Pubkey::new_unique(),
+            code: "test-321".to_string(),
+            device_type: DeviceType::Switch,
+            location_pk: Pubkey::new_unique(),
+            exchange_pk: Pubkey::new_unique(),
+            dz_prefixes: "10.0.0.1/24".parse().unwrap(),
+            public_ip: [0, 0, 0, 0].into(), // Invalid
+            status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::new_unique(),
+            mgmt_vrf: "default".to_string(),
+            interfaces: vec![],
+            users_count: 1,
+            max_users: 2,
+        };
+        let err = val.validate();
+        assert!(err.is_err());
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidClientIp);
+    }
+
+    #[test]
+    fn test_state_device_validate_error_no_dz_prefixes() {
+        let val = Device {
+            account_type: AccountType::Device,
+            owner: Pubkey::new_unique(),
+            index: 123,
+            bump_seed: 1,
+            reference_count: 0,
+            contributor_pk: Pubkey::new_unique(),
+            code: "test-321".to_string(),
+            device_type: DeviceType::Switch,
+            location_pk: Pubkey::new_unique(),
+            exchange_pk: Pubkey::new_unique(),
+            dz_prefixes: "0.0.0.0".parse().unwrap(),
+            public_ip: [1, 2, 3, 4].into(),
+            status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::new_unique(),
+            mgmt_vrf: "default".to_string(),
+            interfaces: vec![],
+            users_count: 1,
+            max_users: 2,
+        };
+        let err = val.validate();
+        assert!(err.is_err());
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidDzPrefix);
+    }
+
+    #[test]
+    fn test_state_device_validate_error_invalid_dz_prefix() {
+        let val = Device {
+            account_type: AccountType::Device,
+            owner: Pubkey::new_unique(),
+            index: 123,
+            bump_seed: 1,
+            reference_count: 0,
+            contributor_pk: Pubkey::new_unique(),
+            code: "test-321".to_string(),
+            device_type: DeviceType::Switch,
+            location_pk: Pubkey::new_unique(),
+            exchange_pk: Pubkey::new_unique(),
+            dz_prefixes: "0.0.0.0/24".parse().unwrap(), // Invalid
+            public_ip: [1, 2, 3, 4].into(),
+            status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::new_unique(),
+            mgmt_vrf: "default".to_string(),
+            interfaces: vec![],
+            users_count: 1,
+            max_users: 2,
+        };
+        let err = val.validate();
+        assert!(err.is_err());
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidDzPrefix);
+    }
+
+    #[test]
+    fn test_state_device_validate_error_invalid_interface() {
+        let invalid_iface = Interface::V1(CurrentInterfaceVersion {
+            status: InterfaceStatus::Activated,
+            name: "".to_string(), // Invalid Name
+            interface_type: InterfaceType::Physical,
+            loopback_type: LoopbackType::None,
+            vlan_id: 100,
+            ip_net: "10.0.0.1/24".parse().unwrap(),
+            node_segment_idx: 42,
+            user_tunnel_endpoint: true,
+        });
+        let val = Device {
+            account_type: AccountType::Device,
+            owner: Pubkey::new_unique(),
+            index: 123,
+            bump_seed: 1,
+            reference_count: 0,
+            contributor_pk: Pubkey::new_unique(),
+            code: "test-321".to_string(),
+            device_type: DeviceType::Switch,
+            location_pk: Pubkey::new_unique(),
+            exchange_pk: Pubkey::new_unique(),
+            dz_prefixes: "10.0.0.1/24".parse().unwrap(),
+            public_ip: [1, 2, 3, 4].into(),
+            status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::new_unique(),
+            mgmt_vrf: "default".to_string(),
+            interfaces: vec![invalid_iface],
+            users_count: 1,
+            max_users: 2,
+        };
+        let err = val.validate();
+        assert!(err.is_err());
+        // Exact error type not verified because it depends on validate_iface
+    }
 
     #[test]
     fn test_state_device_serialization() {
@@ -458,7 +753,7 @@ mod tests {
             device_type: DeviceType::Switch,
             location_pk: Pubkey::new_unique(),
             exchange_pk: Pubkey::new_unique(),
-            dz_prefixes: "10.0.0.1/24,11.0.0.1/24".parse().unwrap(),
+            dz_prefixes: "100.0.0.1/24,101.0.0.1/24".parse().unwrap(),
             public_ip: [1, 2, 3, 4].into(),
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::new_unique(),
@@ -466,7 +761,7 @@ mod tests {
             interfaces: vec![
                 Interface::V1(CurrentInterfaceVersion {
                     status: InterfaceStatus::Activated,
-                    name: "eth0".to_string(),
+                    name: "Switch1/1/1".to_string(),
                     interface_type: InterfaceType::Physical,
                     loopback_type: LoopbackType::None,
                     vlan_id: 100,
@@ -476,7 +771,7 @@ mod tests {
                 }),
                 Interface::V1(CurrentInterfaceVersion {
                     status: InterfaceStatus::Deleting,
-                    name: "eth1".to_string(),
+                    name: "Switch1/1/2".to_string(),
                     interface_type: InterfaceType::Physical,
                     loopback_type: LoopbackType::None,
                     vlan_id: 101,
@@ -491,6 +786,9 @@ mod tests {
 
         let data = borsh::to_vec(&val).unwrap();
         let val2 = Device::try_from(&data[..]).unwrap();
+
+        val.validate().unwrap();
+        val2.validate().unwrap();
 
         assert_eq!(val.size(), val2.size());
         assert_eq!(val.owner, val2.owner);

@@ -52,7 +52,7 @@ func NewSubnetAllocator(baseCIDR string, subnetMask int, docker *client.Client) 
 }
 
 func NewDefaultSubnetAllocator(docker *client.Client) *SubnetAllocator {
-	return NewSubnetAllocator("10.128.0.0/9", 24, docker)
+	return NewSubnetAllocator("9.128.0.0/9", 24, docker)
 }
 
 func (a *SubnetAllocator) GetSubnetCIDR(testID string, salt int) (string, error) {

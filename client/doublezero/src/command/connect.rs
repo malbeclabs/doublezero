@@ -704,7 +704,7 @@ mod tests {
         pub fn new() -> Self {
             let mut fixture = Self {
                 global_cfg: GlobalConfig {
-                    account_type: AccountType::Config,
+                    account_type: AccountType::GlobalConfig,
                     owner: Pubkey::new_unique(),
                     bump_seed: 1,
                     local_asn: 65000,

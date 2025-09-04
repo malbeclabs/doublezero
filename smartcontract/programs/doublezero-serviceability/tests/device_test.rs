@@ -60,9 +60,9 @@ async fn test_device() {
         DoubleZeroInstruction::SetGlobalConfig(SetGlobalConfigArgs {
             local_asn: 65000,
             remote_asn: 65001,
-            device_tunnel_block: "10.0.0.0/24".parse().unwrap(),
-            user_tunnel_block: "10.0.0.0/24".parse().unwrap(),
-            multicastgroup_block: "224.0.0.0/4".parse().unwrap(),
+            device_tunnel_block: "10.0.0.0/24".parse().unwrap(), // Private tunnel block
+            user_tunnel_block: "10.0.0.0/24".parse().unwrap(),   // Private tunnel block
+            multicastgroup_block: "224.0.0.0/4".parse().unwrap(), // Multicast block
         }),
         vec![
             AccountMeta::new(config_pubkey, false),
@@ -177,8 +177,8 @@ async fn test_device() {
         DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
             code: "la".to_string(),
             device_type: DeviceType::Switch,
-            public_ip: [10, 0, 0, 1].into(),
-            dz_prefixes: "10.1.0.0/23".parse().unwrap(),
+            public_ip: [8, 8, 8, 8].into(), // Global public IP
+            dz_prefixes: "110.1.0.0/23".parse().unwrap(), // Global prefix
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
         }),
@@ -311,8 +311,8 @@ async fn test_device() {
             code: Some("la2".to_string()),
             device_type: Some(DeviceType::Switch),
             contributor_pk: None,
-            public_ip: Some([10, 2, 2, 1].into()),
-            dz_prefixes: Some("10.1.0.0/23".parse().unwrap()),
+            public_ip: Some([8, 8, 8, 8].into()), // Global public IP
+            dz_prefixes: Some("110.1.0.0/23".parse().unwrap()),
             metrics_publisher_pk: Some(Pubkey::default()),
             mgmt_vrf: Some("mgmt".to_string()),
             max_users: None,
@@ -334,7 +334,7 @@ async fn test_device() {
         .unwrap();
     assert_eq!(device_la.account_type, AccountType::Device);
     assert_eq!(device_la.code, "la2".to_string());
-    assert_eq!(device_la.public_ip.to_string(), "10.2.2.1");
+    assert_eq!(device_la.public_ip.to_string(), "8.8.8.8");
     assert_eq!(device_la.status, DeviceStatus::Activated);
 
     println!("✅ Device updated");
@@ -361,7 +361,7 @@ async fn test_device() {
         .unwrap();
     assert_eq!(device_la.account_type, AccountType::Device);
     assert_eq!(device_la.code, "la2".to_string());
-    assert_eq!(device_la.public_ip.to_string(), "10.2.2.1");
+    assert_eq!(device_la.public_ip.to_string(), "8.8.8.8");
     assert_eq!(device_la.status, DeviceStatus::Deleting);
 
     /*****************************************************************************************************************************************************/
@@ -438,8 +438,8 @@ async fn test_device_update_metrics_publisher_by_foundation_allowlist_account() 
         DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
             code: "la".to_string(),
             device_type: DeviceType::Switch,
-            public_ip: [10, 0, 0, 1].into(),
-            dz_prefixes: "10.1.0.0/23".parse().unwrap(),
+            public_ip: [100, 0, 0, 1].into(),
+            dz_prefixes: "110.1.0.0/23".parse().unwrap(),
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
         }),
@@ -494,7 +494,7 @@ async fn test_device_update_metrics_publisher_by_foundation_allowlist_account() 
         .unwrap();
     assert_eq!(device.account_type, AccountType::Device);
     assert_eq!(device.code, "la".to_string());
-    assert_eq!(device.public_ip.to_string(), "10.0.0.1");
+    assert_eq!(device.public_ip.to_string(), "100.0.0.1");
     assert_eq!(device.metrics_publisher_pk, metrics_publisher_pk);
 }
 

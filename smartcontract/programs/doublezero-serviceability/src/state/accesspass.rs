@@ -1,4 +1,7 @@
-use crate::state::accounttype::{AccountType, AccountTypeInfo};
+use crate::{
+    error::{DoubleZeroError, Validate},
+    state::accounttype::{AccountType, AccountTypeInfo},
+};
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::AccountInfo, clock::Clock, entrypoint::ProgramResult,
@@ -65,6 +68,30 @@ impl fmt::Display for AccessPassStatus {
             AccessPassStatus::Connected => write!(f, "connected"),
             AccessPassStatus::Disconnected => write!(f, "disconnected"),
             AccessPassStatus::Expired => write!(f, "expired"),
+        }
+    }
+}
+
+impl Validate for AccessPass {
+    fn validate(&self) -> Result<(), DoubleZeroError> {
+        if self.account_type != AccountType::AccessPass {
+            return Err(DoubleZeroError::InvalidAccountType);
+        }
+        self.accesspass_type.validate()?;
+        Ok(())
+    }
+}
+
+impl Validate for AccessPassType {
+    fn validate(&self) -> Result<(), DoubleZeroError> {
+        match self {
+            AccessPassType::Prepaid => Ok(()),
+            AccessPassType::SolanaValidator(solana_identity) => {
+                if *solana_identity == Pubkey::default() {
+                    return Err(DoubleZeroError::InvalidSolanaValidatorPubkey);
+                }
+                Ok(())
+            }
         }
     }
 }
@@ -227,6 +254,9 @@ mod tests {
         let data = borsh::to_vec(&val).unwrap();
         let val2 = AccessPass::try_from(&data[..]).unwrap();
 
+        val.validate().unwrap();
+        val2.validate().unwrap();
+
         assert_eq!(val.size(), val2.size());
         assert_eq!(val.owner, val2.owner);
         assert_eq!(val.bump_seed, val2.bump_seed);
@@ -257,6 +287,9 @@ mod tests {
         let len = data.len();
         let val2 = AccessPass::try_from(&data[..]).unwrap();
 
+        val.validate().unwrap();
+        val2.validate().unwrap();
+
         assert_eq!(val.size(), len, "Invalid val.size()");
         assert_eq!(len, val2.size(), "Invalid val2.size() {val2}");
         assert_eq!(val.owner, val2.owner);
@@ -267,5 +300,44 @@ mod tests {
         assert_eq!(val.last_access_epoch, val2.last_access_epoch);
         assert_eq!(val.connection_count, val2.connection_count);
         assert_eq!(val.status, val2.status);
+    }
+
+    #[test]
+    fn test_state_accesspass_validate_error_invalid_account_type() {
+        let val = AccessPass {
+            account_type: AccountType::Device, // Should be AccessPass
+            owner: Pubkey::new_unique(),
+            bump_seed: 1,
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip: [1, 2, 3, 4].into(),
+            user_payer: Pubkey::new_unique(),
+            last_access_epoch: 0,
+            connection_count: 0,
+            status: AccessPassStatus::Connected,
+        };
+        let err = val.validate();
+        assert!(err.is_err());
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidAccountType);
+    }
+
+    #[test]
+    fn test_state_accesspass_validate_error_invalid_solana_validator_pubkey() {
+        let val = AccessPass {
+            account_type: AccountType::AccessPass,
+            owner: Pubkey::new_unique(),
+            bump_seed: 1,
+            accesspass_type: AccessPassType::SolanaValidator(Pubkey::default()), // Invalid
+            client_ip: [1, 2, 3, 4].into(),
+            user_payer: Pubkey::new_unique(),
+            last_access_epoch: 0,
+            connection_count: 0,
+            status: AccessPassStatus::Connected,
+        };
+        let err = val.validate();
+        assert!(err.is_err());
+        assert_eq!(
+            err.unwrap_err(),
+            DoubleZeroError::InvalidSolanaValidatorPubkey
+        );
     }
 }

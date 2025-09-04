@@ -72,7 +72,7 @@ func TestMain(m *testing.M) {
 	}
 
 	// Initialize a subnet allocator.
-	subnetAllocator = docker.NewSubnetAllocator("10.128.0.0/9", subnetCIDRPrefix, dockerClient)
+	subnetAllocator = docker.NewSubnetAllocator("9.128.0.0/9", subnetCIDRPrefix, dockerClient)
 
 	// Build the container images unless the "no build" environment variable is set.
 	if os.Getenv("DZ_E2E_NO_BUILD") == "" {

@@ -1,4 +1,4 @@
-use doublezero_program_common::types::{NetworkV4, NetworkV4List};
+use doublezero_program_common::types::NetworkV4;
 use doublezero_serviceability::{
     entrypoint::*,
     instructions::*,
@@ -306,8 +306,8 @@ async fn test_doublezero_program() {
     let device_la: DeviceCreateArgs = DeviceCreateArgs {
         code: device_la_code.clone(),
         device_type: DeviceType::Switch,
-        public_ip: [1, 0, 0, 1].into(),
-        dz_prefixes: NetworkV4List::default(),
+        public_ip: [100, 0, 0, 1].into(),
+        dz_prefixes: "100.1.0.0/23".parse().unwrap(),
         metrics_publisher_pk: Pubkey::default(), // Assuming no metrics publisher for this test
         mgmt_vrf: "mgmt".to_string(),
     };
@@ -393,8 +393,8 @@ async fn test_doublezero_program() {
     let device_ny: DeviceCreateArgs = DeviceCreateArgs {
         code: device_ny_code.clone(),
         device_type: DeviceType::Switch,
-        public_ip: [1, 0, 0, 2].into(),
-        dz_prefixes: vec!["10.1.0.1/24".parse().unwrap()].into(),
+        public_ip: [100, 0, 0, 2].into(),
+        dz_prefixes: vec!["100.1.0.1/24".parse().unwrap()].into(),
         metrics_publisher_pk: Pubkey::default(), // Assuming no metrics publisher for this test
         mgmt_vrf: "mgmt".to_string(),
     };
@@ -528,10 +528,10 @@ async fn test_doublezero_program() {
     let tunnel_la_ny: LinkCreateArgs = LinkCreateArgs {
         code: tunnel_la_ny_code.clone(),
         link_type: LinkLinkType::WAN,
-        bandwidth: 100,
-        mtu: 1900,
-        delay_ns: 12_000_000,
-        jitter_ns: 1_000_000,
+        bandwidth: 15_000_000_000,
+        mtu: 4900,
+        delay_ns: 1000000,
+        jitter_ns: 100000,
         side_a_iface_name: "Ethernet0".to_string(),
         side_z_iface_name: Some("Ethernet1".to_string()),
     };
@@ -677,8 +677,8 @@ async fn test_doublezero_program() {
         user1.index
     );
 
-    let tunnel_net: NetworkV4 = "10.0.0.0/24".parse().unwrap();
-    let dz_ip: std::net::Ipv4Addr = "10.2.0.1".parse().unwrap();
+    let tunnel_net: NetworkV4 = "169.254.0.1/25".parse().unwrap();
+    let dz_ip: std::net::Ipv4Addr = "100.2.0.1".parse().unwrap();
 
     let update1: UserActivateArgs = UserActivateArgs {
         tunnel_id: 1,

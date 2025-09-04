@@ -10,7 +10,7 @@ pub enum AccountType {
     #[default]
     None = 0,
     GlobalState = 1,
-    Config = 2,
+    GlobalConfig = 2,
     Location = 3,
     Exchange = 4,
     Device = 5,
@@ -34,7 +34,7 @@ impl From<u8> for AccountType {
     fn from(value: u8) -> Self {
         match value {
             1 => AccountType::GlobalState,
-            2 => AccountType::Config,
+            2 => AccountType::GlobalConfig,
             3 => AccountType::Location,
             4 => AccountType::Exchange,
             5 => AccountType::Device,
@@ -54,7 +54,7 @@ impl fmt::Display for AccountType {
         match self {
             AccountType::None => write!(f, "none"),
             AccountType::GlobalState => write!(f, "globalstate"),
-            AccountType::Config => write!(f, "config"),
+            AccountType::GlobalConfig => write!(f, "config"),
             AccountType::Location => write!(f, "location"),
             AccountType::Exchange => write!(f, "exchange"),
             AccountType::Device => write!(f, "device"),

@@ -1,4 +1,8 @@
-use crate::{helper::deserialize_vec_with_capacity, state::accounttype::AccountType};
+use crate::{
+    error::{DoubleZeroError, Validate},
+    helper::deserialize_vec_with_capacity,
+    state::accounttype::AccountType,
+};
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
 use solana_program::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
@@ -95,6 +99,15 @@ impl TryFrom<&AccountInfo<'_>> for GlobalState {
     }
 }
 
+impl Validate for GlobalState {
+    fn validate(&self) -> Result<(), DoubleZeroError> {
+        if self.account_type != AccountType::GlobalState {
+            return Err(DoubleZeroError::InvalidAccountType);
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -117,6 +130,9 @@ mod tests {
         let data = borsh::to_vec(&val).unwrap();
         let val2 = GlobalState::try_from(&data[..]).unwrap();
 
+        val.validate().unwrap();
+        val2.validate().unwrap();
+
         assert_eq!(val.size(), val2.size());
         assert_eq!(val.account_index, val2.account_index);
         assert_eq!(val.foundation_allowlist, val2.foundation_allowlist);
@@ -130,5 +146,24 @@ mod tests {
             val2.contributor_airdrop_lamports
         );
         assert_eq!(val.user_airdrop_lamports, val2.user_airdrop_lamports);
+    }
+
+    #[test]
+    fn test_state_globalstate_validate_error_invalid_account_type() {
+        let val = GlobalState {
+            account_type: AccountType::Device, // Should be GlobalState
+            bump_seed: 1,
+            account_index: 123,
+            foundation_allowlist: vec![Pubkey::new_unique(), Pubkey::new_unique()],
+            device_allowlist: vec![Pubkey::new_unique(), Pubkey::new_unique()],
+            user_allowlist: vec![Pubkey::new_unique(), Pubkey::new_unique()],
+            activator_authority_pk: Pubkey::new_unique(),
+            sentinel_authority_pk: Pubkey::new_unique(),
+            contributor_airdrop_lamports: 1_000_000_000,
+            user_airdrop_lamports: 40_000,
+        };
+        let err = val.validate();
+        assert!(err.is_err());
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidAccountType);
     }
 }

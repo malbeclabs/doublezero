@@ -1,4 +1,6 @@
 use crate::{
+    error::{DoubleZeroError, Validate},
+    helper::is_global,
     seeds::SEED_USER,
     state::{
         accesspass::{AccessPass, AccessPassStatus, AccessPassType},
@@ -296,6 +298,37 @@ impl TryFrom<&AccountInfo<'_>> for User {
     }
 }
 
+impl Validate for User {
+    fn validate(&self) -> Result<(), DoubleZeroError> {
+        // Account type must be User
+        if self.account_type != AccountType::User {
+            return Err(DoubleZeroError::InvalidAccountType);
+        }
+        // Device public key must be valid
+        if self.device_pk == Pubkey::default() {
+            return Err(DoubleZeroError::InvalidDevicePubkey);
+        }
+        // client_ip must be global unicast
+        if !is_global(self.client_ip) {
+            return Err(DoubleZeroError::InvalidClientIp);
+        }
+        // dz_ip must be global unicast
+        if self.status != UserStatus::Pending && !is_global(self.dz_ip) {
+            return Err(DoubleZeroError::InvalidDzIp);
+        }
+        // tunnel net must be private
+        if self.status != UserStatus::Pending && !self.tunnel_net.ip().is_link_local() {
+            return Err(DoubleZeroError::InvalidTunnelNet);
+        }
+        // tunnel_id must be less than or equal to 1024
+        if self.tunnel_id > 1024 {
+            return Err(DoubleZeroError::InvalidTunnelId);
+        }
+
+        Ok(())
+    }
+}
+
 impl User {
     pub fn get_multicast_groups(&self) -> Vec<Pubkey> {
         let mut groups: Vec<Pubkey> = vec![];
@@ -349,7 +382,7 @@ mod tests {
             dz_ip: [3, 2, 4, 2].into(),
             client_ip: [1, 2, 3, 4].into(),
             tunnel_id: 0,
-            tunnel_net: "10.0.0.1/25".parse().unwrap(),
+            tunnel_net: "169.254.0.0/25".parse().unwrap(),
             status: UserStatus::Activated,
             publishers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
@@ -358,6 +391,9 @@ mod tests {
 
         let data = borsh::to_vec(&val).unwrap();
         let val2 = User::try_from(&data[..]).unwrap();
+
+        val.validate().unwrap();
+        val2.validate().unwrap();
 
         assert_eq!(val.size(), val2.size());
         assert_eq!(val.owner, val2.owner);
@@ -369,5 +405,156 @@ mod tests {
         assert_eq!(val.publishers, val2.publishers);
         assert_eq!(val.validator_pubkey, val2.validator_pubkey);
         assert_eq!(data.len(), val.size(), "Invalid Size");
+    }
+
+    #[test]
+    fn test_state_user_validate_error_invalid_dz_ip() {
+        let val = User {
+            account_type: AccountType::User,
+            owner: Pubkey::new_unique(),
+            index: 123,
+            bump_seed: 1,
+            tenant_pk: Pubkey::default(),
+            user_type: UserType::IBRL,
+            device_pk: Pubkey::new_unique(),
+            cyoa_type: UserCYOA::GREOverDIA,
+            dz_ip: [0, 0, 0, 0].into(),
+            client_ip: [1, 2, 3, 4].into(),
+            tunnel_id: 0,
+            tunnel_net: "10.0.0.1/25".parse().unwrap(),
+            status: UserStatus::Activated,
+            publishers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
+            subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
+            validator_pubkey: Pubkey::new_unique(),
+        };
+
+        let err = val.validate();
+        assert!(err.is_err());
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidDzIp);
+    }
+
+    #[test]
+    fn test_state_user_validate_error_invalid_account_type() {
+        let val = User {
+            account_type: AccountType::AccessPass, // Not User
+            owner: Pubkey::new_unique(),
+            index: 123,
+            bump_seed: 1,
+            tenant_pk: Pubkey::default(),
+            user_type: UserType::IBRL,
+            device_pk: Pubkey::new_unique(),
+            cyoa_type: UserCYOA::GREOverDIA,
+            dz_ip: [3, 2, 4, 2].into(),
+            client_ip: [1, 2, 3, 4].into(),
+            tunnel_id: 0,
+            tunnel_net: "10.0.0.1/25".parse().unwrap(),
+            status: UserStatus::Activated,
+            publishers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
+            subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
+            validator_pubkey: Pubkey::new_unique(),
+        };
+        let err = val.validate();
+        assert!(err.is_err());
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidAccountType);
+    }
+
+    #[test]
+    fn test_state_user_validate_error_invalid_device_pubkey() {
+        let val = User {
+            account_type: AccountType::User,
+            owner: Pubkey::new_unique(),
+            index: 123,
+            bump_seed: 1,
+            tenant_pk: Pubkey::default(),
+            user_type: UserType::IBRL,
+            device_pk: Pubkey::default(), // Invalid
+            cyoa_type: UserCYOA::GREOverDIA,
+            dz_ip: [3, 2, 4, 2].into(),
+            client_ip: [1, 2, 3, 4].into(),
+            tunnel_id: 0,
+            tunnel_net: "10.0.0.1/25".parse().unwrap(),
+            status: UserStatus::Activated,
+            publishers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
+            subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
+            validator_pubkey: Pubkey::new_unique(),
+        };
+        let err = val.validate();
+        assert!(err.is_err());
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidDevicePubkey);
+    }
+
+    #[test]
+    fn test_state_user_validate_error_invalid_client_ip() {
+        let val = User {
+            account_type: AccountType::User,
+            owner: Pubkey::new_unique(),
+            index: 123,
+            bump_seed: 1,
+            tenant_pk: Pubkey::default(),
+            user_type: UserType::IBRL,
+            device_pk: Pubkey::new_unique(),
+            cyoa_type: UserCYOA::GREOverDIA,
+            dz_ip: [3, 2, 4, 2].into(),
+            client_ip: [0, 0, 0, 0].into(), // Invalid
+            tunnel_id: 0,
+            tunnel_net: "10.0.0.1/25".parse().unwrap(),
+            status: UserStatus::Activated,
+            publishers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
+            subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
+            validator_pubkey: Pubkey::new_unique(),
+        };
+        let err = val.validate();
+        assert!(err.is_err());
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidClientIp);
+    }
+
+    #[test]
+    fn test_state_user_validate_error_invalid_tunnel_net() {
+        let val = User {
+            account_type: AccountType::User,
+            owner: Pubkey::new_unique(),
+            index: 123,
+            bump_seed: 1,
+            tenant_pk: Pubkey::default(),
+            user_type: UserType::IBRL,
+            device_pk: Pubkey::new_unique(),
+            cyoa_type: UserCYOA::GREOverDIA,
+            dz_ip: [3, 2, 4, 2].into(),
+            client_ip: [1, 2, 3, 4].into(),
+            tunnel_id: 0,
+            tunnel_net: "8.8.8.8/25".parse().unwrap(), // Not link-local
+            status: UserStatus::Activated,
+            publishers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
+            subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
+            validator_pubkey: Pubkey::new_unique(),
+        };
+        let err = val.validate();
+        assert!(err.is_err());
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidTunnelNet);
+    }
+
+    #[test]
+    fn test_state_user_validate_error_invalid_tunnel_id() {
+        let val = User {
+            account_type: AccountType::User,
+            owner: Pubkey::new_unique(),
+            index: 123,
+            bump_seed: 1,
+            tenant_pk: Pubkey::default(),
+            user_type: UserType::IBRL,
+            device_pk: Pubkey::new_unique(),
+            cyoa_type: UserCYOA::GREOverDIA,
+            dz_ip: [3, 2, 4, 2].into(),
+            client_ip: [1, 2, 3, 4].into(),
+            tunnel_id: 2048, // Invalid
+            tunnel_net: "169.254.0.0/25".parse().unwrap(),
+            status: UserStatus::Activated,
+            publishers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
+            subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
+            validator_pubkey: Pubkey::new_unique(),
+        };
+        let err = val.validate();
+        assert!(err.is_err());
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidTunnelId);
     }
 }

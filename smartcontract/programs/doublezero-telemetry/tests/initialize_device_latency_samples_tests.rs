@@ -564,9 +564,9 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_owner() {
         index: 0,
         bump_seed: 0,
         code: "invalid".to_string(),
-        bandwidth: 0,
-        delay_ns: 0,
-        jitter_ns: 0,
+        bandwidth: 10_000_000_000,
+        delay_ns: 1000,
+        jitter_ns: 1000,
         link_type: LinkLinkType::WAN,
         mtu: 0,
         tunnel_id: 0,
@@ -664,7 +664,8 @@ async fn test_initialize_device_latency_samples_fail_origin_device_not_activated
             DeviceCreateArgs {
                 code: "OriginDevice".to_string(),
                 device_type: DeviceType::Switch,
-                public_ip: [1, 2, 3, 4].into(),
+                public_ip: [100, 0, 0, 1].into(),
+                dz_prefixes: vec!["108.0.0.0/24".parse().unwrap()].into(),
                 metrics_publisher_pk: agent.pubkey(),
                 ..DeviceCreateArgs::default()
             },
@@ -688,7 +689,8 @@ async fn test_initialize_device_latency_samples_fail_origin_device_not_activated
             DeviceCreateArgs {
                 code: "TargetDevice".to_string(),
                 device_type: DeviceType::Switch,
-                public_ip: [5, 6, 7, 8].into(),
+                public_ip: [100, 0, 0, 1].into(),
+                dz_prefixes: vec!["108.0.0.0/24".parse().unwrap()].into(),
                 metrics_publisher_pk: agent.pubkey(),
                 ..DeviceCreateArgs::default()
             },
@@ -712,10 +714,10 @@ async fn test_initialize_device_latency_samples_fail_origin_device_not_activated
             LinkCreateArgs {
                 code: "LINK1".to_string(),
                 link_type: LinkLinkType::WAN,
-                bandwidth: 1000,
+                bandwidth: 10_000_000_000,
                 mtu: 1500,
-                delay_ns: 10,
-                jitter_ns: 1,
+                delay_ns: 1000000,
+                jitter_ns: 100000,
                 side_a_iface_name: "Ethernet0".to_string(),
                 side_z_iface_name: Some("Ethernet1".to_string()),
             },
@@ -798,7 +800,8 @@ async fn test_initialize_device_latency_samples_fail_target_device_not_activated
             DeviceCreateArgs {
                 code: "OriginDevice".to_string(),
                 device_type: DeviceType::Switch,
-                public_ip: [1, 2, 3, 4].into(),
+                public_ip: [100, 0, 0, 1].into(),
+                dz_prefixes: vec!["108.0.0.0/24".parse().unwrap()].into(),
                 metrics_publisher_pk: agent.pubkey(),
                 ..DeviceCreateArgs::default()
             },
@@ -822,7 +825,8 @@ async fn test_initialize_device_latency_samples_fail_target_device_not_activated
             DeviceCreateArgs {
                 code: "TargetDevice".to_string(),
                 device_type: DeviceType::Switch,
-                public_ip: [5, 6, 7, 8].into(),
+                public_ip: [100, 0, 0, 1].into(),
+                dz_prefixes: vec!["108.0.0.0/24".parse().unwrap()].into(),
                 metrics_publisher_pk: agent.pubkey(),
                 ..DeviceCreateArgs::default()
             },
@@ -846,10 +850,10 @@ async fn test_initialize_device_latency_samples_fail_target_device_not_activated
             LinkCreateArgs {
                 code: "LINK1".to_string(),
                 link_type: LinkLinkType::WAN,
-                bandwidth: 1000,
+                bandwidth: 10_000_000_000,
                 mtu: 1500,
-                delay_ns: 10,
-                jitter_ns: 1,
+                delay_ns: 1000000,
+                jitter_ns: 100000,
                 side_a_iface_name: "Ethernet0".to_string(),
                 side_z_iface_name: Some("Ethernet1".to_string()),
             },
@@ -931,7 +935,8 @@ async fn test_initialize_device_latency_samples_fail_link_not_activated() {
             DeviceCreateArgs {
                 code: "OriginDevice".to_string(),
                 device_type: DeviceType::Switch,
-                public_ip: [1, 2, 3, 4].into(),
+                public_ip: [100, 0, 0, 1].into(),
+                dz_prefixes: vec!["108.0.0.0/24".parse().unwrap()].into(),
                 metrics_publisher_pk: agent.pubkey(),
                 ..DeviceCreateArgs::default()
             },
@@ -954,7 +959,8 @@ async fn test_initialize_device_latency_samples_fail_link_not_activated() {
             DeviceCreateArgs {
                 code: "TargetDevice".to_string(),
                 device_type: DeviceType::Switch,
-                public_ip: [5, 6, 7, 8].into(),
+                public_ip: [100, 0, 0, 2].into(),
+                dz_prefixes: vec!["108.0.0.0/24".parse().unwrap()].into(),
                 metrics_publisher_pk: agent.pubkey(),
                 ..DeviceCreateArgs::default()
             },
@@ -978,10 +984,10 @@ async fn test_initialize_device_latency_samples_fail_link_not_activated() {
             LinkCreateArgs {
                 code: "LINK1".to_string(),
                 link_type: LinkLinkType::WAN,
-                bandwidth: 1000,
+                bandwidth: 10_000_000_000,
                 mtu: 1500,
-                delay_ns: 10,
-                jitter_ns: 1,
+                delay_ns: 1000000,
+                jitter_ns: 100000,
                 side_a_iface_name: "Ethernet0".to_string(),
                 side_z_iface_name: Some("Ethernet1".to_string()),
             },
@@ -1061,7 +1067,8 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_devices() {
             DeviceCreateArgs {
                 code: "OriginDevice".to_string(),
                 device_type: DeviceType::Switch,
-                public_ip: [1, 1, 1, 1].into(),
+                public_ip: [100, 0, 0, 1].into(),
+                dz_prefixes: vec!["108.0.0.0/24".parse().unwrap()].into(),
                 metrics_publisher_pk: agent.pubkey(),
                 ..DeviceCreateArgs::default()
             },
@@ -1078,7 +1085,8 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_devices() {
             DeviceCreateArgs {
                 code: "TargetDevice".to_string(),
                 device_type: DeviceType::Switch,
-                public_ip: [2, 2, 2, 2].into(),
+                public_ip: [100, 0, 0, 2].into(),
+                dz_prefixes: vec!["108.0.0.0/24".parse().unwrap()].into(),
                 metrics_publisher_pk: agent.pubkey(),
                 ..DeviceCreateArgs::default()
             },
@@ -1096,8 +1104,8 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_devices() {
             DeviceCreateArgs {
                 code: "DeviceX".to_string(),
                 device_type: DeviceType::Switch,
-                public_ip: [3, 3, 3, 3].into(),
-                metrics_publisher_pk: agent.pubkey(),
+                public_ip: [100, 0, 0, 3].into(),
+                dz_prefixes: vec!["108.0.0.0/24".parse().unwrap()].into(),
                 ..DeviceCreateArgs::default()
             },
             contributor_pk,
@@ -1119,8 +1127,8 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_devices() {
             DeviceCreateArgs {
                 code: "DeviceY".to_string(),
                 device_type: DeviceType::Switch,
-                public_ip: [4, 4, 4, 4].into(),
-                metrics_publisher_pk: agent.pubkey(),
+                public_ip: [100, 0, 0, 4].into(),
+                dz_prefixes: vec!["108.0.0.0/24".parse().unwrap()].into(),
                 ..DeviceCreateArgs::default()
             },
             contributor_pk,
@@ -1143,10 +1151,10 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_devices() {
             LinkCreateArgs {
                 code: "LINK1".to_string(),
                 link_type: LinkLinkType::WAN,
-                bandwidth: 1000,
+                bandwidth: 10_000_000_000,
                 mtu: 1500,
-                delay_ns: 10,
-                jitter_ns: 1,
+                delay_ns: 1000000,
+                jitter_ns: 100000,
                 side_a_iface_name: "Ethernet0".to_string(),
                 side_z_iface_name: Some("Ethernet1".to_string()),
             },
@@ -1228,7 +1236,8 @@ async fn test_initialize_device_latency_samples_succeeds_with_reversed_link_side
             DeviceCreateArgs {
                 code: "OriginDevice".into(),
                 device_type: DeviceType::Switch,
-                public_ip: [10, 0, 0, 1].into(),
+                public_ip: [100, 0, 0, 1].into(),
+                dz_prefixes: vec!["109.0.0.0/24".parse().unwrap()].into(),
                 metrics_publisher_pk: agent.pubkey(),
                 ..DeviceCreateArgs::default()
             },
@@ -1251,7 +1260,8 @@ async fn test_initialize_device_latency_samples_succeeds_with_reversed_link_side
             DeviceCreateArgs {
                 code: "TargetDevice".into(),
                 device_type: DeviceType::Switch,
-                public_ip: [10, 0, 0, 2].into(),
+                public_ip: [100, 0, 0, 2].into(),
+                dz_prefixes: vec!["108.0.0.0/24".parse().unwrap()].into(),
                 metrics_publisher_pk: agent.pubkey(),
                 ..DeviceCreateArgs::default()
             },
@@ -1275,10 +1285,10 @@ async fn test_initialize_device_latency_samples_succeeds_with_reversed_link_side
             LinkCreateArgs {
                 code: "LINK1".into(),
                 link_type: LinkLinkType::WAN,
-                bandwidth: 1000,
+                bandwidth: 10_000_000_000,
                 mtu: 1500,
-                delay_ns: 1,
-                jitter_ns: 1,
+                delay_ns: 1000000,
+                jitter_ns: 100000,
                 side_a_iface_name: "Ethernet1".to_string(),
                 side_z_iface_name: Some("Ethernet0".to_string()),
             },
@@ -1497,7 +1507,8 @@ async fn test_initialize_device_latency_samples_fail_agent_not_owner_of_origin_d
             DeviceCreateArgs {
                 code: "A".to_string(),
                 device_type: DeviceType::Switch,
-                public_ip: [1, 1, 1, 1].into(),
+                public_ip: [100, 0, 0, 1].into(),
+                dz_prefixes: vec!["108.0.0.0/24".parse().unwrap()].into(),
                 metrics_publisher_pk: owner_agent.pubkey(),
                 ..DeviceCreateArgs::default()
             },
@@ -1521,7 +1532,8 @@ async fn test_initialize_device_latency_samples_fail_agent_not_owner_of_origin_d
             DeviceCreateArgs {
                 code: "Z".to_string(),
                 device_type: DeviceType::Switch,
-                public_ip: [2, 2, 2, 2].into(),
+                public_ip: [100, 0, 0, 2].into(),
+                dz_prefixes: vec!["108.0.0.0/24".parse().unwrap()].into(),
                 metrics_publisher_pk: unauthorized_agent.pubkey(),
                 ..DeviceCreateArgs::default()
             },
@@ -1544,10 +1556,10 @@ async fn test_initialize_device_latency_samples_fail_agent_not_owner_of_origin_d
             LinkCreateArgs {
                 code: "LNK".to_string(),
                 link_type: LinkLinkType::WAN,
-                bandwidth: 1000,
-                mtu: 1500,
-                delay_ns: 10,
-                jitter_ns: 1,
+                bandwidth: 10_000_000_000,
+                mtu: 4500,
+                delay_ns: 1000000,
+                jitter_ns: 100000,
                 side_a_iface_name: "Ethernet0".to_string(),
                 side_z_iface_name: Some("Ethernet1".to_string()),
             },

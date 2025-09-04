@@ -1,5 +1,8 @@
 use super::accounttype::{AccountType, AccountTypeInfo};
-use crate::seeds::SEED_EXCHANGE;
+use crate::{
+    error::{DoubleZeroError, Validate},
+    seeds::SEED_EXCHANGE,
+};
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
 use std::fmt;
@@ -140,6 +143,29 @@ impl TryFrom<&AccountInfo<'_>> for Exchange {
     }
 }
 
+impl Validate for Exchange {
+    fn validate(&self) -> Result<(), DoubleZeroError> {
+        // Account type must be Exchange
+        if self.account_type != AccountType::Exchange {
+            return Err(DoubleZeroError::InvalidAccountType);
+        }
+        if self.code.len() > 32 {
+            return Err(DoubleZeroError::CodeTooLong);
+        }
+        if self.name.len() > 64 {
+            return Err(DoubleZeroError::NameTooLong);
+        }
+        if self.lat < -90.0 || self.lat > 90.0 {
+            return Err(DoubleZeroError::InvalidLatitude);
+        }
+        if self.lng < -180.0 || self.lng > 180.0 {
+            return Err(DoubleZeroError::InvalidLongitude);
+        }
+
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -152,8 +178,8 @@ mod tests {
             index: 123,
             bump_seed: 1,
             reference_count: 0,
-            lat: 123.45,
-            lng: 345.678,
+            lat: 50.45,
+            lng: 50.678,
             device1_pk: Pubkey::default(),
             device2_pk: Pubkey::default(),
             loc_id: 1212121,
@@ -165,6 +191,9 @@ mod tests {
         let data = borsh::to_vec(&val).unwrap();
         let val2 = Exchange::try_from(&data[..]).unwrap();
 
+        val.validate().unwrap();
+        val2.validate().unwrap();
+
         assert_eq!(val.size(), val2.size());
         assert_eq!(val.owner, val2.owner);
         assert_eq!(val.code, val2.code);
@@ -174,5 +203,131 @@ mod tests {
         assert_eq!(val.device1_pk, val2.device1_pk);
         assert_eq!(val.device2_pk, val2.device2_pk);
         assert_eq!(data.len(), val.size(), "Invalid Size");
+    }
+
+    #[test]
+    fn test_state_exchange_validate_error_invalid_account_type() {
+        let val = Exchange {
+            account_type: AccountType::Device, // Should be Exchange
+            owner: Pubkey::new_unique(),
+            index: 123,
+            bump_seed: 1,
+            reference_count: 0,
+            lat: 10.0,
+            lng: 10.0,
+            device1_pk: Pubkey::default(),
+            device2_pk: Pubkey::default(),
+            loc_id: 1212121,
+            code: "test-321".to_string(),
+            name: "test-test-test".to_string(),
+            status: ExchangeStatus::Activated,
+        };
+        let err = val.validate();
+        assert!(err.is_err());
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidAccountType);
+    }
+
+    #[test]
+    fn test_state_exchange_validate_error_code_too_long() {
+        let val = Exchange {
+            account_type: AccountType::Exchange,
+            owner: Pubkey::new_unique(),
+            index: 123,
+            bump_seed: 1,
+            reference_count: 0,
+            lat: 10.0,
+            lng: 10.0,
+            device1_pk: Pubkey::default(),
+            device2_pk: Pubkey::default(),
+            loc_id: 1212121,
+            code: "a".repeat(33), // More than 32
+            name: "test-test-test".to_string(),
+            status: ExchangeStatus::Activated,
+        };
+        let err = val.validate();
+        assert!(err.is_err());
+        assert_eq!(err.unwrap_err(), DoubleZeroError::CodeTooLong);
+    }
+
+    #[test]
+    fn test_state_exchange_validate_error_name_too_long() {
+        let val = Exchange {
+            account_type: AccountType::Exchange,
+            owner: Pubkey::new_unique(),
+            index: 123,
+            bump_seed: 1,
+            reference_count: 0,
+            lat: 10.0,
+            lng: 10.0,
+            device1_pk: Pubkey::default(),
+            device2_pk: Pubkey::default(),
+            loc_id: 1212121,
+            code: "test-321".to_string(),
+            name: "a".repeat(65), // More than 64
+            status: ExchangeStatus::Activated,
+        };
+        let err = val.validate();
+        assert!(err.is_err());
+        assert_eq!(err.unwrap_err(), DoubleZeroError::NameTooLong);
+    }
+
+    #[test]
+    fn test_state_exchange_validate_error_invalid_latitude() {
+        let val_low = Exchange {
+            account_type: AccountType::Exchange,
+            owner: Pubkey::new_unique(),
+            index: 123,
+            bump_seed: 1,
+            reference_count: 0,
+            lat: -91.0, // Less than minimum
+            lng: 10.0,
+            device1_pk: Pubkey::default(),
+            device2_pk: Pubkey::default(),
+            loc_id: 1212121,
+            code: "test-321".to_string(),
+            name: "test-test-test".to_string(),
+            status: ExchangeStatus::Activated,
+        };
+        let err_low = val_low.validate();
+        assert!(err_low.is_err());
+        assert_eq!(err_low.unwrap_err(), DoubleZeroError::InvalidLatitude);
+
+        let val_high = Exchange {
+            lat: 91.0, // Greater than maximum
+            ..val_low
+        };
+        let err_high = val_high.validate();
+        assert!(err_high.is_err());
+        assert_eq!(err_high.unwrap_err(), DoubleZeroError::InvalidLatitude);
+    }
+
+    #[test]
+    fn test_state_exchange_validate_error_invalid_longitude() {
+        let val_low = Exchange {
+            account_type: AccountType::Exchange,
+            owner: Pubkey::new_unique(),
+            index: 123,
+            bump_seed: 1,
+            reference_count: 0,
+            lat: 10.0,
+            lng: -181.0, // Less than minimum
+            device1_pk: Pubkey::default(),
+            device2_pk: Pubkey::default(),
+            loc_id: 1212121,
+            code: "test-321".to_string(),
+            name: "test-test-test".to_string(),
+            status: ExchangeStatus::Activated,
+        };
+        let err_low = val_low.validate();
+        assert!(err_low.is_err());
+        assert_eq!(err_low.unwrap_err(), DoubleZeroError::InvalidLongitude);
+
+        let val_high = Exchange {
+            lng: 181.0, // Greater than maximum
+            ..val_low
+        };
+        let err_high = val_high.validate();
+        assert!(err_high.is_err());
+        assert_eq!(err_high.unwrap_err(), DoubleZeroError::InvalidLongitude);
     }
 }

@@ -388,8 +388,8 @@ async fn test_dzx_link() {
             link_type: LinkLinkType::DZX,
             bandwidth: 15_000_000_000,
             mtu: 9000,
-            delay_ns: 150000,
-            jitter_ns: 5000,
+            delay_ns: 1000000,
+            jitter_ns: 100000,
             side_a_iface_name: "Ethernet0".to_string(),
             side_z_iface_name: None,
         }),
@@ -589,8 +589,8 @@ async fn test_dzx_link() {
             tunnel_type: Some(LinkLinkType::WAN),
             bandwidth: Some(20_000_000_000),
             mtu: Some(8900),
-            delay_ns: Some(15000),
-            jitter_ns: Some(5000),
+            delay_ns: Some(1000000),
+            jitter_ns: Some(100000),
         }),
         vec![
             AccountMeta::new(tunnel_pubkey, false),
@@ -610,7 +610,7 @@ async fn test_dzx_link() {
     assert_eq!(tunnel_la.code, "la2".to_string());
     assert_eq!(tunnel_la.bandwidth, 20000000000);
     assert_eq!(tunnel_la.mtu, 8900);
-    assert_eq!(tunnel_la.delay_ns, 15000);
+    assert_eq!(tunnel_la.delay_ns, 1000000);
     assert_eq!(tunnel_la.status, LinkStatus::Activated);
 
     println!("✅ Link updated");
@@ -640,7 +640,7 @@ async fn test_dzx_link() {
     assert_eq!(tunnel_la.code, "la2".to_string());
     assert_eq!(tunnel_la.bandwidth, 20000000000);
     assert_eq!(tunnel_la.mtu, 8900);
-    assert_eq!(tunnel_la.delay_ns, 15000);
+    assert_eq!(tunnel_la.delay_ns, 1000000);
     assert_eq!(tunnel_la.status, LinkStatus::Deleting);
 
     println!("✅ Link deleting");

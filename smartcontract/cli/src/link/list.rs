@@ -239,9 +239,9 @@ mod tests {
             side_a_pk: device1_pubkey,
             side_z_pk: device2_pubkey,
             link_type: LinkLinkType::WAN,
-            bandwidth: 1234,
-            mtu: 1566,
-            delay_ns: 1234,
+            bandwidth: 10_000_000_000,
+            mtu: 4500,
+            delay_ns: 20_000,
             jitter_ns: 1121,
             tunnel_id: 1234,
             tunnel_net: "1.2.3.4/32".parse().unwrap(),
@@ -268,7 +268,7 @@ mod tests {
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | code        | contributor       | side_a_name  | side_a_iface_name | side_z_name  | side_z_iface_name | link_type | bandwidth | mtu  | delay_ms | jitter_ms | tunnel_id | tunnel_net | status    | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR | tunnel_code | contributor1_code | device2_code | eth0              | device2_code | eth1              | WAN       | 1.23Kbps  | 1566 | 0.00ms   | 0.00ms    | 1234      | 1.2.3.4/32 | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 \n");
+        assert_eq!(output_str, " account                                   | code        | contributor       | side_a_name  | side_a_iface_name | side_z_name  | side_z_iface_name | link_type | bandwidth | mtu  | delay_ms | jitter_ms | tunnel_id | tunnel_net | status    | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR | tunnel_code | contributor1_code | device2_code | eth0              | device2_code | eth1              | WAN       | 10Gbps    | 4500 | 0.02ms   | 0.00ms    | 1234      | 1.2.3.4/32 | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 \n");
 
         let mut output = Vec::new();
         let res = ListLinkCliCommand {
@@ -281,6 +281,6 @@ mod tests {
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"code\":\"tunnel_code\",\"contributor_code\":\"contributor1_code\",\"side_a_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"side_a_name\":\"device2_code\",\"side_a_iface_name\":\"eth0\",\"side_z_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"side_z_name\":\"device2_code\",\"side_z_iface_name\":\"eth1\",\"link_type\":\"WAN\",\"bandwidth\":\"1.23Kbps\",\"mtu\":1566,\"delay_ns\":1234,\"jitter_ns\":1121,\"tunnel_id\":1234,\"tunnel_net\":\"1.2.3.4/32\",\"status\":\"Activated\",\"owner\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\"}]\n");
+        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"code\":\"tunnel_code\",\"contributor_code\":\"contributor1_code\",\"side_a_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"side_a_name\":\"device2_code\",\"side_a_iface_name\":\"eth0\",\"side_z_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"side_z_name\":\"device2_code\",\"side_z_iface_name\":\"eth1\",\"link_type\":\"WAN\",\"bandwidth\":\"10Gbps\",\"mtu\":4500,\"delay_ns\":20000,\"jitter_ns\":1121,\"tunnel_id\":1234,\"tunnel_net\":\"1.2.3.4/32\",\"status\":\"Activated\",\"owner\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\"}]\n");
     }
 }

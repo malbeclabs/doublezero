@@ -530,8 +530,8 @@ async fn test_doublezero_program() {
         link_type: LinkLinkType::WAN,
         bandwidth: 15_000_000_000,
         mtu: 4900,
-        delay_ns: 12000,
-        jitter_ns: 1000,
+        delay_ns: 1000000,
+        jitter_ns: 100000,
         side_a_iface_name: "Ethernet0".to_string(),
         side_z_iface_name: Some("Ethernet1".to_string()),
     };

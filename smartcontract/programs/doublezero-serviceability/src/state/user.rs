@@ -10,7 +10,7 @@ use crate::{
 use borsh::{BorshDeserialize, BorshSerialize};
 use doublezero_program_common::types::NetworkV4;
 use solana_program::{
-    account_info::AccountInfo, entrypoint::ProgramResult, program_error::ProgramError,
+    account_info::AccountInfo, entrypoint::ProgramResult, msg, program_error::ProgramError,
     pubkey::Pubkey,
 };
 use std::{fmt, net::Ipv4Addr};
@@ -302,26 +302,32 @@ impl Validate for User {
     fn validate(&self) -> Result<(), DoubleZeroError> {
         // Account type must be User
         if self.account_type != AccountType::User {
+            msg!("account_type: {}", self.account_type);
             return Err(DoubleZeroError::InvalidAccountType);
         }
         // Device public key must be valid
         if self.device_pk == Pubkey::default() {
+            msg!("device_pk: {}", self.device_pk);
             return Err(DoubleZeroError::InvalidDevicePubkey);
         }
         // client_ip must be global unicast
         if !is_global(self.client_ip) {
+            msg!("client_ip: {}", self.client_ip);
             return Err(DoubleZeroError::InvalidClientIp);
         }
         // dz_ip must be global unicast
         if self.status != UserStatus::Pending && !is_global(self.dz_ip) {
+            msg!("dz_ip: {}", self.dz_ip);
             return Err(DoubleZeroError::InvalidDzIp);
         }
         // tunnel net must be private
         if self.status != UserStatus::Pending && !self.tunnel_net.ip().is_link_local() {
+            msg!("tunnel_net: {}", self.tunnel_net);
             return Err(DoubleZeroError::InvalidTunnelNet);
         }
         // tunnel_id must be less than or equal to 1024
         if self.tunnel_id > 1024 {
+            msg!("tunnel_id: {}", self.tunnel_id);
             return Err(DoubleZeroError::InvalidTunnelId);
         }
 

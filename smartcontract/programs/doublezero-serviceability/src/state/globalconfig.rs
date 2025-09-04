@@ -4,7 +4,7 @@ use crate::{
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use doublezero_program_common::types::NetworkV4;
-use solana_program::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
+use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError, pubkey::Pubkey};
 use std::fmt;
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone)]
@@ -74,12 +74,15 @@ impl Validate for GlobalConfig {
     fn validate(&self) -> Result<(), DoubleZeroError> {
         // Account type must be GlobalConfig
         if self.account_type != AccountType::GlobalConfig {
+            msg!("Invalid account type: {}", self.account_type);
             return Err(DoubleZeroError::InvalidAccountType);
         }
         if self.local_asn == 0 || self.local_asn > 4294967294 {
+            msg!("Invalid local ASN: {}", self.local_asn);
             return Err(DoubleZeroError::InvalidLocalAsn);
         }
         if self.remote_asn == 0 || self.remote_asn > 4294967294 {
+            msg!("Invalid remote ASN: {}", self.remote_asn);
             return Err(DoubleZeroError::InvalidRemoteAsn);
         }
         Ok(())

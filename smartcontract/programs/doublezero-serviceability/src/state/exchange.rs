@@ -4,7 +4,7 @@ use crate::{
     seeds::SEED_EXCHANGE,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
-use solana_program::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
+use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError, pubkey::Pubkey};
 use std::fmt;
 
 #[repr(u8)]
@@ -147,18 +147,27 @@ impl Validate for Exchange {
     fn validate(&self) -> Result<(), DoubleZeroError> {
         // Account type must be Exchange
         if self.account_type != AccountType::Exchange {
+            msg!("Invalid account type: {}", self.account_type);
             return Err(DoubleZeroError::InvalidAccountType);
         }
+        // Code length must be <= 32
         if self.code.len() > 32 {
+            msg!("Invalid code length: {}", self.code.len());
             return Err(DoubleZeroError::CodeTooLong);
         }
+        // Name length must be <= 64
         if self.name.len() > 64 {
+            msg!("Invalid name length: {}", self.name.len());
             return Err(DoubleZeroError::NameTooLong);
         }
+        // Latitude must be between -90 and 90
         if self.lat < -90.0 || self.lat > 90.0 {
+            msg!("Invalid latitude: {}", self.lat);
             return Err(DoubleZeroError::InvalidLatitude);
         }
+        // Longitude must be between -180 and 180
         if self.lng < -180.0 || self.lng > 180.0 {
+            msg!("Invalid longitude: {}", self.lng);
             return Err(DoubleZeroError::InvalidLongitude);
         }
 

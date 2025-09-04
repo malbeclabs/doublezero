@@ -5,7 +5,7 @@ use crate::{
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use doublezero_program_common::types::NetworkV4;
-use solana_program::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
+use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError, pubkey::Pubkey};
 use std::{fmt, str::FromStr};
 
 #[repr(u8)]
@@ -241,22 +241,27 @@ impl Validate for Link {
             && self.status != LinkStatus::Pending
             && !self.tunnel_net.ip().is_private()
         {
+            msg!("Invalid tunnel_net: {}", self.tunnel_net);
             return Err(DoubleZeroError::InvalidTunnelNet);
         }
         // Tunnel ID must be less than or equal to 1024
         if self.tunnel_id > 1024 {
+            msg!("Invalid tunnel_id: {}", self.tunnel_id);
             return Err(DoubleZeroError::InvalidTunnelId);
         }
         // Bandwidth must be between 10 Gbps and 400 Gbps
         if self.bandwidth < 10_000_000_000 || self.bandwidth > 400_000_000_000 {
+            msg!("Invalid bandwidth: {}", self.bandwidth);
             return Err(DoubleZeroError::InvalidBandwidth);
         }
         // Delay must be between 1 and 1000 ms
         if self.delay_ns < 1_000_000 || self.delay_ns > 1_000_000_000 {
+            msg!("Invalid delay_ns: {}", self.delay_ns);
             return Err(DoubleZeroError::InvalidDelay);
         }
         // Jitter must be between 0.01 and 1000 ms
         if self.jitter_ns < 10_000 || self.jitter_ns > 1_000_000_000 {
+            msg!("Invalid jitter_ns: {}", self.jitter_ns);
             return Err(DoubleZeroError::InvalidJitter);
         }
         Ok(())

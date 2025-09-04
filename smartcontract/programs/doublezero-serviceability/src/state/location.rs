@@ -4,7 +4,7 @@ use crate::{
     state::accounttype::*,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
-use solana_program::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
+use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError, pubkey::Pubkey};
 use std::fmt;
 
 #[repr(u8)]
@@ -144,21 +144,27 @@ impl Validate for Location {
     fn validate(&self) -> Result<(), DoubleZeroError> {
         // Account type must be Location
         if self.account_type != AccountType::Location {
+            msg!("Invalid account type: {}", self.account_type);
             return Err(DoubleZeroError::InvalidAccountType);
         }
         if self.code.len() > 32 {
+            msg!("Code too long: {}", self.code.len());
             return Err(DoubleZeroError::CodeTooLong);
         }
         if self.name.len() > 64 {
+            msg!("Name too long: {}", self.name.len());
             return Err(DoubleZeroError::NameTooLong);
         }
         if self.country.len() != 2 {
+            msg!("Invalid country code: {}", self.country);
             return Err(DoubleZeroError::InvalidCountryCode);
         }
         if self.lat < -90.0 || self.lat > 90.0 {
+            msg!("Invalid latitude: {}", self.lat);
             return Err(DoubleZeroError::InvalidLatitude);
         }
         if self.lng < -180.0 || self.lng > 180.0 {
+            msg!("Invalid longitude: {}", self.lng);
             return Err(DoubleZeroError::InvalidLongitude);
         }
 

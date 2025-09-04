@@ -6,9 +6,12 @@ use crate::{
 };
 use clap::Args;
 use doublezero_program_common::validate_iface;
-use doublezero_sdk::commands::{
-    device::get::GetDeviceCommand,
-    link::{accept::AcceptLinkCommand, get::GetLinkCommand},
+use doublezero_sdk::{
+    commands::{
+        device::get::GetDeviceCommand,
+        link::{accept::AcceptLinkCommand, get::GetLinkCommand},
+    },
+    InterfaceStatus, InterfaceType,
 };
 use eyre::eyre;
 use std::io::Write;
@@ -43,13 +46,28 @@ impl AcceptLinkCliCommand {
             pubkey_or_code: link.side_z_pk.to_string(),
         })?;
 
-        if !device_z
+        let side_z_iface = device_z
             .interfaces
             .iter()
-            .any(|i| i.into_current_version().name == self.side_z_interface)
-        {
+            .map(|i| i.into_current_version())
+            .find(|i| i.name.to_lowercase() == self.side_z_interface.to_lowercase())
+            .ok_or_else(|| {
+                eyre!(
+                    "Interface '{}' not found on side Z device",
+                    self.side_z_interface
+                )
+            })?;
+
+        if side_z_iface.interface_type != InterfaceType::Physical {
             return Err(eyre!(
-                "Interface '{}' not found on side Z device",
+                "Interface '{}' on side Z device must be a physical interface",
+                self.side_z_interface
+            ));
+        }
+
+        if side_z_iface.status != InterfaceStatus::Unlinked {
+            return Err(eyre!(
+                "Interface '{}' on side Z device must be unlinked",
                 self.side_z_interface
             ));
         }
@@ -126,7 +144,9 @@ mod tests {
             code: "dev01".to_string(),
 
             interfaces: vec![Interface::V1(CurrentInterfaceVersion {
-                name: "eth0".to_string(),
+                name: "Ethernet1/1".to_string(),
+                status: InterfaceStatus::Unlinked,
+                interface_type: InterfaceType::Physical,
                 ..Default::default()
             })],
             device_type: DeviceType::Switch,
@@ -156,8 +176,8 @@ mod tests {
             reference_count: 0,
             code: "dev02".to_string(),
             interfaces: vec![Interface::V1(CurrentInterfaceVersion {
-                status: InterfaceStatus::Pending,
-                name: "eth1".to_string(),
+                status: InterfaceStatus::Unlinked,
+                name: "Ethernet1/2".to_string(),
                 interface_type: InterfaceType::Physical,
                 loopback_type: LoopbackType::None,
                 vlan_id: 0,
@@ -202,8 +222,8 @@ mod tests {
             tunnel_net: "10.0.0.1/16".parse().unwrap(),
             status: LinkStatus::Requested,
             owner: pda_pubkey,
-            side_a_iface_name: "eth0".to_string(),
-            side_z_iface_name: "eth1".to_string(),
+            side_a_iface_name: "Ethernet1/1".to_string(),
+            side_z_iface_name: "Ethernet1/2".to_string(),
         };
 
         client
@@ -226,7 +246,7 @@ mod tests {
             .expect_accept_link()
             .with(predicate::eq(AcceptLinkCommand {
                 link_pubkey: pda_pubkey,
-                side_z_iface_name: "eth1".to_string(),
+                side_z_iface_name: "Ethernet1/2".to_string(),
             }))
             .returning(move |_| Ok(signature));
 
@@ -234,11 +254,11 @@ mod tests {
         let mut output = Vec::new();
         let res = AcceptLinkCliCommand {
             code: pda_pubkey.to_string(),
-            side_z_interface: "eth1".to_string(),
+            side_z_interface: "Ethernet1/2".to_string(),
             wait: false,
         }
         .execute(&client, &mut output);
-        assert!(res.is_ok());
+        assert!(res.is_ok(), "Error: {}", res.unwrap_err());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(
             output_str,"Signature: 3QnHBSdd4doEF6FgpLCejqEw42UQjfvNhQJwoYDSpoBszpCCqVft4cGoneDCnZ6Ez3ujzavzUu85u6F79WtLhcsv\n"

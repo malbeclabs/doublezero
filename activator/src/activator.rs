@@ -5,7 +5,7 @@ use crate::{
     metrics_service::MetricsService,
     process::{
         accesspass::process_access_pass_event, device::process_device_event,
-        exchange::process_exchange_event, link::process_tunnel_event,
+        exchange::process_exchange_event, link::process_link_event,
         location::process_location_event, multicastgroup::process_multicastgroup_event,
         user::process_user_event,
     },
@@ -223,7 +223,7 @@ impl Activator {
                         );
                     }
                     AccountData::Link(tunnel) => {
-                        process_tunnel_event(
+                        process_link_event(
                             client,
                             pubkey,
                             link_ips,

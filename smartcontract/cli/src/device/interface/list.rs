@@ -2,7 +2,7 @@ use crate::{doublezerocommand::CliCommand, validators::validate_pubkey_or_code};
 use clap::Args;
 use doublezero_program_common::types::NetworkV4;
 use doublezero_sdk::commands::device::get::GetDeviceCommand;
-use doublezero_serviceability::state::device::{InterfaceType, LoopbackType};
+use doublezero_serviceability::state::device::LoopbackType;
 use serde::Serialize;
 use std::io::Write;
 use tabled::{settings::Style, Table, Tabled};
@@ -23,12 +23,12 @@ pub struct ListDeviceInterfaceCliCommand {
 #[derive(Tabled, Serialize)]
 pub struct DeviceInterfaceDisplay {
     pub name: String,
-    pub interface_type: InterfaceType,
     pub loopback_type: LoopbackType,
     pub vlan_id: u16,
     pub ip_net: NetworkV4,
     pub node_segment_idx: u16,
     pub user_tunnel_endpoint: bool,
+    pub status: String,
 }
 
 impl ListDeviceInterfaceCliCommand {
@@ -46,12 +46,12 @@ impl ListDeviceInterfaceCliCommand {
                 let iface = iface.into_current_version();
                 DeviceInterfaceDisplay {
                     name: iface.name.clone(),
-                    interface_type: iface.interface_type,
                     loopback_type: iface.loopback_type,
                     vlan_id: iface.vlan_id,
                     ip_net: iface.ip_net,
                     node_segment_idx: iface.node_segment_idx,
                     user_tunnel_endpoint: iface.user_tunnel_endpoint,
+                    status: iface.status.to_string(),
                 }
             })
             .collect();
@@ -155,7 +155,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " name | interface_type | loopback_type | vlan_id | ip_net      | node_segment_idx | user_tunnel_endpoint \n eth0 | physical       | none          | 0       | 10.0.0.1/24 | 12               | true                 \n lo0  | loopback       | vpnv4         | 16      | 10.0.1.1/24 | 13               | false                \n");
+        assert_eq!(output_str, " name | loopback_type | vlan_id | ip_net      | node_segment_idx | user_tunnel_endpoint | status    \n eth0 | none          | 0       | 10.0.0.1/24 | 12               | true                 | activated \n lo0  | vpnv4         | 16      | 10.0.1.1/24 | 13               | false                | activated \n");
 
         let mut output = Vec::new();
         let res = ListDeviceInterfaceCliCommand {
@@ -166,6 +166,6 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"name\":\"eth0\",\"interface_type\":\"Physical\",\"loopback_type\":\"None\",\"vlan_id\":0,\"ip_net\":\"10.0.0.1/24\",\"node_segment_idx\":12,\"user_tunnel_endpoint\":true},{\"name\":\"lo0\",\"interface_type\":\"Loopback\",\"loopback_type\":\"Vpnv4\",\"vlan_id\":16,\"ip_net\":\"10.0.1.1/24\",\"node_segment_idx\":13,\"user_tunnel_endpoint\":false}]\n");
+        assert_eq!(output_str, "[{\"name\":\"eth0\",\"loopback_type\":\"None\",\"vlan_id\":0,\"ip_net\":\"10.0.0.1/24\",\"node_segment_idx\":12,\"user_tunnel_endpoint\":true,\"status\":\"activated\"},{\"name\":\"lo0\",\"loopback_type\":\"Vpnv4\",\"vlan_id\":16,\"ip_net\":\"10.0.1.1/24\",\"node_segment_idx\":13,\"user_tunnel_endpoint\":false,\"status\":\"activated\"}]\n");
     }
 }

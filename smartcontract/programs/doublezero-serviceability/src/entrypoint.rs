@@ -29,7 +29,8 @@ use crate::{
             interface::{
                 activate::process_activate_device_interface,
                 create::process_create_device_interface, delete::process_delete_device_interface,
-                remove::process_remove_device_interface, update::process_update_device_interface,
+                reject::process_reject_device_interface, remove::process_remove_device_interface,
+                unlink::process_unlink_device_interface, update::process_update_device_interface,
             },
             reject::process_reject_device,
             resume::process_resume_device,
@@ -331,6 +332,12 @@ pub fn process_instruction(
         }
         DoubleZeroInstruction::UpdateDeviceInterface(value) => {
             process_update_device_interface(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::UnlinkDeviceInterface(value) => {
+            process_unlink_device_interface(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::RejectDeviceInterface(value) => {
+            process_reject_device_interface(program_id, accounts, &value)?
         }
     };
     Ok(())

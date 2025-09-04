@@ -19,7 +19,8 @@ use crate::processors::{
         delete::DeviceDeleteArgs,
         interface::{
             activate::DeviceInterfaceActivateArgs, create::DeviceInterfaceCreateArgs,
-            delete::DeviceInterfaceDeleteArgs, remove::DeviceInterfaceRemoveArgs,
+            delete::DeviceInterfaceDeleteArgs, reject::DeviceInterfaceRejectArgs,
+            remove::DeviceInterfaceRemoveArgs, unlink::DeviceInterfaceUnlinkArgs,
             update::DeviceInterfaceUpdateArgs,
         },
         reject::DeviceRejectArgs,
@@ -167,6 +168,8 @@ pub enum DoubleZeroInstruction {
     DeleteDeviceInterface(DeviceInterfaceDeleteArgs),     // variant 74
     RemoveDeviceInterface(DeviceInterfaceRemoveArgs),     // variant 75
     UpdateDeviceInterface(DeviceInterfaceUpdateArgs),     // variant 76
+    UnlinkDeviceInterface(DeviceInterfaceUnlinkArgs),     // variant 77
+    RejectDeviceInterface(DeviceInterfaceRejectArgs),     // variant 78
 }
 
 impl DoubleZeroInstruction {
@@ -269,6 +272,8 @@ impl DoubleZeroInstruction {
             74 => Ok(Self::DeleteDeviceInterface(from_slice::<DeviceInterfaceDeleteArgs>(rest).unwrap())),
             75 => Ok(Self::RemoveDeviceInterface(from_slice::<DeviceInterfaceRemoveArgs>(rest).unwrap())),
             76 => Ok(Self::UpdateDeviceInterface(from_slice::<DeviceInterfaceUpdateArgs>(rest).unwrap())),
+            77 => Ok(Self::UnlinkDeviceInterface(from_slice::<DeviceInterfaceUnlinkArgs>(rest).unwrap())),
+            78 => Ok(Self::RejectDeviceInterface(from_slice::<DeviceInterfaceRejectArgs>(rest).unwrap())),
 
             _ => Err(ProgramError::InvalidInstructionData),
         }
@@ -370,6 +375,8 @@ impl DoubleZeroInstruction {
             Self::DeleteDeviceInterface(_) => "DeleteDeviceInterface".to_string(),     // variant 74
             Self::RemoveDeviceInterface(_) => "RemoveDeviceInterface".to_string(),     // variant 75
             Self::UpdateDeviceInterface(_) => "UpdateDeviceInterface".to_string(),     // variant 76
+            Self::UnlinkDeviceInterface(_) => "UnlinkDeviceInterface".to_string(),     // variant 77
+            Self::RejectDeviceInterface(_) => "RejectDeviceInterface".to_string(),     // variant 78
         }
     }
 
@@ -463,6 +470,8 @@ impl DoubleZeroInstruction {
             Self::DeleteDeviceInterface(args) => format!("{args:?}"),   // variant 74
             Self::RemoveDeviceInterface(args) => format!("{args:?}"),   // variant 75
             Self::UpdateDeviceInterface(args) => format!("{args:?}"),   // variant 76
+            Self::UnlinkDeviceInterface(args) => format!("{args:?}"),   // variant 77
+            Self::RejectDeviceInterface(args) => format!("{args:?}"),   // variant 78
         }
     }
 }
@@ -974,6 +983,18 @@ mod tests {
                 user_tunnel_endpoint: Some(false),
             }),
             "UpdateDeviceInterface",
+        );
+        test_instruction(
+            DoubleZeroInstruction::UnlinkDeviceInterface(DeviceInterfaceUnlinkArgs {
+                name: "name".to_string(),
+            }),
+            "UnlinkDeviceInterface",
+        );
+        test_instruction(
+            DoubleZeroInstruction::RejectDeviceInterface(DeviceInterfaceRejectArgs {
+                name: "name".to_string(),
+            }),
+            "RejectDeviceInterface",
         );
     }
 }

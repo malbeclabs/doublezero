@@ -82,6 +82,8 @@ pub enum InterfaceStatus {
     Pending = 2,
     Activated = 3,
     Deleting = 4,
+    Rejected = 5,
+    Unlinked = 6,
 }
 
 impl From<u8> for InterfaceStatus {
@@ -91,7 +93,23 @@ impl From<u8> for InterfaceStatus {
             2 => InterfaceStatus::Pending,
             3 => InterfaceStatus::Activated,
             4 => InterfaceStatus::Deleting,
+            5 => InterfaceStatus::Rejected,
+            6 => InterfaceStatus::Unlinked,
             _ => InterfaceStatus::Invalid, // Default case
+        }
+    }
+}
+
+impl fmt::Display for InterfaceStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            InterfaceStatus::Unmanaged => write!(f, "unmanaged"),
+            InterfaceStatus::Pending => write!(f, "pending"),
+            InterfaceStatus::Activated => write!(f, "activated"),
+            InterfaceStatus::Deleting => write!(f, "deleting"),
+            InterfaceStatus::Rejected => write!(f, "rejected"),
+            InterfaceStatus::Unlinked => write!(f, "unlinked"),
+            _ => write!(f, "invalid"),
         }
     }
 }
@@ -312,6 +330,17 @@ pub struct Device {
     pub reference_count: u32,      // 4
     pub users_count: u16,          // 2
     pub max_users: u16,            // 2
+}
+
+impl Device {
+    pub fn find_interface(&self, name: &str) -> Result<(usize, CurrentInterfaceVersion), String> {
+        self.interfaces
+            .iter()
+            .map(|iface| iface.into_current_version())
+            .enumerate()
+            .find(|(_, iface)| iface.name == name)
+            .ok_or_else(|| format!("Interface with name '{name}' not found"))
+    }
 }
 
 impl fmt::Display for Device {

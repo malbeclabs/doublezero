@@ -83,13 +83,28 @@ impl CreateDZXLinkCliCommand {
             })
             .map_err(|_| eyre::eyre!("Device not found"))?;
 
-        if !side_a_dev
+        let side_a_iface = side_a_dev
             .interfaces
             .iter()
-            .any(|i| i.into_current_version().name == self.side_a_interface)
-        {
+            .map(|i| i.into_current_version())
+            .find(|i| i.name.to_lowercase() == self.side_a_interface.to_lowercase())
+            .ok_or_else(|| {
+                eyre!(
+                    "Interface '{}' not found on side A device",
+                    self.side_a_interface
+                )
+            })?;
+
+        if side_a_iface.interface_type != InterfaceType::Physical {
             return Err(eyre!(
-                "Interface '{}' not found on side A device",
+                "Interface '{}' on side A device must be a physical interface",
+                self.side_a_interface
+            ));
+        }
+
+        if side_a_iface.status != InterfaceStatus::Unlinked {
+            return Err(eyre!(
+                "Interface '{}' on side A device must be unlinked",
                 self.side_a_interface
             ));
         }
@@ -169,8 +184,8 @@ mod tests {
             owner: pda_pubkey,
             mgmt_vrf: "default".to_string(),
             interfaces: vec![Interface::V1(CurrentInterfaceVersion {
-                status: InterfaceStatus::Pending,
-                name: "eth0".to_string(),
+                status: InterfaceStatus::Unlinked,
+                name: "Ethernet1/1".to_string(),
                 interface_type: InterfaceType::Physical,
                 loopback_type: LoopbackType::None,
                 vlan_id: 16,
@@ -201,8 +216,8 @@ mod tests {
             owner: pda_pubkey,
             mgmt_vrf: "default".to_string(),
             interfaces: vec![Interface::V1(CurrentInterfaceVersion {
-                status: InterfaceStatus::Pending,
-                name: "eth1".to_string(),
+                status: InterfaceStatus::Unlinked,
+                name: "Ethernet1/2".to_string(),
                 interface_type: InterfaceType::Physical,
                 loopback_type: LoopbackType::None,
                 vlan_id: 16,
@@ -242,7 +257,7 @@ mod tests {
                 mtu: 1500,
                 delay_ns: 10000000000,
                 jitter_ns: 5000000000,
-                side_a_iface_name: "eth0".to_string(),
+                side_a_iface_name: "Ethernet1/1".to_string(),
                 side_z_iface_name: None,
             }))
             .times(1)
@@ -259,11 +274,11 @@ mod tests {
             mtu: 1500,
             delay_ms: 10000.0,
             jitter_ms: 5000.0,
-            side_a_interface: "eth0".to_string(),
+            side_a_interface: "Ethernet1/1".to_string(),
             wait: false,
         }
         .execute(&client, &mut output);
-        assert!(res.is_ok());
+        assert!(res.is_ok(), "Error: {}", res.unwrap_err());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(
             output_str,"Signature: 3QnHBSdd4doEF6FgpLCejqEw42UQjfvNhQJwoYDSpoBszpCCqVft4cGoneDCnZ6Ez3ujzavzUu85u6F79WtLhcsv\n"

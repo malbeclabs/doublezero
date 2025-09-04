@@ -1,7 +1,7 @@
 use crate::{
     device::interface::types,
     doublezerocommand::CliCommand,
-    poll_for_activation::poll_for_device_activated,
+    poll_for_activation::poll_for_device_interface_activated,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
     validators::validate_pubkey_or_code,
 };
@@ -29,7 +29,7 @@ pub struct UpdateDeviceInterfaceCliCommand {
     /// Can terminate a user tunnel?
     #[arg(long)]
     pub user_tunnel_endpoint: Option<bool>,
-    /// Wait for the device to be activated
+    /// Wait for the device interface to be activated
     #[arg(short, long, default_value_t = false)]
     pub wait: bool,
 }
@@ -50,18 +50,9 @@ impl UpdateDeviceInterfaceCliCommand {
                 )
             })?;
 
-        let mut interface = device
-            .interfaces
-            .iter()
-            .find(|i| i.into_current_version().name.to_lowercase() == self.name.to_lowercase())
-            .ok_or_else(|| {
-                eyre::eyre!(
-                    "Interface with name '{}' does not exist on device '{}'",
-                    self.name,
-                    self.pubkey_or_code
-                )
-            })?
-            .into_current_version();
+        let (_, mut interface) = device
+            .find_interface(&self.name)
+            .map_err(|e| eyre::eyre!(e.to_string()))?;
 
         if let Some(loopback_type) = self.loopback_type.clone() {
             interface.loopback_type = loopback_type.into();
@@ -89,7 +80,7 @@ impl UpdateDeviceInterfaceCliCommand {
 
         let signature = client.update_device_interface(UpdateDeviceInterfaceCommand {
             pubkey: device_pk,
-            name: self.name,
+            name: self.name.clone(),
             loopback_type: self.loopback_type.map(|lt| lt.into()),
             vlan_id: self.vlan_id,
             user_tunnel_endpoint: self.user_tunnel_endpoint,
@@ -97,8 +88,8 @@ impl UpdateDeviceInterfaceCliCommand {
         writeln!(out, "Signature: {signature}")?;
 
         if self.wait {
-            let device = poll_for_device_activated(client, &device_pk)?;
-            writeln!(out, "Status: {0}", device.status)?;
+            let interface = poll_for_device_interface_activated(client, &device_pk, &self.name)?;
+            writeln!(out, "Status: {0}", interface.status)?;
         }
 
         Ok(())

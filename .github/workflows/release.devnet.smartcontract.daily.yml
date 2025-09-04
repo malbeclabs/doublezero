@@ -13,7 +13,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Install agave solana tools
         run: |
-          sh -c "$(curl -sSfL https://release.anza.xyz/v2.2.17/install)"
+          sh -c "$(curl -sSfL https://release.anza.xyz/v2.3.6/install)"
           echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
       - name: Set up keypairs
         run: |

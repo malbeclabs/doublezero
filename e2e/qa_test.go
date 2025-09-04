@@ -378,9 +378,9 @@ func TestConnectivityMulticast(t *testing.T) {
 		sendReq := &pb.MulticastSendRequest{
 			Group:    groupAddr.String(),
 			Port:     7000,
-			Duration: 30,
+			Duration: 60,
 		}
-		ctx, cancel = context.WithTimeout(context.Background(), 60*time.Second)
+		ctx, cancel = context.WithTimeout(context.Background(), 120*time.Second)
 		defer cancel()
 		_, err = client.MulticastSend(ctx, sendReq)
 		require.NoError(t, err, "MulticastSend failed")

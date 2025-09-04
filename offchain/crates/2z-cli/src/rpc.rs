@@ -20,7 +20,7 @@ pub struct DoubleZeroLedgerRpcOptions {
 #[derive(Debug, Args)]
 pub struct SolanaConnectionOptions {
     /// URL for Solana's JSON RPC or moniker (or their first letter):
-    /// [mainnet-beta, testnet, devnet, localhost].
+    /// [mainnet-beta, testnet, localhost].
     #[arg(long = "url", short = 'u')]
     pub url_or_moniker: Option<String>,
 
@@ -101,7 +101,6 @@ fn normalize_to_url_if_moniker(url_or_moniker: &str) -> &str {
     match url_or_moniker {
         "m" | "mainnet-beta" => "https://api.mainnet-beta.solana.com",
         "t" | "testnet" => "https://api.testnet.solana.com",
-        "d" | "devnet" => "https://api.devnet.solana.com",
         "l" | "localhost" => "http://localhost:8899",
         url => url,
     }

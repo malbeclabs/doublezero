@@ -168,6 +168,12 @@ pub struct ConfigureRevenueDistributionOptions {
     #[arg(long, value_name = "LAMPORTS")]
     pub prepaid_connection_termination_relay_lamports: Option<u32>,
 
+    #[arg(long, value_name = "LAMPORTS")]
+    pub distribute_rewards_relay_lamports: Option<u32>,
+
+    #[arg(long, value_name = "EPOCHS")]
+    pub minimum_epochs_to_finalize_rewards: Option<u16>,
+
     /// Community burn rate limit percentage (max: 100%, precision: 7 decimals).
     #[arg(long, value_name = "PERCENTAGE")]
     pub community_burn_rate_limit: Option<String>,
@@ -371,6 +377,8 @@ pub async fn execute_configure_program(
         solana_validator_fixed_sol_fee_amount,
         calculation_grace_period_seconds,
         prepaid_connection_termination_relay_lamports,
+        distribute_rewards_relay_lamports,
+        minimum_epochs_to_finalize_rewards,
         community_burn_rate_limit,
         epochs_to_increasing_community_burn_rate,
         epochs_to_community_burn_rate_limit,
@@ -469,6 +477,26 @@ pub async fn execute_configure_program(
             &wallet_key,
             ProgramConfiguration::PrepaidConnectionTerminationRelayLamports(
                 prepaid_connection_termination_relay_lamports,
+            ),
+        )?;
+        instructions.push(configure_program_ix);
+        compute_unit_limit += 2_000;
+    }
+
+    if let Some(distribute_rewards_relay_lamports) = distribute_rewards_relay_lamports {
+        let configure_program_ix = try_build_configure_program_instruction(
+            &wallet_key,
+            ProgramConfiguration::DistributeRewardsRelayLamports(distribute_rewards_relay_lamports),
+        )?;
+        instructions.push(configure_program_ix);
+        compute_unit_limit += 2_000;
+    }
+
+    if let Some(minimum_epochs_to_finalize_rewards) = minimum_epochs_to_finalize_rewards {
+        let configure_program_ix = try_build_configure_program_instruction(
+            &wallet_key,
+            ProgramConfiguration::MinimumEpochDurationToFinalizeRewards(
+                minimum_epochs_to_finalize_rewards,
             ),
         )?;
         instructions.push(configure_program_ix);

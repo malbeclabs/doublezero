@@ -71,7 +71,7 @@ func checkMulticastPublisherPostConnect(t *testing.T, dn *TestDevnet, device *de
 				"DeviceIP":                  device.CYOANetworkIP,
 				"ExpectedAllocatedClientIP": expectedAllocatedClientIP,
 				"StartTunnel":               controllerconfig.StartUserTunnelNum,
-				"EndTunnel":                 controllerconfig.StartUserTunnelNum + int(device.Spec.MaxUsers) - 1,
+				"EndTunnel":                 controllerconfig.StartUserTunnelNum + controllerconfig.MaxUserTunnelSlots - 1,
 			})
 			require.NoError(t, err, "error reading agent configuration fixture")
 			err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))
@@ -235,7 +235,7 @@ func checkMulticastPublisherPostDisconnect(t *testing.T, dn *TestDevnet, device 
 			config, err := fixtures.Render("fixtures/multicast_publisher/doublezero_agent_config_user_removed.tmpl", map[string]any{
 				"DeviceIP":    device.CYOANetworkIP,
 				"StartTunnel": controllerconfig.StartUserTunnelNum,
-				"EndTunnel":   controllerconfig.StartUserTunnelNum + int(device.Spec.MaxUsers) - 1,
+				"EndTunnel":   controllerconfig.StartUserTunnelNum + controllerconfig.MaxUserTunnelSlots - 1,
 			})
 			require.NoError(t, err, "error reading agent configuration fixture")
 			err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))

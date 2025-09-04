@@ -12,10 +12,6 @@ import (
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
-var (
-	startUserTunnelNum = config.StartUserTunnelNum
-)
-
 type InterfaceType uint8
 
 const (
@@ -186,10 +182,10 @@ type Device struct {
 	IsisNet               string
 }
 
-func NewDevice(ip net.IP, publicKey string, maxUsers uint16) *Device {
+func NewDevice(ip net.IP, publicKey string) *Device {
 	tunnels := []*Tunnel{}
-	for i := 0; i < int(maxUsers); i++ {
-		id := startUserTunnelNum + i
+	for i := 0; i < config.MaxUserTunnelSlots; i++ {
+		id := config.StartUserTunnelNum + i
 		tunnel := &Tunnel{
 			Id:        id,
 			Allocated: false,
@@ -200,7 +196,7 @@ func NewDevice(ip net.IP, publicKey string, maxUsers uint16) *Device {
 		PublicIP:    ip,
 		PubKey:      publicKey,
 		Tunnels:     tunnels,
-		TunnelSlots: int(maxUsers),
+		TunnelSlots: config.MaxUserTunnelSlots,
 	}
 }
 

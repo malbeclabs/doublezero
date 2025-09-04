@@ -21,9 +21,4 @@ const (
 	DevnetTelemetryProgramID         = "C9xqH76NSm11pBS6maNnY163tWHT8Govww47uyEmSnoG"
 	DevnetInternetLatencyCollectorPK = "3fXen9LP5JUAkaaDJtyLo1ohPiJ2LdzVqAnmhtGgAmwJ"
 	DevnetDeviceLocalASN             = 21682
-
-	// Tunnel configuration constants.
-	MaxTunnelSlots     = 128
-	StartUserTunnelNum = 500
-	EndUserTunnelNum   = StartUserTunnelNum + MaxTunnelSlots - 1
 )

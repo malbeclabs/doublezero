@@ -8,10 +8,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-)
-
-const (
-	TestMaxUsers = 128
+	"github.com/malbeclabs/doublezero/controlplane/controller/config"
 )
 
 func TestRenderConfig(t *testing.T) {
@@ -528,8 +525,8 @@ func TestRenderConfig(t *testing.T) {
 			var want []byte
 			if strings.HasSuffix(test.Want, ".tmpl") {
 				templateData := map[string]int{
-					"StartTunnel": startUserTunnelNum,
-					"EndTunnel":   startUserTunnelNum + TestMaxUsers - 1,
+					"StartTunnel": config.StartUserTunnelNum,
+					"EndTunnel":   config.StartUserTunnelNum + config.MaxUserTunnelSlots - 1,
 				}
 				rendered, err := renderTemplateFile(test.Want, templateData)
 				if err != nil {

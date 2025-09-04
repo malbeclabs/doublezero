@@ -242,7 +242,7 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 		}
 
 		devicePubKey := base58.Encode(device.PubKey[:])
-		d := NewDevice(ip, devicePubKey, device.MaxUsers)
+		d := NewDevice(ip, devicePubKey)
 
 		if c.enableInterfacesAndPeers {
 			candidateVpnv4BgpPeer, candidateIpv4BgpPeer := c.processDeviceInterfacesAndPeers(device, d, devicePubKey)

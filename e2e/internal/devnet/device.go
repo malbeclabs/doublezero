@@ -20,6 +20,7 @@ import (
 	dockerfilters "github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/network"
 	"github.com/gagliardetto/solana-go"
+	controllerconfig "github.com/malbeclabs/doublezero/controlplane/controller/config"
 	"github.com/malbeclabs/doublezero/e2e/internal/docker"
 	"github.com/malbeclabs/doublezero/e2e/internal/logging"
 	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
@@ -66,9 +67,6 @@ type DeviceSpec struct {
 
 	// Interfaces is a map of interface names to types.
 	Interfaces map[string]string
-
-	// MaxUsers is the maximum number of users that can connect to this device
-	MaxUsers uint16
 
 	// LoopbackInterfaces is a map of interface names to loopback types.
 	LoopbackInterfaces map[string]string
@@ -291,10 +289,8 @@ func (d *Device) Start(ctx context.Context) error {
 	}
 	d.log.Info("--> Created device onchain", "code", spec.Code, "cyoaNetworkIP", cyoaNetworkIP, "devicePK", devicePK)
 
-	err = d.fetchMaxUsersFromBlockchain(ctx, devicePK)
-	if err != nil {
-		return fmt.Errorf("failed to fetch MaxUsers from blockchain: %w", err)
-	}
+	// MaxUserTunnelSlots is now a constant from config package
+	d.log.Info("--> Using MaxUserTunnelSlots constant", "maxUsers", controllerconfig.MaxUserTunnelSlots)
 
 	// Create interfaces onchain.
 	for name, ifaceType := range spec.Interfaces {
@@ -629,31 +625,9 @@ func (d *Device) setState(ctx context.Context, containerID string) error {
 	d.ID = onchainID
 	d.CYOANetworkIP = ip
 
-	err = d.fetchMaxUsersFromBlockchain(ctx, onchainID)
-	if err != nil {
-		return fmt.Errorf("failed to fetch MaxUsers from blockchain: %w", err)
-	}
+	// MaxUserTunnelSlots is now a constant from config package
+	d.log.Info("--> Using MaxUserTunnelSlots constant", "maxUsers", controllerconfig.MaxUserTunnelSlots)
 
-	return nil
-}
-
-func (d *Device) fetchMaxUsersFromBlockchain(ctx context.Context, devicePK string) error {
-	serviceabilityClient, err := d.dn.Ledger.GetServiceabilityClient()
-	if err != nil {
-		return fmt.Errorf("failed to get serviceability client: %w", err)
-	}
-	data, err := serviceabilityClient.GetProgramData(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get program data: %w", err)
-	}
-	for _, device := range data.Devices {
-		pk := solana.PublicKeyFromBytes(device.PubKey[:])
-		if pk.String() == devicePK {
-			d.Spec.MaxUsers = device.MaxUsers
-			d.log.Info("--> Device MaxUsers from blockchain", "maxUsers", d.Spec.MaxUsers)
-			break
-		}
-	}
 	return nil
 }
 

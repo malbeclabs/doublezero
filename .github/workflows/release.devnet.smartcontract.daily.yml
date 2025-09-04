@@ -7,11 +7,14 @@ on:
 jobs:
   release:
     runs-on: ubuntu-24.04-16c-64gb
-    container:
-      image: ghcr.io/malbeclabs/doublezero-base:latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install agave solana tools
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/v2.2.17/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
       - name: Set up keypairs
         run: |
           echo "${{ secrets.DEVNET_KEYPAIR }}" > id.json

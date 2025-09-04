@@ -14,7 +14,7 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone, Default)]
 pub struct DeviceDeleteArgs;
 
 impl fmt::Debug for DeviceDeleteArgs {

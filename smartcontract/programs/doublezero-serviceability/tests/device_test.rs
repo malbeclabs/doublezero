@@ -202,6 +202,30 @@ async fn test_device() {
     assert_eq!(device.code, "la".to_string());
     assert_eq!(device.status, DeviceStatus::Pending);
 
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
+            max_users: Some(128),
+            ..DeviceUpdateArgs::default()
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let device_la = get_account_data(&mut banks_client, device_pubkey)
+        .await
+        .expect("Unable to get Device")
+        .get_device()
+        .unwrap();
+    assert_eq!(device_la.max_users, 128);
+
     // check reference counts
     let contributor = get_account_data(&mut banks_client, contributor_pubkey)
         .await
@@ -461,6 +485,30 @@ async fn test_device_update_metrics_publisher_by_foundation_allowlist_account() 
     assert_eq!(device.account_type, AccountType::Device);
     assert_eq!(device.code, "la".to_string());
     assert_eq!(device.status, DeviceStatus::Pending);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
+            max_users: Some(128),
+            ..DeviceUpdateArgs::default()
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let device_la = get_account_data(&mut banks_client, device_pubkey)
+        .await
+        .expect("Unable to get Device")
+        .get_device()
+        .unwrap();
+    assert_eq!(device_la.max_users, 128);
 
     // Update device metrics publisher by foundation allowlist account (payer)
     let metrics_publisher_pk = Pubkey::new_unique();

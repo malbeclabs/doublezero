@@ -11,7 +11,7 @@ use solana_program::{
     entrypoint::ProgramResult,
     pubkey::Pubkey,
 };
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone, Default)]
 pub struct ContributorResumeArgs {}
 
 impl fmt::Debug for ContributorResumeArgs {

@@ -20,7 +20,7 @@ use std::fmt;
 #[cfg(test)]
 use solana_program::msg;
 
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone, Default)]
 pub struct ContributorCreateArgs {
     pub code: String,
 }

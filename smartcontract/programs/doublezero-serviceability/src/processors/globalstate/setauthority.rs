@@ -14,7 +14,7 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone, Default)]
 pub struct SetAuthorityArgs {
     pub activator_authority_pk: Option<Pubkey>,
     pub sentinel_authority_pk: Option<Pubkey>,

@@ -16,6 +16,8 @@ All notable changes to this project will be documented in this file.
     - Add more descriptive error logging
 - Activator
     Support for interface IP reclamation
+    - Devices are now initialized with max_users = 0 by default.
+    - Devices with max_users = 0 cannot accept user connections until updated.
 - Onchain monitor
     - Emit metric for telemetry account not found in device and internet telemetry watchers
     - Emit metric with serviceability program onchain version
@@ -28,6 +30,11 @@ All notable changes to this project will be documented in this file.
     - Drop device telemetry samples if submission attempts exhausted and buffer is at capacity
 - Device controller
     - Each environment can now have a different device BGP Autonomous System Number (ASN) per environment. (This is the remote ASN from the client's perspective.)
+- E2E tests
+    - Updated unit tests and e2e tests to validate the new initialization and activation flow.
+- Contributor Operations
+    - Contributors must explicitly run device update to set a valid max_users and activate a Device.
+
 
 ## [v0.6.2](https://github.com/malbeclabs/doublezero/compare/client/v0.6.0...client/v0.6.2) – 2025-09-02
 

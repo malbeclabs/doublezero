@@ -4,8 +4,10 @@ use doublezero_serviceability::{
     instructions::*,
     pda::*,
     processors::{
-        contributor::create::ContributorCreateArgs, device::create::*,
-        exchange::setdevice::SetDeviceOption, *,
+        contributor::create::ContributorCreateArgs,
+        device::{create::*, update::DeviceUpdateArgs},
+        exchange::setdevice::SetDeviceOption,
+        *,
     },
     state::{accounttype::AccountType, contributor::ContributorStatus, device::*},
 };
@@ -198,6 +200,30 @@ async fn exchange_setdevice() {
     assert_eq!(device.account_type, AccountType::Device);
     assert_eq!(device.code, "la".to_string());
     assert_eq!(device.status, DeviceStatus::Pending);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
+            max_users: Some(128),
+            ..DeviceUpdateArgs::default()
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let device_la = get_account_data(&mut banks_client, device_pubkey)
+        .await
+        .expect("Unable to get Device")
+        .get_device()
+        .unwrap();
+    assert_eq!(device_la.max_users, 128);
 
     // check reference counts
     let contributor = get_account_data(&mut banks_client, contributor_pubkey)

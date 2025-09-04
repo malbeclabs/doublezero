@@ -9,7 +9,7 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone, Default)]
 pub struct RemoveMulticastGroupSubAllowlistArgs {
     pub pubkey: Pubkey,
 }

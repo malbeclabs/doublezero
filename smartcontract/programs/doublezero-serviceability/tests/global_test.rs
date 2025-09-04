@@ -10,6 +10,7 @@ use doublezero_serviceability::{
             activate::DeviceActivateArgs,
             create::*,
             interface::{DeviceInterfaceActivateArgs, DeviceInterfaceCreateArgs},
+            update::DeviceUpdateArgs,
         },
         exchange::create::*,
         globalconfig::set::SetGlobalConfigArgs,
@@ -336,6 +337,36 @@ async fn test_doublezero_program() {
         .unwrap();
     assert_eq!(device_la.account_type, AccountType::Device);
     assert_eq!(device_la.code, device_la_code);
+    assert_eq!(device_la.max_users, 0);
+    println!(
+        "✅ Device LA initialized successfully with index: {}",
+        device_la.index
+    );
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
+            max_users: Some(128),
+            ..DeviceUpdateArgs::default()
+        }),
+        vec![
+            AccountMeta::new(device_la_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let device_la = get_account_data(&mut banks_client, device_la_pubkey)
+        .await
+        .expect("Unable to get Device")
+        .get_device()
+        .unwrap();
+    assert_eq!(device_la.account_type, AccountType::Device);
+    assert_eq!(device_la.max_users, 128);
     println!(
         "✅ Device LA initialized successfully with index: {}",
         device_la.index
@@ -426,6 +457,30 @@ async fn test_doublezero_program() {
         "✅ Device NY initialized successfully with index: {}",
         device_ny.index
     );
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
+            max_users: Some(128),
+            ..DeviceUpdateArgs::default()
+        }),
+        vec![
+            AccountMeta::new(device_ny_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let device_la = get_account_data(&mut banks_client, device_ny_pubkey)
+        .await
+        .expect("Unable to get Device")
+        .get_device()
+        .unwrap();
+    assert_eq!(device_la.max_users, 128);
 
     execute_transaction(
         &mut banks_client,

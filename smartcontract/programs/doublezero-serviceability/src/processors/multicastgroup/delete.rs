@@ -12,7 +12,7 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone, Default)]
 pub struct MulticastGroupDeleteArgs {}
 
 impl fmt::Debug for MulticastGroupDeleteArgs {

@@ -5,6 +5,7 @@ use doublezero_serviceability::{
     processors::{
         accesspass::set::SetAccessPassArgs,
         contributor::create::ContributorCreateArgs,
+        device::update::DeviceUpdateArgs,
         user::{activate::*, create::*, delete::*, resume::*, suspend::*, update::*},
         *,
     },
@@ -207,6 +208,30 @@ async fn test_user() {
     assert_eq!(device_la.account_type, AccountType::Device);
     assert_eq!(device_la.code, "la".to_string());
     assert_eq!(device_la.status, DeviceStatus::Pending);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
+            max_users: Some(128),
+            ..DeviceUpdateArgs::default()
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let device_la = get_account_data(&mut banks_client, device_pubkey)
+        .await
+        .expect("Unable to get Device")
+        .get_device()
+        .unwrap();
+    assert_eq!(device_la.max_users, 128);
 
     println!("✅ Device initialized successfully",);
     /*****************************************************************************************************************************************************/

@@ -9,7 +9,7 @@ use solana_program::{
     entrypoint::ProgramResult,
     pubkey::Pubkey,
 };
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone, Default)]
 pub struct LocationResumeArgs;
 
 impl fmt::Debug for LocationResumeArgs {

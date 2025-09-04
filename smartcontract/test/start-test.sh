@@ -156,6 +156,16 @@ echo "Creating external links"
 echo "Accepting external link"
 ./target/doublezero link accept --code "la2-dz02-la2-dz01" --side-z-interface Switch1/1/3 -w
 
+### Update devices to set max users
+echo "Update devices to set max users"
+./target/doublezero device update --pubkey la2-dz01 --max-users 128
+./target/doublezero device update --pubkey ny5-dz01 --max-users 128
+./target/doublezero device update --pubkey ld4-dz01 --max-users 128
+./target/doublezero device update --pubkey frk-dz01 --max-users 128
+./target/doublezero device update --pubkey sg1-dz01 --max-users 128
+./target/doublezero device update --pubkey ty2-dz01 --max-users 128
+./target/doublezero device update --pubkey pit-dzd01 --max-users 128
+./target/doublezero device update --pubkey ams-dz001 --max-users 128
 
 # create access pass
 echo "Create AccessPass for users"

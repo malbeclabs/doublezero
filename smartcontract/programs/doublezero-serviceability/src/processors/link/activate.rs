@@ -10,7 +10,7 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone, Default)]
 pub struct LinkActivateArgs {
     pub tunnel_id: u16,
     pub tunnel_net: NetworkV4,

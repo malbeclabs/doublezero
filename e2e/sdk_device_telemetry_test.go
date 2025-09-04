@@ -62,6 +62,11 @@ func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 		doublezero device create --code ld4-dz01 --contributor co01 --location lhr --exchange xlhr --public-ip "195.219.120.72" --dz-prefixes "195.219.120.72/29" --mgmt-vrf mgmt
 		doublezero device create --code frk-dz01 --contributor co01 --location fra --exchange xfra --public-ip "195.219.220.88" --dz-prefixes "195.219.220.88/29" --mgmt-vrf mgmt
 
+		doublezero device update --code ld4-dz01 --max-users 128
+		doublezero device update --code frk-dz01 --max-users 128
+		doublezero device update --code la2-dz01 --max-users 128
+		doublezero device update --code ny5-dz01 --max-users 128
+
 		doublezero device interface create la2-dz01 "Switch1/1/1"
 		doublezero device interface create ny5-dz01 "Switch1/1/1"
 		doublezero device interface create ld4-dz01 "Switch1/1/1"

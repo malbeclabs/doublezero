@@ -4,7 +4,7 @@ use crate::{
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
-    account_info::AccountInfo, clock::Clock, entrypoint::ProgramResult,
+    account_info::AccountInfo, clock::Clock, entrypoint::ProgramResult, msg,
     program_error::ProgramError, pubkey::Pubkey, sysvar::Sysvar,
 };
 use std::{fmt, net::Ipv4Addr};
@@ -75,6 +75,7 @@ impl fmt::Display for AccessPassStatus {
 impl Validate for AccessPass {
     fn validate(&self) -> Result<(), DoubleZeroError> {
         if self.account_type != AccountType::AccessPass {
+            msg!("Invalid account type: {}", self.account_type);
             return Err(DoubleZeroError::InvalidAccountType);
         }
         self.accesspass_type.validate()?;
@@ -88,6 +89,7 @@ impl Validate for AccessPassType {
             AccessPassType::Prepaid => Ok(()),
             AccessPassType::SolanaValidator(solana_identity) => {
                 if *solana_identity == Pubkey::default() {
+                    msg!("Invalid Solana Validator Pubkey: {}", solana_identity);
                     return Err(DoubleZeroError::InvalidSolanaValidatorPubkey);
                 }
                 Ok(())

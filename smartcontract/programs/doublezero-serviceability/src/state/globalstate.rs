@@ -5,7 +5,7 @@ use crate::{
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
-use solana_program::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
+use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError, pubkey::Pubkey};
 
 #[derive(BorshSerialize, Debug, PartialEq, Clone)]
 pub struct GlobalState {
@@ -102,6 +102,7 @@ impl TryFrom<&AccountInfo<'_>> for GlobalState {
 impl Validate for GlobalState {
     fn validate(&self) -> Result<(), DoubleZeroError> {
         if self.account_type != AccountType::GlobalState {
+            msg!("Invalid account type: {}", self.account_type);
             return Err(DoubleZeroError::InvalidAccountType);
         }
         Ok(())

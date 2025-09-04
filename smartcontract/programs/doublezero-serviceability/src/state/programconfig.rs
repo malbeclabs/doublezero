@@ -7,7 +7,7 @@ use crate::{
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
-use solana_program::{account_info::AccountInfo, program_error::ProgramError};
+use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError};
 
 #[derive(BorshSerialize, Debug, PartialEq, Clone)]
 pub struct ProgramConfig {
@@ -77,6 +77,7 @@ impl Validate for ProgramConfig {
     fn validate(&self) -> Result<(), DoubleZeroError> {
         // Account type must be ProgramConfig
         if self.account_type != AccountType::ProgramConfig {
+            msg!("Invalid account type: {}", self.account_type);
             return Err(DoubleZeroError::InvalidAccountType);
         }
         Ok(())

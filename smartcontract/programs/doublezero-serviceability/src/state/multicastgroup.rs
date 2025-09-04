@@ -5,7 +5,7 @@ use crate::{
     state::accounttype::{AccountType, AccountTypeInfo},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
-use solana_program::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
+use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError, pubkey::Pubkey};
 use std::{fmt, net::Ipv4Addr};
 
 #[repr(u8)]
@@ -191,17 +191,21 @@ impl Validate for MulticastGroup {
     fn validate(&self) -> Result<(), DoubleZeroError> {
         // Account type must be MulticastGroup
         if self.account_type != AccountType::MulticastGroup {
+            msg!("Invalid account type: {}", self.account_type);
             return Err(DoubleZeroError::InvalidAccountType);
         }
         // Multicast IP must be in the range
         if self.status != MulticastGroupStatus::Pending && !self.multicast_ip.is_multicast() {
+            msg!("Invalid multicast IP: {}", self.multicast_ip);
             return Err(DoubleZeroError::InvalidMulticastIp);
         }
         if self.max_bandwidth == 0 {
+            msg!("Invalid max bandwidth: {}", self.max_bandwidth);
             return Err(DoubleZeroError::InvalidMaxBandwidth);
         }
         // Code must be less than or equal to 32 bytes
         if self.code.len() > 32 {
+            msg!("Code too long: {}", self.code.len());
             return Err(DoubleZeroError::CodeTooLong);
         }
 

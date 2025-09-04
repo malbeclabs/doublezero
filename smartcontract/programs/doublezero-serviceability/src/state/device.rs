@@ -9,7 +9,7 @@ use doublezero_program_common::{
     types::{NetworkV4, NetworkV4List},
     validate_iface,
 };
-use solana_program::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
+use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError, pubkey::Pubkey};
 use std::{fmt, net::Ipv4Addr};
 
 #[repr(u8)]
@@ -279,6 +279,7 @@ impl Validate for Interface {
 
         // VLAN ID must be between 0 and 4094
         if interface.vlan_id > 4094 {
+            msg!("Invalid VLAN ID: {}", interface.vlan_id);
             return Err(DoubleZeroError::InvalidVlanId);
         }
         // IP net must be valid
@@ -286,6 +287,7 @@ impl Validate for Interface {
             && !interface.ip_net.ip().is_private()
             && !interface.ip_net.ip().is_link_local()
         {
+            msg!("Invalid interface IP: {}", interface.ip_net);
             return Err(DoubleZeroError::InvalidInterfaceIp);
         }
 
@@ -475,30 +477,37 @@ impl Validate for Device {
     fn validate(&self) -> Result<(), DoubleZeroError> {
         // Account type must be Device
         if self.account_type != AccountType::Device {
+            msg!("Invalid account type: {}", self.account_type);
             return Err(DoubleZeroError::InvalidAccountType);
         }
         // Code must be less than or equal to 32 bytes
         if self.code.len() > 32 {
+            msg!("Code too long: {} bytes", self.code.len());
             return Err(DoubleZeroError::CodeTooLong);
         }
         // Location ID must be valid
         if self.location_pk == Pubkey::default() {
+            msg!("Invalid location ID: {}", self.location_pk);
             return Err(DoubleZeroError::InvalidLocation);
         }
         // Exchange ID must be valid
         if self.exchange_pk == Pubkey::default() {
+            msg!("Invalid exchange ID: {}", self.exchange_pk);
             return Err(DoubleZeroError::InvalidExchange);
         }
         // Public IP must be a global address
         if !is_global(self.public_ip) {
+            msg!("Invalid public IP: {}", self.public_ip);
             return Err(DoubleZeroError::InvalidClientIp);
         }
         // Device prefixes must be present
         if self.dz_prefixes.is_empty() {
+            msg!("No device prefixes present");
             return Err(DoubleZeroError::NoDzPrefixes);
         }
         // Device prefixes must be global unicast
         if self.dz_prefixes.iter().any(|p| !is_global(p.ip())) {
+            msg!("Invalid device prefixes: {:?}", self.dz_prefixes);
             return Err(DoubleZeroError::InvalidDzPrefix);
         }
         // validate Interfaces

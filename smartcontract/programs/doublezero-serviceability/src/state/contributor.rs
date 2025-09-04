@@ -4,7 +4,7 @@ use crate::{
     state::accounttype::{AccountType, AccountTypeInfo},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
-use solana_program::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
+use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError, pubkey::Pubkey};
 use std::fmt;
 
 #[repr(u8)]
@@ -149,10 +149,12 @@ impl Validate for Contributor {
     fn validate(&self) -> Result<(), DoubleZeroError> {
         // Account type must be Contributor
         if self.account_type != AccountType::Contributor {
+            msg!("Invalid account type: {}", self.account_type);
             return Err(DoubleZeroError::InvalidAccountType);
         }
         // Code must be less than or equal to 32 bytes
         if self.code.len() > 32 {
+            msg!("Invalid code length: {}", self.code.len());
             return Err(DoubleZeroError::CodeTooLong);
         }
 

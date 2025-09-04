@@ -220,6 +220,7 @@ router bgp 65342
    neighbor 172.16.0.7 send-community
    no neighbor 169.254.0.1
    neighbor 169.254.0.1 remote-as 65000
+   neighbor 169.254.0.1 local-as 65342 no-prepend replace-as
    neighbor 169.254.0.1 passive
    neighbor 169.254.0.1 description USER-500
    neighbor 169.254.0.1 route-map RM-USER-500-IN in

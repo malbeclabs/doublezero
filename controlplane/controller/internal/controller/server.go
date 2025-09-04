@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/gagliardetto/solana-go"
+	"github.com/malbeclabs/doublezero/config"
 	pb "github.com/malbeclabs/doublezero/controlplane/proto/controller/gen/pb-go"
 	telemetryconfig "github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/config"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
@@ -60,6 +61,8 @@ type Controller struct {
 	enableInterfacesAndPeers bool
 	updateDone               chan struct{}
 	tlsConfig                *tls.Config
+	environment              string
+	deviceLocalASN           uint32
 }
 
 type Option func(*Controller)
@@ -125,6 +128,18 @@ func WithNoHardware() Option {
 func WithEnableInterfacesAndPeers() Option {
 	return func(c *Controller) {
 		c.enableInterfacesAndPeers = true
+	}
+}
+
+func WithEnvironment(env string) Option {
+	return func(c *Controller) {
+		c.environment = env
+	}
+}
+
+func WithDeviceLocalASN(asn uint32) Option {
+	return func(c *Controller) {
+		c.deviceLocalASN = asn
 	}
 }
 
@@ -534,6 +549,25 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 		ipv4Peers = nil
 	}
 
+	var localASN uint32
+	if c.deviceLocalASN != 0 {
+		// Use the explicitly provided ASN
+		localASN = c.deviceLocalASN
+	} else if c.environment != "" {
+		// Get ASN from environment
+		networkConfig, err := config.NetworkConfigForEnv(c.environment)
+		if err != nil {
+			getConfigRenderErrors.WithLabelValues(req.GetPubkey()).Inc()
+			err := status.Errorf(codes.Internal, "failed to get network config for environment %s: %v", c.environment, err)
+			return nil, err
+		}
+		localASN = networkConfig.DeviceLocalASN
+	} else {
+		getConfigRenderErrors.WithLabelValues(req.GetPubkey()).Inc()
+		err := status.Errorf(codes.Internal, "device local ASN not configured")
+		return nil, err
+	}
+
 	data := templateData{
 		MulticastGroupBlock:      multicastGroupBlock,
 		Device:                   device,
@@ -543,6 +577,7 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 		NoHardware:               c.noHardware,
 		InterfacesAndPeers:       c.enableInterfacesAndPeers,
 		TelemetryTWAMPListenPort: telemetryconfig.TWAMPListenPort,
+		LocalASN:                 localASN,
 	}
 
 	config, err := renderConfig(data)

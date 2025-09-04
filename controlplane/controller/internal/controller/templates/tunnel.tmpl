@@ -191,6 +191,7 @@ router bgp 65342
    {{- if and .IsMulticast .Allocated }}
    no neighbor {{ .OverlayDstIP }}
    neighbor {{ .OverlayDstIP }} remote-as 65000
+   neighbor {{ .OverlayDstIP }} local-as {{ $.LocalASN }} no-prepend replace-as
    neighbor {{ .OverlayDstIP }} passive
    neighbor {{ .OverlayDstIP }} description USER-{{ .Id  }}
    neighbor {{ .OverlayDstIP }} route-map RM-USER-{{ .Id }}-IN in
@@ -239,6 +240,7 @@ router bgp 65342
       {{- if not .IsMulticast }}
       no neighbor {{ .OverlayDstIP }}
       neighbor {{ .OverlayDstIP }} remote-as 65000
+      neighbor {{ .OverlayDstIP }} local-as {{ $.LocalASN }} no-prepend replace-as
       neighbor {{ .OverlayDstIP }} passive
       neighbor {{ .OverlayDstIP }} description USER-{{ .Id  }}
       neighbor {{ .OverlayDstIP }} route-map RM-USER-{{ .Id }}-IN in

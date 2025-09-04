@@ -23,6 +23,7 @@ func TestConfig_NetworkConfigForEnv(t *testing.T) {
 				ServiceabilityProgramID:    solana.MustPublicKeyFromBase58(config.MainnetServiceabilityProgramID),
 				TelemetryProgramID:         solana.MustPublicKeyFromBase58(config.MainnetTelemetryProgramID),
 				InternetLatencyCollectorPK: solana.MustPublicKeyFromBase58(config.MainnetInternetLatencyCollectorPK),
+				DeviceLocalASN:             config.MainnetDeviceLocalASN,
 			},
 		},
 		{
@@ -32,6 +33,7 @@ func TestConfig_NetworkConfigForEnv(t *testing.T) {
 				ServiceabilityProgramID:    solana.MustPublicKeyFromBase58(config.MainnetServiceabilityProgramID),
 				TelemetryProgramID:         solana.MustPublicKeyFromBase58(config.MainnetTelemetryProgramID),
 				InternetLatencyCollectorPK: solana.MustPublicKeyFromBase58(config.MainnetInternetLatencyCollectorPK),
+				DeviceLocalASN:             config.MainnetDeviceLocalASN,
 			},
 		},
 		{
@@ -41,6 +43,7 @@ func TestConfig_NetworkConfigForEnv(t *testing.T) {
 				ServiceabilityProgramID:    solana.MustPublicKeyFromBase58(config.TestnetServiceabilityProgramID),
 				TelemetryProgramID:         solana.MustPublicKeyFromBase58(config.TestnetTelemetryProgramID),
 				InternetLatencyCollectorPK: solana.MustPublicKeyFromBase58(config.TestnetInternetLatencyCollectorPK),
+				DeviceLocalASN:             config.TestnetDeviceLocalASN,
 			},
 		},
 		{
@@ -50,6 +53,7 @@ func TestConfig_NetworkConfigForEnv(t *testing.T) {
 				ServiceabilityProgramID:    solana.MustPublicKeyFromBase58(config.DevnetServiceabilityProgramID),
 				TelemetryProgramID:         solana.MustPublicKeyFromBase58(config.DevnetTelemetryProgramID),
 				InternetLatencyCollectorPK: solana.MustPublicKeyFromBase58(config.DevnetInternetLatencyCollectorPK),
+				DeviceLocalASN:             config.DevnetDeviceLocalASN,
 			},
 		},
 		{

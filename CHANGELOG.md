@@ -17,6 +17,8 @@ All notable changes to this project will be documented in this file.
 - Device agents
     - Remove log of keypair path on telemetry agent start up
     - Drop device telemetry samples if submission attempts exhausted and buffer is at capacity
+- Device controller
+    - Each environment can now have a different device BGP Autonomous System Number (ASN) per environment. (This is the remote ASN from the client's perspective.)
 
 ## [v0.6.2](https://github.com/malbeclabs/doublezero/compare/client/v0.6.0...client/v0.6.2) – 2025-09-02
 

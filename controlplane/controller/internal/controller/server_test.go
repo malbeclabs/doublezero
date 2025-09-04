@@ -477,10 +477,12 @@ func TestGetConfig(t *testing.T) {
 				controller = &Controller{
 					noHardware:               test.NoHardware,
 					enableInterfacesAndPeers: true,
+					deviceLocalASN:           65342,
 				}
 			} else {
 				controller = &Controller{
-					noHardware: test.NoHardware,
+					noHardware:     test.NoHardware,
+					deviceLocalASN: 65342,
 				}
 			}
 			pb.RegisterControllerServer(server, controller)
@@ -947,6 +949,7 @@ func TestStateCache(t *testing.T) {
 				WithServiceabilityProgramClient(m),
 				WithListener(lis),
 				WithEnableInterfacesAndPeers(),
+				WithDeviceLocalASN(65342),
 			)
 			if err != nil {
 				t.Fatalf("error creating controller: %v", err)
@@ -1405,12 +1408,14 @@ func TestEndToEnd(t *testing.T) {
 					WithListener(listener),
 					WithSignalChan(make(chan struct{})),
 					WithEnableInterfacesAndPeers(),
+					WithDeviceLocalASN(65342),
 				)
 			} else {
 				controller, err = NewController(
 					WithServiceabilityProgramClient(m),
 					WithListener(listener),
 					WithSignalChan(make(chan struct{})),
+					WithDeviceLocalASN(65342),
 				)
 			}
 			if err != nil {

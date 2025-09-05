@@ -14,6 +14,7 @@ All notable changes to this project will be documented in this file.
     - Rename Config account type to GlobalConfig for clarity and consistency.
     - Fix bug in user update that caused DZ IP to be 0.0.0.0
     - Add more descriptive error logging
+    - Telemetry program: embed serviceability program ID via build feature instead of env variable
 - Activator
     Support for interface IP reclamation
     - Devices are now initialized with max_users = 0 by default.

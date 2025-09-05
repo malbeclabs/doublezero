@@ -2,7 +2,17 @@ PREFIX:=github.com/malbeclabs/doublezero/smartcontract
 BUILD:=`git rev-parse --short HEAD`
 LDFLAGS=
 CLIPPY_FLAGS=-- -Dclippy::all -D warnings
-SERVICEABILITY_PROGRAM_ID ?= local
+env ?= localnet
+
+UNAME_S := $(shell uname -s)
+
+# On macOS, some Rust crates (e.g. blake3) compile C code and need system headers
+# from the macOS SDK. By exporting CC and SDKROOT via xcrun, we ensure Apple’s
+# clang is used with the correct SDK path. This avoids 'assert.h not found' errors.
+ifeq ($(UNAME_S),Darwin)
+  export CC      := $(shell xcrun -find clang)
+  export SDKROOT := $(shell xcrun --sdk macosx --show-sdk-path)
+endif
 
 .PHONY: test
 test: test-programs
@@ -19,7 +29,6 @@ test-programs: test-sbf
 
 .PHONY: test-sbf
 test-sbf:
-	SERVICEABILITY_PROGRAM_ID=$(SERVICEABILITY_PROGRAM_ID) \
 	cargo test-sbf
 
 .PHONY: lint
@@ -29,7 +38,6 @@ lint: lint-programs
 
 .PHONY: lint-programs
 lint-programs:
-	SERVICEABILITY_PROGRAM_ID=$(SERVICEABILITY_PROGRAM_ID) \
 	cargo clippy --all-targets \
 		-p doublezero-record \
 		-p doublezero-telemetry \
@@ -37,12 +45,12 @@ lint-programs:
 		$(CLIPPY_FLAGS)
 
 .PHONY: build
-build: build-sbf
+build: build-programs
 	cargo build $(LDFLAGS) --manifest-path ./sdk/rs/Cargo.toml
 	cargo build $(LDFLAGS) --manifest-path ./cli/Cargo.toml
 
-.PHONY: build-sbf
-build-sbf:
+.PHONY: build-programs
+build-programs:
 	cd programs/doublezero-record && cargo build-sbf
-	cd programs/doublezero-serviceability && SERVICEABILITY_PROGRAM_ID=$(SERVICEABILITY_PROGRAM_ID) cargo build-sbf
-	cd programs/doublezero-telemetry && SERVICEABILITY_PROGRAM_ID=$(SERVICEABILITY_PROGRAM_ID) cargo build-sbf
+	cd programs/doublezero-serviceability && cargo build-sbf
+	cd programs/doublezero-telemetry && cargo build-sbf --features $(env)

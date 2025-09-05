@@ -321,7 +321,6 @@ impl ProgramTestWithOwner {
         )
         .unwrap();
 
-        // TODO: Remove from here and use this for happy path testing.
         let remove_me_ix = solana_system_interface::instruction::transfer(
             &payer_signer.pubkey(),
             &program_config_key,
@@ -402,7 +401,6 @@ impl ProgramTestWithOwner {
         )
         .unwrap();
 
-        // TODO: Remove from here and use this for happy path testing.
         let remove_me_ix =
             solana_system_interface::instruction::transfer(&payer_signer.pubkey(), &journal_key, 1);
 
@@ -481,7 +479,7 @@ impl ProgramTestWithOwner {
     pub async fn configure_distribution_debt(
         &mut self,
         dz_epoch: DoubleZeroEpoch,
-        payments_accountant_signer: &Keypair,
+        debt_accountant_signer: &Keypair,
         total_validators: u32,
         total_debt: u64,
         merkle_root: Hash,
@@ -490,7 +488,7 @@ impl ProgramTestWithOwner {
 
         let configure_distribution_debt_ix = try_build_instruction(
             &ID,
-            ConfigureDistributionDebtAccounts::new(&payments_accountant_signer.pubkey(), dz_epoch),
+            ConfigureDistributionDebtAccounts::new(&debt_accountant_signer.pubkey(), dz_epoch),
             &RevenueDistributionInstructionData::ConfigureDistributionDebt {
                 total_validators,
                 total_debt,
@@ -503,7 +501,7 @@ impl ProgramTestWithOwner {
             &mut self.banks_client,
             &self.cached_blockhash,
             &[configure_distribution_debt_ix],
-            &[payer_signer, payments_accountant_signer],
+            &[payer_signer, debt_accountant_signer],
         )
         .await?;
 
@@ -513,14 +511,14 @@ impl ProgramTestWithOwner {
     pub async fn finalize_distribution_debt(
         &mut self,
         dz_epoch: DoubleZeroEpoch,
-        payments_accountant_signer: &Keypair,
+        debt_accountant_signer: &Keypair,
     ) -> Result<&mut Self, BanksClientError> {
         let payer_signer = &self.payer_signer;
 
         let finalize_distribution_debt_ix = try_build_instruction(
             &ID,
             FinalizeDistributionDebtAccounts::new(
-                &payments_accountant_signer.pubkey(),
+                &debt_accountant_signer.pubkey(),
                 dz_epoch,
                 &payer_signer.pubkey(),
             ),
@@ -532,7 +530,7 @@ impl ProgramTestWithOwner {
             &mut self.banks_client,
             &self.cached_blockhash,
             &[finalize_distribution_debt_ix],
-            &[payer_signer, payments_accountant_signer],
+            &[payer_signer, debt_accountant_signer],
         )
         .await?;
 
@@ -969,7 +967,7 @@ impl ProgramTestWithOwner {
         &mut self,
         dz_epoch: DoubleZeroEpoch,
         next_dz_epoch: DoubleZeroEpoch,
-        payments_accountant_signer: &Keypair,
+        debt_accountant_signer: &Keypair,
         debt: &SolanaValidatorDebt,
         proof: MerkleProof,
     ) -> Result<&mut Self, BanksClientError> {
@@ -978,7 +976,7 @@ impl ProgramTestWithOwner {
         let forgive_solana_validator_debt_ix = try_build_instruction(
             &ID,
             ForgiveSolanaValidatorDebtAccounts::new(
-                &payments_accountant_signer.pubkey(),
+                &debt_accountant_signer.pubkey(),
                 dz_epoch,
                 next_dz_epoch,
             ),
@@ -990,7 +988,7 @@ impl ProgramTestWithOwner {
             &mut self.banks_client,
             &self.cached_blockhash,
             &[forgive_solana_validator_debt_ix],
-            &[payer_signer, payments_accountant_signer],
+            &[payer_signer, debt_accountant_signer],
         )
         .await?;
 

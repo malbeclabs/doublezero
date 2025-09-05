@@ -31,7 +31,7 @@ async fn test_pay_solana_validator_debt() {
 
     let admin_signer = Keypair::new();
 
-    let payments_accountant_signer = Keypair::new();
+    let debt_accountant_signer = Keypair::new();
     let rewards_accountant_signer = Keypair::new();
     let solana_validator_base_block_rewards_pct_fee = 500; // 5%.
 
@@ -44,21 +44,21 @@ async fn test_pay_solana_validator_debt() {
     // Relay settings.
     let distribute_rewards_relay_lamports = 10_000;
 
-    // Distribution payments.
+    // Distribution debt.
 
     let dz_epoch = DoubleZeroEpoch::new(1);
 
-    let payments_data = (0..16)
+    let debt_data = (0..16)
         .map(|i| SolanaValidatorDebt {
             node_id: Pubkey::new_unique(),
             amount: 10_000_000_000 * (i + 1),
         })
         .collect::<Vec<_>>();
 
-    let total_solana_validators = payments_data.len() as u32;
-    let total_solana_validator_debt = payments_data.iter().map(|payment| payment.amount).sum();
-    let solana_validator_payments_merkle_root =
-        merkle_root_from_indexed_pod_leaves(&payments_data, Some(SolanaValidatorDebt::LEAF_PREFIX))
+    let total_solana_validators = debt_data.len() as u32;
+    let total_solana_validator_debt = debt_data.iter().map(|debt| debt.amount).sum();
+    let solana_validator_debt_merkle_root =
+        merkle_root_from_indexed_pod_leaves(&debt_data, Some(SolanaValidatorDebt::LEAF_PREFIX))
             .unwrap();
 
     test_setup
@@ -74,7 +74,7 @@ async fn test_pay_solana_validator_debt() {
         .configure_program(
             &admin_signer,
             [
-                ProgramConfiguration::PaymentsAccountant(payments_accountant_signer.pubkey()),
+                ProgramConfiguration::DebtAccountant(debt_accountant_signer.pubkey()),
                 ProgramConfiguration::RewardsAccountant(rewards_accountant_signer.pubkey()),
                 ProgramConfiguration::SolanaValidatorFeeParameters {
                     base_block_rewards_pct: solana_validator_base_block_rewards_pct_fee,
@@ -98,33 +98,33 @@ async fn test_pay_solana_validator_debt() {
         )
         .await
         .unwrap()
-        .initialize_distribution(&payments_accountant_signer)
+        .initialize_distribution(&debt_accountant_signer)
         .await
         .unwrap()
-        .initialize_distribution(&payments_accountant_signer)
+        .initialize_distribution(&debt_accountant_signer)
         .await
         .unwrap()
         .configure_distribution_debt(
             dz_epoch,
-            &payments_accountant_signer,
+            &debt_accountant_signer,
             total_solana_validators,
             total_solana_validator_debt,
-            solana_validator_payments_merkle_root,
+            solana_validator_debt_merkle_root,
         )
         .await
         .unwrap()
-        .finalize_distribution_debt(dz_epoch, &payments_accountant_signer)
+        .finalize_distribution_debt(dz_epoch, &debt_accountant_signer)
         .await
         .unwrap();
 
     // Show that verification passes.
-    let kinds_and_proofs = payments_data
+    let kinds_and_proofs = debt_data
         .iter()
         .enumerate()
-        .map(|(i, payment)| {
-            let kind = DistributionMerkleRootKind::SolanaValidatorPayment(*payment);
+        .map(|(i, debt)| {
+            let kind = DistributionMerkleRootKind::SolanaValidatorDebt(*debt);
             let proof = MerkleProof::from_indexed_pod_leaves(
-                &payments_data,
+                &debt_data,
                 i.try_into().unwrap(),
                 Some(SolanaValidatorDebt::LEAF_PREFIX),
             )
@@ -144,7 +144,7 @@ async fn test_pay_solana_validator_debt() {
 
     // Initialize Solana validator deposit accounts and transfer an amount one
     // less than the debt amount.
-    for SolanaValidatorDebt { node_id, amount } in payments_data.iter() {
+    for SolanaValidatorDebt { node_id, amount } in debt_data.iter() {
         let (deposit_key, _) = SolanaValidatorDeposit::find_address(node_id);
 
         test_setup
@@ -156,22 +156,22 @@ async fn test_pay_solana_validator_debt() {
             .unwrap();
     }
 
-    for (payment, proof) in payments_data.iter().zip(proofs.clone()) {
+    for (debt, proof) in debt_data.iter().zip(proofs.clone()) {
         // Cannot pay any amount except the exact debt amount.
 
         let invalid_merkle_root = proof.root_from_pod_leaf(
             &SolanaValidatorDebt {
-                node_id: payment.node_id,
-                amount: payment.amount - 1,
+                node_id: debt.node_id,
+                amount: debt.amount - 1,
             },
             Some(SolanaValidatorDebt::LEAF_PREFIX),
         );
 
         let pay_solana_validator_debt_ix = try_build_instruction(
             &ID,
-            PaySolanaValidatorDebtAccounts::new(dz_epoch, &payment.node_id),
+            PaySolanaValidatorDebtAccounts::new(dz_epoch, &debt.node_id),
             &RevenueDistributionInstructionData::PaySolanaValidatorDebt {
-                amount: payment.amount - 1,
+                amount: debt.amount - 1,
                 proof: proof.clone(),
             },
         )
@@ -185,7 +185,7 @@ async fn test_pay_solana_validator_debt() {
             TransactionError::InstructionError(0, InstructionError::InvalidInstructionData)
         );
         assert_eq!(
-            program_logs.get(2).unwrap(),
+            program_logs.get(4).unwrap(),
             &format!("Program log: Invalid computed merkle root: {invalid_merkle_root}")
         );
 
@@ -193,9 +193,9 @@ async fn test_pay_solana_validator_debt() {
 
         let pay_solana_validator_debt_ix = try_build_instruction(
             &ID,
-            PaySolanaValidatorDebtAccounts::new(dz_epoch, &payment.node_id),
+            PaySolanaValidatorDebtAccounts::new(dz_epoch, &debt.node_id),
             &RevenueDistributionInstructionData::PaySolanaValidatorDebt {
-                amount: payment.amount,
+                amount: debt.amount,
                 proof,
             },
         )
@@ -209,17 +209,17 @@ async fn test_pay_solana_validator_debt() {
             TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
         );
         assert_eq!(
-            program_logs.get(2).unwrap(),
+            program_logs.get(4).unwrap(),
             "Program log: Insufficient funds in Solana validator deposit to pay debt"
         );
     }
 
     // Set up Solana validator deposit accounts with lamports to satisfy debt.
-    let mut balances_before = vec![0; payments_data.len()];
+    let mut balances_before = vec![0; debt_data.len()];
 
     // Send last lamport to each deposit account to satisfy debt.
     for (SolanaValidatorDebt { node_id, amount }, balance_before) in
-        payments_data.iter().zip(balances_before.iter_mut())
+        debt_data.iter().zip(balances_before.iter_mut())
     {
         let (deposit_key, _) = SolanaValidatorDeposit::find_address(node_id);
 
@@ -247,23 +247,20 @@ async fn test_pay_solana_validator_debt() {
     assert_eq!(journal.total_sol_balance, 0);
 
     // Pay debt.
-    for ((payment, balance_before), proof) in payments_data
-        .iter()
-        .zip(balances_before)
-        .zip(proofs.clone())
+    for ((debt, balance_before), proof) in debt_data.iter().zip(balances_before).zip(proofs.clone())
     {
         test_setup
-            .pay_solana_validator_debt(dz_epoch, &payment.node_id, payment.amount, proof)
+            .pay_solana_validator_debt(dz_epoch, &debt.node_id, debt.amount, proof)
             .await
             .unwrap();
 
         let balance_after = test_setup
             .banks_client
-            .get_balance(SolanaValidatorDeposit::find_address(&payment.node_id).0)
+            .get_balance(SolanaValidatorDeposit::find_address(&debt.node_id).0)
             .await
             .unwrap();
 
-        assert_eq!(balance_before - balance_after, payment.amount);
+        assert_eq!(balance_before - balance_after, debt.amount);
     }
 
     let (distribution_key, distribution, remaining_distribution_data, _, _) =
@@ -284,10 +281,8 @@ async fn test_pay_solana_validator_debt() {
     expected_distribution.solana_validator_payments_count = total_solana_validators;
     expected_distribution.total_solana_validator_debt = total_solana_validator_debt;
     expected_distribution.collected_solana_validator_payments = total_solana_validator_debt;
-    expected_distribution.solana_validator_payments_merkle_root =
-        solana_validator_payments_merkle_root;
-    expected_distribution.processed_solana_validator_payments_end_index =
-        total_solana_validators / 8;
+    expected_distribution.solana_validator_debt_merkle_root = solana_validator_debt_merkle_root;
+    expected_distribution.processed_solana_validator_debt_end_index = total_solana_validators / 8;
     expected_distribution.distribute_rewards_relay_lamports = distribute_rewards_relay_lamports;
     assert_eq!(distribution, expected_distribution);
 
@@ -297,14 +292,14 @@ async fn test_pay_solana_validator_debt() {
     assert_eq!(journal.total_sol_balance, total_solana_validator_debt);
 
     // Cannot pay debt again.
-    for (payment, proof) in payments_data.iter().zip(proofs) {
+    for (debt, proof) in debt_data.iter().zip(proofs) {
         let leaf_index = proof.leaf_index.unwrap();
 
         let pay_solana_validator_debt_ix = try_build_instruction(
             &ID,
-            PaySolanaValidatorDebtAccounts::new(dz_epoch, &payment.node_id),
+            PaySolanaValidatorDebtAccounts::new(dz_epoch, &debt.node_id),
             &RevenueDistributionInstructionData::PaySolanaValidatorDebt {
-                amount: payment.amount,
+                amount: debt.amount,
                 proof,
             },
         )
@@ -318,11 +313,11 @@ async fn test_pay_solana_validator_debt() {
             TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
         );
         assert_eq!(
-            program_logs.get(2).unwrap(),
+            program_logs.get(4).unwrap(),
             &format!("Program log: Merkle leaf index {leaf_index} has already been processed")
         );
         assert_eq!(
-            program_logs.get(3).unwrap(),
+            program_logs.get(5).unwrap(),
             "Program log: Solana validator debt already processed"
         )
     }

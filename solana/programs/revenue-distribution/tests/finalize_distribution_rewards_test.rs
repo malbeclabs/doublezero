@@ -30,7 +30,7 @@ async fn test_finalize_distribution_rewards() {
 
     let admin_signer = Keypair::new();
 
-    let payments_accountant_signer = Keypair::new();
+    let debt_accountant_signer = Keypair::new();
     let rewards_accountant_signer = Keypair::new();
     let solana_validator_base_block_rewards_pct_fee = 500; // 5%.
 
@@ -49,7 +49,7 @@ async fn test_finalize_distribution_rewards() {
 
     let total_solana_validators = 2_048;
     let total_solana_validator_debt = 69;
-    let solana_validator_payments_merkle_root = Hash::new_unique();
+    let solana_validator_debt_merkle_root = Hash::new_unique();
     let total_contributors = 69;
     let rewards_merkle_root = Hash::new_unique();
 
@@ -66,7 +66,7 @@ async fn test_finalize_distribution_rewards() {
         .configure_program(
             &admin_signer,
             [
-                ProgramConfiguration::PaymentsAccountant(payments_accountant_signer.pubkey()),
+                ProgramConfiguration::DebtAccountant(debt_accountant_signer.pubkey()),
                 ProgramConfiguration::RewardsAccountant(rewards_accountant_signer.pubkey()),
                 ProgramConfiguration::SolanaValidatorFeeParameters {
                     base_block_rewards_pct: solana_validator_base_block_rewards_pct_fee,
@@ -90,10 +90,10 @@ async fn test_finalize_distribution_rewards() {
         )
         .await
         .unwrap()
-        .initialize_distribution(&payments_accountant_signer)
+        .initialize_distribution(&debt_accountant_signer)
         .await
         .unwrap()
-        .initialize_distribution(&payments_accountant_signer)
+        .initialize_distribution(&debt_accountant_signer)
         .await
         .unwrap()
         .configure_distribution_rewards(
@@ -106,15 +106,15 @@ async fn test_finalize_distribution_rewards() {
         .unwrap()
         .configure_distribution_debt(
             dz_epoch,
-            &payments_accountant_signer,
+            &debt_accountant_signer,
             total_solana_validators,
             total_solana_validator_debt,
-            solana_validator_payments_merkle_root,
+            solana_validator_debt_merkle_root,
         )
         .await
         .unwrap();
 
-    // Cannot finalize until payments have not been finalized.
+    // Cannot finalize until debt have not been finalized.
 
     let (tx_err, program_logs) =
         cannot_finalize_distribution_rewards(&mut test_setup, dz_epoch).await;
@@ -123,12 +123,12 @@ async fn test_finalize_distribution_rewards() {
         TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
     );
     assert_eq!(
-        program_logs.get(2).unwrap(),
+        program_logs.get(3).unwrap(),
         "Program log: Distribution debt calculation is not finalized yet"
     );
 
     test_setup
-        .finalize_distribution_debt(dz_epoch, &payments_accountant_signer)
+        .finalize_distribution_debt(dz_epoch, &debt_accountant_signer)
         .await
         .unwrap();
 
@@ -141,7 +141,7 @@ async fn test_finalize_distribution_rewards() {
         TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
     );
     assert_eq!(
-        program_logs.get(2).unwrap(),
+        program_logs.get(3).unwrap(),
         "Program log: Minimum epoch duration to finalize rewards is misconfigured"
     );
 
@@ -171,7 +171,7 @@ async fn test_finalize_distribution_rewards() {
         TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
     );
     assert_eq!(
-        program_logs.get(2).unwrap(),
+        program_logs.get(3).unwrap(),
         &format!(
             "Program log: DZ epoch must be at least {} (currently {}) to finalize rewards",
             minimum_dz_epoch_to_finalize, program_config.next_dz_epoch
@@ -182,7 +182,7 @@ async fn test_finalize_distribution_rewards() {
     // be finalized.
 
     test_setup
-        .initialize_distribution(&payments_accountant_signer)
+        .initialize_distribution(&debt_accountant_signer)
         .await
         .unwrap();
 
@@ -231,12 +231,10 @@ async fn test_finalize_distribution_rewards() {
         ValidatorFee::new(solana_validator_base_block_rewards_pct_fee).unwrap();
     expected_distribution.total_solana_validators = total_solana_validators;
     expected_distribution.total_solana_validator_debt = total_solana_validator_debt;
-    expected_distribution.solana_validator_payments_merkle_root =
-        solana_validator_payments_merkle_root;
+    expected_distribution.solana_validator_debt_merkle_root = solana_validator_debt_merkle_root;
     expected_distribution.total_contributors = total_contributors;
     expected_distribution.rewards_merkle_root = rewards_merkle_root;
-    expected_distribution.processed_solana_validator_payments_end_index =
-        total_solana_validators / 8;
+    expected_distribution.processed_solana_validator_debt_end_index = total_solana_validators / 8;
     expected_distribution.processed_rewards_start_index = total_solana_validators / 8;
     expected_distribution.processed_rewards_end_index =
         (total_solana_validators / 8) + (total_contributors / 8 + 1);
@@ -273,7 +271,7 @@ async fn test_finalize_distribution_rewards() {
         TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
     );
     assert_eq!(
-        program_logs.get(2).unwrap(),
+        program_logs.get(3).unwrap(),
         "Program log: Distribution rewards have already been finalized"
     );
 
@@ -286,7 +284,7 @@ async fn test_finalize_distribution_rewards() {
         TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
     );
     assert_eq!(
-        program_logs.get(2).unwrap(),
+        program_logs.get(3).unwrap(),
         "Program log: Distribution rewards have already been finalized"
     );
 }

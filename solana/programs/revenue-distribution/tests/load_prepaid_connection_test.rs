@@ -126,7 +126,7 @@ async fn test_load_prepaid_connection() {
         TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
     );
     assert_eq!(
-        program_logs.get(2).unwrap(),
+        program_logs.get(3).unwrap(),
         "Program log: Prepaid connection does not have access to DoubleZero Ledger"
     );
 
@@ -392,7 +392,7 @@ async fn test_load_prepaid_connection() {
 
     let last_journal_balance = total_journal_balance;
 
-    let payments_accountant_signer = Keypair::new();
+    let debt_accountant_signer = Keypair::new();
     let solana_validator_base_block_rewards_pct_fee = 500; // 5%.
 
     // Community burn rate.
@@ -408,7 +408,7 @@ async fn test_load_prepaid_connection() {
         .configure_program(
             &admin_signer,
             [
-                ProgramConfiguration::PaymentsAccountant(payments_accountant_signer.pubkey()),
+                ProgramConfiguration::DebtAccountant(debt_accountant_signer.pubkey()),
                 ProgramConfiguration::SolanaValidatorFeeParameters {
                     base_block_rewards_pct: solana_validator_base_block_rewards_pct_fee,
                     priority_block_rewards_pct: 0,
@@ -431,7 +431,7 @@ async fn test_load_prepaid_connection() {
         )
         .await
         .unwrap()
-        .initialize_distribution(&payments_accountant_signer)
+        .initialize_distribution(&debt_accountant_signer)
         .await
         .unwrap();
 
@@ -508,7 +508,7 @@ async fn test_load_prepaid_connection() {
         )
         .await
         .unwrap()
-        .initialize_distribution(&payments_accountant_signer)
+        .initialize_distribution(&debt_accountant_signer)
         .await
         .unwrap();
 
@@ -631,7 +631,7 @@ async fn test_load_prepaid_connection() {
             TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
         );
         assert_eq!(
-            program_logs.get(2).unwrap(),
+            program_logs.get(3).unwrap(),
             "Program log: Prepaid connection already has access"
         );
     }

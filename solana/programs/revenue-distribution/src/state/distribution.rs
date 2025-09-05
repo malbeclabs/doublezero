@@ -12,9 +12,6 @@ use crate::{
 };
 
 /// Account representing distribution information for a given DoubleZero epoch.
-///
-/// TODO: Do we add a gap? Unused data will cost the accountant a real amount of
-/// SOL per epoch.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Pod, Zeroable)]
 #[repr(C, align(8))]
 pub struct Distribution {
@@ -39,7 +36,7 @@ pub struct Distribution {
     /// it was at the time this account was created.
     pub solana_validator_fee_parameters: SolanaValidatorFeeParameters,
 
-    pub solana_validator_payments_merkle_root: Hash,
+    pub solana_validator_debt_merkle_root: Hash,
 
     pub total_solana_validators: u32,
     pub solana_validator_payments_count: u32,
@@ -66,14 +63,14 @@ pub struct Distribution {
     pub collected_prepaid_2z_payments: u64,
     pub collected_2z_converted_from_sol: u64,
 
-    /// The amount of SOL that was owed in past distributions. The payments
+    /// The amount of SOL that was owed in past distributions. The debt
     /// accountant can configure this amount to alleviate the system from
     /// carrying bad debt perpetually. This amount is subtracted from the
     /// total amount owed to the system.
     pub uncollectible_sol_debt: u64,
 
-    pub processed_solana_validator_payments_start_index: u32,
-    pub processed_solana_validator_payments_end_index: u32,
+    pub processed_solana_validator_debt_start_index: u32,
+    pub processed_solana_validator_debt_end_index: u32,
 
     pub processed_rewards_start_index: u32,
     pub processed_rewards_end_index: u32,

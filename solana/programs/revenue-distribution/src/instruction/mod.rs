@@ -14,7 +14,7 @@ use crate::types::{DoubleZeroEpoch, EpochDuration, RewardShare, SolanaValidatorD
 #[derive(Debug, BorshDeserialize, BorshSerialize, Clone, PartialEq, Eq)]
 pub enum ProgramConfiguration {
     Flag(ProgramFlagConfiguration),
-    PaymentsAccountant(Pubkey),
+    DebtAccountant(Pubkey),
     RewardsAccountant(Pubkey),
     ContributorManager(Pubkey),
     DoubleZeroLedgerSentinel(Pubkey),
@@ -62,7 +62,7 @@ pub enum ContributorRewardsConfiguration {
 
 #[derive(Debug, BorshDeserialize, BorshSerialize, Clone, PartialEq, Eq)]
 pub enum DistributionMerkleRootKind {
-    SolanaValidatorPayment(SolanaValidatorDebt),
+    SolanaValidatorDebt(SolanaValidatorDebt),
     RewardShare(RewardShare),
 }
 

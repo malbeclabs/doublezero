@@ -162,8 +162,6 @@ impl_unit_share!(
     "A 32-bit unit share type with maximum value 1,000,000,000 (e.g., 420,000,069 is 42.0000069%)."
 );
 
-// TODO: Remove this once validator-payments incorporates computing merkle
-// roots.
 #[derive(
     Debug, BorshDeserialize, BorshSerialize, Clone, Copy, Default, PartialEq, Eq, Pod, Zeroable,
 )]

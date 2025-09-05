@@ -22,7 +22,7 @@ async fn test_configure_distribution_debt() {
 
     let admin_signer = Keypair::new();
 
-    let payments_accountant_signer = Keypair::new();
+    let debt_accountant_signer = Keypair::new();
     let rewards_accountant_signer = Keypair::new();
     let solana_validator_base_block_rewards_pct_fee = 500; // 5%.
 
@@ -48,7 +48,7 @@ async fn test_configure_distribution_debt() {
         .configure_program(
             &admin_signer,
             [
-                ProgramConfiguration::PaymentsAccountant(payments_accountant_signer.pubkey()),
+                ProgramConfiguration::DebtAccountant(debt_accountant_signer.pubkey()),
                 ProgramConfiguration::RewardsAccountant(rewards_accountant_signer.pubkey()),
                 ProgramConfiguration::SolanaValidatorFeeParameters {
                     base_block_rewards_pct: solana_validator_base_block_rewards_pct_fee,
@@ -72,10 +72,10 @@ async fn test_configure_distribution_debt() {
         )
         .await
         .unwrap()
-        .initialize_distribution(&payments_accountant_signer)
+        .initialize_distribution(&debt_accountant_signer)
         .await
         .unwrap()
-        .initialize_distribution(&payments_accountant_signer)
+        .initialize_distribution(&debt_accountant_signer)
         .await
         .unwrap();
 
@@ -83,23 +83,23 @@ async fn test_configure_distribution_debt() {
 
     let dz_epoch = DoubleZeroEpoch::new(1);
 
-    let payments_data = (0..3)
+    let debt_data = (0..3)
         .map(|i| SolanaValidatorDebt {
             node_id: Pubkey::new_unique(),
             amount: 10_000_000_000 * (i + 1),
         })
         .collect::<Vec<_>>();
 
-    let total_solana_validators = payments_data.len() as u32;
-    let total_solana_validator_debt = payments_data.iter().map(|payment| payment.amount).sum();
-    let solana_validator_payments_merkle_root =
-        merkle_root_from_indexed_pod_leaves(&payments_data, Some(SolanaValidatorDebt::LEAF_PREFIX))
+    let total_solana_validators = debt_data.len() as u32;
+    let total_solana_validator_debt = debt_data.iter().map(|debt| debt.amount).sum();
+    let solana_validator_debt_merkle_root =
+        merkle_root_from_indexed_pod_leaves(&debt_data, Some(SolanaValidatorDebt::LEAF_PREFIX))
             .unwrap();
 
     test_setup
         .configure_distribution_debt(
             dz_epoch,
-            &payments_accountant_signer,
+            &debt_accountant_signer,
             3,
             total_solana_validator_debt + 1,
             Hash::new_unique(),
@@ -108,10 +108,10 @@ async fn test_configure_distribution_debt() {
         .unwrap()
         .configure_distribution_debt(
             dz_epoch,
-            &payments_accountant_signer,
+            &debt_accountant_signer,
             total_solana_validators,
             total_solana_validator_debt,
-            solana_validator_payments_merkle_root,
+            solana_validator_debt_merkle_root,
         )
         .await
         .unwrap();
@@ -130,8 +130,7 @@ async fn test_configure_distribution_debt() {
         ValidatorFee::new(solana_validator_base_block_rewards_pct_fee).unwrap();
     expected_distribution.total_solana_validators = total_solana_validators;
     expected_distribution.total_solana_validator_debt = total_solana_validator_debt;
-    expected_distribution.solana_validator_payments_merkle_root =
-        solana_validator_payments_merkle_root;
+    expected_distribution.solana_validator_debt_merkle_root = solana_validator_debt_merkle_root;
     expected_distribution.distribute_rewards_relay_lamports = distribute_rewards_relay_lamports;
     assert_eq!(distribution, expected_distribution);
 }

@@ -27,7 +27,7 @@ async fn test_terminate_prepaid_connection() {
     let admin_signer = Keypair::new();
     let dz_ledger_sentinel_signer = Keypair::new();
 
-    let payments_accountant_signer = Keypair::new();
+    let debt_accountant_signer = Keypair::new();
     let solana_validator_base_block_rewards_pct_fee = 500; // 5%.
 
     // Community burn rate.
@@ -79,7 +79,7 @@ async fn test_terminate_prepaid_connection() {
             &admin_signer,
             [
                 ProgramConfiguration::DoubleZeroLedgerSentinel(dz_ledger_sentinel_signer.pubkey()),
-                ProgramConfiguration::PaymentsAccountant(payments_accountant_signer.pubkey()),
+                ProgramConfiguration::DebtAccountant(debt_accountant_signer.pubkey()),
                 ProgramConfiguration::SolanaValidatorFeeParameters {
                     base_block_rewards_pct: solana_validator_base_block_rewards_pct_fee,
                     priority_block_rewards_pct: 0,
@@ -129,10 +129,10 @@ async fn test_terminate_prepaid_connection() {
     // Move the DZ epoch forward by two by initializing distributions.
 
     test_setup
-        .initialize_distribution(&payments_accountant_signer)
+        .initialize_distribution(&debt_accountant_signer)
         .await
         .unwrap()
-        .initialize_distribution(&payments_accountant_signer)
+        .initialize_distribution(&debt_accountant_signer)
         .await
         .unwrap();
 

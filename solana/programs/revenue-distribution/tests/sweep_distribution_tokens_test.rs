@@ -42,7 +42,7 @@ async fn test_sweep_distribution_tokens() {
 
     let admin_signer = Keypair::new();
 
-    let payments_accountant_signer = Keypair::new();
+    let debt_accountant_signer = Keypair::new();
     let rewards_accountant_signer = Keypair::new();
     let solana_validator_base_block_rewards_pct_fee = 500; // 5%.
 
@@ -55,26 +55,26 @@ async fn test_sweep_distribution_tokens() {
     // Relay settings.
     let distribute_rewards_relay_lamports = 10_000;
 
-    // Distribution payments.
+    // Distribution debt.
 
     let dz_epoch = DoubleZeroEpoch::new(1);
 
-    let payments_data = (0..8)
+    let debt_data = (0..8)
         .map(|i| SolanaValidatorDebt {
             node_id: Pubkey::new_unique(),
             amount: 10_000_000_000 * (i + 1),
         })
         .collect::<Vec<_>>();
 
-    let total_solana_validators = payments_data.len() as u32;
-    let total_solana_validator_debt = payments_data.iter().map(|payment| payment.amount).sum();
-    let solana_validator_payments_merkle_root =
-        merkle_root_from_indexed_pod_leaves(&payments_data, Some(SolanaValidatorDebt::LEAF_PREFIX))
+    let total_solana_validators = debt_data.len() as u32;
+    let total_solana_validator_debt = debt_data.iter().map(|debt| debt.amount).sum();
+    let solana_validator_debt_merkle_root =
+        merkle_root_from_indexed_pod_leaves(&debt_data, Some(SolanaValidatorDebt::LEAF_PREFIX))
             .unwrap();
 
     // Do not pay all debt. Forgive one poor soul.
     let uncollectible_index = 2;
-    let uncollectible_debt = payments_data[uncollectible_index];
+    let uncollectible_debt = debt_data[uncollectible_index];
 
     let expected_swept_2z_amount_1 = 69 * u64::pow(10, 8);
     let expected_swept_2z_amount_2 = 420 * u64::pow(10, 8);
@@ -99,7 +99,7 @@ async fn test_sweep_distribution_tokens() {
             &admin_signer,
             [
                 ProgramConfiguration::Sol2zSwapProgram(mock_swap_sol_2z::ID),
-                ProgramConfiguration::PaymentsAccountant(payments_accountant_signer.pubkey()),
+                ProgramConfiguration::DebtAccountant(debt_accountant_signer.pubkey()),
                 ProgramConfiguration::RewardsAccountant(rewards_accountant_signer.pubkey()),
                 ProgramConfiguration::SolanaValidatorFeeParameters {
                     base_block_rewards_pct: solana_validator_base_block_rewards_pct_fee,
@@ -123,22 +123,22 @@ async fn test_sweep_distribution_tokens() {
         )
         .await
         .unwrap()
-        .initialize_distribution(&payments_accountant_signer)
+        .initialize_distribution(&debt_accountant_signer)
         .await
         .unwrap()
-        .initialize_distribution(&payments_accountant_signer)
+        .initialize_distribution(&debt_accountant_signer)
         .await
         .unwrap()
         .configure_distribution_debt(
             dz_epoch,
-            &payments_accountant_signer,
+            &debt_accountant_signer,
             total_solana_validators,
             total_solana_validator_debt,
-            solana_validator_payments_merkle_root,
+            solana_validator_debt_merkle_root,
         )
         .await
         .unwrap()
-        .finalize_distribution_debt(dz_epoch, &payments_accountant_signer)
+        .finalize_distribution_debt(dz_epoch, &debt_accountant_signer)
         .await
         .unwrap()
         .initialize_swap_destination(&DOUBLEZERO_MINT_KEY)
@@ -148,8 +148,8 @@ async fn test_sweep_distribution_tokens() {
     // 1. Initialize Solana validator deposit accounts.
     // 2. Transfer amount each validator owes so each can pay its debt.
     // 3. Pay each validator's debt.
-    for (i, payment) in payments_data.iter().enumerate() {
-        let node_id = &payment.node_id;
+    for (i, debt) in debt_data.iter().enumerate() {
+        let node_id = &debt.node_id;
 
         // Just initialize this validator's deposit account.
         if i == uncollectible_index {
@@ -162,13 +162,13 @@ async fn test_sweep_distribution_tokens() {
         }
 
         let proof = MerkleProof::from_indexed_pod_leaves(
-            &payments_data,
+            &debt_data,
             i.try_into().unwrap(),
             Some(SolanaValidatorDebt::LEAF_PREFIX),
         )
         .unwrap();
 
-        let amount = payment.amount;
+        let amount = debt.amount;
 
         let (deposit_key, _) = SolanaValidatorDeposit::find_address(node_id);
 
@@ -207,7 +207,7 @@ async fn test_sweep_distribution_tokens() {
         TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
     );
     assert_eq!(
-        program_logs.get(2).unwrap(),
+        program_logs.get(3).unwrap(),
         "Program log: Journal does not have enough swapped SOL to cover the SOL debt"
     );
 
@@ -217,34 +217,34 @@ async fn test_sweep_distribution_tokens() {
     let next_dz_epoch = dz_epoch.saturating_add_duration(1);
 
     test_setup
-        .initialize_distribution(&payments_accountant_signer)
+        .initialize_distribution(&debt_accountant_signer)
         .await
         .unwrap()
         .configure_distribution_debt(
             next_dz_epoch,
-            &payments_accountant_signer,
+            &debt_accountant_signer,
             total_solana_validators,
             total_solana_validator_debt,
-            solana_validator_payments_merkle_root,
+            solana_validator_debt_merkle_root,
         )
         .await
         .unwrap()
-        .finalize_distribution_debt(next_dz_epoch, &payments_accountant_signer)
+        .finalize_distribution_debt(next_dz_epoch, &debt_accountant_signer)
         .await
         .unwrap();
 
     // 1. Transfer amount each validator owes so each can pay its debt.
     // 2. Pay each validator's debt.
-    for (i, payment) in payments_data.iter().enumerate() {
+    for (i, debt) in debt_data.iter().enumerate() {
         let proof = MerkleProof::from_indexed_pod_leaves(
-            &payments_data,
+            &debt_data,
             i.try_into().unwrap(),
             Some(SolanaValidatorDebt::LEAF_PREFIX),
         )
         .unwrap();
 
-        let node_id = &payment.node_id;
-        let amount = payment.amount;
+        let node_id = &debt.node_id;
+        let amount = debt.amount;
 
         let (deposit_key, _) = SolanaValidatorDeposit::find_address(node_id);
 
@@ -339,11 +339,9 @@ async fn test_sweep_distribution_tokens() {
     expected_distribution.total_solana_validator_debt = total_solana_validator_debt;
     expected_distribution.collected_solana_validator_payments =
         total_solana_validator_debt - uncollectible_debt.amount;
-    expected_distribution.solana_validator_payments_merkle_root =
-        solana_validator_payments_merkle_root;
+    expected_distribution.solana_validator_debt_merkle_root = solana_validator_debt_merkle_root;
     expected_distribution.collected_2z_converted_from_sol = expected_swept_2z_amount_1;
-    expected_distribution.processed_solana_validator_payments_end_index =
-        total_solana_validators / 8;
+    expected_distribution.processed_solana_validator_debt_end_index = total_solana_validators / 8;
     expected_distribution.distribute_rewards_relay_lamports = distribute_rewards_relay_lamports;
     assert_eq!(distribution, expected_distribution);
 
@@ -351,7 +349,7 @@ async fn test_sweep_distribution_tokens() {
 
     // Forgive debt for the uncollectible validator.
     let proof = MerkleProof::from_indexed_pod_leaves(
-        &payments_data,
+        &debt_data,
         uncollectible_index.try_into().unwrap(),
         Some(SolanaValidatorDebt::LEAF_PREFIX),
     )
@@ -361,7 +359,7 @@ async fn test_sweep_distribution_tokens() {
         .forgive_solana_validator_debt(
             dz_epoch,
             next_dz_epoch,
-            &payments_accountant_signer,
+            &debt_accountant_signer,
             &uncollectible_debt,
             proof,
         )
@@ -408,12 +406,10 @@ async fn test_sweep_distribution_tokens() {
     expected_distribution.solana_validator_payments_count = total_solana_validators;
     expected_distribution.total_solana_validator_debt = total_solana_validator_debt;
     expected_distribution.collected_solana_validator_payments = total_solana_validator_debt;
-    expected_distribution.solana_validator_payments_merkle_root =
-        solana_validator_payments_merkle_root;
+    expected_distribution.solana_validator_debt_merkle_root = solana_validator_debt_merkle_root;
     expected_distribution.collected_2z_converted_from_sol = expected_swept_2z_amount_2;
     expected_distribution.uncollectible_sol_debt = uncollectible_debt.amount;
-    expected_distribution.processed_solana_validator_payments_end_index =
-        total_solana_validators / 8;
+    expected_distribution.processed_solana_validator_debt_end_index = total_solana_validators / 8;
     expected_distribution.distribute_rewards_relay_lamports = distribute_rewards_relay_lamports;
     assert_eq!(distribution, expected_distribution);
 

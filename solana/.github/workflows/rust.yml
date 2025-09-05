@@ -9,21 +9,13 @@ env:
   SOLANA_CLI: v2.3.7
 
 jobs:
-  fmt:
+  lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo fmt --check
-
-  clippy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo clippy --all-features --all-targets -- -Dwarnings
+      - run: make lint
 
   test:
     runs-on: ubuntu-latest
@@ -31,7 +23,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo test --lib --features development
+      - run: make test-lib
 
   doc:
     runs-on: ubuntu-latest
@@ -39,7 +31,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo doc --all-features --no-deps --document-private-items
+      - run: make doc
 
   test-sbf:
     runs-on: ubuntu-latest
@@ -51,8 +43,7 @@ jobs:
         run: |
           sh -c "$(curl -sSfL https://release.anza.xyz/$SOLANA_CLI/install)"
           echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
-      - run: cd mock/swap-sol-2z && cargo build-sbf --features entrypoint
-      - run: cargo test-sbf --features entrypoint
+      - run: make test-sbf
 
   test-sbf-development:
     runs-on: ubuntu-latest
@@ -64,5 +55,4 @@ jobs:
         run: |
           sh -c "$(curl -sSfL https://release.anza.xyz/$SOLANA_CLI/install)"
           echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
-      - run: cd mock/swap-sol-2z && cargo build-sbf --features development,entrypoint
-      - run: cargo test-sbf --features development,entrypoint
+      - run: NETWORK=development make test-sbf

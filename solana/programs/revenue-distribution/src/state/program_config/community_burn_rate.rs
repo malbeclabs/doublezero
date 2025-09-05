@@ -2,22 +2,25 @@ use bytemuck::{Pod, Zeroable};
 
 use crate::types::{BurnRate, EpochDuration};
 
-/// The community burn rate acts as the lower-bound to determine how many of this epoch's rewards
-/// should be burned. If there is no economic burn rate specified for this epoch, the burn rate
-/// defaults to the community burn rate.
+/// The community burn rate acts as the lower-bound to determine how many of
+/// this epoch's rewards should be burned. If there is no economic burn rate
+/// specified for this epoch, the burn rate defaults to the community burn rate.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Pod, Zeroable)]
 #[repr(C, align(8))]
 pub struct CommunityBurnRateParameters {
-    /// The absolute maximum value for the community burn rate limit. This value is configurable,
-    /// but it can never be lower than the last community burn rate.
+    /// The absolute maximum value for the community burn rate limit. This value
+    /// is configurable, but it can never be lower than the last community burn
+    /// rate.
     pub limit: BurnRate,
 
-    /// Parameter to determine when the community burn rate's calculation should be determined
-    /// using the cached slope, which will increase the burn rate linearly with DZ epochs.
+    /// Parameter to determine when the community burn rate's calculation should
+    /// be determined using the cached slope, which will increase the burn rate
+    /// linearly with DZ epochs.
     pub dz_epochs_to_increasing: EpochDuration,
 
-    /// Parameter to determine when the community burn rate's calculation should reach its maximum
-    /// value, which will keep every burn rate calculation fixed to the limit.
+    /// Parameter to determine when the community burn rate's calculation should
+    /// reach its maximum value, which will keep every burn rate calculation
+    /// fixed to the limit.
     pub dz_epochs_to_limit: EpochDuration,
 
     cached_slope_numerator: BurnRate,
@@ -43,7 +46,8 @@ impl std::fmt::Display for CommunityBurnRateMode {
 }
 
 impl CommunityBurnRateParameters {
-    /// Generate new parameters, which will attempt to cache the slope and the last burn rate.
+    /// Generate new parameters, which will attempt to cache the slope and the
+    /// last burn rate.
     pub fn new(
         initial_rate: BurnRate,
         limit: BurnRate,
@@ -92,10 +96,11 @@ impl CommunityBurnRateParameters {
         }
     }
 
-    /// Returns the last cached rate after it computes a new cached community burn rate.
+    /// Returns the last cached rate after it computes a new cached community
+    /// burn rate.
     ///
-    /// Even though this operation performs arithmetic with checked math and casting from u64 to
-    /// [BurnRate], all of the math should be safe.
+    /// Even though this operation performs arithmetic with checked math and
+    /// casting from u64 to [BurnRate], all of the math should be safe.
     pub fn checked_compute(&mut self) -> Option<BurnRate> {
         let next_burn_rate = self.next_burn_rate()?;
 
@@ -108,8 +113,8 @@ impl CommunityBurnRateParameters {
             return Some(next_burn_rate);
         }
 
-        // We will only recalculate the cached last burn rate only when there are no more DZ epochs
-        // left to uptick to increasing.
+        // We will only recalculate the cached last burn rate only when there
+        // are no more DZ epochs left to uptick to increasing.
         if self.dz_epochs_to_increasing == 0 {
             // Calculation:
             //
@@ -127,9 +132,10 @@ impl CommunityBurnRateParameters {
                 .checked_add(self.cached_slope_numerator.into())?
                 .saturating_div(self.cached_slope_denominator.into());
 
-            // Ensure we do not pass the limit. We should not have to do this, but we are being extra
-            // safe. Subsequent calls to compute should bail early above because dz_epochs_to_limit
-            // should already be at zero.
+            // Ensure we do not pass the limit. We should not have to do this,
+            // but we are being extra safe. Subsequent calls to compute should
+            // bail early above because dz_epochs_to_limit should already be at
+            // zero.
             self.cached_next_burn_rate = BurnRate::try_from(new_burn_rate)
                 .ok()
                 .map(|burn_rate| burn_rate.min(self.limit))?;
@@ -140,8 +146,8 @@ impl CommunityBurnRateParameters {
 
     /// Update the parameters for the community burn rate calculation.
     ///
-    /// If the new configured limit ends up being less than the last cached burn rate, there will
-    /// be no update.
+    /// If the new configured limit ends up being less than the last cached burn
+    /// rate, there will be no update.
     pub fn checked_update(
         &mut self,
         new_limit: BurnRate,
@@ -153,14 +159,14 @@ impl CommunityBurnRateParameters {
             return None;
         }
 
-        // We require that "increasing" mode cannot immediately start. The first rate must be
-        // calculated before entering this mode.
+        // We require that "increasing" mode cannot immediately start. The first
+        // rate must be calculated before entering this mode.
         if new_dz_epochs_to_increasing == 0 {
             return None;
         }
 
-        // If the DZ epochs to increasing equals the DZ epochs to the limit, we do not want to
-        // compute the slope.
+        // If the DZ epochs to increasing equals the DZ epochs to the limit, we
+        // do not want to compute the slope.
         if new_dz_epochs_to_limit < new_dz_epochs_to_increasing {
             return None;
         }

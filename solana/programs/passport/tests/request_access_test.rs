@@ -21,7 +21,7 @@ use solana_sdk::{
 };
 
 //
-// Initialize the access request
+// Request access.
 //
 
 #[tokio::test]
@@ -85,7 +85,7 @@ async fn test_request_access() {
     assert_eq!(access_request, expected_access_request);
 
     //
-    // Fail on duplicate access request
+    // Fail on duplicate access request.
     //
 
     let duplicate_ix = try_build_instruction(
@@ -111,7 +111,7 @@ async fn test_request_access() {
     assert!(result.is_err());
 
     //
-    // Fail on mismatched service key account and service key argument
+    // Fail on mismatched service key account and service key argument.
     //
 
     let wrong_service_key = Pubkey::new_unique();
@@ -138,7 +138,7 @@ async fn test_request_access() {
     );
 
     //
-    // Pause the program now
+    // Pause the program now.
     //
 
     test_setup
@@ -155,7 +155,7 @@ async fn test_request_access() {
     assert!(program_config.is_paused());
 
     //
-    // Request creation should error now
+    // Request creation should error now.
     //
 
     let result = test_setup

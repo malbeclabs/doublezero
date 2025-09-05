@@ -33,7 +33,8 @@ impl RecipientShares {
 
             let share = UnitShare16::new(*share)?;
 
-            // Keep track of the running sum of shares to make sure it does not exceed 100%.
+            // Keep track of the running sum of shares to make sure it does not
+            // exceed 100%.
             total_share = total_share.checked_add(share)?;
 
             out[i] = RecipientShare {
@@ -49,7 +50,8 @@ impl RecipientShares {
         Some(Self(out))
     }
 
-    /// Returns an iterator over all recipient shares (including default entries).
+    /// Returns an iterator over all recipient shares (including default
+    /// entries).
     pub fn iter(&self) -> impl Iterator<Item = &RecipientShare> {
         self.0.iter()
     }

@@ -44,7 +44,8 @@ pub async fn start_test_with_accounts(accounts: Vec<TestAccount>) -> ProgramTest
 
     let owner_signer = Keypair::new();
 
-    // Fake the BPF Upgradeable Program's program data account for the Passport Program.
+    // Fake the BPF Upgradeable Program's program data account for the Passport
+    // Program.
     let program_data_acct = Account {
         lamports: 69,
         data: bincode::serialize(&UpgradeableLoaderState::ProgramData {
@@ -140,7 +141,6 @@ impl ProgramTestWithOwner {
         )
         .unwrap();
 
-        // TODO: Remove from here and use this for happy path testing.
         let remove_me_ix = solana_system_interface::instruction::transfer(
             &payer_signer.pubkey(),
             &program_config_key,

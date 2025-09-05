@@ -31,7 +31,7 @@ async fn test_forgive_solana_validator_debt() {
 
     let admin_signer = Keypair::new();
 
-    let payments_accountant_signer = Keypair::new();
+    let debt_accountant_signer = Keypair::new();
     let rewards_accountant_signer = Keypair::new();
     let solana_validator_base_block_rewards_pct_fee = 500; // 5%.
 
@@ -49,17 +49,17 @@ async fn test_forgive_solana_validator_debt() {
 
     // Distribution debt accounting.
 
-    let payments_data = (0..16)
+    let debt_data = (0..16)
         .map(|i| SolanaValidatorDebt {
             node_id: Pubkey::new_unique(),
             amount: 10_000_000_000 * (i + 1),
         })
         .collect::<Vec<_>>();
 
-    let total_solana_validators = payments_data.len() as u32;
-    let total_solana_validator_debt = payments_data.iter().map(|payment| payment.amount).sum();
-    let solana_validator_payments_merkle_root =
-        merkle_root_from_indexed_pod_leaves(&payments_data, Some(SolanaValidatorDebt::LEAF_PREFIX))
+    let total_solana_validators = debt_data.len() as u32;
+    let total_solana_validator_debt = debt_data.iter().map(|debt| debt.amount).sum();
+    let solana_validator_debt_merkle_root =
+        merkle_root_from_indexed_pod_leaves(&debt_data, Some(SolanaValidatorDebt::LEAF_PREFIX))
             .unwrap();
 
     test_setup
@@ -75,7 +75,7 @@ async fn test_forgive_solana_validator_debt() {
         .configure_program(
             &admin_signer,
             [
-                ProgramConfiguration::PaymentsAccountant(payments_accountant_signer.pubkey()),
+                ProgramConfiguration::DebtAccountant(debt_accountant_signer.pubkey()),
                 ProgramConfiguration::RewardsAccountant(rewards_accountant_signer.pubkey()),
                 ProgramConfiguration::SolanaValidatorFeeParameters {
                     base_block_rewards_pct: solana_validator_base_block_rewards_pct_fee,
@@ -99,39 +99,39 @@ async fn test_forgive_solana_validator_debt() {
         )
         .await
         .unwrap()
-        .initialize_distribution(&payments_accountant_signer)
+        .initialize_distribution(&debt_accountant_signer)
         .await
         .unwrap()
-        .initialize_distribution(&payments_accountant_signer)
+        .initialize_distribution(&debt_accountant_signer)
         .await
         .unwrap()
-        .initialize_distribution(&payments_accountant_signer)
+        .initialize_distribution(&debt_accountant_signer)
         .await
         .unwrap()
         .configure_distribution_debt(
             dz_epoch,
-            &payments_accountant_signer,
+            &debt_accountant_signer,
             total_solana_validators,
             total_solana_validator_debt,
-            solana_validator_payments_merkle_root,
+            solana_validator_debt_merkle_root,
         )
         .await
         .unwrap()
         .configure_distribution_debt(
             next_dz_epoch,
-            &payments_accountant_signer,
+            &debt_accountant_signer,
             total_solana_validators,
             total_solana_validator_debt,
-            solana_validator_payments_merkle_root,
+            solana_validator_debt_merkle_root,
         )
         .await
         .unwrap();
 
     // Pay debt for one validator.
     let arbitrary_index = 2;
-    let debt = payments_data[arbitrary_index];
+    let debt = debt_data[arbitrary_index];
     let proof = MerkleProof::from_indexed_pod_leaves(
-        &payments_data,
+        &debt_data,
         arbitrary_index.try_into().unwrap(),
         Some(SolanaValidatorDebt::LEAF_PREFIX),
     )
@@ -141,7 +141,7 @@ async fn test_forgive_solana_validator_debt() {
     let forgive_solana_validator_debt_ix = try_build_instruction(
         &ID,
         ForgiveSolanaValidatorDebtAccounts::new(
-            &payments_accountant_signer.pubkey(),
+            &debt_accountant_signer.pubkey(),
             dz_epoch,
             next_dz_epoch,
         ),
@@ -155,7 +155,7 @@ async fn test_forgive_solana_validator_debt() {
     let (tx_err, program_logs) = test_setup
         .unwrap_simulation_error(
             &[forgive_solana_validator_debt_ix.clone()],
-            &[&payments_accountant_signer],
+            &[&debt_accountant_signer],
         )
         .await;
     assert_eq!(
@@ -163,23 +163,23 @@ async fn test_forgive_solana_validator_debt() {
         TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
     );
     assert_eq!(
-        program_logs.get(2).unwrap(),
+        program_logs.get(3).unwrap(),
         "Program log: Distribution debt calculation is not finalized yet"
     );
     assert_eq!(
-        program_logs.get(3).unwrap(),
+        program_logs.get(4).unwrap(),
         &format!("Program log: Epoch {dz_epoch} has unfinalized debt")
     );
 
     test_setup
-        .finalize_distribution_debt(dz_epoch, &payments_accountant_signer)
+        .finalize_distribution_debt(dz_epoch, &debt_accountant_signer)
         .await
         .unwrap();
 
     let (tx_err, program_logs) = test_setup
         .unwrap_simulation_error(
             &[forgive_solana_validator_debt_ix],
-            &[&payments_accountant_signer],
+            &[&debt_accountant_signer],
         )
         .await;
     assert_eq!(
@@ -187,16 +187,16 @@ async fn test_forgive_solana_validator_debt() {
         TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
     );
     assert_eq!(
-        program_logs.get(2).unwrap(),
+        program_logs.get(4).unwrap(),
         "Program log: Distribution debt calculation is not finalized yet"
     );
     assert_eq!(
-        program_logs.get(3).unwrap(),
-        &format!("Program log: Epoch {next_dz_epoch} has unfinalized debt")
+        program_logs.get(5).unwrap(),
+        &format!("Program log: Next epoch {next_dz_epoch} has unfinalized debt")
     );
 
     test_setup
-        .finalize_distribution_debt(next_dz_epoch, &payments_accountant_signer)
+        .finalize_distribution_debt(next_dz_epoch, &debt_accountant_signer)
         .await
         .unwrap();
 
@@ -205,7 +205,7 @@ async fn test_forgive_solana_validator_debt() {
     let forgive_solana_validator_debt_ix = try_build_instruction(
         &ID,
         ForgiveSolanaValidatorDebtAccounts::new(
-            &payments_accountant_signer.pubkey(),
+            &debt_accountant_signer.pubkey(),
             dz_epoch,
             DoubleZeroEpoch::new(0),
         ),
@@ -219,7 +219,7 @@ async fn test_forgive_solana_validator_debt() {
     let (tx_err, program_logs) = test_setup
         .unwrap_simulation_error(
             &[forgive_solana_validator_debt_ix],
-            &[&payments_accountant_signer],
+            &[&debt_accountant_signer],
         )
         .await;
     assert_eq!(
@@ -227,15 +227,15 @@ async fn test_forgive_solana_validator_debt() {
         TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
     );
     assert_eq!(
-        program_logs.get(2).unwrap(),
+        program_logs.get(4).unwrap(),
         "Program log: Next distribution's epoch must be ahead of the current distribution's epoch"
     );
 
     // Pay debt for one validator.
     let upstanding_citizen_index = 3;
-    let paid_debt = payments_data[upstanding_citizen_index];
+    let paid_debt = debt_data[upstanding_citizen_index];
     let proof = MerkleProof::from_indexed_pod_leaves(
-        &payments_data,
+        &debt_data,
         upstanding_citizen_index.try_into().unwrap(),
         Some(SolanaValidatorDebt::LEAF_PREFIX),
     )
@@ -256,13 +256,13 @@ async fn test_forgive_solana_validator_debt() {
         .unwrap();
 
     // Forgive debt for the rest.
-    for (i, debt) in payments_data.iter().enumerate() {
+    for (i, debt) in debt_data.iter().enumerate() {
         if i == upstanding_citizen_index {
             continue;
         }
 
         let proof = MerkleProof::from_indexed_pod_leaves(
-            &payments_data,
+            &debt_data,
             i.try_into().unwrap(),
             Some(SolanaValidatorDebt::LEAF_PREFIX),
         )
@@ -272,7 +272,7 @@ async fn test_forgive_solana_validator_debt() {
             .forgive_solana_validator_debt(
                 dz_epoch,
                 next_dz_epoch,
-                &payments_accountant_signer,
+                &debt_accountant_signer,
                 debt,
                 proof,
             )
@@ -297,11 +297,9 @@ async fn test_forgive_solana_validator_debt() {
     expected_distribution.total_solana_validators = total_solana_validators;
     expected_distribution.solana_validator_payments_count = 1;
     expected_distribution.total_solana_validator_debt = total_solana_validator_debt;
-    expected_distribution.solana_validator_payments_merkle_root =
-        solana_validator_payments_merkle_root;
+    expected_distribution.solana_validator_debt_merkle_root = solana_validator_debt_merkle_root;
     expected_distribution.collected_solana_validator_payments = paid_debt.amount;
-    expected_distribution.processed_solana_validator_payments_end_index =
-        total_solana_validators / 8;
+    expected_distribution.processed_solana_validator_debt_end_index = total_solana_validators / 8;
     expected_distribution.distribute_rewards_relay_lamports = distribute_rewards_relay_lamports;
     assert_eq!(distribution, expected_distribution);
 
@@ -323,11 +321,9 @@ async fn test_forgive_solana_validator_debt() {
         ValidatorFee::new(solana_validator_base_block_rewards_pct_fee).unwrap();
     expected_distribution.total_solana_validators = total_solana_validators;
     expected_distribution.total_solana_validator_debt = total_solana_validator_debt;
-    expected_distribution.solana_validator_payments_merkle_root =
-        solana_validator_payments_merkle_root;
+    expected_distribution.solana_validator_debt_merkle_root = solana_validator_debt_merkle_root;
     expected_distribution.uncollectible_sol_debt = total_solana_validator_debt - paid_debt.amount;
-    expected_distribution.processed_solana_validator_payments_end_index =
-        total_solana_validators / 8;
+    expected_distribution.processed_solana_validator_debt_end_index = total_solana_validators / 8;
     expected_distribution.distribute_rewards_relay_lamports = distribute_rewards_relay_lamports;
     assert_eq!(distribution, expected_distribution);
 
@@ -338,11 +334,11 @@ async fn test_forgive_solana_validator_debt() {
 
     // Cannot forgive debt again. This includes attempting to forgive debt for
     // the upstanding citizen who paid.
-    for (i, debt) in payments_data.iter().enumerate() {
+    for (i, debt) in debt_data.iter().enumerate() {
         let leaf_index = u32::try_from(i).unwrap();
 
         let proof = MerkleProof::from_indexed_pod_leaves(
-            &payments_data,
+            &debt_data,
             leaf_index,
             Some(SolanaValidatorDebt::LEAF_PREFIX),
         )
@@ -351,7 +347,7 @@ async fn test_forgive_solana_validator_debt() {
         let forgive_solana_validator_debt_ix = try_build_instruction(
             &ID,
             ForgiveSolanaValidatorDebtAccounts::new(
-                &payments_accountant_signer.pubkey(),
+                &debt_accountant_signer.pubkey(),
                 dz_epoch,
                 next_dz_epoch,
             ),
@@ -362,7 +358,7 @@ async fn test_forgive_solana_validator_debt() {
         let (tx_err, program_logs) = test_setup
             .unwrap_simulation_error(
                 &[forgive_solana_validator_debt_ix],
-                &[&payments_accountant_signer],
+                &[&debt_accountant_signer],
             )
             .await;
         assert_eq!(
@@ -371,11 +367,11 @@ async fn test_forgive_solana_validator_debt() {
         );
 
         assert_eq!(
-            program_logs.get(2).unwrap(),
+            program_logs.get(3).unwrap(),
             &format!("Program log: Merkle leaf index {leaf_index} has already been processed")
         );
         assert_eq!(
-            program_logs.get(3).unwrap(),
+            program_logs.get(4).unwrap(),
             &format!("Program log: Solana validator debt already processed for epoch {dz_epoch}")
         )
     }

@@ -34,8 +34,8 @@ fn try_process_instruction(
         return Err(ProgramError::IncorrectProgramId);
     }
 
-    // NOTE: Instruction data that happens to deserialize to any of the enum variants and has
-    // trailing data constitutes invalid instruction data.
+    // NOTE: Instruction data that happens to deserialize to any of the enum
+    // variants and has trailing data constitutes invalid instruction data.
     let ix_data =
         BorshDeserialize::try_from_slice(data).map_err(|_| ProgramError::InvalidInstructionData)?;
 
@@ -62,13 +62,15 @@ fn try_initialize_program(accounts: &[AccountInfo]) -> ProgramResult {
     // - 5: System program.
     let mut accounts_iter = accounts.iter().enumerate();
 
-    // Account 0 must be a signer and writable (i.e., payer) because it will be sending lamports
-    // to the new config account when the system program allocates data to it. But because the
-    // create-program instruction requires that this account is a signer and is writable, we do
-    // not need to explicitly check these fields in its account info.
+    // Account 0 must be a signer and writable (i.e., payer) because it will be
+    // sending lamports to the new config account when the system program
+    // allocates data to it. But because the create-program instruction requires
+    // that this account is a signer and is writable, we do not need to
+    // explicitly check these fields in its account info.
     let (_, payer_info) = try_next_enumerated_account(&mut accounts_iter, Default::default())?;
 
-    // Account 1 must be the new program config account. This account should not exist yet.
+    // Account 1 must be the new program config account. This account should
+    // not exist yet.
     let (account_index, new_program_config_info) =
         try_next_enumerated_account(&mut accounts_iter, Default::default())?;
 
@@ -96,7 +98,8 @@ fn try_initialize_program(accounts: &[AccountInfo]) -> ProgramResult {
         Default::default(),
     )?;
 
-    // Establish the discriminator. Set other fields using the configure program instruction.
+    // Establish the discriminator. Set other fields using the configure program
+    // instruction.
     zero_copy::try_initialize::<ProgramConfig>(new_program_config_info, None)?;
 
     Ok(())
@@ -106,13 +109,15 @@ fn try_set_admin(accounts: &[AccountInfo], admin_key: Pubkey) -> ProgramResult {
     msg!("Set admin");
 
     // We expect the following accounts for this instruction:
-    // - 0: This program's program data account (BPF Loader Upgradeable program).
+    // - 0: This program's program data account (BPF Loader Upgradeable
+    //      program).
     // - 1: The program's owner (i.e., upgrade authority).
     // - 2: Program config.
     let mut accounts_iter = accounts.iter().enumerate();
 
     // Account 0 must be the program data belonging to this program.
-    // Account 1 must be the owner of the program data (i.e., the upgrade authority).
+    // Account 1 must be the owner of the program data (i.e., the upgrade
+    // authority).
     UpgradeAuthority::try_next_accounts(&mut accounts_iter, &ID)?;
 
     // Account 2 must be the program config account.
@@ -174,7 +179,7 @@ fn try_configure_program(accounts: &[AccountInfo], setting: ProgramConfiguration
 }
 
 fn try_request_access(accounts: &[AccountInfo], access_mode: AccessMode) -> ProgramResult {
-    msg!("Initiate access request");
+    msg!("Request access");
 
     let AccessMode::SolanaValidator { service_key, .. } = access_mode;
 
@@ -195,20 +200,22 @@ fn try_request_access(accounts: &[AccountInfo], access_mode: AccessMode) -> Prog
     let program_config =
         ZeroCopyAccount::<ProgramConfig>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
 
-    // Make sure program is not paused and we're accepting new accounts at this time
+    // Make sure program is not paused and we are accepting new accounts at this
+    // time.
     try_require_unpaused(&program_config)?;
 
-    // Account 1 must be the payer. The system program will automatically ensure this account is a signer and writable
-    // in order to transfer the lamports to create the new account.
+    // Account 1 must be the payer. The system program will automatically ensure
+    // this account is a signer and writable in order to transfer the lamports
+    // to create the new account.
     let (_, payer_info) = try_next_enumerated_account(&mut accounts_iter, Default::default())?;
     let (account_index, new_access_request_info) =
         try_next_enumerated_account(&mut accounts_iter, Default::default())?;
 
-    // Account 2 must be the new access request account
+    // Account 2 must be the new access request account.
     let (expected_access_request_key, access_request_bump) =
         AccessRequest::find_address(&service_key);
 
-    // Enforce the account location and seed validity
+    // Enforce the account location and seed validity.
     if new_access_request_info.key != &expected_access_request_key {
         msg!(
             "Invalid seeds for access request (account {})",
@@ -241,14 +248,15 @@ fn try_request_access(accounts: &[AccountInfo], access_mode: AccessMode) -> Prog
         },
     )?;
 
-    // Finalize init the access request with the user service and beneficiary keys
+    // Finalize the access request with the user service and beneficiary keys.
     let (mut access_request, _) =
         zero_copy::try_initialize::<AccessRequest>(new_access_request_info, None)?;
     access_request.service_key = service_key;
     access_request.rent_beneficiary_key = *payer_info.key;
 
-    // The sentinel service uses this log statement to filter txn logs to
-    // successfully submitted access requests when subscribing to the logs socket
+    // The sentinel service uses this log statement to filter transaction logs
+    // to successfully submitted access requests when subscribing to program
+    // logs.
     msg!("Initialized user access request {}", service_key);
 
     Ok(())
@@ -285,7 +293,7 @@ fn try_grant_access(accounts: &[AccountInfo]) -> ProgramResult {
         try_next_enumerated_account(&mut accounts_iter, Default::default())?;
     **rent_beneficiary_info.lamports.borrow_mut() += request_refund;
 
-    // Zero out the access request lamports to close the account
+    // Zero out the access request lamports to close the account.
     **access_request_lamports = 0;
 
     msg!("Grant {} access", access_request.service_key);

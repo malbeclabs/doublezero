@@ -17,7 +17,7 @@ use crate::{
 pub struct InitializeProgramAccounts {
     pub payer_key: Pubkey,
     pub new_program_config_key: Pubkey,
-    pub reserve_2z_key: Pubkey,
+    pub new_reserve_2z_key: Pubkey,
     pub dz_mint_key: Pubkey,
 }
 
@@ -28,7 +28,7 @@ impl InitializeProgramAccounts {
         Self {
             payer_key: *payer_key,
             new_program_config_key,
-            reserve_2z_key: find_2z_token_pda_address(&new_program_config_key).0,
+            new_reserve_2z_key: find_2z_token_pda_address(&new_program_config_key).0,
             dz_mint_key: *dz_mint_key,
         }
     }
@@ -39,14 +39,14 @@ impl From<InitializeProgramAccounts> for Vec<AccountMeta> {
         let InitializeProgramAccounts {
             payer_key,
             new_program_config_key,
-            reserve_2z_key,
+            new_reserve_2z_key,
             dz_mint_key,
         } = accounts;
 
         vec![
             AccountMeta::new(payer_key, true),
             AccountMeta::new(new_program_config_key, false),
-            AccountMeta::new(reserve_2z_key, false),
+            AccountMeta::new(new_reserve_2z_key, false),
             AccountMeta::new_readonly(dz_mint_key, false),
             AccountMeta::new_readonly(spl_token::ID, false),
             AccountMeta::new_readonly(system_program::ID, false),
@@ -57,15 +57,15 @@ impl From<InitializeProgramAccounts> for Vec<AccountMeta> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MigrateProgramAccounts {
     pub program_data_key: Pubkey,
-    pub owner_key: Pubkey,
+    pub upgrade_authority_key: Pubkey,
     pub program_config_key: Pubkey,
 }
 
 impl MigrateProgramAccounts {
-    pub fn new(program_id: &Pubkey, owner_key: &Pubkey) -> Self {
+    pub fn new(program_id: &Pubkey, upgrade_authority_key: &Pubkey) -> Self {
         Self {
             program_data_key: get_program_data_address(program_id).0,
-            owner_key: *owner_key,
+            upgrade_authority_key: *upgrade_authority_key,
             program_config_key: ProgramConfig::find_address().0,
         }
     }
@@ -75,13 +75,13 @@ impl From<MigrateProgramAccounts> for Vec<AccountMeta> {
     fn from(accounts: MigrateProgramAccounts) -> Self {
         let MigrateProgramAccounts {
             program_data_key,
-            owner_key,
+            upgrade_authority_key,
             program_config_key,
         } = accounts;
 
         vec![
             AccountMeta::new_readonly(program_data_key, false),
-            AccountMeta::new_readonly(owner_key, true),
+            AccountMeta::new_readonly(upgrade_authority_key, true),
             AccountMeta::new(program_config_key, false),
         ]
     }
@@ -90,15 +90,15 @@ impl From<MigrateProgramAccounts> for Vec<AccountMeta> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SetAdminAccounts {
     pub program_data_key: Pubkey,
-    pub owner_key: Pubkey,
+    pub upgrade_authority_key: Pubkey,
     pub program_config_key: Pubkey,
 }
 
 impl SetAdminAccounts {
-    pub fn new(program_id: &Pubkey, owner_key: &Pubkey) -> Self {
+    pub fn new(program_id: &Pubkey, upgrade_authority_key: &Pubkey) -> Self {
         Self {
             program_data_key: get_program_data_address(program_id).0,
-            owner_key: *owner_key,
+            upgrade_authority_key: *upgrade_authority_key,
             program_config_key: ProgramConfig::find_address().0,
         }
     }
@@ -108,13 +108,13 @@ impl From<SetAdminAccounts> for Vec<AccountMeta> {
     fn from(accounts: SetAdminAccounts) -> Self {
         let SetAdminAccounts {
             program_data_key,
-            owner_key,
+            upgrade_authority_key,
             program_config_key,
         } = accounts;
 
         vec![
             AccountMeta::new_readonly(program_data_key, false),
-            AccountMeta::new_readonly(owner_key, true),
+            AccountMeta::new_readonly(upgrade_authority_key, true),
             AccountMeta::new(program_config_key, false),
         ]
     }
@@ -153,7 +153,7 @@ impl From<ConfigureProgramAccounts> for Vec<AccountMeta> {
 pub struct InitializeJournalAccounts {
     pub payer_key: Pubkey,
     pub new_journal_key: Pubkey,
-    pub journal_2z_token_pda_key: Pubkey,
+    pub new_journal_2z_token_pda_key: Pubkey,
     pub dz_mint_key: Pubkey,
 }
 
@@ -164,7 +164,7 @@ impl InitializeJournalAccounts {
         Self {
             payer_key: *payer_key,
             new_journal_key,
-            journal_2z_token_pda_key: find_2z_token_pda_address(&new_journal_key).0,
+            new_journal_2z_token_pda_key: find_2z_token_pda_address(&new_journal_key).0,
             dz_mint_key: *dz_mint_key,
         }
     }
@@ -175,14 +175,14 @@ impl From<InitializeJournalAccounts> for Vec<AccountMeta> {
         let InitializeJournalAccounts {
             payer_key,
             new_journal_key,
-            journal_2z_token_pda_key,
+            new_journal_2z_token_pda_key,
             dz_mint_key,
         } = accounts;
 
         vec![
             AccountMeta::new(payer_key, true),
             AccountMeta::new(new_journal_key, false),
-            AccountMeta::new(journal_2z_token_pda_key, false),
+            AccountMeta::new(new_journal_2z_token_pda_key, false),
             AccountMeta::new_readonly(dz_mint_key, false),
             AccountMeta::new_readonly(spl_token::ID, false),
             AccountMeta::new_readonly(system_program::ID, false),
@@ -226,10 +226,10 @@ impl From<ConfigureJournalAccounts> for Vec<AccountMeta> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InitializeDistributionAccounts {
     pub program_config_key: Pubkey,
-    pub accountant_key: Pubkey,
+    pub debt_accountant_key: Pubkey,
     pub payer_key: Pubkey,
     pub new_distribution_key: Pubkey,
-    pub distribution_2z_token_pda_key: Pubkey,
+    pub new_distribution_2z_token_pda_key: Pubkey,
     pub dz_mint_key: Pubkey,
     pub journal_key: Pubkey,
     pub journal_2z_token_pda_key: Pubkey,
@@ -237,7 +237,7 @@ pub struct InitializeDistributionAccounts {
 
 impl InitializeDistributionAccounts {
     pub fn new(
-        accountant_key: &Pubkey,
+        debt_accountant_key: &Pubkey,
         payer_key: &Pubkey,
         dz_epoch: DoubleZeroEpoch,
         dz_mint_key: &Pubkey,
@@ -247,10 +247,10 @@ impl InitializeDistributionAccounts {
 
         Self {
             program_config_key: ProgramConfig::find_address().0,
-            accountant_key: *accountant_key,
+            debt_accountant_key: *debt_accountant_key,
             payer_key: *payer_key,
             new_distribution_key,
-            distribution_2z_token_pda_key: find_2z_token_pda_address(&new_distribution_key).0,
+            new_distribution_2z_token_pda_key: find_2z_token_pda_address(&new_distribution_key).0,
             dz_mint_key: *dz_mint_key,
             journal_key,
             journal_2z_token_pda_key: find_2z_token_pda_address(&journal_key).0,
@@ -262,10 +262,10 @@ impl From<InitializeDistributionAccounts> for Vec<AccountMeta> {
     fn from(accounts: InitializeDistributionAccounts) -> Self {
         let InitializeDistributionAccounts {
             program_config_key,
-            accountant_key,
+            debt_accountant_key,
             payer_key,
             new_distribution_key,
-            distribution_2z_token_pda_key,
+            new_distribution_2z_token_pda_key,
             dz_mint_key,
             journal_key,
             journal_2z_token_pda_key,
@@ -273,10 +273,10 @@ impl From<InitializeDistributionAccounts> for Vec<AccountMeta> {
 
         vec![
             AccountMeta::new(program_config_key, false),
-            AccountMeta::new_readonly(accountant_key, true),
+            AccountMeta::new_readonly(debt_accountant_key, true),
             AccountMeta::new(payer_key, true),
             AccountMeta::new(new_distribution_key, false),
-            AccountMeta::new(distribution_2z_token_pda_key, false),
+            AccountMeta::new(new_distribution_2z_token_pda_key, false),
             AccountMeta::new_readonly(dz_mint_key, false),
             AccountMeta::new_readonly(spl_token::ID, false),
             AccountMeta::new(journal_key, false),
@@ -289,15 +289,15 @@ impl From<InitializeDistributionAccounts> for Vec<AccountMeta> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConfigureDistributionDebtAccounts {
     pub program_config_key: Pubkey,
-    pub payments_accountant_key: Pubkey,
+    pub debt_accountant_key: Pubkey,
     pub distribution_key: Pubkey,
 }
 
 impl ConfigureDistributionDebtAccounts {
-    pub fn new(payments_accountant_key: &Pubkey, dz_epoch: DoubleZeroEpoch) -> Self {
+    pub fn new(debt_accountant_key: &Pubkey, dz_epoch: DoubleZeroEpoch) -> Self {
         Self {
             program_config_key: ProgramConfig::find_address().0,
-            payments_accountant_key: *payments_accountant_key,
+            debt_accountant_key: *debt_accountant_key,
             distribution_key: Distribution::find_address(dz_epoch).0,
         }
     }
@@ -307,13 +307,13 @@ impl From<ConfigureDistributionDebtAccounts> for Vec<AccountMeta> {
     fn from(accounts: ConfigureDistributionDebtAccounts) -> Self {
         let ConfigureDistributionDebtAccounts {
             program_config_key,
-            payments_accountant_key,
+            debt_accountant_key,
             distribution_key,
         } = accounts;
 
         vec![
             AccountMeta::new_readonly(program_config_key, false),
-            AccountMeta::new_readonly(payments_accountant_key, true),
+            AccountMeta::new_readonly(debt_accountant_key, true),
             AccountMeta::new(distribution_key, false),
         ]
     }
@@ -322,20 +322,20 @@ impl From<ConfigureDistributionDebtAccounts> for Vec<AccountMeta> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FinalizeDistributionDebtAccounts {
     pub program_config_key: Pubkey,
-    pub payments_accountant_key: Pubkey,
+    pub debt_accountant_key: Pubkey,
     pub distribution_key: Pubkey,
     pub payer_key: Pubkey,
 }
 
 impl FinalizeDistributionDebtAccounts {
     pub fn new(
-        payments_accountant_key: &Pubkey,
+        debt_accountant_key: &Pubkey,
         dz_epoch: DoubleZeroEpoch,
         payer_key: &Pubkey,
     ) -> Self {
         Self {
             program_config_key: ProgramConfig::find_address().0,
-            payments_accountant_key: *payments_accountant_key,
+            debt_accountant_key: *debt_accountant_key,
             distribution_key: Distribution::find_address(dz_epoch).0,
             payer_key: *payer_key,
         }
@@ -346,14 +346,14 @@ impl From<FinalizeDistributionDebtAccounts> for Vec<AccountMeta> {
     fn from(accounts: FinalizeDistributionDebtAccounts) -> Self {
         let FinalizeDistributionDebtAccounts {
             program_config_key,
-            payments_accountant_key,
+            debt_accountant_key,
             distribution_key,
             payer_key,
         } = accounts;
 
         vec![
             AccountMeta::new_readonly(program_config_key, false),
-            AccountMeta::new_readonly(payments_accountant_key, true),
+            AccountMeta::new_readonly(debt_accountant_key, true),
             AccountMeta::new(distribution_key, false),
             AccountMeta::new(payer_key, true),
             AccountMeta::new_readonly(system_program::ID, false),
@@ -364,15 +364,15 @@ impl From<FinalizeDistributionDebtAccounts> for Vec<AccountMeta> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConfigureDistributionRewardsAccounts {
     pub program_config_key: Pubkey,
-    pub accountant_key: Pubkey,
+    pub rewards_accountant_key: Pubkey,
     pub distribution_key: Pubkey,
 }
 
 impl ConfigureDistributionRewardsAccounts {
-    pub fn new(accountant_key: &Pubkey, dz_epoch: DoubleZeroEpoch) -> Self {
+    pub fn new(rewards_accountant_key: &Pubkey, dz_epoch: DoubleZeroEpoch) -> Self {
         Self {
             program_config_key: ProgramConfig::find_address().0,
-            accountant_key: *accountant_key,
+            rewards_accountant_key: *rewards_accountant_key,
             distribution_key: Distribution::find_address(dz_epoch).0,
         }
     }
@@ -382,13 +382,13 @@ impl From<ConfigureDistributionRewardsAccounts> for Vec<AccountMeta> {
     fn from(accounts: ConfigureDistributionRewardsAccounts) -> Self {
         let ConfigureDistributionRewardsAccounts {
             program_config_key,
-            accountant_key,
+            rewards_accountant_key,
             distribution_key,
         } = accounts;
 
         vec![
             AccountMeta::new_readonly(program_config_key, false),
-            AccountMeta::new_readonly(accountant_key, true),
+            AccountMeta::new_readonly(rewards_accountant_key, true),
             AccountMeta::new(distribution_key, false),
         ]
     }
@@ -933,20 +933,20 @@ impl From<PaySolanaValidatorDebtAccounts> for Vec<AccountMeta> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ForgiveSolanaValidatorDebtAccounts {
     pub program_config_key: Pubkey,
-    pub payments_accountant_key: Pubkey,
+    pub debt_accountant_key: Pubkey,
     pub distribution_key: Pubkey,
     pub next_distribution_key: Pubkey,
 }
 
 impl ForgiveSolanaValidatorDebtAccounts {
     pub fn new(
-        payments_accountant_key: &Pubkey,
+        debt_accountant_key: &Pubkey,
         dz_epoch: DoubleZeroEpoch,
         next_dz_epoch: DoubleZeroEpoch,
     ) -> Self {
         Self {
             program_config_key: ProgramConfig::find_address().0,
-            payments_accountant_key: *payments_accountant_key,
+            debt_accountant_key: *debt_accountant_key,
             distribution_key: Distribution::find_address(dz_epoch).0,
             next_distribution_key: Distribution::find_address(next_dz_epoch).0,
         }
@@ -957,14 +957,14 @@ impl From<ForgiveSolanaValidatorDebtAccounts> for Vec<AccountMeta> {
     fn from(accounts: ForgiveSolanaValidatorDebtAccounts) -> Self {
         let ForgiveSolanaValidatorDebtAccounts {
             program_config_key,
-            payments_accountant_key,
+            debt_accountant_key,
             distribution_key,
             next_distribution_key,
         } = accounts;
 
         vec![
             AccountMeta::new_readonly(program_config_key, false),
-            AccountMeta::new_readonly(payments_accountant_key, true),
+            AccountMeta::new_readonly(debt_accountant_key, true),
             AccountMeta::new(distribution_key, false),
             AccountMeta::new(next_distribution_key, false),
         ]

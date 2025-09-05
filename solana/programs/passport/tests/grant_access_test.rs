@@ -20,7 +20,7 @@ use solana_sdk::{
 };
 
 //
-// Grant the access request
+// Grant access.
 //
 
 #[tokio::test]
@@ -63,7 +63,7 @@ async fn test_grant_access() {
         .await
         .unwrap();
 
-    // Test inputs
+    // Test inputs.
 
     let sentinel_before_balance = test_setup
         .banks_client
@@ -129,7 +129,7 @@ async fn test_grant_access() {
     assert!(access_request_info.is_none());
 
     //
-    // Reject the grant access request with an unauthorized sentinel
+    // Reject the grant access request with an unauthorized sentinel.
     //
 
     test_setup
@@ -137,12 +137,12 @@ async fn test_grant_access() {
         .await
         .unwrap();
 
-    // Test inputs
+    // Test inputs.
 
     let (access_request_key, _) = test_setup.fetch_access_request(&service_key).await;
     let unauthorized_signer = Keypair::new();
 
-    // Cannot grant access with unauthorized sentinel
+    // Cannot grant access with unauthorized sentinel.
     let grant_access_ix = try_build_instruction(
         &ID,
         GrantAccessAccounts::new(
@@ -163,12 +163,13 @@ async fn test_grant_access() {
         TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
     );
 
+    // NOTE: Sentinel still has 10,000 lamports from prior grant test.
     let sentinel_after_balance = test_setup
         .banks_client
         .get_balance(sentinel_signer.pubkey())
         .await
         .unwrap();
-    assert_eq!(sentinel_after_balance, 128 * 6_960 + access_fee); // Sentinel still has 10_000 from prior grant test
+    assert_eq!(sentinel_after_balance, 128 * 6_960 + access_fee);
 
     let access_request_info = test_setup
         .banks_client

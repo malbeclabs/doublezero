@@ -38,7 +38,7 @@ async fn test_distribute_rewards() {
     let admin_signer = Keypair::new();
 
     let contributor_manager_signer = Keypair::new();
-    let payments_accountant_signer = Keypair::new();
+    let debt_accountant_signer = Keypair::new();
     let rewards_accountant_signer = Keypair::new();
     let solana_validator_base_block_rewards_pct_fee = 500; // 5%.
 
@@ -105,7 +105,7 @@ async fn test_distribute_rewards() {
             [
                 ProgramConfiguration::Sol2zSwapProgram(mock_swap_sol_2z::ID),
                 ProgramConfiguration::ContributorManager(contributor_manager_signer.pubkey()),
-                ProgramConfiguration::PaymentsAccountant(payments_accountant_signer.pubkey()),
+                ProgramConfiguration::DebtAccountant(debt_accountant_signer.pubkey()),
                 ProgramConfiguration::RewardsAccountant(rewards_accountant_signer.pubkey()),
                 ProgramConfiguration::SolanaValidatorFeeParameters {
                     base_block_rewards_pct: solana_validator_base_block_rewards_pct_fee,
@@ -132,37 +132,37 @@ async fn test_distribute_rewards() {
         )
         .await
         .unwrap()
-        .initialize_distribution(&payments_accountant_signer)
+        .initialize_distribution(&debt_accountant_signer)
         .await
         .unwrap()
-        .initialize_distribution(&payments_accountant_signer)
+        .initialize_distribution(&debt_accountant_signer)
         .await
         .unwrap()
         .configure_distribution_debt(
             dz_epoch,
-            &payments_accountant_signer,
+            &debt_accountant_signer,
             total_solana_validators,
             total_solana_validator_debt,
             solana_validator_debt_merkle_root,
         )
         .await
         .unwrap()
-        .finalize_distribution_debt(dz_epoch, &payments_accountant_signer)
+        .finalize_distribution_debt(dz_epoch, &debt_accountant_signer)
         .await
         .unwrap()
-        .initialize_distribution(&payments_accountant_signer)
+        .initialize_distribution(&debt_accountant_signer)
         .await
         .unwrap()
         .configure_distribution_debt(
             next_dz_epoch,
-            &payments_accountant_signer,
+            &debt_accountant_signer,
             total_solana_validators,
             total_solana_validator_debt,
             solana_validator_debt_merkle_root,
         )
         .await
         .unwrap()
-        .finalize_distribution_debt(next_dz_epoch, &payments_accountant_signer)
+        .finalize_distribution_debt(next_dz_epoch, &debt_accountant_signer)
         .await
         .unwrap();
 
@@ -197,7 +197,7 @@ async fn test_distribute_rewards() {
                 .forgive_solana_validator_debt(
                     dz_epoch,
                     next_dz_epoch,
-                    &payments_accountant_signer,
+                    &debt_accountant_signer,
                     &uncollectible_debt,
                     proof,
                 )
@@ -486,15 +486,14 @@ async fn test_distribute_rewards() {
     expected_distribution.total_solana_validator_debt = total_solana_validator_debt;
     expected_distribution.collected_solana_validator_payments =
         total_solana_validator_debt - uncollectible_debt.amount;
-    expected_distribution.solana_validator_payments_merkle_root = solana_validator_debt_merkle_root;
+    expected_distribution.solana_validator_debt_merkle_root = solana_validator_debt_merkle_root;
     expected_distribution.collected_2z_converted_from_sol = expected_swept_2z_amount_1;
     expected_distribution.total_contributors = total_contributors;
     expected_distribution.rewards_merkle_root = rewards_merkle_root;
     expected_distribution.distributed_rewards_count = total_contributors;
     expected_distribution.distributed_2z_amount = 6_210_000_000;
     expected_distribution.burned_2z_amount = 690_000_000;
-    expected_distribution.processed_solana_validator_payments_end_index =
-        total_solana_validators / 8;
+    expected_distribution.processed_solana_validator_debt_end_index = total_solana_validators / 8;
     expected_distribution.processed_rewards_start_index = total_solana_validators / 8;
     expected_distribution.processed_rewards_end_index =
         (total_solana_validators / 8) + (total_contributors / 8 + 1);
@@ -553,15 +552,14 @@ async fn test_distribute_rewards() {
     expected_distribution.total_solana_validator_debt = total_solana_validator_debt;
     expected_distribution.collected_solana_validator_payments = total_solana_validator_debt;
     expected_distribution.uncollectible_sol_debt = uncollectible_debt.amount;
-    expected_distribution.solana_validator_payments_merkle_root = solana_validator_debt_merkle_root;
+    expected_distribution.solana_validator_debt_merkle_root = solana_validator_debt_merkle_root;
     expected_distribution.collected_2z_converted_from_sol = expected_swept_2z_amount_2;
     expected_distribution.total_contributors = total_contributors;
     expected_distribution.rewards_merkle_root = rewards_merkle_root;
     expected_distribution.distributed_rewards_count = total_contributors;
     expected_distribution.distributed_2z_amount = 37_800_000_000;
     expected_distribution.burned_2z_amount = 4_200_000_000;
-    expected_distribution.processed_solana_validator_payments_end_index =
-        total_solana_validators / 8;
+    expected_distribution.processed_solana_validator_debt_end_index = total_solana_validators / 8;
     expected_distribution.processed_rewards_start_index = total_solana_validators / 8;
     expected_distribution.processed_rewards_end_index =
         (total_solana_validators / 8) + (total_contributors / 8 + 1);

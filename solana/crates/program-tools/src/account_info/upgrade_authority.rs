@@ -67,5 +67,3 @@ impl<'a, 'b> TryNextAccounts<'a, 'b, &'a Pubkey> for UpgradeAuthority<'a, 'b> {
         }
     }
 }
-
-// TODO: Add unit tests.

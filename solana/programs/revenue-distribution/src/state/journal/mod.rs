@@ -33,11 +33,12 @@ pub struct Journal {
 
     pub total_sol_balance: u64,
 
-    /// Based on interactions with the program to deposit 2Z, this is our expected balance. This
-    /// balance may deviate from the actual balance in the 2Z Token account because folks may
-    /// transfer tokens directly to that account (not intended). So if we wanted any recourse to
-    /// do something with the excess amount in this token account, we can simply compute the
-    /// difference between the token account balance and this.
+    /// Based on interactions with the program to deposit 2Z, this is our
+    /// expected balance. This balance may deviate from the actual balance in
+    /// the 2Z Token account because folks may transfer tokens directly to
+    /// that account (not intended). So if we wanted any recourse to do
+    /// something with the excess amount in this token account, we can simply
+    /// compute the difference between the token account balance and this.
     pub total_2z_balance: u64,
 
     pub swap_2z_destination_balance: u64,
@@ -56,13 +57,15 @@ impl PrecomputedDiscriminator for Journal {
 impl Journal {
     pub const SEED_PREFIX: &'static [u8] = b"journal";
 
-    /// Max allowable entries. Due to the CPI constraint of 10kb when creating the Journal account
-    /// (and to avoid performing a realloc for this PDA), we do not allow the maximum entries field
-    /// to be configured beyond this maximum value.
+    /// Max allowable entries. Due to the CPI constraint of 10kb when creating
+    /// the Journal account (and to avoid performing a realloc for this PDA), we
+    /// do not allow the maximum entries field to be configured beyond this
+    /// maximum value.
     ///
-    /// Each entry represents one DZ epoch's payment. If the maximum entries value is configured to
-    /// be 200 DZ epochs for example, this value equates to roughly 400 days worth of payments. It
-    /// is unlikely that the configured maximum entries value will ever be this large.
+    /// Each entry represents one DZ epoch's payment. If the maximum entries
+    /// value is configured to be 200 DZ epochs for example, this value equates
+    /// to roughly 400 days worth of payments. It is unlikely that the
+    /// configured maximum entries value will ever be this large.
     pub const MAX_CONFIGURABLE_ENTRIES: u16 = 200;
 
     pub fn find_address() -> (Pubkey, u8) {
@@ -155,23 +158,24 @@ impl JournalEntries {
         valid_through_dz_epoch: DoubleZeroEpoch,
         cost_per_epoch: u32,
     ) -> Option<u16> {
-        // If we want to add service between the next DZ epoch and the DZ epoch where service is
-        // valid through, we take the difference and add one because service should be active
-        // starting at the next DZ epoch.
+        // If we want to add service between the next DZ epoch and the DZ epoch
+        // where service is valid through, we take the difference and add one
+        // because service should be active at the next DZ epoch.
         let num_epochs = valid_through_dz_epoch
             .value()
             .checked_sub(next_dz_epoch.value())?
             .saturating_add(1);
 
-        // Do nothing if the difference between epochs is too large. The maximum entries parameter
-        // in the journal is configured as u16.
+        // Do nothing if the difference between epochs is too large. The maximum
+        // entries parameter in the journal is configured as `u16`.
         if num_epochs > u16::MAX as u64 {
             return None;
         }
 
         let entries = &mut self.0;
 
-        // First, add amounts to existing entries where we need to allocate 2Z to specific DZ epochs.
+        // First, add amounts to existing entries where we need to allocate 2Z
+        // to specific DZ epochs.
         entries
             .iter_mut()
             .filter(|entry| {

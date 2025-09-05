@@ -37,7 +37,7 @@ async fn test_configure_program() {
     let should_pause = false;
 
     // Other settings.
-    let payments_accountant_key = Pubkey::new_unique();
+    let debt_accountant_key = Pubkey::new_unique();
     let rewards_accountant_key = Pubkey::new_unique();
     let contributor_manager_key = Pubkey::new_unique();
     let dz_ledger_sentinel_key = Pubkey::new_unique();
@@ -69,7 +69,7 @@ async fn test_configure_program() {
             &admin_signer,
             [
                 ProgramConfiguration::Flag(ProgramFlagConfiguration::IsPaused(should_pause)),
-                ProgramConfiguration::PaymentsAccountant(payments_accountant_key),
+                ProgramConfiguration::DebtAccountant(debt_accountant_key),
                 ProgramConfiguration::RewardsAccountant(rewards_accountant_key),
                 ProgramConfiguration::ContributorManager(contributor_manager_key),
                 ProgramConfiguration::DoubleZeroLedgerSentinel(dz_ledger_sentinel_key),
@@ -118,7 +118,7 @@ async fn test_configure_program() {
     expected_program_config.admin_key = admin_signer.pubkey();
     expected_program_config.contributor_manager_key = contributor_manager_key;
     expected_program_config.set_is_paused(should_pause);
-    expected_program_config.payments_accountant_key = payments_accountant_key;
+    expected_program_config.debt_accountant_key = debt_accountant_key;
     expected_program_config.rewards_accountant_key = rewards_accountant_key;
     expected_program_config.dz_ledger_sentinel_key = dz_ledger_sentinel_key;
     expected_program_config.sol_2z_swap_program_id = sol_2z_swap_program_id;

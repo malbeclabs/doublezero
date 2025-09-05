@@ -104,7 +104,7 @@ async fn test_set_rewards_manager() {
         tx_err,
         TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
     );
-    assert_eq!(program_logs.get(2).unwrap(), "Program log: Blocked");
+    assert_eq!(program_logs.get(3).unwrap(), "Program log: Blocked");
 
     // Can set after unblocking.
 

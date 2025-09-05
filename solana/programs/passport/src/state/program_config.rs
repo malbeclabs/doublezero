@@ -15,9 +15,6 @@ pub struct ProgramConfig {
     /// Authority that grants or denies access to the DoubleZero Ledger network.
     pub sentinel_key: Pubkey,
 
-    /// Number of lamports needed on deposit to make an access request
-    /// Will be refunded on successful GrantAccess minus 10_000 processing fee
-    /// Will be forfeit on DenyAccess
     pub access_request_deposit_parameters: AccessRequestDepositParameters,
 
     /// 8 * 32 bytes of a storage gap in case more fields need to be added.

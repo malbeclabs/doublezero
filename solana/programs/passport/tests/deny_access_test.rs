@@ -20,7 +20,7 @@ use solana_sdk::{
 };
 
 //
-// Deny the access request
+// Deny access.
 //
 
 #[tokio::test]

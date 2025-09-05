@@ -21,7 +21,7 @@ async fn test_initialize_distribution() {
 
     let admin_signer = Keypair::new();
 
-    let payments_accountant_signer = Keypair::new();
+    let debt_accountant_signer = Keypair::new();
     let solana_validator_base_block_rewards_pct_fee = 500; // 5%.
 
     // Relay settings.
@@ -46,7 +46,7 @@ async fn test_initialize_distribution() {
         .configure_program(
             &admin_signer,
             [
-                ProgramConfiguration::PaymentsAccountant(payments_accountant_signer.pubkey()),
+                ProgramConfiguration::DebtAccountant(debt_accountant_signer.pubkey()),
                 ProgramConfiguration::SolanaValidatorFeeParameters {
                     base_block_rewards_pct: solana_validator_base_block_rewards_pct_fee,
                     priority_block_rewards_pct: 0,
@@ -69,7 +69,7 @@ async fn test_initialize_distribution() {
         )
         .await
         .unwrap()
-        .initialize_distribution(&payments_accountant_signer)
+        .initialize_distribution(&debt_accountant_signer)
         .await
         .unwrap();
 
@@ -115,7 +115,7 @@ async fn test_initialize_distribution() {
         state::find_2z_token_pda_address(&program_config_key).1;
     expected_program_config.admin_key = admin_signer.pubkey();
     expected_program_config.next_dz_epoch = DoubleZeroEpoch::new(1);
-    expected_program_config.payments_accountant_key = payments_accountant_signer.pubkey();
+    expected_program_config.debt_accountant_key = debt_accountant_signer.pubkey();
 
     let expected_distribution_params = &mut expected_program_config.distribution_parameters;
     expected_distribution_params
@@ -131,7 +131,7 @@ async fn test_initialize_distribution() {
     // Create another distribution.
 
     test_setup
-        .initialize_distribution(&payments_accountant_signer)
+        .initialize_distribution(&debt_accountant_signer)
         .await
         .unwrap();
 
@@ -169,7 +169,7 @@ async fn test_initialize_distribution() {
         state::find_2z_token_pda_address(&program_config_key).1;
     expected_program_config.admin_key = admin_signer.pubkey();
     expected_program_config.next_dz_epoch = DoubleZeroEpoch::new(2);
-    expected_program_config.payments_accountant_key = payments_accountant_signer.pubkey();
+    expected_program_config.debt_accountant_key = debt_accountant_signer.pubkey();
 
     let expected_distribution_params = &mut expected_program_config.distribution_parameters;
     expected_distribution_params

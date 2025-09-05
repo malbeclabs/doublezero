@@ -57,7 +57,7 @@ async fn test_withdraw_sol() {
     }];
 
     let total_solana_validators = debt_data.len() as u32;
-    let solana_validator_payments_merkle_root =
+    let solana_validator_debt_merkle_root =
         merkle_root_from_indexed_pod_leaves(&debt_data, Some(SolanaValidatorDebt::LEAF_PREFIX))
             .unwrap();
 
@@ -81,7 +81,7 @@ async fn test_withdraw_sol() {
         .configure_program(
             &benevolent_dictator_signer,
             [
-                ProgramConfiguration::PaymentsAccountant(benevolent_dictator_signer.pubkey()),
+                ProgramConfiguration::DebtAccountant(benevolent_dictator_signer.pubkey()),
                 ProgramConfiguration::SolanaValidatorFeeParameters {
                     base_block_rewards_pct: solana_validator_base_block_rewards_pct_fee,
                     priority_block_rewards_pct: 0,
@@ -113,7 +113,7 @@ async fn test_withdraw_sol() {
             &benevolent_dictator_signer,
             total_solana_validators,
             total_solana_validator_debt,
-            solana_validator_payments_merkle_root,
+            solana_validator_debt_merkle_root,
         )
         .await
         .unwrap()

@@ -16,15 +16,16 @@ use solana_program::{
 };
 
 #[repr(u8)]
-#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Default)]
 #[borsh(use_discriminant = true)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum SetDeviceOption {
     Set = 1,
+    #[default]
     Remove = 2,
 }
 
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone, Default)]
 pub struct ExchangeSetDeviceArgs {
     /// Index of the device in the exchange, 1 for switch1, 2 for switch2
     pub index: u8,

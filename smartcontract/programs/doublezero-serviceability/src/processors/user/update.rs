@@ -12,7 +12,7 @@ use solana_program::{
 };
 use std::fmt;
 
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone, Default)]
 pub struct UserUpdateArgs {
     pub user_type: Option<UserType>,
     pub cyoa_type: Option<UserCYOA>,

@@ -12,7 +12,7 @@ use solana_program::{
 };
 use std::fmt;
 
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone, Default)]
 pub struct MulticastGroupDeactivateArgs {}
 
 impl fmt::Debug for MulticastGroupDeactivateArgs {

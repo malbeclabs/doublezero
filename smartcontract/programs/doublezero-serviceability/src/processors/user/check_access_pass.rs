@@ -17,7 +17,7 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone, Default)]
 pub struct CheckUserAccessPassArgs {}
 
 impl fmt::Debug for CheckUserAccessPassArgs {

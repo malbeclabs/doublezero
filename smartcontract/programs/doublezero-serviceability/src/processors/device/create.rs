@@ -20,8 +20,6 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-const DEFAULT_MAX_USERS: u16 = 128;
-
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct DeviceCreateArgs {
     pub code: String,
@@ -132,7 +130,7 @@ pub fn process_create_device(
         mgmt_vrf: value.mgmt_vrf.clone(),
         interfaces: vec![],
         users_count: 0,
-        max_users: DEFAULT_MAX_USERS,
+        max_users: 0, // Initially, the Device is locked and must be activated by modifying the maximum number of users.
     };
 
     account_create(

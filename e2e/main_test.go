@@ -213,6 +213,14 @@ func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 		doublezero device interface create pit-dzd01 "Loopback256" --loopback-type ipv4
 		doublezero device interface create ams-dz001 "Loopback256" --loopback-type ipv4
 
+		doublezero device update --pubkey ld4-dz01 --max-users 128
+		doublezero device update --pubkey frk-dz01 --max-users 128
+		doublezero device update --pubkey sg1-dz01 --max-users 128
+		doublezero device update --pubkey ty2-dz01 --max-users 128
+		doublezero device update --pubkey pit-dzd01 --max-users 128
+		doublezero device update --pubkey ams-dz001 --max-users 128
+
+
 		echo "==> Populate link information onchain"
 		doublezero link create wan --code "la2-dz01:ny5-dz01" --contributor co01 --side-a la2-dz01 --side-a-interface Ethernet2 --side-z ny5-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3
 		doublezero link create wan --code "ny5-dz01:ld4-dz01" --contributor co01 --side-a ny5-dz01 --side-a-interface Vlan4001 --side-z ld4-dz01 --side-z-interface Vlan4001 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3

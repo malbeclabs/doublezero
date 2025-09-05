@@ -9,7 +9,7 @@ use solana_program::{
     pubkey::Pubkey,
 };
 use std::fmt;
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone, Default)]
 pub struct LocationUpdateArgs {
     pub code: Option<String>,
     pub name: Option<String>,

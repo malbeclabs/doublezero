@@ -15,7 +15,7 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone, Default)]
 pub struct DeviceSuspendArgs;
 
 impl fmt::Debug for DeviceSuspendArgs {

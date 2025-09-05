@@ -54,7 +54,10 @@ impl UpdateDeviceCliCommand {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
-        let pubkey = Pubkey::from_str(&self.pubkey)?;
+        let (pubkey, _) = client.get_device(GetDeviceCommand {
+            pubkey_or_code: self.pubkey,
+        })?;
+
         let devices = client.list_device(ListDeviceCommand)?;
         if let Some(code) = &self.code {
             if devices
@@ -102,9 +105,6 @@ impl UpdateDeviceCliCommand {
             None
         };
 
-        let (pubkey, _) = client.get_device(GetDeviceCommand {
-            pubkey_or_code: self.pubkey,
-        })?;
         let signature = client.update_device(UpdateDeviceCommand {
             pubkey,
             code: self.code,
@@ -345,6 +345,13 @@ mod tests {
             .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
             .returning(|_| Ok(()));
         client
+            .expect_get_device()
+            .with(predicate::eq(GetDeviceCommand {
+                pubkey_or_code: pda_pubkey.to_string(),
+            }))
+            .returning(move |_| Ok((pda_pubkey, device1.clone())));
+
+        client
             .expect_list_device()
             .with(predicate::eq(ListDeviceCommand))
             .returning(move |_| Ok(device_list.clone()));
@@ -427,6 +434,12 @@ mod tests {
             .expect_check_requirements()
             .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
             .returning(|_| Ok(()));
+        client
+            .expect_get_device()
+            .with(predicate::eq(GetDeviceCommand {
+                pubkey_or_code: pda_pubkey.to_string(),
+            }))
+            .returning(move |_| Ok((pda_pubkey, device1.clone())));
         client
             .expect_list_device()
             .with(predicate::eq(ListDeviceCommand))

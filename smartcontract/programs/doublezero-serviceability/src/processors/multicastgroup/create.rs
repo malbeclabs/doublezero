@@ -18,7 +18,7 @@ use std::fmt;
 #[cfg(test)]
 use solana_program::msg;
 
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone, Default)]
 pub struct MulticastGroupCreateArgs {
     pub index: u128,
     pub bump_seed: u8,

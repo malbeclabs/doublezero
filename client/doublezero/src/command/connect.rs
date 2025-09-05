@@ -85,7 +85,7 @@ impl ProvisioningCliCommand {
         client: &dyn CliCommand,
         controller: &T,
     ) -> eyre::Result<()> {
-        let spinner = init_command(4);
+        let spinner = init_command(5);
 
         // Check requirements
         check_requirements(client, Some(&spinner), CHECK_ID_JSON | CHECK_BALANCE)?;
@@ -695,6 +695,8 @@ mod tests {
     use std::{
         collections::HashMap,
         sync::{Arc, Mutex, OnceLock},
+        thread,
+        time::Duration,
     };
     use tempfile::TempDir;
 
@@ -822,6 +824,7 @@ mod tests {
 
             let users = fixture.users.clone();
             fixture.client.expect_get_user().returning_st(move |cmd| {
+                thread::sleep(Duration::from_secs(1));
                 let user_pk = cmd.pubkey;
                 let users = users.lock().unwrap();
                 let user = users.get(&user_pk);
@@ -833,6 +836,7 @@ mod tests {
 
             let devices = fixture.devices.clone();
             fixture.client.expect_get_device().returning_st(move |cmd| {
+                thread::sleep(Duration::from_secs(1));
                 let devices = devices.lock().unwrap();
                 match parse_pubkey(&cmd.pubkey_or_code) {
                     Some(pk) => match devices.get(&pk) {
@@ -966,6 +970,7 @@ mod tests {
                 .times(1)
                 .with(predicate::eq(expected_create_user_command))
                 .returning_st(move |_| {
+                    thread::sleep(Duration::from_secs(1));
                     users.lock().unwrap().insert(pk, user.clone());
                     Ok((Signature::default(), pk))
                 });
@@ -1002,6 +1007,7 @@ mod tests {
                 .times(1)
                 .with(predicate::eq(expected_create_subscribe_user_command))
                 .returning_st(move |_| {
+                    thread::sleep(Duration::from_secs(1));
                     users.lock().unwrap().insert(pk, user.clone());
                     Ok((Signature::default(), pk))
                 });
@@ -1033,6 +1039,7 @@ mod tests {
                 .times(1)
                 .with(predicate::eq(expected_request))
                 .returning_st(move |_| {
+                    thread::sleep(Duration::from_secs(1));
                     Ok(ProvisioningResponse {
                         status: "success".to_string(),
                         description: None,
@@ -1055,6 +1062,9 @@ mod tests {
             None,
             None,
         );
+
+        // print new line for readability in test output
+        println!();
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
@@ -1108,6 +1118,9 @@ mod tests {
             None,
             None,
         );
+
+        // print new line for readability in test output
+        println!();
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {
@@ -1170,6 +1183,9 @@ mod tests {
             Some(vec![]),
         );
 
+        // print new line for readability in test output
+        println!();
+
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::Multicast {
                 mode: MulticastMode::Publisher,
@@ -1208,6 +1224,9 @@ mod tests {
             Some(vec![]),
             Some(vec![mcast_group.multicast_ip.to_string()]),
         );
+
+        // print new line for readability in test output
+        println!();
 
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::Multicast {

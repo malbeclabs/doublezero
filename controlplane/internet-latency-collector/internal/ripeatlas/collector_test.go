@@ -315,7 +315,7 @@ func TestInternetLatency_RIPEAtlas_ExportMeasurementResults(t *testing.T) {
 			return []Measurement{
 				{
 					ID:          1,
-					Description: "DoubleZero combined to LAX probe 200",
+					Description: "DoubleZero to LAX probe 200",
 					Status: struct {
 						Name string `json:"name"`
 						ID   int    `json:"id"`
@@ -391,13 +391,18 @@ func TestInternetLatency_RIPEAtlas_ExportMeasurementResults(t *testing.T) {
 	tsIdx := slices.Index(header, "timestamp")
 	rttIdx := slices.Index(header, "latency")
 	srcIdx := slices.Index(header, "source_exchange_code")
+	tgtIdx := slices.Index(header, "target_exchange_code")
 	require.NotEqual(t, -1, tsIdx)
 	require.NotEqual(t, -1, rttIdx)
 	require.NotEqual(t, -1, srcIdx)
+	require.NotEqual(t, -1, tgtIdx)
 
+	// After the swap, source is the measurement target (lax) and target is the probe location (nyc/chi)
 	sourcesSeen := map[string]struct{}{}
+	targetsSeen := map[string]struct{}{}
 	for _, row := range records[1:] {
 		src := row[srcIdx]
+		tgt := row[tgtIdx]
 		ts, err := time.Parse(time.RFC3339, row[tsIdx])
 		require.NoError(t, err)
 		require.True(t, ts.Equal(time.Unix(1609459260, 0).UTC()))
@@ -407,9 +412,13 @@ func TestInternetLatency_RIPEAtlas_ExportMeasurementResults(t *testing.T) {
 		require.Equal(t, 26*time.Millisecond, lat)
 
 		sourcesSeen[src] = struct{}{}
+		targetsSeen[tgt] = struct{}{}
 	}
-	require.Contains(t, sourcesSeen, "nyc")
-	require.Contains(t, sourcesSeen, "chi")
+	// Source should be the measurement target (lax)
+	require.Contains(t, sourcesSeen, "lax")
+	// Targets should be the probe locations (nyc, chi)
+	require.Contains(t, targetsSeen, "nyc")
+	require.Contains(t, targetsSeen, "chi")
 }
 
 func TestInternetLatency_RIPEAtlas_ExportMeasurementResults_DeduplicatesByMeasurementSourceKey(t *testing.T) {
@@ -422,7 +431,7 @@ func TestInternetLatency_RIPEAtlas_ExportMeasurementResults_DeduplicatesByMeasur
 			return []Measurement{
 				{
 					ID:          1,
-					Description: "DoubleZero combined to LAX probe 200",
+					Description: "DoubleZero to LAX probe 200",
 					Status: struct {
 						Name string `json:"name"`
 						ID   int    `json:"id"`
@@ -898,7 +907,7 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_CreateNew(t *testing.T)
 	require.Equal(t, "ping", measurement.Definitions[0].Type)
 	require.Equal(t, 4, measurement.Definitions[0].AF)
 	require.Equal(t, "2.2.2.2", measurement.Definitions[0].Target) // LON probe address (target)
-	require.Contains(t, measurement.Definitions[0].Description, "combined to lon")
+	require.Contains(t, measurement.Definitions[0].Description, "to lon")
 
 	require.Len(t, measurement.Probes, 1, "Expected 1 probe")
 	require.Equal(t, 100, measurement.Probes[0].Value) // NYC probe ID (source)

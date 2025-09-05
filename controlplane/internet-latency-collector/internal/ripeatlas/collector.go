@@ -481,14 +481,16 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 			}
 
 			// Keep only 1 record per measurement ID and probe ID.
+			// Note: We swap source and target here to match the semantic meaning:
+			// The measurement "belongs to" the target exchange and measures "to" the source probe's exchange
 			recordsByMeasurementID[measurementSourceKey{
 				MeasurementID: measurement.ID,
 				Source:        sourceLocation,
 				ProbeID:       probeID,
 			}] = exporter.Record{
 				DataProvider:       exporter.DataProviderNameRIPEAtlas,
-				SourceExchangeCode: sourceLocation,
-				TargetExchangeCode: targetLocation,
+				SourceExchangeCode: targetLocation, // Measurement target (owner)
+				TargetExchangeCode: sourceLocation, // Probe location (destination)
 				Timestamp:          timestamp,
 				RTT:                latency,
 			}
@@ -603,9 +605,9 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 	existingByTarget := make(map[string]Measurement)
 	for _, m := range doubleZeroMeasurements {
 		// Check if this is a combined measurement
-		if strings.Contains(m.Description, "combined to") {
+		if strings.Contains(m.Description, "to") {
 			// Extract target location from simplified description
-			// Format: "DoubleZero [env] combined to TARGET probe Y"
+			// Format: "DoubleZero [env] to TARGET probe Y"
 			parts := strings.Split(m.Description, " to ")
 			if len(parts) == 2 {
 				targetPart := parts[1]
@@ -628,16 +630,100 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 	// Step 5: Determine what to create and what to remove
 	toCreate := []MeasurementSpec{}
 	wantedTargets := make(map[string]bool)
+	wantedByTarget := make(map[string]MeasurementSpec)
 
+	// Build map of wanted measurements by target
 	for _, wanted := range wantedMeasurements {
 		wantedTargets[wanted.TargetLocationCode] = true
-		if _, exists := existingByTarget[wanted.TargetLocationCode]; !exists {
+		wantedByTarget[wanted.TargetLocationCode] = wanted
+	}
+
+	// Check each wanted measurement
+	for _, wanted := range wantedMeasurements {
+		existing, exists := existingByTarget[wanted.TargetLocationCode]
+		if !exists {
+			// No existing measurement for this target, create it
 			toCreate = append(toCreate, wanted)
+		} else {
+			// Check if existing measurement has the correct source probes
+			meta, hasMeta := measurementState.GetMetadata(existing.ID)
+			if !hasMeta {
+				// No metadata, can't verify sources, recreate
+				toCreate = append(toCreate, wanted)
+				continue
+			}
+
+			// Compare source probe locations
+			existingSources := make(map[string]bool)
+			for _, source := range meta.Sources {
+				existingSources[source.LocationCode] = true
+			}
+
+			wantedSources := make(map[string]bool)
+			for _, source := range wanted.SourceSpecs {
+				wantedSources[source.LocationCode] = true
+			}
+
+			// Check if source sets match
+			sourcesMatch := len(existingSources) == len(wantedSources)
+			if sourcesMatch {
+				for loc := range wantedSources {
+					if !existingSources[loc] {
+						sourcesMatch = false
+						break
+					}
+				}
+			}
+
+			if !sourcesMatch {
+				// Sources don't match, need to recreate measurement
+				c.log.Info("Measurement has outdated source probes, marking for recreation",
+					slog.Int("measurement_id", existing.ID),
+					slog.String("target", wanted.TargetLocationCode),
+					slog.Int("existing_sources", len(existingSources)),
+					slog.Int("wanted_sources", len(wantedSources)))
+				toCreate = append(toCreate, wanted)
+			}
 		}
 	}
 
-	// Remove measurements for targets we no longer want or measurements without metadata
+	// Remove measurements for targets we no longer want, measurements without metadata, or measurements with outdated sources
 	toRemove := []Measurement{}
+	measurementsToRecreate := make(map[string]bool)
+
+	// First, identify measurements that need recreation due to outdated sources
+	for _, wanted := range wantedMeasurements {
+		if existing, exists := existingByTarget[wanted.TargetLocationCode]; exists {
+			meta, hasMeta := measurementState.GetMetadata(existing.ID)
+			if hasMeta {
+				// Check if sources match
+				existingSources := make(map[string]bool)
+				for _, source := range meta.Sources {
+					existingSources[source.LocationCode] = true
+				}
+
+				wantedSources := make(map[string]bool)
+				for _, source := range wanted.SourceSpecs {
+					wantedSources[source.LocationCode] = true
+				}
+
+				sourcesMatch := len(existingSources) == len(wantedSources)
+				if sourcesMatch {
+					for loc := range wantedSources {
+						if !existingSources[loc] {
+							sourcesMatch = false
+							break
+						}
+					}
+				}
+
+				if !sourcesMatch {
+					measurementsToRecreate[wanted.TargetLocationCode] = true
+				}
+			}
+		}
+	}
+
 	for _, measurement := range doubleZeroMeasurements {
 		// Check if measurement has metadata
 		_, hasMetadata := measurementState.GetMetadata(measurement.ID)
@@ -655,6 +741,9 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 			if idx := strings.Index(targetPart, " probe"); idx != -1 {
 				targetLocation := targetPart[:idx]
 				if !wantedTargets[targetLocation] {
+					toRemove = append(toRemove, measurement)
+				} else if measurementsToRecreate[targetLocation] {
+					// This measurement needs to be recreated due to outdated sources
 					toRemove = append(toRemove, measurement)
 				}
 			}
@@ -717,10 +806,10 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 			// Use simplified description without source list
 			var description string
 			if c.env != "" {
-				description = fmt.Sprintf("DoubleZero [%s] combined to %s probe %d",
+				description = fmt.Sprintf("DoubleZero [%s] to %s probe %d",
 					c.env, spec.TargetLocationCode, spec.TargetProbe.ID)
 			} else {
-				description = fmt.Sprintf("DoubleZero combined to %s probe %d",
+				description = fmt.Sprintf("DoubleZero to %s probe %d",
 					spec.TargetLocationCode, spec.TargetProbe.ID)
 			}
 
@@ -766,7 +855,7 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 					slog.String("error", err.Error()))
 			} else {
 				measurementID := response.Measurements[0]
-				c.log.Info("Created combined measurement",
+				c.log.Info("Created measurement",
 					slog.Int("measurement_id", measurementID),
 					slog.String("description", description))
 

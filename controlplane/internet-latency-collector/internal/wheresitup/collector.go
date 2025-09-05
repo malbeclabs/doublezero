@@ -157,6 +157,18 @@ func (c *Collector) RunJobCreation(ctx context.Context, locations []collector.Lo
 	for _, location := range locationMatches {
 		if location.SourceCount > 0 {
 			locationsWithSources = append(locationsWithSources, location)
+
+			// Calculate and record distance to nearest source
+			if len(location.NearestSources) > 0 && location.NearestSources[0].Latitude != "" {
+				sourceLat, err1 := strconv.ParseFloat(location.NearestSources[0].Latitude, 64)
+				sourceLon, err2 := strconv.ParseFloat(location.NearestSources[0].Longitude, 64)
+				if err1 == nil && err2 == nil {
+					distance := collector.HaversineDistance(
+						location.Latitude, location.Longitude,
+						sourceLat, sourceLon)
+					metrics.DistanceFromExchangeToProbe.WithLabelValues("wheresitup", location.LocationCode).Set(distance)
+				}
+			}
 		}
 	}
 

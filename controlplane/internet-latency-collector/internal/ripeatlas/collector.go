@@ -567,6 +567,13 @@ func (c *Collector) RunRipeAtlasMeasurementCreation(ctx context.Context, dryRun 
 				match.Latitude, match.Longitude, probesPerLocation)
 			if len(nearestProbes) > 0 {
 				c.probeToLocation[nearestProbes[0].ID] = match.LocationCode
+
+				// Calculate and record distance to nearest probe
+				nearestProbe := nearestProbes[0]
+				distance := collector.HaversineDistance(
+					match.Latitude, match.Longitude,
+					nearestProbe.Geometry.Coordinates[1], nearestProbe.Geometry.Coordinates[0])
+				metrics.DistanceFromExchangeToProbe.WithLabelValues("ripeatlas", match.LocationCode).Set(distance)
 			}
 		}
 	}
@@ -604,18 +611,14 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 	// Step 3: Build map of existing measurements by target location
 	existingByTarget := make(map[string]Measurement)
 	for _, m := range doubleZeroMeasurements {
-		// Check if this is a combined measurement
-		if strings.Contains(m.Description, "to") {
-			// Extract target location from simplified description
-			// Format: "DoubleZero [env] to TARGET probe Y"
-			parts := strings.Split(m.Description, " to ")
-			if len(parts) == 2 {
-				targetPart := parts[1]
-				// Extract location code (before " probe")
-				if idx := strings.Index(targetPart, " probe"); idx != -1 {
-					targetLocation := targetPart[:idx]
-					existingByTarget[targetLocation] = m
-				}
+		// Format: "DoubleZero [env] to TARGET probe Y"
+		parts := strings.Split(m.Description, " to ")
+		if len(parts) == 2 {
+			targetPart := parts[1]
+			// Extract location code (before " probe")
+			if idx := strings.Index(targetPart, " probe"); idx != -1 {
+				targetLocation := targetPart[:idx]
+				existingByTarget[targetLocation] = m
 			}
 		}
 	}
@@ -766,12 +769,14 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 					slog.Int("measurement_id", measurement.ID),
 					slog.String("description", measurement.Description))
 			} else {
-				// Export results before removing
-				if _, err := c.exportSingleMeasurementResults(ctx, measurement, measurementState); err != nil {
-					c.log.Warn("Failed to export measurement results before removal",
-						slog.Int("measurement_id", measurement.ID),
-						slog.String("error", err.Error()))
-					// Continue with removal even if export fails
+				// Export results before removing (only if exporter is available)
+				if c.exporter != nil {
+					if _, err := c.exportSingleMeasurementResults(ctx, measurement, measurementState); err != nil {
+						c.log.Warn("Failed to export measurement results before removal",
+							slog.Int("measurement_id", measurement.ID),
+							slog.String("error", err.Error()))
+						// Continue with removal even if export fails
+					}
 				}
 
 				c.log.Info("Removing measurement",
@@ -781,10 +786,11 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 					c.log.Warn("Failed to stop measurement",
 						slog.Int("measurement_id", measurement.ID),
 						slog.String("error", err.Error()))
-				} else {
-					measurementState.RemoveMetadata(measurement.ID)
-					metrics.RipeatlasTotalMeasurements.Dec()
 				}
+				// Always remove metadata for measurements we're removing,
+				// even if the API call fails (measurement might already be stopped)
+				measurementState.RemoveMetadata(measurement.ID)
+				metrics.RipeatlasTotalMeasurements.Dec()
 				time.Sleep(CallDelay) // Rate limiting
 			}
 		}
@@ -795,10 +801,36 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 		}
 	}
 
+	// Step 7b: Clean up orphaned metadata (measurements in state file but not in API)
+	activeIDs := make(map[int]bool)
+	for _, m := range doubleZeroMeasurements {
+		activeIDs[m.ID] = true
+	}
+
+	orphanedIDs := []int{}
+	for id := range measurementState.tracker.Metadata {
+		if !activeIDs[id] {
+			orphanedIDs = append(orphanedIDs, id)
+		}
+	}
+
+	if len(orphanedIDs) > 0 {
+		c.log.Info("Cleaning up orphaned metadata entries",
+			slog.Int("count", len(orphanedIDs)))
+		for _, id := range orphanedIDs {
+			c.log.Debug("Removing orphaned metadata",
+				slog.Int("measurement_id", id))
+			measurementState.RemoveMetadata(id)
+		}
+		if err := measurementState.Save(); err != nil {
+			c.log.Warn("Failed to save state after orphan cleanup", slog.String("error", err.Error()))
+		}
+	}
+
 	// Step 8: Create new measurements
 	for _, spec := range toCreate {
 		if dryRun {
-			c.log.Info("Would create combined measurement (dry run)",
+			c.log.Info("Would create measurement (dry run)",
 				slog.String("target_location", spec.TargetLocation),
 				slog.Int("target_probe", spec.TargetProbe.ID),
 				slog.Int("source_count", len(spec.SourceSpecs)))
@@ -848,7 +880,7 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 
 			response, err := c.client.CreateMeasurement(ctx, measurementRequest)
 			if err != nil {
-				c.log.Warn("Failed to create combined measurement",
+				c.log.Warn("Failed to create measurement",
 					slog.String("target_location", spec.TargetLocation),
 					slog.Int("target_probe", spec.TargetProbe.ID),
 					slog.Int("source_count", len(spec.SourceSpecs)),

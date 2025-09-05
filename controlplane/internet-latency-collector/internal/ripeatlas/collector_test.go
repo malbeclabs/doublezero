@@ -722,7 +722,7 @@ func TestInternetLatency_RIPEAtlas_GenerateWantedMeasurements_Deterministic(t *t
 	// - Measurement to lon from nyc (AMS already measured to lon)
 	// - No measurement to nyc (both AMS and lon already measured to nyc)
 	// Total: 2 measurements
-	require.Len(t, measurements1, 2, "Expected 2 combined measurements")
+	require.Len(t, measurements1, 2, "Expected 2 measurements")
 
 	// Verify measurements have the expected structure
 	targetLocations := make(map[string]bool)
@@ -894,7 +894,6 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_CreateNew(t *testing.T)
 	err := c.configureMeasurements(t.Context(), locationMatches, false, 1, t.TempDir(), 1*time.Minute)
 	require.NoError(t, err, "configureMeasurements should succeed")
 
-	// With combined measurements, LON (first alphabetically) gets a measurement from NYC
 	mu.Lock()
 	finalCreated := createdMeasurements
 	mu.Unlock()

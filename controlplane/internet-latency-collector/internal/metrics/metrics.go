@@ -65,6 +65,12 @@ var (
 		Help: "Number of source probes per location (exchanges minus 1)",
 	})
 
+	// Distance metrics
+	DistanceFromExchangeToProbe = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "doublezero_internet_latency_collector_distance_from_exchange_to_probe_km",
+		Help: "Haversine distance in kilometers from exchange to its nearest probe",
+	}, []string{"provider", "exchange_code"})
+
 	// Wheresitup specific metrics
 	WheresitupJobCreationRunsTotal = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "doublezero_internet_latency_collector_wheresitup_job_creation_runs_total",

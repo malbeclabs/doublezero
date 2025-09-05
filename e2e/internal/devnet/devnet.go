@@ -720,6 +720,11 @@ func (d *Devnet) GetOrCreateDeviceOnchain(ctx context.Context, deviceCode string
 				return "", fmt.Errorf("failed to get device agent pubkey onchain for device %s: %w", deviceCode, err)
 			}
 
+			_, err = d.Manager.Exec(ctx, []string{"doublezero", "device", "update", "--pubkey", deviceAddress, "--max-users", "128"})
+			if err != nil {
+				return "", fmt.Errorf("failed to update device onchain: %w", err)
+			}
+
 			return deviceAddress, nil
 		}
 
@@ -736,6 +741,11 @@ func (d *Devnet) CreateDeviceOnchain(ctx context.Context, deviceCode string, loc
 	_, err := d.Manager.Exec(ctx, []string{"doublezero", "device", "create", "--code", deviceCode, "--contributor", "co01", "--location", location, "--exchange", exchange, "--public-ip", publicIP, "--dz-prefixes", strings.Join(prefixes, ","), "--mgmt-vrf", mgmtVrf}, docker.NoPrintOnError())
 	if err != nil {
 		return fmt.Errorf("failed to create device onchain: %w", err)
+	}
+
+	_, err = d.Manager.Exec(ctx, []string{"doublezero", "device", "update", "--pubkey", deviceCode, "--max-users", "128"})
+	if err != nil {
+		return fmt.Errorf("failed to update device onchain: %w", err)
 	}
 
 	return nil

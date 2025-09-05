@@ -9,7 +9,7 @@ use solana_client::{
     rpc_config::{RpcBlockConfig, RpcGetVoteAccountsConfig},
     rpc_response::{RpcInflationReward, RpcVoteAccountStatus},
 };
-use solana_sdk::{epoch_info::EpochInfo, pubkey::Pubkey};
+use solana_sdk::{commitment_config::CommitmentConfig, epoch_info::EpochInfo, pubkey::Pubkey};
 use solana_transaction_status_client_types::UiConfirmedBlock;
 use std::env;
 
@@ -33,6 +33,8 @@ pub fn solana_rpc() -> String {
 pub trait ValidatorRewards {
     fn solana_rpc_client(&self) -> &RpcClient;
     fn ledger_rpc_client(&self) -> &RpcClient;
+    fn solana_commitment_config(&self) -> CommitmentConfig;
+    fn ledger_commitment_config(&self) -> CommitmentConfig;
     async fn get_epoch_info(&self) -> Result<EpochInfo, solana_client::client_error::ClientError>;
     async fn get_leader_schedule(&self) -> Result<HashMap<String, Vec<usize>>>;
     async fn get_block_with_config(
@@ -84,6 +86,12 @@ impl SolanaDebtCalculator {
 
 #[async_trait]
 impl ValidatorRewards for SolanaDebtCalculator {
+    fn ledger_commitment_config(&self) -> CommitmentConfig {
+        self.ledger_rpc_client.commitment()
+    }
+    fn solana_commitment_config(&self) -> CommitmentConfig {
+        self.solana_rpc_client.commitment()
+    }
     fn solana_rpc_client(&self) -> &RpcClient {
         &self.solana_rpc_client
     }

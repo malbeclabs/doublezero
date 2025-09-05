@@ -7,7 +7,7 @@
 // write record
 
 use crate::{
-    rewards,
+    ledger, rewards,
     solana_debt_calculator::ValidatorRewards,
     transaction,
     validator_debt::{ComputedSolanaValidatorDebt, ComputedSolanaValidatorDebts},
@@ -17,7 +17,6 @@ use chrono::{DateTime, Utc};
 use doublezero_revenue_distribution::instruction::RevenueDistributionInstructionData::ConfigureDistributionDebt;
 use solana_sdk::{pubkey::Pubkey, signature::Signature, signer::keypair::Keypair};
 use std::str::FromStr;
-
 use svm_hash::sha2::Hash;
 
 #[derive(Debug)]
@@ -35,6 +34,7 @@ pub async fn write_debts<T: ValidatorRewards>(
     signer: Keypair,
     validator_ids: Vec<String>,
     dz_epoch: u64,
+    dry_run: bool,
 ) -> Result<RecordResult> {
     let record_result: RecordResult;
     let fetched_dz_epoch_info = solana_debt_calculator
@@ -43,14 +43,11 @@ pub async fn write_debts<T: ValidatorRewards>(
         .await?;
 
     let now = Utc::now();
-    let dz_fetch_epoch_info = solana_debt_calculator
-        .ledger_rpc_client()
-        .get_epoch_info()
-        .await?;
+    let transaction = transaction::Transaction::new(signer, dry_run);
 
     if fetched_dz_epoch_info.epoch == dz_epoch {
         record_result = RecordResult {
-            last_written_epoch: Some(dz_fetch_epoch_info.epoch),
+            last_written_epoch: Some(fetched_dz_epoch_info.epoch),
             last_check: Some(now),
             data_written: None, // probably will be something if we want to record "heartbeats"
             computed_debts: None,
@@ -62,61 +59,119 @@ pub async fn write_debts<T: ValidatorRewards>(
         return Ok(record_result);
     };
 
+    // get solana epoch
+    let solana_epoch = ledger::get_solana_epoch_from_dz_epoch(
+        solana_debt_calculator.solana_rpc_client(),
+        solana_debt_calculator.ledger_rpc_client(),
+        dz_epoch,
+    )
+    .await?;
+
     // fetch rewards for validators
-    let validator_rewards =
-        rewards::get_total_rewards(solana_debt_calculator, validator_ids.as_slice(), dz_epoch)
-            .await?;
+    let validator_rewards = rewards::get_total_rewards(
+        solana_debt_calculator,
+        validator_ids.as_slice(),
+        solana_epoch,
+    )
+    .await?;
 
-    // TODO: post rewards to ledger
+    // Create seeds
+    let prefix = b"solana_validator_debt_test";
+    let dz_epoch_bytes = dz_epoch.to_le_bytes();
+    let seeds: &[&[u8]] = &[prefix, &dz_epoch_bytes];
 
-    // gather rewards into debts
+    // fetch the distribution to get the fee percentages
+    let distribution = transaction
+        .read_distribution(dz_epoch, solana_debt_calculator.solana_rpc_client())
+        .await?;
+
+    // gather rewards into debts for all validators
     let computed_solana_validator_debt_vec: Vec<ComputedSolanaValidatorDebt> = validator_rewards
         .rewards
         .iter()
         .map(|reward| ComputedSolanaValidatorDebt {
             node_id: Pubkey::from_str(&reward.validator_id).unwrap(),
-            amount: reward.total,
+            amount: distribution
+                .solana_validator_fee_parameters
+                .base_block_rewards_pct
+                .mul_scalar(reward.block_base)
+                + distribution
+                    .solana_validator_fee_parameters
+                    .priority_block_rewards_pct
+                    .mul_scalar(reward.block_priority)
+                + distribution
+                    .solana_validator_fee_parameters
+                    .jito_tips_pct
+                    .mul_scalar(reward.jito)
+                + distribution
+                    .solana_validator_fee_parameters
+                    .inflation_rewards_pct
+                    .mul_scalar(reward.inflation)
+                + distribution
+                    .solana_validator_fee_parameters
+                    .fixed_sol_amount as u64,
         })
         .collect();
 
     let computed_solana_validator_debts = ComputedSolanaValidatorDebts {
-        epoch: dz_epoch,
-        debts: computed_solana_validator_debt_vec,
+        epoch: solana_epoch,
+        debts: computed_solana_validator_debt_vec.clone(),
     };
 
-    let data = computed_solana_validator_debts.merkle_root();
+    // TODO: https://github.com/malbeclabs/doublezero/issues/1553
+    let ledger_record = ledger::write_record_to_ledger(
+        solana_debt_calculator.ledger_rpc_client(),
+        &transaction.signer,
+        &computed_solana_validator_debts,
+        solana_debt_calculator.solana_commitment_config(),
+        seeds,
+    )
+    .await?;
 
-    // TODO: need to comment out until local validator running in CI
-    let transaction = transaction::Transaction::new(signer, false);
+    if ledger_record {
+        println!("record already written for {seeds:?}");
+    }
+
+    let merkle_root = computed_solana_validator_debts.merkle_root();
+
+    // Initialize a distribution
     let initialized_transaction = transaction
         .initialize_distribution(
-            solana_debt_calculator.ledger_rpc_client(),
             solana_debt_calculator.solana_rpc_client(),
+            fetched_dz_epoch_info.epoch,
             dz_epoch,
         )
         .await?;
+
     let tx_initialized_sig = transaction
         .send_or_simulate_transaction(
             solana_debt_calculator.solana_rpc_client(),
             &initialized_transaction,
         )
         .await?;
+
+    println!(
+        "initialized distribution tx: {:?}",
+        tx_initialized_sig.unwrap()
+    );
+
+    // Create the data for the solana transaction
     let total_validators: u32 = validator_rewards.rewards.len() as u32;
-    let total_debt: u64 = validator_rewards
-        .rewards
-        .into_iter()
-        .map(|reward| reward.total)
+    let total_debt: u64 = computed_solana_validator_debt_vec
+        .iter()
+        .map(|debt| debt.amount)
         .sum();
 
     let debt = ConfigureDistributionDebt {
         total_validators,
         total_debt,
-        merkle_root: data.unwrap(),
+        merkle_root: merkle_root.unwrap(),
     };
 
     let submitted_distribution = transaction
         .submit_distribution(solana_debt_calculator.solana_rpc_client(), dz_epoch, debt)
         .await?;
+
     let tx_submitted_sig = transaction
         .send_or_simulate_transaction(
             solana_debt_calculator.solana_rpc_client(),
@@ -125,15 +180,15 @@ pub async fn write_debts<T: ValidatorRewards>(
         .await?;
 
     record_result = RecordResult {
-        last_written_epoch: Some(dz_fetch_epoch_info.epoch),
+        last_written_epoch: Some(dz_epoch),
         last_check: Some(now),
-        data_written: data,
+        data_written: merkle_root,
         computed_debts: Some(computed_solana_validator_debts),
         tx_submitted_sig: Some(tx_submitted_sig.ok_or_else(|| {
             anyhow::anyhow!("send_or_simulate_transaction returned None for tx_submitted_sig")
         })?),
         tx_initialized_sig: Some(tx_initialized_sig.ok_or_else(|| {
-            anyhow::anyhow!("send_or_simulate_transaction returned None for tx_initialized_sig")
+            anyhow::anyhow!("send_or_simulate_transaction returned None for tx_submitted_sig")
         })?),
     };
     Ok(record_result)
@@ -197,7 +252,7 @@ mod tests {
 
         let rpc_block_config = RpcBlockConfig {
             encoding: Some(UiTransactionEncoding::Base58),
-            transaction_details: Some(TransactionDetails::None),
+            transaction_details: Some(TransactionDetails::Signatures),
             rewards: Some(true),
             commitment: None,
             max_supported_transaction_version: Some(0),
@@ -209,13 +264,40 @@ mod tests {
             vote_account_config,
         );
 
+        let dz_epoch = 84;
         let _res = write_debts(
             &fpc,
             keypair,
             vec!["va1i6T6vTcijrCz6G8r89H6igKjwkLfF6g5fnpvZu1b".to_string()],
-            832,
+            dz_epoch,
+            false,
         )
         .await?;
+        let signer = try_load_keypair(None).unwrap();
+
+        let prefix = b"solana_validator_debt_test";
+        let dz_epoch_bytes = dz_epoch.to_le_bytes();
+        let seeds: &[&[u8]] = &[prefix, &dz_epoch_bytes];
+        let transaction = transaction::Transaction::new(signer, false);
+
+        let read = ledger::read_from_ledger(
+            fpc.ledger_rpc_client(),
+            &transaction.signer,
+            seeds,
+            fpc.ledger_commitment_config(),
+        )
+        .await?;
+
+        let deserialized: ComputedSolanaValidatorDebts =
+            borsh::from_slice(read.1.as_slice()).unwrap();
+        let solana_epoch = ledger::get_solana_epoch_from_dz_epoch(
+            &fpc.solana_rpc_client,
+            &fpc.ledger_rpc_client,
+            dz_epoch,
+        )
+        .await?;
+
+        assert_eq!(deserialized.epoch, solana_epoch);
 
         Ok(())
     }
@@ -340,8 +422,14 @@ mod tests {
 
         let signer = try_load_keypair(None).unwrap();
 
-        let record_result =
-            write_debts(&mock_solana_debt_calculator, signer, validator_ids, 0).await?;
+        let record_result = write_debts(
+            &mock_solana_debt_calculator,
+            signer,
+            validator_ids,
+            45,
+            false,
+        )
+        .await?;
 
         assert_eq!(
             record_result.last_written_epoch.unwrap(),

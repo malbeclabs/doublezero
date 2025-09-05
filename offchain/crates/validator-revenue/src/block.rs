@@ -1,6 +1,7 @@
 use crate::solana_debt_calculator::ValidatorRewards;
 use anyhow::{Result, bail};
 use futures::{StreamExt, TryStreamExt, stream};
+use solana_client::{client_error::ClientErrorKind, rpc_request::RpcError};
 use solana_sdk::{clock::DEFAULT_SLOTS_PER_EPOCH, reward_type::RewardType::Fee};
 
 use std::collections::HashMap;
@@ -15,7 +16,14 @@ pub async fn get_block_rewards<T: ValidatorRewards>(
     validator_ids: &[String],
     epoch: u64,
 ) -> Result<HashMap<String, (u64, u64)>> {
-    let first_slot = get_first_slot_for_epoch(epoch);
+    let epoch_info = api_provider.get_epoch_info().await?;
+    let first_slot_in_current_epoch = epoch_info.absolute_slot - epoch_info.slot_index;
+
+    let epoch_diff = epoch_info.epoch - epoch;
+    if epoch_diff >= 5 {
+        bail!("Epoch diff is greater than 5")
+    }
+    let first_slot = first_slot_in_current_epoch - (epoch_info.slots_in_epoch * epoch_diff);
 
     // Fetch the leader schedule
     let leader_schedule = api_provider.get_leader_schedule().await?;
@@ -47,7 +55,7 @@ pub async fn get_block_rewards<T: ValidatorRewards>(
                 let mut signature_lamports: u64 = 0;
                 if let Some(sigs) = &block.signatures {
                     signature_lamports = sigs.len() as u64;
-                    signature_lamports *= LAMPORT_MULTIPLE;
+                    signature_lamports *= 2500;
                 };
                 let lamports: u64 = block
                     .rewards
@@ -64,11 +72,24 @@ pub async fn get_block_rewards<T: ValidatorRewards>(
                             })
                             .sum()
                     })
-                    .unwrap_or_default();
-                Ok((validator_id, (lamports, signature_lamports)))
+                    .ok_or_else(|| anyhow::anyhow!("no block rewards"))?;
+                Ok((
+                    validator_id,
+                    (signature_lamports, lamports - signature_lamports),
+                ))
             }
+
             Err(e) => {
-                bail!("Failed to fetch block for slot {slot}: {e}")
+                if let ClientErrorKind::RpcError(RpcError::RpcResponseError { code, .. }) = e.kind()
+                {
+                    if *code == -32_009 {
+                        Ok((validator_id, (0, 0)))
+                    } else {
+                        bail!("Failed to fetch block for slot {slot}: {e}")
+                    }
+                } else {
+                    bail!("Failed to fetch block for slot {slot}: {e}")
+                }
             }
         }
     })
@@ -83,6 +104,7 @@ pub async fn get_block_rewards<T: ValidatorRewards>(
 mod tests {
     use super::*;
     use crate::solana_debt_calculator::MockValidatorRewards;
+    use solana_sdk::epoch_info::EpochInfo;
     use solana_transaction_status_client_types::{Reward, UiConfirmedBlock};
 
     #[tokio::test]
@@ -91,9 +113,7 @@ mod tests {
         let validator_id = "some_validator_pubkey".to_string();
         let validator_ids = &[validator_id.clone()];
         let epoch = 100;
-        let first_slot = get_first_slot_for_epoch(epoch);
         let slot_index = 10;
-        let slot = first_slot + slot_index as u64;
 
         let mut leader_schedule = HashMap::new();
         leader_schedule.insert(validator_id.clone(), vec![slot_index]);
@@ -103,7 +123,7 @@ mod tests {
             .times(1)
             .returning(move || Ok(leader_schedule.clone()));
 
-        let block_reward = (5000, 5000 * 3);
+        let block_reward = (7500, 0);
         let mock_block = UiConfirmedBlock {
             num_reward_partitions: Some(1),
             signatures: Some(vec![
@@ -126,10 +146,22 @@ mod tests {
             block_height: None,
         };
 
+        let mock_epoch_info = EpochInfo {
+            epoch: 101,
+            slot_index: 1000,
+            absolute_slot: 100000,
+            block_height: 1030303,
+            slots_in_epoch: 4000,
+            transaction_count: Some(1000),
+        };
+
+        mock_api_provider
+            .expect_get_epoch_info()
+            .times(1)
+            .returning(move || Ok(mock_epoch_info.clone()));
+
         mock_api_provider
             .expect_get_block_with_config()
-            .withf(move |s| *s == slot)
-            .times(1)
             .returning(move |_| Ok(mock_block.clone()));
 
         let rewards = get_block_rewards(&mock_api_provider, validator_ids, epoch)

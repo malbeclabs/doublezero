@@ -2,7 +2,49 @@ use anyhow::{Context, Result};
 use doublezero_record::state::RecordData;
 use doublezero_sdk::record::{self, client, state::read_record_data};
 use solana_client::{nonblocking::rpc_client::RpcClient, rpc_config::RpcSendTransactionConfig};
-use solana_sdk::{commitment_config::CommitmentConfig, signer::Signer, signer::keypair::Keypair};
+use solana_sdk::{
+    clock::Epoch,
+    commitment_config::CommitmentConfig,
+    signer::{Signer, keypair::Keypair},
+};
+
+const SLOT_TIME_DURATION_SECONDS: f64 = 0.4;
+
+pub async fn get_solana_epoch_from_dz_epoch(
+    solana_client: &RpcClient,
+    ledger_client: &RpcClient,
+    dz_epoch: Epoch,
+) -> Result<u64> {
+    let epoch_info = ledger_client.get_epoch_info().await?;
+
+    let first_slot_in_current_epoch = epoch_info.absolute_slot - epoch_info.slot_index;
+
+    let epoch_diff = epoch_info.epoch - dz_epoch;
+
+    let first_slot = first_slot_in_current_epoch - (epoch_info.slots_in_epoch * epoch_diff);
+
+    let block = ledger_client.get_block(first_slot).await?;
+
+    let dz_block_time = block.block_time.unwrap();
+    let dz_block_time: u64 = dz_block_time as u64;
+
+    let solana_epoch_info = solana_client.get_epoch_info().await?;
+
+    let first_slot_in_current_solana_epoch =
+        solana_epoch_info.absolute_slot - solana_epoch_info.slot_index;
+
+    let block_time = solana_client
+        .get_block_time(first_slot_in_current_solana_epoch)
+        .await?;
+    let block_time: u64 = block_time as u64;
+
+    let num_slots: u64 = ((block_time - dz_block_time) as f64 / SLOT_TIME_DURATION_SECONDS) as u64;
+
+    Ok(
+        (solana_epoch_info.epoch * solana_epoch_info.slots_in_epoch - num_slots)
+            / solana_epoch_info.slots_in_epoch,
+    )
+}
 
 pub async fn write_record_to_ledger<T: borsh::BorshSerialize>(
     rpc_client: &RpcClient,
@@ -10,19 +52,25 @@ pub async fn write_record_to_ledger<T: borsh::BorshSerialize>(
     record_data: &T,
     commitment_config: CommitmentConfig,
     seeds: &[&[u8]],
-) -> Result<()> {
+) -> Result<bool> {
     let recent_blockhash = rpc_client.get_latest_blockhash().await?;
     let payer_key = payer_signer.pubkey();
 
     let serialized = borsh::to_vec(record_data)?;
-    client::try_create_record(
+    // todo : log signature
+    let record = client::try_create_record(
         rpc_client,
         recent_blockhash,
         payer_signer,
         seeds,
         serialized.len(),
     )
-    .await?;
+    .await
+    .unwrap_or_else(|_| Default::default());
+
+    if record.to_string() == "1111111111111111111111111111111111111111111111111111111111111111" {
+        return Ok(true);
+    }
 
     for chunk in record::instruction::write_record_chunks(&payer_key, seeds, &serialized) {
         chunk
@@ -39,7 +87,7 @@ pub async fn write_record_to_ledger<T: borsh::BorshSerialize>(
             .await?;
     }
 
-    Ok(())
+    Ok(false)
 }
 
 pub async fn read_from_ledger(
@@ -80,6 +128,42 @@ mod tests {
 
     use solana_transaction_status_client_types::{TransactionDetails, UiTransactionEncoding};
     use std::{str::FromStr, time::Duration};
+
+    #[ignore = "needs remote connection"]
+    #[tokio::test]
+    async fn test_convert_dz_epoch_to_solana_epoch() -> anyhow::Result<()> {
+        let commitment_config = CommitmentConfig::processed();
+        let solana_rpc_client = RpcClient::new_with_commitment(solana_rpc(), commitment_config);
+        let ledger_rpc_client =
+            RpcClient::new_with_commitment(ledger_rpc().to_string(), commitment_config);
+        let vote_account_config = RpcGetVoteAccountsConfig {
+            vote_pubkey: None,
+            commitment: CommitmentConfig::finalized().into(),
+            keep_unstaked_delinquents: None,
+            delinquent_slot_distance: None,
+        };
+
+        let rpc_block_config = RpcBlockConfig {
+            encoding: Some(UiTransactionEncoding::Base58),
+            transaction_details: Some(TransactionDetails::None),
+            rewards: Some(true),
+            commitment: None,
+            max_supported_transaction_version: Some(0),
+        };
+        let fpc = SolanaDebtCalculator::new(
+            ledger_rpc_client,
+            solana_rpc_client,
+            rpc_block_config,
+            vote_account_config,
+        );
+
+        let solana_epoch =
+            get_solana_epoch_from_dz_epoch(&fpc.solana_rpc_client, &fpc.ledger_rpc_client, 87)
+                .await?;
+
+        assert_eq!(solana_epoch, 835);
+        Ok(())
+    }
 
     #[ignore] // this test will fail until we hook up the validator script
     #[tokio::test]

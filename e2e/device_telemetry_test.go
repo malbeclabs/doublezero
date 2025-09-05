@@ -202,12 +202,12 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 			doublezero device interface create pit-dzd01 "Loopback256" --loopback-type ipv4
 			doublezero device interface create ams-dz001 "Loopback256" --loopback-type ipv4
 
-			doublezero device update --code ld4-dz01 --max-users 128
-			doublezero device update --code frk-dz01 --max-users 128
-			doublezero device update --code sg1-dz01 --max-users 128
-			doublezero device update --code ty2-dz01 --max-users 128
-			doublezero device update --code pit-dzd01 --max-users 128
-			doublezero device update --code ams-dz001 --max-users 128
+			doublezero device update --pubkey ld4-dz01 --max-users 128
+			doublezero device update --pubkey frk-dz01 --max-users 128
+			doublezero device update --pubkey sg1-dz01 --max-users 128
+			doublezero device update --pubkey ty2-dz01 --max-users 128
+			doublezero device update --pubkey pit-dzd01 --max-users 128
+			doublezero device update --pubkey ams-dz001 --max-users 128
 
 `})
 	require.NoError(t, err)

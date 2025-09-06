@@ -110,6 +110,8 @@ func (c *Collector) InitializeMeasurementMetrics(stateDir string) error {
 		// File doesn't exist yet, no measurements to track
 		metrics.RipeatlasTotalMeasurements.Set(0)
 		metrics.RipeatlasProbesPerMeasurement.Set(0)
+		metrics.RipeatlasExpectedDailyCredits.Set(0)
+		metrics.RipeatlasExpectedDailyResults.Set(0)
 		c.log.Info("No measurement state file found, initializing metrics to zero")
 		return nil
 	}
@@ -488,9 +490,12 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 				Source:        sourceLocation,
 				ProbeID:       probeID,
 			}] = exporter.Record{
-				DataProvider:       exporter.DataProviderNameRIPEAtlas,
-				SourceExchangeCode: targetLocation, // Measurement target (owner)
-				TargetExchangeCode: sourceLocation, // Probe location (destination)
+				DataProvider: exporter.DataProviderNameRIPEAtlas,
+				// Source and target are swapped here to match alphabetical ordering expected by downstream systems.
+				// We alphabetically sort the measurements by exchange code, but from the perspective of the measurement
+				// we are pinging from a remote probe to our target exchange.
+				SourceExchangeCode: targetLocation,
+				TargetExchangeCode: sourceLocation,
 				Timestamp:          timestamp,
 				RTT:                latency,
 			}
@@ -918,6 +923,59 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 			time.Sleep(CallDelay)
 		}
 	}
+
+	// Step 9: Calculate and update expected daily credits metric
+	// Use API-provided estimates when available
+	totalProbeCount := 0
+	expectedDailyResults := 0.0
+	expectedDailyCredits := 0.0
+
+	// Build maps for API-provided values
+	measurementAPIData := make(map[int]Measurement)
+	for _, m := range doubleZeroMeasurements {
+		measurementAPIData[m.ID] = m
+	}
+
+	for id := range measurementState.tracker.Metadata {
+		if meta, exists := measurementState.tracker.Metadata[id]; exists {
+			probeCount := len(meta.Sources)
+			totalProbeCount += probeCount
+
+			// Use API-provided estimates if available
+			if apiData, ok := measurementAPIData[id]; ok {
+				if apiData.EstimatedResultsPerDay > 0 {
+					expectedDailyResults += apiData.EstimatedResultsPerDay
+				} else {
+					// Fallback calculation if API doesn't provide estimate
+					samplesPerDay := (24 * time.Hour) / samplingInterval
+					expectedDailyResults += float64(probeCount) * float64(samplesPerDay)
+				}
+
+				if apiData.CreditsPerResult > 0 && apiData.EstimatedResultsPerDay > 0 {
+					expectedDailyCredits += apiData.CreditsPerResult * apiData.EstimatedResultsPerDay
+				} else {
+					// Fallback: assume 2 credits per result
+					samplesPerDay := (24 * time.Hour) / samplingInterval
+					expectedDailyCredits += 2.0 * float64(probeCount) * float64(samplesPerDay)
+				}
+			} else {
+				// No API data available, use fallback calculation
+				samplesPerDay := (24 * time.Hour) / samplingInterval
+				expectedDailyResults += float64(probeCount) * float64(samplesPerDay)
+				expectedDailyCredits += 2.0 * float64(probeCount) * float64(samplesPerDay)
+			}
+		}
+	}
+
+	metrics.RipeatlasExpectedDailyResults.Set(expectedDailyResults)
+	metrics.RipeatlasExpectedDailyCredits.Set(expectedDailyCredits)
+
+	c.log.Info("Updated expected daily metrics",
+		slog.Float64("expected_daily_results", expectedDailyResults),
+		slog.Float64("expected_daily_credits", expectedDailyCredits),
+		slog.Int("total_probe_count", totalProbeCount),
+		slog.Int("measurement_count", len(measurementState.tracker.Metadata)),
+		slog.String("source", "api_estimates_with_fallback"))
 
 	return nil
 }

@@ -278,7 +278,7 @@ func TestInternetLatency_RIPEAtlas_State_TimestampTracker_Structure(t *testing.T
 	t.Parallel()
 
 	// Test that TimestampTracker can be marshaled/unmarshaled correctly
-	tracker := &TimestampTracker{
+	tracker := &MetadataTracker{
 		Metadata: map[int]MeasurementMeta{
 			100: {
 				TargetLocation: "lax",
@@ -298,7 +298,7 @@ func TestInternetLatency_RIPEAtlas_State_TimestampTracker_Structure(t *testing.T
 	require.NoError(t, err)
 
 	// Unmarshal
-	var tracker2 TimestampTracker
+	var tracker2 MetadataTracker
 	err = json.Unmarshal(data, &tracker2)
 	require.NoError(t, err)
 

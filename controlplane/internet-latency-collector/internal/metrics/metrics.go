@@ -65,6 +65,16 @@ var (
 		Help: "Number of source probes per location (exchanges minus 1)",
 	})
 
+	RipeatlasExpectedDailyCredits = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "doublezero_internet_latency_collector_ripeatlas_expected_daily_credits",
+		Help: "Estimated daily RIPE Atlas credit usage (rough estimate, actual may vary)",
+	})
+
+	RipeatlasExpectedDailyResults = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "doublezero_internet_latency_collector_ripeatlas_expected_daily_results",
+		Help: "Expected daily RIPE Atlas results (constrained by 100k daily limit)",
+	})
+
 	// Distance metrics
 	DistanceFromExchangeToProbe = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "doublezero_internet_latency_collector_distance_from_exchange_to_probe_km",

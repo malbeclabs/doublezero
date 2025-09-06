@@ -96,9 +96,11 @@ type Measurement struct {
 		Name string `json:"name"`
 		ID   int    `json:"id"`
 	} `json:"status"`
-	Type   string   `json:"type"`
-	Target string   `json:"target"`
-	Tags   []string `json:"tags,omitempty"`
+	Type                   string   `json:"type"`
+	Target                 string   `json:"target"`
+	Tags                   []string `json:"tags,omitempty"`
+	CreditsPerResult       float64  `json:"credits_per_result"`
+	EstimatedResultsPerDay float64  `json:"estimated_results_per_day"`
 }
 
 type ClientConfig struct {

@@ -8,10 +8,10 @@ import (
 
 type MeasurementState struct {
 	filename string
-	tracker  *TimestampTracker
+	tracker  *MetadataTracker
 }
 
-type TimestampTracker struct {
+type MetadataTracker struct {
 	Metadata map[int]MeasurementMeta `json:"metadata"`
 }
 
@@ -31,7 +31,7 @@ type SourceProbeMeta struct {
 func NewMeasurementState(filename string) *MeasurementState {
 	return &MeasurementState{
 		filename: filename,
-		tracker: &TimestampTracker{
+		tracker: &MetadataTracker{
 			Metadata: make(map[int]MeasurementMeta),
 		},
 	}
@@ -48,7 +48,7 @@ func (ms *MeasurementState) Load() error {
 	}
 	defer file.Close()
 
-	var tracker TimestampTracker
+	var tracker MetadataTracker
 	decoder := json.NewDecoder(file)
 	if err := decoder.Decode(&tracker); err != nil {
 		return fmt.Errorf("failed to decode timestamp file: %w", err)

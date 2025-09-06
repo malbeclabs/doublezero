@@ -29,7 +29,7 @@ import (
 const (
 	defaultStateDir                     = "/var/lib/doublezero-internet-latency-collector/state"
 	defaultAtlasProbesPerLocation       = 1
-	defaultRipeAtlasSamplingInterval    = 2 * time.Minute
+	defaultRipeAtlasSamplingInterval    = 6 * time.Minute
 	defaultRipeAtlasMeasurementInterval = 1 * time.Hour
 	defaultRipeAtlasExportInterval      = 2 * time.Minute
 	defaultWheresitupSamplingInterval   = 2 * time.Minute

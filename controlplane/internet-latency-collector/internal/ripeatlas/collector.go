@@ -1008,6 +1008,16 @@ func (c *Collector) Run(ctx context.Context, dryRun bool, probesPerLocation int,
 
 	var wg sync.WaitGroup
 
+	// Run measurement creation immediately on startup
+	c.log.Info("Running initial RIPE Atlas measurement creation")
+	if err := c.RunRipeAtlasMeasurementCreation(ctx, dryRun, probesPerLocation, stateDir, samplingInterval); err != nil {
+		c.log.Error("Initial measurement creation failed", slog.String("error", err.Error()))
+		metrics.RipeatlasMeasurementManagementFailuresTotal.Inc()
+		// Continue running even if initial creation fails
+	} else {
+		metrics.RipeatlasMeasurementManagementRunsTotal.Inc()
+	}
+
 	// Measurement management
 	wg.Add(1)
 	go func() {

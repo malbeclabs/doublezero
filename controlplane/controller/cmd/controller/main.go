@@ -6,8 +6,10 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"log"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -17,6 +19,8 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+
+	_ "net/http/pprof"
 
 	"github.com/gagliardetto/solana-go"
 	"github.com/gagliardetto/solana-go/rpc"
@@ -123,6 +127,7 @@ func NewControllerCommand() *ControllerCommand {
 	c.fs.BoolVar(&c.showVersion, "version", false, "show version information and exit")
 	c.fs.StringVar(&c.tlsCertFile, "tls-cert", "", "path to tls cert file")
 	c.fs.StringVar(&c.tlsKeyFile, "tls-key", "", "path to tls key file")
+	c.fs.BoolVar(&c.enablePprof, "enable-pprof", false, "enable pprof server")
 	return c
 }
 
@@ -140,6 +145,7 @@ type ControllerCommand struct {
 	showVersion              bool
 	tlsCertFile              string
 	tlsKeyFile               string
+	enablePprof              bool
 }
 
 func (c *ControllerCommand) Fs() *flag.FlagSet {
@@ -166,6 +172,13 @@ func (c *ControllerCommand) Run() error {
 
 	// set build info prometheus metric
 	controller.BuildInfo.WithLabelValues(version, commit, date).Set(1)
+
+	// Start pprof server
+	if c.enablePprof {
+		go func() {
+			log.Println(http.ListenAndServe("localhost:6060", nil))
+		}()
+	}
 
 	// start controller
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

@@ -43,10 +43,10 @@ pub fn validate_parse_mtu(val: &str) -> Result<u32, String> {
 
 pub fn validate_parse_delay_ms(val: &str) -> Result<f64, String> {
     if let Ok(delay) = val.parse::<f64>() {
-        if (1.0..=1000.0).contains(&delay) {
+        if (0.01..=1000.0).contains(&delay) {
             Ok(delay)
         } else {
-            Err(String::from("Delay must be between 1 and 1000 ms"))
+            Err(String::from("Delay must be between 0.01 and 1000 ms"))
         }
     } else {
         Err(String::from("invalid delay format"))
@@ -110,9 +110,10 @@ mod tests {
 
     #[test]
     fn test_validate_delay_ms() {
+        assert!(validate_parse_delay_ms("0.01").is_ok());
         assert!(validate_parse_delay_ms("1").is_ok());
         assert!(validate_parse_delay_ms("1000").is_ok());
-        assert!(validate_parse_delay_ms("0.5").is_err());
+        assert!(validate_parse_delay_ms("0.009").is_err());
         assert!(validate_parse_delay_ms("1001").is_err());
         assert!(validate_parse_delay_ms("not_a_number").is_err());
     }

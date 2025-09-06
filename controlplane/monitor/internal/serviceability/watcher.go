@@ -14,8 +14,10 @@ const (
 )
 
 type ServiceabilityWatcher struct {
-	log *slog.Logger
-	cfg *Config
+	log          *slog.Logger
+	cfg          *Config
+	cacheLinks   []serviceability.Link
+	cacheDevices []serviceability.Device
 }
 
 func NewServiceabilityWatcher(cfg *Config) (*ServiceabilityWatcher, error) {
@@ -67,6 +69,40 @@ func (w *ServiceabilityWatcher) Tick(ctx context.Context) error {
 
 	w.log.Debug("serviceability data", "program_version", version)
 
+	// we need to null user and reference count fields, else the logs will be noisy.
+	for i := range data.Devices {
+		data.Devices[i].UsersCount = 0
+		data.Devices[i].ReferenceCount = 0
+	}
+
+	logEvent := func(events ServiceabilityEventer) {
+		w.log.Info(
+			"serviceability event",
+			"entity_type", events.EntityType(),
+			"action", events.Type(),
+			"id", events.Id(),
+			"pub_key", events.PubKey(),
+			"diff", events.Diff())
+	}
+
+	if w.cacheDevices != nil {
+		deviceEvents := CompareDevice(w.cacheDevices, data.Devices)
+		w.log.Info("device events", "count", len(deviceEvents))
+		for _, e := range deviceEvents {
+			logEvent(e)
+		}
+	}
+	if w.cacheLinks != nil {
+		linkEvents := CompareLink(w.cacheLinks, data.Links)
+		w.log.Info("link events", "count", len(linkEvents))
+		for _, e := range linkEvents {
+			logEvent(e)
+		}
+	}
+
+	// save current on-chain state for next comparison interval
+	w.cacheLinks = data.Links
+	w.cacheDevices = data.Devices
 	return nil
 }
 

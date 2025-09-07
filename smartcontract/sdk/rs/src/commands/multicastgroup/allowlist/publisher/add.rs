@@ -1,34 +1,42 @@
 use crate::{commands::multicastgroup::get::GetMulticastGroupCommand, DoubleZeroClient};
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction,
+    instructions::DoubleZeroInstruction, pda::get_accesspass_pda,
     processors::multicastgroup::allowlist::publisher::add::AddMulticastGroupPubAllowlistArgs,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use std::net::Ipv4Addr;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct AddMulticastGroupPubAllowlistCommand {
     pub pubkey_or_code: String,
-    pub pubkey: Pubkey,
+    pub client_ip: Ipv4Addr,
+    pub user_payer: Pubkey,
 }
 
 impl AddMulticastGroupPubAllowlistCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
-        let (pda_pubkey, mgroup) = GetMulticastGroupCommand {
+        let (mgroup_pubkey, _mgroup) = GetMulticastGroupCommand {
             pubkey_or_code: self.pubkey_or_code.clone(),
         }
         .execute(client)?;
 
-        if mgroup.pub_allowlist.contains(&self.pubkey) {
-            eyre::bail!("Publisher is already in the allowlist");
-        }
+        let (accesspass_pk, _) = get_accesspass_pda(
+            &client.get_program_id(),
+            &self.client_ip,
+            &client.get_payer(),
+        );
 
         client.execute_transaction(
             DoubleZeroInstruction::AddMulticastGroupPubAllowlist(
                 AddMulticastGroupPubAllowlistArgs {
-                    pubkey: self.pubkey,
+                    client_ip: self.client_ip,
+                    user_payer: self.user_payer,
                 },
             ),
-            vec![AccountMeta::new(pda_pubkey, false)],
+            vec![
+                AccountMeta::new(mgroup_pubkey, false),
+                AccountMeta::new(accesspass_pk, false),
+            ],
         )
     }
 }
@@ -66,10 +74,8 @@ mod tests {
             max_bandwidth: 1000,
             status: MulticastGroupStatus::Activated,
             code: "test_code".to_string(),
-            publishers: vec![],
-            subscribers: vec![],
-            pub_allowlist: vec![],
-            sub_allowlist: vec![],
+            publisher_count: 5,
+            subscriber_count: 10,
         };
 
         let cloned_mgroup = mgroup.clone();
@@ -90,7 +96,10 @@ mod tests {
             .expect_execute_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::AddMulticastGroupPubAllowlist(
-                    AddMulticastGroupPubAllowlistArgs { pubkey },
+                    AddMulticastGroupPubAllowlistArgs {
+                        client_ip: [192, 168, 1, 1].into(),
+                        user_payer: pubkey,
+                    },
                 )),
                 predicate::always(),
             )
@@ -98,7 +107,8 @@ mod tests {
 
         let res = AddMulticastGroupPubAllowlistCommand {
             pubkey_or_code: "test_code".to_string(),
-            pubkey,
+            client_ip: [192, 168, 1, 1].into(),
+            user_payer: pubkey,
         }
         .execute(&client);
 

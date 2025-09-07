@@ -1,6 +1,5 @@
 use crate::{
     error::{DoubleZeroError, Validate},
-    helper::deserialize_vec_with_capacity,
     seeds::SEED_MULTICAST_GROUP,
     state::accounttype::{AccountType, AccountTypeInfo},
 };
@@ -72,46 +71,16 @@ pub struct MulticastGroup {
     pub max_bandwidth: u64,        // 8
     pub status: MulticastGroupStatus, // 1
     pub code: String,              // 4 + len
-    #[cfg_attr(
-        feature = "serde",
-        serde(
-            serialize_with = "doublezero_program_common::serializer::serialize_pubkeylist_as_string",
-            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkeylist_from_string"
-        )
-    )]
-    pub pub_allowlist: Vec<Pubkey>, // 4 + 32 * len
-    #[cfg_attr(
-        feature = "serde",
-        serde(
-            serialize_with = "doublezero_program_common::serializer::serialize_pubkeylist_as_string",
-            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkeylist_from_string"
-        )
-    )]
-    pub sub_allowlist: Vec<Pubkey>, // 4 + 32 * len
-    #[cfg_attr(
-        feature = "serde",
-        serde(
-            serialize_with = "doublezero_program_common::serializer::serialize_pubkeylist_as_string",
-            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkeylist_from_string"
-        )
-    )]
-    pub publishers: Vec<Pubkey>, // 4 + 32 * len
-    #[cfg_attr(
-        feature = "serde",
-        serde(
-            serialize_with = "doublezero_program_common::serializer::serialize_pubkeylist_as_string",
-            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkeylist_from_string"
-        )
-    )]
-    pub subscribers: Vec<Pubkey>, // 4 + 32 * len
+    pub publisher_count: u32,      // 4
+    pub subscriber_count: u32,     // 4
 }
 
 impl fmt::Display for MulticastGroup {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, owner: {}, index: {}, bump_seed:{}, code: {}, multicast_ip: {}, max_bandwdith: {}, status: {}",
-            self.account_type, self.owner, self.index, self.bump_seed, self.code, &self.multicast_ip, self.max_bandwidth,  self.status,
+            "account_type: {}, owner: {}, index: {}, bump_seed:{}, code: {}, multicast_ip: {}, max_bandwidth: {}, publishers: {}, subscribers: {}, status: {}",
+            self.account_type, self.owner, self.index, self.bump_seed, self.code, &self.multicast_ip, self.max_bandwidth, self.publisher_count, self.subscriber_count, self.status,
         )
     }
 }
@@ -121,23 +90,7 @@ impl AccountTypeInfo for MulticastGroup {
         SEED_MULTICAST_GROUP
     }
     fn size(&self) -> usize {
-        1 + 32
-            + 16
-            + 1
-            + 32
-            + 4
-            + 8
-            + 4
-            + self.code.len()
-            + 4
-            + self.pub_allowlist.len() * 32
-            + 4
-            + self.sub_allowlist.len() * 32
-            + 4
-            + self.publishers.len() * 32
-            + 4
-            + self.subscribers.len() * 32
-            + 1
+        1 + 32 + 16 + 1 + 32 + 4 + 8 + 1 + 4 + self.code.len() + 4 + 4
     }
     fn index(&self) -> u128 {
         self.index
@@ -164,10 +117,8 @@ impl TryFrom<&[u8]> for MulticastGroup {
             max_bandwidth: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             status: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             code: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            pub_allowlist: deserialize_vec_with_capacity(&mut data).unwrap_or_default(),
-            sub_allowlist: deserialize_vec_with_capacity(&mut data).unwrap_or_default(),
-            publishers: deserialize_vec_with_capacity(&mut data).unwrap_or_default(),
-            subscribers: deserialize_vec_with_capacity(&mut data).unwrap_or_default(),
+            publisher_count: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            subscriber_count: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::MulticastGroup {
@@ -228,10 +179,8 @@ mod tests {
             max_bandwidth: 1000,
             status: MulticastGroupStatus::Activated,
             code: "test".to_string(),
-            pub_allowlist: vec![Pubkey::new_unique()],
-            sub_allowlist: vec![Pubkey::new_unique()],
-            publishers: vec![Pubkey::new_unique()],
-            subscribers: vec![Pubkey::new_unique()],
+            publisher_count: 0,
+            subscriber_count: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -251,10 +200,8 @@ mod tests {
             max_bandwidth: 1000,
             status: MulticastGroupStatus::Activated,
             code: "test".to_string(),
-            pub_allowlist: vec![Pubkey::new_unique(), Pubkey::new_unique()],
-            sub_allowlist: vec![Pubkey::new_unique(), Pubkey::new_unique()],
-            publishers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
-            subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
+            publisher_count: 5,
+            subscriber_count: 10,
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -273,38 +220,12 @@ mod tests {
         assert_eq!(val.status, val2.status);
         assert_eq!(val.account_type, val2.account_type);
         assert_eq!(val.max_bandwidth, val2.max_bandwidth);
+        assert_eq!(val.publisher_count, val2.publisher_count);
+        assert_eq!(val.subscriber_count, val2.subscriber_count);
         assert_eq!(val.account_type as u8, data[0], "Invalid Account Type");
         assert_eq!(
             val.account_type as u8, val2.account_type as u8,
             "Invalid Account Type"
-        );
-        assert_eq!(
-            val.pub_allowlist.len(),
-            val2.pub_allowlist.len(),
-            "Invalid Pub Allowlist"
-        );
-        assert_eq!(
-            val.sub_allowlist.len(),
-            val2.sub_allowlist.len(),
-            "Invalid Sub Allowlist"
-        );
-        assert_eq!(
-            val.publishers.len(),
-            val2.publishers.len(),
-            "Invalid Publishers"
-        );
-        assert_eq!(
-            val.subscribers.len(),
-            val2.subscribers.len(),
-            "Invalid Subscribers"
-        );
-        assert_eq!(
-            val.pub_allowlist[0], val2.pub_allowlist[0],
-            "Invalid Pub Allowlist"
-        );
-        assert_eq!(
-            val.sub_allowlist[0], val2.sub_allowlist[0],
-            "Invalid Sub Allowlist"
         );
         assert_eq!(data.len(), val.size(), "Invalid Size");
     }

@@ -306,12 +306,12 @@ func (dn *TestDevnet) CreateMulticastGroupOnchain(t *testing.T, client *devnet.C
 		doublezero multicast group list
 
 		echo "==> Add me to multicast group allowlist"
-		doublezero multicast group allowlist publisher add --code ` + multicastGroupCode + ` --pubkey me
-		doublezero multicast group allowlist subscriber add --code ` + multicastGroupCode + ` --pubkey me
+		doublezero multicast group allowlist publisher add --code ` + multicastGroupCode + ` --user-payer me --client-ip ` + client.CYOANetworkIP + `
+		doublezero multicast group allowlist subscriber add --code ` + multicastGroupCode + ` --user-payer me --client-ip ` + client.CYOANetworkIP + `
 
 		echo "==> Add client pubkey to multicast group allowlist"
-		doublezero multicast group allowlist publisher add --code ` + multicastGroupCode + ` --pubkey ` + client.Pubkey + `
-		doublezero multicast group allowlist subscriber add --code ` + multicastGroupCode + ` --pubkey ` + client.Pubkey + `
+		doublezero multicast group allowlist publisher add --code ` + multicastGroupCode + ` --user-payer ` + client.Pubkey + ` --client-ip ` + client.CYOANetworkIP + `
+		doublezero multicast group allowlist subscriber add --code ` + multicastGroupCode + ` --user-payer ` + client.Pubkey + ` --client-ip ` + client.CYOANetworkIP + `
 	`})
 	require.NoError(t, err)
 }

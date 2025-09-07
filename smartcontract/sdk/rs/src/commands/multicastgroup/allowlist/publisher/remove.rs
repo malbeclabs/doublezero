@@ -1,5 +1,7 @@
+use std::net::Ipv4Addr;
+
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction,
+    instructions::DoubleZeroInstruction, pda::get_accesspass_pda,
     processors::multicastgroup::allowlist::publisher::remove::RemoveMulticastGroupPubAllowlistArgs,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
@@ -9,27 +11,34 @@ use crate::{commands::multicastgroup::get::GetMulticastGroupCommand, DoubleZeroC
 #[derive(Debug, PartialEq, Clone)]
 pub struct RemoveMulticastGroupPubAllowlistCommand {
     pub pubkey_or_code: String,
-    pub pubkey: Pubkey,
+    pub client_ip: Ipv4Addr,
+    pub user_payer: Pubkey,
 }
 
 impl RemoveMulticastGroupPubAllowlistCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
-        let (pda_pubkey, mgroup) = GetMulticastGroupCommand {
+        let (mgroup_pubkey, _mgroup) = GetMulticastGroupCommand {
             pubkey_or_code: self.pubkey_or_code.clone(),
         }
         .execute(client)?;
 
-        if !mgroup.pub_allowlist.contains(&self.pubkey) {
-            eyre::bail!("Publisher is not in the allowlist");
-        }
+        let (accesspass_pk, _) = get_accesspass_pda(
+            &client.get_program_id(),
+            &self.client_ip,
+            &client.get_payer(),
+        );
 
         client.execute_transaction(
             DoubleZeroInstruction::RemoveMulticastGroupPubAllowlist(
                 RemoveMulticastGroupPubAllowlistArgs {
-                    pubkey: self.pubkey,
+                    client_ip: self.client_ip,
+                    user_payer: self.user_payer,
                 },
             ),
-            vec![AccountMeta::new(pda_pubkey, false)],
+            vec![
+                AccountMeta::new(mgroup_pubkey, false),
+                AccountMeta::new(accesspass_pk, false),
+            ],
         )
     }
 }
@@ -67,10 +76,8 @@ mod tests {
             max_bandwidth: 1000,
             status: MulticastGroupStatus::Activated,
             code: "test_code".to_string(),
-            publishers: vec![],
-            subscribers: vec![],
-            pub_allowlist: vec![pubkey],
-            sub_allowlist: vec![],
+            publisher_count: 5,
+            subscriber_count: 10,
         };
 
         let cloned_mgroup = mgroup.clone();
@@ -91,7 +98,10 @@ mod tests {
             .expect_execute_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::RemoveMulticastGroupPubAllowlist(
-                    RemoveMulticastGroupPubAllowlistArgs { pubkey },
+                    RemoveMulticastGroupPubAllowlistArgs {
+                        client_ip: [192, 168, 1, 1].into(),
+                        user_payer: pubkey,
+                    },
                 )),
                 predicate::always(),
             )
@@ -100,7 +110,8 @@ mod tests {
         // remove publisher with valid code
         let res = RemoveMulticastGroupPubAllowlistCommand {
             pubkey_or_code: "test_code".to_string(),
-            pubkey,
+            client_ip: [192, 168, 1, 1].into(),
+            user_payer: pubkey,
         }
         .execute(&client);
         assert!(res.is_ok());
@@ -108,7 +119,8 @@ mod tests {
         // error attempting to remove publisher with code containing invalid char
         let res = RemoveMulticastGroupPubAllowlistCommand {
             pubkey_or_code: "test^code".to_string(),
-            pubkey,
+            client_ip: [192, 168, 1, 1].into(),
+            user_payer: pubkey,
         }
         .execute(&client);
         assert!(res.is_err());

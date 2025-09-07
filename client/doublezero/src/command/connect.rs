@@ -96,10 +96,7 @@ impl ProvisioningCliCommand {
         let (client_ip, client_ip_str) = look_for_ip(&self.client_ip, &spinner).await?;
 
         if !check_accesspass(client, client_ip)? {
-            println!(
-                "❌  Unable to find a valid Access Pass for the IP: {}",
-                client_ip_str
-            );
+            println!("❌  Unable to find a valid Access Pass for the IP: {client_ip_str}",);
             return Err(eyre::eyre!(
                 "You need to have a valid Access Pass to connect. Please contact support."
             ));
@@ -744,10 +741,6 @@ mod tests {
                 .returning_st(move |_| Ok((Pubkey::new_unique(), global_cfg.clone())));
 
             let payer = fixture.client.get_payer();
-            fixture
-                .client
-                .expect_list_user_allowlist()
-                .returning_st(move |_| Ok(vec![payer]));
 
             let (accesspass_pk, _) = get_accesspass_pda(
                 &fixture.client.get_program_id(),
@@ -764,6 +757,8 @@ mod tests {
                 accesspass_type: AccessPassType::Prepaid,
                 connection_count: 0,
                 status: AccessPassStatus::Requested,
+                mgroup_pub_allowlist: vec![],
+                mgroup_sub_allowlist: vec![],
             };
             fixture
                 .client
@@ -879,10 +874,8 @@ mod tests {
                 max_bandwidth: 10_000_000_000,
                 status: MulticastGroupStatus::Activated,
                 code: code.to_string(),
-                pub_allowlist: vec![],
-                sub_allowlist: vec![],
-                publishers: vec![],
-                subscribers: vec![],
+                publisher_count: 0,
+                subscriber_count: 0,
             };
             mcast_groups.insert(pk, group.clone());
             (pk, group)

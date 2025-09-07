@@ -6,16 +6,19 @@ use crate::{
 use clap::Args;
 use doublezero_sdk::commands::multicastgroup::allowlist::publisher::add::AddMulticastGroupPubAllowlistCommand;
 use solana_sdk::pubkey::Pubkey;
-use std::{io::Write, str::FromStr};
+use std::{io::Write, net::Ipv4Addr, str::FromStr};
 
 #[derive(Args, Debug)]
 pub struct AddMulticastGroupPubAllowlistCliCommand {
     /// Multicast group code to add the publisher to
     #[arg(long, value_parser = validate_code)]
     pub code: String,
+    /// Client IP address in IPv4 format
+    #[arg(long)]
+    pub client_ip: Ipv4Addr,
     /// Publisher Pubkey or 'me' for current payer
     #[arg(long, value_parser = validate_pubkey)]
-    pub pubkey: String,
+    pub user_payer: String,
 }
 
 impl AddMulticastGroupPubAllowlistCliCommand {
@@ -24,17 +27,18 @@ impl AddMulticastGroupPubAllowlistCliCommand {
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
         let pubkey = {
-            if self.pubkey.eq_ignore_ascii_case("me") {
+            if self.user_payer.eq_ignore_ascii_case("me") {
                 client.get_payer()
             } else {
-                Pubkey::from_str(&self.pubkey)?
+                Pubkey::from_str(&self.user_payer)?
             }
         };
 
         let signature =
             client.add_multicastgroup_pub_allowlist(AddMulticastGroupPubAllowlistCommand {
                 pubkey_or_code: self.code,
-                pubkey,
+                client_ip: self.client_ip,
+                user_payer: pubkey,
             })?;
         writeln!(out, "Signature: {signature}")?;
 
@@ -65,6 +69,8 @@ mod tests {
             100, 221, 20, 137, 4, 5,
         ]);
 
+        let client_ip = [100, 0, 0, 1].into();
+
         client
             .expect_check_requirements()
             .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
@@ -73,7 +79,8 @@ mod tests {
             .expect_add_multicastgroup_pub_allowlist()
             .with(predicate::eq(AddMulticastGroupPubAllowlistCommand {
                 pubkey_or_code: "test_code".to_string(),
-                pubkey,
+                user_payer: pubkey,
+                client_ip,
             }))
             .returning(move |_| Ok(signature));
 
@@ -81,7 +88,8 @@ mod tests {
         let mut output = Vec::new();
         let res = AddMulticastGroupPubAllowlistCliCommand {
             code: "test_code".to_string(),
-            pubkey: pubkey.to_string(),
+            client_ip,
+            user_payer: pubkey.to_string(),
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

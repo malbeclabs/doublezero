@@ -1,6 +1,9 @@
 use crate::{doublezerocommand::CliCommand, validators::validate_pubkey};
 use clap::Args;
-use doublezero_sdk::commands::{accesspass::get::GetAccessPassCommand, user::get::GetUserCommand};
+use doublezero_sdk::commands::{
+    accesspass::get::GetAccessPassCommand, multicastgroup::list::ListMulticastGroupCommand,
+    user::get::GetUserCommand,
+};
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, str::FromStr};
 
@@ -20,6 +23,7 @@ impl GetUserCliCommand {
             client_ip: user.client_ip,
             user_payer: user.owner,
         })?;
+        let multicast_groups = client.list_multicastgroup(ListMulticastGroupCommand {})?;
 
         writeln!(
             out,
@@ -45,12 +49,16 @@ impl GetUserCliCommand {
             accesspass,
             user.publishers
                 .iter()
-                .map(|p| p.to_string())
+                .map(|pk| multicast_groups
+                    .get(pk)
+                    .map_or(pk.to_string(), |mg| mg.code.clone()))
                 .collect::<Vec<_>>()
                 .join(", "),
             user.subscribers
                 .iter()
-                .map(|p| p.to_string())
+                .map(|pk| multicast_groups
+                    .get(pk)
+                    .map_or(pk.to_string(), |mg| mg.code.clone()))
                 .collect::<Vec<_>>()
                 .join(", "),
             user.status,
@@ -72,7 +80,7 @@ mod tests {
             accesspass,
             user::{delete::DeleteUserCommand, get::GetUserCommand},
         },
-        AccountType, User, UserCYOA, UserStatus, UserType,
+        AccountType, MulticastGroup, User, UserCYOA, UserStatus, UserType,
     };
     use doublezero_serviceability::{
         pda::{get_accesspass_pda, get_user_pda},
@@ -93,6 +101,21 @@ mod tests {
             100, 221, 20, 137, 4, 5,
         ]);
 
+        let mgroup_pubkey = Pubkey::new_unique();
+        let mgroup = MulticastGroup {
+            account_type: AccountType::MulticastGroup,
+            owner: client.get_payer(),
+            bump_seed: 0,
+            index: 1,
+            code: "test".to_string(),
+            max_bandwidth: 1000,
+            status: doublezero_sdk::MulticastGroupStatus::Activated,
+            tenant_pk: Pubkey::default(),
+            multicast_ip: "100.0.0.1".parse().unwrap(),
+            publisher_count: 0,
+            subscriber_count: 1,
+        };
+
         let user = User {
             account_type: AccountType::User,
             index: 1,
@@ -108,7 +131,7 @@ mod tests {
             status: UserStatus::Activated,
             owner: pda_pubkey,
             publishers: vec![],
-            subscribers: vec![],
+            subscribers: vec![mgroup_pubkey],
             validator_pubkey: Pubkey::default(),
         };
 
@@ -123,9 +146,21 @@ mod tests {
             last_access_epoch: 10,
             connection_count: 0,
             status: AccessPassStatus::Connected,
+            mgroup_pub_allowlist: vec![],
+            mgroup_sub_allowlist: vec![],
             owner: client.get_payer(),
         };
 
+        client
+            .expect_list_multicastgroup()
+            .with(predicate::eq(
+                doublezero_sdk::commands::multicastgroup::list::ListMulticastGroupCommand {},
+            ))
+            .returning(move |_| {
+                let mut map = std::collections::HashMap::new();
+                map.insert(mgroup_pubkey, mgroup.clone());
+                Ok(map)
+            });
         client
             .expect_get_accesspass()
             .with(predicate::eq(accesspass::get::GetAccessPassCommand {
@@ -153,6 +188,6 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by code");
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: CwpwPjV6LsVxHQ1Ye5bizyrXSa9j2Gk5C6y3WyMyYaA1\r\nuser_type: IBRL\r\ndevice: 11111111111111111111111111111111\r\ncyoa_type: GREOverDIA\r\nclient_ip: 10.0.0.1\r\ntunnel_net: 10.2.3.4/24\r\ndz_ip: 10.0.0.2\r\naccesspass: Prepaid: (expires epoch 10)\r\npublishers: \r\nsubscribers: \r\nstatus: activated\r\nowner: CwpwPjV6LsVxHQ1Ye5bizyrXSa9j2Gk5C6y3WyMyYaA1\n");
+        assert_eq!(output_str, "account: CwpwPjV6LsVxHQ1Ye5bizyrXSa9j2Gk5C6y3WyMyYaA1\r\nuser_type: IBRL\r\ndevice: 11111111111111111111111111111111\r\ncyoa_type: GREOverDIA\r\nclient_ip: 10.0.0.1\r\ntunnel_net: 10.2.3.4/24\r\ndz_ip: 10.0.0.2\r\naccesspass: Prepaid: (expires epoch 10)\r\npublishers: \r\nsubscribers: test\r\nstatus: activated\r\nowner: CwpwPjV6LsVxHQ1Ye5bizyrXSa9j2Gk5C6y3WyMyYaA1\n");
     }
 }

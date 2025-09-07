@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 ### Changes
 
 - Onchain programs
+    - Remove user-level allowlist management from CLI and admin interfaces; manage multicast group allowlists through AccessPass.
     - Add Validate trait for core types (AccessPass, Contributor, Interface, etc.) and enforce runtime checks before account operations.
     - Expand DoubleZeroError with granular variants (invalid IPs, ASN, MTU, VLAN, etc.) and derive PartialEq for easier testing.
     - Rename Config account type to GlobalConfig for clarity and consistency.
@@ -35,7 +36,8 @@ All notable changes to this project will be documented in this file.
     - Updated unit tests and e2e tests to validate the new initialization and activation flow.
 - Contributor Operations
     - Contributors must explicitly run device update to set a valid max_users and activate a Device.
-
+- CLI
+    - Display multicast group memberships (publisher/subscriber) in AccessPass listings to improve visibility.
 
 ## [v0.6.2](https://github.com/malbeclabs/doublezero/compare/client/v0.6.0...client/v0.6.2) – 2025-09-02
 

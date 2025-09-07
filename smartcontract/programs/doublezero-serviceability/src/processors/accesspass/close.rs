@@ -32,6 +32,14 @@ pub fn process_close_access_pass(
     #[cfg(test)]
     msg!("process_close_accesspass({:?})", _value);
 
+    if accesspass_account.data_is_empty() {
+        return Err(DoubleZeroError::AccessPassNotFound.into());
+    }
+    assert_eq!(
+        accesspass_account.owner, program_id,
+        "Invalid AccessPass Account Owner"
+    );
+
     // Check the owner of the accounts
     assert_eq!(
         *globalstate_account.owner,

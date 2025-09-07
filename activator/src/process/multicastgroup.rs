@@ -156,13 +156,11 @@ mod tests {
             bump_seed,
             multicast_ip: Ipv4Addr::UNSPECIFIED,
             max_bandwidth: 10000,
-            pub_allowlist: vec![client.get_payer()],
-            sub_allowlist: vec![client.get_payer()],
-            publishers: vec![],
-            subscribers: vec![],
             status: MulticastGroupStatus::Pending,
             code: "test".to_string(),
             tenant_pk: Pubkey::default(),
+            publisher_count: 0,
+            subscriber_count: 0,
         };
 
         let mgroup = multicastgroup.clone();

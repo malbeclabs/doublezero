@@ -1,6 +1,8 @@
+use std::net::Ipv4Addr;
+
 use crate::{
     commands::{
-        globalstate::get::GetGlobalStateCommand, multicastgroup::get::GetMulticastGroupCommand,
+        accesspass::get::GetAccessPassCommand, multicastgroup::get::GetMulticastGroupCommand,
         user::get::GetUserCommand,
     },
     DoubleZeroClient,
@@ -15,6 +17,7 @@ use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature}
 #[derive(Debug, PartialEq, Clone)]
 pub struct SubscribeMulticastGroupCommand {
     pub group_pk: Pubkey,
+    pub client_ip: Ipv4Addr,
     pub user_pk: Pubkey,
     pub publisher: bool,
     pub subscriber: bool,
@@ -22,10 +25,6 @@ pub struct SubscribeMulticastGroupCommand {
 
 impl SubscribeMulticastGroupCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
-        let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
-
         let (_, mgroup) = GetMulticastGroupCommand {
             pubkey_or_code: self.group_pk.to_string(),
         }
@@ -34,12 +33,6 @@ impl SubscribeMulticastGroupCommand {
 
         if mgroup.status != MulticastGroupStatus::Activated {
             eyre::bail!("MulticastGroup not active");
-        }
-        if self.publisher && !mgroup.pub_allowlist.contains(&client.get_payer()) {
-            eyre::bail!("Publisher not allowed");
-        }
-        if self.subscriber && !mgroup.sub_allowlist.contains(&client.get_payer()) {
-            eyre::bail!("Subscriber not allowed");
         }
 
         let (_, user) = GetUserCommand {
@@ -52,15 +45,30 @@ impl SubscribeMulticastGroupCommand {
             eyre::bail!("User not active");
         }
 
+        let (accesspass_pubkey, accesspass) = GetAccessPassCommand {
+            client_ip: self.client_ip,
+            user_payer: user.owner,
+        }
+        .execute(client)
+        .map_err(|_err| eyre::eyre!("AccessPass not found"))?;
+
+        if self.publisher && !accesspass.mgroup_pub_allowlist.contains(&self.group_pk) {
+            eyre::bail!("User not allowed to publish multicast group");
+        }
+        if self.subscriber && !accesspass.mgroup_sub_allowlist.contains(&self.group_pk) {
+            eyre::bail!("User not allowed to subscribe multicast group");
+        }
+
         client.execute_transaction(
             DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
                 publisher: self.publisher,
                 subscriber: self.subscriber,
+                client_ip: user.client_ip,
             }),
             vec![
                 AccountMeta::new(self.group_pk, false),
+                AccountMeta::new(accesspass_pubkey, false),
                 AccountMeta::new(self.user_pk, false),
-                AccountMeta::new(globalstate_pubkey, false),
             ],
         )
     }
@@ -75,7 +83,7 @@ mod tests {
     use doublezero_program_common::types::NetworkV4;
     use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
-        pda::{get_globalstate_pda, get_location_pda},
+        pda::{get_accesspass_pda, get_globalstate_pda, get_location_pda},
         processors::multicastgroup::subscribe::MulticastGroupSubscribeArgs,
         state::{
             accountdata::AccountData,
@@ -102,18 +110,18 @@ mod tests {
             code: "test".to_string(),
             max_bandwidth: 1000,
             status: MulticastGroupStatus::Activated,
-            pub_allowlist: vec![client.get_payer()],
-            sub_allowlist: vec![client.get_payer()],
             tenant_pk: Pubkey::default(),
             multicast_ip: "223.0.0.1".parse().unwrap(),
-            publishers: vec![],
-            subscribers: vec![],
+            publisher_count: 0,
+            subscriber_count: 0,
         };
 
         client
             .expect_get()
             .with(predicate::eq(pda_pubkey))
             .returning(move |_| Ok(AccountData::MulticastGroup(mgroup.clone())));
+
+        let client_ip = Ipv4Addr::new(192, 168, 1, 10);
 
         let user_pubkey = Pubkey::new_unique();
         let user = User {
@@ -125,8 +133,8 @@ mod tests {
             user_type: UserType::Multicast,
             device_pk: pda_pubkey,
             cyoa_type: UserCYOA::GREOverDIA,
-            client_ip: Ipv4Addr::UNSPECIFIED,
-            dz_ip: Ipv4Addr::UNSPECIFIED,
+            client_ip,
+            dz_ip: client_ip,
             tunnel_id: 0,
             tunnel_net: NetworkV4::default(),
             status: UserStatus::Activated,
@@ -134,6 +142,30 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
         };
+
+        let (accesspass_pubkey, _) = get_accesspass_pda(
+            &client.get_program_id(),
+            &user.client_ip,
+            &client.get_payer(),
+        );
+        let accesspass = doublezero_serviceability::state::accesspass::AccessPass {
+            account_type: AccountType::AccessPass,
+            bump_seed: 0,
+            accesspass_type: doublezero_serviceability::state::accesspass::AccessPassType::Prepaid,
+            client_ip: user.client_ip,
+            user_payer: client.get_payer(),
+            last_access_epoch: 0,
+            connection_count: 0,
+            status: doublezero_serviceability::state::accesspass::AccessPassStatus::Requested,
+            owner: client.get_payer(),
+            mgroup_pub_allowlist: vec![pda_pubkey],
+            mgroup_sub_allowlist: vec![pda_pubkey],
+        };
+        client
+            .expect_get()
+            .with(predicate::eq(accesspass_pubkey))
+            .returning(move |_| Ok(AccountData::AccessPass(accesspass.clone())));
+
         client
             .expect_get()
             .with(predicate::eq(user_pubkey))
@@ -144,12 +176,14 @@ mod tests {
             .with(
                 predicate::eq(DoubleZeroInstruction::SubscribeMulticastGroup(
                     MulticastGroupSubscribeArgs {
+                        client_ip,
                         publisher: true,
                         subscriber: false,
                     },
                 )),
                 predicate::eq(vec![
                     AccountMeta::new(pda_pubkey, false),
+                    AccountMeta::new(accesspass_pubkey, false),
                     AccountMeta::new(user_pubkey, false),
                     AccountMeta::new(globalstate_pubkey, false),
                 ]),
@@ -159,6 +193,7 @@ mod tests {
         let res = SubscribeMulticastGroupCommand {
             group_pk: pda_pubkey,
             user_pk: user_pubkey,
+            client_ip,
             publisher: true,
             subscriber: false,
         }

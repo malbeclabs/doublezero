@@ -44,6 +44,14 @@ pub fn process_check_access_pass_user(
 
     // Check the owner of the accounts
     assert_eq!(user_account.owner, program_id, "Invalid PDA Account Owner");
+    if accesspass_account.data_is_empty() {
+        return Err(DoubleZeroError::AccessPassNotFound.into());
+    }
+    assert_eq!(
+        accesspass_account.owner, program_id,
+        "Invalid AccessPass Account Owner"
+    );
+
     assert_eq!(
         globalstate_account.owner, program_id,
         "Invalid GlobalState Account Owner"

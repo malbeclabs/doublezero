@@ -260,10 +260,6 @@ type MulticastGroup struct {
 	MaxBandwidth uint64
 	Status       MulticastGroupStatus
 	Code         string
-	PubAllowList [][32]uint8
-	SubAllowList [][32]uint8
-	Publishers   [][32]uint8
-	Subscribers  [][32]uint8
 	PubKey       [32]byte
 }
 

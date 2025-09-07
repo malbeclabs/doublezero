@@ -16,6 +16,8 @@ pub struct MulticastGroupUpdateArgs {
     pub code: Option<String>,
     pub multicast_ip: Option<std::net::Ipv4Addr>,
     pub max_bandwidth: Option<u64>,
+    pub publisher_count: Option<u32>,
+    pub subscriber_count: Option<u32>,
 }
 
 impl fmt::Debug for MulticastGroupUpdateArgs {
@@ -79,6 +81,12 @@ pub fn process_update_multicastgroup(
     }
     if let Some(ref max_bandwidth) = value.max_bandwidth {
         multicastgroup.max_bandwidth = *max_bandwidth;
+    }
+    if let Some(ref publisher_count) = value.publisher_count {
+        multicastgroup.publisher_count = *publisher_count;
+    }
+    if let Some(ref subscriber_count) = value.subscriber_count {
+        multicastgroup.subscriber_count = *subscriber_count;
     }
 
     account_write(

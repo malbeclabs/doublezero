@@ -32,6 +32,7 @@ impl DeleteUserCommand {
             SubscribeMulticastGroupCommand {
                 group_pk: *mgroup_pk,
                 user_pk: self.pubkey,
+                client_ip: user.client_ip,
                 publisher: false,
                 subscriber: false,
             }

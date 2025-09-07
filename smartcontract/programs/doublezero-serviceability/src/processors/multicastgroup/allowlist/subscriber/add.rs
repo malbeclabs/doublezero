@@ -1,7 +1,16 @@
-use core::fmt;
-
-use crate::{error::DoubleZeroError, helper::account_write, state::multicastgroup::MulticastGroup};
+use crate::{
+    error::DoubleZeroError,
+    pda::get_accesspass_pda,
+    seeds::{SEED_ACCESS_PASS, SEED_PREFIX},
+    state::{
+        accesspass::{AccessPass, AccessPassStatus, AccessPassType},
+        accounttype::{AccountType, AccountTypeInfo},
+        multicastgroup::MulticastGroup,
+    },
+};
 use borsh::{BorshDeserialize, BorshSerialize};
+use core::fmt;
+use doublezero_program_common::{resize_account::resize_account_if_needed, try_create_account};
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -9,15 +18,17 @@ use solana_program::{
     entrypoint::ProgramResult,
     pubkey::Pubkey,
 };
+use std::net::Ipv4Addr;
 
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone, Default)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct AddMulticastGroupSubAllowlistArgs {
-    pub pubkey: Pubkey,
+    pub client_ip: Ipv4Addr,
+    pub user_payer: Pubkey,
 }
 
 impl fmt::Debug for AddMulticastGroupSubAllowlistArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "pubkey: {}", self.pubkey)
+        write!(f, "user_payer: {}", self.user_payer)
     }
 }
 
@@ -29,6 +40,7 @@ pub fn process_add_multicastgroup_sub_allowlist(
     let accounts_iter = &mut accounts.iter();
 
     let mgroup_account = next_account_info(accounts_iter)?;
+    let accesspass_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
@@ -49,16 +61,76 @@ pub fn process_add_multicastgroup_sub_allowlist(
     assert!(mgroup_account.is_writable, "PDA Account is not writable");
 
     // Parse the global state account & check if the payer is in the allowlist
-    let mut mgroup = MulticastGroup::try_from(mgroup_account)?;
+    let mgroup = MulticastGroup::try_from(mgroup_account)?;
     if mgroup.owner != *payer_account.key {
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    if !mgroup.sub_allowlist.contains(&value.pubkey) {
-        mgroup.sub_allowlist.push(value.pubkey);
-    }
+    if accesspass_account.data_is_empty() {
+        let (expected_pda_account, bump_seed) =
+            get_accesspass_pda(program_id, &value.client_ip, &value.user_payer);
+        assert_eq!(
+            accesspass_account.key, &expected_pda_account,
+            "Invalid AccessPass PubKey"
+        );
+        let accesspass = AccessPass {
+            account_type: AccountType::AccessPass,
+            bump_seed,
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip: value.client_ip,
+            user_payer: value.user_payer,
+            last_access_epoch: 0,
+            connection_count: 0,
+            status: AccessPassStatus::Requested,
+            owner: *payer_account.key,
+            mgroup_pub_allowlist: vec![],
+            mgroup_sub_allowlist: vec![*mgroup_account.key],
+        };
 
-    account_write(mgroup_account, &mgroup, payer_account, system_program)?;
+        try_create_account(
+            payer_account.key,             // Account paying for the new account
+            accesspass_account.key,        // Account to be created
+            accesspass_account.lamports(), // Current amount of lamports on the new account
+            accesspass.size(),             // Size in bytes to allocate for the data field
+            program_id,                    // Set program owner to our program
+            accounts,
+            &[
+                SEED_PREFIX,
+                SEED_ACCESS_PASS,
+                &value.client_ip.octets(),
+                &value.user_payer.to_bytes(),
+                &[bump_seed],
+            ],
+        )?;
+        accesspass.try_serialize(accesspass_account)?;
+    } else {
+        assert_eq!(
+            accesspass_account.owner, program_id,
+            "Invalid Accesspass Account Owner"
+        );
+
+        let mut accesspass = AccessPass::try_from(accesspass_account)?;
+        assert!(
+            accesspass.client_ip == value.client_ip,
+            "AccessPass client_ip does not match"
+        );
+        assert!(
+            accesspass.user_payer == value.user_payer,
+            "AccessPass user_payer does not match"
+        );
+
+        if !accesspass.mgroup_sub_allowlist.contains(mgroup_account.key) {
+            accesspass.mgroup_sub_allowlist.push(*mgroup_account.key);
+        }
+
+        resize_account_if_needed(
+            accesspass_account,
+            payer_account,
+            accounts,
+            accesspass.size(),
+        )?;
+        accesspass.try_serialize(accesspass_account)?;
+    }
 
     #[cfg(test)]
     msg!("Updated: {:?}", mgroup);

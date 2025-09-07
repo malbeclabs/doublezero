@@ -107,6 +107,8 @@ pub enum DoubleZeroError {
     InvalidMaxBandwidth, // variant 50
     #[error("Invalid Multicast IP")]
     InvalidMulticastIp, // variant 51
+    #[error("Access Pass not found")]
+    AccessPassNotFound, // variant 52
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -164,6 +166,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::InvalidVlanId => ProgramError::Custom(49),
             DoubleZeroError::InvalidMaxBandwidth => ProgramError::Custom(50),
             DoubleZeroError::InvalidMulticastIp => ProgramError::Custom(51),
+            DoubleZeroError::AccessPassNotFound => ProgramError::Custom(52),
         }
     }
 }
@@ -222,6 +225,7 @@ impl From<u32> for DoubleZeroError {
             49 => DoubleZeroError::InvalidVlanId,
             50 => DoubleZeroError::InvalidMaxBandwidth,
             51 => DoubleZeroError::InvalidMulticastIp,
+            52 => DoubleZeroError::AccessPassNotFound,
 
             _ => DoubleZeroError::Custom(e),
         }
@@ -305,7 +309,7 @@ mod tests {
         for err in variants {
             let pe: ProgramError = err.clone().into();
             let err2: DoubleZeroError = pe.into();
-            assert_eq!(err, err2, "Error conversion failed for {:?}", err);
+            assert_eq!(err, err2, "Error conversion failed for {err:?}");
         }
     }
 }

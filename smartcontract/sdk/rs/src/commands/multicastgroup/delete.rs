@@ -1,10 +1,4 @@
-use crate::{
-    commands::{
-        globalstate::get::GetGlobalStateCommand,
-        multicastgroup::subscribe::SubscribeMulticastGroupCommand,
-    },
-    DoubleZeroClient,
-};
+use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
     processors::multicastgroup::delete::MulticastGroupDeleteArgs,
@@ -23,21 +17,8 @@ impl DeleteMulticastGroupCommand {
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
         let mgroup_pubkey = self.pubkey;
-        let mgroup = client
-            .get(mgroup_pubkey)
-            .map_err(|_| eyre::eyre!("MulticastGroup not found ({})", mgroup_pubkey))?
-            .get_multicastgroup()
-            .map_err(|e| eyre::eyre!(e))?;
 
-        for user_pk in mgroup.publishers.iter().chain(mgroup.subscribers.iter()) {
-            SubscribeMulticastGroupCommand {
-                group_pk: mgroup_pubkey,
-                user_pk: *user_pk,
-                publisher: false,
-                subscriber: false,
-            }
-            .execute(client)?;
-        }
+        // TODO: Check for existing AccessPass referencing this multicast group pubkey in either publishers or subscribers lists before deletion
 
         client.execute_transaction(
             DoubleZeroInstruction::DeleteMulticastGroup(MulticastGroupDeleteArgs {}),
@@ -85,11 +66,9 @@ mod tests {
             multicast_ip: Ipv4Addr::UNSPECIFIED,
             max_bandwidth: 0,
             status: MulticastGroupStatus::Activated,
-            pub_allowlist: vec![client.get_payer()],
-            sub_allowlist: vec![client.get_payer()],
-            publishers: vec![],
-            subscribers: vec![],
             owner: Pubkey::default(),
+            publisher_count: 1,
+            subscriber_count: 0,
         };
 
         let mgroup_cloned = mgroup.clone();

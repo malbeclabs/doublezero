@@ -98,11 +98,9 @@ pub fn process_create_multicastgroup(
         code,
         multicast_ip: std::net::Ipv4Addr::UNSPECIFIED,
         max_bandwidth: value.max_bandwidth,
-        pub_allowlist: vec![],
-        sub_allowlist: vec![],
-        subscribers: vec![],
-        publishers: vec![],
         status: MulticastGroupStatus::Pending,
+        publisher_count: 0,
+        subscriber_count: 0,
     };
 
     account_create(

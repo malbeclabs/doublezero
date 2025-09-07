@@ -254,10 +254,15 @@ func TestConnectivityMulticast(t *testing.T) {
 		client, err := getQAClient(publisher)
 		require.NoError(t, err, "Failed to create QA client")
 
+		ips, err := net.LookupIP(publisher)
+		require.NoError(t, err, "Failed to lookup IP for publisher")
+		ownerIP := ips[0].String()
+
 		req := &pb.MulticastAllowListAddRequest{
-			Mode:   pb.MulticastAllowListAddRequest_PUBLISHER,
-			Code:   code,
-			Pubkey: ownerPubKey,
+			Mode:     pb.MulticastAllowListAddRequest_PUBLISHER,
+			Code:     code,
+			Pubkey:   ownerPubKey,
+			ClientIp: ownerIP,
 		}
 		result, err := client.MulticastAllowListAdd(ctx, req)
 		require.NoError(t, err, "MulticastAllowListAdd failed")
@@ -267,9 +272,10 @@ func TestConnectivityMulticast(t *testing.T) {
 		t.Logf("Multicast group %s added to allow list for publisher %s", code, ownerPubKey)
 
 		req = &pb.MulticastAllowListAddRequest{
-			Mode:   pb.MulticastAllowListAddRequest_SUBSCRIBER,
-			Code:   code,
-			Pubkey: ownerPubKey,
+			Mode:     pb.MulticastAllowListAddRequest_SUBSCRIBER,
+			Code:     code,
+			Pubkey:   ownerPubKey,
+			ClientIp: ownerIP,
 		}
 		result, err = client.MulticastAllowListAdd(ctx, req)
 		require.NoError(t, err, "MulticastAllowListAdd failed")

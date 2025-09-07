@@ -1,7 +1,9 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
 use doublezero_program_common::serializer;
-use doublezero_sdk::commands::accesspass::list::ListAccessPassCommand;
+use doublezero_sdk::commands::{
+    accesspass::list::ListAccessPassCommand, multicastgroup::list::ListMulticastGroupCommand,
+};
 use doublezero_serviceability::state::accesspass::{AccessPassStatus, AccessPassType};
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
@@ -36,6 +38,7 @@ pub struct AccessPassDisplay {
     pub ip: Ipv4Addr,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub user_payer: Pubkey,
+    pub multicast: String,
     pub last_access_epoch: String,
     pub remaining_epoch: String,
     pub connections: u16,
@@ -47,6 +50,8 @@ pub struct AccessPassDisplay {
 impl ListAccessPassCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         let epoch = client.get_epoch()?;
+
+        let mgroups = client.list_multicastgroup(ListMulticastGroupCommand {})?;
 
         let binding = client.list_accesspass(ListAccessPassCommand)?;
         let mut access_passes = binding.iter().collect::<Vec<_>>();
@@ -79,6 +84,25 @@ impl ListAccessPassCliCommand {
                 accesspass_type: access_pass.accesspass_type.to_string(),
                 ip: access_pass.client_ip,
                 user_payer: access_pass.user_payer,
+                multicast: {
+                    let mut list = vec![];
+                    for mg_pub in &access_pass.mgroup_pub_allowlist {
+                        if let Some(mg) = mgroups.get(mg_pub) {
+                            list.push(format!("P:{}", mg.code));
+                        } else {
+                            list.push(format!("P:{mg_pub}"));
+                        }
+                    }
+                    for mg_sub in &access_pass.mgroup_sub_allowlist {
+                        if let Some(mg) = mgroups.get(mg_sub) {
+                            list.push(format!("S:{}", mg.code));
+                        } else {
+                            list.push(format!("S:{mg_sub}"));
+                        }
+                    }
+                    list.join(", ")
+                },
+
                 last_access_epoch: if access_pass.last_access_epoch == u64::MAX {
                     "MAX".to_string()
                 } else {
@@ -130,6 +154,21 @@ mod tests {
     fn test_cli_accesspass_list() {
         let mut client = create_test_client();
 
+        let mgroup_pubkey = Pubkey::from_str_const("1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM");
+        let mgroup = doublezero_sdk::MulticastGroup {
+            account_type: AccountType::MulticastGroup,
+            index: 1,
+            bump_seed: 1,
+            owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9"),
+            tenant_pk: Pubkey::new_unique(),
+            multicast_ip: [239, 0, 0, 1].into(),
+            max_bandwidth: 1000000000,
+            status: doublezero_sdk::MulticastGroupStatus::Activated,
+            code: "test".to_string(),
+            publisher_count: 5,
+            subscriber_count: 10,
+        };
+
         let access1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
         let access1 = AccessPass {
             account_type: AccountType::AccessPass,
@@ -141,6 +180,8 @@ mod tests {
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB"),
             connection_count: 0,
             status: AccessPassStatus::Connected,
+            mgroup_pub_allowlist: vec![mgroup_pubkey],
+            mgroup_sub_allowlist: vec![],
         };
 
         let access2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
@@ -156,9 +197,16 @@ mod tests {
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB"),
             connection_count: 0,
             status: AccessPassStatus::Connected,
+            mgroup_pub_allowlist: vec![],
+            mgroup_sub_allowlist: vec![mgroup_pubkey],
         };
 
         client.expect_get_epoch().returning(move || Ok(123));
+        client.expect_list_multicastgroup().returning(move |_| {
+            let mut mgroups = HashMap::new();
+            mgroups.insert(mgroup_pubkey, mgroup.clone());
+            Ok(mgroups)
+        });
         client.expect_list_accesspass().returning(move |_| {
             let mut access_passes = HashMap::new();
             access_passes.insert(access1_pubkey, access1.clone());
@@ -177,7 +225,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | accesspass_type                                             | ip      | user_payer                                | last_access_epoch | remaining_epoch | connections | status    | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | solana_validator: 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | 1.2.3.4 | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | 123               | 113             | 0           | connected | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
+        assert_eq!(output_str, " account                                   | accesspass_type                                             | ip      | user_payer                                | multicast | last_access_epoch | remaining_epoch | connections | status    | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | solana_validator: 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | 1.2.3.4 | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | S:test    | 123               | 113             | 0           | connected | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
 
         let mut output = Vec::new();
         let res = ListAccessPassCliCommand {
@@ -190,6 +238,6 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"accesspass_type\":\"solana_validator: 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"ip\":\"1.2.3.4\",\"user_payer\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"last_access_epoch\":\"123\",\"remaining_epoch\":\"113\",\"connections\":0,\"status\":\"Connected\",\"owner\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\"}]\n");
+        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"accesspass_type\":\"solana_validator: 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"ip\":\"1.2.3.4\",\"user_payer\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"multicast\":\"S:test\",\"last_access_epoch\":\"123\",\"remaining_epoch\":\"113\",\"connections\":0,\"status\":\"Connected\",\"owner\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\"}]\n");
     }
 }

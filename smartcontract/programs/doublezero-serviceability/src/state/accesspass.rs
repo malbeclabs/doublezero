@@ -1,5 +1,6 @@
 use crate::{
     error::{DoubleZeroError, Validate},
+    helper::deserialize_vec_with_capacity,
     state::accounttype::{AccountType, AccountTypeInfo},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -133,6 +134,8 @@ pub struct AccessPass {
     pub last_access_epoch: u64,    // 8 / 0-Rejected / u64::MAX unlimited
     pub connection_count: u16,     // 2
     pub status: AccessPassStatus,  // 1
+    pub mgroup_pub_allowlist: Vec<Pubkey>, // Vec<32> - List of multicast groups this AccessPass can publish to
+    pub mgroup_sub_allowlist: Vec<Pubkey>, // Vec<32> - List of multicast groups this AccessPass can subscribe to
 }
 
 impl fmt::Display for AccessPass {
@@ -186,6 +189,8 @@ impl TryFrom<&[u8]> for AccessPass {
             last_access_epoch: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             connection_count: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             status: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            mgroup_pub_allowlist: deserialize_vec_with_capacity(&mut data).unwrap_or_default(),
+            mgroup_sub_allowlist: deserialize_vec_with_capacity(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::AccessPass {
@@ -260,6 +265,8 @@ mod tests {
             last_access_epoch: 0,
             connection_count: 0,
             status: AccessPassStatus::Connected,
+            mgroup_pub_allowlist: vec![],
+            mgroup_sub_allowlist: vec![],
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -292,6 +299,8 @@ mod tests {
             last_access_epoch: 0,
             connection_count: 0,
             status: AccessPassStatus::Connected,
+            mgroup_pub_allowlist: vec![],
+            mgroup_sub_allowlist: vec![],
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -325,6 +334,8 @@ mod tests {
             last_access_epoch: 0,
             connection_count: 0,
             status: AccessPassStatus::Connected,
+            mgroup_pub_allowlist: vec![],
+            mgroup_sub_allowlist: vec![],
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -343,6 +354,8 @@ mod tests {
             last_access_epoch: 0,
             connection_count: 0,
             status: AccessPassStatus::Connected,
+            mgroup_pub_allowlist: vec![],
+            mgroup_sub_allowlist: vec![],
         };
         let err = val.validate();
         assert!(err.is_err());

@@ -727,10 +727,6 @@ func TestStateCache(t *testing.T) {
 				{
 					PubKey:      [32]uint8{1},
 					MulticastIp: [4]uint8{239, 0, 0, 1},
-					Subscribers: [][32]uint8{
-						{1},
-						{2},
-					},
 				},
 			},
 			Users: []serviceability.User{
@@ -871,10 +867,6 @@ func TestStateCache(t *testing.T) {
 					"4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM": {
 						PubKey:      [32]uint8{1},
 						MulticastIp: [4]uint8{239, 0, 0, 1},
-						Subscribers: [][32]uint8{
-							{1},
-							{2},
-						},
 					},
 				},
 				Vpnv4BgpPeers: []BgpPeer{
@@ -1135,10 +1127,6 @@ func TestEndToEnd(t *testing.T) {
 				{
 					PubKey:      [32]uint8{1},
 					MulticastIp: [4]uint8{239, 0, 0, 1},
-					Subscribers: [][32]uint8{
-						{1},
-						{2},
-					},
 				},
 			},
 			InterfacesAndPeers: true,
@@ -1249,10 +1237,6 @@ func TestEndToEnd(t *testing.T) {
 				{
 					PubKey:      [32]uint8{1},
 					MulticastIp: [4]uint8{239, 0, 0, 1},
-					Subscribers: [][32]uint8{
-						{1},
-						{2},
-					},
 				},
 			},
 			InterfacesAndPeers: true,

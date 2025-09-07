@@ -807,6 +807,8 @@ mod tests {
                 multicast_ip: Some([1, 2, 3, 4].into()),
                 max_bandwidth: Some(1000),
                 code: Some("test".to_string()),
+                publisher_count: None,
+                subscriber_count: None,
             }),
             "UpdateMulticastGroup",
         );
@@ -834,7 +836,8 @@ mod tests {
         test_instruction(
             DoubleZeroInstruction::AddMulticastGroupPubAllowlist(
                 AddMulticastGroupPubAllowlistArgs {
-                    pubkey: Pubkey::new_unique(),
+                    client_ip: [1, 2, 3, 4].into(),
+                    user_payer: Pubkey::new_unique(),
                 },
             ),
             "AddMulticastGroupPubAllowlist",
@@ -842,7 +845,8 @@ mod tests {
         test_instruction(
             DoubleZeroInstruction::RemoveMulticastGroupPubAllowlist(
                 RemoveMulticastGroupPubAllowlistArgs {
-                    pubkey: Pubkey::new_unique(),
+                    client_ip: [1, 2, 3, 4].into(),
+                    user_payer: Pubkey::new_unique(),
                 },
             ),
             "RemoveMulticastGroupPubAllowlist",
@@ -850,7 +854,8 @@ mod tests {
         test_instruction(
             DoubleZeroInstruction::AddMulticastGroupSubAllowlist(
                 AddMulticastGroupSubAllowlistArgs {
-                    pubkey: Pubkey::new_unique(),
+                    client_ip: [1, 2, 3, 4].into(),
+                    user_payer: Pubkey::new_unique(),
                 },
             ),
             "AddMulticastGroupSubAllowlist",
@@ -858,13 +863,15 @@ mod tests {
         test_instruction(
             DoubleZeroInstruction::RemoveMulticastGroupSubAllowlist(
                 RemoveMulticastGroupSubAllowlistArgs {
-                    pubkey: Pubkey::new_unique(),
+                    client_ip: [1, 2, 3, 4].into(),
+                    user_payer: Pubkey::new_unique(),
                 },
             ),
             "RemoveMulticastGroupSubAllowlist",
         );
         test_instruction(
             DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+                client_ip: [1, 2, 3, 4].into(),
                 publisher: false,
                 subscriber: true,
             }),

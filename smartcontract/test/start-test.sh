@@ -190,46 +190,24 @@ echo "Creating multicast groups"
 
 
 echo "Add me to multicast group allowlist"
-./target/doublezero multicast group allowlist subscriber add --code mg01 --pubkey me
-./target/doublezero multicast group allowlist subscriber add --code mg02 --pubkey me
-./target/doublezero multicast group allowlist subscriber add --code mg03 --pubkey me
-./target/doublezero multicast group allowlist publisher add --code mg01 --pubkey me
-./target/doublezero multicast group allowlist publisher add --code mg02 --pubkey me
-./target/doublezero multicast group allowlist publisher add --code mg03 --pubkey me
+./target/doublezero multicast group allowlist subscriber add --code mg01 --user-payer me --client-ip 100.0.0.5
+./target/doublezero multicast group allowlist subscriber add --code mg01 --user-payer me --client-ip 100.0.0.6
+
+./target/doublezero multicast group allowlist subscriber add --code mg02 --user-payer me --client-ip 100.0.0.5
+./target/doublezero multicast group allowlist subscriber add --code mg03 --user-payer me --client-ip 100.0.0.5
+
+./target/doublezero multicast group allowlist publisher add --code mg01 --user-payer me --client-ip 100.0.0.6
+./target/doublezero multicast group allowlist publisher add --code mg02 --user-payer me --client-ip 100.0.0.6
+./target/doublezero multicast group allowlist publisher add --code mg03 --user-payer me --client-ip 100.0.0.6
 
 echo "Creating multicast user & subscribe"
 ./target/doublezero user create-subscribe --device ty2-dz01 --client-ip 100.0.0.5 --subscriber mg01 -w
 ./target/doublezero user create-subscribe --device ty2-dz01 --client-ip 100.0.0.6 --subscriber mg01 -w
 
 
-./target/doublezero user subscribe --user EthThV5iWtvrcM9G9qXQCmg2sNERLdfxt6AVKuhAewZF --group mg01 --publisher -w
-./target/doublezero user subscribe --user EthThV5iWtvrcM9G9qXQCmg2sNERLdfxt6AVKuhAewZF --group mg02 --publisher -w
-./target/doublezero user subscribe --user vwHPjLfH7aU4G2vDBAqV3on5WQgXLEKq67kNw7Q5Mos --group mg01 --subscriber -w
+./target/doublezero user subscribe --user vwHPjLfH7aU4G2vDBAqV3on5WQgXLEKq67kNw7Q5Mos --group mg01 --publisher -w
+./target/doublezero user subscribe --user vwHPjLfH7aU4G2vDBAqV3on5WQgXLEKq67kNw7Q5Mos --group mg02 --publisher -w
+
 
 echo "########################################################################"
-
-exit 0
-
-echo "Delete users"
-./target/doublezero user delete --pubkey Do1iXv6tNMHRzF1yYHBcLNfNngCK6Yyr9izpLZc1rrwW
-./target/doublezero user delete --pubkey J2MUYJeJvTfrHpxMm3tVYkcDhTwgAFFju2veS27WhByX
-
-echo "Delete tunnels"
-./target/doublezero link delete --pubkey 47Z31KgJW1A7HYar7XGrb6Ax8x2d53ZL3RmcY9ofViet
-./target/doublezero link delete --pubkey 8k1uzVNaUjiTvkYe7huBqUXgDvDYa5rEbes4sJBwRf9P
-./target/doublezero link delete --pubkey 2jH9iDKb8BjSgyQD7t7gfbtNDCPU9WDpngKbwpoUB8YC
-
-./target/doublezero link delete --pubkey Cv2rR6dyRpjjTXQjqDrNA8j2HycthusJgihPrJJFj7pn
-./target/doublezero link delete --pubkey CeteLjdtNZW7EYVYNK7JEMB1dkgk5wqtEUCCiiic7egt
-
-echo "Delete devices"
-./target/doublezero device delete --pubkey 3TD6MDfCo2mVeR9a71ukrdXBYVLyWz5cz8RLcNojVpcv
-./target/doublezero device delete --pubkey FBUy8tzFWa8LhQmCfXbnWZMg1XUDQfudanoVK5NP4KGP
-
-echo "Delete exchanges"
-./target/doublezero exchange delete --pubkey EXFf8KgN5C22EP3ufmscFGNmNzVtTm2HrppBMSn3sn3G
-./target/doublezero exchange delete --pubkey EpE1QxRzUXFLSAPKcsGrHrdareBZ7hNsyJtTPw1iL7q8
-
-echo "Delete locations"
-./target/doublezero location delete --pubkey XEY7fFCJ8r1FM9xwyvMqZ3GEgEbKNBTw65N2ynGJXRD
-./target/doublezero location delete --pubkey 3rHsZ8d3oSRfcz5S1MWGNk3hmaMKMKNGerTkWzuNpwu9
+echo "Setup complete"

@@ -239,10 +239,6 @@ func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 	})
 	require.NoError(t, err)
 
-	// Add client to the user allowlist.
-	_, err = dn.Manager.Exec(ctx, []string{"bash", "-c", "doublezero user allowlist add --pubkey " + client.Pubkey})
-	require.NoError(t, err)
-
 	// Set access pass for the client.
 	_, err = dn.Manager.Exec(ctx, []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + client.CYOANetworkIP + " --user-payer " + client.Pubkey})
 	require.NoError(t, err)
@@ -306,12 +302,12 @@ func (dn *TestDevnet) CreateMulticastGroupOnchain(t *testing.T, client *devnet.C
 		doublezero multicast group list
 
 		echo "==> Add me to multicast group allowlist"
-		doublezero multicast group allowlist publisher add --code ` + multicastGroupCode + ` --pubkey me
-		doublezero multicast group allowlist subscriber add --code ` + multicastGroupCode + ` --pubkey me
+		doublezero multicast group allowlist publisher add --code ` + multicastGroupCode + ` --user-payer me --client-ip ` + client.CYOANetworkIP + `
+		doublezero multicast group allowlist subscriber add --code ` + multicastGroupCode + ` --user-payer me --client-ip ` + client.CYOANetworkIP + `
 
 		echo "==> Add client pubkey to multicast group allowlist"
-		doublezero multicast group allowlist publisher add --code ` + multicastGroupCode + ` --pubkey ` + client.Pubkey + `
-		doublezero multicast group allowlist subscriber add --code ` + multicastGroupCode + ` --pubkey ` + client.Pubkey + `
+		doublezero multicast group allowlist publisher add --code ` + multicastGroupCode + ` --user-payer ` + client.Pubkey + ` --client-ip ` + client.CYOANetworkIP + `
+		doublezero multicast group allowlist subscriber add --code ` + multicastGroupCode + ` --user-payer ` + client.Pubkey + ` --client-ip ` + client.CYOANetworkIP + `
 	`})
 	require.NoError(t, err)
 }

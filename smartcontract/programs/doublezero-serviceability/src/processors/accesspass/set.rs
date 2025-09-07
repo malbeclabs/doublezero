@@ -125,6 +125,8 @@ pub fn process_set_access_pass(
             connection_count: 0,
             status: AccessPassStatus::Requested,
             owner: *payer_account.key,
+            mgroup_pub_allowlist: vec![],
+            mgroup_sub_allowlist: vec![],
         };
 
         try_create_account(
@@ -165,6 +167,8 @@ pub fn process_set_access_pass(
                 connection_count: 0,
                 status: AccessPassStatus::Requested,
                 owner: *payer_account.key,
+                mgroup_pub_allowlist: vec![],
+                mgroup_sub_allowlist: vec![],
             }
         };
 
@@ -177,7 +181,6 @@ pub fn process_set_access_pass(
             accounts,
             accesspass.size(),
         )?;
-
         accesspass.try_serialize(accesspass_account)?;
 
         #[cfg(test)]
@@ -187,8 +190,9 @@ pub fn process_set_access_pass(
     let deposit = AIRDROP_USER_RENT_LAMPORTS
         .saturating_add(globalstate.user_airdrop_lamports)
         .saturating_sub(user_payer.lamports());
+
     if deposit != 0 {
-        msg!("Airdropping {} lamports to user", deposit);
+        msg!("Airdropping {} lamports to user account", deposit);
         invoke_signed_unchecked(
             &system_instruction::transfer(payer_account.key, user_payer.key, deposit),
             &[

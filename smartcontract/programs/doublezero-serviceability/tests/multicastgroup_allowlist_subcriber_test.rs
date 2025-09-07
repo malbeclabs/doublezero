@@ -2,14 +2,20 @@ use doublezero_serviceability::{
     entrypoint::*,
     instructions::*,
     pda::*,
-    processors::multicastgroup::{
-        activate::MulticastGroupActivateArgs,
-        allowlist::subscriber::{
-            add::AddMulticastGroupSubAllowlistArgs, remove::RemoveMulticastGroupSubAllowlistArgs,
+    processors::{
+        accesspass::set::SetAccessPassArgs,
+        multicastgroup::{
+            activate::MulticastGroupActivateArgs,
+            allowlist::subscriber::{
+                add::AddMulticastGroupSubAllowlistArgs,
+                remove::RemoveMulticastGroupSubAllowlistArgs,
+            },
+            create::MulticastGroupCreateArgs,
         },
-        create::MulticastGroupCreateArgs,
     },
-    state::{accounttype::AccountType, multicastgroup::MulticastGroupStatus},
+    state::{
+        accesspass::AccessPassType, accounttype::AccountType, multicastgroup::MulticastGroupStatus,
+    },
 };
 use solana_program_test::*;
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signer::Signer};
@@ -30,6 +36,9 @@ async fn test_multicast_subscriber_allowlist() {
 
     /***********************************************************************************************************************************/
     println!("🟢 1. Global Initialization...");
+
+    let user_payer = payer.pubkey();
+    let client_ip = [100, 0, 0, 1].into();
 
     let (program_config_pubkey, _) = get_program_config_pda(&program_id);
     let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
@@ -123,40 +132,63 @@ async fn test_multicast_subscriber_allowlist() {
 
     println!("✅");
     /*****************************************************************************************************************************************************/
-    println!("🟢 4. Add Allowlist ...");
+    println!("🟢 4. Create AccessPass...");
 
-    let (multicastgroup_pubkey, _) = get_multicastgroup_pda(&program_id, 1);
+    let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &user_payer);
 
-    let allowlist_pubkey = Pubkey::new_unique();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip,
+            last_access_epoch: 100,
+        }),
+        vec![
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_payer, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    /*****************************************************************************************************************************************************/
+    println!("🟢 5. Add Allowlist ...");
+
+    let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &user_payer);
 
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::AddMulticastGroupSubAllowlist(AddMulticastGroupSubAllowlistArgs {
-            pubkey: allowlist_pubkey,
+            client_ip,
+            user_payer,
         }),
-        vec![AccountMeta::new(multicastgroup_pubkey, false)],
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+        ],
         &payer,
     )
     .await;
 
-    let mgroup = get_account_data(&mut banks_client, multicastgroup_pubkey)
+    let accesspass = get_account_data(&mut banks_client, accesspass_pubkey)
         .await
         .expect("Unable to get Account")
-        .get_multicastgroup()
+        .get_accesspass()
         .unwrap();
 
-    assert_eq!(mgroup.account_type, AccountType::MulticastGroup);
-    assert_eq!(mgroup.sub_allowlist.len(), 1);
-    assert!(mgroup.sub_allowlist.contains(&allowlist_pubkey));
-    assert_eq!(mgroup.status, MulticastGroupStatus::Activated);
+    assert_eq!(accesspass.account_type, AccountType::AccessPass);
+    assert!(accesspass
+        .mgroup_sub_allowlist
+        .contains(&multicastgroup_pubkey));
 
     println!("✅");
     /*****************************************************************************************************************************************************/
-    println!("🟢 5. Remove Allowlist ...");
-
-    let (multicastgroup_pubkey, _) = get_multicastgroup_pda(&program_id, 1);
+    println!("🟢 6. Remove Allowlist ...");
 
     execute_transaction(
         &mut banks_client,
@@ -164,23 +196,26 @@ async fn test_multicast_subscriber_allowlist() {
         program_id,
         DoubleZeroInstruction::RemoveMulticastGroupSubAllowlist(
             RemoveMulticastGroupSubAllowlistArgs {
-                pubkey: allowlist_pubkey,
+                client_ip,
+                user_payer,
             },
         ),
-        vec![AccountMeta::new(multicastgroup_pubkey, false)],
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+        ],
         &payer,
     )
     .await;
 
-    let mgroup = get_account_data(&mut banks_client, multicastgroup_pubkey)
+    let accesspass = get_account_data(&mut banks_client, accesspass_pubkey)
         .await
         .expect("Unable to get Account")
-        .get_multicastgroup()
+        .get_accesspass()
         .unwrap();
 
-    assert_eq!(mgroup.account_type, AccountType::MulticastGroup);
-    assert_eq!(mgroup.sub_allowlist.len(), 0);
-    assert_eq!(mgroup.status, MulticastGroupStatus::Activated);
+    assert_eq!(accesspass.account_type, AccountType::AccessPass);
+    assert_eq!(accesspass.mgroup_sub_allowlist.len(), 0);
 
     println!("✅");
     /*****************************************************************************************************************************************************/

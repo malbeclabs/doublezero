@@ -6,8 +6,9 @@ use crate::{
     validators::{validate_pubkey, validate_pubkey_or_code},
 };
 use clap::Args;
-use doublezero_sdk::commands::multicastgroup::{
-    get::GetMulticastGroupCommand, subscribe::SubscribeMulticastGroupCommand,
+use doublezero_sdk::commands::{
+    multicastgroup::{get::GetMulticastGroupCommand, subscribe::SubscribeMulticastGroupCommand},
+    user::get::GetUserCommand,
 };
 use std::io::Write;
 
@@ -35,8 +36,9 @@ impl SubscribeUserCliCommand {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
-        let user_pk =
-            parse_pubkey(&self.user).ok_or_else(|| eyre::eyre!("Invalid user: {}", self.user))?;
+        let (user_pk, user) = client.get_user(GetUserCommand {
+            pubkey: parse_pubkey(&self.user).ok_or_else(|| eyre::eyre!("Invalid user pubkey"))?,
+        })?;
 
         let group_pk = match parse_pubkey(&self.group) {
             Some(pk) => Some(pk),
@@ -54,6 +56,7 @@ impl SubscribeUserCliCommand {
         let signature = client.subscribe_multicastgroup(SubscribeMulticastGroupCommand {
             user_pk,
             group_pk,
+            client_ip: user.client_ip,
             publisher: self.publisher,
             subscriber: self.subscriber,
         })?;
@@ -82,17 +85,20 @@ mod tests {
         user::subscribe::SubscribeUserCliCommand,
     };
     use doublezero_sdk::{
-        commands::multicastgroup::{
-            get::GetMulticastGroupCommand, subscribe::SubscribeMulticastGroupCommand,
+        commands::{
+            multicastgroup::{
+                get::GetMulticastGroupCommand, subscribe::SubscribeMulticastGroupCommand,
+            },
+            user::get::GetUserCommand,
         },
-        AccountType, MulticastGroup, MulticastGroupStatus,
+        AccountType, MulticastGroup, MulticastGroupStatus, User, UserCYOA, UserType,
     };
     use doublezero_serviceability::pda::get_user_pda;
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
     #[test]
-    fn test_cli_user_create_subscribe() {
+    fn test_cli_user_subscribe() {
         let mut client = create_test_client();
 
         let (user_pubkey, _bump_seed) = get_user_pda(&client.get_program_id(), 1);
@@ -102,6 +108,27 @@ mod tests {
             139, 130, 217, 227, 214, 9, 242, 141, 223, 94, 29, 184, 110, 62, 32, 87, 137, 63, 139,
             100, 221, 20, 137, 4, 5,
         ]);
+
+        let client_ip = [192, 168, 1, 100].into();
+        let user = User {
+            account_type: AccountType::User,
+            index: 1,
+            bump_seed: 255,
+            user_type: UserType::Multicast,
+            cyoa_type: UserCYOA::GREOverDIA,
+            device_pk: Pubkey::new_unique(),
+            owner: client.get_payer(),
+            tenant_pk: Pubkey::default(),
+            client_ip,
+            dz_ip: client_ip,
+            tunnel_id: 12345,
+            tunnel_net: "192.168.1.0/24".parse().unwrap(),
+            status: doublezero_sdk::UserStatus::Activated,
+            publishers: vec![],
+            subscribers: vec![],
+            validator_pubkey: Pubkey::default(),
+        };
+
         let mgroup_pubkey = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");
         let mgroup = MulticastGroup {
             account_type: AccountType::MulticastGroup,
@@ -112,17 +139,21 @@ mod tests {
             max_bandwidth: 1000,
             status: MulticastGroupStatus::Activated,
             code: "test".to_string(),
-            pub_allowlist: vec![],
-            sub_allowlist: vec![],
-            publishers: vec![],
-            subscribers: vec![],
             owner: mgroup_pubkey,
+            publisher_count: 0,
+            subscriber_count: 0,
         };
 
         client
             .expect_check_requirements()
             .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
             .returning(|_| Ok(()));
+        client
+            .expect_get_user()
+            .with(predicate::eq(GetUserCommand {
+                pubkey: user_pubkey,
+            }))
+            .returning(move |_| Ok((user_pubkey, user.clone())));
         client
             .expect_get_multicastgroup()
             .with(predicate::eq(GetMulticastGroupCommand {
@@ -134,6 +165,7 @@ mod tests {
             .with(predicate::eq(SubscribeMulticastGroupCommand {
                 user_pk: user_pubkey,
                 group_pk: mgroup_pubkey,
+                client_ip,
                 publisher: false,
                 subscriber: true,
             }))

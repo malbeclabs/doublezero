@@ -119,12 +119,10 @@ mod tests {
             tenant_pk: Pubkey::new_unique(),
             multicast_ip: [10, 0, 0, 1].into(),
             max_bandwidth: 1000000000,
-            pub_allowlist: vec![],
-            sub_allowlist: vec![],
-            publishers: vec![],
-            subscribers: vec![],
             status: MulticastGroupStatus::Activated,
             owner: pda_pubkey,
+            publisher_count: 1,
+            subscriber_count: 0,
         };
 
         client

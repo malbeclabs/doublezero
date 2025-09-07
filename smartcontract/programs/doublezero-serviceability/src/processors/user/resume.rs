@@ -39,6 +39,9 @@ pub fn process_resume_user(
 
     // Check the owner of the accounts
     assert_eq!(user_account.owner, program_id, "Invalid User Account Owner");
+    if accesspass_account.data_is_empty() {
+        return Err(DoubleZeroError::AccessPassNotFound.into());
+    }
     assert_eq!(
         accesspass_account.owner, program_id,
         "Invalid AccessPass Account Owner"

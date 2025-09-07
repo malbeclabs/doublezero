@@ -1,3 +1,5 @@
+use std::net::Ipv4Addr;
+
 use doublezero_serviceability::{
     entrypoint::*,
     instructions::*,
@@ -179,6 +181,8 @@ async fn test_multicastgroup() {
             code: Some("la2".to_string()),
             multicast_ip: Some([239, 1, 1, 2].into()),
             max_bandwidth: Some(2000),
+            publisher_count: Some(5),
+            subscriber_count: Some(10),
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -195,6 +199,10 @@ async fn test_multicastgroup() {
         .unwrap();
     assert_eq!(multicastgroup_la.account_type, AccountType::MulticastGroup);
     assert_eq!(multicastgroup_la.code, "la2".to_string());
+    assert_eq!(multicastgroup_la.multicast_ip, Ipv4Addr::new(239, 1, 1, 2));
+    assert_eq!(multicastgroup_la.max_bandwidth, 2000);
+    assert_eq!(multicastgroup_la.publisher_count, 5);
+    assert_eq!(multicastgroup_la.subscriber_count, 10);
     assert_eq!(multicastgroup_la.status, MulticastGroupStatus::Activated);
 
     println!("✅ MulticastGroup updated");

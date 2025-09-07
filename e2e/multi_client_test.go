@@ -95,20 +95,14 @@ func TestE2E_MultiClient(t *testing.T) {
 	require.NoError(t, err)
 	log.Info("--> Finished waiting for client latency results")
 
-	// Add clients to user allowlist so they can open user connections.
-	log.Info("==> Adding clients to user allowlist")
-	_, err = dn.Manager.Exec(t.Context(), []string{"doublezero", "user", "allowlist", "add", "--pubkey", client1.Pubkey})
-	require.NoError(t, err)
-	_, err = dn.Manager.Exec(t.Context(), []string{"doublezero", "user", "allowlist", "add", "--pubkey", client2.Pubkey})
-	require.NoError(t, err)
-	log.Info("--> Clients added to user allowlist")
-
+	log.Info("==> Add clients to user Access Pass")
 	// Set access pass for the client.
 	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + client1.CYOANetworkIP + " --user-payer " + client1.Pubkey})
 	require.NoError(t, err)
 	// Set access pass for the client.
 	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + client2.CYOANetworkIP + " --user-payer " + client2.Pubkey})
 	require.NoError(t, err)
+	log.Info("--> Clients added to user Access Pass")
 
 	// Run IBRL workflow test.
 	if !t.Run("ibrl", func(t *testing.T) {

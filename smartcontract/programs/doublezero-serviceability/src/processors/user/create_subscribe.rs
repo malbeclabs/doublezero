@@ -64,6 +64,14 @@ pub fn process_create_subscribe_user(
     if !user_account.data.borrow().is_empty() {
         return Err(ProgramError::AccountAlreadyInitialized);
     }
+    if accesspass_account.data_is_empty() {
+        return Err(DoubleZeroError::AccessPassNotFound.into());
+    }
+    assert_eq!(
+        accesspass_account.owner, program_id,
+        "Invalid AccessPass Account Owner"
+    );
+
     let globalstate = globalstate_get_next(globalstate_account)?;
 
     let (expected_pda_account, bump_seed) = get_user_pda(program_id, globalstate.account_index);
@@ -131,10 +139,10 @@ pub fn process_create_subscribe_user(
     assert_eq!(mgroup.status, MulticastGroupStatus::Activated);
 
     // Check if the user is in the allowlist
-    if value.publisher && !mgroup.pub_allowlist.contains(payer_account.key) {
+    if value.publisher && !accesspass.mgroup_pub_allowlist.contains(mgroup_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }
-    if value.subscriber && !mgroup.sub_allowlist.contains(payer_account.key) {
+    if value.subscriber && !accesspass.mgroup_sub_allowlist.contains(mgroup_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
@@ -183,11 +191,12 @@ pub fn process_create_subscribe_user(
         validator_pubkey,
     };
 
-    if value.publisher && !mgroup.publishers.contains(user_account.key) {
-        mgroup.publishers.push(*user_account.key);
+    // Update multicastgroup counts
+    if value.publisher {
+        mgroup.publisher_count = mgroup.publisher_count.saturating_add(1);
     }
-    if value.subscriber && !mgroup.subscribers.contains(user_account.key) {
-        mgroup.subscribers.push(*user_account.key);
+    if value.subscriber {
+        mgroup.subscriber_count = mgroup.subscriber_count.saturating_add(1);
     }
 
     account_write(mgroup_account, &mgroup, payer_account, system_program)?;

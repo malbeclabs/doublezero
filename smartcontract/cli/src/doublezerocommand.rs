@@ -14,10 +14,6 @@ use doublezero_sdk::{
                 add::AddFoundationAllowlistCommand, list::ListFoundationAllowlistCommand,
                 remove::RemoveFoundationAllowlistCommand,
             },
-            user::{
-                add::AddUserAllowlistCommand, list::ListUserAllowlistCommand,
-                remove::RemoveUserAllowlistCommand,
-            },
         },
         contributor::{
             create::CreateContributorCommand, delete::DeleteContributorCommand,
@@ -67,12 +63,10 @@ use doublezero_sdk::{
             allowlist::{
                 publisher::{
                     add::AddMulticastGroupPubAllowlistCommand,
-                    list::ListMulticastGroupPubAllowlistCommand,
                     remove::RemoveMulticastGroupPubAllowlistCommand,
                 },
                 subscriber::{
                     add::AddMulticastGroupSubAllowlistCommand,
-                    list::ListMulticastGroupSubAllowlistCommand,
                     remove::RemoveMulticastGroupSubAllowlistCommand,
                 },
             },
@@ -207,7 +201,6 @@ pub trait CliCommand {
         cmd: ListFoundationAllowlistCommand,
     ) -> eyre::Result<Vec<Pubkey>>;
     fn list_device_allowlist(&self, cmd: ListDeviceAllowlistCommand) -> eyre::Result<Vec<Pubkey>>;
-    fn list_user_allowlist(&self, cmd: ListUserAllowlistCommand) -> eyre::Result<Vec<Pubkey>>;
     fn add_foundation_allowlist(
         &self,
         cmd: AddFoundationAllowlistCommand,
@@ -219,9 +212,6 @@ pub trait CliCommand {
     fn add_device_allowlist(&self, cmd: AddDeviceAllowlistCommand) -> eyre::Result<Signature>;
     fn remove_device_allowlist(&self, cmd: RemoveDeviceAllowlistCommand)
         -> eyre::Result<Signature>;
-    fn add_user_allowlist(&self, cmd: AddUserAllowlistCommand) -> eyre::Result<Signature>;
-    fn remove_user_allowlist(&self, cmd: RemoveUserAllowlistCommand) -> eyre::Result<Signature>;
-
     fn create_multicastgroup(
         &self,
         cmd: CreateMulticastGroupCommand,
@@ -265,15 +255,6 @@ pub trait CliCommand {
         &self,
         cmd: RemoveMulticastGroupSubAllowlistCommand,
     ) -> eyre::Result<Signature>;
-    fn list_multicastgroup_pub_allowlist(
-        &self,
-        cmd: ListMulticastGroupPubAllowlistCommand,
-    ) -> eyre::Result<Vec<Pubkey>>;
-    fn list_multicastgroup_sub_allowlist(
-        &self,
-        cmd: ListMulticastGroupSubAllowlistCommand,
-    ) -> eyre::Result<Vec<Pubkey>>;
-
     fn set_accesspass(&self, cmd: SetAccessPassCommand) -> eyre::Result<Signature>;
     fn get_accesspass(&self, cmd: GetAccessPassCommand) -> eyre::Result<(Pubkey, AccessPass)>;
     fn list_accesspass(
@@ -530,9 +511,6 @@ impl CliCommand for CliCommandImpl<'_> {
     fn list_device_allowlist(&self, cmd: ListDeviceAllowlistCommand) -> eyre::Result<Vec<Pubkey>> {
         cmd.execute(self.client)
     }
-    fn list_user_allowlist(&self, cmd: ListUserAllowlistCommand) -> eyre::Result<Vec<Pubkey>> {
-        cmd.execute(self.client)
-    }
     fn add_foundation_allowlist(
         &self,
         cmd: AddFoundationAllowlistCommand,
@@ -552,12 +530,6 @@ impl CliCommand for CliCommandImpl<'_> {
         &self,
         cmd: RemoveDeviceAllowlistCommand,
     ) -> eyre::Result<Signature> {
-        cmd.execute(self.client)
-    }
-    fn add_user_allowlist(&self, cmd: AddUserAllowlistCommand) -> eyre::Result<Signature> {
-        cmd.execute(self.client)
-    }
-    fn remove_user_allowlist(&self, cmd: RemoveUserAllowlistCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
     fn create_multicastgroup(
@@ -627,18 +599,6 @@ impl CliCommand for CliCommandImpl<'_> {
         &self,
         cmd: RemoveMulticastGroupSubAllowlistCommand,
     ) -> eyre::Result<Signature> {
-        cmd.execute(self.client)
-    }
-    fn list_multicastgroup_pub_allowlist(
-        &self,
-        cmd: ListMulticastGroupPubAllowlistCommand,
-    ) -> eyre::Result<Vec<Pubkey>> {
-        cmd.execute(self.client)
-    }
-    fn list_multicastgroup_sub_allowlist(
-        &self,
-        cmd: ListMulticastGroupSubAllowlistCommand,
-    ) -> eyre::Result<Vec<Pubkey>> {
         cmd.execute(self.client)
     }
     fn set_accesspass(&self, cmd: SetAccessPassCommand) -> eyre::Result<Signature> {

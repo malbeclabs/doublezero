@@ -1,6 +1,7 @@
 package rpc
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -378,8 +379,14 @@ func (q *QAAgent) MulticastAllowListAdd(ctx context.Context, req *pb.MulticastAl
 	if req.GetMode() == pb.MulticastAllowListAddRequest_SUBSCRIBER {
 		mode = "subscriber"
 	}
-	q.log.Info("Received MulticastAllowListAdd request", "pubkey", req.GetPubkey(), "code", req.GetCode(), "mode", mode)
-	cmd := exec.Command("doublezero", "multicast", "group", "allowlist", mode, "add", "--pubkey", req.GetPubkey(), "--code", req.GetCode())
+
+	ipStr, err := getPublicIPv4()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get public IPv4 address: %w", err)
+	}
+
+	q.log.Info("Received MulticastAllowListAdd request", "pubkey", req.GetPubkey(), "client-ip", ipStr, "code", req.GetCode(), "mode", mode)
+	cmd := exec.Command("doublezero", "multicast", "group", "allowlist", mode, "add", "--pubkey", req.GetPubkey(), "--client-ip", ipStr, "--code", req.GetCode())
 	result, err := runCmd(cmd)
 	if err != nil {
 		q.log.Error("Failed to add multicast allowlist entry", "error", err, "output", result.Output)
@@ -470,6 +477,58 @@ func (q *QAAgent) MulticastReport(ctx context.Context, req *pb.MulticastReportRe
 	}
 	q.log.Info("Multicast report generated", "reports", reports)
 	return &pb.MulticastReportResult{Reports: reports}, nil
+}
+
+func getPublicIPv4() (string, error) {
+	// Resolver IPv4 de ifconfig.me:80
+	addrs, err := net.LookupIP("ifconfig.me")
+	if err != nil {
+		return "", fmt.Errorf("error resolviendo host: %w", err)
+	}
+
+	var ipv4 net.IP
+	for _, ip := range addrs {
+		if ip.To4() != nil {
+			ipv4 = ip
+			break
+		}
+	}
+	if ipv4 == nil {
+		return "", fmt.Errorf("no se encontró IPv4 para ifconfig.me")
+	}
+
+	// Conectar al host
+	addr := net.JoinHostPort(ipv4.String(), "80")
+	conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
+	if err != nil {
+		return "", fmt.Errorf("error conectando: %w", err)
+	}
+	defer conn.Close()
+
+	// Enviar request HTTP
+	req := "GET /ip HTTP/1.1\r\nHost: ifconfig.me\r\nConnection: close\r\n\r\n"
+	if _, err := conn.Write([]byte(req)); err != nil {
+		return "", fmt.Errorf("error enviando request: %w", err)
+	}
+
+	// Leer respuesta
+	reader := bufio.NewReader(conn)
+	var response strings.Builder
+	for {
+		line, err := reader.ReadString('\n')
+		response.WriteString(line)
+		if err != nil {
+			break
+		}
+	}
+
+	// Extraer cuerpo
+	parts := strings.SplitN(response.String(), "\r\n\r\n", 2)
+	if len(parts) < 2 {
+		return "", fmt.Errorf("no se pudo parsear respuesta")
+	}
+	ip := strings.TrimSpace(parts[1])
+	return ip, nil
 }
 
 // runCmd executes a command and returns the result in a structured format.

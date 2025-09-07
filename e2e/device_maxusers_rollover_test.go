@@ -14,7 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-
 // Test that if the client's nearest device is full, the client will connect to the next nearest device instead
 func TestE2E_DeviceMaxusersRollover(t *testing.T) {
 	t.Parallel()
@@ -110,21 +109,17 @@ func TestE2E_DeviceMaxusersRollover(t *testing.T) {
 	// Apply tc rules to the correct interface
 	for _, command := range [][]string{
 		{"bash", "-c", "tc qdisc add dev " + cyoaInterface + " root handle 1: prio bands 3"},
-                {"bash", "-c", "tc qdisc add dev " + cyoaInterface + " parent 1:1 handle 10: netem delay 0ms"},
-                {"bash", "-c", "tc qdisc add dev " + cyoaInterface + " parent 1:2 handle 20: netem delay 10ms"},
-                {"bash", "-c", "tc qdisc add dev " + cyoaInterface + " parent 1:3 handle 30: sfq"},
-                {"bash", "-c", "tc filter add dev " + cyoaInterface + " protocol ip parent 1:0 prio 1 u32 match ip dst " + device1.CYOANetworkIP + "/32 flowid 1:1"},
-                {"bash", "-c", "tc filter add dev " + cyoaInterface + " protocol ip parent 1:0 prio 2 u32 match ip dst " + device2.CYOANetworkIP + "/32 flowid 1:2"},
-                {"bash", "-c", "tc filter add dev " + cyoaInterface + " protocol ip parent 1:0 prio 3 u32 match ip dst 0.0.0.0/0 flowid 1:3"},
+		{"bash", "-c", "tc qdisc add dev " + cyoaInterface + " parent 1:1 handle 10: netem delay 0ms"},
+		{"bash", "-c", "tc qdisc add dev " + cyoaInterface + " parent 1:2 handle 20: netem delay 10ms"},
+		{"bash", "-c", "tc qdisc add dev " + cyoaInterface + " parent 1:3 handle 30: sfq"},
+		{"bash", "-c", "tc filter add dev " + cyoaInterface + " protocol ip parent 1:0 prio 1 u32 match ip dst " + device1.CYOANetworkIP + "/32 flowid 1:1"},
+		{"bash", "-c", "tc filter add dev " + cyoaInterface + " protocol ip parent 1:0 prio 2 u32 match ip dst " + device2.CYOANetworkIP + "/32 flowid 1:2"},
+		{"bash", "-c", "tc filter add dev " + cyoaInterface + " protocol ip parent 1:0 prio 3 u32 match ip dst 0.0.0.0/0 flowid 1:3"},
 	} {
 		_, err = client.Exec(t.Context(), command)
 		require.NoError(t, err)
 	}
 
-	// Add clients to user allowlist so they can open user connections.
-	log.Info("==> Adding clients to user allowlist")
-	_, err = dn.Manager.Exec(t.Context(), []string{"doublezero", "user", "allowlist", "add", "--pubkey", client.Pubkey})
-	require.NoError(t, err)
 	log.Info("--> Client added to user allowlist")
 
 	// Set access pass for the client.

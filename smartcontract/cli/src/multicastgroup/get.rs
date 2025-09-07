@@ -17,7 +17,7 @@ pub struct GetMulticastGroupCliCommand {
 
 impl GetMulticastGroupCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
-        let (pubkey, mgroup) = client.get_multicastgroup(GetMulticastGroupCommand {
+        let (mgroup_pubkey, mgroup) = client.get_multicastgroup(GetMulticastGroupCommand {
             pubkey_or_code: self.code,
         })?;
 
@@ -27,15 +27,11 @@ impl GetMulticastGroupCliCommand {
 
         // Write the multicast group details first
         writeln!(out,
-        "account: {}\r\ncode: {}\r\nmulticast_ip: {}\r\nmax_bandwidth: {}\r\rpublisher_allowlist: {}\r\nsubscriber_allowlist: {}\r\npublishers: {}\r\nsubscribers: {}\r\nstatus: {}\r\nowner: {}\r\n\r\nusers:\r\n",
-        pubkey,
+        "account: {}\r\ncode: {}\r\nmulticast_ip: {}\r\nmax_bandwidth: {}\r\nstatus: {}\r\nowner: {}\r\n\r\nusers:\r\n",
+        mgroup_pubkey,
         mgroup.code,
         &mgroup.multicast_ip,
         bandwidth_to_string(&mgroup.max_bandwidth),
-        mgroup.pub_allowlist.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(", "),
-        mgroup.sub_allowlist.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(", "),
-        mgroup.publishers.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(", "),
-        mgroup.subscribers.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(", "),
         mgroup.status,
         mgroup.owner
         )?;
@@ -55,11 +51,10 @@ impl GetMulticastGroupCliCommand {
             "owner",
         ]);
 
-        for (pubkey, data) in users
-            .into_iter()
-            .filter(|(pk, _)| mgroup.publishers.contains(pk) || mgroup.subscribers.contains(pk))
-        {
-            let device = devices.get(&data.device_pk);
+        for (pubkey, user) in users.into_iter().filter(|(_, user)| {
+            user.publishers.contains(&mgroup_pubkey) || user.subscribers.contains(&mgroup_pubkey)
+        }) {
+            let device = devices.get(&user.device_pk);
             let location = match device {
                 Some(device) => locations.get(&device.location_pk),
                 None => None,
@@ -67,7 +62,7 @@ impl GetMulticastGroupCliCommand {
 
             let device_name = match device {
                 Some(device) => device.code.clone(),
-                None => data.device_pk.to_string(),
+                None => user.device_pk.to_string(),
             };
             let location_name = match device {
                 Some(device) => match location {
@@ -76,16 +71,16 @@ impl GetMulticastGroupCliCommand {
                 },
                 None => "".to_string(),
             };
-            let mode_text = if mgroup.publishers.contains(&pubkey) {
-                if !mgroup.subscribers.contains(&pubkey) {
-                    "Tx"
+            let mode_text = if user.publishers.contains(&mgroup_pubkey) {
+                if !user.subscribers.contains(&mgroup_pubkey) {
+                    "P"
                 } else {
-                    "Tx/Rx"
+                    "PS"
                 }
-            } else if mgroup.subscribers.contains(&pubkey) {
-                "Rx"
+            } else if user.subscribers.contains(&mgroup_pubkey) {
+                "S"
             } else {
-                "XX"
+                "X"
             };
 
             builder.push_record([
@@ -93,13 +88,13 @@ impl GetMulticastGroupCliCommand {
                 mode_text,
                 &device_name,
                 &location_name,
-                &data.cyoa_type.to_string(),
-                data.client_ip.to_string().as_str(),
-                &data.tunnel_id.to_string(),
-                data.tunnel_net.to_string().as_str(),
-                data.dz_ip.to_string().as_str(),
-                &data.status.to_string(),
-                &data.owner.to_string(),
+                &user.cyoa_type.to_string(),
+                user.client_ip.to_string().as_str(),
+                &user.tunnel_id.to_string(),
+                user.tunnel_net.to_string().as_str(),
+                user.dz_ip.to_string().as_str(),
+                &user.status.to_string(),
+                &user.owner.to_string(),
             ]);
         }
 
@@ -240,12 +235,10 @@ mod tests {
             tenant_pk: Pubkey::default(),
             multicast_ip: [10, 0, 0, 1].into(),
             max_bandwidth: 1000000000,
-            pub_allowlist: vec![],
-            sub_allowlist: vec![],
-            publishers: vec![user1_pk],
-            subscribers: vec![],
             status: MulticastGroupStatus::Activated,
             owner: mgroup_pubkey,
+            publisher_count: 5,
+            subscriber_count: 10,
         };
 
         client.expect_list_user().returning(move |_| {
@@ -287,7 +280,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by pubkey");
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: G4DjGHreV54t5yeNuSHi5iVcT5Qkykuj43pWWdSsP3dj\r\ncode: test\r\nmulticast_ip: 10.0.0.1\r\nmax_bandwidth: 1Gbps\r\rpublisher_allowlist: \r\nsubscriber_allowlist: \r\npublishers: 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1\r\nsubscribers: \r\nstatus: activated\r\nowner: G4DjGHreV54t5yeNuSHi5iVcT5Qkykuj43pWWdSsP3dj\r\n\r\nusers:\r\n\n account                                   | multicast_mode | device                           | location | cyoa_type  | client_ip   | tunnel_id | tunnel_net  | dz_ip    | status    | owner                                     \n 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1 | Tx             | 11111111111111111111111111111111 |          | GREOverDIA | 192.168.1.1 | 12345     | 10.0.0.0/32 | 10.0.0.2 | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1 \n");
+        assert_eq!(output_str, "account: G4DjGHreV54t5yeNuSHi5iVcT5Qkykuj43pWWdSsP3dj\r\ncode: test\r\nmulticast_ip: 10.0.0.1\r\nmax_bandwidth: 1Gbps\r\nstatus: activated\r\nowner: G4DjGHreV54t5yeNuSHi5iVcT5Qkykuj43pWWdSsP3dj\r\n\r\nusers:\r\n\n account                                   | multicast_mode | device                           | location | cyoa_type  | client_ip   | tunnel_id | tunnel_net  | dz_ip    | status    | owner                                     \n 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1 | P              | 11111111111111111111111111111111 |          | GREOverDIA | 192.168.1.1 | 12345     | 10.0.0.0/32 | 10.0.0.2 | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1 \n");
 
         // Expected success
         let mut output = Vec::new();
@@ -297,6 +290,6 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by code");
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: G4DjGHreV54t5yeNuSHi5iVcT5Qkykuj43pWWdSsP3dj\r\ncode: test\r\nmulticast_ip: 10.0.0.1\r\nmax_bandwidth: 1Gbps\r\rpublisher_allowlist: \r\nsubscriber_allowlist: \r\npublishers: 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1\r\nsubscribers: \r\nstatus: activated\r\nowner: G4DjGHreV54t5yeNuSHi5iVcT5Qkykuj43pWWdSsP3dj\r\n\r\nusers:\r\n\n account                                   | multicast_mode | device                           | location | cyoa_type  | client_ip   | tunnel_id | tunnel_net  | dz_ip    | status    | owner                                     \n 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1 | Tx             | 11111111111111111111111111111111 |          | GREOverDIA | 192.168.1.1 | 12345     | 10.0.0.0/32 | 10.0.0.2 | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1 \n");
+        assert_eq!(output_str, "account: G4DjGHreV54t5yeNuSHi5iVcT5Qkykuj43pWWdSsP3dj\r\ncode: test\r\nmulticast_ip: 10.0.0.1\r\nmax_bandwidth: 1Gbps\r\nstatus: activated\r\nowner: G4DjGHreV54t5yeNuSHi5iVcT5Qkykuj43pWWdSsP3dj\r\n\r\nusers:\r\n\n account                                   | multicast_mode | device                           | location | cyoa_type  | client_ip   | tunnel_id | tunnel_net  | dz_ip    | status    | owner                                     \n 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1 | P              | 11111111111111111111111111111111 |          | GREOverDIA | 192.168.1.1 | 12345     | 10.0.0.0/32 | 10.0.0.2 | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1 \n");
     }
 }

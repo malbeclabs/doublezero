@@ -43,12 +43,6 @@ impl CreateSubscribeUserCommand {
         if mgroup.status != MulticastGroupStatus::Activated {
             eyre::bail!("MulticastGroup not active");
         }
-        if self.publisher && !mgroup.pub_allowlist.contains(&client.get_payer()) {
-            eyre::bail!("Publisher not allowed");
-        }
-        if self.subscriber && !mgroup.sub_allowlist.contains(&client.get_payer()) {
-            eyre::bail!("Subscriber not allowed");
-        }
 
         let (accesspass_pk, _) = get_accesspass_pda(
             &client.get_program_id(),

@@ -565,20 +565,18 @@ const (
 )
 
 type MulticastGroup struct {
-	AccountType  AccountType
-	Owner        [32]uint8
-	Index        Uint128
-	Bump_seed    uint8
-	TenantPubKey [32]uint8
-	MulticastIp  [4]uint8
-	MaxBandwidth uint64
-	Status       MulticastGroupStatus
-	Code         string
-	PubAllowList [][32]uint8
-	SubAllowList [][32]uint8
-	Publishers   [][32]uint8
-	Subscribers  [][32]uint8
-	PubKey       [32]byte
+	AccountType     AccountType
+	Owner           [32]uint8
+	Index           Uint128
+	Bump_seed       uint8
+	TenantPubKey    [32]uint8
+	MulticastIp     [4]uint8
+	MaxBandwidth    uint64
+	Status          MulticastGroupStatus
+	Code            string
+	PublisherCount  uint32
+	SubscriberCount uint32
+	PubKey          [32]byte
 }
 
 type ProgramVersion struct {

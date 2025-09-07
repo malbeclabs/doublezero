@@ -31,6 +31,7 @@ All notable changes to this project will be documented in this file.
     - Drop device telemetry samples if submission attempts exhausted and buffer is at capacity
 - Device controller
     - Each environment can now have a different device BGP Autonomous System Number (ASN) per environment. (This is the remote ASN from the client's perspective.)
+    - Add flag for enabling pprof for runtime profiling
 - E2E tests
     - Updated unit tests and e2e tests to validate the new initialization and activation flow.
 - Contributor Operations

@@ -127,6 +127,7 @@ async fn test_distribute_rewards() {
                 ProgramConfiguration::MinimumEpochDurationToFinalizeRewards(
                     minimum_epoch_duration_to_finalize_rewards,
                 ),
+                ProgramConfiguration::CalculationGracePeriodSeconds(1),
                 ProgramConfiguration::Flag(ProgramFlagConfiguration::IsPaused(false)),
             ],
         )
@@ -136,6 +137,9 @@ async fn test_distribute_rewards() {
         .await
         .unwrap()
         .initialize_distribution(&debt_accountant_signer)
+        .await
+        .unwrap()
+        .warp_timestamp_by(1)
         .await
         .unwrap()
         .configure_distribution_debt(
@@ -151,6 +155,9 @@ async fn test_distribute_rewards() {
         .await
         .unwrap()
         .initialize_distribution(&debt_accountant_signer)
+        .await
+        .unwrap()
+        .warp_timestamp_by(1)
         .await
         .unwrap()
         .configure_distribution_debt(
@@ -428,6 +435,7 @@ async fn test_distribute_rewards() {
             .unwrap();
 
         let relayer_balance = test_setup
+            .context
             .banks_client
             .get_balance(relayer_key)
             .await
@@ -448,6 +456,7 @@ async fn test_distribute_rewards() {
             .unwrap();
 
         let relayer_balance = test_setup
+            .context
             .banks_client
             .get_balance(relayer_key)
             .await
@@ -498,6 +507,11 @@ async fn test_distribute_rewards() {
     expected_distribution.processed_rewards_end_index =
         (total_solana_validators / 8) + (total_contributors / 8 + 1);
     expected_distribution.distribute_rewards_relay_lamports = distribute_rewards_relay_lamports;
+    expected_distribution.calculation_allowed_timestamp = test_setup
+        .get_clock()
+        .await
+        .unix_timestamp
+        .saturating_sub(1) as u32;
     assert_eq!(distribution, expected_distribution);
     assert_eq!(
         distribution.distributed_2z_amount + distribution.burned_2z_amount,
@@ -514,6 +528,7 @@ async fn test_distribute_rewards() {
     // All relay lamports should have been paid, leaving only the rent exemption
     // as the remaining balance in the distribution account.
     let distribution_rent_exemption = test_setup
+        .context
         .banks_client
         .get_rent()
         .await
@@ -564,6 +579,8 @@ async fn test_distribute_rewards() {
     expected_distribution.processed_rewards_end_index =
         (total_solana_validators / 8) + (total_contributors / 8 + 1);
     expected_distribution.distribute_rewards_relay_lamports = distribute_rewards_relay_lamports;
+    expected_distribution.calculation_allowed_timestamp =
+        test_setup.get_clock().await.unix_timestamp as u32;
     assert_eq!(distribution, expected_distribution);
     assert_eq!(
         distribution.distributed_2z_amount + distribution.burned_2z_amount,
@@ -580,6 +597,7 @@ async fn test_distribute_rewards() {
     // All relay lamports should have been paid, leaving only the rent exemption
     // as the remaining balance in the distribution account.
     let distribution_rent_exemption = test_setup
+        .context
         .banks_client
         .get_rent()
         .await

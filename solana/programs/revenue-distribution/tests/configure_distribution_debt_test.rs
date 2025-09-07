@@ -35,6 +35,8 @@ async fn test_configure_distribution_debt() {
     // Relay settings.
     let distribute_rewards_relay_lamports = 10_000;
 
+    let calculation_grace_period_seconds = 3_600;
+
     test_setup
         .initialize_program()
         .await
@@ -67,6 +69,9 @@ async fn test_configure_distribution_debt() {
                 ProgramConfiguration::DistributeRewardsRelayLamports(
                     distribute_rewards_relay_lamports,
                 ),
+                ProgramConfiguration::CalculationGracePeriodSeconds(
+                    calculation_grace_period_seconds,
+                ),
                 ProgramConfiguration::Flag(ProgramFlagConfiguration::IsPaused(false)),
             ],
         )
@@ -76,6 +81,9 @@ async fn test_configure_distribution_debt() {
         .await
         .unwrap()
         .initialize_distribution(&debt_accountant_signer)
+        .await
+        .unwrap()
+        .warp_timestamp_by(calculation_grace_period_seconds)
         .await
         .unwrap();
 
@@ -132,5 +140,7 @@ async fn test_configure_distribution_debt() {
     expected_distribution.total_solana_validator_debt = total_solana_validator_debt;
     expected_distribution.solana_validator_debt_merkle_root = solana_validator_debt_merkle_root;
     expected_distribution.distribute_rewards_relay_lamports = distribute_rewards_relay_lamports;
+    expected_distribution.calculation_allowed_timestamp =
+        test_setup.get_clock().await.unix_timestamp as u32;
     assert_eq!(distribution, expected_distribution);
 }

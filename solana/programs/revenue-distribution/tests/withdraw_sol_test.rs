@@ -99,6 +99,7 @@ async fn test_withdraw_sol() {
                 ProgramConfiguration::DistributeRewardsRelayLamports(
                     distribute_rewards_relay_lamports,
                 ),
+                ProgramConfiguration::CalculationGracePeriodSeconds(1),
                 ProgramConfiguration::Sol2zSwapProgram(mock_swap_sol_2z::ID),
                 ProgramConfiguration::Flag(ProgramFlagConfiguration::IsPaused(false)),
             ],
@@ -106,6 +107,9 @@ async fn test_withdraw_sol() {
         .await
         .unwrap()
         .initialize_distribution(&benevolent_dictator_signer)
+        .await
+        .unwrap()
+        .warp_timestamp_by(1)
         .await
         .unwrap()
         .configure_distribution_debt(
@@ -167,6 +171,7 @@ async fn test_withdraw_sol() {
     assert_eq!(journal.swap_2z_destination_balance, amount_2z_in);
 
     let sol_destination_balance = test_setup
+        .context
         .banks_client
         .get_balance(sol_destination_key)
         .await

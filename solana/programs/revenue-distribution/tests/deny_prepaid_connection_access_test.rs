@@ -86,6 +86,7 @@ async fn test_deny_prepaid_connection_access() {
     // No test inputs.
 
     let sentinel_balance_before = test_setup
+        .context
         .banks_client
         .get_balance(dz_ledger_sentinel_signer.pubkey())
         .await
@@ -102,6 +103,7 @@ async fn test_deny_prepaid_connection_access() {
 
     let (prepaid_connection_key, _) = PrepaidConnection::find_address(&user_key);
     let prepaid_connection_info = test_setup
+        .context
         .banks_client
         .get_account(prepaid_connection_key)
         .await
@@ -109,6 +111,7 @@ async fn test_deny_prepaid_connection_access() {
     assert!(prepaid_connection_info.is_none());
 
     let sentinel_balance_after = test_setup
+        .context
         .banks_client
         .get_balance(dz_ledger_sentinel_signer.pubkey())
         .await

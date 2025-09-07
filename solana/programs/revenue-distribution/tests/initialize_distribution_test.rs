@@ -23,6 +23,7 @@ async fn test_initialize_distribution() {
 
     let debt_accountant_signer = Keypair::new();
     let solana_validator_base_block_rewards_pct_fee = 500; // 5%.
+    let calculation_grace_period_seconds = 69;
 
     // Relay settings.
     let distribute_rewards_relay_lamports = 10_000;
@@ -64,6 +65,9 @@ async fn test_initialize_distribution() {
                 ProgramConfiguration::DistributeRewardsRelayLamports(
                     distribute_rewards_relay_lamports,
                 ),
+                ProgramConfiguration::CalculationGracePeriodSeconds(
+                    calculation_grace_period_seconds,
+                ),
                 ProgramConfiguration::Flag(ProgramFlagConfiguration::IsPaused(false)),
             ],
         )
@@ -104,6 +108,12 @@ async fn test_initialize_distribution() {
         .base_block_rewards_pct =
         ValidatorFee::new(solana_validator_base_block_rewards_pct_fee).unwrap();
     expected_distribution.distribute_rewards_relay_lamports = distribute_rewards_relay_lamports;
+    expected_distribution.calculation_allowed_timestamp = test_setup
+        .get_clock()
+        .await
+        .unix_timestamp
+        .saturating_add(calculation_grace_period_seconds.into())
+        as u32;
     assert_eq!(distribution, expected_distribution);
     assert_eq!(distribution_custody.amount, 0);
 
@@ -118,6 +128,8 @@ async fn test_initialize_distribution() {
     expected_program_config.debt_accountant_key = debt_accountant_signer.pubkey();
 
     let expected_distribution_params = &mut expected_program_config.distribution_parameters;
+    expected_distribution_params.calculation_grace_period_seconds =
+        calculation_grace_period_seconds;
     expected_distribution_params
         .solana_validator_fee_parameters
         .base_block_rewards_pct =
@@ -158,6 +170,12 @@ async fn test_initialize_distribution() {
         .base_block_rewards_pct =
         ValidatorFee::new(solana_validator_base_block_rewards_pct_fee).unwrap();
     expected_distribution.distribute_rewards_relay_lamports = distribute_rewards_relay_lamports;
+    expected_distribution.calculation_allowed_timestamp = test_setup
+        .get_clock()
+        .await
+        .unix_timestamp
+        .saturating_add(calculation_grace_period_seconds.into())
+        as u32;
     assert_eq!(distribution, expected_distribution);
     assert_eq!(distribution_custody.amount, 0);
 
@@ -172,6 +190,8 @@ async fn test_initialize_distribution() {
     expected_program_config.debt_accountant_key = debt_accountant_signer.pubkey();
 
     let expected_distribution_params = &mut expected_program_config.distribution_parameters;
+    expected_distribution_params.calculation_grace_period_seconds =
+        calculation_grace_period_seconds;
     expected_distribution_params
         .solana_validator_fee_parameters
         .base_block_rewards_pct =

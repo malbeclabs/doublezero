@@ -18,7 +18,7 @@ use solana_msg::msg;
 use solana_program_error::{ProgramError, ProgramResult};
 use solana_pubkey::Pubkey;
 use solana_system_interface::instruction as system_instruction;
-use solana_sysvar::{rent::Rent, Sysvar};
+use solana_sysvar::{clock::Clock, rent::Rent, Sysvar};
 use spl_associated_token_account_interface::address::get_associated_token_address;
 use spl_token::instruction as token_instruction;
 use svm_hash::{merkle::MerkleProof, sha2::Hash};
@@ -394,6 +394,17 @@ fn try_configure_program(accounts: &[AccountInfo], setting: ProgramConfiguration
             fee_params.fixed_sol_amount = fixed_sol_amount;
         }
         ProgramConfiguration::CalculationGracePeriodSeconds(calculation_grace_period_seconds) => {
+            // If the grace period is zero, we treat this as unset.
+            if calculation_grace_period_seconds == 0 {
+                msg!("Calculation grace period is zero");
+                return Err(ProgramError::InvalidInstructionData);
+            }
+            // If the grace period is excessive (>24 hours), revert.
+            else if calculation_grace_period_seconds > 24 * 60 * 60 {
+                msg!("Calculation grace period exceeds 24 hours");
+                return Err(ProgramError::InvalidInstructionData);
+            }
+
             msg!(
                 "Set distribution_parameters.calculation_grace_period_seconds: {}",
                 calculation_grace_period_seconds
@@ -739,43 +750,20 @@ fn try_initialize_distribution(accounts: &[AccountInfo]) -> ProgramResult {
     // Make sure the program is not paused.
     program_config.try_require_unpaused()?;
 
+    // The minimum calculation grace period must have been configured.
+    let calculation_grace_period_seconds = program_config
+        .checked_calculation_grace_period_seconds()
+        .ok_or_else(|| {
+            msg!("Calculation grace period has not been configured yet");
+            ProgramError::InvalidAccountData
+        })?;
+
     let solana_validator_fee_params = program_config
         .checked_solana_validator_fee_parameters()
         .ok_or_else(|| {
             msg!("Solana validator fee parameters have not been configured yet");
             ProgramError::InvalidAccountData
         })?;
-
-    if program_config
-        .distribution_parameters
-        .community_burn_rate_parameters
-        .next_burn_rate()
-        .is_none()
-    {
-        msg!("Community burn rate has not been configured yet");
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    // Account 2 must be a signer and writable because it will send lamports to
-    // the new distribution account and distribution's 2Z token account. We do
-    // not check these fields because the create-account workflow requires that
-    // this account is writable and a signer.
-    let (_, payer_info) = try_next_enumerated_account(&mut accounts_iter, Default::default())?;
-
-    // Account 3 must be the new distribution account. The create-account
-    // workflow requires that this account does not exist yet and is writable.
-    let (account_index, new_distribution_info) =
-        try_next_enumerated_account(&mut accounts_iter, Default::default())?;
-
-    // We will need this DZ epoch for the distribution account.
-    let dz_epoch = program_config.next_dz_epoch;
-    let (expected_distribution_key, distribution_bump) = Distribution::find_address(dz_epoch);
-
-    // Enforce this account location and seed validity.
-    if new_distribution_info.key != &expected_distribution_key {
-        msg!("Invalid seeds for distribution (account {})", account_index);
-        return Err(ProgramError::InvalidSeeds);
-    }
 
     // Calculate the community burn rate for this distribution based on the
     // configured parameters (initial rate, limit, slope, etc.)
@@ -799,6 +787,27 @@ fn try_initialize_distribution(accounts: &[AccountInfo]) -> ProgramResult {
             msg!("Distribute rewards relay lamports not configured");
             ProgramError::InvalidAccountData
         })?;
+
+    // Account 2 must be a signer and writable because it will send lamports to
+    // the new distribution account and distribution's 2Z token account. We do
+    // not check these fields because the create-account workflow requires that
+    // this account is writable and a signer.
+    let (_, payer_info) = try_next_enumerated_account(&mut accounts_iter, Default::default())?;
+
+    // Account 3 must be the new distribution account. The create-account
+    // workflow requires that this account does not exist yet and is writable.
+    let (account_index, new_distribution_info) =
+        try_next_enumerated_account(&mut accounts_iter, Default::default())?;
+
+    // We will need this DZ epoch for the distribution account.
+    let dz_epoch = program_config.next_dz_epoch;
+    let (expected_distribution_key, distribution_bump) = Distribution::find_address(dz_epoch);
+
+    // Enforce this account location and seed validity.
+    if new_distribution_info.key != &expected_distribution_key {
+        msg!("Invalid seeds for distribution (account {})", account_index);
+        return Err(ProgramError::InvalidSeeds);
+    }
 
     // Uptick the program config's next epoch.
     program_config.next_dz_epoch = dz_epoch.saturating_add_duration(1);
@@ -875,6 +884,16 @@ fn try_initialize_distribution(accounts: &[AccountInfo]) -> ProgramResult {
     distribution.community_burn_rate = community_burn_rate;
     distribution.solana_validator_fee_parameters = solana_validator_fee_params;
     distribution.distribute_rewards_relay_lamports = distribute_rewards_relay_lamports;
+
+    // We do not expect this operation to fail anytime soon. But we ensure a
+    // panic just in case.
+    distribution.calculation_allowed_timestamp = Clock::get()
+        .unwrap()
+        .unix_timestamp
+        .checked_add(calculation_grace_period_seconds.into())
+        .unwrap()
+        .try_into()
+        .unwrap();
 
     // We need to move prepaid 2Z from the journal to the distribution.
     let mut journal =
@@ -962,6 +981,7 @@ fn try_configure_distribution_debt(
     msg!("DZ epoch: {}", distribution.dz_epoch);
 
     distribution.try_require_unfinalized_debt_calculation()?;
+    distribution.try_require_calculation_allowed()?;
 
     msg!("Set total_solana_validators: {}", total_validators);
     distribution.total_solana_validators = total_validators;
@@ -1087,9 +1107,8 @@ fn try_configure_distribution_rewards(
         ZeroCopyMutAccount::<Distribution>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
     msg!("DZ epoch: {}", distribution.dz_epoch);
 
-    // If the distribution rewards calculation has already been finalized,
-    // we have nothing to do.
     distribution.try_require_unfinalized_rewards_calculation()?;
+    distribution.try_require_calculation_allowed()?;
 
     msg!("Set total_contributors: {}", total_contributors);
     distribution.total_contributors = total_contributors;
@@ -3250,6 +3269,22 @@ impl Distribution {
     fn try_require_has_not_swept_2z_tokens(&self) -> ProgramResult {
         if self.has_swept_2z_tokens() {
             msg!("Distribution has already swept 2Z tokens");
+            return Err(ProgramError::InvalidAccountData);
+        }
+
+        Ok(())
+    }
+
+    #[inline(always)]
+    fn try_require_calculation_allowed(&self) -> ProgramResult {
+        let current_timestamp = Clock::get().unwrap().unix_timestamp;
+
+        let is_allowed = self
+            .checked_calculation_allowed_timestamp()
+            .is_some_and(|allowed_timestamp| current_timestamp >= allowed_timestamp);
+
+        if !is_allowed {
+            msg!("Distribution calculation is not allowed yet");
             return Err(ProgramError::InvalidAccountData);
         }
 

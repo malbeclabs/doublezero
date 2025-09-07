@@ -30,6 +30,7 @@ async fn test_initialize_swap_destination() {
     let (swap_destination_key, swap_dst_2z_token_pda_bump) =
         find_2z_token_pda_address(&swap_authority_key);
     let swap_destination_account_data = test_setup
+        .context
         .banks_client
         .get_account(swap_destination_key)
         .await

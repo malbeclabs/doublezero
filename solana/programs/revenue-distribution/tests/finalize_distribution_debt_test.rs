@@ -83,6 +83,7 @@ async fn test_finalize_distribution_debt() {
                 ProgramConfiguration::DistributeRewardsRelayLamports(
                     distribute_rewards_relay_lamports,
                 ),
+                ProgramConfiguration::CalculationGracePeriodSeconds(1),
                 ProgramConfiguration::Flag(ProgramFlagConfiguration::IsPaused(false)),
             ],
         )
@@ -92,6 +93,9 @@ async fn test_finalize_distribution_debt() {
         .await
         .unwrap()
         .initialize_distribution(&debt_accountant_signer)
+        .await
+        .unwrap()
+        .warp_timestamp_by(1)
         .await
         .unwrap()
         .configure_distribution_debt(
@@ -131,6 +135,8 @@ async fn test_finalize_distribution_debt() {
     expected_distribution.processed_solana_validator_debt_end_index =
         total_solana_validators / 8 + 1;
     expected_distribution.distribute_rewards_relay_lamports = distribute_rewards_relay_lamports;
+    expected_distribution.calculation_allowed_timestamp =
+        test_setup.get_clock().await.unix_timestamp as u32;
     assert_eq!(distribution, expected_distribution);
 
     let expected_remaining_distribution_data_len = 1;
@@ -144,7 +150,7 @@ async fn test_finalize_distribution_debt() {
     );
 
     // Clone payer signer to avoid borrowing issue.
-    let payer_signer = test_setup.payer_signer.insecure_clone();
+    let payer_signer = test_setup.payer_signer().insecure_clone();
 
     // Cannot configure distribution debt after they are finalized.
 

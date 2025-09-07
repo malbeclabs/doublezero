@@ -53,6 +53,7 @@ async fn test_configure_journal() {
 
     let journal_key = Journal::find_address().0;
     let journal_account_data = test_setup
+        .context
         .banks_client
         .get_account(journal_key)
         .await
@@ -78,6 +79,7 @@ async fn test_configure_journal() {
     assert!(epoch_payments.0.is_empty());
 
     let custodied_2z_token_account_data = test_setup
+        .context
         .banks_client
         .get_account(state::find_2z_token_pda_address(&journal_key).0)
         .await

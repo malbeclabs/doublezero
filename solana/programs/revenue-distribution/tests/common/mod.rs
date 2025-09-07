@@ -31,10 +31,13 @@ use doublezero_revenue_distribution::{
 };
 use solana_loader_v3_interface::{get_program_data_address, state::UpgradeableLoaderState};
 use solana_program_pack::Pack;
-use solana_program_test::{BanksClient, BanksClientError, ProgramTest, ProgramTestBanksClientExt};
+use solana_program_test::{
+    BanksClient, BanksClientError, ProgramTest, ProgramTestBanksClientExt, ProgramTestContext,
+};
 use solana_pubkey::Pubkey;
 use solana_sdk::{
     account::Account,
+    clock::Clock,
     hash::Hash,
     instruction::Instruction,
     message::{v0::Message, VersionedMessage},
@@ -55,9 +58,7 @@ pub struct TestAccount {
 }
 
 pub struct ProgramTestWithOwner {
-    pub banks_client: BanksClient,
-    pub payer_signer: Keypair,
-    pub cached_blockhash: Hash,
+    pub context: ProgramTestContext,
     pub owner_signer: Keypair,
     pub treasury_2z_key: Pubkey,
     pub sol_2z_swap_fills_registry_key: Pubkey,
@@ -129,7 +130,11 @@ pub async fn start_test_with_accounts(accounts: Vec<TestAccount>) -> ProgramTest
         program_test.add_account(key, info);
     }
 
-    let (mut banks_client, payer_signer, cached_blockhash) = program_test.start().await;
+    let mut context = program_test.start_with_context().await;
+
+    let banks_client = &mut context.banks_client;
+    let payer_signer = &context.payer;
+    let cached_blockhash = &context.last_blockhash;
 
     let sol_2z_swap_fills_registry_signer = Keypair::new();
     let sol_2z_swap_fills_registry_key = sol_2z_swap_fills_registry_signer.pubkey();
@@ -143,19 +148,19 @@ pub async fn start_test_with_accounts(accounts: Vec<TestAccount>) -> ProgramTest
             );
 
         process_instructions_for_test(
-            &mut banks_client,
-            &cached_blockhash,
+            banks_client,
+            cached_blockhash,
             &[create_account_ix, initialize_fills_tracker_ix],
-            &[&payer_signer, &sol_2z_swap_fills_registry_signer],
+            &[payer_signer, &sol_2z_swap_fills_registry_signer],
         )
         .await
         .unwrap()
     };
 
+    context.last_blockhash = cached_blockhash;
+
     ProgramTestWithOwner {
-        banks_client,
-        payer_signer,
-        cached_blockhash,
+        context,
         owner_signer,
         treasury_2z_key,
         sol_2z_swap_fills_registry_key,
@@ -199,9 +204,29 @@ pub struct IndexedProgramLog<'a> {
 }
 
 impl ProgramTestWithOwner {
+    pub fn payer_signer(&self) -> &Keypair {
+        &self.context.payer
+    }
+
+    pub async fn get_clock(&self) -> Clock {
+        self.context
+            .banks_client
+            .get_sysvar::<Clock>()
+            .await
+            .unwrap()
+    }
+
+    pub async fn warp_timestamp_by(&mut self, seconds: u32) -> Result<&mut Self, BanksClientError> {
+        let mut clock = self.get_clock().await;
+        clock.unix_timestamp += i64::from(seconds);
+        self.context.set_sysvar::<Clock>(&clock);
+
+        Ok(self)
+    }
+
     pub async fn get_latest_blockhash(&mut self) -> Result<Hash, BanksClientError> {
-        self.banks_client
-            .get_new_latest_blockhash(&self.cached_blockhash)
+        self.context
+            .get_new_latest_blockhash()
             .await
             .map_err(Into::into)
     }
@@ -214,7 +239,7 @@ impl ProgramTestWithOwner {
     ) -> (TransactionError, Vec<String>) {
         let recent_blockhash = self.get_latest_blockhash().await.unwrap();
 
-        let payer_signer = &self.payer_signer;
+        let payer_signer = &self.context.payer;
 
         let mut tx_signers = vec![payer_signer];
         tx_signers.extend_from_slice(signers);
@@ -222,6 +247,7 @@ impl ProgramTestWithOwner {
         let transaction = new_transaction(instructions, &tx_signers, recent_blockhash);
 
         let simulated_tx = self
+            .context
             .banks_client
             .simulate_transaction(transaction)
             .await
@@ -229,7 +255,7 @@ impl ProgramTestWithOwner {
 
         let tx_err = simulated_tx.result.unwrap().unwrap_err();
 
-        self.cached_blockhash = recent_blockhash;
+        self.context.last_blockhash = recent_blockhash;
 
         (tx_err, simulated_tx.simulation_details.unwrap().logs)
     }
@@ -239,14 +265,14 @@ impl ProgramTestWithOwner {
         dst_key: &Pubkey,
         amount: u64,
     ) -> Result<&mut Self, BanksClientError> {
-        let payer_signer = &self.payer_signer;
+        let payer_signer = &self.context.payer;
 
         let transfer_ix =
             solana_system_interface::instruction::transfer(&payer_signer.pubkey(), dst_key, amount);
 
-        self.cached_blockhash = process_instructions_for_test(
-            &mut self.banks_client,
-            &self.cached_blockhash,
+        self.context.last_blockhash = process_instructions_for_test(
+            &mut self.context.banks_client,
+            &self.context.last_blockhash,
             &[transfer_ix],
             &[payer_signer],
         )
@@ -259,7 +285,7 @@ impl ProgramTestWithOwner {
         &mut self,
         owner_key: &Pubkey,
     ) -> Result<&mut Self, BanksClientError> {
-        let payer_signer = &self.payer_signer;
+        let payer_signer = &self.context.payer;
         let payer_key = payer_signer.pubkey();
 
         // No consequence if the ATA already exists.
@@ -270,9 +296,9 @@ impl ProgramTestWithOwner {
             &spl_token::ID,
         );
 
-        self.cached_blockhash = process_instructions_for_test(
-            &mut self.banks_client,
-            &self.cached_blockhash,
+        self.context.last_blockhash = process_instructions_for_test(
+            &mut self.context.banks_client,
+            &self.context.last_blockhash,
             &[create_ix],
             &[payer_signer],
         )
@@ -286,7 +312,7 @@ impl ProgramTestWithOwner {
         dst_token_account_key: &Pubkey,
         amount: u64,
     ) -> Result<&mut Self, BanksClientError> {
-        let payer_signer = &self.payer_signer;
+        let payer_signer = &self.context.payer;
         let owner_signer = &self.owner_signer;
 
         let token_transfer_ix = token_instruction::transfer(
@@ -299,9 +325,9 @@ impl ProgramTestWithOwner {
         )
         .unwrap();
 
-        self.cached_blockhash = process_instructions_for_test(
-            &mut self.banks_client,
-            &self.cached_blockhash,
+        self.context.last_blockhash = process_instructions_for_test(
+            &mut self.context.banks_client,
+            &self.context.last_blockhash,
             &[token_transfer_ix],
             &[payer_signer, owner_signer],
         )
@@ -311,7 +337,7 @@ impl ProgramTestWithOwner {
     }
 
     pub async fn initialize_program(&mut self) -> Result<&mut Self, BanksClientError> {
-        let payer_signer = &self.payer_signer;
+        let payer_signer = &self.context.payer;
         let program_config_key = ProgramConfig::find_address().0;
 
         let initialize_program_ix = try_build_instruction(
@@ -327,9 +353,9 @@ impl ProgramTestWithOwner {
             1,
         );
 
-        self.cached_blockhash = process_instructions_for_test(
-            &mut self.banks_client,
-            &self.cached_blockhash,
+        self.context.last_blockhash = process_instructions_for_test(
+            &mut self.context.banks_client,
+            &self.context.last_blockhash,
             &[remove_me_ix, initialize_program_ix],
             &[payer_signer],
         )
@@ -340,7 +366,7 @@ impl ProgramTestWithOwner {
 
     pub async fn set_admin(&mut self, admin_key: &Pubkey) -> Result<&mut Self, BanksClientError> {
         let owner_signer = &self.owner_signer;
-        let payer_signer = &self.payer_signer;
+        let payer_signer = &self.context.payer;
 
         let set_admin_ix = try_build_instruction(
             &ID,
@@ -349,9 +375,9 @@ impl ProgramTestWithOwner {
         )
         .unwrap();
 
-        self.cached_blockhash = process_instructions_for_test(
-            &mut self.banks_client,
-            &self.cached_blockhash,
+        self.context.last_blockhash = process_instructions_for_test(
+            &mut self.context.banks_client,
+            &self.context.last_blockhash,
             &[set_admin_ix],
             &[payer_signer, owner_signer],
         )
@@ -365,7 +391,7 @@ impl ProgramTestWithOwner {
         admin_signer: &Keypair,
         settings: [ProgramConfiguration; N],
     ) -> Result<&mut Self, BanksClientError> {
-        let payer_signer = &self.payer_signer;
+        let payer_signer = &self.context.payer;
 
         let configure_program_ixs = settings
             .into_iter()
@@ -379,9 +405,9 @@ impl ProgramTestWithOwner {
             })
             .collect::<Vec<_>>();
 
-        self.cached_blockhash = process_instructions_for_test(
-            &mut self.banks_client,
-            &self.cached_blockhash,
+        self.context.last_blockhash = process_instructions_for_test(
+            &mut self.context.banks_client,
+            &self.context.last_blockhash,
             &configure_program_ixs,
             &[payer_signer, admin_signer],
         )
@@ -391,7 +417,7 @@ impl ProgramTestWithOwner {
     }
 
     pub async fn initialize_journal(&mut self) -> Result<&mut Self, BanksClientError> {
-        let payer_signer = &self.payer_signer;
+        let payer_signer = &self.context.payer;
         let journal_key = Journal::find_address().0;
 
         let initialize_journal_ix = try_build_instruction(
@@ -404,9 +430,9 @@ impl ProgramTestWithOwner {
         let remove_me_ix =
             solana_system_interface::instruction::transfer(&payer_signer.pubkey(), &journal_key, 1);
 
-        self.cached_blockhash = process_instructions_for_test(
-            &mut self.banks_client,
-            &self.cached_blockhash,
+        self.context.last_blockhash = process_instructions_for_test(
+            &mut self.context.banks_client,
+            &self.context.last_blockhash,
             &[remove_me_ix, initialize_journal_ix],
             &[payer_signer],
         )
@@ -420,7 +446,7 @@ impl ProgramTestWithOwner {
         admin_signer: &Keypair,
         settings: [JournalConfiguration; N],
     ) -> Result<&mut Self, BanksClientError> {
-        let payer_signer = &self.payer_signer;
+        let payer_signer = &self.context.payer;
 
         let configure_program_ixs = settings
             .into_iter()
@@ -435,8 +461,8 @@ impl ProgramTestWithOwner {
             .collect::<Vec<_>>();
 
         process_instructions_for_test(
-            &mut self.banks_client,
-            &self.cached_blockhash,
+            &mut self.context.banks_client,
+            &self.context.last_blockhash,
             &configure_program_ixs,
             &[payer_signer, admin_signer],
         )
@@ -449,7 +475,7 @@ impl ProgramTestWithOwner {
         &mut self,
         accountant_signer: &Keypair,
     ) -> Result<&mut Self, BanksClientError> {
-        let payer_signer = &self.payer_signer;
+        let payer_signer = &self.context.payer;
 
         let (_, program_config, _) = self.fetch_program_config().await;
 
@@ -465,9 +491,9 @@ impl ProgramTestWithOwner {
         )
         .unwrap();
 
-        self.cached_blockhash = process_instructions_for_test(
-            &mut self.banks_client,
-            &self.cached_blockhash,
+        self.context.last_blockhash = process_instructions_for_test(
+            &mut self.context.banks_client,
+            &self.context.last_blockhash,
             &[initialize_distribution_ix],
             &[payer_signer, accountant_signer],
         )
@@ -484,7 +510,7 @@ impl ProgramTestWithOwner {
         total_debt: u64,
         merkle_root: Hash,
     ) -> Result<&mut Self, BanksClientError> {
-        let payer_signer = &self.payer_signer;
+        let payer_signer = &self.context.payer;
 
         let configure_distribution_debt_ix = try_build_instruction(
             &ID,
@@ -497,9 +523,9 @@ impl ProgramTestWithOwner {
         )
         .unwrap();
 
-        self.cached_blockhash = process_instructions_for_test(
-            &mut self.banks_client,
-            &self.cached_blockhash,
+        self.context.last_blockhash = process_instructions_for_test(
+            &mut self.context.banks_client,
+            &self.context.last_blockhash,
             &[configure_distribution_debt_ix],
             &[payer_signer, debt_accountant_signer],
         )
@@ -513,7 +539,7 @@ impl ProgramTestWithOwner {
         dz_epoch: DoubleZeroEpoch,
         debt_accountant_signer: &Keypair,
     ) -> Result<&mut Self, BanksClientError> {
-        let payer_signer = &self.payer_signer;
+        let payer_signer = &self.context.payer;
 
         let finalize_distribution_debt_ix = try_build_instruction(
             &ID,
@@ -526,9 +552,9 @@ impl ProgramTestWithOwner {
         )
         .unwrap();
 
-        self.cached_blockhash = process_instructions_for_test(
-            &mut self.banks_client,
-            &self.cached_blockhash,
+        self.context.last_blockhash = process_instructions_for_test(
+            &mut self.context.banks_client,
+            &self.context.last_blockhash,
             &[finalize_distribution_debt_ix],
             &[payer_signer, debt_accountant_signer],
         )
@@ -544,7 +570,7 @@ impl ProgramTestWithOwner {
         total_contributors: u32,
         merkle_root: Hash,
     ) -> Result<&mut Self, BanksClientError> {
-        let payer_signer = &self.payer_signer;
+        let payer_signer = &self.context.payer;
 
         let configure_distribution_rewards_ix = try_build_instruction(
             &ID,
@@ -556,9 +582,9 @@ impl ProgramTestWithOwner {
         )
         .unwrap();
 
-        self.cached_blockhash = process_instructions_for_test(
-            &mut self.banks_client,
-            &self.cached_blockhash,
+        self.context.last_blockhash = process_instructions_for_test(
+            &mut self.context.banks_client,
+            &self.context.last_blockhash,
             &[configure_distribution_rewards_ix],
             &[payer_signer, accountant_signer],
         )
@@ -571,7 +597,7 @@ impl ProgramTestWithOwner {
         &mut self,
         dz_epoch: DoubleZeroEpoch,
     ) -> Result<&mut Self, BanksClientError> {
-        let payer_signer = &self.payer_signer;
+        let payer_signer = &self.context.payer;
 
         let finalize_distribution_rewards_ix = try_build_instruction(
             &ID,
@@ -580,9 +606,9 @@ impl ProgramTestWithOwner {
         )
         .unwrap();
 
-        self.cached_blockhash = process_instructions_for_test(
-            &mut self.banks_client,
-            &self.cached_blockhash,
+        self.context.last_blockhash = process_instructions_for_test(
+            &mut self.context.banks_client,
+            &self.context.last_blockhash,
             &[finalize_distribution_rewards_ix],
             &[payer_signer],
         )
@@ -600,7 +626,7 @@ impl ProgramTestWithOwner {
         recipient_keys: &[&Pubkey],
         proof: MerkleProof,
     ) -> Result<&mut Self, BanksClientError> {
-        let payer_signer = &self.payer_signer;
+        let payer_signer = &self.context.payer;
 
         let contributor_key = &reward_share.contributor_key;
         let unit_share = reward_share.unit_share;
@@ -623,9 +649,9 @@ impl ProgramTestWithOwner {
         )
         .unwrap();
 
-        self.cached_blockhash = process_instructions_for_test(
-            &mut self.banks_client,
-            &self.cached_blockhash,
+        self.context.last_blockhash = process_instructions_for_test(
+            &mut self.context.banks_client,
+            &self.context.last_blockhash,
             &[distribute_rewards_ix],
             &[payer_signer],
         )
@@ -641,7 +667,7 @@ impl ProgramTestWithOwner {
         source_2z_token_account_key: &Pubkey,
         decimals: u8,
     ) -> Result<&mut Self, BanksClientError> {
-        let payer_signer = &self.payer_signer;
+        let payer_signer = &self.context.payer;
 
         let initialize_prepaid_connection_ix = try_build_instruction(
             &ID,
@@ -659,9 +685,9 @@ impl ProgramTestWithOwner {
         )
         .unwrap();
 
-        self.cached_blockhash = process_instructions_for_test(
-            &mut self.banks_client,
-            &self.cached_blockhash,
+        self.context.last_blockhash = process_instructions_for_test(
+            &mut self.context.banks_client,
+            &self.context.last_blockhash,
             &[initialize_prepaid_connection_ix],
             &[payer_signer, token_transfer_authority_signer],
         )
@@ -675,7 +701,7 @@ impl ProgramTestWithOwner {
         dz_ledger_sentinel_signer: &Keypair,
         user_key: &Pubkey,
     ) -> Result<&mut Self, BanksClientError> {
-        let payer_signer = &self.payer_signer;
+        let payer_signer = &self.context.payer;
 
         let grant_prepaid_connection_access_ix = try_build_instruction(
             &ID,
@@ -687,9 +713,9 @@ impl ProgramTestWithOwner {
         )
         .unwrap();
 
-        self.cached_blockhash = process_instructions_for_test(
-            &mut self.banks_client,
-            &self.cached_blockhash,
+        self.context.last_blockhash = process_instructions_for_test(
+            &mut self.context.banks_client,
+            &self.context.last_blockhash,
             &[grant_prepaid_connection_access_ix],
             &[payer_signer, dz_ledger_sentinel_signer],
         )
@@ -704,7 +730,7 @@ impl ProgramTestWithOwner {
         activation_funder_key: &Pubkey,
         user_key: &Pubkey,
     ) -> Result<&mut Self, BanksClientError> {
-        let payer_signer = &self.payer_signer;
+        let payer_signer = &self.context.payer;
 
         let deny_prepaid_connection_access_ix = try_build_instruction(
             &ID,
@@ -718,9 +744,9 @@ impl ProgramTestWithOwner {
         )
         .unwrap();
 
-        self.cached_blockhash = process_instructions_for_test(
-            &mut self.banks_client,
-            &self.cached_blockhash,
+        self.context.last_blockhash = process_instructions_for_test(
+            &mut self.context.banks_client,
+            &self.context.last_blockhash,
             &[deny_prepaid_connection_access_ix],
             &[payer_signer, dz_ledger_sentinel_signer],
         )
@@ -737,7 +763,7 @@ impl ProgramTestWithOwner {
         valid_through_dz_epoch: DoubleZeroEpoch,
         decimals: u8,
     ) -> Result<&mut Self, BanksClientError> {
-        let payer_signer = &self.payer_signer;
+        let payer_signer = &self.context.payer;
 
         let initialize_prepaid_connection_ix = try_build_instruction(
             &ID,
@@ -754,9 +780,9 @@ impl ProgramTestWithOwner {
         )
         .unwrap();
 
-        self.cached_blockhash = process_instructions_for_test(
-            &mut self.banks_client,
-            &self.cached_blockhash,
+        self.context.last_blockhash = process_instructions_for_test(
+            &mut self.context.banks_client,
+            &self.context.last_blockhash,
             &[initialize_prepaid_connection_ix],
             &[payer_signer, token_transfer_authority_signer],
         )
@@ -771,7 +797,7 @@ impl ProgramTestWithOwner {
         termination_beneficiary: &Pubkey,
         termination_relayer: Option<&Pubkey>,
     ) -> Result<&mut Self, BanksClientError> {
-        let payer_signer = &self.payer_signer;
+        let payer_signer = &self.context.payer;
 
         let terminate_prepaid_connection_ix = try_build_instruction(
             &ID,
@@ -784,9 +810,9 @@ impl ProgramTestWithOwner {
         )
         .unwrap();
 
-        self.cached_blockhash = process_instructions_for_test(
-            &mut self.banks_client,
-            &self.cached_blockhash,
+        self.context.last_blockhash = process_instructions_for_test(
+            &mut self.context.banks_client,
+            &self.context.last_blockhash,
             &[terminate_prepaid_connection_ix],
             &[payer_signer],
         )
@@ -799,7 +825,7 @@ impl ProgramTestWithOwner {
         &mut self,
         service_key: &Pubkey,
     ) -> Result<&mut Self, BanksClientError> {
-        let payer_signer = &self.payer_signer;
+        let payer_signer = &self.context.payer;
 
         let initialize_contributor_rewards_ix = try_build_instruction(
             &ID,
@@ -808,9 +834,9 @@ impl ProgramTestWithOwner {
         )
         .unwrap();
 
-        self.cached_blockhash = process_instructions_for_test(
-            &mut self.banks_client,
-            &self.cached_blockhash,
+        self.context.last_blockhash = process_instructions_for_test(
+            &mut self.context.banks_client,
+            &self.context.last_blockhash,
             &[initialize_contributor_rewards_ix],
             &[payer_signer],
         )
@@ -825,7 +851,7 @@ impl ProgramTestWithOwner {
         contributor_manager_signer: &Keypair,
         rewards_manager_key: &Pubkey,
     ) -> Result<&mut Self, BanksClientError> {
-        let payer_signer = &self.payer_signer;
+        let payer_signer = &self.context.payer;
 
         let set_rewards_manager_ix = try_build_instruction(
             &ID,
@@ -834,9 +860,9 @@ impl ProgramTestWithOwner {
         )
         .unwrap();
 
-        self.cached_blockhash = process_instructions_for_test(
-            &mut self.banks_client,
-            &self.cached_blockhash,
+        self.context.last_blockhash = process_instructions_for_test(
+            &mut self.context.banks_client,
+            &self.context.last_blockhash,
             &[set_rewards_manager_ix],
             &[payer_signer, contributor_manager_signer],
         )
@@ -851,7 +877,7 @@ impl ProgramTestWithOwner {
         rewards_manager_signer: &Keypair,
         setting: [ContributorRewardsConfiguration; N],
     ) -> Result<&mut Self, BanksClientError> {
-        let payer_signer = &self.payer_signer;
+        let payer_signer = &self.context.payer;
 
         let configure_contributor_rewards_ixs = setting
             .into_iter()
@@ -869,8 +895,8 @@ impl ProgramTestWithOwner {
             .collect::<Vec<_>>();
 
         process_instructions_for_test(
-            &mut self.banks_client,
-            &self.cached_blockhash,
+            &mut self.context.banks_client,
+            &self.context.last_blockhash,
             &configure_contributor_rewards_ixs,
             &[payer_signer, rewards_manager_signer],
         )
@@ -884,7 +910,7 @@ impl ProgramTestWithOwner {
         dz_epoch: DoubleZeroEpoch,
         distribution_merkle_root_kinds_and_proofs: Vec<(DistributionMerkleRootKind, MerkleProof)>,
     ) -> Result<&mut Self, BanksClientError> {
-        let payer_signer = &self.payer_signer;
+        let payer_signer = &self.context.payer;
 
         let verify_distribution_merkle_root_ixs = distribution_merkle_root_kinds_and_proofs
             .into_iter()
@@ -901,9 +927,9 @@ impl ProgramTestWithOwner {
             })
             .collect::<Vec<_>>();
 
-        self.cached_blockhash = process_instructions_for_test(
-            &mut self.banks_client,
-            &self.cached_blockhash,
+        self.context.last_blockhash = process_instructions_for_test(
+            &mut self.context.banks_client,
+            &self.context.last_blockhash,
             &verify_distribution_merkle_root_ixs,
             &[payer_signer],
         )
@@ -916,7 +942,7 @@ impl ProgramTestWithOwner {
         &mut self,
         node_id: &Pubkey,
     ) -> Result<&mut Self, BanksClientError> {
-        let payer_signer = &self.payer_signer;
+        let payer_signer = &self.context.payer;
 
         let initialize_solana_validator_deposit_ix = try_build_instruction(
             &ID,
@@ -925,9 +951,9 @@ impl ProgramTestWithOwner {
         )
         .unwrap();
 
-        self.cached_blockhash = process_instructions_for_test(
-            &mut self.banks_client,
-            &self.cached_blockhash,
+        self.context.last_blockhash = process_instructions_for_test(
+            &mut self.context.banks_client,
+            &self.context.last_blockhash,
             &[initialize_solana_validator_deposit_ix],
             &[payer_signer],
         )
@@ -943,7 +969,7 @@ impl ProgramTestWithOwner {
         amount: u64,
         proof: MerkleProof,
     ) -> Result<&mut Self, BanksClientError> {
-        let payer_signer = &self.payer_signer;
+        let payer_signer = &self.context.payer;
 
         let pay_solana_validator_debt_ix = try_build_instruction(
             &ID,
@@ -952,9 +978,9 @@ impl ProgramTestWithOwner {
         )
         .unwrap();
 
-        self.cached_blockhash = process_instructions_for_test(
-            &mut self.banks_client,
-            &self.cached_blockhash,
+        self.context.last_blockhash = process_instructions_for_test(
+            &mut self.context.banks_client,
+            &self.context.last_blockhash,
             &[pay_solana_validator_debt_ix],
             &[payer_signer],
         )
@@ -971,7 +997,7 @@ impl ProgramTestWithOwner {
         debt: &SolanaValidatorDebt,
         proof: MerkleProof,
     ) -> Result<&mut Self, BanksClientError> {
-        let payer_signer = &self.payer_signer;
+        let payer_signer = &self.context.payer;
 
         let forgive_solana_validator_debt_ix = try_build_instruction(
             &ID,
@@ -984,9 +1010,9 @@ impl ProgramTestWithOwner {
         )
         .unwrap();
 
-        self.cached_blockhash = process_instructions_for_test(
-            &mut self.banks_client,
-            &self.cached_blockhash,
+        self.context.last_blockhash = process_instructions_for_test(
+            &mut self.context.banks_client,
+            &self.context.last_blockhash,
             &[forgive_solana_validator_debt_ix],
             &[payer_signer, debt_accountant_signer],
         )
@@ -999,7 +1025,7 @@ impl ProgramTestWithOwner {
         &mut self,
         mint_key: &Pubkey,
     ) -> Result<&mut Self, BanksClientError> {
-        let payer_signer = &self.payer_signer;
+        let payer_signer = &self.context.payer;
 
         let initialize_swap_destination_ix = try_build_instruction(
             &ID,
@@ -1008,9 +1034,9 @@ impl ProgramTestWithOwner {
         )
         .unwrap();
 
-        self.cached_blockhash = process_instructions_for_test(
-            &mut self.banks_client,
-            &self.cached_blockhash,
+        self.context.last_blockhash = process_instructions_for_test(
+            &mut self.context.banks_client,
+            &self.context.last_blockhash,
             &[initialize_swap_destination_ix],
             &[payer_signer],
         )
@@ -1023,7 +1049,7 @@ impl ProgramTestWithOwner {
         &mut self,
         dz_epoch: DoubleZeroEpoch,
     ) -> Result<&mut Self, BanksClientError> {
-        let payer_signer = &self.payer_signer;
+        let payer_signer = &self.context.payer;
         let sol_2z_swap_fills_registry_key = self.sol_2z_swap_fills_registry_key;
 
         let sweep_distribution_tokens_ix = try_build_instruction(
@@ -1037,9 +1063,9 @@ impl ProgramTestWithOwner {
         )
         .unwrap();
 
-        self.cached_blockhash = process_instructions_for_test(
-            &mut self.banks_client,
-            &self.cached_blockhash,
+        self.context.last_blockhash = process_instructions_for_test(
+            &mut self.context.banks_client,
+            &self.context.last_blockhash,
             &[sweep_distribution_tokens_ix],
             &[payer_signer],
         )
@@ -1060,7 +1086,7 @@ impl ProgramTestWithOwner {
         amount_2z_in: u64,
         amount_sol_out: u64,
     ) -> Result<&mut Self, BanksClientError> {
-        let payer_signer = &self.payer_signer;
+        let payer_signer = &self.context.payer;
         let fills_tracker_key = self.sol_2z_swap_fills_registry_key;
 
         let buy_sol_ix = mock_swap_sol_2z::instruction::buy_sol(
@@ -1072,9 +1098,9 @@ impl ProgramTestWithOwner {
             amount_sol_out,
         );
 
-        self.cached_blockhash = process_instructions_for_test(
-            &mut self.banks_client,
-            &self.cached_blockhash,
+        self.context.last_blockhash = process_instructions_for_test(
+            &mut self.context.banks_client,
+            &self.context.last_blockhash,
             &[buy_sol_ix],
             &[payer_signer, transfer_authority_signer],
         )
@@ -1092,6 +1118,7 @@ impl ProgramTestWithOwner {
         token_account_key: &Pubkey,
     ) -> Result<TokenAccount, BanksClientError> {
         let token_account_data = self
+            .context
             .banks_client
             .get_account(*token_account_key)
             .await?
@@ -1106,6 +1133,7 @@ impl ProgramTestWithOwner {
         let program_config_key = ProgramConfig::find_address().0;
 
         let program_config_account_data = self
+            .context
             .banks_client
             .get_account(program_config_key)
             .await
@@ -1115,6 +1143,7 @@ impl ProgramTestWithOwner {
 
         let token_pda_key = state::find_2z_token_pda_address(&program_config_key).0;
         let reserve_2z_data = self
+            .context
             .banks_client
             .get_account(token_pda_key)
             .await
@@ -1137,6 +1166,7 @@ impl ProgramTestWithOwner {
         let journal_key = Journal::find_address().0;
 
         let program_config_account_data = self
+            .context
             .banks_client
             .get_account(journal_key)
             .await
@@ -1151,6 +1181,7 @@ impl ProgramTestWithOwner {
 
         let token_pda_key = state::find_2z_token_pda_address(&journal_key).0;
         let journal_2z_token_pda_data = self
+            .context
             .banks_client
             .get_account(token_pda_key)
             .await
@@ -1170,6 +1201,7 @@ impl ProgramTestWithOwner {
         let distribution_key = Distribution::find_address(dz_epoch).0;
 
         let distribution_account_info = self
+            .context
             .banks_client
             .get_account(distribution_key)
             .await
@@ -1181,6 +1213,7 @@ impl ProgramTestWithOwner {
 
         let token_pda_key = state::find_2z_token_pda_address(&distribution_key).0;
         let distribution_2z_token_pda_data = self
+            .context
             .banks_client
             .get_account(token_pda_key)
             .await
@@ -1203,6 +1236,7 @@ impl ProgramTestWithOwner {
         let prepaid_connection_key = PrepaidConnection::find_address(user_key).0;
 
         let prepaid_connection_account_data = self
+            .context
             .banks_client
             .get_account(prepaid_connection_key)
             .await
@@ -1225,6 +1259,7 @@ impl ProgramTestWithOwner {
         let contributor_rewards_key = ContributorRewards::find_address(service_key).0;
 
         let contributor_rewards_account_data = self
+            .context
             .banks_client
             .get_account(contributor_rewards_key)
             .await
@@ -1247,6 +1282,7 @@ impl ProgramTestWithOwner {
         let solana_validator_deposit_key = SolanaValidatorDeposit::find_address(node_id).0;
 
         let solana_validator_deposit_account_data = self
+            .context
             .banks_client
             .get_account(solana_validator_deposit_key)
             .await

@@ -100,6 +100,7 @@ async fn test_terminate_prepaid_connection() {
                 ProgramConfiguration::DistributeRewardsRelayLamports(
                     distribute_rewards_relay_lamports,
                 ),
+                ProgramConfiguration::CalculationGracePeriodSeconds(1),
                 ProgramConfiguration::Flag(ProgramFlagConfiguration::IsPaused(false)),
             ],
         )
@@ -139,7 +140,7 @@ async fn test_terminate_prepaid_connection() {
     // Test inputs.
 
     let termination_relayer_key = Pubkey::new_unique();
-    let termination_beneficiary_key = test_setup.payer_signer.pubkey();
+    let termination_beneficiary_key = test_setup.payer_signer().pubkey();
 
     let relayer_balance_before = 128 * 6_960;
 
@@ -157,6 +158,7 @@ async fn test_terminate_prepaid_connection() {
 
     let prepaid_connection_key = PrepaidConnection::find_address(&user_key).0;
     let closed_account = test_setup
+        .context
         .banks_client
         .get_account(prepaid_connection_key)
         .await
@@ -164,6 +166,7 @@ async fn test_terminate_prepaid_connection() {
     assert!(closed_account.is_none());
 
     let relayer_balance_after = test_setup
+        .context
         .banks_client
         .get_balance(termination_relayer_key)
         .await

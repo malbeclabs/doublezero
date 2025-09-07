@@ -192,6 +192,18 @@ impl ProgramConfig {
             Some(duration.into())
         }
     }
+
+    pub fn checked_calculation_grace_period_seconds(&self) -> Option<u32> {
+        let grace_period = self
+            .distribution_parameters
+            .calculation_grace_period_seconds;
+
+        if grace_period == 0 {
+            None
+        } else {
+            Some(grace_period)
+        }
+    }
 }
 
 //

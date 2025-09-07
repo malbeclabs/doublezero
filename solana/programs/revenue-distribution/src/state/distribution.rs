@@ -75,8 +75,12 @@ pub struct Distribution {
     pub processed_rewards_start_index: u32,
     pub processed_rewards_end_index: u32,
 
+    /// Distribute rewards relay lamports copied from the program config.
     pub distribute_rewards_relay_lamports: u32,
-    _padding_1: [u32; 1],
+
+    /// The timestamp when the distribution account is allowed to accept
+    /// calculations.
+    pub calculation_allowed_timestamp: u32,
 
     pub distributed_2z_amount: u64,
     pub burned_2z_amount: u64,
@@ -170,6 +174,17 @@ impl Distribution {
         let burn_share_amount = burn_rate.mul_scalar(share_amount);
 
         Some((burn_share_amount, share_amount - burn_share_amount))
+    }
+
+    #[inline]
+    pub fn checked_calculation_allowed_timestamp(&self) -> Option<i64> {
+        let allowed_timestamp = self.calculation_allowed_timestamp;
+
+        if allowed_timestamp == 0 {
+            None
+        } else {
+            Some(i64::from(allowed_timestamp))
+        }
     }
 }
 

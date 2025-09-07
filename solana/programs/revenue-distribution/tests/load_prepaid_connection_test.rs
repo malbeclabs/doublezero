@@ -177,7 +177,7 @@ async fn test_load_prepaid_connection() {
     expected_prepaid_connection_1.set_has_access_granted(true);
     expected_prepaid_connection_1.set_has_paid(true);
     expected_prepaid_connection_1.valid_through_dz_epoch = valid_through_dz_epoch;
-    expected_prepaid_connection_1.termination_beneficiary_key = test_setup.payer_signer.pubkey();
+    expected_prepaid_connection_1.termination_beneficiary_key = test_setup.payer_signer().pubkey();
     expected_prepaid_connection_1.activation_cost = expected_activation_cost;
     expected_prepaid_connection_1.activation_funder_key = src_token_account_key;
     assert_eq!(prepaid_connection, expected_prepaid_connection_1);
@@ -338,7 +338,7 @@ async fn test_load_prepaid_connection() {
     expected_prepaid_connection_2.set_has_access_granted(true);
     expected_prepaid_connection_2.set_has_paid(true);
     expected_prepaid_connection_2.valid_through_dz_epoch = valid_through_dz_epoch;
-    expected_prepaid_connection_2.termination_beneficiary_key = test_setup.payer_signer.pubkey();
+    expected_prepaid_connection_2.termination_beneficiary_key = test_setup.payer_signer().pubkey();
     expected_prepaid_connection_2.activation_cost = expected_activation_cost;
     expected_prepaid_connection_2.activation_funder_key = src_token_account_key;
     assert_eq!(prepaid_connection, expected_prepaid_connection_2);
@@ -426,6 +426,7 @@ async fn test_load_prepaid_connection() {
                 ProgramConfiguration::DistributeRewardsRelayLamports(
                     distribute_rewards_relay_lamports,
                 ),
+                ProgramConfiguration::CalculationGracePeriodSeconds(1),
                 ProgramConfiguration::Flag(ProgramFlagConfiguration::IsPaused(false)),
             ],
         )
@@ -532,7 +533,7 @@ async fn test_load_prepaid_connection() {
     expected_prepaid_connection_3.set_has_access_granted(true);
     expected_prepaid_connection_3.set_has_paid(true);
     expected_prepaid_connection_3.valid_through_dz_epoch = valid_through_dz_epoch;
-    expected_prepaid_connection_3.termination_beneficiary_key = test_setup.payer_signer.pubkey();
+    expected_prepaid_connection_3.termination_beneficiary_key = test_setup.payer_signer().pubkey();
     expected_prepaid_connection_3.activation_cost = expected_activation_cost;
     expected_prepaid_connection_3.activation_funder_key = src_token_account_key;
     assert_eq!(prepaid_connection, expected_prepaid_connection_3);

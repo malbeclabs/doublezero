@@ -15,6 +15,7 @@ async fn test_initialize_program() {
     let (program_config_key, program_config_bump) = ProgramConfig::find_address();
 
     let program_config_account_data = test_setup
+        .context
         .banks_client
         .get_account(program_config_key)
         .await

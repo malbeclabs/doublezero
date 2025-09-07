@@ -93,6 +93,7 @@ async fn test_pay_solana_validator_debt() {
                 ProgramConfiguration::DistributeRewardsRelayLamports(
                     distribute_rewards_relay_lamports,
                 ),
+                ProgramConfiguration::CalculationGracePeriodSeconds(1),
                 ProgramConfiguration::Flag(ProgramFlagConfiguration::IsPaused(false)),
             ],
         )
@@ -102,6 +103,9 @@ async fn test_pay_solana_validator_debt() {
         .await
         .unwrap()
         .initialize_distribution(&debt_accountant_signer)
+        .await
+        .unwrap()
+        .warp_timestamp_by(1)
         .await
         .unwrap()
         .configure_distribution_debt(
@@ -226,6 +230,7 @@ async fn test_pay_solana_validator_debt() {
         test_setup.transfer_lamports(&deposit_key, 1).await.unwrap();
 
         let balance = test_setup
+            .context
             .banks_client
             .get_balance(deposit_key)
             .await
@@ -255,6 +260,7 @@ async fn test_pay_solana_validator_debt() {
             .unwrap();
 
         let balance_after = test_setup
+            .context
             .banks_client
             .get_balance(SolanaValidatorDeposit::find_address(&debt.node_id).0)
             .await
@@ -284,6 +290,8 @@ async fn test_pay_solana_validator_debt() {
     expected_distribution.solana_validator_debt_merkle_root = solana_validator_debt_merkle_root;
     expected_distribution.processed_solana_validator_debt_end_index = total_solana_validators / 8;
     expected_distribution.distribute_rewards_relay_lamports = distribute_rewards_relay_lamports;
+    expected_distribution.calculation_allowed_timestamp =
+        test_setup.get_clock().await.unix_timestamp as u32;
     assert_eq!(distribution, expected_distribution);
 
     assert_eq!(remaining_distribution_data, vec![0b11111111, 0b11111111]);

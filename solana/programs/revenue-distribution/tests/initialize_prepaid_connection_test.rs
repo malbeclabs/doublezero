@@ -101,7 +101,7 @@ async fn test_initialize_prepaid_connection() {
 
     let mut expected_prepaid_connection = PrepaidConnection::default();
     expected_prepaid_connection.user_key = user_key;
-    expected_prepaid_connection.termination_beneficiary_key = test_setup.payer_signer.pubkey();
+    expected_prepaid_connection.termination_beneficiary_key = test_setup.payer_signer().pubkey();
     expected_prepaid_connection.activation_cost = expected_activation_cost;
     expected_prepaid_connection.activation_funder_key = src_token_account_key;
     assert_eq!(prepaid_connection, expected_prepaid_connection);

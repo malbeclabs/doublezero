@@ -85,6 +85,7 @@ async fn test_finalize_distribution_rewards() {
                 ProgramConfiguration::DistributeRewardsRelayLamports(
                     distribute_rewards_relay_lamports,
                 ),
+                ProgramConfiguration::CalculationGracePeriodSeconds(1),
                 ProgramConfiguration::Flag(ProgramFlagConfiguration::IsPaused(false)),
             ],
         )
@@ -94,6 +95,9 @@ async fn test_finalize_distribution_rewards() {
         .await
         .unwrap()
         .initialize_distribution(&debt_accountant_signer)
+        .await
+        .unwrap()
+        .warp_timestamp_by(1)
         .await
         .unwrap()
         .configure_distribution_rewards(
@@ -239,6 +243,8 @@ async fn test_finalize_distribution_rewards() {
     expected_distribution.processed_rewards_end_index =
         (total_solana_validators / 8) + (total_contributors / 8 + 1);
     expected_distribution.distribute_rewards_relay_lamports = distribute_rewards_relay_lamports;
+    expected_distribution.calculation_allowed_timestamp =
+        test_setup.get_clock().await.unix_timestamp as u32;
     assert_eq!(distribution, expected_distribution);
 
     let expected_distribution_remaining_data_len =
@@ -293,7 +299,7 @@ async fn cannot_finalize_distribution_rewards(
     test_setup: &mut common::ProgramTestWithOwner,
     dz_epoch: DoubleZeroEpoch,
 ) -> (TransactionError, Vec<String>) {
-    let payer_key = test_setup.payer_signer.pubkey();
+    let payer_key = test_setup.payer_signer().pubkey();
 
     let finalize_distribution_rewards_ix = try_build_instruction(
         &ID,

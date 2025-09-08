@@ -96,10 +96,7 @@ impl ProvisioningCliCommand {
         let (client_ip, client_ip_str) = look_for_ip(&self.client_ip, &spinner).await?;
 
         if !check_accesspass(client, client_ip)? {
-            println!(
-                "❌  Unable to find a valid Access Pass for the IP: {}",
-                client_ip_str
-            );
+            println!("❌  Unable to find a valid Access Pass for the IP: {client_ip_str}");
             return Err(eyre::eyre!(
                 "You need to have a valid Access Pass to connect. Please contact support."
             ));

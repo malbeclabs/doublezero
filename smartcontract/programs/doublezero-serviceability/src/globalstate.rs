@@ -22,7 +22,7 @@ pub fn globalstate_get(globalstate_account: &AccountInfo) -> Result<GlobalState>
         "Invalid GlobalState Account Type"
     );
 
-    GlobalState::try_from(&data[..]).map_err(|e| std::io::Error::other(format!("{:?}", e)))
+    GlobalState::try_from(&data[..]).map_err(|e| std::io::Error::other(format!("{e:?}")))
 }
 
 pub fn globalstate_get_next(globalstate_account: &AccountInfo) -> Result<GlobalState> {

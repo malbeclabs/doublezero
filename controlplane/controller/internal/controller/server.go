@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/gagliardetto/solana-go"
+	"github.com/gogo/protobuf/proto"
 	"github.com/malbeclabs/doublezero/config"
 	pb "github.com/malbeclabs/doublezero/controlplane/proto/controller/gen/pb-go"
 	telemetryconfig "github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/config"
@@ -589,7 +590,9 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 		err := status.Errorf(codes.Aborted, "config rendering for pubkey %s failed: %v", req.Pubkey, err)
 		return nil, err
 	}
-	return &pb.ConfigResponse{Config: config}, nil
+	resp := &pb.ConfigResponse{Config: config}
+	getConfigMsgSize.Observe(float64(proto.Size(resp)))
+	return resp, nil
 }
 
 // formatCIDR formats a 5-byte network block into CIDR notation

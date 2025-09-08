@@ -78,8 +78,8 @@ func (w *ServiceabilityWatcher) Tick(ctx context.Context) error {
 	logEvent := func(events ServiceabilityEventer) {
 		w.log.Info(
 			"serviceability event",
-			"entity_type", events.EntityType(),
-			"action", events.Type(),
+			"entity_type", events.EntityType().String(),
+			"action", events.Type().String(),
 			"id", events.Id(),
 			"pub_key", events.PubKey(),
 			"diff", events.Diff())

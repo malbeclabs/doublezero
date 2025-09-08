@@ -1,5 +1,13 @@
 package serviceability
 
+import (
+	"encoding/json"
+	"fmt"
+	"net"
+
+	"github.com/mr-tron/base58"
+)
+
 type AccountType uint8
 
 const (
@@ -87,7 +95,22 @@ const (
 	DeviceStatusActivated
 	DeviceStatusSuspended
 	DeviceStatusDeleted
+	DeviceStatusRejected
 )
+
+func (d DeviceStatus) String() string {
+	return [...]string{
+		"pending",
+		"activated",
+		"suspended",
+		"deleted",
+		"rejected",
+	}[d]
+}
+
+func (d DeviceStatus) MarshalJSON() ([]byte, error) {
+	return json.Marshal(d.String())
+}
 
 type InterfaceStatus uint8
 
@@ -97,7 +120,25 @@ const (
 	InterfaceStatusPending
 	InterfaceStatusActivated
 	InterfaceStatusDeleting
+	InterfaceStatusRejecting
+	InterfaceStatusUnlinked
 )
+
+func (i InterfaceStatus) String() string {
+	return [...]string{
+		"invalid",
+		"unmanaged",
+		"pending",
+		"activated",
+		"deleting",
+		"rejecting",
+		"unlinked",
+	}[i]
+}
+
+func (i InterfaceStatus) MarshalJSON() ([]byte, error) {
+	return json.Marshal(i.String())
+}
 
 type InterfaceType uint8
 
@@ -106,6 +147,18 @@ const (
 	InterfaceTypeLoopback
 	InterfaceTypePhysical
 )
+
+func (i InterfaceType) String() string {
+	return [...]string{
+		"invalid",
+		"loopback",
+		"physical",
+	}[i]
+}
+
+func (i InterfaceType) MarshalJSON() ([]byte, error) {
+	return json.Marshal(i.String())
+}
 
 type LoopbackType uint8
 
@@ -117,6 +170,20 @@ const (
 	LoopbackTypeReserved
 )
 
+func (l LoopbackType) String() string {
+	return [...]string{
+		"none",
+		"vpnv4",
+		"ipv4",
+		"pim_rp_addr",
+		"reserved",
+	}[l]
+}
+
+func (l LoopbackType) MarshalJSON() ([]byte, error) {
+	return json.Marshal(l.String())
+}
+
 type Interface struct {
 	Version            uint8
 	Status             InterfaceStatus
@@ -127,6 +194,28 @@ type Interface struct {
 	IpNet              [5]uint8
 	NodeSegmentIdx     uint16
 	UserTunnelEndpoint bool
+}
+
+func (i Interface) MarshalJSON() ([]byte, error) {
+	type InterfaceAlias Interface
+
+	jsonIface := &struct {
+		InterfaceAlias
+		Status        string `json:"Status"`
+		InterfaceType string `json:"InterfaceType"`
+		LoopbackType  string `json:"LoopbackType"`
+		IpNet         string `json:"IpNet"`
+	}{
+		InterfaceAlias: InterfaceAlias(i),
+	}
+
+	jsonIface.Status = i.Status.String()
+	jsonIface.InterfaceType = i.InterfaceType.String()
+	jsonIface.LoopbackType = i.LoopbackType.String()
+
+	jsonIface.IpNet = onChainNetToString(i.IpNet)
+
+	return json.Marshal(jsonIface)
 }
 
 const CurrentInterfaceVersion = 1
@@ -150,7 +239,44 @@ type Device struct {
 	ReferenceCount         uint32
 	UsersCount             uint16
 	MaxUsers               uint16
-	PubKey                 [32]byte // Set separately after deserialization, not part of on-chain data
+	PubKey                 [32]byte
+}
+
+func (d Device) MarshalJSON() ([]byte, error) {
+	type DeviceAlias Device
+
+	jsonDevice := &struct {
+		DeviceAlias
+		Owner                  string   `json:"Owner"`
+		LocationPubKey         string   `json:"LocationPubKey"`
+		ExchangePubKey         string   `json:"ExchangePubKey"`
+		PublicIp               string   `json:"PublicIp"`
+		DzPrefixes             []string `json:"DzPrefixes"`
+		MetricsPublisherPubKey string   `json:"MetricsPublisherPubKey"`
+		ContributorPubKey      string   `json:"ContributorPubKey"`
+		PubKey                 string   `json:"PubKey"`
+		Status                 string   `json:"Status"`
+	}{
+		DeviceAlias: DeviceAlias(d),
+	}
+
+	jsonDevice.Owner = base58.Encode(d.Owner[:])
+	jsonDevice.LocationPubKey = base58.Encode(d.LocationPubKey[:])
+	jsonDevice.ExchangePubKey = base58.Encode(d.ExchangePubKey[:])
+	jsonDevice.MetricsPublisherPubKey = base58.Encode(d.MetricsPublisherPubKey[:])
+	jsonDevice.ContributorPubKey = base58.Encode(d.ContributorPubKey[:])
+	jsonDevice.PubKey = base58.Encode(d.PubKey[:])
+
+	jsonDevice.PublicIp = net.IP(d.PublicIp[:]).String()
+
+	prefixes := make([]string, len(d.DzPrefixes))
+	for i, p := range d.DzPrefixes {
+		prefixes[i] = onChainNetToString(p)
+	}
+	jsonDevice.DzPrefixes = prefixes
+	jsonDevice.Status = d.Status.String()
+
+	return json.Marshal(jsonDevice)
 }
 
 type LinkLinkType uint8
@@ -166,7 +292,24 @@ const (
 	LinkStatusActivated
 	LinkStatusSuspended
 	LinkStatusDeleted
+	LinkStatusRejected
+	LinkStatusRequested
 )
+
+func (l LinkStatus) String() string {
+	return [...]string{
+		"pending",
+		"activated",
+		"suspended",
+		"deleted",
+		"rejected",
+		"requested",
+	}[l]
+}
+
+func (l LinkStatus) MarshalJSON() ([]byte, error) {
+	return json.Marshal(l.String())
+}
 
 type Link struct {
 	AccountType       AccountType
@@ -188,6 +331,34 @@ type Link struct {
 	SideAIfaceName    string
 	SideZIfaceName    string
 	PubKey            [32]byte
+}
+
+func (l Link) MarshalJSON() ([]byte, error) {
+	type LinkAlias Link
+
+	jsonLink := &struct {
+		LinkAlias
+		TunnelNet         string `json:"TunnelNet"`
+		Owner             string `json:"Owner"`
+		SideAPubKey       string `json:"SideAPubKey"`
+		SideZPubKey       string `json:"SideZPubKey"`
+		ContributorPubKey string `json:"ContributorPubKey"`
+		PubKey            string `json:"PubKey"`
+		Status            string `json:"Status"`
+	}{
+		LinkAlias: LinkAlias(l),
+	}
+
+	jsonLink.Owner = base58.Encode(l.Owner[:])
+	jsonLink.SideAPubKey = base58.Encode(l.SideAPubKey[:])
+	jsonLink.SideZPubKey = base58.Encode(l.SideZPubKey[:])
+	jsonLink.ContributorPubKey = base58.Encode(l.ContributorPubKey[:])
+	jsonLink.PubKey = base58.Encode(l.PubKey[:])
+	jsonLink.Status = l.Status.String()
+
+	jsonLink.TunnelNet = onChainNetToString(l.TunnelNet)
+
+	return json.Marshal(jsonLink)
 }
 
 type UserUserType uint8
@@ -277,4 +448,14 @@ type ProgramConfig struct {
 	AccountType AccountType
 	BumpSeed    uint8
 	Version     ProgramVersion
+}
+
+func onChainNetToString(n [5]uint8) string {
+	prefixLen := n[4]
+	if prefixLen > 0 && prefixLen <= 32 {
+		ipBytes := n[:4]
+		ip := net.IP(ipBytes)
+		return fmt.Sprintf("%s/%d", ip.String(), prefixLen)
+	}
+	return ""
 }

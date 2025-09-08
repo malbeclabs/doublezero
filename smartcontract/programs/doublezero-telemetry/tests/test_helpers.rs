@@ -9,8 +9,10 @@ use doublezero_serviceability::{
     processors::{
         contributor::create::ContributorCreateArgs,
         device::{
-            activate::DeviceActivateArgs, create::DeviceCreateArgs,
-            interface::create::DeviceInterfaceCreateArgs, suspend::DeviceSuspendArgs,
+            activate::DeviceActivateArgs,
+            create::DeviceCreateArgs,
+            interface::{create::DeviceInterfaceCreateArgs, unlink::DeviceInterfaceUnlinkArgs},
+            suspend::DeviceSuspendArgs,
         },
         exchange::{create::ExchangeCreateArgs, suspend::ExchangeSuspendArgs},
         globalconfig::set::SetGlobalConfigArgs,
@@ -961,7 +963,7 @@ impl ServiceabilityProgramHelper {
     ) -> Result<(), BanksClientError> {
         self.execute_transaction(
             DoubleZeroInstruction::CreateDeviceInterface(DeviceInterfaceCreateArgs {
-                name,
+                name: name.clone(),
                 loopback_type: LoopbackType::None,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
@@ -969,6 +971,14 @@ impl ServiceabilityProgramHelper {
             vec![
                 AccountMeta::new(device_pk, false),
                 AccountMeta::new(contributor_pk, false),
+                AccountMeta::new(self.global_state_pubkey, false),
+            ],
+        )
+        .await?;
+        self.execute_transaction(
+            DoubleZeroInstruction::UnlinkDeviceInterface(DeviceInterfaceUnlinkArgs { name }),
+            vec![
+                AccountMeta::new(device_pk, false),
                 AccountMeta::new(self.global_state_pubkey, false),
             ],
         )
@@ -1066,6 +1076,8 @@ impl ServiceabilityProgramHelper {
     pub async fn activate_link(
         &mut self,
         link_pk: Pubkey,
+        side_a_pk: Pubkey,
+        side_z_pk: Pubkey,
         tunnel_id: u16,
         tunnel_net: NetworkV4,
     ) -> Result<(), BanksClientError> {
@@ -1076,6 +1088,8 @@ impl ServiceabilityProgramHelper {
             }),
             vec![
                 AccountMeta::new(link_pk, false),
+                AccountMeta::new(side_a_pk, false),
+                AccountMeta::new(side_z_pk, false),
                 AccountMeta::new(self.global_state_pubkey, false),
             ],
         )
@@ -1119,7 +1133,8 @@ impl ServiceabilityProgramHelper {
         let link_pk = self
             .create_link(link, contributor_pk, side_a_pk, side_z_pk)
             .await?;
-        self.activate_link(link_pk, tunnel_id, tunnel_net).await?;
+        self.activate_link(link_pk, side_a_pk, side_z_pk, tunnel_id, tunnel_net)
+            .await?;
         Ok(link_pk)
     }
 

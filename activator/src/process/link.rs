@@ -1,6 +1,4 @@
-use crate::{
-    idallocator::IDAllocator, ipblockallocator::IPBlockAllocator, process::iface_mgr::InterfaceMgr,
-};
+use crate::{idallocator::IDAllocator, ipblockallocator::IPBlockAllocator};
 use doublezero_sdk::{
     commands::link::{
         activate::ActivateLinkCommand, closeaccount::CloseAccountLinkCommand,
@@ -8,7 +6,6 @@ use doublezero_sdk::{
     },
     DoubleZeroClient, Link, LinkStatus,
 };
-use ipnetwork::Ipv4Network;
 use log::info;
 use solana_sdk::pubkey::Pubkey;
 use std::fmt::Write;
@@ -36,6 +33,8 @@ pub fn process_link_event(
 
                     let res = ActivateLinkCommand {
                         link_pubkey: *pubkey,
+                        side_a_pk: link.side_a_pk,
+                        side_z_pk: link.side_z_pk,
                         tunnel_id,
                         tunnel_net: tunnel_net.into(),
                     }
@@ -51,32 +50,6 @@ pub fn process_link_event(
                                 "link-pubkey" => pubkey.to_string(),
                             )
                             .increment(1);
-
-                            // get the first and second ips in the network, but don't throw away
-                            // the netmask/prefix. unwraps are safe below because we already have
-                            // checked that we have a valid tunnel_net
-                            let side_a_ip =
-                                Ipv4Network::new(tunnel_net.nth(0).unwrap(), tunnel_net.prefix())
-                                    .unwrap();
-                            let side_z_ip =
-                                Ipv4Network::new(tunnel_net.nth(1).unwrap(), tunnel_net.prefix())
-                                    .unwrap();
-
-                            let mut mgr = InterfaceMgr::new(client, None, link_ips);
-                            mgr.process_link_interface(
-                                &link.side_a_pk,
-                                &link.code,
-                                "A",
-                                &link.side_a_iface_name,
-                                &side_a_ip.into(),
-                            );
-                            mgr.process_link_interface(
-                                &link.side_z_pk,
-                                &link.code,
-                                "Z",
-                                &link.side_z_iface_name,
-                                &side_z_ip.into(),
-                            );
                         }
                         Err(e) => write!(&mut log_msg, " Error {e}").unwrap(),
                     }
@@ -126,20 +99,6 @@ pub fn process_link_event(
                 Ok(signature) => {
                     write!(&mut log_msg, " Deactivated {signature}").unwrap();
 
-                    let mut mgr = InterfaceMgr::new(client, None, link_ips);
-                    mgr.unlink_link_interface(
-                        &link.side_a_pk,
-                        &link.code,
-                        "A",
-                        &link.side_a_iface_name,
-                    );
-                    mgr.unlink_link_interface(
-                        &link.side_z_pk,
-                        &link.code,
-                        "Z",
-                        &link.side_z_iface_name,
-                    );
-
                     link_ids.unassign(link.tunnel_id);
                     link_ips.unassign_block(link.tunnel_net.into());
 
@@ -169,14 +128,8 @@ mod tests {
     use doublezero_sdk::{AccountData, AccountType, Link, LinkLinkType, LinkStatus};
     use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
-        processors::{
-            device::interface::{
-                activate::DeviceInterfaceActivateArgs, unlink::DeviceInterfaceUnlinkArgs,
-            },
-            link::{
-                activate::LinkActivateArgs, closeaccount::LinkCloseAccountArgs,
-                reject::LinkRejectArgs,
-            },
+        processors::link::{
+            activate::LinkActivateArgs, closeaccount::LinkCloseAccountArgs, reject::LinkRejectArgs,
         },
     };
     use metrics_util::debugging::DebuggingRecorder;
@@ -238,36 +191,6 @@ mod tests {
                 .times(1)
                 .returning(|_, _| Ok(Signature::new_unique()));
 
-            client
-                .expect_execute_transaction()
-                .with(
-                    predicate::eq(DoubleZeroInstruction::ActivateDeviceInterface(
-                        DeviceInterfaceActivateArgs {
-                            name: "Ethernet0".to_string(),
-                            ip_net: "10.0.0.0/31".parse().unwrap(),
-                            node_segment_idx: 0,
-                        },
-                    )),
-                    predicate::always(),
-                )
-                .times(1)
-                .returning(|_, _| Ok(Signature::new_unique()));
-
-            client
-                .expect_execute_transaction()
-                .with(
-                    predicate::eq(DoubleZeroInstruction::ActivateDeviceInterface(
-                        DeviceInterfaceActivateArgs {
-                            name: "Ethernet1".to_string(),
-                            ip_net: "10.0.0.1/31".parse().unwrap(),
-                            node_segment_idx: 0,
-                        },
-                    )),
-                    predicate::always(),
-                )
-                .times(1)
-                .returning(|_, _| Ok(Signature::new_unique()));
-
             process_link_event(
                 &client,
                 &tunnel_pubkey,
@@ -296,32 +219,6 @@ mod tests {
                 .with(
                     predicate::eq(DoubleZeroInstruction::CloseAccountLink(
                         LinkCloseAccountArgs {},
-                    )),
-                    predicate::always(),
-                )
-                .times(1)
-                .returning(|_, _| Ok(Signature::new_unique()));
-
-            client
-                .expect_execute_transaction()
-                .with(
-                    predicate::eq(DoubleZeroInstruction::UnlinkDeviceInterface(
-                        DeviceInterfaceUnlinkArgs {
-                            name: "Ethernet0".to_string(),
-                        },
-                    )),
-                    predicate::always(),
-                )
-                .times(1)
-                .returning(|_, _| Ok(Signature::new_unique()));
-
-            client
-                .expect_execute_transaction()
-                .with(
-                    predicate::eq(DoubleZeroInstruction::UnlinkDeviceInterface(
-                        DeviceInterfaceUnlinkArgs {
-                            name: "Ethernet1".to_string(),
-                        },
                     )),
                     predicate::always(),
                 )

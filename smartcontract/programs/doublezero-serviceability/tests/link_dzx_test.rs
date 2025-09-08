@@ -4,6 +4,7 @@ use doublezero_serviceability::{
     pda::*,
     processors::{
         contributor::create::ContributorCreateArgs,
+        device::interface::DeviceInterfaceUnlinkArgs,
         link::{
             accept::LinkAcceptArgs, activate::*, create::*, delete::*, resume::*, suspend::*,
             update::*,
@@ -369,6 +370,44 @@ async fn test_dzx_link() {
 
     /***********************************************************************************************************************************/
     /***********************************************************************************************************************************/
+    // Activate Interfaces
+    println!("Activating(->Unlinked) LA Device Interfaces...");
+    let unlink_device_interface_la = DeviceInterfaceUnlinkArgs {
+        name: "Ethernet0".to_string(),
+    };
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UnlinkDeviceInterface(unlink_device_interface_la),
+        vec![
+            AccountMeta::new(device_a_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    println!("Activating(->Unlinked) NY Device Interfaces...");
+    let unlink_device_interface_ny = DeviceInterfaceUnlinkArgs {
+        name: "Ethernet1".to_string(),
+    };
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UnlinkDeviceInterface(unlink_device_interface_ny),
+        vec![
+            AccountMeta::new(device_z_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+    /***********************************************************************************************************************************/
+    /***********************************************************************************************************************************/
     // Link _la
     println!("🟢 8. Create DZX Link...");
 
@@ -510,6 +549,8 @@ async fn test_dzx_link() {
         }),
         vec![
             AccountMeta::new(tunnel_pubkey, false),
+            AccountMeta::new(device_a_pubkey, false),
+            AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,

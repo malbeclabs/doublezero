@@ -87,14 +87,14 @@ func (w *ServiceabilityWatcher) Tick(ctx context.Context) error {
 
 	if w.cacheDevices != nil {
 		deviceEvents := CompareDevice(w.cacheDevices, data.Devices)
-		w.log.Info("device events", "count", len(deviceEvents))
+		w.log.Debug("device events", "count", len(deviceEvents))
 		for _, e := range deviceEvents {
 			logEvent(e)
 		}
 	}
 	if w.cacheLinks != nil {
 		linkEvents := CompareLink(w.cacheLinks, data.Links)
-		w.log.Info("link events", "count", len(linkEvents))
+		w.log.Debug("link events", "count", len(linkEvents))
 		for _, e := range linkEvents {
 			logEvent(e)
 		}

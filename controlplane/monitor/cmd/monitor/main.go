@@ -55,7 +55,7 @@ func main() {
 	if *verbose {
 		logLevel = slog.LevelDebug
 	}
-	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+	log := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
 		Level: logLevel,
 	}))
 

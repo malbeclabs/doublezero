@@ -46,10 +46,11 @@ func (m *MockWheresitupCollector) wasRunCalled() bool {
 
 // MockRipeAtlasCollector for testing
 type MockRipeAtlasCollector struct {
-	RunFunc                     func(ctx context.Context, dryRun bool, probesPerLocation int, stateDir string, samplingInterval, measurementInterval, exportInterval time.Duration) error
-	InitializeCreditBalanceFunc func(ctx context.Context) error
-	runCalled                   bool
-	mu                          sync.Mutex
+	RunFunc                          func(ctx context.Context, dryRun bool, probesPerLocation int, stateDir string, samplingInterval, measurementInterval, exportInterval time.Duration) error
+	InitializeCreditBalanceFunc      func(ctx context.Context) error
+	InitializeMeasurementMetricsFunc func(stateDir string) error
+	runCalled                        bool
+	mu                               sync.Mutex
 }
 
 func (m *MockRipeAtlasCollector) Run(ctx context.Context, dryRun bool, probesPerLocation int, stateDir string, samplingInterval, measurementInterval, exportInterval time.Duration) error {
@@ -68,6 +69,13 @@ func (m *MockRipeAtlasCollector) Run(ctx context.Context, dryRun bool, probesPer
 func (m *MockRipeAtlasCollector) InitializeCreditBalance(ctx context.Context) error {
 	if m.InitializeCreditBalanceFunc != nil {
 		return m.InitializeCreditBalanceFunc(ctx)
+	}
+	return nil
+}
+
+func (m *MockRipeAtlasCollector) InitializeMeasurementMetrics(stateDir string) error {
+	if m.InitializeMeasurementMetricsFunc != nil {
+		return m.InitializeMeasurementMetricsFunc(stateDir)
 	}
 	return nil
 }

@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -61,15 +60,20 @@ type Collector struct {
 	exporter         exporter.Exporter
 	getLocationsFunc func(ctx context.Context) []collector.LocationMatch
 	env              string
+	probeToLocation  map[int]string // Maps probe IDs to location codes
+	mu               sync.RWMutex   // Protects probeToLocation map
 }
 
 type MeasurementSpec struct {
-	SourceLocation     string
 	TargetLocation     string
-	SourceLocationCode string
 	TargetLocationCode string
-	SourceProbe        Probe
 	TargetProbe        Probe
+	SourceSpecs        []SourceSpec
+}
+
+type SourceSpec struct {
+	LocationCode string
+	Probe        Probe
 }
 
 func NewCollector(logger *slog.Logger, exporter exporter.Exporter, env string, getLocationsFunc func(ctx context.Context) []collector.LocationMatch) *Collector {
@@ -79,6 +83,7 @@ func NewCollector(logger *slog.Logger, exporter exporter.Exporter, env string, g
 		exporter:         exporter,
 		getLocationsFunc: getLocationsFunc,
 		env:              env,
+		probeToLocation:  make(map[int]string),
 	}
 }
 
@@ -90,6 +95,45 @@ func (c *Collector) InitializeCreditBalance(ctx context.Context) error {
 
 	metrics.RipeatlasCreditBalance.Set(balance)
 	c.log.Info("Initialized RIPE Atlas credit balance metric", slog.Float64("balance", balance))
+
+	return nil
+}
+
+func (c *Collector) InitializeMeasurementMetrics(stateDir string) error {
+	timestampFile := filepath.Join(stateDir, TimestampFileName)
+	measurementState := NewMeasurementState(timestampFile)
+
+	if err := measurementState.Load(); err != nil {
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("failed to load measurement state: %w", err)
+		}
+		// File doesn't exist yet, no measurements to track
+		metrics.RipeatlasTotalMeasurements.Set(0)
+		metrics.RipeatlasProbesPerMeasurement.Set(0)
+		metrics.RipeatlasExpectedDailyCredits.Set(0)
+		metrics.RipeatlasExpectedDailyResults.Set(0)
+		c.log.Info("No measurement state file found, initializing metrics to zero")
+		return nil
+	}
+
+	// Count total measurements and determine probes per location
+	totalMeasurements := 0
+	probesPerLocation := 0
+	for _, meta := range measurementState.tracker.Metadata {
+		if len(meta.Sources) > 0 {
+			totalMeasurements++
+			// All measurements should have the same number of sources (n-1 where n is number of exchanges)
+			if probesPerLocation == 0 {
+				probesPerLocation = len(meta.Sources)
+			}
+		}
+	}
+
+	metrics.RipeatlasTotalMeasurements.Set(float64(totalMeasurements))
+	metrics.RipeatlasProbesPerMeasurement.Set(float64(probesPerLocation))
+	c.log.Info("Initialized RIPE Atlas measurement metrics",
+		slog.Int("total_measurements", totalMeasurements),
+		slog.Int("probes_per_location", probesPerLocation))
 
 	return nil
 }
@@ -131,76 +175,33 @@ func filterValidProbes(probes []Probe) []Probe {
 	return validProbes
 }
 
-func parseProbeIDsFromDescription(description string) (sourceProbe int, targetProbe int, locationA, locationZ string) {
-	// Split by " to "
-	parts := strings.Split(description, " to ")
-	if len(parts) != 2 {
-		return 0, 0, "", ""
-	}
-
-	// Extract source probe from left part: "DoubleZero [env] LocationA probe 123" or "DoubleZero LocationA probe 123"
-	leftPart := parts[0]
-	if idx := strings.LastIndex(leftPart, " probe "); idx != -1 {
-		// Extract probe ID
-		probeIDStr := leftPart[idx+7:] // Skip " probe "
-		if sourceID, err := strconv.Atoi(probeIDStr); err == nil {
-			sourceProbe = sourceID
-		}
-
-		// Extract location A
-		beforeProbe := leftPart[:idx]
-		beforeProbe = strings.TrimPrefix(beforeProbe, "DoubleZero ")
-		// Remove [env] if present
-		if strings.HasPrefix(beforeProbe, "[") {
-			if endIdx := strings.Index(beforeProbe, "] "); endIdx != -1 {
-				beforeProbe = beforeProbe[endIdx+2:]
-			}
-		}
-		locationA = strings.TrimSpace(beforeProbe)
-	}
-
-	// Extract target probe from right part: "LocationZ probe 456"
-	rightPart := parts[1]
-	if idx := strings.LastIndex(rightPart, " probe "); idx != -1 {
-		// Extract probe ID
-		probeIDStr := rightPart[idx+7:] // Skip " probe "
-		if targetID, err := strconv.Atoi(probeIDStr); err == nil {
-			targetProbe = targetID
-		}
-
-		// Extract location Z
-		locationZ = rightPart[:idx]
-		locationZ = strings.TrimSpace(locationZ)
-	}
-
-	return sourceProbe, targetProbe, locationA, locationZ
-}
-
-func (c *Collector) parseLatencyFromResult(result any) (time.Duration, time.Time) {
-	// Parse the result JSON to extract latency data
+func (c *Collector) parseLatencyFromResult(result any) (time.Duration, time.Time, int) {
 	resultMap, ok := result.(map[string]any)
 	if !ok {
-		return 0 * time.Millisecond, time.Time{}
+		return 0 * time.Millisecond, time.Time{}, 0
 	}
 
-	// Extract timestamp
+	probeID := 0
+	if prb, ok := resultMap["prb_id"].(float64); ok {
+		probeID = int(prb)
+	}
+
 	timestamp := time.Time{}
 	if ts, ok := resultMap["timestamp"].(float64); ok {
 		timestamp = time.Unix(int64(ts), 0).UTC()
 	}
 
-	// Extract latency from ping results
 	if resultArray, ok := resultMap["result"].([]any); ok {
 		for _, pingResult := range resultArray {
 			if pingMap, ok := pingResult.(map[string]any); ok {
 				if rtt, ok := pingMap["rtt"].(float64); ok && rtt > 0 {
-					return time.Duration(rtt*1000) * time.Microsecond, timestamp
+					return time.Duration(rtt*1000) * time.Microsecond, timestamp, probeID
 				}
 			}
 		}
 	}
 
-	return 0, timestamp
+	return 0, timestamp, probeID
 }
 
 func (c *Collector) ClearAllMeasurements(ctx context.Context) error {
@@ -426,14 +427,17 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 		slog.Bool("has_timestamp", exists),
 		slog.Time("last_timestamp", lastTimestamp))
 
-	// Parse location codes from description (new format has codes instead of names)
-	_, _, locationA, locationZ := parseProbeIDsFromDescription(measurement.Description)
-
-	if locationA == "" {
-		locationA = "Unknown"
+	meta, hasMeta := measurementState.GetMetadata(measurement.ID)
+	if !hasMeta {
+		c.log.Warn("No metadata found for measurement",
+			slog.Int("measurement_id", measurement.ID))
+		return 0, nil
 	}
-	if locationZ == "" {
-		locationZ = "Unknown"
+
+	targetLocation := meta.TargetLocation
+	probeToLocationLocal := make(map[int]string)
+	for _, source := range meta.Sources {
+		probeToLocationLocal[source.ProbeID] = source.LocationCode
 	}
 
 	// Get measurement results with optional start timestamp
@@ -460,26 +464,38 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 	type measurementSourceKey struct {
 		MeasurementID int
 		Source        string
+		ProbeID       int
 	}
 
 	// Process results.
 	recordsByMeasurementID := map[measurementSourceKey]exporter.Record{}
 	for _, result := range results {
-		// Parse latency from result
-		latency, timestamp := c.parseLatencyFromResult(result)
+		// Parse latency from result (now also returns probe ID)
+		latency, timestamp, probeID := c.parseLatencyFromResult(result)
 		if latency > 0 {
 			if timestamp.After(maxTimestamp) {
 				maxTimestamp = timestamp
 			}
 
-			// Keep only 1 record per measurement ID.
+			sourceLocation := "Unknown"
+			if loc, ok := probeToLocationLocal[probeID]; ok {
+				sourceLocation = loc
+			}
+
+			// Keep only 1 record per measurement ID and probe ID.
+			// Note: We swap source and target here to match the semantic meaning:
+			// The measurement "belongs to" the target exchange and measures "to" the source probe's exchange
 			recordsByMeasurementID[measurementSourceKey{
 				MeasurementID: measurement.ID,
-				Source:        locationA,
+				Source:        sourceLocation,
+				ProbeID:       probeID,
 			}] = exporter.Record{
-				DataProvider:       exporter.DataProviderNameRIPEAtlas,
-				SourceExchangeCode: locationA,
-				TargetExchangeCode: locationZ,
+				DataProvider: exporter.DataProviderNameRIPEAtlas,
+				// Source and target are swapped here to match alphabetical ordering expected by downstream systems.
+				// We alphabetically sort the measurements by exchange code, but from the perspective of the measurement
+				// we are pinging from a remote probe to our target exchange.
+				SourceExchangeCode: targetLocation,
+				TargetExchangeCode: sourceLocation,
 				Timestamp:          timestamp,
 				RTT:                latency,
 			}
@@ -547,6 +563,27 @@ func (c *Collector) RunRipeAtlasMeasurementCreation(ctx context.Context, dryRun 
 
 	c.log.Info("Found probes for locations", slog.Int("locations_with_probes", len(locationMatches)))
 
+	c.mu.Lock()
+	c.probeToLocation = make(map[int]string)
+	for _, match := range locationMatches {
+		if len(match.NearbyProbes) > 0 {
+			// Map the closest probe to this location
+			nearestProbes := getNearestProbesSorted(match.NearbyProbes,
+				match.Latitude, match.Longitude, probesPerLocation)
+			if len(nearestProbes) > 0 {
+				c.probeToLocation[nearestProbes[0].ID] = match.LocationCode
+
+				// Calculate and record distance to nearest probe
+				nearestProbe := nearestProbes[0]
+				distance := collector.HaversineDistance(
+					match.Latitude, match.Longitude,
+					nearestProbe.Geometry.Coordinates[1], nearestProbe.Geometry.Coordinates[0])
+				metrics.DistanceFromExchangeToProbe.WithLabelValues("ripeatlas", match.LocationCode).Set(distance)
+			}
+		}
+	}
+	c.mu.Unlock()
+
 	// Configure measurements between locations
 	if err := c.configureMeasurements(ctx, locationMatches, dryRun, probesPerLocation, stateDir, samplingInterval); err != nil {
 		return collector.NewAPIError("configure_measurements", "failed to configure measurements", err).
@@ -576,53 +613,160 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 		}
 	}
 
-	// Step 3: Build a map of existing measurements for easy lookup
-	existingMap := make(map[string]Measurement)
+	// Step 3: Build map of existing measurements by target location
+	existingByTarget := make(map[string]Measurement)
 	for _, m := range doubleZeroMeasurements {
-		sourceProbe, targetProbe, _, _ := parseProbeIDsFromDescription(m.Description)
-		if sourceProbe > 0 && targetProbe > 0 {
-			key := fmt.Sprintf("%d->%d", sourceProbe, targetProbe)
-			existingMap[key] = m
+		// Format: "DoubleZero [env] to TARGET probe Y"
+		parts := strings.Split(m.Description, " to ")
+		if len(parts) == 2 {
+			targetPart := parts[1]
+			// Extract location code (before " probe")
+			if idx := strings.Index(targetPart, " probe"); idx != -1 {
+				targetLocation := targetPart[:idx]
+				existingByTarget[targetLocation] = m
+			}
 		}
 	}
 
-	// Step 4: Determine what to create and what to remove
+	// Step 4: Load state to check for metadata
+	timestampFile := filepath.Join(stateDir, TimestampFileName)
+	measurementState := NewMeasurementState(timestampFile)
+	if err := measurementState.Load(); err != nil {
+		c.log.Warn("Failed to load measurement state", slog.String("error", err.Error()))
+	}
+
+	// Step 5: Determine what to create and what to remove
 	toCreate := []MeasurementSpec{}
+	wantedTargets := make(map[string]bool)
+	wantedByTarget := make(map[string]MeasurementSpec)
+
+	// Build map of wanted measurements by target
 	for _, wanted := range wantedMeasurements {
-		key := fmt.Sprintf("%d->%d", wanted.SourceProbe.ID, wanted.TargetProbe.ID)
-		if _, exists := existingMap[key]; !exists {
+		wantedTargets[wanted.TargetLocationCode] = true
+		wantedByTarget[wanted.TargetLocationCode] = wanted
+	}
+
+	// Check each wanted measurement
+	for _, wanted := range wantedMeasurements {
+		existing, exists := existingByTarget[wanted.TargetLocationCode]
+		if !exists {
+			// No existing measurement for this target, create it
 			toCreate = append(toCreate, wanted)
+		} else {
+			// Check if existing measurement has the correct source probes
+			meta, hasMeta := measurementState.GetMetadata(existing.ID)
+			if !hasMeta {
+				// No metadata, can't verify sources, recreate
+				toCreate = append(toCreate, wanted)
+				continue
+			}
+
+			// Compare source probe locations
+			existingSources := make(map[string]bool)
+			for _, source := range meta.Sources {
+				existingSources[source.LocationCode] = true
+			}
+
+			wantedSources := make(map[string]bool)
+			for _, source := range wanted.SourceSpecs {
+				wantedSources[source.LocationCode] = true
+			}
+
+			// Check if source sets match
+			sourcesMatch := len(existingSources) == len(wantedSources)
+			if sourcesMatch {
+				for loc := range wantedSources {
+					if !existingSources[loc] {
+						sourcesMatch = false
+						break
+					}
+				}
+			}
+
+			if !sourcesMatch {
+				// Sources don't match, need to recreate measurement
+				c.log.Info("Measurement has outdated source probes, marking for recreation",
+					slog.Int("measurement_id", existing.ID),
+					slog.String("target", wanted.TargetLocationCode),
+					slog.Int("existing_sources", len(existingSources)),
+					slog.Int("wanted_sources", len(wantedSources)))
+				toCreate = append(toCreate, wanted)
+			}
 		}
 	}
 
+	// Remove measurements for targets we no longer want, measurements without metadata, or measurements with outdated sources
 	toRemove := []Measurement{}
-	wantedMap := make(map[string]bool)
-	for _, wanted := range wantedMeasurements {
-		key := fmt.Sprintf("%d->%d", wanted.SourceProbe.ID, wanted.TargetProbe.ID)
-		wantedMap[key] = true
-	}
+	measurementsToRecreate := make(map[string]bool)
 
-	for key, measurement := range existingMap {
-		if !wantedMap[key] {
-			toRemove = append(toRemove, measurement)
+	// First, identify measurements that need recreation due to outdated sources
+	for _, wanted := range wantedMeasurements {
+		if existing, exists := existingByTarget[wanted.TargetLocationCode]; exists {
+			meta, hasMeta := measurementState.GetMetadata(existing.ID)
+			if hasMeta {
+				// Check if sources match
+				existingSources := make(map[string]bool)
+				for _, source := range meta.Sources {
+					existingSources[source.LocationCode] = true
+				}
+
+				wantedSources := make(map[string]bool)
+				for _, source := range wanted.SourceSpecs {
+					wantedSources[source.LocationCode] = true
+				}
+
+				sourcesMatch := len(existingSources) == len(wantedSources)
+				if sourcesMatch {
+					for loc := range wantedSources {
+						if !existingSources[loc] {
+							sourcesMatch = false
+							break
+						}
+					}
+				}
+
+				if !sourcesMatch {
+					measurementsToRecreate[wanted.TargetLocationCode] = true
+				}
+			}
 		}
 	}
 
-	// Step 5: Log the changes
+	for _, measurement := range doubleZeroMeasurements {
+		// Check if measurement has metadata
+		_, hasMetadata := measurementState.GetMetadata(measurement.ID)
+		if !hasMetadata {
+			c.log.Info("Marking measurement for removal due to missing metadata",
+				slog.Int("measurement_id", measurement.ID),
+				slog.String("description", measurement.Description))
+			toRemove = append(toRemove, measurement)
+			continue
+		}
+
+		parts := strings.Split(measurement.Description, " to ")
+		if len(parts) == 2 {
+			targetPart := parts[1]
+			if idx := strings.Index(targetPart, " probe"); idx != -1 {
+				targetLocation := targetPart[:idx]
+				if !wantedTargets[targetLocation] {
+					toRemove = append(toRemove, measurement)
+				} else if measurementsToRecreate[targetLocation] {
+					// This measurement needs to be recreated due to outdated sources
+					toRemove = append(toRemove, measurement)
+				}
+			}
+		}
+	}
+
+	// Step 6: Log the changes
 	c.log.Info("Measurement configuration summary",
 		slog.Int("wanted", len(wantedMeasurements)),
 		slog.Int("existing", len(doubleZeroMeasurements)),
 		slog.Int("to_create", len(toCreate)),
 		slog.Int("to_remove", len(toRemove)))
 
-	// Step 6: Remove unwanted measurements
+	// Step 7: Remove unwanted measurements
 	if len(toRemove) > 0 {
-		timestampFile := filepath.Join(stateDir, TimestampFileName)
-
-		measurementState := NewMeasurementState(timestampFile)
-		if err := measurementState.Load(); err != nil {
-			return err
-		}
 
 		for _, measurement := range toRemove {
 			if dryRun {
@@ -630,12 +774,14 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 					slog.Int("measurement_id", measurement.ID),
 					slog.String("description", measurement.Description))
 			} else {
-				// Export results before removing
-				if _, err := c.exportSingleMeasurementResults(ctx, measurement, measurementState); err != nil {
-					c.log.Warn("Failed to export measurement results before removal",
-						slog.Int("measurement_id", measurement.ID),
-						slog.String("error", err.Error()))
-					// Continue with removal even if export fails
+				// Export results before removing (only if exporter is available)
+				if c.exporter != nil {
+					if _, err := c.exportSingleMeasurementResults(ctx, measurement, measurementState); err != nil {
+						c.log.Warn("Failed to export measurement results before removal",
+							slog.Int("measurement_id", measurement.ID),
+							slog.String("error", err.Error()))
+						// Continue with removal even if export fails
+					}
 				}
 
 				c.log.Info("Removing measurement",
@@ -646,28 +792,61 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 						slog.Int("measurement_id", measurement.ID),
 						slog.String("error", err.Error()))
 				}
+				// Always remove metadata for measurements we're removing,
+				// even if the API call fails (measurement might already be stopped)
+				measurementState.RemoveMetadata(measurement.ID)
+				metrics.RipeatlasTotalMeasurements.Dec()
 				time.Sleep(CallDelay) // Rate limiting
 			}
 		}
+
+		// Save updated state after removals
+		if err := measurementState.Save(); err != nil {
+			c.log.Warn("Failed to save measurement state after removals", slog.String("error", err.Error()))
+		}
 	}
 
-	// Step 7: Create new measurements
+	// Step 7b: Clean up orphaned metadata (measurements in state file but not in API)
+	activeIDs := make(map[int]bool)
+	for _, m := range doubleZeroMeasurements {
+		activeIDs[m.ID] = true
+	}
+
+	orphanedIDs := []int{}
+	for id := range measurementState.tracker.Metadata {
+		if !activeIDs[id] {
+			orphanedIDs = append(orphanedIDs, id)
+		}
+	}
+
+	if len(orphanedIDs) > 0 {
+		c.log.Info("Cleaning up orphaned metadata entries",
+			slog.Int("count", len(orphanedIDs)))
+		for _, id := range orphanedIDs {
+			c.log.Debug("Removing orphaned metadata",
+				slog.Int("measurement_id", id))
+			measurementState.RemoveMetadata(id)
+		}
+		if err := measurementState.Save(); err != nil {
+			c.log.Warn("Failed to save state after orphan cleanup", slog.String("error", err.Error()))
+		}
+	}
+
+	// Step 8: Create new measurements
 	for _, spec := range toCreate {
 		if dryRun {
 			c.log.Info("Would create measurement (dry run)",
-				slog.String("source_location", spec.SourceLocation),
-				slog.Int("source_probe", spec.SourceProbe.ID),
 				slog.String("target_location", spec.TargetLocation),
-				slog.Int("target_probe", spec.TargetProbe.ID))
+				slog.Int("target_probe", spec.TargetProbe.ID),
+				slog.Int("source_count", len(spec.SourceSpecs)))
 		} else {
+			// Use simplified description without source list
 			var description string
 			if c.env != "" {
-				description = fmt.Sprintf("DoubleZero [%s] %s probe %d to %s probe %d",
-					c.env, spec.SourceLocationCode, spec.SourceProbe.ID,
-					spec.TargetLocationCode, spec.TargetProbe.ID)
+				description = fmt.Sprintf("DoubleZero [%s] to %s probe %d",
+					c.env, spec.TargetLocationCode, spec.TargetProbe.ID)
 			} else {
-				description = fmt.Sprintf("DoubleZero %s probe %d to %s probe %d",
-					spec.SourceLocationCode, spec.SourceProbe.ID,
+				description = fmt.Sprintf("DoubleZero to %s probe %d",
 					spec.TargetLocationCode, spec.TargetProbe.ID)
 			}
 
@@ -677,6 +856,15 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 				tags = append(tags, c.env)
 			}
 			tags = append(tags, "doublezero")
+
+			var probes []MeasurementProbe
+			for _, source := range spec.SourceSpecs {
+				probes = append(probes, MeasurementProbe{
+					Value:     source.Probe.ID,
+					Type:      "probes",
+					Requested: 1,
+				})
+			}
 
 			measurementRequest := MeasurementRequest{
 				Definitions: []MeasurementDefinition{
@@ -692,31 +880,102 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 						Tags:           tags,
 					},
 				},
-				Probes: []MeasurementProbe{
-					{
-						Value:     spec.SourceProbe.ID,
-						Type:      "probes",
-						Requested: 1,
-					},
-				},
+				Probes: probes,
 			}
 
 			response, err := c.client.CreateMeasurement(ctx, measurementRequest)
 			if err != nil {
 				c.log.Warn("Failed to create measurement",
-					slog.String("source_location", spec.SourceLocation),
-					slog.Int("source_probe", spec.SourceProbe.ID),
 					slog.String("target_location", spec.TargetLocation),
 					slog.Int("target_probe", spec.TargetProbe.ID),
+					slog.Int("source_count", len(spec.SourceSpecs)),
 					slog.String("error", err.Error()))
 			} else {
+				measurementID := response.Measurements[0]
 				c.log.Info("Created measurement",
-					slog.Int("measurement_id", response.Measurements[0]),
+					slog.Int("measurement_id", measurementID),
 					slog.String("description", description))
+
+				sources := make([]SourceProbeMeta, len(spec.SourceSpecs))
+				for i, source := range spec.SourceSpecs {
+					sources[i] = SourceProbeMeta{
+						LocationCode: source.LocationCode,
+						ProbeID:      source.Probe.ID,
+					}
+				}
+
+				meta := MeasurementMeta{
+					TargetLocation: spec.TargetLocationCode,
+					TargetProbeID:  spec.TargetProbe.ID,
+					Sources:        sources,
+					CreatedAt:      time.Now().Unix(),
+				}
+
+				measurementState.SetMetadata(measurementID, meta)
+				if err := measurementState.Save(); err != nil {
+					c.log.Warn("Failed to save measurement metadata", slog.String("error", err.Error()))
+				} else {
+					// Update metrics
+					metrics.RipeatlasTotalMeasurements.Inc()
+					metrics.RipeatlasProbesPerMeasurement.Set(float64(len(sources)))
+				}
 			}
 			time.Sleep(CallDelay)
 		}
 	}
+
+	// Step 9: Calculate and update expected daily credits metric
+	// Use API-provided estimates when available
+	totalProbeCount := 0
+	expectedDailyResults := 0.0
+	expectedDailyCredits := 0.0
+
+	// Build maps for API-provided values
+	measurementAPIData := make(map[int]Measurement)
+	for _, m := range doubleZeroMeasurements {
+		measurementAPIData[m.ID] = m
+	}
+
+	for id := range measurementState.tracker.Metadata {
+		if meta, exists := measurementState.tracker.Metadata[id]; exists {
+			probeCount := len(meta.Sources)
+			totalProbeCount += probeCount
+
+			// Use API-provided estimates if available
+			if apiData, ok := measurementAPIData[id]; ok {
+				if apiData.EstimatedResultsPerDay > 0 {
+					expectedDailyResults += apiData.EstimatedResultsPerDay
+				} else {
+					// Fallback calculation if API doesn't provide estimate
+					samplesPerDay := (24 * time.Hour) / samplingInterval
+					expectedDailyResults += float64(probeCount) * float64(samplesPerDay)
+				}
+
+				if apiData.CreditsPerResult > 0 && apiData.EstimatedResultsPerDay > 0 {
+					expectedDailyCredits += apiData.CreditsPerResult * apiData.EstimatedResultsPerDay
+				} else {
+					// Fallback: assume 2 credits per result
+					samplesPerDay := (24 * time.Hour) / samplingInterval
+					expectedDailyCredits += 2.0 * float64(probeCount) * float64(samplesPerDay)
+				}
+			} else {
+				// No API data available, use fallback calculation
+				samplesPerDay := (24 * time.Hour) / samplingInterval
+				expectedDailyResults += float64(probeCount) * float64(samplesPerDay)
+				expectedDailyCredits += 2.0 * float64(probeCount) * float64(samplesPerDay)
+			}
+		}
+	}
+
+	metrics.RipeatlasExpectedDailyResults.Set(expectedDailyResults)
+	metrics.RipeatlasExpectedDailyCredits.Set(expectedDailyCredits)
+
+	c.log.Info("Updated expected daily metrics",
+		slog.Float64("expected_daily_results", expectedDailyResults),
+		slog.Float64("expected_daily_credits", expectedDailyCredits),
+		slog.Int("total_probe_count", totalProbeCount),
+		slog.Int("measurement_count", len(measurementState.tracker.Metadata)),
+		slog.String("source", "api_estimates_with_fallback"))
 
 	return nil
 }
@@ -731,45 +990,62 @@ func (c *Collector) generateWantedMeasurements(locationMatches []LocationProbeMa
 		return sortedLocations[i].LocationCode < sortedLocations[j].LocationCode
 	})
 
-	// We want a matrix of measurements between all location pairs
-	for i, sourceLocation := range sortedLocations {
-		if len(sourceLocation.NearbyProbes) == 0 {
+	// Create one measurement per target location
+	// Each measurement will ping from all other locations' probes to this target
+	for targetIdx, targetLocation := range sortedLocations {
+		if len(targetLocation.NearbyProbes) == 0 {
 			continue
 		}
 
-		sourceProbes := getNearestProbesSorted(sourceLocation.NearbyProbes,
-			sourceLocation.Latitude, sourceLocation.Longitude, probesPerLocation)
+		targetProbes := getNearestProbesSorted(targetLocation.NearbyProbes,
+			targetLocation.Latitude, targetLocation.Longitude, probesPerLocation)
 
-		for j, targetLocation := range sortedLocations {
-			// Since ping measures round-trip time, we only need A->B, not B->A
-			if i >= j || len(targetLocation.NearbyProbes) == 0 {
+		if len(targetProbes) == 0 || targetProbes[0].Address == "" {
+			continue
+		}
+
+		// Use the closest probe as the target
+		targetProbe := targetProbes[0]
+
+		// Collect source probes from all other locations
+		// Since we're iterating in alphabetical order and only need to measure once between any pair,
+		// we only include sources from locations that come after this target in the alphabet
+		var sourceSpecs []SourceSpec
+		for sourceIdx, sourceLocation := range sortedLocations {
+			// Skip if this is the target location itself
+			if sourceIdx == targetIdx {
 				continue
 			}
 
-			targetProbes := getNearestProbesSorted(targetLocation.NearbyProbes,
-				targetLocation.Latitude, targetLocation.Longitude, probesPerLocation)
+			// Only include sources that come after the target alphabetically
+			// This ensures we only measure once between any pair
+			if sourceIdx < targetIdx {
+				continue
+			}
 
-			// Create measurements between the closest probes
-			// Use min to handle cases where one location has fewer probes
-			measurementCount := min(len(sourceProbes), len(targetProbes), probesPerLocation)
+			if len(sourceLocation.NearbyProbes) == 0 {
+				continue
+			}
 
-			for k := 0; k < measurementCount; k++ {
-				sourceProbe := sourceProbes[k]
-				targetProbe := targetProbes[k]
+			sourceProbes := getNearestProbesSorted(sourceLocation.NearbyProbes,
+				sourceLocation.Latitude, sourceLocation.Longitude, probesPerLocation)
 
-				if targetProbe.Address == "" {
-					continue
-				}
-
-				wantedMeasurements = append(wantedMeasurements, MeasurementSpec{
-					SourceLocation:     sourceLocation.LocationCode,
-					TargetLocation:     targetLocation.LocationCode,
-					SourceLocationCode: sourceLocation.LocationCode,
-					TargetLocationCode: targetLocation.LocationCode,
-					SourceProbe:        sourceProbe,
-					TargetProbe:        targetProbe,
+			if len(sourceProbes) > 0 {
+				// Use the closest probe as the source
+				sourceSpecs = append(sourceSpecs, SourceSpec{
+					LocationCode: sourceLocation.LocationCode,
+					Probe:        sourceProbes[0],
 				})
 			}
+		}
+
+		if len(sourceSpecs) > 0 {
+			wantedMeasurements = append(wantedMeasurements, MeasurementSpec{
+				TargetLocation:     targetLocation.LocationCode,
+				TargetLocationCode: targetLocation.LocationCode,
+				TargetProbe:        targetProbe,
+				SourceSpecs:        sourceSpecs,
+			})
 		}
 	}
 
@@ -789,6 +1065,16 @@ func (c *Collector) Run(ctx context.Context, dryRun bool, probesPerLocation int,
 	}
 
 	var wg sync.WaitGroup
+
+	// Run measurement creation immediately on startup
+	c.log.Info("Running initial RIPE Atlas measurement creation")
+	if err := c.RunRipeAtlasMeasurementCreation(ctx, dryRun, probesPerLocation, stateDir, samplingInterval); err != nil {
+		c.log.Error("Initial measurement creation failed", slog.String("error", err.Error()))
+		metrics.RipeatlasMeasurementManagementFailuresTotal.Inc()
+		// Continue running even if initial creation fails
+	} else {
+		metrics.RipeatlasMeasurementManagementRunsTotal.Inc()
+	}
 
 	// Measurement management
 	wg.Add(1)

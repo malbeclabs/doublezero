@@ -13,7 +13,7 @@ import (
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
-const MaxDistanceKM = 16.0
+const MaxDistanceKM = 60.0
 
 type LocationMatch struct {
 	LocationCode string

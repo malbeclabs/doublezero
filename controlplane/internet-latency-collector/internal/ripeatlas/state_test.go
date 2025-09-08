@@ -17,8 +17,8 @@ func TestInternetLatency_RIPEAtlas_State_New(t *testing.T) {
 	require.NotNil(t, ms)
 	require.Equal(t, "test.json", ms.filename)
 	require.NotNil(t, ms.tracker)
-	require.NotNil(t, ms.tracker.Timestamps)
-	require.Empty(t, ms.tracker.Timestamps)
+	require.NotNil(t, ms.tracker.Metadata)
+	require.Empty(t, ms.tracker.Metadata)
 }
 
 func TestInternetLatency_RIPEAtlas_State_LoadSave(t *testing.T) {
@@ -32,7 +32,7 @@ func TestInternetLatency_RIPEAtlas_State_LoadSave(t *testing.T) {
 	// Test loading non-existent file
 	err := ms.Load()
 	require.NoError(t, err, "Load() on non-existent file should not error")
-	require.Empty(t, ms.tracker.Timestamps, "Timestamps should be empty initially")
+	require.Empty(t, ms.tracker.Metadata, "Metadata should be empty initially")
 
 	// Test saving
 	ms.UpdateTimestamp(100, 1640995200)
@@ -46,7 +46,7 @@ func TestInternetLatency_RIPEAtlas_State_LoadSave(t *testing.T) {
 	ms2 := NewMeasurementState(filename)
 	err = ms2.Load()
 	require.NoError(t, err, "Load() should not error")
-	require.Len(t, ms2.tracker.Timestamps, 3, "Expected 3 timestamps")
+	require.Len(t, ms2.tracker.Metadata, 3, "Expected 3 metadata entries")
 
 	// Verify timestamps
 	ts, exists := ms2.GetLastTimestamp(100)
@@ -163,21 +163,21 @@ func TestInternetLatency_RIPEAtlas_State_FilePermissionError(t *testing.T) {
 	require.Contains(t, err.Error(), "failed to create timestamp file")
 }
 
-func TestInternetLatency_RIPEAtlas_State_EmptyTimestampsInFile(t *testing.T) {
+func TestInternetLatency_RIPEAtlas_State_EmptyMetadataInFile(t *testing.T) {
 	t.Parallel()
 
 	tempDir := t.TempDir()
-	filename := filepath.Join(tempDir, "empty_timestamps.json")
+	filename := filepath.Join(tempDir, "empty_metadata.json")
 
-	// Write JSON with null timestamps
-	err := os.WriteFile(filename, []byte(`{"timestamps": null}`), 0644)
+	// Write JSON with null metadata
+	err := os.WriteFile(filename, []byte(`{"metadata": null}`), 0644)
 	require.NoError(t, err)
 
 	ms := NewMeasurementState(filename)
 	err = ms.Load()
-	require.NoError(t, err, "Should handle null timestamps gracefully")
-	require.NotNil(t, ms.tracker.Timestamps, "Timestamps map should be initialized")
-	require.Empty(t, ms.tracker.Timestamps, "Timestamps should be empty")
+	require.NoError(t, err, "Should handle null metadata gracefully")
+	require.NotNil(t, ms.tracker.Metadata, "Metadata map should be initialized")
+	require.Empty(t, ms.tracker.Metadata, "Metadata should be empty")
 }
 
 func TestInternetLatency_RIPEAtlas_State_PersistenceAcrossInstances(t *testing.T) {
@@ -278,10 +278,18 @@ func TestInternetLatency_RIPEAtlas_State_TimestampTracker_Structure(t *testing.T
 	t.Parallel()
 
 	// Test that TimestampTracker can be marshaled/unmarshaled correctly
-	tracker := &TimestampTracker{
-		Timestamps: map[int]int64{
-			100: 1640995200,
-			200: 1640995300,
+	tracker := &MetadataTracker{
+		Metadata: map[int]MeasurementMeta{
+			100: {
+				TargetLocation: "lax",
+				TargetProbeID:  999,
+				Sources: []SourceProbeMeta{
+					{LocationCode: "nyc", ProbeID: 100},
+					{LocationCode: "chi", ProbeID: 101},
+				},
+				CreatedAt:    1640995200,
+				LastExportAt: 1640995300,
+			},
 		},
 	}
 
@@ -290,31 +298,9 @@ func TestInternetLatency_RIPEAtlas_State_TimestampTracker_Structure(t *testing.T
 	require.NoError(t, err)
 
 	// Unmarshal
-	var tracker2 TimestampTracker
+	var tracker2 MetadataTracker
 	err = json.Unmarshal(data, &tracker2)
 	require.NoError(t, err)
 
-	require.Equal(t, tracker.Timestamps, tracker2.Timestamps)
-}
-
-func TestInternetLatency_RIPEAtlas_State_MeasurementTimestamp_Structure(t *testing.T) {
-	t.Parallel()
-
-	// Test MeasurementTimestamp structure (currently unused but defined)
-	mt := &MeasurementTimestamp{
-		MeasurementID: 100,
-		LastTimestamp: 1640995200,
-	}
-
-	// Marshal
-	data, err := json.Marshal(mt)
-	require.NoError(t, err)
-
-	// Unmarshal
-	var mt2 MeasurementTimestamp
-	err = json.Unmarshal(data, &mt2)
-	require.NoError(t, err)
-
-	require.Equal(t, mt.MeasurementID, mt2.MeasurementID)
-	require.Equal(t, mt.LastTimestamp, mt2.LastTimestamp)
+	require.Equal(t, tracker.Metadata, tracker2.Metadata)
 }

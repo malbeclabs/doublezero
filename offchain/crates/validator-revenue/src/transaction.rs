@@ -12,7 +12,11 @@ use doublezero_revenue_distribution::{
     state::{Distribution, ProgramConfig},
     types::{DoubleZeroEpoch, SolanaValidatorDebt},
 };
-use solana_client::{nonblocking::rpc_client::RpcClient, rpc_client::SerializableTransaction};
+use solana_client::{
+    nonblocking::rpc_client::RpcClient,
+    rpc_client::SerializableTransaction,
+    rpc_response::{Response, RpcSimulateTransactionResult},
+};
 use solana_sdk::{
     message::{VersionedMessage, v0::Message},
     pubkey::Pubkey,
@@ -164,41 +168,35 @@ impl Transaction {
     }
 
     // only simulate transaction
-    pub async fn verify_transaction(
+    pub async fn verify_merkle_root(
         &self,
         solana_rpc_client: &RpcClient,
         dz_epoch: u64,
         proof: MerkleProof,
         leaf: SolanaValidatorDebt,
-    ) -> Result<VersionedTransaction> {
+    ) -> Result<Response<RpcSimulateTransactionResult>> {
         let dz_epoch = DoubleZeroEpoch::new(dz_epoch);
-        match try_build_instruction(
+        let instruction = try_build_instruction(
             &ID,
             VerifyDistributionMerkleRootAccounts::new(dz_epoch),
             &RevenueDistributionInstructionData::VerifyDistributionMerkleRoot {
                 kind: DistributionMerkleRootKind::SolanaValidatorPayment(leaf),
                 proof,
             },
-        ) {
-            Ok(instruction) => {
-                let recent_blockhash = solana_rpc_client.get_latest_blockhash().await?;
-                let message = Message::try_compile(
-                    &self.signer.pubkey(),
-                    &[instruction],
-                    &[],
-                    recent_blockhash,
-                )
+        )?;
+
+        let recent_blockhash = solana_rpc_client.get_latest_blockhash().await?;
+        let message =
+            Message::try_compile(&self.signer.pubkey(), &[instruction], &[], recent_blockhash)
                 .unwrap();
 
-                let verified_instruction =
-                    VersionedTransaction::try_new(VersionedMessage::V0(message), &[&self.signer])
-                        .unwrap();
-                Ok(verified_instruction)
-            }
-            Err(err) => Err(anyhow!(
-                "Failed to build finalize distribution instruction: {err:?}"
-            )),
-        }
+        let verified_transaction =
+            VersionedTransaction::try_new(VersionedMessage::V0(message), &[&self.signer])
+                .map_err(|e| anyhow!("Failed to create verified instruction: {e:?}"))?;
+        let verified = solana_rpc_client
+            .simulate_transaction(&verified_transaction)
+            .await?;
+        Ok(verified)
     }
 
     pub async fn send_or_simulate_transaction(
@@ -247,8 +245,6 @@ impl Transaction {
 mod tests {
     use super::*;
     use crate::{
-        ledger,
-        rewards::EpochRewards,
         solana_debt_calculator::{SolanaDebtCalculator, ledger_rpc, solana_rpc},
         validator_debt::{ComputedSolanaValidatorDebt, ComputedSolanaValidatorDebts},
     };
@@ -284,7 +280,7 @@ mod tests {
 
     #[ignore = "needs local validator"]
     #[tokio::test]
-    async fn test_verify_distribution() -> anyhow::Result<()> {
+    async fn test_verify_merkle_root() -> anyhow::Result<()> {
         let keypair = try_load_keypair(None).unwrap();
         let commitment_config = CommitmentConfig::processed();
         let ledger_rpc_client = RpcClient::new_with_commitment(ledger_rpc(), commitment_config);
@@ -311,46 +307,29 @@ mod tests {
             vote_account_config,
         );
         let solana_rpc_client = fpc.solana_rpc_client;
-        let ledger_rpc_client = fpc.ledger_rpc_client;
-
-        let transaction = Transaction::new(keypair, true);
+        let dry_run = true;
+        let transaction = Transaction::new(keypair, dry_run);
         let leaf = SolanaValidatorDebt {
             node_id: Pubkey::from_str("va1i6T6vTcijrCz6G8r89H6igKjwkLfF6g5fnpvZu1b").unwrap(),
-            amount: 2264,
+            amount: 707,
         };
 
-        let signer = try_load_keypair(None).unwrap();
-        let dz_epoch: u64 = 83;
-        let prefix = b"solana_validator_debt_test";
-        let dz_epoch_bytes = dz_epoch.to_le_bytes();
-        let seeds: &[&[u8]] = &[prefix, &dz_epoch_bytes];
-        let record =
-            ledger::read_from_ledger(&ledger_rpc_client, &signer, seeds, commitment_config).await?;
-        let deserialized: EpochRewards = borsh::from_slice(record.1.as_slice()).unwrap();
-
-        let computed_solana_validator_debt_vec: Vec<ComputedSolanaValidatorDebt> = deserialized
-            .rewards
-            .iter()
-            .map(|reward| ComputedSolanaValidatorDebt {
-                node_id: Pubkey::from_str(&reward.validator_id).unwrap(),
-                amount: reward.total,
-            })
-            .collect();
-        let debt = ComputedSolanaValidatorDebts {
-            epoch: deserialized.epoch,
-            debts: computed_solana_validator_debt_vec,
+        let dz_epoch: u64 = 84;
+        let record = ComputedSolanaValidatorDebts {
+            epoch: 832,
+            debts: vec![ComputedSolanaValidatorDebt {
+                node_id: Pubkey::from_str("va1i6T6vTcijrCz6G8r89H6igKjwkLfF6g5fnpvZu1b").unwrap(),
+                amount: 707,
+            }],
         };
-        let debt_proof = debt.find_debt_proof(
+        let debt_proof = record.find_debt_proof(
             &Pubkey::from_str("va1i6T6vTcijrCz6G8r89H6igKjwkLfF6g5fnpvZu1b").unwrap(),
         );
         let (_, proof) = debt_proof.unwrap();
-        let new_transaction = transaction
-            .verify_transaction(&solana_rpc_client, 78, proof, leaf)
+        transaction
+            .verify_merkle_root(&solana_rpc_client, dz_epoch, proof, leaf)
             .await?;
 
-        let _sent_transaction = transaction
-            .send_or_simulate_transaction(&solana_rpc_client, &new_transaction)
-            .await?;
         Ok(())
     }
 

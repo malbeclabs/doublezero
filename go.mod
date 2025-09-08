@@ -8,7 +8,7 @@ require (
 	github.com/aristanetworks/goeapi v1.0.1-0.20250411124937-7090068b8735
 	github.com/cenkalti/backoff/v5 v5.0.3
 	github.com/dgraph-io/ristretto v0.2.0
-	github.com/docker/docker v28.3.3+incompatible
+	github.com/docker/docker v28.4.0+incompatible
 	github.com/docker/go-connections v0.6.0
 	github.com/gagliardetto/binary v0.8.0
 	github.com/gagliardetto/solana-go v1.13.0
@@ -75,7 +75,6 @@ require (
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
-	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect

@@ -1,11 +1,9 @@
 #!/bin/bash
 
 clear
-pkill -9 -f validator
-pkill -9 -f activator
-pkill -9 -f solana
-
-kill -9 $(ps -ef | grep activator | grep -v grep | awk '{print $2}')
+killall solana-test-validator > /dev/null 2>&1
+killall -9 doublezero-activator > /dev/null 2>&1
+killall solana > /dev/null 2>&1
 
 set -e
 set -x

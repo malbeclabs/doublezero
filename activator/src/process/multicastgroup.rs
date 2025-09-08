@@ -20,7 +20,6 @@ pub fn process_multicastgroup_event(
     multicastgroup: &MulticastGroup,
     multicastgroups: &mut HashMap<Pubkey, MulticastGroup>,
     multicastgroup_tunnel_ips: &mut IPBlockAllocator,
-    state_transitions: &mut HashMap<&'static str, usize>,
 ) -> eyre::Result<()> {
     match multicastgroup.status {
         MulticastGroupStatus::Pending => {
@@ -49,9 +48,7 @@ pub fn process_multicastgroup_event(
                             write!(&mut log_msg, "Activated: {signature} ",).unwrap();
 
                             multicastgroups.insert(*pubkey, multicastgroup.clone());
-                            *state_transitions
-                                .entry("multicastgroup-pending-to-activated")
-                                .or_insert(0) += 1;
+                            metrics::counter!("doublezero_activator_state_transition", "state_transition" => "multicastgroup-pending-to-activated").increment(1);
                         }
                         Err(e) => {
                             write!(&mut log_msg, "Error: {e} ",).unwrap();
@@ -96,9 +93,7 @@ pub fn process_multicastgroup_event(
                         .unassign_block(Ipv4Network::new(multicastgroup.multicast_ip, 32)?);
 
                     multicastgroups.remove(pubkey);
-                    *state_transitions
-                        .entry("multicastgroup-deleting-to-deactivated")
-                        .or_insert(0) += 1;
+                    metrics::counter!("doublezero_activator_state_transition", "state_transition" => "multicastgroup-deleting-to-deactivated").increment(1);
                 }
                 Err(e) => {
                     write!(&mut log_msg, " Error {e}",).unwrap();
@@ -126,78 +121,91 @@ mod tests {
         instructions::DoubleZeroInstruction,
         processors::multicastgroup::activate::MulticastGroupActivateArgs,
     };
+    use metrics_util::debugging::DebuggingRecorder;
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
     use std::{collections::HashMap, net::Ipv4Addr};
 
     #[test]
     fn test_process_multicastgroup_event() {
-        let mut client = create_test_client();
+        let recorder = DebuggingRecorder::new();
+        let snapshotter = recorder.snapshotter();
 
-        let (_, bump_seed) = get_multicastgroup_pda(&client.get_program_id(), 1);
-        client
-            .expect_execute_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::ActivateMulticastGroup(
-                    MulticastGroupActivateArgs {
-                        multicast_ip: [224, 0, 0, 0].into(),
-                    },
-                )),
-                predicate::always(),
+        metrics::with_local_recorder(&recorder, || {
+            let mut client = create_test_client();
+
+            let (_, bump_seed) = get_multicastgroup_pda(&client.get_program_id(), 1);
+            client
+                .expect_execute_transaction()
+                .with(
+                    predicate::eq(DoubleZeroInstruction::ActivateMulticastGroup(
+                        MulticastGroupActivateArgs {
+                            multicast_ip: [224, 0, 0, 0].into(),
+                        },
+                    )),
+                    predicate::always(),
+                )
+                .returning(|_, _| Ok(Signature::new_unique()));
+
+            let mut multicastgroups = HashMap::new();
+            let pubkey = Pubkey::new_unique();
+            let multicastgroup = MulticastGroup {
+                account_type: AccountType::MulticastGroup,
+                owner: Pubkey::new_unique(),
+                index: 1,
+                bump_seed,
+                multicast_ip: Ipv4Addr::UNSPECIFIED,
+                max_bandwidth: 10000,
+                pub_allowlist: vec![client.get_payer()],
+                sub_allowlist: vec![client.get_payer()],
+                publishers: vec![],
+                subscribers: vec![],
+                status: MulticastGroupStatus::Pending,
+                code: "test".to_string(),
+                tenant_pk: Pubkey::default(),
+            };
+
+            let mgroup = multicastgroup.clone();
+            client
+                .expect_get()
+                .with(predicate::eq(pubkey))
+                .returning(move |_| Ok(AccountData::MulticastGroup(mgroup.clone())));
+
+            client
+                .expect_execute_transaction()
+                .with(
+                    predicate::eq(DoubleZeroInstruction::ActivateMulticastGroup(
+                        MulticastGroupActivateArgs {
+                            multicast_ip: [224, 0, 0, 0].into(),
+                        },
+                    )),
+                    predicate::always(),
+                )
+                .returning(|_, _| Ok(Signature::new_unique()));
+
+            let mut multicastgroup_tunnel_ips =
+                IPBlockAllocator::new("224.0.0.0/4".parse().unwrap());
+
+            process_multicastgroup_event(
+                &client,
+                &pubkey,
+                &multicastgroup,
+                &mut multicastgroups,
+                &mut multicastgroup_tunnel_ips,
             )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect("Failed to process multicastgroup event");
 
-        let mut multicastgroups = HashMap::new();
-        let pubkey = Pubkey::new_unique();
-        let multicastgroup = MulticastGroup {
-            account_type: AccountType::MulticastGroup,
-            owner: Pubkey::new_unique(),
-            index: 1,
-            bump_seed,
-            multicast_ip: Ipv4Addr::UNSPECIFIED,
-            max_bandwidth: 10000,
-            pub_allowlist: vec![client.get_payer()],
-            sub_allowlist: vec![client.get_payer()],
-            publishers: vec![],
-            subscribers: vec![],
-            status: MulticastGroupStatus::Pending,
-            code: "test".to_string(),
-            tenant_pk: Pubkey::default(),
-        };
+            assert!(multicastgroups.contains_key(&pubkey));
+            assert_eq!(*multicastgroups.get(&pubkey).unwrap(), multicastgroup);
 
-        let mgroup = multicastgroup.clone();
-        client
-            .expect_get()
-            .with(predicate::eq(pubkey))
-            .returning(move |_| Ok(AccountData::MulticastGroup(mgroup.clone())));
-
-        client
-            .expect_execute_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::ActivateMulticastGroup(
-                    MulticastGroupActivateArgs {
-                        multicast_ip: [224, 0, 0, 0].into(),
-                    },
-                )),
-                predicate::always(),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
-
-        let mut multicastgroup_tunnel_ips = IPBlockAllocator::new("224.0.0.0/4".parse().unwrap());
-        let mut state_transitions: HashMap<&'static str, usize> = HashMap::new();
-
-        process_multicastgroup_event(
-            &client,
-            &pubkey,
-            &multicastgroup,
-            &mut multicastgroups,
-            &mut multicastgroup_tunnel_ips,
-            &mut state_transitions,
-        )
-        .expect("Failed to process multicastgroup event");
-
-        assert!(multicastgroups.contains_key(&pubkey));
-        assert_eq!(*multicastgroups.get(&pubkey).unwrap(), multicastgroup);
-        assert_eq!(state_transitions["multicastgroup-pending-to-activated"], 1);
+            let mut snapshot = crate::test_helpers::MetricsSnapshot::new(snapshotter.snapshot());
+            snapshot
+                .expect_counter(
+                    "doublezero_activator_state_transition",
+                    vec![("state_transition", "multicastgroup-pending-to-activated")],
+                    1,
+                )
+                .verify();
+        });
     }
 }

@@ -7,10 +7,7 @@ use doublezero_sdk::{
 };
 use log::info;
 use solana_sdk::pubkey::Pubkey;
-use std::{
-    collections::{hash_map::Entry, HashMap},
-    fmt::Write,
-};
+use std::{collections::hash_map::Entry, fmt::Write};
 
 use crate::{activator::DeviceMap, states::devicestate::DeviceState};
 
@@ -19,7 +16,6 @@ pub fn process_device_event(
     pubkey: &Pubkey,
     devices: &mut DeviceMap,
     device: &Device,
-    state_transitions: &mut HashMap<&'static str, usize>,
     segment_routing_ids: &mut IDAllocator,
     link_ips: &mut IPBlockAllocator,
 ) {
@@ -43,9 +39,12 @@ pub fn process_device_event(
                     write!(&mut log_msg, " Activated {signature}").unwrap();
 
                     devices.insert(*pubkey, DeviceState::new(device));
-                    *state_transitions
-                        .entry("device-pending-to-activated")
-                        .or_insert(0) += 1;
+                    metrics::counter!(
+                        "doublezero_activator_state_transition",
+                        "state_transition" => "device-pending-to-activated",
+                        "device-pubkey" => pubkey.to_string(),
+                    )
+                    .increment(1);
                 }
                 Err(e) => write!(&mut log_msg, " Error {e}").unwrap(),
             }
@@ -85,12 +84,16 @@ pub fn process_device_event(
                 Ok(signature) => {
                     write!(&mut log_msg, " Deactivated {signature}").unwrap();
                     devices.remove(pubkey);
-                    *state_transitions
-                        .entry("device-deleting-to-deactivated")
-                        .or_insert(0) += 1;
+                    metrics::counter!(
+                        "doublezero_activator_state_transition",
+                        "state_transition" => "device-deleting-to-deactivated",
+                        "device-pubkey" => pubkey.to_string(),
+                    )
+                    .increment(1);
                 }
                 Err(e) => write!(&mut log_msg, " Error {e}").unwrap(),
             }
+            info!("{log_msg}");
         }
         _ => {}
     }
@@ -114,167 +117,193 @@ mod tests {
             interface::{activate::DeviceInterfaceActivateArgs, unlink::DeviceInterfaceUnlinkArgs},
         },
     };
+    use metrics_util::debugging::DebuggingRecorder;
     use mockall::{predicate, Sequence};
     use solana_sdk::signature::Signature;
     use std::collections::HashMap;
 
     #[test]
     fn test_process_device_event_pending_to_deleted() {
-        let mut seq = Sequence::new();
-        let mut devices = HashMap::new();
-        let mut client = create_test_client();
-        let mut segment_ids = IDAllocator::new(1, vec![]);
+        let recorder = DebuggingRecorder::new();
+        let snapshotter = recorder.snapshotter();
 
-        let device_pubkey = Pubkey::from_str_const("8KvLQiyKgrK3KyVGVVyT1Pmg7ahPVFsvHUVPg97oYynV");
-        let mut device = Device {
-            account_type: AccountType::Device,
-            owner: Pubkey::new_unique(),
-            index: 0,
-            bump_seed: get_device_bump_seed(&client),
-            reference_count: 0,
-            contributor_pk: Pubkey::new_unique(),
-            location_pk: Pubkey::new_unique(),
-            exchange_pk: Pubkey::new_unique(),
-            device_type: DeviceType::Switch,
-            public_ip: [192, 168, 1, 1].into(),
-            status: DeviceStatus::Pending,
-            metrics_publisher_pk: Pubkey::default(),
-            code: "TestDevice".to_string(),
-            dz_prefixes: "10.0.0.1/24,10.0.1.1/24".parse().unwrap(),
-            mgmt_vrf: "default".to_string(),
-            interfaces: vec![
-                Interface::V1(CurrentInterfaceVersion {
-                    status: InterfaceStatus::Pending,
-                    name: "Ethernet0".to_string(),
-                    interface_type: InterfaceType::Physical,
-                    loopback_type: LoopbackType::None,
-                    vlan_id: 0,
-                    ip_net: NetworkV4::default(),
-                    node_segment_idx: 0,
-                    user_tunnel_endpoint: false,
-                }),
-                Interface::V1(CurrentInterfaceVersion {
-                    status: InterfaceStatus::Pending,
-                    name: "Loopback0".to_string(),
-                    interface_type: InterfaceType::Loopback,
-                    loopback_type: LoopbackType::Vpnv4,
-                    vlan_id: 0,
-                    ip_net: NetworkV4::default(),
-                    node_segment_idx: 0,
-                    user_tunnel_endpoint: false,
-                }),
-            ],
-            max_users: 255,
-            users_count: 0,
-        };
+        metrics::with_local_recorder(&recorder, || {
+            let mut seq = Sequence::new();
+            let mut devices = HashMap::new();
+            let mut client = create_test_client();
+            let mut segment_ids = IDAllocator::new(1, vec![]);
 
-        let mut state_transitions: HashMap<&'static str, usize> = HashMap::new();
-
-        client
-            .expect_execute_transaction()
-            .times(1)
-            .in_sequence(&mut seq)
-            .with(
-                predicate::eq(DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs)),
-                predicate::always(),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
-
-        let mut ip_block_allocator = IPBlockAllocator::new("1.1.1.0/24".parse().unwrap());
-
-        process_device_event(
-            &client,
-            &device_pubkey,
-            &mut devices,
-            &device,
-            &mut state_transitions,
-            &mut segment_ids,
-            &mut ip_block_allocator,
-        );
-
-        assert!(devices.contains_key(&device_pubkey));
-        assert_eq!(devices.get(&device_pubkey).unwrap().device, device);
-
-        client
-            .expect_execute_transaction()
-            .times(1)
-            .in_sequence(&mut seq)
-            .with(
-                predicate::eq(DoubleZeroInstruction::UnlinkDeviceInterface(
-                    DeviceInterfaceUnlinkArgs {
+            let device_pubkey =
+                Pubkey::from_str_const("8KvLQiyKgrK3KyVGVVyT1Pmg7ahPVFsvHUVPg97oYynV");
+            let mut device = Device {
+                account_type: AccountType::Device,
+                owner: Pubkey::new_unique(),
+                index: 0,
+                bump_seed: get_device_bump_seed(&client),
+                reference_count: 0,
+                contributor_pk: Pubkey::new_unique(),
+                location_pk: Pubkey::new_unique(),
+                exchange_pk: Pubkey::new_unique(),
+                device_type: DeviceType::Switch,
+                public_ip: [192, 168, 1, 1].into(),
+                status: DeviceStatus::Pending,
+                metrics_publisher_pk: Pubkey::default(),
+                code: "TestDevice".to_string(),
+                dz_prefixes: "10.0.0.1/24,10.0.1.1/24".parse().unwrap(),
+                mgmt_vrf: "default".to_string(),
+                interfaces: vec![
+                    Interface::V1(CurrentInterfaceVersion {
+                        status: InterfaceStatus::Pending,
                         name: "Ethernet0".to_string(),
-                    },
-                )),
-                predicate::always(),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
-
-        client
-            .expect_execute_transaction()
-            .times(1)
-            .in_sequence(&mut seq)
-            .with(
-                predicate::eq(DoubleZeroInstruction::ActivateDeviceInterface(
-                    DeviceInterfaceActivateArgs {
+                        interface_type: InterfaceType::Physical,
+                        loopback_type: LoopbackType::None,
+                        vlan_id: 0,
+                        ip_net: NetworkV4::default(),
+                        node_segment_idx: 0,
+                        user_tunnel_endpoint: false,
+                    }),
+                    Interface::V1(CurrentInterfaceVersion {
+                        status: InterfaceStatus::Pending,
                         name: "Loopback0".to_string(),
-                        ip_net: "1.1.1.1/32".parse().unwrap(),
-                        node_segment_idx: 1,
-                    },
-                )),
-                predicate::always(),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+                        interface_type: InterfaceType::Loopback,
+                        loopback_type: LoopbackType::Vpnv4,
+                        vlan_id: 0,
+                        ip_net: NetworkV4::default(),
+                        node_segment_idx: 0,
+                        user_tunnel_endpoint: false,
+                    }),
+                ],
+                max_users: 255,
+                users_count: 0,
+            };
 
-        // interfaces get checked on activated devices
-        device.status = DeviceStatus::Activated;
+            let mut expected_interfaces = [
+                device.interfaces[0].into_current_version().clone(),
+                device.interfaces[1].into_current_version().clone(),
+            ];
+            expected_interfaces[1].ip_net = "1.1.1.1/32".parse().unwrap();
+            expected_interfaces[1].node_segment_idx = 1;
 
-        process_device_event(
-            &client,
-            &device_pubkey,
-            &mut devices,
-            &device,
-            &mut state_transitions,
-            &mut segment_ids,
-            &mut ip_block_allocator,
-        );
+            client
+                .expect_execute_transaction()
+                .times(1)
+                .in_sequence(&mut seq)
+                .with(
+                    predicate::eq(DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs)),
+                    predicate::always(),
+                )
+                .returning(|_, _| Ok(Signature::new_unique()));
 
-        device.status = DeviceStatus::Deleting;
+            let mut ip_block_allocator = IPBlockAllocator::new("1.1.1.0/24".parse().unwrap());
 
-        let mut client = create_test_client();
+            process_device_event(
+                &client,
+                &device_pubkey,
+                &mut devices,
+                &device,
+                &mut segment_ids,
+                &mut ip_block_allocator,
+            );
 
-        let device2 = device.clone();
-        client
-            .expect_get()
-            .times(1)
-            .in_sequence(&mut seq)
-            .with(predicate::eq(device_pubkey))
-            .returning(move |_| Ok(AccountData::Device(device2.clone())));
+            assert!(devices.contains_key(&device_pubkey));
+            assert_eq!(devices.get(&device_pubkey).unwrap().device, device);
 
-        client
-            .expect_execute_transaction()
-            .times(1)
-            .in_sequence(&mut seq)
-            .with(
-                predicate::eq(DoubleZeroInstruction::CloseAccountDevice(
-                    DeviceCloseAccountArgs {},
-                )),
-                predicate::always(),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            client
+                .expect_execute_transaction()
+                .times(1)
+                .in_sequence(&mut seq)
+                .with(
+                    predicate::eq(DoubleZeroInstruction::UnlinkDeviceInterface(
+                        DeviceInterfaceUnlinkArgs {
+                            name: "Ethernet0".to_string(),
+                        },
+                    )),
+                    predicate::always(),
+                )
+                .returning(|_, _| Ok(Signature::new_unique()));
 
-        process_device_event(
-            &client,
-            &device_pubkey,
-            &mut devices,
-            &device,
-            &mut state_transitions,
-            &mut segment_ids,
-            &mut ip_block_allocator,
-        );
-        assert!(!devices.contains_key(&device_pubkey));
-        assert_eq!(state_transitions.len(), 2);
-        assert_eq!(state_transitions["device-pending-to-activated"], 1);
-        assert_eq!(state_transitions["device-deleting-to-deactivated"], 1);
+            client
+                .expect_execute_transaction()
+                .times(1)
+                .in_sequence(&mut seq)
+                .with(
+                    predicate::eq(DoubleZeroInstruction::ActivateDeviceInterface(
+                        DeviceInterfaceActivateArgs {
+                            name: "Loopback0".to_string(),
+                            ip_net: "1.1.1.1/32".parse().unwrap(),
+                            node_segment_idx: 1,
+                        },
+                    )),
+                    predicate::always(),
+                )
+                .returning(|_, _| Ok(Signature::new_unique()));
+
+            // interfaces get checked on activated devices
+            device.status = DeviceStatus::Activated;
+
+            process_device_event(
+                &client,
+                &device_pubkey,
+                &mut devices,
+                &device,
+                &mut segment_ids,
+                &mut ip_block_allocator,
+            );
+
+            device.status = DeviceStatus::Deleting;
+
+            let mut client = create_test_client();
+
+            let device2 = device.clone();
+            client
+                .expect_get()
+                .times(1)
+                .in_sequence(&mut seq)
+                .with(predicate::eq(device_pubkey))
+                .returning(move |_| Ok(AccountData::Device(device2.clone())));
+
+            client
+                .expect_execute_transaction()
+                .times(1)
+                .in_sequence(&mut seq)
+                .with(
+                    predicate::eq(DoubleZeroInstruction::CloseAccountDevice(
+                        DeviceCloseAccountArgs {},
+                    )),
+                    predicate::always(),
+                )
+                .returning(|_, _| Ok(Signature::new_unique()));
+
+            process_device_event(
+                &client,
+                &device_pubkey,
+                &mut devices,
+                &device,
+                &mut segment_ids,
+                &mut ip_block_allocator,
+            );
+            assert!(!devices.contains_key(&device_pubkey));
+
+            let mut snapshot = crate::test_helpers::MetricsSnapshot::new(snapshotter.snapshot());
+            snapshot
+                .expect_counter(
+                    "doublezero_activator_state_transition",
+                    vec![
+                        ("state_transition", "device-pending-to-activated"),
+                        ("device-pubkey", device_pubkey.to_string().as_str()),
+                    ],
+                    1,
+                )
+                .expect_counter(
+                    "doublezero_activator_state_transition",
+                    vec![
+                        ("state_transition", "device-deleting-to-deactivated"),
+                        ("device-pubkey", device_pubkey.to_string().as_str()),
+                    ],
+                    1,
+                )
+                .verify();
+        });
     }
 
     #[test]
@@ -326,7 +355,6 @@ mod tests {
             users_count: 0,
         };
 
-        let mut state_transitions: HashMap<&'static str, usize> = HashMap::new();
         let mut ip_block_allocator = IPBlockAllocator::new("1.1.1.0/24".parse().unwrap());
 
         client
@@ -362,7 +390,6 @@ mod tests {
             &pubkey,
             &mut devices,
             &device,
-            &mut state_transitions,
             &mut segment_ids,
             &mut ip_block_allocator,
         );
@@ -391,14 +418,11 @@ mod tests {
             &pubkey,
             &mut devices,
             &device,
-            &mut state_transitions,
             &mut segment_ids,
             &mut ip_block_allocator,
         );
 
         assert!(devices.contains_key(&pubkey));
         assert_eq!(devices.get(&pubkey).unwrap().device, device);
-
-        assert_eq!(state_transitions.len(), 0);
     }
 }

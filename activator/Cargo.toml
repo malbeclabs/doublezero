@@ -17,9 +17,6 @@ env_logger.workspace = true
 eyre.workspace = true
 futures.workspace = true
 indexmap.workspace = true
-influxdb2.workspace = true
-influxdb2-derive.workspace = true
-influxdb2-structmap.workspace = true
 ipnetwork.workspace = true
 log.workspace = true
 metrics.workspace = true
@@ -34,3 +31,6 @@ doublezero_sdk.workspace = true
 doublezero_cli.workspace = true
 doublezero-serviceability.workspace = true
 doublezero-program-common.workspace = true
+
+[dev-dependencies]
+metrics-util.workspace = true

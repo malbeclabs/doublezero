@@ -2,9 +2,10 @@ use crate::{
     error::DoubleZeroError,
     globalstate::globalstate_get,
     helper::*,
-    state::{contributor::Contributor, device::Device, link::*},
+    state::{contributor::Contributor, device::*, link::*},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
+use doublezero_program_common::types::NetworkV4;
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -86,6 +87,20 @@ pub fn process_closeaccount_link(
         #[cfg(test)]
         msg!("{:?}", link);
         return Err(solana_program::program_error::ProgramError::Custom(1));
+    }
+
+    if let Ok((idx_a, side_a_iface)) = side_a_dev.find_interface(&link.side_a_iface_name) {
+        let mut updated_iface = side_a_iface.clone();
+        updated_iface.status = InterfaceStatus::Unlinked;
+        updated_iface.ip_net = NetworkV4::default();
+        side_a_dev.interfaces[idx_a] = Interface::V1(updated_iface);
+    }
+
+    if let Ok((idx_z, side_z_iface)) = side_z_dev.find_interface(&link.side_z_iface_name) {
+        let mut updated_iface = side_z_iface.clone();
+        updated_iface.status = InterfaceStatus::Unlinked;
+        updated_iface.ip_net = NetworkV4::default();
+        side_z_dev.interfaces[idx_z] = Interface::V1(updated_iface);
     }
 
     contributor.reference_count = contributor.reference_count.saturating_sub(1);

@@ -8,6 +8,12 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+## [v0.6.3](https://github.com/malbeclabs/doublezero/compare/client/v0.6.2...client/v0.6.3) – 2025-09-08
+
+### Breaking
+
+### Changes
+
 - Onchain programs
     - Add Validate trait for core types (AccessPass, Contributor, Interface, etc.) and enforce runtime checks before account operations.
     - Expand DoubleZeroError with granular variants (invalid IPs, ASN, MTU, VLAN, etc.) and derive PartialEq for easier testing.
@@ -31,6 +37,7 @@ All notable changes to this project will be documented in this file.
     - Drop device telemetry samples if submission attempts exhausted and buffer is at capacity
 - Device controller
     - Each environment can now have a different device BGP Autonomous System Number (ASN) per environment. (This is the remote ASN from the client's perspective.)
+    - Add flag for enabling pprof for runtime profiling
 - E2E tests
     - Updated unit tests and e2e tests to validate the new initialization and activation flow.
 - Contributor Operations

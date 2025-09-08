@@ -33,7 +33,7 @@ pub fn process_add_multicastgroup_sub_allowlist(
     let system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
-    msg!("process_add_user_allowlist({:?})", value);
+    msg!("process_add_multicastgroup_sub_allowlist({:?})", value);
 
     // Check the owner of the accounts
     assert_eq!(

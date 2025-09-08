@@ -305,7 +305,7 @@ mod tests {
         for err in variants {
             let pe: ProgramError = err.clone().into();
             let err2: DoubleZeroError = pe.into();
-            assert_eq!(err, err2, "Error conversion failed for {:?}", err);
+            assert_eq!(err, err2, "Error conversion failed for {err:?}");
         }
     }
 }

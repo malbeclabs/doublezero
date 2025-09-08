@@ -36,11 +36,8 @@ fn main() {
         ),
     };
 
-    println!("cargo:warning=Environment: {}", env_code);
-    println!(
-        "cargo:warning=Serviceability Program ID: {}",
-        serviceability_program_id
-    );
+    println!("cargo:warning=Environment: {env_code}");
+    println!("cargo:warning=Serviceability Program ID: {serviceability_program_id}");
 
     fs::write(
         dest,

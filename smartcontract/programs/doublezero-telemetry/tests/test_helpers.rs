@@ -132,8 +132,8 @@ impl LinkCreateArgsExt for LinkCreateArgs {
             link_type: LinkLinkType::WAN,
             bandwidth: 10_000_000_000,
             mtu: 4500,
-            delay_ns: 1000,
-            jitter_ns: 1000,
+            delay_ns: 10000,
+            jitter_ns: 10000,
             side_a_iface_name: String::default(),
             side_z_iface_name: Some(String::default()),
         }

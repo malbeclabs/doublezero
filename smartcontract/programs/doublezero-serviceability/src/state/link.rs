@@ -254,8 +254,8 @@ impl Validate for Link {
             msg!("Invalid bandwidth: {}", self.bandwidth);
             return Err(DoubleZeroError::InvalidBandwidth);
         }
-        // Delay must be between 1 and 1000 ms
-        if self.delay_ns < 1_000_000 || self.delay_ns > 1_000_000_000 {
+        // Delay must be between 0.01 and 1000 ms
+        if self.delay_ns < 10_000 || self.delay_ns > 1_000_000_000 {
             msg!("Invalid delay_ns: {}", self.delay_ns);
             return Err(DoubleZeroError::InvalidDelay);
         }
@@ -444,7 +444,7 @@ mod tests {
             link_type: LinkLinkType::WAN,
             bandwidth: 10_000_000_000,
             mtu: 1566,
-            delay_ns: 99, // Less than minimum
+            delay_ns: 9999, // Less than minimum
             jitter_ns: 1_000_000,
             tunnel_id: 1,
             tunnel_net: "10.0.0.1/25".parse().unwrap(),

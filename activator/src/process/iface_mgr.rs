@@ -160,7 +160,7 @@ impl<'a> InterfaceMgr<'a> {
         iface_name: &str,
         ip_net: &NetworkV4,
     ) {
-        let context = format!("link:{} side {}", link_code, side);
+        let context = format!("link:{link_code} side {side}");
         self.activate(device_pubkey, &context, iface_name, ip_net, 0);
     }
 
@@ -172,7 +172,7 @@ impl<'a> InterfaceMgr<'a> {
         side: &str,
         iface_name: &str,
     ) {
-        let context = format!("link:{} side {}", link_code, side);
+        let context = format!("link:{link_code} side {side}");
         self.unlink(device_pubkey, &context, iface_name);
     }
 
@@ -192,10 +192,7 @@ impl<'a> InterfaceMgr<'a> {
         };
 
         if let Err(e) = cmd.execute(self.client) {
-            error!(
-                "Failed to activate interface {} on {}: {}",
-                name, context, e
-            );
+            error!("Failed to activate interface {name} on {context}: {e}");
         }
     }
 
@@ -206,7 +203,7 @@ impl<'a> InterfaceMgr<'a> {
         };
 
         if let Err(e) = cmd.execute(self.client) {
-            error!("Failed to unlink interface {} on {}: {}", name, context, e);
+            error!("Failed to unlink interface {name} on {context}: {e}");
         }
     }
 
@@ -217,7 +214,7 @@ impl<'a> InterfaceMgr<'a> {
         };
 
         if let Err(e) = cmd.execute(self.client) {
-            error!("Failed to reject interface {} on {}: {}", name, context, e);
+            error!("Failed to reject interface {name} on {context}: {e}");
         }
     }
 
@@ -228,7 +225,7 @@ impl<'a> InterfaceMgr<'a> {
         };
 
         if let Err(e) = cmd.execute(self.client) {
-            error!("Failed to remove interface {} on {}: {}", name, context, e);
+            error!("Failed to remove interface {name} on {context}: {e}");
         }
     }
 }

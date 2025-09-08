@@ -148,7 +148,12 @@ pub fn process_user_event(
             match res {
                 Ok(signature) => {
                     write!(&mut log_msg, " Activated   {signature}").unwrap();
-                    metrics::counter!("doublezero_activator_state_transition", "state_transition" => "user-pending-to-activated").increment(1);
+                    metrics::counter!(
+                        "doublezero_activator_state_transition",
+                        "state_transition" => "user-pending-to-activated",
+                        "user-pubkey" => pubkey.to_string(),
+                    )
+                    .increment(1);
                     record_device_ip_metrics(&user.device_pk, device_state, locations, exchanges);
                 }
                 Err(e) => {
@@ -232,7 +237,12 @@ pub fn process_user_event(
             match res {
                 Ok(signature) => {
                     write!(&mut log_msg, "Reactivated   {signature}").unwrap();
-                    metrics::counter!("doublezero_activator_state_transition", "state_transition" => "user-updating-to-activated").increment(1);
+                    metrics::counter!(
+                        "doublezero_activator_state_transition",
+                        "state_transition" => "user-updating-to-activated",
+                        "user-pubkey" => pubkey.to_string(),
+                    )
+                    .increment(1);
                     record_device_ip_metrics(&user.device_pk, device_state, locations, exchanges);
                 }
                 Err(e) => {
@@ -279,7 +289,12 @@ pub fn process_user_event(
                                 device_state.release(user.dz_ip, user.tunnel_id).unwrap();
                             }
 
-                            metrics::counter!("doublezero_activator_state_transition", "state_transition" => "user-deleting-to-deactivated").increment(1);
+                            metrics::counter!(
+                                "doublezero_activator_state_transition",
+                                "state_transition" => "user-deleting-to-deactivated",
+                                "user-pubkey" => pubkey.to_string(),
+                            )
+                            .increment(1);
                         }
                         Err(e) => warn!("Error: {e}"),
                     }
@@ -300,7 +315,12 @@ pub fn process_user_event(
                                 device_state.release(user.dz_ip, user.tunnel_id).unwrap();
                             }
 
-                            metrics::counter!("doublezero_activator_state_transition", "state_transition" => "user-pending-ban-to-banned").increment(1);
+                            metrics::counter!(
+                                "doublezero_activator_state_transition",
+                                "state_transition" => "user-pending-ban-to-banned",
+                                "user-pubkey" => pubkey.to_string(),
+                            )
+                            .increment(1);
                         }
                         Err(e) => {
                             write!(&mut log_msg, " Error {e}").unwrap();
@@ -327,7 +347,12 @@ fn reject_user(
     }
     .execute(client)?;
 
-    metrics::counter!("doublezero_activator_state_transition", "state_transition" => "user-pending-to-rejected").increment(1);
+    metrics::counter!(
+        "doublezero_activator_state_transition",
+        "state_transition" => "user-pending-to-rejected",
+        "user-pubkey" => pubkey.to_string(),
+    )
+    .increment(1);
 
     Ok(signature)
 }
@@ -497,7 +522,10 @@ mod tests {
                 )
                 .expect_counter(
                     "doublezero_activator_state_transition",
-                    vec![("state_transition", "user-pending-to-activated")],
+                    vec![
+                        ("state_transition", "user-pending-to-activated"),
+                        ("user-pubkey", user_pubkey.to_string().as_str()),
+                    ],
                     1,
                 )
                 .verify();
@@ -648,7 +676,10 @@ mod tests {
                 )
                 .expect_counter(
                     "doublezero_activator_state_transition",
-                    vec![("state_transition", "user-updating-to-activated")],
+                    vec![
+                        ("state_transition", "user-updating-to-activated"),
+                        ("user-pubkey", user_pubkey.to_string().as_str()),
+                    ],
                     1,
                 )
                 .verify();
@@ -727,7 +758,10 @@ mod tests {
             snapshot
                 .expect_counter(
                     "doublezero_activator_state_transition",
-                    vec![("state_transition", "user-pending-to-rejected")],
+                    vec![
+                        ("state_transition", "user-pending-to-rejected"),
+                        ("user-pubkey", user_pubkey.to_string().as_str()),
+                    ],
                     1,
                 )
                 .verify();
@@ -827,7 +861,10 @@ mod tests {
             snapshot
                 .expect_counter(
                     "doublezero_activator_state_transition",
-                    vec![("state_transition", "user-pending-to-rejected")],
+                    vec![
+                        ("state_transition", "user-pending-to-rejected"),
+                        ("user-pubkey", user_pubkey.to_string().as_str()),
+                    ],
                     1,
                 )
                 .verify();
@@ -924,7 +961,10 @@ mod tests {
             snapshot
                 .expect_counter(
                     "doublezero_activator_state_transition",
-                    vec![("state_transition", "user-pending-to-rejected")],
+                    vec![
+                        ("state_transition", "user-pending-to-rejected"),
+                        ("user-pubkey", user_pubkey.to_string().as_str()),
+                    ],
                     1,
                 )
                 .verify();
@@ -1042,7 +1082,10 @@ mod tests {
                 )
                 .expect_counter(
                     "doublezero_activator_state_transition",
-                    vec![("state_transition", state_transition)],
+                    vec![
+                        ("state_transition", state_transition),
+                        ("user-pubkey", user_pubkey.to_string().as_str()),
+                    ],
                     1,
                 )
                 .verify();

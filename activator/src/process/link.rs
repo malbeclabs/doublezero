@@ -45,7 +45,12 @@ pub fn process_link_event(
                         Ok(signature) => {
                             write!(&mut log_msg, " Activated {signature}").unwrap();
 
-                            metrics::counter!("doublezero_activator_state_transition", "state_transition" => "link-pending-to-activated").increment(1);
+                            metrics::counter!(
+                                "doublezero_activator_state_transition",
+                                "state_transition" => "link-pending-to-activated",
+                                "link-pubkey" => pubkey.to_string(),
+                            )
+                            .increment(1);
 
                             // get the first and second ips in the network, but don't throw away
                             // the netmask/prefix. unwraps are safe below because we already have
@@ -89,7 +94,12 @@ pub fn process_link_event(
                         Ok(signature) => {
                             write!(&mut log_msg, " Rejected {signature}").unwrap();
 
-                            metrics::counter!("doublezero_activator_state_transition", "state_transition" => "link-pending-to-rejected").increment(1);
+                            metrics::counter!(
+                                "doublezero_activator_state_transition",
+                                "state_transition" => "link-pending-to-rejected",
+                                "link-pubkey" => pubkey.to_string(),
+                            )
+                            .increment(1);
                         }
                         Err(e) => write!(&mut log_msg, " Error {e}").unwrap(),
                     }
@@ -133,7 +143,12 @@ pub fn process_link_event(
                     link_ids.unassign(link.tunnel_id);
                     link_ips.unassign_block(link.tunnel_net.into());
 
-                    metrics::counter!("doublezero_activator_state_transition", "state_transition" => "link-deleting-to-deactivated").increment(1);
+                    metrics::counter!(
+                        "doublezero_activator_state_transition",
+                        "state_transition" => "link-deleting-to-deactivated",
+                        "link-pubkey" => pubkey.to_string(),
+                    )
+                    .increment(1);
                 }
                 Err(e) => write!(&mut log_msg, " Error {e}").unwrap(),
             }
@@ -330,12 +345,18 @@ mod tests {
             snapshot
                 .expect_counter(
                     "doublezero_activator_state_transition",
-                    vec![("state_transition", "link-pending-to-activated")],
+                    vec![
+                        ("state_transition", "link-pending-to-activated"),
+                        ("link-pubkey", tunnel_pubkey.to_string().as_str()),
+                    ],
                     1,
                 )
                 .expect_counter(
                     "doublezero_activator_state_transition",
-                    vec![("state_transition", "link-deleting-to-deactivated")],
+                    vec![
+                        ("state_transition", "link-deleting-to-deactivated"),
+                        ("link-pubkey", tunnel_pubkey.to_string().as_str()),
+                    ],
                     1,
                 )
                 .verify();
@@ -401,7 +422,10 @@ mod tests {
             snapshot
                 .expect_counter(
                     "doublezero_activator_state_transition",
-                    vec![("state_transition", "link-pending-to-rejected")],
+                    vec![
+                        ("state_transition", "link-pending-to-rejected"),
+                        ("link-pubkey", tunnel_pubkey.to_string().as_str()),
+                    ],
                     1,
                 )
                 .verify();

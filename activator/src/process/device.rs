@@ -39,7 +39,12 @@ pub fn process_device_event(
                     write!(&mut log_msg, " Activated {signature}").unwrap();
 
                     devices.insert(*pubkey, DeviceState::new(device));
-                    metrics::counter!("doublezero_activator_state_transition", "state_transition" => "device-pending-to-activated").increment(1);
+                    metrics::counter!(
+                        "doublezero_activator_state_transition",
+                        "state_transition" => "device-pending-to-activated",
+                        "device-pubkey" => pubkey.to_string(),
+                    )
+                    .increment(1);
                 }
                 Err(e) => write!(&mut log_msg, " Error {e}").unwrap(),
             }
@@ -79,7 +84,12 @@ pub fn process_device_event(
                 Ok(signature) => {
                     write!(&mut log_msg, " Deactivated {signature}").unwrap();
                     devices.remove(pubkey);
-                    metrics::counter!("doublezero_activator_state_transition", "state_transition" => "device-deleting-to-deactivated").increment(1);
+                    metrics::counter!(
+                        "doublezero_activator_state_transition",
+                        "state_transition" => "device-deleting-to-deactivated",
+                        "device-pubkey" => pubkey.to_string(),
+                    )
+                    .increment(1);
                 }
                 Err(e) => write!(&mut log_msg, " Error {e}").unwrap(),
             }
@@ -278,12 +288,18 @@ mod tests {
             snapshot
                 .expect_counter(
                     "doublezero_activator_state_transition",
-                    vec![("state_transition", "device-pending-to-activated")],
+                    vec![
+                        ("state_transition", "device-pending-to-activated"),
+                        ("device-pubkey", device_pubkey.to_string().as_str()),
+                    ],
                     1,
                 )
                 .expect_counter(
                     "doublezero_activator_state_transition",
-                    vec![("state_transition", "device-deleting-to-deactivated")],
+                    vec![
+                        ("state_transition", "device-deleting-to-deactivated"),
+                        ("device-pubkey", device_pubkey.to_string().as_str()),
+                    ],
                     1,
                 )
                 .verify();

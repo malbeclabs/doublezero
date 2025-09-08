@@ -31,7 +31,12 @@ pub fn process_access_pass_event(
                 user_pubkey: *user_pubkey,
             }
             .execute(client);
-            metrics::counter!("doublezero_activator_state_transition", "state_transition" => "access-pass-user-suspend").increment(1);
+            metrics::counter!(
+                "doublezero_activator_state_transition",
+                "state_transition" => "access-pass-user-suspend",
+                "user-pubkey" => user_pubkey.to_string()
+            )
+            .increment(1);
 
             if res.is_ok() {
                 info!(
@@ -53,7 +58,12 @@ pub fn process_access_pass_event(
                 user_pubkey: *user_pubkey,
             }
             .execute(client);
-            metrics::counter!("doublezero_activator_state_transition", "state_transition" => "access-pass-user-reactivate").increment(1);
+            metrics::counter!(
+                "doublezero_activator_state_transition",
+                "state_transition" => "access-pass-user-reactivate",
+                "user-pubkey" => user_pubkey.to_string()
+            )
+            .increment(1);
 
             if res.is_ok() {
                 info!(

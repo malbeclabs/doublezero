@@ -34,6 +34,12 @@ var (
 		[]string{"pubkey"},
 	)
 
+	getConfigMsgSize = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "controller_grpc_getconfig_msg_size_bytes",
+		Help:    "The size of GetConfig response messages in bytes",
+		Buckets: prometheus.ExponentialBucketsRange(16384, 1048576, 8),
+	})
+
 	// cache update metrics
 	cacheUpdateErrors = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "controller_cache_update_errors_total",
@@ -73,6 +79,7 @@ func init() {
 	prometheus.MustRegister(getConfigPubkeyErrors)
 	prometheus.MustRegister(getConfigRenderErrors)
 	prometheus.MustRegister(getConfigOps)
+	prometheus.MustRegister(getConfigMsgSize)
 
 	// cache update metrics
 	prometheus.MustRegister(cacheUpdateErrors)

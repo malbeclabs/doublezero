@@ -9,7 +9,7 @@ use doublezero_serviceability::{
         device::{
             activate::DeviceActivateArgs,
             create::*,
-            interface::{DeviceInterfaceActivateArgs, DeviceInterfaceCreateArgs},
+            interface::{DeviceInterfaceCreateArgs, DeviceInterfaceUnlinkArgs},
             update::DeviceUpdateArgs,
         },
         exchange::create::*,
@@ -394,18 +394,16 @@ async fn test_doublezero_program() {
     )
     .await;
 
-    println!("Activating LA Device Interfaces...");
-    let activate_device_interface_la = DeviceInterfaceActivateArgs {
+    println!("Activating(->Unlinked) LA Device Interfaces...");
+    let unlink_device_interface_la = DeviceInterfaceUnlinkArgs {
         name: "Ethernet0".to_string(),
-        ip_net: "10.0.0.0/31".parse().unwrap(),
-        node_segment_idx: 0,
     };
 
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::ActivateDeviceInterface(activate_device_interface_la),
+        DoubleZeroInstruction::UnlinkDeviceInterface(unlink_device_interface_la),
         vec![
             AccountMeta::new(device_la_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
@@ -552,18 +550,16 @@ async fn test_doublezero_program() {
     )
     .await;
 
-    println!("Activating NY Device Interfaces...");
-    let activate_device_interface_ny = DeviceInterfaceActivateArgs {
+    println!("Activating(->Unlinked) NY Device Interfaces...");
+    let unlink_device_interface_ny = DeviceInterfaceUnlinkArgs {
         name: "Ethernet1".to_string(),
-        ip_net: "10.0.0.1/31".parse().unwrap(),
-        node_segment_idx: 0,
     };
 
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::ActivateDeviceInterface(activate_device_interface_ny),
+        DoubleZeroInstruction::UnlinkDeviceInterface(unlink_device_interface_ny),
         vec![
             AccountMeta::new(device_ny_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
@@ -637,6 +633,8 @@ async fn test_doublezero_program() {
         DoubleZeroInstruction::ActivateLink(tunnel_activate),
         vec![
             AccountMeta::new(tunnel_la_ny_pubkey, false),
+            AccountMeta::new(device_la_pubkey, false),
+            AccountMeta::new(device_ny_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(payer.pubkey(), false),
         ],

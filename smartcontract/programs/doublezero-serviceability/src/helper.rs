@@ -163,12 +163,13 @@ macro_rules! format_option {
 pub fn deserialize_vec_with_capacity<T: BorshDeserialize>(
     data: &mut &[u8],
 ) -> Result<Vec<T>, ProgramError> {
-    let len = u32::from_le_bytes(
-        data.get(..4)
-            .ok_or(ProgramError::InvalidAccountData)?
-            .try_into()
-            .map_err(|_| ProgramError::InvalidAccountData)?,
-    );
+    let len = u32::from_le_bytes(match data.get(..4) {
+        Some(bytes) => match bytes.try_into() {
+            Ok(arr) => arr,
+            Err(_) => return Ok(Vec::new()),
+        },
+        None => return Ok(Vec::new()),
+    });
 
     *data = &data[4..];
     let mut vec = Vec::with_capacity(len as usize + 1);

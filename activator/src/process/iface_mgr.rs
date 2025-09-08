@@ -151,31 +151,6 @@ impl<'a> InterfaceMgr<'a> {
         self.remove(device_pubkey, device_code, &iface.name);
     }
 
-    /// Process link interfaces (invoked via process_link_event)
-    pub fn process_link_interface(
-        &mut self,
-        device_pubkey: &Pubkey,
-        link_code: &str,
-        side: &str,
-        iface_name: &str,
-        ip_net: &NetworkV4,
-    ) {
-        let context = format!("link:{link_code} side {side}");
-        self.activate(device_pubkey, &context, iface_name, ip_net, 0);
-    }
-
-    /// Unlink a link interface
-    pub fn unlink_link_interface(
-        &mut self,
-        device_pubkey: &Pubkey,
-        link_code: &str,
-        side: &str,
-        iface_name: &str,
-    ) {
-        let context = format!("link:{link_code} side {side}");
-        self.unlink(device_pubkey, &context, iface_name);
-    }
-
     fn activate(
         &self,
         pubkey: &Pubkey,

@@ -1,6 +1,6 @@
 use crate::{
     error::{DoubleZeroError, Validate},
-    helper::is_global,
+    helper::{deserialize_vec_with_capacity, is_global},
     seeds::SEED_USER,
     state::{
         accesspass::{AccessPass, AccessPassStatus, AccessPassType},
@@ -276,8 +276,8 @@ impl TryFrom<&[u8]> for User {
             tunnel_id: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             tunnel_net: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             status: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            publishers: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            subscribers: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            publishers: deserialize_vec_with_capacity(&mut data).unwrap_or_default(),
+            subscribers: deserialize_vec_with_capacity(&mut data).unwrap_or_default(),
             validator_pubkey: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 

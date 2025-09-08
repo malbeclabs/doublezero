@@ -22,6 +22,10 @@ impl NetworkV4 {
     pub fn prefix(&self) -> u8 {
         self.0.prefix()
     }
+
+    pub fn nth(&self, n: u32) -> Option<Ipv4Addr> {
+        self.0.nth(n)
+    }
 }
 
 impl Default for NetworkV4 {

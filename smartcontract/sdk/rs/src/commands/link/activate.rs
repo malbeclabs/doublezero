@@ -12,6 +12,8 @@ use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature}
 #[derive(Debug, PartialEq, Clone)]
 pub struct ActivateLinkCommand {
     pub link_pubkey: Pubkey,
+    pub side_a_pk: Pubkey,
+    pub side_z_pk: Pubkey,
     pub tunnel_id: u16,
     pub tunnel_net: NetworkV4,
 }
@@ -39,6 +41,8 @@ impl ActivateLinkCommand {
             }),
             vec![
                 AccountMeta::new(self.link_pubkey, false),
+                AccountMeta::new(self.side_a_pk, false),
+                AccountMeta::new(self.side_z_pk, false),
                 AccountMeta::new(globalstate_pubkey, false),
             ],
         )

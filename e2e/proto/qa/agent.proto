@@ -30,6 +30,7 @@ message ConnectUnicastRequest {
 
   UnicastMode mode = 1;
   string client_ip = 2;
+  string device_code = 3;
 }
 
 message CreateMulticastGroupRequest {

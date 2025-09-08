@@ -138,11 +138,15 @@ func (q *QAAgent) MulticastLeave(ctx context.Context, in *emptypb.Empty) (*empty
 // using IBRL mode. This call will block until the tunnel is up according to the DoubleZero status
 // output or return an error if the tunnel is not up within 20 seconds.
 func (q *QAAgent) ConnectUnicast(ctx context.Context, req *pb.ConnectUnicastRequest) (*pb.Result, error) {
-	q.log.Info("Received ConnectUnicast request for client IP", "client_ip", req.GetClientIp())
+	q.log.Info("Received ConnectUnicast request", "client_ip", req.GetClientIp(), "device_code", req.GetDeviceCode())
 	clientIP := req.GetClientIp()
+	deviceCode := req.GetDeviceCode()
 	cmds := []string{"connect", "ibrl"}
 	if clientIP != "" {
 		cmds = append(cmds, "--client-ip", clientIP)
+	}
+	if deviceCode != "" {
+		cmds = append(cmds, "--device", deviceCode)
 	}
 	cmd := exec.Command("doublezero", cmds...)
 	res, err := runCmd(cmd)

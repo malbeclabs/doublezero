@@ -360,6 +360,11 @@ impl ProvisioningCliCommand {
 
                 spinner.println(format!("    An account already exists Pubkey: {pubkey}"));
 
+                if user.status == UserStatus::PendingBan || user.status == UserStatus::Banned {
+                    spinner.println("❌  The user is banned.");
+                    eyre::bail!("User is banned.");
+                }
+
                 **pubkey
             }
             None => {
@@ -911,6 +916,17 @@ mod tests {
             }
         }
 
+        pub fn add_user(&mut self, user: &User) -> Pubkey {
+            let mut users = self.users.borrow_mut();
+            let pk = Pubkey::new_unique();
+            users.insert(pk, user.clone());
+            let users = self.users.clone();
+            self.client
+                .expect_list_user()
+                .returning_st(move |_| Ok(users.borrow().clone()));
+            pk
+        }
+
         pub fn expect_create_user(&mut self, pk: Pubkey, user: &User) {
             let expected_create_user_command = CreateUserCommand {
                 user_type: user.user_type,
@@ -1082,6 +1098,30 @@ mod tests {
             .execute_with_service_controller(&fixture.client, &fixture.controller)
             .await;
         assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_connect_banned_user() {
+        let mut fixture = TestFixture::new();
+
+        let (device1_pk, _device1) = fixture.add_device(100, true);
+        let mut user = fixture.create_user(UserType::IBRL, device1_pk, "1.2.3.4");
+        user.status = UserStatus::Banned;
+        fixture.add_user(&user);
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::IBRL {
+                allocate_addr: false,
+            },
+            client_ip: Some(user.client_ip.to_string()),
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        assert!(result.is_err());
     }
 
     #[tokio::test]

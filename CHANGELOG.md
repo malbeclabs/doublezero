@@ -12,6 +12,8 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+- None for this release
+
 ### Changes
 
 - Onchain programs

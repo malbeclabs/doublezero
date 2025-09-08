@@ -144,25 +144,17 @@ impl<'a, 'b, T: Pod + PrecomputedDiscriminator> TryNextAccounts<'a, 'b, Option<&
 
 pub fn try_initialize<'a, T: Default + Pod + PrecomputedDiscriminator>(
     account_info: &'a AccountInfo<'_>,
-    initializer: Option<T>,
 ) -> Result<(RefMut<'a, T>, RefMut<'a, [u8]>), ProgramError> {
     let data = try_borrow_mut_data(account_info)?;
 
     let RefMutSplit {
         mut discriminator,
-        mut mucked_data,
+        mucked_data,
         remaining_data,
     } = RefMutSplit::try_new(data)?;
 
     // First, serialize the discriminator.
     discriminator.copy_from_slice(T::discriminator_slice());
-
-    // Now serialize the rest of the data by copying to data reference.
-    if let Some(initializer) = initializer {
-        *mucked_data = initializer;
-    } else {
-        *mucked_data = T::default();
-    }
 
     Ok((mucked_data, remaining_data))
 }

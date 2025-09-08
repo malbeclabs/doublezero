@@ -248,7 +248,7 @@ async fn test_pay_solana_validator_debt() {
         .await
         .unwrap();
 
-    let (_, journal, _, _) = test_setup.fetch_journal().await;
+    let (_, journal, _) = test_setup.fetch_journal().await;
     assert_eq!(journal.total_sol_balance, 0);
 
     // Pay debt.
@@ -296,7 +296,7 @@ async fn test_pay_solana_validator_debt() {
 
     assert_eq!(remaining_distribution_data, vec![0b11111111, 0b11111111]);
 
-    let (_, journal, _, _) = test_setup.fetch_journal().await;
+    let (_, journal, _) = test_setup.fetch_journal().await;
     assert_eq!(journal.total_sol_balance, total_solana_validator_debt);
 
     // Cannot pay debt again.

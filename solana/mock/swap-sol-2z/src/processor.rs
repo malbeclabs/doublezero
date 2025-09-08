@@ -56,7 +56,7 @@ fn try_initialize_fills_registry(accounts: &[AccountInfo]) -> ProgramResult {
     let (_, new_fills_registry_info) =
         try_next_enumerated_account(&mut accounts_iter, Default::default())?;
 
-    zero_copy::try_initialize::<FillsRegistry>(new_fills_registry_info, None)?;
+    zero_copy::try_initialize::<FillsRegistry>(new_fills_registry_info)?;
 
     Ok(())
 }

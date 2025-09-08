@@ -337,7 +337,7 @@ async fn test_forgive_solana_validator_debt() {
 
     assert_eq!(remaining_distribution_data, vec![0, 0]);
 
-    let (_, journal, _, _) = test_setup.fetch_journal().await;
+    let (_, journal, _) = test_setup.fetch_journal().await;
     assert_eq!(journal.total_sol_balance, paid_debt.amount);
 
     // Cannot forgive debt again. This includes attempting to forgive debt for

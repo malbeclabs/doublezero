@@ -100,7 +100,7 @@ fn try_initialize_program(accounts: &[AccountInfo]) -> ProgramResult {
 
     // Establish the discriminator. Set other fields using the configure program
     // instruction.
-    zero_copy::try_initialize::<ProgramConfig>(new_program_config_info, None)?;
+    zero_copy::try_initialize::<ProgramConfig>(new_program_config_info)?;
 
     Ok(())
 }
@@ -250,7 +250,7 @@ fn try_request_access(accounts: &[AccountInfo], access_mode: AccessMode) -> Prog
 
     // Finalize the access request with the user service and beneficiary keys.
     let (mut access_request, _) =
-        zero_copy::try_initialize::<AccessRequest>(new_access_request_info, None)?;
+        zero_copy::try_initialize::<AccessRequest>(new_access_request_info)?;
     access_request.service_key = service_key;
     access_request.rent_beneficiary_key = *payer_info.key;
 

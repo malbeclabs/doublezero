@@ -40,7 +40,7 @@ async fn test_terminate_prepaid_connection() {
     let prepaid_connection_activation_cost = 20_000;
     let prepaid_cost_per_dz_epoch = 11_000;
     let prepaid_minimum_prepaid_dz_epochs = 1;
-    let prepaid_maximum_entries = 100;
+    let prepaid_maximum_entries = 32;
 
     // Relay settings.
     let prepaid_connection_termination_relay_lamports = 42_069;

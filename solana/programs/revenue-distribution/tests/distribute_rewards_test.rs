@@ -142,6 +142,9 @@ async fn test_distribute_rewards() {
         .warp_timestamp_by(1)
         .await
         .unwrap()
+        .finalize_distribution_debt(DoubleZeroEpoch::default(), &debt_accountant_signer)
+        .await
+        .unwrap()
         .configure_distribution_debt(
             dz_epoch,
             &debt_accountant_signer,
@@ -246,6 +249,9 @@ async fn test_distribute_rewards() {
             expected_swept_2z_amount_2,
             total_solana_validator_debt - uncollectible_debt.amount,
         )
+        .await
+        .unwrap()
+        .sweep_distribution_tokens(DoubleZeroEpoch::default())
         .await
         .unwrap()
         .sweep_distribution_tokens(dz_epoch)

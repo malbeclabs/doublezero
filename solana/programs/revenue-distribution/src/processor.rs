@@ -12,7 +12,7 @@ use doublezero_program_tools::{
     },
     zero_copy::{self, ZeroCopyAccount, ZeroCopyMutAccount},
 };
-use solana_account_info::{AccountInfo, MAX_PERMITTED_DATA_INCREASE};
+use solana_account_info::AccountInfo;
 use solana_cpi::invoke_signed_unchecked;
 use solana_msg::msg;
 use solana_program_error::{ProgramError, ProgramResult};
@@ -31,11 +31,11 @@ use crate::{
     },
     state::{
         self, CommunityBurnRateParameters, ContributorRewards, Distribution, Journal,
-        JournalEntries, PrepaidConnection, ProgramConfig, RecipientShare, RecipientShares,
-        RelayParameters, SolanaValidatorDeposit,
+        PrepaidConnection, ProgramConfig, RecipientShare, RecipientShares, RelayParameters,
+        SolanaValidatorDeposit,
     },
     types::{BurnRate, ByteFlags, DoubleZeroEpoch, RewardShare, SolanaValidatorDebt, ValidatorFee},
-    DOUBLEZERO_MINT_DECIMALS, DOUBLEZERO_MINT_KEY, ID,
+    DOUBLEZERO_MINT_KEY, ID,
 };
 
 solana_program_entrypoint::entrypoint!(try_process_instruction);
@@ -231,7 +231,7 @@ fn try_initialize_program(accounts: &[AccountInfo]) -> ProgramResult {
 
     // Set the bump seeds and pause the program.
     let (mut program_config, _) =
-        zero_copy::try_initialize::<ProgramConfig>(new_program_config_info, None)?;
+        zero_copy::try_initialize::<ProgramConfig>(new_program_config_info)?;
     program_config.bump_seed = program_config_bump;
     program_config.reserve_2z_bump_seed = reserve_2z_bump;
 
@@ -586,10 +586,6 @@ fn try_initialize_journal(accounts: &[AccountInfo]) -> ProgramResult {
     // journal's 2Z token account.
     let rent_sysvar = Rent::get().unwrap();
 
-    // NOTE: We are creating the journal account with the max allowable size for
-    // CPI (10kb). By doing this, we avoid having to realloc when the journal
-    // entries size changes. This pre-allocation strategy saves compute units
-    // and prevents potential realloc failures.
     try_create_account(
         Invoker::Signer(payer_info.key),
         Invoker::Pda {
@@ -597,7 +593,7 @@ fn try_initialize_journal(accounts: &[AccountInfo]) -> ProgramResult {
             signer_seeds: &[Journal::SEED_PREFIX, &[journal_bump]],
         },
         new_journal_info.lamports(),
-        MAX_PERMITTED_DATA_INCREASE,
+        zero_copy::data_end::<Journal>(),
         &ID,
         accounts,
         CreateAccountOptions {
@@ -641,7 +637,7 @@ fn try_initialize_journal(accounts: &[AccountInfo]) -> ProgramResult {
     )?;
 
     // Set the bump seeds.
-    let (mut journal, _) = zero_copy::try_initialize::<Journal>(new_journal_info, None)?;
+    let (mut journal, _) = zero_copy::try_initialize::<Journal>(new_journal_info)?;
     journal.bump_seed = journal_bump;
     journal.token_2z_pda_bump_seed = journal_2z_token_pda_bump;
 
@@ -873,8 +869,7 @@ fn try_initialize_distribution(accounts: &[AccountInfo]) -> ProgramResult {
     )?;
 
     // Finally, initialize some distribution account fields.
-    let (mut distribution, _) =
-        zero_copy::try_initialize::<Distribution>(new_distribution_info, None)?;
+    let (mut distribution, _) = zero_copy::try_initialize::<Distribution>(new_distribution_info)?;
 
     // Set DZ epoch. The DZ epoch should never change with any interaction with
     // the epoch distribution account.
@@ -906,20 +901,13 @@ fn try_initialize_distribution(accounts: &[AccountInfo]) -> ProgramResult {
         Some(journal.token_2z_pda_bump_seed),
     )?;
 
+    let prepayment_entries = &mut journal.prepayment_entries;
+
     // Check the front of the journal entries. If the front entry's epoch
-    // matches this distribution's epoch, pop the front and transfer the amount.
-    let mut journal_entries = Journal::checked_journal_entries(&journal.remaining_data).unwrap();
-
-    if let Some(entry) = journal_entries.front_entry() {
-        if entry.dz_epoch == distribution.dz_epoch {
-            let entry = journal_entries.pop_front_entry().unwrap();
-
-            // Update the journal account with the modified entries.
-            try_serialize_journal_entries(&journal_entries, &mut journal)?;
-
-            // Convert the entry amount to the actual token amount using the mint's decimals.
-            // This operation should be safe: u32::MAX * 10^8 < u64::MAX
-            let transfer_amount = entry.checked_amount(DOUBLEZERO_MINT_DECIMALS).unwrap();
+    // matches this distribution's epoch, pop the front for the transfer amount.
+    if let Some(entry) = prepayment_entries.front_entry() {
+        if entry.dz_epoch == dz_epoch {
+            let transfer_amount = prepayment_entries.pop_front_entry().unwrap().amount;
 
             // We are transferring between token PDAs. No need to check mint's
             // decimals.
@@ -1023,7 +1011,15 @@ fn try_finalize_distribution_debt(accounts: &[AccountInfo]) -> ProgramResult {
     msg!("DZ epoch: {}", distribution.dz_epoch);
 
     distribution.try_require_unfinalized_debt_calculation()?;
+    distribution.try_require_calculation_allowed()?;
     distribution.set_is_debt_calculation_finalized(true);
+
+    // If there is no debt accounted for, we can return early.
+    if distribution.checked_total_sol_debt().unwrap() == 0 {
+        msg!("Zero SOL debt. No need to increase distribution account size");
+
+        return Ok(());
+    }
 
     // We need to realloc the distribution account to add the number of bits
     // needed to store whether a Solana validator has paid.
@@ -1144,6 +1140,7 @@ fn try_finalize_distribution_rewards(accounts: &[AccountInfo]) -> ProgramResult 
     // If the distribution rewards calculation has already been finalized,
     // we have nothing to do.
     distribution.try_require_unfinalized_rewards_calculation()?;
+    distribution.try_require_calculation_allowed()?;
     distribution.set_is_rewards_calculation_finalized(true);
 
     // Debt calculation must have been finalized before rewards can be
@@ -1584,7 +1581,7 @@ fn try_initialize_prepaid_connection(
     // Finalize the prepaid connection with the user and termination beneficiary
     // keys.
     let (mut prepaid_connection, _) =
-        zero_copy::try_initialize::<PrepaidConnection>(new_prepaid_connection_info, None)?;
+        zero_copy::try_initialize::<PrepaidConnection>(new_prepaid_connection_info)?;
 
     prepaid_connection.user_key = user_key;
     prepaid_connection.termination_beneficiary_key = *payer_info.key;
@@ -1856,16 +1853,13 @@ fn try_load_prepaid_connection(
         return Err(ProgramError::InvalidInstructionData);
     }
 
-    // We trust the remaining data of the journal account is serialized
-    // correctly.
-    let mut journal_entries = Journal::checked_journal_entries(&journal.remaining_data).unwrap();
-
-    let cost_per_dz_epoch = journal.checked_cost_per_dz_epoch().ok_or_else(|| {
+    let cost_per_dz_epoch = journal.checked_cost_per_dz_epoch(decimals).ok_or_else(|| {
         msg!("Cost per DZ epoch is misconfigured");
         ProgramError::InvalidAccountData
     })?;
 
-    let num_entries = journal_entries
+    let num_entries = journal
+        .prepayment_entries
         .update(next_dz_epoch, valid_through_dz_epoch, cost_per_dz_epoch)
         .ok_or_else(|| {
             msg!(
@@ -1875,9 +1869,6 @@ fn try_load_prepaid_connection(
             );
             ProgramError::InvalidInstructionData
         })?;
-
-    // Update the journal account with the updated entries.
-    try_serialize_journal_entries(&journal_entries, &mut journal)?;
 
     msg!(
         "Loaded from DZ epoch {} through {}",
@@ -2104,7 +2095,7 @@ fn try_initialize_contributor_rewards(
 
     // Finally, initialize the contributor rewards with the service key.
     let (mut contributor_rewards, _) =
-        zero_copy::try_initialize::<ContributorRewards>(new_contributor_rewards_info, None)?;
+        zero_copy::try_initialize::<ContributorRewards>(new_contributor_rewards_info)?;
 
     contributor_rewards.service_key = service_key;
 
@@ -2328,10 +2319,8 @@ fn try_initialize_solana_validator_deposit(
     )?;
 
     // Finally, initialize the solana validator deposit with the node id.
-    let (mut solana_validator_deposit, _) = zero_copy::try_initialize::<SolanaValidatorDeposit>(
-        new_solana_validator_deposit_info,
-        None,
-    )?;
+    let (mut solana_validator_deposit, _) =
+        zero_copy::try_initialize::<SolanaValidatorDeposit>(new_solana_validator_deposit_info)?;
     solana_validator_deposit.node_id = node_id;
 
     Ok(())
@@ -2686,10 +2675,30 @@ fn try_sweep_distribution_tokens(accounts: &[AccountInfo]) -> ProgramResult {
     let mut journal =
         ZeroCopyMutAccount::<Journal>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
 
+    if journal.next_dz_epoch_to_sweep_tokens != distribution.dz_epoch {
+        msg!(
+            "Can only sweep tokens for DZ epoch {}",
+            journal.next_dz_epoch_to_sweep_tokens
+        );
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Uptick the next DZ epoch for the next distribution to sweep tokens.
+    journal.next_dz_epoch_to_sweep_tokens = journal
+        .next_dz_epoch_to_sweep_tokens
+        .saturating_add_duration(1);
+
     // We will attempt to account for the total SOL debt and account for this
     // amount by reducing the SOL balance of the journal. The SOL that this
     // balance tracks will have already been swapped by the swap program.
     let total_sol_debt = distribution.checked_total_sol_debt().unwrap();
+
+    // If there is no debt, we can return early.
+    if total_sol_debt == 0 {
+        msg!("Zero SOL debt. Nothing to sweep");
+
+        return Ok(());
+    }
 
     if journal.swapped_sol_amount < total_sol_debt {
         msg!("Journal does not have enough swapped SOL to cover the SOL debt");
@@ -2793,7 +2802,7 @@ fn try_sweep_distribution_tokens(accounts: &[AccountInfo]) -> ProgramResult {
 
     // Record the swept amount to the distribution. This amount will also be
     // used to token transfer the 2Z tokens to the distribution.
-    distribution.collected_2z_converted_from_sol += token_2z_amount;
+    distribution.collected_2z_converted_from_sol = token_2z_amount;
 
     // Account 6 must be the distribution's 2Z token account.
     let (_, distribution_2z_token_pda_info, _) = try_next_2z_token_pda_info(
@@ -3196,20 +3205,6 @@ fn try_next_token_program_info(accounts_iter: &mut EnumeratedAccountInfoIter) ->
     }
 
     Ok(())
-}
-
-/// Serializes journal entries using Borsh and writes them to the journal's
-/// remaining data. This is used to persist prepaid connection payment
-/// schedules.
-#[inline(always)]
-fn try_serialize_journal_entries(
-    journal_entries: &JournalEntries,
-    journal: &mut ZeroCopyMutAccount<Journal>,
-) -> ProgramResult {
-    borsh::to_writer(&mut journal.remaining_data[..], &journal_entries).map_err(|e| {
-        msg!("Failed to serialize journal entries");
-        ProgramError::BorshIoError(e.to_string())
-    })
 }
 
 /// Extracts the leaf index from a merkle proof, ensuring it's from an indexed

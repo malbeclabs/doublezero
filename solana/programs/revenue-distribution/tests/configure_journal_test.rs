@@ -61,7 +61,7 @@ async fn test_configure_journal() {
         .unwrap()
         .data;
 
-    let (journal, remaining_data) =
+    let (journal, _) =
         checked_from_bytes_with_discriminator::<Journal>(&journal_account_data).unwrap();
 
     let (journal_key, journal_bump) = Journal::find_address();
@@ -74,9 +74,6 @@ async fn test_configure_journal() {
     expected_prepaid_params.activation_cost = prepaid_connection_activation_cost;
     expected_prepaid_params.cost_per_dz_epoch = prepaid_connection_cost_per_dz_epoch;
     assert_eq!(journal, &expected_journal);
-
-    let epoch_payments = Journal::checked_journal_entries(remaining_data).unwrap();
-    assert!(epoch_payments.0.is_empty());
 
     let custodied_2z_token_account_data = test_setup
         .context

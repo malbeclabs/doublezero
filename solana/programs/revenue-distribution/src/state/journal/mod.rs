@@ -4,20 +4,13 @@ pub use prepaid_connection::*;
 
 //
 
-use std::collections::VecDeque;
-
-use borsh::{BorshDeserialize, BorshSerialize};
 use bytemuck::{Pod, Zeroable};
 use doublezero_program_tools::{types::StorageGap, Discriminator, PrecomputedDiscriminator};
-use solana_account_info::MAX_PERMITTED_DATA_INCREASE;
 use solana_pubkey::Pubkey;
 
 use crate::types::DoubleZeroEpoch;
 
-pub const fn absolute_max_journal_entries() -> usize {
-    let remaining_size = MAX_PERMITTED_DATA_INCREASE - size_of::<Journal>() - 4;
-    remaining_size / size_of::<JournalEntry>()
-}
+pub const JOURNAL_ENTRIES_ABSOLUTE_MAX_LENGTH: u16 = 256;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Pod, Zeroable)]
 #[repr(C, align(8))]
@@ -44,7 +37,12 @@ pub struct Journal {
     pub swap_2z_destination_balance: u64,
 
     pub swapped_sol_amount: u64,
-    _padding: [u64; 2],
+
+    pub next_dz_epoch_to_sweep_tokens: DoubleZeroEpoch,
+
+    _padding: [u64; 1],
+
+    pub prepayment_entries: PrepaymentEntries,
 
     /// 8 * 32 bytes of a storage gap in case we need more fields.
     _storage_gap: StorageGap<7>,
@@ -63,10 +61,10 @@ impl Journal {
     /// maximum value.
     ///
     /// Each entry represents one DZ epoch's payment. If the maximum entries
-    /// value is configured to be 200 DZ epochs for example, this value equates
-    /// to roughly 400 days worth of payments. It is unlikely that the
+    /// value is configured to be 32 DZ epochs for example, this value equates
+    /// to roughly 64 days worth of payments. It is unlikely that the
     /// configured maximum entries value will ever be this large.
-    pub const MAX_CONFIGURABLE_ENTRIES: u16 = 200;
+    pub const MAX_CONFIGURABLE_ENTRIES: u16 = 32;
 
     pub fn find_address() -> (Pubkey, u8) {
         Pubkey::find_program_address(&[Self::SEED_PREFIX], &crate::ID)
@@ -93,10 +91,6 @@ impl Journal {
         }
     }
 
-    pub fn checked_journal_entries(mut data: &[u8]) -> Option<JournalEntries> {
-        BorshDeserialize::deserialize(&mut data).ok()
-    }
-
     pub fn checked_activation_cost(&self) -> Option<u32> {
         let activation_cost = self.prepaid_connection_parameters.activation_cost;
 
@@ -113,50 +107,55 @@ impl Journal {
         checked_pow_10(decimals)?.checked_mul(activation_cost.into())
     }
 
-    pub fn checked_cost_per_dz_epoch(&self) -> Option<u32> {
+    pub fn checked_cost_per_dz_epoch(&self, decimals: u8) -> Option<u64> {
         let cost_per_dz_epoch = self.prepaid_connection_parameters.cost_per_dz_epoch;
 
         if cost_per_dz_epoch == 0 {
             None
         } else {
-            Some(cost_per_dz_epoch)
+            checked_pow_10(decimals)?.checked_mul(cost_per_dz_epoch.into())
         }
     }
 
     pub fn checked_cost_per_dz_epoch_amount(&self, num_entries: u16, decimals: u8) -> Option<u64> {
-        let cost_per_epoch = self.checked_cost_per_dz_epoch()?;
-
-        checked_pow_10(decimals)?
-            .checked_mul(cost_per_epoch.into())?
+        self.checked_cost_per_dz_epoch(decimals)?
             .checked_mul(num_entries.into())
     }
 }
 
-#[derive(Debug, BorshDeserialize, BorshSerialize, Clone, Copy, PartialEq, Eq)]
-pub struct JournalEntry {
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Pod, Zeroable)]
+#[repr(C, align(8))]
+pub struct PrepaymentEntry {
     pub dz_epoch: DoubleZeroEpoch,
-    pub amount: u32,
+    pub amount: u64,
 }
 
-impl JournalEntry {
-    pub fn checked_amount(&self, decimals: u8) -> Option<u64> {
-        checked_pow_10(decimals)?.checked_mul(self.amount.into())
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Pod, Zeroable)]
+#[repr(C, align(8))]
+pub struct PrepaymentEntries {
+    pub head: u16,
+    pub length: u16,
+    _padding: [u8; 4],
+    pub entries: [PrepaymentEntry; JOURNAL_ENTRIES_ABSOLUTE_MAX_LENGTH as usize],
+}
+
+impl Default for PrepaymentEntries {
+    fn default() -> Self {
+        Self {
+            head: 0,
+            length: 0,
+            _padding: [0; 4],
+            entries: [Default::default(); JOURNAL_ENTRIES_ABSOLUTE_MAX_LENGTH as usize],
+        }
     }
 }
 
-#[derive(Debug, BorshDeserialize, BorshSerialize, Clone, Default, PartialEq, Eq)]
-pub struct JournalEntries(pub VecDeque<JournalEntry>);
-
-impl JournalEntries {
-    pub fn last_dz_epoch(&self) -> Option<DoubleZeroEpoch> {
-        self.0.back().map(|entry| entry.dz_epoch)
-    }
-
+impl PrepaymentEntries {
     pub fn update(
         &mut self,
         next_dz_epoch: DoubleZeroEpoch,
         valid_through_dz_epoch: DoubleZeroEpoch,
-        cost_per_epoch: u32,
+        cost_per_epoch: u64,
     ) -> Option<u16> {
         // If we want to add service between the next DZ epoch and the DZ epoch
         // where service is valid through, we take the difference and add one
@@ -168,45 +167,77 @@ impl JournalEntries {
 
         // Do nothing if the difference between epochs is too large. The maximum
         // entries parameter in the journal is configured as `u16`.
-        if num_epochs > u16::MAX as u64 {
+        if num_epochs > JOURNAL_ENTRIES_ABSOLUTE_MAX_LENGTH as u64 {
             return None;
         }
 
-        let entries = &mut self.0;
+        // Calculate how many new entries we need to add.
+        let last_dz_epoch = if self.length == 0 {
+            next_dz_epoch
+        } else {
+            let last_index = (self.head + self.length - 1) % JOURNAL_ENTRIES_ABSOLUTE_MAX_LENGTH;
+            self.entries[last_index as usize]
+                .dz_epoch
+                .saturating_add_duration(1)
+        };
 
-        // First, add amounts to existing entries where we need to allocate 2Z
-        // to specific DZ epochs.
-        entries
-            .iter_mut()
-            .filter(|entry| {
-                entry.dz_epoch >= next_dz_epoch && entry.dz_epoch <= valid_through_dz_epoch
-            })
-            .for_each(|entry| entry.amount = entry.amount.saturating_add(cost_per_epoch));
+        let new_entries_needed = if last_dz_epoch <= valid_through_dz_epoch {
+            valid_through_dz_epoch
+                .value()
+                .saturating_sub(last_dz_epoch.value())
+                .saturating_add(1)
+        } else {
+            0
+        };
 
-        // Find the last epoch so we can push the cost-per-epoch as new entries.
-        let last_dz_epoch = entries
-            .back()
-            .map(|entry| entry.dz_epoch.saturating_add_duration(1))
-            .unwrap_or(next_dz_epoch);
+        // Check if projected length would exceed maximum.
+        let projected_length = self.length as u64 + new_entries_needed;
+        if projected_length > JOURNAL_ENTRIES_ABSOLUTE_MAX_LENGTH as u64 {
+            return None;
+        }
 
+        // Update existing entries in the range.
+        for i in 0..self.length {
+            let index = (self.head + i) % JOURNAL_ENTRIES_ABSOLUTE_MAX_LENGTH;
+            let entry = &mut self.entries[index as usize];
+
+            if entry.dz_epoch >= next_dz_epoch && entry.dz_epoch <= valid_through_dz_epoch {
+                entry.amount = entry.amount.saturating_add(cost_per_epoch);
+            }
+        }
+
+        // Add new entries.
         if last_dz_epoch <= valid_through_dz_epoch {
             for epoch_value in last_dz_epoch.value()..=valid_through_dz_epoch.value() {
-                entries.push_back(JournalEntry {
+                let new_index = (self.head + self.length) % JOURNAL_ENTRIES_ABSOLUTE_MAX_LENGTH;
+                self.entries[new_index as usize] = PrepaymentEntry {
                     dz_epoch: DoubleZeroEpoch::new(epoch_value),
                     amount: cost_per_epoch,
-                });
+                };
+                self.length += 1;
             }
         }
 
         Some(num_epochs as u16)
     }
 
-    pub fn front_entry(&self) -> Option<&JournalEntry> {
-        self.0.front()
+    pub fn front_entry(&self) -> Option<&PrepaymentEntry> {
+        if self.length == 0 {
+            None
+        } else {
+            Some(&self.entries[self.head as usize])
+        }
     }
 
-    pub fn pop_front_entry(&mut self) -> Option<JournalEntry> {
-        self.0.pop_front()
+    pub fn pop_front_entry(&mut self) -> Option<PrepaymentEntry> {
+        if self.length == 0 {
+            None
+        } else {
+            let entry = std::mem::take(&mut self.entries[self.head as usize]);
+            self.head = (self.head + 1) % JOURNAL_ENTRIES_ABSOLUTE_MAX_LENGTH;
+            self.length -= 1;
+            Some(entry)
+        }
     }
 }
 
@@ -217,17 +248,7 @@ fn checked_pow_10(decimals: u8) -> Option<u64> {
 
 //
 
-const _: () = assert!(size_of::<Journal>() == 552, "`Journal` size changed");
-
-const _: () = assert!(
-    absolute_max_journal_entries() == 605,
-    "Absolute max journal entries changed"
-);
-
-const _: () = assert!(
-    (Journal::MAX_CONFIGURABLE_ENTRIES as usize) <= absolute_max_journal_entries(),
-    "Journal entries size is too large"
-);
+const _: () = assert!(size_of::<Journal>() == 4_656, "`Journal` size changed");
 
 #[cfg(test)]
 mod tests {
@@ -240,51 +261,50 @@ mod tests {
 
         let cost_per_epoch = 69;
 
-        let mut journal_entries = JournalEntries(
-            vec![
-                JournalEntry {
-                    dz_epoch: DoubleZeroEpoch::new(0),
-                    amount: 100,
-                },
-                JournalEntry {
-                    dz_epoch: DoubleZeroEpoch::new(1),
-                    amount: 200,
-                },
-            ]
-            .into(),
-        );
+        let mut journal_entries = PrepaymentEntries {
+            length: 2,
+            ..Default::default()
+        };
+        journal_entries.entries[0] = PrepaymentEntry {
+            dz_epoch: DoubleZeroEpoch::new(0),
+            amount: 100,
+        };
+        journal_entries.entries[1] = PrepaymentEntry {
+            dz_epoch: DoubleZeroEpoch::new(1),
+            amount: 200,
+        };
 
         journal_entries.update(next_dz_epoch, valid_through_dz_epoch, cost_per_epoch);
 
-        let expected_journal_entries = JournalEntries(
-            vec![
-                JournalEntry {
-                    dz_epoch: DoubleZeroEpoch::new(0),
-                    amount: 169,
-                },
-                JournalEntry {
-                    dz_epoch: DoubleZeroEpoch::new(1),
-                    amount: 269,
-                },
-                JournalEntry {
-                    dz_epoch: DoubleZeroEpoch::new(2),
-                    amount: 69,
-                },
-                JournalEntry {
-                    dz_epoch: DoubleZeroEpoch::new(3),
-                    amount: 69,
-                },
-                JournalEntry {
-                    dz_epoch: DoubleZeroEpoch::new(4),
-                    amount: 69,
-                },
-                JournalEntry {
-                    dz_epoch: DoubleZeroEpoch::new(5),
-                    amount: 69,
-                },
-            ]
-            .into(),
-        );
+        let mut expected_journal_entries = PrepaymentEntries {
+            length: 6,
+            ..Default::default()
+        };
+        expected_journal_entries.entries[0] = PrepaymentEntry {
+            dz_epoch: DoubleZeroEpoch::new(0),
+            amount: 169,
+        };
+        expected_journal_entries.entries[1] = PrepaymentEntry {
+            dz_epoch: DoubleZeroEpoch::new(1),
+            amount: 269,
+        };
+        expected_journal_entries.entries[2] = PrepaymentEntry {
+            dz_epoch: DoubleZeroEpoch::new(2),
+            amount: 69,
+        };
+        expected_journal_entries.entries[3] = PrepaymentEntry {
+            dz_epoch: DoubleZeroEpoch::new(3),
+            amount: 69,
+        };
+        expected_journal_entries.entries[4] = PrepaymentEntry {
+            dz_epoch: DoubleZeroEpoch::new(4),
+            amount: 69,
+        };
+        expected_journal_entries.entries[5] = PrepaymentEntry {
+            dz_epoch: DoubleZeroEpoch::new(5),
+            amount: 69,
+        };
+
         assert_eq!(journal_entries, expected_journal_entries);
     }
 }

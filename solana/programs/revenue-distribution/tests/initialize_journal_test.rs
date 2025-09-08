@@ -31,7 +31,7 @@ async fn test_initialize_journal() {
         .unwrap()
         .data;
 
-    let (journal, remaining_data) =
+    let (journal, _) =
         checked_from_bytes_with_discriminator::<Journal>(&journal_account_data).unwrap();
 
     let (journal_key, journal_bump) = Journal::find_address();
@@ -40,9 +40,6 @@ async fn test_initialize_journal() {
     expected_journal.bump_seed = journal_bump;
     expected_journal.token_2z_pda_bump_seed = state::find_2z_token_pda_address(&journal_key).1;
     assert_eq!(journal, &expected_journal);
-
-    let epoch_payments = Journal::checked_journal_entries(remaining_data).unwrap();
-    assert!(epoch_payments.0.is_empty());
 
     let custodied_2z_token_account_data = test_setup
         .context

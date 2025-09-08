@@ -163,7 +163,7 @@ async fn test_withdraw_sol() {
         .unwrap();
 
     // Check the journal's balances.
-    let (_, journal, _, _) = test_setup.fetch_journal().await;
+    let (_, journal, _) = test_setup.fetch_journal().await;
     assert_eq!(
         journal.total_sol_balance,
         total_solana_validator_debt - amount_sol_out

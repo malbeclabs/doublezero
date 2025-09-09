@@ -390,6 +390,22 @@ func (c *Collector) ExportMeasurementResults(ctx context.Context, stateDir strin
 
 	c.log.Info("Found active DoubleZero measurements to export", slog.Int("count", len(activeMeasurements)))
 
+	// Calculate expected samples based on active measurements
+	expectedSamples := 0
+	for _, measurement := range activeMeasurements {
+		if meta, hasMeta := measurementState.GetMetadata(measurement.ID); hasMeta {
+			// Each measurement has multiple source probes, each one generates a sample
+			expectedSamples += len(meta.Sources)
+		}
+	}
+
+	// Track expected samples metric
+	if expectedSamples > 0 {
+		metrics.LatencySamplesPerCollectionIntervalExpected.WithLabelValues("ripeatlas").Set(float64(expectedSamples))
+		c.log.Info("RIPE Atlas - Set expected samples metric",
+			slog.Int("expected_samples", expectedSamples))
+	}
+
 	recordCount := 0
 
 	for _, measurement := range activeMeasurements {
@@ -410,6 +426,11 @@ func (c *Collector) ExportMeasurementResults(ctx context.Context, stateDir strin
 		return err
 	}
 	c.log.Debug("Updated timestamp tracking file", slog.String("file", timestampFile))
+
+	// Track actual samples metric
+	metrics.LatencySamplesPerCollectionIntervalActual.WithLabelValues("ripeatlas").Set(float64(recordCount))
+	c.log.Info("RIPE Atlas - Set actual samples metric",
+		slog.Int("actual_samples", recordCount))
 
 	c.log.Info("Successfully exported measurement results",
 		slog.Int("records_written", recordCount))

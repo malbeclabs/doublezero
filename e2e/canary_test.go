@@ -27,11 +27,12 @@ import (
 )
 
 var (
-	hosts          = flag.String("hosts", "", "comma separated list of hosts to run tests against")
-	port           = flag.String("port", "7009", "port to connect to on each host")
-	env            = flag.String("env", "", "environment to run in (devnet, testnet, mainnet-beta)")
-	forcePublisher = flag.String("force-publisher", "", "host to force as publisher for multicast tests (optional)")
-	useGroup       = flag.String("use-group", "", "use existing multicast group by code (optional)")
+	hosts                = flag.String("hosts", "", "comma separated list of hosts to run tests against")
+	port                 = flag.String("port", "7009", "port to connect to on each host")
+	env                  = flag.String("env", "", "environment to run in (devnet, testnet, mainnet-beta)")
+	forcePublisher       = flag.String("force-publisher", "", "host to force as publisher for multicast tests (optional)")
+	useGroup             = flag.String("use-group", "", "use existing multicast group by code (optional)")
+	deviceCodeStartsWith = flag.String("device-code-startswith", "", "only test devices whose code starts with this string (optional)")
 
 	serviceabilityClient *serviceability.Client
 
@@ -138,7 +139,7 @@ func getQAClient(host string) (pb.QAAgentServiceClient, error) {
 	return client, nil
 }
 
-func TestConectivityUnicast_AllDevices(t *testing.T) {
+func TestConnectivityUnicast_AllDevices(t *testing.T) {
 	if len(devices) == 0 {
 		t.Skip("No devices found on-chain")
 	}
@@ -148,9 +149,15 @@ func TestConectivityUnicast_AllDevices(t *testing.T) {
 		t.Fatal("Exactly 2 hosts are required for connectivity testing")
 	}
 
-	// Filter devices to only include those with matching prefix
+	// Filter devices based on device-code-startswith flag and capacity
 	var validDevices []*Device
 	for _, device := range devices {
+		// Apply device code prefix filter if specified
+		if *deviceCodeStartsWith != "" && !strings.HasPrefix(device.Code, *deviceCodeStartsWith) {
+			t.Logf("Skipping device %s as it doesn't match the prefix %s", device.Code, *deviceCodeStartsWith)
+			continue
+		}
+
 		// Check if device has capacity for at least 2 users
 		if device.MaxUsers > 0 && device.UsersCount >= device.MaxUsers-1 {
 			t.Logf("Skipping device %s as it doesn't have capacity for 2 users (%d/%d users)",
@@ -161,7 +168,11 @@ func TestConectivityUnicast_AllDevices(t *testing.T) {
 	}
 
 	if len(validDevices) == 0 {
-		t.Skip("No valid devices found with chi-dn-dzd prefix and sufficient capacity")
+		if *deviceCodeStartsWith != "" {
+			t.Skipf("No valid devices found with prefix %s and sufficient capacity", *deviceCodeStartsWith)
+		} else {
+			t.Skip("No valid devices found with sufficient capacity")
+		}
 	}
 
 	// Connect first host to the first valid device and keep it connected for the entire test
@@ -240,8 +251,6 @@ func TestConectivityUnicast_AllDevices(t *testing.T) {
 
 // runUnicastConnectivityTest runs the connectivity test and returns an error if it fails
 func runUnicastConnectivityTest(t *testing.T, device *Device, firstHost string, firstHostIP string, secondHost string) error {
-	ctx := context.Background()
-
 	// Connect second host to the device
 	t.Logf("Connecting %s to device %s", secondHost, device.Code)
 	client2, err := getQAClient(secondHost)
@@ -249,11 +258,14 @@ func runUnicastConnectivityTest(t *testing.T, device *Device, firstHost string, 
 		return fmt.Errorf("failed to create QA client for second host: %w", err)
 	}
 
+	connectCtx, connectCancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer connectCancel()
+
 	req2 := &pb.ConnectUnicastRequest{
 		Mode:       pb.ConnectUnicastRequest_IBRL,
 		DeviceCode: device.Code,
 	}
-	result2, err := client2.ConnectUnicast(ctx, req2)
+	result2, err := client2.ConnectUnicast(connectCtx, req2)
 	if err != nil {
 		return fmt.Errorf("failed to connect second host: %w", err)
 	}
@@ -262,8 +274,13 @@ func runUnicastConnectivityTest(t *testing.T, device *Device, firstHost string, 
 	}
 
 	// Get the IP address of the second host
-	resp2, err := client2.GetStatus(ctx, &emptypb.Empty{})
+	statusCtx, statusCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer statusCancel()
+
+	resp2, err := client2.GetStatus(statusCtx, &emptypb.Empty{})
 	if err != nil {
+		// Disconnect on error
+		disconnectOnError(client2)
 		return fmt.Errorf("failed to get status for second host: %w", err)
 	}
 
@@ -275,80 +292,159 @@ func runUnicastConnectivityTest(t *testing.T, device *Device, firstHost string, 
 		}
 	}
 	if secondHostIP == "" {
+		// Disconnect on error
+		disconnectOnError(client2)
 		return fmt.Errorf("failed to get IP for second host on device %s", device.Code)
 	}
 	t.Logf("Second host %s connected to device %s with IP %s", secondHost, device.Code, secondHostIP)
 
-	// Ensure we disconnect second host when done with this device
-	defer func() {
-		t.Logf("Disconnecting second host %s from device %s", secondHost, device.Code)
-		_, _ = client2.Disconnect(context.Background(), &emptypb.Empty{})
-	}()
+	// Run the connectivity tests
+	testErr := runPingTests(t, client2, device, firstHost, firstHostIP, secondHost, secondHostIP)
 
-	// Test connectivity from second host to first host
-	t.Logf("Testing ping from second host to first host")
-	pingCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	// Always disconnect the second host after tests complete
+	t.Logf("Disconnecting second host %s from device %s", secondHost, device.Code)
+	disconnectCtx, disconnectCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	disconnectResult, disconnectErr := client2.Disconnect(disconnectCtx, &emptypb.Empty{})
+	disconnectCancel()
+
+	if disconnectErr != nil {
+		t.Logf("Warning: disconnect failed for second host from device %s: %v", device.Code, disconnectErr)
+	} else if disconnectResult != nil && disconnectResult.GetSuccess() {
+		t.Logf("Successfully disconnected from device %s", device.Code)
+	}
+
+	// Wait a bit to ensure clean disconnect before next connection
+	time.Sleep(2 * time.Second)
+
+	return testErr
+}
+
+// disconnectOnError is a helper to disconnect a client when an error occurs
+func disconnectOnError(client pb.QAAgentServiceClient) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	_, _ = client.Disconnect(ctx, &emptypb.Empty{})
+}
 
-	pingReq := &pb.PingRequest{
-		TargetIp:    firstHostIP,
-		SourceIp:    secondHostIP,
-		SourceIface: "doublezero0",
-		PingType:    pb.PingRequest_ICMP,
-	}
-	pingResp, err := client2.Ping(pingCtx, pingReq)
-	if err != nil {
-		return fmt.Errorf("ping from second host to first host failed: %w", err)
+// runPingTests performs the bidirectional ping tests
+func runPingTests(t *testing.T, client2 pb.QAAgentServiceClient, device *Device, firstHost string, firstHostIP string, secondHost string, secondHostIP string) error {
+	// Add a small delay to ensure routing is established
+	t.Logf("Waiting 3 seconds for routing to stabilize on device %s", device.Code)
+	time.Sleep(3 * time.Second)
+
+	// Test connectivity from second host to first host with retries
+	t.Logf("Testing ping from second host (%s) to first host (%s) on device %s", secondHostIP, firstHostIP, device.Code)
+
+	var lastErr error
+	maxRetries := 3
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		if attempt > 1 {
+			t.Logf("Retry attempt %d/%d after 2 second delay", attempt, maxRetries)
+			time.Sleep(2 * time.Second)
+		}
+
+		pingCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+
+		pingReq := &pb.PingRequest{
+			TargetIp:    firstHostIP,
+			SourceIp:    secondHostIP,
+			SourceIface: "doublezero0",
+			PingType:    pb.PingRequest_ICMP,
+		}
+
+		t.Logf("Attempt %d: Sending ping request: target=%s, source=%s", attempt, firstHostIP, secondHostIP)
+		pingResp, err := client2.Ping(pingCtx, pingReq)
+		cancel()
+
+		if err != nil {
+			lastErr = fmt.Errorf("attempt %d: ping from second host to first host failed: %w", attempt, err)
+			t.Logf("Attempt %d failed: %v", attempt, err)
+			continue
+		}
+
+		if pingResp.PacketsSent == 0 {
+			lastErr = fmt.Errorf("attempt %d: no packets sent from second host", attempt)
+			t.Logf("Attempt %d failed: no packets sent", attempt)
+			continue
+		}
+		if pingResp.PacketsReceived == 0 {
+			lastErr = fmt.Errorf("attempt %d: no packets received by second host (sent=%d)", attempt, pingResp.PacketsSent)
+			t.Logf("Attempt %d failed: no packets received (sent=%d)", attempt, pingResp.PacketsSent)
+			continue
+		}
+		if pingResp.PacketsReceived < pingResp.PacketsSent {
+			lastErr = fmt.Errorf("attempt %d: packet loss detected: sent=%d, received=%d", attempt, pingResp.PacketsSent, pingResp.PacketsReceived)
+			t.Logf("Attempt %d failed: packet loss (sent=%d, received=%d)", attempt, pingResp.PacketsSent, pingResp.PacketsReceived)
+			continue
+		}
+
+		t.Logf("Successfully pinged first host (%s) from second host (%s) on device %s (attempt %d)",
+			firstHostIP, secondHostIP, device.Code, attempt)
+		lastErr = nil
+		break
 	}
 
-	if pingResp.PacketsSent == 0 {
-		return fmt.Errorf("no packets sent from second host")
-	}
-	if pingResp.PacketsReceived == 0 {
-		return fmt.Errorf("no packets received by second host (sent=%d)", pingResp.PacketsSent)
-	}
-	if pingResp.PacketsReceived < pingResp.PacketsSent {
-		return fmt.Errorf("packet loss detected: sent=%d, received=%d", pingResp.PacketsSent, pingResp.PacketsReceived)
+	if lastErr != nil {
+		return lastErr
 	}
 
-	t.Logf("Successfully pinged first host (%s) from second host (%s) on device %s",
-		firstHostIP, secondHostIP, device.Code)
-
-	// Test connectivity from first host to second host
-	t.Logf("Testing ping from first host to second host")
-	pingCtx2, cancel2 := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel2()
-
+	// Test connectivity from first host to second host with retries
+	t.Logf("Testing ping from first host (%s) to second host (%s) on device %s", firstHostIP, secondHostIP, device.Code)
 	client1, err := getQAClient(firstHost)
 	if err != nil {
 		return fmt.Errorf("failed to create QA client for first host: %w", err)
 	}
 
-	pingReq2 := &pb.PingRequest{
-		TargetIp:    secondHostIP,
-		SourceIp:    firstHostIP,
-		SourceIface: "doublezero0",
-		PingType:    pb.PingRequest_ICMP,
-	}
-	pingResp2, err := client1.Ping(pingCtx2, pingReq2)
-	if err != nil {
-		return fmt.Errorf("ping from first host to second host failed: %w", err)
+	lastErr = nil
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		if attempt > 1 {
+			t.Logf("Retry attempt %d/%d after 2 second delay", attempt, maxRetries)
+			time.Sleep(2 * time.Second)
+		}
+
+		pingCtx2, cancel2 := context.WithTimeout(context.Background(), 15*time.Second)
+
+		pingReq2 := &pb.PingRequest{
+			TargetIp:    secondHostIP,
+			SourceIp:    firstHostIP,
+			SourceIface: "doublezero0",
+			PingType:    pb.PingRequest_ICMP,
+		}
+
+		t.Logf("Attempt %d: Sending ping request: target=%s, source=%s", attempt, secondHostIP, firstHostIP)
+		pingResp2, err := client1.Ping(pingCtx2, pingReq2)
+		cancel2()
+
+		if err != nil {
+			lastErr = fmt.Errorf("attempt %d: ping from first host to second host failed: %w", attempt, err)
+			t.Logf("Attempt %d failed: %v", attempt, err)
+			continue
+		}
+
+		if pingResp2.PacketsSent == 0 {
+			lastErr = fmt.Errorf("attempt %d: no packets sent from first host", attempt)
+			t.Logf("Attempt %d failed: no packets sent", attempt)
+			continue
+		}
+		if pingResp2.PacketsReceived == 0 {
+			lastErr = fmt.Errorf("attempt %d: no packets received by first host (sent=%d)", attempt, pingResp2.PacketsSent)
+			t.Logf("Attempt %d failed: no packets received (sent=%d)", attempt, pingResp2.PacketsSent)
+			continue
+		}
+		if pingResp2.PacketsReceived < pingResp2.PacketsSent {
+			lastErr = fmt.Errorf("attempt %d: packet loss detected: sent=%d, received=%d", attempt, pingResp2.PacketsSent, pingResp2.PacketsReceived)
+			t.Logf("Attempt %d failed: packet loss (sent=%d, received=%d)", attempt, pingResp2.PacketsSent, pingResp2.PacketsReceived)
+			continue
+		}
+
+		t.Logf("Successfully pinged second host (%s) from first host (%s) on device %s (attempt %d)",
+			secondHostIP, firstHostIP, device.Code, attempt)
+		lastErr = nil
+		break
 	}
 
-	if pingResp2.PacketsSent == 0 {
-		return fmt.Errorf("no packets sent from first host")
-	}
-	if pingResp2.PacketsReceived == 0 {
-		return fmt.Errorf("no packets received by first host (sent=%d)", pingResp2.PacketsSent)
-	}
-	if pingResp2.PacketsReceived < pingResp2.PacketsSent {
-		return fmt.Errorf("packet loss detected: sent=%d, received=%d", pingResp2.PacketsSent, pingResp2.PacketsReceived)
-	}
-
-	t.Logf("Successfully pinged second host (%s) from first host (%s) on device %s",
-		secondHostIP, firstHostIP, device.Code)
-
-	return nil
+	return lastErr
 }
 
 // printTestSummary prints a summary of test results

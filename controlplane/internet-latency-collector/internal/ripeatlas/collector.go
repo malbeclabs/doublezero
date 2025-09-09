@@ -390,12 +390,33 @@ func (c *Collector) ExportMeasurementResults(ctx context.Context, stateDir strin
 
 	c.log.Info("Found active DoubleZero measurements to export", slog.Int("count", len(activeMeasurements)))
 
-	// Calculate expected samples based on active measurements
-	expectedSamples := 0
+	// Calculate expected samples based on unique exchange pairs (upper triangular matrix)
+	// Build a set of all exchanges that have probes
+	exchangesWithProbes := make(map[string]bool)
 	for _, measurement := range activeMeasurements {
 		if meta, hasMeta := measurementState.GetMetadata(measurement.ID); hasMeta {
-			// Each measurement has multiple source probes, each one generates a sample
-			expectedSamples += len(meta.Sources)
+			// Target exchange has a probe
+			exchangesWithProbes[meta.TargetLocation] = true
+			// Source exchanges have probes
+			for _, source := range meta.Sources {
+				exchangesWithProbes[source.LocationCode] = true
+			}
+		}
+	}
+
+	// Convert to sorted slice for consistent ordering
+	var exchanges []string
+	for exchange := range exchangesWithProbes {
+		exchanges = append(exchanges, exchange)
+	}
+	sort.Strings(exchanges)
+
+	// Count unique pairs (upper triangular matrix)
+	expectedSamples := 0
+	for i := 0; i < len(exchanges); i++ {
+		for j := i + 1; j < len(exchanges); j++ {
+			// Both exchanges have probes, so this pair should have a measurement
+			expectedSamples++
 		}
 	}
 
@@ -403,7 +424,8 @@ func (c *Collector) ExportMeasurementResults(ctx context.Context, stateDir strin
 	if expectedSamples > 0 {
 		metrics.LatencySamplesPerCollectionIntervalExpected.WithLabelValues("ripeatlas").Set(float64(expectedSamples))
 		c.log.Info("RIPE Atlas - Set expected samples metric",
-			slog.Int("expected_samples", expectedSamples))
+			slog.Int("expected_samples", expectedSamples),
+			slog.Int("exchanges_with_probes", len(exchanges)))
 	}
 
 	recordCount := 0

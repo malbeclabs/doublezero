@@ -31,7 +31,7 @@ const (
 	defaultAtlasProbesPerLocation       = 1
 	defaultRipeAtlasSamplingInterval    = 6 * time.Minute
 	defaultRipeAtlasMeasurementInterval = 1 * time.Hour
-	defaultRipeAtlasExportInterval      = 2 * time.Minute
+	defaultRipeAtlasExportInterval      = 6 * time.Minute
 	defaultWheresitupSamplingInterval   = 2 * time.Minute
 	defaultLedgerSubmissionInterval     = 1 * time.Minute
 	defaultWheresitupStateFile          = "wheresitup_jobs_to_process.json"

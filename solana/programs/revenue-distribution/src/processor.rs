@@ -2301,6 +2301,11 @@ fn try_initialize_solana_validator_deposit(
     // writable and a signer.
     let (_, payer_info) = try_next_enumerated_account(&mut accounts_iter, Default::default())?;
 
+    // Lamports may have already been transferred to this account before its
+    // creation. We should capture these lamports and add them to the new
+    // account's lamports.
+    let additional_lamports = new_solana_validator_deposit_info.lamports();
+
     try_create_account(
         Invoker::Signer(payer_info.key),
         Invoker::Pda {
@@ -2315,7 +2320,10 @@ fn try_initialize_solana_validator_deposit(
         zero_copy::data_end::<SolanaValidatorDeposit>(),
         &ID,
         accounts,
-        Default::default(),
+        CreateAccountOptions {
+            rent_sysvar: None,
+            additional_lamports: Some(additional_lamports),
+        },
     )?;
 
     // Finally, initialize the solana validator deposit with the node id.

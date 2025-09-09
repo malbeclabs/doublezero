@@ -1697,24 +1697,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
 
 [[package]]
-name = "doublezero-2z"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "doublezero-passport",
- "doublezero-program-tools",
- "doublezero-revenue-distribution",
- "serde_json",
- "solana-client",
- "solana-commitment-config",
- "solana-sdk",
- "solana-transaction-status-client-types",
- "tokio",
- "url",
-]
-
-[[package]]
 name = "doublezero-config"
 version = "0.6.0"
 source = "git+ssh://git@github.com/malbeclabs/doublezero#387e64ba548048b96c998a8cb0371782c6b4aa28"
@@ -1894,6 +1876,24 @@ dependencies = [
  "serde_bytes",
  "solana-program",
  "thiserror 2.0.16",
+]
+
+[[package]]
+name = "doublezero-solana"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "doublezero-passport",
+ "doublezero-program-tools",
+ "doublezero-revenue-distribution",
+ "serde_json",
+ "solana-client",
+ "solana-commitment-config",
+ "solana-sdk",
+ "solana-transaction-status-client-types",
+ "tokio",
+ "url",
 ]
 
 [[package]]

@@ -20,7 +20,7 @@ use anyhow::Result;
 use clap::Subcommand;
 
 #[derive(Debug, Subcommand)]
-pub enum DoubleZero2zSolanaCommand {
+pub enum DoubleZeroSolanaCommand {
     /// Admin commands.
     #[command(hide = true)]
     Admin(AdminCliCommand),
@@ -44,22 +44,22 @@ pub enum DoubleZero2zSolanaCommand {
     Validator(ValidatorCliCommand),
 }
 
-impl DoubleZero2zSolanaCommand {
+impl DoubleZeroSolanaCommand {
     pub async fn try_into_execute(self) -> Result<()> {
         match self {
-            DoubleZero2zSolanaCommand::Admin(admin) => admin.command.try_into_execute().await,
-            DoubleZero2zSolanaCommand::Passport(passport) => {
+            DoubleZeroSolanaCommand::Admin(admin) => admin.command.try_into_execute().await,
+            DoubleZeroSolanaCommand::Passport(passport) => {
                 passport.command.try_into_execute().await
             }
-            DoubleZero2zSolanaCommand::RevenueDistribution(revenue_distribution) => {
+            DoubleZeroSolanaCommand::RevenueDistribution(revenue_distribution) => {
                 revenue_distribution.command.try_into_execute().await
             }
-            DoubleZero2zSolanaCommand::Ata(ata) => ata.command.try_into_execute().await,
-            DoubleZero2zSolanaCommand::Contributor(contributor) => {
+            DoubleZeroSolanaCommand::Ata(ata) => ata.command.try_into_execute().await,
+            DoubleZeroSolanaCommand::Contributor(contributor) => {
                 contributor.command.try_into_execute().await
             }
-            DoubleZero2zSolanaCommand::Prepaid(prepaid) => prepaid.command.try_into_execute().await,
-            DoubleZero2zSolanaCommand::Validator(validator) => {
+            DoubleZeroSolanaCommand::Prepaid(prepaid) => prepaid.command.try_into_execute().await,
+            DoubleZeroSolanaCommand::Validator(validator) => {
                 validator.command.try_into_execute().await
             }
         }

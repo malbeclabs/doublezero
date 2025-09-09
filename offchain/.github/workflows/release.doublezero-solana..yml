@@ -1,9 +1,9 @@
-name: releaser.2z
+name: releaser.doublezero-solana
 
 on:
   push:
     tags:
-      - "2z/v*.*.*"
+      - "doublezero-solana/v*.*.*"
 
 permissions:
   contents: write
@@ -34,7 +34,7 @@ jobs:
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser-pro
-          args: release -f release/.goreleaser.2z.yaml --clean
+          args: release -f release/.goreleaser.doublezero-solana.yaml --clean
         env:
           SERVICEABILITY_PROGRAM_ID: devnet
           SLACK_WEBHOOK: ${{ secrets.SLACK_BOTS_WEBHOOK }}

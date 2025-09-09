@@ -3,19 +3,19 @@
 
 version: 2
 
-project_name: doublezero-2z
+project_name: doublezero-solana
 
 monorepo:
-  tag_prefix: 2z/
+  tag_prefix: doublezero-solana/
 
 builds:
-  - id: doublezero-2z
-    binary: doublezero-2z
+  - id: doublezero-solana
+    binary: doublezero-solana
     builder: rust
     tool: cargo
     command: build
     flags:
-      - --package=doublezero-2z
+      - --package=doublezero-solana
       - --release
     targets:
       - x86_64-unknown-linux-gnu
@@ -26,9 +26,9 @@ builds:
       - DATE={{ .Date }}
 
 archives:
-  - id: 2z_archive
+  - id: doublezero_solana_archive
     formats: ["tar.gz"]
-    ids: [2z]
+    ids: [doublezero-solana]
     # this name template makes the OS and Arch compatible with the results of `uname`
     name_template: >-
       {{ .ProjectName }}_
@@ -39,19 +39,19 @@ archives:
       {{- if .Arm }}v{{ .Arm }}{{ end }}
 
 nfpms:
-  - id: doublezero-2z
-    package_name: doublezero-2z
-    ids: [doublezero-2z]
+  - id: doublezero-solana
+    package_name: doublezero-solana
+    ids: [doublezero-solana]
     vendor: doublezero
     homepage: doublezero.xyz
     maintainer: tech <tech@malbeclabs.com>
     description: |-
-      DoubleZero 2Z CLI
+      DoubleZero Solana CLI
     license: Apache 2.0
     formats:
       - deb
     bindir: /usr/local/bin
-    release: 1
+    release: "1"
     section: default
     # NOTE: 2z does not required to be a systemd service
 
@@ -72,18 +72,18 @@ release:
 announce:
   slack:
     enabled: true
-    message_template: "DoubleZero 2Z CLI {{ .Tag }} has been released! Check it out at {{ .ReleaseURL }}"
+    message_template: "DoubleZero Solana CLI {{ .Tag }} has been released! Check it out at {{ .ReleaseURL }}"
     channel: "#bots"
 
 git:
   ignore_tags:
-    - doublezero-2z/daily
+    - doublezero-solana/daily
 
 nightly:
   publish_release: true
   keep_single_release: true
   version_template: "{{ incpatch .Version }}~git{{ .Env.BUILD_DATE }}.{{ .ShortCommit }}"
-  tag_name: "doublezero-2z/daily"
+  tag_name: "doublezero-solana/daily"
 
 cloudsmiths:
   - organization: malbeclabs

@@ -2,7 +2,7 @@
 
 set -eu
 
-CLI_BIN=target/debug/2z
+CLI_BIN=target/debug/doublezero-solana
 
 $CLI_BIN -h
 echo
@@ -46,16 +46,16 @@ echo
 
 ### Passport admin commands.
 
-echo "2z admin passport -h"
+echo "doublezero-solana admin passport -h"
 $CLI_BIN admin passport -h
 echo
 
-echo "2z admin passport initialize -u l -v"
+echo "doublezero-solana admin passport initialize -u l -v"
 $CLI_BIN admin passport initialize -u l -v
 echo
 
 ### Set admin to bogus address.
-echo "2z admin passport set-admin -u l -v $DUMMY_KEY"
+echo "doublezero-solana admin passport set-admin -u l -v $DUMMY_KEY"
 $CLI_BIN admin passport set-admin \
     -u l \
     -v \
@@ -63,7 +63,7 @@ $CLI_BIN admin passport set-admin \
 echo
 
 ### Set admin to upgrade authority.
-echo "2z admin passport set-admin -u l -v --fee-payer another_payer.json $(solana address)"
+echo "doublezero-solana admin passport set-admin -u l -v --fee-payer another_payer.json $(solana address)"
 $CLI_BIN admin passport set-admin \
     -u l \
     -v \
@@ -71,11 +71,11 @@ $CLI_BIN admin passport set-admin \
     $(solana address)
 echo
 
-echo "2z admin passport configure -h"
+echo "doublezero-solana admin passport configure -h"
 $CLI_BIN admin passport configure -h
 echo
 
-echo "2z admin passport configure -u l -v --pause" \
+echo "doublezero-solana admin passport configure -u l -v --pause" \
      "--sentinel $DUMMY_KEY" \
      "--access-request-deposit 1000000000" \
      "--access-fee 100000"
@@ -87,13 +87,13 @@ $CLI_BIN admin passport configure -u l \
     --access-fee 100000
 echo
 
-echo "2z admin passport configure -u l -v --unpause"
+echo "doublezero-solana admin passport configure -u l -v --unpause"
 $CLI_BIN admin passport configure -u l -v --unpause
 echo
 
 ### Request Solana validator access.
 
-echo "2z passport request-solana-validator-access -h"
+echo "doublezero-solana passport request-solana-validator-access -h"
 $CLI_BIN passport request-solana-validator-access -h
 echo
 
@@ -103,7 +103,7 @@ NODE_ID=$(solana address -k $VALIDATOR_KEYPAIR)
 MESSAGE="service_key=$DUMMY_KEY"
 SIGNATURE=$(solana sign-offchain-message -k $VALIDATOR_KEYPAIR service_key=$DUMMY_KEY)
 
-echo "2z passport request-solana-validator-access -u l -v --node-id $NODE_ID --signature $SIGNATURE $DUMMY_KEY"
+echo "doublezero-solana passport request-solana-validator-access -u l -v --node-id $NODE_ID --signature $SIGNATURE $DUMMY_KEY"
 $CLI_BIN passport request-solana-validator-access \
     -u l \
     -v \
@@ -114,16 +114,16 @@ echo
 
 ### Revenue distribution admin commands.
 
-echo "2z admin revenue-distribution -h"
+echo "doublezero-solana admin revenue-distribution -h"
 $CLI_BIN admin revenue-distribution -h
 echo
 
-echo "2z admin revenue-distribution initialize -u l -v"
+echo "doublezero-solana admin revenue-distribution initialize -u l -v"
 $CLI_BIN admin revenue-distribution initialize -u l -v
 echo
 
 ### Set admin to bogus address.
-echo "2z admin revenue-distribution set-admin -u l -v $DUMMY_KEY"
+echo "doublezero-solana admin revenue-distribution set-admin -u l -v $DUMMY_KEY"
 $CLI_BIN admin revenue-distribution set-admin \
     -u l \
     -v \
@@ -131,7 +131,7 @@ $CLI_BIN admin revenue-distribution set-admin \
 echo
 
 ### Set admin to upgrade authority.
-echo "2z admin revenue-distribution set-admin -u l -v --fee-payer another_payer.json $(solana address)"
+echo "doublezero-solana admin revenue-distribution set-admin -u l -v --fee-payer another_payer.json $(solana address)"
 $CLI_BIN admin revenue-distribution set-admin \
     -u l \
     -v \
@@ -139,11 +139,11 @@ $CLI_BIN admin revenue-distribution set-admin \
     $(solana address)
 echo
 
-echo "2z admin revenue-distribution configure -h"
+echo "doublezero-solana admin revenue-distribution configure -h"
 $CLI_BIN admin revenue-distribution configure -h
 echo
 
-echo "2z admin revenue-distribution configure -u l -v --pause" \
+echo "doublezero-solana admin revenue-distribution configure -u l -v --pause" \
      "--payments-accountant $DUMMY_KEY --rewards-accountant $DUMMY_KEY" \
      "--contributor-manager $DUMMY_KEY --sentinel $DUMMY_KEY" \
      "--sol-2z-swap-program $DUMMY_KEY --calculation-grace-period-seconds 3600" \
@@ -177,15 +177,15 @@ $CLI_BIN admin revenue-distribution configure \
     --initial-community-burn-rate 10.0
 echo
 
-echo "2z admin revenue-distribution configure -u l -v --unpause"
+echo "doublezero-solana admin revenue-distribution configure -u l -v --unpause"
 $CLI_BIN admin revenue-distribution configure -u l -v --unpause
 echo
 
-echo "2z admin revenue-distribution set-rewards-manager -h"
+echo "doublezero-solana admin revenue-distribution set-rewards-manager -h"
 $CLI_BIN admin revenue-distribution set-rewards-manager -h
 echo
 
-echo "2z admin revenue-distribution set-rewards-manager -u l -v " \
+echo "doublezero-solana admin revenue-distribution set-rewards-manager -u l -v " \
      "--rewards-manager $(solana address -k rewards_manager.json) " \
      "--initialize-contributor-rewards " \
      "$(solana address -k service_key_1.json) " \
@@ -198,7 +198,7 @@ $CLI_BIN admin revenue-distribution set-rewards-manager \
     $(solana address -k another_payer.json)
 echo
 
-echo "2z admin revenue-distribution set-rewards-manager -u l -v " \
+echo "doublezero-solana admin revenue-distribution set-rewards-manager -u l -v " \
      "$(solana address -k service_key_1.json) " \
      "$(solana address -k rewards_manager.json)"
 $CLI_BIN admin revenue-distribution set-rewards-manager \
@@ -210,22 +210,22 @@ echo
 
 ### Revenue distribution commands.
 
-echo "2z revenue-distribution -h"
+echo "doublezero-solana revenue-distribution -h"
 $CLI_BIN revenue-distribution -h
 echo
 
-echo "2z revenue-distribution initialize-contributor-rewards -h"
+echo "doublezero-solana revenue-distribution initialize-contributor-rewards -h"
 $CLI_BIN revenue-distribution initialize-contributor-rewards -h
 echo
 
-echo "2z revenue-distribution initialize-contributor-rewards -u l -v $(solana address -k service_key_2.json)"
+echo "doublezero-solana revenue-distribution initialize-contributor-rewards -u l -v $(solana address -k service_key_2.json)"
 $CLI_BIN revenue-distribution initialize-contributor-rewards \
     -u l \
     -v \
     $(solana address -k service_key_2.json)
 echo
 
-echo "2z admin revenue-distribution set-rewards-manager -u l -v " \
+echo "doublezero-solana admin revenue-distribution set-rewards-manager -u l -v " \
      "$(solana address -k service_key_2.json) " \
      "$(solana address -k rewards_manager.json)"
 $CLI_BIN admin revenue-distribution set-rewards-manager \
@@ -237,25 +237,25 @@ echo
 
 ### ATA commands.
 
-echo "2z ata -h"
+echo "doublezero-solana ata -h"
 $CLI_BIN ata -h
 echo
 
 ### Contributor commands.
 
-echo "2z contributor -h"
+echo "doublezero-solana contributor -h"
 $CLI_BIN contributor -h
 echo
 
 ### Prepaid commands.
 
-echo "2z prepaid -h"
+echo "doublezero-solana prepaid -h"
 $CLI_BIN prepaid -h
 echo
 
 ### Validator commands.
 
-echo "2z validator -h"
+echo "doublezero-solana validator -h"
 $CLI_BIN validator -h
 echo
 

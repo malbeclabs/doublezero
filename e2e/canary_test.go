@@ -49,6 +49,12 @@ type Device struct {
 	UsersCount int
 }
 
+type DeviceTestResult struct {
+	Device  *Device
+	Success bool
+	Error   string
+}
+
 func TestMain(m *testing.M) {
 	flag.Parse()
 	switch *env {
@@ -198,33 +204,68 @@ func TestConectivityUnicast_AllDevices(t *testing.T) {
 		_, _ = client1.Disconnect(context.Background(), &emptypb.Empty{})
 	}()
 
+	// Track results for all devices
+	results := make([]*DeviceTestResult, 0, len(validDevices))
+	var resultsMutex sync.Mutex
+
 	// Now loop through all valid devices, connecting second host to each
 	for _, device := range validDevices {
+		device := device // capture loop variable
 		t.Run(fmt.Sprintf("device_%s", device.Code), func(t *testing.T) {
-			testUnicastConnectivityBetweenHosts(t, device, firstHost, firstHostIP, secondHost)
+			result := &DeviceTestResult{
+				Device:  device,
+				Success: true,
+				Error:   "",
+			}
+
+			defer func() {
+				resultsMutex.Lock()
+				results = append(results, result)
+				resultsMutex.Unlock()
+			}()
+
+			// Run the connectivity test and capture any errors
+			err := runUnicastConnectivityTest(t, device, firstHost, firstHostIP, secondHost)
+			if err != nil {
+				result.Success = false
+				result.Error = err.Error()
+				t.Errorf("Device %s failed: %v", device.Code, err)
+			}
 		})
 	}
+
+	// Print summary
+	printTestSummary(t, results)
 }
 
-func testUnicastConnectivityBetweenHosts(t *testing.T, device *Device, firstHost string, firstHostIP string, secondHost string) {
+// runUnicastConnectivityTest runs the connectivity test and returns an error if it fails
+func runUnicastConnectivityTest(t *testing.T, device *Device, firstHost string, firstHostIP string, secondHost string) error {
 	ctx := context.Background()
 
 	// Connect second host to the device
 	t.Logf("Connecting %s to device %s", secondHost, device.Code)
 	client2, err := getQAClient(secondHost)
-	require.NoError(t, err, "Failed to create QA client for second host")
+	if err != nil {
+		return fmt.Errorf("failed to create QA client for second host: %w", err)
+	}
 
 	req2 := &pb.ConnectUnicastRequest{
 		Mode:       pb.ConnectUnicastRequest_IBRL,
 		DeviceCode: device.Code,
 	}
 	result2, err := client2.ConnectUnicast(ctx, req2)
-	require.NoError(t, err, "Failed to connect second host to device %s", device.Code)
-	require.True(t, result2.GetSuccess(), "Second host connection to device %s failed: %s", device.Code, result2.GetOutput())
+	if err != nil {
+		return fmt.Errorf("failed to connect second host: %w", err)
+	}
+	if !result2.GetSuccess() {
+		return fmt.Errorf("second host connection failed: %s", result2.GetOutput())
+	}
 
 	// Get the IP address of the second host
 	resp2, err := client2.GetStatus(ctx, &emptypb.Empty{})
-	require.NoError(t, err, "Failed to get status for second host")
+	if err != nil {
+		return fmt.Errorf("failed to get status for second host: %w", err)
+	}
 
 	var secondHostIP string
 	for _, status := range resp2.Status {
@@ -233,7 +274,9 @@ func testUnicastConnectivityBetweenHosts(t *testing.T, device *Device, firstHost
 			break
 		}
 	}
-	require.NotEmpty(t, secondHostIP, "Failed to get IP for second host on device %s", device.Code)
+	if secondHostIP == "" {
+		return fmt.Errorf("failed to get IP for second host on device %s", device.Code)
+	}
 	t.Logf("Second host %s connected to device %s with IP %s", secondHost, device.Code, secondHostIP)
 
 	// Ensure we disconnect second host when done with this device
@@ -243,51 +286,108 @@ func testUnicastConnectivityBetweenHosts(t *testing.T, device *Device, firstHost
 	}()
 
 	// Test connectivity from second host to first host
-	t.Run("ping_first_host", func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		defer cancel()
+	t.Logf("Testing ping from second host to first host")
+	pingCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
 
-		pingReq := &pb.PingRequest{
-			TargetIp:    firstHostIP,
-			SourceIp:    secondHostIP,
-			SourceIface: "doublezero0",
-			PingType:    pb.PingRequest_ICMP,
-		}
-		pingResp, err := client2.Ping(ctx, pingReq)
-		require.NoError(t, err, "Ping from second host to first host failed on device %s", device.Code)
+	pingReq := &pb.PingRequest{
+		TargetIp:    firstHostIP,
+		SourceIp:    secondHostIP,
+		SourceIface: "doublezero0",
+		PingType:    pb.PingRequest_ICMP,
+	}
+	pingResp, err := client2.Ping(pingCtx, pingReq)
+	if err != nil {
+		return fmt.Errorf("ping from second host to first host failed: %w", err)
+	}
 
-		require.NotZero(t, pingResp.PacketsSent, "No packets sent from second host")
-		require.NotZero(t, pingResp.PacketsReceived, "No packets received by second host")
-		require.Equal(t, pingResp.PacketsSent, pingResp.PacketsReceived,
-			"Packet loss detected: Sent=%d, Received=%d", pingResp.PacketsSent, pingResp.PacketsReceived)
+	if pingResp.PacketsSent == 0 {
+		return fmt.Errorf("no packets sent from second host")
+	}
+	if pingResp.PacketsReceived == 0 {
+		return fmt.Errorf("no packets received by second host (sent=%d)", pingResp.PacketsSent)
+	}
+	if pingResp.PacketsReceived < pingResp.PacketsSent {
+		return fmt.Errorf("packet loss detected: sent=%d, received=%d", pingResp.PacketsSent, pingResp.PacketsReceived)
+	}
 
-		t.Logf("Successfully pinged first host (%s) from second host (%s) on device %s",
-			firstHostIP, secondHostIP, device.Code)
-	})
+	t.Logf("Successfully pinged first host (%s) from second host (%s) on device %s",
+		firstHostIP, secondHostIP, device.Code)
 
 	// Test connectivity from first host to second host
-	t.Run("ping_second_host", func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		defer cancel()
+	t.Logf("Testing ping from first host to second host")
+	pingCtx2, cancel2 := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel2()
 
-		client1, err := getQAClient(firstHost)
-		require.NoError(t, err, "Failed to create QA client for first host")
+	client1, err := getQAClient(firstHost)
+	if err != nil {
+		return fmt.Errorf("failed to create QA client for first host: %w", err)
+	}
 
-		pingReq := &pb.PingRequest{
-			TargetIp:    secondHostIP,
-			SourceIp:    firstHostIP,
-			SourceIface: "doublezero0",
-			PingType:    pb.PingRequest_ICMP,
+	pingReq2 := &pb.PingRequest{
+		TargetIp:    secondHostIP,
+		SourceIp:    firstHostIP,
+		SourceIface: "doublezero0",
+		PingType:    pb.PingRequest_ICMP,
+	}
+	pingResp2, err := client1.Ping(pingCtx2, pingReq2)
+	if err != nil {
+		return fmt.Errorf("ping from first host to second host failed: %w", err)
+	}
+
+	if pingResp2.PacketsSent == 0 {
+		return fmt.Errorf("no packets sent from first host")
+	}
+	if pingResp2.PacketsReceived == 0 {
+		return fmt.Errorf("no packets received by first host (sent=%d)", pingResp2.PacketsSent)
+	}
+	if pingResp2.PacketsReceived < pingResp2.PacketsSent {
+		return fmt.Errorf("packet loss detected: sent=%d, received=%d", pingResp2.PacketsSent, pingResp2.PacketsReceived)
+	}
+
+	t.Logf("Successfully pinged second host (%s) from first host (%s) on device %s",
+		secondHostIP, firstHostIP, device.Code)
+
+	return nil
+}
+
+// printTestSummary prints a summary of test results
+func printTestSummary(t *testing.T, results []*DeviceTestResult) {
+	var passed, failed []*DeviceTestResult
+
+	for _, result := range results {
+		if result.Success {
+			passed = append(passed, result)
+		} else {
+			failed = append(failed, result)
 		}
-		pingResp, err := client1.Ping(ctx, pingReq)
-		require.NoError(t, err, "Ping from first host to second host failed on device %s", device.Code)
+	}
 
-		require.NotZero(t, pingResp.PacketsSent, "No packets sent from first host")
-		require.NotZero(t, pingResp.PacketsReceived, "No packets received by first host")
-		require.Equal(t, pingResp.PacketsSent, pingResp.PacketsReceived,
-			"Packet loss detected: Sent=%d, Received=%d", pingResp.PacketsSent, pingResp.PacketsReceived)
+	t.Logf("\n========================================")
+	t.Logf("TEST SUMMARY")
+	t.Logf("========================================")
+	t.Logf("Total devices tested: %d", len(results))
+	t.Logf("Passed: %d", len(passed))
+	t.Logf("Failed: %d", len(failed))
 
-		t.Logf("Successfully pinged second host (%s) from first host (%s) on device %s",
-			secondHostIP, firstHostIP, device.Code)
-	})
+	if len(passed) > 0 {
+		t.Logf("\n✅ PASSED DEVICES:")
+		for _, result := range passed {
+			t.Logf("  - %s", result.Device.Code)
+		}
+	}
+
+	if len(failed) > 0 {
+		t.Logf("\n❌ FAILED DEVICES:")
+		for _, result := range failed {
+			t.Logf("  - %s: %s", result.Device.Code, result.Error)
+		}
+	}
+
+	t.Logf("========================================\n")
+
+	// Fail the test if any device failed
+	if len(failed) > 0 {
+		t.Errorf("Connectivity test failed for %d out of %d devices", len(failed), len(results))
+	}
 }

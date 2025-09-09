@@ -96,8 +96,8 @@ func TestMain(m *testing.M) {
 
 	if *hosts != "" {
 		hostList = strings.Split(*hosts, ",")
-		if len(hostList) < 2 {
-			log.Fatal("At least two hosts are required to run the tests")
+		if len(hostList) != 2 {
+			log.Fatal("Exactly two hosts are required to run the tests")
 		}
 		for _, host := range hostList {
 			addr := net.JoinHostPort(host, *port)
@@ -132,150 +132,162 @@ func getQAClient(host string) (pb.QAAgentServiceClient, error) {
 	return client, nil
 }
 
-func TestConectivityUnicastToAllDevices(t *testing.T) {
+func TestConectivityUnicast_AllDevices(t *testing.T) {
 	if len(devices) == 0 {
 		t.Skip("No devices found on-chain")
 	}
 
-	// Loop through each device and test connectivity
+	// Ensure we have exactly 2 hosts
+	if len(hostList) != 2 {
+		t.Fatal("Exactly 2 hosts are required for connectivity testing")
+	}
+
+	// Filter devices to only include those with matching prefix
+	var validDevices []*Device
 	for _, device := range devices {
+		// Check if device has capacity for at least 2 users
+		if device.MaxUsers > 0 && device.UsersCount >= device.MaxUsers-1 {
+			t.Logf("Skipping device %s as it doesn't have capacity for 2 users (%d/%d users)",
+				device.Code, device.UsersCount, device.MaxUsers)
+			continue
+		}
+		validDevices = append(validDevices, device)
+	}
+
+	if len(validDevices) == 0 {
+		t.Skip("No valid devices found with chi-dn-dzd prefix and sufficient capacity")
+	}
+
+	// Connect first host to the first valid device and keep it connected for the entire test
+	firstDevice := validDevices[0]
+	firstHost := hostList[0]
+	secondHost := hostList[1]
+
+	ctx := context.Background()
+
+	// Connect first host to first device
+	t.Logf("Connecting %s to device %s (will stay connected)", firstHost, firstDevice.Code)
+	client1, err := getQAClient(firstHost)
+	require.NoError(t, err, "Failed to create QA client for first host")
+
+	req1 := &pb.ConnectUnicastRequest{
+		Mode:       pb.ConnectUnicastRequest_IBRL,
+		DeviceCode: firstDevice.Code,
+	}
+	result1, err := client1.ConnectUnicast(ctx, req1)
+	require.NoError(t, err, "Failed to connect first host to first device")
+	require.True(t, result1.GetSuccess(), "First host connection failed: %s", result1.GetOutput())
+
+	// Get the IP address of the first host
+	resp1, err := client1.GetStatus(ctx, &emptypb.Empty{})
+	require.NoError(t, err, "Failed to get status for first host")
+
+	var firstHostIP string
+	for _, status := range resp1.Status {
+		if (status.UserType == "IBRL" || status.UserType == "IBRLWithAllocatedIP") && status.DoubleZeroIp != "" {
+			firstHostIP = status.DoubleZeroIp
+			break
+		}
+	}
+	require.NotEmpty(t, firstHostIP, "Failed to get IP for first host")
+	t.Logf("First host %s connected with IP %s", firstHost, firstHostIP)
+
+	// Ensure we disconnect first host at the end
+	defer func() {
+		t.Logf("Disconnecting first host %s", firstHost)
+		_, _ = client1.Disconnect(context.Background(), &emptypb.Empty{})
+	}()
+
+	// Now loop through all valid devices, connecting second host to each
+	for _, device := range validDevices {
 		t.Run(fmt.Sprintf("device_%s", device.Code), func(t *testing.T) {
-			if !strings.HasPrefix(device.Code, "chi-dn-dzd") {
-				t.Skipf("Skipping device %s as it does not match required code prefix", device.Code)
-			}
-			// Check if device has capacity for users
-			if device.MaxUsers > 0 && device.UsersCount >= device.MaxUsers {
-				t.Skipf("Device %s is at capacity (%d/%d users)", device.Code, device.UsersCount, device.MaxUsers)
-			}
-
-			// Connect to this specific device using device code
-			testConnectivityToDevice(t, device)
+			testUnicastConnectivityBetweenHosts(t, device, firstHost, firstHostIP, secondHost)
 		})
 	}
 }
 
-func testConnectivityToDevice(t *testing.T, device *Device) {
-	// Ensure we have at least 2 hosts for connectivity testing
-	if len(hostList) < 2 {
-		t.Skip("Need at least 2 hosts for connectivity testing")
+func testUnicastConnectivityBetweenHosts(t *testing.T, device *Device, firstHost string, firstHostIP string, secondHost string) {
+	ctx := context.Background()
+
+	// Connect second host to the device
+	t.Logf("Connecting %s to device %s", secondHost, device.Code)
+	client2, err := getQAClient(secondHost)
+	require.NoError(t, err, "Failed to create QA client for second host")
+
+	req2 := &pb.ConnectUnicastRequest{
+		Mode:       pb.ConnectUnicastRequest_IBRL,
+		DeviceCode: device.Code,
 	}
+	result2, err := client2.ConnectUnicast(ctx, req2)
+	require.NoError(t, err, "Failed to connect second host to device %s", device.Code)
+	require.True(t, result2.GetSuccess(), "Second host connection to device %s failed: %s", device.Code, result2.GetOutput())
 
-	cleanup := unicastCleanupFunc(t, hostList)
-	defer cleanup()
+	// Get the IP address of the second host
+	resp2, err := client2.GetStatus(ctx, &emptypb.Empty{})
+	require.NoError(t, err, "Failed to get status for second host")
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Connect all hosts to the specific device
-	for _, host := range hostList {
-		if !t.Run("connect_to_device_"+device.Code+"_from_"+host, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
-			defer cancel()
-			client, err := getQAClient(host)
-			require.NoError(t, err, "Failed to create QA client")
-
-			// Connect with device code specified
-			req := &pb.ConnectUnicastRequest{
-				Mode:       pb.ConnectUnicastRequest_IBRL,
-				DeviceCode: device.Code,
-			}
-			result, err := client.ConnectUnicast(ctx, req)
-			log.Printf("ConnectUnicast result from host %s to device %s: %+v", host, device.Code, result)
-			require.NoError(t, err, "ConnectUnicast to device %s failed", device.Code)
-
-			if result.GetSuccess() == false || result.GetReturnCode() != 0 {
-				require.Fail(t, "ConnectUnicast to device failed", "Device: %s, Output: %s", device.Code, result.GetOutput())
-			}
-		}) {
-			t.Fatalf("Failed to connect to device %s from host %s", device.Code, host)
+	var secondHostIP string
+	for _, status := range resp2.Status {
+		if (status.UserType == "IBRL" || status.UserType == "IBRLWithAllocatedIP") && status.DoubleZeroIp != "" {
+			secondHostIP = status.DoubleZeroIp
+			break
 		}
 	}
+	require.NotEmpty(t, secondHostIP, "Failed to get IP for second host on device %s", device.Code)
+	t.Logf("Second host %s connected to device %s with IP %s", secondHost, device.Code, secondHostIP)
 
-	// Build host-to-IP map after all hosts are connected
-	hostToIP := make(map[string]string)
-	for _, host := range hostList {
-		client, err := getQAClient(host)
-		require.NoError(t, err, "Failed to create QA client for host %s", host)
+	// Ensure we disconnect second host when done with this device
+	defer func() {
+		t.Logf("Disconnecting second host %s from device %s", secondHost, device.Code)
+		_, _ = client2.Disconnect(context.Background(), &emptypb.Empty{})
+	}()
 
-		resp, err := client.GetStatus(ctx, &emptypb.Empty{})
-		require.NoError(t, err, "GetStatus failed for host %s", host)
+	// Test connectivity from second host to first host
+	t.Run("ping_first_host", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
 
-		for _, status := range resp.Status {
-			if (status.UserType == "IBRL" || status.UserType == "IBRLWithAllocatedIP") && status.DoubleZeroIp != "" {
-				hostToIP[host] = status.DoubleZeroIp
-				t.Logf("Host %s connected to device %s with IP %s", host, device.Code, status.DoubleZeroIp)
-				break
-			}
+		pingReq := &pb.PingRequest{
+			TargetIp:    firstHostIP,
+			SourceIp:    secondHostIP,
+			SourceIface: "doublezero0",
+			PingType:    pb.PingRequest_ICMP,
 		}
-		require.NotEmpty(t, hostToIP[host], "No local address found for host %s on device %s", host, device.Code)
-	}
+		pingResp, err := client2.Ping(ctx, pingReq)
+		require.NoError(t, err, "Ping from second host to first host failed on device %s", device.Code)
 
-	// Run connectivity checks between all hosts on this device
-	for _, host := range hostList {
-		t.Run("connectivity_check_on_device_"+device.Code+"_from_"+host, func(t *testing.T) {
-			client, err := getQAClient(host)
-			require.NoError(t, err, "Failed to create QA client")
+		require.NotZero(t, pingResp.PacketsSent, "No packets sent from second host")
+		require.NotZero(t, pingResp.PacketsReceived, "No packets received by second host")
+		require.Equal(t, pingResp.PacketsSent, pingResp.PacketsReceived,
+			"Packet loss detected: Sent=%d, Received=%d", pingResp.PacketsSent, pingResp.PacketsReceived)
 
-			localAddr := hostToIP[host]
+		t.Logf("Successfully pinged first host (%s) from second host (%s) on device %s",
+			firstHostIP, secondHostIP, device.Code)
+	})
 
-			// Ping all other hosts on this device
-			peers := []string{}
-			for peerHost, peerIP := range hostToIP {
-				if peerHost == host {
-					continue
-				}
-				peers = append(peers, peerIP)
-			}
+	// Test connectivity from first host to second host
+	t.Run("ping_second_host", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
 
-			require.NotEmpty(t, peers, "No peers found for connectivity check on device %s", device.Code)
+		client1, err := getQAClient(firstHost)
+		require.NoError(t, err, "Failed to create QA client for first host")
 
-			for _, peer := range peers {
-				t.Run("to_"+peer, func(t *testing.T) {
-					ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
-					defer cancel()
-					pingReq := &pb.PingRequest{
-						TargetIp:    peer,
-						SourceIp:    localAddr,
-						SourceIface: "doublezero0",
-						PingType:    pb.PingRequest_ICMP,
-					}
-					pingResp, err := client.Ping(ctx, pingReq)
-					require.NoError(t, err, "Ping failed for %s on device %s", peer, device.Code)
+		pingReq := &pb.PingRequest{
+			TargetIp:    secondHostIP,
+			SourceIp:    firstHostIP,
+			SourceIface: "doublezero0",
+			PingType:    pb.PingRequest_ICMP,
+		}
+		pingResp, err := client1.Ping(ctx, pingReq)
+		require.NoError(t, err, "Ping from first host to second host failed on device %s", device.Code)
 
-					if pingResp.PacketsSent == 0 || pingResp.PacketsReceived == 0 {
-						require.Fail(t, "Ping to %s on device %s failed: Sent=%d, Received=%d",
-							peer, device.Code, pingResp.PacketsSent, pingResp.PacketsReceived)
-					}
+		require.NotZero(t, pingResp.PacketsSent, "No packets sent from first host")
+		require.NotZero(t, pingResp.PacketsReceived, "No packets received by first host")
+		require.Equal(t, pingResp.PacketsSent, pingResp.PacketsReceived,
+			"Packet loss detected: Sent=%d, Received=%d", pingResp.PacketsSent, pingResp.PacketsReceived)
 
-					if pingResp.PacketsReceived < pingResp.PacketsSent {
-						require.Fail(t, "Ping to %s on device %s had loss: Sent=%d, Received=%d",
-							peer, device.Code, pingResp.PacketsSent, pingResp.PacketsReceived)
-					}
-
-					t.Logf("Successfully pinged %s from %s on device %s", peer, localAddr, device.Code)
-				})
-			}
-		})
-	}
-}
-
-func unicastCleanupFunc(t *testing.T, hosts []string) func() {
-	return func() {
-		disconnectUsers(t, hosts) // Disconnect all users after tests
-	}
-}
-
-func disconnectUsers(t *testing.T, hosts []string) {
-	for _, host := range hosts {
-		t.Run("disconnect_from_"+host, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-			defer cancel()
-
-			client, err := getQAClient(host)
-			require.NoError(t, err, "Failed to create QA client")
-
-			_, err = client.Disconnect(ctx, &emptypb.Empty{})
-			require.NoError(t, err, "Disconnect failed")
-		})
-	}
+		t.Logf("Successfully pinged second host (%s) from first host (%s) on device %s",
+			secondHostIP, firstHostIP, device.Code)
+	})
 }

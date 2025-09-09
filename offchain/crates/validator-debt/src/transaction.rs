@@ -6,7 +6,8 @@ use doublezero_revenue_distribution::{
         DistributionMerkleRootKind, RevenueDistributionInstructionData,
         account::{
             ConfigureDistributionDebtAccounts, FinalizeDistributionDebtAccounts,
-            InitializeDistributionAccounts, VerifyDistributionMerkleRootAccounts,
+            InitializeDistributionAccounts, PaySolanaValidatorDebtAccounts,
+            VerifyDistributionMerkleRootAccounts,
         },
     },
     state::{Distribution, ProgramConfig},
@@ -26,6 +27,8 @@ use solana_sdk::{
 };
 use std::env;
 use svm_hash::merkle::MerkleProof;
+
+use crate::validator_debt::ComputedSolanaValidatorDebts;
 
 #[derive(Debug)]
 pub struct Transaction {
@@ -180,7 +183,7 @@ impl Transaction {
             &ID,
             VerifyDistributionMerkleRootAccounts::new(dz_epoch),
             &RevenueDistributionInstructionData::VerifyDistributionMerkleRoot {
-                kind: DistributionMerkleRootKind::SolanaValidatorPayment(leaf),
+                kind: DistributionMerkleRootKind::SolanaValidatorDebt(leaf),
                 proof,
             },
         )?;
@@ -221,6 +224,40 @@ impl Transaction {
             let tx_sig = rpc_client.send_and_confirm_transaction(transaction).await?;
             Ok(Some(tx_sig))
         }
+    }
+
+    pub async fn pay_solana_validator_debt(
+        &self,
+        solana_rpc_client: &RpcClient,
+        debt: ComputedSolanaValidatorDebts,
+        dz_epoch: u64,
+    ) -> Result<Vec<VersionedTransaction>> {
+        let mut transactions: Vec<VersionedTransaction> = Vec::new();
+        let debt_clone = debt.clone();
+        for d in debt.debts {
+            let debt_proof = debt_clone.find_debt_proof(&d.node_id).unwrap();
+            let (_, proof) = debt_proof;
+            let instruction = try_build_instruction(
+                &ID,
+                PaySolanaValidatorDebtAccounts::new(DoubleZeroEpoch::new(dz_epoch), &d.node_id),
+                &RevenueDistributionInstructionData::PaySolanaValidatorDebt {
+                    amount: d.amount,
+                    proof,
+                },
+            )
+            .unwrap();
+
+            let recent_blockhash = solana_rpc_client.get_latest_blockhash().await?;
+            let message =
+                Message::try_compile(&self.signer.pubkey(), &[instruction], &[], recent_blockhash)
+                    .unwrap();
+
+            let versioned_transaction =
+                VersionedTransaction::try_new(VersionedMessage::V0(message), &[&self.signer])
+                    .unwrap();
+            transactions.push(versioned_transaction);
+        }
+        Ok(transactions)
     }
 
     pub async fn read_distribution(

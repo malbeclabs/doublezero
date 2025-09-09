@@ -29,9 +29,22 @@ pub struct SolanaConnectionOptions {
     pub ws_url: Option<String>,
 }
 
+#[derive(Debug, Args)]
+pub struct LedgerConnectionOptions {
+    /// URL for DoubleZero Ledger:
+    /// [mainnet-beta, testnet, localhost].
+    #[arg(long = "ledger_url", short = 'l')]
+    pub ledger_url: Option<String>,
+}
+
 pub struct Connection {
     pub rpc_client: RpcClient,
     pub ws_url: Url,
+    pub is_mainnet: bool,
+}
+
+pub struct LedgerConnection {
+    pub rpc_client: RpcClient,
     pub is_mainnet: bool,
 }
 
@@ -46,6 +59,25 @@ impl Connection {
         PubsubClient::new(self.ws_url.as_ref())
             .await
             .map_err(Into::into)
+    }
+}
+
+impl TryFrom<LedgerConnectionOptions> for LedgerConnection {
+    type Error = Error;
+
+    fn try_from(opts: LedgerConnectionOptions) -> Result<LedgerConnection> {
+        let LedgerConnectionOptions { ledger_url } = opts;
+
+        let ledger_url = ledger_url.as_deref().unwrap_or("mainnet-beta");
+        let ledger_rpc_url = Url::parse(normalize_to_ledger_url(ledger_url))?;
+
+        let ledger_rpc_client =
+            RpcClient::new_with_commitment(ledger_rpc_url.into(), CommitmentConfig::confirmed());
+
+        Ok(LedgerConnection {
+            rpc_client: ledger_rpc_client,
+            is_mainnet: false,
+        })
     }
 }
 
@@ -96,11 +128,28 @@ impl Deref for Connection {
     }
 }
 
+impl Deref for LedgerConnection {
+    type Target = RpcClient;
+
+    fn deref(&self) -> &Self::Target {
+        &self.rpc_client
+    }
+}
+
 // Forked from solana-clap-utils.
 fn normalize_to_url_if_moniker(url_or_moniker: &str) -> &str {
     match url_or_moniker {
         "m" | "mainnet-beta" => "https://api.mainnet-beta.solana.com",
         "t" | "testnet" => "https://api.testnet.solana.com",
+        "l" | "localhost" => "http://localhost:8899",
+        url => url,
+    }
+}
+
+fn normalize_to_ledger_url(url: &str) -> &str {
+    match url {
+        "m" | "mainnet-beta" => "",
+        "t" | "testnet" => "",
         "l" | "localhost" => "http://localhost:8899",
         url => url,
     }

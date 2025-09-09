@@ -67,14 +67,6 @@ pub async fn write_debts<T: ValidatorRewards>(
     )
     .await?;
 
-    // fetch rewards for validators
-    let validator_rewards = rewards::get_total_rewards(
-        solana_debt_calculator,
-        validator_ids.as_slice(),
-        solana_epoch,
-    )
-    .await?;
-
     // Create seeds
     let prefix = b"solana_validator_debt_test";
     let dz_epoch_bytes = dz_epoch.to_le_bytes();
@@ -84,6 +76,14 @@ pub async fn write_debts<T: ValidatorRewards>(
     let distribution = transaction
         .read_distribution(dz_epoch, solana_debt_calculator.solana_rpc_client())
         .await?;
+
+    // fetch rewards for validators
+    let validator_rewards = rewards::get_total_rewards(
+        solana_debt_calculator,
+        validator_ids.as_slice(),
+        solana_epoch,
+    )
+    .await?;
 
     // gather rewards into debts for all validators
     let computed_solana_validator_debt_vec: Vec<ComputedSolanaValidatorDebt> = validator_rewards

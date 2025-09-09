@@ -1,4 +1,5 @@
 use anyhow::{Result, anyhow};
+use borsh::de::BorshDeserialize;
 use clap::{Args, Subcommand};
 use doublezero_program_tools::{instruction::try_build_instruction, zero_copy};
 use doublezero_revenue_distribution::{
@@ -8,11 +9,16 @@ use doublezero_revenue_distribution::{
     },
     state::{ContributorRewards, Journal, ProgramConfig},
 };
+
+use doublezero_solana_validator_debt::{
+    ledger, transaction::Transaction, validator_debt::ComputedSolanaValidatorDebts,
+};
+
 use solana_sdk::{compute_budget::ComputeBudgetInstruction, pubkey::Pubkey};
 
 use crate::{
     payer::{SolanaPayerOptions, Wallet},
-    rpc::{Connection, SolanaConnectionOptions},
+    rpc::{Connection, LedgerConnection, LedgerConnectionOptions, SolanaConnectionOptions},
 };
 
 #[derive(Debug, Args)]
@@ -45,6 +51,16 @@ pub enum RevenueDistributionSubCommand {
         #[command(flatten)]
         solana_payer_options: SolanaPayerOptions,
     },
+
+    PaySolanaValidatorDebt {
+        #[arg(long)]
+        epoch: u64,
+
+        #[command(flatten)]
+        solana_payer_options: SolanaPayerOptions,
+        #[command(flatten)]
+        ledger_connection_options: LedgerConnectionOptions,
+    },
 }
 
 impl RevenueDistributionSubCommand {
@@ -59,6 +75,18 @@ impl RevenueDistributionSubCommand {
                 service_key,
                 solana_payer_options,
             } => execute_initialize_contributor_rewards(service_key, solana_payer_options).await,
+            RevenueDistributionSubCommand::PaySolanaValidatorDebt {
+                epoch,
+                solana_payer_options,
+                ledger_connection_options,
+            } => {
+                execute_pay_solana_validator_debt(
+                    epoch,
+                    solana_payer_options,
+                    ledger_connection_options,
+                )
+                .await
+            }
         }
     }
 }
@@ -143,5 +171,41 @@ pub async fn execute_initialize_contributor_rewards(
         wallet.print_verbose_output(&[tx_sig]).await?;
     }
 
+    Ok(())
+}
+
+//
+// RevenueDistributionSubCommand::PaySolanaValidatorDebt.
+//
+//
+pub async fn execute_pay_solana_validator_debt(
+    epoch: u64,
+    solana_payer_options: SolanaPayerOptions,
+    ledger_connection_options: LedgerConnectionOptions,
+) -> Result<()> {
+    let prefix = b"solana_validator_debt_test";
+    let dz_epoch_bytes = epoch.to_le_bytes();
+    let seeds: &[&[u8]] = &[prefix, &dz_epoch_bytes];
+    let wallet = Wallet::try_from(solana_payer_options)?;
+    let ledger = LedgerConnection::try_from(ledger_connection_options)?;
+    let read = ledger::read_from_ledger(
+        &ledger.rpc_client,
+        &wallet.signer,
+        seeds,
+        ledger.rpc_client.commitment(),
+    )
+    .await?;
+
+    let deserialized = ComputedSolanaValidatorDebts::try_from_slice(read.1.as_slice())?;
+
+    let transaction = Transaction::new(wallet.signer, wallet.dry_run);
+    let transactions = transaction
+        .pay_solana_validator_debt(&wallet.connection.rpc_client, deserialized, epoch)
+        .await?;
+    for t in transactions {
+        transaction
+            .send_or_simulate_transaction(&wallet.connection.rpc_client, &t)
+            .await?;
+    }
     Ok(())
 }

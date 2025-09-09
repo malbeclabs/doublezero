@@ -419,7 +419,7 @@ pub async fn execute_configure_program(
     if let Some(payments_accountant_key) = payments_accountant {
         let configure_program_ix = try_build_configure_program_instruction(
             &wallet_key,
-            ProgramConfiguration::PaymentsAccountant(payments_accountant_key),
+            ProgramConfiguration::DebtAccountant(payments_accountant_key),
         )?;
         instructions.push(configure_program_ix);
         compute_unit_limit += 2_500;

@@ -8,6 +8,7 @@ version.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+borsh.workspace = true
 clap.workspace = true
 doublezero-passport.workspace = true
 doublezero-program-tools.workspace = true
@@ -19,7 +20,7 @@ solana-sdk.workspace = true
 solana-transaction-status-client-types.workspace = true
 tokio.workspace = true
 url.workspace = true
-
+doublezero-solana-validator-debt = { path = "../validator-debt/" }
 [[bin]]
 name = "doublezero-solana"
 path = "src/main.rs"

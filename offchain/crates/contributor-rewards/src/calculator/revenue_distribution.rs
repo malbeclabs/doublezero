@@ -43,7 +43,7 @@ pub async fn post_rewards_merkle_root(
     if distribution_account.value.is_none() {
         bail!(
             "Distribution account for epoch {} does not exist at {}. \
-            It should be initialized by validator-revenue crate first.",
+            It should be initialized by validator-debt crate first.",
             epoch,
             distribution_pubkey
         );

@@ -1,7 +1,7 @@
 [package]
-name = "doublezero-solana-validator-revenue"
+name = "doublezero-solana-validator-debt"
 
-description = "Crate that processes revenue for validators"
+description = "Crate that processes debt for validators"
 
 edition.workspace = true
 homepage.workspace = true

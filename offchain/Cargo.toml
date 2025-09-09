@@ -2,8 +2,8 @@
 members = [
     "crates/contributor-rewards",
     "crates/sentinel",
-    "crates/validator-revenue",
-    "crates/doublezero-solana"
+    "crates/doublezero-solana",
+    "crates/validator-debt",
 ]
 resolver = "2"
 

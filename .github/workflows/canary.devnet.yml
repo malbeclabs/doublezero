@@ -1,0 +1,16 @@
+name: canary.devnet
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+jobs:
+  qa:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v4
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go test -v e2e/canary_test.go --args -hosts=chi-dn-bm2,chi-dn-bm3 -env devnet

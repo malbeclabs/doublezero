@@ -69,7 +69,9 @@ func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 
 		doublezero device interface create la2-dz01 "Switch1/1/1"
 		doublezero device interface create ny5-dz01 "Switch1/1/1"
+		doublezero device interface create ny5-dz01 "Switch1/1/2"
 		doublezero device interface create ld4-dz01 "Switch1/1/1"
+		doublezero device interface create ld4-dz01 "Switch1/1/2"
 		doublezero device interface create frk-dz01 "Switch1/1/1"
 
 		doublezero device interface create la2-dz01 "Loopback255" --loopback-type vpnv4
@@ -83,8 +85,8 @@ func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 		doublezero device interface create frk-dz01 "Loopback256" --loopback-type ipv4
 
 		doublezero link create wan --code "la2-dz01:ny5-dz01" --contributor co01 --side-a la2-dz01 --side-a-interface Switch1/1/1 --side-z ny5-dz01 --side-z-interface Switch1/1/1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3
-		doublezero link create wan --code "ny5-dz01:ld4-dz01" --contributor co01 --side-a ny5-dz01 --side-a-interface Switch1/1/1 --side-z ld4-dz01 --side-z-interface Switch1/1/1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3
-		doublezero link create wan --code "ld4-dz01:frk-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Switch1/1/1 --side-z frk-dz01 --side-z-interface Switch1/1/1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 25 --jitter-ms 10
+		doublezero link create wan --code "ny5-dz01:ld4-dz01" --contributor co01 --side-a ny5-dz01 --side-a-interface Switch1/1/2 --side-z ld4-dz01 --side-z-interface Switch1/1/1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3
+		doublezero link create wan --code "ld4-dz01:frk-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Switch1/1/2 --side-z frk-dz01 --side-z-interface Switch1/1/1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 25 --jitter-ms 10
 	`})
 	require.NoError(t, err)
 

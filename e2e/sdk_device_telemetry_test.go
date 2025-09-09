@@ -95,8 +95,9 @@ func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 	require.Eventually(t, func() bool {
 		data, err := serviceabilityClient.GetProgramData(ctx)
 		require.NoError(t, err)
+		log.Info("==> Waiting for devices and links to be created onchain", "devices", len(data.Devices), "links", len(data.Links))
 		return len(data.Devices) == 4 && len(data.Links) == 3
-	}, 20*time.Second, 1*time.Second)
+	}, 60*time.Second, 3*time.Second)
 
 	data, err := serviceabilityClient.GetProgramData(ctx)
 	require.NoError(t, err)

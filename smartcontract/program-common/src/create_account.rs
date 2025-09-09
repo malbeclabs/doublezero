@@ -1,3 +1,5 @@
+#[cfg(test)]
+use solana_program::msg;
 use solana_program::{
     account_info::AccountInfo, entrypoint::ProgramResult, program::invoke_signed_unchecked,
     pubkey::Pubkey, rent::Rent, system_instruction, sysvar::Sysvar,
@@ -29,6 +31,12 @@ pub fn try_create_account(
         .minimum_balance(data_len);
 
     if current_lamports == 0 {
+        #[cfg(test)]
+        msg!(
+            "Creating account with {} lamports and {} bytes",
+            rent_exemption_lamports,
+            data_len
+        );
         let create_account_ix = system_instruction::create_account(
             payer_key,
             new_account_key,
@@ -38,6 +46,12 @@ pub fn try_create_account(
         );
         invoke_signed_unchecked(&create_account_ix, accounts, &[new_account_signer_seeds])?;
     } else {
+        #[cfg(test)]
+        msg!(
+            "Account already has {} lamports, resizing to {} bytes if needed",
+            current_lamports,
+            data_len
+        );
         let allocate_ix = system_instruction::allocate(new_account_key, data_len as u64);
         invoke_signed_unchecked(&allocate_ix, accounts, &[new_account_signer_seeds])?;
 
@@ -48,6 +62,8 @@ pub fn try_create_account(
 
         // Transfer as much as we need for this account to be rent-exempt.
         if lamport_diff != 0 {
+            #[cfg(test)]
+            msg!("Transferring {} lamports to new account", lamport_diff);
             let transfer_ix =
                 system_instruction::transfer(payer_key, new_account_key, lamport_diff);
             invoke_signed_unchecked(&transfer_ix, accounts, &[])?;

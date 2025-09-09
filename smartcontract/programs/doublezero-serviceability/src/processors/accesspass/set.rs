@@ -146,12 +146,12 @@ pub fn process_set_access_pass(
         #[cfg(test)]
         msg!("Created: {:?}", accesspass);
     } else {
-        assert_eq!(
-            accesspass_account.owner, program_id,
-            "Invalid PDA Account Owner"
-        );
-
         let mut accesspass = if !accesspass_account.data_is_empty() {
+            assert_eq!(
+                accesspass_account.owner, program_id,
+                "Invalid PDA Account Owner"
+            );
+
             AccessPass::try_from(accesspass_account)?
         } else {
             AccessPass {
@@ -187,6 +187,7 @@ pub fn process_set_access_pass(
         .saturating_add(globalstate.user_airdrop_lamports)
         .saturating_sub(user_payer.lamports());
     if deposit != 0 {
+        msg!("Airdropping {} lamports to user", deposit);
         invoke_signed_unchecked(
             &system_instruction::transfer(payer_account.key, user_payer.key, deposit),
             &[

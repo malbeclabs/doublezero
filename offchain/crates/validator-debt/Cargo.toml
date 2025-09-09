@@ -13,6 +13,7 @@ version.workspace = true
 [dependencies]
 anyhow.workspace = true
 async-trait.workspace = true
+backon.workspace = true
 borsh.workspace = true
 chrono.workspace = true
 doublezero-program-tools.workspace = true
@@ -29,3 +30,4 @@ solana-sdk.workspace = true
 solana-transaction-status-client-types.workspace = true
 svm-hash.workspace = true
 tokio.workspace = true
+tracing.workspace = true

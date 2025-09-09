@@ -1,10 +1,11 @@
 use crate::solana_debt_calculator::ValidatorRewards;
 use anyhow::{Result, bail};
+use backon::{ExponentialBuilder, Retryable};
 use futures::{StreamExt, TryStreamExt, stream};
 use solana_client::{client_error::ClientErrorKind, rpc_request::RpcError};
 use solana_sdk::{clock::DEFAULT_SLOTS_PER_EPOCH, reward_type::RewardType::Fee};
-
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
+use tracing::info;
 
 pub const LAMPORT_MULTIPLE: u64 = 5000;
 pub const fn get_first_slot_for_epoch(target_epoch: u64) -> u64 {
@@ -50,7 +51,31 @@ pub async fn get_block_rewards<T: ValidatorRewards>(
         },
     ))
     .map(|(validator_id, slot)| async move {
-        match api_provider.get_block_with_config(slot).await {
+        match (|| async { api_provider.get_block_with_config(slot).await })
+            .retry(
+                &ExponentialBuilder::default()
+                    .with_max_times(5)
+                    .with_min_delay(Duration::from_millis(100))
+                    .with_max_delay(Duration::from_secs(10))
+                    .with_jitter(),
+            )
+            .when(|err| {
+                match err.kind() {
+                    ClientErrorKind::RpcError(RpcError::RpcResponseError { code, .. }) => {
+                        // Don't retry if block isn't found
+                        !matches!(*code, -32009 | -32007)
+                    }
+                    _ => true, // Retry on all other errors
+                }
+            })
+            .notify(|err, dur: Duration| {
+                info!(
+                    "get_block_with_config call failed, retrying in {:?}: {}",
+                    dur, err
+                );
+            })
+            .await
+        {
             Ok(block) => {
                 let mut signature_lamports: u64 = 0;
                 if let Some(sigs) = &block.signatures {

@@ -1,7 +1,9 @@
 use crate::solana_debt_calculator::ValidatorRewards;
 use anyhow::{Result, anyhow};
+use backon::{ExponentialBuilder, Retryable};
 use solana_sdk::pubkey::Pubkey;
-use std::{collections::HashMap, str::FromStr};
+use std::{collections::HashMap, str::FromStr, time::Duration};
+use tracing::info;
 
 pub async fn get_inflation_rewards<T: ValidatorRewards + ?Sized>(
     solana_debt_calculator: &T,
@@ -10,9 +12,20 @@ pub async fn get_inflation_rewards<T: ValidatorRewards + ?Sized>(
 ) -> Result<HashMap<String, u64>> {
     let mut vote_keys: Vec<Pubkey> = Vec::with_capacity(validator_ids.len());
 
-    let vote_accounts = solana_debt_calculator
+    let vote_accounts = (|| async {
+        solana_debt_calculator
         .get_vote_accounts_with_config()
-        .await?;
+        .await
+    }).retry(&ExponentialBuilder::default()
+        .with_max_times(5)
+        .with_min_delay(Duration::from_millis(100))
+        .with_max_delay(Duration::from_secs(10))
+        .with_jitter())
+    .notify(|err, dur: Duration| {
+        info!("get_vote_accounts_with_config call failed, retrying in {:?}: {}", dur, err);
+    }).await.map_err(|e| {
+        anyhow!("Failed to fetch get_vote_accounts_with_config for epoch {epoch} after retries: {e:#?}")
+    })?;
 
     // this can be cleaned up i'm sure
     for validator_id in validator_ids {

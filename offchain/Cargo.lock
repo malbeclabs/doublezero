@@ -1913,6 +1913,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "backon",
  "borsh 1.5.7",
  "chrono",
  "doublezero-program-tools",
@@ -1929,6 +1930,7 @@ dependencies = [
  "solana-transaction-status-client-types",
  "svm-hash",
  "tokio",
+ "tracing",
 ]
 
 [[package]]

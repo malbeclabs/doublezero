@@ -1,8 +1,10 @@
 use crate::solana_debt_calculator::ValidatorRewards;
 use anyhow::{Result, anyhow};
+use backon::{ExponentialBuilder, Retryable};
 use futures::{StreamExt, stream};
 use serde::Deserialize;
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
+use tracing::info;
 
 const JITO_BASE_URL: &str = "https://kobe.mainnet.jito.network/api/v1/";
 
@@ -34,24 +36,28 @@ pub async fn get_jito_rewards<T: ValidatorRewards>(
         "{JITO_BASE_URL}validator_rewards?epoch={epoch}&limit={JITO_REWARDS_LIMIT}"
     );
 
-    let rewards = match solana_debt_calculator.get::<JitoRewards>(&url).await {
-        Ok(jito_rewards) => {
-            if jito_rewards.total_count > JITO_REWARDS_LIMIT {
-                println!(
-                    "Unexpectedly received total count higher than 1500; actual count is {}",
-                    jito_rewards.total_count
-                );
-            }
-            jito_rewards
-        }
+    let rewards = (|| async { solana_debt_calculator.get::<JitoRewards>(&url).await })
+        .retry(
+            &ExponentialBuilder::default()
+                .with_max_times(5)
+                .with_min_delay(Duration::from_millis(100))
+                .with_max_delay(Duration::from_secs(10))
+                .with_jitter(),
+        )
+        .notify(|err, dur: Duration| {
+            info!("Jito API call failed, retrying in {:?}: {}", dur, err);
+        })
+        .await
+        .map_err(|e| {
+            anyhow!("Failed to fetch Jito rewards for epoch {epoch} after retries: {e:#?}")
+        })?;
 
-        Err(e) => {
-            return Err(anyhow!(
-                "Failed to fetch Jito rewards for epoch {epoch}: {e:#?}"
-            ));
-        }
-    };
-
+    if rewards.total_count > JITO_REWARDS_LIMIT {
+        println!(
+            "Unexpectedly received total count higher than 1500; actual count is {}",
+            rewards.total_count
+        );
+    }
     let jito_rewards: HashMap<String, u64> = stream::iter(validator_ids)
         .map(|validator_id| {
             let validator_id = validator_id.to_string();

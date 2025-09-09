@@ -135,6 +135,7 @@ pub async fn fetch(
 
     Ok(DZDTelemetryData {
         device_latency_samples,
+        accounts,
     })
 }
 

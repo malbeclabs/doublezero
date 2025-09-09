@@ -209,10 +209,7 @@ pub async fn handle(orchestrator: &Orchestrator, cmd: SnapshotCommands) -> Resul
             let fetcher = Fetcher::from_settings(orchestrator.settings())?;
 
             // Fetch data for epoch
-            let (fetch_epoch, fetch_data) = match epoch {
-                Some(e) => fetcher.with_epoch(e).await?,
-                None => fetcher.fetch().await?,
-            };
+            let (fetch_epoch, fetch_data) = fetcher.fetch(epoch).await?;
 
             info!("Fetched data for DZ epoch {}", fetch_epoch);
 
@@ -306,10 +303,7 @@ pub async fn handle(orchestrator: &Orchestrator, cmd: SnapshotCommands) -> Resul
             let fetcher = Fetcher::from_settings(orchestrator.settings())?;
 
             // Fetch data for epoch
-            let (fetch_epoch, fetch_data) = match epoch {
-                Some(e) => fetcher.with_epoch(e).await?,
-                None => fetcher.fetch().await?,
-            };
+            let (fetch_epoch, fetch_data) = fetcher.fetch(epoch).await?;
 
             info!("Fetched data for DZ epoch {}", fetch_epoch);
             info!(
@@ -376,7 +370,7 @@ pub async fn handle(orchestrator: &Orchestrator, cmd: SnapshotCommands) -> Resul
                 info!("Using DZ epoch {}", dz_e);
 
                 // Fetch DZ data to get timestamp
-                let (_, fetch_data) = fetcher.with_epoch(dz_e).await?;
+                let (_, fetch_data) = fetcher.fetch(Some(dz_e)).await?;
 
                 // Get leader schedule using the new method
                 let schedule_map = epoch_finder
@@ -404,7 +398,7 @@ pub async fn handle(orchestrator: &Orchestrator, cmd: SnapshotCommands) -> Resul
                 // No epoch provided - use current
                 info!("No epoch provided, using current");
 
-                let (dz_e, fetch_data) = fetcher.fetch().await?;
+                let (dz_e, fetch_data) = fetcher.fetch(None).await?;
 
                 // Get leader schedule using the new method
                 let schedule_map = epoch_finder

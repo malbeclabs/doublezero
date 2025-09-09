@@ -242,6 +242,7 @@ impl InetLookbackAccumulator {
 
         Ok(DZInternetData {
             internet_latency_samples: merged_samples,
+            accounts: vec![],
         })
     }
 
@@ -317,6 +318,7 @@ mod tests {
 
         let data = DZInternetData {
             internet_latency_samples: samples,
+            accounts: vec![],
         };
         let epoch_data = EpochData::new(100, data);
 
@@ -353,6 +355,7 @@ mod tests {
             80,
             DZInternetData {
                 internet_latency_samples: epoch80_samples,
+                accounts: vec![],
             },
         );
 
@@ -366,6 +369,7 @@ mod tests {
             79,
             DZInternetData {
                 internet_latency_samples: epoch79_samples,
+                accounts: vec![],
             },
         );
 
@@ -378,6 +382,7 @@ mod tests {
             78,
             DZInternetData {
                 internet_latency_samples: epoch78_samples,
+                accounts: vec![],
             },
         );
 
@@ -444,6 +449,7 @@ mod tests {
             80,
             DZInternetData {
                 internet_latency_samples: epoch1_samples,
+                accounts: vec![],
             },
         );
 
@@ -457,6 +463,7 @@ mod tests {
             80,
             DZInternetData {
                 internet_latency_samples: epoch2_samples,
+                accounts: vec![],
             },
         );
 
@@ -500,6 +507,7 @@ mod tests {
 
         let data = DZInternetData {
             internet_latency_samples: samples,
+            accounts: vec![],
         };
         let epoch_data = EpochData::new(100, data);
 
@@ -531,6 +539,7 @@ mod tests {
                 create_test_samples(exchange1, exchange2, "provider", 150, 100),
                 create_test_samples(exchange2, exchange3, "provider", 150, 100),
             ],
+            accounts: vec![],
         };
 
         // Epoch 99: routes 3->4 and 1->4
@@ -539,6 +548,7 @@ mod tests {
                 create_test_samples(exchange3, exchange4, "provider", 150, 99),
                 create_test_samples(exchange1, exchange4, "provider", 150, 99),
             ],
+            accounts: vec![],
         };
 
         let epoch1 = EpochData::new(100, epoch1_data);

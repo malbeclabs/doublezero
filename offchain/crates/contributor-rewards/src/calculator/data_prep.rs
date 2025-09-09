@@ -39,10 +39,7 @@ impl PreparedData {
     pub async fn new(fetcher: &Fetcher, epoch: Option<u64>, require_shapley: bool) -> Result<Self> {
         // NOTE: Always fetch current epoch's serviceability data first
         // This ensures we have the correct exchange_pk -> device -> location mappings
-        let (fetch_epoch, mut fetch_data) = match epoch {
-            None => fetcher.fetch().await?,
-            Some(epoch_num) => fetcher.with_epoch(epoch_num).await?,
-        };
+        let (fetch_epoch, mut fetch_data) = fetcher.fetch(epoch).await?;
 
         // Create cache for previous epoch data
         let mut previous_epoch_cache = PreviousEpochCache::new();

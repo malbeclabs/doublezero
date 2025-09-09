@@ -1,4 +1,3 @@
-use anyhow::Result;
 use contributor_rewards::{
     ingestor::types::{DZInternetData, DZInternetLatencySamples},
     settings::InetLookbackSettings,
@@ -58,6 +57,7 @@ mod mock_tests {
 
         DZInternetData {
             internet_latency_samples: samples,
+            accounts: vec![],
         }
     }
 
@@ -114,6 +114,7 @@ mod mock_tests {
             .iter()
             .map(|_epoch| DZInternetData {
                 internet_latency_samples: vec![],
+                accounts: vec![],
             })
             .collect();
 
@@ -275,15 +276,4 @@ mod mock_tests {
             );
         }
     }
-}
-
-#[test]
-#[ignore = "Requires RPC connection"]
-fn test_fetch_with_threshold_integration() -> Result<()> {
-    // This test would require:
-    // 1. A running Solana test validator
-    // 2. Deployed programs with test data
-    // 3. Proper RPC endpoint configuration
-    // TBD
-    Ok(())
 }

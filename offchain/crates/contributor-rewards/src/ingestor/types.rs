@@ -10,11 +10,13 @@ use doublezero_telemetry::state::{
     device_latency_samples::DeviceLatencySamples, internet_latency_samples::InternetLatencySamples,
 };
 use serde::{Deserialize, Serialize};
-use solana_sdk::pubkey::Pubkey;
+use solana_sdk::{account::Account, pubkey::Pubkey};
 use std::{
     collections::BTreeMap,
     fmt::{Display, Formatter},
 };
+
+pub type KeyedAccounts = Vec<(Pubkey, Account)>;
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct FetchData {
@@ -183,6 +185,7 @@ impl DZDeviceLatencySamples {
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct DZDTelemetryData {
     pub device_latency_samples: Vec<DZDeviceLatencySamples>,
+    pub accounts: KeyedAccounts,
 }
 
 impl DZDTelemetryData {
@@ -259,4 +262,5 @@ impl DZInternetLatencySamples {
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct DZInternetData {
     pub internet_latency_samples: Vec<DZInternetLatencySamples>,
+    pub accounts: KeyedAccounts,
 }

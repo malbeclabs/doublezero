@@ -41,17 +41,24 @@ impl Fetcher {
     }
 
     /// Fetch all data for the previous epoch
-    pub async fn fetch(&self) -> Result<(u64, FetchData)> {
-        // Get DZ epoch info from DZ RPC
-        let dz_epoch_info = self.dz_rpc_client.get_epoch_info().await?;
-        info!("Current dz_epoch: {}", dz_epoch_info.epoch);
-        let dz_prev_epoch = dz_epoch_info.epoch.saturating_sub(1);
-        info!("Fetching data for previous DZ epoch: {}", dz_prev_epoch);
-        self.with_epoch(dz_prev_epoch).await
+    pub async fn fetch(&self, epoch: Option<u64>) -> Result<(u64, FetchData)> {
+        let search_epoch = match epoch {
+            None => {
+                // Get DZ epoch info from DZ RPC
+                let dz_epoch_info = self.dz_rpc_client.get_epoch_info().await?;
+                info!("Current dz_epoch: {}", dz_epoch_info.epoch);
+                let dz_prev_epoch = dz_epoch_info.epoch.saturating_sub(1);
+                info!("Fetching data for previous DZ epoch: {}", dz_prev_epoch);
+                dz_prev_epoch
+            }
+            Some(e) => e,
+        };
+
+        self.with_epoch(search_epoch).await
     }
 
     /// Fetch all data for a specific epoch
-    pub async fn with_epoch(&self, epoch: u64) -> Result<(u64, FetchData)> {
+    async fn with_epoch(&self, epoch: u64) -> Result<(u64, FetchData)> {
         info!(
             "Using serviceability program: {}",
             self.settings.programs.serviceability_program_id

@@ -9,12 +9,15 @@ use anyhow::{Result, bail};
 use clap::Subcommand;
 use contributor_rewards::{
     calculator::orchestrator::Orchestrator,
-    ingestor::fetcher::Fetcher,
-    processor::internet::{InternetTelemetryProcessor, InternetTelemetryStats},
-    processor::telemetry::{DZDTelemetryProcessor, DZDTelemetryStats},
+    ingestor::{fetcher::Fetcher, types::KeyedAccounts},
+    processor::{
+        internet::{InternetTelemetryProcessor, InternetTelemetryStats},
+        telemetry::{DZDTelemetryProcessor, DZDTelemetryStats},
+    },
 };
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, str::FromStr};
+use tabled::{Table, Tabled, settings::Style};
 use tracing::info;
 
 /// Telemetry type selection
@@ -22,15 +25,17 @@ use tracing::info;
 pub enum TelemetryType {
     Internet,
     Device,
+    All,
 }
 
-impl std::str::FromStr for TelemetryType {
+impl FromStr for TelemetryType {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "internet" | "i" => Ok(TelemetryType::Internet),
             "device" | "d" => Ok(TelemetryType::Device),
+            "both" | "all" | "a" => Ok(TelemetryType::All),
             _ => Err(format!(
                 "Invalid telemetry type: '{s}'. Use 'internet' or 'device'"
             )),
@@ -145,6 +150,41 @@ pub enum TelemetryCommands {
         #[command(flatten)]
         output: OutputOptions,
     },
+
+    #[command(
+        about = "Calculate rent requirements for telemetry sample accounts",
+        after_help = r#"Examples:
+    # Calculate rent for device telemetry for the last epoch
+    telemetry rent --type device
+
+    # Calculate rent for internet telemetry for a specific epoch
+    telemetry rent --type internet --epoch 123
+
+    # Calculate rent for both types
+    telemetry rent --type all
+
+    # Export rent analysis as JSON
+    telemetry rent --type all --epoch 123 --output-format json --output-file rent-analysis.json"#
+    )]
+    Rent {
+        /// Telemetry type to analyze (device, internet, or all)
+        #[arg(
+            short = 't',
+            long,
+            value_name = "TYPE",
+            default_value = "all",
+            help = "Telemetry type: 'device', 'internet', or 'all'"
+        )]
+        telemetry_type: TelemetryType,
+
+        /// DZ epoch to analyze (defaults to last epoch)
+        #[arg(short, long, value_name = "EPOCH")]
+        epoch: Option<u64>,
+
+        /// Output options
+        #[command(flatten)]
+        output: OutputOptions,
+    },
 }
 
 /// Internet telemetry statistics export
@@ -215,6 +255,65 @@ pub struct ProblematicLink {
     pub samples: usize,
 }
 
+/// Rent analysis for telemetry sample accounts
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TelemetryRentAnalysis {
+    pub epoch: u64,
+    pub device_telemetry: Option<TelemetryTypeRentAnalysis>,
+    pub internet_telemetry: Option<TelemetryTypeRentAnalysis>,
+    pub combined_summary: RentSummary,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TelemetryTypeRentAnalysis {
+    pub telemetry_type: String,
+    pub total_accounts: usize,
+    pub total_bytes: usize,
+    pub lamports_per_byte: u64,
+    pub total_rent_lamports: u64,
+    pub total_rent_sol: f64,
+    pub average_account_size_bytes: usize,
+    pub account_details: Vec<AccountRentDetail>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RentSummary {
+    pub total_accounts: usize,
+    pub total_bytes: usize,
+    pub total_rent_lamports: u64,
+    pub total_rent_sol: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AccountRentDetail {
+    pub pubkey: String,
+    pub size_bytes: usize,
+    pub rent_lamports: u64,
+}
+
+// Tabled structs for displaying rent information
+#[derive(Tabled)]
+struct RentSummaryRow {
+    #[tabled(rename = "Telemetry Type")]
+    telemetry_type: String,
+    #[tabled(rename = "Accounts")]
+    accounts: String,
+    #[tabled(rename = "Total Size")]
+    total_size: String,
+    #[tabled(rename = "Avg Size")]
+    avg_size: String,
+    #[tabled(rename = "Rent (SOL)")]
+    rent_sol: String,
+}
+
+#[derive(Tabled)]
+struct RentTotalRow {
+    #[tabled(rename = "Category")]
+    category: String,
+    #[tabled(rename = "Value")]
+    value: String,
+}
+
 // Implement Exportable traits
 impl Exportable for InternetStatsExport {
     fn export(&self, format: OutputFormat) -> Result<String> {
@@ -246,6 +345,26 @@ impl Exportable for LinkQualityAnalysis {
     }
 }
 
+impl Exportable for TelemetryRentAnalysis {
+    fn export(&self, format: OutputFormat) -> Result<String> {
+        match format {
+            OutputFormat::Csv => {
+                // For CSV, combine all account details from both types
+                let mut all_details = Vec::new();
+                if let Some(ref device) = self.device_telemetry {
+                    all_details.extend(device.account_details.clone());
+                }
+                if let Some(ref internet) = self.internet_telemetry {
+                    all_details.extend(internet.account_details.clone());
+                }
+                collection_to_csv(&all_details)
+            }
+            OutputFormat::Json => to_json_string(self, false),
+            OutputFormat::JsonPretty => to_json_string(self, true),
+        }
+    }
+}
+
 /// Handle telemetry commands
 pub async fn handle(orchestrator: &Orchestrator, cmd: TelemetryCommands) -> Result<()> {
     match cmd {
@@ -261,6 +380,10 @@ pub async fn handle(orchestrator: &Orchestrator, cmd: TelemetryCommands) -> Resu
             TelemetryType::Device => {
                 handle_device_stats(orchestrator, epoch, filters, output).await
             }
+            TelemetryType::All => {
+                handle_internet_stats(orchestrator, epoch, filters.clone(), output.clone()).await?;
+                handle_device_stats(orchestrator, epoch, filters, output).await
+            }
         },
         TelemetryCommands::Export {
             telemetry_type,
@@ -272,6 +395,11 @@ pub async fn handle(orchestrator: &Orchestrator, cmd: TelemetryCommands) -> Resu
                 handle_internet_export(orchestrator, epoch, filters, output).await
             }
             TelemetryType::Device => {
+                handle_device_export(orchestrator, epoch, filters, output).await
+            }
+            TelemetryType::All => {
+                handle_internet_export(orchestrator, epoch, filters.clone(), output.clone())
+                    .await?;
                 handle_device_export(orchestrator, epoch, filters, output).await
             }
         },
@@ -287,7 +415,17 @@ pub async fn handle(orchestrator: &Orchestrator, cmd: TelemetryCommands) -> Resu
             TelemetryType::Device => {
                 handle_device_analyze(orchestrator, epoch, thresholds, output).await
             }
+            TelemetryType::All => {
+                handle_internet_analyze(orchestrator, epoch, thresholds.clone(), output.clone())
+                    .await?;
+                handle_device_analyze(orchestrator, epoch, thresholds, output).await
+            }
         },
+        TelemetryCommands::Rent {
+            telemetry_type,
+            epoch,
+            output,
+        } => handle_telemetry_rent_analysis(orchestrator, telemetry_type, epoch, output).await,
     }
 }
 
@@ -303,10 +441,7 @@ async fn handle_internet_stats(
     let fetcher = Fetcher::from_settings(orchestrator.settings())?;
 
     // Fetch data for epoch
-    let (fetch_epoch, fetch_data) = match epoch {
-        Some(e) => fetcher.with_epoch(e).await?,
-        None => fetcher.fetch().await?,
-    };
+    let (fetch_epoch, fetch_data) = fetcher.fetch(epoch).await?;
 
     info!("Processing telemetry for epoch {}", fetch_epoch);
 
@@ -393,10 +528,7 @@ async fn handle_device_stats(
     let fetcher = Fetcher::from_settings(orchestrator.settings())?;
 
     // Fetch data for epoch
-    let (fetch_epoch, fetch_data) = match epoch {
-        Some(e) => fetcher.with_epoch(e).await?,
-        None => fetcher.fetch().await?,
-    };
+    let (fetch_epoch, fetch_data) = fetcher.fetch(epoch).await?;
 
     info!("Processing telemetry for epoch {}", fetch_epoch);
 
@@ -503,10 +635,7 @@ async fn handle_internet_export(
     let fetcher = Fetcher::from_settings(orchestrator.settings())?;
 
     // Fetch data for epoch
-    let (fetch_epoch, fetch_data) = match epoch {
-        Some(e) => fetcher.with_epoch(e).await?,
-        None => fetcher.fetch().await?,
-    };
+    let (fetch_epoch, fetch_data) = fetcher.fetch(epoch).await?;
 
     // Filter samples if requested
     let samples = if filters.from_city.is_some() || filters.to_city.is_some() {
@@ -603,10 +732,7 @@ async fn handle_device_export(
     let fetcher = Fetcher::from_settings(orchestrator.settings())?;
 
     // Fetch data for epoch
-    let (fetch_epoch, fetch_data) = match epoch {
-        Some(e) => fetcher.with_epoch(e).await?,
-        None => fetcher.fetch().await?,
-    };
+    let (fetch_epoch, fetch_data) = fetcher.fetch(epoch).await?;
 
     // Get city for filtering (prefer city over from_city)
     let city_filter = filters.city.or(filters.from_city);
@@ -698,10 +824,7 @@ async fn handle_internet_analyze(
     let fetcher = Fetcher::from_settings(orchestrator.settings())?;
 
     // Fetch data for epoch
-    let (fetch_epoch, fetch_data) = match epoch {
-        Some(e) => fetcher.with_epoch(e).await?,
-        None => fetcher.fetch().await?,
-    };
+    let (fetch_epoch, fetch_data) = fetcher.fetch(epoch).await?;
 
     // Process internet telemetry
     let internet_stats = InternetTelemetryProcessor::process(&fetch_data)?;
@@ -815,10 +938,7 @@ async fn handle_device_analyze(
     let fetcher = Fetcher::from_settings(orchestrator.settings())?;
 
     // Fetch data for epoch
-    let (fetch_epoch, fetch_data) = match epoch {
-        Some(e) => fetcher.with_epoch(e).await?,
-        None => fetcher.fetch().await?,
-    };
+    let (fetch_epoch, fetch_data) = fetcher.fetch(epoch).await?;
 
     // Process device telemetry
     let device_stats = DZDTelemetryProcessor::process(&fetch_data)?;
@@ -918,5 +1038,193 @@ async fn handle_device_analyze(
         "Device performance analysis complete: {} issues found",
         analysis.issues_found
     );
+    Ok(())
+}
+
+async fn handle_telemetry_rent_analysis(
+    orchestrator: &Orchestrator,
+    telemetry_type: TelemetryType,
+    epoch: Option<u64>,
+    output: OutputOptions,
+) -> Result<()> {
+    const LAMPORTS_PER_BYTE: u64 = 6_960;
+    const LAMPORTS_PER_SOL: f64 = 1_000_000_000.0;
+
+    info!("Calculating rent requirements for telemetry accounts");
+
+    // Fetch all data
+    let fetcher = Fetcher::from_settings(orchestrator.settings())?;
+    let (fetch_epoch, fetch_data) = fetcher.fetch(epoch).await?;
+
+    // Helper function to analyze account rent
+    fn analyze_rent(accounts: &KeyedAccounts, telemetry_type: &str) -> TelemetryTypeRentAnalysis {
+        let mut total_bytes = 0usize;
+        let mut account_details = Vec::new();
+
+        for (pubkey, account) in accounts {
+            let size = account.data.len();
+            total_bytes += size;
+
+            account_details.push(AccountRentDetail {
+                pubkey: pubkey.to_string(),
+                size_bytes: size,
+                rent_lamports: size as u64 * LAMPORTS_PER_BYTE,
+            });
+        }
+
+        let total_rent_lamports = total_bytes as u64 * LAMPORTS_PER_BYTE;
+        let total_rent_sol = total_rent_lamports as f64 / LAMPORTS_PER_SOL;
+        let avg_size = if accounts.is_empty() {
+            0
+        } else {
+            total_bytes / accounts.len()
+        };
+
+        TelemetryTypeRentAnalysis {
+            telemetry_type: telemetry_type.to_string(),
+            total_accounts: accounts.len(),
+            total_bytes,
+            lamports_per_byte: LAMPORTS_PER_BYTE,
+            total_rent_lamports,
+            total_rent_sol,
+            average_account_size_bytes: avg_size,
+            account_details,
+        }
+    }
+
+    // Analyze accounts based on type using the fetched data
+    let mut device_analysis = None;
+    let mut internet_analysis = None;
+
+    match telemetry_type {
+        TelemetryType::Device => {
+            device_analysis = Some(analyze_rent(&fetch_data.dz_telemetry.accounts, "device"));
+        }
+        TelemetryType::Internet => {
+            internet_analysis = Some(analyze_rent(&fetch_data.dz_internet.accounts, "internet"));
+        }
+        TelemetryType::All => {
+            device_analysis = Some(analyze_rent(&fetch_data.dz_telemetry.accounts, "device"));
+            internet_analysis = Some(analyze_rent(&fetch_data.dz_internet.accounts, "internet"));
+        }
+    }
+
+    // Calculate combined summary
+    let mut total_accounts = 0;
+    let mut total_bytes = 0;
+    let mut total_rent_lamports = 0;
+
+    if let Some(ref device) = device_analysis {
+        total_accounts += device.total_accounts;
+        total_bytes += device.total_bytes;
+        total_rent_lamports += device.total_rent_lamports;
+    }
+
+    if let Some(ref internet) = internet_analysis {
+        total_accounts += internet.total_accounts;
+        total_bytes += internet.total_bytes;
+        total_rent_lamports += internet.total_rent_lamports;
+    }
+
+    let combined_summary = RentSummary {
+        total_accounts,
+        total_bytes,
+        total_rent_lamports,
+        total_rent_sol: total_rent_lamports as f64 / LAMPORTS_PER_SOL,
+    };
+
+    let analysis = TelemetryRentAnalysis {
+        epoch: fetch_epoch,
+        device_telemetry: device_analysis,
+        internet_telemetry: internet_analysis,
+        combined_summary,
+    };
+
+    // Display summary
+    println!();
+    println!("Telemetry Accounts Rent Analysis - Epoch {fetch_epoch}");
+    println!("=================================================\n");
+
+    // Build table rows
+    let mut rows = Vec::new();
+
+    if let Some(ref device) = analysis.device_telemetry {
+        rows.push(RentSummaryRow {
+            telemetry_type: "Device".to_string(),
+            accounts: format!("{}", device.total_accounts),
+            total_size: format!(
+                "{} bytes ({:.2} MB)",
+                device.total_bytes,
+                device.total_bytes as f64 / (1024.0 * 1024.0)
+            ),
+            avg_size: format!("{} bytes", device.average_account_size_bytes),
+            rent_sol: format!("{:.6} SOL", device.total_rent_sol),
+        });
+    }
+
+    if let Some(ref internet) = analysis.internet_telemetry {
+        rows.push(RentSummaryRow {
+            telemetry_type: "Internet".to_string(),
+            accounts: format!("{}", internet.total_accounts),
+            total_size: format!(
+                "{} bytes ({:.2} MB)",
+                internet.total_bytes,
+                internet.total_bytes as f64 / (1024.0 * 1024.0)
+            ),
+            avg_size: format!("{} bytes", internet.average_account_size_bytes),
+            rent_sol: format!("{:.6} SOL", internet.total_rent_sol),
+        });
+    }
+
+    // Display telemetry breakdown table
+    if !rows.is_empty() {
+        let table = Table::new(rows).with(Style::psql()).to_string();
+        println!("{table}");
+    }
+
+    // Display combined summary table
+    println!("\nCombined Summary:");
+    let total_rows = vec![
+        RentTotalRow {
+            category: "Total Accounts".to_string(),
+            value: format!("{}", analysis.combined_summary.total_accounts),
+        },
+        RentTotalRow {
+            category: "Total Size".to_string(),
+            value: format!(
+                "{} bytes ({:.2} MB)",
+                analysis.combined_summary.total_bytes,
+                analysis.combined_summary.total_bytes as f64 / (1024.0 * 1024.0)
+            ),
+        },
+        RentTotalRow {
+            category: "Rent per Byte".to_string(),
+            value: format!("{LAMPORTS_PER_BYTE} lamports"),
+        },
+        RentTotalRow {
+            category: "Total Rent Required".to_string(),
+            value: format!(
+                "{:.6} SOL ({} lamports)",
+                analysis.combined_summary.total_rent_sol,
+                analysis.combined_summary.total_rent_lamports
+            ),
+        },
+    ];
+
+    let total_table = Table::new(total_rows).with(Style::psql()).to_string();
+    println!("{total_table}");
+    println!();
+
+    // Export based on options
+    let export_options = OutputOptions {
+        output_format: output.output_format,
+        output_dir: output.output_dir.clone(),
+        output_file: output.output_file.clone(),
+    };
+
+    let default_filename = format!("telemetry-rent-analysis-epoch-{fetch_epoch}");
+    export_options.write(&analysis, &default_filename)?;
+
+    info!("Telemetry accounts rent analysis complete");
     Ok(())
 }

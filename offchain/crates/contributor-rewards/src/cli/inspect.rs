@@ -170,10 +170,7 @@ async fn handle_inspect_shapley(
 
     // Fetch data
     let fetcher = Fetcher::from_settings(orchestrator.settings())?;
-    let (fetch_epoch, fetch_data) = match epoch {
-        Some(e) => fetcher.with_epoch(e).await?,
-        None => fetcher.fetch().await?,
-    };
+    let (fetch_epoch, fetch_data) = fetcher.fetch(epoch).await?;
 
     info!("Using data from epoch {}", fetch_epoch);
 

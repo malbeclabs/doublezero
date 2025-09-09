@@ -136,6 +136,7 @@ pub async fn fetch(
 
     Ok(DZInternetData {
         internet_latency_samples,
+        accounts,
     })
 }
 

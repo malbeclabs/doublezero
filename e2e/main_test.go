@@ -162,7 +162,7 @@ func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 
 	// Add the other devices and links onchain.
 	dn.log.Info("==> Creating other devices and links onchain")
-	dn.Manager.Exec(ctx, []string{"bash", "-c", `
+	_, err = dn.Manager.Exec(ctx, []string{"bash", "-c", `
 		set -euo pipefail
 
 		echo "==> Populate device information onchain"
@@ -177,41 +177,41 @@ func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 
 		echo "==> Populate device interface information onchain"
 		# TODO: When the controller supports dzd metadata, this will have to be updated to reflect actual interfaces
-		doublezero device interface create ny5-dz01 "Ethernet2"
-		doublezero device interface create ny5-dz01 "Vlan4001"
-		doublezero device interface create la2-dz01 "Ethernet2"
-		doublezero device interface create la2-dz01 "Ethernet3"
-		doublezero device interface create ld4-dz01 "Vlan4001"
-		doublezero device interface create ld4-dz01 "Ethernet3"
-		doublezero device interface create ld4-dz01 "Ethernet4"
-		doublezero device interface create frk-dz01 "Ethernet2"
-		doublezero device interface create frk-dz01 "Ethernet3"
-		doublezero device interface create sg1-dz01 "Ethernet2"
-		doublezero device interface create sg1-dz01 "Ethernet3"
-		doublezero device interface create ty2-dz01 "Ethernet2"
-		doublezero device interface create ty2-dz01 "Ethernet3"
-		doublezero device interface create pit-dzd01 "Ethernet2"
-		doublezero device interface create pit-dzd01 "Ethernet3"
-		doublezero device interface create ams-dz001 "Ethernet2"
-		doublezero device interface create ams-dz001 "Ethernet3"
+		doublezero device interface create ny5-dz01 "Ethernet2" -w
+		doublezero device interface create ny5-dz01 "Vlan4001" -w
+		doublezero device interface create la2-dz01 "Ethernet2" -w
+		doublezero device interface create la2-dz01 "Ethernet3" -w
+		doublezero device interface create ld4-dz01 "Vlan4001" -w
+		doublezero device interface create ld4-dz01 "Ethernet3" -w
+		doublezero device interface create ld4-dz01 "Ethernet4" -w
+		doublezero device interface create frk-dz01 "Ethernet2" -w
+		doublezero device interface create frk-dz01 "Ethernet3" -w
+		doublezero device interface create sg1-dz01 "Ethernet2" -w
+		doublezero device interface create sg1-dz01 "Ethernet3" -w
+		doublezero device interface create ty2-dz01 "Ethernet2" -w
+		doublezero device interface create ty2-dz01 "Ethernet3" -w
+		doublezero device interface create pit-dzd01 "Ethernet2" -w
+		doublezero device interface create pit-dzd01 "Ethernet3" -w
+		doublezero device interface create ams-dz001 "Ethernet2" -w
+		doublezero device interface create ams-dz001 "Ethernet3" -w
 
-		doublezero device interface create ny5-dz01 "Loopback255" --loopback-type vpnv4
-		doublezero device interface create la2-dz01 "Loopback255" --loopback-type vpnv4
-		doublezero device interface create ld4-dz01 "Loopback255" --loopback-type vpnv4
-		doublezero device interface create frk-dz01 "Loopback255" --loopback-type vpnv4
-		doublezero device interface create sg1-dz01 "Loopback255" --loopback-type vpnv4
-		doublezero device interface create ty2-dz01 "Loopback255" --loopback-type vpnv4
-		doublezero device interface create pit-dzd01 "Loopback255" --loopback-type vpnv4
-		doublezero device interface create ams-dz001 "Loopback255" --loopback-type vpnv4
+		doublezero device interface create ny5-dz01 "Loopback255" --loopback-type vpnv4 -w
+		doublezero device interface create la2-dz01 "Loopback255" --loopback-type vpnv4 -w
+		doublezero device interface create ld4-dz01 "Loopback255" --loopback-type vpnv4 -w
+		doublezero device interface create frk-dz01 "Loopback255" --loopback-type vpnv4 -w
+		doublezero device interface create sg1-dz01 "Loopback255" --loopback-type vpnv4 -w
+		doublezero device interface create ty2-dz01 "Loopback255" --loopback-type vpnv4 -w
+		doublezero device interface create pit-dzd01 "Loopback255" --loopback-type vpnv4 -w
+		doublezero device interface create ams-dz001 "Loopback255" --loopback-type vpnv4 -w
 
-		doublezero device interface create ny5-dz01 "Loopback256" --loopback-type ipv4
-		doublezero device interface create la2-dz01 "Loopback256" --loopback-type ipv4
-		doublezero device interface create ld4-dz01 "Loopback256" --loopback-type ipv4
-		doublezero device interface create frk-dz01 "Loopback256" --loopback-type ipv4
-		doublezero device interface create sg1-dz01 "Loopback256" --loopback-type ipv4
-		doublezero device interface create ty2-dz01 "Loopback256" --loopback-type ipv4
-		doublezero device interface create pit-dzd01 "Loopback256" --loopback-type ipv4
-		doublezero device interface create ams-dz001 "Loopback256" --loopback-type ipv4
+		doublezero device interface create ny5-dz01 "Loopback256" --loopback-type ipv4 -w
+		doublezero device interface create la2-dz01 "Loopback256" --loopback-type ipv4 -w
+		doublezero device interface create ld4-dz01 "Loopback256" --loopback-type ipv4 -w
+		doublezero device interface create frk-dz01 "Loopback256" --loopback-type ipv4 -w
+		doublezero device interface create sg1-dz01 "Loopback256" --loopback-type ipv4 -w
+		doublezero device interface create ty2-dz01 "Loopback256" --loopback-type ipv4 -w
+		doublezero device interface create pit-dzd01 "Loopback256" --loopback-type ipv4 -w
+		doublezero device interface create ams-dz001 "Loopback256" --loopback-type ipv4 -w
 
 		doublezero device update --pubkey ld4-dz01 --max-users 128
 		doublezero device update --pubkey frk-dz01 --max-users 128
@@ -222,12 +222,12 @@ func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 
 
 		echo "==> Populate link information onchain"
-		doublezero link create wan --code "la2-dz01:ny5-dz01" --contributor co01 --side-a la2-dz01 --side-a-interface Ethernet2 --side-z ny5-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3
+		doublezero link create wan --code "la2-dz01:ny5-dz01" --contributor co01 --side-a la2-dz01 --side-a-interface Ethernet2 --side-z ny5-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3 -w
 		doublezero link create wan --code "ny5-dz01:ld4-dz01" --contributor co01 --side-a ny5-dz01 --side-a-interface Vlan4001 --side-z ld4-dz01 --side-z-interface Vlan4001 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3
 		doublezero link create wan --code "ld4-dz01:frk-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet3 --side-z frk-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 25 --jitter-ms 10
 		doublezero link create wan --code "ld4-dz01:sg1-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet4 --side-z sg1-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 120 --jitter-ms 9
 		doublezero link create wan --code "sg1-dz01:ty2-dz01" --contributor co01 --side-a sg1-dz01 --side-a-interface Ethernet3 --side-z ty2-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 7
-		doublezero link create wan --code "ty2-dz01:la2-dz01" --contributor co01 --side-a ty2-dz01 --side-a-interface Ethernet2 --side-z la2-dz01 --side-z-interface Ethernet3 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 10
+		doublezero link create wan --code "ty2-dz01:la2-dz01" --contributor co01 --side-a ty2-dz01 --side-a-interface Ethernet3 --side-z la2-dz01 --side-z-interface Ethernet3 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 10
 		echo "--> Tunnel information onchain:"
 		doublezero link list
 	`})

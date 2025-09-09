@@ -153,6 +153,9 @@ impl TryFrom<&[u8]> for AccountData {
     type Error = ProgramError;
 
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+        if bytes.is_empty() {
+            return Err(ProgramError::InvalidAccountData);
+        }
         match AccountType::from(bytes[0]) {
             AccountType::None => Ok(AccountData::None),
             AccountType::GlobalState => Ok(AccountData::GlobalState(GlobalState::try_from(bytes)?)),

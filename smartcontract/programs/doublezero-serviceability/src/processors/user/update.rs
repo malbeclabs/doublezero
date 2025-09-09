@@ -74,9 +74,7 @@ pub fn process_update_user(
 
     let mut user: User = User::try_from(user_account)?;
 
-    if let Some(value) = value.dz_ip {
-        user.dz_ip = value;
-    }
+    user.dz_ip = "0.0.0.0".parse().unwrap();
     if let Some(value) = value.tunnel_id {
         user.tunnel_id = value;
     }

@@ -316,10 +316,10 @@ impl Validate for User {
             return Err(DoubleZeroError::InvalidClientIp);
         }
         // dz_ip must be global unicast
-        if self.status != UserStatus::Pending && !is_global(self.dz_ip) {
-            msg!("dz_ip: {}", self.dz_ip);
-            return Err(DoubleZeroError::InvalidDzIp);
-        }
+        //if self.status != UserStatus::Pending && !is_global(self.dz_ip) {
+        //msg!("dz_ip: {}", self.dz_ip);
+        //return Err(DoubleZeroError::InvalidDzIp);
+        //}
         // tunnel net must be private
         if self.status != UserStatus::Pending && !self.tunnel_net.ip().is_link_local() {
             msg!("tunnel_net: {}", self.tunnel_net);

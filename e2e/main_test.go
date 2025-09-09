@@ -162,7 +162,7 @@ func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 
 	// Add the other devices and links onchain.
 	dn.log.Info("==> Creating other devices and links onchain")
-	dn.Manager.Exec(ctx, []string{"bash", "-c", `
+	_, err = dn.Manager.Exec(ctx, []string{"bash", "-c", `
 		set -euo pipefail
 
 		echo "==> Populate device information onchain"

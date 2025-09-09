@@ -54,7 +54,7 @@ func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 	ny5DeviceAgentPrivateKey := solana.NewWallet().PrivateKey
 
 	log.Info("==> Creating other devices and links onchain")
-	dn.Manager.Exec(ctx, []string{"bash", "-c", `
+	_, err = dn.Manager.Exec(ctx, []string{"bash", "-c", `
 		set -euo pipefail
 
 		doublezero device create --code la2-dz01 --contributor co01 --location lax --exchange xlax --public-ip "207.45.216.134" --dz-prefixes "207.45.216.136/30,200.12.12.12/29" --metrics-publisher ` + la2DeviceAgentPrivateKey.PublicKey().String() + ` --mgmt-vrf mgmt

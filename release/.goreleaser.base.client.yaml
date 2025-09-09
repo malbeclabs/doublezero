@@ -63,6 +63,8 @@ nfpms:
     bindir: /usr/bin
     release: 1
     section: default
+    dependencies:
+      - doublezero-solana
     contents:
       - src: client/doublezerod/cmd/doublezerod/doublezerod.service
         dst: /usr/lib/systemd/system/doublezerod.service

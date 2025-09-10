@@ -12,17 +12,18 @@ jobs:
   component-tags:
     name: Tag ${{ matrix.component }} with version ${{ github.event.inputs.version }}
     uses: ./.github/workflows/release.testnet.push.tags.yml
+    permissions:
+      contents: write
     strategy:
       matrix:
         component:
-          #- activator
-          #- controller
-          #- internet-latency-collector
-          #- agent
-          #- device-telemetry-agent
-          #- funder
-          #- monitor
-          - test
+          - activator
+          - controller
+          - internet-latency-collector
+          - agent
+          - device-telemetry-agent
+          - funder
+          - monitor
     with:
       version: ${{ github.event.inputs.version }}
       component: ${{ matrix.component }}
@@ -32,9 +33,10 @@ jobs:
     name: Tag client with version ${{ github.event.inputs.version }}
     needs: component-tags
     uses: ./.github/workflows/release.testnet.push.tags.yml
+    permissions:
+      contents: write
     with:
       version: ${{ github.event.inputs.version }}
-      component: test2
-        # - client
+      component: client
     secrets:
       DOUBLEZERO_PAT: ${{ secrets.DOUBLEZERO_PAT }}

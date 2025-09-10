@@ -21,8 +21,6 @@ jobs:
     name: Push ${{ inputs.version }} tag for ${{ inputs.component }}
     runs-on: ubuntu-latest
     environment: testnet
-    permissions:
-      contents: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

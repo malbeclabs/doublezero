@@ -1,6 +1,6 @@
 module github.com/malbeclabs/doublezero
 
-go 1.24
+go 1.24.7
 
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.40.1

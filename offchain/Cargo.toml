@@ -30,13 +30,13 @@ clap = { version = "4", features = ["derive"] }
 config = "0"
 csv = "1"
 doublezero-passport = { git = "ssh://git@github.com/doublezerofoundation/doublezero-solana" }
-doublezero-program-common = { git = "ssh://git@github.com/malbeclabs/doublezero" }
+doublezero-program-common = { git = "ssh://git@github.com/malbeclabs/doublezero", tag="v0.6.3" }
 doublezero-program-tools = { git = "ssh://git@github.com/doublezerofoundation/doublezero-solana" }
-doublezero-record = { git = "ssh://git@github.com/malbeclabs/doublezero", features = [ "no-entrypoint" ] }
+doublezero-record = { git = "ssh://git@github.com/malbeclabs/doublezero", tag="v0.6.3", features = [ "no-entrypoint" ] }
 doublezero-revenue-distribution = { git = "ssh://git@github.com/doublezerofoundation/doublezero-solana" }
-doublezero_sdk = { git = "ssh://git@github.com/malbeclabs/doublezero" }
-doublezero-serviceability = { git = "ssh://git@github.com/malbeclabs/doublezero", features = [ "no-entrypoint", "serde"] }
-doublezero-telemetry = { git = "ssh://git@github.com/malbeclabs/doublezero", features = [ "no-entrypoint", "serde" ] }
+doublezero_sdk = { git = "ssh://git@github.com/malbeclabs/doublezero", tag="v0.6.3" }
+doublezero-serviceability = { git = "ssh://git@github.com/malbeclabs/doublezero", tag="v0.6.3", features = [ "no-entrypoint", "serde"] }
+doublezero-telemetry = { git = "ssh://git@github.com/malbeclabs/doublezero", tag="v0.6.3", features = [ "no-entrypoint", "serde" ] }
 dotenvy = "0"
 futures = "0"
 futures-util = "0"

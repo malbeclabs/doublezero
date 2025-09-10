@@ -12,7 +12,8 @@ type MeasurementState struct {
 }
 
 type MetadataTracker struct {
-	Metadata map[int]MeasurementMeta `json:"metadata"`
+	Metadata           map[int]MeasurementMeta `json:"metadata"`
+	UnresponsiveProbes []int                   `json:"unresponsive_probes,omitempty"`
 }
 
 type MeasurementMeta struct {
@@ -118,4 +119,30 @@ func (ms *MeasurementState) GetAllTimestamps() map[int]int64 {
 		}
 	}
 	return result
+}
+
+func (ms *MeasurementState) AddUnresponsiveProbe(probeID int) {
+	// Check if probe is already in the list
+	for _, id := range ms.tracker.UnresponsiveProbes {
+		if id == probeID {
+			return
+		}
+	}
+	ms.tracker.UnresponsiveProbes = append(ms.tracker.UnresponsiveProbes, probeID)
+}
+
+func (ms *MeasurementState) IsProbeUnresponsive(probeID int) bool {
+	for _, id := range ms.tracker.UnresponsiveProbes {
+		if id == probeID {
+			return true
+		}
+	}
+	return false
+}
+
+func (ms *MeasurementState) GetUnresponsiveProbes() []int {
+	if ms.tracker.UnresponsiveProbes == nil {
+		return []int{}
+	}
+	return ms.tracker.UnresponsiveProbes
 }

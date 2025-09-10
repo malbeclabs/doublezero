@@ -706,12 +706,15 @@ func TestInternetLatency_RIPEAtlas_GenerateWantedMeasurements_Deterministic(t *t
 		},
 	}
 
+	// Create a measurement state for testing (empty, no unresponsive probes)
+	measurementState := NewMeasurementState("/tmp/test_state.json")
+
 	// Test with different orderings
-	measurements1 := c.generateWantedMeasurements(locations, 2)
+	measurements1 := c.generateWantedMeasurements(locations, 2, measurementState)
 
 	// Reverse the order
 	reversedLocations := []LocationProbeMatch{locations[2], locations[1], locations[0]}
-	measurements2 := c.generateWantedMeasurements(reversedLocations, 2)
+	measurements2 := c.generateWantedMeasurements(reversedLocations, 2, measurementState)
 
 	// Should have same number of measurements
 	require.Equal(t, len(measurements1), len(measurements2), "Different number of measurements")

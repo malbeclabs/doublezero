@@ -10,6 +10,7 @@ import (
 	"math/rand"
 	"net"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -41,7 +42,21 @@ var (
 	clientsMutex sync.RWMutex
 
 	hostList []string
+	devices  []*Device
 )
+
+type Device struct {
+	PubKey     string
+	Code       string
+	MaxUsers   int
+	UsersCount int
+}
+
+type DeviceTestResult struct {
+	Device  *Device
+	Success bool
+	Error   string
+}
 
 func TestMain(m *testing.M) {
 	flag.Parse()
@@ -58,6 +73,28 @@ func TestMain(m *testing.M) {
 		log.Fatalf("failed to get network config for env %s: %v", *env, err)
 	}
 	serviceabilityClient = serviceability.New(rpc.New(networkConfig.LedgerPublicRPCURL), networkConfig.ServiceabilityProgramID)
+
+	// Get all devices from on-chain data
+	ctx := context.Background()
+	data, err := serviceabilityClient.GetProgramData(ctx)
+	if err != nil {
+		log.Fatalf("failed to get program data: %v", err)
+	}
+
+	for _, d := range data.Devices {
+		dev := &Device{
+			PubKey:     base58.Encode(d.PubKey[:]),
+			Code:       d.Code,
+			MaxUsers:   int(d.MaxUsers),
+			UsersCount: int(d.UsersCount),
+		}
+		devices = append(devices, dev)
+	}
+
+	fmt.Printf("Found %d devices on-chain\n", len(devices))
+	for _, dev := range devices {
+		fmt.Printf("Device PubKey: %s, Code: %s, MaxUsers: %d, UsersCount: %d\n", dev.PubKey, dev.Code, dev.MaxUsers, dev.UsersCount)
+	}
 
 	clients = make(map[string]pb.QAAgentServiceClient)
 	clientConns := make(map[string]*grpc.ClientConn)
@@ -104,92 +141,8 @@ func TestConnectivityUnicast(t *testing.T) {
 	cleanup := unicastCleanupFunc(t, hostList)
 	defer cleanup()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	for _, host := range hostList {
-		if !t.Run("connect_ibrl_mode_from_"+host, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
-			defer cancel()
-			client, err := getQAClient(host)
-			require.NoError(t, err, "Failed to create QA client")
-
-			// TODO: pick random host to use IBRL w/ allocated address mode
-			req := &pb.ConnectUnicastRequest{
-				Mode: pb.ConnectUnicastRequest_IBRL,
-			}
-			result, err := client.ConnectUnicast(ctx, req)
-			require.NoError(t, err, "ConnectUnicast failed")
-
-			if result.GetSuccess() == false || result.GetReturnCode() != 0 {
-				require.Fail(t, "ConnectUnicast failed", result.GetOutput())
-			}
-		}) {
-			t.Fatalf("Failed to connect IBRL mode from host %s", host)
-		}
-	}
-
-	// Build host-to-IP map after all hosts are connected
-	hostToIP := make(map[string]string)
-	for _, host := range hostList {
-		client, err := getQAClient(host)
-		require.NoError(t, err, "Failed to create QA client for host %s", host)
-
-		resp, err := client.GetStatus(ctx, &emptypb.Empty{})
-		require.NoError(t, err, "GetStatus failed for host %s", host)
-
-		for _, status := range resp.Status {
-			if (status.UserType == "IBRL" || status.UserType == "IBRLWithAllocatedIP") && status.DoubleZeroIp != "" {
-				hostToIP[host] = status.DoubleZeroIp
-				break
-			}
-		}
-		require.NotEmpty(t, hostToIP[host], "No local address found for host %s", host)
-	}
-
-	// Run connectivity checks only between hosts participating in the test
-	for _, host := range hostList {
-		t.Run("connectivity_check_from_"+host, func(t *testing.T) {
-			client, err := getQAClient(host)
-			require.NoError(t, err, "Failed to create QA client")
-
-			localAddr := hostToIP[host]
-
-			// Only ping IPs of hosts in hostList (excluding self)
-			peers := []string{}
-			for peerHost, peerIP := range hostToIP {
-				if peerHost == host {
-					continue
-				}
-				peers = append(peers, peerIP)
-			}
-
-			require.NotEmpty(t, peers, "No peers found for connectivity check")
-
-			for _, peer := range peers {
-				t.Run("to_"+peer, func(t *testing.T) {
-					ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
-					defer cancel()
-					pingReq := &pb.PingRequest{
-						TargetIp:    peer,
-						SourceIp:    localAddr,
-						SourceIface: "doublezero0",
-						PingType:    pb.PingRequest_ICMP,
-					}
-					pingResp, err := client.Ping(ctx, pingReq)
-					require.NoError(t, err, "Ping failed for %s", peer)
-
-					if pingResp.PacketsSent == 0 || pingResp.PacketsReceived == 0 {
-						require.Fail(t, "Ping to %s failed: Sent=%d, Received=%d", peer, pingResp.PacketsSent, pingResp.PacketsReceived)
-					}
-
-					if pingResp.PacketsReceived < pingResp.PacketsSent {
-						require.Fail(t, "Ping to %s had loss: Sent=%d, Received=%d", peer, pingResp.PacketsSent, pingResp.PacketsReceived)
-					}
-				})
-			}
-		})
-	}
+	// Use the unified helper with nil devices (QA mode)
+	runUnicastConnectivityTest(t, hostList, nil)
 }
 
 func TestConnectivityMulticast(t *testing.T) {
@@ -505,4 +458,411 @@ func findMulticastGroupByCode(ctx context.Context, code string) (group serviceab
 		}
 	}
 	return serviceability.MulticastGroup{}, false, nil
+}
+
+// Skip this test with -short flag as it can take a long time
+func TestConnectivityUnicast_AllDevices(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping all-devices test in short mode")
+	}
+
+	if len(devices) == 0 {
+		t.Skip("No devices found on-chain")
+	}
+
+	// Ensure we have at least 2 hosts
+	if len(hostList) < 2 {
+		t.Fatal("At least 2 hosts are required for all-devices connectivity testing")
+	}
+
+	// Filter devices to only include those with sufficient capacity and skip test devices
+	var validDevices []*Device
+	for _, device := range devices {
+		// Skip devices with "test" in the code as these are typically not real hardware
+		if strings.Contains(strings.ToLower(device.Code), "test") {
+			t.Logf("Skipping test device %s", device.Code)
+			continue
+		}
+
+		// Check if device has capacity for at least 2 users
+		if device.MaxUsers > 0 && device.UsersCount >= device.MaxUsers-1 {
+			t.Logf("Skipping device %s as it doesn't have capacity for 2 users (%d/%d users)",
+				device.Code, device.UsersCount, device.MaxUsers)
+			continue
+		}
+		validDevices = append(validDevices, device)
+	}
+
+	if len(validDevices) == 0 {
+		t.Skip("No valid devices found with sufficient capacity")
+	}
+
+	// Sort devices by code for consistent ordering
+	sort.Slice(validDevices, func(i, j int) bool {
+		return validDevices[i].Code < validDevices[j].Code
+	})
+
+	t.Logf("Will test devices in order: %v", func() []string {
+		codes := make([]string, len(validDevices))
+		for i, d := range validDevices {
+			codes[i] = d.Code
+		}
+		return codes
+	}())
+
+	// Cleanup at the end
+	defer disconnectUsers(t, hostList)
+
+	// Use the unified helper with specific devices (AllDevices mode)
+	runUnicastConnectivityTest(t, hostList, validDevices)
+}
+
+func printTestAllDevicesUnicastSummary(t *testing.T, results []*DeviceTestResult) {
+	var passed, failed []*DeviceTestResult
+
+	for _, result := range results {
+		if result.Success {
+			passed = append(passed, result)
+		} else {
+			failed = append(failed, result)
+		}
+	}
+
+	t.Logf("\n========================================")
+	t.Logf("TEST SUMMARY")
+	t.Logf("========================================")
+	t.Logf("Total devices tested: %d", len(results))
+	t.Logf("Passed: %d", len(passed))
+	t.Logf("Failed: %d", len(failed))
+
+	if len(passed) > 0 {
+		t.Logf("\n✅ PASSED DEVICES:")
+		for _, result := range passed {
+			t.Logf("  - %s", result.Device.Code)
+		}
+	}
+
+	if len(failed) > 0 {
+		t.Logf("\n❌ FAILED DEVICES:")
+		for _, result := range failed {
+			t.Logf("  - %s: %s", result.Device.Code, result.Error)
+		}
+	}
+
+	t.Logf("========================================\n")
+
+	// Fail the test if any device failed
+	if len(failed) > 0 {
+		t.Errorf("Connectivity test failed for %d out of %d devices", len(failed), len(results))
+	}
+}
+
+// runUnicastConnectivityTest is a unified helper for connectivity testing
+// If devices is nil/empty, connects all hosts without device specification (QA mode)
+// If devices are provided, tests connectivity across all devices (AllDevices mode)
+func runUnicastConnectivityTest(t *testing.T, hosts []string, devices []*Device) {
+	if len(devices) == 0 {
+		// QA mode: Connect all hosts without device specification
+		t.Log("Running in QA mode - connecting all hosts without device specification")
+		hostIPMap, err := connectHosts(t, hosts, nil)
+		require.NoError(t, err, "Failed to connect hosts")
+
+		err = testAllToAllConnectivity(t, hostIPMap, false) // false = use simple ping
+		require.NoError(t, err, "Connectivity test failed")
+		return
+	}
+
+	// QA-AllDevices mode: First host stays connected, iterate through devices
+	t.Log("Running in AllDevices mode - testing connectivity across specified devices")
+	require.True(t, len(hosts) >= 2, "AllDevices mode requires at least 2 hosts")
+
+	firstHost := hosts[0]
+	remainingHosts := hosts[1:]
+
+	// Connect first host to first working device
+	var firstHostIP string
+
+	for i, device := range devices {
+		if i > 0 {
+			t.Logf("Waiting 5 seconds before next connection attempt...")
+			time.Sleep(5 * time.Second)
+		}
+
+		t.Logf("Attempting to connect %s to device %s", firstHost, device.Code)
+		hostIPMap, err := connectHosts(t, []string{firstHost}, device)
+		if err != nil {
+			t.Logf("Failed to connect to device %s: %v", device.Code, err)
+			// Try to disconnect to clean up
+			if client, err := getQAClient(firstHost); err == nil {
+				disconnectOnError(client)
+			}
+			continue
+		}
+
+		firstHostIP = hostIPMap[firstHost]
+		t.Logf("First host %s successfully connected to device %s with IP %s",
+			firstHost, device.Code, firstHostIP)
+		break
+	}
+
+	require.NotEmpty(t, firstHostIP, "Failed to connect first host to any device")
+
+	// Ensure we disconnect first host at the end
+	defer func() {
+		t.Logf("Disconnecting first host %s", firstHost)
+		if client, err := getQAClient(firstHost); err == nil {
+			disconnectOnError(client)
+		}
+	}()
+
+	// Test each device with remaining hosts
+	var results []*DeviceTestResult
+	var resultsMutex sync.Mutex
+
+	for _, device := range devices {
+		device := device // capture loop variable
+		t.Run(fmt.Sprintf("device_%s", device.Code), func(t *testing.T) {
+			result := testDeviceConnectivity(t, device, remainingHosts, firstHost, firstHostIP)
+
+			resultsMutex.Lock()
+			results = append(results, result)
+			resultsMutex.Unlock()
+
+			if !result.Success {
+				t.Errorf("Device %s failed: %s", device.Code, result.Error)
+			}
+		})
+	}
+
+	// Print summary
+	printTestAllDevicesUnicastSummary(t, results)
+}
+
+// connectHosts connects the specified hosts, optionally to a specific device
+func connectHosts(t *testing.T, hosts []string, device *Device) (map[string]string, error) {
+	hostIPMap := make(map[string]string)
+	ctx := context.Background()
+
+	for _, host := range hosts {
+		client, err := getQAClient(host)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create QA client for %s: %w", host, err)
+		}
+
+		// Create connection request
+		req := &pb.ConnectUnicastRequest{
+			Mode: pb.ConnectUnicastRequest_IBRL,
+		}
+		if device != nil {
+			req.DeviceCode = device.Code
+		}
+
+		// Connect with timeout
+		connCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+		result, err := client.ConnectUnicast(connCtx, req)
+		cancel()
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to connect %s: %w", host, err)
+		}
+		if !result.GetSuccess() {
+			return nil, fmt.Errorf("connection failed for %s: %s", host, result.GetOutput())
+		}
+
+		// Get IP address
+		statusCtx, statusCancel := context.WithTimeout(ctx, 30*time.Second)
+		status, err := client.GetStatus(statusCtx, &emptypb.Empty{})
+		statusCancel()
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to get status for %s: %w", host, err)
+		}
+
+		ip := getIPFromStatus(status)
+		if ip == "" {
+			return nil, fmt.Errorf("failed to get IP for %s", host)
+		}
+
+		hostIPMap[host] = ip
+		t.Logf("Host %s connected with IP %s", host, ip)
+	}
+
+	return hostIPMap, nil
+}
+
+// testDeviceConnectivity tests connectivity for a specific device
+func testDeviceConnectivity(t *testing.T, device *Device, hosts []string, additionalHost string, additionalIP string) *DeviceTestResult {
+	result := &DeviceTestResult{
+		Device:  device,
+		Success: true,
+		Error:   "",
+	}
+
+	// Connect all hosts to this device
+	t.Logf("Connecting hosts to device %s", device.Code)
+	hostIPMap, err := connectHosts(t, hosts, device)
+	if err != nil {
+		result.Success = false
+		result.Error = err.Error()
+		return result
+	}
+
+	// Add the already-connected first host to the map
+	hostIPMap[additionalHost] = additionalIP
+
+	// Test connectivity between all hosts
+	err = testAllToAllConnectivity(t, hostIPMap, true) // true = use retry ping
+	if err != nil {
+		result.Success = false
+		result.Error = err.Error()
+	}
+
+	// Disconnect the hosts we just connected (not the additional host)
+	for _, host := range hosts {
+		t.Logf("Disconnecting %s from device %s", host, device.Code)
+		if client, err := getQAClient(host); err == nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			_, _ = client.Disconnect(ctx, &emptypb.Empty{})
+			cancel()
+		}
+	}
+
+	// Wait a bit to ensure clean disconnect before next connection
+	time.Sleep(2 * time.Second)
+
+	return result
+}
+
+func testAllToAllConnectivity(t *testing.T, hostIPMap map[string]string, useRetry bool) error {
+	// Build ordered lists for consistent testing
+	var sortedHosts []string
+	for host := range hostIPMap {
+		sortedHosts = append(sortedHosts, host)
+	}
+	sort.Strings(sortedHosts)
+
+	// For each host, ping all other hosts
+	for _, sourceHost := range sortedHosts {
+		sourceIP := hostIPMap[sourceHost]
+		client, err := getQAClient(sourceHost)
+		if err != nil {
+			return fmt.Errorf("failed to get client for %s: %w", sourceHost, err)
+		}
+
+		for _, targetHost := range sortedHosts {
+			if sourceHost == targetHost {
+				continue
+			}
+			targetIP := hostIPMap[targetHost]
+
+			t.Logf("Testing ping from %s (%s) to %s (%s)", sourceHost, sourceIP, targetHost, targetIP)
+
+			if useRetry {
+				// Use robust ping with retries for device testing
+				err := performPingWithRetries(t, client, sourceIP, targetIP,
+					sourceHost, targetHost, 3)
+				if err != nil {
+					return err
+				}
+			} else {
+				// Use simple ping for basic QA mode
+				ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+				pingReq := &pb.PingRequest{
+					TargetIp:    targetIP,
+					SourceIp:    sourceIP,
+					SourceIface: "doublezero0",
+					PingType:    pb.PingRequest_ICMP,
+				}
+				pingResp, err := client.Ping(ctx, pingReq)
+				cancel()
+
+				if err != nil {
+					return fmt.Errorf("ping from %s to %s failed: %w", sourceHost, targetHost, err)
+				}
+
+				if pingResp.PacketsSent == 0 || pingResp.PacketsReceived == 0 {
+					return fmt.Errorf("ping from %s to %s failed: sent=%d, received=%d",
+						sourceHost, targetHost, pingResp.PacketsSent, pingResp.PacketsReceived)
+				}
+
+				if pingResp.PacketsReceived < pingResp.PacketsSent {
+					return fmt.Errorf("ping from %s to %s had loss: sent=%d, received=%d",
+						sourceHost, targetHost, pingResp.PacketsSent, pingResp.PacketsReceived)
+				}
+
+				t.Logf("Successfully pinged %s from %s", targetHost, sourceHost)
+			}
+		}
+	}
+
+	return nil
+}
+
+func disconnectOnError(client pb.QAAgentServiceClient) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_, _ = client.Disconnect(ctx, &emptypb.Empty{})
+}
+
+// performPingWithRetries executes a ping test with retry logic
+func performPingWithRetries(t *testing.T, client pb.QAAgentServiceClient, sourceIP, targetIP, sourceName, targetName string, maxRetries int) error {
+	var lastErr error
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		if attempt > 1 {
+			t.Logf("Retry attempt %d/%d after 2 second delay", attempt, maxRetries)
+			time.Sleep(2 * time.Second)
+		}
+
+		pingCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+
+		pingReq := &pb.PingRequest{
+			TargetIp:    targetIP,
+			SourceIp:    sourceIP,
+			SourceIface: "doublezero0",
+			PingType:    pb.PingRequest_ICMP,
+		}
+
+		t.Logf("Attempt %d: Sending ping request: target=%s, source=%s", attempt, targetIP, sourceIP)
+		pingResp, err := client.Ping(pingCtx, pingReq)
+		cancel()
+
+		if err != nil {
+			lastErr = fmt.Errorf("attempt %d: ping from %s to %s failed: %w", attempt, sourceName, targetName, err)
+			t.Logf("Attempt %d failed: %v", attempt, err)
+			continue
+		}
+
+		if pingResp.PacketsSent == 0 {
+			lastErr = fmt.Errorf("attempt %d: no packets sent from %s", attempt, sourceName)
+			t.Logf("Attempt %d failed: no packets sent", attempt)
+			continue
+		}
+		if pingResp.PacketsReceived == 0 {
+			lastErr = fmt.Errorf("attempt %d: no packets received by %s (sent=%d)", attempt, sourceName, pingResp.PacketsSent)
+			t.Logf("Attempt %d failed: no packets received (sent=%d)", attempt, pingResp.PacketsSent)
+			continue
+		}
+		if pingResp.PacketsReceived < pingResp.PacketsSent {
+			lastErr = fmt.Errorf("attempt %d: packet loss detected: sent=%d, received=%d", attempt, pingResp.PacketsSent, pingResp.PacketsReceived)
+			t.Logf("Attempt %d failed: packet loss (sent=%d, received=%d)", attempt, pingResp.PacketsSent, pingResp.PacketsReceived)
+			continue
+		}
+
+		t.Logf("Successfully pinged %s (%s) from %s (%s) (attempt %d)",
+			targetName, targetIP, sourceName, sourceIP, attempt)
+		lastErr = nil
+		break
+	}
+
+	return lastErr
+}
+
+func getIPFromStatus(resp *pb.StatusResponse) string {
+	for _, status := range resp.Status {
+		if (status.UserType == "IBRL" || status.UserType == "IBRLWithAllocatedIP") && status.DoubleZeroIp != "" {
+			return status.DoubleZeroIp
+		}
+	}
+	return ""
 }

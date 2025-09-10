@@ -138,11 +138,15 @@ func (q *QAAgent) MulticastLeave(ctx context.Context, in *emptypb.Empty) (*empty
 // using IBRL mode. This call will block until the tunnel is up according to the DoubleZero status
 // output or return an error if the tunnel is not up within 20 seconds.
 func (q *QAAgent) ConnectUnicast(ctx context.Context, req *pb.ConnectUnicastRequest) (*pb.Result, error) {
-	q.log.Info("Received ConnectUnicast request for client IP", "client_ip", req.GetClientIp())
+	q.log.Info("Received ConnectUnicast request", "client_ip", req.GetClientIp(), "device_code", req.GetDeviceCode())
 	clientIP := req.GetClientIp()
+	deviceCode := req.GetDeviceCode()
 	cmds := []string{"connect", "ibrl"}
 	if clientIP != "" {
 		cmds = append(cmds, "--client-ip", clientIP)
+	}
+	if deviceCode != "" {
+		cmds = append(cmds, "--device", deviceCode)
 	}
 	cmd := exec.Command("doublezero", cmds...)
 	res, err := runCmd(cmd)
@@ -158,9 +162,16 @@ func (q *QAAgent) ConnectUnicast(ctx context.Context, req *pb.ConnectUnicastRequ
 		defer cancel()
 		status, err := fetchStatus(ctx)
 		if err != nil {
+			q.log.Warn("fetchStatus error", "error", err)
 			return false, err
 		}
-		return status[0].DoubleZeroStatus.State == "up", nil
+		if len(status) == 0 {
+			q.log.Warn("fetchStatus returned empty status")
+			return false, fmt.Errorf("empty status response")
+		}
+		currentState := status[0].DoubleZeroStatus.State
+		q.log.Info("Polling tunnel status", "state", currentState, "tunnel_name", status[0].TunnelName, "doublezero_ip", status[0].DoubleZeroIP)
+		return currentState == "up", nil
 	}
 
 	err = poll.Until(ctx, condition, 30*time.Second, 1*time.Second)

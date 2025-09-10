@@ -5,4 +5,4 @@ pub mod state;
 
 //
 
-solana_pubkey::declare_id!("MockSwapSo12Z111111111111111111111111111111");
+solana_pubkey::declare_id!("ms2ZZhUaXgFW6PQBHK1hxjg1fn8mZejm4zUCtQvHqU2");

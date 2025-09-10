@@ -13,4 +13,4 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - run: go test -v e2e/canary_test.go --args -hosts=sfo-tn-qa01,fra-tn-qa01 -env testnet
+      - run: go test -tags=qa -v ./e2e -run TestConnectivityUnicast_AllDevices --args -hosts=sfo-tn-qa01,fra-tn-qa01 -env testnet

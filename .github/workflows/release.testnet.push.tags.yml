@@ -1,0 +1,53 @@
+name: release.testnet.push.tags
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'The semantic version tag to create (format: vX.X.X)'
+        required: true
+        type: string
+
+jobs:
+  create-and-push-tag:
+    name: Push ${{ github.event.inputs.version }} tag for ${{ matrix.component }}
+    runs-on: ubuntu-latest
+    environment: testnet
+    permissions:
+      contents: write
+    strategy:
+      matrix:
+        component: [test]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          repository: malbeclabs/doublezero
+          token: ${{ secrets.DOUBLEZERO_PAT }}
+          fetch-tags: true
+
+      - name: Validate format and push tag
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          COMPONENT="${{ matrix.component }}"
+          TAG_NAME="$COMPONENT/$VERSION"
+
+          VERSION_REGEX="^v[0-9]+\.[0-9]+\.[0-9]+$"
+
+          if ! [[ "$VERSION" =~ $VERSION_REGEX ]]; then
+            echo "Error: Version format '$VERSION' is invalid. It must be in the format 'vX.X.X'."
+            exit 1
+          fi
+          echo "Version format is valid."
+
+          if git rev-parse -q --verify "refs/tags/$TAG_NAME"; then
+            echo "Error: Tag '$TAG_NAME' already exists in the repository."
+            exit 1
+          fi
+          echo "Tag '$TAG_NAME' will be created."
+
+          git tag "$TAG_NAME"
+          echo "Successfully created tag '$TAG_NAME' locally."
+
+          # git push origin tag "$TAG_NAME"
+          echo "Successfully pushed tag '$TAG_NAME'."

@@ -188,6 +188,25 @@ impl Validate for MulticastGroup {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    #[test]
+    fn test_state_multicastgroup_try_from_defaults() {
+        let data = [AccountType::MulticastGroup as u8];
+        let val = MulticastGroup::try_from(&data[..]).unwrap();
+
+        assert_eq!(val.owner, Pubkey::default());
+        assert_eq!(val.bump_seed, 0);
+        assert_eq!(val.index, 0);
+        assert_eq!(val.tenant_pk, Pubkey::default());
+        assert_eq!(val.multicast_ip, Ipv4Addr::new(0, 0, 0, 0));
+        assert_eq!(val.max_bandwidth, 0);
+        assert_eq!(val.status, MulticastGroupStatus::Pending);
+        assert_eq!(val.code, String::new());
+        assert_eq!(val.publisher_count, 0);
+        assert_eq!(val.subscriber_count, 0);
+    }
+
     #[test]
     fn test_state_multicastgroup_validate_error_invalid_account_type() {
         // Should fail because account_type is not MulticastGroup
@@ -208,7 +227,6 @@ mod tests {
         assert!(err.is_err());
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidAccountType);
     }
-    use super::*;
 
     #[test]
     fn test_state_multicastgroup_serialization() {

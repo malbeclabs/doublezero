@@ -7,7 +7,7 @@ use crate::{
     pda::*,
     seeds::{SEED_ACCESS_PASS, SEED_PREFIX},
     state::{
-        accesspass::{AccessPass, AccessPassStatus, AccessPassType},
+        accesspass::{AccessPass, AccessPassStatus, AccessPassType, ALLOW_MULTIPLE_IP, IS_DYNAMIC},
         accounttype::{AccountType, AccountTypeInfo},
     },
 };
@@ -20,27 +20,29 @@ use solana_program::{
     msg,
     program::invoke_signed_unchecked,
     pubkey::Pubkey,
+    rent::Rent,
     system_instruction,
     sysvar::Sysvar,
 };
 
 // Value to rent exempt two `User` accounts + configurable amount for connect/disconnect txns
 // `User` account size assumes a single publisher and subscriber pubkey registered
-const AIRDROP_USER_RENT_LAMPORTS: u64 = 236 * 2;
+const AIRDROP_USER_RENT_LAMPORTS_BYTES: usize = 236 * 3;
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct SetAccessPassArgs {
     pub accesspass_type: AccessPassType, // 1 or 33
     pub client_ip: Ipv4Addr,             // 4
     pub last_access_epoch: u64,          // 8
+    pub allow_multiple_ip: bool,         // 1
 }
 
 impl fmt::Debug for SetAccessPassArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "accesspass_type: {}, ip: {}, last_access_epoch: {}",
-            self.accesspass_type, self.client_ip, self.last_access_epoch,
+            "accesspass_type: {}, ip: {}, last_access_epoch: {}, allow_multiple_ip: {}",
+            self.accesspass_type, self.client_ip, self.last_access_epoch, self.allow_multiple_ip,
         )
     }
 }
@@ -113,8 +115,16 @@ pub fn process_set_access_pass(
         return Err(DoubleZeroError::InvalidLastAccessEpoch.into());
     }
 
-    // Create the AccessPass account if it doesn't exist, otherwise update it
-    if accesspass_account.owner != program_id {
+    // Flags
+    let mut flags = 0;
+    if value.client_ip == Ipv4Addr::UNSPECIFIED {
+        flags |= IS_DYNAMIC;
+    }
+    if value.allow_multiple_ip {
+        flags |= ALLOW_MULTIPLE_IP;
+    }
+
+    if accesspass_account.data_is_empty() && accesspass_account.lamports() == 0 {
         let accesspass = AccessPass {
             account_type: AccountType::AccessPass,
             bump_seed,
@@ -127,6 +137,7 @@ pub fn process_set_access_pass(
             owner: *payer_account.key,
             mgroup_pub_allowlist: vec![],
             mgroup_sub_allowlist: vec![],
+            flags,
         };
 
         try_create_account(
@@ -162,6 +173,7 @@ pub fn process_set_access_pass(
                 bump_seed,
                 accesspass_type: value.accesspass_type,
                 client_ip: value.client_ip,
+                flags,
                 user_payer: *user_payer.key,
                 last_access_epoch: value.last_access_epoch,
                 connection_count: 0,
@@ -174,6 +186,7 @@ pub fn process_set_access_pass(
 
         accesspass.accesspass_type = value.accesspass_type;
         accesspass.last_access_epoch = value.last_access_epoch;
+        accesspass.flags = flags;
 
         resize_account_if_needed(
             accesspass_account,
@@ -187,22 +200,22 @@ pub fn process_set_access_pass(
         msg!("Updated: {:?}", accesspass);
     }
 
-    let deposit = AIRDROP_USER_RENT_LAMPORTS
+    let deposit = Rent::get()
+        .unwrap()
+        .minimum_balance(AIRDROP_USER_RENT_LAMPORTS_BYTES)
         .saturating_add(globalstate.user_airdrop_lamports)
         .saturating_sub(user_payer.lamports());
 
-    if deposit != 0 {
-        msg!("Airdropping {} lamports to user account", deposit);
-        invoke_signed_unchecked(
-            &system_instruction::transfer(payer_account.key, user_payer.key, deposit),
-            &[
-                payer_account.clone(),
-                user_payer.clone(),
-                system_program.clone(),
-            ],
-            &[],
-        )?;
-    }
+    msg!("Airdropping {} lamports to user account", deposit);
+    invoke_signed_unchecked(
+        &system_instruction::transfer(payer_account.key, user_payer.key, deposit),
+        &[
+            payer_account.clone(),
+            user_payer.clone(),
+            system_program.clone(),
+        ],
+        &[],
+    )?;
 
     Ok(())
 }

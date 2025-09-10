@@ -228,6 +228,7 @@ func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 		doublezero link create wan --code "ld4-dz01:sg1-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet4 --side-z sg1-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 120 --jitter-ms 9
 		doublezero link create wan --code "sg1-dz01:ty2-dz01" --contributor co01 --side-a sg1-dz01 --side-a-interface Ethernet3 --side-z ty2-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 7
 		doublezero link create wan --code "ty2-dz01:la2-dz01" --contributor co01 --side-a ty2-dz01 --side-a-interface Ethernet3 --side-z la2-dz01 --side-z-interface Ethernet3 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 10
+
 		echo "--> Tunnel information onchain:"
 		doublezero link list
 	`})
@@ -290,13 +291,10 @@ func (dn *TestDevnet) CreateMulticastGroupOnchain(t *testing.T, client *devnet.C
 	dn.log.Info("==> Creating multicast group onchain")
 
 	_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", `
-			set -e
+		set -e
 
 		echo "==> Populate multicast group information onchain"
-		doublezero multicast group create --code ` + multicastGroupCode + ` --max-bandwidth 10Gbps --owner me
-
-		echo "==> Waiting for multicast group to be activated by activator"
-		sleep 5
+		doublezero multicast group create --code ` + multicastGroupCode + ` --max-bandwidth 10Gbps --owner me -w
 
 		echo "--> Multicast group information onchain:"
 		doublezero multicast group list

@@ -375,6 +375,30 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_state_user_try_from_defaults() {
+        let data = [AccountType::User as u8];
+        let val = User::try_from(&data[..]).unwrap();
+
+        assert_eq!(val.owner, Pubkey::default());
+        assert_eq!(val.bump_seed, 0);
+        assert_eq!(val.index, 0);
+        assert_eq!(val.user_type, UserType::IBRL);
+        assert_eq!(val.device_pk, Pubkey::default());
+        assert_eq!(val.cyoa_type, UserCYOA::None);
+        assert_eq!(val.client_ip, Ipv4Addr::new(0, 0, 0, 0));
+        assert_eq!(val.dz_ip, Ipv4Addr::new(0, 0, 0, 0));
+        assert_eq!(val.tunnel_id, 0);
+        assert_eq!(
+            val.tunnel_net,
+            NetworkV4::new(Ipv4Addr::new(0, 0, 0, 0), 0).unwrap()
+        );
+        assert_eq!(val.status, UserStatus::Pending);
+        assert_eq!(val.publishers, Vec::<Pubkey>::new());
+        assert_eq!(val.subscribers, Vec::<Pubkey>::new());
+        assert_eq!(val.validator_pubkey, Pubkey::default());
+    }
+
+    #[test]
     fn test_state_user_serialization() {
         let val = User {
             account_type: AccountType::User,

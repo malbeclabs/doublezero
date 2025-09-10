@@ -13,6 +13,10 @@ use doublezero_sdk::{
 };
 use indicatif::ProgressBar;
 
+fn has_keypair_argument() -> bool {
+    std::env::args().any(|arg| arg == "--keypair" || arg == "-k")
+}
+
 pub const CHECK_ID_JSON: u8 = 1;
 pub const CHECK_BALANCE: u8 = 2;
 pub const CHECK_FOUNDATION_ALLOWLIST: u8 = 4;
@@ -24,7 +28,7 @@ pub fn check_requirements(
     checks: u8,
 ) -> eyre::Result<()> {
     // Check that have your id.json
-    if checks & CHECK_ID_JSON != 0 {
+    if (checks & CHECK_ID_JSON != 0) && !has_keypair_argument() {
         check_id(spinner)?;
     }
 

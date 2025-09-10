@@ -108,6 +108,9 @@ impl Validate for AccessPassType {
     }
 }
 
+pub const IS_DYNAMIC: u8 = 1 << 0; // 0000_0001
+pub const ALLOW_MULTIPLE_IP: u8 = 1 << 1; // 0000_0010
+
 #[derive(BorshSerialize, Debug, PartialEq, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct AccessPass {
@@ -136,6 +139,7 @@ pub struct AccessPass {
     pub status: AccessPassStatus,  // 1
     pub mgroup_pub_allowlist: Vec<Pubkey>, // Vec<32> - List of multicast groups this AccessPass can publish to
     pub mgroup_sub_allowlist: Vec<Pubkey>, // Vec<32> - List of multicast groups this AccessPass can subscribe to
+    pub flags: u8,                         // 1
 }
 
 impl fmt::Display for AccessPass {
@@ -191,6 +195,7 @@ impl TryFrom<&[u8]> for AccessPass {
             status: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             mgroup_pub_allowlist: deserialize_vec_with_capacity(&mut data).unwrap_or_default(),
             mgroup_sub_allowlist: deserialize_vec_with_capacity(&mut data).unwrap_or_default(),
+            flags: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::AccessPass {
@@ -237,6 +242,23 @@ impl AccessPass {
 
         Ok(())
     }
+
+    pub fn is_dynamic(&self) -> bool {
+        (self.flags & IS_DYNAMIC) != 0
+    }
+    pub fn allow_multiple_ip(&self) -> bool {
+        (self.flags & ALLOW_MULTIPLE_IP) != 0
+    }
+    pub fn flags_string(&self) -> String {
+        let mut flags = Vec::new();
+        if self.is_dynamic() {
+            flags.push("dynamic");
+        }
+        if self.allow_multiple_ip() {
+            flags.push("allow_multiple_ip");
+        }
+        flags.join(", ")
+    }
 }
 
 #[cfg(test)]
@@ -267,6 +289,7 @@ mod tests {
             status: AccessPassStatus::Connected,
             mgroup_pub_allowlist: vec![],
             mgroup_sub_allowlist: vec![],
+            flags: 0,
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -284,6 +307,7 @@ mod tests {
         assert_eq!(val.last_access_epoch, val2.last_access_epoch);
         assert_eq!(val.connection_count, val2.connection_count);
         assert_eq!(val.status, val2.status);
+        assert_eq!(val.flags, val2.flags);
         assert_eq!(data.len(), val.size(), "Invalid Size");
     }
 
@@ -301,6 +325,7 @@ mod tests {
             status: AccessPassStatus::Connected,
             mgroup_pub_allowlist: vec![],
             mgroup_sub_allowlist: vec![],
+            flags: 0,
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -319,6 +344,61 @@ mod tests {
         assert_eq!(val.user_payer, val2.user_payer);
         assert_eq!(val.last_access_epoch, val2.last_access_epoch);
         assert_eq!(val.connection_count, val2.connection_count);
+        assert_eq!(val.flags, val2.flags);
+        assert_eq!(val.status, val2.status);
+    }
+
+    #[test]
+    fn test_state_accesspass_try_from_defaults() {
+        let data = [AccountType::AccessPass as u8];
+        let val = AccessPass::try_from(&data[..]).unwrap();
+
+        assert_eq!(val.owner, Pubkey::default());
+        assert_eq!(val.bump_seed, 0);
+        assert_eq!(val.accesspass_type, AccessPassType::default());
+        assert_eq!(val.client_ip, Ipv4Addr::new(0, 0, 0, 0));
+        assert_eq!(val.user_payer, Pubkey::default());
+        assert_eq!(val.last_access_epoch, 0);
+        assert_eq!(val.connection_count, 0);
+        assert_eq!(val.flags, 0);
+        assert_eq!(val.status, AccessPassStatus::default());
+    }
+
+    #[test]
+    fn test_state_accesspass_solana_validator_serialization_overflow() {
+        let val = AccessPass {
+            account_type: AccountType::AccessPass,
+            owner: Pubkey::new_unique(),
+            bump_seed: 1,
+            accesspass_type: AccessPassType::SolanaValidator(Pubkey::new_unique()),
+            client_ip: [1, 2, 3, 4].into(),
+            user_payer: Pubkey::new_unique(),
+            last_access_epoch: 0,
+            connection_count: 0,
+            status: AccessPassStatus::Connected,
+            mgroup_pub_allowlist: vec![],
+            mgroup_sub_allowlist: vec![],
+            flags: 0,
+        };
+
+        let mut data = borsh::to_vec(&val).unwrap();
+        let len = data.len();
+        data.push(0);
+        let val2 = AccessPass::try_from(&data[..]).unwrap();
+
+        val.validate().unwrap();
+        val2.validate().unwrap();
+
+        assert_eq!(val.size(), len, "Invalid val.size()");
+        assert_eq!(len, val2.size(), "Invalid val2.size() {val2}");
+        assert_eq!(val.owner, val2.owner);
+        assert_eq!(val.bump_seed, val2.bump_seed);
+        assert_eq!(val.accesspass_type, val2.accesspass_type);
+        assert_eq!(val.client_ip, val2.client_ip);
+        assert_eq!(val.user_payer, val2.user_payer);
+        assert_eq!(val.last_access_epoch, val2.last_access_epoch);
+        assert_eq!(val.connection_count, val2.connection_count);
+        assert_eq!(val.flags, val2.flags);
         assert_eq!(val.status, val2.status);
     }
 
@@ -336,6 +416,7 @@ mod tests {
             status: AccessPassStatus::Connected,
             mgroup_pub_allowlist: vec![],
             mgroup_sub_allowlist: vec![],
+            flags: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -356,6 +437,7 @@ mod tests {
             status: AccessPassStatus::Connected,
             mgroup_pub_allowlist: vec![],
             mgroup_sub_allowlist: vec![],
+            flags: 0,
         };
         let err = val.validate();
         assert!(err.is_err());

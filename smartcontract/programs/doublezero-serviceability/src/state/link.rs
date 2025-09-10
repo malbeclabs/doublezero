@@ -289,6 +289,30 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_state_link_try_from_defaults() {
+        let data = [AccountType::Link as u8];
+        let val = Link::try_from(&data[..]).unwrap();
+
+        assert_eq!(val.owner, Pubkey::default());
+        assert_eq!(val.bump_seed, 0);
+        assert_eq!(val.index, 0);
+        assert_eq!(val.contributor_pk, Pubkey::default());
+        assert_eq!(val.side_a_pk, Pubkey::default());
+        assert_eq!(val.side_z_pk, Pubkey::default());
+        assert_eq!(val.link_type, LinkLinkType::default());
+        assert_eq!(val.bandwidth, 0);
+        assert_eq!(val.mtu, 0);
+        assert_eq!(val.delay_ns, 0);
+        assert_eq!(val.jitter_ns, 0);
+        assert_eq!(val.tunnel_id, 0);
+        assert_eq!(val.tunnel_net, NetworkV4::default());
+        assert_eq!(val.code, "");
+        assert_eq!(val.side_a_iface_name, "");
+        assert_eq!(val.side_z_iface_name, "");
+        assert_eq!(val.status, LinkStatus::default());
+    }
+
+    #[test]
     fn test_state_link_serialization() {
         let val = Link {
             account_type: AccountType::Link,

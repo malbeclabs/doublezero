@@ -41,6 +41,7 @@ pub struct AccessPassDisplay {
     pub multicast: String,
     pub last_access_epoch: String,
     pub remaining_epoch: String,
+    pub flags: String,
     pub connections: u16,
     pub status: AccessPassStatus,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
@@ -116,6 +117,7 @@ impl ListAccessPassCliCommand {
                         .saturating_sub(epoch)
                         .to_string()
                 },
+                flags: access_pass.flags_string(),
                 connections: access_pass.connection_count,
                 status: access_pass.status,
                 owner: access_pass.owner,
@@ -145,7 +147,7 @@ mod tests {
     use crate::{accesspass::list::ListAccessPassCliCommand, tests::utils::create_test_client};
     use doublezero_sdk::AccountType;
     use doublezero_serviceability::state::accesspass::{
-        AccessPass, AccessPassStatus, AccessPassType,
+        AccessPass, AccessPassStatus, AccessPassType, IS_DYNAMIC,
     };
     use solana_sdk::pubkey::Pubkey;
     use std::{collections::HashMap, net::Ipv4Addr};
@@ -182,13 +184,14 @@ mod tests {
             status: AccessPassStatus::Connected,
             mgroup_pub_allowlist: vec![mgroup_pubkey],
             mgroup_sub_allowlist: vec![],
+            flags: 0,
         };
 
         let access2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
         let access2 = AccessPass {
             account_type: AccountType::AccessPass,
             bump_seed: 2,
-            client_ip: Ipv4Addr::new(1, 2, 3, 4),
+            client_ip: Ipv4Addr::UNSPECIFIED,
             accesspass_type: AccessPassType::SolanaValidator(Pubkey::from_str_const(
                 "1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB",
             )),
@@ -199,6 +202,7 @@ mod tests {
             status: AccessPassStatus::Connected,
             mgroup_pub_allowlist: vec![],
             mgroup_sub_allowlist: vec![mgroup_pubkey],
+            flags: IS_DYNAMIC,
         };
 
         client.expect_get_epoch().returning(move || Ok(123));
@@ -225,7 +229,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | accesspass_type                                             | ip      | user_payer                                | multicast | last_access_epoch | remaining_epoch | connections | status    | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | solana_validator: 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | 1.2.3.4 | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | S:test    | 123               | 113             | 0           | connected | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
+        assert_eq!(output_str, " account                                   | accesspass_type                                             | ip      | user_payer                                | multicast | last_access_epoch | remaining_epoch | flags   | connections | status    | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | solana_validator: 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | 0.0.0.0 | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | S:test    | 123               | 113             | dynamic | 0           | connected | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
 
         let mut output = Vec::new();
         let res = ListAccessPassCliCommand {
@@ -238,6 +242,6 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"accesspass_type\":\"solana_validator: 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"ip\":\"1.2.3.4\",\"user_payer\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"multicast\":\"S:test\",\"last_access_epoch\":\"123\",\"remaining_epoch\":\"113\",\"connections\":0,\"status\":\"Connected\",\"owner\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\"}]\n");
+        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"accesspass_type\":\"solana_validator: 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"ip\":\"0.0.0.0\",\"user_payer\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"multicast\":\"S:test\",\"last_access_epoch\":\"123\",\"remaining_epoch\":\"113\",\"flags\":\"dynamic\",\"connections\":0,\"status\":\"Connected\",\"owner\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\"}]\n");
     }
 }

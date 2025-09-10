@@ -1,13 +1,14 @@
+use std::net::Ipv4Addr;
+
 use crate::{
     commands::{
-        globalstate::get::GetGlobalStateCommand,
+        accesspass::get::GetAccessPassCommand, globalstate::get::GetGlobalStateCommand,
         multicastgroup::subscribe::SubscribeMulticastGroupCommand,
     },
     DoubleZeroClient,
 };
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_accesspass_pda,
-    processors::user::delete::UserDeleteArgs,
+    instructions::DoubleZeroInstruction, processors::user::delete::UserDeleteArgs,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
@@ -39,8 +40,20 @@ impl DeleteUserCommand {
             .execute(client)?;
         }
 
-        let (accesspass_pk, _) =
-            get_accesspass_pda(&client.get_program_id(), &user.client_ip, &user.owner);
+        let (accesspass_pk, _) = GetAccessPassCommand {
+            client_ip: Ipv4Addr::UNSPECIFIED,
+            user_payer: user.owner,
+        }
+        .execute(client)
+        .or_else(|_| {
+            GetAccessPassCommand {
+                client_ip: user.client_ip,
+                user_payer: user.owner,
+            }
+            .execute(client)
+        })
+        .map_err(|_| eyre::eyre!("You have no Access Pass"))?;
+
         client.execute_transaction(
             DoubleZeroInstruction::DeleteUser(UserDeleteArgs {}),
             vec![

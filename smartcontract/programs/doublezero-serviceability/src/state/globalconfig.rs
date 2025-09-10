@@ -94,6 +94,20 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_state_globalconfig_try_from_defaults() {
+        let data = [AccountType::GlobalConfig as u8];
+        let val = GlobalConfig::try_from(&data[..]).unwrap();
+
+        assert_eq!(val.owner, Pubkey::default());
+        assert_eq!(val.bump_seed, 0);
+        assert_eq!(val.local_asn, 0);
+        assert_eq!(val.remote_asn, 0);
+        assert_eq!(val.device_tunnel_block, NetworkV4::default());
+        assert_eq!(val.user_tunnel_block, NetworkV4::default());
+        assert_eq!(val.multicastgroup_block, NetworkV4::default());
+    }
+
+    #[test]
     fn test_state_globalconfig_serialization() {
         let val = GlobalConfig {
             account_type: AccountType::GlobalConfig,

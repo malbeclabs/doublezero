@@ -545,6 +545,30 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_state_device_try_from_defaults() {
+        let data = [AccountType::Device as u8];
+        let val = Device::try_from(&data[..]).unwrap();
+
+        assert_eq!(val.owner, Pubkey::default());
+        assert_eq!(val.bump_seed, 0);
+        assert_eq!(val.index, 0);
+        assert_eq!(val.code, "");
+        assert_eq!(val.dz_prefixes.len(), 0);
+        assert_eq!(val.location_pk, Pubkey::default());
+        assert_eq!(val.exchange_pk, Pubkey::default());
+        assert_eq!(val.public_ip, Ipv4Addr::new(0, 0, 0, 0));
+        assert_eq!(val.status, DeviceStatus::Pending);
+        assert_eq!(val.device_type, DeviceType::Switch);
+        assert_eq!(val.metrics_publisher_pk, Pubkey::default());
+        assert_eq!(val.contributor_pk, Pubkey::default());
+        assert_eq!(val.mgmt_vrf, "");
+        assert_eq!(val.interfaces.len(), 0);
+        assert_eq!(val.reference_count, 0);
+        assert_eq!(val.users_count, 0);
+        assert_eq!(val.max_users, 0);
+    }
+
+    #[test]
     fn test_state_device_validate_error_invalid_account_type() {
         let val = Device {
             account_type: AccountType::User, // Should be Device

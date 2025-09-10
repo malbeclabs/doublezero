@@ -685,7 +685,6 @@ mod tests {
             DoubleZeroInstruction::UpdateUser(UserUpdateArgs {
                 user_type: Some(UserType::IBRL),
                 cyoa_type: Some(UserCYOA::GREOverDIA),
-                client_ip: Some([1, 2, 3, 4].into()),
                 dz_ip: Some([1, 2, 3, 4].into()),
                 tunnel_id: Some(1),
                 tunnel_net: Some("1.2.3.4/1".parse().unwrap()),
@@ -932,6 +931,7 @@ mod tests {
                 ),
                 client_ip: [1, 2, 3, 4].into(),
                 last_access_epoch: 123,
+                allow_multiple_ip: false,
             }),
             "SetAccessPass",
         );

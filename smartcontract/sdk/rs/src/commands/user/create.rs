@@ -1,7 +1,10 @@
-use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
+use crate::{
+    commands::{accesspass::get::GetAccessPassCommand, globalstate::get::GetGlobalStateCommand},
+    DoubleZeroClient,
+};
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
-    pda::{get_accesspass_pda, get_user_pda},
+    pda::get_user_pda,
     processors::user::create::UserCreateArgs,
     state::user::{UserCYOA, UserType},
 };
@@ -22,11 +25,20 @@ impl CreateUserCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (accesspass_pk, _) = get_accesspass_pda(
-            &client.get_program_id(),
-            &self.client_ip,
-            &client.get_payer(),
-        );
+        let (accesspass_pk, _) = GetAccessPassCommand {
+            client_ip: Ipv4Addr::UNSPECIFIED,
+            user_payer: client.get_payer(),
+        }
+        .execute(client)
+        .or_else(|_| {
+            GetAccessPassCommand {
+                client_ip: self.client_ip,
+                user_payer: client.get_payer(),
+            }
+            .execute(client)
+        })
+        .map_err(|_| eyre::eyre!("You have no Access Pass"))?;
+
         let (pda_pubkey, _) = get_user_pda(&client.get_program_id(), globalstate.account_index + 1);
         client
             .execute_transaction(

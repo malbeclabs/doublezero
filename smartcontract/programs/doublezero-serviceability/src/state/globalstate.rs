@@ -114,6 +114,22 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_state_globalstate_try_from_defaults() {
+        let data = [AccountType::GlobalState as u8];
+        let val = GlobalState::try_from(&data[..]).unwrap();
+
+        assert_eq!(val.bump_seed, 0);
+        assert_eq!(val.account_index, 0);
+        assert_eq!(val.foundation_allowlist, Vec::<Pubkey>::new());
+        assert_eq!(val.device_allowlist, Vec::<Pubkey>::new());
+        assert_eq!(val.user_allowlist, Vec::<Pubkey>::new());
+        assert_eq!(val.activator_authority_pk, Pubkey::default());
+        assert_eq!(val.sentinel_authority_pk, Pubkey::default());
+        assert_eq!(val.contributor_airdrop_lamports, 0);
+        assert_eq!(val.user_airdrop_lamports, 0);
+    }
+
+    #[test]
     fn test_state_globalstate_serialization() {
         let val = GlobalState {
             account_type: AccountType::GlobalState,

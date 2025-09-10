@@ -20,13 +20,14 @@ use doublezero_serviceability::{
 use globalconfig::set::SetGlobalConfigArgs;
 use solana_program_test::*;
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signer::Signer};
+use std::net::Ipv4Addr;
 use user::closeaccount::UserCloseAccountArgs;
 
 mod test_helpers;
 use test_helpers::*;
 
 #[tokio::test]
-async fn test_user() {
+async fn test_accesspass_allow_multiple_ip() {
     let program_id = Pubkey::new_unique();
     let (mut banks_client, payer, recent_blockhash) = ProgramTest::new(
         "doublezero_serviceability",
@@ -262,7 +263,8 @@ async fn test_user() {
     println!("🟢 6. Testing Access Pass creation...");
 
     let user_ip = [100, 0, 0, 1].into();
-    let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &user_ip, &payer.pubkey());
+    let (accesspass_pubkey, _) =
+        get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &payer.pubkey());
 
     println!("Testing AccessPass User1 initialization...");
     execute_transaction(
@@ -271,9 +273,9 @@ async fn test_user() {
         program_id,
         DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
             accesspass_type: AccessPassType::Prepaid,
-            client_ip: user_ip,
+            client_ip: Ipv4Addr::UNSPECIFIED,
             last_access_epoch: 9999,
-            allow_multiple_ip: false,
+            allow_multiple_ip: true,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),

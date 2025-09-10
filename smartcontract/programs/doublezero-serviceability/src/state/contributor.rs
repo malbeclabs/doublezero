@@ -167,6 +167,19 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_state_contributor_try_from_defaults() {
+        let data = [AccountType::Contributor as u8];
+        let val = Contributor::try_from(&data[..]).unwrap();
+
+        assert_eq!(val.owner, Pubkey::default());
+        assert_eq!(val.bump_seed, 0);
+        assert_eq!(val.index, 0);
+        assert_eq!(val.status, ContributorStatus::None);
+        assert_eq!(val.code, "");
+        assert_eq!(val.reference_count, 0);
+    }
+
+    #[test]
     fn test_state_contributor_serialization() {
         let val = Contributor {
             account_type: AccountType::Contributor,

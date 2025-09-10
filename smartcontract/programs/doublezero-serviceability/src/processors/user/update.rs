@@ -16,7 +16,6 @@ use std::fmt;
 pub struct UserUpdateArgs {
     pub user_type: Option<UserType>,
     pub cyoa_type: Option<UserCYOA>,
-    pub client_ip: Option<std::net::Ipv4Addr>,
     pub dz_ip: Option<std::net::Ipv4Addr>,
     pub tunnel_id: Option<u16>,
     pub tunnel_net: Option<NetworkV4>,
@@ -27,10 +26,9 @@ impl fmt::Debug for UserUpdateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "user_type: {}, cyoa_type: {}, client_ip: {}, dz_ip: {}, tunnel_id: {}, tunnel_net: {}",
+            "user_type: {}, cyoa_type: {}, dz_ip: {}, tunnel_id: {}, tunnel_net: {}",
             format_option!(self.user_type),
             format_option!(self.cyoa_type),
-            format_option!(self.client_ip),
             format_option!(self.dz_ip),
             format_option!(self.tunnel_id),
             format_option!(self.tunnel_net),
@@ -88,9 +86,6 @@ pub fn process_update_user(
     }
     if let Some(value) = value.cyoa_type {
         user.cyoa_type = value;
-    }
-    if let Some(value) = value.client_ip {
-        user.client_ip = value;
     }
     if let Some(value) = value.validator_pubkey {
         user.validator_pubkey = value;

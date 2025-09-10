@@ -10,11 +10,10 @@ use crate::{
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
 use doublezero_program_common::types::NetworkV4;
-#[cfg(test)]
-use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
+    msg,
     pubkey::Pubkey,
 };
 use std::net::Ipv4Addr;
@@ -85,8 +84,14 @@ pub fn process_activate_user(
     }
 
     let mut accesspass = AccessPass::try_from(accesspass_account)?;
-    assert_eq!(accesspass.client_ip, user.client_ip, "Invalid AccessPass");
-    assert_eq!(accesspass.user_payer, user.owner, "Invalid AccessPass");
+    if accesspass.user_payer != user.owner {
+        msg!(
+            "Invalid user_payer accesspass.{{user_payer: {}}} = {{ user_payer: {} }}",
+            accesspass.user_payer,
+            payer_account.key
+        );
+        return Err(DoubleZeroError::Unauthorized.into());
+    }
 
     user.tunnel_id = value.tunnel_id;
     user.tunnel_net = value.tunnel_net;

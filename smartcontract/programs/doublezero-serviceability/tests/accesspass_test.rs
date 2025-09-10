@@ -6,7 +6,7 @@ use doublezero_serviceability::{
     state::accesspass::AccessPassType,
 };
 use solana_program_test::*;
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signer::Signer};
+use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey};
 use std::net::Ipv4Addr;
 
 mod test_helpers;
@@ -47,7 +47,7 @@ async fn test_accesspass() {
     // AccessPass tests
 
     let client_ip = Ipv4Addr::new(100, 0, 0, 1);
-    let user_payer = payer.pubkey();
+    let user_payer = Pubkey::new_unique();
     let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &user_payer);
     let solana_identity = Pubkey::new_unique();
 
@@ -62,6 +62,7 @@ async fn test_accesspass() {
             accesspass_type: AccessPassType::Prepaid,
             client_ip,
             last_access_epoch: 10,
+            allow_multiple_ip: false,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -93,6 +94,7 @@ async fn test_accesspass() {
             accesspass_type: AccessPassType::SolanaValidator(solana_identity),
             client_ip,
             last_access_epoch: u64::MAX,
+            allow_multiple_ip: false,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -148,6 +150,7 @@ async fn test_accesspass() {
             accesspass_type: AccessPassType::Prepaid,
             client_ip,
             last_access_epoch: 101,
+            allow_multiple_ip: false,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -180,6 +183,7 @@ async fn test_accesspass() {
             accesspass_type: AccessPassType::Prepaid,
             client_ip,
             last_access_epoch: 0,
+            allow_multiple_ip: false,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),

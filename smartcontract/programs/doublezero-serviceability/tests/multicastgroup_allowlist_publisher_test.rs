@@ -144,6 +144,7 @@ async fn test_multicast_publisher_allowlist() {
             accesspass_type: AccessPassType::Prepaid,
             client_ip,
             last_access_epoch: 100,
+            allow_multiple_ip: false,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),

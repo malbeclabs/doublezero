@@ -122,6 +122,7 @@ mod tests {
             owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo7"),
             connection_count: 0,
             status: AccessPassStatus::Requested,
+            flags: 0,
         };
 
         let accesspass2_pk = Pubkey::from_str_const("11111112D1oxKts8YPdTJRG5FzxTNpMtWmq8hkVx3");
@@ -137,6 +138,7 @@ mod tests {
             owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo5"),
             connection_count: 0,
             status: AccessPassStatus::Requested,
+            flags: 0,
         };
 
         client

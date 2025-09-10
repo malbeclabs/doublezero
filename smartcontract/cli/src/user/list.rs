@@ -79,11 +79,25 @@ impl ListUserCliCommand {
         let mut users = binding
             .iter()
             .map(|(pk, user)| {
-                let (accesspass_pk, _) =
-                    get_accesspass_pda(&client.get_program_id(), &user.client_ip, &user.owner);
-                let accesspass = accesspasses.get(&accesspass_pk);
+                let (accesspass_pk, _) = get_accesspass_pda(
+                    &client.get_program_id(),
+                    &Ipv4Addr::UNSPECIFIED,
+                    &user.owner,
+                );
 
-                (*pk, user.clone(), accesspass.cloned())
+                match accesspasses.get(&accesspass_pk) {
+                    Some(accesspass) => (pk, user.clone(), Some(accesspass.clone())),
+                    None => {
+                        let (accesspass_pk, _) = get_accesspass_pda(
+                            &client.get_program_id(),
+                            &user.client_ip,
+                            &user.owner,
+                        );
+                        let accesspass = accesspasses.get(&accesspass_pk);
+
+                        (pk, user.clone(), accesspass.cloned())
+                    }
+                }
             })
             .collect::<Vec<_>>();
 
@@ -152,7 +166,7 @@ impl ListUserCliCommand {
                 };
 
                 UserDisplay {
-                    account: pubkey,
+                    account: *pubkey,
                     user_type: user.user_type,
                     device_pk: user.device_pk,
                     multicast: format_multicast_group_names(&user, &mgroups),
@@ -432,6 +446,7 @@ mod tests {
             mgroup_pub_allowlist: vec![],
             mgroup_sub_allowlist: vec![],
             owner: client.get_payer(),
+            flags: 0,
         };
 
         let user2 = User {
@@ -468,6 +483,7 @@ mod tests {
             mgroup_sub_allowlist: vec![mgroup1_pubkey],
 
             owner: client.get_payer(),
+            flags: 0,
         };
 
         client.expect_list_user().returning(move |_| {

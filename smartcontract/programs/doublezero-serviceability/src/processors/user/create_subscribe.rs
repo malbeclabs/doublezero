@@ -23,6 +23,7 @@ use solana_program::{
     pubkey::Pubkey,
     sysvar::Sysvar,
 };
+use std::net::Ipv4Addr;
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct UserCreateSubscribeArgs {
@@ -91,9 +92,13 @@ pub fn process_create_subscribe_user(
     }
 
     let (accesspass_pda, _) = get_accesspass_pda(program_id, &value.client_ip, payer_account.key);
-    assert_eq!(
-        accesspass_account.key, &accesspass_pda,
-        "Invalid AccessPass PDA"
+    let (accesspass_dynamic_pda, _) =
+        get_accesspass_pda(program_id, &Ipv4Addr::UNSPECIFIED, payer_account.key);
+    // Access Pass must exist and match the client_ip or allow_multiple_ip must be enabled
+    assert!(
+        accesspass_account.key == &accesspass_pda
+            || accesspass_account.key == &accesspass_dynamic_pda,
+        "Invalid AccessPass PDA",
     );
 
     // Invalid Access Pass
@@ -103,11 +108,20 @@ pub fn process_create_subscribe_user(
 
     // Read Access Pass
     let mut accesspass = AccessPass::try_from(accesspass_account)?;
-    if accesspass.user_payer != *payer_account.key || accesspass.client_ip != value.client_ip {
+    if accesspass.user_payer != *payer_account.key {
         msg!(
-            "Invalid user_payer or client_ip accesspass.{{user_payer: {} client_ip: {}}} = {{ user_payer: {} client_ip: {} }}",
+            "Invalid user_payer accesspass.{{user_payer: {}}} = {{ user_payer: {} }}",
             accesspass.user_payer,
-            payer_account.key,
+            payer_account.key
+        );
+        return Err(DoubleZeroError::Unauthorized.into());
+    }
+    if accesspass.is_dynamic() && accesspass.client_ip == Ipv4Addr::UNSPECIFIED {
+        accesspass.client_ip = value.client_ip; // lock to the first used IP
+    }
+    if !accesspass.allow_multiple_ip() && accesspass.client_ip != value.client_ip {
+        msg!(
+            "Invalid client_ip accesspass.{{client_ip: {}}} = {{ client_ip: {} }}",
             accesspass.client_ip,
             value.client_ip
         );
@@ -128,6 +142,9 @@ pub fn process_create_subscribe_user(
 
     accesspass.connection_count += 1;
     accesspass.status = AccessPassStatus::Connected;
+    if accesspass.is_dynamic() && accesspass.client_ip == Ipv4Addr::UNSPECIFIED {
+        accesspass.client_ip = value.client_ip; // lock to the first used IP
+    }
 
     // Read validator_pubkey from AccesPass
     let validator_pubkey = match accesspass.accesspass_type {

@@ -8,6 +8,10 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Device controller
+    - Support server dual listening on TLS and non-TLS ports
+
+
 ## [v0.6.3](https://github.com/malbeclabs/doublezero/compare/client/v0.6.2...client/v0.6.3) – 2025-09-08
 
 ### Breaking

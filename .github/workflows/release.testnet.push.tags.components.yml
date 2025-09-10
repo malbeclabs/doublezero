@@ -1,0 +1,40 @@
+name: release.testnet.push.tags.components
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'The semantic version tag to create (format: vX.X.X)'
+        required: true
+        type: string
+
+jobs:
+  component-tags:
+    name: Tag ${{ matrix.component }} with version ${{ github.event.inputs.version }}
+    uses: ./.github/workflows/release.testnet.push.tags.yml
+    strategy:
+      matrix:
+        component:
+          #- activator
+          #- controller
+          #- internet-latency-collector
+          #- agent
+          #- device-telemetry-agent
+          #- funder
+          #- monitor
+          - test
+    with:
+      version: ${{ github.event.inputs.version }}
+      component: ${{ matrix.component }}
+    secrets:
+      DOUBLEZERO_PAT: ${{ secrets.DOUBLEZERO_PAT }}
+  client-tag:
+    name: Tag client with version ${{ github.event.inputs.version }}
+    needs: component-tags
+    uses: ./.github/workflows/release.testnet.push.tags.yml
+    with:
+      version: ${{ github.event.inputs.version }}
+      component: test2
+        # - client
+    secrets:
+      DOUBLEZERO_PAT: ${{ secrets.DOUBLEZERO_PAT }}

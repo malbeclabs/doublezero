@@ -1,30 +1,28 @@
-name: release.testnet.push.tags
+name: Reusable - Push Component Tag
 
 on:
-  workflow_dispatch:
+  workflow_call:
     inputs:
       version:
         description: 'The semantic version tag to create (format: vX.X.X)'
         required: true
         type: string
+      component:
+        description: 'The component to tag'
+        required: true
+        type: string
+    secrets:
+      DOUBLEZERO_PAT:
+        description: 'PAT to push tags to the repository'
+        required: true
 
 jobs:
   create-and-push-tag:
-    name: Push ${{ github.event.inputs.version }} tag for ${{ matrix.component }}
+    name: Push ${{ inputs.version }} tag for ${{ inputs.component }}
     runs-on: ubuntu-latest
     environment: testnet
     permissions:
       contents: write
-    strategy:
-      matrix:
-        component:
-          - activator
-          - controller
-          - internet-latency-collector
-          - agent
-          - device-telemetry-agent
-          - funder
-          - monitor
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -35,8 +33,8 @@ jobs:
 
       - name: Validate format and push tag
         run: |
-          VERSION="${{ github.event.inputs.version }}"
-          COMPONENT="${{ matrix.component }}"
+          VERSION="${{ inputs.version }}"
+          COMPONENT="${{ inputs.component }}"
           TAG_NAME="$COMPONENT/$VERSION"
 
           VERSION_REGEX="^v[0-9]+\.[0-9]+\.[0-9]+$"

@@ -17,7 +17,14 @@ jobs:
       contents: write
     strategy:
       matrix:
-        component: [test]
+        component:
+          - activator
+          - controller
+          - internet-latency-collector
+          - agent
+          - device-telemetry-agent
+          - funder
+          - monitor
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -49,5 +56,5 @@ jobs:
           git tag "$TAG_NAME"
           echo "Successfully created tag '$TAG_NAME' locally."
 
-          # git push origin tag "$TAG_NAME"
+          git push origin tag "$TAG_NAME"
           echo "Successfully pushed tag '$TAG_NAME'."

@@ -1,7 +1,7 @@
 # ----------------------------------------------------------------------------
 # Builder stage for building the control plane agent binary.
 # ----------------------------------------------------------------------------
-FROM golang:1.24.3 AS builder
+FROM golang:1.24.7 AS builder
 
 WORKDIR /work
 COPY . .

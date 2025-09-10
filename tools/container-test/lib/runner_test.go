@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	dockerfile = `FROM golang:1.24.3-alpine AS builder
+	dockerfile = `FROM golang:1.24.7-alpine AS builder
 WORKDIR /work
 COPY . .
 RUN go test -c -o /bin/example.test -tags container_tests

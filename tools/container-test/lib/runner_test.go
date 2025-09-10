@@ -84,7 +84,7 @@ func TestContainerTest_Runner_AllPassingTests(t *testing.T) {
 
 	// Add a go.mod file to the temporary directory.
 	goModFilePath := filepath.Join(tmpDir, "go.mod")
-	if err := os.WriteFile(goModFilePath, []byte("module example\n\ngo 1.24.3\n"), 0644); err != nil {
+	if err := os.WriteFile(goModFilePath, []byte("module example\n\ngo 1.24.7\n"), 0644); err != nil {
 		t.Fatalf("failed to write go.mod file: %v", err)
 	}
 
@@ -135,7 +135,7 @@ func TestContainerTest_Runner_SomeFailingTests(t *testing.T) {
 
 	// Add a go.mod file to the temporary directory.
 	goModFilePath := filepath.Join(tmpDir, "go.mod")
-	if err := os.WriteFile(goModFilePath, []byte("module example\n\ngo 1.24.3\n"), 0644); err != nil {
+	if err := os.WriteFile(goModFilePath, []byte("module example\n\ngo 1.24.7\n"), 0644); err != nil {
 		t.Fatalf("failed to write go.mod file: %v", err)
 	}
 

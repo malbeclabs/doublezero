@@ -143,7 +143,7 @@ mod tests {
     use super::*;
     use crate::settings::{
         InetLookbackSettings, PrefixSettings, ProgramSettings, RpcSettings, ShapleySettings,
-        TelemetryDefaultSettings, network::Network,
+        TelemetryDefaultSettings, WorkerSettings, network::Network,
     };
 
     fn create_valid_config() -> Settings {
@@ -184,6 +184,7 @@ mod tests {
                 private_default_latency_ms: 1000.0,
                 enable_previous_epoch_lookup: true,
             },
+            worker: WorkerSettings::default(),
         }
     }
 

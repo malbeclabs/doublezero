@@ -28,6 +28,9 @@ pub struct Settings {
     pub inet_lookback: InetLookbackSettings,
     /// Telemetry default handling configuration
     pub telemetry_defaults: TelemetryDefaultSettings,
+    /// Worker configuration (optional)
+    #[serde(default)]
+    pub worker: WorkerSettings,
 }
 
 /// Shapley value calculation parameters for reward distribution
@@ -116,6 +119,30 @@ pub struct TelemetryDefaultSettings {
     /// Enable previous epoch lookup for public links
     /// If true, fetches previous epoch's average when current has insufficient data
     pub enable_previous_epoch_lookup: bool,
+}
+
+/// Worker configuration for automated rewards calculation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkerSettings {
+    /// Check interval in seconds (default: 300 = 5 minutes)
+    pub interval_seconds: u64,
+    /// Path to worker state file (default: /var/lib/doublezero/contributor-rewards.state)
+    pub state_file: String,
+    /// Maximum consecutive failures before halting (default: 10)
+    pub max_consecutive_failures: u32,
+    /// Enable dry run mode for worker (default: false)
+    pub enable_dry_run: bool,
+}
+
+impl Default for WorkerSettings {
+    fn default() -> Self {
+        Self {
+            interval_seconds: 300,
+            state_file: "/var/lib/doublezero/contributor-rewards.state".to_string(),
+            max_consecutive_failures: 10,
+            enable_dry_run: false,
+        }
+    }
 }
 
 impl Settings {

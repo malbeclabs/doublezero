@@ -28,6 +28,9 @@ Examples:
     # Calculate rewards for the previous epoch
     contributor-rewards calculate-rewards -k keypair.json
 
+    # Start automated scheduler
+    contributor-rewards scheduler start --dry-run
+
     # Read telemetry aggregates
     contributor-rewards read-telem-agg --epoch 123
 
@@ -64,6 +67,11 @@ pub enum Commands {
         #[command(subcommand)]
         cmd: cli::telemetry::TelemetryCommands,
     },
+    /// Run automated rewards scheduler
+    Scheduler {
+        #[command(subcommand)]
+        cmd: cli::scheduler::SchedulerCommands,
+    },
 }
 
 impl Cli {
@@ -83,6 +91,7 @@ impl Cli {
             Commands::Inspect { cmd } => cli::inspect::handle(&orchestrator, cmd).await,
             Commands::Snapshot { cmd } => cli::snapshot::handle(&orchestrator, cmd).await,
             Commands::Telemetry { cmd } => cli::telemetry::handle(&orchestrator, cmd).await,
+            Commands::Scheduler { cmd } => cli::scheduler::handle(&orchestrator, cmd).await,
         }
     }
 }

@@ -51,6 +51,7 @@ fn create_test_settings(
             private_default_latency_ms: private_default_ms,
             enable_previous_epoch_lookup: enable_previous,
         },
+        worker: settings::WorkerSettings::default(),
     }
 }
 

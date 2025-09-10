@@ -20,9 +20,9 @@ use std::{collections::BTreeMap, path::PathBuf, time::Instant};
 use tabled::{builder::Builder as TableBuilder, settings::Style};
 use tracing::{info, warn};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Orchestrator {
-    settings: Settings,
+    pub settings: Settings,
 }
 
 impl Orchestrator {

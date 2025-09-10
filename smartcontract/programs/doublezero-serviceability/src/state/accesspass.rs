@@ -16,7 +16,16 @@ use std::{fmt, net::Ipv4Addr};
 pub enum AccessPassType {
     #[default]
     Prepaid,
-    SolanaValidator(Pubkey),
+    SolanaValidator(
+        #[cfg_attr(
+            feature = "serde",
+            serde(
+                serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string",
+                deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
+            )
+        )]
+        Pubkey,
+    ),
 }
 
 impl AccessPassType {

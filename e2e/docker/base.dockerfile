@@ -45,7 +45,7 @@ RUN apt update -qq && \
     protobuf-compiler libssl-dev git iproute2 iputils-ping net-tools tcpdump
 
 # Install go
-ARG GO_VERSION=1.24.3
+ARG GO_VERSION=1.24.7
 RUN ARCH="$(uname -m)" && \
     case "$ARCH" in \
     x86_64) GOARCH=amd64 ;; \

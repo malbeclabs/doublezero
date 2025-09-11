@@ -485,7 +485,8 @@ func TestConnectivityUnicast_AllDevices(t *testing.T) {
 		}
 
 		// Check if device has capacity for at least 2 users
-		if device.MaxUsers > 0 && device.UsersCount >= device.MaxUsers-1 {
+		availableSlots := device.MaxUsers - device.UsersCount
+		if availableSlots < 2 {
 			t.Logf("Skipping device %s as it doesn't have capacity for 2 users (%d/%d users)",
 				device.Code, device.UsersCount, device.MaxUsers)
 			continue
@@ -619,9 +620,10 @@ func runUnicastConnectivityTest(t *testing.T, hosts []string, devices []*Device)
 	var results []*DeviceTestResult
 	var resultsMutex sync.Mutex
 
-	for _, device := range devices {
+	for i, device := range devices {
 		device := device // capture loop variable
 		t.Run(fmt.Sprintf("device_%s", device.Code), func(t *testing.T) {
+			t.Logf("Testing device %s %d/%d", device.Code, i+1, len(devices))
 			result := testDeviceConnectivity(t, device, remainingHosts, firstHost, firstHostIP)
 
 			resultsMutex.Lock()
@@ -647,6 +649,31 @@ func connectHosts(t *testing.T, hosts []string, device *Device) (map[string]stri
 		client, err := getQAClient(host)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create QA client for %s: %w", host, err)
+		}
+
+		// Ensure clean state by disconnecting if tunnel is up
+		checkCtx, checkCancel := context.WithTimeout(ctx, 10*time.Second)
+		checkStatus, checkErr := client.GetStatus(checkCtx, &emptypb.Empty{})
+		checkCancel()
+
+		if checkErr != nil {
+			return nil, fmt.Errorf("failed to check existing tunnel status for %s (is doublezerod running?): %w", host, checkErr)
+		}
+
+		// Check if any session is "up"
+		if checkStatus != nil {
+			for _, s := range checkStatus.Status {
+				if s.SessionStatus == "up" {
+					t.Logf("Host %s has existing tunnel (session status: %s), disconnecting first", host, s.SessionStatus)
+					disconnectCtx, disconnectCancel := context.WithTimeout(ctx, 10*time.Second)
+					_, _ = client.Disconnect(disconnectCtx, &emptypb.Empty{})
+					disconnectCancel()
+
+					// Give it a moment to disconnect
+					time.Sleep(2 * time.Second)
+					break
+				}
+			}
 		}
 
 		// Create connection request
@@ -698,8 +725,24 @@ func testDeviceConnectivity(t *testing.T, device *Device, hosts []string, additi
 		Error:   "",
 	}
 
+	// Ensure cleanup happens even if connection fails
+	defer func() {
+		// Disconnect the hosts we just connected (not the additional host)
+		for _, host := range hosts {
+			t.Logf("Disconnecting %s from device %s", host, device.Code)
+			if client, err := getQAClient(host); err == nil {
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				_, _ = client.Disconnect(ctx, &emptypb.Empty{})
+				cancel()
+			}
+		}
+
+		// Wait a bit to ensure clean disconnect before next connection
+		time.Sleep(2 * time.Second)
+	}()
+
 	// Connect all hosts to this device
-	t.Logf("Connecting hosts to device %s", device.Code)
+	t.Logf("Connecting hosts %s to device %s", hosts, device.Code)
 	hostIPMap, err := connectHosts(t, hosts, device)
 	if err != nil {
 		result.Success = false
@@ -716,19 +759,6 @@ func testDeviceConnectivity(t *testing.T, device *Device, hosts []string, additi
 		result.Success = false
 		result.Error = err.Error()
 	}
-
-	// Disconnect the hosts we just connected (not the additional host)
-	for _, host := range hosts {
-		t.Logf("Disconnecting %s from device %s", host, device.Code)
-		if client, err := getQAClient(host); err == nil {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			_, _ = client.Disconnect(ctx, &emptypb.Empty{})
-			cancel()
-		}
-	}
-
-	// Wait a bit to ensure clean disconnect before next connection
-	time.Sleep(2 * time.Second)
 
 	return result
 }

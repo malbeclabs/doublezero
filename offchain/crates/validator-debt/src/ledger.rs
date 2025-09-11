@@ -5,6 +5,7 @@ use solana_client::{nonblocking::rpc_client::RpcClient, rpc_config::RpcSendTrans
 use solana_sdk::{
     clock::Epoch,
     commitment_config::CommitmentConfig,
+    hash::Hash,
     signer::{Signer, keypair::Keypair},
 };
 
@@ -46,14 +47,14 @@ pub async fn get_solana_epoch_from_dz_epoch(
     )
 }
 
-pub async fn write_record_to_ledger<T: borsh::BorshSerialize>(
+pub async fn create_record_on_ledger<T: borsh::BorshSerialize>(
     rpc_client: &RpcClient,
+    recent_blockhash: Hash,
     payer_signer: &Keypair,
     record_data: &T,
     commitment_config: CommitmentConfig,
     seeds: &[&[u8]],
 ) -> Result<bool> {
-    let recent_blockhash = rpc_client.get_latest_blockhash().await?;
     let payer_key = payer_signer.pubkey();
 
     let serialized = borsh::to_vec(record_data)?;
@@ -237,7 +238,17 @@ mod tests {
             }],
         };
 
-        write_record_to_ledger(&rpc_client, &payer_signer, &data, commitment_config, seeds).await?;
+        let recent_blockhash = rpc_client.get_latest_blockhash().await?;
+
+        create_record_on_ledger(
+            &rpc_client,
+            recent_blockhash,
+            &payer_signer,
+            &data,
+            commitment_config,
+            seeds,
+        )
+        .await?;
 
         let (record_header, record_body) =
             read_from_ledger(&rpc_client, &payer_signer, seeds, commitment_config).await?;

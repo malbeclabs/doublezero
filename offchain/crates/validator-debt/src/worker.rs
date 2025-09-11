@@ -18,7 +18,7 @@ use doublezero_serviceability::state::{
     accesspass::AccessPassType, accountdata::AccountData, accounttype::AccountType,
 };
 use solana_client::nonblocking::rpc_client::RpcClient;
-use solana_sdk::{pubkey::Pubkey, signer::keypair::Keypair};
+use solana_sdk::{clock::Clock, pubkey::Pubkey, signer::keypair::Keypair, sysvar::clock};
 use std::{collections::HashMap, env, str::FromStr};
 use tabled::{Table, Tabled, settings::Style};
 
@@ -117,6 +117,26 @@ pub async fn calculate_validator_debt<T: ValidatorRewards>(
         );
     };
 
+    // fetch the distribution to get the fee percentages and calculation_allowed_timestamp
+    let distribution = transaction
+        .read_distribution(dz_epoch, solana_debt_calculator.solana_rpc_client())
+        .await?;
+
+    // get solana current timestamp
+    let clock_account = solana_debt_calculator
+        .solana_rpc_client()
+        .get_account(&clock::id())
+        .await?;
+    let clock = bincode::deserialize::<Clock>(&clock_account.data)?;
+    let solana_timestamp = clock.unix_timestamp;
+
+    if distribution.calculation_allowed_timestamp as i64 >= solana_timestamp {
+        bail!(
+            "Solana timestamp {solana_timestamp} has not passed the calculation_allowed_timestamp: {}",
+            distribution.calculation_allowed_timestamp
+        );
+    };
+
     // get solana epoch
     let solana_epoch = ledger::get_solana_epoch_from_dz_epoch(
         solana_debt_calculator.solana_rpc_client(),
@@ -126,18 +146,17 @@ pub async fn calculate_validator_debt<T: ValidatorRewards>(
     .await?;
 
     // Create seeds
-    let prefix = b"solana_validator_debt_test";
+    let prefix = b"solana_validator_debt";
     let dz_epoch_bytes = dz_epoch.to_le_bytes();
     let seeds: &[&[u8]] = &[prefix, &dz_epoch_bytes];
 
     let validator_pubkeys =
         fetch_validator_pubkeys(solana_debt_calculator.ledger_rpc_client()).await?;
 
-    // fetch the distribution to get the fee percentages
-    let distribution = transaction
-        .read_distribution(dz_epoch, solana_debt_calculator.solana_rpc_client())
-        .await?;
-
+    println!(
+        "Processing validator rewards for {} validators",
+        validator_pubkeys.len()
+    );
     // fetch rewards for validators
     let validator_rewards = rewards::get_total_rewards(
         solana_debt_calculator,
@@ -147,6 +166,7 @@ pub async fn calculate_validator_debt<T: ValidatorRewards>(
     .await?;
 
     // gather rewards into debts for all validators
+    println!("Computing solana validator debt");
     let computed_solana_validator_debt_vec: Vec<ComputedSolanaValidatorDebt> = validator_rewards
         .rewards
         .iter()
@@ -174,28 +194,36 @@ pub async fn calculate_validator_debt<T: ValidatorRewards>(
         })
         .collect();
 
+    let recent_blockhash = solana_debt_calculator
+        .ledger_rpc_client()
+        .get_latest_blockhash()
+        .await?;
+
     let computed_solana_validator_debts = ComputedSolanaValidatorDebts {
+        blockhash: recent_blockhash,
         epoch: solana_epoch,
         debts: computed_solana_validator_debt_vec.clone(),
     };
 
-    // TODO: https://github.com/malbeclabs/doublezero/issues/1553
-    let ledger_record = ledger::write_record_to_ledger(
+    println!("attempting to create a new record on DZ ledger");
+    let created_ledger_record = ledger::create_record_on_ledger(
         solana_debt_calculator.ledger_rpc_client(),
+        recent_blockhash,
         &transaction.signer,
         &computed_solana_validator_debts,
-        solana_debt_calculator.solana_commitment_config(),
+        solana_debt_calculator.ledger_commitment_config(),
         seeds,
     )
     .await?;
 
-    if ledger_record {
-        println!("record already written for {seeds:?}");
+    if created_ledger_record {
+        println!("record already created for {seeds:?}");
     }
 
     let merkle_root = computed_solana_validator_debts.merkle_root();
 
     // Create the data for the solana transaction
+    println!("Writing total debt to solana");
     let total_validators: u32 = validator_rewards.rewards.len() as u32;
     let total_debt: u64 = computed_solana_validator_debt_vec
         .iter()

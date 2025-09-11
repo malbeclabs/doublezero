@@ -1931,6 +1931,7 @@ dependencies = [
  "solana-sdk",
  "solana-transaction-status-client-types",
  "svm-hash",
+ "tabled",
  "tokio",
  "tracing",
  "url",

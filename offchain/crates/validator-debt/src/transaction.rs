@@ -204,11 +204,11 @@ impl Transaction {
 
     pub async fn send_or_simulate_transaction(
         &self,
-        rpc_client: &RpcClient,
+        solana_rpc_client: &RpcClient,
         transaction: &impl SerializableTransaction,
     ) -> Result<Option<Signature>> {
         if self.dry_run {
-            let simulation_response = rpc_client.simulate_transaction(transaction).await?;
+            let simulation_response = solana_rpc_client.simulate_transaction(transaction).await?;
             println!("Simulated program logs:");
             simulation_response
                 .value
@@ -221,7 +221,9 @@ impl Transaction {
 
             Ok(None)
         } else {
-            let tx_sig = rpc_client.send_and_confirm_transaction(transaction).await?;
+            let tx_sig = solana_rpc_client
+                .send_and_confirm_transaction(transaction)
+                .await?;
             Ok(Some(tx_sig))
         }
     }

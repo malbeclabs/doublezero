@@ -73,7 +73,30 @@ pub async fn initialize_distribution<T: ValidatorRewards>(
     Ok(())
 }
 
-pub async fn write_debts<T: ValidatorRewards>(
+pub async fn finalize_distribution<T: ValidatorRewards>(
+    solana_debt_calculator: &T,
+    signer: Keypair,
+    dz_epoch: u64,
+    dry_run: bool,
+) -> Result<()> {
+    let transaction = Transaction::new(signer, dry_run);
+    let transaction_to_submit = transaction
+        .finalize_distribution(solana_debt_calculator.solana_rpc_client(), dz_epoch)
+        .await?;
+    let transaction_signature = transaction
+        .send_or_simulate_transaction(
+            solana_debt_calculator.solana_rpc_client(),
+            &transaction_to_submit,
+        )
+        .await?;
+
+    if let Some(finalized_sig) = transaction_signature {
+        println!("finalized distribution tx: {finalized_sig:?}");
+    }
+    Ok(())
+}
+
+pub async fn calculate_validator_debt<T: ValidatorRewards>(
     solana_debt_calculator: &T,
     signer: Keypair,
     dz_epoch: u64,
@@ -325,7 +348,7 @@ mod tests {
         );
 
         let dz_epoch = 84;
-        let _res = write_debts(&fpc, keypair, dz_epoch, false).await?;
+        let _res = calculate_validator_debt(&fpc, keypair, dz_epoch, false).await?;
         let signer = try_load_keypair(None).unwrap();
 
         let prefix = b"solana_validator_debt_test";
@@ -475,7 +498,8 @@ mod tests {
 
         let signer = try_load_keypair(None).unwrap();
 
-        let record_result = write_debts(&mock_solana_debt_calculator, signer, 45, false).await?;
+        let record_result =
+            calculate_validator_debt(&mock_solana_debt_calculator, signer, 45, false).await?;
 
         assert_eq!(
             record_result.last_written_epoch.unwrap(),

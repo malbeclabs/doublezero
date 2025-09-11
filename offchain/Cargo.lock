@@ -1916,6 +1916,7 @@ dependencies = [
  "backon",
  "borsh 1.5.7",
  "chrono",
+ "clap",
  "doublezero-program-tools",
  "doublezero-record",
  "doublezero-revenue-distribution",
@@ -1933,6 +1934,7 @@ dependencies = [
  "svm-hash",
  "tokio",
  "tracing",
+ "url",
 ]
 
 [[package]]

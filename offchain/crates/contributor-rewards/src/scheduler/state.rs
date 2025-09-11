@@ -6,7 +6,7 @@ use tracing::{debug, error, info, warn};
 
 /// Worker state persisted to disk
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WorkerState {
+pub struct SchedulerState {
     /// Last epoch that was successfully processed
     pub last_processed_epoch: Option<u64>,
     /// Last time the worker checked for new epochs
@@ -17,7 +17,7 @@ pub struct WorkerState {
     pub consecutive_failures: u32,
 }
 
-impl Default for WorkerState {
+impl Default for SchedulerState {
     fn default() -> Self {
         Self {
             last_processed_epoch: None,
@@ -28,7 +28,7 @@ impl Default for WorkerState {
     }
 }
 
-impl WorkerState {
+impl SchedulerState {
     /// Load state from file, or create new if doesn't exist
     pub fn load_or_default(path: &Path) -> Result<Self> {
         if path.exists() {
@@ -37,7 +37,7 @@ impl WorkerState {
                 .with_context(|| format!("Failed to read state file: {path:?}"))?;
 
             // Try to parse the state file
-            match serde_json::from_str::<WorkerState>(&contents) {
+            match serde_json::from_str::<SchedulerState>(&contents) {
                 Ok(state) => {
                     info!(
                         "Loaded worker state: last_processed_epoch={:?}, last_check={:?}",

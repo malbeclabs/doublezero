@@ -42,6 +42,7 @@ impl Orchestrator {
         keypair_path: Option<PathBuf>,
         dry_run: bool,
     ) -> Result<()> {
+        let epoch_start = Instant::now();
         let fetcher = Fetcher::from_settings(&self.settings)?;
 
         // Prepare all data
@@ -49,6 +50,9 @@ impl Orchestrator {
         let fetch_epoch = prep_data.epoch;
         let device_telemetry = prep_data.device_telemetry;
         let internet_telemetry = prep_data.internet_telemetry;
+
+        // Track current epoch being processed
+        metrics::gauge!("doublezero_contributor_rewards_current_epoch").set(fetch_epoch as f64);
 
         let Some(shapley_inputs) = prep_data.shapley_inputs else {
             bail!("Shapley inputs required for reward calculation but were not prepared")
@@ -77,6 +81,7 @@ impl Orchestrator {
         let per_city_shapley_outputs: BTreeMap<String, Vec<(String, f64)>> = demand_groups
             .par_iter()
             .map(|(city, demands)| {
+                let city_start = Instant::now();
                 info!(
                     "City: {city}, Demand: \n{}",
                     print_demands(demands, 1_000_000)
@@ -96,6 +101,12 @@ impl Orchestrator {
                 // Shapley output
                 let output = input.compute().expect("Failed to compute Shapley values");
 
+                // Track Shapley computation metrics
+                metrics::histogram!("doublezero_contributor_rewards_shapley_computation_duration", "city" => city.to_string())
+                    .record(city_start.elapsed().as_secs_f64());
+                metrics::counter!("doublezero_contributor_rewards_shapley_computations", "city" => city.to_string())
+                    .increment(1);
+
                 // Print per-city table
                 let table = TableBuilder::from(output.clone())
                     .build()
@@ -109,11 +120,16 @@ impl Orchestrator {
                     .map(|(operator, shapley_value)| (operator, shapley_value.value))
                     .collect();
 
-                (city.clone(), city_values)
+                (city.to_string(), city_values)
             })
             .collect();
 
         let elapsed = start_time.elapsed();
+
+        // Track total Shapley computation time
+        metrics::histogram!("doublezero_contributor_rewards_shapley_total_duration")
+            .record(elapsed.as_secs_f64());
+
         info!(
             "Shapley computation completed in {:.2?} for {} cities",
             elapsed,
@@ -160,6 +176,7 @@ impl Orchestrator {
                 .await?;
 
                 let mut summary = WriteSummary::default();
+                let ledger_start = Instant::now();
 
                 // Write device telemetry
                 let device_prefix = self.settings.prefixes.device_telemetry.as_bytes();
@@ -245,6 +262,19 @@ impl Orchestrator {
                     }
                 }
 
+                // Track ledger operation metrics
+                metrics::histogram!("doublezero_contributor_rewards_ledger_write_duration")
+                    .record(ledger_start.elapsed().as_secs_f64());
+
+                if summary.failed_count() > 0 {
+                    metrics::counter!("doublezero_contributor_rewards_ledger_writes_failure")
+                        .increment(summary.failed_count() as u64);
+                }
+                if summary.successful_count() > 0 {
+                    metrics::counter!("doublezero_contributor_rewards_ledger_writes_success")
+                        .increment(summary.successful_count() as u64);
+                }
+
                 // Log final summary
                 info!("{}", summary);
 
@@ -287,6 +317,13 @@ impl Orchestrator {
                 info!("  - Would post merkle root to revenue distribution program");
             }
         }
+
+        // Track epoch processing completion
+        metrics::counter!("doublezero_contributor_rewards_epochs_processed").increment(1);
+        metrics::gauge!("doublezero_contributor_rewards_last_successful_epoch")
+            .set(fetch_epoch as f64);
+        metrics::histogram!("doublezero_contributor_rewards_epoch_processing_duration")
+            .record(epoch_start.elapsed().as_secs_f64());
 
         Ok(())
     }

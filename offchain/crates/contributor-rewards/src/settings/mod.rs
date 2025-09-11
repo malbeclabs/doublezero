@@ -6,7 +6,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use config::{Config as ConfigBuilder, Environment, File};
 use network::Network;
 use serde::{Deserialize, Serialize};
-use std::{fmt, path::Path};
+use std::{fmt, net::SocketAddr, path::Path};
 use validation::validate_config;
 
 /// Main settings configuration for contributor-rewards
@@ -28,9 +28,10 @@ pub struct Settings {
     pub inet_lookback: InetLookbackSettings,
     /// Telemetry default handling configuration
     pub telemetry_defaults: TelemetryDefaultSettings,
-    /// Worker configuration (optional)
-    #[serde(default)]
-    pub worker: WorkerSettings,
+    /// Worker settings
+    pub scheduler: SchedulerSettings,
+    /// Metrics settings
+    pub metrics: Option<MetricsSettings>,
 }
 
 /// Shapley value calculation parameters for reward distribution
@@ -121,28 +122,23 @@ pub struct TelemetryDefaultSettings {
     pub enable_previous_epoch_lookup: bool,
 }
 
-/// Worker configuration for automated rewards calculation
+/// Scheduler configuration for automated rewards calculation
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WorkerSettings {
-    /// Check interval in seconds (default: 300 = 5 minutes)
+pub struct SchedulerSettings {
+    /// Check interval in seconds
     pub interval_seconds: u64,
-    /// Path to worker state file (default: /var/lib/doublezero/contributor-rewards.state)
+    /// Path to worker state file
     pub state_file: String,
-    /// Maximum consecutive failures before halting (default: 10)
+    /// Maximum consecutive failures before halting
     pub max_consecutive_failures: u32,
-    /// Enable dry run mode for worker (default: false)
+    /// Enable dry run mode for worker
     pub enable_dry_run: bool,
 }
 
-impl Default for WorkerSettings {
-    fn default() -> Self {
-        Self {
-            interval_seconds: 300,
-            state_file: "/var/lib/doublezero/contributor-rewards.state".to_string(),
-            max_consecutive_failures: 10,
-            enable_dry_run: false,
-        }
-    }
+/// Scheduler configuration for automated rewards calculation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetricsSettings {
+    pub addr: SocketAddr,
 }
 
 impl Settings {

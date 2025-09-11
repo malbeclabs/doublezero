@@ -21,6 +21,8 @@ pub fn process_device_samples(
     start_us: u64,
     end_us: u64,
 ) -> Result<BTreeMap<String, TelemetryStatistics>> {
+    let process_start = std::time::Instant::now();
+
     // Group samples by circuit
     let mut grouped_samples: BTreeMap<String, Vec<&DZDeviceLatencySamples>> = BTreeMap::new();
 
@@ -36,6 +38,10 @@ pub fn process_device_samples(
         grouped_samples.len()
     );
 
+    // Track sample count
+    metrics::counter!("doublezero_contributor_rewards_telemetry_samples_processed", "type" => "device")
+        .increment(samples.len() as u64);
+
     // Process each group
     let mut results = BTreeMap::new();
 
@@ -43,6 +49,10 @@ pub fn process_device_samples(
         let stats = calculate_device_group_statistics(&sample_group, start_us, end_us)?;
         results.insert(key, stats);
     }
+
+    // Track processing time
+    metrics::histogram!("doublezero_contributor_rewards_telemetry_processing_duration", "type" => "device")
+        .record(process_start.elapsed().as_secs_f64());
 
     Ok(results)
 }
@@ -53,6 +63,8 @@ pub fn process_internet_samples(
     start_us: u64,
     end_us: u64,
 ) -> Result<BTreeMap<String, TelemetryStatistics>> {
+    let process_start = std::time::Instant::now();
+
     // Group samples by route
     let mut grouped_samples: BTreeMap<String, Vec<&DZInternetLatencySamples>> = BTreeMap::new();
 
@@ -68,6 +80,10 @@ pub fn process_internet_samples(
         grouped_samples.len()
     );
 
+    // Track sample count
+    metrics::counter!("doublezero_contributor_rewards_telemetry_samples_processed", "type" => "internet")
+        .increment(samples.len() as u64);
+
     // Process each group
     let mut results = BTreeMap::new();
 
@@ -75,6 +91,10 @@ pub fn process_internet_samples(
         let stats = calculate_internet_group_statistics(&sample_group, start_us, end_us)?;
         results.insert(key, stats);
     }
+
+    // Track processing time
+    metrics::histogram!("doublezero_contributor_rewards_telemetry_processing_duration", "type" => "internet")
+        .record(process_start.elapsed().as_secs_f64());
 
     Ok(results)
 }

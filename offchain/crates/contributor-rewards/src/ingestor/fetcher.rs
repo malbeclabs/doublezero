@@ -45,7 +45,14 @@ impl Fetcher {
         let search_epoch = match epoch {
             None => {
                 // Get DZ epoch info from DZ RPC
+                let rpc_start = std::time::Instant::now();
                 let dz_epoch_info = self.dz_rpc_client.get_epoch_info().await?;
+
+                metrics::histogram!("doublezero_contributor_rewards_rpc_request_duration", "type" => "get_epoch_info")
+                    .record(rpc_start.elapsed().as_secs_f64());
+                metrics::counter!("doublezero_contributor_rewards_rpc_requests", "type" => "get_epoch_info")
+                    .increment(1);
+
                 info!("Current dz_epoch: {}", dz_epoch_info.epoch);
                 let dz_prev_epoch = dz_epoch_info.epoch.saturating_sub(1);
                 info!("Fetching data for previous DZ epoch: {}", dz_prev_epoch);
@@ -69,11 +76,17 @@ impl Fetcher {
         );
 
         // Fetch all data in parallel
+        let fetch_start = std::time::Instant::now();
         let (serviceability_data, telemetry_data, internet_data) = tokio::try_join!(
             serviceability::fetch(&self.dz_rpc_client, &self.settings),
             telemetry::fetch(&self.dz_rpc_client, &self.settings, epoch),
             internet::fetch(&self.dz_rpc_client, &self.settings, epoch)
         )?;
+
+        metrics::histogram!("doublezero_contributor_rewards_data_fetch_duration", "epoch" => epoch.to_string())
+            .record(fetch_start.elapsed().as_secs_f64());
+        metrics::counter!("doublezero_contributor_rewards_data_fetches", "epoch" => epoch.to_string())
+            .increment(1);
 
         let (start_us, end_us) = telemetry_data.start_end_us()?;
 

@@ -1,5 +1,6 @@
 use crate::settings::Settings;
 use anyhow::{Result, bail};
+use std::net::{IpAddr, SocketAddr};
 
 /// Validate the configuration values
 pub fn validate_config(settings: &Settings) -> Result<()> {
@@ -135,16 +136,30 @@ pub fn validate_config(settings: &Settings) -> Result<()> {
         );
     }
 
+    if let Some(metrics) = &settings.metrics {
+        if !validate_socket_addr(&metrics.addr) {
+            bail!("Invalid SocketAddr: {}", metrics.addr)
+        }
+    }
+
     Ok(())
+}
+
+fn validate_socket_addr(addr: &SocketAddr) -> bool {
+    match addr.ip() {
+        IpAddr::V4(ipv4) => !ipv4.is_broadcast() && !ipv4.is_multicast(),
+        IpAddr::V6(ipv6) => !ipv6.is_unspecified() && !ipv6.is_multicast(),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::settings::{
-        InetLookbackSettings, PrefixSettings, ProgramSettings, RpcSettings, ShapleySettings,
-        TelemetryDefaultSettings, WorkerSettings, network::Network,
+        InetLookbackSettings, MetricsSettings, PrefixSettings, ProgramSettings, RpcSettings,
+        SchedulerSettings, ShapleySettings, TelemetryDefaultSettings, network::Network,
     };
+    use std::{net::SocketAddr, str::FromStr};
 
     fn create_valid_config() -> Settings {
         Settings {
@@ -184,7 +199,15 @@ mod tests {
                 private_default_latency_ms: 1000.0,
                 enable_previous_epoch_lookup: true,
             },
-            worker: WorkerSettings::default(),
+            scheduler: SchedulerSettings {
+                interval_seconds: 300,
+                state_file: "/var/lib/doublezero-contributor-rewards/scheduler.state".to_string(),
+                max_consecutive_failures: 10,
+                enable_dry_run: false,
+            },
+            metrics: Some(MetricsSettings {
+                addr: SocketAddr::from_str("127.0.0.1:9090").unwrap(),
+            }),
         }
     }
 
@@ -243,5 +266,35 @@ mod tests {
         let mut config = create_valid_config();
         config.log_level = "invalid".to_string();
         assert!(validate_config(&config).is_err());
+    }
+
+    #[test]
+    fn test_valid_metrics_address() {
+        let mut config = create_valid_config();
+
+        // Test valid addresses
+        config.metrics = Some(MetricsSettings {
+            addr: SocketAddr::from_str("127.0.0.1:9090").unwrap(),
+        });
+        assert!(validate_config(&config).is_ok());
+
+        config.metrics = Some(MetricsSettings {
+            addr: SocketAddr::from_str("0.0.0.0:8080").unwrap(),
+        });
+        assert!(validate_config(&config).is_ok());
+
+        config.metrics = Some(MetricsSettings {
+            addr: SocketAddr::from_str("[::1]:9090").unwrap(),
+        });
+        assert!(validate_config(&config).is_ok());
+    }
+
+    #[test]
+    fn test_metrics_disabled() {
+        let mut config = create_valid_config();
+
+        // No metrics configuration should be valid
+        config.metrics = None;
+        assert!(validate_config(&config).is_ok());
     }
 }

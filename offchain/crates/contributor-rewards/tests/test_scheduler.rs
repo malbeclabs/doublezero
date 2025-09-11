@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use contributor_rewards::worker::WorkerState;
+    use contributor_rewards::scheduler::SchedulerState;
     use tempfile::TempDir;
 
     #[test]
@@ -9,19 +9,19 @@ mod tests {
         let state_file = temp_dir.path().join("test.state");
 
         // Create and save state
-        let mut state = WorkerState::default();
+        let mut state = SchedulerState::default();
         state.mark_success(100);
         state.save(&state_file).unwrap();
 
         // Load state and verify
-        let loaded_state = WorkerState::load_or_default(&state_file).unwrap();
+        let loaded_state = SchedulerState::load_or_default(&state_file).unwrap();
         assert_eq!(loaded_state.last_processed_epoch, Some(100));
         assert_eq!(loaded_state.consecutive_failures, 0);
     }
 
     #[test]
     fn test_should_process_epoch() {
-        let mut state = WorkerState::default();
+        let mut state = SchedulerState::default();
 
         // Should process when no epoch has been processed
         assert!(state.should_process_epoch(1));
@@ -40,7 +40,7 @@ mod tests {
 
     #[test]
     fn test_failure_tracking() {
-        let mut state = WorkerState::default();
+        let mut state = SchedulerState::default();
 
         // Initially no failures
         assert_eq!(state.consecutive_failures, 0);
@@ -69,13 +69,13 @@ mod tests {
         let non_existent_path = temp_dir.path().join("subdir").join("state.json");
 
         // Should create parent directories
-        let mut state = WorkerState::default();
+        let mut state = SchedulerState::default();
         state.mark_success(42);
         state.save(&non_existent_path).unwrap();
 
         // Verify file was created and can be loaded
         assert!(non_existent_path.exists());
-        let loaded = WorkerState::load_or_default(&non_existent_path).unwrap();
+        let loaded = SchedulerState::load_or_default(&non_existent_path).unwrap();
         assert_eq!(loaded.last_processed_epoch, Some(42));
     }
 }

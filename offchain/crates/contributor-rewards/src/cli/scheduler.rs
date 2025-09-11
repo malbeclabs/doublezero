@@ -1,6 +1,6 @@
 use anyhow::{Result, bail};
 use clap::Subcommand;
-use contributor_rewards::{calculator::orchestrator::Orchestrator, worker::RewardsWorker};
+use contributor_rewards::{calculator::orchestrator::Orchestrator, scheduler::ScheduleWorker};
 use std::{path::PathBuf, time::Duration};
 use tracing::info;
 
@@ -63,10 +63,10 @@ async fn start_scheduler(
     let settings = orchestrator.settings();
 
     // Use CLI args if provided, otherwise fall back to config settings
-    let interval = interval_override.unwrap_or(settings.worker.interval_seconds);
+    let interval = interval_override.unwrap_or(settings.scheduler.interval_seconds);
     let state_file =
-        state_file_override.unwrap_or_else(|| PathBuf::from(&settings.worker.state_file));
-    let dry_run = dry_run_override || settings.worker.enable_dry_run;
+        state_file_override.unwrap_or_else(|| PathBuf::from(&settings.scheduler.state_file));
+    let dry_run = dry_run_override || settings.scheduler.enable_dry_run;
 
     // Validate keypair if not in dry-run mode
     if !dry_run {
@@ -87,7 +87,7 @@ async fn start_scheduler(
     info!("Starting rewards scheduler");
 
     // Create and run worker
-    let worker = RewardsWorker::new(
+    let worker = ScheduleWorker::new(
         orchestrator,
         state_file,
         keypair_path,

@@ -145,7 +145,15 @@ fn test_settings() -> settings::Settings {
             private_default_latency_ms: 1000.0,
             enable_previous_epoch_lookup: true,
         },
-        worker: settings::WorkerSettings::default(),
+        scheduler: settings::SchedulerSettings {
+            interval_seconds: 300,
+            state_file: "/var/lib/doublezero-contributor-rewards/scheduler.state".to_string(),
+            max_consecutive_failures: 10,
+            enable_dry_run: false,
+        },
+        metrics: Some(settings::MetricsSettings {
+            addr: "127.0.0.1:9090".parse().unwrap(),
+        }),
     }
 }
 

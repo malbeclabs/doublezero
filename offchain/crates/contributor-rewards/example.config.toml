@@ -98,3 +98,23 @@ private_default_latency_ms = 1000.0
 # Enable previous epoch lookup for public links
 # When true, fetches previous epoch's average when current has insufficient data
 enable_previous_epoch_lookup = true
+
+# ========== Scheduler Configuration ==========
+[scheduler]
+# Check interval in seconds (how often to check for new epochs)
+interval_seconds = 300
+
+# Path to worker state file for tracking processed epochs
+state_file = "/var/lib/doublezero-contributor-rewards/scheduler.state"
+
+# Maximum consecutive failures before halting
+max_consecutive_failures = 10
+
+# Enable dry run mode (no on-chain writes)
+enable_dry_run = false
+
+# ========== Metrics Configuration (Optional) ==========
+[metrics]
+# Address to expose metrics endpoint
+# Format: "IP:PORT" or "[IPv6]:PORT"
+addr = "127.0.0.1:9090"

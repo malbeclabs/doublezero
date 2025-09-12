@@ -272,9 +272,15 @@ fn try_grant_access(accounts: &[AccountInfo]) -> ProgramResult {
     // - 3: Rent beneficiary (original payer)
     let mut accounts_iter = accounts.iter().enumerate();
 
+    // Account 0 must be the program config.
+    // Account 1 must be the DoubleZero Ledger sentinel.
+    //
+    // This call ensures that the DoubleZero Ledger sentinel is a signer and is
+    // the same sentinel encoded in the program config.
     let authorized_use =
         VerifiedProgramAuthority::try_next_accounts(&mut accounts_iter, Authority::Sentinel)?;
 
+    // Account 2 must be the new access request account.
     let access_request =
         ZeroCopyAccount::<AccessRequest>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
 
@@ -289,8 +295,19 @@ fn try_grant_access(accounts: &[AccountInfo]) -> ProgramResult {
 
     **sentinel_info.lamports.borrow_mut() += request_fee;
 
+    // Account 3 must be the rent beneficiary.
     let (_, rent_beneficiary_info) =
         try_next_enumerated_account(&mut accounts_iter, Default::default())?;
+
+    // Cannot use another account as rent beneficiary.
+    if rent_beneficiary_info.key != &access_request.rent_beneficiary_key {
+        msg!(
+            "Expected rent beneficiary key: {}",
+            access_request.rent_beneficiary_key
+        );
+        return Err(ProgramError::InvalidAccountData);
+    }
+
     **rent_beneficiary_info.lamports.borrow_mut() += request_refund;
 
     // Zero out the access request lamports to close the account.

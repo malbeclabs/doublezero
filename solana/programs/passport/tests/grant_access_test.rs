@@ -163,18 +163,31 @@ async fn test_grant_access() {
         TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
     );
 
-    // NOTE: Sentinel still has 10,000 lamports from prior grant test.
-    let sentinel_after_balance = test_setup
-        .banks_client
-        .get_balance(sentinel_signer.pubkey())
-        .await
-        .unwrap();
-    assert_eq!(sentinel_after_balance, 128 * 6_960 + access_fee);
+    // Cannot use another account as rent beneficiary.
+    let grant_access_ix = try_build_instruction(
+        &ID,
+        GrantAccessAccounts::new(
+            &sentinel_signer.pubkey(),
+            &access_request_key,
+            &Pubkey::new_unique(),
+        ),
+        &PassportInstructionData::GrantAccess,
+    )
+    .unwrap();
 
-    let access_request_info = test_setup
-        .banks_client
-        .get_account(access_request_key)
-        .await
-        .unwrap();
-    assert!(access_request_info.is_some());
+    let (tx_err, program_logs) = test_setup
+        .unwrap_simulation_error(&[grant_access_ix], &[&sentinel_signer])
+        .await;
+
+    assert_eq!(
+        tx_err,
+        TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
+    );
+    assert_eq!(
+        program_logs.get(2).unwrap(),
+        &format!(
+            "Program log: Expected rent beneficiary key: {}",
+            access_request.rent_beneficiary_key
+        )
+    );
 }

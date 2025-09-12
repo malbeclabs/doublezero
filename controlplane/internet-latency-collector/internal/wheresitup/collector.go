@@ -210,6 +210,10 @@ func (c *Collector) RunJobCreation(ctx context.Context, locations []collector.Lo
 		}
 
 		if len(newJobIDs) > 0 {
+			// Track expected samples metric (one sample per job)
+			metrics.LatencySamplesPerCollectionIntervalExpected.WithLabelValues("wheresitup").Set(float64(len(newJobIDs)))
+			c.log.Info("Wheresitup - Set expected samples metric",
+				slog.Int("expected_samples", len(newJobIDs)))
 
 			c.log.Info("Wheresitup - Storing new job IDs",
 				slog.Int("job_count", len(newJobIDs)),
@@ -528,6 +532,10 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 			c.log.Warn("Wheresitup failed to write records", "error", err.Error(), "records", len(records))
 			return fmt.Errorf("failed to write records: %w", err)
 		}
+		// Track actual samples metric
+		metrics.LatencySamplesPerCollectionIntervalActual.WithLabelValues("wheresitup").Set(float64(len(records)))
+		c.log.Info("Wheresitup - Set actual samples metric",
+			slog.Int("actual_samples", len(records)))
 	}
 
 	if len(completedJobIDs) > 0 {

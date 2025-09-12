@@ -131,7 +131,7 @@ func (c *Client) setCommonHeaders(req *http.Request, contentType string) {
 }
 
 func (c *Client) fetchProbesWithErrorHandling(ctx context.Context, lat, lng float64, entityName string) ([]Probe, error) {
-	probes, err := c.GetProbesInRadius(ctx, lat, lng, 15)
+	probes, err := c.GetProbesInRadius(ctx, lat, lng, int(collector.MaxDistanceKM))
 	if err != nil {
 		c.log.Warn("Failed to get probes for location",
 			slog.String("entity_name", entityName),

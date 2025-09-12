@@ -116,4 +116,22 @@ var (
 		Name: "doublezero_internet_latency_collector_exporter_submitter_account_full",
 		Help: "Number of times the exporter has encountered a submitter account full error",
 	}, []string{"data_provider", "source_exchange_pk", "target_exchange_pk", "epoch"})
+
+	// Exchange pair latency metrics tracking - using regular GaugeVec (not promauto)
+	// to avoid initialization with zero values
+	LatencySamplesPerCollectionIntervalExpected = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "doublezero_internet_latency_collector_latency_samples_per_collection_interval_expected",
+		Help: "Expected number of exchange pair latency samples per collection interval",
+	}, []string{"data_provider"})
+
+	LatencySamplesPerCollectionIntervalActual = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "doublezero_internet_latency_collector_latency_samples_per_collection_interval_actual",
+		Help: "Actual number of exchange pair latency samples exported per collection interval",
+	}, []string{"data_provider"})
 )
+
+func init() {
+	// Register the metrics that we don't want to auto-initialize with zero values
+	prometheus.MustRegister(LatencySamplesPerCollectionIntervalExpected)
+	prometheus.MustRegister(LatencySamplesPerCollectionIntervalActual)
+}

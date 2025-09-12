@@ -135,6 +135,8 @@ mpls icmp ip source-interface Loopback255
 !
 router bgp 65342
    router-id 14.14.14.14
+   timers bgp 1 3
+   distance bgp 20 200 200
    address-family ipv4
    !
    address-family vpn-ipv4

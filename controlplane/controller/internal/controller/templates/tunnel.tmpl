@@ -164,6 +164,8 @@ interface Tunnel{{ .Id }}
 router bgp 65342
    {{- if $.InterfacesAndPeers }}
    router-id {{ .Device.Vpn4vLoopbackIP }}
+   timers bgp 1 3
+   distance bgp 20 200 200
    {{- range .Ipv4BgpPeers }}
    {{- if ne .PeerIP.String $.Device.Ipv4LoopbackIP.String }}
    no neighbor {{ .PeerIP }}

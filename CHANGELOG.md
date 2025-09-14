@@ -10,6 +10,8 @@ All notable changes to this project will be documented in this file.
 
 - Device controller
     - Update device template to set default BGP timers and admin distance
+- Activator
+    - Fix access pass check status accounts list
 
 ## [v0.6.4](https://github.com/malbeclabs/doublezero/compare/client/v0.6.3...client/v0.6.4) – 2025-09-10
 
@@ -21,7 +23,7 @@ All notable changes to this project will be documented in this file.
 
 - Onchain programs
     - Fix bug preventing re-opening of AccessPass after closure
-    - sc/svc: guard against empty account data 
+    - sc/svc: guard against empty account data
 - Device controller
     - Support server dual listening on TLS and non-TLS ports
 - Device and Internet Latency Telemetry

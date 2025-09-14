@@ -26,7 +26,6 @@ impl CheckStatusAccessPassCommand {
             vec![
                 AccountMeta::new(pda_pubkey, false),
                 AccountMeta::new_readonly(globalstate_pubkey, false),
-                AccountMeta::new(self.user_payer, false),
             ],
         )
     }
@@ -65,7 +64,6 @@ mod tests {
                 predicate::eq(vec![
                     AccountMeta::new(pda_pubkey, false),
                     AccountMeta::new_readonly(globalstate_pubkey, false),
-                    AccountMeta::new(payer, false),
                 ]),
             )
             .returning(|_, _| Ok(Signature::new_unique()));

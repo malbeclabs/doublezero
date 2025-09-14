@@ -107,6 +107,8 @@ pub enum DoubleZeroError {
     InvalidMaxBandwidth, // variant 50
     #[error("Invalid Multicast IP")]
     InvalidMulticastIp, // variant 51
+    #[error("Invalid Account Owner")]
+    InvalidAccountOwner, // variant 52
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -164,6 +166,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::InvalidVlanId => ProgramError::Custom(49),
             DoubleZeroError::InvalidMaxBandwidth => ProgramError::Custom(50),
             DoubleZeroError::InvalidMulticastIp => ProgramError::Custom(51),
+            DoubleZeroError::InvalidAccountOwner => ProgramError::Custom(52),
         }
     }
 }
@@ -222,6 +225,7 @@ impl From<u32> for DoubleZeroError {
             49 => DoubleZeroError::InvalidVlanId,
             50 => DoubleZeroError::InvalidMaxBandwidth,
             51 => DoubleZeroError::InvalidMulticastIp,
+            52 => DoubleZeroError::InvalidAccountOwner,
 
             _ => DoubleZeroError::Custom(e),
         }

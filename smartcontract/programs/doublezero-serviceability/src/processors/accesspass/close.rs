@@ -1,14 +1,9 @@
 use crate::{
-    error::DoubleZeroError,
-    globalstate::globalstate_get,
-    state::{
-        accesspass::{AccessPass, AccessPassStatus},
-        accounttype::AccountTypeInfo,
-    },
+    error::DoubleZeroError, globalstate::globalstate_get, helper::account_close,
+    state::accounttype::AccountType,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
-use doublezero_program_common::resize_account::resize_account_if_needed;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
@@ -63,18 +58,26 @@ pub fn process_close_access_pass(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    let mut accesspass = AccessPass::try_from(accesspass_account)?;
-    accesspass.last_access_epoch = 0;
-    accesspass.status = AccessPassStatus::Expired;
+    if accesspass_account.owner != program_id {
+        return Err(DoubleZeroError::InvalidAccountOwner.into());
+    }
 
-    resize_account_if_needed(
-        accesspass_account,
-        payer_account,
-        accounts,
-        accesspass.size(),
-    )?;
+    if let Ok(accesspass_account_data) = accesspass_account.try_borrow_data() {
+        if accesspass_account_data.len() > 0 {
+            let account_type: AccountType = accesspass_account_data[0].into();
+            if account_type != AccountType::AccessPass {
+                msg!("AccountType is not AccessPass, cannot close");
+                return Err(DoubleZeroError::InvalidAccountType.into());
+            } else {
+                msg!("AccountType is AccessPass, proceeding to close");
+            }
+        } else {
+            msg!("Account data length is zero, nothing to close");
+        }
+    };
 
-    accesspass.try_serialize(accesspass_account)?;
+    account_close(accesspass_account, payer_account)?;
+
     msg!("Access pass closed");
 
     Ok(())

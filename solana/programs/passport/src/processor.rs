@@ -166,12 +166,11 @@ fn try_configure_program(accounts: &[AccountInfo], setting: ProgramConfiguration
             }
 
             msg!("Set access_request_deposit_parameters");
-            let deposit_params = &mut program_config.access_request_deposit_parameters;
             msg!("  request_deposit_lamports: {}", deposit_lamports);
-            deposit_params.request_deposit_lamports = deposit_lamports;
+            program_config.request_deposit_lamports = deposit_lamports;
 
             msg!("  request_fee_lamports: {}", fee_lamports);
-            deposit_params.request_fee_lamports = fee_lamports;
+            program_config.request_fee_lamports = fee_lamports;
         }
     }
 
@@ -224,9 +223,7 @@ fn try_request_access(accounts: &[AccountInfo], access_mode: AccessMode) -> Prog
         return Err(ProgramError::InvalidSeeds);
     }
 
-    let additional_lamports = program_config
-        .access_request_deposit_parameters
-        .request_deposit_lamports;
+    let additional_lamports = program_config.request_deposit_lamports;
 
     try_create_account(
         Invoker::Signer(payer_info.key),
@@ -253,6 +250,7 @@ fn try_request_access(accounts: &[AccountInfo], access_mode: AccessMode) -> Prog
         zero_copy::try_initialize::<AccessRequest>(new_access_request_info)?;
     access_request.service_key = service_key;
     access_request.rent_beneficiary_key = *payer_info.key;
+    access_request.request_fee_lamports = program_config.request_fee_lamports;
 
     // The sentinel service uses this log statement to filter transaction logs
     // to successfully submitted access requests when subscribing to program
@@ -285,11 +283,8 @@ fn try_grant_access(accounts: &[AccountInfo]) -> ProgramResult {
         ZeroCopyAccount::<AccessRequest>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
 
     let (_, sentinel_info) = authorized_use.authority;
-    let program_config = authorized_use.program_config;
 
-    let request_fee = program_config
-        .access_request_deposit_parameters
-        .request_fee_lamports;
+    let request_fee = access_request.request_fee_lamports;
     let mut access_request_lamports = access_request.info.try_borrow_mut_lamports()?;
     let request_refund = access_request_lamports.saturating_sub(request_fee);
 
@@ -395,7 +390,7 @@ impl Authority {
 }
 
 struct VerifiedProgramAuthority<'a, 'b> {
-    program_config: ZeroCopyAccount<'a, 'b, ProgramConfig>,
+    _program_config: ZeroCopyAccount<'a, 'b, ProgramConfig>,
     authority: (usize, &'a AccountInfo<'b>),
 }
 
@@ -413,7 +408,7 @@ impl<'a, 'b> TryNextAccounts<'a, 'b, Authority> for VerifiedProgramAuthority<'a,
             authority.try_next_as_authorized_account(accounts_iter, &program_config.data)?;
 
         Ok(Self {
-            program_config,
+            _program_config: program_config,
             authority: (index, authority_info),
         })
     }

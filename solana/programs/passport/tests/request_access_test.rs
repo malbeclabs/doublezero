@@ -31,8 +31,8 @@ async fn test_request_access() {
     let service_key = Pubkey::new_unique();
     let validator_id = Pubkey::new_unique();
 
-    let access_deposit = 10_000_000;
-    let access_fee = 10_000;
+    let request_deposit_lamports = 10_000_000;
+    let request_fee_lamports = 10_000;
 
     let mut test_setup = common::start_test().await;
 
@@ -47,8 +47,8 @@ async fn test_request_access() {
             [
                 ProgramConfiguration::Flag(ProgramFlagConfiguration::IsPaused(false)),
                 ProgramConfiguration::AccessRequestDeposit {
-                    request_deposit_lamports: access_deposit,
-                    request_fee_lamports: access_fee,
+                    request_deposit_lamports,
+                    request_fee_lamports,
                 },
             ],
             &admin_signer,
@@ -68,6 +68,7 @@ async fn test_request_access() {
     let expected_access_request = AccessRequest {
         service_key,
         rent_beneficiary_key: test_setup.payer_signer.pubkey(),
+        request_fee_lamports,
     };
 
     let request_rent = test_setup
@@ -81,7 +82,10 @@ async fn test_request_access() {
         .get_balance(access_request_key)
         .await
         .unwrap();
-    assert_eq!(access_request_balance_after, access_deposit + request_rent);
+    assert_eq!(
+        access_request_balance_after,
+        request_deposit_lamports + request_rent
+    );
     assert_eq!(access_request, expected_access_request);
 
     //

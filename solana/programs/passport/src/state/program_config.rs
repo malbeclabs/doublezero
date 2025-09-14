@@ -15,7 +15,8 @@ pub struct ProgramConfig {
     /// Authority that grants or denies access to the DoubleZero Ledger network.
     pub sentinel_key: Pubkey,
 
-    pub access_request_deposit_parameters: AccessRequestDepositParameters,
+    pub request_deposit_lamports: u64,
+    pub request_fee_lamports: u64,
 
     /// 8 * 32 bytes of a storage gap in case more fields need to be added.
     _storage_gap: StorageGap<8>,
@@ -41,13 +42,6 @@ impl ProgramConfig {
     pub fn set_is_paused(&mut self, should_pause: bool) {
         self.flags.set_bit(Self::FLAG_IS_PAUSED_BIT, should_pause);
     }
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Pod, Zeroable)]
-#[repr(C, align(8))]
-pub struct AccessRequestDepositParameters {
-    pub request_deposit_lamports: u64,
-    pub request_fee_lamports: u64,
 }
 
 const _: () = assert!(

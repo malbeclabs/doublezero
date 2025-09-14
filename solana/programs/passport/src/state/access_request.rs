@@ -7,6 +7,8 @@ use solana_pubkey::Pubkey;
 pub struct AccessRequest {
     pub service_key: Pubkey,
     pub rent_beneficiary_key: Pubkey,
+
+    pub request_fee_lamports: u64,
 }
 
 impl PrecomputedDiscriminator for AccessRequest {
@@ -26,6 +28,6 @@ impl AccessRequest {
 }
 
 const _: () = assert!(
-    size_of::<AccessRequest>() == 64,
+    size_of::<AccessRequest>() == 72,
     "`AccessRequest` size changed"
 );

@@ -62,19 +62,21 @@ pub fn process_close_access_pass(
         return Err(DoubleZeroError::InvalidAccountOwner.into());
     }
 
-    if let Ok(accesspass_account_data) = accesspass_account.try_borrow_data() {
-        if accesspass_account_data.len() > 0 {
-            let account_type: AccountType = accesspass_account_data[0].into();
+    if let Ok(data) = accesspass_account.try_borrow_data() {
+        if data.is_empty() {
+            msg!("Account data length is zero");
+        } else {
+            let account_type: AccountType = data[0].into();
             if account_type != AccountType::AccessPass {
                 msg!("AccountType is not AccessPass, cannot close");
                 return Err(DoubleZeroError::InvalidAccountType.into());
-            } else {
-                msg!("AccountType is AccessPass, proceeding to close");
             }
-        } else {
-            msg!("Account data length is zero, nothing to close");
+            msg!("AccountType is AccessPass, proceeding to close");
         }
-    };
+    } else {
+        msg!("Failed to borrow account data, cannot close");
+        return Err(DoubleZeroError::InvalidAccountType.into());
+    }
 
     account_close(accesspass_account, payer_account)?;
 

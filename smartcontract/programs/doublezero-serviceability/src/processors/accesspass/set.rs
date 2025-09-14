@@ -113,7 +113,9 @@ pub fn process_set_access_pass(
         return Err(DoubleZeroError::InvalidLastAccessEpoch.into());
     }
 
-    if accesspass_account.owner != program_id || (accesspass_account.data_is_empty() && accesspass_account.lamports() == 0) {
+    if accesspass_account.owner != program_id
+        || (accesspass_account.data_is_empty() && accesspass_account.lamports() == 0)
+    {
         let accesspass = AccessPass {
             account_type: AccountType::AccessPass,
             bump_seed,

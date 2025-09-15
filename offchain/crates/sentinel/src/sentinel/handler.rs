@@ -20,6 +20,7 @@ pub struct Sentinel {
     dz_rpc_client: DzRpcClient,
     sol_rpc_client: SolRpcClient,
     rx: UnboundedReceiver<Signature>,
+    #[allow(dead_code)]
     previous_leader_epochs: u8,
 }
 
@@ -108,17 +109,21 @@ impl Sentinel {
             debug!(%validator_id, "Validator failed signature validation");
             return Ok(None);
         }
-        if !self
-            .sol_rpc_client
-            .check_leader_schedule(validator_id, self.previous_leader_epochs)
-            .await?
-        {
-            debug!(
-                %validator_id,
-                "Validator failed leader schedule qualification"
-            );
-            return Ok(None);
-        }
+
+        // NOTE: Temporarily disable leader schedule
+        // - This is done so that glxy can onboard backup validator(s)
+        // if !self
+        //     .sol_rpc_client
+        //     .check_leader_schedule(validator_id, self.previous_leader_epochs)
+        //     .await?
+        // {
+        //     debug!(
+        //         %validator_id,
+        //         "Validator failed leader schedule qualification"
+        //     );
+        //     return Ok(None);
+        // }
+
         if let Some(validator_ip) = self.sol_rpc_client.get_validator_ip(validator_id).await? {
             Ok(Some(validator_ip))
         } else {

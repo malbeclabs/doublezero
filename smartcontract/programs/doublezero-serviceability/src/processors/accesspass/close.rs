@@ -75,7 +75,6 @@ pub fn process_close_access_pass(
         }
     } else {
         msg!("Failed to borrow account data, cannot close");
-        return Err(DoubleZeroError::InvalidAccountType.into());
     }
 
     account_close(accesspass_account, payer_account)?;

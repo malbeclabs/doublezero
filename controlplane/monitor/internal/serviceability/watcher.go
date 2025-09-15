@@ -117,7 +117,7 @@ func (w *ServiceabilityWatcher) Tick(ctx context.Context) error {
 				userAdds++
 			}
 		}
-		if userAdds > 0 {
+		if userAdds > 0 && w.cfg.SlackWebhookURL != "" {
 			msg, err := w.buildSlackMessage(userEvents, data.Devices)
 			if err != nil {
 				w.log.Error("failed to build slack message", "error", err)

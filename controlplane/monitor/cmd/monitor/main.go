@@ -51,11 +51,6 @@ func main() {
 		os.Exit(0)
 	}
 
-	if slackWebhookURL == nil || *slackWebhookURL == "" {
-		fmt.Println("Missing required flag: -slack-webhook-url")
-		flag.Usage()
-		os.Exit(1)
-	}
 	// Initialize logger.
 	logLevel := slog.LevelInfo
 	if *verbose {

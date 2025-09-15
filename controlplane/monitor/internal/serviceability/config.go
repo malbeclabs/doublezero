@@ -14,9 +14,10 @@ type ServiceabilityClient interface {
 }
 
 type Config struct {
-	Logger         *slog.Logger
-	Serviceability ServiceabilityClient
-	Interval       time.Duration
+	Logger          *slog.Logger
+	Serviceability  ServiceabilityClient
+	Interval        time.Duration
+	SlackWebhookURL string
 }
 
 func (c *Config) Validate() error {

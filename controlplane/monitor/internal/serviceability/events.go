@@ -48,6 +48,7 @@ const (
 	EntityTypeUnknown EntityType = iota
 	EntityTypeDevice
 	EntityTypeLink
+	EntityTypeUser
 )
 
 func (e EntityType) String() string {
@@ -56,6 +57,8 @@ func (e EntityType) String() string {
 		return "device"
 	case EntityTypeLink:
 		return "link"
+	case EntityTypeUser:
+		return "user"
 	default:
 		return "unknown"
 	}
@@ -110,6 +113,32 @@ func (e ServiceabilityLinkEvent) PubKey() string {
 }
 
 func (e ServiceabilityLinkEvent) Type() EventType {
+	return e.eventType
+}
+
+type ServiceabilityUserEvent struct {
+	eventType EventType
+	User      serviceability.User
+	diff      string
+}
+
+func (e ServiceabilityUserEvent) Diff() string {
+	return e.diff
+}
+
+func (e ServiceabilityUserEvent) EntityType() EntityType {
+	return EntityTypeUser
+}
+
+func (e ServiceabilityUserEvent) Id() string {
+	return e.PubKey()
+}
+
+func (e ServiceabilityUserEvent) PubKey() string {
+	return base58.Encode(e.User.PubKey[:])
+}
+
+func (e ServiceabilityUserEvent) Type() EventType {
 	return e.eventType
 }
 
@@ -177,6 +206,19 @@ func CompareLink(a, b []serviceability.Link) []ServiceabilityLinkEvent {
 		func(l serviceability.Link) string { return base58.Encode(l.PubKey[:]) },
 		func(et EventType, l serviceability.Link, df string) ServiceabilityLinkEvent {
 			return ServiceabilityLinkEvent{eventType: et, Link: l, diff: df}
+		},
+		diffFunc,
+	)
+}
+
+func CompareUser(a, b []serviceability.User) []ServiceabilityUserEvent {
+	diffFunc := func(a, b serviceability.User) string {
+		return diffEntities(a, b, func(u serviceability.User) string { return base58.Encode(u.PubKey[:]) })
+	}
+	return Compare(a, b,
+		func(u serviceability.User) string { return base58.Encode(u.PubKey[:]) },
+		func(et EventType, u serviceability.User, df string) ServiceabilityUserEvent {
+			return ServiceabilityUserEvent{eventType: et, User: u, diff: df}
 		},
 		diffFunc,
 	)

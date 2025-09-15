@@ -32,6 +32,7 @@ type Config struct {
 	Telemetry                  TelemetryProgramClient
 	InternetLatencyCollectorPK solana.PublicKey
 	Interval                   time.Duration
+	SlackWebhookURL            string
 }
 
 func (c *Config) Validate() error {

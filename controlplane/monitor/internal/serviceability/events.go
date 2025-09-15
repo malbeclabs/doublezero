@@ -222,7 +222,6 @@ func CompareUser(a, b []serviceability.User) []ServiceabilityUserEvent {
 		},
 		diffFunc,
 	)
-
 }
 
 func diffEntities[T any](a, b T, getCode func(T) string) string {

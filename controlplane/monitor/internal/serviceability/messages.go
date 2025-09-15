@@ -52,7 +52,6 @@ type SlackMessage struct {
 //   - A JSON string representing the Slack message payload.
 //   - An error if the payload cannot be marshaled to JSON.
 func GenerateSlackTableMessage(headerText string, tableRows [][]string, columnSettings []ColumnSetting) (string, error) {
-	// 1. Create the Header Block
 	headerBlock := Block{
 		Type: "header",
 		Text: &TextObject{
@@ -62,8 +61,6 @@ func GenerateSlackTableMessage(headerText string, tableRows [][]string, columnSe
 		},
 	}
 
-	// 2. Create the Table Block
-	// Convert the slice of string slices into the required Slack format for rows.
 	slackRows := make([][]TableCell, len(tableRows))
 	for i, row := range tableRows {
 		slackRow := make([]TableCell, len(row))
@@ -76,7 +73,6 @@ func GenerateSlackTableMessage(headerText string, tableRows [][]string, columnSe
 		slackRows[i] = slackRow
 	}
 
-	// Use provided column settings or default to the ones from the example.
 	if columnSettings == nil {
 		columnSettings = []ColumnSetting{
 			{IsWrapped: true},
@@ -90,12 +86,10 @@ func GenerateSlackTableMessage(headerText string, tableRows [][]string, columnSe
 		Rows:           slackRows,
 	}
 
-	// 3. Assemble the final message payload
 	message := SlackMessage{
 		Blocks: []Block{headerBlock, tableBlock},
 	}
 
-	// 4. Marshal the struct into a JSON string
 	payload, err := json.MarshalIndent(message, "", "\t")
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal slack message to JSON: %w", err)

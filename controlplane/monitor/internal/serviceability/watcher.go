@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	"github.com/mr-tron/base58"
 )
 
 const (
@@ -139,7 +140,7 @@ func programVersionString(version serviceability.ProgramVersion) string {
 }
 
 func (w *ServiceabilityWatcher) buildSlackMessage(event []ServiceabilityUserEvent, devices []serviceability.Device) (string, error) {
-	findDeviceName := func(pubkey [32]byte) string {
+	findDeviceCode := func(pubkey [32]byte) string {
 		for _, d := range devices {
 			if d.PubKey == pubkey {
 				return d.Code
@@ -147,24 +148,38 @@ func (w *ServiceabilityWatcher) buildSlackMessage(event []ServiceabilityUserEven
 		}
 		return "unknown"
 	}
+
 	users := [][]string{}
-	users = append(users, []string{"UserPubKey", "TunnelID", "ClientIP", "DeviceName"})
+	users = append(users, []string{"UserPubKey", "Client IP", "Device PubKey", "Device Name", "Tunnel ID"})
 	for _, e := range event {
 		if e.Type() == EventTypeAdded {
 			clientIp := net.IP(e.User.ClientIp[:]).String()
-			users = append(users, []string{e.PubKey(), strconv.FormatUint(uint64(e.User.TunnelId), 10), clientIp, findDeviceName(e.User.DevicePubKey)})
+			devicePubKey := base58.Encode(e.User.DevicePubKey[:])
+			tunnelId := strconv.FormatUint(uint64(e.User.TunnelId), 10)
+			users = append(users, []string{
+				e.PubKey(),
+				clientIp,
+				devicePubKey,
+				findDeviceCode(e.User.DevicePubKey),
+				tunnelId,
+			})
 		}
 	}
 	if len(users) == 0 {
 		return "", nil
 	}
-	return GenerateSlackTableMessage("test", users, nil)
+
+	title := "New DoubleZero Users Added!"
+	if len(users) == 2 {
+		title = "New DoubleZero User Added!"
+	}
+
+	header := fmt.Sprintf(":yay-frog: :frog-wow-scroll: :elmo-fire: :lfg-dz: %s :lfg-dz: :elmo-fire: :frog-wow-scroll: :yay-frog:", title)
+	return GenerateSlackTableMessage(header, users, nil)
 }
 
 func (w *ServiceabilityWatcher) postSlackMessage(msg string) error {
-	webhookURL := "https://hooks.slack.com/services/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"
-
-	req, err := http.NewRequest("POST", webhookURL, strings.NewReader(msg))
+	req, err := http.NewRequest("POST", w.cfg.SlackWebhookURL, strings.NewReader(msg))
 	if err != nil {
 		return fmt.Errorf("error creating HTTP request: %v", err)
 	}

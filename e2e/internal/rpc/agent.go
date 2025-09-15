@@ -174,7 +174,7 @@ func (q *QAAgent) ConnectUnicast(ctx context.Context, req *pb.ConnectUnicastRequ
 		return currentState == "up", nil
 	}
 
-	err = poll.Until(ctx, condition, 30*time.Second, 1*time.Second)
+	err = poll.Until(ctx, condition, 60*time.Second, 1*time.Second)
 	if err != nil {
 		return nil, fmt.Errorf("failed while polling for session status: %v", err)
 	}

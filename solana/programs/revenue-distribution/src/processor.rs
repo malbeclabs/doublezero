@@ -14,6 +14,7 @@ use doublezero_program_tools::{
 };
 use solana_account_info::AccountInfo;
 use solana_cpi::invoke_signed_unchecked;
+use solana_instruction::{syscalls::get_stack_height, TRANSACTION_LEVEL_STACK_HEIGHT};
 use solana_msg::msg;
 use solana_program_error::{ProgramError, ProgramResult};
 use solana_pubkey::Pubkey;
@@ -1458,6 +1459,11 @@ fn try_initialize_prepaid_connection(
     decimals: u8,
 ) -> ProgramResult {
     msg!("Initialize prepaid connection");
+
+    if get_stack_height() != TRANSACTION_LEVEL_STACK_HEIGHT {
+        msg!("Cannot CPI initialize prepaid connection");
+        return Err(ProgramError::InvalidInstructionData);
+    }
 
     if user_key == Pubkey::default() {
         msg!("User key cannot be zero address");

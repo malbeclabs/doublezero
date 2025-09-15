@@ -11,6 +11,7 @@ use doublezero_program_tools::{
     zero_copy::{self, ZeroCopyAccount, ZeroCopyMutAccount},
 };
 use solana_account_info::AccountInfo;
+use solana_instruction::{syscalls::get_stack_height, TRANSACTION_LEVEL_STACK_HEIGHT};
 use solana_msg::msg;
 use solana_program_error::{ProgramError, ProgramResult};
 use solana_pubkey::Pubkey;
@@ -179,6 +180,11 @@ fn try_configure_program(accounts: &[AccountInfo], setting: ProgramConfiguration
 
 fn try_request_access(accounts: &[AccountInfo], access_mode: AccessMode) -> ProgramResult {
     msg!("Request access");
+
+    if get_stack_height() != TRANSACTION_LEVEL_STACK_HEIGHT {
+        msg!("Cannot CPI request access");
+        return Err(ProgramError::InvalidInstructionData);
+    }
 
     let AccessMode::SolanaValidator { service_key, .. } = access_mode;
 

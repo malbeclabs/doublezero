@@ -12,7 +12,7 @@ borsh = { workspace = true, features = ["derive"] }
 bytemuck = { workspace = true, features = ["derive", "min_const_generics"] }
 doublezero-program-tools = { workspace = true, features = ["entrypoint"] }
 solana-account-info.workspace = true
-solana-instruction.workspace = true
+solana-instruction = { workspace = true, features = ["syscalls"] }
 solana-msg.workspace = true
 solana-program-entrypoint.workspace = true
 solana-program-error.workspace = true

@@ -180,16 +180,6 @@ impl ScheduleWorker {
             return Ok(false);
         }
 
-        // Check if rewards already exist for this epoch (idempotency check)
-        if self.rewards_exist_for_epoch(&fetcher, target_epoch).await? {
-            info!(
-                "Rewards already exist for epoch {}, marking as processed",
-                target_epoch
-            );
-            state.mark_success(target_epoch);
-            return Ok(false);
-        }
-
         info!("Processing rewards for epoch {}", target_epoch);
 
         if self.dry_run {
@@ -214,6 +204,16 @@ impl ScheduleWorker {
                 target_epoch
             );
         } else {
+            // Check if rewards already exist for this epoch (idempotency, only when not in dry-run)
+            if self.rewards_exist_for_epoch(&fetcher, target_epoch).await? {
+                info!(
+                    "Rewards already exist for epoch {}, marking as processed",
+                    target_epoch
+                );
+                state.mark_success(target_epoch);
+                return Ok(false);
+            }
+
             // Calculate and write rewards for real
             self.orchestrator
                 .calculate_rewards(Some(target_epoch), self.keypair_path.clone(), false)

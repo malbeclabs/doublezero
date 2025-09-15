@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -150,7 +151,6 @@ func (w *ServiceabilityWatcher) buildSlackMessage(event []ServiceabilityUserEven
 	}
 
 	users := [][]string{}
-	users = append(users, []string{"UserPubKey", "Client IP", "Device PubKey", "Device Name", "Tunnel ID"})
 	for _, e := range event {
 		if e.Type() == EventTypeAdded {
 			clientIp := net.IP(e.User.ClientIp[:]).String()
@@ -170,10 +170,11 @@ func (w *ServiceabilityWatcher) buildSlackMessage(event []ServiceabilityUserEven
 	}
 
 	title := "New DoubleZero Users Added!"
-	if len(users) == 2 {
+	if len(users) == 1 {
 		title = "New DoubleZero User Added!"
 	}
 
+	users = slices.Insert(users, 0, []string{"UserPubKey", "Client IP", "Device PubKey", "Device Name", "Tunnel ID"})
 	header := fmt.Sprintf(":yay-frog: :frog-wow-scroll: :elmo-fire: :lfg-dz: %s :lfg-dz: :elmo-fire: :frog-wow-scroll: :yay-frog:", title)
 	return GenerateSlackTableMessage(header, users, nil)
 }

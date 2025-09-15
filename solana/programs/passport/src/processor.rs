@@ -165,8 +165,11 @@ fn try_configure_program(accounts: &[AccountInfo], setting: ProgramConfiguration
             request_deposit_lamports: deposit_lamports,
             request_fee_lamports: fee_lamports,
         } => {
-            if fee_lamports >= deposit_lamports {
-                msg!("Processing fee must be less than the deposit");
+            if deposit_lamports == 0 {
+                msg!("Deposit lamports must not be zero");
+                return Err(ProgramError::InvalidInstructionData);
+            } else if fee_lamports >= deposit_lamports {
+                msg!("Request fee must be less than the deposit");
                 return Err(ProgramError::InvalidInstructionData);
             }
 
@@ -218,14 +221,22 @@ fn try_request_access(accounts: &[AccountInfo], access_mode: AccessMode) -> Prog
         return Err(ProgramError::InvalidAccountData);
     }
 
+    let additional_lamports = program_config
+        .checked_request_deposit_lamports()
+        .ok_or_else(|| {
+            msg!("Request deposit lamports not configured");
+            ProgramError::InvalidAccountData
+        })?;
+
     // Account 1 must be the payer. The system program will automatically ensure
     // this account is a signer and writable in order to transfer the lamports
     // to create the new account.
     let (_, payer_info) = try_next_enumerated_account(&mut accounts_iter, Default::default())?;
+
+    // Account 2 must be the new access request account.
     let (account_index, new_access_request_info) =
         try_next_enumerated_account(&mut accounts_iter, Default::default())?;
 
-    // Account 2 must be the new access request account.
     let (expected_access_request_key, access_request_bump) =
         AccessRequest::find_address(&service_key);
 
@@ -237,8 +248,6 @@ fn try_request_access(accounts: &[AccountInfo], access_mode: AccessMode) -> Prog
         );
         return Err(ProgramError::InvalidSeeds);
     }
-
-    let additional_lamports = program_config.request_deposit_lamports;
 
     try_create_account(
         Invoker::Signer(payer_info.key),

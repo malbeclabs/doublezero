@@ -52,6 +52,16 @@ impl ProgramConfig {
         self.flags
             .set_bit(Self::FLAG_IS_REQUEST_ACCESS_PAUSED_BIT, should_pause);
     }
+
+    pub fn checked_request_deposit_lamports(&self) -> Option<u64> {
+        let lamports = self.request_deposit_lamports;
+
+        if lamports == 0 {
+            None
+        } else {
+            Some(lamports)
+        }
+    }
 }
 
 const _: () = assert!(

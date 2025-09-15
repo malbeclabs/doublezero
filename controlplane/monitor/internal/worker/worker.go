@@ -28,9 +28,10 @@ func New(cfg *Config) (*Worker, error) {
 	}
 
 	serviceabilityWatcher, err := serviceability.NewServiceabilityWatcher(&serviceability.Config{
-		Logger:         cfg.Logger,
-		Serviceability: cfg.Serviceability,
-		Interval:       cfg.Interval,
+		Logger:          cfg.Logger,
+		Serviceability:  cfg.Serviceability,
+		Interval:        cfg.Interval,
+		SlackWebhookURL: cfg.SlackWebhookURL,
 	})
 	if err != nil {
 		return nil, err

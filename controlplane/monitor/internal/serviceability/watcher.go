@@ -4,6 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
+	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
@@ -18,6 +22,7 @@ type ServiceabilityWatcher struct {
 	cfg          *Config
 	cacheLinks   []serviceability.Link
 	cacheDevices []serviceability.Device
+	cacheUsers   []serviceability.User
 }
 
 func NewServiceabilityWatcher(cfg *Config) (*ServiceabilityWatcher, error) {
@@ -100,12 +105,80 @@ func (w *ServiceabilityWatcher) Tick(ctx context.Context) error {
 		}
 	}
 
+	if w.cacheUsers != nil {
+		userEvents := CompareUser(w.cacheUsers, data.Users)
+		w.log.Debug("user events", "count", len(userEvents))
+		userAdds := 0
+		for _, e := range userEvents {
+			logEvent(e)
+			if e.Type() == EventTypeAdded {
+				userAdds++
+			}
+		}
+		if userAdds > 0 {
+			msg, err := w.buildSlackMessage(userEvents, data.Devices)
+			if err != nil {
+				w.log.Error("failed to build slack message", "error", err)
+			}
+			if err := w.postSlackMessage(msg); err != nil {
+				w.log.Error("failed to post slack message", "error", err)
+			}
+		}
+	}
+
 	// save current on-chain state for next comparison interval
 	w.cacheLinks = data.Links
 	w.cacheDevices = data.Devices
+	w.cacheUsers = data.Users
+
 	return nil
 }
 
 func programVersionString(version serviceability.ProgramVersion) string {
 	return fmt.Sprintf("%d.%d.%d", version.Major, version.Minor, version.Patch)
+}
+
+func (w *ServiceabilityWatcher) buildSlackMessage(event []ServiceabilityUserEvent, devices []serviceability.Device) (string, error) {
+	findDeviceName := func(pubkey [32]byte) string {
+		for _, d := range devices {
+			if d.PubKey == pubkey {
+				return d.Code
+			}
+		}
+		return "unknown"
+	}
+	users := [][]string{}
+	users = append(users, []string{"UserPubKey", "TunnelID", "ClientIP", "DeviceName"})
+	for _, e := range event {
+		if e.Type() == EventTypeAdded {
+			clientIp := net.IP(e.User.ClientIp[:]).String()
+			users = append(users, []string{e.PubKey(), strconv.FormatUint(uint64(e.User.TunnelId), 10), clientIp, findDeviceName(e.User.DevicePubKey)})
+		}
+	}
+	if len(users) == 0 {
+		return "", nil
+	}
+	return GenerateSlackTableMessage("test", users, nil)
+}
+
+func (w *ServiceabilityWatcher) postSlackMessage(msg string) error {
+	webhookURL := "https://hooks.slack.com/services/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"
+
+	req, err := http.NewRequest("POST", webhookURL, strings.NewReader(msg))
+	if err != nil {
+		return fmt.Errorf("error creating HTTP request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("error sending HTTP request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("non-2xx response from Slack: %d", resp.StatusCode)
+	}
+	return nil
 }

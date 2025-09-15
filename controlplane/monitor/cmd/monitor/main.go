@@ -35,6 +35,7 @@ var (
 	verbose                    = flag.Bool("verbose", false, "enable verbose logging")
 	showVersion                = flag.Bool("version", false, "Print the version of the doublezero-agent and exit")
 	metricsAddr                = flag.String("metrics-addr", ":8080", "Address to listen on for prometheus metrics")
+	slackWebhookURL            = flag.String("slack-webhook-url", "", "The Slack webhook URL to send alerts")
 
 	// Set by LDFLAGS
 	version = "dev"
@@ -50,6 +51,11 @@ func main() {
 		os.Exit(0)
 	}
 
+	if slackWebhookURL == nil || *slackWebhookURL == "" {
+		fmt.Println("Missing required flag: -slack-webhook-url")
+		flag.Usage()
+		os.Exit(1)
+	}
 	// Initialize logger.
 	logLevel := slog.LevelInfo
 	if *verbose {
@@ -144,6 +150,7 @@ func main() {
 		Telemetry:                  telemetryClient,
 		InternetLatencyCollectorPK: networkConfig.InternetLatencyCollectorPK,
 		Interval:                   *interval,
+		SlackWebhookURL:            *slackWebhookURL,
 	})
 	if err != nil {
 		log.Error("Failed to create worker", "error", err)

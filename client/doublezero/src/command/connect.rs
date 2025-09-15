@@ -3,6 +3,7 @@ use crate::{
     requirements::check_doublezero,
     servicecontroller::{ProvisioningRequest, ServiceController, ServiceControllerImpl},
 };
+use backoff::{future, Error, ExponentialBackoffBuilder};
 use clap::{Args, Subcommand, ValueEnum};
 use doublezero_cli::{
     doublezerocommand::CliCommand,
@@ -25,7 +26,7 @@ use doublezero_sdk::{
 use eyre;
 use indicatif::ProgressBar;
 use solana_sdk::pubkey::Pubkey;
-use std::{collections::HashMap, net::Ipv4Addr, str::FromStr};
+use std::{collections::HashMap, net::Ipv4Addr, str::FromStr, time::Duration};
 
 #[derive(Clone, Debug, ValueEnum)]
 pub enum MulticastMode {
@@ -287,13 +288,27 @@ impl ProvisioningCliCommand {
 
                 let device_keys = devices.keys().map(|k| k.to_string()).collect::<Vec<_>>();
 
-                let mut latencies = controller
-                    .latency()
-                    .await
-                    .map_err(|_| eyre::eyre!("Could not get latency"))?;
-                latencies.retain(|l| l.reachable);
-                latencies.retain(|l| device_keys.contains(&l.device_pk.to_string()));
-                latencies.sort_by(|a, b| a.avg_latency_ns.cmp(&b.avg_latency_ns));
+                let get_latencies = || async {
+                    let mut latencies = controller
+                        .latency()
+                        .await
+                        .map_err(|_| Error::permanent(eyre::eyre!("Could not get latency")))?;
+                    latencies.retain(|l| l.reachable);
+                    latencies.retain(|l| device_keys.contains(&l.device_pk.to_string()));
+                    latencies.sort_by(|a, b| a.avg_latency_ns.cmp(&b.avg_latency_ns));
+                    match latencies.len() {
+                        0 => Err(Error::transient(eyre::eyre!("No devices found"))),
+                        _ => Ok(latencies),
+                    }
+                };
+
+                let mut builder = ExponentialBackoffBuilder::new();
+                builder
+                    .with_initial_interval(Duration::from_secs(1))
+                    .with_max_interval(Duration::from_secs(10))
+                    .with_max_elapsed_time(Some(Duration::from_secs(120)));
+
+                let latencies = future::retry(builder.build(), get_latencies).await?;
 
                 spinner.set_message("Reading device account...");
                 Pubkey::from_str(
@@ -677,7 +692,10 @@ mod tests {
     };
     use mockall::predicate;
     use solana_sdk::signature::Signature;
-    use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::OnceLock};
+    use std::{
+        collections::HashMap,
+        sync::{Arc, Mutex, OnceLock},
+    };
     use tempfile::TempDir;
 
     static TMPDIR: OnceLock<TempDir> = OnceLock::new();
@@ -696,10 +714,10 @@ mod tests {
         pub global_cfg: GlobalConfig,
         pub client: MockCliCommand,
         pub controller: MockServiceController,
-        pub devices: Rc<RefCell<HashMap<Pubkey, Device>>>,
-        pub users: Rc<RefCell<HashMap<Pubkey, User>>>,
-        pub latencies: Rc<RefCell<Vec<LatencyRecord>>>,
-        pub mcast_groups: Rc<RefCell<HashMap<Pubkey, MulticastGroup>>>,
+        pub devices: Arc<Mutex<HashMap<Pubkey, Device>>>,
+        pub users: Arc<Mutex<HashMap<Pubkey, User>>>,
+        pub latencies: Arc<Mutex<Vec<LatencyRecord>>>,
+        pub mcast_groups: Arc<Mutex<HashMap<Pubkey, MulticastGroup>>>,
     }
 
     impl TestFixture {
@@ -717,10 +735,10 @@ mod tests {
                 },
                 client: create_test_client(),
                 controller: MockServiceController::new(),
-                devices: Rc::new(RefCell::new(HashMap::new())),
-                users: Rc::new(RefCell::new(HashMap::new())),
-                latencies: Rc::new(RefCell::new(vec![])),
-                mcast_groups: Rc::new(RefCell::new(HashMap::new())),
+                devices: Arc::new(Mutex::new(HashMap::new())),
+                users: Arc::new(Mutex::new(HashMap::new())),
+                latencies: Arc::new(Mutex::new(vec![])),
+                mcast_groups: Arc::new(Mutex::new(HashMap::new())),
             };
 
             fixture
@@ -737,7 +755,7 @@ mod tests {
             fixture
                 .controller
                 .expect_latency()
-                .returning_st(move || Ok(latencies.borrow().clone()));
+                .returning_st(move || Ok(latencies.lock().unwrap().clone()));
 
             let global_cfg = fixture.global_cfg.clone();
             fixture
@@ -780,24 +798,24 @@ mod tests {
             fixture
                 .client
                 .expect_list_user()
-                .returning_st(move |_| Ok(users.borrow().clone()));
+                .returning_st(move |_| Ok(users.lock().unwrap().clone()));
 
             let devices = fixture.devices.clone();
             fixture
                 .client
                 .expect_list_device()
-                .returning_st(move |_| Ok(devices.borrow().clone()));
+                .returning_st(move |_| Ok(devices.lock().unwrap().clone()));
 
             let mcast_groups = fixture.mcast_groups.clone();
             fixture
                 .client
                 .expect_list_multicastgroup()
-                .returning_st(move |_| Ok(mcast_groups.borrow().clone()));
+                .returning_st(move |_| Ok(mcast_groups.lock().unwrap().clone()));
 
             let users = fixture.users.clone();
             fixture.client.expect_get_user().returning_st(move |cmd| {
                 let user_pk = cmd.pubkey;
-                let users = users.borrow();
+                let users = users.lock().unwrap();
                 let user = users.get(&user_pk);
                 match user {
                     Some(user) => Ok((user_pk, user.clone())),
@@ -807,7 +825,7 @@ mod tests {
 
             let devices = fixture.devices.clone();
             fixture.client.expect_get_device().returning_st(move |cmd| {
-                let devices = devices.borrow();
+                let devices = devices.lock().unwrap();
                 match parse_pubkey(&cmd.pubkey_or_code) {
                     Some(pk) => match devices.get(&pk) {
                         Some(device) => Ok((pk, device.clone())),
@@ -827,11 +845,11 @@ mod tests {
         }
 
         pub fn add_device(&mut self, latency_ns: i32, reachable: bool) -> (Pubkey, Device) {
-            let mut devices = self.devices.borrow_mut();
+            let mut devices = self.devices.lock().unwrap();
             let device_number = devices.len() + 1;
             let pk = Pubkey::new_unique();
             let device_ip = format!("5.6.7.{device_number}");
-            self.latencies.borrow_mut().push(LatencyRecord {
+            self.latencies.lock().unwrap().push(LatencyRecord {
                 device_pk: pk.to_string(),
                 device_ip: device_ip.clone(),
                 device_code: format!("device{device_number}"),
@@ -869,7 +887,7 @@ mod tests {
             code: &str,
             multicast_ip: &str,
         ) -> (Pubkey, MulticastGroup) {
-            let mut mcast_groups = self.mcast_groups.borrow_mut();
+            let mut mcast_groups = self.mcast_groups.lock().unwrap();
             let pk = Pubkey::new_unique();
             let group = MulticastGroup {
                 account_type: AccountType::MulticastGroup,
@@ -917,13 +935,13 @@ mod tests {
         }
 
         pub fn add_user(&mut self, user: &User) -> Pubkey {
-            let mut users = self.users.borrow_mut();
+            let mut users = self.users.lock().unwrap();
             let pk = Pubkey::new_unique();
             users.insert(pk, user.clone());
             let users = self.users.clone();
             self.client
                 .expect_list_user()
-                .returning_st(move |_| Ok(users.borrow().clone()));
+                .returning_st(move |_| Ok(users.lock().unwrap().clone()));
             pk
         }
 
@@ -942,7 +960,7 @@ mod tests {
                 .times(1)
                 .with(predicate::eq(expected_create_user_command))
                 .returning_st(move |_| {
-                    users.borrow_mut().insert(pk, user.clone());
+                    users.lock().unwrap().insert(pk, user.clone());
                     Ok((Signature::default(), pk))
                 });
         }
@@ -978,7 +996,7 @@ mod tests {
                 .times(1)
                 .with(predicate::eq(expected_create_subscribe_user_command))
                 .returning_st(move |_| {
-                    users.borrow_mut().insert(pk, user.clone());
+                    users.lock().unwrap().insert(pk, user.clone());
                     Ok((Signature::default(), pk))
                 });
         }
@@ -1199,6 +1217,95 @@ mod tests {
             .execute_with_service_controller(&fixture.client, &fixture.controller)
             .await;
         assert!(result.is_ok());
+
+        println!("Test that adding a second subscriber fails");
+        // Test that adding a second subscriber fails
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::Multicast {
+                mode: MulticastMode::Subscriber,
+                multicast_group: "test-group2".to_string(),
+            },
+            client_ip: Some(user.client_ip.to_string()),
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Multicast user already exists for IP: 1.2.3.4"));
+
+        println!("Test that adding an IBRL tunnel with an existing multicast fails");
+        // Test that adding an IBRL tunnel with an existing multicast fails
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::IBRL {
+                allocate_addr: false,
+            },
+            client_ip: Some(user.client_ip.to_string()),
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Only one tunnel currently supported"));
+    }
+
+    #[tokio::test]
+    async fn test_connect_command_delayed_latencies() {
+        let mut fixture = TestFixture::new();
+
+        let (mcast_group_pk, mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
+        (_, _) = fixture.add_multicast_group("test-group2", "239.0.0.2");
+        let (device1_pk, device1) = fixture.add_device(100, true);
+        let user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
+        fixture.expect_create_subscribe_user(
+            Pubkey::new_unique(),
+            &user,
+            mcast_group_pk,
+            false,
+            true,
+        );
+        fixture.expected_provisioning_request(
+            UserType::Multicast,
+            user.client_ip.to_string().as_str(),
+            device1.public_ip.to_string().as_str(),
+            Some(vec![]),
+            Some(vec![mcast_group.multicast_ip.to_string()]),
+        );
+
+        let latency_record = fixture.latencies.lock().unwrap()[0].clone();
+        fixture.latencies.lock().unwrap().clear();
+        let latencies = Arc::clone(&fixture.latencies);
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::Multicast {
+                mode: MulticastMode::Subscriber,
+                multicast_group: "test-group".to_string(),
+            },
+            client_ip: Some(user.client_ip.to_string()),
+            device: None,
+            verbose: false,
+        };
+
+        let coro1 = command.execute_with_service_controller(&fixture.client, &fixture.controller);
+        let coro2 = tokio::task::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            latencies.lock().unwrap().push(latency_record);
+        });
+
+        let (result1, _) = tokio::join!(coro1, coro2);
+
+        assert!(result1.is_ok());
 
         println!("Test that adding a second subscriber fails");
         // Test that adding a second subscriber fails

@@ -4,7 +4,7 @@ use crate::{
 };
 use clap::{Args, ValueEnum};
 use doublezero_sdk::commands::accesspass::set::SetAccessPassCommand;
-use doublezero_serviceability::state::accesspass::AccessPassType;
+use doublezero_serviceability::{pda::get_accesspass_pda, state::accesspass::AccessPassType};
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, net::Ipv4Addr, str::FromStr};
 
@@ -63,6 +63,10 @@ impl SetAccessPassCliCommand {
             },
         };
 
+        let (accesspass_pubkey, _) =
+            get_accesspass_pda(&client.get_program_id(), &self.client_ip, &user_payer);
+        writeln!(out, "AccessPass PDA: {accesspass_pubkey}")?;
+
         let signature = client.set_accesspass(SetAccessPassCommand {
             accesspass_type,
             client_ip: self.client_ip,
@@ -90,11 +94,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_cli_device_create() {
+    fn test_cli_accesspass_set() {
         let mut client = create_test_client();
 
         let client_ip = [100, 0, 0, 1].into();
-        let payer = Pubkey::new_unique();
+        let payer = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
 
         let (_pda_pubkey, _bump_seed) =
             get_accesspass_pda(&client.get_program_id(), &client_ip, &payer);
@@ -150,7 +154,7 @@ mod tests {
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(
-            output_str,"Signature: 3QnHBSdd4doEF6FgpLCejqEw42UQjfvNhQJwoYDSpoBszpCCqVft4cGoneDCnZ6Ez3ujzavzUu85u6F79WtLhcsv\n"
+            output_str,"AccessPass PDA: 6pw9fvwzjjkkocGuwxhmv1TwHHnYTFjGvV9GKX6nkFMw\nSignature: 3QnHBSdd4doEF6FgpLCejqEw42UQjfvNhQJwoYDSpoBszpCCqVft4cGoneDCnZ6Ez3ujzavzUu85u6F79WtLhcsv\n"
         );
     }
 }

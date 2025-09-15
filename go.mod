@@ -1,6 +1,6 @@
 module github.com/malbeclabs/doublezero
 
-go 1.24
+go 1.24.0
 
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.40.1
@@ -15,6 +15,7 @@ require (
 	github.com/gogo/protobuf v1.3.2
 	github.com/google/go-cmp v0.7.0
 	github.com/google/gopacket v1.1.19
+	github.com/hexops/gotextdiff v1.0.3
 	github.com/jellydator/ttlcache/v3 v3.4.0
 	github.com/joho/godotenv v1.5.1
 	github.com/jwhited/corebgp v0.8.5
@@ -38,7 +39,7 @@ require (
 	github.com/twmb/franz-go/plugin/kprom v1.3.0
 	github.com/vishvananda/netlink v1.3.1
 	github.com/vishvananda/netns v0.0.5
-	golang.org/x/mod v0.27.0
+	golang.org/x/mod v0.28.0
 	golang.org/x/net v0.43.0
 	golang.org/x/sys v0.35.0
 	google.golang.org/grpc v1.75.0
@@ -77,7 +78,6 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/hexops/gotextdiff v1.0.3 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect

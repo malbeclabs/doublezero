@@ -557,7 +557,7 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 	}
 
 	if len(unknownPeers) != 0 {
-		slog.Info("device returned unknown peers to be deleted", "device pubkey", req.GetPubkey(), "number of unknown peers", len(unknownPeers), "peers", unknownPeers)
+		slog.Debug("device returned unknown peers to be deleted", "device pubkey", req.GetPubkey(), "number of unknown peers", len(unknownPeers), "peers", unknownPeers)
 	}
 
 	multicastGroupBlock := formatCIDR(&c.cache.Config.MulticastGroupBlock)

@@ -36,6 +36,7 @@ pub async fn get_jito_rewards<T: ValidatorRewards>(
         "{JITO_BASE_URL}validator_rewards?epoch={epoch}&limit={JITO_REWARDS_LIMIT}"
     );
 
+    println!("Fetching Jito rewards for epoch {epoch}");
     let rewards = (|| async { solana_debt_calculator.get::<JitoRewards>(&url).await })
         .retry(
             &ExponentialBuilder::default()
@@ -61,6 +62,7 @@ pub async fn get_jito_rewards<T: ValidatorRewards>(
     let jito_rewards: HashMap<String, u64> = stream::iter(validator_ids)
         .map(|validator_id| {
             let validator_id = validator_id.to_string();
+            println!("Fetching Jito rewards for validator_id {validator_id}");
             let rewards = &rewards.rewards;
             async move {
                 let mev_revenue = rewards

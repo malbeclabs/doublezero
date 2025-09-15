@@ -54,7 +54,7 @@ pub async fn create_record_on_ledger<T: borsh::BorshSerialize>(
     record_data: &T,
     commitment_config: CommitmentConfig,
     seeds: &[&[u8]],
-) -> Result<bool> {
+) -> Result<()> {
     let payer_key = payer_signer.pubkey();
 
     let serialized = borsh::to_vec(record_data)?;
@@ -70,7 +70,7 @@ pub async fn create_record_on_ledger<T: borsh::BorshSerialize>(
     .unwrap_or_else(|_| Default::default());
 
     if record.to_string() == "1111111111111111111111111111111111111111111111111111111111111111" {
-        return Ok(true);
+        println!("record already exists for {seeds:#?}");
     }
 
     for chunk in record::instruction::write_record_chunks(&payer_key, seeds, &serialized) {
@@ -87,8 +87,11 @@ pub async fn create_record_on_ledger<T: borsh::BorshSerialize>(
             )
             .await?;
     }
-
-    Ok(false)
+    println!(
+        "wrote {} bytes for blockhash {recent_blockhash}",
+        serialized.len()
+    );
+    Ok(())
 }
 
 pub async fn read_from_ledger(

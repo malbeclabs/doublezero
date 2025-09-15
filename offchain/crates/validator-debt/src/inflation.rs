@@ -12,6 +12,7 @@ pub async fn get_inflation_rewards<T: ValidatorRewards + ?Sized>(
 ) -> Result<HashMap<String, u64>> {
     let mut vote_keys: Vec<Pubkey> = Vec::with_capacity(validator_ids.len());
 
+    println!("get inflation rewards for epoch {epoch}");
     let vote_accounts = (|| async {
         solana_debt_calculator
         .get_vote_accounts_with_config()
@@ -28,6 +29,7 @@ pub async fn get_inflation_rewards<T: ValidatorRewards + ?Sized>(
     })?;
 
     // this can be cleaned up i'm sure
+    println!("getting vote account keys for inflation rewards");
     for validator_id in validator_ids {
         match vote_accounts
             .current

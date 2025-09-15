@@ -30,6 +30,7 @@ pub async fn get_block_rewards<T: ValidatorRewards>(
     let leader_schedule = api_provider.get_leader_schedule().await?;
 
     // Build validator schedules
+    println!("Building validator schedules");
     let validator_schedules: HashMap<String, Vec<u64>> = validator_ids
         .iter()
         .filter_map(|validator_id| {
@@ -45,12 +46,14 @@ pub async fn get_block_rewards<T: ValidatorRewards>(
 
     let block_rewards = stream::iter(validator_schedules.into_iter().flat_map(
         |(validator_id, slots)| {
+            println!("getting block rewards for {}", validator_id.clone());
             slots
                 .into_iter()
                 .map(move |slot| (validator_id.clone(), slot))
         },
     ))
     .map(|(validator_id, slot)| async move {
+        println!("getting blocks for {}", validator_id.clone());
         match (|| async { api_provider.get_block_with_config(slot).await })
             .retry(
                 &ExponentialBuilder::default()

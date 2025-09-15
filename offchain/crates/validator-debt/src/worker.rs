@@ -205,20 +205,54 @@ pub async fn calculate_validator_debt<T: ValidatorRewards>(
         debts: computed_solana_validator_debt_vec.clone(),
     };
 
-    println!("attempting to create a new record on DZ ledger");
-    let created_ledger_record = ledger::create_record_on_ledger(
+    // read record
+    println!("checking if record exists");
+    let record = ledger::read_from_ledger(
         solana_debt_calculator.ledger_rpc_client(),
-        recent_blockhash,
         &transaction.signer,
-        &computed_solana_validator_debts,
-        solana_debt_calculator.ledger_commitment_config(),
         seeds,
+        solana_debt_calculator.ledger_commitment_config(),
     )
-    .await?;
+    .await;
 
-    if created_ledger_record {
-        println!("record already created for {seeds:?}");
-    }
+    match record {
+        Ok(ledger_record) => {
+            let deserialized_record: ComputedSolanaValidatorDebts =
+                borsh::from_slice(ledger_record.1.as_slice())
+                    .map_err(|e| anyhow::anyhow!("failed to deserialize ledger record: {}", e))?;
+
+            if deserialized_record.blockhash != computed_solana_validator_debts.blockhash {
+                bail!(
+                    "retrieved record blockhash {} is equal to created record blockhash {}",
+                    &deserialized_record.blockhash,
+                    &computed_solana_validator_debts.blockhash
+                );
+            }
+
+            assert_eq!(
+                deserialized_record.debts,
+                computed_solana_validator_debts.debts
+            );
+
+            println!(
+                "computed debt and deserialized ledger record data are identical, proceeding to write transaction"
+            )
+        }
+        Err(_err) => {
+            // create record
+            println!("creating a new record on DZ ledger");
+            ledger::create_record_on_ledger(
+                solana_debt_calculator.ledger_rpc_client(),
+                recent_blockhash,
+                &transaction.signer,
+                &computed_solana_validator_debts,
+                solana_debt_calculator.ledger_commitment_config(),
+                seeds,
+            )
+            .await?;
+            println!("new record created; shutting down until the next check")
+        }
+    };
 
     let merkle_root = computed_solana_validator_debts.merkle_root();
 
@@ -314,7 +348,6 @@ async fn fetch_validator_pubkeys(ledger_rpc_client: &RpcClient) -> Result<Vec<St
             pubkeys.push(pubkey.to_string())
         }
     }
-
     Ok(pubkeys)
 }
 
@@ -442,8 +475,8 @@ mod tests {
         )
         .await?;
 
-        let deserialized: ComputedSolanaValidatorDebts =
-            borsh::from_slice(read.1.as_slice()).unwrap();
+        let deserialized: ComputedSolanaValidatorDebts = borsh::from_slice(read.1.as_slice())
+            .map_err(|e| anyhow::anyhow!("failed to deserialize ledger record: {}", e))?;
         let solana_epoch = ledger::get_solana_epoch_from_dz_epoch(
             &fpc.solana_rpc_client,
             &fpc.ledger_rpc_client,

@@ -2,7 +2,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use solana_sdk::{hash::Hash, pubkey::Pubkey};
 use svm_hash::merkle::{MerkleProof, merkle_root_from_indexed_byte_ref_leaves};
 
-#[derive(Debug, BorshDeserialize, BorshSerialize, Clone)]
+#[derive(Debug, BorshDeserialize, BorshSerialize, Clone, PartialEq, Eq)]
 pub struct ComputedSolanaValidatorDebts {
     pub blockhash: Hash,
     pub epoch: u64,

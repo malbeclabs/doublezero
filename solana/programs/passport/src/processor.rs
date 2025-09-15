@@ -151,6 +151,10 @@ fn try_configure_program(accounts: &[AccountInfo], setting: ProgramConfiguration
                     msg!("is_paused: {}", should_pause);
                     program_config.set_is_paused(should_pause);
                 }
+                ProgramFlagConfiguration::IsRequestAccessPaused(should_pause) => {
+                    msg!("is_request_access_paused: {}", should_pause);
+                    program_config.set_is_request_access_paused(should_pause);
+                }
             };
         }
         ProgramConfiguration::DoubleZeroLedgerSentinel(sentinel_key) => {
@@ -205,9 +209,14 @@ fn try_request_access(accounts: &[AccountInfo], access_mode: AccessMode) -> Prog
     let program_config =
         ZeroCopyAccount::<ProgramConfig>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
 
-    // Make sure program is not paused and we are accepting new accounts at this
-    // time.
-    try_require_unpaused(&program_config)?;
+    // Make sure program is not paused globally.
+    program_config.try_require_unpaused()?;
+
+    // Make sure request access is not paused.
+    if program_config.is_request_access_paused() {
+        msg!("Request access is paused");
+        return Err(ProgramError::InvalidAccountData);
+    }
 
     // Account 1 must be the payer. The system program will automatically ensure
     // this account is a signer and writable in order to transfer the lamports
@@ -284,6 +293,9 @@ fn try_grant_access(accounts: &[AccountInfo]) -> ProgramResult {
     let authorized_use =
         VerifiedProgramAuthority::try_next_accounts(&mut accounts_iter, Authority::Sentinel)?;
 
+    // Make sure program is not paused globally.
+    authorized_use.program_config.try_require_unpaused()?;
+
     // Account 2 must be the new access request account.
     let access_request =
         ZeroCopyAccount::<AccessRequest>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
@@ -335,6 +347,9 @@ fn try_deny_access(accounts: &[AccountInfo]) -> ProgramResult {
 
     let authorized_use =
         VerifiedProgramAuthority::try_next_accounts(&mut accounts_iter, Authority::Sentinel)?;
+
+    // Make sure program is not paused globally.
+    authorized_use.program_config.try_require_unpaused()?;
 
     let access_request =
         ZeroCopyAccount::<AccessRequest>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
@@ -396,7 +411,7 @@ impl Authority {
 }
 
 struct VerifiedProgramAuthority<'a, 'b> {
-    _program_config: ZeroCopyAccount<'a, 'b, ProgramConfig>,
+    program_config: ZeroCopyAccount<'a, 'b, ProgramConfig>,
     authority: (usize, &'a AccountInfo<'b>),
 }
 
@@ -414,7 +429,7 @@ impl<'a, 'b> TryNextAccounts<'a, 'b, Authority> for VerifiedProgramAuthority<'a,
             authority.try_next_as_authorized_account(accounts_iter, &program_config.data)?;
 
         Ok(Self {
-            _program_config: program_config,
+            program_config,
             authority: (index, authority_info),
         })
     }
@@ -445,12 +460,14 @@ impl<'a, 'b> TryNextAccounts<'a, 'b, Authority> for VerifiedProgramAuthorityMut<
     }
 }
 
-#[inline(always)]
-fn try_require_unpaused(program_config: &ProgramConfig) -> ProgramResult {
-    if program_config.is_paused() {
-        msg!("Program is paused");
-        return Err(ProgramError::InvalidAccountData);
-    }
+impl ProgramConfig {
+    #[inline(always)]
+    fn try_require_unpaused(&self) -> ProgramResult {
+        if self.is_paused() {
+            msg!("Program is paused");
+            return Err(ProgramError::InvalidAccountData);
+        }
 
-    Ok(())
+        Ok(())
+    }
 }

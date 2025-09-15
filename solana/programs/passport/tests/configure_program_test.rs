@@ -42,6 +42,9 @@ async fn test_configure_program() {
         .configure_program(
             [
                 ProgramConfiguration::Flag(ProgramFlagConfiguration::IsPaused(should_pause)),
+                ProgramConfiguration::Flag(ProgramFlagConfiguration::IsRequestAccessPaused(
+                    should_pause,
+                )),
                 ProgramConfiguration::DoubleZeroLedgerSentinel(sentinel_key),
                 ProgramConfiguration::AccessRequestDeposit {
                     request_deposit_lamports: required_deposit_lamports,
@@ -58,6 +61,7 @@ async fn test_configure_program() {
     let mut expected_program_config = ProgramConfig::default();
     expected_program_config.admin_key = admin_signer.pubkey();
     expected_program_config.set_is_paused(should_pause);
+    expected_program_config.set_is_request_access_paused(should_pause);
     expected_program_config.sentinel_key = sentinel_key;
     expected_program_config.request_deposit_lamports = required_deposit_lamports;
     expected_program_config.request_fee_lamports = fee_lamports;

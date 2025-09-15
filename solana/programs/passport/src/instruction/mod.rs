@@ -21,6 +21,7 @@ pub enum ProgramConfiguration {
 #[derive(Debug, BorshDeserialize, BorshSerialize, Clone, PartialEq, Eq)]
 pub enum ProgramFlagConfiguration {
     IsPaused(bool),
+    IsRequestAccessPaused(bool),
 }
 
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq, Eq)]

@@ -3,7 +3,7 @@ use doublezero_serviceability::{
     instructions::*,
     pda::*,
     processors::accesspass::{close::CloseAccessPassArgs, set::SetAccessPassArgs},
-    state::accesspass::{AccessPassStatus, AccessPassType},
+    state::accesspass::AccessPassType,
 };
 use solana_program_test::*;
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signer::Signer};
@@ -132,18 +132,8 @@ async fn test_accesspass() {
     )
     .await;
 
-    let accesspass = get_account_data(&mut banks_client, accesspass_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_accesspass()
-        .unwrap();
-    assert_eq!(
-        accesspass.accesspass_type,
-        AccessPassType::SolanaValidator(solana_identity)
-    );
-    assert_eq!(accesspass.client_ip, client_ip);
-    assert_eq!(accesspass.last_access_epoch, 0);
-    assert_eq!(accesspass.status, AccessPassStatus::Expired);
+    let accesspass_closed = get_account_data(&mut banks_client, accesspass_pubkey).await;
+    assert!(accesspass_closed.is_none());
 
     println!("✅ AccessPass closed successfully");
 

@@ -13,6 +13,12 @@ All notable changes to this project will be documented in this file.
 - Activator
     - Fix access pass check status accounts list
 
+- AccessPass Account Validation and Closing
+  - Implemented strict validation to ensure that only AccessPass accounts **owned by the program** and of the correct type can be closed.
+  - Fix Access Pass set Instruction.
+  - Switched to using `account_close` helper for closing accounts instead of resizing and serializing.
+
+
 ## [v0.6.4](https://github.com/malbeclabs/doublezero/compare/client/v0.6.3...client/v0.6.4) – 2025-09-10
 
 ### Breaking

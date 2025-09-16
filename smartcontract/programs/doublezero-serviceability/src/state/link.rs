@@ -77,7 +77,6 @@ impl From<u8> for LinkStatus {
     }
 }
 
-
 impl FromStr for LinkStatus {
     type Err = String;
 

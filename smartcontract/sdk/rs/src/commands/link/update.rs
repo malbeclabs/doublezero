@@ -1,7 +1,8 @@
 use crate::{commands::link::get::GetLinkCommand, DoubleZeroClient, GetGlobalStateCommand};
 use doublezero_program_common::validate_account_code;
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, processors::link::update::LinkUpdateArgs,
+    instructions::DoubleZeroInstruction,
+    processors::link::update::LinkUpdateArgs,
     state::link::{LinkLinkType, LinkStatus},
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};

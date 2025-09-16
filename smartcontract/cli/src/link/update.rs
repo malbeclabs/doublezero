@@ -8,10 +8,10 @@ use crate::{
     },
 };
 use clap::Args;
-use doublezero_sdk::{commands::{
+use doublezero_sdk::commands::{
     contributor::get::GetContributorCommand,
     link::{get::GetLinkCommand, update::UpdateLinkCommand},
-}};
+};
 use eyre::eyre;
 use std::io::Write;
 
@@ -47,7 +47,7 @@ pub struct UpdateLinkCliCommand {
     /// Wait for the device to be activated
     #[arg(short, long, default_value_t = false)]
     pub wait: bool,
-} 
+}
 
 impl UpdateLinkCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
@@ -75,7 +75,6 @@ impl UpdateLinkCliCommand {
             .map(|t| t.parse())
             .transpose()
             .map_err(|e| eyre!("Invalid tunnel type: {e}"))?;
-
 
         let status = self
             .status

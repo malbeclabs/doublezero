@@ -10,7 +10,7 @@ use doublezero_program_common::{
     validate_iface,
 };
 use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError, pubkey::Pubkey};
-use std::{fmt, net::Ipv4Addr};
+use std::{fmt, net::Ipv4Addr, str::FromStr};
 
 #[repr(u8)]
 #[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Default)]
@@ -89,6 +89,22 @@ pub enum InterfaceStatus {
     Deleting = 4,
     Rejected = 5,
     Unlinked = 6,
+}
+
+impl FromStr for InterfaceStatus {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "unmanaged" => Ok(InterfaceStatus::Unmanaged),
+            "pending" => Ok(InterfaceStatus::Pending),
+            "activated" => Ok(InterfaceStatus::Activated),
+            "deleting" => Ok(InterfaceStatus::Deleting),
+            "rejected" => Ok(InterfaceStatus::Rejected),
+            "unlinked" => Ok(InterfaceStatus::Unlinked),
+            _ => Err(format!("Invalid interface status: {}", s)),
+        }
+    }
 }
 
 impl From<u8> for InterfaceStatus {

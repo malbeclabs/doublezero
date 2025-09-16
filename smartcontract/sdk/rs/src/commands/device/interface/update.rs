@@ -2,9 +2,11 @@ use crate::{
     commands::{device::get::GetDeviceCommand, globalstate::get::GetGlobalStateCommand},
     DoubleZeroClient,
 };
+use doublezero_program_common::types::NetworkV4;
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, processors::device::interface::DeviceInterfaceUpdateArgs,
-    state::device::LoopbackType,
+    instructions::DoubleZeroInstruction,
+    processors::device::interface::DeviceInterfaceUpdateArgs,
+    state::device::{InterfaceStatus, LoopbackType},
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
@@ -15,6 +17,9 @@ pub struct UpdateDeviceInterfaceCommand {
     pub loopback_type: Option<LoopbackType>,
     pub vlan_id: Option<u16>,
     pub user_tunnel_endpoint: Option<bool>,
+    pub status: Option<InterfaceStatus>,
+    pub ip_net: Option<NetworkV4>,
+    pub node_segment_idx: Option<u16>,
 }
 
 impl UpdateDeviceInterfaceCommand {
@@ -34,6 +39,9 @@ impl UpdateDeviceInterfaceCommand {
                 loopback_type: self.loopback_type,
                 vlan_id: self.vlan_id,
                 user_tunnel_endpoint: self.user_tunnel_endpoint,
+                status: self.status,
+                ip_net: self.ip_net,
+                node_segment_idx: self.node_segment_idx,
             }),
             vec![
                 AccountMeta::new(device_pubkey, false),
@@ -103,6 +111,9 @@ mod tests {
                         loopback_type: None,
                         vlan_id: Some(42),
                         user_tunnel_endpoint: None,
+                        status: None,
+                        ip_net: None,
+                        node_segment_idx: None,
                     },
                 )),
                 predicate::eq(vec![
@@ -119,6 +130,9 @@ mod tests {
             loopback_type: None,
             vlan_id: Some(42),
             user_tunnel_endpoint: None,
+            status: None,
+            ip_net: None,
+            node_segment_idx: None,
         };
 
         let res = update_command.execute(&client);

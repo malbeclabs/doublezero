@@ -86,6 +86,10 @@ func (w *ServiceabilityWatcher) Tick(ctx context.Context) error {
 		data.Devices[i].UsersCount = 0
 		data.Devices[i].ReferenceCount = 0
 	}
+	// filter out our own users
+	data.Users = slices.DeleteFunc(data.Users, func(u serviceability.User) bool {
+		return base58.Encode(u.Owner[:]) == doubleZeroPubKey
+	})
 
 	logEvent := func(events ServiceabilityEventer) {
 		w.log.Info(
@@ -116,11 +120,6 @@ func (w *ServiceabilityWatcher) Tick(ctx context.Context) error {
 		userEvents := CompareUser(w.cacheUsers, data.Users)
 		w.log.Debug("user events", "count", len(userEvents))
 
-		// filter out events for our self-testing
-		userEvents = slices.DeleteFunc(userEvents, func(e ServiceabilityUserEvent) bool {
-			return base58.Encode(e.User.Owner[:]) == doubleZeroPubKey
-		})
-
 		userAdds := 0
 		for _, e := range userEvents {
 			logEvent(e)
@@ -129,7 +128,7 @@ func (w *ServiceabilityWatcher) Tick(ctx context.Context) error {
 			}
 		}
 		if userAdds > 0 && w.cfg.SlackWebhookURL != "" {
-			msg, err := w.buildSlackMessage(userEvents, data.Devices)
+			msg, err := w.buildSlackMessage(userEvents, data.Devices, len(data.Users))
 			if err != nil {
 				w.log.Error("failed to build slack message", "error", err)
 			}
@@ -151,7 +150,7 @@ func programVersionString(version serviceability.ProgramVersion) string {
 	return fmt.Sprintf("%d.%d.%d", version.Major, version.Minor, version.Patch)
 }
 
-func (w *ServiceabilityWatcher) buildSlackMessage(event []ServiceabilityUserEvent, devices []serviceability.Device) (string, error) {
+func (w *ServiceabilityWatcher) buildSlackMessage(event []ServiceabilityUserEvent, devices []serviceability.Device, totalUsers int) (string, error) {
 	findDeviceCode := func(pubkey [32]byte) string {
 		for _, d := range devices {
 			if d.PubKey == pubkey {
@@ -188,7 +187,8 @@ func (w *ServiceabilityWatcher) buildSlackMessage(event []ServiceabilityUserEven
 
 	users = slices.Insert(users, 0, []string{"UserPubKey", "Client IP", "Device PubKey", "Device Name", "Tunnel ID"})
 	header := fmt.Sprintf(":yay-frog: :frog-wow-scroll: :elmo-fire: :lfg-dz: %s :lfg-dz: :elmo-fire: :frog-wow-scroll: :yay-frog:", title)
-	return GenerateSlackTableMessage(header, users, nil)
+	footer := fmt.Sprintf("Total Users: %d", totalUsers)
+	return GenerateSlackTableMessage(header, users, nil, footer)
 }
 
 func (w *ServiceabilityWatcher) postSlackMessage(msg string) error {

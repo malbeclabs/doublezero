@@ -47,11 +47,14 @@ type SlackMessage struct {
 //   - tableRows: A slice of rows, where each row is a slice of strings for the cells.
 //     The first row is typically the table header.
 //   - columnSettings: An optional slice of column setting objects. If nil, default settings are used.
+//   - footerText: An optional string to display after the table. If empty, it's omitted.
 //
 // Returns:
 //   - A JSON string representing the Slack message payload.
 //   - An error if the payload cannot be marshaled to JSON.
-func GenerateSlackTableMessage(headerText string, tableRows [][]string, columnSettings []ColumnSetting) (string, error) {
+func GenerateSlackTableMessage(headerText string, tableRows [][]string, columnSettings []ColumnSetting, footerText string) (string, error) {
+	blocks := []Block{}
+
 	headerBlock := Block{
 		Type: "header",
 		Text: &TextObject{
@@ -60,6 +63,7 @@ func GenerateSlackTableMessage(headerText string, tableRows [][]string, columnSe
 			Emoji: true,
 		},
 	}
+	blocks = append(blocks, headerBlock)
 
 	slackRows := make([][]TableCell, len(tableRows))
 	for i, row := range tableRows {
@@ -85,9 +89,22 @@ func GenerateSlackTableMessage(headerText string, tableRows [][]string, columnSe
 		ColumnSettings: columnSettings,
 		Rows:           slackRows,
 	}
+	blocks = append(blocks, tableBlock)
+
+	if footerText != "" {
+		footerBlock := Block{
+			Type: "header",
+			Text: &TextObject{
+				Type:  "plain_text",
+				Text:  footerText,
+				Emoji: true,
+			},
+		}
+		blocks = append(blocks, footerBlock)
+	}
 
 	message := SlackMessage{
-		Blocks: []Block{headerBlock, tableBlock},
+		Blocks: blocks,
 	}
 
 	payload, err := json.MarshalIndent(message, "", "\t")

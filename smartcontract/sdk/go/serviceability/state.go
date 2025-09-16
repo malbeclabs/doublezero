@@ -370,6 +370,19 @@ const (
 	UserTypeMulticast
 )
 
+func (u UserUserType) String() string {
+	return [...]string{
+		"ibrl",
+		"ibrl_with_allocated_ip",
+		"edge_filtering",
+		"multicast",
+	}[u]
+}
+
+func (u UserUserType) MarshalJSON() ([]byte, error) {
+	return json.Marshal(u.String())
+}
+
 type CyoaType uint8
 
 const (
@@ -379,6 +392,21 @@ const (
 	CyoaTypeGREOverPublicPeering
 	CyoaTypeGREOverCable
 )
+
+func (c CyoaType) String() string {
+	return [...]string{
+		"unknown",
+		"gre_over_dia",
+		"gre_over_fabric",
+		"gre_over_private_peering",
+		"gre_over_public_peering",
+		"gre_over_cable",
+	}[c]
+}
+
+func (c CyoaType) MarshalJSON() ([]byte, error) {
+	return json.Marshal(c.String())
+}
 
 type UserStatus uint8
 
@@ -392,6 +420,23 @@ const (
 	UserStatusBanned
 	UserStatusUpdating
 )
+
+func (u UserStatus) String() string {
+	return [...]string{
+		"pending",
+		"activated",
+		"suspended",
+		"deleted",
+		"rejected",
+		"pending_ban",
+		"banned",
+		"updating",
+	}[u]
+}
+
+func (u UserStatus) MarshalJSON() ([]byte, error) {
+	return json.Marshal(u.String())
+}
 
 type User struct {
 	AccountType  AccountType
@@ -410,6 +455,52 @@ type User struct {
 	Publishers   [][32]uint8
 	Subscribers  [][32]uint8
 	PubKey       [32]byte
+}
+
+func (u User) MarshalJSON() ([]byte, error) {
+	type UserAlias User
+
+	publishers := make([]string, len(u.Publishers))
+	for i, p := range u.Publishers {
+		publishers[i] = base58.Encode(p[:])
+	}
+
+	subscribers := make([]string, len(u.Subscribers))
+	for i, s := range u.Subscribers {
+		subscribers[i] = base58.Encode(s[:])
+	}
+
+	jsonUser := &struct {
+		UserAlias
+		Owner        string   `json:"Owner"`
+		TenantPubKey string   `json:"TenantPubKey"`
+		DevicePubKey string   `json:"DevicePubKey"`
+		ClientIp     string   `json:"ClientIp"`
+		DzIp         string   `json:"DzIp"`
+		TunnelNet    string   `json:"TunnelNet"`
+		Publishers   []string `json:"Publishers"`
+		Subscribers  []string `json:"Subscribers"`
+		Status       string   `json:"Status"`
+		CyoaType     string   `json:"CyoaType"`
+		UserType     string   `json:"UserType"`
+		PubKey       string   `json:"PubKey"`
+	}{
+		UserAlias:    UserAlias(u),
+		Owner:        base58.Encode(u.Owner[:]),
+		TenantPubKey: base58.Encode(u.TenantPubKey[:]),
+		DevicePubKey: base58.Encode(u.DevicePubKey[:]),
+		ClientIp:     net.IP(u.ClientIp[:]).String(),
+		DzIp:         net.IP(u.DzIp[:]).String(),
+		TunnelNet:    onChainNetToString(u.TunnelNet),
+		Publishers:   publishers,
+		Subscribers:  subscribers,
+		Status:       u.Status.String(),
+		CyoaType:     u.CyoaType.String(),
+		UserType:     u.UserType.String(),
+		PubKey:       base58.Encode(u.PubKey[:]),
+	}
+
+	return json.Marshal(jsonUser)
 }
 
 type MulticastGroupStatus uint8

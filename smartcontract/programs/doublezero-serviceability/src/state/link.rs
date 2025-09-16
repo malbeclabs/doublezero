@@ -77,6 +77,23 @@ impl From<u8> for LinkStatus {
     }
 }
 
+
+impl FromStr for LinkStatus {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "pending" => Ok(LinkStatus::Pending),
+            "activated" => Ok(LinkStatus::Activated),
+            "suspended" => Ok(LinkStatus::Suspended),
+            "deleting" => Ok(LinkStatus::Deleting),
+            "rejected" => Ok(LinkStatus::Rejected),
+            "requested" => Ok(LinkStatus::Requested),
+            _ => Err(format!("Invalid LinkStatus: {s}")),
+        }
+    }
+}
+
 impl fmt::Display for LinkStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

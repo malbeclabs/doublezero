@@ -649,6 +649,7 @@ mod tests {
                 mtu: Some(1500),
                 delay_ns: Some(10000),
                 jitter_ns: Some(100),
+                status: None,
             }),
             "UpdateLink",
         );

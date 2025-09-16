@@ -27,6 +27,8 @@ const (
 
 type Unit string
 
+type LinkType string
+
 const (
 	UnitMillisecond Unit = "ms"
 	UnitMicrosecond Unit = "us"
@@ -64,6 +66,7 @@ type GetSummaryForCircuitsConfig struct {
 	Time     *TimeRange
 	Unit     Unit
 	Circuits []string
+	LinkType LinkType
 }
 
 type CircuitSummary struct {

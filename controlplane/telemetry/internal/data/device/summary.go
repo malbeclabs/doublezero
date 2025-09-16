@@ -26,6 +26,16 @@ func (p *provider) GetSummaryForCircuits(ctx context.Context, cfg GetSummaryForC
 		go func(circuitCode string) {
 			defer wg.Done()
 
+			circuit, ok := circuitsByCode[circuitCode]
+			if !ok {
+				p.log.Warn("circuit not found", "circuit", circuitCode)
+				return
+			}
+
+			if circuit.Link.LinkType != cfg.LinkType {
+				return
+			}
+
 			series, err := p.GetCircuitLatencies(ctx, GetCircuitLatenciesConfig{
 				Circuit:   circuitCode,
 				Epochs:    cfg.Epochs,
@@ -47,11 +57,6 @@ func (p *provider) GetSummaryForCircuits(ctx context.Context, cfg GetSummaryForC
 			measured := series[0]
 
 			// Calculate committed RTT and jitter deltas and change ratios.
-			circuit, ok := circuitsByCode[circuitCode]
-			if !ok {
-				p.log.Warn("circuit not found", "circuit", circuitCode)
-				return
-			}
 			committedRTT := circuit.Link.CommittedRTT
 			committedJitter := circuit.Link.CommittedJitter
 			switch cfg.Unit {

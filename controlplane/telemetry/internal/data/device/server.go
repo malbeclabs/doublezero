@@ -97,6 +97,8 @@ func (s *Server) handlSummary(w http.ResponseWriter, r *http.Request) {
 	toStr := r.URL.Query().Get("to")
 	circuits := parseMultiParam(r, "circuit")
 	unit := r.URL.Query().Get("unit")
+	linkType := r.URL.Query().Get("link_type")
+
 	s.log.Debug("[/device-link/summary]", "env", env, "from", fromStr, "to", toStr, "circuits", circuits, "unit", unit, "full", r.URL.String())
 
 	provider, err := s.provider(env)
@@ -141,6 +143,7 @@ func (s *Server) handlSummary(w http.ResponseWriter, r *http.Request) {
 		Circuits: circuits,
 		Time:     &TimeRange{From: fromTime, To: toTime},
 		Unit:     Unit(unit),
+		LinkType: LinkType(linkType),
 	})
 	if err != nil {
 		s.log.Error("failed to get summary for circuits", "error", err)
@@ -160,15 +163,16 @@ func (s *Server) handleDeviceCircuitLatencies(w http.ResponseWriter, r *http.Req
 	env := r.URL.Query().Get("env")
 	fromStr := r.URL.Query().Get("from")
 	toStr := r.URL.Query().Get("to")
-	circuits := parseMultiParam(r, "circuit")
+	circuitCodes := parseMultiParam(r, "circuit")
 	maxPointsStr := r.URL.Query().Get("max_points")
 	intervalStr := r.URL.Query().Get("interval")
 	unit := r.URL.Query().Get("unit")
+	linkType := r.URL.Query().Get("link_type")
 	metrics := parseMultiParam(r, "metrics")
 	partStr := r.URL.Query().Get("partition")
 	totalPartsStr := r.URL.Query().Get("total_partitions")
 
-	s.log.Debug("[/device-link/circuit-latencies]", "env", env, "from", fromStr, "to", toStr, "circuits", circuits, "max_points", maxPointsStr, "interval", intervalStr, "unit", unit, "partition", partStr, "total_partitions", totalPartsStr, "full", r.URL.String(), "metrics", metrics)
+	s.log.Debug("[/device-link/circuit-latencies]", "env", env, "from", fromStr, "to", toStr, "circuit_codes", circuitCodes, "max_points", maxPointsStr, "interval", intervalStr, "unit", unit, "partition", partStr, "total_partitions", totalPartsStr, "full", r.URL.String(), "metrics", metrics)
 
 	provider, err := s.provider(env)
 	if err != nil {
@@ -222,16 +226,16 @@ func (s *Server) handleDeviceCircuitLatencies(w http.ResponseWriter, r *http.Req
 		}
 	}
 
-	if len(circuits) == 0 || (len(circuits) == 1 && circuits[0] == "all") {
+	if len(circuitCodes) == 0 || (len(circuitCodes) == 1 && circuitCodes[0] == "all") {
 		allCircuits, err := provider.GetCircuits(r.Context())
 		if err != nil {
 			s.log.Error("failed to get circuits", "error", err)
 			http.Error(w, fmt.Sprintf("failed to get circuits: %v", err), http.StatusInternalServerError)
 			return
 		}
-		circuits = make([]string, 0, len(allCircuits))
+		circuitCodes = make([]string, 0, len(allCircuits))
 		for _, circuit := range allCircuits {
-			circuits = append(circuits, circuit.Code)
+			circuitCodes = append(circuitCodes, circuit.Code)
 		}
 	}
 
@@ -247,8 +251,8 @@ func (s *Server) handleDeviceCircuitLatencies(w http.ResponseWriter, r *http.Req
 			http.Error(w, "invalid partition/total_partitions", http.StatusBadRequest)
 			return
 		}
-		sort.Strings(circuits)
-		n := len(circuits)
+		sort.Strings(circuitCodes)
+		n := len(circuitCodes)
 		base := n / tparts
 		rem := n % tparts
 		start := part*base + min(part, rem)
@@ -257,22 +261,22 @@ func (s *Server) handleDeviceCircuitLatencies(w http.ResponseWriter, r *http.Req
 			size++
 		}
 		end := start + size
-		if part >= len(circuits) {
+		if part >= len(circuitCodes) {
 			// If the current partition is greater than or equal to the number of circuits, due to a bug
 			// in Grafana, we need to return 1 entry in the output with the expected format, so we will
 			// return the first entry from the first circuit.
 			// This is an ugly hack that we can remove once Grafana fixes the bug.
 			// // https://github.com/grafana/grafana-infinity-datasource/issues/705
 			partOutOfRange = true
-			circuits = []string{circuits[0]}
+			circuitCodes = []string{circuitCodes[0]}
 		} else {
 			if start > n {
-				circuits = nil
+				circuitCodes = nil
 			} else {
 				if end > n {
 					end = n
 				}
-				circuits = circuits[start:end]
+				circuitCodes = circuitCodes[start:end]
 			}
 		}
 	}
@@ -281,10 +285,32 @@ func (s *Server) handleDeviceCircuitLatencies(w http.ResponseWriter, r *http.Req
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 
-	for _, circuitCode := range circuits {
+	circuits, err := provider.GetCircuits(r.Context())
+	if err != nil {
+		s.log.Error("failed to get circuits", "error", err)
+		http.Error(w, fmt.Sprintf("failed to get circuits: %v", err), http.StatusInternalServerError)
+		return
+	}
+	circuitsByCode := map[string]Circuit{}
+	for _, circuit := range circuits {
+		circuitsByCode[circuit.Code] = circuit
+	}
+
+	for _, circuitCode := range circuitCodes {
 		wg.Add(1)
 		go func(circuitCode string) {
 			defer wg.Done()
+
+			circuit, ok := circuitsByCode[circuitCode]
+			if !ok {
+				s.log.Warn("circuit not found", "circuit", circuitCode)
+				return
+			}
+
+			if circuit.Link.LinkType != LinkType(linkType) {
+				return
+			}
+
 			series, err := provider.GetCircuitLatencies(r.Context(), GetCircuitLatenciesConfig{
 				Circuit:   circuitCode,
 				Time:      &TimeRange{From: fromTime, To: toTime},

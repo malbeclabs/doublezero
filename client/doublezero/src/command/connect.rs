@@ -3,7 +3,7 @@ use crate::{
     requirements::check_doublezero,
     servicecontroller::{ProvisioningRequest, ServiceController, ServiceControllerImpl},
 };
-use backoff::{future, Error, ExponentialBackoffBuilder};
+use backon::{ExponentialBuilder, Retryable};
 use clap::{Args, Subcommand, ValueEnum};
 use doublezero_cli::{
     doublezerocommand::CliCommand,
@@ -292,23 +292,28 @@ impl ProvisioningCliCommand {
                     let mut latencies = controller
                         .latency()
                         .await
-                        .map_err(|_| Error::permanent(eyre::eyre!("Could not get latency")))?;
+                        .map_err(|_| eyre::eyre!("Could not get latency"))?;
                     latencies.retain(|l| l.reachable);
                     latencies.retain(|l| device_keys.contains(&l.device_pk.to_string()));
                     latencies.sort_by(|a, b| a.avg_latency_ns.cmp(&b.avg_latency_ns));
                     match latencies.len() {
-                        0 => Err(Error::transient(eyre::eyre!("No devices found"))),
+                        0 => Err(eyre::eyre!("No devices found")),
                         _ => Ok(latencies),
                     }
                 };
 
-                let mut builder = ExponentialBackoffBuilder::new();
-                builder
-                    .with_initial_interval(Duration::from_secs(1))
-                    .with_max_interval(Duration::from_secs(10))
-                    .with_max_elapsed_time(Some(Duration::from_secs(120)));
+                let builder = ExponentialBuilder::new()
+                    .with_max_times(5)
+                    .with_min_delay(Duration::from_secs(1))
+                    .with_max_delay(Duration::from_secs(10));
 
-                let latencies = future::retry(builder.build(), get_latencies).await?;
+                let latencies = get_latencies
+                    .retry(builder)
+                    .when(|e| e.to_string() == "No devices found")
+                    .notify(|_, dur| {
+                        spinner.set_message(format!("Waiting for latency stats after {dur:?}"))
+                    })
+                    .await?;
 
                 spinner.set_message("Reading device account...");
                 Pubkey::from_str(

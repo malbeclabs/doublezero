@@ -19,6 +19,11 @@ const (
 	watcherName = "serviceability"
 )
 
+var (
+	// DoubleZero pubkey used for self-testing
+	doubleZeroPubKey = "DZfHfcCXTLwgZeCRKQ1FL1UuwAwFAZM93g86NMYpfYan"
+)
+
 type ServiceabilityWatcher struct {
 	log          *slog.Logger
 	cfg          *Config
@@ -110,6 +115,12 @@ func (w *ServiceabilityWatcher) Tick(ctx context.Context) error {
 	if w.cacheUsers != nil {
 		userEvents := CompareUser(w.cacheUsers, data.Users)
 		w.log.Debug("user events", "count", len(userEvents))
+
+		// filter out events for our self-testing
+		userEvents = slices.DeleteFunc(userEvents, func(e ServiceabilityUserEvent) bool {
+			return base58.Encode(e.User.Owner[:]) == doubleZeroPubKey
+		})
+
 		userAdds := 0
 		for _, e := range userEvents {
 			logEvent(e)
@@ -153,11 +164,12 @@ func (w *ServiceabilityWatcher) buildSlackMessage(event []ServiceabilityUserEven
 	users := [][]string{}
 	for _, e := range event {
 		if e.Type() == EventTypeAdded {
+			userPubKey := base58.Encode(e.User.Owner[:])
 			clientIp := net.IP(e.User.ClientIp[:]).String()
 			devicePubKey := base58.Encode(e.User.DevicePubKey[:])
 			tunnelId := strconv.FormatUint(uint64(e.User.TunnelId), 10)
 			users = append(users, []string{
-				e.PubKey(),
+				userPubKey,
 				clientIp,
 				devicePubKey,
 				findDeviceCode(e.User.DevicePubKey),

@@ -7,8 +7,9 @@ import (
 
 const (
 	// Metrics names.
-	MetricNameErrors           = "doublezero_monitor_serviceability_errors_total"
-	MetricNameProgramBuildInfo = "doublezero_monitor_serviceability_program_build_info"
+	MetricNameErrors                  = "doublezero_monitor_serviceability_errors_total"
+	MetricNameProgramBuildInfo        = "doublezero_monitor_serviceability_program_build_info"
+	MetricNameUnlinkedInterfaceErrors = "doublezero_monitor_unlinked_interface_errors_total"
 
 	// Labels.
 	MetricLabelErrorType      = "error_type"
@@ -33,5 +34,13 @@ var (
 			Help: "Program build info",
 		},
 		[]string{MetricLabelProgramVersion},
+	)
+
+	MetricUnlinkedInterfaceErrors = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: MetricNameUnlinkedInterfaceErrors,
+			Help: "Onchain error when a device interface is unlinked but participating in an activated link",
+		},
+		[]string{"device_pubkey", "device_code", "interface_name", "link_pubkey"},
 	)
 )

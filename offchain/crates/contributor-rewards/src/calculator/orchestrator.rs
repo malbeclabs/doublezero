@@ -3,7 +3,7 @@ use crate::{
         data_prep::PreparedData,
         input::RewardInput,
         keypair_loader::load_keypair,
-        ledger_operations::{self, WriteSummary, write_and_track, write_shapley_output},
+        ledger_operations,
         proof::{ContributorRewardsMerkleTree, ShapleyOutputStorage},
         revenue_distribution::post_rewards_merkle_root,
         shapley_aggregator::aggregate_shapley_outputs,
@@ -175,12 +175,12 @@ impl Orchestrator {
                 )
                 .await?;
 
-                let mut summary = WriteSummary::default();
+                let mut summary = ledger_operations::WriteSummary::default();
                 let ledger_start = Instant::now();
 
                 // Write device telemetry
                 let device_prefix = self.settings.prefixes.device_telemetry.as_bytes();
-                write_and_track(
+                ledger_operations::write_and_track(
                     &fetcher.dz_rpc_client,
                     &payer_signer,
                     &[device_prefix, &fetch_epoch.to_le_bytes()],
@@ -193,7 +193,7 @@ impl Orchestrator {
 
                 // Write internet telemetry
                 let internet_prefix = self.settings.prefixes.internet_telemetry.as_bytes();
-                write_and_track(
+                ledger_operations::write_and_track(
                     &fetcher.dz_rpc_client,
                     &payer_signer,
                     &[internet_prefix, &fetch_epoch.to_le_bytes()],
@@ -206,7 +206,7 @@ impl Orchestrator {
 
                 // Write reward input
                 let reward_prefix = self.settings.prefixes.reward_input.as_bytes();
-                write_and_track(
+                ledger_operations::write_and_track(
                     &fetcher.dz_rpc_client,
                     &payer_signer,
                     &[reward_prefix, &fetch_epoch.to_le_bytes()],
@@ -224,7 +224,7 @@ impl Orchestrator {
                     total_unit_shares: merkle_tree.rewards().iter().map(|r| r.unit_share).sum(),
                 };
 
-                write_shapley_output(
+                ledger_operations::write_shapley_output(
                     &fetcher.dz_rpc_client,
                     &payer_signer,
                     fetch_epoch,

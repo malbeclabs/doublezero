@@ -1,3 +1,4 @@
+use crate::calculator::constants::MAX_UNIT_SHARE;
 use anyhow::{Result, anyhow, bail};
 use borsh::{BorshDeserialize, BorshSerialize};
 use doublezero_revenue_distribution::types::{RewardShare, UnitShare32};
@@ -45,9 +46,10 @@ impl ContributorRewardsMerkleTree {
             let contributor_key = Pubkey::from_str(operator_pubkey_str)
                 .map_err(|e| anyhow!("Invalid pubkey string '{}': {}", operator_pubkey_str, e))?;
 
-            // Convert f64 proportion to u32 with 9 decimal places. Validate
-            // with UnitShare32::new.
-            let unit_share = UnitShare32::new((val.proportion * 1_000_000_000.0).round() as u32)
+            // Clamp f64 proportion
+            let proportion = val.proportion.clamp(0.0, 1.0);
+            // Convert f64 proportion to u32 with 9 decimal places
+            let unit_share = UnitShare32::new((proportion * MAX_UNIT_SHARE).round() as u32)
                 .ok_or_else(|| anyhow!("Invalid unit share"))?;
             total_unit_shares = total_unit_shares
                 .checked_add(unit_share)
@@ -65,8 +67,10 @@ impl ContributorRewardsMerkleTree {
             );
         }
 
-        // Modify the first reward to ensure the total shares exactly equals
-        // 1_000_000_000.
+        // Reconcile rounding errors from float-to-fixed conversion.
+        // Due to floating point precision, the sum might be slightly less than MAX.
+        // We add the difference to the first reward to ensure the total equals exactly
+        // 1_000_000_000 (100%), which is required by the on-chain contract.
         rewards[0].unit_share += u32::from(UnitShare32::MAX.saturating_sub(total_unit_shares));
 
         Ok(Self { epoch, rewards })

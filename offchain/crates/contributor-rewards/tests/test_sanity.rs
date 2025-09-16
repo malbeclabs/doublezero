@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use anyhow::Result;
-    use contributor_rewards::{
+    use doublezero_contributor_rewards::{
         calculator::keypair_loader::load_keypair,
         processor::{internet::InternetTelemetryStatMap, telemetry::DZDTelemetryStatMap},
     };

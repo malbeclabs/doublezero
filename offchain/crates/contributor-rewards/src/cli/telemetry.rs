@@ -1,20 +1,23 @@
-use crate::cli::{
-    common::{
-        FilterOptions, OutputFormat, OutputOptions, ThresholdOptions, collection_to_csv,
-        to_json_string,
-    },
-    traits::Exportable,
-};
-use anyhow::{Result, bail};
-use clap::Subcommand;
-use contributor_rewards::{
+use crate::{
     calculator::orchestrator::Orchestrator,
-    ingestor::{fetcher::Fetcher, types::KeyedAccounts},
+    cli::{
+        common::{
+            FilterOptions, OutputFormat, OutputOptions, ThresholdOptions, collection_to_csv,
+            to_json_string,
+        },
+        traits::Exportable,
+    },
+    ingestor::{
+        fetcher::Fetcher,
+        types::{DZDeviceLatencySamples, DZInternetLatencySamples, KeyedAccounts},
+    },
     processor::{
         internet::{InternetTelemetryProcessor, InternetTelemetryStats},
         telemetry::{DZDTelemetryProcessor, DZDTelemetryStats},
     },
 };
+use anyhow::{Result, bail};
+use clap::Subcommand;
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, str::FromStr};
 use tabled::{Table, Tabled, settings::Style};
@@ -681,7 +684,7 @@ async fn handle_internet_export(
     struct SamplesExport {
         epoch: u64,
         count: usize,
-        samples: Vec<contributor_rewards::ingestor::types::DZInternetLatencySamples>,
+        samples: Vec<DZInternetLatencySamples>,
     }
 
     let export_data = SamplesExport {
@@ -773,7 +776,7 @@ async fn handle_device_export(
     struct SamplesExport {
         epoch: u64,
         count: usize,
-        samples: Vec<contributor_rewards::ingestor::types::DZDeviceLatencySamples>,
+        samples: Vec<DZDeviceLatencySamples>,
     }
 
     let export_data = SamplesExport {

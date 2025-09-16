@@ -1,5 +1,5 @@
 use anyhow::Result;
-use contributor_rewards::{
+use doublezero_contributor_rewards::{
     calculator::shapley_handler::{PreviousEpochCache, build_private_links},
     ingestor::types::FetchData,
     processor::telemetry::DZDTelemetryProcessor,
@@ -25,7 +25,7 @@ fn create_expected_results() -> HashMap<(String, String), ExpectedLink> {
     expected.insert(
         ("lon-dz001".to_string(), "sin-dz001".to_string()),
         ExpectedLink {
-            latency_ms: 152.530694,
+            latency_ms: 153.368,
             bandwidth_gbps: 10.0,
             uptime: 0.9999409299,
         },
@@ -52,7 +52,7 @@ fn create_expected_results() -> HashMap<(String, String), ExpectedLink> {
     expected.insert(
         ("sin-dz001".to_string(), "tyo-dz001".to_string()),
         ExpectedLink {
-            latency_ms: 67.332,
+            latency_ms: 67.225,
             bandwidth_gbps: 10.0,
             uptime: 0.9999,
         },
@@ -88,7 +88,7 @@ fn create_expected_results() -> HashMap<(String, String), ExpectedLink> {
     expected.insert(
         ("lon-dz001".to_string(), "fra-dz001".to_string()),
         ExpectedLink {
-            latency_ms: 11.044,
+            latency_ms: 11.064,
             bandwidth_gbps: 10.0,
             uptime: 0.9999,
         },

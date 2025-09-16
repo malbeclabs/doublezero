@@ -1,6 +1,6 @@
+use crate::calculator::orchestrator::Orchestrator;
 use anyhow::Result;
 use clap::Subcommand;
-use contributor_rewards::calculator::orchestrator::Orchestrator;
 use solana_sdk::pubkey::Pubkey;
 use std::path::PathBuf;
 

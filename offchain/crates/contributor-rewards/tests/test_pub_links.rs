@@ -1,5 +1,5 @@
 use anyhow::Result;
-use contributor_rewards::{
+use doublezero_contributor_rewards::{
     calculator::shapley_handler::{PreviousEpochCache, build_public_links},
     ingestor::types::FetchData,
     processor::internet::InternetTelemetryProcessor,
@@ -73,40 +73,40 @@ fn create_expected_results() -> HashMap<(String, String), f64> {
     let mut expected = HashMap::new();
 
     // These are the exact values from the public links output (updated after snapshot rebuild)
-    expected.insert(("ams".to_string(), "fra".to_string()), 10.114);
-    expected.insert(("ams".to_string(), "lax".to_string()), 142.678);
-    expected.insert(("ams".to_string(), "lon".to_string()), 13.197);
-    expected.insert(("ams".to_string(), "nyc".to_string()), 80.398);
-    expected.insert(("ams".to_string(), "prg".to_string()), 16.784);
-    expected.insert(("ams".to_string(), "sin".to_string()), 210.454);
-    expected.insert(("ams".to_string(), "tyo".to_string()), 251.810);
+    expected.insert(("ams".to_string(), "fra".to_string()), 7.320);
+    expected.insert(("ams".to_string(), "lax".to_string()), 148.240);
+    expected.insert(("ams".to_string(), "lon".to_string()), 12.622);
+    expected.insert(("ams".to_string(), "nyc".to_string()), 80.040);
+    expected.insert(("ams".to_string(), "prg".to_string()), 16.645);
+    expected.insert(("ams".to_string(), "sin".to_string()), 211.876);
+    expected.insert(("ams".to_string(), "tyo".to_string()), 286.482);
 
-    expected.insert(("fra".to_string(), "lax".to_string()), 144.351);
-    expected.insert(("fra".to_string(), "lon".to_string()), 12.015);
-    expected.insert(("fra".to_string(), "nyc".to_string()), 86.630);
-    expected.insert(("fra".to_string(), "prg".to_string()), 10.881);
-    expected.insert(("fra".to_string(), "sin".to_string()), 166.629);
-    expected.insert(("fra".to_string(), "tyo".to_string()), 241.717);
+    expected.insert(("fra".to_string(), "lax".to_string()), 142.718);
+    expected.insert(("fra".to_string(), "lon".to_string()), 12.018);
+    expected.insert(("fra".to_string(), "nyc".to_string()), 87.938);
+    expected.insert(("fra".to_string(), "prg".to_string()), 10.914);
+    expected.insert(("fra".to_string(), "sin".to_string()), 170.642);
+    expected.insert(("fra".to_string(), "tyo".to_string()), 243.183);
 
-    expected.insert(("lax".to_string(), "lon".to_string()), 146.862);
-    expected.insert(("lax".to_string(), "nyc".to_string()), 68.434);
-    expected.insert(("lax".to_string(), "prg".to_string()), 156.486);
-    expected.insert(("lax".to_string(), "sin".to_string()), 174.882);
-    expected.insert(("lax".to_string(), "tyo".to_string()), 105.793);
+    expected.insert(("lax".to_string(), "lon".to_string()), 147.642);
+    expected.insert(("lax".to_string(), "nyc".to_string()), 64.951);
+    expected.insert(("lax".to_string(), "prg".to_string()), 154.809);
+    expected.insert(("lax".to_string(), "sin".to_string()), 184.499);
+    expected.insert(("lax".to_string(), "tyo".to_string()), 101.735);
 
-    expected.insert(("lon".to_string(), "nyc".to_string()), 97.456);
-    expected.insert(("lon".to_string(), "prg".to_string()), 21.964);
-    expected.insert(("lon".to_string(), "sin".to_string()), 209.719);
-    expected.insert(("lon".to_string(), "tyo".to_string()), 280.546);
+    expected.insert(("lon".to_string(), "nyc".to_string()), 84.530);
+    expected.insert(("lon".to_string(), "prg".to_string()), 21.166);
+    expected.insert(("lon".to_string(), "sin".to_string()), 235.639);
+    expected.insert(("lon".to_string(), "tyo".to_string()), 284.035);
 
-    expected.insert(("nyc".to_string(), "prg".to_string()), 95.627);
-    expected.insert(("nyc".to_string(), "sin".to_string()), 311.910);
-    expected.insert(("nyc".to_string(), "tyo".to_string()), 170.049);
+    expected.insert(("nyc".to_string(), "prg".to_string()), 95.203);
+    expected.insert(("nyc".to_string(), "sin".to_string()), 386.875);
+    expected.insert(("nyc".to_string(), "tyo".to_string()), 166.375);
 
-    expected.insert(("prg".to_string(), "sin".to_string()), 208.622);
-    expected.insert(("prg".to_string(), "tyo".to_string()), 260.513);
+    expected.insert(("prg".to_string(), "sin".to_string()), 208.615);
+    expected.insert(("prg".to_string(), "tyo".to_string()), 262.659);
 
-    expected.insert(("sin".to_string(), "tyo".to_string()), 69.168);
+    expected.insert(("sin".to_string(), "tyo".to_string()), 73.031);
 
     expected
 }

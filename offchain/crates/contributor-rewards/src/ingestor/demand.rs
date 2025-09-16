@@ -1,11 +1,25 @@
-use crate::ingestor::{epoch::EpochFinder, fetcher::Fetcher, types::FetchData};
+use crate::{
+    calculator::constants::{
+        DEMAND_MULTICAST_ENABLED, DEMAND_TRAFFIC, DEMAND_TYPE, SLOTS_IN_EPOCH,
+    },
+    ingestor::{
+        epoch::{EpochFinder, LeaderSchedule},
+        fetcher::Fetcher,
+        types::FetchData,
+    },
+    settings::{Settings, network::Network},
+};
 use anyhow::{Result, anyhow, bail};
-use doublezero_serviceability::state::user::User as DZUser;
+use doublezero_serviceability::state::{
+    accesspass::{AccessPassStatus, AccessPassType},
+    user::User as DZUser,
+};
 use network_shapley::types::{Demand, Demands};
 use rayon::prelude::*;
-use solana_sdk::system_program::ID as SystemProgramID;
-use std::collections::BTreeMap;
-use tracing::info;
+use solana_sdk::{pubkey::Pubkey, system_program::ID as SystemProgramID};
+use std::collections::{BTreeMap, HashMap};
+use tabled::{Table, Tabled, settings::Style};
+use tracing::{info, warn};
 
 // key: location code, val: city stat
 pub type CityStats = BTreeMap<String, CityStat>;
@@ -54,43 +68,132 @@ pub async fn build(fetcher: &Fetcher, fetch_data: &FetchData) -> Result<DemandBu
     );
 
     // Fetch leader schedule for this DZ epoch
-    let leader_schedule_map = epoch_finder
+    let leader_schedule = epoch_finder
         .fetch_leader_schedule(dz_epoch, timestamp_us)
         .await?;
 
-    build_with_schedule(fetch_data, leader_schedule_map)
+    build_with_schedule(&fetcher.settings, fetch_data, &leader_schedule)
 }
 
 /// Builds demands using pre-fetched leader schedule data
 /// NOTE: This allows testing without RPC calls
 pub fn build_with_schedule(
+    settings: &Settings,
     fetch_data: &FetchData,
-    leader_schedule: BTreeMap<String, usize>,
+    leader_schedule: &LeaderSchedule,
 ) -> Result<DemandBuildOutput> {
-    // Build validator to user mapping
-    let validator_to_user: BTreeMap<String, &DZUser> = fetch_data
-        .dz_serviceability
-        .users
-        .par_iter()
-        .filter_map(|(_user_pk, user)| {
-            // Ensure that validator is not the system program
-            (user.validator_pubkey != SystemProgramID)
-                .then_some((user.validator_pubkey.to_string(), user))
-        })
-        .collect();
+    // Build AccessPass lookup map
+    // This maps user_payer -> validator_pk for Connected SolanaValidator access passes only
+    let mut accessor_to_validator: HashMap<Pubkey, Pubkey> = HashMap::new();
+
+    // Track AccessPass statistics
+    let mut prepaid_count = 0;
+    let mut connected_validator_count = 0;
+    let mut requested_validator_count = 0;
+
+    for access_pass in fetch_data.dz_serviceability.access_passes.values() {
+        match (access_pass.accesspass_type, access_pass.status) {
+            (AccessPassType::Prepaid, AccessPassStatus::Connected) => prepaid_count += 1,
+            (AccessPassType::SolanaValidator(validator_pk), AccessPassStatus::Connected) => {
+                connected_validator_count += 1;
+                accessor_to_validator.insert(access_pass.user_payer, validator_pk);
+            }
+            (AccessPassType::SolanaValidator(validator_pk), AccessPassStatus::Requested) => {
+                requested_validator_count += 1;
+
+                // NOTE: add requested access passes to the map only on testnet/devnet
+                if matches!(settings.network, Network::Devnet | Network::Testnet) {
+                    accessor_to_validator.insert(access_pass.user_payer, validator_pk);
+                }
+            }
+            _ => {
+                warn!(
+                    access_pass_type = ?access_pass.accesspass_type,
+                    status = ?access_pass.status,
+                    "Ignored access pass"
+                );
+            }
+        }
+    }
+
+    // Process users and build validator mapping
+    let mut validator_to_user = BTreeMap::new();
+    let mut users_with_access_pass = 0;
+    let mut users_without_access_pass = 0;
+
+    for user in fetch_data.dz_serviceability.users.values() {
+        match accessor_to_validator.get(&user.owner) {
+            None => {
+                users_without_access_pass += 1;
+            }
+            Some(validator_pk) => {
+                if *validator_pk != SystemProgramID {
+                    users_with_access_pass += 1;
+                    validator_to_user.insert(validator_pk.to_string(), user);
+                }
+            }
+        }
+    }
+
+    {
+        // For logging as table
+        #[derive(Debug, Tabled)]
+        struct AccessPassStats {
+            category: String,
+            count: usize,
+        }
+
+        // AccessPass breakdown table
+        let access_pass_stats = vec![
+            AccessPassStats {
+                category: "Prepaid".to_string(),
+                count: prepaid_count,
+            },
+            AccessPassStats {
+                category: "Validator - Connected".to_string(),
+                count: connected_validator_count,
+            },
+            AccessPassStats {
+                category: "Validator - Requested".to_string(),
+                count: requested_validator_count,
+            },
+        ];
+
+        let access_table = Table::new(access_pass_stats)
+            .with(Style::psql().remove_horizontals())
+            .to_string();
+        info!("AccessPass Breakdown:\n{}", access_table);
+
+        // User processing table
+        let user_stats = vec![
+            AccessPassStats {
+                category: "Users with Connected AccessPass".to_string(),
+                count: users_with_access_pass,
+            },
+            AccessPassStats {
+                category: "Users without Connected AccessPass".to_string(),
+                count: users_without_access_pass,
+            },
+        ];
+
+        let user_table = Table::new(user_stats)
+            .with(Style::psql().remove_horizontals())
+            .to_string();
+        info!("User Processing:\n{}", user_table);
+    }
 
     if validator_to_user.is_empty() {
         bail!("Did not find any validators to build demands!")
     }
 
     // Process leaders and build city statistics
-    let city_stats = build_city_stats(fetch_data, &validator_to_user, leader_schedule)?;
+    let city_stats = build_city_stats(settings, fetch_data, &validator_to_user, leader_schedule)?;
     if city_stats.is_empty() {
         bail!("Could not build any city_stats!")
     }
 
     // Generate demands
-    let demands: Demands = generate(&city_stats);
+    let demands = generate(&city_stats);
     if demands.is_empty() {
         bail!("Could not build any demands!")
     }
@@ -103,27 +206,41 @@ pub fn build_with_schedule(
 
 /// Build city statistics from fetch data and leader schedule
 pub fn build_city_stats(
+    settings: &Settings,
     fetch_data: &FetchData,
     validator_to_user: &BTreeMap<String, &DZUser>,
-    leader_schedule: BTreeMap<String, usize>,
+    leader_schedule: &LeaderSchedule,
 ) -> Result<CityStats> {
     let mut city_stats = CityStats::new();
 
     // Process each leader
-    for (validator_pubkey, stake_proxy) in leader_schedule {
-        if let Some(user) = validator_to_user.get(&validator_pubkey)
+    for (validator_pubkey, stake_proxy) in leader_schedule.schedule_map.iter() {
+        if let Some(user) = validator_to_user.get(validator_pubkey)
             && let Some(device) = fetch_data.dz_serviceability.devices.get(&user.device_pk)
             && let Some(location) = fetch_data
                 .dz_serviceability
                 .locations
                 .get(&device.location_pk)
+            && let Some(exchange) = fetch_data
+                .dz_serviceability
+                .exchanges
+                .get(&device.exchange_pk)
         {
-            let stats = city_stats
-                .entry(location.code.to_string())
-                .or_insert(CityStat {
-                    validator_count: 0,
-                    total_stake_proxy: 0,
-                });
+            let stats = match settings.network {
+                Network::Testnet | Network::Devnet => city_stats
+                    .entry(location.code.to_string())
+                    .or_insert(CityStat {
+                        validator_count: 0,
+                        total_stake_proxy: 0,
+                    }),
+                // On mainnet, the exchange.code directly has the name of the city
+                Network::MainnetBeta | Network::Mainnet => city_stats
+                    .entry(exchange.code.to_string())
+                    .or_insert(CityStat {
+                        validator_count: 0,
+                        total_stake_proxy: 0,
+                    }),
+            };
             stats.validator_count += 1;
             stats.total_stake_proxy += stake_proxy;
         }
@@ -134,12 +251,6 @@ pub fn build_city_stats(
 
 /// Generates demand entries for cities
 pub fn generate(city_stats: &CityStats) -> Demands {
-    // TODO: move this to some constants.rs and/or make configurable
-    const TRAFFIC: f64 = 0.05;
-    const DEMAND_TYPE: u32 = 1;
-    const MULTICAST: bool = false;
-    const SLOTS_IN_EPOCH: f64 = 432000.0;
-
     // Filter cities with validators once
     let cities_with_validators: Vec<(&String, &CityStat)> = city_stats
         .iter()
@@ -168,10 +279,10 @@ pub fn generate(city_stats: &CityStats) -> Demands {
                         start: start_city.to_string(),
                         end: end_city.to_string(),
                         receivers: end_stats.validator_count as u32,
-                        traffic: TRAFFIC,
+                        traffic: DEMAND_TRAFFIC,
                         priority,
                         kind: DEMAND_TYPE,
-                        multicast: MULTICAST,
+                        multicast: DEMAND_MULTICAST_ENABLED,
                     })
                 })
                 .collect::<Vec<_>>()

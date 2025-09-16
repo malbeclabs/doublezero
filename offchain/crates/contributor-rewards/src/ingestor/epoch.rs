@@ -5,9 +5,14 @@
 //! - Estimate slots from timestamps
 //! - Find epochs corresponding to specific timestamps
 
+use crate::cli::{
+    common::{OutputFormat, to_json_string},
+    traits::Exportable,
+};
 use anyhow::{Result, anyhow, bail};
 use backon::{ExponentialBuilder, Retryable};
 use chrono::Utc;
+use serde::{Deserialize, Serialize};
 use solana_client::{
     client_error::ClientError as SolanaClientError, nonblocking::rpc_client::RpcClient,
 };
@@ -17,6 +22,28 @@ use tracing::{debug, info};
 
 /// Approximate slot duration in microseconds (400ms)
 pub const SLOT_DURATION_US: u64 = 400_000;
+
+// key: validator_pk, val: slot count
+pub type LeaderScheduleMap = BTreeMap<String, usize>;
+
+// Wrapper struct for leader scheduler
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LeaderSchedule {
+    pub solana_epoch: u64,
+    pub schedule_map: LeaderScheduleMap,
+}
+
+impl Exportable for LeaderSchedule {
+    fn export(&self, format: OutputFormat) -> Result<String> {
+        match format {
+            OutputFormat::Csv => {
+                bail!("CSV export not supported for leader schedule. Use JSON format instead.")
+            }
+            OutputFormat::Json => to_json_string(&self, false),
+            OutputFormat::JsonPretty => to_json_string(&self, true),
+        }
+    }
+}
 
 /// Calculate the epoch for a given slot using the epoch schedule
 ///
@@ -167,7 +194,7 @@ impl EpochFinder {
         &mut self,
         dz_epoch: u64,
         timestamp_us: u64,
-    ) -> Result<BTreeMap<String, usize>> {
+    ) -> Result<LeaderSchedule> {
         info!("Fetching leader schedule for DZ epoch {}", dz_epoch);
 
         // Find the corresponding Solana epoch for this timestamp
@@ -206,17 +233,20 @@ impl EpochFinder {
         .ok_or_else(|| anyhow!("No leader schedule found for Solana epoch {}", solana_epoch))?;
 
         // Convert leader schedule to map of validator -> slot count
-        let leader_schedule_map: BTreeMap<String, usize> = leader_schedule
+        let schedule_map: LeaderScheduleMap = leader_schedule
             .into_iter()
             .map(|(pk, schedule)| (pk, schedule.len()))
             .collect();
 
         info!(
             "Retrieved leader schedule with {} validators",
-            leader_schedule_map.len()
+            schedule_map.len()
         );
 
-        Ok(leader_schedule_map)
+        Ok(LeaderSchedule {
+            solana_epoch,
+            schedule_map,
+        })
     }
 }
 

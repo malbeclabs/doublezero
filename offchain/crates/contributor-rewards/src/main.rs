@@ -1,11 +1,12 @@
 // TODO: keeping this for now, remove when 2z-cli is ported
 
-mod cli;
-
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use cli::{inspect::InspectCommands, rewards::RewardsCommands};
-use contributor_rewards::{calculator::orchestrator::Orchestrator, settings::Settings};
+use doublezero_contributor_rewards::{
+    calculator::orchestrator::Orchestrator,
+    cli::{inspect::InspectCommands, rewards::RewardsCommands},
+    settings::Settings,
+};
 use metrics_exporter_prometheus::PrometheusBuilder;
 use std::path::PathBuf;
 use tracing::{debug, warn};
@@ -62,17 +63,17 @@ pub enum Commands {
     /// Export raw chain data snapshots for debugging and analysis
     Snapshot {
         #[command(subcommand)]
-        cmd: cli::snapshot::SnapshotCommands,
+        cmd: doublezero_contributor_rewards::cli::snapshot::SnapshotCommands,
     },
     /// Analyze telemetry data (internet or device)
     Telemetry {
         #[command(subcommand)]
-        cmd: cli::telemetry::TelemetryCommands,
+        cmd: doublezero_contributor_rewards::cli::telemetry::TelemetryCommands,
     },
     /// Run automated rewards scheduler
     Scheduler {
         #[command(subcommand)]
-        cmd: cli::scheduler::SchedulerCommands,
+        cmd: doublezero_contributor_rewards::cli::scheduler::SchedulerCommands,
     },
 }
 
@@ -104,11 +105,21 @@ impl Cli {
 
         // Route to module handlers
         match self.command {
-            Commands::Rewards(cmd) => cli::rewards::handle(&orchestrator, cmd).await,
-            Commands::Inspect { cmd } => cli::inspect::handle(&orchestrator, cmd).await,
-            Commands::Snapshot { cmd } => cli::snapshot::handle(&orchestrator, cmd).await,
-            Commands::Telemetry { cmd } => cli::telemetry::handle(&orchestrator, cmd).await,
-            Commands::Scheduler { cmd } => cli::scheduler::handle(&orchestrator, cmd).await,
+            Commands::Rewards(cmd) => {
+                doublezero_contributor_rewards::cli::rewards::handle(&orchestrator, cmd).await
+            }
+            Commands::Inspect { cmd } => {
+                doublezero_contributor_rewards::cli::inspect::handle(&orchestrator, cmd).await
+            }
+            Commands::Snapshot { cmd } => {
+                doublezero_contributor_rewards::cli::snapshot::handle(&orchestrator, cmd).await
+            }
+            Commands::Telemetry { cmd } => {
+                doublezero_contributor_rewards::cli::telemetry::handle(&orchestrator, cmd).await
+            }
+            Commands::Scheduler { cmd } => {
+                doublezero_contributor_rewards::cli::scheduler::handle(&orchestrator, cmd).await
+            }
         }
     }
 }

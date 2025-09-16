@@ -1,28 +1,10 @@
-use contributor_rewards::{
-    ingestor::types::{DZInternetData, DZInternetLatencySamples},
-    settings::InetLookbackSettings,
-};
+use doublezero_contributor_rewards::ingestor::types::{DZInternetData, DZInternetLatencySamples};
 use solana_sdk::pubkey::Pubkey;
 
 /// Mock RPC client for testing without actual chain
 #[cfg(test)]
 mod mock_tests {
     use super::*;
-
-    // Create test settings with configurable thresholds
-    fn create_test_settings(
-        min_coverage: f64,
-        max_lookback: u64,
-        min_samples: usize,
-    ) -> InetLookbackSettings {
-        InetLookbackSettings {
-            min_coverage_threshold: min_coverage,
-            max_epochs_lookback: max_lookback,
-            min_samples_per_link: min_samples,
-            enable_accumulator: false,
-            dedup_window_us: 10_000_000,
-        }
-    }
 
     // Helper to create test internet data with specified coverage
     fn create_internet_data_with_coverage(
@@ -64,7 +46,6 @@ mod mock_tests {
     #[test]
     fn test_threshold_logic_current_epoch_sufficient() {
         // Test: Current epoch has sufficient coverage, should use it
-        let _settings = create_test_settings(0.7, 5, 10);
         let target_epoch = 100;
         let _expected_links = 10;
 
@@ -81,7 +62,6 @@ mod mock_tests {
     #[test]
     fn test_threshold_logic_requires_lookback() {
         // Test: Current epoch insufficient, historical epoch sufficient
-        let _settings = create_test_settings(0.7, 5, 10);
         let target_epoch = 100;
         let _expected_links = 10;
 
@@ -104,10 +84,6 @@ mod mock_tests {
 
     #[test]
     fn test_edge_case_no_data_all_epochs() {
-        // Test: No data available in any epoch
-        let _settings = create_test_settings(0.7, 5, 10);
-        let _expected_links = 10;
-
         // Create empty data for multiple epochs
         let epochs: Vec<u64> = vec![100, 99, 98, 97, 96];
         let empty_data: Vec<DZInternetData> = epochs
@@ -160,7 +136,6 @@ mod mock_tests {
     #[test]
     fn test_lookback_limit_enforcement() {
         // Test: Should not look back more than max_epochs_lookback
-        let _settings = create_test_settings(0.9, 3, 10); // High threshold, max 3 lookback
         let target_epoch = 100;
 
         // Create epochs to test
@@ -176,7 +151,6 @@ mod mock_tests {
     #[test]
     fn test_samples_threshold_filtering() {
         // Test: Links with insufficient samples should not count toward coverage
-        let _settings = create_test_settings(0.5, 3, 10);
         let expected_links = 6;
 
         // Create data with mixed sample counts

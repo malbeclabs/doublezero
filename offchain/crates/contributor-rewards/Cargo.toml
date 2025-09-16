@@ -11,8 +11,12 @@ license.workspace = true
 repository.workspace = true
 
 [lib]
-name = "contributor_rewards"
+name = "doublezero_contributor_rewards"
 path = "src/lib.rs"
+
+[[bin]]
+name = "doublezero-contributor-rewards"
+path = "src/main.rs"
 
 [dependencies]
 anyhow.workspace = true

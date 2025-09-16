@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use contributor_rewards::scheduler::SchedulerState;
+    use doublezero_contributor_rewards::scheduler::SchedulerState;
     use tempfile::TempDir;
 
     #[test]

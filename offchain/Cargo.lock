@@ -1704,8 +1704,8 @@ checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
 
 [[package]]
 name = "doublezero-config"
-version = "0.6.3"
-source = "git+ssh://git@github.com/malbeclabs/doublezero?tag=v0.6.3#cbb16d7bc9677174c70ce2a7c33142645dadefd2"
+version = "0.6.4"
+source = "git+ssh://git@github.com/malbeclabs/doublezero?rev=89a675d#89a675daff59fd2f4bb30f130b7859d201c35151"
 dependencies = [
  "eyre",
  "solana-sdk",
@@ -1807,8 +1807,8 @@ dependencies = [
 
 [[package]]
 name = "doublezero-program-common"
-version = "0.6.3"
-source = "git+ssh://git@github.com/malbeclabs/doublezero?tag=v0.6.3#cbb16d7bc9677174c70ce2a7c33142645dadefd2"
+version = "0.6.4"
+source = "git+ssh://git@github.com/malbeclabs/doublezero?rev=89a675d#89a675daff59fd2f4bb30f130b7859d201c35151"
 dependencies = [
  "borsh 1.5.7",
  "byteorder",
@@ -1841,8 +1841,8 @@ dependencies = [
 
 [[package]]
 name = "doublezero-record"
-version = "0.6.3"
-source = "git+ssh://git@github.com/malbeclabs/doublezero?tag=v0.6.3#cbb16d7bc9677174c70ce2a7c33142645dadefd2"
+version = "0.6.4"
+source = "git+ssh://git@github.com/malbeclabs/doublezero?rev=89a675d#89a675daff59fd2f4bb30f130b7859d201c35151"
 dependencies = [
  "bytemuck",
  "solana-program",
@@ -1875,8 +1875,8 @@ dependencies = [
 
 [[package]]
 name = "doublezero-serviceability"
-version = "0.6.3"
-source = "git+ssh://git@github.com/malbeclabs/doublezero?tag=v0.6.3#cbb16d7bc9677174c70ce2a7c33142645dadefd2"
+version = "0.6.4"
+source = "git+ssh://git@github.com/malbeclabs/doublezero?rev=89a675d#89a675daff59fd2f4bb30f130b7859d201c35151"
 dependencies = [
  "borsh 1.5.7",
  "doublezero-program-common",
@@ -1941,8 +1941,8 @@ dependencies = [
 
 [[package]]
 name = "doublezero-telemetry"
-version = "0.6.3"
-source = "git+ssh://git@github.com/malbeclabs/doublezero?tag=v0.6.3#cbb16d7bc9677174c70ce2a7c33142645dadefd2"
+version = "0.6.4"
+source = "git+ssh://git@github.com/malbeclabs/doublezero?rev=89a675d#89a675daff59fd2f4bb30f130b7859d201c35151"
 dependencies = [
  "borsh 1.5.7",
  "doublezero-config",
@@ -1955,8 +1955,8 @@ dependencies = [
 
 [[package]]
 name = "doublezero_sdk"
-version = "0.6.3"
-source = "git+ssh://git@github.com/malbeclabs/doublezero?tag=v0.6.3#cbb16d7bc9677174c70ce2a7c33142645dadefd2"
+version = "0.6.4"
+source = "git+ssh://git@github.com/malbeclabs/doublezero?rev=89a675d#89a675daff59fd2f4bb30f130b7859d201c35151"
 dependencies = [
  "base64 0.22.1",
  "bincode 2.0.1",

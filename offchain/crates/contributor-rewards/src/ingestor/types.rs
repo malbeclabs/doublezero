@@ -2,9 +2,10 @@ use anyhow::{Result, bail};
 use chrono::{DateTime, Utc};
 use doublezero_program_common::serializer;
 use doublezero_serviceability::state::{
-    contributor::Contributor as DZContributor, device::Device as DZDevice,
-    exchange::Exchange as DZExchange, link::Link as DZLink, location::Location as DZLocation,
-    multicastgroup::MulticastGroup as DZMulticastGroup, user::User as DZUser,
+    accesspass::AccessPass as DZAccessPass, contributor::Contributor as DZContributor,
+    device::Device as DZDevice, exchange::Exchange as DZExchange, link::Link as DZLink,
+    location::Location as DZLocation, multicastgroup::MulticastGroup as DZMulticastGroup,
+    user::User as DZUser,
 };
 use doublezero_telemetry::state::{
     device_latency_samples::DeviceLatencySamples, internet_latency_samples::InternetLatencySamples,
@@ -115,6 +116,11 @@ pub struct DZServiceabilityData {
         deserialize_with = "serializer::deserialize_pubkey_btreemap"
     )]
     pub contributors: BTreeMap<Pubkey, DZContributor>,
+    #[serde(
+        serialize_with = "serializer::serialize_pubkey_btreemap",
+        deserialize_with = "serializer::deserialize_pubkey_btreemap"
+    )]
+    pub access_passes: BTreeMap<Pubkey, DZAccessPass>,
 }
 
 /// DB representation of DeviceLatencySamples
@@ -185,6 +191,7 @@ impl DZDeviceLatencySamples {
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct DZDTelemetryData {
     pub device_latency_samples: Vec<DZDeviceLatencySamples>,
+    #[serde(skip)]
     pub accounts: KeyedAccounts,
 }
 
@@ -262,5 +269,6 @@ impl DZInternetLatencySamples {
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct DZInternetData {
     pub internet_latency_samples: Vec<DZInternetLatencySamples>,
+    #[serde(skip)]
     pub accounts: KeyedAccounts,
 }

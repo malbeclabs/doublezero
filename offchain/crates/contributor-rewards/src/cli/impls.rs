@@ -1,11 +1,11 @@
-use crate::cli::{
-    common::{OutputFormat, collection_to_csv, to_json_string},
-    traits::Exportable,
+use crate::{
+    cli::{
+        common::{OutputFormat, collection_to_csv, to_json_string},
+        traits::Exportable,
+    },
+    processor::{internet::InternetTelemetryStats, telemetry::DZDTelemetryStats},
 };
 use anyhow::Result;
-use contributor_rewards::processor::{
-    internet::InternetTelemetryStats, telemetry::DZDTelemetryStats,
-};
 
 // Implement Exportable for processor types
 

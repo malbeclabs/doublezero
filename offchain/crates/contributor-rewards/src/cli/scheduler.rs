@@ -1,6 +1,6 @@
+use crate::{calculator::orchestrator::Orchestrator, scheduler::ScheduleWorker};
 use anyhow::{Result, bail};
 use clap::Subcommand;
-use contributor_rewards::{calculator::orchestrator::Orchestrator, scheduler::ScheduleWorker};
 use std::{path::PathBuf, time::Duration};
 use tracing::info;
 

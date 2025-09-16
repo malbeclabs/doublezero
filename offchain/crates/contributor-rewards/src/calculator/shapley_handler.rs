@@ -1,4 +1,5 @@
 use crate::{
+    calculator::constants::{BPS_TO_GBPS, DEFAULT_EDGE_BANDWIDTH_GBPS, SEC_TO_MS, SEC_TO_US},
     ingestor::{demand, fetcher::Fetcher, types::FetchData},
     processor::{
         constants::PENALTY_RTT_US, internet::InternetTelemetryStatMap,
@@ -83,9 +84,6 @@ impl PreviousEpochCache {
 
 pub fn build_devices(fetch_data: &FetchData) -> Result<Devices> {
     let mut devices = Vec::new();
-
-    // Default edge bandwidth in Gbps - will be configurable via smart contract in future
-    const DEFAULT_EDGE_BANDWIDTH_GBPS: u32 = 10;
 
     for device in fetch_data.dz_serviceability.devices.values() {
         if let Some(contributor) = fetch_data
@@ -201,7 +199,7 @@ pub fn build_public_links(
                         "Circuit {} has {:.1}% missing data, using previous epoch average: {:.2}ms",
                         stats.circuit,
                         stats.missing_data_ratio * 100.0,
-                        prev_avg / 1000.0
+                        prev_avg / SEC_TO_MS
                     );
                     prev_avg
                 } else {
@@ -209,7 +207,7 @@ pub fn build_public_links(
                         "Circuit {} has {:.1}% missing data, no previous epoch data available, using current p95: {:.2}ms",
                         stats.circuit,
                         stats.missing_data_ratio * 100.0,
-                        stats.rtt_p95_us / 1000.0
+                        stats.rtt_p95_us / SEC_TO_MS
                     );
                     stats.rtt_p95_us
                 }
@@ -221,7 +219,7 @@ pub fn build_public_links(
         };
 
         // Convert from microseconds to milliseconds
-        let latency_ms = latency_us / 1000.0;
+        let latency_ms = latency_us / SEC_TO_MS;
 
         city_pair_latencies
             .entry((city1, city2))
@@ -272,7 +270,7 @@ pub fn build_private_links(
         };
 
         // Convert bandwidth from bits/sec to Gbps for network-shapley
-        let bandwidth_gbps = (link.bandwidth / 1_000_000_000) as f64;
+        let bandwidth_gbps = (link.bandwidth / BPS_TO_GBPS) as f64;
 
         // Create circuit key to match telemetry stats
         let circuit_key = format!("{}:{}:{}", link.side_a_pk, link.side_z_pk, link_pk);
@@ -300,13 +298,13 @@ pub fn build_private_links(
                             "Private circuit {} has {:.1}% missing data, using previous epoch average: {:.2}ms",
                             stats.circuit,
                             stats.missing_data_ratio * 100.0,
-                            prev_avg / 1000.0
+                            prev_avg / SEC_TO_MS
                         );
                         prev_avg
                     } else {
                         // No previous epoch data, fall back to configured default
                         let default_latency_us =
-                            settings.telemetry_defaults.private_default_latency_ms * 1000.0;
+                            settings.telemetry_defaults.private_default_latency_ms * SEC_TO_MS;
                         info!(
                             "Private circuit {} has {:.1}% missing data, no previous epoch data, using default: {:.2}ms",
                             stats.circuit,
@@ -318,7 +316,7 @@ pub fn build_private_links(
                 } else {
                     // Previous epoch lookup disabled, use configured default
                     let default_latency_us =
-                        settings.telemetry_defaults.private_default_latency_ms * 1000.0;
+                        settings.telemetry_defaults.private_default_latency_ms * SEC_TO_MS;
                     info!(
                         "Private circuit {} has {:.1}% missing data, using default: {:.2}ms",
                         stats.circuit,
@@ -336,7 +334,7 @@ pub fn build_private_links(
                 "Private circuit {} → {} has no telemetry data, using penalty: {:.2}ms",
                 from_device.code,
                 to_device.code,
-                PENALTY_RTT_US / 1000.0
+                PENALTY_RTT_US / SEC_TO_MS
             );
             PENALTY_RTT_US
         };
@@ -345,7 +343,7 @@ pub fn build_private_links(
             .map(|stats| {
                 // Calculate time range in seconds
                 let time_range_seconds =
-                    (fetch_data.end_us.saturating_sub(fetch_data.start_us)) as f64 / 1_000_000.0;
+                    (fetch_data.end_us.saturating_sub(fetch_data.start_us)) as f64 / SEC_TO_US;
 
                 // Expected samples: one every 10 seconds
                 let expected_samples = time_range_seconds / 10.0;
@@ -360,7 +358,7 @@ pub fn build_private_links(
             .unwrap_or(0.0); // Default to 0% if no stats found
 
         // Convert latency from microseconds to milliseconds
-        let latency_ms = latency_us / 1000.0;
+        let latency_ms = latency_us / SEC_TO_MS;
 
         // network-shapley-rs expects the following units for PrivateLink:
         // - latency: milliseconds (ms) - we convert from microseconds

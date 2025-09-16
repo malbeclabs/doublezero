@@ -2,8 +2,8 @@ use crate::{ingestor::types::DZServiceabilityData, settings::Settings};
 use anyhow::{Context, Result};
 use backon::{ExponentialBuilder, Retryable};
 use doublezero_serviceability::state::{
-    accounttype::AccountType, contributor::Contributor, device::Device, exchange::Exchange,
-    link::Link, location::Location, multicastgroup::MulticastGroup, user::User,
+    accesspass::AccessPass, accounttype::AccountType, contributor::Contributor, device::Device,
+    exchange::Exchange, link::Link, location::Location, multicastgroup::MulticastGroup, user::User,
 };
 use solana_account_decoder::UiAccountEncoding;
 use solana_client::{
@@ -29,6 +29,7 @@ const PROCESSED_ACCOUNT_TYPES: &[AccountType] = &[
     AccountType::User,
     AccountType::MulticastGroup,
     AccountType::Contributor,
+    AccountType::AccessPass,
 ];
 
 pub async fn fetch(rpc_client: &RpcClient, settings: &Settings) -> Result<DZServiceabilityData> {
@@ -91,6 +92,13 @@ pub async fn fetch(rpc_client: &RpcClient, settings: &Settings) -> Result<DZServ
                             serviceability_data.contributors.insert(pubkey, contributor);
                             total_processed += 1;
                         }
+                        AccountType::AccessPass => {
+                            let access_pass = AccessPass::try_from(&account_data[..])?;
+                            serviceability_data
+                                .access_passes
+                                .insert(pubkey, access_pass);
+                            total_processed += 1;
+                        }
                         _ => {
                             warn!(
                                 "Unexpected account type {:?} in processed list",
@@ -104,7 +112,7 @@ pub async fn fetch(rpc_client: &RpcClient, settings: &Settings) -> Result<DZServ
     }
 
     info!(
-        "Processed {} serviceability accounts, contributors={}, locations={}, exchanges={}, devices={}, links={}, users={}, mcast_groups={}. Errors={}",
+        "Processed {} serviceability accounts, contributors={}, locations={}, exchanges={}, devices={}, links={}, users={}, mcast_groups={}, access_passes={}. Errors={}",
         total_processed,
         serviceability_data.contributors.len(),
         serviceability_data.locations.len(),
@@ -113,6 +121,7 @@ pub async fn fetch(rpc_client: &RpcClient, settings: &Settings) -> Result<DZServ
         serviceability_data.links.len(),
         serviceability_data.users.len(),
         serviceability_data.multicast_groups.len(),
+        serviceability_data.access_passes.len(),
         total_errors,
     );
 

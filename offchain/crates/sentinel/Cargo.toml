@@ -18,6 +18,7 @@ doublezero-program-common.workspace = true
 doublezero-program-tools.workspace = true
 doublezero-serviceability.workspace = true
 futures.workspace = true
+backon.workspace = true
 metrics.workspace = true
 metrics-exporter-prometheus.workspace = true
 serde.workspace = true

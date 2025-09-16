@@ -1,6 +1,7 @@
 use crate::{
     AccessIds, Result,
     client::{doublezero_ledger::DzRpcClient, solana::SolRpcClient},
+    error::rpc_with_retry,
     verify_access_request,
 };
 use doublezero_passport::instruction::AccessMode;
@@ -82,13 +83,24 @@ impl Sentinel {
             ..
         } = access_ids.mode;
         if let Some(validator_ip) = self.verify_qualifiers(&access_ids.mode).await? {
-            self.dz_rpc_client
-                .issue_access_pass(&service_key, &validator_ip, &validator_id)
-                .await?;
-            let signature = self
-                .sol_rpc_client
-                .grant_access(&access_ids.request_pda, &access_ids.rent_beneficiary_key)
-                .await?;
+            rpc_with_retry(
+                || async {
+                    self.dz_rpc_client
+                        .issue_access_pass(&service_key, &validator_ip, &validator_id)
+                        .await
+                },
+                "issue_access_pass",
+            )
+            .await?;
+            let signature = rpc_with_retry(
+                || async {
+                    self.sol_rpc_client
+                        .grant_access(&access_ids.request_pda, &access_ids.rent_beneficiary_key)
+                        .await
+                },
+                "grant_access",
+            )
+            .await?;
             info!(%signature, user = %service_key, "access request granted");
             metrics::counter!("doublezero_sentinel_access_granted").increment(1);
         } else {

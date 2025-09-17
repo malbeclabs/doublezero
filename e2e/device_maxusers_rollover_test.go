@@ -100,14 +100,22 @@ func TestE2E_DeviceMaxusersRollover(t *testing.T) {
 	log.Info("--> Client added", "clientPubkey", client.Pubkey, "clientIP", client.CYOANetworkIP)
 
 	// Add latency to client to make sure it prefers device 1
+	// First, detect which interface has the CYOA network (9.x.x.x) since Docker may assign it to eth0 or eth1
+	output, err := client.Exec(t.Context(), []string{"bash", "-c", "ip -o addr show | grep -E 'inet 9\\.' | awk '{print $2}'"})
+	require.NoError(t, err)
+	cyoaInterface := strings.TrimSpace(string(output))
+	require.NotEmpty(t, cyoaInterface, "could not find interface with CYOA network")
+	log.Info("Detected CYOA network interface", "interface", cyoaInterface)
+
+	// Apply tc rules to the correct interface
 	for _, command := range [][]string{
-		{"bash", "-c", "tc qdisc add dev eth0 root handle 1: prio bands 3"},
-                {"bash", "-c", "tc qdisc add dev eth0 parent 1:1 handle 10: netem delay 0ms"},
-                {"bash", "-c", "tc qdisc add dev eth0 parent 1:2 handle 20: netem delay 10ms"},
-                {"bash", "-c", "tc qdisc add dev eth0 parent 1:3 handle 30: sfq"},
-                {"bash", "-c", "tc filter add dev eth0 protocol ip parent 1:0 prio 1 u32 match ip dst " + device1.CYOANetworkIP + "/32 flowid 1:1"},
-                {"bash", "-c", "tc filter add dev eth0 protocol ip parent 1:0 prio 2 u32 match ip dst " + device2.CYOANetworkIP + "/32 flowid 1:2"},
-                {"bash", "-c", "tc filter add dev eth0 protocol ip parent 1:0 prio 3 u32 match ip dst 0.0.0.0/0 flowid 1:3"},
+		{"bash", "-c", "tc qdisc add dev " + cyoaInterface + " root handle 1: prio bands 3"},
+                {"bash", "-c", "tc qdisc add dev " + cyoaInterface + " parent 1:1 handle 10: netem delay 0ms"},
+                {"bash", "-c", "tc qdisc add dev " + cyoaInterface + " parent 1:2 handle 20: netem delay 10ms"},
+                {"bash", "-c", "tc qdisc add dev " + cyoaInterface + " parent 1:3 handle 30: sfq"},
+                {"bash", "-c", "tc filter add dev " + cyoaInterface + " protocol ip parent 1:0 prio 1 u32 match ip dst " + device1.CYOANetworkIP + "/32 flowid 1:1"},
+                {"bash", "-c", "tc filter add dev " + cyoaInterface + " protocol ip parent 1:0 prio 2 u32 match ip dst " + device2.CYOANetworkIP + "/32 flowid 1:2"},
+                {"bash", "-c", "tc filter add dev " + cyoaInterface + " protocol ip parent 1:0 prio 3 u32 match ip dst 0.0.0.0/0 flowid 1:3"},
 	} {
 		_, err = client.Exec(t.Context(), command)
 		require.NoError(t, err)

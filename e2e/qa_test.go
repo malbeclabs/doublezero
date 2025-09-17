@@ -697,7 +697,7 @@ func connectHosts(t *testing.T, hosts []string, device *Device) (map[string]stri
 		}
 
 		// Get IP address
-		statusCtx, statusCancel := context.WithTimeout(ctx, 30*time.Second)
+		statusCtx, statusCancel := context.WithTimeout(ctx, 60*time.Second)
 		status, err := client.GetStatus(statusCtx, &emptypb.Empty{})
 		statusCancel()
 

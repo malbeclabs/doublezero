@@ -1,6 +1,6 @@
 module github.com/malbeclabs/doublezero
 
-go 1.24
+go 1.24.0
 
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.40.1
@@ -39,7 +39,7 @@ require (
 	github.com/twmb/franz-go/plugin/kprom v1.3.0
 	github.com/vishvananda/netlink v1.3.1
 	github.com/vishvananda/netns v0.0.5
-	golang.org/x/mod v0.27.0
+	golang.org/x/mod v0.28.0
 	golang.org/x/net v0.43.0
 	golang.org/x/sys v0.35.0
 	google.golang.org/grpc v1.75.0

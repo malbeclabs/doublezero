@@ -56,4 +56,4 @@ rm -f /var/run/doublezerod/doublezerod.sock
 mkdir -p /var/lib/doublezerod
 
 # Start doublezerod.
-doublezerod -program-id ${DZ_SERVICEABILITY_PROGRAM_ID} -solana-rpc-endpoint ${DZ_LEDGER_URL} -probe-interval 5 -cache-update-interval 3
+doublezerod -program-id ${DZ_SERVICEABILITY_PROGRAM_ID} -solana-rpc-endpoint ${DZ_LEDGER_URL} -probe-interval 5 -cache-update-interval 3 -v

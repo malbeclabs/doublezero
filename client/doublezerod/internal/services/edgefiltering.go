@@ -113,7 +113,7 @@ func (s *EdgeFilteringService) Teardown() error {
 	return errors.Join(errFlushRules, errFlushRoutes, errRemoveTunnel, errRemovePeer)
 }
 
-func (s *EdgeFilteringService) Status() (*api.StatusResponse, error) {
+func (s *EdgeFilteringService) Status() (*api.ServiceStatus, error) {
 	state := s.db.GetState()
 	if state == nil {
 		return nil, nil
@@ -124,7 +124,7 @@ func (s *EdgeFilteringService) Status() (*api.StatusResponse, error) {
 	}
 
 	peerStatus := s.bgp.GetPeerStatus(s.Tunnel.RemoteOverlay)
-	return &api.StatusResponse{
+	return &api.ServiceStatus{
 		TunnelName:       s.Tunnel.Name,
 		TunnelSrc:        s.Tunnel.LocalUnderlay,
 		TunnelDst:        s.Tunnel.RemoteUnderlay,

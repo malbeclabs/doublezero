@@ -10,6 +10,7 @@ import (
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/config"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/services"
 )
@@ -19,7 +20,7 @@ import (
 type Provisioner interface {
 	Setup(*api.ProvisionRequest) error
 	Teardown() error
-	Status() (*api.StatusResponse, error) // TODO: what do we return here?
+	Status() (*api.ServiceStatus, error) // TODO: what do we return here?
 	ServiceType() services.ServiceType
 }
 
@@ -42,6 +43,7 @@ type DbReaderWriter interface {
 }
 
 type NetlinkManager struct {
+	Config           *config.Config
 	netlink          routing.Netlinker
 	Routes           []*routing.Route
 	Rules            []*routing.IPRule
@@ -71,8 +73,8 @@ func CreateService(u api.UserType, bgp services.BGPReaderWriter, nl routing.Netl
 	}
 }
 
-func NewNetlinkManager(netlink routing.Netlinker, bgp BGPServer, db services.DBReaderWriter, pim services.PIMWriter) *NetlinkManager {
-	manager := &NetlinkManager{netlink: netlink, bgp: bgp, db: db, pim: pim}
+func NewNetlinkManager(Config *config.Config, netlink routing.Netlinker, bgp BGPServer, db services.DBReaderWriter, pim services.PIMWriter) *NetlinkManager {
+	manager := &NetlinkManager{Config: Config, netlink: netlink, bgp: bgp, db: db, pim: pim}
 	return manager
 }
 
@@ -222,11 +224,11 @@ func (n *NetlinkManager) Recover() error {
 // service.
 //
 // Status returns the status of all provisioned services.
-func (n *NetlinkManager) Status() ([]*api.StatusResponse, error) {
+func (n *NetlinkManager) Status() ([]*api.ServiceStatus, error) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
-	resp := []*api.StatusResponse{}
+	resp := []*api.ServiceStatus{}
 	if n.UnicastService != nil {
 		status, err := n.UnicastService.Status()
 		if err != nil {

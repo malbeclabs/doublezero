@@ -12,8 +12,9 @@ impl GetConfigCliCommand {
 
         writeln!(
             out,
-            "Config File: {}\nRPC URL: {}\nWebSocket URL: {}\nKeypair Path: {}\nProgram ID: {}\n",
+            "Config File: {}\nEnvironment: {}\nRPC URL: {}\nWebSocket URL: {}\nKeypair Path: {}\nProgram ID: {}\n",
             filename.display(),
+            config.environment,
             config.json_rpc_url,
             config.websocket_url.unwrap_or(format!(
                 "{} (computed)",

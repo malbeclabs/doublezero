@@ -31,6 +31,12 @@ pub struct ProvisioningResponse {
     pub description: Option<String>,
 }
 
+#[derive(Clone, Deserialize, Serialize, Debug)]
+pub struct LatencyResponse {
+    pub program_id: String,
+    pub results: Vec<LatencyRecord>,
+}
+
 #[derive(Clone, Tabled, Deserialize, Serialize, Debug)]
 pub struct LatencyRecord {
     #[tabled(rename = "pubkey")]
@@ -70,6 +76,7 @@ impl fmt::Display for LatencyRecord {
 
 #[derive(Serialize, Debug)]
 pub struct RemoveTunnelCliCommand {
+    pub program_id: String,
     pub user_type: String,
 }
 
@@ -79,9 +86,15 @@ pub struct RemoveResponse {
     pub description: Option<String>,
 }
 
-#[derive(Tabled, Serialize, Deserialize, Debug)]
-#[tabled(display(Option, "display::option", ""))]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct StatusResponse {
+    pub program_id: String,
+    pub results: Vec<ServiceStatus>,
+}
+
+#[derive(Tabled, Serialize, Deserialize, Debug, Default)]
+#[tabled(display(Option, "display::option", ""))]
+pub struct ServiceStatus {
     #[tabled(inline)]
     pub doublezero_status: DoubleZeroStatus,
     #[tabled(rename = "Tunnel Name")]
@@ -96,7 +109,7 @@ pub struct StatusResponse {
     pub user_type: Option<String>,
 }
 
-#[derive(Tabled, Serialize, Deserialize, Debug)]
+#[derive(Tabled, Serialize, Deserialize, Debug, Default)]
 pub struct DoubleZeroStatus {
     #[tabled(rename = "Tunnel status")]
     pub session_status: String,
@@ -115,6 +128,17 @@ fn maybe_i64_to_dt_str(maybe_i64_dt: &Option<i64>) -> String {
     )
 }
 
+#[derive(Serialize, Deserialize, Debug, Default)]
+pub struct ConfigRequest {
+    pub ledger_rpc_url: String,
+    pub serviceability_program_id: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Default)]
+pub struct ConfigResponse {
+    pub status: String,
+}
+
 #[derive(Deserialize, Debug)]
 pub struct ErrorResponse {
     pub status: String,
@@ -125,10 +149,11 @@ pub struct ErrorResponse {
 pub trait ServiceController {
     fn service_controller_check(&self) -> bool;
     fn service_controller_can_open(&self) -> bool;
-    async fn latency(&self) -> eyre::Result<Vec<LatencyRecord>>;
+    async fn latency(&self) -> eyre::Result<LatencyResponse>;
     async fn provisioning(&self, args: ProvisioningRequest) -> eyre::Result<ProvisioningResponse>;
     async fn remove(&self, args: RemoveTunnelCliCommand) -> eyre::Result<RemoveResponse>;
-    async fn status(&self) -> eyre::Result<Vec<StatusResponse>>;
+    async fn config(&self, args: ConfigRequest) -> eyre::Result<ConfigResponse>;
+    async fn status(&self) -> eyre::Result<StatusResponse>;
 }
 
 pub struct ServiceControllerImpl {
@@ -159,7 +184,7 @@ impl ServiceController for ServiceControllerImpl {
         }
     }
 
-    async fn latency(&self) -> eyre::Result<Vec<LatencyRecord>> {
+    async fn latency(&self) -> eyre::Result<LatencyResponse> {
         let uri = Uri::new(&self.socket_path, "/latency").into();
         let client: Client<UnixConnector, Full<Bytes>> =
             Client::builder(TokioExecutor::new()).build(UnixConnector);
@@ -175,7 +200,7 @@ impl ServiceController for ServiceControllerImpl {
             .map_err(|e| eyre!("Unable to read response body: {e}"))?
             .to_bytes();
 
-        match serde_json::from_slice::<Vec<LatencyRecord>>(&data) {
+        match serde_json::from_slice::<LatencyResponse>(&data) {
             Ok(response) => Ok(response),
             Err(e) => match serde_json::from_slice::<ErrorResponse>(&data) {
                 Ok(response) => {
@@ -242,7 +267,29 @@ impl ServiceController for ServiceControllerImpl {
         }
     }
 
-    async fn status(&self) -> eyre::Result<Vec<StatusResponse>> {
+    async fn config(&self, args: ConfigRequest) -> eyre::Result<ConfigResponse> {
+        let client = Client::builder(TokioExecutor::new()).build(UnixConnector);
+        let body_bytes =
+            serde_json::to_vec(&args).map_err(|e| eyre!("Unable to serialize request: {e}"))?;
+
+        let req = Request::builder()
+            .method(Method::PUT)
+            .uri(Uri::new(&self.socket_path, "/config"))
+            .body(Full::new(Bytes::from(body_bytes)))?;
+
+        let res = client.request(req).await?;
+        let data = res
+            .into_body()
+            .collect()
+            .await
+            .map_err(|e| eyre!("Unable to read response body: {e}"))?
+            .to_bytes();
+
+        let response = serde_json::from_slice::<ConfigResponse>(&data)?;
+        Ok(response)
+    }
+
+    async fn status(&self) -> eyre::Result<StatusResponse> {
         let client = Client::builder(TokioExecutor::new()).build(UnixConnector);
 
         let req = Request::builder()
@@ -263,7 +310,7 @@ impl ServiceController for ServiceControllerImpl {
                     .map_err(|e| eyre!("Unable to read response body: {e}"))?
                     .to_bytes();
 
-                match serde_json::from_slice::<Vec<StatusResponse>>(&data) {
+                match serde_json::from_slice::<StatusResponse>(&data) {
                     Ok(response) => Ok(response),
                     Err(e) => {
                         println!("Data: {data:?}");

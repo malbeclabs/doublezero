@@ -103,7 +103,7 @@ func (s *IBRLService) Teardown() error {
 	return errors.Join(errRemoveTunnel, errRemovePeer)
 }
 
-func (s *IBRLService) Status() (*api.StatusResponse, error) {
+func (s *IBRLService) Status() (*api.ServiceStatus, error) {
 	state := s.db.GetState(s.UserType())
 	if state == nil {
 		log.Printf("netlink: no state found for %v", s.UserType())
@@ -116,7 +116,7 @@ func (s *IBRLService) Status() (*api.StatusResponse, error) {
 
 	peerStatus := s.bgp.GetPeerStatus(s.Tunnel.RemoteOverlay)
 
-	return &api.StatusResponse{
+	return &api.ServiceStatus{
 		TunnelName:       s.Tunnel.Name,
 		TunnelSrc:        s.Tunnel.LocalUnderlay,
 		TunnelDst:        s.Tunnel.RemoteUnderlay,
@@ -145,7 +145,7 @@ func (s *IBRLServiceWithAllocatedAddress) UserType() api.UserType {
 }
 func (s *IBRLServiceWithAllocatedAddress) ServiceType() ServiceType { return ServiceTypeUnicast }
 
-func (s *IBRLServiceWithAllocatedAddress) Status() (*api.StatusResponse, error) {
+func (s *IBRLServiceWithAllocatedAddress) Status() (*api.ServiceStatus, error) {
 	state := s.db.GetState(s.UserType())
 	if state == nil {
 		log.Printf("netlink: no state found for %v", s.UserType())
@@ -158,7 +158,7 @@ func (s *IBRLServiceWithAllocatedAddress) Status() (*api.StatusResponse, error) 
 
 	peerStatus := s.bgp.GetPeerStatus(s.Tunnel.RemoteOverlay)
 
-	return &api.StatusResponse{
+	return &api.ServiceStatus{
 		TunnelName:       s.Tunnel.Name,
 		TunnelSrc:        s.Tunnel.LocalUnderlay,
 		TunnelDst:        s.Tunnel.RemoteUnderlay,

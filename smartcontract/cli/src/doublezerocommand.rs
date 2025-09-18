@@ -1,3 +1,4 @@
+use doublezero_config::Environment;
 use doublezero_sdk::{
     commands::{
         accesspass::{
@@ -111,6 +112,7 @@ pub trait CliCommand {
     ) -> eyre::Result<(Pubkey, ProgramConfig)>;
 
     fn get_program_id(&self) -> Pubkey;
+    fn get_environment(&self) -> Environment;
     fn get_payer(&self) -> Pubkey;
     fn get_balance(&self) -> eyre::Result<u64>;
     fn get_epoch(&self) -> eyre::Result<u64>;
@@ -304,6 +306,10 @@ impl CliCommand for CliCommandImpl<'_> {
 
     fn get_program_id(&self) -> Pubkey {
         *self.client.get_program_id()
+    }
+    fn get_environment(&self) -> Environment {
+        Environment::from_program_id(&self.get_program_id().to_string())
+            .unwrap_or(Environment::Local)
     }
     fn get_payer(&self) -> Pubkey {
         self.client.get_payer()

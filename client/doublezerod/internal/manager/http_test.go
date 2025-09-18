@@ -17,6 +17,7 @@ import (
 	"github.com/jwhited/corebgp"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/config"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/manager"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/pim"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
@@ -104,11 +105,12 @@ func TestNetlinkManager_ProvisionRequestValidation(t *testing.T) {
 }
 
 func TestHttpStatus(t *testing.T) {
+	c := &config.Config{}
 	m := &MockNetlink{}
 	b := &MockBgpServer{}
 	db := &MockDb{state: nil}
 	pim := &MockPIMServer{}
-	manager := manager.NewNetlinkManager(m, b, db, pim)
+	manager := manager.NewNetlinkManager(c, m, b, db, pim)
 
 	f, err := os.CreateTemp("/tmp", "doublezero.sock")
 	if err != nil {
@@ -216,11 +218,12 @@ func TestHttpStatus(t *testing.T) {
 }
 
 func TestNetlinkManager_HttpEndpoints(t *testing.T) {
+	c := &config.Config{}
 	m := &MockNetlink{}
 	b := &MockBgpServer{}
 	db := &MockDb{state: []*api.ProvisionRequest{}}
 	pim := &MockPIMServer{}
-	manager := manager.NewNetlinkManager(m, b, db, pim)
+	manager := manager.NewNetlinkManager(c, m, b, db, pim)
 
 	f, err := os.CreateTemp("/tmp", "doublezero.sock")
 	if err != nil {

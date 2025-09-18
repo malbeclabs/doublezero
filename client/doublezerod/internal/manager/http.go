@@ -58,6 +58,12 @@ func (n *NetlinkManager) ServeRemove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if rr.ProgramID != n.Config.ProgramID() {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(fmt.Sprintf(`{"status": "error", "description": "program ID mismatch: request %s, config %s"}`, rr.ProgramID.String(), n.Config.ProgramID().String())))
+		return
+	}
+
 	// TODO: this is a hack until the client is updated to send user type
 	if rr.UserType == api.UserTypeUnknown {
 		rr.UserType = api.UserTypeIBRL
@@ -86,12 +92,13 @@ func (n *NetlinkManager) ServeStatus(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(fmt.Sprintf(`{"status": "error", "description": "error while getting status: %v"}`, err)))
 		return
 	}
-	if len(status) == 0 {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`[{"doublezero_status": {"session_status": "disconnected"}}]`))
-		return
+
+	response := api.StatusResponse{
+		ProgramID: n.Config.ProgramID(),
+		Results:   status,
 	}
-	if err = json.NewEncoder(w).Encode(status); err != nil {
+
+	if err = json.NewEncoder(w).Encode(response); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte(fmt.Sprintf(`{"status": "error", "description": "error while encoding status: %v"}`, err)))
 		return

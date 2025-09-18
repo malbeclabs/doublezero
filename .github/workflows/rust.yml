@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-24.04-16c-64gb
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.90
+      - uses: dtolnay/rust-toolchain@1.90.0
       - uses: Swatinem/rust-cache@v2
       - name: Install agave solana tools
         run: |
@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-24.04-16c-64gb
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.90
+      - uses: dtolnay/rust-toolchain@1.90.0
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
@@ -30,7 +30,7 @@ jobs:
     runs-on: ubuntu-24.04-16c-64gb
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.90
+      - uses: dtolnay/rust-toolchain@1.90.0
       - uses: Swatinem/rust-cache@v2
       - name: Install agave solana tools
         run: |
@@ -41,7 +41,7 @@ jobs:
     runs-on: ubuntu-24.04-16c-64gb
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.90
+      - uses: dtolnay/rust-toolchain@1.90.0
       - uses: Swatinem/rust-cache@v2
       - name: Install agave solana tools
         run: |

@@ -28,7 +28,7 @@ jobs:
       - name: Set env vars
         run: ./scripts/env.sh >> $GITHUB_ENV
       - name: Install rust for cli
-        uses: dtolnay/rust-toolchain@1.90
+        uses: dtolnay/rust-toolchain@1.90.0
       - name: Install dependencies for rpm packaging
         run: |
           sudo apt update

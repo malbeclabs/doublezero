@@ -22,7 +22,7 @@ jobs:
             target
             target/x86_64-unknown-linux-gnu/release
       - name: Install rust for cli
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.90.0
       - name: Install dependencies for rpm packaging
         run: |
           sudo apt update

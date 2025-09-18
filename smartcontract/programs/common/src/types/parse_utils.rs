@@ -31,14 +31,14 @@ pub fn bandwidth_to_string(bandwidth: &u64) -> String {
             format!("{bandwidth}bps")
         }
         1_000..=999_999 => {
-            if bandwidth.is_multiple_of(1000) {
+            if bandwidth % 1000 == 0 {
                 format!("{}Kbps", bandwidth / 1000)
             } else {
                 format!("{:.2}Kbps", *bandwidth as f64 / 1000.0)
             }
         }
         1_000_000..=999_999_999 => {
-            if bandwidth.is_multiple_of(1000000) {
+            if bandwidth % 1000000 == 0 {
                 format!("{}Mbps", bandwidth / 1000000)
             } else {
                 format!("{:.2}Mbps", *bandwidth as f64 / 1000000.0)

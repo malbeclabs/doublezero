@@ -138,6 +138,13 @@ func (w *ServiceabilityWatcher) Tick(ctx context.Context) error {
 		}
 	}
 
+	if w.cacheDevices != nil || w.cacheLinks != nil {
+		for _, device := range data.Devices {
+			for _, iface := range device.Interfaces {
+				checkUnlinkedInterfaces(device, iface, data.Links)
+			}
+		}
+	}
 	// save current on-chain state for next comparison interval
 	w.cacheLinks = data.Links
 	w.cacheDevices = data.Devices

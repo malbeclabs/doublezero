@@ -1,8 +1,9 @@
 use crate::{commands::link::get::GetLinkCommand, DoubleZeroClient, GetGlobalStateCommand};
 use doublezero_program_common::validate_account_code;
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, processors::link::update::LinkUpdateArgs,
-    state::link::LinkLinkType,
+    instructions::DoubleZeroInstruction,
+    processors::link::update::LinkUpdateArgs,
+    state::link::{LinkLinkType, LinkStatus},
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
@@ -16,6 +17,7 @@ pub struct UpdateLinkCommand {
     pub mtu: Option<u32>,
     pub delay_ns: Option<u64>,
     pub jitter_ns: Option<u64>,
+    pub status: Option<LinkStatus>,
 }
 
 impl UpdateLinkCommand {
@@ -46,6 +48,7 @@ impl UpdateLinkCommand {
                 mtu: self.mtu,
                 delay_ns: self.delay_ns,
                 jitter_ns: self.jitter_ns,
+                status: self.status,
             }),
             vec![
                 AccountMeta::new(self.pubkey, false),

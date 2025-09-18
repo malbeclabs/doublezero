@@ -1,5 +1,9 @@
 [package]
 name = "doublezero-program-common"
+
+# clippy ignores rust-version.toml
+rust-version = "1.84.1" # cargo build-sbf --version
+
 authors.workspace = true
 readme.workspace = true
 edition.workspace = true

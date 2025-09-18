@@ -29,6 +29,15 @@ pub struct UpdateDeviceInterfaceCliCommand {
     /// Can terminate a user tunnel?
     #[arg(long)]
     pub user_tunnel_endpoint: Option<bool>,
+    /// Interface status
+    #[arg(long)]
+    pub status: Option<String>,
+    /// IP network (CIDR notation)
+    #[arg(long)]
+    pub ip_net: Option<String>,
+    /// Node segment index
+    #[arg(long)]
+    pub node_segment_idx: Option<u16>,
     /// Wait for the device interface to be activated
     #[arg(short, long, default_value_t = false)]
     pub wait: bool,
@@ -84,6 +93,9 @@ impl UpdateDeviceInterfaceCliCommand {
             loopback_type: self.loopback_type.map(|lt| lt.into()),
             vlan_id: self.vlan_id,
             user_tunnel_endpoint: self.user_tunnel_endpoint,
+            status: self.status.as_ref().map(|s| s.parse().unwrap()),
+            ip_net: self.ip_net.as_ref().map(|s| s.parse().unwrap()),
+            node_segment_idx: self.node_segment_idx,
         })?;
         writeln!(out, "Signature: {signature}")?;
 
@@ -175,6 +187,9 @@ mod tests {
                 loopback_type: Some(LoopbackType::Ipv4),
                 vlan_id: Some(20),
                 user_tunnel_endpoint: None,
+                status: Some(InterfaceStatus::Activated),
+                ip_net: Some("10.0.1.1/24".parse().unwrap()),
+                node_segment_idx: None,
             }))
             .times(1)
             .returning(move |_| Ok(signature));
@@ -187,6 +202,9 @@ mod tests {
             loopback_type: Some(types::LoopbackType::Ipv4),
             vlan_id: Some(20),
             user_tunnel_endpoint: None,
+            status: Some(InterfaceStatus::Activated.to_string()),
+            ip_net: Some("10.0.1.1/24".to_string()),
+            node_segment_idx: None,
             wait: false,
         }
         .execute(&client, &mut output);

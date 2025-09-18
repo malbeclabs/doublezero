@@ -649,6 +649,7 @@ mod tests {
                 mtu: Some(1500),
                 delay_ns: Some(10000),
                 jitter_ns: Some(100),
+                status: None,
             }),
             "UpdateLink",
         );
@@ -981,6 +982,9 @@ mod tests {
                 loopback_type: Some(LoopbackType::None),
                 vlan_id: Some(0),
                 user_tunnel_endpoint: Some(false),
+                ip_net: Some("10.0.0.0/3".parse().unwrap()),
+                node_segment_idx: Some(1),
+                status: None,
             }),
             "UpdateDeviceInterface",
         );

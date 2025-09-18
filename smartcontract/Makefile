@@ -23,6 +23,7 @@ test: test-programs
 .PHONY: test-programs
 test-programs: test-sbf
 	cargo test --lib \
+		-p doublezero-program-common \
 		-p doublezero-record \
 		-p doublezero-telemetry \
 		-p doublezero-serviceability
@@ -39,6 +40,7 @@ lint: lint-programs
 .PHONY: lint-programs
 lint-programs:
 	cargo clippy --all-targets \
+		-p doublezero-program-common \
 		-p doublezero-record \
 		-p doublezero-telemetry \
 		-p doublezero-serviceability \

@@ -9,7 +9,7 @@ members = [
     "smartcontract/programs/doublezero-record",
     "smartcontract/programs/doublezero-serviceability",
     "smartcontract/programs/doublezero-telemetry",
-    "smartcontract/program-common",
+    "smartcontract/programs/common",
 ]
 default-members = []
 exclude = []
@@ -84,7 +84,7 @@ tokio = { version = "1", default-features = false, features = [
 ] }
 doublezero-config = { path = "config" }
 doublezero_cli = { path = "smartcontract/cli" }
-doublezero-program-common = { path = "smartcontract/program-common" }
+doublezero-program-common = { path = "smartcontract/programs/common" }
 doublezero_sdk = { path = "smartcontract/sdk/rs" }
 
 [workspace.dependencies.doublezero-record]

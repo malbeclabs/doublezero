@@ -2,10 +2,11 @@ use crate::{
     error::DoubleZeroError,
     globalstate::globalstate_get,
     helper::*,
-    state::{accounttype::AccountType, contributor::Contributor, device::*},
+    state::{accounttype::AccountType, device::*},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
+use doublezero_program_common::types::NetworkV4;
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -20,6 +21,9 @@ pub struct DeviceInterfaceUpdateArgs {
     pub loopback_type: Option<LoopbackType>,
     pub vlan_id: Option<u16>,
     pub user_tunnel_endpoint: Option<bool>,
+    pub status: Option<InterfaceStatus>,
+    pub ip_net: Option<NetworkV4>,
+    pub node_segment_idx: Option<u16>,
 }
 
 impl fmt::Debug for DeviceInterfaceUpdateArgs {
@@ -82,11 +86,7 @@ pub fn process_update_device_interface(
     let globalstate = globalstate_get(globalstate_account)?;
     assert_eq!(globalstate.account_type, AccountType::GlobalState);
 
-    let contributor = Contributor::try_from(contributor_account)?;
-
-    if contributor.owner != *payer_account.key
-        && !globalstate.foundation_allowlist.contains(payer_account.key)
-    {
+    if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
@@ -110,7 +110,15 @@ pub fn process_update_device_interface(
             if let Some(user_tunnel_endpoint) = value.user_tunnel_endpoint {
                 iface.user_tunnel_endpoint = user_tunnel_endpoint;
             }
-            iface.status = InterfaceStatus::Pending;
+            if let Some(status) = value.status {
+                iface.status = status;
+            }
+            if let Some(ip_net) = value.ip_net {
+                iface.ip_net = ip_net;
+            }
+            if let Some(node_segment_idx) = value.node_segment_idx {
+                iface.node_segment_idx = node_segment_idx;
+            }
             device.interfaces[i] = Interface::V1(iface);
         }
     }

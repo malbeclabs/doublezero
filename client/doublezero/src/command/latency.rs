@@ -34,7 +34,15 @@ impl LatencyCliCommand {
                 .unwrap_or(false)
         });
 
-        latencies.sort_by(|a, b| a.avg_latency_ns.cmp(&b.avg_latency_ns));
+        latencies.sort_by(|a, b| {
+            let reachable_cmp = b.reachable.cmp(&a.reachable);
+            if reachable_cmp != std::cmp::Ordering::Equal {
+                return reachable_cmp;
+            }
+            a.avg_latency_ns
+                .partial_cmp(&b.avg_latency_ns)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         util::show_output(latencies, self.json)?;
 

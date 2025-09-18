@@ -8,6 +8,7 @@ import (
 	"github.com/malbeclabs/doublezero/e2e/internal/poll"
 	prom "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
+	"github.com/prometheus/common/model"
 )
 
 const (
@@ -51,7 +52,7 @@ func (m *MetricsClient) Fetch(ctx context.Context) error {
 	}
 	defer resp.Body.Close()
 
-	var parser expfmt.TextParser
+	parser := expfmt.NewTextParser(model.LegacyValidation)
 	families, err := parser.TextToMetricFamilies(resp.Body)
 	if err != nil {
 		return err

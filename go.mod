@@ -21,6 +21,7 @@ require (
 	github.com/jwhited/corebgp v0.8.5
 	github.com/klauspost/compress v1.18.0
 	github.com/lmittmann/tint v1.1.2
+	github.com/minio/minio-go v6.0.14+incompatible
 	github.com/mr-tron/base58 v1.2.0
 	github.com/near/borsh-go v0.3.1
 	github.com/olekukonko/tablewriter v0.0.5
@@ -74,6 +75,7 @@ require (
 	github.com/gagliardetto/treeout v0.1.4 // indirect
 	github.com/go-faster/city v1.0.1 // indirect
 	github.com/go-faster/errors v0.7.1 // indirect
+	github.com/go-ini/ini v1.67.0 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
@@ -87,6 +89,7 @@ require (
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-runewidth v0.0.16 // indirect
+	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/mitchellh/go-testing-interface v1.14.1 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect

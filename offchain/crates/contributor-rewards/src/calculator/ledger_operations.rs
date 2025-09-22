@@ -89,11 +89,7 @@ pub async fn validate_rewards_accountant_keypair(
     let actual = keypair.pubkey();
 
     if actual != expected {
-        bail!(
-            "Keypair pubkey {} doesn't match ProgramConfig rewards_accountant {}",
-            actual,
-            expected
-        );
+        bail!("Keypair pubkey {actual} doesn't match ProgramConfig rewards_accountant {expected}",);
     }
 
     info!("Keypair validated: matches rewards_accountant in ProgramConfig");
@@ -220,10 +216,7 @@ pub async fn read_telemetry_aggregates(
 ) -> Result<()> {
     // Validate type parameter
     if telemetry_type != "device" && telemetry_type != "internet" && telemetry_type != "all" {
-        bail!(
-            "Invalid telemetry type '{}'. Must be 'device', 'internet', or 'all'",
-            telemetry_type
-        );
+        bail!("Invalid telemetry type '{telemetry_type}'. Must be 'device', 'internet', or 'all'",);
     }
 
     // Create fetcher
@@ -347,11 +340,11 @@ pub async fn read_telemetry_aggregates(
             for stats in device_data.values() {
                 writer
                     .serialize(stats)
-                    .map_err(|e| anyhow!("Failed to write device telemetry record: {}", e))?;
+                    .map_err(|e| anyhow!("Failed to write device telemetry record: {e}"))?;
             }
             writer
                 .flush()
-                .map_err(|e| anyhow!("Failed to flush device telemetry CSV: {}", e))?;
+                .map_err(|e| anyhow!("Failed to flush device telemetry CSV: {e}"))?;
             info!("Device telemetry exported to: {}", device_file.display());
         }
 
@@ -381,11 +374,11 @@ pub async fn read_telemetry_aggregates(
             for stats in internet_data.values() {
                 writer
                     .serialize(stats)
-                    .map_err(|e| anyhow!("Failed to write internet telemetry record: {}", e))?;
+                    .map_err(|e| anyhow!("Failed to write internet telemetry record: {e}"))?;
             }
             writer
                 .flush()
-                .map_err(|e| anyhow::anyhow!("Failed to flush internet telemetry CSV: {}", e))?;
+                .map_err(|e| anyhow::anyhow!("Failed to flush internet telemetry CSV: {e}"))?;
             info!(
                 "Internet telemetry exported to: {}",
                 internet_file.display()
@@ -429,11 +422,7 @@ pub async fn read_reward_input(
     .await?;
 
     let input_config = match maybe_account.value {
-        None => bail!(
-            "Calculation input account {} not found for epoch {}",
-            record_key,
-            epoch
-        ),
+        None => bail!("Calculation input account {record_key} not found for epoch {epoch}",),
         Some(acc) => {
             let data: RewardInput = borsh::from_slice(&acc.data[size_of::<RecordData>()..])?;
             data
@@ -652,11 +641,7 @@ pub async fn read_shapley_output(
     .await?;
 
     let shapley_storage = match maybe_account.value {
-        None => bail!(
-            "Shapley output storage account {} not found for epoch {}",
-            storage_key,
-            epoch
-        ),
+        None => bail!("Shapley output storage account {storage_key} not found for epoch {epoch}",),
         Some(acc) => {
             let data: ShapleyOutputStorage =
                 borsh::from_slice(&acc.data[size_of::<RecordData>()..])?;
@@ -731,7 +716,7 @@ pub async fn realloc_record(
     .await?;
 
     if maybe_account.value.is_none() {
-        bail!("Record account {} does not exist", record_key);
+        bail!("Record account {record_key} does not exist");
     }
 
     // Create realloc instruction
@@ -835,7 +820,7 @@ pub async fn close_record(
     .await?;
 
     if maybe_account.value.is_none() {
-        bail!("Record account {} does not exist", record_key);
+        bail!("Record account {record_key} does not exist");
     }
 
     // Create close instruction
@@ -945,7 +930,7 @@ pub async fn inspect_records(
                 let seeds: &[&[u8]] = &[&prefix, &epoch_bytes, b"shapley_output"];
                 compute_record_address(&rewards_accountant, seeds)?
             }
-            _ => bail!("Unknown record type: {}", r_type),
+            _ => bail!("Unknown record type: {r_type}"),
         };
 
         // Try to fetch the account

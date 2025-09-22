@@ -82,21 +82,29 @@ impl Sentinel {
     }
 
     async fn handle_access_request(&self, access_ids: AccessIds) -> Result<()> {
-        let AccessMode::SolanaValidator {
-            service_key,
-            validator_id,
-            ..
-        } = access_ids.mode;
-        if let Some(validator_ip) = self.verify_qualifiers(&access_ids.mode).await? {
-            rpc_with_retry(
-                || async {
-                    self.dz_rpc_client
-                        .issue_access_pass(&service_key, &validator_ip, &validator_id)
-                        .await
-                },
-                "issue_access_pass",
-            )
-            .await?;
+        // Get the service key.
+        let service_key = match access_ids.mode {
+            AccessMode::SolanaValidator(attestation) => attestation.service_key,
+            AccessMode::SolanaValidatorWithBackupIds { attestation, .. } => attestation.service_key,
+        };
+
+        let validator_ips = self.verify_qualifiers(&access_ids.mode).await?;
+
+        if !validator_ips.is_empty() {
+            // Issue access passes for all validators (primary + backups)
+            for (validator_id, validator_ip) in validator_ips {
+                rpc_with_retry(
+                    || async {
+                        self.dz_rpc_client
+                            .issue_access_pass(&service_key, &validator_ip, &validator_id)
+                            .await
+                    },
+                    "issue_access_pass",
+                )
+                .await?;
+                info!(%validator_id, %validator_ip, user = %service_key, "access pass issued");
+            }
+
             let signature = rpc_with_retry(
                 || async {
                     self.sol_rpc_client
@@ -125,41 +133,421 @@ impl Sentinel {
         Ok(())
     }
 
-    async fn verify_qualifiers(&self, access_mode: &AccessMode) -> Result<Option<Ipv4Addr>> {
-        let AccessMode::SolanaValidator { validator_id, .. } = access_mode;
-        if verify_access_request(access_mode).is_err() {
-            debug!(%validator_id, "Validator failed signature validation");
-            return Ok(None);
-        }
+    /// Check that a validator is in the leader schedule
+    async fn check_validator_in_leader_schedule(&self, validator_id: &Pubkey) -> Result<bool> {
+        rpc_with_retry(
+            || async {
+                self.sol_rpc_client
+                    .check_leader_schedule(validator_id, self.previous_leader_epochs)
+                    .await
+            },
+            "check_leader_schedule",
+        )
+        .await
+    }
 
-        // NOTE: Temporarily disable leader schedule
-        // - This is done so that glxy can onboard backup validator(s)
-        // - Also need to use rpc_with_retry on check_leader_schedule
-        // if !self
-        //     .sol_rpc_client
-        //     .check_leader_schedule(validator_id, self.previous_leader_epochs)
-        //     .await?
-        // {
-        //     debug!(
-        //         %validator_id,
-        //         "Validator failed leader schedule qualification"
-        //     );
-        //     return Ok(None);
-        // }
-        let opt_validator_ip = rpc_with_retry(
+    /// Get and validate a validator's IP from gossip
+    async fn get_and_validate_validator_ip(
+        &self,
+        validator_id: &Pubkey,
+    ) -> Result<Option<Ipv4Addr>> {
+        rpc_with_retry(
             || async { self.sol_rpc_client.get_validator_ip(validator_id).await },
             "get_validator_ip",
         )
-        .await?;
+        .await
+    }
 
-        if let Some(validator_ip) = opt_validator_ip {
-            Ok(Some(validator_ip))
-        } else {
+    async fn verify_qualifiers(&self, access_mode: &AccessMode) -> Result<Vec<(Pubkey, Ipv4Addr)>> {
+        // Return early if sig verification fails
+        let validator_id = verify_access_request(access_mode)?;
+        debug!(%validator_id, "Validator passed signature validation");
+
+        // Extract attestation and backup IDs
+        let backup_ids = match access_mode {
+            AccessMode::SolanaValidator(_) => None,
+            AccessMode::SolanaValidatorWithBackupIds { backup_ids, .. } => Some(backup_ids),
+        };
+
+        // Check primary validator is in leader schedule
+        if !self
+            .check_validator_in_leader_schedule(&validator_id)
+            .await?
+        {
             debug!(
                 %validator_id,
-                "Validator failed gossip protocol ip qualification"
+                "Validator failed leader schedule qualification"
             );
-            Ok(None)
+            return Ok(vec![]);
         }
+
+        // Get primary validator IP immediately after leader schedule check
+        let validator_ip = match self.get_and_validate_validator_ip(&validator_id).await? {
+            Some(ip) => ip,
+            None => {
+                debug!(
+                    %validator_id,
+                    "Validator failed gossip protocol ip qualification"
+                );
+                return Ok(Default::default());
+            }
+        };
+
+        // Collect all validated IPs (starting with primary)
+        let mut ips = vec![(validator_id, validator_ip)];
+
+        // If we have backup IDs, verify they are NOT in leader schedule but ARE in gossip
+        if let Some(backup_ids) = backup_ids {
+            for backup_id in backup_ids {
+                // Backup should NOT be in leader schedule
+                if self.check_validator_in_leader_schedule(backup_id).await? {
+                    debug!(
+                        %backup_id,
+                        "Backup validator is in leader schedule (should not be)"
+                    );
+                    return Ok(Default::default());
+                }
+
+                // Check backup ID is in gossip and store IP
+                match self.get_and_validate_validator_ip(backup_id).await? {
+                    Some(ip) => {
+                        ips.push((*backup_id, ip));
+                    }
+                    None => {
+                        debug!(
+                            %backup_id,
+                            "Backup validator not found in gossip"
+                        );
+                        return Ok(Default::default());
+                    }
+                }
+            }
+        }
+
+        Ok(ips)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use doublezero_passport::instruction::SolanaValidatorAttestation;
+    use solana_sdk::pubkey::Pubkey;
+    use std::net::Ipv4Addr;
+
+    // Mock implementations for testing
+    struct MockSentinel {
+        leader_schedule_responses: std::collections::HashMap<Pubkey, bool>,
+        gossip_ip_responses: std::collections::HashMap<Pubkey, Option<Ipv4Addr>>,
+    }
+
+    impl MockSentinel {
+        fn new() -> Self {
+            Self {
+                leader_schedule_responses: std::collections::HashMap::new(),
+                gossip_ip_responses: std::collections::HashMap::new(),
+            }
+        }
+
+        fn set_leader_schedule(&mut self, pubkey: Pubkey, in_schedule: bool) {
+            self.leader_schedule_responses.insert(pubkey, in_schedule);
+        }
+
+        fn set_gossip_ip(&mut self, pubkey: Pubkey, ip: Option<Ipv4Addr>) {
+            self.gossip_ip_responses.insert(pubkey, ip);
+        }
+
+        async fn check_validator_in_leader_schedule(&self, validator_id: &Pubkey) -> Result<bool> {
+            Ok(self
+                .leader_schedule_responses
+                .get(validator_id)
+                .copied()
+                .unwrap_or(false))
+        }
+
+        async fn check_validator_not_in_leader_schedule(
+            &self,
+            validator_id: &Pubkey,
+        ) -> Result<bool> {
+            Ok(!self
+                .leader_schedule_responses
+                .get(validator_id)
+                .copied()
+                .unwrap_or(false))
+        }
+
+        async fn get_and_validate_validator_ip(
+            &self,
+            validator_id: &Pubkey,
+        ) -> Result<Option<Ipv4Addr>> {
+            Ok(self
+                .gossip_ip_responses
+                .get(validator_id)
+                .copied()
+                .flatten())
+        }
+
+        async fn verify_qualifiers_mock(
+            &self,
+            access_mode: &AccessMode,
+        ) -> Result<Vec<(Pubkey, Ipv4Addr)>> {
+            // Note: Skipping signature verification in mock, but in real code it's done first
+
+            // Extract attestation and backup IDs
+            let (attestation, backup_ids) = match access_mode {
+                AccessMode::SolanaValidator(attestation) => (attestation, None),
+                AccessMode::SolanaValidatorWithBackupIds {
+                    attestation,
+                    backup_ids,
+                } => (attestation, Some(backup_ids)),
+            };
+
+            // Check primary validator is in leader schedule
+            if !self
+                .check_validator_in_leader_schedule(&attestation.validator_id)
+                .await?
+            {
+                return Ok(vec![]);
+            }
+
+            // Get primary validator IP immediately after leader schedule check
+            let validator_ip = match self
+                .get_and_validate_validator_ip(&attestation.validator_id)
+                .await?
+            {
+                Some(ip) => ip,
+                None => return Ok(vec![]),
+            };
+
+            // Collect all validated IPs (starting with primary)
+            let mut ips = vec![(attestation.validator_id, validator_ip)];
+
+            // If we have backup IDs, verify they are NOT in leader schedule but ARE in gossip
+            if let Some(backup_ids) = backup_ids {
+                // Store backup IPs to avoid duplicate calls
+                let mut backup_ips = Vec::new();
+
+                for backup_id in backup_ids {
+                    // Backup should NOT be in leader schedule
+                    if !self
+                        .check_validator_not_in_leader_schedule(backup_id)
+                        .await?
+                    {
+                        return Ok(vec![]);
+                    }
+
+                    // Check backup ID is in gossip and store IP
+                    match self.get_and_validate_validator_ip(backup_id).await? {
+                        Some(backup_ip) => {
+                            backup_ips.push((*backup_id, backup_ip));
+                        }
+                        None => {
+                            return Ok(vec![]);
+                        }
+                    }
+                }
+
+                // Add all validated backup IPs to the result
+                ips.extend(backup_ips);
+            }
+
+            Ok(ips)
+        }
+    }
+
+    #[tokio::test]
+    async fn test_verify_qualifiers_solana_validator_success() {
+        let mut mock = MockSentinel::new();
+
+        let validator_id = Pubkey::new_unique();
+        let service_key = Pubkey::new_unique();
+        let validator_ip = Ipv4Addr::new(192, 168, 1, 1);
+
+        // Setup mock responses
+        mock.set_leader_schedule(validator_id, true);
+        mock.set_gossip_ip(validator_id, Some(validator_ip));
+
+        let attestation = SolanaValidatorAttestation {
+            validator_id,
+            service_key,
+            ed25519_signature: [0; 64],
+        };
+
+        let access_mode = AccessMode::SolanaValidator(attestation);
+        let result = mock.verify_qualifiers_mock(&access_mode).await.unwrap();
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].0, validator_id);
+        assert_eq!(result[0].1, validator_ip);
+    }
+
+    #[tokio::test]
+    async fn test_verify_qualifiers_solana_validator_not_in_schedule() {
+        let mut mock = MockSentinel::new();
+
+        let validator_id = Pubkey::new_unique();
+        let service_key = Pubkey::new_unique();
+
+        // Setup mock responses - validator not in leader schedule
+        mock.set_leader_schedule(validator_id, false);
+        mock.set_gossip_ip(validator_id, Some(Ipv4Addr::new(192, 168, 1, 1)));
+
+        let attestation = SolanaValidatorAttestation {
+            validator_id,
+            service_key,
+            ed25519_signature: [0; 64],
+        };
+
+        let access_mode = AccessMode::SolanaValidator(attestation);
+        let result = mock.verify_qualifiers_mock(&access_mode).await.unwrap();
+
+        assert_eq!(result.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_verify_qualifiers_with_backup_ids_success() {
+        let mut mock = MockSentinel::new();
+
+        let validator_id = Pubkey::new_unique();
+        let backup_id_1 = Pubkey::new_unique();
+        let backup_id_2 = Pubkey::new_unique();
+        let service_key = Pubkey::new_unique();
+
+        let validator_ip = Ipv4Addr::new(192, 168, 1, 1);
+        let backup_ip_1 = Ipv4Addr::new(192, 168, 1, 2);
+        let backup_ip_2 = Ipv4Addr::new(192, 168, 1, 3);
+
+        // Setup mock responses
+        mock.set_leader_schedule(validator_id, true); // Primary in schedule
+        mock.set_leader_schedule(backup_id_1, false); // Backup NOT in schedule
+        mock.set_leader_schedule(backup_id_2, false); // Backup NOT in schedule
+
+        mock.set_gossip_ip(validator_id, Some(validator_ip));
+        mock.set_gossip_ip(backup_id_1, Some(backup_ip_1));
+        mock.set_gossip_ip(backup_id_2, Some(backup_ip_2));
+
+        let attestation = SolanaValidatorAttestation {
+            validator_id,
+            service_key,
+            ed25519_signature: [0; 64],
+        };
+
+        let access_mode = AccessMode::SolanaValidatorWithBackupIds {
+            attestation,
+            backup_ids: vec![backup_id_1, backup_id_2],
+        };
+
+        let result = mock.verify_qualifiers_mock(&access_mode).await.unwrap();
+
+        assert_eq!(result.len(), 3);
+        assert!(
+            result
+                .iter()
+                .any(|(id, ip)| *id == validator_id && *ip == validator_ip)
+        );
+        assert!(
+            result
+                .iter()
+                .any(|(id, ip)| *id == backup_id_1 && *ip == backup_ip_1)
+        );
+        assert!(
+            result
+                .iter()
+                .any(|(id, ip)| *id == backup_id_2 && *ip == backup_ip_2)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_verify_qualifiers_backup_in_leader_schedule_fails() {
+        let mut mock = MockSentinel::new();
+
+        let validator_id = Pubkey::new_unique();
+        let backup_id = Pubkey::new_unique();
+        let service_key = Pubkey::new_unique();
+
+        // Setup mock responses - backup IS in leader schedule (should fail)
+        mock.set_leader_schedule(validator_id, true);
+        mock.set_leader_schedule(backup_id, true); // Backup IS in schedule - should fail
+
+        mock.set_gossip_ip(validator_id, Some(Ipv4Addr::new(192, 168, 1, 1)));
+        mock.set_gossip_ip(backup_id, Some(Ipv4Addr::new(192, 168, 1, 2)));
+
+        let attestation = SolanaValidatorAttestation {
+            validator_id,
+            service_key,
+            ed25519_signature: [0; 64],
+        };
+
+        let access_mode = AccessMode::SolanaValidatorWithBackupIds {
+            attestation,
+            backup_ids: vec![backup_id],
+        };
+
+        let result = mock.verify_qualifiers_mock(&access_mode).await.unwrap();
+
+        assert_eq!(result.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_verify_qualifiers_backup_not_in_gossip_fails() {
+        let mut mock = MockSentinel::new();
+
+        let validator_id = Pubkey::new_unique();
+        let backup_id = Pubkey::new_unique();
+        let service_key = Pubkey::new_unique();
+
+        // Setup mock responses - backup not in gossip
+        mock.set_leader_schedule(validator_id, true);
+        mock.set_leader_schedule(backup_id, false);
+
+        mock.set_gossip_ip(validator_id, Some(Ipv4Addr::new(192, 168, 1, 1)));
+        mock.set_gossip_ip(backup_id, None); // Backup not in gossip - should fail
+
+        let attestation = SolanaValidatorAttestation {
+            validator_id,
+            service_key,
+            ed25519_signature: [0; 64],
+        };
+
+        let access_mode = AccessMode::SolanaValidatorWithBackupIds {
+            attestation,
+            backup_ids: vec![backup_id],
+        };
+
+        let result = mock.verify_qualifiers_mock(&access_mode).await.unwrap();
+
+        assert_eq!(result.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_verify_qualifiers_empty_backup_ids() {
+        let mut mock = MockSentinel::new();
+
+        let validator_id = Pubkey::new_unique();
+        let service_key = Pubkey::new_unique();
+        let validator_ip = Ipv4Addr::new(192, 168, 1, 1);
+
+        // Setup mock responses
+        mock.set_leader_schedule(validator_id, true);
+        mock.set_gossip_ip(validator_id, Some(validator_ip));
+
+        let attestation = SolanaValidatorAttestation {
+            validator_id,
+            service_key,
+            ed25519_signature: [0; 64],
+        };
+
+        // Empty backup IDs list
+        let access_mode = AccessMode::SolanaValidatorWithBackupIds {
+            attestation,
+            backup_ids: vec![],
+        };
+
+        let result = mock.verify_qualifiers_mock(&access_mode).await.unwrap();
+
+        // Should work with just the primary validator
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].0, validator_id);
+        assert_eq!(result[0].1, validator_ip);
     }
 }

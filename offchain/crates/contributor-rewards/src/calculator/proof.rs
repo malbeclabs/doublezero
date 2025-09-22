@@ -44,7 +44,7 @@ impl ContributorRewardsMerkleTree {
         for (operator_pubkey_str, val) in shapley_output.iter() {
             // Parse the operator string as a Pubkey
             let contributor_key = Pubkey::from_str(operator_pubkey_str)
-                .map_err(|e| anyhow!("Invalid pubkey string '{}': {}", operator_pubkey_str, e))?;
+                .map_err(|e| anyhow!("Invalid pubkey string '{operator_pubkey_str}': {e}"))?;
 
             // Clamp f64 proportion
             let proportion = val.proportion.clamp(0.0, 1.0);
@@ -149,12 +149,8 @@ pub fn generate_proof_from_shapley(
         }
     }
 
-    let index = contributor_index.ok_or_else(|| {
-        anyhow!(
-            "Contributor {} not found in shapley output",
-            contributor_pubkey
-        )
-    })?;
+    let index = contributor_index
+        .ok_or_else(|| anyhow!("Contributor {contributor_pubkey} not found in shapley output",))?;
     let reward = contributor_reward.unwrap();
 
     // Use POD-based merkle proof generation
@@ -163,12 +159,7 @@ pub fn generate_proof_from_shapley(
         index as u32,
         Some(RewardShare::LEAF_PREFIX),
     )
-    .ok_or_else(|| {
-        anyhow!(
-            "Failed to generate proof for contributor at index {}",
-            index
-        )
-    })?;
+    .ok_or_else(|| anyhow!("Failed to generate proof for contributor at index {index}",))?;
 
     // Compute the root for verification using POD
     let root = merkle_root_from_indexed_pod_leaves(

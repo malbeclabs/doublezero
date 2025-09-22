@@ -4,7 +4,10 @@ use anyhow::{Result, anyhow, bail};
 use clap::{Args, Subcommand};
 use doublezero_passport::{
     ID,
-    instruction::{AccessMode, PassportInstructionData, account::RequestAccessAccounts},
+    instruction::{
+        AccessMode, PassportInstructionData, SolanaValidatorAttestation,
+        account::RequestAccessAccounts,
+    },
     state::{AccessRequest, ProgramConfig},
 };
 use doublezero_program_tools::{instruction::try_build_instruction, zero_copy};
@@ -123,8 +126,16 @@ async fn execute_request_solana_validator_access(
 
     let ed25519_signature = Signature::from_str(&signature)?;
 
+    // Create attestation
+    let attestation = SolanaValidatorAttestation {
+        validator_id: node_id,
+        service_key,
+        ed25519_signature: ed25519_signature.into(),
+    };
+
     // Verify the signature.
-    let raw_message = AccessRequest::access_request_message(&service_key);
+    let raw_message =
+        AccessRequest::access_request_message(&AccessMode::SolanaValidator(attestation));
 
     if verbose {
         println!("Raw message: {raw_message}");
@@ -142,11 +153,7 @@ async fn execute_request_solana_validator_access(
     let request_access_ix = try_build_instruction(
         &ID,
         RequestAccessAccounts::new(&wallet_key, &service_key),
-        &PassportInstructionData::RequestAccess(AccessMode::SolanaValidator {
-            validator_id: node_id,
-            service_key,
-            ed25519_signature: ed25519_signature.into(),
-        }),
+        &PassportInstructionData::RequestAccess(AccessMode::SolanaValidator(attestation)),
     )?;
 
     let mut compute_unit_limit = 10_000;

@@ -62,7 +62,7 @@ pub fn estimate_slot_from_timestamp(
     current_time_us: u64,
 ) -> Result<u64> {
     if timestamp_us > current_time_us {
-        bail!("Timestamp {} is in the future", timestamp_us);
+        bail!("Timestamp {timestamp_us} is in the future");
     }
 
     // Calculate approximate slot at the given timestamp
@@ -70,7 +70,7 @@ pub fn estimate_slot_from_timestamp(
     let slots_ago = time_diff_us / SLOT_DURATION_US;
 
     if slots_ago > current_slot {
-        bail!("Timestamp {} is too far in the past", timestamp_us);
+        bail!("Timestamp {timestamp_us} is too far in the past");
     }
 
     Ok(current_slot - slots_ago)
@@ -230,7 +230,7 @@ impl EpochFinder {
             )
         })
         .await?
-        .ok_or_else(|| anyhow!("No leader schedule found for Solana epoch {}", solana_epoch))?;
+        .ok_or_else(|| anyhow!("No leader schedule found for Solana epoch {solana_epoch}"))?;
 
         // Convert leader schedule to map of validator -> slot count
         let schedule_map: LeaderScheduleMap = leader_schedule

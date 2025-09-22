@@ -356,7 +356,7 @@ async fn create_or_validate_ledger_record<T: ValidatorRewards>(
         Ok(ledger_record) => {
             let deserialized_record: ComputedSolanaValidatorDebts =
                 borsh::from_slice(ledger_record.1.as_slice())
-                    .map_err(|e| anyhow::anyhow!("failed to deserialize ledger record: {}", e))?;
+                    .map_err(|e| anyhow::anyhow!("failed to deserialize ledger record: {e}"))?;
 
             if deserialized_record.blockhash == computed_solana_validator_debts.blockhash {
                 bail!(

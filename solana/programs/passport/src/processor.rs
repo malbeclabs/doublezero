@@ -218,7 +218,7 @@ fn try_request_access(accounts: &[AccountInfo], access_mode: AccessMode) -> Prog
         return Err(ProgramError::InvalidAccountData);
     }
 
-    let service_key = match access_mode {
+    let service_key = match &access_mode {
         AccessMode::SolanaValidator(attestation) => {
             msg!("Solana validator");
 
@@ -301,6 +301,12 @@ fn try_request_access(accounts: &[AccountInfo], access_mode: AccessMode) -> Prog
     access_request.service_key = service_key;
     access_request.rent_beneficiary_key = *payer_info.key;
     access_request.request_fee_lamports = program_config.request_fee_lamports;
+
+    // Copy the access mode into the access request.
+    borsh::to_writer(access_request.encoded_access_mode.as_mut(), &access_mode).map_err(|_| {
+        msg!("Failed to serialize access mode");
+        ProgramError::InvalidAccountData
+    })?;
 
     // The sentinel service uses this log statement to filter transaction logs
     // to successfully submitted access requests when subscribing to program

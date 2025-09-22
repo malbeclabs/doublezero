@@ -8,7 +8,7 @@ use doublezero_passport::{
         account::RequestAccessAccounts, AccessMode, PassportInstructionData, ProgramConfiguration,
         ProgramFlagConfiguration, SolanaValidatorAttestation,
     },
-    state::AccessRequest,
+    state::{AccessRequest, REQUEST_ACCESS_MAX_DATA_SIZE},
     ID,
 };
 use doublezero_program_tools::{instruction::try_build_instruction, zero_copy};
@@ -112,27 +112,31 @@ async fn test_request_access() {
         )
     );
 
+    let access_mode_1 = AccessMode::SolanaValidator(attestation_1);
+    let access_mode_2 = AccessMode::SolanaValidatorWithBackupIds {
+        attestation: attestation_2,
+        backup_ids: backup_ids.clone(),
+    };
+
     test_setup
-        .request_access(&service_key_1, AccessMode::SolanaValidator(attestation_1))
+        .request_access(&service_key_1, access_mode_1.clone())
         .await
         .unwrap()
-        .request_access(
-            &service_key_2,
-            AccessMode::SolanaValidatorWithBackupIds {
-                attestation: attestation_2,
-                backup_ids,
-            },
-        )
+        .request_access(&service_key_2, access_mode_2.clone())
         .await
         .unwrap();
 
     let (access_request_key, access_request) =
         test_setup.fetch_access_request(&service_key_1).await;
 
+    let mut encoded_access_mode = [0; REQUEST_ACCESS_MAX_DATA_SIZE];
+    borsh::to_writer(encoded_access_mode.as_mut(), &access_mode_1).unwrap();
+
     let expected_access_request = AccessRequest {
         service_key: service_key_1,
         rent_beneficiary_key: test_setup.payer_signer.pubkey(),
         request_fee_lamports,
+        encoded_access_mode,
     };
     assert_eq!(access_request, expected_access_request);
 
@@ -142,32 +146,38 @@ async fn test_request_access() {
         .await
         .unwrap()
         .minimum_balance(zero_copy::data_end::<AccessRequest>());
-    let access_request_balance = test_setup
+
+    let access_request_balance_after = test_setup
         .banks_client
         .get_balance(access_request_key)
         .await
         .unwrap();
     assert_eq!(
-        access_request_balance,
+        access_request_balance_after,
         request_deposit_lamports + request_rent
     );
 
     let (access_request_key, access_request) =
         test_setup.fetch_access_request(&service_key_2).await;
+
+    let mut encoded_access_mode = [0; REQUEST_ACCESS_MAX_DATA_SIZE];
+    borsh::to_writer(encoded_access_mode.as_mut(), &access_mode_2).unwrap();
+
     let expected_access_request = AccessRequest {
         service_key: service_key_2,
         rent_beneficiary_key: test_setup.payer_signer.pubkey(),
         request_fee_lamports,
+        encoded_access_mode,
     };
     assert_eq!(access_request, expected_access_request);
 
-    let access_request_balance = test_setup
+    let access_request_balance_after = test_setup
         .banks_client
         .get_balance(access_request_key)
         .await
         .unwrap();
     assert_eq!(
-        access_request_balance,
+        access_request_balance_after,
         request_deposit_lamports + request_rent
     );
 

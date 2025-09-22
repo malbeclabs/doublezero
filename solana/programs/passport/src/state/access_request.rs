@@ -7,13 +7,29 @@ use solana_pubkey::Pubkey;
 #[cfg(feature = "offchain")]
 use crate::instruction::AccessMode;
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Pod, Zeroable)]
+pub const REQUEST_ACCESS_MAX_DATA_SIZE: usize = 4_096;
+
+#[derive(Debug, Clone, Copy, PartialEq, Pod, Zeroable)]
 #[repr(C, align(8))]
 pub struct AccessRequest {
     pub service_key: Pubkey,
     pub rent_beneficiary_key: Pubkey,
 
     pub request_fee_lamports: u64,
+
+    /// Borsh-serialized access mode.
+    pub encoded_access_mode: [u8; REQUEST_ACCESS_MAX_DATA_SIZE],
+}
+
+impl Default for AccessRequest {
+    fn default() -> Self {
+        Self {
+            service_key: Default::default(),
+            rent_beneficiary_key: Default::default(),
+            request_fee_lamports: Default::default(),
+            encoded_access_mode: [Default::default(); REQUEST_ACCESS_MAX_DATA_SIZE],
+        }
+    }
 }
 
 impl PrecomputedDiscriminator for AccessRequest {
@@ -48,6 +64,6 @@ impl AccessRequest {
 }
 
 const _: () = assert!(
-    size_of::<AccessRequest>() == 72,
+    size_of::<AccessRequest>() == 4_168,
     "`AccessRequest` size changed"
 );

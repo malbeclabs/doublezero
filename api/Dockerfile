@@ -2,12 +2,12 @@ FROM golang:1.24-alpine AS builder
 
 WORKDIR /app
 
-COPY ../../go.mod ../../go.sum ./
+COPY ../go.mod ../go.sum ./
 RUN go mod download
 
-COPY ../../ ./
+COPY ../ ./
 
-RUN CGO_ENABLED=0 go build -o /server ./controlplane/api/cmd/server
+RUN CGO_ENABLED=0 go build -o server ./api/cmd/server
 
 FROM alpine:latest
 
@@ -15,7 +15,7 @@ RUN apk --no-cache add ca-certificates
 
 WORKDIR /app
 
-COPY --from=builder /server .
+COPY --from=builder /app/server .
 
 EXPOSE 8080
 

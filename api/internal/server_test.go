@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"net/http"
@@ -12,7 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// mockRpcClient is a mock implementation of the RpcClient interface for testing.
 type mockRpcClient struct {
 	totalSupply float64
 	err         error
@@ -22,7 +22,39 @@ func (m *mockRpcClient) GetTotalSupply(ctx context.Context) (float64, error) {
 	return m.totalSupply, m.err
 }
 
-func TestApiServer_SupplyEndpoint(t *testing.T) {
+func runEndpointTest(t *testing.T, serverOpts []Option, endpoint string, expectedStatusCode int, expectedBody string) {
+	t.Helper()
+
+	apiServer, err := NewApiServer(serverOpts...)
+	require.NoError(t, err, "Failed to create API server")
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- apiServer.Run()
+	}()
+
+	// give the server a moment to start.
+	time.Sleep(100 * time.Millisecond)
+
+	resp, err := http.Get("http://localhost:8080" + endpoint)
+	require.NoError(t, err, "Failed to send request to endpoint %s", endpoint)
+	defer resp.Body.Close()
+
+	assert.Equal(t, expectedStatusCode, resp.StatusCode)
+
+	if expectedStatusCode == http.StatusOK {
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err, "Failed to read response body")
+		assert.Equal(t, expectedBody, string(bytes.TrimSpace(body)))
+	} else {
+		io.Copy(io.Discard, resp.Body) // nolint:errcheck
+	}
+
+	require.NoError(t, apiServer.Shutdown(), "Server shutdown failed")
+	assert.NoError(t, <-errCh, "apiServer.Run() returned an unexpected error")
+}
+
+func TestApiServer_CirculatingSupplyEndpoint(t *testing.T) {
 	today := time.Now().Format("2006-01-02")
 
 	testCases := []struct {
@@ -75,43 +107,51 @@ func TestApiServer_SupplyEndpoint(t *testing.T) {
 				totalSupply: tc.mockTotalSupply,
 				err:         nil,
 			}
-
-			apiServer, err := NewApiServer(
+			serverOpts := []Option{
 				WithRpcClient(mockClient),
 				WithEstimatedSupply(tc.estimatedSupplyMap),
-			)
-			require.NoError(t, err, "Failed to create API server")
-
-			errCh := make(chan error, 1)
-			go func() {
-				errCh <- apiServer.Run()
-			}()
-
-			// give the server a moment to start.
-			time.Sleep(100 * time.Millisecond)
-
-			resp, err := http.Get("http://localhost:8080/api/v1/2z/supply")
-			require.NoError(t, err, "Failed to send request to /supply endpoint")
-			defer resp.Body.Close()
-
-			assert.Equal(t, tc.expectedStatusCode, resp.StatusCode)
-
-			if tc.expectedStatusCode == http.StatusOK {
-				body, err := io.ReadAll(resp.Body)
-				require.NoError(t, err, "Failed to read response body")
-
-				supply, err := strconv.ParseFloat(string(body), 64)
-				require.NoError(t, err, "Failed to parse supply from response body")
-				assert.Equal(t, tc.expectedCirculatingSupply, supply)
-			} else {
-				io.Copy(io.Discard, resp.Body) // nolint:errcheck
 			}
+			expectedBody := ""
+			if tc.expectedStatusCode == http.StatusOK {
+				expectedBody = strconv.FormatFloat(tc.expectedCirculatingSupply, 'f', 1, 64)
+			}
+			runEndpointTest(t, serverOpts, "/api/v1/2z/circulating-supply", tc.expectedStatusCode, expectedBody)
+		})
+	}
+}
 
-			err = apiServer.Shutdown()
-			require.NoError(t, err, "Server shutdown failed")
+func TestApiServer_TotalSupplyEndpoint(t *testing.T) {
+	testCases := []struct {
+		name               string
+		mockTotalSupply    float64
+		expectedStatusCode int
+	}{
+		{
+			name:               "valid total supply",
+			mockTotalSupply:    12_345_678.9,
+			expectedStatusCode: http.StatusOK,
+		},
+		{
+			name:               "zero total supply",
+			mockTotalSupply:    0.0,
+			expectedStatusCode: http.StatusOK,
+		},
+	}
 
-			runErr := <-errCh
-			assert.NoError(t, runErr, "apiServer.Run() returned an unexpected error")
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			mockClient := &mockRpcClient{
+				totalSupply: tc.mockTotalSupply,
+				err:         nil,
+			}
+			serverOpts := []Option{
+				WithRpcClient(mockClient),
+			}
+			expectedBody := ""
+			if tc.expectedStatusCode == http.StatusOK {
+				expectedBody = strconv.FormatFloat(tc.mockTotalSupply, 'f', 1, 64)
+			}
+			runEndpointTest(t, serverOpts, "/api/v1/2z/total-supply", tc.expectedStatusCode, expectedBody)
 		})
 	}
 }

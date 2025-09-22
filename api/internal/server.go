@@ -82,6 +82,20 @@ func NewApiServer(opts ...Option) (*ApiServer, error) {
 	return s, nil
 }
 
+func (s *ApiServer) handleGetTotalSupply(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	s.mu.RLock()
+	supply := s.totalSupply
+	s.mu.RUnlock()
+
+	w.Header().Set("Content-Type", "text/plain")
+	fmt.Fprintf(w, "%.1f", supply)
+}
+
 // handleGetCirculatingSupply handles HTTP requests to get the circulating supply.
 func (s *ApiServer) handleGetCirculatingSupply(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -118,7 +132,8 @@ func (s *ApiServer) GetCirculatingSupply() (float64, error) {
 
 func (s *ApiServer) Run() error {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/v1/2z/supply", s.handleGetCirculatingSupply)
+	mux.HandleFunc("/api/v1/2z/circulating-supply", s.handleGetCirculatingSupply)
+	mux.HandleFunc("/api/v1/2z/total-supply", s.handleGetTotalSupply)
 
 	s.httpServer = &http.Server{
 		Addr:    s.listenAddr,

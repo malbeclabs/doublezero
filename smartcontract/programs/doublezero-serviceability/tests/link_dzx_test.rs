@@ -632,7 +632,6 @@ async fn test_dzx_link() {
             mtu: Some(8900),
             delay_ns: Some(1000000),
             jitter_ns: Some(100000),
-            status: None,
         }),
         vec![
             AccountMeta::new(tunnel_pubkey, false),

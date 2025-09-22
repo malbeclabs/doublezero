@@ -23,7 +23,6 @@ pub struct LinkUpdateArgs {
     pub mtu: Option<u32>,
     pub delay_ns: Option<u64>,
     pub jitter_ns: Option<u64>,
-    pub status: Option<LinkStatus>,
 }
 
 impl fmt::Debug for LinkUpdateArgs {
@@ -97,9 +96,6 @@ pub fn process_update_link(
     }
     if let Some(jitter_ns) = value.jitter_ns {
         link.jitter_ns = jitter_ns;
-    }
-    if let Some(status) = value.status {
-        link.status = status;
     }
 
     account_write(link_account, &link, payer_account, system_program)?;

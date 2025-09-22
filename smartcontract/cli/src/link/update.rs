@@ -41,9 +41,6 @@ pub struct UpdateLinkCliCommand {
     /// Jitter in milliseconds
     #[arg(long, value_parser = validate_parse_jitter_ms)]
     pub jitter_ms: Option<f64>,
-    /// Updated link status (e.g. Activated, Deactivated)
-    #[arg(long)]
-    pub status: Option<String>,
     /// Wait for the device to be activated
     #[arg(short, long, default_value_t = false)]
     pub wait: bool,
@@ -76,12 +73,6 @@ impl UpdateLinkCliCommand {
             .transpose()
             .map_err(|e| eyre!("Invalid tunnel type: {e}"))?;
 
-        let status = self
-            .status
-            .map(|s| s.parse())
-            .transpose()
-            .map_err(|e| eyre!("Invalid status: {e}"))?;
-
         let signature = client.update_link(UpdateLinkCommand {
             pubkey,
             code: self.code.clone(),
@@ -93,7 +84,6 @@ impl UpdateLinkCliCommand {
             jitter_ns: self
                 .jitter_ms
                 .map(|jitter_ms| (jitter_ms * 1000000.0) as u64),
-            status,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -197,7 +187,6 @@ mod tests {
                 mtu: Some(1500),
                 delay_ns: Some(10000000),
                 jitter_ns: Some(5000000),
-                status: None,
             }))
             .returning(move |_| Ok(signature));
 
@@ -213,7 +202,6 @@ mod tests {
             delay_ms: Some(10.0),
             jitter_ms: Some(5.0),
             wait: false,
-            status: None,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

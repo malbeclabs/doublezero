@@ -90,7 +90,7 @@ func TestApiServer_SupplyEndpoint(t *testing.T) {
 			// give the server a moment to start.
 			time.Sleep(100 * time.Millisecond)
 
-			resp, err := http.Get("http://localhost:8080/supply")
+			resp, err := http.Get("http://localhost:8080/api/v1/2z/supply")
 			require.NoError(t, err, "Failed to send request to /supply endpoint")
 			defer resp.Body.Close()
 
@@ -104,7 +104,7 @@ func TestApiServer_SupplyEndpoint(t *testing.T) {
 				require.NoError(t, err, "Failed to parse supply from response body")
 				assert.Equal(t, tc.expectedCirculatingSupply, supply)
 			} else {
-				io.Copy(io.Discard, resp.Body)
+				io.Copy(io.Discard, resp.Body) // nolint:errcheck
 			}
 
 			err = apiServer.Shutdown()

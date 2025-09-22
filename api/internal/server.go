@@ -118,7 +118,7 @@ func (s *ApiServer) GetCirculatingSupply() (float64, error) {
 
 func (s *ApiServer) Run() error {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/supply", s.handleGetCirculatingSupply)
+	mux.HandleFunc("/api/v1/2z/supply", s.handleGetCirculatingSupply)
 
 	s.httpServer = &http.Server{
 		Addr:    s.listenAddr,

@@ -31,10 +31,10 @@ func NewSolanaClient() *SolanaClient {
 
 // jsonRPCRequest defines the structure for a JSON-RPC request.
 type jsonRPCRequest struct {
-	JSONRPC string        `json:"jsonrpc"`
-	ID      int           `json:"id"`
-	Method  string        `json:"method"`
-	Params  []interface{} `json:"params"`
+	JSONRPC string `json:"jsonrpc"`
+	ID      int    `json:"id"`
+	Method  string `json:"method"`
+	Params  []any  `json:"params"`
 }
 
 // jsonRPCResponse defines the structure for the getTokenSupply response.
@@ -52,7 +52,7 @@ func (c *SolanaClient) GetTotalSupply(ctx context.Context) (float64, error) {
 		JSONRPC: "2.0",
 		ID:      1,
 		Method:  "getTokenSupply",
-		Params:  []interface{}{c.pubkey},
+		Params:  []any{c.pubkey},
 	})
 	if err != nil {
 		return 0, fmt.Errorf("failed to marshal request body: %w", err)

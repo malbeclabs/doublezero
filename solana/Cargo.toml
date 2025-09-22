@@ -26,6 +26,7 @@ bincode = "1"
 borsh = "1"
 bytemuck = "1"
 clap = { version = "4", features = ["derive"] }
+itertools = "0.14"
 ruint = { version = "1", features = ["bytemuck"] }
 serde_json = "1"
 solana-account-info = "2"

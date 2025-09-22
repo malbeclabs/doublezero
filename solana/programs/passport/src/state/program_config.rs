@@ -18,8 +18,11 @@ pub struct ProgramConfig {
     pub request_deposit_lamports: u64,
     pub request_fee_lamports: u64,
 
-    /// 8 * 32 bytes of a storage gap in case more fields need to be added.
-    _storage_gap: StorageGap<8>,
+    pub solana_validator_backup_ids_limit: u16,
+    _padding: [u8; 30],
+
+    /// 7 * 32 bytes of a storage gap in case more fields need to be added.
+    _storage_gap: StorageGap<7>,
 }
 
 impl PrecomputedDiscriminator for ProgramConfig {

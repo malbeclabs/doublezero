@@ -16,6 +16,7 @@ pub enum ProgramConfiguration {
         request_deposit_lamports: u64,
         request_fee_lamports: u64,
     },
+    SolanaValidatorBackupIdsLimit(u16),
 }
 
 #[derive(Debug, BorshDeserialize, BorshSerialize, Clone, PartialEq, Eq)]
@@ -24,12 +25,19 @@ pub enum ProgramFlagConfiguration {
     IsRequestAccessPaused(bool),
 }
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, PartialEq, Eq)]
+#[derive(Debug, BorshSerialize, BorshDeserialize, Clone, Copy, PartialEq, Eq)]
+pub struct SolanaValidatorAttestation {
+    pub validator_id: Pubkey,
+    pub service_key: Pubkey,
+    pub ed25519_signature: [u8; 64],
+}
+
+#[derive(Debug, BorshSerialize, BorshDeserialize, Clone, PartialEq, Eq)]
 pub enum AccessMode {
-    SolanaValidator {
-        validator_id: Pubkey,
-        service_key: Pubkey,
-        ed25519_signature: [u8; 64],
+    SolanaValidator(SolanaValidatorAttestation),
+    SolanaValidatorWithBackupIds {
+        attestation: SolanaValidatorAttestation,
+        backup_ids: Vec<Pubkey>,
     },
 }
 

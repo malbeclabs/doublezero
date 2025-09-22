@@ -180,6 +180,10 @@ fn try_configure_program(accounts: &[AccountInfo], setting: ProgramConfiguration
             msg!("  request_fee_lamports: {}", fee_lamports);
             program_config.request_fee_lamports = fee_lamports;
         }
+        ProgramConfiguration::SolanaValidatorBackupIdsLimit(limit) => {
+            msg!("Set solana_validator_backup_ids_limit: {}", limit);
+            program_config.solana_validator_backup_ids_limit = limit;
+        }
     }
 
     Ok(())
@@ -190,13 +194,6 @@ fn try_request_access(accounts: &[AccountInfo], access_mode: AccessMode) -> Prog
 
     if get_stack_height() != TRANSACTION_LEVEL_STACK_HEIGHT {
         msg!("Cannot CPI request access");
-        return Err(ProgramError::InvalidInstructionData);
-    }
-
-    let AccessMode::SolanaValidator { service_key, .. } = access_mode;
-
-    if service_key == Pubkey::default() {
-        msg!("User service key cannot be zero address");
         return Err(ProgramError::InvalidInstructionData);
     }
 
@@ -219,6 +216,35 @@ fn try_request_access(accounts: &[AccountInfo], access_mode: AccessMode) -> Prog
     if program_config.is_request_access_paused() {
         msg!("Request access is paused");
         return Err(ProgramError::InvalidAccountData);
+    }
+
+    let service_key = match access_mode {
+        AccessMode::SolanaValidator(attestation) => {
+            msg!("Solana validator");
+
+            attestation.service_key
+        }
+        AccessMode::SolanaValidatorWithBackupIds {
+            attestation,
+            backup_ids,
+        } => {
+            msg!("Solana validator with backup IDs");
+
+            if backup_ids.len() > program_config.solana_validator_backup_ids_limit as usize {
+                msg!(
+                    "Cannot exceed Solana validator backup IDs limit {}",
+                    program_config.solana_validator_backup_ids_limit
+                );
+                return Err(ProgramError::InvalidInstructionData);
+            }
+
+            attestation.service_key
+        }
+    };
+
+    if service_key == Pubkey::default() {
+        msg!("User service key cannot be zero address");
+        return Err(ProgramError::InvalidInstructionData);
     }
 
     let additional_lamports = program_config

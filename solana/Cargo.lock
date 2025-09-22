@@ -1420,6 +1420,7 @@ dependencies = [
  "borsh 1.5.7",
  "bytemuck",
  "doublezero-program-tools",
+ "itertools 0.14.0",
  "solana-account-info",
  "solana-instruction",
  "solana-loader-v3-interface",
@@ -2534,6 +2535,15 @@ name = "itertools"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba291022dbbd398a455acf126c1e341954079855bc60dfdda641363bd6922569"
+dependencies = [
+ "either",
+]
+
+[[package]]
+name = "itertools"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285"
 dependencies = [
  "either",
 ]

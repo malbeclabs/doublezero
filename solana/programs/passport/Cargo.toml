@@ -12,6 +12,7 @@ rust-version.workspace = true
 borsh = { workspace = true, features = ["derive"] }
 bytemuck = { workspace = true, features = ["derive", "min_const_generics"] }
 doublezero-program-tools = { workspace = true, features = ["entrypoint"] }
+itertools.workspace = true
 solana-account-info.workspace = true
 solana-instruction = { workspace = true, features = ["syscalls"] }
 solana-msg.workspace = true
@@ -33,6 +34,7 @@ default = []
 ### Build with this feature for Solana devnet and localnet.
 development = []
 entrypoint = []
+offchain = []
 
 [lib]
 crate-type = ["cdylib", "lib"]

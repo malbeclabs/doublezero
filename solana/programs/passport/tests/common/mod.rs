@@ -213,19 +213,14 @@ impl ProgramTestWithOwner {
     pub async fn request_access(
         &mut self,
         service_key: &Pubkey,
-        validator_id: &Pubkey,
-        signature: [u8; 64],
+        access_mode: AccessMode,
     ) -> Result<&mut Self, BanksClientError> {
         let payer_signer = &self.payer_signer;
 
         let request_access_ix = try_build_instruction(
             &ID,
             RequestAccessAccounts::new(&payer_signer.pubkey(), service_key),
-            &PassportInstructionData::RequestAccess(AccessMode::SolanaValidator {
-                validator_id: *validator_id,
-                service_key: *service_key,
-                ed25519_signature: signature,
-            }),
+            &PassportInstructionData::RequestAccess(access_mode),
         )
         .unwrap();
 

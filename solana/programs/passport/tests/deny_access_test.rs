@@ -4,8 +4,8 @@ mod common;
 
 use doublezero_passport::{
     instruction::{
-        account::DenyAccessAccounts, PassportInstructionData, ProgramConfiguration,
-        ProgramFlagConfiguration,
+        account::DenyAccessAccounts, AccessMode, PassportInstructionData, ProgramConfiguration,
+        ProgramFlagConfiguration, SolanaValidatorAttestation,
     },
     state::AccessRequest,
     ID,
@@ -36,6 +36,12 @@ async fn test_deny_access() {
 
     let mut test_setup = common::start_test().await;
 
+    let attestation = SolanaValidatorAttestation {
+        validator_id,
+        service_key,
+        ed25519_signature: [1; 64],
+    };
+
     test_setup
         .transfer_lamports(&sentinel_signer.pubkey(), 128 * 6_960)
         .await
@@ -59,7 +65,7 @@ async fn test_deny_access() {
         )
         .await
         .unwrap()
-        .request_access(&service_key, &validator_id, [1u8; 64])
+        .request_access(&service_key, AccessMode::SolanaValidator(attestation))
         .await
         .unwrap();
 
@@ -117,7 +123,7 @@ async fn test_deny_access() {
     //
 
     test_setup
-        .request_access(&service_key, &validator_id, [1u8; 64])
+        .request_access(&service_key, AccessMode::SolanaValidator(attestation))
         .await
         .unwrap();
 

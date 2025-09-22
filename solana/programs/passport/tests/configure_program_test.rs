@@ -37,6 +37,7 @@ async fn test_configure_program() {
     let sentinel_key = Pubkey::new_unique();
     let required_deposit_lamports = 1_000_000;
     let fee_lamports = 1_000;
+    let solana_validator_backup_ids_limit = 10;
 
     test_setup
         .configure_program(
@@ -50,6 +51,9 @@ async fn test_configure_program() {
                     request_deposit_lamports: required_deposit_lamports,
                     request_fee_lamports: fee_lamports,
                 },
+                ProgramConfiguration::SolanaValidatorBackupIdsLimit(
+                    solana_validator_backup_ids_limit,
+                ),
             ],
             &admin_signer,
         )
@@ -65,6 +69,6 @@ async fn test_configure_program() {
     expected_program_config.sentinel_key = sentinel_key;
     expected_program_config.request_deposit_lamports = required_deposit_lamports;
     expected_program_config.request_fee_lamports = fee_lamports;
-
+    expected_program_config.solana_validator_backup_ids_limit = solana_validator_backup_ids_limit;
     assert_eq!(program_config, expected_program_config);
 }

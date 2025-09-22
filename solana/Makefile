@@ -23,6 +23,10 @@ build-sbf:
 	cd programs/passport && cargo build-sbf --features $(CARGO_FEATURES)
 	cd programs/revenue-distribution && cargo build-sbf --features $(CARGO_FEATURES)
 
+.PHONY: build-cli
+build-cli:
+	cargo build --release --bin doublezero-passport-admin --bin doublezero-revenue-distribution-admin
+
 artifacts-$(NETWORK): build-sbf
 	@if [ ! -d "$@" ]; then \
 		mkdir -p "$@" && \

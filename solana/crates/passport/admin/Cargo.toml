@@ -1,0 +1,21 @@
+[package]
+name = "doublezero-passport-admin-cli"
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+doublezero-passport.workspace = true
+doublezero-program-tools.workspace = true
+doublezero-solana-client-tools.workspace = true
+solana-sdk.workspace = true
+tokio.workspace = true
+
+[[bin]]
+name = "doublezero-passport-admin"
+path = "src/main.rs"

@@ -1,7 +1,10 @@
 [workspace]
 exclude = []
 members = [
+    "crates/client-tools",
+    "crates/passport/admin",
     "crates/program-tools",
+    "crates/revenue-distribution/admin",
     "mock/swap-sol-2z",
     "programs/passport",
     "programs/revenue-distribution",
@@ -19,17 +22,12 @@ version = "0.1.0"
 [workspace.dependencies]
 anyhow = "1"
 base64 = "0.22"
-bincode = "1.3"
-borsh = "1.5"
-bytemuck = "1.23"
-chrono = "0.4"
+bincode = "1"
+borsh = "1"
+bytemuck = "1"
 clap = { version = "4", features = ["derive"] }
-futures = "0.3"
-reqwest = { version = "0.12", features = ["json"] }
 ruint = { version = "1", features = ["bytemuck"] }
-serde = "1"
 serde_json = "1"
-solana-account-decoder-client-types = "2"
 solana-account-info = "2"
 solana-client = "2"
 solana-commitment-config = "2"
@@ -50,14 +48,16 @@ solana-transaction-status-client-types = "2"
 spl-associated-token-account-interface = "1"
 spl-token = { version = "8", features = ["no-entrypoint"] }
 svm-hash = "0.1.0-beta.6"
-thiserror = "2"
 tokio = "1"
 url = "2"
 
 ### Please keep these packages pinned for now.
 sha2-const-stable = "=0.1.0"
-solana-program-test = "=2.3.7"
+solana-program-test = "=2.3.9"
 solana-sdk = "=2.3"
+
+[workspace.dependencies.doublezero-solana-client-tools]
+path = "crates/client-tools"
 
 [workspace.dependencies.doublezero-passport]
 path = "programs/passport"

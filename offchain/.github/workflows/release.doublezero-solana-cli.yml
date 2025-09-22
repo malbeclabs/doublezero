@@ -34,7 +34,7 @@ jobs:
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser-pro
-          args: release -f release/.goreleaser.doublezero-solana.yaml --clean
+          args: release -f release/.goreleaser.doublezero-solana-cli.yaml --clean
         env:
           SERVICEABILITY_PROGRAM_ID: devnet
           SLACK_WEBHOOK: ${{ secrets.SLACK_BOTS_WEBHOOK }}

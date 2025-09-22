@@ -2,7 +2,7 @@
 members = [
     "crates/contributor-rewards",
     "crates/sentinel",
-    "crates/doublezero-solana",
+    "crates/solana-cli",
     "crates/validator-debt",
 ]
 resolver = "2"
@@ -12,7 +12,6 @@ version = "0.1.0"
 edition = "2024"
 authors = ["Malbec Labs <dev@malbeclabs.com>"]
 readme = "README.md"
-description = "DoubleZero Off-Chain Components"
 license = "Apache-2.0"
 repository = "https://github.com/doublezerofoundation/doublezero-offchain"
 homepage = "https://github.com/doublezerofoundation/doublezero-offchain"
@@ -21,22 +20,14 @@ homepage = "https://github.com/doublezerofoundation/doublezero-offchain"
 anyhow = "1"
 async-trait = "0.1"
 backon = "1"
-base64 = "0"
-bincode = "1.3"
+base64 = "0.22"
+bincode = "1"
 bitvec = "1"
 borsh = "1"
 chrono = { version = "0", features = ["serde"] }
 clap = { version = "4", features = ["derive"] }
 config = "0"
 csv = "1"
-doublezero-passport = { git = "ssh://git@github.com/doublezerofoundation/doublezero-solana", rev = "8b254a0" }
-doublezero-program-common = { git = "ssh://git@github.com/malbeclabs/doublezero", rev = "89a675d" }
-doublezero-program-tools = { git = "ssh://git@github.com/doublezerofoundation/doublezero-solana", rev = "8b254a0" }
-doublezero-record = { git = "ssh://git@github.com/malbeclabs/doublezero", rev="89a675d", features = [ "no-entrypoint" ] }
-doublezero-revenue-distribution = { git = "ssh://git@github.com/doublezerofoundation/doublezero-solana",  rev = "8b254a0" }
-doublezero_sdk = { git = "ssh://git@github.com/malbeclabs/doublezero", rev = "89a675d" }
-doublezero-serviceability = { git = "ssh://git@github.com/malbeclabs/doublezero", rev = "89a675d", features = [ "no-entrypoint", "serde"] }
-doublezero-telemetry = { git = "ssh://git@github.com/malbeclabs/doublezero", rev = "89a675d", features = [ "no-entrypoint", "serde" ] }
 dotenvy = "0"
 futures = "0"
 futures-util = "0"
@@ -45,10 +36,9 @@ itertools = "0"
 metrics = "0"
 metrics-exporter-prometheus = "0"
 mockall = "0.13"
-network-shapley = { git = "https://github.com/doublezerofoundation/network-shapley-rs", features = ["serde", "borsh"], tag = "v0.2.1" }
 rand = "0"
 rayon = "1"
-reqwest = { version = "0", features = [ "json" ] }
+reqwest = { version = "0", features = ["json"] }
 rust_decimal = { version = "1", features = ["serde", "macros"] }
 sha2 = "0"
 serde = { version = "1", features = ["derive"] }
@@ -62,16 +52,71 @@ solana-sanitize = "2"
 solana-sdk = "2"
 solana-system-interface = "1"
 solana-transaction-status-client-types = "2"
-svm-hash = { version = "0.1.0-beta.6", features = [ "bytemuck", "borsh" ] }
-tabled = { version = "0", features = [ "std", "derive" ]}
+svm-hash = { version = "0.1.0-beta.6", features = ["bytemuck", "borsh"] }
+tabled = { version = "0", features = ["std", "derive"] }
 tempfile = "3"
 thiserror = "2"
 tokio = { version = "1", default-features = false, features = ["rt-multi-thread", "signal"] }
-tokio-util = { version = "0" }
+tokio-util = "0"
 toml = "0"
 tracing = "0"
 tracing-subscriber = { version = "0", default-features = true, features = ["env-filter", "fmt", "registry"] }
 url = "2"
+
+### Dependencies found in github.com/doublezerofoundation/doublezero-solana
+
+[workspace.dependencies.doublezero-passport]
+git = "ssh://git@github.com/doublezerofoundation/doublezero-solana"
+rev = "4dd2450"
+
+[workspace.dependencies.doublezero-program-tools]
+git = "ssh://git@github.com/doublezerofoundation/doublezero-solana"
+rev = "4dd2450"
+
+[workspace.dependencies.doublezero-revenue-distribution]
+git = "ssh://git@github.com/doublezerofoundation/doublezero-solana"
+rev = "4dd2450"
+
+[workspace.dependencies.doublezero-solana-client-tools]
+git = "ssh://git@github.com/doublezerofoundation/doublezero-solana"
+rev = "4dd2450"
+
+### Dependencies found in github.com/malbeclabs/doublezero
+
+[workspace.dependencies.doublezero-program-common]
+git = "ssh://git@github.com/malbeclabs/doublezero"
+rev="89a675d"
+
+[workspace.dependencies.doublezero-record]
+features = ["no-entrypoint"]
+git = "ssh://git@github.com/malbeclabs/doublezero"
+rev="89a675d"
+
+[workspace.dependencies.doublezero_sdk]
+git = "ssh://git@github.com/malbeclabs/doublezero"
+rev="89a675d"
+
+[workspace.dependencies.doublezero-serviceability]
+features = ["no-entrypoint", "serde"]
+git = "ssh://git@github.com/malbeclabs/doublezero"
+rev="89a675d"
+
+[workspace.dependencies.doublezero-telemetry]
+features = ["no-entrypoint", "serde"]
+git = "ssh://git@github.com/malbeclabs/doublezero"
+rev="89a675d"
+
+### Other git dependencies
+
+[workspace.dependencies.network-shapley]
+features = ["serde", "borsh"]
+git = "https://github.com/doublezerofoundation/network-shapley-rs"
+tag = "v0.2.1"
+
+### Local dependencies
+
+[workspace.dependencies.doublezero-solana-validator-debt]
+path = "crates/validator-debt"
 
 [profile.release]
 lto = true

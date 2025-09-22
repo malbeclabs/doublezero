@@ -1,9 +1,8 @@
 use anyhow::Result;
 use clap::{Args, Subcommand};
 use doublezero_revenue_distribution::DOUBLEZERO_MINT_DECIMALS;
+use doublezero_solana_client_tools::{payer::SolanaPayerOptions, rpc::SolanaConnectionOptions};
 use solana_sdk::pubkey::Pubkey;
-
-use crate::{payer::SolanaPayerOptions, rpc::SolanaConnectionOptions};
 
 pub const DECIMAL_UNITS_PER_2Z: u64 = u64::pow(10, DOUBLEZERO_MINT_DECIMALS as u32);
 

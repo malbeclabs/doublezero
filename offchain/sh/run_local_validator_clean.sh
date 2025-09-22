@@ -14,11 +14,11 @@ mkdir -p $LOCALNET_CACHE_DIR
 
 ### Dump program accounts from Solana devnet into localnet/cache.
 solana program dump \
-    -u d \
+    -u t \
     $REVENUE_DISTRIBUTION_PROGRAM_ID \
     $LOCALNET_CACHE_DIR/$REVENUE_DISTRIBUTION_PROGRAM_ID.so
 solana program dump \
-    -u d \
+    -u t \
     $PASSPORT_PROGRAM_ID \
     $LOCALNET_CACHE_DIR/$PASSPORT_PROGRAM_ID.so
 
@@ -32,7 +32,7 @@ fi
 USER_KEY=$(solana address)
 
 ### Run local validator with dumped program accounts and 2Z mint.
-solana-test-validator -u d \
+solana-test-validator -u t \
     --reset \
     --upgradeable-program \
     $REVENUE_DISTRIBUTION_PROGRAM_ID \

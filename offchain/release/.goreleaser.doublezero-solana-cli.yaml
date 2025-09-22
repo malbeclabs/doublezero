@@ -15,7 +15,7 @@ builds:
     tool: cargo
     command: build
     flags:
-      - --package=doublezero-solana
+      - --package=doublezero-solana-cli
       - --release
     targets:
       - x86_64-unknown-linux-gnu
@@ -54,7 +54,7 @@ nfpms:
     bindir: /usr/local/bin
     release: "1"
     section: default
-    # NOTE: 2z does not required to be a systemd service
+    # NOTE: doublezero-solana-cli is not required to be a systemd service
 
 changelog:
   sort: asc

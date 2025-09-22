@@ -8,14 +8,13 @@ use doublezero_passport::{
     state::{AccessRequest, ProgramConfig},
 };
 use doublezero_program_tools::{instruction::try_build_instruction, zero_copy};
+use doublezero_solana_client_tools::{
+    payer::{SolanaPayerOptions, Wallet},
+    rpc::{SolanaConnection, SolanaConnectionOptions},
+};
 use solana_sdk::{
     compute_budget::ComputeBudgetInstruction, offchain_message::OffchainMessage, pubkey::Pubkey,
     signature::Signature,
-};
-
-use crate::{
-    payer::{SolanaPayerOptions, Wallet},
-    rpc::{Connection, SolanaConnectionOptions},
 };
 
 #[derive(Debug, Args)]
@@ -87,7 +86,7 @@ async fn execute_fetch(
     program_config: bool,
     solana_connection_options: SolanaConnectionOptions,
 ) -> Result<()> {
-    let connection = Connection::try_from(solana_connection_options)?;
+    let connection = SolanaConnection::try_from(solana_connection_options)?;
 
     if program_config {
         let program_config_key = ProgramConfig::find_address().0;

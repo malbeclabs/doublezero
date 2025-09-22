@@ -9,17 +9,17 @@ use doublezero_revenue_distribution::{
     },
     state::{ContributorRewards, Journal, ProgramConfig},
 };
-
+use doublezero_solana_client_tools::zero_copy::ZeroCopyAccountOwned;
+use doublezero_solana_client_tools::{
+    payer::{SolanaPayerOptions, Wallet},
+    rpc::{DoubleZeroLedgerConnectionOptions, SolanaConnection, SolanaConnectionOptions},
+};
 use doublezero_solana_validator_debt::{
     ledger, transaction::Transaction, validator_debt::ComputedSolanaValidatorDebts,
 };
-
+use solana_client::nonblocking::rpc_client::RpcClient;
+use solana_commitment_config::CommitmentConfig;
 use solana_sdk::{compute_budget::ComputeBudgetInstruction, pubkey::Pubkey};
-
-use crate::{
-    payer::{SolanaPayerOptions, Wallet},
-    rpc::{Connection, LedgerConnection, LedgerConnectionOptions, SolanaConnectionOptions},
-};
 
 #[derive(Debug, Args)]
 pub struct RevenueDistributionCliCommand {
@@ -31,14 +31,16 @@ pub struct RevenueDistributionCliCommand {
 pub enum RevenueDistributionSubCommand {
     Fetch {
         #[arg(long)]
-        program_config: bool,
+        config: bool,
 
         #[arg(long)]
         journal: bool,
 
+        #[arg(long)]
+        solana_validator_fees: bool,
+
         // TODO: --distribution with Option<u64>.
         // TODO: --contributor-rewards with Option<Pubkey>.
-        // TODO: --prepaid-connection with Option<Pubkey>.
         //
         #[command(flatten)]
         solana_connection_options: SolanaConnectionOptions,
@@ -58,8 +60,9 @@ pub enum RevenueDistributionSubCommand {
 
         #[command(flatten)]
         solana_payer_options: SolanaPayerOptions,
+
         #[command(flatten)]
-        ledger_connection_options: LedgerConnectionOptions,
+        dz_ledger_connection_options: DoubleZeroLedgerConnectionOptions,
     },
 }
 
@@ -67,10 +70,19 @@ impl RevenueDistributionSubCommand {
     pub async fn try_into_execute(self) -> Result<()> {
         match self {
             RevenueDistributionSubCommand::Fetch {
-                program_config,
+                config,
                 journal,
+                solana_validator_fees,
                 solana_connection_options,
-            } => execute_fetch(program_config, journal, solana_connection_options).await,
+            } => {
+                execute_fetch(
+                    config,
+                    journal,
+                    solana_validator_fees,
+                    solana_connection_options,
+                )
+                .await
+            }
             RevenueDistributionSubCommand::InitializeContributorRewards {
                 service_key,
                 solana_payer_options,
@@ -78,12 +90,12 @@ impl RevenueDistributionSubCommand {
             RevenueDistributionSubCommand::PaySolanaValidatorDebt {
                 epoch,
                 solana_payer_options,
-                ledger_connection_options,
+                dz_ledger_connection_options,
             } => {
                 execute_pay_solana_validator_debt(
                     epoch,
                     solana_payer_options,
-                    ledger_connection_options,
+                    dz_ledger_connection_options,
                 )
                 .await
             }
@@ -96,21 +108,15 @@ impl RevenueDistributionSubCommand {
 //
 
 async fn execute_fetch(
-    program_config: bool,
+    config: bool,
     journal: bool,
+    solana_validator_fees: bool,
     solana_connection_options: SolanaConnectionOptions,
 ) -> Result<()> {
-    let connection = Connection::try_from(solana_connection_options)?;
+    let connection = SolanaConnection::try_from(solana_connection_options)?;
 
-    if program_config {
-        let program_config_key = ProgramConfig::find_address().0;
-        let program_config_info = connection.get_account(&program_config_key).await?;
-
-        let (program_config, _) =
-            zero_copy::checked_from_bytes_with_discriminator::<ProgramConfig>(
-                &program_config_info.data,
-            )
-            .ok_or(anyhow!("Failed to deserialize program config"))?;
+    if config {
+        let program_config = fetch_program_config(&connection).await?;
 
         // TODO: Pretty print.
         println!("Program config: {program_config:?}");
@@ -126,6 +132,50 @@ async fn execute_fetch(
 
         // TODO: Pretty print.
         println!("Journal: {journal:?}");
+    }
+
+    if solana_validator_fees {
+        let program_config = fetch_program_config(&connection).await?;
+
+        let fee_params = program_config
+            .checked_solana_validator_fee_parameters()
+            .ok_or(anyhow!(
+                "Solana validator fee parameters not configured yet"
+            ))?;
+
+        println!("Fee Parameter          | Value");
+        println!("-----------------------|----------------");
+        if fee_params.base_block_rewards_pct != Default::default() {
+            println!(
+                "Base block rewards     | {:.2}%",
+                u16::from(fee_params.base_block_rewards_pct) as f64 / 100.0
+            );
+        }
+        if fee_params.priority_block_rewards_pct != Default::default() {
+            println!(
+                "Priority block rewards | {:.2}%",
+                u16::from(fee_params.priority_block_rewards_pct) as f64 / 100.0
+            );
+        }
+        if fee_params.inflation_rewards_pct != Default::default() {
+            println!(
+                "Inflation rewards      | {:.2}%",
+                u16::from(fee_params.inflation_rewards_pct) as f64 / 100.0
+            );
+        }
+        if fee_params.jito_tips_pct != Default::default() {
+            println!(
+                "Jito tips              | {:.2}%",
+                u16::from(fee_params.jito_tips_pct) as f64 / 100.0
+            );
+        }
+        if fee_params.fixed_sol_amount != 0 {
+            println!(
+                "Fixed                  | {:.9} SOL",
+                fee_params.fixed_sol_amount as f64 * 1e-9
+            );
+        }
+        println!();
     }
 
     Ok(())
@@ -181,18 +231,21 @@ pub async fn execute_initialize_contributor_rewards(
 pub async fn execute_pay_solana_validator_debt(
     epoch: u64,
     solana_payer_options: SolanaPayerOptions,
-    ledger_connection_options: LedgerConnectionOptions,
+    dz_ledger_connection_options: DoubleZeroLedgerConnectionOptions,
 ) -> Result<()> {
     let prefix = b"solana_validator_debt_test";
     let dz_epoch_bytes = epoch.to_le_bytes();
     let seeds: &[&[u8]] = &[prefix, &dz_epoch_bytes];
     let wallet = Wallet::try_from(solana_payer_options)?;
-    let ledger = LedgerConnection::try_from(ledger_connection_options)?;
+    let dz_ledger_rpc_client = RpcClient::new_with_commitment(
+        dz_ledger_connection_options.dz_ledger_url,
+        CommitmentConfig::confirmed(),
+    );
     let read = ledger::read_from_ledger(
-        &ledger.rpc_client,
+        &dz_ledger_rpc_client,
         &wallet.signer,
         seeds,
-        ledger.rpc_client.commitment(),
+        dz_ledger_rpc_client.commitment(),
     )
     .await?;
 
@@ -208,4 +261,16 @@ pub async fn execute_pay_solana_validator_debt(
             .await?;
     }
     Ok(())
+}
+
+//
+
+async fn fetch_program_config(connection: &SolanaConnection) -> Result<ProgramConfig> {
+    let program_config = ZeroCopyAccountOwned::from_rpc_client(
+        &connection.rpc_client,
+        &ProgramConfig::find_address().0,
+    )
+    .await?;
+
+    Ok(program_config.data)
 }

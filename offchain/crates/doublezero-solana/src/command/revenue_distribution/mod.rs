@@ -198,7 +198,7 @@ pub async fn execute_pay_solana_validator_debt(
 
     let deserialized = ComputedSolanaValidatorDebts::try_from_slice(read.1.as_slice())?;
 
-    let transaction = Transaction::new(wallet.signer, wallet.dry_run);
+    let transaction = Transaction::new(wallet.signer, wallet.dry_run, false); // hardcoding force as false as it doesn't matter here. will revisit later
     let transactions = transaction
         .pay_solana_validator_debt(&wallet.connection.rpc_client, deserialized, epoch)
         .await?;

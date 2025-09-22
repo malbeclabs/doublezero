@@ -34,6 +34,7 @@ use crate::validator_debt::ComputedSolanaValidatorDebts;
 pub struct Transaction {
     pub signer: Keypair,
     pub dry_run: bool,
+    pub force: bool,
 }
 
 fn mint_key() -> Pubkey {
@@ -50,8 +51,12 @@ fn mint_key() -> Pubkey {
 }
 
 impl Transaction {
-    pub fn new(signer: Keypair, dry_run: bool) -> Transaction {
-        Transaction { signer, dry_run }
+    pub fn new(signer: Keypair, dry_run: bool, force: bool) -> Transaction {
+        Transaction {
+            signer,
+            dry_run,
+            force,
+        }
     }
 
     pub fn pubkey(&self) -> Pubkey {
@@ -347,7 +352,8 @@ mod tests {
         );
         let solana_rpc_client = fpc.solana_rpc_client;
         let dry_run = true;
-        let transaction = Transaction::new(keypair, dry_run);
+        let force = false;
+        let transaction = Transaction::new(keypair, dry_run, force);
         let leaf = SolanaValidatorDebt {
             node_id: Pubkey::from_str("va1i6T6vTcijrCz6G8r89H6igKjwkLfF6g5fnpvZu1b").unwrap(),
             amount: 707,
@@ -356,7 +362,8 @@ mod tests {
         let dz_epoch: u64 = 84;
         let record = ComputedSolanaValidatorDebts {
             blockhash: Hash::new_unique(),
-            epoch: 832,
+            first_solana_epoch: 832,
+            last_solana_epoch: 832,
             debts: vec![ComputedSolanaValidatorDebt {
                 node_id: Pubkey::from_str("va1i6T6vTcijrCz6G8r89H6igKjwkLfF6g5fnpvZu1b").unwrap(),
                 amount: 707,
@@ -406,7 +413,7 @@ mod tests {
         let solana_rpc_client = fpc.solana_rpc_client;
         let ledger_rpc_client = fpc.ledger_rpc_client;
 
-        let transaction = Transaction::new(keypair, false);
+        let transaction = Transaction::new(keypair, false, false);
 
         let dz_epoch_info = ledger_rpc_client.get_epoch_info().await?;
 
@@ -451,7 +458,7 @@ mod tests {
         );
         let solana_rpc_client = fpc.solana_rpc_client;
 
-        let transaction = Transaction::new(keypair, false);
+        let transaction = Transaction::new(keypair, false, false);
 
         let dz_epoch: u64 = 0;
         let finalize_transaction = transaction
@@ -524,7 +531,7 @@ mod tests {
             tokio::time::sleep(Duration::from_secs(2)).await;
         }
 
-        let transaction = Transaction::new(keypair, false);
+        let transaction = Transaction::new(keypair, false, false);
 
         let new_transaction = transaction
             .initialize_distribution(&solana_rpc_client, 0, 0)

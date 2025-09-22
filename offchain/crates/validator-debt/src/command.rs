@@ -1,5 +1,6 @@
 use crate::{
-    rpc::SolanaValidatorDebtConnectionOptions, solana_debt_calculator::SolanaDebtCalculator, worker,
+    rpc::SolanaValidatorDebtConnectionOptions, solana_debt_calculator::SolanaDebtCalculator,
+    transaction::Transaction, worker,
 };
 use anyhow::Result;
 use clap::Subcommand;
@@ -16,6 +17,8 @@ pub enum ValidatorDebtCommand {
         epoch: u64,
         #[arg(long, value_name = "DRY_RUN")]
         dry_run: bool,
+        #[arg(long, value_name = "FORCE")]
+        force: bool,
     },
 
     /// Calculate Validator Debt.
@@ -26,6 +29,8 @@ pub enum ValidatorDebtCommand {
         epoch: u64,
         #[arg(long, value_name = "DRY_RUN")]
         dry_run: bool,
+        #[arg(long, value_name = "FORCE")]
+        force: bool,
     },
 
     /// Finalize Epoch Transaction.
@@ -36,6 +41,8 @@ pub enum ValidatorDebtCommand {
         epoch: u64,
         #[arg(long, value_name = "DRY_RUN")]
         dry_run: bool,
+        #[arg(long, value_name = "FORCE")]
+        force: bool,
     },
 }
 
@@ -46,17 +53,28 @@ impl ValidatorDebtCommand {
                 solana_connection_options,
                 epoch,
                 dry_run,
-            } => execute_initialize_distribution(solana_connection_options, epoch, dry_run).await,
+                force,
+            } => {
+                execute_initialize_distribution(solana_connection_options, epoch, dry_run, force)
+                    .await
+            }
             ValidatorDebtCommand::CalculateValidatorDebt {
                 solana_connection_options,
                 epoch,
                 dry_run,
-            } => execute_calculate_validator_debt(solana_connection_options, epoch, dry_run).await,
+                force,
+            } => {
+                execute_calculate_validator_debt(solana_connection_options, epoch, dry_run, force)
+                    .await
+            }
             ValidatorDebtCommand::FinalizeTransaction {
                 solana_connection_options,
                 epoch,
                 dry_run,
-            } => execute_finalize_transaction(solana_connection_options, epoch, dry_run).await,
+                force,
+            } => {
+                execute_finalize_transaction(solana_connection_options, epoch, dry_run, force).await
+            }
         }
     }
 }
@@ -65,11 +83,13 @@ async fn execute_initialize_distribution(
     solana_connection_options: SolanaValidatorDebtConnectionOptions,
     epoch: u64,
     dry_run: bool,
+    force: bool,
 ) -> Result<()> {
     let solana_debt_calculator: SolanaDebtCalculator =
         SolanaDebtCalculator::try_from(solana_connection_options)?;
     let signer = try_load_keypair(None).expect("failed to load keypair");
-    worker::initialize_distribution(&solana_debt_calculator, signer, epoch, dry_run).await?;
+    let transaction = Transaction::new(signer, dry_run, force);
+    worker::initialize_distribution(&solana_debt_calculator, transaction, epoch).await?;
     Ok(())
 }
 
@@ -77,11 +97,13 @@ async fn execute_calculate_validator_debt(
     solana_connection_options: SolanaValidatorDebtConnectionOptions,
     epoch: u64,
     dry_run: bool,
+    force: bool,
 ) -> Result<()> {
     let solana_debt_calculator: SolanaDebtCalculator =
         SolanaDebtCalculator::try_from(solana_connection_options)?;
     let signer = try_load_keypair(None).expect("failed to load keypair");
-    worker::calculate_validator_debt(&solana_debt_calculator, signer, epoch, dry_run).await?;
+    let transaction = Transaction::new(signer, dry_run, force);
+    worker::calculate_validator_debt(&solana_debt_calculator, transaction, epoch).await?;
     Ok(())
 }
 
@@ -89,11 +111,13 @@ async fn execute_finalize_transaction(
     solana_connection_options: SolanaValidatorDebtConnectionOptions,
     epoch: u64,
     dry_run: bool,
+    force: bool,
 ) -> Result<()> {
     let solana_debt_calculator: SolanaDebtCalculator =
         SolanaDebtCalculator::try_from(solana_connection_options)?;
     let signer = try_load_keypair(None).expect("failed to load keypair");
-    worker::finalize_distribution(&solana_debt_calculator, signer, epoch, dry_run).await?;
+    let transaction = Transaction::new(signer, dry_run, force);
+    worker::finalize_distribution(&solana_debt_calculator, transaction, epoch).await?;
     Ok(())
 }
 

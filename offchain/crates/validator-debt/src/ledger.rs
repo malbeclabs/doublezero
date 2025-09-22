@@ -15,36 +15,25 @@ pub async fn get_solana_epoch_from_dz_epoch(
     solana_client: &RpcClient,
     ledger_client: &RpcClient,
     dz_epoch: Epoch,
-) -> Result<u64> {
+) -> Result<(u64, u64)> {
     let epoch_info = ledger_client.get_epoch_info().await?;
 
     let first_slot_in_current_epoch = epoch_info.absolute_slot - epoch_info.slot_index;
 
     let epoch_diff = epoch_info.epoch - dz_epoch;
 
-    let first_slot = first_slot_in_current_epoch - (epoch_info.slots_in_epoch * epoch_diff);
+    let first_slot = first_slot_in_current_epoch - (epoch_info.slots_in_epoch * epoch_diff) - 1;
+    let last_slot = first_slot + (epoch_info.slots_in_epoch - 1);
 
-    let block = ledger_client.get_block(first_slot).await?;
+    let solana_epoch_from_first_dz_epoch_slot =
+        get_solana_epoch_from_dz_slot(solana_client, ledger_client, first_slot).await?;
+    let solana_epoch_from_last_dz_epoch_slot =
+        get_solana_epoch_from_dz_slot(solana_client, ledger_client, last_slot).await?;
 
-    let dz_block_time = block.block_time.unwrap();
-    let dz_block_time: u64 = dz_block_time as u64;
-
-    let solana_epoch_info = solana_client.get_epoch_info().await?;
-
-    let first_slot_in_current_solana_epoch =
-        solana_epoch_info.absolute_slot - solana_epoch_info.slot_index;
-
-    let block_time = solana_client
-        .get_block_time(first_slot_in_current_solana_epoch)
-        .await?;
-    let block_time: u64 = block_time as u64;
-
-    let num_slots: u64 = ((block_time - dz_block_time) as f64 / SLOT_TIME_DURATION_SECONDS) as u64;
-
-    Ok(
-        (solana_epoch_info.epoch * solana_epoch_info.slots_in_epoch - num_slots)
-            / solana_epoch_info.slots_in_epoch,
-    )
+    Ok((
+        solana_epoch_from_first_dz_epoch_slot + 1,
+        solana_epoch_from_last_dz_epoch_slot,
+    ))
 }
 
 pub async fn create_record_on_ledger<T: borsh::BorshSerialize>(
@@ -97,12 +86,12 @@ pub async fn create_record_on_ledger<T: borsh::BorshSerialize>(
 pub async fn read_from_ledger(
     rpc_client: &RpcClient,
     payer_signer: &Keypair,
-    seeds: &[&[u8]],
+    seed: &[&[u8]],
     commitment_config: CommitmentConfig,
 ) -> Result<(RecordData, Vec<u8>)> {
     let payer_key = payer_signer.pubkey();
 
-    let record_key = record::pubkey::create_record_key(&payer_key, seeds);
+    let record_key = record::pubkey::create_record_key(&payer_key, seed);
     let get_account_response = rpc_client
         .get_account_with_commitment(&record_key, commitment_config)
         .await
@@ -116,6 +105,34 @@ pub async fn read_from_ledger(
         .with_context(|| format!("Failed to parse record data from account {record_key}"))?;
 
     Ok((*record_header, record_body.to_vec()))
+}
+
+async fn get_solana_epoch_from_dz_slot(
+    solana_client: &RpcClient,
+    ledger_client: &RpcClient,
+    slot: u64,
+) -> Result<u64> {
+    let block = ledger_client.get_block(slot).await?;
+
+    let dz_block_time = block.block_time.unwrap();
+    let dz_block_time: u64 = dz_block_time as u64;
+
+    let solana_epoch_info = solana_client.get_epoch_info().await?;
+
+    let first_slot_in_current_solana_epoch =
+        solana_epoch_info.absolute_slot - solana_epoch_info.slot_index;
+
+    let block_time = solana_client
+        .get_block_time(first_slot_in_current_solana_epoch)
+        .await?;
+    let block_time: u64 = block_time as u64;
+
+    let num_slots: u64 = ((block_time - dz_block_time) as f64 / SLOT_TIME_DURATION_SECONDS) as u64;
+
+    Ok(
+        (solana_epoch_info.epoch * solana_epoch_info.slots_in_epoch - num_slots)
+            / solana_epoch_info.slots_in_epoch,
+    )
 }
 
 #[cfg(test)]
@@ -161,7 +178,7 @@ mod tests {
             vote_account_config,
         );
 
-        let solana_epoch =
+        let (solana_epoch, _last) =
             get_solana_epoch_from_dz_epoch(&fpc.solana_rpc_client, &fpc.ledger_rpc_client, 87)
                 .await?;
 

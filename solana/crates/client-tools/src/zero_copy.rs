@@ -4,6 +4,7 @@ use doublezero_program_tools::{zero_copy, PrecomputedDiscriminator};
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::pubkey::Pubkey;
 
+#[derive(Debug)]
 pub struct ZeroCopyAccountOwned<T: Pod + PrecomputedDiscriminator> {
     pub data: T,
     pub remaining_data: Vec<u8>,

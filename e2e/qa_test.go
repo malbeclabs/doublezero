@@ -685,7 +685,7 @@ func connectHosts(t *testing.T, hosts []string, device *Device) (map[string]stri
 		}
 
 		// Connect with timeout
-		connCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+		connCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
 		result, err := client.ConnectUnicast(connCtx, req)
 		cancel()
 

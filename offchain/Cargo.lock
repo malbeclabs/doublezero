@@ -1799,7 +1799,7 @@ dependencies = [
 [[package]]
 name = "doublezero-passport"
 version = "0.1.0"
-source = "git+ssh://git@github.com/doublezerofoundation/doublezero-solana?rev=03a5567#03a5567743c8e8146fc1c44666fbd57999f18d83"
+source = "git+ssh://git@github.com/doublezerofoundation/doublezero-solana?rev=ab80633#ab806331c038ee0b11174442816dcb6f1fec075a"
 dependencies = [
  "borsh 1.5.7",
  "bytemuck",
@@ -1830,7 +1830,7 @@ dependencies = [
 [[package]]
 name = "doublezero-program-tools"
 version = "0.1.0"
-source = "git+ssh://git@github.com/doublezerofoundation/doublezero-solana?rev=03a5567#03a5567743c8e8146fc1c44666fbd57999f18d83"
+source = "git+ssh://git@github.com/doublezerofoundation/doublezero-solana?rev=ab80633#ab806331c038ee0b11174442816dcb6f1fec075a"
 dependencies = [
  "bincode 1.3.3",
  "borsh 1.5.7",
@@ -1862,7 +1862,7 @@ dependencies = [
 [[package]]
 name = "doublezero-revenue-distribution"
 version = "0.1.0"
-source = "git+ssh://git@github.com/doublezerofoundation/doublezero-solana?rev=03a5567#03a5567743c8e8146fc1c44666fbd57999f18d83"
+source = "git+ssh://git@github.com/doublezerofoundation/doublezero-solana?rev=ab80633#ab806331c038ee0b11174442816dcb6f1fec075a"
 dependencies = [
  "borsh 1.5.7",
  "bytemuck",
@@ -1933,7 +1933,7 @@ dependencies = [
 [[package]]
 name = "doublezero-solana-client-tools"
 version = "0.1.0"
-source = "git+ssh://git@github.com/doublezerofoundation/doublezero-solana?rev=03a5567#03a5567743c8e8146fc1c44666fbd57999f18d83"
+source = "git+ssh://git@github.com/doublezerofoundation/doublezero-solana?rev=ab80633#ab806331c038ee0b11174442816dcb6f1fec075a"
 dependencies = [
  "anyhow",
  "bytemuck",

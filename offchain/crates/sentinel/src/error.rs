@@ -22,6 +22,8 @@ pub enum Error {
     BincodeDeser(#[from] bincode::Error),
     #[error("borsh deserialization error: {0}")]
     BorshIo(#[from] borsh::io::Error),
+    #[error("deserialization error: {0}")]
+    Deserialize(String),
     #[error("instruction not found in transaction: {0}")]
     InstructionNotFound(Signature),
     #[error("invalid instruction data: {0}")]

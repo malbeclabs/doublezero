@@ -83,10 +83,7 @@ impl Sentinel {
 
     async fn handle_access_request(&self, access_ids: AccessIds) -> Result<()> {
         // Get the service key.
-        let service_key = match access_ids.mode {
-            AccessMode::SolanaValidator(attestation) => attestation.service_key,
-            AccessMode::SolanaValidatorWithBackupIds { attestation, .. } => attestation.service_key,
-        };
+        let service_key = access_ids.mode.service_key();
 
         let validator_ips = self.verify_qualifiers(&access_ids.mode).await?;
 

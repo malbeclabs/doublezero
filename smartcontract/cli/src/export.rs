@@ -58,6 +58,7 @@ struct ExchangeData {
 struct LinkData {
     pub pubkey: String,
     pub code: String,
+    pub iface_name: String,
     pub side: LinkSideData,
     pub tunnel_net: String,
     pub link_type: String,
@@ -75,6 +76,7 @@ struct LinkSideData {
     pub tunnel_id: u16,
     pub tunnel_net: String,
     pub public_ip: String,
+    pub iface_name: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -146,20 +148,35 @@ impl ExportCliCommand {
                             tunnel.side_a_pk == pubkey || tunnel.side_z_pk == pubkey
                         })
                         .filter_map(|(key, link)| {
+                            let iface_name = if link.side_a_pk == pubkey {
+                                link.side_a_iface_name.clone()
+                            } else {
+                                link.side_z_iface_name.clone()
+                            };
+
                             let side_pubkey = if link.side_a_pk == pubkey {
                                 link.side_z_pk
                             } else {
                                 link.side_a_pk
                             };
+
+                            let iface_name2 = if link.side_a_pk == pubkey {
+                                link.side_z_iface_name.clone()
+                            } else {
+                                link.side_a_iface_name.clone()
+                            };
+
                             let side_device = devices.get(&side_pubkey)?;
 
                             Some(LinkData {
                                 pubkey: key.to_string(),
                                 code: link.code.clone(),
                                 tunnel_net: link.tunnel_net.to_string(),
+                                iface_name,
                                 side: LinkSideData {
                                     name: side_device.code.clone(),
                                     pubkey: side_pubkey.to_string(),
+                                    iface_name: iface_name2,
                                     public_ip: side_device.public_ip.to_string(),
                                     tunnel_id: link.tunnel_id,
                                     tunnel_net: link.tunnel_net.to_string(),

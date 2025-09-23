@@ -32,8 +32,8 @@ require (
 	github.com/prometheus/common v0.66.1
 	github.com/spf13/cobra v1.10.1
 	github.com/stretchr/testify v1.11.1
-	github.com/testcontainers/testcontainers-go v0.38.0
-	github.com/testcontainers/testcontainers-go/modules/clickhouse v0.38.0
+	github.com/testcontainers/testcontainers-go v0.39.0
+	github.com/testcontainers/testcontainers-go/modules/clickhouse v0.39.0
 	github.com/testcontainers/testcontainers-go/modules/redpanda v0.38.0
 	github.com/twmb/franz-go v1.19.5
 	github.com/twmb/franz-go/pkg/kadm v1.16.1
@@ -42,14 +42,14 @@ require (
 	github.com/vishvananda/netns v0.0.5
 	golang.org/x/mod v0.28.0
 	golang.org/x/net v0.43.0
-	golang.org/x/sys v0.35.0
+	golang.org/x/sys v0.36.0
 	google.golang.org/grpc v1.75.1
 	google.golang.org/protobuf v1.36.8
 	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
-	dario.cat/mergo v1.0.1 // indirect
+	dario.cat/mergo v1.0.2 // indirect
 	filippo.io/edwards25519 v1.0.0-rc.1 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
 	github.com/ClickHouse/ch-go v0.67.0 // indirect
@@ -114,7 +114,7 @@ require (
 	github.com/prometheus/procfs v0.16.1 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/segmentio/asm v1.2.0 // indirect
-	github.com/shirou/gopsutil/v4 v4.25.5 // indirect
+	github.com/shirou/gopsutil/v4 v4.25.6 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect

@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/contributor-rewards",
+    "crates/scheduled-command",
     "crates/sentinel",
     "crates/solana-cli",
     "crates/validator-debt",
@@ -57,7 +58,8 @@ tabled = { version = "0", features = ["std", "derive"] }
 tempfile = "3"
 thiserror = "2"
 tokio = { version = "1", default-features = false, features = ["rt-multi-thread", "signal"] }
-tokio-util = "0"
+tokio-cron-scheduler = "0.14"
+tokio-util = "0.7"
 toml = "0"
 tracing = "0"
 tracing-subscriber = { version = "0", default-features = true, features = ["env-filter", "fmt", "registry"] }
@@ -68,19 +70,19 @@ url = "2"
 [workspace.dependencies.doublezero-passport]
 features = ["offchain"]
 git = "ssh://git@github.com/doublezerofoundation/doublezero-solana"
-rev = "058af1a"
+rev = "03a5567"
 
 [workspace.dependencies.doublezero-program-tools]
 git = "ssh://git@github.com/doublezerofoundation/doublezero-solana"
-rev = "058af1a"
+rev = "03a5567"
 
 [workspace.dependencies.doublezero-revenue-distribution]
 git = "ssh://git@github.com/doublezerofoundation/doublezero-solana"
-rev = "058af1a"
+rev = "03a5567"
 
 [workspace.dependencies.doublezero-solana-client-tools]
 git = "ssh://git@github.com/doublezerofoundation/doublezero-solana"
-rev = "058af1a"
+rev = "03a5567"
 
 ### Dependencies found in github.com/malbeclabs/doublezero
 
@@ -115,6 +117,9 @@ git = "https://github.com/doublezerofoundation/network-shapley-rs"
 tag = "v0.2.1"
 
 ### Local dependencies
+
+[workspace.dependencies.doublezero-scheduled-command]
+path = "crates/scheduled-command"
 
 [workspace.dependencies.doublezero-solana-validator-debt]
 path = "crates/validator-debt"

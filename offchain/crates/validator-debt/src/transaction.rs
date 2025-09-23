@@ -6,11 +6,10 @@ use doublezero_revenue_distribution::{
         DistributionMerkleRootKind, RevenueDistributionInstructionData,
         account::{
             ConfigureDistributionDebtAccounts, FinalizeDistributionDebtAccounts,
-            InitializeDistributionAccounts, PaySolanaValidatorDebtAccounts,
-            VerifyDistributionMerkleRootAccounts,
+            PaySolanaValidatorDebtAccounts, VerifyDistributionMerkleRootAccounts,
         },
     },
-    state::{Distribution, ProgramConfig},
+    state::Distribution,
     types::{DoubleZeroEpoch, SolanaValidatorDebt},
 };
 use solana_client::{
@@ -25,7 +24,6 @@ use solana_sdk::{
     signer::Signer,
     transaction::VersionedTransaction,
 };
-use std::env;
 use svm_hash::merkle::MerkleProof;
 
 use crate::validator_debt::ComputedSolanaValidatorDebts;
@@ -35,19 +33,6 @@ pub struct Transaction {
     pub signer: Keypair,
     pub dry_run: bool,
     pub force: bool,
-}
-
-fn mint_key() -> Pubkey {
-    match env::var("MINT_KEY_ENVIRONMENT") {
-        Ok(val) => {
-            if val == "mainnet-beta" {
-                doublezero_revenue_distribution::env::mainnet::DOUBLEZERO_MINT_KEY
-            } else {
-                doublezero_revenue_distribution::env::development::DOUBLEZERO_MINT_KEY
-            }
-        }
-        Err(_) => doublezero_revenue_distribution::env::development::DOUBLEZERO_MINT_KEY,
-    }
 }
 
 impl Transaction {
@@ -61,52 +46,6 @@ impl Transaction {
 
     pub fn pubkey(&self) -> Pubkey {
         self.signer.pubkey()
-    }
-
-    pub async fn initialize_distribution(
-        &self,
-        solana_rpc_client: &RpcClient,
-        fetched_dz_epoch: u64,
-        dz_epoch: u64,
-    ) -> Result<VersionedTransaction> {
-        let keypair = self.signer.pubkey();
-        let program_config_address = ProgramConfig::find_address().0;
-
-        if fetched_dz_epoch != dz_epoch {
-            anyhow::bail!("Fetched DZ epoch {fetched_dz_epoch} != parameter {dz_epoch}");
-        }
-
-        let account = solana_rpc_client
-            .get_account(&program_config_address)
-            .await?;
-        let program_config =
-            zero_copy::checked_from_bytes_with_discriminator::<ProgramConfig>(&account.data)
-                .unwrap()
-                .0;
-
-        let initialize_distribution_ix = try_build_instruction(
-            &ID,
-            InitializeDistributionAccounts::new(
-                &keypair,
-                &keypair,
-                program_config.next_dz_epoch,
-                &mint_key(),
-            ),
-            &RevenueDistributionInstructionData::InitializeDistribution,
-        )
-        .unwrap();
-
-        let recent_blockhash = solana_rpc_client.get_latest_blockhash().await?;
-        let message = Message::try_compile(
-            &keypair,
-            &[initialize_distribution_ix],
-            &[],
-            recent_blockhash,
-        )?;
-
-        let new_transaction =
-            VersionedTransaction::try_new(VersionedMessage::V0(message), &[&self.signer]).unwrap();
-        Ok(new_transaction)
     }
 
     pub async fn submit_distribution(
@@ -297,10 +236,10 @@ mod tests {
         nonblocking::rpc_client::RpcClient,
         rpc_config::{RpcBlockConfig, RpcGetVoteAccountsConfig},
     };
-    use solana_sdk::{commitment_config::CommitmentConfig, signer::Signer};
+    use solana_sdk::commitment_config::CommitmentConfig;
 
     use solana_transaction_status_client_types::{TransactionDetails, UiTransactionEncoding};
-    use std::{path::PathBuf, str::FromStr, time::Duration};
+    use std::{path::PathBuf, str::FromStr};
     use svm_hash::sha2::Hash;
 
     /// Taken from a Solana cookbook to load a keypair from a user's Solana config
@@ -382,54 +321,6 @@ mod tests {
 
     #[ignore = "needs local validator"]
     #[tokio::test]
-    async fn test_initialize_distribution() -> anyhow::Result<()> {
-        let keypair = try_load_keypair(None).unwrap();
-        let commitment_config = CommitmentConfig::processed();
-        let ledger_rpc_client =
-            RpcClient::new_with_commitment("http://localhost:8899".to_string(), commitment_config);
-
-        let solana_rpc_client =
-            RpcClient::new_with_commitment("http://localhost:8899".to_string(), commitment_config);
-        let vote_account_config = RpcGetVoteAccountsConfig {
-            vote_pubkey: None,
-            commitment: CommitmentConfig::finalized().into(),
-            keep_unstaked_delinquents: None,
-            delinquent_slot_distance: None,
-        };
-
-        let rpc_block_config = RpcBlockConfig {
-            encoding: Some(UiTransactionEncoding::Base58),
-            transaction_details: Some(TransactionDetails::None),
-            rewards: Some(true),
-            commitment: None,
-            max_supported_transaction_version: Some(0),
-        };
-        let fpc = SolanaDebtCalculator::new(
-            ledger_rpc_client,
-            solana_rpc_client,
-            rpc_block_config,
-            vote_account_config,
-        );
-        let solana_rpc_client = fpc.solana_rpc_client;
-        let ledger_rpc_client = fpc.ledger_rpc_client;
-
-        let transaction = Transaction::new(keypair, false, false);
-
-        let dz_epoch_info = ledger_rpc_client.get_epoch_info().await?;
-
-        let new_transaction = transaction
-            .initialize_distribution(&ledger_rpc_client, dz_epoch_info.epoch, 85)
-            .await?;
-
-        let _sent_transaction = transaction
-            .send_or_simulate_transaction(&solana_rpc_client, &new_transaction)
-            .await?;
-
-        Ok(())
-    }
-
-    #[ignore = "needs local validator"]
-    #[tokio::test]
     async fn test_finalize_distribution() -> anyhow::Result<()> {
         let keypair = try_load_keypair(None).unwrap();
         let commitment_config = CommitmentConfig::processed();
@@ -468,96 +359,6 @@ mod tests {
         let _sent_transaction = transaction
             .send_or_simulate_transaction(&solana_rpc_client, &finalize_transaction)
             .await?;
-        Ok(())
-    }
-
-    #[ignore = "needs local validator"]
-    #[tokio::test]
-    async fn test_write_to_read_from_chain() -> anyhow::Result<()> {
-        let keypair = try_load_keypair(None).unwrap();
-        let k = keypair.pubkey();
-        let validator_id = "devgM7SXHvoHH6jPXRsjn97gygPUo58XEnc9bqY1jpj";
-        let commitment_config = CommitmentConfig::processed();
-        let ledger_rpc_client =
-            RpcClient::new_with_commitment("http://localhost:8899".to_string(), commitment_config);
-
-        let solana_rpc_client =
-            RpcClient::new_with_commitment("http://localhost:8899".to_string(), commitment_config);
-        let vote_account_config = RpcGetVoteAccountsConfig {
-            vote_pubkey: Some(validator_id.to_string()),
-            commitment: CommitmentConfig::finalized().into(),
-            keep_unstaked_delinquents: None,
-            delinquent_slot_distance: None,
-        };
-
-        let rpc_block_config = RpcBlockConfig {
-            encoding: Some(UiTransactionEncoding::Base58),
-            transaction_details: Some(TransactionDetails::None),
-            rewards: Some(true),
-            commitment: None,
-            max_supported_transaction_version: Some(0),
-        };
-        let fpc = SolanaDebtCalculator::new(
-            ledger_rpc_client,
-            solana_rpc_client,
-            rpc_block_config,
-            vote_account_config,
-        );
-        let solana_rpc_client = fpc.solana_rpc_client;
-
-        let tx_sig = solana_rpc_client
-            .request_airdrop(&k, 1_000_000_000)
-            .await
-            .unwrap();
-
-        while !solana_rpc_client
-            .confirm_transaction_with_commitment(&tx_sig, commitment_config)
-            .await
-            .unwrap()
-            .value
-        {
-            tokio::time::sleep(Duration::from_millis(400)).await;
-        }
-
-        // Make sure airdrop went through.
-        while solana_rpc_client
-            .get_balance_with_commitment(&k, commitment_config)
-            .await
-            .unwrap()
-            .value
-            == 0
-        {
-            // Airdrop doesn't get processed after a slot unfortunately.
-            tokio::time::sleep(Duration::from_secs(2)).await;
-        }
-
-        let transaction = Transaction::new(keypair, false, false);
-
-        let new_transaction = transaction
-            .initialize_distribution(&solana_rpc_client, 0, 0)
-            .await?;
-
-        let _sent_transaction = transaction
-            .send_or_simulate_transaction(&solana_rpc_client, &new_transaction)
-            .await?;
-
-        let debt = RevenueDistributionInstructionData::ConfigureDistributionDebt {
-            total_validators: 5,
-            total_debt: 100_000,
-            merkle_root: Hash::from_str("7biGoeW59qKyVEqL2iWAm6H4hhRCExk6LxbgGrpXptci").unwrap(),
-        };
-
-        let dz_epoch = 0;
-        let t = transaction
-            .submit_distribution(&solana_rpc_client, dz_epoch, debt)
-            .await?;
-
-        let _tr = transaction
-            .send_or_simulate_transaction(&solana_rpc_client, &t)
-            .await?;
-
-        let _rt = transaction.read_distribution(0, &solana_rpc_client).await?;
-
         Ok(())
     }
 }

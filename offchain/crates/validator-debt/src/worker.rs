@@ -43,38 +43,6 @@ fn serviceability_pubkey() -> Result<Pubkey> {
     }
 }
 
-pub async fn initialize_distribution<T: ValidatorRewards>(
-    solana_debt_calculator: &T,
-    transaction: Transaction,
-    dz_epoch: u64,
-) -> Result<()> {
-    let fetched_dz_epoch_info = solana_debt_calculator
-        .ledger_rpc_client()
-        .get_epoch_info()
-        .await?;
-
-    let initialized_transaction = transaction
-        .initialize_distribution(
-            solana_debt_calculator.solana_rpc_client(),
-            fetched_dz_epoch_info.epoch,
-            dz_epoch,
-        )
-        .await?;
-
-    let tx_initialized_sig = transaction
-        .send_or_simulate_transaction(
-            solana_debt_calculator.solana_rpc_client(),
-            &initialized_transaction,
-        )
-        .await?;
-
-    if let Some(tx) = tx_initialized_sig {
-        println!("initialized distribution tx: {tx:?}");
-    }
-
-    Ok(())
-}
-
 pub async fn finalize_distribution<T: ValidatorRewards>(
     solana_debt_calculator: &T,
     transaction: Transaction,
@@ -495,41 +463,6 @@ mod tests {
 
     #[ignore = "need local validator"]
     #[tokio::test]
-    async fn test_initialize_distribution_flow() -> Result<()> {
-        let keypair = try_load_keypair(None).unwrap();
-        let commitment_config = CommitmentConfig::confirmed();
-        let ledger_rpc_client = RpcClient::new_with_commitment(ledger_rpc(), commitment_config);
-
-        let solana_rpc_client = RpcClient::new_with_commitment(solana_rpc(), commitment_config);
-        let vote_account_config = RpcGetVoteAccountsConfig {
-            vote_pubkey: None,
-            commitment: CommitmentConfig::finalized().into(),
-            keep_unstaked_delinquents: None,
-            delinquent_slot_distance: None,
-        };
-
-        let rpc_block_config = RpcBlockConfig {
-            encoding: Some(UiTransactionEncoding::Base58),
-            transaction_details: Some(TransactionDetails::Signatures),
-            rewards: Some(true),
-            commitment: None,
-            max_supported_transaction_version: Some(0),
-        };
-        let fpc = SolanaDebtCalculator::new(
-            ledger_rpc_client,
-            solana_rpc_client,
-            rpc_block_config,
-            vote_account_config,
-        );
-        let dz_epoch_info = fpc.ledger_rpc_client.get_epoch_info().await?;
-        let transaction = Transaction::new(keypair, true, false);
-        initialize_distribution(&fpc, transaction, dz_epoch_info.epoch).await?;
-
-        Ok(())
-    }
-
-    #[ignore = "need local validator"]
-    #[tokio::test]
     async fn test_distribution_flow() -> Result<()> {
         // sample validator id: "va1i6T6vTcijrCz6G8r89H6igKjwkLfF6g5fnpvZu1b"
         let keypair = try_load_keypair(None).unwrap();
@@ -578,7 +511,7 @@ mod tests {
         .await?;
 
         let deserialized: ComputedSolanaValidatorDebts = borsh::from_slice(read.1.as_slice())
-            .map_err(|e| anyhow::anyhow!("failed to deserialize ledger record: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("failed to deserialize ledger record: {e}"))?;
         let (first_solana_epoch, last_solana_epoch) = ledger::get_solana_epoch_from_dz_epoch(
             &fpc.solana_rpc_client,
             &fpc.ledger_rpc_client,

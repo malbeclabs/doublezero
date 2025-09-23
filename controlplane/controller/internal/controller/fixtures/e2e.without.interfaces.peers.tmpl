@@ -72,7 +72,6 @@ mpls ip
 !
 {{- range $i := seq .StartTunnel .EndTunnel}}
 default interface Tunnel{{$i}}
-!
 {{- end}}
 router bgp 65342
    address-family ipv4

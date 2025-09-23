@@ -126,6 +126,8 @@ mpls icmp ip source-interface {{ $.Device.Vpn4vLoopbackIntfName }}{{/* This must
 {{- end }}
 {{- range .Device.Tunnels }}
 default interface Tunnel{{ .Id }}
+{{- end }}
+{{- range .Device.Tunnels }}
 {{- if eq true .Allocated }}
 interface Tunnel{{ .Id }}
    {{- if eq true .IsMulticast }}
@@ -158,8 +160,8 @@ interface Tunnel{{ .Id }}
    tunnel path-mtu-discovery
    tunnel ttl 32
    no shutdown
-{{- end }}
 !
+{{- end }}
 {{- end }}
 router bgp 65342
    {{- if $.InterfacesAndPeers }}

@@ -67,6 +67,9 @@ mpls icmp ttl-exceeded tunneling
 mpls icmp ip source-interface Loopback255
 !
 default interface Tunnel500
+default interface Tunnel501
+default interface Tunnel502
+default interface Tunnel503
 interface Tunnel500
    description USER-MCAST-500
    multicast ipv4 boundary SEC-USER-MCAST-BOUNDARY-500-OUT out
@@ -81,7 +84,6 @@ interface Tunnel500
    tunnel ttl 32
    no shutdown
 !
-default interface Tunnel501
 interface Tunnel501
    description USER-UCAST-501
    vrf vrf1
@@ -94,7 +96,6 @@ interface Tunnel501
    tunnel ttl 32
    no shutdown
 !
-default interface Tunnel502
 interface Tunnel502
    description USER-MCAST-502
    multicast ipv4 boundary SEC-USER-MCAST-BOUNDARY-502-OUT out
@@ -110,7 +111,6 @@ interface Tunnel502
    tunnel ttl 32
    no shutdown
 !
-default interface Tunnel503
 interface Tunnel503
    description USER-MCAST-503
    multicast ipv4 boundary SEC-USER-MCAST-BOUNDARY-503-OUT out

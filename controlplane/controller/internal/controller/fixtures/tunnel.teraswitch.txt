@@ -1,5 +1,7 @@
 !
 default interface Tunnel500
+default interface Tunnel501
+default interface Tunnel502
 interface Tunnel500
    mtu 9216
    ip address 169.254.0.0/31
@@ -10,7 +12,6 @@ interface Tunnel500
    tunnel ttl 32
    no shutdown
 !
-default interface Tunnel501
 interface Tunnel501
    mtu 9216
    ip address 169.254.0.2/31
@@ -21,7 +22,6 @@ interface Tunnel501
    tunnel ttl 32
    no shutdown
 !
-default interface Tunnel502
 interface Tunnel502
    mtu 9216
    ip address 169.254.0.4/31

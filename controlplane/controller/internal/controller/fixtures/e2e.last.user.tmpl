@@ -84,7 +84,6 @@ mpls icmp ip source-interface Loopback255
 !
 {{- range $i := seq .StartTunnel .EndTunnel}}
 default interface Tunnel{{$i}}
-!
 {{- end}}
 router bgp 65342
    router-id 14.14.14.14

@@ -49,7 +49,7 @@ test-sbf: build-sbf-mock
 
 .PHONY: test-lib
 test-lib:
-	cargo test --lib --features development
+	cargo test --lib --features development,offchain
 
 .PHONY: lint
 lint:

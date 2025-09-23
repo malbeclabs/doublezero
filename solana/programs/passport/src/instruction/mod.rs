@@ -41,6 +41,16 @@ pub enum AccessMode {
     },
 }
 
+impl AccessMode {
+    #[cfg(feature = "offchain")]
+    pub fn service_key(&self) -> Pubkey {
+        match self {
+            Self::SolanaValidator(attestation) => attestation.service_key,
+            Self::SolanaValidatorWithBackupIds { attestation, .. } => attestation.service_key,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PassportInstructionData {
     InitializeProgram,

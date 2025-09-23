@@ -61,9 +61,75 @@ impl AccessRequest {
             }
         }
     }
+
+    #[cfg(feature = "offchain")]
+    pub fn checked_access_mode(&self) -> Option<AccessMode> {
+        borsh::BorshDeserialize::deserialize(&mut &self.encoded_access_mode[..]).ok()
+    }
 }
 
 const _: () = assert!(
     size_of::<AccessRequest>() == 4_168,
     "`AccessRequest` size changed"
 );
+
+#[allow(unused_imports)]
+#[cfg(test)]
+mod tests {
+    use borsh::BorshSerialize;
+    use solana_sdk::signature::Signature;
+
+    use crate::instruction::SolanaValidatorAttestation;
+
+    use super::*;
+
+    #[cfg(feature = "offchain")]
+    #[test]
+    fn test_checked_access_mode() {
+        let access_mode = AccessMode::SolanaValidator(SolanaValidatorAttestation {
+            validator_id: Pubkey::new_unique(),
+            service_key: Pubkey::new_unique(),
+            ed25519_signature: Signature::new_unique().into(),
+        });
+
+        let mut encoded_access_mode = [0; REQUEST_ACCESS_MAX_DATA_SIZE];
+        access_mode
+            .serialize(&mut encoded_access_mode.as_mut())
+            .unwrap();
+
+        let access_request = AccessRequest {
+            encoded_access_mode,
+            ..Default::default()
+        };
+        assert_eq!(access_request.checked_access_mode().unwrap(), access_mode);
+
+        let access_mode = AccessMode::SolanaValidatorWithBackupIds {
+            attestation: SolanaValidatorAttestation {
+                validator_id: Pubkey::new_unique(),
+                service_key: Pubkey::new_unique(),
+                ed25519_signature: Signature::new_unique().into(),
+            },
+            backup_ids: vec![
+                Pubkey::new_unique(),
+                Pubkey::new_unique(),
+                Pubkey::new_unique(),
+                Pubkey::new_unique(),
+                Pubkey::new_unique(),
+                Pubkey::new_unique(),
+                Pubkey::new_unique(),
+                Pubkey::new_unique(),
+            ],
+        };
+
+        let mut encoded_access_mode = [0; REQUEST_ACCESS_MAX_DATA_SIZE];
+        access_mode
+            .serialize(&mut encoded_access_mode.as_mut())
+            .unwrap();
+
+        let access_request = AccessRequest {
+            encoded_access_mode,
+            ..Default::default()
+        };
+        assert_eq!(access_request.checked_access_mode().unwrap(), access_mode);
+    }
+}

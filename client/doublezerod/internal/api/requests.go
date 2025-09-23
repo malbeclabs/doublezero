@@ -77,16 +77,17 @@ func (r *RemoveRequest) Validate() error {
 }
 
 type ProvisionRequest struct {
-	UserType           UserType     `json:"user_type"`
-	TunnelSrc          net.IP       `json:"tunnel_src"`
-	TunnelDst          net.IP       `json:"tunnel_dst"`
-	TunnelNet          *net.IPNet   `json:"tunnel_net"`
-	DoubleZeroIP       net.IP       `json:"doublezero_ip"`
-	DoubleZeroPrefixes []*net.IPNet `json:"doublezero_prefixes"`
-	MulticastSubGroups []net.IP     `json:"mcast_sub_groups"`
-	MulticastPubGroups []net.IP     `json:"mcast_pub_groups"`
-	BgpLocalAsn        uint32       `json:"bgp_local_asn"`
-	BgpRemoteAsn       uint32       `json:"bgp_remote_asn"`
+	ProgramID          solana.PublicKey `json:"program_id"`
+	UserType           UserType         `json:"user_type"`
+	TunnelSrc          net.IP           `json:"tunnel_src"`
+	TunnelDst          net.IP           `json:"tunnel_dst"`
+	TunnelNet          *net.IPNet       `json:"tunnel_net"`
+	DoubleZeroIP       net.IP           `json:"doublezero_ip"`
+	DoubleZeroPrefixes []*net.IPNet     `json:"doublezero_prefixes"`
+	MulticastSubGroups []net.IP         `json:"mcast_sub_groups"`
+	MulticastPubGroups []net.IP         `json:"mcast_pub_groups"`
+	BgpLocalAsn        uint32           `json:"bgp_local_asn"`
+	BgpRemoteAsn       uint32           `json:"bgp_remote_asn"`
 }
 
 func (p *ProvisionRequest) Validate() error {

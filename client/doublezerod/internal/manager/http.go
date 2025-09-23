@@ -32,6 +32,12 @@ func (n *NetlinkManager) ServeProvision(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	if p.ProgramID != n.Config.ProgramID() {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(fmt.Sprintf(`{"status": "error", "description": "program ID mismatch: request %s, config %s"}`, p.ProgramID.String(), n.Config.ProgramID().String())))
+		return
+	}
+
 	if err = p.Validate(); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		_, _ = w.Write([]byte(fmt.Sprintf(`{"status": "error", "description": "invalid request: %v"}`, err)))

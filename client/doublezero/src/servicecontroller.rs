@@ -13,6 +13,7 @@ const NANOS_TO_MS: f32 = 1000000.0;
 
 #[derive(Serialize, Debug, PartialEq)]
 pub struct ProvisioningRequest {
+    pub program_id: String,
     pub tunnel_src: String,
     pub tunnel_dst: String,
     pub tunnel_net: String,

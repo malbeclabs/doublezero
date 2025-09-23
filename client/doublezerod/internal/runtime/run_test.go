@@ -82,29 +82,36 @@ func (p *dummyPlugin) handleUpdate(peer corebgp.PeerConfig, u []byte) *corebgp.N
 }
 
 func TestEndToEnd_IBRL_Basic(t *testing.T) {
-	runIBRLTest(t, api.UserTypeIBRL, map[string]any{
+	runIBRLTest(t, api.UserTypeIBRL,
+		map[string]any{
+			"program_id": "Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS",
+			"services": map[string]any{
 
-		"tunnel_src":     "192.168.1.0",
-		"tunnel_dst":     "192.168.1.1",
-		"tunnel_net":     "169.254.0.0/31",
-		"doublezero_ip":  "192.168.1.0",
-		"user_type":      "IBRL",
-		"bgp_local_asn":  65000,
-		"bgp_remote_asn": 65342,
-	}, "./fixtures/doublezerod.ibrl.json")
+				"tunnel_src":     "192.168.1.0",
+				"tunnel_dst":     "192.168.1.1",
+				"tunnel_net":     "169.254.0.0/31",
+				"doublezero_ip":  "192.168.1.0",
+				"user_type":      "IBRL",
+				"bgp_local_asn":  65000,
+				"bgp_remote_asn": 65342,
+			},
+		}, "./fixtures/doublezerod.ibrl.json")
 }
 
 func TestEndToEnd_IBRL_WithAllocatedIP(t *testing.T) {
-	runIBRLTest(t, api.UserTypeIBRLWithAllocatedIP, map[string]any{
-
-		"tunnel_src":     "192.168.1.0",
-		"tunnel_dst":     "192.168.1.1",
-		"tunnel_net":     "169.254.0.0/31",
-		"doublezero_ip":  "192.168.1.0",
-		"user_type":      "IBRLWithAllocatedIP",
-		"bgp_local_asn":  65000,
-		"bgp_remote_asn": 65342,
-	}, "./fixtures/doublezerod.ibrl.with.allocated.ip.json")
+	runIBRLTest(t, api.UserTypeIBRLWithAllocatedIP,
+		map[string]any{
+			"program_id": "Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS",
+			"services": map[string]any{
+				"tunnel_src":     "192.168.1.0",
+				"tunnel_dst":     "192.168.1.1",
+				"tunnel_net":     "169.254.0.0/31",
+				"doublezero_ip":  "192.168.1.0",
+				"user_type":      "IBRLWithAllocatedIP",
+				"bgp_local_asn":  65000,
+				"bgp_remote_asn": 65342,
+			},
+		}, "./fixtures/doublezerod.ibrl.with.allocated.ip.json")
 }
 
 func runIBRLTest(t *testing.T, userType api.UserType, provisioningRequest map[string]any, goldenStateFile string) {

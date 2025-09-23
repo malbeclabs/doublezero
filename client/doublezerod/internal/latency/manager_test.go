@@ -112,9 +112,14 @@ func TestClient_Latency(t *testing.T) {
 		m.ServeLatency(rec, req)
 		require.Equal(t, http.StatusOK, rec.Code)
 
-		var got []map[string]any
-		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
-		require.Len(t, got, 2)
+		var res map[string]any
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &res))
+		require.Equal(t, "Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS", res["program_id"])
+		require.Contains(t, res, "results")
+
+		got := res["results"].([]map[string]any)
+
+		fmt.Println(got)
 
 		require.Equal(t, "dev-A", got[0]["device_code"])
 		require.Equal(t, mustPKFromBytes(pk1), got[0]["device_pk"])
@@ -258,7 +263,7 @@ func TestClient_Latency(t *testing.T) {
 		require.Equal(t, http.StatusOK, rec.Code)
 		require.Equal(t, "application/json", rec.Header().Get("Content-Type"))
 		require.Equal(t, "no-store", rec.Header().Get("Cache-Control"))
-		require.Equal(t, "[]\n", rec.Body.String())
+		require.Equal(t, "{\"program_id\":\"Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS\",\"results\":[]}\n", rec.Body.String())
 	})
 
 	t.Run("refreshDevices_without_client_noop", func(t *testing.T) {
@@ -746,7 +751,11 @@ func mustPKFromBytes(b [32]byte) string {
 }
 
 func someProgramID() solana.PublicKey {
-	return solana.NewWallet().PublicKey()
+	pk, err := solana.PublicKeyFromBase58("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS")
+	if err != nil {
+		panic(err)
+	}
+	return pk
 }
 
 func maxInt(a, b int64) int64 {

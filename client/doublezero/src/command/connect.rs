@@ -626,6 +626,7 @@ Disconnect and connect again!"#,
         spinner.set_message("Provisioning DoubleZero service...");
         match controller
             .provisioning(ProvisioningRequest {
+                program_id: client.get_program_id().to_string(),
                 tunnel_src,
                 tunnel_dst,
                 tunnel_net,
@@ -1020,6 +1021,7 @@ mod tests {
             mcast_sub_groups: Option<Vec<String>>,
         ) {
             let expected_request = ProvisioningRequest {
+                program_id: self.client.get_program_id().to_string(),
                 tunnel_src: client_ip.to_string(),
                 tunnel_dst: device_ip.to_string(),
                 tunnel_net: "10.1.1.0/31".to_string(),

@@ -2,7 +2,7 @@ use crate::doublezerocommand::CliCommand;
 use clap::Args;
 use doublezero_program_common::types::parse_utils::bandwidth_to_string;
 use doublezero_sdk::commands::{
-    device::list::ListDeviceCommand, exchange::list::ListExchangeCommand,
+    contributor, device::list::ListDeviceCommand, exchange::list::ListExchangeCommand,
     link::list::ListLinkCommand, location::list::ListLocationCommand, user::list::ListUserCommand,
 };
 use serde::{Deserialize, Serialize};
@@ -24,6 +24,7 @@ struct Data {
 struct DeviceData {
     name: String,
     pubkey: String,
+    contributor: String,
     public_ip: String,
     location: LocationData,
     exchange: ExchangeData,
@@ -94,6 +95,7 @@ impl ExportCliCommand {
         let locations = client.list_location(ListLocationCommand)?;
         let exchanges = client.list_exchange(ListExchangeCommand)?;
 
+        let contributors = client.list_contributor(contributor::list::ListContributorCommand {})?;
         let devices = client.list_device(ListDeviceCommand)?;
         let tunnels = client.list_link(ListLinkCommand)?;
         let users = client.list_user(ListUserCommand)?;
@@ -108,12 +110,17 @@ impl ExportCliCommand {
                 .get(&data.exchange_pk)
                 .ok_or(eyre::eyre!("Unable to retrieve Exchange"))?;
 
+            let contributor = contributors
+                .get(&data.contributor_pk)
+                .ok_or(eyre::eyre!("Unable to retrieve Contributor"))?;
+
             writeln!(out, "{name}")?;
 
             let config = Data {
                 device: DeviceData {
                     name: data.code,
                     pubkey: pubkey.to_string(),
+                    contributor: contributor.code.clone(),
                     location: LocationData {
                         code: location.code.clone(),
                         name: location.name.clone(),

@@ -15,6 +15,7 @@ import (
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/config"
+	twozoracle "github.com/malbeclabs/doublezero/controlplane/monitor/internal/2z-oracle"
 	"github.com/malbeclabs/doublezero/controlplane/monitor/internal/worker"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
@@ -22,7 +23,8 @@ import (
 )
 
 const (
-	defaultInterval = 1 * time.Minute
+	defaultInterval           = 1 * time.Minute
+	defaultTwoZOracleInterval = 5 * time.Second
 )
 
 var (
@@ -31,11 +33,12 @@ var (
 	serviceabilityProgramID    = flag.String("serviceability-program-id", "", "the id of the serviceability program")
 	telemetryProgramID         = flag.String("telemetry-program-id", "", "the id of the telemetry program")
 	internetLatencyCollectorPK = flag.String("internet-latency-collector-pk", "", "the public key of the internet latency collector")
-	interval                   = flag.Duration("interval", defaultInterval, "the interval to execute watcher ticks")
+	interval                   = flag.Duration("interval", defaultInterval, "default interval to execute watcher ticks")
 	verbose                    = flag.Bool("verbose", false, "enable verbose logging")
 	showVersion                = flag.Bool("version", false, "Print the version of the doublezero-agent and exit")
 	metricsAddr                = flag.String("metrics-addr", ":8080", "Address to listen on for prometheus metrics")
 	slackWebhookURL            = flag.String("slack-webhook-url", "", "The Slack webhook URL to send alerts")
+	twoZOracleInterval         = flag.Duration("twoz-oracle-interval", defaultTwoZOracleInterval, "interval to execute twoz oracle watcher ticks")
 
 	// Set by LDFLAGS
 	version = "dev"
@@ -130,12 +133,18 @@ func main() {
 			log.Error("Failed to start prometheus metrics server listener", "error", err)
 			return
 		}
-		log.Info("Prometheus metrics server listening", "address", listener.Addr())
+		log.Info("Prometheus metrics server listening", "address", listener.Addr().String())
 		http.Handle("/metrics", promhttp.Handler())
 		if err := http.Serve(listener, nil); err != nil {
 			log.Error("Failed to start prometheus metrics server", "error", err)
 		}
 	}()
+
+	var twoZOracleClient twozoracle.TwoZOracleClient
+	if networkConfig.TwoZOracleURL != "" {
+		// 2ZOracle is not configured in devnet.
+		twoZOracleClient = twozoracle.NewTwoZOracleClient(http.DefaultClient, networkConfig.TwoZOracleURL)
+	}
 
 	// Initialize worker.
 	worker, err := worker.New(&worker.Config{
@@ -146,6 +155,8 @@ func main() {
 		InternetLatencyCollectorPK: networkConfig.InternetLatencyCollectorPK,
 		Interval:                   *interval,
 		SlackWebhookURL:            *slackWebhookURL,
+		TwoZOracleClient:           twoZOracleClient,
+		TwoZOracleInterval:         *twoZOracleInterval,
 	})
 	if err != nil {
 		log.Error("Failed to create worker", "error", err)

@@ -7,6 +7,7 @@ const (
 	MainnetTelemetryProgramID         = "tE1exJ5VMyoC9ByZeSmgtNzJCFF74G9JAv338sJiqkC"
 	MainnetInternetLatencyCollectorPK = "8xHn4r7oQuqNZ5cLYwL5YZcDy1JjDQcpVkyoA8Dw5uXH"
 	MainnetDeviceLocalASN             = 209321
+	MainnetTwoZOracleURL              = "https://10qk1zz9ql.execute-api.us-east-1.amazonaws.com/mainnet-beta/api/v1"
 
 	// Testnet constants.
 	TestnetLedgerPublicRPCURL         = "https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16"
@@ -14,6 +15,7 @@ const (
 	TestnetTelemetryProgramID         = "3KogTMmVxc5eUHtjZnwm136H5P8tvPwVu4ufbGPvM7p1"
 	TestnetInternetLatencyCollectorPK = "HWGQSTmXWMB85NY2vFLhM1nGpXA8f4VCARRyeGNbqDF1"
 	TestnetDeviceLocalASN             = 65342
+	TestnetTwoZOracleURL              = "https://7op1fv6sj5.execute-api.us-east-1.amazonaws.com/testnet/api/v1"
 
 	// Devnet constants.
 	DevnetLedgerPublicRPCURL         = "https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16"
@@ -21,4 +23,5 @@ const (
 	DevnetTelemetryProgramID         = "C9xqH76NSm11pBS6maNnY163tWHT8Govww47uyEmSnoG"
 	DevnetInternetLatencyCollectorPK = "3fXen9LP5JUAkaaDJtyLo1ohPiJ2LdzVqAnmhtGgAmwJ"
 	DevnetDeviceLocalASN             = 21682
+	DevnetTwoZOracleURL              = ""
 )

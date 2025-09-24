@@ -188,14 +188,14 @@ func main() {
 					log.Error("Failed to start prometheus metrics server listener in namespace", "error", err, "namespace", *managementNamespace)
 					return
 				}
-				log.Info("Prometheus metrics server listening", "namespace", *managementNamespace, "address", listener.Addr())
+				log.Info("Prometheus metrics server listening", "namespace", *managementNamespace, "address", listener.Addr().String())
 			} else {
 				listener, err = net.Listen("tcp", *metricsAddr)
 				if err != nil {
 					log.Error("Failed to start prometheus metrics server listener", "error", err)
 					return
 				}
-				log.Info("Prometheus metrics server listening", "address", listener.Addr())
+				log.Info("Prometheus metrics server listening", "address", listener.Addr().String())
 			}
 			http.Handle("/metrics", promhttp.Handler())
 			if err := http.Serve(listener, nil); err != nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 
+	twozoracle "github.com/malbeclabs/doublezero/controlplane/monitor/internal/2z-oracle"
 	devicetelemetry "github.com/malbeclabs/doublezero/controlplane/monitor/internal/device-telemetry"
 	internettelemetry "github.com/malbeclabs/doublezero/controlplane/monitor/internal/internet-telemetry"
 	"github.com/malbeclabs/doublezero/controlplane/monitor/internal/serviceability"
@@ -71,6 +72,19 @@ func New(cfg *Config) (*Worker, error) {
 		deviceTelemetryWatcher,
 		internetTelemetryWatcher,
 	}
+
+	if cfg.TwoZOracleClient != nil {
+		twoZOracleWatcher, err := twozoracle.NewTwoZOracleWatcher(&twozoracle.Config{
+			Logger:   cfg.Logger,
+			Interval: cfg.TwoZOracleInterval,
+			Client:   cfg.TwoZOracleClient,
+		})
+		if err != nil {
+			return nil, err
+		}
+		watchers = append(watchers, twoZOracleWatcher)
+	}
+
 	return &Worker{
 		log:      cfg.Logger,
 		cfg:      cfg,

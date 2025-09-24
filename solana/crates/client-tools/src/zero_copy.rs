@@ -8,6 +8,9 @@ use solana_sdk::pubkey::Pubkey;
 pub struct ZeroCopyAccountOwned<T: Pod + PrecomputedDiscriminator> {
     pub data: T,
     pub remaining_data: Vec<u8>,
+    pub lamports: u64,
+    pub balance: u64,
+    pub owner: Pubkey,
 }
 
 impl<T: Pod + PrecomputedDiscriminator> ZeroCopyAccountOwned<T> {
@@ -16,11 +19,21 @@ impl<T: Pod + PrecomputedDiscriminator> ZeroCopyAccountOwned<T> {
 
         let (mucked_data, remaining_data) =
             zero_copy::checked_from_bytes_with_discriminator(&account_info.data)
-                .ok_or(anyhow!("cannot deserialize as plain-old-data"))?;
+                .ok_or(anyhow!("Cannot read as zero-copy account"))?;
+
+        let lamports = account_info.lamports;
+
+        let rent_exemption = rpc_client
+            .get_minimum_balance_for_rent_exemption(zero_copy::data_end::<T>())
+            .await?;
+        let balance = lamports.saturating_sub(rent_exemption);
 
         Ok(Self {
             data: *mucked_data,
             remaining_data: remaining_data.to_vec(),
+            lamports,
+            balance,
+            owner: account_info.owner,
         })
     }
 }

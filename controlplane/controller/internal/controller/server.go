@@ -556,10 +556,6 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 		}
 	}
 
-	if len(unknownPeers) != 0 {
-		slog.Info("device returned unknown peers to be deleted", "device pubkey", req.GetPubkey(), "number of unknown peers", len(unknownPeers), "peers", unknownPeers)
-	}
-
 	multicastGroupBlock := formatCIDR(&c.cache.Config.MulticastGroupBlock)
 
 	// This check avoids the situation where the template produces the following useless output, which happens in any test case with a single DZD.

@@ -546,21 +546,19 @@ async fn handle_device_stats(
         .into_iter()
         .filter(|(_, stats)| {
             // Filter by city if specified
-            if let Some(ref city) = city_filter {
-                if let Some(location) = fetch_data.get_device_location(&stats.origin_device) {
-                    if !location.name.to_lowercase().contains(&city.to_lowercase()) {
-                        return false;
-                    }
-                }
+            if let Some(ref city) = city_filter
+                && let Some(location) = fetch_data.get_device_location(&stats.origin_device)
+                && !location.name.to_lowercase().contains(&city.to_lowercase())
+            {
+                return false;
             }
 
             // Filter by device ID if specified
-            if let Some(ref device_id) = filters.device {
-                if stats.origin_device.to_string() != *device_id
-                    && stats.target_device.to_string() != *device_id
-                {
-                    return false;
-                }
+            if let Some(ref device_id) = filters.device
+                && stats.origin_device.to_string() != *device_id
+                && stats.target_device.to_string() != *device_id
+            {
+                return false;
             }
 
             // Note: exchange filter removed from common FilterOptions

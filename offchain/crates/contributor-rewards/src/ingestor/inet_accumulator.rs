@@ -130,10 +130,11 @@ impl InetLookbackAccumulator {
                 sample.data_provider_name.clone(),
             );
 
-            if let Some(&index) = self.route_index.get(&route_key) {
-                if index < self.coverage_bitmap.len() && !self.coverage_bitmap[index] {
-                    new_coverage += 1;
-                }
+            if let Some(&index) = self.route_index.get(&route_key)
+                && index < self.coverage_bitmap.len()
+                && !self.coverage_bitmap[index]
+            {
+                new_coverage += 1;
             }
         }
 
@@ -163,11 +164,11 @@ impl InetLookbackAccumulator {
                 sample.data_provider_name.clone(),
             );
 
-            if let Some(&index) = self.route_index.get(&route_key) {
-                if index < epoch_bitmap.len() {
-                    epoch_bitmap.set(index, true);
-                    self.coverage_bitmap.set(index, true);
-                }
+            if let Some(&index) = self.route_index.get(&route_key)
+                && index < epoch_bitmap.len()
+            {
+                epoch_bitmap.set(index, true);
+                self.coverage_bitmap.set(index, true);
             }
         }
 

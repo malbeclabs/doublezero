@@ -89,7 +89,7 @@ pub fn calculate_rtt_statistics(values: &[f64]) -> Result<RttStats> {
     let max = sorted_values[len - 1];
 
     // Calculate median
-    let median = if len % 2 == 0 {
+    let median = if len.is_multiple_of(2) {
         (sorted_values[len / 2 - 1] + sorted_values[len / 2]) / 2.0
     } else {
         sorted_values[len / 2]
@@ -119,7 +119,7 @@ pub fn calculate_rtt_statistics(values: &[f64]) -> Result<RttStats> {
     let mut deviations: Vec<f64> = sorted_values.iter().map(|&v| (v - median).abs()).collect();
     deviations.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
 
-    let mad = if deviations.len() % 2 == 0 {
+    let mad = if deviations.len().is_multiple_of(2) {
         (deviations[deviations.len() / 2 - 1] + deviations[deviations.len() / 2]) / 2.0
     } else {
         deviations[deviations.len() / 2]

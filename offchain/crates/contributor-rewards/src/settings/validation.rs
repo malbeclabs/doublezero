@@ -136,10 +136,10 @@ pub fn validate_config(settings: &Settings) -> Result<()> {
         );
     }
 
-    if let Some(metrics) = &settings.metrics {
-        if !validate_socket_addr(&metrics.addr) {
-            bail!("Invalid SocketAddr: {}", metrics.addr)
-        }
+    if let Some(metrics) = &settings.metrics
+        && !validate_socket_addr(&metrics.addr)
+    {
+        bail!("Invalid SocketAddr: {}", metrics.addr)
     }
 
     Ok(())

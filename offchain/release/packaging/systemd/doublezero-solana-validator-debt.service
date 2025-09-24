@@ -1,0 +1,18 @@
+# NOTE: This is a placeholder unit.
+# It will NOT start the monitor with correct runtime flags.
+# Expected: Ansible will manage an override file at:
+#   /etc/systemd/system/doublezero-solana-validator-debt.service.d/override.conf
+# which will set the real ExecStart and options.
+
+[Unit]
+Description=DoubleZero Solana Validator Debt
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/doublezero-solana-validator-debt
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

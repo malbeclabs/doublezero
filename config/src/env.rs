@@ -19,12 +19,12 @@ impl std::str::FromStr for Environment {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            MAINNET_BETA_SHORT_NAME | MAINNET_BETA_NAME => Ok(Environment::MainnetBeta),
-            TESTNET_SHORT_NAME | TESTNET_NAME => Ok(Environment::Testnet),
-            DEVNET_SHORT_NAME | DEVNET_NAME => Ok(Environment::Devnet),
-            LOCALNET_SHORT_NAME | LOCALNET_NAME => Ok(Environment::Local),
+            ENV_MAINNET_BETA_SHORT_NAME | ENV_MAINNET_BETA_NAME => Ok(Environment::MainnetBeta),
+            ENV_TESTNET_SHORT_NAME | ENV_TESTNET_NAME => Ok(Environment::Testnet),
+            ENV_DEVNET_SHORT_NAME | ENV_DEVNET_NAME => Ok(Environment::Devnet),
+            ENV_LOCALNET_SHORT_NAME | ENV_LOCALNET_NAME => Ok(Environment::Local),
             _ => Err(eyre::eyre!(
-                "Invalid environment {s}, must be one of: {MAINNET_BETA_NAME}, {TESTNET_NAME}, {DEVNET_NAME}, {LOCALNET_NAME}",
+                "Invalid environment {s}, must be one of: {ENV_MAINNET_BETA_NAME}, {ENV_TESTNET_NAME}, {ENV_DEVNET_NAME}, {ENV_LOCALNET_NAME}",
             )),
         }
     }
@@ -43,13 +43,13 @@ impl fmt::Display for Environment {
 
 impl Environment {
     pub fn from_program_id(program_id: &str) -> eyre::Result<Environment> {
-        if program_id.eq(&SERVICEABILITY_MAINNET_BETA_PUBKEY.to_string()) {
+        if program_id.eq(&ENV_MAINNET_BETA_SERVICEABILITY_PUBKEY.to_string()) {
             return Ok(Environment::MainnetBeta);
-        } else if program_id.eq(&SERVICEABILITY_TESTNET_PUBKEY.to_string()) {
+        } else if program_id.eq(&ENV_TESTNET_SERVICEABILITY_PUBKEY.to_string()) {
             return Ok(Environment::Testnet);
-        } else if program_id.eq(&SERVICEABILITY_DEVNET_PUBKEY.to_string()) {
+        } else if program_id.eq(&ENV_DEVNET_SERVICEABILITY_PUBKEY.to_string()) {
             return Ok(Environment::Devnet);
-        } else if program_id.eq(&SERVICEABILITY_LOCALNET_PUBKEY.to_string()) {
+        } else if program_id.eq(&ENV_LOCAL_SERVICEABILITY_PUBKEY.to_string()) {
             return Ok(Environment::Local);
         }
         Err(eyre::eyre!(
@@ -60,32 +60,32 @@ impl Environment {
     pub fn config(&self) -> eyre::Result<NetworkConfig> {
         let mut config = match self {
             Environment::MainnetBeta => NetworkConfig {
-                ledger_public_rpc_url: DOUBLEZERO_LEDGER_RPC_URL.to_string(),
-                ledger_public_ws_rpc_url: DOUBLEZERO_LEDGER_WS_RPC_URL.to_string(),
-                serviceability_program_id: SERVICEABILITY_MAINNET_BETA_PUBKEY,
-                telemetry_program_id: TELEMETRY_MAINNET_BETA_PUBKEY,
-                internet_latency_collector_pk: INTERNET_LATENCY_COLLECTOR_MAINNET_BETA_PUBKEY,
+                ledger_public_rpc_url: ENV_MAINNET_BETA_DOUBLEZERO_LEDGER_RPC_URL.to_string(),
+                ledger_public_ws_rpc_url: ENV_MAINNET_BETA_DOUBLEZERO_LEDGER_WS_RPC_URL.to_string(),
+                serviceability_program_id: ENV_MAINNET_BETA_SERVICEABILITY_PUBKEY,
+                telemetry_program_id: ENV_MAINNET_BETA_TELEMETRY_PUBKEY,
+                internet_latency_collector_pk: ENV_MAINNET_BETA_INTERNET_LATENCY_COLLECTOR_PUBKEY,
             },
             Environment::Testnet => NetworkConfig {
-                ledger_public_rpc_url: DOUBLEZERO_TESTNET_LEDGER_RPC_URL.to_string(),
-                ledger_public_ws_rpc_url: DOUBLEZERO_TESTNET_LEDGER_WS_RPC_URL.to_string(),
-                serviceability_program_id: SERVICEABILITY_TESTNET_PUBKEY,
-                telemetry_program_id: TELEMETRY_TESTNET_PUBKEY,
-                internet_latency_collector_pk: INTERNET_LATENCY_COLLECTOR_TESTNET_PUBKEY,
+                ledger_public_rpc_url: ENV_TESTNET_DOUBLEZERO_LEDGER_RPC_URL.to_string(),
+                ledger_public_ws_rpc_url: ENV_TESTNET_DOUBLEZERO_LEDGER_WS_RPC_URL.to_string(),
+                serviceability_program_id: ENV_TESTNET_SERVICEABILITY_PUBKEY,
+                telemetry_program_id: ENV_TESTNET_TELEMETRY_PUBKEY,
+                internet_latency_collector_pk: ENV_TESTNET_INTERNET_LATENCY_COLLECTOR_PUBKEY,
             },
             Environment::Devnet => NetworkConfig {
-                ledger_public_rpc_url: DOUBLEZERO_DEVNET_LEDGER_RPC_URL.to_string(),
-                ledger_public_ws_rpc_url: DOUBLEZERO_DEVNET_LEDGER_WS_RPC_URL.to_string(),
-                serviceability_program_id: SERVICEABILITY_DEVNET_PUBKEY,
-                telemetry_program_id: TELEMETRY_DEVNET_PUBKEY,
-                internet_latency_collector_pk: INTERNET_LATENCY_COLLECTOR_DEVNET_PUBKEY,
+                ledger_public_rpc_url: ENV_DEVNET_DOUBLEZERO_LEDGER_RPC_URL.to_string(),
+                ledger_public_ws_rpc_url: ENV_LEDGER_DOUBLEZERO_DEVNET_WS_RPC_URL.to_string(),
+                serviceability_program_id: ENV_DEVNET_SERVICEABILITY_PUBKEY,
+                telemetry_program_id: ENV_DEVNET_TELEMETRY_PUBKEY,
+                internet_latency_collector_pk: ENV_DEVNET_INTERNET_LATENCY_COLLECTOR_PUBKEY,
             },
             Environment::Local => NetworkConfig {
-                ledger_public_rpc_url: DOUBLEZERO_LOCALNET_LEDGER_RPC_URL.to_string(),
-                ledger_public_ws_rpc_url: DOUBLEZERO_LOCALNET_LEDGER_WS_RPC_URL.to_string(),
-                serviceability_program_id: SERVICEABILITY_LOCALNET_PUBKEY,
-                telemetry_program_id: TELEMETRY_LOCALNET_PUBKEY,
-                internet_latency_collector_pk: INTERNET_LATENCY_COLLECTOR_LOCALNET_PUBKEY,
+                ledger_public_rpc_url: ENV_LOCAL_DOUBLEZERO_LEDGER_RPC_URL.to_string(),
+                ledger_public_ws_rpc_url: ENV_LOCAL_DOUBLEZERO_LEDGER_WS_RPC_URL.to_string(),
+                serviceability_program_id: ENV_LOCAL_SERVICEABILITY_PUBKEY,
+                telemetry_program_id: ENV_LOCAL_TELEMETRY_PUBKEY,
+                internet_latency_collector_pk: ENV_LOCAL_INTERNET_LATENCY_COLLECTOR_PUBKEY,
             },
         };
 
@@ -248,14 +248,16 @@ mod tests {
     #[test]
     #[serial]
     fn test_environment_match_environment() {
-        let env =
-            Environment::from_program_id(&SERVICEABILITY_MAINNET_BETA_PUBKEY.to_string()).unwrap();
+        let env = Environment::from_program_id(&ENV_MAINNET_BETA_SERVICEABILITY_PUBKEY.to_string())
+            .unwrap();
         assert_eq!(env, Environment::MainnetBeta);
 
-        let env = Environment::from_program_id(&SERVICEABILITY_TESTNET_PUBKEY.to_string()).unwrap();
+        let env =
+            Environment::from_program_id(&ENV_TESTNET_SERVICEABILITY_PUBKEY.to_string()).unwrap();
         assert_eq!(env, Environment::Testnet);
 
-        let env = Environment::from_program_id(&SERVICEABILITY_DEVNET_PUBKEY.to_string()).unwrap();
+        let env =
+            Environment::from_program_id(&ENV_DEVNET_SERVICEABILITY_PUBKEY.to_string()).unwrap();
         assert_eq!(env, Environment::Devnet);
 
         let err = Environment::from_program_id(&Pubkey::default().to_string());

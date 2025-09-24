@@ -68,7 +68,9 @@ func Run(ctx context.Context, sockFile string, enableLatencyProbing bool, progra
 			"program_id": programId,
 			"rpc_url":    rpcEndpoint,
 		}
-		_ = json.NewEncoder(w).Encode(resp)
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			http.Error(w, "failed to encode response", http.StatusInternalServerError)
+		}
 	})
 
 	opts := []api.Option{

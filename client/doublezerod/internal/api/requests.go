@@ -6,6 +6,7 @@ import (
 	"net"
 	"slices"
 
+	"github.com/gagliardetto/solana-go"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
 )
 
@@ -64,7 +65,8 @@ func (u *UserType) UnmarshalJSON(b []byte) error {
 }
 
 type RemoveRequest struct {
-	UserType UserType `json:"user_type"`
+	ProgramID solana.PublicKey `json:"program_id"`
+	UserType  UserType         `json:"user_type"`
 }
 
 func (r *RemoveRequest) Validate() error {
@@ -75,16 +77,17 @@ func (r *RemoveRequest) Validate() error {
 }
 
 type ProvisionRequest struct {
-	UserType           UserType     `json:"user_type"`
-	TunnelSrc          net.IP       `json:"tunnel_src"`
-	TunnelDst          net.IP       `json:"tunnel_dst"`
-	TunnelNet          *net.IPNet   `json:"tunnel_net"`
-	DoubleZeroIP       net.IP       `json:"doublezero_ip"`
-	DoubleZeroPrefixes []*net.IPNet `json:"doublezero_prefixes"`
-	MulticastSubGroups []net.IP     `json:"mcast_sub_groups"`
-	MulticastPubGroups []net.IP     `json:"mcast_pub_groups"`
-	BgpLocalAsn        uint32       `json:"bgp_local_asn"`
-	BgpRemoteAsn       uint32       `json:"bgp_remote_asn"`
+	ProgramID          solana.PublicKey `json:"program_id"`
+	UserType           UserType         `json:"user_type"`
+	TunnelSrc          net.IP           `json:"tunnel_src"`
+	TunnelDst          net.IP           `json:"tunnel_dst"`
+	TunnelNet          *net.IPNet       `json:"tunnel_net"`
+	DoubleZeroIP       net.IP           `json:"doublezero_ip"`
+	DoubleZeroPrefixes []*net.IPNet     `json:"doublezero_prefixes"`
+	MulticastSubGroups []net.IP         `json:"mcast_sub_groups"`
+	MulticastPubGroups []net.IP         `json:"mcast_pub_groups"`
+	BgpLocalAsn        uint32           `json:"bgp_local_asn"`
+	BgpRemoteAsn       uint32           `json:"bgp_remote_asn"`
 }
 
 func (p *ProvisionRequest) Validate() error {
@@ -150,10 +153,30 @@ type StatusRequest struct {
 }
 
 type StatusResponse struct {
+	ProgramID solana.PublicKey `json:"program_id"`
+	Results   []*ServiceStatus `json:"results"`
+}
+
+type ServiceStatus struct {
 	TunnelName       string      `json:"tunnel_name"`
 	TunnelSrc        net.IP      `json:"tunnel_src"`
 	TunnelDst        net.IP      `json:"tunnel_dst"`
 	DoubleZeroIP     net.IP      `json:"doublezero_ip"`
 	DoubleZeroStatus bgp.Session `json:"doublezero_status"`
 	UserType         UserType    `json:"user_type"`
+}
+
+type SetConfigRequest struct {
+	LedgerRPCURL string `json:"ledger_rpc_url"`
+	ProgramID    string `json:"program_id"`
+}
+
+func (r *SetConfigRequest) Validate() error {
+	if r.LedgerRPCURL == "" {
+		return fmt.Errorf("ledger_rpc_url is required")
+	}
+	if r.ProgramID == "" {
+		return fmt.Errorf("program_id is required")
+	}
+	return nil
 }

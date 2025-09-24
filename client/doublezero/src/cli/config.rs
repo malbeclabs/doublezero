@@ -1,6 +1,6 @@
+use crate::command::setconfig::SetConfigCliCommand;
 use clap::{Args, Subcommand};
-
-use doublezero_cli::config::{get::GetConfigCliCommand, set::SetConfigCliCommand};
+use doublezero_cli::config::get::GetConfigCliCommand;
 
 #[derive(Args, Debug)]
 pub struct ConfigCliCommand {

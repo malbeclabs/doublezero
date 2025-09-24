@@ -1613,6 +1613,7 @@ name = "doublezero-config"
 version = "0.6.4"
 dependencies = [
  "eyre",
+ "serde",
  "serial_test",
  "solana-sdk",
 ]

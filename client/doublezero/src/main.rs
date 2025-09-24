@@ -92,7 +92,7 @@ async fn main() -> eyre::Result<()> {
         Command::Init(args) => args.execute(&client, &mut handle),
         Command::Config(command) => match command.command {
             ConfigCommands::Get(args) => args.execute(&client, &mut handle),
-            ConfigCommands::Set(args) => args.execute(&client, &mut handle),
+            ConfigCommands::Set(args) => args.execute(&client, &mut handle).await,
         },
         Command::GlobalConfig(command) => match command.command {
             GlobalConfigCommands::Set(args) => args.execute(&client, &mut handle),

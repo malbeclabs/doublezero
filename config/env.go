@@ -8,9 +8,12 @@ import (
 )
 
 const (
+	EnvM           = "m"
 	EnvMainnetBeta = "mainnet-beta"
 	EnvMainnet     = "mainnet"
+	EnvT           = "t"
 	EnvTestnet     = "testnet"
+	EnvD           = "d"
 	EnvDevnet      = "devnet"
 )
 
@@ -25,7 +28,7 @@ type NetworkConfig struct {
 func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 	var config *NetworkConfig
 	switch env {
-	case EnvMainnetBeta, EnvMainnet:
+	case EnvMainnetBeta, EnvMainnet, EnvM:
 		serviceabilityProgramID, err := solana.PublicKeyFromBase58(MainnetServiceabilityProgramID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse serviceability program ID: %w", err)
@@ -45,7 +48,7 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 			InternetLatencyCollectorPK: internetLatencyCollectorPK,
 			DeviceLocalASN:             MainnetDeviceLocalASN,
 		}
-	case EnvTestnet:
+	case EnvTestnet, EnvT:
 		serviceabilityProgramID, err := solana.PublicKeyFromBase58(TestnetServiceabilityProgramID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse serviceability program ID: %w", err)
@@ -65,7 +68,7 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 			InternetLatencyCollectorPK: internetLatencyCollectorPK,
 			DeviceLocalASN:             TestnetDeviceLocalASN,
 		}
-	case EnvDevnet:
+	case EnvDevnet, EnvD:
 		serviceabilityProgramID, err := solana.PublicKeyFromBase58(DevnetServiceabilityProgramID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse serviceability program ID: %w", err)

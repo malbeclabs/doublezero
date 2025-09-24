@@ -1,6 +1,7 @@
 use crate::command::util;
 use clap::Args;
 use doublezero_cli::doublezerocommand::CliCommand;
+use doublezero_config::Environment;
 use doublezero_sdk::{commands::device::list::ListDeviceCommand, DeviceStatus};
 use solana_sdk::pubkey::Pubkey;
 use std::str::FromStr;
@@ -23,8 +24,21 @@ impl LatencyCliCommand {
         check_doublezero(&controller, None)?;
 
         let devices = client.list_device(ListDeviceCommand)?;
-        let mut latencies = controller.latency().await.map_err(|e| eyre::eyre!(e))?;
+        let latency = controller.latency().await.map_err(|e| eyre::eyre!(e))?;
 
+        let env = client.get_environment();
+        let daemon_env = Environment::from_program_id(&latency.program_id)?;
+
+        if env != daemon_env {
+            eyre::bail!(
+                "Environment mismatch: CLI is set to {:?}, but daemon is set to {:?}. \
+            Please reconfigure with: doublezero config set --env [mainnet-beta|testnet]",
+                env,
+                daemon_env
+            );
+        }
+
+        let mut latencies = latency.results;
         // Filter the active devices
         latencies.retain(|l| {
             Pubkey::from_str(&l.device_pk)

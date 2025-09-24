@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/gagliardetto/solana-go"
 	"github.com/google/go-cmp/cmp"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/manager"
@@ -41,6 +42,7 @@ func TestDbNew(t *testing.T) {
 					},
 					BgpLocalAsn:  65000,
 					BgpRemoteAsn: 65001,
+					
 					UserType:     api.UserTypeEdgeFiltering,
 				},
 			},
@@ -165,7 +167,11 @@ func TestDbSaveState(t *testing.T) {
 					},
 					BgpLocalAsn:  65000,
 					BgpRemoteAsn: 65001,
-					UserType:     api.UserTypeEdgeFiltering,
+					ProgramID: func() solana.PublicKey {
+						pk, _ := solana.PublicKeyFromBase58("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS")
+						return pk
+					}(),
+					UserType: api.UserTypeEdgeFiltering,
 				},
 			},
 			goldenFile:  "./fixtures/doublezerod.edgefiltering.json",
@@ -182,7 +188,11 @@ func TestDbSaveState(t *testing.T) {
 					DoubleZeroPrefixes: []*net.IPNet{},
 					BgpLocalAsn:        65000,
 					BgpRemoteAsn:       65001,
-					UserType:           api.UserTypeIBRL,
+					ProgramID: func() solana.PublicKey {
+						pk, _ := solana.PublicKeyFromBase58("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS")
+						return pk
+					}(),
+					UserType: api.UserTypeIBRL,
 				},
 			},
 			goldenFile:  "./fixtures/doublezerod.ibrl.json",
@@ -199,7 +209,11 @@ func TestDbSaveState(t *testing.T) {
 					DoubleZeroPrefixes: []*net.IPNet{},
 					BgpLocalAsn:        65000,
 					BgpRemoteAsn:       65001,
-					UserType:           api.UserTypeIBRL,
+					ProgramID: func() solana.PublicKey {
+						pk, _ := solana.PublicKeyFromBase58("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS")
+						return pk
+					}(),
+					UserType: api.UserTypeIBRL,
 				},
 				{
 					TunnelSrc:          net.IP{1, 1, 1, 1},
@@ -209,7 +223,11 @@ func TestDbSaveState(t *testing.T) {
 					DoubleZeroPrefixes: []*net.IPNet{},
 					BgpLocalAsn:        65000,
 					BgpRemoteAsn:       65001,
-					UserType:           api.UserTypeMulticast,
+					ProgramID: func() solana.PublicKey {
+						pk, _ := solana.PublicKeyFromBase58("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS")
+						return pk
+					}(),
+					UserType: api.UserTypeMulticast,
 				},
 			},
 

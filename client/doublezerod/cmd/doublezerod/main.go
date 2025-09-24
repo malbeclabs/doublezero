@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
 	"log/slog"
 	"net"
 	"net/http"
@@ -12,6 +11,8 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/gagliardetto/solana-go"
+	clientconfig "github.com/malbeclabs/doublezero/client/doublezerod/internal/config"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/runtime"
 	"github.com/malbeclabs/doublezero/config"
 	"github.com/prometheus/client_golang/prometheus"
@@ -19,8 +20,14 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
+const (
+	defaultSockFile   = "/var/run/doublezerod/doublezerod.sock"
+	defaultConfigPath = "/var/run/doublezerod/config.json"
+)
+
 var (
-	sockFile             = flag.String("sock-file", "/var/run/doublezerod/doublezerod.sock", "path to doublezerod domain socket")
+	sockFile             = flag.String("sock-file", defaultSockFile, "path to doublezerod domain socket")
+	configPath           = flag.String("config", defaultConfigPath, "path to doublezerod config file")
 	enableLatencyProbing = flag.Bool("latency-probing", true, "enable latency probing to doublezero nodes")
 	versionFlag          = flag.Bool("version", false, "build version")
 	env                  = flag.String("env", config.EnvTestnet, "environment to use")
@@ -47,8 +54,8 @@ func main() {
 			Level: slog.LevelDebug,
 		}
 	}
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, opts))
-	slog.SetDefault(logger)
+	log := slog.New(slog.NewJSONHandler(os.Stdout, opts))
+	slog.SetDefault(log)
 
 	if *versionFlag {
 		fmt.Printf("build: %s\n", commit)
@@ -98,14 +105,14 @@ func main() {
 		go func() {
 			listener, err := net.Listen("tcp", *metricsAddr)
 			if err != nil {
-				slog.Error("Failed to start prometheus metrics listener", "error", err)
+				log.Error("Failed to start prometheus metrics listener", "error", err)
 				os.Exit(1)
 			}
 			http.Handle("/metrics", promhttp.Handler())
 
-			slog.Info("prometheus metrics server started", "address", listener.Addr().String())
+			log.Info("prometheus metrics server started", "address", listener.Addr().String())
 			if err := http.Serve(listener, nil); err != nil {
-				log.Printf("Failed to start prometheus metrics server: %v", err)
+				log.Error("Failed to start prometheus metrics server", "error", err)
 			}
 		}()
 	}
@@ -113,8 +120,32 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := runtime.Run(ctx, *sockFile, *enableLatencyProbing, *programId, *rpcEndpoint, *probeInterval, *cacheUpdateInterval); err != nil {
-		slog.Error("runtime error", "error", err)
+	// If program ID or RPC endpoint flags are set, but the config file is not present, then
+	// initialize it with the flags. Otherwise, ignore the flags and log a warning.
+	if _, err := os.Stat(*configPath); os.IsNotExist(err) {
+		if *programId != "" && *rpcEndpoint == "" {
+			log.Error("If program ID is set, RPC endpoint must also be set")
+			os.Exit(1)
+		}
+		if *rpcEndpoint != "" && *programId == "" {
+			log.Error("If RPC endpoint is set, program ID must also be set")
+			os.Exit(1)
+		}
+		if *programId != "" && *rpcEndpoint != "" {
+			log.Info("Initializing config file with flags", "program-id", *programId, "rpc-endpoint", *rpcEndpoint)
+			cfg := clientconfig.New(*configPath)
+			_, err := cfg.Update(*rpcEndpoint, solana.MustPublicKeyFromBase58(*programId))
+			if err != nil {
+				log.Error("Failed to save config", "error", err)
+				os.Exit(1)
+			}
+		}
+	} else if *programId != "" || *rpcEndpoint != "" {
+		log.Warn("Ignoring program-id and solana-rpc-endpoint flags, config file is used instead")
+	}
+
+	if err := runtime.Run(ctx, log, *sockFile, *enableLatencyProbing, *configPath, *probeInterval, *cacheUpdateInterval); err != nil {
+		log.Error("runtime error", "error", err)
 		os.Exit(1)
 	}
 }

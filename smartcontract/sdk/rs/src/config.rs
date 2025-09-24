@@ -1,3 +1,4 @@
+use doublezero_config::Environment;
 use serde::{Deserialize, Serialize};
 use solana_client::client_error::reqwest::Url;
 use solana_sdk::signature::Keypair;
@@ -31,6 +32,7 @@ fn get_cfg_filename() -> &'static Option<PathBuf> {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ClientConfig {
+    pub environment: Environment,
     pub json_rpc_url: String,
     pub websocket_url: Option<String>,
     pub keypair_path: PathBuf,
@@ -40,19 +42,38 @@ pub struct ClientConfig {
 
 impl Default for ClientConfig {
     fn default() -> Self {
+        let env = Environment::default();
+        let config = env.config().unwrap();
+
         ClientConfig {
-            json_rpc_url: doublezero_config::Environment::Testnet
-                .config()
-                .unwrap()
-                .ledger_public_rpc_url,
+            environment: env,
+            json_rpc_url: config.ledger_public_rpc_url,
             websocket_url: None,
             keypair_path: {
                 let mut keypair_path = dirs_next::home_dir().unwrap_or_default();
                 keypair_path.extend([".config", "doublezero", "id.json"]);
                 keypair_path
             },
-            program_id: None,
+            program_id: Some(config.serviceability_program_id.to_string()),
             address_labels: HashMap::new(),
+        }
+    }
+}
+
+impl ClientConfig {
+    pub fn match_environment(&mut self) {
+        if let Ok(env) =
+            Environment::from_program_id(self.program_id.as_ref().unwrap_or(&"".to_string()))
+        {
+            self.environment = env;
+        } else {
+            let env = Environment::default();
+            self.environment = env;
+            if let Ok(config) = env.config() {
+                self.json_rpc_url = config.ledger_public_rpc_url;
+                self.websocket_url = None;
+                self.program_id = Some(config.serviceability_program_id.to_string());
+            }
         }
     }
 }
@@ -63,7 +84,9 @@ pub fn read_doublezero_config() -> eyre::Result<(PathBuf, ClientConfig)> {
         Some(filename) => match fs::read_to_string(filename) {
             Err(_) => Ok((filename.clone(), ClientConfig::default())),
             Ok(config_content) => {
-                let config: ClientConfig = serde_yaml::from_str(&config_content)?;
+                let mut config: ClientConfig = serde_yaml::from_str(&config_content)?;
+                config.match_environment();
+
                 Ok((filename.clone(), config))
             }
         },
@@ -95,7 +118,7 @@ pub fn convert_url_moniker(url: String) -> String {
                 .unwrap()
                 .ledger_public_rpc_url
         }
-        "localhost" => crate::consts::LOCALHOST_URL.to_string(),
+        "local" => crate::consts::LOCAL_URL.to_string(),
         "devnet" => crate::consts::DEVNET_URL.to_string(),
         "testnet" => crate::consts::TESTNET_URL.to_string(),
         "mainnet-beta" => crate::consts::MAINNET_BETA_URL.to_string(),
@@ -111,7 +134,7 @@ pub fn convert_ws_moniker(url: String) -> String {
                 .unwrap()
                 .ledger_public_ws_rpc_url
         }
-        "localhost" => crate::consts::LOCALHOST_WS.to_string(),
+        "local" => crate::consts::LOCAL_WS.to_string(),
         "devnet" => crate::consts::DEVNET_WS.to_string(),
         "testnet" => crate::consts::TESTNET_WS.to_string(),
         "mainnet-beta" => crate::consts::MAINNET_BETA_WS.to_string(),
@@ -121,8 +144,10 @@ pub fn convert_ws_moniker(url: String) -> String {
 
 pub fn convert_program_moniker(pubkey: String) -> String {
     match pubkey.as_str() {
+        "mainnet-beta" => crate::mainnet::program_id::id().to_string(),
         "devnet" => crate::devnet::program_id::id().to_string(),
         "testnet" => crate::testnet::program_id::id().to_string(),
+        "local" => crate::local::program_id::id().to_string(),
         _ => pubkey,
     }
 }
@@ -215,6 +240,7 @@ mod tests {
         env::set_var("DOUBLEZERO_CONFIG_FILE", &config_path);
 
         let cfg = ClientConfig {
+            environment: Environment::Devnet,
             json_rpc_url: "http://localhost:8899".into(),
             websocket_url: None,
             keypair_path: keypair_path.clone(),
@@ -244,6 +270,7 @@ mod tests {
         env::set_var("DOUBLEZERO_CONFIG_FILE", &config_path);
 
         let cfg = ClientConfig {
+            environment: Environment::Local,
             json_rpc_url: "http://localhost:8899".into(),
             websocket_url: None,
             keypair_path: keypair_path.clone(),
@@ -269,6 +296,7 @@ mod tests {
         env::set_var("DOUBLEZERO_CONFIG_FILE", &config_path);
 
         let cfg = ClientConfig {
+            environment: Environment::Local,
             json_rpc_url: "http://localhost:8899".into(),
             websocket_url: None,
             keypair_path: keypair_path.clone(),

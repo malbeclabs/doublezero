@@ -38,7 +38,7 @@ pub fn get_public_ipv4() -> Result<String, Box<dyn std::error::Error>> {
     let mut stream = TcpStream::connect(addrs)?;
 
     // Send an HTTP GET request to retrieve only IPv4
-    let request = "GET /ip HTTP/1.1\r\nHost: ifconfig.me\r\nConnection: close\r\n\r\n";
+    let request = "GET /ip HTTP/1.1\nHost: ifconfig.me\nConnection: close\n\n";
     stream.write_all(request.as_bytes())?;
 
     // Read the response from the server
@@ -49,7 +49,7 @@ pub fn get_public_ipv4() -> Result<String, Box<dyn std::error::Error>> {
     let response_text = str::from_utf8(&response)?;
 
     // The IP will be in the body after the HTTP headers
-    if let Some(body_start) = response_text.find("\r\n\r\n") {
+    if let Some(body_start) = response_text.find("\n\n") {
         let ip = &response_text[body_start + 4..].trim();
 
         return Ok(ip.to_string());

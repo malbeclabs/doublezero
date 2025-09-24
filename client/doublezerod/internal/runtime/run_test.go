@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/netip"
@@ -81,29 +82,36 @@ func (p *dummyPlugin) handleUpdate(peer corebgp.PeerConfig, u []byte) *corebgp.N
 }
 
 func TestEndToEnd_IBRL_Basic(t *testing.T) {
-	runIBRLTest(t, api.UserTypeIBRL, map[string]any{
+	runIBRLTest(t, api.UserTypeIBRL,
+		map[string]any{
+			"program_id": "Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS",
+			"services": map[string]any{
 
-		"tunnel_src":     "192.168.1.0",
-		"tunnel_dst":     "192.168.1.1",
-		"tunnel_net":     "169.254.0.0/31",
-		"doublezero_ip":  "192.168.1.0",
-		"user_type":      "IBRL",
-		"bgp_local_asn":  65000,
-		"bgp_remote_asn": 65342,
-	}, "./fixtures/doublezerod.ibrl.json")
+				"tunnel_src":     "192.168.1.0",
+				"tunnel_dst":     "192.168.1.1",
+				"tunnel_net":     "169.254.0.0/31",
+				"doublezero_ip":  "192.168.1.0",
+				"user_type":      "IBRL",
+				"bgp_local_asn":  65000,
+				"bgp_remote_asn": 65342,
+			},
+		}, "./fixtures/doublezerod.ibrl.json")
 }
 
 func TestEndToEnd_IBRL_WithAllocatedIP(t *testing.T) {
-	runIBRLTest(t, api.UserTypeIBRLWithAllocatedIP, map[string]any{
-
-		"tunnel_src":     "192.168.1.0",
-		"tunnel_dst":     "192.168.1.1",
-		"tunnel_net":     "169.254.0.0/31",
-		"doublezero_ip":  "192.168.1.0",
-		"user_type":      "IBRLWithAllocatedIP",
-		"bgp_local_asn":  65000,
-		"bgp_remote_asn": 65342,
-	}, "./fixtures/doublezerod.ibrl.with.allocated.ip.json")
+	runIBRLTest(t, api.UserTypeIBRLWithAllocatedIP,
+		map[string]any{
+			"program_id": "Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS",
+			"services": map[string]any{
+				"tunnel_src":     "192.168.1.0",
+				"tunnel_dst":     "192.168.1.1",
+				"tunnel_net":     "169.254.0.0/31",
+				"doublezero_ip":  "192.168.1.0",
+				"user_type":      "IBRLWithAllocatedIP",
+				"bgp_local_asn":  65000,
+				"bgp_remote_asn": 65342,
+			},
+		}, "./fixtures/doublezerod.ibrl.with.allocated.ip.json")
 }
 
 func runIBRLTest(t *testing.T, userType api.UserType, provisioningRequest map[string]any, goldenStateFile string) {
@@ -157,9 +165,9 @@ func runIBRLTest(t *testing.T, userType api.UserType, provisioningRequest map[st
 
 	t.Run("IBRL", func(t *testing.T) {
 		sockFile := filepath.Join(rootPath, "doublezerod.sock")
+		configFile := filepath.Join(rootPath, "config.json")
 		go func() {
-			programId := ""
-			err := runtime.Run(ctx, sockFile, false, programId, "", 30, 30)
+			err := runtime.Run(ctx, newTestLogger(t), sockFile, false, configFile, 30, 30)
 			errChan <- err
 		}()
 
@@ -171,7 +179,7 @@ func runIBRLTest(t *testing.T, userType api.UserType, provisioningRequest map[st
 			},
 		}
 
-		t.Run("start_runtime", func(t *testing.T) {
+		if !t.Run("start_runtime", func(t *testing.T) {
 			select {
 			case err := <-errChan:
 				if err != nil {
@@ -179,9 +187,11 @@ func runIBRLTest(t *testing.T, userType api.UserType, provisioningRequest map[st
 				}
 			case <-time.After(5 * time.Second):
 			}
-		})
+		}) {
+			t.Fatalf("error starting runtime")
+		}
 
-		t.Run("send_provision_request", func(t *testing.T) {
+		if !t.Run("send_provision_request", func(t *testing.T) {
 			url, err := url.JoinPath("http://localhost/", "provision")
 			if err != nil {
 				t.Fatalf("error creating url: %v", err)
@@ -202,9 +212,11 @@ func runIBRLTest(t *testing.T, userType api.UserType, provisioningRequest map[st
 			if string(got) != want {
 				t.Fatalf("wrong response: %s", string(got))
 			}
-		})
+		}) {
+			t.Fatalf("error sending provision request")
+		}
 
-		t.Run("verify_tunnel_is_up", func(t *testing.T) {
+		if !t.Run("verify_tunnel_is_up", func(t *testing.T) {
 			tun, err := nl.LinkByName("doublezero0")
 			if err != nil {
 				t.Fatalf("error fetching tunnel status: %v", err)
@@ -218,9 +230,11 @@ func runIBRLTest(t *testing.T, userType api.UserType, provisioningRequest map[st
 			if tun.Attrs().MTU != 1476 {
 				t.Fatalf("tunnel mtu should be 1476; got %d", tun.Attrs().MTU)
 			}
-		})
+		}) {
+			t.Fatalf("error verifying tunnel is up")
+		}
 
-		t.Run("verify_routes_are_installed", func(t *testing.T) {
+		if !t.Run("verify_routes_are_installed", func(t *testing.T) {
 			time.Sleep(5 * time.Second)
 			got, err := nl.RouteListFiltered(nl.FAMILY_V4, &nl.Route{Protocol: unix.RTPROT_BGP}, nl.RT_FILTER_PROTOCOL)
 			if err != nil {
@@ -261,9 +275,11 @@ func runIBRLTest(t *testing.T, userType api.UserType, provisioningRequest map[st
 			if diff := cmp.Diff(want, got); diff != "" {
 				t.Fatalf("Route mismatch (-want +got): %s\n", diff)
 			}
-		})
+		}) {
+			t.Fatalf("error verifying routes are installed")
+		}
 
-		t.Run("verify_state_file_is_created", func(t *testing.T) {
+		if !t.Run("verify_state_file_is_created", func(t *testing.T) {
 			got, err := os.ReadFile(filepath.Join(rootPath, "doublezerod", "doublezerod.json"))
 			if err != nil {
 				t.Fatalf("error reading state file: %v", err)
@@ -275,9 +291,11 @@ func runIBRLTest(t *testing.T, userType api.UserType, provisioningRequest map[st
 			if diff := cmp.Diff(string(want), string(got)); diff != "" {
 				t.Fatalf("State mismatch (-want +got): %s\n", diff)
 			}
-		})
+		}) {
+			t.Fatalf("error verifying state file is created")
+		}
 
-		t.Run("verify_routes_flushed_on_session_down_event", func(t *testing.T) {
+		if !t.Run("verify_routes_flushed_on_session_down_event", func(t *testing.T) {
 			if userType == api.UserTypeIBRLWithAllocatedIP {
 				t.Skip("we don't flush routes in IBRLWithAllocatedIP mode")
 			}
@@ -361,9 +379,11 @@ func runIBRLTest(t *testing.T, userType api.UserType, provisioningRequest map[st
 			if diff := cmp.Diff(want, got); diff != "" {
 				t.Fatalf("Route mismatch (-want +got): %s\n", diff)
 			}
-		})
+		}) {
+			t.Fatalf("error verifying routes flushed on session down event")
+		}
 
-		t.Run("stop_runtime", func(t *testing.T) {
+		if !t.Run("stop_runtime", func(t *testing.T) {
 			cancel()
 			select {
 			case err := <-errChan:
@@ -373,18 +393,19 @@ func runIBRLTest(t *testing.T, userType api.UserType, provisioningRequest map[st
 			case <-time.After(5 * time.Second):
 				log.Fatalf("timed out waiting for close")
 			}
-		})
+		}) {
+			t.Fatalf("error stopping runtime")
+		}
 
 		ctx, cancel = context.WithCancel(context.Background())
 		go func() {
-			programId := ""
-			err := runtime.Run(ctx, sockFile, false, programId, "", 30, 30)
+			err := runtime.Run(ctx, newTestLogger(t), sockFile, false, configFile, 30, 30)
 			errChan <- err
 		}()
 
 		<-time.After(5 * time.Second)
 
-		t.Run("restart_runtime", func(t *testing.T) {
+		if !t.Run("restart_runtime", func(t *testing.T) {
 			select {
 			case err := <-errChan:
 				if err != nil {
@@ -392,9 +413,11 @@ func runIBRLTest(t *testing.T, userType api.UserType, provisioningRequest map[st
 				}
 			case <-time.After(5 * time.Second):
 			}
-		})
+		}) {
+			t.Fatalf("error restarting runtime: %v", <-errChan)
+		}
 
-		t.Run("state_recovery_verify_tunnel_is_up", func(t *testing.T) {
+		if !t.Run("state_recovery_verify_tunnel_is_up", func(t *testing.T) {
 			tun, err := nl.LinkByName("doublezero0")
 			if err != nil {
 				t.Fatalf("error fetching tunnel status: %v", err)
@@ -408,9 +431,11 @@ func runIBRLTest(t *testing.T, userType api.UserType, provisioningRequest map[st
 			if tun.Attrs().MTU != 1476 {
 				t.Fatalf("tunnel mtu should be 1476; got %d", tun.Attrs().MTU)
 			}
-		})
+		}) {
+			t.Fatalf("error verifying tunnel is up")
+		}
 
-		t.Run("send_remove_request", func(t *testing.T) {
+		if !t.Run("send_remove_request", func(t *testing.T) {
 			url, err := url.JoinPath("http://localhost/", "remove")
 			if err != nil {
 				t.Fatalf("error creating url: %v", err)
@@ -430,16 +455,20 @@ func runIBRLTest(t *testing.T, userType api.UserType, provisioningRequest map[st
 			if string(got) != want {
 				t.Fatalf("wrong response: %s", string(got))
 			}
-		})
+		}) {
+			t.Fatalf("error sending remove request")
+		}
 
-		t.Run("verify_tunnel_is_removed", func(t *testing.T) {
+		if !t.Run("verify_tunnel_is_removed", func(t *testing.T) {
 			_, err := nl.LinkByName("doublezero0")
 			if !errors.As(err, &nl.LinkNotFoundError{}) {
 				t.Fatalf("expected LinkNotFoundError; got: %v", err)
 			}
-		})
+		}) {
+			t.Fatalf("error verifying tunnel is removed")
+		}
 
-		t.Run("state_removal_stop_runtime", func(t *testing.T) {
+		if !t.Run("state_removal_stop_runtime", func(t *testing.T) {
 			cancel()
 			select {
 			case err := <-errChan:
@@ -449,9 +478,11 @@ func runIBRLTest(t *testing.T, userType api.UserType, provisioningRequest map[st
 			case <-time.After(5 * time.Second):
 				log.Fatalf("timed out waiting for close")
 			}
-		})
+		}) {
+			t.Fatalf("error stopping runtime")
+		}
 
-		t.Run("state_removal_verify_state_file_removed", func(t *testing.T) {
+		if !t.Run("state_removal_verify_state_file_removed", func(t *testing.T) {
 			path, _ := os.ReadFile(filepath.Join(rootPath, "doublezerod", "doublezerod.json"))
 
 			var p []*api.ProvisionRequest
@@ -463,7 +494,9 @@ func runIBRLTest(t *testing.T, userType api.UserType, provisioningRequest map[st
 				t.Fatalf("provisioned requests should be empty; got %+v", p)
 
 			}
-		})
+		}) {
+			t.Fatalf("error verifying state file is removed")
+		}
 	})
 }
 
@@ -492,9 +525,9 @@ func TestEndToEnd_EdgeFiltering(t *testing.T) {
 	}
 
 	sockFile := filepath.Join(rootPath, "doublezerod.sock")
+	configFile := filepath.Join(rootPath, "config.json")
 	go func() {
-		programId := ""
-		err := runtime.Run(ctx, sockFile, false, programId, "", 30, 30)
+		err := runtime.Run(ctx, newTestLogger(t), sockFile, false, configFile, 30, 30)
 		errChan <- err
 	}()
 
@@ -507,7 +540,7 @@ func TestEndToEnd_EdgeFiltering(t *testing.T) {
 	}
 
 	// case: clean start and provision tunnel
-	t.Run("start_runtime", func(t *testing.T) {
+	if !t.Run("start_runtime", func(t *testing.T) {
 		select {
 		case err := <-errChan:
 			if err != nil {
@@ -515,9 +548,11 @@ func TestEndToEnd_EdgeFiltering(t *testing.T) {
 			}
 		case <-time.After(5 * time.Second):
 		}
-	})
+	}) {
+		t.Fatalf("error starting runtime")
+	}
 
-	t.Run("send_provision_request", func(t *testing.T) {
+	if !t.Run("send_provision_request", func(t *testing.T) {
 		url, err := url.JoinPath("http://localhost/", "provision")
 		if err != nil {
 			t.Fatalf("error creating url: %v", err)
@@ -545,9 +580,11 @@ func TestEndToEnd_EdgeFiltering(t *testing.T) {
 		if string(got) != want {
 			t.Fatalf("wrong response: %s", string(got))
 		}
-	})
+	}) {
+		t.Fatalf("error sending provision request")
+	}
 
-	t.Run("verify_tunnel_is_up", func(t *testing.T) {
+	if !t.Run("verify_tunnel_is_up", func(t *testing.T) {
 		tun, err := nl.LinkByName("doublezero0")
 		if err != nil {
 			t.Fatalf("error fetching tunnel status: %v", err)
@@ -561,9 +598,11 @@ func TestEndToEnd_EdgeFiltering(t *testing.T) {
 		if tun.Attrs().MTU != 1476 {
 			t.Fatalf("tunnel mtu should be 1476; got %d", tun.Attrs().MTU)
 		}
-	})
+	}) {
+		t.Fatalf("error verifying tunnel is up")
+	}
 
-	t.Run("verify_ip_rules_created", func(t *testing.T) {
+	if !t.Run("verify_ip_rules_created", func(t *testing.T) {
 		// ip rule 100: from all to 3.0.0.0/24 table 100
 		rules, err := nl.RuleListFiltered(0, &nl.Rule{Priority: 100}, nl.RT_FILTER_PRIORITY)
 		if err != nil {
@@ -592,9 +631,11 @@ func TestEndToEnd_EdgeFiltering(t *testing.T) {
 		if rules[0].Table != 101 {
 			t.Fatalf("rule 100 should be looked up in table 100; got %d", rules[0].Table)
 		}
-	})
+	}) {
+		t.Fatalf("error verifying ip rules created")
+	}
 
-	t.Run("verify_default_route_created", func(t *testing.T) {
+	if !t.Run("verify_default_route_created", func(t *testing.T) {
 		route, err := nl.RouteListFiltered(0, &nl.Route{Table: 101}, nl.RT_FILTER_TABLE)
 		if err != nil {
 			t.Fatalf("error fetching routes: %v", err)
@@ -608,11 +649,13 @@ func TestEndToEnd_EdgeFiltering(t *testing.T) {
 		if !route[0].Gw.Equal(net.IP{169, 254, 0, 0}) {
 			t.Fatalf("route gw should be 169.254.0.0; got %s", route[0].Gw)
 		}
-	})
+	}) {
+		t.Fatalf("error verifying default route created")
+	}
 
 	// TODO: verify specific routes are created; this needs namespaces
 
-	t.Run("verify_state_file_is_created", func(t *testing.T) {
+	if !t.Run("verify_state_file_is_created", func(t *testing.T) {
 		got, err := os.ReadFile(filepath.Join(rootPath, "doublezerod", "doublezerod.json"))
 		if err != nil {
 			t.Fatalf("error reading state file: %v", err)
@@ -624,10 +667,12 @@ func TestEndToEnd_EdgeFiltering(t *testing.T) {
 		if diff := cmp.Diff(string(want), string(got)); diff != "" {
 			t.Fatalf("State mismatch (-want +got): %s\n", diff)
 		}
-	})
+	}) {
+		t.Fatalf("error verifying state file is created")
+	}
 
 	// case: restart and auto-recover state
-	t.Run("stop_runtime", func(t *testing.T) {
+	if !t.Run("stop_runtime", func(t *testing.T) {
 		cancel()
 		select {
 		case err := <-errChan:
@@ -637,18 +682,19 @@ func TestEndToEnd_EdgeFiltering(t *testing.T) {
 		case <-time.After(5 * time.Second):
 			log.Fatalf("timed out waiting for close")
 		}
-	})
+	}) {
+		t.Fatalf("error stopping runtime")
+	}
 
 	ctx, cancel = context.WithCancel(context.Background())
 	go func() {
-		programId := ""
-		err := runtime.Run(ctx, sockFile, false, programId, "", 30, 30)
+		err := runtime.Run(ctx, newTestLogger(t), sockFile, false, configFile, 30, 30)
 		errChan <- err
 	}()
 
 	<-time.After(5 * time.Second)
 
-	t.Run("restart_runtime", func(t *testing.T) {
+	if !t.Run("restart_runtime", func(t *testing.T) {
 		select {
 		case err := <-errChan:
 			if err != nil {
@@ -656,9 +702,11 @@ func TestEndToEnd_EdgeFiltering(t *testing.T) {
 			}
 		case <-time.After(10 * time.Second):
 		}
-	})
+	}) {
+		t.Fatalf("error restarting runtime")
+	}
 
-	t.Run("state_recovery_verify_tunnel_is_up", func(t *testing.T) {
+	if !t.Run("state_recovery_verify_tunnel_is_up", func(t *testing.T) {
 		tun, err := nl.LinkByName("doublezero0")
 		if err != nil {
 			t.Fatalf("error fetching tunnel status: %v", err)
@@ -672,9 +720,11 @@ func TestEndToEnd_EdgeFiltering(t *testing.T) {
 		if tun.Attrs().MTU != 1476 {
 			t.Fatalf("tunnel mtu should be 1476; got %d", tun.Attrs().MTU)
 		}
-	})
+	}) {
+		t.Fatalf("error verifying tunnel is up")
+	}
 
-	t.Run("state_recovery_verify_ip_rules_created", func(t *testing.T) {
+	if !t.Run("state_recovery_verify_ip_rules_created", func(t *testing.T) {
 		// ip rule 100: from all to 3.0.0.0/24 table 100
 		rules, err := nl.RuleListFiltered(0, &nl.Rule{Priority: 100}, nl.RT_FILTER_PRIORITY)
 		if err != nil {
@@ -703,9 +753,11 @@ func TestEndToEnd_EdgeFiltering(t *testing.T) {
 		if rules[0].Table != 101 {
 			t.Fatalf("rule 100 should be looked up in table 100; got %d", rules[0].Table)
 		}
-	})
+	}) {
+		t.Fatalf("error verifying ip rules created")
+	}
 
-	t.Run("state_recovery_verify_default_route_created", func(t *testing.T) {
+	if !t.Run("state_recovery_verify_default_route_created", func(t *testing.T) {
 		route, err := nl.RouteListFiltered(0, &nl.Route{Table: 101}, nl.RT_FILTER_TABLE)
 		if err != nil {
 			t.Fatalf("error fetching routes: %v", err)
@@ -719,11 +771,13 @@ func TestEndToEnd_EdgeFiltering(t *testing.T) {
 		if !route[0].Gw.Equal(net.IP{169, 254, 0, 0}) {
 			t.Fatalf("route gw should be 169.254.0.0; got %s", route[0].Gw)
 		}
-	})
+	}) {
+		t.Fatalf("error verifying default route created")
+	}
 	// TODO: verify specific routes are created; this needs namespaces
 
 	// case: remove tunnel
-	t.Run("send_remove_request", func(t *testing.T) {
+	if !t.Run("send_remove_request", func(t *testing.T) {
 		url, err := url.JoinPath("http://localhost/", "remove")
 		if err != nil {
 			t.Fatalf("error creating url: %v", err)
@@ -743,16 +797,20 @@ func TestEndToEnd_EdgeFiltering(t *testing.T) {
 		if string(got) != want {
 			t.Fatalf("wrong response: %s", string(got))
 		}
-	})
+	}) {
+		t.Fatalf("error sending remove request")
+	}
 
-	t.Run("verify_tunnel_is_removed", func(t *testing.T) {
+	if !t.Run("verify_tunnel_is_removed", func(t *testing.T) {
 		_, err := nl.LinkByName("doublezero0")
 		if !errors.As(err, &nl.LinkNotFoundError{}) {
 			t.Fatalf("expected LinkNotFoundError; got: %v", err)
 		}
-	})
+	}) {
+		t.Fatalf("error verifying tunnel is removed")
+	}
 
-	t.Run("verify_ip_rules_are_removed", func(t *testing.T) {
+	if !t.Run("verify_ip_rules_are_removed", func(t *testing.T) {
 		// ip rule 100: from all to 3.0.0.0/24 table 100
 		rules, err := nl.RuleListFiltered(0, &nl.Rule{Priority: 100}, nl.RT_FILTER_PRIORITY)
 		if err != nil {
@@ -769,9 +827,11 @@ func TestEndToEnd_EdgeFiltering(t *testing.T) {
 		if len(rules) != 0 {
 			t.Fatalf("wanted 0 rules found at priority 101; got %d: %+v", len(rules), rules)
 		}
-	})
+	}) {
+		t.Fatalf("error verifying ip rules are removed")
+	}
 
-	t.Run("verify_default_route_is_removed", func(t *testing.T) {
+	if !t.Run("verify_default_route_is_removed", func(t *testing.T) {
 		route, err := nl.RouteListFiltered(0, &nl.Route{Table: 101}, nl.RT_FILTER_TABLE)
 		if err != nil {
 			t.Fatalf("error fetching routes: %v", err)
@@ -779,11 +839,13 @@ func TestEndToEnd_EdgeFiltering(t *testing.T) {
 		if len(route) != 0 {
 			t.Fatalf("wanted 0 routes found in table 101; got %d: %+v", len(route), route)
 		}
-	})
+	}) {
+		t.Fatalf("error verifying default route is removed")
+	}
 
 	// TODO: verify specific routes are removed; this needs namespaces
 
-	t.Run("state_removal_stop_runtime", func(t *testing.T) {
+	if !t.Run("state_removal_stop_runtime", func(t *testing.T) {
 		cancel()
 		select {
 		case err := <-errChan:
@@ -793,9 +855,11 @@ func TestEndToEnd_EdgeFiltering(t *testing.T) {
 		case <-time.After(5 * time.Second):
 			log.Fatalf("timed out waiting for close")
 		}
-	})
+	}) {
+		t.Fatalf("error stopping runtime")
+	}
 
-	t.Run("state_removal_verify_state_file_removed", func(t *testing.T) {
+	if !t.Run("state_removal_verify_state_file_removed", func(t *testing.T) {
 		path, _ := os.ReadFile(filepath.Join(rootPath, "doublezerod", "doublezerod.json"))
 
 		var p []*api.ProvisionRequest
@@ -806,7 +870,9 @@ func TestEndToEnd_EdgeFiltering(t *testing.T) {
 		if len(p) != 0 {
 			t.Fatalf("provisioned requests should be empty; got %+v %s", p, string(path))
 		}
-	})
+	}) {
+		t.Fatalf("error verifying state file is removed")
+	}
 
 	// case: latency endpoint
 	// TODO: call latency endpoint
@@ -861,9 +927,9 @@ func TestMulticastPublisher(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	sockFile := filepath.Join(rootPath, "doublezerod.sock")
+	configFile := filepath.Join(rootPath, "config.json")
 	go func() {
-		programId := ""
-		err := runtime.Run(ctx, sockFile, false, programId, "", 30, 30)
+		err := runtime.Run(ctx, newTestLogger(t), sockFile, false, configFile, 30, 30)
 		errChan <- err
 	}()
 
@@ -876,7 +942,7 @@ func TestMulticastPublisher(t *testing.T) {
 	}
 
 	// case: clean start and provision tunnel
-	t.Run("start_runtime", func(t *testing.T) {
+	if !t.Run("start_runtime", func(t *testing.T) {
 		select {
 		case err := <-errChan:
 			if err != nil {
@@ -884,9 +950,11 @@ func TestMulticastPublisher(t *testing.T) {
 			}
 		case <-time.After(5 * time.Second):
 		}
-	})
+	}) {
+		t.Fatalf("error starting runtime")
+	}
 
-	t.Run("send_provision_request", func(t *testing.T) {
+	if !t.Run("send_provision_request", func(t *testing.T) {
 		url, err := url.JoinPath("http://localhost/", "provision")
 		if err != nil {
 			t.Fatalf("error creating url: %v", err)
@@ -917,9 +985,11 @@ func TestMulticastPublisher(t *testing.T) {
 		if string(got) != want {
 			t.Fatalf("wrong response: %s", string(got))
 		}
-	})
+	}) {
+		t.Fatalf("error sending provision request")
+	}
 
-	t.Run("verify_tunnel_is_up", func(t *testing.T) {
+	if !t.Run("verify_tunnel_is_up", func(t *testing.T) {
 		tun, err := nl.LinkByName("doublezero1")
 		if err != nil {
 			t.Fatalf("error fetching tunnel status: %v", err)
@@ -933,9 +1003,11 @@ func TestMulticastPublisher(t *testing.T) {
 		if tun.Attrs().MTU != 1476 {
 			t.Fatalf("tunnel mtu should be 1476; got %d", tun.Attrs().MTU)
 		}
-	})
+	}) {
+		t.Fatalf("error verifying tunnel is up")
+	}
 
-	t.Run("verify_doublezero_ip_is_added_to_tunnel", func(t *testing.T) {
+	if !t.Run("verify_doublezero_ip_is_added_to_tunnel", func(t *testing.T) {
 		tun, err := nl.LinkByName("doublezero1")
 		if err != nil {
 			t.Fatalf("error fetching tunnel info: %v", err)
@@ -954,9 +1026,11 @@ func TestMulticastPublisher(t *testing.T) {
 			}
 		}
 		t.Fatalf("addr 3.3.3.3/32 not found on tunnel doublezero1")
-	})
+	}) {
+		t.Fatalf("error verifying doublezero ip is added to tunnel")
+	}
 
-	t.Run("verify_routes_are_installed", func(t *testing.T) {
+	if !t.Run("verify_routes_are_installed", func(t *testing.T) {
 		got, err := nl.RouteListFiltered(nl.FAMILY_V4, &nl.Route{Dst: &net.IPNet{IP: net.IP{239, 0, 0, 1}, Mask: net.IPv4Mask(255, 255, 255, 255)}}, nl.RT_FILTER_DST)
 		if err != nil {
 			t.Fatalf("error fetching routes: %v", err)
@@ -983,9 +1057,11 @@ func TestMulticastPublisher(t *testing.T) {
 		if diff := cmp.Diff(want, got); diff != "" {
 			t.Fatalf("Route mismatch (-want +got): %s\n", diff)
 		}
-	})
+	}) {
+		t.Fatalf("error verifying routes are installed")
+	}
 
-	t.Run("verify_state_file_is_created", func(t *testing.T) {
+	if !t.Run("verify_state_file_is_created", func(t *testing.T) {
 		got, err := os.ReadFile(filepath.Join(rootPath, "doublezerod", "doublezerod.json"))
 		if err != nil {
 			t.Fatalf("error reading state file: %v", err)
@@ -997,9 +1073,11 @@ func TestMulticastPublisher(t *testing.T) {
 		if diff := cmp.Diff(string(want), string(got)); diff != "" {
 			t.Fatalf("State mismatch (-want +got): %s\n", diff)
 		}
-	})
+	}) {
+		t.Fatalf("error verifying state file is created")
+	}
 
-	t.Run("verify_bgp_session_is_up", func(t *testing.T) {
+	if !t.Run("verify_bgp_session_is_up", func(t *testing.T) {
 		up, err := waitForPeerStatus(httpClient, api.UserTypeMulticast, bgp.SessionStatusUp, 10*time.Second)
 		if err != nil {
 			t.Fatalf("error while waiting for peer status: %v", err)
@@ -1007,9 +1085,11 @@ func TestMulticastPublisher(t *testing.T) {
 		if !up {
 			t.Fatalf("timed out waiting for peer status of up")
 		}
-	})
+	}) {
+		t.Fatalf("error verifying bgp session is up")
+	}
 
-	t.Run("stop_runtime", func(t *testing.T) {
+	if !t.Run("stop_runtime", func(t *testing.T) {
 		cancel()
 		select {
 		case err := <-errChan:
@@ -1019,18 +1099,19 @@ func TestMulticastPublisher(t *testing.T) {
 		case <-time.After(5 * time.Second):
 			log.Fatalf("timed out waiting for close")
 		}
-	})
+	}) {
+		t.Fatalf("error stopping runtime")
+	}
 
 	ctx, cancel = context.WithCancel(context.Background())
 	go func() {
-		programId := ""
-		err := runtime.Run(ctx, sockFile, false, programId, "", 30, 30)
+		err := runtime.Run(ctx, newTestLogger(t), sockFile, false, configFile, 30, 30)
 		errChan <- err
 	}()
 
 	<-time.After(5 * time.Second)
 
-	t.Run("restart_runtime", func(t *testing.T) {
+	if !t.Run("restart_runtime", func(t *testing.T) {
 		select {
 		case err := <-errChan:
 			if err != nil {
@@ -1038,9 +1119,11 @@ func TestMulticastPublisher(t *testing.T) {
 			}
 		case <-time.After(10 * time.Second):
 		}
-	})
+	}) {
+		t.Fatalf("error restarting runtime")
+	}
 
-	t.Run("state_recovery_verify_tunnel_is_up", func(t *testing.T) {
+	if !t.Run("state_recovery_verify_tunnel_is_up", func(t *testing.T) {
 		tun, err := nl.LinkByName("doublezero1")
 		if err != nil {
 			t.Fatalf("error fetching tunnel status: %v", err)
@@ -1065,9 +1148,11 @@ func TestMulticastPublisher(t *testing.T) {
 				}
 			}
 		}
-	})
+	}) {
+		t.Fatalf("error verifying tunnel is up")
+	}
 
-	t.Run("send_remove_request", func(t *testing.T) {
+	if !t.Run("send_remove_request", func(t *testing.T) {
 		url, err := url.JoinPath("http://localhost/", "remove")
 		if err != nil {
 			t.Fatalf("error creating url: %v", err)
@@ -1087,16 +1172,20 @@ func TestMulticastPublisher(t *testing.T) {
 		if string(got) != want {
 			t.Fatalf("wrong response: %s", string(got))
 		}
-	})
+	}) {
+		t.Fatalf("error sending remove request")
+	}
 
-	t.Run("verify_tunnel_is_removed", func(t *testing.T) {
+	if !t.Run("verify_tunnel_is_removed", func(t *testing.T) {
 		_, err := nl.LinkByName("doublezero1")
 		if !errors.As(err, &nl.LinkNotFoundError{}) {
 			t.Fatalf("expected LinkNotFoundError; got: %v", err)
 		}
-	})
+	}) {
+		t.Fatalf("error verifying tunnel is removed")
+	}
 
-	t.Run("state_removal_stop_runtime", func(t *testing.T) {
+	if !t.Run("state_removal_stop_runtime", func(t *testing.T) {
 		cancel()
 		select {
 		case err := <-errChan:
@@ -1106,9 +1195,11 @@ func TestMulticastPublisher(t *testing.T) {
 		case <-time.After(5 * time.Second):
 			log.Fatalf("timed out waiting for close")
 		}
-	})
+	}) {
+		t.Fatalf("error stopping runtime")
+	}
 
-	t.Run("state_removal_verify_state_file_removed", func(t *testing.T) {
+	if !t.Run("state_removal_verify_state_file_removed", func(t *testing.T) {
 		path, _ := os.ReadFile(filepath.Join(rootPath, "doublezerod", "doublezerod.json"))
 
 		var p []*api.ProvisionRequest
@@ -1120,7 +1211,9 @@ func TestMulticastPublisher(t *testing.T) {
 			t.Fatalf("provisioned requests should be empty; got %+v", p)
 
 		}
-	})
+	}) {
+		t.Fatalf("error verifying state file is removed")
+	}
 
 }
 
@@ -1229,9 +1322,9 @@ func TestMulticastSubscriber(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	sockFile := filepath.Join(rootPath, "doublezerod.sock")
+	configFile := filepath.Join(rootPath, "config.json")
 	go func() {
-		programId := ""
-		err := runtime.Run(ctx, sockFile, false, programId, "", 30, 30)
+		err := runtime.Run(ctx, newTestLogger(t), sockFile, false, configFile, 30, 30)
 		errChan <- err
 	}()
 
@@ -1243,7 +1336,7 @@ func TestMulticastSubscriber(t *testing.T) {
 		},
 	}
 
-	t.Run("start_runtime", func(t *testing.T) {
+	if !t.Run("start_runtime", func(t *testing.T) {
 		select {
 		case err := <-errChan:
 			if err != nil {
@@ -1251,9 +1344,11 @@ func TestMulticastSubscriber(t *testing.T) {
 			}
 		case <-time.After(5 * time.Second):
 		}
-	})
+	}) {
+		t.Fatalf("error starting runtime")
+	}
 
-	t.Run("send_provision_request", func(t *testing.T) {
+	if !t.Run("send_provision_request", func(t *testing.T) {
 		url, err := url.JoinPath("http://localhost/", "provision")
 		if err != nil {
 			t.Fatalf("error creating url: %v", err)
@@ -1284,9 +1379,11 @@ func TestMulticastSubscriber(t *testing.T) {
 		if string(got) != want {
 			t.Fatalf("wrong response: %s", string(got))
 		}
-	})
+	}) {
+		t.Fatalf("error sending provision request")
+	}
 
-	t.Run("verify_tunnel_is_up", func(t *testing.T) {
+	if !t.Run("verify_tunnel_is_up", func(t *testing.T) {
 		tun, err := nl.LinkByName("doublezero1")
 		if err != nil {
 			t.Fatalf("error fetching tunnel status: %v", err)
@@ -1300,9 +1397,11 @@ func TestMulticastSubscriber(t *testing.T) {
 		if tun.Attrs().MTU != 1476 {
 			t.Fatalf("tunnel mtu should be 1476; got %d", tun.Attrs().MTU)
 		}
-	})
+	}) {
+		t.Fatalf("error verifying tunnel is up")
+	}
 
-	t.Run("verify_state_file_is_created", func(t *testing.T) {
+	if !t.Run("verify_state_file_is_created", func(t *testing.T) {
 		got, err := os.ReadFile(filepath.Join(rootPath, "doublezerod", "doublezerod.json"))
 		if err != nil {
 			t.Fatalf("error reading state file: %v", err)
@@ -1314,9 +1413,11 @@ func TestMulticastSubscriber(t *testing.T) {
 		if diff := cmp.Diff(string(want), string(got)); diff != "" {
 			t.Fatalf("State mismatch (-want +got): %s\n", diff)
 		}
-	})
+	}) {
+		t.Fatalf("error verifying state file is created")
+	}
 
-	t.Run("verify_bgp_session_is_up", func(t *testing.T) {
+	if !t.Run("verify_bgp_session_is_up", func(t *testing.T) {
 		up, err := waitForPeerStatus(httpClient, api.UserTypeMulticast, bgp.SessionStatusUp, 10*time.Second)
 		if err != nil {
 			t.Fatalf("error while waiting for peer status: %v", err)
@@ -1324,9 +1425,11 @@ func TestMulticastSubscriber(t *testing.T) {
 		if !up {
 			t.Fatalf("timed out waiting for peer status of up")
 		}
-	})
+	}) {
+		t.Fatalf("error verifying bgp session is up")
+	}
 
-	t.Run("verify_pim_hello_message_sent", func(t *testing.T) {
+	if !t.Run("verify_pim_hello_message_sent", func(t *testing.T) {
 		var msg []byte
 		// Wait for a PIM Hello message
 		select {
@@ -1364,8 +1467,11 @@ func TestMulticastSubscriber(t *testing.T) {
 				t.Errorf("HelloMessage mismatch (-got +want):\n%s", diff)
 			}
 		}
-	})
-	t.Run("verify_pim_join_message_sent", func(t *testing.T) {
+	}) {
+		t.Fatalf("error verifying pim hello message sent")
+	}
+
+	if !t.Run("verify_pim_join_message_sent", func(t *testing.T) {
 		// Verify join message is received
 		var msg []byte
 		select {
@@ -1421,9 +1527,11 @@ func TestMulticastSubscriber(t *testing.T) {
 				t.Errorf("JoinPruneMessage mismatch (-got +want):\n%s", diff)
 			}
 		}
-	})
+	}) {
+		t.Fatalf("error verifying pim join message sent")
+	}
 
-	t.Run("stop_runtime", func(t *testing.T) {
+	if !t.Run("stop_runtime", func(t *testing.T) {
 		cancel()
 		select {
 		case err := <-errChan:
@@ -1433,9 +1541,11 @@ func TestMulticastSubscriber(t *testing.T) {
 		case <-time.After(5 * time.Second):
 			log.Fatalf("timed out waiting for close")
 		}
-	})
+	}) {
+		t.Fatalf("error verifying pim join message sent")
+	}
 
-	t.Run("verify_prune_message_sent", func(t *testing.T) {
+	if !t.Run("verify_prune_message_sent", func(t *testing.T) {
 		// Verify prune message is received
 		var msg []byte
 		select {
@@ -1487,18 +1597,19 @@ func TestMulticastSubscriber(t *testing.T) {
 				t.Errorf("JoinPruneMessage mismatch (-got +want):\n%s", diff)
 			}
 		}
-	})
+	}) {
+		t.Fatalf("error verifying prune message sent")
+	}
 
 	ctx, cancel = context.WithCancel(context.Background())
 	go func() {
-		programId := ""
-		err := runtime.Run(ctx, sockFile, false, programId, "", 30, 30)
+		err := runtime.Run(ctx, newTestLogger(t), sockFile, false, configFile, 30, 30)
 		errChan <- err
 	}()
 
 	<-time.After(5 * time.Second)
 
-	t.Run("restart_runtime", func(t *testing.T) {
+	if !t.Run("restart_runtime", func(t *testing.T) {
 		select {
 		case err := <-errChan:
 			if err != nil {
@@ -1506,9 +1617,11 @@ func TestMulticastSubscriber(t *testing.T) {
 			}
 		case <-time.After(10 * time.Second):
 		}
-	})
+	}) {
+		t.Fatalf("error restarting runtime")
+	}
 
-	t.Run("state_recovery_verify_tunnel_is_up", func(t *testing.T) {
+	if !t.Run("state_recovery_verify_tunnel_is_up", func(t *testing.T) {
 		tun, err := nl.LinkByName("doublezero1")
 		if err != nil {
 			t.Fatalf("error fetching tunnel status: %v", err)
@@ -1533,9 +1646,11 @@ func TestMulticastSubscriber(t *testing.T) {
 				}
 			}
 		}
-	})
+	}) {
+		t.Fatalf("error verifying tunnel is up")
+	}
 
-	t.Run("send_remove_request", func(t *testing.T) {
+	if !t.Run("send_remove_request", func(t *testing.T) {
 		url, err := url.JoinPath("http://localhost/", "remove")
 		if err != nil {
 			t.Fatalf("error creating url: %v", err)
@@ -1555,16 +1670,20 @@ func TestMulticastSubscriber(t *testing.T) {
 		if string(got) != want {
 			t.Fatalf("wrong response: %s", string(got))
 		}
-	})
+	}) {
+		t.Fatalf("error sending remove request")
+	}
 
-	t.Run("verify_tunnel_is_removed", func(t *testing.T) {
+	if !t.Run("verify_tunnel_is_removed", func(t *testing.T) {
 		_, err := nl.LinkByName("doublezero0")
 		if !errors.As(err, &nl.LinkNotFoundError{}) {
 			t.Fatalf("expected LinkNotFoundError; got: %v", err)
 		}
-	})
+	}) {
+		t.Fatalf("error verifying tunnel is removed")
+	}
 
-	t.Run("state_removal_stop_runtime", func(t *testing.T) {
+	if !t.Run("state_removal_stop_runtime", func(t *testing.T) {
 		cancel()
 		select {
 		case err := <-errChan:
@@ -1574,9 +1693,11 @@ func TestMulticastSubscriber(t *testing.T) {
 		case <-time.After(5 * time.Second):
 			log.Fatalf("timed out waiting for close")
 		}
-	})
+	}) {
+		t.Fatalf("error verifying tunnel is removed")
+	}
 
-	t.Run("state_removal_verify_state_file_removed", func(t *testing.T) {
+	if !t.Run("state_removal_verify_state_file_removed", func(t *testing.T) {
 		path, _ := os.ReadFile(filepath.Join(rootPath, "doublezerod", "doublezerod.json"))
 
 		var p []*api.ProvisionRequest
@@ -1587,7 +1708,9 @@ func TestMulticastSubscriber(t *testing.T) {
 		if len(p) != 0 {
 			t.Fatalf("provisioned requests should be empty; got %+v", p)
 		}
-	})
+	}) {
+		t.Fatalf("error verifying state file is removed")
+	}
 }
 
 func TestServiceNoCoExistence(t *testing.T) {
@@ -1647,12 +1770,13 @@ func TestServiceNoCoExistence(t *testing.T) {
 	}()
 
 	errChan := make(chan error, 1)
-	ctx, _ := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	sockFile := filepath.Join(rootPath, "doublezerod.sock")
+	configFile := filepath.Join(rootPath, "config.json")
 	go func() {
-		programId := ""
-		err := runtime.Run(ctx, sockFile, false, programId, "", 30, 30)
+		err := runtime.Run(ctx, newTestLogger(t), sockFile, false, configFile, 30, 30)
 		errChan <- err
 	}()
 
@@ -1664,7 +1788,7 @@ func TestServiceNoCoExistence(t *testing.T) {
 		},
 	}
 
-	t.Run("start_runtime", func(t *testing.T) {
+	if !t.Run("start_runtime", func(t *testing.T) {
 		select {
 		case err := <-errChan:
 			if err != nil {
@@ -1672,9 +1796,11 @@ func TestServiceNoCoExistence(t *testing.T) {
 			}
 		case <-time.After(5 * time.Second):
 		}
-	})
+	}) {
+		t.Fatalf("error starting runtime")
+	}
 
-	t.Run("provision_ibrl_tunnel", func(t *testing.T) {
+	if !t.Run("provision_ibrl_tunnel", func(t *testing.T) {
 		req := `{
 					"tunnel_src":     "192.168.1.0",
 					"tunnel_dst":     "192.168.1.1",
@@ -1690,9 +1816,11 @@ func TestServiceNoCoExistence(t *testing.T) {
 		if err := sendClientRequest(httpClient, "provision", req); err != nil {
 			t.Fatalf("error sending provision request: %v", err)
 		}
-	})
+	}) {
+		t.Fatalf("error sending provision request")
+	}
 
-	t.Run("provision_multicast_subscriber_tunnel", func(t *testing.T) {
+	if !t.Run("provision_multicast_subscriber_tunnel", func(t *testing.T) {
 		req := `{
 					"tunnel_src":     "192.168.2.0",
 					"tunnel_dst":     "192.168.2.1",
@@ -1708,7 +1836,9 @@ func TestServiceNoCoExistence(t *testing.T) {
 		if err := sendClientRequest(httpClient, "provision", req); err == nil || !strings.Contains(err.Error(), "cannot provision multiple tunnels at the same time") {
 			t.Fatalf("expected provisioning request to fail with error containing 'cannot provision multiple tunnels at the same time' but got: %v", err)
 		}
-	})
+	}) {
+		t.Fatalf("error sending provision request")
+	}
 
 }
 
@@ -1831,9 +1961,9 @@ func TestServiceCoexistence(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	sockFile := filepath.Join(rootPath, "doublezerod.sock")
+	configFile := filepath.Join(rootPath, "config.json")
 	go func() {
-		programId := ""
-		err := runtime.Run(ctx, sockFile, false, programId, "", 30, 30)
+		err := runtime.Run(ctx, newTestLogger(t), sockFile, false, configFile, 30, 30)
 		errChan <- err
 	}()
 
@@ -1845,7 +1975,7 @@ func TestServiceCoexistence(t *testing.T) {
 		},
 	}
 
-	t.Run("start_runtime", func(t *testing.T) {
+	if !t.Run("start_runtime", func(t *testing.T) {
 		select {
 		case err := <-errChan:
 			if err != nil {
@@ -1853,9 +1983,11 @@ func TestServiceCoexistence(t *testing.T) {
 			}
 		case <-time.After(5 * time.Second):
 		}
-	})
+	}) {
+		t.Fatalf("error starting runtime")
+	}
 
-	t.Run("provision_ibrl_tunnel", func(t *testing.T) {
+	if !t.Run("provision_ibrl_tunnel", func(t *testing.T) {
 		req := `{
 					"tunnel_src":     "192.168.1.0",
 					"tunnel_dst":     "192.168.1.1",
@@ -1871,9 +2003,11 @@ func TestServiceCoexistence(t *testing.T) {
 		if err := sendClientRequest(httpClient, "provision", req); err != nil {
 			t.Fatalf("error sending provision request: %v", err)
 		}
-	})
+	}) {
+		t.Fatalf("error sending provision request")
+	}
 
-	t.Run("provision_multicast_subscriber_tunnel", func(t *testing.T) {
+	if !t.Run("provision_multicast_subscriber_tunnel", func(t *testing.T) {
 		req := `{
 					"tunnel_src":     "192.168.2.0",
 					"tunnel_dst":     "192.168.2.1",
@@ -1889,9 +2023,11 @@ func TestServiceCoexistence(t *testing.T) {
 		if err := sendClientRequest(httpClient, "provision", req); err != nil {
 			t.Fatalf("error sending provision request: %v", err)
 		}
-	})
+	}) {
+		t.Fatalf("error sending provision request")
+	}
 
-	t.Run("verify_ibrl_state", func(t *testing.T) {
+	if !t.Run("verify_ibrl_state", func(t *testing.T) {
 		verifyTunnelIsUp(t, "doublezero0")
 		verifyBgpSessionIsUp(t, httpClient, api.UserTypeIBRL)
 
@@ -1922,20 +2058,26 @@ func TestServiceCoexistence(t *testing.T) {
 			},
 		}
 		verifyBgpRoutesAreInstalled(t, "doublezero0", want)
-	})
+	}) {
+		t.Fatalf("error verifying ibrl state")
+	}
 
-	t.Run("verify_multicast_state", func(t *testing.T) {
+	if !t.Run("verify_multicast_state", func(t *testing.T) {
 		verifyTunnelIsUp(t, "doublezero1")
 		verifyBgpSessionIsUp(t, httpClient, api.UserTypeMulticast)
 		verifyPimHelloMessageSent(t, pimHelloChan)
 		verifyPimJoinMessageSent(t, pimJoinPruneChan, net.IP([]byte{169, 254, 1, 0}))
-	})
+	}) {
+		t.Fatalf("error verifying multicast state")
+	}
 
-	t.Run("verify_state_file_is_created", func(t *testing.T) {
+	if !t.Run("verify_state_file_is_created", func(t *testing.T) {
 		verifyStateFileMatches(t, rootPath, "./fixtures/doublezerod.ibrl_w_mcast_subscriber.json")
-	})
+	}) {
+		t.Fatalf("error verifying state file is created")
+	}
 
-	t.Run("stop_runtime", func(t *testing.T) {
+	if !t.Run("stop_runtime", func(t *testing.T) {
 		cancel()
 		select {
 		case err := <-errChan:
@@ -1945,18 +2087,19 @@ func TestServiceCoexistence(t *testing.T) {
 		case <-time.After(5 * time.Second):
 			t.Fatalf("timed out waiting for close")
 		}
-	})
+	}) {
+		t.Fatalf("error stopping runtime")
+	}
 
 	ctx, cancel = context.WithCancel(context.Background())
 	go func() {
-		programId := ""
-		err := runtime.Run(ctx, sockFile, false, programId, "", 30, 30)
+		err := runtime.Run(ctx, newTestLogger(t), sockFile, false, configFile, 30, 30)
 		errChan <- err
 	}()
 
 	<-time.After(5 * time.Second)
 
-	t.Run("restart_runtime", func(t *testing.T) {
+	if !t.Run("restart_runtime", func(t *testing.T) {
 		select {
 		case err := <-errChan:
 			if err != nil {
@@ -1964,9 +2107,11 @@ func TestServiceCoexistence(t *testing.T) {
 			}
 		case <-time.After(10 * time.Second):
 		}
-	})
+	}) {
+		t.Fatalf("error restarting runtime")
+	}
 
-	t.Run("verify_ibrl_state_after_restart", func(t *testing.T) {
+	if !t.Run("verify_ibrl_state_after_restart", func(t *testing.T) {
 		verifyTunnelIsUp(t, "doublezero0")
 		verifyBgpSessionIsUp(t, httpClient, api.UserTypeIBRL)
 
@@ -1997,47 +2142,63 @@ func TestServiceCoexistence(t *testing.T) {
 			},
 		}
 		verifyBgpRoutesAreInstalled(t, "doublezero0", want)
-	})
+	}) {
+		t.Fatalf("error verifying ibrl state after restart")
+	}
 
-	t.Run("verify_multicast_state_after_restart", func(t *testing.T) {
+	if !t.Run("verify_multicast_state_after_restart", func(t *testing.T) {
 		verifyTunnelIsUp(t, "doublezero1")
 		verifyBgpSessionIsUp(t, httpClient, api.UserTypeMulticast)
 		verifyPruneMessageSent(t, pimJoinPruneChan, net.IP([]byte{169, 254, 1, 0}))
 		verifyPimHelloMessageSent(t, pimHelloChan)
 		verifyPimJoinMessageSent(t, pimJoinPruneChan, net.IP([]byte{169, 254, 1, 0}))
-	})
+	}) {
+		t.Fatalf("error verifying multicast state after restart")
+	}
 
-	t.Run("remove_ibrl_subscriber_tunnel", func(t *testing.T) {
+	if !t.Run("remove_ibrl_subscriber_tunnel", func(t *testing.T) {
 		body := fmt.Sprintf(`{"user_type": "%s"}`, api.UserTypeIBRL)
 		if err := sendClientRequest(httpClient, "remove", body); err != nil {
 			t.Fatalf("error sending remove request: %v", err)
 		}
-	})
+	}) {
+		t.Fatalf("error sending remove request")
+	}
 
-	t.Run("verify_ibrl_tunnel_is_removed", func(t *testing.T) {
+	if !t.Run("verify_ibrl_tunnel_is_removed", func(t *testing.T) {
 		verifyTunnelIsRemoved(t, "doublezero0")
-	})
+	}) {
+		t.Fatalf("error verifying ibrl tunnel is removed")
+	}
 
-	t.Run("verify_ibrl_state_removed", func(t *testing.T) {
+	if !t.Run("verify_ibrl_state_removed", func(t *testing.T) {
 		verifyStateFileMatches(t, rootPath, "./fixtures/doublezerod.ibrl_w_mcast_subscriber_ibrl_removed.json")
-	})
+	}) {
+		t.Fatalf("error verifying ibrl state removed")
+	}
 
-	t.Run("remove_multicast_subscriber_tunnel", func(t *testing.T) {
+	if !t.Run("remove_multicast_subscriber_tunnel", func(t *testing.T) {
 		body := fmt.Sprintf(`{"user_type": "%s"}`, api.UserTypeMulticast)
 		if err := sendClientRequest(httpClient, "remove", body); err != nil {
 			t.Fatalf("error sending remove request: %v", err)
 		}
-	})
+	}) {
+		t.Fatalf("error sending remove request")
+	}
 
-	t.Run("verify_multicast_tunnel_is_removed", func(t *testing.T) {
+	if !t.Run("verify_multicast_tunnel_is_removed", func(t *testing.T) {
 		verifyTunnelIsRemoved(t, "doublezero1")
-	})
+	}) {
+		t.Fatalf("error verifying multicast tunnel is removed")
+	}
 
-	t.Run("verify_multicast_state_removed", func(t *testing.T) {
+	if !t.Run("verify_multicast_state_removed", func(t *testing.T) {
 		verifyStateFileMatches(t, rootPath, "./fixtures/doublezerod.empty.json")
-	})
+	}) {
+		t.Fatalf("error verifying multicast state removed")
+	}
 
-	t.Run("stop_runtime", func(t *testing.T) {
+	if !t.Run("stop_runtime", func(t *testing.T) {
 		cancel()
 		select {
 		case err := <-errChan:
@@ -2047,7 +2208,9 @@ func TestServiceCoexistence(t *testing.T) {
 		case <-time.After(5 * time.Second):
 			t.Fatalf("timed out waiting for close")
 		}
-	})
+	}) {
+		t.Fatalf("error stopping runtime")
+	}
 }
 
 func setupTest(t *testing.T) (func(), error) {
@@ -2145,7 +2308,7 @@ func waitForPeerStatus(httpClient http.Client, userType api.UserType, status bgp
 		if err != nil {
 			return false, fmt.Errorf("error reading status response: %v", err)
 		}
-		var statusResponses []api.StatusResponse
+		var statusResponses []api.ServiceStatus
 		if err := json.Unmarshal(got, &statusResponses); err != nil {
 			return false, fmt.Errorf("error unmarshalling status response: %v", err)
 		}
@@ -2433,4 +2596,9 @@ func abortIfLinksAreUp(t *testing.T) {
 			t.Fatalf("tunnel %s is up and needs to be removed", tun.Attrs().Name)
 		}
 	}
+}
+
+func newTestLogger(t *testing.T) *slog.Logger {
+	t.Helper()
+	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 }

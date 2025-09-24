@@ -18,20 +18,20 @@ impl GetDeviceCliCommand {
 
         writeln!(
             out,
-            "account: {}\r\n\
-code: {}\r\n\
-contributor: {}\r\n\
-location: {}\r\n\
-exchange: {}\r\n\
-device_type: {}\r\n\
-public_ip: {}\r\n\
-dz_prefixes: {}\r\n\
-metrics_publisher: {}\r\n\
-mgmt_vrf: {}\r\n\
-interfaces: {:?}\r\n\
-max_users: {}\r\n\
-users_count: {}\r\n\
-status: {}\r\n\
+            "account: {}\n\
+code: {}\n\
+contributor: {}\n\
+location: {}\n\
+exchange: {}\n\
+device_type: {}\n\
+public_ip: {}\n\
+dz_prefixes: {}\n\
+metrics_publisher: {}\n\
+mgmt_vrf: {}\n\
+interfaces: {:?}\n\
+max_users: {}\n\
+users_count: {}\n\
+status: {}\n\
 owner: {}",
             pubkey,
             device.code,
@@ -122,6 +122,6 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by pubkey");
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\r\ncode: test\r\ncontributor: HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx\r\nlocation: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx\r\nexchange: GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc\r\ndevice_type: switch\r\npublic_ip: 1.2.3.4\r\ndz_prefixes: 1.2.3.4/32\r\nmetrics_publisher: 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\r\nmgmt_vrf: default\r\ninterfaces: []\r\nmax_users: 255\r\nusers_count: 0\r\nstatus: activated\r\nowner: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\n");
+        assert_eq!(output_str, "account: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\ncode: test\ncontributor: HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx\nlocation: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx\nexchange: GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc\ndevice_type: switch\npublic_ip: 1.2.3.4\ndz_prefixes: 1.2.3.4/32\nmetrics_publisher: 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\nmgmt_vrf: default\ninterfaces: []\nmax_users: 255\nusers_count: 0\nstatus: activated\nowner: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\n");
     }
 }

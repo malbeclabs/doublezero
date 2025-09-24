@@ -4,6 +4,7 @@
         "doublezero_prefixes": [
             "7.0.0.0/8"
         ],
+        "program_id": "Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS",
         "user_type": "EdgeFiltering",
         "tunnel_src": "1.1.1.1",
         "tunnel_dst": "2.2.2.2",

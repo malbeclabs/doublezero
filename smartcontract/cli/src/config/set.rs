@@ -46,7 +46,7 @@ impl SetConfigCliCommand {
             let config = env.parse::<Environment>()?.config()?;
             (
                 Some(config.ledger_public_rpc_url),
-                Some(config.ledger_public_ws_rpc_url),
+                None,
                 Some(config.serviceability_program_id.to_string()),
             )
         } else {
@@ -78,12 +78,15 @@ impl SetConfigCliCommand {
             config.program_id = Some(convert_program_moniker(program_id));
         }
 
+        config.match_environment();
+
         write_doublezero_config(&config)?;
 
         writeln!(
             out,
-            "Config File: {}\nRPC URL: {}\nWebSocket URL: {}\nKeypair Path: {}\nProgram ID: {}\n",
+            "Config File: {}\nEnvironment: {}\nRPC URL: {}\nWebSocket URL: {}\nKeypair Path: {}\nProgram ID: {}\n",
             filename.display(),
+            config.environment,
             config.json_rpc_url,
             config.websocket_url.unwrap_or(format!(
                 "{} (computed)",
@@ -249,7 +252,7 @@ mod tests {
                 url: None,
                 ws: None,
                 keypair: None,
-                program_id: Some("1234567890".to_string()),
+                program_id: Some("7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX".to_string()),
             }
             .execute(&client, &mut output)
             .unwrap();
@@ -259,7 +262,7 @@ mod tests {
             validate_config_output(
                 &output_str,
                 &devnet_config.ledger_public_rpc_url,
-                "1234567890",
+                "7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX",
             );
         });
     }
@@ -272,6 +275,7 @@ mod tests {
         let devnet_config = Environment::Devnet.config().unwrap();
 
         let mut cfg = ClientConfig {
+            environment: Environment::Devnet,
             json_rpc_url: devnet_config.ledger_public_rpc_url.clone(),
             websocket_url: Some(devnet_config.ledger_public_ws_rpc_url.clone()),
             keypair_path: keypair_path.clone(),

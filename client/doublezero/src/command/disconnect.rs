@@ -88,6 +88,7 @@ impl DecommissioningCliCommand {
 
             let _ = controller
                 .remove(RemoveTunnelCliCommand {
+                    program_id: client.get_program_id().to_string(),
                     user_type: user.user_type.to_string(),
                 })
                 .await;

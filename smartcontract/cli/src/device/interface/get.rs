@@ -29,13 +29,13 @@ impl GetDeviceInterfaceCliCommand {
 
         writeln!(
             out,
-            "name: {}\r\n\
-status: {}\r\n\
-loopback_type: {}\r\n\
-vlan_id: {}\r\n\
-ip_net: {}\r\n\
-node_segment_idx: {}\r\n\
-user_tunnel_endpoint: {}\r\n\
+            "name: {}\n\
+status: {}\n\
+loopback_type: {}\n\
+vlan_id: {}\n\
+ip_net: {}\n\
+node_segment_idx: {}\n\
+user_tunnel_endpoint: {}\n\
 device_pk: {}",
             interface.name,
             interface.status,
@@ -134,6 +134,6 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by pubkey");
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "name: eth0\r\nstatus: activated\r\nloopback_type: none\r\nvlan_id: 16\r\nip_net: 10.0.0.1/24\r\nnode_segment_idx: 42\r\nuser_tunnel_endpoint: true\r\ndevice_pk: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\n");
+        assert_eq!(output_str, "name: eth0\nstatus: activated\nloopback_type: none\nvlan_id: 16\nip_net: 10.0.0.1/24\nnode_segment_idx: 42\nuser_tunnel_endpoint: true\ndevice_pk: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\n");
     }
 }

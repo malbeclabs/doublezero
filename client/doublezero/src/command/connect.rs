@@ -289,10 +289,11 @@ impl ProvisioningCliCommand {
                 let device_keys = devices.keys().map(|k| k.to_string()).collect::<Vec<_>>();
 
                 let get_latencies = || async {
-                    let mut latencies = controller
+                    let latency = controller
                         .latency()
                         .await
                         .map_err(|_| eyre::eyre!("Could not get latency"))?;
+                    let mut latencies = latency.results;
                     latencies.retain(|l| l.reachable);
                     latencies.retain(|l| device_keys.contains(&l.device_pk.to_string()));
                     latencies.sort_by(|a, b| a.avg_latency_ns.cmp(&b.avg_latency_ns));
@@ -625,6 +626,7 @@ Disconnect and connect again!"#,
         spinner.set_message("Provisioning DoubleZero service...");
         match controller
             .provisioning(ProvisioningRequest {
+                program_id: client.get_program_id().to_string(),
                 tunnel_src,
                 tunnel_dst,
                 tunnel_net,
@@ -679,7 +681,9 @@ Disconnect and connect again!"#,
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::servicecontroller::{LatencyRecord, MockServiceController, ProvisioningResponse};
+    use crate::servicecontroller::{
+        LatencyRecord, LatencyResponse, MockServiceController, ProvisioningResponse,
+    };
     use doublezero_cli::{doublezerocommand::MockCliCommand, tests::utils::create_test_client};
     use doublezero_sdk::{
         commands::accesspass::get::GetAccessPassCommand, tests::utils::create_temp_config,
@@ -757,10 +761,12 @@ mod tests {
                 .return_const(true);
 
             let latencies = fixture.latencies.clone();
-            fixture
-                .controller
-                .expect_latency()
-                .returning_st(move || Ok(latencies.lock().unwrap().clone()));
+            fixture.controller.expect_latency().returning_st(move || {
+                Ok(LatencyResponse {
+                    program_id: Pubkey::default().to_string(),
+                    results: latencies.lock().unwrap().clone(),
+                })
+            });
 
             let global_cfg = fixture.global_cfg.clone();
             fixture
@@ -1015,6 +1021,7 @@ mod tests {
             mcast_sub_groups: Option<Vec<String>>,
         ) {
             let expected_request = ProvisioningRequest {
+                program_id: self.client.get_program_id().to_string(),
                 tunnel_src: client_ip.to_string(),
                 tunnel_dst: device_ip.to_string(),
                 tunnel_net: "10.1.1.0/31".to_string(),

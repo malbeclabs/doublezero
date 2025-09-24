@@ -17,10 +17,13 @@ import (
 	"github.com/jwhited/corebgp"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/config"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/manager"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/pim"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 	"golang.org/x/sys/unix"
+
+	"github.com/gagliardetto/solana-go"
 )
 
 type validator interface {
@@ -104,11 +107,12 @@ func TestNetlinkManager_ProvisionRequestValidation(t *testing.T) {
 }
 
 func TestHttpStatus(t *testing.T) {
+	c := &config.Config{}
 	m := &MockNetlink{}
 	b := &MockBgpServer{}
 	db := &MockDb{state: nil}
 	pim := &MockPIMServer{}
-	manager := manager.NewNetlinkManager(m, b, db, pim)
+	manager := manager.NewNetlinkManager(c, m, b, db, pim)
 
 	f, err := os.CreateTemp("/tmp", "doublezero.sock")
 	if err != nil {
@@ -160,9 +164,9 @@ func TestHttpStatus(t *testing.T) {
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("wanted 200 response; got %d\n", resp.StatusCode)
 		}
-		// this previously returned `{"doublezero_status": {"session_status": "disconnected"}}  but now returns []
+		// this previously returned `{\"program_id\":\"11111111111111111111111111111111\",\"results\":[]}\n  but now returns []
 		// want := "[]\n"
-		want := `[{"doublezero_status": {"session_status": "disconnected"}}]`
+		want := `{\"program_id\":\"11111111111111111111111111111111\",\"results\":[]}\n`
 		got, _ := io.ReadAll(resp.Body)
 		if diff := cmp.Diff(want, string(got)); diff != "" {
 			t.Fatalf("wrong response (-want +got): %s\n", diff)
@@ -207,7 +211,7 @@ func TestHttpStatus(t *testing.T) {
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("wanted 200 response; got %d", resp.StatusCode)
 		}
-		want := `[{"tunnel_name":"doublezero0","tunnel_src":"1.1.1.1","tunnel_dst":"2.2.2.2","doublezero_ip":"3.3.3.3","doublezero_status":{"session_status":"unknown","last_session_update":0},"user_type":"IBRL"}]` + "\n"
+		want := `{"program_id":"11111111111111111111111111111111","results":[{"tunnel_name":"doublezero0","tunnel_src":"1.1.1.1","tunnel_dst":"2.2.2.2","doublezero_ip":"3.3.3.3","doublezero_status":{"session_status":"unknown","last_session_update":0},"user_type":"IBRL"}]}` + "\n"
 		got, _ := io.ReadAll(resp.Body)
 		if diff := cmp.Diff(want, string(got), cmpopts.IgnoreFields(bgp.Session{}, "LastSessionUpdate")); diff != "" {
 			t.Fatalf("Response body mismatch (-want +got): %s\n", diff)
@@ -216,11 +220,15 @@ func TestHttpStatus(t *testing.T) {
 }
 
 func TestNetlinkManager_HttpEndpoints(t *testing.T) {
+	ProgramID, _ := solana.PublicKeyFromBase58("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS")
+	c := &config.Config{
+		ServiceabilityProgramID: ProgramID,
+	}
 	m := &MockNetlink{}
 	b := &MockBgpServer{}
 	db := &MockDb{state: []*api.ProvisionRequest{}}
 	pim := &MockPIMServer{}
-	manager := manager.NewNetlinkManager(m, b, db, pim)
+	manager := manager.NewNetlinkManager(c, m, b, db, pim)
 
 	f, err := os.CreateTemp("/tmp", "doublezero.sock")
 	if err != nil {

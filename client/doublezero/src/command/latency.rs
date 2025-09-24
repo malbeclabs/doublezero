@@ -20,7 +20,7 @@ pub struct LatencyCliCommand {
 impl LatencyCliCommand {
     pub async fn execute(self, client: &dyn CliCommand) -> eyre::Result<()> {
         let controller = ServiceControllerImpl::new(None);
-        check_doublezero(&controller, None)?;
+        check_doublezero(&controller, client, None).await?;
 
         let devices = client.list_device(ListDeviceCommand)?;
         let mut latencies = controller.latency().await.map_err(|e| eyre::eyre!(e))?;

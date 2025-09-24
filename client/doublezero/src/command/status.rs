@@ -14,11 +14,11 @@ pub struct StatusCliCommand {
 }
 
 impl StatusCliCommand {
-    pub async fn execute(self, _client: &dyn CliCommand) -> eyre::Result<()> {
+    pub async fn execute(self, client: &dyn CliCommand) -> eyre::Result<()> {
         let controller = ServiceControllerImpl::new(None);
 
         // Check requirements
-        check_doublezero(&controller, None)?;
+        check_doublezero(&controller, client, None).await?;
 
         match controller.status().await {
             Err(e) => print_error(e),

@@ -1,4 +1,5 @@
 use chrono::DateTime;
+use doublezero_config::Environment;
 use eyre::eyre;
 use http_body_util::{BodyExt, Empty, Full};
 use hyper::{body::Bytes, Method, Request};
@@ -96,6 +97,12 @@ pub struct StatusResponse {
     pub user_type: Option<String>,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct GetConfigResponse {
+    pub program_id: String,
+    pub rpc_url: String,
+}
+
 #[derive(Tabled, Serialize, Deserialize, Debug)]
 pub struct DoubleZeroStatus {
     #[tabled(rename = "Tunnel status")]
@@ -125,6 +132,8 @@ pub struct ErrorResponse {
 pub trait ServiceController {
     fn service_controller_check(&self) -> bool;
     fn service_controller_can_open(&self) -> bool;
+    async fn get_config(&self) -> eyre::Result<GetConfigResponse>;
+    async fn get_env(&self) -> eyre::Result<Environment>;
     async fn latency(&self) -> eyre::Result<Vec<LatencyRecord>>;
     async fn provisioning(&self, args: ProvisioningRequest) -> eyre::Result<ProvisioningResponse>;
     async fn remove(&self, args: RemoveTunnelCliCommand) -> eyre::Result<RemoveResponse>;
@@ -157,6 +166,42 @@ impl ServiceController for ServiceControllerImpl {
             Ok(_) => true,
             Err(e) => !matches!(e.kind(), std::io::ErrorKind::PermissionDenied),
         }
+    }
+
+    async fn get_config(&self) -> eyre::Result<GetConfigResponse> {
+        let uri = Uri::new(&self.socket_path, "/config").into();
+        let client: Client<UnixConnector, Full<Bytes>> =
+            Client::builder(TokioExecutor::new()).build(UnixConnector);
+        let res = client
+            .get(uri)
+            .await
+            .map_err(|e| eyre!("Unable to connect to doublezero daemon: {e}"))?;
+
+        let data = res
+            .into_body()
+            .collect()
+            .await
+            .map_err(|e| eyre!("Unable to read response body: {e}"))?
+            .to_bytes();
+
+        match serde_json::from_slice::<GetConfigResponse>(&data) {
+            Ok(response) => Ok(response),
+            Err(e) => match serde_json::from_slice::<ErrorResponse>(&data) {
+                Ok(response) => {
+                    if response.status == "error" {
+                        Err(eyre!(response.description))
+                    } else {
+                        Err(eyre!("Unable to parse LatencyRecord: {e}"))
+                    }
+                }
+                Err(e) => Err(eyre!("Unable to parse ErrorResponse: {e}")),
+            },
+        }
+    }
+
+    async fn get_env(&self) -> eyre::Result<Environment> {
+        let config = self.get_config().await?;
+        Ok(Environment::from_program_id(&config.program_id).unwrap_or_default())
     }
 
     async fn latency(&self) -> eyre::Result<Vec<LatencyRecord>> {

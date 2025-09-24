@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net"
@@ -54,6 +55,21 @@ func Run(ctx context.Context, sockFile string, enableLatencyProbing bool, progra
 		}()
 		mux.HandleFunc("GET /latency", latency.ServeLatency)
 	}
+
+	// /config endpoint returns:
+	// {
+	//   "program_id": "<string>", // The program ID used by the client
+	//   "rpc_url": "<string>"     // The RPC endpoint URL
+	// }
+	mux.HandleFunc("GET /config", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		resp := map[string]string{
+			"program_id": programId,
+			"rpc_url":    rpcEndpoint,
+		}
+		_ = json.NewEncoder(w).Encode(resp)
+	})
 
 	opts := []api.Option{
 		api.WithBaseContext(ctx),

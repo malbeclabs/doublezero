@@ -2,10 +2,6 @@ mod ata;
 mod passport;
 mod revenue_distribution;
 
-pub use ata::*;
-pub use passport::*;
-pub use revenue_distribution::*;
-
 //
 
 use anyhow::Result;
@@ -14,23 +10,21 @@ use clap::Subcommand;
 #[derive(Debug, Subcommand)]
 pub enum DoubleZeroSolanaCommand {
     /// Associated Token Account commands.
-    Ata(AtaCliCommand),
+    Ata(ata::AtaCommand),
 
     /// Passport program commands.
-    Passport(PassportCliCommand),
+    Passport(passport::PassportCommand),
 
     /// Revenue distribution program commands.
-    RevenueDistribution(RevenueDistributionCliCommand),
+    RevenueDistribution(revenue_distribution::RevenueDistributionCommand),
 }
 
 impl DoubleZeroSolanaCommand {
     pub async fn try_into_execute(self) -> Result<()> {
         match self {
-            DoubleZeroSolanaCommand::Ata(ata) => ata.command.try_into_execute().await,
-            DoubleZeroSolanaCommand::Passport(passport) => {
-                passport.command.try_into_execute().await
-            }
-            DoubleZeroSolanaCommand::RevenueDistribution(revenue_distribution) => {
+            Self::Ata(ata) => ata.command.try_into_execute().await,
+            Self::Passport(passport) => passport.command.try_into_execute().await,
+            Self::RevenueDistribution(revenue_distribution) => {
                 revenue_distribution.command.try_into_execute().await
             }
         }

@@ -19,7 +19,7 @@ build:
 
 # Run clippy
 clippy:
-    cargo clippy -- -Dclippy::all -D warnings
+    cargo clippy --all-features -- -Dclippy::all -D warnings
 
 # Run tests
 test:

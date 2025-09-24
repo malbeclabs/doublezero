@@ -2,7 +2,7 @@ use crate::doublezerocommand::CliCommand;
 use clap::Args;
 use doublezero_program_common::types::parse_utils::bandwidth_to_string;
 use doublezero_sdk::commands::{
-    device::list::ListDeviceCommand, exchange::list::ListExchangeCommand,
+    contributor, device::list::ListDeviceCommand, exchange::list::ListExchangeCommand,
     link::list::ListLinkCommand, location::list::ListLocationCommand, user::list::ListUserCommand,
 };
 use serde::{Deserialize, Serialize};
@@ -24,6 +24,7 @@ struct Data {
 struct DeviceData {
     name: String,
     pubkey: String,
+    contributor: String,
     public_ip: String,
     location: LocationData,
     exchange: ExchangeData,
@@ -57,6 +58,7 @@ struct ExchangeData {
 struct LinkData {
     pub pubkey: String,
     pub code: String,
+    pub iface_name: String,
     pub side: LinkSideData,
     pub tunnel_net: String,
     pub link_type: String,
@@ -74,6 +76,7 @@ struct LinkSideData {
     pub tunnel_id: u16,
     pub tunnel_net: String,
     pub public_ip: String,
+    pub iface_name: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -94,6 +97,7 @@ impl ExportCliCommand {
         let locations = client.list_location(ListLocationCommand)?;
         let exchanges = client.list_exchange(ListExchangeCommand)?;
 
+        let contributors = client.list_contributor(contributor::list::ListContributorCommand {})?;
         let devices = client.list_device(ListDeviceCommand)?;
         let tunnels = client.list_link(ListLinkCommand)?;
         let users = client.list_user(ListUserCommand)?;
@@ -108,12 +112,17 @@ impl ExportCliCommand {
                 .get(&data.exchange_pk)
                 .ok_or(eyre::eyre!("Unable to retrieve Exchange"))?;
 
+            let contributor = contributors
+                .get(&data.contributor_pk)
+                .ok_or(eyre::eyre!("Unable to retrieve Contributor"))?;
+
             writeln!(out, "{name}")?;
 
             let config = Data {
                 device: DeviceData {
                     name: data.code,
                     pubkey: pubkey.to_string(),
+                    contributor: contributor.code.clone(),
                     location: LocationData {
                         code: location.code.clone(),
                         name: location.name.clone(),
@@ -139,20 +148,35 @@ impl ExportCliCommand {
                             tunnel.side_a_pk == pubkey || tunnel.side_z_pk == pubkey
                         })
                         .filter_map(|(key, link)| {
+                            let iface_name = if link.side_a_pk == pubkey {
+                                link.side_a_iface_name.clone()
+                            } else {
+                                link.side_z_iface_name.clone()
+                            };
+
                             let side_pubkey = if link.side_a_pk == pubkey {
                                 link.side_z_pk
                             } else {
                                 link.side_a_pk
                             };
+
+                            let iface_name2 = if link.side_a_pk == pubkey {
+                                link.side_z_iface_name.clone()
+                            } else {
+                                link.side_a_iface_name.clone()
+                            };
+
                             let side_device = devices.get(&side_pubkey)?;
 
                             Some(LinkData {
                                 pubkey: key.to_string(),
                                 code: link.code.clone(),
                                 tunnel_net: link.tunnel_net.to_string(),
+                                iface_name,
                                 side: LinkSideData {
                                     name: side_device.code.clone(),
                                     pubkey: side_pubkey.to_string(),
+                                    iface_name: iface_name2,
                                     public_ip: side_device.public_ip.to_string(),
                                     tunnel_id: link.tunnel_id,
                                     tunnel_net: link.tunnel_net.to_string(),

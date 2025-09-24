@@ -89,8 +89,7 @@ impl ProvisioningCliCommand {
 
         // Check requirements
         check_requirements(client, Some(&spinner), CHECK_ID_JSON | CHECK_BALANCE)?;
-
-        check_doublezero(controller, Some(&spinner))?;
+        check_doublezero(controller, client, Some(&spinner)).await?;
 
         spinner.println("🔗  Start Provisioning User...");
         // Get public IP
@@ -681,6 +680,7 @@ mod tests {
     use super::*;
     use crate::servicecontroller::{LatencyRecord, MockServiceController, ProvisioningResponse};
     use doublezero_cli::{doublezerocommand::MockCliCommand, tests::utils::create_test_client};
+    use doublezero_config::Environment;
     use doublezero_sdk::{
         commands::accesspass::get::GetAccessPassCommand, tests::utils::create_temp_config,
         utils::parse_pubkey,
@@ -745,6 +745,16 @@ mod tests {
                 latencies: Arc::new(Mutex::new(vec![])),
                 mcast_groups: Arc::new(Mutex::new(HashMap::new())),
             };
+
+            fixture
+                .controller
+                .expect_get_env()
+                .returning_st(|| Ok(Environment::default()));
+
+            fixture
+                .client
+                .expect_get_environment()
+                .returning_st(Environment::default);
 
             fixture
                 .controller

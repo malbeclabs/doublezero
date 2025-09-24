@@ -1,5 +1,6 @@
 use base64::{engine::general_purpose, prelude::*, Engine};
 use chrono::{DateTime, NaiveDateTime, Utc};
+use doublezero_config::Environment;
 use doublezero_serviceability::{
     error::DoubleZeroError, instructions::*, state::accounttype::AccountType,
 };
@@ -98,6 +99,10 @@ impl DZClient {
 
     pub fn get_program_id(&self) -> &Pubkey {
         &self.program_id
+    }
+
+    pub fn get_environment(&self) -> Environment {
+        Environment::from_program_id(&self.program_id.to_string()).unwrap_or_default()
     }
 
     pub fn get_balance(&self) -> eyre::Result<u64> {

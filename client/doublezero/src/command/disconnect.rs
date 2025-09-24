@@ -45,7 +45,7 @@ impl DecommissioningCliCommand {
 
         // Check that have your id.json
         check_requirements(client, Some(&spinner), CHECK_ID_JSON | CHECK_BALANCE)?;
-        check_doublezero(&controller, Some(&spinner))?;
+        check_doublezero(&controller, client, Some(&spinner)).await?;
         // READY
         spinner.println("🔍  Decommissioning User");
 

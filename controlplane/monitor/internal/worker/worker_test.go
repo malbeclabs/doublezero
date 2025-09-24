@@ -39,6 +39,8 @@ func TestMonitor_Worker(t *testing.T) {
 		},
 		InternetLatencyCollectorPK: solana.NewWallet().PublicKey(),
 		Interval:                   10 * time.Millisecond,
+		TwoZOracleClient:           &mockTwoZOracleClient{},
+		TwoZOracleInterval:         10 * time.Millisecond,
 	}
 
 	t.Run("New_setsUpDeviceTelemetryWatcher", func(t *testing.T) {
@@ -46,10 +48,11 @@ func TestMonitor_Worker(t *testing.T) {
 		w, err := New(validCfg)
 		require.NoError(t, err)
 		require.NotNil(t, w)
-		require.Len(t, w.watchers, 3)
+		require.Len(t, w.watchers, 4)
 		require.Equal(t, "serviceability", w.watchers[0].Name())
 		require.Equal(t, "device-telemetry", w.watchers[1].Name())
 		require.Equal(t, "internet-telemetry", w.watchers[2].Name())
+		require.Equal(t, "twozoracle", w.watchers[3].Name())
 	})
 
 	t.Run("New_failsOnBadConfig", func(t *testing.T) {

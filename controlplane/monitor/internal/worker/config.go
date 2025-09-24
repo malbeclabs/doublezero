@@ -8,6 +8,7 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
+	twozoracle "github.com/malbeclabs/doublezero/controlplane/monitor/internal/2z-oracle"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 )
@@ -33,6 +34,8 @@ type Config struct {
 	InternetLatencyCollectorPK solana.PublicKey
 	Interval                   time.Duration
 	SlackWebhookURL            string
+	TwoZOracleClient           twozoracle.TwoZOracleClient
+	TwoZOracleInterval         time.Duration
 }
 
 func (c *Config) Validate() error {
@@ -53,6 +56,12 @@ func (c *Config) Validate() error {
 	}
 	if c.Interval <= 0 {
 		return errors.New("interval must be greater than 0")
+	}
+	if c.TwoZOracleClient == nil {
+		return errors.New("twoz oracle client is required")
+	}
+	if c.TwoZOracleInterval <= 0 {
+		return errors.New("twoz oracle interval must be greater than 0")
 	}
 	return nil
 }

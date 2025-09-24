@@ -9,6 +9,7 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
+	twozoracle "github.com/malbeclabs/doublezero/controlplane/monitor/internal/2z-oracle"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 	"github.com/stretchr/testify/require"
@@ -39,6 +40,8 @@ func TestMonitor_Worker_Config(t *testing.T) {
 		},
 		Interval:                   50 * time.Millisecond,
 		InternetLatencyCollectorPK: solana.NewWallet().PublicKey(),
+		TwoZOracleClient:           &mockTwoZOracleClient{},
+		TwoZOracleInterval:         50 * time.Millisecond,
 	}
 
 	t.Run("valid config passes", func(t *testing.T) {
@@ -120,4 +123,17 @@ func (m *mockTelemetryProgramClient) GetDeviceLatencySamples(ctx context.Context
 
 func (m *mockTelemetryProgramClient) GetInternetLatencySamples(ctx context.Context, d string, o, t, l solana.PublicKey, e uint64) (*telemetry.InternetLatencySamples, error) {
 	return m.GetInternetLatencySamplesFunc(ctx, d, o, t, l, e)
+}
+
+type mockTwoZOracleClient struct {
+	SwapRateFunc func(ctx context.Context) (twozoracle.SwapRateResponse, int, error)
+	HealthFunc   func(ctx context.Context) (twozoracle.HealthResponse, int, error)
+}
+
+func (m *mockTwoZOracleClient) SwapRate(ctx context.Context) (twozoracle.SwapRateResponse, int, error) {
+	return m.SwapRateFunc(ctx)
+}
+
+func (m *mockTwoZOracleClient) Health(ctx context.Context) (twozoracle.HealthResponse, int, error) {
+	return m.HealthFunc(ctx)
 }

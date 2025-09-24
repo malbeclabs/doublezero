@@ -103,7 +103,7 @@ func main() {
 				log.Error("Failed to start prometheus metrics server listener", "error", err)
 				return
 			}
-			log.Info("Prometheus metrics server listening", "address", listener.Addr())
+			log.Info("Prometheus metrics server listening", "address", listener.Addr().String())
 			http.Handle("/metrics", promhttp.Handler())
 			if err := http.Serve(listener, nil); err != nil {
 				log.Error("Failed to start prometheus metrics server", "error", err)

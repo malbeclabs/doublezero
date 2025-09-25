@@ -18,8 +18,8 @@ pub struct SolanaValidatorDepositCommand {
     #[arg(long)]
     initialize: bool,
 
-    #[arg(long, value_name = "LAMPORTS")]
-    fund: Option<u64>,
+    #[arg(long, value_name = "SOL")]
+    fund: Option<String>,
 
     #[command(flatten)]
     solana_payer_options: SolanaPayerOptions,
@@ -45,8 +45,15 @@ impl SolanaValidatorDepositCommand {
             bail!("Solana validator deposit already initialized");
         }
 
+        // Parse fund amount from SOL string (representing 9 decimal places at
+        // most) to lamports.
+        let fund_lamports = match fund {
+            Some(fund) => parse_sol_to_lamports(fund)?,
+            None => 0,
+        };
+
         // Ensure that we initialize if it does not exist and we are funding.
-        let should_initialize = deposit.is_none() && fund.is_some_and(|fund| fund != 0);
+        let should_initialize = deposit.is_none() && fund_lamports != 0;
 
         let mut instructions = vec![];
         let mut compute_unit_limit = 5_000;
@@ -69,15 +76,14 @@ impl SolanaValidatorDepositCommand {
             ""
         };
 
-        if let Some(fund) = fund {
-            if fund == 0 {
-                bail!("Cannot fund with zero lamports");
-            }
+        if fund_lamports != 0 {
+            deposit_balance += fund_lamports;
 
-            deposit_balance += fund;
-
-            let transfer_ix =
-                solana_system_interface::instruction::transfer(&wallet_key, &deposit_key, fund);
+            let transfer_ix = solana_system_interface::instruction::transfer(
+                &wallet_key,
+                &deposit_key,
+                fund_lamports,
+            );
             instructions.push(transfer_ix);
 
             compute_unit_limit += 5_000;
@@ -109,4 +115,36 @@ impl SolanaValidatorDepositCommand {
 
         Ok(())
     }
+}
+
+//
+
+fn parse_sol_to_lamports(sol_amount_str: String) -> Result<u64> {
+    let sol_amount_str = sol_amount_str.trim();
+
+    if sol_amount_str.is_empty() {
+        bail!("SOL amount cannot be empty");
+    }
+
+    let sol_amount = sol_amount_str
+        .parse::<f64>()
+        .map_err(|_| anyhow::anyhow!("Invalid SOL amount: '{sol_amount_str}'"))?;
+
+    if sol_amount <= 0.0 {
+        bail!("SOL amount must be a positive value");
+    }
+
+    if sol_amount > (u64::MAX as f64 / 1e9) {
+        bail!("SOL amount too large");
+    }
+
+    // Check that value is at most 9 decimal places.
+    if let Some(decimal_index) = sol_amount_str.find('.') {
+        let decimal_places = sol_amount_str.len() - decimal_index - 1;
+        if decimal_places > 9 {
+            bail!("SOL amount cannot have more than 9 decimal places");
+        }
+    }
+
+    Ok((sol_amount * 1e9).round() as u64)
 }

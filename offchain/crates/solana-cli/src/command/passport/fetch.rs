@@ -53,12 +53,12 @@ impl FetchCommand {
                 program_config.sentinel_key
             );
             println!(
-                "Request deposit lamports          | {}",
-                program_config.request_deposit_lamports
+                "Request deposit                   | {:.9} SOL",
+                program_config.request_deposit_lamports as f64 * 1e-9
             );
             println!(
-                "Request fee lamports              | {}",
-                program_config.request_fee_lamports
+                "Request fee                       | {:.9} SOL",
+                program_config.request_fee_lamports as f64 * 1e-9
             );
             println!(
                 "Solana validator backup IDs limit | {}",
@@ -76,21 +76,18 @@ impl FetchCommand {
             println!();
             match access_request {
                 Some(access_request) => {
-                    println!("Field                             | Value");
+                    println!("Field                | Value");
                     println!(
-                        "----------------------------------+-------------------------------------------------"
+                        "---------------------+-------------------------------------------------"
                     );
+                    println!("Service key          | {}", access_request.service_key);
                     println!(
-                        "Service key                       | {}",
-                        access_request.service_key
-                    );
-                    println!(
-                        "Rent beneficiary key              | {}",
+                        "Rent beneficiary key | {}",
                         access_request.rent_beneficiary_key
                     );
                     println!(
-                        "Request fee lamports              | {}",
-                        access_request.request_fee_lamports
+                        "Request fee          | {:.9} SOL",
+                        access_request.request_fee_lamports as f64 * 1e-9
                     );
                     match access_request.checked_access_mode() {
                         Some(access_mode) => {
@@ -100,10 +97,10 @@ impl FetchCommand {
                                     "Solana validator with backup IDs"
                                 }
                             };
-                            println!("Access mode                       | {access_mode_str}");
+                            println!("Access mode          | {access_mode_str}");
                         }
                         None => {
-                            println!("Access mode                       | Unknown");
+                            println!("Access mode          | Unknown");
                         }
                     }
                 }

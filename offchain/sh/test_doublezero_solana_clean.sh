@@ -157,17 +157,17 @@ doublezero-revenue-distribution-admin set-rewards-manager \
     $(solana address -k rewards_manager.json)
 echo
 
-echo "doublezero-solana revenue-distribution solana-validator-deposit --fund 1000000000 -u l -v $DUMMY_KEY"
+echo "doublezero-solana revenue-distribution solana-validator-deposit --fund 4.2069 -u l -v $DUMMY_KEY"
 $CLI_BIN revenue-distribution solana-validator-deposit \
-    --fund 1000000000 \
+    --fund 4.2069 \
     -u l \
     -v \
     $DUMMY_KEY
 echo
 
-echo "doublezero-solana revenue-distribution solana-validator-deposit --fund 1000000000 -u l -v $DUMMY_KEY"
+echo "doublezero-solana revenue-distribution solana-validator-deposit --fund 69.420 -u l -v $DUMMY_KEY"
 $CLI_BIN revenue-distribution solana-validator-deposit \
-    --fund 1000000000 \
+    --fund 69.420 \
     -u l \
     -v \
     $DUMMY_KEY

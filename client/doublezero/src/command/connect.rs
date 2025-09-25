@@ -384,7 +384,7 @@ impl ProvisioningCliCommand {
                     eyre::bail!("User is banned.");
                 }
 
-                // executing this instruction will force not actually change the user account, but
+                // executing this instruction will not actually change the user account, but
                 // will force an update that the activator will see.
                 client.update_user(UpdateUserCommand {
                     pubkey: **pubkey,

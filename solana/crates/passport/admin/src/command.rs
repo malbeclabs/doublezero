@@ -81,6 +81,10 @@ pub struct ConfigurePassportOptions {
     /// Set the access request fee lamports.
     #[arg(long, value_name = "LAMPORTS")]
     access_fee: Option<u64>,
+
+    /// Set number of Solana validator backup IDs allowed per staked node.
+    #[arg(long, value_name = "NUMBER")]
+    solana_validator_backup_ids_limit: Option<u16>,
 }
 
 //
@@ -193,6 +197,7 @@ pub async fn execute_configure_program(
         sentinel,
         access_request_deposit,
         access_fee,
+        solana_validator_backup_ids_limit,
     } = configure_options;
 
     let wallet = Wallet::try_from(solana_payer_options)?;
@@ -230,7 +235,7 @@ pub async fn execute_configure_program(
             ProgramConfiguration::DoubleZeroLedgerSentinel(sentinel_key),
         )?;
         instructions.push(configure_program_ix);
-        compute_unit_limit += 2_500;
+        compute_unit_limit += 3_000;
     }
 
     // Both access need to be specified.
@@ -244,12 +249,21 @@ pub async fn execute_configure_program(
                 },
             )?;
             instructions.push(configure_program_ix);
-            compute_unit_limit += 2_000;
+            compute_unit_limit += 2_500;
         }
         (None, None) => {}
         _ => {
             bail!("Access request deposit and access fee must be specified");
         }
+    }
+
+    if let Some(limit) = solana_validator_backup_ids_limit {
+        let configure_program_ix = try_build_configure_program_instruction(
+            &wallet_key,
+            ProgramConfiguration::SolanaValidatorBackupIdsLimit(limit),
+        )?;
+        instructions.push(configure_program_ix);
+        compute_unit_limit += 2_000;
     }
 
     instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(

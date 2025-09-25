@@ -71,13 +71,15 @@ echo
 echo "doublezero-passport-admin configure -u l -v --pause" \
      "--sentinel $DUMMY_KEY" \
      "--access-request-deposit 1000000000" \
-     "--access-fee 100000"
+     "--access-fee 100000" \
+     "--solana-validator-backup-ids-limit 1"
 $PASSPORT_CLI_BIN configure -u l \
     -v \
     --pause \
     --sentinel $DUMMY_KEY \
     --access-request-deposit 1000000000 \
-    --access-fee 100000
+    --access-fee 100000 \
+    --solana-validator-backup-ids-limit 1
 echo
 
 echo "doublezero-passport-admin configure -u l -v --unpause"

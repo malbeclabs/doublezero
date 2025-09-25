@@ -181,6 +181,11 @@ fn try_configure_program(accounts: &[AccountInfo], setting: ProgramConfiguration
             program_config.request_fee_lamports = fee_lamports;
         }
         ProgramConfiguration::SolanaValidatorBackupIdsLimit(limit) => {
+            if limit == 0 {
+                msg!("Solana validator backup IDs limit must not be zero");
+                return Err(ProgramError::InvalidInstructionData);
+            }
+
             msg!("Set solana_validator_backup_ids_limit: {}", limit);
             program_config.solana_validator_backup_ids_limit = limit;
         }
@@ -230,9 +235,14 @@ fn try_request_access(accounts: &[AccountInfo], access_mode: AccessMode) -> Prog
         } => {
             msg!("Solana validator with backup IDs");
 
+            if backup_ids.is_empty() {
+                msg!("Must provide at least one backup ID");
+                return Err(ProgramError::InvalidInstructionData);
+            }
+
             if backup_ids.len() > program_config.solana_validator_backup_ids_limit as usize {
                 msg!(
-                    "Cannot exceed Solana validator backup IDs limit {}",
+                    "Cannot exceed backup IDs limit {}",
                     program_config.solana_validator_backup_ids_limit
                 );
                 return Err(ProgramError::InvalidInstructionData);

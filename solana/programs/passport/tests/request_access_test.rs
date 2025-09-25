@@ -107,9 +107,7 @@ async fn test_request_access() {
     );
     assert_eq!(
         program_logs.get(3).unwrap(),
-        &format!(
-            "Program log: Cannot exceed Solana validator backup IDs limit {solana_validator_backup_ids_limit}",
-        )
+        &format!("Program log: Cannot exceed backup IDs limit {solana_validator_backup_ids_limit}",)
     );
 
     let access_mode_1 = AccessMode::SolanaValidator(attestation_1);

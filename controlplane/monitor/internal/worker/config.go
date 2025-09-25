@@ -57,9 +57,6 @@ func (c *Config) Validate() error {
 	if c.Interval <= 0 {
 		return errors.New("interval must be greater than 0")
 	}
-	if c.TwoZOracleClient == nil {
-		return errors.New("twoz oracle client is required")
-	}
 	if c.TwoZOracleInterval <= 0 {
 		return errors.New("twoz oracle interval must be greater than 0")
 	}

@@ -90,6 +90,20 @@ func TestMonitor_Worker_Config(t *testing.T) {
 		c.Interval = 0
 		require.Error(t, c.Validate())
 	})
+
+	t.Run("twoz oracle can be nil", func(t *testing.T) {
+		t.Parallel()
+		c := *valid
+		c.TwoZOracleClient = nil
+		require.NoError(t, c.Validate())
+	})
+
+	t.Run("non-positive twoz oracle interval fails", func(t *testing.T) {
+		t.Parallel()
+		c := *valid
+		c.TwoZOracleInterval = 0
+		require.Error(t, c.Validate())
+	})
 }
 
 func newTestLogger(t *testing.T) *slog.Logger {

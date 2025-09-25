@@ -411,27 +411,41 @@ func (c *Collector) ExportMeasurementResults(ctx context.Context, stateDir strin
 	}
 	sort.Strings(exchanges)
 
-	// Count unique pairs (upper triangular matrix)
+	// Count unique pairs (upper triangular matrix) and track per circuit
 	expectedSamples := 0
+	circuitExpectedSamples := make(map[string]int)
 	for i := 0; i < len(exchanges); i++ {
 		for j := i + 1; j < len(exchanges); j++ {
 			// Both exchanges have probes, so this pair should have a measurement
 			expectedSamples++
+			// Verify exchanges are sorted as expected
+			if exchanges[i] > exchanges[j] {
+				c.log.Warn("Exchanges not in expected sorted order",
+					slog.String("exchange_i", exchanges[i]),
+					slog.String("exchange_j", exchanges[j]))
+			}
+			circuit := fmt.Sprintf("%s → %s", exchanges[i], exchanges[j])
+			circuitExpectedSamples[circuit] = 1
 		}
 	}
 
-	// Track expected samples metric
+	// Track expected samples metric per circuit
+	for circuit, count := range circuitExpectedSamples {
+		metrics.LatencySamplesPerCollectionIntervalExpected.WithLabelValues("ripeatlas", circuit).Add(float64(count))
+	}
+
 	if expectedSamples > 0 {
-		metrics.LatencySamplesPerCollectionIntervalExpected.WithLabelValues("ripeatlas").Set(float64(expectedSamples))
-		c.log.Info("RIPE Atlas - Set expected samples metric",
-			slog.Int("expected_samples", expectedSamples),
-			slog.Int("exchanges_with_probes", len(exchanges)))
+		c.log.Info("RIPE Atlas - Added expected samples metrics",
+			slog.Int("total_expected_samples", expectedSamples),
+			slog.Int("exchanges_with_probes", len(exchanges)),
+			slog.Int("circuits", len(circuitExpectedSamples)))
 	}
 
 	recordCount := 0
+	circuitActualSamples := make(map[string]int)
 
 	for _, measurement := range activeMeasurements {
-		count, err := c.exportSingleMeasurementResults(ctx, measurement, measurementState)
+		count, records, err := c.exportSingleMeasurementResults(ctx, measurement, measurementState)
 		if err != nil {
 			c.log.Warn("Failed to export measurement results",
 				slog.Int("measurement_id", measurement.ID),
@@ -440,6 +454,17 @@ func (c *Collector) ExportMeasurementResults(ctx context.Context, stateDir strin
 			continue // Skip this measurement if export fails
 		} else {
 			recordCount += count
+			// Track actual samples per circuit
+			for _, record := range records {
+				// Create circuit label with alphabetically sorted exchanges
+				var circuit string
+				if record.SourceExchangeCode < record.TargetExchangeCode {
+					circuit = fmt.Sprintf("%s → %s", record.SourceExchangeCode, record.TargetExchangeCode)
+				} else {
+					circuit = fmt.Sprintf("%s → %s", record.TargetExchangeCode, record.SourceExchangeCode)
+				}
+				circuitActualSamples[circuit]++
+			}
 		}
 	}
 
@@ -449,10 +474,16 @@ func (c *Collector) ExportMeasurementResults(ctx context.Context, stateDir strin
 	}
 	c.log.Debug("Updated timestamp tracking file", slog.String("file", timestampFile))
 
-	// Track actual samples metric
-	metrics.LatencySamplesPerCollectionIntervalActual.WithLabelValues("ripeatlas").Set(float64(recordCount))
-	c.log.Info("RIPE Atlas - Set actual samples metric",
-		slog.Int("actual_samples", recordCount))
+	// Track actual samples metric per circuit
+	for circuit, count := range circuitActualSamples {
+		metrics.LatencySamplesPerCollectionIntervalActual.WithLabelValues("ripeatlas", circuit).Add(float64(count))
+	}
+
+	if recordCount > 0 {
+		c.log.Info("RIPE Atlas - Added actual samples metrics",
+			slog.Int("total_actual_samples", recordCount),
+			slog.Int("circuits", len(circuitActualSamples)))
+	}
 
 	c.log.Info("Successfully exported measurement results",
 		slog.Int("records_written", recordCount))
@@ -460,7 +491,7 @@ func (c *Collector) ExportMeasurementResults(ctx context.Context, stateDir strin
 	return nil
 }
 
-func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurement Measurement, measurementState *MeasurementState) (int, error) {
+func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurement Measurement, measurementState *MeasurementState) (int, []exporter.Record, error) {
 	lastTimestampUnix, exists := measurementState.GetLastTimestamp(measurement.ID)
 	lastTimestamp := time.Unix(lastTimestampUnix, 0)
 
@@ -474,7 +505,7 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 	if !hasMeta {
 		c.log.Warn("No metadata found for measurement",
 			slog.Int("measurement_id", measurement.ID))
-		return 0, nil
+		return 0, nil, nil
 	}
 
 	targetLocation := meta.TargetLocation
@@ -489,12 +520,12 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 		c.log.Warn("Failed to get results for measurement",
 			slog.Int("measurement_id", measurement.ID),
 			slog.String("error", err.Error()))
-		return 0, err
+		return 0, nil, err
 	}
 
 	if len(results) == 0 {
 		c.log.Debug("No new results for measurement", slog.Int("measurement_id", measurement.ID))
-		return 0, nil
+		return 0, nil, nil
 	}
 
 	c.log.Debug("Retrieved new results for measurement",
@@ -556,7 +587,7 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 	if len(records) > 0 {
 		if err := c.exporter.WriteRecords(ctx, records); err != nil {
 			c.log.Warn("RIPE Atlas failed to write records", "error", err.Error(), "records", len(records))
-			return 0, fmt.Errorf("failed to write records: %w", err)
+			return 0, nil, fmt.Errorf("failed to write records: %w", err)
 		}
 	}
 
@@ -569,7 +600,7 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 			slog.Int("processed_results", processedResults))
 	}
 
-	return len(records), nil
+	return len(records), records, nil
 }
 
 func (c *Collector) RunRipeAtlasMeasurementCreation(ctx context.Context, dryRun bool, probesPerLocation int, stateDir string, samplingInterval time.Duration) error {
@@ -836,7 +867,7 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 			} else {
 				// Export results before removing (only if exporter is available)
 				if c.exporter != nil {
-					if _, err := c.exportSingleMeasurementResults(ctx, measurement, measurementState); err != nil {
+					if _, _, err := c.exportSingleMeasurementResults(ctx, measurement, measurementState); err != nil {
 						c.log.Warn("Failed to export measurement results before removal",
 							slog.Int("measurement_id", measurement.ID),
 							slog.String("error", err.Error()))

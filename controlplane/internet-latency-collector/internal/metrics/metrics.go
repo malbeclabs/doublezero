@@ -39,6 +39,41 @@ var (
 		Help: "Total number of failed collection runs",
 	}, []string{"data_provider"})
 
+	ExporterErrorsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "doublezero_internet_latency_collector_exporter_errors_total",
+		Help: "Total number of errors from the exporter",
+	}, []string{"error_type"})
+
+	ExporterExchangeNotFoundTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "doublezero_internet_latency_collector_exporter_exchange_not_found_total",
+		Help: "Total number of exchange not found warnings from the exporter",
+	}, []string{"exchange"})
+
+	ExporterPartitionedBufferSize = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "doublezero_internet_latency_collector_exporter_partitioned_buffer_size",
+		Help: "Number of partitioned buffers from the exporter",
+	}, []string{"data_provider", "source_exchange_pk", "target_exchange_pk"})
+
+	ExporterSubmitterAccountFull = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "doublezero_internet_latency_collector_exporter_submitter_account_full",
+		Help: "Number of times the exporter has encountered a submitter account full error",
+	}, []string{"data_provider", "source_exchange_pk", "target_exchange_pk", "epoch"})
+
+	LatencySamplesPerCollectionIntervalExpected = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "doublezero_internet_latency_collector_latency_samples_per_collection_interval_expected",
+		Help: "Expected number of exchange pair latency samples per collection interval",
+	}, []string{"data_provider", "circuit"})
+
+	LatencySamplesPerCollectionIntervalActual = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "doublezero_internet_latency_collector_latency_samples_per_collection_interval_actual",
+		Help: "Actual number of exchange pair latency samples exported per collection interval",
+	}, []string{"data_provider", "circuit"})
+
+	DistanceFromExchangeToProbe = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "doublezero_internet_latency_collector_distance_from_exchange_to_probe_km",
+		Help: "Haversine distance in kilometers from exchange to its nearest probe",
+	}, []string{"provider", "exchange_code"})
+
 	// RIPE Atlas specific metrics
 	RipeatlasMeasurementManagementRunsTotal = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "doublezero_internet_latency_collector_ripeatlas_measurement_management_runs_total",
@@ -75,12 +110,6 @@ var (
 		Help: "Expected daily RIPE Atlas results (constrained by 100k daily limit)",
 	})
 
-	// Distance metrics
-	DistanceFromExchangeToProbe = promauto.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "doublezero_internet_latency_collector_distance_from_exchange_to_probe_km",
-		Help: "Haversine distance in kilometers from exchange to its nearest probe",
-	}, []string{"provider", "exchange_code"})
-
 	// Wheresitup specific metrics
 	WheresitupJobCreationRunsTotal = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "doublezero_internet_latency_collector_wheresitup_job_creation_runs_total",
@@ -96,38 +125,6 @@ var (
 		Name: "doublezero_internet_latency_collector_wheresitup_credit_balance",
 		Help: "Current Wheresitup credit balance",
 	})
-
-	ExporterErrorsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "doublezero_internet_latency_collector_exporter_errors_total",
-		Help: "Total number of errors from the exporter",
-	}, []string{"error_type"})
-
-	ExporterExchangeNotFoundTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "doublezero_internet_latency_collector_exporter_exchange_not_found_total",
-		Help: "Total number of exchange not found warnings from the exporter",
-	}, []string{"exchange"})
-
-	ExporterPartitionedBufferSize = promauto.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "doublezero_internet_latency_collector_exporter_partitioned_buffer_size",
-		Help: "Number of partitioned buffers from the exporter",
-	}, []string{"data_provider", "source_exchange_pk", "target_exchange_pk"})
-
-	ExporterSubmitterAccountFull = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "doublezero_internet_latency_collector_exporter_submitter_account_full",
-		Help: "Number of times the exporter has encountered a submitter account full error",
-	}, []string{"data_provider", "source_exchange_pk", "target_exchange_pk", "epoch"})
-
-	// Exchange pair latency metrics tracking - using regular GaugeVec (not promauto)
-	// to avoid initialization with zero values
-	LatencySamplesPerCollectionIntervalExpected = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "doublezero_internet_latency_collector_latency_samples_per_collection_interval_expected",
-		Help: "Expected number of exchange pair latency samples per collection interval",
-	}, []string{"data_provider"})
-
-	LatencySamplesPerCollectionIntervalActual = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "doublezero_internet_latency_collector_latency_samples_per_collection_interval_actual",
-		Help: "Actual number of exchange pair latency samples exported per collection interval",
-	}, []string{"data_provider"})
 )
 
 func init() {

@@ -210,9 +210,22 @@ func (c *Collector) RunJobCreation(ctx context.Context, locations []collector.Lo
 		}
 
 		if len(newJobIDs) > 0 {
-			// Track expected samples metric (one sample per job)
-			metrics.LatencySamplesPerCollectionIntervalExpected.WithLabelValues("wheresitup").Set(float64(len(newJobIDs)))
-			c.log.Info("Wheresitup - Set expected samples metric",
+			// Track expected samples metric per circuit
+			// We need to track which circuits these jobs represent
+			for i, sourceLocation := range locationsWithSources {
+				for j, targetLocation := range locationsWithSources {
+					if i == j || len(sourceLocation.NearestSources) == 0 || len(targetLocation.NearestSources) == 0 {
+						continue
+					}
+					// Only count if source location name comes before target location name alphabetically
+					if sourceLocation.LocationCode >= targetLocation.LocationCode {
+						continue
+					}
+					circuit := fmt.Sprintf("%s → %s", sourceLocation.LocationCode, targetLocation.LocationCode)
+					metrics.LatencySamplesPerCollectionIntervalExpected.WithLabelValues("wheresitup", circuit).Add(1)
+				}
+			}
+			c.log.Info("Wheresitup - Added expected samples metrics",
 				slog.Int("expected_samples", len(newJobIDs)))
 
 			c.log.Info("Wheresitup - Storing new job IDs",
@@ -532,10 +545,24 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 			c.log.Warn("Wheresitup failed to write records", "error", err.Error(), "records", len(records))
 			return fmt.Errorf("failed to write records: %w", err)
 		}
-		// Track actual samples metric
-		metrics.LatencySamplesPerCollectionIntervalActual.WithLabelValues("wheresitup").Set(float64(len(records)))
-		c.log.Info("Wheresitup - Set actual samples metric",
-			slog.Int("actual_samples", len(records)))
+		// Track actual samples metric per circuit
+		circuitActualSamples := make(map[string]int)
+		for _, record := range records {
+			// Create circuit label with alphabetically sorted exchanges
+			var circuit string
+			if record.SourceExchangeCode < record.TargetExchangeCode {
+				circuit = fmt.Sprintf("%s → %s", record.SourceExchangeCode, record.TargetExchangeCode)
+			} else {
+				circuit = fmt.Sprintf("%s → %s", record.TargetExchangeCode, record.SourceExchangeCode)
+			}
+			circuitActualSamples[circuit]++
+		}
+		for circuit, count := range circuitActualSamples {
+			metrics.LatencySamplesPerCollectionIntervalActual.WithLabelValues("wheresitup", circuit).Add(float64(count))
+		}
+		c.log.Info("Wheresitup - Added actual samples metrics",
+			slog.Int("actual_samples", len(records)),
+			slog.Int("circuits", len(circuitActualSamples)))
 	}
 
 	if len(completedJobIDs) > 0 {

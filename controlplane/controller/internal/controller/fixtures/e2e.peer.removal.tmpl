@@ -83,6 +83,10 @@ mpls icmp ttl-exceeded tunneling
 mpls icmp ip source-interface Loopback255
 !
 default interface Tunnel500
+default interface Tunnel501
+{{- range $i := seq (add .StartTunnel 2) .EndTunnel}}
+default interface Tunnel{{$i}}
+{{- end}}
 interface Tunnel500
    description USER-UCAST-500
    ip access-group SEC-USER-500-IN in
@@ -96,7 +100,6 @@ interface Tunnel500
    tunnel ttl 32
    no shutdown
 !
-default interface Tunnel501
 interface Tunnel501
    description USER-MCAST-501
    ip access-group SEC-USER-SUB-MCAST-IN in
@@ -112,10 +115,6 @@ interface Tunnel501
    tunnel ttl 32
    no shutdown
 !
-{{- range $i := seq (add .StartTunnel 2) .EndTunnel}}
-default interface Tunnel{{$i}}
-!
-{{- end}}
 router bgp 65342
    router-id 14.14.14.14
    timers bgp 1 3

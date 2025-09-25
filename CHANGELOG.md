@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 
 - Device controller
     - Update device template to set default BGP timers and admin distance
+    - Update device tempalte so all "default interface TunnelXXX" commands for user tunnels come before any other user tunnel config
 - Activator
     - Fix access pass check status accounts list
 - AccessPass Account Validation and Closing

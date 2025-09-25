@@ -2,15 +2,9 @@ use clap::Parser;
 use doublezero_config::Environment;
 use doublezero_sdk::ProgramVersion;
 use futures::{future::LocalBoxFuture, FutureExt};
-use log::{error, info, LevelFilter};
+use log::{info, LevelFilter};
 use metrics_exporter_prometheus::PrometheusBuilder;
-use std::{
-    path::PathBuf,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
-};
+use std::path::PathBuf;
 use tokio::signal;
 
 mod accesspass_monitor;
@@ -20,6 +14,7 @@ mod constants;
 mod idallocator;
 mod ipblockallocator;
 mod process;
+mod processor;
 mod states;
 pub mod test_helpers;
 pub mod tests;
@@ -82,61 +77,13 @@ async fn main() -> eyre::Result<()> {
         .keypair
         .ok_or_else(|| eyre::eyre!("Keypair is required"))?;
 
-    let mut activator = activator::Activator::new(
+    activator::run_activator(
         Some(rpc_url.clone()),
         Some(ws_url.clone()),
         Some(program_id.clone()),
         Some(keypair.clone()),
     )
     .await?;
-
-    info!("Activator started");
-    let shutdown = Arc::new(AtomicBool::new(false));
-    let shutdown_clone = shutdown.clone();
-    let shutdown_clone2 = shutdown.clone();
-
-    activator.init().await?;
-
-    info!("Initialized");
-
-    // run on the tokio blocking thread pool so we can continue to run the metrics submitter in this async task
-    let activator_handle = tokio::task::spawn_blocking(move || {
-        info!("Activator thread started");
-        activator
-            .process_events_thread(shutdown_clone)
-            .unwrap_or_default()
-    });
-
-    let accesspass_monitor_handle = tokio::task::spawn_blocking(move || {
-        info!("User monitor thread started");
-        accesspass_monitor::process_access_pass_monitor_thread(
-            rpc_url,
-            ws_url,
-            program_id,
-            keypair,
-            shutdown_clone2,
-        )
-        .unwrap_or_default()
-    });
-
-    tokio::select! {
-        biased;
-        _ = listen_for_shutdown()? => {
-            shutdown.store(true, Ordering::Relaxed);
-        }
-        activator_res = activator_handle => {
-            if let Err(err) = activator_res {
-                error!("Activator thread exited unexpectedly with reason: {err:?}");
-            }
-        }
-        accesspass_monitor_res = accesspass_monitor_handle => {
-            if let Err(err) = accesspass_monitor_res {
-                error!("AccessPass monitor thread exited unexpectedly with reason: {err:?}");
-            }
-        }
-    }
-
-    info!("Activator handler finished");
 
     Ok(())
 }

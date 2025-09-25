@@ -1544,6 +1544,7 @@ dependencies = [
 name = "doublezero-activator"
 version = "0.6.5"
 dependencies = [
+ "backon",
  "bitvec",
  "chrono",
  "clap",

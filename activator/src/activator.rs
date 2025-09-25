@@ -116,7 +116,7 @@ pub fn process_events_thread(
     client.gets_and_subscribe(
         |_, pubkey, data| {
             tx.blocking_send((pubkey, data)).unwrap_or_else(|err| {
-                log::error!("Failed to websocket data to processor: {}", err);
+                log::error!("Failed to send websocket data to processor: {}", err);
             });
         },
         stop_signal,

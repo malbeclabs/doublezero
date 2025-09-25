@@ -10,6 +10,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+backon.workspace = true
 bitvec.workspace = true
 chrono.workspace = true
 clap.workspace = true

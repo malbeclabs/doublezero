@@ -1,6 +1,6 @@
 use crate::{
-    activator::DeviceMap, activator_metrics::record_device_ip_metrics, idallocator::IDAllocator,
-    ipblockallocator::IPBlockAllocator, states::devicestate::DeviceState,
+    activator_metrics::record_device_ip_metrics, idallocator::IDAllocator,
+    ipblockallocator::IPBlockAllocator, processor::DeviceMap, states::devicestate::DeviceState,
 };
 use doublezero_program_common::types::NetworkV4;
 use doublezero_sdk::{

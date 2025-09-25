@@ -31,6 +31,7 @@ impl IDAllocator {
         id
     }
 
+    #[allow(dead_code)]
     pub fn display_assigned(&self) -> String {
         self.assigned
             .iter()

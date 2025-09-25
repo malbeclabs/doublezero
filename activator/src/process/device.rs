@@ -9,7 +9,7 @@ use log::info;
 use solana_sdk::pubkey::Pubkey;
 use std::{collections::hash_map::Entry, fmt::Write};
 
-use crate::{activator::DeviceMap, states::devicestate::DeviceState};
+use crate::{processor::DeviceMap, states::devicestate::DeviceState};
 
 pub fn process_device_event(
     client: &dyn DoubleZeroClient,

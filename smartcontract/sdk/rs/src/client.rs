@@ -125,7 +125,7 @@ impl DZClient {
 
     /******************************************************************************************************************************************/
 
-    fn get_all(&self) -> eyre::Result<HashMap<Pubkey, AccountData>> {
+    pub fn get_all(&self) -> eyre::Result<HashMap<Box<Pubkey>, Box<AccountData>>> {
         let options = RpcProgramAccountsConfig {
             filters: None,
             account_config: RpcAccountInfoConfig {
@@ -138,14 +138,17 @@ impl DZClient {
             sort_results: None,
         };
 
-        let mut list: HashMap<Pubkey, AccountData> = HashMap::new();
+        let mut list: HashMap<Box<Pubkey>, Box<AccountData>> = HashMap::new();
 
         let accounts = self
             .client
             .get_program_accounts_with_config(&self.program_id, options)?;
 
         for (pubkey, account) in accounts {
-            list.insert(pubkey, AccountData::try_from(&account.data[..])?);
+            list.insert(
+                Box::new(pubkey),
+                Box::new(AccountData::try_from(&account.data[..])?),
+            );
         }
 
         Ok(list)
@@ -157,13 +160,13 @@ impl DZClient {
         stop_signal: Arc<AtomicBool>,
     ) -> eyre::Result<()>
     where
-        F: FnMut(&DZClient, &Pubkey, &AccountData),
+        F: FnMut(&DZClient, Box<Pubkey>, Box<AccountData>),
     {
         while !stop_signal.load(Ordering::Relaxed) {
             match self.get_all() {
                 Ok(accounts) => {
                     for (pubkey, account) in accounts {
-                        action(self, &pubkey, &account);
+                        action(self, pubkey, account);
                     }
                 }
                 Err(e) => {
@@ -182,7 +185,7 @@ impl DZClient {
     #[allow(clippy::collapsible_match)]
     pub fn subscribe<F>(&self, mut action: F, stop_signal: Arc<AtomicBool>) -> eyre::Result<()>
     where
-        F: FnMut(&DZClient, &Pubkey, &AccountData),
+        F: FnMut(&DZClient, Box<Pubkey>, Box<AccountData>),
     {
         while !stop_signal.load(Ordering::Relaxed) {
             let options = RpcProgramAccountsConfig {
@@ -205,14 +208,16 @@ impl DZClient {
 
                 if let UiAccountData::Binary(data, encoding) = event.account.data {
                     if let UiAccountEncoding::Base64 = encoding {
-                        let pubkey = Pubkey::from_str(&event.pubkey)
-                            .map_err(|e| eyre!("Unable to parse Pubkey:{e}"))?;
+                        let pubkey = Box::new(
+                            Pubkey::from_str(&event.pubkey)
+                                .map_err(|e| eyre!("Unable to parse Pubkey:{e}"))?,
+                        );
                         let bytes = BASE64_STANDARD
                             .decode(data.clone())
                             .map_err(|e| eyre!("Unable decode data: {e}"))?;
-                        let account = AccountData::try_from(&bytes[..])?;
+                        let account = Box::new(AccountData::try_from(&bytes[..])?);
 
-                        action(self, &pubkey, &account);
+                        action(self, pubkey, account);
                     }
                 }
             }

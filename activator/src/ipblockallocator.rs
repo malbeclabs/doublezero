@@ -95,6 +95,7 @@ impl IPBlockAllocator {
         None
     }
 
+    #[allow(dead_code)]
     pub fn display_assigned_ips(&self) -> String {
         let mut ips = String::new();
         for (index, assigned) in self.assigned_ips.iter().enumerate() {

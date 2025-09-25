@@ -8,17 +8,23 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- CLI
+    - Connect now waits for doublezerod to get all latencies
+    - Latency command sorts unreachable to bottom
 - Device controller
     - Update device template to set default BGP timers and admin distance
     - Update device tempalte so all "default interface TunnelXXX" commands for user tunnels come before any other user tunnel config
 - Activator
     - Fix access pass check status accounts list
-- AccessPass Account Validation and Closing
-  - Implemented strict validation to ensure that only AccessPass accounts **owned by the program** and of the correct type can be closed.
-  - Fix Access Pass set Instruction.
-  - Switched to using `account_close` helper for closing accounts instead of resizing and serializing.
+- Onchain programs
+    - Implemented strict validation to ensure that only AccessPass accounts **owned by the program** and of the correct type can be closed.
+    - Fix Access Pass set Instruction.
+    - Switched to using `account_close` helper for closing accounts instead of resizing and serializing.
+    - Make interface name comparison case insensitive
 - Onchain monitor
-  - Add watcher for 2Z/SOL swap oracle
+    - Check for unlinked interfaces in a link
+    - Emit user events
+    - Add watcher for 2Z/SOL swap oracle
 
 
 ## [v0.6.4](https://github.com/malbeclabs/doublezero/compare/client/v0.6.3...client/v0.6.4) – 2025-09-10

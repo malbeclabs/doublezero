@@ -79,7 +79,7 @@ mod tests {
     async fn test_get_inflation_rewards() {
         let mut mock_solana_debt_calculator = MockValidatorRewards::new();
         let validator_id = "some_validator_pubkey".to_string();
-        let validator_ids = &[validator_id.clone()];
+        let validator_ids = std::slice::from_ref(&validator_id);
         let epoch = 100;
         let mock_rpc_vote_account_status = RpcVoteAccountStatus {
             current: vec![RpcVoteAccountInfo {

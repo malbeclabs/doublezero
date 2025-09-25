@@ -1,26 +1,14 @@
+mod initialize;
+
+//
+
 use std::path::PathBuf;
 
 use anyhow::{Result, bail};
 use clap::{Args, Subcommand};
-use doublezero_program_tools::instruction::try_build_instruction;
-use doublezero_revenue_distribution::{
-    ID as REVENUE_DISTRIBUTION_PROGRAM_ID,
-    instruction::{RevenueDistributionInstructionData, account::InitializeDistributionAccounts},
-    state::{self, Distribution, ProgramConfig},
-};
 use doublezero_scheduled_command::{Schedulable, ScheduleOption};
-use doublezero_solana_client_tools::{
-    payer::{SolanaPayerOptions, Wallet},
-    rpc::DoubleZeroLedgerConnectionOptions,
-    zero_copy::ZeroCopyAccountOwned,
-};
 use solana_client::nonblocking::rpc_client::RpcClient;
-use solana_sdk::{
-    commitment_config::CommitmentConfig,
-    compute_budget::ComputeBudgetInstruction,
-    pubkey::Pubkey,
-    signer::{Signer, keypair::Keypair},
-};
+use solana_sdk::{pubkey::Pubkey, signer::keypair::Keypair};
 
 use crate::{
     rpc::SolanaValidatorDebtConnectionOptions, solana_debt_calculator::SolanaDebtCalculator,
@@ -33,7 +21,7 @@ const DOUBLEZERO_LEDGER_GENESIS_HASH: Pubkey =
 #[derive(Debug, Subcommand)]
 pub enum ValidatorDebtCommand {
     /// Initialize a new distribution on Solana.
-    InitializeDistribution(InitializeDistributionCommand),
+    InitializeDistribution(initialize::InitializeDistributionCommand),
 
     /// Calculate Validator Debt.
     CalculateValidatorDebt {
@@ -58,107 +46,6 @@ pub enum ValidatorDebtCommand {
         #[arg(long, value_name = "FORCE")]
         force: bool,
     },
-}
-
-#[derive(Debug, Args, Clone)]
-pub struct InitializeDistributionCommand {
-    #[command(flatten)]
-    schedule_or_force: ScheduleOrForce,
-
-    #[command(flatten)]
-    solana_payer_options: SolanaPayerOptions,
-
-    #[command(flatten)]
-    dz_ledger_connection_options: DoubleZeroLedgerConnectionOptions,
-}
-
-#[async_trait::async_trait]
-impl Schedulable for InitializeDistributionCommand {
-    fn schedule(&self) -> &ScheduleOption {
-        &self.schedule_or_force.schedule
-    }
-
-    async fn execute_once(&self) -> Result<()> {
-        self.schedule_or_force.ensure_safe_execution()?;
-
-        let wallet = Wallet::try_from(self.solana_payer_options.clone())?;
-
-        let (next_dz_epoch, expected_accountant_key) =
-            ZeroCopyAccountOwned::<ProgramConfig>::from_rpc_client(
-                &wallet.connection,
-                &ProgramConfig::find_address().0,
-            )
-            .await
-            .map(|config| (config.data.next_dz_epoch, config.data.debt_accountant_key))?;
-
-        if wallet.signer.pubkey() != expected_accountant_key {
-            bail!("Signer does not match expected debt accountant");
-        }
-
-        let dz_ledger_rpc_client = RpcClient::new_with_commitment(
-            self.dz_ledger_connection_options.dz_ledger_url.clone(),
-            CommitmentConfig::confirmed(),
-        );
-
-        ensure_same_network_environment(&dz_ledger_rpc_client, wallet.connection.is_mainnet)
-            .await?;
-
-        let expected_dz_epoch = dz_ledger_rpc_client.get_epoch_info().await?.epoch;
-
-        // Ensure that the epoch from the DoubleZero Ledger network equals the next
-        // one known by the Revenue Distribution program. If it does not, this
-        // method has not been called for a long time.
-        if next_dz_epoch.value() != expected_dz_epoch {
-            if self.schedule_or_force.force {
-                tracing::warn!("DZ epoch {expected_dz_epoch} != program's epoch {next_dz_epoch}");
-            } else {
-                bail!("DZ epoch {expected_dz_epoch} != program's epoch {next_dz_epoch}");
-            }
-        }
-
-        let dz_mint_key = if wallet.connection.is_mainnet {
-            doublezero_revenue_distribution::env::mainnet::DOUBLEZERO_MINT_KEY
-        } else {
-            doublezero_revenue_distribution::env::development::DOUBLEZERO_MINT_KEY
-        };
-
-        let initialize_distribution_ix = try_build_instruction(
-            &REVENUE_DISTRIBUTION_PROGRAM_ID,
-            InitializeDistributionAccounts::new(
-                &expected_accountant_key,
-                &expected_accountant_key,
-                next_dz_epoch,
-                &dz_mint_key,
-            ),
-            &RevenueDistributionInstructionData::InitializeDistribution,
-        )
-        .unwrap();
-
-        let mut compute_unit_limit = 24_000;
-
-        let (distribution_key, bump) = Distribution::find_address(next_dz_epoch);
-        compute_unit_limit += Wallet::compute_units_for_bump_seed(bump);
-
-        let (_, bump) = state::find_2z_token_pda_address(&distribution_key);
-        compute_unit_limit += Wallet::compute_units_for_bump_seed(bump);
-
-        let instructions = vec![
-            initialize_distribution_ix,
-            ComputeBudgetInstruction::set_compute_unit_limit(compute_unit_limit),
-            ComputeBudgetInstruction::set_compute_unit_price(1_000_000), // Land it.
-        ];
-
-        let transaction = wallet.new_transaction(&instructions).await?;
-        let tx_sig = wallet.send_or_simulate_transaction(&transaction).await?;
-
-        if let Some(tx_sig) = tx_sig {
-            println!("Initialize distribution: {tx_sig}");
-
-            wallet.print_verbose_output(&[tx_sig]).await?;
-        }
-
-        Ok(())
-    }
 }
 
 impl ValidatorDebtCommand {

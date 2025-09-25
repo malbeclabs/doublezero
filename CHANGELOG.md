@@ -8,12 +8,20 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+## [v0.6.5](https://github.com/malbeclabs/doublezero/compare/client/v0.6.4...client/v0.6.5) – 2025-09-25
+
+### Breaking
+
+- None for this release
+
+### Changes
+
 - CLI
     - Connect now waits for doublezerod to get all latencies
     - Latency command sorts unreachable to bottom
 - Device controller
     - Update device template to set default BGP timers and admin distance
-    - Update device tempalte so all "default interface TunnelXXX" commands for user tunnels come before any other user tunnel config
+    - Update device template so all "default interface TunnelXXX" commands for user tunnels come before any other user tunnel config
 - Activator
     - Fix access pass check status accounts list
 - Onchain programs
@@ -25,7 +33,6 @@ All notable changes to this project will be documented in this file.
     - Check for unlinked interfaces in a link
     - Emit user events
     - Add watcher for 2Z/SOL swap oracle
-
 
 ## [v0.6.4](https://github.com/malbeclabs/doublezero/compare/client/v0.6.3...client/v0.6.4) – 2025-09-10
 

@@ -3,7 +3,7 @@ use crate::{
     requirements::check_doublezero,
     servicecontroller::{ProvisioningRequest, ServiceController, ServiceControllerImpl},
 };
-use backon::{ExponentialBuilder, Retryable};
+use backon::{BlockingRetryable, ExponentialBuilder, Retryable};
 use clap::{Args, Subcommand, ValueEnum};
 use doublezero_cli::{
     doublezerocommand::CliCommand,
@@ -18,7 +18,7 @@ use doublezero_sdk::{
         multicastgroup::list::ListMulticastGroupCommand,
         user::{
             create::CreateUserCommand, create_subscribe::CreateSubscribeUserCommand,
-            get::GetUserCommand, list::ListUserCommand,
+            get::GetUserCommand, list::ListUserCommand, update::UpdateUserCommand,
         },
     },
     Device, DeviceStatus, User, UserCYOA, UserStatus, UserType,
@@ -384,6 +384,19 @@ impl ProvisioningCliCommand {
                     eyre::bail!("User is banned.");
                 }
 
+                // executing this instruction will force not actually change the user account, but
+                // will force an update that the activator will see.
+                client.update_user(UpdateUserCommand {
+                    pubkey: **pubkey,
+                    user_type: None,
+                    cyoa_type: None,
+                    client_ip: None,
+                    dz_ip: None,
+                    tunnel_id: None,
+                    tunnel_net: None,
+                    validator_pubkey: None,
+                })?;
+
                 **pubkey
             }
             None => {
@@ -523,45 +536,39 @@ Disconnect and connect again!"#,
         spinner: &ProgressBar,
     ) -> eyre::Result<User> {
         spinner.set_message("Waiting for user activation...");
-        let start_time = std::time::Instant::now();
-        let timeout = std::time::Duration::from_secs(50);
-        let poll_interval = std::time::Duration::from_secs(1);
-        let mut last_error: Option<eyre::Error> = None;
 
-        loop {
-            if start_time.elapsed() >= timeout {
-                return Err(match last_error {
-                    Some(e) => eyre::eyre!(
-                        "Timeout waiting for user activation after {} seconds. Last error: {}",
-                        timeout.as_secs(),
-                        e
-                    ),
-                    None => eyre::eyre!(
-                        "Timeout waiting for user activation after {} seconds",
-                        timeout.as_secs()
-                    ),
-                });
-            }
+        // activator polling is done every 1-minute, so if the activator websocket misses the user
+        // create, then we may need to wait up to 2 minutes for the activator to pick up the user
+        let builder = ExponentialBuilder::new()
+            .with_max_times(8) // 1+2+4+8+16+32+32+32 = 127 seconds max
+            .with_min_delay(Duration::from_secs(1))
+            .with_max_delay(Duration::from_secs(32));
 
-            match client.get_user(GetUserCommand {
-                pubkey: *user_pubkey,
-            }) {
-                Ok((_, user)) => {
-                    if user.status == UserStatus::Activated || user.status == UserStatus::Rejected {
-                        spinner.println("    The user has been successfully activated");
-                        return Ok(user);
+        let get_activated_user = || {
+            client
+                .get_user(GetUserCommand {
+                    pubkey: *user_pubkey,
+                })
+                .and_then(|(pk, user)| {
+                    if user.status != UserStatus::Activated {
+                        Err(eyre::eyre!("User not activated yet"))
+                    } else {
+                        Ok((pk, user))
                     }
-                }
-                Err(e) => {
-                    // User not found or some other error, continue polling
-                    // It may take some time for the user to be visible onchain after the creation
-                    // transaction is confirmed, so we need to poll here until is is.
-                    last_error = Some(e);
-                }
-            }
+                })
+                .map_err(|e| eyre::eyre!(e.to_string()))
+        };
 
-            std::thread::sleep(poll_interval);
-        }
+        get_activated_user
+            .retry(builder)
+            .notify(|_, dur| {
+                spinner.set_message(format!(
+                    "Waiting for user activation (checking in {dur:?})..."
+                ))
+            })
+            .call()
+            .map(|(_, user)| user)
+            .map_err(|_| eyre::eyre!("Timeout waiting for user activation"))
     }
 
     #[allow(clippy::too_many_arguments)]

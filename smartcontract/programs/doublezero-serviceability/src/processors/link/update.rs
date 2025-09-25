@@ -99,6 +99,10 @@ pub fn process_update_link(
         link.jitter_ns = jitter_ns;
     }
     if let Some(status) = value.status {
+        // Only allow to update the status if the payer is in the foundation allowlist
+        if !globalstate.foundation_allowlist.contains(payer_account.key) {
+            return Err(DoubleZeroError::NotAllowed.into());
+        }
         link.status = status;
     }
 

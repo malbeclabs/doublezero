@@ -42,7 +42,7 @@ pub struct UpdateLinkCliCommand {
     #[arg(long, value_parser = validate_parse_jitter_ms)]
     pub jitter_ms: Option<f64>,
     /// Updated link status (e.g. Activated, Deactivated)
-    #[arg(long)]
+    #[arg(long, hide = true)]
     pub status: Option<String>,
     /// Wait for the device to be activated
     #[arg(short, long, default_value_t = false)]

@@ -16,6 +16,7 @@ use solana_client::{
 use solana_sdk::{
     commitment_config::CommitmentConfig,
     instruction::{AccountMeta, Instruction, InstructionError},
+    program_error::ProgramError,
     pubkey::Pubkey,
     signature::{Keypair, Signature, Signer},
     transaction::{Transaction, TransactionError},
@@ -145,10 +146,16 @@ impl DZClient {
             .get_program_accounts_with_config(&self.program_id, options)?;
 
         for (pubkey, account) in accounts {
-            list.insert(
-                Box::new(pubkey),
-                Box::new(AccountData::try_from(&account.data[..])?),
-            );
+            let account = match AccountData::try_from(&account.data[..]) {
+                Ok(data) => data,
+                Err(ProgramError::InvalidAccountData) => {
+                    continue;
+                }
+                Err(e) => {
+                    return Err(e.into());
+                }
+            };
+            list.insert(Box::new(pubkey), Box::new(account));
         }
 
         Ok(list)

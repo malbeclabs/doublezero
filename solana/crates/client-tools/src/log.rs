@@ -1,55 +1,63 @@
+#[cfg(feature = "tracing")]
 #[macro_export]
 macro_rules! log_info {
     ($($arg:tt)*) => {
-        #[cfg(feature = "tracing")]
-        {
-            ::tracing::info!($($arg)*);
-        }
-        #[cfg(not(feature = "tracing"))]
-        {
-            println!($($arg)*);
-        }
+        ::tracing::info!($($arg)*);
     };
 }
 
+#[cfg(not(feature = "tracing"))]
+#[macro_export]
+macro_rules! log_info {
+    ($($arg:tt)*) => {
+        println!($($arg)*);
+    };
+}
+
+#[cfg(feature = "tracing")]
 #[macro_export]
 macro_rules! log_error {
     ($($arg:tt)*) => {
-        #[cfg(feature = "tracing")]
-        {
-            ::tracing::error!($($arg)*);
-        }
-        #[cfg(not(feature = "tracing"))]
-        {
-            eprintln!($($arg)*);
-        }
+        ::tracing::error!($($arg)*);
     };
 }
 
+#[cfg(not(feature = "tracing"))]
+#[macro_export]
+macro_rules! log_error {
+    ($($arg:tt)*) => {
+        eprintln!($($arg)*);
+    };
+}
+
+#[cfg(feature = "tracing")]
 #[macro_export]
 macro_rules! log_warn {
     ($($arg:tt)*) => {
-        #[cfg(feature = "tracing")]
-        {
-            ::tracing::warn!($($arg)*);
-        }
-        #[cfg(not(feature = "tracing"))]
-        {
-            eprintln!($($arg)*);
-        }
+        ::tracing::warn!($($arg)*);
     };
 }
 
+#[cfg(not(feature = "tracing"))]
+#[macro_export]
+macro_rules! log_warn {
+    ($($arg:tt)*) => {
+        eprintln!($($arg)*);
+    };
+}
+
+#[cfg(feature = "tracing")]
 #[macro_export]
 macro_rules! log_debug {
     ($($arg:tt)*) => {
-        #[cfg(feature = "tracing")]
-        {
-            ::tracing::debug!($($arg)*);
-        }
-        #[cfg(not(feature = "tracing"))]
-        {
-            println!($($arg)*);
-        }
+        ::tracing::debug!($($arg)*);
+    };
+}
+
+#[cfg(not(feature = "tracing"))]
+#[macro_export]
+macro_rules! log_debug {
+    ($($arg:tt)*) => {
+        println!($($arg)*);
     };
 }

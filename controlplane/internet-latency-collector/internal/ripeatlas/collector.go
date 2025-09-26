@@ -485,6 +485,21 @@ func (c *Collector) ExportMeasurementResults(ctx context.Context, stateDir strin
 			slog.Int("circuits", len(circuitActualSamples)))
 	}
 
+	// Track missing samples metric for circuits that were expected but not received
+	missingSamples := 0
+	for circuit := range circuitExpectedSamples {
+		if _, exists := circuitActualSamples[circuit]; !exists {
+			metrics.LatencySamplesPerCollectionIntervalMissing.WithLabelValues(c.env, circuit, "ripeatlas").Add(1)
+			missingSamples++
+		}
+	}
+	if missingSamples > 0 {
+		c.log.Info("RIPE Atlas - Tracked missing samples",
+			slog.Int("missing_samples", missingSamples),
+			slog.Int("expected_circuits", len(circuitExpectedSamples)),
+			slog.Int("actual_circuits", len(circuitActualSamples)))
+	}
+
 	c.log.Info("Successfully exported measurement results",
 		slog.Int("records_written", recordCount))
 

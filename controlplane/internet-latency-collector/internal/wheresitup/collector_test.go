@@ -543,7 +543,7 @@ func TestInternetLatency_Wheresitup_ParseLocationCodesFromJobDetails(t *testing.
 
 	log := logger.With("test", t.Name())
 
-	c := NewCollector(log, nil, mockLocationsFetcher([]collector.LocationMatch{}))
+	c := NewCollector(log, nil, "testnet", mockLocationsFetcher([]collector.LocationMatch{}))
 
 	tests := []struct {
 		name  string
@@ -604,7 +604,7 @@ func TestInternetLatency_Wheresitup_ExtractChecksFromJobDetails(t *testing.T) {
 
 	log := logger.With("test", t.Name())
 
-	c := NewCollector(log, nil, mockLocationsFetcher([]collector.LocationMatch{}))
+	c := NewCollector(log, nil, "testnet", mockLocationsFetcher([]collector.LocationMatch{}))
 
 	tests := []struct {
 		name string
@@ -658,7 +658,7 @@ func TestInternetLatency_Wheresitup_FormatTimestampFromUnix(t *testing.T) {
 
 	log := logger.With("test", t.Name())
 
-	c := NewCollector(log, nil, mockLocationsFetcher([]collector.LocationMatch{}))
+	c := NewCollector(log, nil, "testnet", mockLocationsFetcher([]collector.LocationMatch{}))
 
 	// Test with a known timestamp
 	unixTime := int64(1640995200) // 2022-01-01 00:00:00 UTC

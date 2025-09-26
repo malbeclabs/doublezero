@@ -148,7 +148,7 @@ RIPE Atlas measurements hourly, and exports RIPE Atlas results every 2 minutes.`
 		ripeatlasCollector := ripeatlas.NewCollector(log, exporter, env, func(ctx context.Context) []collector.LocationMatch {
 			return collector.GetLocations(ctx, log, serviceabilityClient)
 		})
-		wheresitupCollector := wheresitup.NewCollector(log, exporter, func(ctx context.Context) []collector.LocationMatch {
+		wheresitupCollector := wheresitup.NewCollector(log, exporter, env, func(ctx context.Context) []collector.LocationMatch {
 			return collector.GetLocations(ctx, log, serviceabilityClient)
 		})
 
@@ -326,7 +326,7 @@ var wheresitupListSourcesCmd = &cobra.Command{
 			return
 		}
 
-		wheresitupCollector := wheresitup.NewCollector(log, nil, func(ctx context.Context) []collector.LocationMatch {
+		wheresitupCollector := wheresitup.NewCollector(log, nil, env, func(ctx context.Context) []collector.LocationMatch {
 			return collector.GetLocations(ctx, log, serviceabilityClient)
 		})
 
@@ -349,7 +349,7 @@ var wheresitupListJobsCmd = &cobra.Command{
 		log := collector.NewLogger(collector.LogLevel(logLevel))
 		log.Info("Operation started: list_wheresitup_jobs")
 
-		wheresitupCollector := wheresitup.NewCollector(log, nil, func(ctx context.Context) []collector.LocationMatch {
+		wheresitupCollector := wheresitup.NewCollector(log, nil, env, func(ctx context.Context) []collector.LocationMatch {
 			return collector.GetLocations(ctx, log, serviceabilityClient)
 		})
 

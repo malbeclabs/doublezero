@@ -69,6 +69,11 @@ var (
 		Help: "Actual number of exchange pair latency samples exported per collection interval",
 	}, []string{"data_provider", "circuit"})
 
+	LatencySamplesPerCollectionIntervalMissing = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "doublezero_internet_latency_collector_latency_samples_per_collection_interval_missing",
+		Help: "Number of exchange pair latency samples that were expected but not received per collection interval",
+	}, []string{"env", "circuit", "data_provider"})
+
 	DistanceFromExchangeToProbe = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "doublezero_internet_latency_collector_distance_from_exchange_to_probe_km",
 		Help: "Haversine distance in kilometers from exchange to its nearest probe",
@@ -131,4 +136,5 @@ func init() {
 	// Register the metrics that we don't want to auto-initialize with zero values
 	prometheus.MustRegister(LatencySamplesPerCollectionIntervalExpected)
 	prometheus.MustRegister(LatencySamplesPerCollectionIntervalActual)
+	prometheus.MustRegister(LatencySamplesPerCollectionIntervalMissing)
 }

@@ -18,9 +18,14 @@ solana-commitment-config.workspace = true
 solana-sdk.workspace = true
 solana-transaction-status-client-types.workspace = true
 url.workspace = true
+tracing = { optional = true, workspace = true }
 
 [dev-dependencies]
 leaky-bucket = "1"
 solana-rpc-client-types = "2"
 solana-reward-info = "2"
 tokio.workspace = true
+tracing-subscriber = "0.3"
+
+[features]
+tracing = ["dep:tracing"]

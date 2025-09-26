@@ -2,7 +2,10 @@ use std::sync::Arc;
 
 use anyhow::{bail, Result};
 use clap::Parser;
-use doublezero_solana_client_tools::rpc::{SolanaConnection, SolanaConnectionOptions};
+use doublezero_solana_client_tools::{
+    log_error, log_info, log_warn,
+    rpc::{SolanaConnection, SolanaConnectionOptions},
+};
 use leaky_bucket::RateLimiter;
 use solana_client::{
     client_error::{ClientError, ClientErrorKind},
@@ -51,6 +54,17 @@ struct BlockInfo {
 
 impl GetBlocksExampleApp {
     async fn into_execute(self) -> Result<()> {
+        #[cfg(feature = "tracing")]
+        {
+            use tracing_subscriber::FmtSubscriber;
+
+            let subscriber = FmtSubscriber::builder()
+                .with_max_level(tracing::Level::DEBUG)
+                .finish();
+
+            tracing::subscriber::set_global_default(subscriber).unwrap();
+        }
+
         let Self {
             first_slot,
             last_slot,
@@ -101,9 +115,7 @@ impl GetBlocksExampleApp {
             let rpc_client = Arc::clone(&rpc_client);
 
             let task = tokio::spawn(async move {
-                if debug {
-                    eprintln!("Fetching i={i}, slot={slot}");
-                }
+                log_info!("Fetching i={i}, slot={slot}");
 
                 let mut block = None;
 
@@ -137,13 +149,13 @@ impl GetBlocksExampleApp {
                             kind: ClientErrorKind::Reqwest(_),
                         }) => {
                             if debug {
-                                eprintln!("Reqwest error at slot={slot}: Retry after 1 second");
+                                log_warn!("Reqwest error at slot={slot}: Retry after 1 second");
                             }
                             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                             rate_limiter.acquire_one().await;
                         }
                         Err(e) => {
-                            eprintln!("Failed to get block {slot}: {e:?}");
+                            log_error!("Failed to get block {slot}: {e:?}");
                             return None;
                         }
                     };
@@ -180,8 +192,9 @@ impl GetBlocksExampleApp {
 
         block_infos.sort_by_key(|info| info.i);
 
+        log_info!("Block infos:");
         for info in block_infos {
-            println!("i={}, slot={}, rewards={}", info.i, info.slot, info.rewards);
+            log_info!("i={}, slot={}, rewards={}", info.i, info.slot, info.rewards);
         }
 
         Ok(())

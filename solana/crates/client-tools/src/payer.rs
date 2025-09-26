@@ -15,6 +15,7 @@ use solana_sdk::{
 use solana_transaction_status_client_types::UiTransactionEncoding;
 
 use crate::{
+    log_info,
     rpc::{SolanaConnection, SolanaConnectionOptions},
     transaction::new_transaction,
 };
@@ -83,11 +84,11 @@ impl Wallet {
 
     pub async fn print_verbose_output(&self, tx_sigs: &[Signature]) -> Result<()> {
         if self.verbose {
-            println!();
-            println!("Url: {}", self.connection.url());
-            println!("Signer: {}", self.signer.pubkey());
+            log_info!("");
+            log_info!("Url: {}", self.connection.url());
+            log_info!("Signer: {}", self.signer.pubkey());
             if let Some(fee_payer) = &self.fee_payer {
-                println!("Fee payer: {}", fee_payer.pubkey());
+                log_info!("Fee payer: {}", fee_payer.pubkey());
             }
 
             for tx_sig in tx_sigs {
@@ -116,17 +117,17 @@ impl Wallet {
             .meta
             .ok_or_else(|| anyhow!("Transaction meta not found"))?;
 
-        println!("\nTransaction details for {tx_sig}");
-        println!("  Fee (lamports): {}", tx_meta.fee);
-        println!(
+        log_info!("\nTransaction details for {tx_sig}");
+        log_info!("  Fee (lamports): {}", tx_meta.fee);
+        log_info!(
             "  Compute units: {}",
             tx_meta.compute_units_consumed.unwrap()
         );
-        println!("  Cost units: {}", tx_meta.cost_units.unwrap());
+        log_info!("  Cost units: {}", tx_meta.cost_units.unwrap());
 
-        println!("\n  Program logs:");
+        log_info!("\n  Program logs:");
         tx_meta.log_messages.unwrap().iter().for_each(|log| {
-            println!("    {log}");
+            log_info!("    {log}");
         });
 
         Ok(())
@@ -139,14 +140,14 @@ impl Wallet {
         if self.dry_run {
             let simulation_response = self.connection.simulate_transaction(transaction).await?;
 
-            println!("Simulated program logs:");
+            log_info!("Simulated program logs:");
             simulation_response
                 .value
                 .logs
                 .unwrap()
                 .iter()
                 .for_each(|log| {
-                    println!("  {log}");
+                    log_info!("  {log}");
                 });
 
             Ok(None)

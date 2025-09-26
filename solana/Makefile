@@ -59,3 +59,9 @@ lint:
 .PHONY: doc
 doc:
 	cargo doc --all-features --no-deps --document-private-items
+
+.PHONY: examples
+examples:
+	cargo run --example log_output
+	cargo run --example log_output --features tracing
+	cargo run --example get_blocks --features tracing -- -ut

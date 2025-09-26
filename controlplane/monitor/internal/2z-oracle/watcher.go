@@ -2,7 +2,6 @@ package twozoracle
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"strconv"
 	"time"
@@ -63,8 +62,8 @@ func (w *TwoZOracleWatcher) Tick(ctx context.Context) error {
 			MetricHealthResponse.WithLabelValues(strconv.Itoa(statusCode)).Inc()
 		}
 		MetricErrors.WithLabelValues(MetricErrorTypeGetHealth, strconv.Itoa(statusCode)).Inc()
-		w.log.Error("failed to get health", "error", err)
-		return fmt.Errorf("failed to get health: %w", err)
+		w.log.Info("failed to get health", "error", err)
+		return nil
 	}
 	MetricHealthResponse.WithLabelValues(strconv.Itoa(statusCode)).Inc()
 	w.log.Debug("health", "health", health)
@@ -79,8 +78,8 @@ func (w *TwoZOracleWatcher) Tick(ctx context.Context) error {
 			MetricSwapRateResponse.WithLabelValues(strconv.Itoa(statusCode)).Inc()
 		}
 		MetricErrors.WithLabelValues(MetricErrorTypeGetSwapRate, strconv.Itoa(statusCode)).Inc()
-		w.log.Error("failed to get swap rate", "error", err)
-		return fmt.Errorf("failed to get swap rate: %w", err)
+		w.log.Info("failed to get swap rate", "error", err)
+		return nil
 	}
 	MetricSwapRateResponse.WithLabelValues(strconv.Itoa(statusCode)).Inc()
 	w.log.Debug("swap rate", "swapRate", swapRate)
@@ -88,15 +87,15 @@ func (w *TwoZOracleWatcher) Tick(ctx context.Context) error {
 	solPriceUSD, err := strconv.ParseFloat(swapRate.SOLPriceUSD, 64)
 	if err != nil {
 		MetricErrors.WithLabelValues(MetricErrorTypeParseSOLPriceUSD, strconv.Itoa(0)).Inc()
-		w.log.Error("failed to parse sol price usd", "error", err)
-		return fmt.Errorf("failed to parse sol price usd: %w", err)
+		w.log.Info("failed to parse sol price usd", "error", err)
+		return nil
 	}
 	MetricSOLPriceUSD.Set(solPriceUSD)
 	twoZPriceUSD, err := strconv.ParseFloat(swapRate.TwoZPriceUSD, 64)
 	if err != nil {
 		MetricErrors.WithLabelValues(MetricErrorTypeParseTwoZPriceUSD, strconv.Itoa(0)).Inc()
-		w.log.Error("failed to parse twoz price usd", "error", err)
-		return fmt.Errorf("failed to parse twoz price usd: %w", err)
+		w.log.Info("failed to parse twoz price usd", "error", err)
+		return nil
 	}
 	MetricTwoZPriceUSD.Set(twoZPriceUSD)
 

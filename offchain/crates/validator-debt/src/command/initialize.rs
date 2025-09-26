@@ -61,16 +61,33 @@ impl Schedulable for InitializeDistributionCommand {
         super::ensure_same_network_environment(&dz_ledger_rpc_client, wallet.connection.is_mainnet)
             .await?;
 
-        let expected_dz_epoch = dz_ledger_rpc_client.get_epoch_info().await?.epoch;
+        // We want to make sure the next DZ epoch is in sync with the last
+        // completed DZ epoch.
+        let expected_completed_dz_epoch = dz_ledger_rpc_client.get_epoch_info().await?.epoch - 1;
 
         // Ensure that the epoch from the DoubleZero Ledger network equals the next
         // one known by the Revenue Distribution program. If it does not, this
         // method has not been called for a long time.
-        if next_dz_epoch.value() != expected_dz_epoch {
-            if self.schedule_or_force.force {
-                tracing::warn!("DZ epoch {expected_dz_epoch} != program's epoch {next_dz_epoch}");
+        if next_dz_epoch.value() != expected_completed_dz_epoch {
+            let err_msg = format!(
+                "Last completed DZ epoch {expected_completed_dz_epoch} != program's epoch {next_dz_epoch}"
+            );
+
+            // If the force flag is set, only allow the command to play catch up
+            // if the next DZ epoch is less than the expected completed DZ
+            // epoch. Prompt to be extra sure.
+            if self.schedule_or_force.force && next_dz_epoch.value() < expected_completed_dz_epoch {
+                eprintln!("{err_msg}");
+                super::proceed_prompt()?;
+            // If the schedule flag is set, simply warn so we do not spam any
+            // monitoring system.
+            } else if self.schedule_or_force.schedule.is_scheduled() {
+                tracing::warn!("{err_msg}");
+
+                return Ok(());
+            // Otherwise, we should not be allowed to proceed.
             } else {
-                bail!("DZ epoch {expected_dz_epoch} != program's epoch {next_dz_epoch}");
+                bail!("{err_msg}");
             }
         }
 

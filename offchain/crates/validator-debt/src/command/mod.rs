@@ -2,9 +2,12 @@ mod initialize;
 
 //
 
-use std::path::PathBuf;
+use std::{
+    io::{self, Write},
+    path::PathBuf,
+};
 
-use anyhow::{Result, bail};
+use anyhow::{Result, bail, ensure};
 use clap::{Args, Subcommand};
 use doublezero_scheduled_command::{Schedulable, ScheduleOption};
 use solana_client::nonblocking::rpc_client::RpcClient;
@@ -153,4 +156,16 @@ impl ScheduleOrForce {
 
         Ok(())
     }
+}
+
+fn proceed_prompt() -> Result<()> {
+    print!("Proceed? [y/N] ");
+    io::stdout().flush().unwrap(); // Ensure prompt appears before input
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).unwrap();
+
+    ensure!(input.trim().to_lowercase() == "y", "Cancelled");
+
+    Ok(())
 }

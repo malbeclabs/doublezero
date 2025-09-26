@@ -142,7 +142,7 @@ func main() {
 
 	var twoZOracleClient twozoracle.TwoZOracleClient
 	if networkConfig.TwoZOracleURL != "" {
-		// 2ZOracle is not configured in devnet.
+		// 2ZOracle is not configured in some environments.
 		twoZOracleClient = twozoracle.NewTwoZOracleClient(http.DefaultClient, networkConfig.TwoZOracleURL)
 	}
 

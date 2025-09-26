@@ -19,6 +19,7 @@ func TestConfig_NetworkConfigForEnv(t *testing.T) {
 		{
 			env: config.EnvMainnet,
 			want: &config.NetworkConfig{
+				Moniker:                    config.EnvMainnetBeta,
 				LedgerPublicRPCURL:         config.MainnetLedgerPublicRPCURL,
 				ServiceabilityProgramID:    solana.MustPublicKeyFromBase58(config.MainnetServiceabilityProgramID),
 				TelemetryProgramID:         solana.MustPublicKeyFromBase58(config.MainnetTelemetryProgramID),
@@ -30,6 +31,7 @@ func TestConfig_NetworkConfigForEnv(t *testing.T) {
 		{
 			env: config.EnvMainnetBeta,
 			want: &config.NetworkConfig{
+				Moniker:                    config.EnvMainnetBeta,
 				LedgerPublicRPCURL:         config.MainnetLedgerPublicRPCURL,
 				ServiceabilityProgramID:    solana.MustPublicKeyFromBase58(config.MainnetServiceabilityProgramID),
 				TelemetryProgramID:         solana.MustPublicKeyFromBase58(config.MainnetTelemetryProgramID),
@@ -41,6 +43,7 @@ func TestConfig_NetworkConfigForEnv(t *testing.T) {
 		{
 			env: config.EnvTestnet,
 			want: &config.NetworkConfig{
+				Moniker:                    config.EnvTestnet,
 				LedgerPublicRPCURL:         config.TestnetLedgerPublicRPCURL,
 				ServiceabilityProgramID:    solana.MustPublicKeyFromBase58(config.TestnetServiceabilityProgramID),
 				TelemetryProgramID:         solana.MustPublicKeyFromBase58(config.TestnetTelemetryProgramID),
@@ -52,6 +55,7 @@ func TestConfig_NetworkConfigForEnv(t *testing.T) {
 		{
 			env: config.EnvDevnet,
 			want: &config.NetworkConfig{
+				Moniker:                    config.EnvDevnet,
 				LedgerPublicRPCURL:         config.DevnetLedgerPublicRPCURL,
 				ServiceabilityProgramID:    solana.MustPublicKeyFromBase58(config.DevnetServiceabilityProgramID),
 				TelemetryProgramID:         solana.MustPublicKeyFromBase58(config.DevnetTelemetryProgramID),

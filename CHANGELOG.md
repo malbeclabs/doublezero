@@ -9,10 +9,13 @@ All notable changes to this project will be documented in this file.
 ### Changes
 
 - Internet telemetry
+    - Add circuit label to metrics; create a new metric for missing circuit samples
     - Submit partitions of samples in parallel
     - Include circuit label on submitter error metric
 - Monitor
     - Reduce logging noise in 2z oracle watcher
+- Device controller
+    - When a device is missing required loopback interfaces, provide detailed errors to agent instead of "<pubkey> not found". Also, log these conditions as warnings instead of errors, and don't emit "unknown pubkey requested" error metrics for these conditions
 
 ## [v0.6.6](https://github.com/malbeclabs/doublezero/compare/client/v0.6.5...client/v0.6.6) – 2025-09-26
 

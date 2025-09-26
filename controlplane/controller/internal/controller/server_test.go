@@ -130,6 +130,7 @@ func TestGetConfig(t *testing.T) {
 						Vpn4vLoopbackIP:       net.IP{14, 14, 14, 14},
 						Vpn4vLoopbackIntfName: "Loopback255",
 						IsisNet:               "49.0000.0e0e.0e0e.0000.00",
+						DevicePathologies:     []string{},
 					},
 				},
 			},
@@ -213,6 +214,7 @@ func TestGetConfig(t *testing.T) {
 						Vpn4vLoopbackIP:       net.IP{14, 14, 14, 14},
 						Vpn4vLoopbackIntfName: "Loopback255",
 						IsisNet:               "49.0000.0e0e.0e0e.0000.00",
+						DevicePathologies:     []string{},
 					},
 				},
 			},
@@ -306,6 +308,7 @@ func TestGetConfig(t *testing.T) {
 						Vpn4vLoopbackIP:       net.IP{14, 14, 14, 14},
 						Vpn4vLoopbackIntfName: "Loopback255",
 						IsisNet:               "49.0000.0e0e.0e0e.0000.00",
+						DevicePathologies:     []string{},
 					},
 				},
 			},
@@ -400,6 +403,7 @@ func TestGetConfig(t *testing.T) {
 						Vpn4vLoopbackIP:       net.IP{14, 14, 14, 14},
 						Vpn4vLoopbackIntfName: "Loopback255",
 						IsisNet:               "49.0000.0e0e.0e0e.0000.00",
+						DevicePathologies:     []string{},
 					},
 				},
 			},
@@ -434,6 +438,7 @@ func TestGetConfig(t *testing.T) {
 						Ipv4LoopbackIP:        net.IP{13, 13, 13, 13},
 						Vpn4vLoopbackIntfName: "Loopback255",
 						Ipv4LoopbackIntfName:  "Loopback256",
+						DevicePathologies:     []string{},
 						Tunnels:               []*Tunnel{},
 						TunnelSlots:           0,
 						Interfaces: []Interface{
@@ -493,6 +498,7 @@ func TestGetConfig(t *testing.T) {
 						Ipv4LoopbackIP:        net.IP{13, 13, 13, 13},
 						Vpn4vLoopbackIntfName: "Loopback255",
 						Ipv4LoopbackIntfName:  "Loopback256",
+						DevicePathologies:     []string{},
 						Tunnels:               []*Tunnel{},
 						TunnelSlots:           0,
 						MgmtVrf:               "test-mgmt-vrf",
@@ -514,6 +520,7 @@ func TestGetConfig(t *testing.T) {
 					"abc123": {
 						PublicIP:              net.IP{7, 7, 7, 7},
 						Vpn4vLoopbackIntfName: "Loopback255",
+						DevicePathologies:     []string{},
 						Tunnels:               []*Tunnel{},
 						TunnelSlots:           0,
 					},
@@ -596,6 +603,92 @@ func TestGetConfig(t *testing.T) {
 			}
 			if diff := cmp.Diff(string(want), got.GetConfig()); diff != "" {
 				t.Errorf("GetConfig mismatch in fixture %s (-want +got): %s\n", test.Want, diff)
+			}
+		})
+	}
+}
+
+func TestGetConfigWithPathologies(t *testing.T) {
+	tests := []struct {
+		Name              string
+		Description       string
+		StateCache        stateCache
+		Pubkey            string
+		ExpectedErrorCode string
+		ExpectedErrorMsg  string
+	}{
+		{
+			Name:        "device_with_pathologies_returns_failed_precondition",
+			Description: "GetConfig should return FailedPrecondition error for device with pathologies",
+			StateCache: stateCache{
+				Config: serviceability.Config{
+					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
+				},
+				Devices: map[string]*Device{
+					"abc123": {
+						PubKey:   "abc123",
+						PublicIP: net.IP{1, 2, 3, 4},
+						DevicePathologies: []string{
+							"no or invalid VPNv4 loopback interface found for device",
+							"ISIS NET could not be generated",
+						},
+					},
+				},
+			},
+			Pubkey:            "abc123",
+			ExpectedErrorCode: "FailedPrecondition",
+			ExpectedErrorMsg:  "cannot render config for device abc123:",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.Name, func(t *testing.T) {
+			listener := bufconn.Listen(1024 * 1024)
+			server := grpc.NewServer()
+			controller := &Controller{
+				log:            slog.New(slog.NewTextHandler(io.Discard, nil)),
+				deviceLocalASN: 65342,
+			}
+			pb.RegisterControllerServer(server, controller)
+
+			go func() {
+				if err := server.Serve(listener); err != nil {
+					log.Fatal(err)
+				}
+			}()
+
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			opts := []grpc.DialOption{
+				grpc.WithTransportCredentials(insecure.NewCredentials()),
+				grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
+					return listener.Dial()
+				}),
+			}
+			conn, err := grpc.NewClient("passthrough://bufnet", opts...)
+			if err != nil {
+				t.Fatalf("error creating controller client: %v", err)
+			}
+			defer conn.Close()
+			defer cancel()
+
+			agent := pb.NewControllerClient(conn)
+
+			// update the state cache in the controller per the test
+			controller.swapCache(test.StateCache)
+
+			// attempt to fetch config and verify it returns the expected error
+			_, err = agent.GetConfig(ctx, &pb.ConfigRequest{Pubkey: test.Pubkey})
+			if err == nil {
+				t.Errorf("expected error but got nil")
+				return
+			}
+
+			if !strings.Contains(err.Error(), test.ExpectedErrorCode) {
+				t.Errorf("expected error to contain '%s', got: %v", test.ExpectedErrorCode, err)
+			}
+
+			if !strings.Contains(err.Error(), test.ExpectedErrorMsg) {
+				t.Errorf("expected error to contain '%s', got: %v", test.ExpectedErrorMsg, err)
 			}
 		})
 	}
@@ -798,11 +891,12 @@ func TestStateCache(t *testing.T) {
 				},
 				Devices: map[string]*Device{
 					"4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM": {
-						PubKey:          "4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM",
-						PublicIP:        net.IP{2, 2, 2, 2},
-						Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
-						IsisNet:         "49.0000.0e0e.0e0e.0000.00",
-						Ipv4LoopbackIP:  net.IP{12, 12, 12, 12},
+						PubKey:            "4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM",
+						PublicIP:          net.IP{2, 2, 2, 2},
+						Vpn4vLoopbackIP:   net.IP{14, 14, 14, 14},
+						IsisNet:           "49.0000.0e0e.0e0e.0000.00",
+						Ipv4LoopbackIP:    net.IP{12, 12, 12, 12},
+						DevicePathologies: []string{},
 						Tunnels: append([]*Tunnel{
 							{
 								Id:            500,
@@ -868,7 +962,7 @@ func TestStateCache(t *testing.T) {
 			},
 		},
 		{
-			Name: "exclude_device_without_vpnv4_loopback",
+			Name: "device_with_pathologies_added_to_cache",
 			Config: serviceability.Config{
 				MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 			},
@@ -905,8 +999,31 @@ func TestStateCache(t *testing.T) {
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
 				MulticastGroups: map[string]serviceability.MulticastGroup{},
-				Vpnv4BgpPeers:   nil,                  // No BGP peers since device is excluded
-				Devices:         map[string]*Device{}, // Device should not be in cache
+				Vpnv4BgpPeers:   nil, // No BGP peers since device has pathologies
+				Devices: map[string]*Device{
+					"4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM": {
+						PubKey:   "4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM",
+						PublicIP: net.IP{3, 3, 3, 3},
+						DevicePathologies: []string{
+							"no or invalid VPNv4 loopback interface found for device",
+							"no or invalid IPv4 loopback interface found for device",
+							"ISIS NET could not be generated",
+						},
+						Tunnels: append([]*Tunnel{
+							{
+								Id:            500,
+								UnderlaySrcIP: net.IP{3, 3, 3, 3},
+								UnderlayDstIP: net.IP{1, 1, 1, 1},
+								OverlaySrcIP:  net.IP{10, 1, 1, 0},
+								OverlayDstIP:  net.IP{10, 1, 1, 1},
+								DzIp:          net.IP{100, 100, 100, 100},
+								PubKey:        "11111111111111111111111111111111",
+								Allocated:     true,
+							},
+						}, generateEmptyTunnelSlots(config.StartUserTunnelNum+1, config.MaxUserTunnelSlots-1)...),
+						TunnelSlots: config.MaxUserTunnelSlots,
+					},
+				},
 			},
 		},
 	}
@@ -1207,7 +1324,7 @@ func TestEndToEnd(t *testing.T) {
 					},
 					Status: serviceability.DeviceStatusActivated,
 					Code:   "abc02",
-					PubKey: [32]byte{1},
+					PubKey: [32]byte{2},
 				},
 				{
 					AccountType:    serviceability.AccountType(0),
@@ -1227,7 +1344,7 @@ func TestEndToEnd(t *testing.T) {
 					},
 					Status: serviceability.DeviceStatusActivated,
 					Code:   "abc03",
-					PubKey: [32]byte{1},
+					PubKey: [32]byte{3},
 				},
 			},
 			AgentRequest: &pb.ConfigRequest{

@@ -260,27 +260,32 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 			candidateVpnv4BgpPeer, candidateIpv4BgpPeer := c.processDeviceInterfacesAndPeers(device, d, devicePubKey)
 
 			if len(d.Vpn4vLoopbackIP) == 0 {
-				c.log.Error("not adding device to cache", "device pubkey", devicePubKey, "reason", "no or invalid VPNv4 loopback interface found for device")
-				continue
+				c.log.Warn("device has pathology", "device_pubkey", devicePubKey, "pathology", "no or invalid VPNv4 loopback interface found for device")
+				d.DevicePathologies = append(d.DevicePathologies, "no or invalid VPNv4 loopback interface found for device")
 			}
 
 			if len(d.Ipv4LoopbackIP) == 0 {
-				c.log.Error("not adding device to cache", "device pubkey", devicePubKey, "reason", "no or invalid IPv4 loopback interface found for device")
-				continue
+				c.log.Warn("device has pathology", "device_pubkey", devicePubKey, "pathology", "no or invalid IPv4 loopback interface found for device")
+				d.DevicePathologies = append(d.DevicePathologies, "no or invalid IPv4 loopback interface found for device")
 			}
 
 			if d.Vpn4vLoopbackIP.Equal(net.IPv4(0, 0, 0, 0)) {
-				c.log.Error("not adding device to cache", "device pubkey", devicePubKey, "reason", "VPNv4 loopback interface is unassigned (0.0.0.0)")
-				continue
+				c.log.Warn("device has pathology", "device_pubkey", devicePubKey, "pathology", "VPNv4 loopback interface is unassigned (0.0.0.0)")
+				d.DevicePathologies = append(d.DevicePathologies, "VPNv4 loopback interface is unassigned (0.0.0.0)")
 			}
 
 			if d.Ipv4LoopbackIP.Equal(net.IPv4(0, 0, 0, 0)) {
-				c.log.Error("not adding device to cache", "device pubkey", devicePubKey, "reason", "IPv4 loopback interface is unassigned (0.0.0.0)")
-				continue
+				c.log.Warn("device has pathology", "device_pubkey", devicePubKey, "pathology", "IPv4 loopback interface is unassigned (0.0.0.0)")
+				d.DevicePathologies = append(d.DevicePathologies, "IPv4 loopback interface is unassigned (0.0.0.0)")
 			}
 
 			if d.IsisNet == "" {
-				c.log.Error("not adding device to cache", "device pubkey", devicePubKey, "reason", "ISIS NET could not be generated")
+				c.log.Warn("device has pathology", "device_pubkey", devicePubKey, "pathology", "ISIS NET could not be generated")
+				d.DevicePathologies = append(d.DevicePathologies, "ISIS NET could not be generated")
+			}
+
+			if len(d.DevicePathologies) > 0 {
+				cache.Devices[devicePubKey] = d
 				continue
 			}
 
@@ -518,6 +523,10 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 	if !ok {
 		getConfigPubkeyErrors.WithLabelValues(req.GetPubkey()).Inc()
 		err := status.Errorf(codes.NotFound, "pubkey %s not found", req.Pubkey)
+		return nil, err
+	}
+	if len(device.DevicePathologies) > 0 {
+		err := status.Errorf(codes.FailedPrecondition, "cannot render config for device %s: %v", req.Pubkey, device.DevicePathologies)
 		return nil, err
 	}
 

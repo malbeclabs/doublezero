@@ -180,10 +180,12 @@ type Device struct {
 	Interfaces            []Interface
 	MgmtVrf               string
 	IsisNet               string
+	DevicePathologies     []string
 }
 
 func NewDevice(ip net.IP, publicKey string) *Device {
 	tunnels := []*Tunnel{}
+	devicePathologies := []string{}
 	for i := 0; i < config.MaxUserTunnelSlots; i++ {
 		id := config.StartUserTunnelNum + i
 		tunnel := &Tunnel{
@@ -193,10 +195,11 @@ func NewDevice(ip net.IP, publicKey string) *Device {
 		tunnels = append(tunnels, tunnel)
 	}
 	return &Device{
-		PublicIP:    ip,
-		PubKey:      publicKey,
-		Tunnels:     tunnels,
-		TunnelSlots: config.MaxUserTunnelSlots,
+		PublicIP:          ip,
+		PubKey:            publicKey,
+		Tunnels:           tunnels,
+		TunnelSlots:       config.MaxUserTunnelSlots,
+		DevicePathologies: devicePathologies,
 	}
 }
 

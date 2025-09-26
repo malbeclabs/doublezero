@@ -8,8 +8,20 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+## [v0.6.6](https://github.com/malbeclabs/doublezero/compare/client/v0.6.5...client/v0.6.6) – 2025-09-26
+
+### Breaking
+
+- None for this release
+
+### Changes
+
 - Monitor
     - Update 2Z oracle to emit response code metrics on errors too
+- Activator
+    - A mitigation was added to handle situations where blockchain updates are missed by the Activator due to timeouts on the websocket. This mitigation processes pending accounts on a 1-minute timer interval.
+- CLI
+    - Connect command updated to provide better user experience with regard to activator websocket timeouts (see above).
 
 ## [v0.6.5](https://github.com/malbeclabs/doublezero/compare/client/v0.6.4...client/v0.6.5) – 2025-09-25
 

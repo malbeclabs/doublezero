@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Monitor
+    - Update 2Z oracle to emit response code metrics on errors too
+
 ## [v0.6.5](https://github.com/malbeclabs/doublezero/compare/client/v0.6.4...client/v0.6.5) – 2025-09-25
 
 ### Breaking

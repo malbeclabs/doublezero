@@ -59,6 +59,9 @@ func (w *TwoZOracleWatcher) Tick(ctx context.Context) error {
 
 	health, statusCode, err := w.cfg.Client.Health(ctx)
 	if err != nil {
+		if statusCode != 0 {
+			MetricHealthResponse.WithLabelValues(strconv.Itoa(statusCode)).Inc()
+		}
 		MetricErrors.WithLabelValues(MetricErrorTypeGetHealth, strconv.Itoa(statusCode)).Inc()
 		w.log.Error("failed to get health", "error", err)
 		return fmt.Errorf("failed to get health: %w", err)
@@ -72,6 +75,9 @@ func (w *TwoZOracleWatcher) Tick(ctx context.Context) error {
 
 	swapRate, statusCode, err := w.cfg.Client.SwapRate(ctx)
 	if err != nil {
+		if statusCode != 0 {
+			MetricSwapRateResponse.WithLabelValues(strconv.Itoa(statusCode)).Inc()
+		}
 		MetricErrors.WithLabelValues(MetricErrorTypeGetSwapRate, strconv.Itoa(statusCode)).Inc()
 		w.log.Error("failed to get swap rate", "error", err)
 		return fmt.Errorf("failed to get swap rate: %w", err)

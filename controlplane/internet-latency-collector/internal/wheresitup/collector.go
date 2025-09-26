@@ -27,6 +27,7 @@ type Collector struct {
 	jobWaitTimeout   time.Duration // Duration to wait between job creation and export
 	getLocationsFunc func(ctx context.Context) []collector.LocationMatch
 	exporter         exporter.Exporter
+	env              string
 }
 
 type clientInterface interface {
@@ -39,13 +40,14 @@ type clientInterface interface {
 	GetCredit(ctx context.Context) (int, error)
 }
 
-func NewCollector(logger *slog.Logger, exporter exporter.Exporter, getLocationsFunc func(ctx context.Context) []collector.LocationMatch) *Collector {
+func NewCollector(logger *slog.Logger, exporter exporter.Exporter, env string, getLocationsFunc func(ctx context.Context) []collector.LocationMatch) *Collector {
 	return &Collector{
 		client:           NewClient(logger),
 		log:              logger,
 		jobWaitTimeout:   RequestTimeout, // Default to 30 seconds
 		getLocationsFunc: getLocationsFunc,
 		exporter:         exporter,
+		env:              env,
 	}
 }
 
@@ -210,21 +212,49 @@ func (c *Collector) RunJobCreation(ctx context.Context, locations []collector.Lo
 		}
 
 		if len(newJobIDs) > 0 {
-			// Track expected samples metric (one sample per job)
-			metrics.LatencySamplesPerCollectionIntervalExpected.WithLabelValues("wheresitup").Set(float64(len(newJobIDs)))
-			c.log.Info("Wheresitup - Set expected samples metric",
-				slog.Int("expected_samples", len(newJobIDs)))
+			// Calculate expected circuits: n*(n-1)/2 for n locations
+			n := len(locationsWithSources)
+			expectedCircuits := n * (n - 1) / 2
 
-			c.log.Info("Wheresitup - Storing new job IDs",
+			// Generate circuit labels for storage and metrics
+			var circuits []string
+			for i, sourceLocation := range locationsWithSources {
+				for j, targetLocation := range locationsWithSources {
+					if i == j || len(sourceLocation.NearestSources) == 0 || len(targetLocation.NearestSources) == 0 {
+						continue
+					}
+					// Only count if source location name comes before target location name alphabetically
+					if sourceLocation.LocationCode >= targetLocation.LocationCode {
+						continue
+					}
+					circuit := fmt.Sprintf("%s → %s", sourceLocation.LocationCode, targetLocation.LocationCode)
+					circuits = append(circuits, circuit)
+					metrics.LatencySamplesPerCollectionIntervalExpected.WithLabelValues("wheresitup", circuit).Add(1)
+				}
+			}
+
+			c.log.Info("Wheresitup - Added expected samples metrics",
+				slog.Int("expected_circuits", expectedCircuits),
+				slog.Int("job_count", len(newJobIDs)))
+
+			c.log.Info("Wheresitup - Storing new job IDs and circuits",
 				slog.Int("job_count", len(newJobIDs)),
+				slog.Int("circuit_count", len(circuits)),
 				slog.String("file", jobIDsFile))
 
 			state := NewState(jobIDsFile)
-			if err := state.AddJobIDs(newJobIDs); err != nil {
-				c.log.Warn("Wheresitup - Failed to store job IDs",
+			if err := state.AddJobIDsWithCircuits(newJobIDs, circuits); err != nil {
+				c.log.Warn("Wheresitup - Failed to store job IDs and circuits",
 					slog.String("file", jobIDsFile),
 					slog.Int("job_count", len(newJobIDs)),
+					slog.Int("circuit_count", len(circuits)),
 					slog.String("error", err.Error()))
+			} else {
+				c.log.Debug("Wheresitup - Successfully stored job IDs and circuits",
+					slog.String("file", jobIDsFile),
+					slog.Int("job_count", len(newJobIDs)),
+					slog.Int("circuit_count", len(circuits)),
+					slog.Any("circuits", circuits))
 			}
 		} else {
 			c.log.Warn("Wheresitup - No valid job IDs to store - all job responses had empty IDs")
@@ -431,6 +461,15 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 	}
 	jobIDs := state.GetJobIDs()
 
+	// Build expected circuits map from stored circuits
+	circuitExpectedSamples := make(map[string]bool)
+	for _, circuit := range state.Circuits {
+		circuitExpectedSamples[circuit] = true
+	}
+	c.log.Debug("Wheresitup - Loaded expected circuits",
+		slog.Int("circuit_count", len(circuitExpectedSamples)),
+		slog.Any("circuits", state.Circuits))
+
 	if len(jobIDs) == 0 {
 		c.log.Info("No tracked jobs found to export")
 		return nil
@@ -532,10 +571,39 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 			c.log.Warn("Wheresitup failed to write records", "error", err.Error(), "records", len(records))
 			return fmt.Errorf("failed to write records: %w", err)
 		}
-		// Track actual samples metric
-		metrics.LatencySamplesPerCollectionIntervalActual.WithLabelValues("wheresitup").Set(float64(len(records)))
-		c.log.Info("Wheresitup - Set actual samples metric",
-			slog.Int("actual_samples", len(records)))
+		// Track actual samples metric per circuit
+		circuitActualSamples := make(map[string]int)
+		for _, record := range records {
+			// Create circuit label with alphabetically sorted exchanges
+			var circuit string
+			if record.SourceExchangeCode < record.TargetExchangeCode {
+				circuit = fmt.Sprintf("%s → %s", record.SourceExchangeCode, record.TargetExchangeCode)
+			} else {
+				circuit = fmt.Sprintf("%s → %s", record.TargetExchangeCode, record.SourceExchangeCode)
+			}
+			circuitActualSamples[circuit]++
+		}
+		for circuit, count := range circuitActualSamples {
+			metrics.LatencySamplesPerCollectionIntervalActual.WithLabelValues("wheresitup", circuit).Add(float64(count))
+		}
+		c.log.Info("Wheresitup - Added actual samples metrics",
+			slog.Int("actual_samples", len(records)),
+			slog.Int("circuits", len(circuitActualSamples)))
+
+		// Track missing samples metric for circuits that were expected but not received
+		missingSamples := 0
+		for circuit := range circuitExpectedSamples {
+			if _, exists := circuitActualSamples[circuit]; !exists {
+				metrics.LatencySamplesPerCollectionIntervalMissing.WithLabelValues(c.env, circuit, "wheresitup").Add(1)
+				missingSamples++
+			}
+		}
+		if missingSamples > 0 {
+			c.log.Info("Wheresitup - Tracked missing samples",
+				slog.Int("missing_samples", missingSamples),
+				slog.Int("expected_circuits", len(circuitExpectedSamples)),
+				slog.Int("actual_circuits", len(circuitActualSamples)))
+		}
 	}
 
 	if len(completedJobIDs) > 0 {

@@ -20,6 +20,7 @@ type JobEntry struct {
 
 type State struct {
 	Jobs     []JobEntry `json:"jobs"`
+	Circuits []string   `json:"circuits,omitempty"` // Circuits expected when jobs were created
 	filename string
 	log      *slog.Logger
 }
@@ -70,6 +71,7 @@ func (jt *State) Load() error {
 			slog.String("filename", jt.filename),
 			slog.String("error", err.Error()))
 		jt.Jobs = []JobEntry{}
+		jt.Circuits = nil
 		return nil
 	}
 
@@ -91,6 +93,11 @@ func (jt *State) Save() error {
 		}
 	}
 	jt.Jobs = activeJobs
+
+	// Clear circuits when all jobs are filtered out
+	if len(jt.Jobs) == 0 {
+		jt.Circuits = nil
+	}
 
 	file, err := os.Create(jt.filename)
 	if err != nil {
@@ -122,6 +129,22 @@ func (jt *State) AddJobIDs(newJobIDs []string) error {
 	return jt.Save()
 }
 
+func (jt *State) AddJobIDsWithCircuits(newJobIDs []string, circuits []string) error {
+	if err := jt.Load(); err != nil {
+		return err
+	}
+
+	now := time.Now()
+	for _, jobID := range newJobIDs {
+		jt.Jobs = append(jt.Jobs, JobEntry{
+			JobID:     jobID,
+			CreatedAt: now,
+		})
+	}
+	jt.Circuits = circuits
+	return jt.Save()
+}
+
 func (jt *State) RemoveJobIDs(jobIDsToRemove []string) error {
 	if err := jt.Load(); err != nil {
 		return err
@@ -140,6 +163,12 @@ func (jt *State) RemoveJobIDs(jobIDsToRemove []string) error {
 	}
 
 	jt.Jobs = updatedJobs
+
+	// Clear circuits when all jobs are completed
+	if len(jt.Jobs) == 0 {
+		jt.Circuits = nil
+	}
+
 	return jt.Save()
 }
 

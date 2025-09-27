@@ -14,6 +14,7 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
+	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/malbeclabs/doublezero/config"
 	twozoracle "github.com/malbeclabs/doublezero/controlplane/monitor/internal/2z-oracle"
 	"github.com/malbeclabs/doublezero/controlplane/monitor/internal/worker"
@@ -146,6 +147,33 @@ func main() {
 		twoZOracleClient = twozoracle.NewTwoZOracleClient(http.DefaultClient, networkConfig.TwoZOracleURL)
 	}
 
+	// Initialize InfluxDB writer
+	var influxClient influxdb2.Client
+	var influxWriter worker.InfluxWriter
+	var influxUrl, influxToken, influxBucket string
+
+	// Check whether writing to InfluxDB should be enabled.
+	enableInflux := func() bool {
+		influxUrl = os.Getenv("INFLUX_URL")
+		influxToken = os.Getenv("INFLUX_TOKEN")
+		if influxUrl == "" {
+			log.Info("INFLUX_URL not set, not enabling writes to InfluxDB")
+			return false
+		}
+		if influxToken == "" {
+			log.Info("INFLUX_TOKEN not set, not enabling writes to InfluxDB")
+			return false
+		}
+		influxBucket = "doublezero-" + *env
+		return true
+	}
+
+	if enableInflux() {
+		influxClient = influxdb2.NewClient(influxUrl, influxToken)
+		influxWriter = influxClient.WriteAPI("rd", influxBucket)
+		defer influxClient.Close()
+	}
+
 	// Initialize worker.
 	worker, err := worker.New(&worker.Config{
 		Logger:                     log,
@@ -157,6 +185,8 @@ func main() {
 		SlackWebhookURL:            *slackWebhookURL,
 		TwoZOracleClient:           twoZOracleClient,
 		TwoZOracleInterval:         *twoZOracleInterval,
+		InfluxWriter:               influxWriter,
+		Env:                        *env,
 	})
 	if err != nil {
 		log.Error("Failed to create worker", "error", err)

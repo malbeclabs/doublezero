@@ -13,11 +13,19 @@ type ServiceabilityClient interface {
 	GetProgramData(context.Context) (*serviceability.ProgramData, error)
 }
 
+type InfluxWriter interface {
+	Errors() <-chan error
+	WriteRecord(string)
+	Flush()
+}
+
 type Config struct {
 	Logger          *slog.Logger
 	Serviceability  ServiceabilityClient
 	Interval        time.Duration
 	SlackWebhookURL string
+	InfluxWriter    InfluxWriter
+	Env             string
 }
 
 func (c *Config) Validate() error {

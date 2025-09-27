@@ -3,6 +3,7 @@ package serviceability
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -10,6 +11,37 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 )
+
+type mockInfluxWriter struct {
+	WriteRecordFunc func(string)
+	FlushFunc       func()
+	ErrorsFunc      func() <-chan error
+	writeCount      atomic.Int32
+	flushCount      atomic.Int32
+}
+
+func (m *mockInfluxWriter) WriteRecord(s string) {
+	if m.WriteRecordFunc != nil {
+		m.WriteRecordFunc(s)
+	}
+	m.writeCount.Add(1)
+}
+
+func (m *mockInfluxWriter) Flush() {
+	if m.FlushFunc != nil {
+		m.FlushFunc()
+	}
+	m.flushCount.Add(1)
+}
+
+func (m *mockInfluxWriter) Errors() <-chan error {
+	if m.ErrorsFunc != nil {
+		return m.ErrorsFunc()
+	}
+	ch := make(chan error)
+	close(ch)
+	return ch
+}
 
 func TestMonitor_Serviceability_Watcher(t *testing.T) {
 	t.Parallel()
@@ -61,6 +93,31 @@ func TestMonitor_Serviceability_Watcher(t *testing.T) {
 		require.Error(t, err)
 		after := testutil.ToFloat64(MetricErrors.WithLabelValues(MetricErrorTypeGetProgramData))
 		require.GreaterOrEqual(t, after-before, float64(1))
+	})
+
+	t.Run("tick_with_influx_writer_writes_metrics", func(t *testing.T) {
+		t.Parallel()
+		mockWriter := &mockInfluxWriter{}
+		devices := []serviceability.Device{
+			{Code: "dev1"},
+			{Code: "dev2"},
+		}
+		programData := &serviceability.ProgramData{
+			Devices: devices,
+		}
+
+		cfg := &Config{
+			Logger:         newTestLogger(t),
+			Serviceability: &mockServiceabilityClient{GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) { return programData, nil }},
+			Interval:       10 * time.Millisecond,
+			InfluxWriter:   mockWriter,
+		}
+		w, err := NewServiceabilityWatcher(cfg)
+		require.NoError(t, err)
+
+		require.NoError(t, w.Tick(context.Background()))
+		require.Equal(t, int32(len(devices)), mockWriter.writeCount.Load(), "WriteRecord should be called for each device")
+		require.Equal(t, int32(1), mockWriter.flushCount.Load(), "Flush should be called once per tick")
 	})
 
 	t.Run("run_stops_on_context_cancel", func(t *testing.T) {

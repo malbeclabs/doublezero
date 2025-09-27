@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"math/rand"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/gagliardetto/solana-go"
@@ -14,6 +15,10 @@ import (
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/buffer"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/epoch"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
+)
+
+const (
+	defaultMaxConcurrency = 100
 )
 
 type SubmitterConfig struct {
@@ -25,6 +30,7 @@ type SubmitterConfig struct {
 	BackoffFunc                   func(attempt int) time.Duration // optional, defaults to exponential backoff
 	MaxAttempts                   int                             // optional, defaults to 5
 	EpochFinder                   epoch.Finder
+	MaxConcurrency                int // optional, defaults to 100
 }
 
 func (c *SubmitterConfig) Validate() error {
@@ -42,6 +48,9 @@ func (c *SubmitterConfig) Validate() error {
 	}
 	if c.OracleAgentPK.IsZero() {
 		return errors.New("oracle agent public key is required")
+	}
+	if c.MaxConcurrency <= 0 {
+		c.MaxConcurrency = defaultMaxConcurrency
 	}
 	return nil
 }
@@ -168,77 +177,98 @@ func (s *Submitter) Tick(ctx context.Context) {
 		maxAttempts = 5
 	}
 
-	for partitionKey := range s.cfg.Buffer.FlushWithoutReset() {
-		tmp := s.cfg.Buffer.CopyAndReset(partitionKey)
+	partitions := s.cfg.Buffer.FlushWithoutReset()
 
-		log := s.log.With("partition", partitionKey)
+	if len(partitions) == 0 {
+		return
+	}
 
-		log.Debug("Submitting samples", "count", len(tmp))
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, s.cfg.MaxConcurrency)
+	wg.Add(len(partitions))
 
-		if len(tmp) == 0 {
-			log.Debug("No samples to submit, skipping")
+	for partitionKey := range partitions {
+		go func(partitionKey PartitionKey) {
+			defer wg.Done()
+
+			// Limit concurrency.
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			tmp := s.cfg.Buffer.CopyAndReset(partitionKey)
+
+			log := s.log.With("partition", partitionKey)
+
+			log.Debug("Submitting samples", "count", len(tmp))
+
+			if len(tmp) == 0 {
+				log.Debug("No samples to submit, skipping")
+				s.cfg.Buffer.Recycle(partitionKey, tmp)
+
+				// If the account is for a past epoch, remove it.
+				currentEpoch, err := s.cfg.EpochFinder.ApproximateAtTime(ctx, time.Now())
+				if err != nil {
+					log.Error("Failed to get current epoch", "error", err)
+					metrics.ExporterErrorsTotal.WithLabelValues(metrics.ErrorTypeGetCurrentEpoch).Inc()
+					return
+				}
+				if partitionKey.Epoch < currentEpoch {
+					s.cfg.Buffer.Remove(partitionKey)
+					log.Debug("Removed partition key")
+				}
+				return
+			}
+
+			success := false
+			for attempt := 1; attempt <= maxAttempts; attempt++ {
+				err := s.SubmitSamples(ctx, partitionKey, tmp)
+				if err == nil {
+					log.Debug("Submitted samples", "count", len(tmp), "attempt", attempt)
+					success = true
+					break
+				}
+
+				var backoff time.Duration
+				if s.cfg.BackoffFunc != nil {
+					backoff = s.cfg.BackoffFunc(attempt)
+				} else {
+					backoff = s.defaultBackoff(attempt)
+				}
+
+				switch attempt {
+				case 1:
+					log.Debug("Submission failed, retrying...", "attempt", attempt, "error", err)
+				case maxAttempts:
+					metrics.ExporterErrorsTotal.WithLabelValues(metrics.ErrorTypeSubmissionRetriesExhausted).Inc()
+					log.Error("Submission failed after all retries", "attempt", attempt, "samplesCount", len(tmp), "error", err)
+				case (maxAttempts + 1) / 2:
+					log.Debug("Submission failed, still retrying...", "attempt", attempt, "error", err)
+				default:
+					log.Debug("Submission failed, retrying...", "attempt", attempt, "delay", backoff, "error", err)
+				}
+
+				if !sleepOrDone(ctx, backoff) {
+					log.Debug("Submission retry aborted by context")
+					break
+				}
+			}
+
+			if !success {
+				s.cfg.Buffer.PriorityPrepend(partitionKey, tmp)
+			}
+
+			// Always recycle the slice for reuse
 			s.cfg.Buffer.Recycle(partitionKey, tmp)
 
-			// If the account is for a past epoch, remove it.
-			currentEpoch, err := s.cfg.EpochFinder.ApproximateAtTime(ctx, time.Now())
-			if err != nil {
-				log.Error("Failed to get current epoch", "error", err)
-				metrics.ExporterErrorsTotal.WithLabelValues(metrics.ErrorTypeGetCurrentEpoch).Inc()
-				continue
-			}
-			if partitionKey.Epoch < currentEpoch {
-				s.cfg.Buffer.Remove(partitionKey)
-				log.Debug("Removed partition key")
-			}
-			continue
-		}
-
-		success := false
-		for attempt := 1; attempt <= maxAttempts; attempt++ {
-			err := s.SubmitSamples(ctx, partitionKey, tmp)
-			if err == nil {
-				log.Debug("Submitted samples", "count", len(tmp), "attempt", attempt)
-				success = true
-				break
-			}
-
-			var backoff time.Duration
-			if s.cfg.BackoffFunc != nil {
-				backoff = s.cfg.BackoffFunc(attempt)
-			} else {
-				backoff = s.defaultBackoff(attempt)
-			}
-
-			switch attempt {
-			case 1:
-				log.Debug("Submission failed, retrying...", "attempt", attempt, "error", err)
-			case maxAttempts:
-				metrics.ExporterErrorsTotal.WithLabelValues(metrics.ErrorTypeSubmissionRetriesExhausted).Inc()
-				log.Error("Submission failed after all retries", "attempt", attempt, "samplesCount", len(tmp), "error", err)
-			case (maxAttempts + 1) / 2:
-				log.Debug("Submission failed, still retrying...", "attempt", attempt, "error", err)
-			default:
-				log.Debug("Submission failed, retrying...", "attempt", attempt, "delay", backoff, "error", err)
-			}
-
-			if !sleepOrDone(ctx, backoff) {
-				log.Debug("Submission retry aborted by context")
-				break
-			}
-		}
-
-		if !success {
-			s.cfg.Buffer.PriorityPrepend(partitionKey, tmp)
-		}
-
-		// Always recycle the slice for reuse
-		s.cfg.Buffer.Recycle(partitionKey, tmp)
+		}(partitionKey)
 	}
+
+	wg.Wait()
 }
 
 func (s *Submitter) defaultBackoff(attempt int) time.Duration {
-	base := 500 * time.Millisecond
-	max := 5 * time.Second
+	base := 1 * time.Second
+	max := 10 * time.Second
 	jitter := 0.5 + 0.5*s.rng.Float64()
 	mult := 1 << uint(attempt-1)
 	backoff := time.Duration(float64(base) * float64(mult) * jitter)

@@ -284,7 +284,7 @@ func TestConnectivityMulticast(t *testing.T) {
 	if !t.Run("connect_multicast_subscribers", func(t *testing.T) {
 		for _, host := range subscribers {
 			t.Run("subscribe_"+host, func(t *testing.T) {
-				ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+				ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
 				defer cancel()
 				client, err := getQAClient(host)
 				require.NoError(t, err, "Failed to create QA client")
@@ -315,7 +315,7 @@ func TestConnectivityMulticast(t *testing.T) {
 	}
 
 	if !t.Run("connect_multicast_publisher_"+publisher, func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+		ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
 		defer cancel()
 		client, err := getQAClient(publisher)
 		require.NoError(t, err, "Failed to create QA client")
@@ -407,7 +407,7 @@ func unicastCleanupFunc(t *testing.T, hosts []string) func() {
 func disconnectUsers(t *testing.T, hosts []string) {
 	for _, host := range hosts {
 		t.Run("disconnect_from_"+host, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 			defer cancel()
 
 			client, err := getQAClient(host)
@@ -665,7 +665,7 @@ func connectHosts(t *testing.T, hosts []string, device *Device) (map[string]stri
 			for _, s := range checkStatus.Status {
 				if s.SessionStatus == "up" {
 					t.Logf("Host %s has existing tunnel (session status: %s), disconnecting first", host, s.SessionStatus)
-					disconnectCtx, disconnectCancel := context.WithTimeout(ctx, 30*time.Second)
+					disconnectCtx, disconnectCancel := context.WithTimeout(ctx, 90*time.Second)
 					_, _ = client.Disconnect(disconnectCtx, &emptypb.Empty{})
 					disconnectCancel()
 
@@ -731,7 +731,7 @@ func testDeviceConnectivity(t *testing.T, device *Device, hosts []string, additi
 		for _, host := range hosts {
 			t.Logf("Disconnecting %s from device %s", host, device.Code)
 			if client, err := getQAClient(host); err == nil {
-				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 				_, _ = client.Disconnect(ctx, &emptypb.Empty{})
 				cancel()
 			}

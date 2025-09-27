@@ -34,7 +34,8 @@ func (p *provider) GetCircuits(ctx context.Context) ([]Circuit, error) {
 		return nil, fmt.Errorf("failed to load serviceability data: %w", err)
 	}
 
-	circuits := make([]Circuit, 0, 2*len(data.Links))
+	n := len(data.Exchanges)
+	circuits := make([]Circuit, 0, n*(n-1)/2)
 	circuitsByCode := make(map[string]struct{})
 
 	for _, originExchange := range data.Exchanges {

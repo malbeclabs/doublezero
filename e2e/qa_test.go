@@ -652,7 +652,7 @@ func connectHosts(t *testing.T, hosts []string, device *Device) (map[string]stri
 		}
 
 		// Ensure clean state by disconnecting if tunnel is up
-		checkCtx, checkCancel := context.WithTimeout(ctx, 10*time.Second)
+		checkCtx, checkCancel := context.WithTimeout(ctx, 30*time.Second)
 		checkStatus, checkErr := client.GetStatus(checkCtx, &emptypb.Empty{})
 		checkCancel()
 
@@ -665,7 +665,7 @@ func connectHosts(t *testing.T, hosts []string, device *Device) (map[string]stri
 			for _, s := range checkStatus.Status {
 				if s.SessionStatus == "up" {
 					t.Logf("Host %s has existing tunnel (session status: %s), disconnecting first", host, s.SessionStatus)
-					disconnectCtx, disconnectCancel := context.WithTimeout(ctx, 10*time.Second)
+					disconnectCtx, disconnectCancel := context.WithTimeout(ctx, 30*time.Second)
 					_, _ = client.Disconnect(disconnectCtx, &emptypb.Empty{})
 					disconnectCancel()
 

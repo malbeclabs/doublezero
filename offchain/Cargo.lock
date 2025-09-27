@@ -1799,7 +1799,7 @@ dependencies = [
 [[package]]
 name = "doublezero-passport"
 version = "0.1.0"
-source = "git+ssh://git@github.com/doublezerofoundation/doublezero-solana?rev=9de9286#9de9286db7cdd3487e8b1a0c587bd5f9f47168f1"
+source = "git+ssh://git@github.com/doublezerofoundation/doublezero-solana?rev=2cd59e6#2cd59e6cdf19953860f8599728d5f02fdfcf18eb"
 dependencies = [
  "borsh 1.5.7",
  "bytemuck",
@@ -1830,7 +1830,7 @@ dependencies = [
 [[package]]
 name = "doublezero-program-tools"
 version = "0.1.0"
-source = "git+ssh://git@github.com/doublezerofoundation/doublezero-solana?rev=9de9286#9de9286db7cdd3487e8b1a0c587bd5f9f47168f1"
+source = "git+ssh://git@github.com/doublezerofoundation/doublezero-solana?rev=2cd59e6#2cd59e6cdf19953860f8599728d5f02fdfcf18eb"
 dependencies = [
  "bincode 1.3.3",
  "borsh 1.5.7",
@@ -1862,7 +1862,7 @@ dependencies = [
 [[package]]
 name = "doublezero-revenue-distribution"
 version = "0.1.0"
-source = "git+ssh://git@github.com/doublezerofoundation/doublezero-solana?rev=9de9286#9de9286db7cdd3487e8b1a0c587bd5f9f47168f1"
+source = "git+ssh://git@github.com/doublezerofoundation/doublezero-solana?rev=2cd59e6#2cd59e6cdf19953860f8599728d5f02fdfcf18eb"
 dependencies = [
  "borsh 1.5.7",
  "bytemuck",
@@ -1934,7 +1934,7 @@ dependencies = [
 [[package]]
 name = "doublezero-solana-client-tools"
 version = "0.1.0"
-source = "git+ssh://git@github.com/doublezerofoundation/doublezero-solana?rev=9de9286#9de9286db7cdd3487e8b1a0c587bd5f9f47168f1"
+source = "git+ssh://git@github.com/doublezerofoundation/doublezero-solana?rev=2cd59e6#2cd59e6cdf19953860f8599728d5f02fdfcf18eb"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -1945,6 +1945,7 @@ dependencies = [
  "solana-commitment-config",
  "solana-sdk",
  "solana-transaction-status-client-types",
+ "tracing",
  "url",
 ]
 
@@ -1967,6 +1968,7 @@ dependencies = [
  "doublezero-solana-client-tools",
  "doublezero_sdk",
  "futures",
+ "leaky-bucket",
  "mockall",
  "reqwest",
  "serde",
@@ -3504,6 +3506,17 @@ name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
+
+[[package]]
+name = "leaky-bucket"
+version = "1.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0a396bb213c2d09ed6c5495fd082c991b6ab39c9daf4fff59e6727f85c73e4c5"
+dependencies = [
+ "parking_lot",
+ "pin-project-lite",
+ "tokio",
+]
 
 [[package]]
 name = "libc"

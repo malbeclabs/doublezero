@@ -1,5 +1,6 @@
-use anyhow::{Error, Result};
+use anyhow::{Error, Result, ensure};
 use clap::Args;
+use leaky_bucket::RateLimiter;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::commitment_config::CommitmentConfig;
 use solana_transaction_status_client_types::{TransactionDetails, UiTransactionEncoding};
@@ -13,7 +14,7 @@ use crate::solana_debt_calculator::SolanaDebtCalculator;
 pub struct SolanaValidatorDebtConnectionOptions {
     /// URL for DoubleZero Ledger's JSON RPC. Required.
     #[arg(long)]
-    pub dz_ledger_url: Option<String>,
+    pub dz_ledger_url: String,
 
     /// URL for Solana's JSON RPC or moniker (or their first letter):
     /// [mainnet-beta, testnet, localhost].
@@ -30,11 +31,8 @@ impl TryFrom<SolanaValidatorDebtConnectionOptions> for SolanaDebtCalculator {
             dz_ledger_url,
         } = opts;
 
-        let ledger_url = dz_ledger_url.as_deref().unwrap_or("mainnet-beta");
-        let ledger_rpc_url = Url::parse(normalize_to_ledger_url(ledger_url))?;
-
-        let ledger_rpc_client =
-            RpcClient::new_with_commitment(ledger_rpc_url.into(), CommitmentConfig::confirmed());
+        let ledger_rpc_client = Url::parse(&dz_ledger_url)
+            .map(|url| RpcClient::new_with_commitment(url.into(), CommitmentConfig::confirmed()))?;
 
         let solana_url_or_moniker = solana_url_or_moniker.as_deref().unwrap_or("m");
         let solana_url = Url::parse(normalize_to_url_if_moniker(solana_url_or_moniker))?;
@@ -76,11 +74,113 @@ fn normalize_to_url_if_moniker(url_or_moniker: &str) -> &str {
     }
 }
 
-fn normalize_to_ledger_url(url: &str) -> &str {
-    match url {
-        "m" | "mainnet-beta" => "",
-        "t" | "testnet" => "",
-        "l" | "localhost" => "http://localhost:8899",
-        url => url,
+pub enum JoinedSolanaEpochs {
+    Range(std::ops::RangeInclusive<u64>),
+    Duplicate(u64),
+}
+
+impl JoinedSolanaEpochs {
+    async fn find_solana_epoch_before_timestamp(
+        solana_client: &RpcClient,
+        rate_limiter: &RateLimiter,
+        initial_solana_epoch: u64,
+        initial_last_slot_of_epoch: u64,
+        slots_per_epoch: u64,
+        target_timestamp: i64,
+    ) -> Result<u64> {
+        let mut current_epoch = initial_solana_epoch;
+        let mut current_last_slot = initial_last_slot_of_epoch;
+
+        // This loop will always terminate.
+        loop {
+            rate_limiter.acquire_one().await;
+
+            let last_slot_block_time = solana_client.get_block_time(current_last_slot).await?;
+
+            if last_slot_block_time < target_timestamp {
+                return Ok(current_epoch);
+            }
+
+            current_epoch -= 1;
+            current_last_slot -= slots_per_epoch;
+        }
+    }
+
+    pub async fn try_new(
+        solana_client: &RpcClient,
+        dz_ledger_client: &RpcClient,
+        target_dz_epoch: u64,
+        rate_limiter: &RateLimiter,
+    ) -> Result<Self> {
+        let current_dz_epoch_info = dz_ledger_client.get_epoch_info().await?;
+        ensure!(
+            target_dz_epoch < current_dz_epoch_info.epoch,
+            "DZ epoch {target_dz_epoch} is not less than the current DZ epoch {}",
+            current_dz_epoch_info.epoch
+        );
+
+        let dz_epoch_diff = current_dz_epoch_info.epoch - target_dz_epoch;
+
+        let last_slot_of_current_dz_epoch = current_dz_epoch_info.absolute_slot
+            - current_dz_epoch_info.slot_index
+            + current_dz_epoch_info.slots_in_epoch
+            - 1;
+
+        let last_slot_of_target_dz_epoch =
+            last_slot_of_current_dz_epoch - (current_dz_epoch_info.slots_in_epoch * dz_epoch_diff);
+
+        let last_dz_block_time = dz_ledger_client
+            .get_block_time(last_slot_of_target_dz_epoch)
+            .await?;
+
+        let current_solana_epoch_info = solana_client.get_epoch_info().await?;
+
+        let initial_solana_epoch = current_solana_epoch_info.epoch - 1;
+        let initial_last_slot_of_solana_epoch =
+            current_solana_epoch_info.absolute_slot - current_solana_epoch_info.slot_index - 1;
+
+        // Find the last Solana epoch that ends before the target DZ epoch ends.
+        let last_solana_epoch = Self::find_solana_epoch_before_timestamp(
+            solana_client,
+            rate_limiter,
+            initial_solana_epoch,
+            initial_last_slot_of_solana_epoch,
+            current_solana_epoch_info.slots_in_epoch,
+            last_dz_block_time,
+        )
+        .await?;
+
+        let last_slot_of_previous_dz_epoch =
+            last_slot_of_target_dz_epoch - current_dz_epoch_info.slots_in_epoch;
+
+        let previous_dz_block_time = dz_ledger_client
+            .get_block_time(last_slot_of_previous_dz_epoch)
+            .await?;
+
+        // Calculate the last slot for the last Solana epoch we found.
+        let last_slot_of_last_solana_epoch = initial_last_slot_of_solana_epoch
+            - (initial_solana_epoch - last_solana_epoch) * current_solana_epoch_info.slots_in_epoch;
+
+        // Find the Solana epoch that ends before the previous DZ epoch ends.
+        let solana_epoch_before_previous = Self::find_solana_epoch_before_timestamp(
+            solana_client,
+            rate_limiter,
+            last_solana_epoch,
+            last_slot_of_last_solana_epoch,
+            current_solana_epoch_info.slots_in_epoch,
+            previous_dz_block_time,
+        )
+        .await?;
+
+        // This epoch could be the same as the last solana epoch, which means
+        // the last DZ epoch that determined Solana epochs already accounted for
+        // the last Solana epoch.
+        if solana_epoch_before_previous == last_solana_epoch {
+            Ok(Self::Duplicate(last_solana_epoch))
+        } else {
+            let first_solana_epoch = solana_epoch_before_previous + 1;
+
+            Ok(Self::Range(first_solana_epoch..=last_solana_epoch))
+        }
     }
 }

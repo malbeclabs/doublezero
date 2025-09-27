@@ -1,3 +1,4 @@
+mod calculate;
 mod initialize;
 
 //
@@ -18,7 +19,7 @@ use crate::{
     transaction::Transaction, worker,
 };
 
-const DOUBLEZERO_LEDGER_GENESIS_HASH: Pubkey =
+const DOUBLEZERO_LEDGER_MAINNET_BETA_GENESIS_HASH: Pubkey =
     solana_sdk::pubkey!("5wVUvkFcFGYiKRUZ8Jp8Wc5swjhDEqT7hTdyssxDpC7P");
 
 #[derive(Debug, Subcommand)]
@@ -27,16 +28,9 @@ pub enum ValidatorDebtCommand {
     InitializeDistribution(initialize::InitializeDistributionCommand),
 
     /// Calculate Validator Debt.
-    CalculateValidatorDebt {
-        #[command(flatten)]
-        solana_connection_options: SolanaValidatorDebtConnectionOptions,
-        #[arg(long)]
-        epoch: u64,
-        #[arg(long, value_name = "DRY_RUN")]
-        dry_run: bool,
-        #[arg(long, value_name = "FORCE")]
-        force: bool,
-    },
+    CalculateValidatorDebt(calculate::CalculateValidatorDebtCommand),
+
+    FindSolanaEpoch(calculate::FindSolanaEpochCommand),
 
     /// Finalize Epoch Transaction.
     FinalizeTransaction {
@@ -54,16 +48,9 @@ pub enum ValidatorDebtCommand {
 impl ValidatorDebtCommand {
     pub async fn try_into_execute(self) -> Result<()> {
         match self {
-            ValidatorDebtCommand::InitializeDistribution(cmd) => cmd.execute().await,
-            ValidatorDebtCommand::CalculateValidatorDebt {
-                solana_connection_options,
-                epoch,
-                dry_run,
-                force,
-            } => {
-                execute_calculate_validator_debt(solana_connection_options, epoch, dry_run, force)
-                    .await
-            }
+            ValidatorDebtCommand::InitializeDistribution(command) => command.execute().await,
+            ValidatorDebtCommand::CalculateValidatorDebt(command) => command.execute().await,
+            ValidatorDebtCommand::FindSolanaEpoch(command) => command.execute().await,
             ValidatorDebtCommand::FinalizeTransaction {
                 solana_connection_options,
                 epoch,
@@ -74,20 +61,6 @@ impl ValidatorDebtCommand {
             }
         }
     }
-}
-
-async fn execute_calculate_validator_debt(
-    solana_connection_options: SolanaValidatorDebtConnectionOptions,
-    epoch: u64,
-    dry_run: bool,
-    force: bool,
-) -> Result<()> {
-    let solana_debt_calculator: SolanaDebtCalculator =
-        SolanaDebtCalculator::try_from(solana_connection_options)?;
-    let signer = try_load_keypair(None).expect("failed to load keypair");
-    let transaction = Transaction::new(signer, dry_run, force);
-    worker::calculate_validator_debt(&solana_debt_calculator, transaction, epoch).await?;
-    Ok(())
 }
 
 async fn execute_finalize_transaction(
@@ -130,8 +103,10 @@ async fn ensure_same_network_environment(
 
     // This check is safe to do because there are only two possible DoubleZero
     // Ledger networks: mainnet and testnet.
-    if (is_mainnet && genesis_hash.to_bytes() != DOUBLEZERO_LEDGER_GENESIS_HASH.to_bytes())
-        || (!is_mainnet && genesis_hash.to_bytes() == DOUBLEZERO_LEDGER_GENESIS_HASH.to_bytes())
+    if (is_mainnet
+        && genesis_hash.to_bytes() != DOUBLEZERO_LEDGER_MAINNET_BETA_GENESIS_HASH.to_bytes())
+        || (!is_mainnet
+            && genesis_hash.to_bytes() == DOUBLEZERO_LEDGER_MAINNET_BETA_GENESIS_HASH.to_bytes())
     {
         bail!("DoubleZero Ledger environment is not the same as the Solana environment");
     }
@@ -141,6 +116,8 @@ async fn ensure_same_network_environment(
 
 #[derive(Debug, Args, Clone)]
 struct ScheduleOrForce {
+    /// Force the command to execute immediately. NOTE: This may not bypass all
+    /// safety checks.
     #[arg(long, short = 'f')]
     force: bool,
 

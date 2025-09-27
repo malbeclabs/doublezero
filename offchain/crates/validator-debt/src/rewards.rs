@@ -77,7 +77,10 @@ pub async fn get_total_rewards(
 
     for validator_id in validator_ids {
         let mut total_reward: u64 = 0;
-        let jito_reward = jito_rewards.get(validator_id).cloned().unwrap_or_default();
+        let jito_reward = jito_rewards
+            .get(validator_id.as_str())
+            .cloned()
+            .unwrap_or_default();
         let inflation_reward = inflation_rewards
             .get(validator_id)
             .cloned()

@@ -1,4 +1,4 @@
-use anyhow::{Result, bail};
+use anyhow::{Result, bail, ensure};
 use clap::Args;
 use doublezero_program_tools::instruction::try_build_instruction;
 use doublezero_revenue_distribution::{
@@ -8,6 +8,7 @@ use doublezero_revenue_distribution::{
 };
 use doublezero_scheduled_command::{Schedulable, ScheduleOption};
 use doublezero_solana_client_tools::{
+    log_info, log_warn,
     payer::{SolanaPayerOptions, Wallet},
     rpc::DoubleZeroLedgerConnectionOptions,
     zero_copy::ZeroCopyAccountOwned,
@@ -49,9 +50,10 @@ impl Schedulable for InitializeDistributionCommand {
             .await
             .map(|config| (config.data.next_dz_epoch, config.data.debt_accountant_key))?;
 
-        if wallet.signer.pubkey() != expected_accountant_key {
-            bail!("Signer does not match expected debt accountant");
-        }
+        ensure!(
+            wallet.signer.pubkey() == expected_accountant_key,
+            "Signer does not match expected debt accountant"
+        );
 
         let dz_ledger_rpc_client = RpcClient::new_with_commitment(
             self.dz_ledger_connection_options.dz_ledger_url.clone(),
@@ -77,12 +79,12 @@ impl Schedulable for InitializeDistributionCommand {
             // if the next DZ epoch is less than the expected completed DZ
             // epoch. Prompt to be extra sure.
             if self.schedule_or_force.force && next_dz_epoch.value() < expected_completed_dz_epoch {
-                eprintln!("{err_msg}");
+                log_warn!(err_msg);
                 super::proceed_prompt()?;
             // If the schedule flag is set, simply warn so we do not spam any
             // monitoring system.
             } else if self.schedule_or_force.schedule.is_scheduled() {
-                tracing::warn!("{err_msg}");
+                log_warn!(err_msg);
 
                 return Ok(());
             // Otherwise, we should not be allowed to proceed.
@@ -127,7 +129,7 @@ impl Schedulable for InitializeDistributionCommand {
         let tx_sig = wallet.send_or_simulate_transaction(&transaction).await?;
 
         if let Some(tx_sig) = tx_sig {
-            println!("Initialize distribution: {tx_sig}");
+            log_info!("Initialize distribution: {tx_sig}");
 
             wallet.print_verbose_output(&[tx_sig]).await?;
         }

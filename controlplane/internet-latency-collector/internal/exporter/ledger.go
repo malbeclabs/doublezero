@@ -164,10 +164,12 @@ func (e *BufferedLedgerExporter) WriteRecords(ctx context.Context, records []Rec
 		}
 
 		partitionKey := PartitionKey{
-			DataProvider:     record.DataProvider,
-			SourceExchangePK: source.PubKey,
-			TargetExchangePK: target.PubKey,
-			Epoch:            epoch,
+			DataProvider:       record.DataProvider,
+			SourceExchangePK:   source.PubKey,
+			TargetExchangePK:   target.PubKey,
+			SourceExchangeCode: record.SourceExchangeCode,
+			TargetExchangeCode: record.TargetExchangeCode,
+			Epoch:              epoch,
 		}
 		sample := Sample{
 			Timestamp: record.Timestamp,

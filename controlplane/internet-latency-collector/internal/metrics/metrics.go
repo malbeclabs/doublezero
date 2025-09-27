@@ -42,7 +42,7 @@ var (
 	ExporterErrorsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "doublezero_internet_latency_collector_exporter_errors_total",
 		Help: "Total number of errors from the exporter",
-	}, []string{"error_type"})
+	}, []string{"error_type", "circuit"})
 
 	ExporterExchangeNotFoundTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "doublezero_internet_latency_collector_exporter_exchange_not_found_total",

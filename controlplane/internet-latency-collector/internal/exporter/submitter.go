@@ -209,7 +209,7 @@ func (s *Submitter) Tick(ctx context.Context) {
 				currentEpoch, err := s.cfg.EpochFinder.ApproximateAtTime(ctx, time.Now())
 				if err != nil {
 					log.Error("Failed to get current epoch", "error", err)
-					metrics.ExporterErrorsTotal.WithLabelValues(metrics.ErrorTypeGetCurrentEpoch).Inc()
+					metrics.ExporterErrorsTotal.WithLabelValues(metrics.ErrorTypeGetCurrentEpoch, partitionKey.CircuitCode()).Inc()
 					return
 				}
 				if partitionKey.Epoch < currentEpoch {
@@ -239,7 +239,7 @@ func (s *Submitter) Tick(ctx context.Context) {
 				case 1:
 					log.Debug("Submission failed, retrying...", "attempt", attempt, "error", err)
 				case maxAttempts:
-					metrics.ExporterErrorsTotal.WithLabelValues(metrics.ErrorTypeSubmissionRetriesExhausted).Inc()
+					metrics.ExporterErrorsTotal.WithLabelValues(metrics.ErrorTypeSubmissionRetriesExhausted, partitionKey.CircuitCode()).Inc()
 					log.Error("Submission failed after all retries", "attempt", attempt, "samplesCount", len(tmp), "error", err)
 				case (maxAttempts + 1) / 2:
 					log.Debug("Submission failed, still retrying...", "attempt", attempt, "error", err)

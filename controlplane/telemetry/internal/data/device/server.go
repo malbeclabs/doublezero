@@ -62,13 +62,14 @@ func (s *Server) provider(env string) (Provider, error) {
 
 func (s *Server) registerRoutes() {
 	s.Mux.HandleFunc("/device-link/circuits", s.handleDeviceCircuits)
+	s.Mux.HandleFunc("/device-link/link-types", s.handleDeviceLinkTypes)
 	s.Mux.HandleFunc("/device-link/circuit-latencies", s.handleDeviceCircuitLatencies)
 	s.Mux.HandleFunc("/device-link/summary", s.handlSummary)
 }
 
-func (s *Server) handleDeviceCircuits(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleDeviceLinkTypes(w http.ResponseWriter, r *http.Request) {
 	env := r.URL.Query().Get("env")
-	s.log.Debug("[/device-link/circuits]", "env", env, "full", r.URL.String())
+	s.log.Debug("[/device-link/link-types]", "env", env, "full", r.URL.String())
 
 	provider, err := s.provider(env)
 	if err != nil {
@@ -84,6 +85,64 @@ func (s *Server) handleDeviceCircuits(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	linkTypesMap := map[string]struct{}{}
+	for _, circuit := range circuits {
+		linkTypesMap[circuit.Link.LinkType] = struct{}{}
+	}
+
+	linkTypes := make([]string, 0, len(linkTypesMap))
+	for linkType := range linkTypesMap {
+		linkTypes = append(linkTypes, linkType)
+	}
+
+	sort.Strings(linkTypes)
+
+	if err := json.NewEncoder(w).Encode(linkTypes); err != nil {
+		s.log.Error("failed to encode link types", "error", err)
+		http.Error(w, fmt.Sprintf("failed to encode link types: %v", err), http.StatusInternalServerError)
+		return
+	}
+}
+
+func (s *Server) handleDeviceCircuits(w http.ResponseWriter, r *http.Request) {
+	env := r.URL.Query().Get("env")
+	linkTypes := parseMultiParam(r, "link_type")
+	s.log.Debug("[/device-link/circuits]", "env", env, "link_types", linkTypes, "full", r.URL.String())
+
+	// Convert link types to lowercase.
+	for i, linkType := range linkTypes {
+		linkTypes[i] = strings.ToLower(linkType)
+	}
+
+	if len(linkTypes) == 1 && linkTypes[0] == "all" {
+		linkTypes = nil
+	}
+
+	provider, err := s.provider(env)
+	if err != nil {
+		s.log.Warn("invalid environment", "env", env)
+		http.Error(w, fmt.Sprintf("invalid environment %q", env), http.StatusBadRequest)
+		return
+	}
+
+	circuits, err := provider.GetCircuits(r.Context())
+	if err != nil {
+		s.log.Error("failed to get circuits", "error", err)
+		http.Error(w, fmt.Sprintf("failed to get circuits: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Filter by link type, if provided.
+	if len(linkTypes) > 0 {
+		filteredCircuits := make([]Circuit, 0, len(circuits))
+		for _, circuit := range circuits {
+			if slices.Contains(linkTypes, strings.ToLower(circuit.Link.LinkType)) {
+				filteredCircuits = append(filteredCircuits, circuit)
+			}
+		}
+		circuits = filteredCircuits
+	}
+
 	if err := json.NewEncoder(w).Encode(circuits); err != nil {
 		s.log.Error("failed to encode circuits", "error", err)
 		http.Error(w, fmt.Sprintf("failed to encode circuits: %v", err), http.StatusInternalServerError)
@@ -95,15 +154,24 @@ func (s *Server) handlSummary(w http.ResponseWriter, r *http.Request) {
 	env := r.URL.Query().Get("env")
 	fromStr := r.URL.Query().Get("from")
 	toStr := r.URL.Query().Get("to")
-	circuits := parseMultiParam(r, "circuit")
+	circuitCodes := parseMultiParam(r, "circuit")
 	unit := r.URL.Query().Get("unit")
-	s.log.Debug("[/device-link/summary]", "env", env, "from", fromStr, "to", toStr, "circuits", circuits, "unit", unit, "full", r.URL.String())
+	linkTypes := parseMultiParam(r, "link_type")
+	s.log.Debug("[/device-link/summary]", "env", env, "from", fromStr, "to", toStr, "circuit_codes", circuitCodes, "unit", unit, "link_types", linkTypes, "full", r.URL.String())
 
 	provider, err := s.provider(env)
 	if err != nil {
 		s.log.Warn("invalid environment", "env", env)
 		http.Error(w, fmt.Sprintf("invalid environment %q", env), http.StatusBadRequest)
 		return
+	}
+
+	// Convert link types to lowercase.
+	for i, linkType := range linkTypes {
+		linkTypes[i] = strings.ToLower(linkType)
+	}
+	if len(linkTypes) == 1 && linkTypes[0] == "all" {
+		linkTypes = nil
 	}
 
 	if unit == "" {
@@ -124,21 +192,33 @@ func (s *Server) handlSummary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(circuits) == 0 || (len(circuits) == 1 && circuits[0] == "all") {
-		allCircuits, err := provider.GetCircuits(r.Context())
-		if err != nil {
-			s.log.Error("failed to get circuits", "error", err)
-			http.Error(w, fmt.Sprintf("failed to get circuits: %v", err), http.StatusInternalServerError)
-			return
-		}
-		circuits = make([]string, 0, len(allCircuits))
+	allCircuits, err := provider.GetCircuits(r.Context())
+	if err != nil {
+		s.log.Error("failed to get circuits", "error", err)
+		http.Error(w, fmt.Sprintf("failed to get circuits: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Filter by link type, if provided.
+	if len(linkTypes) > 0 {
+		filteredCircuits := make([]Circuit, 0, len(allCircuits))
 		for _, circuit := range allCircuits {
-			circuits = append(circuits, circuit.Code)
+			if slices.Contains(linkTypes, strings.ToLower(circuit.Link.LinkType)) {
+				filteredCircuits = append(filteredCircuits, circuit)
+			}
+		}
+		allCircuits = filteredCircuits
+	}
+
+	if len(circuitCodes) == 0 || (len(circuitCodes) == 1 && circuitCodes[0] == "all") {
+		circuitCodes = make([]string, 0, len(allCircuits))
+		for _, circuit := range allCircuits {
+			circuitCodes = append(circuitCodes, circuit.Code)
 		}
 	}
 
 	output, err := provider.GetSummaryForCircuits(r.Context(), GetSummaryForCircuitsConfig{
-		Circuits: circuits,
+		Circuits: circuitCodes,
 		Time:     &TimeRange{From: fromTime, To: toTime},
 		Unit:     Unit(unit),
 	})
@@ -160,21 +240,30 @@ func (s *Server) handleDeviceCircuitLatencies(w http.ResponseWriter, r *http.Req
 	env := r.URL.Query().Get("env")
 	fromStr := r.URL.Query().Get("from")
 	toStr := r.URL.Query().Get("to")
-	circuits := parseMultiParam(r, "circuit")
+	circuitCodes := parseMultiParam(r, "circuit")
 	maxPointsStr := r.URL.Query().Get("max_points")
 	intervalStr := r.URL.Query().Get("interval")
 	unit := r.URL.Query().Get("unit")
 	metrics := parseMultiParam(r, "metrics")
 	partStr := r.URL.Query().Get("partition")
 	totalPartsStr := r.URL.Query().Get("total_partitions")
+	linkTypes := parseMultiParam(r, "link_type")
 
-	s.log.Debug("[/device-link/circuit-latencies]", "env", env, "from", fromStr, "to", toStr, "circuits", circuits, "max_points", maxPointsStr, "interval", intervalStr, "unit", unit, "partition", partStr, "total_partitions", totalPartsStr, "full", r.URL.String(), "metrics", metrics)
+	s.log.Debug("[/device-link/circuit-latencies]", "env", env, "from", fromStr, "to", toStr, "circuits", circuitCodes, "max_points", maxPointsStr, "interval", intervalStr, "unit", unit, "partition", partStr, "total_partitions", totalPartsStr, "link_types", linkTypes, "full", r.URL.String(), "metrics", metrics)
 
 	provider, err := s.provider(env)
 	if err != nil {
 		s.log.Warn("invalid environment", "env", env)
 		http.Error(w, fmt.Sprintf("invalid environment %q", env), http.StatusBadRequest)
 		return
+	}
+
+	// Convert link types to lowercase.
+	for i, linkType := range linkTypes {
+		linkTypes[i] = strings.ToLower(linkType)
+	}
+	if len(linkTypes) == 1 && linkTypes[0] == "all" {
+		linkTypes = nil
 	}
 
 	if unit == "" {
@@ -222,16 +311,28 @@ func (s *Server) handleDeviceCircuitLatencies(w http.ResponseWriter, r *http.Req
 		}
 	}
 
-	if len(circuits) == 0 || (len(circuits) == 1 && circuits[0] == "all") {
-		allCircuits, err := provider.GetCircuits(r.Context())
-		if err != nil {
-			s.log.Error("failed to get circuits", "error", err)
-			http.Error(w, fmt.Sprintf("failed to get circuits: %v", err), http.StatusInternalServerError)
-			return
-		}
-		circuits = make([]string, 0, len(allCircuits))
+	allCircuits, err := provider.GetCircuits(r.Context())
+	if err != nil {
+		s.log.Error("failed to get circuits", "error", err)
+		http.Error(w, fmt.Sprintf("failed to get circuits: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Filter by link type, if provided.
+	if len(linkTypes) > 0 {
+		filteredCircuits := make([]Circuit, 0, len(allCircuits))
 		for _, circuit := range allCircuits {
-			circuits = append(circuits, circuit.Code)
+			if len(linkTypes) == 0 || slices.Contains(linkTypes, strings.ToLower(circuit.Link.LinkType)) {
+				filteredCircuits = append(filteredCircuits, circuit)
+			}
+		}
+		allCircuits = filteredCircuits
+	}
+
+	if len(circuitCodes) == 0 || (len(circuitCodes) == 1 && circuitCodes[0] == "all") {
+		circuitCodes = make([]string, 0, len(allCircuits))
+		for _, circuit := range allCircuits {
+			circuitCodes = append(circuitCodes, circuit.Code)
 		}
 	}
 
@@ -247,8 +348,8 @@ func (s *Server) handleDeviceCircuitLatencies(w http.ResponseWriter, r *http.Req
 			http.Error(w, "invalid partition/total_partitions", http.StatusBadRequest)
 			return
 		}
-		sort.Strings(circuits)
-		n := len(circuits)
+		sort.Strings(circuitCodes)
+		n := len(circuitCodes)
 		base := n / tparts
 		rem := n % tparts
 		start := part*base + min(part, rem)
@@ -257,22 +358,24 @@ func (s *Server) handleDeviceCircuitLatencies(w http.ResponseWriter, r *http.Req
 			size++
 		}
 		end := start + size
-		if part >= len(circuits) {
+		if part >= len(circuitCodes) {
 			// If the current partition is greater than or equal to the number of circuits, due to a bug
 			// in Grafana, we need to return 1 entry in the output with the expected format, so we will
 			// return the first entry from the first circuit.
 			// This is an ugly hack that we can remove once Grafana fixes the bug.
 			// // https://github.com/grafana/grafana-infinity-datasource/issues/705
 			partOutOfRange = true
-			circuits = []string{circuits[0]}
+			if len(circuitCodes) > 0 {
+				circuitCodes = []string{circuitCodes[0]}
+			}
 		} else {
 			if start > n {
-				circuits = nil
+				circuitCodes = nil
 			} else {
 				if end > n {
 					end = n
 				}
-				circuits = circuits[start:end]
+				circuitCodes = circuitCodes[start:end]
 			}
 		}
 	}
@@ -281,7 +384,7 @@ func (s *Server) handleDeviceCircuitLatencies(w http.ResponseWriter, r *http.Req
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 
-	for _, circuitCode := range circuits {
+	for _, circuitCode := range circuitCodes {
 		wg.Add(1)
 		go func(circuitCode string) {
 			defer wg.Done()

@@ -337,7 +337,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 						Owner:             getOwner(tunnelPayload),
 						SideAPubKey:       getPubKeyOffset(tunnelPayload, 50, 82),
 						SideZPubKey:       getPubKeyOffset(tunnelPayload, 82, 114),
-						LinkType:          LinkLinkTypeMPLSoverGRE,
+						LinkType:          LinkLinkTypeWAN,
 						Bandwidth:         10000000000,
 						Mtu:               9000,
 						DelayNs:           30000000,

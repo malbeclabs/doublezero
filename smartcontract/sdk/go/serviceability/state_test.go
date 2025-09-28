@@ -33,7 +33,7 @@ func TestCustomJSONMarshal(t *testing.T) {
 				Bump_seed:         255,
 				SideAPubKey:       dummyPubKey,
 				SideZPubKey:       dummyPubKey,
-				LinkType:          serviceability.LinkLinkTypeMPLSoverGRE,
+				LinkType:          serviceability.LinkLinkTypeWAN,
 				Bandwidth:         1000000000, // 1 Gbps
 				Mtu:               1500,
 				DelayNs:           5000000, // 5ms
@@ -54,7 +54,7 @@ func TestCustomJSONMarshal(t *testing.T) {
 				"Bump_seed": 255,
 				"SideAPubKey": "` + dummyPubKeyB58 + `",
 				"SideZPubKey": "` + dummyPubKeyB58 + `",
-				"LinkType": 1,
+				"LinkType": "WAN",
 				"Bandwidth": 1000000000,
 				"Mtu": 1500,
 				"DelayNs": 5000000,
@@ -82,7 +82,7 @@ func TestCustomJSONMarshal(t *testing.T) {
 				"Bump_seed": 0,
 				"SideAPubKey": "11111111111111111111111111111111",
 				"SideZPubKey": "11111111111111111111111111111111",
-				"LinkType": 0,
+				"LinkType": "",
 				"Bandwidth": 0,
 				"Mtu": 0,
 				"DelayNs": 0,

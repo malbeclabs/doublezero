@@ -282,8 +282,24 @@ func (d Device) MarshalJSON() ([]byte, error) {
 type LinkLinkType uint8
 
 const (
-	LinkLinkTypeMPLSoverGRE LinkLinkType = iota + 1
+	LinkLinkTypeWAN LinkLinkType = 1
+	LinkLinkTypeDZX LinkLinkType = 127
 )
+
+func (l LinkLinkType) String() string {
+	switch l {
+	case LinkLinkTypeWAN:
+		return "WAN"
+	case LinkLinkTypeDZX:
+		return "DZX"
+	default:
+		return ""
+	}
+}
+
+func (l LinkLinkType) MarshalJSON() ([]byte, error) {
+	return json.Marshal(l.String())
+}
 
 type LinkStatus uint8
 

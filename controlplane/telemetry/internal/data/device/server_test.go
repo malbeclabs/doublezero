@@ -61,6 +61,9 @@ func TestTelemetry_Data_Device_Server(t *testing.T) {
 		from, to := now.Format(time.RFC3339), now.Add(10*time.Second).Format(time.RFC3339)
 
 		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{
+			GetCircuitsFunc: func(context.Context) ([]data.Circuit, error) {
+				return []data.Circuit{{Code: "foo"}}, nil
+			},
 			GetCircuitLatenciesFunc: func(_ context.Context, cfg data.GetCircuitLatenciesConfig) ([]stats.CircuitLatencyStat, error) {
 				return []stats.CircuitLatencyStat{{Circuit: cfg.Circuit, RTTMean: 42}}, nil
 			},
@@ -79,6 +82,67 @@ func TestTelemetry_Data_Device_Server(t *testing.T) {
 		require.NoError(t, json.Unmarshal(body, &out))
 		require.Len(t, out, 1)
 		assert.Equal(t, "foo", out[0].Circuit)
+	})
+
+	t.Run("GET /device-link/circuit-latencies with link_type WAN", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
+		from, to := now.Format(time.RFC3339), now.Add(10*time.Second).Format(time.RFC3339)
+
+		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{
+			GetCircuitsFunc: func(context.Context) ([]data.Circuit, error) {
+				return []data.Circuit{{Code: "foo", Link: data.Link{LinkType: "WAN"}}}, nil
+			},
+			GetCircuitLatenciesFunc: func(_ context.Context, cfg data.GetCircuitLatenciesConfig) ([]stats.CircuitLatencyStat, error) {
+				return []stats.CircuitLatencyStat{{Circuit: cfg.Circuit, RTTMean: 42}}, nil
+			},
+		}, &mockProvider{})
+		defer closeFn()
+
+		res, body := get(t, baseURL, "/device-link/circuit-latencies", url.Values{
+			"env":       {"testnet"},
+			"from":      {from},
+			"to":        {to},
+			"circuit":   {"{foo}"},
+			"link_type": {"WAN"},
+		})
+		assert.Equal(t, http.StatusOK, res.StatusCode)
+
+		var out []stats.CircuitLatencyStat
+		require.NoError(t, json.Unmarshal(body, &out))
+		require.Len(t, out, 1)
+		assert.Equal(t, "foo", out[0].Circuit)
+	})
+
+	t.Run("GET /device-link/circuit-latencies with link_type all", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
+		from, to := now.Format(time.RFC3339), now.Add(10*time.Second).Format(time.RFC3339)
+
+		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{
+			GetCircuitsFunc: func(context.Context) ([]data.Circuit, error) {
+				return []data.Circuit{{Code: "foo", Link: data.Link{LinkType: "WAN"}}, {Code: "bar", Link: data.Link{LinkType: "DZX"}}}, nil
+			},
+			GetCircuitLatenciesFunc: func(_ context.Context, cfg data.GetCircuitLatenciesConfig) ([]stats.CircuitLatencyStat, error) {
+				return []stats.CircuitLatencyStat{{Circuit: cfg.Circuit, RTTMean: 42}}, nil
+			},
+		}, &mockProvider{})
+		defer closeFn()
+
+		res, body := get(t, baseURL, "/device-link/circuit-latencies", url.Values{
+			"env":       {"testnet"},
+			"from":      {from},
+			"to":        {to},
+			"circuit":   {"{foo,bar}"},
+			"link_type": {"all"},
+		})
+		assert.Equal(t, http.StatusOK, res.StatusCode)
+
+		var out []stats.CircuitLatencyStat
+		require.NoError(t, json.Unmarshal(body, &out))
+		require.Len(t, out, 2)
 	})
 
 	t.Run("GET /device-link/circuit-latencies with invalid time range", func(t *testing.T) {
@@ -122,6 +186,9 @@ func TestTelemetry_Data_Device_Server(t *testing.T) {
 		from, to := now.Format(time.RFC3339), now.Add(10*time.Second).Format(time.RFC3339)
 
 		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{
+			GetCircuitsFunc: func(context.Context) ([]data.Circuit, error) {
+				return []data.Circuit{{Code: "a"}, {Code: "b"}}, nil
+			},
 			GetCircuitLatenciesFunc: func(_ context.Context, _ data.GetCircuitLatenciesConfig) ([]stats.CircuitLatencyStat, error) {
 				return nil, errors.New("expected")
 			},
@@ -146,6 +213,9 @@ func TestTelemetry_Data_Device_Server(t *testing.T) {
 
 		var gotCfg data.GetCircuitLatenciesConfig
 		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{
+			GetCircuitsFunc: func(context.Context) ([]data.Circuit, error) {
+				return []data.Circuit{{Code: "foo"}}, nil
+			},
 			GetCircuitLatenciesFunc: func(_ context.Context, cfg data.GetCircuitLatenciesConfig) ([]stats.CircuitLatencyStat, error) {
 				gotCfg = cfg
 				return []stats.CircuitLatencyStat{{Circuit: cfg.Circuit, RTTMean: 7}}, nil
@@ -267,6 +337,78 @@ func TestTelemetry_Data_Device_Server(t *testing.T) {
 		assert.Equal(t, toSet([]string{"a", "b", "c"}), toSet(got))
 	})
 
+	t.Run("GET /device-link/circuit-latencies expands circuits via GetCircuits when link_type=WAN", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
+		from, to := now.Format(time.RFC3339), now.Add(10*time.Second).Format(time.RFC3339)
+
+		var got []string
+		var mu sync.Mutex
+
+		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{
+			GetCircuitsFunc: func(context.Context) ([]data.Circuit, error) {
+				// Intentionally unsorted to ensure handler sorts before partitioning/querying
+				return []data.Circuit{{Code: "b"}, {Code: "a", Link: data.Link{LinkType: "WAN"}}, {Code: "c", Link: data.Link{LinkType: "WAN"}}}, nil
+			},
+			GetCircuitLatenciesFunc: func(_ context.Context, cfg data.GetCircuitLatenciesConfig) ([]stats.CircuitLatencyStat, error) {
+				mu.Lock()
+				got = append(got, cfg.Circuit)
+				mu.Unlock()
+				return []stats.CircuitLatencyStat{{Circuit: cfg.Circuit, RTTMean: 1}}, nil
+			},
+		}, &mockProvider{})
+		defer closeFn()
+
+		res, body := get(t, baseURL, "/device-link/circuit-latencies", url.Values{
+			"env":       {"testnet"},
+			"from":      {from},
+			"to":        {to},
+			"link_type": {"WAN"},
+		})
+		assert.Equal(t, http.StatusOK, res.StatusCode)
+
+		var out []stats.CircuitLatencyStat
+		require.NoError(t, json.Unmarshal(body, &out))
+		require.Len(t, out, 2)
+	})
+
+	t.Run("GET /device-link/circuit-latencies expands circuits via GetCircuits when link_type=all", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
+		from, to := now.Format(time.RFC3339), now.Add(10*time.Second).Format(time.RFC3339)
+
+		var got []string
+		var mu sync.Mutex
+
+		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{
+			GetCircuitsFunc: func(context.Context) ([]data.Circuit, error) {
+				// Intentionally unsorted to ensure handler sorts before partitioning/querying
+				return []data.Circuit{{Code: "b"}, {Code: "a", Link: data.Link{LinkType: "WAN"}}, {Code: "c", Link: data.Link{LinkType: "WAN"}}, {Code: "d", Link: data.Link{LinkType: "DZX"}}}, nil
+			},
+			GetCircuitLatenciesFunc: func(_ context.Context, cfg data.GetCircuitLatenciesConfig) ([]stats.CircuitLatencyStat, error) {
+				mu.Lock()
+				got = append(got, cfg.Circuit)
+				mu.Unlock()
+				return []stats.CircuitLatencyStat{{Circuit: cfg.Circuit, RTTMean: 1}}, nil
+			},
+		}, &mockProvider{})
+		defer closeFn()
+
+		res, body := get(t, baseURL, "/device-link/circuit-latencies", url.Values{
+			"env":       {"testnet"},
+			"from":      {from},
+			"to":        {to},
+			"link_type": {"all"},
+		})
+		assert.Equal(t, http.StatusOK, res.StatusCode)
+
+		var out []stats.CircuitLatencyStat
+		require.NoError(t, json.Unmarshal(body, &out))
+		require.Len(t, out, 4)
+	})
+
 	t.Run("GET /device-link/circuit-latencies expands circuits via GetCircuits when circuit omitted", func(t *testing.T) {
 		t.Parallel()
 
@@ -324,6 +466,9 @@ func TestTelemetry_Data_Device_Server(t *testing.T) {
 			GetCircuitsFunc: func(context.Context) ([]data.Circuit, error) {
 				return nil, errors.New("boom")
 			},
+			GetCircuitLatenciesFunc: func(_ context.Context, _ data.GetCircuitLatenciesConfig) ([]stats.CircuitLatencyStat, error) {
+				return nil, errors.New("boom")
+			},
 		}, &mockProvider{})
 		defer closeFn()
 
@@ -346,6 +491,9 @@ func TestTelemetry_Data_Device_Server(t *testing.T) {
 		var mu sync.Mutex
 		var gotCircuits []string
 		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{
+			GetCircuitsFunc: func(context.Context) ([]data.Circuit, error) {
+				return []data.Circuit{{Code: "e"}, {Code: "d"}, {Code: "c"}, {Code: "b"}, {Code: "a"}}, nil
+			},
 			GetCircuitLatenciesFunc: func(_ context.Context, cfg data.GetCircuitLatenciesConfig) ([]stats.CircuitLatencyStat, error) {
 				mu.Lock()
 				gotCircuits = append(gotCircuits, cfg.Circuit)
@@ -390,6 +538,9 @@ func TestTelemetry_Data_Device_Server(t *testing.T) {
 		from, to := now.Format(time.RFC3339), now.Add(10*time.Second).Format(time.RFC3339)
 
 		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{
+			GetCircuitsFunc: func(context.Context) ([]data.Circuit, error) {
+				return []data.Circuit{{Code: "a"}, {Code: "b"}}, nil
+			},
 			GetCircuitLatenciesFunc: func(_ context.Context, _ data.GetCircuitLatenciesConfig) ([]stats.CircuitLatencyStat, error) {
 				return []stats.CircuitLatencyStat{{Circuit: "should-not-be-called"}}, nil
 			},
@@ -423,6 +574,9 @@ func TestTelemetry_Data_Device_Server(t *testing.T) {
 
 		// Return an empty series to exercise the branch that used to panic
 		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{
+			GetCircuitsFunc: func(context.Context) ([]data.Circuit, error) {
+				return []data.Circuit{{Code: "a"}, {Code: "b"}}, nil
+			},
 			GetCircuitLatenciesFunc: func(_ context.Context, _ data.GetCircuitLatenciesConfig) ([]stats.CircuitLatencyStat, error) {
 				return nil, nil
 			},
@@ -456,6 +610,9 @@ func TestTelemetry_Data_Device_Server(t *testing.T) {
 		zero := stats.CircuitLatencyStat{Circuit: "a"} // assumes zero/empty samples is allowed
 
 		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{
+			GetCircuitsFunc: func(context.Context) ([]data.Circuit, error) {
+				return []data.Circuit{{Code: "a"}, {Code: "b"}}, nil
+			},
 			GetCircuitLatenciesFunc: func(_ context.Context, cfg data.GetCircuitLatenciesConfig) ([]stats.CircuitLatencyStat, error) {
 				_ = cfg
 				return []stats.CircuitLatencyStat{zero}, nil
@@ -492,6 +649,9 @@ func TestTelemetry_Data_Device_Server_Summary(t *testing.T) {
 
 		var gotCfg data.GetSummaryForCircuitsConfig
 		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{
+			GetCircuitsFunc: func(context.Context) ([]data.Circuit, error) {
+				return []data.Circuit{{Code: "foo"}}, nil
+			},
 			GetSummaryForCircuitsFunc: func(_ context.Context, cfg data.GetSummaryForCircuitsConfig) ([]data.CircuitSummary, error) {
 				gotCfg = cfg
 				return []data.CircuitSummary{{
@@ -607,6 +767,80 @@ func TestTelemetry_Data_Device_Server_Summary(t *testing.T) {
 		assert.Equal(t, wantSet, asSet(gotCircuits))
 	})
 
+	t.Run("GET /device-link/summary expands circuits when link_type=WAN", func(t *testing.T) {
+		t.Parallel()
+
+		fromT := time.Date(2024, 12, 2, 0, 0, 0, 0, time.UTC)
+		toT := fromT.Add(2 * time.Minute)
+		from, to := fromT.Format(time.RFC3339), toT.Format(time.RFC3339)
+
+		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{
+			GetCircuitsFunc: func(context.Context) ([]data.Circuit, error) {
+				// unsorted on purpose; handler just forwards the list to provider method
+				return []data.Circuit{{Code: "b"}, {Code: "c", Link: data.Link{LinkType: "WAN"}}, {Code: "a", Link: data.Link{LinkType: "WAN"}}, {Code: "d", Link: data.Link{LinkType: "DZX"}}}, nil
+			},
+			GetSummaryForCircuitsFunc: func(_ context.Context, cfg data.GetSummaryForCircuitsConfig) ([]data.CircuitSummary, error) {
+				// WAN circuits should be passed in here only.
+				require.Equal(t, []string{"c", "a"}, cfg.Circuits)
+				return []data.CircuitSummary{
+					{Circuit: "b", LinkType: "WAN"},
+					{Circuit: "c", LinkType: "WAN"},
+				}, nil
+			},
+		}, &mockProvider{})
+		defer closeFn()
+
+		res, body := get(t, baseURL, "/device-link/summary", url.Values{
+			"env":       {"testnet"},
+			"from":      {from},
+			"to":        {to},
+			"link_type": {"WAN"},
+			"unit":      {"ms"},
+		})
+		assert.Equal(t, http.StatusOK, res.StatusCode)
+
+		var out []data.CircuitSummary
+		require.NoError(t, json.Unmarshal(body, &out))
+		require.Len(t, out, 2)
+	})
+
+	t.Run("GET /device-link/summary expands circuits when link_type=all", func(t *testing.T) {
+		t.Parallel()
+
+		fromT := time.Date(2024, 12, 2, 0, 0, 0, 0, time.UTC)
+		toT := fromT.Add(2 * time.Minute)
+		from, to := fromT.Format(time.RFC3339), toT.Format(time.RFC3339)
+
+		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{
+			GetCircuitsFunc: func(context.Context) ([]data.Circuit, error) {
+				// unsorted on purpose; handler just forwards the list to provider method
+				return []data.Circuit{{Code: "b"}, {Code: "c"}, {Code: "a", Link: data.Link{LinkType: "WAN"}}, {Code: "d", Link: data.Link{LinkType: "DZX"}}}, nil
+			},
+			GetSummaryForCircuitsFunc: func(_ context.Context, cfg data.GetSummaryForCircuitsConfig) ([]data.CircuitSummary, error) {
+				return []data.CircuitSummary{
+					{Circuit: "a"},
+					{Circuit: "b"},
+					{Circuit: "c", LinkType: "WAN"},
+					{Circuit: "d", LinkType: "DZX"},
+				}, nil
+			},
+		}, &mockProvider{})
+		defer closeFn()
+
+		res, body := get(t, baseURL, "/device-link/summary", url.Values{
+			"env":       {"testnet"},
+			"from":      {from},
+			"to":        {to},
+			"link_type": {"all"},
+			"unit":      {"ms"},
+		})
+		assert.Equal(t, http.StatusOK, res.StatusCode)
+
+		var out []data.CircuitSummary
+		require.NoError(t, json.Unmarshal(body, &out))
+		require.Len(t, out, 4)
+	})
+
 	t.Run("GET /device-link/summary provider error -> 500", func(t *testing.T) {
 		t.Parallel()
 
@@ -615,6 +849,9 @@ func TestTelemetry_Data_Device_Server_Summary(t *testing.T) {
 		from, to := fromT.Format(time.RFC3339), toT.Format(time.RFC3339)
 
 		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{
+			GetCircuitsFunc: func(context.Context) ([]data.Circuit, error) {
+				return []data.Circuit{{Code: "x"}, {Code: "y"}}, nil
+			},
 			GetSummaryForCircuitsFunc: func(context.Context, data.GetSummaryForCircuitsConfig) ([]data.CircuitSummary, error) {
 				return nil, errors.New("boom")
 			},

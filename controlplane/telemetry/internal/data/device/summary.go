@@ -68,7 +68,9 @@ func (p *provider) GetSummaryForCircuits(ctx context.Context, cfg GetSummaryForC
 			// Add the circuit summary to the output.
 			mu.Lock()
 			output = append(output, CircuitSummary{
-				Circuit:            circuitCode,
+				Circuit:  circuitCode,
+				LinkType: circuit.Link.LinkType,
+
 				CircuitLatencyStat: measured,
 
 				CommittedRTT:    committedRTT,

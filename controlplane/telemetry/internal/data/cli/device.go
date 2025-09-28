@@ -6,7 +6,9 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"slices"
 	"sort"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -68,6 +70,15 @@ func (c *DeviceCmd) Command() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("failed to get unit flag: %w", err)
 			}
+			linkTypes, err := cmd.Flags().GetStringSlice("link-type")
+			if err != nil {
+				return fmt.Errorf("failed to get link-type flag: %w", err)
+			}
+
+			// Convert link types to lowercase.
+			for i, linkType := range linkTypes {
+				linkTypes[i] = strings.ToLower(linkType)
+			}
 
 			var unit devicedata.Unit
 			switch unitStr {
@@ -94,6 +105,17 @@ func (c *DeviceCmd) Command() *cobra.Command {
 			if err != nil {
 				log.Error("Failed to get circuits", "error", err)
 				os.Exit(1)
+			}
+
+			// Filter by link type, if provided.
+			if len(linkTypes) > 0 {
+				filteredCircuits := make([]devicedata.Circuit, 0, len(circuits))
+				for _, circuit := range circuits {
+					if slices.Contains(linkTypes, strings.ToLower(circuit.Link.LinkType)) {
+						filteredCircuits = append(filteredCircuits, circuit)
+					}
+				}
+				circuits = filteredCircuits
 			}
 
 			usingTimeWindow := recentTime > 0
@@ -230,6 +252,7 @@ func (c *DeviceCmd) Command() *cobra.Command {
 	cmd.Flags().Int32("to-epoch", 0, "Aggregate to the given epoch")
 	cmd.Flags().String("raw-csv", "", "Path to save raw data to CSV")
 	cmd.Flags().String("unit", "ms", "Unit to display latencies in (ms, us)")
+	cmd.Flags().StringSlice("link-type", []string{}, "Filter by link type (wan, dzx)")
 
 	return cmd
 }
@@ -289,6 +312,7 @@ func printDeviceSummaries(stats []devicedata.CircuitSummary, env string, recentT
 	table.SetRowLine(true)
 	table.SetHeader([]string{
 		"Circuit",
+		"Link Type",
 		"RTT Mean\n(" + string(unit) + ")",
 		"Committed\nRTT\n(" + string(unit) + ")",
 		"Committed RTT\nChange\n(%)",
@@ -306,6 +330,7 @@ func printDeviceSummaries(stats []devicedata.CircuitSummary, env string, recentT
 		f := NewValueFormatter(s.LossRate)
 		table.Append([]string{
 			s.Circuit,
+			s.LinkType,
 			f.Format(s.RTTMean),
 			f.Format(s.CommittedRTT),
 			f.Format(s.CommittedRTTChangeRatio * 100),

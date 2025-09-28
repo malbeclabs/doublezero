@@ -1,5 +1,5 @@
 use crate::{
-    AccessIds, Result,
+    AccessIds, Error, Result,
     client::{doublezero_ledger::DzRpcClient, solana::SolRpcClient},
     error::rpc_with_retry,
     verify_access_request,
@@ -12,7 +12,7 @@ use solana_sdk::{
 use std::{net::Ipv4Addr, sync::Arc, time::Duration};
 use tokio::{sync::mpsc::UnboundedReceiver, time::interval};
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, error, info};
+use tracing::{error, info};
 use url::Url;
 
 const BACKFILL_TIMER: Duration = Duration::from_secs(60 * 60);
@@ -157,8 +157,17 @@ impl Sentinel {
 
     async fn verify_qualifiers(&self, access_mode: &AccessMode) -> Result<Vec<(Pubkey, Ipv4Addr)>> {
         // Return early if sig verification fails
-        let validator_id = verify_access_request(access_mode)?;
-        debug!(%validator_id, "Validator passed signature validation");
+        let validator_id = match verify_access_request(access_mode) {
+            Ok(v) => v,
+            Err(e @ Error::SignatureVerify) => {
+                return {
+                    info!(error = %e, "signature verification failed");
+                    Ok(vec![])
+                };
+            }
+            Err(e) => return Err(e),
+        };
+        info!(%validator_id, "Validator passed signature validation");
 
         // Extract attestation and backup IDs
         let backup_ids = match access_mode {
@@ -171,7 +180,7 @@ impl Sentinel {
             .check_validator_in_leader_schedule(&validator_id)
             .await?
         {
-            debug!(
+            info!(
                 %validator_id,
                 "Validator failed leader schedule qualification"
             );
@@ -182,7 +191,7 @@ impl Sentinel {
         let validator_ip = match self.get_and_validate_validator_ip(&validator_id).await? {
             Some(ip) => ip,
             None => {
-                debug!(
+                info!(
                     %validator_id,
                     "Validator failed gossip protocol ip qualification"
                 );
@@ -198,7 +207,7 @@ impl Sentinel {
             for backup_id in backup_ids {
                 // Backup should NOT be in leader schedule
                 if self.check_validator_in_leader_schedule(backup_id).await? {
-                    debug!(
+                    info!(
                         %backup_id,
                         "Backup validator is in leader schedule (should not be)"
                     );
@@ -211,7 +220,7 @@ impl Sentinel {
                         ips.push((*backup_id, ip));
                     }
                     None => {
-                        debug!(
+                        info!(
                             %backup_id,
                             "Backup validator not found in gossip"
                         );
@@ -231,6 +240,7 @@ mod tests {
     use doublezero_passport::instruction::SolanaValidatorAttestation;
     use solana_sdk::pubkey::Pubkey;
     use std::net::Ipv4Addr;
+    use tokio::sync::mpsc::unbounded_channel;
 
     // Mock implementations for testing
     struct MockSentinel {
@@ -546,5 +556,36 @@ mod tests {
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].0, validator_id);
         assert_eq!(result[0].1, validator_ip);
+    }
+
+    #[tokio::test]
+    async fn test_verify_qualifiers_signature_verify_error_returns_empty() {
+        // Build a real Sentinel; it won't hit network because we short-circuit on signature
+        let (_tx, rx) = unbounded_channel();
+        let keypair = Arc::new(Keypair::new());
+        let dz_rpc = Url::parse("http://127.0.0.1:1234").unwrap();
+        let sol_rpc = Url::parse("http://127.0.0.1:1235").unwrap();
+        let serviceability_id = Pubkey::new_unique();
+
+        let sentinel = Sentinel {
+            dz_rpc_client: DzRpcClient::new(dz_rpc, keypair.clone(), serviceability_id),
+            sol_rpc_client: SolRpcClient::new(sol_rpc, keypair),
+            rx,
+            previous_leader_epochs: 0,
+        };
+
+        // Invalid signature -> verify_access_request(...) should return Error::SignatureVerify
+        let attestation = SolanaValidatorAttestation {
+            validator_id: Pubkey::new_unique(),
+            service_key: Pubkey::new_unique(),
+            ed25519_signature: [0u8; 64],
+        };
+        let access_mode = AccessMode::SolanaValidator(attestation);
+
+        let result = sentinel.verify_qualifiers(&access_mode).await.unwrap();
+        assert!(
+            result.is_empty(),
+            "expected empty vec when signature verification fails"
+        );
     }
 }

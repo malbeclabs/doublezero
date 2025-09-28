@@ -180,14 +180,12 @@ type Device struct {
 	Interfaces            []Interface
 	MgmtVrf               string
 	IsisNet               string
+	DevicePathologies     []string
 	// Additional fields for metric labels
-	Code              string
-	ContributorCode   string
-	ExchangeCode      string
-	LocationCode      string
-	UsersCount        uint16
-	MaxUsers          uint16
-	DevicePathologies []string
+	Code            string
+	ContributorCode string
+	ExchangeCode    string
+	LocationCode    string
 }
 
 func NewDevice(ip net.IP, publicKey string) *Device {

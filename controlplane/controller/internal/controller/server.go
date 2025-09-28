@@ -346,8 +346,6 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 
 		// Populate additional fields for metrics
 		d.Code = device.Code
-		d.UsersCount = device.UsersCount
-		d.MaxUsers = device.MaxUsers
 
 		if contributor, ok := contributorMap[device.ContributorPubKey]; ok {
 			d.ContributorCode = contributor.Code
@@ -576,8 +574,6 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 		device.ContributorCode,
 		device.ExchangeCode,
 		device.LocationCode,
-		fmt.Sprintf("%d", device.UsersCount),
-		fmt.Sprintf("%d", device.MaxUsers),
 	).Inc()
 
 	// compare peers from device to on-chain

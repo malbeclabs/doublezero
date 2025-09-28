@@ -15,6 +15,7 @@ type ProgramData struct {
 	Config          Config
 	Locations       []Location
 	Exchanges       []Exchange
+	Contributors    []Contributor
 	Devices         []Device
 	Links           []Link
 	Users           []User
@@ -41,6 +42,7 @@ func (c *Client) GetProgramData(ctx context.Context) (*ProgramData, error) {
 	config := Config{}
 	locations := []Location{}
 	exchanges := []Exchange{}
+	contributors := []Contributor{}
 	devices := []Device{}
 	links := []Link{}
 	users := []User{}
@@ -70,6 +72,11 @@ func (c *Client) GetProgramData(ctx context.Context) (*ProgramData, error) {
 			DeserializeExchange(reader, &exchange)
 			exchange.PubKey = element.Pubkey
 			exchanges = append(exchanges, exchange)
+		case byte(ContributorType):
+			var contributor Contributor
+			DeserializeContributor(reader, &contributor)
+			contributor.PubKey = element.Pubkey
+			contributors = append(contributors, contributor)
 		case byte(DeviceType):
 			var device Device
 			DeserializeDevice(reader, &device)
@@ -99,6 +106,7 @@ func (c *Client) GetProgramData(ctx context.Context) (*ProgramData, error) {
 		Config:          config,
 		Locations:       locations,
 		Exchanges:       exchanges,
+		Contributors:    contributors,
 		Devices:         devices,
 		Links:           links,
 		Users:           users,

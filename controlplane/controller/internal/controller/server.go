@@ -234,6 +234,23 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 	if len(links) == 0 {
 		c.log.Debug("0 links found on-chain")
 	}
+	exchanges := data.Exchanges
+	contributors := data.Contributors
+	locations := data.Locations
+
+	// Create lookup maps for contributors, exchanges, and locations
+	contributorMap := make(map[[32]byte]serviceability.Contributor)
+	for _, contributor := range contributors {
+		contributorMap[contributor.PubKey] = contributor
+	}
+	exchangeMap := make(map[[32]byte]serviceability.Exchange)
+	for _, exchange := range exchanges {
+		exchangeMap[exchange.PubKey] = exchange
+	}
+	locationMap := make(map[[32]byte]serviceability.Location)
+	for _, location := range locations {
+		locationMap[location.PubKey] = location
+	}
 	cache := stateCache{
 		Config:          data.Config,
 		Devices:         make(map[string]*Device),
@@ -326,6 +343,29 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 			}
 		}
 		d.MgmtVrf = device.MgmtVrf
+
+		// Populate additional fields for metrics
+		d.Code = device.Code
+		d.UsersCount = device.UsersCount
+		d.MaxUsers = device.MaxUsers
+
+		if contributor, ok := contributorMap[device.ContributorPubKey]; ok {
+			d.ContributorCode = contributor.Code
+		} else {
+			d.ContributorCode = "unknown"
+		}
+
+		if exchange, ok := exchangeMap[device.ExchangePubKey]; ok {
+			d.ExchangeCode = exchange.Code
+		} else {
+			d.ExchangeCode = "unknown"
+		}
+
+		if location, ok := locationMap[device.LocationPubKey]; ok {
+			d.LocationCode = location.Code
+		} else {
+			d.LocationCode = "unknown"
+		}
 
 		cache.Devices[devicePubKey] = d
 	}
@@ -516,7 +556,6 @@ func (c *Controller) Run(ctx context.Context) error {
 
 // GetConfig renders the latest device configuration based on cached device data
 func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.ConfigResponse, error) {
-	getConfigOps.WithLabelValues(req.GetPubkey()).Inc()
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	device, ok := c.cache.Devices[req.GetPubkey()]
@@ -529,6 +568,17 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 		err := status.Errorf(codes.FailedPrecondition, "cannot render config for device %s: %v", req.Pubkey, device.DevicePathologies)
 		return nil, err
 	}
+
+	// Record metrics with device labels
+	getConfigOps.WithLabelValues(
+		req.GetPubkey(),
+		device.Code,
+		device.ContributorCode,
+		device.ExchangeCode,
+		device.LocationCode,
+		fmt.Sprintf("%d", device.UsersCount),
+		fmt.Sprintf("%d", device.MaxUsers),
+	).Inc()
 
 	// compare peers from device to on-chain
 	peerFound := func(peer net.IP) bool {

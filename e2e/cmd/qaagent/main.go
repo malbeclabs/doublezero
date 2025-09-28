@@ -13,6 +13,8 @@ import (
 	"path"
 	"syscall"
 
+	_ "net/http/pprof"
+
 	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
 	"github.com/malbeclabs/doublezero/e2e/internal/rpc"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -22,6 +24,7 @@ var (
 	serverAddr  = flag.String("server-addr", "localhost:443", "the server address to connect to")
 	showVersion = flag.Bool("version", false, "show version information and exit")
 	metricsAddr = flag.String("metrics-addr", "127.0.0.1:2112", "the address to expose metrics")
+	enablePprof = flag.Bool("enable-pprof", false, "enable pprof server")
 
 	// set by LDFLAGS
 	version = "dev"
@@ -59,6 +62,15 @@ func main() {
 		mux.Handle("/metrics", promhttp.Handler())
 		http.ListenAndServe(*metricsAddr, mux) //nolint
 	}()
+
+	if *enablePprof {
+		go func() {
+			err := http.ListenAndServe("localhost:6060", nil)
+			if err != nil {
+				log.Error("failed to start pprof server", "error", err)
+			}
+		}()
+	}
 
 	joiner := netutil.NewMulticastListener()
 	e, err := rpc.NewQAAgent(log, *serverAddr, joiner)

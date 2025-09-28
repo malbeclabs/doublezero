@@ -267,14 +267,15 @@ func TestAgentTelemetry_Collector(t *testing.T) {
 		})
 
 		collector, err := telemetry.New(log, telemetry.Config{
-			LocalDevicePK:          devicePK,
-			ProbeInterval:          100 * time.Millisecond,
-			SubmissionInterval:     250 * time.Millisecond,
-			TWAMPSenderTimeout:     250 * time.Millisecond,
-			SenderTTL:              1 * time.Millisecond,
-			TWAMPReflector:         reflector,
-			PeerDiscovery:          peerDiscovery,
-			TelemetryProgramClient: telemetryProgram,
+			LocalDevicePK:           devicePK,
+			ProbeInterval:           100 * time.Millisecond,
+			SubmissionInterval:      250 * time.Millisecond,
+			TWAMPSenderTimeout:      250 * time.Millisecond,
+			SenderTTL:               1 * time.Millisecond,
+			SubmitterMaxConcurrency: 10,
+			TWAMPReflector:          reflector,
+			PeerDiscovery:           peerDiscovery,
+			TelemetryProgramClient:  telemetryProgram,
 			GetCurrentEpochFunc: func(ctx context.Context) (uint64, error) {
 				return 100, nil
 			},
@@ -454,15 +455,16 @@ func TestAgentTelemetry_Collector(t *testing.T) {
 
 		// Small TTL so we can force rotation quickly; run fast probes.
 		collector, err := telemetry.New(log, telemetry.Config{
-			LocalDevicePK:          devicePK,
-			ProbeInterval:          75 * time.Millisecond,
-			SubmissionInterval:     200 * time.Millisecond,
-			TWAMPSenderTimeout:     200 * time.Millisecond,
-			TWAMPReflector:         reflector,
-			PeerDiscovery:          peerDiscovery,
-			TelemetryProgramClient: telemetryProgram,
-			GetCurrentEpochFunc:    func(ctx context.Context) (uint64, error) { return 100, nil },
-			SenderTTL:              250 * time.Millisecond,
+			LocalDevicePK:           devicePK,
+			ProbeInterval:           75 * time.Millisecond,
+			SubmissionInterval:      200 * time.Millisecond,
+			TWAMPSenderTimeout:      200 * time.Millisecond,
+			SubmitterMaxConcurrency: 10,
+			TWAMPReflector:          reflector,
+			PeerDiscovery:           peerDiscovery,
+			TelemetryProgramClient:  telemetryProgram,
+			GetCurrentEpochFunc:     func(ctx context.Context) (uint64, error) { return 100, nil },
+			SenderTTL:               250 * time.Millisecond,
 			NowFunc: func() time.Time {
 				nowMu.Lock()
 				defer nowMu.Unlock()
@@ -568,14 +570,15 @@ func newTestCollector(t *testing.T, log *slog.Logger, localDevicePK solana.Publi
 	peerDiscovery.UpdatePeers(t, peers)
 
 	collector, err := telemetry.New(log, telemetry.Config{
-		LocalDevicePK:          localDevicePK,
-		ProbeInterval:          100 * time.Millisecond,
-		SubmissionInterval:     submissionInterval,
-		TWAMPSenderTimeout:     1 * time.Second,
-		SenderTTL:              1 * time.Millisecond,
-		TWAMPReflector:         reflector,
-		PeerDiscovery:          peerDiscovery,
-		TelemetryProgramClient: telemetryProgramClient,
+		LocalDevicePK:           localDevicePK,
+		ProbeInterval:           100 * time.Millisecond,
+		SubmissionInterval:      submissionInterval,
+		TWAMPSenderTimeout:      1 * time.Second,
+		SenderTTL:               1 * time.Millisecond,
+		SubmitterMaxConcurrency: 10,
+		TWAMPReflector:          reflector,
+		PeerDiscovery:           peerDiscovery,
+		TelemetryProgramClient:  telemetryProgramClient,
 		GetCurrentEpochFunc: func(ctx context.Context) (uint64, error) {
 			return 100, nil
 		},

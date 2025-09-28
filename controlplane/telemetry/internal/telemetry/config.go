@@ -42,6 +42,9 @@ type Config struct {
 
 	// SenderTTL is the time to live for a sender instance until it's recreated.
 	SenderTTL time.Duration
+
+	// SubmitterMaxConcurrency is the maximum number of concurrent submissions.
+	SubmitterMaxConcurrency int
 }
 
 func (c *Config) Validate() error {
@@ -76,6 +79,9 @@ func (c *Config) Validate() error {
 	}
 	if c.SenderTTL <= 0 {
 		return errors.New("sender ttl must be greater than 0")
+	}
+	if c.SubmitterMaxConcurrency <= 0 {
+		return errors.New("submitter max concurrency must be greater than 0")
 	}
 	return nil
 }

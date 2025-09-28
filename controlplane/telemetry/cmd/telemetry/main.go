@@ -27,17 +27,17 @@ import (
 )
 
 const (
-	defaultProbeInterval         = 10 * time.Second
-	defaultSubmissionInterval    = 60 * time.Second
-	defaultTWAMPListenPort       = telemetryconfig.TWAMPListenPort
-	defaultTWAMPReflectorTimeout = 1 * time.Second
-	defaultPeersRefreshInterval  = 10 * time.Second
-	defaultTWAMPSenderTimeout    = 1 * time.Second
-	defaultSenderTTL             = 5 * time.Minute
-	defaultLedgerRPCURL          = ""
-	defaultProgramId             = ""
-	defaultLocalDevicePubkey     = ""
-	defaultAristaEAPIGRPCAddress = "127.0.0.1:9543"
+	defaultProbeInterval           = 10 * time.Second
+	defaultSubmissionInterval      = 60 * time.Second
+	defaultTWAMPListenPort         = telemetryconfig.TWAMPListenPort
+	defaultTWAMPReflectorTimeout   = 1 * time.Second
+	defaultPeersRefreshInterval    = 10 * time.Second
+	defaultTWAMPSenderTimeout      = 1 * time.Second
+	defaultSenderTTL               = 5 * time.Minute
+	defaultLedgerRPCURL            = ""
+	defaultProgramId               = ""
+	defaultLocalDevicePubkey       = ""
+	defaultSubmitterMaxConcurrency = 10
 
 	waitForNamespaceTimeout = 30 * time.Second
 )
@@ -56,6 +56,7 @@ var (
 	twampReflectorTimeout   = flag.Duration("twamp-reflector-timeout", defaultTWAMPReflectorTimeout, "The timeout for the twamp reflector.")
 	peersRefreshInterval    = flag.Duration("peers-refresh-interval", defaultPeersRefreshInterval, "The interval to refresh the peer discovery.")
 	senderTTL               = flag.Duration("sender-ttl", defaultSenderTTL, "The time to live for a sender instance until it's recreated.")
+	submitterMaxConcurrency = flag.Int("submitter-max-concurrency", defaultSubmitterMaxConcurrency, "The maximum number of concurrent submissions.")
 	managementNamespace     = flag.String("management-namespace", "", "The name of the management namespace to use for ledger communication. If not provided, the default namespace will be used. (default: '')")
 	verbose                 = flag.Bool("verbose", false, "Enable verbose logging.")
 	showVersion             = flag.Bool("version", false, "Print the version of the doublezero-agent and exit.")
@@ -270,7 +271,8 @@ func main() {
 			}
 			return epochInfo.Epoch, nil
 		},
-		SenderTTL: *senderTTL,
+		SenderTTL:               *senderTTL,
+		SubmitterMaxConcurrency: *submitterMaxConcurrency,
 	})
 	if err != nil {
 		log.Error("failed to create telemetry collector", "error", err)

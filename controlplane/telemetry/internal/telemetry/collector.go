@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/metrics"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/buffer"
 	twamplight "github.com/malbeclabs/doublezero/tools/twamp/pkg/light"
 )
@@ -59,6 +58,7 @@ func New(log *slog.Logger, cfg Config) (*Collector, error) {
 		ProbeInterval:      cfg.ProbeInterval,
 		ProgramClient:      cfg.TelemetryProgramClient,
 		GetCurrentEpoch:    cfg.GetCurrentEpochFunc,
+		MaxConcurrency:     cfg.SubmitterMaxConcurrency,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create submitter: %w", err)
@@ -158,7 +158,7 @@ func (c *Collector) Run(ctx context.Context) error {
 
 	wg.Wait()
 
-	if cerr := c.Close(runCtx); cerr != nil {
+	if cerr := c.Close(); cerr != nil {
 		c.log.Warn("Failed to close telemetry collector", "error", cerr)
 	}
 
@@ -167,24 +167,8 @@ func (c *Collector) Run(ctx context.Context) error {
 
 // Close gracefully shuts down the Collector by submitting remaining samples,
 // stopping the TWAMP reflector, and closing all active TWAMP senders.
-func (c *Collector) Close(ctx context.Context) error {
+func (c *Collector) Close() error {
 	c.log.Info("Closing telemetry collector")
-
-	// Submit any buffered samples.
-	for partitionKey, samples := range c.buffer.FlushWithoutReset() {
-		if len(samples) > 0 {
-			c.log.Debug("Submitting remaining samples", "partition", partitionKey, "count", len(samples))
-			for attempt := 1; attempt <= 2; attempt++ {
-				err := c.submitter.SubmitSamples(ctx, partitionKey, samples)
-				if err == nil {
-					break
-				}
-				metrics.Errors.WithLabelValues(metrics.ErrorTypeCollectorSubmitSamplesOnClose).Inc()
-				c.log.Warn("Final sample submission failed", "attempt", attempt, "samples", len(samples), "error", err)
-				sleepOrDone(ctx, time.Duration(attempt)*500*time.Millisecond)
-			}
-		}
-	}
 
 	// Close the TWAMP reflector.
 	if err := c.reflector.Close(); err != nil {

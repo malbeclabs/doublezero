@@ -32,6 +32,7 @@ type QAAgent struct {
 	pb.UnimplementedQAAgentServiceServer
 	listener      net.Listener
 	mcastListener Joiner
+	dzClient      *http.Client
 	log           *slog.Logger
 }
 
@@ -52,6 +53,19 @@ func NewQAAgent(logger *slog.Logger, addr string, j Joiner) (*QAAgent, error) {
 			return nil, fmt.Errorf("failed to listen: %v", err)
 		}
 		q.listener = lis
+	}
+
+	sockFile := "/var/run/doublezerod/doublezerod.sock"
+	q.dzClient = &http.Client{
+		Transport: &http.Transport{
+			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+				dialer := net.Dialer{}
+				return dialer.DialContext(ctx, "unix", sockFile)
+			},
+			MaxIdleConns:    10,
+			IdleConnTimeout: 30 * time.Second,
+		},
+		Timeout: 5 * time.Second,
 	}
 	return q, nil
 }
@@ -160,7 +174,7 @@ func (q *QAAgent) ConnectUnicast(ctx context.Context, req *pb.ConnectUnicastRequ
 	condition := func() (bool, error) {
 		ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 		defer cancel()
-		status, err := fetchStatus(ctx)
+		status, err := q.fetchStatus(ctx)
 		if err != nil {
 			q.log.Warn("fetchStatus error", "error", err)
 			return false, err
@@ -223,7 +237,7 @@ type StatusResponse struct {
 // tunnel. This is equivalent to the `doublezero status` command.
 func (q *QAAgent) GetStatus(ctx context.Context, req *emptypb.Empty) (*pb.StatusResponse, error) {
 	q.log.Info("Received GetStatus request")
-	status, err := fetchStatus(ctx)
+	status, err := q.fetchStatus(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -440,24 +454,12 @@ func runCmd(cmd *exec.Cmd) (*pb.Result, error) {
 
 // fetchStatus retrieves the current status of the configured DoubleZero tunnel via the doublezerod
 // unix socket.
-func fetchStatus(ctx context.Context) ([]StatusResponse, error) {
-	sockFile := "/var/run/doublezerod/doublezerod.sock"
-
-	client := http.Client{
-		Transport: &http.Transport{
-			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-				dialer := net.Dialer{}
-				return dialer.DialContext(ctx, "unix", sockFile)
-			},
-		},
-		Timeout: 5 * time.Second,
-	}
-
+func (q *QAAgent) fetchStatus(ctx context.Context) ([]StatusResponse, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", "http://doublezero/status", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create status request: %w", err)
 	}
-	resp, err := client.Do(req)
+	resp, err := q.dzClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("error during status request: %w", err)
 	}

@@ -449,6 +449,9 @@ func fetchStatus(ctx context.Context) ([]StatusResponse, error) {
 				dialer := net.Dialer{}
 				return dialer.DialContext(ctx, "unix", sockFile)
 			},
+
+			// Disable keep-alives to avoid accumulating goroutines.
+			DisableKeepAlives: true,
 		},
 		Timeout: 5 * time.Second,
 	}

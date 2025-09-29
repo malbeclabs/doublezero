@@ -11,6 +11,7 @@ use solana_sdk::{
 };
 
 pub mod client;
+pub mod constants;
 mod error;
 pub mod sentinel;
 pub mod settings;

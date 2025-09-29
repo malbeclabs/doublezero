@@ -12,7 +12,7 @@ use doublezero_solana_client_tools::payer::{SolanaPayerOptions, Wallet};
 use solana_sdk::{compute_budget::ComputeBudgetInstruction, pubkey::Pubkey};
 
 #[derive(Debug, Args)]
-pub struct SolanaValidatorDepositCommand {
+pub struct ValidatorDepositCommand {
     node_id: Pubkey,
 
     #[arg(long)]
@@ -25,9 +25,9 @@ pub struct SolanaValidatorDepositCommand {
     solana_payer_options: SolanaPayerOptions,
 }
 
-impl SolanaValidatorDepositCommand {
+impl ValidatorDepositCommand {
     pub async fn try_into_execute(self) -> Result<()> {
-        let SolanaValidatorDepositCommand {
+        let ValidatorDepositCommand {
             node_id,
             initialize,
             fund,

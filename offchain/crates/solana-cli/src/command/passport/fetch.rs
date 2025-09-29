@@ -9,7 +9,7 @@ pub struct FetchCommand {
     #[arg(long)]
     config: bool,
 
-    #[arg(long, value_name = "PUBKEY")]
+    #[arg(long, value_name = "DOUBLEZERO_PUBKEY")]
     access_request: Option<Pubkey>,
 
     #[command(flatten)]

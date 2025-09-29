@@ -44,9 +44,6 @@ pub struct Settings {
     /// and holding the oboarding DZ ledger funds to credit authorized validators
     keypair: PathBuf,
 
-    /// The number of previous epochs to search for appearance in the leader schedule
-    previous_leader_epochs: u8,
-
     /// metrics listening endpoint
     #[serde(default = "default_metrics_addr")]
     metrics_addr: String,
@@ -106,10 +103,6 @@ impl Settings {
 
     pub fn dz_rpc(&self) -> Url {
         Url::parse(&self.dz_rpc).expect("invalid dz_rpc url")
-    }
-
-    pub fn previous_leader_epochs(&self) -> u8 {
-        self.previous_leader_epochs
     }
 
     pub fn metrics_addr(&self) -> SocketAddr {

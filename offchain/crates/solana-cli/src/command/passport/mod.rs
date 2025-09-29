@@ -1,14 +1,13 @@
-pub mod fetch;
-pub mod find;
-pub mod request;
-
-//
-
 use anyhow::Result;
 use clap::{Args, Subcommand};
 use doublezero_passport::state::{AccessRequest, ProgramConfig};
 use doublezero_solana_client_tools::{rpc::SolanaConnection, zero_copy::ZeroCopyAccountOwned};
 use solana_sdk::pubkey::Pubkey;
+
+pub mod fetch;
+pub mod find_validator;
+pub mod prepare_access;
+pub mod request_access;
 
 #[derive(Debug, Args)]
 pub struct PassportCommand {
@@ -18,19 +17,23 @@ pub struct PassportCommand {
 
 #[derive(Debug, Subcommand)]
 pub enum PassportSubcommand {
+    /// Fetch and display the current program configuration and access request (if any)
     Fetch(fetch::FetchCommand),
-
-    Find(find::FindCommand),
-
-    RequestSolanaValidatorAccess(request::RequestSolanaValidatorAccessCommand),
+    /// Find and display the Current Identity
+    FindValidator(find_validator::FindValidatorCommand),
+    /// Validate arguments and generate the required transaction signature command
+    PrepareValidatorAccess(prepare_access::PrepareValidatorAccessCommand),
+    /// Request access as a Solana Validator
+    RequestValidatorAccess(request_access::RequestValidatorAccessCommand),
 }
 
 impl PassportSubcommand {
     pub async fn try_into_execute(self) -> Result<()> {
         match self {
-            Self::Find(command) => command.try_into_execute().await,
             Self::Fetch(command) => command.try_into_execute().await,
-            Self::RequestSolanaValidatorAccess(command) => command.try_into_execute().await,
+            Self::FindValidator(command) => command.try_into_execute().await,
+            Self::PrepareValidatorAccess(command) => command.try_into_execute().await,
+            Self::RequestValidatorAccess(command) => command.try_into_execute().await,
         }
     }
 }

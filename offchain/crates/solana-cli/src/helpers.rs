@@ -1,10 +1,14 @@
+use core::fmt;
 use std::{
     io::{Read, Write},
-    net::{SocketAddr, TcpStream, ToSocketAddrs},
+    net::{Ipv4Addr, SocketAddr, TcpStream, ToSocketAddrs},
+    str::FromStr,
     time::Duration,
 };
 
 use anyhow::{Context, bail};
+use solana_client::{nonblocking::rpc_client::RpcClient, rpc_response::RpcContactInfo};
+use solana_sdk::pubkey::Pubkey;
 
 pub fn get_public_ipv4() -> anyhow::Result<String> {
     // Resolve the host `ifconfig.me` to IPv4 addresses
@@ -35,4 +39,57 @@ pub fn get_public_ipv4() -> anyhow::Result<String> {
     }
 
     bail!("Failed to extract the IP from the response")
+}
+
+pub fn parse_pubkey(s: &str) -> Result<Pubkey, String> {
+    Pubkey::from_str(s).map_err(|e| format!("Invalid Pubkey {s}: {e}"))
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Cluster {
+    MainnetBeta,
+    Testnet,
+    Devnet,
+    Unknown,
+}
+
+impl fmt::Display for Cluster {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Cluster::MainnetBeta => write!(f, "mainnet-beta"),
+            Cluster::Testnet => write!(f, "testnet"),
+            Cluster::Devnet => write!(f, "devnet"),
+            Cluster::Unknown => write!(f, "unknown"),
+        }
+    }
+}
+
+pub async fn identify_cluster(client: &RpcClient) -> Cluster {
+    let genesis_hash = client
+        .get_genesis_hash()
+        .await
+        .expect("Failed to fetch genesis hash");
+
+    match genesis_hash.to_string().as_str() {
+        "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d" => Cluster::MainnetBeta,
+        "4uhcVJyU9pJkvQyS88uRDiswHXSCkY3zQawwpjk2NsNY" => Cluster::Testnet,
+        "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG" => Cluster::Devnet,
+        _ => Cluster::Unknown,
+    }
+}
+
+pub fn find_node_by_node_id<'a>(
+    nodes: &'a [RpcContactInfo],
+    node_id: &Pubkey,
+) -> Option<&'a RpcContactInfo> {
+    // Convert the Pubkey to string for comparison
+    let node_id_str = node_id.to_string();
+    // Search for the node in the list
+    nodes.iter().find(|n| n.pubkey == node_id_str)
+}
+
+pub fn find_node_by_ip(nodes: &[RpcContactInfo], ip: Ipv4Addr) -> Option<&RpcContactInfo> {
+    nodes
+        .iter()
+        .find(|n| n.gossip.as_ref().is_some_and(|gossip| gossip.ip() == ip))
 }

@@ -1,7 +1,7 @@
 mod contributor_rewards;
 mod fetch;
 mod relay;
-mod solana_validator_deposit;
+mod validator_deposit;
 
 //
 
@@ -26,7 +26,7 @@ pub enum RevenueDistributionSubcommand {
     ContributorRewards(contributor_rewards::ContributorRewardsCommand),
 
     /// Solana validator deposit account management.
-    SolanaValidatorDeposit(solana_validator_deposit::SolanaValidatorDepositCommand),
+    ValidatorDeposit(validator_deposit::ValidatorDepositCommand),
 
     /// Relayer instructions for the Revenue Distribution program.
     Relay(relay::RevenueDistributionRelayCommand),
@@ -37,7 +37,7 @@ impl RevenueDistributionSubcommand {
         match self {
             Self::Fetch(command) => command.try_into_execute().await,
             Self::ContributorRewards(command) => command.try_into_execute().await,
-            Self::SolanaValidatorDeposit(command) => command.try_into_execute().await,
+            Self::ValidatorDeposit(command) => command.try_into_execute().await,
             Self::Relay(command) => command.inner.try_into_execute().await,
         }
     }

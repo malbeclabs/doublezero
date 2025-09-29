@@ -98,8 +98,8 @@ echo "doublezero-solana passport fetch -u l --config --access-request $DUMMY_KEY
 $CLI_BIN passport fetch -u l --config --access-request $DUMMY_KEY
 echo
 
-echo "doublezero-solana passport request-solana-validator-access -h"
-$CLI_BIN passport request-solana-validator-access -h
+echo "doublezero-solana passport request-validator-access -h"
+$CLI_BIN passport request-validator-access -h
 echo
 
 # Generate the signature using solana sign-offchain-message
@@ -108,13 +108,13 @@ NODE_ID=$(solana address -k $VALIDATOR_KEYPAIR)
 MESSAGE="service_key=$DUMMY_KEY"
 SIGNATURE=$(solana sign-offchain-message -k $VALIDATOR_KEYPAIR service_key=$DUMMY_KEY)
 
-echo "doublezero-solana passport request-solana-validator-access -u l -v --node-id $NODE_ID --signature $SIGNATURE $DUMMY_KEY"
-$CLI_BIN passport request-solana-validator-access \
+echo "doublezero-solana passport request-validator-access -u l -v --primary-validator-id $NODE_ID --signature $SIGNATURE --doublezero-address $DUMMY_KEY"
+$CLI_BIN passport request-validator-access \
     -u l \
     -v \
-    --node-id $NODE_ID \
+    --primary-validator-id $NODE_ID \
     --signature $SIGNATURE \
-    $DUMMY_KEY
+    --doublezero-address $DUMMY_KEY
 echo
 
 echo "doublezero-solana passport fetch -u l --access-request $DUMMY_KEY"
@@ -131,8 +131,8 @@ echo "doublezero-solana revenue-distribution fetch -h"
 $CLI_BIN revenue-distribution fetch -h
 echo
 
-echo "doublezero-solana revenue-distribution fetch -u l --config --solana-validator-deposit $DUMMY_KEY"
-$CLI_BIN revenue-distribution fetch -u l --config --solana-validator-deposit $DUMMY_KEY
+echo "doublezero-solana revenue-distribution fetch -u l --config --validator-deposit $DUMMY_KEY"
+$CLI_BIN revenue-distribution fetch -u l --config --validator-deposit $DUMMY_KEY
 echo
 
 echo "doublezero-solana revenue-distribution contributor-rewards -h"
@@ -157,24 +157,24 @@ doublezero-revenue-distribution-admin set-rewards-manager \
     $(solana address -k rewards_manager.json)
 echo
 
-echo "doublezero-solana revenue-distribution solana-validator-deposit --fund 4.2069 -u l -v $DUMMY_KEY"
-$CLI_BIN revenue-distribution solana-validator-deposit \
+echo "doublezero-solana revenue-distribution validator-deposit --fund 4.2069 -u l -v $DUMMY_KEY"
+$CLI_BIN revenue-distribution validator-deposit \
     --fund 4.2069 \
     -u l \
     -v \
     $DUMMY_KEY
 echo
 
-echo "doublezero-solana revenue-distribution solana-validator-deposit --fund 69.420 -u l -v $DUMMY_KEY"
-$CLI_BIN revenue-distribution solana-validator-deposit \
+echo "doublezero-solana revenue-distribution validator-deposit --fund 69.420 -u l -v $DUMMY_KEY"
+$CLI_BIN revenue-distribution validator-deposit \
     --fund 69.420 \
     -u l \
     -v \
     $DUMMY_KEY
 echo
 
-echo "doublezero-solana revenue-distribution fetch -u l --solana-validator-deposit $DUMMY_KEY"
-$CLI_BIN revenue-distribution fetch -u l --solana-validator-deposit $DUMMY_KEY
+echo "doublezero-solana revenue-distribution fetch -u l --validator-deposit $DUMMY_KEY"
+$CLI_BIN revenue-distribution fetch -u l --validator-deposit $DUMMY_KEY
 echo
 
 ### ATA commands.

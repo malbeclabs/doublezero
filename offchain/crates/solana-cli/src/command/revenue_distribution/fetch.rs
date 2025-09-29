@@ -17,7 +17,7 @@ pub struct FetchCommand {
     solana_validator_fees: bool,
 
     #[arg(long, value_name = "PUBKEY")]
-    solana_validator_deposit: Option<Pubkey>,
+    validator_deposit: Option<Pubkey>,
 
     // TODO: --distribution with Option<u64>.
     // TODO: --contributor-rewards with Option<Pubkey>.
@@ -32,7 +32,7 @@ impl FetchCommand {
             config,
             journal,
             solana_validator_fees,
-            solana_validator_deposit,
+            validator_deposit,
             solana_connection_options,
         } = self;
 
@@ -233,7 +233,7 @@ impl FetchCommand {
             println!("Journal: {journal:?}");
         }
 
-        if let Some(node_id) = solana_validator_deposit {
+        if let Some(node_id) = validator_deposit {
             let (deposit_key, deposit, deposit_balance) =
                 super::fetch_solana_validator_deposit(&connection, &node_id).await;
 

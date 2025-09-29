@@ -1,5 +1,6 @@
 use clap::Parser;
 use doublezero_ledger_sentinel::{
+    constants::ENV_PREVIOUS_LEADER_EPOCHS,
     sentinel::{ReqListener, Sentinel},
     settings::{AppArgs, Settings},
 };
@@ -46,7 +47,7 @@ async fn main() -> anyhow::Result<()> {
         keypair,
         settings.serviceability_program_id()?,
         rx,
-        settings.previous_leader_epochs(),
+        ENV_PREVIOUS_LEADER_EPOCHS,
     )
     .await?;
 

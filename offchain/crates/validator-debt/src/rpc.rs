@@ -1,7 +1,15 @@
-use anyhow::{Error, Result, ensure};
+use anyhow::{Error, Result, bail, ensure};
 use clap::Args;
+use doublezero_solana_client_tools::log_warn;
 use leaky_bucket::RateLimiter;
-use solana_client::nonblocking::rpc_client::RpcClient;
+use solana_client::{
+    client_error::{ClientError, ClientErrorKind},
+    nonblocking::rpc_client::RpcClient,
+    rpc_custom_error::{
+        JSON_RPC_SERVER_ERROR_LONG_TERM_STORAGE_SLOT_SKIPPED, JSON_RPC_SERVER_ERROR_SLOT_SKIPPED,
+    },
+    rpc_request::RpcError,
+};
 use solana_sdk::commitment_config::CommitmentConfig;
 use solana_transaction_status_client_types::{TransactionDetails, UiTransactionEncoding};
 
@@ -80,6 +88,98 @@ pub enum JoinedSolanaEpochs {
 }
 
 impl JoinedSolanaEpochs {
+    /// Estimates block time for a skipped slot by searching forward for a
+    /// non-skipped slot.
+    async fn estimate_block_time_for_skipped_slot(
+        solana_client: &RpcClient,
+        rate_limiter: &RateLimiter,
+        slot: u64,
+        current_epoch: u64,
+    ) -> Result<i64> {
+        const SLOTS_TO_SKIP: u32 = 10;
+        const ESTIMATED_SKIP_TIME: i64 = 4;
+        const MAX_SLOTS_TO_SEARCH: u32 = 432_000;
+
+        log_warn!(
+            "Block time for slot {} in epoch {} not found. Estimating block time",
+            slot,
+            current_epoch,
+        );
+
+        // Start at SLOTS_TO_SKIP since we already know slot 0 failed.
+        let mut slots_count = SLOTS_TO_SKIP;
+
+        // Traverse forward from the current slot until we find a block time
+        // that is not skipped.
+        while slots_count < MAX_SLOTS_TO_SEARCH {
+            rate_limiter.acquire_one().await;
+
+            let search_slot = slot + u64::from(slots_count);
+
+            match solana_client.get_block_time(search_slot).await {
+                Ok(block_time) => {
+                    // Estimate the original slot's block time by subtracting
+                    // estimated time.
+                    return Ok(block_time
+                        - ESTIMATED_SKIP_TIME * i64::from(slots_count) / i64::from(SLOTS_TO_SKIP));
+                }
+                _ => {
+                    log_warn!(
+                        "Block time for slot {} in epoch {} not found. Continuing search...",
+                        search_slot,
+                        current_epoch,
+                    );
+                }
+            }
+
+            slots_count += SLOTS_TO_SKIP;
+        }
+
+        bail!(
+            "Cannot estimate block time for slot {} in epoch {} after searching {} slots",
+            slot,
+            current_epoch,
+            MAX_SLOTS_TO_SEARCH
+        )
+    }
+
+    /// Gets block time for a slot, with fallback to estimation if the slot was
+    /// skipped.
+    async fn get_block_time_with_estimation(
+        solana_client: &RpcClient,
+        rate_limiter: &RateLimiter,
+        slot: u64,
+        current_epoch: u64,
+    ) -> Result<i64> {
+        rate_limiter.acquire_one().await;
+
+        match solana_client.get_block_time(slot).await {
+            Ok(block_time) => Ok(block_time),
+            Err(e) => match e {
+                ClientError {
+                    request: _,
+                    kind:
+                        ClientErrorKind::RpcError(RpcError::RpcResponseError {
+                            code:
+                                JSON_RPC_SERVER_ERROR_SLOT_SKIPPED
+                                | JSON_RPC_SERVER_ERROR_LONG_TERM_STORAGE_SLOT_SKIPPED,
+                            message: _,
+                            data: _,
+                        }),
+                } => {
+                    Self::estimate_block_time_for_skipped_slot(
+                        solana_client,
+                        rate_limiter,
+                        slot,
+                        current_epoch,
+                    )
+                    .await
+                }
+                e => bail!(e),
+            },
+        }
+    }
+
     async fn find_solana_epoch_before_timestamp(
         solana_client: &RpcClient,
         rate_limiter: &RateLimiter,
@@ -93,9 +193,13 @@ impl JoinedSolanaEpochs {
 
         // This loop will always terminate.
         loop {
-            rate_limiter.acquire_one().await;
-
-            let last_slot_block_time = solana_client.get_block_time(current_last_slot).await?;
+            let last_slot_block_time = Self::get_block_time_with_estimation(
+                solana_client,
+                rate_limiter,
+                current_last_slot,
+                current_epoch,
+            )
+            .await?;
 
             if last_slot_block_time < target_timestamp {
                 return Ok(current_epoch);

@@ -131,8 +131,16 @@ echo "doublezero-solana revenue-distribution fetch -h"
 $CLI_BIN revenue-distribution fetch -h
 echo
 
-echo "doublezero-solana revenue-distribution fetch -u l --config --validator-deposit $DUMMY_KEY"
-$CLI_BIN revenue-distribution fetch -u l --config --validator-deposit $DUMMY_KEY
+echo "doublezero-solana revenue-distribution fetch config -u l"
+$CLI_BIN revenue-distribution fetch config -u l
+echo
+
+echo "doublezero-solana revenue-distribution fetch validator-deposits -u l --node-id $DUMMY_KEY"
+$CLI_BIN revenue-distribution fetch validator-deposits -u l --node-id $DUMMY_KEY
+echo
+
+echo "doublezero-solana revenue-distribution fetch validator-deposits -u l"
+$CLI_BIN revenue-distribution fetch validator-deposits -u l
 echo
 
 echo "doublezero-solana revenue-distribution contributor-rewards -h"
@@ -173,8 +181,12 @@ $CLI_BIN revenue-distribution validator-deposit \
     $DUMMY_KEY
 echo
 
-echo "doublezero-solana revenue-distribution fetch -u l --validator-deposit $DUMMY_KEY"
-$CLI_BIN revenue-distribution fetch -u l --validator-deposit $DUMMY_KEY
+echo "doublezero-solana revenue-distribution fetch validator-deposits -u l --node-id $DUMMY_KEY"
+$CLI_BIN revenue-distribution fetch validator-deposits -u l --node-id $DUMMY_KEY
+echo
+
+echo "doublezero-solana revenue-distribution fetch validator-deposits -u l"
+$CLI_BIN revenue-distribution fetch validator-deposits -u l
 echo
 
 ### ATA commands.

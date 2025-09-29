@@ -1924,6 +1924,7 @@ dependencies = [
  "doublezero-solana-validator-debt",
  "doublezero_sdk",
  "serde_json",
+ "solana-account-decoder-client-types",
  "solana-client",
  "solana-commitment-config",
  "solana-sdk",

@@ -61,4 +61,4 @@ jobs:
           SLACK_USERNAME: Doublezero Releaser
           SLACK_TITLE: Daily Release Failure
           MSG_MINIMAL: actions url
-          SLACK_WEBHOOK: ${{ secrets.SLACK_ALERTS_WEBHOOK }}
+          SLACK_WEBHOOK: ${{ secrets.SLACK_DEVNET_ALERTS_WEBHOOK }}

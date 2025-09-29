@@ -802,6 +802,7 @@ func testAllToAllConnectivity(t *testing.T, hostIPMap map[string]string, useRetr
 					SourceIp:    sourceIP,
 					SourceIface: "doublezero0",
 					PingType:    pb.PingRequest_ICMP,
+					Timeout:     10,
 				}
 				pingResp, err := client.Ping(ctx, pingReq)
 				cancel()

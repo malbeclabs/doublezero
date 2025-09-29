@@ -15,6 +15,7 @@ const (
 )
 
 type NetworkConfig struct {
+	Moniker                    string
 	LedgerPublicRPCURL         string
 	ServiceabilityProgramID    solana.PublicKey
 	TelemetryProgramID         solana.PublicKey
@@ -40,6 +41,7 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 			return nil, fmt.Errorf("failed to parse internet latency collector oracle agent PK: %w", err)
 		}
 		config = &NetworkConfig{
+			Moniker:                    EnvMainnetBeta,
 			LedgerPublicRPCURL:         MainnetLedgerPublicRPCURL,
 			ServiceabilityProgramID:    serviceabilityProgramID,
 			TelemetryProgramID:         telemetryProgramID,
@@ -61,6 +63,7 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 			return nil, fmt.Errorf("failed to parse internet latency collector oracle agent PK: %w", err)
 		}
 		config = &NetworkConfig{
+			Moniker:                    EnvTestnet,
 			LedgerPublicRPCURL:         TestnetLedgerPublicRPCURL,
 			ServiceabilityProgramID:    serviceabilityProgramID,
 			TelemetryProgramID:         telemetryProgramID,
@@ -82,6 +85,7 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 			return nil, fmt.Errorf("failed to parse internet latency collector oracle agent PK: %w", err)
 		}
 		config = &NetworkConfig{
+			Moniker:                    EnvDevnet,
 			LedgerPublicRPCURL:         DevnetLedgerPublicRPCURL,
 			ServiceabilityProgramID:    serviceabilityProgramID,
 			TelemetryProgramID:         telemetryProgramID,

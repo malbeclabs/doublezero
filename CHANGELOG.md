@@ -11,6 +11,8 @@ All notable changes to this project will be documented in this file.
 - Internet telemetry
     - Submit partitions of samples in parallel
     - Include circuit label on submitter error metric
+- Monitor
+    - Reduce logging noise in 2z oracle watcher
 
 ## [v0.6.6](https://github.com/malbeclabs/doublezero/compare/client/v0.6.5...client/v0.6.6) – 2025-09-26
 

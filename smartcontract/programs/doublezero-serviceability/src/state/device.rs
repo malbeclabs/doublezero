@@ -389,6 +389,11 @@ impl Device {
             .find(|(_, iface)| iface.name.eq_ignore_ascii_case(name))
             .ok_or_else(|| format!("Interface with name '{name}' not found"))
     }
+
+    pub fn is_device_eligible_for_provisioning(&self) -> bool {
+        self.status == DeviceStatus::Activated
+            && (self.max_users > 0 && self.users_count < self.max_users)
+    }
 }
 
 impl fmt::Display for Device {

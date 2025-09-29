@@ -451,6 +451,11 @@ impl ProvisioningCliCommand {
         let users = client.list_user(ListUserCommand)?;
         let devices = client.list_device(ListDeviceCommand)?;
 
+        // Filter devices activated
+        devices.retain(|_, d| {
+            d.status == DeviceStatus::Activated && (d.max_users > 0 && d.users_count < d.max_users)
+        });
+
         let matched_users = users
             .iter()
             .filter(|(_, u)| u.client_ip == *client_ip)

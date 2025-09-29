@@ -26,7 +26,10 @@ async fn test_initialize_program() {
     let (program_config, remaining_data) =
         checked_from_bytes_with_discriminator::<ProgramConfig>(&program_config_account_data)
             .unwrap();
-    assert!(remaining_data.is_empty());
+    assert_eq!(
+        remaining_data.len(),
+        10_240 - doublezero_program_tools::zero_copy::data_end::<ProgramConfig>()
+    );
 
     let mut expected_program_config = ProgramConfig::default();
     expected_program_config.bump_seed = program_config_bump;

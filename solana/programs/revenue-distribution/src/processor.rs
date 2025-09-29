@@ -12,9 +12,8 @@ use doublezero_program_tools::{
     },
     zero_copy::{self, ZeroCopyAccount, ZeroCopyMutAccount},
 };
-use solana_account_info::AccountInfo;
+use solana_account_info::{AccountInfo, MAX_PERMITTED_DATA_INCREASE};
 use solana_cpi::invoke_signed_unchecked;
-use solana_instruction::{syscalls::get_stack_height, TRANSACTION_LEVEL_STACK_HEIGHT};
 use solana_msg::msg;
 use solana_program_error::{ProgramError, ProgramResult};
 use solana_pubkey::Pubkey;
@@ -27,15 +26,14 @@ use svm_hash::{merkle::MerkleProof, sha2::Hash};
 use crate::{
     instruction::{
         account::DequeueFillsCpiAccounts, ContributorRewardsConfiguration,
-        DistributionMerkleRootKind, JournalConfiguration, ProgramConfiguration,
-        ProgramFlagConfiguration, RevenueDistributionInstructionData,
+        DistributionMerkleRootKind, ProgramConfiguration, ProgramFlagConfiguration,
+        RevenueDistributionInstructionData,
     },
     state::{
         self, CommunityBurnRateParameters, ContributorRewards, Distribution, Journal,
-        PrepaidConnection, ProgramConfig, RecipientShare, RecipientShares, RelayParameters,
-        SolanaValidatorDeposit,
+        ProgramConfig, RecipientShare, RecipientShares, RelayParameters, SolanaValidatorDeposit,
     },
-    types::{BurnRate, ByteFlags, DoubleZeroEpoch, RewardShare, SolanaValidatorDebt, ValidatorFee},
+    types::{BurnRate, ByteFlags, RewardShare, SolanaValidatorDebt, ValidatorFee},
     DOUBLEZERO_MINT_KEY, ID,
 };
 
@@ -67,9 +65,6 @@ fn try_process_instruction(
             try_configure_program(accounts, setting)
         }
         RevenueDistributionInstructionData::InitializeJournal => try_initialize_journal(accounts),
-        RevenueDistributionInstructionData::ConfigureJournal(setting) => {
-            try_configure_journal(accounts, setting)
-        }
         RevenueDistributionInstructionData::InitializeDistribution => {
             try_initialize_distribution(accounts)
         }
@@ -93,22 +88,6 @@ fn try_process_instruction(
             economic_burn_rate,
             proof,
         } => try_distribute_rewards(accounts, unit_share, economic_burn_rate, proof),
-        RevenueDistributionInstructionData::InitializePrepaidConnection { user_key, decimals } => {
-            try_initialize_prepaid_connection(accounts, user_key, decimals)
-        }
-        RevenueDistributionInstructionData::GrantPrepaidConnectionAccess => {
-            try_grant_prepaid_connection_access(accounts)
-        }
-        RevenueDistributionInstructionData::DenyPrepaidConnectionAccess => {
-            try_deny_prepaid_connection_access(accounts)
-        }
-        RevenueDistributionInstructionData::LoadPrepaidConnection {
-            valid_through_dz_epoch,
-            decimals,
-        } => try_load_prepaid_connection(accounts, valid_through_dz_epoch, decimals),
-        RevenueDistributionInstructionData::TerminatePrepaidConnection => {
-            try_terminate_prepaid_connection(accounts)
-        }
         RevenueDistributionInstructionData::InitializeContributorRewards(service_key) => {
             try_initialize_contributor_rewards(accounts, service_key)
         }
@@ -180,6 +159,8 @@ fn try_initialize_program(accounts: &[AccountInfo]) -> ProgramResult {
     // the new reserve 2Z token account.
     let rent_sysvar = Rent::get().unwrap();
 
+    // The program config account is created with the maximum data length
+    // allowed (10kb) in case other fields are added in the future.
     try_create_account(
         Invoker::Signer(payer_info.key),
         Invoker::Pda {
@@ -187,7 +168,7 @@ fn try_initialize_program(accounts: &[AccountInfo]) -> ProgramResult {
             signer_seeds: &[ProgramConfig::SEED_PREFIX, &[program_config_bump]],
         },
         new_program_config_info.lamports(),
-        zero_copy::data_end::<ProgramConfig>(),
+        MAX_PERMITTED_DATA_INCREASE,
         &ID,
         accounts,
         CreateAccountOptions {
@@ -308,9 +289,8 @@ fn try_configure_program(accounts: &[AccountInfo], setting: ProgramConfiguration
             msg!("Set contributor_manager_key: {}", contributor_manager_key);
             program_config.contributor_manager_key = contributor_manager_key;
         }
-        ProgramConfiguration::DoubleZeroLedgerSentinel(dz_ledger_sentinel_key) => {
-            msg!("Set dz_ledger_sentinel_key: {}", dz_ledger_sentinel_key);
-            program_config.dz_ledger_sentinel_key = dz_ledger_sentinel_key;
+        ProgramConfiguration::PlaceholderKey(_) => {
+            return Err(ProgramError::InvalidInstructionData);
         }
         ProgramConfiguration::Sol2zSwapProgram(sol_2z_swap_program_id) => {
             msg!("Set sol_2z_swap_program_id: {}", sol_2z_swap_program_id);
@@ -506,19 +486,8 @@ fn try_configure_program(accounts: &[AccountInfo], setting: ProgramConfiguration
                 }
             }
         }
-        ProgramConfiguration::PrepaidConnectionTerminationRelayLamports(relay_lamports) => {
-            if relay_lamports < RelayParameters::MIN_LAMPORTS {
-                msg!("Relay lamports must be greater than the cost of a transaction signature");
-                return Err(ProgramError::InvalidInstructionData);
-            }
-
-            msg!(
-                "Set relay_parameters.prepaid_connection_termination_lamports: {}",
-                relay_lamports
-            );
-            program_config
-                .relay_parameters
-                .prepaid_connection_termination_lamports = relay_lamports;
+        ProgramConfiguration::PlaceholderRelayLamports(_) => {
+            return Err(ProgramError::InvalidInstructionData);
         }
         ProgramConfiguration::DistributeRewardsRelayLamports(relay_lamports) => {
             if relay_lamports < RelayParameters::MIN_LAMPORTS {
@@ -587,6 +556,8 @@ fn try_initialize_journal(accounts: &[AccountInfo]) -> ProgramResult {
     // journal's 2Z token account.
     let rent_sysvar = Rent::get().unwrap();
 
+    // The journal account is created with the maximum data length allowed
+    // (10kb) in case other fields are added in the future.
     try_create_account(
         Invoker::Signer(payer_info.key),
         Invoker::Pda {
@@ -594,7 +565,7 @@ fn try_initialize_journal(accounts: &[AccountInfo]) -> ProgramResult {
             signer_seeds: &[Journal::SEED_PREFIX, &[journal_bump]],
         },
         new_journal_info.lamports(),
-        zero_copy::data_end::<Journal>(),
+        MAX_PERMITTED_DATA_INCREASE,
         &ID,
         accounts,
         CreateAccountOptions {
@@ -641,83 +612,6 @@ fn try_initialize_journal(accounts: &[AccountInfo]) -> ProgramResult {
     let (mut journal, _) = zero_copy::try_initialize::<Journal>(new_journal_info)?;
     journal.bump_seed = journal_bump;
     journal.token_2z_pda_bump_seed = journal_2z_token_pda_bump;
-
-    Ok(())
-}
-
-fn try_configure_journal(accounts: &[AccountInfo], setting: JournalConfiguration) -> ProgramResult {
-    msg!("Configure journal");
-
-    // We expect the following accounts for this instruction:
-    // - 0: Program config.
-    // - 1: Admin.
-    // - 2: Journal.
-    let mut accounts_iter = accounts.iter().enumerate();
-
-    // Account 0 must be the program config.
-    // Account 1 must be the admin.
-    //
-    // This call ensures that the admin is a signer and is the same admin
-    // encoded in the program config.
-    VerifiedProgramAuthority::try_next_accounts(&mut accounts_iter, Authority::Admin)?;
-
-    // Account 2 must be the journal. Ensure it is writable so we can update its
-    // prepaid connection parameters.
-    let mut journal =
-        ZeroCopyMutAccount::<Journal>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
-
-    match setting {
-        JournalConfiguration::ActivationCost(activation_cost) => {
-            msg!(
-                "Set prepaid_connection_parameters.activation_cost: {}",
-                activation_cost
-            );
-            journal.prepaid_connection_parameters.activation_cost = activation_cost;
-        }
-        JournalConfiguration::CostPerDoubleZeroEpoch(cost_per_dz_epoch) => {
-            msg!(
-                "Set prepaid_connection_parameters.cost_per_dz_epoch: {}",
-                cost_per_dz_epoch
-            );
-            journal.prepaid_connection_parameters.cost_per_dz_epoch = cost_per_dz_epoch;
-        }
-        JournalConfiguration::EntryBoundaries {
-            minimum_prepaid_dz_epochs,
-            maximum_entries,
-        } => {
-            if minimum_prepaid_dz_epochs == 0 {
-                msg!("Minimum prepaid DZ epochs cannot be zero");
-                return Err(ProgramError::InvalidInstructionData);
-            }
-
-            if maximum_entries < minimum_prepaid_dz_epochs {
-                msg!("Maximum entries cannot be less than minimum prepaid DZ epochs");
-                return Err(ProgramError::InvalidInstructionData);
-            }
-
-            if maximum_entries > Journal::MAX_CONFIGURABLE_ENTRIES {
-                msg!(
-                    "Maximum entries cannot be greater than {}",
-                    Journal::MAX_CONFIGURABLE_ENTRIES
-                );
-                return Err(ProgramError::InvalidInstructionData);
-            }
-
-            msg!(
-                "Set prepaid_connection_parameters.minimum_prepaid_dz_epochs: {}",
-                minimum_prepaid_dz_epochs
-            );
-            journal
-                .prepaid_connection_parameters
-                .minimum_allowed_dz_epochs = minimum_prepaid_dz_epochs;
-
-            msg!(
-                "Set prepaid_connection_parameters.maximum_entries: {}",
-                maximum_entries
-            );
-            journal.prepaid_connection_parameters.maximum_entries = maximum_entries;
-        }
-    }
 
     Ok(())
 }
@@ -891,48 +785,20 @@ fn try_initialize_distribution(accounts: &[AccountInfo]) -> ProgramResult {
         .try_into()
         .unwrap();
 
-    // We need to move prepaid 2Z from the journal to the distribution.
-    let mut journal =
-        ZeroCopyMutAccount::<Journal>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+    // NOTE: The Journal and its 2Z token account are not used in this
+    // instruction. But they act as placeholders when 2Z prepayment will be
+    // implemented.
 
-    let (_, journal_2z_token_pda_info, _) = try_next_2z_token_pda_info(
+    // Account 7 must be the journal.
+    let journal = ZeroCopyMutAccount::<Journal>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+
+    // Account 8 must be the journal's 2Z token account.
+    let (_, _journal_2z_token_pda_info, _) = try_next_2z_token_pda_info(
         &mut accounts_iter,
         journal.info.key,
         "journal's",
         Some(journal.token_2z_pda_bump_seed),
     )?;
-
-    let prepayment_entries = &mut journal.prepayment_entries;
-
-    // Check the front of the journal entries. If the front entry's epoch
-    // matches this distribution's epoch, pop the front for the transfer amount.
-    if let Some(entry) = prepayment_entries.front_entry() {
-        if entry.dz_epoch == dz_epoch {
-            let transfer_amount = prepayment_entries.pop_front_entry().unwrap().amount;
-
-            // We are transferring between token PDAs. No need to check mint's
-            // decimals.
-            let token_transfer_ix = token_instruction::transfer(
-                &spl_token::ID,
-                journal_2z_token_pda_info.key,
-                new_distribution_2z_token_pda_info.key,
-                journal.info.key,
-                &[], // signer_pubkeys
-                transfer_amount,
-            )
-            .unwrap();
-
-            invoke_signed_unchecked(
-                &token_transfer_ix,
-                accounts,
-                &[&[Journal::SEED_PREFIX, &[journal.bump_seed]]],
-            )?;
-
-            msg!("Moved {} 2Z from journal to distribution", transfer_amount);
-            distribution.collected_prepaid_2z_payments = transfer_amount;
-            journal.total_2z_balance = journal.total_2z_balance.saturating_sub(transfer_amount);
-        }
-    }
 
     msg!("Initialized distribution for DZ epoch {}", dz_epoch);
 
@@ -1448,600 +1314,6 @@ fn try_distribute_rewards(
     msg!(
         "Moved {} lamports to relayer",
         distribute_rewards_relay_lamports
-    );
-
-    Ok(())
-}
-
-fn try_initialize_prepaid_connection(
-    accounts: &[AccountInfo],
-    user_key: Pubkey,
-    decimals: u8,
-) -> ProgramResult {
-    msg!("Initialize prepaid connection");
-
-    if get_stack_height() != TRANSACTION_LEVEL_STACK_HEIGHT {
-        msg!("Cannot CPI initialize prepaid connection");
-        return Err(ProgramError::InvalidInstructionData);
-    }
-
-    if user_key == Pubkey::default() {
-        msg!("User key cannot be zero address");
-        return Err(ProgramError::InvalidInstructionData);
-    }
-
-    // We expect the following accounts for this instruction:
-    // - 0: Program config.
-    // - 1: Journal.
-    // - 2: Source 2Z token account.
-    // - 3: SPL 2Z mint.
-    // - 4: Reserve 2Z.
-    // - 5: Token transfer authority.
-    // - 6: SPL Token program.
-    // - 7: Payer.
-    // - 8: New prepaid connection.
-    // - 9: System program.
-    let mut accounts_iter = accounts.iter().enumerate();
-
-    // Account 0 must be the program config. We need the reserve 2Z bump.
-    let program_config =
-        ZeroCopyAccount::<ProgramConfig>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
-
-    // Make sure the program is not paused.
-    program_config.try_require_unpaused()?;
-
-    // Account 1 must be the journal. We need the activation cost to determine
-    // how much to transfer to the reserve.
-    let journal = ZeroCopyAccount::<Journal>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
-
-    let activation_cost = journal
-        .checked_activation_cost_amount(decimals)
-        .unwrap_or_default();
-
-    // There should be a non-zero activation cost.
-    if activation_cost == 0 {
-        msg!("Activation cost misconfigured");
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    // Account 2 must be the source of 2Z tokens. The activation amount will be
-    // burned from this token account.
-    let (_, src_2z_token_account_info) =
-        try_next_enumerated_account(&mut accounts_iter, Default::default())?;
-
-    // Account 3 must be the 2Z mint.
-    try_next_2z_mint_info(&mut accounts_iter)?;
-
-    // Account 4 must be the reserve 2Z token account. The activation fees are
-    // diverted to this token account effectively to burn them.
-    let (_, reserve_2z_info, _) = try_next_2z_token_pda_info(
-        &mut accounts_iter,
-        program_config.info.key,
-        "reserve",
-        Some(program_config.reserve_2z_bump_seed),
-    )?;
-
-    // Account 5 must be the token transfer authority. The token transfer will
-    // fail if this account is not a signer.
-    let (_, token_transfer_authority_info) =
-        try_next_enumerated_account(&mut accounts_iter, Default::default())?;
-
-    // Account 6 must be the SPL Token program.
-    try_next_token_program_info(&mut accounts_iter)?;
-
-    // Transfer the activation fee to the reserve account.
-    let token_transfer_checked_ix = token_instruction::transfer_checked(
-        &spl_token::ID,
-        src_2z_token_account_info.key,
-        &DOUBLEZERO_MINT_KEY,
-        reserve_2z_info.key,
-        token_transfer_authority_info.key,
-        &[], // signer_pubkeys
-        activation_cost,
-        decimals,
-    )
-    .unwrap();
-
-    invoke_signed_unchecked(&token_transfer_checked_ix, accounts, &[])?;
-
-    // Account 7 must be a signer and writable because it will send lamports to
-    // the new prepaid connection account. We do not check these fields
-    // because the create-account workflow requires that this account is
-    // writable and a signer.
-    let (_, payer_info) = try_next_enumerated_account(&mut accounts_iter, Default::default())?;
-
-    // Account 8 must be the new prepaid connection account. The create-account
-    // workflow requires that this account does not exist yet and is writable.
-    let (account_index, new_prepaid_connection_info) =
-        try_next_enumerated_account(&mut accounts_iter, Default::default())?;
-
-    let (expected_prepaid_connection_key, prepaid_connection_bump) =
-        PrepaidConnection::find_address(&user_key);
-
-    // Enforce this account location and seed validity.
-    if new_prepaid_connection_info.key != &expected_prepaid_connection_key {
-        msg!(
-            "Invalid seeds for prepaid connection (account {})",
-            account_index
-        );
-        return Err(ProgramError::InvalidSeeds);
-    }
-
-    try_create_account(
-        Invoker::Signer(payer_info.key),
-        Invoker::Pda {
-            key: &expected_prepaid_connection_key,
-            signer_seeds: &[
-                PrepaidConnection::SEED_PREFIX,
-                user_key.as_ref(),
-                &[prepaid_connection_bump],
-            ],
-        },
-        new_prepaid_connection_info.lamports(),
-        zero_copy::data_end::<PrepaidConnection>(),
-        &ID,
-        accounts,
-        Default::default(),
-    )?;
-
-    // Finalize the prepaid connection with the user and termination beneficiary
-    // keys.
-    let (mut prepaid_connection, _) =
-        zero_copy::try_initialize::<PrepaidConnection>(new_prepaid_connection_info)?;
-
-    prepaid_connection.user_key = user_key;
-    prepaid_connection.termination_beneficiary_key = *payer_info.key;
-    prepaid_connection.activation_cost = activation_cost;
-    prepaid_connection.activation_funder_key = *src_2z_token_account_info.key;
-
-    msg!("Paid {} to initialize user {}", activation_cost, user_key);
-
-    Ok(())
-}
-
-fn try_grant_prepaid_connection_access(accounts: &[AccountInfo]) -> ProgramResult {
-    msg!("Grant prepaid connection access");
-
-    // We expect the following accounts for this instruction:
-    // - 0: Program config.
-    // - 1: DoubleZero Ledger sentinel.
-    // - 2: Prepaid connection.
-    let mut accounts_iter = accounts.iter().enumerate();
-
-    // Account 0 must be the program config.
-    // Account 1 must be the DoubleZero ledger sentinel.
-    //
-    // This call ensures that the DoubleZero ledger sentinel is a signer and is
-    // the same sentinel encoded in the program config.
-    let authorized_use = VerifiedProgramAuthority::try_next_accounts(
-        &mut accounts_iter,
-        Authority::DoubleZeroLedgerSentinel,
-    )?;
-
-    // Make sure the program is not paused.
-    authorized_use.program_config.try_require_unpaused()?;
-
-    // Account 2 must be the prepaid connection. The access granted flag will be
-    // set to true by the end of this instruction.
-    let mut prepaid_connection =
-        ZeroCopyMutAccount::<PrepaidConnection>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
-    msg!("User key: {}", prepaid_connection.user_key);
-
-    prepaid_connection.set_has_access_granted(true);
-
-    Ok(())
-}
-
-fn try_deny_prepaid_connection_access(accounts: &[AccountInfo]) -> ProgramResult {
-    msg!("Deny prepaid connection access");
-
-    // We expect the following accounts for this instruction:
-    // - 0: Program config.
-    // - 1: DoubleZero Ledger sentinel.
-    // - 2: Prepaid connection.
-    // - 3: Reserve 2Z.
-    // - 4: Activation funder.
-    // - 5: Termination beneficiary.
-    let mut accounts_iter = accounts.iter().enumerate();
-
-    // Account 0 must be the program config.
-    // Account 1 must be the DoubleZero ledger sentinel.
-    //
-    // This call ensures that the DoubleZero ledger sentinel is a signer and is the
-    // same sentinel encoded in the program config.
-    let authorized_use = VerifiedProgramAuthority::try_next_accounts(
-        &mut accounts_iter,
-        Authority::DoubleZeroLedgerSentinel,
-    )?;
-
-    let program_config = authorized_use.program_config;
-
-    // Make sure the program is not paused.
-    program_config.try_require_unpaused()?;
-
-    // Account 2 must be the prepaid connection. This account will be closed by
-    // sending termination relay lamports to the sentinel and remaining rent
-    // lamports to the termination beneficiary key.
-    let prepaid_connection =
-        ZeroCopyAccount::<PrepaidConnection>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
-    msg!("User key: {}", prepaid_connection.user_key);
-
-    // Revert if we try to deny access to a prepaid connection that already has
-    // access. This check also covers the case when the prepaid connection has
-    // been paid because the access granted flag is set to true in that case.
-    if prepaid_connection.has_access_granted() {
-        msg!("Prepaid connection already has access");
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    // Account 3 must be the reserve 2Z token account. The activation cost will
-    // be transferred from this account back to the activation funder.
-    let (_, reserve_2z_token_account_info, _) = try_next_2z_token_pda_info(
-        &mut accounts_iter,
-        program_config.info.key,
-        "reserve",
-        Some(program_config.reserve_2z_bump_seed),
-    )?;
-
-    // Account 4 must be the activation funder. The activation cost will be
-    // transferred from the reserve 2Z token account to this account.
-    let (_, activation_funder_info) =
-        try_next_enumerated_account(&mut accounts_iter, Default::default())?;
-
-    let expected_activation_funder_key = prepaid_connection.activation_funder_key;
-
-    // Enforce this account location.
-    if activation_funder_info.key != &expected_activation_funder_key {
-        msg!(
-            "Expected activation funder key: {}",
-            expected_activation_funder_key
-        );
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    let activation_cost = prepaid_connection.activation_cost;
-
-    // Transfer 2Z tokens back to the activation funder.
-    let token_transfer_ix = token_instruction::transfer(
-        &spl_token::ID,
-        reserve_2z_token_account_info.key,
-        &expected_activation_funder_key,
-        program_config.info.key,
-        &[], // signer_pubkeys
-        activation_cost,
-    )
-    .unwrap();
-
-    invoke_signed_unchecked(
-        &token_transfer_ix,
-        accounts,
-        &[&[ProgramConfig::SEED_PREFIX, &[program_config.bump_seed]]],
-    )?;
-
-    let termination_relay_lamports = program_config
-        .checked_prepaid_connection_termination_relay_lamports()
-        .map(u64::from)
-        .ok_or_else(|| {
-            msg!("Prepaid connection termination relay lamports are misconfigured");
-            ProgramError::InvalidAccountData
-        })?;
-
-    // Move the termination relay lamports amount to the sentinel.
-    let (_, sentinel_info) = authorized_use.authority;
-    **sentinel_info.lamports.borrow_mut() += termination_relay_lamports;
-
-    let mut prepaid_connection_info_lamports = prepaid_connection.info.try_borrow_mut_lamports()?;
-
-    // Account 5 must be the termination beneficiary. The remaining prepaid
-    // connection rent lamports will be moved to this account.
-    let (_, termination_beneficiary_info) =
-        try_next_enumerated_account(&mut accounts_iter, Default::default())?;
-
-    // Enforce this account location.
-    if termination_beneficiary_info.key != &prepaid_connection.termination_beneficiary_key {
-        msg!(
-            "Expected termination beneficiary key: {}",
-            prepaid_connection.termination_beneficiary_key
-        );
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    **termination_beneficiary_info.lamports.borrow_mut() +=
-        prepaid_connection_info_lamports.saturating_sub(termination_relay_lamports);
-
-    // By setting the prepaid connection lamports to zero, the prepaid
-    // connection will be closed.
-    **prepaid_connection_info_lamports = 0;
-
-    msg!(
-        "Return {} 2Z tokens to {}",
-        activation_cost,
-        expected_activation_funder_key
-    );
-
-    Ok(())
-}
-
-fn try_load_prepaid_connection(
-    accounts: &[AccountInfo],
-    valid_through_dz_epoch: DoubleZeroEpoch,
-    decimals: u8,
-) -> ProgramResult {
-    msg!("Load prepaid connection");
-
-    // We expect the following accounts for this instruction:
-    // - 0: Program config.
-    // - 1: Journal.
-    // - 2: Prepaid connection.
-    // - 3: Source 2Z token account.
-    // - 4: 2Z mint.
-    // - 5: Journal's 2Z token account.
-    // - 6: Token transfer authority.
-    // - 7: SPL Token program.
-    let mut accounts_iter = accounts.iter().enumerate();
-
-    // Account 0 must be the program config. We will only be reading the next DZ
-    // epoch from this account because many calculations require this value.
-    let program_config =
-        ZeroCopyAccount::<ProgramConfig>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
-
-    // Make sure the program is not paused.
-    program_config.try_require_unpaused()?;
-
-    // Account 1 must be the journal. The journal specifies the min and maximum
-    // entry constraints. When the constraint checks pass, we update the
-    // existing journal entries to reflect the payment.
-    let mut journal =
-        ZeroCopyMutAccount::<Journal>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
-
-    let maximum_entries = journal.checked_maximum_entries().ok_or_else(|| {
-        msg!("Maximum entries misconfigured");
-        ProgramError::InvalidAccountData
-    })?;
-
-    let global_dz_epoch = program_config.next_dz_epoch;
-
-    // We constrain that the new service cannot exceed however many entries from
-    // the global epoch.
-    let max_dz_epoch = global_dz_epoch.saturating_add_duration(maximum_entries.into());
-
-    if valid_through_dz_epoch > max_dz_epoch {
-        msg!(
-            "Specified DZ epoch is beyond maximum DZ epoch allowed: {}",
-            max_dz_epoch
-        );
-        return Err(ProgramError::InvalidInstructionData);
-    }
-
-    // Account 2 must be the prepaid connection. We need to determine the next
-    // DZ epoch using the current DZ epoch that this account is valid through.
-    let mut prepaid_connection =
-        ZeroCopyMutAccount::<PrepaidConnection>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
-    msg!("User key: {}", prepaid_connection.user_key);
-
-    // Make sure the prepaid connection has access to the DoubleZero Ledger
-    // network.
-    if !prepaid_connection.has_access_granted() {
-        msg!("Prepaid connection does not have access to DoubleZero Ledger");
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    // Determine the starting point for the new prepaid period.
-    // If the prepaid connection was freshly created, the valid-through DZ epoch
-    // will be zero, so this value will default to the program config's next DZ
-    // epoch. But if service was already prepaid up through some specified DZ
-    // epoch beyond the program config's next DZ epoch, the service's DZ epoch
-    // will be used as a starting point to allow extending existing connections.
-    let next_dz_epoch = prepaid_connection
-        .checked_valid_through_dz_epoch()
-        .map(|epoch| epoch.saturating_add_duration(1))
-        .unwrap_or(global_dz_epoch)
-        .max(global_dz_epoch);
-
-    let minimum_allowed_dz_epochs =
-        journal.checked_minimum_allowed_dz_epochs().ok_or_else(|| {
-            msg!("Minimum allowed DZ epochs misconfigured");
-            ProgramError::InvalidAccountData
-        })?;
-
-    // The minimum DZ epoch is determined by however long the service is
-    // currently set up for. So if the prepaid connection were freshly created,
-    // a user must pay for service for at least as long as the minimum
-    // requirement from the global epoch. Otherwise, it needs to be at least as
-    // long from when service was already paid for.
-    let min_dz_epoch = next_dz_epoch.saturating_add_duration(minimum_allowed_dz_epochs.into());
-
-    if valid_through_dz_epoch < min_dz_epoch {
-        msg!(
-            "Specified DZ epoch is below minimum DZ epoch allowed: {}",
-            min_dz_epoch
-        );
-        return Err(ProgramError::InvalidInstructionData);
-    }
-
-    let cost_per_dz_epoch = journal.checked_cost_per_dz_epoch(decimals).ok_or_else(|| {
-        msg!("Cost per DZ epoch is misconfigured");
-        ProgramError::InvalidAccountData
-    })?;
-
-    let num_entries = journal
-        .prepayment_entries
-        .update(next_dz_epoch, valid_through_dz_epoch, cost_per_dz_epoch)
-        .ok_or_else(|| {
-            msg!(
-                "Failed to update journal entries for DZ epochs from {} through {}",
-                next_dz_epoch,
-                valid_through_dz_epoch
-            );
-            ProgramError::InvalidInstructionData
-        })?;
-
-    msg!(
-        "Loaded from DZ epoch {} through {}",
-        next_dz_epoch,
-        valid_through_dz_epoch
-    );
-    prepaid_connection.valid_through_dz_epoch = valid_through_dz_epoch;
-
-    // By setting this flag, we are now allowing anyone to terminate the prepaid
-    // connection once the service's DZ epoch exceeds the next DZ epoch in the
-    // program config.
-    prepaid_connection.set_has_paid(true);
-
-    // Next, we need to transfer the total service cost to the journal and
-    // update its balance.
-
-    let transfer_amount = journal
-        .checked_cost_per_dz_epoch_amount(num_entries, decimals)
-        .unwrap_or_default();
-
-    if transfer_amount == 0 {
-        msg!("Transfer amount cannot be computed because cost per DZ epoch is misconfigured");
-        return Err(ProgramError::InvalidAccountData);
-    };
-
-    // Account 3 must be the source token account where 2Z will be transferred
-    // from.
-    let (_, src_2z_token_account_info) =
-        try_next_enumerated_account(&mut accounts_iter, Default::default())?;
-
-    // Account 4 must be the 2Z mint to perform the transfer checked CPI call.
-    try_next_2z_mint_info(&mut accounts_iter)?;
-
-    // Account 5 must be the journal's 2Z token account. This account will
-    // receive payment.
-    let (_, journal_2z_token_pda_info, _) = try_next_2z_token_pda_info(
-        &mut accounts_iter,
-        journal.info.key,
-        "journal's",
-        Some(journal.token_2z_pda_bump_seed),
-    )?;
-
-    // Account 6 must be the token transfer authority. The token transfer will
-    // fail if this account is not a signer.
-    let (_, token_transfer_authority_info) =
-        try_next_enumerated_account(&mut accounts_iter, Default::default())?;
-
-    // First transfer 2Z from funder to journal.
-    let token_transfer_checked_ix = token_instruction::transfer_checked(
-        &spl_token::ID,
-        src_2z_token_account_info.key,
-        &DOUBLEZERO_MINT_KEY,
-        journal_2z_token_pda_info.key,
-        token_transfer_authority_info.key,
-        &[], // signer_pubkeys
-        transfer_amount,
-        decimals,
-    )
-    .unwrap();
-
-    invoke_signed_unchecked(&token_transfer_checked_ix, accounts, &[])?;
-
-    // Finally, update the journal to reflect the new balance.
-    let new_balance = journal.total_2z_balance.saturating_add(transfer_amount);
-
-    msg!("New journal 2Z balance: {}", new_balance);
-    journal.total_2z_balance = new_balance;
-
-    Ok(())
-}
-
-fn try_terminate_prepaid_connection(accounts: &[AccountInfo]) -> ProgramResult {
-    msg!("Terminate prepaid connection");
-
-    // We expect 4 accounts for this instruction at the following indices:
-    // - 0: Program config.
-    // - 1: Prepaid connection account.
-    // - 2: Termination relayer.
-    // - 3: Termination beneficiary.
-    let mut accounts_iter = accounts.iter().enumerate();
-
-    let program_config =
-        ZeroCopyAccount::<ProgramConfig>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
-
-    // Make sure the program is not paused.
-    program_config.try_require_unpaused()?;
-
-    let termination_relay_lamports = u64::from(
-        program_config
-            .relay_parameters
-            .prepaid_connection_termination_lamports,
-    );
-
-    if termination_relay_lamports == 0 {
-        msg!("Prepaid connection termination relay lamports not configured yet");
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    let prepaid_connection =
-        ZeroCopyAccount::<PrepaidConnection>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
-    msg!("User key: {}", prepaid_connection.user_key);
-
-    if !prepaid_connection.has_paid() {
-        msg!("Prepaid connection has not been paid yet");
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    if program_config.next_dz_epoch <= prepaid_connection.valid_through_dz_epoch {
-        msg!(
-            "Can only terminate prepaid connection after DZ epoch {}",
-            program_config.next_dz_epoch
-        );
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    // Account 2 will receive the relay fee. He does not need to sign to invoke
-    // this instruction. But this account must be writable in order for the
-    // lamports to change.
-    let (_, termination_relayer_info) = try_next_enumerated_account(
-        &mut accounts_iter,
-        NextAccountOptions {
-            must_be_writable: true,
-            ..Default::default()
-        },
-    )?;
-
-    // Account 3 will receive the rest of the prepaid connection's rent
-    // exemption lamports. This account pubkey must agree with the termination
-    // beneficiary in the prepaid connection.
-    let (account_index, termination_beneficiary_info) = try_next_enumerated_account(
-        &mut accounts_iter,
-        NextAccountOptions {
-            must_be_writable: true,
-            ..Default::default()
-        },
-    )?;
-
-    if termination_beneficiary_info.key != &prepaid_connection.termination_beneficiary_key {
-        msg!(
-            "Invalid termination beneficiary (account {}). Must be {}",
-            account_index,
-            prepaid_connection.termination_beneficiary_key
-        );
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    let mut prepaid_connection_info_lamports = prepaid_connection.info.try_borrow_mut_lamports()?;
-
-    // Move some lamports to the termination relayer.
-    //
-    // If the termination relay lamports is less than rent-exemption for a
-    // zero-byte account and the termination relayer is an underfunded account,
-    // the transaction will fail. In order for the termination to be reliable,
-    // be sure to specify a funded account.
-    **termination_relayer_info.lamports.borrow_mut() += termination_relay_lamports;
-
-    // Move the rest to the termination beneficiary.
-    **termination_beneficiary_info.lamports.borrow_mut() +=
-        prepaid_connection_info_lamports.saturating_sub(termination_relay_lamports);
-
-    // By setting the prepaid connection lamports to zero, this account will be closed.
-    **prepaid_connection_info_lamports = 0;
-
-    msg!(
-        "Expired since DZ epoch {} for user {}",
-        prepaid_connection.valid_through_dz_epoch,
-        prepaid_connection.user_key
     );
 
     Ok(())
@@ -3039,8 +2311,6 @@ enum Authority {
     RewardsAccountant,
     /// Sets reward managers for contributor rewards.
     ContributorManager,
-    /// Grants and denies prepaid connection access.
-    DoubleZeroLedgerSentinel,
 }
 
 impl Authority {
@@ -3083,15 +2353,6 @@ impl Authority {
                     return Err(ProgramError::InvalidAccountData);
                 }
             }
-            Authority::DoubleZeroLedgerSentinel => {
-                if authority_info.key != &program_config.dz_ledger_sentinel_key {
-                    msg!(
-                        "Unauthorized DoubleZero Ledger sentinel (account {})",
-                        index
-                    );
-                    return Err(ProgramError::InvalidAccountData);
-                }
-            }
         }
 
         Ok((index, authority_info))
@@ -3100,7 +2361,7 @@ impl Authority {
 
 struct VerifiedProgramAuthority<'a, 'b> {
     program_config: ZeroCopyAccount<'a, 'b, ProgramConfig>,
-    authority: (usize, &'a AccountInfo<'b>),
+    _authority: (usize, &'a AccountInfo<'b>),
 }
 
 impl<'a, 'b> TryNextAccounts<'a, 'b, Authority> for VerifiedProgramAuthority<'a, 'b> {
@@ -3118,7 +2379,7 @@ impl<'a, 'b> TryNextAccounts<'a, 'b, Authority> for VerifiedProgramAuthority<'a,
 
         Ok(Self {
             program_config,
-            authority: (index, authority_info),
+            _authority: (index, authority_info),
         })
     }
 }

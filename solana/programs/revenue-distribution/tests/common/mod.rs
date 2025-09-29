@@ -7,24 +7,20 @@ use doublezero_revenue_distribution::{
     instruction::{
         account::{
             ConfigureContributorRewardsAccounts, ConfigureDistributionDebtAccounts,
-            ConfigureDistributionRewardsAccounts, ConfigureJournalAccounts,
-            ConfigureProgramAccounts, DenyPrepaidConnectionAccessAccounts,
+            ConfigureDistributionRewardsAccounts, ConfigureProgramAccounts,
             DistributeRewardsAccounts, FinalizeDistributionDebtAccounts,
             FinalizeDistributionRewardsAccounts, ForgiveSolanaValidatorDebtAccounts,
-            GrantPrepaidConnectionAccessAccounts, InitializeContributorRewardsAccounts,
-            InitializeDistributionAccounts, InitializeJournalAccounts,
-            InitializePrepaidConnectionAccounts, InitializeProgramAccounts,
+            InitializeContributorRewardsAccounts, InitializeDistributionAccounts,
+            InitializeJournalAccounts, InitializeProgramAccounts,
             InitializeSolanaValidatorDepositAccounts, InitializeSwapDestinationAccounts,
-            LoadPrepaidConnectionAccounts, PaySolanaValidatorDebtAccounts, SetAdminAccounts,
-            SetRewardsManagerAccounts, SweepDistributionTokensAccounts,
-            TerminatePrepaidConnectionAccounts, VerifyDistributionMerkleRootAccounts,
+            PaySolanaValidatorDebtAccounts, SetAdminAccounts, SetRewardsManagerAccounts,
+            SweepDistributionTokensAccounts, VerifyDistributionMerkleRootAccounts,
         },
-        ContributorRewardsConfiguration, DistributionMerkleRootKind, JournalConfiguration,
-        ProgramConfiguration, RevenueDistributionInstructionData,
+        ContributorRewardsConfiguration, DistributionMerkleRootKind, ProgramConfiguration,
+        RevenueDistributionInstructionData,
     },
     state::{
-        self, ContributorRewards, Distribution, Journal, PrepaidConnection, ProgramConfig,
-        SolanaValidatorDeposit,
+        self, ContributorRewards, Distribution, Journal, ProgramConfig, SolanaValidatorDeposit,
     },
     types::{DoubleZeroEpoch, RewardShare, SolanaValidatorDebt},
     DOUBLEZERO_MINT_KEY, ID,
@@ -441,36 +437,6 @@ impl ProgramTestWithOwner {
         Ok(self)
     }
 
-    pub async fn configure_journal<const N: usize>(
-        &mut self,
-        admin_signer: &Keypair,
-        settings: [JournalConfiguration; N],
-    ) -> Result<&mut Self, BanksClientError> {
-        let payer_signer = &self.context.payer;
-
-        let configure_program_ixs = settings
-            .into_iter()
-            .map(|setting| {
-                try_build_instruction(
-                    &ID,
-                    ConfigureJournalAccounts::new(&admin_signer.pubkey()),
-                    &RevenueDistributionInstructionData::ConfigureJournal(setting),
-                )
-                .unwrap()
-            })
-            .collect::<Vec<_>>();
-
-        process_instructions_for_test(
-            &mut self.context.banks_client,
-            &self.context.last_blockhash,
-            &configure_program_ixs,
-            &[payer_signer, admin_signer],
-        )
-        .await?;
-
-        Ok(self)
-    }
-
     pub async fn initialize_distribution(
         &mut self,
         accountant_signer: &Keypair,
@@ -653,167 +619,6 @@ impl ProgramTestWithOwner {
             &mut self.context.banks_client,
             &self.context.last_blockhash,
             &[distribute_rewards_ix],
-            &[payer_signer],
-        )
-        .await?;
-
-        Ok(self)
-    }
-
-    pub async fn initialize_prepaid_connection(
-        &mut self,
-        user_key: &Pubkey,
-        token_transfer_authority_signer: &Keypair,
-        source_2z_token_account_key: &Pubkey,
-        decimals: u8,
-    ) -> Result<&mut Self, BanksClientError> {
-        let payer_signer = &self.context.payer;
-
-        let initialize_prepaid_connection_ix = try_build_instruction(
-            &ID,
-            InitializePrepaidConnectionAccounts::new(
-                source_2z_token_account_key,
-                &DOUBLEZERO_MINT_KEY,
-                &token_transfer_authority_signer.pubkey(),
-                &payer_signer.pubkey(),
-                user_key,
-            ),
-            &RevenueDistributionInstructionData::InitializePrepaidConnection {
-                user_key: *user_key,
-                decimals,
-            },
-        )
-        .unwrap();
-
-        self.context.last_blockhash = process_instructions_for_test(
-            &mut self.context.banks_client,
-            &self.context.last_blockhash,
-            &[initialize_prepaid_connection_ix],
-            &[payer_signer, token_transfer_authority_signer],
-        )
-        .await?;
-
-        Ok(self)
-    }
-
-    pub async fn grant_prepaid_connection_access(
-        &mut self,
-        dz_ledger_sentinel_signer: &Keypair,
-        user_key: &Pubkey,
-    ) -> Result<&mut Self, BanksClientError> {
-        let payer_signer = &self.context.payer;
-
-        let grant_prepaid_connection_access_ix = try_build_instruction(
-            &ID,
-            GrantPrepaidConnectionAccessAccounts::new(
-                &dz_ledger_sentinel_signer.pubkey(),
-                user_key,
-            ),
-            &RevenueDistributionInstructionData::GrantPrepaidConnectionAccess,
-        )
-        .unwrap();
-
-        self.context.last_blockhash = process_instructions_for_test(
-            &mut self.context.banks_client,
-            &self.context.last_blockhash,
-            &[grant_prepaid_connection_access_ix],
-            &[payer_signer, dz_ledger_sentinel_signer],
-        )
-        .await?;
-
-        Ok(self)
-    }
-
-    pub async fn deny_prepaid_connection_access(
-        &mut self,
-        dz_ledger_sentinel_signer: &Keypair,
-        activation_funder_key: &Pubkey,
-        user_key: &Pubkey,
-    ) -> Result<&mut Self, BanksClientError> {
-        let payer_signer = &self.context.payer;
-
-        let deny_prepaid_connection_access_ix = try_build_instruction(
-            &ID,
-            DenyPrepaidConnectionAccessAccounts::new(
-                &dz_ledger_sentinel_signer.pubkey(),
-                activation_funder_key,
-                &payer_signer.pubkey(),
-                user_key,
-            ),
-            &RevenueDistributionInstructionData::DenyPrepaidConnectionAccess,
-        )
-        .unwrap();
-
-        self.context.last_blockhash = process_instructions_for_test(
-            &mut self.context.banks_client,
-            &self.context.last_blockhash,
-            &[deny_prepaid_connection_access_ix],
-            &[payer_signer, dz_ledger_sentinel_signer],
-        )
-        .await?;
-
-        Ok(self)
-    }
-
-    pub async fn load_prepaid_connection(
-        &mut self,
-        user_key: &Pubkey,
-        token_transfer_authority_signer: &Keypair,
-        source_2z_token_account_key: &Pubkey,
-        valid_through_dz_epoch: DoubleZeroEpoch,
-        decimals: u8,
-    ) -> Result<&mut Self, BanksClientError> {
-        let payer_signer = &self.context.payer;
-
-        let initialize_prepaid_connection_ix = try_build_instruction(
-            &ID,
-            LoadPrepaidConnectionAccounts::new(
-                source_2z_token_account_key,
-                &DOUBLEZERO_MINT_KEY,
-                &token_transfer_authority_signer.pubkey(),
-                user_key,
-            ),
-            &RevenueDistributionInstructionData::LoadPrepaidConnection {
-                valid_through_dz_epoch,
-                decimals,
-            },
-        )
-        .unwrap();
-
-        self.context.last_blockhash = process_instructions_for_test(
-            &mut self.context.banks_client,
-            &self.context.last_blockhash,
-            &[initialize_prepaid_connection_ix],
-            &[payer_signer, token_transfer_authority_signer],
-        )
-        .await?;
-
-        Ok(self)
-    }
-
-    pub async fn terminate_prepaid_connection(
-        &mut self,
-        user_key: &Pubkey,
-        termination_beneficiary: &Pubkey,
-        termination_relayer: Option<&Pubkey>,
-    ) -> Result<&mut Self, BanksClientError> {
-        let payer_signer = &self.context.payer;
-
-        let terminate_prepaid_connection_ix = try_build_instruction(
-            &ID,
-            TerminatePrepaidConnectionAccounts::new(
-                user_key,
-                termination_beneficiary,
-                termination_relayer,
-            ),
-            &RevenueDistributionInstructionData::TerminatePrepaidConnection,
-        )
-        .unwrap();
-
-        self.context.last_blockhash = process_instructions_for_test(
-            &mut self.context.banks_client,
-            &self.context.last_blockhash,
-            &[terminate_prepaid_connection_ix],
             &[payer_signer],
         )
         .await?;
@@ -1227,26 +1032,6 @@ impl ProgramTestWithOwner {
             distribution_remaining_data.to_vec(),
             distribution_account_info.lamports,
             token_pda,
-        )
-    }
-
-    pub async fn fetch_prepaid_connection(&self, user_key: &Pubkey) -> (Pubkey, PrepaidConnection) {
-        let prepaid_connection_key = PrepaidConnection::find_address(user_key).0;
-
-        let prepaid_connection_account_data = self
-            .context
-            .banks_client
-            .get_account(prepaid_connection_key)
-            .await
-            .unwrap()
-            .unwrap()
-            .data;
-
-        (
-            prepaid_connection_key,
-            *checked_from_bytes_with_discriminator(&prepaid_connection_account_data)
-                .unwrap()
-                .0,
         )
     }
 

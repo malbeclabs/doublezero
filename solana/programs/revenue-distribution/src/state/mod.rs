@@ -1,14 +1,12 @@
 mod contributor_rewards;
 mod distribution;
 mod journal;
-mod prepaid_connection;
 mod program_config;
 mod solana_validator_deposit;
 
 pub use contributor_rewards::*;
 pub use distribution::*;
 pub use journal::*;
-pub use prepaid_connection::*;
 pub use program_config::*;
 pub use solana_validator_deposit::*;
 

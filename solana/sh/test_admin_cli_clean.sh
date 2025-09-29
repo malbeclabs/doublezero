@@ -119,9 +119,8 @@ echo
 
 echo "doublezero-revenue-distribution-admin configure -u l -v --pause" \
      "--debt-accountant $DUMMY_KEY --rewards-accountant $DUMMY_KEY" \
-     "--contributor-manager $DUMMY_KEY --sentinel $DUMMY_KEY" \
+     "--contributor-manager $DUMMY_KEY" \
      "--sol-2z-swap-program $DUMMY_KEY --calculation-grace-period-seconds 3600" \
-     "--prepaid-connection-termination-relay-lamports 100000" \
      "--solana-validator-base-block-rewards-fee-pct 1.23" \
      "--solana-validator-priority-block-rewards-fee-pct 45.67" \
      "--solana-validator-inflation-rewards-fee-pct 0.89 " \
@@ -136,10 +135,8 @@ $REVENUE_DISTRIBUTION_CLI_BIN configure \
     --debt-accountant $DUMMY_KEY \
     --rewards-accountant $DUMMY_KEY \
     --contributor-manager $(solana address) \
-    --sentinel $DUMMY_KEY \
     --sol-2z-swap-program $DUMMY_KEY \
     --calculation-grace-period-seconds 3600 \
-    --prepaid-connection-termination-relay-lamports 100000 \
     --solana-validator-base-block-rewards-fee-pct 1.23 \
     --solana-validator-priority-block-rewards-fee-pct 45.67 \
     --solana-validator-inflation-rewards-fee-pct 0.89 \

@@ -126,10 +126,6 @@ pub struct ConfigureRevenueDistributionOptions {
     #[arg(long, value_name = "PUBKEY")]
     pub contributor_manager: Option<Pubkey>,
 
-    /// Set the DoubleZero Ledger sentinel key.
-    #[arg(long, value_name = "PUBKEY")]
-    pub sentinel: Option<Pubkey>,
-
     /// Set the SOL/2Z Swap program ID.
     #[arg(long, value_name = "PUBKEY")]
     pub sol_2z_swap_program: Option<Pubkey>,
@@ -158,10 +154,6 @@ pub struct ConfigureRevenueDistributionOptions {
     #[arg(long, value_name = "SECONDS")]
     pub calculation_grace_period_seconds: Option<u32>,
 
-    /// Amount to pay relayer to terminate a prepaid connection.
-    #[arg(long, value_name = "LAMPORTS")]
-    pub prepaid_connection_termination_relay_lamports: Option<u32>,
-
     #[arg(long, value_name = "LAMPORTS")]
     pub distribute_rewards_relay_lamports: Option<u32>,
 
@@ -181,14 +173,6 @@ pub struct ConfigureRevenueDistributionOptions {
     /// Initial community burn rate percentage (max: 100%, precision: 7 decimals).
     #[arg(long, value_name = "PERCENTAGE")]
     pub initial_community_burn_rate: Option<String>,
-
-    /// Activation cost for a prepaid connection.
-    #[arg(long, value_name = "AMOUNT")]
-    pub activation_cost: Option<u32>,
-
-    /// Cost per DoubleZero epoch for a prepaid connection.
-    #[arg(long, value_name = "AMOUNT")]
-    pub cost_per_epoch: Option<u32>,
 }
 
 //
@@ -375,7 +359,6 @@ pub async fn execute_configure_program(
         debt_accountant,
         rewards_accountant,
         contributor_manager,
-        sentinel,
         sol_2z_swap_program,
         solana_validator_base_block_rewards_fee_pct,
         solana_validator_priority_block_rewards_fee_pct,
@@ -383,15 +366,12 @@ pub async fn execute_configure_program(
         solana_validator_jito_tips_fee_pct,
         solana_validator_fixed_sol_fee_amount,
         calculation_grace_period_seconds,
-        prepaid_connection_termination_relay_lamports,
         distribute_rewards_relay_lamports,
         minimum_epochs_to_finalize_rewards,
         community_burn_rate_limit,
         epochs_to_increasing_community_burn_rate,
         epochs_to_community_burn_rate_limit,
         initial_community_burn_rate,
-        activation_cost: _,
-        cost_per_epoch: _,
     } = *configure_options;
 
     let wallet = Wallet::try_from(solana_payer_options)?;
@@ -450,15 +430,6 @@ pub async fn execute_configure_program(
         compute_unit_limit += 3_000;
     }
 
-    if let Some(sentinel_key) = sentinel {
-        let configure_program_ix = try_build_configure_program_instruction(
-            &wallet_key,
-            ProgramConfiguration::DoubleZeroLedgerSentinel(sentinel_key),
-        )?;
-        instructions.push(configure_program_ix);
-        compute_unit_limit += 3_000;
-    }
-
     if let Some(sol_2z_swap_program_id) = sol_2z_swap_program {
         let configure_program_ix = try_build_configure_program_instruction(
             &wallet_key,
@@ -475,19 +446,6 @@ pub async fn execute_configure_program(
         let configure_program_ix = try_build_configure_program_instruction(
             &wallet_key,
             ProgramConfiguration::CalculationGracePeriodSeconds(calculation_grace_period_seconds),
-        )?;
-        instructions.push(configure_program_ix);
-        compute_unit_limit += 1_500;
-    }
-
-    if let Some(prepaid_connection_termination_relay_lamports) =
-        prepaid_connection_termination_relay_lamports
-    {
-        let configure_program_ix = try_build_configure_program_instruction(
-            &wallet_key,
-            ProgramConfiguration::PrepaidConnectionTerminationRelayLamports(
-                prepaid_connection_termination_relay_lamports,
-            ),
         )?;
         instructions.push(configure_program_ix);
         compute_unit_limit += 1_500;

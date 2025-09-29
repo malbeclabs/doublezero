@@ -9,7 +9,7 @@ use doublezero_program_tools::{Discriminator, DISCRIMINATOR_LEN};
 use solana_pubkey::Pubkey;
 use svm_hash::{merkle::MerkleProof, sha2::Hash};
 
-use crate::types::{DoubleZeroEpoch, EpochDuration, RewardShare, SolanaValidatorDebt};
+use crate::types::{EpochDuration, RewardShare, SolanaValidatorDebt};
 
 #[derive(Debug, BorshDeserialize, BorshSerialize, Clone, PartialEq, Eq)]
 pub enum ProgramConfiguration {
@@ -17,7 +17,7 @@ pub enum ProgramConfiguration {
     DebtAccountant(Pubkey),
     RewardsAccountant(Pubkey),
     ContributorManager(Pubkey),
-    DoubleZeroLedgerSentinel(Pubkey),
+    PlaceholderKey(Pubkey),
     Sol2zSwapProgram(Pubkey),
     SolanaValidatorFeeParameters {
         base_block_rewards_pct: u16,
@@ -34,19 +34,9 @@ pub enum ProgramConfiguration {
         dz_epochs_to_limit: EpochDuration,
         initial_rate: Option<u32>,
     },
-    PrepaidConnectionTerminationRelayLamports(u32),
+    PlaceholderRelayLamports(u32),
     DistributeRewardsRelayLamports(u32),
     MinimumEpochDurationToFinalizeRewards(u16),
-}
-
-#[derive(Debug, BorshDeserialize, BorshSerialize, Clone, PartialEq, Eq)]
-pub enum JournalConfiguration {
-    ActivationCost(u32),
-    CostPerDoubleZeroEpoch(u32),
-    EntryBoundaries {
-        minimum_prepaid_dz_epochs: u16,
-        maximum_entries: u16,
-    },
 }
 
 #[derive(Debug, BorshDeserialize, BorshSerialize, Clone, PartialEq, Eq)]
@@ -73,7 +63,6 @@ pub enum RevenueDistributionInstructionData {
     SetAdmin(Pubkey),
     ConfigureProgram(ProgramConfiguration),
     InitializeJournal,
-    ConfigureJournal(JournalConfiguration),
     InitializeDistribution,
     ConfigureDistributionDebt {
         total_validators: u32,
@@ -91,17 +80,6 @@ pub enum RevenueDistributionInstructionData {
         economic_burn_rate: u32,
         proof: MerkleProof,
     },
-    InitializePrepaidConnection {
-        user_key: Pubkey,
-        decimals: u8,
-    },
-    GrantPrepaidConnectionAccess,
-    DenyPrepaidConnectionAccess,
-    LoadPrepaidConnection {
-        valid_through_dz_epoch: DoubleZeroEpoch,
-        decimals: u8,
-    },
-    TerminatePrepaidConnection,
     InitializeContributorRewards(Pubkey),
     SetRewardsManager(Pubkey),
     ConfigureContributorRewards(ContributorRewardsConfiguration),
@@ -134,8 +112,6 @@ impl RevenueDistributionInstructionData {
         Discriminator::new_sha2(b"dz::ix::configure_program");
     pub const INITIALIZE_JOURNAL: Discriminator<DISCRIMINATOR_LEN> =
         Discriminator::new_sha2(b"dz::ix::initialize_journal");
-    pub const CONFIGURE_JOURNAL: Discriminator<DISCRIMINATOR_LEN> =
-        Discriminator::new_sha2(b"dz::ix::configure_journal");
     pub const INITIALIZE_DISTRIBUTION: Discriminator<DISCRIMINATOR_LEN> =
         Discriminator::new_sha2(b"dz::ix::initialize_distribution");
     pub const CONFIGURE_DISTRIBUTION_DEBT: Discriminator<DISCRIMINATOR_LEN> =
@@ -148,16 +124,6 @@ impl RevenueDistributionInstructionData {
         Discriminator::new_sha2(b"dz::ix::finalize_distribution_rewards");
     pub const DISTRIBUTE_REWARDS: Discriminator<DISCRIMINATOR_LEN> =
         Discriminator::new_sha2(b"dz::ix::distribute_rewards");
-    pub const INITIALIZE_PREPAID_CONNECTION: Discriminator<DISCRIMINATOR_LEN> =
-        Discriminator::new_sha2(b"dz::ix::initialize_prepaid_connection");
-    pub const GRANT_PREPAID_CONNECTION_ACCESS: Discriminator<DISCRIMINATOR_LEN> =
-        Discriminator::new_sha2(b"dz::ix::grant_prepaid_connection_access");
-    pub const DENY_PREPAID_CONNECTION_ACCESS: Discriminator<DISCRIMINATOR_LEN> =
-        Discriminator::new_sha2(b"dz::ix::deny_prepaid_connection_access");
-    pub const LOAD_PREPAID_CONNECTION: Discriminator<DISCRIMINATOR_LEN> =
-        Discriminator::new_sha2(b"dz::ix::load_prepaid_connection");
-    pub const TERMINATE_PREPAID_CONNECTION: Discriminator<DISCRIMINATOR_LEN> =
-        Discriminator::new_sha2(b"dz::ix::terminate_prepaid_connection");
     pub const INITIALIZE_CONTRIBUTOR_REWARDS: Discriminator<DISCRIMINATOR_LEN> =
         Discriminator::new_sha2(b"dz::ix::initialize_contributor_rewards");
     pub const SET_REWARDS_MANAGER: Discriminator<DISCRIMINATOR_LEN> =
@@ -194,9 +160,6 @@ impl BorshDeserialize for RevenueDistributionInstructionData {
             Self::CONFIGURE_PROGRAM => {
                 BorshDeserialize::deserialize_reader(reader).map(Self::ConfigureProgram)
             }
-            Self::CONFIGURE_JOURNAL => {
-                BorshDeserialize::deserialize_reader(reader).map(Self::ConfigureJournal)
-            }
             Self::INITIALIZE_JOURNAL => Ok(Self::InitializeJournal),
             Self::INITIALIZE_DISTRIBUTION => Ok(Self::InitializeDistribution),
             Self::CONFIGURE_DISTRIBUTION_DEBT => {
@@ -232,24 +195,6 @@ impl BorshDeserialize for RevenueDistributionInstructionData {
                     proof,
                 })
             }
-            Self::INITIALIZE_PREPAID_CONNECTION => {
-                let user_key = BorshDeserialize::deserialize_reader(reader)?;
-                let decimals = BorshDeserialize::deserialize_reader(reader)?;
-
-                Ok(Self::InitializePrepaidConnection { user_key, decimals })
-            }
-            Self::GRANT_PREPAID_CONNECTION_ACCESS => Ok(Self::GrantPrepaidConnectionAccess),
-            Self::DENY_PREPAID_CONNECTION_ACCESS => Ok(Self::DenyPrepaidConnectionAccess),
-            Self::LOAD_PREPAID_CONNECTION => {
-                let valid_through_dz_epoch = BorshDeserialize::deserialize_reader(reader)?;
-                let decimals = BorshDeserialize::deserialize_reader(reader)?;
-
-                Ok(Self::LoadPrepaidConnection {
-                    valid_through_dz_epoch,
-                    decimals,
-                })
-            }
-            Self::TERMINATE_PREPAID_CONNECTION => Ok(Self::TerminatePrepaidConnection),
             Self::INITIALIZE_CONTRIBUTOR_REWARDS => {
                 BorshDeserialize::deserialize_reader(reader).map(Self::InitializeContributorRewards)
             }
@@ -308,10 +253,6 @@ impl BorshSerialize for RevenueDistributionInstructionData {
                 Self::CONFIGURE_PROGRAM.serialize(writer)?;
                 setting.serialize(writer)
             }
-            Self::ConfigureJournal(setting) => {
-                Self::CONFIGURE_JOURNAL.serialize(writer)?;
-                setting.serialize(writer)
-            }
             Self::InitializeJournal => Self::INITIALIZE_JOURNAL.serialize(writer),
             Self::InitializeDistribution => Self::INITIALIZE_DISTRIBUTION.serialize(writer),
             Self::ConfigureDistributionDebt {
@@ -345,28 +286,6 @@ impl BorshSerialize for RevenueDistributionInstructionData {
                 unit_share.serialize(writer)?;
                 economic_burn_rate.serialize(writer)?;
                 proof.serialize(writer)
-            }
-            Self::InitializePrepaidConnection { user_key, decimals } => {
-                Self::INITIALIZE_PREPAID_CONNECTION.serialize(writer)?;
-                user_key.serialize(writer)?;
-                decimals.serialize(writer)
-            }
-            Self::GrantPrepaidConnectionAccess => {
-                Self::GRANT_PREPAID_CONNECTION_ACCESS.serialize(writer)
-            }
-            Self::DenyPrepaidConnectionAccess => {
-                Self::DENY_PREPAID_CONNECTION_ACCESS.serialize(writer)
-            }
-            Self::LoadPrepaidConnection {
-                valid_through_dz_epoch,
-                decimals,
-            } => {
-                Self::LOAD_PREPAID_CONNECTION.serialize(writer)?;
-                valid_through_dz_epoch.serialize(writer)?;
-                decimals.serialize(writer)
-            }
-            Self::TerminatePrepaidConnection => {
-                Self::TERMINATE_PREPAID_CONNECTION.serialize(writer)
             }
             Self::InitializeContributorRewards(service_key) => {
                 Self::INITIALIZE_CONTRIBUTOR_REWARDS.serialize(writer)?;

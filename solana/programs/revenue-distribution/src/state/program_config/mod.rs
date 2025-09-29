@@ -9,10 +9,8 @@ pub use relay::*;
 //
 
 use bytemuck::{Pod, Zeroable};
-use doublezero_program_tools::{
-    types::{Flags, StorageGap},
-    Discriminator, PrecomputedDiscriminator,
-};
+use doublezero_program_tools::{types::Flags, Discriminator, PrecomputedDiscriminator};
+use solana_account_info::MAX_PERMITTED_DATA_INCREASE;
 use solana_pubkey::Pubkey;
 
 use crate::types::{DoubleZeroEpoch, EpochDuration};
@@ -56,8 +54,7 @@ pub struct ProgramConfig {
     /// Authority to establish new contributor rewards accounts.
     pub contributor_manager_key: Pubkey,
 
-    /// Authority to allow access to the DoubleZero Ledger network.
-    pub dz_ledger_sentinel_key: Pubkey,
+    pub _placeholder_key: Pubkey,
 
     /// The program allowed to CPI to this program to withdraw SOL to swap for
     /// 2Z. The Revenue Distribution program will be verifying that the SOL/2Z
@@ -67,9 +64,6 @@ pub struct ProgramConfig {
     pub distribution_parameters: DistributionParameters,
 
     pub relay_parameters: RelayParameters,
-
-    /// 16 * 32 bytes of a storage gap in case more fields need to be added.
-    _storage_gap: StorageGap<16>,
 }
 
 impl PrecomputedDiscriminator for ProgramConfig {
@@ -169,18 +163,6 @@ impl ProgramConfig {
         }
     }
 
-    pub fn checked_prepaid_connection_termination_relay_lamports(&self) -> Option<u32> {
-        let lamports = self
-            .relay_parameters
-            .prepaid_connection_termination_lamports;
-
-        if lamports == 0 {
-            None
-        } else {
-            Some(lamports)
-        }
-    }
-
     pub fn checked_minimum_epoch_duration_to_finalize_rewards(&self) -> Option<EpochDuration> {
         let duration = self
             .distribution_parameters
@@ -209,6 +191,11 @@ impl ProgramConfig {
 //
 
 const _: () = assert!(
-    size_of::<ProgramConfig>() == 1_096,
+    size_of::<ProgramConfig>() == 584,
     "`ProgramConfig` size changed"
+);
+
+const _: () = assert!(
+    doublezero_program_tools::zero_copy::data_end::<ProgramConfig>() <= MAX_PERMITTED_DATA_INCREASE,
+    "`ProgramConfig` total data length exceeds 10kb"
 );

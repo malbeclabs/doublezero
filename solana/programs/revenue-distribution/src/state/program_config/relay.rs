@@ -6,7 +6,7 @@ use doublezero_program_tools::types::StorageGap;
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Pod, Zeroable)]
 #[repr(C, align(8))]
 pub struct RelayParameters {
-    pub prepaid_connection_termination_lamports: u32,
+    pub _placeholder_lamports: u32,
     pub distribute_rewards_lamports: u32,
 
     _storage_gap: StorageGap<1>,

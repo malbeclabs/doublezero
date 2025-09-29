@@ -361,6 +361,58 @@ func (l Link) MarshalJSON() ([]byte, error) {
 	return json.Marshal(jsonLink)
 }
 
+type ContributorStatus uint8
+
+const (
+	ContributorStatusPending ContributorStatus = iota
+	ContributorStatusActivated
+	ContributorStatusSuspended
+	ContributorStatusDeleted
+)
+
+func (s ContributorStatus) String() string {
+	return [...]string{
+		"pending",
+		"activated",
+		"suspended",
+		"deleted",
+	}[s]
+}
+
+func (s ContributorStatus) MarshalJSON() ([]byte, error) {
+	return json.Marshal(s.String())
+}
+
+type Contributor struct {
+	AccountType AccountType
+	Owner       [32]uint8
+	Index       Uint128
+	BumpSeed    uint8
+	Status      ContributorStatus
+	Code        string
+	Name        string
+	PubKey      [32]byte
+}
+
+func (c Contributor) MarshalJSON() ([]byte, error) {
+	type ContributorAlias Contributor
+
+	jsonContributor := &struct {
+		ContributorAlias
+		Owner  string `json:"Owner"`
+		PubKey string `json:"PubKey"`
+		Status string `json:"Status"`
+	}{
+		ContributorAlias: ContributorAlias(c),
+	}
+
+	jsonContributor.Owner = base58.Encode(c.Owner[:])
+	jsonContributor.PubKey = base58.Encode(c.PubKey[:])
+	jsonContributor.Status = c.Status.String()
+
+	return json.Marshal(jsonContributor)
+}
+
 type UserUserType uint8
 
 const (

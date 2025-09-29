@@ -16,6 +16,7 @@ All notable changes to this project will be documented in this file.
     - Reduce logging noise in 2z oracle watcher
 - Device controller
     - When a device is missing required loopback interfaces, provide detailed errors to agent instead of "<pubkey> not found". Also, log these conditions as warnings instead of errors, and don't emit "unknown pubkey requested" error metrics for these conditions
+    - Add device info as labels to `controller_grpc_getconfig_requests_total` metric
 
 ## [v0.6.6](https://github.com/malbeclabs/doublezero/compare/client/v0.6.5...client/v0.6.6) – 2025-09-26
 

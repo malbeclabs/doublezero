@@ -43,6 +43,17 @@ func DeserializeExchange(reader *ByteReader, exchange *Exchange) {
 	exchange.PubKey = reader.ReadPubkey()
 }
 
+func DeserializeContributor(reader *ByteReader, contributor *Contributor) {
+	contributor.AccountType = AccountType(reader.ReadU8())
+	contributor.Owner = reader.ReadPubkey()
+	contributor.Index = reader.ReadU128()
+	contributor.BumpSeed = reader.ReadU8()
+	contributor.Status = ContributorStatus(reader.ReadU8())
+	contributor.Code = reader.ReadString()
+	contributor.Name = reader.ReadString()
+	contributor.PubKey = reader.ReadPubkey()
+}
+
 func DeserializeInterface(reader *ByteReader, iface *Interface) {
 	iface.Version = reader.ReadU8()
 

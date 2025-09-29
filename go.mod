@@ -24,7 +24,7 @@ require (
 	github.com/minio/minio-go v6.0.14+incompatible
 	github.com/mr-tron/base58 v1.2.0
 	github.com/near/borsh-go v0.3.1
-	github.com/olekukonko/tablewriter v0.0.5
+	github.com/olekukonko/tablewriter v1.1.0
 	github.com/osrg/gobgp v2.0.0+incompatible
 	github.com/prometheus-community/pro-bing v0.7.0
 	github.com/prometheus/client_golang v1.23.2
@@ -104,6 +104,8 @@ require (
 	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/mostynb/zstdpool-freelist v0.0.0-20201229113212-927304c0c3b1 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
+	github.com/olekukonko/errors v1.1.0 // indirect
+	github.com/olekukonko/ll v0.0.9 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/paulmach/orb v0.11.1 // indirect

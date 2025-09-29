@@ -131,6 +131,36 @@ impl PreparedData {
             city_weights,
         };
 
+        // Record overall Shapley inputs
+        metrics::gauge!(
+            "doublezero_contributor_rewards_shapley_inputs_total",
+            "kind" => "devices"
+        )
+        .set(shapley_inputs.devices.len() as f64);
+        metrics::gauge!(
+            "doublezero_contributor_rewards_shapley_inputs_total",
+            "kind" => "private_links"
+        )
+        .set(shapley_inputs.private_links.len() as f64);
+        metrics::gauge!(
+            "doublezero_contributor_rewards_shapley_inputs_total",
+            "kind" => "public_links"
+        )
+        .set(shapley_inputs.public_links.len() as f64);
+        metrics::gauge!(
+            "doublezero_contributor_rewards_shapley_inputs_total",
+            "kind" => "demands"
+        )
+        .set(shapley_inputs.demands.len() as f64);
+
+        for (city, weight) in shapley_inputs.city_weights.iter() {
+            metrics::gauge!(
+                "doublezero_contributor_rewards_shapley_city_weight",
+                "city" => city.clone()
+            )
+            .set(*weight);
+        }
+
         Ok(Self {
             epoch: fetch_epoch,
             device_telemetry,

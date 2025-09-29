@@ -3,7 +3,7 @@ use crate::{
         input::RewardInput,
         keypair_loader::load_keypair,
         proof::{ShapleyOutputStorage, generate_proof_from_shapley},
-        recorder::{compute_record_address, write_to_ledger},
+        recorder::{compute_record_address, write_serialized_to_ledger},
     },
     ingestor::fetcher::Fetcher,
     processor::{
@@ -14,7 +14,6 @@ use crate::{
 };
 use anyhow::{Result, anyhow, bail};
 use backon::{ExponentialBuilder, Retryable};
-use borsh::BorshSerialize;
 use doublezero_program_tools::zero_copy;
 use doublezero_record::{instruction as record_ix, state::RecordData};
 use doublezero_revenue_distribution::state::ProgramConfig;
@@ -173,21 +172,20 @@ impl fmt::Display for WriteSummary {
     }
 }
 
-/// Simple helper to write and track results
-pub async fn write_and_track<T: BorshSerialize>(
+pub async fn write_serialized_and_track(
     rpc_client: &RpcClient,
     payer_signer: &Keypair,
     seeds: &[&[u8]],
-    data: &T,
+    serialized: &[u8],
     description: &str,
     summary: &mut WriteSummary,
     rps_limit: u32,
 ) {
-    match write_to_ledger(
+    match write_serialized_to_ledger(
         rpc_client,
         payer_signer,
         seeds,
-        data,
+        serialized,
         description,
         rps_limit,
     )
@@ -583,7 +581,8 @@ pub async fn write_shapley_output(
     rpc_client: &RpcClient,
     payer_signer: &Keypair,
     epoch: u64,
-    shapley_storage: &ShapleyOutputStorage,
+    _shapley_storage: &ShapleyOutputStorage,
+    shapley_storage_bytes: &[u8],
     settings: &Settings,
 ) -> Result<()> {
     let prefix = get_contributor_rewards_prefix(settings)?;
@@ -591,11 +590,11 @@ pub async fn write_shapley_output(
     let seeds: &[&[u8]] = &[&prefix, &epoch_bytes, b"shapley_output"];
 
     let mut summary = WriteSummary::default();
-    write_and_track(
+    write_serialized_and_track(
         rpc_client,
         payer_signer,
         seeds,
-        shapley_storage,
+        shapley_storage_bytes,
         "shapley output storage",
         &mut summary,
         settings.rpc.rps_limit,

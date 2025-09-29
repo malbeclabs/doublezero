@@ -12,7 +12,7 @@ use crate::{
     ingestor::fetcher::Fetcher,
     settings::Settings,
 };
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use network_shapley::{shapley::ShapleyInput, types::Demand};
 use rayon::prelude::*;
 use solana_sdk::pubkey::Pubkey;
@@ -48,6 +48,7 @@ impl Orchestrator {
         // Prepare all data
         let prep_data = PreparedData::new(&fetcher, epoch, true).await?;
         let fetch_epoch = prep_data.epoch;
+        let fetch_epoch_bytes = fetch_epoch.to_le_bytes();
         let device_telemetry = prep_data.device_telemetry;
         let internet_telemetry = prep_data.internet_telemetry;
 
@@ -58,13 +59,19 @@ impl Orchestrator {
             bail!("Shapley inputs required for reward calculation but were not prepared")
         };
 
+        let device_telemetry_bytes = borsh::to_vec(&device_telemetry)?;
+        let internet_telemetry_bytes = borsh::to_vec(&internet_telemetry)?;
+
         let input_config = RewardInput::new(
             fetch_epoch,
             self.settings.shapley.clone(),
             &shapley_inputs,
-            &borsh::to_vec(&device_telemetry)?,
-            &borsh::to_vec(&internet_telemetry)?,
+            &device_telemetry_bytes,
+            &internet_telemetry_bytes,
         );
+
+        let device_payload_bytes = device_telemetry_bytes.len();
+        let internet_payload_bytes = internet_telemetry_bytes.len();
 
         // Group demands by start city
         let mut demands_by_city: BTreeMap<String, Vec<Demand>> = BTreeMap::new();
@@ -81,9 +88,10 @@ impl Orchestrator {
         let per_city_shapley_outputs: BTreeMap<String, Vec<(String, f64)>> = demand_groups
             .par_iter()
             .map(|(city, demands)| {
+                let city_name = city.clone();
                 let city_start = Instant::now();
                 info!(
-                    "City: {city}, Demand: \n{}",
+                    "City: {city_name}, Demand: \n{}",
                     print_demands(demands, 1_000_000)
                 );
 
@@ -99,20 +107,37 @@ impl Orchestrator {
                 };
 
                 // Shapley output
-                let output = input.compute().expect("Failed to compute Shapley values");
+                let output = input
+                    .compute()
+                    .map_err(|err| {
+                        metrics::counter!(
+                            "doublezero_contributor_rewards_shapley_computations_failed",
+                            "city" => city_name.clone()
+                        )
+                        .increment(1);
+                        warn!(error = ?err, city = %city_name, "Failed to compute Shapley values");
+                        err
+                    })
+                    .with_context(|| format!("failed to compute Shapley values for {city_name}"))?;
 
                 // Track Shapley computation metrics
-                metrics::histogram!("doublezero_contributor_rewards_shapley_computation_duration", "city" => city.to_string())
-                    .record(city_start.elapsed().as_secs_f64());
-                metrics::counter!("doublezero_contributor_rewards_shapley_computations", "city" => city.to_string())
-                    .increment(1);
+                metrics::histogram!(
+                    "doublezero_contributor_rewards_shapley_computation_duration",
+                    "city" => city_name.clone()
+                )
+                .record(city_start.elapsed().as_secs_f64());
+                metrics::counter!(
+                    "doublezero_contributor_rewards_shapley_computations",
+                    "city" => city_name.clone()
+                )
+                .increment(1);
 
                 // Print per-city table
                 let table = TableBuilder::from(output.clone())
                     .build()
                     .with(Style::psql().remove_horizontals())
                     .to_string();
-                info!("Shapley Output for {city}:\n{}", table);
+                info!("Shapley Output for {city_name}:\n{}", table);
 
                 // Store raw values for aggregation
                 let city_values: Vec<(String, f64)> = output
@@ -120,8 +145,10 @@ impl Orchestrator {
                     .map(|(operator, shapley_value)| (operator, shapley_value.value))
                     .collect();
 
-                (city.to_string(), city_values)
+                Ok((city_name, city_values))
             })
+            .collect::<Result<Vec<_>>>()?
+            .into_iter()
             .collect();
 
         let elapsed = start_time.elapsed();
@@ -130,11 +157,13 @@ impl Orchestrator {
         metrics::histogram!("doublezero_contributor_rewards_shapley_total_duration")
             .record(elapsed.as_secs_f64());
 
+        let processed_cities = per_city_shapley_outputs.len();
         info!(
             "Shapley computation completed in {:.2?} for {} cities",
-            elapsed,
-            per_city_shapley_outputs.len()
+            elapsed, processed_cities
         );
+        metrics::gauge!("doublezero_contributor_rewards_shapley_cities_processed")
+            .set(processed_cities as f64);
 
         // Aggregate consolidated Shapley output
         if !per_city_shapley_outputs.is_empty() {
@@ -159,10 +188,48 @@ impl Orchestrator {
                 .to_string();
             info!("Shapley Output:\n{}", table);
 
+            let total_value: f64 = shapley_output.values().map(|val| val.value).sum();
+            metrics::gauge!("doublezero_contributor_rewards_shapley_total_value").set(total_value);
+            metrics::gauge!("doublezero_contributor_rewards_shapley_operator_count")
+                .set(shapley_output.len() as f64);
+
             // Construct merkle tree
             let merkle_tree = ContributorRewardsMerkleTree::new(fetch_epoch, &shapley_output)?;
             let merkle_root = merkle_tree.compute_root()?;
             info!("merkle_root: {:#?}", merkle_root);
+
+            let shapley_storage = ShapleyOutputStorage {
+                epoch: fetch_epoch,
+                rewards: merkle_tree.rewards().to_vec(),
+                total_unit_shares: merkle_tree.rewards().iter().map(|r| r.unit_share).sum(),
+            };
+
+            // Record payload sizes to monitor ledger write growth
+            let reward_input_bytes = borsh::to_vec(&input_config)?;
+            let shapley_storage_bytes = borsh::to_vec(&shapley_storage)?;
+            let reward_input_len = reward_input_bytes.len();
+            let shapley_storage_len = shapley_storage_bytes.len();
+
+            metrics::gauge!(
+                "doublezero_contributor_rewards_ledger_write_bytes",
+                "type" => "device"
+            )
+            .set(device_payload_bytes as f64);
+            metrics::gauge!(
+                "doublezero_contributor_rewards_ledger_write_bytes",
+                "type" => "internet"
+            )
+            .set(internet_payload_bytes as f64);
+            metrics::gauge!(
+                "doublezero_contributor_rewards_ledger_write_bytes",
+                "type" => "reward"
+            )
+            .set(reward_input_len as f64);
+            metrics::gauge!(
+                "doublezero_contributor_rewards_ledger_write_bytes",
+                "type" => "shapley"
+            )
+            .set(shapley_storage_len as f64);
 
             // Perform batch writes to ledger
             if !dry_run {
@@ -180,11 +247,11 @@ impl Orchestrator {
 
                 // Write device telemetry
                 let device_prefix = self.settings.prefixes.device_telemetry.as_bytes();
-                ledger_operations::write_and_track(
+                ledger_operations::write_serialized_and_track(
                     &fetcher.dz_rpc_client,
                     &payer_signer,
-                    &[device_prefix, &fetch_epoch.to_le_bytes()],
-                    &device_telemetry,
+                    &[device_prefix, &fetch_epoch_bytes],
+                    &device_telemetry_bytes,
                     "device telemetry aggregates",
                     &mut summary,
                     self.settings.rpc.rps_limit,
@@ -193,11 +260,11 @@ impl Orchestrator {
 
                 // Write internet telemetry
                 let internet_prefix = self.settings.prefixes.internet_telemetry.as_bytes();
-                ledger_operations::write_and_track(
+                ledger_operations::write_serialized_and_track(
                     &fetcher.dz_rpc_client,
                     &payer_signer,
-                    &[internet_prefix, &fetch_epoch.to_le_bytes()],
-                    &internet_telemetry,
+                    &[internet_prefix, &fetch_epoch_bytes],
+                    &internet_telemetry_bytes,
                     "internet telemetry aggregates",
                     &mut summary,
                     self.settings.rpc.rps_limit,
@@ -206,11 +273,11 @@ impl Orchestrator {
 
                 // Write reward input
                 let reward_prefix = self.settings.prefixes.reward_input.as_bytes();
-                ledger_operations::write_and_track(
+                ledger_operations::write_serialized_and_track(
                     &fetcher.dz_rpc_client,
                     &payer_signer,
-                    &[reward_prefix, &fetch_epoch.to_le_bytes()],
-                    &input_config,
+                    &[reward_prefix, &fetch_epoch_bytes],
+                    &reward_input_bytes,
                     "reward calculation input",
                     &mut summary,
                     self.settings.rpc.rps_limit,
@@ -218,17 +285,12 @@ impl Orchestrator {
                 .await;
 
                 // Write shapley output storage instead of individual proofs
-                let shapley_storage = ShapleyOutputStorage {
-                    epoch: fetch_epoch,
-                    rewards: merkle_tree.rewards().to_vec(),
-                    total_unit_shares: merkle_tree.rewards().iter().map(|r| r.unit_share).sum(),
-                };
-
                 ledger_operations::write_shapley_output(
                     &fetcher.dz_rpc_client,
                     &payer_signer,
                     fetch_epoch,
                     &shapley_storage,
+                    &shapley_storage_bytes,
                     &self.settings,
                 )
                 .await?;
@@ -291,26 +353,12 @@ impl Orchestrator {
                     "DRY-RUN: Would perform batch writes for epoch {}",
                     fetch_epoch
                 );
-                info!(
-                    "  - Device telemetry: {} bytes",
-                    borsh::to_vec(&device_telemetry)?.len()
-                );
-                info!(
-                    "  - Internet telemetry: {} bytes",
-                    borsh::to_vec(&internet_telemetry)?.len()
-                );
-                info!(
-                    "  - Reward input: {} bytes",
-                    borsh::to_vec(&input_config)?.len()
-                );
-                let shapley_storage = ShapleyOutputStorage {
-                    epoch: fetch_epoch,
-                    rewards: merkle_tree.rewards().to_vec(),
-                    total_unit_shares: merkle_tree.rewards().iter().map(|r| r.unit_share).sum(),
-                };
+                info!("  - Device telemetry: {} bytes", device_payload_bytes);
+                info!("  - Internet telemetry: {} bytes", internet_payload_bytes);
+                info!("  - Reward input: {} bytes", reward_input_len);
                 info!(
                     "  - Shapley output storage: {} bytes ({} contributors)",
-                    borsh::to_vec(&shapley_storage)?.len(),
+                    shapley_storage_len,
                     merkle_tree.len()
                 );
                 info!("  - Merkle root to post: {:?}", merkle_root);
@@ -426,11 +474,11 @@ impl Orchestrator {
             // Write device telemetry if requested
             if telemetry_type == "device" || telemetry_type == "all" {
                 let device_prefix = self.settings.prefixes.device_telemetry.as_bytes();
-                ledger_operations::write_and_track(
+                ledger_operations::write_serialized_and_track(
                     &fetcher.dz_rpc_client,
                     &payer_signer,
                     &[device_prefix, &fetch_epoch.to_le_bytes()],
-                    &device_telemetry,
+                    &borsh::to_vec(&device_telemetry)?,
                     "device telemetry aggregates",
                     &mut summary,
                     self.settings.rpc.rps_limit,
@@ -441,11 +489,11 @@ impl Orchestrator {
             // Write internet telemetry if requested
             if telemetry_type == "internet" || telemetry_type == "all" {
                 let inet_prefix = self.settings.prefixes.internet_telemetry.as_bytes();
-                ledger_operations::write_and_track(
+                ledger_operations::write_serialized_and_track(
                     &fetcher.dz_rpc_client,
                     &payer_signer,
                     &[inet_prefix, &fetch_epoch.to_le_bytes()],
-                    &internet_telemetry,
+                    &borsh::to_vec(&internet_telemetry)?,
                     "internet telemetry aggregates",
                     &mut summary,
                     self.settings.rpc.rps_limit,

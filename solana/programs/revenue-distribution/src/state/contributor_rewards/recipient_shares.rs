@@ -33,6 +33,11 @@ impl RecipientShares {
 
             let share = UnitShare16::new(*share)?;
 
+            // Cannot have a zero share.
+            if share == UnitShare16::MIN {
+                return None;
+            }
+
             // Keep track of the running sum of shares to make sure it does not
             // exceed 100%.
             total_share = total_share.checked_add(share)?;
@@ -90,6 +95,15 @@ mod tests {
 
         assert_eq!(shares.0[3].recipient_key, recipients[3].0);
         assert_eq!(shares.0[3].share, UnitShare16::new(4_000).unwrap());
+
+        let recipients = [
+            (Pubkey::new_unique(), 1_000),
+            (Pubkey::new_unique(), 0_000),
+            (Pubkey::new_unique(), 5_000),
+            (Pubkey::new_unique(), 4_000),
+        ];
+
+        assert!(RecipientShares::new(&recipients).is_none());
     }
 
     #[test]

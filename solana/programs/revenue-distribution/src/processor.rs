@@ -2090,7 +2090,7 @@ fn try_sweep_distribution_tokens(accounts: &[AccountInfo]) -> ProgramResult {
     // used to token transfer the 2Z tokens to the distribution.
     distribution.collected_2z_converted_from_sol = token_2z_amount;
 
-    // Account 6 must be the distribution's 2Z token account.
+    // Account 7 must be the distribution's 2Z token account.
     let (_, distribution_2z_token_pda_info, _) = try_next_2z_token_pda_info(
         &mut accounts_iter,
         distribution.info.key,
@@ -2098,7 +2098,7 @@ fn try_sweep_distribution_tokens(accounts: &[AccountInfo]) -> ProgramResult {
         Some(distribution.token_2z_pda_bump_seed),
     )?;
 
-    // Account 7 must be the swap authority. It is assumed to be a signer
+    // Account 8 must be the swap authority. It is assumed to be a signer
     // because it is the authority that will be used to transfer 2Z from its
     // token account to the distribution's token account.
     let (account_index, swap_authority_info) =
@@ -2115,7 +2115,7 @@ fn try_sweep_distribution_tokens(accounts: &[AccountInfo]) -> ProgramResult {
         return Err(ProgramError::InvalidSeeds);
     }
 
-    // Account 8 must be the swap destination 2Z token account.
+    // Account 9 must be the swap destination 2Z token account.
     let (_, swap_destination_2z_info, _) = try_next_2z_token_pda_info(
         &mut accounts_iter,
         &expected_swap_authority_key,

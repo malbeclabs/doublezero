@@ -827,7 +827,7 @@ impl From<DequeueFillsCpiAccounts> for Vec<AccountMeta> {
             AccountMeta::new_readonly(configuration_registry_key, false),
             AccountMeta::new_readonly(program_state_key, false),
             AccountMeta::new(fills_registry_key, false),
-            AccountMeta::new(journal_key, true),
+            AccountMeta::new_readonly(journal_key, true),
         ]
     }
 }

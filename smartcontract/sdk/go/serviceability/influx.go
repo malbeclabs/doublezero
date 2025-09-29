@@ -124,8 +124,21 @@ func ToLineProtocol(measurement string, s any, ts time.Time, additionalTags map[
 	fieldStr := strings.Join(fieldParts, ",")
 	timestampStr := fmt.Sprintf("%d", ts.UnixNano())
 
+	var builder strings.Builder
+	builder.WriteString(measurement)
+
 	if tagStr != "" {
-		return fmt.Sprintf("%s,%s %s %s", measurement, tagStr, fieldStr, timestampStr), nil
+		builder.WriteByte(',')
+		builder.WriteString(tagStr)
 	}
-	return fmt.Sprintf("%s %s %s", measurement, fieldStr, timestampStr), nil
+
+	if fieldStr != "" {
+		builder.WriteByte(' ')
+		builder.WriteString(fieldStr)
+	}
+
+	builder.WriteByte(' ')
+	builder.WriteString(timestampStr)
+
+	return builder.String(), nil
 }

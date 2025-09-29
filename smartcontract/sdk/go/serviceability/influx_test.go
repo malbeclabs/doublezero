@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mr-tron/base58"
 	"github.com/stretchr/testify/require"
 )
 
@@ -14,8 +15,7 @@ func TestToLineProtocol(t *testing.T) {
 
 	var pubKey1 [32]byte
 	copy(pubKey1[:], "11111111111111111111111111111111")
-	pubKey1B58 := "6JjJS3bJS2s2p2Y9x2y2q2y2q2y2q2y2q2y2q2y2q"
-
+	pubKey1B58 := base58.Encode(pubKey1[:])
 	var pubKey2 [32]byte
 	copy(pubKey2[:], "22222222222222222222222222222222")
 	pubKey2B58 := "C2n2b2n2b2n2b2n2b2n2b2n2b2n2b2n2b2n2b2n2b"
@@ -64,7 +64,7 @@ func TestToLineProtocol(t *testing.T) {
 			additionalTags: map[string]string{
 				"env": "testnet",
 			},
-			expected:  `devices,code=dev-01,device_type=1,env=testnet,owner=` + pubKey1B58 + `,public_ip=192.168.1.1,status=activated dz_prefixes="10.0.0.0/16,10.1.0.0/16",max_users=100,users_count=5 ` + time.Unix(0, tsNano).Format("1582230000000000000"),
+			expected:  `devices,code=dev-01,device_type=1,env=testnet,owner=` + pubKey1B58 + `,public_ip=192.168.1.1,status=activated dz_prefixes="10.0.0.0/16,10.1.0.0/16",max_users=100,users_count=5 `,
 			expectErr: false,
 		},
 		{
@@ -72,22 +72,24 @@ func TestToLineProtocol(t *testing.T) {
 			measurement: "devices",
 			input:       testDevice{},
 			ts:          ts,
-			expected:    `devices,code=,device_type=0,owner=11111111111111111111111111111111,public_ip=0.0.0.0,status=pending dz_prefixes="",max_users=0,users_count=0 ` + time.Unix(0, tsNano).Format("1582230000000000000"),
+			expected:    `devices,code=,device_type=0,owner=11111111111111111111111111111111,public_ip=0.0.0.0,status=pending dz_prefixes="",max_users=0,users_count=0 `,
 			expectErr:   false,
 		},
 		{
 			name:        "additional tags override struct tags",
 			measurement: "devices",
 			input: testDevice{
-				Owner: pubKey1,
-				Code:  "dev-01",
+				Owner:      pubKey1,
+				Code:       "dev-01",
+				DeviceType: 1,
 			},
 			ts: ts,
 			additionalTags: map[string]string{
-				"owner": pubKey2B58,
-				"env":   "mainnet",
+				"owner":       pubKey2B58,
+				"env":         "mainnet",
+				"device_type": "2", // override a numeric tag
 			},
-			expected:  `devices,code=dev-01,device_type=0,env=mainnet,owner=` + pubKey2B58 + `,public_ip=0.0.0.0,status=pending dz_prefixes="",max_users=0,users_count=0 ` + time.Unix(0, tsNano).Format("1582230000000000000"),
+			expected:  `devices,code=dev-01,device_type=2,env=mainnet,owner=` + pubKey2B58 + `,public_ip=0.0.0.0,status=pending dz_prefixes="",max_users=0,users_count=0 `,
 			expectErr: false,
 		},
 		{
@@ -97,7 +99,7 @@ func TestToLineProtocol(t *testing.T) {
 				Field1 int `influx:"field,field1"`
 			}{Field1: 42},
 			ts:       ts,
-			expected: `devices field1=42 ` + time.Unix(0, tsNano).Format("1582230000000000000"),
+			expected: `devices field1=42 `,
 		},
 		{
 			name:        "no fields",
@@ -106,7 +108,7 @@ func TestToLineProtocol(t *testing.T) {
 				Tag1 string `influx:"tag,tag1"`
 			}{Tag1: "value1"},
 			ts:       ts,
-			expected: `devices,tag1=value1  ` + time.Unix(0, tsNano).Format("1582230000000000000"),
+			expected: `devices,tag1=value1  `,
 		},
 		{
 			name:        "input is not a struct",
@@ -128,9 +130,9 @@ func TestToLineProtocol(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			expected := tc.expected
+			var expected string
 			if !tc.expectErr {
-				expected = strings.Replace(expected, "1582230000000000000", fmt.Sprintf("%d", tsNano), 1)
+				expected = strings.TrimSpace(tc.expected) + " " + fmt.Sprintf("%d", tsNano)
 			}
 
 			line, err := ToLineProtocol(tc.measurement, tc.input, tc.ts, tc.additionalTags)

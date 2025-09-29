@@ -21,7 +21,7 @@ use doublezero_sdk::{
             get::GetUserCommand, list::ListUserCommand, update::UpdateUserCommand,
         },
     },
-    Device, DeviceStatus, User, UserCYOA, UserStatus, UserType,
+    Device, User, UserCYOA, UserStatus, UserType,
 };
 use eyre;
 use indicatif::ProgressBar;
@@ -348,10 +348,8 @@ impl ProvisioningCliCommand {
         let users = client.list_user(ListUserCommand)?;
         let mut devices = client.list_device(ListDeviceCommand)?;
 
-        // Filter devices activated
-        devices.retain(|_, d| {
-            d.status == DeviceStatus::Activated && (d.max_users > 0 && d.users_count < d.max_users)
-        });
+        // Filter to retain only activated devices with available user slots
+        devices.retain(|_, d| d.is_device_eligible_for_provisioning());
 
         let matched_users = users
             .iter()
@@ -449,7 +447,10 @@ impl ProvisioningCliCommand {
         spinner.inc(1);
 
         let users = client.list_user(ListUserCommand)?;
-        let devices = client.list_device(ListDeviceCommand)?;
+        let mut devices = client.list_device(ListDeviceCommand)?;
+
+        // Filter to retain only activated devices with available user slots
+        devices.retain(|_, d| d.is_device_eligible_for_provisioning());
 
         let matched_users = users
             .iter()

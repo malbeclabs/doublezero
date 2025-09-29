@@ -26,6 +26,12 @@ type TelemetryProgramClient interface {
 	GetInternetLatencySamples(ctx context.Context, dataProviderName string, originExchangePubKey, targetExchangePubKey, linkPubKey solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error)
 }
 
+type InfluxWriter interface {
+	Errors() <-chan error
+	WriteRecord(string)
+	Flush()
+}
+
 type Config struct {
 	Logger                     *slog.Logger
 	LedgerRPCClient            LedgerRPCClient
@@ -36,6 +42,8 @@ type Config struct {
 	SlackWebhookURL            string
 	TwoZOracleClient           twozoracle.TwoZOracleClient
 	TwoZOracleInterval         time.Duration
+	InfluxWriter               InfluxWriter
+	Env                        string
 }
 
 func (c *Config) Validate() error {

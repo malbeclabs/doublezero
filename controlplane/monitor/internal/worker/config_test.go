@@ -42,6 +42,15 @@ func TestMonitor_Worker_Config(t *testing.T) {
 		InternetLatencyCollectorPK: solana.NewWallet().PublicKey(),
 		TwoZOracleClient:           &mockTwoZOracleClient{},
 		TwoZOracleInterval:         50 * time.Millisecond,
+		InfluxWriter: &mockInfluxWriter{
+			ErrorsFunc: func() <-chan error {
+				errCh := make(chan error)
+				close(errCh)
+				return errCh
+			},
+			WriteFunc: func(s string) {},
+			FlushFunc: func() {},
+		},
 	}
 
 	t.Run("valid config passes", func(t *testing.T) {
@@ -150,4 +159,22 @@ func (m *mockTwoZOracleClient) SwapRate(ctx context.Context) (twozoracle.SwapRat
 
 func (m *mockTwoZOracleClient) Health(ctx context.Context) (twozoracle.HealthResponse, int, error) {
 	return m.HealthFunc(ctx)
+}
+
+type mockInfluxWriter struct {
+	ErrorsFunc func() <-chan error
+	WriteFunc  func(string)
+	FlushFunc  func()
+}
+
+func (m *mockInfluxWriter) Errors() <-chan error {
+	return m.ErrorsFunc()
+}
+
+func (m *mockInfluxWriter) WriteRecord(s string) {
+	m.WriteFunc(s)
+}
+
+func (m *mockInfluxWriter) Flush() {
+	m.FlushFunc()
 }

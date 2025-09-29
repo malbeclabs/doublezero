@@ -50,6 +50,15 @@ func (w *ServiceabilityWatcher) Run(ctx context.Context) error {
 	ticker := time.NewTicker(w.cfg.Interval)
 	defer ticker.Stop()
 
+	// if influx writer is configured, monitor errors messages for async writes
+	if w.cfg.InfluxWriter != nil {
+		go func() {
+			for err := range w.cfg.InfluxWriter.Errors() {
+				w.log.Error("influx write error", "error", err)
+			}
+		}()
+	}
+
 	err := w.Tick(ctx)
 	if err != nil {
 		w.log.Error("failed to tick", "error", err)
@@ -91,6 +100,42 @@ func (w *ServiceabilityWatcher) Tick(ctx context.Context) error {
 		return base58.Encode(u.Owner[:]) == doubleZeroPubKey
 	})
 
+	w.processEvents(data)
+	w.runAudits(data)
+
+	if w.cfg.InfluxWriter != nil {
+		w.exportDevicesToInflux(data.Devices)
+	}
+
+	// save current on-chain state for next comparison interval
+	w.cacheLinks = data.Links
+	w.cacheDevices = data.Devices
+	w.cacheUsers = data.Users
+
+	return nil
+}
+
+func (w *ServiceabilityWatcher) exportDevicesToInflux(devices []serviceability.Device) {
+	if w.cfg.InfluxWriter == nil {
+		return
+	}
+	additionalTags := map[string]string{
+		"env": w.cfg.Env,
+	}
+	// write each device as a separate line protocol entry
+	for _, device := range devices {
+		line, err := serviceability.ToLineProtocol("devices", device, time.Now(), additionalTags)
+		if err != nil {
+			w.log.Error("failed to create influx line protocol for device", "device_code", device.Code, "error", err)
+			continue
+		}
+		w.log.Debug("writing device record to influx", "line", line)
+		w.cfg.InfluxWriter.WriteRecord(line)
+	}
+	w.cfg.InfluxWriter.Flush()
+}
+
+func (w *ServiceabilityWatcher) processEvents(data *serviceability.ProgramData) {
 	logEvent := func(events ServiceabilityEventer) {
 		w.log.Info(
 			"serviceability event",
@@ -108,6 +153,7 @@ func (w *ServiceabilityWatcher) Tick(ctx context.Context) error {
 			logEvent(e)
 		}
 	}
+
 	if w.cacheLinks != nil {
 		linkEvents := CompareLink(w.cacheLinks, data.Links)
 		w.log.Debug("link events", "count", len(linkEvents))
@@ -120,37 +166,30 @@ func (w *ServiceabilityWatcher) Tick(ctx context.Context) error {
 		userEvents := CompareUser(w.cacheUsers, data.Users)
 		w.log.Debug("user events", "count", len(userEvents))
 
-		userAdds := 0
+		var newUsers []ServiceabilityUserEvent
 		for _, e := range userEvents {
 			logEvent(e)
 			if e.Type() == EventTypeAdded {
-				userAdds++
+				newUsers = append(newUsers, e)
 			}
 		}
-		if userAdds > 0 && w.cfg.SlackWebhookURL != "" {
-			msg, err := w.buildSlackMessage(userEvents, data.Devices, len(data.Users))
-			if err != nil {
-				w.log.Error("failed to build slack message", "error", err)
-			}
-			if err := w.postSlackMessage(msg); err != nil {
-				w.log.Error("failed to post slack message", "error", err)
-			}
+
+		if len(newUsers) > 0 && w.cfg.SlackWebhookURL != "" {
+			w.log.Info("notifying new users", "count", len(newUsers))
+			w.notifyNewUsers(newUsers, data.Devices, len(data.Users))
 		}
 	}
+}
 
-	if w.cacheDevices != nil || w.cacheLinks != nil {
-		for _, device := range data.Devices {
-			for _, iface := range device.Interfaces {
-				checkUnlinkedInterfaces(device, iface, data.Links)
-			}
+func (w *ServiceabilityWatcher) runAudits(data *serviceability.ProgramData) {
+	if w.cacheDevices == nil && w.cacheLinks == nil {
+		return
+	}
+	for _, device := range data.Devices {
+		for _, iface := range device.Interfaces {
+			checkUnlinkedInterfaces(device, iface, data.Links)
 		}
 	}
-	// save current on-chain state for next comparison interval
-	w.cacheLinks = data.Links
-	w.cacheDevices = data.Devices
-	w.cacheUsers = data.Users
-
-	return nil
 }
 
 func programVersionString(version serviceability.ProgramVersion) string {
@@ -158,33 +197,28 @@ func programVersionString(version serviceability.ProgramVersion) string {
 }
 
 func (w *ServiceabilityWatcher) buildSlackMessage(event []ServiceabilityUserEvent, devices []serviceability.Device, totalUsers int) (string, error) {
+	if len(event) == 0 {
+		return "", nil
+	}
+
 	findDeviceCode := func(pubkey [32]byte) string {
 		for _, d := range devices {
 			if d.PubKey == pubkey {
 				return d.Code
 			}
 		}
-		return "unknown"
+		return "not found"
 	}
 
 	users := [][]string{}
 	for _, e := range event {
-		if e.Type() == EventTypeAdded {
-			userPubKey := base58.Encode(e.User.Owner[:])
-			clientIp := net.IP(e.User.ClientIp[:]).String()
-			devicePubKey := base58.Encode(e.User.DevicePubKey[:])
-			tunnelId := strconv.FormatUint(uint64(e.User.TunnelId), 10)
-			users = append(users, []string{
-				userPubKey,
-				clientIp,
-				devicePubKey,
-				findDeviceCode(e.User.DevicePubKey),
-				tunnelId,
-			})
-		}
-	}
-	if len(users) == 0 {
-		return "", nil
+		users = append(users, []string{
+			base58.Encode(e.User.Owner[:]),
+			net.IP(e.User.ClientIp[:]).String(),
+			base58.Encode(e.User.DevicePubKey[:]),
+			findDeviceCode(e.User.DevicePubKey),
+			strconv.FormatUint(uint64(e.User.TunnelId), 10),
+		})
 	}
 
 	title := "New DoubleZero Users Added!"
@@ -196,6 +230,17 @@ func (w *ServiceabilityWatcher) buildSlackMessage(event []ServiceabilityUserEven
 	header := fmt.Sprintf(":yay-frog: :frog-wow-scroll: :elmo-fire: :lfg-dz: %s :lfg-dz: :elmo-fire: :frog-wow-scroll: :yay-frog:", title)
 	footer := fmt.Sprintf("Total Users: %d", totalUsers)
 	return GenerateSlackTableMessage(header, users, nil, footer)
+}
+
+func (w *ServiceabilityWatcher) notifyNewUsers(newUsers []ServiceabilityUserEvent, devices []serviceability.Device, totalUsers int) {
+	msg, err := w.buildSlackMessage(newUsers, devices, totalUsers)
+	if err != nil {
+		w.log.Error("failed to build slack message", "error", err)
+	}
+	w.log.Info("posting slack message", "message", msg)
+	if err := w.postSlackMessage(msg); err != nil {
+		w.log.Error("failed to post slack message", "error", err)
+	}
 }
 
 func (w *ServiceabilityWatcher) postSlackMessage(msg string) error {

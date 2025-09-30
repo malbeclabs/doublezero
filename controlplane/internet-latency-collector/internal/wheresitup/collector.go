@@ -184,7 +184,14 @@ func (c *Collector) RunJobCreation(ctx context.Context, locations []collector.Lo
 		slog.Int("location_count", len(locationsWithSources)),
 		slog.String("expire_after", expireAfter))
 
+	jobCreationStart := time.Now()
 	jobResponses, err := c.CreateJobsBetweenLocations(ctx, locationsWithSources, dryRun, false)
+	jobCreationDuration := time.Since(jobCreationStart)
+	metrics.RunDurationSeconds.WithLabelValues("wheresitup", "create_jobs").Observe(jobCreationDuration.Seconds())
+	c.log.Info("Wheresitup job creation completed",
+		slog.Duration("duration", jobCreationDuration),
+		slog.Int("job_count", len(jobResponses)))
+
 	if err != nil {
 		return collector.ErrJobCreation.WithContext("location_count", len(locationsWithSources)).
 			WithContext("dry_run", dryRun)
@@ -718,6 +725,7 @@ func (c *Collector) Run(ctx context.Context, interval time.Duration, dryRun bool
 			c.log.Info("Stopping Wheresitup job creation")
 			return nil
 		case <-ticker.C:
+			cycleStart := time.Now()
 			c.log.Info("Running Wheresitup job creation cycle")
 			locations := c.getLocationsFunc(ctx)
 			if err := c.RunJobCreation(ctx, locations, dryRun, fullJobIDsPath); err != nil {
@@ -732,12 +740,25 @@ func (c *Collector) Run(ctx context.Context, interval time.Duration, dryRun bool
 
 				// Export job results
 				c.log.Info("Exporting Wheresitup job results")
+				exportStart := time.Now()
 				if err := c.ExportJobResults(ctx, fullJobIDsPath); err != nil {
 					c.log.Error("Operation failed: Wheresitup export_job_results", slog.String("error", err.Error()))
 					metrics.CollectionFailuresTotal.WithLabelValues("wheresitup").Inc()
 				} else {
+					exportDuration := time.Since(exportStart)
+					metrics.RunDurationSeconds.WithLabelValues("wheresitup", "export").Observe(exportDuration.Seconds())
+					c.log.Info("Wheresitup job export completed",
+						slog.Duration("duration", exportDuration))
 					metrics.CollectionRunsTotal.WithLabelValues("wheresitup").Inc()
 				}
+			}
+
+			cycleDuration := time.Since(cycleStart)
+			if cycleDuration >= interval {
+				c.log.Warn("Wheresitup collection cycle exceeded sampling interval",
+					slog.Duration("cycle_duration", cycleDuration),
+					slog.Duration("sampling_interval", interval),
+					slog.Duration("overrun", cycleDuration-interval))
 			}
 		}
 	}

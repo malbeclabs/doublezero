@@ -115,6 +115,12 @@ var (
 		Help: "Expected daily RIPE Atlas results (constrained by 100k daily limit)",
 	})
 
+	RunDurationSeconds = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "doublezero_internet_latency_collector_run_duration_seconds",
+		Help:    "Duration of collector tasks in seconds",
+		Buckets: []float64{1, 5, 10, 30, 60, 120, 180, 300, 600},
+	}, []string{"data_provider", "task"})
+
 	// Wheresitup specific metrics
 	WheresitupJobCreationRunsTotal = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "doublezero_internet_latency_collector_wheresitup_job_creation_runs_total",

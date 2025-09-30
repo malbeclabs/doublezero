@@ -1198,11 +1198,16 @@ func (c *Collector) Run(ctx context.Context, dryRun bool, probesPerLocation int,
 
 	// Run measurement creation immediately on startup
 	c.log.Info("Running initial RIPE Atlas measurement creation")
+	managementStart := time.Now()
 	if err := c.RunRipeAtlasMeasurementCreation(ctx, dryRun, probesPerLocation, stateDir, samplingInterval); err != nil {
 		c.log.Error("Initial measurement creation failed", slog.String("error", err.Error()))
 		metrics.RipeatlasMeasurementManagementFailuresTotal.Inc()
 		// Continue running even if initial creation fails
 	} else {
+		managementDuration := time.Since(managementStart)
+		metrics.RunDurationSeconds.WithLabelValues("ripeatlas", "manage_measurements").Observe(managementDuration.Seconds())
+		c.log.Info("RIPE Atlas measurement management completed",
+			slog.Duration("duration", managementDuration))
 		metrics.RipeatlasMeasurementManagementRunsTotal.Inc()
 	}
 
@@ -1220,10 +1225,15 @@ func (c *Collector) Run(ctx context.Context, dryRun bool, probesPerLocation int,
 				c.log.Info("Stopping RIPE Atlas measurement creation")
 				return
 			case <-ticker.C:
+				managementStart := time.Now()
 				if err := c.RunRipeAtlasMeasurementCreation(ctx, dryRun, probesPerLocation, stateDir, samplingInterval); err != nil {
 					c.log.Error("Operation failed: create_ripeatlas_measurements", slog.String("error", err.Error()))
 					metrics.RipeatlasMeasurementManagementFailuresTotal.Inc()
 				} else {
+					managementDuration := time.Since(managementStart)
+					metrics.RunDurationSeconds.WithLabelValues("ripeatlas", "manage_measurements").Observe(managementDuration.Seconds())
+					c.log.Info("RIPE Atlas measurement management completed",
+						slog.Duration("duration", managementDuration))
 					metrics.RipeatlasMeasurementManagementRunsTotal.Inc()
 				}
 			}
@@ -1245,10 +1255,15 @@ func (c *Collector) Run(ctx context.Context, dryRun bool, probesPerLocation int,
 				c.log.Info("Stopping RIPE Atlas export")
 				return
 			case <-ticker.C:
+				exportStart := time.Now()
 				if err := c.ExportMeasurementResults(ctx, stateDir); err != nil {
 					c.log.Warn("Failed to export RIPE Atlas measurements", slog.String("error", err.Error()))
 					metrics.CollectionFailuresTotal.WithLabelValues("ripeatlas").Inc()
 				} else {
+					exportDuration := time.Since(exportStart)
+					metrics.RunDurationSeconds.WithLabelValues("ripeatlas", "export").Observe(exportDuration.Seconds())
+					c.log.Info("RIPE Atlas export completed",
+						slog.Duration("duration", exportDuration))
 					metrics.CollectionRunsTotal.WithLabelValues("ripeatlas").Inc()
 				}
 

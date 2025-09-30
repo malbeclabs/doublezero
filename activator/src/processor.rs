@@ -173,13 +173,13 @@ impl Processor {
                     &mut self.link_ips,
                 );
             }
-            AccountData::Link(tunnel) => {
+            AccountData::Link(link) => {
                 process_link_event(
                     self.client.as_ref(),
                     pubkey,
                     &mut self.link_ips,
                     &mut self.link_ids,
-                    tunnel,
+                    link,
                 );
             }
             AccountData::User(user) => {

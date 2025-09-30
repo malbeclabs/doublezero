@@ -1,4 +1,5 @@
 use crate::{idallocator::IDAllocator, ipblockallocator::IPBlockAllocator};
+use doublezero_program_common::types::NetworkV4;
 use doublezero_sdk::{
     commands::link::{
         activate::ActivateLinkCommand, closeaccount::CloseAccountLinkCommand,
@@ -9,6 +10,24 @@ use doublezero_sdk::{
 use log::info;
 use solana_sdk::pubkey::Pubkey;
 use std::fmt::Write;
+
+fn get_ip_block(link: &Link, link_ips: &mut IPBlockAllocator) -> Option<ipnetwork::Ipv4Network> {
+    // if the link already has a tunnel net assigned, reuse that
+    if link.tunnel_net != NetworkV4::default() {
+        Some(link.tunnel_net.into())
+    } else {
+        link_ips.next_available_block(0, 2)
+    }
+}
+
+fn get_link_id(link: &Link, link_ids: &mut IDAllocator) -> u16 {
+    // if the link already has a tunnel id assigned, reuse that
+    if link.tunnel_id != 0 {
+        link.tunnel_id
+    } else {
+        link_ids.next_available()
+    }
+}
 
 pub fn process_link_event(
     client: &dyn DoubleZeroClient,
@@ -27,16 +46,16 @@ pub fn process_link_event(
             )
             .unwrap();
 
-            match link_ips.next_available_block(0, 2) {
-                Some(tunnel_net) => {
-                    let tunnel_id = link_ids.next_available();
+            match get_ip_block(link, link_ips) {
+                Some(link_net) => {
+                    let link_id = get_link_id(link, link_ids);
 
                     let res = ActivateLinkCommand {
                         link_pubkey: *pubkey,
                         side_a_pk: link.side_a_pk,
                         side_z_pk: link.side_z_pk,
-                        tunnel_id,
-                        tunnel_net: tunnel_net.into(),
+                        tunnel_id: link_id,
+                        tunnel_net: link_net.into(),
                     }
                     .execute(client);
 
@@ -164,7 +183,7 @@ mod tests {
                 mtu: 1500,
                 delay_ns: 20_000,
                 jitter_ns: 100,
-                tunnel_id: 1,
+                tunnel_id: 0,
                 tunnel_net: NetworkV4::default(),
                 status: LinkStatus::Pending,
                 code: "TestLink".to_string(),
@@ -258,6 +277,60 @@ mod tests {
                 )
                 .verify();
         });
+    }
+
+    #[test]
+    fn test_process_link_event_pending_reuse_ip() {
+        let mut link_ips = IPBlockAllocator::new("10.0.0.0/16".parse().unwrap());
+        let mut link_ids = IDAllocator::new(500, vec![500, 501, 503]);
+        let mut client = create_test_client();
+
+        let owner_pubkey = Pubkey::new_unique();
+        let device1_pubkey = Pubkey::new_unique();
+        let device2_pubkey = Pubkey::new_unique();
+
+        let link_pubkey = Pubkey::new_unique();
+        let link = Link {
+            account_type: AccountType::Link,
+            owner: owner_pubkey,
+            index: 0,
+            bump_seed: get_tunnel_bump_seed(&client),
+            contributor_pk: Pubkey::new_unique(),
+            side_a_pk: device1_pubkey,
+            side_z_pk: device2_pubkey,
+            link_type: LinkLinkType::WAN,
+            bandwidth: 10_000_000_000,
+            mtu: 1500,
+            delay_ns: 20_000,
+            jitter_ns: 100,
+            tunnel_id: 1,
+            tunnel_net: "10.1.2.0/31".parse().unwrap(),
+            status: LinkStatus::Pending,
+            code: "TestLink".to_string(),
+            side_a_iface_name: "Ethernet0".to_string(),
+            side_z_iface_name: "Ethernet1".to_string(),
+        };
+
+        let link_cloned = link.clone();
+        client
+            .expect_get()
+            .with(predicate::eq(link_pubkey))
+            .times(1)
+            .returning(move |_| Ok(AccountData::Link(link_cloned.clone())));
+
+        client
+            .expect_execute_transaction()
+            .with(
+                predicate::eq(DoubleZeroInstruction::ActivateLink(LinkActivateArgs {
+                    tunnel_id: 1,
+                    tunnel_net: "10.1.2.0/31".parse().unwrap(),
+                })),
+                predicate::always(),
+            )
+            .times(1)
+            .returning(|_, _| Ok(Signature::new_unique()));
+
+        process_link_event(&client, &link_pubkey, &mut link_ips, &mut link_ids, &link);
     }
 
     #[test]

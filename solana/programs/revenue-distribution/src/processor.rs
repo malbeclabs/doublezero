@@ -1220,10 +1220,11 @@ fn try_distribute_rewards(
     // Account 6 must be the SPL Token program.
     try_next_token_program_info(&mut accounts_iter)?;
 
-    // Split the reward into two parts: the amount to burn and the amount to distribute.
-    // This operation is safe to unwrap because under the hood, the unit share
-    // and economic burn rate are checked, but these values do not need to be
-    // checked since they were already checked in the `RewardShare::new` call.
+    // Split the reward into two parts: the amount to burn and the amount to
+    // distribute. This operation is safe to unwrap because under the hood, the
+    // unit share and economic burn rate are checked, but these values do not
+    // need to be checked since they were already checked in the
+    // `RewardShare::new` call.
     let (mut burn_share_amount, remaining_share_amount) =
         distribution.split_2z_amount(&reward_share).unwrap();
 
@@ -1234,6 +1235,7 @@ fn try_distribute_rewards(
     ];
 
     let mut total_transferred_share_amount = 0;
+    let mut transfer_count = 0;
 
     // Now split up the remaining share amount across the recipient ATAs. For
     // each recipient, take the Associated Token Account (ATA) and transfer the
@@ -1281,6 +1283,14 @@ fn try_distribute_rewards(
             recipient_share_amount,
             recipient_key
         );
+
+        transfer_count += 1;
+    }
+
+    // There must be at least one recipient.
+    if transfer_count == 0 {
+        msg!("Contributor recipients must be configured");
+        return Err(ProgramError::InvalidAccountData);
     }
 
     // Add any dust (rounding remainder) to the burn amount to ensure all tokens

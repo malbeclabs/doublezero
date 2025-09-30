@@ -34,7 +34,7 @@ pub type ExchangeMap = HashMap<Pubkey, Exchange>;
 pub type MulticastGroupMap = HashMap<Pubkey, MulticastGroup>;
 
 pub struct Processor {
-    rx: mpsc::Receiver<(Box<Pubkey>, Box<AccountData>, bool)>,
+    rx: mpsc::Receiver<(Box<Pubkey>, Box<AccountData>)>,
     client: Arc<DZClient>,
     link_ids: IDAllocator,
     segment_routing_ids: IDAllocator,
@@ -49,7 +49,7 @@ pub struct Processor {
 
 impl Processor {
     pub fn new(
-        rx: mpsc::Receiver<(Box<Pubkey>, Box<AccountData>, bool)>,
+        rx: mpsc::Receiver<(Box<Pubkey>, Box<AccountData>)>,
         client: Arc<DZClient>,
     ) -> eyre::Result<Self> {
         let builder = ExponentialBuilder::new()
@@ -148,19 +148,15 @@ impl Processor {
     pub async fn run(&mut self, stop_signal: Arc<AtomicBool>) {
         info!("Processor running...");
         while !stop_signal.load(std::sync::atomic::Ordering::Relaxed) {
-            if let Some((pubkey, data, should_log)) = self.rx.recv().await {
-                self.process_event(&pubkey, &data, should_log);
+            if let Some((pubkey, data)) = self.rx.recv().await {
+                self.process_event(&pubkey, &data);
             }
         }
         info!("Processor done");
     }
 
-    fn process_event(&mut self, pubkey: &Pubkey, data: &AccountData, should_log: bool) {
-        if should_log {
-            info!("Event: {pubkey} {data:?}");
-        } else {
-            debug!("Event: {pubkey} {data:?}");
-        }
+    fn process_event(&mut self, pubkey: &Pubkey, data: &AccountData) {
+        debug!("Event: {pubkey} {data:?}");
 
         match data {
             AccountData::Device(device) => {

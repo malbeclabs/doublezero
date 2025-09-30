@@ -48,9 +48,11 @@ impl<'a> InterfaceMgr<'a> {
     ) {
         match (iface.status, iface.interface_type) {
             (InterfaceStatus::Pending, InterfaceType::Loopback) => {
+                info!("Event:Interface(Pending) {device_pubkey} {device:?} loopback {iface:?}");
                 self.handle_pending_loopback(device_pubkey, device, &mut iface);
             }
             (InterfaceStatus::Pending, InterfaceType::Physical) => {
+                info!("Event:Interface(Pending) {device_pubkey} {device:?} physical {iface:?}");
                 self.unlink(device_pubkey, &device.code, &iface.name);
             }
             (InterfaceStatus::Pending, _) => {
@@ -60,6 +62,7 @@ impl<'a> InterfaceMgr<'a> {
                 );
             }
             (InterfaceStatus::Deleting, _) => {
+                info!("Event:Interface(Deleting) {device_pubkey} {device:?} {iface:?}");
                 self.handle_deleting_interface(device_pubkey, &device.code, &iface);
             }
             _ => {} // Nothing to do
@@ -177,8 +180,13 @@ impl<'a> InterfaceMgr<'a> {
             name: name.to_string(),
         };
 
-        if let Err(e) = cmd.execute(self.client) {
-            error!("Failed to unlink interface {name} on {context}: {e}");
+        match cmd.execute(self.client) {
+            Ok(signature) => {
+                info!("Unlinked interface {name} on {context}: {signature}");
+            }
+            Err(e) => {
+                error!("Failed to unlink interface {name} on {context}: {e}");
+            }
         }
     }
 
@@ -188,8 +196,13 @@ impl<'a> InterfaceMgr<'a> {
             name: name.to_string(),
         };
 
-        if let Err(e) = cmd.execute(self.client) {
-            error!("Failed to reject interface {name} on {context}: {e}");
+        match cmd.execute(self.client) {
+            Ok(signature) => {
+                info!("Rejected interface {name} on {context}: {signature}");
+            }
+            Err(e) => {
+                error!("Failed to reject interface {name} on {context}: {e}");
+            }
         }
     }
 
@@ -199,8 +212,13 @@ impl<'a> InterfaceMgr<'a> {
             name: name.to_string(),
         };
 
-        if let Err(e) = cmd.execute(self.client) {
-            error!("Failed to remove interface {name} on {context}: {e}");
+        match cmd.execute(self.client) {
+            Ok(signature) => {
+                info!("Removed interface {name} on {context}: {signature}");
+            }
+            Err(e) => {
+                error!("Failed to remove interface {name} on {context}: {e}");
+            }
         }
     }
 }

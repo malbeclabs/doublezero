@@ -96,12 +96,12 @@ fn version_check(client: &DZClient) -> eyre::Result<()> {
 
 pub async fn get_snapshot_poll(
     client: Arc<DZClient>,
-    tx: mpsc::Sender<(Box<Pubkey>, Box<AccountData>, bool)>,
+    tx: mpsc::Sender<(Box<Pubkey>, Box<AccountData>)>,
     stop_signal: Arc<AtomicBool>,
 ) -> eyre::Result<()> {
     while !stop_signal.load(std::sync::atomic::Ordering::Relaxed) {
         for (pubkey, data) in client.get_all()? {
-            tx.send((pubkey, data, false)).await?;
+            tx.send((pubkey, data)).await?;
         }
         tokio::time::sleep(std::time::Duration::from_secs(60)).await;
     }
@@ -110,15 +110,14 @@ pub async fn get_snapshot_poll(
 
 pub fn process_events_thread(
     client: Arc<DZClient>,
-    tx: mpsc::Sender<(Box<Pubkey>, Box<AccountData>, bool)>,
+    tx: mpsc::Sender<(Box<Pubkey>, Box<AccountData>)>,
     stop_signal: Arc<AtomicBool>,
 ) -> eyre::Result<()> {
     client.subscribe(
         |_, pubkey, data| {
-            tx.blocking_send((pubkey, data, true))
-                .unwrap_or_else(|err| {
-                    log::error!("Failed to send websocket data to processor: {}", err);
-                });
+            tx.blocking_send((pubkey, data)).unwrap_or_else(|err| {
+                log::error!("Failed to send websocket data to processor: {}", err);
+            });
         },
         stop_signal,
     )?;

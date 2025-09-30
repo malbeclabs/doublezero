@@ -100,10 +100,10 @@ pub async fn get_snapshot_poll(
     stop_signal: Arc<AtomicBool>,
 ) -> eyre::Result<()> {
     while !stop_signal.load(std::sync::atomic::Ordering::Relaxed) {
-        tokio::time::sleep(std::time::Duration::from_secs(60)).await;
         for (pubkey, data) in client.get_all()? {
             tx.send((pubkey, data, false)).await?;
         }
+        tokio::time::sleep(std::time::Duration::from_secs(60)).await;
     }
     Ok(())
 }

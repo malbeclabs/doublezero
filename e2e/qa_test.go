@@ -633,6 +633,7 @@ func runUnicastConnectivityTest(t *testing.T, hosts []string, devices []*Device)
 			if !result.Success {
 				t.Errorf("Device %s failed: %s", device.Code, result.Error)
 			}
+			time.Sleep(30 * time.Second) // wait 30s between devices to avoid race in client diconnect/connect
 		})
 	}
 

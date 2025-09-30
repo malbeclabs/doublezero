@@ -585,8 +585,8 @@ func runUnicastConnectivityTest(t *testing.T, hosts []string, devices []*Device)
 
 	for i, device := range devices {
 		if i > 0 {
-			t.Logf("Waiting 5 seconds before next connection attempt...")
-			time.Sleep(5 * time.Second)
+			t.Logf("Waiting 30 seconds before next connection attempt...")
+			time.Sleep(30 * time.Second)
 		}
 
 		t.Logf("Attempting to connect %s to device %s", firstHost, device.Code)

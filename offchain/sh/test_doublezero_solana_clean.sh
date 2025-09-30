@@ -187,6 +187,14 @@ echo "doublezero-solana revenue-distribution fetch validator-deposits -u l"
 $CLI_BIN revenue-distribution fetch validator-deposits -u l
 echo
 
+echo "doublezero-solana revenue-distribution fetch distribution -u t"
+$CLI_BIN revenue-distribution fetch distribution -u t
+echo
+
+echo "doublezero-solana revenue-distribution fetch distribution -u t --epoch 101"
+$CLI_BIN revenue-distribution fetch distribution -u t --epoch 101
+echo
+
 ### ATA commands.
 
 echo "doublezero-solana ata -h"

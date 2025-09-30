@@ -138,8 +138,10 @@ async fn get_solana_epoch_from_dz_slot(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rewards::{EpochRewards, Reward};
-    use crate::solana_debt_calculator::{SolanaDebtCalculator, ledger_rpc, solana_rpc};
+    use crate::{
+        rewards::{EpochRewards, Reward},
+        solana_debt_calculator::{SolanaDebtCalculator, ledger_rpc, solana_rpc},
+    };
 
     use solana_client::{
         nonblocking::rpc_client::RpcClient,

@@ -1,12 +1,20 @@
 use anyhow::{Result, anyhow};
 use clap::{Args, Subcommand};
-use doublezero_program_tools::PrecomputedDiscriminator;
-use doublezero_program_tools::zero_copy;
-use doublezero_revenue_distribution::state::{CommunityBurnRateMode, Journal};
-use doublezero_solana_client_tools::rpc::{SolanaConnection, SolanaConnectionOptions};
+use doublezero_program_tools::{PrecomputedDiscriminator, zero_copy};
+use doublezero_revenue_distribution::{
+    DOUBLEZERO_MINT_DECIMALS,
+    state::{CommunityBurnRateMode, Distribution, Journal, ProgramConfig},
+    types::DoubleZeroEpoch,
+};
+use doublezero_solana_client_tools::{
+    rpc::{SolanaConnection, SolanaConnectionOptions},
+    zero_copy::ZeroCopyAccountOwned,
+};
 use solana_account_decoder_client_types::UiAccountEncoding;
-use solana_client::rpc_config::{RpcAccountInfoConfig, RpcProgramAccountsConfig};
-use solana_client::rpc_filter::{Memcmp, RpcFilterType};
+use solana_client::{
+    rpc_config::{RpcAccountInfoConfig, RpcProgramAccountsConfig},
+    rpc_filter::{Memcmp, RpcFilterType},
+};
 use solana_sdk::pubkey::Pubkey;
 
 #[derive(Debug, Subcommand)]
@@ -24,6 +32,14 @@ pub enum FetchSubcommand {
     ValidatorDeposits {
         #[arg(long = "node-id", short = 'n', value_name = "PUBKEY")]
         node_id: Option<Pubkey>,
+        #[command(flatten)]
+        connection_options: SolanaConnectionOptions,
+    },
+
+    /// Show distribution account with optional epoch filter. Default is to show the distribution for the current epoch.
+    Distribution {
+        #[arg(long = "epoch", short = 'e', value_name = "EPOCH")]
+        epoch: Option<u64>,
         #[command(flatten)]
         connection_options: SolanaConnectionOptions,
     },
@@ -291,6 +307,138 @@ impl FetchCommand {
                 for (pubkey, node_id, balance) in outputs {
                     println!("{} | {} | {:.9}", pubkey, node_id, balance as f64 * 1e-9);
                 }
+                println!();
+            }
+
+            FetchSubcommand::Distribution {
+                epoch,
+                connection_options,
+            } => {
+                let connection = SolanaConnection::try_from(connection_options)?;
+
+                let epoch = if let Some(epoch) = epoch {
+                    epoch
+                } else {
+                    ZeroCopyAccountOwned::<ProgramConfig>::from_rpc_client(
+                        &connection,
+                        &ProgramConfig::find_address().0,
+                    )
+                    .await
+                    .map_err(|_| anyhow!("Program config not initialized"))
+                    .map(|config| config.data.next_dz_epoch.value().saturating_sub(1))?
+                };
+
+                let (pubkey, _) = Distribution::find_address(DoubleZeroEpoch::new(epoch));
+
+                let account =
+                    ZeroCopyAccountOwned::<Distribution>::from_rpc_client(&connection, &pubkey)
+                        .await
+                        .map_err(|_| anyhow!("Distribution account not found for epoch {epoch}"))
+                        .map(|config| config.data)?;
+
+                println!("Epoch: {epoch}");
+                println!("Account pubkey: {pubkey}");
+                println!(
+                    "Community burn rate: {:.7}%",
+                    u32::from(account.community_burn_rate) as f64 / 10_000_000.0
+                );
+                println!("Solana validator fee parameters:",);
+                if account
+                    .solana_validator_fee_parameters
+                    .base_block_rewards_pct
+                    != Default::default()
+                {
+                    println!(
+                        "  Base block rewards: {:.2}%",
+                        u16::from(
+                            account
+                                .solana_validator_fee_parameters
+                                .base_block_rewards_pct
+                        ) as f64
+                            / 100.0
+                    );
+                }
+                if account
+                    .solana_validator_fee_parameters
+                    .priority_block_rewards_pct
+                    != Default::default()
+                {
+                    println!(
+                        "  Priority block rewards: {:.2}%",
+                        u16::from(
+                            account
+                                .solana_validator_fee_parameters
+                                .priority_block_rewards_pct
+                        ) as f64
+                            / 100.0
+                    );
+                }
+                if account
+                    .solana_validator_fee_parameters
+                    .inflation_rewards_pct
+                    != Default::default()
+                {
+                    println!(
+                        "  Inflation rewards: {:.2}%",
+                        u16::from(
+                            account
+                                .solana_validator_fee_parameters
+                                .inflation_rewards_pct
+                        ) as f64
+                            / 100.0
+                    );
+                }
+                if account.solana_validator_fee_parameters.jito_tips_pct != Default::default() {
+                    println!(
+                        "  Jito tips: {:.2}%",
+                        u16::from(account.solana_validator_fee_parameters.jito_tips_pct) as f64
+                            / 100.0
+                    );
+                }
+                if account.solana_validator_fee_parameters.fixed_sol_amount != 0 {
+                    println!(
+                        "  Fixed: {:.9} SOL",
+                        account.solana_validator_fee_parameters.fixed_sol_amount as f64 * 1e-9
+                    );
+                }
+                println!(
+                    "Total solana validators: {}",
+                    account.total_solana_validators
+                );
+                println!(
+                    "Solana validator payments count: {}",
+                    account.solana_validator_payments_count
+                );
+                println!(
+                    "Collected solana validator payments: {:.9} SOL",
+                    account.collected_solana_validator_payments as f64 * 1e-9
+                );
+                println!("Total contributors: {}", account.total_contributors);
+                println!(
+                    "Distributed rewards count: {}",
+                    account.distributed_rewards_count
+                );
+                println!(
+                    "Distributed 2Z amount: {:.prec$} 2Z",
+                    account.distributed_2z_amount as f64
+                        / 10f64.powi(DOUBLEZERO_MINT_DECIMALS as i32),
+                    prec = DOUBLEZERO_MINT_DECIMALS as usize
+                );
+                println!(
+                    "Burned 2Z amount: {:.prec$} 2Z",
+                    account.burned_2z_amount as f64 / 10f64.powi(DOUBLEZERO_MINT_DECIMALS as i32),
+                    prec = DOUBLEZERO_MINT_DECIMALS as usize
+                );
+                println!(
+                    "Is debt calculation finalized: {}",
+                    account.is_debt_calculation_finalized()
+                );
+                println!(
+                    "Is rewards calculation finalized: {}",
+                    account.is_rewards_calculation_finalized()
+                );
+                println!("Has swept 2Z tokens: {}", account.has_swept_2z_tokens());
+
                 println!();
             }
         }

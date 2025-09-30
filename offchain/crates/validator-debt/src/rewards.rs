@@ -5,9 +5,7 @@
 //! - JITO rewards per epoch
 //!
 //! The rewards from all sources for an epoch are summed and associated with a validator_id
-use crate::block;
-use crate::inflation;
-use crate::jito;
+use crate::{block, inflation, jito};
 
 use anyhow::{Result, anyhow};
 use borsh::{BorshDeserialize, BorshSerialize};

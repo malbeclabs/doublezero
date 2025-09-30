@@ -113,8 +113,7 @@ fn retryable_status(status: Option<StatusCode>) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::StatusCode;
-    use super::*;
+    use super::{StatusCode, *};
     use solana_sdk::transaction::TransactionError;
 
     #[test]

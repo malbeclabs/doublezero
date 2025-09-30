@@ -7,11 +7,13 @@ default:
 
 # Run fmt
 fmt:
-    cargo fmt
+    @rustup component add rustfmt --toolchain nightly
+    @cargo +nightly fmt --all -- --config imports_granularity=Crate
 
 # Check fmt
 fmt-check:
-    cargo fmt --check
+	@rustup component add rustfmt --toolchain nightly
+	@cargo +nightly fmt --all -- --check --config imports_granularity=Crate || (echo "Formatting check failed. Please run 'just fmt' to fix formatting issues." && exit 1)
 
 # Build (release)
 build:

@@ -19,7 +19,7 @@ use doublezero_sdk::{
     AccountData, DZClient, DeviceStatus, Exchange, GetGlobalConfigCommand, InterfaceType,
     LinkStatus, Location, MulticastGroup, UserStatus,
 };
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 use solana_sdk::pubkey::Pubkey;
 use std::{
     collections::HashMap,
@@ -34,7 +34,7 @@ pub type ExchangeMap = HashMap<Pubkey, Exchange>;
 pub type MulticastGroupMap = HashMap<Pubkey, MulticastGroup>;
 
 pub struct Processor {
-    rx: mpsc::Receiver<(Box<Pubkey>, Box<AccountData>)>,
+    rx: mpsc::Receiver<(Box<Pubkey>, Box<AccountData>, bool)>,
     client: Arc<DZClient>,
     link_ids: IDAllocator,
     segment_routing_ids: IDAllocator,
@@ -49,7 +49,7 @@ pub struct Processor {
 
 impl Processor {
     pub fn new(
-        rx: mpsc::Receiver<(Box<Pubkey>, Box<AccountData>)>,
+        rx: mpsc::Receiver<(Box<Pubkey>, Box<AccountData>, bool)>,
         client: Arc<DZClient>,
     ) -> eyre::Result<Self> {
         let builder = ExponentialBuilder::new()
@@ -148,15 +148,19 @@ impl Processor {
     pub async fn run(&mut self, stop_signal: Arc<AtomicBool>) {
         info!("Processor running...");
         while !stop_signal.load(std::sync::atomic::Ordering::Relaxed) {
-            if let Some((pubkey, data)) = self.rx.recv().await {
-                self.process_event(&pubkey, &data);
+            if let Some((pubkey, data, should_log)) = self.rx.recv().await {
+                self.process_event(&pubkey, &data, should_log);
             }
         }
         info!("Processor done");
     }
 
-    fn process_event(&mut self, pubkey: &Pubkey, data: &AccountData) {
-        info!("Event: {pubkey} {data:?}");
+    fn process_event(&mut self, pubkey: &Pubkey, data: &AccountData, should_log: bool) {
+        if should_log {
+            info!("Event: {pubkey} {data:?}");
+        } else {
+            debug!("Event: {pubkey} {data:?}");
+        }
 
         match data {
             AccountData::Device(device) => {

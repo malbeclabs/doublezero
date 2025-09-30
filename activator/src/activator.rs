@@ -113,7 +113,7 @@ pub fn process_events_thread(
     tx: mpsc::Sender<(Box<Pubkey>, Box<AccountData>, bool)>,
     stop_signal: Arc<AtomicBool>,
 ) -> eyre::Result<()> {
-    client.gets_and_subscribe(
+    client.subscribe(
         |_, pubkey, data| {
             tx.blocking_send((pubkey, data, true))
                 .unwrap_or_else(|err| {

@@ -18,7 +18,7 @@ use doublezero_sdk::{
         multicastgroup::list::ListMulticastGroupCommand,
         user::{
             create::CreateUserCommand, create_subscribe::CreateSubscribeUserCommand,
-            get::GetUserCommand, list::ListUserCommand, update::UpdateUserCommand,
+            get::GetUserCommand, list::ListUserCommand,
         },
     },
     Device, User, UserCYOA, UserStatus, UserType,
@@ -381,19 +381,6 @@ impl ProvisioningCliCommand {
                     spinner.println("❌  The user is banned.");
                     eyre::bail!("User is banned.");
                 }
-
-                // executing this instruction will not actually change the user account, but
-                // will force an update that the activator will see.
-                client.update_user(UpdateUserCommand {
-                    pubkey: **pubkey,
-                    user_type: None,
-                    cyoa_type: None,
-                    client_ip: None,
-                    dz_ip: None,
-                    tunnel_id: None,
-                    tunnel_net: None,
-                    validator_pubkey: None,
-                })?;
 
                 **pubkey
             }

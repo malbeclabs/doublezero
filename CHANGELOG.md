@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 
 - Activator
     - Reduce logging noise when processing snapshot events
+    - Wrap main select handler in loop to avoid shutdown on branch error
 - Internet telemetry
     - Add circuit label to metrics; create a new metric for missing circuit samples
     - Submit partitions of samples in parallel

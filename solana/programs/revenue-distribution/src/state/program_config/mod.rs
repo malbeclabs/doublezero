@@ -41,7 +41,7 @@ pub struct ProgramConfig {
     /// the required signer of [Self::sol_2z_swap_program_id] to withdraw SOL.
     pub withdraw_sol_authority_bump_seed: u8,
 
-    _padding: [u8; 3],
+    _padding_0: [u8; 3],
 
     pub admin_key: Pubkey,
 
@@ -64,6 +64,9 @@ pub struct ProgramConfig {
     pub distribution_parameters: DistributionParameters,
 
     pub relay_parameters: RelayParameters,
+
+    pub last_initialized_distribution_timestamp: u32,
+    _padding_1: [u8; 4],
 }
 
 impl PrecomputedDiscriminator for ProgramConfig {
@@ -178,12 +181,24 @@ impl ProgramConfig {
     pub fn checked_calculation_grace_period_seconds(&self) -> Option<u32> {
         let grace_period = self
             .distribution_parameters
-            .calculation_grace_period_seconds;
+            .calculation_grace_period_minutes;
 
         if grace_period == 0 {
             None
         } else {
-            Some(grace_period)
+            Some(u32::from(grace_period) * 60)
+        }
+    }
+
+    pub fn checked_distribution_initialization_grace_period_seconds(&self) -> Option<u32> {
+        let grace_period = self
+            .distribution_parameters
+            .initialization_grace_period_minutes;
+
+        if grace_period == 0 {
+            None
+        } else {
+            Some(u32::from(grace_period) * 60)
         }
     }
 }
@@ -191,7 +206,7 @@ impl ProgramConfig {
 //
 
 const _: () = assert!(
-    size_of::<ProgramConfig>() == 584,
+    size_of::<ProgramConfig>() == 592,
     "`ProgramConfig` size changed"
 );
 

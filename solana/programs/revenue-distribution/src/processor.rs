@@ -374,25 +374,25 @@ fn try_configure_program(accounts: &[AccountInfo], setting: ProgramConfiguration
             msg!("  fixed_sol_amount: {}", fixed_sol_amount);
             fee_params.fixed_sol_amount = fixed_sol_amount;
         }
-        ProgramConfiguration::CalculationGracePeriodSeconds(calculation_grace_period_seconds) => {
+        ProgramConfiguration::CalculationGracePeriodMinutes(grace_period_minutes) => {
             // If the grace period is zero, we treat this as unset.
-            if calculation_grace_period_seconds == 0 {
+            if grace_period_minutes == 0 {
                 msg!("Calculation grace period is zero");
                 return Err(ProgramError::InvalidInstructionData);
             }
             // If the grace period is excessive (>24 hours), revert.
-            else if calculation_grace_period_seconds > 24 * 60 * 60 {
+            else if grace_period_minutes > 24 * 60 {
                 msg!("Calculation grace period exceeds 24 hours");
                 return Err(ProgramError::InvalidInstructionData);
             }
 
             msg!(
-                "Set distribution_parameters.calculation_grace_period_seconds: {}",
-                calculation_grace_period_seconds
+                "Set distribution_parameters.calculation_grace_period_minutes: {}",
+                grace_period_minutes
             );
             program_config
                 .distribution_parameters
-                .calculation_grace_period_seconds = calculation_grace_period_seconds;
+                .calculation_grace_period_minutes = grace_period_minutes;
         }
         ProgramConfiguration::CommunityBurnRateParameters {
             limit,
@@ -515,6 +515,28 @@ fn try_configure_program(accounts: &[AccountInfo], setting: ProgramConfiguration
             program_config
                 .distribution_parameters
                 .minimum_epoch_duration_to_finalize_rewards = epoch_duration;
+        }
+        ProgramConfiguration::DistributionInitializationGracePeriodMinutes(
+            grace_period_minutes,
+        ) => {
+            // If the grace period is zero, we treat this as unset.
+            if grace_period_minutes == 0 {
+                msg!("Distribution initialization grace period is zero");
+                return Err(ProgramError::InvalidInstructionData);
+            }
+            // If the grace period is excessive (>48 hours), revert.
+            else if grace_period_minutes > 48 * 60 {
+                msg!("Distribution initialization grace period exceeds 48 hours");
+                return Err(ProgramError::InvalidInstructionData);
+            }
+
+            msg!(
+                "Set distribution_parameters.initialization_grace_period_minutes: {}",
+                grace_period_minutes
+            );
+            program_config
+                .distribution_parameters
+                .initialization_grace_period_minutes = grace_period_minutes;
         }
     }
 
@@ -640,6 +662,36 @@ fn try_initialize_distribution(accounts: &[AccountInfo]) -> ProgramResult {
 
     // Make sure the program is not paused.
     program_config.try_require_unpaused()?;
+
+    // The initialization grace period must have been configured.
+    let initialization_grace_period_seconds = program_config
+        .checked_distribution_initialization_grace_period_seconds()
+        .ok_or_else(|| {
+            msg!("Initialization grace period has not been configured yet");
+            ProgramError::InvalidAccountData
+        })?;
+
+    let current_timestamp = Clock::get().unwrap().unix_timestamp;
+
+    // We do not expect this operation to fail anytime soon. But we ensure a
+    // panic just in case.
+    let initialization_allowed_timestamp = program_config
+        .last_initialized_distribution_timestamp
+        .checked_add(initialization_grace_period_seconds)
+        .unwrap();
+
+    if current_timestamp < i64::from(initialization_allowed_timestamp) {
+        let remaining_seconds = i64::from(initialization_allowed_timestamp) - current_timestamp;
+        msg!(
+            "Cannot initialize a new distribution until {} seconds",
+            remaining_seconds
+        );
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Now reflect when this distribution is initialized. We do not expect this
+    // conversion to fail anytime soon. But we ensure a panic just in case.
+    program_config.last_initialized_distribution_timestamp = current_timestamp.try_into().unwrap();
 
     // The minimum calculation grace period must have been configured.
     let calculation_grace_period_seconds = program_config
@@ -777,9 +829,7 @@ fn try_initialize_distribution(accounts: &[AccountInfo]) -> ProgramResult {
 
     // We do not expect this operation to fail anytime soon. But we ensure a
     // panic just in case.
-    distribution.calculation_allowed_timestamp = Clock::get()
-        .unwrap()
-        .unix_timestamp
+    distribution.calculation_allowed_timestamp = current_timestamp
         .checked_add(calculation_grace_period_seconds.into())
         .unwrap()
         .try_into()

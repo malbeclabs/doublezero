@@ -43,7 +43,7 @@ async fn test_configure_program() {
     let sol_2z_swap_program_id = Pubkey::new_unique();
 
     // Distribution settings.
-    let calculation_grace_period_seconds = 6 * 60 * 60;
+    let calculation_grace_period_minutes = 6 * 60;
     let minimum_epoch_duration_to_finalize_rewards = 10;
 
     // -- Solana validator fee parameters.
@@ -70,8 +70,8 @@ async fn test_configure_program() {
                 ProgramConfiguration::DebtAccountant(debt_accountant_key),
                 ProgramConfiguration::RewardsAccountant(rewards_accountant_key),
                 ProgramConfiguration::ContributorManager(contributor_manager_key),
-                ProgramConfiguration::CalculationGracePeriodSeconds(
-                    calculation_grace_period_seconds,
+                ProgramConfiguration::CalculationGracePeriodMinutes(
+                    calculation_grace_period_minutes,
                 ),
                 ProgramConfiguration::Sol2zSwapProgram(sol_2z_swap_program_id),
                 ProgramConfiguration::SolanaValidatorFeeParameters {
@@ -117,8 +117,8 @@ async fn test_configure_program() {
     expected_program_config.sol_2z_swap_program_id = sol_2z_swap_program_id;
 
     let expected_distribution_params = &mut expected_program_config.distribution_parameters;
-    expected_distribution_params.calculation_grace_period_seconds =
-        calculation_grace_period_seconds;
+    expected_distribution_params.calculation_grace_period_minutes =
+        calculation_grace_period_minutes;
     expected_distribution_params.minimum_epoch_duration_to_finalize_rewards =
         minimum_epoch_duration_to_finalize_rewards;
 

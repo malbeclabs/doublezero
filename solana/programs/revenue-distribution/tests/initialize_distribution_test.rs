@@ -23,7 +23,8 @@ async fn test_initialize_distribution() {
 
     let debt_accountant_signer = Keypair::new();
     let solana_validator_base_block_rewards_pct_fee = 500; // 5%.
-    let calculation_grace_period_seconds = 69;
+    let calculation_grace_period_minutes = 69;
+    let initialization_grace_period_minutes = 420;
 
     // Relay settings.
     let distribute_rewards_relay_lamports = 10_000;
@@ -65,8 +66,11 @@ async fn test_initialize_distribution() {
                 ProgramConfiguration::DistributeRewardsRelayLamports(
                     distribute_rewards_relay_lamports,
                 ),
-                ProgramConfiguration::CalculationGracePeriodSeconds(
-                    calculation_grace_period_seconds,
+                ProgramConfiguration::CalculationGracePeriodMinutes(
+                    calculation_grace_period_minutes,
+                ),
+                ProgramConfiguration::DistributionInitializationGracePeriodMinutes(
+                    initialization_grace_period_minutes,
                 ),
                 ProgramConfiguration::Flag(ProgramFlagConfiguration::IsPaused(false)),
             ],
@@ -112,7 +116,7 @@ async fn test_initialize_distribution() {
         .get_clock()
         .await
         .unix_timestamp
-        .saturating_add(calculation_grace_period_seconds.into())
+        .saturating_add(i64::from(calculation_grace_period_minutes) * 60)
         as u32;
     assert_eq!(distribution, expected_distribution);
     assert_eq!(distribution_custody.amount, 0);
@@ -126,10 +130,14 @@ async fn test_initialize_distribution() {
     expected_program_config.admin_key = admin_signer.pubkey();
     expected_program_config.next_dz_epoch = DoubleZeroEpoch::new(1);
     expected_program_config.debt_accountant_key = debt_accountant_signer.pubkey();
+    expected_program_config.last_initialized_distribution_timestamp =
+        test_setup.get_clock().await.unix_timestamp as u32;
 
     let expected_distribution_params = &mut expected_program_config.distribution_parameters;
-    expected_distribution_params.calculation_grace_period_seconds =
-        calculation_grace_period_seconds;
+    expected_distribution_params.calculation_grace_period_minutes =
+        calculation_grace_period_minutes;
+    expected_distribution_params.initialization_grace_period_minutes =
+        initialization_grace_period_minutes;
     expected_distribution_params
         .solana_validator_fee_parameters
         .base_block_rewards_pct =
@@ -143,6 +151,9 @@ async fn test_initialize_distribution() {
     // Create another distribution.
 
     test_setup
+        .warp_timestamp_by(u32::from(initialization_grace_period_minutes) * 60)
+        .await
+        .unwrap()
         .initialize_distribution(&debt_accountant_signer)
         .await
         .unwrap();
@@ -174,7 +185,7 @@ async fn test_initialize_distribution() {
         .get_clock()
         .await
         .unix_timestamp
-        .saturating_add(calculation_grace_period_seconds.into())
+        .saturating_add(i64::from(calculation_grace_period_minutes) * 60)
         as u32;
     assert_eq!(distribution, expected_distribution);
     assert_eq!(distribution_custody.amount, 0);
@@ -188,10 +199,14 @@ async fn test_initialize_distribution() {
     expected_program_config.admin_key = admin_signer.pubkey();
     expected_program_config.next_dz_epoch = DoubleZeroEpoch::new(2);
     expected_program_config.debt_accountant_key = debt_accountant_signer.pubkey();
+    expected_program_config.last_initialized_distribution_timestamp =
+        test_setup.get_clock().await.unix_timestamp as u32;
 
     let expected_distribution_params = &mut expected_program_config.distribution_parameters;
-    expected_distribution_params.calculation_grace_period_seconds =
-        calculation_grace_period_seconds;
+    expected_distribution_params.calculation_grace_period_minutes =
+        calculation_grace_period_minutes;
+    expected_distribution_params.initialization_grace_period_minutes =
+        initialization_grace_period_minutes;
     expected_distribution_params
         .solana_validator_fee_parameters
         .base_block_rewards_pct =

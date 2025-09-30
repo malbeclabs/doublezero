@@ -99,7 +99,8 @@ async fn test_withdraw_sol() {
                 ProgramConfiguration::DistributeRewardsRelayLamports(
                     distribute_rewards_relay_lamports,
                 ),
-                ProgramConfiguration::CalculationGracePeriodSeconds(1),
+                ProgramConfiguration::CalculationGracePeriodMinutes(1),
+                ProgramConfiguration::DistributionInitializationGracePeriodMinutes(1),
                 ProgramConfiguration::Sol2zSwapProgram(mock_swap_sol_2z::ID),
                 ProgramConfiguration::Flag(ProgramFlagConfiguration::IsPaused(false)),
             ],
@@ -109,7 +110,7 @@ async fn test_withdraw_sol() {
         .initialize_distribution(&benevolent_dictator_signer)
         .await
         .unwrap()
-        .warp_timestamp_by(1)
+        .warp_timestamp_by(60)
         .await
         .unwrap()
         .configure_distribution_debt(

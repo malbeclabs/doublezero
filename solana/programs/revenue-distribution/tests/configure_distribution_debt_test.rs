@@ -35,7 +35,8 @@ async fn test_configure_distribution_debt() {
     // Relay settings.
     let distribute_rewards_relay_lamports = 10_000;
 
-    let calculation_grace_period_seconds = 3_600;
+    let calculation_grace_period_minutes = 60;
+    let initialization_grace_period_minutes = 1;
 
     test_setup
         .initialize_program()
@@ -69,8 +70,11 @@ async fn test_configure_distribution_debt() {
                 ProgramConfiguration::DistributeRewardsRelayLamports(
                     distribute_rewards_relay_lamports,
                 ),
-                ProgramConfiguration::CalculationGracePeriodSeconds(
-                    calculation_grace_period_seconds,
+                ProgramConfiguration::CalculationGracePeriodMinutes(
+                    calculation_grace_period_minutes,
+                ),
+                ProgramConfiguration::DistributionInitializationGracePeriodMinutes(
+                    initialization_grace_period_minutes,
                 ),
                 ProgramConfiguration::Flag(ProgramFlagConfiguration::IsPaused(false)),
             ],
@@ -80,10 +84,13 @@ async fn test_configure_distribution_debt() {
         .initialize_distribution(&debt_accountant_signer)
         .await
         .unwrap()
+        .warp_timestamp_by(u32::from(initialization_grace_period_minutes) * 60)
+        .await
+        .unwrap()
         .initialize_distribution(&debt_accountant_signer)
         .await
         .unwrap()
-        .warp_timestamp_by(calculation_grace_period_seconds)
+        .warp_timestamp_by(u32::from(calculation_grace_period_minutes) * 60)
         .await
         .unwrap();
 

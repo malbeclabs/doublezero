@@ -18,13 +18,25 @@ pub struct DistributionParameters {
     /// initialized. If a grace period has not been configured, the program will
     /// not allow new Merkle roots (which are necessary for validators to pay
     /// their dues and contributors to have rewards distributed).
-    pub calculation_grace_period_seconds: u32,
+    pub calculation_grace_period_minutes: u16,
+
+    /// Time to wait in between distribution initializations to avoid creating
+    /// distribution accounts too quickly.
+    ///
+    /// This field should be configured in a way that avoids distributions from
+    /// being created too slowly as well (in case initializing a given
+    /// distribution takes a long time after the new epoch starts on the
+    /// DoubleZero Ledger network).
+    ///
+    /// For reference, the time between epochs on the DoubleZero Ledger network
+    /// (at the time of writing this comment) is roughly 45 hours.
+    pub initialization_grace_period_minutes: u16,
 
     /// The minimum duration that must pass before rewards can be finalized.
     /// This field is used to ensure that rewards are not finalized (and
     /// distributed) too early.
-    pub minimum_epoch_duration_to_finalize_rewards: u16,
-    _padding: [u8; 2],
+    pub minimum_epoch_duration_to_finalize_rewards: u8,
+    _padding: [u8; 3],
 
     pub community_burn_rate_parameters: CommunityBurnRateParameters,
 

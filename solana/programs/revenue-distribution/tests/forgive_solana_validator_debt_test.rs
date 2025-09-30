@@ -94,7 +94,8 @@ async fn test_forgive_solana_validator_debt() {
                 ProgramConfiguration::DistributeRewardsRelayLamports(
                     distribute_rewards_relay_lamports,
                 ),
-                ProgramConfiguration::CalculationGracePeriodSeconds(1),
+                ProgramConfiguration::CalculationGracePeriodMinutes(1),
+                ProgramConfiguration::DistributionInitializationGracePeriodMinutes(1),
                 ProgramConfiguration::Flag(ProgramFlagConfiguration::IsPaused(false)),
             ],
         )
@@ -103,13 +104,19 @@ async fn test_forgive_solana_validator_debt() {
         .initialize_distribution(&debt_accountant_signer)
         .await
         .unwrap()
-        .initialize_distribution(&debt_accountant_signer)
+        .warp_timestamp_by(60)
         .await
         .unwrap()
         .initialize_distribution(&debt_accountant_signer)
         .await
         .unwrap()
-        .warp_timestamp_by(1)
+        .warp_timestamp_by(60)
+        .await
+        .unwrap()
+        .initialize_distribution(&debt_accountant_signer)
+        .await
+        .unwrap()
+        .warp_timestamp_by(60)
         .await
         .unwrap()
         .configure_distribution_debt(
@@ -305,8 +312,11 @@ async fn test_forgive_solana_validator_debt() {
     expected_distribution.collected_solana_validator_payments = paid_debt.amount;
     expected_distribution.processed_solana_validator_debt_end_index = total_solana_validators / 8;
     expected_distribution.distribute_rewards_relay_lamports = distribute_rewards_relay_lamports;
-    expected_distribution.calculation_allowed_timestamp =
-        test_setup.get_clock().await.unix_timestamp as u32;
+    expected_distribution.calculation_allowed_timestamp = test_setup
+        .get_clock()
+        .await
+        .unix_timestamp
+        .saturating_sub(60) as u32;
     assert_eq!(distribution, expected_distribution);
 
     assert_eq!(remaining_distribution_data, vec![0b11111111, 0b11111111]);

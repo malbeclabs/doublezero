@@ -27,7 +27,7 @@ pub enum ProgramConfiguration {
         fixed_sol_amount: u32,
         _unused: [u8; 28],
     },
-    CalculationGracePeriodSeconds(u32),
+    CalculationGracePeriodMinutes(u16),
     CommunityBurnRateParameters {
         limit: u32,
         dz_epochs_to_increasing: EpochDuration,
@@ -36,7 +36,8 @@ pub enum ProgramConfiguration {
     },
     PlaceholderRelayLamports(u32),
     DistributeRewardsRelayLamports(u32),
-    MinimumEpochDurationToFinalizeRewards(u16),
+    MinimumEpochDurationToFinalizeRewards(u8),
+    DistributionInitializationGracePeriodMinutes(u16),
 }
 
 #[derive(Debug, BorshDeserialize, BorshSerialize, Clone, PartialEq, Eq)]

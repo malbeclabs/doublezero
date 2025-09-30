@@ -118,7 +118,8 @@ async fn test_sweep_distribution_tokens() {
                 ProgramConfiguration::DistributeRewardsRelayLamports(
                     distribute_rewards_relay_lamports,
                 ),
-                ProgramConfiguration::CalculationGracePeriodSeconds(1),
+                ProgramConfiguration::CalculationGracePeriodMinutes(1),
+                ProgramConfiguration::DistributionInitializationGracePeriodMinutes(1),
                 ProgramConfiguration::Flag(ProgramFlagConfiguration::IsPaused(false)),
             ],
         )
@@ -127,10 +128,13 @@ async fn test_sweep_distribution_tokens() {
         .initialize_distribution(&debt_accountant_signer)
         .await
         .unwrap()
+        .warp_timestamp_by(60)
+        .await
+        .unwrap()
         .initialize_distribution(&debt_accountant_signer)
         .await
         .unwrap()
-        .warp_timestamp_by(1)
+        .warp_timestamp_by(60)
         .await
         .unwrap()
         .configure_distribution_debt(
@@ -257,7 +261,7 @@ async fn test_sweep_distribution_tokens() {
         .initialize_distribution(&debt_accountant_signer)
         .await
         .unwrap()
-        .warp_timestamp_by(1)
+        .warp_timestamp_by(60)
         .await
         .unwrap()
         .configure_distribution_debt(
@@ -387,7 +391,7 @@ async fn test_sweep_distribution_tokens() {
         .get_clock()
         .await
         .unix_timestamp
-        .saturating_sub(1) as u32;
+        .saturating_sub(60) as u32;
     assert_eq!(distribution, expected_distribution);
 
     assert_eq!(remaining_distribution_data, vec![0b11111011]);

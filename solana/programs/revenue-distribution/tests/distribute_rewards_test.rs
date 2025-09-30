@@ -127,7 +127,8 @@ async fn test_distribute_rewards() {
                 ProgramConfiguration::MinimumEpochDurationToFinalizeRewards(
                     minimum_epoch_duration_to_finalize_rewards,
                 ),
-                ProgramConfiguration::CalculationGracePeriodSeconds(1),
+                ProgramConfiguration::CalculationGracePeriodMinutes(1),
+                ProgramConfiguration::DistributionInitializationGracePeriodMinutes(1),
                 ProgramConfiguration::Flag(ProgramFlagConfiguration::IsPaused(false)),
             ],
         )
@@ -136,10 +137,13 @@ async fn test_distribute_rewards() {
         .initialize_distribution(&debt_accountant_signer)
         .await
         .unwrap()
+        .warp_timestamp_by(60)
+        .await
+        .unwrap()
         .initialize_distribution(&debt_accountant_signer)
         .await
         .unwrap()
-        .warp_timestamp_by(1)
+        .warp_timestamp_by(60)
         .await
         .unwrap()
         .finalize_distribution_debt(DoubleZeroEpoch::default(), &debt_accountant_signer)
@@ -160,7 +164,7 @@ async fn test_distribute_rewards() {
         .initialize_distribution(&debt_accountant_signer)
         .await
         .unwrap()
-        .warp_timestamp_by(1)
+        .warp_timestamp_by(60)
         .await
         .unwrap()
         .configure_distribution_debt(
@@ -517,7 +521,7 @@ async fn test_distribute_rewards() {
         .get_clock()
         .await
         .unix_timestamp
-        .saturating_sub(1) as u32;
+        .saturating_sub(60) as u32;
     assert_eq!(distribution, expected_distribution);
     assert_eq!(
         distribution.distributed_2z_amount + distribution.burned_2z_amount,

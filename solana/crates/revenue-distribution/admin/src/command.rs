@@ -150,15 +150,20 @@ pub struct ConfigureRevenueDistributionOptions {
     #[arg(long, value_name = "LAMPORTS")]
     pub solana_validator_fixed_sol_fee_amount: Option<u32>,
 
-    /// How long the accountant must wait to fetch telemetry data for reward calculations.
-    #[arg(long, value_name = "SECONDS")]
-    pub calculation_grace_period_seconds: Option<u32>,
+    /// How long the accountant must wait to fetch telemetry data for reward
+    /// calculations.
+    #[arg(long, value_name = "MINUTES")]
+    pub calculation_grace_period_minutes: Option<u16>,
+
+    /// How long the accountant must wait to initialize a distribution.
+    #[arg(long, value_name = "MINUTES")]
+    pub distribution_initialization_grace_period_minutes: Option<u16>,
 
     #[arg(long, value_name = "LAMPORTS")]
     pub distribute_rewards_relay_lamports: Option<u32>,
 
     #[arg(long, value_name = "EPOCHS")]
-    pub minimum_epochs_to_finalize_rewards: Option<u16>,
+    pub minimum_epochs_to_finalize_rewards: Option<u8>,
 
     /// Community burn rate limit percentage (max: 100%, precision: 7 decimals).
     #[arg(long, value_name = "PERCENTAGE")]
@@ -170,7 +175,8 @@ pub struct ConfigureRevenueDistributionOptions {
     #[arg(long, value_name = "EPOCHS")]
     pub epochs_to_community_burn_rate_limit: Option<u32>,
 
-    /// Initial community burn rate percentage (max: 100%, precision: 7 decimals).
+    /// Initial community burn rate percentage (max: 100%, precision: 7
+    /// decimals).
     #[arg(long, value_name = "PERCENTAGE")]
     pub initial_community_burn_rate: Option<String>,
 }
@@ -320,8 +326,8 @@ pub async fn execute_set_admin(
         &RevenueDistributionInstructionData::SetAdmin(admin_key),
     )?;
 
-    // Precisely calculate the amount of compute units needed for the instructions.
-    // There should be ~3k CU buffer with this base.
+    // Precisely calculate the amount of compute units needed for the
+    // instructions. There should be ~3k CU buffer with this base.
     let compute_unit_limit = 10_000;
 
     let mut instructions = vec![
@@ -365,7 +371,8 @@ pub async fn execute_configure_program(
         solana_validator_inflation_rewards_fee_pct,
         solana_validator_jito_tips_fee_pct,
         solana_validator_fixed_sol_fee_amount,
-        calculation_grace_period_seconds,
+        calculation_grace_period_minutes,
+        distribution_initialization_grace_period_minutes,
         distribute_rewards_relay_lamports,
         minimum_epochs_to_finalize_rewards,
         community_burn_rate_limit,
@@ -442,10 +449,23 @@ pub async fn execute_configure_program(
         compute_unit_limit += Wallet::compute_units_for_bump_seed(bump);
     }
 
-    if let Some(calculation_grace_period_seconds) = calculation_grace_period_seconds {
+    if let Some(calculation_grace_period_minutes) = calculation_grace_period_minutes {
         let configure_program_ix = try_build_configure_program_instruction(
             &wallet_key,
-            ProgramConfiguration::CalculationGracePeriodSeconds(calculation_grace_period_seconds),
+            ProgramConfiguration::CalculationGracePeriodMinutes(calculation_grace_period_minutes),
+        )?;
+        instructions.push(configure_program_ix);
+        compute_unit_limit += 1_500;
+    }
+
+    if let Some(distribution_initialization_grace_period_minutes) =
+        distribution_initialization_grace_period_minutes
+    {
+        let configure_program_ix = try_build_configure_program_instruction(
+            &wallet_key,
+            ProgramConfiguration::DistributionInitializationGracePeriodMinutes(
+                distribution_initialization_grace_period_minutes,
+            ),
         )?;
         instructions.push(configure_program_ix);
         compute_unit_limit += 1_500;

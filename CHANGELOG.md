@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Activator
+    - Reduce logging noise when processing snapshot events
 - Internet telemetry
     - Add circuit label to metrics; create a new metric for missing circuit samples
     - Submit partitions of samples in parallel

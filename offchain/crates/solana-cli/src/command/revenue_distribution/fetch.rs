@@ -77,9 +77,7 @@ impl FetchCommand {
                 println!(
                     "Calculation grace period                    | {:?}",
                     std::time::Duration::from_secs(
-                        distribution_parameters
-                            .calculation_grace_period_seconds
-                            .into()
+                        u64::from(distribution_parameters.calculation_grace_period_minutes) * 60
                     ),
                 );
                 println!(

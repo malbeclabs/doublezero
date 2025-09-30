@@ -71,19 +71,19 @@ url = "2"
 [workspace.dependencies.doublezero-passport]
 features = ["offchain"]
 git = "ssh://git@github.com/doublezerofoundation/doublezero-solana"
-rev = "2cd59e6"
+rev = "2fef1c6"
 
 [workspace.dependencies.doublezero-program-tools]
 git = "ssh://git@github.com/doublezerofoundation/doublezero-solana"
-rev = "2cd59e6"
+rev = "2fef1c6"
 
 [workspace.dependencies.doublezero-revenue-distribution]
 git = "ssh://git@github.com/doublezerofoundation/doublezero-solana"
-rev = "2cd59e6"
+rev = "2fef1c6"
 
 [workspace.dependencies.doublezero-solana-client-tools]
 git = "ssh://git@github.com/doublezerofoundation/doublezero-solana"
-rev = "2cd59e6"
+rev = "2fef1c6"
 
 ### Dependencies found in github.com/malbeclabs/doublezero
 

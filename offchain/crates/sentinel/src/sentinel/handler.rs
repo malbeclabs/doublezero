@@ -1,5 +1,5 @@
 use crate::{
-    AccessIds, Error, Result,
+    AccessId, Error, Result,
     client::{doublezero_ledger::DzRpcClient, solana::SolRpcClient},
     error::rpc_with_retry,
     verify_access_request,
@@ -66,12 +66,15 @@ impl Sentinel {
                         info!(%signature, "received access request txn");
                         let access_ids = rpc_with_retry(
                             || async {
-                                self.sol_rpc_client.get_access_request_from_signature(signature).await
+                                self.sol_rpc_client.get_access_requests_from_signature(signature).await
                             },
                             "get_access_request_from_signature",
                         ).await?;
-                        if let Err(err) = self.handle_access_request(access_ids).await {
-                            error!(?err, "error encountered validating network access request");
+
+                        for access_id in access_ids {
+                            if let Err(err) = self.handle_access_request(access_id).await {
+                                error!(?err, "error encountered validating network access request");
+                            }
                         }
                     }
                 }
@@ -81,11 +84,11 @@ impl Sentinel {
         Ok(())
     }
 
-    async fn handle_access_request(&self, access_ids: AccessIds) -> Result<()> {
+    async fn handle_access_request(&self, access_id: AccessId) -> Result<()> {
         // Get the service key.
-        let service_key = access_ids.mode.service_key();
+        let service_key = access_id.mode.service_key();
 
-        let validator_ips = self.verify_qualifiers(&access_ids.mode).await?;
+        let validator_ips = self.verify_qualifiers(&access_id.mode).await?;
 
         if !validator_ips.is_empty() {
             // Issue access passes for all validators (primary + backups)
@@ -105,7 +108,7 @@ impl Sentinel {
             let signature = rpc_with_retry(
                 || async {
                     self.sol_rpc_client
-                        .grant_access(&access_ids.request_pda, &access_ids.rent_beneficiary_key)
+                        .grant_access(&access_id.request_pda, &access_id.rent_beneficiary_key)
                         .await
                 },
                 "grant_access",
@@ -117,7 +120,7 @@ impl Sentinel {
             let signature = rpc_with_retry(
                 || async {
                     self.sol_rpc_client
-                        .deny_access(&access_ids.request_pda)
+                        .deny_access(&access_id.request_pda)
                         .await
                 },
                 "deny_access",

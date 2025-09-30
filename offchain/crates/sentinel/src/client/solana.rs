@@ -1,4 +1,4 @@
-use crate::{AccessIds, Error, Result, new_transaction};
+use crate::{AccessId, Error, Result, new_transaction};
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64_STD};
 use bincode;
 use doublezero_passport::{
@@ -10,7 +10,7 @@ use doublezero_passport::{
     state::AccessRequest,
 };
 use doublezero_program_tools::{
-    PrecomputedDiscriminator, instruction::try_build_instruction, zero_copy,
+    Discriminator, PrecomputedDiscriminator, instruction::try_build_instruction, zero_copy,
 };
 use futures::{future::BoxFuture, stream::BoxStream};
 use solana_account_decoder_client_types::UiAccountEncoding;
@@ -25,6 +25,8 @@ use solana_client::{
 };
 use solana_commitment_config::{CommitmentConfig, CommitmentLevel};
 use solana_sdk::{
+    compute_budget::ComputeBudgetInstruction,
+    instruction::CompiledInstruction,
     pubkey::Pubkey,
     signature::{Keypair, Signature},
     signer::Signer,
@@ -68,7 +70,17 @@ impl SolRpcClient {
 
         let recent_blockhash = self.client.get_latest_blockhash().await?;
 
-        let transaction = new_transaction(&[grant_ix], &[signer], recent_blockhash);
+        // There should be ~5k CU buffer with this limit.
+        let compute_limit_ix = ComputeBudgetInstruction::set_compute_unit_limit(16_000);
+
+        // TODO: Consider using a priority fee API instead of a fixed price.
+        let compute_price_ix = ComputeBudgetInstruction::set_compute_unit_price(100_000);
+
+        let transaction = new_transaction(
+            &[grant_ix, compute_limit_ix, compute_price_ix],
+            &[signer],
+            recent_blockhash,
+        );
 
         Ok(self
             .client
@@ -84,9 +96,19 @@ impl SolRpcClient {
             &PassportInstructionData::DenyAccess,
         )?;
 
+        // There should be ~5k CU buffer with this limit.
+        let compute_limit_ix = ComputeBudgetInstruction::set_compute_unit_limit(12_000);
+
+        // TODO: Consider using a priority fee API instead of a fixed price.
+        let compute_price_ix = ComputeBudgetInstruction::set_compute_unit_price(100_000);
+
         let recent_blockhash = self.client.get_latest_blockhash().await?;
 
-        let transaction = new_transaction(&[deny_ix], &[signer], recent_blockhash);
+        let transaction = new_transaction(
+            &[deny_ix, compute_limit_ix, compute_price_ix],
+            &[signer],
+            recent_blockhash,
+        );
 
         Ok(self
             .client
@@ -94,10 +116,10 @@ impl SolRpcClient {
             .await?)
     }
 
-    pub async fn get_access_request_from_signature(
+    pub async fn get_access_requests_from_signature(
         &self,
         signature: Signature,
-    ) -> Result<AccessIds> {
+    ) -> Result<Vec<AccessId>> {
         // Get the transaction to find the AccessRequest account pubkey
         let txn = self
             .client
@@ -113,46 +135,51 @@ impl SolRpcClient {
             )
             .await?;
 
-        // Extract the AccessRequest account pubkey from the transaction
-        let request_pda =
-            if let EncodedTransaction::Binary(data, TransactionBinaryEncoding::Base64) =
-                txn.transaction.transaction
+        let mut access_ids = Vec::new();
+
+        if let EncodedTransaction::Binary(data, TransactionBinaryEncoding::Base64) =
+            txn.transaction.transaction
+        {
+            let data = BASE64_STD.decode(data)?;
+            let tx = bincode::deserialize::<VersionedTransaction>(&data)?;
+
+            let static_account_keys = tx.message.static_account_keys();
+            let instructions = tx.message.instructions();
+
+            for compiled_ix in instructions
+                .iter()
+                .filter(|ix| is_request_access_instruction(ix, static_account_keys))
             {
-                let data: &[u8] = &BASE64_STD.decode(data)?;
-                let tx: VersionedTransaction = bincode::deserialize(data)?;
-
-                // Find the passport instruction
-                let compiled_ix = tx
-                    .message
-                    .instructions()
-                    .iter()
-                    .find(|ix| ix.program_id(tx.message.static_account_keys()) == &passport_id())
-                    .ok_or(Error::InstructionNotFound(signature))?;
-
                 // Get the AccessRequest account
                 let accounts = compiled_ix
                     .accounts
                     .iter()
-                    .map(|&idx| tx.message.static_account_keys().get(idx as usize).copied())
+                    .map(|&idx| static_account_keys.get(idx as usize))
                     .collect::<Option<Vec<_>>>()
                     .ok_or(Error::MissingAccountKeys(signature))?;
 
-                accounts
+                let request_pda = accounts
                     .get(ACCESS_REQUEST_ACCOUNT_INDEX)
                     .copied()
-                    .ok_or(Error::InstructionInvalid(signature))?
-            } else {
-                return Err(Error::TransactionEncoding(signature));
-            };
+                    .ok_or(Error::InstructionInvalid(signature))?;
 
-        // Fetch the AccessRequest account data
-        let account = self.client.get_account(&request_pda).await?;
+                // Fetch the AccessRequest account data
+                let account = self.client.get_account(request_pda).await?;
 
-        // Deserialize the AccessRequest and extract the AccessMode
-        deserialize_access_request_from_account(&request_pda, &account.data)
+                // Deserialize the AccessRequest and extract the AccessMode
+                let access_id =
+                    deserialize_access_request_from_account(request_pda, &account.data)?;
+
+                access_ids.push(access_id);
+            }
+        } else {
+            return Err(Error::TransactionEncoding(signature));
+        };
+
+        Ok(access_ids)
     }
 
-    pub async fn get_access_requests(&self) -> Result<Vec<AccessIds>> {
+    pub async fn get_access_requests(&self) -> Result<Vec<AccessId>> {
         let config = RpcProgramAccountsConfig {
             filters: Some(vec![RpcFilterType::Memcmp(Memcmp::new_raw_bytes(
                 0,
@@ -253,7 +280,7 @@ impl SolPubsubClient {
 fn deserialize_access_request_from_account(
     request_pda: &Pubkey,
     account_data: &[u8],
-) -> Result<AccessIds> {
+) -> Result<AccessId> {
     // Parse the AccessRequest structure using zero_copy
     let (access_request, _) =
         zero_copy::checked_from_bytes_with_discriminator::<AccessRequest>(account_data)
@@ -264,11 +291,17 @@ fn deserialize_access_request_from_account(
         .checked_access_mode()
         .ok_or_else(|| Error::Deserialize("Failed to deserialize AccessMode".to_string()))?;
 
-    Ok(AccessIds {
+    Ok(AccessId {
         request_pda: *request_pda,
         rent_beneficiary_key: access_request.rent_beneficiary_key,
         mode: access_mode,
     })
+}
+
+fn is_request_access_instruction(ix: &CompiledInstruction, static_account_keys: &[Pubkey]) -> bool {
+    ix.program_id(static_account_keys) == &passport_id()
+        && Discriminator::new(ix.data[..8].try_into().unwrap())
+            == PassportInstructionData::REQUEST_ACCESS
 }
 
 pub struct PreviousEpochSlots {

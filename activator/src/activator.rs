@@ -100,10 +100,10 @@ pub async fn get_snapshot_poll(
     stop_signal: Arc<AtomicBool>,
 ) -> eyre::Result<()> {
     while !stop_signal.load(std::sync::atomic::Ordering::Relaxed) {
-        tokio::time::sleep(std::time::Duration::from_secs(60)).await;
         for (pubkey, data) in client.get_all()? {
             tx.send((pubkey, data, false)).await?;
         }
+        tokio::time::sleep(std::time::Duration::from_secs(60)).await;
     }
     Ok(())
 }
@@ -113,7 +113,7 @@ pub fn process_events_thread(
     tx: mpsc::Sender<(Box<Pubkey>, Box<AccountData>, bool)>,
     stop_signal: Arc<AtomicBool>,
 ) -> eyre::Result<()> {
-    client.gets_and_subscribe(
+    client.subscribe(
         |_, pubkey, data| {
             tx.blocking_send((pubkey, data, true))
                 .unwrap_or_else(|err| {

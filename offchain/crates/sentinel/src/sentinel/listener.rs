@@ -23,13 +23,55 @@ pub struct ReqListener {
 impl ReqListener {
     pub async fn new(ws_url: Url) -> Result<(Self, UnboundedReceiver<Signature>)> {
         let (tx, rx) = unbounded_channel();
-        Ok((
-            Self {
-                pubsub_client: SolPubsubClient::new(ws_url).await?,
-                tx,
-            },
-            rx,
-        ))
+
+        // Retry WebSocket connection with backoff as well
+        let mut retry_delay = Duration::from_secs(1);
+        let mut retry_count = 0;
+
+        let pubsub_client = loop {
+            match SolPubsubClient::new(ws_url.clone()).await {
+                Ok(client) => {
+                    if retry_count > 0 {
+                        info!(
+                            retry_count,
+                            "successfully connected to WebSocket after retries"
+                        );
+                    }
+                    break client;
+                }
+                Err(err) => {
+                    retry_count += 1;
+
+                    // Use graduated logging same as runtime reconnection
+                    if retry_count <= ERROR_AFTER_RETRIES {
+                        warn!(
+                            ?err,
+                            ?retry_delay,
+                            retry_count,
+                            "failed to connect to WebSocket during startup; retrying after delay (transient)"
+                        );
+                    } else {
+                        error!(
+                            ?err,
+                            ?retry_delay,
+                            retry_count,
+                            "failed to connect to WebSocket during startup after multiple retries (persistent issue)"
+                        );
+                    }
+
+                    metrics::counter!("doublezero_sentinel_startup_connection_failed").increment(1);
+
+                    // Sleep with backoff before retrying
+                    sleep(retry_delay).await;
+
+                    // Exponential backoff with max cap
+                    retry_delay =
+                        std::cmp::min(retry_delay * RETRY_BACKOFF_MULTIPLIER, MAX_RETRY_DELAY);
+                }
+            }
+        };
+
+        Ok((Self { pubsub_client, tx }, rx))
     }
 
     pub async fn run(&self, shutdown_listener: CancellationToken) -> Result<()> {

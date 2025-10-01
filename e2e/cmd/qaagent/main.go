@@ -15,7 +15,6 @@ import (
 
 	_ "net/http/pprof"
 
-	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
 	"github.com/malbeclabs/doublezero/e2e/internal/rpc"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -72,8 +71,7 @@ func main() {
 		}()
 	}
 
-	joiner := netutil.NewMulticastListener()
-	e, err := rpc.NewQAAgent(log, *serverAddr, joiner)
+	e, err := rpc.NewQAAgent(log, *serverAddr)
 	if err != nil {
 		log.Error("failed to create server", "error", err)
 		os.Exit(1)

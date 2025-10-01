@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
 	"github.com/malbeclabs/doublezero/e2e/internal/poll"
 	pb "github.com/malbeclabs/doublezero/e2e/proto/qa/gen/pb-go"
 	probing "github.com/prometheus-community/pro-bing"
@@ -26,24 +27,55 @@ type Joiner interface {
 	GetStatistics(net.IP) uint64
 }
 
+type Netlinker interface {
+	RouteGet(src net.IP) ([]Route, error)
+}
+
 type Option func(*QAAgent)
 
 type QAAgent struct {
 	pb.UnimplementedQAAgentServiceServer
 	listener      net.Listener
 	mcastListener Joiner
+	netlinker     Netlinker
 	dzClient      *http.Client
+	dzStatusURL   string
 	log           *slog.Logger
+}
+
+func WithDzClient(client *http.Client) Option {
+	return func(q *QAAgent) {
+		q.dzClient = client
+	}
+}
+
+func WithDzStatusURL(url string) Option {
+	return func(q *QAAgent) {
+		q.dzStatusURL = url
+	}
+}
+
+func WithJoiner(j Joiner) Option {
+	return func(q *QAAgent) {
+		q.mcastListener = j
+	}
+}
+
+func WithNetlinker(n Netlinker) Option {
+	return func(q *QAAgent) {
+		q.netlinker = n
+	}
 }
 
 // NewQAAgent creates a new QAAgent instance. It accepts an address (i.e. localhost:443) to listen
 // on and a Joiner interface for managing multicast group joins.
-func NewQAAgent(logger *slog.Logger, addr string, j Joiner) (*QAAgent, error) {
+func NewQAAgent(logger *slog.Logger, addr string, opts ...Option) (*QAAgent, error) {
 	q := &QAAgent{
-		mcastListener: j,
-		log:           logger,
+		log:         logger,
+		dzStatusURL: "http://doublezero/status",
 	}
-	for _, opt := range []Option{} {
+
+	for _, opt := range opts {
 		opt(q)
 	}
 
@@ -55,17 +87,27 @@ func NewQAAgent(logger *slog.Logger, addr string, j Joiner) (*QAAgent, error) {
 		q.listener = lis
 	}
 
-	sockFile := "/var/run/doublezerod/doublezerod.sock"
-	q.dzClient = &http.Client{
-		Transport: &http.Transport{
-			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-				dialer := net.Dialer{}
-				return dialer.DialContext(ctx, "unix", sockFile)
+	if q.mcastListener == nil {
+		q.mcastListener = netutil.NewMulticastListener()
+	}
+
+	if q.netlinker == nil {
+		q.netlinker = &Netlink{}
+	}
+
+	if q.dzClient == nil {
+		sockFile := "/var/run/doublezerod/doublezerod.sock"
+		q.dzClient = &http.Client{
+			Transport: &http.Transport{
+				DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+					dialer := net.Dialer{}
+					return dialer.DialContext(ctx, "unix", sockFile)
+				},
+				MaxIdleConns:    10,
+				IdleConnTimeout: 30 * time.Second,
 			},
-			MaxIdleConns:    10,
-			IdleConnTimeout: 30 * time.Second,
-		},
-		Timeout: 5 * time.Second,
+			Timeout: 5 * time.Second,
+		}
 	}
 	return q, nil
 }
@@ -452,10 +494,29 @@ func runCmd(cmd *exec.Cmd) (*pb.Result, error) {
 	return res, nil
 }
 
+func (q *QAAgent) GetPublicIP(ctx context.Context, req *emptypb.Empty) (*pb.GetPublicIPResponse, error) {
+	q.log.Info("Received GetPublicIP request")
+	dest := net.ParseIP("1.1.1.1")
+	rts, err := q.netlinker.RouteGet(dest)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get route to %s: %w", dest.String(), err)
+	}
+	if len(rts) == 0 {
+		return nil, fmt.Errorf("no route found to %s", dest.String())
+	}
+	if len(rts) > 1 {
+		q.log.Warn("multiple routes found to destination, using the first one", "count", len(rts))
+	}
+	rt := rts[0]
+	return &pb.GetPublicIPResponse{
+		PublicIp: rt.Src.String(),
+	}, nil
+}
+
 // fetchStatus retrieves the current status of the configured DoubleZero tunnel via the doublezerod
 // unix socket.
 func (q *QAAgent) fetchStatus(ctx context.Context) ([]StatusResponse, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", "http://doublezero/status", nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", q.dzStatusURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create status request: %w", err)
 	}

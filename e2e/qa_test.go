@@ -417,6 +417,7 @@ func disconnectUsers(t *testing.T, hosts []string) {
 			require.NoError(t, err, "Disconnect failed")
 		})
 	}
+	time.Sleep(30 * time.Second) // TODO: remove this after the race in the client is fixed
 }
 
 func removeMulticastGroup(t *testing.T, code, publisher string) {

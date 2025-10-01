@@ -450,7 +450,7 @@ impl ProgramTestWithOwner {
             InitializeDistributionAccounts::new(
                 &accountant_signer.pubkey(),
                 &payer_signer.pubkey(),
-                program_config.next_dz_epoch,
+                program_config.next_completed_dz_epoch,
                 &DOUBLEZERO_MINT_KEY,
             ),
             &RevenueDistributionInstructionData::InitializeDistribution,

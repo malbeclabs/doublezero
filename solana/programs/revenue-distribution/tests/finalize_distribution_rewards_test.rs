@@ -182,7 +182,7 @@ async fn test_finalize_distribution_rewards() {
         program_logs.get(3).unwrap(),
         &format!(
             "Program log: DZ epoch must be at least {} (currently {}) to finalize rewards",
-            minimum_dz_epoch_to_finalize, program_config.next_dz_epoch
+            minimum_dz_epoch_to_finalize, program_config.next_completed_dz_epoch
         )
     );
 
@@ -195,7 +195,10 @@ async fn test_finalize_distribution_rewards() {
         .unwrap();
 
     let (_, program_config, _) = test_setup.fetch_program_config().await;
-    assert_eq!(program_config.next_dz_epoch, minimum_dz_epoch_to_finalize);
+    assert_eq!(
+        program_config.next_completed_dz_epoch,
+        minimum_dz_epoch_to_finalize
+    );
 
     //
 

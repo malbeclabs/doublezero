@@ -128,7 +128,7 @@ async fn test_initialize_distribution() {
     expected_program_config.reserve_2z_bump_seed =
         state::find_2z_token_pda_address(&program_config_key).1;
     expected_program_config.admin_key = admin_signer.pubkey();
-    expected_program_config.next_dz_epoch = DoubleZeroEpoch::new(1);
+    expected_program_config.next_completed_dz_epoch = DoubleZeroEpoch::new(1);
     expected_program_config.debt_accountant_key = debt_accountant_signer.pubkey();
     expected_program_config.last_initialized_distribution_timestamp =
         test_setup.get_clock().await.unix_timestamp as u32;
@@ -197,7 +197,7 @@ async fn test_initialize_distribution() {
     expected_program_config.reserve_2z_bump_seed =
         state::find_2z_token_pda_address(&program_config_key).1;
     expected_program_config.admin_key = admin_signer.pubkey();
-    expected_program_config.next_dz_epoch = DoubleZeroEpoch::new(2);
+    expected_program_config.next_completed_dz_epoch = DoubleZeroEpoch::new(2);
     expected_program_config.debt_accountant_key = debt_accountant_signer.pubkey();
     expected_program_config.last_initialized_distribution_timestamp =
         test_setup.get_clock().await.unix_timestamp as u32;

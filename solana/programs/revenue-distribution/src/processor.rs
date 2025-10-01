@@ -417,7 +417,7 @@ fn try_configure_program(accounts: &[AccountInfo], setting: ProgramConfiguration
                     //
                     // This updated community burn rate will be saved to the
                     // program config.
-                    if program_config.next_dz_epoch != 0 {
+                    if program_config.next_completed_dz_epoch != 0 {
                         msg!(
                             "Cannot initialize community burn rate parameters if not zero DZ epoch"
                         );
@@ -743,7 +743,7 @@ fn try_initialize_distribution(accounts: &[AccountInfo]) -> ProgramResult {
         try_next_enumerated_account(&mut accounts_iter, Default::default())?;
 
     // We will need this DZ epoch for the distribution account.
-    let dz_epoch = program_config.next_dz_epoch;
+    let dz_epoch = program_config.next_completed_dz_epoch;
     let (expected_distribution_key, distribution_bump) = Distribution::find_address(dz_epoch);
 
     // Enforce this account location and seed validity.
@@ -753,7 +753,7 @@ fn try_initialize_distribution(accounts: &[AccountInfo]) -> ProgramResult {
     }
 
     // Uptick the program config's next epoch.
-    program_config.next_dz_epoch = dz_epoch.saturating_add_duration(1);
+    program_config.next_completed_dz_epoch = dz_epoch.saturating_add_duration(1);
 
     // We no longer need the program config for anything.
     drop(program_config);
@@ -1074,11 +1074,11 @@ fn try_finalize_distribution_rewards(accounts: &[AccountInfo]) -> ProgramResult 
             ProgramError::InvalidAccountData
         })?;
 
-    if minimum_dz_epoch_to_finalize > program_config.next_dz_epoch {
+    if minimum_dz_epoch_to_finalize > program_config.next_completed_dz_epoch {
         msg!(
             "DZ epoch must be at least {} (currently {}) to finalize rewards",
             minimum_dz_epoch_to_finalize,
-            program_config.next_dz_epoch
+            program_config.next_completed_dz_epoch
         );
         return Err(ProgramError::InvalidAccountData);
     }

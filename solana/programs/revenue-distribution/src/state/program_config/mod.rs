@@ -22,7 +22,7 @@ use super::checked_2z_token_pda_address;
 pub struct ProgramConfig {
     pub flags: Flags,
 
-    pub next_dz_epoch: DoubleZeroEpoch,
+    pub next_completed_dz_epoch: DoubleZeroEpoch,
 
     /// This seed will be used to sign for token transfers.
     pub bump_seed: u8,

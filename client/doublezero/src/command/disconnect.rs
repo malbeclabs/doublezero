@@ -1,4 +1,9 @@
+use std::time::Duration;
+
+use backon::{BlockingRetryable, ExponentialBuilder};
 use clap::{Args, ValueEnum};
+use indicatif::ProgressBar;
+use solana_sdk::pubkey::Pubkey;
 
 use crate::requirements::check_doublezero;
 use doublezero_cli::{
@@ -10,7 +15,7 @@ use doublezero_cli::{
 use crate::servicecontroller::{RemoveTunnelCliCommand, ServiceController, ServiceControllerImpl};
 
 use doublezero_sdk::{
-    commands::user::{delete::DeleteUserCommand, list::ListUserCommand},
+    commands::user::{delete::DeleteUserCommand, get::GetUserCommand, list::ListUserCommand},
     UserType,
 };
 
@@ -79,23 +84,66 @@ impl DecommissioningCliCommand {
             let res = client.delete_user(DeleteUserCommand { pubkey: *pubkey });
             match res {
                 Ok(_) => {
-                    spinner.println("🔍  User Account deleted");
+                    spinner.println("🔍  User Account deleting...");
                 }
                 Err(_) => {
                     spinner.println("🔍  User Account not found");
                 }
             }
 
+            spinner.inc(1);
             let _ = controller
                 .remove(RemoveTunnelCliCommand {
                     user_type: user.user_type.to_string(),
                 })
                 .await;
+
+            self.poll_for_user_closed(client, pubkey, &spinner)?;
         }
 
         spinner.println("✅  Deprovisioning Complete");
         spinner.finish_and_clear();
 
+        Ok(())
+    }
+
+    fn poll_for_user_closed(
+        &self,
+        client: &dyn CliCommand,
+        user_pubkey: &Pubkey,
+        spinner: &ProgressBar,
+    ) -> eyre::Result<()> {
+        spinner.set_message("Waiting for user deletion...");
+
+        let builder = ExponentialBuilder::new()
+            .with_max_times(8) // 1+2+4+8+16+32+32+32 = 127 seconds max
+            .with_min_delay(Duration::from_secs(1))
+            .with_max_delay(Duration::from_secs(32));
+
+        let get_user = || {
+            match client.get_user(GetUserCommand {
+                pubkey: *user_pubkey,
+            }) {
+                Ok(user) => Err(user), // User still exists, keep retrying
+                Err(e) => {
+                    Ok(if e.to_string().contains("User not found") {
+                        Ok(()) // User deleted, stop retrying
+                    } else {
+                        Err(e) // Other error, keep retrying
+                    })
+                }
+            }
+        };
+
+        let _ = get_user
+            .retry(builder)
+            .notify(|_, dur| {
+                spinner.set_message(format!(
+                    "Waiting for user deletion (checking in {dur:?})..."
+                ))
+            })
+            .call()
+            .map_err(|_| eyre::eyre!("Timeout waiting for user deletion"))?;
         Ok(())
     }
 }

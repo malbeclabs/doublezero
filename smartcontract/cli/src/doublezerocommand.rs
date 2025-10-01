@@ -99,7 +99,7 @@ use doublezero_serviceability::state::{
     accesspass::AccessPass, contributor::Contributor, programconfig::ProgramConfig,
 };
 use mockall::automock;
-use solana_sdk::{pubkey::Pubkey, signature::Signature};
+use solana_sdk::{account::Account, pubkey::Pubkey, signature::Signature};
 use std::collections::HashMap;
 
 #[automock]
@@ -117,6 +117,7 @@ pub trait CliCommand {
     fn get_balance(&self) -> eyre::Result<u64>;
     fn get_epoch(&self) -> eyre::Result<u64>;
     fn get_logs(&self, pubkey: &Pubkey) -> eyre::Result<Vec<String>>;
+    fn get_account(&self, pubkey: Pubkey) -> eyre::Result<Account>;
 
     fn init_globalstate(&self, cmd: InitGlobalStateCommand) -> eyre::Result<Signature>;
     fn get_globalstate(&self, cmd: GetGlobalStateCommand) -> eyre::Result<(Pubkey, GlobalState)>;
@@ -321,6 +322,9 @@ impl CliCommand for CliCommandImpl<'_> {
     }
     fn get_logs(&self, pubkey: &Pubkey) -> eyre::Result<Vec<String>> {
         self.client.get_logs(pubkey)
+    }
+    fn get_account(&self, pubkey: Pubkey) -> eyre::Result<Account> {
+        self.client.get_account(pubkey)
     }
 
     fn init_globalstate(&self, cmd: InitGlobalStateCommand) -> eyre::Result<Signature> {

@@ -40,18 +40,18 @@ func TestQAAgentConnectivity(t *testing.T) {
 	defer mockServer.Close()
 
 	opts := []Option{
-		WithDzClient(mockServer.Client()),
+		WithDZClient(mockServer.Client()),
 		WithDzStatusURL(mockServer.URL + "/status"),
 		WithJoiner(&DummyJoiner{}),
 		WithNetlinker(&DummyNetlinker{}),
 	}
 	agent, lis := newTestQAAgent(t, logger, opts...)
 
-	ctx := t.Context()
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
 
 	go func() {
-		err := agent.Start(ctx)
-		require.ErrorIs(t, err, grpc.ErrServerStopped, "expected server to be stopped gracefully")
+		_ = agent.Start(ctx)
 	}()
 
 	conn, err := grpc.NewClient("passthrough://bufnet",

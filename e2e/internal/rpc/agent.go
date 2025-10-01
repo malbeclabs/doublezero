@@ -43,7 +43,7 @@ type QAAgent struct {
 	log           *slog.Logger
 }
 
-func WithDzClient(client *http.Client) Option {
+func WithDZClient(client *http.Client) Option {
 	return func(q *QAAgent) {
 		q.dzClient = client
 	}
@@ -117,11 +117,9 @@ func (q *QAAgent) Start(ctx context.Context) error {
 	agent := grpc.NewServer()
 	pb.RegisterQAAgentServiceServer(agent, q)
 
-	errChan := make(chan error)
+	errChan := make(chan error, 1)
 	go func() {
-		if err := agent.Serve(q.listener); err != nil {
-			errChan <- err
-		}
+		errChan <- agent.Serve(q.listener)
 	}()
 
 	select {
@@ -129,7 +127,7 @@ func (q *QAAgent) Start(ctx context.Context) error {
 		q.log.Info("Stopping QA Agent...")
 		agent.GracefulStop()
 		q.mcastListener.Stop()
-		return nil
+		return <-errChan
 	case err := <-errChan:
 		if err != nil {
 			return fmt.Errorf("agent error: %v", err)

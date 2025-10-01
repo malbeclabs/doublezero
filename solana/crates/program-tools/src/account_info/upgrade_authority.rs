@@ -37,11 +37,6 @@ impl<'a, 'b> TryNextAccounts<'a, 'b, &'a Pubkey> for UpgradeAuthority<'a, 'b> {
             },
         )?;
 
-        if !owner_info.is_signer {
-            msg!("Owner (account {}) must be signer", index);
-            return Err(ProgramError::MissingRequiredSignature);
-        }
-
         let program_data_info_data = program_data_info.data.borrow();
         match bincode::deserialize(&program_data_info_data) {
             Ok(UpgradeableLoaderState::ProgramData {

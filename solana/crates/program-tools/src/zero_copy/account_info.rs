@@ -16,7 +16,7 @@ use crate::{
         try_borrow_data, try_borrow_mut_data, try_next_enumerated_account, NextAccountOptions,
         TryNextAccounts,
     },
-    PrecomputedDiscriminator, DISCRIMINATOR_LEN,
+    Discriminator, PrecomputedDiscriminator, DISCRIMINATOR_LEN,
 };
 
 use super::data_range;
@@ -152,6 +152,20 @@ pub fn try_initialize<'a, T: Default + Pod + PrecomputedDiscriminator>(
         mucked_data,
         remaining_data,
     } = RefMutSplit::try_new(data)?;
+
+    // If this account already has a discriminator, it means it has already been
+    // initialized.
+    if discriminator.as_ref() != [0, 0, 0, 0, 0, 0, 0, 0] {
+        let mut buf = [0; DISCRIMINATOR_LEN];
+        buf.copy_from_slice(&discriminator);
+
+        msg!(
+            "Account {} already initialized with discriminator {}",
+            account_info.key,
+            Discriminator::new(buf),
+        );
+        return Err(ProgramError::InvalidAccountData);
+    }
 
     // First, serialize the discriminator.
     discriminator.copy_from_slice(T::discriminator_slice());

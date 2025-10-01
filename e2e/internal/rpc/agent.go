@@ -49,7 +49,7 @@ func WithDZClient(client *http.Client) Option {
 	}
 }
 
-func WithDzStatusURL(url string) Option {
+func WithDZStatusURL(url string) Option {
 	return func(q *QAAgent) {
 		q.dzStatusURL = url
 	}

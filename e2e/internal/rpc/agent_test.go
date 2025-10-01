@@ -41,7 +41,7 @@ func TestQAAgentConnectivity(t *testing.T) {
 
 	opts := []Option{
 		WithDZClient(mockServer.Client()),
-		WithDzStatusURL(mockServer.URL + "/status"),
+		WithDZStatusURL(mockServer.URL + "/status"),
 		WithJoiner(&DummyJoiner{}),
 		WithNetlinker(&DummyNetlinker{}),
 	}

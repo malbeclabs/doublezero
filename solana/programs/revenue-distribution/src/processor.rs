@@ -1182,8 +1182,6 @@ fn try_distribute_rewards(
         ZeroCopyAccount::<ProgramConfig>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
 
     // Make sure the program is not paused.
-    //
-    // TODO: Do we want to pause?
     program_config.try_require_unpaused()?;
 
     // Account 1 must be the distribution.
@@ -1200,6 +1198,11 @@ fn try_distribute_rewards(
     // Make sure 2Z tokens have been swept.
     if !distribution.has_swept_2z_tokens() {
         msg!("Distribution has not swept 2Z tokens");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    if distribution.distributed_rewards_count == distribution.total_contributors {
+        msg!("All rewards have already been distributed");
         return Err(ProgramError::InvalidAccountData);
     }
 

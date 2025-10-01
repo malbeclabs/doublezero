@@ -21,7 +21,7 @@ use crate::{
 #[derive(Debug, Args, Clone)]
 pub struct CalculateValidatorDebtCommand {
     #[arg(long)]
-    epoch: u64,
+    epoch: Option<u64>,
 
     #[command(flatten)]
     schedule_or_force: super::ScheduleOrForce,
@@ -54,6 +54,17 @@ impl Schedulable for CalculateValidatorDebtCommand {
 
         schedule_or_force.ensure_safe_execution()?;
 
+        let epoch = match epoch {
+            Some(e) => *e,
+            None => {
+                latest_distribution_epoch(
+                    &solana_payer_options.connection_options,
+                    dz_ledger_connection_options,
+                )
+                .await?
+            }
+        };
+
         let connection_options = SolanaValidatorDebtConnectionOptions {
             solana_url_or_moniker: solana_payer_options
                 .connection_options
@@ -69,7 +80,7 @@ impl Schedulable for CalculateValidatorDebtCommand {
         crate::worker::calculate_validator_debt(
             &solana_debt_calculator,
             transaction,
-            *epoch,
+            epoch,
             *post_to_ledger_only,
         )
         .await?;
@@ -115,27 +126,9 @@ impl Schedulable for FindSolanaEpochCommand {
 
         schedule_or_force.ensure_safe_execution()?;
 
-        let mut solana_connection = SolanaConnection::try_from(solana_connection_options.clone())?;
-        solana_connection.cache_if_mainnet().await?;
-
-        let dz_ledger_rpc_client = RpcClient::new_with_commitment(
-            dz_ledger_connection_options.dz_ledger_url.clone(),
-            CommitmentConfig::confirmed(),
-        );
-
-        super::ensure_same_network_environment(&dz_ledger_rpc_client, solana_connection.is_mainnet)
-            .await?;
-
-        // Program config on Solana should be the source-of-truth for the current
-        // DZ epoch. Presumably, this epoch will be in sync with the DoubleZero
-        // Ledger network.
-        let latest_distribution_epoch = ZeroCopyAccountOwned::<ProgramConfig>::from_rpc_client(
-            &solana_connection,
-            &ProgramConfig::find_address().0,
-        )
-        .await
-        .map_err(|_| anyhow!("Revenue Distribution program not initialized"))
-        .map(|config| config.data.next_dz_epoch.value().saturating_sub(1))?;
+        let latest_distribution_epoch =
+            latest_distribution_epoch(solana_connection_options, dz_ledger_connection_options)
+                .await?;
 
         let target_dz_epoch = epoch.as_ref().copied().unwrap_or(latest_distribution_epoch);
         log_info!("Target DZ epoch: {target_dz_epoch}");
@@ -146,6 +139,14 @@ impl Schedulable for FindSolanaEpochCommand {
             .refill(*solana_rate_limit)
             .interval(std::time::Duration::from_secs(1))
             .build();
+
+        let mut solana_connection = SolanaConnection::try_from(solana_connection_options.clone())?;
+        solana_connection.cache_if_mainnet().await?;
+
+        let dz_ledger_rpc_client = RpcClient::new_with_commitment(
+            dz_ledger_connection_options.dz_ledger_url.clone(),
+            CommitmentConfig::confirmed(),
+        );
 
         match JoinedSolanaEpochs::try_new(
             &solana_connection,
@@ -167,4 +168,30 @@ impl Schedulable for FindSolanaEpochCommand {
 
         Ok(())
     }
+}
+
+async fn latest_distribution_epoch(
+    solana_connection_options: &SolanaConnectionOptions,
+    dz_ledger_connection_options: &DoubleZeroLedgerConnectionOptions,
+) -> Result<u64> {
+    let mut solana_connection = SolanaConnection::try_from(solana_connection_options.clone())?;
+    solana_connection.cache_if_mainnet().await?;
+
+    let dz_ledger_rpc_client = RpcClient::new_with_commitment(
+        dz_ledger_connection_options.dz_ledger_url.clone(),
+        CommitmentConfig::confirmed(),
+    );
+
+    super::ensure_same_network_environment(&dz_ledger_rpc_client, solana_connection.is_mainnet)
+        .await?;
+
+    let latest_distribution_epoch = ZeroCopyAccountOwned::<ProgramConfig>::from_rpc_client(
+        &solana_connection,
+        &ProgramConfig::find_address().0,
+    )
+    .await
+    .map_err(|_| anyhow!("Revenue Distribution program not initialized"))
+    .map(|config| config.data.next_dz_epoch.value().saturating_sub(1))?;
+
+    Ok(latest_distribution_epoch)
 }

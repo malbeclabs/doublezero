@@ -72,6 +72,7 @@ pub async fn calculate_validator_debt<T: ValidatorRewards>(
     solana_debt_calculator: &T,
     transaction: Transaction,
     dz_epoch: u64,
+    post_to_ledger_only: bool,
 ) -> Result<()> {
     let fetched_dz_epoch_info = solana_debt_calculator
         .ledger_rpc_client()
@@ -254,6 +255,10 @@ pub async fn calculate_validator_debt<T: ValidatorRewards>(
         recent_blockhash,
     )
     .await?;
+
+    if post_to_ledger_only {
+        bail!("Debt posted only to DoubleZero Ledger and process exited")
+    }
 
     write_transaction(
         solana_debt_calculator.solana_rpc_client(),
@@ -523,7 +528,7 @@ mod tests {
 
         let dz_epoch = 84;
         let transaction = Transaction::new(keypair, true, false);
-        calculate_validator_debt(&fpc, transaction, dz_epoch).await?;
+        calculate_validator_debt(&fpc, transaction, dz_epoch, false).await?;
 
         let signer = try_load_keypair(None).unwrap();
 
@@ -675,7 +680,7 @@ mod tests {
         let signer = try_load_keypair(None).unwrap();
         let transaction = Transaction::new(signer, true, false);
 
-        calculate_validator_debt(&mock_solana_debt_calculator, transaction, 45).await?;
+        calculate_validator_debt(&mock_solana_debt_calculator, transaction, 45, false).await?;
 
         Ok(())
     }

@@ -31,6 +31,10 @@ pub struct CalculateValidatorDebtCommand {
 
     #[command(flatten)]
     dz_ledger_connection_options: DoubleZeroLedgerConnectionOptions,
+
+    /// Option to post validator debt only to the DoubleZero Ledger
+    #[arg(long)]
+    post_to_ledger_only: bool,
 }
 
 #[async_trait::async_trait]
@@ -45,6 +49,7 @@ impl Schedulable for CalculateValidatorDebtCommand {
             schedule_or_force,
             solana_payer_options,
             dz_ledger_connection_options,
+            post_to_ledger_only,
         } = self;
 
         schedule_or_force.ensure_safe_execution()?;
@@ -61,8 +66,13 @@ impl Schedulable for CalculateValidatorDebtCommand {
             SolanaDebtCalculator::try_from(connection_options)?;
         let signer = try_load_keypair(None).expect("failed to load keypair");
         let transaction = Transaction::new(signer, true, false);
-        crate::worker::calculate_validator_debt(&solana_debt_calculator, transaction, *epoch)
-            .await?;
+        crate::worker::calculate_validator_debt(
+            &solana_debt_calculator,
+            transaction,
+            *epoch,
+            *post_to_ledger_only,
+        )
+        .await?;
 
         Ok(())
     }

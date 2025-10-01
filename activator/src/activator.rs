@@ -18,49 +18,57 @@ pub async fn run_activator(
     let client = create_client(rpc_url, websocket_url, program_id, keypair)?;
     version_check(&client)?;
 
-    let (tx, rx) = mpsc::channel(128);
-    let mut processor = Processor::new(rx, Arc::clone(&client))?;
+    loop {
+        info!("Activator handler loop started");
 
-    let shutdown = Arc::new(AtomicBool::new(false));
+        let (tx, rx) = mpsc::channel(128);
+        let mut processor = Processor::new(rx, Arc::clone(&client))?;
 
-    // run on the tokio blocking thread pool so we can continue to run the metrics submitter in this async task
-    let shutdown_clone = shutdown.clone();
-    let client_clone = Arc::clone(&client);
-    let tx_clone = tx.clone();
-    let activator_handle = tokio::task::spawn_blocking(move || {
-        info!("Activator thread started");
-        process_events_thread(client_clone, tx_clone, shutdown_clone).unwrap_or_default()
-    });
+        let shutdown = Arc::new(AtomicBool::new(false));
 
-    let shutdown_clone = shutdown.clone();
-    let client_clone = Arc::clone(&client);
-    let accesspass_monitor_handle = tokio::task::spawn_blocking(move || {
-        info!("User monitor thread started");
-        crate::accesspass_monitor::process_access_pass_monitor_thread(client_clone, shutdown_clone)
+        // run on the tokio blocking thread pool so we can continue to run the metrics submitter in this async task
+        let shutdown_clone = shutdown.clone();
+        let client_clone = Arc::clone(&client);
+        let tx_clone = tx.clone();
+        let activator_handle = tokio::task::spawn_blocking(move || {
+            info!("Activator thread started");
+            process_events_thread(client_clone, tx_clone, shutdown_clone).unwrap_or_default()
+        });
+
+        let shutdown_clone = shutdown.clone();
+        let client_clone = Arc::clone(&client);
+        let accesspass_monitor_handle = tokio::task::spawn_blocking(move || {
+            info!("User monitor thread started");
+            crate::accesspass_monitor::process_access_pass_monitor_thread(
+                client_clone,
+                shutdown_clone,
+            )
             .unwrap_or_default()
-    });
+        });
 
-    tokio::select! {
-        biased;
-        _ = crate::listen_for_shutdown()? => {
-            shutdown.store(true, std::sync::atomic::Ordering::Relaxed);
-        }
-        activator_res = activator_handle => {
-            if let Err(err) = activator_res {
-                error!("Activator thread exited unexpectedly with reason: {err:?}");
+        tokio::select! {
+            biased;
+            _ = crate::listen_for_shutdown()? => {
+                shutdown.store(true, std::sync::atomic::Ordering::Relaxed);
+                break;
             }
-        }
-        accesspass_monitor_res = accesspass_monitor_handle => {
-            if let Err(err) = accesspass_monitor_res {
-                error!("AccessPass monitor thread exited unexpectedly with reason: {err:?}");
+            activator_res = activator_handle => {
+                if let Err(err) = activator_res {
+                    error!("Activator thread exited unexpectedly with reason: {err:?}");
+                }
             }
-        }
-        snapshot_poll_res = get_snapshot_poll(Arc::clone(&client), tx, shutdown.clone()) => {
-            if let Err(err) = snapshot_poll_res {
-                error!("Snapshot poll exited unexpectedly with reason: {err:?}");
+            accesspass_monitor_res = accesspass_monitor_handle => {
+                if let Err(err) = accesspass_monitor_res {
+                    error!("AccessPass monitor thread exited unexpectedly with reason: {err:?}");
+                }
             }
+            snapshot_poll_res = get_snapshot_poll(Arc::clone(&client), tx, shutdown.clone()) => {
+                if let Err(err) = snapshot_poll_res {
+                    error!("Snapshot poll exited unexpectedly with reason: {err:?}");
+                }
+            }
+            _ = processor.run(shutdown.clone()) => {}
         }
-        _ = processor.run(shutdown.clone()) => {}
     }
 
     info!("Activator handler finished");

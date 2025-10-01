@@ -13,6 +13,7 @@ service QAAgentService {
   rpc MulticastAllowListAdd(MulticastAllowListAddRequest) returns (Result);
   rpc ConnectMulticast(ConnectMulticastRequest) returns (Result);
   rpc GetStatus(google.protobuf.Empty) returns (StatusResponse);
+  rpc GetPublicIP(google.protobuf.Empty) returns (GetPublicIPResponse);
   rpc Disconnect(google.protobuf.Empty) returns (Result);
   rpc Ping(PingRequest) returns (PingResult);
   rpc MulticastJoin(MulticastJoinRequest) returns (MulticastJoinResult);
@@ -81,6 +82,10 @@ message Status {
 
 message StatusResponse {
   repeated Status status = 1;
+}
+
+message GetPublicIPResponse {
+  string public_ip = 1;
 }
 
 message PingRequest {

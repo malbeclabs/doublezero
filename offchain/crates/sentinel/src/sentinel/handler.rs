@@ -51,7 +51,19 @@ impl Sentinel {
                 _ = shutdown_listener.cancelled() => break,
                 _ = backfill_timer.tick() => {
                     info!("fetching outstanding access requests");
-                    let access_ids = self.sol_rpc_client.get_access_requests().await?;
+                    let access_ids = match rpc_with_retry(
+                        || async {
+                            self.sol_rpc_client.get_access_requests().await
+                        },
+                        "get_access_requests",
+                    ).await {
+                        Ok(ids) => ids,
+                        Err(err) => {
+                            error!(?err, "failed to fetch outstanding access requests after retries; will retry in next cycle");
+                            metrics::counter!("doublezero_sentinel_backfill_failed").increment(1);
+                            continue;
+                        }
+                    };
 
                     info!(count = access_ids.len(), "processing unhandled access requests");
 
@@ -64,12 +76,19 @@ impl Sentinel {
                 event = self.rx.recv() => {
                     if let Some(signature) = event {
                         info!(%signature, "received access request txn");
-                        let access_ids = rpc_with_retry(
+                        let access_ids = match rpc_with_retry(
                             || async {
                                 self.sol_rpc_client.get_access_requests_from_signature(signature).await
                             },
                             "get_access_request_from_signature",
-                        ).await?;
+                        ).await {
+                            Ok(ids) => ids,
+                            Err(err) => {
+                                error!(?err, %signature, "failed to fetch access request from signature after retries; skipping");
+                                metrics::counter!("doublezero_sentinel_signature_fetch_failed").increment(1);
+                                continue;
+                            }
+                        };
 
                         for access_id in access_ids {
                             if let Err(err) = self.handle_access_request(access_id).await {

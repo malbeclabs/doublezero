@@ -6,9 +6,13 @@
 // generate merkle tree from debts
 // write record
 
+use doublezero_solana_client_tools::{log_info, log_warn};
+use leaky_bucket::RateLimiter;
+
 use crate::{
     ledger,
     rewards::{self, EpochRewards},
+    rpc::JoinedSolanaEpochs,
     solana_debt_calculator::ValidatorRewards,
     transaction::Transaction,
     validator_debt::{ComputedSolanaValidatorDebt, ComputedSolanaValidatorDebts},
@@ -102,14 +106,38 @@ pub async fn calculate_validator_debt<T: ValidatorRewards>(
         );
     };
 
-    // get solana epoch
-    let (solana_epoch_from_first_dz_epoch_block, solana_epoch_from_last_dz_epoch_block) =
-        ledger::get_solana_epoch_from_dz_epoch(
-            solana_debt_calculator.solana_rpc_client(),
-            solana_debt_calculator.ledger_rpc_client(),
-            dz_epoch,
-        )
-        .await?;
+    let rate_limiter = RateLimiter::builder()
+        .max(10)
+        .initial(10)
+        .refill(10)
+        .interval(std::time::Duration::from_secs(1))
+        .build();
+
+    let mut epochs: Vec<u64> = Vec::new();
+
+    match JoinedSolanaEpochs::try_new(
+        solana_debt_calculator.solana_rpc_client(),
+        solana_debt_calculator.ledger_rpc_client(),
+        dz_epoch,
+        &rate_limiter,
+    )
+    .await?
+    {
+        JoinedSolanaEpochs::Range(solana_epoch_range) => {
+            solana_epoch_range.into_iter().for_each(|solana_epoch| {
+                epochs.push(solana_epoch);
+                log_info!("Joined Solana epoch: {solana_epoch}");
+            });
+        }
+        JoinedSolanaEpochs::Duplicate(solana_epoch) => {
+            log_warn!("Duplicated joined Solana epoch: {solana_epoch}");
+        }
+    };
+
+    // this is kind of brittle although there should always be an epoch in the vec
+    // and it for some reason there isn't the cli should panic
+    let solana_epoch_from_first_dz_epoch_block = epochs.first().unwrap().to_owned();
+    let solana_epoch_from_last_dz_epoch_block = epochs.last().unwrap().to_owned();
 
     let solana_epoch = if solana_epoch_from_first_dz_epoch_block
         == solana_epoch_from_last_dz_epoch_block

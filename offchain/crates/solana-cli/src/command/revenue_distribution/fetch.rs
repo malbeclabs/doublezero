@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow};
+use anyhow::{Result, anyhow, bail};
 use clap::{Args, Subcommand};
 use doublezero_program_tools::{PrecomputedDiscriminator, zero_copy};
 use doublezero_revenue_distribution::{
@@ -262,10 +262,16 @@ impl FetchCommand {
                     ..Default::default()
                 };
 
-                let outputs = if let Some(node_id) = node_id {
-                    let (deposit_key, _deposit, deposit_balance) =
+                let outputs: Vec<(Pubkey, Pubkey, u64)> = if let Some(node_id) = node_id {
+                    let (deposit_key, deposit, deposit_balance) =
                         super::fetch_solana_validator_deposit(&connection, &node_id).await;
-                    vec![(deposit_key, node_id, deposit_balance)]
+                    if let Some(deposit) = deposit {
+                        vec![(deposit_key, deposit.node_id, deposit_balance)]
+                    } else {
+                        bail!(
+                            "Not found. Please use \"doublezero-solana revenue-distribution validator-deposit --fund\" to create"
+                        );
+                    }
                 } else {
                     let accounts = connection
                         .get_program_accounts_with_config(

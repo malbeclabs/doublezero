@@ -133,10 +133,6 @@ echo "doublezero-solana revenue-distribution fetch config -u l"
 $CLI_BIN revenue-distribution fetch config -u l
 echo
 
-echo "doublezero-solana revenue-distribution fetch validator-deposits -u l --node-id $DUMMY_KEY"
-$CLI_BIN revenue-distribution fetch validator-deposits -u l --node-id $DUMMY_KEY
-echo
-
 echo "doublezero-solana revenue-distribution fetch validator-deposits -u l"
 $CLI_BIN revenue-distribution fetch validator-deposits -u l
 echo

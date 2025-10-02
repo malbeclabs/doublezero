@@ -1,6 +1,10 @@
-use crate::processor::Processor;
+use crate::{accesspass_monitor, processor::Processor};
 use doublezero_cli::{checkversion::check_version, doublezerocommand::CliCommandImpl};
-use doublezero_sdk::{AccountData, DZClient, ProgramVersion};
+use doublezero_sdk::{
+    rpckeyedaccount_decode::rpckeyedaccount_decode, AccountData, AsyncDZClient, DZClient,
+    ProgramVersion,
+};
+use futures::stream::StreamExt;
 use log::{error, info};
 use solana_sdk::pubkey::Pubkey;
 use std::{
@@ -26,48 +30,34 @@ pub async fn run_activator(
 
         let shutdown = Arc::new(AtomicBool::new(false));
 
-        // run on the tokio blocking thread pool so we can continue to run the metrics submitter in this async task
-        let shutdown_clone = shutdown.clone();
-        let client_clone = Arc::clone(&client);
-        let tx_clone = tx.clone();
-        let activator_handle = tokio::task::spawn_blocking(move || {
-            info!("Activator thread started");
-            process_events_thread(client_clone, tx_clone, shutdown_clone).unwrap_or_default()
-        });
-
-        let shutdown_clone = shutdown.clone();
-        let client_clone = Arc::clone(&client);
-        let accesspass_monitor_handle = tokio::task::spawn_blocking(move || {
-            info!("User monitor thread started");
-            crate::accesspass_monitor::process_access_pass_monitor_thread(
-                client_clone,
-                shutdown_clone,
-            )
-            .unwrap_or_default()
-        });
-
         tokio::select! {
             biased;
             _ = crate::listen_for_shutdown()? => {
+                info!("Shutdown signal received, stopping activator...");
                 shutdown.store(true, std::sync::atomic::Ordering::Relaxed);
                 break;
             }
-            activator_res = activator_handle => {
-                if let Err(err) = activator_res {
-                    error!("Activator thread exited unexpectedly with reason: {err:?}");
-                }
+            _ = websocket_task(Arc::clone(&client), tx.clone(), shutdown.clone()) => {
+                info!("Websocket task finished, stopping activator...");
             }
-            accesspass_monitor_res = accesspass_monitor_handle => {
+            accesspass_monitor_res = accesspass_monitor::access_pass_monitor_task(Arc::clone(&client), shutdown.clone()) => {
                 if let Err(err) = accesspass_monitor_res {
-                    error!("AccessPass monitor thread exited unexpectedly with reason: {err:?}");
+                    error!("AccessPass monitor task exited unexpectedly with reason: {err:?}");
+                } else {
+                    info!("AccessPass monitor task finished, stopping activator...");
                 }
             }
-            snapshot_poll_res = get_snapshot_poll(Arc::clone(&client), tx, shutdown.clone()) => {
+            snapshot_poll_res = get_snapshot_poll(Arc::clone(&client), tx.clone(), shutdown.clone()) => {
                 if let Err(err) = snapshot_poll_res {
                     error!("Snapshot poll exited unexpectedly with reason: {err:?}");
                 }
+                else {
+                    info!("Snapshot poll task finished, stopping activator...");
+                }
             }
-            _ = processor.run(shutdown.clone()) => {}
+            _ = processor.run(shutdown.clone()) => {
+                info!("Processor task finished, stopping activator...");
+            }
         }
     }
 
@@ -116,18 +106,55 @@ pub async fn get_snapshot_poll(
     Ok(())
 }
 
-pub fn process_events_thread(
+pub async fn websocket_task(
     client: Arc<DZClient>,
     tx: mpsc::Sender<(Box<Pubkey>, Box<AccountData>)>,
     stop_signal: Arc<AtomicBool>,
-) -> eyre::Result<()> {
-    client.subscribe(
-        |_, pubkey, data| {
-            tx.blocking_send((pubkey, data)).unwrap_or_else(|err| {
-                log::error!("Failed to send websocket data to processor: {}", err);
-            });
-        },
-        stop_signal,
-    )?;
-    Ok(())
+) {
+    while !stop_signal.load(std::sync::atomic::Ordering::Relaxed) {
+        info!(
+            "Starting websocket task on {}, program_id: {}",
+            client.get_ws(),
+            client.get_program_id()
+        );
+        match AsyncDZClient::new(client.get_ws(), *client.get_program_id()).await {
+            Ok(async_client) => match async_client.subscribe().await {
+                Ok((mut subscription, unsubscribe)) => {
+                    info!("Websocket subscription established");
+                    while !stop_signal.load(std::sync::atomic::Ordering::Relaxed) {
+                        if let Some(msg) = subscription.next().await {
+                            let keyed_account = msg.value;
+                            let pubkey = keyed_account.pubkey.clone();
+                            match rpckeyedaccount_decode(keyed_account) {
+                                Ok(Some((pubkey, account))) => {
+                                    tx.send((pubkey, account)).await.unwrap();
+                                }
+                                Ok(None) => {
+                                    info!("Received account with empty data for pubkey {}", pubkey);
+                                }
+                                Err(e) => {
+                                    error!(
+                                        "Error parsing RpcKeyedAccount for pubkey {}: {e}",
+                                        pubkey
+                                    );
+                                }
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                    unsubscribe().await;
+                    info!("Websocket subscription ended gracefully");
+                }
+                Err(e) => {
+                    error!("Failed to establish websocket subscription: {e}");
+                }
+            },
+            Err(e) => {
+                error!("Failed to create AsyncDZClient: {e}");
+            }
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+    }
+    info!("Websocket task finished successfully");
 }

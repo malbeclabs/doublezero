@@ -187,6 +187,8 @@ func main() {
 		TwoZOracleInterval:         *twoZOracleInterval,
 		InfluxWriter:               influxWriter,
 		Env:                        *env,
+		SolanaRPCURL:               networkConfig.SolanaRPCURL,
+		LedgerPublicRPCURL:         networkConfig.LedgerPublicRPCURL,
 	})
 	if err != nil {
 		log.Error("Failed to create worker", "error", err)

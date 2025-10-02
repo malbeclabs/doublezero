@@ -1,8 +1,11 @@
 package serviceability
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"io/ioutil"
+	"net/http"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -151,4 +154,58 @@ func TestMonitor_Serviceability_Watcher(t *testing.T) {
 		s := programVersionString(serviceability.ProgramVersion{Major: 0, Minor: 10, Patch: 7})
 		require.Equal(t, "0.10.7", s)
 	})
+}
+
+// mockRoundTripper allows us to control HTTP responses for epoch RPC calls.
+type mockRoundTripper struct {
+	responses [][]byte
+	call      int
+}
+
+func (m *mockRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp := &http.Response{
+		StatusCode: 200,
+		Body:       ioutil.NopCloser(bytes.NewReader(m.responses[m.call])),
+		Header:     make(http.Header),
+	}
+	m.call++
+	return resp, nil
+}
+
+func TestWatcher_EpochChangeDetection(t *testing.T) {
+	mockRT := &mockRoundTripper{
+		responses: [][]byte{
+			[]byte(`{"result":{"epoch":1,"absoluteSlot":0,"blockHeight":0,"slotIndex":0,"slotsInEpoch":0,"transactionCount":0,"leaderScheduleEpoch":0,"startSlot":0,"warmup":false}}`), // doublezero, first tick
+			[]byte(`{"result":{"epoch":1,"absoluteSlot":0,"blockHeight":0,"slotIndex":0,"slotsInEpoch":0,"transactionCount":0,"leaderScheduleEpoch":0,"startSlot":0,"warmup":false}}`), // solana, first tick
+			[]byte(`{"result":{"epoch":2,"absoluteSlot":0,"blockHeight":0,"slotIndex":0,"slotsInEpoch":0,"transactionCount":0,"leaderScheduleEpoch":0,"startSlot":0,"warmup":false}}`), // doublezero, second tick
+			[]byte(`{"result":{"epoch":2,"absoluteSlot":0,"blockHeight":0,"slotIndex":0,"slotsInEpoch":0,"transactionCount":0,"leaderScheduleEpoch":0,"startSlot":0,"warmup":false}}`), // solana, second tick
+		},
+	}
+
+	mockHTTP := &http.Client{Transport: mockRT}
+
+	cfg := &Config{
+		Logger: newTestLogger(t),
+		Serviceability: &mockServiceabilityClient{GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+			return &serviceability.ProgramData{
+				ProgramConfig: serviceability.ProgramConfig{Version: serviceability.ProgramVersion{Major: 1, Minor: 0, Patch: 0}},
+			}, nil
+		}},
+		Interval:           10 * time.Millisecond,
+		LedgerPublicRPCURL: "http://mock-dz",
+		SolanaRPCURL:       "http://mock-sol",
+	}
+	w, err := NewServiceabilityWatcher(cfg)
+	require.NoError(t, err)
+	w.rpcClient = mockHTTP
+
+	// first tick: should set both epochs to 1
+	require.NoError(t, w.Tick(context.Background()))
+	require.Equal(t, uint64(1), w.currDZEpoch)
+	require.Equal(t, uint64(1), w.currSolanaEpoch)
+
+	// second tick: should detect epoch change to 2
+	require.NoError(t, w.Tick(context.Background()))
+	require.Equal(t, uint64(2), w.currDZEpoch)
+	require.Equal(t, uint64(2), w.currSolanaEpoch)
 }

@@ -9,6 +9,7 @@ const (
 	MainnetDeviceLocalASN             = 209321
 	// MainnetTwoZOracleURL              = "https://10qk1zz9ql.execute-api.us-east-1.amazonaws.com/mainnet-beta/api/v1"
 	MainnetTwoZOracleURL = ""
+	MainnetSolanaRPC     = "https://api.mainnet-beta.solana.com"
 
 	// Testnet constants.
 	TestnetLedgerPublicRPCURL         = "https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16"
@@ -17,6 +18,7 @@ const (
 	TestnetInternetLatencyCollectorPK = "HWGQSTmXWMB85NY2vFLhM1nGpXA8f4VCARRyeGNbqDF1"
 	TestnetDeviceLocalASN             = 65342
 	TestnetTwoZOracleURL              = "https://7op1fv6sj5.execute-api.us-east-1.amazonaws.com/testnet/api/v1"
+	TestnetSolanaRPC                  = "https://api.testnet.solana.com"
 
 	// Devnet constants.
 	DevnetLedgerPublicRPCURL         = "https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16"
@@ -25,4 +27,5 @@ const (
 	DevnetInternetLatencyCollectorPK = "3fXen9LP5JUAkaaDJtyLo1ohPiJ2LdzVqAnmhtGgAmwJ"
 	DevnetDeviceLocalASN             = 21682
 	DevnetTwoZOracleURL              = ""
+	DevnetSolanaRPC                  = ""
 )

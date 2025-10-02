@@ -25,11 +25,14 @@ var (
 )
 
 type ServiceabilityWatcher struct {
-	log          *slog.Logger
-	cfg          *Config
-	cacheLinks   []serviceability.Link
-	cacheDevices []serviceability.Device
-	cacheUsers   []serviceability.User
+	log             *slog.Logger
+	cfg             *Config
+	cacheLinks      []serviceability.Link
+	cacheDevices    []serviceability.Device
+	cacheUsers      []serviceability.User
+	rpcClient       *http.Client
+	currDZEpoch     uint64
+	currSolanaEpoch uint64
 }
 
 func NewServiceabilityWatcher(cfg *Config) (*ServiceabilityWatcher, error) {
@@ -39,6 +42,9 @@ func NewServiceabilityWatcher(cfg *Config) (*ServiceabilityWatcher, error) {
 	return &ServiceabilityWatcher{
 		log: cfg.Logger.With("watcher", watcherName),
 		cfg: cfg,
+		rpcClient: &http.Client{
+			Timeout: 10 * time.Second,
+		},
 	}, nil
 }
 
@@ -112,7 +118,29 @@ func (w *ServiceabilityWatcher) Tick(ctx context.Context) error {
 	w.cacheDevices = data.Devices
 	w.cacheUsers = data.Users
 
+	// detect current epoch info
+	w.detectEpochChange("doublezero", w.cfg.LedgerPublicRPCURL, &w.currDZEpoch)
+	w.detectEpochChange("solana", w.cfg.SolanaRPCURL, &w.currSolanaEpoch)
 	return nil
+}
+
+func (w *ServiceabilityWatcher) detectEpochChange(chainName, rpcURL string, lastEpoch *uint64) {
+	if rpcURL == "" {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	currEpoch, prevEpochStart, nextEpochStart, err := GetEpochStatus(ctx, w.rpcClient, rpcURL)
+	if err != nil {
+		w.log.Error("failed to get epoch status", "chain", chainName, "error", err)
+		return
+	}
+	w.log.Debug("epoch status", "chain", chainName, "current_epoch", currEpoch, "previous_epoch_start", prevEpochStart, "next_epoch_start", nextEpochStart)
+	// if epoch is 0, we just restarted
+	if currEpoch > *lastEpoch && *lastEpoch != 0 {
+		w.log.Info("epoch change detected", "chain", chainName, "prev_epoch_start", prevEpochStart, "next_epoch_start", nextEpochStart, "previous_epoch", *lastEpoch, "current_epoch", currEpoch)
+	}
+	*lastEpoch = currEpoch
 }
 
 func (w *ServiceabilityWatcher) exportDevicesToInflux(devices []serviceability.Device) {

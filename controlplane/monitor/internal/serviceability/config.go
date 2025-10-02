@@ -20,12 +20,14 @@ type InfluxWriter interface {
 }
 
 type Config struct {
-	Logger          *slog.Logger
-	Serviceability  ServiceabilityClient
-	Interval        time.Duration
-	SlackWebhookURL string
-	InfluxWriter    InfluxWriter
-	Env             string
+	Logger             *slog.Logger
+	Serviceability     ServiceabilityClient
+	Interval           time.Duration
+	SlackWebhookURL    string
+	InfluxWriter       InfluxWriter
+	Env                string
+	SolanaRPCURL       string
+	LedgerPublicRPCURL string
 }
 
 func (c *Config) Validate() error {

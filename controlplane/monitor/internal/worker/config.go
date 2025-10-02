@@ -44,6 +44,8 @@ type Config struct {
 	TwoZOracleInterval         time.Duration
 	InfluxWriter               InfluxWriter
 	Env                        string
+	SolanaRPCURL               string
+	LedgerPublicRPCURL         string
 }
 
 func (c *Config) Validate() error {

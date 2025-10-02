@@ -3,7 +3,7 @@ use clap::{Args, Subcommand};
 use doublezero_program_tools::{PrecomputedDiscriminator, zero_copy};
 use doublezero_revenue_distribution::{
     DOUBLEZERO_MINT_DECIMALS,
-    state::{CommunityBurnRateMode, Distribution, Journal, ProgramConfig},
+    state::{CommunityBurnRateMode, Distribution, Journal, SolanaValidatorDeposit},
     types::DoubleZeroEpoch,
 };
 use doublezero_solana_client_tools::{
@@ -250,29 +250,38 @@ impl FetchCommand {
                 connection_options,
             } => {
                 let connection = SolanaConnection::try_from(connection_options)?;
-                let config = RpcProgramAccountsConfig {
-                    filters: Some(vec![RpcFilterType::Memcmp(Memcmp::new_raw_bytes(
-                        0,
-                        doublezero_revenue_distribution::state::SolanaValidatorDeposit::discriminator_slice().to_vec(),
-                    ))]),
-                    account_config: RpcAccountInfoConfig {
-                        encoding: Some(UiAccountEncoding::Base64),
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                };
 
-                let outputs: Vec<(Pubkey, Pubkey, u64)> = if let Some(node_id) = node_id {
+                let (outputs, fund_warning_message) = if let Some(node_id) = node_id {
                     let (deposit_key, deposit, deposit_balance) =
                         super::fetch_solana_validator_deposit(&connection, &node_id).await;
+
                     if let Some(deposit) = deposit {
-                        vec![(deposit_key, deposit.node_id, deposit_balance)]
+                        (vec![(deposit_key, deposit.node_id, deposit_balance)], None)
+                    } else if deposit_balance != 0 {
+                        (
+                            vec![(deposit_key, node_id, deposit_balance)],
+                            Some(format!(
+                                "⚠️  Warning: Please use \"doublezero-solana revenue-distribution validator-deposit {node_id} --initialize\" to create"
+                            )),
+                        )
                     } else {
                         bail!(
-                            "Not found. Please use \"doublezero-solana revenue-distribution validator-deposit --fund\" to create"
+                            "No deposit account found. Please use \"doublezero-solana revenue-distribution validator-deposit {node_id} --fund <AMOUNT>\" to deposit SOL"
                         );
                     }
                 } else {
+                    let config = RpcProgramAccountsConfig {
+                        filters: Some(vec![RpcFilterType::Memcmp(Memcmp::new_raw_bytes(
+                            0,
+                            SolanaValidatorDeposit::discriminator_slice().to_vec(),
+                        ))]),
+                        account_config: RpcAccountInfoConfig {
+                            encoding: Some(UiAccountEncoding::Base64),
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    };
+
                     let accounts = connection
                         .get_program_accounts_with_config(
                             &doublezero_revenue_distribution::ID,
@@ -283,21 +292,21 @@ impl FetchCommand {
                     let rent_exemption = connection
                         .rpc_client
                         .get_minimum_balance_for_rent_exemption(zero_copy::data_end::<
-                            doublezero_revenue_distribution::state::SolanaValidatorDeposit,
+                            SolanaValidatorDeposit,
                         >())
                         .await?;
 
-                    let mut outputs = Vec::new();
+                    let mut outputs = Vec::with_capacity(accounts.len());
                     for (pubkey, account) in accounts {
                         let balance = account.lamports.saturating_sub(rent_exemption);
                         let (account, _) = zero_copy::checked_from_bytes_with_discriminator::<
-                            doublezero_revenue_distribution::state::SolanaValidatorDeposit,
+                            SolanaValidatorDeposit,
                         >(&account.data)
                         .ok_or(anyhow!("Failed to deserialize solana validator deposit"))?;
                         outputs.push((pubkey, account.node_id, balance));
                     }
 
-                    outputs
+                    (outputs, None)
                 };
 
                 let mut outputs = outputs.into_iter().collect::<Vec<_>>();
@@ -314,6 +323,11 @@ impl FetchCommand {
                     println!("{} | {} | {:.9}", pubkey, node_id, balance as f64 * 1e-9);
                 }
                 println!();
+
+                if let Some(fund_warning_message) = fund_warning_message {
+                    println!("{fund_warning_message}");
+                    println!();
+                }
             }
 
             FetchSubcommand::Distribution {
@@ -322,16 +336,17 @@ impl FetchCommand {
             } => {
                 let connection = SolanaConnection::try_from(connection_options)?;
 
-                let epoch = if let Some(epoch) = epoch {
-                    epoch
-                } else {
-                    ZeroCopyAccountOwned::<ProgramConfig>::from_rpc_client(
-                        &connection,
-                        &ProgramConfig::find_address().0,
-                    )
-                    .await
-                    .map_err(|_| anyhow!("Program config not initialized"))
-                    .map(|config| config.data.next_dz_epoch.value().saturating_sub(1))?
+                let epoch = match epoch {
+                    Some(epoch) => epoch,
+                    None => {
+                        let (_, program_config) =
+                            super::try_fetch_program_config(&connection).await?;
+
+                        program_config
+                            .next_completed_dz_epoch
+                            .value()
+                            .saturating_sub(1)
+                    }
                 };
 
                 let (pubkey, _) = Distribution::find_address(DoubleZeroEpoch::new(epoch));
@@ -340,7 +355,7 @@ impl FetchCommand {
                     ZeroCopyAccountOwned::<Distribution>::from_rpc_client(&connection, &pubkey)
                         .await
                         .map_err(|_| anyhow!("Distribution account not found for epoch {epoch}"))
-                        .map(|config| config.data)?;
+                        .map(|config| config.data.unwrap().0)?;
 
                 println!("Epoch: {epoch}");
                 println!("Account pubkey: {pubkey}");

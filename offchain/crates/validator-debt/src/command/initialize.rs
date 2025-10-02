@@ -42,13 +42,18 @@ impl Schedulable for InitializeDistributionCommand {
         let mut wallet = Wallet::try_from(self.solana_payer_options.clone())?;
         wallet.connection.cache_if_mainnet().await?;
 
-        let (next_dz_epoch, expected_accountant_key) =
-            ZeroCopyAccountOwned::<ProgramConfig>::from_rpc_client(
-                &wallet.connection,
-                &ProgramConfig::find_address().0,
-            )
-            .await
-            .map(|config| (config.data.next_dz_epoch, config.data.debt_accountant_key))?;
+        let program_config_info = ZeroCopyAccountOwned::<ProgramConfig>::from_rpc_client(
+            &wallet.connection,
+            &ProgramConfig::find_address().0,
+        )
+        .await?;
+
+        // This is safe to unwrap because the account exists.
+        let ProgramConfig {
+            next_completed_dz_epoch: next_dz_epoch,
+            debt_accountant_key: expected_accountant_key,
+            ..
+        } = *program_config_info.data.unwrap().0;
 
         ensure!(
             wallet.signer.pubkey() == expected_accountant_key,

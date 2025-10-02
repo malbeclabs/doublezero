@@ -47,7 +47,7 @@ impl RevenueDistributionSubcommand {
 
 async fn try_fetch_program_config(
     connection: &SolanaConnection,
-) -> Result<(Pubkey, ProgramConfig)> {
+) -> Result<(Pubkey, Box<ProgramConfig>)> {
     let (program_config_key, _) = ProgramConfig::find_address();
 
     let program_config =
@@ -55,7 +55,7 @@ async fn try_fetch_program_config(
             .await
             .map_err(|_| anyhow!("Revenue Distribution program not initialized"))?;
 
-    Ok((program_config_key, program_config.data))
+    Ok((program_config_key, program_config.data.unwrap().0))
 }
 
 async fn fetch_solana_validator_deposit(
@@ -74,11 +74,18 @@ async fn fetch_solana_validator_deposit(
     )
     .await
     {
-        Ok(solana_validator_deposit) => (
-            solana_validator_deposit_key,
-            Some(solana_validator_deposit.data),
-            solana_validator_deposit.balance,
-        ),
+        Ok(solana_validator_deposit) => match solana_validator_deposit.data {
+            Some(data) => (
+                solana_validator_deposit_key,
+                Some(*data.0),
+                solana_validator_deposit.balance,
+            ),
+            None => (
+                solana_validator_deposit_key,
+                None,
+                solana_validator_deposit.lamports,
+            ),
+        },
         Err(_) => (solana_validator_deposit_key, None, 0),
     }
 }

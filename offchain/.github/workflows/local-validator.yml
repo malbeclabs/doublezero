@@ -21,9 +21,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Install Passport Admin
-        run: cargo install --git "ssh://git@github.com/doublezerofoundation/doublezero-solana" --rev "2fef1c6" doublezero-passport-admin-cli
+        run: cargo install --git "ssh://git@github.com/doublezerofoundation/doublezero-solana" --rev "464823a" doublezero-passport-admin-cli
       - name: Install Revenue Distribution Admin
-        run: cargo install --git "ssh://git@github.com/doublezerofoundation/doublezero-solana" --rev "2fef1c6" doublezero-revenue-distribution-admin-cli
+        run: cargo install --git "ssh://git@github.com/doublezerofoundation/doublezero-solana" --rev "464823a" doublezero-revenue-distribution-admin-cli
       - name: Solana toolchain
         run: |
           sh -c "$(curl -sSfL https://release.anza.xyz/$SOLANA_CLI/install)"

@@ -386,7 +386,7 @@ func (q *QAAgent) MulticastAllowListAdd(ctx context.Context, req *pb.MulticastAl
 	}
 
 	q.log.Info("Received MulticastAllowListAdd request", "pubkey", req.GetPubkey(), "client-ip", ipStr, "code", req.GetCode(), "mode", mode)
-	cmd := exec.Command("doublezero", "multicast", "group", "allowlist", mode, "add", "--pubkey", req.GetPubkey(), "--client-ip", ipStr, "--code", req.GetCode())
+	cmd := exec.Command("doublezero", "multicast", "group", "allowlist", mode, "add", "--user-payer", req.GetPubkey(), "--client-ip", ipStr, "--code", req.GetCode())
 	result, err := runCmd(cmd)
 	if err != nil {
 		q.log.Error("Failed to add multicast allowlist entry", "error", err, "output", result.Output)

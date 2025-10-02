@@ -16,8 +16,9 @@ use doublezero_sdk::{
         link::list::ListLinkCommand, location::list::ListLocationCommand,
         user::list::ListUserCommand,
     },
-    AccountData, DZClient, DeviceStatus, Exchange, GetGlobalConfigCommand, InterfaceType,
-    LinkStatus, Location, MulticastGroup, UserStatus,
+    doublezeroclient::DoubleZeroClient,
+    AccountData, DeviceStatus, Exchange, GetGlobalConfigCommand, InterfaceType, LinkStatus,
+    Location, MulticastGroup, UserStatus,
 };
 use log::{debug, error, info, warn};
 use solana_sdk::pubkey::Pubkey;
@@ -33,9 +34,9 @@ pub type LocationMap = HashMap<Pubkey, Location>;
 pub type ExchangeMap = HashMap<Pubkey, Exchange>;
 pub type MulticastGroupMap = HashMap<Pubkey, MulticastGroup>;
 
-pub struct Processor {
+pub struct Processor<T: DoubleZeroClient> {
     rx: mpsc::Receiver<(Box<Pubkey>, Box<AccountData>)>,
-    client: Arc<DZClient>,
+    client: Arc<T>,
     link_ids: IDAllocator,
     segment_routing_ids: IDAllocator,
     link_ips: IPBlockAllocator,
@@ -47,10 +48,10 @@ pub struct Processor {
     multicastgroups: MulticastGroupMap,
 }
 
-impl Processor {
+impl<T: DoubleZeroClient> Processor<T> {
     pub fn new(
         rx: mpsc::Receiver<(Box<Pubkey>, Box<AccountData>)>,
-        client: Arc<DZClient>,
+        client: Arc<T>,
     ) -> eyre::Result<Self> {
         let builder = ExponentialBuilder::new()
             .with_max_times(5)

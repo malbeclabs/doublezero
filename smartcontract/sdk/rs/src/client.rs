@@ -1,4 +1,4 @@
-use base64::{engine::general_purpose, prelude::*, Engine};
+use base64::{engine::general_purpose, Engine};
 use chrono::{DateTime, NaiveDateTime, Utc};
 use doublezero_config::Environment;
 use doublezero_serviceability::{
@@ -6,7 +6,7 @@ use doublezero_serviceability::{
 };
 use eyre::{bail, eyre, OptionExt};
 use log::debug;
-use solana_account_decoder::{UiAccountData, UiAccountEncoding};
+use solana_account_decoder::UiAccountEncoding;
 use solana_client::{
     pubsub_client::PubsubClient,
     rpc_client::RpcClient,
@@ -38,8 +38,8 @@ use std::{
 };
 
 use crate::{
-    config::*, doublezeroclient::DoubleZeroClient, dztransaction::DZTransaction, utils::*,
-    AccountData,
+    config::*, doublezeroclient::DoubleZeroClient, dztransaction::DZTransaction,
+    rpckeyedaccount_decode::rpckeyedaccount_decode, utils::*, AccountData,
 };
 
 pub struct DZClient {
@@ -129,41 +129,6 @@ impl DZClient {
 
     /******************************************************************************************************************************************/
 
-    pub fn get_all(&self) -> eyre::Result<HashMap<Box<Pubkey>, Box<AccountData>>> {
-        let options = RpcProgramAccountsConfig {
-            filters: None,
-            account_config: RpcAccountInfoConfig {
-                encoding: Some(UiAccountEncoding::Base64),
-                data_slice: None,
-                commitment: Some(CommitmentConfig::confirmed()),
-                min_context_slot: None,
-            },
-            with_context: None,
-            sort_results: None,
-        };
-
-        let mut list: HashMap<Box<Pubkey>, Box<AccountData>> = HashMap::new();
-
-        let accounts = self
-            .client
-            .get_program_accounts_with_config(&self.program_id, options)?;
-
-        for (pubkey, account) in accounts {
-            let account = match AccountData::try_from(&account.data[..]) {
-                Ok(data) => data,
-                Err(ProgramError::InvalidAccountData) => {
-                    continue;
-                }
-                Err(e) => {
-                    return Err(e.into());
-                }
-            };
-            list.insert(Box::new(pubkey), Box::new(account));
-        }
-
-        Ok(list)
-    }
-
     pub fn gets_and_subscribe<F>(
         &self,
         mut action: F,
@@ -215,20 +180,8 @@ impl DZClient {
 
             for response in receiver {
                 let event = response.value;
-
-                if let UiAccountData::Binary(data, encoding) = event.account.data {
-                    if let UiAccountEncoding::Base64 = encoding {
-                        let pubkey = Box::new(
-                            Pubkey::from_str(&event.pubkey)
-                                .map_err(|e| eyre!("Unable to parse Pubkey:{e}"))?,
-                        );
-                        let bytes = BASE64_STANDARD
-                            .decode(data.clone())
-                            .map_err(|e| eyre!("Unable decode data: {e}"))?;
-                        let account = Box::new(AccountData::try_from(&bytes[..])?);
-
-                        action(self, pubkey, account);
-                    }
+                if let Some(pubkey_account) = rpckeyedaccount_decode(event)? {
+                    action(self, pubkey_account.0, pubkey_account.1);
                 }
             }
         }
@@ -289,6 +242,41 @@ impl DoubleZeroClient for DZClient {
             .get_epoch_info()
             .map_err(|e| eyre!(e))
             .map(|info| info.epoch)
+    }
+
+    fn get_all(&self) -> eyre::Result<HashMap<Box<Pubkey>, Box<AccountData>>> {
+        let options = RpcProgramAccountsConfig {
+            filters: None,
+            account_config: RpcAccountInfoConfig {
+                encoding: Some(UiAccountEncoding::Base64),
+                data_slice: None,
+                commitment: Some(CommitmentConfig::confirmed()),
+                min_context_slot: None,
+            },
+            with_context: None,
+            sort_results: None,
+        };
+
+        let mut list: HashMap<Box<Pubkey>, Box<AccountData>> = HashMap::new();
+
+        let accounts = self
+            .client
+            .get_program_accounts_with_config(&self.program_id, options)?;
+
+        for (pubkey, account) in accounts {
+            let account = match AccountData::try_from(&account.data[..]) {
+                Ok(data) => data,
+                Err(ProgramError::InvalidAccountData) => {
+                    continue;
+                }
+                Err(e) => {
+                    return Err(e.into());
+                }
+            };
+            list.insert(Box::new(pubkey), Box::new(account));
+        }
+
+        Ok(list)
     }
 
     fn execute_transaction(

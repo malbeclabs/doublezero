@@ -1557,7 +1557,9 @@ name = "doublezero-activator"
 version = "0.7.1"
 dependencies = [
  "backon",
+ "base64 0.22.1",
  "bitvec",
+ "borsh 1.5.7",
  "chrono",
  "clap",
  "doublezero-config",
@@ -1570,12 +1572,15 @@ dependencies = [
  "futures",
  "indexmap",
  "ipnetwork",
+ "libc",
  "log",
  "metrics",
  "metrics-exporter-prometheus",
  "metrics-util",
  "mockall",
+ "solana-account-decoder",
  "solana-client",
+ "solana-rpc-client-api",
  "solana-sdk",
  "tokio",
 ]
@@ -1725,6 +1730,7 @@ dependencies = [
 name = "doublezero_sdk"
 version = "0.7.1"
 dependencies = [
+ "async-trait",
  "base64 0.22.1",
  "bincode 2.0.1",
  "bytemuck",

@@ -34,4 +34,9 @@ doublezero-serviceability.workspace = true
 doublezero-program-common.workspace = true
 
 [dev-dependencies]
+base64.workspace = true
+borsh.workspace = true
+libc.workspace = true
 metrics-util.workspace = true
+solana-account-decoder.workspace = true
+solana-rpc-client-api.workspace = true

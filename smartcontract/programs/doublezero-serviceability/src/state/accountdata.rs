@@ -9,9 +9,10 @@ use crate::{
 };
 use solana_program::program_error::ProgramError;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum AccountData {
+    #[default]
     None,
     GlobalState(GlobalState),
     GlobalConfig(GlobalConfig),

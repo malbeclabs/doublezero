@@ -37,6 +37,7 @@ func New(cfg *Config) (*Worker, error) {
 		Env:                cfg.Env,
 		SolanaRPCURL:       cfg.SolanaRPCURL,
 		LedgerPublicRPCURL: cfg.LedgerPublicRPCURL,
+		LedgerRPCClient:    cfg.LedgerRPCClient,
 	})
 	if err != nil {
 		return nil, err

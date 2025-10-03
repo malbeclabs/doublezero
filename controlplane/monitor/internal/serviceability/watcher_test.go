@@ -1,14 +1,13 @@
 package serviceability
 
 import (
-	"bytes"
 	"context"
 	"errors"
-	"io/ioutil"
-	"net/http"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	solanarpc "github.com/gagliardetto/solana-go/rpc"
 
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -156,33 +155,21 @@ func TestMonitor_Serviceability_Watcher(t *testing.T) {
 	})
 }
 
-// mockRoundTripper allows us to control HTTP responses for epoch RPC calls.
-type mockRoundTripper struct {
-	responses [][]byte
-	call      int
+type mockLedgerRPC struct {
+	GetEpochInfoFunc func(ctx context.Context, c solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error)
 }
 
-func (m *mockRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	resp := &http.Response{
-		StatusCode: 200,
-		Body:       ioutil.NopCloser(bytes.NewReader(m.responses[m.call])),
-		Header:     make(http.Header),
-	}
-	m.call++
-	return resp, nil
+func (m *mockLedgerRPC) GetEpochInfo(ctx context.Context, c solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
+	return m.GetEpochInfoFunc(ctx, c)
 }
 
 func TestWatcher_EpochChangeDetection(t *testing.T) {
-	mockRT := &mockRoundTripper{
-		responses: [][]byte{
-			[]byte(`{"result":{"epoch":1,"absoluteSlot":0,"blockHeight":0,"slotIndex":0,"slotsInEpoch":0,"transactionCount":0,"leaderScheduleEpoch":0,"startSlot":0,"warmup":false}}`), // doublezero, first tick
-			[]byte(`{"result":{"epoch":1,"absoluteSlot":0,"blockHeight":0,"slotIndex":0,"slotsInEpoch":0,"transactionCount":0,"leaderScheduleEpoch":0,"startSlot":0,"warmup":false}}`), // solana, first tick
-			[]byte(`{"result":{"epoch":2,"absoluteSlot":0,"blockHeight":0,"slotIndex":0,"slotsInEpoch":0,"transactionCount":0,"leaderScheduleEpoch":0,"startSlot":0,"warmup":false}}`), // doublezero, second tick
-			[]byte(`{"result":{"epoch":2,"absoluteSlot":0,"blockHeight":0,"slotIndex":0,"slotsInEpoch":0,"transactionCount":0,"leaderScheduleEpoch":0,"startSlot":0,"warmup":false}}`), // solana, second tick
+	var epoch uint64 = 1
+	mockRPC := &mockLedgerRPC{
+		GetEpochInfoFunc: func(ctx context.Context, c solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
+			return &solanarpc.GetEpochInfoResult{Epoch: epoch}, nil
 		},
 	}
-
-	mockHTTP := &http.Client{Transport: mockRT}
 
 	cfg := &Config{
 		Logger: newTestLogger(t),
@@ -192,12 +179,12 @@ func TestWatcher_EpochChangeDetection(t *testing.T) {
 			}, nil
 		}},
 		Interval:           10 * time.Millisecond,
+		LedgerRPCClient:    mockRPC,
 		LedgerPublicRPCURL: "http://mock-dz",
 		SolanaRPCURL:       "http://mock-sol",
 	}
 	w, err := NewServiceabilityWatcher(cfg)
 	require.NoError(t, err)
-	w.rpcClient = mockHTTP
 
 	// first tick: should set both epochs to 1
 	require.NoError(t, w.Tick(context.Background()))
@@ -205,6 +192,7 @@ func TestWatcher_EpochChangeDetection(t *testing.T) {
 	require.Equal(t, uint64(1), w.currSolanaEpoch)
 
 	// second tick: should detect epoch change to 2
+	epoch = 2
 	require.NoError(t, w.Tick(context.Background()))
 	require.Equal(t, uint64(2), w.currDZEpoch)
 	require.Equal(t, uint64(2), w.currSolanaEpoch)

@@ -7,10 +7,16 @@ import (
 	"time"
 
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+
+	solanarpc "github.com/gagliardetto/solana-go/rpc"
 )
 
 type ServiceabilityClient interface {
 	GetProgramData(context.Context) (*serviceability.ProgramData, error)
+}
+
+type LedgerRPCClient interface {
+	GetEpochInfo(ctx context.Context, commitment solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error)
 }
 
 type InfluxWriter interface {
@@ -28,6 +34,7 @@ type Config struct {
 	Env                string
 	SolanaRPCURL       string
 	LedgerPublicRPCURL string
+	LedgerRPCClient    LedgerRPCClient
 }
 
 func (c *Config) Validate() error {

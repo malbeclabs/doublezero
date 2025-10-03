@@ -106,5 +106,9 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 		config.LedgerPublicRPCURL = ledgerRPCURL
 	}
 
+	solanaRPCURL := os.Getenv("SOLANA_RPC_URL")
+	if solanaRPCURL != "" {
+		config.SolanaRPCURL = solanaRPCURL
+	}
 	return config, nil
 }

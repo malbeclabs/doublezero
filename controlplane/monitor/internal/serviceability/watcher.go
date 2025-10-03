@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/mr-tron/base58"
 )
@@ -130,12 +131,16 @@ func (w *ServiceabilityWatcher) detectEpochChange(chainName, rpcURL string, last
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	currEpoch, prevEpochStart, nextEpochStart, err := GetEpochStatus(ctx, w.rpcClient, rpcURL)
+	epochInfo, err := w.cfg.LedgerRPCClient.GetEpochInfo(ctx, solanarpc.CommitmentFinalized)
 	if err != nil {
-		w.log.Error("failed to get epoch status", "chain", chainName, "error", err)
+		w.log.Error("failed to get epoch info", "error", err)
 		return
 	}
+
+	currEpoch := epochInfo.Epoch
+	prevEpochStart, nextEpochStart := CalculateEpochTimes(epochInfo.SlotIndex, epochInfo.SlotsInEpoch)
 	w.log.Debug("epoch status", "chain", chainName, "current_epoch", currEpoch, "previous_epoch_start", prevEpochStart, "next_epoch_start", nextEpochStart)
+
 	// if epoch is 0, we just restarted
 	if currEpoch > *lastEpoch && *lastEpoch != 0 {
 		w.log.Info("epoch change detected", "chain", chainName, "prev_epoch_start", prevEpochStart, "next_epoch_start", nextEpochStart, "previous_epoch", *lastEpoch, "current_epoch", currEpoch)

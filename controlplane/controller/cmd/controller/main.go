@@ -129,6 +129,7 @@ func NewControllerCommand() *ControllerCommand {
 	c.fs.StringVar(&c.tlsKeyFile, "tls-key", "", "path to tls key file")
 	c.fs.BoolVar(&c.enablePprof, "enable-pprof", false, "enable pprof server")
 	c.fs.StringVar(&c.tlsListenPort, "tls-listen-port", "", "listening port for controller grpc server")
+	c.fs.BoolVar(&c.verbose, "verbose", false, "enable verbose logging")
 	return c
 }
 
@@ -148,6 +149,7 @@ type ControllerCommand struct {
 	tlsKeyFile               string
 	tlsListenPort            string
 	enablePprof              bool
+	verbose                  bool
 }
 
 func (c *ControllerCommand) Fs() *flag.FlagSet {
@@ -172,8 +174,12 @@ func (c *ControllerCommand) Run() error {
 		os.Exit(0)
 	}
 
+	logLevel := slog.LevelInfo
+	if c.verbose {
+		logLevel = slog.LevelDebug
+	}
 	log := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
+		Level: logLevel,
 	}))
 
 	// set build info prometheus metric

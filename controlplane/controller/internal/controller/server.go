@@ -477,7 +477,7 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 	}
 
 	// swap out state cache with new version
-	c.log.Debug("updating state cache", "state cache", cache)
+	c.log.Debug("updating state cache", "devices", len(cache.Devices), "multicast groups", len(cache.MulticastGroups), "vpnv4 bgp peers", len(cache.Vpnv4BgpPeers), "ipv4 bgp peers", len(cache.Ipv4BgpPeers))
 	c.swapCache(cache)
 	return nil
 }
@@ -554,6 +554,8 @@ func (c *Controller) Run(ctx context.Context) error {
 
 // GetConfig renders the latest device configuration based on cached device data
 func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.ConfigResponse, error) {
+	c.log.Debug("GetConfig", "request", req)
+
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	device, ok := c.cache.Devices[req.GetPubkey()]

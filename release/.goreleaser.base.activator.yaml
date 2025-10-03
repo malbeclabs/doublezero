@@ -23,7 +23,7 @@ builds:
       - RUSTFLAGS=-C linker=x86_64-linux-gnu-gcc
       - BUILD_VERSION={{.Version}}
       - BUILD_COMMIT={{.ShortCommit}}
-      - DATE={{.Date}}
+      - BUILD_DATE={{.Date}}
 
 archives:
   - id: activator_archive

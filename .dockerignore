@@ -1,1 +1,10 @@
+.git
+.dist
+dist
+target
 **/target/
+**/target
+node_modules
+.tmp
+.DS_Store
+test-ledger/

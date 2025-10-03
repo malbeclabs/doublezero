@@ -119,7 +119,7 @@ fn init_logger(log_level: &str) {
 fn export_build_info() {
     let version = option_env!("BUILD_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
     let build_commit = option_env!("BUILD_COMMIT").unwrap_or("unknown");
-    let build_date = option_env!("DATE").unwrap_or("unknown");
+    let build_date = option_env!("BUILD_DATE").unwrap_or("unknown");
     let pkg_version = env!("CARGO_PKG_VERSION");
     let program_version = ProgramVersion::current().to_string();
 

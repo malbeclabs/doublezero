@@ -38,12 +38,5 @@ jobs:
       - name: Setup | Just
         uses: taiki-e/install-action@just
 
-      - name: Setup | ssh-agent
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: |
-            ${{ secrets.MALBECLABS_DOUBLEZERO_SSH }}
-            ${{ secrets.DOUBLEZERO_SOLANA_PRIVATE }}
-
       - name: Test | CI Pipeline
         run: just ci

@@ -65,7 +65,7 @@ func TestConfig_NetworkConfigForEnv(t *testing.T) {
 				InternetLatencyCollectorPK: solana.MustPublicKeyFromBase58(config.DevnetInternetLatencyCollectorPK),
 				DeviceLocalASN:             config.DevnetDeviceLocalASN,
 				TwoZOracleURL:              config.DevnetTwoZOracleURL,
-				SolanaRPCURL:               config.DevnetSolanaRPC,
+				SolanaRPCURL:               config.TestnetSolanaRPC,
 			},
 		},
 		{

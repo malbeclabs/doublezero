@@ -29,15 +29,14 @@ func New(cfg *Config) (*Worker, error) {
 	}
 
 	serviceabilityWatcher, err := serviceability.NewServiceabilityWatcher(&serviceability.Config{
-		Logger:             cfg.Logger,
-		Serviceability:     cfg.Serviceability,
-		Interval:           cfg.Interval,
-		SlackWebhookURL:    cfg.SlackWebhookURL,
-		InfluxWriter:       cfg.InfluxWriter,
-		Env:                cfg.Env,
-		SolanaRPCURL:       cfg.SolanaRPCURL,
-		LedgerPublicRPCURL: cfg.LedgerPublicRPCURL,
-		LedgerRPCClient:    cfg.LedgerRPCClient,
+		Logger:          cfg.Logger,
+		Serviceability:  cfg.Serviceability,
+		Interval:        cfg.Interval,
+		SlackWebhookURL: cfg.SlackWebhookURL,
+		InfluxWriter:    cfg.InfluxWriter,
+		Env:             cfg.Env,
+		LedgerRPCClient: cfg.LedgerRPCClient,
+		SolanaRPCClient: cfg.SolanaRPCClient,
 	})
 	if err != nil {
 		return nil, err

@@ -48,12 +48,23 @@ func (m *mockInfluxWriter) Errors() <-chan error {
 func TestMonitor_Serviceability_Watcher(t *testing.T) {
 	t.Parallel()
 
+	mockRPC := &mockLedgerRPC{
+		GetEpochInfoFunc: func(ctx context.Context, c solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
+			return &solanarpc.GetEpochInfoResult{Epoch: 1}, nil
+		},
+	}
 	t.Run("new_watcher_validates_config", func(t *testing.T) {
 		t.Parallel()
 		_, err := NewServiceabilityWatcher(&Config{Logger: nil, Serviceability: nil, Interval: 0})
 		require.Error(t, err)
 
-		cfg := &Config{Logger: newTestLogger(t), Serviceability: &mockServiceabilityClient{}, Interval: 10 * time.Millisecond}
+		cfg := &Config{
+			Logger:          newTestLogger(t),
+			Serviceability:  &mockServiceabilityClient{},
+			Interval:        10 * time.Millisecond,
+			LedgerRPCClient: mockRPC,
+			SolanaRPCClient: mockRPC,
+		}
 		w, err := NewServiceabilityWatcher(cfg)
 		require.NoError(t, err)
 		require.NotNil(t, w)
@@ -65,9 +76,11 @@ func TestMonitor_Serviceability_Watcher(t *testing.T) {
 		version := serviceability.ProgramVersion{Major: 1, Minor: 2, Patch: 3}
 		got := &serviceability.ProgramData{ProgramConfig: serviceability.ProgramConfig{Version: version}}
 		cfg := &Config{
-			Logger:         newTestLogger(t),
-			Serviceability: &mockServiceabilityClient{GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) { return got, nil }},
-			Interval:       10 * time.Millisecond,
+			Logger:          newTestLogger(t),
+			Serviceability:  &mockServiceabilityClient{GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) { return got, nil }},
+			Interval:        10 * time.Millisecond,
+			LedgerRPCClient: mockRPC,
+			SolanaRPCClient: mockRPC,
 		}
 		w, err := NewServiceabilityWatcher(cfg)
 		require.NoError(t, err)
@@ -83,9 +96,11 @@ func TestMonitor_Serviceability_Watcher(t *testing.T) {
 	t.Run("tick_error_increments_error_metric", func(t *testing.T) {
 		t.Parallel()
 		cfg := &Config{
-			Logger:         newTestLogger(t),
-			Serviceability: &mockServiceabilityClient{GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) { return nil, errors.New("boom") }},
-			Interval:       10 * time.Millisecond,
+			Logger:          newTestLogger(t),
+			Serviceability:  &mockServiceabilityClient{GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) { return nil, errors.New("boom") }},
+			Interval:        10 * time.Millisecond,
+			LedgerRPCClient: mockRPC,
+			SolanaRPCClient: mockRPC,
 		}
 		w, err := NewServiceabilityWatcher(cfg)
 		require.NoError(t, err)
@@ -109,10 +124,12 @@ func TestMonitor_Serviceability_Watcher(t *testing.T) {
 		}
 
 		cfg := &Config{
-			Logger:         newTestLogger(t),
-			Serviceability: &mockServiceabilityClient{GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) { return programData, nil }},
-			Interval:       10 * time.Millisecond,
-			InfluxWriter:   mockWriter,
+			Logger:          newTestLogger(t),
+			Serviceability:  &mockServiceabilityClient{GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) { return programData, nil }},
+			Interval:        10 * time.Millisecond,
+			InfluxWriter:    mockWriter,
+			LedgerRPCClient: mockRPC,
+			SolanaRPCClient: mockRPC,
 		}
 		w, err := NewServiceabilityWatcher(cfg)
 		require.NoError(t, err)
@@ -126,9 +143,11 @@ func TestMonitor_Serviceability_Watcher(t *testing.T) {
 		t.Parallel()
 		got := &serviceability.ProgramData{ProgramConfig: serviceability.ProgramConfig{Version: serviceability.ProgramVersion{Major: 9, Minor: 9, Patch: 9}}}
 		cfg := &Config{
-			Logger:         newTestLogger(t),
-			Serviceability: &mockServiceabilityClient{GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) { return got, nil }},
-			Interval:       5 * time.Millisecond,
+			Logger:          newTestLogger(t),
+			Serviceability:  &mockServiceabilityClient{GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) { return got, nil }},
+			Interval:        5 * time.Millisecond,
+			LedgerRPCClient: mockRPC,
+			SolanaRPCClient: mockRPC,
 		}
 		w, err := NewServiceabilityWatcher(cfg)
 		require.NoError(t, err)
@@ -157,9 +176,11 @@ func TestMonitor_Serviceability_Watcher(t *testing.T) {
 
 type mockLedgerRPC struct {
 	GetEpochInfoFunc func(ctx context.Context, c solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error)
+	callCount        atomic.Int32
 }
 
 func (m *mockLedgerRPC) GetEpochInfo(ctx context.Context, c solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
+	m.callCount.Add(1)
 	return m.GetEpochInfoFunc(ctx, c)
 }
 
@@ -178,22 +199,23 @@ func TestWatcher_EpochChangeDetection(t *testing.T) {
 				ProgramConfig: serviceability.ProgramConfig{Version: serviceability.ProgramVersion{Major: 1, Minor: 0, Patch: 0}},
 			}, nil
 		}},
-		Interval:           10 * time.Millisecond,
-		LedgerRPCClient:    mockRPC,
-		LedgerPublicRPCURL: "http://mock-dz",
-		SolanaRPCURL:       "http://mock-sol",
+		Interval:        10 * time.Millisecond,
+		LedgerRPCClient: mockRPC, // for doublezero
+		SolanaRPCClient: mockRPC, // for solana
 	}
 	w, err := NewServiceabilityWatcher(cfg)
 	require.NoError(t, err)
 
 	// first tick: should set both epochs to 1
 	require.NoError(t, w.Tick(context.Background()))
+	require.Equal(t, int32(2), mockRPC.callCount.Load(), "GetEpochInfo should be called for both DZ and Solana")
 	require.Equal(t, uint64(1), w.currDZEpoch)
 	require.Equal(t, uint64(1), w.currSolanaEpoch)
 
 	// second tick: should detect epoch change to 2
 	epoch = 2
 	require.NoError(t, w.Tick(context.Background()))
+	require.Equal(t, int32(4), mockRPC.callCount.Load(), "GetEpochInfo should be called again for both chains")
 	require.Equal(t, uint64(2), w.currDZEpoch)
 	require.Equal(t, uint64(2), w.currSolanaEpoch)
 }

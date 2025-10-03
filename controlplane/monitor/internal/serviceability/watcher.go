@@ -120,18 +120,15 @@ func (w *ServiceabilityWatcher) Tick(ctx context.Context) error {
 	w.cacheUsers = data.Users
 
 	// detect current epoch info
-	w.detectEpochChange("doublezero", w.cfg.LedgerPublicRPCURL, &w.currDZEpoch)
-	w.detectEpochChange("solana", w.cfg.SolanaRPCURL, &w.currSolanaEpoch)
+	w.detectEpochChange("doublezero", w.cfg.LedgerRPCClient, &w.currDZEpoch)
+	w.detectEpochChange("solana", w.cfg.SolanaRPCClient, &w.currSolanaEpoch)
 	return nil
 }
 
-func (w *ServiceabilityWatcher) detectEpochChange(chainName, rpcURL string, lastEpoch *uint64) {
-	if rpcURL == "" {
-		return
-	}
+func (w *ServiceabilityWatcher) detectEpochChange(chainName string, rpcClient LedgerRPCClient, lastEpoch *uint64) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	epochInfo, err := w.cfg.LedgerRPCClient.GetEpochInfo(ctx, solanarpc.CommitmentFinalized)
+	epochInfo, err := rpcClient.GetEpochInfo(ctx, solanarpc.CommitmentFinalized)
 	if err != nil {
 		w.log.Error("failed to get epoch info", "error", err)
 		return

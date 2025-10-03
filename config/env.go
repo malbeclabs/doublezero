@@ -95,7 +95,7 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 			InternetLatencyCollectorPK: internetLatencyCollectorPK,
 			DeviceLocalASN:             DevnetDeviceLocalASN,
 			TwoZOracleURL:              DevnetTwoZOracleURL,
-			SolanaRPCURL:               DevnetSolanaRPC,
+			SolanaRPCURL:               TestnetSolanaRPC,
 		}
 	default:
 		return nil, fmt.Errorf("invalid environment %q, must be one of: %s, %s, %s", env, EnvMainnetBeta, EnvTestnet, EnvDevnet)

@@ -27,5 +27,4 @@ const (
 	DevnetInternetLatencyCollectorPK = "3fXen9LP5JUAkaaDJtyLo1ohPiJ2LdzVqAnmhtGgAmwJ"
 	DevnetDeviceLocalASN             = 21682
 	DevnetTwoZOracleURL              = ""
-	DevnetSolanaRPC                  = ""
 )

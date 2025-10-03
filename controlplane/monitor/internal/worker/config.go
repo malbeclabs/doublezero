@@ -35,6 +35,7 @@ type InfluxWriter interface {
 type Config struct {
 	Logger                     *slog.Logger
 	LedgerRPCClient            LedgerRPCClient
+	SolanaRPCClient            LedgerRPCClient
 	Serviceability             ServiceabilityClient
 	Telemetry                  TelemetryProgramClient
 	InternetLatencyCollectorPK solana.PublicKey
@@ -44,8 +45,6 @@ type Config struct {
 	TwoZOracleInterval         time.Duration
 	InfluxWriter               InfluxWriter
 	Env                        string
-	SolanaRPCURL               string
-	LedgerPublicRPCURL         string
 }
 
 func (c *Config) Validate() error {

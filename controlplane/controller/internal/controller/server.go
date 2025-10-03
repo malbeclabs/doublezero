@@ -85,6 +85,9 @@ func NewController(options ...Option) (*Controller, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to listen: %v", err)
 		}
+		if controller.tlsConfig != nil {
+			lis = tls.NewListener(lis, controller.tlsConfig)
+		}
 		controller.listener = lis
 	}
 	if controller.serviceability == nil {

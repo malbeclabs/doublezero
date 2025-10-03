@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"slices"
 	"strings"
 	"syscall"
 	"text/tabwriter"
@@ -127,7 +126,6 @@ func NewControllerCommand() *ControllerCommand {
 	c.fs.StringVar(&c.tlsCertFile, "tls-cert", "", "path to tls cert file")
 	c.fs.StringVar(&c.tlsKeyFile, "tls-key", "", "path to tls key file")
 	c.fs.BoolVar(&c.enablePprof, "enable-pprof", false, "enable pprof server")
-	c.fs.StringVar(&c.tlsListenPort, "tls-listen-port", "", "listening port for controller grpc server")
 	c.fs.BoolVar(&c.verbose, "verbose", false, "enable verbose logging")
 	return c
 }
@@ -145,7 +143,6 @@ type ControllerCommand struct {
 	showVersion    bool
 	tlsCertFile    string
 	tlsKeyFile     string
-	tlsListenPort  string
 	enablePprof    bool
 	verbose        bool
 }
@@ -234,75 +231,32 @@ func (c *ControllerCommand) Run() error {
 
 	options = append(options, controller.WithServiceabilityProgramClient(serviceabilityClient))
 
-	if c.tlsListenPort != "" {
-		options := slices.Clone(options)
-		go func(options []controller.Option) {
-			log := log.With("mode", "tls")
-			options = append(options, controller.WithLogger(log))
-
-			if c.tlsCertFile == "" && c.tlsKeyFile == "" {
-				log.Error("tls-cert and tls-key are required when tls-listen-port is provided")
-				os.Exit(1)
-			}
-
-			cert, err := tls.LoadX509KeyPair(c.tlsCertFile, c.tlsKeyFile)
-			if err != nil {
-				log.Error("error loading tls cert", "error", err)
-				os.Exit(1)
-			}
-			tlsConfig := &tls.Config{
-				Certificates:     []tls.Certificate{cert},
-				MinVersion:       tls.VersionTLS12,
-				CurvePreferences: []tls.CurveID{tls.X25519, tls.CurveP256},
-				NextProtos:       []string{"h2", "http/1.1"},
-			}
-			options = append(options, controller.WithTLSConfig(tlsConfig))
-
-			addr := net.JoinHostPort(c.listenAddr, c.tlsListenPort)
-			listener, err := net.Listen("tcp", addr)
-			if err != nil {
-				log.Error("failed to listen", "error", err)
-				os.Exit(1)
-			}
-			options = append(options, controller.WithListener(listener))
-
-			server, err := controller.NewController(options...)
-			if err != nil {
-				log.Error("error creating controller", "error", err)
-				os.Exit(1)
-			}
-
-			log.Info("starting tls controller", "address", addr)
-			if err := server.Run(ctx); err != nil {
-				log.Error("runtime error", "error", err)
-				os.Exit(1)
-			}
-		}(options)
-	} else {
-		if c.tlsCertFile != "" && c.tlsKeyFile != "" {
-			cert, err := tls.LoadX509KeyPair(c.tlsCertFile, c.tlsKeyFile)
-			if err != nil {
-				log.Error("error loading tls cert", "error", err)
-				os.Exit(1)
-			}
-			tlsConfig := &tls.Config{
-				Certificates: []tls.Certificate{cert},
-				MinVersion:   tls.VersionTLS12,
-				NextProtos:   []string{"h2"},
-			}
-			options = append(options, controller.WithTLSConfig(tlsConfig))
-		}
-	}
-
-	log = log.With("mode", "no-tls")
-	options = append(options, controller.WithLogger(log))
-
 	lis, err := net.Listen("tcp", net.JoinHostPort(c.listenAddr, c.listenPort))
 	if err != nil {
 		log.Error("failed to listen", "error", err)
 		os.Exit(1)
 	}
+
+	if c.tlsCertFile != "" && c.tlsKeyFile != "" {
+		cert, err := tls.LoadX509KeyPair(c.tlsCertFile, c.tlsKeyFile)
+		if err != nil {
+			log.Error("error loading tls cert", "error", err)
+			os.Exit(1)
+		}
+		tlsConfig := &tls.Config{
+			Certificates:     []tls.Certificate{cert},
+			MinVersion:       tls.VersionTLS12,
+			CurvePreferences: []tls.CurveID{tls.X25519, tls.CurveP256},
+			NextProtos:       []string{"h2", "http/1.1"},
+		}
+		options = append(options, controller.WithTLSConfig(tlsConfig))
+
+		lis = tls.NewListener(lis, tlsConfig)
+	}
+
+	options = append(options, controller.WithLogger(log))
 	options = append(options, controller.WithListener(lis))
+
 	control, err := controller.NewController(options...)
 	if err != nil {
 		log.Error("error creating controller", "error", err)

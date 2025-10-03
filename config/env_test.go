@@ -26,6 +26,7 @@ func TestConfig_NetworkConfigForEnv(t *testing.T) {
 				InternetLatencyCollectorPK: solana.MustPublicKeyFromBase58(config.MainnetInternetLatencyCollectorPK),
 				DeviceLocalASN:             config.MainnetDeviceLocalASN,
 				TwoZOracleURL:              config.MainnetTwoZOracleURL,
+				SolanaRPCURL:               config.MainnetSolanaRPC,
 			},
 		},
 		{
@@ -38,6 +39,7 @@ func TestConfig_NetworkConfigForEnv(t *testing.T) {
 				InternetLatencyCollectorPK: solana.MustPublicKeyFromBase58(config.MainnetInternetLatencyCollectorPK),
 				DeviceLocalASN:             config.MainnetDeviceLocalASN,
 				TwoZOracleURL:              config.MainnetTwoZOracleURL,
+				SolanaRPCURL:               config.MainnetSolanaRPC,
 			},
 		},
 		{
@@ -50,6 +52,7 @@ func TestConfig_NetworkConfigForEnv(t *testing.T) {
 				InternetLatencyCollectorPK: solana.MustPublicKeyFromBase58(config.TestnetInternetLatencyCollectorPK),
 				DeviceLocalASN:             config.TestnetDeviceLocalASN,
 				TwoZOracleURL:              config.TestnetTwoZOracleURL,
+				SolanaRPCURL:               config.TestnetSolanaRPC,
 			},
 		},
 		{
@@ -62,6 +65,7 @@ func TestConfig_NetworkConfigForEnv(t *testing.T) {
 				InternetLatencyCollectorPK: solana.MustPublicKeyFromBase58(config.DevnetInternetLatencyCollectorPK),
 				DeviceLocalASN:             config.DevnetDeviceLocalASN,
 				TwoZOracleURL:              config.DevnetTwoZOracleURL,
+				SolanaRPCURL:               config.TestnetSolanaRPC,
 			},
 		},
 		{

@@ -1,7 +1,7 @@
 use clap::Parser;
 use doublezero_ledger_sentinel::{
     constants::ENV_PREVIOUS_LEADER_EPOCHS,
-    sentinel::{ReqListener, Sentinel},
+    sentinel::{PollingSentinel, ReqListener, Sentinel},
     settings::{AppArgs, Settings},
 };
 use metrics_exporter_prometheus::PrometheusBuilder;
@@ -28,44 +28,78 @@ async fn main() -> anyhow::Result<()> {
     export_build_info();
 
     let sol_rpc = settings.sol_rpc();
-    let sol_ws = settings.sol_ws();
     let dz_rpc = settings.dz_rpc();
     let keypair = settings.keypair();
 
-    info!(
-        %sol_rpc,
-        %sol_ws,
-        %dz_rpc,
-        pubkey = %keypair.pubkey(),
-        "DoubleZero Ledger Sentinel starting"
-    );
-
-    let (request_listener, rx) = ReqListener::new(sol_ws).await?;
-    let mut sentinel = Sentinel::new(
-        dz_rpc,
-        sol_rpc,
-        keypair,
-        settings.serviceability_program_id()?,
-        rx,
-        ENV_PREVIOUS_LEADER_EPOCHS,
-    )
-    .await?;
-
     let shutdown_listener = shutdown_listener();
 
-    tokio::select! {
-        biased;
-        _ = shutdown_listener.cancelled() => {
-            info!("shutdown signal received");
-        },
-        result = request_listener.run(shutdown_listener.clone()) => {
-            if let Err(err) = result {
-                error!(?err, "sentinel request listener exited with error");
+    // If the poll_interval is set, do not use websocket conn
+    if let Some(poll_interval) = args.poll_interval {
+        info!(
+            %sol_rpc,
+            %dz_rpc,
+            poll_interval_secs = poll_interval,
+            pubkey = %keypair.pubkey(),
+            "DoubleZero Ledger Sentinel starting in POLLING mode"
+        );
+
+        let mut polling_sentinel = PollingSentinel::new(
+            dz_rpc,
+            sol_rpc,
+            keypair,
+            settings.serviceability_program_id()?,
+            poll_interval,
+            ENV_PREVIOUS_LEADER_EPOCHS,
+        )
+        .await?;
+
+        tokio::select! {
+            biased;
+            _ = shutdown_listener.cancelled() => {
+                info!("shutdown signal received");
+            },
+            result = polling_sentinel.run(shutdown_listener.clone()) => {
+                if let Err(err) = result {
+                    error!(?err, "polling sentinel exited with error");
+                }
             }
         }
-        result = sentinel.run(shutdown_listener.clone()) => {
-            if let Err(err) = result {
-                error!(?err, "sentinel handler exited with error");
+    } else {
+        let sol_ws = settings.sol_ws();
+
+        info!(
+            %sol_rpc,
+            %sol_ws,
+            %dz_rpc,
+            pubkey = %keypair.pubkey(),
+            "DoubleZero Ledger Sentinel starting in WEBSOCKET mode"
+        );
+
+        let (request_listener, rx) = ReqListener::new(sol_ws).await?;
+        let mut sentinel = Sentinel::new(
+            dz_rpc,
+            sol_rpc,
+            keypair,
+            settings.serviceability_program_id()?,
+            rx,
+            ENV_PREVIOUS_LEADER_EPOCHS,
+        )
+        .await?;
+
+        tokio::select! {
+            biased;
+            _ = shutdown_listener.cancelled() => {
+                info!("shutdown signal received");
+            },
+            result = request_listener.run(shutdown_listener.clone()) => {
+                if let Err(err) = result {
+                    error!(?err, "sentinel request listener exited with error");
+                }
+            }
+            result = sentinel.run(shutdown_listener.clone()) => {
+                if let Err(err) = result {
+                    error!(?err, "sentinel handler exited with error");
+                }
             }
         }
     }

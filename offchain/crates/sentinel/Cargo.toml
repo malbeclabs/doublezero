@@ -21,6 +21,7 @@ futures.workspace = true
 backon.workspace = true
 metrics.workspace = true
 metrics-exporter-prometheus.workspace = true
+retainer.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 solana-account-decoder-client-types.workspace = true

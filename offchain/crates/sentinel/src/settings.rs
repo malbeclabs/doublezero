@@ -22,6 +22,10 @@ pub struct AppArgs {
     /// Path to the config file
     #[arg(short = 'c', long)]
     pub config: Option<PathBuf>,
+
+    /// Enable polling mode with specified interval (in seconds), bypass websocket connection.
+    #[arg(long)]
+    pub poll_interval: Option<u64>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

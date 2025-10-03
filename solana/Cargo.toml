@@ -48,7 +48,7 @@ solana-sysvar = "2"
 solana-transaction-status-client-types = "2"
 spl-associated-token-account-interface = "1"
 spl-token = { version = "8", features = ["no-entrypoint"] }
-svm-hash = "0.1.0-beta.6"
+svm-hash = "0.1.0"
 tokio = "1"
 tracing = "0.1"
 url = "2"

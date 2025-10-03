@@ -7588,9 +7588,9 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
 name = "svm-hash"
-version = "0.1.0-beta.6"
+version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1b9a4ef0ba6d8fc68b413f11165379ee6c1f58454e2233deeac3ebf33936e674"
+checksum = "fdcee45226b963ba8933174e0eb1f6270b51fd9d32447dbc38f3372dacd08f44"
 dependencies = [
  "borsh 1.5.7",
  "bytemuck",

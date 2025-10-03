@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - snor/release-docker-core
     tags:
       - 'v*.*.*' # stable
       - 'v*.*.*-*' # pre-releases
@@ -30,7 +31,7 @@ jobs:
           SHORT_SHA="${GITHUB_SHA::8}"
           echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
 
-          if [[ "${{ github.ref_type }}" == "branch" && "${{ github.ref_name }}" == "main" ]]; then
+          if [[ "${{ github.ref_type }}" == "branch" && "${{ github.ref_name }}" == "main" || "${{ github.ref_name }}" == "snor/release-docker-core" ]]; then
             echo "channel=edge" >> $GITHUB_OUTPUT
           else
             TAG="${{ github.ref_name }}"  # e.g. v1.2.3 or v1.2.3-rc.1

@@ -245,9 +245,10 @@ func (c *ControllerCommand) Run() error {
 				os.Exit(1)
 			}
 			tlsConfig := &tls.Config{
-				Certificates: []tls.Certificate{cert},
-				MinVersion:   tls.VersionTLS12,
-				NextProtos:   []string{"h2"},
+				Certificates:     []tls.Certificate{cert},
+				MinVersion:       tls.VersionTLS12,
+				CurvePreferences: []tls.CurveID{tls.X25519, tls.CurveP256},
+				NextProtos:       []string{"h2", "http/1.1"},
 			}
 			options = append(options, controller.WithTLSConfig(tlsConfig))
 

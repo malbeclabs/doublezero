@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/csv"
 	"flag"
 	"fmt"
@@ -25,6 +26,8 @@ func main() {
 	listenAddr := flag.String("listen-addr", ":8080", "Address to listen on for HTTP requests")
 	csvPath := flag.String("supply-csv", "estimated_supply.csv", "Path to the CSV file with date,estimated_supply")
 	useS3 := flag.Bool("use-s3", false, "Whether to download the CSV from S3")
+	tlsCertFile := flag.String("tls-cert", "", "path to tls cert file")
+	tlsKeyFile := flag.String("tls-key", "", "path to tls key file")
 	flag.Parse()
 
 	if *useS3 {
@@ -67,12 +70,30 @@ func main() {
 	}
 
 	rpcClient := api.NewSolanaClient()
-	apiServer, err := api.NewApiServer(
+	options := []api.Option{
 		api.WithRpcClient(rpcClient),
 		api.WithEstimatedSupply(supplyMap),
 		api.WithLogger(logger),
 		api.WithListenAddr(*listenAddr),
-	)
+	}
+
+	if *tlsCertFile != "" && *tlsKeyFile != "" {
+		logger.Info("Loading TLS config")
+		cert, err := tls.LoadX509KeyPair(*tlsCertFile, *tlsKeyFile)
+		if err != nil {
+			logger.Error("error loading tls cert", "error", err)
+			os.Exit(1)
+		}
+		tlsConfig := &tls.Config{
+			Certificates:     []tls.Certificate{cert},
+			MinVersion:       tls.VersionTLS12,
+			CurvePreferences: []tls.CurveID{tls.X25519, tls.CurveP256},
+			NextProtos:       []string{"h2", "http/1.1"},
+		}
+		options = append(options, api.WithTLSConfig(tlsConfig))
+	}
+
+	apiServer, err := api.NewApiServer(options...)
 	if err != nil {
 		logger.Error("Failed to create API server", "error", err)
 		os.Exit(1)

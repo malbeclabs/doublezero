@@ -2,8 +2,10 @@ package api
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -26,6 +28,7 @@ type ApiServer struct {
 	logger          *slog.Logger
 	mu              sync.RWMutex
 	listenAddr      string
+	tlsConfig       *tls.Config
 }
 
 type Option func(*ApiServer)
@@ -53,6 +56,12 @@ func WithLogger(logger *slog.Logger) Option {
 func WithListenAddr(addr string) Option {
 	return func(s *ApiServer) {
 		s.listenAddr = addr
+	}
+}
+
+func WithTLSConfig(tlsConfig *tls.Config) Option {
+	return func(s *ApiServer) {
+		s.tlsConfig = tlsConfig
 	}
 }
 
@@ -136,8 +145,9 @@ func (s *ApiServer) Run() error {
 	mux.HandleFunc("/api/v1/2z/total-supply", s.handleGetTotalSupply)
 
 	s.httpServer = &http.Server{
-		Addr:    s.listenAddr,
-		Handler: mux,
+		Addr:      s.listenAddr,
+		Handler:   mux,
+		TLSConfig: s.tlsConfig,
 	}
 
 	// periodically fetch total supply from Solana RPC and update s.totalSupply
@@ -167,7 +177,16 @@ func (s *ApiServer) Run() error {
 	}()
 
 	s.logger.Info("API server starting", "address", s.httpServer.Addr)
-	if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+	listener, err := net.Listen("tcp", s.httpServer.Addr)
+	if err != nil {
+		return fmt.Errorf("could not listen on %s: %w", s.httpServer.Addr, err)
+	}
+	defer listener.Close()
+	if s.tlsConfig != nil {
+		listener = tls.NewListener(listener, s.tlsConfig)
+	}
+	err = s.httpServer.Serve(listener)
+	if err != nil && err != http.ErrServerClosed {
 		return fmt.Errorf("could not listen on %s: %w", s.httpServer.Addr, err)
 	}
 	return nil

@@ -411,7 +411,7 @@ func (d *Device) Start(ctx context.Context) error {
 	controllerAddr := net.JoinHostPort(d.dn.Controller.DefaultNetworkIP, fmt.Sprintf("%d", internalControllerPort))
 
 	commandArgs := []string{
-		"-controller", controllerAddr,
+		"-controller-addr", controllerAddr,
 		"-pubkey", devicePK,
 	}
 

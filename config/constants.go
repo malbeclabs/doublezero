@@ -7,8 +7,9 @@ const (
 	MainnetTelemetryProgramID         = "tE1exJ5VMyoC9ByZeSmgtNzJCFF74G9JAv338sJiqkC"
 	MainnetInternetLatencyCollectorPK = "8xHn4r7oQuqNZ5cLYwL5YZcDy1JjDQcpVkyoA8Dw5uXH"
 	MainnetDeviceLocalASN             = 209321
-	MainnetTwoZOracleURL              = "https://sol-2z-oracle-api-v1.mainnet-beta.doublezero.xyz"
+	MainnetTwoZOracleURL              = ""
 	MainnetSolanaRPC                  = "https://api.mainnet-beta.solana.com"
+	MainnetControllerAddress          = "controller-grpc.mainnet-beta.doublezero.xyz:443"
 
 	// Testnet constants.
 	TestnetLedgerPublicRPCURL         = "https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16"
@@ -18,6 +19,7 @@ const (
 	TestnetDeviceLocalASN             = 65342
 	TestnetTwoZOracleURL              = "https://sol-2z-oracle-api-v1.testnet.doublezero.xyz"
 	TestnetSolanaRPC                  = "https://api.testnet.solana.com"
+	TestnetControllerAddress          = "controller-grpc.testnet.doublezero.xyz:443"
 
 	// Devnet constants.
 	DevnetLedgerPublicRPCURL         = "https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16"
@@ -26,6 +28,7 @@ const (
 	DevnetInternetLatencyCollectorPK = "3fXen9LP5JUAkaaDJtyLo1ohPiJ2LdzVqAnmhtGgAmwJ"
 	DevnetDeviceLocalASN             = 21682
 	DevnetTwoZOracleURL              = ""
+	DevnetControllerAddress          = "controller-grpc.devnet.doublezero.xyz:443"
 
 	// Localnet constants.
 	LocalnetLedgerPublicRPCURL         = "http://localhost:8899"
@@ -35,4 +38,5 @@ const (
 	LocalnetDeviceLocalASN             = 21682
 	LocalnetTwoZOracleURL              = ""
 	LocalnetSolanaRPC                  = "http://localhost:8899"
+	LocalnetControllerAddress          = "localhost:7000"
 )

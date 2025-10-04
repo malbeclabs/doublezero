@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/malbeclabs/doublezero/config"
 	agent "github.com/malbeclabs/doublezero/controlplane/agent/internal/agent"
 	arista "github.com/malbeclabs/doublezero/controlplane/agent/pkg/arista"
 	aristapb "github.com/malbeclabs/doublezero/controlplane/proto/arista/gen/pb-go/arista/EosSdkRpc"
@@ -21,7 +22,8 @@ import (
 
 var (
 	localDevicePubkey          = flag.String("pubkey", "frtyt4WKYudUpqTsvJzwN6Bd4btYxrkaYNhBNAaUVGWn", "This device's public key on the doublezero network")
-	controllerAddress          = flag.String("controller", "", "The DoubleZero controller IP address and port to connect to")
+	env                        = flag.String("env", "", "The network environment to use (devnet, testnet, mainnet).")
+	controllerAddr             = flag.String("controller-addr", "", "The DoubleZero controller address and port to connect to")
 	device                     = flag.String("device", "127.0.0.1:9543", "IP Address and port of the Arist EOS API. Should always be the local switch at 127.0.0.1:9543.")
 	sleepIntervalInSeconds     = flag.Float64("sleep-interval-in-seconds", 5, "How long to sleep in between polls")
 	controllerTimeoutInSeconds = flag.Float64("controller-timeout-in-seconds", 30, "How long to wait for a response from the controller before giving up")
@@ -88,7 +90,7 @@ func main() {
 
 	log.Printf("Starting doublezero-agent version %s starting\n", version)
 	log.Printf("doublezero-agent pubkey: %s\n", *localDevicePubkey)
-	log.Printf("doublezero-agent controller: %s\n", *controllerAddress)
+	log.Printf("doublezero-agent controller: %s\n", *controllerAddr)
 	log.Printf("doublezero-agent device: %s\n", *device)
 	log.Printf("doublezero-agent sleep-interval-in-seconds: %f\n", *sleepIntervalInSeconds)
 	log.Printf("doublezero-agent controller-timeout-in-seconds: %f\n", *controllerTimeoutInSeconds)
@@ -104,11 +106,20 @@ func main() {
 		}()
 	}
 
-	if *controllerAddress == "" {
-		log.Fatalf("controller address is required")
+	// If the controller address is not provided, use the network config for the given environment.
+	if *controllerAddr == "" {
+		if *env == "" {
+			log.Fatalf("env flag is required when controller address is not provided")
+		}
+
+		networkConfig, err := config.NetworkConfigForEnv(*env)
+		if err != nil {
+			log.Fatalf("Failed to get network config for env %s: %v", *env, err)
+		}
+		*controllerAddr = networkConfig.ControllerAddress
 	}
 
-	dzclient, err := agent.GetDzClient(*controllerAddress)
+	dzclient, err := agent.GetDzClient(*controllerAddr)
 	if err != nil {
 		log.Fatalf("Call to GetDzClient failed: %q\n", err)
 	}

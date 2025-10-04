@@ -2,6 +2,7 @@ package devnet
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"log/slog"
 	"net"
@@ -15,7 +16,7 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/credentials"
 
 	pb "github.com/malbeclabs/doublezero/controlplane/proto/controller/gen/pb-go"
 )
@@ -192,7 +193,9 @@ func (c *Controller) GetAgentConfig(ctx context.Context, deviceAgentPubkey strin
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	opts := []grpc.DialOption{
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
+			InsecureSkipVerify: true,
+		})),
 	}
 	conn, err := grpc.NewClient(controllerAddr, opts...)
 	if err != nil {

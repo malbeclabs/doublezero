@@ -50,8 +50,7 @@ func NewAgentCommand() *AgentCommand {
 		description: "command set for interacting with controller",
 	}
 	a.fs.StringVar(&a.pubkey, "device-pubkey", "", "pubkey of device which to fetch config")
-	a.fs.StringVar(&a.controllerAddr, "controller-addr", "localhost", "listening address of controller")
-	a.fs.StringVar(&a.controllerPort, "controller-port", "443", "listening port of controller")
+	a.fs.StringVar(&a.controllerAddr, "controller-addr", "localhost:443", "listening address of controller")
 	a.fs.StringVar(&a.unknownPeers, "unknown-peers", "", "comma separated list of unknown peers to remove from config")
 	return a
 }
@@ -61,7 +60,6 @@ type AgentCommand struct {
 	description    string
 	pubkey         string
 	controllerAddr string
-	controllerPort string
 	unknownPeers   string
 }
 
@@ -82,16 +80,13 @@ func (a *AgentCommand) Init(args []string) error {
 }
 
 func (a *AgentCommand) Run() error {
-	target := net.JoinHostPort(a.controllerAddr, a.controllerPort)
-
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	opts := []grpc.DialOption{
-		// grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
 			InsecureSkipVerify: true,
 		})),
 	}
-	conn, err := grpc.NewClient(target, opts...)
+	conn, err := grpc.NewClient(a.controllerAddr, opts...)
 	if err != nil {
 		slog.Error("error creating controller client", "error", err)
 		os.Exit(1)

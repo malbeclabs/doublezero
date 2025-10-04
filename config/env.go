@@ -24,6 +24,7 @@ type NetworkConfig struct {
 	DeviceLocalASN             uint32
 	TwoZOracleURL              string
 	SolanaRPCURL               string
+	ControllerAddress          string
 }
 
 func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
@@ -51,6 +52,7 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 			DeviceLocalASN:             MainnetDeviceLocalASN,
 			TwoZOracleURL:              MainnetTwoZOracleURL,
 			SolanaRPCURL:               MainnetSolanaRPC,
+			ControllerAddress:          MainnetControllerAddress,
 		}
 	case EnvTestnet:
 		serviceabilityProgramID, err := solana.PublicKeyFromBase58(TestnetServiceabilityProgramID)
@@ -74,6 +76,7 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 			DeviceLocalASN:             TestnetDeviceLocalASN,
 			TwoZOracleURL:              TestnetTwoZOracleURL,
 			SolanaRPCURL:               TestnetSolanaRPC,
+			ControllerAddress:          TestnetControllerAddress,
 		}
 	case EnvDevnet:
 		serviceabilityProgramID, err := solana.PublicKeyFromBase58(DevnetServiceabilityProgramID)
@@ -97,6 +100,7 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 			DeviceLocalASN:             DevnetDeviceLocalASN,
 			TwoZOracleURL:              DevnetTwoZOracleURL,
 			SolanaRPCURL:               TestnetSolanaRPC,
+			ControllerAddress:          DevnetControllerAddress,
 		}
 	case EnvLocalnet:
 		serviceabilityProgramID, err := solana.PublicKeyFromBase58(LocalnetServiceabilityProgramID)

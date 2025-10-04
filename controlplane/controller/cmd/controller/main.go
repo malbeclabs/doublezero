@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/credentials"
 
 	_ "net/http/pprof"
 
@@ -86,7 +86,10 @@ func (a *AgentCommand) Run() error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	opts := []grpc.DialOption{
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		// grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
+			InsecureSkipVerify: true,
+		})),
 	}
 	conn, err := grpc.NewClient(target, opts...)
 	if err != nil {

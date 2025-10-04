@@ -19,5 +19,9 @@ while ! curl -sf -X POST -H 'Content-Type: application/json' \
     sleep 1
 done
 
+# Generate a TLS cert and key.
+openssl req -x509 -newkey rsa:4096 -keyout server.key -out server.crt -days 365 -nodes
+echo "TLS cert and key generated in server.crt and server.key"
+
 # Start the controller.
-doublezero-controller start -listen-addr 0.0.0.0 -listen-port 7000 -program-id ${DZ_SERVICEABILITY_PROGRAM_ID} -solana-rpc-endpoint ${DZ_LEDGER_URL} -device-local-asn 65342 -no-hardware
+doublezero-controller start -listen-addr 0.0.0.0 -listen-port 8443 -program-id ${DZ_SERVICEABILITY_PROGRAM_ID} -solana-rpc-endpoint ${DZ_LEDGER_URL} -device-local-asn 65342 -no-hardware -tls-cert server.crt -tls-key server.key $CONTROLLER_FLAGS

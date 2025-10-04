@@ -2,13 +2,14 @@ package agent
 
 import (
 	"context"
+	"crypto/tls"
 	"log"
 	"slices"
 	"time"
 
 	pb "github.com/malbeclabs/doublezero/controlplane/proto/controller/gen/pb-go"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/credentials"
 )
 
 func GetConfigFromServer(ctx context.Context, client pb.ControllerClient, localDevicePubkey string, neighborIpMap map[string][]string, controllerTimeoutInSeconds *float64, agentVersion string, agentCommit string, agentDate string) (config string, err error) {
@@ -36,7 +37,11 @@ func GetConfigFromServer(ctx context.Context, client pb.ControllerClient, localD
 }
 
 func GetDzClient(controllerAddressAndPort string) (pb.ControllerClient, error) {
-	conn, err := grpc.NewClient(controllerAddressAndPort, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(controllerAddressAndPort,
+		grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
+			InsecureSkipVerify: true,
+		})),
+	)
 	log.Printf("controllerAddressAndPort %s\n", controllerAddressAndPort)
 	if err != nil {
 		log.Fatalf("GetDzClient call to grpc.NewClient() failed: %v", err)

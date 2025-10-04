@@ -21,7 +21,7 @@ import (
 
 var (
 	localDevicePubkey          = flag.String("pubkey", "frtyt4WKYudUpqTsvJzwN6Bd4btYxrkaYNhBNAaUVGWn", "This device's public key on the doublezero network")
-	controllerAddress          = flag.String("controller", "18.116.166.35:7000", "The DoubleZero controller IP address and port to connect to")
+	controllerAddress          = flag.String("controller", "", "The DoubleZero controller IP address and port to connect to")
 	device                     = flag.String("device", "127.0.0.1:9543", "IP Address and port of the Arist EOS API. Should always be the local switch at 127.0.0.1:9543.")
 	sleepIntervalInSeconds     = flag.Float64("sleep-interval-in-seconds", 5, "How long to sleep in between polls")
 	controllerTimeoutInSeconds = flag.Float64("controller-timeout-in-seconds", 30, "How long to wait for a response from the controller before giving up")
@@ -102,6 +102,10 @@ func main() {
 				log.Printf("Failed to start prometheus metrics server: %v", err)
 			}
 		}()
+	}
+
+	if *controllerAddress == "" {
+		log.Fatalf("controller address is required")
 	}
 
 	dzclient, err := agent.GetDzClient(*controllerAddress)

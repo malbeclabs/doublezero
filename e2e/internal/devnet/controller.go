@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	internalControllerPort = 7000
+	internalControllerPort = 8443
 )
 
 type ControllerSpec struct {

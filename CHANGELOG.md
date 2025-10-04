@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.
     - Wrap main select handler in loop to avoid shutdown on branch error
 - Internet telemetry
     - Add circuit label to metrics; create a new metric for missing circuit samples
+    - Create a new metric that tracks how long it takes collector tasks to run
     - Submit partitions of samples in parallel
     - Include circuit label on submitter error metric
 - Monitor

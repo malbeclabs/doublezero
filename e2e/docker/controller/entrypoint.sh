@@ -19,8 +19,11 @@ while ! curl -sf -X POST -H 'Content-Type: application/json' \
     sleep 1
 done
 
-# Generate a TLS cert and key.
-openssl req -x509 -newkey rsa:4096 -keyout server.key -out server.crt -days 365 -nodes
+# Generate a TLS cert and key, non-interactively.
+echo "Generating TLS cert and key..."
+openssl ecparam -genkey -name prime256v1 -out server.key
+openssl req -new -key server.key -out server.csr -subj "/CN=localhost"
+openssl x509 -req -in server.csr -signkey server.key -out server.crt
 echo "TLS cert and key generated in server.crt and server.key"
 
 # Start the controller.

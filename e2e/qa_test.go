@@ -92,9 +92,6 @@ func TestMain(m *testing.M) {
 	}
 
 	fmt.Printf("Found %d devices on-chain\n", len(devices))
-	for _, dev := range devices {
-		fmt.Printf("Device PubKey: %s, Code: %s, MaxUsers: %d, UsersCount: %d\n", dev.PubKey, dev.Code, dev.MaxUsers, dev.UsersCount)
-	}
 
 	clients = make(map[string]pb.QAAgentServiceClient)
 	clientConns := make(map[string]*grpc.ClientConn)
@@ -288,6 +285,9 @@ func TestConnectivityMulticast(t *testing.T) {
 				defer cancel()
 				client, err := getQAClient(host)
 				require.NoError(t, err, "Failed to create QA client")
+
+				ensureDisconnected(t, ctx, client, host)
+
 				req := &pb.ConnectMulticastRequest{
 					Mode: pb.ConnectMulticastRequest_SUBSCRIBER,
 					Code: code,
@@ -319,6 +319,9 @@ func TestConnectivityMulticast(t *testing.T) {
 		defer cancel()
 		client, err := getQAClient(publisher)
 		require.NoError(t, err, "Failed to create QA client")
+
+		ensureDisconnected(t, ctx, client, publisher)
+
 		req := &pb.ConnectMulticastRequest{
 			Mode: pb.ConnectMulticastRequest_PUBLISHER,
 			Code: code,
@@ -396,6 +399,47 @@ func TestConnectivityMulticast(t *testing.T) {
 			})
 		}
 	})
+}
+
+func ensureDisconnected(t *testing.T, ctx context.Context, client pb.QAAgentServiceClient, host string) {
+	checkCtx, checkCancel := context.WithTimeout(ctx, 30*time.Second)
+	checkStatus, checkErr := client.GetStatus(checkCtx, &emptypb.Empty{})
+	checkCancel()
+
+	if checkErr != nil {
+		require.Fail(t, "Failed to check existing tunnel status", "host: %s, error: %v", host, checkErr)
+	}
+
+	if checkStatus != nil {
+		for _, s := range checkStatus.Status {
+			if s.SessionStatus != "disconnected" {
+				t.Logf("Host %s has existing tunnel (session status: %s), disconnecting first", host, s.SessionStatus)
+				disconnectCtx, disconnectCancel := context.WithTimeout(ctx, 90*time.Second)
+				_, _ = client.Disconnect(disconnectCtx, &emptypb.Empty{})
+				disconnectCancel()
+
+				condition := func() (bool, error) {
+					statusCtx, statusCancel := context.WithTimeout(ctx, 10*time.Second)
+					defer statusCancel()
+					status, err := client.GetStatus(statusCtx, &emptypb.Empty{})
+					if err != nil {
+						return false, err
+					}
+					for _, s := range status.Status {
+						if s.SessionStatus != "disconnected" {
+							return false, nil
+						}
+					}
+					return true, nil
+				}
+
+				err := poll.Until(ctx, condition, 30*time.Second, 1*time.Second)
+				require.NoError(t, err, "Tunnel did not reach disconnected state after disconnect for host %s", host)
+				t.Logf("Host %s tunnel is disconnected, proceeding with connection", host)
+				break
+			}
+		}
+	}
 }
 
 func unicastCleanupFunc(t *testing.T, hosts []string) func() {
@@ -653,30 +697,7 @@ func connectHosts(t *testing.T, hosts []string, device *Device) (map[string]stri
 			return nil, fmt.Errorf("failed to create QA client for %s: %w", host, err)
 		}
 
-		// Ensure clean state by disconnecting if tunnel is up
-		checkCtx, checkCancel := context.WithTimeout(ctx, 30*time.Second)
-		checkStatus, checkErr := client.GetStatus(checkCtx, &emptypb.Empty{})
-		checkCancel()
-
-		if checkErr != nil {
-			return nil, fmt.Errorf("failed to check existing tunnel status for %s (is doublezerod running?): %w", host, checkErr)
-		}
-
-		// Check if any session is "up"
-		if checkStatus != nil {
-			for _, s := range checkStatus.Status {
-				if s.SessionStatus == "up" {
-					t.Logf("Host %s has existing tunnel (session status: %s), disconnecting first", host, s.SessionStatus)
-					disconnectCtx, disconnectCancel := context.WithTimeout(ctx, 90*time.Second)
-					_, _ = client.Disconnect(disconnectCtx, &emptypb.Empty{})
-					disconnectCancel()
-
-					// Give it a moment to disconnect
-					time.Sleep(2 * time.Second)
-					break
-				}
-			}
-		}
+		ensureDisconnected(t, ctx, client, host)
 
 		// Create connection request
 		req := &pb.ConnectUnicastRequest{

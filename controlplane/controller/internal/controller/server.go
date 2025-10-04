@@ -23,7 +23,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
 )
 
@@ -532,9 +531,6 @@ func (c *Controller) Run(ctx context.Context) error {
 
 	// start gRPC server
 	opts := []grpc.ServerOption{}
-	if c.tlsConfig != nil {
-		opts = append(opts, grpc.Creds(credentials.NewTLS(c.tlsConfig)))
-	}
 	server := grpc.NewServer(opts...)
 	pb.RegisterControllerServer(server, c)
 

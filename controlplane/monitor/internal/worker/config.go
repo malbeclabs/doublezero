@@ -35,6 +35,7 @@ type InfluxWriter interface {
 type Config struct {
 	Logger                     *slog.Logger
 	LedgerRPCClient            LedgerRPCClient
+	SolanaRPCClient            LedgerRPCClient
 	Serviceability             ServiceabilityClient
 	Telemetry                  TelemetryProgramClient
 	InternetLatencyCollectorPK solana.PublicKey

@@ -126,6 +126,11 @@ func main() {
 	serviceabilityClient := serviceability.New(rpcClient, networkConfig.ServiceabilityProgramID)
 	telemetryClient := telemetry.New(log, rpcClient, nil, networkConfig.TelemetryProgramID)
 
+	var solanaRPCClient *solanarpc.Client
+	if networkConfig.SolanaRPCURL != "" {
+		solanaRPCClient = solanarpc.New(networkConfig.SolanaRPCURL)
+	}
+
 	// Initialize prometheus metrics server.
 	worker.MetricBuildInfo.WithLabelValues(version, commit, date).Set(1)
 	go func() {
@@ -178,6 +183,7 @@ func main() {
 	worker, err := worker.New(&worker.Config{
 		Logger:                     log,
 		LedgerRPCClient:            rpcClient,
+		SolanaRPCClient:            solanaRPCClient,
 		Serviceability:             serviceabilityClient,
 		Telemetry:                  telemetryClient,
 		InternetLatencyCollectorPK: networkConfig.InternetLatencyCollectorPK,

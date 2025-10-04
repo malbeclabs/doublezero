@@ -14,6 +14,7 @@ use solana_client::{
     rpc_filter::{Memcmp, MemcmpEncodedBytes, RpcFilterType},
 };
 use solana_sdk::{
+    account::Account,
     commitment_config::CommitmentConfig,
     instruction::{AccountMeta, Instruction, InstructionError},
     program_error::ProgramError,
@@ -122,6 +123,10 @@ impl DZClient {
             .get_epoch_info()
             .map_err(|e| eyre!(e))
             .map(|info| info.epoch)
+    }
+
+    pub fn get_account(&self, pubkey: Pubkey) -> eyre::Result<Account> {
+        self.client.get_account(&pubkey).map_err(|e| eyre!(e))
     }
 
     /******************************************************************************************************************************************/

@@ -35,6 +35,8 @@ func New(cfg *Config) (*Worker, error) {
 		SlackWebhookURL: cfg.SlackWebhookURL,
 		InfluxWriter:    cfg.InfluxWriter,
 		Env:             cfg.Env,
+		LedgerRPCClient: cfg.LedgerRPCClient,
+		SolanaRPCClient: cfg.SolanaRPCClient,
 	})
 	if err != nil {
 		return nil, err

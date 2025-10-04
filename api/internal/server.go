@@ -143,6 +143,9 @@ func (s *ApiServer) Run() error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/2z/circulating-supply", s.handleGetCirculatingSupply)
 	mux.HandleFunc("/api/v1/2z/total-supply", s.handleGetTotalSupply)
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
 
 	s.httpServer = &http.Server{
 		Addr:      s.listenAddr,

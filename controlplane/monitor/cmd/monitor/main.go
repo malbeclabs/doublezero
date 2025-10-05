@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	defaultInterval           = 1 * time.Minute
+	defaultInterval           = 30 * time.Second
 	defaultTwoZOracleInterval = 5 * time.Second
 )
 
@@ -125,6 +125,26 @@ func main() {
 	rpcClient := solanarpc.New(networkConfig.LedgerPublicRPCURL)
 	serviceabilityClient := serviceability.New(rpcClient, networkConfig.ServiceabilityProgramID)
 	telemetryClient := telemetry.New(log, rpcClient, nil, networkConfig.TelemetryProgramID)
+
+	// wsRPCClient, err := ws.Connect(context.Background(), rpc.MainNetBeta_WS)
+	// if err != nil {
+	// 	log.Error("Failed to connect to solana websocket", "error", err)
+	// 	os.Exit(1)
+	// }
+	// sub, err := wsRPCClient.AccountSubscribe(networkConfig.ServiceabilityProgramID, rpc.CommitmentFinalized)
+	// if err != nil {
+	// 	log.Error("Failed to subscribe to serviceability program", "error", err)
+	// 	os.Exit(1)
+	// }
+	// defer sub.Unsubscribe()
+	// for {
+	// 	got, err := sub.Recv(context.Background())
+	// 	if err != nil {
+	// 		log.Error("Failed to receive from serviceability program", "error", err)
+	// 		os.Exit(1)
+	// 	}
+	// 	got.Value.Data.GetRawJSON()
+	// }
 
 	var solanaRPCClient *solanarpc.Client
 	if networkConfig.SolanaRPCURL != "" {

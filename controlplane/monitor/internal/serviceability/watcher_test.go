@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
@@ -171,6 +172,113 @@ func TestMonitor_Serviceability_Watcher(t *testing.T) {
 		t.Parallel()
 		s := programVersionString(serviceability.ProgramVersion{Major: 0, Minor: 10, Patch: 7})
 		require.Equal(t, "0.10.7", s)
+	})
+
+	t.Run("user_state_transitions_happy_path", func(t *testing.T) {
+		t.Parallel()
+
+		userPK1 := solana.NewWallet().PublicKey()
+		userPK2 := solana.NewWallet().PublicKey()
+
+		serviceabilityClient := &mockServiceabilityClient{GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+			return &serviceability.ProgramData{Users: []serviceability.User{
+				{PubKey: userPK1, Status: serviceability.UserStatusPending},
+				{PubKey: userPK2, Status: serviceability.UserStatusDeleting},
+			}}, nil
+		}}
+
+		cfg := &Config{
+			Logger:          newTestLogger(t),
+			Serviceability:  serviceabilityClient,
+			Interval:        10 * time.Millisecond,
+			LedgerRPCClient: mockRPC,
+			SolanaRPCClient: mockRPC,
+		}
+		w, err := NewServiceabilityWatcher(cfg)
+		require.NoError(t, err)
+
+		require.NoError(t, w.Tick(t.Context()))
+		require.Equal(t, serviceability.UserStatusPending, w.userStates[userPK1.String()].User.Status)
+		require.Equal(t, serviceability.UserStatusDeleting, w.userStates[userPK2.String()].User.Status)
+
+		serviceabilityClient.GetProgramDataFunc = func(ctx context.Context) (*serviceability.ProgramData, error) {
+			return &serviceability.ProgramData{Users: []serviceability.User{
+				{PubKey: userPK1, Status: serviceability.UserStatusActivated},
+			}}, nil
+		}
+		require.NoError(t, w.Tick(t.Context()))
+		require.Equal(t, serviceability.UserStatusActivated, w.userStates[userPK1.String()].User.Status)
+		require.NotNil(t, w.userStates[userPK2.String()])
+
+		serviceabilityClient.GetProgramDataFunc = func(ctx context.Context) (*serviceability.ProgramData, error) {
+			return &serviceability.ProgramData{Users: []serviceability.User{
+				{PubKey: userPK1, Status: serviceability.UserStatusDeleting},
+			}}, nil
+		}
+		require.NoError(t, w.Tick(t.Context()))
+		require.Equal(t, serviceability.UserStatusDeleting, w.userStates[userPK1.String()].User.Status)
+		require.NotContains(t, w.userStates, userPK2.String())
+
+		serviceabilityClient.GetProgramDataFunc = func(ctx context.Context) (*serviceability.ProgramData, error) {
+			return &serviceability.ProgramData{Users: []serviceability.User{}}, nil
+		}
+		require.NoError(t, w.Tick(t.Context()))
+		require.NotContains(t, w.userStates, userPK1.String())
+		require.NotContains(t, w.userStates, userPK2.String())
+	})
+
+	t.Run("user_state_transitions_skipped_some", func(t *testing.T) {
+		t.Parallel()
+
+		userPK1 := solana.NewWallet().PublicKey()
+		userPK2 := solana.NewWallet().PublicKey()
+
+		serviceabilityClient := &mockServiceabilityClient{GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+			return &serviceability.ProgramData{Users: []serviceability.User{
+				{PubKey: userPK1, Status: serviceability.UserStatusActivated},
+				{PubKey: userPK2, Status: serviceability.UserStatusPending},
+			}}, nil
+		}}
+
+		cfg := &Config{
+			Logger:          newTestLogger(t),
+			Serviceability:  serviceabilityClient,
+			Interval:        10 * time.Millisecond,
+			LedgerRPCClient: mockRPC,
+			SolanaRPCClient: mockRPC,
+		}
+		w, err := NewServiceabilityWatcher(cfg)
+		require.NoError(t, err)
+
+		require.NoError(t, w.Tick(t.Context()))
+		require.Equal(t, serviceability.UserStatusActivated, w.userStates[userPK1.String()].User.Status)
+		require.Equal(t, serviceability.UserStatusPending, w.userStates[userPK2.String()].User.Status)
+
+		serviceabilityClient.GetProgramDataFunc = func(ctx context.Context) (*serviceability.ProgramData, error) {
+			return &serviceability.ProgramData{Users: []serviceability.User{
+				{PubKey: userPK1, Status: serviceability.UserStatusDeleting},
+				{PubKey: userPK2, Status: serviceability.UserStatusPending},
+			}}, nil
+		}
+		require.NoError(t, w.Tick(t.Context()))
+		require.Equal(t, serviceability.UserStatusDeleting, w.userStates[userPK1.String()].User.Status)
+		require.Equal(t, serviceability.UserStatusPending, w.userStates[userPK2.String()].User.Status)
+
+		serviceabilityClient.GetProgramDataFunc = func(ctx context.Context) (*serviceability.ProgramData, error) {
+			return &serviceability.ProgramData{Users: []serviceability.User{
+				{PubKey: userPK2, Status: serviceability.UserStatusDeleting},
+			}}, nil
+		}
+		require.NoError(t, w.Tick(t.Context()))
+		require.NotContains(t, w.userStates, userPK1.String())
+		require.Equal(t, serviceability.UserStatusDeleting, w.userStates[userPK2.String()].User.Status)
+
+		serviceabilityClient.GetProgramDataFunc = func(ctx context.Context) (*serviceability.ProgramData, error) {
+			return &serviceability.ProgramData{Users: []serviceability.User{}}, nil
+		}
+		require.NoError(t, w.Tick(t.Context()))
+		require.NotContains(t, w.userStates, userPK1.String())
+		require.NotContains(t, w.userStates, userPK2.String())
 	})
 }
 

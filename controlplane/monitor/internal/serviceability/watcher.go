@@ -34,6 +34,15 @@ type ServiceabilityWatcher struct {
 	rpcClient       *http.Client
 	currDZEpoch     uint64
 	currSolanaEpoch uint64
+	userStates      map[string]userState
+	tick            uint64
+}
+
+type userState struct {
+	User         serviceability.User
+	StartedAt    time.Time
+	LastSeenAt   time.Time
+	FoundOnStart bool
 }
 
 func NewServiceabilityWatcher(cfg *Config) (*ServiceabilityWatcher, error) {
@@ -46,6 +55,7 @@ func NewServiceabilityWatcher(cfg *Config) (*ServiceabilityWatcher, error) {
 		rpcClient: &http.Client{
 			Timeout: 10 * time.Second,
 		},
+		userStates: make(map[string]userState),
 	}, nil
 }
 
@@ -92,6 +102,18 @@ func (w *ServiceabilityWatcher) Tick(ctx context.Context) error {
 		return err
 	}
 
+	if w.tick == 0 {
+		for _, user := range data.Users {
+			userPK := base58.Encode(user.PubKey[:])
+			w.userStates[userPK] = userState{
+				User:         user,
+				StartedAt:    time.Now(),
+				LastSeenAt:   time.Now(),
+				FoundOnStart: true,
+			}
+		}
+	}
+
 	version := programVersionString(data.ProgramConfig.Version)
 	MetricProgramBuildInfo.WithLabelValues(version).Set(1)
 
@@ -102,13 +124,10 @@ func (w *ServiceabilityWatcher) Tick(ctx context.Context) error {
 		data.Devices[i].UsersCount = 0
 		data.Devices[i].ReferenceCount = 0
 	}
-	// filter out our own users
-	data.Users = slices.DeleteFunc(data.Users, func(u serviceability.User) bool {
-		return base58.Encode(u.Owner[:]) == doubleZeroPubKey
-	})
 
 	w.processEvents(data)
 	w.runAudits(data)
+	w.checkUserStateTransitions(data.Users)
 
 	if w.cfg.InfluxWriter != nil {
 		w.exportDevicesToInflux(data.Devices)
@@ -122,6 +141,9 @@ func (w *ServiceabilityWatcher) Tick(ctx context.Context) error {
 	// detect current epoch info
 	w.detectEpochChange("doublezero", w.cfg.LedgerRPCClient, &w.currDZEpoch)
 	w.detectEpochChange("solana", w.cfg.SolanaRPCClient, &w.currSolanaEpoch)
+
+	w.tick++
+
 	return nil
 }
 
@@ -198,6 +220,11 @@ func (w *ServiceabilityWatcher) processEvents(data *serviceability.ProgramData) 
 
 		var newUsers []ServiceabilityUserEvent
 		for _, e := range userEvents {
+			ownerPK := base58.Encode(e.User.Owner[:])
+			if ownerPK == doubleZeroPubKey {
+				// Exclude our users
+				continue
+			}
 			logEvent(e)
 			if e.Type() == EventTypeAdded {
 				newUsers = append(newUsers, e)
@@ -218,6 +245,68 @@ func (w *ServiceabilityWatcher) runAudits(data *serviceability.ProgramData) {
 	for _, device := range data.Devices {
 		for _, iface := range device.Interfaces {
 			checkUnlinkedInterfaces(device, iface, data.Links)
+		}
+	}
+}
+
+func (w *ServiceabilityWatcher) checkUserStateTransitions(users []serviceability.User) {
+	usersByPK := make(map[string]serviceability.User)
+	for _, user := range users {
+		usersByPK[base58.Encode(user.PubKey[:])] = user
+	}
+
+	// Check for users that are no longer in the state.
+	for userPK, us := range w.userStates {
+		if _, ok := usersByPK[userPK]; !ok {
+			w.log.Info("user no longer in state", "user_pubkey", userPK, "last_status", us.User.Status, "last_seen_at", us.LastSeenAt, "started_at", us.StartedAt)
+			delete(w.userStates, userPK)
+		}
+	}
+
+	// Check for users who are new to the state.
+	for userPK, user := range usersByPK {
+		if _, ok := w.userStates[userPK]; !ok {
+			w.log.Info("user new to state", "user_pubkey", userPK, "status", user.Status)
+
+			w.userStates[userPK] = userState{
+				User:         user,
+				StartedAt:    time.Now(),
+				LastSeenAt:   time.Now(),
+				FoundOnStart: false,
+			}
+		}
+	}
+
+	for userPK, user := range usersByPK {
+		if us, ok := w.userStates[userPK]; ok {
+			// If the status has changed, update the user state.
+			if user.Status != us.User.Status {
+				w.log.Info("user status changed", "user_pubkey", userPK, "previous_status", us.User.Status, "new_status", user.Status)
+
+				w.userStates[userPK] = userState{
+					User:         user,
+					StartedAt:    us.StartedAt,
+					LastSeenAt:   time.Now(),
+					FoundOnStart: false,
+				}
+			} else {
+				// If the status has not changed, check if the user is still in pending or deleting state.
+				duration := time.Since(us.StartedAt)
+				switch user.Status {
+				case serviceability.UserStatusPending:
+					w.log.Info("user still in pending state", "user_pubkey", userPK, "last_seen_at", us.LastSeenAt, "started_at", us.StartedAt, "duration", duration)
+					MetricUserPendingDuration.WithLabelValues(userPK).Observe(duration.Seconds())
+					if duration > 5*time.Minute {
+						w.log.Warn("user in pending state for too long", "user_pubkey", userPK, "duration", duration, "started_at", us.StartedAt, "last_seen_at", us.LastSeenAt)
+					}
+				case serviceability.UserStatusDeleting:
+					w.log.Info("user still in deleting state", "user_pubkey", userPK, "last_seen_at", us.LastSeenAt, "started_at", us.StartedAt, "duration", duration)
+					MetricUserDeletingDuration.WithLabelValues(userPK).Observe(duration.Seconds())
+					if duration > 5*time.Minute {
+						w.log.Warn("user in deleting state for too long", "user_pubkey", userPK, "duration", duration, "started_at", us.StartedAt, "last_seen_at", us.LastSeenAt)
+					}
+				}
+			}
 		}
 	}
 }

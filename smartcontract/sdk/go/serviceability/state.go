@@ -466,7 +466,7 @@ const (
 	UserStatusPending UserStatus = iota
 	UserStatusActivated
 	UserStatusSuspended
-	UserStatusDeleted
+	UserStatusDeleting
 	UserStatusRejected
 	UserStatusPendingBan
 	UserStatusBanned
@@ -478,7 +478,7 @@ func (u UserStatus) String() string {
 		"pending",
 		"activated",
 		"suspended",
-		"deleted",
+		"deleting",
 		"rejected",
 		"pending_ban",
 		"banned",

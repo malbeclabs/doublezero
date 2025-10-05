@@ -61,7 +61,21 @@ func TestMonitor_TwoZOracle_Client(t *testing.T) {
 		c := newTestClient(t, fs.BaseURL, 2*time.Second)
 
 		_, _, err := c.SwapRate(context.Background())
-		r.Error(err)
+		r.EqualError(err, "error getting swap rate: 503 Service Unavailable: {\"error\":\"unavailable\"}")
+	})
+
+	t.Run("Health_Non200", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		fs := NewFakeTwoZOracleServer(t)
+		t.Cleanup(fs.Close)
+		fs.SetHealth(503, `{"error":"unavailable"}`, 0)
+
+		c := newTestClient(t, fs.BaseURL, 2*time.Second)
+
+		_, _, err := c.Health(context.Background())
+		r.EqualError(err, "error getting health: 503 Service Unavailable: {\"error\":\"unavailable\"}")
 	})
 
 	t.Run("Health_BadJSON", func(t *testing.T) {
@@ -75,7 +89,7 @@ func TestMonitor_TwoZOracle_Client(t *testing.T) {
 		c := newTestClient(t, fs.BaseURL, 2*time.Second)
 
 		_, _, err := c.Health(context.Background())
-		r.Error(err)
+		r.EqualError(err, "unexpected EOF")
 	})
 
 	t.Run("SwapRate_Timeout", func(t *testing.T) {
@@ -91,7 +105,7 @@ func TestMonitor_TwoZOracle_Client(t *testing.T) {
 		defer cancel()
 
 		_, _, err := c.SwapRate(ctx)
-		r.Error(err)
+		r.ErrorContains(err, "context deadline exceeded (Client.Timeout exceeded while awaiting headers)")
 	})
 }
 

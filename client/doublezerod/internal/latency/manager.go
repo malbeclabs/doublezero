@@ -94,29 +94,86 @@ func (l *LatencyResults) MarshalJSON() ([]byte, error) {
 }
 
 type LatencyManager struct {
-	SmartContractFunc SmartContractorFunc
-	ProberFunc        ProberFunc
-	DeviceCache       *DeviceCache
-	ResultsCache      *LatencyResults
+	SmartContractFunc   SmartContractorFunc
+	proberFunc          ProberFunc
+	DeviceCache         *DeviceCache
+	ResultsCache        *LatencyResults
+	programId           string
+	rpcEndpoint         string
+	probeInterval       time.Duration
+	cacheUpdateInterval time.Duration
+	metricsEnabled      bool
 }
 
-func NewLatencyManager(s SmartContractorFunc, p ProberFunc) *LatencyManager {
-	return &LatencyManager{
-		SmartContractFunc: s,
-		ProberFunc:        p,
-		DeviceCache:       &DeviceCache{Devices: []serviceability.Device{}, Lock: sync.Mutex{}},
-		ResultsCache:      &LatencyResults{Results: []LatencyResult{}, Lock: sync.RWMutex{}},
+type Option func(*LatencyManager)
+
+func NewLatencyManager(options ...Option) *LatencyManager {
+	lm := &LatencyManager{
+		DeviceCache:  &DeviceCache{Devices: []serviceability.Device{}, Lock: sync.Mutex{}},
+		ResultsCache: &LatencyResults{Results: []LatencyResult{}, Lock: sync.RWMutex{}},
+		// Set default values
+		SmartContractFunc:   FetchContractData,
+		proberFunc:          UdpPing,
+		probeInterval:       10 * time.Second,
+		cacheUpdateInterval: 300 * time.Second,
+		metricsEnabled:      false,
+	}
+	for _, o := range options {
+		o(lm)
+	}
+	return lm
+}
+
+func WithSmartContractFunc(f SmartContractorFunc) Option {
+	return func(l *LatencyManager) {
+		l.SmartContractFunc = f
 	}
 }
 
-func (l *LatencyManager) Start(ctx context.Context, programId string, rpcEndpoint string, probeInterval, cacheUpdateInterval int) error {
+func WithProberFunc(f ProberFunc) Option {
+	return func(l *LatencyManager) {
+		l.proberFunc = f
+	}
+}
+
+func WithProgramID(id string) Option {
+	return func(l *LatencyManager) {
+		l.programId = id
+	}
+}
+
+func WithRpcEndpoint(endpoint string) Option {
+	return func(l *LatencyManager) {
+		l.rpcEndpoint = endpoint
+	}
+}
+
+func WithProbeInterval(interval time.Duration) Option {
+	return func(l *LatencyManager) {
+		l.probeInterval = interval
+	}
+}
+
+func WithCacheUpdateInterval(interval time.Duration) Option {
+	return func(l *LatencyManager) {
+		l.cacheUpdateInterval = interval
+	}
+}
+
+func WithMetricsEnabled(enabled bool) Option {
+	return func(l *LatencyManager) {
+		l.metricsEnabled = enabled
+	}
+}
+
+func (l *LatencyManager) Start(ctx context.Context) error {
 
 	// start goroutine for fetching smartcontract devices
 	go func() {
 		fetch := func() {
 			ctx, cancel := context.WithTimeout(ctx, serviceabilityProgramDataFetchTimeout)
 			defer cancel()
-			contractData, err := l.SmartContractFunc(ctx, programId, rpcEndpoint)
+			contractData, err := l.SmartContractFunc(ctx, l.programId, l.rpcEndpoint)
 			if err != nil {
 				slog.Error("latency: error fetching smart contract data", "error", err)
 				return
@@ -134,7 +191,7 @@ func (l *LatencyManager) Start(ctx context.Context, programId string, rpcEndpoin
 		// don't wait for first tick and populate cache
 		fetch()
 
-		ticker := time.NewTicker(time.Duration(cacheUpdateInterval) * time.Second)
+		ticker := time.NewTicker(l.cacheUpdateInterval)
 		for {
 			select {
 			case <-ctx.Done():
@@ -159,7 +216,7 @@ func (l *LatencyManager) Start(ctx context.Context, programId string, rpcEndpoin
 			for _, device := range devices {
 				wg.Add(1)
 				go func() {
-					resultsChan <- l.ProberFunc(ctx, device)
+					resultsChan <- l.proberFunc(ctx, device)
 					wg.Done()
 				}()
 			}
@@ -171,20 +228,22 @@ func (l *LatencyManager) Start(ctx context.Context, programId string, rpcEndpoin
 			for result := range resultsChan {
 				resultsCache = append(resultsCache, result)
 
-				devicePk := base58.Encode(result.Device.PubKey[:])
-				deviceIp := net.IP(result.Device.PublicIp[:]).String()
+				if l.metricsEnabled {
+					devicePk := base58.Encode(result.Device.PubKey[:])
+					deviceIp := net.IP(result.Device.PublicIp[:]).String()
 
-				MetricLatencyRtt.WithLabelValues(devicePk, result.Device.Code, deviceIp, "avg").Set(float64(result.Avg))
-				MetricLatencyRtt.WithLabelValues(devicePk, result.Device.Code, deviceIp, "min").Set(float64(result.Min))
-				MetricLatencyRtt.WithLabelValues(devicePk, result.Device.Code, deviceIp, "max").Set(float64(result.Max))
+					MetricLatencyRtt.WithLabelValues(devicePk, result.Device.Code, deviceIp, "avg").Set(float64(result.Avg))
+					MetricLatencyRtt.WithLabelValues(devicePk, result.Device.Code, deviceIp, "min").Set(float64(result.Min))
+					MetricLatencyRtt.WithLabelValues(devicePk, result.Device.Code, deviceIp, "max").Set(float64(result.Max))
 
-				MetricLatencyLoss.WithLabelValues(devicePk, result.Device.Code, deviceIp).Set(result.Loss)
+					MetricLatencyLoss.WithLabelValues(devicePk, result.Device.Code, deviceIp).Set(result.Loss)
 
-				reachableValue := 0
-				if result.Reachable {
-					reachableValue = 1
+					reachableValue := 0
+					if result.Reachable {
+						reachableValue = 1
+					}
+					MetricLatencyReachable.WithLabelValues(devicePk, result.Device.Code, deviceIp).Set(float64(reachableValue))
 				}
-				MetricLatencyReachable.WithLabelValues(devicePk, result.Device.Code, deviceIp).Set(float64(reachableValue))
 			}
 
 			l.ResultsCache.Lock.Lock()
@@ -195,7 +254,7 @@ func (l *LatencyManager) Start(ctx context.Context, programId string, rpcEndpoin
 		// don't wait for first tick to ping stuff
 		probe()
 
-		ticker := time.NewTicker(time.Duration(probeInterval) * time.Second)
+		ticker := time.NewTicker(l.probeInterval)
 		for {
 			select {
 			case <-ctx.Done():

@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
@@ -18,7 +19,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func Run(ctx context.Context, sockFile string, enableLatencyProbing bool, programId string, rpcEndpoint string, probeInterval, cacheUpdateInterval int) error {
+func Run(ctx context.Context, sockFile string, enableLatencyProbing, enableLatencyMetrics bool, programId string, rpcEndpoint string, probeInterval, cacheUpdateInterval int) error {
 	nlr := routing.Netlink{}
 	bgp, err := bgp.NewBgpServer(net.IPv4(1, 1, 1, 1), nlr)
 	if err != nil {
@@ -48,12 +49,18 @@ func Run(ctx context.Context, sockFile string, enableLatencyProbing bool, progra
 	mux.HandleFunc("GET /status", nlm.ServeStatus)
 
 	if enableLatencyProbing {
-		latency := latency.NewLatencyManager(latency.FetchContractData, latency.UdpPing)
+		latencyManager := latency.NewLatencyManager(
+			latency.WithProgramID(programId),
+			latency.WithRpcEndpoint(rpcEndpoint),
+			latency.WithProbeInterval(time.Duration(probeInterval)*time.Second),
+			latency.WithCacheUpdateInterval(time.Duration(cacheUpdateInterval)*time.Second),
+			latency.WithMetricsEnabled(enableLatencyMetrics),
+		)
 		go func() {
-			err := latency.Start(ctx, programId, rpcEndpoint, probeInterval, cacheUpdateInterval)
+			err := latencyManager.Start(ctx)
 			errCh <- err
 		}()
-		mux.HandleFunc("GET /latency", latency.ServeLatency)
+		mux.HandleFunc("GET /latency", latencyManager.ServeLatency)
 	}
 
 	// /config endpoint returns:

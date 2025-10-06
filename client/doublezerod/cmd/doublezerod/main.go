@@ -29,6 +29,7 @@ var (
 	probeInterval        = flag.Int("probe-interval", 30, "latency probe interval in seconds")
 	cacheUpdateInterval  = flag.Int("cache-update-interval", 30, "latency cache update interval in seconds")
 	enableVerboseLogging = flag.Bool("v", false, "enables verbose logging")
+	enableLatencyMetrics = flag.Bool("enable-latency-metrics", false, "enables latency metrics")
 	metricsEnable        = flag.Bool("metrics-enable", false, "Enable prometheus metrics")
 	metricsAddr          = flag.String("metrics-addr", "localhost:0", "Address to listen on for prometheus metrics")
 
@@ -113,7 +114,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := runtime.Run(ctx, *sockFile, *enableLatencyProbing, *programId, *rpcEndpoint, *probeInterval, *cacheUpdateInterval); err != nil {
+	if err := runtime.Run(ctx, *sockFile, *enableLatencyProbing, *enableLatencyMetrics, *programId, *rpcEndpoint, *probeInterval, *cacheUpdateInterval); err != nil {
 		slog.Error("runtime error", "error", err)
 		os.Exit(1)
 	}

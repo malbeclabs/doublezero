@@ -25,8 +25,7 @@ const (
 )
 
 type ControllerSpec struct {
-	ContainerImage             string
-	NoEnableInterfacesAndPeers bool
+	ContainerImage string
 }
 
 func (s *ControllerSpec) Validate(cyoaNetworkSpec CYOANetworkSpec) error {
@@ -111,9 +110,6 @@ func (c *Controller) Start(ctx context.Context) error {
 	c.log.Info("==> Starting controller", "image", c.dn.Spec.Controller.ContainerImage)
 
 	controllerFlags := ""
-	if !c.dn.Spec.Controller.NoEnableInterfacesAndPeers {
-		controllerFlags = "-enable-interfaces-and-peers"
-	}
 
 	req := testcontainers.ContainerRequest{
 		Image: c.dn.Spec.Controller.ContainerImage,

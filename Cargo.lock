@@ -1103,6 +1103,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "console"
+version = "0.16.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b430743a6eb14e9764d4260d4c0d8123087d504eeb9c48f2b2a5e810dd369df4"
+dependencies = [
+ "encode_unicode",
+ "libc",
+ "once_cell",
+ "unicode-width",
+ "windows-sys 0.61.1",
+]
+
+[[package]]
 name = "console_error_panic_hook"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1511,7 +1524,7 @@ dependencies = [
  "chrono",
  "clap",
  "clap_complete",
- "console",
+ "console 0.15.11",
  "ctor",
  "doublezero-config",
  "doublezero-program-common",
@@ -1526,7 +1539,7 @@ dependencies = [
  "hyper 1.7.0",
  "hyper-util",
  "hyperlocal",
- "indicatif",
+ "indicatif 0.18.0",
  "mockall",
  "serde",
  "serde_json",
@@ -1576,7 +1589,7 @@ dependencies = [
  "chrono",
  "clap",
  "clap_complete",
- "console",
+ "console 0.15.11",
  "doublezero_cli",
  "doublezero_sdk",
  "eyre",
@@ -1584,7 +1597,7 @@ dependencies = [
  "futures-util",
  "hyper 1.7.0",
  "hyperlocal",
- "indicatif",
+ "indicatif 0.18.0",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -1671,7 +1684,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "clap",
- "console",
+ "console 0.15.11",
  "doublezero-config",
  "doublezero-program-common",
  "doublezero-serviceability",
@@ -1680,7 +1693,7 @@ dependencies = [
  "futures",
  "futures-util",
  "http 1.3.1",
- "indicatif",
+ "indicatif 0.18.0",
  "ipnetwork",
  "mockall",
  "serde",
@@ -2804,10 +2817,23 @@ version = "0.17.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "183b3088984b400f4cfac3620d5e076c84da5364016b4f49473de574b2586235"
 dependencies = [
- "console",
+ "console 0.15.11",
  "number_prefix",
  "portable-atomic",
  "unicode-width",
+ "web-time",
+]
+
+[[package]]
+name = "indicatif"
+version = "0.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "70a646d946d06bedbbc4cac4c218acf4bbf2d87757a784857025f4d447e4e1cd"
+dependencies = [
+ "console 0.16.1",
+ "portable-atomic",
+ "unicode-width",
+ "unit-prefix",
  "web-time",
 ]
 
@@ -5212,7 +5238,7 @@ dependencies = [
  "futures",
  "futures-util",
  "indexmap",
- "indicatif",
+ "indicatif 0.17.11",
  "log",
  "quinn",
  "rayon",
@@ -6535,7 +6561,7 @@ dependencies = [
  "base64 0.22.1",
  "bincode 1.3.3",
  "bs58",
- "indicatif",
+ "indicatif 0.17.11",
  "log",
  "reqwest",
  "reqwest-middleware",
@@ -7386,7 +7412,7 @@ dependencies = [
  "bincode 1.3.3",
  "futures-util",
  "indexmap",
- "indicatif",
+ "indicatif 0.17.11",
  "log",
  "rayon",
  "solana-client-traits",
@@ -8789,6 +8815,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
 
 [[package]]
+name = "unit-prefix"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "323402cff2dd658f39ca17c789b502021b3f18707c91cdf22e3838e1b4023817"
+
+[[package]]
 name = "universal-hash"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9219,6 +9251,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e38bc4d79ed67fd075bcc251a1c39b32a1776bbe92e5bef1f0bf1f8c531853b"
 dependencies = [
  "windows-targets 0.52.6",
+]
+
+[[package]]
+name = "windows-sys"
+version = "0.61.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6f109e41dd4a3c848907eb83d5a42ea98b3769495597450cf6d153507b166f0f"
+dependencies = [
+ "windows-link 0.2.0",
 ]
 
 [[package]]

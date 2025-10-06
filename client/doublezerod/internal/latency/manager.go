@@ -170,6 +170,21 @@ func (l *LatencyManager) Start(ctx context.Context, programId string, rpcEndpoin
 
 			for result := range resultsChan {
 				resultsCache = append(resultsCache, result)
+
+				devicePk := base58.Encode(result.Device.PubKey[:])
+				deviceIp := net.IP(result.Device.PublicIp[:]).String()
+
+				MetricLatencyRtt.WithLabelValues(devicePk, result.Device.Code, deviceIp, "avg").Set(float64(result.Avg))
+				MetricLatencyRtt.WithLabelValues(devicePk, result.Device.Code, deviceIp, "min").Set(float64(result.Min))
+				MetricLatencyRtt.WithLabelValues(devicePk, result.Device.Code, deviceIp, "max").Set(float64(result.Max))
+
+				MetricLatencyLoss.WithLabelValues(devicePk, result.Device.Code, deviceIp).Set(result.Loss)
+
+				reachableValue := 0
+				if result.Reachable {
+					reachableValue = 1
+				}
+				MetricLatencyReachable.WithLabelValues(devicePk, result.Device.Code, deviceIp).Set(float64(reachableValue))
 			}
 
 			l.ResultsCache.Lock.Lock()

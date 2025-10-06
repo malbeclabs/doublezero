@@ -8,12 +8,26 @@ import (
 var (
 	latencyLabels = []string{"device_pk", "device_code", "device_ip"}
 
-	MetricLatencyRtt = promauto.NewGaugeVec(
+	MetricLatencyRttMin = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "doublezero_latency_rtt_nanoseconds",
-			Help: "Round-trip time latency measurements to DoubleZero devices in nanoseconds.",
+			Name: "doublezero_latency_rtt_min_nanoseconds",
+			Help: "Minimum round-trip time latency to DoubleZero devices in nanoseconds.",
 		},
-		append(latencyLabels, "stat"), // stat can be "min", "max", "avg"
+		latencyLabels,
+	)
+	MetricLatencyRttAvg = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "doublezero_latency_rtt_avg_nanoseconds",
+			Help: "Average round-trip time latency to DoubleZero devices in nanoseconds.",
+		},
+		latencyLabels,
+	)
+	MetricLatencyRttMax = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "doublezero_latency_rtt_max_nanoseconds",
+			Help: "Maximum round-trip time latency to DoubleZero devices in nanoseconds.",
+		},
+		latencyLabels,
 	)
 
 	MetricLatencyLoss = promauto.NewGaugeVec(

@@ -232,9 +232,9 @@ func (l *LatencyManager) Start(ctx context.Context) error {
 					devicePk := base58.Encode(result.Device.PubKey[:])
 					deviceIp := net.IP(result.Device.PublicIp[:]).String()
 
-					MetricLatencyRtt.WithLabelValues(devicePk, result.Device.Code, deviceIp, "avg").Set(float64(result.Avg))
-					MetricLatencyRtt.WithLabelValues(devicePk, result.Device.Code, deviceIp, "min").Set(float64(result.Min))
-					MetricLatencyRtt.WithLabelValues(devicePk, result.Device.Code, deviceIp, "max").Set(float64(result.Max))
+					MetricLatencyRttMin.WithLabelValues(devicePk, result.Device.Code, deviceIp).Set(float64(result.Min))
+					MetricLatencyRttAvg.WithLabelValues(devicePk, result.Device.Code, deviceIp).Set(float64(result.Avg))
+					MetricLatencyRttMax.WithLabelValues(devicePk, result.Device.Code, deviceIp).Set(float64(result.Max))
 
 					MetricLatencyLoss.WithLabelValues(devicePk, result.Device.Code, deviceIp).Set(result.Loss)
 

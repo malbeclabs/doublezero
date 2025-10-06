@@ -1,18 +1,32 @@
 use crate::{doublezerocommand::CliCommand, validators::validate_pubkey_or_code};
 use clap::Args;
+use doublezero_program_common::serializer;
 use doublezero_program_common::types::parse_utils::bandwidth_to_string;
 use doublezero_sdk::commands::{
-    device::list::ListDeviceCommand, location::list::ListLocationCommand,
-    multicastgroup::get::GetMulticastGroupCommand, user::list::ListUserCommand,
+    accesspass::list::ListAccessPassCommand, device::list::ListDeviceCommand,
+    location::list::ListLocationCommand, multicastgroup::get::GetMulticastGroupCommand,
+    user::list::ListUserCommand,
 };
-use std::io::Write;
-use tabled::{builder::Builder, settings::Style};
+use serde::Serialize;
+use solana_sdk::pubkey::Pubkey;
+use std::{io::Write, net::Ipv4Addr};
+use tabled::{builder::Builder, settings::Style, Table, Tabled};
 
 #[derive(Args, Debug)]
 pub struct GetMulticastGroupCliCommand {
     /// MulticastCroup code or Pubkey to query
     #[arg(long, value_parser = validate_pubkey_or_code)]
     pub code: String,
+}
+
+#[derive(Tabled, Serialize)]
+pub struct MulticastAllowlistDisplay {
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
+    pub account: Pubkey,
+    pub mode: String,
+    pub client_ip: Ipv4Addr,
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
+    pub user_payer: Pubkey,
 }
 
 impl GetMulticastGroupCliCommand {
@@ -27,7 +41,7 @@ impl GetMulticastGroupCliCommand {
 
         // Write the multicast group details first
         writeln!(out,
-        "account: {}\r\ncode: {}\r\nmulticast_ip: {}\r\nmax_bandwidth: {}\r\nstatus: {}\r\nowner: {}\r\n\r\nusers:\r\n",
+        "account: {}\r\ncode: {}\r\nmulticast_ip: {}\r\nmax_bandwidth: {}\r\nstatus: {}\r\nowner: {}",
         mgroup_pubkey,
         mgroup.code,
         &mgroup.multicast_ip,
@@ -35,6 +49,36 @@ impl GetMulticastGroupCliCommand {
         mgroup.status,
         mgroup.owner
         )?;
+
+        let list_accesspass = client.list_accesspass(ListAccessPassCommand {})?;
+
+        let mga_displays = list_accesspass
+            .into_iter()
+            .filter(|(_, accesspass)| {
+                accesspass.mgroup_sub_allowlist.contains(&mgroup_pubkey)
+                    || accesspass.mgroup_pub_allowlist.contains(&mgroup_pubkey)
+            })
+            .map(|(_, accesspass)| MulticastAllowlistDisplay {
+                account: mgroup_pubkey,
+                mode: if accesspass.mgroup_pub_allowlist.contains(&mgroup_pubkey) {
+                    if accesspass.mgroup_sub_allowlist.contains(&mgroup_pubkey) {
+                        "P+S".to_string()
+                    } else {
+                        "P".to_string()
+                    }
+                } else {
+                    "S".to_string()
+                },
+                client_ip: accesspass.client_ip,
+                user_payer: accesspass.user_payer,
+            })
+            .collect::<Vec<_>>();
+
+        let table = Table::new(mga_displays)
+            .with(Style::psql().remove_horizontals())
+            .to_string();
+
+        writeln!(out, "\r\nallowlist:\r\n{table}")?;
 
         let mut builder = Builder::default();
         builder.push_record([
@@ -103,7 +147,7 @@ impl GetMulticastGroupCliCommand {
             .with(Style::psql().remove_horizontals())
             .to_string();
 
-        writeln!(out, "{table}")?;
+        writeln!(out, "\r\nusers:\r\n{table}")?;
 
         Ok(())
     }

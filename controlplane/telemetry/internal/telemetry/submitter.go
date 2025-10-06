@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand"
+	"sync"
 	"time"
 
 	"github.com/cenkalti/backoff/v5"
@@ -16,7 +17,8 @@ import (
 )
 
 const (
-	defaultMaxAttempts = 5
+	defaultMaxAttempts                  = 5
+	defaultOnSubmitterCloseFlushTimeout = 30 * time.Second
 )
 
 type SubmitterConfig struct {
@@ -27,6 +29,7 @@ type SubmitterConfig struct {
 	ProgramClient      TelemetryProgramClient
 	BackoffFunc        func(attempt int) time.Duration // optional, defaults to exponential backoff
 	MaxAttempts        int                             // optional, defaults to 5
+	MaxConcurrency     int
 	GetCurrentEpoch    func(ctx context.Context) (uint64, error)
 }
 
@@ -43,10 +46,12 @@ func NewSubmitter(log *slog.Logger, cfg *SubmitterConfig) (*Submitter, error) {
 	if cfg.GetCurrentEpoch == nil {
 		return nil, fmt.Errorf("GetCurrentEpoch is required")
 	}
+	if cfg.MaxConcurrency <= 0 {
+		return nil, fmt.Errorf("max concurrency must be greater than 0")
+	}
 	if cfg.MaxAttempts == 0 {
 		cfg.MaxAttempts = defaultMaxAttempts
 	}
-
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	return &Submitter{
 		log: log,
@@ -64,7 +69,12 @@ func (s *Submitter) Run(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			s.log.Debug("Submission loop done")
+			s.log.Debug("Submission loop done, flushing remaining samples")
+			// Pass a new context since the current one has already been cancelled.
+			flushCtx, cancel := context.WithTimeout(context.Background(), defaultOnSubmitterCloseFlushTimeout)
+			defer cancel()
+			s.Tick(flushCtx)
+			s.log.Debug("Flushed remaining samples")
 			return nil
 		case <-ticker.C:
 			s.Tick(ctx)
@@ -157,75 +167,90 @@ func (s *Submitter) SubmitSamples(ctx context.Context, partitionKey PartitionKey
 }
 
 func (s *Submitter) Tick(ctx context.Context) {
-	for partitionKey := range s.cfg.Buffer.FlushWithoutReset() {
-		tmp := s.cfg.Buffer.CopyAndReset(partitionKey)
-
-		log := s.log.With("partition", partitionKey)
-
-		log.Debug("Submitting samples", "count", len(tmp))
-
-		if len(tmp) == 0 {
-			log.Debug("No samples to submit, skipping")
-			s.cfg.Buffer.Recycle(partitionKey, tmp)
-
-			// If the account is for a past epoch, remove it.
-			epoch, err := s.getCurrentEpoch(ctx)
-			if err != nil {
-				log.Error("failed to get current epoch", "error", err)
-				continue
-			}
-			if partitionKey.Epoch < epoch {
-				s.cfg.Buffer.Remove(partitionKey)
-				log.Debug("Removed account key")
-			}
-			continue
-		}
-
-		success := false
-		for attempt := 1; attempt <= s.cfg.MaxAttempts; attempt++ {
-			err := s.SubmitSamples(ctx, partitionKey, tmp)
-			if err == nil {
-				log.Debug("Submitted samples", "count", len(tmp), "attempt", attempt)
-				success = true
-				break
-			}
-
-			var backoff time.Duration
-			if s.cfg.BackoffFunc != nil {
-				backoff = s.cfg.BackoffFunc(attempt)
-			} else {
-				backoff = s.defaultBackoff(attempt)
-			}
-
-			switch attempt {
-			case 1:
-				log.Debug("Submission failed, retrying...", "attempt", attempt, "error", err)
-			case s.cfg.MaxAttempts:
-				metrics.Errors.WithLabelValues(metrics.ErrorTypeSubmitterRetriesExhausted).Inc()
-				log.Error("Submission failed after all retries", "attempt", attempt, "samplesCount", len(tmp), "error", err)
-			case (s.cfg.MaxAttempts + 1) / 2:
-				log.Debug("Submission failed, still retrying...", "attempt", attempt, "error", err)
-			default:
-				log.Debug("Submission failed, retrying...", "attempt", attempt, "delay", backoff, "error", err)
-			}
-
-			if !sleepOrDone(ctx, backoff) {
-				log.Debug("Submission retry aborted by context")
-				break
-			}
-		}
-
-		// If submission failed and the buffer is not at capacity, prepend the samples back to the
-		// buffer. If the buffer is at capacity and we have failed all attempts, don't prepend the
-		// samples back to the buffer.
-		overCapacity := s.cfg.Buffer.Len(partitionKey)+len(tmp) >= s.cfg.Buffer.Capacity(partitionKey)
-		if !success && !overCapacity {
-			s.cfg.Buffer.PriorityPrepend(partitionKey, tmp)
-		}
-
-		// Always recycle the slice for reuse
-		s.cfg.Buffer.Recycle(partitionKey, tmp)
+	partitions := s.cfg.Buffer.FlushWithoutReset()
+	if len(partitions) == 0 {
+		return
 	}
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, s.cfg.MaxConcurrency)
+	wg.Add(len(partitions))
+	for partitionKey := range partitions {
+		go func(partitionKey PartitionKey) {
+			defer wg.Done()
+			defer func() { <-sem }() // limit concurrency
+			sem <- struct{}{}
+
+			tmp := s.cfg.Buffer.CopyAndReset(partitionKey)
+
+			log := s.log.With("partition", partitionKey)
+
+			log.Debug("Submitting samples", "count", len(tmp))
+
+			if len(tmp) == 0 {
+				log.Debug("No samples to submit, skipping")
+				s.cfg.Buffer.Recycle(partitionKey, tmp)
+
+				// If the account is for a past epoch, remove it.
+				epoch, err := s.getCurrentEpoch(ctx)
+				if err != nil {
+					log.Error("failed to get current epoch", "error", err)
+					return
+				}
+				if partitionKey.Epoch < epoch {
+					s.cfg.Buffer.Remove(partitionKey)
+					log.Debug("Removed account key")
+				}
+				return
+			}
+
+			success := false
+			for attempt := 1; attempt <= s.cfg.MaxAttempts; attempt++ {
+				err := s.SubmitSamples(ctx, partitionKey, tmp)
+				if err == nil {
+					log.Debug("Submitted samples", "count", len(tmp), "attempt", attempt)
+					success = true
+					break
+				}
+
+				var backoff time.Duration
+				if s.cfg.BackoffFunc != nil {
+					backoff = s.cfg.BackoffFunc(attempt)
+				} else {
+					backoff = s.defaultBackoff(attempt)
+				}
+
+				switch attempt {
+				case 1:
+					log.Debug("Submission failed, retrying...", "attempt", attempt, "error", err)
+				case s.cfg.MaxAttempts:
+					metrics.Errors.WithLabelValues(metrics.ErrorTypeSubmitterRetriesExhausted).Inc()
+					log.Error("Submission failed after all retries", "attempt", attempt, "samplesCount", len(tmp), "error", err)
+				case (s.cfg.MaxAttempts + 1) / 2:
+					log.Debug("Submission failed, still retrying...", "attempt", attempt, "error", err)
+				default:
+					log.Debug("Submission failed, retrying...", "attempt", attempt, "delay", backoff, "error", err)
+				}
+
+				if !sleepOrDone(ctx, backoff) {
+					log.Debug("Submission retry aborted by context")
+					break
+				}
+			}
+
+			// If submission failed and the buffer is not at capacity, prepend the samples back to the
+			// buffer. If the buffer is at capacity and we have failed all attempts, don't prepend the
+			// samples back to the buffer.
+			overCapacity := s.cfg.Buffer.Len(partitionKey)+len(tmp) >= s.cfg.Buffer.Capacity(partitionKey)
+			if !success && !overCapacity {
+				s.cfg.Buffer.PriorityPrepend(partitionKey, tmp)
+			}
+
+			// Always recycle the slice for reuse
+			s.cfg.Buffer.Recycle(partitionKey, tmp)
+		}(partitionKey)
+	}
+
+	wg.Wait()
 }
 
 func (s *Submitter) defaultBackoff(attempt int) time.Duration {

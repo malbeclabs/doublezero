@@ -8,8 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
-- Added a wait in the `disconnect` command to ensure the account is fully closed before returning, preventing failures during rapid disconnect/reconnect sequences.
-
+- CLI
+    - Added a wait in the `disconnect` command to ensure the account is fully closed before returning, preventing failures during rapid disconnect/reconnect sequences.
 - Activator
     - Reduce logging noise when processing snapshot events
     - Wrap main select handler in loop to avoid shutdown on branch error
@@ -23,6 +23,8 @@ All notable changes to this project will be documented in this file.
 - Device controller
     - When a device is missing required loopback interfaces, provide detailed errors to agent instead of "<pubkey> not found". Also, log these conditions as warnings instead of errors, and don't emit "unknown pubkey requested" error metrics for these conditions
     - Add device info as labels to `controller_grpc_getconfig_requests_total` metric
+- Device agents
+    - Submit device-link telemetry partitions in parallel
 
 ## [v0.6.6](https://github.com/malbeclabs/doublezero/compare/client/v0.6.5...client/v0.6.6) – 2025-09-26
 

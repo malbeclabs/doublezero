@@ -54,11 +54,12 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		buffer.Add(key, newTestSample())
 
 		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
-			Interval:      time.Hour, // unused
-			Buffer:        buffer,
-			ProgramClient: telemetryProgram,
-			MaxAttempts:   1,
-			BackoffFunc:   func(_ int) time.Duration { return 0 },
+			Interval:       time.Hour, // unused
+			Buffer:         buffer,
+			ProgramClient:  telemetryProgram,
+			MaxAttempts:    1,
+			MaxConcurrency: 10,
+			BackoffFunc:    func(_ int) time.Duration { return 0 },
 			GetCurrentEpoch: func(ctx context.Context) (uint64, error) {
 				return 100, nil
 			},
@@ -97,11 +98,12 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		})
 
 		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
-			Interval:      time.Hour, // unused
-			Buffer:        buffer,
-			ProgramClient: telemetryProgram,
-			MaxAttempts:   5,
-			BackoffFunc:   func(_ int) time.Duration { return 0 },
+			Interval:       time.Hour, // unused
+			Buffer:         buffer,
+			ProgramClient:  telemetryProgram,
+			MaxAttempts:    5,
+			MaxConcurrency: 10,
+			BackoffFunc:    func(_ int) time.Duration { return 0 },
 			GetCurrentEpoch: func(ctx context.Context) (uint64, error) {
 				return 100, nil
 			},
@@ -140,11 +142,12 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		})
 
 		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
-			Interval:      time.Hour, // unused
-			Buffer:        buffer,
-			ProgramClient: telemetryProgram,
-			MaxAttempts:   5,
-			BackoffFunc:   func(_ int) time.Duration { return 10 * time.Millisecond },
+			Interval:       time.Hour, // unused
+			Buffer:         buffer,
+			ProgramClient:  telemetryProgram,
+			MaxAttempts:    5,
+			MaxConcurrency: 10,
+			BackoffFunc:    func(_ int) time.Duration { return 10 * time.Millisecond },
 			GetCurrentEpoch: func(ctx context.Context) (uint64, error) {
 				return 100, nil
 			},
@@ -181,11 +184,12 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		buffer.Add(key, sample)
 
 		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
-			Interval:      time.Hour, // unused
-			Buffer:        buffer,
-			ProgramClient: telemetryProgram,
-			MaxAttempts:   3,
-			BackoffFunc:   func(_ int) time.Duration { return 0 },
+			Interval:       time.Hour, // unused
+			Buffer:         buffer,
+			ProgramClient:  telemetryProgram,
+			MaxAttempts:    3,
+			MaxConcurrency: 10,
+			BackoffFunc:    func(_ int) time.Duration { return 0 },
 			GetCurrentEpoch: func(ctx context.Context) (uint64, error) {
 				return 100, nil
 			},
@@ -226,11 +230,12 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		buffer.Add(key, sample)
 
 		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
-			Interval:      time.Hour,
-			Buffer:        buffer,
-			ProgramClient: telemetryProgram,
-			MaxAttempts:   3,
-			BackoffFunc:   func(_ int) time.Duration { return 0 },
+			Interval:       time.Hour,
+			Buffer:         buffer,
+			ProgramClient:  telemetryProgram,
+			MaxAttempts:    3,
+			MaxConcurrency: 10,
+			BackoffFunc:    func(_ int) time.Duration { return 0 },
 			GetCurrentEpoch: func(ctx context.Context) (uint64, error) {
 				return 100, nil
 			},
@@ -271,11 +276,12 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		buffer.Add(key, sample)
 
 		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
-			Interval:      time.Hour,
-			Buffer:        buffer,
-			ProgramClient: telemetryProgram,
-			MaxAttempts:   5,
-			BackoffFunc:   func(_ int) time.Duration { return 0 },
+			Interval:       time.Hour,
+			Buffer:         buffer,
+			ProgramClient:  telemetryProgram,
+			MaxAttempts:    5,
+			MaxConcurrency: 10,
+			BackoffFunc:    func(_ int) time.Duration { return 0 },
 			GetCurrentEpoch: func(ctx context.Context) (uint64, error) {
 				return 100, nil
 			},
@@ -316,10 +322,11 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		defer cancel()
 
 		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
-			Interval:      time.Hour,
-			Buffer:        buffer,
-			ProgramClient: telemetryProgram,
-			MaxAttempts:   5,
+			Interval:       time.Hour,
+			Buffer:         buffer,
+			ProgramClient:  telemetryProgram,
+			MaxAttempts:    5,
+			MaxConcurrency: 10,
 			BackoffFunc: func(_ int) time.Duration {
 				cancel() // cancel immediately after first failure
 				return 10 * time.Millisecond
@@ -364,11 +371,12 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		}
 
 		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
-			Interval:      time.Hour,
-			Buffer:        buffer,
-			ProgramClient: telemetryProgram,
-			MaxAttempts:   1,
-			BackoffFunc:   func(_ int) time.Duration { return 0 },
+			Interval:       time.Hour,
+			Buffer:         buffer,
+			ProgramClient:  telemetryProgram,
+			MaxAttempts:    1,
+			MaxConcurrency: 10,
+			BackoffFunc:    func(_ int) time.Duration { return 0 },
 			GetCurrentEpoch: func(ctx context.Context) (uint64, error) {
 				return 100, nil
 			},
@@ -402,11 +410,12 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		telemetryProgram := &mockTelemetryProgramClient{}
 
 		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
-			Interval:      time.Hour,
-			Buffer:        buffer,
-			ProgramClient: telemetryProgram,
-			MaxAttempts:   1,
-			BackoffFunc:   func(_ int) time.Duration { return 0 },
+			Interval:       time.Hour,
+			Buffer:         buffer,
+			ProgramClient:  telemetryProgram,
+			MaxAttempts:    1,
+			MaxConcurrency: 10,
+			BackoffFunc:    func(_ int) time.Duration { return 0 },
 			GetCurrentEpoch: func(ctx context.Context) (uint64, error) {
 				return currentEpoch, nil
 			},
@@ -441,11 +450,12 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
 
 		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
-			Interval:      time.Hour,
-			Buffer:        buffer,
-			ProgramClient: telemetryProgram,
-			MaxAttempts:   1,
-			BackoffFunc:   func(_ int) time.Duration { return 0 },
+			Interval:       time.Hour,
+			Buffer:         buffer,
+			ProgramClient:  telemetryProgram,
+			MaxAttempts:    1,
+			MaxConcurrency: 10,
+			BackoffFunc:    func(_ int) time.Duration { return 0 },
 			GetCurrentEpoch: func(ctx context.Context) (uint64, error) {
 				return 100, nil
 			},
@@ -517,11 +527,12 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		buffer.Add(key, sample)
 
 		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
-			Interval:      time.Hour,
-			Buffer:        buffer,
-			ProgramClient: telemetryProgram,
-			MaxAttempts:   1,
-			BackoffFunc:   func(_ int) time.Duration { return 0 },
+			Interval:       time.Hour,
+			Buffer:         buffer,
+			ProgramClient:  telemetryProgram,
+			MaxAttempts:    1,
+			MaxConcurrency: 10,
+			BackoffFunc:    func(_ int) time.Duration { return 0 },
 			GetCurrentEpoch: func(ctx context.Context) (uint64, error) {
 				return 100, nil
 			},
@@ -546,10 +557,11 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 
 		var attempts int
 		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
-			Interval:    time.Hour,
-			Buffer:      buffer,
-			MaxAttempts: 1,
-			BackoffFunc: func(_ int) time.Duration { return 0 },
+			Interval:       time.Hour,
+			Buffer:         buffer,
+			MaxAttempts:    1,
+			MaxConcurrency: 10,
+			BackoffFunc:    func(_ int) time.Duration { return 0 },
 			ProgramClient: &mockTelemetryProgramClient{
 				WriteDeviceLatencySamplesFunc: func(ctx context.Context, _ sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
 					return solana.Signature{}, nil, nil
@@ -584,10 +596,11 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		var submissionCalled bool
 
 		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
-			Interval:    time.Hour,
-			Buffer:      buffer,
-			MaxAttempts: 1,
-			BackoffFunc: func(_ int) time.Duration { return 0 },
+			Interval:       time.Hour,
+			Buffer:         buffer,
+			MaxAttempts:    1,
+			MaxConcurrency: 10,
+			BackoffFunc:    func(_ int) time.Duration { return 0 },
 			ProgramClient: &mockTelemetryProgramClient{
 				WriteDeviceLatencySamplesFunc: func(ctx context.Context, _ sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
 					submissionCalled = true
@@ -630,11 +643,12 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		buffer.Add(key, sample)
 
 		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
-			Interval:      time.Hour,
-			Buffer:        buffer,
-			ProgramClient: telemetryProgram,
-			MaxAttempts:   3,
-			BackoffFunc:   func(_ int) time.Duration { return 0 },
+			Interval:       time.Hour,
+			Buffer:         buffer,
+			ProgramClient:  telemetryProgram,
+			MaxAttempts:    3,
+			MaxConcurrency: 10,
+			BackoffFunc:    func(_ int) time.Duration { return 0 },
 			GetCurrentEpoch: func(ctx context.Context) (uint64, error) {
 				return 100, nil
 			},
@@ -677,11 +691,12 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		buffer.Add(key, sample)
 
 		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
-			Interval:      time.Hour,
-			Buffer:        buffer,
-			ProgramClient: telemetryProgram,
-			MaxAttempts:   2,
-			BackoffFunc:   func(_ int) time.Duration { return 0 },
+			Interval:       time.Hour,
+			Buffer:         buffer,
+			ProgramClient:  telemetryProgram,
+			MaxAttempts:    2,
+			MaxConcurrency: 10,
+			BackoffFunc:    func(_ int) time.Duration { return 0 },
 			GetCurrentEpoch: func(ctx context.Context) (uint64, error) {
 				return 100, nil
 			},
@@ -718,6 +733,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			Buffer:          buf,
 			ProgramClient:   telemetryProgram,
 			MaxAttempts:     1,
+			MaxConcurrency:  10,
 			BackoffFunc:     func(_ int) time.Duration { return 0 },
 			GetCurrentEpoch: func(context.Context) (uint64, error) { return 100, nil },
 		})
@@ -751,7 +767,11 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		buf.Add(key, first)
 
 		s, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
-			Interval: time.Hour, Buffer: buf, ProgramClient: prog, MaxAttempts: 1,
+			Interval:        time.Hour,
+			Buffer:          buf,
+			ProgramClient:   prog,
+			MaxAttempts:     1,
+			MaxConcurrency:  10,
 			BackoffFunc:     func(int) time.Duration { return 0 },
 			GetCurrentEpoch: func(context.Context) (uint64, error) { return 100, nil },
 		})
@@ -778,7 +798,11 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		buf.Add(key, newTestSample())
 
 		s, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
-			Interval: time.Hour, Buffer: buf, ProgramClient: prog, MaxAttempts: 1,
+			Interval:        time.Hour,
+			Buffer:          buf,
+			ProgramClient:   prog,
+			MaxAttempts:     1,
+			MaxConcurrency:  10,
 			BackoffFunc:     func(int) time.Duration { return 0 },
 			GetCurrentEpoch: func(context.Context) (uint64, error) { return 100, nil },
 		})
@@ -816,7 +840,11 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		buf.Add(key, second)
 
 		s, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
-			Interval: time.Hour, Buffer: buf, ProgramClient: prog, MaxAttempts: 2,
+			Interval:        time.Hour,
+			Buffer:          buf,
+			ProgramClient:   prog,
+			MaxAttempts:     2,
+			MaxConcurrency:  10,
 			BackoffFunc:     func(int) time.Duration { return 0 },
 			GetCurrentEpoch: func(context.Context) (uint64, error) { return 100, nil },
 		})

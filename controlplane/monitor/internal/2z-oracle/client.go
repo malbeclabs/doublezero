@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 )
@@ -67,7 +68,8 @@ func (c *twoZOracleClient) SwapRate(ctx context.Context) (SwapRateResponse, int,
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return SwapRateResponse{}, resp.StatusCode, fmt.Errorf("unexpected status: %s", resp.Status)
+		body, _ := io.ReadAll(resp.Body)
+		return SwapRateResponse{}, resp.StatusCode, fmt.Errorf("error getting swap rate: %s: %s", resp.Status, string(body))
 	}
 
 	var out SwapRateResponse
@@ -90,7 +92,8 @@ func (c *twoZOracleClient) Health(ctx context.Context) (HealthResponse, int, err
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return HealthResponse{}, resp.StatusCode, fmt.Errorf("unexpected status: %s", resp.Status)
+		body, _ := io.ReadAll(resp.Body)
+		return HealthResponse{}, resp.StatusCode, fmt.Errorf("error getting health: %s: %s", resp.Status, string(body))
 	}
 
 	var out HealthResponse

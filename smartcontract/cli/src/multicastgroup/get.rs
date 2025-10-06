@@ -1,7 +1,6 @@
 use crate::{doublezerocommand::CliCommand, validators::validate_pubkey_or_code};
 use clap::Args;
-use doublezero_program_common::serializer;
-use doublezero_program_common::types::parse_utils::bandwidth_to_string;
+use doublezero_program_common::{serializer, types::parse_utils::bandwidth_to_string};
 use doublezero_sdk::commands::{
     accesspass::list::ListAccessPassCommand, device::list::ListDeviceCommand,
     location::list::ListLocationCommand, multicastgroup::get::GetMulticastGroupCommand,
@@ -168,6 +167,9 @@ mod tests {
         get_multicastgroup_pda, AccountType, Device, DeviceStatus, GetLocationCommand, Location,
         LocationStatus, MulticastGroup, MulticastGroupStatus, User, UserCYOA, UserStatus, UserType,
     };
+    use doublezero_serviceability::state::accesspass::{
+        AccessPass, AccessPassStatus, AccessPassType,
+    };
     use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
 
@@ -291,6 +293,27 @@ mod tests {
             Ok(users)
         });
 
+        client.expect_list_accesspass().returning(move |_| {
+            let mut accesspasses = std::collections::HashMap::new();
+            accesspasses.insert(
+                Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1"),
+                AccessPass {
+                    account_type: AccountType::AccessPass,
+                    bump_seed: 255,
+                    accesspass_type: AccessPassType::Prepaid,
+                    last_access_epoch: u64::MAX,
+                    connection_count: 0,
+                    user_payer: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1"),
+                    client_ip: [192, 168, 1, 1].into(),
+                    mgroup_pub_allowlist: vec![mgroup_pubkey],
+                    mgroup_sub_allowlist: vec![mgroup_pubkey],
+                    owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1"),
+                    status: AccessPassStatus::Requested,
+                },
+            );
+            Ok(accesspasses)
+        });
+
         let multicastgroup2 = multicastgroup.clone();
         client
             .expect_get_multicastgroup()
@@ -324,7 +347,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by pubkey");
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: G4DjGHreV54t5yeNuSHi5iVcT5Qkykuj43pWWdSsP3dj\r\ncode: test\r\nmulticast_ip: 10.0.0.1\r\nmax_bandwidth: 1Gbps\r\nstatus: activated\r\nowner: G4DjGHreV54t5yeNuSHi5iVcT5Qkykuj43pWWdSsP3dj\r\n\r\nusers:\r\n\n account                                   | multicast_mode | device                           | location | cyoa_type  | client_ip   | tunnel_id | tunnel_net  | dz_ip    | status    | owner                                     \n 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1 | P              | 11111111111111111111111111111111 |          | GREOverDIA | 192.168.1.1 | 12345     | 10.0.0.0/32 | 10.0.0.2 | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1 \n");
+        assert_eq!(output_str, "account: G4DjGHreV54t5yeNuSHi5iVcT5Qkykuj43pWWdSsP3dj\r\ncode: test\r\nmulticast_ip: 10.0.0.1\r\nmax_bandwidth: 1Gbps\r\nstatus: activated\r\nowner: G4DjGHreV54t5yeNuSHi5iVcT5Qkykuj43pWWdSsP3dj\n\r\nallowlist:\r\n account                                      | mode | client_ip   | user_payer                                \n G4DjGHreV54t5yeNuSHi5iVcT5Qkykuj43pWWdSsP3dj | P+S  | 192.168.1.1 | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1 \n\r\nusers:\r\n account                                   | multicast_mode | device                           | location | cyoa_type  | client_ip   | tunnel_id | tunnel_net  | dz_ip    | status    | owner                                     \n 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1 | P              | 11111111111111111111111111111111 |          | GREOverDIA | 192.168.1.1 | 12345     | 10.0.0.0/32 | 10.0.0.2 | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1 \n");
 
         // Expected success
         let mut output = Vec::new();
@@ -334,6 +357,6 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by code");
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: G4DjGHreV54t5yeNuSHi5iVcT5Qkykuj43pWWdSsP3dj\r\ncode: test\r\nmulticast_ip: 10.0.0.1\r\nmax_bandwidth: 1Gbps\r\nstatus: activated\r\nowner: G4DjGHreV54t5yeNuSHi5iVcT5Qkykuj43pWWdSsP3dj\r\n\r\nusers:\r\n\n account                                   | multicast_mode | device                           | location | cyoa_type  | client_ip   | tunnel_id | tunnel_net  | dz_ip    | status    | owner                                     \n 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1 | P              | 11111111111111111111111111111111 |          | GREOverDIA | 192.168.1.1 | 12345     | 10.0.0.0/32 | 10.0.0.2 | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1 \n");
+        assert_eq!(output_str, "account: G4DjGHreV54t5yeNuSHi5iVcT5Qkykuj43pWWdSsP3dj\r\ncode: test\r\nmulticast_ip: 10.0.0.1\r\nmax_bandwidth: 1Gbps\r\nstatus: activated\r\nowner: G4DjGHreV54t5yeNuSHi5iVcT5Qkykuj43pWWdSsP3dj\n\r\nallowlist:\r\n account                                      | mode | client_ip   | user_payer                                \n G4DjGHreV54t5yeNuSHi5iVcT5Qkykuj43pWWdSsP3dj | P+S  | 192.168.1.1 | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1 \n\r\nusers:\r\n account                                   | multicast_mode | device                           | location | cyoa_type  | client_ip   | tunnel_id | tunnel_net  | dz_ip    | status    | owner                                     \n 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1 | P              | 11111111111111111111111111111111 |          | GREOverDIA | 192.168.1.1 | 12345     | 10.0.0.0/32 | 10.0.0.2 | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1 \n");
     }
 }

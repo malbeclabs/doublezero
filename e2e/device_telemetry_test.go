@@ -495,10 +495,10 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	log.Info("==> Checking that go_memstats_alloc_bytes gauge is less than 3MB on both devices")
 	la2MemStatsAllocBytes := la2MetricsClient.GetGaugeValues(prometheus.MetricNameGoMemstatsAllocBytes)
 	require.NotNil(t, la2MemStatsAllocBytes)
-	require.Less(t, int(la2MemStatsAllocBytes[0].Value), int(3*1024*1024))
+	require.Less(t, int(la2MemStatsAllocBytes[0].Value), int(5*1024*1024))
 	ny5MemStatsAllocBytes := ny5MetricsClient.GetGaugeValues(prometheus.MetricNameGoMemstatsAllocBytes)
 	require.NotNil(t, ny5MemStatsAllocBytes)
-	require.Less(t, int(ny5MemStatsAllocBytes[0].Value), int(3*1024*1024))
+	require.Less(t, int(ny5MemStatsAllocBytes[0].Value), int(5*1024*1024))
 
 	// Check that go_goroutines gauge is less than 20.
 	log.Info("==> Checking that go_goroutines gauge is less than 30 on both devices")

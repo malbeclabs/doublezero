@@ -159,7 +159,7 @@ func runIBRLTest(t *testing.T, userType api.UserType, provisioningRequest map[st
 		sockFile := filepath.Join(rootPath, "doublezerod.sock")
 		go func() {
 			programId := ""
-			err := runtime.Run(ctx, sockFile, false, programId, "", 30, 30)
+			err := runtime.Run(ctx, sockFile, false, false, programId, "", 30, 30)
 			errChan <- err
 		}()
 
@@ -378,7 +378,7 @@ func runIBRLTest(t *testing.T, userType api.UserType, provisioningRequest map[st
 		ctx, cancel = context.WithCancel(context.Background())
 		go func() {
 			programId := ""
-			err := runtime.Run(ctx, sockFile, false, programId, "", 30, 30)
+			err := runtime.Run(ctx, sockFile, false, false, programId, "", 30, 30)
 			errChan <- err
 		}()
 
@@ -494,7 +494,7 @@ func TestEndToEnd_EdgeFiltering(t *testing.T) {
 	sockFile := filepath.Join(rootPath, "doublezerod.sock")
 	go func() {
 		programId := ""
-		err := runtime.Run(ctx, sockFile, false, programId, "", 30, 30)
+		err := runtime.Run(ctx, sockFile, false, false, programId, "", 30, 30)
 		errChan <- err
 	}()
 
@@ -642,7 +642,7 @@ func TestEndToEnd_EdgeFiltering(t *testing.T) {
 	ctx, cancel = context.WithCancel(context.Background())
 	go func() {
 		programId := ""
-		err := runtime.Run(ctx, sockFile, false, programId, "", 30, 30)
+		err := runtime.Run(ctx, sockFile, false, false, programId, "", 30, 30)
 		errChan <- err
 	}()
 
@@ -863,7 +863,7 @@ func TestMulticastPublisher(t *testing.T) {
 	sockFile := filepath.Join(rootPath, "doublezerod.sock")
 	go func() {
 		programId := ""
-		err := runtime.Run(ctx, sockFile, false, programId, "", 30, 30)
+		err := runtime.Run(ctx, sockFile, false, false, programId, "", 30, 30)
 		errChan <- err
 	}()
 
@@ -1024,7 +1024,7 @@ func TestMulticastPublisher(t *testing.T) {
 	ctx, cancel = context.WithCancel(context.Background())
 	go func() {
 		programId := ""
-		err := runtime.Run(ctx, sockFile, false, programId, "", 30, 30)
+		err := runtime.Run(ctx, sockFile, false, false, programId, "", 30, 30)
 		errChan <- err
 	}()
 
@@ -1231,7 +1231,7 @@ func TestMulticastSubscriber(t *testing.T) {
 	sockFile := filepath.Join(rootPath, "doublezerod.sock")
 	go func() {
 		programId := ""
-		err := runtime.Run(ctx, sockFile, false, programId, "", 30, 30)
+		err := runtime.Run(ctx, sockFile, false, false, programId, "", 30, 30)
 		errChan <- err
 	}()
 
@@ -1492,7 +1492,7 @@ func TestMulticastSubscriber(t *testing.T) {
 	ctx, cancel = context.WithCancel(context.Background())
 	go func() {
 		programId := ""
-		err := runtime.Run(ctx, sockFile, false, programId, "", 30, 30)
+		err := runtime.Run(ctx, sockFile, false, false, programId, "", 30, 30)
 		errChan <- err
 	}()
 
@@ -1652,7 +1652,7 @@ func TestServiceNoCoExistence(t *testing.T) {
 	sockFile := filepath.Join(rootPath, "doublezerod.sock")
 	go func() {
 		programId := ""
-		err := runtime.Run(ctx, sockFile, false, programId, "", 30, 30)
+		err := runtime.Run(ctx, sockFile, false, false, programId, "", 30, 30)
 		errChan <- err
 	}()
 
@@ -1833,7 +1833,7 @@ func TestServiceCoexistence(t *testing.T) {
 	sockFile := filepath.Join(rootPath, "doublezerod.sock")
 	go func() {
 		programId := ""
-		err := runtime.Run(ctx, sockFile, false, programId, "", 30, 30)
+		err := runtime.Run(ctx, sockFile, false, false, programId, "", 30, 30)
 		errChan <- err
 	}()
 
@@ -1950,7 +1950,7 @@ func TestServiceCoexistence(t *testing.T) {
 	ctx, cancel = context.WithCancel(context.Background())
 	go func() {
 		programId := ""
-		err := runtime.Run(ctx, sockFile, false, programId, "", 30, 30)
+		err := runtime.Run(ctx, sockFile, false, false, programId, "", 30, 30)
 		errChan <- err
 	}()
 

@@ -172,6 +172,7 @@ type Device struct {
 
 	ContainerID   string
 	CYOANetworkIP string
+	DZPrefix      string // The dz_prefix registered onchain for this device
 
 	// ExternalEAPIHTTPPort is the port on which the device's EAPI HTTP server is exposed.
 	ExternalEAPIHTTPPort int
@@ -283,11 +284,42 @@ func (d *Device) Start(ctx context.Context) error {
 	}
 
 	// Create the device onchain.
-	devicePK, err := d.dn.GetOrCreateDeviceOnchain(ctx, spec.Code, spec.Location, spec.Exchange, spec.MetricsPublisherPK, cyoaNetworkIP, []string{cyoaNetworkIP + "/" + strconv.Itoa(int(spec.CYOANetworkAllocatablePrefix))}, "mgmt")
+	// Use a different IP range for dz_prefixes to avoid conflicts with the public IP.
+	// We derive a unique /29 subnet by taking the public IP and adding 128 to the last octet,
+	// then rounding down to a /29 boundary (multiples of 8).
+	// For example, if public IP is 10.237.248.8, we use 10.237.248.136/29 as dz_prefix.
+	// If adding 128 would overflow the byte (last octet >= 128), we increment the third octet.
+	// For example, if public IP is 9.200.53.200, we use 9.200.54.72/29 as dz_prefix.
+	// This ensures each device gets a unique dz_prefix that doesn't overlap with public IPs.
+	publicIP := net.ParseIP(cyoaNetworkIP)
+	if publicIP == nil {
+		return fmt.Errorf("failed to parse public IP: %s", cyoaNetworkIP)
+	}
+	publicIPBytes := publicIP.To4()
+	if publicIPBytes == nil {
+		return fmt.Errorf("public IP is not IPv4: %s", cyoaNetworkIP)
+	}
+	// Add 128 to the last octet to create separation from public IPs,
+	// then round down to /29 boundary (multiple of 8)
+	// Handle byte overflow by incrementing third octet when necessary
+	dzPrefixBytes := make(net.IP, 4)
+	copy(dzPrefixBytes, publicIPBytes)
+	if publicIPBytes[3] >= 128 {
+		// Overflow case: increment third octet
+		dzPrefixBytes[2]++
+		dzPrefixBytes[3] = ((publicIPBytes[3] - 128) / 8) * 8
+	} else {
+		// No overflow: just add 128
+		dzPrefixBytes[3] = ((publicIPBytes[3] + 128) / 8) * 8
+	}
+	dzPrefix := dzPrefixBytes.String() + "/29"
+	d.DZPrefix = dzPrefix
+
+	devicePK, err := d.dn.GetOrCreateDeviceOnchain(ctx, spec.Code, spec.Location, spec.Exchange, spec.MetricsPublisherPK, cyoaNetworkIP, []string{dzPrefix}, "mgmt")
 	if err != nil {
 		return fmt.Errorf("failed to create device %s onchain: %w", spec.Code, err)
 	}
-	d.log.Info("--> Created device onchain", "code", spec.Code, "cyoaNetworkIP", cyoaNetworkIP, "devicePK", devicePK)
+	d.log.Info("--> Created device onchain", "code", spec.Code, "cyoaNetworkIP", cyoaNetworkIP, "dzPrefix", dzPrefix, "devicePK", devicePK)
 
 	// MaxUserTunnelSlots is now a constant from config package
 	d.log.Info("--> Using MaxUserTunnelSlots constant", "maxUsers", controllerconfig.MaxUserTunnelSlots)

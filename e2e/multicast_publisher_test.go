@@ -13,6 +13,7 @@ import (
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
 	"github.com/malbeclabs/doublezero/e2e/internal/docker"
 	"github.com/malbeclabs/doublezero/e2e/internal/fixtures"
+	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
 	"github.com/stretchr/testify/require"
 )
 
@@ -62,7 +63,14 @@ func checkMulticastPublisherPostConnect(t *testing.T, dn *TestDevnet, device *de
 	t.Run("check_post_connect", func(t *testing.T) {
 		dn.log.Info("==> Checking multicast publisher post-connect requirements")
 
-		expectedAllocatedClientIP, err := nextAllocatableIP(device.CYOANetworkIP, int(device.Spec.CYOANetworkAllocatablePrefix), map[string]bool{})
+		// Parse the dz_prefix to get the base IP and prefix length
+		// User IPs are allocated from the dz_prefix, not the public IP
+		dzPrefixIP, dzPrefixNet, err := netutil.ParseCIDR(device.DZPrefix)
+		require.NoError(t, err)
+		ones, _ := dzPrefixNet.Mask.Size()
+		allocatableBits := 32 - ones // number of host bits
+
+		expectedAllocatedClientIP, err := nextAllocatableIP(dzPrefixIP, allocatableBits, map[string]bool{})
 		require.NoError(t, err)
 
 		if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {

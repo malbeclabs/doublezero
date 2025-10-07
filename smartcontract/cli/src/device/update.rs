@@ -88,6 +88,40 @@ impl UpdateDeviceCliCommand {
             }
         }
 
+        // Check if updated public_ip conflicts with dz_prefixes
+        if let Some(new_public_ip) = &self.public_ip {
+            let own_dz_prefixes = self
+                .dz_prefixes
+                .as_ref()
+                .or_else(|| devices.get(&pubkey).map(|d| &d.dz_prefixes))
+                .unwrap();
+
+            for dz_prefix in own_dz_prefixes.iter() {
+                if dz_prefix.contains(*new_public_ip) {
+                    eyre::bail!(
+                        "Public IP '{}' conflicts with device's own dz_prefix '{}'",
+                        new_public_ip,
+                        dz_prefix
+                    );
+                }
+            }
+
+            for (pk, device) in devices.iter() {
+                if *pk != pubkey {
+                    for dz_prefix in device.dz_prefixes.iter() {
+                        if dz_prefix.contains(*new_public_ip) {
+                            eyre::bail!(
+                                "Public IP '{}' conflicts with existing device '{}' dz_prefix '{}'",
+                                new_public_ip,
+                                device.code,
+                                dz_prefix
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
         let metrics_publisher = if let Some(metrics_publisher) = &self.metrics_publisher {
             if metrics_publisher == "me" {
                 Some(client.get_payer())
@@ -194,7 +228,7 @@ mod tests {
             exchange_pk,
             device_type: DeviceType::Hybrid,
             public_ip: [1, 2, 3, 4].into(),
-            dz_prefixes: "1.2.3.4/32".parse().unwrap(),
+            dz_prefixes: "10.1.2.3/32".parse().unwrap(),
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::default(),
             owner: pda_pubkey,
@@ -271,7 +305,7 @@ mod tests {
                 code: Some("test".to_string()),
                 device_type: Some(DeviceType::Hybrid),
                 public_ip: Some([1, 2, 3, 4].into()),
-                dz_prefixes: Some("1.2.3.4/32".parse().unwrap()),
+                dz_prefixes: Some("10.1.2.3/32".parse().unwrap()),
                 metrics_publisher: Some(Pubkey::from_str_const(
                     "HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx",
                 )),
@@ -297,7 +331,7 @@ mod tests {
             code: Some("test".to_string()),
             public_ip: Some([1, 2, 3, 4].into()),
             device_type: Some(DeviceType::Hybrid),
-            dz_prefixes: Some("1.2.3.4/32".parse().unwrap()),
+            dz_prefixes: Some("10.1.2.3/32".parse().unwrap()),
             metrics_publisher: Some("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx".to_string()),
             contributor: Some("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx".to_string()),
             location: Some("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx".to_string()),

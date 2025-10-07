@@ -26,6 +26,10 @@ impl NetworkV4 {
     pub fn nth(&self, n: u32) -> Option<Ipv4Addr> {
         self.0.nth(n)
     }
+
+    pub fn contains(&self, ip: Ipv4Addr) -> bool {
+        self.0.contains(ip)
+    }
 }
 
 impl Default for NetworkV4 {

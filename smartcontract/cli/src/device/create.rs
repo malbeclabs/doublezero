@@ -60,16 +60,33 @@ impl CreateDeviceCliCommand {
 
         let devices = client.list_device(ListDeviceCommand)?;
         if devices.iter().any(|(_, d)| d.code == self.code) {
-            return Err(eyre::eyre!(
-                "Device with code '{}' already exists",
-                self.code
-            ));
+            eyre::bail!("Device with code '{}' already exists", self.code);
         }
         if devices.iter().any(|(_, d)| d.public_ip == self.public_ip) {
-            return Err(eyre::eyre!(
-                "Device with public ip '{}' already exists",
-                &self.public_ip
-            ));
+            eyre::bail!("Device with public ip '{}' already exists", &self.public_ip);
+        }
+
+        for device in devices.values() {
+            for dz_prefix in device.dz_prefixes.iter() {
+                if dz_prefix.contains(self.public_ip) {
+                    eyre::bail!(
+                        "Public IP '{}' conflicts with existing device '{}' dz_prefix '{}'",
+                        self.public_ip,
+                        device.code,
+                        dz_prefix
+                    );
+                }
+            }
+        }
+
+        for dz_prefix in self.dz_prefixes.iter() {
+            if dz_prefix.contains(self.public_ip) {
+                eyre::bail!(
+                    "Public IP '{}' conflicts with device's own dz_prefix '{}'",
+                    self.public_ip,
+                    dz_prefix
+                );
+            }
         }
 
         let contributor_pk = match parse_pubkey(&self.contributor) {
@@ -114,7 +131,7 @@ impl CreateDeviceCliCommand {
             } else {
                 match Pubkey::from_str(metrics_publisher) {
                     Ok(pk) => pk,
-                    Err(_) => return Err(eyre::eyre!("Invalid metrics publisher Pubkey")),
+                    Err(_) => eyre::bail!("Invalid metrics publisher Pubkey"),
                 }
             }
         } else {
@@ -288,5 +305,113 @@ mod tests {
         assert_eq!(
             output_str,"Signature: 3QnHBSdd4doEF6FgpLCejqEw42UQjfvNhQJwoYDSpoBszpCCqVft4cGoneDCnZ6Ez3ujzavzUu85u6F79WtLhcsv\n"
         );
+    }
+
+    #[test]
+    fn test_cli_device_create_fails_when_public_ip_conflicts_with_existing_device_dz_prefix() {
+        use doublezero_sdk::{Device, DeviceStatus};
+
+        let mut client = create_test_client();
+
+        let location_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
+        let exchange_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
+        let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
+
+        // Create an existing device with dz_prefix that will conflict
+        let existing_device_pk =
+            Pubkey::from_str_const("HQ4UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
+        let existing_device = Device {
+            account_type: AccountType::Device,
+            index: 1,
+            bump_seed: 255,
+            reference_count: 0,
+            code: "existing-device".to_string(),
+            contributor_pk,
+            location_pk,
+            exchange_pk,
+            device_type: DeviceType::Hybrid,
+            public_ip: [100, 0, 0, 1].into(),
+            // This dz_prefix includes 10.1.5.10
+            dz_prefixes: "10.1.0.0/16".parse().unwrap(),
+            metrics_publisher_pk: Pubkey::default(),
+            status: DeviceStatus::Activated,
+            mgmt_vrf: String::default(),
+            interfaces: vec![],
+            users_count: 0,
+            max_users: 100,
+            owner: Pubkey::default(),
+        };
+
+        let mut devices = HashMap::new();
+        devices.insert(existing_device_pk, existing_device);
+
+        client
+            .expect_check_requirements()
+            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+            .returning(|_| Ok(()));
+        client
+            .expect_list_device()
+            .with(predicate::eq(ListDeviceCommand))
+            .returning(move |_| Ok(devices.clone()));
+
+        let mut output = Vec::new();
+        // Create a device with public_ip 10.1.5.10, which is within existing device's dz_prefix
+        let res = CreateDeviceCliCommand {
+            code: "new-device".to_string(),
+            contributor: contributor_pk.to_string(),
+            location: location_pk.to_string(),
+            exchange: exchange_pk.to_string(),
+            device_type: "hybrid".to_string(),
+            public_ip: [10, 1, 5, 10].into(), // This is within 10.1.0.0/16
+            dz_prefixes: "192.168.0.0/16".parse().unwrap(),
+            metrics_publisher: Some(Pubkey::default().to_string()),
+            mgmt_vrf: String::default(),
+            wait: false,
+        }
+        .execute(&client, &mut output);
+
+        assert!(res.is_err());
+        let err = res.unwrap_err();
+        assert!(err.to_string().contains("Public IP '10.1.5.10' conflicts with existing device 'existing-device' dz_prefix '10.1.0.0/16'"));
+    }
+
+    #[test]
+    fn test_cli_device_create_fails_when_public_ip_conflicts_with_own_dz_prefix() {
+        let mut client = create_test_client();
+
+        let location_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
+        let exchange_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
+        let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
+
+        client
+            .expect_check_requirements()
+            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+            .returning(|_| Ok(()));
+        client
+            .expect_list_device()
+            .with(predicate::eq(ListDeviceCommand))
+            .returning(move |_| Ok(HashMap::new()));
+
+        let mut output = Vec::new();
+        // Create a device where public_ip is within its own dz_prefix
+        let res = CreateDeviceCliCommand {
+            code: "test-device".to_string(),
+            contributor: contributor_pk.to_string(),
+            location: location_pk.to_string(),
+            exchange: exchange_pk.to_string(),
+            device_type: "hybrid".to_string(),
+            public_ip: [10, 1, 5, 10].into(), // This is within 10.1.0.0/16
+            dz_prefixes: "10.1.0.0/16".parse().unwrap(), // Own prefix contains public_ip
+            metrics_publisher: Some(Pubkey::default().to_string()),
+            mgmt_vrf: String::default(),
+            wait: false,
+        }
+        .execute(&client, &mut output);
+
+        assert!(res.is_err());
+        let err = res.unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("Public IP '10.1.5.10' conflicts with device's own dz_prefix '10.1.0.0/16'"));
     }
 }

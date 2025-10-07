@@ -83,18 +83,22 @@ func TestLatencyManager(t *testing.T) {
 			Reachable: true,
 		}
 	}
-	manager := latency.LatencyManager{
-		SmartContractFunc: mockSmartContractFunc,
-		ProberFunc:        mockProberFunc,
-		DeviceCache:       &latency.DeviceCache{Devices: tests[0].DeviceCache, Lock: sync.Mutex{}},
-		ResultsCache:      &latency.LatencyResults{Results: []latency.LatencyResult{}, Lock: sync.RWMutex{}},
-	}
+	programId := "9i7v8m3i7W2qPGRonFi8mehN76SXUkDcpgk4tPQhEabc"
+	manager := latency.NewLatencyManager(
+		latency.WithSmartContractFunc(mockSmartContractFunc),
+		latency.WithProberFunc(mockProberFunc),
+		latency.WithProgramID(programId),
+		latency.WithProbeInterval(30*time.Second),
+		latency.WithCacheUpdateInterval(30*time.Second),
+	)
+	manager.DeviceCache = &latency.DeviceCache{Devices: tests[0].DeviceCache, Lock: sync.Mutex{}}
+	manager.ResultsCache = &latency.LatencyResults{Results: []latency.LatencyResult{}, Lock: sync.RWMutex{}}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	go func() {
-		programId := "9i7v8m3i7W2qPGRonFi8mehN76SXUkDcpgk4tPQhEabc"
-		if err := manager.Start(ctx, programId, "", 30, 30); err != nil {
+		if err := manager.Start(ctx); err != nil {
 			log.Fatalf("error: %v", err)
 		}
 	}()
@@ -218,21 +222,21 @@ func TestLatencyUdpPing(t *testing.T) {
 		return result
 	}
 
-	manager := latency.LatencyManager{
-		SmartContractFunc: mockSmartContractFunc,
-		ProberFunc:        mockProber,
-		DeviceCache: &latency.DeviceCache{
-			Devices: devices,
-			Lock:    sync.Mutex{},
-		},
-		ResultsCache: &latency.LatencyResults{Results: []latency.LatencyResult{}, Lock: sync.RWMutex{}},
-	}
+	programId := "9i7v8m3i7W2qPGRonFi8mehN76SXUkDcpgk4tPQhEabc"
+	manager := latency.NewLatencyManager(
+		latency.WithSmartContractFunc(mockSmartContractFunc),
+		latency.WithProberFunc(mockProber),
+		latency.WithProgramID(programId),
+		latency.WithProbeInterval(30*time.Second),
+		latency.WithCacheUpdateInterval(30*time.Second),
+	)
+	manager.DeviceCache = &latency.DeviceCache{Devices: devices, Lock: sync.Mutex{}}
+	manager.ResultsCache = &latency.LatencyResults{Results: []latency.LatencyResult{}, Lock: sync.RWMutex{}}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go func() {
-		programId := "9i7v8m3i7W2qPGRonFi8mehN76SXUkDcpgk4tPQhEabc"
-		if err := manager.Start(ctx, programId, "", 30, 30); err != nil {
+		if err := manager.Start(ctx); err != nil {
 			log.Fatalf("error: %v", err)
 		}
 	}()

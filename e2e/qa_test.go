@@ -74,7 +74,7 @@ func TestMain(m *testing.M) {
 	}
 	serviceabilityClient = serviceability.New(rpc.New(networkConfig.LedgerPublicRPCURL), networkConfig.ServiceabilityProgramID)
 
-	// Get all devices from on-chain data
+	// Get all devices from onchain data
 	ctx := context.Background()
 	data, err := serviceabilityClient.GetProgramData(ctx)
 	if err != nil {
@@ -91,7 +91,7 @@ func TestMain(m *testing.M) {
 		devices = append(devices, dev)
 	}
 
-	fmt.Printf("Found %d devices on-chain\n", len(devices))
+	fmt.Printf("Found %d devices onchain\n", len(devices))
 
 	clients = make(map[string]pb.QAAgentServiceClient)
 	clientConns := make(map[string]*grpc.ClientConn)
@@ -440,6 +440,47 @@ func ensureDisconnected(t *testing.T, ctx context.Context, client pb.QAAgentServ
 			}
 		}
 	}
+
+	// After ensuring disconnected, also wait for the user to be deleted onchain
+	waitForUserDeletion(t, ctx, client, host)
+}
+
+func waitForUserDeletion(t *testing.T, ctx context.Context, client pb.QAAgentServiceClient, host string) {
+	ipCtx, ipCancel := context.WithTimeout(ctx, 10*time.Second)
+	ipResp, err := client.GetPublicIP(ipCtx, &emptypb.Empty{})
+	ipCancel()
+
+	if err != nil {
+		require.NoError(t, err, "Failed to get public IP for host %s", host)
+	}
+
+	clientIP := ipResp.GetPublicIp()
+	if clientIP == "" {
+		require.NotEmpty(t, clientIP, "Empty public IP for host %s", host)
+	}
+
+	condition := func() (bool, error) {
+		data, err := serviceabilityClient.GetProgramData(ctx)
+		if err != nil {
+			return false, err
+		}
+
+		for _, user := range data.Users {
+			userClientIP := net.IP(user.ClientIp[:]).String()
+			if userClientIP == clientIP {
+				t.Logf("User with IP %s exists onchain (status: %s), waiting for activator to complete deletion...", clientIP, user.Status)
+				return false, nil
+			}
+		}
+
+		t.Logf("User with IP %s does not exist onchain", clientIP)
+		return true, nil
+	}
+
+	err = poll.Until(ctx, condition, 60*time.Second, 2*time.Second)
+	if err != nil {
+		t.Logf("Warning: Timed out waiting for user deletion for IP %s: %v", clientIP, err)
+	}
 }
 
 func unicastCleanupFunc(t *testing.T, hosts []string) func() {
@@ -512,7 +553,7 @@ func TestConnectivityUnicast_AllDevices(t *testing.T) {
 	}
 
 	if len(devices) == 0 {
-		t.Skip("No devices found on-chain")
+		t.Skip("No devices found onchain")
 	}
 
 	// Ensure we have at least 2 hosts

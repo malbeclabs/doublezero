@@ -1225,9 +1225,6 @@ mod tests {
             Some(vec![mcast_group.multicast_ip.to_string()]),
         );
 
-        // print new line for readability in test output
-        println!();
-
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::Multicast {
                 mode: MulticastMode::Subscriber,
@@ -1243,7 +1240,6 @@ mod tests {
             .await;
         assert!(result.is_ok());
 
-        println!("Test that adding a second subscriber fails");
         // Test that adding a second subscriber fails
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::Multicast {
@@ -1264,7 +1260,6 @@ mod tests {
             .to_string()
             .contains("Multicast user already exists for IP: 1.2.3.4"));
 
-        println!("Test that adding an IBRL tunnel with an existing multicast fails");
         // Test that adding an IBRL tunnel with an existing multicast fails
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {

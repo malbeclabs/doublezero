@@ -256,24 +256,30 @@ func TestConnectivityMulticast(t *testing.T) {
 			Code:   code,
 			Pubkey: ownerPubKey,
 		}
+		
 		result, err := client.MulticastAllowListAdd(ctx, req)
 		require.NoError(t, err, "MulticastAllowListAdd failed")
 		if result.GetSuccess() == false || result.GetReturnCode() != 0 {
 			require.Fail(t, "MulticastAllowListAdd failed", result.GetOutput())
 		}
-		t.Logf("Multicast group %s added to allow list for publisher %s", code, ownerPubKey)
+		t.Logf("Multicast group %s added to allow list for publisher server: %s user-payer: %s", code, publisher, ownerPubKey)
 
-		req = &pb.MulticastAllowListAddRequest{
-			Mode:   pb.MulticastAllowListAddRequest_SUBSCRIBER,
-			Code:   code,
-			Pubkey: ownerPubKey,
+		for _, subscriber := range subscribers {
+			client, err := getQAClient(subscriber)
+			require.NoError(t, err, "Failed to create QA client")
+
+			req = &pb.MulticastAllowListAddRequest{
+				Mode:   pb.MulticastAllowListAddRequest_SUBSCRIBER,
+				Code:   code,
+				Pubkey: ownerPubKey,
+			}
+			result, err = client.MulticastAllowListAdd(ctx, req)
+			require.NoError(t, err, "MulticastAllowListAdd failed")
+			if result.GetSuccess() == false || result.GetReturnCode() != 0 {
+				require.Fail(t, "MulticastAllowListAdd failed", result.GetOutput())
+			}
+			t.Logf("Multicast group %s added to allow list for subscriber server: %s user-payer: %s", code, subscriber, ownerPubKey)
 		}
-		result, err = client.MulticastAllowListAdd(ctx, req)
-		require.NoError(t, err, "MulticastAllowListAdd failed")
-		if result.GetSuccess() == false || result.GetReturnCode() != 0 {
-			require.Fail(t, "MulticastAllowListAdd failed", result.GetOutput())
-		}
-		t.Logf("Multicast group %s added to allow list for subscriber %s", code, ownerPubKey)
 	}) {
 		t.Fatal("Failed to update multicast allow list")
 	}

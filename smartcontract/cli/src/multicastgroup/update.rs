@@ -24,6 +24,12 @@ pub struct UpdateMulticastGroupCliCommand {
     /// Updated maximum bandwidth (e.g. 1Gbps, 100Mbps)
     #[arg(long)]
     pub max_bandwidth: Option<u64>,
+    /// Updated publisher count
+    #[arg(long)]
+    pub publisher_count: Option<u32>,
+    /// Updated subscriber count
+    #[arg(long)]
+    pub subscriber_count: Option<u32>,
     /// Wait for the multicast group to be activated
     #[arg(short, long, default_value_t = false)]
     pub wait: bool,
@@ -43,6 +49,8 @@ impl UpdateMulticastGroupCliCommand {
             code: self.code.clone(),
             multicast_ip: self.multicast_ip,
             max_bandwidth: self.max_bandwidth,
+            publisher_count: self.publisher_count,
+            subscriber_count: self.subscriber_count,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -92,12 +100,10 @@ mod tests {
             tenant_pk: Pubkey::new_unique(),
             multicast_ip: [10, 0, 0, 1].into(),
             max_bandwidth: 1000000000,
-            pub_allowlist: vec![],
-            sub_allowlist: vec![],
-            publishers: vec![],
-            subscribers: vec![],
             status: MulticastGroupStatus::Activated,
             owner: pda_pubkey,
+            publisher_count: 5,
+            subscriber_count: 10,
         };
 
         client
@@ -117,6 +123,8 @@ mod tests {
                 code: Some("new_code".to_string()),
                 multicast_ip: Some([10, 0, 0, 1].into()),
                 max_bandwidth: Some(1000000000),
+                publisher_count: Some(5),
+                subscriber_count: Some(10),
             }))
             .returning(move |_| Ok(signature));
 
@@ -127,6 +135,8 @@ mod tests {
             code: Some("new_code".to_string()),
             multicast_ip: Some([10, 0, 0, 1].into()),
             max_bandwidth: Some(1000000000),
+            publisher_count: Some(5),
+            subscriber_count: Some(10),
             wait: false,
         }
         .execute(&client, &mut output);

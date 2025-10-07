@@ -60,6 +60,14 @@ pub fn process_create_user(
     if !user_account.data.borrow().is_empty() {
         return Err(ProgramError::AccountAlreadyInitialized);
     }
+    if accesspass_account.data_is_empty() {
+        return Err(DoubleZeroError::AccessPassNotFound.into());
+    }
+    assert_eq!(
+        accesspass_account.owner, program_id,
+        "Invalid AccessPass Account Owner"
+    );
+
     let globalstate = globalstate_get_next(globalstate_account)?;
 
     let (expected_pda_account, bump_seed) = get_user_pda(program_id, globalstate.account_index);

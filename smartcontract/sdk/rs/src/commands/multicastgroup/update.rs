@@ -13,6 +13,8 @@ pub struct UpdateMulticastGroupCommand {
     pub code: Option<String>,
     pub multicast_ip: Option<Ipv4Addr>,
     pub max_bandwidth: Option<u64>,
+    pub publisher_count: Option<u32>,
+    pub subscriber_count: Option<u32>,
 }
 
 impl UpdateMulticastGroupCommand {
@@ -32,6 +34,8 @@ impl UpdateMulticastGroupCommand {
                 code,
                 multicast_ip: self.multicast_ip,
                 max_bandwidth: self.max_bandwidth,
+                publisher_count: self.publisher_count,
+                subscriber_count: self.subscriber_count,
             }),
             vec![
                 AccountMeta::new(self.pubkey, false),
@@ -70,6 +74,8 @@ mod tests {
                         code: Some("test_group".to_string()),
                         multicast_ip: Some("127.0.0.1".parse().unwrap()),
                         max_bandwidth: Some(1000),
+                        publisher_count: Some(10),
+                        subscriber_count: Some(100),
                     },
                 )),
                 predicate::eq(vec![
@@ -84,6 +90,8 @@ mod tests {
             code: Some("test_group".to_string()),
             multicast_ip: Some("127.0.0.1".parse().unwrap()),
             max_bandwidth: Some(1000),
+            publisher_count: Some(10),
+            subscriber_count: Some(100),
         };
 
         let update_invalid_command = UpdateMulticastGroupCommand {

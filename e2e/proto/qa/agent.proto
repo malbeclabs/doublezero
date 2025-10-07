@@ -64,6 +64,7 @@ message MulticastAllowListAddRequest {
   MulticastMode mode = 1;
   string code = 2;
   string pubkey = 3;
+  string client_ip = 4;
 }
 
 message Result {

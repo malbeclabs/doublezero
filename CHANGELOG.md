@@ -6,13 +6,19 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+- Multicast group change: Regeneration of all multicast group allowlists required, as allowlists are now stored within each Access Pass instead of at the multicast group level.
+
 ### Changes
 
 - CLI
     - Added a wait in the `disconnect` command to ensure the account is fully closed before returning, preventing failures during rapid disconnect/reconnect sequences.
+    - Display multicast group memberships (publisher/subscriber) in AccessPass listings to improve visibility.  
 - Activator
     - Reduce logging noise when processing snapshot events
     - Wrap main select handler in loop to avoid shutdown on branch error
+- Onchain programs
+    - Remove user-level allowlist management from CLI and admin interfaces; manage multicast group allowlists through AccessPass.
+    - Add Validate trait for core types (AccessPass, Contributor, Interface, etc.) and enforce runtime checks before account operations.
 - Internet telemetry
     - Add circuit label to metrics; create a new metric for missing circuit samples
     - Create a new metric that tracks how long it takes collector tasks to run
@@ -93,7 +99,6 @@ All notable changes to this project will be documented in this file.
 ### Changes
 
 - Onchain programs
-    - Add Validate trait for core types (AccessPass, Contributor, Interface, etc.) and enforce runtime checks before account operations.
     - Expand DoubleZeroError with granular variants (invalid IPs, ASN, MTU, VLAN, etc.) and derive PartialEq for easier testing.
     - Rename Config account type to GlobalConfig for clarity and consistency.
     - Fix bug in user update that caused DZ IP to be 0.0.0.0
@@ -120,7 +125,6 @@ All notable changes to this project will be documented in this file.
     - Updated unit tests and e2e tests to validate the new initialization and activation flow.
 - Contributor Operations
     - Contributors must explicitly run device update to set a valid max_users and activate a Device.
-
 
 ## [v0.6.2](https://github.com/malbeclabs/doublezero/compare/client/v0.6.0...client/v0.6.2) – 2025-09-02
 

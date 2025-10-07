@@ -147,11 +147,9 @@ mod tests {
             max_bandwidth: 1000,
             status: MulticastGroupStatus::Activated,
             code: "test".to_string(),
-            pub_allowlist: vec![],
-            sub_allowlist: vec![],
-            publishers: vec![],
-            subscribers: vec![],
             owner: mgroup_pubkey,
+            publisher_count: 0,
+            subscriber_count: 0,
         };
 
         let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");

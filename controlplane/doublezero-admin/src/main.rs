@@ -12,7 +12,7 @@ use crate::cli::{
     },
     link::LinkCommands,
     location::LocationCommands,
-    user::{UserAllowlistCommands, UserCommands},
+    user::UserCommands,
 };
 use doublezero_cli::{checkversion::check_version, doublezerocommand::CliCommandImpl};
 use doublezero_sdk::{DZClient, ProgramVersion};
@@ -155,11 +155,6 @@ async fn main() -> eyre::Result<()> {
             UserCommands::List(args) => args.execute(&client, &mut handle),
             UserCommands::Get(args) => args.execute(&client, &mut handle),
             UserCommands::Delete(args) => args.execute(&client, &mut handle),
-            UserCommands::Allowlist(command) => match command.command {
-                UserAllowlistCommands::List(args) => args.execute(&client, &mut handle),
-                UserAllowlistCommands::Add(args) => args.execute(&client, &mut handle),
-                UserAllowlistCommands::Remove(args) => args.execute(&client, &mut handle),
-            },
             UserCommands::RequestBan(args) => args.execute(&client, &mut handle),
         },
         Command::Multicast(args) => match args.command {

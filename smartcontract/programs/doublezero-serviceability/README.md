@@ -94,6 +94,17 @@ classDiagram
         String side_a_iface_name
         String side_z_iface_name
     }
+    class AccessPass {
+        AccountType account_type
+        Pubkey owner
+        u8 bump_seed
+        AccessPassType accesspass_type
+        IpV4 client_ip
+        Pubkey user_payer
+        u64 last_access_epoch
+        u16 connection_count
+        AccessPassStatus status
+    }
     class User {
         AccountType account_type
         Pubkey owner
@@ -106,8 +117,6 @@ classDiagram
         Ipv4Addr dz_ip
         u16 tunnel_id
         NetworkV4 tunnel_net
-        Pubkey[] publisher
-        Pubkey[] subscribers
         UserStatus status
     }
     class MulticastGroup {
@@ -118,10 +127,8 @@ classDiagram
         Pubkey tenant_pk
         String code
         MulticastGroupStatus status
-        Pubkey[] pub_allowlist
-        Pubkey[] sub_allowlist
-        Pubkey[] publisher
-        Pubkey[] subscribers
+        u32 publisher_count
+        u32 subscriber_count
     }
     class GlobalConfig {
         AccountType account_type
@@ -146,6 +153,8 @@ classDiagram
     Link --> Device : side_a_pk
     Link --> Device : side_z_pk
     User --> Device  : device_pk
+    AccessPass --> MulticastGroup: mgroup_pub_allowlist
+    AccessPass --> MulticastGroup: mgroup_sub_allowlist
     User --> MulticastGroup : publishers
     User --> MulticastGroup : subscribers
     MulticastGroup --> User : publishers
@@ -339,6 +348,35 @@ stateDiagram-v2
 | code              | String       | Link code               |
 | side_a_iface_name | String       | Side A interface name   |
 | side_z_iface_name | String       | Side Z interface name   |
+
+## AccessPass
+
+Represents an access pass in the DoubleZero network. AccessPasses are used to control and track access to network resources, including multicast group permissions and connection status.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Requested
+    Requested --> Connected: connect
+    Connected --> Disconnected: disconnect
+    Connected --> Expired: expire
+    Disconnected --> Connected: reconnect
+    Disconnected --> Expired: expire
+    Expired --> [*]
+```
+
+| Field                  | Type                | Description                                                        |
+|------------------------|---------------------|--------------------------------------------------------------------|
+| account_type           | AccountType         | Type of account (must be AccessPass)                               |
+| owner                  | Pubkey              | Pass owner                                                         |
+| bump_seed              | u8                  | Bump seed for PDA                                                  |
+| accesspass_type        | AccessPassType      | Pass type (`Prepaid` or `SolanaValidator(Pubkey)`)                 |
+| client_ip              | Ipv4Addr            | Associated client IP                                               |
+| user_payer             | Pubkey              | User who pays for the access                                       |
+| last_access_epoch      | u64                 | Last access epoch (`u64::MAX` = unlimited)                         |
+| connection_count       | u16                 | Number of performed connections                                    |
+| status                 | AccessPassStatus    | Pass status (`Requested`, `Connected`, `Disconnected`, `Expired`)  |
+| mgroup_pub_allowlist   | Vec<Pubkey>         | Multicast groups this pass can publish to                          |
+| mgroup_sub_allowlist   | Vec<Pubkey>         | Multicast groups this pass can subscribe to                        |
 
 ## User
 

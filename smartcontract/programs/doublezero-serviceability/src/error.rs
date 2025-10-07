@@ -109,6 +109,8 @@ pub enum DoubleZeroError {
     InvalidMulticastIp, // variant 51
     #[error("Invalid Account Owner")]
     InvalidAccountOwner, // variant 52
+    #[error("Access Pass not found")]
+    AccessPassNotFound, // variant 53
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -167,6 +169,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::InvalidMaxBandwidth => ProgramError::Custom(50),
             DoubleZeroError::InvalidMulticastIp => ProgramError::Custom(51),
             DoubleZeroError::InvalidAccountOwner => ProgramError::Custom(52),
+            DoubleZeroError::AccessPassNotFound => ProgramError::Custom(53),
         }
     }
 }
@@ -226,6 +229,7 @@ impl From<u32> for DoubleZeroError {
             50 => DoubleZeroError::InvalidMaxBandwidth,
             51 => DoubleZeroError::InvalidMulticastIp,
             52 => DoubleZeroError::InvalidAccountOwner,
+            53 => DoubleZeroError::AccessPassNotFound,
 
             _ => DoubleZeroError::Custom(e),
         }

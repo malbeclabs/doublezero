@@ -163,6 +163,7 @@ macro_rules! format_option {
 pub fn deserialize_vec_with_capacity<T: BorshDeserialize>(
     data: &mut &[u8],
 ) -> Result<Vec<T>, ProgramError> {
+    // If the data doesn't contain enough bytes to read the vector size (4 bytes), return an empty vector.
     let len = u32::from_le_bytes(match data.get(..4) {
         Some(bytes) => match bytes.try_into() {
             Ok(arr) => arr,
@@ -186,4 +187,33 @@ pub fn is_global(ip: Ipv4Addr) -> bool {
         && !ip.is_broadcast()
         && !ip.is_documentation()
         && !ip.is_unspecified()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_deserialize_vec_with_capacity() {
+        // Normal case
+        let data = [3u8, 0, 0, 0, 10, 0, 0, 0, 20, 0, 0, 0, 30, 0, 0, 0];
+        let result = deserialize_vec_with_capacity::<u32>(&mut &data[..]).unwrap();
+        assert_eq!(result, vec![10, 20, 30]);
+
+        // Error case: not enough data to read length
+        let data = [0u8]; // Incomplete length
+        let err = deserialize_vec_with_capacity::<u8>(&mut &data[..]).unwrap();
+        assert_eq!(err, Vec::<u8>::new());
+    }
+
+    #[test]
+    fn test_is_global() {
+        assert!(is_global(Ipv4Addr::new(8, 8, 8, 8))); // Public IP
+        assert!(!is_global(Ipv4Addr::new(10, 0, 0, 1))); // Private IP
+        assert!(!is_global(Ipv4Addr::new(127, 0, 0, 1))); // Loopback IP
+        assert!(!is_global(Ipv4Addr::new(169, 254, 0, 1))); // Link-local IP
+        assert!(!is_global(Ipv4Addr::new(255, 255, 255, 255))); // Broadcast IP
+        assert!(!is_global(Ipv4Addr::new(192, 0, 2, 1))); // Documentation IP
+        assert!(!is_global(Ipv4Addr::new(0, 0, 0, 0))); // Unspecified IP
+    }
 }

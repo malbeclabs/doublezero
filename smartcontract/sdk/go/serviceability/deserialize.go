@@ -155,10 +155,6 @@ func DeserializeMulticastGroup(reader *ByteReader, multicastgroup *MulticastGrou
 	multicastgroup.MaxBandwidth = reader.ReadU64()
 	multicastgroup.Status = MulticastGroupStatus(reader.ReadU8())
 	multicastgroup.Code = reader.ReadString()
-	multicastgroup.PubAllowList = reader.ReadPubkeySlice()
-	multicastgroup.SubAllowList = reader.ReadPubkeySlice()
-	multicastgroup.Publishers = reader.ReadPubkeySlice()
-	multicastgroup.Subscribers = reader.ReadPubkeySlice()
 	multicastgroup.PubKey = reader.ReadPubkey()
 }
 

@@ -28,12 +28,8 @@ pub struct MulticastGroupDisplay {
     #[serde(serialize_with = "serializer::serialize_bandwidth_as_string")]
     #[tabled(display = "doublezero_program_common::types::parse_utils::bandwidth_to_string")]
     pub max_bandwidth: u64,
-    #[serde(serialize_with = "serializer::serialize_pubkeylist_as_string")]
-    #[tabled(display = "crate::util::display_count")]
-    pub publishers: Vec<Pubkey>,
-    #[serde(serialize_with = "serializer::serialize_pubkeylist_as_string")]
-    #[tabled(display = "crate::util::display_count")]
-    pub subscribers: Vec<Pubkey>,
+    pub publishers: u32,
+    pub subscribers: u32,
     pub status: MulticastGroupStatus,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub owner: Pubkey,
@@ -55,8 +51,8 @@ impl ListMulticastGroupCliCommand {
                 owner: multicastgroup.owner,
                 multicast_ip: multicastgroup.multicast_ip,
                 max_bandwidth: multicastgroup.max_bandwidth,
-                publishers: multicastgroup.publishers,
-                subscribers: multicastgroup.subscribers,
+                publishers: multicastgroup.publisher_count,
+                subscribers: multicastgroup.subscriber_count,
                 status: multicastgroup.status,
             })
             .collect::<Vec<_>>();
@@ -157,17 +153,10 @@ mod tests {
             code: "multicastgroup_code".to_string(),
             multicast_ip: [1, 2, 3, 4].into(),
             max_bandwidth: 1234,
-            pub_allowlist: vec![],
-            sub_allowlist: vec![],
-            publishers: vec![
-                Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo2"),
-                Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo3"),
-            ],
-            subscribers: vec![Pubkey::from_str_const(
-                "11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo3",
-            )],
             status: MulticastGroupStatus::Activated,
             owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9"),
+            publisher_count: 5,
+            subscriber_count: 10,
         };
 
         client.expect_list_multicastgroup().returning(move |_| {
@@ -185,7 +174,7 @@ mod tests {
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | code                | multicast_ip | max_bandwidth | publishers | subscribers | status    | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR | multicastgroup_code | 1.2.3.4      | 1.23Kbps      | 2          | 1           | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 \n");
+        assert_eq!(output_str, " account                                   | code                | multicast_ip | max_bandwidth | publishers | subscribers | status    | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR | multicastgroup_code | 1.2.3.4      | 1.23Kbps      | 5          | 10          | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 \n");
 
         let mut output = Vec::new();
         let res = ListMulticastGroupCliCommand {
@@ -196,6 +185,6 @@ mod tests {
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"code\":\"multicastgroup_code\",\"multicast_ip\":\"1.2.3.4\",\"max_bandwidth\":\"1.23Kbps\",\"publishers\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo2, 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo3\",\"subscribers\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo3\",\"status\":\"Activated\",\"owner\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\"}]\n");
+        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"code\":\"multicastgroup_code\",\"multicast_ip\":\"1.2.3.4\",\"max_bandwidth\":\"1.23Kbps\",\"publishers\":5,\"subscribers\":10,\"status\":\"Activated\",\"owner\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\"}]\n");
     }
 }

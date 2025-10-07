@@ -132,14 +132,6 @@ func TestE2E_DeviceStress(t *testing.T) {
 		log.Debug(fmt.Sprintf("--> Created client %d", i+1),
 			"pubkey", client.Pubkey, "cyoaIP", client.CYOANetworkIP)
 
-		// Add to allowlist
-		log.Info(fmt.Sprintf("Adding client %d to allowlist", i+1))
-		_, err = dn.Manager.Exec(t.Context(), []string{
-			"doublezero", "user", "allowlist", "add",
-			"--pubkey", client.Pubkey,
-		})
-		require.NoError(t, err)
-
 		// Set access pass
 		cmd := fmt.Sprintf("doublezero access-pass set --accesspass-type prepaid --client-ip %s --user-payer %s --last-access-epoch 99999",
 			client.CYOANetworkIP, client.Pubkey)

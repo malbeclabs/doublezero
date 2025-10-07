@@ -117,6 +117,8 @@ pub enum DoubleZeroError {
     InvalidBgpCommunity, // variant 55
     #[error("Interface already exists")]
     InterfaceAlreadyExists, // variant 56
+    #[error("Invalid Public IP: IP conflicts with DZ prefix")]
+    InvalidPublicIp, // variant 57
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -179,6 +181,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::UserAccountNotFound => ProgramError::Custom(54),
             DoubleZeroError::InvalidBgpCommunity => ProgramError::Custom(55),
             DoubleZeroError::InterfaceAlreadyExists => ProgramError::Custom(56),
+            DoubleZeroError::InvalidPublicIp => ProgramError::Custom(57),
         }
     }
 }
@@ -242,6 +245,7 @@ impl From<u32> for DoubleZeroError {
             54 => DoubleZeroError::UserAccountNotFound,
             55 => DoubleZeroError::InvalidBgpCommunity,
             56 => DoubleZeroError::InterfaceAlreadyExists,
+            57 => DoubleZeroError::InvalidPublicIp,
             _ => DoubleZeroError::Custom(e),
         }
     }
@@ -320,6 +324,11 @@ mod tests {
             InvalidVlanId,
             InvalidMaxBandwidth,
             InvalidMulticastIp,
+            InvalidAccountOwner,
+            AccessPassNotFound,
+            UserAccountNotFound,
+            InvalidBgpCommunity,
+            InvalidPublicIp,
         ];
         for err in variants {
             let pe: ProgramError = err.clone().into();

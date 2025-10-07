@@ -74,7 +74,7 @@ func TestMain(m *testing.M) {
 	}
 	serviceabilityClient = serviceability.New(rpc.New(networkConfig.LedgerPublicRPCURL), networkConfig.ServiceabilityProgramID)
 
-	// Get all devices from on-chain data
+	// Get all devices from onchain data
 	ctx := context.Background()
 	data, err := serviceabilityClient.GetProgramData(ctx)
 	if err != nil {
@@ -91,10 +91,7 @@ func TestMain(m *testing.M) {
 		devices = append(devices, dev)
 	}
 
-	fmt.Printf("Found %d devices on-chain\n", len(devices))
-	for _, dev := range devices {
-		fmt.Printf("Device PubKey: %s, Code: %s, MaxUsers: %d, UsersCount: %d\n", dev.PubKey, dev.Code, dev.MaxUsers, dev.UsersCount)
-	}
+	fmt.Printf("Found %d devices onchain\n", len(devices))
 
 	clients = make(map[string]pb.QAAgentServiceClient)
 	clientConns := make(map[string]*grpc.ClientConn)
@@ -288,6 +285,9 @@ func TestConnectivityMulticast(t *testing.T) {
 				defer cancel()
 				client, err := getQAClient(host)
 				require.NoError(t, err, "Failed to create QA client")
+
+				ensureDisconnected(t, ctx, client, host)
+
 				req := &pb.ConnectMulticastRequest{
 					Mode: pb.ConnectMulticastRequest_SUBSCRIBER,
 					Code: code,
@@ -319,6 +319,9 @@ func TestConnectivityMulticast(t *testing.T) {
 		defer cancel()
 		client, err := getQAClient(publisher)
 		require.NoError(t, err, "Failed to create QA client")
+
+		ensureDisconnected(t, ctx, client, publisher)
+
 		req := &pb.ConnectMulticastRequest{
 			Mode: pb.ConnectMulticastRequest_PUBLISHER,
 			Code: code,
@@ -398,6 +401,88 @@ func TestConnectivityMulticast(t *testing.T) {
 	})
 }
 
+func ensureDisconnected(t *testing.T, ctx context.Context, client pb.QAAgentServiceClient, host string) {
+	checkCtx, checkCancel := context.WithTimeout(ctx, 30*time.Second)
+	checkStatus, checkErr := client.GetStatus(checkCtx, &emptypb.Empty{})
+	checkCancel()
+
+	if checkErr != nil {
+		require.Fail(t, "Failed to check existing tunnel status", "host: %s, error: %v", host, checkErr)
+	}
+
+	if checkStatus != nil {
+		for _, s := range checkStatus.Status {
+			if s.SessionStatus != "disconnected" {
+				t.Logf("Host %s has existing tunnel (session status: %s), disconnecting first", host, s.SessionStatus)
+				disconnectCtx, disconnectCancel := context.WithTimeout(ctx, 90*time.Second)
+				_, _ = client.Disconnect(disconnectCtx, &emptypb.Empty{})
+				disconnectCancel()
+
+				condition := func() (bool, error) {
+					statusCtx, statusCancel := context.WithTimeout(ctx, 10*time.Second)
+					defer statusCancel()
+					status, err := client.GetStatus(statusCtx, &emptypb.Empty{})
+					if err != nil {
+						return false, err
+					}
+					for _, s := range status.Status {
+						if s.SessionStatus != "disconnected" {
+							return false, nil
+						}
+					}
+					return true, nil
+				}
+
+				err := poll.Until(ctx, condition, 30*time.Second, 1*time.Second)
+				require.NoError(t, err, "Tunnel did not reach disconnected state after disconnect for host %s", host)
+				t.Logf("Host %s tunnel is disconnected, proceeding with connection", host)
+				break
+			}
+		}
+	}
+
+	// After ensuring disconnected, also wait for the user to be deleted onchain
+	waitForUserDeletion(t, ctx, client, host)
+}
+
+func waitForUserDeletion(t *testing.T, ctx context.Context, client pb.QAAgentServiceClient, host string) {
+	ipCtx, ipCancel := context.WithTimeout(ctx, 10*time.Second)
+	ipResp, err := client.GetPublicIP(ipCtx, &emptypb.Empty{})
+	ipCancel()
+
+	if err != nil {
+		require.NoError(t, err, "Failed to get public IP for host %s", host)
+	}
+
+	clientIP := ipResp.GetPublicIp()
+	if clientIP == "" {
+		require.NotEmpty(t, clientIP, "Empty public IP for host %s", host)
+	}
+
+	condition := func() (bool, error) {
+		data, err := serviceabilityClient.GetProgramData(ctx)
+		if err != nil {
+			return false, err
+		}
+
+		for _, user := range data.Users {
+			userClientIP := net.IP(user.ClientIp[:]).String()
+			if userClientIP == clientIP {
+				t.Logf("User with IP %s exists onchain (status: %s), waiting for activator to complete deletion...", clientIP, user.Status)
+				return false, nil
+			}
+		}
+
+		t.Logf("User with IP %s does not exist onchain", clientIP)
+		return true, nil
+	}
+
+	err = poll.Until(ctx, condition, 60*time.Second, 2*time.Second)
+	if err != nil {
+		t.Logf("Warning: Timed out waiting for user deletion for IP %s: %v", clientIP, err)
+	}
+}
+
 func unicastCleanupFunc(t *testing.T, hosts []string) func() {
 	return func() {
 		disconnectUsers(t, hosts) // Disconnect all users after tests
@@ -468,7 +553,7 @@ func TestConnectivityUnicast_AllDevices(t *testing.T) {
 	}
 
 	if len(devices) == 0 {
-		t.Skip("No devices found on-chain")
+		t.Skip("No devices found onchain")
 	}
 
 	// Ensure we have at least 2 hosts
@@ -653,30 +738,7 @@ func connectHosts(t *testing.T, hosts []string, device *Device) (map[string]stri
 			return nil, fmt.Errorf("failed to create QA client for %s: %w", host, err)
 		}
 
-		// Ensure clean state by disconnecting if tunnel is up
-		checkCtx, checkCancel := context.WithTimeout(ctx, 30*time.Second)
-		checkStatus, checkErr := client.GetStatus(checkCtx, &emptypb.Empty{})
-		checkCancel()
-
-		if checkErr != nil {
-			return nil, fmt.Errorf("failed to check existing tunnel status for %s (is doublezerod running?): %w", host, checkErr)
-		}
-
-		// Check if any session is "up"
-		if checkStatus != nil {
-			for _, s := range checkStatus.Status {
-				if s.SessionStatus == "up" {
-					t.Logf("Host %s has existing tunnel (session status: %s), disconnecting first", host, s.SessionStatus)
-					disconnectCtx, disconnectCancel := context.WithTimeout(ctx, 90*time.Second)
-					_, _ = client.Disconnect(disconnectCtx, &emptypb.Empty{})
-					disconnectCancel()
-
-					// Give it a moment to disconnect
-					time.Sleep(2 * time.Second)
-					break
-				}
-			}
-		}
+		ensureDisconnected(t, ctx, client, host)
 
 		// Create connection request
 		req := &pb.ConnectUnicastRequest{

@@ -13,6 +13,7 @@ use doublezero_sdk::{
     },
     DoubleZeroClient, Exchange, Location, User, UserStatus, UserType,
 };
+use doublezero_serviceability::error::DoubleZeroError;
 use log::{info, warn};
 use solana_sdk::{pubkey::Pubkey, signature::Signature};
 use std::{
@@ -157,7 +158,16 @@ pub fn process_user_event(
                     record_device_ip_metrics(&user.device_pk, device_state, locations, exchanges);
                 }
                 Err(e) => {
-                    write!(&mut log_msg, " Error: {e}").unwrap();
+                    // Ignore DoubleZeroError::InvalidStatus errors
+                    if let Some(dz_err) = e.downcast_ref::<DoubleZeroError>() {
+                        if matches!(dz_err, DoubleZeroError::InvalidStatus) {
+                            // Do nothing
+                        } else {
+                            write!(&mut log_msg, " Error: {e}").unwrap();
+                        }
+                    } else {
+                        write!(&mut log_msg, " Error: {e}").unwrap();
+                    }
                 }
             }
 
@@ -246,7 +256,16 @@ pub fn process_user_event(
                     record_device_ip_metrics(&user.device_pk, device_state, locations, exchanges);
                 }
                 Err(e) => {
-                    write!(&mut log_msg, " Error {e}").unwrap();
+                    // Ignore DoubleZeroError::InvalidStatus errors
+                    if let Some(dz_err) = e.downcast_ref::<DoubleZeroError>() {
+                        if matches!(dz_err, DoubleZeroError::InvalidStatus) {
+                            // Do nothing
+                        } else {
+                            write!(&mut log_msg, " Error: {e}").unwrap();
+                        }
+                    } else {
+                        write!(&mut log_msg, " Error: {e}").unwrap();
+                    }
                 }
             }
 

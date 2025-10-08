@@ -158,16 +158,7 @@ pub fn process_user_event(
                     record_device_ip_metrics(&user.device_pk, device_state, locations, exchanges);
                 }
                 Err(e) => {
-                    // Ignore DoubleZeroError::InvalidStatus errors
-                    if let Some(dz_err) = e.downcast_ref::<DoubleZeroError>() {
-                        if matches!(dz_err, DoubleZeroError::InvalidStatus) {
-                            // Do nothing
-                        } else {
-                            write!(&mut log_msg, " Error: {e}").unwrap();
-                        }
-                    } else {
-                        write!(&mut log_msg, " Error: {e}").unwrap();
-                    }
+                    log_error_ignore_invalid_status(&mut log_msg, e);
                 }
             }
 
@@ -256,16 +247,7 @@ pub fn process_user_event(
                     record_device_ip_metrics(&user.device_pk, device_state, locations, exchanges);
                 }
                 Err(e) => {
-                    // Ignore DoubleZeroError::InvalidStatus errors
-                    if let Some(dz_err) = e.downcast_ref::<DoubleZeroError>() {
-                        if matches!(dz_err, DoubleZeroError::InvalidStatus) {
-                            // Do nothing
-                        } else {
-                            write!(&mut log_msg, " Error: {e}").unwrap();
-                        }
-                    } else {
-                        write!(&mut log_msg, " Error: {e}").unwrap();
-                    }
+                    log_error_ignore_invalid_status(&mut log_msg, e);
                 }
             }
 
@@ -352,6 +334,19 @@ pub fn process_user_event(
             info!("{log_msg}");
         }
         _ => {}
+    }
+}
+
+fn log_error_ignore_invalid_status(log_msg: &mut String, e: eyre::ErrReport) {
+    // Ignore DoubleZeroError::InvalidStatus errors
+    if let Some(dz_err) = e.downcast_ref::<DoubleZeroError>() {
+        if matches!(dz_err, DoubleZeroError::InvalidStatus) {
+            // Do nothing
+        } else {
+            write!(log_msg, " Error: {e}").unwrap();
+        }
+    } else {
+        write!(log_msg, " Error: {e}").unwrap();
     }
 }
 

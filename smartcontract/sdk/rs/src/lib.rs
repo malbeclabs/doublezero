@@ -27,6 +27,7 @@ pub use doublezero_serviceability::{
     },
 };
 
+mod asyncclient;
 mod client;
 mod config;
 mod consts;
@@ -36,10 +37,11 @@ mod errors;
 
 pub mod commands;
 pub mod record;
+pub mod rpckeyedaccount_decode;
 pub mod tests;
 pub mod utils;
 
-pub use crate::client::DZClient;
+pub use crate::{asyncclient::AsyncDZClient, client::DZClient};
 
 pub use crate::{
     config::{convert_program_moniker, convert_url_moniker, convert_url_to_ws, convert_ws_moniker},

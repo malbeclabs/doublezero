@@ -324,7 +324,7 @@ pub fn process_user_event(
                             .increment(1);
                         }
                         Err(e) => {
-                            write!(&mut log_msg, " Error {e}").unwrap();
+                            write!(&mut log_msg, "Error {e}").unwrap();
                         }
                     }
                 }
@@ -343,10 +343,10 @@ fn log_error_ignore_invalid_status(log_msg: &mut String, e: eyre::ErrReport) {
         if matches!(dz_err, DoubleZeroError::InvalidStatus) {
             // Do nothing
         } else {
-            write!(log_msg, " Error: {e}").unwrap();
+            write!(log_msg, "Error: {e}").unwrap();
         }
     } else {
-        write!(log_msg, " Error: {e}").unwrap();
+        write!(log_msg, "Error: {e}").unwrap();
     }
 }
 

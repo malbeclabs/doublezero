@@ -14,6 +14,7 @@ pub struct SetAccessPassCommand {
     pub client_ip: Ipv4Addr,
     pub user_payer: Pubkey,
     pub last_access_epoch: u64,
+    pub allow_multiple_ip: bool,
 }
 
 impl SetAccessPassCommand {
@@ -41,6 +42,7 @@ impl SetAccessPassCommand {
                 accesspass_type: self.accesspass_type,
                 client_ip: self.client_ip,
                 last_access_epoch: self.last_access_epoch,
+                allow_multiple_ip: self.allow_multiple_ip,
             }),
             vec![
                 AccountMeta::new(pda_pubkey, false),
@@ -83,6 +85,7 @@ mod tests {
                     accesspass_type: AccessPassType::Prepaid,
                     client_ip,
                     last_access_epoch: 0,
+                    allow_multiple_ip: false,
                 })),
                 predicate::eq(vec![
                     AccountMeta::new(pda_pubkey, false),
@@ -97,6 +100,7 @@ mod tests {
             client_ip,
             user_payer: payer,
             last_access_epoch: 0,
+            allow_multiple_ip: false,
         }
         .execute(&client);
         assert!(res.is_ok());

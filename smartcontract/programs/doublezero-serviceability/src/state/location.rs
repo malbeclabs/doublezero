@@ -177,6 +177,24 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_state_location_try_from_defaults() {
+        let data = [AccountType::Location as u8];
+        let val = Location::try_from(&data[..]).unwrap();
+
+        assert_eq!(val.owner, Pubkey::default());
+        assert_eq!(val.bump_seed, 0);
+        assert_eq!(val.index, 0);
+        assert_eq!(val.lat, 0.0);
+        assert_eq!(val.lng, 0.0);
+        assert_eq!(val.loc_id, 0);
+        assert_eq!(val.code, String::new());
+        assert_eq!(val.name, String::new());
+        assert_eq!(val.country, String::new());
+        assert_eq!(val.reference_count, 0);
+        assert_eq!(val.status, LocationStatus::default());
+    }
+
+    #[test]
     fn test_state_location_serialization() {
         let val = Location {
             account_type: AccountType::Location,

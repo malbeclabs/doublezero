@@ -42,7 +42,7 @@ struct App {
     #[arg(long, value_name = "PROGRAM_ID", global = true)]
     program_id: Option<String>,
     /// Path to the keypair file
-    #[arg(long, value_name = "KEYPAIR", global = true)]
+    #[arg(short, long, value_name = "KEYPAIR", global = true)]
     keypair: Option<PathBuf>,
 }
 

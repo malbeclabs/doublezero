@@ -22,7 +22,6 @@ use solana_sdk::{
     signature::{Keypair, Signature, Signer},
     transaction::{Transaction, TransactionError},
 };
-
 use solana_system_interface::program;
 use solana_transaction_status::{
     option_serializer::OptionSerializer, EncodedTransaction, TransactionBinaryEncoding,
@@ -66,7 +65,6 @@ impl DZClient {
             convert_ws_moniker(websocket_url.unwrap_or(config.websocket_url.unwrap_or(ws_url)));
 
         let client = RpcClient::new_with_commitment(rpc_url.clone(), CommitmentConfig::confirmed());
-
         let payer = read_keypair_from_file(keypair.unwrap_or(config.keypair_path)).ok();
 
         let program_id = match program_id {

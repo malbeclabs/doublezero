@@ -180,6 +180,24 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_state_exchange_try_from_defaults() {
+        let data = [AccountType::Exchange as u8];
+        let val = Exchange::try_from(&data[..]).unwrap();
+
+        assert_eq!(val.owner, Pubkey::default());
+        assert_eq!(val.bump_seed, 0);
+        assert_eq!(val.code, String::default());
+        assert_eq!(val.name, String::default());
+        assert_eq!(val.lat, 0.0);
+        assert_eq!(val.lng, 0.0);
+        assert_eq!(val.device1_pk, Pubkey::default());
+        assert_eq!(val.device2_pk, Pubkey::default());
+        assert_eq!(val.loc_id, 0);
+        assert_eq!(val.status, ExchangeStatus::default());
+        assert_eq!(val.reference_count, 0);
+    }
+
+    #[test]
     fn test_state_exchange_serialization() {
         let val = Exchange {
             account_type: AccountType::Exchange,

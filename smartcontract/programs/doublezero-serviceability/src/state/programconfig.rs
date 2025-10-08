@@ -89,6 +89,16 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_state_programconfig_try_from_defaults() {
+        let data = [AccountType::ProgramConfig as u8];
+        let val = ProgramConfig::try_from(&data[..]).unwrap();
+
+        assert_eq!(val.version.major, 0);
+        assert_eq!(val.version.minor, 0);
+        assert_eq!(val.version.patch, 0);
+    }
+
+    #[test]
     fn test_state_programconfig_serialization() {
         let val = ProgramConfig {
             account_type: AccountType::ProgramConfig,

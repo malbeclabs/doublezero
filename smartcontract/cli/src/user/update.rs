@@ -14,9 +14,6 @@ pub struct UpdateUserCliCommand {
     /// User Pubkey to update
     #[arg(long, value_parser = validate_pubkey)]
     pub pubkey: String,
-    /// New Client IP address
-    #[arg(long)]
-    pub client_ip: Option<Ipv4Addr>,
     /// New DZ IP address
     #[arg(long)]
     pub dz_ip: Option<Ipv4Addr>,
@@ -41,7 +38,6 @@ impl UpdateUserCliCommand {
             pubkey,
             user_type: None,
             cyoa_type: None,
-            client_ip: self.client_ip,
             dz_ip: self.dz_ip,
             tunnel_id: self.tunnel_id,
             tunnel_net: self.tunnel_net,
@@ -124,7 +120,6 @@ mod tests {
                 pubkey: pda_pubkey,
                 user_type: None,
                 cyoa_type: None,
-                client_ip: Some([10, 5, 4, 3].into()),
                 dz_ip: Some([2, 3, 4, 5].into()),
                 tunnel_id: Some(1),
                 tunnel_net: Some("10.2.2.3/24".parse().unwrap()),
@@ -136,7 +131,6 @@ mod tests {
         let mut output = Vec::new();
         let res = UpdateUserCliCommand {
             pubkey: pda_pubkey.to_string(),
-            client_ip: Some([10, 5, 4, 3].into()),
             dz_ip: Some([2, 3, 4, 5].into()),
             tunnel_id: Some(1),
             tunnel_net: Some("10.2.2.3/24".parse().unwrap()),

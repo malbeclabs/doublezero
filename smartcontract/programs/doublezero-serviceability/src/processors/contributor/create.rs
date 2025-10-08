@@ -13,7 +13,9 @@ use solana_program::{
     program::invoke_signed_unchecked,
     program_error::ProgramError,
     pubkey::Pubkey,
+    rent::Rent,
     system_instruction,
+    sysvar::Sysvar,
 };
 use std::fmt;
 
@@ -94,13 +96,13 @@ pub fn process_create_contributor(
         status: ContributorStatus::Activated,
     };
 
-    // transfer some lamports to the owner account to cover the rent exemption
+    let deposit = Rent::get()
+        .unwrap()
+        .minimum_balance(0)
+        .saturating_add(globalstate.contributor_airdrop_lamports);
+
     invoke_signed_unchecked(
-        &system_instruction::transfer(
-            payer_account.key,
-            owner_account.key,
-            globalstate.contributor_airdrop_lamports,
-        ),
+        &system_instruction::transfer(payer_account.key, owner_account.key, deposit),
         &[
             payer_account.clone(),
             owner_account.clone(),

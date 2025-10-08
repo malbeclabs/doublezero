@@ -669,6 +669,7 @@ async fn test_doublezero_program() {
             accesspass_type: AccessPassType::SolanaValidator(Pubkey::new_unique()),
             client_ip: user_ip,
             last_access_epoch: 9999,
+            allow_multiple_ip: false,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),

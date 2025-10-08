@@ -13,7 +13,6 @@ pub struct UpdateUserCommand {
     pub pubkey: Pubkey,
     pub user_type: Option<UserType>,
     pub cyoa_type: Option<UserCYOA>,
-    pub client_ip: Option<Ipv4Addr>,
     pub dz_ip: Option<Ipv4Addr>,
     pub tunnel_id: Option<u16>,
     pub tunnel_net: Option<NetworkV4>,
@@ -30,7 +29,6 @@ impl UpdateUserCommand {
             DoubleZeroInstruction::UpdateUser(UserUpdateArgs {
                 user_type: self.user_type,
                 cyoa_type: self.cyoa_type,
-                client_ip: self.client_ip,
                 dz_ip: self.dz_ip,
                 tunnel_id: self.tunnel_id,
                 tunnel_net: self.tunnel_net,

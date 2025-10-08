@@ -394,10 +394,12 @@ mod tests {
     };
     use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
+        pda::get_accesspass_pda,
         processors::user::{
             activate::UserActivateArgs, ban::UserBanArgs, closeaccount::UserCloseAccountArgs,
             reject::UserRejectArgs,
         },
+        state::accesspass::{AccessPass, AccessPassStatus, AccessPassType},
     };
     use metrics_util::debugging::DebuggingRecorder;
     use mockall::{predicate, Sequence};
@@ -458,6 +460,28 @@ mod tests {
                 validator_pubkey: Pubkey::default(),
             };
 
+            let (accesspass_pk_unspecified, _) = get_accesspass_pda(
+                &client.get_program_id(),
+                &Ipv4Addr::UNSPECIFIED,
+                &user.owner,
+            );
+            let (accesspass_pk, _) =
+                get_accesspass_pda(&client.get_program_id(), &user.client_ip, &user.owner);
+            let accesspass = AccessPass {
+                account_type: AccountType::AccessPass,
+                owner: user.owner,
+                bump_seed: 255,
+                accesspass_type: AccessPassType::Prepaid,
+                client_ip: user.client_ip,
+                user_payer: user.owner,
+                last_access_epoch: 1234,
+                connection_count: 0,
+                status: AccessPassStatus::Requested,
+                mgroup_pub_allowlist: vec![],
+                mgroup_sub_allowlist: vec![],
+                flags: 0,
+            };
+
             let user_clonned = user.clone();
             client
                 .expect_get()
@@ -465,6 +489,20 @@ mod tests {
                 .in_sequence(&mut seq)
                 .with(predicate::eq(user_pubkey))
                 .returning(move |_| Ok(AccountData::User(user_clonned.clone())));
+
+            client
+                .expect_get()
+                .times(1)
+                .in_sequence(&mut seq)
+                .with(predicate::eq(accesspass_pk_unspecified))
+                .returning(move |_| Err(eyre::eyre!("AccessPass not found")));
+
+            client
+                .expect_get()
+                .times(1)
+                .in_sequence(&mut seq)
+                .with(predicate::eq(accesspass_pk))
+                .returning(move |_| Ok(AccountData::AccessPass(accesspass.clone())));
 
             client
                 .expect_execute_transaction()
@@ -612,6 +650,28 @@ mod tests {
                 validator_pubkey: Pubkey::default(),
             };
 
+            let (accesspass_pk_unspecified, _) = get_accesspass_pda(
+                &client.get_program_id(),
+                &Ipv4Addr::UNSPECIFIED,
+                &user.owner,
+            );
+            let (accesspass_pk, _) =
+                get_accesspass_pda(&client.get_program_id(), &user.client_ip, &user.owner);
+            let accesspass = AccessPass {
+                account_type: AccountType::AccessPass,
+                owner: user.owner,
+                bump_seed: 255,
+                accesspass_type: AccessPassType::Prepaid,
+                client_ip: user.client_ip,
+                user_payer: user.owner,
+                last_access_epoch: 1234,
+                connection_count: 0,
+                status: AccessPassStatus::Requested,
+                mgroup_pub_allowlist: vec![],
+                mgroup_sub_allowlist: vec![],
+                flags: 0,
+            };
+
             let user_cloned = user.clone();
             client
                 .expect_get()
@@ -619,6 +679,20 @@ mod tests {
                 .in_sequence(&mut seq)
                 .with(predicate::eq(user_pubkey))
                 .returning(move |_| Ok(AccountData::User(user_cloned.clone())));
+
+            client
+                .expect_get()
+                .times(1)
+                .in_sequence(&mut seq)
+                .with(predicate::eq(accesspass_pk_unspecified))
+                .returning(move |_| Err(eyre::eyre!("AccessPass not found")));
+
+            client
+                .expect_get()
+                .times(1)
+                .in_sequence(&mut seq)
+                .with(predicate::eq(accesspass_pk))
+                .returning(move |_| Ok(AccountData::AccessPass(accesspass.clone())));
 
             client
                 .expect_execute_transaction()

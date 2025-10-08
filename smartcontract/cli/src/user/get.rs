@@ -149,6 +149,7 @@ mod tests {
             mgroup_pub_allowlist: vec![],
             mgroup_sub_allowlist: vec![],
             owner: client.get_payer(),
+            flags: 0,
         };
 
         client

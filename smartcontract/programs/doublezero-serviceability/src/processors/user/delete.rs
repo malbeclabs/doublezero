@@ -2,6 +2,7 @@ use crate::{
     error::DoubleZeroError,
     globalstate::globalstate_get,
     helper::*,
+    pda::get_accesspass_pda,
     state::{
         accesspass::{AccessPass, AccessPassStatus},
         user::*,
@@ -9,13 +10,13 @@ use crate::{
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
-#[cfg(test)]
-use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
+    msg,
     pubkey::Pubkey,
 };
+use std::net::Ipv4Addr;
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone, Default)]
 pub struct UserDeleteArgs {}
@@ -77,14 +78,48 @@ pub fn process_delete_user(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
+    let (accesspass_pda, _) = get_accesspass_pda(program_id, &user.client_ip, &user.owner);
+    let (accesspass_dynamic_pda, _) =
+        get_accesspass_pda(program_id, &Ipv4Addr::UNSPECIFIED, &user.owner);
+    // Access Pass must exist and match the client_ip or allow_multiple_ip must be enabled
+    assert!(
+        accesspass_account.key == &accesspass_pda
+            || accesspass_account.key == &accesspass_dynamic_pda,
+        "Invalid AccessPass PDA",
+    );
+
     if !accesspass_account.data_is_empty() {
+        // Read Access Pass
         let mut accesspass = AccessPass::try_from(accesspass_account)?;
+        if accesspass.user_payer != user.owner {
+            msg!(
+                "Invalid user_payer accesspass.user_payer: {} = user_payer: {} ",
+                accesspass.user_payer,
+                user.owner
+            );
+            return Err(DoubleZeroError::Unauthorized.into());
+        }
+        if accesspass.is_dynamic() && accesspass.client_ip == Ipv4Addr::UNSPECIFIED {
+            accesspass.client_ip = user.client_ip; // lock to the first used IP
+        }
+        if accesspass.client_ip != user.client_ip && !accesspass.allow_multiple_ip() {
+            msg!(
+                "Invalid client_ip accesspass.{{client_ip: {}}} = {{ client_ip: {} }}",
+                accesspass.client_ip,
+                user.client_ip
+            );
+            return Err(DoubleZeroError::Unauthorized.into());
+        }
+
         accesspass.connection_count = accesspass.connection_count.saturating_sub(1);
         accesspass.status = if accesspass.connection_count > 0 {
             AccessPassStatus::Connected
         } else {
             AccessPassStatus::Disconnected
         };
+        if accesspass.connection_count == 0 && accesspass.allow_multiple_ip() {
+            accesspass.client_ip = Ipv4Addr::UNSPECIFIED; // reset to allow multiple IPs
+        }
         accesspass.try_serialize(accesspass_account)?;
     }
 

@@ -166,15 +166,8 @@ echo "Update devices to set max users"
 ./target/doublezero device update --pubkey ams-dz001 --max-users 128
 
 # create access pass
-echo "Create AccessPass for users"
-./target/doublezero access-pass set --accesspass-type prepaid --client-ip 177.54.159.95 --user-payer me
-./target/doublezero access-pass set --accesspass-type prepaid --client-ip 147.28.171.51 --user-payer me
-./target/doublezero access-pass set --accesspass-type prepaid --client-ip 100.100.100.100 --user-payer me
-./target/doublezero access-pass set --accesspass-type prepaid --client-ip 200.200.200.200 --user-payer me
-./target/doublezero access-pass set --accesspass-type prepaid --client-ip 100.0.0.5 --user-payer me
-./target/doublezero access-pass set --accesspass-type prepaid --client-ip 100.0.0.6 --user-payer me
-
-./target/doublezero access-pass set --accesspass-type solana-validator --solana-validator 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX --client-ip 177.54.159.95 --user-payer me
+echo "Create AccessPass for all IPs"
+./target/doublezero access-pass set --accesspass-type prepaid --user-payer me --allow-multiple-ip
 
 # create a user
 echo "Creating users"
@@ -205,8 +198,13 @@ echo "Creating multicast user & subscribe"
 ./target/doublezero user create-subscribe --device ty2-dz01 --client-ip 100.0.0.6 --subscriber mg01 -w
 
 
+
 ./target/doublezero user subscribe --user vwHPjLfH7aU4G2vDBAqV3on5WQgXLEKq67kNw7Q5Mos --group mg01 --publisher -w
 ./target/doublezero user subscribe --user vwHPjLfH7aU4G2vDBAqV3on5WQgXLEKq67kNw7Q5Mos --group mg02 --publisher -w
+
+
+solana transfer testGjWJiksK7wdGmH7ZZsaqRGU695LHgvjRd6jfHYF 5 --allow-unfunded-recipient
+
 
 
 echo "########################################################################"

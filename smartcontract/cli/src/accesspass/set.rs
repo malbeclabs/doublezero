@@ -21,7 +21,7 @@ pub struct SetAccessPassCliCommand {
     pub accesspass_type: CliAccessPassType,
     /// Client IP address in IPv4 format
     #[arg(long)]
-    pub client_ip: Ipv4Addr,
+    pub client_ip: Option<Ipv4Addr>,
     /// Specifies the payer of the access pass.
     #[arg(long)]
     pub user_payer: String,
@@ -31,6 +31,9 @@ pub struct SetAccessPassCliCommand {
     /// Specifies the solana validator node id for the access pass. Required if accesspass_type is solana_validator
     #[arg(long)]
     pub solana_validator: Option<Pubkey>,
+    /// Allow multiple IP addresses for this access pass (only for Prepaid type)
+    #[arg(long, default_value_t = false)]
+    pub allow_multiple_ip: bool,
 }
 
 impl SetAccessPassCliCommand {
@@ -63,15 +66,19 @@ impl SetAccessPassCliCommand {
             },
         };
 
-        let (accesspass_pubkey, _) =
-            get_accesspass_pda(&client.get_program_id(), &self.client_ip, &user_payer);
+        let (accesspass_pubkey, _) = get_accesspass_pda(
+            &client.get_program_id(),
+            &self.client_ip.unwrap_or(Ipv4Addr::UNSPECIFIED),
+            &user_payer,
+        );
         writeln!(out, "AccessPass PDA: {accesspass_pubkey}")?;
 
         let signature = client.set_accesspass(SetAccessPassCommand {
             accesspass_type,
-            client_ip: self.client_ip,
+            client_ip: self.client_ip.unwrap_or(Ipv4Addr::UNSPECIFIED),
             user_payer,
             last_access_epoch,
+            allow_multiple_ip: self.allow_multiple_ip,
         })?;
         writeln!(out, "Signature: {signature}")?;
 
@@ -124,16 +131,18 @@ mod tests {
                 client_ip,
                 user_payer: payer,
                 last_access_epoch: 11,
+                allow_multiple_ip: false,
             }))
             .returning(move |_| Ok(signature));
 
         let mut output = Vec::new();
         let res = SetAccessPassCliCommand {
             accesspass_type: CliAccessPassType::SolanaValidator,
-            client_ip,
+            client_ip: Some(client_ip),
             user_payer: payer.to_string(),
             epochs: "1".into(),
             solana_validator: None,
+            allow_multiple_ip: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_err());
@@ -145,10 +154,11 @@ mod tests {
         let mut output = Vec::new();
         let res = SetAccessPassCliCommand {
             accesspass_type: CliAccessPassType::SolanaValidator,
-            client_ip,
+            client_ip: Some(client_ip),
             user_payer: payer.to_string(),
             epochs: "1".into(),
             solana_validator: Some(solana_validator),
+            allow_multiple_ip: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

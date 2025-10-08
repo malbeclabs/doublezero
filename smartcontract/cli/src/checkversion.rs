@@ -16,7 +16,7 @@ pub fn check_version<C: CliCommand, W: Write>(
         }
         // If the program version is compatible, but the client version is behind, print a warning
         if pconfig.version.warning(&client_version) {
-            writeln!(out, "A new version of the client is available. We recommend updating to the latest version for the best experience.")?;
+            writeln!(out, "A new version of the client is available: {} → {}\nWe recommend updating to the latest version for the best experience.", client_version, pconfig.version)?;
         }
     }
 
@@ -104,6 +104,6 @@ mod tests {
         );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "A new version of the client is available. We recommend updating to the latest version for the best experience.\n");
+        assert_eq!(output_str, "A new version of the client is available: 1.2.0 → 1.2.10\nWe recommend updating to the latest version for the best experience.\n");
     }
 }

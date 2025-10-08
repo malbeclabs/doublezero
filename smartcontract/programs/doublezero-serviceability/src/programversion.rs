@@ -55,14 +55,34 @@ impl ProgramVersion {
         }
     }
 
-    // Check if the current version is compatible with the required version
-    pub fn warning(&self, client: &ProgramVersion) -> bool {
-        self.major == client.major && self.minor == client.minor && self.patch > client.patch
+    // Check if there's a patch version difference (warning level)
+    // Returns true if major and minor match but patch differs
+    pub fn has_patch_mismatch(&self, client: &ProgramVersion) -> bool {
+        self.major == client.major && self.minor == client.minor && self.patch != client.patch
     }
 
-    // Check if the current version is incompatible with the required version
+    // Check if there's a minor version difference (warning level)
+    // Returns true if major matches but minor differs
+    pub fn has_minor_mismatch(&self, client: &ProgramVersion) -> bool {
+        self.major == client.major && self.minor != client.minor
+    }
+
+    // Check if there's a major version difference (error level)
+    // Returns true if major versions differ
+    pub fn has_major_mismatch(&self, client: &ProgramVersion) -> bool {
+        self.major != client.major
+    }
+
+    // Legacy methods for backward compatibility
+    pub fn warning(&self, client: &ProgramVersion) -> bool {
+        // Warning when program version is newer than client version (client is out of date)
+        (self.has_minor_mismatch(client) && self.minor > client.minor)
+            || (self.has_patch_mismatch(client) && self.patch > client.patch)
+    }
+
     pub fn error(&self, client: &ProgramVersion) -> bool {
-        self.major > client.major || (self.major == client.major && self.minor > client.minor)
+        // Error only on major version mismatches
+        self.has_major_mismatch(client)
     }
 }
 
@@ -77,58 +97,91 @@ mod tests {
     }
 
     #[test]
-    fn test_program_version_warning1() {
-        let program = ProgramVersion::new(1, 1, 3);
-        let client = ProgramVersion::new(1, 2, 0);
+    fn test_has_patch_mismatch() {
+        let program = ProgramVersion::new(1, 2, 3);
+        let client = ProgramVersion::new(1, 2, 4);
+        assert!(program.has_patch_mismatch(&client));
+
+        let program = ProgramVersion::new(1, 2, 3);
+        let client = ProgramVersion::new(1, 3, 3);
+        assert!(!program.has_patch_mismatch(&client));
+    }
+
+    #[test]
+    fn test_has_minor_mismatch() {
+        let program = ProgramVersion::new(1, 2, 3);
+        let client = ProgramVersion::new(1, 3, 3);
+        assert!(program.has_minor_mismatch(&client));
+
+        let program = ProgramVersion::new(1, 2, 3);
+        let client = ProgramVersion::new(2, 2, 3);
+        assert!(!program.has_minor_mismatch(&client));
+    }
+
+    #[test]
+    fn test_has_major_mismatch() {
+        let program = ProgramVersion::new(1, 2, 3);
+        let client = ProgramVersion::new(2, 2, 3);
+        assert!(program.has_major_mismatch(&client));
+
+        let program = ProgramVersion::new(1, 2, 3);
+        let client = ProgramVersion::new(1, 3, 3);
+        assert!(!program.has_major_mismatch(&client));
+    }
+
+    #[test]
+    fn test_warning() {
+        // Program newer patch - warning (client out of date)
+        let program = ProgramVersion::new(1, 2, 4);
+        let client = ProgramVersion::new(1, 2, 3);
+        assert!(program.warning(&client));
+
+        // Program newer minor - warning (client out of date)
+        let program = ProgramVersion::new(1, 3, 3);
+        let client = ProgramVersion::new(1, 2, 3);
+        assert!(program.warning(&client));
+
+        // Client newer patch - no warning (program out of date)
+        let program = ProgramVersion::new(1, 2, 3);
+        let client = ProgramVersion::new(1, 2, 4);
+        assert!(!program.warning(&client));
+
+        // Client newer minor - no warning (program out of date)
+        let program = ProgramVersion::new(1, 2, 3);
+        let client = ProgramVersion::new(1, 3, 3);
+        assert!(!program.warning(&client));
+
+        // Major mismatch - not a warning (should be error)
+        let program = ProgramVersion::new(1, 2, 3);
+        let client = ProgramVersion::new(2, 2, 3);
         assert!(!program.warning(&client));
     }
 
     #[test]
-    fn test_program_version_warning2() {
+    fn test_error() {
+        // Major mismatch - error
+        let program = ProgramVersion::new(1, 2, 3);
+        let client = ProgramVersion::new(2, 2, 3);
+        assert!(program.error(&client));
+
+        // Different major (program higher) - error
+        let program = ProgramVersion::new(2, 2, 3);
+        let client = ProgramVersion::new(1, 2, 3);
+        assert!(program.error(&client));
+
+        // Same major, client newer - no error (should be warning)
         let program = ProgramVersion::new(1, 2, 2);
         let client = ProgramVersion::new(1, 2, 3);
-        assert!(!program.warning(&client));
-    }
+        assert!(!program.error(&client));
 
-    #[test]
-    fn test_program_version_warning3() {
+        // Same major, program newer - no error
+        let program = ProgramVersion::new(1, 2, 4);
+        let client = ProgramVersion::new(1, 2, 3);
+        assert!(!program.error(&client));
+
+        // Same version - no error
         let program = ProgramVersion::new(1, 2, 3);
         let client = ProgramVersion::new(1, 2, 3);
-        assert!(!program.warning(&client));
-    }
-
-    #[test]
-    fn test_program_version_warning4() {
-        let program = ProgramVersion::new(1, 2, 3);
-        let client = ProgramVersion::new(1, 2, 2);
-        assert!(program.warning(&client));
-    }
-
-    #[test]
-    fn test_program_version_error1() {
-        let program = ProgramVersion::new(1, 2, 3);
-        let client = ProgramVersion::new(1, 3, 0);
-        assert!(!program.error(&client));
-    }
-
-    #[test]
-    fn test_program_version_error2() {
-        let program = ProgramVersion::new(2, 0, 3);
-        let client = ProgramVersion::new(1, 2, 0);
-        assert!(program.error(&client));
-    }
-
-    #[test]
-    fn test_program_version_error3() {
-        let program = ProgramVersion::new(1, 3, 3);
-        let client = ProgramVersion::new(1, 2, 0);
-        assert!(program.error(&client));
-    }
-
-    #[test]
-    fn test_program_version_error4() {
-        let program = ProgramVersion::new(1, 0, 3);
-        let client = ProgramVersion::new(2, 2, 0);
         assert!(!program.error(&client));
     }
 }

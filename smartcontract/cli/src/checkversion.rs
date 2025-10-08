@@ -56,7 +56,7 @@ mod tests {
     }
 
     #[test]
-    fn test_check_version_ok() {
+    fn test_check_version_same_versions_ok() {
         let mut output = Vec::new();
         let res = test_check_version(
             &mut output,
@@ -69,7 +69,33 @@ mod tests {
     }
 
     #[test]
-    fn test_check_version_minor_ok() {
+    fn test_check_version_program_higher_patch_warning() {
+        let mut output = Vec::new();
+        let res = test_check_version(
+            &mut output,
+            ProgramVersion::new(1, 0, 1),
+            ProgramVersion::new(1, 0, 0),
+        );
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        assert_eq!(output_str, "A new version of the client is available. We recommend updating to the latest version for the best experience.\n");
+    }
+
+    #[test]
+    fn test_check_version_program_higher_minor_warning() {
+        let mut output = Vec::new();
+        let res = test_check_version(
+            &mut output,
+            ProgramVersion::new(1, 2, 0),
+            ProgramVersion::new(1, 1, 0),
+        );
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        assert_eq!(output_str, "A new version of the client is available. We recommend updating to the latest version for the best experience.\n");
+    }
+
+    #[test]
+    fn test_check_version_client_higher_minor_ok() {
         let mut output = Vec::new();
         let res = test_check_version(
             &mut output,
@@ -82,12 +108,12 @@ mod tests {
     }
 
     #[test]
-    fn test_check_version_major_ok() {
+    fn test_check_version_client_higher_patch_ok() {
         let mut output = Vec::new();
         let res = test_check_version(
             &mut output,
-            ProgramVersion::new(1, 0, 0),
-            ProgramVersion::new(2, 0, 0),
+            ProgramVersion::new(1, 2, 0),
+            ProgramVersion::new(1, 2, 1),
         );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
@@ -95,15 +121,28 @@ mod tests {
     }
 
     #[test]
-    fn test_check_version_build_warning() {
+    fn test_check_version_client_higher_major_error() {
         let mut output = Vec::new();
         let res = test_check_version(
             &mut output,
-            ProgramVersion::new(1, 2, 10),
-            ProgramVersion::new(1, 2, 0),
+            ProgramVersion::new(1, 0, 0),
+            ProgramVersion::new(2, 0, 0),
         );
-        assert!(res.is_ok());
-        let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "A new version of the client is available. We recommend updating to the latest version for the best experience.\n");
+        assert!(res.is_err());
+        let error_msg = res.unwrap_err().to_string();
+        assert_eq!(error_msg, "Your client version is no longer up to date. Please update it before continuing to use the client.");
+    }
+
+    #[test]
+    fn test_check_version_program_higher_major_error() {
+        let mut output = Vec::new();
+        let res = test_check_version(
+            &mut output,
+            ProgramVersion::new(2, 0, 0),
+            ProgramVersion::new(1, 0, 0),
+        );
+        assert!(res.is_err());
+        let error_msg = res.unwrap_err().to_string();
+        assert_eq!(error_msg, "Your client version is no longer up to date. Please update it before continuing to use the client.");
     }
 }

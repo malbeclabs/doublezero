@@ -13,6 +13,7 @@ use doublezero_sdk::{
     },
     DoubleZeroClient, Exchange, Location, User, UserStatus, UserType,
 };
+use doublezero_serviceability::error::DoubleZeroError;
 use log::{info, warn};
 use solana_sdk::{pubkey::Pubkey, signature::Signature};
 use std::{
@@ -157,7 +158,7 @@ pub fn process_user_event(
                     record_device_ip_metrics(&user.device_pk, device_state, locations, exchanges);
                 }
                 Err(e) => {
-                    write!(&mut log_msg, " Error: {e}").unwrap();
+                    log_error_ignore_invalid_status(&mut log_msg, e);
                 }
             }
 
@@ -246,7 +247,7 @@ pub fn process_user_event(
                     record_device_ip_metrics(&user.device_pk, device_state, locations, exchanges);
                 }
                 Err(e) => {
-                    write!(&mut log_msg, " Error {e}").unwrap();
+                    log_error_ignore_invalid_status(&mut log_msg, e);
                 }
             }
 
@@ -323,7 +324,7 @@ pub fn process_user_event(
                             .increment(1);
                         }
                         Err(e) => {
-                            write!(&mut log_msg, " Error {e}").unwrap();
+                            write!(&mut log_msg, "Error {e}").unwrap();
                         }
                     }
                 }
@@ -333,6 +334,19 @@ pub fn process_user_event(
             info!("{log_msg}");
         }
         _ => {}
+    }
+}
+
+fn log_error_ignore_invalid_status(log_msg: &mut String, e: eyre::ErrReport) {
+    // Ignore DoubleZeroError::InvalidStatus errors since this only happens when the user is already activated
+    if let Some(dz_err) = e.downcast_ref::<DoubleZeroError>() {
+        if matches!(dz_err, DoubleZeroError::InvalidStatus) {
+            // Do nothing
+        } else {
+            write!(log_msg, "Error: {e}").unwrap();
+        }
+    } else {
+        write!(log_msg, "Error: {e}").unwrap();
     }
 }
 

@@ -27,7 +27,7 @@ use solana_program::{
 
 // Value to rent exempt two `User` accounts + configurable amount for connect/disconnect txns
 // `User` account size assumes a single publisher and subscriber pubkey registered
-const AIRDROP_USER_RENT_LAMPORTS_BYTES: usize = 236 * 3;
+const AIRDROP_USER_RENT_LAMPORTS_BYTES: usize = 236 * 3; // 236 bytes per User account x 3 accounts = 708 bytes
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct SetAccessPassArgs {

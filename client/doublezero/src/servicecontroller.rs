@@ -49,7 +49,7 @@ pub struct LatencyRecord {
     pub reachable: bool,
 }
 
-fn display_as_ms(latency: &i32) -> String {
+pub fn display_as_ms(latency: &i32) -> String {
     format!("{:.2}ms", (*latency as f32 / NANOS_TO_MS))
 }
 
@@ -80,7 +80,7 @@ pub struct RemoveResponse {
     pub description: Option<String>,
 }
 
-#[derive(Tabled, Serialize, Deserialize, Debug)]
+#[derive(Clone, Tabled, Serialize, Deserialize, Debug)]
 #[tabled(display(Option, "display::option", ""))]
 pub struct StatusResponse {
     #[tabled(inline)]
@@ -103,7 +103,7 @@ pub struct GetConfigResponse {
     pub rpc_url: String,
 }
 
-#[derive(Tabled, Serialize, Deserialize, Debug)]
+#[derive(Clone, Tabled, Serialize, Deserialize, Debug)]
 pub struct DoubleZeroStatus {
     #[tabled(rename = "Tunnel status")]
     pub session_status: String,

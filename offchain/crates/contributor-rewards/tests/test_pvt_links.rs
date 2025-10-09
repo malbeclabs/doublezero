@@ -1,6 +1,6 @@
 use anyhow::Result;
 use doublezero_contributor_rewards::{
-    calculator::shapley_handler::{PreviousEpochCache, build_devices, build_private_links},
+    calculator::shapley_handler::{build_devices, build_private_links},
     ingestor::types::FetchData,
     processor::telemetry::DZDTelemetryProcessor,
     settings,

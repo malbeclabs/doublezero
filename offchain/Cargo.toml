@@ -72,44 +72,44 @@ url = "2"
 
 [workspace.dependencies.doublezero-passport]
 features = ["offchain"]
-git = "ssh://git@github.com/doublezerofoundation/doublezero-solana"
-rev = "464823a"
+git = "https://github.com/doublezerofoundation/doublezero-solana"
+rev = "a3cd70b"
 
 [workspace.dependencies.doublezero-program-tools]
-git = "ssh://git@github.com/doublezerofoundation/doublezero-solana"
-rev = "464823a"
+git = "https://github.com/doublezerofoundation/doublezero-solana"
+rev = "a3cd70b"
 
 [workspace.dependencies.doublezero-revenue-distribution]
-git = "ssh://git@github.com/doublezerofoundation/doublezero-solana"
-rev = "464823a"
+git = "https://github.com/doublezerofoundation/doublezero-solana"
+rev = "a3cd70b"
 
 [workspace.dependencies.doublezero-solana-client-tools]
-git = "ssh://git@github.com/doublezerofoundation/doublezero-solana"
-rev = "464823a"
+git = "https://github.com/doublezerofoundation/doublezero-solana"
+rev = "a3cd70b"
 
 ### Dependencies found in github.com/malbeclabs/doublezero
 
 [workspace.dependencies.doublezero-program-common]
-git = "ssh://git@github.com/malbeclabs/doublezero"
+git = "https://github.com/malbeclabs/doublezero"
 rev="89a675d"
 
 [workspace.dependencies.doublezero-record]
 features = ["no-entrypoint"]
-git = "ssh://git@github.com/malbeclabs/doublezero"
+git = "https://github.com/malbeclabs/doublezero"
 rev="89a675d"
 
 [workspace.dependencies.doublezero_sdk]
-git = "ssh://git@github.com/malbeclabs/doublezero"
+git = "https://github.com/malbeclabs/doublezero"
 rev="89a675d"
 
 [workspace.dependencies.doublezero-serviceability]
 features = ["no-entrypoint", "serde"]
-git = "ssh://git@github.com/malbeclabs/doublezero"
+git = "https://github.com/malbeclabs/doublezero"
 rev="89a675d"
 
 [workspace.dependencies.doublezero-telemetry]
 features = ["no-entrypoint", "serde"]
-git = "ssh://git@github.com/malbeclabs/doublezero"
+git = "https://github.com/malbeclabs/doublezero"
 rev="89a675d"
 
 ### Other git dependencies

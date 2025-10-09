@@ -55,7 +55,7 @@ mod tests {
         }
 
         // With access pass changes, verify the cities expected exist
-        let expected_cities = ["ams", "fra", "lax", "lon", "nyc", "prg", "sin", "tyo"];
+        let expected_cities = ["AMS", "FRA", "LAX", "LON", "NYC", "PRG", "SIN", "TYO"];
 
         println!("{:#?}", result.demands);
 
@@ -78,9 +78,10 @@ mod tests {
                     // Verify demand has valid values
                     if let Some(demand) = found {
                         assert!(demand.receivers > 0, "Demand should have receivers");
+                        // Priority can be 0.0 if total_stake_proxy is 0 for the destination city
                         assert!(
-                            demand.priority > 0.0,
-                            "Demand should have positive priority"
+                            demand.priority >= 0.0,
+                            "Demand priority should be non-negative"
                         );
                     }
                 }

@@ -10,6 +10,7 @@ use doublezero_serviceability::state::{
 use doublezero_telemetry::state::{
     device_latency_samples::DeviceLatencySamples, internet_latency_samples::InternetLatencySamples,
 };
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use solana_sdk::{account::Account, pubkey::Pubkey};
 use std::{
@@ -79,43 +80,47 @@ impl FetchData {
 }
 
 /// Struct for all network data
+///
+/// Note: Use IndexMap to preserve insertion order during serialization/deserialization. This
+/// ensures deterministic JSON output and consistent iteration order, which is critical for
+/// snapshot-based reward calculations that must match R implementation exactly.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct DZServiceabilityData {
     #[serde(
-        serialize_with = "serializer::serialize_pubkey_btreemap",
-        deserialize_with = "serializer::deserialize_pubkey_btreemap"
+        serialize_with = "serialize_pubkey_indexmap",
+        deserialize_with = "deserialize_pubkey_indexmap"
     )]
-    pub locations: BTreeMap<Pubkey, DZLocation>,
+    pub locations: IndexMap<Pubkey, DZLocation>,
     #[serde(
-        serialize_with = "serializer::serialize_pubkey_btreemap",
-        deserialize_with = "serializer::deserialize_pubkey_btreemap"
+        serialize_with = "serialize_pubkey_indexmap",
+        deserialize_with = "deserialize_pubkey_indexmap"
     )]
-    pub exchanges: BTreeMap<Pubkey, DZExchange>,
+    pub exchanges: IndexMap<Pubkey, DZExchange>,
     #[serde(
-        serialize_with = "serializer::serialize_pubkey_btreemap",
-        deserialize_with = "serializer::deserialize_pubkey_btreemap"
+        serialize_with = "serialize_pubkey_indexmap",
+        deserialize_with = "deserialize_pubkey_indexmap"
     )]
-    pub devices: BTreeMap<Pubkey, DZDevice>,
+    pub devices: IndexMap<Pubkey, DZDevice>,
     #[serde(
-        serialize_with = "serializer::serialize_pubkey_btreemap",
-        deserialize_with = "serializer::deserialize_pubkey_btreemap"
+        serialize_with = "serialize_pubkey_indexmap",
+        deserialize_with = "deserialize_pubkey_indexmap"
     )]
-    pub links: BTreeMap<Pubkey, DZLink>,
+    pub links: IndexMap<Pubkey, DZLink>,
     #[serde(
-        serialize_with = "serializer::serialize_pubkey_btreemap",
-        deserialize_with = "serializer::deserialize_pubkey_btreemap"
+        serialize_with = "serialize_pubkey_indexmap",
+        deserialize_with = "deserialize_pubkey_indexmap"
     )]
-    pub users: BTreeMap<Pubkey, DZUser>,
+    pub users: IndexMap<Pubkey, DZUser>,
     #[serde(
-        serialize_with = "serializer::serialize_pubkey_btreemap",
-        deserialize_with = "serializer::deserialize_pubkey_btreemap"
+        serialize_with = "serialize_pubkey_indexmap",
+        deserialize_with = "deserialize_pubkey_indexmap"
     )]
-    pub multicast_groups: BTreeMap<Pubkey, DZMulticastGroup>,
+    pub multicast_groups: IndexMap<Pubkey, DZMulticastGroup>,
     #[serde(
-        serialize_with = "serializer::serialize_pubkey_btreemap",
-        deserialize_with = "serializer::deserialize_pubkey_btreemap"
+        serialize_with = "serialize_pubkey_indexmap",
+        deserialize_with = "deserialize_pubkey_indexmap"
     )]
-    pub contributors: BTreeMap<Pubkey, DZContributor>,
+    pub contributors: IndexMap<Pubkey, DZContributor>,
     #[serde(
         serialize_with = "serializer::serialize_pubkey_btreemap",
         deserialize_with = "serializer::deserialize_pubkey_btreemap"
@@ -271,4 +276,64 @@ pub struct DZInternetData {
     pub internet_latency_samples: Vec<DZInternetLatencySamples>,
     #[serde(skip)]
     pub accounts: KeyedAccounts,
+}
+
+/// Custom serializer for IndexMap<Pubkey, T> that preserves insertion order
+/// Serializes Pubkey as string keys in JSON
+pub fn serialize_pubkey_indexmap<S, T>(
+    map: &IndexMap<Pubkey, T>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+    T: Serialize,
+{
+    use serde::ser::SerializeMap;
+    let mut map_ser = serializer.serialize_map(Some(map.len()))?;
+    for (k, v) in map {
+        map_ser.serialize_entry(&k.to_string(), v)?;
+    }
+    map_ser.end()
+}
+
+/// Custom deserializer for IndexMap<Pubkey, T> that preserves insertion order
+/// Deserializes from JSON object with string keys
+pub fn deserialize_pubkey_indexmap<'de, D, T>(
+    deserializer: D,
+) -> Result<IndexMap<Pubkey, T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    use serde::de::{Error, MapAccess, Visitor};
+    use std::marker::PhantomData;
+
+    struct IndexMapVisitor<T>(PhantomData<T>);
+
+    impl<'de, T> Visitor<'de> for IndexMapVisitor<T>
+    where
+        T: Deserialize<'de>,
+    {
+        type Value = IndexMap<Pubkey, T>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("a map with Pubkey string keys")
+        }
+
+        fn visit_map<M>(self, mut access: M) -> Result<Self::Value, M::Error>
+        where
+            M: MapAccess<'de>,
+        {
+            let mut map = IndexMap::with_capacity(access.size_hint().unwrap_or(0));
+            while let Some((key_str, value)) = access.next_entry::<String, T>()? {
+                let key = key_str
+                    .parse::<Pubkey>()
+                    .map_err(|e| Error::custom(format!("Invalid Pubkey: {}", e)))?;
+                map.insert(key, value);
+            }
+            Ok(map)
+        }
+    }
+
+    deserializer.deserialize_map(IndexMapVisitor(PhantomData))
 }

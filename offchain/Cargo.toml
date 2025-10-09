@@ -33,6 +33,7 @@ dotenvy = "0"
 futures = "0"
 futures-util = "0"
 governor = "0"
+indexmap = { version = "2", features = ["serde"] }
 itertools = "0"
 leaky-bucket = "1"
 metrics = "0"
@@ -116,7 +117,7 @@ rev="89a675d"
 [workspace.dependencies.network-shapley]
 features = ["serde", "borsh"]
 git = "https://github.com/doublezerofoundation/network-shapley-rs"
-tag = "v0.2.1"
+tag = "v0.3.0"
 
 ### Local dependencies
 

@@ -35,6 +35,7 @@ doublezero-revenue-distribution.workspace = true
 doublezero-serviceability.workspace = true
 doublezero-telemetry.workspace = true
 governor.workspace = true
+indexmap.workspace = true
 metrics.workspace = true
 metrics-exporter-prometheus.workspace = true
 network-shapley.workspace = true

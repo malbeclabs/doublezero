@@ -10,19 +10,24 @@ pub enum RewardsCommands {
     #[command(
         about = "Calculate Shapley value-based rewards for network contributors",
         after_help = r#"Examples:
-    # Calculate rewards for the previous epoch
-    calculate-rewards -k keypair.json
-
-    # Calculate for a specific epoch
-    calculate-rewards --epoch 123 -k keypair.json
+    # Calculate rewards from snapshot
+    calculate-rewards --snapshot mn-epoch-27-snapshot.json -k keypair.json
 
     # Dry run to preview without writing to DZ ledger
-    calculate-rewards --epoch 123 --dry-run"#
+    calculate-rewards --snapshot mn-epoch-27-snapshot.json --dry-run
+
+    # Create a snapshot first using the snapshot command
+    snapshot all --epoch 27 --output-file mn-epoch-27-snapshot.json"#
     )]
     CalculateRewards {
-        /// DZ epoch to calculate rewards for (defaults to previous epoch)
-        #[arg(short, long, value_name = "EPOCH")]
-        epoch: Option<u64>,
+        /// Path to epoch snapshot file (REQUIRED for reproducible calculations)
+        #[arg(
+            short = 's',
+            long,
+            value_name = "FILE",
+            help = "Snapshot file containing epoch data"
+        )]
+        snapshot: PathBuf,
 
         /// Skip writing to ledger and show what would be written
         #[arg(long)]
@@ -212,12 +217,12 @@ pub enum RewardsCommands {
 pub async fn handle(orchestrator: &Orchestrator, cmd: RewardsCommands) -> Result<()> {
     match cmd {
         RewardsCommands::CalculateRewards {
-            epoch,
+            snapshot,
             dry_run,
             keypair,
         } => {
             orchestrator
-                .calculate_rewards(epoch, keypair, dry_run)
+                .calculate_rewards(None, keypair, Some(snapshot), dry_run)
                 .await
         }
         RewardsCommands::ReadTelemAgg {

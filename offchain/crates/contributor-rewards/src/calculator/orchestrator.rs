@@ -9,6 +9,7 @@ use crate::{
         shapley_aggregator::aggregate_shapley_outputs,
         util::print_demands,
     },
+    cli::snapshot::CompleteSnapshot,
     ingestor::fetcher::Fetcher,
     settings::Settings,
 };
@@ -40,13 +41,28 @@ impl Orchestrator {
         &self,
         epoch: Option<u64>,
         keypair_path: Option<PathBuf>,
+        snapshot_path: Option<PathBuf>,
         dry_run: bool,
     ) -> Result<()> {
         let epoch_start = Instant::now();
+
+        // Prepare all data - either from snapshot or from RPC
+        let prep_data = if let Some(snapshot_file) = snapshot_path {
+            info!("Loading data from snapshot: {:?}", snapshot_file);
+            let snapshot = CompleteSnapshot::load_from_file(&snapshot_file)?;
+            info!(
+                "Snapshot loaded: epoch {}, created at {}",
+                snapshot.dz_epoch, snapshot.metadata.created_at
+            );
+            PreparedData::from_snapshot(&snapshot, &self.settings, true)?
+        } else {
+            let fetcher = Fetcher::from_settings(&self.settings)?;
+            PreparedData::new(&fetcher, epoch, true).await?
+        };
+
+        // Create fetcher for ledger writes (needed even in snapshot mode for non-dry-run)
         let fetcher = Fetcher::from_settings(&self.settings)?;
 
-        // Prepare all data
-        let prep_data = PreparedData::new(&fetcher, epoch, true).await?;
         let fetch_epoch = prep_data.epoch;
         let fetch_epoch_bytes = fetch_epoch.to_le_bytes();
         let device_telemetry = prep_data.device_telemetry;

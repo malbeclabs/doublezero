@@ -1,6 +1,7 @@
 use anyhow::Result;
 use network_shapley::shapley::{ShapleyOutput, ShapleyValue};
 use std::collections::BTreeMap;
+use tabled::{builder::Builder as TableBuilder, settings::Style};
 use tracing::info;
 
 /// Aggregates per-city Shapley outputs using pre-calculated stake-share weights
@@ -15,17 +16,21 @@ pub fn aggregate_shapley_outputs(
     per_city_outputs: &BTreeMap<String, Vec<(String, f64)>>,
     city_weights: &BTreeMap<String, f64>,
 ) -> Result<ShapleyOutput> {
-    // Log the weights being used
+    // Log the weights being used in table format
     let weights_sum: f64 = city_weights.values().sum();
-    info!(
-        "City weights (sum={:.4}): {:?}",
-        weights_sum,
-        city_weights
-            .iter()
-            .map(|(city, weight)| format!("{city}: {weight:.4}"))
-            .collect::<Vec<_>>()
-            .join(", ")
-    );
+
+    let mut table_rows = vec![vec!["city".to_string(), "weight".to_string()]];
+    for (city, weight) in city_weights.iter() {
+        table_rows.push(vec![city.to_uppercase(), format!("{:.4}", weight)]);
+    }
+    table_rows.push(vec!["total".to_string(), format!("{:.4}", weights_sum)]);
+
+    let table = TableBuilder::from(table_rows)
+        .build()
+        .with(Style::psql().remove_horizontals())
+        .to_string();
+
+    info!("\n{}", table);
 
     // Aggregate values for each operator across all cities
     let mut operator_values: BTreeMap<String, f64> = BTreeMap::new();
@@ -51,28 +56,16 @@ pub fn aggregate_shapley_outputs(
         .into_iter()
         .map(|(operator, value)| {
             let proportion = if total_value != 0.0 {
-                value / total_value // Store as decimal (0.0 to 1.0)
+                value / total_value
             } else {
                 0.0
             };
 
-            (
-                operator,
-                ShapleyValue {
-                    value: round_to_decimals(value, 4),
-                    proportion: round_to_decimals(proportion, 6), // Keep more precision for proportions
-                },
-            )
+            (operator, ShapleyValue { value, proportion })
         })
         .collect();
 
     Ok(consolidated)
-}
-
-/// Round a float to specified decimal places
-fn round_to_decimals(value: f64, decimals: u32) -> f64 {
-    let multiplier = 10_f64.powi(decimals as i32);
-    (value * multiplier).round() / multiplier
 }
 
 #[cfg(test)]
@@ -128,16 +121,16 @@ mod tests {
         assert_eq!(result.len(), 3);
 
         let op_a = result.get("OperatorA").unwrap();
-        assert_eq!(op_a.value, 92.0);
-        assert_eq!(op_a.proportion, 0.613333); // 92/150
+        assert!((op_a.value - 92.0).abs() < 1e-9);
+        assert!((op_a.proportion - 92.0 / 150.0).abs() < 1e-9); // 92/150
 
         let op_b = result.get("OperatorB").unwrap();
-        assert_eq!(op_b.value, 30.0);
-        assert_eq!(op_b.proportion, 0.2); // 30/150
+        assert!((op_b.value - 30.0).abs() < 1e-9);
+        assert!((op_b.proportion - 30.0 / 150.0).abs() < 1e-9); // 30/150
 
         let op_c = result.get("OperatorC").unwrap();
-        assert_eq!(op_c.value, 28.0);
-        assert_eq!(op_c.proportion, 0.186667); // 28/150
+        assert!((op_c.value - 28.0).abs() < 1e-9);
+        assert!((op_c.proportion - 28.0 / 150.0).abs() < 1e-9); // 28/150
     }
 
     #[test]
@@ -163,12 +156,12 @@ mod tests {
         assert_eq!(result.len(), 2);
 
         let op_x = result.get("OpX").unwrap();
-        assert_eq!(op_x.value, 75.0);
-        assert_eq!(op_x.proportion, 0.75); // 75/100
+        assert!((op_x.value - 75.0).abs() < 1e-9);
+        assert!((op_x.proportion - 0.75).abs() < 1e-9); // 75/100
 
         let op_y = result.get("OpY").unwrap();
-        assert_eq!(op_y.value, 25.0);
-        assert_eq!(op_y.proportion, 0.25); // 25/100
+        assert!((op_y.value - 25.0).abs() < 1e-9);
+        assert!((op_y.proportion - 0.25).abs() < 1e-9); // 25/100
     }
 
     #[test]
@@ -199,12 +192,12 @@ mod tests {
         assert_eq!(result.len(), 2);
         // Each operator gets 50% weight
         let op_a = result.get("OpA").unwrap();
-        assert_eq!(op_a.value, 50.0);
-        assert_eq!(op_a.proportion, 0.5); // 50/100
+        assert!((op_a.value - 50.0).abs() < 1e-9);
+        assert!((op_a.proportion - 0.5).abs() < 1e-9); // 50/100
 
         let op_b = result.get("OpB").unwrap();
-        assert_eq!(op_b.value, 50.0);
-        assert_eq!(op_b.proportion, 0.5); // 50/100
+        assert!((op_b.value - 50.0).abs() < 1e-9);
+        assert!((op_b.proportion - 0.5).abs() < 1e-9); // 50/100
     }
 
     #[test]
@@ -235,8 +228,8 @@ mod tests {
         // MAD should be ignored due to zero stake
         assert_eq!(result.len(), 1);
         let op_active = result.get("OpActive").unwrap();
-        assert_eq!(op_active.value, 50.0);
-        assert_eq!(op_active.proportion, 1.0);
+        assert!((op_active.value - 50.0).abs() < 1e-9);
+        assert!((op_active.proportion - 1.0).abs() < 1e-9);
     }
 
     #[test]
@@ -295,12 +288,12 @@ mod tests {
         assert_eq!(result.len(), 2);
 
         let op_pos = result.get("OpPositive").unwrap();
-        assert_eq!(op_pos.value, 100.0);
-        assert_eq!(op_pos.proportion, 2.0); // 100/50
+        assert!((op_pos.value - 100.0).abs() < 1e-9);
+        assert!((op_pos.proportion - 2.0).abs() < 1e-9); // 100/50
 
         let op_neg = result.get("OpNegative").unwrap();
-        assert_eq!(op_neg.value, -50.0);
-        assert_eq!(op_neg.proportion, -1.0); // -50/50
+        assert!((op_neg.value + 50.0).abs() < 1e-9);
+        assert!((op_neg.proportion + 1.0).abs() < 1e-9); // -50/50
     }
 
     #[test]

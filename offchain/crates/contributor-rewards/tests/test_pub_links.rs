@@ -60,6 +60,7 @@ fn test_settings() -> settings::Settings {
         scheduler: settings::SchedulerSettings {
             interval_seconds: 300,
             state_file: "/var/lib/doublezero-contributor-rewards/scheduler.state".to_string(),
+            snapshot_dir: "/tmp/snapshots".to_string(),
             max_consecutive_failures: 10,
             enable_dry_run: false,
         },

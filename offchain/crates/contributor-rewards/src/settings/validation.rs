@@ -202,6 +202,7 @@ mod tests {
             scheduler: SchedulerSettings {
                 interval_seconds: 300,
                 state_file: "/var/lib/doublezero-contributor-rewards/scheduler.state".to_string(),
+                snapshot_dir: "/var/lib/doublezero-contributor-rewards/snapshots".to_string(),
                 max_consecutive_failures: 10,
                 enable_dry_run: false,
             },

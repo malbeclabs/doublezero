@@ -125,11 +125,11 @@ mod tests {
             );
             cache.device_stats = Some(prev_device_stats);
 
-            // Should prefer previous epoch average (5000us) over default (1000ms)
+            // Should prefer previous epoch average (9000us P95) over default (1000ms)
             let prev_avg = cache
                 .get_device_circuit_average("device1->device2")
                 .unwrap();
-            assert_eq!(prev_avg, 5000.0); // Previous epoch mean
+            assert_eq!(prev_avg, 9000.0); // Previous epoch P95
         }
 
         // Test 3: With previous epoch lookup enabled but no data available
@@ -204,7 +204,7 @@ mod tests {
 
             let avg = cache.get_device_circuit_average("device1->device2");
             assert!(avg.is_some());
-            assert_eq!(avg.unwrap(), 5000.0); // The mean from mock stats
+            assert_eq!(avg.unwrap(), 9000.0); // The P95 from mock stats
 
             let missing = cache.get_device_circuit_average("device3->device4");
             assert!(missing.is_none());

@@ -129,6 +129,8 @@ pub struct SchedulerSettings {
     pub interval_seconds: u64,
     /// Path to worker state file
     pub state_file: String,
+    /// Directory to store epoch snapshots
+    pub snapshot_dir: String,
     /// Maximum consecutive failures before halting
     pub max_consecutive_failures: u32,
     /// Enable dry run mode for worker

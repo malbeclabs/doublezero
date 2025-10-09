@@ -95,12 +95,28 @@ impl InternetTelemetryProcessor {
             .map(|(pubkey, exch)| (*pubkey, exch.code.to_string()))
             .collect();
 
-        // Process internet telemetry samples
-        let generic_stats = process_internet_samples(
-            &fetch_data.dz_internet.internet_latency_samples,
-            fetch_data.start_us,
-            fetch_data.end_us,
-        )?;
+        // Filter out ripeatlas samples (R implementation excludes ripeatlas)
+        let filtered_samples: Vec<DZInternetLatencySamples> = fetch_data
+            .dz_internet
+            .internet_latency_samples
+            .iter()
+            .filter(|sample| sample.data_provider_name != "ripeatlas")
+            .cloned()
+            .collect();
+
+        let total_samples = fetch_data.dz_internet.internet_latency_samples.len();
+        let filtered_count = filtered_samples.len();
+        if filtered_count < total_samples {
+            debug!(
+                "Filtered out {} ripeatlas samples ({} remaining)",
+                total_samples - filtered_count,
+                filtered_count
+            );
+        }
+
+        // Process internet telemetry samples (excluding ripeatlas)
+        let generic_stats =
+            process_internet_samples(&filtered_samples, fetch_data.start_us, fetch_data.end_us)?;
 
         debug!(
             "Processed {} circuits for internet data",
@@ -112,7 +128,7 @@ impl InternetTelemetryProcessor {
 
         // Need to get the first sample from each group to extract oracle agent
         let mut sample_by_key: BTreeMap<String, &DZInternetLatencySamples> = BTreeMap::new();
-        for sample in &fetch_data.dz_internet.internet_latency_samples {
+        for sample in filtered_samples.iter() {
             let key = format!(
                 "{}:{}:{}",
                 sample.origin_exchange_pk, sample.target_exchange_pk, sample.data_provider_name

@@ -67,6 +67,45 @@ pub fn display_us_as_ms(us: &f64) -> String {
     format!("{}", us / 1000.0)
 }
 
+/// Calculate quantile using R's type 7 algorithm (default in R's quantile function)
+/// This uses linear interpolation to match R's default behavior exactly
+///
+/// R type 7 formula:
+/// - h = (n-1) * p  (0-based continuous index)
+/// - Interpolate linearly between floor(h) and ceil(h)
+///
+/// # Arguments
+/// * `sorted_values` - Sorted array of values (must be pre-sorted ascending)
+/// * `p` - Quantile to compute (0.0 to 1.0)
+///
+/// # Returns
+/// The interpolated quantile value
+pub fn quantile_r_type7(sorted_values: &[f64], p: f64) -> f64 {
+    let n = sorted_values.len();
+    if n == 0 {
+        return f64::NAN;
+    }
+    if n == 1 {
+        return sorted_values[0];
+    }
+
+    // R type 7: h = (n-1) * p (0-based continuous index)
+    let h = (n - 1) as f64 * p;
+    let h_floor = h.floor() as usize;
+
+    // Handle edge case where h_floor is at the last index
+    if h_floor >= n - 1 {
+        return sorted_values[n - 1];
+    }
+
+    // Linear interpolation between h_floor and h_floor + 1
+    let lower = sorted_values[h_floor];
+    let upper = sorted_values[h_floor + 1];
+    let fraction = h - h_floor as f64;
+
+    lower + fraction * (upper - lower)
+}
+
 pub fn calculate_rtt_statistics(values: &[f64]) -> Result<RttStats> {
     if values.is_empty() {
         return Ok(RttStats::new_dead());
@@ -106,14 +145,11 @@ pub fn calculate_rtt_statistics(values: &[f64]) -> Result<RttStats> {
     let variance = if len > 0 { m2 / n } else { 0.0 };
     let stddev = variance.sqrt();
 
-    // Calculate percentiles
-    let p90_index = ((n * 0.90).ceil() - 1.0).max(0.0) as usize;
-    let p95_index = ((n * 0.95).ceil() - 1.0).max(0.0) as usize;
-    let p99_index = ((n * 0.99).ceil() - 1.0).max(0.0) as usize;
-
-    let p90 = sorted_values.get(p90_index).copied().unwrap_or(mean);
-    let p95 = sorted_values.get(p95_index).copied().unwrap_or(mean);
-    let p99 = sorted_values.get(p99_index).copied().unwrap_or(mean);
+    // Calculate percentiles using R's type 7 quantile algorithm (linear interpolation)
+    // This exactly matches R's default quantile(x, p, type=7) behavior
+    let p90 = quantile_r_type7(&sorted_values, 0.90);
+    let p95 = quantile_r_type7(&sorted_values, 0.95);
+    let p99 = quantile_r_type7(&sorted_values, 0.99);
 
     // Calculate MAD (Median Absolute Deviation)
     let mut deviations: Vec<f64> = sorted_values.iter().map(|&v| (v - median).abs()).collect();
@@ -285,9 +321,13 @@ mod tests {
         assert_eq!(stats.median_us, 300.0);
         assert_eq!(stats.min_us, 100.0);
         assert_eq!(stats.max_us, 500.0);
-        assert_eq!(stats.p90_us, 500.0);
-        assert_eq!(stats.p95_us, 500.0);
-        assert_eq!(stats.p99_us, 500.0);
+        // R type 7 quantile with linear interpolation:
+        // For n=5, p90: h=(5-1)*0.90=3.6, interpolate between index 3 (400) and 4 (500): 400 + 0.6*100 = 460
+        // For n=5, p95: h=(5-1)*0.95=3.8, interpolate between index 3 (400) and 4 (500): 400 + 0.8*100 = 480
+        // For n=5, p99: h=(5-1)*0.99=3.96, interpolate between index 3 (400) and 4 (500): 400 + 0.96*100 = 496
+        assert_eq!(stats.p90_us, 460.0);
+        assert_eq!(stats.p95_us, 480.0);
+        assert_eq!(stats.p99_us, 496.0);
         // Standard deviation calculation
         assert!((stats.stddev_us - 141.421).abs() < 0.01);
         assert!((stats.variance_us - 20000.0).abs() < 1.0);

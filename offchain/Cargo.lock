@@ -1758,6 +1758,7 @@ dependencies = [
  "doublezero-serviceability",
  "doublezero-telemetry",
  "governor 0.10.1",
+ "indexmap",
  "itertools 0.14.0",
  "metrics",
  "metrics-exporter-prometheus",
@@ -3324,6 +3325,8 @@ checksum = "4b0f83760fb341a774ed326568e19f5a863af4a952def8c39f9ab92fd95b88e5"
 dependencies = [
  "equivalent",
  "hashbrown 0.16.0",
+ "serde",
+ "serde_core",
 ]
 
 [[package]]
@@ -3920,7 +3923,7 @@ dependencies = [
 [[package]]
 name = "network-shapley"
 version = "0.1.0"
-source = "git+https://github.com/doublezerofoundation/network-shapley-rs?tag=v0.2.1#e7280c350a9fcb740018d1c87e7376dc5e2c5a6f"
+source = "git+https://github.com/doublezerofoundation/network-shapley-rs?tag=v0.3.0#78bbe772c5dce6bbd9e83675015dbc13c9432d17"
 dependencies = [
  "borsh 1.5.7",
  "clarabel",

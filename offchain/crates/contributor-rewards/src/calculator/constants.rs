@@ -5,7 +5,7 @@ pub const SLOTS_IN_EPOCH: f64 = 432000.0;
 pub const BPS_TO_GBPS: u64 = 1_000_000_000;
 
 // Default edge bandwidth in Gbps - will be configurable via smart contract in future
-pub const DEFAULT_EDGE_BANDWIDTH_GBPS: u32 = 10;
+pub const DEFAULT_EDGE_BANDWIDTH_GBPS: u32 = 100;
 
 // 1s = 1000ms
 pub const SEC_TO_MS: f64 = 1000.0;

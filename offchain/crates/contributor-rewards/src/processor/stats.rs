@@ -97,13 +97,14 @@ fn extract_samples_common(
         sample_count as usize
     };
 
-    // Extract samples within range, filtering out failed samples (zeros)
+    // Extract samples within range, filtering out failed samples (zeros and near-zero noise)
+    // Matches R implementation: samples[which(samples > 1e-10)]
     let mut values = Vec::new();
     if start_idx < end_idx && start_idx < samples.len() {
         let actual_end_idx = end_idx.min(samples.len());
         for &sample in samples.iter().take(actual_end_idx).skip(start_idx) {
-            // Only include successful samples (non-zero values)
-            if sample > 0 {
+            // Only include successful samples (filtering threshold matches R)
+            if sample as f64 > 1e-10 {
                 values.push(sample as f64);
             }
         }

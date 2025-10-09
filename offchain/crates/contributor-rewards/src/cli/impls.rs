@@ -1,11 +1,12 @@
 use crate::{
+    calculator::input::RewardInput,
     cli::{
         common::{OutputFormat, collection_to_csv, to_json_string},
         traits::Exportable,
     },
     processor::{internet::InternetTelemetryStats, telemetry::DZDTelemetryStats},
 };
-use anyhow::Result;
+use anyhow::{Result, bail};
 
 // Implement Exportable for processor types
 
@@ -43,6 +44,19 @@ impl Exportable for Vec<DZDTelemetryStats> {
     fn export(&self, format: OutputFormat) -> Result<String> {
         match format {
             OutputFormat::Csv => collection_to_csv(self),
+            OutputFormat::Json => to_json_string(self, false),
+            OutputFormat::JsonPretty => to_json_string(self, true),
+        }
+    }
+}
+
+// Implement Exportable for RewardInput
+impl Exportable for RewardInput {
+    fn export(&self, format: OutputFormat) -> Result<String> {
+        match format {
+            OutputFormat::Csv => {
+                bail!("CSV export not supported for RewardInput. Use JSON format.")
+            }
             OutputFormat::Json => to_json_string(self, false),
             OutputFormat::JsonPretty => to_json_string(self, true),
         }

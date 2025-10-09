@@ -1,21 +1,25 @@
 use crate::{
     calculator::{orchestrator::Orchestrator, recorder::compute_record_address},
-    ingestor::fetcher::Fetcher,
+    cli::snapshot::{CompleteSnapshot, SnapshotMetadata},
+    ingestor::{epoch::EpochFinder, fetcher::Fetcher},
     scheduler::state::SchedulerState,
+    settings::network::Network,
 };
 use anyhow::{Result, anyhow, bail};
 use backon::{ExponentialBuilder, Retryable};
+use chrono::Utc;
 use doublezero_program_tools::zero_copy;
 use doublezero_revenue_distribution::state::ProgramConfig;
 use solana_client::client_error::ClientError as SolanaClientError;
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
 use std::{
+    fs,
     path::PathBuf,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tokio::{
     signal,
@@ -27,6 +31,7 @@ use tracing::{debug, error, info, warn};
 pub struct ScheduleWorker {
     orchestrator: Orchestrator,
     state_file: PathBuf,
+    snapshot_dir: PathBuf,
     keypair_path: Option<PathBuf>,
     dry_run: bool,
     interval: Duration,
@@ -43,9 +48,11 @@ impl ScheduleWorker {
         interval: Duration,
     ) -> Self {
         let max_consecutive_failures = orchestrator.settings.scheduler.max_consecutive_failures;
+        let snapshot_dir = PathBuf::from(&orchestrator.settings.scheduler.snapshot_dir);
         Self {
             orchestrator: orchestrator.clone(),
             state_file,
+            snapshot_dir,
             keypair_path,
             dry_run,
             interval,
@@ -182,20 +189,35 @@ impl ScheduleWorker {
 
         info!("Processing rewards for epoch {}", target_epoch);
 
+        // Step 1: Create snapshot for the target epoch
+        info!("Step 1/2: Creating snapshot for epoch {}", target_epoch);
+        let snapshot_path = match self.create_epoch_snapshot(target_epoch).await {
+            Ok(path) => {
+                state.mark_snapshot_created(target_epoch, path.clone());
+                state.save(&self.state_file)?;
+                path
+            }
+            Err(e) => {
+                error!(
+                    "Failed to create snapshot for epoch {}: {}",
+                    target_epoch, e
+                );
+                metrics::counter!(
+                    "doublezero_contributor_rewards_snapshot_failed",
+                    "reason" => "creation_error"
+                )
+                .increment(1);
+                return Err(e);
+            }
+        };
+
         if self.dry_run {
             info!(
                 "DRY RUN: Would calculate and write rewards for epoch {}",
                 target_epoch
             );
             info!("DRY RUN: Skipping actual ledger writes");
-
-            // Still fetch and compute to verify everything works
-            // but don't write to chain
-            let _fetcher = Fetcher::from_settings(&self.orchestrator.settings)?;
-            info!("DRY RUN: Fetched data successfully");
-            info!(
-                "DRY RUN: Would write device telemetry, internet telemetry, reward input, and shapley outputs"
-            );
+            info!("DRY RUN: Snapshot created at {:?}", snapshot_path);
 
             // Mark success even in dry run so we track what we've processed
             state.mark_success(target_epoch);
@@ -214,9 +236,10 @@ impl ScheduleWorker {
                 return Ok(false);
             }
 
-            // Calculate and write rewards for real
+            // Step 2: Calculate and write rewards using the snapshot
+            info!("Step 2/2: Calculating rewards from snapshot");
             self.orchestrator
-                .calculate_rewards(Some(target_epoch), self.keypair_path.clone(), false)
+                .calculate_rewards(None, self.keypair_path.clone(), Some(snapshot_path), false)
                 .await?;
 
             // Mark success
@@ -345,5 +368,127 @@ impl ScheduleWorker {
         .await?;
 
         Ok(maybe_account.value.is_some())
+    }
+
+    /// Create a snapshot for a given epoch
+    async fn create_epoch_snapshot(&self, epoch: u64) -> Result<PathBuf> {
+        let start = Instant::now();
+
+        info!("Creating snapshot for epoch {}", epoch);
+
+        // Create snapshot directory if it doesn't exist
+        fs::create_dir_all(&self.snapshot_dir).map_err(|e| {
+            anyhow!(
+                "Failed to create snapshot directory {:?}: {}",
+                self.snapshot_dir,
+                e
+            )
+        })?;
+
+        // Determine network prefix (mn for mainnet, tn for testnet)
+        let network_prefix = match self.orchestrator.settings.network {
+            Network::MainnetBeta | Network::Mainnet => "mn",
+            Network::Testnet => "tn",
+            Network::Devnet => "dn",
+        };
+
+        // Generate snapshot filename
+        let filename = format!("{}-epoch-{}-snapshot.json", network_prefix, epoch);
+        let snapshot_path = self.snapshot_dir.join(filename);
+
+        // Check if snapshot already exists
+        if snapshot_path.exists() {
+            warn!(
+                "Snapshot already exists at {:?}, overwriting",
+                snapshot_path
+            );
+        }
+
+        // Fetch all data for the epoch
+        info!("Fetching data for epoch {}", epoch);
+        let fetcher = Fetcher::from_settings(&self.orchestrator.settings)?;
+        let (fetch_epoch, fetch_data) = fetcher.fetch(Some(epoch)).await?;
+
+        if fetch_epoch != epoch {
+            bail!(
+                "Fetched epoch {} does not match target epoch {}",
+                fetch_epoch,
+                epoch
+            );
+        }
+
+        // Try to fetch leader schedule (optional - warn on failure)
+        info!("Fetching leader schedule for epoch {}", epoch);
+        let (solana_epoch, leader_schedule) = match EpochFinder::new(
+            fetcher.dz_rpc_client.clone(),
+            fetcher.solana_read_client.clone(),
+        )
+        .fetch_leader_schedule(epoch, fetch_data.start_us)
+        .await
+        {
+            Ok(schedule) => {
+                info!(
+                    "Leader schedule fetched successfully for Solana epoch {}",
+                    schedule.solana_epoch
+                );
+                (Some(schedule.solana_epoch), Some(schedule))
+            }
+            Err(e) => {
+                warn!("Failed to fetch leader schedule for epoch {}: {}", epoch, e);
+                warn!("Snapshot will be created without leader schedule");
+                (None, None)
+            }
+        };
+
+        // Create metadata
+        let metadata = SnapshotMetadata {
+            created_at: Utc::now().to_rfc3339(),
+            network: format!("{:?}", self.orchestrator.settings.network),
+            exchanges_count: fetch_data.dz_serviceability.exchanges.len(),
+            locations_count: fetch_data.dz_serviceability.locations.len(),
+            devices_count: fetch_data.dz_serviceability.devices.len(),
+            internet_samples_count: fetch_data.dz_internet.internet_latency_samples.len(),
+            device_samples_count: fetch_data.dz_telemetry.device_latency_samples.len(),
+        };
+
+        // Create complete snapshot
+        let snapshot = CompleteSnapshot {
+            dz_epoch: epoch,
+            solana_epoch,
+            fetch_data,
+            leader_schedule,
+            metadata,
+        };
+
+        // Write snapshot to file
+        info!("Writing snapshot to {:?}", snapshot_path);
+        snapshot.save_to_file(&snapshot_path)?;
+
+        let duration = start.elapsed();
+        let file_size = fs::metadata(&snapshot_path)?.len();
+
+        // Record metrics
+        metrics::histogram!("doublezero_contributor_rewards_snapshot_creation_duration_seconds")
+            .record(duration.as_secs_f64());
+        metrics::gauge!(
+            "doublezero_contributor_rewards_snapshot_size_bytes",
+            "epoch" => epoch.to_string()
+        )
+        .set(file_size as f64);
+        metrics::counter!(
+            "doublezero_contributor_rewards_snapshot_created",
+            "epoch" => epoch.to_string()
+        )
+        .increment(1);
+        metrics::gauge!("doublezero_contributor_rewards_last_snapshot_epoch").set(epoch as f64);
+
+        info!(
+            "Snapshot created successfully: {} ({:.2} MB, took {:.2}s)",
+            snapshot_path.display(),
+            file_size as f64 / 1_048_576.0,
+            duration.as_secs_f64()
+        );
+
+        Ok(snapshot_path)
     }
 }

@@ -10,16 +10,11 @@ use crate::{
     settings::{Settings, network::Network},
 };
 use anyhow::{Result, anyhow, bail};
-use doublezero_serviceability::state::{
-    accesspass::{AccessPassStatus, AccessPassType},
-    user::User as DZUser,
-};
+use doublezero_serviceability::state::user::User as DZUser;
 use network_shapley::types::{Demand, Demands};
 use rayon::prelude::*;
-use solana_sdk::{pubkey::Pubkey, system_program::ID as SystemProgramID};
-use std::collections::{BTreeMap, HashMap};
-use tabled::{Table, Tabled, settings::Style};
-use tracing::{info, warn};
+use std::collections::BTreeMap;
+use tracing::info;
 
 // key: location code, val: city stat
 pub type CityStats = BTreeMap<String, CityStat>;
@@ -82,112 +77,25 @@ pub fn build_with_schedule(
     fetch_data: &FetchData,
     leader_schedule: &LeaderSchedule,
 ) -> Result<DemandBuildOutput> {
-    // Build AccessPass lookup map
-    // This maps user_payer -> validator_pk for Connected SolanaValidator access passes only
-    let mut accessor_to_validator: HashMap<Pubkey, Pubkey> = HashMap::new();
-
-    // Track AccessPass statistics
-    let mut prepaid_count = 0;
-    let mut connected_validator_count = 0;
-    let mut requested_validator_count = 0;
-
-    for access_pass in fetch_data.dz_serviceability.access_passes.values() {
-        match (access_pass.accesspass_type, access_pass.status) {
-            (AccessPassType::Prepaid, AccessPassStatus::Connected) => prepaid_count += 1,
-            (AccessPassType::SolanaValidator(validator_pk), AccessPassStatus::Connected) => {
-                connected_validator_count += 1;
-                accessor_to_validator.insert(access_pass.user_payer, validator_pk);
-            }
-            (AccessPassType::SolanaValidator(validator_pk), AccessPassStatus::Requested) => {
-                requested_validator_count += 1;
-
-                // NOTE: add requested access passes to the map only on testnet/devnet
-                if matches!(settings.network, Network::Devnet | Network::Testnet) {
-                    accessor_to_validator.insert(access_pass.user_payer, validator_pk);
-                }
-            }
-            _ => {
-                warn!(
-                    access_pass_type = ?access_pass.accesspass_type,
-                    status = ?access_pass.status,
-                    "Ignored access pass"
-                );
-            }
-        }
-    }
-
-    // Process users and build validator mapping
-    let mut validator_to_user = BTreeMap::new();
-    let mut users_with_access_pass = 0;
-    let mut users_without_access_pass = 0;
+    // Process users and collect all (validator_pubkey, user) pairs
+    // NOTE: Use user.validator_pubkey directly (matching R's approach)
+    // Multiple users can share the same validator_pubkey, so we keep all pairs
+    // R includes ALL users, even those with SystemProgram validator (they get 0 slots)
+    let mut validator_user_pairs: Vec<(String, &DZUser)> = Vec::new();
 
     for user in fetch_data.dz_serviceability.users.values() {
-        match accessor_to_validator.get(&user.owner) {
-            None => {
-                users_without_access_pass += 1;
-            }
-            Some(validator_pk) => {
-                if *validator_pk != SystemProgramID {
-                    users_with_access_pass += 1;
-                    validator_to_user.insert(validator_pk.to_string(), user);
-                }
-            }
-        }
+        validator_user_pairs.push((user.validator_pubkey.to_string(), user));
     }
 
-    {
-        // For logging as table
-        #[derive(Debug, Tabled)]
-        struct AccessPassStats {
-            category: String,
-            count: usize,
-        }
+    info!("Total user-validator pairs: {}", validator_user_pairs.len());
 
-        // AccessPass breakdown table
-        let access_pass_stats = vec![
-            AccessPassStats {
-                category: "Prepaid".to_string(),
-                count: prepaid_count,
-            },
-            AccessPassStats {
-                category: "Validator - Connected".to_string(),
-                count: connected_validator_count,
-            },
-            AccessPassStats {
-                category: "Validator - Requested".to_string(),
-                count: requested_validator_count,
-            },
-        ];
-
-        let access_table = Table::new(access_pass_stats)
-            .with(Style::psql().remove_horizontals())
-            .to_string();
-        info!("AccessPass Breakdown:\n{}", access_table);
-
-        // User processing table
-        let user_stats = vec![
-            AccessPassStats {
-                category: "Users with Connected AccessPass".to_string(),
-                count: users_with_access_pass,
-            },
-            AccessPassStats {
-                category: "Users without Connected AccessPass".to_string(),
-                count: users_without_access_pass,
-            },
-        ];
-
-        let user_table = Table::new(user_stats)
-            .with(Style::psql().remove_horizontals())
-            .to_string();
-        info!("User Processing:\n{}", user_table);
-    }
-
-    if validator_to_user.is_empty() {
+    if validator_user_pairs.is_empty() {
         bail!("Did not find any validators to build demands!")
     }
 
     // Process leaders and build city statistics
-    let city_stats = build_city_stats(settings, fetch_data, &validator_to_user, leader_schedule)?;
+    let city_stats =
+        build_city_stats(settings, fetch_data, &validator_user_pairs, leader_schedule)?;
     if city_stats.is_empty() {
         bail!("Could not build any city_stats!")
     }
@@ -208,42 +116,90 @@ pub fn build_with_schedule(
 pub fn build_city_stats(
     settings: &Settings,
     fetch_data: &FetchData,
-    validator_to_user: &BTreeMap<String, &DZUser>,
+    validator_user_pairs: &[(String, &DZUser)],
     leader_schedule: &LeaderSchedule,
 ) -> Result<CityStats> {
     let mut city_stats = CityStats::new();
 
-    // Process each leader
-    for (validator_pubkey, stake_proxy) in leader_schedule.schedule_map.iter() {
-        if let Some(user) = validator_to_user.get(validator_pubkey)
-            && let Some(device) = fetch_data.dz_serviceability.devices.get(&user.device_pk)
+    // Debug: Track what we're processing
+    let total_validators_in_schedule = leader_schedule.schedule_map.len();
+    let total_slots_in_schedule: usize = leader_schedule.schedule_map.values().sum();
+    let total_user_validator_pairs = validator_user_pairs.len();
+
+    info!("=== City Stats Debug ===");
+    info!(
+        "Total validators in leader schedule: {}",
+        total_validators_in_schedule
+    );
+    info!(
+        "Total slots in leader schedule: {}",
+        total_slots_in_schedule
+    );
+    info!("User-validator pairs: {}", total_user_validator_pairs);
+
+    let mut processed_user_validator_pairs = 0;
+    let mut processed_slots = 0;
+    let mut pairs_without_device = 0;
+
+    // Process each user-validator pair
+    // Note: R includes ALL users with devices, even if not in leader_schedule (assigns 0 slots)
+    for (validator_pubkey, user) in validator_user_pairs {
+        // Get stake_proxy from leader schedule, default to 0 if not found (matching R's all.x = TRUE)
+        let stake_proxy = leader_schedule
+            .schedule_map
+            .get(validator_pubkey)
+            .copied()
+            .unwrap_or(0);
+
+        if let Some(device) = fetch_data.dz_serviceability.devices.get(&user.device_pk)
             && let Some(location) = fetch_data
                 .dz_serviceability
                 .locations
                 .get(&device.location_pk)
-            && let Some(exchange) = fetch_data
+        {
+            if let Some(exchange) = fetch_data
                 .dz_serviceability
                 .exchanges
                 .get(&device.exchange_pk)
-        {
-            let stats = match settings.network {
-                Network::Testnet | Network::Devnet => city_stats
-                    .entry(location.code.to_string())
-                    .or_insert(CityStat {
-                        validator_count: 0,
-                        total_stake_proxy: 0,
-                    }),
-                // On mainnet, the exchange.code directly has the name of the city
-                Network::MainnetBeta | Network::Mainnet => city_stats
-                    .entry(exchange.code.to_string())
-                    .or_insert(CityStat {
-                        validator_count: 0,
-                        total_stake_proxy: 0,
-                    }),
-            };
-            stats.validator_count += 1;
-            stats.total_stake_proxy += stake_proxy;
+            {
+                let city_code = match settings.network {
+                    Network::Testnet | Network::Devnet => location.code.to_uppercase(),
+                    // On mainnet, the exchange.code directly has the name of the city
+                    Network::MainnetBeta | Network::Mainnet => exchange.code.to_uppercase(),
+                };
+
+                let stats = city_stats.entry(city_code).or_insert(CityStat {
+                    validator_count: 0,
+                    total_stake_proxy: 0,
+                });
+                stats.validator_count += 1;
+                stats.total_stake_proxy += stake_proxy;
+
+                processed_user_validator_pairs += 1;
+                processed_slots += stake_proxy;
+            }
+        } else {
+            pairs_without_device += 1;
         }
+    }
+
+    info!(
+        "Processed user-validator pairs: {}",
+        processed_user_validator_pairs
+    );
+    info!("Processed slots: {}", processed_slots);
+    info!("Pairs without device: {}", pairs_without_device);
+    info!("R expects: 422 user-validator pairs, 97548 slots");
+
+    // Log per-city stats
+    info!("Per-city statistics:");
+    let mut sorted_cities: Vec<_> = city_stats.iter().collect();
+    sorted_cities.sort_by(|a, b| b.1.total_stake_proxy.cmp(&a.1.total_stake_proxy));
+    for (city, stats) in sorted_cities.iter().take(5) {
+        info!(
+            "  {}: validators={}, slots={}",
+            city, stats.validator_count, stats.total_stake_proxy
+        );
     }
 
     Ok(city_stats)
@@ -261,6 +217,7 @@ pub fn generate(city_stats: &CityStats) -> Demands {
     cities_with_validators
         .par_iter()
         .flat_map(|(start_city, _start_stats)| {
+            let start_city_upper = start_city.to_uppercase();
             // Create demands from this city to all others
             cities_with_validators
                 .iter()
@@ -270,14 +227,16 @@ pub fn generate(city_stats: &CityStats) -> Demands {
                         return None;
                     }
 
+                    let end_city_upper = end_city.to_uppercase();
+
                     // Calculate priority using formula: (1/slots_in_epoch) * (total_stake_proxy/validator_count)
                     let slots_per_validator =
                         end_stats.total_stake_proxy as f64 / end_stats.validator_count as f64;
                     let priority = (1.0 / SLOTS_IN_EPOCH) * slots_per_validator;
 
                     Some(Demand {
-                        start: start_city.to_string(),
-                        end: end_city.to_string(),
+                        start: start_city_upper.clone(),
+                        end: end_city_upper,
                         receivers: end_stats.validator_count as u32,
                         traffic: DEMAND_TRAFFIC,
                         priority,

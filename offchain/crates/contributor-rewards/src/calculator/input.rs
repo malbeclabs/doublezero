@@ -50,7 +50,12 @@ pub struct RewardInput {
     pub city_summaries: BTreeMap<String, CitySummary>,
 
     // Checksums for telemetry data verification
+    // Note: Skipped during serialization because checksums are computed from raw telemetry data
+    // which may vary across snapshots (different time windows, sampling). These are for runtime
+    // verification only and not part of the reward calculation state.
+    #[serde(skip)]
     pub device_telemetry_checksum: Hash,
+    #[serde(skip)]
     pub internet_telemetry_checksum: Hash,
 }
 

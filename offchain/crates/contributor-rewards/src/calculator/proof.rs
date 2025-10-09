@@ -46,10 +46,14 @@ impl ContributorRewardsMerkleTree {
             let contributor_key = Pubkey::from_str(operator_pubkey_str)
                 .map_err(|e| anyhow!("Invalid pubkey string '{operator_pubkey_str}': {e}"))?;
 
-            // Clamp f64 proportion
+            // Clamp to valid range for conversion; negative shares are dropped here, but retained for
+            // logging/analysis prior to this step.
             let proportion = val.proportion.clamp(0.0, 1.0);
-            // Convert f64 proportion to u32 with 9 decimal places
-            let unit_share = UnitShare32::new((proportion * MAX_UNIT_SHARE).round() as u32)
+
+            // Convert to fixed-point shares, biasing downward so the accumulated total never exceeds
+            // MAX_UNIT_SHARE. Any remainder is reconciled later when we top up the first reward.
+            let scaled = (proportion * MAX_UNIT_SHARE).floor();
+            let unit_share = UnitShare32::new(scaled.min(MAX_UNIT_SHARE) as u32)
                 .ok_or_else(|| anyhow!("Invalid unit share"))?;
             total_unit_shares = total_unit_shares
                 .checked_add(unit_share)

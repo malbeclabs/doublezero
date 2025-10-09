@@ -1,7 +1,11 @@
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::{fs, io::Write, path::Path};
+use std::{
+    fs,
+    io::Write,
+    path::{Path, PathBuf},
+};
 use tracing::{debug, error, info, warn};
 
 /// Worker state persisted to disk
@@ -9,6 +13,9 @@ use tracing::{debug, error, info, warn};
 pub struct SchedulerState {
     /// Last epoch that was successfully processed
     pub last_processed_epoch: Option<u64>,
+    /// Last snapshot file created
+    #[serde(default)]
+    pub last_snapshot_file: Option<PathBuf>,
     /// Last time the worker checked for new epochs
     pub last_check_time: DateTime<Utc>,
     /// Last time rewards were successfully calculated
@@ -21,6 +28,7 @@ impl Default for SchedulerState {
     fn default() -> Self {
         Self {
             last_processed_epoch: None,
+            last_snapshot_file: None,
             last_check_time: Utc::now(),
             last_success_time: None,
             consecutive_failures: 0,
@@ -115,6 +123,15 @@ impl SchedulerState {
         self.last_success_time = Some(Utc::now());
         self.consecutive_failures = 0;
         info!("Marked epoch {} as successfully processed", epoch);
+    }
+
+    /// Update state after successful snapshot creation
+    pub fn mark_snapshot_created(&mut self, epoch: u64, snapshot_path: PathBuf) {
+        self.last_snapshot_file = Some(snapshot_path.clone());
+        info!(
+            "Marked snapshot created for epoch {}: {:?}",
+            epoch, snapshot_path
+        );
     }
 
     /// Update state after check (regardless of outcome)

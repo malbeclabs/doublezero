@@ -10,12 +10,12 @@ import (
 )
 
 type SwapRateResponse struct {
-	SwapRate     int64  `json:"swapRate"`
-	Timestamp    int64  `json:"timestamp"`
-	Signature    string `json:"signature"`
-	SOLPriceUSD  string `json:"solPriceUsd"`
-	TwoZPriceUSD string `json:"twozPriceUsd"`
-	CacheHit     bool   `json:"cacheHit"`
+	SwapRate     float64 `json:"swapRate"`
+	Timestamp    int64   `json:"timestamp"`
+	Signature    string  `json:"signature"`
+	SOLPriceUSD  string  `json:"solPriceUsd"`
+	TwoZPriceUSD string  `json:"twozPriceUsd"`
+	CacheHit     bool    `json:"cacheHit"`
 }
 
 type HealthResponse struct {

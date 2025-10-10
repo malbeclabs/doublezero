@@ -3,10 +3,10 @@
 
 version: 2
 
-project_name: doublezero-monitor
+project_name: doublezero-monitor-tool
 
 monorepo:
-  tag_prefix: doublezero-monitor/
+  tag_prefix: doublezero-monitor-tool/
 
 builds:
   - builder: prebuilt
@@ -22,8 +22,8 @@ archives:
     - binary
 
 nfpms:
-  - id: doublezero-monitor
-    package_name: doublezero-monitor
+  - id: doublezero-monitor-tool
+    package_name: doublezero-monitor-tool
     vendor: doublezero
     homepage: doublezero.xyz
     maintainer: steve <steve@malbeclabs.com>

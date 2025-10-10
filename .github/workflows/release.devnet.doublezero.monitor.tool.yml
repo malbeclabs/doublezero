@@ -1,9 +1,7 @@
-name: releaser.doublezero.monitor
+name: releaser.doublezero.monitor.tool
 
 on:
-  push:
-    tags:
-      - "doublezero-monitor/v*.*.*"
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -29,7 +27,7 @@ jobs:
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser-pro
-          args: release -f release/.goreleaser.testnet.doublezero.monitor.yaml --clean
+          args: release -f release/.goreleaser.devnet.doublezero.monitor.yaml --clean
         env:
           SLACK_WEBHOOK: ${{ secrets.SLACK_BOTS_WEBHOOK }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

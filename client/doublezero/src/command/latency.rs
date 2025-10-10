@@ -35,7 +35,7 @@ impl LatencyCliCommand {
         });
 
         latencies.sort_by(|a, b| {
-            let reachable_cmp = b.reachable.cmp(&a.reachable);
+            let reachable_cmp = a.reachable.cmp(&b.reachable);
             if reachable_cmp != std::cmp::Ordering::Equal {
                 return reachable_cmp;
             }

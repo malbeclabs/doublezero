@@ -3,6 +3,7 @@ use clap_complete::generate;
 use std::path::PathBuf;
 mod cli;
 mod command;
+mod dzd_latency;
 use doublezero_config::Environment;
 mod requirements;
 mod servicecontroller;

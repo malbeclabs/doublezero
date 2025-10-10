@@ -80,7 +80,7 @@ pub struct RemoveResponse {
     pub description: Option<String>,
 }
 
-#[derive(Tabled, Serialize, Deserialize, Debug)]
+#[derive(Tabled, Serialize, Deserialize, Debug, Clone)]
 #[tabled(display(Option, "display::option", ""))]
 pub struct StatusResponse {
     #[tabled(inline)]
@@ -103,7 +103,7 @@ pub struct GetConfigResponse {
     pub rpc_url: String,
 }
 
-#[derive(Tabled, Serialize, Deserialize, Debug)]
+#[derive(Tabled, Serialize, Deserialize, Debug, Clone)]
 pub struct DoubleZeroStatus {
     #[tabled(rename = "Tunnel status")]
     pub session_status: String,

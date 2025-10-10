@@ -25,7 +25,7 @@ func TestMonitor_TwoZOracle_Client(t *testing.T) {
 
 		out, _, err := c.SwapRate(context.Background())
 		r.NoError(err)
-		r.Equal(int64(2764713870), out.SwapRate)
+		r.Equal(float64(2764713870.9234), out.SwapRate)
 		r.Equal(int64(1758741874), out.Timestamp)
 		r.NotEmpty(out.SOLPriceUSD)
 		r.NotEmpty(out.TwoZPriceUSD)
@@ -134,7 +134,7 @@ func NewFakeTwoZOracleServer(t *testing.T) *FakeTwoZOracleServer {
 	// sane defaults mirroring the real API
 	fs.swap.Store(fakeResp{
 		status: 200,
-		body:   `{"swapRate":2764713870,"timestamp":1758741874,"signature":"sig","solPriceUsd":"213.9","twozPriceUsd":"7.73","cacheHit":true}`,
+		body:   `{"swapRate":2764713870.9234,"timestamp":1758741874,"signature":"sig","solPriceUsd":"213.9","twozPriceUsd":"7.73","cacheHit":true}`,
 	})
 	fs.health.Store(fakeResp{
 		status: 200,

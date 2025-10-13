@@ -494,6 +494,7 @@ func TestWatcher_Tick_DeletesOnlyDisappeared_Circuit(t *testing.T) {
 	// Two links → four circuits; later we "remove" only linkA
 	oa, za := solana.NewWallet().PublicKey(), solana.NewWallet().PublicKey()
 	ob, zb := solana.NewWallet().PublicKey(), solana.NewWallet().PublicKey()
+	contributorPK := solana.NewWallet().PublicKey()
 	linkA, linkB := solana.NewWallet().PublicKey(), solana.NewWallet().PublicKey()
 	oaCode, zaCode := "OA", "ZA"
 	obCode, zbCode := "OB", "ZB"
@@ -520,14 +521,17 @@ func TestWatcher_Tick_DeletesOnlyDisappeared_Circuit(t *testing.T) {
 					{Code: oaCode, PubKey: pkAsBytes(oa)}, {Code: zaCode, PubKey: pkAsBytes(za)},
 					{Code: obCode, PubKey: pkAsBytes(ob)}, {Code: zbCode, PubKey: pkAsBytes(zb)},
 				},
+				Contributors: []serviceability.Contributor{
+					{Code: "C1", PubKey: pkAsBytes(contributorPK)},
+				},
 			}
 			if keepA.Load() {
 				pd.Links = append(pd.Links, serviceability.Link{
-					Code: "LA", PubKey: pkAsBytes(linkA), SideAPubKey: pkAsBytes(oa), SideZPubKey: pkAsBytes(za),
+					Code: "LA", PubKey: pkAsBytes(linkA), SideAPubKey: pkAsBytes(oa), SideZPubKey: pkAsBytes(za), ContributorPubKey: pkAsBytes(contributorPK),
 				})
 			}
 			pd.Links = append(pd.Links, serviceability.Link{
-				Code: "LB", PubKey: pkAsBytes(linkB), SideAPubKey: pkAsBytes(ob), SideZPubKey: pkAsBytes(zb),
+				Code: "LB", PubKey: pkAsBytes(linkB), SideAPubKey: pkAsBytes(ob), SideZPubKey: pkAsBytes(zb), ContributorPubKey: pkAsBytes(contributorPK),
 			})
 			return pd, nil
 		},
@@ -614,6 +618,7 @@ func circuitKey(origin, target string, linkPK solana.PublicKey) string {
 }
 
 func makeProgramData(devA, devZ string, pkA, pkZ, linkPK solana.PublicKey, linkCode string) *serviceability.ProgramData {
+	contributor := serviceability.Contributor{Code: "C1", PubKey: pkAsBytes(solana.NewWallet().PublicKey())}
 	return &serviceability.ProgramData{
 		Devices: []serviceability.Device{
 			{Code: devA, PubKey: pkAsBytes(pkA)},
@@ -621,11 +626,15 @@ func makeProgramData(devA, devZ string, pkA, pkZ, linkPK solana.PublicKey, linkC
 		},
 		Links: []serviceability.Link{
 			{
-				Code:        linkCode,
-				PubKey:      pkAsBytes(linkPK),
-				SideAPubKey: pkAsBytes(pkA),
-				SideZPubKey: pkAsBytes(pkZ),
+				Code:              linkCode,
+				PubKey:            pkAsBytes(linkPK),
+				SideAPubKey:       pkAsBytes(pkA),
+				SideZPubKey:       pkAsBytes(pkZ),
+				ContributorPubKey: contributor.PubKey,
 			},
+		},
+		Contributors: []serviceability.Contributor{
+			contributor,
 		},
 	}
 }

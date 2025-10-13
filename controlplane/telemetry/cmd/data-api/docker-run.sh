@@ -5,7 +5,7 @@ workspace_dir=$(dirname $(dirname $(dirname $(dirname "${script_dir}"))))
 
 cd "${workspace_dir}"
 
-CONTAINER_NAME="${CONTAINER_NAME:-snormore/dz-telemetry-data-api-v2}"
+CONTAINER_NAME="${CONTAINER_NAME:-snormore/dz-telemetry-data-api-v3}"
 
 set -x
 

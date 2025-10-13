@@ -348,6 +348,7 @@ func circuitKey(origin, target string, link solana.PublicKey) string {
 }
 
 func newTestProvider(t *testing.T, getFunc func(epoch uint64) (*telemetry.DeviceLatencySamples, error), circuit data.Circuit) data.Provider {
+	contributorPK := solana.NewWallet().PublicKey()
 	p, err := data.NewProvider(&data.ProviderConfig{
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 		ServiceabilityClient: &mockServiceabilityClient{
@@ -358,7 +359,10 @@ func newTestProvider(t *testing.T, getFunc func(epoch uint64) (*telemetry.Device
 						{Code: circuit.TargetDevice.Code, PubKey: circuit.TargetDevice.PK},
 					},
 					Links: []serviceability.Link{
-						{Code: circuit.Link.Code, SideAPubKey: circuit.OriginDevice.PK, SideZPubKey: circuit.TargetDevice.PK, PubKey: circuit.Link.PK},
+						{Code: circuit.Link.Code, SideAPubKey: circuit.OriginDevice.PK, SideZPubKey: circuit.TargetDevice.PK, PubKey: circuit.Link.PK, ContributorPubKey: contributorPK},
+					},
+					Contributors: []serviceability.Contributor{
+						{Code: circuit.Link.ContributorCode, PubKey: contributorPK},
 					},
 				}, nil
 			},

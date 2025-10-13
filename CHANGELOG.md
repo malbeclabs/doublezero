@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.
     - Display multicast group memberships (publisher/subscriber) in AccessPass listings to improve visibility.
     - Allow AccessPass creation without 'client_ip'
     - Add 'allow_multiple_ip' argument to support AccessPass connections from multiple IPs
+    - Include validator pubkey in `export` output
 - Activator
     - Reduce logging noise when processing snapshot events
     - Wrap main select handler in loop to avoid shutdown on branch error

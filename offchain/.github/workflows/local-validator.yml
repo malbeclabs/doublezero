@@ -15,18 +15,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Install Passport Admin
-        run: cargo install --git "ssh://git@github.com/doublezerofoundation/doublezero-solana" --rev "464823a" doublezero-passport-admin-cli
-      - name: Install Revenue Distribution Admin
-        run: cargo install --git "ssh://git@github.com/doublezerofoundation/doublezero-solana" --rev "464823a" doublezero-revenue-distribution-admin-cli
       - name: Solana toolchain
         run: |
           sh -c "$(curl -sSfL https://release.anza.xyz/$SOLANA_CLI/install)"
           echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
       - name: Generate ~/.config/solana/id.json
         run: solana-keygen new --silent --no-bip39-passphrase
-      - name: Start Solana test validator in background
-        run: bash sh/run_local_validator_clean.sh > /dev/null 2>&1 &
+      - name: Start Solana mainnet-beta fork in background
+        run: cargo run --bin doublezero-solana-fork -- -um > /dev/null 2>&1 &
       - name: Build DoubleZero Solana
         run: cargo build --bin doublezero-solana
       - name: Check starting SOL balance

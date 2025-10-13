@@ -33,55 +33,6 @@ echo "solana-keygen new --silent --no-bip39-passphrase -o service_key_1.json"
 solana-keygen new --silent --no-bip39-passphrase -o service_key_1.json
 echo
 
-### Set up programs with admin CLI.
-
-echo "doublezero-passport-admin initialize -u l -v"
-doublezero-passport-admin initialize -u l -v
-echo
-
-echo "doublezero-passport-admin configure -u l -v --unpause" \
-     "--sentinel $DUMMY_KEY" \
-     "--access-request-deposit 1000000000" \
-     "--access-fee 100000"
-doublezero-passport-admin configure -u l \
-    -v \
-    --unpause \
-    --sentinel $DUMMY_KEY \
-    --access-request-deposit 1000000000 \
-    --access-fee 100000
-echo
-
-echo "doublezero-revenue-distribution-admin initialize -u l -v"
-doublezero-revenue-distribution-admin initialize -u l -v
-echo
-
-echo "doublezero-revenue-distribution-admin configure -u l -v --unpause" \
-     "--contributor-manager $(solana address)" \
-     "--calculation-grace-period-minutes 60" \
-     "--solana-validator-base-block-rewards-fee-pct 1.23" \
-     "--solana-validator-priority-block-rewards-fee-pct 45.67" \
-     "--solana-validator-inflation-rewards-fee-pct 0.89 " \
-     "--solana-validator-jito-tips-fee-pct 100" \
-     "--solana-validator-fixed-sol-fee-amount 100000000" \
-     "--community-burn-rate-limit 50.0 --epochs-to-increasing-community-burn-rate 100" \
-     "--epochs-to-community-burn-rate-limit 200 --initial-community-burn-rate 10.0"
-doublezero-revenue-distribution-admin configure \
-    -u l \
-    -v \
-    --unpause \
-    --contributor-manager $(solana address) \
-    --calculation-grace-period-minutes 60 \
-    --solana-validator-base-block-rewards-fee-pct 1.23 \
-    --solana-validator-priority-block-rewards-fee-pct 45.67 \
-    --solana-validator-inflation-rewards-fee-pct 0.89 \
-    --solana-validator-jito-tips-fee-pct 100 \
-    --solana-validator-fixed-sol-fee-amount 100000000 \
-    --community-burn-rate-limit 50.0 \
-    --epochs-to-increasing-community-burn-rate 100 \
-    --epochs-to-community-burn-rate-limit 200 \
-    --initial-community-burn-rate 10.0
-echo
-
 ### Passport commands.
 
 echo "doublezero-solana passport -h"
@@ -149,16 +100,6 @@ $CLI_BIN revenue-distribution contributor-rewards \
     $(solana address -k service_key_1.json)
 echo
 
-echo "doublezero-revenue-distribution-admin set-rewards-manager -u l -v " \
-     "$(solana address -k service_key_1.json) " \
-     "$(solana address -k rewards_manager.json)"
-doublezero-revenue-distribution-admin set-rewards-manager \
-    -u l \
-    -v \
-    $(solana address -k service_key_1.json) \
-    $(solana address -k rewards_manager.json)
-echo
-
 echo "doublezero-solana revenue-distribution validator-deposit --fund 4.2069 -u l -v $DUMMY_KEY"
 $CLI_BIN revenue-distribution validator-deposit \
     --fund 4.2069 \
@@ -183,12 +124,12 @@ echo "doublezero-solana revenue-distribution fetch validator-deposits -u l"
 $CLI_BIN revenue-distribution fetch validator-deposits -u l
 echo
 
-echo "doublezero-solana revenue-distribution fetch distribution -u t"
-$CLI_BIN revenue-distribution fetch distribution -u t
+echo "doublezero-solana revenue-distribution fetch distribution -u l"
+$CLI_BIN revenue-distribution fetch distribution -u l
 echo
 
-echo "doublezero-solana revenue-distribution fetch distribution -u t --epoch 101"
-$CLI_BIN revenue-distribution fetch distribution -u t --epoch 101
+echo "doublezero-solana revenue-distribution fetch distribution -u l --epoch 1"
+$CLI_BIN revenue-distribution fetch distribution -u l --epoch 1
 echo
 
 ### ATA commands.

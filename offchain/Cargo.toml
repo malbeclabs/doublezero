@@ -4,6 +4,7 @@ members = [
     "crates/scheduled-command",
     "crates/sentinel",
     "crates/solana-cli",
+    "crates/solana-fork",
     "crates/validator-debt",
 ]
 resolver = "2"

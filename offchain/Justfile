@@ -21,7 +21,7 @@ build:
 
 # Run clippy
 clippy:
-    cargo clippy --all-features -- -Dclippy::all -D warnings
+    cargo clippy --all-features --all-targets -- -Dclippy::all -D warnings
 
 # Run tests
 test:

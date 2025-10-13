@@ -1,5 +1,6 @@
 use clap::{CommandFactory, Parser};
 use clap_complete::generate;
+use doublezero_config::Environment;
 use std::path::PathBuf;
 mod cli;
 use crate::cli::{
@@ -14,8 +15,8 @@ use crate::cli::{
     location::LocationCommands,
     user::UserCommands,
 };
-use doublezero_cli::{checkversion::check_version, doublezerocommand::CliCommandImpl};
-use doublezero_sdk::{DZClient, ProgramVersion};
+use doublezero_cli::doublezerocommand::CliCommandImpl;
+use doublezero_sdk::DZClient;
 
 #[derive(Parser, Debug)]
 #[command(term_width = 0)]
@@ -25,18 +26,20 @@ use doublezero_sdk::{DZClient, ProgramVersion};
 struct App {
     #[command(subcommand)]
     command: Command,
-
+    /// DZ env (testnet, devnet, or mainnet-beta)
+    #[arg(short, long, value_name = "ENV", global = true)]
+    env: Option<String>,
     /// DZ ledger RPC URL
-    #[arg(long, value_name = "RPC_URL", global = true)]
+    #[arg(short, long, value_name = "RPC_URL", global = true)]
     url: Option<String>,
     /// DZ ledger WebSocket URL
-    #[arg(long, value_name = "WEBSOCKET_URL", global = true)]
+    #[arg(short, long, value_name = "WEBSOCKET_URL", global = true)]
     ws: Option<String>,
     /// DZ program ID (testnet or devnet)
     #[arg(long, value_name = "PROGRAM_ID", global = true)]
     program_id: Option<String>,
     /// Path to the keypair file
-    #[arg(long, value_name = "KEYPAIR", global = true)]
+    #[arg(short, long, value_name = "KEYPAIR", global = true)]
     keypair: Option<PathBuf>,
 }
 
@@ -48,13 +51,23 @@ async fn main() -> eyre::Result<()> {
         println!("using keypair: {}", keypair.display());
     }
 
-    let dzclient = DZClient::new(app.url, app.ws, app.program_id, app.keypair)?;
+    let (url, ws, program_id) = if let Some(env) = app.env {
+        let config = env.parse::<Environment>()?.config()?;
+        (
+            Some(config.ledger_public_rpc_url),
+            Some(config.ledger_public_ws_rpc_url),
+            Some(config.serviceability_program_id.to_string()),
+        )
+    } else {
+        (app.url, app.ws, app.program_id)
+    };
+
+    let dzclient = DZClient::new(url, ws, program_id, app.keypair)?;
     let client = CliCommandImpl::new(&dzclient);
 
     let stdout = std::io::stdout();
     let mut handle = stdout.lock();
 
-    check_version(&client, &mut handle, ProgramVersion::current())?;
     let res = match app.command {
         Command::Address(args) => args.execute(&client, &mut handle),
         Command::Balance(args) => args.execute(&client, &mut handle),

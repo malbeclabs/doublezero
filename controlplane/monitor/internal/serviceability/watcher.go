@@ -112,6 +112,8 @@ func (w *ServiceabilityWatcher) Tick(ctx context.Context) error {
 
 	if w.cfg.InfluxWriter != nil {
 		w.exportDevicesToInflux(data.Devices)
+		w.exportContributorsToInflux(data.Contributors)
+		w.exportExchangesToInflux(data.Exchanges)
 	}
 
 	// save current on-chain state for next comparison interval
@@ -160,6 +162,46 @@ func (w *ServiceabilityWatcher) exportDevicesToInflux(devices []serviceability.D
 			continue
 		}
 		w.log.Debug("writing device record to influx", "line", line)
+		w.cfg.InfluxWriter.WriteRecord(line)
+	}
+	w.cfg.InfluxWriter.Flush()
+}
+
+func (w *ServiceabilityWatcher) exportContributorsToInflux(contributors []serviceability.Contributor) {
+	if w.cfg.InfluxWriter == nil {
+		return
+	}
+	additionalTags := map[string]string{
+		"env": w.cfg.Env,
+	}
+	// write each contributor as a separate line protocol entry
+	for _, contributor := range contributors {
+		line, err := serviceability.ToLineProtocol("contributors", contributor, time.Now(), additionalTags)
+		if err != nil {
+			w.log.Error("failed to create influx line protocol for contributor", "contributor_code", contributor.Code, "error", err)
+			continue
+		}
+		w.log.Debug("writing contributor record to influx", "line", line)
+		w.cfg.InfluxWriter.WriteRecord(line)
+	}
+	w.cfg.InfluxWriter.Flush()
+}
+
+func (w *ServiceabilityWatcher) exportExchangesToInflux(exchanges []serviceability.Exchange) {
+	if w.cfg.InfluxWriter == nil {
+		return
+	}
+	additionalTags := map[string]string{
+		"env": w.cfg.Env,
+	}
+	// write each exchange as a separate line protocol entry
+	for _, exchange := range exchanges {
+		line, err := serviceability.ToLineProtocol("exchanges", exchange, time.Now(), additionalTags)
+		if err != nil {
+			w.log.Error("failed to create influx line protocol for exchange", "exchange_code", exchange.Code, "error", err)
+			continue
+		}
+		w.log.Debug("writing exchange record to influx", "line", line)
 		w.cfg.InfluxWriter.WriteRecord(line)
 	}
 	w.cfg.InfluxWriter.Flush()

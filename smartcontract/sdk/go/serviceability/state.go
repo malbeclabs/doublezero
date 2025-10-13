@@ -76,16 +76,16 @@ const (
 
 type Exchange struct {
 	AccountType AccountType
-	Owner       [32]uint8
-	Index       Uint128
-	Bump_seed   uint8
-	Lat         float64
-	Lng         float64
-	LocId       uint32
-	Status      ExchangeStatus
-	Code        string
-	Name        string
-	PubKey      [32]byte
+	Owner       [32]uint8      `influx:"tag,owner,pubkey"`
+	Index       Uint128        `influx:"-"`
+	Bump_seed   uint8          `influx:"-"`
+	Lat         float64        `influx:"field,lat"`
+	Lng         float64        `influx:"field,lng"`
+	LocId       uint32         `influx:"field,loc_id"`
+	Status      ExchangeStatus `influx:"tag,status"`
+	Code        string         `influx:"tag,code"`
+	Name        string         `influx:"tag,name"`
+	PubKey      [32]byte       `influx:"tag,pubkey,pubkey"`
 }
 
 type DeviceStatus uint8
@@ -401,13 +401,13 @@ func (s ContributorStatus) MarshalJSON() ([]byte, error) {
 
 type Contributor struct {
 	AccountType AccountType
-	Owner       [32]uint8
-	Index       Uint128
-	BumpSeed    uint8
-	Status      ContributorStatus
-	Code        string
-	Name        string
-	PubKey      [32]byte
+	Owner       [32]uint8         `influx:"tag,owner,pubkey"`
+	Index       Uint128           `influx:"-"`
+	BumpSeed    uint8             `influx:"-"`
+	Status      ContributorStatus `influx:"tag,status"`
+	Code        string            `influx:"tag,code"`
+	Name        string            `influx:"tag,name"`
+	PubKey      [32]byte          `influx:"tag,pubkey,pubkey"`
 }
 
 func (c Contributor) MarshalJSON() ([]byte, error) {

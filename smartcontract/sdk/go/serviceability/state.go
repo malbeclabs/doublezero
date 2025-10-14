@@ -409,14 +409,15 @@ func (s ContributorStatus) MarshalJSON() ([]byte, error) {
 }
 
 type Contributor struct {
-	AccountType AccountType
-	Owner       [32]uint8         `influx:"tag,owner,pubkey"`
-	Index       Uint128           `influx:"-"`
-	BumpSeed    uint8             `influx:"-"`
-	Status      ContributorStatus `influx:"tag,status"`
-	Code        string            `influx:"tag,code"`
-	Name        string            `influx:"tag,name"`
-	PubKey      [32]byte          `influx:"tag,pubkey,pubkey"`
+	AccountType    AccountType
+	Owner          [32]uint8         `influx:"tag,owner,pubkey"`
+	Index          Uint128           `influx:"-"`
+	BumpSeed       uint8             `influx:"-"`
+	Status         ContributorStatus `influx:"tag,status"`
+	Code           string            `influx:"tag,code"`
+	Name           string            `influx:"tag,name"`
+	ReferenceCount uint32            `influx:"field,reference_count"`
+	PubKey         [32]byte          `influx:"tag,pubkey,pubkey"`
 }
 
 func (c Contributor) MarshalJSON() ([]byte, error) {

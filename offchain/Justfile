@@ -1,6 +1,9 @@
 # Export required env
 export SERVICEABILITY_PROGRAM_ID := "devnet"
 
+# Fail on warnings
+export RUSTFLAGS := "-Dwarnings"
+
 # Default (list of commands)
 default:
     just -l
@@ -21,7 +24,7 @@ build:
 
 # Run clippy
 clippy:
-    cargo clippy --all-features --all-targets -- -Dclippy::all -D warnings
+    cargo clippy --all-features --all-targets -- -Dclippy::all
 
 # Run tests
 test:

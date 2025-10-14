@@ -1,23 +1,22 @@
 use crate::{
     AccessId, Result,
-    client::{doublezero_ledger::DzRpcClient, solana::SolRpcClient},
+    client::{doublezero_ledger::DzRpcClientType, solana::SolRpcClientType},
     error::rpc_with_retry,
     sentinel::ValidatorVerifier,
 };
 use doublezero_passport::instruction::AccessMode;
-use solana_sdk::{
-    pubkey::Pubkey,
-    signature::{Keypair, Signature},
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
+use std::{
+    net::Ipv4Addr,
+    time::{Duration, Instant},
 };
-use std::{net::Ipv4Addr, sync::Arc, time::Duration};
 use tokio::{sync::mpsc::UnboundedReceiver, time::interval};
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info};
-use url::Url;
 
 const BACKFILL_TIMER: Duration = Duration::from_secs(60 * 60);
 
-pub struct Sentinel {
+pub struct Sentinel<DzRpcClient: DzRpcClientType, SolRpcClient: SolRpcClientType> {
     dz_rpc_client: DzRpcClient,
     sol_rpc_client: SolRpcClient,
     rx: UnboundedReceiver<Signature>,
@@ -25,18 +24,18 @@ pub struct Sentinel {
     previous_leader_epochs: u8,
 }
 
-impl Sentinel {
+impl<DzRpcClient: DzRpcClientType, SolRpcClient: SolRpcClientType>
+    Sentinel<DzRpcClient, SolRpcClient>
+{
     pub async fn new(
-        dz_rpc: Url,
-        sol_rpc: Url,
-        keypair: Arc<Keypair>,
-        serviceability_id: Pubkey,
+        dz_rpc_client: DzRpcClient,
+        sol_rpc_client: SolRpcClient,
         rx: UnboundedReceiver<Signature>,
         previous_leader_epochs: u8,
     ) -> Result<Self> {
         Ok(Self {
-            dz_rpc_client: DzRpcClient::new(dz_rpc, keypair.clone(), serviceability_id),
-            sol_rpc_client: SolRpcClient::new(sol_rpc, keypair),
+            dz_rpc_client,
+            sol_rpc_client,
             rx,
             previous_leader_epochs,
         })
@@ -50,27 +49,9 @@ impl Sentinel {
                 biased;
                 _ = shutdown_listener.cancelled() => break,
                 _ = backfill_timer.tick() => {
-                    info!("fetching outstanding access requests");
-                    let access_ids = match rpc_with_retry(
-                        || async {
-                            self.sol_rpc_client.get_access_requests().await
-                        },
-                        "get_access_requests",
-                    ).await {
-                        Ok(ids) => ids,
-                        Err(err) => {
-                            error!(?err, "failed to fetch outstanding access requests after retries; will retry in next cycle");
-                            metrics::counter!("doublezero_sentinel_backfill_failed").increment(1);
-                            continue;
-                        }
-                    };
-
-                    info!(count = access_ids.len(), "processing unhandled access requests");
-
-                    for ids in access_ids {
-                        if let Err(err) = self.handle_access_request(ids).await {
-                            error!(?err, "error encountered validating network access request");
-                        }
+                    if let Err(err) = self.drain().await {
+                        error!(?err, "error encountered draining outstanding access requests; will retry in next cycle");
+                        metrics::counter!("doublezero_sentinel_backfill_failed").increment(1);
                     }
                 }
                 event = self.rx.recv() => {
@@ -100,6 +81,41 @@ impl Sentinel {
             }
         }
 
+        Ok(())
+    }
+
+    pub async fn drain(&mut self) -> Result<()> {
+        info!("Draining outstanding access requests from the passport program");
+        let started_at = Instant::now();
+
+        let access_ids = match rpc_with_retry(
+            || async { self.sol_rpc_client.get_access_requests().await },
+            "get_access_requests",
+        )
+        .await
+        {
+            Ok(ids) => ids,
+            Err(err) => {
+                error!(
+                    ?err,
+                    "failed to fetch outstanding access requests after retries"
+                );
+                return Err(err);
+            }
+        };
+
+        info!(
+            count = access_ids.len(),
+            "processing unhandled access requests"
+        );
+
+        for access_id in access_ids {
+            if let Err(err) = self.handle_access_request(access_id).await {
+                error!(?err, "error encountered processing access request");
+            }
+        }
+
+        info!("Drain complete in {:?}", started_at.elapsed());
         Ok(())
     }
 
@@ -160,11 +176,22 @@ impl Sentinel {
 
 #[cfg(test)]
 mod tests {
+    use crate::{
+        Error,
+        client::{
+            doublezero_ledger::{DzRpcClient, MockDzRpcClientType},
+            solana::{MockSolRpcClientType, SolRpcClient},
+        },
+    };
+
     use super::*;
     use doublezero_passport::instruction::SolanaValidatorAttestation;
-    use solana_sdk::pubkey::Pubkey;
-    use std::net::Ipv4Addr;
+    use mockall::predicate::*;
+    use solana_client::client_error::{ClientError, ClientErrorKind};
+    use solana_sdk::{pubkey::Pubkey, signature::Keypair};
+    use std::{net::Ipv4Addr, sync::Arc};
     use tokio::sync::mpsc::unbounded_channel;
+    use url::Url;
 
     // Mock implementations for testing
     struct MockSentinel {
@@ -487,13 +514,13 @@ mod tests {
         // Build a real Sentinel; it won't hit network because we short-circuit on signature
         let (_tx, rx) = unbounded_channel();
         let keypair = Arc::new(Keypair::new());
-        let dz_rpc = Url::parse("http://127.0.0.1:1234").unwrap();
-        let sol_rpc = Url::parse("http://127.0.0.1:1235").unwrap();
+        let dz_rpc_url = Url::parse("http://127.0.0.1:1234").unwrap();
+        let sol_rpc_url = Url::parse("http://127.0.0.1:1235").unwrap();
         let serviceability_id = Pubkey::new_unique();
 
         let sentinel = Sentinel {
-            dz_rpc_client: DzRpcClient::new(dz_rpc, keypair.clone(), serviceability_id),
-            sol_rpc_client: SolRpcClient::new(sol_rpc, keypair),
+            dz_rpc_client: DzRpcClient::new(dz_rpc_url, keypair.clone(), serviceability_id),
+            sol_rpc_client: SolRpcClient::new(sol_rpc_url, keypair),
             rx,
             previous_leader_epochs: 0,
         };
@@ -511,5 +538,208 @@ mod tests {
             result.is_empty(),
             "expected empty vec when signature verification fails"
         );
+    }
+
+    #[tokio::test]
+    async fn drain_ok_when_no_outstanding_requests() {
+        let mut sol = MockSolRpcClientType::new();
+        sol.expect_get_access_requests()
+            .times(1)
+            .returning(|| Ok(Vec::<AccessId>::new()));
+
+        let dz = MockDzRpcClientType::new();
+
+        let (_tx, rx) = unbounded_channel::<Signature>();
+
+        let mut sentinel = Sentinel {
+            dz_rpc_client: dz,
+            sol_rpc_client: sol,
+            rx,
+            previous_leader_epochs: 0,
+        };
+
+        let res = sentinel.drain().await;
+
+        assert!(res.is_ok());
+    }
+
+    #[tokio::test]
+    async fn drain_propagates_error_if_fetch_fails() {
+        let mut sol = MockSolRpcClientType::new();
+        sol.expect_get_access_requests().times(1).returning(|| {
+            Err(Error::RpcClient(Box::new(ClientError::from(
+                ClientErrorKind::Custom("boom".to_string()),
+            ))))
+        });
+
+        let dz = MockDzRpcClientType::new();
+        let (_tx, rx) = unbounded_channel::<Signature>();
+
+        let mut sentinel = Sentinel {
+            dz_rpc_client: dz,
+            sol_rpc_client: sol,
+            rx,
+            previous_leader_epochs: 0,
+        };
+
+        let res = sentinel.drain().await;
+
+        assert!(
+            res.is_err(),
+            "expected error to propagate from get_access_requests"
+        );
+    }
+
+    #[tokio::test]
+    async fn drain_iterates_all_ids_and_denies_each_on_bad_sig() {
+        let n = 3;
+        let ids: Vec<AccessId> = (0..n)
+            .map(|_| make_access_id(make_invalid_attestation()))
+            .collect();
+
+        let mut sol = MockSolRpcClientType::new();
+        {
+            let ids_clone = ids.clone();
+            sol.expect_get_access_requests()
+                .times(1)
+                .returning(move || Ok(ids_clone.clone()));
+        }
+        sol.expect_deny_access()
+            .times(n)
+            .returning(|_| Ok(Signature::new_unique()));
+        sol.expect_grant_access().times(0);
+        sol.expect_check_leader_schedule().times(0);
+        sol.expect_get_validator_ip().times(0);
+
+        let mut dz = MockDzRpcClientType::new();
+        dz.expect_issue_access_pass().times(0);
+
+        let (_tx, rx) = unbounded_channel::<Signature>();
+        let mut s = Sentinel {
+            dz_rpc_client: dz,
+            sol_rpc_client: sol,
+            rx,
+            previous_leader_epochs: 0,
+        };
+        assert!(s.drain().await.is_ok());
+    }
+    #[tokio::test]
+    async fn drain_grants_all_ids_when_leader_and_gossip_ok() {
+        let n = 3usize;
+
+        // Build signed, valid access requests; keep the per-id triples for assertions
+        let mut ids = Vec::with_capacity(n);
+        let mut triples = Vec::with_capacity(n); // (request_pda, rent_beneficiary, (service_key, validator_id))
+        for _ in 0..n {
+            let (mode, validator_id, service_key) = make_valid_attestation();
+            let id = make_access_id(mode);
+            triples.push((
+                id.request_pda,
+                id.rent_beneficiary_key,
+                (service_key, validator_id),
+            ));
+            ids.push(id);
+        }
+
+        let mut sol = MockSolRpcClientType::new();
+        {
+            let ids_clone = ids.clone();
+            sol.expect_get_access_requests()
+                .times(1)
+                .returning(move || Ok(ids_clone.clone()));
+        }
+
+        // Verifier deps per ID
+        sol.expect_check_leader_schedule()
+            .times(n)
+            .withf(|_pk, prev_epochs| *prev_epochs == 0)
+            .returning(|_, _| Ok(true));
+        let grant_ip = Ipv4Addr::new(10, 0, 0, 7);
+        sol.expect_get_validator_ip()
+            .times(n)
+            .returning(move |_| Ok(Some(grant_ip)));
+
+        // Grant once per ID with exact (pda, rent) pair
+        {
+            let mut seq = mockall::Sequence::new();
+            for (pda, rent, _) in &triples {
+                let pda = *pda;
+                let rent = *rent;
+                sol.expect_grant_access()
+                    .times(1)
+                    .in_sequence(&mut seq)
+                    .with(eq(pda), eq(rent))
+                    .returning(|_, _| Ok(Signature::new_unique()));
+            }
+        }
+        sol.expect_deny_access().times(0);
+
+        let mut dz = MockDzRpcClientType::new();
+        {
+            let mut seq = mockall::Sequence::new();
+            for (_, _, (service_key, validator_id)) in &triples {
+                let service_key = *service_key;
+                let validator_id = *validator_id;
+                dz.expect_issue_access_pass()
+                    .times(1)
+                    .in_sequence(&mut seq)
+                    .with(eq(service_key), eq(grant_ip), eq(validator_id))
+                    .returning(|_, _, _| Ok(Signature::new_unique()));
+            }
+        }
+
+        let (_tx, rx) = tokio::sync::mpsc::unbounded_channel::<Signature>();
+        let mut s = Sentinel {
+            dz_rpc_client: dz,
+            sol_rpc_client: sol,
+            rx,
+            previous_leader_epochs: 0,
+        };
+
+        assert!(s.drain().await.is_ok());
+    }
+
+    fn make_access_id(mode: AccessMode) -> AccessId {
+        AccessId {
+            request_pda: Pubkey::new_unique(),
+            rent_beneficiary_key: Pubkey::new_unique(),
+            mode,
+        }
+    }
+
+    fn make_invalid_attestation() -> AccessMode {
+        let att = doublezero_passport::instruction::SolanaValidatorAttestation {
+            validator_id: Pubkey::new_unique(),
+            service_key: Pubkey::new_unique(),
+            ed25519_signature: [0u8; 64],
+        };
+        AccessMode::SolanaValidator(att)
+    }
+
+    fn make_valid_attestation() -> (
+        AccessMode,
+        Pubkey, // validator_id
+        Pubkey, // service_key
+    ) {
+        use doublezero_passport::{instruction::SolanaValidatorAttestation, state::AccessRequest};
+        use solana_sdk::{offchain_message::OffchainMessage, signer::Signer};
+
+        let validator_kp = solana_sdk::signature::Keypair::new();
+        let validator_id = validator_kp.pubkey();
+        let service_key = Pubkey::new_unique();
+
+        // Build a temporary attestation with zero sig just to produce the message
+        let mut att = SolanaValidatorAttestation {
+            validator_id,
+            service_key,
+            ed25519_signature: [0u8; 64],
+        };
+        let raw = AccessRequest::access_request_message(&AccessMode::SolanaValidator(att));
+        let off = OffchainMessage::new(0u8, raw.as_bytes()).unwrap();
+        let sig_bytes: [u8; 64] = validator_kp.sign_message(&off.serialize().unwrap()).into();
+
+        // Overwrite signature and build the final AccessMode
+        att.ed25519_signature = sig_bytes;
+        (AccessMode::SolanaValidator(att), validator_id, service_key)
     }
 }

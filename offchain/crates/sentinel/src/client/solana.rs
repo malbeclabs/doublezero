@@ -1,4 +1,5 @@
 use crate::{AccessId, Error, Result, new_transaction};
+use async_trait::async_trait;
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64_STD};
 use bincode;
 use doublezero_passport::{
@@ -13,6 +14,7 @@ use doublezero_program_tools::{
     Discriminator, PrecomputedDiscriminator, instruction::try_build_instruction, zero_copy,
 };
 use futures::{future::BoxFuture, stream::BoxStream};
+use mockall::automock;
 use solana_account_decoder_client_types::UiAccountEncoding;
 use solana_client::{
     nonblocking::{pubsub_client::PubsubClient, rpc_client::RpcClient},
@@ -43,9 +45,76 @@ use url::Url;
 
 const ACCESS_REQUEST_ACCOUNT_INDEX: usize = 2;
 
+#[automock]
+#[async_trait]
+pub trait SolRpcClientType {
+    async fn grant_access(
+        &self,
+        access_request_key: &Pubkey,
+        rent_beneficiary_key: &Pubkey,
+    ) -> Result<Signature>;
+
+    async fn deny_access(&self, access_request_key: &Pubkey) -> Result<Signature>;
+
+    async fn get_access_requests_from_signature(
+        &self,
+        signature: Signature,
+    ) -> Result<Vec<AccessId>>;
+
+    async fn get_access_requests(&self) -> Result<Vec<AccessId>>;
+
+    async fn check_leader_schedule(
+        &self,
+        validator_id: &Pubkey,
+        previous_leader_epochs: u8,
+    ) -> Result<bool>;
+
+    async fn get_validator_ip(&self, validator_id: &Pubkey) -> Result<Option<Ipv4Addr>>;
+}
+
 pub struct SolRpcClient {
     client: RpcClient,
     payer: Arc<Keypair>,
+}
+
+#[async_trait]
+impl SolRpcClientType for SolRpcClient {
+    async fn grant_access(
+        &self,
+        access_request_key: &Pubkey,
+        rent_beneficiary_key: &Pubkey,
+    ) -> Result<Signature> {
+        self.grant_access(access_request_key, rent_beneficiary_key)
+            .await
+    }
+
+    async fn deny_access(&self, access_request_key: &Pubkey) -> Result<Signature> {
+        self.deny_access(access_request_key).await
+    }
+
+    async fn get_access_requests_from_signature(
+        &self,
+        signature: Signature,
+    ) -> Result<Vec<AccessId>> {
+        self.get_access_requests_from_signature(signature).await
+    }
+
+    async fn get_access_requests(&self) -> Result<Vec<AccessId>> {
+        self.get_access_requests().await
+    }
+
+    async fn check_leader_schedule(
+        &self,
+        validator_id: &Pubkey,
+        previous_leader_epochs: u8,
+    ) -> Result<bool> {
+        self.check_leader_schedule(validator_id, previous_leader_epochs)
+            .await
+    }
+
+    async fn get_validator_ip(&self, validator_id: &Pubkey) -> Result<Option<Ipv4Addr>> {
+        self.get_validator_ip(validator_id).await
+    }
 }
 
 impl SolRpcClient {

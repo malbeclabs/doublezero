@@ -1,12 +1,13 @@
 use clap::Parser;
 use doublezero_ledger_sentinel::{
+    client::{doublezero_ledger::DzRpcClient, solana::SolRpcClient},
     constants::ENV_PREVIOUS_LEADER_EPOCHS,
     sentinel::{PollingSentinel, ReqListener, Sentinel},
     settings::{AppArgs, Settings},
 };
 use metrics_exporter_prometheus::PrometheusBuilder;
 use solana_sdk::signer::Signer;
-use tokio::signal;
+use tokio::{signal, sync::mpsc::unbounded_channel};
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -27,25 +28,45 @@ async fn main() -> anyhow::Result<()> {
 
     export_build_info();
 
-    let sol_rpc = settings.sol_rpc();
-    let dz_rpc = settings.dz_rpc();
+    let sol_rpc_url = settings.sol_rpc();
+    let dz_rpc_url = settings.dz_rpc();
     let keypair = settings.keypair();
+
+    let serviceability_id = settings.serviceability_program_id()?;
+
+    let sol_rpc_client = SolRpcClient::new(sol_rpc_url.clone(), keypair.clone());
+    let dz_rpc_client = DzRpcClient::new(dz_rpc_url.clone(), keypair.clone(), serviceability_id);
+
+    if let Some(drain) = args.drain
+        && drain
+    {
+        let (_tx, rx) = unbounded_channel();
+        let mut sentinel = Sentinel::new(
+            dz_rpc_client,
+            sol_rpc_client,
+            rx,
+            ENV_PREVIOUS_LEADER_EPOCHS,
+        )
+        .await?;
+        sentinel.drain().await?;
+        return Ok(());
+    }
 
     let shutdown_listener = shutdown_listener();
 
     // If the poll_interval is set, do not use websocket conn
     if let Some(poll_interval) = args.poll_interval {
         info!(
-            %sol_rpc,
-            %dz_rpc,
+            %sol_rpc_url,
+            %dz_rpc_url,
             poll_interval_secs = poll_interval,
             pubkey = %keypair.pubkey(),
             "DoubleZero Ledger Sentinel starting in POLLING mode"
         );
 
         let mut polling_sentinel = PollingSentinel::new(
-            dz_rpc,
-            sol_rpc,
+            dz_rpc_url,
+            sol_rpc_url,
             keypair,
             settings.serviceability_program_id()?,
             poll_interval,
@@ -68,19 +89,17 @@ async fn main() -> anyhow::Result<()> {
         let sol_ws = settings.sol_ws();
 
         info!(
-            %sol_rpc,
+            %sol_rpc_url,
             %sol_ws,
-            %dz_rpc,
+            %dz_rpc_url,
             pubkey = %keypair.pubkey(),
             "DoubleZero Ledger Sentinel starting in WEBSOCKET mode"
         );
 
         let (request_listener, rx) = ReqListener::new(sol_ws).await?;
         let mut sentinel = Sentinel::new(
-            dz_rpc,
-            sol_rpc,
-            keypair,
-            settings.serviceability_program_id()?,
+            dz_rpc_client,
+            sol_rpc_client,
             rx,
             ENV_PREVIOUS_LEADER_EPOCHS,
         )

@@ -1,5 +1,6 @@
 use crate::{Result, new_transaction};
 
+use async_trait::async_trait;
 use doublezero_program_tools::instruction::try_build_instruction;
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
@@ -7,6 +8,7 @@ use doublezero_serviceability::{
     processors::accesspass::set::SetAccessPassArgs,
     state::accesspass::AccessPassType,
 };
+use mockall::automock;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_commitment_config::CommitmentConfig;
 use solana_sdk::{
@@ -19,10 +21,34 @@ use std::{net::Ipv4Addr, sync::Arc};
 use tracing::info;
 use url::Url;
 
+#[automock]
+#[async_trait]
+pub trait DzRpcClientType {
+    async fn issue_access_pass(
+        &self,
+        service_key: &Pubkey,
+        client_ip: &Ipv4Addr,
+        validator_id: &Pubkey,
+    ) -> Result<Signature>;
+}
+
 pub struct DzRpcClient {
     client: RpcClient,
     payer: Arc<Keypair>,
     serviceability_id: Pubkey,
+}
+
+#[async_trait]
+impl DzRpcClientType for DzRpcClient {
+    async fn issue_access_pass(
+        &self,
+        service_key: &Pubkey,
+        client_ip: &Ipv4Addr,
+        validator_id: &Pubkey,
+    ) -> Result<Signature> {
+        self.issue_access_pass(service_key, client_ip, validator_id)
+            .await
+    }
 }
 
 impl DzRpcClient {

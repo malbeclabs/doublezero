@@ -18,7 +18,7 @@ pub mod settings;
 
 pub use error::{Error, Result};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AccessId {
     request_pda: Pubkey,
     rent_beneficiary_key: Pubkey,

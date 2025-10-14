@@ -26,6 +26,10 @@ pub struct AppArgs {
     /// Enable polling mode with specified interval (in seconds), bypass websocket connection.
     #[arg(long)]
     pub poll_interval: Option<u64>,
+
+    /// Drain the open access requests from the passport program. Executes only once and exits.
+    #[arg(long)]
+    pub drain: Option<bool>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

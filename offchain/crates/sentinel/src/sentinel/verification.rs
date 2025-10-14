@@ -1,5 +1,5 @@
 use crate::{
-    Error, Result, client::solana::SolRpcClient, error::rpc_with_retry, verify_access_request,
+    Error, Result, client::solana::SolRpcClientType, error::rpc_with_retry, verify_access_request,
 };
 use doublezero_passport::instruction::AccessMode;
 use solana_sdk::pubkey::Pubkey;
@@ -7,12 +7,12 @@ use std::net::Ipv4Addr;
 use tracing::info;
 
 /// Shared validator verification logic used by both WebSocket and polling modes
-pub struct ValidatorVerifier<'a> {
+pub struct ValidatorVerifier<'a, SolRpcClient: SolRpcClientType> {
     sol_rpc_client: &'a SolRpcClient,
     previous_leader_epochs: u8,
 }
 
-impl<'a> ValidatorVerifier<'a> {
+impl<'a, SolRpcClient: SolRpcClientType> ValidatorVerifier<'a, SolRpcClient> {
     pub fn new(sol_rpc_client: &'a SolRpcClient, previous_leader_epochs: u8) -> Self {
         Self {
             sol_rpc_client,

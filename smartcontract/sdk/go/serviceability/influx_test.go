@@ -122,7 +122,7 @@ func TestToLineProtocol(t *testing.T) {
 			additionalTags: map[string]string{
 				"env": "testnet",
 			},
-			expected:  `exchanges,code=dev-01,env=testnet,name=test-exchange,owner=` + pubKey1B58 + `,status=1 lat=10,lng=20`,
+			expected:  `exchanges,code=dev-01,env=testnet,name=test-exchange,owner=` + pubKey1B58 + `,status=activated lat=10,lng=20`,
 			expectErr: false,
 		},
 		{

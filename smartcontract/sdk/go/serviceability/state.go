@@ -74,6 +74,15 @@ const (
 	ExchangeStatusDeleted
 )
 
+func (e ExchangeStatus) String() string {
+	return [...]string{
+		"pending",
+		"activated",
+		"suspended",
+		"deleted",
+	}[e]
+}
+
 type Exchange struct {
 	AccountType AccountType
 	Owner       [32]uint8      `influx:"tag,owner,pubkey"`

@@ -27,7 +27,7 @@ fn create_expected_results() -> HashMap<(String, String), ExpectedLink> {
         ExpectedLink {
             latency_ms: 154.520,
             bandwidth_gbps: 10.0,
-            uptime: 1.0,
+            uptime: 0.9265342099820373, // ~99.69% valid samples, penalty applied: 0.9265
         },
     );
 

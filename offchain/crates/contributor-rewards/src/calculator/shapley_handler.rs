@@ -15,6 +15,7 @@ use network_shapley::types::{
 };
 use solana_sdk::pubkey::Pubkey;
 use std::collections::BTreeMap;
+use tabled::{Table, Tabled, settings::Style};
 use tracing::{debug, info};
 
 // (city1_code, city2_code)
@@ -23,6 +24,21 @@ type CityPair = (String, String);
 type CityPairLatencies = BTreeMap<CityPair, Vec<f64>>;
 // key: device pubkey, value: shapley-friendly device id
 pub type DeviceIdMap = BTreeMap<Pubkey, String>;
+
+/// Penalty information for a private link with reduced uptime
+#[derive(Debug, Clone, Tabled)]
+struct LinkPenalty {
+    #[tabled(rename = "Link")]
+    link: String,
+    #[tabled(rename = "Valid Samples %")]
+    valid_samples_pct: f64,
+    #[tabled(rename = "True Uptime")]
+    true_uptime: f64,
+    #[tabled(rename = "Penalized Uptime")]
+    penalized_uptime: f64,
+    #[tabled(rename = "Bandwidth Reduction %")]
+    bandwidth_reduction_pct: f64,
+}
 
 /// Cache for previous epoch telemetry stats
 #[derive(Default)]
@@ -285,6 +301,7 @@ pub fn build_public_links(
 
 pub fn build_private_links(fetch_data: &FetchData, device_ids: &DeviceIdMap) -> PrivateLinks {
     let mut private_links = Vec::new();
+    let mut penalties = Vec::new();
 
     for (link_pk, link) in fetch_data.dz_serviceability.links.iter() {
         if link.status != DZLinkStatus::Activated {
@@ -315,12 +332,15 @@ pub fn build_private_links(fetch_data: &FetchData, device_ids: &DeviceIdMap) -> 
         // regardless of direction, then computes P95 from the combined samples.
         // This matches: samples = unlist(sapply(which(schema == temp$pubkey), function(i) unlist(...)))
         let mut combined_samples: Vec<f64> = Vec::new();
+        let mut total_samples: usize = 0;
 
         for sample in &fetch_data.dz_telemetry.device_latency_samples {
             if sample.link_pk == *link_pk {
                 // Collect all valid samples, filtering out zeros and near-zero noise
                 // Matches R implementation: samples[which(samples > 1e-10)]
+                // Also track total sample count for uptime calculation
                 for &raw_sample in &sample.samples {
+                    total_samples += 1;
                     if raw_sample as f64 > 1e-10 {
                         combined_samples.push(raw_sample as f64);
                     }
@@ -348,8 +368,27 @@ pub fn build_private_links(fetch_data: &FetchData, device_ids: &DeviceIdMap) -> 
         // Convert latency from microseconds to milliseconds (R divides by 1e3 on line 40)
         let latency_ms = latency_us / 1000.0;
 
-        // R implementation hardcodes Uptime = 1 for all private links
-        let uptime = 1.0;
+        // Calculate true_uptime: percentage of valid samples present (R line 49)
+        // true_uptime = sum(samples >= 1e-10) / length(samples)
+        let true_uptime = if total_samples > 0 {
+            combined_samples.len() as f64 / total_samples as f64
+        } else {
+            0.0
+        };
+
+        // Calculate penalized uptime
+        let uptime = penalized_uptime(true_uptime);
+
+        // Collect penalty information for links with reduced uptime
+        if uptime < 1.0 {
+            penalties.push(LinkPenalty {
+                link: format!("{} → {}", from_device.code, to_device.code),
+                valid_samples_pct: true_uptime * 100.0,
+                true_uptime,
+                penalized_uptime: uptime,
+                bandwidth_reduction_pct: (1.0 - uptime) * 100.0,
+            });
+        }
 
         // network-shapley-rs expects the following units for PrivateLink:
         // - latency: milliseconds (ms) - we convert from microseconds
@@ -365,5 +404,188 @@ pub fn build_private_links(fetch_data: &FetchData, device_ids: &DeviceIdMap) -> 
         ));
     }
 
+    // Print penalty table if any links were penalized
+    if !penalties.is_empty() {
+        info!(
+            "Private Link Uptime Penalties:\n{}",
+            Table::new(&penalties)
+                .with(Style::psql().remove_horizontals())
+                .to_string()
+        );
+    }
+
     private_links
+}
+
+fn penalized_uptime(true_uptime: f64) -> f64 {
+    // Apply quadratic penalty formula for links with missing data (R line 92)
+    // uptime = pmin(pmax(-1578.9474 * true_uptime^2 + 3176.3158 * true_uptime - 1596.3684, 0), 1)
+    // This heavily penalizes links below 98% uptime:
+    // - 100% uptime -> 1.0 (no penalty)
+    // - 99% uptime -> 0.658 (~34% bandwidth reduction)
+    // - 98% uptime -> ~0 (threshold - effectively dropped)
+    // - <98% uptime -> 0 (link dropped from calculations)
+    const COEFF_A: f64 = -1578.9474;
+    const COEFF_B: f64 = 3176.3158;
+    const CONST_C: f64 = -1596.3684;
+    let uptime_raw = COEFF_A * true_uptime.powi(2) + COEFF_B * true_uptime + CONST_C;
+    uptime_raw.clamp(0.0, 1.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_penalized_uptime_perfect() {
+        // 100% uptime should result in no penalty
+        let result = penalized_uptime(1.0);
+        assert!(
+            (result - 1.0).abs() < 0.0001,
+            "100% uptime should be 1.0, got {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_penalized_uptime_99_percent() {
+        // 99% uptime should result in penalty (uptime ~0.658)
+        let result = penalized_uptime(0.99);
+        assert!(
+            result > 0.65 && result < 0.67,
+            "99% uptime should be ~0.658, got {}",
+            result
+        );
+
+        // More precisely, check against expected value
+        let expected = 0.6579; // Actual value from formula
+        assert!(
+            (result - expected).abs() < 0.001,
+            "99% uptime: expected ~{}, got {}",
+            expected,
+            result
+        );
+    }
+
+    #[test]
+    fn test_penalized_uptime_98_percent() {
+        // 98% uptime is right at the threshold - essentially drops to 0
+        let result = penalized_uptime(0.98);
+        assert!(
+            result < 0.001,
+            "98% uptime should be near 0 (threshold), got {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_penalized_uptime_97_percent() {
+        // 97% uptime should be effectively dropped (uptime ~0)
+        let result = penalized_uptime(0.97);
+        assert!(result < 0.05, "97% uptime should be near 0, got {}", result);
+    }
+
+    #[test]
+    fn test_penalized_uptime_below_98_percent() {
+        // Test various values below 98% - all should be near 0
+        for uptime_pct in [0.97, 0.96, 0.95, 0.90, 0.85, 0.80] {
+            let result = penalized_uptime(uptime_pct);
+            assert!(
+                result < 0.1,
+                "{}% uptime should be heavily penalized (near 0), got {}",
+                uptime_pct * 100.0,
+                result
+            );
+        }
+    }
+
+    #[test]
+    fn test_penalized_uptime_zero() {
+        // 0% uptime should be 0
+        let result = penalized_uptime(0.0);
+        assert_eq!(result, 0.0, "0% uptime should be 0.0, got {}", result);
+    }
+
+    #[test]
+    fn test_penalized_uptime_clamping_upper() {
+        // Values that would produce >1.0 should be clamped to 1.0
+        // The formula shouldn't produce >1.0 for valid inputs, but test anyway
+        let result = penalized_uptime(1.0);
+        assert!(
+            result <= 1.0,
+            "Result should never exceed 1.0, got {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_penalized_uptime_clamping_lower() {
+        // Negative results should be clamped to 0.0
+        let result = penalized_uptime(0.5);
+        assert!(
+            result >= 0.0,
+            "Result should never be negative, got {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_penalized_uptime_boundary_98_99() {
+        // Test the steep gradient between 98% and 99%
+        let uptime_98 = penalized_uptime(0.98);
+        let uptime_985 = penalized_uptime(0.985);
+        let uptime_99 = penalized_uptime(0.99);
+
+        // Should see significant increase from 98% to 99%
+        assert!(
+            uptime_99 > uptime_985 && uptime_985 > uptime_98,
+            "Should see steep gradient: 98%={}, 98.5%={}, 99%={}",
+            uptime_98,
+            uptime_985,
+            uptime_99
+        );
+
+        // The jump should be significant
+        let jump_98_to_99 = uptime_99 - uptime_98;
+        assert!(
+            jump_98_to_99 > 0.3,
+            "Penalty gradient should be steep (jump > 0.3), got {}",
+            jump_98_to_99
+        );
+    }
+
+    #[test]
+    fn test_penalized_uptime_real_world_example() {
+        // Test scenario: if a link had only 92.65% valid samples (below 98% threshold)
+        // Input: true_uptime = 0.9265 (92.65% of samples are valid)
+        // Expected output: ~0 (link should be effectively dropped)
+        let true_uptime = 0.9265342099820373;
+        let result = penalized_uptime(true_uptime);
+
+        // Should be heavily penalized (effectively 0) since below 98% threshold
+        assert!(
+            result < 0.001,
+            "Link with only {:.2}% valid samples should be effectively dropped, got uptime={}",
+            true_uptime * 100.0,
+            result
+        );
+    }
+
+    #[test]
+    fn test_penalized_uptime_monotonic_increasing() {
+        // Verify the function is monotonic increasing in the range [0.98, 1.0]
+        let mut prev_result = penalized_uptime(0.98);
+        for i in 981..=1000 {
+            let uptime = i as f64 / 1000.0;
+            let result = penalized_uptime(uptime);
+            assert!(
+                result >= prev_result,
+                "Function should be monotonic increasing from 98% to 100%: at {}%, got {} (prev {})",
+                uptime * 100.0,
+                result,
+                prev_result
+            );
+            prev_result = result;
+        }
+    }
 }

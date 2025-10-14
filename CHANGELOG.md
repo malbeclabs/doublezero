@@ -13,6 +13,8 @@ All notable changes to this project will be documented in this file.
 - CLI
     - Added a wait in the `disconnect` command to ensure the account is fully closed before returning, preventing failures during rapid disconnect/reconnect sequences.
     - Display multicast group memberships (publisher/subscriber) in AccessPass listings to improve visibility.
+    - Allow AccessPass creation without 'client_ip'
+    - Add 'allow_multiple_ip' argument to support AccessPass connections from multiple IPs
 - Activator
     - Reduce logging noise when processing snapshot events
     - Wrap main select handler in loop to avoid shutdown on branch error
@@ -33,14 +35,14 @@ All notable changes to this project will be documented in this file.
     - Add device info as labels to `controller_grpc_getconfig_requests_total` metric
 - Device agents
     - Submit device-link telemetry partitions in parallel
-- CLI
-    - Allow AccessPass creation without 'client_ip'
-    - Add 'allow_multiple_ip' argument to support AccessPass connections from multiple IPs
 - Onchain programs
     - Enable AccessPass with 'client_ip=0.0.0.0' to dynamically learn the user’s IP on first connection
     - Enable AccessPass to support connections from multiple IPs (allowlist compatibility)
 - Telemetry data API
     - Filter by contributor and link type
+- SDK/Go
+    - String serialization for exchanges status
+    - Exclude empty tags from influx serialization
 
 
 ## [v0.6.6](https://github.com/malbeclabs/doublezero/compare/client/v0.6.5...client/v0.6.6) – 2025-09-26

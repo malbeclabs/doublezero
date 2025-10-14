@@ -89,7 +89,11 @@ func ToLineProtocol(measurement string, s any, ts time.Time, additionalTags map[
 
 		switch tagType {
 		case "tag":
-			tags[name] = fmt.Sprintf("%v", finalValue)
+			value := fmt.Sprintf("%v", finalValue)
+			if value == "" {
+				continue
+			}
+			tags[name] = value
 		case "field":
 			fields[name] = finalValue
 		}

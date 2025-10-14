@@ -112,16 +112,15 @@ impl PrepareValidatorAccessCommand {
 
                     if sol_client
                         .check_leader_schedule(backup_id, ENV_PREVIOUS_LEADER_EPOCHS)
-                        .await
-                        .is_err()
+                        .await?
                     {
-                        println!(" ✅ OK (not a leader scheduled validator)");
-                    } else {
                         println!(" ❌ Fail (on leader scheduler)");
                         errors.push(format!(
                             "Backup validator ID ({}) should not be on leader scheduler. It must be a non-leader scheduled validator.",
                             backup_id
                         ));
+                    } else {
+                        println!(" ✅ OK (not a leader scheduled validator)");
                     }
                 } else {
                     println!("❌ Gossip Fail",);

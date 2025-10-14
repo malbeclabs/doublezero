@@ -67,7 +67,7 @@ mod tests {
             device2_pk: Pubkey::default(),
             lat: 12.34,
             lng: 56.78,
-            loc_id: 1,
+            bgp_community: 1,
             status: ExchangeStatus::Activated,
             owner: pda_pubkey,
         };

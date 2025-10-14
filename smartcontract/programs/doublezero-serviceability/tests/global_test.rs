@@ -190,7 +190,7 @@ async fn test_doublezero_program() {
         name: "Los Angeles".to_string(),
         lat: 1.234,
         lng: 4.567,
-        loc_id: 0,
+        bgp_community: 0,
     };
 
     println!("Testing Exchange LA initialization...");
@@ -232,7 +232,7 @@ async fn test_doublezero_program() {
         name: "New York".to_string(),
         lat: 1.234,
         lng: 4.567,
-        loc_id: 0,
+        bgp_community: 0,
     };
 
     execute_transaction(

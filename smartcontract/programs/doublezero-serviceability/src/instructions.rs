@@ -553,7 +553,7 @@ mod tests {
                 name: "test".to_string(),
                 lat: 1.0,
                 lng: 2.0,
-                loc_id: 123,
+                bgp_community: 123,
             }),
             "CreateExchange",
         );
@@ -561,7 +561,7 @@ mod tests {
             DoubleZeroInstruction::UpdateExchange(ExchangeUpdateArgs {
                 lat: Some(1.0),
                 lng: Some(2.0),
-                loc_id: Some(123),
+                bgp_community: Some(123),
                 code: Some("test".to_string()),
                 name: Some("test".to_string()),
             }),

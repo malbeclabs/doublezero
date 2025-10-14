@@ -58,7 +58,7 @@ mod tests {
             device2_pk: Pubkey::default(),
             lat: 1.0,
             lng: 2.0,
-            loc_id: 3,
+            bgp_community: 3,
             status: ExchangeStatus::Activated,
             owner: Pubkey::new_unique(),
         };
@@ -75,7 +75,7 @@ mod tests {
             device2_pk: Pubkey::default(),
             lat: 3.0,
             lng: 4.0,
-            loc_id: 5,
+            bgp_community: 5,
             status: ExchangeStatus::Activated,
             owner: Pubkey::new_unique(),
         };

@@ -17,15 +17,15 @@ pub struct ExchangeUpdateArgs {
     pub name: Option<String>,
     pub lat: Option<f64>,
     pub lng: Option<f64>,
-    pub loc_id: Option<u32>,
+    pub bgp_community: Option<u32>,
 }
 
 impl fmt::Debug for ExchangeUpdateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "code: {:?}, name: {:?}, lat: {:?}, lng: {:?}, loc_id: {:?}",
-            self.code, self.name, self.lat, self.lng, self.loc_id
+            "code: {:?}, name: {:?}, lat: {:?}, lng: {:?}, bgp_community: {:?}",
+            self.code, self.name, self.lat, self.lng, self.bgp_community
         )
     }
 }
@@ -82,8 +82,8 @@ pub fn process_update_exchange(
     if let Some(ref lng) = value.lng {
         exchange.lng = *lng;
     }
-    if let Some(ref loc_id) = value.loc_id {
-        exchange.loc_id = *loc_id;
+    if let Some(ref bgp_community) = value.bgp_community {
+        exchange.bgp_community = *bgp_community;
     }
 
     account_write(exchange_account, &exchange, payer_account, system_program)?;

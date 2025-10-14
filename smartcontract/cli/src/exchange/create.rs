@@ -21,9 +21,9 @@ pub struct CreateExchangeCliCommand {
     /// Longitude of the exchange
     #[arg(long, allow_hyphen_values(true))]
     pub lng: f64,
-    /// Optional location ID for the exchange
+    /// Optional BGP community for the exchange
     #[arg(long)]
-    pub loc_id: Option<u32>,
+    pub bgp_community: Option<u32>,
 }
 
 impl CreateExchangeCliCommand {
@@ -36,7 +36,7 @@ impl CreateExchangeCliCommand {
             name: self.name.clone(),
             lat: self.lat,
             lng: self.lng,
-            loc_id: self.loc_id,
+            bgp_community: self.bgp_community,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -79,7 +79,7 @@ mod tests {
                 name: "Test Exchange".to_string(),
                 lat: 0.0,
                 lng: 0.0,
-                loc_id: None,
+                bgp_community: None,
             }))
             .returning(move |_| Ok((signature, pda_pubkey)));
 
@@ -89,7 +89,7 @@ mod tests {
             name: "Test Exchange".to_string(),
             lat: 0.0,
             lng: 0.0,
-            loc_id: None,
+            bgp_community: None,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

@@ -55,7 +55,7 @@ pub struct Exchange {
     pub bump_seed: u8,             // 1
     pub lat: f64,                  // 8
     pub lng: f64,                  // 8
-    pub loc_id: u32,               // 4
+    pub bgp_community: u32,        // 4
     pub status: ExchangeStatus,    // 1
     pub code: String,              // 4 + len
     pub name: String,              // 4 + len
@@ -82,8 +82,8 @@ impl fmt::Display for Exchange {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, owner: {}, index: {}, bump_seed: {}, code: {}, name: {}, lat: {}, lng: {}, loc_id: {}, status: {}, reference_count: {}, switcha_pk: {}, switchb_pk: {}",
-            self.account_type, self.owner, self.index, self.bump_seed, self.code, self.name, self.lat, self.lng, self.loc_id, self.status, self.reference_count, self.device1_pk, self.device2_pk
+            "account_type: {}, owner: {}, index: {}, bump_seed: {}, code: {}, name: {}, lat: {}, lng: {}, bgp_community: {}, status: {}, reference_count: {}, switcha_pk: {}, switchb_pk: {}",
+            self.account_type, self.owner, self.index, self.bump_seed, self.code, self.name, self.lat, self.lng, self.bgp_community, self.status, self.reference_count, self.device1_pk, self.device2_pk
         )
     }
 }
@@ -117,7 +117,7 @@ impl TryFrom<&[u8]> for Exchange {
             bump_seed: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             lat: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             lng: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            loc_id: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            bgp_community: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             status: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             code: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             name: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
@@ -192,7 +192,7 @@ mod tests {
         assert_eq!(val.lng, 0.0);
         assert_eq!(val.device1_pk, Pubkey::default());
         assert_eq!(val.device2_pk, Pubkey::default());
-        assert_eq!(val.loc_id, 0);
+        assert_eq!(val.bgp_community, 0);
         assert_eq!(val.status, ExchangeStatus::default());
         assert_eq!(val.reference_count, 0);
     }
@@ -209,7 +209,7 @@ mod tests {
             lng: 50.678,
             device1_pk: Pubkey::default(),
             device2_pk: Pubkey::default(),
-            loc_id: 1212121,
+            bgp_community: 1212121,
             code: "test-321".to_string(),
             name: "test-test-test".to_string(),
             status: ExchangeStatus::Activated,
@@ -244,7 +244,7 @@ mod tests {
             lng: 10.0,
             device1_pk: Pubkey::default(),
             device2_pk: Pubkey::default(),
-            loc_id: 1212121,
+            bgp_community: 1212121,
             code: "test-321".to_string(),
             name: "test-test-test".to_string(),
             status: ExchangeStatus::Activated,
@@ -266,7 +266,7 @@ mod tests {
             lng: 10.0,
             device1_pk: Pubkey::default(),
             device2_pk: Pubkey::default(),
-            loc_id: 1212121,
+            bgp_community: 1212121,
             code: "a".repeat(33), // More than 32
             name: "test-test-test".to_string(),
             status: ExchangeStatus::Activated,
@@ -288,7 +288,7 @@ mod tests {
             lng: 10.0,
             device1_pk: Pubkey::default(),
             device2_pk: Pubkey::default(),
-            loc_id: 1212121,
+            bgp_community: 1212121,
             code: "test-321".to_string(),
             name: "a".repeat(65), // More than 64
             status: ExchangeStatus::Activated,
@@ -310,7 +310,7 @@ mod tests {
             lng: 10.0,
             device1_pk: Pubkey::default(),
             device2_pk: Pubkey::default(),
-            loc_id: 1212121,
+            bgp_community: 1212121,
             code: "test-321".to_string(),
             name: "test-test-test".to_string(),
             status: ExchangeStatus::Activated,
@@ -340,7 +340,7 @@ mod tests {
             lng: -181.0, // Less than minimum
             device1_pk: Pubkey::default(),
             device2_pk: Pubkey::default(),
-            loc_id: 1212121,
+            bgp_community: 1212121,
             code: "test-321".to_string(),
             name: "test-test-test".to_string(),
             status: ExchangeStatus::Activated,

@@ -30,7 +30,7 @@ pub struct ExchangeDisplay {
     pub device2: String,
     pub lat: f64,
     pub lng: f64,
-    pub loc_id: u32,
+    pub bgp_community: u32,
     pub status: ExchangeStatus,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub owner: Pubkey,
@@ -68,7 +68,7 @@ impl ListExchangeCliCommand {
                 },
                 lat: tunnel.lat,
                 lng: tunnel.lng,
-                loc_id: tunnel.loc_id,
+                bgp_community: tunnel.bgp_community,
                 status: tunnel.status,
                 owner: tunnel.owner,
             })
@@ -173,7 +173,7 @@ mod tests {
             device2_pk: Pubkey::default(),
             lat: 15.00,
             lng: 15.00,
-            loc_id: 6,
+            bgp_community: 6,
             status: Activated,
             code: "some code".to_string(),
             name: "some name".to_string(),
@@ -193,7 +193,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | code      | name      | device1 | device2 | lat | lng | loc_id | status    | owner                                     \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | some code | some name | (none)  | (none)  | 15  | 15  | 6      | activated | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
+        assert_eq!(output_str, " account                                   | code      | name      | device1 | device2 | lat | lng | bgp_community | status    | owner                                     \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | some code | some name | (none)  | (none)  | 15  | 15  | 6             | activated | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
 
         let mut output = Vec::new();
         let res = ListExchangeCliCommand {
@@ -204,6 +204,6 @@ mod tests {
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\",\"code\":\"some code\",\"name\":\"some name\",\"device1\":\"(none)\",\"device2\":\"(none)\",\"lat\":15.0,\"lng\":15.0,\"loc_id\":6,\"status\":\"Activated\",\"owner\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\"}]\n");
+        assert_eq!(output_str, "[{\"account\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\",\"code\":\"some code\",\"name\":\"some name\",\"device1\":\"(none)\",\"device2\":\"(none)\",\"lat\":15.0,\"lng\":15.0,\"bgp_community\":6,\"status\":\"Activated\",\"owner\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\"}]\n");
     }
 }

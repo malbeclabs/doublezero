@@ -24,9 +24,9 @@ pub struct UpdateExchangeCliCommand {
     /// Updated longitude for the exchange
     #[arg(long, allow_hyphen_values(true))]
     pub lng: Option<f64>,
-    /// Updated location ID for the exchange
+    /// Updated BGP community for the exchange
     #[arg(long)]
-    pub loc_id: Option<u32>,
+    pub bgp_community: Option<u32>,
 }
 
 impl UpdateExchangeCliCommand {
@@ -43,7 +43,7 @@ impl UpdateExchangeCliCommand {
             name: self.name,
             lat: self.lat,
             lng: self.lng,
-            loc_id: self.loc_id,
+            bgp_community: self.bgp_community,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -89,7 +89,7 @@ mod tests {
             device2_pk: Pubkey::default(),
             lat: 12.34,
             lng: 56.78,
-            loc_id: 1,
+            bgp_community: 1,
             status: ExchangeStatus::Activated,
             owner: Pubkey::new_unique(),
         };
@@ -113,7 +113,7 @@ mod tests {
                 name: Some("Test Exchange".to_string()),
                 lat: Some(12.34),
                 lng: Some(56.78),
-                loc_id: Some(1),
+                bgp_community: Some(1),
             }))
             .times(1)
             .returning(move |_| Ok(signature));
@@ -126,7 +126,7 @@ mod tests {
             name: Some("Test Exchange".to_string()),
             lat: Some(12.34),
             lng: Some(56.78),
-            loc_id: Some(1),
+            bgp_community: Some(1),
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

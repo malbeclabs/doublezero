@@ -31,7 +31,7 @@ mod tests {
             reference_count: 0,
             lat: 50.0,
             lng: 20.0,
-            loc_id: 1234,
+            bgp_community: 1234,
             device1_pk: Pubkey::default(),
             device2_pk: Pubkey::default(),
             status: ExchangeStatus::Activated,

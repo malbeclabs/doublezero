@@ -12,7 +12,7 @@ pub struct UpdateExchangeCommand {
     pub name: Option<String>,
     pub lat: Option<f64>,
     pub lng: Option<f64>,
-    pub loc_id: Option<u32>,
+    pub bgp_community: Option<u32>,
 }
 
 impl UpdateExchangeCommand {
@@ -33,7 +33,7 @@ impl UpdateExchangeCommand {
                 name: self.name.to_owned(),
                 lat: self.lat,
                 lng: self.lng,
-                loc_id: self.loc_id,
+                bgp_community: self.bgp_community,
             }),
             vec![
                 AccountMeta::new(self.pubkey, false),
@@ -72,7 +72,7 @@ mod tests {
                     name: Some("Test Exchange".to_string()),
                     lat: Some(0.0),
                     lng: Some(0.0),
-                    loc_id: Some(0),
+                    bgp_community: Some(0),
                 })),
                 predicate::eq(vec![
                     AccountMeta::new(pda_pubkey, false),
@@ -87,7 +87,7 @@ mod tests {
             name: Some("Test Exchange".to_string()),
             lat: Some(0.0),
             lng: Some(0.0),
-            loc_id: Some(0),
+            bgp_community: Some(0),
         };
 
         let update_invalid_command = UpdateExchangeCommand {

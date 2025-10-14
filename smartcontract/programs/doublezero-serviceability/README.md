@@ -48,7 +48,7 @@ classDiagram
         u8 bump_seed
         f64 lat
         f64 lng
-        u32 loc_id
+        u32 bgp_community
         ExchangeStatus status
         String code
         String name
@@ -212,18 +212,18 @@ stateDiagram-v2
     Deleting --> [*]
 ```
 
-| Field        | Type           | Description     |
-| ------------ | -------------- | --------------- |
-| account_type | AccountType    | Type of account |
-| owner        | Pubkey         | Exchange owner  |
-| index        | u128           | Exchange index  |
-| bump_seed    | u8             | PDA bump seed   |
-| lat          | f64            | Latitude        |
-| lng          | f64            | Longitude       |
-| loc_id       | u32            | Location ID     |
-| status       | ExchangeStatus | Exchange status |
-| code         | String         | Exchange code   |
-| name         | String         | Exchange name   |
+| Field               | Type           | Description     |
+| ------------------- | -------------- | --------------- |
+| account_type        | AccountType    | Type of account |
+| owner               | Pubkey         | Exchange owner  |
+| index               | u128           | Exchange index  |
+| bump_seed           | u8             | PDA bump seed   |
+| lat                 | f64            | Latitude        |
+| lng                 | f64            | Longitude       |
+| bgp_community       | u32            | BGP community   |
+| status              | ExchangeStatus | Exchange status |
+| code                | String         | Exchange code   |
+| name                | String         | Exchange name   |
 
 
 ## Contributor

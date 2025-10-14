@@ -13,7 +13,7 @@ pub struct CreateExchangeCommand {
     pub name: String,
     pub lat: f64,
     pub lng: f64,
-    pub loc_id: Option<u32>,
+    pub bgp_community: Option<u32>,
 }
 
 impl CreateExchangeCommand {
@@ -34,7 +34,7 @@ impl CreateExchangeCommand {
                     name: self.name.clone(),
                     lat: self.lat,
                     lng: self.lng,
-                    loc_id: self.loc_id.unwrap_or(0),
+                    bgp_community: self.bgp_community.unwrap_or(0),
                 }),
                 vec![
                     AccountMeta::new(pda_pubkey, false),
@@ -74,7 +74,7 @@ mod tests {
                     name: "Test Exchange".to_string(),
                     lat: 0.0,
                     lng: 0.0,
-                    loc_id: 0,
+                    bgp_community: 0,
                 })),
                 predicate::eq(vec![
                     AccountMeta::new(pda_pubkey, false),
@@ -88,7 +88,7 @@ mod tests {
             name: "Test Exchange".to_string(),
             lat: 0.0,
             lng: 0.0,
-            loc_id: None,
+            bgp_community: None,
         };
 
         let create_invalid_command = CreateExchangeCommand {

@@ -75,17 +75,17 @@ const (
 )
 
 type Exchange struct {
-	AccountType AccountType
-	Owner       [32]uint8      `influx:"tag,owner,pubkey"`
-	Index       Uint128        `influx:"-"`
-	Bump_seed   uint8          `influx:"-"`
-	Lat         float64        `influx:"field,lat"`
-	Lng         float64        `influx:"field,lng"`
-	LocId       uint32         `influx:"-"`
-	Status      ExchangeStatus `influx:"tag,status"`
-	Code        string         `influx:"tag,code"`
-	Name        string         `influx:"tag,name"`
-	PubKey      [32]byte       `influx:"tag,pubkey,pubkey"`
+	AccountType  AccountType
+	Owner        [32]uint8      `influx:"tag,owner,pubkey"`
+	Index        Uint128        `influx:"-"`
+	Bump_seed    uint8          `influx:"-"`
+	Lat          float64        `influx:"field,lat"`
+	Lng          float64        `influx:"field,lng"`
+	BgpCommunity uint32         `influx:"-"`
+	Status       ExchangeStatus `influx:"tag,status"`
+	Code         string         `influx:"tag,code"`
+	Name         string         `influx:"tag,name"`
+	PubKey       [32]byte       `influx:"tag,pubkey,pubkey"`
 }
 
 type DeviceStatus uint8

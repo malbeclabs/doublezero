@@ -21,6 +21,7 @@ All notable changes to this project will be documented in this file.
 - Onchain programs
     - Remove user-level allowlist management from CLI and admin interfaces; manage multicast group allowlists through AccessPass.
     - Add Validate trait for core types (AccessPass, Contributor, Interface, etc.) and enforce runtime checks before account operations.
+    - Rename exchange.loc_id to exchange.bgp_community
 - Internet telemetry
     - Add circuit label to metrics; create a new metric for missing circuit samples
     - Create a new metric that tracks how long it takes collector tasks to run
@@ -35,6 +36,10 @@ All notable changes to this project will be documented in this file.
     - Add device info as labels to `controller_grpc_getconfig_requests_total` metric
 - Device agents
     - Submit device-link telemetry partitions in parallel
+- CLI
+    - Allow AccessPass creation without 'client_ip'
+    - Add 'allow_multiple_ip' argument to support AccessPass connections from multiple IPs
+    - Rename exchange.loc_id to exchange.bgp_community
 - Onchain programs
     - Enable AccessPass with 'client_ip=0.0.0.0' to dynamically learn the user’s IP on first connection
     - Enable AccessPass to support connections from multiple IPs (allowlist compatibility)

@@ -78,14 +78,16 @@ impl RequestValidatorAccessCommand {
         };
 
         // Verify the signature.
-        let raw_message = if self.backup_validator_ids.is_empty() {
-            AccessRequest::access_request_message(&AccessMode::SolanaValidator(attestation))
+        let access_mode = if self.backup_validator_ids.is_empty() {
+            AccessMode::SolanaValidator(attestation)
         } else {
-            AccessRequest::access_request_message(&AccessMode::SolanaValidatorWithBackupIds {
+            AccessMode::SolanaValidatorWithBackupIds {
                 attestation,
                 backup_ids: self.backup_validator_ids.clone(),
-            })
+            }
         };
+
+        let raw_message = AccessRequest::access_request_message(&access_mode);
 
         if self.solana_payer_options.signer_options.verbose {
             println!("Raw message: {raw_message}");
@@ -103,7 +105,7 @@ impl RequestValidatorAccessCommand {
         let request_access_ix = try_build_instruction(
             &ID,
             RequestAccessAccounts::new(&wallet_key, &self.doublezero_address),
-            &PassportInstructionData::RequestAccess(AccessMode::SolanaValidator(attestation)),
+            &PassportInstructionData::RequestAccess(access_mode),
         )?;
 
         let (_, bump) = AccessRequest::find_address(&self.doublezero_address);

@@ -17,16 +17,27 @@ use tabled::{settings::Style, Table, Tabled};
 
 #[derive(Args, Debug)]
 pub struct ListUserCliCommand {
-    /// List prepaid access passes
+    /// Filter by prepaid access passes
     #[arg(long, default_value_t = false)]
     pub prepaid: bool,
-    /// List Solana validator access passes
+    /// Filter by Solana validator access passes
     #[arg(long, default_value_t = false)]
     pub solana_validator: bool,
-    /// Solana identity public key
-    #[arg(long)]
-    pub solana_identity: Option<Pubkey>,
-
+    /// Filter by Solana identity public key
+    #[arg(long, value_delimiter = ',', value_name = "SOLANA_IDENTITY,...")]
+    pub solana_identity: Option<Vec<Pubkey>>,
+    /// Filter by device code
+    #[arg(long, value_delimiter = ',', value_name = "DEVICE_CODE,...")]
+    pub device: Option<Vec<String>>,
+    /// Filter by location code
+    #[arg(long, value_delimiter = ',', value_name = "LOCATION_CODE_OR_NAME,...")]
+    pub location: Option<Vec<String>>,
+    /// Filter by client IP address
+    #[arg(long, value_delimiter = ',', value_name = "CLIENT_IP,...")]
+    pub client_ip: Option<Vec<Ipv4Addr>>,
+    /// Filter by owner public key
+    #[arg(long, value_delimiter = ',', value_name = "OWNER_PUBLIC_KEY,...")]
+    pub owner: Option<Vec<Pubkey>>,
     /// Output as pretty JSON.
     #[arg(long, default_value_t = false)]
     pub json: bool,
@@ -125,12 +136,46 @@ impl ListUserCliCommand {
                 }
             });
         }
-
-        if let Some(solana_identity) = self.solana_identity {
+        if let Some(solana_identity_vec) = self.solana_identity {
             users.retain(|(_, _, accesspass)| {
                 if let Some(accesspass) = accesspass {
-                    accesspass.accesspass_type ==
-                        doublezero_serviceability::state::accesspass::AccessPassType::SolanaValidator(solana_identity)
+                    if let doublezero_serviceability::state::accesspass::AccessPassType::SolanaValidator(pk) = &accesspass.accesspass_type {
+                        solana_identity_vec.contains(pk)
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            });
+        }
+
+        if let Some(ref owner_vec) = self.owner {
+            users.retain(|(_, user, _)| owner_vec.contains(&user.owner));
+        }
+        if let Some(ref client_ips) = self.client_ip {
+            users.retain(|(_, user, _)| client_ips.contains(&user.client_ip));
+        }
+
+        if let Some(ref device_code_vec) = self.device {
+            users.retain(|(_, user, _)| {
+                if let Some(device) = devices.get(&user.device_pk) {
+                    device_code_vec.contains(&device.code)
+                } else {
+                    false
+                }
+            });
+        }
+
+        if let Some(ref location_code_or_name_vec) = self.location {
+            users.retain(|(_, user, _)| {
+                if let Some(device) = devices.get(&user.device_pk) {
+                    if let Some(location) = locations.get(&device.location_pk) {
+                        location_code_or_name_vec.contains(&location.code)
+                            || location_code_or_name_vec.contains(&location.name)
+                    } else {
+                        false
+                    }
                 } else {
                     false
                 }
@@ -507,6 +552,10 @@ mod tests {
             prepaid: false,
             solana_validator: false,
             solana_identity: None,
+            device: None,
+            location: None,
+            owner: None,
+            client_ip: None,
             json: false,
             json_compact: false,
         }
@@ -520,6 +569,10 @@ mod tests {
             prepaid: false,
             solana_validator: false,
             solana_identity: None,
+            device: None,
+            location: None,
+            owner: None,
+            client_ip: None,
             json: false,
             json_compact: true,
         }

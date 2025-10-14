@@ -12,6 +12,7 @@ repository.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+backon.workspace = true
 chrono.workspace = true
 clap.workspace = true
 clap_complete.workspace = true
@@ -19,9 +20,13 @@ console.workspace = true
 eyre.workspace = true
 futures.workspace = true
 futures-util.workspace = true
+http.workspace = true
+http-body-util.workspace = true
 hyper.workspace = true
+hyper-util.workspace = true
 hyperlocal.workspace = true
 indicatif.workspace = true
+mockall.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml.workspace = true
@@ -35,3 +40,6 @@ tokio.workspace = true
 # Dependencies from this workspace
 doublezero_sdk.workspace = true
 doublezero_cli.workspace = true
+doublezero-config.workspace = true
+doublezero-serviceability.workspace = true
+doublezero-program-common.workspace = true

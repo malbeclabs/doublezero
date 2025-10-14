@@ -19,6 +19,7 @@ type DeviceLinkCircuit struct {
 	OriginDevice serviceability.Device
 	TargetDevice serviceability.Device
 	Link         serviceability.Link
+	Contributor  serviceability.Contributor
 }
 
 func GetDeviceLinkCircuits(ctx context.Context, log *slog.Logger, serviceabilityClient ServiceabilityClient) ([]DeviceLinkCircuit, error) {
@@ -35,10 +36,17 @@ func GetDeviceLinkCircuits(ctx context.Context, log *slog.Logger, serviceability
 		devicesByPK[pk.String()] = device
 	}
 
+	contributorsByPK := map[string]serviceability.Contributor{}
+	for _, contributor := range data.Contributors {
+		pk := solana.PublicKeyFromBytes(contributor.PubKey[:])
+		contributorsByPK[pk.String()] = contributor
+	}
+
 	for _, link := range data.Links {
 		deviceAPK := solana.PublicKeyFromBytes(link.SideAPubKey[:])
 		deviceZPK := solana.PublicKeyFromBytes(link.SideZPubKey[:])
 		linkPK := solana.PublicKeyFromBytes(link.PubKey[:])
+		contributorPK := solana.PublicKeyFromBytes(link.ContributorPubKey[:])
 
 		deviceA, ok := devicesByPK[deviceAPK.String()]
 		if !ok {
@@ -51,6 +59,12 @@ func GetDeviceLinkCircuits(ctx context.Context, log *slog.Logger, serviceability
 			continue
 		}
 
+		contributor, ok := contributorsByPK[contributorPK.String()]
+		if !ok {
+			log.Warn("contributor not found, skipping link", "link_code", link.Code, "contributor_pk", contributorPK.String())
+			continue
+		}
+
 		// Forward circuit
 		forwardKey := deviceLinkCircuitKey(deviceA.Code, deviceZ.Code, linkPK)
 		circuits = append(circuits, DeviceLinkCircuit{
@@ -58,6 +72,7 @@ func GetDeviceLinkCircuits(ctx context.Context, log *slog.Logger, serviceability
 			OriginDevice: deviceA,
 			TargetDevice: deviceZ,
 			Link:         link,
+			Contributor:  contributor,
 		})
 
 		// Reverse circuit
@@ -67,6 +82,7 @@ func GetDeviceLinkCircuits(ctx context.Context, log *slog.Logger, serviceability
 			OriginDevice: deviceZ,
 			TargetDevice: deviceA,
 			Link:         link,
+			Contributor:  contributor,
 		})
 	}
 

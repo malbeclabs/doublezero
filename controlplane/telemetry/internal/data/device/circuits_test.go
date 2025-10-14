@@ -28,17 +28,23 @@ func TestTelemetry_Data_Device_Provider_GetCircuits(t *testing.T) {
 			Code:   "B",
 			PubKey: toPubKeyBytes(solana.NewWallet().PublicKey()),
 		}
+		contributor := serviceability.Contributor{
+			Code:   "C1",
+			PubKey: toPubKeyBytes(solana.NewWallet().PublicKey()),
+		}
 		link := serviceability.Link{
-			Code:        "L1",
-			SideAPubKey: devA.PubKey,
-			SideZPubKey: devB.PubKey,
+			Code:              "L1",
+			SideAPubKey:       devA.PubKey,
+			SideZPubKey:       devB.PubKey,
+			ContributorPubKey: contributor.PubKey,
 		}
 
 		client := &mockServiceabilityClient{
 			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
 				return &serviceability.ProgramData{
-					Devices: []serviceability.Device{devA, devB},
-					Links:   []serviceability.Link{link},
+					Devices:      []serviceability.Device{devA, devB},
+					Links:        []serviceability.Link{link},
+					Contributors: []serviceability.Contributor{contributor},
 				}, nil
 			},
 		}
@@ -79,16 +85,22 @@ func TestTelemetry_Data_Device_Provider_GetCircuits(t *testing.T) {
 			Code:   "A",
 			PubKey: toPubKeyBytes(solana.NewWallet().PublicKey()),
 		}
+		contributor := serviceability.Contributor{
+			Code:   "C1",
+			PubKey: toPubKeyBytes(solana.NewWallet().PublicKey()),
+		}
 		link := serviceability.Link{
-			Code:        "L2",
-			SideAPubKey: devA.PubKey,
-			SideZPubKey: toPubKeyBytes(solana.NewWallet().PublicKey()), // Missing device
+			Code:              "L2",
+			SideAPubKey:       devA.PubKey,
+			SideZPubKey:       toPubKeyBytes(solana.NewWallet().PublicKey()), // Missing device
+			ContributorPubKey: contributor.PubKey,
 		}
 		client := &mockServiceabilityClient{
 			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
 				return &serviceability.ProgramData{
-					Devices: []serviceability.Device{devA},
-					Links:   []serviceability.Link{link},
+					Devices:      []serviceability.Device{devA},
+					Links:        []serviceability.Link{link},
+					Contributors: []serviceability.Contributor{contributor},
 				}, nil
 			},
 		}
@@ -148,10 +160,15 @@ func TestTelemetry_Data_Device_Provider_GetCircuits(t *testing.T) {
 			Code:   "B",
 			PubKey: toPubKeyBytes(walletB.PublicKey()),
 		}
+		contributor := serviceability.Contributor{
+			Code:   "C1",
+			PubKey: toPubKeyBytes(solana.NewWallet().PublicKey()),
+		}
 		link := serviceability.Link{
-			Code:        "L1",
-			SideAPubKey: devA.PubKey,
-			SideZPubKey: devB.PubKey,
+			Code:              "L1",
+			SideAPubKey:       devA.PubKey,
+			SideZPubKey:       devB.PubKey,
+			ContributorPubKey: contributor.PubKey,
 		}
 
 		client := &mockServiceabilityClient{
@@ -161,8 +178,9 @@ func TestTelemetry_Data_Device_Provider_GetCircuits(t *testing.T) {
 				}
 				called++
 				return &serviceability.ProgramData{
-					Devices: []serviceability.Device{devA, devB},
-					Links:   []serviceability.Link{link},
+					Devices:      []serviceability.Device{devA, devB},
+					Links:        []serviceability.Link{link},
+					Contributors: []serviceability.Contributor{contributor},
 				}, nil
 			},
 		}

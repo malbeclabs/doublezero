@@ -196,6 +196,8 @@ func newTestProviderWithCircuits(t *testing.T, get func(ctx context.Context, a, 
 	devSeen := map[string]solana.PublicKey{}
 	var devs []serviceability.Device
 	var links []serviceability.Link
+	var contributors []serviceability.Contributor
+	contributorPK := solana.NewWallet().PublicKey()
 	for _, c := range circuits {
 		if _, ok := devSeen[c.OriginDevice.Code]; !ok {
 			devSeen[c.OriginDevice.Code] = c.OriginDevice.PK
@@ -206,18 +208,20 @@ func newTestProviderWithCircuits(t *testing.T, get func(ctx context.Context, a, 
 			devs = append(devs, serviceability.Device{Code: c.TargetDevice.Code, PubKey: c.TargetDevice.PK})
 		}
 		links = append(links, serviceability.Link{
-			Code:        c.Link.Code,
-			SideAPubKey: c.OriginDevice.PK,
-			SideZPubKey: c.TargetDevice.PK,
-			PubKey:      c.Link.PK,
+			Code:              c.Link.Code,
+			SideAPubKey:       c.OriginDevice.PK,
+			SideZPubKey:       c.TargetDevice.PK,
+			PubKey:            c.Link.PK,
+			ContributorPubKey: contributorPK,
 		})
+		contributors = append(contributors, serviceability.Contributor{Code: c.Link.ContributorCode, PubKey: contributorPK})
 	}
 
 	p, err := data.NewProvider(&data.ProviderConfig{
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 		ServiceabilityClient: &mockServiceabilityClient{
 			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
-				return &serviceability.ProgramData{Devices: devs, Links: links}, nil
+				return &serviceability.ProgramData{Devices: devs, Links: links, Contributors: contributors}, nil
 			},
 		},
 		TelemetryClient: &mockTelemetryClient{

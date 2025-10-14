@@ -67,7 +67,10 @@ type GetSummaryForCircuitsConfig struct {
 }
 
 type CircuitSummary struct {
-	Circuit                  string
+	Circuit         string `json:"circuit"`
+	LinkType        string `json:"link_type"`
+	ContributorCode string `json:"contributor_code"`
+
 	stats.CircuitLatencyStat `json:",inline"`
 	CommittedRTT             float64 `json:"committed_rtt"`
 	CommittedJitter          float64 `json:"committed_jitter"`

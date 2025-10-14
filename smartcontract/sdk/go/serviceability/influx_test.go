@@ -36,6 +36,26 @@ func TestToLineProtocol(t *testing.T) {
 		NoTag      string
 	}
 
+	type testContributor struct {
+		Owner   [32]byte          `influx:"tag,owner,pubkey"`
+		Status  ContributorStatus `influx:"tag,status"`
+		Code    string            `influx:"tag,code"`
+		Name    string            `influx:"tag,name"`
+		Ignored string            `influx:"-"`
+		NoTag   string
+	}
+
+	type testExchange struct {
+		Owner   [32]byte       `influx:"tag,owner,pubkey"`
+		Lat     float64        `influx:"field,lat"`
+		Lng     float64        `influx:"field,lng"`
+		Status  ExchangeStatus `influx:"tag,status"`
+		Code    string         `influx:"tag,code"`
+		Name    string         `influx:"tag,name"`
+		Ignored string         `influx:"-"`
+		NoTag   string
+	}
+
 	testCases := []struct {
 		name           string
 		measurement    string
@@ -65,6 +85,44 @@ func TestToLineProtocol(t *testing.T) {
 				"env": "testnet",
 			},
 			expected:  `devices,code=dev-01,device_type=1,env=testnet,owner=` + pubKey1B58 + `,public_ip=192.168.1.1,status=activated dz_prefixes="10.0.0.0/16,10.1.0.0/16",max_users=100,users_count=5 `,
+			expectErr: false,
+		},
+		{
+			name:        "full contributor struct",
+			measurement: "contributors",
+			input: testContributor{
+				Owner:   pubKey1,
+				Status:  ContributorStatusActivated,
+				Code:    "dev-01",
+				Name:    "test-contributor",
+				Ignored: "should be ignored",
+				NoTag:   "should be ignored",
+			},
+			ts: ts,
+			additionalTags: map[string]string{
+				"env": "testnet",
+			},
+			expected:  `contributors,code=dev-01,env=testnet,name=test-contributor,owner=` + pubKey1B58 + `,status=activated`,
+			expectErr: false,
+		},
+		{
+			name:        "full exchange struct",
+			measurement: "exchanges",
+			input: testExchange{
+				Owner:   pubKey1,
+				Lat:     10.0,
+				Lng:     20.0,
+				Status:  ExchangeStatusActivated,
+				Code:    "dev-01",
+				Name:    "test-exchange",
+				Ignored: "should be ignored",
+				NoTag:   "should be ignored",
+			},
+			ts: ts,
+			additionalTags: map[string]string{
+				"env": "testnet",
+			},
+			expected:  `exchanges,code=dev-01,env=testnet,name=test-exchange,owner=` + pubKey1B58 + `,status=1 lat=10,lng=20`,
 			expectErr: false,
 		},
 		{

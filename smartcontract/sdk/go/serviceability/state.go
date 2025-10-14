@@ -81,7 +81,7 @@ type Exchange struct {
 	Bump_seed   uint8          `influx:"-"`
 	Lat         float64        `influx:"field,lat"`
 	Lng         float64        `influx:"field,lng"`
-	LocId       uint32         `influx:"field,loc_id"`
+	LocId       uint32         `influx:"-"`
 	Status      ExchangeStatus `influx:"tag,status"`
 	Code        string         `influx:"tag,code"`
 	Name        string         `influx:"tag,name"`

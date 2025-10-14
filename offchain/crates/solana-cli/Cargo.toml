@@ -1,7 +1,7 @@
 [package]
 name = "doublezero-solana-cli"
 description = "Command line to interact with DoubleZero Solana programs"
-version = "0.1.9"
+version = "0.1.10"
 
 edition.workspace = true
 homepage.workspace = true

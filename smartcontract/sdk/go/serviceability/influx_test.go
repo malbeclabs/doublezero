@@ -130,7 +130,7 @@ func TestToLineProtocol(t *testing.T) {
 			measurement: "devices",
 			input:       testDevice{},
 			ts:          ts,
-			expected:    `devices,code=,device_type=0,owner=11111111111111111111111111111111,public_ip=0.0.0.0,status=pending dz_prefixes="",max_users=0,users_count=0 `,
+			expected:    `devices,device_type=0,owner=11111111111111111111111111111111,public_ip=0.0.0.0,status=pending dz_prefixes="",max_users=0,users_count=0 `,
 			expectErr:   false,
 		},
 		{
@@ -181,6 +181,24 @@ func TestToLineProtocol(t *testing.T) {
 			input:       testDevice{},
 			ts:          ts,
 			expectErr:   true,
+		},
+		{
+			name:        "empty tag",
+			measurement: "contributors",
+			input: testContributor{
+				Owner:   pubKey1,
+				Status:  ContributorStatusActivated,
+				Code:    "dev-01",
+				Name:    "",
+				Ignored: "should be ignored",
+				NoTag:   "should be ignored",
+			},
+			ts: ts,
+			additionalTags: map[string]string{
+				"env": "testnet",
+			},
+			expected:  `contributors,code=dev-01,env=testnet,owner=` + pubKey1B58 + `,status=activated`,
+			expectErr: false,
 		},
 	}
 

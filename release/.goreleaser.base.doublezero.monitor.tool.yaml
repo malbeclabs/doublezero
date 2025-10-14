@@ -1,0 +1,60 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema-pro.json
+# vim: set ts=2 sw=2 tw=0 fo=cnqoj
+
+version: 2
+
+project_name: doublezero-monitor-tool
+
+monorepo:
+  tag_prefix: doublezero-monitor-tool/
+
+builds:
+  - builder: prebuilt
+    goos:
+      - linux
+    goarch:
+      - amd64
+    prebuilt:
+      path: doublezero_monitor/monitor_ibrl.py
+
+archives:
+  - formats:
+    - binary
+
+nfpms:
+  - id: doublezero-monitor-tool
+    package_name: doublezero-monitor-tool
+    vendor: doublezero
+    homepage: doublezero.xyz
+    maintainer: steve <steve@malbeclabs.com>
+    description: |-
+      DoubleZero Monitor
+    license: Apache 2.0
+    formats:
+      - deb
+    bindir: /opt/doublezero_monitor
+    release: 1
+    section: default
+    contents:
+      # glob isn't supported so we need to list every file
+      - src: doublezero_monitor/monitor_ibrl.py
+        dst: /opt/doublezero_monitor/monitor_ibrl.py
+      - src: doublezero_monitor/monitor.py
+        dst: /opt/doublezero_monitor/monitor.py
+      - src: doublezero_monitor/doublezero.py
+        dst: /opt/doublezero_monitor/doublezero.py
+      - src: doublezero_monitor/config.py
+        dst: /opt/doublezero_monitor/config.py
+      - src: doublezero_monitor/helpers.py
+        dst: /opt/doublezero_monitor/helpers.py
+      - src: doublezero_monitor/ping.py
+        dst: /opt/doublezero_monitor/ping.py
+      - src: doublezero_monitor/task_group.py
+        dst: /opt/doublezero_monitor/task_group.py
+      - src: doublezero_monitor/doublezero_monitor.service
+        dst: /etc/systemd/system/doublezero_monitor.service
+    overrides:
+      deb:
+          scripts:
+            preinstall: release/packaging/scripts/doublezero_monitor/deb/preinstall.sh
+            postremove: release/packaging/scripts/doublezero_monitor/deb/postremove.sh

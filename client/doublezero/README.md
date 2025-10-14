@@ -156,9 +156,9 @@ doublezero exchange list
 
 Output:
 ```
- pubkey                                       | code | name        | lat                | lng                  | loc_id | status | owner 
- 5Hbdr6X5pBvAXdhVjMS3bkyqFmQoZHHAbZi7JMEd1UGR | xla  | Los Angeles | 34.049641274076464 | -118.25939642499903  | 0      | 1      | gwfHPG4suqu1aiXEjCPyW9rZfKnb9zQqdNt4iyqiA1D 
- FpGew6SbmrLXipUC2BLFdi3Fa3BGNXrU85ky4fuB3HLU | xny  | New York    | 40.780297071772125 | -74.07203003496925   | 0      | 1      | gwfHPG4suqu1aiXEjCPyW9rZfKnb9zQqdNt4iyqiA1D 
+ pubkey                                       | code | name        | lat                | lng                  | bgp_community | status | owner 
+ 5Hbdr6X5pBvAXdhVjMS3bkyqFmQoZHHAbZi7JMEd1UGR | xla  | Los Angeles | 34.049641274076464 | -118.25939642499903  | 0             | 1      | gwfHPG4suqu1aiXEjCPyW9rZfKnb9zQqdNt4iyqiA1D 
+ FpGew6SbmrLXipUC2BLFdi3Fa3BGNXrU85ky4fuB3HLU | xny  | New York    | 40.780297071772125 | -74.07203003496925   | 0             | 1      | gwfHPG4suqu1aiXEjCPyW9rZfKnb9zQqdNt4iyqiA1D 
  ```
 
 ## Create devices & Link

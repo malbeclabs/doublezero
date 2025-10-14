@@ -78,7 +78,7 @@ mod tests {
             owner: Pubkey::default(),
             lat: 0.0,
             lng: 0.0,
-            loc_id: 123,
+            bgp_community: 123,
             status: ExchangeStatus::Activated,
         };
 

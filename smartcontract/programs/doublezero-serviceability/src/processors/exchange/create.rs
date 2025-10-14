@@ -24,15 +24,15 @@ pub struct ExchangeCreateArgs {
     pub name: String,
     pub lat: f64,
     pub lng: f64,
-    pub loc_id: u32,
+    pub bgp_community: u32,
 }
 
 impl fmt::Debug for ExchangeCreateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "code: {}, name: {}, lat: {}, lng: {}, loc_id: {}",
-            self.code, self.name, self.lat, self.lng, self.loc_id
+            "code: {}, name: {}, lat: {}, lng: {}, bgp_community: {}",
+            self.code, self.name, self.lat, self.lng, self.bgp_community
         )
     }
 }
@@ -97,7 +97,7 @@ pub fn process_create_exchange(
         name: value.name.clone(),
         lat: value.lat,
         lng: value.lng,
-        loc_id: value.loc_id,
+        bgp_community: value.bgp_community,
         status: ExchangeStatus::Activated,
     };
 

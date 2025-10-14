@@ -76,7 +76,7 @@ classDiagram
         String name
         f64 lat
         f64 lng
-        u32 loc_id
+        u32 bgp_community
     }
     class Device {
         +Pubkey pda_pubkey
@@ -186,7 +186,7 @@ Creates a new exchange with the specified parameters. Returns the transaction si
 - `name: String` — Exchange name
 - `lat: f64` — Latitude
 - `lng: f64` — Longitude
-- `loc_id: Option<u32>` — Optional location ID
+- `bgp_community: Option<u32>` — Optional BGP community (auto-assigned by activator)
 
 ### UpdateExchangeCommand
 Updates the parameters of an existing exchange. Returns the transaction signature.
@@ -195,7 +195,7 @@ Updates the parameters of an existing exchange. Returns the transaction signatur
 - `name: Option<String>` — Optional new name
 - `lat: Option<f64>` — Optional new latitude
 - `lng: Option<f64>` — Optional new longitude
-- `loc_id: Option<u32>` — Optional new location ID
+- `bgp_community: Option<u32>` — Optional BGP community
 
 ### GetExchangeCommand
 Fetches an exchange by its public key or code. Returns the exchange's public key and its on-chain data if found.
@@ -216,7 +216,7 @@ Lists all exchanges in the program. Returns a map of exchange public keys to the
 | name          | String  | Exchange name              |
 | lat           | f64     | Latitude                   |
 | lng           | f64     | Longitude                  |
-| loc_id        | u32     | Location ID                |
+| bgp_community | u32     | BGP community              |
 
 ### CreateExchangeCommand
 Creates a new location with the specified parameters. Returns the transaction signature and the location's public key on success.
@@ -224,7 +224,7 @@ Creates a new location with the specified parameters. Returns the transaction si
 - `name: String` — Exchange name
 - `lat: f64` — Latitude
 - `lng: f64` — Longitude
-- `loc_id: Option<u32>` — Optional location ID
+- `bgp_community: Option<u32>` — Optional BGP community
 
 ## Contributor Commands
 

@@ -40,7 +40,7 @@ classDiagram
         u8 bump_seed
         f64 lat
         f64 lng
-        u32 loc_id
+        u32 bgp_community
         ExchangeStatus status
         String code
         String name

@@ -115,7 +115,7 @@ mod tests {
             device2_pk: Pubkey::default(),
             lat: 50.4501,
             lng: 30.5234,
-            loc_id: 1,
+            bgp_community: 1,
             status: ExchangeStatus::Activated,
         };
         client

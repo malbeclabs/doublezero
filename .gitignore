@@ -21,3 +21,6 @@ dist/
 
 # Local devnet deployment artifacts.
 dev/.deploy/
+
+# Ignore the directory used for checking out the monitor tool in CI
+doublezero_monitor/

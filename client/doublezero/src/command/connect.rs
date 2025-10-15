@@ -1,9 +1,10 @@
 use super::helpers::look_for_ip;
 use crate::{
+    dzd_latency::best_latency,
     requirements::check_doublezero,
     servicecontroller::{ProvisioningRequest, ServiceController, ServiceControllerImpl},
 };
-use backon::{BlockingRetryable, ExponentialBuilder, Retryable};
+use backon::{BlockingRetryable, ExponentialBuilder};
 use clap::{Args, Subcommand, ValueEnum};
 use doublezero_cli::{
     doublezerocommand::CliCommand,
@@ -283,45 +284,10 @@ impl ProvisioningCliCommand {
                 }
             },
             None => {
-                spinner.set_message("Reading latency stats...");
-
-                let device_keys = devices.keys().map(|k| k.to_string()).collect::<Vec<_>>();
-
-                let get_latencies = || async {
-                    let mut latencies = controller
-                        .latency()
-                        .await
-                        .map_err(|_| eyre::eyre!("Could not get latency"))?;
-                    latencies.retain(|l| l.reachable);
-                    latencies.retain(|l| device_keys.contains(&l.device_pk.to_string()));
-                    latencies.sort_by(|a, b| a.avg_latency_ns.cmp(&b.avg_latency_ns));
-                    match latencies.len() {
-                        0 => Err(eyre::eyre!("No devices found")),
-                        _ => Ok(latencies),
-                    }
-                };
-
-                let builder = ExponentialBuilder::new()
-                    .with_max_times(5)
-                    .with_min_delay(Duration::from_secs(1))
-                    .with_max_delay(Duration::from_secs(10));
-
-                let latencies = get_latencies
-                    .retry(builder)
-                    .when(|e| e.to_string() == "No devices found")
-                    .notify(|_, dur| {
-                        spinner.set_message(format!("Waiting for latency stats after {dur:?}"))
-                    })
-                    .await?;
-
+                let latency = best_latency(controller, devices, true, Some(spinner), None).await?;
                 spinner.set_message("Reading device account...");
-                Pubkey::from_str(
-                    &latencies
-                        .first()
-                        .ok_or(eyre::eyre!("No devices found"))?
-                        .device_pk,
-                )
-                .map_err(|_| eyre::eyre!("Unable to parse pubkey"))?
+                Pubkey::from_str(&latency.device_pk)
+                    .map_err(|_| eyre::eyre!("Unable to parse pubkey"))?
             }
         };
 

@@ -83,7 +83,7 @@ func TestToLineProtocol(t *testing.T) {
 			additionalTags: map[string]string{
 				"env": "testnet",
 			},
-			expected:  `devices,code=dev-01,device_type=1,env=testnet,owner=` + pubKey1B58 + `,public_ip=192.168.1.1,status=activated dz_prefixes="10.0.0.0/16,10.1.0.0/16",max_users=100u,users_count=5u`,
+			expected:  `devices,code=dev-01,device_type=1,env=testnet,owner=` + pubKey1B58 + `,public_ip=192.168.1.1,status=activated dz_prefixes="10.0.0.0/16,10.1.0.0/16",max_users=100,users_count=5`,
 			expectErr: false,
 		},
 		{
@@ -129,7 +129,7 @@ func TestToLineProtocol(t *testing.T) {
 			measurement: "devices",
 			input:       testDevice{},
 			ts:          ts,
-			expected:    `devices,device_type=0,owner=11111111111111111111111111111111,public_ip=0.0.0.0,status=pending dz_prefixes="",max_users=0u,users_count=0u`,
+			expected:    `devices,device_type=0,owner=11111111111111111111111111111111,public_ip=0.0.0.0,status=pending dz_prefixes="",max_users=0,users_count=0`,
 			expectErr:   false,
 		},
 		{
@@ -146,7 +146,7 @@ func TestToLineProtocol(t *testing.T) {
 				"env":         "mainnet",
 				"device_type": "2", // override a numeric tag
 			},
-			expected:  `devices,code=dev-01,device_type=2,env=mainnet,owner=` + pubKey2B58 + `,public_ip=0.0.0.0,status=pending dz_prefixes="",max_users=0u,users_count=0u`,
+			expected:  `devices,code=dev-01,device_type=2,env=mainnet,owner=` + pubKey2B58 + `,public_ip=0.0.0.0,status=pending dz_prefixes="",max_users=0,users_count=0`,
 			expectErr: false,
 		},
 		{
@@ -156,7 +156,7 @@ func TestToLineProtocol(t *testing.T) {
 				Field1 int `influx:"field,field1"`
 			}{Field1: 42},
 			ts:       ts,
-			expected: `devices, field1=42i`,
+			expected: `devices, field1=42`,
 		},
 		{
 			name:        "no fields",

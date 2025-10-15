@@ -1,6 +1,6 @@
 mod calculate;
 mod initialize;
-
+mod verify;
 //
 
 use std::{
@@ -32,8 +32,10 @@ pub enum ValidatorDebtCommand {
 
     FindSolanaEpoch(calculate::FindSolanaEpochCommand),
 
-    /// Finalize Epoch Transaction.
-    FinalizeTransaction {
+    VerifyValidatorDebt(verify::VerifyValidatorDebtCommand),
+
+    /// Finalize Epoch Distribution.
+    FinalizeDistribution {
         #[command(flatten)]
         solana_connection_options: SolanaValidatorDebtConnectionOptions,
         #[arg(long)]
@@ -51,7 +53,8 @@ impl ValidatorDebtCommand {
             ValidatorDebtCommand::InitializeDistribution(command) => command.execute().await,
             ValidatorDebtCommand::CalculateValidatorDebt(command) => command.execute().await,
             ValidatorDebtCommand::FindSolanaEpoch(command) => command.execute().await,
-            ValidatorDebtCommand::FinalizeTransaction {
+            ValidatorDebtCommand::VerifyValidatorDebt(command) => command.execute().await,
+            ValidatorDebtCommand::FinalizeDistribution {
                 solana_connection_options,
                 epoch,
                 dry_run,

@@ -19,12 +19,15 @@ use crate::{
 };
 
 #[derive(Debug, Args, Clone)]
-pub struct CalculateValidatorDebtCommand {
+pub struct VerifyValidatorDebtCommand {
     #[arg(long)]
     epoch: Option<u64>,
 
     #[arg(long)]
-    csv_path: Option<String>,
+    validator_id: String,
+
+    #[arg(long)]
+    amount: u64,
 
     #[command(flatten)]
     schedule_or_force: super::ScheduleOrForce,
@@ -34,14 +37,10 @@ pub struct CalculateValidatorDebtCommand {
 
     #[command(flatten)]
     dz_ledger_connection_options: DoubleZeroLedgerConnectionOptions,
-
-    /// Option to post validator debt only to the DoubleZero Ledger
-    #[arg(long)]
-    post_to_ledger_only: bool,
 }
 
 #[async_trait::async_trait]
-impl Schedulable for CalculateValidatorDebtCommand {
+impl Schedulable for VerifyValidatorDebtCommand {
     fn schedule(&self) -> &ScheduleOption {
         &self.schedule_or_force.schedule
     }
@@ -49,11 +48,11 @@ impl Schedulable for CalculateValidatorDebtCommand {
     async fn execute_once(&self) -> Result<()> {
         let Self {
             epoch,
-            csv_path,
+            validator_id,
+            amount,
             schedule_or_force,
             solana_payer_options,
             dz_ledger_connection_options,
-            post_to_ledger_only,
         } = self;
 
         schedule_or_force.ensure_safe_execution()?;
@@ -76,20 +75,17 @@ impl Schedulable for CalculateValidatorDebtCommand {
                 .clone(),
             dz_ledger_url: dz_ledger_connection_options.dz_ledger_url.clone(),
         };
+
         let solana_debt_calculator: SolanaDebtCalculator =
             SolanaDebtCalculator::try_from(connection_options)?;
         let signer = try_load_keypair(None).expect("failed to load keypair");
-        let transaction = Transaction::new(
-            signer,
-            solana_payer_options.signer_options.dry_run,
-            schedule_or_force.force,
-        );
-        crate::worker::calculate_validator_debt(
+        let transaction = Transaction::new(signer, true, false);
+        crate::worker::verify_validator_debt(
             &solana_debt_calculator,
             transaction,
             epoch,
-            csv_path.clone(),
-            *post_to_ledger_only,
+            validator_id.as_str(),
+            *amount,
         )
         .await?;
 

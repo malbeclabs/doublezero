@@ -27,7 +27,7 @@ pub async fn get_block_rewards<T: ValidatorRewards>(
     let first_slot = first_slot_in_current_epoch - (epoch_info.slots_in_epoch * epoch_diff);
 
     // Fetch the leader schedule
-    let leader_schedule = api_provider.get_leader_schedule().await?;
+    let leader_schedule = api_provider.get_leader_schedule(Some(first_slot)).await?;
 
     // Build validator schedules
     println!("Building validator schedules");
@@ -44,88 +44,102 @@ pub async fn get_block_rewards<T: ValidatorRewards>(
         })
         .collect();
 
-    let block_rewards = stream::iter(validator_schedules.into_iter().flat_map(
-        |(validator_id, slots)| {
-            println!("getting block rewards for {}", validator_id.clone());
-            slots
+    let block_rewards =
+        stream::iter(
+            validator_schedules
                 .into_iter()
-                .map(move |slot| (validator_id.clone(), slot))
-        },
-    ))
-    .map(|(validator_id, slot)| async move {
-        println!("getting blocks for {}", validator_id.clone());
-        match (|| async { api_provider.get_block_with_config(slot).await })
-            .retry(
-                &ExponentialBuilder::default()
-                    .with_max_times(5)
-                    .with_min_delay(Duration::from_millis(100))
-                    .with_max_delay(Duration::from_secs(10))
-                    .with_jitter(),
-            )
-            .when(|err| {
-                match err.kind() {
-                    ClientErrorKind::RpcError(RpcError::RpcResponseError { code, .. }) => {
-                        // Don't retry if block isn't found
-                        !matches!(*code, -32009 | -32007)
+                .flat_map(|(validator_id, slots)| {
+                    println!("getting block rewards for {}", validator_id.clone());
+                    slots
+                        .into_iter()
+                        .map(move |slot| (validator_id.clone(), slot))
+                }),
+        )
+        .map(|(validator_id, slot)| async move {
+            println!("getting blocks for {}", validator_id.clone());
+            match (|| async { api_provider.get_block_with_config(slot).await })
+                .retry(
+                    &ExponentialBuilder::default()
+                        .with_max_times(5)
+                        .with_min_delay(Duration::from_millis(100))
+                        .with_max_delay(Duration::from_secs(10))
+                        .with_jitter(),
+                )
+                .when(|err| {
+                    match err.kind() {
+                        ClientErrorKind::RpcError(RpcError::RpcResponseError { code, .. }) => {
+                            // Don't retry if block isn't found
+                            println!("{}", *code);
+                            !matches!(*code, -32009 | -32007)
+                        }
+                        _ => true, // Retry on all other errors
                     }
-                    _ => true, // Retry on all other errors
+                })
+                .notify(|err, dur: Duration| {
+                    info!(
+                        "get_block_with_config call failed, retrying in {:?}: {}",
+                        dur, err
+                    );
+                })
+                .await
+            {
+                Ok(block) => {
+                    let mut signature_lamports: u64 = 0;
+                    if let Some(sigs) = &block.signatures {
+                        signature_lamports = sigs.len() as u64;
+                        signature_lamports *= 2500;
+                    };
+                    let lamports: u64 = block
+                        .rewards
+                        .as_ref()
+                        .map(|rewards| {
+                            rewards
+                                .iter()
+                                .filter_map(|reward| {
+                                    if reward.reward_type == Some(Fee) {
+                                        Some(reward.lamports as u64)
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .sum()
+                        })
+                        .ok_or_else(|| anyhow::anyhow!("no block rewards"))?;
+                    Ok((
+                        validator_id,
+                        (signature_lamports, lamports - signature_lamports),
+                    ))
                 }
-            })
-            .notify(|err, dur: Duration| {
-                info!(
-                    "get_block_with_config call failed, retrying in {:?}: {}",
-                    dur, err
-                );
-            })
-            .await
-        {
-            Ok(block) => {
-                let mut signature_lamports: u64 = 0;
-                if let Some(sigs) = &block.signatures {
-                    signature_lamports = sigs.len() as u64;
-                    signature_lamports *= 2500;
-                };
-                let lamports: u64 = block
-                    .rewards
-                    .as_ref()
-                    .map(|rewards| {
-                        rewards
-                            .iter()
-                            .filter_map(|reward| {
-                                if reward.reward_type == Some(Fee) {
-                                    Some(reward.lamports as u64)
-                                } else {
-                                    None
-                                }
-                            })
-                            .sum()
-                    })
-                    .ok_or_else(|| anyhow::anyhow!("no block rewards"))?;
-                Ok((
-                    validator_id,
-                    (signature_lamports, lamports - signature_lamports),
-                ))
-            }
 
-            Err(e) => {
-                if let ClientErrorKind::RpcError(RpcError::RpcResponseError { code, .. }) = e.kind()
-                {
-                    // -32_009 -  Slot x was skipped, or missing in long-term storage
-                    // -32_007 -  Requested block or slot does not exist
-                    if *code == -32_009 || *code == -32_007 {
-                        Ok((validator_id, (0, 0)))
+                Err(e) => {
+                    if let ClientErrorKind::RpcError(RpcError::RpcResponseError { code, .. }) =
+                        e.kind()
+                    {
+                        // -32_009 -  Slot x was skipped, or missing in long-term storage
+                        // -32_007 -  Requested block or slot does not exist
+                        if *code == -32_009 || *code == -32_007 {
+                            Ok((validator_id, (0, 0)))
+                        } else {
+                            bail!("Failed to fetch block for slot {slot}: {e}")
+                        }
                     } else {
                         bail!("Failed to fetch block for slot {slot}: {e}")
                     }
-                } else {
-                    bail!("Failed to fetch block for slot {slot}: {e}")
                 }
             }
-        }
-    })
-    .buffer_unordered(20)
-    .try_collect::<HashMap<String, (u64, u64)>>()
-    .await?;
+        })
+        .buffer_unordered(20)
+        .try_fold(
+            HashMap::new(),
+            |mut acc: HashMap<String, (u64, u64)>,
+             (validator_id, (signature_lamports, lamports))| async move {
+                let entry = acc.entry(validator_id).or_insert((0, 0));
+                entry.0 += signature_lamports;
+                entry.1 += lamports;
+                Ok(acc)
+            },
+        )
+        .await?;
 
     Ok(block_rewards)
 }
@@ -151,7 +165,7 @@ mod tests {
         mock_api_provider
             .expect_get_leader_schedule()
             .times(1)
-            .returning(move || Ok(leader_schedule.clone()));
+            .returning(move |_| Ok(leader_schedule.clone()));
 
         let block_reward = (7500, 0);
         let mock_block = UiConfirmedBlock {

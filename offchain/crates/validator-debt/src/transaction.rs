@@ -1,4 +1,6 @@
+use crate::{ledger, validator_debt::ComputedSolanaValidatorDebts};
 use anyhow::{Result, anyhow};
+use borsh::BorshDeserialize;
 use doublezero_program_tools::{instruction::try_build_instruction, zero_copy};
 use doublezero_revenue_distribution::{
     ID,
@@ -12,27 +14,33 @@ use doublezero_revenue_distribution::{
     state::Distribution,
     types::{DoubleZeroEpoch, SolanaValidatorDebt},
 };
-use solana_client::{
-    nonblocking::rpc_client::RpcClient,
-    rpc_client::SerializableTransaction,
-    rpc_response::{Response, RpcSimulateTransactionResult},
-};
+use doublezero_sdk::record::pubkey;
+use serde::Serialize;
+use solana_client::{nonblocking::rpc_client::RpcClient, rpc_client::SerializableTransaction};
 use solana_sdk::{
+    hash::Hash,
     message::{VersionedMessage, v0::Message},
     pubkey::Pubkey,
-    signature::{Keypair, Signature},
+    signature::Keypair,
     signer::Signer,
     transaction::VersionedTransaction,
 };
 use svm_hash::merkle::MerkleProof;
 
-use crate::validator_debt::ComputedSolanaValidatorDebts;
+pub const SOLANA_SEED_PREFIX: &[u8; 21] = b"solana_validator_debt";
 
 #[derive(Debug)]
 pub struct Transaction {
     pub signer: Keypair,
     pub dry_run: bool,
     pub force: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DebtCollectionResult {
+    pub validator_id: String,
+    pub amount: u64,
+    pub result: Option<String>,
 }
 
 impl Transaction {
@@ -84,8 +92,35 @@ impl Transaction {
     pub async fn finalize_distribution(
         &self,
         solana_rpc_client: &RpcClient,
+        dz_ledger_rpc_client: &RpcClient,
         dz_epoch: u64,
     ) -> Result<VersionedTransaction> {
+        let dz_epoch_bytes = dz_epoch.to_le_bytes();
+        let seeds: &[&[u8]] = &[SOLANA_SEED_PREFIX, &dz_epoch_bytes];
+
+        let read = ledger::read_from_ledger(
+            dz_ledger_rpc_client,
+            &self.signer,
+            seeds,
+            dz_ledger_rpc_client.commitment(),
+        )
+        .await?;
+
+        let deserialized = ComputedSolanaValidatorDebts::try_from_slice(read.1.as_slice())?;
+
+        for debt_entry in deserialized.clone().debts {
+            let debt_proof = deserialized.find_debt_proof(&debt_entry.node_id).unwrap();
+            let (_, proof) = debt_proof;
+
+            let leaf = SolanaValidatorDebt {
+                node_id: debt_entry.node_id,
+                amount: debt_entry.amount,
+            };
+
+            self.verify_merkle_root(solana_rpc_client, dz_epoch, proof, leaf)
+                .await?;
+        }
+
         let dz_epoch = DoubleZeroEpoch::new(dz_epoch);
 
         match try_build_instruction(
@@ -121,7 +156,7 @@ impl Transaction {
         dz_epoch: u64,
         proof: MerkleProof,
         leaf: SolanaValidatorDebt,
-    ) -> Result<Response<RpcSimulateTransactionResult>> {
+    ) -> Result<()> {
         let dz_epoch = DoubleZeroEpoch::new(dz_epoch);
         let instruction = try_build_instruction(
             &ID,
@@ -140,36 +175,64 @@ impl Transaction {
         let verified_transaction =
             VersionedTransaction::try_new(VersionedMessage::V0(message), &[&self.signer])
                 .map_err(|e| anyhow!("Failed to create verified instruction: {e:?}"))?;
-        let verified = solana_rpc_client
+        let verification = solana_rpc_client
             .simulate_transaction(&verified_transaction)
             .await?;
-        Ok(verified)
+        anyhow::ensure!(
+            verification.value.err.is_none(),
+            "simulation verification failed"
+        );
+
+        println!(
+            "Verification Result: {:#?}",
+            verification.value.logs.unwrap_or(Vec::new())
+        );
+
+        Ok(())
     }
 
     pub async fn send_or_simulate_transaction(
         &self,
         solana_rpc_client: &RpcClient,
         transaction: &impl SerializableTransaction,
-    ) -> Result<Option<Signature>> {
+    ) -> Result<Option<String>> {
         if self.dry_run {
             let simulation_response = solana_rpc_client.simulate_transaction(transaction).await?;
-            println!("Simulated program logs:");
-            simulation_response
-                .value
-                .logs
-                .unwrap()
-                .iter()
-                .for_each(|log| {
-                    println!("  {log}");
-                });
-
-            Ok(None)
+            Ok(Some(simulation_response.value.logs.unwrap().join(", ")))
         } else {
             let tx_sig = solana_rpc_client
                 .send_and_confirm_transaction(transaction)
                 .await?;
-            Ok(Some(tx_sig))
+            Ok(Some(tx_sig.to_string()))
         }
+    }
+
+    pub async fn close_account(
+        &self,
+        ledger_rpc_client: &RpcClient,
+        dz_epoch: u64,
+        recent_blockhash: Hash,
+    ) -> Result<()> {
+        let dz_epoch_bytes = dz_epoch.to_le_bytes();
+        let seed: &[&[u8]] = &[SOLANA_SEED_PREFIX, &dz_epoch_bytes];
+        let key = pubkey::create_record_key(&self.pubkey(), seed);
+        let instruction =
+            doublezero_record::instruction::close_account(&key, &self.pubkey(), &self.pubkey());
+
+        let message =
+            Message::try_compile(&self.pubkey(), &[instruction], &[], recent_blockhash).unwrap();
+
+        let verified_transaction =
+            VersionedTransaction::try_new(VersionedMessage::V0(message), &[&self.signer])
+                .map_err(|e| anyhow::anyhow!("Failed to create verified instruction: {e:?}"))?;
+
+        let tx = &self
+            .send_or_simulate_transaction(ledger_rpc_client, &verified_transaction)
+            .await?;
+
+        println!("{:#?}", tx);
+
+        Ok(())
     }
 
     pub async fn pay_solana_validator_debt(
@@ -177,8 +240,9 @@ impl Transaction {
         solana_rpc_client: &RpcClient,
         debt: ComputedSolanaValidatorDebts,
         dz_epoch: u64,
-    ) -> Result<Vec<VersionedTransaction>> {
-        let mut transactions: Vec<VersionedTransaction> = Vec::new();
+    ) -> Result<Vec<DebtCollectionResult>> {
+        let mut payment_results: Vec<DebtCollectionResult> = Vec::with_capacity(debt.debts.len());
+
         let debt_clone = debt.clone();
         for d in debt.debts {
             let debt_proof = debt_clone.find_debt_proof(&d.node_id).unwrap();
@@ -201,9 +265,33 @@ impl Transaction {
             let versioned_transaction =
                 VersionedTransaction::try_new(VersionedMessage::V0(message), &[&self.signer])
                     .unwrap();
-            transactions.push(versioned_transaction);
+
+            let result = self
+                .send_or_simulate_transaction(solana_rpc_client, &versioned_transaction)
+                .await;
+
+            match result {
+                Ok(success) => {
+                    println!("{:#?}", &success);
+                    let payment_result = DebtCollectionResult {
+                        amount: d.amount,
+                        validator_id: d.node_id.to_string(),
+                        result: success,
+                    };
+                    payment_results.push(payment_result);
+                }
+                Err(err) => {
+                    let payment_result = DebtCollectionResult {
+                        amount: d.amount,
+                        validator_id: d.node_id.to_string(),
+                        result: Some(err.to_string()),
+                    };
+                    payment_results.push(payment_result);
+                    println!("ERR: {:#?} for validator: {:#?}", err, &d.node_id)
+                }
+            }
         }
-        Ok(transactions)
+        Ok(payment_results)
     }
 
     pub async fn read_distribution(
@@ -348,12 +436,13 @@ mod tests {
             vote_account_config,
         );
         let solana_rpc_client = fpc.solana_rpc_client;
+        let ledger_rpc_client = fpc.ledger_rpc_client;
 
         let transaction = Transaction::new(keypair, false, false);
 
         let dz_epoch: u64 = 0;
         let finalize_transaction = transaction
-            .finalize_distribution(&solana_rpc_client, dz_epoch)
+            .finalize_distribution(&solana_rpc_client, &ledger_rpc_client, dz_epoch)
             .await?;
 
         let _sent_transaction = transaction

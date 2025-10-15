@@ -36,7 +36,7 @@ pub trait ValidatorRewards {
     fn solana_commitment_config(&self) -> CommitmentConfig;
     fn ledger_commitment_config(&self) -> CommitmentConfig;
     async fn get_epoch_info(&self) -> Result<EpochInfo, solana_client::client_error::ClientError>;
-    async fn get_leader_schedule(&self) -> Result<HashMap<String, Vec<usize>>>;
+    async fn get_leader_schedule(&self, epoch: Option<u64>) -> Result<HashMap<String, Vec<usize>>>;
     async fn get_block_with_config(
         &self,
         slot: u64,
@@ -102,8 +102,8 @@ impl ValidatorRewards for SolanaDebtCalculator {
     async fn get_epoch_info(&self) -> Result<EpochInfo, solana_client::client_error::ClientError> {
         self.solana_rpc_client.get_epoch_info().await
     }
-    async fn get_leader_schedule(&self) -> Result<HashMap<String, Vec<usize>>> {
-        let schedule = self.solana_rpc_client.get_leader_schedule(None).await?;
+    async fn get_leader_schedule(&self, epoch: Option<u64>) -> Result<HashMap<String, Vec<usize>>> {
+        let schedule = self.solana_rpc_client.get_leader_schedule(epoch).await?;
         schedule.ok_or(anyhow!("No leader schedule found"))
     }
 

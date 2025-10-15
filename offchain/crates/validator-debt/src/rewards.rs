@@ -270,7 +270,7 @@ mod tests {
         mock_solana_debt_calculator
             .expect_get_leader_schedule()
             .times(1)
-            .returning(move || Ok(leader_schedule.clone()));
+            .returning(move |_| Ok(leader_schedule.clone()));
 
         // Call the function under test with the prepared data and mocks.
         let rewards = get_rewards_between_timestamps(
@@ -350,7 +350,7 @@ mod tests {
         mock_solana_debt_calculator
             .expect_get_leader_schedule()
             .times(1)
-            .returning(move || Ok(leader_schedule.clone()));
+            .returning(move |_| Ok(leader_schedule.clone()));
 
         let mock_block = UiConfirmedBlock {
             num_reward_partitions: Some(1),

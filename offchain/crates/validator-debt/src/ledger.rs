@@ -48,19 +48,16 @@ pub async fn create_record_on_ledger<T: borsh::BorshSerialize>(
 
     let serialized = borsh::to_vec(record_data)?;
     // todo : log signature
-    let record = client::try_create_record(
+    let created_record = client::try_create_record(
         rpc_client,
         recent_blockhash,
         payer_signer,
         seeds,
         serialized.len(),
     )
-    .await
-    .unwrap_or_else(|_| Default::default());
+    .await;
 
-    if record.to_string() == "1111111111111111111111111111111111111111111111111111111111111111" {
-        println!("record already exists for {seeds:#?}");
-    }
+    println!("Attempting to create record {:#?}", created_record?);
 
     for chunk in record::instruction::write_record_chunks(&payer_key, seeds, &serialized) {
         chunk

@@ -18,6 +18,7 @@ bincode.workspace = true
 borsh.workspace = true
 chrono.workspace = true
 clap.workspace = true
+csv.workspace = true
 doublezero-program-tools.workspace = true
 doublezero-record.workspace = true
 doublezero-revenue-distribution.workspace = true

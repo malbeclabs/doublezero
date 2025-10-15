@@ -11,7 +11,9 @@ repository.workspace = true
 [dependencies]
 anyhow.workspace = true
 borsh.workspace = true
+chrono.workspace = true
 clap.workspace = true
+csv.workspace = true
 doublezero-passport.workspace = true
 doublezero-ledger-sentinel.workspace = true
 doublezero-program-tools.workspace = true

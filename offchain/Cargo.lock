@@ -1937,7 +1937,9 @@ version = "0.1.1"
 dependencies = [
  "anyhow",
  "borsh 1.5.7",
+ "chrono",
  "clap",
+ "csv",
  "doublezero-ledger-sentinel",
  "doublezero-passport",
  "doublezero-program-tools",
@@ -2003,6 +2005,7 @@ dependencies = [
  "borsh 1.5.7",
  "chrono",
  "clap",
+ "csv",
  "doublezero-program-tools",
  "doublezero-record",
  "doublezero-revenue-distribution",

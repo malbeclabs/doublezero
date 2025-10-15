@@ -90,6 +90,7 @@ struct UserData {
     pub dz_ip: String,
     pub status: String,
     pub owner: String,
+    pub validator_pubkey: String,
 }
 
 impl ExportCliCommand {
@@ -203,6 +204,7 @@ impl ExportCliCommand {
                             dz_ip: user.dz_ip.to_string(),
                             status: user.status.to_string(),
                             owner: user.owner.to_string(),
+                            validator_pubkey: user.validator_pubkey.to_string(),
                         })
                         .collect(),
                     owner: data.owner.to_string(),

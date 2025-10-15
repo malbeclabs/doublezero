@@ -1,6 +1,11 @@
 use core::fmt;
 
-use crate::{error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::exchange::*};
+use crate::{
+    error::DoubleZeroError,
+    globalstate::{globalstate_get, globalstate_write},
+    helper::*,
+    state::exchange::Exchange,
+};
 use borsh::{BorshDeserialize, BorshSerialize};
 use doublezero_program_common::validate_account_code;
 #[cfg(test)]
@@ -62,7 +67,7 @@ pub fn process_update_exchange(
     // Check if the account is writable
     assert!(exchange_account.is_writable, "PDA Account is not writable");
     // Parse the global state account & check if the payer is in the allowlist
-    let globalstate = globalstate_get(globalstate_account)?;
+    let mut globalstate = globalstate_get(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }
@@ -82,11 +87,12 @@ pub fn process_update_exchange(
     if let Some(ref lng) = value.lng {
         exchange.lng = *lng;
     }
-    if let Some(ref bgp_community) = value.bgp_community {
-        exchange.bgp_community = *bgp_community;
+    if let Some(_bgp_community) = value.bgp_community {
+        exchange.bgp_community = assign_bgp_community(&mut globalstate);
     }
 
     account_write(exchange_account, &exchange, payer_account, system_program)?;
+    globalstate_write(globalstate_account, &globalstate)?;
 
     #[cfg(test)]
     msg!("Updated: {:?}", exchange);

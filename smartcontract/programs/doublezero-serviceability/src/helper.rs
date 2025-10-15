@@ -1,4 +1,8 @@
-use crate::{error::Validate, seeds::*, state::accounttype::*};
+use crate::{
+    error::Validate,
+    seeds::*,
+    state::{accounttype::*, globalstate::GlobalState},
+};
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::AccountInfo,
@@ -144,6 +148,19 @@ pub fn account_close(
     close_account.assign(&system_program::ID);
 
     Ok(())
+}
+
+/// Auto-assigns the next BGP community value for an exchange.
+///
+/// # Arguments
+/// * `globalstate` - Mutable reference to global state (updated with next_bgp_community)
+///
+/// # Returns
+/// * The assigned BGP community value
+pub fn assign_bgp_community(globalstate: &mut GlobalState) -> u16 {
+    let assigned = globalstate.next_bgp_community;
+    globalstate.next_bgp_community = assigned.saturating_add(1);
+    assigned
 }
 
 pub fn format_option_displayable<T: fmt::Display>(opt: Option<T>) -> String {

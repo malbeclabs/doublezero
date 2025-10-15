@@ -24,9 +24,6 @@ pub struct UpdateExchangeCliCommand {
     /// Updated longitude for the exchange
     #[arg(long, allow_hyphen_values(true))]
     pub lng: Option<f64>,
-    /// Updated BGP community for the exchange
-    #[arg(long)]
-    pub bgp_community: Option<u16>,
 }
 
 impl UpdateExchangeCliCommand {
@@ -37,13 +34,14 @@ impl UpdateExchangeCliCommand {
         let (pubkey, _) = client.get_exchange(GetExchangeCommand {
             pubkey_or_code: self.pubkey,
         })?;
+
         let signature = client.update_exchange(UpdateExchangeCommand {
             pubkey,
             code: self.code,
             name: self.name,
             lat: self.lat,
             lng: self.lng,
-            bgp_community: self.bgp_community,
+            bgp_community: None, // BGP community cannot be updated
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -114,7 +112,7 @@ mod tests {
                 name: Some("Test Exchange".to_string()),
                 lat: Some(12.34),
                 lng: Some(56.78),
-                bgp_community: Some(1),
+                bgp_community: None,
             }))
             .times(1)
             .returning(move |_| Ok(signature));
@@ -127,7 +125,6 @@ mod tests {
             name: Some("Test Exchange".to_string()),
             lat: Some(12.34),
             lng: Some(56.78),
-            bgp_community: Some(1),
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

@@ -56,7 +56,7 @@ async fn test_user() {
     )
     .await;
 
-    let (config_pubkey, _) = get_globalconfig_pda(&program_id);
+    let (_config_pubkey, _) = get_globalconfig_pda(&program_id);
 
     execute_transaction(
         &mut banks_client,
@@ -69,10 +69,7 @@ async fn test_user() {
             user_tunnel_block: "10.0.0.0/24".parse().unwrap(),
             multicastgroup_block: "224.0.0.0/4".parse().unwrap(),
         }),
-        vec![
-            AccountMeta::new(config_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
+        vec![AccountMeta::new(globalstate_pubkey, false)],
         &payer,
     )
     .await;

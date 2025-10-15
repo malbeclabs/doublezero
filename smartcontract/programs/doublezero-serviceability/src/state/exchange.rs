@@ -7,6 +7,12 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError, pubkey::Pubkey};
 use std::fmt;
 
+/// Minimum BGP community value for exchanges (inclusive)
+pub const BGP_COMMUNITY_MIN: u16 = 10000;
+
+/// Maximum BGP community value for exchanges (inclusive)
+pub const BGP_COMMUNITY_MAX: u16 = 10999;
+
 #[repr(u8)]
 #[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Default)]
 #[borsh(use_discriminant = true)]
@@ -171,6 +177,13 @@ impl Validate for Exchange {
         if self.lng < -180.0 || self.lng > 180.0 {
             msg!("Invalid longitude: {}", self.lng);
             return Err(DoubleZeroError::InvalidLongitude);
+        }
+        // BGP Community must be 0 or in range BGP_COMMUNITY_MIN-BGP_COMMUNITY_MAX
+        if self.bgp_community != 0
+            && (self.bgp_community < BGP_COMMUNITY_MIN || self.bgp_community > BGP_COMMUNITY_MAX)
+        {
+            msg!("Invalid BGP community: {}", self.bgp_community);
+            return Err(DoubleZeroError::InvalidBgpCommunity);
         }
 
         Ok(())
@@ -364,5 +377,60 @@ mod tests {
         let err_high = val_high.validate();
         assert!(err_high.is_err());
         assert_eq!(err_high.unwrap_err(), DoubleZeroError::InvalidLongitude);
+    }
+
+    #[test]
+    fn test_state_exchange_validate_bgp_community() {
+        let val_zero = Exchange {
+            account_type: AccountType::Exchange,
+            owner: Pubkey::new_unique(),
+            index: 123,
+            bump_seed: 1,
+            reference_count: 0,
+            lat: 10.0,
+            lng: 10.0,
+            device1_pk: Pubkey::default(),
+            device2_pk: Pubkey::default(),
+            bgp_community: 0,
+            unused: 0,
+            code: "test-321".to_string(),
+            name: "test-test-test".to_string(),
+            status: ExchangeStatus::Activated,
+        };
+        assert!(val_zero.validate().is_ok());
+
+        let val_min = Exchange {
+            bgp_community: BGP_COMMUNITY_MIN,
+            ..val_zero.clone()
+        };
+        assert!(val_min.validate().is_ok());
+
+        let val_max = Exchange {
+            bgp_community: BGP_COMMUNITY_MAX,
+            ..val_zero.clone()
+        };
+        assert!(val_max.validate().is_ok());
+
+        let val_mid = Exchange {
+            bgp_community: 10500,
+            ..val_zero.clone()
+        };
+        assert!(val_mid.validate().is_ok());
+
+        let val_too_low = Exchange {
+            bgp_community: BGP_COMMUNITY_MIN - 1,
+            ..val_zero.clone()
+        };
+        let err = val_too_low.validate();
+        assert!(err.is_err());
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidBgpCommunity);
+
+        let val_too_high = Exchange {
+            bgp_community: BGP_COMMUNITY_MAX + 1,
+            ..val_zero.clone()
+        };
+        let err = val_too_high.validate();
+        assert!(err.is_err());
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidBgpCommunity);
     }
 }

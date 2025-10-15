@@ -2,7 +2,10 @@ use doublezero_serviceability::{
     entrypoint::*,
     instructions::*,
     pda::*,
-    processors::exchange::{create::*, delete::*, resume::*, suspend::*, update::*},
+    processors::{
+        exchange::{create::*, delete::*, resume::*, suspend::*, update::*},
+        globalconfig::set::SetGlobalConfigArgs,
+    },
     state::{accounttype::AccountType, exchange::*},
 };
 use solana_program_test::*;
@@ -42,6 +45,29 @@ async fn test_exchange() {
     )
     .await;
 
+    /***********************************************************************************************************************************/
+    println!("Initializing globalconfig account...");
+    let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetGlobalConfig(SetGlobalConfigArgs {
+            local_asn: 65000,
+            remote_asn: 65001,
+            device_tunnel_block: "10.0.0.0/24".parse().unwrap(),
+            user_tunnel_block: "10.0.0.0/24".parse().unwrap(),
+            multicastgroup_block: "224.0.0.0/4".parse().unwrap(),
+        }),
+        vec![
+            AccountMeta::new(globalconfig_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+    println!("✅ globalconfig account initialized");
     /***********************************************************************************************************************************/
     // Exchange _la
 
@@ -141,7 +167,7 @@ async fn test_exchange() {
             name: Some("Los Angeles - Los Angeles".to_string()),
             lat: Some(3.433),
             lng: Some(23.223),
-            bgp_community: Some(1),
+            bgp_community: Some(10500),
         }),
         vec![
             AccountMeta::new(exchange_pubkey, false),

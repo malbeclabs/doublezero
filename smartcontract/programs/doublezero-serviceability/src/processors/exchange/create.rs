@@ -5,7 +5,10 @@ use crate::{
     globalstate::{globalstate_get_next, globalstate_write},
     helper::*,
     pda::*,
-    state::{accounttype::AccountType, exchange::*},
+    state::{
+        accounttype::AccountType,
+        exchange::{Exchange, ExchangeStatus},
+    },
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use doublezero_program_common::validate_account_code;
@@ -69,7 +72,7 @@ pub fn process_create_exchange(
     // Check if the account is writable
     assert!(exchange_account.is_writable, "PDA Account is not writable");
     // Parse the global state account & check if the payer is in the allowlist
-    let globalstate = globalstate_get_next(globalstate_account)?;
+    let mut globalstate = globalstate_get_next(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }
@@ -85,6 +88,8 @@ pub fn process_create_exchange(
         "Invalid Exchange PubKey"
     );
 
+    let bgp_community = assign_bgp_community(&mut globalstate);
+
     let exchange: Exchange = Exchange {
         account_type: AccountType::Exchange,
         owner: *payer_account.key,
@@ -97,7 +102,7 @@ pub fn process_create_exchange(
         name: value.name.clone(),
         lat: value.lat,
         lng: value.lng,
-        bgp_community: value.bgp_community,
+        bgp_community,
         unused: 0,
         status: ExchangeStatus::Activated,
     };

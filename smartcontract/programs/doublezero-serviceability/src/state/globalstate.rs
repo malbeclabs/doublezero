@@ -1,7 +1,7 @@
 use crate::{
     error::{DoubleZeroError, Validate},
     helper::deserialize_vec_with_capacity,
-    state::accounttype::AccountType,
+    state::{accounttype::AccountType, exchange::BGP_COMMUNITY_MIN},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
@@ -19,6 +19,7 @@ pub struct GlobalState {
     pub sentinel_authority_pk: Pubkey,     // 32
     pub contributor_airdrop_lamports: u64, // 8
     pub user_airdrop_lamports: u64,        // 8
+    pub next_bgp_community: u16,           // 2
 }
 
 impl fmt::Display for GlobalState {
@@ -33,7 +34,8 @@ user_allowlist: {:?}, \
 activator_authority_pk: {:?}, \
 sentinel_authority_pk: {:?}, \
 contributor_airdrop_lamports: {}, \
-user_airdrop_lamports: {}",
+user_airdrop_lamports: {}, \
+next_bgp_community: {}",
             self.account_type,
             self.account_index,
             self.foundation_allowlist,
@@ -43,6 +45,7 @@ user_airdrop_lamports: {}",
             self.sentinel_authority_pk,
             self.contributor_airdrop_lamports,
             self.user_airdrop_lamports,
+            self.next_bgp_community,
         )
     }
 }
@@ -61,6 +64,7 @@ impl GlobalState {
             + 32
             + 8
             + 8
+            + 2
     }
 }
 
@@ -80,6 +84,8 @@ impl TryFrom<&[u8]> for GlobalState {
             contributor_airdrop_lamports: BorshDeserialize::deserialize(&mut data)
                 .unwrap_or_default(),
             user_airdrop_lamports: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            next_bgp_community: BorshDeserialize::deserialize(&mut data)
+                .unwrap_or(BGP_COMMUNITY_MIN),
         };
 
         if out.account_type != AccountType::GlobalState {
@@ -127,6 +133,7 @@ mod tests {
         assert_eq!(val.sentinel_authority_pk, Pubkey::default());
         assert_eq!(val.contributor_airdrop_lamports, 0);
         assert_eq!(val.user_airdrop_lamports, 0);
+        assert_eq!(val.next_bgp_community, BGP_COMMUNITY_MIN);
     }
 
     #[test]
@@ -142,6 +149,7 @@ mod tests {
             sentinel_authority_pk: Pubkey::new_unique(),
             contributor_airdrop_lamports: 1_000_000_000,
             user_airdrop_lamports: 40_000,
+            next_bgp_community: BGP_COMMUNITY_MIN,
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -163,6 +171,7 @@ mod tests {
             val2.contributor_airdrop_lamports
         );
         assert_eq!(val.user_airdrop_lamports, val2.user_airdrop_lamports);
+        assert_eq!(val.next_bgp_community, val2.next_bgp_community);
     }
 
     #[test]
@@ -178,6 +187,7 @@ mod tests {
             sentinel_authority_pk: Pubkey::new_unique(),
             contributor_airdrop_lamports: 1_000_000_000,
             user_airdrop_lamports: 40_000,
+            next_bgp_community: BGP_COMMUNITY_MIN,
         };
         let err = val.validate();
         assert!(err.is_err());

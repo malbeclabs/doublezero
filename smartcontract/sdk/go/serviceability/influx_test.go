@@ -2,7 +2,6 @@ package serviceability
 
 import (
 	"fmt"
-	"strings"
 	"testing"
 	"time"
 
@@ -84,7 +83,7 @@ func TestToLineProtocol(t *testing.T) {
 			additionalTags: map[string]string{
 				"env": "testnet",
 			},
-			expected:  `devices,code=dev-01,device_type=1,env=testnet,owner=` + pubKey1B58 + `,public_ip=192.168.1.1,status=activated dz_prefixes="10.0.0.0/16,10.1.0.0/16",max_users=100,users_count=5 `,
+			expected:  `devices,code=dev-01,device_type=1,env=testnet,owner=` + pubKey1B58 + `,public_ip=192.168.1.1,status=activated dz_prefixes="10.0.0.0/16,10.1.0.0/16",max_users=100u,users_count=5u`,
 			expectErr: false,
 		},
 		{
@@ -102,7 +101,7 @@ func TestToLineProtocol(t *testing.T) {
 			additionalTags: map[string]string{
 				"env": "testnet",
 			},
-			expected:  `contributors,code=dev-01,env=testnet,name=test-contributor,owner=` + pubKey1B58 + `,status=activated`,
+			expected:  `contributors,code=dev-01,env=testnet,name=test-contributor,owner=` + pubKey1B58 + `,status=activated `,
 			expectErr: false,
 		},
 		{
@@ -130,7 +129,7 @@ func TestToLineProtocol(t *testing.T) {
 			measurement: "devices",
 			input:       testDevice{},
 			ts:          ts,
-			expected:    `devices,device_type=0,owner=11111111111111111111111111111111,public_ip=0.0.0.0,status=pending dz_prefixes="",max_users=0,users_count=0 `,
+			expected:    `devices,device_type=0,owner=11111111111111111111111111111111,public_ip=0.0.0.0,status=pending dz_prefixes="",max_users=0u,users_count=0u`,
 			expectErr:   false,
 		},
 		{
@@ -147,7 +146,7 @@ func TestToLineProtocol(t *testing.T) {
 				"env":         "mainnet",
 				"device_type": "2", // override a numeric tag
 			},
-			expected:  `devices,code=dev-01,device_type=2,env=mainnet,owner=` + pubKey2B58 + `,public_ip=0.0.0.0,status=pending dz_prefixes="",max_users=0,users_count=0 `,
+			expected:  `devices,code=dev-01,device_type=2,env=mainnet,owner=` + pubKey2B58 + `,public_ip=0.0.0.0,status=pending dz_prefixes="",max_users=0u,users_count=0u`,
 			expectErr: false,
 		},
 		{
@@ -157,7 +156,7 @@ func TestToLineProtocol(t *testing.T) {
 				Field1 int `influx:"field,field1"`
 			}{Field1: 42},
 			ts:       ts,
-			expected: `devices field1=42 `,
+			expected: `devices, field1=42i`,
 		},
 		{
 			name:        "no fields",
@@ -166,7 +165,7 @@ func TestToLineProtocol(t *testing.T) {
 				Tag1 string `influx:"tag,tag1"`
 			}{Tag1: "value1"},
 			ts:       ts,
-			expected: `devices,tag1=value1  `,
+			expected: `devices,tag1=value1 `,
 		},
 		{
 			name:        "input is not a struct",
@@ -197,7 +196,27 @@ func TestToLineProtocol(t *testing.T) {
 			additionalTags: map[string]string{
 				"env": "testnet",
 			},
-			expected:  `contributors,code=dev-01,env=testnet,owner=` + pubKey1B58 + `,status=activated`,
+			expected:  `contributors,code=dev-01,env=testnet,owner=` + pubKey1B58 + `,status=activated `,
+			expectErr: false,
+		},
+		{
+			name:        "field with spaces",
+			measurement: "exchanges",
+			input: testExchange{
+				Owner:   pubKey1,
+				Lat:     10.0,
+				Lng:     20.0,
+				Status:  ExchangeStatusActivated,
+				Code:    "dev-01",
+				Name:    "test exchange",
+				Ignored: "should be ignored",
+				NoTag:   "should be ignored",
+			},
+			ts: ts,
+			additionalTags: map[string]string{
+				"env": "testnet",
+			},
+			expected:  `exchanges,code=dev-01,env=testnet,name=test\ exchange,owner=` + pubKey1B58 + `,status=activated lat=10,lng=20`,
 			expectErr: false,
 		},
 	}
@@ -208,7 +227,7 @@ func TestToLineProtocol(t *testing.T) {
 
 			var expected string
 			if !tc.expectErr {
-				expected = strings.TrimSpace(tc.expected) + " " + fmt.Sprintf("%d", tsNano)
+				expected = tc.expected + " " + fmt.Sprintf("%d", tsNano)
 			}
 
 			line, err := ToLineProtocol(tc.measurement, tc.input, tc.ts, tc.additionalTags)

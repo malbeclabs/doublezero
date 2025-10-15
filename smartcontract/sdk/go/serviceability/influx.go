@@ -4,10 +4,11 @@ import (
 	"fmt"
 	"net"
 	"reflect"
-	"sort"
 	"strings"
 	"time"
 
+	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
+	"github.com/influxdata/influxdb-client-go/v2/api/write"
 	"github.com/mr-tron/base58"
 )
 
@@ -108,41 +109,8 @@ func ToLineProtocol(measurement string, s any, ts time.Time, additionalTags map[
 		return "", fmt.Errorf("measurement name cannot be empty")
 	}
 
-	var tagParts []string
-	for k, v := range tags {
-		tagParts = append(tagParts, fmt.Sprintf("%s=%s", k, v))
-	}
-	sort.Strings(tagParts)
-
-	var fieldParts []string
-	for k, v := range fields {
-		if s, ok := v.(string); ok {
-			fieldParts = append(fieldParts, fmt.Sprintf(`%s="%s"`, k, s))
-		} else {
-			fieldParts = append(fieldParts, fmt.Sprintf("%s=%v", k, v))
-		}
-	}
-	sort.Strings(fieldParts)
-
-	tagStr := strings.Join(tagParts, ",")
-	fieldStr := strings.Join(fieldParts, ",")
-	timestampStr := fmt.Sprintf("%d", ts.UnixNano())
-
-	var builder strings.Builder
-	builder.WriteString(measurement)
-
-	if tagStr != "" {
-		builder.WriteByte(',')
-		builder.WriteString(tagStr)
-	}
-
-	if fieldStr != "" {
-		builder.WriteByte(' ')
-		builder.WriteString(fieldStr)
-	}
-
-	builder.WriteByte(' ')
-	builder.WriteString(timestampStr)
-
-	return builder.String(), nil
+	p := influxdb2.NewPoint(measurement, tags, fields, ts)
+	line := write.PointToLineProtocol(p, time.Nanosecond)
+	line = strings.TrimSpace(line)
+	return line, nil
 }

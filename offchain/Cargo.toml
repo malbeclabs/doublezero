@@ -3,14 +3,17 @@ members = [
     "crates/contributor-rewards",
     "crates/scheduled-command",
     "crates/sentinel",
+    "crates/solana-admin/passport-cli",
+    "crates/solana-admin/revenue-distribution-cli",
     "crates/solana-cli",
+    "crates/solana-client-tools",
     "crates/solana-fork",
     "crates/validator-debt",
 ]
 resolver = "2"
 
 [workspace.package]
-version = "0.1.0"
+version = "0.0.0"
 edition = "2024"
 authors = ["Malbec Labs <dev@malbeclabs.com>"]
 readme = "README.md"
@@ -26,6 +29,7 @@ base64 = "0.22"
 bincode = "1"
 bitvec = "1"
 borsh = "1"
+bytemuck = "1"
 chrono = { version = "0", features = ["serde"] }
 clap = { version = "4", features = ["derive"] }
 config = "0"
@@ -84,10 +88,6 @@ rev = "a3cd70b"
 git = "https://github.com/doublezerofoundation/doublezero-solana"
 rev = "a3cd70b"
 
-[workspace.dependencies.doublezero-solana-client-tools]
-git = "https://github.com/doublezerofoundation/doublezero-solana"
-rev = "a3cd70b"
-
 ### Dependencies found in github.com/malbeclabs/doublezero
 
 [workspace.dependencies.doublezero-program-common]
@@ -127,6 +127,9 @@ path = "crates/sentinel"
 
 [workspace.dependencies.doublezero-scheduled-command]
 path = "crates/scheduled-command"
+
+[workspace.dependencies.doublezero-solana-client-tools]
+path = "crates/solana-client-tools"
 
 [workspace.dependencies.doublezero-solana-validator-debt]
 path = "crates/validator-debt"

@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+### Changes
+
+## [v0.6.7](https://github.com/malbeclabs/doublezero/compare/client/v0.6.6...client/v0.6.7) – 2025-10-16
+
+### Breaking
+
 - Multicast group change: Regeneration of all multicast group allowlists required, as allowlists are now stored within each Access Pass instead of at the multicast group level.
 
 ### Changes
@@ -16,6 +22,7 @@ All notable changes to this project will be documented in this file.
     - Allow AccessPass creation without 'client_ip'
     - Add 'allow_multiple_ip' argument to support AccessPass connections from multiple IPs
     - Include validator pubkey in `export` output
+    - Rename exchange.loc_id to exchange.bgp_community
 - Activator
     - Reduce logging noise when processing snapshot events
     - Wrap main select handler in loop to avoid shutdown on branch error
@@ -39,6 +46,7 @@ All notable changes to this project will be documented in this file.
 - Onchain programs
     - Enable AccessPass with 'client_ip=0.0.0.0' to dynamically learn the user’s IP on first connection
     - Enable AccessPass to support connections from multiple IPs (allowlist compatibility)
+    - Rename exchange.loc_id to exchange.bgp_community, and change it from u32 to u16
 - Telemetry data API
     - Filter by contributor and link type
 - SDK/Go

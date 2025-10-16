@@ -274,7 +274,7 @@ gantt
 - **Data tampering by contributors:** The first mainnet-beta release will NOT be permissionless, and only trusted partners will be admitted to the network, therefore we do not have a significant risk of data tampering.
 - **Malicious data submission by bad actors:** We register the agent with the telemetry program, where the telemetry program account specifying the agent as the proper authority. In order to write data to a specific latency account, the agent must be passed in as a signer and match the authority on the SLA account. This requires a private key on the agent.
 
-# Backwards Compatibility
+# Backward Compatibility
 
 - No known backward compatibility issues
 

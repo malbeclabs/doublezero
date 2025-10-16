@@ -52,7 +52,7 @@ Discuss effects on:
 *Threat analysis and mitigations.*
 Identify new attack surfaces, trust boundaries, or privacy issues introduced by the change. Describe how each risk is prevented, detected, or accepted and reference relevant best practices.
 
-## Backwards Compatibility
+## Backward Compatibility
 
 *Interaction with existing deployments.*
 Explain whether current nodes, data, or integrations continue to work unchanged. If not, spell out migration paths, feature gates, version negotiation, or deprecation timelines.

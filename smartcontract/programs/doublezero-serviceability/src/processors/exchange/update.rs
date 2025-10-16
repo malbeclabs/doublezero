@@ -17,7 +17,7 @@ pub struct ExchangeUpdateArgs {
     pub name: Option<String>,
     pub lat: Option<f64>,
     pub lng: Option<f64>,
-    pub bgp_community: Option<u32>,
+    pub bgp_community: Option<u16>,
 }
 
 impl fmt::Debug for ExchangeUpdateArgs {

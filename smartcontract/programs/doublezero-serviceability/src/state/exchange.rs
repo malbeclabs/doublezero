@@ -55,7 +55,8 @@ pub struct Exchange {
     pub bump_seed: u8,             // 1
     pub lat: f64,                  // 8
     pub lng: f64,                  // 8
-    pub bgp_community: u32,        // 4
+    pub bgp_community: u16,        // 2
+    pub unused: u16,               // 2 (padding to maintain account size)
     pub status: ExchangeStatus,    // 1
     pub code: String,              // 4 + len
     pub name: String,              // 4 + len
@@ -118,6 +119,7 @@ impl TryFrom<&[u8]> for Exchange {
             lat: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             lng: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             bgp_community: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            unused: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             status: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             code: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             name: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
@@ -209,7 +211,8 @@ mod tests {
             lng: 50.678,
             device1_pk: Pubkey::default(),
             device2_pk: Pubkey::default(),
-            bgp_community: 1212121,
+            bgp_community: 10500,
+            unused: 0,
             code: "test-321".to_string(),
             name: "test-test-test".to_string(),
             status: ExchangeStatus::Activated,
@@ -244,7 +247,8 @@ mod tests {
             lng: 10.0,
             device1_pk: Pubkey::default(),
             device2_pk: Pubkey::default(),
-            bgp_community: 1212121,
+            bgp_community: 10500,
+            unused: 0,
             code: "test-321".to_string(),
             name: "test-test-test".to_string(),
             status: ExchangeStatus::Activated,
@@ -266,7 +270,8 @@ mod tests {
             lng: 10.0,
             device1_pk: Pubkey::default(),
             device2_pk: Pubkey::default(),
-            bgp_community: 1212121,
+            bgp_community: 10500,
+            unused: 0,
             code: "a".repeat(33), // More than 32
             name: "test-test-test".to_string(),
             status: ExchangeStatus::Activated,
@@ -288,7 +293,8 @@ mod tests {
             lng: 10.0,
             device1_pk: Pubkey::default(),
             device2_pk: Pubkey::default(),
-            bgp_community: 1212121,
+            bgp_community: 10500,
+            unused: 0,
             code: "test-321".to_string(),
             name: "a".repeat(65), // More than 64
             status: ExchangeStatus::Activated,
@@ -310,7 +316,8 @@ mod tests {
             lng: 10.0,
             device1_pk: Pubkey::default(),
             device2_pk: Pubkey::default(),
-            bgp_community: 1212121,
+            bgp_community: 10500,
+            unused: 0,
             code: "test-321".to_string(),
             name: "test-test-test".to_string(),
             status: ExchangeStatus::Activated,
@@ -340,7 +347,8 @@ mod tests {
             lng: -181.0, // Less than minimum
             device1_pk: Pubkey::default(),
             device2_pk: Pubkey::default(),
-            bgp_community: 1212121,
+            bgp_community: 10500,
+            unused: 0,
             code: "test-321".to_string(),
             name: "test-test-test".to_string(),
             status: ExchangeStatus::Activated,

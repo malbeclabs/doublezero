@@ -30,7 +30,7 @@ pub struct ExchangeDisplay {
     pub device2: String,
     pub lat: f64,
     pub lng: f64,
-    pub bgp_community: u32,
+    pub bgp_community: u16,
     pub status: ExchangeStatus,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub owner: Pubkey,
@@ -174,6 +174,7 @@ mod tests {
             lat: 15.00,
             lng: 15.00,
             bgp_community: 6,
+            unused: 0,
             status: Activated,
             code: "some code".to_string(),
             name: "some name".to_string(),

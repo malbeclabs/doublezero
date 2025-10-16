@@ -353,6 +353,7 @@ mod tests {
             lat: 15.0,
             lng: 15.0,
             bgp_community: 6,
+            unused: 0,
             status: ExchangeStatus::Activated,
             owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo3"),
         };
@@ -369,6 +370,7 @@ mod tests {
             lat: 15.0,
             lng: 15.0,
             bgp_community: 6,
+            unused: 0,
             status: ExchangeStatus::Activated,
             owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo4"),
         };

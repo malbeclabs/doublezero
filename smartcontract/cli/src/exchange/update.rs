@@ -26,7 +26,7 @@ pub struct UpdateExchangeCliCommand {
     pub lng: Option<f64>,
     /// Updated BGP community for the exchange
     #[arg(long)]
-    pub bgp_community: Option<u32>,
+    pub bgp_community: Option<u16>,
 }
 
 impl UpdateExchangeCliCommand {
@@ -90,6 +90,7 @@ mod tests {
             lat: 12.34,
             lng: 56.78,
             bgp_community: 1,
+            unused: 0,
             status: ExchangeStatus::Activated,
             owner: Pubkey::new_unique(),
         };

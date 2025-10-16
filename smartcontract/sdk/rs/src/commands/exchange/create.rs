@@ -13,7 +13,7 @@ pub struct CreateExchangeCommand {
     pub name: String,
     pub lat: f64,
     pub lng: f64,
-    pub bgp_community: Option<u32>,
+    pub bgp_community: Option<u16>,
 }
 
 impl CreateExchangeCommand {

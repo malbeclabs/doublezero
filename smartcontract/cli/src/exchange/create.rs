@@ -23,7 +23,7 @@ pub struct CreateExchangeCliCommand {
     pub lng: f64,
     /// Optional BGP community for the exchange
     #[arg(long)]
-    pub bgp_community: Option<u32>,
+    pub bgp_community: Option<u16>,
 }
 
 impl CreateExchangeCliCommand {

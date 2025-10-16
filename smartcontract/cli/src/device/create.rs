@@ -202,6 +202,7 @@ mod tests {
             lat: 0.0,
             lng: 0.0,
             bgp_community: 0,
+            unused: 0,
             status: ExchangeStatus::Activated,
             owner: exchange_pk,
         };

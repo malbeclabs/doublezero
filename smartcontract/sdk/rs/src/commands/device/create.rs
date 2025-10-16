@@ -116,6 +116,7 @@ mod tests {
             lat: 50.4501,
             lng: 30.5234,
             bgp_community: 1,
+            unused: 0,
             status: ExchangeStatus::Activated,
         };
         client

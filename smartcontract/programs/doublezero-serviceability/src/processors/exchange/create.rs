@@ -24,7 +24,7 @@ pub struct ExchangeCreateArgs {
     pub name: String,
     pub lat: f64,
     pub lng: f64,
-    pub bgp_community: u32,
+    pub bgp_community: u16,
 }
 
 impl fmt::Debug for ExchangeCreateArgs {
@@ -98,6 +98,7 @@ pub fn process_create_exchange(
         lat: value.lat,
         lng: value.lng,
         bgp_community: value.bgp_community,
+        unused: 0,
         status: ExchangeStatus::Activated,
     };
 

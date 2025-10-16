@@ -183,6 +183,7 @@ mod tests {
             lat: 1.0,
             lng: 2.0,
             bgp_community: 3,
+            unused: 0,
             status: ExchangeStatus::Activated,
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA"),
         };

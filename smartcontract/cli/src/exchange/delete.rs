@@ -68,6 +68,7 @@ mod tests {
             lat: 12.34,
             lng: 56.78,
             bgp_community: 1,
+            unused: 0,
             status: ExchangeStatus::Activated,
             owner: pda_pubkey,
         };

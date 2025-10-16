@@ -181,10 +181,11 @@ type Device struct {
 	MgmtVrf               string
 	IsisNet               string
 	DevicePathologies     []string
+	BgpCommunity          uint16
+	ExchangeCode          string
 	// Additional fields for metric labels
 	Code            string
 	ContributorCode string
-	ExchangeCode    string
 	LocationCode    string
 }
 
@@ -237,6 +238,12 @@ type BgpPeer struct {
 	PeerName string
 }
 
+type StringsHelper struct{}
+
+func (StringsHelper) ToUpper(s string) string {
+	return strings.ToUpper(s)
+}
+
 type templateData struct {
 	Device                   *Device
 	Vpnv4BgpPeers            []BgpPeer
@@ -247,4 +254,5 @@ type templateData struct {
 	InterfacesAndPeers       bool
 	TelemetryTWAMPListenPort int
 	LocalASN                 uint32
+	Strings                  StringsHelper
 }

@@ -265,6 +265,52 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 		devicePubKey := base58.Encode(device.PubKey[:])
 		d := NewDevice(ip, devicePubKey)
 
+		d.MgmtVrf = device.MgmtVrf
+		d.Code = device.Code
+
+		if contributor, ok := contributorMap[device.ContributorPubKey]; ok {
+			d.ContributorCode = contributor.Code
+		} else {
+			d.ContributorCode = "unknown"
+		}
+
+		if exchange, ok := exchangeMap[device.ExchangePubKey]; ok {
+			d.ExchangeCode = exchange.Code
+			d.BgpCommunity = exchange.BgpCommunity
+		} else {
+			d.ExchangeCode = "unknown"
+			d.BgpCommunity = 0
+		}
+
+		if location, ok := locationMap[device.LocationPubKey]; ok {
+			d.LocationCode = location.Code
+		} else {
+			d.LocationCode = "unknown"
+		}
+
+		d.MgmtVrf = device.MgmtVrf
+		d.Code = device.Code
+
+		if contributor, ok := contributorMap[device.ContributorPubKey]; ok {
+			d.ContributorCode = contributor.Code
+		} else {
+			d.ContributorCode = "unknown"
+		}
+
+		if exchange, ok := exchangeMap[device.ExchangePubKey]; ok {
+			d.ExchangeCode = exchange.Code
+			d.BgpCommunity = exchange.BgpCommunity
+		} else {
+			d.ExchangeCode = "unknown"
+			d.BgpCommunity = 0
+		}
+
+		if location, ok := locationMap[device.LocationPubKey]; ok {
+			d.LocationCode = location.Code
+		} else {
+			d.LocationCode = "unknown"
+		}
+
 		candidateVpnv4BgpPeer, candidateIpv4BgpPeer := c.processDeviceInterfacesAndPeers(device, d, devicePubKey)
 
 		if len(d.Vpn4vLoopbackIP) == 0 {
@@ -290,6 +336,11 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 		if d.IsisNet == "" {
 			c.log.Warn("device has pathology", "device_pubkey", devicePubKey, "pathology", "ISIS NET could not be generated")
 			d.DevicePathologies = append(d.DevicePathologies, "ISIS NET could not be generated")
+		}
+
+		if d.BgpCommunity == 0 {
+			c.log.Warn("device has pathology", "device_pubkey", devicePubKey, "pathology", "device exchange bgp_community=0")
+			d.DevicePathologies = append(d.DevicePathologies, "device exchange bgp_community=0")
 		}
 
 		if len(d.DevicePathologies) > 0 {
@@ -327,32 +378,11 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 				continue
 			}
 
-			microseconds := math.Ceil(float64(link.DelayNs) / 1000.0)
-			d.Interfaces[i].Metric = uint32(microseconds)
-			d.Interfaces[i].IsLink = true
-			linkMetrics.WithLabelValues(device.Code, iface.Name, d.PubKey).Set(float64(d.Interfaces[i].Metric))
-		}
-		d.MgmtVrf = device.MgmtVrf
-
-		// Populate additional fields for metrics
-		d.Code = device.Code
-
-		if contributor, ok := contributorMap[device.ContributorPubKey]; ok {
-			d.ContributorCode = contributor.Code
-		} else {
-			d.ContributorCode = "unknown"
-		}
-
-		if exchange, ok := exchangeMap[device.ExchangePubKey]; ok {
-			d.ExchangeCode = exchange.Code
-		} else {
-			d.ExchangeCode = "unknown"
-		}
-
-		if location, ok := locationMap[device.LocationPubKey]; ok {
-			d.LocationCode = location.Code
-		} else {
-			d.LocationCode = "unknown"
+				microseconds := math.Ceil(float64(link.DelayNs) / 1000.0)
+				d.Interfaces[i].Metric = uint32(microseconds)
+				d.Interfaces[i].IsLink = true
+				linkMetrics.WithLabelValues(device.Code, iface.Name, d.PubKey).Set(float64(d.Interfaces[i].Metric))
+			}
 		}
 
 		cache.Devices[devicePubKey] = d
@@ -642,6 +672,7 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 		InterfacesAndPeers:       true,
 		TelemetryTWAMPListenPort: telemetryconfig.TWAMPListenPort,
 		LocalASN:                 localASN,
+		Strings:                  StringsHelper{},
 	}
 
 	config, err := renderConfig(data)

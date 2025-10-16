@@ -24,6 +24,8 @@ import (
 	sdktelemetry "github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 	twamplight "github.com/malbeclabs/doublezero/tools/twamp/pkg/light"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+
+	_ "net/http/pprof"
 )
 
 const (
@@ -38,6 +40,7 @@ const (
 	defaultProgramId               = ""
 	defaultLocalDevicePubkey       = ""
 	defaultSubmitterMaxConcurrency = 10
+	defaultPprofAddr               = "localhost:6060"
 
 	waitForNamespaceTimeout = 30 * time.Second
 )
@@ -62,6 +65,7 @@ var (
 	showVersion             = flag.Bool("version", false, "Print the version of the doublezero-agent and exit.")
 	metricsEnable           = flag.Bool("metrics-enable", false, "Enable prometheus metrics.")
 	metricsAddr             = flag.String("metrics-addr", ":8080", "Address to listen on for prometheus metrics.")
+	enablePprof             = flag.Bool("enable-pprof", false, "enable pprof server")
 
 	// Set by LDFLAGS
 	version = "dev"
@@ -190,13 +194,34 @@ func main() {
 					return
 				}
 				log.Info("Prometheus metrics server listening", "namespace", *managementNamespace, "address", listener.Addr().String())
+
+				// Start pprof server
+				if *enablePprof {
+					go func() {
+						err := http.ListenAndServe(defaultPprofAddr, nil)
+						if err != nil {
+							log.Error("Failed to start pprof server", "error", err)
+						}
+					}()
+				}
 			} else {
+				// Start prometheus metrics server
 				listener, err = net.Listen("tcp", *metricsAddr)
 				if err != nil {
 					log.Error("Failed to start prometheus metrics server listener", "error", err)
 					return
 				}
 				log.Info("Prometheus metrics server listening", "address", listener.Addr().String())
+
+				// Start pprof server
+				if *enablePprof {
+					go func() {
+						err := http.ListenAndServe(defaultPprofAddr, nil)
+						if err != nil {
+							log.Error("Failed to start pprof server", "error", err)
+						}
+					}()
+				}
 			}
 			http.Handle("/metrics", promhttp.Handler())
 			if err := http.Serve(listener, nil); err != nil {

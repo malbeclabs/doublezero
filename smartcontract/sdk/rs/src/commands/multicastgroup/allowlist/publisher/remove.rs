@@ -1,7 +1,8 @@
 use std::net::Ipv4Addr;
 
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_accesspass_pda,
+    instructions::DoubleZeroInstruction,
+    pda::{get_accesspass_pda, get_globalstate_pda},
     processors::multicastgroup::allowlist::publisher::remove::RemoveMulticastGroupPubAllowlistArgs,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
@@ -25,6 +26,8 @@ impl RemoveMulticastGroupPubAllowlistCommand {
         let (accesspass_pk, _) =
             get_accesspass_pda(&client.get_program_id(), &self.client_ip, &self.user_payer);
 
+        let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
+
         client.execute_transaction(
             DoubleZeroInstruction::RemoveMulticastGroupPubAllowlist(
                 RemoveMulticastGroupPubAllowlistArgs {
@@ -35,6 +38,7 @@ impl RemoveMulticastGroupPubAllowlistCommand {
             vec![
                 AccountMeta::new(mgroup_pubkey, false),
                 AccountMeta::new(accesspass_pk, false),
+                AccountMeta::new(globalstate_pubkey, false),
             ],
         )
     }

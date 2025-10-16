@@ -1,6 +1,7 @@
 use crate::{commands::multicastgroup::get::GetMulticastGroupCommand, DoubleZeroClient};
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_accesspass_pda,
+    instructions::DoubleZeroInstruction,
+    pda::{get_accesspass_pda, get_globalstate_pda},
     processors::multicastgroup::allowlist::publisher::add::AddMulticastGroupPubAllowlistArgs,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
@@ -23,6 +24,8 @@ impl AddMulticastGroupPubAllowlistCommand {
         let (accesspass_pk, _) =
             get_accesspass_pda(&client.get_program_id(), &self.client_ip, &self.user_payer);
 
+        let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
+
         client.execute_transaction(
             DoubleZeroInstruction::AddMulticastGroupPubAllowlist(
                 AddMulticastGroupPubAllowlistArgs {
@@ -33,6 +36,7 @@ impl AddMulticastGroupPubAllowlistCommand {
             vec![
                 AccountMeta::new(mgroup_pubkey, false),
                 AccountMeta::new(accesspass_pk, false),
+                AccountMeta::new(globalstate_pubkey, false),
             ],
         )
     }

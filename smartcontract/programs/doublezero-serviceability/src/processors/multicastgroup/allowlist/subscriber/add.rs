@@ -1,5 +1,6 @@
 use crate::{
     error::DoubleZeroError,
+    globalstate::globalstate_get,
     pda::get_accesspass_pda,
     seeds::{SEED_ACCESS_PASS, SEED_PREFIX},
     state::{
@@ -45,6 +46,7 @@ pub fn process_add_multicastgroup_sub_allowlist(
 
     let mgroup_account = next_account_info(accounts_iter)?;
     let accesspass_account = next_account_info(accounts_iter)?;
+    let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
@@ -64,9 +66,14 @@ pub fn process_add_multicastgroup_sub_allowlist(
     // Check if the account is writable
     assert!(mgroup_account.is_writable, "PDA Account is not writable");
 
-    // Parse the global state account & check if the payer is in the allowlist
+    // Parse the global state account
     let mgroup = MulticastGroup::try_from(mgroup_account)?;
-    if mgroup.owner != *payer_account.key {
+    let globalstate = globalstate_get(globalstate_account)?;
+
+    // Check whether mgroup is authorized
+    let is_authorized = (mgroup.owner == *payer_account.key)
+        || globalstate.foundation_allowlist.contains(payer_account.key);
+    if !is_authorized {
         return Err(DoubleZeroError::NotAllowed.into());
     }
 

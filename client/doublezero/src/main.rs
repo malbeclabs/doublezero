@@ -113,6 +113,7 @@ async fn main() -> eyre::Result<()> {
             },
         },
         Command::Account(args) => args.execute(&dzclient, &mut handle),
+        Command::Accounts(args) => args.execute(&dzclient, &mut handle),
         Command::Location(command) => match command.command {
             LocationCommands::Create(args) => args.execute(&client, &mut handle),
             LocationCommands::Update(args) => args.execute(&client, &mut handle),

@@ -191,6 +191,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_state_compatibility_multicastgroup() {
+        /* To generate the base64 strings, use the following commands after deploying the program and creating accounts:
+
+        solana account FmgsHPJ2cNdo9TvryTbkTGAAhqSGUZqzeqbgprYw994Q --output json  -u  https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16
+
+         */
+        let versions = ["CLqu81K568sUiDTMFBv+LwPqNkwpNJn8CYTap5DlwMyW3gAAAAAAAAAAAAAAAAAAAPsAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOlUsgBAQg8AAAAAAAEEAAAAZGVtbwAAAAAAAAAAAAAAAAAAAAA="];
+
+        crate::helper::base_tests::test_parsing::<MulticastGroup>(&versions).unwrap();
+    }
+
+    #[test]
     fn test_state_multicastgroup_try_from_defaults() {
         let data = [AccountType::MulticastGroup as u8];
         let val = MulticastGroup::try_from(&data[..]).unwrap();

@@ -1103,19 +1103,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "console"
-version = "0.16.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b430743a6eb14e9764d4260d4c0d8123087d504eeb9c48f2b2a5e810dd369df4"
-dependencies = [
- "encode_unicode",
- "libc",
- "once_cell",
- "unicode-width",
- "windows-sys 0.61.1",
-]
-
-[[package]]
 name = "console_error_panic_hook"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1516,7 +1503,7 @@ checksum = "fea41bba32d969b513997752735605054bc0dfa92b4c56bf1189f2e174be7a10"
 
 [[package]]
 name = "doublezero"
-version = "0.6.6"
+version = "0.6.7"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -1524,7 +1511,7 @@ dependencies = [
  "chrono",
  "clap",
  "clap_complete",
- "console 0.15.11",
+ "console",
  "ctor",
  "doublezero-config",
  "doublezero-program-common",
@@ -1539,7 +1526,7 @@ dependencies = [
  "hyper 1.7.0",
  "hyper-util",
  "hyperlocal",
- "indicatif 0.18.0",
+ "indicatif",
  "mockall",
  "serde",
  "serde_json",
@@ -1555,7 +1542,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-activator"
-version = "0.6.6"
+version = "0.6.7"
 dependencies = [
  "backon",
  "bitvec",
@@ -1566,7 +1553,7 @@ dependencies = [
  "doublezero-serviceability",
  "doublezero_cli",
  "doublezero_sdk",
- "env_logger 0.11.8",
+ "env_logger",
  "eyre",
  "futures",
  "indexmap",
@@ -1583,14 +1570,14 @@ dependencies = [
 
 [[package]]
 name = "doublezero-admin"
-version = "0.6.6"
+version = "0.6.7"
 dependencies = [
  "anyhow",
  "backon",
  "chrono",
  "clap",
  "clap_complete",
- "console 0.15.11",
+ "console",
  "doublezero-config",
  "doublezero-program-common",
  "doublezero-serviceability",
@@ -1604,7 +1591,7 @@ dependencies = [
  "hyper 1.7.0",
  "hyper-util",
  "hyperlocal",
- "indicatif 0.18.0",
+ "indicatif",
  "mockall",
  "serde",
  "serde_json",
@@ -1619,7 +1606,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-config"
-version = "0.6.6"
+version = "0.6.7"
 dependencies = [
  "eyre",
  "serde",
@@ -1629,7 +1616,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-program-common"
-version = "0.6.6"
+version = "0.6.7"
 dependencies = [
  "borsh 1.5.7",
  "byteorder",
@@ -1641,7 +1628,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-record"
-version = "0.6.6"
+version = "0.6.7"
 dependencies = [
  "bytemuck",
  "solana-program",
@@ -1653,7 +1640,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-serviceability"
-version = "0.6.6"
+version = "0.6.7"
 dependencies = [
  "borsh 1.5.7",
  "doublezero-program-common",
@@ -1668,7 +1655,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-telemetry"
-version = "0.6.6"
+version = "0.6.7"
 dependencies = [
  "bincode 2.0.1",
  "borsh 1.5.7",
@@ -1676,7 +1663,7 @@ dependencies = [
  "doublezero-config",
  "doublezero-program-common",
  "doublezero-serviceability",
- "env_logger 0.11.8",
+ "env_logger",
  "log",
  "serde",
  "serde_bytes",
@@ -1687,12 +1674,12 @@ dependencies = [
 
 [[package]]
 name = "doublezero_cli"
-version = "0.6.6"
+version = "0.6.7"
 dependencies = [
  "anyhow",
  "chrono",
  "clap",
- "console 0.15.11",
+ "console",
  "doublezero-config",
  "doublezero-program-common",
  "doublezero-serviceability",
@@ -1701,7 +1688,7 @@ dependencies = [
  "futures",
  "futures-util",
  "http 1.3.1",
- "indicatif 0.18.0",
+ "indicatif",
  "ipnetwork",
  "mockall",
  "serde",
@@ -1720,7 +1707,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero_sdk"
-version = "0.6.6"
+version = "0.6.7"
 dependencies = [
  "base64 0.22.1",
  "bincode 2.0.1",
@@ -1894,16 +1881,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "env_filter"
-version = "0.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "186e05a59d4c50738528153b83b0b0194d3a29507dfec16eccd4b342903397d0"
-dependencies = [
- "log",
- "regex",
-]
-
-[[package]]
 name = "env_logger"
 version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1914,19 +1891,6 @@ dependencies = [
  "log",
  "regex",
  "termcolor",
-]
-
-[[package]]
-name = "env_logger"
-version = "0.11.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "13c863f0904021b108aa8b2f55046443e6b1ebde8fd4a15c399893aae4fa069f"
-dependencies = [
- "anstream",
- "anstyle",
- "env_filter",
- "jiff",
- "log",
 ]
 
 [[package]]
@@ -2848,23 +2812,10 @@ version = "0.17.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "183b3088984b400f4cfac3620d5e076c84da5364016b4f49473de574b2586235"
 dependencies = [
- "console 0.15.11",
+ "console",
  "number_prefix",
  "portable-atomic",
  "unicode-width",
- "web-time",
-]
-
-[[package]]
-name = "indicatif"
-version = "0.18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "70a646d946d06bedbbc4cac4c218acf4bbf2d87757a784857025f4d447e4e1cd"
-dependencies = [
- "console 0.16.1",
- "portable-atomic",
- "unicode-width",
- "unit-prefix",
  "web-time",
 ]
 
@@ -2938,30 +2889,6 @@ name = "itoa"
 version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4a5f13b858c8d314ee3e8f639011f7ccefe71f97f96e50151fb991f267928e2c"
-
-[[package]]
-name = "jiff"
-version = "0.2.15"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "be1f93b8b1eb69c77f24bbb0afdf66f54b632ee39af40ca21c4365a1d7347e49"
-dependencies = [
- "jiff-static",
- "log",
- "portable-atomic",
- "portable-atomic-util",
- "serde",
-]
-
-[[package]]
-name = "jiff-static"
-version = "0.2.15"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "03343451ff899767262ec32146f6d559dd759fdadf42ff0e227c7c48f72594b4"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.102",
-]
 
 [[package]]
 name = "jni"
@@ -3806,15 +3733,6 @@ name = "portable-atomic"
 version = "1.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f84267b20a16ea918e43c6a88433c2d54fa145c92a811b5b047ccbe153674483"
-
-[[package]]
-name = "portable-atomic-util"
-version = "0.2.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d8a2f0d8d040d7848a709caf78912debcc3f33ee4b3cac47d73d1e1069e83507"
-dependencies = [
- "portable-atomic",
-]
 
 [[package]]
 name = "potential_utf"
@@ -5302,7 +5220,7 @@ dependencies = [
  "futures",
  "futures-util",
  "indexmap",
- "indicatif 0.17.11",
+ "indicatif",
  "log",
  "quinn",
  "rayon",
@@ -5992,7 +5910,7 @@ version = "2.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "db8e777ec1afd733939b532a42492d888ec7c88d8b4127a5d867eb45c6eb5cd5"
 dependencies = [
- "env_logger 0.9.3",
+ "env_logger",
  "lazy_static",
  "libc",
  "log",
@@ -6625,7 +6543,7 @@ dependencies = [
  "base64 0.22.1",
  "bincode 1.3.3",
  "bs58",
- "indicatif 0.17.11",
+ "indicatif",
  "log",
  "reqwest",
  "reqwest-middleware",
@@ -7476,7 +7394,7 @@ dependencies = [
  "bincode 1.3.3",
  "futures-util",
  "indexmap",
- "indicatif 0.17.11",
+ "indicatif",
  "log",
  "rayon",
  "solana-client-traits",
@@ -8879,12 +8797,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
 
 [[package]]
-name = "unit-prefix"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "323402cff2dd658f39ca17c789b502021b3f18707c91cdf22e3838e1b4023817"
-
-[[package]]
 name = "universal-hash"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9315,15 +9227,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e38bc4d79ed67fd075bcc251a1c39b32a1776bbe92e5bef1f0bf1f8c531853b"
 dependencies = [
  "windows-targets 0.52.6",
-]
-
-[[package]]
-name = "windows-sys"
-version = "0.61.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6f109e41dd4a3c848907eb83d5a42ea98b3769495597450cf6d153507b166f0f"
-dependencies = [
- "windows-link 0.2.0",
 ]
 
 [[package]]

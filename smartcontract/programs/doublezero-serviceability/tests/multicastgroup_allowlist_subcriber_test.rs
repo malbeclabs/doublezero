@@ -171,6 +171,7 @@ async fn test_multicast_subscriber_allowlist() {
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
     )
@@ -204,6 +205,7 @@ async fn test_multicast_subscriber_allowlist() {
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
     )

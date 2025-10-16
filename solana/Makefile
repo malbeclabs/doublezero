@@ -1,3 +1,6 @@
+PASSPORT_PATH = programs/passport/Cargo.toml
+REVENUE_DISTRIBUTION_PATH = programs/revenue-distribution/Cargo.toml
+
 NETWORK ?= mainnet-beta
 
 # Validate NETWORK parameter
@@ -20,12 +23,8 @@ clean:
 
 .PHONY: build-sbf
 build-sbf:
-	cd programs/passport && cargo build-sbf --features $(CARGO_FEATURES)
-	cd programs/revenue-distribution && cargo build-sbf --features $(CARGO_FEATURES)
-
-.PHONY: build-cli
-build-cli:
-	cargo build --release --bin doublezero-passport-admin --bin doublezero-revenue-distribution-admin
+	cargo build-sbf --features $(CARGO_FEATURES) --manifest-path $(PASSPORT_PATH)
+	cargo build-sbf --features $(CARGO_FEATURES) --manifest-path $(REVENUE_DISTRIBUTION_PATH)
 
 artifacts-$(NETWORK): build-sbf
 	@if [ ! -d "$@" ]; then \
@@ -41,11 +40,12 @@ build-artifacts: artifacts-$(NETWORK)
 
 .PHONY: build-sbf-mock
 build-sbf-mock:
-	cd mock/swap-sol-2z && cargo build-sbf --features $(CARGO_FEATURES)
+	cargo build-sbf --features $(CARGO_FEATURES) --manifest-path mock/swap-sol-2z/Cargo.toml
 
 .PHONY: test-sbf
 test-sbf: build-sbf-mock
-	cargo test-sbf --features $(CARGO_FEATURES)
+	cargo test-sbf --features $(CARGO_FEATURES) --manifest-path $(PASSPORT_PATH)
+	cargo test-sbf --features $(CARGO_FEATURES) --manifest-path $(REVENUE_DISTRIBUTION_PATH)
 
 .PHONY: test-lib
 test-lib:
@@ -59,9 +59,3 @@ lint:
 .PHONY: doc
 doc:
 	cargo doc --all-features --no-deps --document-private-items
-
-.PHONY: examples
-examples:
-	cargo run --example log_output
-	cargo run --example log_output --features tracing
-	cargo run --example get_blocks --features tracing -- -ut

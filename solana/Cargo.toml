@@ -1,10 +1,7 @@
 [workspace]
 exclude = []
 members = [
-    "crates/client-tools",
-    "crates/passport/admin",
     "crates/program-tools",
-    "crates/revenue-distribution/admin",
     "mock/swap-sol-2z",
     "programs/passport",
     "programs/revenue-distribution",
@@ -17,21 +14,16 @@ homepage = "https://doublezero.xyz"
 license = "Apache-2.0"
 repository = ""
 rust-version = "1.84"
-version = "0.1.0"
+version = "0.0.0"
 
 [workspace.dependencies]
-anyhow = "1"
 base64 = "0.22"
 bincode = "1"
 borsh = "1"
 bytemuck = "1"
-clap = { version = "4", features = ["derive"] }
 itertools = "0.14"
 ruint = { version = "1", features = ["bytemuck"] }
-serde_json = "1"
 solana-account-info = "2"
-solana-client = "2"
-solana-commitment-config = "2"
 solana-cpi = "2"
 solana-hash = "2"
 solana-instruction = "2"
@@ -45,13 +37,9 @@ solana-pubkey = "2"
 solana-sha256-hasher = "2"
 solana-system-interface = "1"
 solana-sysvar = "2"
-solana-transaction-status-client-types = "2"
 spl-associated-token-account-interface = "1"
 spl-token = { version = "8", features = ["no-entrypoint"] }
 svm-hash = "0.1.0"
-tokio = "1"
-tracing = "0.1"
-url = "2"
 
 ### Please keep these packages pinned for now.
 sha2-const-stable = "=0.1.0"

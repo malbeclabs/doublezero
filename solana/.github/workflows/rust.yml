@@ -33,14 +33,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: make doc
 
-  examples:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - run: make examples
-
   test-sbf:
     runs-on: ubuntu-latest
     steps:

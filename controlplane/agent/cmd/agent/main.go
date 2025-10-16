@@ -17,6 +17,12 @@ import (
 	aristapb "github.com/malbeclabs/doublezero/controlplane/proto/arista/gen/pb-go/arista/EosSdkRpc"
 	pb "github.com/malbeclabs/doublezero/controlplane/proto/controller/gen/pb-go"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+
+	_ "net/http/pprof"
+)
+
+const (
+	defaultPprofAddr = "localhost:6060"
 )
 
 var (
@@ -30,6 +36,7 @@ var (
 	showVersion                = flag.Bool("version", false, "Print the version of the doublezero-agent and exit")
 	metricsEnable              = flag.Bool("metrics-enable", false, "Enable prometheus metrics")
 	metricsAddr                = flag.String("metrics-addr", ":8080", "Address to listen on for prometheus metrics")
+	enablePprof                = flag.Bool("enable-pprof", false, "enable pprof server")
 
 	// set by LDFLAGS
 	version = "dev"
@@ -100,6 +107,15 @@ func main() {
 			http.Handle("/metrics", promhttp.Handler())
 			if err := http.ListenAndServe(*metricsAddr, nil); err != nil {
 				log.Printf("Failed to start prometheus metrics server: %v", err)
+			}
+		}()
+	}
+
+	if *enablePprof {
+		go func() {
+			err := http.ListenAndServe(defaultPprofAddr, nil)
+			if err != nil {
+				log.Printf("Failed to start pprof server: %v", err)
 			}
 		}()
 	}

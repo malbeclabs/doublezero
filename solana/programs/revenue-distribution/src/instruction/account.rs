@@ -55,39 +55,6 @@ impl From<InitializeProgramAccounts> for Vec<AccountMeta> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MigrateProgramAccounts {
-    pub program_data_key: Pubkey,
-    pub upgrade_authority_key: Pubkey,
-    pub program_config_key: Pubkey,
-}
-
-impl MigrateProgramAccounts {
-    pub fn new(program_id: &Pubkey, upgrade_authority_key: &Pubkey) -> Self {
-        Self {
-            program_data_key: get_program_data_address(program_id).0,
-            upgrade_authority_key: *upgrade_authority_key,
-            program_config_key: ProgramConfig::find_address().0,
-        }
-    }
-}
-
-impl From<MigrateProgramAccounts> for Vec<AccountMeta> {
-    fn from(accounts: MigrateProgramAccounts) -> Self {
-        let MigrateProgramAccounts {
-            program_data_key,
-            upgrade_authority_key,
-            program_config_key,
-        } = accounts;
-
-        vec![
-            AccountMeta::new_readonly(program_data_key, false),
-            AccountMeta::new_readonly(upgrade_authority_key, true),
-            AccountMeta::new(program_config_key, false),
-        ]
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SetAdminAccounts {
     pub program_data_key: Pubkey,
     pub upgrade_authority_key: Pubkey,
@@ -767,26 +734,6 @@ impl From<InitializeSwapDestinationAccounts> for Vec<AccountMeta> {
     }
 }
 
-#[cfg(not(feature = "development"))]
-mod sweep_distribution_tokens {
-    use super::*;
-
-    #[derive(Debug, Clone, PartialEq, Eq)]
-    pub struct SweepDistributionTokensAccounts;
-
-    impl SweepDistributionTokensAccounts {
-        pub fn new(_dz_epoch: DoubleZeroEpoch) -> Self {
-            Self
-        }
-    }
-
-    impl From<SweepDistributionTokensAccounts> for Vec<AccountMeta> {
-        fn from(_accounts: SweepDistributionTokensAccounts) -> Self {
-            vec![]
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DequeueFillsCpiAccounts {
     pub configuration_registry_key: Pubkey,
@@ -800,12 +747,11 @@ impl DequeueFillsCpiAccounts {
     pub fn new(sol_2z_swap_program_id: &Pubkey, fills_registery_key: &Pubkey) -> Self {
         Self {
             configuration_registry_key: Pubkey::find_program_address(
-                &[b"system_config_v1"],
+                &[b"system_config"],
                 sol_2z_swap_program_id,
             )
             .0,
-            program_state_key: Pubkey::find_program_address(&[b"state_v1"], sol_2z_swap_program_id)
-                .0,
+            program_state_key: Pubkey::find_program_address(&[b"state"], sol_2z_swap_program_id).0,
             fills_registry_key: *fills_registery_key,
             journal_key: Journal::find_address().0,
             sol_2z_swap_program_id: Some(*sol_2z_swap_program_id),

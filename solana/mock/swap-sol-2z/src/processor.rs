@@ -147,7 +147,7 @@ fn try_dequeue_fills(accounts: &[AccountInfo], max_sol_amount: u64) -> ProgramRe
         try_next_enumerated_account(&mut accounts_iter, Default::default())?;
 
     let (expected_configuration_registry_key, _) =
-        Pubkey::find_program_address(&[b"system_config_v1"], &ID);
+        Pubkey::find_program_address(&[b"system_config"], &ID);
 
     // Enforce this account location.
     if configuration_registry_info.key != &expected_configuration_registry_key {
@@ -162,7 +162,7 @@ fn try_dequeue_fills(accounts: &[AccountInfo], max_sol_amount: u64) -> ProgramRe
     let (account_index, program_state_info) =
         try_next_enumerated_account(&mut accounts_iter, Default::default())?;
 
-    let (expected_program_state_key, _) = Pubkey::find_program_address(&[b"state_v1"], &ID);
+    let (expected_program_state_key, _) = Pubkey::find_program_address(&[b"state"], &ID);
 
     // Enforce this account location.
     if program_state_info.key != &expected_program_state_key {

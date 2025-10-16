@@ -6,8 +6,7 @@ use doublezero_revenue_distribution::{
         account::{
             ConfigureProgramAccounts, InitializeContributorRewardsAccounts,
             InitializeJournalAccounts, InitializeProgramAccounts,
-            InitializeSwapDestinationAccounts, MigrateProgramAccounts, SetAdminAccounts,
-            SetRewardsManagerAccounts,
+            InitializeSwapDestinationAccounts, SetAdminAccounts, SetRewardsManagerAccounts,
         },
         ProgramConfiguration, ProgramFlagConfiguration, RevenueDistributionInstructionData,
     },
@@ -16,7 +15,9 @@ use doublezero_revenue_distribution::{
 };
 use doublezero_solana_client_tools::payer::{SolanaPayerOptions, Wallet};
 use solana_sdk::{
-    compute_budget::ComputeBudgetInstruction, instruction::Instruction, pubkey::Pubkey,
+    compute_budget::ComputeBudgetInstruction,
+    instruction::{AccountMeta, Instruction},
+    pubkey::Pubkey,
 };
 
 #[derive(Debug, Subcommand)]
@@ -282,7 +283,11 @@ pub async fn execute_migrate_program_accounts(
 
     let migrate_program_accounts_ix = try_build_instruction(
         &ID,
-        MigrateProgramAccounts::new(&ID, &wallet_key),
+        vec![
+            AccountMeta::new_readonly(get_program_data_address(&ID).0, false),
+            AccountMeta::new_readonly(wallet_key, true),
+            AccountMeta::new(ProgramConfig::find_address().0, false),
+        ],
         &RevenueDistributionInstructionData::MigrateProgramAccounts,
     )?;
 

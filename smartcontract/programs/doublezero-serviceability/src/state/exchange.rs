@@ -191,6 +191,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_state_compatibility_exchange() {
+        /* To generate the base64 strings, use the following commands after deploying the program and creating accounts:
+
+        solana account <pubkey> --output json  -u  https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16
+
+         */
+        let versions = ["BLqqPaSNmr1wLINMX3kvak2PM053QzcaGwrC1muP05fODAAAAAAAAAAAAAAAAAAAAP/NIT2DgiZKQM9yhtzaxBNAExIAAAEEAAAAeGFtcwkAAABBbXN0ZXJkYW0="];
+
+        crate::helper::base_tests::test_parsing::<Exchange>(&versions).unwrap();
+    }
+
+    #[test]
     fn test_state_exchange_try_from_defaults() {
         let data = [AccountType::Exchange as u8];
         let val = Exchange::try_from(&data[..]).unwrap();

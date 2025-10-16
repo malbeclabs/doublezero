@@ -98,6 +98,19 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_state_compatibility_globalconfig() {
+        /* To generate the base64 strings, use the following commands after deploying the program and creating accounts:
+
+        solana account 8uA3su1WQPXvnhN5DhNueXrmizA8CY7dE5sj1vXkAWnf --output json  -u  https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16
+
+         */
+        let versions =
+            ["ArqURkOjUnp/ZIYOxBHg7ts7n0lFlaGFNKiKe+P8gnOq/uj9AAA+/wAArBAAABCp/gAAEOlUsgAY"];
+
+        crate::helper::base_tests::test_parsing::<GlobalConfig>(&versions).unwrap();
+    }
+
+    #[test]
     fn test_state_globalconfig_try_from_defaults() {
         let data = [AccountType::GlobalConfig as u8];
         let val = GlobalConfig::try_from(&data[..]).unwrap();

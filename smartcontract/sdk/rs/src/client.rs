@@ -291,6 +291,10 @@ impl DoubleZeroClient for DZClient {
             .map(|info| info.epoch)
     }
 
+    fn get_client(&self) -> &RpcClient {
+        &self.client
+    }
+
     fn execute_transaction(
         &self,
         instruction: DoubleZeroInstruction,

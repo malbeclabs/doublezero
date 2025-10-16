@@ -1732,6 +1732,7 @@ dependencies = [
  "doublezero-program-common",
  "doublezero-record",
  "doublezero-serviceability",
+ "doublezero-telemetry",
  "eyre",
  "futures",
  "log",

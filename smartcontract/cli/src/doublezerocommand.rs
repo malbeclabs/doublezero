@@ -262,6 +262,8 @@ pub trait CliCommand {
         cmd: ListAccessPassCommand,
     ) -> eyre::Result<HashMap<Pubkey, AccessPass>>;
     fn close_accesspass(&self, cmd: CloseAccessPassCommand) -> eyre::Result<Signature>;
+
+    fn get_latency_data(&self, cmd: GetLinkCommand) -> eyre::Result<(Pubkey, Link)>;
 }
 
 pub struct CliCommandImpl<'a> {

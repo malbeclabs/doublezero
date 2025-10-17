@@ -490,7 +490,11 @@ impl TryFrom<&AccountInfo<'_>> for Device {
 
     fn try_from(account: &AccountInfo) -> Result<Self, Self::Error> {
         let data = account.try_borrow_data()?;
-        Device::try_from(&data[..])
+        let res = Self::try_from(&data[..]);
+        if res.is_err() {
+            msg!("Failed to deserialize Device: {:?}", res.as_ref().err());
+        }
+        res
     }
 }
 

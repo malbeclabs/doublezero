@@ -8,9 +8,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
-- Fix: resize AccessPass account before serialization to prevent errors; standardized use of resize_account_if_needed across processors.
-
-## [v0.6.7](https://github.com/malbeclabs/doublezero/compare/client/v0.6.6...client/v0.6.7) – 2025-10-16
+## [v0.6.8](https://github.com/malbeclabs/doublezero/compare/client/v0.6.6...client/v0.6.8) – 2025-10-17
 
 ### Breaking
 
@@ -31,6 +29,7 @@ All notable changes to this project will be documented in this file.
 - Onchain programs
     - Remove user-level allowlist management from CLI and admin interfaces; manage multicast group allowlists through AccessPass.
     - Add Validate trait for core types (AccessPass, Contributor, Interface, etc.) and enforce runtime checks before account operations.
+    - Fix: resize AccessPass account before serialization to prevent errors; standardized use of resize_account_if_needed across processors.
 - Internet telemetry
     - Add circuit label to metrics; create a new metric for missing circuit samples
     - Create a new metric that tracks how long it takes collector tasks to run

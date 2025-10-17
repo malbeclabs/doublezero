@@ -102,8 +102,8 @@ func (s *LinuxSender) Probe(ctx context.Context) (time.Duration, error) {
 	s.seq++
 
 	// Create a packet and marshal it.
-	packet := NewPacket(s.seq)
-	err := packet.Marshal(s.buf)
+	sentPacket := NewPacket(s.seq)
+	err := sentPacket.Marshal(s.buf)
 	if err != nil {
 		return 0, fmt.Errorf("marshal packet: %w", err)
 	}
@@ -159,7 +159,7 @@ func (s *LinuxSender) Probe(ctx context.Context) (time.Duration, error) {
 		}
 
 		// Validate packet format.
-		packet, err = UnmarshalPacket(s.buf[:n])
+		packet, err := UnmarshalPacket(s.buf[:n])
 		if err != nil {
 			continue
 		}
@@ -192,6 +192,18 @@ func (s *LinuxSender) Probe(ctx context.Context) (time.Duration, error) {
 				ts := *(*syscall.Timespec)(unsafe.Pointer(&cmsg.Data[0]))
 				kernelRecvTime := time.Unix(int64(ts.Sec), int64(ts.Nsec))
 				rtt := decideRTT(sendTime, kernelRecvTime, fallbackRecvTime)
+
+				// Verify that the seq and timestamp match the sent packet.
+				if sentPacket.Seq != packet.Seq {
+					continue
+				}
+				if sentPacket.Sec != packet.Sec {
+					continue
+				}
+				if sentPacket.Frac != packet.Frac {
+					continue
+				}
+
 				return rtt, nil
 			}
 		}

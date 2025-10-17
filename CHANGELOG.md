@@ -13,6 +13,9 @@ All notable changes to this project will be documented in this file.
 - CLI
     - Removed `--bgp-community` option from `doublezero exchange create` since these values are now assigned automatically
     - Add `--next-bgp-community` option to `doublezero global-config set` so authorized users can control which bgp_community will be assigned next
+- Tools
+    - TWAMP: Verify that the sequence number and timestamp of the received packet matches those of the sent packet
+    - Uping: Add minimal ICMP echo library for user-space liveness probing over doublezero interfaces, even when certain routes are not in the the kernel routing table.
 
 ## [v0.6.8](https://github.com/malbeclabs/doublezero/compare/client/v0.6.6...client/v0.6.8) – 2025-10-17
 

@@ -34,16 +34,16 @@ struct App {
     #[arg(short, long, value_name = "ENV", global = true)]
     env: Option<String>,
     /// DZ ledger RPC URL
-    #[arg(short, long, value_name = "RPC_URL", global = true)]
+    #[arg(long, value_name = "RPC_URL", global = true)]
     url: Option<String>,
     /// DZ ledger WebSocket URL
-    #[arg(short, long, value_name = "WEBSOCKET_URL", global = true)]
+    #[arg(long, value_name = "WEBSOCKET_URL", global = true)]
     ws: Option<String>,
     /// DZ program ID (testnet or devnet)
     #[arg(long, value_name = "PROGRAM_ID", global = true)]
     program_id: Option<String>,
     /// Path to the keypair file
-    #[arg(short, long, value_name = "KEYPAIR", global = true)]
+    #[arg(long, value_name = "KEYPAIR", global = true)]
     keypair: Option<PathBuf>,
 }
 

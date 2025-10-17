@@ -51,13 +51,18 @@ pub fn process_create_user(
     let accounts_iter = &mut accounts.iter();
 
     let user_account = next_account_info(accounts_iter)?;
+    msg!("user_account: {}", user_account.key);
     let device_account = next_account_info(accounts_iter)?;
+    msg!("device_account: {}", device_account.key);
     let accesspass_account = next_account_info(accounts_iter)?;
+    msg!("accesspass_account: {}", accesspass_account.key);
     let globalstate_account = next_account_info(accounts_iter)?;
+    msg!("globalstate_account: {}", globalstate_account.key);
     let payer_account = next_account_info(accounts_iter)?;
+    msg!("payer_account: {}", payer_account.key);
     let system_program = next_account_info(accounts_iter)?;
+    msg!("system_program: {}", system_program.key);
 
-    #[cfg(test)]
     msg!("process_create_user({:?})", value);
 
     // Check if the payer is a signer
@@ -75,6 +80,7 @@ pub fn process_create_user(
     );
 
     let globalstate = globalstate_get_next(globalstate_account)?;
+    msg!("globalstate: {:?}", globalstate);
 
     let (expected_pda_account, bump_seed) = get_user_pda(program_id, globalstate.account_index);
     assert_eq!(
@@ -110,6 +116,7 @@ pub fn process_create_user(
 
     // Read Access Pass
     let mut accesspass = AccessPass::try_from(accesspass_account)?;
+    msg!("AccessPass: {} - {:?}", accesspass_account.key, accesspass);
     if accesspass.user_payer != *payer_account.key {
         msg!(
             "Invalid user_payer accesspass.{{user_payer: {}}} = {{ user_payer: {} }}",
@@ -152,7 +159,7 @@ pub fn process_create_user(
     };
 
     let mut device = Device::try_from(device_account)?;
-
+    msg!("Device: {:?} ", device);
     if device.status == DeviceStatus::Suspended {
         if !globalstate.foundation_allowlist.contains(payer_account.key) {
             msg!("{:?}", device);

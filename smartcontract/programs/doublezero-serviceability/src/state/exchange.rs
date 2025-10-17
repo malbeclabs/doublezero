@@ -1,6 +1,7 @@
 use super::accounttype::{AccountType, AccountTypeInfo};
 use crate::{
     error::{DoubleZeroError, Validate},
+    helper::msg_err,
     seeds::SEED_EXCHANGE,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -115,20 +116,48 @@ impl TryFrom<&[u8]> for Exchange {
 
     fn try_from(mut data: &[u8]) -> Result<Self, Self::Error> {
         let out = Self {
-            account_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            owner: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            index: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            bump_seed: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            lat: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            lng: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            bgp_community: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            unused: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            status: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            code: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            name: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            reference_count: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            device1_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            device2_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            account_type: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "account_type"))
+                .unwrap_or_default(),
+            owner: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "owner"))
+                .unwrap_or_default(),
+            index: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "index"))
+                .unwrap_or_default(),
+            bump_seed: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "bump_seed"))
+                .unwrap_or_default(),
+            lat: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "lat"))
+                .unwrap_or_default(),
+            lng: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "lng"))
+                .unwrap_or_default(),
+            bgp_community: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "bgp_community"))
+                .unwrap_or_default(),
+            unused: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "unused"))
+                .unwrap_or_default(),
+            status: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "status"))
+                .unwrap_or_default(),
+            code: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "code"))
+                .unwrap_or_default(),
+            name: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "name"))
+                .unwrap_or_default(),
+            reference_count: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "reference_count"))
+                .unwrap_or_default(),
+            device1_pk: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "device1_pk"))
+                .unwrap_or_default(),
+            device2_pk: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "device2_pk"))
+                .unwrap_or_default(),
         };
 
         if out.account_type != AccountType::Exchange {

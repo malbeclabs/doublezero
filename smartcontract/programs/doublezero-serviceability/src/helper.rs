@@ -19,7 +19,6 @@ use std::{
 };
 
 use doublezero_program_common::create_account::try_create_account;
-#[cfg(test)]
 use solana_program::msg;
 
 pub fn account_create<'a, T>(
@@ -260,4 +259,9 @@ pub mod base_tests {
         }
         Ok(())
     }
+}
+
+pub fn msg_err<E: Debug>(err: E, name: &str) -> E {
+    msg!("Deserialization error in {}: {:?}", name, err);
+    err
 }

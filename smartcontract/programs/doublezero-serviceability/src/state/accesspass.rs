@@ -1,6 +1,6 @@
 use crate::{
     error::{DoubleZeroError, Validate},
-    helper::deserialize_vec_with_capacity,
+    helper::{deserialize_vec_with_capacity, msg_err},
     state::accounttype::{AccountType, AccountTypeInfo},
 };
 
@@ -184,19 +184,42 @@ impl TryFrom<&[u8]> for AccessPass {
 
     fn try_from(mut data: &[u8]) -> Result<Self, Self::Error> {
         let out = Self {
-            account_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            owner: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            bump_seed: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            accesspass_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            account_type: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "account_type"))
+                .unwrap_or_default(),
+            owner: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "owner"))
+                .unwrap_or_default(),
+            bump_seed: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "bump_seed"))
+                .unwrap_or_default(),
+            accesspass_type: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "accesspass_type"))
+                .unwrap_or_default(),
             client_ip: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "client_ip"))
                 .unwrap_or(std::net::Ipv4Addr::UNSPECIFIED),
-            user_payer: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            last_access_epoch: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            connection_count: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            status: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            mgroup_pub_allowlist: deserialize_vec_with_capacity(&mut data).unwrap_or_default(),
-            mgroup_sub_allowlist: deserialize_vec_with_capacity(&mut data).unwrap_or_default(),
-            flags: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            user_payer: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "user_payer"))
+                .unwrap_or_default(),
+            last_access_epoch: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "last_access_epoch"))
+                .unwrap_or_default(),
+            connection_count: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "connection_count"))
+                .unwrap_or_default(),
+            status: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "status"))
+                .unwrap_or_default(),
+            mgroup_pub_allowlist: deserialize_vec_with_capacity(&mut data)
+                .map_err(|e| msg_err(e, "mgroup_pub_allowlist"))
+                .unwrap_or_default(),
+            mgroup_sub_allowlist: deserialize_vec_with_capacity(&mut data)
+                .map_err(|e| msg_err(e, "mgroup_sub_allowlist"))
+                .unwrap_or_default(),
+            flags: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "flags"))
+                .unwrap_or_default(),
         };
 
         if out.account_type != AccountType::AccessPass {

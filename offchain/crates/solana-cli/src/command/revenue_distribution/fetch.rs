@@ -423,12 +423,20 @@ impl FetchCommand {
                     );
                 }
                 println!(
+                    "Solana validator debt merkle root: {}",
+                    account.solana_validator_debt_merkle_root
+                );
+                println!(
                     "Total solana validators: {}",
                     account.total_solana_validators
                 );
                 println!(
                     "Solana validator payments count: {}",
                     account.solana_validator_payments_count
+                );
+                println!(
+                    "Total solana validator debt: {:.9} SOL",
+                    account.total_solana_validator_debt as f64 * 1e-9
                 );
                 println!(
                     "Collected solana validator payments: {:.9} SOL",

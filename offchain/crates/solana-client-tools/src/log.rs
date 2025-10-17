@@ -1,8 +1,12 @@
+// Re-export tracing so dependent crates don't need to depend on it directly
+#[cfg(feature = "tracing")]
+pub use tracing;
+
 #[cfg(feature = "tracing")]
 #[macro_export]
 macro_rules! log_info {
     ($($arg:tt)*) => {
-        ::tracing::info!($($arg)*);
+        $crate::log::tracing::info!($($arg)*);
     };
 }
 
@@ -18,7 +22,7 @@ macro_rules! log_info {
 #[macro_export]
 macro_rules! log_error {
     ($($arg:tt)*) => {
-        ::tracing::error!($($arg)*);
+        $crate::log::tracing::error!($($arg)*);
     };
 }
 
@@ -34,7 +38,7 @@ macro_rules! log_error {
 #[macro_export]
 macro_rules! log_warn {
     ($($arg:tt)*) => {
-        ::tracing::warn!($($arg)*);
+        $crate::log::tracing::warn!($($arg)*);
     };
 }
 
@@ -50,7 +54,7 @@ macro_rules! log_warn {
 #[macro_export]
 macro_rules! log_debug {
     ($($arg:tt)*) => {
-        ::tracing::debug!($($arg)*);
+        $crate::log::tracing::debug!($($arg)*);
     };
 }
 

@@ -7,7 +7,7 @@ mod validator_deposit;
 
 use anyhow::{Result, anyhow};
 use clap::{Args, Subcommand};
-use doublezero_revenue_distribution::state::{ProgramConfig, SolanaValidatorDeposit};
+use doublezero_revenue_distribution::state::{Journal, ProgramConfig, SolanaValidatorDeposit};
 use doublezero_solana_client_tools::{rpc::SolanaConnection, zero_copy::ZeroCopyAccountOwned};
 use solana_sdk::pubkey::Pubkey;
 
@@ -56,6 +56,16 @@ async fn try_fetch_program_config(
             .map_err(|_| anyhow!("Revenue Distribution program not initialized"))?;
 
     Ok((program_config_key, program_config.data.unwrap().0))
+}
+
+async fn try_fetch_journal(connection: &SolanaConnection) -> Result<(Pubkey, Box<Journal>)> {
+    let (journal_key, _) = Journal::find_address();
+
+    let journal = ZeroCopyAccountOwned::from_rpc_client(&connection.rpc_client, &journal_key)
+        .await
+        .map_err(|_| anyhow!("Revenue Distribution program not initialized"))?;
+
+    Ok((journal_key, journal.data.unwrap().0))
 }
 
 async fn fetch_solana_validator_deposit(

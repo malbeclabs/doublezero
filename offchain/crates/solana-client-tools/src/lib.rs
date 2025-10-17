@@ -1,4 +1,4 @@
-mod log;
+pub mod log;
 pub mod payer;
 pub mod rpc;
 pub mod transaction;

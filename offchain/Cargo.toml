@@ -3,8 +3,10 @@ members = [
     "crates/contributor-rewards",
     "crates/scheduled-command",
     "crates/sentinel",
-    "crates/solana-admin/passport-cli",
-    "crates/solana-admin/revenue-distribution-cli",
+    "crates/solana-interface/sol-conversion",
+    "crates/solana-admin-cli/passport",
+    "crates/solana-admin-cli/revenue-distribution",
+    "crates/solana-admin-cli/sol-conversion",
     "crates/solana-cli",
     "crates/solana-client-tools",
     "crates/solana-fork",
@@ -28,8 +30,8 @@ backon = "1"
 base64 = "0.22"
 bincode = "1"
 bitvec = "1"
-borsh = "1"
-bytemuck = "1"
+borsh = { version = "1", features = ["derive"] }
+bytemuck = { version = "1", features = ["derive", "min_const_generics"] }
 chrono = { version = "0", features = ["serde"] }
 clap = { version = "4", features = ["derive"] }
 config = "0"
@@ -57,6 +59,8 @@ solana-account-decoder-client-types = "2"
 solana-client = "2"
 solana-commitment-config = "2"
 solana-epoch-info = "3"
+solana-instruction = "2"
+solana-pubkey = { version = "2", features = ["borsh", "bytemuck"] }
 solana-sanitize = "2"
 solana-sdk = "2"
 solana-system-interface = "1"
@@ -78,15 +82,15 @@ url = "2"
 [workspace.dependencies.doublezero-passport]
 features = ["offchain"]
 git = "https://github.com/doublezerofoundation/doublezero-solana"
-rev = "a3cd70b"
+rev = "0a59eac"
 
 [workspace.dependencies.doublezero-program-tools]
 git = "https://github.com/doublezerofoundation/doublezero-solana"
-rev = "a3cd70b"
+rev = "0a59eac"
 
 [workspace.dependencies.doublezero-revenue-distribution]
 git = "https://github.com/doublezerofoundation/doublezero-solana"
-rev = "a3cd70b"
+rev = "0a59eac"
 
 ### Dependencies found in github.com/malbeclabs/doublezero
 
@@ -122,11 +126,14 @@ tag = "v0.3.0"
 
 ### Local dependencies
 
+[workspace.dependencies.doublezero-scheduled-command]
+path = "crates/scheduled-command"
+
 [workspace.dependencies.doublezero-ledger-sentinel]
 path = "crates/sentinel"
 
-[workspace.dependencies.doublezero-scheduled-command]
-path = "crates/scheduled-command"
+[workspace.dependencies.doublezero-sol-conversion-interface]
+path = "crates/solana-interface/sol-conversion"
 
 [workspace.dependencies.doublezero-solana-client-tools]
 path = "crates/solana-client-tools"

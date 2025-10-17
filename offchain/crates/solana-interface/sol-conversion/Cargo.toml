@@ -1,0 +1,16 @@
+[package]
+name = "doublezero-sol-conversion-interface"
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
+version.workspace = true
+
+[dependencies]
+borsh.workspace = true
+bytemuck.workspace = true
+doublezero-program-tools.workspace = true
+doublezero-revenue-distribution.workspace = true
+solana-instruction.workspace = true
+solana-pubkey.workspace = true
+solana-system-interface.workspace = true

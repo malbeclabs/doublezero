@@ -25,7 +25,7 @@ doublezero-revenue-distribution.workspace = true
 doublezero-scheduled-command.workspace = true
 doublezero-serviceability.workspace = true
 doublezero_sdk.workspace = true
-doublezero-solana-client-tools = { workspace = true, features = ["tracing"] }
+doublezero-solana-client-tools.workspace = true
 futures.workspace = true
 leaky-bucket.workspace = true
 mockall.workspace = true
@@ -43,3 +43,5 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 url.workspace = true
 
+[features]
+tracing = ["doublezero-solana-client-tools/tracing"]

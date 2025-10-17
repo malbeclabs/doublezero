@@ -11,6 +11,7 @@ anyhow.workspace = true
 bytemuck.workspace = true
 clap.workspace = true
 doublezero-program-tools.workspace = true
+doublezero-scheduled-command.workspace = true
 serde_json.workspace = true
 solana-client.workspace = true
 solana-commitment-config.workspace = true

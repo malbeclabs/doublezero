@@ -10,6 +10,7 @@ repository.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+async-trait.workspace = true
 borsh.workspace = true
 chrono.workspace = true
 clap.workspace = true
@@ -18,9 +19,12 @@ doublezero-passport.workspace = true
 doublezero-ledger-sentinel.workspace = true
 doublezero-program-tools.workspace = true
 doublezero-revenue-distribution.workspace = true
+doublezero-scheduled-command.workspace = true
+doublezero-sol-conversion-interface.workspace = true
 doublezero-solana-client-tools.workspace = true
 doublezero-solana-validator-debt.workspace = true
 doublezero_sdk.workspace = true
+itertools.workspace = true
 serde_json.workspace = true
 solana-account-decoder-client-types.workspace = true
 solana-client.workspace = true
@@ -29,6 +33,7 @@ solana-sdk.workspace = true
 solana-system-interface.workspace = true
 solana-transaction-status-client-types.workspace = true
 tokio.workspace = true
+tracing-subscriber.workspace = true
 url.workspace = true
 
 [[bin]]

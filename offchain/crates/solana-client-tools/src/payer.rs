@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Context, Result, anyhow, bail, ensure};
 use clap::Args;
 use solana_client::rpc_config::RpcTransactionConfig;
 use solana_commitment_config::CommitmentConfig;
@@ -10,7 +10,7 @@ use solana_sdk::{
     pubkey::Pubkey,
     signature::{Keypair, Signature},
     signer::Signer,
-    transaction::VersionedTransaction,
+    transaction::{TransactionError, VersionedTransaction},
 };
 use solana_transaction_status_client_types::UiTransactionEncoding;
 
@@ -160,6 +160,13 @@ impl Wallet {
         if self.dry_run {
             let simulation_response = self.connection.simulate_transaction(transaction).await?;
 
+            if let Some(tx_err) = simulation_response.value.err {
+                ensure!(
+                    matches!(tx_err, TransactionError::InstructionError(_, _)),
+                    "Simulation failed: {tx_err}"
+                );
+            }
+
             log_info!("Simulated program logs:");
             simulation_response
                 .value
@@ -239,9 +246,12 @@ pub fn try_load_keypair(path: Option<PathBuf>) -> Result<Keypair> {
 }
 
 fn try_load_specified_keypair(path: &PathBuf) -> Result<Keypair> {
-    let keypair_file = std::fs::read_to_string(path)?;
-    let keypair_bytes = serde_json::from_str::<Vec<u8>>(&keypair_file)?;
-    let default_keypair = Keypair::try_from(keypair_bytes.as_slice())?;
+    let keypair_file = std::fs::read_to_string(path)
+        .context(format!("Keypair not found at {}", path.display()))?;
+    let keypair_bytes = serde_json::from_str::<Vec<u8>>(&keypair_file)
+        .context(format!("Keypair not valid JSON at {}", path.display()))?;
+    let default_keypair = Keypair::try_from(keypair_bytes.as_slice())
+        .context(format!("Invalid keypair found at {}", path.display()))?;
 
     Ok(default_keypair)
 }

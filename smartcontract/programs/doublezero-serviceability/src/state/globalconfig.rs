@@ -64,7 +64,14 @@ impl TryFrom<&AccountInfo<'_>> for GlobalConfig {
 
     fn try_from(account: &AccountInfo) -> Result<Self, Self::Error> {
         let data = account.try_borrow_data()?;
-        Self::try_from(&data[..])
+        let res = Self::try_from(&data[..]);
+        if res.is_err() {
+            msg!(
+                "Failed to deserialize GlobalConfig: {:?}",
+                res.as_ref().err()
+            );
+        }
+        res
     }
 }
 

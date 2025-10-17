@@ -167,7 +167,13 @@ echo "Update devices to set max users"
 
 # create access pass
 echo "Create AccessPass for all IPs"
-./target/doublezero access-pass set --accesspass-type prepaid --user-payer me --allow-multiple-ip
+./target/doublezero access-pass set --accesspass-type prepaid --user-payer me --client-ip 100.0.0.5
+./target/doublezero access-pass set --accesspass-type prepaid --user-payer me --client-ip 100.0.0.6
+
+./target/doublezero access-pass set --accesspass-type prepaid --user-payer me --client-ip 177.54.159.95
+./target/doublezero access-pass set --accesspass-type prepaid --user-payer me --client-ip 147.28.171.51
+./target/doublezero access-pass set --accesspass-type prepaid --user-payer me --client-ip 100.100.100.100
+./target/doublezero access-pass set --accesspass-type prepaid --user-payer me --client-ip 200.200.200.200
 
 # create a user
 echo "Creating users"

@@ -157,9 +157,11 @@ pub fn process_create_subscribe_user(
 
     // Check if the user is in the allowlist
     if value.publisher && !accesspass.mgroup_pub_allowlist.contains(mgroup_account.key) {
+        msg!("{} -> {:?}", accesspass_account.key, accesspass);
         return Err(DoubleZeroError::NotAllowed.into());
     }
     if value.subscriber && !accesspass.mgroup_sub_allowlist.contains(mgroup_account.key) {
+        msg!("{} -> {:?}", accesspass_account.key, accesspass);
         return Err(DoubleZeroError::NotAllowed.into());
     }
 

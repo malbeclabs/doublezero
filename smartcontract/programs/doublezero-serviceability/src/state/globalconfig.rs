@@ -1,5 +1,6 @@
 use crate::{
     error::{DoubleZeroError, Validate},
+    helper::msg_err,
     state::accounttype::AccountType,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -37,14 +38,30 @@ impl TryFrom<&[u8]> for GlobalConfig {
 
     fn try_from(mut data: &[u8]) -> Result<Self, Self::Error> {
         let out = Self {
-            account_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            owner: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            bump_seed: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            local_asn: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            remote_asn: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            device_tunnel_block: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            user_tunnel_block: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            multicastgroup_block: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            account_type: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "account_type"))
+                .unwrap_or_default(),
+            owner: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "owner"))
+                .unwrap_or_default(),
+            bump_seed: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "bump_seed"))
+                .unwrap_or_default(),
+            local_asn: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "local_asn"))
+                .unwrap_or_default(),
+            remote_asn: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "remote_asn"))
+                .unwrap_or_default(),
+            device_tunnel_block: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "device_tunnel_block"))
+                .unwrap_or_default(),
+            user_tunnel_block: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "user_tunnel_block"))
+                .unwrap_or_default(),
+            multicastgroup_block: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "multicastgroup_block"))
+                .unwrap_or_default(),
         };
 
         if out.account_type != AccountType::GlobalConfig {

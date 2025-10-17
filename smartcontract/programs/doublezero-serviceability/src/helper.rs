@@ -10,6 +10,7 @@ use solana_program::{
     sysvar::{rent::Rent, Sysvar},
 };
 use std::{
+    error::Error,
     fmt::{self, Debug},
     net::Ipv4Addr,
 };
@@ -251,7 +252,9 @@ pub mod base_tests {
     }
 }
 
-pub fn msg_err<E: Debug>(err: E, name: &str) -> E {
-    msg!("Deserialization error in {}: {:?}", name, err);
+pub fn msg_err<E: Error + Debug>(err: E, name: &str) -> E {
+    if err.to_string() != "Unexpected length of input" {
+        msg!("Deserialization error in {}: {:?}", name, err);
+    }
     err
 }

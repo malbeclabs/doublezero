@@ -45,14 +45,15 @@ impl CreateSubscribeUserCommand {
             eyre::bail!("MulticastGroup not active");
         }
 
+        // First try to get AccessPass for the client IP
         let (accesspass_pk, _) = GetAccessPassCommand {
-            client_ip: Ipv4Addr::UNSPECIFIED,
+            client_ip: self.client_ip,
             user_payer: client.get_payer(),
         }
         .execute(client)
         .or_else(|_| {
             GetAccessPassCommand {
-                client_ip: self.client_ip,
+                client_ip: Ipv4Addr::UNSPECIFIED,
                 user_payer: client.get_payer(),
             }
             .execute(client)

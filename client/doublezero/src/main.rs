@@ -37,7 +37,7 @@ struct App {
     #[arg(short, long, value_name = "RPC_URL", global = true)]
     url: Option<String>,
     /// DZ ledger WebSocket URL
-    #[arg(short, long, value_name = "WEBSOCKET_URL", global = true)]
+    #[arg(long, value_name = "WEBSOCKET_URL", global = true)]
     ws: Option<String>,
     /// DZ program ID (testnet or devnet)
     #[arg(long, value_name = "PROGRAM_ID", global = true)]

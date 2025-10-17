@@ -5,11 +5,13 @@ use crate::{
     pda::get_accesspass_pda,
     state::{
         accesspass::{AccessPass, AccessPassStatus},
+        accounttype::AccountTypeInfo,
         user::*,
     },
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
+use doublezero_program_common::resize_account::resize_account_if_needed;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
@@ -120,6 +122,12 @@ pub fn process_delete_user(
         if accesspass.connection_count == 0 && accesspass.allow_multiple_ip() {
             accesspass.client_ip = Ipv4Addr::UNSPECIFIED; // reset to allow multiple IPs
         }
+        resize_account_if_needed(
+            accesspass_account,
+            payer_account,
+            accounts,
+            accesspass.size(),
+        )?;
         accesspass.try_serialize(accesspass_account)?;
     }
 

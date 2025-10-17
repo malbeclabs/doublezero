@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Fix: resize AccessPass account before serialization to prevent errors; standardized use of resize_account_if_needed across processors.
+
 ## [v0.6.7](https://github.com/malbeclabs/doublezero/compare/client/v0.6.6...client/v0.6.7) – 2025-10-16
 
 ### Breaking

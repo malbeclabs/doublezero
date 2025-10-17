@@ -10,12 +10,12 @@ use solana_program::{
     sysvar::{rent::Rent, Sysvar},
 };
 use std::{
+    error::Error,
     fmt::{self, Debug},
     net::Ipv4Addr,
 };
 
 use doublezero_program_common::create_account::try_create_account;
-#[cfg(test)]
 use solana_program::msg;
 
 pub fn account_create<'a, T>(
@@ -216,4 +216,45 @@ mod tests {
         assert!(!is_global(Ipv4Addr::new(192, 0, 2, 1))); // Documentation IP
         assert!(!is_global(Ipv4Addr::new(0, 0, 0, 0))); // Unspecified IP
     }
+}
+
+#[cfg(test)]
+pub mod base_tests {
+    use base64::{engine::general_purpose, Engine as _};
+    use solana_sdk::program_error::ProgramError;
+
+    pub fn test_parsing<T>(inputs: &[&str]) -> Result<(), ProgramError>
+    where
+        for<'a> T: TryFrom<&'a [u8]> + std::fmt::Debug,
+        for<'a> <T as TryFrom<&'a [u8]>>::Error: std::fmt::Debug,
+    {
+        println!("\n{}", std::any::type_name::<T>());
+
+        for (i, s) in inputs.iter().enumerate() {
+            match general_purpose::STANDARD.decode(s) {
+                Ok(bytes) => {
+                    let slice: &[u8] = bytes.as_slice();
+                    match T::try_from(slice) {
+                        Ok(acc) => println!("{i}: ✅ OK {:?}", acc),
+                        Err(e) => {
+                            println!("{i}: Failed to parse: {:?}", e);
+                            return Err(ProgramError::InvalidInstructionData);
+                        }
+                    }
+                }
+                Err(e) => {
+                    println!("{i}: Base64 decode error: {:?}", e);
+                    return Err(ProgramError::InvalidInstructionData);
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+pub fn msg_err<E: Error + Debug>(err: E, name: &str) -> E {
+    if err.to_string() != "Unexpected length of input" {
+        msg!("Deserialization error in {}: {:?}", name, err);
+    }
+    err
 }

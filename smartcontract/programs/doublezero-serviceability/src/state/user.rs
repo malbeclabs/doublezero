@@ -1,6 +1,6 @@
 use crate::{
     error::{DoubleZeroError, Validate},
-    helper::{deserialize_vec_with_capacity, is_global},
+    helper::{deserialize_vec_with_capacity, is_global, msg_err},
     seeds::SEED_USER,
     state::{
         accesspass::{AccessPass, AccessPassStatus, AccessPassType},
@@ -263,22 +263,54 @@ impl TryFrom<&[u8]> for User {
 
     fn try_from(mut data: &[u8]) -> Result<Self, ProgramError> {
         let out = Self {
-            account_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            owner: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            index: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            bump_seed: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            user_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            tenant_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            device_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            cyoa_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            client_ip: BorshDeserialize::deserialize(&mut data).unwrap_or([0, 0, 0, 0].into()),
-            dz_ip: BorshDeserialize::deserialize(&mut data).unwrap_or([0, 0, 0, 0].into()),
-            tunnel_id: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            tunnel_net: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            status: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            publishers: deserialize_vec_with_capacity(&mut data).unwrap_or_default(),
-            subscribers: deserialize_vec_with_capacity(&mut data).unwrap_or_default(),
-            validator_pubkey: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            account_type: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "account_type"))
+                .unwrap_or_default(),
+            owner: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "owner"))
+                .unwrap_or_default(),
+            index: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "index"))
+                .unwrap_or_default(),
+            bump_seed: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "bump_seed"))
+                .unwrap_or_default(),
+            user_type: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "user_type"))
+                .unwrap_or_default(),
+            tenant_pk: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "tenant_pk"))
+                .unwrap_or_default(),
+            device_pk: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "device_pk"))
+                .unwrap_or_default(),
+            cyoa_type: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "cyoa_type"))
+                .unwrap_or_default(),
+            client_ip: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "client_ip"))
+                .unwrap_or([0, 0, 0, 0].into()),
+            dz_ip: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "dz_ip"))
+                .unwrap_or([0, 0, 0, 0].into()),
+            tunnel_id: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "tunnel_id"))
+                .unwrap_or_default(),
+            tunnel_net: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "tunnel_net"))
+                .unwrap_or_default(),
+            status: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "status"))
+                .unwrap_or_default(),
+            publishers: deserialize_vec_with_capacity(&mut data)
+                .map_err(|e| msg_err(e, "validator_pubkey"))
+                .unwrap_or_default(),
+            subscribers: deserialize_vec_with_capacity(&mut data)
+                .map_err(|e| msg_err(e, "validator_pubkey"))
+                .unwrap_or_default(),
+            validator_pubkey: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "validator_pubkey"))
+                .unwrap_or_default(),
         };
 
         if out.account_type != AccountType::User {
@@ -294,7 +326,11 @@ impl TryFrom<&AccountInfo<'_>> for User {
 
     fn try_from(account: &AccountInfo) -> Result<Self, Self::Error> {
         let data = account.try_borrow_data()?;
-        Self::try_from(&data[..])
+        let res = Self::try_from(&data[..]);
+        if res.is_err() {
+            msg!("Failed to deserialize User: {:?}", res.as_ref().err());
+        }
+        res
     }
 }
 
@@ -373,6 +409,19 @@ impl User {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_state_compatibility_user() {
+        /* To generate the base64 strings, use the following commands after deploying the program and creating accounts:
+
+        solana account <Pubkey> --output json  -u  https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16
+
+         */
+        let versions = ["B6gVJ9nqZZCbOZ4+qdSD0fV6GW608QGIxlc96bI9/o1ukAMAAAAAAAAAAAAAAAAAAP8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABNn75kIGVAa79vzDXmsfzMjJv6k6bA4q/3il4oq4agjAFfrc7uX63O7i8Cqf4CxB8BAAAAAAAAAACjpUHKupgvsyUs0s3LR1ojd7zOQkjFxGsDoH+BeOYVWw==",
+        "B7qqHuIng+xr+jC+xdH+K0McWbY0Sz2o800JnFlfiUXDTBgAAAAAAAAAAAAAAAAAAP4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABNn75kIGVAa79vzDXmsfzMjJv6k6bA4q/3il4oq4agjAFD1XgJQ9V4CQMCqf4ApB8BAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="];
+
+        crate::helper::base_tests::test_parsing::<User>(&versions).unwrap();
+    }
 
     #[test]
     fn test_state_user_try_from_defaults() {

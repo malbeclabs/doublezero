@@ -1,5 +1,6 @@
 use crate::{
     error::{DoubleZeroError, Validate},
+    helper::msg_err,
     seeds::SEED_LOCATION,
     state::accounttype::*,
 };
@@ -109,18 +110,42 @@ impl TryFrom<&[u8]> for Location {
 
     fn try_from(mut data: &[u8]) -> Result<Self, Self::Error> {
         let out = Self {
-            account_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            owner: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            index: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            bump_seed: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            lat: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            lng: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            loc_id: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            status: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            code: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            name: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            country: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            reference_count: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            account_type: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "account_type"))
+                .unwrap_or_default(),
+            owner: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "owner"))
+                .unwrap_or_default(),
+            index: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "index"))
+                .unwrap_or_default(),
+            bump_seed: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "bump_seed"))
+                .unwrap_or_default(),
+            lat: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "lat"))
+                .unwrap_or_default(),
+            lng: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "lng"))
+                .unwrap_or_default(),
+            loc_id: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "loc_id"))
+                .unwrap_or_default(),
+            status: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "status"))
+                .unwrap_or_default(),
+            code: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "code"))
+                .unwrap_or_default(),
+            name: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "name"))
+                .unwrap_or_default(),
+            country: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "country"))
+                .unwrap_or_default(),
+            reference_count: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "reference_count"))
+                .unwrap_or_default(),
         };
 
         if out.account_type != AccountType::Location {
@@ -136,7 +161,11 @@ impl TryFrom<&AccountInfo<'_>> for Location {
 
     fn try_from(account: &AccountInfo) -> Result<Self, Self::Error> {
         let data = account.try_borrow_data()?;
-        Self::try_from(&data[..])
+        let res = Self::try_from(&data[..]);
+        if res.is_err() {
+            msg!("Failed to deserialize Location: {:?}", res.as_ref().err());
+        }
+        res
     }
 }
 
@@ -175,6 +204,18 @@ impl Validate for Location {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_state_compatibility_location() {
+        /* To generate the base64 strings, use the following commands after deploying the program and creating accounts:
+
+        solana account <pubkey> --output json  -u  https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16
+
+         */
+        let versions = ["A7qqPaSNmr1wLINMX3kvak2PM053QzcaGwrC1muP05fOBAAAAAAAAAAAAAAAAAAAAP/NIT2DgiZKQM9yhtzaxBNAExIAAAEDAAAAYW1zCQAAAEFtc3RlcmRhbQIAAABVUw=="];
+
+        crate::helper::base_tests::test_parsing::<Location>(&versions).unwrap();
+    }
 
     #[test]
     fn test_state_location_try_from_defaults() {

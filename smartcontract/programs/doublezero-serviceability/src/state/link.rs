@@ -1,5 +1,6 @@
 use crate::{
     error::{DoubleZeroError, Validate},
+    helper::msg_err,
     seeds::SEED_LINK,
     state::accounttype::{AccountType, AccountTypeInfo},
 };
@@ -209,24 +210,60 @@ impl TryFrom<&[u8]> for Link {
 
     fn try_from(mut data: &[u8]) -> Result<Self, Self::Error> {
         let out = Self {
-            account_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            owner: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            index: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            bump_seed: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            side_a_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            side_z_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            link_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            bandwidth: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            mtu: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            delay_ns: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            jitter_ns: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            tunnel_id: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            tunnel_net: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            status: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            code: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            contributor_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            side_a_iface_name: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            side_z_iface_name: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            account_type: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "account_type"))
+                .unwrap_or_default(),
+            owner: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "owner"))
+                .unwrap_or_default(),
+            index: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "index"))
+                .unwrap_or_default(),
+            bump_seed: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "bump_seed"))
+                .unwrap_or_default(),
+            side_a_pk: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "side_a_pk"))
+                .unwrap_or_default(),
+            side_z_pk: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "side_z_pk"))
+                .unwrap_or_default(),
+            link_type: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "link_type"))
+                .unwrap_or_default(),
+            bandwidth: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "bandwidth"))
+                .unwrap_or_default(),
+            mtu: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "mtu"))
+                .unwrap_or_default(),
+            delay_ns: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "delay_ns"))
+                .unwrap_or_default(),
+            jitter_ns: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "jitter_ns"))
+                .unwrap_or_default(),
+            tunnel_id: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "tunnel_id"))
+                .unwrap_or_default(),
+            tunnel_net: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "tunnel_net"))
+                .unwrap_or_default(),
+            status: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "status"))
+                .unwrap_or_default(),
+            code: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "code"))
+                .unwrap_or_default(),
+            contributor_pk: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "contributor_pk"))
+                .unwrap_or_default(),
+            side_a_iface_name: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "side_a_iface_name"))
+                .unwrap_or_default(),
+            side_z_iface_name: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "side_z_iface_name"))
+                .unwrap_or_default(),
         };
 
         if out.account_type != AccountType::Link {
@@ -242,7 +279,11 @@ impl TryFrom<&AccountInfo<'_>> for Link {
 
     fn try_from(account: &AccountInfo) -> Result<Self, Self::Error> {
         let data = account.try_borrow_data()?;
-        Self::try_from(&data[..])
+        let res = Self::try_from(&data[..]);
+        if res.is_err() {
+            msg!("Failed to deserialize Link: {:?}", res.as_ref().err());
+        }
+        res
     }
 }
 
@@ -287,6 +328,18 @@ impl Validate for Link {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_state_compatibility_link() {
+        /* To generate the base64 strings, use the following commands after deploying the program and creating accounts:
+
+        solana account <pubkey> --output json  -u  https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16
+
+         */
+        let versions = ["BkvSaV1rq1QJ8zOTtS11vLcqEAOEa6/VPFWMS3g8LlDQUwMAAAAAAAAAAAAAAAAAAP40OG7nknYJX/02vlGmZE3PZWBVkL/zMY4P60wIaJK5l6+0kktF4ZgCVrgWnleXuDOmfdeg3neH8u7LCs6dkCV3AQDkC1QCAAAAKCMAAADkVwAAAAAAkHYSAAAAAAAAAKwQAAAfARMAAABhbXMtZHowMDE6bG9uLWR6MDAxI3iXByb/tN/b4hEbmFObJCBDgjsbphxyMIz1SUP2C+4QAAAAU3dpdGNoMS8xLzEuMTAwMRAAAABTd2l0Y2gxLzEvMS4xMDAx"];
+
+        crate::helper::base_tests::test_parsing::<Link>(&versions).unwrap();
+    }
 
     #[test]
     fn test_state_link_try_from_defaults() {

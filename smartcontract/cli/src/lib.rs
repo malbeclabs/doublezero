@@ -1,5 +1,6 @@
 pub mod accesspass;
 pub mod account;
+pub mod accounts;
 pub mod address;
 pub mod allowlist;
 pub mod balance;

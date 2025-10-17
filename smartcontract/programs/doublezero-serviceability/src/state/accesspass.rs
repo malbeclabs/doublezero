@@ -1,8 +1,9 @@
 use crate::{
     error::{DoubleZeroError, Validate},
-    helper::deserialize_vec_with_capacity,
+    helper::{deserialize_vec_with_capacity, msg_err},
     state::accounttype::{AccountType, AccountTypeInfo},
 };
+
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::AccountInfo, clock::Clock, entrypoint::ProgramResult, msg,
@@ -183,19 +184,42 @@ impl TryFrom<&[u8]> for AccessPass {
 
     fn try_from(mut data: &[u8]) -> Result<Self, Self::Error> {
         let out = Self {
-            account_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            owner: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            bump_seed: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            accesspass_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            account_type: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "account_type"))
+                .unwrap_or_default(),
+            owner: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "owner"))
+                .unwrap_or_default(),
+            bump_seed: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "bump_seed"))
+                .unwrap_or_default(),
+            accesspass_type: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "accesspass_type"))
+                .unwrap_or_default(),
             client_ip: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "client_ip"))
                 .unwrap_or(std::net::Ipv4Addr::UNSPECIFIED),
-            user_payer: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            last_access_epoch: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            connection_count: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            status: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            mgroup_pub_allowlist: deserialize_vec_with_capacity(&mut data).unwrap_or_default(),
-            mgroup_sub_allowlist: deserialize_vec_with_capacity(&mut data).unwrap_or_default(),
-            flags: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            user_payer: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "user_payer"))
+                .unwrap_or_default(),
+            last_access_epoch: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "last_access_epoch"))
+                .unwrap_or_default(),
+            connection_count: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "connection_count"))
+                .unwrap_or_default(),
+            status: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "status"))
+                .unwrap_or_default(),
+            mgroup_pub_allowlist: deserialize_vec_with_capacity(&mut data)
+                .map_err(|e| msg_err(e, "mgroup_pub_allowlist"))
+                .unwrap_or_default(),
+            mgroup_sub_allowlist: deserialize_vec_with_capacity(&mut data)
+                .map_err(|e| msg_err(e, "mgroup_sub_allowlist"))
+                .unwrap_or_default(),
+            flags: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "flags"))
+                .unwrap_or_default(),
         };
 
         if out.account_type != AccountType::AccessPass {
@@ -211,7 +235,11 @@ impl TryFrom<&AccountInfo<'_>> for AccessPass {
 
     fn try_from(account: &AccountInfo) -> Result<Self, Self::Error> {
         let data = account.try_borrow_data()?;
-        Self::try_from(&data[..])
+        let res = Self::try_from(&data[..]);
+        if res.is_err() {
+            msg!("Failed to deserialize AccessPass: {:?}", res.as_ref().err());
+        }
+        res
     }
 }
 
@@ -263,8 +291,23 @@ impl AccessPass {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use borsh::object_length;
+
+    use super::*;
+
+    #[test]
+    fn test_state_compatibility_accesspass() {
+        /* To generate the base64 strings, use the following commands after deploying the program and creating accounts:
+
+        solana account <pubkey> --output json  -u  https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16
+
+         */
+        let versions = ["C7qqHuIng+xr+jC+xdH+K0McWbY0Sz2o800JnFlfiUXD/wEKMn8sVpVpD9hZLrMBs5vmoZJrEr3Jm/+Bnz0ZNxH2ctRTKz4oucUt7JbWjAqOf/dn7tAFvWQRcKAJn5fTUPSytlyzaP//////////AAAC",
+        "Cw/Yc23gE4TGWMth7/U6RH8eyKMyCwPgaOt85q71G6p0/QFzjyfb7L+DkaP2MshouP9HaAlv5WdMR67oUvQEuw1uStGfmm5o6ww5SH/2KjjMhIvhn7m0SqBUWZF0hnxc/wZ9cXaKdP//////////AQAB",
+        "C7qqHuIng+xr+jC+xdH+K0McWbY0Sz2o800JnFlfiUXD/gBD1XgJuqoe4ieD7Gv6ML7F0f4rQxxZtjRLPajzTQmcWV+JRcP//////////wEAAQAAAAAAAAAAAA=="];
+
+        crate::helper::base_tests::test_parsing::<AccessPass>(&versions).unwrap();
+    }
 
     #[test]
     fn test_state_accesspass_types() {

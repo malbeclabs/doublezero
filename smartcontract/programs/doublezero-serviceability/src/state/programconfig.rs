@@ -1,6 +1,7 @@
 use crate::{
     accounts::{AccountSeed, AccountSize},
     error::{DoubleZeroError, Validate},
+    helper::msg_err,
     programversion::ProgramVersion,
     seeds::{SEED_PREFIX, SEED_PROGRAM_CONFIG},
     state::accounttype::AccountType,
@@ -47,12 +48,22 @@ impl TryFrom<&[u8]> for ProgramConfig {
 
     fn try_from(mut data: &[u8]) -> Result<Self, Self::Error> {
         let out = Self {
-            account_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            bump_seed: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            account_type: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "account_type"))
+                .unwrap_or_default(),
+            bump_seed: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "bump_seed"))
+                .unwrap_or_default(),
             version: ProgramVersion {
-                major: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-                minor: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-                patch: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+                major: BorshDeserialize::deserialize(&mut data)
+                    .map_err(|e| msg_err(e, "major"))
+                    .unwrap_or_default(),
+                minor: BorshDeserialize::deserialize(&mut data)
+                    .map_err(|e| msg_err(e, "minor"))
+                    .unwrap_or_default(),
+                patch: BorshDeserialize::deserialize(&mut data)
+                    .map_err(|e| msg_err(e, "patch"))
+                    .unwrap_or_default(),
             },
         };
 
@@ -69,7 +80,14 @@ impl TryFrom<&AccountInfo<'_>> for ProgramConfig {
 
     fn try_from(account: &AccountInfo) -> Result<Self, Self::Error> {
         let data = account.try_borrow_data()?;
-        Self::try_from(&data[..])
+        let res = Self::try_from(&data[..]);
+        if res.is_err() {
+            msg!(
+                "Failed to deserialize ProgramConfig: {:?}",
+                res.as_ref().err()
+            );
+        }
+        res
     }
 }
 
@@ -87,6 +105,18 @@ impl Validate for ProgramConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_state_compatibility_programconfig() {
+        /* To generate the base64 strings, use the following commands after deploying the program and creating accounts:
+
+        solana account 64GnM7vWSr7PJkqaeiVV7HMxs8o3WjsBcRvm1j75BcAE --output json  -u  https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16
+
+         */
+        let versions = ["Cf8AAAAABgAAAAcAAAA="];
+
+        crate::helper::base_tests::test_parsing::<ProgramConfig>(&versions).unwrap();
+    }
 
     #[test]
     fn test_state_programconfig_try_from_defaults() {

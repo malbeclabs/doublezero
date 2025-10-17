@@ -1,6 +1,6 @@
 use crate::{
     error::{DoubleZeroError, Validate},
-    helper::is_global,
+    helper::{is_global, msg_err},
     seeds::SEED_DEVICE,
     state::accounttype::{AccountType, AccountTypeInfo},
 };
@@ -228,15 +228,31 @@ impl TryFrom<&[u8]> for InterfaceV1 {
 
     fn try_from(mut data: &[u8]) -> Result<Self, Self::Error> {
         Ok(Self {
-            status: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            name: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            interface_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            loopback_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            vlan_id: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            ip_net: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            node_segment_idx: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            status: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "code"))
+                .unwrap_or_default(),
+            name: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "code"))
+                .unwrap_or_default(),
+            interface_type: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "code"))
+                .unwrap_or_default(),
+            loopback_type: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "code"))
+                .unwrap_or_default(),
+            vlan_id: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "code"))
+                .unwrap_or_default(),
+            ip_net: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "code"))
+                .unwrap_or_default(),
+            node_segment_idx: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "code"))
+                .unwrap_or_default(),
             user_tunnel_endpoint: {
-                let val: u8 = BorshDeserialize::deserialize(&mut data).unwrap_or_default();
+                let val: u8 = BorshDeserialize::deserialize(&mut data)
+                    .map_err(|e| msg_err(e, "code"))
+                    .unwrap_or_default();
                 val != 0
             },
         })
@@ -457,24 +473,60 @@ impl TryFrom<&[u8]> for Device {
 
     fn try_from(mut data: &[u8]) -> Result<Self, Self::Error> {
         let out = Self {
-            account_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            owner: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            index: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            bump_seed: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            location_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            exchange_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            device_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            public_ip: BorshDeserialize::deserialize(&mut data).unwrap_or([0, 0, 0, 0].into()),
-            status: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            code: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            dz_prefixes: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            metrics_publisher_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            contributor_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            mgmt_vrf: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            interfaces: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            reference_count: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            users_count: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            max_users: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            account_type: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "account_type"))
+                .unwrap_or_default(),
+            owner: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "owner"))
+                .unwrap_or_default(),
+            index: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "index"))
+                .unwrap_or_default(),
+            bump_seed: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "bump_seed"))
+                .unwrap_or_default(),
+            location_pk: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "location_pk"))
+                .unwrap_or_default(),
+            exchange_pk: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "exchange_pk"))
+                .unwrap_or_default(),
+            device_type: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "device_type"))
+                .unwrap_or_default(),
+            public_ip: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "public_ip"))
+                .unwrap_or([0, 0, 0, 0].into()),
+            status: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "status"))
+                .unwrap_or_default(),
+            code: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "code"))
+                .unwrap_or_default(),
+            dz_prefixes: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "dz_prefixes"))
+                .unwrap_or_default(),
+            metrics_publisher_pk: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "metrics_publisher_pk"))
+                .unwrap_or_default(),
+            contributor_pk: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "contributor_pk"))
+                .unwrap_or_default(),
+            mgmt_vrf: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "mgmt_vrf"))
+                .unwrap_or_default(),
+            interfaces: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "interfaces"))
+                .unwrap_or_default(),
+            reference_count: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "reference_count"))
+                .unwrap_or_default(),
+            users_count: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "users_count"))
+                .unwrap_or_default(),
+            max_users: BorshDeserialize::deserialize(&mut data)
+                .map_err(|e| msg_err(e, "max_users"))
+                .unwrap_or_default(),
         };
 
         if out.account_type != AccountType::Device {
@@ -490,7 +542,11 @@ impl TryFrom<&AccountInfo<'_>> for Device {
 
     fn try_from(account: &AccountInfo) -> Result<Self, Self::Error> {
         let data = account.try_borrow_data()?;
-        Device::try_from(&data[..])
+        let res = Self::try_from(&data[..]);
+        if res.is_err() {
+            msg!("Failed to deserialize Device: {:?}", res.as_ref().err());
+        }
+        res
     }
 }
 
@@ -543,6 +599,18 @@ impl Validate for Device {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_state_compatibility_device() {
+        /* To generate the base64 strings, use the following commands after deploying the program and creating accounts:
+
+        solana account FmgsHPJ2cNdo9TvryTbkTGAAhqSGUZqzeqbgprYw994Q --output json  -u  https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16
+
+         */
+        let versions = ["BUvSaV1rq1QJ8zOTtS11vLcqEAOEa6/VPFWMS3g8LlDQEQAAAAAAAAAAAAAAAAAAAP1rC4VFOvOPg4mpRREb9GukjeFMsf6rdR+TNo5tzrcu/w+sPgaJM83p9DCCOuYH9DTSeASjawRIgdmqexb75jS8AMPbijIBCQAAAGFtcy1kejAwMQEAAADD24pgG/FpS9IUqUkCnSkOv8POB7fhrYDYEyUmGWLw2835agVaI3iXByb/tN/b4hEbmFObJCBDgjsbphxyMIz1SUP2C+4AAAAAAwAAAAADCwAAAExvb3BiYWNrMjU1AQEAAKwQAB4gCAAAAAMLAAAATG9vcGJhY2syNTYBAgAArBAAJSAAAAAAAxAAAABTd2l0Y2gxLzEvMS4xMDAxAgDpA6wQAAAfAAAACgAAADMAgAA="];
+
+        crate::helper::base_tests::test_parsing::<Device>(&versions).unwrap();
+    }
 
     #[test]
     fn test_state_device_try_from_defaults() {

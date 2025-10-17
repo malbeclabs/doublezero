@@ -80,7 +80,6 @@ pub fn process_create_user(
     );
 
     let globalstate = globalstate_get_next(globalstate_account)?;
-    msg!("globalstate: {:?}", globalstate);
 
     let (expected_pda_account, bump_seed) = get_user_pda(program_id, globalstate.account_index);
     assert_eq!(
@@ -116,7 +115,6 @@ pub fn process_create_user(
 
     // Read Access Pass
     let mut accesspass = AccessPass::try_from(accesspass_account)?;
-    msg!("AccessPass: {} - {:?}", accesspass_account.key, accesspass);
     if accesspass.user_payer != *payer_account.key {
         msg!(
             "Invalid user_payer accesspass.{{user_payer: {}}} = {{ user_payer: {} }}",
@@ -159,7 +157,7 @@ pub fn process_create_user(
     };
 
     let mut device = Device::try_from(device_account)?;
-    msg!("Device: {:?} ", device);
+
     if device.status == DeviceStatus::Suspended {
         if !globalstate.foundation_allowlist.contains(payer_account.key) {
             msg!("{:?}", device);

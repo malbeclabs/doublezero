@@ -43,7 +43,7 @@ pub struct CreateDeviceCliCommand {
     #[arg(long, value_parser = validate_pubkey)]
     pub metrics_publisher: Option<String>,
     /// Management VRF name (optional)
-    #[arg(long, default_value = "")]
+    #[arg(long, default_value = "default")]
     pub mgmt_vrf: String,
     /// Wait for the device to be activated
     #[arg(short, long, default_value_t = false)]
@@ -256,7 +256,7 @@ mod tests {
                 public_ip: [100, 0, 0, 1].into(),
                 dz_prefixes: "10.1.0.0/16".parse().unwrap(),
                 metrics_publisher: Pubkey::default(),
-                mgmt_vrf: String::default(),
+                mgmt_vrf: "default".to_string(),
             }))
             .returning(move |_| Ok((signature, pda_pubkey)));
 
@@ -269,7 +269,7 @@ mod tests {
             public_ip: [100, 0, 0, 1].into(),
             dz_prefixes: "10.1.0.0/16".parse().unwrap(),
             metrics_publisher: Some(Pubkey::default().to_string()),
-            mgmt_vrf: String::default(),
+            mgmt_vrf: "default".to_string(),
             wait: false,
         }
         .execute(&client, &mut output);

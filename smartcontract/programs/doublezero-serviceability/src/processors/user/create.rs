@@ -5,14 +5,14 @@ use crate::{
     pda::{get_accesspass_pda, get_user_pda},
     state::{
         accesspass::{AccessPass, AccessPassStatus, AccessPassType},
-        accounttype::AccountType,
+        accounttype::{AccountType, AccountTypeInfo},
         device::{Device, DeviceStatus},
         user::*,
     },
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
-use doublezero_program_common::types::NetworkV4;
+use doublezero_program_common::{resize_account::resize_account_if_needed, types::NetworkV4};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     clock::Clock,
@@ -194,6 +194,13 @@ pub fn process_create_user(
     )?;
     account_write(device_account, &device, payer_account, system_program)?;
     globalstate_write(globalstate_account, &globalstate)?;
+
+    resize_account_if_needed(
+        accesspass_account,
+        payer_account,
+        accounts,
+        accesspass.size(),
+    )?;
     accesspass.try_serialize(accesspass_account)?;
 
     Ok(())

@@ -1,6 +1,11 @@
-use crate::{error::DoubleZeroError, globalstate::globalstate_get, state::accesspass::AccessPass};
+use crate::{
+    error::DoubleZeroError,
+    globalstate::globalstate_get,
+    state::{accesspass::AccessPass, accounttype::AccountTypeInfo},
+};
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
+use doublezero_program_common::resize_account::resize_account_if_needed;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
@@ -79,6 +84,12 @@ pub fn process_check_status_access_pass(
     // Update status
     accesspass.update_status()?;
 
+    resize_account_if_needed(
+        accesspass_account,
+        payer_account,
+        accounts,
+        accesspass.size(),
+    )?;
     accesspass.try_serialize(accesspass_account)?;
 
     #[cfg(test)]

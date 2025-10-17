@@ -5,11 +5,13 @@ use crate::{
     pda::get_accesspass_pda,
     state::{
         accesspass::{AccessPass, AccessPassStatus},
+        accounttype::AccountTypeInfo,
         user::{User, UserStatus},
     },
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
+use doublezero_program_common::resize_account::resize_account_if_needed;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
@@ -98,6 +100,12 @@ pub fn process_check_access_pass_user(
     };
 
     account_write(user_account, &user, payer_account, system_program)?;
+    resize_account_if_needed(
+        accesspass_account,
+        payer_account,
+        accounts,
+        accesspass.size(),
+    )?;
     accesspass.try_serialize(accesspass_account)?;
 
     #[cfg(test)]

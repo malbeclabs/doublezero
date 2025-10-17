@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- TWAMP
+    - Verify that the sequence number and timestamp of the received packet matches those of the sent packet
+
 ## [v0.6.8](https://github.com/malbeclabs/doublezero/compare/client/v0.6.6...client/v0.6.8) – 2025-10-17
 
 ### Breaking

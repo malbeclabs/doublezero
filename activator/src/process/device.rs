@@ -189,7 +189,7 @@ mod tests {
                 .times(1)
                 .in_sequence(&mut seq)
                 .with(
-                    predicate::eq(DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs)),
+                    predicate::eq(DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs {})),
                     predicate::always(),
                 )
                 .returning(|_, _| Ok(Signature::new_unique()));

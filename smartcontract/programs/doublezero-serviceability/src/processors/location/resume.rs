@@ -1,7 +1,8 @@
 use core::fmt;
 
 use crate::{error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::location::*};
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
+use borsh_incremental::BorshDeserializeIncremental;
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -9,8 +10,8 @@ use solana_program::{
     entrypoint::ProgramResult,
     pubkey::Pubkey,
 };
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone, Default)]
-pub struct LocationResumeArgs;
+#[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
+pub struct LocationResumeArgs {}
 
 impl fmt::Debug for LocationResumeArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

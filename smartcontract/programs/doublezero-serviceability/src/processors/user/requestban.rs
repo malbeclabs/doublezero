@@ -1,5 +1,6 @@
 use crate::{error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::user::*};
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
+use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
 #[cfg(test)]
 use solana_program::msg;
@@ -9,7 +10,7 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone, Default)]
+#[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
 pub struct UserRequestBanArgs {}
 
 impl fmt::Debug for UserRequestBanArgs {

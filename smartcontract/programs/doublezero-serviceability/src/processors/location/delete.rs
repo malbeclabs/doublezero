@@ -4,7 +4,8 @@ use crate::{
     helper::*,
     state::{accounttype::AccountType, location::*},
 };
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
+use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
 #[cfg(test)]
 use solana_program::msg;
@@ -14,8 +15,8 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone, Default)]
-pub struct LocationDeleteArgs;
+#[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
+pub struct LocationDeleteArgs {}
 
 impl fmt::Debug for LocationDeleteArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

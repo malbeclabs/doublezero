@@ -5,6 +5,7 @@ use crate::{
     state::{device::Device, exchange::*},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
+use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
 
 #[cfg(test)]
@@ -25,7 +26,7 @@ pub enum SetDeviceOption {
     Remove = 2,
 }
 
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone, Default)]
+#[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
 pub struct ExchangeSetDeviceArgs {
     /// Index of the device in the exchange, 1 for switch1, 2 for switch2
     pub index: u8,

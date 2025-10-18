@@ -17,6 +17,7 @@ crate-type = ["cdylib", "lib"]
 
 [dependencies]
 borsh.workspace = true
+borsh-incremental.workspace = true
 doublezero-program-common.workspace = true
 ipnetwork.workspace = true
 serde = { workspace = true, optional = true }

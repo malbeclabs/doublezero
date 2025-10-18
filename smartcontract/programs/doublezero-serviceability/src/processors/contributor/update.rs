@@ -1,7 +1,8 @@
 use crate::{
     error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::contributor::*,
 };
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
+use borsh_incremental::BorshDeserializeIncremental;
 use doublezero_program_common::validate_account_code;
 #[cfg(test)]
 use solana_program::msg;
@@ -11,7 +12,7 @@ use solana_program::{
     pubkey::Pubkey,
 };
 use std::fmt;
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone, Default)]
+#[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
 pub struct ContributorUpdateArgs {
     pub code: Option<String>,
     pub owner: Option<Pubkey>,

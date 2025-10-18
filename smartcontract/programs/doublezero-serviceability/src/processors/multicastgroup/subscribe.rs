@@ -8,7 +8,8 @@ use crate::{
         user::{User, UserStatus},
     },
 };
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
+use borsh_incremental::BorshDeserializeIncremental;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
@@ -16,8 +17,9 @@ use solana_program::{
     pubkey::Pubkey,
 };
 use std::{fmt, net::Ipv4Addr};
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
+#[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone)]
 pub struct MulticastGroupSubscribeArgs {
+    #[incremental(default = Ipv4Addr::UNSPECIFIED)]
     pub client_ip: Ipv4Addr,
     pub publisher: bool,
     pub subscriber: bool,

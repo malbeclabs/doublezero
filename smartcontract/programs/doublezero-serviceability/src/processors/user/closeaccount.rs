@@ -4,7 +4,8 @@ use crate::{
     helper::*,
     state::{device::Device, user::*},
 };
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
+use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -14,7 +15,7 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone, Default)]
+#[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
 pub struct UserCloseAccountArgs {}
 
 impl fmt::Debug for UserCloseAccountArgs {

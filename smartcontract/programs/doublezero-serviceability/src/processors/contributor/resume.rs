@@ -3,7 +3,8 @@ use core::fmt;
 use crate::{
     error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::contributor::*,
 };
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
+use borsh_incremental::BorshDeserializeIncremental;
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -11,7 +12,7 @@ use solana_program::{
     entrypoint::ProgramResult,
     pubkey::Pubkey,
 };
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone, Default)]
+#[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
 pub struct ContributorResumeArgs {}
 
 impl fmt::Debug for ContributorResumeArgs {

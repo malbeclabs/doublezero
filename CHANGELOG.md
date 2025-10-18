@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Onchain programs
+    - Update serviceability and telemetry program instruction args to use the `BorshDeserializeIncremental` derive macro incremental, backward-compatible, deserialization of structs.
+
 ## [v0.6.8](https://github.com/malbeclabs/doublezero/compare/client/v0.6.6...client/v0.6.8) – 2025-10-17
 
 ### Breaking

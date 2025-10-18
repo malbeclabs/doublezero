@@ -5,7 +5,8 @@ use crate::{
         internet_latency_samples::{InternetLatencySamplesHeader, MAX_INTERNET_LATENCY_SAMPLES},
     },
 };
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
+use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
 use doublezero_program_common::resize_account::resize_account_if_needed;
 use solana_program::{
@@ -18,7 +19,7 @@ use solana_program::{
 
 // Instruction arguments for initializing an internet latency samples account from a third party probe.
 // Represents a single direction (origin -> target) over a public internet link during an epoch.
-#[derive(BorshDeserialize, BorshSerialize, Clone, PartialEq)]
+#[derive(BorshDeserializeIncremental, BorshSerialize, Clone, PartialEq)]
 pub struct WriteInternetLatencySamplesArgs {
     pub start_timestamp_microseconds: u64,
     pub samples: Vec<u32>,

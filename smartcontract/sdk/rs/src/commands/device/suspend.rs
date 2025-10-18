@@ -25,7 +25,7 @@ impl SuspendDeviceCommand {
         .map_err(|_err| eyre::eyre!("Device not found"))?;
 
         client.execute_transaction(
-            DoubleZeroInstruction::SuspendDevice(DeviceSuspendArgs),
+            DoubleZeroInstruction::SuspendDevice(DeviceSuspendArgs {}),
             vec![
                 AccountMeta::new(self.pubkey, false),
                 AccountMeta::new(device.contributor_pk, false),

@@ -4,7 +4,8 @@ use crate::{
     helper::account_write,
     state::{accounttype::AccountType, contributor::Contributor, device::*},
 };
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
+use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
 use doublezero_program_common::{types::NetworkV4, validate_iface};
 #[cfg(test)]
@@ -15,7 +16,7 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone, Default)]
+#[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
 pub struct DeviceInterfaceCreateArgs {
     pub name: String,
     pub loopback_type: LoopbackType,

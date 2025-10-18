@@ -4,7 +4,8 @@ use crate::{
     helper::*,
     state::{contributor::Contributor, device::*, exchange::Exchange, location::Location},
 };
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
+use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
 #[cfg(test)]
 use solana_program::msg;
@@ -14,7 +15,7 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone, Default)]
+#[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
 pub struct DeviceCloseAccountArgs {}
 
 impl fmt::Debug for DeviceCloseAccountArgs {

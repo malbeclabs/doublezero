@@ -5,7 +5,8 @@ use crate::{
     pda::*,
     state::{accounttype::AccountType, location::*},
 };
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
+use borsh_incremental::BorshDeserializeIncremental;
 use doublezero_program_common::validate_account_code;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -27,7 +28,7 @@ use solana_program::msg;
 /// 3. `payer_account` - Payer account covering the creation costs. Must be included in the global state's allowlist.
 /// 4. `system_program` - Solana system program account.
 ///
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
+#[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone)]
 pub struct LocationCreateArgs {
     pub code: String,
     pub name: String,

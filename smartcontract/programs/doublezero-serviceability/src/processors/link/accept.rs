@@ -5,7 +5,8 @@ use crate::{
     helper::*,
     state::{contributor::Contributor, device::Device, link::*},
 };
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
+use borsh_incremental::BorshDeserializeIncremental;
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -14,7 +15,7 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone, Default)]
+#[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
 pub struct LinkAcceptArgs {
     pub side_z_iface_name: String,
 }

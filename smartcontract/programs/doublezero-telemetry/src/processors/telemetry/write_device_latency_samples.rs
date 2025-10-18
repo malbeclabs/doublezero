@@ -8,7 +8,8 @@ use crate::{
         },
     },
 };
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
+use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
 use doublezero_program_common::resize_account::resize_account_if_needed;
 use solana_program::{
@@ -20,7 +21,7 @@ use solana_program::{
 };
 
 /// Instruction arguments for writing RTT samples to a latency samples account.
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
+#[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone)]
 pub struct WriteDeviceLatencySamplesArgs {
     pub start_timestamp_microseconds: u64,
     pub samples: Vec<u32>,

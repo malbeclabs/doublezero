@@ -7,7 +7,8 @@ use crate::{
     pda::*,
     state::{accounttype::AccountType, exchange::*},
 };
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
+use borsh_incremental::BorshDeserializeIncremental;
 use doublezero_program_common::validate_account_code;
 #[cfg(test)]
 use solana_program::msg;
@@ -18,7 +19,7 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
+#[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone)]
 pub struct ExchangeCreateArgs {
     pub code: String,
     pub name: String,

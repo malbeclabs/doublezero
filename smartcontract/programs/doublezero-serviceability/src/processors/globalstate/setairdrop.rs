@@ -4,7 +4,8 @@ use crate::{
     pda::get_globalstate_pda,
 };
 
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
+use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
 #[cfg(test)]
 use solana_program::msg;
@@ -14,7 +15,7 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-#[derive(BorshSerialize, BorshDeserialize, Clone, PartialEq)]
+#[derive(BorshSerialize, BorshDeserializeIncremental, Clone, PartialEq)]
 pub struct SetAirdropArgs {
     pub contributor_airdrop_lamports: Option<u64>,
     pub user_airdrop_lamports: Option<u64>,

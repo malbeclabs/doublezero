@@ -8,7 +8,8 @@ use crate::{
         device_latency_samples::{DeviceLatencySamplesHeader, DEVICE_LATENCY_SAMPLES_HEADER_SIZE},
     },
 };
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
+use borsh_incremental::BorshDeserializeIncremental;
 use doublezero_program_common::create_account::try_create_account;
 use doublezero_serviceability::state::{
     device::{Device, DeviceStatus},
@@ -26,7 +27,7 @@ use solana_program::{
 
 // Instruction arguments for initializing a latency samples account.
 // Represents a single direction (origin -> target) over a link during an epoch.
-#[derive(BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq)]
+#[derive(BorshSerialize, BorshDeserializeIncremental, Clone, Debug, PartialEq)]
 pub struct InitializeDeviceLatencySamplesArgs {
     pub epoch: u64,
     pub sampling_interval_microseconds: u64,

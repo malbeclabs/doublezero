@@ -4,11 +4,11 @@ use crate::processors::telemetry::{
     write_device_latency_samples::WriteDeviceLatencySamplesArgs,
     write_internet_latency_samples::WriteInternetLatencySamplesArgs,
 };
-use borsh::{from_slice, BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
 use solana_program::program_error::ProgramError;
 use std::cmp::PartialEq;
 
-#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq)]
+#[derive(BorshSerialize, Debug, PartialEq)]
 pub enum TelemetryInstruction {
     /// Initialize device latency samples account
     InitializeDeviceLatencySamples(InitializeDeviceLatencySamplesArgs),
@@ -38,22 +38,30 @@ impl TelemetryInstruction {
             return Err(ProgramError::InvalidInstructionData);
         }
 
-        let instruction = match data[0] {
+        let (&instruction, rest) = data
+            .split_first()
+            .ok_or(ProgramError::InvalidInstructionData)?;
+
+        let instruction = match instruction {
             INITIALIZE_DEVICE_LATENCY_SAMPLES_INSTRUCTION_INDEX => {
-                let args: InitializeDeviceLatencySamplesArgs = from_slice(&data[1..])?;
-                TelemetryInstruction::InitializeDeviceLatencySamples(args)
+                TelemetryInstruction::InitializeDeviceLatencySamples(
+                    InitializeDeviceLatencySamplesArgs::try_from(rest)?,
+                )
             }
             WRITE_DEVICE_LATENCY_SAMPLES_INSTRUCTION_INDEX => {
-                let args: WriteDeviceLatencySamplesArgs = from_slice(&data[1..])?;
-                TelemetryInstruction::WriteDeviceLatencySamples(args)
+                TelemetryInstruction::WriteDeviceLatencySamples(
+                    WriteDeviceLatencySamplesArgs::try_from(rest)?,
+                )
             }
             INITIALIZE_INTERNET_LATENCY_SAMPLES_INSTRUCTION_INDEX => {
-                let args: InitializeInternetLatencySamplesArgs = from_slice(&data[1..])?;
-                TelemetryInstruction::InitializeInternetLatencySamples(args)
+                TelemetryInstruction::InitializeInternetLatencySamples(
+                    InitializeInternetLatencySamplesArgs::try_from(rest)?,
+                )
             }
             WRITE_INTERNET_LATENCY_SAMPLES_INSTRUCTION_INDEX => {
-                let args: WriteInternetLatencySamplesArgs = from_slice(&data[1..])?;
-                TelemetryInstruction::WriteInternetLatencySamples(args)
+                TelemetryInstruction::WriteInternetLatencySamples(
+                    WriteInternetLatencySamplesArgs::try_from(rest)?,
+                )
             }
             _ => return Err(ProgramError::InvalidInstructionData),
         };

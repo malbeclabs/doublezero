@@ -5,7 +5,8 @@ use crate::{
     serviceability_program_id,
     state::{accounttype::AccountType, internet_latency_samples::InternetLatencySamplesHeader},
 };
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
+use borsh_incremental::BorshDeserializeIncremental;
 use doublezero_program_common::create_account::try_create_account;
 use doublezero_serviceability::state::exchange::{Exchange, ExchangeStatus};
 use solana_program::{
@@ -20,7 +21,7 @@ use solana_program::{
 
 // Instruction arguments for initializing an internet latency samples account from a third party probe.
 // Represents a single direction (origin -> target) over a public internet link during an epoch.
-#[derive(BorshDeserialize, BorshSerialize, Clone, Debug, PartialEq)]
+#[derive(BorshDeserializeIncremental, BorshSerialize, Clone, Debug, PartialEq)]
 pub struct InitializeInternetLatencySamplesArgs {
     pub data_provider_name: String,
     pub epoch: u64,

@@ -8,7 +8,8 @@ use crate::{
         location::Location,
     },
 };
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
+use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
 use doublezero_program_common::{types::NetworkV4List, validate_account_code};
 #[cfg(test)]
@@ -20,10 +21,11 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
+#[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone)]
 pub struct DeviceCreateArgs {
     pub code: String,
     pub device_type: DeviceType,
+    #[incremental(default = std::net::Ipv4Addr::UNSPECIFIED)]
     pub public_ip: std::net::Ipv4Addr,
     pub dz_prefixes: NetworkV4List,
     pub metrics_publisher_pk: Pubkey,

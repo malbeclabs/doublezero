@@ -1,7 +1,8 @@
 use crate::{
     error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::multicastgroup::*,
 };
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
+use borsh_incremental::BorshDeserializeIncremental;
 use doublezero_program_common::validate_account_code;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -11,7 +12,7 @@ use solana_program::{
 };
 use std::fmt;
 
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone, Default)]
+#[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
 pub struct MulticastGroupUpdateArgs {
     pub code: Option<String>,
     pub multicast_ip: Option<std::net::Ipv4Addr>,

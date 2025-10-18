@@ -5,7 +5,8 @@ use crate::{
     pda::*,
     state::{accounttype::AccountType, contributor::*},
 };
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
+use borsh_incremental::BorshDeserializeIncremental;
 use doublezero_program_common::validate_account_code;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -22,7 +23,7 @@ use std::fmt;
 #[cfg(test)]
 use solana_program::msg;
 
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone, Default)]
+#[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
 pub struct ContributorCreateArgs {
     pub code: String,
 }

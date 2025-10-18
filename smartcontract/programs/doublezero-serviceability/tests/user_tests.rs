@@ -242,7 +242,7 @@ async fn test_user() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::ActivateDevice(device::activate::DeviceActivateArgs),
+        DoubleZeroInstruction::ActivateDevice(device::activate::DeviceActivateArgs {}),
         vec![
             AccountMeta::new(device_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),

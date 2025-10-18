@@ -17,7 +17,7 @@ impl ActivateDeviceCommand {
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
         client.execute_transaction(
-            DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs),
+            DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs {}),
             vec![
                 AccountMeta::new(self.device_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
@@ -50,7 +50,7 @@ mod tests {
         client
             .expect_execute_transaction()
             .with(
-                predicate::eq(DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs)),
+                predicate::eq(DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs {})),
                 predicate::eq(vec![
                     AccountMeta::new(pda_pubkey, false),
                     AccountMeta::new(globalstate_pubkey, false),

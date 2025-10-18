@@ -72,12 +72,12 @@ use crate::processors::{
         update::UserUpdateArgs,
     },
 };
-use borsh::{from_slice, BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
 use solana_program::program_error::ProgramError;
 use std::cmp::PartialEq;
 
 // Instructions that our program can execute
-#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone)]
+#[derive(BorshSerialize, Debug, PartialEq, Clone)]
 pub enum DoubleZeroInstruction {
     None(),                               // variant 0
     InitGlobalState(),                    // variant 1
@@ -184,96 +184,96 @@ impl DoubleZeroInstruction {
 
         match instruction {
             1 => Ok(Self::InitGlobalState()),
-            2 => Ok(Self::SetAuthority(from_slice::<SetAuthorityArgs>(rest).unwrap())),
-            3 => Ok(Self::SetGlobalConfig(from_slice::<SetGlobalConfigArgs>(rest).unwrap())),
+            2 => Ok(Self::SetAuthority(SetAuthorityArgs::try_from(rest).unwrap())),
+            3 => Ok(Self::SetGlobalConfig(SetGlobalConfigArgs::try_from(rest).unwrap())),
 
-            4 => Ok(Self::AddFoundationAllowlist(from_slice::<AddFoundationAllowlistArgs>(rest).unwrap())),
-            5 => Ok(Self::RemoveFoundationAllowlist(from_slice::<RemoveFoundationAllowlistArgs>(rest).unwrap())),
-            6 => Ok(Self::AddDeviceAllowlist(from_slice::<AddDeviceAllowlistArgs>(rest).unwrap())),
-            7 => Ok(Self::RemoveDeviceAllowlist(from_slice::<RemoveDeviceAllowlistArgs>(rest).unwrap())),
-            8 => Ok(Self::AddUserAllowlist(from_slice::<AddUserAllowlistArgs>(rest).unwrap())),
-            9 => Ok(Self::RemoveUserAllowlist(from_slice::<RemoveUserAllowlistArgs>(rest).unwrap())),
+            4 => Ok(Self::AddFoundationAllowlist(AddFoundationAllowlistArgs::try_from(rest).unwrap())),
+            5 => Ok(Self::RemoveFoundationAllowlist(RemoveFoundationAllowlistArgs::try_from(rest).unwrap())),
+            6 => Ok(Self::AddDeviceAllowlist(AddDeviceAllowlistArgs::try_from(rest).unwrap())),
+            7 => Ok(Self::RemoveDeviceAllowlist(RemoveDeviceAllowlistArgs::try_from(rest).unwrap())),
+            8 => Ok(Self::AddUserAllowlist(AddUserAllowlistArgs::try_from(rest).unwrap())),
+            9 => Ok(Self::RemoveUserAllowlist(RemoveUserAllowlistArgs::try_from(rest).unwrap())),
 
-            10 => Ok(Self::CreateLocation(from_slice::<LocationCreateArgs>(rest).unwrap())),
-            11 => Ok(Self::UpdateLocation(from_slice::<LocationUpdateArgs>(rest).unwrap())),
-            12 => Ok(Self::SuspendLocation(from_slice::<LocationSuspendArgs>(rest).unwrap())),
-            13 => Ok(Self::ResumeLocation(from_slice::<LocationResumeArgs>(rest).unwrap())),
-            14 => Ok(Self::DeleteLocation(from_slice::<LocationDeleteArgs>(rest).unwrap())),
+            10 => Ok(Self::CreateLocation(LocationCreateArgs::try_from(rest).unwrap())),
+            11 => Ok(Self::UpdateLocation(LocationUpdateArgs::try_from(rest).unwrap())),
+            12 => Ok(Self::SuspendLocation(LocationSuspendArgs::try_from(rest).unwrap())),
+            13 => Ok(Self::ResumeLocation(LocationResumeArgs::try_from(rest).unwrap())),
+            14 => Ok(Self::DeleteLocation(LocationDeleteArgs::try_from(rest).unwrap())),
 
-            15 => Ok(Self::CreateExchange(from_slice::<ExchangeCreateArgs>(rest).unwrap())),
-            16 => Ok(Self::UpdateExchange(from_slice::<ExchangeUpdateArgs>(rest).unwrap())),
-            17 => Ok(Self::SuspendExchange(from_slice::<ExchangeSuspendArgs>(rest).unwrap())),
-            18 => Ok(Self::ResumeExchange(from_slice::<ExchangeResumeArgs>(rest).unwrap())),
-            19 => Ok(Self::DeleteExchange(from_slice::<ExchangeDeleteArgs>(rest).unwrap())),
+            15 => Ok(Self::CreateExchange(ExchangeCreateArgs::try_from(rest).unwrap())),
+            16 => Ok(Self::UpdateExchange(ExchangeUpdateArgs::try_from(rest).unwrap())),
+            17 => Ok(Self::SuspendExchange(ExchangeSuspendArgs::try_from(rest).unwrap())),
+            18 => Ok(Self::ResumeExchange(ExchangeResumeArgs::try_from(rest).unwrap())),
+            19 => Ok(Self::DeleteExchange(ExchangeDeleteArgs::try_from(rest).unwrap())),
 
-            20 => Ok(Self::CreateDevice(from_slice::<DeviceCreateArgs>(rest).unwrap())),
-            21 => Ok(Self::ActivateDevice(from_slice::<DeviceActivateArgs>(rest).unwrap())),
-            22 => Ok(Self::RejectDevice(from_slice::<DeviceRejectArgs>(rest).unwrap())),
-            23 => Ok(Self::UpdateDevice(from_slice::<DeviceUpdateArgs>(rest).unwrap())),
-            24 => Ok(Self::SuspendDevice(from_slice::<DeviceSuspendArgs>(rest).unwrap())),
-            25 => Ok(Self::ResumeDevice(from_slice::<DeviceResumeArgs>(rest).unwrap())),
-            26 => Ok(Self::DeleteDevice(from_slice::<DeviceDeleteArgs>(rest).unwrap())),
-            27 => Ok(Self::CloseAccountDevice(from_slice::<DeviceCloseAccountArgs>(rest).unwrap())),
+            20 => Ok(Self::CreateDevice(DeviceCreateArgs::try_from(rest).unwrap())),
+            21 => Ok(Self::ActivateDevice(DeviceActivateArgs::try_from(rest).unwrap())),
+            22 => Ok(Self::RejectDevice(DeviceRejectArgs::try_from(rest).unwrap())),
+            23 => Ok(Self::UpdateDevice(DeviceUpdateArgs::try_from(rest).unwrap())),
+            24 => Ok(Self::SuspendDevice(DeviceSuspendArgs::try_from(rest).unwrap())),
+            25 => Ok(Self::ResumeDevice(DeviceResumeArgs::try_from(rest).unwrap())),
+            26 => Ok(Self::DeleteDevice(DeviceDeleteArgs::try_from(rest).unwrap())),
+            27 => Ok(Self::CloseAccountDevice(DeviceCloseAccountArgs::try_from(rest).unwrap())),
 
-            28 => Ok(Self::CreateLink(from_slice::<LinkCreateArgs>(rest).unwrap())),
-            29 => Ok(Self::ActivateLink(from_slice::<LinkActivateArgs>(rest).unwrap())),
-            30 => Ok(Self::RejectLink(from_slice::<LinkRejectArgs>(rest).unwrap())),
-            31 => Ok(Self::UpdateLink(from_slice::<LinkUpdateArgs>(rest).unwrap())),
-            32 => Ok(Self::SuspendLink(from_slice::<LinkSuspendArgs>(rest).unwrap())),
-            33 => Ok(Self::ResumeLink(from_slice::<LinkResumeArgs>(rest).unwrap())),
-            34 => Ok(Self::DeleteLink(from_slice::<LinkDeleteArgs>(rest).unwrap())),
-            35 => Ok(Self::CloseAccountLink(from_slice::<LinkCloseAccountArgs>(rest).unwrap())),
+            28 => Ok(Self::CreateLink(LinkCreateArgs::try_from(rest).unwrap())),
+            29 => Ok(Self::ActivateLink(LinkActivateArgs::try_from(rest).unwrap())),
+            30 => Ok(Self::RejectLink(LinkRejectArgs::try_from(rest).unwrap())),
+            31 => Ok(Self::UpdateLink(LinkUpdateArgs::try_from(rest).unwrap())),
+            32 => Ok(Self::SuspendLink(LinkSuspendArgs::try_from(rest).unwrap())),
+            33 => Ok(Self::ResumeLink(LinkResumeArgs::try_from(rest).unwrap())),
+            34 => Ok(Self::DeleteLink(LinkDeleteArgs::try_from(rest).unwrap())),
+            35 => Ok(Self::CloseAccountLink(LinkCloseAccountArgs::try_from(rest).unwrap())),
 
-            36 => Ok(Self::CreateUser(from_slice::<UserCreateArgs>(rest).unwrap())),
-            37 => Ok(Self::ActivateUser(from_slice::<UserActivateArgs>(rest).unwrap())),
-            38 => Ok(Self::RejectUser(from_slice::<UserRejectArgs>(rest).unwrap())),
-            39 => Ok(Self::UpdateUser(from_slice::<UserUpdateArgs>(rest).unwrap())),
-            40 => Ok(Self::SuspendUser(from_slice::<UserSuspendArgs>(rest).unwrap())),
-            41 => Ok(Self::ResumeUser(from_slice::<UserResumeArgs>(rest).unwrap())),
-            42 => Ok(Self::DeleteUser(from_slice::<UserDeleteArgs>(rest).unwrap())),
-            43 => Ok(Self::CloseAccountUser(from_slice::<UserCloseAccountArgs>(rest).unwrap())),
-            44 => Ok(Self::RequestBanUser(from_slice::<UserRequestBanArgs>(rest).unwrap())),
-            45 => Ok(Self::BanUser(from_slice::<UserBanArgs>(rest).unwrap())),
+            36 => Ok(Self::CreateUser(UserCreateArgs::try_from(rest).unwrap())),
+            37 => Ok(Self::ActivateUser(UserActivateArgs::try_from(rest).unwrap())),
+            38 => Ok(Self::RejectUser(UserRejectArgs::try_from(rest).unwrap())),
+            39 => Ok(Self::UpdateUser(UserUpdateArgs::try_from(rest).unwrap())),
+            40 => Ok(Self::SuspendUser(UserSuspendArgs::try_from(rest).unwrap())),
+            41 => Ok(Self::ResumeUser(UserResumeArgs::try_from(rest).unwrap())),
+            42 => Ok(Self::DeleteUser(UserDeleteArgs::try_from(rest).unwrap())),
+            43 => Ok(Self::CloseAccountUser(UserCloseAccountArgs::try_from(rest).unwrap())),
+            44 => Ok(Self::RequestBanUser(UserRequestBanArgs::try_from(rest).unwrap())),
+            45 => Ok(Self::BanUser(UserBanArgs::try_from(rest).unwrap())),
 
 
-            46 => Ok(Self::CreateMulticastGroup(from_slice::<MulticastGroupCreateArgs>(rest).unwrap())),
-            47 => Ok(Self::ActivateMulticastGroup(from_slice::<MulticastGroupActivateArgs>(rest).unwrap())),
-            48 => Ok(Self::RejectMulticastGroup(from_slice::<MulticastGroupRejectArgs>(rest).unwrap())),
-            49 => Ok(Self::UpdateMulticastGroup(from_slice::<MulticastGroupUpdateArgs>(rest).unwrap())),
-            50 => Ok(Self::SuspendMulticastGroup(from_slice::<MulticastGroupSuspendArgs>(rest).unwrap())),
-            51 => Ok(Self::ReactivateMulticastGroup(from_slice::<MulticastGroupReactivateArgs>(rest).unwrap())),
-            52 => Ok(Self::DeleteMulticastGroup(from_slice::<MulticastGroupDeleteArgs>(rest).unwrap())),
-            53 => Ok(Self::DeactivateMulticastGroup(from_slice::<MulticastGroupDeactivateArgs>(rest).unwrap())),
+            46 => Ok(Self::CreateMulticastGroup(MulticastGroupCreateArgs::try_from(rest).unwrap())),
+            47 => Ok(Self::ActivateMulticastGroup(MulticastGroupActivateArgs::try_from(rest).unwrap())),
+            48 => Ok(Self::RejectMulticastGroup(MulticastGroupRejectArgs::try_from(rest).unwrap())),
+            49 => Ok(Self::UpdateMulticastGroup(MulticastGroupUpdateArgs::try_from(rest).unwrap())),
+            50 => Ok(Self::SuspendMulticastGroup(MulticastGroupSuspendArgs::try_from(rest).unwrap())),
+            51 => Ok(Self::ReactivateMulticastGroup(MulticastGroupReactivateArgs::try_from(rest).unwrap())),
+            52 => Ok(Self::DeleteMulticastGroup(MulticastGroupDeleteArgs::try_from(rest).unwrap())),
+            53 => Ok(Self::DeactivateMulticastGroup(MulticastGroupDeactivateArgs::try_from(rest).unwrap())),
 
-            54 => Ok(Self::AddMulticastGroupPubAllowlist(from_slice::<AddMulticastGroupPubAllowlistArgs>(rest).unwrap())),
-            55 => Ok(Self::RemoveMulticastGroupPubAllowlist(from_slice::<RemoveMulticastGroupPubAllowlistArgs>(rest).unwrap())),
-            56 => Ok(Self::AddMulticastGroupSubAllowlist(from_slice::<AddMulticastGroupSubAllowlistArgs>(rest).unwrap())),
-            57 => Ok(Self::RemoveMulticastGroupSubAllowlist(from_slice::<RemoveMulticastGroupSubAllowlistArgs>(rest).unwrap())),
-            58 => Ok(Self::SubscribeMulticastGroup(from_slice::<MulticastGroupSubscribeArgs>(rest).unwrap())),
-            59 => Ok(Self::CreateSubscribeUser(from_slice::<UserCreateSubscribeArgs>(rest).unwrap())),
+            54 => Ok(Self::AddMulticastGroupPubAllowlist(AddMulticastGroupPubAllowlistArgs::try_from(rest).unwrap())),
+            55 => Ok(Self::RemoveMulticastGroupPubAllowlist(RemoveMulticastGroupPubAllowlistArgs::try_from(rest).unwrap())),
+            56 => Ok(Self::AddMulticastGroupSubAllowlist(AddMulticastGroupSubAllowlistArgs::try_from(rest).unwrap())),
+            57 => Ok(Self::RemoveMulticastGroupSubAllowlist(RemoveMulticastGroupSubAllowlistArgs::try_from(rest).unwrap())),
+            58 => Ok(Self::SubscribeMulticastGroup(MulticastGroupSubscribeArgs::try_from(rest).unwrap())),
+            59 => Ok(Self::CreateSubscribeUser(UserCreateSubscribeArgs::try_from(rest).unwrap())),
 
-            60 => Ok(Self::CreateContributor(from_slice::<ContributorCreateArgs>(rest).unwrap())),
-            61 => Ok(Self::UpdateContributor(from_slice::<ContributorUpdateArgs>(rest).unwrap())),
-            62 => Ok(Self::SuspendContributor(from_slice::<ContributorSuspendArgs>(rest).unwrap())),
-            63 => Ok(Self::ResumeContributor(from_slice::<ContributorResumeArgs>(rest).unwrap())),
-            64 => Ok(Self::DeleteContributor(from_slice::<ContributorDeleteArgs>(rest).unwrap())),
+            60 => Ok(Self::CreateContributor(ContributorCreateArgs::try_from(rest).unwrap())),
+            61 => Ok(Self::UpdateContributor(ContributorUpdateArgs::try_from(rest).unwrap())),
+            62 => Ok(Self::SuspendContributor(ContributorSuspendArgs::try_from(rest).unwrap())),
+            63 => Ok(Self::ResumeContributor(ContributorResumeArgs::try_from(rest).unwrap())),
+            64 => Ok(Self::DeleteContributor(ContributorDeleteArgs::try_from(rest).unwrap())),
 
-            65 => Ok(Self::SetDeviceExchange(from_slice::<ExchangeSetDeviceArgs>(rest).unwrap())),
-            66 => Ok(Self::AcceptLink(from_slice::<LinkAcceptArgs>(rest).unwrap())),
-            67 => Ok(Self::SetAccessPass(from_slice::<SetAccessPassArgs>(rest).unwrap())),
+            65 => Ok(Self::SetDeviceExchange(ExchangeSetDeviceArgs::try_from(rest).unwrap())),
+            66 => Ok(Self::AcceptLink(LinkAcceptArgs::try_from(rest).unwrap())),
+            67 => Ok(Self::SetAccessPass(SetAccessPassArgs::try_from(rest).unwrap())),
 
-            68 => Ok(Self::SetAirdrop(from_slice::<SetAirdropArgs>(rest).unwrap())),
-            69 => Ok(Self::CloseAccessPass(from_slice::<CloseAccessPassArgs>(rest).unwrap())),
-            70 => Ok(Self::CheckStatusAccessPass(from_slice::<CheckStatusAccessPassArgs>(rest).unwrap())),
-            71 => Ok(Self::CheckUserAccessPass(from_slice::<CheckUserAccessPassArgs>(rest).unwrap())),
+            68 => Ok(Self::SetAirdrop(SetAirdropArgs::try_from(rest).unwrap())),
+            69 => Ok(Self::CloseAccessPass(CloseAccessPassArgs::try_from(rest).unwrap())),
+            70 => Ok(Self::CheckStatusAccessPass(CheckStatusAccessPassArgs::try_from(rest).unwrap())),
+            71 => Ok(Self::CheckUserAccessPass(CheckUserAccessPassArgs::try_from(rest).unwrap())),
 
-            72 => Ok(Self::ActivateDeviceInterface(from_slice::<DeviceInterfaceActivateArgs>(rest).unwrap())),
-            73 => Ok(Self::CreateDeviceInterface(from_slice::<DeviceInterfaceCreateArgs>(rest).unwrap())),
-            74 => Ok(Self::DeleteDeviceInterface(from_slice::<DeviceInterfaceDeleteArgs>(rest).unwrap())),
-            75 => Ok(Self::RemoveDeviceInterface(from_slice::<DeviceInterfaceRemoveArgs>(rest).unwrap())),
-            76 => Ok(Self::UpdateDeviceInterface(from_slice::<DeviceInterfaceUpdateArgs>(rest).unwrap())),
-            77 => Ok(Self::UnlinkDeviceInterface(from_slice::<DeviceInterfaceUnlinkArgs>(rest).unwrap())),
-            78 => Ok(Self::RejectDeviceInterface(from_slice::<DeviceInterfaceRejectArgs>(rest).unwrap())),
+            72 => Ok(Self::ActivateDeviceInterface(DeviceInterfaceActivateArgs::try_from(rest).unwrap())),
+            73 => Ok(Self::CreateDeviceInterface(DeviceInterfaceCreateArgs::try_from(rest).unwrap())),
+            74 => Ok(Self::DeleteDeviceInterface(DeviceInterfaceDeleteArgs::try_from(rest).unwrap())),
+            75 => Ok(Self::RemoveDeviceInterface(DeviceInterfaceRemoveArgs::try_from(rest).unwrap())),
+            76 => Ok(Self::UpdateDeviceInterface(DeviceInterfaceUpdateArgs::try_from(rest).unwrap())),
+            77 => Ok(Self::UnlinkDeviceInterface(DeviceInterfaceUnlinkArgs::try_from(rest).unwrap())),
+            78 => Ok(Self::RejectDeviceInterface(DeviceInterfaceRejectArgs::try_from(rest).unwrap())),
 
             _ => Err(ProgramError::InvalidInstructionData),
         }
@@ -537,15 +537,15 @@ mod tests {
             "UpdateLocation",
         );
         test_instruction(
-            DoubleZeroInstruction::SuspendLocation(LocationSuspendArgs),
+            DoubleZeroInstruction::SuspendLocation(LocationSuspendArgs {}),
             "SuspendLocation",
         );
         test_instruction(
-            DoubleZeroInstruction::ResumeLocation(LocationResumeArgs),
+            DoubleZeroInstruction::ResumeLocation(LocationResumeArgs {}),
             "ResumeLocation",
         );
         test_instruction(
-            DoubleZeroInstruction::DeleteLocation(LocationDeleteArgs),
+            DoubleZeroInstruction::DeleteLocation(LocationDeleteArgs {}),
             "DeleteLocation",
         );
         test_instruction(
@@ -592,7 +592,7 @@ mod tests {
             "CreateDevice",
         );
         test_instruction(
-            DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs),
+            DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs {}),
             "ActivateDevice",
         );
         test_instruction(
@@ -610,15 +610,15 @@ mod tests {
             "UpdateDevice",
         );
         test_instruction(
-            DoubleZeroInstruction::SuspendDevice(DeviceSuspendArgs),
+            DoubleZeroInstruction::SuspendDevice(DeviceSuspendArgs {}),
             "SuspendDevice",
         );
         test_instruction(
-            DoubleZeroInstruction::ResumeDevice(DeviceResumeArgs),
+            DoubleZeroInstruction::ResumeDevice(DeviceResumeArgs {}),
             "ResumeDevice",
         );
         test_instruction(
-            DoubleZeroInstruction::DeleteDevice(DeviceDeleteArgs),
+            DoubleZeroInstruction::DeleteDevice(DeviceDeleteArgs {}),
             "DeleteDevice",
         );
         test_instruction(

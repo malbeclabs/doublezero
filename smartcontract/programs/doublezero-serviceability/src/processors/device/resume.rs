@@ -6,7 +6,8 @@ use crate::{
     helper::*,
     state::{accounttype::AccountType, contributor::Contributor, device::*},
 };
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
+use borsh_incremental::BorshDeserializeIncremental;
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -15,8 +16,8 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone, Default)]
-pub struct DeviceResumeArgs;
+#[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
+pub struct DeviceResumeArgs {}
 
 impl fmt::Debug for DeviceResumeArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

@@ -3,7 +3,8 @@ use crate::{
     helper::*,
     state::{accesspass::AccessPass, user::*},
 };
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
+use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
 #[cfg(test)]
 use solana_program::msg;
@@ -13,7 +14,7 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone, Default)]
+#[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
 pub struct UserResumeArgs {}
 
 impl fmt::Debug for UserResumeArgs {

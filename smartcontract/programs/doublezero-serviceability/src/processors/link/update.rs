@@ -4,7 +4,8 @@ use crate::{
     helper::*,
     state::{contributor::Contributor, link::*},
 };
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
+use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
 use doublezero_program_common::validate_account_code;
 #[cfg(test)]
@@ -14,7 +15,7 @@ use solana_program::{
     entrypoint::ProgramResult,
     pubkey::Pubkey,
 };
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone, Default)]
+#[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
 pub struct LinkUpdateArgs {
     pub code: Option<String>,
     pub contributor_pk: Option<Pubkey>,

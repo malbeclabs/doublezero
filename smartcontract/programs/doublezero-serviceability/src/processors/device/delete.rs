@@ -4,7 +4,8 @@ use crate::{
     helper::*,
     state::{accounttype::AccountType, contributor::Contributor, device::*},
 };
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
+use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
 #[cfg(test)]
 use solana_program::msg;
@@ -14,8 +15,8 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone, Default)]
-pub struct DeviceDeleteArgs;
+#[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
+pub struct DeviceDeleteArgs {}
 
 impl fmt::Debug for DeviceDeleteArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

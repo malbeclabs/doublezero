@@ -3,7 +3,8 @@ use crate::{
     globalstate::globalstate_get,
     state::{accesspass::AccessPass, accounttype::AccountTypeInfo, multicastgroup::MulticastGroup},
 };
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
+use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
 use doublezero_program_common::resize_account::resize_account_if_needed;
 #[cfg(test)]
@@ -15,8 +16,9 @@ use solana_program::{
 };
 use std::net::Ipv4Addr;
 
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
+#[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone)]
 pub struct RemoveMulticastGroupSubAllowlistArgs {
+    #[incremental(default = Ipv4Addr::UNSPECIFIED)]
     pub client_ip: Ipv4Addr,
     pub user_payer: Pubkey,
 }

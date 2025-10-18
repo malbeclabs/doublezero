@@ -1,0 +1,12 @@
+[package]
+name = "borsh-incremental"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Incremental deserialization for Borsh structs with defaults and custom field deserializers."
+repository = "https://github.com/malbeclabs/doublezero/tree/main/crates/borsh-incremental"
+readme = "README.md"
+
+[dependencies]
+borsh = { version = "1.5", features = ["derive"] }
+borsh-incremental-derive = { path = "derive" }

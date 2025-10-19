@@ -14,7 +14,7 @@ pub async fn look_for_ip(
         None => &{
             spinner.set_message("Discovering your public IP...");
 
-            match get_public_ipv4() {
+            match get_public_ipv4().await {
                 Ok(ip) => {
                     spinner.println(format!("Public IP detected: {ip} - If you want to use a different IP, you can specify it with `--client-ip x.x.x.x`"));
                     ip

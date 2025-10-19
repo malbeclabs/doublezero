@@ -7,6 +7,8 @@ All notable changes to this project will be documented in this file.
 ### Breaking
 
 ### Changes
+- Onchain programs
+    - Add auto-assignment and validation to exchange.bgp_community in the serviceability smartcontract
 
 ## [v0.6.8](https://github.com/malbeclabs/doublezero/compare/client/v0.6.6...client/v0.6.8) – 2025-10-17
 

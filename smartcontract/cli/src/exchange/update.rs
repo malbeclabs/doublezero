@@ -4,7 +4,12 @@ use crate::{
     validators::{validate_code, validate_pubkey_or_code},
 };
 use clap::Args;
-use doublezero_sdk::commands::exchange::{get::GetExchangeCommand, update::UpdateExchangeCommand};
+use doublezero_sdk::{
+    commands::exchange::{
+        get::GetExchangeCommand, list::ListExchangeCommand, update::UpdateExchangeCommand,
+    },
+    BGP_COMMUNITY_MAX, BGP_COMMUNITY_MIN,
+};
 use std::io::Write;
 
 #[derive(Args, Debug)]
@@ -37,6 +42,29 @@ impl UpdateExchangeCliCommand {
         let (pubkey, _) = client.get_exchange(GetExchangeCommand {
             pubkey_or_code: self.pubkey,
         })?;
+
+        if let Some(bgp_community) = self.bgp_community {
+            if !(BGP_COMMUNITY_MIN..=BGP_COMMUNITY_MAX).contains(&bgp_community) {
+                return Err(eyre::eyre!(
+                    "BGP community {} is out of valid range {}-{}",
+                    bgp_community,
+                    BGP_COMMUNITY_MIN,
+                    BGP_COMMUNITY_MAX
+                ));
+            }
+
+            let exchanges = client.list_exchange(ListExchangeCommand)?;
+            for (exchange_pubkey, exchange) in exchanges {
+                if exchange_pubkey != pubkey && exchange.bgp_community == bgp_community {
+                    return Err(eyre::eyre!(
+                        "BGP community {} is already in use by exchange {}",
+                        bgp_community,
+                        exchange.code
+                    ));
+                }
+            }
+        }
+
         let signature = client.update_exchange(UpdateExchangeCommand {
             pubkey,
             code: self.code,
@@ -60,11 +88,14 @@ mod tests {
         tests::utils::create_test_client,
     };
     use doublezero_sdk::{
-        commands::exchange::{get::GetExchangeCommand, update::UpdateExchangeCommand},
+        commands::exchange::{
+            get::GetExchangeCommand, list::ListExchangeCommand, update::UpdateExchangeCommand,
+        },
         get_exchange_pda, AccountType, Exchange, ExchangeStatus,
     };
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
+    use std::collections::HashMap;
 
     #[test]
     fn test_cli_exchange_update() {
@@ -89,7 +120,7 @@ mod tests {
             device2_pk: Pubkey::default(),
             lat: 12.34,
             lng: 56.78,
-            bgp_community: 1,
+            bgp_community: 10000,
             unused: 0,
             status: ExchangeStatus::Activated,
             owner: Pubkey::new_unique(),
@@ -99,12 +130,24 @@ mod tests {
             .expect_check_requirements()
             .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
             .returning(|_| Ok(()));
+
+        let exchange_clone = exchange.clone();
         client
             .expect_get_exchange()
             .with(predicate::eq(GetExchangeCommand {
                 pubkey_or_code: pda_pubkey.to_string(),
             }))
-            .returning(move |_| Ok((pda_pubkey, exchange.clone())));
+            .returning(move |_| Ok((pda_pubkey, exchange_clone.clone())));
+
+        // Expect list_exchange to be called for duplicate validation
+        client
+            .expect_list_exchange()
+            .with(predicate::eq(ListExchangeCommand))
+            .returning(move |_| {
+                let mut exchanges = HashMap::new();
+                exchanges.insert(pda_pubkey, exchange.clone());
+                Ok(exchanges)
+            });
 
         client
             .expect_update_exchange()
@@ -114,7 +157,7 @@ mod tests {
                 name: Some("Test Exchange".to_string()),
                 lat: Some(12.34),
                 lng: Some(56.78),
-                bgp_community: Some(1),
+                bgp_community: Some(10001),
             }))
             .times(1)
             .returning(move |_| Ok(signature));
@@ -127,7 +170,7 @@ mod tests {
             name: Some("Test Exchange".to_string()),
             lat: Some(12.34),
             lng: Some(56.78),
-            bgp_community: Some(1),
+            bgp_community: Some(10001),
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

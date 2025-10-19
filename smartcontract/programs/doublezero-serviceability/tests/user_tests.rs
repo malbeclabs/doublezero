@@ -121,7 +121,7 @@ async fn test_user() {
             name: "Los Angeles".to_string(),
             lat: 1.234,
             lng: 4.567,
-            bgp_community: 0,
+            bgp_community: 10000,
         }),
         vec![
             AccountMeta::new(exchange_pubkey, false),

@@ -4,8 +4,11 @@ use crate::{
     validators::validate_code,
 };
 use clap::Args;
-use doublezero_sdk::commands::exchange::create::CreateExchangeCommand;
-use std::io::Write;
+use doublezero_sdk::{
+    commands::exchange::{create::CreateExchangeCommand, list::ListExchangeCommand},
+    BGP_COMMUNITY_MAX, BGP_COMMUNITY_MIN,
+};
+use std::{collections::HashSet, io::Write};
 
 #[derive(Args, Debug)]
 pub struct CreateExchangeCliCommand {
@@ -21,9 +24,6 @@ pub struct CreateExchangeCliCommand {
     /// Longitude of the exchange
     #[arg(long, allow_hyphen_values(true))]
     pub lng: f64,
-    /// Optional BGP community for the exchange
-    #[arg(long)]
-    pub bgp_community: Option<u16>,
 }
 
 impl CreateExchangeCliCommand {
@@ -31,12 +31,28 @@ impl CreateExchangeCliCommand {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
+        let exchanges = client.list_exchange(ListExchangeCommand)?;
+        let used_communities: HashSet<u16> = exchanges
+            .values()
+            .map(|exchange| exchange.bgp_community)
+            .collect();
+
+        let bgp_community = (BGP_COMMUNITY_MIN..=BGP_COMMUNITY_MAX)
+            .find(|&community| !used_communities.contains(&community))
+            .ok_or_else(|| {
+                eyre::eyre!(
+                    "All BGP communities in range {}-{} are exhausted",
+                    BGP_COMMUNITY_MIN,
+                    BGP_COMMUNITY_MAX
+                )
+            })?;
+
         let (signature, _pubkey) = client.create_exchange(CreateExchangeCommand {
             code: self.code.clone(),
             name: self.name.clone(),
             lat: self.lat,
             lng: self.lng,
-            bgp_community: self.bgp_community,
+            bgp_community: Some(bgp_community),
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -52,9 +68,13 @@ mod tests {
         requirements::{CHECK_BALANCE, CHECK_ID_JSON},
         tests::utils::create_test_client,
     };
-    use doublezero_sdk::{commands::exchange::create::CreateExchangeCommand, get_exchange_pda};
+    use doublezero_sdk::{
+        commands::exchange::{create::CreateExchangeCommand, list::ListExchangeCommand},
+        get_exchange_pda, BGP_COMMUNITY_MIN,
+    };
     use mockall::predicate;
     use solana_sdk::signature::Signature;
+    use std::collections::HashMap;
 
     #[test]
     fn test_cli_exchange_create() {
@@ -72,6 +92,13 @@ mod tests {
             .expect_check_requirements()
             .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
             .returning(|_| Ok(()));
+
+        // Expect list_exchange to be called, return empty HashMap (no exchanges exist yet)
+        client
+            .expect_list_exchange()
+            .with(predicate::eq(ListExchangeCommand))
+            .returning(|_| Ok(HashMap::new()));
+
         client
             .expect_create_exchange()
             .with(predicate::eq(CreateExchangeCommand {
@@ -79,7 +106,7 @@ mod tests {
                 name: "Test Exchange".to_string(),
                 lat: 0.0,
                 lng: 0.0,
-                bgp_community: None,
+                bgp_community: Some(BGP_COMMUNITY_MIN), // First available BGP community
             }))
             .returning(move |_| Ok((signature, pda_pubkey)));
 
@@ -89,7 +116,6 @@ mod tests {
             name: "Test Exchange".to_string(),
             lat: 0.0,
             lng: 0.0,
-            bgp_community: None,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

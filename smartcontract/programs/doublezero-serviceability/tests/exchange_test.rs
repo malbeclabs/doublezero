@@ -62,7 +62,7 @@ async fn test_exchange() {
             name: "Los Angeles".to_string(),
             lat: 1.234,
             lng: 4.567,
-            bgp_community: 0,
+            bgp_community: 10000,
         }),
         vec![
             AccountMeta::new(exchange_pubkey, false),
@@ -141,7 +141,7 @@ async fn test_exchange() {
             name: Some("Los Angeles - Los Angeles".to_string()),
             lat: Some(3.433),
             lng: Some(23.223),
-            bgp_community: Some(1),
+            bgp_community: Some(10001),
         }),
         vec![
             AccountMeta::new(exchange_pubkey, false),

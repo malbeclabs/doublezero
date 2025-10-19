@@ -65,6 +65,7 @@ solana-sanitize = "2"
 solana-sdk = "2"
 solana-system-interface = "1"
 solana-transaction-status-client-types = "2"
+spl-token = { version = "8", features = ["no-entrypoint"] }
 svm-hash = { version = "0.1.0", features = ["bytemuck", "borsh"] }
 tabled = { version = "0", features = ["std", "derive"] }
 tempfile = "3"

@@ -16,7 +16,7 @@ pub struct ProgramState {
 }
 
 impl PrecomputedDiscriminator for ProgramState {
-    const DISCRIMINATOR: Discriminator<8> = Discriminator::new_sha2(b"account:program_state");
+    const DISCRIMINATOR: Discriminator<8> = Discriminator::new_sha2(b"account:ProgramStateAccount");
 }
 
 impl ProgramState {

@@ -2026,15 +2026,20 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
+ "borsh 1.5.7",
+ "bytemuck",
  "clap",
  "doublezero-passport",
+ "doublezero-program-tools",
  "doublezero-revenue-distribution",
+ "doublezero-sol-conversion-interface",
  "doublezero-solana-client-tools",
  "serde",
  "serde_json",
  "solana-account-decoder-client-types",
  "solana-client",
  "solana-sdk",
+ "spl-token",
  "tokio",
 ]
 

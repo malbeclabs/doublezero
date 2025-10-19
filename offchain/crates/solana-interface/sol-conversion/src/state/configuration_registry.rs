@@ -15,7 +15,7 @@ pub struct ConfigurationRegistry {
 
 impl PrecomputedDiscriminator for ConfigurationRegistry {
     const DISCRIMINATOR: Discriminator<8> =
-        Discriminator::new_sha2(b"account:configuration_registry");
+        Discriminator::new_sha2(b"account:ConfigurationRegistry");
 }
 
 impl ConfigurationRegistry {

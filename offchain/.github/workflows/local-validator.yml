@@ -6,7 +6,7 @@ on:
     branches: [ main ]
 
 env:
-  SOLANA_CLI: v2.3.7
+  SOLANA_CLI: v2.3.9
 
 jobs:
   test-doublezero-solana-clean:
@@ -22,7 +22,7 @@ jobs:
       - name: Generate ~/.config/solana/id.json
         run: solana-keygen new --silent --no-bip39-passphrase
       - name: Start Solana mainnet-beta fork in background
-        run: cargo run --bin doublezero-solana-fork -- -um > /dev/null 2>&1 &
+        run: cargo run --bin doublezero-solana-fork -- -um --reset --god-mode > /dev/null 2>&1 &
       - name: Build DoubleZero Solana
         run: cargo build --bin doublezero-solana
       - name: Check starting SOL balance

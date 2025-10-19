@@ -10,7 +10,7 @@ pub struct DenyListRegistry {
 }
 
 impl PrecomputedDiscriminator for DenyListRegistry {
-    const DISCRIMINATOR: Discriminator<8> = Discriminator::new_sha2(b"account:deny_list_registry");
+    const DISCRIMINATOR: Discriminator<8> = Discriminator::new_sha2(b"account:DenyListRegistry");
 }
 
 impl DenyListRegistry {

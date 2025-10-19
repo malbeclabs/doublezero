@@ -29,7 +29,7 @@ impl Default for FillsRegistry {
 }
 
 impl PrecomputedDiscriminator for FillsRegistry {
-    const DISCRIMINATOR: Discriminator<8> = Discriminator::new_sha2(b"account:fills_registry");
+    const DISCRIMINATOR: Discriminator<8> = Discriminator::new_sha2(b"account:FillsRegistry");
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Pod, Zeroable)]

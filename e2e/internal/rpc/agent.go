@@ -1,7 +1,6 @@
 package rpc
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -13,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cenkalti/backoff/v4"
 	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
 	"github.com/malbeclabs/doublezero/e2e/internal/poll"
 	pb "github.com/malbeclabs/doublezero/e2e/proto/qa/gen/pb-go"
@@ -479,55 +479,61 @@ func (q *QAAgent) MulticastReport(ctx context.Context, req *pb.MulticastReportRe
 	return &pb.MulticastReportResult{Reports: reports}, nil
 }
 
+func defaultBackoff() *backoff.ExponentialBackOff {
+	eb := backoff.NewExponentialBackOff()
+	eb.InitialInterval = 200 * time.Millisecond
+	eb.MaxInterval = 3 * time.Second
+	eb.MaxElapsedTime = 15 * time.Second
+	return eb
+}
+
 func getPublicIPv4() (string, error) {
-	// Resolver IPv4 de ifconfig.me:80
-	addrs, err := net.LookupIP("ifconfig.me")
-	if err != nil {
-		return "", fmt.Errorf("error resolviendo host: %w", err)
-	}
+	client := &http.Client{Timeout: 5 * time.Second}
+	return getPublicIPv4With(client, "https://ifconfig.me/ip", defaultBackoff())
+}
 
-	var ipv4 net.IP
-	for _, ip := range addrs {
-		if ip.To4() != nil {
-			ipv4 = ip
-			break
-		}
-	}
-	if ipv4 == nil {
-		return "", fmt.Errorf("no se encontró IPv4 para ifconfig.me")
-	}
-
-	// Conectar al host
-	addr := net.JoinHostPort(ipv4.String(), "80")
-	conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
-	if err != nil {
-		return "", fmt.Errorf("error conectando: %w", err)
-	}
-	defer conn.Close()
-
-	// Enviar request HTTP
-	req := "GET /ip HTTP/1.1\r\nHost: ifconfig.me\r\nConnection: close\r\n\r\n"
-	if _, err := conn.Write([]byte(req)); err != nil {
-		return "", fmt.Errorf("error enviando request: %w", err)
-	}
-
-	// Leer respuesta
-	reader := bufio.NewReader(conn)
-	var response strings.Builder
-	for {
-		line, err := reader.ReadString('\n')
-		response.WriteString(line)
+func getPublicIPv4With(client *http.Client, url string, eb backoff.BackOff) (string, error) {
+	op := func() (string, error) {
+		req, err := http.NewRequest("GET", url, nil)
 		if err != nil {
-			break
+			return "", fmt.Errorf("failed to build request: %w", err)
 		}
+		req.Header.Set("User-Agent", "curl/8.0")
+
+		resp, err := client.Do(req)
+		if err != nil {
+			return "", fmt.Errorf("failed to send request: %w", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			return "", fmt.Errorf("non-200 status code: %d", resp.StatusCode)
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return "", fmt.Errorf("failed to read response body: %w", err)
+		}
+
+		ip := strings.TrimSpace(string(body))
+		if ip == "" {
+			return "", fmt.Errorf("empty IP response from server")
+		}
+		return ip, nil
 	}
 
-	// Extraer cuerpo
-	parts := strings.SplitN(response.String(), "\r\n\r\n", 2)
-	if len(parts) < 2 {
-		return "", fmt.Errorf("no se pudo parsear respuesta")
+	var ip string
+	err := backoff.Retry(func() error {
+		res, err := op()
+		if err == nil {
+			ip = res
+			return nil
+		}
+		return err
+	}, eb)
+	if err != nil {
+		return "", err
 	}
-	ip := strings.TrimSpace(parts[1])
 	return ip, nil
 }
 

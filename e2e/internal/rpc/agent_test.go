@@ -7,8 +7,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
+	"github.com/cenkalti/backoff/v4"
 	pb "github.com/malbeclabs/doublezero/e2e/proto/qa/gen/pb-go"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -86,6 +90,91 @@ func TestQAAgentConnectivity(t *testing.T) {
 		require.NotNil(t, resp)
 		require.Equal(t, "6.6.6.6", resp.GetPublicIp())
 	})
+}
+
+func fastBackoff(maxElapsed time.Duration) backoff.BackOff {
+	eb := backoff.NewExponentialBackOff()
+	eb.InitialInterval = 5 * time.Millisecond
+	eb.Multiplier = 2
+	eb.MaxInterval = 20 * time.Millisecond
+	eb.MaxElapsedTime = maxElapsed
+	return eb
+}
+
+func TestGetPublicIPv4_ReturnsImmediatelyOnSuccess(t *testing.T) {
+	t.Parallel()
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "curl/8.0", r.Header.Get("User-Agent"))
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("203.0.113.5\n"))
+	}))
+	defer ts.Close()
+
+	client := &http.Client{Timeout: 500 * time.Millisecond}
+	ip, err := getPublicIPv4With(client, ts.URL, fastBackoff(200*time.Millisecond))
+	require.NoError(t, err)
+	require.Equal(t, "203.0.113.5", ip)
+}
+
+func TestGetPublicIPv4_RetriesThenSucceeds(t *testing.T) {
+	t.Parallel()
+
+	var calls int32
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := atomic.AddInt32(&calls, 1)
+		if n == 1 {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		require.Equal(t, "curl/8.0", r.Header.Get("User-Agent"))
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("198.51.100.7\n"))
+	}))
+	defer ts.Close()
+
+	client := &http.Client{Timeout: 500 * time.Millisecond}
+	ip, err := getPublicIPv4With(client, ts.URL, fastBackoff(300*time.Millisecond))
+	require.NoError(t, err)
+	require.Equal(t, "198.51.100.7", ip)
+	require.GreaterOrEqual(t, atomic.LoadInt32(&calls), int32(2))
+}
+
+func TestGetPublicIPv4_FailsAfterPermanent500(t *testing.T) {
+	t.Parallel()
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer ts.Close()
+
+	client := &http.Client{Timeout: 500 * time.Millisecond}
+	_, err := getPublicIPv4With(client, ts.URL, fastBackoff(200*time.Millisecond))
+	require.Error(t, err)
+	s := err.Error()
+	require.Truef(t,
+		strings.Contains(s, "non-200") || strings.Contains(s, "500"),
+		"unexpected error: %v", err,
+	)
+}
+
+func TestGetPublicIPv4_EmptyBodyEventuallyErrors(t *testing.T) {
+	t.Parallel()
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		// empty body
+	}))
+	defer ts.Close()
+
+	client := &http.Client{Timeout: 500 * time.Millisecond}
+	_, err := getPublicIPv4With(client, ts.URL, fastBackoff(200*time.Millisecond))
+	require.Error(t, err)
+	s := err.Error()
+	require.Truef(t,
+		strings.Contains(s, "empty") || strings.Contains(s, "body"),
+		"unexpected error: %v", err,
+	)
 }
 
 type DummyJoiner struct{}

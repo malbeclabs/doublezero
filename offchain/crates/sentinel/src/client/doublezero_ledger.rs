@@ -75,6 +75,8 @@ impl DzRpcClient {
             accesspass_type: AccessPassType::SolanaValidator(*validator_id),
             client_ip: *client_ip,
             last_access_epoch: u64::MAX,
+            // NOTE: Setting this to false by default
+            allow_multiple_ip: false,
         });
         let accounts = vec![
             AccountMeta::new(pass_pk, false),

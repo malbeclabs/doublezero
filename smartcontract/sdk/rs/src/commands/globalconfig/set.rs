@@ -13,6 +13,7 @@ pub struct SetGlobalConfigCommand {
     pub device_tunnel_block: Option<NetworkV4>,
     pub user_tunnel_block: Option<NetworkV4>,
     pub multicastgroup_block: Option<NetworkV4>,
+    pub next_bgp_community: Option<u16>,
 }
 
 impl SetGlobalConfigCommand {
@@ -46,6 +47,7 @@ impl SetGlobalConfigCommand {
                     device_tunnel_block: None,
                     user_tunnel_block: None,
                     multicastgroup_block: None,
+                    next_bgp_community: None,
                 },
                 _,
             ) => Err(eyre::eyre!(
@@ -58,6 +60,7 @@ impl SetGlobalConfigCommand {
                     device_tunnel_block: Some(device_tunnel_block),
                     user_tunnel_block: Some(user_tunnel_block),
                     multicastgroup_block: Some(multicastgroup_block),
+                    next_bgp_community,
                 },
                 _,
             ) => Ok(SetGlobalConfigArgs {
@@ -66,6 +69,7 @@ impl SetGlobalConfigCommand {
                 device_tunnel_block: *device_tunnel_block,
                 user_tunnel_block: *user_tunnel_block,
                 multicastgroup_block: *multicastgroup_block,
+                next_bgp_community: *next_bgp_community,
             }),
             (_, None) => Err(eyre::eyre!("Invalid SetGlobalConfigCommand; incomplete set command with no valid config to update")),
             (set_config_command, Some((_, existing_config))) => Ok(SetGlobalConfigArgs {
@@ -74,6 +78,7 @@ impl SetGlobalConfigCommand {
                 device_tunnel_block: set_config_command.device_tunnel_block.unwrap_or(existing_config.device_tunnel_block),
                 user_tunnel_block: set_config_command.user_tunnel_block.unwrap_or(existing_config.user_tunnel_block),
                 multicastgroup_block: set_config_command.multicastgroup_block.unwrap_or(existing_config.multicastgroup_block),
+                next_bgp_community: set_config_command.next_bgp_community,
             }),
         }
     }

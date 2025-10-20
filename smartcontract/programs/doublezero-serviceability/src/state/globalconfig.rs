@@ -1,6 +1,6 @@
 use crate::{
     error::{DoubleZeroError, Validate},
-    state::accounttype::AccountType,
+    state::{accounttype::AccountType, exchange::BGP_COMMUNITY_MIN},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use doublezero_program_common::types::NetworkV4;
@@ -17,17 +17,19 @@ pub struct GlobalConfig {
     pub device_tunnel_block: NetworkV4,  // 5
     pub user_tunnel_block: NetworkV4,    // 5
     pub multicastgroup_block: NetworkV4, // 5
+    pub next_bgp_community: u16,         // 2
 }
 
 impl fmt::Display for GlobalConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, owner: {}, local_asn: {}, remote_asn: {}, device_tunnel_block: {}, user_tunnel_block: {}, multicastgroup_block: {}",
+            "account_type: {}, owner: {}, local_asn: {}, remote_asn: {}, device_tunnel_block: {}, user_tunnel_block: {}, multicastgroup_block: {}, next_bgp_community: {}",
             self.account_type, self.owner, self.local_asn, self.remote_asn,
             &self.device_tunnel_block,
             &self.user_tunnel_block,
             &self.multicastgroup_block,
+            self.next_bgp_community,
         )
     }
 }
@@ -45,6 +47,8 @@ impl TryFrom<&[u8]> for GlobalConfig {
             device_tunnel_block: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             user_tunnel_block: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             multicastgroup_block: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            next_bgp_community: BorshDeserialize::deserialize(&mut data)
+                .unwrap_or(BGP_COMMUNITY_MIN),
         };
 
         if out.account_type != AccountType::GlobalConfig {
@@ -66,7 +70,7 @@ impl TryFrom<&AccountInfo<'_>> for GlobalConfig {
 
 impl GlobalConfig {
     pub fn size(&self) -> usize {
-        1 + 32 + 1 + 4 + 4 + 5 + 5 + 5
+        1 + 32 + 1 + 4 + 4 + 5 + 5 + 5 + 2
     }
 }
 
@@ -105,6 +109,7 @@ mod tests {
         assert_eq!(val.device_tunnel_block, NetworkV4::default());
         assert_eq!(val.user_tunnel_block, NetworkV4::default());
         assert_eq!(val.multicastgroup_block, NetworkV4::default());
+        assert_eq!(val.next_bgp_community, BGP_COMMUNITY_MIN);
     }
 
     #[test]
@@ -118,6 +123,7 @@ mod tests {
             device_tunnel_block: "10.0.0.1/24".parse().unwrap(),
             user_tunnel_block: "10.0.0.2/24".parse().unwrap(),
             multicastgroup_block: "224.0.0.0/4".parse().unwrap(),
+            next_bgp_community: BGP_COMMUNITY_MIN,
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -133,6 +139,7 @@ mod tests {
         assert_eq!(val.device_tunnel_block, val2.device_tunnel_block);
         assert_eq!(val.user_tunnel_block, val2.user_tunnel_block);
         assert_eq!(val.multicastgroup_block, val2.multicastgroup_block);
+        assert_eq!(val.next_bgp_community, val2.next_bgp_community);
         assert_eq!(data.len(), val.size(), "Invalid Size");
     }
 
@@ -147,6 +154,7 @@ mod tests {
             device_tunnel_block: "10.0.0.1/24".parse().unwrap(),
             user_tunnel_block: "10.0.0.2/24".parse().unwrap(),
             multicastgroup_block: "224.0.0.0/4".parse().unwrap(),
+            next_bgp_community: BGP_COMMUNITY_MIN,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -164,6 +172,7 @@ mod tests {
             device_tunnel_block: "10.0.0.1/24".parse().unwrap(),
             user_tunnel_block: "10.0.0.2/24".parse().unwrap(),
             multicastgroup_block: "224.0.0.0/4".parse().unwrap(),
+            next_bgp_community: BGP_COMMUNITY_MIN,
         };
         let err_zero = val_zero.validate();
         assert!(err_zero.is_err());
@@ -189,6 +198,7 @@ mod tests {
             device_tunnel_block: "10.0.0.1/24".parse().unwrap(),
             user_tunnel_block: "10.0.0.2/24".parse().unwrap(),
             multicastgroup_block: "224.0.0.0/4".parse().unwrap(),
+            next_bgp_community: BGP_COMMUNITY_MIN,
         };
         let err_zero = val_zero.validate();
         assert!(err_zero.is_err());

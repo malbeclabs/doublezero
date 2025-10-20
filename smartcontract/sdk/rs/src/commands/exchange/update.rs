@@ -1,7 +1,8 @@
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 use doublezero_program_common::validate_account_code;
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, processors::exchange::update::ExchangeUpdateArgs,
+    instructions::DoubleZeroInstruction, pda::get_globalconfig_pda,
+    processors::exchange::update::ExchangeUpdateArgs,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
@@ -27,6 +28,8 @@ impl UpdateExchangeCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
+        let (globalconfig_pubkey, _) = get_globalconfig_pda(&client.get_program_id());
+
         client.execute_transaction(
             DoubleZeroInstruction::UpdateExchange(ExchangeUpdateArgs {
                 code,
@@ -37,6 +40,7 @@ impl UpdateExchangeCommand {
             }),
             vec![
                 AccountMeta::new(self.pubkey, false),
+                AccountMeta::new(globalconfig_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
             ],
         )
@@ -51,7 +55,7 @@ mod tests {
     };
     use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
-        pda::{get_exchange_pda, get_globalstate_pda},
+        pda::{get_exchange_pda, get_globalconfig_pda, get_globalstate_pda},
         processors::exchange::update::ExchangeUpdateArgs,
     };
     use mockall::predicate;
@@ -62,6 +66,7 @@ mod tests {
         let mut client = create_test_client();
 
         let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
+        let (globalconfig_pubkey, _) = get_globalconfig_pda(&client.get_program_id());
         let (pda_pubkey, _) = get_exchange_pda(&client.get_program_id(), 1);
 
         client
@@ -76,6 +81,7 @@ mod tests {
                 })),
                 predicate::eq(vec![
                     AccountMeta::new(pda_pubkey, false),
+                    AccountMeta::new(globalconfig_pubkey, false),
                     AccountMeta::new(globalstate_pubkey, false),
                 ]),
             )

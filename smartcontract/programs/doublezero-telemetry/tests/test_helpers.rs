@@ -101,7 +101,7 @@ impl ExchangeCreateArgsExt for ExchangeCreateArgs {
             name: "".to_string(),
             lat: 0.0,
             lng: 0.0,
-            bgp_community: 0,
+            reserved: 0,
         }
     }
 }
@@ -296,7 +296,7 @@ impl LedgerHelper {
             .create_exchange(ExchangeCreateArgs {
                 code: "EX1".to_string(),
                 name: "Test Exchange".to_string(),
-                bgp_community: 1,
+                reserved: 0,
                 ..ExchangeCreateArgs::default()
             })
             .await?;
@@ -395,7 +395,7 @@ impl LedgerHelper {
             .create_exchange(ExchangeCreateArgs {
                 code: "EX1".to_string(),
                 name: "Test Exchange1".to_string(),
-                bgp_community: 1,
+                reserved: 0,
                 ..ExchangeCreateArgs::default()
             })
             .await?;
@@ -405,7 +405,7 @@ impl LedgerHelper {
             .create_exchange(ExchangeCreateArgs {
                 code: "EX2".to_string(),
                 name: "Test Exchange2".to_string(),
-                bgp_community: 2,
+                reserved: 0,
                 ..ExchangeCreateArgs::default()
             })
             .await?;
@@ -776,6 +776,7 @@ impl ServiceabilityProgramHelper {
                     device_tunnel_block: "10.0.0.0/24".parse().unwrap(),
                     user_tunnel_block: "10.0.0.0/24".parse().unwrap(),
                     multicastgroup_block: "224.0.0.0/4".parse().unwrap(),
+                    next_bgp_community: None,
                 }),
                 vec![
                     AccountMeta::new(global_config_pubkey, false),
@@ -854,10 +855,11 @@ impl ServiceabilityProgramHelper {
                 name: exchange.name,
                 lat: exchange.lat,
                 lng: exchange.lng,
-                bgp_community: exchange.bgp_community,
+                reserved: 0, // BGP community is auto-assigned
             }),
             vec![
                 AccountMeta::new(exchange_pubkey, false),
+                AccountMeta::new(self.global_config_pubkey, false),
                 AccountMeta::new(self.global_state_pubkey, false),
             ],
         )

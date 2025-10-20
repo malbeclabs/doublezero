@@ -88,7 +88,6 @@ pub fn process_update_exchange(
 
     let mut exchange: Exchange = Exchange::try_from(exchange_account)?;
 
-    let mut globalconfig_updated = false;
     if let Some(ref code) = value.code {
         exchange.code =
             validate_account_code(code).map_err(|_| DoubleZeroError::InvalidAccountCode)?;
@@ -104,11 +103,6 @@ pub fn process_update_exchange(
     }
     if let Some(_bgp_community) = value.bgp_community {
         exchange.bgp_community = assign_bgp_community(&mut globalconfig);
-        globalconfig_updated = true;
-    }
-
-    account_write(exchange_account, &exchange, payer_account, system_program)?;
-    if globalconfig_updated {
         globalconfig_write_with_realloc(
             globalconfig_account,
             &globalconfig,
@@ -117,6 +111,8 @@ pub fn process_update_exchange(
             globalconfig_bump_seed,
         );
     }
+
+    account_write(exchange_account, &exchange, payer_account, system_program)?;
 
     #[cfg(test)]
     msg!("Updated: {:?}", exchange);

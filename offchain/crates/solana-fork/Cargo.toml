@@ -19,6 +19,7 @@ doublezero-revenue-distribution.workspace = true
 doublezero-program-tools.workspace = true
 doublezero-sol-conversion-interface.workspace = true
 doublezero-solana-client-tools.workspace = true
+reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 solana-account-decoder-client-types.workspace = true

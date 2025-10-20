@@ -11,6 +11,11 @@ borsh.workspace = true
 bytemuck.workspace = true
 doublezero-program-tools.workspace = true
 doublezero-revenue-distribution.workspace = true
+serde = { optional = true, workspace = true }
 solana-instruction.workspace = true
 solana-pubkey.workspace = true
 solana-system-interface.workspace = true
+spl-token.workspace = true
+
+[features]
+serde = ["dep:serde"]

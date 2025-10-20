@@ -6,6 +6,7 @@
 # Secrets
 .env
 .envrc
+.private
 config.toml
 mainnet-beta.toml
 testnet.toml

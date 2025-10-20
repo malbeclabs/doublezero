@@ -1961,14 +1961,16 @@ dependencies = [
  "bytemuck",
  "doublezero-program-tools",
  "doublezero-revenue-distribution",
+ "serde",
  "solana-instruction",
  "solana-pubkey",
  "solana-system-interface",
+ "spl-token",
 ]
 
 [[package]]
 name = "doublezero-solana-cli"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1986,6 +1988,7 @@ dependencies = [
  "doublezero-solana-validator-debt",
  "doublezero_sdk",
  "itertools 0.10.5",
+ "reqwest",
  "serde_json",
  "solana-account-decoder-client-types",
  "solana-client",
@@ -1993,6 +1996,8 @@ dependencies = [
  "solana-sdk",
  "solana-system-interface",
  "solana-transaction-status-client-types",
+ "spl-associated-token-account-interface",
+ "tabled",
  "tokio",
  "tracing-subscriber",
  "url",
@@ -2035,6 +2040,7 @@ dependencies = [
  "doublezero-revenue-distribution",
  "doublezero-sol-conversion-interface",
  "doublezero-solana-client-tools",
+ "reqwest",
  "serde",
  "serde_json",
  "solana-account-decoder-client-types",

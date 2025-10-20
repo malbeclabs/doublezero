@@ -11,15 +11,34 @@ use doublezero_revenue_distribution::{
 use doublezero_solana_client_tools::payer::{SolanaPayerOptions, Wallet};
 use solana_sdk::{compute_budget::ComputeBudgetInstruction, pubkey::Pubkey};
 
+use crate::command::{
+    revenue_distribution::convert_2z::Convert2zCommand, try_prompt_proceed_confirmation,
+};
+
 #[derive(Debug, Args)]
 pub struct ValidatorDepositCommand {
+    /// Node (Validator) identity.
+    #[arg(long, short = 'n', value_name = "PUBKEY")]
     node_id: Pubkey,
 
-    #[arg(long)]
+    /// Initialize the Solana validator deposit account if it does not exist.
+    #[arg(long, short = 'i')]
     initialize: bool,
 
+    /// Fund the Solana validator deposit account with SOL. When
+    /// `--convert-2z-limit-price` is specified, the fund amount must match the
+    /// required (fixed fill quantity) amount for the 2Z -> SOL conversion.
     #[arg(long, value_name = "SOL")]
     fund: Option<String>,
+
+    /// Fund with 2Z limited by specified conversion rate for 2Z -> SOL.
+    #[arg(long, value_name = "PRICE_LIMIT")]
+    convert_2z_limit_price: Option<String>,
+
+    /// Token account must be owned by the signer. Defaults to signer ATA if not
+    /// specified.
+    #[arg(long, value_name = "PUBKEY")]
+    source_2z_account: Option<Pubkey>,
 
     #[command(flatten)]
     solana_payer_options: SolanaPayerOptions,
@@ -31,13 +50,15 @@ impl ValidatorDepositCommand {
             node_id,
             initialize,
             fund,
+            convert_2z_limit_price: convert_2z_limit_price_str,
+            source_2z_account: source_2z_account_key,
             solana_payer_options,
         } = self;
 
         let wallet = Wallet::try_from(solana_payer_options)?;
         let wallet_key = wallet.pubkey();
 
-        // First check if the solana validator deposit is already initialized.
+        // First check if the Solana validator deposit is already initialized.
         let (deposit_key, deposit, mut deposit_balance) =
             super::fetch_solana_validator_deposit(&wallet.connection, &node_id).await;
 
@@ -48,7 +69,7 @@ impl ValidatorDepositCommand {
         // Parse fund amount from SOL string (representing 9 decimal places at
         // most) to lamports.
         let fund_lamports = match fund {
-            Some(fund) => parse_sol_to_lamports(fund)?,
+            Some(fund) => crate::utils::parse_sol_amount_to_lamports(fund)?,
             None => 0,
         };
 
@@ -75,6 +96,27 @@ impl ValidatorDepositCommand {
         } else {
             ""
         };
+
+        if let Some(limit_price_str) = convert_2z_limit_price_str {
+            try_prompt_proceed_confirmation(
+                format!(
+                    "By specifying --convert-2z-limit-price, you are funding {:0.9} SOL to your deposit account",
+                    fund_lamports as f64 * 1e-9,
+                ),
+                "Aborting command with --convert-2z-limit-price".to_string(),
+            )?;
+
+            let buy_sol_ix = Convert2zCommand::try_build_buy_sol_instruction(
+                &wallet,
+                Some(limit_price_str),
+                source_2z_account_key,
+                Some(fund_lamports),
+            )
+            .await?;
+
+            instructions.push(buy_sol_ix);
+            compute_unit_limit += Convert2zCommand::BUY_SOL_COMPUTE_UNIT_LIMIT;
+        }
 
         if fund_lamports != 0 {
             deposit_balance += fund_lamports;
@@ -115,36 +157,4 @@ impl ValidatorDepositCommand {
 
         Ok(())
     }
-}
-
-//
-
-fn parse_sol_to_lamports(sol_amount_str: String) -> Result<u64> {
-    let sol_amount_str = sol_amount_str.trim();
-
-    if sol_amount_str.is_empty() {
-        bail!("SOL amount cannot be empty");
-    }
-
-    let sol_amount = sol_amount_str
-        .parse::<f64>()
-        .map_err(|_| anyhow::anyhow!("Invalid SOL amount: '{sol_amount_str}'"))?;
-
-    if sol_amount <= 0.0 {
-        bail!("SOL amount must be a positive value");
-    }
-
-    if sol_amount > (u64::MAX as f64 / 1e9) {
-        bail!("SOL amount too large");
-    }
-
-    // Check that value is at most 9 decimal places.
-    if let Some(decimal_index) = sol_amount_str.find('.') {
-        let decimal_places = sol_amount_str.len() - decimal_index - 1;
-        if decimal_places > 9 {
-            bail!("SOL amount cannot have more than 9 decimal places");
-        }
-    }
-
-    Ok((sol_amount * 1e9).round() as u64)
 }

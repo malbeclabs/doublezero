@@ -8,6 +8,8 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use doublezero_program_tools::{DISCRIMINATOR_LEN, Discriminator};
 use solana_pubkey::Pubkey;
 
+use crate::oracle::OraclePriceData;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SolConversionInstructionData {
     /// Set up initial state. Requires the upgrade authority.
@@ -42,7 +44,10 @@ pub enum SolConversionInstructionData {
     /// In other words, pause or unpause the system.
     ToggleSystemState(bool),
 
-    BuySol,
+    BuySol {
+        limit_price: u64,
+        oracle_price_data: OraclePriceData,
+    },
 
     GetConversionRate,
 
@@ -121,7 +126,15 @@ impl BorshDeserialize for SolConversionInstructionData {
             Self::TOGGLE_SYSTEM_STATE => {
                 BorshDeserialize::deserialize_reader(reader).map(Self::ToggleSystemState)
             }
-            Self::BUY_SOL => Ok(Self::BuySol),
+            Self::BUY_SOL => {
+                let limit_price = BorshDeserialize::deserialize_reader(reader)?;
+                let oracle_price_data = BorshDeserialize::deserialize_reader(reader)?;
+
+                Ok(Self::BuySol {
+                    limit_price,
+                    oracle_price_data,
+                })
+            }
             Self::GET_CONVERSION_RATE => Ok(Self::GetConversionRate),
             Self::DEQUEUE_FILLS => Ok(Self::DequeueFills),
             _ => Err(io::Error::new(
@@ -182,7 +195,14 @@ impl BorshSerialize for SolConversionInstructionData {
                 Self::TOGGLE_SYSTEM_STATE.serialize(writer)?;
                 should_pause.serialize(writer)
             }
-            Self::BuySol => Self::BUY_SOL.serialize(writer),
+            Self::BuySol {
+                limit_price,
+                oracle_price_data,
+            } => {
+                Self::BUY_SOL.serialize(writer)?;
+                limit_price.serialize(writer)?;
+                oracle_price_data.serialize(writer)
+            }
             Self::GetConversionRate => Self::GET_CONVERSION_RATE.serialize(writer),
             Self::DequeueFills => Self::DEQUEUE_FILLS.serialize(writer),
         }

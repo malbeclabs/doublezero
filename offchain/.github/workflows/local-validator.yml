@@ -25,9 +25,5 @@ jobs:
         run: cargo run --bin doublezero-solana-fork -- -um --reset --god-mode > /dev/null 2>&1 &
       - name: Build DoubleZero Solana
         run: cargo build --bin doublezero-solana
-      - name: Check starting SOL balance
-        run: solana balance -u l
       - name: Run DoubleZero Solana tests
         run: bash sh/test_doublezero_solana_clean.sh
-      - name: Check ending SOL balance
-        run: solana balance -u l

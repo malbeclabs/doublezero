@@ -1,4 +1,5 @@
 pub mod instruction;
+pub mod oracle;
 pub mod state;
 
 //

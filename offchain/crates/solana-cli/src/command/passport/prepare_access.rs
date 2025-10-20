@@ -12,7 +12,7 @@ use doublezero_passport::{
 use doublezero_solana_client_tools::rpc::{SolanaConnection, SolanaConnectionOptions};
 use solana_sdk::{pubkey::Pubkey, signature::Keypair};
 
-use crate::helpers::{find_node_by_node_id, identify_cluster};
+use crate::utils::{find_node_by_node_id, identify_cluster};
 
 /*
    doublezero-solana passport request-access --doublezero-address SSSS --primary-validator-id AAA --backup-validator-ids BBB,CCC --signature XXXXX

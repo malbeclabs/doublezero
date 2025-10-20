@@ -1,5 +1,5 @@
 use doublezero_program_tools::get_program_data_address;
-use doublezero_revenue_distribution::state::find_withdraw_sol_authority_address;
+use doublezero_revenue_distribution::{ID as REVENUE_DISTRIBUTION_PROGRAM_ID, state as dz_state};
 use solana_instruction::AccountMeta;
 use solana_pubkey::Pubkey;
 
@@ -26,7 +26,7 @@ impl InitializeSystemAccounts {
             new_program_state_key: ProgramState::find_address().0,
             new_deny_list_registry_key: DenyListRegistry::find_address().0,
             fills_registry_key: *fills_registry_key,
-            withdraw_authority_key: find_withdraw_sol_authority_address(&ID).0,
+            withdraw_authority_key: dz_state::find_withdraw_sol_authority_address(&ID).0,
             program_data_key: get_program_data_address(&ID).0,
             upgrade_authority_key: *upgrade_authority_key,
         }
@@ -184,6 +184,84 @@ impl From<ToggleSystemStateAccounts> for Vec<AccountMeta> {
         vec![
             AccountMeta::new_readonly(admin_key, true),
             AccountMeta::new(program_state_key, false),
+        ]
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BuySolAccounts {
+    pub configuration_registry_key: Pubkey,
+    pub program_state_key: Pubkey,
+    pub deny_list_registry_key: Pubkey,
+    pub fills_registry_key: Pubkey,
+    pub withdraw_authority_key: Pubkey,
+    pub user_token_account_key: Pubkey,
+    pub swap_destination_key: Pubkey,
+    pub dz_mint_key: Pubkey,
+    pub dz_config_key: Pubkey,
+    pub dz_journal_key: Pubkey,
+    pub user_key: Pubkey,
+}
+
+impl BuySolAccounts {
+    pub fn new(
+        fill_registry_key: &Pubkey,
+        user_token_account_key: &Pubkey,
+        dz_mint_key: &Pubkey,
+        user_key: &Pubkey,
+    ) -> Self {
+        let swap_authority_key =
+            doublezero_revenue_distribution::state::find_swap_authority_address().0;
+        Self {
+            configuration_registry_key: ConfigurationRegistry::find_address().0,
+            program_state_key: ProgramState::find_address().0,
+            deny_list_registry_key: DenyListRegistry::find_address().0,
+            fills_registry_key: *fill_registry_key,
+            withdraw_authority_key: dz_state::find_withdraw_sol_authority_address(&ID).0,
+            user_token_account_key: *user_token_account_key,
+            swap_destination_key:
+                doublezero_revenue_distribution::state::find_2z_token_pda_address(
+                    &swap_authority_key,
+                )
+                .0,
+            dz_mint_key: *dz_mint_key,
+            dz_config_key: dz_state::ProgramConfig::find_address().0,
+            dz_journal_key: dz_state::Journal::find_address().0,
+            user_key: *user_key,
+        }
+    }
+}
+
+impl From<BuySolAccounts> for Vec<AccountMeta> {
+    fn from(accounts: BuySolAccounts) -> Self {
+        let BuySolAccounts {
+            configuration_registry_key,
+            program_state_key,
+            deny_list_registry_key,
+            fills_registry_key,
+            withdraw_authority_key,
+            user_token_account_key,
+            swap_destination_key,
+            dz_mint_key,
+            dz_config_key,
+            dz_journal_key,
+            user_key,
+        } = accounts;
+
+        vec![
+            AccountMeta::new_readonly(configuration_registry_key, false),
+            AccountMeta::new(program_state_key, false),
+            AccountMeta::new_readonly(deny_list_registry_key, false),
+            AccountMeta::new(fills_registry_key, false),
+            AccountMeta::new_readonly(withdraw_authority_key, false),
+            AccountMeta::new(user_token_account_key, false),
+            AccountMeta::new(swap_destination_key, false),
+            AccountMeta::new_readonly(dz_mint_key, false),
+            AccountMeta::new_readonly(dz_config_key, false),
+            AccountMeta::new(dz_journal_key, false),
+            AccountMeta::new_readonly(spl_token::id(), false),
+            AccountMeta::new_readonly(REVENUE_DISTRIBUTION_PROGRAM_ID, false),
+            AccountMeta::new(user_key, true),
         ]
     }
 }

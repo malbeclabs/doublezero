@@ -1,5 +1,4 @@
 use anyhow::Result;
-use borsh::BorshDeserialize;
 use clap::Args;
 use doublezero_program_tools::instruction::try_build_instruction;
 use doublezero_revenue_distribution::{
@@ -7,11 +6,12 @@ use doublezero_revenue_distribution::{
     instruction::{RevenueDistributionInstructionData, account::SweepDistributionTokensAccounts},
 };
 use doublezero_scheduled_command::{Schedulable, ScheduleOption};
-use doublezero_sol_conversion_interface::state::ProgramState as SwapProgramState;
 use doublezero_solana_client_tools::payer::{SolanaPayerOptions, Wallet};
 use solana_sdk::compute_budget::ComputeBudgetInstruction;
 
-use crate::command::revenue_distribution::{try_fetch_journal, try_fetch_program_config};
+use crate::command::revenue_distribution::{
+    SolConversionState, try_fetch_journal, try_fetch_program_config,
+};
 
 #[derive(Debug, Args, Clone)]
 pub struct SweepDistributionTokens {
@@ -41,12 +41,10 @@ impl Schedulable for SweepDistributionTokens {
         let (_, journal) = try_fetch_journal(&wallet.connection).await?;
         let dz_epoch = journal.next_dz_epoch_to_sweep_tokens;
 
-        let swap_state_account = wallet
-            .connection
-            .get_account(&SwapProgramState::find_address().0)
-            .await?;
-        let swap_state_data = SwapProgramState::deserialize(&mut &swap_state_account.data[8..])?;
-        let sol_2z_swap_fills_registry_key = swap_state_data.fills_registry_key;
+        let SolConversionState {
+            program_state: (_, sol_conversion_program_state),
+            ..
+        } = SolConversionState::try_fetch(&wallet.connection).await?;
 
         let mut instructions = Vec::new();
         let mut compute_unit_limit = 5_000;
@@ -56,7 +54,7 @@ impl Schedulable for SweepDistributionTokens {
             SweepDistributionTokensAccounts::new(
                 dz_epoch,
                 &sol_2z_swap_program_id,
-                &sol_2z_swap_fills_registry_key,
+                &sol_conversion_program_state.fills_registry_key,
             ),
             &RevenueDistributionInstructionData::SweepDistributionTokens,
         )?;

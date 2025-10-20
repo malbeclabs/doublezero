@@ -1,7 +1,7 @@
 [package]
 name = "doublezero-solana-cli"
 description = "Command line to interact with DoubleZero Solana programs"
-version = "0.1.1"
+version = "0.2.0"
 
 edition.workspace = true
 homepage.workspace = true
@@ -25,6 +25,7 @@ doublezero-solana-client-tools.workspace = true
 doublezero-solana-validator-debt.workspace = true
 doublezero_sdk.workspace = true
 itertools.workspace = true
+reqwest.workspace = true
 serde_json.workspace = true
 solana-account-decoder-client-types.workspace = true
 solana-client.workspace = true
@@ -32,6 +33,8 @@ solana-commitment-config.workspace = true
 solana-sdk.workspace = true
 solana-system-interface.workspace = true
 solana-transaction-status-client-types.workspace = true
+spl-associated-token-account-interface.workspace = true
+tabled.workspace = true
 tokio.workspace = true
 tracing-subscriber.workspace = true
 url.workspace = true

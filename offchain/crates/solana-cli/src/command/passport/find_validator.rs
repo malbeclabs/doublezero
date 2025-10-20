@@ -11,7 +11,7 @@ use solana_client::rpc_response::RpcContactInfo;
 use solana_sdk::{pubkey::Pubkey, signature::Keypair, signer::Signer};
 use url::Url;
 
-use crate::helpers::{find_node_by_ip, find_node_by_node_id, get_public_ipv4, identify_cluster};
+use crate::utils::{find_node_by_ip, find_node_by_node_id, identify_cluster, try_get_public_ipv4};
 
 #[derive(Debug, Args)]
 pub struct FindValidatorCommand {
@@ -84,7 +84,7 @@ impl FindValidatorCommand {
             }
         } else {
             // Neither node_id nor server_ip provided, attempt to detect public IP
-            match get_public_ipv4() {
+            match try_get_public_ipv4() {
                 Ok(ip) => {
                     println!("Detected public IP: {ip}");
                     let server_ip: Ipv4Addr = match ip.parse() {

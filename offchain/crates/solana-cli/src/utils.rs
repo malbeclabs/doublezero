@@ -1,16 +1,15 @@
-use core::fmt;
 use std::{
+    fmt,
     io::{Read, Write},
     net::{Ipv4Addr, SocketAddr, TcpStream, ToSocketAddrs},
-    str::FromStr,
     time::Duration,
 };
 
-use anyhow::{Context, bail};
+use anyhow::{Context, Result, bail};
 use solana_client::{nonblocking::rpc_client::RpcClient, rpc_response::RpcContactInfo};
 use solana_sdk::pubkey::Pubkey;
 
-pub fn get_public_ipv4() -> anyhow::Result<String> {
+pub fn try_get_public_ipv4() -> Result<String> {
     // Resolve the host `ifconfig.me` to IPv4 addresses
     let socket_addr = "ifconfig.me:80"
         .to_socket_addrs()?
@@ -39,10 +38,6 @@ pub fn get_public_ipv4() -> anyhow::Result<String> {
     }
 
     bail!("Failed to extract the IP from the response")
-}
-
-pub fn parse_pubkey(s: &str) -> Result<Pubkey, String> {
-    Pubkey::from_str(s).map_err(|e| format!("Invalid Pubkey {s}: {e}"))
 }
 
 #[derive(Debug, PartialEq)]
@@ -92,4 +87,34 @@ pub fn find_node_by_ip(nodes: &[RpcContactInfo], ip: Ipv4Addr) -> Option<&RpcCon
     nodes
         .iter()
         .find(|n| n.gossip.as_ref().is_some_and(|gossip| gossip.ip() == ip))
+}
+
+pub fn parse_sol_amount_to_lamports(sol_amount_str: String) -> Result<u64> {
+    let sol_amount_str = sol_amount_str.trim();
+
+    if sol_amount_str.is_empty() {
+        bail!("SOL amount cannot be empty");
+    }
+
+    let sol_amount = sol_amount_str
+        .parse::<f64>()
+        .map_err(|_| anyhow::anyhow!("Invalid SOL amount: '{sol_amount_str}'"))?;
+
+    if sol_amount <= 0.0 {
+        bail!("SOL amount must be a positive value");
+    }
+
+    if sol_amount > (u64::MAX as f64 / 1e9) {
+        bail!("SOL amount too large");
+    }
+
+    // Check that value is at most 9 decimal places.
+    if let Some(decimal_index) = sol_amount_str.find('.') {
+        let decimal_places = sol_amount_str.len() - decimal_index - 1;
+        if decimal_places > 9 {
+            bail!("SOL amount cannot have more than 9 decimal places");
+        }
+    }
+
+    Ok((sol_amount * 1e9).round() as u64)
 }

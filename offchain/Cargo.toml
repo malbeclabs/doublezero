@@ -65,9 +65,10 @@ solana-sanitize = "2"
 solana-sdk = "2"
 solana-system-interface = "1"
 solana-transaction-status-client-types = "2"
+spl-associated-token-account-interface = "1"
 spl-token = { version = "8", features = ["no-entrypoint"] }
 svm-hash = { version = "0.1.0", features = ["bytemuck", "borsh"] }
-tabled = { version = "0", features = ["std", "derive"] }
+tabled = { version = "0.20", features = ["std", "derive"] }
 tempfile = "3"
 thiserror = "2"
 tokio = { version = "1", default-features = false, features = ["rt-multi-thread", "signal"] }
@@ -134,6 +135,7 @@ path = "crates/scheduled-command"
 path = "crates/sentinel"
 
 [workspace.dependencies.doublezero-sol-conversion-interface]
+features = ["serde"]
 path = "crates/solana-interface/sol-conversion"
 
 [workspace.dependencies.doublezero-solana-client-tools]

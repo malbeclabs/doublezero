@@ -2,6 +2,21 @@
 
 set -eu
 
+# Wait for Solana fork to start. Only try for 60 seconds.
+for i in {1..30}; do
+    if solana cluster-version -u l > /dev/null 2>&1; then
+        echo "Solana fork is ready."
+        break
+    fi
+        sleep 2
+done
+
+# If not ready after 60 seconds, bail out.
+if ! solana cluster-version -u l > /dev/null 2>&1; then
+    echo "Solana fork did not start within 60 seconds." >&2
+    exit 1
+fi
+
 CLI_BIN=target/debug/doublezero-solana
 
 $CLI_BIN -h
@@ -9,7 +24,7 @@ echo
 
 echo "solana-keygen new --silent --no-bip39-passphrase -o dummy.json"
 solana-keygen new --silent --no-bip39-passphrase -o dummy.json
-solana airdrop -u l 1 -k dummy.json
+solana airdrop -ul 1 -k dummy.json
 echo
 
 DUMMY_KEY=$(solana address -k dummy.json)
@@ -18,13 +33,13 @@ DUMMY_KEY=$(solana address -k dummy.json)
 
 echo "solana-keygen new --silent --no-bip39-passphrase -o another_payer.json"
 solana-keygen new --silent --no-bip39-passphrase -o another_payer.json
-solana airdrop -u l 69 -k another_payer.json
+solana airdrop -ul 69 -k another_payer.json
 echo
 
 ### Establish rewards manager.
 echo "solana-keygen new --silent --no-bip39-passphrase -o rewards_manager.json"
 solana-keygen new --silent --no-bip39-passphrase -o rewards_manager.json
-solana airdrop -u l 1 -k rewards_manager.json
+solana airdrop -ul 1 -k rewards_manager.json
 echo
 
 ### Establish service keys.
@@ -43,8 +58,8 @@ echo "doublezero-solana passport fetch -h"
 $CLI_BIN passport fetch -h
 echo
 
-echo "doublezero-solana passport fetch -u l --config --access-request $DUMMY_KEY"
-$CLI_BIN passport fetch -u l --config --access-request $DUMMY_KEY
+echo "doublezero-solana passport fetch -ul --config --access-request $DUMMY_KEY"
+$CLI_BIN passport fetch -ul --config --access-request $DUMMY_KEY
 echo
 
 echo "doublezero-solana passport request-validator-access -h"
@@ -57,17 +72,17 @@ NODE_ID=$(solana address -k $VALIDATOR_KEYPAIR)
 MESSAGE="service_key=$DUMMY_KEY"
 SIGNATURE=$(solana sign-offchain-message -k $VALIDATOR_KEYPAIR service_key=$DUMMY_KEY)
 
-echo "doublezero-solana passport request-validator-access -u l -v --primary-validator-id $NODE_ID --signature $SIGNATURE --doublezero-address $DUMMY_KEY"
+echo "doublezero-solana passport request-validator-access -ul -v --primary-validator-id $NODE_ID --signature $SIGNATURE --doublezero-address $DUMMY_KEY"
 $CLI_BIN passport request-validator-access \
-    -u l \
+    -ul \
     -v \
     --primary-validator-id $NODE_ID \
     --signature $SIGNATURE \
     --doublezero-address $DUMMY_KEY
 echo
 
-echo "doublezero-solana passport fetch -u l --access-request $DUMMY_KEY"
-$CLI_BIN passport fetch -u l --access-request $DUMMY_KEY
+echo "doublezero-solana passport fetch -ul --access-request $DUMMY_KEY"
+$CLI_BIN passport fetch -ul --access-request $DUMMY_KEY
 echo
 
 ### Revenue distribution commands.
@@ -80,62 +95,64 @@ echo "doublezero-solana revenue-distribution fetch -h"
 $CLI_BIN revenue-distribution fetch -h
 echo
 
-echo "doublezero-solana revenue-distribution fetch config -u l"
-$CLI_BIN revenue-distribution fetch config -u l
+echo "doublezero-solana revenue-distribution fetch config -ul"
+$CLI_BIN revenue-distribution fetch config -ul
 echo
 
-echo "doublezero-solana revenue-distribution fetch validator-deposits -u l"
-$CLI_BIN revenue-distribution fetch validator-deposits -u l
+echo "doublezero-solana revenue-distribution fetch validator-deposits -ul"
+$CLI_BIN revenue-distribution fetch validator-deposits -ul
 echo
 
 echo "doublezero-solana revenue-distribution contributor-rewards -h"
 $CLI_BIN revenue-distribution contributor-rewards -h
 echo
 
-echo "doublezero-solana revenue-distribution contributor-rewards -u l --initialize -v $(solana address -k service_key_1.json)"
+echo "doublezero-solana revenue-distribution contributor-rewards -ul --initialize -v $(solana address -k service_key_1.json)"
 $CLI_BIN revenue-distribution contributor-rewards \
-    -u l \
+    -ul \
     --initialize \
     -v \
     $(solana address -k service_key_1.json)
 echo
 
-echo "doublezero-solana revenue-distribution validator-deposit --fund 4.2069 -u l -v $DUMMY_KEY"
+echo "doublezero-solana revenue-distribution validator-deposit --fund 4.2069 -ul -v --node-id $DUMMY_KEY"
 $CLI_BIN revenue-distribution validator-deposit \
     --fund 4.2069 \
-    -u l \
+    -ul \
     -v \
-    $DUMMY_KEY
+    --node-id $DUMMY_KEY
 echo
 
-echo "doublezero-solana revenue-distribution validator-deposit --fund 69.420 -u l -v $DUMMY_KEY"
+echo "doublezero-solana revenue-distribution validator-deposit --fund 69.420 -ul -v --node-id $DUMMY_KEY"
 $CLI_BIN revenue-distribution validator-deposit \
     --fund 69.420 \
-    -u l \
+    -ul \
     -v \
-    $DUMMY_KEY
+    --node-id $DUMMY_KEY
 echo
 
-echo "doublezero-solana revenue-distribution fetch validator-deposits -u l --node-id $DUMMY_KEY"
-$CLI_BIN revenue-distribution fetch validator-deposits -u l --node-id $DUMMY_KEY
+echo "doublezero-solana revenue-distribution fetch validator-deposits -ul --node-id $DUMMY_KEY"
+$CLI_BIN revenue-distribution fetch validator-deposits -ul --node-id $DUMMY_KEY
 echo
 
-echo "doublezero-solana revenue-distribution fetch validator-deposits -u l"
-$CLI_BIN revenue-distribution fetch validator-deposits -u l
+echo "doublezero-solana revenue-distribution fetch validator-deposits -ul --node-id $DUMMY_KEY --balance-only"
+$CLI_BIN revenue-distribution fetch validator-deposits -ul --node-id $DUMMY_KEY --balance-only
 echo
 
-echo "doublezero-solana revenue-distribution fetch distribution -u l"
-$CLI_BIN revenue-distribution fetch distribution -u l
+echo "doublezero-solana revenue-distribution fetch validator-deposits -ul"
+$CLI_BIN revenue-distribution fetch validator-deposits -ul
 echo
 
-echo "doublezero-solana revenue-distribution fetch distribution -u l --epoch 1"
-$CLI_BIN revenue-distribution fetch distribution -u l --epoch 1
+echo "doublezero-solana revenue-distribution fetch distribution -ul"
+$CLI_BIN revenue-distribution fetch distribution -ul
 echo
 
-### ATA commands.
+echo "doublezero-solana revenue-distribution fetch distribution -ul --dz-epoch 1"
+$CLI_BIN revenue-distribution fetch distribution -ul --dz-epoch 1
+echo
 
-echo "doublezero-solana ata -h"
-$CLI_BIN ata -h
+echo "doublezero-solana revenue-distribution fetch distribution -ul -e 1"
+$CLI_BIN revenue-distribution fetch distribution -ul -e 1
 echo
 
 ### Clean up.

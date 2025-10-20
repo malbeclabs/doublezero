@@ -206,7 +206,7 @@ async fn try_initialize_missing_deposit_accounts(
         let tx_sig = wallet.send_or_simulate_transaction(&transaction).await?;
 
         if let Some(tx_sig) = tx_sig {
-            println!("Initialize solana validator deposit: {tx_sig}");
+            println!("Initialize Solana validator deposit: {tx_sig}");
 
             wallet.print_verbose_output(&[tx_sig]).await?;
         }

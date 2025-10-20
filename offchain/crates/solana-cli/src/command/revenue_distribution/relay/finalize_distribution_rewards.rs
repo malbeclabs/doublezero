@@ -16,7 +16,7 @@ use crate::command::revenue_distribution::try_fetch_program_config;
 
 #[derive(Debug, Args, Clone)]
 pub struct FinalizeDistributionRewards {
-    #[arg(long)]
+    #[arg(long, short = 'e')]
     dz_epoch: Option<u64>,
 
     #[command(flatten)]

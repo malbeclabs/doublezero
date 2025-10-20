@@ -639,7 +639,7 @@ async fn test_initialize_device_latency_samples_fail_origin_device_not_activated
         .create_exchange(ExchangeCreateArgs {
             code: "EX1".to_string(),
             name: "Test Exchange".to_string(),
-            bgp_community: 1,
+            reserved: 0,
             ..ExchangeCreateArgs::default()
         })
         .await
@@ -775,7 +775,7 @@ async fn test_initialize_device_latency_samples_fail_target_device_not_activated
         .create_exchange(ExchangeCreateArgs {
             code: "EX1".to_string(),
             name: "Test Exchange".to_string(),
-            bgp_community: 1,
+            reserved: 0,
             ..ExchangeCreateArgs::default()
         })
         .await
@@ -911,7 +911,7 @@ async fn test_initialize_device_latency_samples_fail_link_not_activated() {
         .create_exchange(ExchangeCreateArgs {
             code: "EX1".to_string(),
             name: "Test Exchange".to_string(),
-            bgp_community: 1,
+            reserved: 0,
             ..ExchangeCreateArgs::default()
         })
         .await
@@ -1043,7 +1043,7 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_devices() {
         .create_exchange(ExchangeCreateArgs {
             code: "EX1".to_string(),
             name: "Test Exchange".to_string(),
-            bgp_community: 1,
+            reserved: 0,
             ..ExchangeCreateArgs::default()
         })
         .await
@@ -1212,7 +1212,7 @@ async fn test_initialize_device_latency_samples_succeeds_with_reversed_link_side
         .create_exchange(ExchangeCreateArgs {
             code: "EX1".into(),
             name: "Exchange".into(),
-            bgp_community: 1,
+            reserved: 0,
             ..ExchangeCreateArgs::default()
         })
         .await
@@ -1488,7 +1488,7 @@ async fn test_initialize_device_latency_samples_fail_agent_not_owner_of_origin_d
         .create_exchange(ExchangeCreateArgs {
             code: "EX".to_string(),
             name: "Exchange".to_string(),
-            bgp_community: 1,
+            reserved: 0,
             ..ExchangeCreateArgs::default()
         })
         .await

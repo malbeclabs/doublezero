@@ -78,6 +78,7 @@ async fn test_doublezero_program() {
             device_tunnel_block: "10.0.0.0/24".parse().unwrap(),
             user_tunnel_block: "10.0.0.0/24".parse().unwrap(),
             multicastgroup_block: "224.0.0.0/4".parse().unwrap(),
+            next_bgp_community: None,
         }),
         vec![
             AccountMeta::new(globalconfig_pubkey, false),
@@ -190,7 +191,7 @@ async fn test_doublezero_program() {
         name: "Los Angeles".to_string(),
         lat: 1.234,
         lng: 4.567,
-        bgp_community: 0,
+        reserved: 0,
     };
 
     println!("Testing Exchange LA initialization...");
@@ -201,6 +202,7 @@ async fn test_doublezero_program() {
         DoubleZeroInstruction::CreateExchange(exchange_la),
         vec![
             AccountMeta::new(exchange_la_pubkey, false),
+            AccountMeta::new(globalconfig_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
@@ -232,7 +234,7 @@ async fn test_doublezero_program() {
         name: "New York".to_string(),
         lat: 1.234,
         lng: 4.567,
-        bgp_community: 0,
+        reserved: 0,
     };
 
     execute_transaction(
@@ -242,6 +244,7 @@ async fn test_doublezero_program() {
         DoubleZeroInstruction::CreateExchange(exchange_ny),
         vec![
             AccountMeta::new(exchange_ny_pubkey, false),
+            AccountMeta::new(globalconfig_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,

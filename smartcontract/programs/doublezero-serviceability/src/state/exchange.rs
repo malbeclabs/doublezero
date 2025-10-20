@@ -7,10 +7,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError, pubkey::Pubkey};
 use std::fmt;
 
-/// Minimum BGP community value for exchanges (inclusive)
 pub const BGP_COMMUNITY_MIN: u16 = 10000;
-
-/// Maximum BGP community value for exchanges (inclusive)
 pub const BGP_COMMUNITY_MAX: u16 = 10999;
 
 #[repr(u8)]
@@ -178,7 +175,6 @@ impl Validate for Exchange {
             msg!("Invalid longitude: {}", self.lng);
             return Err(DoubleZeroError::InvalidLongitude);
         }
-        // BGP Community must be 0 or in range BGP_COMMUNITY_MIN-BGP_COMMUNITY_MAX
         if self.bgp_community != 0
             && (self.bgp_community < BGP_COMMUNITY_MIN || self.bgp_community > BGP_COMMUNITY_MAX)
         {

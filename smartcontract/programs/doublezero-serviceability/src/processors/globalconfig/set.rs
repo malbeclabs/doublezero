@@ -3,7 +3,7 @@ use crate::{
     globalstate::{globalconfig_write_with_realloc, globalstate_get},
     pda::*,
     seeds::{SEED_CONFIG, SEED_PREFIX},
-    state::{accounttype::AccountType, globalconfig::GlobalConfig},
+    state::{accounttype::AccountType, exchange::BGP_COMMUNITY_MIN, globalconfig::GlobalConfig},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use doublezero_program_common::{create_account::try_create_account, types::NetworkV4};
@@ -23,18 +23,20 @@ pub struct SetGlobalConfigArgs {
     pub device_tunnel_block: NetworkV4,
     pub user_tunnel_block: NetworkV4,
     pub multicastgroup_block: NetworkV4,
+    pub next_bgp_community: Option<u16>,
 }
 
 impl fmt::Debug for SetGlobalConfigArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "local_asn: {}, remote_asn: {}, tunnel_block: {}, user _block: {}, multicastgroup_block: {}",
+            "local_asn: {}, remote_asn: {}, tunnel_block: {}, user _block: {}, multicastgroup_block: {}, next_bgp_community: {:?}",
             self.local_asn,
             self.remote_asn,
             &self.device_tunnel_block,
             &self.user_tunnel_block,
             &self.multicastgroup_block,
+            self.next_bgp_community,
         )
     }
 }
@@ -65,6 +67,14 @@ pub fn process_set_globalconfig(
         "Invalid GlobalConfig PubKey"
     );
 
+    let next_bgp_community = if let Some(val) = value.next_bgp_community {
+        val
+    } else if pda_account.try_borrow_data()?.is_empty() {
+        BGP_COMMUNITY_MIN
+    } else {
+        GlobalConfig::try_from(pda_account)?.next_bgp_community
+    };
+
     let data: GlobalConfig = GlobalConfig {
         account_type: AccountType::GlobalConfig,
         owner: *payer_account.key,
@@ -74,6 +84,7 @@ pub fn process_set_globalconfig(
         device_tunnel_block: value.device_tunnel_block,
         user_tunnel_block: value.user_tunnel_block,
         multicastgroup_block: value.multicastgroup_block,
+        next_bgp_community,
     };
 
     let account_space = data.size();

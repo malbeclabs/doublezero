@@ -3,10 +3,7 @@ use crate::{
     pda::*,
     programversion::ProgramVersion,
     seeds::{SEED_GLOBALSTATE, SEED_PREFIX},
-    state::{
-        accounttype::AccountType, exchange::BGP_COMMUNITY_MIN, globalstate::GlobalState,
-        programconfig::ProgramConfig,
-    },
+    state::{accounttype::AccountType, globalstate::GlobalState, programconfig::ProgramConfig},
 };
 use borsh::BorshSerialize;
 use doublezero_program_common::create_account::try_create_account;
@@ -69,7 +66,6 @@ pub fn initialize_global_state(program_id: &Pubkey, accounts: &[AccountInfo]) ->
         sentinel_authority_pk: *payer_account.key,
         contributor_airdrop_lamports: 1_000_000_000,
         user_airdrop_lamports: 40_000,
-        next_bgp_community: BGP_COMMUNITY_MIN,
     };
 
     // Size of our index account

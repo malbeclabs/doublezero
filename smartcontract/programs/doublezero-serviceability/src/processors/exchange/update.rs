@@ -2,9 +2,10 @@ use core::fmt;
 
 use crate::{
     error::DoubleZeroError,
-    globalstate::{globalstate_get, globalstate_write},
+    globalstate::{globalconfig_write_with_realloc, globalstate_get},
     helper::*,
-    state::exchange::Exchange,
+    pda::get_globalconfig_pda,
+    state::{exchange::Exchange, globalconfig::GlobalConfig},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use doublezero_program_common::validate_account_code;
@@ -43,6 +44,7 @@ pub fn process_update_exchange(
     let accounts_iter = &mut accounts.iter();
 
     let exchange_account = next_account_info(accounts_iter)?;
+    let globalconfig_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
@@ -56,6 +58,10 @@ pub fn process_update_exchange(
         "Invalid PDA Account Owner"
     );
     assert_eq!(
+        globalconfig_account.owner, program_id,
+        "Invalid GlobalConfig Account Owner"
+    );
+    assert_eq!(
         globalstate_account.owner, program_id,
         "Invalid GlobalState Account Owner"
     );
@@ -67,13 +73,22 @@ pub fn process_update_exchange(
     // Check if the account is writable
     assert!(exchange_account.is_writable, "PDA Account is not writable");
     // Parse the global state account & check if the payer is in the allowlist
-    let mut globalstate = globalstate_get(globalstate_account)?;
+    let globalstate = globalstate_get(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
+    // We need to access globalconfig in order to assign BGP community
+    let mut globalconfig = GlobalConfig::try_from(&globalconfig_account.data.borrow()[..])?;
+    let (globalconfig_pda, globalconfig_bump_seed) = get_globalconfig_pda(program_id);
+    assert_eq!(
+        globalconfig_account.key, &globalconfig_pda,
+        "Invalid GlobalConfig PubKey"
+    );
+
     let mut exchange: Exchange = Exchange::try_from(exchange_account)?;
 
+    let mut globalconfig_updated = false;
     if let Some(ref code) = value.code {
         exchange.code =
             validate_account_code(code).map_err(|_| DoubleZeroError::InvalidAccountCode)?;
@@ -88,11 +103,20 @@ pub fn process_update_exchange(
         exchange.lng = *lng;
     }
     if let Some(_bgp_community) = value.bgp_community {
-        exchange.bgp_community = assign_bgp_community(&mut globalstate);
+        exchange.bgp_community = assign_bgp_community(&mut globalconfig);
+        globalconfig_updated = true;
     }
 
     account_write(exchange_account, &exchange, payer_account, system_program)?;
-    globalstate_write(globalstate_account, &globalstate)?;
+    if globalconfig_updated {
+        globalconfig_write_with_realloc(
+            globalconfig_account,
+            &globalconfig,
+            payer_account,
+            system_program,
+            globalconfig_bump_seed,
+        );
+    }
 
     #[cfg(test)]
     msg!("Updated: {:?}", exchange);

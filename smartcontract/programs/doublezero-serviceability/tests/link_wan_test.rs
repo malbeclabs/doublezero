@@ -54,7 +54,7 @@ async fn test_wan_link() {
     )
     .await;
 
-    let (_config_pubkey, _) = get_globalconfig_pda(&program_id);
+    let (config_pubkey, _) = get_globalconfig_pda(&program_id);
 
     execute_transaction(
         &mut banks_client,
@@ -66,8 +66,12 @@ async fn test_wan_link() {
             device_tunnel_block: "10.0.0.0/24".parse().unwrap(),
             user_tunnel_block: "10.0.0.0/24".parse().unwrap(),
             multicastgroup_block: "10.0.0.0/24".parse().unwrap(),
+            next_bgp_community: None,
         }),
-        vec![AccountMeta::new(globalstate_pubkey, false)],
+        vec![
+            AccountMeta::new(config_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
         &payer,
     )
     .await;
@@ -116,10 +120,11 @@ async fn test_wan_link() {
             name: "Los Angeles".to_string(),
             lat: 1.234,
             lng: 4.567,
-            bgp_community: 0,
+            reserved: 0,
         }),
         vec![
             AccountMeta::new(exchange_pubkey, false),
+            AccountMeta::new(config_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,

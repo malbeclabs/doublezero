@@ -101,13 +101,34 @@ pub fn derive(input: TokenStream) -> TokenStream {
 
         if let Some(dw) = &f.deser_with {
             quote! {
-                let #tmp: #ty = (#dw)(&mut data).ok().unwrap_or_else(|| #fallback);
+                let before_len = data.len();
+                let #tmp: #ty = match (#dw)(&mut data) {
+                    Ok(v) => v,
+                    Err(e_any) => {
+                        let after_len = data.len();
+                        if after_len == before_len {
+                            #fallback
+                        } else {
+                            let e: ::std::io::Error = ::core::convert::Into::into(e_any);
+                            return Err(<#error_ty as ::core::convert::From<::std::io::Error>>::from(e));
+                        }
+                    }
+                };
             }
         } else {
             quote! {
-                let #tmp: #ty = <#ty as ::borsh::BorshDeserialize>::deserialize(&mut data)
-                    .ok()
-                    .unwrap_or_else(|| #fallback);
+                let before_len = data.len();
+                let #tmp: #ty = match <#ty as ::borsh::BorshDeserialize>::deserialize(&mut data) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        let after_len = data.len();
+                        if after_len == before_len {
+                            #fallback
+                        } else {
+                            return Err(<#error_ty as ::core::convert::From<::std::io::Error>>::from(e));
+                        }
+                    }
+                };
             }
         }
     });

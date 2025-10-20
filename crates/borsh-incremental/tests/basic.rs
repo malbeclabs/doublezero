@@ -163,16 +163,57 @@ fn test_truncated_input_v2_defaults() {
     };
     let old_bytes = borsh::to_vec(&old).unwrap();
 
-    // Truncate aggressively to force defaults for name, count, and status.
-    let truncated = &old_bytes[..4];
-    let v2 = ExampleV2::try_from(truncated).unwrap();
+    // Keep only the fully-encoded `name`, drop the 4-byte `count`.
+    // V2 should default `count` to 0 and `status` to "active".
+    let truncated_after_name = &old_bytes[..old_bytes.len() - 4];
+    let v2 = ExampleV2::try_from(truncated_after_name).unwrap();
+
     assert_eq!(
         v2,
         ExampleV2 {
-            name: "Unnamed".into(),
+            name: "Alice".into(),
             count: 0,
             status: "active".into()
         }
+    );
+}
+
+#[test]
+fn test_truncated_input_v2_partial_field_errors() {
+    use borsh::BorshSerialize;
+
+    #[derive(BorshSerialize)]
+    struct ExampleV1 {
+        name: String,
+        count: u32,
+    }
+
+    #[derive(BorshDeserializeIncremental, Debug, PartialEq)]
+    struct ExampleV2 {
+        #[incremental(default = "Unnamed".to_string())]
+        name: String,
+        count: u32,
+        #[incremental(default = "active".to_string())]
+        status: String,
+    }
+
+    let old = ExampleV1 {
+        name: "Alice".into(),
+        count: 5,
+    };
+    let old_bytes = borsh::to_vec(&old).unwrap();
+
+    // Truncate *inside* the first field's payload (after reading the 4-byte length).
+    // "Alice" => len=5; keep 4 (len) + 2 (partial payload) = 6 bytes total.
+    let truncated = &old_bytes[..(4 + 2)];
+    let err = ExampleV2::try_from(truncated).unwrap_err();
+
+    // Borsh may surface either UnexpectedEof or InvalidData here; accept either.
+    let k = err.kind();
+    assert!(
+        k == std::io::ErrorKind::UnexpectedEof || k == std::io::ErrorKind::InvalidData,
+        "got {:?}",
+        k
     );
 }
 

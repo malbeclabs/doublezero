@@ -29,8 +29,20 @@ fn main() {
     let parsed_v2 = ExampleV2::try_from(&old_bytes[..]).unwrap();
     println!("Backward-compatible decode: {:?}", parsed_v2);
 
-    // Simulate truncated input — only part of the serialized name
-    let truncated = &old_bytes[..4];
-    let partial = ExampleV2::try_from(truncated).unwrap();
-    println!("Partial decode with defaults: {:?}", partial);
+    // Simulate truncated input — only part of the serialized name (partial field)
+    // This now errors under the new semantics.
+    let truncated_partial = &old_bytes[..(4 + 2)]; // 4 bytes length + 2 bytes of "Alice"
+    match ExampleV2::try_from(truncated_partial) {
+        Ok(v) => println!("Unexpected success on partial field: {:?}", v),
+        Err(e) => println!("Partial decode now errors: {}", e),
+    }
+
+    // If you truncate cleanly after a whole field (e.g., drop `count` entirely),
+    // defaults still apply for missing tail fields.
+    let truncated_after_name = &old_bytes[..old_bytes.len() - 4]; // drop the 4-byte `count`
+    let defaults_applied = ExampleV2::try_from(truncated_after_name).unwrap();
+    println!(
+        "Truncated after name (defaults applied): {:?}",
+        defaults_applied
+    );
 }

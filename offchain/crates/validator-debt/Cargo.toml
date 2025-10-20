@@ -32,6 +32,7 @@ mockall.workspace = true
 reqwest.workspace = true
 serde_json.workspace = true
 serde.workspace = true
+slack-notifier.workspace = true
 solana-account-decoder.workspace = true
 solana-client.workspace = true
 solana-sdk.workspace = true

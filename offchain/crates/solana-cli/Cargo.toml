@@ -27,6 +27,7 @@ doublezero_sdk.workspace = true
 itertools.workspace = true
 reqwest.workspace = true
 serde_json.workspace = true
+slack-notifier.workspace = true
 solana-account-decoder-client-types.workspace = true
 solana-client.workspace = true
 solana-commitment-config.workspace = true

@@ -25,6 +25,7 @@ use doublezero_solana_validator_debt::{
     transaction::{SOLANA_SEED_PREFIX, Transaction},
     validator_debt::ComputedSolanaValidatorDebts,
 };
+use slack_notifier::validator_debt;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_commitment_config::CommitmentConfig;
 use solana_sdk::{compute_budget::ComputeBudgetInstruction, pubkey::Pubkey};
@@ -115,6 +116,8 @@ async fn execute_pay_solana_validator_debt(
     let tx_results = transaction
         .pay_solana_validator_debt(&wallet.connection.rpc_client, computed_debt, epoch)
         .await?;
+
+    validator_debt::post_debt_collection_to_slack(tx_results.len(), epoch, wallet.dry_run).await?;
 
     if let Some(ExportFormat::Csv) = export {
         let now = Utc::now();

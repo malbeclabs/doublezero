@@ -16,14 +16,15 @@ use doublezero_serviceability::state::{
 };
 use doublezero_solana_client_tools::{log_info, log_warn};
 use leaky_bucket::RateLimiter;
-use std::fs::File;
+use serde::Serialize;
+use slack_notifier;
 
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::{clock::Clock, pubkey::Pubkey, sysvar::clock};
-use std::{collections::HashMap, env, str::FromStr};
+use std::{collections::HashMap, env, fs::File, str::FromStr};
 use tabled::{Table, Tabled, settings::Style};
 
-#[derive(Debug, Default, Tabled)]
+#[derive(Debug, Default, Serialize, Tabled)]
 pub struct WriteSummary {
     pub validator_pubkey: String,
     pub total_debt: u64,
@@ -63,6 +64,12 @@ pub async fn finalize_distribution<T: ValidatorRewards>(
 
     if let Some(finalized_sig) = transaction_signature {
         println!("finalized distribution tx: {finalized_sig:?}");
+        slack_notifier::validator_debt::post_finalized_distribution_to_slack(
+            finalized_sig,
+            dz_epoch,
+            transaction.dry_run,
+        )
+        .await?;
     }
     Ok(())
 }
@@ -332,7 +339,7 @@ pub async fn calculate_validator_debt<T: ValidatorRewards>(
         bail!("Debt posted only to DoubleZero Ledger and process exited")
     }
 
-    write_transaction(
+    let submitted_tx = write_transaction(
         solana_debt_calculator.solana_rpc_client(),
         &computed_solana_validator_debts,
         &transaction,
@@ -352,16 +359,31 @@ pub async fn calculate_validator_debt<T: ValidatorRewards>(
         .into_iter()
         .map(|vr| WriteSummary {
             validator_pubkey: vr.node_id.to_string().clone(),
-            total_debt: debt_map[&vr.node_id.to_string()], // this should panic if not found
-                                                           // validator_pubkey: vr.validator_id.clone(),
-                                                           // jito_rewards: vr.jito,
-                                                           // block_base_rewards: vr.block_base,
-                                                           // block_priority_rewards: vr.block_priority,
-                                                           // inflation_rewards: vr.inflation,
-                                                           // total_rewards: vr.total,
-                                                           // total_debt: debt_map[&vr.validator_id], // this should panic if not found
+            total_debt: debt_map[&vr.node_id.to_string()],
+            // this should panic if not found
+            // validator_pubkey: vr.validator_id.clone(),
+            // jito_rewards: vr.jito,
+            // block_base_rewards: vr.block_base,
+            // block_priority_rewards: vr.block_priority,
+            // inflation_rewards: vr.inflation,
+            // total_rewards: vr.total,
+            // total_debt: debt_map[&vr.validator_id], // this should panic if not found
         })
         .collect();
+
+    slack_notifier::validator_debt::post_distribution_to_slack(
+        dz_epoch,
+        solana_epoch,
+        transaction.dry_run,
+        computed_solana_validator_debts.debts.len() as u64,
+        computed_solana_validator_debts
+            .debts
+            .iter()
+            .map(|d| d.amount)
+            .sum(),
+        submitted_tx,
+    )
+    .await?;
 
     println!(
         "Validator rewards for solana epoch {} and validator debt for DoubleZero epoch {dz_epoch}:\n{}",
@@ -378,7 +400,7 @@ async fn write_transaction(
     computed_solana_validator_debts: &ComputedSolanaValidatorDebts,
     transaction: &Transaction,
     dz_epoch: u64,
-) -> Result<()> {
+) -> Result<Option<String>> {
     let merkle_root = computed_solana_validator_debts.merkle_root();
 
     // Create the data for the solana transaction
@@ -407,9 +429,10 @@ async fn write_transaction(
 
     if let Some(tx) = tx_submitted_sig {
         println!("submitted distribution tx: {tx:?}");
+        Ok(Some(tx))
+    } else {
+        Ok(None)
     }
-
-    Ok(())
 }
 async fn create_or_validate_ledger_record<T: ValidatorRewards>(
     solana_debt_calculator: &T,

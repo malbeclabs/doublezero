@@ -16,11 +16,15 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Extract version from tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF_NAME#doublezero-monitor-tool/}" >> $GITHUB_OUTPUT
       - name: Checkout doublezero_monitor repo
         uses: actions/checkout@v4
         with:
           repository: alexpyattaev/doublezero_monitor
           path: doublezero_monitor
+          ref: ${{ steps.get_version.outputs.VERSION }}
       - name: install dependencies for rpm packaging
         run: |
           sudo apt update

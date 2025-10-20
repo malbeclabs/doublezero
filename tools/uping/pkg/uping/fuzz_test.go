@@ -3,75 +3,69 @@
 package uping
 
 import (
-	"bytes"
 	"encoding/binary"
+	"math/rand"
 	"testing"
+
+	"golang.org/x/net/icmp"
+	"golang.org/x/net/ipv4"
 )
 
-// Ensures validateEchoReply never panics on arbitrary input.
+// Must not panic on arbitrary bytes (IPv4 or bare ICMP).
 func FuzzUping_ValidateEchoReply_Malformed_NoPanic(f *testing.F) {
 	f.Add([]byte{})
-	f.Add([]byte{0x45, 0x00})
-	f.Add(make([]byte, 19))
+	f.Add([]byte{0x45})                // minimal header byte
+	f.Add(make([]byte, 19))            // truncated IPv4
+	f.Add([]byte{8, 0, 0, 0, 0, 0, 0}) // short ICMP
 	f.Fuzz(func(t *testing.T, pkt []byte) {
 		if len(pkt) > 1<<16 {
 			pkt = pkt[:1<<16]
 		}
-		validateEchoReply(pkt, 0xBEEF, 1, 99)
+		_, _, _, _ = validateEchoReply(pkt, 0xBEEF, 1, 99)
 	})
 }
 
-// Verifies ensureICMPBuf correctly sizes and reuses backing storage when large enough.
-func FuzzUping_EnsureICMPBuf(f *testing.F) {
-	f.Add(0, 0)
-	f.Add(32, 8)
-	f.Fuzz(func(t *testing.T, capHint, payloadLen int) {
-		if capHint < 0 {
-			capHint = -capHint
+// ICMP checksum property: set -> validates to zero; flip a byte -> non-zero.
+func FuzzUping_ICMPChecksum_Roundtrip(f *testing.F) {
+	seed := fuzzEchoReply(0x1234, 7, 42, 8)
+	f.Add(seed)
+	f.Fuzz(func(t *testing.T, msg []byte) {
+		if len(msg) < 8 {
+			msg = append(msg, make([]byte, 8-len(msg))...)
 		}
-		if payloadLen < 0 {
-			payloadLen = -payloadLen
+		if len(msg) > 2048 {
+			msg = msg[:2048]
 		}
-		if capHint > 4096 {
-			capHint = 4096
+		binary.BigEndian.PutUint16(msg[2:], 0)
+		cs := icmpChecksum(msg)
+		binary.BigEndian.PutUint16(msg[2:], cs)
+		if icmpChecksum(msg) != 0 {
+			t.Fatalf("checksum not zero after set")
 		}
-		if payloadLen > 2048 {
-			payloadLen = 2048
-		}
-
-		dst := make([]byte, 0, capHint)
-		out := ensureICMPBuf(dst, payloadLen)
-		if len(out) != 8+payloadLen {
-			t.Fatalf("len=%d want=%d", len(out), 8+payloadLen)
-		}
-		if cap(dst) >= 8+payloadLen && len(dst) == 0 && payloadLen > 0 {
-			if &out[0] != &dst[:8+payloadLen][0] {
-				t.Fatalf("expected reuse of dst backing array")
+		if len(msg) > 8 {
+			i := 8 + rand.Intn(len(msg)-8)
+			msg[i] ^= 0xFF
+			if icmpChecksum(msg) == 0 {
+				t.Fatalf("checksum still zero after flip")
 			}
 		}
 	})
 }
 
-// Verifies fillICMPEcho correctly constructs an ICMP echo request packet.
-func FuzzUping_FillICMPEcho(f *testing.F) {
-	f.Add(uint16(0x1234), uint16(7), []byte{1, 2, 3, 4, 5, 6, 7, 8})
-	f.Fuzz(func(t *testing.T, id, seq uint16, payload []byte) {
-		if len(payload) > 512 {
-			payload = payload[:512]
-		}
-		dst := ensureICMPBuf(nil, len(payload))
-		fillICMPEcho(dst, id, seq, payload)
-		if dst[0] != 8 || dst[1] != 0 {
-			t.Fatalf("not echo request")
-		}
-		if binary.BigEndian.Uint16(dst[4:6]) != id || binary.BigEndian.Uint16(dst[6:8]) != seq {
-			t.Fatalf("id/seq mismatch")
-		}
-		if !bytes.Equal(dst[8:], payload) {
-			t.Fatalf("payload mismatch")
-		}
-		if icmpChecksum(dst) != 0 {
-			t.Fatalf("bad checksum")
-		}
-	})
+// Bare helper: valid Echo Reply bytes.
+func fuzzEchoReply(id, seq uint16, nonce uint64, extra int) []byte {
+	if extra < 0 {
+		extra = -extra
+	}
+	if extra > 1024 {
+		extra = 1024
+	}
+	data := make([]byte, 8+extra)
+	binary.BigEndian.PutUint64(data[:8], nonce)
+	msg := &icmp.Message{
+		Type: ipv4.ICMPTypeEchoReply, Code: 0,
+		Body: &icmp.Echo{ID: int(id), Seq: int(seq), Data: data},
+	}
+	b, _ := msg.Marshal(nil)
+	return b
 }

@@ -11,11 +11,13 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"golang.org/x/net/icmp"
+	"golang.org/x/net/ipv4"
 	"golang.org/x/sys/unix"
 )
 
 // Ensures the listener pinned to loopback replies to echo requests and reports RTTs.
-func TestListener_HDRINCL_Loopback_Responds(t *testing.T) {
+func TestListener_Loopback_Responds(t *testing.T) {
 	t.Parallel()
 	requireRawSockets(t)
 
@@ -90,23 +92,20 @@ func TestListener_Ignores_NonEcho_Then_Replies(t *testing.T) {
 	go func() { _ = l.Listen(ctx) }()
 	time.Sleep(40 * time.Millisecond)
 
-	fd, err := unix.Socket(unix.AF_INET, unix.SOCK_RAW, unix.IPPROTO_ICMP)
+	// Inject a non-echo ICMP (dest unreachable) using ipv4.PacketConn.
+	c, err := net.ListenIP("ip4:icmp", &net.IPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	require.NoError(t, err)
-	defer unix.Close(fd)
+	ip4c := ipv4.NewPacketConn(c)
+	defer func() { _ = ip4c.Close(); _ = c.Close() }()
+	_ = ip4c.SetTTL(64)
 
-	icmp := make([]byte, 8)
-	icmp[0] = 3
-	binary.BigEndian.PutUint16(icmp[2:], icmpChecksum(icmp))
-	ip := make([]byte, 20+len(icmp))
-	ip[0] = 0x45
-	ip[9] = 1
-	copy(ip[12:16], net.IPv4(127, 0, 0, 1).To4())
-	copy(ip[16:20], net.IPv4(127, 0, 0, 1).To4())
-	binary.BigEndian.PutUint16(ip[10:], icmpChecksum(ip[:20]))
-	copy(ip[20:], icmp)
+	nonEcho := &icmp.Message{Type: ipv4.ICMPTypeDestinationUnreachable, Code: 0, Body: &icmp.DstUnreach{}}
+	nb, err := nonEcho.Marshal(nil)
+	require.NoError(t, err)
+	_, err = ip4c.WriteTo(nb, &ipv4.ControlMessage{IfIndex: 1, Src: net.IPv4(127, 0, 0, 1)}, &net.IPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	require.NoError(t, err)
 
-	require.NoError(t, unix.Sendto(fd, ip, 0, &unix.SockaddrInet4{Addr: [4]byte{127, 0, 0, 1}}))
-
+	// Now a real echo via our Sender should still get a reply.
 	s, err := NewSender(SenderConfig{Source: net.IPv4(127, 0, 0, 1), Interface: "lo"})
 	require.NoError(t, err)
 	defer s.Close()
@@ -138,7 +137,7 @@ func TestListenerConfig_Validate_Errors(t *testing.T) {
 }
 
 // Exercises large ICMP payloads and ensures the listener continues to reply.
-func TestListener_HDRINCL_LargePayload(t *testing.T) {
+func TestListener_LargePayload(t *testing.T) {
 	t.Parallel()
 	requireRawSockets(t)
 
@@ -154,30 +153,25 @@ func TestListener_HDRINCL_LargePayload(t *testing.T) {
 	go func() { _ = l.Listen(ctx) }()
 	time.Sleep(40 * time.Millisecond)
 
-	fd, err := unix.Socket(unix.AF_INET, unix.SOCK_RAW, unix.IPPROTO_ICMP)
+	// Send a large echo request using ipv4.PacketConn to 127.0.0.1.
+	c, err := net.ListenIP("ip4:icmp", &net.IPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	require.NoError(t, err)
-	defer unix.Close(fd)
+	ip4c := ipv4.NewPacketConn(c)
+	defer func() { _ = ip4c.Close(); _ = c.Close() }()
+	_ = ip4c.SetTTL(64)
 
 	payload := make([]byte, 4096)
 	_, _ = rand.Read(payload)
-	req := make([]byte, 8+len(payload))
-	req[0] = 8
-	req[1] = 0
-	binary.BigEndian.PutUint16(req[4:], 0x4242)
-	binary.BigEndian.PutUint16(req[6:], 0x0102)
-	copy(req[8:], payload)
-	binary.BigEndian.PutUint16(req[2:], icmpChecksum(req))
+	msg := &icmp.Message{
+		Type: ipv4.ICMPTypeEcho, Code: 0,
+		Body: &icmp.Echo{ID: 0x4242, Seq: 0x0102, Data: payload},
+	}
+	wb, err := msg.Marshal(nil)
+	require.NoError(t, err)
+	_, err = ip4c.WriteTo(wb, &ipv4.ControlMessage{IfIndex: 1, Src: net.IPv4(127, 0, 0, 1)}, &net.IPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	require.NoError(t, err)
 
-	ip := make([]byte, 20+len(req))
-	ip[0] = 0x45
-	ip[9] = 1
-	copy(ip[12:16], net.IPv4(127, 0, 0, 1).To4())
-	copy(ip[16:20], net.IPv4(127, 0, 0, 1).To4())
-	binary.BigEndian.PutUint16(ip[10:], icmpChecksum(ip[:20]))
-	copy(ip[20:], req)
-
-	require.NoError(t, unix.Sendto(fd, ip, 0, &unix.SockaddrInet4{Addr: [4]byte{127, 0, 0, 1}}))
-
+	// Confirm we still get a reply using the Sender path.
 	s, err := NewSender(SenderConfig{Source: net.IPv4(127, 0, 0, 1), Interface: "lo"})
 	require.NoError(t, err)
 	defer s.Close()
@@ -188,7 +182,7 @@ func TestListener_HDRINCL_LargePayload(t *testing.T) {
 }
 
 // Verifies truncated/invalid IPv4/ICMP inputs are ignored and normal operation resumes.
-func TestListener_HDRINCL_IgnoresTruncatedJunkAndKeepsWorking(t *testing.T) {
+func TestListener_IgnoresTruncatedJunkAndKeepsWorking(t *testing.T) {
 	t.Parallel()
 	requireRawSockets(t)
 
@@ -204,14 +198,17 @@ func TestListener_HDRINCL_IgnoresTruncatedJunkAndKeepsWorking(t *testing.T) {
 	go func() { _ = l.Listen(ctx) }()
 	time.Sleep(40 * time.Millisecond)
 
+	// For malformed frames, use raw unix socket (ipv4.PacketConn won’t craft broken IP).
 	fd, err := unix.Socket(unix.AF_INET, unix.SOCK_RAW, unix.IPPROTO_ICMP)
 	require.NoError(t, err)
 	defer unix.Close(fd)
 
 	dst := &unix.SockaddrInet4{Addr: [4]byte{127, 0, 0, 1}}
 
+	// Truncated IP header
 	require.NoError(t, unix.Sendto(fd, []byte{0x45, 0x00}, 0, dst))
 
+	// Non-ICMP protocol in IP header
 	ip := make([]byte, 20+8)
 	ip[0] = 0x45
 	ip[9] = 6
@@ -220,14 +217,16 @@ func TestListener_HDRINCL_IgnoresTruncatedJunkAndKeepsWorking(t *testing.T) {
 	binary.BigEndian.PutUint16(ip[10:], icmpChecksum(ip[:20]))
 	require.NoError(t, unix.Sendto(fd, ip, 0, dst))
 
-	ip3 := make([]byte, 20+4)
-	ip3[0] = 0x45
-	ip3[9] = 1
-	copy(ip3[12:16], []byte{127, 0, 0, 1})
-	copy(ip3[16:20], []byte{127, 0, 0, 1})
-	binary.BigEndian.PutUint16(ip3[10:], icmpChecksum(ip3[:20]))
-	require.NoError(t, unix.Sendto(fd, ip3, 0, dst))
+	// Too-short ICMP payload
+	ip2 := make([]byte, 20+4)
+	ip2[0] = 0x45
+	ip2[9] = 1
+	copy(ip2[12:16], []byte{127, 0, 0, 1})
+	copy(ip2[16:20], []byte{127, 0, 0, 1})
+	binary.BigEndian.PutUint16(ip2[10:], icmpChecksum(ip2[:20]))
+	require.NoError(t, unix.Sendto(fd, ip2, 0, dst))
 
+	// Normal echo still works afterward.
 	s, err := NewSender(SenderConfig{Source: net.IPv4(127, 0, 0, 1), Interface: "lo"})
 	require.NoError(t, err)
 	defer s.Close()
@@ -254,6 +253,7 @@ func TestListener_Ignores_BadICMPChecksum_Then_Replies(t *testing.T) {
 	go func() { _ = l.Listen(ctx) }()
 	time.Sleep(40 * time.Millisecond)
 
+	// Craft an echo with an intentionally bad checksum; inject via raw unix.
 	fd, err := unix.Socket(unix.AF_INET, unix.SOCK_RAW, unix.IPPROTO_ICMP)
 	require.NoError(t, err)
 	defer unix.Close(fd)
@@ -280,6 +280,7 @@ func TestListener_Ignores_BadICMPChecksum_Then_Replies(t *testing.T) {
 
 	require.NoError(t, unix.Sendto(fd, ip, 0, &unix.SockaddrInet4{Addr: [4]byte{127, 0, 0, 1}}))
 
+	// Normal echo afterwards.
 	s, err := NewSender(SenderConfig{Source: net.IPv4(127, 0, 0, 1), Interface: "lo"})
 	require.NoError(t, err)
 	defer s.Close()

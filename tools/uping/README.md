@@ -4,8 +4,8 @@ Minimal Linux-only raw ICMP echo library and toolset for user-space liveness pro
 
 ## Components
 
-- **Receiver**: Listens on a specific interface and replies to ICMP echo requests with manually constructed IPv4 headers (`IP_HDRINCL`), ensuring replies always originate from the specified interface and address, bypassing kernel ICMP handling.
-- **Sender**: Sends ICMP echo requests and measures round-trip times via raw sockets (`SO_BINDTODEVICE`, `IP_PKTINFO`), functioning even when no route to the target exists in the system routing table.
+- **Listener**: Responds to ICMP echo requests on a specific interface and IPv4 address, providing consistent user-space replies for local or unroutable peers.
+- **Sender**: Sends ICMP echo requests and measures round-trip times per interface, operating reliably even without kernel routing. Handles retries, timeouts, and context cancellation.
 
 ## Example
 
@@ -17,4 +17,5 @@ uping-send --iface doublezero0 --src 9.169.90.100 --dst 9.169.90.110
 ## Notes
 
 - IPv4 only
-- Requires `CAP_NET_RAW`
+- Requires CAP_NET_RAW
+- Socket egress/ingress is pinned to the selected interface

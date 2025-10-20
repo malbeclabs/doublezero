@@ -4,16 +4,14 @@ package uping
 
 import (
 	"context"
-	"encoding/binary"
 	"fmt"
 	"log/slog"
 	"net"
 	"os"
-	"sync/atomic"
 	"time"
-	"unsafe"
 
-	"golang.org/x/sys/unix"
+	"golang.org/x/net/icmp"
+	"golang.org/x/net/ipv4"
 )
 
 const defaultListenerTimeout = 1 * time.Second
@@ -67,26 +65,6 @@ func NewListener(cfg ListenerConfig) (Listener, error) {
 	return &listener{log: cfg.Logger, cfg: cfg, iface: ifi, ifIndex: ifi.Index, src4: cfg.IP.To4()}, nil
 }
 
-// ipid is a process-wide increasing IPv4 Identification field for HDRINCL packets.
-var ipid uint32
-
-func nextIPID() uint16 { return uint16(atomic.AddUint32(&ipid, 1)) }
-
-// onesComplement16 computes the Internet checksum over b (used for IPv4 header and ICMP).
-func onesComplement16(b []byte) uint16 {
-	var sum uint32
-	for i := 0; i+1 < len(b); i += 2 {
-		sum += uint32(binary.BigEndian.Uint16(b[i:]))
-	}
-	if len(b)%2 == 1 {
-		sum += uint32(b[len(b)-1]) << 8
-	}
-	for (sum >> 16) != 0 {
-		sum = (sum & 0xFFFF) + (sum >> 16)
-	}
-	return ^uint16(sum)
-}
-
 func (l *listener) Listen(ctx context.Context) error {
 	// Instance tag helps spot duplicate listeners (pid/object address).
 	inst := fmt.Sprintf("%d/%p", os.Getpid(), l)
@@ -94,165 +72,94 @@ func (l *listener) Listen(ctx context.Context) error {
 		l.log.Info("uping/recv: starting listener", "inst", inst, "iface", l.cfg.Interface, "src", l.src4)
 	}
 
-	// Raw ICMPv4 socket; requires CAP_NET_RAW. We both read requests and send replies on it.
-	fd, err := unix.Socket(unix.AF_INET, unix.SOCK_RAW, unix.IPPROTO_ICMP)
+	// Raw ICMPv4 via net.IPConn so we can pin to device and use control messages.
+	ipc, err := net.ListenIP("ip4:icmp", &net.IPAddr{IP: l.src4})
 	if err != nil {
-		return fmt.Errorf("socket: %w", err)
+		return fmt.Errorf("ListenIP: %w", err)
 	}
-	defer unix.Close(fd)
+	defer ipc.Close()
+
+	// Wrap in ipv4.PacketConn so we can enable control messages (interface, dst).
+	ip4c := ipv4.NewPacketConn(ipc)
+	defer ip4c.Close()
+	if err := ip4c.SetControlMessage(ipv4.FlagInterface|ipv4.FlagDst, true); err != nil {
+		return fmt.Errorf("SetControlMessage: %w", err)
+	}
 
 	// Pin the socket to the given interface for both RX and TX routing.
-	if err := unix.SetsockoptString(fd, unix.SOL_SOCKET, unix.SO_BINDTODEVICE, l.iface.Name); err != nil {
+	if err := bindToDevice(ipc, l.iface.Name); err != nil {
 		return fmt.Errorf("bind-to-device %q: %w", l.iface.Name, err)
 	}
-	// Ask the kernel to attach IP_PKTINFO cmsgs so we can verify ingress ifindex.
-	if err := unix.SetsockoptInt(fd, unix.IPPROTO_IP, unix.IP_PKTINFO, 1); err != nil {
-		return fmt.Errorf("setsockopt IP_PKTINFO: %w", err)
-	}
-	// We will craft the IPv4 header ourselves to force source/dst and keep TX on the interface.
-	if err := unix.SetsockoptInt(fd, unix.IPPROTO_IP, unix.IP_HDRINCL, 1); err != nil {
-		return fmt.Errorf("setsockopt IP_HDRINCL: %w", err)
-	}
-	if err := unix.SetNonblock(fd, true); err != nil {
-		return fmt.Errorf("set nonblock: %w", err)
-	}
 
-	// eventfd used to interrupt poll() on ctx cancellation without races.
-	efd, err := unix.Eventfd(0, unix.EFD_NONBLOCK|unix.EFD_CLOEXEC)
-	if err != nil {
-		return fmt.Errorf("eventfd: %w", err)
-	}
-	defer unix.Close(efd)
+	// Interrupt blocking reads immediately on ctx cancellation.
 	go func() {
 		<-ctx.Done()
-		var one [8]byte
-		binary.LittleEndian.PutUint64(one[:], 1)
-		_, _ = unix.Write(efd, one[:])
+		_ = ipc.SetReadDeadline(time.Now().Add(-time.Hour))
 	}()
 
-	// Reusable buffers for payload and control messages (IP_PKTINFO).
 	buf := make([]byte, 65535)
-	oob := make([]byte, unix.CmsgSpace(unix.SizeofInet4Pktinfo))
-	pfds := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}, {Fd: int32(efd), Events: unix.POLLIN}}
 
 	for {
-		// Use the smaller of ctx deadline or fallback timeout to bound poll().
-		timeout := pollTimeoutMs(ctx, l.cfg.Timeout)
+		// Use the smaller of ctx deadline or fallback timeout to bound reads.
+		if ms := pollTimeoutMs(ctx, l.cfg.Timeout); ms < 0 {
+			_ = ipc.SetReadDeadline(time.Time{})
+		} else {
+			_ = ipc.SetReadDeadline(time.Now().Add(time.Duration(ms) * time.Millisecond))
+		}
 
-		nready, err := unix.Poll(pfds, timeout)
-		if err != nil {
-			if err == unix.EINTR {
-				continue
+		n, cm, raddr, err := ip4c.ReadFrom(buf)
+		if ne, ok := err.(net.Error); ok && ne.Timeout() {
+			if ctx.Err() != nil {
+				return nil
 			}
-			return fmt.Errorf("poll: %w", err)
-		}
-		// Wake from ctx cancellation.
-		if pfds[1].Revents&unix.POLLIN != 0 {
-			var tmp [8]byte
-			_, _ = unix.Read(efd, tmp[:])
-			return nil
-		}
-		// Timeout or nothing interesting on the socket.
-		if nready == 0 || pfds[0].Revents&(unix.POLLIN|unix.POLLERR|unix.POLLHUP) == 0 {
 			continue
 		}
-
-		// Recvmsg with OOB to get IP_PKTINFO (ingress ifindex).
-		n, oobn, _, _, err := unix.Recvmsg(fd, buf, oob, 0)
 		if err != nil {
-			if err == unix.EAGAIN || err == unix.EWOULDBLOCK || err == unix.EINTR {
-				continue
-			}
 			if ctx.Err() != nil {
 				return nil
 			}
 			if l.log != nil {
-				l.log.Debug("uping/recv: recvmsg error", "err", err)
+				l.log.Debug("uping/recv: read error", "err", err)
 			}
 			continue
 		}
-		// Basic IPv4 sanity: IHL/Version before deeper parsing.
-		if n < 20 || buf[0]>>4 != 4 {
+
+		// Enforce ingress interface and destination.
+		if cm == nil || cm.IfIndex != l.ifIndex || !cm.Dst.Equal(l.src4) {
 			continue
 		}
 
-		// Enforce ingress interface: drop if IP_PKTINFO missing or ifindex mismatched.
-		inIfidx := 0
-		if oobn > 0 {
-			cms, _ := unix.ParseSocketControlMessage(oob[:oobn])
-			for _, cm := range cms {
-				if cm.Header.Level == unix.IPPROTO_IP && cm.Header.Type == unix.IP_PKTINFO && len(cm.Data) >= unix.SizeofInet4Pktinfo {
-					var pi unix.Inet4Pktinfo
-					copy((*[unix.SizeofInet4Pktinfo]byte)(unsafe.Pointer(&pi))[:], cm.Data[:unix.SizeofInet4Pktinfo])
-					inIfidx = int(pi.Ifindex)
-					break
-				}
-			}
-		}
-		if inIfidx == 0 || inIfidx != l.ifIndex {
+		m, err := icmp.ParseMessage(1, buf[:n])
+		if err != nil {
 			continue
 		}
-
-		ipv := buf[:n]
-		ihl := int(ipv[0]&0x0F) * 4
-		// Must be ICMPv4 (proto=1) and large enough for ICMP header.
-		if ihl < 20 || n < ihl+8 || ipv[9] != 1 {
+		if m.Type != ipv4.ICMPTypeEcho {
 			continue
 		}
-
-		// Only answer traffic addressed to our configured source IP.
-		dst := net.IP(ipv[16:20]).To4()
-		if !dst.Equal(l.src4) {
+		echo, ok := m.Body.(*icmp.Echo)
+		if !ok || echo == nil {
 			continue
 		}
-
-		src := net.IP(ipv[12:16]).To4()
-		icmp := ipv[ihl:]
-		// Echo request (type 8), validate header length.
-		if len(icmp) < 8 || icmp[0] != 8 {
-			continue
-		}
-		// Drop corrupt ICMPs early.
-		if onesComplement16(icmp) != 0 {
-			continue
-		}
-
-		id := binary.BigEndian.Uint16(icmp[4:6])
-		seq := binary.BigEndian.Uint16(icmp[6:8])
-		payload := icmp[8:]
 
 		// Build ICMP echo-reply (type 0), mirror id/seq/payload.
-		reply := make([]byte, 8+len(payload))
-		reply[0] = 0
-		reply[1] = 0
-		binary.BigEndian.PutUint16(reply[4:], id)
-		binary.BigEndian.PutUint16(reply[6:], seq)
-		copy(reply[8:], payload)
-		binary.BigEndian.PutUint16(reply[2:], onesComplement16(reply))
+		reply := &icmp.Message{
+			Type: ipv4.ICMPTypeEchoReply,
+			Code: 0,
+			Body: &icmp.Echo{ID: echo.ID, Seq: echo.Seq, Data: echo.Data},
+		}
+		wb, err := reply.Marshal(nil)
+		if err != nil {
+			continue
+		}
 
-		// Build minimal IPv4 header (HDRINCL). Copy DSCP/ECN from request.
-		ip := make([]byte, 20)
-		ip[0] = 0x45                                              // Version=4, IHL=5
-		ip[1] = ipv[1]                                            // DSCP/ECN from request
-		binary.BigEndian.PutUint16(ip[2:], uint16(20+len(reply))) // Total Length
-		binary.BigEndian.PutUint16(ip[4:], nextIPID())            // Identification
-		ip[6], ip[7] = 0, 0                                       // Flags/Fragment offset
-		ip[8] = 64                                                // TTL
-		ip[9] = 1                                                 // Protocol = ICMP
-		copy(ip[12:16], l.src4)                                   // Source = our configured IP
-		copy(ip[16:20], src)                                      // Dest = original sender
-		binary.BigEndian.PutUint16(ip[10:], onesComplement16(ip)) // Header checksum
-
-		// Send the full packet; SO_BINDTODEVICE keeps egress on the bound interface.
-		pkt := append(ip, reply...)
-		var dstSA unix.SockaddrInet4
-		copy(dstSA.Addr[:], src)
-		if err := unix.Sendto(fd, pkt, 0, &dstSA); err == nil {
+		// Send the reply; SO_BINDTODEVICE keeps egress on the bound interface.
+		dst := raddr.(*net.IPAddr)
+		if _, err := ip4c.WriteTo(wb, &ipv4.ControlMessage{IfIndex: l.ifIndex}, dst); err == nil {
 			if l.log != nil {
-				l.log.Info("uping/recv: replied", "inst", inst, "dst", src.String(), "id", id, "seq", seq, "iface", l.iface.Name, "src", l.src4)
+				l.log.Info("uping/recv: replied", "inst", inst, "dst", dst.IP.String(), "id", echo.ID, "seq", echo.Seq, "iface", l.iface.Name, "src", l.src4)
 			}
 		} else if l.log != nil {
-			l.log.Debug("uping/recv: HDRINCL send failed", "err", err, "iface", l.iface.Name, "src", l.src4)
+			l.log.Debug("uping/recv: write failed", "err", err, "iface", l.iface.Name, "src", l.src4)
 		}
 	}
 }

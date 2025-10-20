@@ -12,8 +12,11 @@ import (
 	"os"
 	"sync"
 	"time"
-	"unsafe"
 
+	"syscall"
+
+	"golang.org/x/net/icmp"
+	"golang.org/x/net/ipv4"
 	"golang.org/x/sys/unix"
 )
 
@@ -21,7 +24,7 @@ import (
 const (
 	defaultSenderCount   = 3
 	defaultSenderTimeout = 3 * time.Second
-	maxPollSlice         = 200 * time.Millisecond // cap per-Recvfrom block to avoid overshooting deadlines
+	maxPollSlice         = 200 * time.Millisecond // cap per-Recv block to avoid overshooting deadlines
 )
 
 // SenderConfig configures the raw-ICMP sender.
@@ -90,74 +93,79 @@ type Sender interface {
 	Close() error
 }
 
-// sender owns the raw socket and addressing state.
-// A mutex serializes Send and Close to the single FD.
+// sender owns the socket and addressing state.
+// A mutex serializes Send and Close to the single underlying conn.
 type sender struct {
-	log       *slog.Logger
-	cfg       SenderConfig
-	sip       net.IP // IPv4 source (validated)
-	fd        int    // raw IPv4 ICMP socket
-	pid       uint16 // echo identifier seed (pid & 0xffff)
-	ifIndex   int    // ifindex derived from Interface
-	connected bool
-	mu        sync.Mutex
+	log     *slog.Logger
+	cfg     SenderConfig
+	sip     net.IP           // IPv4 source (validated)
+	ifIndex int              // ifindex derived from Interface
+	pid     uint16           // echo identifier seed (pid & 0xffff)
+	ipc     *net.IPConn      // ip4:icmp bound to src
+	ip4c    *ipv4.PacketConn // ipv4 wrapper
+	mu      sync.Mutex
 }
 
-// NewSender opens a raw ICMP socket, enables IP_PKTINFO, sets TTL, validates
-// IPv4 source, and resolves the interface index. Fails fast on misconfig.
+// NewSender opens an ICMP socket bound to Source, pins to device, sets TTL,
+// validates IPv4 source, and resolves the interface index. Fails fast on misconfig.
 func NewSender(cfg SenderConfig) (Sender, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
 
-	fd, err := unix.Socket(unix.AF_INET, unix.SOCK_RAW, unix.IPPROTO_ICMP)
-	if err != nil {
-		return nil, err
-	}
-	ok := false
-	defer func() {
-		if !ok {
-			_ = unix.Close(fd)
-		}
-	}()
-
 	sip := cfg.Source.To4() // safe: Validate() ensures IPv4
-
-	// Allow specifying egress ifindex and source address per packet (IP_PKTINFO).
-	if err := unix.SetsockoptInt(fd, unix.IPPROTO_IP, unix.IP_PKTINFO, 1); err != nil {
-		return nil, fmt.Errorf("enable IP_PKTINFO: %w", err)
-	}
-
-	// Sane default TTL; kernel builds IPv4 header for raw ICMP sockets.
-	_ = unix.SetsockoptInt(fd, unix.IPPROTO_IP, unix.IP_TTL, 64)
 
 	// REQUIRED: resolve interface index; fail if not present.
 	ifi, err := net.InterfaceByName(cfg.Interface)
 	if err != nil {
 		return nil, fmt.Errorf("lookup interface %q: %w", cfg.Interface, err)
 	}
-	ifIndex := ifi.Index
 
-	ok = true
+	// Bind to the source IP so the kernel builds IPv4 and selects routes accordingly.
+	ipc, err := net.ListenIP("ip4:icmp", &net.IPAddr{IP: sip})
+	if err != nil {
+		return nil, err
+	}
+
+	// Wrap so we can use control messages and TTL helpers.
+	ip4c := ipv4.NewPacketConn(ipc)
+	_ = ip4c.SetTTL(64)
+	_ = ip4c.SetControlMessage(ipv4.FlagInterface|ipv4.FlagDst, true)
+
+	// Pin the socket to the given interface for both RX and TX routing.
+	if err := bindToDevice(ipc, ifi.Name); err != nil {
+		_ = ip4c.Close()
+		_ = ipc.Close()
+		return nil, fmt.Errorf("bind-to-device %q: %w", ifi.Name, err)
+	}
+
 	return &sender{
 		log:     cfg.Logger,
 		cfg:     cfg,
 		sip:     sip,
-		fd:      fd,
+		ifIndex: ifi.Index,
 		pid:     uint16(os.Getpid() & 0xffff),
-		ifIndex: ifIndex,
+		ipc:     ipc,
+		ip4c:    ip4c,
 	}, nil
 }
 
-// Close closes the underlying raw socket. Concurrency-safe with Send via s.mu.
+// Close closes the underlying socket. Concurrency-safe with Send via s.mu.
 func (s *sender) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return unix.Close(s.fd)
+	if s.ip4c != nil {
+		_ = s.ip4c.Close()
+	}
+	if s.ipc != nil {
+		return s.ipc.Close()
+	}
+	return nil
 }
 
 // Send transmits Count echo requests and waits up to Timeout for each reply.
-// It uses IP_PKTINFO to steer egress and validates echo replies by id/seq/nonce.
+// It steers egress by iface and source using an ipv4.ControlMessage and validates
+// echo replies by id/seq/nonce.
 func (s *sender) Send(ctx context.Context, cfg SendConfig) (*SendResults, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
@@ -167,23 +175,18 @@ func (s *sender) Send(ctx context.Context, cfg SendConfig) (*SendResults, error)
 		return nil, fmt.Errorf("invalid target IP: %s", cfg.Target)
 	}
 
-	// Serialize access to the single raw socket and protect against Close.
+	// Serialize access to the single socket and protect against Close.
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	results := &SendResults{Results: make([]SendResult, 0, cfg.Count)}
 	seq := uint16(1)
-	dst := &unix.SockaddrInet4{Addr: [4]byte{dip[0], dip[1], dip[2], dip[3]}}
-
-	// Best-effort: connect to narrow inbound to the target (filters RX path).
-	s.maybeConnect(dst)
+	dst := &net.IPAddr{IP: dip}
 
 	// Per-Send() reusable buffers to avoid hot-path allocations.
-	buf := make([]byte, 4096)                // RX buffer (IPv4 header + ICMP + payload)
-	oob := s.buildPktinfoOOB()               // PKTINFO control message
-	payload := make([]byte, 8)               // 8-byte nonce in ICMP echo data
-	icmp := ensureICMPBuf(nil, len(payload)) // ICMP packet buffer (header + payload)
-	nonce := uint64(time.Now().UnixNano())   // starting nonce; increment per probe
+	buf := make([]byte, 8192)              // RX buffer (ICMP payload when using PacketConn)
+	payload := make([]byte, 8)             // 8-byte nonce in ICMP echo data
+	nonce := uint64(time.Now().UnixNano()) // starting nonce; increment per probe
 
 	for i := 0; i < cfg.Count; i++ {
 		select {
@@ -192,36 +195,39 @@ func (s *sender) Send(ctx context.Context, cfg SendConfig) (*SendResults, error)
 		default:
 		}
 
-		// Prepare ICMP Echo with (id, seq, nonce). Reuse buffers; recompute checksum.
+		// Prepare ICMP Echo with (id, seq, nonce).
 		nonce++
 		binary.BigEndian.PutUint64(payload, nonce)
-		if len(icmp) != 8+len(payload) {
-			icmp = ensureICMPBuf(icmp, len(payload))
+		wb, err := (&icmp.Message{
+			Type: ipv4.ICMPTypeEcho, Code: 0,
+			Body: &icmp.Echo{ID: int(s.pid), Seq: int(seq), Data: payload},
+		}).Marshal(nil)
+		if err != nil {
+			results.Results = append(results.Results, SendResult{RTT: -1, Error: err})
+			seq++
+			continue
 		}
-		fillICMPEcho(icmp, s.pid, seq, payload)
 
-		// When connected, do NOT pass a destination; otherwise, pass dst.
-		sendDst := unix.Sockaddr(nil)
-		if !s.connected {
-			sendDst = dst
-		}
+		// Per-packet steering: IfIndex emulate IP_PKTINFO (Spec_dst + ifindex).
+		cm := &ipv4.ControlMessage{IfIndex: s.ifIndex}
 
 		t0 := time.Now()
-		if _, err := unix.SendmsgN(s.fd, icmp, oob, sendDst, 0); err != nil {
-			// Only retry on errors that imply no datagram could have been queued.
+		if _, err := s.ip4c.WriteTo(wb, cm, dst); err != nil {
+			// Try a reopen on common transient send failures.
 			if transientSendRetryable(err) {
 				if s.log != nil {
 					s.log.Info("uping/sender: reopen after send err", "i", i+1, "seq", seq, "err", err)
 				}
 				if e := s.reopen(); e == nil {
-					s.maybeConnect(dst)
-					oob = s.buildPktinfoOOB()
-					sendDst = nil
-					if !s.connected {
-						sendDst = dst
-					}
-					_, err = unix.SendmsgN(s.fd, icmp, oob, sendDst, 0)
+					cm = &ipv4.ControlMessage{IfIndex: s.ifIndex}
+					_, err = s.ip4c.WriteTo(wb, cm, dst)
 				}
+			}
+			// One-shot retry on EPERM after a tiny backoff
+			// This can happen sometimes especially on loopback interfaces.
+			if err != nil && errors.Is(err, syscall.EPERM) {
+				time.Sleep(5 * time.Millisecond)
+				_, err = s.ip4c.WriteTo(wb, nil, dst)
 			}
 			if err != nil {
 				if s.log != nil {
@@ -241,28 +247,28 @@ func (s *sender) Send(ctx context.Context, cfg SendConfig) (*SendResults, error)
 			if ctx.Err() != nil {
 				return results, ctx.Err()
 			}
-			if !deadline.After(time.Now()) {
+			remain := time.Until(deadline)
+			if remain <= 0 {
 				break
 			}
-			if !s.applyRecvSlice(deadline) {
-				break
+			if remain > maxPollSlice {
+				remain = maxPollSlice
 			}
+			_ = s.ipc.SetReadDeadline(time.Now().Add(remain))
 
-			n, _, err := unix.Recvfrom(s.fd, buf, 0)
+			n, rcm, raddr, err := s.ip4c.ReadFrom(buf)
+			if ne, ok := err.(net.Error); ok && ne.Timeout() {
+				continue
+			}
 			if err != nil {
-				// Expected transient read conditions: try again within the remaining deadline.
-				if errors.Is(err, unix.EAGAIN) || errors.Is(err, unix.EWOULDBLOCK) || errors.Is(err, unix.EINTR) {
-					continue
-				}
 				// If the socket became invalid/transient, try reopening and continue waiting.
 				if transientSocketErr(err) {
 					if s.log != nil {
 						s.log.Info("uping/sender: reopen after recv err", "i", i+1, "seq", seq, "err", err)
 					}
 					if e := s.reopen(); e == nil {
-						s.maybeConnect(dst)
-						oob = s.buildPktinfoOOB()
-						_ = s.applyRecvSlice(deadline)
+						_ = s.ipc.SetReadDeadline(time.Now().Add(time.Until(deadline)))
+						continue
 					}
 				}
 				if s.log != nil {
@@ -271,19 +277,37 @@ func (s *sender) Send(ctx context.Context, cfg SendConfig) (*SendResults, error)
 				continue
 			}
 
-			// Parse and validate an echo reply (checksum, type/code, id/seq/nonce).
+			// Optionally filter by ingress ifindex when available.
+			if rcm != nil && rcm.IfIndex != 0 && rcm.IfIndex != s.ifIndex {
+				continue
+			}
+
+			// Parse and validate an echo reply. buf[:n] is ICMP payload with PacketConn,
+			// or full IPv4 if the stack delivers that; validateEchoReply handles both.
 			rtt := time.Since(t0)
 			ok, src, itype, icode := validateEchoReply(buf[:n], s.pid, seq, nonce)
 			if ok {
 				if s.log != nil {
-					s.log.Info("uping/sender: reply", "i", i+1, "seq", seq, "src", src.String(), "rtt", rtt, "len", n)
+					ip := src
+					if ip == nil || ip.Equal(net.IPv4zero) {
+						if ipaddr, _ := raddr.(*net.IPAddr); ipaddr != nil {
+							ip = ipaddr.IP
+						}
+					}
+					s.log.Info("uping/sender: reply", "i", i+1, "seq", seq, "src", ip.String(), "rtt", rtt, "len", n)
 				}
 				results.Results = append(results.Results, SendResult{RTT: rtt, Error: nil})
 				got = true
 				break
 			}
 			if s.log != nil {
-				s.log.Debug("uping/sender: ignored", "i", i+1, "seq", seq, "src", src.String(), "icmp_type", itype, "icmp_code", icode)
+				ip := src
+				if ip == nil || ip.Equal(net.IPv4zero) {
+					if ipaddr, _ := raddr.(*net.IPAddr); ipaddr != nil {
+						ip = ipaddr.IP
+					}
+				}
+				s.log.Debug("uping/sender: ignored", "i", i+1, "seq", seq, "src", ip.String(), "icmp_type", itype, "icmp_code", icode)
 			}
 		}
 
@@ -300,135 +324,80 @@ func (s *sender) Send(ctx context.Context, cfg SendConfig) (*SendResults, error)
 	return results, nil
 }
 
-// applyRecvSlice sets SO_RCVTIMEO to min(deadline-now, maxPollSlice) on the current socket,
-// ensuring Recvfrom won't block past the absolute deadline. Returns false if the deadline
-// has already passed.
-func (s *sender) applyRecvSlice(deadline time.Time) bool {
-	remain := time.Until(deadline)
-	if remain <= 0 {
-		return false
+// bindToDevice applies SO_BINDTODEVICE to c’s socket so traffic stays on ifname.
+func bindToDevice(c any, ifname string) error {
+	sc, ok := c.(syscall.Conn)
+	if !ok {
+		return fmt.Errorf("no raw fd")
 	}
-	if remain > maxPollSlice {
-		remain = maxPollSlice
+	var setErr error
+	raw, err := sc.SyscallConn()
+	if err != nil {
+		return err
 	}
-	tv := durationToTimeval(remain)
-	_ = unix.SetsockoptTimeval(s.fd, unix.SOL_SOCKET, unix.SO_RCVTIMEO, &tv)
-	return true
-}
-
-// ensureICMPBuf returns a slice of size 8+payloadLen backed by dst if possible,
-// or a new allocation if dst is too small. Intended to be called rarely (once).
-func ensureICMPBuf(dst []byte, payloadLen int) []byte {
-	need := 8 + payloadLen
-	if cap(dst) < need {
-		return make([]byte, need)
-	}
-	return dst[:need]
-}
-
-// fillICMPEcho writes an ICMP Echo Request into dst (type 8) with the given id/seq/payload,
-// and computes the checksum over the whole ICMP message. dst must be 8+len(payload) bytes.
-func fillICMPEcho(dst []byte, id, seq uint16, payload []byte) {
-	dst[0] = 8
-	dst[1] = 0
-	dst[2], dst[3] = 0, 0
-	binary.BigEndian.PutUint16(dst[4:], id)
-	binary.BigEndian.PutUint16(dst[6:], seq)
-	copy(dst[8:], payload)
-	binary.BigEndian.PutUint16(dst[2:], icmpChecksum(dst))
-}
-
-// maybeConnect optionally connects the raw socket to the destination to filter inbound
-// packets by peer. It skips connecting loopback->non-loopback (to avoid odd routing paths)
-// and ignores common routing/address errors so RX remains unconnected if connect fails.
-func (s *sender) maybeConnect(dst *unix.SockaddrInet4) {
-	if s.sip != nil && s.sip.IsLoopback() && !net.IP(dst.Addr[:]).IsLoopback() {
-		return
-	}
-	if err := unix.Connect(s.fd, dst); err != nil {
-		if s.log != nil {
-			s.log.Debug("connect skipped", "err", err)
+	if err := raw.Control(func(fd uintptr) {
+		if e := unix.SetsockoptString(int(fd), unix.SOL_SOCKET, unix.SO_BINDTODEVICE, ifname); e != nil {
+			setErr = e
 		}
-		s.connected = false
-		return
+	}); err != nil {
+		return err
 	}
-	s.connected = true
+	return setErr
 }
 
-// buildPktinfoOOB constructs a single IP_PKTINFO control message to steer egress
-// (ifIndex and Spec_dst). Given validation, this should return a non-nil buffer.
-func (s *sender) buildPktinfoOOB() []byte {
-	// Guard left in place for safety/future changes.
-	if s.ifIndex == 0 && s.sip == nil {
-		return nil
-	}
-
-	oob := make([]byte, unix.CmsgSpace(unix.SizeofInet4Pktinfo))
-
-	cm := (*unix.Cmsghdr)(unsafe.Pointer(&oob[0]))
-	cm.Level = unix.IPPROTO_IP
-	cm.Type = unix.IP_PKTINFO
-	cm.SetLen(unix.CmsgLen(unix.SizeofInet4Pktinfo))
-
-	// Control data payload for IP_PKTINFO immediately follows the cmsghdr.
-	data := oob[unix.CmsgLen(0):unix.CmsgLen(unix.SizeofInet4Pktinfo)]
-
-	var pi unix.Inet4Pktinfo
-	pi.Ifindex = int32(s.ifIndex)
-	copy(pi.Spec_dst[:], s.sip.To4())
-
-	*(*unix.Inet4Pktinfo)(unsafe.Pointer(&data[0])) = pi
-	return oob
-}
-
-// validateEchoReply parses an IPv4 packet, verifies it's ICMP, verifies ICMP checksum,
+// validateEchoReply parses a packet or ICMP message, verifies checksum,
 // and returns true only for Echo Reply (type=0, code=0) matching (id, seq, nonce).
-// For non-echo ICMP or malformed packets, it returns false with best-effort type/code.
+// Accepts either a full IPv4 packet or a bare ICMP payload.
 func validateEchoReply(pkt []byte, wantID, wantSeq uint16, wantNonce uint64) (bool, net.IP, int, int) {
-	if len(pkt) < 20 || pkt[0]>>4 != 4 {
-		return false, net.IPv4zero, -1, -1
+	// Full IPv4?
+	if len(pkt) >= 20 && pkt[0]>>4 == 4 {
+		ihl := int(pkt[0]&0x0F) * 4
+		if ihl < 20 || len(pkt) < ihl+8 {
+			return false, net.IPv4zero, -1, -1
+		}
+		if pkt[9] != 1 { // not ICMP
+			return false, net.IP(pkt[12:16]), int(pkt[9]), -1
+		}
+		src := net.IP(pkt[12:16])
+		return validateICMPEcho(pkt[ihl:], wantID, wantSeq, wantNonce, src)
 	}
-	ihl := int(pkt[0]&0x0F) * 4
-	if ihl < 20 || len(pkt) < ihl+8 {
-		return false, net.IPv4zero, -1, -1
-	}
+	// Otherwise treat as bare ICMP payload from PacketConn.
+	return validateICMPEcho(pkt, wantID, wantSeq, wantNonce, net.IPv4zero)
+}
 
-	// Not ICMP: surface protocol number as "type".
-	if pkt[9] != 1 {
-		return false, net.IP(pkt[12:16]), int(pkt[9]), -1
+// validateICMPEcho verifies checksum, parses with icmp.ParseMessage, and matches id/seq/nonce.
+// src is surfaced unchanged (IPv4zero for bare ICMP).
+func validateICMPEcho(icmpb []byte, wantID, wantSeq uint16, wantNonce uint64, src net.IP) (bool, net.IP, int, int) {
+	if len(icmpb) < 8 {
+		return false, src, -1, -1
 	}
+	// Raw for logging/return
+	itype := int(icmpb[0])
+	icode := int(icmpb[1])
 
-	src := net.IP(pkt[12:16])
-	icmp := pkt[ihl:]
-
-	// Surface type/code whenever available, even if we later reject.
-	itype, icode := -1, -1
-	if len(icmp) >= 2 {
-		itype, icode = int(icmp[0]), int(icmp[1])
-	}
-
-	// Most ICMP messages are at least 8 bytes. Verify checksum when possible.
-	if len(icmp) < 8 {
-		return false, src, itype, icode
-	}
-	if icmpChecksum(icmp) != 0 {
-		return false, src, itype, icode
-	}
-
-	// Only accept Echo Reply.
-	if itype != 0 || icode != 0 {
+	// Verify Internet checksum over ICMP message.
+	if icmpChecksum(icmpb) != 0 {
 		return false, src, itype, icode
 	}
 
-	// Echo Reply must include id/seq + our 8-byte nonce.
-	if len(icmp) < 16 {
+	m, err := icmp.ParseMessage(1, icmpb)
+	if err != nil {
 		return false, src, itype, icode
 	}
 
-	rid := binary.BigEndian.Uint16(icmp[4:6])
-	rseq := binary.BigEndian.Uint16(icmp[6:8])
-	gotNonce := binary.BigEndian.Uint64(icmp[8:16])
-	if rid == wantID && rseq == wantSeq && gotNonce == wantNonce {
+	// Only accept Echo Reply (type=0, code=0). Use m.Type for the predicate.
+	if m.Type != ipv4.ICMPTypeEchoReply {
+		return false, src, itype, icode
+	}
+	echo, ok := m.Body.(*icmp.Echo)
+	if !ok || echo == nil {
+		return false, src, itype, icode
+	}
+	if len(echo.Data) < 8 {
+		return false, src, itype, icode
+	}
+	gotNonce := binary.BigEndian.Uint64(echo.Data[:8])
+	if uint16(echo.ID) == wantID && uint16(echo.Seq) == wantSeq && gotNonce == wantNonce {
 		return true, src, itype, icode
 	}
 	return false, src, itype, icode
@@ -449,31 +418,34 @@ func icmpChecksum(b []byte) uint16 {
 	return ^uint16(s)
 }
 
-// durationToTimeval converts a Go duration to a timeval for SO_RCVTIMEO.
-func durationToTimeval(d time.Duration) unix.Timeval {
-	if d <= 0 {
-		return unix.Timeval{}
-	}
-	sec := d / time.Second
-	usec := (d % time.Second) / time.Microsecond
-	return unix.Timeval{Sec: int64(sec), Usec: int64(usec)}
-}
-
-// reopen replaces the socket with a fresh raw ICMP socket and reapplies base options.
+// reopen replaces the socket with a fresh ip4:icmp socket and reapplies base options.
 // Used after transient errors (device down, address not ready, etc.).
 func (s *sender) reopen() error {
-	fd, err := unix.Socket(unix.AF_INET, unix.SOCK_RAW, unix.IPPROTO_ICMP)
+	if s.ip4c != nil {
+		_ = s.ip4c.Close()
+	}
+	if s.ipc != nil {
+		_ = s.ipc.Close()
+	}
+	ipc, err := net.ListenIP("ip4:icmp", &net.IPAddr{IP: s.sip})
 	if err != nil {
 		return err
 	}
-	if err := unix.SetsockoptInt(fd, unix.IPPROTO_IP, unix.IP_PKTINFO, 1); err != nil {
-		_ = unix.Close(fd)
-		return fmt.Errorf("enable IP_PKTINFO: %w", err)
+	ip4c := ipv4.NewPacketConn(ipc)
+	_ = ip4c.SetTTL(64)
+	_ = ip4c.SetControlMessage(ipv4.FlagInterface|ipv4.FlagDst, true)
+
+	// Re-pin to device.
+	if err := bindToDevice(ipc, s.cfg.Interface); err != nil {
+		_ = ip4c.Close()
+		_ = ipc.Close()
+		return fmt.Errorf("bind-to-device %q: %w", s.cfg.Interface, err)
 	}
-	_ = unix.SetsockoptInt(fd, unix.IPPROTO_IP, unix.IP_TTL, 64)
-	_ = unix.Close(s.fd)
-	s.fd = fd
+
+	// Re-resolve ifindex defensively.
 	s.refreshIfIndex()
+
+	s.ipc, s.ip4c = ipc, ip4c
 	return nil
 }
 
@@ -487,13 +459,15 @@ func (s *sender) refreshIfIndex() {
 
 // transientSocketErr classifies socket errors that are often recoverable with a reopen.
 func transientSocketErr(err error) bool {
-	return errors.Is(err, unix.EBADF) || errors.Is(err, unix.ENETDOWN) || errors.Is(err, unix.ENODEV) ||
+	// net errors often wrap unix errors; keep the common set.
+	return errors.Is(err, net.ErrClosed) ||
+		errors.Is(err, unix.EBADF) || errors.Is(err, unix.ENETDOWN) || errors.Is(err, unix.ENODEV) ||
 		errors.Is(err, unix.EADDRNOTAVAIL) || errors.Is(err, unix.ENOBUFS) || errors.Is(err, unix.ENETRESET) ||
 		errors.Is(err, unix.ENOMEM)
 }
 
 // transientSendRetryable classifies send errors that are often recoverable with a reopen
 func transientSendRetryable(err error) bool {
-	// These imply no datagram could have been queued
-	return errors.Is(err, unix.EBADF) || errors.Is(err, unix.ENODEV) || errors.Is(err, unix.ENETDOWN)
+	return errors.Is(err, net.ErrClosed) ||
+		errors.Is(err, unix.EBADF) || errors.Is(err, unix.ENODEV) || errors.Is(err, unix.ENETDOWN)
 }

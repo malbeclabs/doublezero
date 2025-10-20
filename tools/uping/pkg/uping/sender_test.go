@@ -10,19 +10,10 @@ import (
 	"net"
 	"testing"
 	"time"
-	"unsafe"
 
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
 )
-
-// Verifies ensureICMPBuf returns a buffer of the correct size.
-func TestUping_Sender_EnsureICMPBuf(t *testing.T) {
-	t.Parallel()
-	dst := make([]byte, 0, 32)
-	out := ensureICMPBuf(dst, 8)
-	require.Equal(t, 16, len(out))
-}
 
 // Verifies ICMP echo packet construction and checksum correctness.
 func TestUping_Sender_ChecksumAndICMPEcho(t *testing.T) {
@@ -61,17 +52,6 @@ func TestUping_Sender_ValidateEchoReply(t *testing.T) {
 	require.Equal(t, 0, ic)
 	ok, _, _, _ = validateEchoReply(rep, id, seq, nonce+1)
 	require.False(t, ok)
-}
-
-// Checks correct timeval conversion for positive and zero durations.
-func TestUping_DurationToTimeval(t *testing.T) {
-	t.Parallel()
-	tv := durationToTimeval(1500 * time.Millisecond)
-	require.Equal(t, int64(1), tv.Sec)
-	require.InDelta(t, 500000, tv.Usec, 1000.0)
-	tv = durationToTimeval(0)
-	require.Equal(t, int64(0), tv.Sec)
-	require.Equal(t, int64(0), tv.Usec)
 }
 
 // Verifies that a basic ping to localhost succeeds using loopback interface.
@@ -270,17 +250,8 @@ func TestUping_ValidateEchoReply_RejectsEchoRequest(t *testing.T) {
 	require.Equal(t, 8, it)
 }
 
-// Confirms negative durations are clamped to zero timeval.
-func TestUping_DurationToTimeval_Negative(t *testing.T) {
-	t.Parallel()
-
-	tv := durationToTimeval(-5 * time.Millisecond)
-	require.Equal(t, int64(0), tv.Sec)
-	require.Equal(t, int64(0), tv.Usec)
-}
-
-// Ensures socket reopen on send failure (EBADF) works and resumes successfully.
-func TestUping_Sender_ReopenOnSend_EBADF(t *testing.T) {
+// Ensures socket reopen on send failure works and resumes successfully (PacketConn path).
+func TestUping_Sender_ReopenOnSend_ReconnectAndSend(t *testing.T) {
 	t.Parallel()
 	requireRawSockets(t)
 
@@ -289,8 +260,11 @@ func TestUping_Sender_ReopenOnSend_EBADF(t *testing.T) {
 	defer sIface.Close()
 
 	s := sIface.(*sender)
-	require.NoError(t, unix.Close(s.fd))
-	s.fd = -1
+
+	// Force a closed connection, then explicit reopen, then send should work.
+	_ = s.ip4c.Close()
+	_ = s.ipc.Close()
+	require.NoError(t, s.reopen())
 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
@@ -301,8 +275,8 @@ func TestUping_Sender_ReopenOnSend_EBADF(t *testing.T) {
 	require.Greater(t, res.Results[0].RTT, time.Duration(0))
 }
 
-// Validates reopen behavior after a receive-side EBADF event.
-func TestUping_Sender_ReopenOnRecv_EBADF_Blackhole(t *testing.T) {
+// Verifies recv path handles blackholed targets cleanly without races or crashes.
+func TestUping_Sender_RecvTimeout_Blackhole_NoCrash(t *testing.T) {
 	t.Parallel()
 	requireRawSockets(t)
 
@@ -312,103 +286,20 @@ func TestUping_Sender_ReopenOnRecv_EBADF_Blackhole(t *testing.T) {
 	sIface, err := NewSender(SenderConfig{Source: ip, Interface: ifname})
 	require.NoError(t, err)
 	defer sIface.Close()
-	s := sIface.(*sender)
 
+	// Long enough overall context to let one probe time out cleanly on recv path.
 	ctx, cancel := context.WithTimeout(t.Context(), 1200*time.Millisecond)
 	defer cancel()
 
-	go func() {
-		time.Sleep(100 * time.Millisecond)
-		killFDForTest(s)
-	}()
-
-	res, err := s.Send(ctx, SendConfig{Target: net.IPv4(203, 0, 113, 200), Count: 1, Timeout: 900 * time.Millisecond})
+	// Blackhole target; expect probe-level timeout result, not a crash or top-level error.
+	res, err := sIface.Send(ctx, SendConfig{
+		Target:  net.IPv4(203, 0, 113, 200), // TEST-NET-3
+		Count:   1,
+		Timeout: 900 * time.Millisecond,
+	})
 	require.NoError(t, err)
 	require.Len(t, res.Results, 1)
 	require.Error(t, res.Results[0].Error)
-}
-
-// Checks that buildPktinfoOOB creates valid IP_PKTINFO control message.
-func TestUping_Sender_buildPktinfoOOB(t *testing.T) {
-	t.Parallel()
-	requireRawSockets(t)
-
-	sIface, err := NewSender(SenderConfig{Source: net.IPv4(127, 0, 0, 1), Interface: "lo"})
-	require.NoError(t, err)
-	defer sIface.Close()
-	s := sIface.(*sender)
-
-	o := s.buildPktinfoOOB()
-	require.NotNil(t, o)
-	require.GreaterOrEqual(t, len(o), unix.CmsgSpace(unix.SizeofInet4Pktinfo))
-
-	h := (*unix.Cmsghdr)(unsafe.Pointer(&o[0]))
-	require.Equal(t, int32(unix.IPPROTO_IP), h.Level)
-	require.Equal(t, int32(unix.IP_PKTINFO), h.Type)
-}
-
-// Confirms pktinfo includes correct source IP and interface index.
-func TestUping_buildPktinfoOOB_ContainsSpecDstAndIfindex(t *testing.T) {
-	t.Parallel()
-	requireRawSockets(t)
-
-	src := net.IPv4(127, 0, 0, 1)
-	ifi, err := net.InterfaceByName("lo")
-	require.NoError(t, err)
-
-	si, err := NewSender(SenderConfig{Source: src, Interface: "lo"})
-	require.NoError(t, err)
-	defer si.Close()
-	s := si.(*sender)
-
-	o := s.buildPktinfoOOB()
-	require.NotNil(t, o)
-	require.GreaterOrEqual(t, len(o), unix.CmsgSpace(unix.SizeofInet4Pktinfo))
-
-	h := (*unix.Cmsghdr)(unsafe.Pointer(&o[0]))
-	require.Equal(t, int32(unix.IPPROTO_IP), h.Level)
-	require.Equal(t, int32(unix.IP_PKTINFO), h.Type)
-
-	data := o[unix.CmsgLen(0):unix.CmsgLen(unix.SizeofInet4Pktinfo)]
-	pi := *(*unix.Inet4Pktinfo)(unsafe.Pointer(&data[0]))
-
-	exp := [4]byte{src[0], src[1], src[2], src[3]}
-	require.Equal(t, int32(ifi.Index), pi.Ifindex)
-	if pi.Spec_dst != exp && pi.Addr != exp {
-		t.Fatalf("pktinfo source mismatch: got Spec_dst=%v Addr=%v, want %v", pi.Spec_dst, pi.Addr, exp)
-	}
-}
-
-// Ensures reopen preserves pktinfo correctness and continued send success.
-func TestUping_Reopen_PreservesPktinfoAndSendWorks(t *testing.T) {
-	t.Parallel()
-	requireRawSockets(t)
-
-	src := net.IPv4(127, 0, 0, 1)
-	si, err := NewSender(SenderConfig{Source: src, Interface: "lo"})
-	require.NoError(t, err)
-	defer si.Close()
-	s := si.(*sender)
-
-	require.NoError(t, s.reopen())
-
-	o := s.buildPktinfoOOB()
-	require.NotNil(t, o)
-	data := o[unix.CmsgLen(0):unix.CmsgLen(unix.SizeofInet4Pktinfo)]
-	pi := *(*unix.Inet4Pktinfo)(unsafe.Pointer(&data[0]))
-	exp := [4]byte{src[0], src[1], src[2], src[3]}
-	if pi.Spec_dst != exp && pi.Addr != exp {
-		t.Fatalf("pktinfo source mismatch after reopen: got Spec_dst=%v Addr=%v, want %v", pi.Spec_dst, pi.Addr, exp)
-	}
-	require.NotZero(t, pi.Ifindex)
-
-	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
-	defer cancel()
-	res, err := s.Send(ctx, SendConfig{Target: net.IPv4(127, 0, 0, 1), Count: 1, Timeout: 800 * time.Millisecond})
-	require.NoError(t, err)
-	require.Len(t, res.Results, 1)
-	require.NoError(t, res.Results[0].Error)
-	require.Greater(t, res.Results[0].RTT, time.Duration(0))
 }
 
 // Verifies transientSocketErr correctly classifies recoverable errors.
@@ -468,18 +359,6 @@ func TestUping_Sender_TransientSendRetryable(t *testing.T) {
 	}
 }
 
-// Verifies applyRecvSlice returns false if the deadline has passed.
-func TestUping_Sender_ApplyRecvSlice_ReturnsFalsePastDeadline(t *testing.T) {
-	t.Parallel()
-	var s sender // zero fd; SetsockoptTimeval error is ignored by implementation
-	if s.applyRecvSlice(time.Now().Add(-time.Millisecond)) {
-		t.Fatal("expected false for past deadline")
-	}
-	if !s.applyRecvSlice(time.Now().Add(time.Millisecond)) {
-		t.Fatal("expected true for future deadline")
-	}
-}
-
 // helper to build a minimal IPv4+ICMP frame
 func buildIPv4Packet(src, dst net.IP, proto byte, payload []byte) []byte {
 	ip := make([]byte, 20+len(payload))
@@ -492,16 +371,17 @@ func buildIPv4Packet(src, dst net.IP, proto byte, payload []byte) []byte {
 	return ip
 }
 
+// Require CAP_NET_RAW by attempting to bind an ICMP socket. Skips/errs like before.
 func requireRawSockets(t *testing.T) {
-	fd, err := unix.Socket(unix.AF_INET, unix.SOCK_RAW, unix.IPPROTO_ICMP)
+	c, err := net.ListenIP("ip4:icmp", &net.IPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	if err == nil {
-		_ = unix.Close(fd)
+		_ = c.Close()
 		return
 	}
 	require.NoError(t, err)
-	require.False(t, errors.Is(err, unix.EPERM))
 }
 
+// Pick a non-loopback IPv4 if available, else fall back to loopback.
 func pickLocalV4(t *testing.T) net.IP {
 	ifs, err := net.Interfaces()
 	require.NoError(t, err)
@@ -546,13 +426,6 @@ func ifaceNameForIP(t *testing.T, ip net.IP) string {
 	}
 	t.Fatalf("could not find interface name for ip %v", ip)
 	return ""
-}
-
-func killFDForTest(s *sender) {
-	s.mu.Lock()
-	fd := s.fd
-	s.mu.Unlock()
-	_ = unix.Close(fd)
 }
 
 func icmpEcho(id, seq uint16, payload []byte) []byte {

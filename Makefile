@@ -18,6 +18,10 @@ test: go-test rust-test
 .PHONY: ci
 ci: build lint test
 
+.PHONY: clean
+clean:
+	cargo clean
+
 
 # -----------------------------------------------------------------------------
 # Go targets

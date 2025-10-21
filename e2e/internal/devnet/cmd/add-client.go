@@ -17,6 +17,7 @@ func NewAddClientCmd() *AddClientCmd {
 func (c *AddClientCmd) Command() *cobra.Command {
 	var cyoaNetworkHostID uint32
 	var keypairPath string
+	var routeProbingEnable bool
 
 	cmd := &cobra.Command{
 		Use:   "add-client",
@@ -30,6 +31,7 @@ func (c *AddClientCmd) Command() *cobra.Command {
 			_, err = dn.AddClient(ctx, devnet.ClientSpec{
 				CYOANetworkIPHostID: cyoaNetworkHostID,
 				KeypairPath:         keypairPath,
+				RouteProbingEnable:  routeProbingEnable,
 			})
 			if err != nil {
 				return fmt.Errorf("failed to add client: %w", err)
@@ -43,6 +45,7 @@ func (c *AddClientCmd) Command() *cobra.Command {
 	_ = cmd.MarkFlagRequired("cyoa-network-host-id")
 
 	cmd.Flags().StringVar(&keypairPath, "keypair-path", "", "Path to the keypair file (optional)")
+	cmd.Flags().BoolVar(&routeProbingEnable, "route-probing-enable", false, "Enable route liveness probing")
 
 	return cmd
 }

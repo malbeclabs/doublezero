@@ -13,6 +13,8 @@ import (
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 )
 
+type NewRouteManagerFunc func(iface string, src net.IP) (bgp.RouteManager, error)
+
 type PIMWriter interface {
 	Start(conn pim.RawConner, iface string, tunnelAddr net.IP, group []net.IP) error
 	Close() error

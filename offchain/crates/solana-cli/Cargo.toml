@@ -35,6 +35,7 @@ solana-sdk.workspace = true
 solana-system-interface.workspace = true
 solana-transaction-status-client-types.workspace = true
 spl-associated-token-account-interface.workspace = true
+spl-token.workspace = true
 tabled.workspace = true
 tokio.workspace = true
 tracing-subscriber.workspace = true

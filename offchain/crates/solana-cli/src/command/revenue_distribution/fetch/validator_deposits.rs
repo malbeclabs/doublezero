@@ -63,13 +63,13 @@ impl ValidatorDepositsCommand {
                 )
             } else if deposit_balance != 0 {
                 let warning_message = format!(
-                    "⚠️  Warning: Please use \"doublezero-solana revenue-distribution validator-deposit {node_id} -i\" to create"
+                    "⚠️  Warning: Please use \"doublezero-solana revenue-distribution validator-deposit --node-id {node_id} -i\" to create {deposit_key}"
                 );
 
                 if balance_only {
                     println!("{:.9}", deposit_balance as f64 * 1e-9);
-                    println!();
-                    println!("{warning_message}");
+                    eprintln!();
+                    eprintln!("{warning_message}");
 
                     return Ok(());
                 }
@@ -80,13 +80,11 @@ impl ValidatorDepositsCommand {
                         node_id,
                         amount: format!("{:.9}", deposit_balance as f64 * 1e-9),
                     }],
-                    Some(format!(
-                        "⚠️  Warning: Please use \"doublezero-solana revenue-distribution validator-deposit {node_id} -i\" to create"
-                    )),
+                    Some(warning_message),
                 )
             } else {
                 bail!(
-                    "No deposit account found. Please use \"doublezero-solana revenue-distribution validator-deposit {node_id} --fund <AMOUNT>\" to deposit SOL"
+                    "No deposit account found at {deposit_key}. Please use \"doublezero-solana revenue-distribution validator-deposit --node-id {node_id} --fund <AMOUNT>\" to deposit SOL"
                 );
             }
         } else {

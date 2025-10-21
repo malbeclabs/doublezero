@@ -1998,6 +1998,7 @@ dependencies = [
  "solana-system-interface",
  "solana-transaction-status-client-types",
  "spl-associated-token-account-interface",
+ "spl-token",
  "tabled",
  "tokio",
  "tracing-subscriber",

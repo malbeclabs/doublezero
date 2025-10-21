@@ -1,6 +1,7 @@
 use anyhow::{Context, Result, bail, ensure};
 use clap::Args;
 use doublezero_program_tools::instruction::try_build_instruction;
+use doublezero_revenue_distribution::env::mainnet::DOUBLEZERO_MINT_KEY;
 use doublezero_sol_conversion_interface::{
     ID,
     instruction::{SolConversionInstructionData, account::BuySolAccounts},
@@ -8,13 +9,16 @@ use doublezero_sol_conversion_interface::{
 };
 use doublezero_solana_client_tools::payer::{SolanaPayerOptions, Wallet};
 use solana_sdk::{
-    compute_budget::ComputeBudgetInstruction, instruction::Instruction, pubkey::Pubkey,
+    compute_budget::ComputeBudgetInstruction, instruction::Instruction, program_pack::Pack,
+    pubkey::Pubkey,
 };
 
 use crate::command::{
     revenue_distribution::{SolConversionState, try_request_oracle_conversion_price},
     try_prompt_proceed_confirmation,
 };
+
+pub const BUY_SOL_COMPUTE_UNIT_LIMIT: u32 = 80_000;
 
 #[derive(Debug, Args, Clone)]
 pub struct Convert2zCommand {
@@ -37,69 +41,6 @@ pub struct Convert2zCommand {
 }
 
 impl Convert2zCommand {
-    pub const BUY_SOL_COMPUTE_UNIT_LIMIT: u32 = 80_000;
-
-    pub async fn try_build_buy_sol_instruction(
-        wallet: &Wallet,
-        limit_price_str: Option<String>,
-        source_token_account_key: Option<Pubkey>,
-        checked_lamports: Option<u64>,
-    ) -> Result<Instruction> {
-        let wallet_key = wallet.pubkey();
-
-        let dz_mint_key = doublezero_revenue_distribution::env::mainnet::DOUBLEZERO_MINT_KEY;
-
-        let user_token_account_key = source_token_account_key.unwrap_or(
-            spl_associated_token_account_interface::address::get_associated_token_address(
-                &wallet_key,
-                &dz_mint_key,
-            ),
-        );
-
-        let SolConversionState {
-            program_state: (_, sol_conversion_program_state),
-            configuration_registry: (_, configuration_registry),
-            journal: (_, journal, _),
-        } = SolConversionState::try_fetch(&wallet.connection).await?;
-
-        let required_lamports = configuration_registry.fixed_fill_quantity;
-        ensure!(
-            journal.total_sol_balance >= required_lamports,
-            "Not enough SOL liquidity to cover conversion"
-        );
-
-        if let Some(specified_lamports) = checked_lamports {
-            ensure!(
-                specified_lamports == required_lamports,
-                "SOL amount must be {:0.9} for 2Z -> SOL conversion. Got {:0.9}",
-                required_lamports as f64 * 1e-9,
-                specified_lamports as f64 * 1e-9,
-            );
-        }
-
-        let oracle_price_data = try_request_oracle_conversion_price().await?;
-
-        let limit_price = match limit_price_str {
-            Some(limit_price_str) => parse_limit_price_to_u64(limit_price_str)?,
-            None => oracle_price_data.swap_rate,
-        };
-
-        try_build_instruction(
-            &ID,
-            BuySolAccounts::new(
-                &sol_conversion_program_state.fills_registry_key,
-                &user_token_account_key,
-                &dz_mint_key,
-                &wallet_key,
-            ),
-            &SolConversionInstructionData::BuySol {
-                limit_price,
-                oracle_price_data,
-            },
-        )
-        .context("Failed to build buy SOL instruction")
-    }
-
     pub async fn try_into_execute(self) -> Result<()> {
         let Self {
             limit_price: limit_price_str,
@@ -128,17 +69,21 @@ impl Convert2zCommand {
             None => None,
         };
 
-        let buy_sol_ix = Self::try_build_buy_sol_instruction(
+        let convert_2z_context = Convert2zContext::try_prepare(
             &wallet,
             limit_price_str,
             source_token_account_key,
             checked_lamports,
         )
         .await?;
+        println!(
+            "2Z token balance: {:.8}",
+            convert_2z_context.balance_before as f64 * 1e-8
+        );
 
         let mut instructions = vec![
-            buy_sol_ix,
-            ComputeBudgetInstruction::set_compute_unit_limit(Self::BUY_SOL_COMPUTE_UNIT_LIMIT),
+            convert_2z_context.instruction,
+            ComputeBudgetInstruction::set_compute_unit_limit(BUY_SOL_COMPUTE_UNIT_LIMIT),
         ];
 
         if let Some(ref compute_unit_price_ix) = wallet.compute_unit_price_ix {
@@ -149,7 +94,17 @@ impl Convert2zCommand {
         let tx_sig = wallet.send_or_simulate_transaction(&transaction).await?;
 
         if let Some(tx_sig) = tx_sig {
-            println!("Buy SOL: {tx_sig}");
+            println!("Converted 2Z to SOL: {tx_sig}");
+
+            let balance_after =
+                fetch_token_balance(&wallet, Some(convert_2z_context.user_token_account_key))
+                    .await?;
+            println!(
+                "Converted {:.8} 2Z tokens to {:.9} SOL",
+                (convert_2z_context.balance_before - balance_after) as f64 * 1e-8,
+                (convert_2z_context.required_lamports as f64 * 1e-9)
+            );
+
             wallet.print_verbose_output(&[tx_sig]).await?;
         }
 
@@ -189,4 +144,104 @@ fn parse_limit_price_to_u64(bid_price_str: String) -> Result<u64> {
     }
 
     Ok((bid_price * RATE_PRECISION_F64).round() as u64)
+}
+
+pub fn unwrap_token_account_or_ata(
+    wallet: &Wallet,
+    source_token_account_key: Option<Pubkey>,
+) -> Pubkey {
+    source_token_account_key.unwrap_or(
+        spl_associated_token_account_interface::address::get_associated_token_address(
+            &wallet.pubkey(),
+            &DOUBLEZERO_MINT_KEY,
+        ),
+    )
+}
+
+pub async fn fetch_token_balance(
+    wallet: &Wallet,
+    source_token_account_key: Option<Pubkey>,
+) -> Result<u64> {
+    let user_token_account_key = unwrap_token_account_or_ata(wallet, source_token_account_key);
+
+    let token_account = wallet
+        .connection
+        .get_account(&user_token_account_key)
+        .await
+        .with_context(|| format!("Token account not found: {user_token_account_key}"))?;
+
+    spl_token::state::Account::unpack(&token_account.data)
+        .map(|account| account.amount)
+        .context("Failed to unpack token account")
+}
+
+pub struct Convert2zContext {
+    pub instruction: Instruction,
+    pub user_token_account_key: Pubkey,
+    pub balance_before: u64,
+    pub required_lamports: u64,
+}
+
+impl Convert2zContext {
+    pub async fn try_prepare(
+        wallet: &Wallet,
+        limit_price_str: Option<String>,
+        source_token_account_key: Option<Pubkey>,
+        checked_lamports: Option<u64>,
+    ) -> Result<Self> {
+        let wallet_key = wallet.pubkey();
+
+        let SolConversionState {
+            program_state: (_, sol_conversion_program_state),
+            configuration_registry: (_, configuration_registry),
+            journal: (_, journal, _),
+        } = SolConversionState::try_fetch(&wallet.connection).await?;
+
+        let required_lamports = configuration_registry.fixed_fill_quantity;
+        ensure!(
+            journal.total_sol_balance >= required_lamports,
+            "Not enough SOL liquidity to cover conversion"
+        );
+
+        if let Some(specified_lamports) = checked_lamports {
+            ensure!(
+                specified_lamports == required_lamports,
+                "SOL amount must be {:0.9} for 2Z -> SOL conversion. Got {:0.9}",
+                required_lamports as f64 * 1e-9,
+                specified_lamports as f64 * 1e-9,
+            );
+        }
+
+        let user_token_account_key = unwrap_token_account_or_ata(wallet, source_token_account_key);
+        let balance_before = fetch_token_balance(wallet, Some(user_token_account_key)).await?;
+
+        let oracle_price_data = try_request_oracle_conversion_price().await?;
+
+        let limit_price = match limit_price_str {
+            Some(limit_price_str) => parse_limit_price_to_u64(limit_price_str)?,
+            None => oracle_price_data.swap_rate,
+        };
+
+        let instruction = try_build_instruction(
+            &ID,
+            BuySolAccounts::new(
+                &sol_conversion_program_state.fills_registry_key,
+                &user_token_account_key,
+                &DOUBLEZERO_MINT_KEY,
+                &wallet_key,
+            ),
+            &SolConversionInstructionData::BuySol {
+                limit_price,
+                oracle_price_data,
+            },
+        )
+        .context("Failed to build buy SOL instruction")?;
+
+        Ok(Self {
+            instruction,
+            user_token_account_key,
+            balance_before,
+            required_lamports,
+        })
+    }
 }

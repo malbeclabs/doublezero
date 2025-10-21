@@ -71,8 +71,8 @@ func (s *BasicSender) Probe(ctx context.Context) (time.Duration, error) {
 	s.seq++
 
 	// Create a packet and marshal it.
-	packet := NewPacket(s.seq)
-	err := packet.Marshal(s.buf)
+	sentPacket := NewPacket(s.seq)
+	err := sentPacket.Marshal(s.buf)
 	if err != nil {
 		return 0, fmt.Errorf("marshal packet: %w", err)
 	}
@@ -124,7 +124,7 @@ func (s *BasicSender) Probe(ctx context.Context) (time.Duration, error) {
 		}
 
 		// Validate packet.
-		packet, err = UnmarshalPacket(s.buf[:n])
+		packet, err := UnmarshalPacket(s.buf[:n])
 		if err != nil {
 			return 0, fmt.Errorf("unmarshal packet: %w", err)
 		}
@@ -142,6 +142,20 @@ func (s *BasicSender) Probe(ctx context.Context) (time.Duration, error) {
 		s.receivedMu.Lock()
 		s.received[*packet] = struct{}{}
 		s.receivedMu.Unlock()
+
+		// Verify that the seq and timestamp match the sent packet.
+		if sentPacket.Seq != packet.Seq {
+			s.log.Debug("sequence number mismatch", "sent_seq", sentPacket.Seq, "received_seq", packet.Seq)
+			continue
+		}
+		if sentPacket.Sec != packet.Sec {
+			s.log.Debug("timestamp seconds mismatch", "sent_sec", sentPacket.Sec, "received_sec", packet.Sec)
+			continue
+		}
+		if sentPacket.Frac != packet.Frac {
+			s.log.Debug("timestamp fractional mismatch", "sent_frac", sentPacket.Frac, "received_frac", packet.Frac)
+			continue
+		}
 
 		// Calculate RTT.
 		rtt := recvTime.Sub(sendTime)

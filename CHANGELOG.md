@@ -32,6 +32,7 @@ All notable changes to this project will be documented in this file.
     - Add 'allow_multiple_ip' argument to support AccessPass connections from multiple IPs
     - Include validator pubkey in `export` output
     - Rename exchange.loc_id to exchange.bgp_community
+    - `status` command now shows connected and lowest latency DZD
 - Activator
     - Reduce logging noise when processing snapshot events
     - Wrap main select handler in loop to avoid shutdown on branch error
@@ -39,6 +40,9 @@ All notable changes to this project will be documented in this file.
     - Remove user-level allowlist management from CLI and admin interfaces; manage multicast group allowlists through AccessPass.
     - Add Validate trait for core types (AccessPass, Contributor, Interface, etc.) and enforce runtime checks before account operations.
     - Fix: resize AccessPass account before serialization to prevent errors; standardized use of resize_account_if_needed across processors.
+    - Enable AccessPass with 'client_ip=0.0.0.0' to dynamically learn the user’s IP on first connection
+    - Enable AccessPass to support connections from multiple IPs (allowlist compatibility)
+    - Rename exchange.loc_id to exchange.bgp_community, and change it from u32 to u16
 - Internet telemetry
     - Add circuit label to metrics; create a new metric for missing circuit samples
     - Create a new metric that tracks how long it takes collector tasks to run
@@ -53,10 +57,6 @@ All notable changes to this project will be documented in this file.
     - Add device info as labels to `controller_grpc_getconfig_requests_total` metric
 - Device agents
     - Submit device-link telemetry partitions in parallel
-- Onchain programs
-    - Enable AccessPass with 'client_ip=0.0.0.0' to dynamically learn the user’s IP on first connection
-    - Enable AccessPass to support connections from multiple IPs (allowlist compatibility)
-    - Rename exchange.loc_id to exchange.bgp_community, and change it from u32 to u16
 - Telemetry data API
     - Filter by contributor and link type
 - SDK/Go

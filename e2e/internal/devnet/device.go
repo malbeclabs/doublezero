@@ -39,8 +39,8 @@ const (
 
 const (
 	// Device container is more CPU and memory intensive than the others.
-	deviceContainerNanoCPUs = 4_000_000_000          // 4 cores
-	deviceContainerMemory   = 4 * 1024 * 1024 * 1024 // 4GB
+	deviceContainerNanoCPUs = 4_000_000_000            // 4 cores
+	deviceContainerMemory   = 4.5 * 1024 * 1024 * 1024 // 4.5GB
 
 	defaultCYOANetworkAllocatablePrefix = 29 // 8 addresses
 )

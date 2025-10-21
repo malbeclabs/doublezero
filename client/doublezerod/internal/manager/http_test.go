@@ -20,6 +20,7 @@ import (
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/manager"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/pim"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/services"
 	"golang.org/x/sys/unix"
 )
 
@@ -107,8 +108,11 @@ func TestHttpStatus(t *testing.T) {
 	m := &MockNetlink{}
 	b := &MockBgpServer{}
 	db := &MockDb{state: nil}
-	pim := &MockPIMServer{}
-	manager := manager.NewNetlinkManager(m, b, db, pim)
+	manager := manager.NewNetlinkManager(m, b, db, map[api.UserType]manager.Provisioner{
+		api.UserTypeIBRL: services.NewIBRLService(b, m, db, func(iface string, src net.IP) (bgp.RouteManager, error) {
+			return manager.NewNetlinkerRouteManager(m), nil
+		}),
+	})
 
 	f, err := os.CreateTemp("/tmp", "doublezero.sock")
 	if err != nil {
@@ -220,7 +224,20 @@ func TestNetlinkManager_HttpEndpoints(t *testing.T) {
 	b := &MockBgpServer{}
 	db := &MockDb{state: []*api.ProvisionRequest{}}
 	pim := &MockPIMServer{}
-	manager := manager.NewNetlinkManager(m, b, db, pim)
+	manager := manager.NewNetlinkManager(m, b, db, map[api.UserType]manager.Provisioner{
+		api.UserTypeIBRL: services.NewIBRLService(b, m, db, func(iface string, src net.IP) (bgp.RouteManager, error) {
+			return manager.NewNetlinkerRouteManager(m), nil
+		}),
+		api.UserTypeIBRLWithAllocatedIP: services.NewIBRLServiceWithAllocatedAddress(b, m, db, func(iface string, src net.IP) (bgp.RouteManager, error) {
+			return manager.NewNetlinkerRouteManager(m), nil
+		}),
+		api.UserTypeEdgeFiltering: services.NewEdgeFilteringService(b, m, db, func(iface string, src net.IP) (bgp.RouteManager, error) {
+			return manager.NewNetlinkerRouteManager(m), nil
+		}),
+		api.UserTypeMulticast: services.NewMulticastService(b, m, db, pim, func(iface string, src net.IP) (bgp.RouteManager, error) {
+			return manager.NewNetlinkerRouteManager(m), nil
+		}),
+	})
 
 	f, err := os.CreateTemp("/tmp", "doublezero.sock")
 	if err != nil {

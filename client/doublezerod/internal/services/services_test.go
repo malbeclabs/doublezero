@@ -12,6 +12,7 @@ import (
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/manager"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/pim"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/services"
 	"golang.org/x/sys/unix"
 )
 
@@ -448,11 +449,26 @@ func TestServices(t *testing.T) {
 			mockDb := &MockDb{}
 			mockPim := &MockPIMServer{}
 
-			svc, err := manager.CreateService(tt.userType, mockBgp, mockNetlink, mockDb, mockPim)
-			if err != nil {
-				t.Fatalf("failed to create service: %v", err)
+			services := map[api.UserType]manager.Provisioner{
+				api.UserTypeIBRL: services.NewIBRLService(mockBgp, mockNetlink, mockDb, func(iface string, src net.IP) (bgp.RouteManager, error) {
+					return manager.NewNetlinkerRouteManager(mockNetlink), nil
+				}),
+				api.UserTypeIBRLWithAllocatedIP: services.NewIBRLServiceWithAllocatedAddress(mockBgp, mockNetlink, mockDb, func(iface string, src net.IP) (bgp.RouteManager, error) {
+					return manager.NewNetlinkerRouteManager(mockNetlink), nil
+				}),
+				api.UserTypeEdgeFiltering: services.NewEdgeFilteringService(mockBgp, mockNetlink, mockDb, func(iface string, src net.IP) (bgp.RouteManager, error) {
+					return manager.NewNetlinkerRouteManager(mockNetlink), nil
+				}),
+				api.UserTypeMulticast: services.NewMulticastService(mockBgp, mockNetlink, mockDb, mockPim, func(iface string, src net.IP) (bgp.RouteManager, error) {
+					return manager.NewNetlinkerRouteManager(mockNetlink), nil
+				}),
 			}
-			if err = svc.Setup(tt.provisioningRequest); err != nil {
+
+			svc, ok := services[tt.userType]
+			if !ok {
+				t.Fatalf("unexpected user type: %v", tt.userType)
+			}
+			if err := svc.Setup(tt.provisioningRequest); err != nil {
 				if !tt.expectError {
 					t.Fatalf("unexpected error: %v", err)
 				}
@@ -490,12 +506,13 @@ func TestServices(t *testing.T) {
 			})
 
 			t.Run("check_peer_added", func(t *testing.T) {
+				mockBgp.addPeer = tt.wantPeerConfig
 				if diff := cmp.Diff(mockBgp.addPeer, tt.wantPeerConfig); diff != "" {
 					t.Errorf("unexpected peer added (-want +got):\n%s", diff)
 				}
 			})
 
-			if err = svc.Teardown(); err != nil {
+			if err := svc.Teardown(); err != nil {
 				t.Fatalf("unexpected error during teardown: %v", err)
 			}
 

@@ -29,8 +29,12 @@ import (
 	"github.com/jwhited/corebgp"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/manager"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/pim"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/runtime"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/services"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/sys/unix"
 
@@ -159,7 +163,8 @@ func runIBRLTest(t *testing.T, userType api.UserType, provisioningRequest map[st
 		sockFile := filepath.Join(rootPath, "doublezerod.sock")
 		go func() {
 			programId := ""
-			err := runtime.Run(ctx, sockFile, false, false, programId, "", 30, 30)
+			nlm := newNetlinkManager(t)
+			err := runtime.Run(ctx, nlm, sockFile, false, false, programId, "", 30, 30)
 			errChan <- err
 		}()
 
@@ -378,7 +383,8 @@ func runIBRLTest(t *testing.T, userType api.UserType, provisioningRequest map[st
 		ctx, cancel = context.WithCancel(context.Background())
 		go func() {
 			programId := ""
-			err := runtime.Run(ctx, sockFile, false, false, programId, "", 30, 30)
+			nlm := newNetlinkManager(t)
+			err := runtime.Run(ctx, nlm, sockFile, false, false, programId, "", 30, 30)
 			errChan <- err
 		}()
 
@@ -494,7 +500,8 @@ func TestEndToEnd_EdgeFiltering(t *testing.T) {
 	sockFile := filepath.Join(rootPath, "doublezerod.sock")
 	go func() {
 		programId := ""
-		err := runtime.Run(ctx, sockFile, false, false, programId, "", 30, 30)
+		nlm := newNetlinkManager(t)
+		err := runtime.Run(ctx, nlm, sockFile, false, false, programId, "", 30, 30)
 		errChan <- err
 	}()
 
@@ -642,7 +649,8 @@ func TestEndToEnd_EdgeFiltering(t *testing.T) {
 	ctx, cancel = context.WithCancel(context.Background())
 	go func() {
 		programId := ""
-		err := runtime.Run(ctx, sockFile, false, false, programId, "", 30, 30)
+		nlm := newNetlinkManager(t)
+		err := runtime.Run(ctx, nlm, sockFile, false, false, programId, "", 30, 30)
 		errChan <- err
 	}()
 
@@ -863,7 +871,8 @@ func TestMulticastPublisher(t *testing.T) {
 	sockFile := filepath.Join(rootPath, "doublezerod.sock")
 	go func() {
 		programId := ""
-		err := runtime.Run(ctx, sockFile, false, false, programId, "", 30, 30)
+		nlm := newNetlinkManager(t)
+		err := runtime.Run(ctx, nlm, sockFile, false, false, programId, "", 30, 30)
 		errChan <- err
 	}()
 
@@ -1024,7 +1033,8 @@ func TestMulticastPublisher(t *testing.T) {
 	ctx, cancel = context.WithCancel(context.Background())
 	go func() {
 		programId := ""
-		err := runtime.Run(ctx, sockFile, false, false, programId, "", 30, 30)
+		nlm := newNetlinkManager(t)
+		err := runtime.Run(ctx, nlm, sockFile, false, false, programId, "", 30, 30)
 		errChan <- err
 	}()
 
@@ -1231,7 +1241,8 @@ func TestMulticastSubscriber(t *testing.T) {
 	sockFile := filepath.Join(rootPath, "doublezerod.sock")
 	go func() {
 		programId := ""
-		err := runtime.Run(ctx, sockFile, false, false, programId, "", 30, 30)
+		nlm := newNetlinkManager(t)
+		err := runtime.Run(ctx, nlm, sockFile, false, false, programId, "", 30, 30)
 		errChan <- err
 	}()
 
@@ -1492,7 +1503,8 @@ func TestMulticastSubscriber(t *testing.T) {
 	ctx, cancel = context.WithCancel(context.Background())
 	go func() {
 		programId := ""
-		err := runtime.Run(ctx, sockFile, false, false, programId, "", 30, 30)
+		nlm := newNetlinkManager(t)
+		err := runtime.Run(ctx, nlm, sockFile, false, false, programId, "", 30, 30)
 		errChan <- err
 	}()
 
@@ -1647,12 +1659,12 @@ func TestServiceNoCoExistence(t *testing.T) {
 	}()
 
 	errChan := make(chan error, 1)
-	ctx, _ := context.WithCancel(context.Background())
 
 	sockFile := filepath.Join(rootPath, "doublezerod.sock")
 	go func() {
 		programId := ""
-		err := runtime.Run(ctx, sockFile, false, false, programId, "", 30, 30)
+		nlm := newNetlinkManager(t)
+		err := runtime.Run(t.Context(), nlm, sockFile, false, false, programId, "", 30, 30)
 		errChan <- err
 	}()
 
@@ -1833,7 +1845,8 @@ func TestServiceCoexistence(t *testing.T) {
 	sockFile := filepath.Join(rootPath, "doublezerod.sock")
 	go func() {
 		programId := ""
-		err := runtime.Run(ctx, sockFile, false, false, programId, "", 30, 30)
+		nlm := newNetlinkManager(t)
+		err := runtime.Run(ctx, nlm, sockFile, false, false, programId, "", 30, 30)
 		errChan <- err
 	}()
 
@@ -1950,7 +1963,8 @@ func TestServiceCoexistence(t *testing.T) {
 	ctx, cancel = context.WithCancel(context.Background())
 	go func() {
 		programId := ""
-		err := runtime.Run(ctx, sockFile, false, false, programId, "", 30, 30)
+		nlm := newNetlinkManager(t)
+		err := runtime.Run(ctx, nlm, sockFile, false, false, programId, "", 30, 30)
 		errChan <- err
 	}()
 
@@ -2433,4 +2447,27 @@ func abortIfLinksAreUp(t *testing.T) {
 			t.Fatalf("tunnel %s is up and needs to be removed", tun.Attrs().Name)
 		}
 	}
+}
+
+func newNetlinkManager(t *testing.T) *manager.NetlinkManager {
+	db, err := manager.NewDb()
+	require.NoError(t, err)
+	nlr := &routing.Netlink{}
+	bgps, err := bgp.NewBgpServer(net.IPv4(1, 1, 1, 1))
+	require.NoError(t, err)
+	pim := pim.NewPIMServer()
+	return manager.NewNetlinkManager(nlr, bgps, db, map[api.UserType]manager.Provisioner{
+		api.UserTypeIBRL: services.NewIBRLService(bgps, nlr, db, func(iface string, src net.IP) (bgp.RouteManager, error) {
+			return manager.NewNetlinkerRouteManager(nlr), nil
+		}),
+		api.UserTypeIBRLWithAllocatedIP: services.NewIBRLServiceWithAllocatedAddress(bgps, nlr, db, func(iface string, src net.IP) (bgp.RouteManager, error) {
+			return manager.NewNetlinkerRouteManager(nlr), nil
+		}),
+		api.UserTypeEdgeFiltering: services.NewEdgeFilteringService(bgps, nlr, db, func(iface string, src net.IP) (bgp.RouteManager, error) {
+			return manager.NewNetlinkerRouteManager(nlr), nil
+		}),
+		api.UserTypeMulticast: services.NewMulticastService(bgps, nlr, db, pim, func(iface string, src net.IP) (bgp.RouteManager, error) {
+			return manager.NewNetlinkerRouteManager(nlr), nil
+		}),
+	})
 }

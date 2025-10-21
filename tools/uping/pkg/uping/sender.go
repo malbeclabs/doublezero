@@ -4,6 +4,7 @@ package uping
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -30,9 +31,10 @@ const (
 // SenderConfig configures the raw-ICMP sender.
 // Both Interface and Source are REQUIRED and must be IPv4-capable.
 type SenderConfig struct {
-	Logger    *slog.Logger // optional
-	Interface string       // required: interface name; used to resolve ifindex for PKTINFO
-	Source    net.IP       // required: IPv4 source address used as Spec_dst
+	Logger        *slog.Logger           // optional
+	Interface     string                 // required: interface name; used to resolve ifindex for PKTINFO
+	Source        net.IP                 // required: IPv4 source address used as Spec_dst
+	NewEchoIDFunc func() (uint16, error) // optional: function to generate a unique echo ID (default: random)
 }
 
 // Validate enforces required fields and IPv4-ness.
@@ -42,6 +44,9 @@ func (cfg *SenderConfig) Validate() error {
 	}
 	if cfg.Source == nil || cfg.Source.To4() == nil {
 		return fmt.Errorf("source must be a valid IPv4 address")
+	}
+	if cfg.NewEchoIDFunc == nil {
+		cfg.NewEchoIDFunc = randomEchoID
 	}
 	return nil
 }
@@ -67,6 +72,15 @@ func (cfg *SendConfig) Validate() error {
 		return fmt.Errorf("timeout must be greater than 0")
 	}
 	return nil
+}
+
+func randomEchoID() (uint16, error) {
+	var idb [2]byte
+	if _, err := rand.Read(idb[:]); err != nil {
+		return 0, fmt.Errorf("rand echo id: %w", err)
+	}
+	pid := binary.BigEndian.Uint16(idb[:])
+	return pid, nil
 }
 
 // SendResults is a bag of per-probe results; Failed() indicates any error occurred.
@@ -100,9 +114,8 @@ type sender struct {
 	cfg     SenderConfig
 	sip     net.IP           // IPv4 source (validated)
 	ifIndex int              // ifindex derived from Interface
-	pid     uint16           // echo identifier seed (pid & 0xffff)
-	ipc     *net.IPConn      // ip4:icmp bound to src
-	ip4c    *ipv4.PacketConn // ipv4 wrapper
+	pid     uint16           // echo identifier (random per instance)
+	ip4c    *ipv4.PacketConn // ipv4 wrapper over ICMP datagram (“ping”) socket
 	mu      sync.Mutex
 }
 
@@ -115,27 +128,33 @@ func NewSender(cfg SenderConfig) (Sender, error) {
 
 	sip := cfg.Source.To4() // safe: Validate() ensures IPv4
 
-	// REQUIRED: resolve interface index; fail if not present.
+	// Resolve interface index; fail if not present.
 	ifi, err := net.InterfaceByName(cfg.Interface)
 	if err != nil {
 		return nil, fmt.Errorf("lookup interface %q: %w", cfg.Interface, err)
 	}
 
-	// Bind to the source IP so the kernel builds IPv4 and selects routes accordingly.
-	ipc, err := net.ListenIP("ip4:icmp", &net.IPAddr{IP: sip})
+	// Unique random Echo ID per instance (enables kernel demux with ping sockets).
+	var idb [2]byte
+	if _, err := rand.Read(idb[:]); err != nil {
+		return nil, fmt.Errorf("rand echo id: %w", err)
+	}
+	pid := binary.BigEndian.Uint16(idb[:])
+
+	// Create an ICMP datagram (“ping”) socket and bind it to the source IP + Echo ID (Linux demux key).
+	pconn, err := listenICMPDatagram(sip, pid)
 	if err != nil {
 		return nil, err
 	}
 
 	// Wrap so we can use control messages and TTL helpers.
-	ip4c := ipv4.NewPacketConn(ipc)
+	ip4c := ipv4.NewPacketConn(pconn)
 	_ = ip4c.SetTTL(64)
 	_ = ip4c.SetControlMessage(ipv4.FlagInterface|ipv4.FlagDst, true)
 
 	// Pin the socket to the given interface for both RX and TX routing.
-	if err := bindToDevice(ipc, ifi.Name); err != nil {
+	if err := bindToDevice(pconn, ifi.Name); err != nil {
 		_ = ip4c.Close()
-		_ = ipc.Close()
 		return nil, fmt.Errorf("bind-to-device %q: %w", ifi.Name, err)
 	}
 
@@ -144,8 +163,7 @@ func NewSender(cfg SenderConfig) (Sender, error) {
 		cfg:     cfg,
 		sip:     sip,
 		ifIndex: ifi.Index,
-		pid:     uint16(os.Getpid() & 0xffff),
-		ipc:     ipc,
+		pid:     pid,
 		ip4c:    ip4c,
 	}, nil
 }
@@ -155,10 +173,7 @@ func (s *sender) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.ip4c != nil {
-		_ = s.ip4c.Close()
-	}
-	if s.ipc != nil {
-		return s.ipc.Close()
+		return s.ip4c.Close()
 	}
 	return nil
 }
@@ -184,9 +199,16 @@ func (s *sender) Send(ctx context.Context, cfg SendConfig) (*SendResults, error)
 	dst := &net.IPAddr{IP: dip}
 
 	// Per-Send() reusable buffers to avoid hot-path allocations.
-	buf := make([]byte, 8192)              // RX buffer (ICMP payload when using PacketConn)
-	payload := make([]byte, 8)             // 8-byte nonce in ICMP echo data
-	nonce := uint64(time.Now().UnixNano()) // starting nonce; increment per probe
+	buf := make([]byte, 8192) // RX buffer (ICMP payload when using PacketConn)
+
+	// 8-byte nonce in ICMP echo data, initialized from crypto/rand.
+	var n8 [8]byte
+	if _, err := rand.Read(n8[:]); err != nil {
+		return nil, fmt.Errorf("rand nonce: %w", err)
+	}
+	nonce := binary.BigEndian.Uint64(n8[:])
+
+	payload := make([]byte, 8) // reused; overwritten each probe
 
 	for i := 0; i < cfg.Count; i++ {
 		select {
@@ -208,8 +230,8 @@ func (s *sender) Send(ctx context.Context, cfg SendConfig) (*SendResults, error)
 			continue
 		}
 
-		// Per-packet steering: IfIndex emulate IP_PKTINFO (Spec_dst + ifindex).
-		cm := &ipv4.ControlMessage{IfIndex: s.ifIndex}
+		// Per-packet steering: IfIndex + Src emulate IP_PKTINFO (Spec_dst + ifindex).
+		cm := &ipv4.ControlMessage{IfIndex: s.ifIndex, Src: s.sip}
 
 		t0 := time.Now()
 		if _, err := s.ip4c.WriteTo(wb, cm, dst); err != nil {
@@ -219,7 +241,7 @@ func (s *sender) Send(ctx context.Context, cfg SendConfig) (*SendResults, error)
 					s.log.Info("uping/sender: reopen after send err", "i", i+1, "seq", seq, "err", err)
 				}
 				if e := s.reopen(); e == nil {
-					cm = &ipv4.ControlMessage{IfIndex: s.ifIndex}
+					cm = &ipv4.ControlMessage{IfIndex: s.ifIndex, Src: s.sip}
 					_, err = s.ip4c.WriteTo(wb, cm, dst)
 				}
 			}
@@ -254,7 +276,7 @@ func (s *sender) Send(ctx context.Context, cfg SendConfig) (*SendResults, error)
 			if remain > maxPollSlice {
 				remain = maxPollSlice
 			}
-			_ = s.ipc.SetReadDeadline(time.Now().Add(remain))
+			_ = s.ip4c.SetReadDeadline(time.Now().Add(remain))
 
 			n, rcm, raddr, err := s.ip4c.ReadFrom(buf)
 			if ne, ok := err.(net.Error); ok && ne.Timeout() {
@@ -267,7 +289,7 @@ func (s *sender) Send(ctx context.Context, cfg SendConfig) (*SendResults, error)
 						s.log.Info("uping/sender: reopen after recv err", "i", i+1, "seq", seq, "err", err)
 					}
 					if e := s.reopen(); e == nil {
-						_ = s.ipc.SetReadDeadline(time.Now().Add(time.Until(deadline)))
+						_ = s.ip4c.SetReadDeadline(time.Now().Add(time.Until(deadline)))
 						continue
 					}
 				}
@@ -291,6 +313,8 @@ func (s *sender) Send(ctx context.Context, cfg SendConfig) (*SendResults, error)
 					ip := src
 					if ip == nil || ip.Equal(net.IPv4zero) {
 						if ipaddr, _ := raddr.(*net.IPAddr); ipaddr != nil {
+							ip = ipaddr.IP
+						} else if ipaddr, _ := raddr.(*net.UDPAddr); ipaddr != nil {
 							ip = ipaddr.IP
 						}
 					}
@@ -418,34 +442,30 @@ func icmpChecksum(b []byte) uint16 {
 	return ^uint16(s)
 }
 
-// reopen replaces the socket with a fresh ip4:icmp socket and reapplies base options.
+// reopen replaces the socket with a fresh ICMP datagram socket and reapplies base options.
 // Used after transient errors (device down, address not ready, etc.).
 func (s *sender) reopen() error {
 	if s.ip4c != nil {
 		_ = s.ip4c.Close()
 	}
-	if s.ipc != nil {
-		_ = s.ipc.Close()
-	}
-	ipc, err := net.ListenIP("ip4:icmp", &net.IPAddr{IP: s.sip})
+	pconn, err := listenICMPDatagram(s.sip, s.pid) // keep same Echo ID for kernel demux
 	if err != nil {
 		return err
 	}
-	ip4c := ipv4.NewPacketConn(ipc)
+	ip4c := ipv4.NewPacketConn(pconn)
 	_ = ip4c.SetTTL(64)
 	_ = ip4c.SetControlMessage(ipv4.FlagInterface|ipv4.FlagDst, true)
 
 	// Re-pin to device.
-	if err := bindToDevice(ipc, s.cfg.Interface); err != nil {
+	if err := bindToDevice(pconn, s.cfg.Interface); err != nil {
 		_ = ip4c.Close()
-		_ = ipc.Close()
 		return fmt.Errorf("bind-to-device %q: %w", s.cfg.Interface, err)
 	}
 
 	// Re-resolve ifindex defensively.
 	s.refreshIfIndex()
 
-	s.ipc, s.ip4c = ipc, ip4c
+	s.ip4c = ip4c
 	return nil
 }
 
@@ -470,4 +490,27 @@ func transientSocketErr(err error) bool {
 func transientSendRetryable(err error) bool {
 	return errors.Is(err, net.ErrClosed) ||
 		errors.Is(err, unix.EBADF) || errors.Is(err, unix.ENODEV) || errors.Is(err, unix.ENETDOWN)
+}
+
+// listenICMPDatagram creates an ICMP “ping” datagram socket bound to sip with sin_port=echoID.
+func listenICMPDatagram(sip net.IP, echoID uint16) (net.PacketConn, error) {
+	fd, err := unix.Socket(unix.AF_INET, unix.SOCK_DGRAM|unix.SOCK_CLOEXEC, unix.IPPROTO_ICMP)
+	if err != nil {
+		return nil, err
+	}
+	sa := &unix.SockaddrInet4{Port: int(echoID)}
+	copy(sa.Addr[:], sip.To4())
+	if err := unix.Bind(fd, sa); err != nil {
+		_ = unix.Close(fd)
+		return nil, err
+	}
+	f := os.NewFile(uintptr(fd), "icmp-dgram")
+	pc, err := net.FilePacketConn(f)
+	if err != nil {
+		_ = f.Close() // close on error only
+		return nil, err
+	}
+	// pc now owns the fd; safe to close the *os.File wrapper without closing the fd.
+	_ = f.Close()
+	return pc, nil
 }

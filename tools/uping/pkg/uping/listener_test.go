@@ -17,7 +17,7 @@ import (
 )
 
 // Ensures the listener pinned to loopback replies to echo requests and reports RTTs.
-func TestListener_Loopback_Responds(t *testing.T) {
+func TestUping_Listener_Loopback_Responds(t *testing.T) {
 	t.Parallel()
 	requireRawSockets(t)
 
@@ -51,7 +51,7 @@ func TestListener_Loopback_Responds(t *testing.T) {
 }
 
 // Verifies the listener exits promptly when the context is cancelled.
-func TestListener_ContextCancel_Exits(t *testing.T) {
+func TestUping_Listener_ContextCancel_Exits(t *testing.T) {
 	t.Parallel()
 	requireRawSockets(t)
 
@@ -76,7 +76,7 @@ func TestListener_ContextCancel_Exits(t *testing.T) {
 }
 
 // Confirms non-echo ICMP is ignored and that subsequent valid echo still gets a reply.
-func TestListener_Ignores_NonEcho_Then_Replies(t *testing.T) {
+func TestUping_Listener_Ignores_NonEcho_Then_Replies(t *testing.T) {
 	t.Parallel()
 	requireRawSockets(t)
 
@@ -121,7 +121,7 @@ func TestListener_Ignores_NonEcho_Then_Replies(t *testing.T) {
 }
 
 // Validates config error paths for missing iface/IP and invalid timeout.
-func TestListenerConfig_Validate_Errors(t *testing.T) {
+func TestUping_ListenerConfig_Validate_Errors(t *testing.T) {
 	t.Parallel()
 
 	_, err := NewListener(ListenerConfig{IP: net.IPv4(127, 0, 0, 1), Timeout: time.Second})
@@ -137,7 +137,7 @@ func TestListenerConfig_Validate_Errors(t *testing.T) {
 }
 
 // Exercises large ICMP payloads and ensures the listener continues to reply.
-func TestListener_LargePayload(t *testing.T) {
+func TestUping_Listener_LargePayload(t *testing.T) {
 	t.Parallel()
 	requireRawSockets(t)
 
@@ -148,7 +148,7 @@ func TestListener_LargePayload(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()
 	go func() { _ = l.Listen(ctx) }()
 	time.Sleep(40 * time.Millisecond)
@@ -182,7 +182,7 @@ func TestListener_LargePayload(t *testing.T) {
 }
 
 // Verifies truncated/invalid IPv4/ICMP inputs are ignored and normal operation resumes.
-func TestListener_IgnoresTruncatedJunkAndKeepsWorking(t *testing.T) {
+func TestUping_Listener_IgnoresTruncatedJunkAndKeepsWorking(t *testing.T) {
 	t.Parallel()
 	requireRawSockets(t)
 
@@ -193,7 +193,7 @@ func TestListener_IgnoresTruncatedJunkAndKeepsWorking(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	go func() { _ = l.Listen(ctx) }()
 	time.Sleep(40 * time.Millisecond)
@@ -237,7 +237,7 @@ func TestListener_IgnoresTruncatedJunkAndKeepsWorking(t *testing.T) {
 }
 
 // Ensures echo requests with bad ICMP checksums are ignored; normal echo still works afterward.
-func TestListener_Ignores_BadICMPChecksum_Then_Replies(t *testing.T) {
+func TestUping_Listener_Ignores_BadICMPChecksum_Then_Replies(t *testing.T) {
 	t.Parallel()
 	requireRawSockets(t)
 
@@ -291,24 +291,24 @@ func TestListener_Ignores_BadICMPChecksum_Then_Replies(t *testing.T) {
 }
 
 // Validates pollTimeoutMs against deadline/fallback edge cases and infinite mode.
-func Test_pollTimeoutMs(t *testing.T) {
+func TestUping_Listener_pollTimeoutMs(t *testing.T) {
 	t.Parallel()
 
 	{
-		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+		ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
 		defer cancel()
 		ms := pollTimeoutMs(ctx, 500*time.Millisecond)
 		require.InDelta(t, 50, ms, 25)
 	}
 
 	{
-		ctx := context.Background()
+		ctx := t.Context()
 		ms := pollTimeoutMs(ctx, 123*time.Millisecond)
 		require.InDelta(t, 123, ms, 10)
 	}
 
 	{
-		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Nanosecond)
+		ctx, cancel := context.WithTimeout(t.Context(), 1*time.Nanosecond)
 		time.Sleep(200 * time.Microsecond)
 		defer cancel()
 		ms := pollTimeoutMs(ctx, 5*time.Second)
@@ -316,8 +316,145 @@ func Test_pollTimeoutMs(t *testing.T) {
 	}
 
 	{
-		ctx := context.Background()
+		ctx := t.Context()
 		ms := pollTimeoutMs(ctx, 0)
 		require.Equal(t, -1, ms)
+	}
+}
+
+// Loopback listener; sender bound to a different (non-loopback) interface should NOT see replies.
+func TestUping_Listener_RepliesStayOnLoopbackInterface(t *testing.T) {
+	t.Parallel()
+	requireRawSockets(t) // for listener (raw ICMP)
+	requirePingSocket(t) // for sender (ping datagram)
+
+	// Start listener pinned to loopback.
+	l, err := NewListener(ListenerConfig{
+		Interface: "lo",
+		IP:        net.IPv4(127, 0, 0, 1),
+		Timeout:   150 * time.Millisecond,
+	})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	go func() { _ = l.Listen(ctx) }()
+	time.Sleep(40 * time.Millisecond)
+
+	// Find a non-loopback IPv4 + iface.
+	ip := pickNonLoopbackV4(t)
+	ifname := ifaceNameForIP(t, ip)
+
+	// Sender is *not* on loopback; it should not receive the loopback reply.
+	sWAN, err := NewSender(SenderConfig{Source: ip, Interface: ifname})
+	require.NoError(t, err)
+	defer sWAN.Close()
+
+	res, err := sWAN.Send(ctx, SendConfig{
+		Target:  net.IPv4(127, 0, 0, 1),
+		Count:   1,
+		Timeout: 700 * time.Millisecond,
+	})
+	// Either a transport-level error or a probe timeout is acceptable here.
+	if err == nil {
+		require.Len(t, res.Results, 1)
+		require.Error(t, res.Results[0].Error, "expected no reply across interfaces")
+	}
+}
+
+// Verifies that the Listener replies to ICMP Echo Requests on the same non-loopback interface
+// it’s bound to.
+func TestUping_Listener_RepliesStayOnNonLoopbackInterface_InjectRequest(t *testing.T) {
+	t.Parallel()
+	requireRawSockets(t) // RAW needed for listener/inject/receive
+
+	src := pickNonLoopbackV4(t)
+	ifname := ifaceNameForIP(t, src)
+	ifi, err := net.InterfaceByName(ifname)
+	require.NoError(t, err)
+
+	// Start the listener
+	l, err := NewListener(ListenerConfig{
+		Interface: ifname,
+		IP:        src,
+		Timeout:   150 * time.Millisecond,
+	})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- l.Listen(ctx) }()
+	select {
+	case e := <-errCh:
+		require.NoErrorf(t, e, "listener exited immediately")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	// Build Echo request with deterministic ID/Seq
+	const echoID = 0xBEEF
+	const seq = 0x0001
+	payload := []byte{1, 2, 3, 4, 5, 6, 7, 8}
+	reqBytes, err := (&icmp.Message{
+		Type: ipv4.ICMPTypeEcho, Code: 0,
+		Body: &icmp.Echo{ID: echoID, Seq: seq, Data: payload},
+	}).Marshal(nil)
+	require.NoError(t, err)
+
+	// Injector: RAW ip4:icmp, pinned to (src, ifname)
+	injIP, err := net.ListenIP("ip4:icmp", &net.IPAddr{IP: src})
+	require.NoError(t, err)
+	defer injIP.Close()
+	require.NoError(t, bindToDevice(injIP, ifname))
+	inj := ipv4.NewPacketConn(injIP)
+	defer inj.Close()
+	require.NoError(t, inj.SetControlMessage(ipv4.FlagInterface|ipv4.FlagDst, true))
+
+	// Receiver: separate RAW ip4:icmp, pinned to (src, ifname)
+	rcvIP, err := net.ListenIP("ip4:icmp", &net.IPAddr{IP: src})
+	require.NoError(t, err)
+	defer rcvIP.Close()
+	require.NoError(t, bindToDevice(rcvIP, ifname))
+	rcv := ipv4.NewPacketConn(rcvIP)
+	defer rcv.Close()
+	require.NoError(t, rcv.SetControlMessage(ipv4.FlagInterface|ipv4.FlagDst, true))
+
+	// Inject request as if it arrived on that iface
+	cm := &ipv4.ControlMessage{IfIndex: ifi.Index, Src: src}
+	_, err = inj.WriteTo(reqBytes, cm, &net.IPAddr{IP: src})
+	require.NoError(t, err, "failed to inject echo request")
+
+	// Wait for the Echo reply on RAW receiver
+	_ = rcvIP.SetReadDeadline(time.Now().Add(1500 * time.Millisecond))
+	buf := make([]byte, 4096)
+	for {
+		n, cmin, _, err := rcv.ReadFrom(buf)
+		if ne, ok := err.(net.Error); ok && ne.Timeout() {
+			t.Fatalf("timeout waiting for echo reply on %s (%s)", ifname, src)
+		}
+		require.NoError(t, err)
+
+		// rcv gets full IPv4 packet; strip header if present
+		p := buf[:n]
+		if len(p) >= 20 && p[0]>>4 == 4 {
+			ihl := int(p[0]&0x0F) * 4
+			if ihl < 20 || len(p) < ihl+8 {
+				continue
+			}
+			p = p[ihl:]
+		}
+
+		rm, perr := icmp.ParseMessage(1, p)
+		if perr != nil || rm.Type != ipv4.ICMPTypeEchoReply {
+			continue
+		}
+		if echo, ok := rm.Body.(*icmp.Echo); ok && echo != nil && echo.ID == echoID && echo.Seq == seq {
+			if cmin == nil || cmin.IfIndex == 0 {
+				t.Skip("kernel did not provide PKTINFO; cannot verify interface confinement")
+			}
+			require.Equal(t, ifi.Index, cmin.IfIndex, "reply arrived on wrong iface")
+			return // success
+		}
 	}
 }

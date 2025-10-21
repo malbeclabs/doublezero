@@ -57,7 +57,7 @@ func TestUping_Sender_ValidateEchoReply(t *testing.T) {
 // Verifies that a basic ping to localhost succeeds using loopback interface.
 func TestUping_Sender_Localhost_Success(t *testing.T) {
 	t.Parallel()
-	requireRawSockets(t)
+	requirePingSocket(t)
 
 	s, err := NewSender(SenderConfig{Source: net.IPv4(127, 0, 0, 1), Interface: "lo"})
 	require.NoError(t, err)
@@ -77,7 +77,7 @@ func TestUping_Sender_Localhost_Success(t *testing.T) {
 // Confirms packets are correctly steered through a specific interface (loopback).
 func TestUping_Sender_Interface_Steer_Loopback(t *testing.T) {
 	t.Parallel()
-	requireRawSockets(t)
+	requirePingSocket(t)
 
 	s, err := NewSender(SenderConfig{Source: net.IPv4(127, 0, 0, 1), Interface: "lo"})
 	require.NoError(t, err)
@@ -94,7 +94,7 @@ func TestUping_Sender_Interface_Steer_Loopback(t *testing.T) {
 // Ensures timeout behavior when sending to a nonresponsive (blackhole) address.
 func TestUping_Sender_Timeout_Blackhole(t *testing.T) {
 	t.Parallel()
-	requireRawSockets(t)
+	requirePingSocket(t)
 
 	ip := pickLocalV4(t)
 	ifname := ifaceNameForIP(t, ip)
@@ -132,7 +132,7 @@ func TestUping_Sender_NewSender_InvalidSource(t *testing.T) {
 // Rejects creation with nonexistent network interface.
 func TestUping_Sender_NewSender_BadInterfaceName(t *testing.T) {
 	t.Parallel()
-	requireRawSockets(t)
+	requirePingSocket(t)
 
 	_, err := NewSender(SenderConfig{Source: net.IPv4(127, 0, 0, 1), Interface: "does-not-exist-xyz"})
 	require.Error(t, err)
@@ -141,7 +141,7 @@ func TestUping_Sender_NewSender_BadInterfaceName(t *testing.T) {
 // Ensures Send() exits cleanly if the context is canceled before sending.
 func TestUping_Sender_ContextCanceledEarly(t *testing.T) {
 	t.Parallel()
-	requireRawSockets(t)
+	requirePingSocket(t)
 
 	s, err := NewSender(SenderConfig{Source: net.IPv4(127, 0, 0, 1), Interface: "lo"})
 	require.NoError(t, err)
@@ -184,7 +184,7 @@ func TestUping_ValidateEchoReply_Negatives(t *testing.T) {
 // Confirms partial timeouts still return full count of results.
 func TestUping_Sender_PartialTimeoutsStillReturnCount(t *testing.T) {
 	t.Parallel()
-	requireRawSockets(t)
+	requirePingSocket(t)
 
 	sLo, err := NewSender(SenderConfig{Source: net.IPv4(127, 0, 0, 1), Interface: "lo"})
 	require.NoError(t, err)
@@ -253,7 +253,7 @@ func TestUping_ValidateEchoReply_RejectsEchoRequest(t *testing.T) {
 // Ensures socket reopen on send failure works and resumes successfully (PacketConn path).
 func TestUping_Sender_ReopenOnSend_ReconnectAndSend(t *testing.T) {
 	t.Parallel()
-	requireRawSockets(t)
+	requirePingSocket(t)
 
 	sIface, err := NewSender(SenderConfig{Source: net.IPv4(127, 0, 0, 1), Interface: "lo"})
 	require.NoError(t, err)
@@ -263,7 +263,6 @@ func TestUping_Sender_ReopenOnSend_ReconnectAndSend(t *testing.T) {
 
 	// Force a closed connection, then explicit reopen, then send should work.
 	_ = s.ip4c.Close()
-	_ = s.ipc.Close()
 	require.NoError(t, s.reopen())
 
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
@@ -278,7 +277,7 @@ func TestUping_Sender_ReopenOnSend_ReconnectAndSend(t *testing.T) {
 // Verifies recv path handles blackholed targets cleanly without races or crashes.
 func TestUping_Sender_RecvTimeout_Blackhole_NoCrash(t *testing.T) {
 	t.Parallel()
-	requireRawSockets(t)
+	requirePingSocket(t)
 
 	ip := pickLocalV4(t)
 	ifname := ifaceNameForIP(t, ip)
@@ -359,6 +358,96 @@ func TestUping_Sender_TransientSendRetryable(t *testing.T) {
 	}
 }
 
+// Verifies that replies arrive when bound to the correct interface (loopback).
+func TestUping_Sender_InterfaceBinding_AcceptsOnBoundInterface(t *testing.T) {
+	t.Parallel()
+	requirePingSocket(t)
+
+	s, err := NewSender(SenderConfig{Source: net.IPv4(127, 0, 0, 1), Interface: "lo"})
+	require.NoError(t, err)
+	defer s.Close()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+
+	res, err := s.Send(ctx, SendConfig{Target: net.IPv4(127, 0, 0, 1), Count: 1, Timeout: 800 * time.Millisecond})
+	require.NoError(t, err)
+	require.Len(t, res.Results, 1)
+	require.NoError(t, res.Results[0].Error)
+}
+
+// Verifies that replies do NOT arrive if we bind to a different interface.
+// We bind to a non-loopback iface and attempt to ping 127.0.0.1.
+// With SO_BINDTODEVICE, TX must use that iface and RX must arrive on it;
+// loopback replies won't be delivered to this socket. We accept either a send error
+// (route/source mismatch) or a clean per-probe timeout as success.
+func TestUping_Sender_InterfaceBinding_RejectsFromOtherInterface(t *testing.T) {
+	t.Parallel()
+	requirePingSocket(t)
+
+	ip := pickNonLoopbackV4(t)
+	ifname := ifaceNameForIP(t, ip)
+
+	s, err := NewSender(SenderConfig{Source: ip, Interface: ifname})
+	require.NoError(t, err)
+	defer s.Close()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 1200*time.Millisecond)
+	defer cancel()
+
+	res, err := s.Send(ctx, SendConfig{
+		Target:  net.IPv4(127, 0, 0, 1),
+		Count:   1,
+		Timeout: 900 * time.Millisecond,
+	})
+	require.NoError(t, err)
+	require.Len(t, res.Results, 1)
+	require.Error(t, res.Results[0].Error, "expected timeout when bound to %s (%s)", ifname, ip)
+}
+
+// Verifies demux across different Echo IDs: a socket bound with EchoID=B does not receive replies
+// for EchoID=A. We send only from sA; sA must succeed, sB must timeout or error. This avoids
+// kernel-version-dependent behavior for same-ID fanout.
+func TestUping_KernelDemux_DifferentIDs_NoCrossDelivery(t *testing.T) {
+	t.Parallel()
+	requirePingSocket(t)
+
+	src := net.IPv4(127, 0, 0, 1)
+
+	newEchoID_A := func() (uint16, error) { return 0xA1A1, nil }
+	newEchoID_B := func() (uint16, error) { return 0xB2B2, nil }
+
+	sA, err := NewSender(SenderConfig{Source: src, Interface: "lo", NewEchoIDFunc: newEchoID_A})
+	require.NoError(t, err)
+	defer sA.Close()
+
+	sB, err := NewSender(SenderConfig{Source: src, Interface: "lo", NewEchoIDFunc: newEchoID_B})
+	require.NoError(t, err)
+	defer sB.Close()
+
+	// Fire a single probe from sA only.
+	ctxA, cancelA := context.WithTimeout(t.Context(), 1500*time.Millisecond)
+	defer cancelA()
+	resA, errA := sA.Send(ctxA, SendConfig{Target: src, Count: 1, Timeout: 900 * time.Millisecond})
+	require.NoError(t, errA)
+	require.Len(t, resA.Results, 1)
+	require.NoError(t, resA.Results[0].Error, "sA should receive its own reply")
+
+	// Concurrently “listen” with sB by issuing a send to an unroutable target so it blocks on recv.
+	// If the kernel cross-delivered sA's reply to sB (it shouldn't), sB would succeed here; we expect timeout/error.
+	ctxB, cancelB := context.WithTimeout(t.Context(), 1200*time.Millisecond)
+	defer cancelB()
+	resB, errB := sB.Send(ctxB, SendConfig{Target: net.IPv4(203, 0, 113, 200), Count: 1, Timeout: 900 * time.Millisecond})
+
+	if errB != nil {
+		// Transport error is also fine (confirms no unexpected success).
+		t.Logf("sB got top-level error (acceptable): %v", errB)
+		return
+	}
+	require.Len(t, resB.Results, 1)
+	require.Error(t, resB.Results[0].Error, "sB should NOT receive sA's reply for a different EchoID")
+}
+
 // helper to build a minimal IPv4+ICMP frame
 func buildIPv4Packet(src, dst net.IP, proto byte, payload []byte) []byte {
 	ip := make([]byte, 20+len(payload))
@@ -371,14 +460,18 @@ func buildIPv4Packet(src, dst net.IP, proto byte, payload []byte) []byte {
 	return ip
 }
 
-// Require CAP_NET_RAW by attempting to bind an ICMP socket. Skips/errs like before.
+// requireRawSockets ensures the environment can open a Linux raw ICMP socket.
 func requireRawSockets(t *testing.T) {
-	c, err := net.ListenIP("ip4:icmp", &net.IPAddr{IP: net.IPv4(127, 0, 0, 1)})
-	if err == nil {
-		_ = c.Close()
-		return
-	}
+	fd, err := unix.Socket(unix.AF_INET, unix.SOCK_RAW|unix.SOCK_CLOEXEC, unix.IPPROTO_ICMP)
 	require.NoError(t, err)
+	_ = unix.Close(fd)
+}
+
+// requirePingSocket ensures the environment can open a Linux ICMP “ping” datagram socket.
+func requirePingSocket(t *testing.T) {
+	fd, err := unix.Socket(unix.AF_INET, unix.SOCK_DGRAM|unix.SOCK_CLOEXEC, unix.IPPROTO_ICMP)
+	require.NoError(t, err)
+	_ = unix.Close(fd)
 }
 
 // Pick a non-loopback IPv4 if available, else fall back to loopback.
@@ -436,4 +529,26 @@ func icmpEcho(id, seq uint16, payload []byte) []byte {
 	copy(h[8:], payload)
 	binary.BigEndian.PutUint16(h[2:], icmpChecksum(h))
 	return h
+}
+
+// pickNonLoopbackV4 returns a non-loopback IPv4 address.
+func pickNonLoopbackV4(t *testing.T) net.IP {
+	ifs, err := net.Interfaces()
+	require.NoError(t, err)
+	for _, ifi := range ifs {
+		if (ifi.Flags&net.FlagUp) == 0 || (ifi.Flags&net.FlagLoopback) != 0 {
+			continue
+		}
+		addrs, _ := ifi.Addrs()
+		for _, a := range addrs {
+			if ipn, ok := a.(*net.IPNet); ok {
+				ip := ipn.IP.To4()
+				if ip != nil && !ip.IsLoopback() {
+					return ip
+				}
+			}
+		}
+	}
+	t.Fatalf("could not find non-loopback IPv4 address")
+	return nil
 }

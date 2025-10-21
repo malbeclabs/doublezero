@@ -1721,7 +1721,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-contributor-rewards"
-version = "0.0.0"
+version = "0.2.1-rc1"
 dependencies = [
  "anyhow",
  "backon",
@@ -1763,7 +1763,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-ledger-sentinel"
-version = "0.1.9"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1819,7 +1819,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-passport-admin-cli"
-version = "0.0.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -1900,7 +1900,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-revenue-distribution-admin-cli"
-version = "0.0.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -1913,7 +1913,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-scheduled-command"
-version = "0.0.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1939,7 +1939,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-sol-conversion-admin-cli"
-version = "0.0.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -1954,7 +1954,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-sol-conversion-interface"
-version = "0.0.0"
+version = "0.0.1"
 dependencies = [
  "borsh 1.5.7",
  "bytemuck",
@@ -2006,7 +2006,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-solana-client-tools"
-version = "0.0.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -2029,7 +2029,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-solana-fork-cli"
-version = "0.0.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -2053,7 +2053,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-solana-validator-debt"
-version = "0.0.0"
+version = "0.1.0-rc4"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5801,7 +5801,7 @@ checksum = "7a2ae44ef20feb57a68b23d846850f861394c2e02dc425a50098ae8c90267589"
 
 [[package]]
 name = "slack-notifier"
-version = "0.0.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "backon",

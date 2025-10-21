@@ -1,14 +1,13 @@
 [package]
 name = "doublezero-solana-validator-debt"
-
 description = "Crate that processes debt for validators"
+version = "0.1.0-rc4"
 
 edition.workspace = true
 homepage.workspace = true
 license.workspace = true
 readme.workspace = true
 repository.workspace = true
-version.workspace = true
 
 [dependencies]
 anyhow.workspace = true

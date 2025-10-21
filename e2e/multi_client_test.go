@@ -154,7 +154,7 @@ func runMultiClientIBRLWorkflowTest(t *testing.T, log *slog.Logger, dn *devnet.D
 
 	// Connect client1 in IBRL mode to device1 (xlax exchange).
 	log.Info("==> Connecting client1 in IBRL mode to device1")
-	_, err = client1.Exec(t.Context(), []string{"doublezero", "connect", "ibrl", "--client-ip", client1.CYOANetworkIP, "--device-code", deviceCode1})
+	_, err = client1.Exec(t.Context(), []string{"doublezero", "connect", "ibrl", "--client-ip", client1.CYOANetworkIP, "--device", deviceCode1})
 	require.NoError(t, err)
 	err = client1.WaitForTunnelUp(t.Context(), 90*time.Second)
 	require.NoError(t, err)
@@ -162,7 +162,7 @@ func runMultiClientIBRLWorkflowTest(t *testing.T, log *slog.Logger, dn *devnet.D
 
 	// Connect client2 in IBRL mode to device2 (xewr exchange).
 	log.Info("==> Connecting client2 in IBRL mode to device2")
-	_, err = client2.Exec(t.Context(), []string{"doublezero", "connect", "ibrl", "--client-ip", client2.CYOANetworkIP, "--device-code", deviceCode2})
+	_, err = client2.Exec(t.Context(), []string{"doublezero", "connect", "ibrl", "--client-ip", client2.CYOANetworkIP, "--device", deviceCode2})
 	require.NoError(t, err)
 	err = client2.WaitForTunnelUp(t.Context(), 90*time.Second)
 	require.NoError(t, err)
@@ -247,7 +247,7 @@ func runMultiClientIBRLWithAllocatedIPWorkflowTest(t *testing.T, log *slog.Logge
 
 	// Connect client1 in IBRL mode to device1 (xlax exchange) with allocated IP.
 	log.Info("==> Connecting client1 in IBRL mode with allocated IP to device1")
-	_, err = client1.Exec(t.Context(), []string{"doublezero", "connect", "ibrl", "--client-ip", client1.CYOANetworkIP, "--allocate-addr", "--device-code", deviceCode1})
+	_, err = client1.Exec(t.Context(), []string{"doublezero", "connect", "ibrl", "--client-ip", client1.CYOANetworkIP, "--allocate-addr", "--device", deviceCode1})
 	require.NoError(t, err)
 	err = client1.WaitForTunnelUp(t.Context(), 90*time.Second)
 	require.NoError(t, err)
@@ -255,7 +255,7 @@ func runMultiClientIBRLWithAllocatedIPWorkflowTest(t *testing.T, log *slog.Logge
 
 	// Connect client2 in IBRL mode to device2 (xewr exchange) with allocated IP.
 	log.Info("==> Connecting client2 in IBRL mode with allocated IP to device2")
-	_, err = client2.Exec(t.Context(), []string{"doublezero", "connect", "ibrl", "--client-ip", client2.CYOANetworkIP, "--allocate-addr", "--device-code", deviceCode2})
+	_, err = client2.Exec(t.Context(), []string{"doublezero", "connect", "ibrl", "--client-ip", client2.CYOANetworkIP, "--allocate-addr", "--device", deviceCode2})
 	require.NoError(t, err)
 	err = client2.WaitForTunnelUp(t.Context(), 90*time.Second)
 	require.NoError(t, err)

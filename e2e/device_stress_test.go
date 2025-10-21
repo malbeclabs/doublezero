@@ -221,7 +221,7 @@ func connectClientWithRetry(t *testing.T, i int, client *devnet.Client, device *
 		// Add timeout to prevent hanging forever
 		ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
 		output, err = client.Exec(ctx, []string{
-			"doublezero", "connect", "ibrl", "-v", "--client-ip", client.CYOANetworkIP, "--device-code", device.Spec.Code,
+			"doublezero", "connect", "ibrl", "-v", "--client-ip", client.CYOANetworkIP, "--device", device.Spec.Code,
 		})
 		cancel() // Cancel immediately after use
 

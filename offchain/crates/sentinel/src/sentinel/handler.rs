@@ -608,7 +608,7 @@ mod tests {
             .times(n)
             .returning(|_| Ok(Signature::new_unique()));
         sol.expect_grant_access().times(0);
-        sol.expect_check_leader_schedule().times(0);
+        sol.expect_is_scheduled_leader().times(0);
         sol.expect_get_validator_ip().times(0);
 
         let mut dz = MockDzRpcClientType::new();
@@ -650,7 +650,7 @@ mod tests {
         }
 
         // Verifier deps per ID
-        sol.expect_check_leader_schedule()
+        sol.expect_is_scheduled_leader()
             .times(n)
             .withf(|_pk, prev_epochs| *prev_epochs == 0)
             .returning(|_, _| Ok(true));

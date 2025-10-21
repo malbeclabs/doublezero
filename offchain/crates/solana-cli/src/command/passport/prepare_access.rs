@@ -79,7 +79,7 @@ impl PrepareValidatorAccessCommand {
             print!("  Leader scheduler: ");
 
             if sol_client
-                .check_leader_schedule(&primary_validator_id, 5)
+                .is_scheduled_leader(&primary_validator_id, 5)
                 .await
                 .is_ok()
             {
@@ -111,7 +111,7 @@ impl PrepareValidatorAccessCommand {
                     print!("  Leader scheduler: ");
 
                     if sol_client
-                        .check_leader_schedule(backup_id, ENV_PREVIOUS_LEADER_EPOCHS)
+                        .is_scheduled_leader(backup_id, ENV_PREVIOUS_LEADER_EPOCHS)
                         .await?
                     {
                         println!(" ❌ Fail (on leader scheduler)");

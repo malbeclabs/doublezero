@@ -63,7 +63,7 @@ pub trait SolRpcClientType {
 
     async fn get_access_requests(&self) -> Result<Vec<AccessId>>;
 
-    async fn check_leader_schedule(
+    async fn is_scheduled_leader(
         &self,
         validator_id: &Pubkey,
         previous_leader_epochs: u8,
@@ -103,12 +103,12 @@ impl SolRpcClientType for SolRpcClient {
         self.get_access_requests().await
     }
 
-    async fn check_leader_schedule(
+    async fn is_scheduled_leader(
         &self,
         validator_id: &Pubkey,
         previous_leader_epochs: u8,
     ) -> Result<bool> {
-        self.check_leader_schedule(validator_id, previous_leader_epochs)
+        self.is_scheduled_leader(validator_id, previous_leader_epochs)
             .await
     }
 
@@ -276,7 +276,7 @@ impl SolRpcClient {
         Ok(access_ids)
     }
 
-    pub async fn check_leader_schedule(
+    pub async fn is_scheduled_leader(
         &self,
         validator_id: &Pubkey,
         previous_leader_epochs: u8,
@@ -289,11 +289,13 @@ impl SolRpcClient {
                 ..Default::default()
             };
 
-            if !self
+            let schedule = self
                 .client
                 .get_leader_schedule_with_config(Some(slot), config)
-                .await?
-                .is_some_and(|schedule| schedule.is_empty())
+                .await?;
+
+            if let Some(slots) = schedule
+                && !slots.is_empty()
             {
                 return Ok(true);
             }

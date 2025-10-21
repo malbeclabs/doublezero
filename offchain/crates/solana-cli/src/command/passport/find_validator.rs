@@ -120,7 +120,7 @@ async fn print_node_info(node: &RpcContactInfo, sol_client: &SolRpcClient) {
     let pubkey = node.pubkey.parse::<Pubkey>().expect("Invalid pubkey");
 
     if sol_client
-        .check_leader_schedule(&pubkey, ENV_PREVIOUS_LEADER_EPOCHS)
+        .is_scheduled_leader(&pubkey, ENV_PREVIOUS_LEADER_EPOCHS)
         .await
         .is_ok()
     {

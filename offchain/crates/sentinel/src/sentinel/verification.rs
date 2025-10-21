@@ -107,10 +107,10 @@ impl<'a, SolRpcClient: SolRpcClientType> ValidatorVerifier<'a, SolRpcClient> {
         rpc_with_retry(
             || async {
                 self.sol_rpc_client
-                    .check_leader_schedule(validator_id, self.previous_leader_epochs)
+                    .is_scheduled_leader(validator_id, self.previous_leader_epochs)
                     .await
             },
-            "check_leader_schedule",
+            "is_scheduled_leader",
         )
         .await
     }

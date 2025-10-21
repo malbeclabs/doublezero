@@ -7,7 +7,6 @@ import (
 
 	dockerfilters "github.com/docker/docker/api/types/filters"
 	dockernetwork "github.com/docker/docker/api/types/network"
-	"github.com/testcontainers/testcontainers-go"
 )
 
 type MiscNetwork struct {
@@ -54,18 +53,15 @@ func (n *MiscNetwork) CreateIfNotExists(ctx context.Context) (bool, error) {
 func (n *MiscNetwork) Create(ctx context.Context) error {
 	n.log.Info("==> Creating misc network", "labels", n.dn.labels)
 
-	// Create a docker network.
-	//nolint:staticcheck // SA1019
-	req := testcontainers.GenericNetworkRequest{
-		NetworkRequest: testcontainers.NetworkRequest{
-			Name:       n.Name,
-			Driver:     "bridge",
-			Attachable: false,
-			Labels:     n.dn.labels,
+	// Create a docker network using Docker API directly to set MTU.
+	_, err := n.dn.dockerClient.NetworkCreate(ctx, n.Name, dockernetwork.CreateOptions{
+		Driver:     "bridge",
+		Attachable: false,
+		Labels:     n.dn.labels,
+		Options: map[string]string{
+			"com.docker.network.driver.mtu": "2048",
 		},
-	}
-	//nolint:staticcheck // SA1019
-	_, err := testcontainers.GenericNetwork(ctx, req)
+	})
 	if err != nil {
 		return fmt.Errorf("failed to create network: %w", err)
 	}

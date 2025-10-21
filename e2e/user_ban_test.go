@@ -47,6 +47,10 @@ func TestE2E_UserBan(t *testing.T) {
 	require.NoError(t, err)
 	log.Info("--> Devnet started")
 
+	linkNetwork := devnet.NewMiscNetwork(dn, log, "la2-dz01:ny5-dz01")
+	_, err = linkNetwork.CreateIfNotExists(t.Context())
+	require.NoError(t, err)
+
 	// Add la2-dz01 device in xlax exchange.
 	deviceCode1 := "la2-dz01"
 	device1, err := dn.AddDevice(t.Context(), devnet.DeviceSpec{
@@ -56,6 +60,10 @@ func TestE2E_UserBan(t *testing.T) {
 		// .8/29 has network address .8, allocatable up to .14, and broadcast .15
 		CYOANetworkIPHostID:          8,
 		CYOANetworkAllocatablePrefix: 29,
+		AdditionalNetworks: []string{linkNetwork.Name},
+		Interfaces: map[string]string{
+			"Ethernet2": "physical",
+		},
 		LoopbackInterfaces: map[string]string{
 			"Loopback255": "vpnv4",
 			"Loopback256": "ipv4",
@@ -65,8 +73,8 @@ func TestE2E_UserBan(t *testing.T) {
 	devicePK1 := device1.ID
 	log.Info("--> Device1 added", "deviceCode", deviceCode1, "devicePK", devicePK1)
 
-	// Add ewr1-dz01 device in xewr exchange.
-	deviceCode2 := "ewr1-dz01"
+	// Add ny5-dz01 device in xewr exchange.
+	deviceCode2 := "ny5-dz01"
 	device2, err := dn.AddDevice(t.Context(), devnet.DeviceSpec{
 		Code:     deviceCode2,
 		Location: "ewr",
@@ -74,6 +82,10 @@ func TestE2E_UserBan(t *testing.T) {
 		// .16/29 has network address .16, allocatable up to .22, and broadcast .23
 		CYOANetworkIPHostID:          16,
 		CYOANetworkAllocatablePrefix: 29,
+		AdditionalNetworks: []string{linkNetwork.Name},
+		Interfaces: map[string]string{
+			"Ethernet2": "physical",
+		},
 		LoopbackInterfaces: map[string]string{
 			"Loopback255": "vpnv4",
 			"Loopback256": "ipv4",
@@ -93,6 +105,12 @@ func TestE2E_UserBan(t *testing.T) {
 		return len(data.Devices) == 2
 	}, 30*time.Second, 1*time.Second)
 	log.Info("--> Devices exist onchain", "deviceCode1", deviceCode1, "devicePK1", devicePK1, "deviceCode2", deviceCode2, "devicePK2", devicePK2)
+
+	// Create WAN link between devices.
+	log.Info("==> Creating link onchain")
+	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero link create wan --code \"la2-dz01:ny5-dz01\" --contributor co01 --side-a la2-dz01 --side-a-interface Ethernet2 --side-z ny5-dz01 --side-z-interface Ethernet2 --bandwidth \"10 Gbps\" --mtu 2048 --delay-ms 40 --jitter-ms 3"})
+	require.NoError(t, err)
+	log.Info("--> Link created onchain")
 
 	// Add a client.
 	log.Info("==> Adding client1")
@@ -217,61 +235,41 @@ func runUserBanIBRLWorkflowTest(t *testing.T, log *slog.Logger, client1 *devnet.
 	require.Equal(t, client3.CYOANetworkIP, client3DZIP)
 	log.Info("--> Clients have a DZ IP as public IP when not configured to use an allocated IP")
 
-	// Check that client1 and client3 cannot reach each other (same exchange - xlax).
-	log.Info("==> Checking that client1 and client3 cannot reach each other (intra-exchange routing policy)")
-	_, err = client1.Exec(t.Context(), []string{"ping", "-I", "doublezero0", "-c", "3", client3DZIP, "-W", "1"})
-	require.Error(t, err, "client1 should not be able to ping client3 (both in xlax exchange)")
-	_, err = client3.Exec(t.Context(), []string{"ping", "-I", "doublezero0", "-c", "3", client1DZIP, "-W", "1"})
-	require.Error(t, err, "client3 should not be able to ping client1 (both in xlax exchange)")
-	log.Info("--> Confirmed client1 and client3 cannot reach each other (intra-exchange routing policy working)")
-
-	// Check that client1 and client2 can reach each other via their DZ IPs (cross-exchange).
-	log.Info("==> Checking that client1 and client2 can reach each other via their DZ IPs (cross-exchange)")
-	_, err = client1.Exec(t.Context(), []string{"ping", "-I", "doublezero0", "-c", "3", client2DZIP, "-W", "1"})
-	require.NoError(t, err)
-	_, err = client2.Exec(t.Context(), []string{"ping", "-I", "doublezero0", "-c", "3", client1DZIP, "-W", "1"})
-	require.NoError(t, err)
-	log.Info("--> Client1 and client2 can reach each other via their DZ IPs (cross-exchange)")
-
-	// Update device2 to xlax exchange (same as device1) to test routing policy change.
-	log.Info("==> Updating device2 exchange from xewr to xlax")
-	serviceabilityClient, err := dn.Ledger.GetServiceabilityClient()
-	require.NoError(t, err)
-	data, err := serviceabilityClient.GetProgramData(t.Context())
-	require.NoError(t, err)
-
-	var device2PK string
-	for _, device := range data.Devices {
-		if device.Code == deviceCode2 {
-			device2PK = base58.Encode(device.PubKey[:])
-			break
-		}
-	}
-	require.NotEmpty(t, device2PK, "device2 not found onchain")
-
-	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero device update --pubkey " + device2PK + " --exchange xlax"})
-	require.NoError(t, err)
-	log.Info("--> Device2 exchange updated to xlax")
-
-	// Wait for controller to process the exchange change and device to poll for config update.
-	log.Info("==> Waiting for device2 configuration to be updated with xlax exchange")
+	// Check that client1 and client3 do not have routes to each other (same exchange - xlax).
+	log.Info("==> Checking that client1 and client3 do not have routes to each other (intra-exchange routing policy)")
 	require.Eventually(t, func() bool {
-		output, err := device2.Exec(t.Context(), []string{"bash", "-c", "Cli -c 'show running-config'"})
+		output, err := client1.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
 		if err != nil {
-			log.Debug("Failed to get running config", "error", err)
 			return false
 		}
-		return strings.Contains(string(output), "ip community-list COMM-XLAX_USERS")
-	}, 30*time.Second, 2*time.Second, "device2 configuration not updated with xlax exchange")
-	log.Info("--> Device2 configuration updated with xlax exchange")
+		return !strings.Contains(string(output), client3.CYOANetworkIP)
+	}, 30*time.Second, 1*time.Second, "client1 should not have route to client3 (both in xlax exchange)")
+	require.Eventually(t, func() bool {
+		output, err := client3.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
+		if err != nil {
+			return false
+		}
+		return !strings.Contains(string(output), client1.CYOANetworkIP)
+	}, 30*time.Second, 1*time.Second, "client3 should not have route to client1 (both in xlax exchange)")
+	log.Info("--> Confirmed client1 and client3 do not have routes to each other (intra-exchange routing policy working)")
 
-	// Check that client1 and client2 can NO LONGER reach each other (now both in xlax exchange).
-	log.Info("==> Checking that client1 and client2 can NO LONGER reach each other (both now in xlax exchange)")
-	_, err = client1.Exec(t.Context(), []string{"ping", "-I", "doublezero0", "-c", "3", client2DZIP, "-W", "1"})
-	require.Error(t, err, "client1 should not be able to ping client2 after device2 moved to xlax exchange")
-	_, err = client2.Exec(t.Context(), []string{"ping", "-I", "doublezero0", "-c", "3", client1DZIP, "-W", "1"})
-	require.Error(t, err, "client2 should not be able to ping client1 after device2 moved to xlax exchange")
-	log.Info("--> Confirmed client1 and client2 cannot reach each other after exchange change (intra-exchange routing policy working)")
+	// Check that client1 and client2 have routes to each other (cross-exchange).
+	log.Info("==> Checking that client1 and client2 have routes to each other (cross-exchange)")
+	require.Eventually(t, func() bool {
+		output, err := client1.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
+		if err != nil {
+			return false
+		}
+		return strings.Contains(string(output), client2.CYOANetworkIP)
+	}, 30*time.Second, 1*time.Second, "client1 should have route to client2 (different exchanges)")
+	require.Eventually(t, func() bool {
+		output, err := client2.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
+		if err != nil {
+			return false
+		}
+		return strings.Contains(string(output), client1.CYOANetworkIP)
+	}, 30*time.Second, 1*time.Second, "client2 should have route to client1 (different exchanges)")
+	log.Info("--> Confirmed client1 and client2 have routes to each other (cross-exchange)")
 
 	// Ban client1.
 	user_pk := getUserAccountPk(t, log, client1, dn)

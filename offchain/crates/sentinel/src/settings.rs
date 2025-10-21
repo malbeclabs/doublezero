@@ -23,13 +23,10 @@ pub struct AppArgs {
     #[arg(short = 'c', long)]
     pub config: Option<PathBuf>,
 
-    /// Enable polling mode with specified interval (in seconds), bypass websocket connection.
+    /// Polling interval in seconds for checking access requests (required).
+    /// Recommended: 30-120 seconds for production.
     #[arg(long)]
-    pub poll_interval: Option<u64>,
-
-    /// Drain the open access requests from the passport program. Executes only once and exits.
-    #[arg(long)]
-    pub drain: Option<bool>,
+    pub poll_interval: u64,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -44,9 +41,8 @@ pub struct Settings {
     /// Connection URIs for the DZ ledger RPC endpoint
     dz_rpc: String,
 
-    /// Connection URIs for the Solana RPC and Websocket endpoints
+    /// Connection URI for the Solana RPC endpoint
     sol_rpc: String,
-    sol_ws: Option<String>,
 
     /// The path to the keypair file authorized in the passport program on Solana
     /// and holding the oboarding DZ ledger funds to credit authorized validators
@@ -92,21 +88,6 @@ impl Settings {
             url => url,
         };
         Url::parse(url).expect("invalid sol_rpc url")
-    }
-
-    pub fn sol_ws(&self) -> Url {
-        if let Some(ref ws_url) = self.sol_ws {
-            Url::parse(ws_url).expect("invalid sol_ws url")
-        } else {
-            let mut ws_rpc = self.sol_rpc();
-            let ws_scheme = match ws_rpc.scheme() {
-                "http" => "ws",
-                "https" => "wss",
-                _ => panic!("invalid ws url scheme"),
-            };
-            ws_rpc.set_scheme(ws_scheme).unwrap();
-            ws_rpc
-        }
     }
 
     pub fn dz_rpc(&self) -> Url {

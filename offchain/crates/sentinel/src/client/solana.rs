@@ -13,17 +13,15 @@ use doublezero_passport::{
 use doublezero_program_tools::{
     Discriminator, PrecomputedDiscriminator, instruction::try_build_instruction, zero_copy,
 };
-use futures::{future::BoxFuture, stream::BoxStream};
 use mockall::automock;
 use solana_account_decoder_client_types::UiAccountEncoding;
 use solana_client::{
-    nonblocking::{pubsub_client::PubsubClient, rpc_client::RpcClient},
+    nonblocking::rpc_client::RpcClient,
     rpc_config::{
         RpcAccountInfoConfig, RpcLeaderScheduleConfig, RpcProgramAccountsConfig,
-        RpcTransactionConfig, RpcTransactionLogsConfig, RpcTransactionLogsFilter,
+        RpcTransactionConfig,
     },
     rpc_filter::{Memcmp, RpcFilterType},
-    rpc_response::{Response, RpcLogsResponse},
 };
 use solana_commitment_config::{CommitmentConfig, CommitmentLevel};
 use solana_sdk::{
@@ -317,33 +315,6 @@ impl SolRpcClient {
                 SocketAddr::V6(addr_v6) => addr_v6.ip().to_ipv4_mapped(),
             });
         Ok(address)
-    }
-}
-
-pub struct SolPubsubClient {
-    client: PubsubClient,
-}
-
-impl SolPubsubClient {
-    pub async fn new(ws_url: Url) -> Result<Self> {
-        let client = PubsubClient::new(ws_url.as_ref()).await?;
-
-        Ok(Self { client })
-    }
-
-    pub async fn subscribe_to_access_requests(
-        &self,
-    ) -> Result<(
-        BoxStream<'_, Response<RpcLogsResponse>>,
-        Box<dyn FnOnce() -> BoxFuture<'static, ()> + Send>,
-    )> {
-        let config = RpcTransactionLogsConfig {
-            commitment: Some(CommitmentConfig::confirmed()),
-        };
-
-        let filter = RpcTransactionLogsFilter::Mentions(vec![passport_id().to_string()]);
-
-        Ok(self.client.logs_subscribe(filter, config).await?)
     }
 }
 

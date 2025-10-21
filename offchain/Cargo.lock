@@ -1777,7 +1777,6 @@ dependencies = [
  "doublezero-program-common",
  "doublezero-program-tools",
  "doublezero-serviceability",
- "futures",
  "metrics",
  "metrics-exporter-prometheus",
  "mockall",

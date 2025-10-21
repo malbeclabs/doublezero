@@ -4,7 +4,7 @@ use crate::{
 };
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
-    pda::get_user_pda,
+    pda::get_user_pda2,
     processors::user::create::UserCreateArgs,
     state::user::{UserCYOA, UserType},
 };
@@ -21,7 +21,7 @@ pub struct CreateUserCommand {
 
 impl CreateUserCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<(Signature, Pubkey)> {
-        let (globalstate_pubkey, globalstate) = GetGlobalStateCommand
+        let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
@@ -40,10 +40,11 @@ impl CreateUserCommand {
         })
         .map_err(|_| eyre::eyre!("You have no Access Pass"))?;
 
-        let (pda_pubkey, _) = get_user_pda(&client.get_program_id(), globalstate.account_index + 1);
+        let (pda_pubkey, _) =
+            get_user_pda2(&client.get_program_id(), &self.client_ip, self.user_type);
         client
             .execute_transaction(
-                DoubleZeroInstruction::CreateUser(UserCreateArgs {
+                DoubleZeroInstruction::CreateUser2(UserCreateArgs {
                     user_type: self.user_type,
                     cyoa_type: self.cyoa_type,
                     client_ip: self.client_ip,

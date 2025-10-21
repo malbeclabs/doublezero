@@ -336,6 +336,12 @@ impl Validate for User {
 }
 
 impl User {
+    pub fn try_serialize(&self, account: &AccountInfo) -> ProgramResult {
+        let mut data = &mut account.data.borrow_mut()[..];
+        self.serialize(&mut data)?;
+
+        Ok(())
+    }
     pub fn get_multicast_groups(&self) -> Vec<Pubkey> {
         let mut groups: Vec<Pubkey> = vec![];
 

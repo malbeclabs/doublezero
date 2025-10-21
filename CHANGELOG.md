@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Added a new create_user2 instruction with an updated PDA model to prevent race conditions during user creation, while maintaining compatibility with the existing version.
+
 - Onchain programs
     - serviceability: add auto-assignment and validation for exchange.bgp_community
 - CLI

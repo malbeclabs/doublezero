@@ -1,8 +1,12 @@
 use crate::{
-    error::DoubleZeroError, format_option, globalstate::globalstate_get, helper::*, state::user::*,
+    error::DoubleZeroError,
+    format_option,
+    globalstate::globalstate_get,
+    helper::*,
+    state::{accounttype::AccountTypeInfo, user::*},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
-use doublezero_program_common::types::NetworkV4;
+use doublezero_program_common::{resize_account::resize_account_if_needed, types::NetworkV4};
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -91,7 +95,10 @@ pub fn process_update_user(
         user.validator_pubkey = value;
     }
 
-    account_write(user_account, &user, payer_account, system_program)?;
+    // Resize account if needed
+    resize_account_if_needed(user_account, payer_account, accounts, user.size())?;
+    user.try_serialize(user_account)?;
+
     #[cfg(test)]
     msg!("Updated: {:?}", user);
 

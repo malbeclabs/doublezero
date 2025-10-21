@@ -83,7 +83,8 @@ use crate::{
             activate::process_activate_user, ban::process_ban_user,
             check_access_pass::process_check_access_pass_user,
             closeaccount::process_closeaccount_user, create::process_create_user,
-            create_subscribe::process_create_subscribe_user, delete::process_delete_user,
+            create2::process_create_user2, create_subscribe::process_create_subscribe_user,
+            create_subscribe2::process_create_subscribe_user2, delete::process_delete_user,
             reject::process_reject_user, requestban::process_request_ban_user,
             resume::process_resume_user, suspend::process_suspend_user,
             update::process_update_user,
@@ -339,6 +340,12 @@ pub fn process_instruction(
         DoubleZeroInstruction::RejectDeviceInterface(value) => {
             process_reject_device_interface(program_id, accounts, &value)?
         }
-    };
+        DoubleZeroInstruction::CreateUser2(value) => {
+            process_create_user2(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::CreateSubscribeUser2(value) => {
+            process_create_subscribe_user2(program_id, accounts, &value)?
+        }
+    }
     Ok(())
 }

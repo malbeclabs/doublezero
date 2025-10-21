@@ -300,13 +300,13 @@ async fn test_user() {
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     assert_eq!(globalstate_account.account_index, 4);
 
-    let (user_pubkey, _) = get_user_pda(&program_id, globalstate_account.account_index + 1);
+    let (user_pubkey, _) = get_user_pda2(&program_id, &user_ip, UserType::IBRL);
 
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateUser(UserCreateArgs {
+        DoubleZeroInstruction::CreateUser2(UserCreateArgs {
             client_ip: user_ip,
             user_type: UserType::IBRL,
             cyoa_type: UserCYOA::GREOverDIA,

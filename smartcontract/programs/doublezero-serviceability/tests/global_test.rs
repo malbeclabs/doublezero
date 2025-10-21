@@ -698,7 +698,7 @@ async fn test_doublezero_program() {
     assert_eq!(globalstate_account.account_index, 8);
 
     let user_ip = "100.0.0.1".parse().unwrap();
-    let (user1_pubkey, _) = get_user_pda(&program_id, globalstate_account.account_index + 1);
+    let (user1_pubkey, _) = get_user_pda2(&program_id, &user_ip, UserType::IBRL);
     let user1: UserCreateArgs = UserCreateArgs {
         user_type: UserType::IBRL,
         cyoa_type: UserCYOA::GREOverDIA,
@@ -710,7 +710,7 @@ async fn test_doublezero_program() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateUser(user1),
+        DoubleZeroInstruction::CreateUser2(user1),
         vec![
             AccountMeta::new(user1_pubkey, false),
             AccountMeta::new(device_la_pubkey, false),

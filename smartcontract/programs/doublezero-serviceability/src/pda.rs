@@ -2,9 +2,13 @@ use std::net::Ipv4Addr;
 
 use solana_program::pubkey::Pubkey;
 
-use crate::seeds::{
-    SEED_ACCESS_PASS, SEED_CONFIG, SEED_CONTRIBUTOR, SEED_DEVICE, SEED_EXCHANGE, SEED_GLOBALSTATE,
-    SEED_LINK, SEED_LOCATION, SEED_MULTICAST_GROUP, SEED_PREFIX, SEED_PROGRAM_CONFIG, SEED_USER,
+use crate::{
+    seeds::{
+        SEED_ACCESS_PASS, SEED_CONFIG, SEED_CONTRIBUTOR, SEED_DEVICE, SEED_EXCHANGE,
+        SEED_GLOBALSTATE, SEED_LINK, SEED_LOCATION, SEED_MULTICAST_GROUP, SEED_PREFIX,
+        SEED_PROGRAM_CONFIG, SEED_USER,
+    },
+    state::user::UserType,
 };
 
 pub fn get_globalstate_pda(program_id: &Pubkey) -> (Pubkey, u8) {
@@ -46,6 +50,13 @@ pub fn get_link_pda(program_id: &Pubkey, index: u128) -> (Pubkey, u8) {
 
 pub fn get_user_pda(program_id: &Pubkey, index: u128) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[SEED_PREFIX, SEED_USER, &index.to_le_bytes()], program_id)
+}
+
+pub fn get_user_pda2(program_id: &Pubkey, ip: &Ipv4Addr, user_type: UserType) -> (Pubkey, u8) {
+    Pubkey::find_program_address(
+        &[SEED_PREFIX, SEED_USER, &ip.octets(), &[user_type as u8]],
+        program_id,
+    )
 }
 
 pub fn get_multicastgroup_pda(program_id: &Pubkey, index: u128) -> (Pubkey, u8) {

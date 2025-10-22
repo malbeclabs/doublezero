@@ -36,6 +36,7 @@ mod errors;
 
 pub mod commands;
 pub mod record;
+pub mod telemetry;
 pub mod tests;
 pub mod utils;
 

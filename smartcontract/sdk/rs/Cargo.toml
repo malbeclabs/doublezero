@@ -23,6 +23,7 @@ doublezero-config.workspace = true
 doublezero-program-common.workspace = true
 doublezero-record.workspace = true
 doublezero-serviceability.workspace = true
+doublezero-telemetry = { workspace = true, features = ["no-entrypoint", "serde"] }
 eyre.workspace = true
 futures.workspace = true
 mockall.workspace = true

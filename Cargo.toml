@@ -95,3 +95,7 @@ features = ["no-entrypoint"]
 [workspace.dependencies.doublezero-serviceability]
 path = "smartcontract/programs/doublezero-serviceability"
 features = ["no-entrypoint"]
+
+[workspace.dependencies.doublezero-telemetry]
+path = "smartcontract/programs/doublezero-telemetry"
+features = ["no-entrypoint"]

@@ -154,7 +154,7 @@ func (l *listener) Listen(ctx context.Context) error {
 
 		// Send the reply; SO_BINDTODEVICE keeps egress on the bound interface.
 		dst := raddr.(*net.IPAddr)
-		if _, err := ip4c.WriteTo(wb, &ipv4.ControlMessage{IfIndex: l.ifIndex}, dst); err == nil {
+		if _, err := ip4c.WriteTo(wb, &ipv4.ControlMessage{IfIndex: l.ifIndex, Src: l.src4}, dst); err == nil {
 			if l.log != nil {
 				l.log.Info("uping/recv: replied", "inst", inst, "dst", dst.IP.String(), "id", echo.ID, "seq", echo.Seq, "iface", l.iface.Name, "src", l.src4)
 			}

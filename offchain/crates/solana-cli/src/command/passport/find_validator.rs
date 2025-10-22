@@ -60,7 +60,7 @@ impl FindValidatorCommand {
         if let Some(node_id) = validator_id {
             // Search by node_id
             if let Some(node) = find_node_by_node_id(&nodes, &node_id) {
-                print_node_info(node, &sol_client).await;
+                print_node_info(node, &sol_client).await?;
             } else {
                 println!(
                     "⚠️  Warning: Your node ID is not appearing in gossip. Your validator must be visible in gossip in order to connect to DoubleZero."
@@ -76,7 +76,7 @@ impl FindValidatorCommand {
                 }
             };
             if let Some(node) = find_node_by_ip(&nodes, server_ip) {
-                print_node_info(node, &sol_client).await;
+                print_node_info(node, &sol_client).await?;
             } else {
                 println!(
                     "⚠️  Warning: Your IP is not appearing in gossip. Your validator must be visible in gossip in order to connect to DoubleZero."
@@ -95,7 +95,7 @@ impl FindValidatorCommand {
                         }
                     };
                     if let Some(node) = find_node_by_ip(&nodes, server_ip) {
-                        print_node_info(node, &sol_client).await;
+                        print_node_info(node, &sol_client).await?;
                     } else {
                         println!(
                             "⚠️  Warning: Your IP is not appearing in gossip. Your validator must be visible in gossip in order to connect to DoubleZero."
@@ -110,7 +110,7 @@ impl FindValidatorCommand {
     }
 }
 
-async fn print_node_info(node: &RpcContactInfo, sol_client: &SolRpcClient) {
+async fn print_node_info(node: &RpcContactInfo, sol_client: &SolRpcClient) -> Result<()> {
     println!("Validator ID: {}", node.pubkey);
     match &node.gossip {
         Some(gossip) => println!("Gossip IP: {}", gossip.ip()),
@@ -121,8 +121,7 @@ async fn print_node_info(node: &RpcContactInfo, sol_client: &SolRpcClient) {
 
     if sol_client
         .is_scheduled_leader(&pubkey, ENV_PREVIOUS_LEADER_EPOCHS)
-        .await
-        .is_ok()
+        .await?
     {
         println!("In Leader scheduler");
         println!(
@@ -133,4 +132,6 @@ async fn print_node_info(node: &RpcContactInfo, sol_client: &SolRpcClient) {
             "✅ This validator can only connect as a backup in DoubleZero 🖥️  🛟. It is not leader scheduled and cannot act as a primary validator."
         );
     }
+
+    Ok(())
 }

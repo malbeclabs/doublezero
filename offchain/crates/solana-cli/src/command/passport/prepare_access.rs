@@ -79,9 +79,8 @@ impl PrepareValidatorAccessCommand {
             print!("  Leader scheduler: ");
 
             if sol_client
-                .is_scheduled_leader(&primary_validator_id, 5)
-                .await
-                .is_ok()
+                .is_scheduled_leader(&primary_validator_id, ENV_PREVIOUS_LEADER_EPOCHS)
+                .await?
             {
                 print!(" ✅ OK ");
             } else {

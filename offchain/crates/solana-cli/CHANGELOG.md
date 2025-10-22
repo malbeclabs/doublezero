@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Fixed a bug when searching for an identity in the Solana leader schedule. ([166](https://github.com/doublezerofoundation/doublezero-offchain/pull/166))
+
 ## [0.1.1](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-solana/v0.1.1) - 2025-10-21
 
 ### Other

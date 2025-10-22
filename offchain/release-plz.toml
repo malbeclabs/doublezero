@@ -10,8 +10,6 @@ dependencies_update = false
 pr_labels = ["release"]
 # Git tag format: <crate-name>/v<version>
 git_tag_name = "{{ package }}/v{{ version }}"
-# Git release name should match the tag
-git_release_name = "{{ tag }}"
 # Enable git releases (goreleaser will handle the actual binary builds)
 git_release_enable = true
 git_release_draft = false
@@ -24,6 +22,7 @@ name = "doublezero-contributor-rewards"
 changelog_path = "crates/contributor-rewards/CHANGELOG.md"
 # Override git tag format (uses 'contributor-rewards' prefix instead of full crate name)
 git_tag_name = "contributor-rewards/v{{ version }}"
+git_release_name = "contributor-rewards/v{{ version }}"
 
 # Sentinel
 [[package]]
@@ -31,6 +30,7 @@ name = "doublezero-ledger-sentinel"
 changelog_path = "crates/sentinel/CHANGELOG.md"
 # Override git tag format for sentinel (uses 'sentinel' prefix instead of full crate name)
 git_tag_name = "sentinel/v{{ version }}"
+git_release_name = "sentinel/v{{ version }}"
 
 # Solana CLI (2z-cli)
 [[package]]
@@ -38,12 +38,14 @@ name = "doublezero-solana-cli"
 changelog_path = "crates/solana-cli/CHANGELOG.md"
 # Override git tag format (uses 'doublezero-solana' prefix)
 git_tag_name = "doublezero-solana/v{{ version }}"
+git_release_name = "doublezero-solana/v{{ version }}"
 
 # Validator Debt
 [[package]]
 name = "doublezero-solana-validator-debt"
 changelog_path = "crates/validator-debt/CHANGELOG.md"
 git_tag_name = "solana-validator-debt/v{{ version }}"
+git_release_name = "solana-validator-debt/v{{ version }}"
 
 # Library crates (don't create releases for these, just maintain changelogs)
 [[package]]

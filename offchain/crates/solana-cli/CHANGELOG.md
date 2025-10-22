@@ -7,12 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- Fixed a bug when searching for an identity in the Solana leader schedule. ([166](https://github.com/doublezerofoundation/doublezero-offchain/pull/166))
-
-## [0.1.1](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-solana/v0.1.1) - 2025-10-21
-
-### Other
-
+- fixed identity search in Solana leader schedule ([#166](https://github.com/doublezerofoundation/doublezero-offchain/pull/166))
 - testing release-plz integration
 - simplify leader schedule check ([#157](https://github.com/doublezerofoundation/doublezero-offchain/pull/157))
 - add token balances and more info in stdout ([#162](https://github.com/doublezerofoundation/doublezero-offchain/pull/162))
@@ -20,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - add SOL conversion commands ([#159](https://github.com/doublezerofoundation/doublezero-offchain/pull/159))
 - add sol-conversion-admin-cli ([#156](https://github.com/doublezerofoundation/doublezero-offchain/pull/156))
 - import from and export to CSV, add verify command, bug fixes ([#147](https://github.com/doublezerofoundation/doublezero-offchain/pull/147))
+
+## [0.1.1](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-solana/v0.1.1) - 2025-10-21
+
+### Other
+
 - version 0.1.1 ([#152](https://github.com/doublezerofoundation/doublezero-offchain/pull/152))
 - bump doublezero-solana-cli version to 0.1.10 ([#151](https://github.com/doublezerofoundation/doublezero-offchain/pull/151))
 - fix backup validator leader schedule check output ([#150](https://github.com/doublezerofoundation/doublezero-offchain/pull/150))

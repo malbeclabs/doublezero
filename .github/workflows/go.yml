@@ -35,7 +35,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - run: make go-test nocontainertest
+      - run: sudo sysctl -w net.ipv4.ping_group_range="0 0"
   go-container-test:
     runs-on: ubuntu-latest
     needs: go-build

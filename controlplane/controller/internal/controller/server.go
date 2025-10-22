@@ -55,17 +55,16 @@ type stateCache struct {
 type Controller struct {
 	pb.UnimplementedControllerServer
 
-	log                      *slog.Logger
-	cache                    stateCache
-	mu                       sync.RWMutex
-	serviceability           ServiceabilityProgramClient
-	listener                 net.Listener
-	noHardware               bool
-	enableInterfacesAndPeers bool
-	updateDone               chan struct{}
-	tlsConfig                *tls.Config
-	environment              string
-	deviceLocalASN           uint32
+	log            *slog.Logger
+	cache          stateCache
+	mu             sync.RWMutex
+	serviceability ServiceabilityProgramClient
+	listener       net.Listener
+	noHardware     bool
+	updateDone     chan struct{}
+	tlsConfig      *tls.Config
+	environment    string
+	deviceLocalASN uint32
 }
 
 type Option func(*Controller)
@@ -133,13 +132,6 @@ func WithSignalChan(ch chan struct{}) Option {
 func WithNoHardware() Option {
 	return func(c *Controller) {
 		c.noHardware = true
-	}
-}
-
-// WithEnableInterfacesAndPeers provides a way to enable processing of device interfaces and BGP peers.
-func WithEnableInterfacesAndPeers() Option {
-	return func(c *Controller) {
-		c.enableInterfacesAndPeers = true
 	}
 }
 
@@ -273,74 +265,72 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 		devicePubKey := base58.Encode(device.PubKey[:])
 		d := NewDevice(ip, devicePubKey)
 
-		if c.enableInterfacesAndPeers {
-			candidateVpnv4BgpPeer, candidateIpv4BgpPeer := c.processDeviceInterfacesAndPeers(device, d, devicePubKey)
+		candidateVpnv4BgpPeer, candidateIpv4BgpPeer := c.processDeviceInterfacesAndPeers(device, d, devicePubKey)
 
-			if len(d.Vpn4vLoopbackIP) == 0 {
-				c.log.Warn("device has pathology", "device_pubkey", devicePubKey, "pathology", "no or invalid VPNv4 loopback interface found for device")
-				d.DevicePathologies = append(d.DevicePathologies, "no or invalid VPNv4 loopback interface found for device")
+		if len(d.Vpn4vLoopbackIP) == 0 {
+			c.log.Warn("device has pathology", "device_pubkey", devicePubKey, "pathology", "no or invalid VPNv4 loopback interface found for device")
+			d.DevicePathologies = append(d.DevicePathologies, "no or invalid VPNv4 loopback interface found for device")
+		}
+
+		if len(d.Ipv4LoopbackIP) == 0 {
+			c.log.Warn("device has pathology", "device_pubkey", devicePubKey, "pathology", "no or invalid IPv4 loopback interface found for device")
+			d.DevicePathologies = append(d.DevicePathologies, "no or invalid IPv4 loopback interface found for device")
+		}
+
+		if d.Vpn4vLoopbackIP.Equal(net.IPv4(0, 0, 0, 0)) {
+			c.log.Warn("device has pathology", "device_pubkey", devicePubKey, "pathology", "VPNv4 loopback interface is unassigned (0.0.0.0)")
+			d.DevicePathologies = append(d.DevicePathologies, "VPNv4 loopback interface is unassigned (0.0.0.0)")
+		}
+
+		if d.Ipv4LoopbackIP.Equal(net.IPv4(0, 0, 0, 0)) {
+			c.log.Warn("device has pathology", "device_pubkey", devicePubKey, "pathology", "IPv4 loopback interface is unassigned (0.0.0.0)")
+			d.DevicePathologies = append(d.DevicePathologies, "IPv4 loopback interface is unassigned (0.0.0.0)")
+		}
+
+		if d.IsisNet == "" {
+			c.log.Warn("device has pathology", "device_pubkey", devicePubKey, "pathology", "ISIS NET could not be generated")
+			d.DevicePathologies = append(d.DevicePathologies, "ISIS NET could not be generated")
+		}
+
+		if len(d.DevicePathologies) > 0 {
+			cache.Devices[devicePubKey] = d
+			continue
+		}
+
+		cache.Vpnv4BgpPeers = append(cache.Vpnv4BgpPeers, candidateVpnv4BgpPeer)
+		cache.Ipv4BgpPeers = append(cache.Ipv4BgpPeers, candidateIpv4BgpPeer)
+
+		// determine if interface is in an onchain link and assign metrics
+		findLink := func(intf Interface) serviceability.Link {
+			for _, link := range links {
+				if d.PubKey == base58.Encode(link.SideAPubKey[:]) && intf.Name == link.SideAIfaceName {
+					return link
+				}
+				if d.PubKey == base58.Encode(link.SideZPubKey[:]) && intf.Name == link.SideZIfaceName {
+					return link
+				}
 			}
+			return serviceability.Link{}
+		}
 
-			if len(d.Ipv4LoopbackIP) == 0 {
-				c.log.Warn("device has pathology", "device_pubkey", devicePubKey, "pathology", "no or invalid IPv4 loopback interface found for device")
-				d.DevicePathologies = append(d.DevicePathologies, "no or invalid IPv4 loopback interface found for device")
-			}
+		for i, iface := range d.Interfaces {
+			link := findLink(iface)
 
-			if d.Vpn4vLoopbackIP.Equal(net.IPv4(0, 0, 0, 0)) {
-				c.log.Warn("device has pathology", "device_pubkey", devicePubKey, "pathology", "VPNv4 loopback interface is unassigned (0.0.0.0)")
-				d.DevicePathologies = append(d.DevicePathologies, "VPNv4 loopback interface is unassigned (0.0.0.0)")
-			}
-
-			if d.Ipv4LoopbackIP.Equal(net.IPv4(0, 0, 0, 0)) {
-				c.log.Warn("device has pathology", "device_pubkey", devicePubKey, "pathology", "IPv4 loopback interface is unassigned (0.0.0.0)")
-				d.DevicePathologies = append(d.DevicePathologies, "IPv4 loopback interface is unassigned (0.0.0.0)")
-			}
-
-			if d.IsisNet == "" {
-				c.log.Warn("device has pathology", "device_pubkey", devicePubKey, "pathology", "ISIS NET could not be generated")
-				d.DevicePathologies = append(d.DevicePathologies, "ISIS NET could not be generated")
-			}
-
-			if len(d.DevicePathologies) > 0 {
-				cache.Devices[devicePubKey] = d
+			if link == (serviceability.Link{}) || link.Status != serviceability.LinkStatusActivated {
+				d.Interfaces[i].IsLink = false
+				d.Interfaces[i].Metric = 0
 				continue
 			}
 
-			cache.Vpnv4BgpPeers = append(cache.Vpnv4BgpPeers, candidateVpnv4BgpPeer)
-			cache.Ipv4BgpPeers = append(cache.Ipv4BgpPeers, candidateIpv4BgpPeer)
-
-			// determine if interface is in an onchain link and assign metrics
-			findLink := func(intf Interface) serviceability.Link {
-				for _, link := range links {
-					if d.PubKey == base58.Encode(link.SideAPubKey[:]) && intf.Name == link.SideAIfaceName {
-						return link
-					}
-					if d.PubKey == base58.Encode(link.SideZPubKey[:]) && intf.Name == link.SideZIfaceName {
-						return link
-					}
-				}
-				return serviceability.Link{}
+			if link.DelayNs <= 0 {
+				linkMetricInvalid.WithLabelValues(base58.Encode(link.PubKey[:]), device.Code, iface.Name).Inc()
+				continue
 			}
 
-			for i, iface := range d.Interfaces {
-				link := findLink(iface)
-
-				if link == (serviceability.Link{}) || link.Status != serviceability.LinkStatusActivated {
-					d.Interfaces[i].IsLink = false
-					d.Interfaces[i].Metric = 0
-					continue
-				}
-
-				if link.DelayNs <= 0 {
-					linkMetricInvalid.WithLabelValues(base58.Encode(link.PubKey[:]), device.Code, iface.Name).Inc()
-					continue
-				}
-
-				microseconds := math.Ceil(float64(link.DelayNs) / 1000.0)
-				d.Interfaces[i].Metric = uint32(microseconds)
-				d.Interfaces[i].IsLink = true
-				linkMetrics.WithLabelValues(device.Code, iface.Name, d.PubKey).Set(float64(d.Interfaces[i].Metric))
-			}
+			microseconds := math.Ceil(float64(link.DelayNs) / 1000.0)
+			d.Interfaces[i].Metric = uint32(microseconds)
+			d.Interfaces[i].IsLink = true
+			linkMetrics.WithLabelValues(device.Code, iface.Name, d.PubKey).Set(float64(d.Interfaces[i].Metric))
 		}
 		d.MgmtVrf = device.MgmtVrf
 
@@ -649,7 +639,7 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 		Ipv4BgpPeers:             ipv4Peers,
 		UnknownBgpPeers:          unknownPeers,
 		NoHardware:               c.noHardware,
-		InterfacesAndPeers:       c.enableInterfacesAndPeers,
+		InterfacesAndPeers:       true,
 		TelemetryTWAMPListenPort: telemetryconfig.TWAMPListenPort,
 		LocalASN:                 localASN,
 	}

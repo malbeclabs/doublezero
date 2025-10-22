@@ -123,7 +123,7 @@ func NewControllerCommand() *ControllerCommand {
 	c.fs.StringVar(&c.rpcEndpoint, "solana-rpc-endpoint", "", "override solana rpc endpoint (default: devnet)")
 	c.fs.Uint64Var(&c.deviceLocalASN, "device-local-asn", 0, "device local ASN (required when env is not set)")
 	c.fs.BoolVar(&c.noHardware, "no-hardware", false, "exclude config commands that will fail when not running on the real hardware")
-	c.fs.BoolVar(&c.enableInterfacesAndPeers, "enable-interfaces-and-peers", false, "enable processing of device interfaces and BGP peers")
+	c.fs.BoolVar(&c.enableInterfacesAndPeers, "enable-interfaces-and-peers", false, "deprecated: interfaces and peers are always enabled")
 	c.fs.BoolVar(&c.showVersion, "version", false, "show version information and exit")
 	c.fs.StringVar(&c.tlsCertFile, "tls-cert", "", "path to tls cert file")
 	c.fs.StringVar(&c.tlsKeyFile, "tls-key", "", "path to tls key file")
@@ -229,7 +229,7 @@ func (c *ControllerCommand) Run() error {
 	}
 
 	if c.enableInterfacesAndPeers {
-		options = append(options, controller.WithEnableInterfacesAndPeers())
+		log.Warn("The -enable-interfaces-and-peers flag is deprecated and ignored. Interfaces and peers are always enabled.")
 	}
 
 	options = append(options, controller.WithServiceabilityProgramClient(serviceabilityClient))

@@ -69,3 +69,42 @@ impl TelemetryInstruction {
         Ok(instruction)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_instruction(instruction: TelemetryInstruction) {
+        let unpacked = TelemetryInstruction::unpack(&instruction.pack().unwrap()).unwrap();
+        assert_eq!(instruction, unpacked, "Instruction mismatch");
+    }
+
+    #[test]
+    fn test_telemetry_instruction() {
+        test_instruction(TelemetryInstruction::InitializeDeviceLatencySamples(
+            InitializeDeviceLatencySamplesArgs {
+                epoch: 100,
+                sampling_interval_microseconds: 1000,
+            },
+        ));
+        test_instruction(TelemetryInstruction::WriteDeviceLatencySamples(
+            WriteDeviceLatencySamplesArgs {
+                start_timestamp_microseconds: 1000,
+                samples: vec![],
+            },
+        ));
+        test_instruction(TelemetryInstruction::InitializeInternetLatencySamples(
+            InitializeInternetLatencySamplesArgs {
+                data_provider_name: "data_provider_name".to_string(),
+                epoch: 100,
+                sampling_interval_microseconds: 1000,
+            },
+        ));
+        test_instruction(TelemetryInstruction::WriteInternetLatencySamples(
+            WriteInternetLatencySamplesArgs {
+                start_timestamp_microseconds: 1000,
+                samples: vec![],
+            },
+        ));
+    }
+}

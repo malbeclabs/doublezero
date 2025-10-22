@@ -508,46 +508,18 @@ func TestGetConfig(t *testing.T) {
 			Pubkey: "abc123",
 			Want:   "fixtures/base.config.with.mgmt.vrf.txt",
 		},
-		{
-			Name:               "render_base_config_without_interfaces_and_peers_successfully",
-			Description:        "render base configuration without interfaces and peers",
-			InterfacesAndPeers: false,
-			StateCache: stateCache{
-				Config: serviceability.Config{
-					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
-				},
-				Devices: map[string]*Device{
-					"abc123": {
-						PublicIP:              net.IP{7, 7, 7, 7},
-						Vpn4vLoopbackIntfName: "Loopback255",
-						DevicePathologies:     []string{},
-						Tunnels:               []*Tunnel{},
-						TunnelSlots:           0,
-					},
-				},
-			},
-			Pubkey: "abc123",
-			Want:   "fixtures/base.config.without.interfaces.peers.txt",
-		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.Name, func(t *testing.T) {
 			listener := bufconn.Listen(1024 * 1024)
 			server := grpc.NewServer()
-			controller := &Controller{}
-			if test.InterfacesAndPeers == true {
-				controller = &Controller{
-					noHardware:               test.NoHardware,
-					enableInterfacesAndPeers: true,
-					deviceLocalASN:           65342,
-				}
-			} else {
-				controller = &Controller{
-					log:            slog.New(slog.NewTextHandler(io.Discard, nil)),
-					noHardware:     test.NoHardware,
-					deviceLocalASN: 65342,
-				}
+			controller := &Controller{
+				noHardware:     test.NoHardware,
+				deviceLocalASN: 65342,
+			}
+			if !test.InterfacesAndPeers {
+				controller.log = slog.New(slog.NewTextHandler(io.Discard, nil))
 			}
 			pb.RegisterControllerServer(server, controller)
 
@@ -1049,7 +1021,6 @@ func TestStateCache(t *testing.T) {
 				WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))),
 				WithServiceabilityProgramClient(m),
 				WithListener(lis),
-				WithEnableInterfacesAndPeers(),
 				WithDeviceLocalASN(65342),
 			)
 			if err != nil {
@@ -1348,88 +1319,6 @@ func TestEndToEnd(t *testing.T) {
 			Want: "fixtures/e2e.peer.removal.tmpl",
 		},
 		{
-			Name: "base_config_without_interfaces_and_peers",
-			Config: serviceability.Config{
-				MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
-				TunnelTunnelBlock:   [5]uint8{172, 16, 0, 0, 16},
-				UserTunnelBlock:     [5]uint8{169, 254, 0, 0, 16},
-			},
-			InterfacesAndPeers: false,
-			Devices: []serviceability.Device{
-				{
-					AccountType:    serviceability.AccountType(0),
-					Owner:          [32]uint8{},
-					LocationPubKey: [32]uint8{},
-					ExchangePubKey: [32]uint8{},
-					DeviceType:     0,
-					PublicIp:       [4]uint8{2, 2, 2, 2},
-					Interfaces: []serviceability.Interface{
-						{
-							InterfaceType:  serviceability.InterfaceTypeLoopback,
-							LoopbackType:   serviceability.LoopbackTypeVpnv4,
-							IpNet:          [5]uint8{14, 14, 14, 14, 32},
-							Name:           "Loopback255",
-							NodeSegmentIdx: 101,
-						},
-						{
-							InterfaceType: serviceability.InterfaceTypeLoopback,
-							LoopbackType:  serviceability.LoopbackTypeIpv4,
-							IpNet:         [5]uint8{12, 12, 12, 12, 32},
-							Name:          "Loopback256",
-						},
-					},
-					Status: serviceability.DeviceStatusActivated,
-					Code:   "abc01",
-					PubKey: [32]byte{1},
-				},
-				{
-					AccountType:    serviceability.AccountType(0),
-					Owner:          [32]uint8{},
-					LocationPubKey: [32]uint8{},
-					ExchangePubKey: [32]uint8{},
-					DeviceType:     0,
-					PublicIp:       [4]uint8{22, 22, 22, 22},
-					Interfaces: []serviceability.Interface{
-						// Because this device does not also have an Ipv4 loopback interface, this peer should not be added to abc01's peers
-						{
-							InterfaceType: serviceability.InterfaceTypeLoopback,
-							LoopbackType:  serviceability.LoopbackTypeVpnv4,
-							IpNet:         [5]uint8{114, 114, 114, 114, 32},
-							Name:          "Loopback255",
-						},
-					},
-					Status: serviceability.DeviceStatusActivated,
-					Code:   "abc02",
-					PubKey: [32]byte{2},
-				},
-				{
-					AccountType:    serviceability.AccountType(0),
-					Owner:          [32]uint8{},
-					LocationPubKey: [32]uint8{},
-					ExchangePubKey: [32]uint8{},
-					DeviceType:     0,
-					PublicIp:       [4]uint8{23, 23, 23, 23},
-					Interfaces: []serviceability.Interface{
-						// Because this device does not also have an Vpnv4 loopback interface, this peer should not be added to abc01's peers
-						{
-							InterfaceType: serviceability.InterfaceTypeLoopback,
-							LoopbackType:  serviceability.LoopbackTypeIpv4,
-							IpNet:         [5]uint8{124, 124, 124, 124, 32},
-							Name:          "Loopback256",
-						},
-					},
-					Status: serviceability.DeviceStatusActivated,
-					Code:   "abc03",
-					PubKey: [32]byte{3},
-				},
-			},
-			AgentRequest: &pb.ConfigRequest{
-				Pubkey:   "4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM",
-				BgpPeers: []string{},
-			},
-			Want: "fixtures/e2e.without.interfaces.peers.tmpl",
-		},
-		{
 			Name: "remove_last_user_from_device",
 			Config: serviceability.Config{
 				MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
@@ -1496,24 +1385,13 @@ func TestEndToEnd(t *testing.T) {
 			}
 			var controller *Controller
 			var err error
-			if test.InterfacesAndPeers {
-				controller, err = NewController(
-					WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))),
-					WithServiceabilityProgramClient(m),
-					WithListener(listener),
-					WithSignalChan(make(chan struct{})),
-					WithEnableInterfacesAndPeers(),
-					WithDeviceLocalASN(65342),
-				)
-			} else {
-				controller, err = NewController(
-					WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))),
-					WithServiceabilityProgramClient(m),
-					WithListener(listener),
-					WithSignalChan(make(chan struct{})),
-					WithDeviceLocalASN(65342),
-				)
-			}
+			controller, err = NewController(
+				WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))),
+				WithServiceabilityProgramClient(m),
+				WithListener(listener),
+				WithSignalChan(make(chan struct{})),
+				WithDeviceLocalASN(65342),
+			)
 			if err != nil {
 				t.Fatalf("error creating controller: %v", err)
 			}

@@ -42,6 +42,9 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
 
+      - name: Clean cargo registry index
+        run: rm -rf ~/.cargo/registry/index
+
       - name: Run release-plz
         uses: release-plz/action@v0.5
         env:

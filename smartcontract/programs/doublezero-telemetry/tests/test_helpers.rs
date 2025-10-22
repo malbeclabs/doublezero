@@ -28,7 +28,6 @@ use doublezero_serviceability::{
     },
 };
 use doublezero_telemetry::{
-    entrypoint::process_instruction as telemetry_process_instruction,
     error::TelemetryError,
     instructions::{TelemetryInstruction, INITIALIZE_DEVICE_LATENCY_SAMPLES_INSTRUCTION_INDEX},
     pda::{derive_device_latency_samples_pda, derive_internet_latency_samples_pda},
@@ -40,6 +39,9 @@ use doublezero_telemetry::{
     },
     serviceability_program_id,
 };
+
+#[cfg(not(feature = "no-entrypoint"))]
+use doublezero_telemetry::entrypoint::process_instruction as telemetry_process_instruction;
 use solana_program_test::*;
 use solana_sdk::{
     account::Account,
@@ -1254,11 +1256,14 @@ pub fn setup_test_programs() -> (ProgramTest, Pubkey, Pubkey) {
 
     // Add telemetry program
     let telemetry_program_id = Pubkey::new_unique();
+    #[cfg(not(feature = "no-entrypoint"))]
     program_test.add_program(
         "doublezero_telemetry",
         telemetry_program_id,
         processor!(telemetry_process_instruction),
     );
+    #[cfg(feature = "no-entrypoint")]
+    program_test.add_program("doublezero_telemetry", telemetry_program_id, None);
 
     // Add serviceability program with its actual processor
     let serviceability_program_id = serviceability_program_id();

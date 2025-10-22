@@ -391,6 +391,10 @@ impl DoubleZeroClient for DZClient {
         }
     }
 
+    fn get_account(&self, pubkey: Pubkey) -> eyre::Result<Account> {
+        self.client.get_account(&pubkey).map_err(|e| eyre!(e))
+    }
+
     #[allow(deprecated)]
     fn get_transactions(&self, pubkey: Pubkey) -> eyre::Result<Vec<DZTransaction>> {
         let mut transactions: Vec<DZTransaction> = Vec::new();

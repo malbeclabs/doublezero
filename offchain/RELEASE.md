@@ -4,10 +4,9 @@ This is a quick guide for releasing packages in this repository using `release-p
 
 ## TLDR
 
-1. Click "Run workflow" in GitHub Actions
-2. Wait for PR to appear
-3. Review and merge the PR
-4. Done - tags and binaries created automatically
+1. Click "Run workflow" in GitHub Actions (opens release PR)
+2. Review and merge the PR (tags created automatically)
+3. Done - binaries built automatically by goreleaser
 
 ---
 
@@ -62,9 +61,9 @@ release-plz analyzes commits since `sentinel/v0.2.0` and opens a PR with these c
 
 Look at the PR. Check:
 
-- ✅ Version number is correct (`0.2.1`)
-- ✅ Changelog entries look good
-- ✅ Only the crates you want to release are included
+- [OK] Version number is correct (`0.2.1`)
+- [OK] Changelog entries look good
+- [OK] Only the crates you want to release are included
 
 **Optional**: Edit the PR if needed:
 
@@ -72,24 +71,25 @@ Look at the PR. Check:
 - Want to improve changelog wording? Edit `CHANGELOG.md`
 - Want to skip releasing a crate? Revert its changes
 
-#### Step 4: Merge the PR (10 seconds)
+#### Step 4: Merge the PR
 
 Click "Merge pull request" → "Confirm merge"
 
-#### Step 5: Wait for Automation
+**What happens automatically**:
 
-**Immediately after merge**
+- [OK] Workflow detects Cargo.toml changed (path filter)
+- [OK] Tag created: `sentinel/v0.2.1`
+- [OK] Tag pushed to GitHub
+- [OK] GitHub Release created with changelog
 
-- ✅ Tag created: `sentinel/v0.2.1`
-- ✅ Tag pushed to GitHub
-- ✅ GitHub Release created with changelog
+#### Step 5: Wait for Goreleaser (automatic)
 
-**Then** (5 minutes):
+The tag triggers the existing goreleaser workflow:
 
-- ✅ Goreleaser builds binary
-- ✅ Packages created (`.tar.gz`, `.deb`)
-- ✅ Artifacts uploaded to GitHub release
-- ✅ Slack notification sent
+- [OK] Goreleaser builds binary
+- [OK] Packages created (`.tar.gz`, `.deb`)
+- [OK] Artifacts uploaded to GitHub release
+- [OK] Slack notification sent
 
 ### Done!
 
@@ -166,6 +166,16 @@ Don't like the version release-plz chose?
 - When bug fixes are ready for users
 - Before major milestones
 - Could do on some schedule but not needed for now
+
+### Q: How are accidental releases prevented?
+
+**A**: Multiple safety layers:
+
+1. **Manual trigger required**: You must manually trigger the workflow to open a release PR
+2. **PR review required**: You must review and approve the version bumps and changelog
+3. **Path filter**: The workflow only runs when `crates/*/Cargo.toml` changes, which only happens when you merge a release PR
+
+Regular code PRs (changing .rs files, docs, etc.) will NOT trigger the workflow and will NOT create releases.
 
 ### Q: What if I don't want to release right now?
 

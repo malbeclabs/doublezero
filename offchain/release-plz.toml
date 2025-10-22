@@ -10,6 +10,8 @@ dependencies_update = false
 pr_labels = ["release"]
 # Git tag format: <crate-name>/v<version>
 git_tag_name = "{{ package }}/v{{ version }}"
+# Git release name should match the tag
+git_release_name = "{{ tag }}"
 # Enable git releases (goreleaser will handle the actual binary builds)
 git_release_enable = true
 git_release_draft = false
@@ -20,6 +22,8 @@ publish = false
 [[package]]
 name = "doublezero-contributor-rewards"
 changelog_path = "crates/contributor-rewards/CHANGELOG.md"
+# Override git tag format (uses 'contributor-rewards' prefix instead of full crate name)
+git_tag_name = "contributor-rewards/v{{ version }}"
 
 # Sentinel
 [[package]]
@@ -65,4 +69,20 @@ git_release_enable = false
 [[package]]
 name = "doublezero-solana-fork-cli"
 changelog_path = "crates/solana-fork/CHANGELOG.md"
+git_release_enable = false
+
+# Admin CLI tools (don't create releases)
+[[package]]
+name = "doublezero-passport-admin-cli"
+changelog_path = "crates/solana-admin-cli/passport/CHANGELOG.md"
+git_release_enable = false
+
+[[package]]
+name = "doublezero-revenue-distribution-admin-cli"
+changelog_path = "crates/solana-admin-cli/revenue-distribution/CHANGELOG.md"
+git_release_enable = false
+
+[[package]]
+name = "doublezero-sol-conversion-admin-cli"
+changelog_path = "crates/solana-admin-cli/sol-conversion/CHANGELOG.md"
 git_release_enable = false

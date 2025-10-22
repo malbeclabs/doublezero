@@ -1,18 +1,27 @@
 name: Release Please (release-plz)
 
-# This workflow uses release-plz to manage changelogs and releases:
-# 1. Manual trigger: Opens a PR with changelog updates and version bumps
-# 2. When PR is merged: Creates git tags for changed crates
-# 3. Tags trigger existing goreleaser workflows for binary builds
+# This workflow uses release-plz to manage changelogs and releases.
+#
+# Workflow:
+# 1. Trigger manually: Opens a PR with changelog updates and version bumps
+# 2. Review and merge the release PR
+# 3. Tags created automatically when release PR merges (path filter ensures this)
+# 4. Tags trigger existing goreleaser workflows for binary builds
+#
+# The path filter ensures this only runs when Cargo.toml files change,
+# which only happens when a release PR (that you approved) is merged.
+# Regular code PRs do NOT trigger this workflow.
 
 on:
-  # Allow manual trigger
+  # Manual trigger to open release PR
   workflow_dispatch:
 
-  # Run after release PR is merged to create tags
+  # Auto-run when release PR merges (Cargo.toml versions change)
   push:
     branches:
       - main
+    paths:
+      - 'crates/*/Cargo.toml'
 
 permissions:
   contents: write

@@ -90,7 +90,8 @@ type Exchange struct {
 	Bump_seed    uint8          `influx:"-"`
 	Lat          float64        `influx:"field,lat"`
 	Lng          float64        `influx:"field,lng"`
-	BgpCommunity uint32         `influx:"-"`
+	BgpCommunity uint16         `influx:"field,bgp_community"`
+	Unused       uint16         `influx:"-"`
 	Status       ExchangeStatus `influx:"tag,status"`
 	Code         string         `influx:"tag,code"`
 	Name         string         `influx:"tag,name"`

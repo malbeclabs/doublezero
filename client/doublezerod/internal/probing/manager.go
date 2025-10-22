@@ -13,6 +13,7 @@ import (
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 	"github.com/malbeclabs/doublezero/tools/uping/pkg/uping"
+	promprobing "github.com/prometheus-community/pro-bing"
 )
 
 var (
@@ -114,8 +115,7 @@ func newRouteKey(route *routing.Route) routeKey {
 }
 
 type managedRoute struct {
-	route  *routing.Route
-	sender uping.Sender
+	route *routing.Route
 
 	// Liveness counters & current state (hysteresis).
 	consecOK   uint
@@ -237,19 +237,19 @@ func (m *ProbingManager) Tick(ctx context.Context) error {
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			res, err := m.probeRoute(ctx, &route, m.cfg.ProbeTimeout)
+			res, err := m.probeRoute(ctx, &route)
 			if err != nil {
-				m.log.Error("probing: send failed", "route", route.String(), "error", err)
-				// Treat send failure as a failed probe.
+				m.log.Error("probing: probe error", "route", route.String(), "error", err)
+				// Treat probe error as a failed probe.
 				m.applyProbeResult(&route, false)
 				return
 			}
 
-			ok := res.Error == nil
+			ok := res.PacketsSent > 0 && res.PacketsRecv == res.PacketsSent
 			if !ok {
-				m.log.Debug("probing: route probe failure", "route", route.String(), "error", res.Error)
+				m.log.Debug("probing: route probe failure", "route", route.String(), "packets_sent", res.PacketsSent, "packets_recv", res.PacketsRecv, "packet_loss", res.PacketLoss)
 			} else {
-				m.log.Debug("probing: route probe success", "route", route.String(), "rtt", res.RTT.String())
+				m.log.Debug("probing: route probe success", "route", route.String(), "packets_sent", res.PacketsSent, "packets_recv", res.PacketsRecv, "packet_loss", res.PacketLoss)
 			}
 			// Apply hysteresis policy and perform kernel ops only on transitions.
 			m.applyProbeResult(&route, ok)
@@ -311,12 +311,6 @@ func (m *ProbingManager) stop() {
 		m.cancel = nil
 	}
 	m.cancelMu.Unlock()
-
-	m.routesMu.Lock()
-	for _, r := range m.routes {
-		r.sender.Close()
-	}
-	m.routesMu.Unlock()
 }
 
 func (m *ProbingManager) isRunning() bool {
@@ -325,23 +319,24 @@ func (m *ProbingManager) isRunning() bool {
 	return m.cancel != nil
 }
 
-func (m *ProbingManager) probeRoute(ctx context.Context, mr *managedRoute, timeout time.Duration) (*uping.SendResult, error) {
+func (m *ProbingManager) probeRoute(ctx context.Context, mr *managedRoute) (*promprobing.Statistics, error) {
 	m.log.Debug("probing: sending route probe", "route", mr.String())
 
-	results, err := mr.sender.Send(ctx, uping.SendConfig{
-		Target:  mr.route.Dst.IP,
-		Count:   1,
-		Timeout: timeout,
-	})
+	pinger, err := promprobing.NewPinger(mr.route.Dst.IP.String())
+	if err != nil {
+		return nil, fmt.Errorf("error creating route probe pinger: %w", err)
+	}
+	pinger.Count = 1
+	pinger.Timeout = m.cfg.ProbeTimeout
+	pinger.Source = mr.route.Src.String()
+	pinger.InterfaceName = m.cfg.InterfaceName
+
+	err = pinger.RunWithContext(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("probing: error probing route: %w", err)
 	}
 
-	if len(results.Results) == 0 {
-		return nil, fmt.Errorf("probing: route probe returned no results")
-	}
-
-	return &results.Results[0], nil
+	return pinger.Statistics(), nil
 }
 
 func (m *ProbingManager) handleRouteAdd(route *routing.Route) error {
@@ -364,29 +359,11 @@ func (m *ProbingManager) handleRouteAdd(route *routing.Route) error {
 		return m.cfg.Netlink.RouteAdd(route)
 	}
 
-	// Add to managed routes map.
-	sender, err := uping.NewSender(uping.SenderConfig{
-		Interface: m.cfg.InterfaceName,
-		Source:    route.Src,
-	})
-	if err != nil {
-		return fmt.Errorf("error creating route probe sender: %w", err)
-	}
-
 	key := newRouteKey(route)
-	if old, ok := m.getRoute(key); ok {
-		// If the route is already in the managed routes map, close the old sender before
-		// overwriting it.
-		err := old.sender.Close()
-		if err != nil {
-			m.log.Warn("probing: error closing old sender; continuing", "route", route.String(), "error", err)
-		}
-	}
 	// Start conservatively as DOWN; we'll promote to UP after UpThreshold successes.
 	m.setRoute(key, managedRoute{
-		route:  route,
-		sender: sender,
-		state:  stateDown,
+		route: route,
+		state: stateDown,
 	})
 
 	// Just keep track of the route in memory. The liveness strategy will add it to the kernel when ready.
@@ -414,13 +391,9 @@ func (m *ProbingManager) handleRouteDelete(route *routing.Route) error {
 		return m.cfg.Netlink.RouteDelete(route)
 	}
 
-	// Delete the route from the managed routes map and close the sender.
+	// Delete the route from the managed routes map.
 	key := newRouteKey(route)
-	mr, ok := m.getRoute(key)
-	if ok {
-		mr.sender.Close()
-		m.deleteRoute(key)
-	}
+	m.deleteRoute(key)
 
 	// Delete the route from the kernel immediately.
 	err := m.cfg.Netlink.RouteDelete(route)

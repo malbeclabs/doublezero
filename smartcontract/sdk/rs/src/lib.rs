@@ -17,7 +17,7 @@ pub use doublezero_serviceability::{
             CurrentInterfaceVersion, Device, DeviceStatus, DeviceType, Interface, InterfaceStatus,
             InterfaceType, LoopbackType,
         },
-        exchange::{Exchange, ExchangeStatus},
+        exchange::{Exchange, ExchangeStatus, BGP_COMMUNITY_MAX, BGP_COMMUNITY_MIN},
         globalconfig::GlobalConfig,
         globalstate::GlobalState,
         link::{Link, LinkLinkType, LinkStatus},

@@ -1,4 +1,8 @@
-use crate::{error::Validate, seeds::*, state::accounttype::*};
+use crate::{
+    error::Validate,
+    seeds::*,
+    state::{accounttype::*, globalconfig::GlobalConfig},
+};
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::AccountInfo,
@@ -144,6 +148,12 @@ pub fn account_close(
     close_account.assign(&system_program::ID);
 
     Ok(())
+}
+
+pub fn assign_bgp_community(globalconfig: &mut GlobalConfig) -> u16 {
+    let assigned = globalconfig.next_bgp_community;
+    globalconfig.next_bgp_community = assigned.saturating_add(1);
+    assigned
 }
 
 pub fn format_option_displayable<T: fmt::Display>(opt: Option<T>) -> String {

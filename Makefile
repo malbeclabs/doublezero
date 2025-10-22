@@ -18,6 +18,10 @@ test: go-test rust-test
 .PHONY: ci
 ci: build lint test
 
+.PHONY: clean
+clean:
+	cargo clean
+
 
 # -----------------------------------------------------------------------------
 # Go targets
@@ -46,6 +50,7 @@ nocontainertest:
 .PHONY: go-fuzz
 go-fuzz:
 	cd tools/twamp && $(MAKE) fuzz
+	cd tools/uping && $(MAKE) fuzz
 
 .PHONY: go-container-test
 go-container-test:

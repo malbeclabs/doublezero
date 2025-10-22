@@ -510,6 +510,7 @@ mod tests {
                 device_tunnel_block: "1.2.3.4/1".parse().unwrap(),
                 user_tunnel_block: "1.2.3.4/1".parse().unwrap(),
                 multicastgroup_block: "1.2.3.4/1".parse().unwrap(),
+                next_bgp_community: None,
             }),
             "SetGlobalConfig",
         );
@@ -553,7 +554,7 @@ mod tests {
                 name: "test".to_string(),
                 lat: 1.0,
                 lng: 2.0,
-                bgp_community: 123,
+                reserved: 0,
             }),
             "CreateExchange",
         );

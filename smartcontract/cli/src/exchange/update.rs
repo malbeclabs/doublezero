@@ -4,7 +4,10 @@ use crate::{
     validators::{validate_code, validate_pubkey_or_code},
 };
 use clap::Args;
-use doublezero_sdk::commands::exchange::{get::GetExchangeCommand, update::UpdateExchangeCommand};
+use doublezero_sdk::{
+    commands::exchange::{get::GetExchangeCommand, update::UpdateExchangeCommand},
+    BGP_COMMUNITY_MAX, BGP_COMMUNITY_MIN,
+};
 use std::io::Write;
 
 #[derive(Args, Debug)]
@@ -24,7 +27,7 @@ pub struct UpdateExchangeCliCommand {
     /// Updated longitude for the exchange
     #[arg(long, allow_hyphen_values(true))]
     pub lng: Option<f64>,
-    /// Updated BGP community for the exchange
+    /// Re-assign BGP community value
     #[arg(long)]
     pub bgp_community: Option<u16>,
 }
@@ -34,9 +37,21 @@ impl UpdateExchangeCliCommand {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
+        if let Some(bgp_community) = self.bgp_community {
+            if !(BGP_COMMUNITY_MIN..=BGP_COMMUNITY_MAX).contains(&bgp_community) {
+                return Err(eyre::eyre!(
+                    "BGP community {} is out of valid range {}-{}",
+                    bgp_community,
+                    BGP_COMMUNITY_MIN,
+                    BGP_COMMUNITY_MAX
+                ));
+            }
+        }
+
         let (pubkey, _) = client.get_exchange(GetExchangeCommand {
             pubkey_or_code: self.pubkey,
         })?;
+
         let signature = client.update_exchange(UpdateExchangeCommand {
             pubkey,
             code: self.code,
@@ -114,7 +129,7 @@ mod tests {
                 name: Some("Test Exchange".to_string()),
                 lat: Some(12.34),
                 lng: Some(56.78),
-                bgp_community: Some(1),
+                bgp_community: None,
             }))
             .times(1)
             .returning(move |_| Ok(signature));
@@ -127,7 +142,7 @@ mod tests {
             name: Some("Test Exchange".to_string()),
             lat: Some(12.34),
             lng: Some(56.78),
-            bgp_community: Some(1),
+            bgp_community: None,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());
@@ -135,5 +150,45 @@ mod tests {
         assert_eq!(
             output_str,"Signature: 3QnHBSdd4doEF6FgpLCejqEw42UQjfvNhQJwoYDSpoBszpCCqVft4cGoneDCnZ6Ez3ujzavzUu85u6F79WtLhcsv\n"
         );
+    }
+
+    #[test]
+    fn test_cli_exchange_update_invalid_bgp_community() {
+        let mut client = create_test_client();
+
+        let (pda_pubkey, _bump_seed) = get_exchange_pda(&client.get_program_id(), 1);
+
+        client
+            .expect_check_requirements()
+            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+            .returning(|_| Ok(()));
+
+        // Test with BGP community below minimum
+        let mut output = Vec::new();
+        let res = UpdateExchangeCliCommand {
+            pubkey: pda_pubkey.to_string(),
+            code: None,
+            name: None,
+            lat: None,
+            lng: None,
+            bgp_community: Some(9999), // Below BGP_COMMUNITY_MIN (10000)
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_err());
+        assert!(res.unwrap_err().to_string().contains("out of valid range"));
+
+        // Test with BGP community above maximum
+        let mut output = Vec::new();
+        let res = UpdateExchangeCliCommand {
+            pubkey: pda_pubkey.to_string(),
+            code: None,
+            name: None,
+            lat: None,
+            lng: None,
+            bgp_community: Some(11000), // Above BGP_COMMUNITY_MAX (10999)
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_err());
+        assert!(res.unwrap_err().to_string().contains("out of valid range"));
     }
 }

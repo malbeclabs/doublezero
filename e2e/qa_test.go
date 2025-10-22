@@ -256,7 +256,7 @@ func TestConnectivityMulticast(t *testing.T) {
 			Code:   code,
 			Pubkey: ownerPubKey,
 		}
-		
+
 		result, err := client.MulticastAllowListAdd(ctx, req)
 		require.NoError(t, err, "MulticastAllowListAdd failed")
 		if result.GetSuccess() == false || result.GetReturnCode() != 0 {

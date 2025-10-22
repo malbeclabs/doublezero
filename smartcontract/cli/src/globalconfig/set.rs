@@ -4,7 +4,9 @@ use crate::{
 };
 use clap::Args;
 use doublezero_program_common::types::NetworkV4;
-use doublezero_sdk::commands::globalconfig::set::SetGlobalConfigCommand;
+use doublezero_sdk::{
+    commands::globalconfig::set::SetGlobalConfigCommand, BGP_COMMUNITY_MAX, BGP_COMMUNITY_MIN,
+};
 use std::io::Write;
 
 #[derive(Args, Debug)]
@@ -24,6 +26,9 @@ pub struct SetGlobalConfigCliCommand {
     /// Multicast group block in CIDR format
     #[arg(long)]
     multicastgroup_block: Option<NetworkV4>,
+    /// Next BGP community value to assign
+    #[arg(long)]
+    pub next_bgp_community: Option<u16>,
 }
 
 impl SetGlobalConfigCliCommand {
@@ -31,12 +36,24 @@ impl SetGlobalConfigCliCommand {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
+        if let Some(bgp_community) = self.next_bgp_community {
+            if !(BGP_COMMUNITY_MIN..=BGP_COMMUNITY_MAX).contains(&bgp_community) {
+                return Err(eyre::eyre!(
+                    "BGP community {} is out of valid range {}-{}",
+                    bgp_community,
+                    BGP_COMMUNITY_MIN,
+                    BGP_COMMUNITY_MAX
+                ));
+            }
+        }
+
         let signature = client.set_globalconfig(SetGlobalConfigCommand {
             local_asn: self.local_asn,
             remote_asn: self.remote_asn,
             device_tunnel_block: self.device_tunnel_block,
             user_tunnel_block: self.user_tunnel_block,
             multicastgroup_block: self.multicastgroup_block,
+            next_bgp_community: self.next_bgp_community,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -78,6 +95,7 @@ mod tests {
                 device_tunnel_block: "10.20.0.0/16".parse().ok(),
                 user_tunnel_block: "10.10.0.0/16".parse().ok(),
                 multicastgroup_block: "224.2.0.0/4".parse().ok(),
+                next_bgp_community: None,
             }))
             .returning(move |_| Ok(signature));
 
@@ -90,6 +108,7 @@ mod tests {
             device_tunnel_block: "10.20.0.0/16".parse().ok(),
             user_tunnel_block: "10.10.0.0/16".parse().ok(),
             multicastgroup_block: "224.2.0.0/4".parse().ok(),
+            next_bgp_community: None,
         }
         .execute(&client, &mut output1);
         assert!(res.is_ok());
@@ -107,6 +126,7 @@ mod tests {
                 device_tunnel_block: None,
                 user_tunnel_block: None,
                 multicastgroup_block: None,
+                next_bgp_community: None,
             }))
             .returning(move |_| Ok(signature));
         let mut output2 = Vec::new();
@@ -116,6 +136,7 @@ mod tests {
             device_tunnel_block: None,
             user_tunnel_block: None,
             multicastgroup_block: None,
+            next_bgp_community: None,
         }
         .execute(&client, &mut output2);
         assert!(res.is_ok());
@@ -141,6 +162,7 @@ mod tests {
                 device_tunnel_block: None,
                 user_tunnel_block: None,
                 multicastgroup_block: None,
+                next_bgp_community: None,
             }))
             .returning(move |_| {
                 Err(eyre::eyre!(
@@ -155,6 +177,7 @@ mod tests {
             device_tunnel_block: None,
             user_tunnel_block: None,
             multicastgroup_block: None,
+            next_bgp_community: None,
         }
         .execute(&client, &mut output);
         assert!(res.is_err());

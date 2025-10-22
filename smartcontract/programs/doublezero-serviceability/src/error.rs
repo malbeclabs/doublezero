@@ -113,6 +113,8 @@ pub enum DoubleZeroError {
     AccessPassNotFound, // variant 53
     #[error("User account not found")]
     UserAccountNotFound, // variant 54
+    #[error("Invalid BGP Community")]
+    InvalidBgpCommunity, // variant 55
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -173,6 +175,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::InvalidAccountOwner => ProgramError::Custom(52),
             DoubleZeroError::AccessPassNotFound => ProgramError::Custom(53),
             DoubleZeroError::UserAccountNotFound => ProgramError::Custom(54),
+            DoubleZeroError::InvalidBgpCommunity => ProgramError::Custom(55),
         }
     }
 }
@@ -234,7 +237,7 @@ impl From<u32> for DoubleZeroError {
             52 => DoubleZeroError::InvalidAccountOwner,
             53 => DoubleZeroError::AccessPassNotFound,
             54 => DoubleZeroError::UserAccountNotFound,
-
+            55 => DoubleZeroError::InvalidBgpCommunity,
             _ => DoubleZeroError::Custom(e),
         }
     }

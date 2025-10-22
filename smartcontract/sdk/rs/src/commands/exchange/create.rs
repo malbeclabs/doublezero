@@ -1,6 +1,7 @@
 use doublezero_program_common::validate_account_code;
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_exchange_pda,
+    instructions::DoubleZeroInstruction,
+    pda::{get_exchange_pda, get_globalconfig_pda},
     processors::exchange::create::ExchangeCreateArgs,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
@@ -25,6 +26,7 @@ impl CreateExchangeCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
+        let (globalconfig_pubkey, _) = get_globalconfig_pda(&client.get_program_id());
         let (pda_pubkey, _) =
             get_exchange_pda(&client.get_program_id(), globalstate.account_index + 1);
         client
@@ -34,10 +36,11 @@ impl CreateExchangeCommand {
                     name: self.name.clone(),
                     lat: self.lat,
                     lng: self.lng,
-                    bgp_community: self.bgp_community.unwrap_or(0),
+                    reserved: 0, // BGP community is auto-assigned
                 }),
                 vec![
                     AccountMeta::new(pda_pubkey, false),
+                    AccountMeta::new(globalconfig_pubkey, false),
                     AccountMeta::new(globalstate_pubkey, false),
                 ],
             )
@@ -53,7 +56,7 @@ mod tests {
     };
     use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
-        pda::{get_exchange_pda, get_globalstate_pda},
+        pda::{get_exchange_pda, get_globalconfig_pda, get_globalstate_pda},
         processors::exchange::create::ExchangeCreateArgs,
     };
     use mockall::predicate;
@@ -64,6 +67,7 @@ mod tests {
         let mut client = create_test_client();
 
         let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
+        let (globalconfig_pubkey, _) = get_globalconfig_pda(&client.get_program_id());
         let (pda_pubkey, _) = get_exchange_pda(&client.get_program_id(), 1);
 
         client
@@ -74,10 +78,11 @@ mod tests {
                     name: "Test Exchange".to_string(),
                     lat: 0.0,
                     lng: 0.0,
-                    bgp_community: 0,
+                    reserved: 0,
                 })),
                 predicate::eq(vec![
                     AccountMeta::new(pda_pubkey, false),
+                    AccountMeta::new(globalconfig_pubkey, false),
                     AccountMeta::new(globalstate_pubkey, false),
                 ]),
             )

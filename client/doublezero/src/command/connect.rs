@@ -700,6 +700,7 @@ mod tests {
                     device_tunnel_block: "10.0.0.0/24".parse().unwrap(),
                     user_tunnel_block: "10.0.1.0/24".parse().unwrap(),
                     multicastgroup_block: "239.0.0.0/24".parse().unwrap(),
+                    next_bgp_community: 10000,
                 },
                 client: create_test_client(),
                 controller: MockServiceController::new(),

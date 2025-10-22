@@ -288,29 +288,6 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 			d.LocationCode = "unknown"
 		}
 
-		d.MgmtVrf = device.MgmtVrf
-		d.Code = device.Code
-
-		if contributor, ok := contributorMap[device.ContributorPubKey]; ok {
-			d.ContributorCode = contributor.Code
-		} else {
-			d.ContributorCode = "unknown"
-		}
-
-		if exchange, ok := exchangeMap[device.ExchangePubKey]; ok {
-			d.ExchangeCode = exchange.Code
-			d.BgpCommunity = exchange.BgpCommunity
-		} else {
-			d.ExchangeCode = "unknown"
-			d.BgpCommunity = 0
-		}
-
-		if location, ok := locationMap[device.LocationPubKey]; ok {
-			d.LocationCode = location.Code
-		} else {
-			d.LocationCode = "unknown"
-		}
-
 		candidateVpnv4BgpPeer, candidateIpv4BgpPeer := c.processDeviceInterfacesAndPeers(device, d, devicePubKey)
 
 		if len(d.Vpn4vLoopbackIP) == 0 {
@@ -378,11 +355,10 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 				continue
 			}
 
-				microseconds := math.Ceil(float64(link.DelayNs) / 1000.0)
-				d.Interfaces[i].Metric = uint32(microseconds)
-				d.Interfaces[i].IsLink = true
-				linkMetrics.WithLabelValues(device.Code, iface.Name, d.PubKey).Set(float64(d.Interfaces[i].Metric))
-			}
+			microseconds := math.Ceil(float64(link.DelayNs) / 1000.0)
+			d.Interfaces[i].Metric = uint32(microseconds)
+			d.Interfaces[i].IsLink = true
+			linkMetrics.WithLabelValues(device.Code, iface.Name, d.PubKey).Set(float64(d.Interfaces[i].Metric))
 		}
 
 		cache.Devices[devicePubKey] = d

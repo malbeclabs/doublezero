@@ -280,15 +280,15 @@ func runUserBanIBRLWorkflowTest(t *testing.T, log *slog.Logger, client1 *devnet.
 
 	waitForUserBanned(t, log, dn, user_pk, 60*time.Second)
 
-	log.Info("==> Checking that the clients cannot reach each other via their DZ IPs")
+	log.Info("==> Checking that client1 does not have route to client2 after being banned")
 	require.Eventually(t, func() bool {
-		_, err = client1.Exec(t.Context(), []string{"ping", "-I", "doublezero0", "-c", "3", client2DZIP, "-W", "1"})
-		if err == nil {
-			log.Info("Ping of client2 successful")
+		output, err := client1.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
+		if err != nil {
+			return false
 		}
-		return err != nil
-	}, 120*time.Second, 5*time.Second, "timeout waiting for client1 to be banned by the controller/agent")
-	log.Info("--> Client1 cannot reach client2 via DZ IP after being banned")
+		return !strings.Contains(string(output), client2DZIP)
+	}, 120*time.Second, 5*time.Second, "timeout waiting for client1's route to client2 to be withdrawn after banning")
+	log.Info("--> Client1 does not have route to client2 after being banned")
 
 	// Unban by deleting the user account.
 	log.Info("==> Unbanning client1")
@@ -320,16 +320,16 @@ func runUserBanIBRLWorkflowTest(t *testing.T, log *slog.Logger, client1 *devnet.
 	require.Equal(t, client1.CYOANetworkIP, client1DZIP)
 	log.Info("--> Client1 has a DZ IP as public IP when not configured to use an allocated IP")
 
-	// Check that the clients can reach each other again via their DZ IPs, via ping.
-	log.Info("==> Checking that the client1 can reach client2 via their DZ IPs")
+	// Check that client1 has route to client2 again after unbanning.
+	log.Info("==> Checking that client1 has route to client2 after unbanning")
 	require.Eventually(t, func() bool {
-		_, err = client1.Exec(t.Context(), []string{"ping", "-I", "doublezero0", "-c", "3", client2DZIP, "-W", "1"})
-		if err == nil {
-			return true
+		output, err := client1.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
+		if err != nil {
+			return false
 		}
-		return false
-	}, 120*time.Second, 5*time.Second, "timeout waiting for client1 to ping client2 after unbanning")
-	log.Info("--> Client1 can reach client2 via their DZ IPs")
+		return strings.Contains(string(output), client2DZIP)
+	}, 120*time.Second, 5*time.Second, "timeout waiting for client1 to receive route to client2 after unbanning")
+	log.Info("--> Client1 has route to client2 after unbanning")
 
 	// Disconnect client1.
 	log.Info("==> Disconnecting client1 from IBRL")

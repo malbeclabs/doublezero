@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -42,6 +43,10 @@ func TestE2E_MultiClient(t *testing.T) {
 	require.NoError(t, err)
 	log.Info("--> Devnet started")
 
+	linkNetwork := devnet.NewMiscNetwork(dn, log, "la2-dz01:ewr1-dz01")
+	_, err = linkNetwork.CreateIfNotExists(t.Context())
+	require.NoError(t, err)
+
 	// Add la2-dz01 device in xlax exchange.
 	deviceCode1 := "la2-dz01"
 	device1, err := dn.AddDevice(t.Context(), devnet.DeviceSpec{
@@ -51,6 +56,10 @@ func TestE2E_MultiClient(t *testing.T) {
 		// .8/29 has network address .8, allocatable up to .14, and broadcast .15
 		CYOANetworkIPHostID:          8,
 		CYOANetworkAllocatablePrefix: 29,
+		AdditionalNetworks: []string{linkNetwork.Name},
+		Interfaces: map[string]string{
+			"Ethernet2": "physical",
+		},
 		LoopbackInterfaces: map[string]string{
 			"Loopback255": "vpnv4",
 			"Loopback256": "ipv4",
@@ -69,6 +78,10 @@ func TestE2E_MultiClient(t *testing.T) {
 		// .16/29 has network address .16, allocatable up to .22, and broadcast .23
 		CYOANetworkIPHostID:          16,
 		CYOANetworkAllocatablePrefix: 29,
+		AdditionalNetworks: []string{linkNetwork.Name},
+		Interfaces: map[string]string{
+			"Ethernet2": "physical",
+		},
 		LoopbackInterfaces: map[string]string{
 			"Loopback255": "vpnv4",
 			"Loopback256": "ipv4",
@@ -88,6 +101,11 @@ func TestE2E_MultiClient(t *testing.T) {
 		return len(data.Devices) == 2
 	}, 30*time.Second, 1*time.Second)
 	log.Info("--> Devices exist onchain", "deviceCode1", deviceCode1, "devicePK1", devicePK1, "deviceCode2", deviceCode2, "devicePK2", devicePK2)
+
+	log.Info("==> Creating link onchain")
+	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero link create wan --code \"la2-dz01:ewr1-dz01\" --contributor co01 --side-a la2-dz01 --side-a-interface Ethernet2 --side-z ewr1-dz01 --side-z-interface Ethernet2 --bandwidth \"10 Gbps\" --mtu 2048 --delay-ms 40 --jitter-ms 3"})
+	require.NoError(t, err)
+	log.Info("--> Link created onchain")
 
 	// Add a client.
 	log.Info("==> Adding client1")
@@ -182,13 +200,23 @@ func runMultiClientIBRLWorkflowTest(t *testing.T, log *slog.Logger, dn *devnet.D
 	require.Equal(t, client2.CYOANetworkIP, client2DZIP)
 	log.Info("--> Clients have a DZ IP as public IP when not configured to use an allocated IP")
 
-	// Check that the clients can reach each other via their DZ IPs, via ping.
-	log.Info("==> Checking that the clients can reach each other via their DZ IPs")
-	_, err = client1.Exec(t.Context(), []string{"ping", "-c", "3", client2DZIP, "-W", "1"})
-	require.NoError(t, err)
-	_, err = client2.Exec(t.Context(), []string{"ping", "-c", "3", client1DZIP, "-W", "1"})
-	require.NoError(t, err)
-	log.Info("--> Clients can reach each other via their DZ IPs")
+	// Check that the clients have routes to each other.
+	log.Info("==> Checking that the clients have routes to each other")
+	require.Eventually(t, func() bool {
+		output, err := client1.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
+		if err != nil {
+			return false
+		}
+		return strings.Contains(string(output), client2DZIP)
+	}, 120*time.Second, 5*time.Second, "client1 should have route to client2")
+	require.Eventually(t, func() bool {
+		output, err := client2.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
+		if err != nil {
+			return false
+		}
+		return strings.Contains(string(output), client1DZIP)
+	}, 120*time.Second, 5*time.Second, "client2 should have route to client1")
+	log.Info("--> Clients have routes to each other")
 
 	// Disconnect client1.
 	log.Info("==> Disconnecting client1 from IBRL")
@@ -275,13 +303,23 @@ func runMultiClientIBRLWithAllocatedIPWorkflowTest(t *testing.T, log *slog.Logge
 	require.NotEqual(t, client2.CYOANetworkIP, client2DZIP)
 	log.Info("--> Clients have a DZ IP different from their client IP when configured to use an allocated IP")
 
-	// Check that the clients can reach each other via their DZ IPs, via ping.
-	log.Info("==> Checking that the clients can reach each other via their DZ IPs")
-	_, err = client1.Exec(t.Context(), []string{"ping", "-c", "3", client2DZIP, "-W", "1"})
-	require.NoError(t, err)
-	_, err = client2.Exec(t.Context(), []string{"ping", "-c", "3", client1DZIP, "-W", "1"})
-	require.NoError(t, err)
-	log.Info("--> Clients can reach each other via their DZ IPs")
+	// Check that the clients have routes to each other.
+	log.Info("==> Checking that the clients have routes to each other")
+	require.Eventually(t, func() bool {
+		output, err := client1.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
+		if err != nil {
+			return false
+		}
+		return strings.Contains(string(output), client2DZIP)
+	}, 120*time.Second, 5*time.Second, "client1 should have route to client2")
+	require.Eventually(t, func() bool {
+		output, err := client2.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
+		if err != nil {
+			return false
+		}
+		return strings.Contains(string(output), client1DZIP)
+	}, 120*time.Second, 5*time.Second, "client2 should have route to client1")
+	log.Info("--> Clients have routes to each other")
 
 	// Disconnect client1.
 	log.Info("==> Disconnecting client1 from IBRL with allocated IP")

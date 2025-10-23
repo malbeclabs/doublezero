@@ -1,5 +1,4 @@
 use doublezero_serviceability::{
-    entrypoint::*,
     instructions::*,
     pda::*,
     processors::{
@@ -18,21 +17,14 @@ use doublezero_serviceability::{
     },
 };
 use solana_program_test::*;
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signer::Signer};
+use solana_sdk::{instruction::AccountMeta, signer::Signer};
 
 mod test_helpers;
 use test_helpers::*;
 
 #[tokio::test]
 async fn test_multicast_subscriber_allowlist() {
-    let program_id = Pubkey::new_unique();
-    let (mut banks_client, payer, recent_blockhash) = ProgramTest::new(
-        "doublezero_serviceability",
-        program_id,
-        processor!(process_instruction),
-    )
-    .start()
-    .await;
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
 
     /***********************************************************************************************************************************/
     println!("🟢 1. Global Initialization...");

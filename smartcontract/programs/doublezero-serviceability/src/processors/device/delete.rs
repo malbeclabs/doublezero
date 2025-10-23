@@ -40,6 +40,9 @@ pub fn process_delete_device(
     #[cfg(test)]
     msg!("process_delete_device({:?})", _value);
 
+    // Check if the payer is a signer
+    assert!(payer_account.is_signer, "Payer must be a signer");
+
     // Check the owner of the accounts
     assert_eq!(
         device_account.owner, program_id,

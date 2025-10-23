@@ -26,6 +26,9 @@ pub fn initialize_global_state(program_id: &Pubkey, accounts: &[AccountInfo]) ->
     #[cfg(test)]
     msg!("initialize_global_state()");
 
+    // Check if the payer is a signer
+    assert!(payer_account.is_signer, "Payer must be a signer");
+
     let (program_config_pda, program_config_bump_seed) = get_program_config_pda(program_id);
     assert_eq!(
         program_config_account.key, &program_config_pda,

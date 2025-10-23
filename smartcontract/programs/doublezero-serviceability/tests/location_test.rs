@@ -1,26 +1,18 @@
 use doublezero_serviceability::{
-    entrypoint::*,
     instructions::*,
     pda::*,
     processors::location::{create::*, delete::*, resume::*, suspend::*, update::*},
     state::{accounttype::AccountType, location::*},
 };
 use solana_program_test::*;
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey};
+use solana_sdk::instruction::AccountMeta;
 
 mod test_helpers;
 use test_helpers::*;
 
 #[tokio::test]
 async fn test_location() {
-    let program_id = Pubkey::new_unique();
-    let (mut banks_client, payer, recent_blockhash) = ProgramTest::new(
-        "doublezero_serviceability",
-        program_id,
-        processor!(process_instruction),
-    )
-    .start()
-    .await;
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
 
     /***********************************************************************************************************************************/
     println!("🟢  Start test_location");

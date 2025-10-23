@@ -20,6 +20,7 @@ All notable changes to this project will be documented in this file.
     - serviceability: add auto-assignment and validation for exchange.bgp_community
     - serviceability: prevent device interface name duplication
     - Update serviceability and telemetry program instruction args to use the `BorshDeserializeIncremental` derive macro incremental, backward-compatible, deserialization of structs.
+    - Add explicit signer checks for payer accounts across various processors to improve security and ensure correct transaction authorization.
 - CLI
     - Removed `--bgp-community` option from `doublezero exchange create` since these values are now assigned automatically
     - Add `--next-bgp-community` option to `doublezero global-config set` so authorized users can control which bgp_community will be assigned next

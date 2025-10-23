@@ -1,5 +1,4 @@
 use doublezero_serviceability::{
-    entrypoint::*,
     instructions::*,
     pda::*,
     processors::allowlist::foundation::{
@@ -15,14 +14,7 @@ use test_helpers::*;
 
 #[tokio::test]
 async fn foundation_allowlist_test() {
-    let program_id = Pubkey::new_unique();
-    let (mut banks_client, payer, recent_blockhash) = ProgramTest::new(
-        "doublezero_serviceability",
-        program_id,
-        processor!(process_instruction),
-    )
-    .start()
-    .await;
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
 
     /***********************************************************************************************************************************/
     println!("🟢  Start foundation_allowlist_test");

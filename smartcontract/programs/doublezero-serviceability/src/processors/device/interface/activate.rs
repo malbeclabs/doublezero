@@ -45,6 +45,9 @@ pub fn process_activate_device_interface(
     #[cfg(test)]
     msg!("process_activate_device_interface()");
 
+    // Check if the payer is a signer
+    assert!(payer_account.is_signer, "Payer must be a signer");
+
     if device_account.owner != program_id {
         return Err(ProgramError::IncorrectProgramId);
     }

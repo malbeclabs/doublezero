@@ -35,6 +35,9 @@ pub fn process_suspend_location(
     #[cfg(test)]
     msg!("process_suspend_location({:?})", _value);
 
+    // Check if the payer is a signer
+    assert!(payer_account.is_signer, "Payer must be a signer");
+
     // Check the owner of the accounts
     assert_eq!(
         location_account.owner, program_id,

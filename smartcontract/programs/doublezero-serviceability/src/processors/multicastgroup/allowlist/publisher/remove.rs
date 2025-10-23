@@ -49,6 +49,9 @@ pub fn process_remove_multicast_pub_allowlist(
     #[cfg(test)]
     msg!("process_remove_multicast_pub_allowlist({:?})", value);
 
+    // Check if the payer is a signer
+    assert!(payer_account.is_signer, "Payer must be a signer");
+
     // Check the owner of the accounts
     assert_eq!(
         mgroup_account.owner, program_id,

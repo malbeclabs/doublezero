@@ -39,8 +39,21 @@ pub fn process_resume_link(
     #[cfg(test)]
     msg!("process_resume_link({:?})", _value);
 
+    // Check if the payer is a signer
+    assert!(payer_account.is_signer, "Payer must be a signer");
+
     // Check the owner of the accounts
     assert_eq!(link_account.owner, program_id, "Invalid PDA Account Owner");
+    // Check the owner of the accounts
+    assert_eq!(
+        contributor_account.owner, program_id,
+        "Invalid Contributor Account Owner"
+    );
+
+    assert_eq!(
+        globalstate_account.owner, program_id,
+        "Invalid GlobalState Account Owner"
+    );
     assert_eq!(
         *system_program.unsigned_key(),
         solana_program::system_program::id(),

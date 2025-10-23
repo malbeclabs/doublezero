@@ -45,6 +45,9 @@ pub fn process_check_access_pass_user(
     #[cfg(test)]
     msg!("process_check_access_pass_user({:?})", _value);
 
+    // Check if the payer is a signer
+    assert!(payer_account.is_signer, "Payer must be a signer");
+
     // Check the owner of the accounts
     assert_eq!(user_account.owner, program_id, "Invalid PDA Account Owner");
     if accesspass_account.data_is_empty() {

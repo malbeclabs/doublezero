@@ -27,7 +27,7 @@ func newRouteKey(route *routing.Route) routeKey {
 
 type managedRoute struct {
 	route    *routing.Route
-	liveness LivenessState
+	liveness livenessState
 }
 
 func (r *managedRoute) String() string {

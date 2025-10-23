@@ -1,32 +1,40 @@
 package probing
 
 // Internal liveness state machine
-type routeState uint8
+type livenessStatus uint8
 
 const (
-	stateUnknown routeState = iota
-	stateUp
-	stateDown
+	livenessStatusUnknown livenessStatus = iota
+	livenessStatusUp
+	livenessStatusDown
 )
 
 // Per-route liveness counters + state (hysteresis)
-type LivenessState struct {
+type livenessState struct {
 	consecOK, consecFail uint
-	state                routeState
+	status               livenessStatus
+}
+
+func newLivenessStateDown() livenessState {
+	return livenessState{
+		consecOK:   0,
+		consecFail: 0,
+		status:     livenessStatusDown,
+	}
 }
 
 // Pure policy (thresholds -> next state + transition)
-type Transition int
+type livenessTransition int
 
 const (
-	NoChange Transition = iota
-	ToUp
-	ToDown
+	livenessTransitionNoChange livenessTransition = iota
+	livenessTransitionToUp
+	livenessTransitionToDown
 )
 
-type Policy struct{ UpThreshold, DownThreshold uint }
+type livenessPolicy struct{ UpThreshold, DownThreshold uint }
 
-func (p Policy) Next(s LivenessState, ok bool) (LivenessState, Transition) {
+func (p livenessPolicy) Next(s livenessState, ok bool) (livenessState, livenessTransition) {
 	if ok {
 		s.consecOK++
 		s.consecFail = 0
@@ -34,20 +42,20 @@ func (p Policy) Next(s LivenessState, ok bool) (LivenessState, Transition) {
 		s.consecFail++
 		s.consecOK = 0
 	}
-	want := s.state
+	want := s.status
 	if s.consecOK >= p.UpThreshold {
-		want = stateUp
+		want = livenessStatusUp
 	}
 	if s.consecFail >= p.DownThreshold {
-		want = stateDown
+		want = livenessStatusDown
 	}
 
-	if want == s.state {
-		return s, NoChange
+	if want == s.status {
+		return s, livenessTransitionNoChange
 	}
-	s.state = want
-	if want == stateUp {
-		return s, ToUp
+	s.status = want
+	if want == livenessStatusUp {
+		return s, livenessTransitionToUp
 	}
-	return s, ToDown
+	return s, livenessTransitionToDown
 }

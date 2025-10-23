@@ -224,15 +224,12 @@ func (w *probingWorker) handleRouteAdd(route *routing.Route) error {
 	}
 
 	key := newRouteKey(route)
-	// Start conservatively as DOWN; we'll promote to UP after UpThreshold successes.
 	w.store.Set(key, managedRoute{
 		route: route,
-		liveness: LivenessState{
-			state: stateDown,
-		},
+		// Start conservatively as DOWN; we'll promote to UP after UpThreshold successes.
+		liveness: newLivenessStateDown(),
 	})
 
-	// Just keep track of the route in memory. The liveness strategy will add it to the kernel when ready.
 	w.log.Info("probing: route added to managed routes", "route", route.String(), "routes", w.store.Len())
 	return nil
 }
@@ -342,25 +339,25 @@ func (w *probingWorker) applyProbeResult(snap *managedRoute, ok bool) {
 	}
 
 	// Apply pure policy.
-	pol := Policy{UpThreshold: w.cfg.UpThreshold, DownThreshold: w.cfg.DownThreshold}
+	pol := livenessPolicy{UpThreshold: w.cfg.UpThreshold, DownThreshold: w.cfg.DownThreshold}
 	next, tr := pol.Next(cur.liveness, ok)
 	cur.liveness = next
 
 	// Act only on transitions.
 	switch tr {
-	case ToUp:
+	case livenessTransitionToUp:
 		if err := w.addRouteToKernel(&cur); err != nil {
 			w.log.Error("probing: kernel add failed", "route", cur.String(), "error", err)
 		} else {
 			w.log.Info("probing: route marked UP", "route", cur.String(), "successes", cur.liveness.consecOK)
 		}
-	case ToDown:
+	case livenessTransitionToDown:
 		if err := w.deleteRouteFromKernel(&cur); err != nil {
 			w.log.Error("probing: kernel delete failed", "route", cur.String(), "error", err)
 		} else {
 			w.log.Info("probing: route marked DOWN", "route", cur.String(), "failures", cur.liveness.consecFail)
 		}
-	case NoChange:
+	case livenessTransitionNoChange:
 		// nothing
 	}
 

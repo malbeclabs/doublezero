@@ -50,7 +50,7 @@ func (m *ProbingManager) RouteAdd(route *routing.Route) error {
 		return nil
 	}
 	if m.worker.IsRunning() {
-		m.worker.EnqueueAdd(route) // NEW
+		m.worker.EnqueueAdd(route)
 		return nil
 	}
 	return m.cfg.Netlink.RouteAdd(route)
@@ -62,7 +62,7 @@ func (m *ProbingManager) RouteDelete(route *routing.Route) error {
 		return nil
 	}
 	if m.worker.IsRunning() {
-		m.worker.EnqueueDelete(route) // NEW
+		m.worker.EnqueueDelete(route)
 		return nil
 	}
 	return m.cfg.Netlink.RouteDelete(route)

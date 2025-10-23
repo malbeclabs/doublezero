@@ -59,34 +59,42 @@ router bgp 65000
    neighbor 169.254.0.5 maximum-accepted-routes 1
 !
 ip community-list COMM-ALL_USERS permit 21682:1200
+ip community-list COMM-ALL_MCAST_USERS permit 21682:1300
+ip community-list COMM-TST_USERS permit 21682:10050
 !
 no route-map RM-USER-500-OUT
-route-map RM-USER-500-OUT permit 10
-   match community COMM-ALL_USERS 
+route-map RM-USER-500-OUT deny 10
+   match community COMM-TST_USERS
+route-map RM-USER-500-OUT permit 20
+   match community COMM-ALL_USERS
 no route-map RM-USER-501-OUT
-route-map RM-USER-501-OUT permit 10
-   match community COMM-ALL_USERS 
+route-map RM-USER-501-OUT deny 10
+   match community COMM-TST_USERS
+route-map RM-USER-501-OUT permit 20
+   match community COMM-ALL_USERS
 no route-map RM-USER-502-OUT
-route-map RM-USER-502-OUT permit 10
-   match community COMM-ALL_USERS 
+route-map RM-USER-502-OUT deny 10
+   match community COMM-TST_USERS
+route-map RM-USER-502-OUT permit 20
+   match community COMM-ALL_USERS
 !
 no route-map RM-USER-500-IN
 route-map RM-USER-500-IN permit 10
    match ip address prefix-list PL-USER-500
    match as-path length = 1
-   set community 21682:1200
+   set community 21682:1200 21682:10050
 !
 no route-map RM-USER-501-IN
 route-map RM-USER-501-IN permit 10
    match ip address prefix-list PL-USER-501
    match as-path length = 1
-   set community 21682:1200
+   set community 21682:1200 21682:10050
 !
 no route-map RM-USER-502-IN
 route-map RM-USER-502-IN permit 10
    match ip address prefix-list PL-USER-502
    match as-path length = 1
-   set community 21682:1200
+   set community 21682:1200 21682:10050
 !
 no ip prefix-list PL-USER-500
 ip prefix-list PL-USER-500 seq 10 permit 100.0.0.0/32

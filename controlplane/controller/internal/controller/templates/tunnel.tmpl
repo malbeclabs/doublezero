@@ -268,11 +268,14 @@ router isis 1
 !
 ip community-list COMM-ALL_USERS permit 21682:1200
 ip community-list COMM-ALL_MCAST_USERS permit 21682:1300
+ip community-list COMM-{{ .Strings.ToUpper .Device.ExchangeCode }}_USERS permit 21682:{{ .Device.BgpCommunity }}
 !
 {{- range .Device.Tunnels }}
 no route-map RM-USER-{{ .Id }}-OUT
 {{- if eq true .Allocated }}
-route-map RM-USER-{{ .Id }}-OUT permit 10
+route-map RM-USER-{{ .Id }}-OUT deny 10
+   match community COMM-{{ $.Strings.ToUpper $.Device.ExchangeCode }}_USERS
+route-map RM-USER-{{ .Id }}-OUT permit 20
    match community {{ if eq true .IsMulticast }}COMM-ALL_MCAST_USERS{{ else }}COMM-ALL_USERS{{ end }}
 {{- end }}
 !
@@ -283,7 +286,7 @@ no route-map RM-USER-{{ .Id }}-IN
 route-map RM-USER-{{ .Id }}-IN permit 10
    match ip address prefix-list PL-USER-{{ .Id }}
    match as-path length = 1
-   set community 21682:{{ if eq true .IsMulticast }}1300{{ else }}1200{{ end }}
+   set community 21682:{{ if eq true .IsMulticast }}1300{{ else }}1200{{ end }} 21682:{{ $.Device.BgpCommunity }}
 {{- end }}
 !
 {{- end }}

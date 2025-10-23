@@ -37,11 +37,14 @@ func DeserializeExchange(reader *ByteReader, exchange *Exchange) {
 	exchange.Lat = reader.ReadF64()
 	exchange.Lng = reader.ReadF64()
 	exchange.BgpCommunity = reader.ReadU16()
-	exchange.Unused = reader.ReadU16()
+	_ = reader.ReadU16() // unused padding field
 	exchange.Status = ExchangeStatus(reader.ReadU8())
 	exchange.Code = reader.ReadString()
 	exchange.Name = reader.ReadString()
-	exchange.PubKey = reader.ReadPubkey()
+	_ = reader.ReadU32()    // reference_count (not used in Go SDK)
+	_ = reader.ReadPubkey() // device1_pk (not used in Go SDK)
+	_ = reader.ReadPubkey() // device2_pk (not used in Go SDK)
+	// Note: exchange.PubKey is set separately in client.go after deserialization
 }
 
 func DeserializeContributor(reader *ByteReader, contributor *Contributor) {

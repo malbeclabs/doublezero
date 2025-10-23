@@ -22,6 +22,7 @@ func TestRenderConfig(t *testing.T) {
 			Name:        "render_unicast_tunnels_successfully",
 			Description: "render config for a set of unicast tunnels",
 			Data: templateData{
+				Strings:                  StringsHelper{},
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
 				InterfacesAndPeers:       true,
@@ -32,6 +33,8 @@ func TestRenderConfig(t *testing.T) {
 					Vpn4vLoopbackIntfName: "Loopback255",
 					Interfaces:            []Interface{},
 					IsisNet:               "49.0000.0e0e.0e0e.0000.00",
+					ExchangeCode:          "tst",
+					BgpCommunity:          10050,
 					Tunnels: []*Tunnel{
 						{
 							Id:            500,
@@ -70,6 +73,7 @@ func TestRenderConfig(t *testing.T) {
 			Name:        "render_peer_removal_successful",
 			Description: "render config for removal of unknown peers successfully",
 			Data: templateData{
+				Strings:                  StringsHelper{},
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
 				InterfacesAndPeers:       true,
@@ -80,6 +84,8 @@ func TestRenderConfig(t *testing.T) {
 					Vpn4vLoopbackIP:       net.IP{14, 14, 14, 14},
 					Vpn4vLoopbackIntfName: "Loopback255",
 					IsisNet:               "49.0000.0e0e.0e0e.0000.00",
+					ExchangeCode:          "tst",
+					BgpCommunity:          10050,
 					Tunnels: []*Tunnel{
 						{
 							Id:            500,
@@ -120,6 +126,7 @@ func TestRenderConfig(t *testing.T) {
 			Name:        "render_multicast_tunnel_successfully",
 			Description: "render config for a multicast tunnel",
 			Data: templateData{
+				Strings:                  StringsHelper{},
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
 				InterfacesAndPeers:       true,
@@ -130,6 +137,8 @@ func TestRenderConfig(t *testing.T) {
 					Vpn4vLoopbackIP:       net.IP{14, 14, 14, 14},
 					Vpn4vLoopbackIntfName: "Loopback255",
 					IsisNet:               "49.0000.0e0e.0e0e.0000.00",
+					ExchangeCode:          "tst",
+					BgpCommunity:          10050,
 					Tunnels: []*Tunnel{
 						{
 							Id:            500,
@@ -201,6 +210,7 @@ func TestRenderConfig(t *testing.T) {
 			Name:        "render_mixed_tunnels_successfully",
 			Description: "render config for a mix of unicast and multicast tunnels",
 			Data: templateData{
+				Strings:                  StringsHelper{},
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
 				InterfacesAndPeers:       true,
@@ -211,6 +221,8 @@ func TestRenderConfig(t *testing.T) {
 					Vpn4vLoopbackIP:       net.IP{14, 14, 14, 14},
 					Vpn4vLoopbackIntfName: "Loopback255",
 					IsisNet:               "49.0000.0e0e.0e0e.0000.00",
+					ExchangeCode:          "tst",
+					BgpCommunity:          10050,
 					Tunnels: []*Tunnel{
 						{
 							Id:            500,
@@ -293,6 +305,7 @@ func TestRenderConfig(t *testing.T) {
 			Name:        "render_nohardware_tunnels_successfully",
 			Description: "render config for a mix of unicast and multicast tunnels with no hardware option",
 			Data: templateData{
+				Strings:                  StringsHelper{},
 				NoHardware:               true,
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
@@ -304,6 +317,8 @@ func TestRenderConfig(t *testing.T) {
 					Vpn4vLoopbackIP:       net.IP{14, 14, 14, 14},
 					Vpn4vLoopbackIntfName: "Loopback255",
 					IsisNet:               "49.0000.0e0e.0e0e.0000.00",
+					ExchangeCode:          "tst",
+					BgpCommunity:          10050,
 					Tunnels: []*Tunnel{
 						{
 							Id:            500,
@@ -386,6 +401,7 @@ func TestRenderConfig(t *testing.T) {
 			Name:        "render_interfaces_successfully",
 			Description: "render config for a set of interfaces",
 			Data: templateData{
+				Strings:                  StringsHelper{},
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
 				InterfacesAndPeers:       true,
@@ -396,6 +412,8 @@ func TestRenderConfig(t *testing.T) {
 					Vpn4vLoopbackIntfName: "Loopback255",
 					IsisNet:               "49.0000.0e0e.0e0e.0000.00",
 					Ipv4LoopbackIP:        net.IP{13, 13, 13, 13},
+					ExchangeCode:          "tst",
+					BgpCommunity:          10050,
 					Interfaces: []Interface{
 						{
 							Name:           "Loopback255",
@@ -466,6 +484,7 @@ func TestRenderConfig(t *testing.T) {
 			Name:        "render_base_config_successfully",
 			Description: "render base device config without tunnels",
 			Data: templateData{
+				Strings:                  StringsHelper{},
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
 				InterfacesAndPeers:       true,
@@ -475,6 +494,8 @@ func TestRenderConfig(t *testing.T) {
 					Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
 					IsisNet:         "49.0000.0e0e.0e0e.0000.00",
 					Ipv4LoopbackIP:  net.IP{13, 13, 13, 13},
+					ExchangeCode:    "tst",
+					BgpCommunity:    10050,
 					Interfaces: []Interface{
 						{
 							Name:           "Loopback255",

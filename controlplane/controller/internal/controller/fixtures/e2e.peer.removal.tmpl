@@ -166,13 +166,18 @@ router isis 1
 !
 ip community-list COMM-ALL_USERS permit 21682:1200
 ip community-list COMM-ALL_MCAST_USERS permit 21682:1300
+ip community-list COMM-TST_USERS permit 21682:10050
 !
 no route-map RM-USER-500-OUT
-route-map RM-USER-500-OUT permit 10
+route-map RM-USER-500-OUT deny 10
+   match community COMM-TST_USERS
+route-map RM-USER-500-OUT permit 20
    match community COMM-ALL_USERS
 !
 no route-map RM-USER-501-OUT
-route-map RM-USER-501-OUT permit 10
+route-map RM-USER-501-OUT deny 10
+   match community COMM-TST_USERS
+route-map RM-USER-501-OUT permit 20
    match community COMM-ALL_MCAST_USERS
 !
 {{- range $i := seq (add .StartTunnel 2) .EndTunnel}}
@@ -183,13 +188,13 @@ no route-map RM-USER-500-IN
 route-map RM-USER-500-IN permit 10
    match ip address prefix-list PL-USER-500
    match as-path length = 1
-   set community 21682:1200
+   set community 21682:1200 21682:10050
 !
 no route-map RM-USER-501-IN
 route-map RM-USER-501-IN permit 10
    match ip address prefix-list PL-USER-501
    match as-path length = 1
-   set community 21682:1300
+   set community 21682:1300 21682:10050
 !
 {{- range $i := seq (add .StartTunnel 2) .EndTunnel}}
 no route-map RM-USER-{{$i}}-IN

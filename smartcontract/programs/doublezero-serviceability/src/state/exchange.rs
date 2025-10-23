@@ -429,4 +429,43 @@ mod tests {
         assert!(err.is_err());
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidBgpCommunity);
     }
+
+    #[test]
+    #[ignore] // Only run manually to generate test payload
+    fn generate_exchange_payload_for_go_sdk() {
+        // Owner bytes from original exchangePayload
+        let owner_bytes = [
+            0x0a, 0x3b, 0x74, 0xb3, 0x53, 0x5c, 0xde, 0xb3, 0x4f, 0xd5, 0xe4, 0xcd, 0x7e, 0xa1,
+            0x13, 0x3e, 0x55, 0xab, 0xc5, 0x21, 0xc8, 0x85, 0x0f, 0x6d, 0x08, 0x16, 0x6d, 0x11,
+            0xe4, 0x82, 0x89, 0x78,
+        ];
+
+        let exchange = Exchange {
+            account_type: AccountType::Exchange,
+            owner: Pubkey::new_from_array(owner_bytes),
+            index: 12u128,
+            bump_seed: 255,
+            lat: 50.1215356432098,
+            lng: 8.642047117175098,
+            bgp_community: 0,
+            unused: 0,
+            status: ExchangeStatus::Activated,
+            code: "xfra".to_string(),
+            name: "Frankfurt".to_string(),
+            reference_count: 0x05050505,
+            device1_pk: Pubkey::new_from_array([0x11; 32]),
+            device2_pk: Pubkey::new_from_array([0x22; 32]),
+        };
+
+        let serialized = borsh::to_vec(&exchange).unwrap();
+
+        println!("\nvar exchangePayload = `");
+        for (i, byte) in serialized.iter().enumerate() {
+            print!("{:02x}", byte);
+            if (i + 1) % 38 == 0 && i + 1 != serialized.len() {
+                println!();
+            }
+        }
+        println!("\n`\n");
+    }
 }

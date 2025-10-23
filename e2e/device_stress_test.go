@@ -95,11 +95,51 @@ func TestE2E_DeviceStress(t *testing.T) {
 	}, 60*time.Second, 2*time.Second)
 	log.Info("--> Device exists and is activated onchain", "deviceCode", device.Spec.Code)
 
+	// Add second device in different exchange to allow client-to-client communication
+	log.Info("==> Adding second device")
+	device2Spec := devnet.DeviceSpec{
+		ContainerImage:      os.Getenv("DZ_DEVICE_IMAGE"),
+		Code:                "dz2-" + random.ShortID(),
+		Location:            "lax",
+		Exchange:            "xlax",
+		CYOANetworkIPHostID: 3,
+		LoopbackInterfaces: map[string]string{
+			"Loopback255": "vpnv4",
+			"Loopback256": "ipv4",
+		},
+	}
+
+	device2, err := dn.AddDevice(t.Context(), device2Spec)
+	require.NoError(t, err)
+
+	log.Info("--> Device2 setup complete", "deviceID", device2.ID)
+
+	// Wait for both devices to be activated
+	require.Eventually(t, func() bool {
+		data, err := serviceabilityClient.GetProgramData(t.Context())
+		if err != nil {
+			return false
+		}
+		if len(data.Devices) != 2 {
+			return false
+		}
+		activatedCount := 0
+		for _, d := range data.Devices {
+			if (d.Code == device.Spec.Code || d.Code == device2.Spec.Code) && d.Status == serviceability.DeviceStatusActivated {
+				activatedCount++
+			}
+		}
+		return activatedCount == 2
+	}, 60*time.Second, 2*time.Second)
+	log.Info("--> Both devices are activated onchain")
+
 	// Give it a moment for controller to pick up the change
 	time.Sleep(5 * time.Second)
 
 	// Process clients sequentially - complete all steps for each client before moving to next
+	// Alternate clients between the two devices to allow communication across exchanges
 	clients := make([]*clientMetrics, 0, config.NumClients)
+	devices := []*devnet.Device{device, device2}
 
 	for i := 0; i < config.NumClients; i++ {
 		log.Info(fmt.Sprintf("\n=== Processing client %d/%d ===", i+1, config.NumClients))
@@ -143,10 +183,13 @@ func TestE2E_DeviceStress(t *testing.T) {
 		log.Info("Set access pass output", "output", string(cmdOutput))
 		require.NoError(t, err2)
 
-		connectClientWithRetry(t, i, client, log)
+		// Alternate clients between devices to enable cross-exchange communication
+		selectedDevice := devices[i%2]
+		log.Info(fmt.Sprintf("Client %d will connect to device %s (exchange: %s)", i+1, selectedDevice.Spec.Code, selectedDevice.Spec.Exchange))
+		connectClientWithRetry(t, i, client, selectedDevice, log)
 
 		cm.connectedAt = time.Now()
-		log.Info(fmt.Sprintf("✅ Client %d connected successfully", i+1))
+		log.Info(fmt.Sprintf("✅ Client %d connected successfully to device %s", i+1, selectedDevice.Spec.Code))
 
 		err = client.WaitForTunnelUp(t.Context(), 60*time.Second)
 		require.NoError(t, err)
@@ -165,8 +208,8 @@ func TestE2E_DeviceStress(t *testing.T) {
 	}
 }
 
-func connectClientWithRetry(t *testing.T, i int, client *devnet.Client, log *slog.Logger) {
-	log.Info(fmt.Sprintf("Connecting client %d", i+1))
+func connectClientWithRetry(t *testing.T, i int, client *devnet.Client, device *devnet.Device, log *slog.Logger) {
+	log.Info(fmt.Sprintf("Connecting client %d to device %s", i+1, device.Spec.Code))
 
 	var output []byte
 	var err error
@@ -178,7 +221,7 @@ func connectClientWithRetry(t *testing.T, i int, client *devnet.Client, log *slo
 		// Add timeout to prevent hanging forever
 		ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
 		output, err = client.Exec(ctx, []string{
-			"doublezero", "connect", "ibrl", "-v", "--client-ip", client.CYOANetworkIP,
+			"doublezero", "connect", "ibrl", "-v", "--client-ip", client.CYOANetworkIP, "--device", device.Spec.Code,
 		})
 		cancel() // Cancel immediately after use
 

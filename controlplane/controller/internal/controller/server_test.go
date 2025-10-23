@@ -96,7 +96,9 @@ func TestGetConfig(t *testing.T) {
 				},
 				Devices: map[string]*Device{
 					"abc123": {
-						Interfaces: []Interface{},
+						Interfaces:   []Interface{},
+						ExchangeCode: "tst",
+						BgpCommunity: 10050,
 						Tunnels: []*Tunnel{
 							{
 								Id:            500,
@@ -147,7 +149,9 @@ func TestGetConfig(t *testing.T) {
 				},
 				Devices: map[string]*Device{
 					"abc123": {
-						Interfaces: []Interface{},
+						Interfaces:   []Interface{},
+						ExchangeCode: "tst",
+						BgpCommunity: 10050,
 						Tunnels: []*Tunnel{
 							{
 								Id:            500,
@@ -231,6 +235,8 @@ func TestGetConfig(t *testing.T) {
 				},
 				Devices: map[string]*Device{
 					"abc123": {
+						ExchangeCode: "tst",
+						BgpCommunity: 10050,
 						Tunnels: []*Tunnel{
 							{
 								Id:            500,
@@ -326,6 +332,8 @@ func TestGetConfig(t *testing.T) {
 				},
 				Devices: map[string]*Device{
 					"abc123": {
+						ExchangeCode: "tst",
+						BgpCommunity: 10050,
 						Tunnels: []*Tunnel{
 							{
 								Id:            500,
@@ -441,6 +449,8 @@ func TestGetConfig(t *testing.T) {
 						DevicePathologies:     []string{},
 						Tunnels:               []*Tunnel{},
 						TunnelSlots:           0,
+						ExchangeCode:          "tst",
+						BgpCommunity:          10050,
 						Interfaces: []Interface{
 							{
 								Name:           "Loopback255",
@@ -502,6 +512,8 @@ func TestGetConfig(t *testing.T) {
 						Tunnels:               []*Tunnel{},
 						TunnelSlots:           0,
 						MgmtVrf:               "test-mgmt-vrf",
+						ExchangeCode:          "tst",
+						BgpCommunity:          10050,
 					},
 				},
 			},
@@ -604,6 +616,8 @@ func TestGetConfigWithPathologies(t *testing.T) {
 							"no or invalid VPNv4 loopback interface found for device",
 							"ISIS NET could not be generated",
 						},
+						ExchangeCode: "tst",
+						BgpCommunity: 10050,
 					},
 				},
 			},
@@ -688,6 +702,7 @@ func TestStateCache(t *testing.T) {
 		Devices         []serviceability.Device
 		Links           []serviceability.Link
 		MulticastGroups []serviceability.MulticastGroup
+		Exchanges       []serviceability.Exchange
 		StateCache      stateCache
 	}{
 		{
@@ -699,6 +714,13 @@ func TestStateCache(t *testing.T) {
 				{
 					PubKey:      [32]uint8{1},
 					MulticastIp: [4]uint8{239, 0, 0, 1},
+				},
+			},
+			Exchanges: []serviceability.Exchange{
+				{
+					PubKey:       [32]uint8{2},
+					Code:         "tst",
+					BgpCommunity: 10050,
 				},
 			},
 			Users: []serviceability.User{
@@ -775,7 +797,7 @@ func TestStateCache(t *testing.T) {
 					AccountType:    serviceability.AccountType(0),
 					Owner:          [32]uint8{},
 					LocationPubKey: [32]uint8{},
-					ExchangePubKey: [32]uint8{},
+					ExchangePubKey: [32]uint8{2},
 					DeviceType:     0,
 					PublicIp:       [4]uint8{2, 2, 2, 2},
 					Interfaces: []serviceability.Interface{
@@ -861,6 +883,8 @@ func TestStateCache(t *testing.T) {
 						IsisNet:           "49.0000.0e0e.0e0e.0000.00",
 						Ipv4LoopbackIP:    net.IP{12, 12, 12, 12},
 						DevicePathologies: []string{},
+						ExchangeCode:      "tst",
+						BgpCommunity:      10050,
 						Tunnels: append([]*Tunnel{
 							{
 								Id:            500,
@@ -923,7 +947,6 @@ func TestStateCache(t *testing.T) {
 						Ipv4LoopbackIntfName:  "Loopback256",
 						Code:                  "abc01",
 						ContributorCode:       "unknown",
-						ExchangeCode:          "unknown",
 						LocationCode:          "unknown",
 					},
 				},
@@ -933,6 +956,13 @@ func TestStateCache(t *testing.T) {
 			Name: "device_with_pathologies_added_to_cache",
 			Config: serviceability.Config{
 				MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
+			},
+			Exchanges: []serviceability.Exchange{
+				{
+					PubKey:       [32]uint8{2},
+					Code:         "tst",
+					BgpCommunity: 10050,
+				},
 			},
 			Users: []serviceability.User{
 				{
@@ -953,7 +983,7 @@ func TestStateCache(t *testing.T) {
 					AccountType:    serviceability.AccountType(0),
 					Owner:          [32]uint8{},
 					LocationPubKey: [32]uint8{},
-					ExchangePubKey: [32]uint8{},
+					ExchangePubKey: [32]uint8{2},
 					DeviceType:     0,
 					PublicIp:       [4]uint8{3, 3, 3, 3},
 					Interfaces:     []serviceability.Interface{}, // No VPNv4 loopback interface
@@ -976,6 +1006,118 @@ func TestStateCache(t *testing.T) {
 							"no or invalid VPNv4 loopback interface found for device",
 							"no or invalid IPv4 loopback interface found for device",
 							"ISIS NET could not be generated",
+						},
+						ExchangeCode:    "tst",
+						BgpCommunity:    10050,
+						Code:            "abc02",
+						ContributorCode: "unknown",
+						LocationCode:    "unknown",
+						Tunnels: append([]*Tunnel{
+							{
+								Id:            500,
+								UnderlaySrcIP: net.IP{3, 3, 3, 3},
+								UnderlayDstIP: net.IP{1, 1, 1, 1},
+								OverlaySrcIP:  net.IP{10, 1, 1, 0},
+								OverlayDstIP:  net.IP{10, 1, 1, 1},
+								DzIp:          net.IP{100, 100, 100, 100},
+								PubKey:        "11111111111111111111111111111111",
+								Allocated:     true,
+							},
+						}, generateEmptyTunnelSlots(config.StartUserTunnelNum+1, config.MaxUserTunnelSlots-1)...),
+						TunnelSlots: config.MaxUserTunnelSlots,
+					},
+				},
+			},
+		},
+		{
+			Name: "device_with_out_of_range_exchange_bgp_community_pathology",
+			Config: serviceability.Config{
+				MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
+			},
+			Exchanges: []serviceability.Exchange{
+				{
+					PubKey:       [32]uint8{2},
+					Code:         "tst",
+					BgpCommunity: 5000, // Out of valid range (10000-10999)
+				},
+			},
+			Users: []serviceability.User{
+				{
+					AccountType:  serviceability.AccountType(0),
+					Owner:        [32]uint8{},
+					UserType:     serviceability.UserUserType(serviceability.UserTypeIBRL),
+					DevicePubKey: [32]uint8{1},
+					CyoaType:     serviceability.CyoaTypeGREOverDIA,
+					ClientIp:     [4]uint8{1, 1, 1, 1},
+					DzIp:         [4]uint8{100, 100, 100, 100},
+					TunnelId:     uint16(500),
+					TunnelNet:    [5]uint8{10, 1, 1, 0, 31},
+					Status:       serviceability.UserStatusActivated,
+				},
+			},
+			Devices: []serviceability.Device{
+				{
+					AccountType:    serviceability.AccountType(0),
+					Owner:          [32]uint8{},
+					LocationPubKey: [32]uint8{3},
+					ExchangePubKey: [32]uint8{2},
+					DeviceType:     0,
+					PublicIp:       [4]uint8{3, 3, 3, 3},
+					Interfaces: []serviceability.Interface{
+						{
+							Name:          "Loopback255",
+							InterfaceType: serviceability.InterfaceTypeLoopback,
+							LoopbackType:  serviceability.LoopbackTypeVpnv4,
+							IpNet:         [5]uint8{10, 10, 10, 1, 32},
+						},
+						{
+							Name:          "Loopback256",
+							InterfaceType: serviceability.InterfaceTypeLoopback,
+							LoopbackType:  serviceability.LoopbackTypeIpv4,
+							IpNet:         [5]uint8{10, 10, 10, 2, 32},
+						},
+					},
+					Status: serviceability.DeviceStatusActivated,
+					Code:   "abc03",
+					PubKey: [32]byte{1},
+				},
+			},
+			Links: []serviceability.Link{},
+			StateCache: stateCache{
+				Config: serviceability.Config{
+					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
+				},
+				MulticastGroups: map[string]serviceability.MulticastGroup{},
+				Devices: map[string]*Device{
+					"4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM": {
+						PubKey:   "4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM",
+						PublicIP: net.IP{3, 3, 3, 3},
+						DevicePathologies: []string{
+							"exchange BGP community 5000 is out of valid range (10000-10999)",
+						},
+						ExchangeCode:          "tst",
+						BgpCommunity:          5000,
+						Code:                  "abc03",
+						ContributorCode:       "unknown",
+						LocationCode:          "unknown",
+						Vpn4vLoopbackIP:       net.IP{10, 10, 10, 1},
+						Vpn4vLoopbackIntfName: "Loopback255",
+						Ipv4LoopbackIP:        net.IP{10, 10, 10, 2},
+						Ipv4LoopbackIntfName:  "Loopback256",
+						IsisNet:               "49.0000.0a0a.0a01.0000.00",
+						Interfaces: []Interface{
+							{
+								Name:          "Loopback255",
+								Ip:            netip.MustParsePrefix("10.10.10.1/32"),
+								InterfaceType: InterfaceTypeLoopback,
+								LoopbackType:  LoopbackTypeVpnv4,
+							},
+							{
+								Name:          "Loopback256",
+								Ip:            netip.MustParsePrefix("10.10.10.2/32"),
+								InterfaceType: InterfaceTypeLoopback,
+								LoopbackType:  LoopbackTypeIpv4,
+							},
 						},
 						Tunnels: append([]*Tunnel{
 							{
@@ -1011,6 +1153,7 @@ func TestStateCache(t *testing.T) {
 						Devices:         test.Devices,
 						Links:           test.Links,
 						MulticastGroups: test.MulticastGroups,
+						Exchanges:       test.Exchanges,
 					}, nil
 				},
 				ProgramIDFunc: func() solana.PublicKey {
@@ -1084,6 +1227,7 @@ func TestEndToEnd(t *testing.T) {
 		Devices            []serviceability.Device
 		Links              []serviceability.Link
 		MulticastGroups    []serviceability.MulticastGroup
+		Exchanges          []serviceability.Exchange
 		InterfacesAndPeers bool
 		AgentRequest       *pb.ConfigRequest
 		DevicePubKey       string
@@ -1098,6 +1242,13 @@ func TestEndToEnd(t *testing.T) {
 				{
 					PubKey:      [32]uint8{1},
 					MulticastIp: [4]uint8{239, 0, 0, 1},
+				},
+			},
+			Exchanges: []serviceability.Exchange{
+				{
+					PubKey:       [32]uint8{2},
+					Code:         "tst",
+					BgpCommunity: 10050,
 				},
 			},
 			InterfacesAndPeers: true,
@@ -1133,7 +1284,7 @@ func TestEndToEnd(t *testing.T) {
 					AccountType:    serviceability.AccountType(0),
 					Owner:          [32]uint8{},
 					LocationPubKey: [32]uint8{},
-					ExchangePubKey: [32]uint8{},
+					ExchangePubKey: [32]uint8{2},
 					DeviceType:     0,
 					PublicIp:       [4]uint8{2, 2, 2, 2},
 					Status:         serviceability.DeviceStatusActivated,
@@ -1210,6 +1361,13 @@ func TestEndToEnd(t *testing.T) {
 					MulticastIp: [4]uint8{239, 0, 0, 1},
 				},
 			},
+			Exchanges: []serviceability.Exchange{
+				{
+					PubKey:       [32]uint8{2},
+					Code:         "tst",
+					BgpCommunity: 10050,
+				},
+			},
 			InterfacesAndPeers: true,
 			Users: []serviceability.User{
 				{
@@ -1243,7 +1401,7 @@ func TestEndToEnd(t *testing.T) {
 					AccountType:    serviceability.AccountType(0),
 					Owner:          [32]uint8{},
 					LocationPubKey: [32]uint8{},
-					ExchangePubKey: [32]uint8{},
+					ExchangePubKey: [32]uint8{2},
 					DeviceType:     0,
 					PublicIp:       [4]uint8{2, 2, 2, 2},
 					Interfaces: []serviceability.Interface{
@@ -1325,6 +1483,13 @@ func TestEndToEnd(t *testing.T) {
 				TunnelTunnelBlock:   [5]uint8{172, 16, 0, 0, 16},
 				UserTunnelBlock:     [5]uint8{169, 254, 0, 0, 16},
 			},
+			Exchanges: []serviceability.Exchange{
+				{
+					PubKey:       [32]uint8{2},
+					Code:         "tst",
+					BgpCommunity: 10050,
+				},
+			},
 			InterfacesAndPeers: true,
 			Users:              []serviceability.User{},
 			Devices: []serviceability.Device{
@@ -1332,7 +1497,7 @@ func TestEndToEnd(t *testing.T) {
 					AccountType:    serviceability.AccountType(0),
 					Owner:          [32]uint8{},
 					LocationPubKey: [32]uint8{},
-					ExchangePubKey: [32]uint8{},
+					ExchangePubKey: [32]uint8{2},
 					DeviceType:     0,
 					PublicIp:       [4]uint8{2, 2, 2, 2},
 					Interfaces: []serviceability.Interface{
@@ -1377,6 +1542,7 @@ func TestEndToEnd(t *testing.T) {
 						Devices:         test.Devices,
 						Links:           test.Links,
 						MulticastGroups: test.MulticastGroups,
+						Exchanges:       test.Exchanges,
 					}, nil
 				},
 				ProgramIDFunc: func() solana.PublicKey {

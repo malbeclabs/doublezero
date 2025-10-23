@@ -19,6 +19,7 @@ All notable changes to this project will be documented in this file.
     - Uping: Add minimal ICMP echo library for user-space liveness probing over doublezero interfaces, even when certain routes are not in the the kernel routing table.
 - Device controller
     - Deprecate the -enable-interfaces-and-peers flag. The controller now always renders interfaces and peers
+    - Intra-exchange routing policy, which uses the onchain exchange.bgp_community value to route traffic between users in the local exchange over the internet
 - Monitor
     - Add metrics that detect when duplicate or out-of-range exchange.bgp_community values exist in serviceability
 

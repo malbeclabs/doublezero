@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -46,34 +47,70 @@ func TestE2E_UserBan(t *testing.T) {
 	require.NoError(t, err)
 	log.Info("--> Devnet started")
 
-	// Add la2-dz01 device.
-	deviceCode := "la2-dz01"
-	device, err := dn.AddDevice(t.Context(), devnet.DeviceSpec{
-		Code:     deviceCode,
+	linkNetwork := devnet.NewMiscNetwork(dn, log, "la2-dz01:ny5-dz01")
+	_, err = linkNetwork.CreateIfNotExists(t.Context())
+	require.NoError(t, err)
+
+	// Add la2-dz01 device in xlax exchange.
+	deviceCode1 := "la2-dz01"
+	device1, err := dn.AddDevice(t.Context(), devnet.DeviceSpec{
+		Code:     deviceCode1,
 		Location: "lax",
 		Exchange: "xlax",
 		// .8/29 has network address .8, allocatable up to .14, and broadcast .15
 		CYOANetworkIPHostID:          8,
 		CYOANetworkAllocatablePrefix: 29,
+		AdditionalNetworks: []string{linkNetwork.Name},
+		Interfaces: map[string]string{
+			"Ethernet2": "physical",
+		},
 		LoopbackInterfaces: map[string]string{
 			"Loopback255": "vpnv4",
 			"Loopback256": "ipv4",
 		},
 	})
 	require.NoError(t, err)
-	devicePK := device.ID
-	log.Info("--> Device added", "deviceCode", deviceCode, "devicePK", devicePK)
+	devicePK1 := device1.ID
+	log.Info("--> Device1 added", "deviceCode", deviceCode1, "devicePK", devicePK1)
 
-	// Wait for device to exist onchain.
-	log.Info("==> Waiting for device to exist onchain")
+	// Add ny5-dz01 device in xewr exchange.
+	deviceCode2 := "ny5-dz01"
+	device2, err := dn.AddDevice(t.Context(), devnet.DeviceSpec{
+		Code:     deviceCode2,
+		Location: "ewr",
+		Exchange: "xewr",
+		// .16/29 has network address .16, allocatable up to .22, and broadcast .23
+		CYOANetworkIPHostID:          16,
+		CYOANetworkAllocatablePrefix: 29,
+		AdditionalNetworks: []string{linkNetwork.Name},
+		Interfaces: map[string]string{
+			"Ethernet2": "physical",
+		},
+		LoopbackInterfaces: map[string]string{
+			"Loopback255": "vpnv4",
+			"Loopback256": "ipv4",
+		},
+	})
+	require.NoError(t, err)
+	devicePK2 := device2.ID
+	log.Info("--> Device2 added", "deviceCode", deviceCode2, "devicePK", devicePK2)
+
+	// Wait for devices to exist onchain.
+	log.Info("==> Waiting for devices to exist onchain")
 	serviceabilityClient, err := dn.Ledger.GetServiceabilityClient()
 	require.NoError(t, err)
 	require.Eventually(t, func() bool {
 		data, err := serviceabilityClient.GetProgramData(t.Context())
 		require.NoError(t, err)
-		return len(data.Devices) == 1
+		return len(data.Devices) == 2
 	}, 30*time.Second, 1*time.Second)
-	log.Info("--> Device exists onchain", "deviceCode", deviceCode, "devicePK", devicePK)
+	log.Info("--> Devices exist onchain", "deviceCode1", deviceCode1, "devicePK1", devicePK1, "deviceCode2", deviceCode2, "devicePK2", devicePK2)
+
+	// Create WAN link between devices.
+	log.Info("==> Creating link onchain")
+	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero link create wan --code \"la2-dz01:ny5-dz01\" --contributor co01 --side-a la2-dz01 --side-a-interface Ethernet2 --side-z ny5-dz01 --side-z-interface Ethernet2 --bandwidth \"10 Gbps\" --mtu 2048 --delay-ms 40 --jitter-ms 3"})
+	require.NoError(t, err)
+	log.Info("--> Link created onchain")
 
 	// Add a client.
 	log.Info("==> Adding client1")
@@ -91,11 +128,21 @@ func TestE2E_UserBan(t *testing.T) {
 	require.NoError(t, err)
 	log.Info("--> Client2 added", "client2Pubkey", client2.Pubkey, "client2IP", client2.CYOANetworkIP)
 
+	// Add third client to test intra-exchange routing policy.
+	log.Info("==> Adding client3")
+	client3, err := dn.AddClient(t.Context(), devnet.ClientSpec{
+		CYOANetworkIPHostID: 120,
+	})
+	require.NoError(t, err)
+	log.Info("--> Client3 added", "client3Pubkey", client3.Pubkey, "client3IP", client3.CYOANetworkIP)
+
 	// Wait for client latency results.
 	log.Info("==> Waiting for client latency results")
-	err = client1.WaitForLatencyResults(t.Context(), devicePK, 90*time.Second)
+	err = client1.WaitForLatencyResults(t.Context(), devicePK1, 90*time.Second)
 	require.NoError(t, err)
-	err = client2.WaitForLatencyResults(t.Context(), devicePK, 90*time.Second)
+	err = client2.WaitForLatencyResults(t.Context(), devicePK2, 90*time.Second)
+	require.NoError(t, err)
+	err = client3.WaitForLatencyResults(t.Context(), devicePK1, 90*time.Second)
 	require.NoError(t, err)
 	log.Info("--> Finished waiting for client latency results")
 
@@ -107,17 +154,20 @@ func TestE2E_UserBan(t *testing.T) {
 	// Set access pass for the client.
 	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + client2.CYOANetworkIP + " --user-payer " + client2.Pubkey})
 	require.NoError(t, err)
+	// Set access pass for the client.
+	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + client3.CYOANetworkIP + " --user-payer " + client3.Pubkey})
+	require.NoError(t, err)
 	log.Info("--> Clients added to user Access Pass")
 
 	// Run IBRL workflow test.
 	if !t.Run("user-ban-ibrl", func(t *testing.T) {
-		runUserBanIBRLWorkflowTest(t, log, client1, client2, dn)
+		runUserBanIBRLWorkflowTest(t, log, client1, client2, client3, dn, device2, deviceCode1, deviceCode2)
 	}) {
 		t.Fail()
 	}
 }
 
-func runUserBanIBRLWorkflowTest(t *testing.T, log *slog.Logger, client1 *devnet.Client, client2 *devnet.Client, dn *devnet.Devnet) {
+func runUserBanIBRLWorkflowTest(t *testing.T, log *slog.Logger, client1 *devnet.Client, client2 *devnet.Client, client3 *devnet.Client, dn *devnet.Devnet, device2 *devnet.Device, deviceCode1 string, deviceCode2 string) {
 	// Check that the clients are disconnected and do not have a DZ IP allocated.
 	log.Info("==> Checking that the clients are disconnected and do not have a DZ IP allocated")
 	status, err := client1.GetTunnelStatus(t.Context())
@@ -130,23 +180,41 @@ func runUserBanIBRLWorkflowTest(t *testing.T, log *slog.Logger, client1 *devnet.
 	require.Len(t, status, 1, status)
 	require.Nil(t, status[0].DoubleZeroIP, status)
 	require.Equal(t, devnet.ClientSessionStatusDisconnected, status[0].DoubleZeroStatus.SessionStatus)
+	status, err = client3.GetTunnelStatus(t.Context())
+	require.NoError(t, err)
+	require.Len(t, status, 1, status)
+	require.Nil(t, status[0].DoubleZeroIP, status)
+	require.Equal(t, devnet.ClientSessionStatusDisconnected, status[0].DoubleZeroStatus.SessionStatus)
 	log.Info("--> Confirmed clients are disconnected and do not have a DZ IP allocated")
 
-	// Connect client1 in IBRL mode.
-	log.Info("==> Connecting client1 in IBRL mode")
-	_, err = client1.Exec(t.Context(), []string{"doublezero", "connect", "ibrl", "--client-ip", client1.CYOANetworkIP})
+	// Connect client1 in IBRL mode to device1 (xlax exchange).
+	log.Info("==> Connecting client1 in IBRL mode to device1")
+	_, err = client1.Exec(t.Context(), []string{"doublezero", "connect", "ibrl", "--client-ip", client1.CYOANetworkIP, "--device", deviceCode1})
 	require.NoError(t, err)
 	err = client1.WaitForTunnelUp(t.Context(), 90*time.Second)
 	require.NoError(t, err)
-	log.Info("--> Client1 connected in IBRL mode")
+	log.Info("--> Client1 connected in IBRL mode to device1")
 
-	// Connect client2 in IBRL mode.
-	log.Info("==> Connecting client2 in IBRL mode")
-	_, err = client2.Exec(t.Context(), []string{"doublezero", "connect", "ibrl", "--client-ip", client2.CYOANetworkIP})
+	// Connect client2 in IBRL mode to device2 (xewr exchange).
+	log.Info("==> Connecting client2 in IBRL mode to device2")
+	_, err = client2.Exec(t.Context(), []string{"doublezero", "connect", "ibrl", "--client-ip", client2.CYOANetworkIP, "--device", deviceCode2})
 	require.NoError(t, err)
 	err = client2.WaitForTunnelUp(t.Context(), 90*time.Second)
 	require.NoError(t, err)
-	log.Info("--> Client2 connected in IBRL mode")
+	log.Info("--> Client2 connected in IBRL mode to device2")
+
+	// Connect client3 in IBRL mode to device1 (xlax exchange, same as client1).
+	log.Info("==> Connecting client3 in IBRL mode to device1")
+	_, err = client3.Exec(t.Context(), []string{"doublezero", "connect", "ibrl", "--client-ip", client3.CYOANetworkIP, "--device", deviceCode1})
+	require.NoError(t, err)
+	err = client3.WaitForTunnelUp(t.Context(), 90*time.Second)
+	require.NoError(t, err)
+	log.Info("--> Client3 connected in IBRL mode to device1")
+
+	// Wait for BGP routes to converge after all clients have connected
+	log.Info("==> Waiting for BGP routes to converge")
+	time.Sleep(20 * time.Second)
+	log.Info("--> BGP routes should have converged")
 
 	// Check that the clients have a DZ IP equal to their client IP when not configured to use an allocated IP.
 	log.Info("==> Checking that the clients have a DZ IP as public IP when not configured to use an allocated IP")
@@ -160,15 +228,48 @@ func runUserBanIBRLWorkflowTest(t *testing.T, log *slog.Logger, client1 *devnet.
 	client2DZIP := status[0].DoubleZeroIP.String()
 	require.NoError(t, err)
 	require.Equal(t, client2.CYOANetworkIP, client2DZIP)
+	status, err = client3.GetTunnelStatus(t.Context())
+	require.Len(t, status, 1)
+	client3DZIP := status[0].DoubleZeroIP.String()
+	require.NoError(t, err)
+	require.Equal(t, client3.CYOANetworkIP, client3DZIP)
 	log.Info("--> Clients have a DZ IP as public IP when not configured to use an allocated IP")
 
-	// Check that the clients can reach each other via their DZ IPs, via ping.
-	log.Info("==> Checking that the clients can reach each other via their DZ IPs")
-	_, err = client1.Exec(t.Context(), []string{"ping", "-I", "doublezero0", "-c", "3", client2DZIP, "-W", "1"})
-	require.NoError(t, err)
-	_, err = client2.Exec(t.Context(), []string{"ping", "-I", "doublezero0", "-c", "3", client1DZIP, "-W", "1"})
-	require.NoError(t, err)
-	log.Info("--> Clients can reach each other via their DZ IPs")
+	// Check that client1 and client3 do not have routes to each other (same exchange - xlax).
+	log.Info("==> Checking that client1 and client3 do not have routes to each other (intra-exchange routing policy)")
+	require.Eventually(t, func() bool {
+		output, err := client1.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
+		if err != nil {
+			return false
+		}
+		return !strings.Contains(string(output), client3.CYOANetworkIP)
+	}, 30*time.Second, 1*time.Second, "client1 should not have route to client3 (both in xlax exchange)")
+	require.Eventually(t, func() bool {
+		output, err := client3.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
+		if err != nil {
+			return false
+		}
+		return !strings.Contains(string(output), client1.CYOANetworkIP)
+	}, 30*time.Second, 1*time.Second, "client3 should not have route to client1 (both in xlax exchange)")
+	log.Info("--> Confirmed client1 and client3 do not have routes to each other (intra-exchange routing policy working)")
+
+	// Check that client1 and client2 have routes to each other (cross-exchange).
+	log.Info("==> Checking that client1 and client2 have routes to each other (cross-exchange)")
+	require.Eventually(t, func() bool {
+		output, err := client1.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
+		if err != nil {
+			return false
+		}
+		return strings.Contains(string(output), client2.CYOANetworkIP)
+	}, 30*time.Second, 1*time.Second, "client1 should have route to client2 (different exchanges)")
+	require.Eventually(t, func() bool {
+		output, err := client2.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
+		if err != nil {
+			return false
+		}
+		return strings.Contains(string(output), client1.CYOANetworkIP)
+	}, 30*time.Second, 1*time.Second, "client2 should have route to client1 (different exchanges)")
+	log.Info("--> Confirmed client1 and client2 have routes to each other (cross-exchange)")
 
 	// Ban client1.
 	user_pk := getUserAccountPk(t, log, client1, dn)
@@ -179,15 +280,15 @@ func runUserBanIBRLWorkflowTest(t *testing.T, log *slog.Logger, client1 *devnet.
 
 	waitForUserBanned(t, log, dn, user_pk, 60*time.Second)
 
-	log.Info("==> Checking that the clients cannot reach each other via their DZ IPs")
+	log.Info("==> Checking that client1 does not have route to client2 after being banned")
 	require.Eventually(t, func() bool {
-		_, err = client1.Exec(t.Context(), []string{"ping", "-I", "doublezero0", "-c", "3", client2DZIP, "-W", "1"})
-		if err == nil {
-			log.Info("Ping of client2 successful")
+		output, err := client1.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
+		if err != nil {
+			return false
 		}
-		return err != nil
-	}, 120*time.Second, 5*time.Second, "timeout waiting for client1 to be banned by the controller/agent")
-	log.Info("--> Client1 cannot reach client2 via DZ IP after being banned")
+		return !strings.Contains(string(output), client2DZIP)
+	}, 120*time.Second, 5*time.Second, "timeout waiting for client1's route to client2 to be withdrawn after banning")
+	log.Info("--> Client1 does not have route to client2 after being banned")
 
 	// Unban by deleting the user account.
 	log.Info("==> Unbanning client1")
@@ -202,13 +303,13 @@ func runUserBanIBRLWorkflowTest(t *testing.T, log *slog.Logger, client1 *devnet.
 	require.NoError(t, err)
 	log.Info("--> Client1 disconnected from IBRL")
 
-	// Connect client1 in IBRL mode.
-	log.Info("==> Connecting client1 in IBRL mode")
-	_, err = client1.Exec(t.Context(), []string{"doublezero", "connect", "ibrl", "--client-ip", client1.CYOANetworkIP})
+	// Connect client1 in IBRL mode to device1 (xlax exchange).
+	log.Info("==> Connecting client1 in IBRL mode to device1")
+	_, err = client1.Exec(t.Context(), []string{"doublezero", "connect", "ibrl", "--client-ip", client1.CYOANetworkIP, "--device", deviceCode1})
 	require.NoError(t, err)
 	err = client1.WaitForTunnelUp(t.Context(), 90*time.Second)
 	require.NoError(t, err)
-	log.Info("--> Client1 connected in IBRL mode")
+	log.Info("--> Client1 connected in IBRL mode to device1")
 
 	// Check that the clients have a DZ IP equal to their client IP when not configured to use an allocated IP.
 	log.Info("==> Checking that the client1 has a DZ IP as public IP when not configured to use an allocated IP")
@@ -219,16 +320,16 @@ func runUserBanIBRLWorkflowTest(t *testing.T, log *slog.Logger, client1 *devnet.
 	require.Equal(t, client1.CYOANetworkIP, client1DZIP)
 	log.Info("--> Client1 has a DZ IP as public IP when not configured to use an allocated IP")
 
-	// Check that the clients can reach each other again via their DZ IPs, via ping.
-	log.Info("==> Checking that the client1 can reach client2 via their DZ IPs")
+	// Check that client1 has route to client2 again after unbanning.
+	log.Info("==> Checking that client1 has route to client2 after unbanning")
 	require.Eventually(t, func() bool {
-		_, err = client1.Exec(t.Context(), []string{"ping", "-I", "doublezero0", "-c", "3", client2DZIP, "-W", "1"})
-		if err == nil {
-			return true
+		output, err := client1.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
+		if err != nil {
+			return false
 		}
-		return false
-	}, 120*time.Second, 5*time.Second, "timeout waiting for client1 to ping client2 after unbanning")
-	log.Info("--> Client1 can reach client2 via their DZ IPs")
+		return strings.Contains(string(output), client2DZIP)
+	}, 120*time.Second, 5*time.Second, "timeout waiting for client1 to receive route to client2 after unbanning")
+	log.Info("--> Client1 has route to client2 after unbanning")
 
 	// Disconnect client1.
 	log.Info("==> Disconnecting client1 from IBRL")
@@ -242,17 +343,29 @@ func runUserBanIBRLWorkflowTest(t *testing.T, log *slog.Logger, client1 *devnet.
 	require.NoError(t, err)
 	log.Info("--> Client2 disconnected from IBRL")
 
+	// Disconnect client3.
+	log.Info("==> Disconnecting client3 from IBRL")
+	_, err = client3.Exec(t.Context(), []string{"doublezero", "disconnect", "--client-ip", client3.CYOANetworkIP})
+	require.NoError(t, err)
+	log.Info("--> Client3 disconnected from IBRL")
+
 	// Check that the clients are eventually disconnected and do not have a DZ IP allocated.
 	log.Info("==> Checking that the clients are eventually disconnected and do not have a DZ IP allocated")
 	err = client1.WaitForTunnelDisconnected(t.Context(), 60*time.Second)
 	require.NoError(t, err)
 	err = client2.WaitForTunnelDisconnected(t.Context(), 60*time.Second)
 	require.NoError(t, err)
+	err = client3.WaitForTunnelDisconnected(t.Context(), 60*time.Second)
+	require.NoError(t, err)
 	status, err = client1.GetTunnelStatus(t.Context())
 	require.NoError(t, err)
 	require.Len(t, status, 1, status)
 	require.Nil(t, status[0].DoubleZeroIP, status)
 	status, err = client2.GetTunnelStatus(t.Context())
+	require.NoError(t, err)
+	require.Len(t, status, 1, status)
+	require.Nil(t, status[0].DoubleZeroIP, status)
+	status, err = client3.GetTunnelStatus(t.Context())
 	require.NoError(t, err)
 	require.Len(t, status, 1, status)
 	require.Nil(t, status[0].DoubleZeroIP, status)

@@ -246,6 +246,7 @@ router isis 1
 !
 ip community-list COMM-ALL_USERS permit 21682:1200
 ip community-list COMM-ALL_MCAST_USERS permit 21682:1300
+ip community-list COMM-XEWR_USERS permit 21682:10001
 !
 {{- range $i := seq .StartTunnel .EndTunnel}}
 no route-map RM-USER-{{$i}}-OUT

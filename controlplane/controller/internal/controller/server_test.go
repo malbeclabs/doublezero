@@ -1029,6 +1029,113 @@ func TestStateCache(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "device_with_out_of_range_exchange_bgp_community_pathology",
+			Config: serviceability.Config{
+				MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
+			},
+			Exchanges: []serviceability.Exchange{
+				{
+					PubKey:       [32]uint8{2},
+					Code:         "tst",
+					BgpCommunity: 5000, // Out of valid range (10000-10999)
+				},
+			},
+			Users: []serviceability.User{
+				{
+					AccountType:  serviceability.AccountType(0),
+					Owner:        [32]uint8{},
+					UserType:     serviceability.UserUserType(serviceability.UserTypeIBRL),
+					DevicePubKey: [32]uint8{1},
+					CyoaType:     serviceability.CyoaTypeGREOverDIA,
+					ClientIp:     [4]uint8{1, 1, 1, 1},
+					DzIp:         [4]uint8{100, 100, 100, 100},
+					TunnelId:     uint16(500),
+					TunnelNet:    [5]uint8{10, 1, 1, 0, 31},
+					Status:       serviceability.UserStatusActivated,
+				},
+			},
+			Devices: []serviceability.Device{
+				{
+					AccountType:    serviceability.AccountType(0),
+					Owner:          [32]uint8{},
+					LocationPubKey: [32]uint8{3},
+					ExchangePubKey: [32]uint8{2},
+					DeviceType:     0,
+					PublicIp:       [4]uint8{3, 3, 3, 3},
+					Interfaces: []serviceability.Interface{
+						{
+							Name:          "Loopback255",
+							InterfaceType: serviceability.InterfaceTypeLoopback,
+							LoopbackType:  serviceability.LoopbackTypeVpnv4,
+							IpNet:         [5]uint8{10, 10, 10, 1, 32},
+						},
+						{
+							Name:          "Loopback256",
+							InterfaceType: serviceability.InterfaceTypeLoopback,
+							LoopbackType:  serviceability.LoopbackTypeIpv4,
+							IpNet:         [5]uint8{10, 10, 10, 2, 32},
+						},
+					},
+					Status: serviceability.DeviceStatusActivated,
+					Code:   "abc03",
+					PubKey: [32]byte{1},
+				},
+			},
+			Links: []serviceability.Link{},
+			StateCache: stateCache{
+				Config: serviceability.Config{
+					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
+				},
+				MulticastGroups: map[string]serviceability.MulticastGroup{},
+				Devices: map[string]*Device{
+					"4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM": {
+						PubKey:   "4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM",
+						PublicIP: net.IP{3, 3, 3, 3},
+						DevicePathologies: []string{
+							"exchange BGP community 5000 is out of valid range (10000-10999)",
+						},
+						ExchangeCode:          "tst",
+						BgpCommunity:          5000,
+						Code:                  "abc03",
+						ContributorCode:       "unknown",
+						LocationCode:          "unknown",
+						Vpn4vLoopbackIP:       net.IP{10, 10, 10, 1},
+						Vpn4vLoopbackIntfName: "Loopback255",
+						Ipv4LoopbackIP:        net.IP{10, 10, 10, 2},
+						Ipv4LoopbackIntfName:  "Loopback256",
+						IsisNet:               "49.0000.0a0a.0a01.0000.00",
+						Interfaces: []Interface{
+							{
+								Name:          "Loopback255",
+								Ip:            netip.MustParsePrefix("10.10.10.1/32"),
+								InterfaceType: InterfaceTypeLoopback,
+								LoopbackType:  LoopbackTypeVpnv4,
+							},
+							{
+								Name:          "Loopback256",
+								Ip:            netip.MustParsePrefix("10.10.10.2/32"),
+								InterfaceType: InterfaceTypeLoopback,
+								LoopbackType:  LoopbackTypeIpv4,
+							},
+						},
+						Tunnels: append([]*Tunnel{
+							{
+								Id:            500,
+								UnderlaySrcIP: net.IP{3, 3, 3, 3},
+								UnderlayDstIP: net.IP{1, 1, 1, 1},
+								OverlaySrcIP:  net.IP{10, 1, 1, 0},
+								OverlayDstIP:  net.IP{10, 1, 1, 1},
+								DzIp:          net.IP{100, 100, 100, 100},
+								PubKey:        "11111111111111111111111111111111",
+								Allocated:     true,
+							},
+						}, generateEmptyTunnelSlots(config.StartUserTunnelNum+1, config.MaxUserTunnelSlots-1)...),
+						TunnelSlots: config.MaxUserTunnelSlots,
+					},
+				},
+			},
+		},
 	}
 
 	for _, test := range tests {

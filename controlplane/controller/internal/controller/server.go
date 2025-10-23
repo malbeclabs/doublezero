@@ -32,6 +32,9 @@ const (
 	ISISAreaNumber      = "0000"
 	ISISSystemIDPadding = "0000"
 	ISISNSelector       = "00"
+
+	bgpCommunityMinValid = 10000
+	bgpCommunityMaxValid = 10999
 )
 
 var (
@@ -277,6 +280,11 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 		if exchange, ok := exchangeMap[device.ExchangePubKey]; ok {
 			d.ExchangeCode = exchange.Code
 			d.BgpCommunity = exchange.BgpCommunity
+
+			if exchange.BgpCommunity < bgpCommunityMinValid || exchange.BgpCommunity > bgpCommunityMaxValid {
+				c.log.Warn("device has pathology", "device_pubkey", devicePubKey, "pathology", fmt.Sprintf("exchange BGP community %d is out of valid range (%d-%d)", exchange.BgpCommunity, bgpCommunityMinValid, bgpCommunityMaxValid), "exchange_code", exchange.Code)
+				d.DevicePathologies = append(d.DevicePathologies, fmt.Sprintf("exchange BGP community %d is out of valid range (%d-%d)", exchange.BgpCommunity, bgpCommunityMinValid, bgpCommunityMaxValid))
+			}
 		} else {
 			d.ExchangeCode = "unknown"
 			d.BgpCommunity = 0

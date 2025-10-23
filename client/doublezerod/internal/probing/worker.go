@@ -153,7 +153,6 @@ func (w *probingWorker) run(ctx context.Context) {
 			}
 
 		case pr := <-w.evProbeRes:
-			// apply policy & kernel changes using existing method
 			w.applyProbeResult(&pr.route, pr.ok)
 			inFlight--
 		}

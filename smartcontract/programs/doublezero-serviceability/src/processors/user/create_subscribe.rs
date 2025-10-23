@@ -44,6 +44,8 @@ impl fmt::Debug for UserCreateSubscribeArgs {
     }
 }
 
+// this function is not used anymore, kept for reference
+// please refer to process_create_subscribe_user2 for the updated implementation
 pub fn process_create_subscribe_user(
     program_id: &Pubkey,
     accounts: &[AccountInfo],

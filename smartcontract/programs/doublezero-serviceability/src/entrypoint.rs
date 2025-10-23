@@ -82,8 +82,7 @@ use crate::{
         user::{
             activate::process_activate_user, ban::process_ban_user,
             check_access_pass::process_check_access_pass_user,
-            closeaccount::process_closeaccount_user, create::process_create_user,
-            create2::process_create_user2, create_subscribe::process_create_subscribe_user,
+            closeaccount::process_closeaccount_user, create2::process_create_user2,
             create_subscribe2::process_create_subscribe_user2, delete::process_delete_user,
             reject::process_reject_user, requestban::process_request_ban_user,
             resume::process_resume_user, suspend::process_suspend_user,
@@ -136,7 +135,8 @@ pub fn process_instruction(
             process_create_link(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::CreateUser(value) => {
-            process_create_user(program_id, accounts, &value)?
+            // Note: This routes to the new create_user processor
+            process_create_user2(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::ActivateLink(value) => {
             process_activate_link(program_id, accounts, &value)?
@@ -284,7 +284,8 @@ pub fn process_instruction(
             process_subscribe_multicastgroup(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::CreateSubscribeUser(value) => {
-            process_create_subscribe_user(program_id, accounts, &value)?
+            // Note: This routes to the new create_subscribe_user processor
+            process_create_subscribe_user2(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::CreateContributor(value) => {
             process_create_contributor(program_id, accounts, &value)?
@@ -339,12 +340,6 @@ pub fn process_instruction(
         }
         DoubleZeroInstruction::RejectDeviceInterface(value) => {
             process_reject_device_interface(program_id, accounts, &value)?
-        }
-        DoubleZeroInstruction::CreateUser2(value) => {
-            process_create_user2(program_id, accounts, &value)?
-        }
-        DoubleZeroInstruction::CreateSubscribeUser2(value) => {
-            process_create_subscribe_user2(program_id, accounts, &value)?
         }
     }
     Ok(())

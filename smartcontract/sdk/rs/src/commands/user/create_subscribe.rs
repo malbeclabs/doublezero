@@ -64,7 +64,7 @@ impl CreateSubscribeUserCommand {
             get_user_pda2(&client.get_program_id(), &self.client_ip, self.user_type);
         client
             .execute_transaction(
-                DoubleZeroInstruction::CreateSubscribeUser2(UserCreateSubscribeArgs {
+                DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
                     user_type: self.user_type,
                     cyoa_type: self.cyoa_type,
                     client_ip: self.client_ip,

@@ -41,6 +41,8 @@ impl fmt::Debug for UserCreateArgs {
     }
 }
 
+// this function is not used anymore, kept for reference
+// Please refer to process_create_user2 for the updated implementation
 pub fn process_create_user(
     program_id: &Pubkey,
     accounts: &[AccountInfo],

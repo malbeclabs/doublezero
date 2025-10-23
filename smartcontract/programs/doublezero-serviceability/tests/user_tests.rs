@@ -306,7 +306,7 @@ async fn test_user() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateUser2(UserCreateArgs {
+        DoubleZeroInstruction::CreateUser(UserCreateArgs {
             client_ip: user_ip,
             user_type: UserType::IBRL,
             cyoa_type: UserCYOA::GREOverDIA,

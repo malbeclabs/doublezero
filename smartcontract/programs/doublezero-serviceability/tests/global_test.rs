@@ -710,7 +710,7 @@ async fn test_doublezero_program() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateUser2(user1),
+        DoubleZeroInstruction::CreateUser(user1),
         vec![
             AccountMeta::new(user1_pubkey, false),
             AccountMeta::new(device_la_pubkey, false),

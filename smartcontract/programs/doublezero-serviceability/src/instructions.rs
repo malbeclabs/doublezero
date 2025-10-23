@@ -170,10 +170,6 @@ pub enum DoubleZeroInstruction {
     UpdateDeviceInterface(DeviceInterfaceUpdateArgs),     // variant 76
     UnlinkDeviceInterface(DeviceInterfaceUnlinkArgs),     // variant 77
     RejectDeviceInterface(DeviceInterfaceRejectArgs),     // variant 78
-
-    // New variants added below
-    CreateUser2(UserCreateArgs),                   // variant 79
-    CreateSubscribeUser2(UserCreateSubscribeArgs), // variant 80
 }
 
 impl DoubleZeroInstruction {
@@ -279,10 +275,6 @@ impl DoubleZeroInstruction {
             77 => Ok(Self::UnlinkDeviceInterface(from_slice::<DeviceInterfaceUnlinkArgs>(rest).unwrap())),
             78 => Ok(Self::RejectDeviceInterface(from_slice::<DeviceInterfaceRejectArgs>(rest).unwrap())),
 
-            // New variants added below
-            79 => Ok(Self::CreateUser2(from_slice::<UserCreateArgs>(rest).unwrap())),
-            80 => Ok(Self::CreateSubscribeUser2(from_slice::<UserCreateSubscribeArgs>(rest).unwrap())),
-
             _ => Err(ProgramError::InvalidInstructionData),
         }
     }
@@ -385,10 +377,6 @@ impl DoubleZeroInstruction {
             Self::UpdateDeviceInterface(_) => "UpdateDeviceInterface".to_string(),     // variant 76
             Self::UnlinkDeviceInterface(_) => "UnlinkDeviceInterface".to_string(),     // variant 77
             Self::RejectDeviceInterface(_) => "RejectDeviceInterface".to_string(),     // variant 78
-
-            // New variants added below
-            Self::CreateUser2(_) => "CreateUser2".to_string(), // variant 79
-            Self::CreateSubscribeUser2(_) => "CreateSubscribeUser2".to_string(), // variant 80
         }
     }
 
@@ -484,10 +472,6 @@ impl DoubleZeroInstruction {
             Self::UpdateDeviceInterface(args) => format!("{args:?}"),   // variant 76
             Self::UnlinkDeviceInterface(args) => format!("{args:?}"),   // variant 77
             Self::RejectDeviceInterface(args) => format!("{args:?}"),   // variant 78
-
-            // New variants added below
-            Self::CreateUser2(args) => format!("{args:?}"), // variant 79
-            Self::CreateSubscribeUser2(args) => format!("{args:?}"), // variant 80
         }
     }
 }
@@ -1023,25 +1007,6 @@ mod tests {
                 name: "name".to_string(),
             }),
             "RejectDeviceInterface",
-        );
-        // New variants tests
-        test_instruction(
-            DoubleZeroInstruction::CreateUser2(UserCreateArgs {
-                user_type: UserType::IBRL,
-                cyoa_type: UserCYOA::GREOverDIA,
-                client_ip: [1, 2, 3, 4].into(),
-            }),
-            "CreateUser2",
-        );
-        test_instruction(
-            DoubleZeroInstruction::CreateSubscribeUser2(UserCreateSubscribeArgs {
-                user_type: UserType::IBRL,
-                cyoa_type: UserCYOA::GREOverDIA,
-                client_ip: [1, 2, 3, 4].into(),
-                publisher: false,
-                subscriber: true,
-            }),
-            "CreateSubscribeUser2",
         );
     }
 }

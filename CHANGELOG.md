@@ -6,9 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
-### Changes
+- Updated PDA derivation to use user IP and user type, removing the user-payer dependency.
+- Cretae a new vesion create2 and create_subscriber2 instructions to use the new PDA while maintaining argument compatibility (requires get_user_pda2).
 
-- Added a new create_user2 instruction with an updated PDA model to prevent race conditions during user creation, while maintaining compatibility with the existing version.
+### Changes
 
 - Onchain programs
     - serviceability: add auto-assignment and validation for exchange.bgp_community

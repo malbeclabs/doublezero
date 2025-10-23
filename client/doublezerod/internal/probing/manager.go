@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"maps"
 	"net"
 	"net/netip"
 	"sync"
@@ -73,8 +72,7 @@ type ProbingManager struct {
 	log *slog.Logger
 	cfg Config
 
-	routes   map[routeKey]managedRoute
-	routesMu sync.RWMutex
+	store *routeStore
 
 	// The context cancel function for the worker.
 	// Indicates that the worker is running.
@@ -120,7 +118,7 @@ func NewProbingManager(cfg Config) (*ProbingManager, error) {
 		log: cfg.Logger,
 		cfg: cfg,
 
-		routes: make(map[routeKey]managedRoute),
+		store: newRouteStore(),
 	}, nil
 }
 
@@ -211,7 +209,7 @@ func (m *ProbingManager) Run(ctx context.Context) {
 func (m *ProbingManager) Tick(ctx context.Context) error {
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, int(m.cfg.MaxConcurrency))
-	for _, route := range m.getRoutes() {
+	for _, route := range m.store.Clone() {
 		sem <- struct{}{} // limit concurrency
 		wg.Add(1)
 		go func(route managedRoute) {
@@ -239,40 +237,6 @@ func (m *ProbingManager) Tick(ctx context.Context) error {
 	wg.Wait()
 
 	return nil
-}
-
-func (m *ProbingManager) getRoutes() map[routeKey]managedRoute {
-	m.routesMu.RLock()
-	defer m.routesMu.RUnlock()
-	return maps.Clone(m.routes)
-}
-
-func (m *ProbingManager) getRoutesLen() int {
-	m.routesMu.RLock()
-	defer m.routesMu.RUnlock()
-	return len(m.routes)
-}
-
-func (m *ProbingManager) getRoute(key routeKey) (managedRoute, bool) {
-	m.routesMu.RLock()
-	defer m.routesMu.RUnlock()
-	route, ok := m.routes[key]
-	if !ok {
-		return managedRoute{}, false
-	}
-	return route, true
-}
-
-func (m *ProbingManager) setRoute(key routeKey, route managedRoute) {
-	m.routesMu.Lock()
-	defer m.routesMu.Unlock()
-	m.routes[key] = route
-}
-
-func (m *ProbingManager) deleteRoute(key routeKey) {
-	m.routesMu.Lock()
-	defer m.routesMu.Unlock()
-	delete(m.routes, key)
 }
 
 func (m *ProbingManager) start() {
@@ -337,7 +301,7 @@ func (m *ProbingManager) handleRouteAdd(route *routing.Route) error {
 
 	key := newRouteKey(route)
 	// Start conservatively as DOWN; we'll promote to UP after UpThreshold successes.
-	m.setRoute(key, managedRoute{
+	m.store.Set(key, managedRoute{
 		route: route,
 		liveness: LivenessState{
 			state: stateDown,
@@ -345,7 +309,7 @@ func (m *ProbingManager) handleRouteAdd(route *routing.Route) error {
 	})
 
 	// Just keep track of the route in memory. The liveness strategy will add it to the kernel when ready.
-	m.log.Info("probing: route added to managed routes", "route", route.String(), "routes", m.getRoutesLen())
+	m.log.Info("probing: route added to managed routes", "route", route.String(), "routes", m.store.Len())
 	return nil
 }
 
@@ -366,7 +330,7 @@ func (m *ProbingManager) handleRouteDelete(route *routing.Route) error {
 
 	// Delete the route from the managed routes map.
 	key := newRouteKey(route)
-	m.deleteRoute(key)
+	m.store.Del(key)
 
 	// Delete the route from the kernel immediately.
 	err := m.cfg.Netlink.RouteDelete(route)
@@ -374,14 +338,14 @@ func (m *ProbingManager) handleRouteDelete(route *routing.Route) error {
 		return fmt.Errorf("error deleting route from kernel: %w", err)
 	}
 
-	m.log.Info("probing: route deleted", "route", route.String(), "routes", m.getRoutesLen())
+	m.log.Info("probing: route deleted", "route", route.String(), "routes", m.store.Len())
 	return nil
 }
 
 func (m *ProbingManager) addRouteToKernel(mr *managedRoute) error {
 	// Protect against the race condition where the route is deleted between probing start and now.
 	key := newRouteKey(mr.route)
-	if _, ok := m.getRoute(key); !ok {
+	if _, ok := m.store.Get(key); !ok {
 		m.log.Debug("probing: route not found in managed routes, skipping add", "route", mr.String())
 		return nil
 	}
@@ -400,7 +364,7 @@ func (m *ProbingManager) addRouteToKernel(mr *managedRoute) error {
 func (m *ProbingManager) deleteRouteFromKernel(mr *managedRoute) error {
 	// Protect against the race condition where the route is deleted between probing start and now.
 	key := newRouteKey(mr.route)
-	if _, ok := m.getRoute(key); !ok {
+	if _, ok := m.store.Get(key); !ok {
 		m.log.Debug("probing: route not found in managed routes, skipping delete", "route", mr.String())
 		return nil
 	}
@@ -447,7 +411,7 @@ func (m *ProbingManager) applyProbeResult(snap *managedRoute, ok bool) {
 	key := snap.Key()
 
 	// Re-read current value; it may have changed while probing.
-	cur, exists := m.getRoute(key)
+	cur, exists := m.store.Get(key)
 	if !exists {
 		m.log.Debug("probing: route vanished before update", "route", snap.String())
 		return
@@ -477,5 +441,5 @@ func (m *ProbingManager) applyProbeResult(snap *managedRoute, ok bool) {
 	}
 
 	// Persist updated route entry.
-	m.setRoute(key, cur)
+	m.store.Set(key, cur)
 }

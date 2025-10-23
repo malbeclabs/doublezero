@@ -2,8 +2,41 @@ package probing
 
 import (
 	"maps"
+	"net/netip"
 	"sync"
+
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 )
+
+type routeKey struct {
+	table   int
+	dst     netip.Addr
+	nextHop netip.Addr
+}
+
+func newRouteKey(route *routing.Route) routeKey {
+	var dk, nk netip.Addr
+	if a, ok := netip.AddrFromSlice(route.Dst.IP.To4()); ok {
+		dk = a
+	}
+	if a, ok := netip.AddrFromSlice(route.NextHop.To4()); ok {
+		nk = a
+	}
+	return routeKey{table: route.Table, dst: dk, nextHop: nk}
+}
+
+type managedRoute struct {
+	route    *routing.Route
+	liveness LivenessState
+}
+
+func (r *managedRoute) String() string {
+	return r.route.String()
+}
+
+func (r *managedRoute) Key() routeKey {
+	return newRouteKey(r.route)
+}
 
 // Route store: threadsafe wrapper around the managed routes map.
 type routeStore struct {

@@ -93,7 +93,7 @@ mod tests {
         },
         AccountType, MulticastGroup, MulticastGroupStatus, User, UserCYOA, UserType,
     };
-    use doublezero_serviceability::pda::get_user_pda;
+    use doublezero_serviceability::pda::get_user_pda2;
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
@@ -101,7 +101,9 @@ mod tests {
     fn test_cli_user_subscribe() {
         let mut client = create_test_client();
 
-        let (user_pubkey, _bump_seed) = get_user_pda(&client.get_program_id(), 1);
+        let client_ip = [192, 168, 1, 100].into();
+        let (user_pubkey, _bump_seed) =
+            get_user_pda2(&client.get_program_id(), &client_ip, UserType::IBRL);
         let signature = Signature::from([
             120, 138, 162, 185, 59, 209, 241, 157, 71, 157, 74, 131, 4, 87, 54, 28, 38, 180, 222,
             82, 64, 62, 61, 62, 22, 46, 17, 203, 187, 136, 62, 43, 11, 38, 235, 17, 239, 82, 240,
@@ -109,7 +111,6 @@ mod tests {
             100, 221, 20, 137, 4, 5,
         ]);
 
-        let client_ip = [192, 168, 1, 100].into();
         let user = User {
             account_type: AccountType::User,
             index: 1,

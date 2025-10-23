@@ -1,8 +1,10 @@
 use crate::{
     error::DoubleZeroError,
-    globalstate::{globalstate_get_next, globalstate_write},
+    globalstate::{globalstate_get, globalstate_write},
     helper::*,
-    pda::{get_accesspass_pda, get_user_pda},
+    pda::{get_accesspass_pda, get_user_pda2},
+    processors::user::create::UserCreateArgs,
+    seeds::{SEED_PREFIX, SEED_USER},
     state::{
         accesspass::{AccessPass, AccessPassStatus, AccessPassType},
         accounttype::{AccountType, AccountTypeInfo},
@@ -10,9 +12,9 @@ use crate::{
         user::*,
     },
 };
-use borsh::{BorshDeserialize, BorshSerialize};
-use core::fmt;
-use doublezero_program_common::{resize_account::resize_account_if_needed, types::NetworkV4};
+use doublezero_program_common::{
+    resize_account::resize_account_if_needed, try_create_account, types::NetworkV4,
+};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     clock::Clock,
@@ -24,26 +26,9 @@ use solana_program::{
 };
 use std::net::Ipv4Addr;
 
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
-pub struct UserCreateArgs {
-    pub user_type: UserType,
-    pub cyoa_type: UserCYOA,
-    pub client_ip: std::net::Ipv4Addr,
-}
-
-impl fmt::Debug for UserCreateArgs {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "user_type: {}, cyoa_type: {}, client_ip: {}",
-            self.user_type, self.cyoa_type, &self.client_ip,
-        )
-    }
-}
-
-// this function is not used anymore, kept for reference
-// Please refer to process_create_user2 for the updated implementation
-pub fn process_create_user(
+// Introduce a new version of `create_user` implementing an updated PDA model.
+// This change improves determinism and prevents collisions between user accounts.
+pub fn process_create_user2(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
     value: &UserCreateArgs,
@@ -71,9 +56,10 @@ pub fn process_create_user(
         "Invalid AccessPass Account Owner"
     );
 
-    let globalstate = globalstate_get_next(globalstate_account)?;
+    let globalstate = globalstate_get(globalstate_account)?;
 
-    let (expected_pda_account, bump_seed) = get_user_pda(program_id, globalstate.account_index);
+    let (expected_pda_account, bump_seed) =
+        get_user_pda2(program_id, &value.client_ip, value.user_type);
     assert_eq!(
         user_account.key, &expected_pda_account,
         "Invalid User PubKey"
@@ -172,7 +158,7 @@ pub fn process_create_user(
         account_type: AccountType::User,
         owner: *payer_account.key,
         bump_seed,
-        index: globalstate.account_index,
+        index: 0, // It’s no longer used.
         tenant_pk: Pubkey::default(),
         user_type: value.user_type,
         device_pk: *device_account.key,
@@ -187,13 +173,23 @@ pub fn process_create_user(
         validator_pubkey,
     };
 
-    account_create(
-        user_account,
-        &user,
-        payer_account,
-        system_program,
-        program_id,
+    try_create_account(
+        payer_account.key,       // Account paying for the new account
+        user_account.key,        // Account to be created
+        user_account.lamports(), // Current amount of lamports on the new account
+        user.size(),             // Size in bytes to allocate for the data field
+        program_id,              // Set program owner to our program
+        accounts,
+        &[
+            SEED_PREFIX,
+            SEED_USER,
+            &user.client_ip.octets(),
+            &[user.user_type as u8],
+            &[bump_seed],
+        ],
     )?;
+    user.try_serialize(user_account)?;
+
     account_write(device_account, &device, payer_account, system_program)?;
     globalstate_write(globalstate_account, &globalstate)?;
 

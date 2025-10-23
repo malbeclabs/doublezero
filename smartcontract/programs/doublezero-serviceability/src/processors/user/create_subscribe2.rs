@@ -1,18 +1,21 @@
 use crate::{
     error::DoubleZeroError,
-    globalstate::{globalstate_get_next, globalstate_write},
+    globalstate::{globalstate_get, globalstate_write},
     helper::*,
-    pda::{get_accesspass_pda, get_user_pda},
+    pda::{get_accesspass_pda, get_user_pda2},
+    processors::user::create_subscribe::UserCreateSubscribeArgs,
+    seeds::{SEED_PREFIX, SEED_USER},
     state::{
         accesspass::{AccessPass, AccessPassStatus, AccessPassType},
         accounttype::{AccountType, AccountTypeInfo},
         device::{Device, DeviceStatus},
+        multicastgroup::{MulticastGroup, MulticastGroupStatus},
         user::*,
     },
 };
-use borsh::{BorshDeserialize, BorshSerialize};
-use core::fmt;
-use doublezero_program_common::{resize_account::resize_account_if_needed, types::NetworkV4};
+use doublezero_program_common::{
+    resize_account::resize_account_if_needed, try_create_account, types::NetworkV4,
+};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     clock::Clock,
@@ -24,34 +27,18 @@ use solana_program::{
 };
 use std::net::Ipv4Addr;
 
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
-pub struct UserCreateArgs {
-    pub user_type: UserType,
-    pub cyoa_type: UserCYOA,
-    pub client_ip: std::net::Ipv4Addr,
-}
-
-impl fmt::Debug for UserCreateArgs {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "user_type: {}, cyoa_type: {}, client_ip: {}",
-            self.user_type, self.cyoa_type, &self.client_ip,
-        )
-    }
-}
-
-// this function is not used anymore, kept for reference
-// Please refer to process_create_user2 for the updated implementation
-pub fn process_create_user(
+// Introduce a new version of `create_subscribe_user` implementing an updated PDA model.
+// This change improves determinism and prevents collisions between user accounts.
+pub fn process_create_subscribe_user2(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    value: &UserCreateArgs,
+    value: &UserCreateSubscribeArgs,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
     let user_account = next_account_info(accounts_iter)?;
     let device_account = next_account_info(accounts_iter)?;
+    let mgroup_account = next_account_info(accounts_iter)?;
     let accesspass_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
@@ -71,9 +58,10 @@ pub fn process_create_user(
         "Invalid AccessPass Account Owner"
     );
 
-    let globalstate = globalstate_get_next(globalstate_account)?;
+    let globalstate = globalstate_get(globalstate_account)?;
 
-    let (expected_pda_account, bump_seed) = get_user_pda(program_id, globalstate.account_index);
+    let (expected_pda_account, bump_seed) =
+        get_user_pda2(program_id, &value.client_ip, value.user_type);
     assert_eq!(
         user_account.key, &expected_pda_account,
         "Invalid User PubKey"
@@ -101,7 +89,6 @@ pub fn process_create_user(
 
     // Invalid Access Pass
     if accesspass_account.data_is_empty() {
-        msg!("Invalid Access Pass");
         return Err(DoubleZeroError::Unauthorized.into());
     }
 
@@ -141,12 +128,28 @@ pub fn process_create_user(
 
     accesspass.connection_count += 1;
     accesspass.status = AccessPassStatus::Connected;
+    if accesspass.is_dynamic() && accesspass.client_ip == Ipv4Addr::UNSPECIFIED {
+        accesspass.client_ip = value.client_ip; // lock to the first used IP
+    }
 
-    // Read validator_pubkey from AccessPass
+    // Read validator_pubkey from AccesPass
     let validator_pubkey = match accesspass.accesspass_type {
         AccessPassType::SolanaValidator(pk) => pk,
         AccessPassType::Prepaid => Pubkey::default(),
     };
+
+    let mut mgroup: MulticastGroup = MulticastGroup::try_from(mgroup_account)?;
+    assert_eq!(mgroup.status, MulticastGroupStatus::Activated);
+
+    // Check if the user is in the allowlist
+    if value.publisher && !accesspass.mgroup_pub_allowlist.contains(mgroup_account.key) {
+        msg!("{} -> {:?}", accesspass_account.key, accesspass);
+        return Err(DoubleZeroError::NotAllowed.into());
+    }
+    if value.subscriber && !accesspass.mgroup_sub_allowlist.contains(mgroup_account.key) {
+        msg!("{} -> {:?}", accesspass_account.key, accesspass);
+        return Err(DoubleZeroError::NotAllowed.into());
+    }
 
     let mut device = Device::try_from(device_account)?;
 
@@ -172,7 +175,7 @@ pub fn process_create_user(
         account_type: AccountType::User,
         owner: *payer_account.key,
         bump_seed,
-        index: globalstate.account_index,
+        index: 0, // It’s no longer used.
         tenant_pk: Pubkey::default(),
         user_type: value.user_type,
         device_pk: *device_account.key,
@@ -182,21 +185,45 @@ pub fn process_create_user(
         tunnel_id: 0,
         tunnel_net: NetworkV4::default(),
         status: UserStatus::Pending,
-        publishers: vec![],
-        subscribers: vec![],
+        publishers: match value.publisher {
+            true => vec![*mgroup_account.key],
+            false => vec![],
+        },
+        subscribers: match value.subscriber {
+            true => vec![*mgroup_account.key],
+            false => vec![],
+        },
         validator_pubkey,
     };
 
-    account_create(
-        user_account,
-        &user,
-        payer_account,
-        system_program,
-        program_id,
+    // Update multicastgroup counts
+    if value.publisher {
+        mgroup.publisher_count = mgroup.publisher_count.saturating_add(1);
+    }
+    if value.subscriber {
+        mgroup.subscriber_count = mgroup.subscriber_count.saturating_add(1);
+    }
+
+    account_write(mgroup_account, &mgroup, payer_account, system_program)?;
+    try_create_account(
+        payer_account.key,       // Account paying for the new account
+        user_account.key,        // Account to be created
+        user_account.lamports(), // Current amount of lamports on the new account
+        user.size(),             // Size in bytes to allocate for the data field
+        program_id,              // Set program owner to our program
+        accounts,
+        &[
+            SEED_PREFIX,
+            SEED_USER,
+            &user.client_ip.octets(),
+            &[user.user_type as u8],
+            &[bump_seed],
+        ],
     )?;
+    user.try_serialize(user_account)?;
+
     account_write(device_account, &device, payer_account, system_program)?;
     globalstate_write(globalstate_account, &globalstate)?;
-
     resize_account_if_needed(
         accesspass_account,
         payer_account,

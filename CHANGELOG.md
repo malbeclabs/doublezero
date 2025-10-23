@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+- Updated PDA derivation to use user IP and user type, removing the user-payer dependency.
+- Cretae a new vesion create2 and create_subscriber2 instructions to use the new PDA while maintaining argument compatibility (requires get_user_pda2).
+
 ### Changes
 
 - Onchain programs

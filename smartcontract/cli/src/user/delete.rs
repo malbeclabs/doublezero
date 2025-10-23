@@ -40,7 +40,7 @@ mod tests {
         commands::user::{delete::DeleteUserCommand, get::GetUserCommand},
         AccountType, User, UserCYOA, UserStatus, UserType,
     };
-    use doublezero_serviceability::pda::get_user_pda;
+    use doublezero_serviceability::pda::get_user_pda2;
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
@@ -48,7 +48,9 @@ mod tests {
     fn test_cli_user_delete() {
         let mut client = create_test_client();
 
-        let (pda_pubkey, _bump_seed) = get_user_pda(&client.get_program_id(), 1);
+        let client_ip = [100, 0, 0, 1].into();
+        let (pda_pubkey, _bump_seed) =
+            get_user_pda2(&client.get_program_id(), &client_ip, UserType::IBRL);
         let signature = Signature::from([
             120, 138, 162, 185, 59, 209, 241, 157, 71, 157, 74, 131, 4, 87, 54, 28, 38, 180, 222,
             82, 64, 62, 61, 62, 22, 46, 17, 203, 187, 136, 62, 43, 11, 38, 235, 17, 239, 82, 240,
@@ -64,7 +66,7 @@ mod tests {
             tenant_pk: Pubkey::default(),
             cyoa_type: UserCYOA::GREOverDIA,
             device_pk: Pubkey::default(),
-            client_ip: [10, 0, 0, 1].into(),
+            client_ip,
             dz_ip: [10, 0, 0, 2].into(),
             tunnel_id: 0,
             tunnel_net: "10.2.3.4/24".parse().unwrap(),

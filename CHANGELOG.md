@@ -18,6 +18,8 @@ All notable changes to this project will be documented in this file.
     - Uping: Add minimal ICMP echo library for user-space liveness probing over doublezero interfaces, even when certain routes are not in the the kernel routing table.
 - Device controller
     - Deprecate the -enable-interfaces-and-peers flag. The controller now always renders interfaces and peers
+- Monitor
+    - Add metrics that detect when duplicate or out-of-range exchange.bgp_community values exist in serviceability
 
 ## [v0.6.8](https://github.com/malbeclabs/doublezero/compare/client/v0.6.6...client/v0.6.8) – 2025-10-17
 

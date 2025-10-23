@@ -262,6 +262,12 @@ func (w *ServiceabilityWatcher) runAudits(data *serviceability.ProgramData) {
 			checkUnlinkedInterfaces(device, iface, data.Links)
 		}
 	}
+
+	for _, exchange := range data.Exchanges {
+		checkExchangeBGPCommunityRange(w.log, exchange)
+	}
+
+	checkExchangeBGPCommunityDuplicates(w.log, data.Exchanges)
 }
 
 func programVersionString(version serviceability.ProgramVersion) string {

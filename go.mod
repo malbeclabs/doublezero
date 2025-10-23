@@ -27,7 +27,7 @@ require (
 	github.com/near/borsh-go v0.3.1
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/osrg/gobgp v2.0.0+incompatible
-	github.com/prometheus-community/pro-bing v0.7.0
+	github.com/prometheus-community/pro-bing v0.7.1-0.20251023154604-1478ef537ea3
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2
 	github.com/prometheus/common v0.67.1
@@ -152,6 +152,3 @@ require (
 // Fix: ambiguous import: found package google.golang.org/genproto/googleapis/api/httpbody in multiple modules
 // See "go mod graph | grep genproto" for more details.
 replace google.golang.org/genproto => google.golang.org/genproto v0.0.0-20250519155744-55703ea1f237
-
-// Use fork of pro-bing with support for pinning to source address.
-replace github.com/prometheus-community/pro-bing => github.com/malbeclabs/pro-bing v0.0.0-20251022200251-963180e3cb17

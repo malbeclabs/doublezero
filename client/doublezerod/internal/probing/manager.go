@@ -82,16 +82,6 @@ type ProbingManager struct {
 	cancelMu sync.RWMutex
 }
 
-// Internal liveness state for a managed route. We add/delete from the kernel
-// only on transitions between these states after thresholds are met.
-type routeState uint8
-
-const (
-	stateUnknown routeState = iota
-	stateUp
-	stateDown
-)
-
 type routeKey struct {
 	table   int
 	dst     netip.Addr
@@ -110,12 +100,8 @@ func newRouteKey(route *routing.Route) routeKey {
 }
 
 type managedRoute struct {
-	route *routing.Route
-
-	// Liveness counters & current state (hysteresis).
-	consecOK   uint
-	consecFail uint
-	state      routeState
+	route    *routing.Route
+	liveness LivenessState
 }
 
 func (r *managedRoute) String() string {
@@ -353,7 +339,9 @@ func (m *ProbingManager) handleRouteAdd(route *routing.Route) error {
 	// Start conservatively as DOWN; we'll promote to UP after UpThreshold successes.
 	m.setRoute(key, managedRoute{
 		route: route,
-		state: stateDown,
+		liveness: LivenessState{
+			state: stateDown,
+		},
 	})
 
 	// Just keep track of the route in memory. The liveness strategy will add it to the kernel when ready.
@@ -455,59 +443,39 @@ func (m *ProbingManager) routeExistsInKernel(mr *managedRoute) bool {
 	return false
 }
 
-// applyProbeResult updates per-route counters and state with hysteresis, and only
-// touches the kernel (add/delete) when a state transition occurs.
 func (m *ProbingManager) applyProbeResult(snap *managedRoute, ok bool) {
 	key := snap.Key()
 
-	// Re-read current map value in case it changed while we probed.
+	// Re-read current value; it may have changed while probing.
 	cur, exists := m.getRoute(key)
 	if !exists {
-		// Route was removed mid-flight; nothing to do.
 		m.log.Debug("probing: route vanished before update", "route", snap.String())
 		return
 	}
 
-	// Work on the latest value, then write it back.
-	r := cur
-
-	// Update counters with simple hysteresis (hard reset of opposite side).
-	if ok {
-		r.consecOK++
-		r.consecFail = 0
-	} else {
-		r.consecFail++
-		r.consecOK = 0
-	}
-
-	// Determine desired state after thresholds.
-	want := r.state
-	if r.consecOK >= m.cfg.UpThreshold {
-		want = stateUp
-	} else if r.consecFail >= m.cfg.DownThreshold {
-		want = stateDown
-	}
+	// Apply pure policy.
+	pol := Policy{UpThreshold: m.cfg.UpThreshold, DownThreshold: m.cfg.DownThreshold}
+	next, tr := pol.Next(cur.liveness, ok)
+	cur.liveness = next
 
 	// Act only on transitions.
-	if want != r.state {
-		switch want {
-		case stateUp:
-			if err := m.addRouteToKernel(&r); err != nil {
-				m.log.Error("probing: kernel add failed", "route", r.String(), "error", err)
-			} else {
-				r.state = stateUp
-				m.log.Info("probing: route marked UP", "route", r.String(), "successes", r.consecOK)
-			}
-		case stateDown:
-			if err := m.deleteRouteFromKernel(&r); err != nil {
-				m.log.Error("probing: kernel delete failed", "route", r.String(), "error", err)
-			} else {
-				r.state = stateDown
-				m.log.Info("probing: route marked DOWN", "route", r.String(), "failures", r.consecFail)
-			}
+	switch tr {
+	case ToUp:
+		if err := m.addRouteToKernel(&cur); err != nil {
+			m.log.Error("probing: kernel add failed", "route", cur.String(), "error", err)
+		} else {
+			m.log.Info("probing: route marked UP", "route", cur.String(), "successes", cur.liveness.consecOK)
 		}
+	case ToDown:
+		if err := m.deleteRouteFromKernel(&cur); err != nil {
+			m.log.Error("probing: kernel delete failed", "route", cur.String(), "error", err)
+		} else {
+			m.log.Info("probing: route marked DOWN", "route", cur.String(), "failures", cur.liveness.consecFail)
+		}
+	case NoChange:
+		// nothing
 	}
 
 	// Persist updated route entry.
-	m.setRoute(key, r)
+	m.setRoute(key, cur)
 }

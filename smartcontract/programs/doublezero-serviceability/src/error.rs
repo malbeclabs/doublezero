@@ -123,6 +123,8 @@ pub enum DoubleZeroError {
     InvalidLoopbackType, // variant 58
     #[error("Invalid Minimum Compatible Version")]
     InvalidMinCompatibleVersion, // variant 59
+    #[error("Invalid Actual Location")]
+    InvalidActualLocation, // variant 60
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -188,6 +190,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::InvalidInterfaceType => ProgramError::Custom(57),
             DoubleZeroError::InvalidLoopbackType => ProgramError::Custom(58),
             DoubleZeroError::InvalidMinCompatibleVersion => ProgramError::Custom(59),
+            DoubleZeroError::InvalidActualLocation => ProgramError::Custom(60),
         }
     }
 }
@@ -254,6 +257,7 @@ impl From<u32> for DoubleZeroError {
             57 => DoubleZeroError::InvalidInterfaceType,
             58 => DoubleZeroError::InvalidLoopbackType,
             59 => DoubleZeroError::InvalidMinCompatibleVersion,
+            60 => DoubleZeroError::InvalidActualLocation,
             _ => DoubleZeroError::Custom(e),
         }
     }
@@ -340,6 +344,8 @@ mod tests {
             InvalidInterfaceType,
             InvalidLoopbackType,
             InvalidMinCompatibleVersion,
+            InvalidActualLocation,
+            
         ];
         for err in variants {
             let pe: ProgramError = err.clone().into();

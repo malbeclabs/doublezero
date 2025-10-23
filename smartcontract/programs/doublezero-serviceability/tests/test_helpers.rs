@@ -16,6 +16,7 @@ use std::any::type_name;
 
 // Use a fixed byte array to create a constant Keypair for testing
 // This is safe for tests only; never use hardcoded keys in production!
+#[allow(dead_code)]
 pub const TEST_PAYER_BYTES: [u8; 64] = [
     169, 191, 120, 114, 135, 172, 221, 186, 245, 154, 139, 162, 103, 229, 16, 1, 170, 160, 159, 47,
     224, 60, 179, 71, 245, 255, 116, 238, 144, 208, 19, 89, 13, 59, 115, 1, 186, 171, 180, 37, 165,
@@ -23,10 +24,12 @@ pub const TEST_PAYER_BYTES: [u8; 64] = [
     241, 90,
 ];
 
+#[allow(dead_code)]
 pub fn test_payer() -> Keypair {
     Keypair::from_bytes(&TEST_PAYER_BYTES).unwrap()
 }
 
+#[allow(dead_code)]
 pub async fn init_test() -> (BanksClient, Pubkey, Keypair, solana_program::hash::Hash) {
     let program_id = Pubkey::new_unique();
 
@@ -142,7 +145,6 @@ pub async fn execute_transaction(
         .get_latest_blockhash()
         .await
         .expect("Failed to get latest blockhash");
-    println!("recent_blockhash: {recent_blockhash} ");
     let mut transaction = create_transaction(program_id, &instruction, &accounts, payer);
     transaction.try_sign(&[&payer], recent_blockhash).unwrap();
     banks_client.process_transaction(transaction).await.unwrap();
@@ -158,13 +160,6 @@ async fn execute_transaction_tester(
     payer: &Keypair,
 ) -> Result<(), BanksClientError> {
     let test_payer = Pubkey::new_unique();
-
-    let recent_blockhash = banks_client
-        .get_latest_blockhash()
-        .await
-        .expect("Failed to get latest blockhash");
-
-    println!("recent_blockhash: {recent_blockhash} ");
 
     let recent_blockhash = banks_client
         .get_latest_blockhash()

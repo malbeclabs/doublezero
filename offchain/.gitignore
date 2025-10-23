@@ -49,4 +49,3 @@ test-ledger/
 *.gz
 .DS_Store
 *.state
-.schema/

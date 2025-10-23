@@ -11,7 +11,8 @@ use crate::{
         accounttype::{AccountType, AccountTypeInfo},
     },
 };
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
+use borsh_incremental::BorshDeserializeIncremental;
 use doublezero_program_common::{resize_account::resize_account_if_needed, try_create_account};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -29,10 +30,11 @@ use solana_program::{
 // `User` account size assumes a single publisher and subscriber pubkey registered
 const AIRDROP_USER_RENT_LAMPORTS_BYTES: usize = 236 * 3; // 236 bytes per User account x 3 accounts = 708 bytes
 
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
+#[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone)]
 pub struct SetAccessPassArgs {
     pub accesspass_type: AccessPassType, // 1 or 33
-    pub client_ip: Ipv4Addr,             // 4
+    #[incremental(default = Ipv4Addr::UNSPECIFIED)]
+    pub client_ip: Ipv4Addr, // 4
     pub last_access_epoch: u64,          // 8
     pub allow_multiple_ip: bool,         // 1
 }

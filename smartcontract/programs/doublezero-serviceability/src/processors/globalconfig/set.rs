@@ -5,7 +5,8 @@ use crate::{
     seeds::{SEED_CONFIG, SEED_PREFIX},
     state::{accounttype::AccountType, exchange::BGP_COMMUNITY_MIN, globalconfig::GlobalConfig},
 };
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
+use borsh_incremental::BorshDeserializeIncremental;
 use doublezero_program_common::{create_account::try_create_account, types::NetworkV4};
 #[cfg(test)]
 use solana_program::msg;
@@ -16,7 +17,7 @@ use solana_program::{
 };
 use std::fmt;
 
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone, Default)]
+#[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
 pub struct SetGlobalConfigArgs {
     pub local_asn: u32,
     pub remote_asn: u32,

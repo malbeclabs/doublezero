@@ -8,7 +8,8 @@ use crate::{
         user::{User, UserStatus},
     },
 };
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
+use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
 use doublezero_program_common::{resize_account::resize_account_if_needed, types::NetworkV4};
 use solana_program::{
@@ -19,10 +20,11 @@ use solana_program::{
 };
 use std::net::Ipv4Addr;
 
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
+#[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone)]
 pub struct UserActivateArgs {
     pub tunnel_id: u16,
     pub tunnel_net: NetworkV4,
+    #[incremental(default = Ipv4Addr::UNSPECIFIED)]
     pub dz_ip: Ipv4Addr,
 }
 

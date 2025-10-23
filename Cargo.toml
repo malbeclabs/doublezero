@@ -34,6 +34,7 @@ base64 = "0.22.1"
 bincode = { version = "2", features = ["serde"] }
 bitvec = "1"
 borsh = "1"
+borsh-incremental = { version = "0" }
 bytemuck = { version = "1", features = ["derive"] }
 byteorder = "1"
 chrono = "0"

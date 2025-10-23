@@ -1,7 +1,8 @@
 use crate::{
     error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::multicastgroup::*,
 };
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
+use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -10,8 +11,9 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
+#[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone)]
 pub struct MulticastGroupActivateArgs {
+    #[incremental(default = std::net::Ipv4Addr::UNSPECIFIED)]
     pub multicast_ip: std::net::Ipv4Addr,
 }
 

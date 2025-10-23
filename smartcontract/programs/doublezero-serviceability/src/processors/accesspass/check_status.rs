@@ -3,7 +3,8 @@ use crate::{
     globalstate::globalstate_get,
     state::{accesspass::AccessPass, accounttype::AccountTypeInfo},
 };
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
+use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
 use doublezero_program_common::resize_account::resize_account_if_needed;
 use solana_program::{
@@ -13,7 +14,7 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone, Default)]
+#[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
 pub struct CheckStatusAccessPassArgs {}
 
 impl fmt::Debug for CheckStatusAccessPassArgs {

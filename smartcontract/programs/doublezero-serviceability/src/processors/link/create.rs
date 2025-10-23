@@ -5,7 +5,8 @@ use crate::{
     pda::get_link_pda,
     state::{accounttype::AccountType, contributor::Contributor, device::Device, link::*},
 };
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
+use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
 use doublezero_program_common::{types::NetworkV4, validate_account_code};
 #[cfg(test)]
@@ -17,7 +18,7 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone, Default)]
+#[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
 pub struct LinkCreateArgs {
     pub code: String,
     pub link_type: LinkLinkType,

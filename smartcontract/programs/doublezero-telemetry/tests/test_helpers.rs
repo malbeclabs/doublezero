@@ -923,7 +923,7 @@ impl ServiceabilityProgramHelper {
 
     pub async fn activate_device(&mut self, device_pk: Pubkey) -> Result<(), BanksClientError> {
         self.execute_transaction(
-            DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs),
+            DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs {}),
             vec![
                 AccountMeta::new(device_pk, false),
                 AccountMeta::new(self.global_state_pubkey, false),
@@ -947,7 +947,7 @@ impl ServiceabilityProgramHelper {
         pubkey: Pubkey,
     ) -> Result<(), BanksClientError> {
         self.execute_transaction(
-            DoubleZeroInstruction::SuspendDevice(DeviceSuspendArgs),
+            DoubleZeroInstruction::SuspendDevice(DeviceSuspendArgs {}),
             vec![
                 AccountMeta::new(pubkey, false),
                 AccountMeta::new(contributor_pk, false),
@@ -998,7 +998,7 @@ impl ServiceabilityProgramHelper {
 
     pub async fn suspend_location(&mut self, pubkey: Pubkey) -> Result<(), BanksClientError> {
         self.execute_transaction(
-            DoubleZeroInstruction::SuspendLocation(LocationSuspendArgs),
+            DoubleZeroInstruction::SuspendLocation(LocationSuspendArgs {}),
             vec![
                 AccountMeta::new(pubkey, false),
                 AccountMeta::new(self.global_state_pubkey, false),
@@ -1018,7 +1018,7 @@ impl ServiceabilityProgramHelper {
 
     pub async fn suspend_exchange(&mut self, pubkey: Pubkey) -> Result<(), BanksClientError> {
         self.execute_transaction(
-            DoubleZeroInstruction::SuspendExchange(ExchangeSuspendArgs),
+            DoubleZeroInstruction::SuspendExchange(ExchangeSuspendArgs {}),
             vec![
                 AccountMeta::new(pubkey, false),
                 AccountMeta::new(self.global_state_pubkey, false),

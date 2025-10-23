@@ -487,7 +487,7 @@ async fn test_doublezero_program() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs),
+        DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs {}),
         vec![
             AccountMeta::new(device_ny_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
@@ -511,7 +511,7 @@ async fn test_doublezero_program() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs),
+        DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs {}),
         vec![
             AccountMeta::new(device_la_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),

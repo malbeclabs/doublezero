@@ -9,7 +9,8 @@ All notable changes to this project will be documented in this file.
 ### Changes
 
 - Onchain programs
-    - serviceability: add auto-assignment and validation for exchange.bgp_community
+    - Serviceability: add auto-assignment and validation for exchange.bgp_community
+    - Serviceability: A validation in the link was fixed that prevented transitioning to Deleting when the link did not have a valid IP. This caused it to be stuck in Pending and unable to move to Deleting.
 - CLI
     - Removed `--bgp-community` option from `doublezero exchange create` since these values are now assigned automatically
     - Add `--next-bgp-community` option to `doublezero global-config set` so authorized users can control which bgp_community will be assigned next

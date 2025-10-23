@@ -95,11 +95,13 @@ pub async fn try_execute_transaction(
 
     let mut transaction = create_transaction(program_id, instruction, accounts, payer);
     transaction.sign(&[&payer], recent_blockhash);
-    banks_client.process_transaction(transaction).await?;
+    let res = banks_client.process_transaction(transaction).await;
 
-    println!("✅");
+    if res.is_err() {
+        println!("✅");
+    }
 
-    Ok(())
+    res
 }
 
 pub fn create_transaction(

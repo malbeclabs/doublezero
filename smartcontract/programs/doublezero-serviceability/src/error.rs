@@ -115,6 +115,8 @@ pub enum DoubleZeroError {
     UserAccountNotFound, // variant 54
     #[error("Invalid BGP Community")]
     InvalidBgpCommunity, // variant 55
+    #[error("Invalid Actual Location")]
+    InvalidActualLocation, // variant 56
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -176,6 +178,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::AccessPassNotFound => ProgramError::Custom(53),
             DoubleZeroError::UserAccountNotFound => ProgramError::Custom(54),
             DoubleZeroError::InvalidBgpCommunity => ProgramError::Custom(55),
+            DoubleZeroError::InvalidActualLocation => ProgramError::Custom(56),
         }
     }
 }
@@ -238,6 +241,7 @@ impl From<u32> for DoubleZeroError {
             53 => DoubleZeroError::AccessPassNotFound,
             54 => DoubleZeroError::UserAccountNotFound,
             55 => DoubleZeroError::InvalidBgpCommunity,
+            56 => DoubleZeroError::InvalidActualLocation,
             _ => DoubleZeroError::Custom(e),
         }
     }
@@ -316,6 +320,11 @@ mod tests {
             InvalidVlanId,
             InvalidMaxBandwidth,
             InvalidMulticastIp,
+            InvalidAccountOwner,
+            AccessPassNotFound,
+            UserAccountNotFound,
+            InvalidBgpCommunity,
+            InvalidActualLocation,
         ];
         for err in variants {
             let pe: ProgramError = err.clone().into();

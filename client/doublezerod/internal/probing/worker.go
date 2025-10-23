@@ -230,7 +230,7 @@ func (w *probingWorker) handleRouteAdd(route *routing.Route) error {
 		liveness: newLivenessStateDown(),
 	})
 
-	w.log.Info("probing: route added to managed routes", "route", route.String(), "routes", w.store.Len())
+	w.log.Debug("probing: route added to managed routes", "route", route.String(), "routes", w.store.Len())
 	return nil
 }
 
@@ -259,7 +259,7 @@ func (w *probingWorker) handleRouteDelete(route *routing.Route) error {
 		return fmt.Errorf("error deleting route from kernel: %w", err)
 	}
 
-	w.log.Info("probing: route deleted", "route", route.String(), "routes", w.store.Len())
+	w.log.Debug("probing: route deleted", "route", route.String(), "routes", w.store.Len())
 	return nil
 }
 
@@ -278,7 +278,7 @@ func (w *probingWorker) addRouteToKernel(mr *managedRoute) error {
 	}
 
 	// Add the route to the kernel routing table.
-	w.log.Info("probing: adding route to kernel routing table", "route", mr.String())
+	w.log.Debug("probing: adding route to kernel routing table", "route", mr.String())
 	return w.cfg.Netlink.RouteAdd(mr.route)
 }
 
@@ -301,7 +301,7 @@ func (w *probingWorker) deleteRouteFromKernel(mr *managedRoute) error {
 	route.Protocol = 0
 
 	// Delete the route from the kernel routing table.
-	w.log.Info("probing: deleting route from kernel routing table", "route", mr.String())
+	w.log.Debug("probing: deleting route from kernel routing table", "route", mr.String())
 	return w.cfg.Netlink.RouteDelete(&route)
 }
 
@@ -349,13 +349,13 @@ func (w *probingWorker) applyProbeResult(snap *managedRoute, ok bool) {
 		if err := w.addRouteToKernel(&cur); err != nil {
 			w.log.Error("probing: kernel add failed", "route", cur.String(), "error", err)
 		} else {
-			w.log.Info("probing: route marked UP", "route", cur.String(), "successes", cur.liveness.consecOK)
+			w.log.Info("probing: route transitioned to UP", "route", cur.String(), "successes", cur.liveness.consecOK)
 		}
 	case livenessTransitionToDown:
 		if err := w.deleteRouteFromKernel(&cur); err != nil {
 			w.log.Error("probing: kernel delete failed", "route", cur.String(), "error", err)
 		} else {
-			w.log.Info("probing: route marked DOWN", "route", cur.String(), "failures", cur.liveness.consecFail)
+			w.log.Info("probing: route transitioned to DOWN", "route", cur.String(), "failures", cur.liveness.consecFail)
 		}
 	case livenessTransitionNoChange:
 		// nothing

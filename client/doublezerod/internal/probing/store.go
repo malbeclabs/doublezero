@@ -27,7 +27,7 @@ func newRouteKey(route *routing.Route) routeKey {
 
 type managedRoute struct {
 	route    *routing.Route
-	liveness livenessState
+	liveness LivenessTracker
 }
 
 func (r *managedRoute) String() string {
@@ -51,22 +51,26 @@ func (s *routeStore) Clone() map[routeKey]managedRoute {
 	defer s.mu.RUnlock()
 	return maps.Clone(s.m)
 }
+
 func (s *routeStore) Len() int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return len(s.m)
 }
+
 func (s *routeStore) Get(k routeKey) (managedRoute, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	v, ok := s.m[k]
 	return v, ok
 }
+
 func (s *routeStore) Set(k routeKey, v managedRoute) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.m[k] = v
 }
+
 func (s *routeStore) Del(k routeKey) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

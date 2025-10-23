@@ -57,7 +57,7 @@ func TestProbing_RouteStore(t *testing.T) {
 	t.Run("managedRoute_Key_and_String", func(t *testing.T) {
 		t.Parallel()
 		r := newRoute(42, "203.0.113.9", "203.0.113.10")
-		mr := managedRoute{route: r, liveness: newLivenessStateDown()}
+		mr := managedRoute{route: r, liveness: NewHysteresisLivenessPolicy(10, 10).NewTracker()}
 
 		require.Equal(t, r.String(), mr.String())
 		require.Equal(t, newRouteKey(r), mr.Key())

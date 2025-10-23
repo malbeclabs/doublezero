@@ -1,174 +1,134 @@
-package probing
+package probing_test
 
 import (
 	"testing"
 
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/probing"
 	"github.com/stretchr/testify/require"
 )
 
-func TestProbing_Liveness(t *testing.T) {
+func TestProbing_Liveness_HysteresisTracker_Behavior(t *testing.T) {
 	t.Parallel()
 
-	t.Run("UpTransitionFromDown_WithThreshold", func(t *testing.T) {
-		t.Parallel()
-		p := livenessPolicy{UpThreshold: 3, DownThreshold: 2}
-		s := newLivenessStateDown()
+	tests := []struct {
+		name     string
+		up, down uint
+		probes   []bool
+		wantStat probing.LivenessStatus
+		wantTran []probing.LivenessTransition
+	}{
+		{
+			name: "remains down with intermittent success below threshold",
+			up:   3, down: 2,
+			probes:   []bool{true, false, true, false},
+			wantStat: probing.LivenessStatusDown,
+			wantTran: []probing.LivenessTransition{
+				probing.LivenessTransitionNoChange,
+				probing.LivenessTransitionNoChange,
+				probing.LivenessTransitionNoChange,
+				probing.LivenessTransitionNoChange,
+			},
+		},
+		{
+			name: "transitions to up after reaching up threshold",
+			up:   2, down: 2,
+			probes:   []bool{true, true},
+			wantStat: probing.LivenessStatusUp,
+			wantTran: []probing.LivenessTransition{
+				probing.LivenessTransitionNoChange,
+				probing.LivenessTransitionToUp,
+			},
+		},
+		{
+			name: "transitions down after consecutive failures",
+			up:   2, down: 2,
+			probes:   []bool{true, true, false, false},
+			wantStat: probing.LivenessStatusDown,
+			wantTran: []probing.LivenessTransition{
+				probing.LivenessTransitionNoChange,
+				probing.LivenessTransitionToUp,
+				probing.LivenessTransitionNoChange,
+				probing.LivenessTransitionToDown,
+			},
+		},
+		{
+			name: "stays up with more successes than threshold",
+			up:   2, down: 3,
+			probes:   []bool{true, true, true, true},
+			wantStat: probing.LivenessStatusUp,
+			wantTran: []probing.LivenessTransition{
+				probing.LivenessTransitionNoChange,
+				probing.LivenessTransitionToUp,
+				probing.LivenessTransitionNoChange,
+				probing.LivenessTransitionNoChange,
+			},
+		},
+		{
+			name: "requires multiple failures before going down",
+			up:   2, down: 3,
+			probes:   []bool{true, true, false, false, false},
+			wantStat: probing.LivenessStatusDown,
+			wantTran: []probing.LivenessTransition{
+				probing.LivenessTransitionNoChange,
+				probing.LivenessTransitionToUp,
+				probing.LivenessTransitionNoChange,
+				probing.LivenessTransitionNoChange,
+				probing.LivenessTransitionToDown,
+			},
+		},
+	}
 
-		var tr livenessTransition
-		s, tr = p.Next(s, true)
-		require.Equal(t, livenessTransitionNoChange, tr)
-		require.Equal(t, uint(1), s.consecOK)
-		require.Equal(t, uint(0), s.consecFail)
-		require.Equal(t, livenessStatusDown, s.status)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-		s, tr = p.Next(s, true)
-		require.Equal(t, livenessTransitionNoChange, tr)
-		require.Equal(t, uint(2), s.consecOK)
-		require.Equal(t, uint(0), s.consecFail)
-		require.Equal(t, livenessStatusDown, s.status)
+			policy := probing.NewHysteresisLivenessPolicy(tt.up, tt.down)
+			tracker := policy.NewTracker()
 
-		s, tr = p.Next(s, true)
-		require.Equal(t, livenessTransitionToUp, tr)
-		require.Equal(t, uint(3), s.consecOK)
-		require.Equal(t, uint(0), s.consecFail)
-		require.Equal(t, livenessStatusUp, s.status)
-	})
+			var gotTran []probing.LivenessTransition
+			for _, ok := range tt.probes {
+				gotTran = append(gotTran, tracker.OnProbe(ok))
+			}
 
-	t.Run("DownTransitionFromUp_WithThreshold", func(t *testing.T) {
-		t.Parallel()
-		p := livenessPolicy{UpThreshold: 3, DownThreshold: 2}
-		s := livenessState{status: livenessStatusUp}
+			require.Equal(t, tt.wantTran, gotTran, "transition mismatch")
+			require.Equal(t, tt.wantStat, tracker.Status(), "final status mismatch")
+		})
+	}
+}
 
-		var tr livenessTransition
-		s, tr = p.Next(s, false)
-		require.Equal(t, livenessTransitionNoChange, tr)
-		require.Equal(t, uint(0), s.consecOK)
-		require.Equal(t, uint(1), s.consecFail)
-		require.Equal(t, livenessStatusUp, s.status)
+func TestProbing_Liveness_HysteresisTracker_Counters(t *testing.T) {
+	t.Parallel()
 
-		s, tr = p.Next(s, false)
-		require.Equal(t, livenessTransitionToDown, tr)
-		require.Equal(t, uint(0), s.consecOK)
-		require.Equal(t, uint(2), s.consecFail)
-		require.Equal(t, livenessStatusDown, s.status)
-	})
+	policy := probing.NewHysteresisLivenessPolicy(2, 2)
+	tracker := policy.NewTracker()
 
-	t.Run("OppositeCounterResets_OnSuccessAfterFail", func(t *testing.T) {
-		t.Parallel()
-		p := livenessPolicy{UpThreshold: 3, DownThreshold: 2}
-		s := newLivenessStateDown()
+	require.Equal(t, uint(0), tracker.ConsecutiveOK())
+	require.Equal(t, uint(0), tracker.ConsecutiveFail())
+	require.Equal(t, probing.LivenessStatusDown, tracker.Status())
 
-		// one failure increments consecFail
-		s, _ = p.Next(s, false)
-		require.Equal(t, uint(1), s.consecFail)
-		require.Equal(t, uint(0), s.consecOK)
+	tracker.OnProbe(true)
+	require.Equal(t, uint(1), tracker.ConsecutiveOK())
+	require.Equal(t, uint(0), tracker.ConsecutiveFail())
 
-		// success resets consecFail and increments consecOK
-		s, tr := p.Next(s, true)
-		require.Equal(t, livenessTransitionNoChange, tr)
-		require.Equal(t, uint(0), s.consecFail)
-		require.Equal(t, uint(1), s.consecOK)
-		require.Equal(t, livenessStatusDown, s.status)
-	})
+	tracker.OnProbe(true)
+	require.Equal(t, uint(2), tracker.ConsecutiveOK())
+	require.Equal(t, probing.LivenessStatusUp, tracker.Status())
 
-	t.Run("OppositeCounterResets_OnFailAfterSuccess", func(t *testing.T) {
-		t.Parallel()
-		p := livenessPolicy{UpThreshold: 3, DownThreshold: 2}
-		s := newLivenessStateDown()
+	tracker.OnProbe(false)
+	require.Equal(t, uint(1), tracker.ConsecutiveFail())
+	require.Equal(t, uint(0), tracker.ConsecutiveOK())
+}
 
-		// two successes, still down (threshold 3)
-		s, _ = p.Next(s, true)
-		s, _ = p.Next(s, true)
-		require.Equal(t, uint(2), s.consecOK)
-		require.Equal(t, uint(0), s.consecFail)
-		require.Equal(t, livenessStatusDown, s.status)
+func TestProbing_Liveness_HysteresisPolicy_NewTracker(t *testing.T) {
+	t.Parallel()
 
-		// failure resets consecOK and increments consecFail
-		s, tr := p.Next(s, false)
-		require.Equal(t, livenessTransitionNoChange, tr)
-		require.Equal(t, uint(0), s.consecOK)
-		require.Equal(t, uint(1), s.consecFail)
-		require.Equal(t, livenessStatusDown, s.status)
-	})
+	p := probing.NewHysteresisLivenessPolicy(3, 2).(*probing.HysteresisPolicy)
+	require.Equal(t, uint(3), p.UpThreshold)
+	require.Equal(t, uint(2), p.DownThreshold)
 
-	t.Run("ImmediateThresholds_UpAndDown", func(t *testing.T) {
-		t.Parallel()
-		p := livenessPolicy{UpThreshold: 1, DownThreshold: 1}
+	tr := p.NewTracker()
+	require.Equal(t, probing.LivenessStatusDown, tr.Status())
 
-		// from Down -> one success flips to Up
-		s := newLivenessStateDown()
-		var tr livenessTransition
-		s, tr = p.Next(s, true)
-		require.Equal(t, livenessTransitionToUp, tr)
-		require.Equal(t, livenessStatusUp, s.status)
-		require.Equal(t, uint(1), s.consecOK)
-		require.Equal(t, uint(0), s.consecFail)
-
-		// staying Up with further success: no change
-		s, tr = p.Next(s, true)
-		require.Equal(t, livenessTransitionNoChange, tr)
-		require.Equal(t, livenessStatusUp, s.status)
-
-		// one failure flips immediately to Down
-		s, tr = p.Next(s, false)
-		require.Equal(t, livenessTransitionToDown, tr)
-		require.Equal(t, livenessStatusDown, s.status)
-
-		// staying Down with further failure: no change
-		s, tr = p.Next(s, false)
-		require.Equal(t, livenessTransitionNoChange, tr)
-		require.Equal(t, livenessStatusDown, s.status)
-	})
-
-	t.Run("UnknownStart_ReachesUpOrDownByThresholds", func(t *testing.T) {
-		t.Parallel()
-		p := livenessPolicy{UpThreshold: 2, DownThreshold: 2}
-
-		// Unknown -> two successes => Up
-		s := livenessState{status: livenessStatusUnknown}
-		var tr livenessTransition
-		s, tr = p.Next(s, true)
-		require.Equal(t, livenessTransitionNoChange, tr)
-		require.Equal(t, livenessStatusUnknown, s.status)
-		s, tr = p.Next(s, true)
-		require.Equal(t, livenessTransitionToUp, tr)
-		require.Equal(t, livenessStatusUp, s.status)
-
-		// Reset to Unknown -> two failures => Down
-		s = livenessState{status: livenessStatusUnknown}
-		s, tr = p.Next(s, false)
-		require.Equal(t, livenessTransitionNoChange, tr)
-		require.Equal(t, livenessStatusUnknown, s.status)
-		s, tr = p.Next(s, false)
-		require.Equal(t, livenessTransitionToDown, tr)
-		require.Equal(t, livenessStatusDown, s.status)
-	})
-
-	t.Run("MaintainState_NoChangeOnSameDirectionBeyondThreshold", func(t *testing.T) {
-		t.Parallel()
-		p := livenessPolicy{UpThreshold: 2, DownThreshold: 2}
-
-		// climb to Up
-		s := newLivenessStateDown()
-		s, _ = p.Next(s, true)
-		s, tr := p.Next(s, true)
-		require.Equal(t, livenessTransitionToUp, tr)
-		require.Equal(t, livenessStatusUp, s.status)
-
-		// extra successes keep status Up with NoChange
-		s, tr = p.Next(s, true)
-		require.Equal(t, livenessTransitionNoChange, tr)
-		require.Equal(t, livenessStatusUp, s.status)
-
-		// drop to Down
-		s, _ = p.Next(s, false)
-		s, tr = p.Next(s, false)
-		require.Equal(t, livenessTransitionToDown, tr)
-		require.Equal(t, livenessStatusDown, s.status)
-
-		// extra failures keep status Down with NoChange
-		s, tr = p.Next(s, false)
-		require.Equal(t, livenessTransitionNoChange, tr)
-		require.Equal(t, livenessStatusDown, s.status)
-	})
+	tr2 := p.NewTracker()
+	require.NotSame(t, tr, tr2, "NewTracker should produce independent instances")
 }

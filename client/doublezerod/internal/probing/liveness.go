@@ -1,61 +1,95 @@
 package probing
 
-// Internal liveness state machine
-type livenessStatus uint8
+type LivenessStatus uint8
 
 const (
-	livenessStatusUnknown livenessStatus = iota
-	livenessStatusUp
-	livenessStatusDown
+	LivenessStatusUnknown LivenessStatus = iota
+	LivenessStatusUp
+	LivenessStatusDown
 )
 
-// Per-route liveness counters + state (hysteresis)
+type LivenessTransition int
+
+const (
+	LivenessTransitionNoChange LivenessTransition = iota
+	LivenessTransitionToUp
+	LivenessTransitionToDown
+)
+
+type LivenessTracker interface {
+	OnProbe(ok bool) LivenessTransition
+	Status() LivenessStatus
+	ConsecutiveOK() uint
+	ConsecutiveFail() uint
+}
+
+type LivenessPolicy interface {
+	NewTracker() LivenessTracker
+}
+
 type livenessState struct {
 	consecOK, consecFail uint
-	status               livenessStatus
+	status               LivenessStatus
+}
+type hysteresisTracker struct {
+	s    livenessState
+	up   uint
+	down uint
 }
 
-func newLivenessStateDown() livenessState {
-	return livenessState{
-		consecOK:   0,
-		consecFail: 0,
-		status:     livenessStatusDown,
-	}
-}
-
-// Pure policy (thresholds -> next state + transition)
-type livenessTransition int
-
-const (
-	livenessTransitionNoChange livenessTransition = iota
-	livenessTransitionToUp
-	livenessTransitionToDown
-)
-
-type livenessPolicy struct{ UpThreshold, DownThreshold uint }
-
-func (p livenessPolicy) Next(s livenessState, ok bool) (livenessState, livenessTransition) {
+func (t *hysteresisTracker) OnProbe(ok bool) LivenessTransition {
 	if ok {
-		s.consecOK++
-		s.consecFail = 0
+		t.s.consecOK++
+		t.s.consecFail = 0
 	} else {
-		s.consecFail++
-		s.consecOK = 0
+		t.s.consecFail++
+		t.s.consecOK = 0
 	}
-	want := s.status
-	if s.consecOK >= p.UpThreshold {
-		want = livenessStatusUp
+	want := t.s.status
+	if t.s.consecOK >= t.up {
+		want = LivenessStatusUp
 	}
-	if s.consecFail >= p.DownThreshold {
-		want = livenessStatusDown
+	if t.s.consecFail >= t.down {
+		want = LivenessStatusDown
 	}
+	if want == t.s.status {
+		return LivenessTransitionNoChange
+	}
+	t.s.status = want
+	if want == LivenessStatusUp {
+		return LivenessTransitionToUp
+	}
+	return LivenessTransitionToDown
+}
 
-	if want == s.status {
-		return s, livenessTransitionNoChange
+func (t *hysteresisTracker) Status() LivenessStatus {
+	return t.s.status
+}
+
+func (t *hysteresisTracker) ConsecutiveOK() uint {
+	return t.s.consecOK
+}
+
+func (t *hysteresisTracker) ConsecutiveFail() uint {
+	return t.s.consecFail
+}
+
+func NewHysteresisLivenessPolicy(up, down uint) LivenessPolicy {
+	return &HysteresisPolicy{
+		UpThreshold:   up,
+		DownThreshold: down,
 	}
-	s.status = want
-	if want == livenessStatusUp {
-		return s, livenessTransitionToUp
+}
+
+type HysteresisPolicy struct {
+	UpThreshold   uint
+	DownThreshold uint
+}
+
+func (p *HysteresisPolicy) NewTracker() LivenessTracker {
+	return &hysteresisTracker{
+		s:    livenessState{status: LivenessStatusDown},
+		up:   p.UpThreshold,
+		down: p.DownThreshold,
 	}
-	return s, livenessTransitionToDown
 }

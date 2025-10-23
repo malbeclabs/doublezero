@@ -18,6 +18,7 @@ type probingWorker struct {
 	log   *slog.Logger
 	cfg   Config
 	store *routeStore
+	lp    LivenessPolicy
 
 	// lifecycle
 	cancel   context.CancelFunc
@@ -41,9 +42,12 @@ type probeResult struct {
 	loss  float64
 }
 
-func newWorker(log *slog.Logger, cfg Config, store *routeStore) *probingWorker {
+func newWorker(log *slog.Logger, cfg Config, store *routeStore, lp LivenessPolicy) *probingWorker {
 	return &probingWorker{
-		log: log, cfg: cfg, store: store,
+		log:           log,
+		cfg:           cfg,
+		store:         store,
+		lp:            lp,
 		evRouteAdd:    make(chan *routing.Route, 256),
 		evRouteDelete: make(chan *routing.Route, 256),
 		evTick:        make(chan struct{}, 1),
@@ -134,12 +138,12 @@ func (w *probingWorker) run(ctx context.Context) {
 
 		case <-ticker.C:
 			if inFlight == 0 {
-				inFlight += w.scheduleSweep(ctx)
+				inFlight += w.startProbes(ctx)
 			}
 
 		case <-w.evTick:
 			if inFlight == 0 {
-				inFlight += w.scheduleSweep(ctx)
+				inFlight += w.startProbes(ctx)
 			}
 
 		case r := <-w.evRouteAdd:
@@ -159,8 +163,8 @@ func (w *probingWorker) run(ctx context.Context) {
 	}
 }
 
-// scheduleSweep spawns probes using existing probeRoute; results return on evProbeRes.
-func (w *probingWorker) scheduleSweep(ctx context.Context) (spawned int) {
+// startProbes spawns probes using existing probeRoute; results return on evProbeRes.
+func (w *probingWorker) startProbes(ctx context.Context) (spawned int) {
 	for _, route := range w.store.Clone() {
 		w.sem <- struct{}{} // limit concurrency
 		spawned++
@@ -224,9 +228,8 @@ func (w *probingWorker) handleRouteAdd(route *routing.Route) error {
 
 	key := newRouteKey(route)
 	w.store.Set(key, managedRoute{
-		route: route,
-		// Start conservatively as DOWN; we'll promote to UP after UpThreshold successes.
-		liveness: newLivenessStateDown(),
+		route:    route,
+		liveness: w.lp.NewTracker(),
 	})
 
 	w.log.Debug("probing: route added to managed routes", "route", route.String(), "routes", w.store.Len())
@@ -330,36 +333,32 @@ func (w *probingWorker) routeExistsInKernel(mr *managedRoute) bool {
 func (w *probingWorker) applyProbeResult(snap *managedRoute, ok bool) {
 	key := snap.Key()
 
-	// Re-read current value; it may have changed while probing.
 	cur, exists := w.store.Get(key)
 	if !exists {
 		w.log.Debug("probing: route vanished before update", "route", snap.String())
 		return
 	}
 
-	// Apply pure policy.
-	pol := livenessPolicy{UpThreshold: w.cfg.UpThreshold, DownThreshold: w.cfg.DownThreshold}
-	next, tr := pol.Next(cur.liveness, ok)
-	cur.liveness = next
+	tr := cur.liveness.OnProbe(ok)
 
-	// Act only on transitions.
 	switch tr {
-	case livenessTransitionToUp:
+	case LivenessTransitionToUp:
 		if err := w.addRouteToKernel(&cur); err != nil {
 			w.log.Error("probing: kernel add failed", "route", cur.String(), "error", err)
 		} else {
-			w.log.Info("probing: route transitioned to UP", "route", cur.String(), "successes", cur.liveness.consecOK)
+			w.log.Info("probing: route transitioned to UP", "route", cur.String(),
+				"successes", cur.liveness.ConsecutiveOK())
 		}
-	case livenessTransitionToDown:
+	case LivenessTransitionToDown:
 		if err := w.deleteRouteFromKernel(&cur); err != nil {
 			w.log.Error("probing: kernel delete failed", "route", cur.String(), "error", err)
 		} else {
-			w.log.Info("probing: route transitioned to DOWN", "route", cur.String(), "failures", cur.liveness.consecFail)
+			w.log.Info("probing: route transitioned to DOWN", "route", cur.String(),
+				"failures", cur.liveness.ConsecutiveFail())
 		}
-	case livenessTransitionNoChange:
+	case LivenessTransitionNoChange:
 		// nothing
 	}
 
-	// Persist updated route entry.
 	w.store.Set(key, cur)
 }

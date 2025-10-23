@@ -255,6 +255,7 @@ impl Validate for Link {
         // Tunnel network must be private
         if self.status != LinkStatus::Requested
             && self.status != LinkStatus::Pending
+            && self.status != LinkStatus::Deleting
             && !self.tunnel_net.ip().is_private()
         {
             msg!("Invalid tunnel_net: {}", self.tunnel_net);

@@ -30,7 +30,7 @@ impl<'a, SolRpcClient: SolRpcClientType> ValidatorVerifier<'a, SolRpcClient> {
             Ok(v) => v,
             Err(e @ Error::SignatureVerify) => {
                 return {
-                    info!(error = %e, "signature verification failed");
+                    info!(reason = %e, "signature verification failed");
                     Ok(vec![])
                 };
             }

@@ -159,7 +159,7 @@ func main() {
 
 		return services.NewIBRLService(bgps, nlr, db, func(iface string, src net.IP) (bgp.RouteManager, error) {
 			if *routeProbingEnable {
-				pm, err := probing.NewProbingManager(probing.Config{
+				return probing.NewRouteManager(probing.Config{
 					Logger:         logger,
 					Context:        ctx,
 					Netlink:        nlr,
@@ -171,11 +171,6 @@ func main() {
 					UpThreshold:    *routeProbingUpThreshold,
 					DownThreshold:  *routeProbingDownThreshold,
 				})
-				if err != nil {
-					slog.Error("error creating probing router", "error", err)
-					os.Exit(1)
-				}
-				return pm, nil
 			} else {
 				return manager.NewNetlinkerPassthroughRouteManager(nlr), nil
 			}

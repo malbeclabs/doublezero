@@ -7,7 +7,7 @@ import (
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 )
 
-type ProbingManager struct {
+type RouteManager struct {
 	log *slog.Logger
 	cfg Config
 
@@ -15,13 +15,13 @@ type ProbingManager struct {
 	worker *probingWorker
 }
 
-func NewProbingManager(cfg Config) (*ProbingManager, error) {
+func NewRouteManager(cfg Config) (*RouteManager, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("error creating probing manager: %w", err)
 	}
 	store := newRouteStore()
 	worker := newWorker(cfg.Logger, cfg, store)
-	return &ProbingManager{
+	return &RouteManager{
 		log: cfg.Logger,
 		cfg: cfg,
 
@@ -30,21 +30,21 @@ func NewProbingManager(cfg Config) (*ProbingManager, error) {
 	}, nil
 }
 
-func (m *ProbingManager) PeerOnEstablished() error {
+func (m *RouteManager) PeerOnEstablished() error {
 	if !m.worker.IsRunning() {
 		m.worker.Start(m.cfg.Context)
 	}
 	return nil
 }
 
-func (m *ProbingManager) PeerOnClose() error {
+func (m *RouteManager) PeerOnClose() error {
 	if m.worker.IsRunning() {
 		m.worker.Stop()
 	}
 	return nil
 }
 
-func (m *ProbingManager) RouteAdd(route *routing.Route) error {
+func (m *RouteManager) RouteAdd(route *routing.Route) error {
 	if !m.cfg.TunnelSrc.Equal(route.Src) {
 		m.log.Warn("probing: route src does not match tunnel src", "route", route.String(), "tunnel src", m.cfg.TunnelSrc.String())
 		return nil
@@ -56,7 +56,7 @@ func (m *ProbingManager) RouteAdd(route *routing.Route) error {
 	return m.cfg.Netlink.RouteAdd(route)
 }
 
-func (m *ProbingManager) RouteDelete(route *routing.Route) error {
+func (m *RouteManager) RouteDelete(route *routing.Route) error {
 	if !m.cfg.TunnelSrc.Equal(route.Src) {
 		m.log.Warn("probing: route src does not match tunnel src", "route", route.String(), "tunnel src", m.cfg.TunnelSrc.String())
 		return nil
@@ -68,6 +68,6 @@ func (m *ProbingManager) RouteDelete(route *routing.Route) error {
 	return m.cfg.Netlink.RouteDelete(route)
 }
 
-func (m *ProbingManager) RouteByProtocol(protocol int) ([]*routing.Route, error) {
+func (m *RouteManager) RouteByProtocol(protocol int) ([]*routing.Route, error) {
 	return m.cfg.Netlink.RouteByProtocol(protocol)
 }

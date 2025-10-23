@@ -50,7 +50,7 @@ git commit -m "current production configs" > /dev/null 2>&1 || true
 cd - > /dev/null
 
 if [ "$VERBOSE" -eq 1 ]; then
-  /app/controller start -enable-interfaces-and-peers -env "$ENV" -listen-port 7000 &
+  /app/controller start -env "$ENV" -listen-port 7000 &
 else
   /app/controller start -enable-interfaces-and-peers -env "$ENV" -listen-port 7000 > /dev/null 2>&1 &
 fi

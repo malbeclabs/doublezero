@@ -75,11 +75,16 @@ pub fn process_create_device_interface(
     }
 
     let mut interface_type = InterfaceType::Physical;
-    if value.name.starts_with("Loopback") {
+    if name.starts_with("Loopback") {
         interface_type = InterfaceType::Loopback;
     }
 
     let mut device: Device = Device::try_from(device_account)?;
+
+    if device.find_interface(&name).is_ok() {
+        return Err(DoubleZeroError::InterfaceAlreadyExists.into());
+    }
+
     device
         .interfaces
         .push(Interface::V1(CurrentInterfaceVersion {

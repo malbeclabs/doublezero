@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 
 - Onchain programs
     - serviceability: add auto-assignment and validation for exchange.bgp_community
+    - serviceability: prevent device interface name duplication
     - Update serviceability and telemetry program instruction args to use the `BorshDeserializeIncremental` derive macro incremental, backward-compatible, deserialization of structs.
 - CLI
     - Removed `--bgp-community` option from `doublezero exchange create` since these values are now assigned automatically

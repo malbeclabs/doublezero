@@ -7,7 +7,7 @@ use crate::{
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
-use doublezero_program_common::types::NetworkV4;
+use doublezero_program_common::{types::NetworkV4, validate_iface};
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -93,36 +93,31 @@ pub fn process_update_device_interface(
 
     let mut device: Device = Device::try_from(device_account)?;
 
-    let idx = device
-        .interfaces
-        .iter()
-        .position(|i| i.into_current_version().name == value.name);
+    let (idx, _) = device
+        .find_interface(&value.name)
+        .map_err(|_| DoubleZeroError::InterfaceNotFound)?;
+    let mut iface = device.interfaces[idx].into_current_version();
+    iface.name = validate_iface(&value.name).map_err(|_| DoubleZeroError::InvalidInterfaceName)?;
 
-    match idx {
-        None => return Err(DoubleZeroError::InterfaceNotFound.into()),
-        Some(i) => {
-            let mut iface = device.interfaces[i].into_current_version();
-            if let Some(loopback_type) = value.loopback_type {
-                iface.loopback_type = loopback_type;
-            }
-            if let Some(vlan_id) = value.vlan_id {
-                iface.vlan_id = vlan_id;
-            }
-            if let Some(user_tunnel_endpoint) = value.user_tunnel_endpoint {
-                iface.user_tunnel_endpoint = user_tunnel_endpoint;
-            }
-            if let Some(status) = value.status {
-                iface.status = status;
-            }
-            if let Some(ip_net) = value.ip_net {
-                iface.ip_net = ip_net;
-            }
-            if let Some(node_segment_idx) = value.node_segment_idx {
-                iface.node_segment_idx = node_segment_idx;
-            }
-            device.interfaces[i] = Interface::V1(iface);
-        }
+    if let Some(loopback_type) = value.loopback_type {
+        iface.loopback_type = loopback_type;
     }
+    if let Some(vlan_id) = value.vlan_id {
+        iface.vlan_id = vlan_id;
+    }
+    if let Some(user_tunnel_endpoint) = value.user_tunnel_endpoint {
+        iface.user_tunnel_endpoint = user_tunnel_endpoint;
+    }
+    if let Some(status) = value.status {
+        iface.status = status;
+    }
+    if let Some(ip_net) = value.ip_net {
+        iface.ip_net = ip_net;
+    }
+    if let Some(node_segment_idx) = value.node_segment_idx {
+        iface.node_segment_idx = node_segment_idx;
+    }
+    device.interfaces[idx] = Interface::V1(iface);
 
     account_write(device_account, &device, payer_account, system_program)?;
 

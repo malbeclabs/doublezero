@@ -1,12 +1,15 @@
 use doublezero_serviceability::{
-    entrypoint::*,
     instructions::*,
     pda::*,
-    processors::accesspass::{close::CloseAccessPassArgs, set::SetAccessPassArgs},
+    processors::accesspass::{
+        check_status::CheckStatusAccessPassArgs, close::CloseAccessPassArgs, set::SetAccessPassArgs,
+    },
     state::accesspass::AccessPassType,
 };
 use solana_program_test::*;
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey};
+use solana_sdk::{
+    instruction::AccountMeta, pubkey::Pubkey, signature::Keypair, signer::Signer, system_program,
+};
 use std::net::Ipv4Addr;
 
 mod test_helpers;
@@ -14,14 +17,7 @@ use test_helpers::*;
 
 #[tokio::test]
 async fn test_accesspass() {
-    let program_id = Pubkey::new_unique();
-    let (mut banks_client, payer, recent_blockhash) = ProgramTest::new(
-        "doublezero_serviceability",
-        program_id,
-        processor!(process_instruction),
-    )
-    .start()
-    .await;
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
 
     /***********************************************************************************************************************************/
     println!("🟢  Start test_accesspass");
@@ -205,6 +201,65 @@ async fn test_accesspass() {
     assert_eq!(accesspass.last_access_epoch, 0);
     println!("✅ AccessPass update last_epoch successfully");
 
+    /***********************************************************************************************************************************/
+    println!("🟢 6. Check AccessPass...");
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CheckStatusAccessPass(CheckStatusAccessPassArgs {}),
+        vec![
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let accesspass = get_account_data(&mut banks_client, accesspass_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_accesspass()
+        .unwrap();
+
+    assert_eq!(accesspass.accesspass_type, AccessPassType::Prepaid);
+    assert_eq!(accesspass.client_ip, client_ip);
+    assert_eq!(accesspass.last_access_epoch, 0);
+    println!("✅ AccessPass check Access Pass successfully");
+    /***********************************************************************************************************************************/
+    println!("🟢 6. Check AccessPass (no payer)...");
+
+    let another_payer = Keypair::new();
+
+    transfer(
+        &mut banks_client,
+        &payer,
+        &another_payer.pubkey(),
+        1_000_000_000,
+    )
+    .await;
+
+    let res = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CheckStatusAccessPass(CheckStatusAccessPassArgs {}),
+        vec![
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(payer.pubkey(), false),
+            AccountMeta::new(system_program::id(), false),
+        ],
+        &another_payer,
+    )
+    .await;
+
+    println!("res: {:?}", res);
+
+    assert!(res.is_err());
+
+    println!("✅ AccessPass check Access Pass fail successfully");
     /***********************************************************************************************************************************/
 
     println!("🟢  End test_accesspass");

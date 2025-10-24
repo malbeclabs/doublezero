@@ -38,6 +38,9 @@ pub fn process_activate_multicastgroup(
     #[cfg(test)]
     msg!("process_activate_multicastgroup({:?})", value);
 
+    // Check if the payer is a signer
+    assert!(payer_account.is_signer, "Payer must be a signer");
+
     // Check the owner of the accounts
     assert_eq!(
         multicastgroup_account.owner, program_id,

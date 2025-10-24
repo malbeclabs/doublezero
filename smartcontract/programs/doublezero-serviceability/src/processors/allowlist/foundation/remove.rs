@@ -43,6 +43,9 @@ pub fn process_remove_foundation_allowlist_globalconfig(
         value
     );
 
+    // Check if the payer is a signer
+    assert!(payer_account.is_signer, "Payer must be a signer");
+
     // Check the owner of the accounts
     assert_eq!(pda_account.owner, program_id, "Invalid PDA Account Owner");
     assert_eq!(

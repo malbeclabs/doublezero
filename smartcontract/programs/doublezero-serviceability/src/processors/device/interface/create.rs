@@ -50,6 +50,9 @@ pub fn process_create_device_interface(
     #[cfg(test)]
     msg!("process_create_device_interface({:?})", value);
 
+    // Check if the payer is a signer
+    assert!(payer_account.is_signer, "Payer must be a signer");
+
     let name = validate_iface(&value.name).map_err(|_| DoubleZeroError::InvalidInterfaceName)?;
 
     assert_eq!(

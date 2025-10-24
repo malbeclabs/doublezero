@@ -38,6 +38,9 @@ pub fn process_check_status_access_pass(
     #[cfg(test)]
     msg!("process_check_status_access_pass({:?})", _value);
 
+    // Check if the payer is a signer
+    assert!(payer_account.is_signer, "Payer must be a signer");
+
     if accesspass_account.data_is_empty() {
         return Err(DoubleZeroError::AccessPassNotFound.into());
     }

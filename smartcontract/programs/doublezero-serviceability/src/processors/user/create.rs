@@ -60,6 +60,9 @@ pub fn process_create_user(
     #[cfg(test)]
     msg!("process_create_user({:?})", value);
 
+    // Check if the payer is a signer
+    assert!(payer_account.is_signer, "Payer must be a signer");
+
     if !user_account.data.borrow().is_empty() {
         return Err(ProgramError::AccountAlreadyInitialized);
     }

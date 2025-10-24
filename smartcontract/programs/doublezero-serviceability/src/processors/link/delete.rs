@@ -40,8 +40,16 @@ pub fn process_delete_link(
     #[cfg(test)]
     msg!("process_delete_link({:?})", _value);
 
+    // Check if the payer is a signer
+    assert!(payer_account.is_signer, "Payer must be a signer");
+
     // Check the owner of the accounts
     assert_eq!(link_account.owner, program_id, "Invalid PDA Account Owner");
+    assert_eq!(
+        contributor_account.owner, program_id,
+        "Invalid Contributor Account Owner"
+    );
+
     assert_eq!(
         globalstate_account.owner, program_id,
         "Invalid GlobalState Account Owner"

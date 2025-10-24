@@ -56,9 +56,16 @@ pub fn process_setdevice_exchange(
     #[cfg(test)]
     msg!("process_setdevice_exchange({:?})", value);
 
+    // Check if the payer is a signer
+    assert!(payer_account.is_signer, "Payer must be a signer");
+
     // Check the owner of the accounts
     assert_eq!(
         exchange_account.owner, program_id,
+        "Invalid PDA Account Owner"
+    );
+    assert_eq!(
+        device_account.owner, program_id,
         "Invalid PDA Account Owner"
     );
     assert_eq!(

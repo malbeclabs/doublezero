@@ -57,6 +57,15 @@ pub fn process_set_globalconfig(
     #[cfg(test)]
     msg!("process_set_global_config({:?})", value);
 
+    // Check if the payer is a signer
+    assert!(payer_account.is_signer, "Payer must be a signer");
+
+    // Check the owner of the accounts
+    assert_eq!(
+        globalstate_account.owner, program_id,
+        "Invalid GlobalState Account Owner"
+    );
+
     let globalstate = globalstate_get(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());

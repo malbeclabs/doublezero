@@ -45,6 +45,9 @@ pub fn process_closeaccount_link(
     #[cfg(test)]
     msg!("process_closeaccount_link({:?})", _value);
 
+    // Check if the payer is a signer
+    assert!(payer_account.is_signer, "Payer must be a signer");
+
     // Check the owner of the accounts
     assert_eq!(link_account.owner, program_id, "Invalid PDA Account Owner");
     assert_eq!(

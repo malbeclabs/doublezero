@@ -53,6 +53,9 @@ pub fn process_create_multicastgroup(
     #[cfg(test)]
     msg!("process_create_multicastgroup({:?})", value);
 
+    // Check if the payer is a signer
+    assert!(payer_account.is_signer, "Payer must be a signer");
+
     // Validate and normalize code
     let code =
         validate_account_code(&value.code).map_err(|_| DoubleZeroError::InvalidAccountCode)?;

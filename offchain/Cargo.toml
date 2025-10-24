@@ -129,6 +129,9 @@ tag = "v0.3.0"
 
 ### Local dependencies
 
+[workspace.dependencies.doublezero-contributor-rewards]
+path = "crates/contributor-rewards"
+
 [workspace.dependencies.doublezero-scheduled-command]
 path = "crates/scheduled-command"
 

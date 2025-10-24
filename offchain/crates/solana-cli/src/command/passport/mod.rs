@@ -1,7 +1,10 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{Args, Subcommand};
 use doublezero_passport::state::{AccessRequest, ProgramConfig};
-use doublezero_solana_client_tools::{rpc::SolanaConnection, zero_copy::ZeroCopyAccountOwned};
+use doublezero_solana_client_tools::{
+    rpc::SolanaConnection,
+    zero_copy::{ZeroCopyAccountOwned, ZeroCopyAccountOwnedData},
+};
 use solana_sdk::pubkey::Pubkey;
 
 pub mod fetch;
@@ -43,26 +46,28 @@ impl PassportSubcommand {
 async fn fetch_program_config(connection: &SolanaConnection) -> Result<(Pubkey, ProgramConfig)> {
     let (program_config_key, _) = ProgramConfig::find_address();
 
-    let program_config =
-        ZeroCopyAccountOwned::from_rpc_client(&connection.rpc_client, &program_config_key).await?;
+    let account_info =
+        ZeroCopyAccountOwned::try_from_rpc_client(&connection.rpc_client, &program_config_key)
+            .await
+            .context("Passport program not found")?;
 
-    Ok((program_config_key, *program_config.data.unwrap().0))
+    Ok((program_config_key, *account_info.data.unwrap().mucked_data))
 }
 
 async fn fetch_access_request(
     connection: &SolanaConnection,
     service_key: &Pubkey,
-) -> Result<(Pubkey, Option<AccessRequest>)> {
+) -> Result<(Pubkey, AccessRequest)> {
     let (access_request_key, _) = AccessRequest::find_address(service_key);
 
-    let access_request =
-        ZeroCopyAccountOwned::from_rpc_client(&connection.rpc_client, &access_request_key)
-            .await
-            .ok()
-            .and_then(|access_request| access_request.data);
+    let failed_fetch_error = || format!("Access request not found for service key {service_key}");
 
-    Ok((
-        access_request_key,
-        access_request.map(|access_request| *access_request.0),
-    ))
+    let account_info =
+        ZeroCopyAccountOwned::try_from_rpc_client(&connection.rpc_client, &access_request_key)
+            .await
+            .with_context(failed_fetch_error)?;
+    let access_request =
+        ZeroCopyAccountOwnedData::try_from(account_info).with_context(failed_fetch_error)?;
+
+    Ok((access_request_key, *access_request.mucked_data))
 }

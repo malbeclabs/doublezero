@@ -1,5 +1,5 @@
 use crate::calculator::constants::MAX_UNIT_SHARE;
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use borsh::{BorshDeserialize, BorshSerialize};
 use doublezero_revenue_distribution::types::{RewardShare, UnitShare32};
 use network_shapley::shapley::ShapleyOutput;
@@ -10,13 +10,6 @@ use svm_hash::{
     sha2::Hash,
 };
 
-#[derive(Debug, Clone, BorshDeserialize, BorshSerialize)]
-pub struct ContributorRewardsMerkleRoot {
-    pub epoch: u64,
-    pub root: Hash,
-    pub total_contributors: u32,
-}
-
 /// Storage structure for consolidated shapley output
 /// This is what gets stored on-chain instead of individual proofs
 #[derive(Debug, Clone, BorshDeserialize, BorshSerialize)]
@@ -26,13 +19,7 @@ pub struct ShapleyOutputStorage {
     pub total_unit_shares: u32, // Should equal 1_000_000_000 for validation
 }
 
-#[derive(Debug)]
-pub struct ContributorRewardsMerkleTree {
-    epoch: u64,
-    rewards: Vec<RewardShare>,
-}
-
-impl ContributorRewardsMerkleTree {
+impl ShapleyOutputStorage {
     pub fn new(epoch: u64, shapley_output: &ShapleyOutput) -> Result<Self> {
         if shapley_output.is_empty() {
             bail!("Empty Shapley output");
@@ -44,7 +31,7 @@ impl ContributorRewardsMerkleTree {
         for (operator_pubkey_str, val) in shapley_output.iter() {
             // Parse the operator string as a Pubkey
             let contributor_key = Pubkey::from_str(operator_pubkey_str)
-                .map_err(|e| anyhow!("Invalid pubkey string '{operator_pubkey_str}': {e}"))?;
+                .with_context(|| format!("Invalid pubkey string '{operator_pubkey_str}'"))?;
 
             // Clamp to valid range for conversion; negative shares are dropped here, but retained for
             // logging/analysis prior to this step.
@@ -52,12 +39,12 @@ impl ContributorRewardsMerkleTree {
 
             // Convert to fixed-point shares, biasing downward so the accumulated total never exceeds
             // MAX_UNIT_SHARE. Any remainder is reconciled later when we top up the first reward.
-            let scaled = (proportion * MAX_UNIT_SHARE).floor();
+            let scaled = f64::floor(proportion * MAX_UNIT_SHARE);
             let unit_share = UnitShare32::new(scaled.min(MAX_UNIT_SHARE) as u32)
-                .ok_or_else(|| anyhow!("Invalid unit share"))?;
+                .context("Invalid unit share")?;
             total_unit_shares = total_unit_shares
                 .checked_add(unit_share)
-                .ok_or_else(|| anyhow!("Total unit shares overflow"))?;
+                .context("Total unit shares overflow")?;
 
             // Unwrapping is safe because we know the proportion is valid.
             rewards.push(
@@ -77,17 +64,21 @@ impl ContributorRewardsMerkleTree {
         // 1_000_000_000 (100%), which is required by the on-chain contract.
         rewards[0].unit_share += u32::from(UnitShare32::MAX.saturating_sub(total_unit_shares));
 
-        Ok(Self { epoch, rewards })
+        Ok(Self {
+            epoch,
+            rewards,
+            total_unit_shares: total_unit_shares.into(),
+        })
     }
 
     /// Compute the merkle root for all contributor rewards using POD serialization
-    pub fn compute_root(&self) -> Result<Hash> {
+    pub fn compute_merkle_root(&self) -> Result<Hash> {
         merkle_root_from_indexed_pod_leaves(&self.rewards, Some(RewardShare::LEAF_PREFIX))
-            .ok_or_else(|| anyhow!("Failed to compute merkle root for epoch {}", self.epoch))
+            .with_context(|| format!("Failed to compute merkle root for epoch {}", self.epoch))
     }
 
     /// Generate a proof for a specific contributor by index
-    pub fn generate_proof(&self, contributor_index: usize) -> Result<MerkleProof> {
+    pub fn generate_merkle_proof(&self, contributor_index: usize) -> Result<MerkleProof> {
         if contributor_index >= self.rewards.len() {
             bail!(
                 "Invalid contributor index {} for epoch {}. Total contributors: {}",
@@ -102,11 +93,10 @@ impl ContributorRewardsMerkleTree {
             contributor_index as u32,
             Some(RewardShare::LEAF_PREFIX),
         )
-        .ok_or_else(|| {
-            anyhow!(
+        .with_context(|| {
+            format!(
                 "Failed to generate proof for contributor {} at epoch {}",
-                contributor_index,
-                self.epoch
+                contributor_index, self.epoch
             )
         })
     }
@@ -126,7 +116,7 @@ impl ContributorRewardsMerkleTree {
     }
 
     /// Total number of contributors
-    pub fn len(&self) -> usize {
+    pub fn total_contributors(&self) -> usize {
         self.rewards.len()
     }
 
@@ -227,10 +217,10 @@ mod tests {
     #[test]
     fn test_merkle_tree_creation() {
         let output = create_test_shapley_output();
-        let tree = ContributorRewardsMerkleTree::new(123, &output).unwrap();
+        let tree = ShapleyOutputStorage::new(123, &output).unwrap();
 
         assert_eq!(tree.epoch(), 123);
-        assert_eq!(tree.len(), 3);
+        assert_eq!(tree.total_contributors(), 3);
         assert!(!tree.is_empty());
 
         // Check rewards are properly stored
@@ -256,23 +246,23 @@ mod tests {
     #[test]
     fn test_single_contributor_tree() {
         let output = create_single_contributor_output();
-        let tree = ContributorRewardsMerkleTree::new(456, &output).unwrap();
+        let tree = ShapleyOutputStorage::new(456, &output).unwrap();
 
-        assert_eq!(tree.len(), 1);
+        assert_eq!(tree.total_contributors(), 1);
         assert!(!tree.is_empty());
 
-        let root = tree.compute_root().unwrap();
+        let root = tree.compute_merkle_root().unwrap();
         assert_ne!(root, Hash::default());
 
         // Verify proof generation succeeds for the single contributor
-        tree.generate_proof(0).unwrap();
+        tree.generate_merkle_proof(0).unwrap();
     }
 
     #[test]
     fn test_empty_tree() {
         let output = create_empty_output();
         // Empty tree will fail validation because proportions sum to 0, not 1_000_000_000
-        let result = ContributorRewardsMerkleTree::new(789, &output);
+        let result = ShapleyOutputStorage::new(789, &output);
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().to_string(), "Empty Shapley output")
     }
@@ -280,10 +270,10 @@ mod tests {
     #[test]
     fn test_merkle_root_computation() {
         let output = create_test_shapley_output();
-        let tree = ContributorRewardsMerkleTree::new(100, &output).unwrap();
+        let tree = ShapleyOutputStorage::new(100, &output).unwrap();
 
-        let root1 = tree.compute_root().unwrap();
-        let root2 = tree.compute_root().unwrap();
+        let root1 = tree.compute_merkle_root().unwrap();
+        let root2 = tree.compute_merkle_root().unwrap();
 
         // Root should be deterministic
         assert_eq!(root1, root2);
@@ -295,27 +285,27 @@ mod tests {
     #[test]
     fn test_proof_generation_and_verification() {
         let output = create_test_shapley_output();
-        let tree = ContributorRewardsMerkleTree::new(200, &output).unwrap();
-        let root = tree.compute_root().unwrap();
+        let tree = ShapleyOutputStorage::new(200, &output).unwrap();
+        let root = tree.compute_merkle_root().unwrap();
 
         // Test proof generation for each contributor
-        for i in 0..tree.len() {
+        for i in 0..tree.total_contributors() {
             // Verify proof generation succeeds for each contributor
-            tree.generate_proof(i).unwrap();
+            tree.generate_merkle_proof(i).unwrap();
         }
 
         // Verify root remains consistent
-        let verified_root = tree.compute_root().unwrap();
+        let verified_root = tree.compute_merkle_root().unwrap();
         assert_eq!(verified_root, root, "Root verification failed");
     }
 
     #[test]
     fn test_invalid_proof_index() {
         let output = create_test_shapley_output();
-        let tree = ContributorRewardsMerkleTree::new(300, &output).unwrap();
+        let tree = ShapleyOutputStorage::new(300, &output).unwrap();
 
         // Try to generate proof for invalid index
-        let result = tree.generate_proof(100);
+        let result = tree.generate_merkle_proof(100);
         assert!(result.is_err());
         assert!(
             result
@@ -328,24 +318,24 @@ mod tests {
     #[test]
     fn test_proof_serialization_deserialization() {
         let output = create_test_shapley_output();
-        let tree = ContributorRewardsMerkleTree::new(400, &output).unwrap();
-        let root = tree.compute_root().unwrap();
+        let tree = ShapleyOutputStorage::new(400, &output).unwrap();
+        let root = tree.compute_merkle_root().unwrap();
 
         // Generate and serialize proof
-        let proof = tree.generate_proof(0).unwrap();
+        let proof = tree.generate_merkle_proof(0).unwrap();
         let proof_bytes = borsh::to_vec(&proof).unwrap();
 
         // Verify proof can be deserialized
         let _: MerkleProof = borsh::from_slice(&proof_bytes).unwrap();
 
         // Verify tree root remains consistent
-        assert_eq!(tree.compute_root().unwrap(), root);
+        assert_eq!(tree.compute_merkle_root().unwrap(), root);
     }
 
     #[test]
     fn test_generate_proof_from_shapley() {
         let output = create_test_shapley_output();
-        let tree = ContributorRewardsMerkleTree::new(600, &output).unwrap();
+        let tree = ShapleyOutputStorage::new(600, &output).unwrap();
 
         // Create ShapleyOutputStorage
         let shapley_storage = ShapleyOutputStorage {
@@ -383,11 +373,11 @@ mod tests {
     fn test_different_epochs_different_roots() {
         let output = create_test_shapley_output();
 
-        let tree1 = ContributorRewardsMerkleTree::new(700, &output).unwrap();
-        let tree2 = ContributorRewardsMerkleTree::new(701, &output).unwrap();
+        let tree1 = ShapleyOutputStorage::new(700, &output).unwrap();
+        let tree2 = ShapleyOutputStorage::new(701, &output).unwrap();
 
-        let root1 = tree1.compute_root().unwrap();
-        let root2 = tree2.compute_root().unwrap();
+        let root1 = tree1.compute_merkle_root().unwrap();
+        let root2 = tree2.compute_merkle_root().unwrap();
 
         // Different epochs should not affect root (only rewards matter)
         assert_eq!(root1, root2);
@@ -396,14 +386,14 @@ mod tests {
     #[test]
     fn test_modified_reward_invalidates_proof() {
         let output = create_test_shapley_output();
-        let tree = ContributorRewardsMerkleTree::new(800, &output).unwrap();
-        let root = tree.compute_root().unwrap();
+        let tree = ShapleyOutputStorage::new(800, &output).unwrap();
+        let root = tree.compute_merkle_root().unwrap();
 
         // Get first contributor's reward
         let mut reward = *tree.get_reward(0).unwrap();
 
         // Generate proof before modification
-        tree.generate_proof(0).unwrap();
+        tree.generate_merkle_proof(0).unwrap();
 
         // Modify reward unit_share
         reward.unit_share += 1;
@@ -443,18 +433,18 @@ mod tests {
             );
         }
 
-        let tree = ContributorRewardsMerkleTree::new(900, &output).unwrap();
-        assert_eq!(tree.len(), 100);
+        let tree = ShapleyOutputStorage::new(900, &output).unwrap();
+        assert_eq!(tree.total_contributors(), 100);
 
-        let root = tree.compute_root().unwrap();
+        let root = tree.compute_merkle_root().unwrap();
 
         // Verify proof generation succeeds for various indices
         for i in [0, 25, 50, 75, 99] {
-            tree.generate_proof(i).unwrap();
+            tree.generate_merkle_proof(i).unwrap();
         }
 
         // Verify root remains consistent
-        let computed_root = tree.compute_root().unwrap();
+        let computed_root = tree.compute_merkle_root().unwrap();
         assert_eq!(computed_root, root, "Root verification failed");
     }
 
@@ -476,16 +466,16 @@ mod tests {
             },
         );
 
-        let tree = ContributorRewardsMerkleTree::new(1000, &output).unwrap();
-        let root = tree.compute_root().unwrap();
+        let tree = ShapleyOutputStorage::new(1000, &output).unwrap();
+        let root = tree.compute_merkle_root().unwrap();
 
         // Verify proof generation succeeds for both contributors
-        for i in 0..tree.len() {
-            tree.generate_proof(i).unwrap();
+        for i in 0..tree.total_contributors() {
+            tree.generate_merkle_proof(i).unwrap();
         }
 
         // Verify root remains consistent
-        let computed_root = tree.compute_root().unwrap();
+        let computed_root = tree.compute_merkle_root().unwrap();
         assert_eq!(computed_root, root);
     }
 
@@ -507,16 +497,16 @@ mod tests {
             },
         );
 
-        let tree = ContributorRewardsMerkleTree::new(1100, &output).unwrap();
-        let root = tree.compute_root().unwrap();
+        let tree = ShapleyOutputStorage::new(1100, &output).unwrap();
+        let root = tree.compute_merkle_root().unwrap();
 
         // Verify proof generation succeeds even with negative values
-        for i in 0..tree.len() {
-            tree.generate_proof(i).unwrap();
+        for i in 0..tree.total_contributors() {
+            tree.generate_merkle_proof(i).unwrap();
         }
 
         // Verify root remains consistent
-        let computed_root = tree.compute_root().unwrap();
+        let computed_root = tree.compute_merkle_root().unwrap();
         assert_eq!(computed_root, root);
     }
 }

@@ -32,6 +32,7 @@ doublezero-record.workspace = true
 doublezero-program-common.workspace = true
 doublezero-program-tools.workspace = true
 doublezero-revenue-distribution.workspace = true
+doublezero_sdk.workspace = true
 doublezero-serviceability.workspace = true
 doublezero-telemetry.workspace = true
 governor.workspace = true

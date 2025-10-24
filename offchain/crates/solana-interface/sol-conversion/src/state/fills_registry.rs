@@ -2,14 +2,14 @@ use bytemuck::{Pod, Zeroable};
 use doublezero_program_tools::{Discriminator, PrecomputedDiscriminator};
 
 // TODO: Reduce and fix in program.
-pub const MAX_FILLS_QUEUE_SIZE: usize = 20_000;
+pub const MAX_FILLS_QUEUE_SIZE: u32 = 20_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Pod, Zeroable)]
 #[repr(C, align(8))]
 pub struct FillsRegistry {
     pub total_sol_pending: u64,
     pub total_2z_pending: u64,
-    pub fills: [Fill; MAX_FILLS_QUEUE_SIZE],
+    pub fills: [Fill; MAX_FILLS_QUEUE_SIZE as usize],
     pub head: u64,
     pub tail: u64,
     pub count: u64,
@@ -20,7 +20,7 @@ impl Default for FillsRegistry {
         Self {
             total_sol_pending: 0,
             total_2z_pending: 0,
-            fills: [Fill::default(); MAX_FILLS_QUEUE_SIZE],
+            fills: [Fill::default(); MAX_FILLS_QUEUE_SIZE as usize],
             head: 0,
             tail: 0,
             count: 0,

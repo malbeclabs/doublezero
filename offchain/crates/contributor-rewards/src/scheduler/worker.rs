@@ -1,5 +1,5 @@
 use crate::{
-    calculator::{orchestrator::Orchestrator, recorder::compute_record_address},
+    calculator::orchestrator::Orchestrator,
     cli::snapshot::{CompleteSnapshot, SnapshotMetadata},
     ingestor::{epoch::EpochFinder, fetcher::Fetcher},
     scheduler::state::SchedulerState,
@@ -10,6 +10,7 @@ use backon::{ExponentialBuilder, Retryable};
 use chrono::Utc;
 use doublezero_program_tools::zero_copy;
 use doublezero_revenue_distribution::state::ProgramConfig;
+use doublezero_sdk::record::pubkey::create_record_key;
 use solana_client::client_error::ClientError as SolanaClientError;
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
 use std::{
@@ -292,7 +293,7 @@ impl ScheduleWorker {
             .as_bytes();
         let epoch_bytes = epoch.to_le_bytes();
         let seeds: &[&[u8]] = &[prefix, &epoch_bytes, b"shapley_output"];
-        let record_key = compute_record_address(&rewards_accountant, seeds)?;
+        let record_key = create_record_key(&rewards_accountant, seeds);
 
         debug!("Checking for contributor rewards at: {}", record_key);
 
@@ -310,7 +311,7 @@ impl ScheduleWorker {
         let prefix = self.orchestrator.settings.prefixes.reward_input.as_bytes();
         let epoch_bytes = epoch.to_le_bytes();
         let seeds: &[&[u8]] = &[prefix, &epoch_bytes];
-        let record_key = compute_record_address(&rewards_accountant, seeds)?;
+        let record_key = create_record_key(&rewards_accountant, seeds);
 
         debug!("Checking for reward input at: {}", record_key);
 

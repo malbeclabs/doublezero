@@ -30,7 +30,7 @@ impl SolConversionCommand {
         let SolConversionState {
             program_state: (_, program_state),
             configuration_registry: (_, configuration_registry),
-            journal: (_, journal, _),
+            journal: (_, journal),
         } = SolConversionState::try_fetch(&connection).await?;
         let last_slot = program_state.last_trade_slot;
 

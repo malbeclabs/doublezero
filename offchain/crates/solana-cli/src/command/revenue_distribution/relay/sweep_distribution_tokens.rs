@@ -1,16 +1,22 @@
-use anyhow::Result;
+use anyhow::{Result, bail, ensure};
 use clap::Args;
 use doublezero_program_tools::instruction::try_build_instruction;
 use doublezero_revenue_distribution::{
     ID,
     instruction::{RevenueDistributionInstructionData, account::SweepDistributionTokensAccounts},
+    state::{Distribution, ProgramConfig},
+    types::DoubleZeroEpoch,
 };
 use doublezero_scheduled_command::{Schedulable, ScheduleOption};
-use doublezero_solana_client_tools::payer::{SolanaPayerOptions, Wallet};
-use solana_sdk::compute_budget::ComputeBudgetInstruction;
+use doublezero_sol_conversion_interface::state::MAX_FILLS_QUEUE_SIZE;
+use doublezero_solana_client_tools::{
+    log_info, log_warn,
+    payer::{SolanaPayerOptions, Wallet},
+};
+use solana_sdk::{compute_budget::ComputeBudgetInstruction, instruction::Instruction};
 
 use crate::command::revenue_distribution::{
-    SolConversionState, try_fetch_journal, try_fetch_program_config,
+    SolConversionState, try_fetch_distribution, try_fetch_program_config,
 };
 
 #[derive(Debug, Args, Clone)]
@@ -30,54 +36,130 @@ impl Schedulable for SweepDistributionTokens {
 
     async fn execute_once(&self) -> Result<()> {
         let Self {
-            schedule: _,
+            schedule,
             solana_payer_options,
         } = self;
         let wallet = Wallet::try_from(solana_payer_options.clone())?;
 
-        let (_, program_config) = try_fetch_program_config(&wallet.connection).await?;
-        let sol_2z_swap_program_id = program_config.sol_2z_swap_program_id;
+        let (_, config) = try_fetch_program_config(&wallet.connection).await?;
 
-        let (_, journal) = try_fetch_journal(&wallet.connection).await?;
-        let dz_epoch = journal.next_dz_epoch_to_sweep_tokens;
+        let sweep_distribution_tokens_context = match SweepDistributionTokensContext::try_prepare(
+            &wallet, &config, None, // dz_epoch
+        )
+        .await
+        {
+            Ok(context) => context,
+            Err(e) => {
+                if schedule.is_scheduled() {
+                    log_warn!("{e}");
 
-        let SolConversionState {
-            program_state: (_, sol_conversion_program_state),
-            ..
-        } = SolConversionState::try_fetch(&wallet.connection).await?;
+                    return Ok(());
+                } else {
+                    bail!(e);
+                }
+            }
+        };
 
-        let mut instructions = Vec::new();
-        let mut compute_unit_limit = 5_000;
-
-        let sweep_distribution_tokens_ix = try_build_instruction(
-            &ID,
-            SweepDistributionTokensAccounts::new(
-                dz_epoch,
-                &sol_2z_swap_program_id,
-                &sol_conversion_program_state.fills_registry_key,
+        let mut instructions = vec![
+            sweep_distribution_tokens_context.instruction,
+            ComputeBudgetInstruction::set_compute_unit_limit(
+                sweep_distribution_tokens_context.compute_unit_limit,
             ),
-            &RevenueDistributionInstructionData::SweepDistributionTokens,
-        )?;
-        instructions.push(sweep_distribution_tokens_ix);
-        compute_unit_limit += 30_000;
-
-        instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(
-            compute_unit_limit,
-        ));
+        ];
 
         if let Some(ref compute_unit_price_ix) = wallet.compute_unit_price_ix {
             instructions.push(compute_unit_price_ix.clone());
         }
 
         let transaction = wallet.new_transaction(&instructions).await?;
-        let tx_sig = wallet.send_or_simulate_transaction(&transaction).await?;
+
+        // TODO: We should fetch the distribution and journal to check whether
+        // there are enough 2Z tokens to sweep instead of warning on an RPC
+        // error.
+        let tx_sig = match wallet.send_or_simulate_transaction(&transaction).await {
+            Ok(tx_sig) => tx_sig,
+            Err(e) => {
+                if schedule.is_scheduled() {
+                    log_warn!("{e}");
+
+                    return Ok(());
+                } else {
+                    bail!(e);
+                }
+            }
+        };
 
         if let Some(tx_sig) = tx_sig {
-            println!("Sweep distribution tokens: {tx_sig}");
+            log_info!(
+                "Sweep distribution tokens for epoch {}: {tx_sig}",
+                sweep_distribution_tokens_context.dz_epoch
+            );
 
             wallet.print_verbose_output(&[tx_sig]).await?;
         }
 
         Ok(())
+    }
+}
+
+pub struct SweepDistributionTokensContext {
+    pub instruction: Instruction,
+    pub compute_unit_limit: u32,
+    pub dz_epoch: DoubleZeroEpoch,
+}
+
+impl SweepDistributionTokensContext {
+    pub async fn try_prepare(
+        wallet: &Wallet,
+        config: &ProgramConfig,
+        distribution: Option<&Distribution>,
+    ) -> Result<Self> {
+        let SolConversionState {
+            program_state: (_, sol_conversion_program_state),
+            configuration_registry: (_, configuration_registry),
+            journal: (_, journal),
+        } = SolConversionState::try_fetch(&wallet.connection).await?;
+
+        let expected_dz_epoch = journal.next_dz_epoch_to_sweep_tokens;
+        let distribution = match distribution {
+            Some(distribution) => {
+                ensure!(
+                    distribution.dz_epoch == expected_dz_epoch,
+                    "DZ epoch does not match next epoch to sweep tokens"
+                );
+
+                *distribution
+            }
+            None => {
+                let (_, distribution_data) =
+                    try_fetch_distribution(&wallet.connection, expected_dz_epoch).await?;
+                *distribution_data.mucked_data
+            }
+        };
+
+        let expected_fill_count = distribution.checked_total_sol_debt().unwrap()
+            / configuration_registry.fixed_fill_quantity
+            + 1;
+        ensure!(
+            expected_fill_count <= MAX_FILLS_QUEUE_SIZE as u64,
+            "Expected fill count is too large"
+        );
+
+        let sweep_distribution_tokens_ix = try_build_instruction(
+            &ID,
+            SweepDistributionTokensAccounts::new(
+                expected_dz_epoch,
+                &config.sol_2z_swap_program_id,
+                &sol_conversion_program_state.fills_registry_key,
+            ),
+            &RevenueDistributionInstructionData::SweepDistributionTokens,
+        )?;
+        let compute_unit_limit = 35_000 + 80 * expected_fill_count as u32;
+
+        Ok(Self {
+            instruction: sweep_distribution_tokens_ix,
+            compute_unit_limit,
+            dz_epoch: expected_dz_epoch,
+        })
     }
 }

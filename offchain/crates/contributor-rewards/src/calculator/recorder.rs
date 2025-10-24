@@ -22,22 +22,6 @@ use solana_system_interface::instruction as system_instruction;
 use std::{num::NonZeroU32, time::Duration};
 use tracing::info;
 
-pub fn make_record_key(payer_signer: &Keypair, seeds: &[&[u8]]) -> Result<Pubkey> {
-    let payer_key = payer_signer.pubkey();
-    compute_record_address(&payer_key, seeds)
-}
-
-/// Compute a record address without needing a keypair, using only the public key.
-/// This is useful for reading records when you know the payer's public key.
-pub fn compute_record_address(base_pubkey: &Pubkey, seeds: &[&[u8]]) -> Result<Pubkey> {
-    // This is a hack to create a utf8 string seed. Because the system program's
-    // create-with-seed instruction (as well as allocate-with-seed and
-    // assign-with-seed) only support these strings as a seed, we stringify our
-    // own seed, which is a hash of the seeds we care about.
-    let seed_str = create_record_seed_string(seeds);
-    Pubkey::create_with_seed(base_pubkey, &seed_str, &RECORD_PROGRAM_ID).map_err(|e| e.into())
-}
-
 pub async fn try_create_record(
     rpc_client: &RpcClient,
     payer_signer: &Keypair,
@@ -51,7 +35,8 @@ pub async fn try_create_record(
 
     let seed_str = create_record_seed_string(seeds);
 
-    let record_key = make_record_key(payer_signer, seeds)?;
+    let record_key =
+        doublezero_sdk::record::pubkey::create_record_key(&payer_signer.pubkey(), seeds);
 
     let maybe_account = (|| async {
         rpc_client

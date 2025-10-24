@@ -251,7 +251,7 @@ async fn latest_distribution_epoch(
     super::ensure_same_network_environment(&dz_ledger_rpc_client, solana_connection.is_mainnet)
         .await?;
 
-    let program_config_info = ZeroCopyAccountOwned::<ProgramConfig>::from_rpc_client(
+    let program_config_info = ZeroCopyAccountOwned::<ProgramConfig>::try_from_rpc_client(
         &solana_connection,
         &ProgramConfig::find_address().0,
     )
@@ -261,7 +261,7 @@ async fn latest_distribution_epoch(
     Ok(program_config_info
         .data
         .unwrap()
-        .0
+        .mucked_data
         .next_completed_dz_epoch
         .value()
         .saturating_sub(1))

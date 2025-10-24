@@ -26,7 +26,7 @@ pub enum SolConversionAdminSubcommand {
     /// Initialize and set admin to upgrade authority.
     Initialize {
         #[arg(long, value_name = "LAMPORTS")]
-        fixed_fill_quantity: u64,
+        fixed_fill_quantity_lamports: u64,
 
         #[arg(long, value_name = "SECONDS")]
         price_maximum_age_seconds: u32,
@@ -56,14 +56,14 @@ impl SolConversionAdminSubcommand {
     pub async fn try_into_execute(self) -> Result<()> {
         match self {
             Self::Initialize {
-                fixed_fill_quantity,
+                fixed_fill_quantity_lamports,
                 price_maximum_age_seconds,
                 coefficient,
                 max_discount_rate_pct,
                 solana_payer_options,
             } => {
                 execute_initialize(
-                    fixed_fill_quantity,
+                    fixed_fill_quantity_lamports,
                     price_maximum_age_seconds,
                     coefficient,
                     max_discount_rate_pct,
@@ -200,7 +200,7 @@ pub struct ConfigureCommand {
     oracle: Option<Pubkey>,
 
     #[arg(long, value_name = "LAMPORTS")]
-    fixed_fill_quantity: Option<u64>,
+    fixed_fill_quantity_lamports: Option<u64>,
 
     #[arg(long, value_name = "SECONDS")]
     price_maximum_age_seconds: Option<u32>,
@@ -224,7 +224,7 @@ impl ConfigureCommand {
             pause,
             unpause,
             oracle: oracle_key,
-            fixed_fill_quantity: fixed_fill_quantity_lamports,
+            fixed_fill_quantity_lamports,
             price_maximum_age_seconds,
             coefficient: coefficient_str,
             max_discount_rate_pct: max_discount_rate_pct_str,

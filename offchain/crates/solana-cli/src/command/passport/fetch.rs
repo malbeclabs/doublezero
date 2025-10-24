@@ -74,40 +74,33 @@ impl FetchCommand {
 
             println!("Access request: {access_request_key}");
             println!();
-            match access_request {
-                Some(access_request) => {
-                    println!("Field                | Value");
-                    println!(
-                        "---------------------+-------------------------------------------------"
-                    );
-                    println!("Service key          | {}", access_request.service_key);
-                    println!(
-                        "Rent beneficiary key | {}",
-                        access_request.rent_beneficiary_key
-                    );
-                    println!(
-                        "Request fee          | {:.9} SOL",
-                        access_request.request_fee_lamports as f64 * 1e-9
-                    );
-                    match access_request.checked_access_mode() {
-                        Some(access_mode) => {
-                            let access_mode_str = match access_mode {
-                                AccessMode::SolanaValidator(_) => "Solana validator",
-                                AccessMode::SolanaValidatorWithBackupIds { .. } => {
-                                    "Solana validator with backup IDs"
-                                }
-                            };
-                            println!("Access mode          | {access_mode_str}");
+
+            println!("Field                | Value");
+            println!("---------------------+-------------------------------------------------");
+            println!("Service key          | {}", access_request.service_key);
+            println!(
+                "Rent beneficiary key | {}",
+                access_request.rent_beneficiary_key
+            );
+            println!(
+                "Request fee          | {:.9} SOL",
+                access_request.request_fee_lamports as f64 * 1e-9
+            );
+            match access_request.checked_access_mode() {
+                Some(access_mode) => {
+                    let access_mode_str = match access_mode {
+                        AccessMode::SolanaValidator(_) => "Solana validator",
+                        AccessMode::SolanaValidatorWithBackupIds { .. } => {
+                            "Solana validator with backup IDs"
                         }
-                        None => {
-                            println!("Access mode          | Unknown");
-                        }
-                    }
+                    };
+                    println!("Access mode          | {access_mode_str}");
                 }
                 None => {
-                    println!("... no access request found");
+                    println!("Access mode          | Unknown");
                 }
             }
+
             println!();
         }
 

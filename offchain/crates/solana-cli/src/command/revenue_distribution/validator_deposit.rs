@@ -131,7 +131,7 @@ impl ValidatorDepositCommand {
             );
 
             instructions.push(instruction);
-            compute_unit_limit += convert_2z::BUY_SOL_COMPUTE_UNIT_LIMIT;
+            compute_unit_limit += Convert2zContext::BUY_SOL_COMPUTE_UNIT_LIMIT;
 
             Some(Convert2zContextItems {
                 user_token_account_key,

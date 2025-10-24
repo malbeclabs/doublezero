@@ -1,13 +1,9 @@
 use crate::{
     calculator::{
-        data_prep::PreparedData,
-        input::RewardInput,
-        keypair_loader::load_keypair,
-        ledger_operations,
-        proof::{ContributorRewardsMerkleTree, ShapleyOutputStorage},
+        data_prep::PreparedData, input::RewardInput, keypair_loader::load_keypair,
+        ledger_operations, proof::ShapleyOutputStorage,
         revenue_distribution::post_rewards_merkle_root,
-        shapley_aggregator::aggregate_shapley_outputs,
-        util::print_demands,
+        shapley_aggregator::aggregate_shapley_outputs, util::print_demands,
     },
     cli::snapshot::CompleteSnapshot,
     ingestor::fetcher::Fetcher,
@@ -209,16 +205,10 @@ impl Orchestrator {
             metrics::gauge!("doublezero_contributor_rewards_shapley_operator_count")
                 .set(shapley_output.len() as f64);
 
-            // Construct merkle tree
-            let merkle_tree = ContributorRewardsMerkleTree::new(fetch_epoch, &shapley_output)?;
-            let merkle_root = merkle_tree.compute_root()?;
+            // Construct merkle tree from shapley output
+            let shapley_storage = ShapleyOutputStorage::new(fetch_epoch, &shapley_output)?;
+            let merkle_root = shapley_storage.compute_merkle_root()?;
             info!("merkle_root: {:#?}", merkle_root);
-
-            let shapley_storage = ShapleyOutputStorage {
-                epoch: fetch_epoch,
-                rewards: merkle_tree.rewards().to_vec(),
-                total_unit_shares: merkle_tree.rewards().iter().map(|r| r.unit_share).sum(),
-            };
 
             // Record payload sizes to monitor ledger write growth
             let reward_input_bytes = borsh::to_vec(&input_config)?;
@@ -323,7 +313,7 @@ impl Orchestrator {
                     &fetcher.solana_write_client,
                     &payer_signer,
                     fetch_epoch,
-                    merkle_tree.len() as u32,
+                    shapley_storage.total_contributors() as u32,
                     merkle_root,
                 )
                 .await
@@ -375,7 +365,7 @@ impl Orchestrator {
                 info!(
                     "  - Shapley output storage: {} bytes ({} contributors)",
                     shapley_storage_len,
-                    merkle_tree.len()
+                    shapley_storage.total_contributors()
                 );
                 info!("  - Merkle root to post: {:?}", merkle_root);
                 info!("  - Would post merkle root to revenue distribution program");

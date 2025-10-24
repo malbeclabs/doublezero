@@ -1,14 +1,12 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use clap::Args;
-use doublezero_revenue_distribution::{
-    DOUBLEZERO_MINT_DECIMALS, state::Distribution, types::DoubleZeroEpoch,
-};
+use doublezero_revenue_distribution::{DOUBLEZERO_MINT_DECIMALS, types::DoubleZeroEpoch};
 use doublezero_solana_client_tools::{
     rpc::{SolanaConnection, SolanaConnectionOptions},
-    zero_copy::ZeroCopyAccountOwned,
+    zero_copy::ZeroCopyAccountOwnedData,
 };
 
-use crate::command::revenue_distribution::try_fetch_program_config;
+use crate::command::revenue_distribution::{try_fetch_distribution, try_fetch_program_config};
 
 #[derive(Debug, Args)]
 pub struct DistributionCommand {
@@ -36,24 +34,21 @@ impl DistributionCommand {
         let connection = SolanaConnection::try_from(connection_options)?;
 
         let epoch = match dz_epoch {
-            Some(epoch) => epoch,
+            Some(epoch) => DoubleZeroEpoch::new(epoch),
             None => {
-                let (_, program_config) = try_fetch_program_config(&connection).await?;
+                let (_, config) = try_fetch_program_config(&connection).await?;
 
-                program_config
-                    .next_completed_dz_epoch
-                    .value()
-                    .saturating_sub(1)
+                DoubleZeroEpoch::new(config.next_completed_dz_epoch.value().saturating_sub(1))
             }
         };
 
-        let (distribution_key, _) = Distribution::find_address(DoubleZeroEpoch::new(epoch));
-
-        let account =
-            ZeroCopyAccountOwned::<Distribution>::from_rpc_client(&connection, &distribution_key)
-                .await
-                .with_context(|| format!("Distribution account not found for epoch {epoch}"))
-                .map(|config| config.data.unwrap().0)?;
+        let (
+            distribution_key,
+            ZeroCopyAccountOwnedData {
+                mucked_data: distribution,
+                remaining_data: _,
+            },
+        ) = try_fetch_distribution(&connection, epoch).await?;
 
         let mut value_rows = vec![
             DistributionTableRow {
@@ -70,13 +65,13 @@ impl DistributionCommand {
                 field: "Community burn rate",
                 value: format!(
                     "{:.7}%",
-                    u32::from(account.community_burn_rate) as f64 / 10_000_000.0
+                    u32::from(distribution.community_burn_rate) as f64 / 10_000_000.0
                 ),
                 note: "Lower-bound proportion of rewards burned".to_string(),
             },
         ];
 
-        let fee_parameters = account.solana_validator_fee_parameters;
+        let fee_parameters = distribution.solana_validator_fee_parameters;
 
         if fee_parameters.base_block_rewards_pct != Default::default() {
             value_rows.push(DistributionTableRow {
@@ -128,19 +123,19 @@ impl DistributionCommand {
 
         value_rows.push(DistributionTableRow {
             field: "Solana validator debt merkle root",
-            value: account.solana_validator_debt_merkle_root.to_string(),
+            value: distribution.solana_validator_debt_merkle_root.to_string(),
             note: Default::default(),
         });
 
         value_rows.push(DistributionTableRow {
             field: "Total Solana validators",
-            value: account.total_solana_validators.to_string(),
+            value: distribution.total_solana_validators.to_string(),
             note: Default::default(),
         });
 
         value_rows.push(DistributionTableRow {
             field: "Solana validator payments count",
-            value: account.solana_validator_payments_count.to_string(),
+            value: distribution.solana_validator_payments_count.to_string(),
             note: Default::default(),
         });
 
@@ -148,7 +143,7 @@ impl DistributionCommand {
             field: "Total Solana validator debt",
             value: format!(
                 "{:.9} SOL",
-                account.total_solana_validator_debt as f64 * 1e-9
+                distribution.total_solana_validator_debt as f64 * 1e-9
             ),
             note: Default::default(),
         });
@@ -157,26 +152,26 @@ impl DistributionCommand {
             field: "Collected Solana validator payments",
             value: format!(
                 "{:.9} SOL",
-                account.collected_solana_validator_payments as f64 * 1e-9
+                distribution.collected_solana_validator_payments as f64 * 1e-9
             ),
             note: Default::default(),
         });
 
         value_rows.push(DistributionTableRow {
             field: "Rewards merkle root",
-            value: account.rewards_merkle_root.to_string(),
+            value: distribution.rewards_merkle_root.to_string(),
             note: Default::default(),
         });
 
         value_rows.push(DistributionTableRow {
             field: "Total contributors",
-            value: account.total_contributors.to_string(),
+            value: distribution.total_contributors.to_string(),
             note: Default::default(),
         });
 
         value_rows.push(DistributionTableRow {
             field: "Distributed rewards count",
-            value: account.distributed_rewards_count.to_string(),
+            value: distribution.distributed_rewards_count.to_string(),
             note: Default::default(),
         });
 
@@ -184,7 +179,8 @@ impl DistributionCommand {
             field: "Distributed 2Z amount",
             value: format!(
                 "{:.prec$} 2Z",
-                account.distributed_2z_amount as f64 / 10f64.powi(DOUBLEZERO_MINT_DECIMALS as i32),
+                distribution.distributed_2z_amount as f64
+                    / 10f64.powi(DOUBLEZERO_MINT_DECIMALS as i32),
                 prec = DOUBLEZERO_MINT_DECIMALS as usize
             ),
             note: Default::default(),
@@ -193,24 +189,24 @@ impl DistributionCommand {
             field: "Burned 2Z amount",
             value: format!(
                 "{:.prec$} 2Z",
-                account.burned_2z_amount as f64 / 10f64.powi(DOUBLEZERO_MINT_DECIMALS as i32),
+                distribution.burned_2z_amount as f64 / 10f64.powi(DOUBLEZERO_MINT_DECIMALS as i32),
                 prec = DOUBLEZERO_MINT_DECIMALS as usize
             ),
             note: Default::default(),
         });
         value_rows.push(DistributionTableRow {
             field: "Is debt calculation finalized",
-            value: account.is_debt_calculation_finalized().to_string(),
+            value: distribution.is_debt_calculation_finalized().to_string(),
             note: Default::default(),
         });
         value_rows.push(DistributionTableRow {
             field: "Is rewards calculation finalized",
-            value: account.is_rewards_calculation_finalized().to_string(),
+            value: distribution.is_rewards_calculation_finalized().to_string(),
             note: Default::default(),
         });
         value_rows.push(DistributionTableRow {
             field: "Has swept 2Z tokens",
-            value: account.has_swept_2z_tokens().to_string(),
+            value: distribution.has_swept_2z_tokens().to_string(),
             note: Default::default(),
         });
 

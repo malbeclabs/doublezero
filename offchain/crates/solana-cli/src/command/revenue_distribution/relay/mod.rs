@@ -1,3 +1,4 @@
+mod distribute_rewards;
 mod finalize_distribution_rewards;
 mod sweep_distribution_tokens;
 
@@ -63,7 +64,8 @@ pub enum RevenueDistributionRelaySubcommand {
     SweepDistributionTokens(sweep_distribution_tokens::SweepDistributionTokens),
 
     FinalizeDistributionRewards(finalize_distribution_rewards::FinalizeDistributionRewards),
-    // TODO: Add `DistributeRewards`
+
+    DistributeRewards(distribute_rewards::DistributeRewards),
 }
 
 impl RevenueDistributionRelaySubcommand {
@@ -85,6 +87,7 @@ impl RevenueDistributionRelaySubcommand {
             }
             Self::SweepDistributionTokens(command) => command.execute().await,
             Self::FinalizeDistributionRewards(command) => command.execute().await,
+            Self::DistributeRewards(command) => command.execute().await,
         }
     }
 }

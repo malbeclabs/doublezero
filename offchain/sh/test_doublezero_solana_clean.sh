@@ -58,8 +58,8 @@ echo "doublezero-solana passport fetch -h"
 $CLI_BIN passport fetch -h
 echo
 
-echo "doublezero-solana passport fetch -ul --config --access-request $DUMMY_KEY"
-$CLI_BIN passport fetch -ul --config --access-request $DUMMY_KEY
+echo "doublezero-solana passport fetch -ul --config"
+$CLI_BIN passport fetch -ul --config
 echo
 
 echo "doublezero-solana passport request-validator-access -h"

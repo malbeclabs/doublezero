@@ -1,11 +1,10 @@
-use anyhow::{Context, Result, bail, ensure};
+use anyhow::{Context, Result, ensure};
 use clap::Args;
 use doublezero_program_tools::instruction::try_build_instruction;
 use doublezero_revenue_distribution::env::mainnet::DOUBLEZERO_MINT_KEY;
 use doublezero_sol_conversion_interface::{
     ID,
     instruction::{SolConversionInstructionData, account::BuySolAccounts},
-    oracle::RATE_PRECISION,
 };
 use doublezero_solana_client_tools::payer::{SolanaPayerOptions, Wallet};
 use solana_sdk::{
@@ -18,12 +17,10 @@ use crate::command::{
     try_prompt_proceed_confirmation,
 };
 
-pub const BUY_SOL_COMPUTE_UNIT_LIMIT: u32 = 80_000;
-
 #[derive(Debug, Args, Clone)]
 pub struct Convert2zCommand {
     /// Limit price defaults to the current SOL/2Z oracle price.
-    #[arg(long, value_name = "DECIMAL")]
+    #[arg(long, value_name = "2Z_SOL_PRICE")]
     limit_price: Option<String>,
 
     /// Token account must be owned by the signer. Defaults to signer ATA if not
@@ -83,7 +80,9 @@ impl Convert2zCommand {
 
         let mut instructions = vec![
             convert_2z_context.instruction,
-            ComputeBudgetInstruction::set_compute_unit_limit(BUY_SOL_COMPUTE_UNIT_LIMIT),
+            ComputeBudgetInstruction::set_compute_unit_limit(
+                Convert2zContext::BUY_SOL_COMPUTE_UNIT_LIMIT,
+            ),
         ];
 
         if let Some(ref compute_unit_price_ix) = wallet.compute_unit_price_ix {
@@ -115,35 +114,30 @@ impl Convert2zCommand {
 //
 
 fn parse_limit_price_to_u64(bid_price_str: String) -> Result<u64> {
-    const RATE_PRECISION_F64: f64 = RATE_PRECISION as f64;
+    const RATE_PRECISION: f64 = doublezero_sol_conversion_interface::oracle::RATE_PRECISION as f64;
 
     let bid_price_str = bid_price_str.trim();
-
-    if bid_price_str.is_empty() {
-        bail!("Bid price cannot be empty");
-    }
+    ensure!(!bid_price_str.is_empty(), "Bid price cannot be empty");
 
     let bid_price = bid_price_str
         .parse::<f64>()
         .map_err(|_| anyhow::anyhow!("Invalid bid price: '{bid_price_str}'"))?;
-
-    if bid_price <= 0.0 {
-        bail!("Bid price must be a positive value");
-    }
-
-    if bid_price > (u64::MAX as f64 / RATE_PRECISION_F64) {
-        bail!("Bid price too large");
-    }
+    ensure!(bid_price > 0.0, "Bid price must be a positive value");
+    ensure!(
+        bid_price <= (u64::MAX as f64 / RATE_PRECISION),
+        "Bid price too large"
+    );
 
     // Check that value is at most 8 decimal places.
     if let Some(decimal_index) = bid_price_str.find('.') {
         let decimal_places = bid_price_str.len() - decimal_index - 1;
-        if decimal_places > 8 {
-            bail!("Bid price cannot have more than 8 decimal places");
-        }
+        ensure!(
+            decimal_places <= 8,
+            "Bid price cannot have more than 8 decimal places"
+        );
     }
 
-    Ok((bid_price * RATE_PRECISION_F64).round() as u64)
+    Ok((bid_price * RATE_PRECISION).round() as u64)
 }
 
 pub fn unwrap_token_account_or_ata(
@@ -172,7 +166,7 @@ pub async fn fetch_token_balance(
 
     spl_token::state::Account::unpack(&token_account.data)
         .map(|account| account.amount)
-        .context("Failed to unpack token account")
+        .with_context(|| format!("Account {user_token_account_key} not token account"))
 }
 
 pub struct Convert2zContext {
@@ -183,6 +177,8 @@ pub struct Convert2zContext {
 }
 
 impl Convert2zContext {
+    pub const BUY_SOL_COMPUTE_UNIT_LIMIT: u32 = 80_000;
+
     pub async fn try_prepare(
         wallet: &Wallet,
         limit_price_str: Option<String>,
@@ -194,7 +190,7 @@ impl Convert2zContext {
         let SolConversionState {
             program_state: (_, sol_conversion_program_state),
             configuration_registry: (_, configuration_registry),
-            journal: (_, journal, _),
+            journal: (_, journal),
         } = SolConversionState::try_fetch(&wallet.connection).await?;
 
         let required_lamports = configuration_registry.fixed_fill_quantity;

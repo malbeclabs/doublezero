@@ -3,7 +3,7 @@ use crate::{
         input::RewardInput,
         keypair_loader::load_keypair,
         proof::{ShapleyOutputStorage, generate_proof_from_shapley},
-        recorder::{compute_record_address, write_serialized_to_ledger},
+        recorder::write_serialized_to_ledger,
     },
     ingestor::fetcher::Fetcher,
     processor::{
@@ -12,11 +12,12 @@ use crate::{
     },
     settings::Settings,
 };
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use backon::{ExponentialBuilder, Retryable};
 use doublezero_program_tools::zero_copy;
 use doublezero_record::{instruction as record_ix, state::RecordData};
 use doublezero_revenue_distribution::state::ProgramConfig;
+use doublezero_sdk::record::pubkey::create_record_key;
 use solana_client::{
     client_error::ClientError as SolanaClientError, nonblocking::rpc_client::RpcClient,
 };
@@ -232,7 +233,7 @@ pub async fn read_telemetry_aggregates(
         let prefix = get_device_telemetry_prefix(settings)?;
         let epoch_bytes = epoch.to_le_bytes();
         let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
-        let record_key = compute_record_address(&rewards_accountant, seeds)?;
+        let record_key = create_record_key(&rewards_accountant, seeds);
 
         debug!("Re-created record_key: {record_key}");
 
@@ -267,7 +268,7 @@ pub async fn read_telemetry_aggregates(
         let prefix = get_internet_telemetry_prefix(settings)?;
         let epoch_bytes = epoch.to_le_bytes();
         let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
-        let record_key = compute_record_address(&rewards_accountant, seeds)?;
+        let record_key = create_record_key(&rewards_accountant, seeds);
 
         debug!("Re-created record_key: {record_key}");
 
@@ -403,7 +404,7 @@ pub async fn read_reward_input(
     let prefix = get_reward_input_prefix(settings)?;
     let epoch_bytes = epoch.to_le_bytes();
     let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
-    let record_key = compute_record_address(&rewards_accountant, seeds)?;
+    let record_key = create_record_key(&rewards_accountant, seeds);
 
     debug!("Fetching calculation input from: {}", record_key);
 
@@ -495,8 +496,18 @@ pub async fn check_contributor_reward(
     epoch: u64,
     rewards_accountant: Option<Pubkey>,
 ) -> Result<()> {
+    let fetcher = Fetcher::from_settings(settings)?;
+
+    // Auto-fetch rewards_accountant if not provided
+    let rewards_accountant =
+        get_rewards_accountant(&fetcher.solana_write_client, rewards_accountant).await?;
+
+    let prefix = get_contributor_rewards_prefix(settings)?;
+
     // Fetch the shapley output storage
-    let shapley_storage = read_shapley_output(settings, epoch, rewards_accountant).await?;
+    let shapley_storage =
+        try_fetch_shapley_output(&fetcher.dz_rpc_client, &prefix, &rewards_accountant, epoch)
+            .await?;
 
     // Generate proof dynamically
     debug!(
@@ -509,11 +520,9 @@ pub async fn check_contributor_reward(
 
     // POD-based proof verification is handled by comparing roots
     // POD verification - check that the proof is valid by comparing roots
-    use doublezero_revenue_distribution::types::RewardShare;
-    use svm_hash::merkle::merkle_root_from_indexed_pod_leaves;
-    let verification_root = merkle_root_from_indexed_pod_leaves(
+    let verification_root = svm_hash::merkle::merkle_root_from_indexed_pod_leaves(
         &shapley_storage.rewards,
-        Some(RewardShare::LEAF_PREFIX),
+        Some(doublezero_revenue_distribution::types::RewardShare::LEAF_PREFIX),
     )
     .unwrap();
     let verification_result = verification_root == computed_root;
@@ -621,34 +630,34 @@ pub async fn read_shapley_output(
         get_rewards_accountant(&fetcher.solana_write_client, rewards_accountant).await?;
 
     let prefix = get_contributor_rewards_prefix(settings)?;
-    let epoch_bytes = epoch.to_le_bytes();
-    let seeds: &[&[u8]] = &[&prefix, &epoch_bytes, b"shapley_output"];
-    let storage_key = compute_record_address(&rewards_accountant, seeds)?;
+
+    try_fetch_shapley_output(&fetcher.dz_rpc_client, &prefix, &rewards_accountant, epoch).await
+}
+
+pub async fn try_fetch_shapley_output(
+    dz_rpc_client: &RpcClient,
+    prefix: &[u8],
+    accountant_key: &Pubkey,
+    epoch: u64,
+) -> Result<ShapleyOutputStorage> {
+    let storage_key = create_record_key(
+        accountant_key,
+        &[prefix, &epoch.to_le_bytes(), b"shapley_output"],
+    );
 
     debug!("Fetching shapley output from: {}", storage_key);
 
-    let maybe_account = (|| async {
-        fetcher
-            .dz_rpc_client
-            .get_account_with_commitment(&storage_key, CommitmentConfig::confirmed())
-            .await
-    })
-    .retry(&ExponentialBuilder::default().with_jitter())
-    .notify(|err: &SolanaClientError, dur: Duration| {
-        info!("retrying error: {:?} with sleeping {:?}", err, dur)
-    })
-    .await?;
+    let account_info = dz_rpc_client
+        .get_account_with_commitment(&storage_key, CommitmentConfig::confirmed())
+        .await?
+        .value
+        .with_context(|| {
+            format!("Shapley output storage account {storage_key} not found for epoch {epoch}")
+        })?;
 
-    let shapley_storage = match maybe_account.value {
-        None => bail!("Shapley output storage account {storage_key} not found for epoch {epoch}",),
-        Some(acc) => {
-            let data: ShapleyOutputStorage =
-                borsh::from_slice(&acc.data[size_of::<RecordData>()..])?;
-            data
-        }
-    };
-
-    Ok(shapley_storage)
+    borsh::from_slice(&account_info.data[size_of::<RecordData>()..]).with_context(|| {
+        format!("Failed to Borsh deserialize shapley output storage from record {storage_key}")
+    })
 }
 
 /// NOTE: This is mostly just for debugging
@@ -676,22 +685,22 @@ pub async fn realloc_record(
         "device-telemetry" => {
             let prefix = get_device_telemetry_prefix(settings)?;
             let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
-            compute_record_address(&payer_signer.pubkey(), seeds)?
+            create_record_key(&payer_signer.pubkey(), seeds)
         }
         "internet-telemetry" => {
             let prefix = get_internet_telemetry_prefix(settings)?;
             let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
-            compute_record_address(&payer_signer.pubkey(), seeds)?
+            create_record_key(&payer_signer.pubkey(), seeds)
         }
         "reward-input" => {
             let prefix = get_reward_input_prefix(settings)?;
             let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
-            compute_record_address(&payer_signer.pubkey(), seeds)?
+            create_record_key(&payer_signer.pubkey(), seeds)
         }
         "contributor-rewards" => {
             let prefix = get_contributor_rewards_prefix(settings)?;
             let seeds: &[&[u8]] = &[&prefix, &epoch_bytes, b"shapley_output"];
-            compute_record_address(&payer_signer.pubkey(), seeds)?
+            create_record_key(&payer_signer.pubkey(), seeds)
         }
         _ => bail!(
             "Invalid record type. Must be one of: device-telemetry, internet-telemetry, reward-input, contributor-rewards"
@@ -780,22 +789,22 @@ pub async fn close_record(
         "device-telemetry" => {
             let prefix = get_device_telemetry_prefix(settings)?;
             let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
-            compute_record_address(&payer_signer.pubkey(), seeds)?
+            create_record_key(&payer_signer.pubkey(), seeds)
         }
         "internet-telemetry" => {
             let prefix = get_internet_telemetry_prefix(settings)?;
             let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
-            compute_record_address(&payer_signer.pubkey(), seeds)?
+            create_record_key(&payer_signer.pubkey(), seeds)
         }
         "reward-input" => {
             let prefix = get_reward_input_prefix(settings)?;
             let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
-            compute_record_address(&payer_signer.pubkey(), seeds)?
+            create_record_key(&payer_signer.pubkey(), seeds)
         }
         "contributor-rewards" => {
             let prefix = get_contributor_rewards_prefix(settings)?;
             let seeds: &[&[u8]] = &[&prefix, &epoch_bytes, b"shapley_output"];
-            compute_record_address(&payer_signer.pubkey(), seeds)?
+            create_record_key(&payer_signer.pubkey(), seeds)
         }
         _ => bail!(
             "Invalid record type. Must be one of: device-telemetry, internet-telemetry, reward-input, contributor-rewards"
@@ -912,22 +921,22 @@ pub async fn inspect_records(
             "device-telemetry" => {
                 let prefix = get_device_telemetry_prefix(settings)?;
                 let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
-                compute_record_address(&rewards_accountant, seeds)?
+                create_record_key(&rewards_accountant, seeds)
             }
             "internet-telemetry" => {
                 let prefix = get_internet_telemetry_prefix(settings)?;
                 let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
-                compute_record_address(&rewards_accountant, seeds)?
+                create_record_key(&rewards_accountant, seeds)
             }
             "reward-input" => {
                 let prefix = get_reward_input_prefix(settings)?;
                 let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
-                compute_record_address(&rewards_accountant, seeds)?
+                create_record_key(&rewards_accountant, seeds)
             }
             "contributor-rewards" => {
                 let prefix = get_contributor_rewards_prefix(settings)?;
                 let seeds: &[&[u8]] = &[&prefix, &epoch_bytes, b"shapley_output"];
-                compute_record_address(&rewards_accountant, seeds)?
+                create_record_key(&rewards_accountant, seeds)
             }
             _ => bail!("Unknown record type: {r_type}"),
         };

@@ -9,8 +9,10 @@ mod validator_deposit;
 use anyhow::{Context, Result, ensure};
 use borsh::BorshDeserialize;
 use clap::{Args, Subcommand};
-use doublezero_program_tools::zero_copy;
-use doublezero_revenue_distribution::state::{Journal, ProgramConfig, SolanaValidatorDeposit};
+use doublezero_revenue_distribution::{
+    state::{Distribution, Journal, ProgramConfig, SolanaValidatorDeposit},
+    types::DoubleZeroEpoch,
+};
 use doublezero_sol_conversion_interface::{
     oracle::OraclePriceData,
     state::{
@@ -18,7 +20,10 @@ use doublezero_sol_conversion_interface::{
         ProgramState as SolConversionProgramState,
     },
 };
-use doublezero_solana_client_tools::{rpc::SolanaConnection, zero_copy::ZeroCopyAccountOwned};
+use doublezero_solana_client_tools::{
+    rpc::SolanaConnection,
+    zero_copy::{ZeroCopyAccountOwned, ZeroCopyAccountOwnedData},
+};
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::pubkey::Pubkey;
 
@@ -74,21 +79,11 @@ async fn try_fetch_program_config(
     let (program_config_key, _) = ProgramConfig::find_address();
 
     let program_config =
-        ZeroCopyAccountOwned::from_rpc_client(&connection.rpc_client, &program_config_key)
+        ZeroCopyAccountOwned::try_from_rpc_client(&connection.rpc_client, &program_config_key)
             .await
             .context("Revenue Distribution program not initialized")?;
 
-    Ok((program_config_key, program_config.data.unwrap().0))
-}
-
-async fn try_fetch_journal(connection: &SolanaConnection) -> Result<(Pubkey, Box<Journal>)> {
-    let (journal_key, _) = Journal::find_address();
-
-    let journal = ZeroCopyAccountOwned::from_rpc_client(&connection.rpc_client, &journal_key)
-        .await
-        .context("Revenue Distribution program not initialized")?;
-
-    Ok((journal_key, journal.data.unwrap().0))
+    Ok((program_config_key, program_config.data.unwrap().mucked_data))
 }
 
 async fn fetch_solana_validator_deposit(
@@ -101,7 +96,7 @@ async fn fetch_solana_validator_deposit(
 ) {
     let (solana_validator_deposit_key, _) = SolanaValidatorDeposit::find_address(node_id);
 
-    match ZeroCopyAccountOwned::from_rpc_client(
+    match ZeroCopyAccountOwned::try_from_rpc_client(
         &connection.rpc_client,
         &solana_validator_deposit_key,
     )
@@ -110,7 +105,7 @@ async fn fetch_solana_validator_deposit(
         Ok(solana_validator_deposit) => match solana_validator_deposit.data {
             Some(data) => (
                 solana_validator_deposit_key,
-                Some(*data.0),
+                Some(*data.mucked_data),
                 solana_validator_deposit.balance,
             ),
             None => (
@@ -123,44 +118,57 @@ async fn fetch_solana_validator_deposit(
     }
 }
 
+async fn try_fetch_distribution(
+    connection: &SolanaConnection,
+    dz_epoch: DoubleZeroEpoch,
+) -> Result<(Pubkey, ZeroCopyAccountOwnedData<Distribution>)> {
+    let (distribution_key, _) = Distribution::find_address(dz_epoch);
+
+    let failed_fetch_error = || format!("Distribution not found for epoch {dz_epoch}");
+
+    let distribution =
+        ZeroCopyAccountOwned::try_from_rpc_client(&connection.rpc_client, &distribution_key)
+            .await
+            .with_context(failed_fetch_error)?;
+
+    let data = distribution.data.with_context(failed_fetch_error)?;
+    Ok((distribution_key, data))
+}
+
 pub struct SolConversionState {
     pub program_state: (Pubkey, Box<SolConversionProgramState>),
     pub configuration_registry: (Pubkey, Box<SolConversionConfigurationRegistry>),
-    pub journal: (Pubkey, Box<Journal>, Vec<u8>),
+    pub journal: (Pubkey, ZeroCopyAccountOwnedData<Journal>),
 }
 
 impl SolConversionState {
     pub async fn try_fetch(rpc_client: &RpcClient) -> Result<Self> {
+        const FAILED_FETCH_ERROR: &str = "SOL Conversion program not initialized";
+
         let (program_state_key, _) = SolConversionProgramState::find_address();
         let (configuration_registry_key, _) = SolConversionConfigurationRegistry::find_address();
         let (journal_key, _) = Journal::find_address();
 
         let accounts = rpc_client
             .get_multiple_accounts(&[program_state_key, configuration_registry_key, journal_key])
-            .await?;
+            .await
+            .context(FAILED_FETCH_ERROR)?;
         let account_datas = accounts
             .into_iter()
             .filter_map(|account| account.map(|account| account.data))
             .collect::<Vec<_>>();
-        ensure!(
-            account_datas.len() == 3,
-            "SOL Conversion program not initialized"
-        );
+        ensure!(account_datas.len() == 3, FAILED_FETCH_ERROR);
 
         let program_state_data = Box::<_>::deserialize(&mut &account_datas[0][8..])?;
         let configuration_registry_data = Box::<_>::deserialize(&mut &account_datas[1][8..])?;
 
-        let (journal_data, journal_remaining_data) =
-            zero_copy::checked_from_bytes_with_discriminator(&account_datas[2])
-                .map(|(mucked_data, remaining_data)| {
-                    (Box::new(*mucked_data), remaining_data.to_vec())
-                })
-                .context("Revenue Distribution program not initialized")?;
+        let journal_data = ZeroCopyAccountOwnedData::new(&account_datas[2])
+            .context("Revenue Distribution program not initialized")?;
 
         Ok(Self {
             program_state: (program_state_key, program_state_data),
             configuration_registry: (configuration_registry_key, configuration_registry_data),
-            journal: (journal_key, journal_data, journal_remaining_data),
+            journal: (journal_key, journal_data),
         })
     }
 }

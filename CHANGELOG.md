@@ -8,6 +8,14 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+## [v0.6.9](https://github.com/malbeclabs/doublezero/compare/client/v0.6.7...client/v0.6.9) – 2025-10-24
+
+### Breaking
+
+- None for this release
+
+### Changes
+
 - Onchain programs
     - serviceability: add auto-assignment and validation for exchange.bgp_community
     - serviceability: prevent device interface name duplication

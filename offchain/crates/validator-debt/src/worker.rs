@@ -22,17 +22,23 @@ use slack_notifier;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::{clock::Clock, pubkey::Pubkey, sysvar::clock};
 use std::{collections::HashMap, env, fs::File, str::FromStr};
-use tabled::{Table, Tabled, settings::Style};
+use tabled::Tabled;
+
+#[derive(Debug, Default, Serialize)]
+pub struct WriteSummary {
+    pub dz_epoch: u64,
+    pub solana_epoch: u64,
+    pub dry_run: bool,
+    pub total_debt: u64,
+    pub total_validators: u64,
+    pub validator_summaries: Vec<ValidatorSummary>,
+    pub transaction_id: Option<String>,
+}
 
 #[derive(Debug, Default, Serialize, Tabled)]
-pub struct WriteSummary {
+pub struct ValidatorSummary {
     pub validator_pubkey: String,
     pub total_debt: u64,
-    // pub total_rewards: u64,
-    // pub block_base_rewards: u64,
-    // pub block_priority_rewards: u64,
-    // pub inflation_rewards: u64,
-    // pub jito_rewards: u64,
 }
 
 fn serviceability_pubkey() -> Result<Pubkey> {
@@ -120,7 +126,7 @@ pub async fn calculate_validator_debt<T: ValidatorRewards>(
     dz_epoch: u64,
     csv_path: Option<String>,
     post_to_ledger_only: bool,
-) -> Result<()> {
+) -> Result<WriteSummary> {
     let fetched_dz_epoch_info = solana_debt_calculator
         .ledger_rpc_client()
         .get_epoch_info()
@@ -353,46 +359,26 @@ pub async fn calculate_validator_debt<T: ValidatorRewards>(
         .map(|debt| (debt.node_id.to_string(), debt.amount))
         .collect();
 
-    let write_summaries: Vec<WriteSummary> = computed_solana_validator_debt_vec
+    let validator_summaries: Vec<ValidatorSummary> = computed_solana_validator_debt_vec
         .clone()
-        // .rewards
         .into_iter()
-        .map(|vr| WriteSummary {
+        .map(|vr| ValidatorSummary {
             validator_pubkey: vr.node_id.to_string().clone(),
-            total_debt: debt_map[&vr.node_id.to_string()],
-            // this should panic if not found
-            // validator_pubkey: vr.validator_id.clone(),
-            // jito_rewards: vr.jito,
-            // block_base_rewards: vr.block_base,
-            // block_priority_rewards: vr.block_priority,
-            // inflation_rewards: vr.inflation,
-            // total_rewards: vr.total,
-            // total_debt: debt_map[&vr.validator_id], // this should panic if not found
+            total_debt: vr.amount,
         })
         .collect();
 
-    slack_notifier::validator_debt::post_distribution_to_slack(
+    let write_summary = WriteSummary {
         dz_epoch,
         solana_epoch,
-        transaction.dry_run,
-        computed_solana_validator_debts.debts.len() as u64,
-        computed_solana_validator_debts
-            .debts
-            .iter()
-            .map(|d| d.amount)
-            .sum(),
-        submitted_tx,
-    )
-    .await?;
+        total_debt: debt_map.iter().map(|dm| dm.1).sum(),
+        dry_run: transaction.dry_run,
+        total_validators: computed_solana_validator_debts.debts.len() as u64,
+        transaction_id: submitted_tx,
+        validator_summaries,
+    };
 
-    println!(
-        "Validator rewards for solana epoch {} and validator debt for DoubleZero epoch {dz_epoch}:\n{}",
-        solana_epoch,
-        // validator_rewards.epoch,
-        Table::new(write_summaries).with(Style::psql().remove_horizontals())
-    );
-
-    Ok(())
+    Ok(write_summary)
 }
 
 async fn write_transaction(

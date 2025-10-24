@@ -1,9 +1,12 @@
-use crate::slack::{Block, ColumnSetting, SlackMessage, Text};
+use crate::slack;
 use anyhow::{Result, bail};
-use reqwest::{Body, Client, RequestBuilder, header::ACCEPT};
+use reqwest::{Body, Client};
 use std::env;
 
+const VALIDATOR_DEBT_CHANNEL_ID: &str = "C09LES1Q127"; // #tmp-validator-debt
+
 pub async fn post_distribution_to_slack(
+    filepath: Option<String>,
     dz_epoch: u64,
     solana_epoch: u64,
     dry_run: bool,
@@ -21,25 +24,20 @@ pub async fn post_distribution_to_slack(
     let table_header = vec![
         "Solana Epoch".to_string(),
         "DoubleZero Epoch".to_string(),
+        "Total Debt".to_string(),
         "Total Validators".to_string(),
         "Transaction Details".to_string(),
-        "Total Debt".to_string(),
     ];
 
     let table_values = vec![
         solana_epoch.to_string(),
         dz_epoch.to_string(),
+        total_amount.to_string(),
         total_validators.to_string(),
         transaction.unwrap_or("No transaction details".to_string()),
-        total_amount.to_string(),
     ];
 
-    let msg = build_table(header.to_string(), table_header, table_values)?;
-
-    let payload = serde_json::to_string(&msg)?;
-    let body = Body::from(payload);
-    let request = build_message_request(&client, body)?;
-    let _resp = request.send().await?;
+    post_to_slack(filepath, client, header, table_header, table_values).await?;
 
     Ok(())
 }
@@ -56,23 +54,22 @@ pub async fn post_finalized_distribution_to_slack(
         "Finalized Distribution"
     };
 
-    let table_headers = vec!["DoubleZero Epoch".to_string(), "Transaction".to_string()];
+    let table_header = vec!["DoubleZero Epoch".to_string(), "Transaction".to_string()];
 
     let table_values = vec![dz_epoch.to_string(), finalized_sig.to_string()];
 
-    let msg = build_table(header.to_string(), table_headers, table_values)?;
-
-    let payload = serde_json::to_string(&msg)?;
-    let body = Body::from(payload);
-    let request = build_message_request(&client, body)?;
-    let _resp = request.send().await?;
+    post_to_slack(None, client, header, table_header, table_values).await?;
 
     Ok(())
 }
 
 pub async fn post_debt_collection_to_slack(
     total_transactions: usize,
+    total_success: usize,
+    insufficient_funds: usize,
+    already_paid: usize,
     dz_epoch: u64,
+    filepath: Option<String>,
     dry_run: bool,
 ) -> Result<()> {
     let client = reqwest::Client::new();
@@ -82,86 +79,50 @@ pub async fn post_debt_collection_to_slack(
         "Debt Collected"
     };
 
-    let table_headers = vec![
+    let table_header = vec![
         "DoubleZero Epoch".to_string(),
-        "Attempted Transactions".to_string(),
+        "Total Attempted Transactions".to_string(),
+        "Successful Transactions".to_string(),
+        "Insufficient Funds".to_string(),
+        "Already Paid".to_string(),
     ];
 
-    let table_values = vec![dz_epoch.to_string(), total_transactions.to_string()];
+    let table_values = vec![
+        dz_epoch.to_string(),
+        total_transactions.to_string(),
+        total_success.to_string(),
+        insufficient_funds.to_string(),
+        already_paid.to_string(),
+    ];
 
-    let msg = build_table(header.to_string(), table_headers, table_values)?;
-
-    let payload = serde_json::to_string(&msg)?;
-    let body = Body::from(payload);
-    let request = build_message_request(&client, body)?;
-    let _resp = request.send().await?;
+    post_to_slack(filepath, client, header, table_header, table_values).await?;
 
     Ok(())
 }
 
-fn build_table(
-    header: String,
-    table_headers: Vec<String>,
-    table_values: Vec<String>,
-) -> anyhow::Result<SlackMessage> {
-    let mut body: Vec<Block> = Vec::new();
-
-    let header = Block {
-        column_settings: None,
-        block_type: "header".to_string(),
-        fields: None,
-        rows: None,
-        text: Some(Text {
-            text_type: "plain_text".to_string(),
-            text: Some(header),
-            emoji: Some(true),
-        }),
+async fn post_to_slack(
+    filepath: Option<String>,
+    client: Client,
+    header: &str,
+    mut table_header: Vec<String>,
+    mut table_values: Vec<String>,
+) -> Result<()> {
+    if let Some(filepath) = filepath
+        && let Some(permalink) =
+            slack::upload_file(filepath, VALIDATOR_DEBT_CHANNEL_ID.to_string()).await?
+    {
+        table_header.push("CSV Permalink".to_string());
+        table_values.push(permalink);
     };
-    body.push(header);
 
-    let mut table_header: Vec<Text> = Vec::with_capacity(table_headers.len());
-    for th in table_headers {
-        let header = Text {
-            text_type: "raw_text".to_string(),
-            text: Some(th),
-            emoji: None,
-        };
-        table_header.push(header)
-    }
+    let msg = slack::build_table(header.to_string(), table_header, table_values)?;
 
-    let mut table_rows: Vec<Text> = Vec::with_capacity(table_values.len());
-    for tv in table_values {
-        let row = Text {
-            text_type: "raw_text".to_string(),
-            text: Some(tv),
-            emoji: None,
-        };
-        table_rows.push(row)
-    }
+    let payload = serde_json::to_string(&msg)?;
+    let body = Body::from(payload);
+    let request = slack::build_message_request(&client, body, slack_webhook()?)?;
+    let _resp = request.send().await?;
 
-    let table = Block {
-        column_settings: Some(vec![ColumnSetting {
-            is_wrapped: true,
-            align: "right".to_string(),
-        }]),
-        rows: Some(vec![table_header, table_rows]),
-        block_type: "table".to_string(),
-        fields: None,
-        text: None,
-    };
-    body.push(table);
-
-    let slack_message = SlackMessage { blocks: body };
-    Ok(slack_message)
-}
-
-fn build_message_request(client: &Client, body: Body) -> Result<RequestBuilder> {
-    let slack_webhook = slack_webhook()?;
-    let msg_request = client
-        .post(slack_webhook)
-        .header(ACCEPT, "application/json")
-        .body(body);
-    Ok(msg_request)
+    Ok(())
 }
 
 fn slack_webhook() -> Result<String> {

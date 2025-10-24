@@ -1,5 +1,6 @@
 use anyhow::{Result, anyhow};
-use clap::Args;
+use chrono::Utc;
+use clap::{Args, ValueEnum};
 use doublezero_revenue_distribution::state::ProgramConfig;
 use doublezero_scheduled_command::{Schedulable, ScheduleOption};
 use doublezero_solana_client_tools::{
@@ -11,12 +12,19 @@ use doublezero_solana_client_tools::{
 use leaky_bucket::RateLimiter;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::commitment_config::CommitmentConfig;
+use tabled::{Table, settings::Style};
 
 use crate::{
     rpc::{JoinedSolanaEpochs, SolanaValidatorDebtConnectionOptions},
     solana_debt_calculator::SolanaDebtCalculator,
     transaction::Transaction,
 };
+
+#[derive(Debug, Clone, ValueEnum)]
+pub enum ExportFormat {
+    Csv,
+    Slack,
+}
 
 #[derive(Debug, Args, Clone)]
 pub struct CalculateValidatorDebtCommand {
@@ -38,6 +46,10 @@ pub struct CalculateValidatorDebtCommand {
     /// Option to post validator debt only to the DoubleZero Ledger
     #[arg(long)]
     post_to_ledger_only: bool,
+
+    /// export results: csv, slack
+    #[arg(long, value_enum)]
+    export: Option<ExportFormat>,
 }
 
 #[async_trait::async_trait]
@@ -54,6 +66,7 @@ impl Schedulable for CalculateValidatorDebtCommand {
             solana_payer_options,
             dz_ledger_connection_options,
             post_to_ledger_only,
+            export,
         } = self;
 
         schedule_or_force.ensure_safe_execution()?;
@@ -84,7 +97,8 @@ impl Schedulable for CalculateValidatorDebtCommand {
             solana_payer_options.signer_options.dry_run,
             schedule_or_force.force,
         );
-        crate::worker::calculate_validator_debt(
+        let dry_run = transaction.dry_run;
+        let write_summary = crate::worker::calculate_validator_debt(
             &solana_debt_calculator,
             transaction,
             epoch,
@@ -92,6 +106,50 @@ impl Schedulable for CalculateValidatorDebtCommand {
             *post_to_ledger_only,
         )
         .await?;
+
+        let mut filename: Option<String> = None;
+
+        if let Some(ExportFormat::Csv) = export {
+            let now = Utc::now();
+            let timestamp_milliseconds: i64 = now.timestamp_millis();
+            let string_filename = if dry_run {
+                format!(
+                    "DRY_RUN_dz_epoch_{}_calculate_distribution_{timestamp_milliseconds}.csv",
+                    write_summary.dz_epoch
+                )
+            } else {
+                format!(
+                    "dz_epoch_{}_calculate_distribution_{timestamp_milliseconds}.csv",
+                    write_summary.dz_epoch
+                )
+            };
+            let mut writer = csv::Writer::from_path(string_filename.clone())?;
+            filename = Some(string_filename);
+            for w in write_summary.validator_summaries.iter() {
+                writer.serialize(w)?;
+            }
+            writer.flush()?;
+        };
+
+        if let Some(ExportFormat::Slack) = export {
+            slack_notifier::validator_debt::post_distribution_to_slack(
+                filename,
+                write_summary.solana_epoch,
+                write_summary.dz_epoch,
+                dry_run,
+                write_summary.total_debt,
+                write_summary.total_validators,
+                write_summary.transaction_id,
+            )
+            .await?;
+        }
+
+        println!(
+            "Validator rewards for solana epoch {} and validator debt for DoubleZero epoch {}:\n{}",
+            write_summary.solana_epoch,
+            write_summary.dz_epoch,
+            Table::new(write_summary.validator_summaries).with(Style::psql().remove_horizontals())
+        );
 
         Ok(())
     }

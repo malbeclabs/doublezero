@@ -88,7 +88,7 @@ This RFC should have a positive impact on DoubleZero through more frequent deplo
 
 Security posture should largely remain the same as there aren't any changes to how we interact or deploy code. There is potentially more unused code behind feature flags which could be a security vulnerability if the code isn't vetted. Feature flagged code must follow the same reviews and security audits so unused or unactivated code shouldn't meaningfully negatively impact our security posture.
 
-## Backwards Compatibility
+## Backward Compatibility
 
 There are no backwards compatibility requirements for this RFC. Future compatibility requirements are outlined in the `Compatibility` section.
 

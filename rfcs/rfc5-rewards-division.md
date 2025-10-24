@@ -174,7 +174,7 @@ The generation of the Merkle root must be perfectly deterministic, leveraging th
 - **Service Integrity:** The `rewards-calculator` is a trusted off-chain component. A compromise of the execution environment could lead to the publication of an incorrect Merkle root. Immediate mitigation is to just run the service in a secure, minimal, and access-controlled environment. The public verifiability of the calculation provides a crucial check; any incorrect root can be challenged and identified by the community.
 - **Availability:** The availability of the Merkle leaf data on the DZ Ledger is critical for payouts. If the DZ Ledger is unavailable, contributors cannot generate proofs to claim their rewards. The DZ Ledger must be treated as a high-availability system.
 
-# **Backwards Compatibility**
+# **Backward Compatibility**
 
 This RFC describes the initial design and implementation of a new system. As such, there are no backwards compatibility concerns. Future changes to the Merkle leaf structure or hashing algorithm will require a new version of the on-chain `Revenue Distribution Program` capable of handling the new format.
 

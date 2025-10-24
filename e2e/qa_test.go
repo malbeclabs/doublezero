@@ -666,10 +666,10 @@ func runUnicastConnectivityTest(t *testing.T, hosts []string, devices []*Device)
 	if len(devices) == 0 {
 		// QA mode: Connect all hosts without device specification
 		t.Log("Running in QA mode - connecting all hosts without device specification")
-		hostIPMap, _, err := connectHosts(t, hosts, nil)
+		hostIPMap, hostDeviceMap, err := connectHosts(t, hosts, nil)
 		require.NoError(t, err, "Failed to connect hosts")
 
-		err = testAllToAllConnectivity(t, hostIPMap, nil, false) // false = use simple ping, nil = QA mode (always use SourceIface)
+		err = testAllToAllConnectivity(t, hostIPMap, hostDeviceMap, false) // false = use simple ping
 		require.NoError(t, err, "Connectivity test failed")
 		return
 	}
@@ -798,8 +798,13 @@ func connectHosts(t *testing.T, hosts []string, device *Device) (map[string]stri
 		// If we're connecting to a specific device, store it
 		if device != nil {
 			hostDeviceMap[host] = device
+		} else {
+			// In QA mode, we need to find which device we connected to for exchange comparison
+			connectedDevice := findDeviceByHostIP(t, ip)
+			if connectedDevice != nil {
+				hostDeviceMap[host] = connectedDevice
+			}
 		}
-		// In QA mode (device == nil), we don't track devices since we always use SourceIface
 
 		t.Logf("Host %s connected with IP %s", host, ip)
 	}
@@ -878,17 +883,10 @@ func testAllToAllConnectivity(t *testing.T, hostIPMap map[string]string, hostDev
 
 			t.Logf("Testing ping from %s (%s) to %s (%s)", sourceHost, sourceIP, targetHost, targetIP)
 
-			// Determine if we need to use SourceIface
-			var useSourceIface bool
-			if hostDeviceMap == nil {
-				// QA mode: hosts are geographically distributed, always use SourceIface
-				useSourceIface = true
-			} else {
-				// AllDevices mode: compare exchanges
-				sourceDevice := hostDeviceMap[sourceHost]
-				targetDevice := hostDeviceMap[targetHost]
-				useSourceIface = shouldUseSourceIfaceSimple(sourceDevice, targetDevice)
-			}
+			// Determine if we need to use SourceIface based on exchange comparison
+			sourceDevice := hostDeviceMap[sourceHost]
+			targetDevice := hostDeviceMap[targetHost]
+			useSourceIface := shouldUseSourceIfaceSimple(sourceDevice, targetDevice)
 
 			if useRetry {
 				// Use robust ping with retries for device testing
@@ -908,6 +906,9 @@ func testAllToAllConnectivity(t *testing.T, hostIPMap map[string]string, hostDev
 				}
 				if useSourceIface {
 					pingReq.SourceIface = "doublezero0"
+					t.Logf("Sending ping request with -I doublezero0 (inter-exchange routing): target=%s, source=%s", targetIP, sourceIP)
+				} else {
+					t.Logf("Sending ping request WITHOUT -I doublezero0 (intra-exchange routing): target=%s, source=%s", targetIP, sourceIP)
 				}
 				pingResp, err := client.Ping(ctx, pingReq)
 				cancel()
@@ -998,6 +999,41 @@ func performPingWithRetries(t *testing.T, client pb.QAAgentServiceClient, source
 	}
 
 	return lastErr
+}
+
+// findDeviceByHostIP finds the device that a host is connected to based on its IP
+func findDeviceByHostIP(t *testing.T, ip string) *Device {
+	ctx := context.Background()
+	data, err := serviceabilityClient.GetProgramData(ctx)
+	if err != nil {
+		t.Logf("Warning: Failed to get program data for device lookup: %v", err)
+		return nil
+	}
+
+	// Find user by IP
+	var user *serviceability.User
+	for i := range data.Users {
+		u := &data.Users[i]
+		userIP := net.IP(u.DzIp[:]).String()
+		if userIP == ip {
+			user = u
+			break
+		}
+	}
+
+	if user == nil {
+		return nil
+	}
+
+	// Find the device from our global devices list
+	for _, device := range devices {
+		devicePubKey := base58.Encode(user.DevicePubKey[:])
+		if device.PubKey == devicePubKey {
+			return device
+		}
+	}
+
+	return nil
 }
 
 // The intra-exchange routing policy defined in rfc6 dictates that unicast clients that are connected to the

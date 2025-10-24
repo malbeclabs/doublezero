@@ -54,21 +54,14 @@ pub fn process_remove_device_interface(
     }
 
     let mut device = Device::try_from(device_account)?;
-    let idx = device
-        .interfaces
-        .iter()
-        .position(|i| i.into_current_version().name == value.name);
+    let (idx, iface) = device
+        .find_interface(&value.name)
+        .map_err(|_| DoubleZeroError::InterfaceNotFound)?;
 
-    match idx {
-        None => return Err(DoubleZeroError::InterfaceNotFound.into()),
-        Some(i) => {
-            let iface = device.interfaces[i].into_current_version();
-            if iface.status != InterfaceStatus::Deleting {
-                return Err(DoubleZeroError::InvalidStatus.into());
-            }
-            device.interfaces.remove(i);
-        }
+    if iface.status != InterfaceStatus::Deleting {
+        return Err(DoubleZeroError::InvalidStatus.into());
     }
+    device.interfaces.remove(idx);
 
     account_write(device_account, &device, payer_account, system_program)?;
 

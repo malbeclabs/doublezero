@@ -60,12 +60,8 @@ pub fn process_activate_device_interface(
     let mut device: Device = Device::try_from(device_account)?;
 
     let (idx, iface) = device
-        .interfaces
-        .iter()
-        .map(|i| i.into_current_version())
-        .enumerate()
-        .find(|(_, i)| i.name == value.name)
-        .ok_or(DoubleZeroError::InterfaceNotFound)?;
+        .find_interface(&value.name)
+        .map_err(|_| DoubleZeroError::InterfaceNotFound)?;
 
     if iface.status == InterfaceStatus::Deleting {
         return Err(DoubleZeroError::InvalidStatus.into());

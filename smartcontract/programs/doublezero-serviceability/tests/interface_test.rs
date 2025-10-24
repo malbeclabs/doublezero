@@ -265,7 +265,7 @@ async fn test_device_interfaces() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::CreateDeviceInterface(DeviceInterfaceCreateArgs {
-            name: "Ethernet1/1".to_string(),
+            name: "Et1/1".to_string(),
             loopback_type: LoopbackType::None,
             vlan_id: 42,
             user_tunnel_endpoint: false,
@@ -284,7 +284,7 @@ async fn test_device_interfaces() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::CreateDeviceInterface(DeviceInterfaceCreateArgs {
-            name: "Loopback0".to_string(),
+            name: "loopback0".to_string(),
             loopback_type: LoopbackType::Vpnv4,
             vlan_id: 0,
             user_tunnel_endpoint: false,
@@ -374,7 +374,7 @@ async fn test_device_interfaces() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UnlinkDeviceInterface(DeviceInterfaceUnlinkArgs {
-            name: "Ethernet1/1".to_string(),
+            name: "ethernet1/1".to_string(),
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -389,7 +389,7 @@ async fn test_device_interfaces() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::ActivateDeviceInterface(DeviceInterfaceActivateArgs {
-            name: "Loopback0".to_string(),
+            name: "loopback0".to_string(),
             ip_net: "10.1.1.0/31".parse().unwrap(),
             node_segment_idx: 10,
         }),
@@ -406,7 +406,7 @@ async fn test_device_interfaces() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::RejectDeviceInterface(DeviceInterfaceRejectArgs {
-            name: "Loopback1".to_string(),
+            name: "loopback1".to_string(),
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -439,7 +439,7 @@ async fn test_device_interfaces() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::DeleteDeviceInterface(DeviceInterfaceDeleteArgs {
-            name: "Ethernet1/1".to_string(),
+            name: "ethernet1/1".to_string(),
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -455,7 +455,7 @@ async fn test_device_interfaces() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::DeleteDeviceInterface(DeviceInterfaceDeleteArgs {
-            name: "Loopback0".to_string(),
+            name: "loopback0".to_string(),
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -471,7 +471,7 @@ async fn test_device_interfaces() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::DeleteDeviceInterface(DeviceInterfaceDeleteArgs {
-            name: "Loopback1".to_string(),
+            name: "loopback1".to_string(),
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -503,7 +503,7 @@ async fn test_device_interfaces() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::RemoveDeviceInterface(DeviceInterfaceRemoveArgs {
-            name: "Ethernet1/1".to_string(),
+            name: "ethernet1/1".to_string(),
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -518,7 +518,7 @@ async fn test_device_interfaces() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::RemoveDeviceInterface(DeviceInterfaceRemoveArgs {
-            name: "Loopback0".to_string(),
+            name: "loopback0".to_string(),
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -533,7 +533,7 @@ async fn test_device_interfaces() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::RemoveDeviceInterface(DeviceInterfaceRemoveArgs {
-            name: "Loopback1".to_string(),
+            name: "loopback1".to_string(),
         }),
         vec![
             AccountMeta::new(device_pubkey, false),

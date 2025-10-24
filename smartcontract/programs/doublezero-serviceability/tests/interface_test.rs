@@ -336,7 +336,10 @@ async fn test_device_interfaces() {
         &payer,
     )
     .await;
-    assert!(res.is_err());
+    assert!(res
+        .unwrap_err()
+        .to_string()
+        .contains("custom program error: 0x38")); // DoubleZeroError::InterfaceAlreadyExists == 0x38
 
     let device = get_account_data(&mut banks_client, device_pubkey)
         .await

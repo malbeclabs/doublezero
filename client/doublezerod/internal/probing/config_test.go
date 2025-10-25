@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 	"log/slog"
-	"net"
 	"testing"
 	"time"
 
@@ -18,10 +17,10 @@ func validConfig() Config {
 		Context:       context.Background(),
 		Netlink:       &MockNetlinker{},
 		Liveness:      NewHysteresisLivenessPolicy(2, 2),
+		ListenFunc:    func(ctx context.Context) error { return nil },
 		Interval:      200 * time.Millisecond,
 		ProbeTimeout:  500 * time.Millisecond,
 		InterfaceName: "eth0",
-		TunnelSrc:     net.ParseIP("10.0.0.1"),
 	}
 }
 
@@ -71,6 +70,15 @@ func TestProbing_ConfigValidate(t *testing.T) {
 		require.EqualError(t, err, "liveness policy is required")
 	})
 
+	t.Run("nil_listen_func", func(t *testing.T) {
+		t.Parallel()
+		cfg := validConfig()
+		cfg.ListenFunc = nil
+		err := cfg.Validate()
+		require.Error(t, err)
+		require.EqualError(t, err, "listen func is required")
+	})
+
 	t.Run("zero_interval", func(t *testing.T) {
 		t.Parallel()
 		cfg := validConfig()
@@ -96,23 +104,5 @@ func TestProbing_ConfigValidate(t *testing.T) {
 		err := cfg.Validate()
 		require.Error(t, err)
 		require.EqualError(t, err, "interface name is required")
-	})
-
-	t.Run("nil_tunnel_src", func(t *testing.T) {
-		t.Parallel()
-		cfg := validConfig()
-		cfg.TunnelSrc = nil
-		err := cfg.Validate()
-		require.Error(t, err)
-		require.EqualError(t, err, "tunnel src is required")
-	})
-
-	t.Run("unspecified_tunnel_src", func(t *testing.T) {
-		t.Parallel()
-		cfg := validConfig()
-		cfg.TunnelSrc = net.IPv4zero // 0.0.0.0 triggers IsUnspecified()
-		err := cfg.Validate()
-		require.Error(t, err)
-		require.EqualError(t, err, "tunnel src is unspecified")
 	})
 }

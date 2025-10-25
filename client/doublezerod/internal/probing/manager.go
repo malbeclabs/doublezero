@@ -46,10 +46,6 @@ func (m *RouteManager) PeerOnClose() error {
 }
 
 func (m *RouteManager) RouteAdd(route *routing.Route) error {
-	if !m.cfg.TunnelSrc.Equal(route.Src) {
-		m.log.Warn("probing: route src does not match tunnel src", "route", route.String(), "tunnel src", m.cfg.TunnelSrc.String())
-		return nil
-	}
 	if m.worker.IsRunning() {
 		m.worker.EnqueueAdd(route)
 		return nil
@@ -58,10 +54,6 @@ func (m *RouteManager) RouteAdd(route *routing.Route) error {
 }
 
 func (m *RouteManager) RouteDelete(route *routing.Route) error {
-	if !m.cfg.TunnelSrc.Equal(route.Src) {
-		m.log.Warn("probing: route src does not match tunnel src", "route", route.String(), "tunnel src", m.cfg.TunnelSrc.String())
-		return nil
-	}
 	if m.worker.IsRunning() {
 		m.worker.EnqueueDelete(route)
 		return nil

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"net"
 	"time"
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
@@ -17,16 +16,16 @@ const (
 
 type Config struct {
 	// Required object fields.
-	Logger   *slog.Logger
-	Context  context.Context
-	Netlink  routing.Netlinker
-	Liveness LivenessPolicy
+	Logger     *slog.Logger
+	Context    context.Context
+	Netlink    routing.Netlinker
+	Liveness   LivenessPolicy
+	ListenFunc func(context.Context) error
 
 	// Required scalar fields.
 	Interval      time.Duration
 	ProbeTimeout  time.Duration
 	InterfaceName string
-	TunnelSrc     net.IP
 
 	// Optional fields.
 	RouteEventBufferSize  int
@@ -47,6 +46,9 @@ func (cfg *Config) Validate() error {
 	if cfg.Liveness == nil {
 		return errors.New("liveness policy is required")
 	}
+	if cfg.ListenFunc == nil {
+		return errors.New("listen func is required")
+	}
 
 	// Required scalar fields.
 	if cfg.Interval <= 0 {
@@ -57,12 +59,6 @@ func (cfg *Config) Validate() error {
 	}
 	if cfg.InterfaceName == "" {
 		return errors.New("interface name is required")
-	}
-	if cfg.TunnelSrc == nil {
-		return errors.New("tunnel src is required")
-	}
-	if cfg.TunnelSrc.IsUnspecified() {
-		return errors.New("tunnel src is unspecified")
 	}
 
 	// Optional fields.

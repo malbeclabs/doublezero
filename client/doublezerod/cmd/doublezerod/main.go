@@ -22,6 +22,7 @@ import (
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/runtime"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/services"
 	"github.com/malbeclabs/doublezero/config"
+	"github.com/malbeclabs/doublezero/tools/uping/pkg/uping"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -159,15 +160,26 @@ func main() {
 		return services.NewIBRLService(bgps, nlr, db, func(iface string, src net.IP) (bgp.RouteManager, error) {
 			if *routeProbingEnable {
 				liveness := probing.NewHysteresisLivenessPolicy(*routeProbingUpThreshold, *routeProbingDownThreshold)
+				listenFunc := func(ctx context.Context) error {
+					listener, err := uping.NewListener(uping.ListenerConfig{
+						Logger:    logger,
+						Interface: iface,
+						IP:        src,
+					})
+					if err != nil {
+						return err
+					}
+					return listener.Listen(ctx)
+				}
 				return probing.NewRouteManager(probing.Config{
 					Logger:        logger,
 					Context:       ctx,
 					Netlink:       nlr,
 					Liveness:      liveness,
+					ListenFunc:    listenFunc,
 					Interval:      *routeProbingInterval,
 					ProbeTimeout:  *routeProbingProbeTimeout,
 					InterfaceName: iface,
-					TunnelSrc:     src,
 				})
 			} else {
 				return manager.NewNetlinkerPassthroughRouteManager(nlr), nil

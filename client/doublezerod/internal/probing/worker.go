@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
-	"github.com/malbeclabs/doublezero/tools/uping/pkg/uping"
 	promprobing "github.com/prometheus-community/pro-bing"
 )
 
@@ -97,15 +96,8 @@ func (w *probingWorker) enqueueTick() {
 func (w *probingWorker) run(ctx context.Context) {
 	w.log.Info("probing: worker started", "interval", w.cfg.Interval.String())
 
-	listener, err := uping.NewListener(uping.ListenerConfig{
-		Logger: w.log, Interface: w.cfg.InterfaceName, IP: w.cfg.TunnelSrc,
-	})
-	if err != nil {
-		w.log.Error("probing: error creating listener", "error", err)
-		return
-	}
 	go func() {
-		if err := listener.Listen(ctx); err != nil {
+		if err := w.cfg.ListenFunc(ctx); err != nil {
 			w.log.Error("probing: error listening", "error", err)
 		}
 	}()

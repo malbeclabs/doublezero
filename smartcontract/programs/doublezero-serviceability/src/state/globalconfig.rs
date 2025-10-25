@@ -8,6 +8,7 @@ use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError
 use std::fmt;
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GlobalConfig {
     pub account_type: AccountType,       // 1
     pub owner: Pubkey,                   // 32

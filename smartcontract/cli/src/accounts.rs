@@ -1,5 +1,7 @@
 use clap::Args;
+use doublezero_config::Environment;
 use doublezero_sdk::*;
+use serde_json::to_writer_pretty;
 use std::io::Write;
 
 #[derive(Args, Debug)]
@@ -9,9 +11,22 @@ pub struct GetAccountsCliCommand {
     pub account_type: Option<String>,
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct GetAccountsCliResponse {
+    pub env: String,
+    pub accounts: Vec<AccountsCliResponse>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct AccountsCliResponse {
+    pub pubkey: String,
+    pub account_type: String,
+    pub account: Box<AccountData>,
+}
+
 impl GetAccountsCliCommand {
     pub fn execute<W: Write>(self, client: &DZClient, out: &mut W) -> eyre::Result<()> {
-        let mut accounts = client
+        let mut accounts: Vec<(String, Box<AccountData>)> = client
             .get_all()?
             .into_iter()
             .map(|acc| (acc.0.to_string(), acc.1))
@@ -22,9 +37,20 @@ impl GetAccountsCliCommand {
             accounts.retain(|(_, acc)| acc.get_name().to_lowercase() == account_type);
         }
 
-        for (i, (pk, account)) in accounts.into_iter().enumerate() {
-            writeln!(out, "{i} {pk}: {:?}", account)?;
-        }
+        let res = GetAccountsCliResponse {
+            env: Environment::from_program_id(&client.get_program_id().to_string())?.to_string(),
+            accounts: accounts
+                .into_iter()
+                .map(|(pubkey, account)| AccountsCliResponse {
+                    pubkey,
+                    account_type: account.get_name().to_string(),
+                    account,
+                })
+                .collect(),
+        };
+
+        to_writer_pretty(&mut *out, &res)?;
+        writeln!(out)?;
 
         Ok(())
     }

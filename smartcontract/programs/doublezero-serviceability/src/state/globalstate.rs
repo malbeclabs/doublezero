@@ -8,6 +8,7 @@ use core::fmt;
 use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError, pubkey::Pubkey};
 
 #[derive(BorshSerialize, Debug, PartialEq, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GlobalState {
     pub account_type: AccountType,         // 1
     pub bump_seed: u8,                     // 1

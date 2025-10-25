@@ -105,9 +105,9 @@ rust-ci: rust-build rust-lint rust-test rust-validator-test rust-program-account
 
 .PHONY: rust-program-accounts-compat
 rust-program-accounts-compat:
-	cargo run -p doublezero -- accounts -ed
-	cargo run -p doublezero -- accounts -et
-	cargo run -p doublezero -- accounts -em
+	cargo run -p doublezero -- accounts -ed --no-output
+	cargo run -p doublezero -- accounts -et --no-output
+	cargo run -p doublezero -- accounts -em --no-output
 
 # -----------------------------------------------------------------------------
 # E2E targets

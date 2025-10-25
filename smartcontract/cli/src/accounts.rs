@@ -9,6 +9,10 @@ pub struct GetAccountsCliCommand {
     // Filter by account type
     #[arg(long)]
     pub account_type: Option<String>,
+
+    // Suppress output
+    #[arg(long, default_value_t = false)]
+    pub no_output: bool,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -49,8 +53,10 @@ impl GetAccountsCliCommand {
                 .collect(),
         };
 
-        to_writer_pretty(&mut *out, &res)?;
-        writeln!(out)?;
+        if !self.no_output {
+            to_writer_pretty(&mut *out, &res)?;
+            writeln!(out)?;
+        }
 
         Ok(())
     }

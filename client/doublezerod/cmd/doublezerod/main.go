@@ -158,16 +158,16 @@ func main() {
 
 		return services.NewIBRLService(bgps, nlr, db, func(iface string, src net.IP) (bgp.RouteManager, error) {
 			if *routeProbingEnable {
+				liveness := probing.NewHysteresisLivenessPolicy(*routeProbingUpThreshold, *routeProbingDownThreshold)
 				return probing.NewRouteManager(probing.Config{
 					Logger:        logger,
 					Context:       ctx,
 					Netlink:       nlr,
+					Liveness:      liveness,
 					Interval:      *routeProbingInterval,
 					ProbeTimeout:  *routeProbingProbeTimeout,
 					InterfaceName: iface,
 					TunnelSrc:     src,
-					UpThreshold:   *routeProbingUpThreshold,
-					DownThreshold: *routeProbingDownThreshold,
 				})
 			} else {
 				return manager.NewNetlinkerPassthroughRouteManager(nlr), nil

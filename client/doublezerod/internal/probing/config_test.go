@@ -17,12 +17,11 @@ func validConfig() Config {
 		Logger:        logger,
 		Context:       context.Background(),
 		Netlink:       &MockNetlinker{},
+		Liveness:      NewHysteresisLivenessPolicy(2, 2),
 		Interval:      200 * time.Millisecond,
 		ProbeTimeout:  500 * time.Millisecond,
 		InterfaceName: "eth0",
 		TunnelSrc:     net.ParseIP("10.0.0.1"),
-		UpThreshold:   2,
-		DownThreshold: 2,
 	}
 }
 
@@ -63,7 +62,16 @@ func TestProbing_ConfigValidate(t *testing.T) {
 		require.EqualError(t, err, "netlink is required")
 	})
 
-	t.Run("nonpositive_interval", func(t *testing.T) {
+	t.Run("nil_liveness", func(t *testing.T) {
+		t.Parallel()
+		cfg := validConfig()
+		cfg.Liveness = nil
+		err := cfg.Validate()
+		require.Error(t, err)
+		require.EqualError(t, err, "liveness policy is required")
+	})
+
+	t.Run("zero_interval", func(t *testing.T) {
 		t.Parallel()
 		cfg := validConfig()
 		cfg.Interval = 0
@@ -106,23 +114,5 @@ func TestProbing_ConfigValidate(t *testing.T) {
 		err := cfg.Validate()
 		require.Error(t, err)
 		require.EqualError(t, err, "tunnel src is unspecified")
-	})
-
-	t.Run("zero_up_threshold", func(t *testing.T) {
-		t.Parallel()
-		cfg := validConfig()
-		cfg.UpThreshold = 0
-		err := cfg.Validate()
-		require.Error(t, err)
-		require.EqualError(t, err, "up threshold is required")
-	})
-
-	t.Run("zero_down_threshold", func(t *testing.T) {
-		t.Parallel()
-		cfg := validConfig()
-		cfg.DownThreshold = 0
-		err := cfg.Validate()
-		require.Error(t, err)
-		require.EqualError(t, err, "down threshold is required")
 	})
 }

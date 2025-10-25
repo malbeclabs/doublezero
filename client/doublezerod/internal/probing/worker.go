@@ -18,7 +18,6 @@ type probingWorker struct {
 	log   *slog.Logger
 	cfg   Config
 	store *routeStore
-	lp    LivenessPolicy
 
 	// lifecycle
 	cancel   context.CancelFunc
@@ -39,12 +38,11 @@ type probeResult struct {
 	loss  float64
 }
 
-func newWorker(log *slog.Logger, cfg Config, store *routeStore, lp LivenessPolicy) *probingWorker {
+func newWorker(log *slog.Logger, cfg Config, store *routeStore) *probingWorker {
 	return &probingWorker{
 		log:           log,
 		cfg:           cfg,
 		store:         store,
-		lp:            lp,
 		evRouteAdd:    make(chan *routing.Route, cfg.RouteEventBufferSize),
 		evRouteDelete: make(chan *routing.Route, cfg.RouteEventBufferSize),
 		evTick:        make(chan struct{}, 1),
@@ -218,7 +216,7 @@ func (w *probingWorker) handleRouteAdd(route *routing.Route) error {
 	key := newRouteKey(route)
 	w.store.Set(key, managedRoute{
 		route:    route,
-		liveness: w.lp.NewTracker(),
+		liveness: w.cfg.Liveness.NewTracker(),
 	})
 
 	w.log.Debug("probing: route added to managed routes", "route", route.String(), "routes", w.store.Len())

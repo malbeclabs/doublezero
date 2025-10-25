@@ -20,8 +20,8 @@ func NewRouteManager(cfg Config) (*RouteManager, error) {
 		return nil, fmt.Errorf("error creating probing manager: %w", err)
 	}
 	store := newRouteStore()
-	policy := NewHysteresisLivenessPolicy(cfg.UpThreshold, cfg.DownThreshold)
-	worker := newWorker(cfg.Logger, cfg, store, policy)
+	worker := newWorker(cfg.Logger, cfg, store)
+
 	return &RouteManager{
 		log: cfg.Logger,
 		cfg: cfg,

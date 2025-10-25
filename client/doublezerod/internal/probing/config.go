@@ -16,9 +16,13 @@ const (
 )
 
 type Config struct {
-	Logger        *slog.Logger
-	Context       context.Context
-	Netlink       routing.Netlinker
+	// Required object fields.
+	Logger   *slog.Logger
+	Context  context.Context
+	Netlink  routing.Netlinker
+	Liveness LivenessPolicy
+
+	// Required scalar fields.
 	Interval      time.Duration
 	ProbeTimeout  time.Duration
 	InterfaceName string
@@ -27,14 +31,10 @@ type Config struct {
 	// Optional fields.
 	RouteEventBufferSize  int
 	ProbeResultBufferSize int
-
-	// Liveness policy: consecutive probe results required before flipping kernel state.
-	// If zero, defaults will be applied in NewProbingManager.
-	UpThreshold   uint // consecutive successes to mark UP
-	DownThreshold uint // consecutive failures to mark DOWN
 }
 
 func (cfg *Config) Validate() error {
+	// Required object fields.
 	if cfg.Logger == nil {
 		return errors.New("logger is required")
 	}
@@ -44,6 +44,11 @@ func (cfg *Config) Validate() error {
 	if cfg.Netlink == nil {
 		return errors.New("netlink is required")
 	}
+	if cfg.Liveness == nil {
+		return errors.New("liveness policy is required")
+	}
+
+	// Required scalar fields.
 	if cfg.Interval <= 0 {
 		return errors.New("interval is required")
 	}
@@ -58,12 +63,6 @@ func (cfg *Config) Validate() error {
 	}
 	if cfg.TunnelSrc.IsUnspecified() {
 		return errors.New("tunnel src is unspecified")
-	}
-	if cfg.UpThreshold == 0 {
-		return errors.New("up threshold is required")
-	}
-	if cfg.DownThreshold == 0 {
-		return errors.New("down threshold is required")
 	}
 
 	// Optional fields.

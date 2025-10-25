@@ -14,15 +14,14 @@ import (
 func validConfig() Config {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	return Config{
-		Logger:        logger,
-		Context:       context.Background(),
-		Netlink:       &MockNetlinker{},
-		Liveness:      NewHysteresisLivenessPolicy(2, 2),
-		ListenFunc:    func(ctx context.Context) error { return nil },
-		ProbeFunc:     func(ctx context.Context, route *routing.Route) (ProbeResult, error) { return ProbeResult{}, nil },
-		Interval:      200 * time.Millisecond,
-		ProbeTimeout:  500 * time.Millisecond,
-		InterfaceName: "eth0",
+		Logger:       logger,
+		Context:      context.Background(),
+		Netlink:      &MockNetlinker{},
+		Liveness:     NewHysteresisLivenessPolicy(2, 2),
+		ListenFunc:   func(ctx context.Context) error { return nil },
+		ProbeFunc:    func(ctx context.Context, route *routing.Route) (ProbeResult, error) { return ProbeResult{}, nil },
+		Interval:     200 * time.Millisecond,
+		ProbeTimeout: 500 * time.Millisecond,
 	}
 }
 
@@ -106,14 +105,5 @@ func TestProbing_ConfigValidate(t *testing.T) {
 		err := cfg.Validate()
 		require.Error(t, err)
 		require.EqualError(t, err, "probe timeout is required")
-	})
-
-	t.Run("empty_interface_name", func(t *testing.T) {
-		t.Parallel()
-		cfg := validConfig()
-		cfg.InterfaceName = ""
-		err := cfg.Validate()
-		require.Error(t, err)
-		require.EqualError(t, err, "interface name is required")
 	})
 }

@@ -159,15 +159,14 @@ func main() {
 		return services.NewIBRLService(bgps, nlr, db, func(iface string, src net.IP) (bgp.RouteManager, error) {
 			if *routeProbingEnable {
 				return probing.NewRouteManager(probing.Config{
-					Logger:        logger,
-					Context:       ctx,
-					Netlink:       nlr,
-					Liveness:      probing.NewHysteresisLivenessPolicy(*routeProbingUpThreshold, *routeProbingDownThreshold),
-					ListenFunc:    probing.DefaultListenFunc(logger, iface, src),
-					ProbeFunc:     probing.DefaultProbeFunc(logger, iface, *routeProbingProbeTimeout),
-					Interval:      *routeProbingInterval,
-					ProbeTimeout:  *routeProbingProbeTimeout,
-					InterfaceName: iface,
+					Logger:       logger,
+					Context:      ctx,
+					Netlink:      nlr,
+					Liveness:     probing.NewHysteresisLivenessPolicy(*routeProbingUpThreshold, *routeProbingDownThreshold),
+					ListenFunc:   probing.DefaultListenFunc(logger, iface, src),
+					ProbeFunc:    probing.DefaultProbeFunc(logger, iface, *routeProbingProbeTimeout),
+					Interval:     *routeProbingInterval,
+					ProbeTimeout: *routeProbingProbeTimeout,
 				})
 			} else {
 				return manager.NewNetlinkerPassthroughRouteManager(nlr), nil

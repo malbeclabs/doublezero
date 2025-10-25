@@ -34,9 +34,8 @@ type Config struct {
 	ProbeFunc  ProbeFunc
 
 	// Required scalar fields.
-	Interval      time.Duration
-	ProbeTimeout  time.Duration
-	InterfaceName string
+	Interval     time.Duration
+	ProbeTimeout time.Duration
 
 	// Optional fields.
 	RouteEventBufferSize  int
@@ -70,9 +69,6 @@ func (cfg *Config) Validate() error {
 	}
 	if cfg.ProbeTimeout <= 0 {
 		return errors.New("probe timeout is required")
-	}
-	if cfg.InterfaceName == "" {
-		return errors.New("interface name is required")
 	}
 
 	// Optional fields.

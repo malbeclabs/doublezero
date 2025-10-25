@@ -14,12 +14,12 @@ use solana_program::{
     sysvar::{rent::Rent, Sysvar},
 };
 use std::{
-    error::Error,
     fmt::{self, Debug},
     net::Ipv4Addr,
 };
 
 use doublezero_program_common::create_account::try_create_account;
+#[cfg(test)]
 use solana_program::msg;
 
 pub fn account_create<'a, T>(
@@ -260,11 +260,4 @@ pub mod base_tests {
         }
         Ok(())
     }
-}
-
-pub fn msg_err<E: Error + Debug>(err: E, name: &str) -> E {
-    if err.to_string() != "Unexpected length of input" {
-        msg!("Deserialization error in {}: {:?}", name, err);
-    }
-    err
 }

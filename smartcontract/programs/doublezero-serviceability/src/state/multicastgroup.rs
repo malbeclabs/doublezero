@@ -1,6 +1,5 @@
 use crate::{
     error::{DoubleZeroError, Validate},
-    helper::msg_err,
     seeds::SEED_MULTICAST_GROUP,
     state::accounttype::{AccountType, AccountTypeInfo},
 };
@@ -131,39 +130,17 @@ impl TryFrom<&[u8]> for MulticastGroup {
 
     fn try_from(mut data: &[u8]) -> Result<Self, Self::Error> {
         let out = Self {
-            account_type: BorshDeserialize::deserialize(&mut data)
-                .map_err(|e| msg_err(e, "account_type"))
-                .unwrap_or_default(),
-            owner: BorshDeserialize::deserialize(&mut data)
-                .map_err(|e| msg_err(e, "owner"))
-                .unwrap_or_default(),
-            index: BorshDeserialize::deserialize(&mut data)
-                .map_err(|e| msg_err(e, "index"))
-                .unwrap_or_default(),
-            bump_seed: BorshDeserialize::deserialize(&mut data)
-                .map_err(|e| msg_err(e, "bump_seed"))
-                .unwrap_or_default(),
-            tenant_pk: BorshDeserialize::deserialize(&mut data)
-                .map_err(|e| msg_err(e, "tenant_pk"))
-                .unwrap_or_default(),
-            multicast_ip: BorshDeserialize::deserialize(&mut data)
-                .map_err(|e| msg_err(e, "multicast_ip"))
-                .unwrap_or([0, 0, 0, 0].into()),
-            max_bandwidth: BorshDeserialize::deserialize(&mut data)
-                .map_err(|e| msg_err(e, "max_bandwidth"))
-                .unwrap_or_default(),
-            status: BorshDeserialize::deserialize(&mut data)
-                .map_err(|e| msg_err(e, "status"))
-                .unwrap_or_default(),
-            code: BorshDeserialize::deserialize(&mut data)
-                .map_err(|e| msg_err(e, "code"))
-                .unwrap_or_default(),
-            publisher_count: BorshDeserialize::deserialize(&mut data)
-                .map_err(|e| msg_err(e, "publisher_count"))
-                .unwrap_or_default(),
-            subscriber_count: BorshDeserialize::deserialize(&mut data)
-                .map_err(|e| msg_err(e, "subscriber_count"))
-                .unwrap_or_default(),
+            account_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            owner: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            index: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            bump_seed: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            tenant_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            multicast_ip: BorshDeserialize::deserialize(&mut data).unwrap_or([0, 0, 0, 0].into()),
+            max_bandwidth: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            status: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            code: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            publisher_count: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            subscriber_count: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::MulticastGroup {

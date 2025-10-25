@@ -1,6 +1,5 @@
 use crate::{
     error::{DoubleZeroError, Validate},
-    helper::msg_err,
     seeds::SEED_LINK,
     state::accounttype::{AccountType, AccountTypeInfo},
 };
@@ -210,60 +209,24 @@ impl TryFrom<&[u8]> for Link {
 
     fn try_from(mut data: &[u8]) -> Result<Self, Self::Error> {
         let out = Self {
-            account_type: BorshDeserialize::deserialize(&mut data)
-                .map_err(|e| msg_err(e, "account_type"))
-                .unwrap_or_default(),
-            owner: BorshDeserialize::deserialize(&mut data)
-                .map_err(|e| msg_err(e, "owner"))
-                .unwrap_or_default(),
-            index: BorshDeserialize::deserialize(&mut data)
-                .map_err(|e| msg_err(e, "index"))
-                .unwrap_or_default(),
-            bump_seed: BorshDeserialize::deserialize(&mut data)
-                .map_err(|e| msg_err(e, "bump_seed"))
-                .unwrap_or_default(),
-            side_a_pk: BorshDeserialize::deserialize(&mut data)
-                .map_err(|e| msg_err(e, "side_a_pk"))
-                .unwrap_or_default(),
-            side_z_pk: BorshDeserialize::deserialize(&mut data)
-                .map_err(|e| msg_err(e, "side_z_pk"))
-                .unwrap_or_default(),
-            link_type: BorshDeserialize::deserialize(&mut data)
-                .map_err(|e| msg_err(e, "link_type"))
-                .unwrap_or_default(),
-            bandwidth: BorshDeserialize::deserialize(&mut data)
-                .map_err(|e| msg_err(e, "bandwidth"))
-                .unwrap_or_default(),
-            mtu: BorshDeserialize::deserialize(&mut data)
-                .map_err(|e| msg_err(e, "mtu"))
-                .unwrap_or_default(),
-            delay_ns: BorshDeserialize::deserialize(&mut data)
-                .map_err(|e| msg_err(e, "delay_ns"))
-                .unwrap_or_default(),
-            jitter_ns: BorshDeserialize::deserialize(&mut data)
-                .map_err(|e| msg_err(e, "jitter_ns"))
-                .unwrap_or_default(),
-            tunnel_id: BorshDeserialize::deserialize(&mut data)
-                .map_err(|e| msg_err(e, "tunnel_id"))
-                .unwrap_or_default(),
-            tunnel_net: BorshDeserialize::deserialize(&mut data)
-                .map_err(|e| msg_err(e, "tunnel_net"))
-                .unwrap_or_default(),
-            status: BorshDeserialize::deserialize(&mut data)
-                .map_err(|e| msg_err(e, "status"))
-                .unwrap_or_default(),
-            code: BorshDeserialize::deserialize(&mut data)
-                .map_err(|e| msg_err(e, "code"))
-                .unwrap_or_default(),
-            contributor_pk: BorshDeserialize::deserialize(&mut data)
-                .map_err(|e| msg_err(e, "contributor_pk"))
-                .unwrap_or_default(),
-            side_a_iface_name: BorshDeserialize::deserialize(&mut data)
-                .map_err(|e| msg_err(e, "side_a_iface_name"))
-                .unwrap_or_default(),
-            side_z_iface_name: BorshDeserialize::deserialize(&mut data)
-                .map_err(|e| msg_err(e, "side_z_iface_name"))
-                .unwrap_or_default(),
+            account_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            owner: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            index: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            bump_seed: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            side_a_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            side_z_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            link_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            bandwidth: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            mtu: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            delay_ns: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            jitter_ns: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            tunnel_id: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            tunnel_net: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            status: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            code: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            contributor_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            side_a_iface_name: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            side_z_iface_name: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::Link {

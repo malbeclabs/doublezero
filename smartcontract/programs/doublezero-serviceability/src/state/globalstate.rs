@@ -1,6 +1,6 @@
 use crate::{
     error::{DoubleZeroError, Validate},
-    helper::{deserialize_vec_with_capacity, msg_err},
+    helper::deserialize_vec_with_capacity,
     state::accounttype::AccountType,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -69,33 +69,17 @@ impl TryFrom<&[u8]> for GlobalState {
 
     fn try_from(mut data: &[u8]) -> Result<Self, Self::Error> {
         let out = Self {
-            account_type: BorshDeserialize::deserialize(&mut data)
-                .map_err(|e| msg_err(e, "account_type"))
-                .unwrap_or_default(),
-            bump_seed: BorshDeserialize::deserialize(&mut data)
-                .map_err(|e| msg_err(e, "bump_seed"))
-                .unwrap_or_default(),
-            account_index: BorshDeserialize::deserialize(&mut data)
-                .map_err(|e| msg_err(e, "account_index"))
-                .unwrap_or_default(),
-            foundation_allowlist: deserialize_vec_with_capacity(&mut data)
-                .map_err(|e| msg_err(e, "foundation_allowlist"))?,
-            device_allowlist: deserialize_vec_with_capacity(&mut data)
-                .map_err(|e| msg_err(e, "device_allowlist"))?,
-            user_allowlist: deserialize_vec_with_capacity(&mut data)
-                .map_err(|e| msg_err(e, "user_allowlist"))?,
-            activator_authority_pk: BorshDeserialize::deserialize(&mut data)
-                .map_err(|e| msg_err(e, "activator_authority_pk"))
-                .unwrap_or_default(),
-            sentinel_authority_pk: BorshDeserialize::deserialize(&mut data)
-                .map_err(|e| msg_err(e, "sentinel_authority_pk"))
-                .unwrap_or_default(),
+            account_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            bump_seed: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            account_index: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            foundation_allowlist: deserialize_vec_with_capacity(&mut data)?,
+            device_allowlist: deserialize_vec_with_capacity(&mut data)?,
+            user_allowlist: deserialize_vec_with_capacity(&mut data)?,
+            activator_authority_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            sentinel_authority_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             contributor_airdrop_lamports: BorshDeserialize::deserialize(&mut data)
-                .map_err(|e| msg_err(e, "contributor_airdrop_lamports"))
                 .unwrap_or_default(),
-            user_airdrop_lamports: BorshDeserialize::deserialize(&mut data)
-                .map_err(|e| msg_err(e, "user_airdrop_lamports"))
-                .unwrap_or_default(),
+            user_airdrop_lamports: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::GlobalState {

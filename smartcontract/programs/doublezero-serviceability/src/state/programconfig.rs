@@ -1,7 +1,6 @@
 use crate::{
     accounts::{AccountSeed, AccountSize},
     error::{DoubleZeroError, Validate},
-    helper::msg_err,
     programversion::ProgramVersion,
     seeds::{SEED_PREFIX, SEED_PROGRAM_CONFIG},
     state::accounttype::AccountType,
@@ -48,22 +47,12 @@ impl TryFrom<&[u8]> for ProgramConfig {
 
     fn try_from(mut data: &[u8]) -> Result<Self, Self::Error> {
         let out = Self {
-            account_type: BorshDeserialize::deserialize(&mut data)
-                .map_err(|e| msg_err(e, "account_type"))
-                .unwrap_or_default(),
-            bump_seed: BorshDeserialize::deserialize(&mut data)
-                .map_err(|e| msg_err(e, "bump_seed"))
-                .unwrap_or_default(),
+            account_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            bump_seed: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             version: ProgramVersion {
-                major: BorshDeserialize::deserialize(&mut data)
-                    .map_err(|e| msg_err(e, "major"))
-                    .unwrap_or_default(),
-                minor: BorshDeserialize::deserialize(&mut data)
-                    .map_err(|e| msg_err(e, "minor"))
-                    .unwrap_or_default(),
-                patch: BorshDeserialize::deserialize(&mut data)
-                    .map_err(|e| msg_err(e, "patch"))
-                    .unwrap_or_default(),
+                major: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+                minor: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+                patch: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             },
         };
 

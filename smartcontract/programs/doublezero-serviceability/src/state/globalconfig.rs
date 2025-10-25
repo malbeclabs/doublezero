@@ -8,6 +8,7 @@ use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError
 use std::fmt;
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GlobalConfig {
     pub account_type: AccountType,       // 1
     pub owner: Pubkey,                   // 32
@@ -64,7 +65,14 @@ impl TryFrom<&AccountInfo<'_>> for GlobalConfig {
 
     fn try_from(account: &AccountInfo) -> Result<Self, Self::Error> {
         let data = account.try_borrow_data()?;
-        Self::try_from(&data[..])
+        let res = Self::try_from(&data[..]);
+        if res.is_err() {
+            msg!(
+                "Failed to deserialize GlobalConfig: {:?}",
+                res.as_ref().err()
+            );
+        }
+        res
     }
 }
 
@@ -96,6 +104,19 @@ impl Validate for GlobalConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_state_compatibility_globalconfig() {
+        /* To generate the base64 strings, use the following commands after deploying the program and creating accounts:
+
+        solana account 8uA3su1WQPXvnhN5DhNueXrmizA8CY7dE5sj1vXkAWnf --output json  -u  https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16
+
+         */
+        let versions =
+            ["ArqURkOjUnp/ZIYOxBHg7ts7n0lFlaGFNKiKe+P8gnOq/uj9AAA+/wAArBAAABCp/gAAEOlUsgAY"];
+
+        crate::helper::base_tests::test_parsing::<GlobalConfig>(&versions).unwrap();
+    }
 
     #[test]
     fn test_state_globalconfig_try_from_defaults() {

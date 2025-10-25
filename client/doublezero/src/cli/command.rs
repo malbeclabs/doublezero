@@ -14,9 +14,9 @@ use crate::{
 use clap::{Args, Subcommand};
 use clap_complete::Shell;
 use doublezero_cli::{
-    account::GetAccountCliCommand, address::AddressCliCommand, balance::BalanceCliCommand,
-    export::ExportCliCommand, init::InitCliCommand, keygen::KeyGenCliCommand,
-    logcommand::LogCliCommand,
+    account::GetAccountCliCommand, accounts::GetAccountsCliCommand, address::AddressCliCommand,
+    balance::BalanceCliCommand, export::ExportCliCommand, init::InitCliCommand,
+    keygen::KeyGenCliCommand, logcommand::LogCliCommand,
 };
 
 #[derive(Subcommand, Debug)]
@@ -50,6 +50,9 @@ pub enum Command {
     /// Get Account
     #[command()]
     Account(GetAccountCliCommand),
+    /// List Accounts
+    #[command(hide = true)]
+    Accounts(GetAccountsCliCommand),
     /// Manage locations
     #[command()]
     Location(LocationCliCommand),

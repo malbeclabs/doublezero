@@ -141,7 +141,14 @@ impl TryFrom<&AccountInfo<'_>> for Contributor {
 
     fn try_from(account: &AccountInfo) -> Result<Self, Self::Error> {
         let data = account.try_borrow_data()?;
-        Contributor::try_from(&data[..])
+        let res = Self::try_from(&data[..]);
+        if res.is_err() {
+            msg!(
+                "Failed to deserialize Contributor: {:?}",
+                res.as_ref().err()
+            );
+        }
+        res
     }
 }
 
@@ -165,6 +172,20 @@ impl Validate for Contributor {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_state_compatibility_contributor() {
+        /* To generate the base64 strings, use the following commands after deploying the program and creating accounts:
+
+        solana account <pubkey> --output json  -u  https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16
+
+         */
+        let versions = [
+            "CiN4lwcm/7Tf2+IRG5hTmyQgQ4I7G6YccjCM9UlD9gaXKAIAAAAAAAAAAAAAAAAAAP0BBAAAAGNvMDMAAAAA",
+        ];
+
+        crate::helper::base_tests::test_parsing::<Contributor>(&versions).unwrap();
+    }
 
     #[test]
     fn test_state_contributor_try_from_defaults() {

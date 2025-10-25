@@ -101,8 +101,13 @@ rust-validator-test:
 	bash smartcontract/test/run_record_test.sh
 
 .PHONY: rust-ci
-rust-ci: rust-build rust-lint rust-test rust-validator-test
+rust-ci: rust-build rust-lint rust-test rust-validator-test rust-program-accounts-compat
 
+.PHONY: rust-program-accounts-compat
+rust-program-accounts-compat:
+	cargo run -p doublezero -- accounts -ed --no-output
+	cargo run -p doublezero -- accounts -et --no-output
+	cargo run -p doublezero -- accounts -em --no-output
 
 # -----------------------------------------------------------------------------
 # E2E targets

@@ -3,6 +3,7 @@ use core::fmt;
 use std::str::FromStr;
 
 #[derive(BorshSerialize, Debug, PartialEq, Clone, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ProgramVersion {
     pub major: u32,
     pub minor: u32,

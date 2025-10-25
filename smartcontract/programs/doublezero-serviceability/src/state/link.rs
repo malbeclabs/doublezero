@@ -242,7 +242,11 @@ impl TryFrom<&AccountInfo<'_>> for Link {
 
     fn try_from(account: &AccountInfo) -> Result<Self, Self::Error> {
         let data = account.try_borrow_data()?;
-        Self::try_from(&data[..])
+        let res = Self::try_from(&data[..]);
+        if res.is_err() {
+            msg!("Failed to deserialize Link: {:?}", res.as_ref().err());
+        }
+        res
     }
 }
 
@@ -287,6 +291,18 @@ impl Validate for Link {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_state_compatibility_link() {
+        /* To generate the base64 strings, use the following commands after deploying the program and creating accounts:
+
+        solana account <pubkey> --output json  -u  https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16
+
+         */
+        let versions = ["BkvSaV1rq1QJ8zOTtS11vLcqEAOEa6/VPFWMS3g8LlDQUwMAAAAAAAAAAAAAAAAAAP40OG7nknYJX/02vlGmZE3PZWBVkL/zMY4P60wIaJK5l6+0kktF4ZgCVrgWnleXuDOmfdeg3neH8u7LCs6dkCV3AQDkC1QCAAAAKCMAAADkVwAAAAAAkHYSAAAAAAAAAKwQAAAfARMAAABhbXMtZHowMDE6bG9uLWR6MDAxI3iXByb/tN/b4hEbmFObJCBDgjsbphxyMIz1SUP2C+4QAAAAU3dpdGNoMS8xLzEuMTAwMRAAAABTd2l0Y2gxLzEvMS4xMDAx"];
+
+        crate::helper::base_tests::test_parsing::<Link>(&versions).unwrap();
+    }
 
     #[test]
     fn test_state_link_try_from_defaults() {

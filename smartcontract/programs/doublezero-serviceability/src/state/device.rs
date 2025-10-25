@@ -490,7 +490,11 @@ impl TryFrom<&AccountInfo<'_>> for Device {
 
     fn try_from(account: &AccountInfo) -> Result<Self, Self::Error> {
         let data = account.try_borrow_data()?;
-        Device::try_from(&data[..])
+        let res = Self::try_from(&data[..]);
+        if res.is_err() {
+            msg!("Failed to deserialize Device: {:?}", res.as_ref().err());
+        }
+        res
     }
 }
 
@@ -543,6 +547,18 @@ impl Validate for Device {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_state_compatibility_device() {
+        /* To generate the base64 strings, use the following commands after deploying the program and creating accounts:
+
+        solana account FmgsHPJ2cNdo9TvryTbkTGAAhqSGUZqzeqbgprYw994Q --output json  -u  https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16
+
+         */
+        let versions = ["BUvSaV1rq1QJ8zOTtS11vLcqEAOEa6/VPFWMS3g8LlDQEQAAAAAAAAAAAAAAAAAAAP1rC4VFOvOPg4mpRREb9GukjeFMsf6rdR+TNo5tzrcu/w+sPgaJM83p9DCCOuYH9DTSeASjawRIgdmqexb75jS8AMPbijIBCQAAAGFtcy1kejAwMQEAAADD24pgG/FpS9IUqUkCnSkOv8POB7fhrYDYEyUmGWLw2835agVaI3iXByb/tN/b4hEbmFObJCBDgjsbphxyMIz1SUP2C+4AAAAAAwAAAAADCwAAAExvb3BiYWNrMjU1AQEAAKwQAB4gCAAAAAMLAAAATG9vcGJhY2syNTYBAgAArBAAJSAAAAAAAxAAAABTd2l0Y2gxLzEvMS4xMDAxAgDpA6wQAAAfAAAACgAAADMAgAA="];
+
+        crate::helper::base_tests::test_parsing::<Device>(&versions).unwrap();
+    }
 
     #[test]
     fn test_state_device_try_from_defaults() {

@@ -57,7 +57,6 @@ pub fn process_create_user(
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
-    #[cfg(test)]
     msg!("process_create_user({:?})", value);
 
     // Check if the payer is a signer

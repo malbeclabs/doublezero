@@ -294,7 +294,11 @@ impl TryFrom<&AccountInfo<'_>> for User {
 
     fn try_from(account: &AccountInfo) -> Result<Self, Self::Error> {
         let data = account.try_borrow_data()?;
-        Self::try_from(&data[..])
+        let res = Self::try_from(&data[..]);
+        if res.is_err() {
+            msg!("Failed to deserialize User: {:?}", res.as_ref().err());
+        }
+        res
     }
 }
 
@@ -373,6 +377,19 @@ impl User {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_state_compatibility_user() {
+        /* To generate the base64 strings, use the following commands after deploying the program and creating accounts:
+
+        solana account <Pubkey> --output json  -u  https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16
+
+         */
+        let versions = ["B6gVJ9nqZZCbOZ4+qdSD0fV6GW608QGIxlc96bI9/o1ukAMAAAAAAAAAAAAAAAAAAP8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABNn75kIGVAa79vzDXmsfzMjJv6k6bA4q/3il4oq4agjAFfrc7uX63O7i8Cqf4CxB8BAAAAAAAAAACjpUHKupgvsyUs0s3LR1ojd7zOQkjFxGsDoH+BeOYVWw==",
+        "B7qqHuIng+xr+jC+xdH+K0McWbY0Sz2o800JnFlfiUXDTBgAAAAAAAAAAAAAAAAAAP4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABNn75kIGVAa79vzDXmsfzMjJv6k6bA4q/3il4oq4agjAFD1XgJQ9V4CQMCqf4ApB8BAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="];
+
+        crate::helper::base_tests::test_parsing::<User>(&versions).unwrap();
+    }
 
     #[test]
     fn test_state_user_try_from_defaults() {

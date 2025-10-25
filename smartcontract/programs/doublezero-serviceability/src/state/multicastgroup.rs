@@ -156,7 +156,14 @@ impl TryFrom<&AccountInfo<'_>> for MulticastGroup {
 
     fn try_from(account: &AccountInfo) -> Result<Self, Self::Error> {
         let data = account.try_borrow_data()?;
-        Self::try_from(&data[..])
+        let res = Self::try_from(&data[..]);
+        if res.is_err() {
+            msg!(
+                "Failed to deserialize MulticastGroup: {:?}",
+                res.as_ref().err()
+            );
+        }
+        res
     }
 }
 
@@ -189,6 +196,18 @@ impl Validate for MulticastGroup {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_state_compatibility_multicastgroup() {
+        /* To generate the base64 strings, use the following commands after deploying the program and creating accounts:
+
+        solana account FmgsHPJ2cNdo9TvryTbkTGAAhqSGUZqzeqbgprYw994Q --output json  -u  https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16
+
+         */
+        let versions = ["CLqu81K568sUiDTMFBv+LwPqNkwpNJn8CYTap5DlwMyW3gAAAAAAAAAAAAAAAAAAAPsAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOlUsgBAQg8AAAAAAAEEAAAAZGVtbwAAAAAAAAAAAAAAAAAAAAA="];
+
+        crate::helper::base_tests::test_parsing::<MulticastGroup>(&versions).unwrap();
+    }
 
     #[test]
     fn test_state_multicastgroup_try_from_defaults() {

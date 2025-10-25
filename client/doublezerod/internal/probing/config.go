@@ -14,13 +14,24 @@ const (
 	defaultProbeResultBufferSize = 4096
 )
 
+type ListenFunc func(context.Context) error
+
+type ProbeFunc func(context.Context, *routing.Route) (ProbeResult, error)
+
+type ProbeResult struct {
+	OK       bool
+	Sent     int
+	Received int
+}
+
 type Config struct {
 	// Required object fields.
 	Logger     *slog.Logger
 	Context    context.Context
 	Netlink    routing.Netlinker
 	Liveness   LivenessPolicy
-	ListenFunc func(context.Context) error
+	ListenFunc ListenFunc
+	ProbeFunc  ProbeFunc
 
 	// Required scalar fields.
 	Interval      time.Duration
@@ -48,6 +59,9 @@ func (cfg *Config) Validate() error {
 	}
 	if cfg.ListenFunc == nil {
 		return errors.New("listen func is required")
+	}
+	if cfg.ProbeFunc == nil {
+		return errors.New("probe func is required")
 	}
 
 	// Required scalar fields.

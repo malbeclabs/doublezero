@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
-	promprobing "github.com/prometheus-community/pro-bing"
 )
 
 // Worker owns the event loop. It delegates all business logic
@@ -30,11 +29,8 @@ type probingWorker struct {
 }
 
 type probeResult struct {
-	route managedRoute
-	ok    bool
-	sent  int
-	recv  int
-	loss  float64
+	ProbeResult
+	route *managedRoute
 }
 
 func newWorker(log *slog.Logger, cfg Config, store *routeStore) *probingWorker {
@@ -137,7 +133,7 @@ func (w *probingWorker) run(ctx context.Context) {
 			}
 
 		case pr := <-w.evProbeRes:
-			w.applyProbeResult(&pr.route, pr.ok)
+			w.applyProbeResult(pr.route, pr.OK)
 			if inFlight > 0 {
 				inFlight--
 			}
@@ -149,45 +145,28 @@ func (w *probingWorker) run(ctx context.Context) {
 func (w *probingWorker) startProbes(ctx context.Context) (spawned int) {
 	for _, route := range w.store.Clone() {
 		spawned++
-		go func(snapshot managedRoute) {
-			res, err := w.probeRoute(ctx, &snapshot)
-			pr := probeResult{route: snapshot}
+		go func(mr managedRoute) {
+			res, err := w.cfg.ProbeFunc(ctx, mr.route)
 			if err != nil {
-				w.log.Error("probing: probe error", "route", snapshot.String(), "error", err)
-				pr.ok = false
+				w.log.Error("probing: probe error", "route", mr.String(), "error", err)
+				w.evProbeRes <- probeResult{
+					ProbeResult: ProbeResult{OK: false},
+					route:       &mr,
+				}
 			} else {
-				pr.ok = res.PacketsSent > 0 && res.PacketsRecv == res.PacketsSent
-				pr.sent, pr.recv, pr.loss = int(res.PacketsSent), int(res.PacketsRecv), res.PacketLoss
-				if pr.ok {
-					w.log.Debug("probing: route probe success", "route", snapshot.String(), "packets_sent", pr.sent, "packets_recv", pr.recv, "packet_loss", pr.loss)
+				if res.OK {
+					w.log.Debug("probing: route probe success", "route", mr.String(), "probe_ok", res.OK, "packets_sent", res.Sent, "packets_recv", res.Received)
 				} else {
-					w.log.Debug("probing: route probe failure", "route", snapshot.String(), "packets_sent", pr.sent, "packets_recv", pr.recv, "packet_loss", pr.loss)
+					w.log.Debug("probing: route probe failure", "route", mr.String(), "probe_ok", res.OK, "packets_sent", res.Sent, "packets_recv", res.Received)
+				}
+				w.evProbeRes <- probeResult{
+					ProbeResult: res,
+					route:       &mr,
 				}
 			}
-			w.evProbeRes <- pr
 		}(route)
 	}
 	return spawned
-}
-
-func (w *probingWorker) probeRoute(ctx context.Context, mr *managedRoute) (*promprobing.Statistics, error) {
-	w.log.Debug("probing: sending route probe", "route", mr.String())
-
-	pinger, err := promprobing.NewPinger(mr.route.Dst.IP.String())
-	if err != nil {
-		return nil, fmt.Errorf("error creating route probe pinger: %w", err)
-	}
-	pinger.Count = 1
-	pinger.Timeout = w.cfg.ProbeTimeout
-	pinger.Source = mr.route.Src.String()
-	pinger.InterfaceName = w.cfg.InterfaceName
-
-	err = pinger.RunWithContext(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("probing: error probing route: %w", err)
-	}
-
-	return pinger.Statistics(), nil
 }
 
 func (w *probingWorker) handleRouteAdd(route *routing.Route) error {

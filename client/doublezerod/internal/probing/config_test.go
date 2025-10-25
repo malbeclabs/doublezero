@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 	"github.com/stretchr/testify/require"
 )
 
@@ -18,6 +19,7 @@ func validConfig() Config {
 		Netlink:       &MockNetlinker{},
 		Liveness:      NewHysteresisLivenessPolicy(2, 2),
 		ListenFunc:    func(ctx context.Context) error { return nil },
+		ProbeFunc:     func(ctx context.Context, route *routing.Route) (ProbeResult, error) { return ProbeResult{}, nil },
 		Interval:      200 * time.Millisecond,
 		ProbeTimeout:  500 * time.Millisecond,
 		InterfaceName: "eth0",
@@ -77,6 +79,15 @@ func TestProbing_ConfigValidate(t *testing.T) {
 		err := cfg.Validate()
 		require.Error(t, err)
 		require.EqualError(t, err, "listen func is required")
+	})
+
+	t.Run("nil_probe_func", func(t *testing.T) {
+		t.Parallel()
+		cfg := validConfig()
+		cfg.ProbeFunc = nil
+		err := cfg.Validate()
+		require.Error(t, err)
+		require.EqualError(t, err, "probe func is required")
 	})
 
 	t.Run("zero_interval", func(t *testing.T) {

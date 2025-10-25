@@ -36,24 +36,23 @@ const (
 )
 
 var (
-	sockFile                   = flag.String("sock-file", "/var/run/doublezerod/doublezerod.sock", "path to doublezerod domain socket")
-	enableLatencyProbing       = flag.Bool("latency-probing", true, "enable latency probing to doublezero nodes")
-	versionFlag                = flag.Bool("version", false, "build version")
-	env                        = flag.String("env", config.EnvTestnet, "environment to use")
-	programId                  = flag.String("program-id", "", "override smartcontract program id to monitor")
-	rpcEndpoint                = flag.String("solana-rpc-endpoint", "", "override solana rpc endpoint url")
-	probeInterval              = flag.Int("probe-interval", 30, "latency probe interval in seconds")
-	cacheUpdateInterval        = flag.Int("cache-update-interval", 30, "latency cache update interval in seconds")
-	enableVerboseLogging       = flag.Bool("v", false, "enables verbose logging")
-	enableLatencyMetrics       = flag.Bool("enable-latency-metrics", false, "enables latency metrics")
-	metricsEnable              = flag.Bool("metrics-enable", false, "Enable prometheus metrics")
-	metricsAddr                = flag.String("metrics-addr", "localhost:0", "Address to listen on for prometheus metrics")
-	routeProbingEnable         = flag.Bool("route-probing-enable", false, "enables route liveness probing")
-	routeProbingInterval       = flag.Duration("route-probing-interval", defaultRouteProbingInterval, "route liveness probing interval as a duration (i.e. 5s, 10s, 30s)")
-	routeProbingMaxConcurrency = flag.Uint("route-probing-max-concurrency", defaultRouteProbingMaxConcurrency, "route liveness probing max concurrency")
-	routeProbingProbeTimeout   = flag.Duration("route-probing-probe-timeout", defaultRouteProbingProbeTimeout, "route liveness probing probe timeout as a duration (i.e. 1s, 3s, 5s)")
-	routeProbingUpThreshold    = flag.Uint("route-probing-up-threshold", defaultRouteProbingUpThreshold, "route liveness probing up threshold")
-	routeProbingDownThreshold  = flag.Uint("route-probing-down-threshold", defaultRouteProbingDownThreshold, "route liveness probing down threshold")
+	sockFile                  = flag.String("sock-file", "/var/run/doublezerod/doublezerod.sock", "path to doublezerod domain socket")
+	enableLatencyProbing      = flag.Bool("latency-probing", true, "enable latency probing to doublezero nodes")
+	versionFlag               = flag.Bool("version", false, "build version")
+	env                       = flag.String("env", config.EnvTestnet, "environment to use")
+	programId                 = flag.String("program-id", "", "override smartcontract program id to monitor")
+	rpcEndpoint               = flag.String("solana-rpc-endpoint", "", "override solana rpc endpoint url")
+	probeInterval             = flag.Int("probe-interval", 30, "latency probe interval in seconds")
+	cacheUpdateInterval       = flag.Int("cache-update-interval", 30, "latency cache update interval in seconds")
+	enableVerboseLogging      = flag.Bool("v", false, "enables verbose logging")
+	enableLatencyMetrics      = flag.Bool("enable-latency-metrics", false, "enables latency metrics")
+	metricsEnable             = flag.Bool("metrics-enable", false, "Enable prometheus metrics")
+	metricsAddr               = flag.String("metrics-addr", "localhost:0", "Address to listen on for prometheus metrics")
+	routeProbingEnable        = flag.Bool("route-probing-enable", false, "enables route liveness probing")
+	routeProbingInterval      = flag.Duration("route-probing-interval", defaultRouteProbingInterval, "route liveness probing interval as a duration (i.e. 5s, 10s, 30s)")
+	routeProbingProbeTimeout  = flag.Duration("route-probing-probe-timeout", defaultRouteProbingProbeTimeout, "route liveness probing probe timeout as a duration (i.e. 1s, 3s, 5s)")
+	routeProbingUpThreshold   = flag.Uint("route-probing-up-threshold", defaultRouteProbingUpThreshold, "route liveness probing up threshold")
+	routeProbingDownThreshold = flag.Uint("route-probing-down-threshold", defaultRouteProbingDownThreshold, "route liveness probing down threshold")
 
 	// set by LDFLAGS
 	version = "dev"
@@ -160,16 +159,15 @@ func main() {
 		return services.NewIBRLService(bgps, nlr, db, func(iface string, src net.IP) (bgp.RouteManager, error) {
 			if *routeProbingEnable {
 				return probing.NewRouteManager(probing.Config{
-					Logger:         logger,
-					Context:        ctx,
-					Netlink:        nlr,
-					Interval:       *routeProbingInterval,
-					MaxConcurrency: *routeProbingMaxConcurrency,
-					ProbeTimeout:   *routeProbingProbeTimeout,
-					InterfaceName:  iface,
-					TunnelSrc:      src,
-					UpThreshold:    *routeProbingUpThreshold,
-					DownThreshold:  *routeProbingDownThreshold,
+					Logger:        logger,
+					Context:       ctx,
+					Netlink:       nlr,
+					Interval:      *routeProbingInterval,
+					ProbeTimeout:  *routeProbingProbeTimeout,
+					InterfaceName: iface,
+					TunnelSrc:     src,
+					UpThreshold:   *routeProbingUpThreshold,
+					DownThreshold: *routeProbingDownThreshold,
 				})
 			} else {
 				return manager.NewNetlinkerPassthroughRouteManager(nlr), nil

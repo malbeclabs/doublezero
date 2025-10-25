@@ -29,9 +29,6 @@ type probingWorker struct {
 	evRouteDelete chan *routing.Route
 	evTick        chan struct{}
 	evProbeRes    chan probeResult
-
-	// probe concurrency limiter
-	sem chan struct{}
 }
 
 type probeResult struct {
@@ -48,11 +45,10 @@ func newWorker(log *slog.Logger, cfg Config, store *routeStore, lp LivenessPolic
 		cfg:           cfg,
 		store:         store,
 		lp:            lp,
-		evRouteAdd:    make(chan *routing.Route, 256),
-		evRouteDelete: make(chan *routing.Route, 256),
+		evRouteAdd:    make(chan *routing.Route, cfg.RouteEventBufferSize),
+		evRouteDelete: make(chan *routing.Route, cfg.RouteEventBufferSize),
 		evTick:        make(chan struct{}, 1),
-		evProbeRes:    make(chan probeResult, 2048),
-		sem:           make(chan struct{}, int(cfg.MaxConcurrency)),
+		evProbeRes:    make(chan probeResult, cfg.ProbeResultBufferSize),
 	}
 }
 
@@ -82,32 +78,26 @@ func (w *probingWorker) IsRunning() bool {
 	return w.cancel != nil
 }
 
-// Non-blocking enqueue helpers used by ProbingManager
 func (w *probingWorker) EnqueueAdd(r *routing.Route) {
-	select {
-	case w.evRouteAdd <- r:
-	default:
-		w.evRouteAdd <- r
-	}
+	// Non-blocking unless the buffer is full.
+	w.evRouteAdd <- r
 }
+
 func (w *probingWorker) EnqueueDelete(r *routing.Route) {
-	select {
-	case w.evRouteDelete <- r:
-	default:
-		w.evRouteDelete <- r
-	}
+	// Non-blocking unless the buffer is full.
+	w.evRouteDelete <- r
 }
+
 func (w *probingWorker) enqueueTick() {
 	select {
 	case w.evTick <- struct{}{}:
 	default:
+		// Drop if there's already a tick in the buffer.
 	}
 }
 
-// Run is the event loop. It does NOT implement business logic; it just
-// calls back into the ProbingManager methods you already have.
 func (w *probingWorker) run(ctx context.Context) {
-	w.log.Info("probing: worker started", "interval", w.cfg.Interval.String(), "max_concurrency", w.cfg.MaxConcurrency)
+	w.log.Info("probing: worker started", "interval", w.cfg.Interval.String())
 
 	listener, err := uping.NewListener(uping.ListenerConfig{
 		Logger: w.log, Interface: w.cfg.InterfaceName, IP: w.cfg.TunnelSrc,
@@ -122,7 +112,7 @@ func (w *probingWorker) run(ctx context.Context) {
 		}
 	}()
 
-	// kick an immediate sweep
+	// Tick immediately to start probing.
 	w.enqueueTick()
 
 	ticker := time.NewTicker(w.cfg.Interval)
@@ -158,7 +148,9 @@ func (w *probingWorker) run(ctx context.Context) {
 
 		case pr := <-w.evProbeRes:
 			w.applyProbeResult(&pr.route, pr.ok)
-			inFlight--
+			if inFlight > 0 {
+				inFlight--
+			}
 		}
 	}
 }
@@ -166,11 +158,8 @@ func (w *probingWorker) run(ctx context.Context) {
 // startProbes spawns probes using existing probeRoute; results return on evProbeRes.
 func (w *probingWorker) startProbes(ctx context.Context) (spawned int) {
 	for _, route := range w.store.Clone() {
-		w.sem <- struct{}{} // limit concurrency
 		spawned++
 		go func(snapshot managedRoute) {
-			defer func() { <-w.sem }()
-
 			res, err := w.probeRoute(ctx, &snapshot)
 			pr := probeResult{route: snapshot}
 			if err != nil {

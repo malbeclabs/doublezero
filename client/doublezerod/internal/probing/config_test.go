@@ -14,16 +14,15 @@ import (
 func validConfig() Config {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	return Config{
-		Logger:         logger,
-		Context:        context.Background(),
-		Netlink:        &MockNetlinker{},
-		Interval:       200 * time.Millisecond,
-		MaxConcurrency: 4,
-		ProbeTimeout:   500 * time.Millisecond,
-		InterfaceName:  "eth0",
-		TunnelSrc:      net.ParseIP("10.0.0.1"),
-		UpThreshold:    2,
-		DownThreshold:  2,
+		Logger:        logger,
+		Context:       context.Background(),
+		Netlink:       &MockNetlinker{},
+		Interval:      200 * time.Millisecond,
+		ProbeTimeout:  500 * time.Millisecond,
+		InterfaceName: "eth0",
+		TunnelSrc:     net.ParseIP("10.0.0.1"),
+		UpThreshold:   2,
+		DownThreshold: 2,
 	}
 }
 
@@ -71,15 +70,6 @@ func TestProbing_ConfigValidate(t *testing.T) {
 		err := cfg.Validate()
 		require.Error(t, err)
 		require.EqualError(t, err, "interval is required")
-	})
-
-	t.Run("zero_max_concurrency", func(t *testing.T) {
-		t.Parallel()
-		cfg := validConfig()
-		cfg.MaxConcurrency = 0
-		err := cfg.Validate()
-		require.Error(t, err)
-		require.EqualError(t, err, "max concurrency is required")
 	})
 
 	t.Run("nonpositive_probe_timeout", func(t *testing.T) {

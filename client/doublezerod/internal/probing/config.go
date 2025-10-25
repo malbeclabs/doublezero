@@ -10,15 +10,23 @@ import (
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 )
 
+const (
+	defaultRouteEventBufferSize  = 1024
+	defaultProbeResultBufferSize = 4096
+)
+
 type Config struct {
-	Logger         *slog.Logger
-	Context        context.Context
-	Netlink        routing.Netlinker
-	Interval       time.Duration
-	MaxConcurrency uint
-	ProbeTimeout   time.Duration
-	InterfaceName  string
-	TunnelSrc      net.IP
+	Logger        *slog.Logger
+	Context       context.Context
+	Netlink       routing.Netlinker
+	Interval      time.Duration
+	ProbeTimeout  time.Duration
+	InterfaceName string
+	TunnelSrc     net.IP
+
+	// Optional fields.
+	RouteEventBufferSize  int
+	ProbeResultBufferSize int
 
 	// Liveness policy: consecutive probe results required before flipping kernel state.
 	// If zero, defaults will be applied in NewProbingManager.
@@ -39,9 +47,6 @@ func (cfg *Config) Validate() error {
 	if cfg.Interval <= 0 {
 		return errors.New("interval is required")
 	}
-	if cfg.MaxConcurrency == 0 {
-		return errors.New("max concurrency is required")
-	}
 	if cfg.ProbeTimeout <= 0 {
 		return errors.New("probe timeout is required")
 	}
@@ -59,6 +64,20 @@ func (cfg *Config) Validate() error {
 	}
 	if cfg.DownThreshold == 0 {
 		return errors.New("down threshold is required")
+	}
+
+	// Optional fields.
+	if cfg.RouteEventBufferSize == 0 {
+		cfg.RouteEventBufferSize = defaultRouteEventBufferSize
+	}
+	if cfg.ProbeResultBufferSize == 0 {
+		cfg.ProbeResultBufferSize = defaultProbeResultBufferSize
+	}
+	if cfg.RouteEventBufferSize <= 0 {
+		return errors.New("route event buffer size must be greater than 0")
+	}
+	if cfg.ProbeResultBufferSize <= 0 {
+		return errors.New("probe result buffer size must be greater than 0")
 	}
 	return nil
 }

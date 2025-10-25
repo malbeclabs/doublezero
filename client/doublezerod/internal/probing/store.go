@@ -52,6 +52,16 @@ func (s *routeStore) Clone() map[routeKey]managedRoute {
 	return maps.Clone(s.m)
 }
 
+func (s *routeStore) Keys() []routeKey {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	keys := make([]routeKey, 0, len(s.m))
+	for k := range s.m {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
 func (s *routeStore) Len() int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

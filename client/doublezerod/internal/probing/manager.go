@@ -17,7 +17,7 @@ type RouteManager struct {
 
 func NewRouteManager(cfg Config) (*RouteManager, error) {
 	if err := cfg.Validate(); err != nil {
-		return nil, fmt.Errorf("error creating probing manager: %w", err)
+		return nil, fmt.Errorf("probing: error validating config: %w", err)
 	}
 	store := newRouteStore()
 	worker := newWorker(cfg.Logger, cfg, store)

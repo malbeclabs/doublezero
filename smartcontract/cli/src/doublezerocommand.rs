@@ -51,8 +51,8 @@ use doublezero_sdk::{
         link::{
             accept::AcceptLinkCommand, activate::ActivateLinkCommand,
             closeaccount::CloseAccountLinkCommand, create::CreateLinkCommand,
-            delete::DeleteLinkCommand, get::GetLinkCommand, list::ListLinkCommand,
-            reject::RejectLinkCommand, update::UpdateLinkCommand,
+            delete::DeleteLinkCommand, get::GetLinkCommand, latency::LatencyLinkCommand,
+            list::ListLinkCommand, reject::RejectLinkCommand, update::UpdateLinkCommand,
         },
         location::{
             create::CreateLocationCommand, delete::DeleteLocationCommand, get::GetLocationCommand,
@@ -86,6 +86,7 @@ use doublezero_sdk::{
             requestban::RequestBanUserCommand, update::UpdateUserCommand,
         },
     },
+    telemetry::LinkLatencyStats,
     DZClient, Device, DoubleZeroClient, Exchange, GetGlobalConfigCommand, GetGlobalStateCommand,
     GlobalConfig, GlobalState, Link, Location, MulticastGroup, User,
 };
@@ -182,6 +183,7 @@ pub trait CliCommand {
     fn update_link(&self, cmd: UpdateLinkCommand) -> eyre::Result<Signature>;
     fn delete_link(&self, cmd: DeleteLinkCommand) -> eyre::Result<Signature>;
     fn activate_link(&self, cmd: ActivateLinkCommand) -> eyre::Result<Signature>;
+    fn latency_link(&self, cmd: LatencyLinkCommand) -> eyre::Result<LinkLatencyStats>;
     fn reject_link(&self, cmd: RejectLinkCommand) -> eyre::Result<Signature>;
     fn closeaccount_link(&self, cmd: CloseAccountLinkCommand) -> eyre::Result<Signature>;
 
@@ -470,6 +472,9 @@ impl CliCommand for CliCommandImpl<'_> {
         cmd.execute(self.client)
     }
     fn activate_link(&self, cmd: ActivateLinkCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn latency_link(&self, cmd: LatencyLinkCommand) -> eyre::Result<LinkLatencyStats> {
         cmd.execute(self.client)
     }
     fn reject_link(&self, cmd: RejectLinkCommand) -> eyre::Result<Signature> {

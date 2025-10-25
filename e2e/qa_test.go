@@ -46,10 +46,11 @@ var (
 )
 
 type Device struct {
-	PubKey     string
-	Code       string
-	MaxUsers   int
-	UsersCount int
+	PubKey       string
+	Code         string
+	ExchangeCode string
+	MaxUsers     int
+	UsersCount   int
 }
 
 type DeviceTestResult struct {
@@ -81,12 +82,20 @@ func TestMain(m *testing.M) {
 		log.Fatalf("failed to get program data: %v", err)
 	}
 
+	// Create a map of exchange pubkeys to codes for lookup
+	exchangeMap := make(map[[32]uint8]string)
+	for _, e := range data.Exchanges {
+		exchangeMap[e.PubKey] = e.Code
+	}
+
 	for _, d := range data.Devices {
+		exchangeCode := exchangeMap[d.ExchangePubKey]
 		dev := &Device{
-			PubKey:     base58.Encode(d.PubKey[:]),
-			Code:       d.Code,
-			MaxUsers:   int(d.MaxUsers),
-			UsersCount: int(d.UsersCount),
+			PubKey:       base58.Encode(d.PubKey[:]),
+			Code:         d.Code,
+			ExchangeCode: exchangeCode,
+			MaxUsers:     int(d.MaxUsers),
+			UsersCount:   int(d.UsersCount),
 		}
 		devices = append(devices, dev)
 	}
@@ -479,7 +488,7 @@ func waitForUserDeletion(t *testing.T, ctx context.Context, client pb.QAAgentSer
 			}
 		}
 
-		t.Logf("User with IP %s does not exist onchain", clientIP)
+		t.Logf("Waiting for user with IP %s to be deleted onchain", clientIP)
 		return true, nil
 	}
 
@@ -657,10 +666,10 @@ func runUnicastConnectivityTest(t *testing.T, hosts []string, devices []*Device)
 	if len(devices) == 0 {
 		// QA mode: Connect all hosts without device specification
 		t.Log("Running in QA mode - connecting all hosts without device specification")
-		hostIPMap, err := connectHosts(t, hosts, nil)
+		hostIPMap, hostDeviceMap, err := connectHosts(t, hosts, nil)
 		require.NoError(t, err, "Failed to connect hosts")
 
-		err = testAllToAllConnectivity(t, hostIPMap, false) // false = use simple ping
+		err = testAllToAllConnectivity(t, hostIPMap, hostDeviceMap, false) // false = use simple ping
 		require.NoError(t, err, "Connectivity test failed")
 		return
 	}
@@ -674,6 +683,7 @@ func runUnicastConnectivityTest(t *testing.T, hosts []string, devices []*Device)
 
 	// Connect first host to first working device
 	var firstHostIP string
+	var firstHostDevice *Device
 
 	for i, device := range devices {
 		if i > 0 {
@@ -682,7 +692,7 @@ func runUnicastConnectivityTest(t *testing.T, hosts []string, devices []*Device)
 		}
 
 		t.Logf("Attempting to connect %s to device %s", firstHost, device.Code)
-		hostIPMap, err := connectHosts(t, []string{firstHost}, device)
+		hostIPMap, _, err := connectHosts(t, []string{firstHost}, device)
 		if err != nil {
 			t.Logf("Failed to connect to device %s: %v", device.Code, err)
 			// Try to disconnect to clean up
@@ -693,6 +703,7 @@ func runUnicastConnectivityTest(t *testing.T, hosts []string, devices []*Device)
 		}
 
 		firstHostIP = hostIPMap[firstHost]
+		firstHostDevice = device
 		t.Logf("First host %s successfully connected to device %s with IP %s",
 			firstHost, device.Code, firstHostIP)
 		break
@@ -716,7 +727,7 @@ func runUnicastConnectivityTest(t *testing.T, hosts []string, devices []*Device)
 		device := device // capture loop variable
 		t.Run(fmt.Sprintf("device_%s", device.Code), func(t *testing.T) {
 			t.Logf("Testing device %s %d/%d", device.Code, i+1, len(devices))
-			result := testDeviceConnectivity(t, device, remainingHosts, firstHost, firstHostIP)
+			result := testDeviceConnectivity(t, device, remainingHosts, firstHost, firstHostIP, firstHostDevice)
 
 			resultsMutex.Lock()
 			results = append(results, result)
@@ -734,14 +745,16 @@ func runUnicastConnectivityTest(t *testing.T, hosts []string, devices []*Device)
 }
 
 // connectHosts connects the specified hosts, optionally to a specific device
-func connectHosts(t *testing.T, hosts []string, device *Device) (map[string]string, error) {
+// Returns maps of host->IP and host->Device
+func connectHosts(t *testing.T, hosts []string, device *Device) (map[string]string, map[string]*Device, error) {
 	hostIPMap := make(map[string]string)
+	hostDeviceMap := make(map[string]*Device)
 	ctx := context.Background()
 
 	for _, host := range hosts {
 		client, err := getQAClient(host)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create QA client for %s: %w", host, err)
+			return nil, nil, fmt.Errorf("failed to create QA client for %s: %w", host, err)
 		}
 
 		ensureDisconnected(t, ctx, client, host)
@@ -760,10 +773,10 @@ func connectHosts(t *testing.T, hosts []string, device *Device) (map[string]stri
 		cancel()
 
 		if err != nil {
-			return nil, fmt.Errorf("failed to connect %s: %w", host, err)
+			return nil, nil, fmt.Errorf("failed to connect %s: %w", host, err)
 		}
 		if !result.GetSuccess() {
-			return nil, fmt.Errorf("connection failed for %s: %s", host, result.GetOutput())
+			return nil, nil, fmt.Errorf("connection failed for %s: %s", host, result.GetOutput())
 		}
 
 		// Get IP address
@@ -772,23 +785,35 @@ func connectHosts(t *testing.T, hosts []string, device *Device) (map[string]stri
 		statusCancel()
 
 		if err != nil {
-			return nil, fmt.Errorf("failed to get status for %s: %w", host, err)
+			return nil, nil, fmt.Errorf("failed to get status for %s: %w", host, err)
 		}
 
 		ip := getIPFromStatus(status)
 		if ip == "" {
-			return nil, fmt.Errorf("failed to get IP for %s", host)
+			return nil, nil, fmt.Errorf("failed to get IP for %s", host)
 		}
 
 		hostIPMap[host] = ip
+
+		// If we're connecting to a specific device, store it
+		if device != nil {
+			hostDeviceMap[host] = device
+		} else {
+			// In QA mode, we need to find which device we connected to for exchange comparison
+			connectedDevice := findDeviceByHostIP(t, ip)
+			if connectedDevice != nil {
+				hostDeviceMap[host] = connectedDevice
+			}
+		}
+
 		t.Logf("Host %s connected with IP %s", host, ip)
 	}
 
-	return hostIPMap, nil
+	return hostIPMap, hostDeviceMap, nil
 }
 
 // testDeviceConnectivity tests connectivity for a specific device
-func testDeviceConnectivity(t *testing.T, device *Device, hosts []string, additionalHost string, additionalIP string) *DeviceTestResult {
+func testDeviceConnectivity(t *testing.T, device *Device, hosts []string, additionalHost string, additionalIP string, additionalHostDevice *Device) *DeviceTestResult {
 	result := &DeviceTestResult{
 		Device:  device,
 		Success: true,
@@ -813,18 +838,19 @@ func testDeviceConnectivity(t *testing.T, device *Device, hosts []string, additi
 
 	// Connect all hosts to this device
 	t.Logf("Connecting hosts %s to device %s", hosts, device.Code)
-	hostIPMap, err := connectHosts(t, hosts, device)
+	hostIPMap, hostDeviceMap, err := connectHosts(t, hosts, device)
 	if err != nil {
 		result.Success = false
 		result.Error = err.Error()
 		return result
 	}
 
-	// Add the already-connected first host to the map
+	// Add the already-connected first host to the maps
 	hostIPMap[additionalHost] = additionalIP
+	hostDeviceMap[additionalHost] = additionalHostDevice
 
 	// Test connectivity between all hosts
-	err = testAllToAllConnectivity(t, hostIPMap, true) // true = use retry ping
+	err = testAllToAllConnectivity(t, hostIPMap, hostDeviceMap, true) // true = use retry ping
 	if err != nil {
 		result.Success = false
 		result.Error = err.Error()
@@ -833,7 +859,7 @@ func testDeviceConnectivity(t *testing.T, device *Device, hosts []string, additi
 	return result
 }
 
-func testAllToAllConnectivity(t *testing.T, hostIPMap map[string]string, useRetry bool) error {
+func testAllToAllConnectivity(t *testing.T, hostIPMap map[string]string, hostDeviceMap map[string]*Device, useRetry bool) error {
 	// Build ordered lists for consistent testing
 	var sortedHosts []string
 	for host := range hostIPMap {
@@ -857,10 +883,15 @@ func testAllToAllConnectivity(t *testing.T, hostIPMap map[string]string, useRetr
 
 			t.Logf("Testing ping from %s (%s) to %s (%s)", sourceHost, sourceIP, targetHost, targetIP)
 
+			// Determine if we need to use SourceIface based on exchange comparison
+			sourceDevice := hostDeviceMap[sourceHost]
+			targetDevice := hostDeviceMap[targetHost]
+			useSourceIface := shouldUseSourceIfaceSimple(sourceDevice, targetDevice)
+
 			if useRetry {
 				// Use robust ping with retries for device testing
 				err := performPingWithRetries(t, client, sourceIP, targetIP,
-					sourceHost, targetHost, 3)
+					sourceHost, targetHost, 3, useSourceIface)
 				if err != nil {
 					return err
 				}
@@ -868,11 +899,16 @@ func testAllToAllConnectivity(t *testing.T, hostIPMap map[string]string, useRetr
 				// Use simple ping for basic QA mode
 				ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 				pingReq := &pb.PingRequest{
-					TargetIp:    targetIP,
-					SourceIp:    sourceIP,
-					SourceIface: "doublezero0",
-					PingType:    pb.PingRequest_ICMP,
-					Timeout:     10,
+					TargetIp: targetIP,
+					SourceIp: sourceIP,
+					PingType: pb.PingRequest_ICMP,
+					Timeout:  10,
+				}
+				if useSourceIface {
+					pingReq.SourceIface = "doublezero0"
+					t.Logf("Sending ping request with -I doublezero0 (inter-exchange routing): target=%s, source=%s", targetIP, sourceIP)
+				} else {
+					t.Logf("Sending ping request WITHOUT -I doublezero0 (intra-exchange routing): target=%s, source=%s", targetIP, sourceIP)
 				}
 				pingResp, err := client.Ping(ctx, pingReq)
 				cancel()
@@ -906,7 +942,7 @@ func disconnectOnError(client pb.QAAgentServiceClient) {
 }
 
 // performPingWithRetries executes a ping test with retry logic
-func performPingWithRetries(t *testing.T, client pb.QAAgentServiceClient, sourceIP, targetIP, sourceName, targetName string, maxRetries int) error {
+func performPingWithRetries(t *testing.T, client pb.QAAgentServiceClient, sourceIP, targetIP, sourceName, targetName string, maxRetries int, useSourceIface bool) error {
 	var lastErr error
 
 	for attempt := 1; attempt <= maxRetries; attempt++ {
@@ -918,13 +954,19 @@ func performPingWithRetries(t *testing.T, client pb.QAAgentServiceClient, source
 		pingCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 
 		pingReq := &pb.PingRequest{
-			TargetIp:    targetIP,
-			SourceIp:    sourceIP,
-			SourceIface: "doublezero0",
-			PingType:    pb.PingRequest_ICMP,
+			TargetIp: targetIP,
+			SourceIp: sourceIP,
+			PingType: pb.PingRequest_ICMP,
+		}
+		if useSourceIface {
+			pingReq.SourceIface = "doublezero0"
 		}
 
-		t.Logf("Attempt %d: Sending ping request: target=%s, source=%s", attempt, targetIP, sourceIP)
+		if useSourceIface {
+			t.Logf("Attempt %d: Sending ping request with -I doublezero0 (inter-exchange routing): target=%s, source=%s", attempt, targetIP, sourceIP)
+		} else {
+			t.Logf("Attempt %d: Sending ping request WITHOUT -I doublezero0 (intra-exchange routing): target=%s, source=%s", attempt, targetIP, sourceIP)
+		}
 		pingResp, err := client.Ping(pingCtx, pingReq)
 		cancel()
 
@@ -957,6 +999,48 @@ func performPingWithRetries(t *testing.T, client pb.QAAgentServiceClient, source
 	}
 
 	return lastErr
+}
+
+// findDeviceByHostIP finds the device that a host is connected to based on its IP
+func findDeviceByHostIP(t *testing.T, ip string) *Device {
+	ctx := context.Background()
+	data, err := serviceabilityClient.GetProgramData(ctx)
+	if err != nil {
+		t.Logf("Warning: Failed to get program data for device lookup: %v", err)
+		return nil
+	}
+
+	// Find user by IP
+	var user *serviceability.User
+	for i := range data.Users {
+		u := &data.Users[i]
+		userIP := net.IP(u.DzIp[:]).String()
+		if userIP == ip {
+			user = u
+			break
+		}
+	}
+
+	if user == nil {
+		return nil
+	}
+
+	// Find the device from our global devices list
+	for _, device := range devices {
+		devicePubKey := base58.Encode(user.DevicePubKey[:])
+		if device.PubKey == devicePubKey {
+			return device
+		}
+	}
+
+	return nil
+}
+
+// The intra-exchange routing policy defined in rfc6 dictates that unicast clients that are connected to the
+// same exchange will communicate with each other over the internet instead of doublezero0. If they are
+// connected to the same exchange, `ping -I doublezero0` will fail. This check lets us avoid that.
+func shouldUseSourceIfaceSimple(sourceDevice, targetDevice *Device) bool {
+	return sourceDevice.ExchangeCode != targetDevice.ExchangeCode
 }
 
 func getIPFromStatus(resp *pb.StatusResponse) string {

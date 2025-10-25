@@ -11,8 +11,6 @@ pub struct GetAccountsCliCommand {
 
 impl GetAccountsCliCommand {
     pub fn execute<W: Write>(self, client: &DZClient, out: &mut W) -> eyre::Result<()> {
-        // Check requirements
-
         let mut accounts = client
             .get_all()?
             .into_iter()

@@ -51,7 +51,7 @@ pub enum Command {
     #[command()]
     Account(GetAccountCliCommand),
     /// List Accounts
-    #[command()]
+    #[command(hide = true)]
     Accounts(GetAccountsCliCommand),
     /// Manage locations
     #[command()]

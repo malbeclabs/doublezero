@@ -10,8 +10,6 @@ import (
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 )
 
-// Worker owns the event loop. It delegates all business logic
-// back to the ProbingManager's existing methods.
 type probingWorker struct {
 	log   *slog.Logger
 	cfg   Config
@@ -45,11 +43,11 @@ func newWorker(log *slog.Logger, cfg Config, store *routeStore) *probingWorker {
 	}
 }
 
-func (w *probingWorker) Start(parent context.Context) {
+func (w *probingWorker) Start(ctx context.Context) {
 	if w.IsRunning() {
 		return
 	}
-	ctx, cancel := context.WithCancel(parent)
+	ctx, cancel := context.WithCancel(ctx)
 	w.cancelMu.Lock()
 	w.cancel = cancel
 	w.cancelMu.Unlock()
@@ -170,7 +168,10 @@ func (w *probingWorker) startProbes(ctx context.Context) (spawned int) {
 }
 
 func (w *probingWorker) handleRouteAdd(route *routing.Route) error {
-	if route.Dst.IP == nil {
+	if route == nil {
+		return nil
+	}
+	if route.Dst == nil || route.Dst.IP == nil {
 		return fmt.Errorf("dst IP is nil")
 	}
 	if route.NextHop == nil {
@@ -195,7 +196,10 @@ func (w *probingWorker) handleRouteAdd(route *routing.Route) error {
 }
 
 func (w *probingWorker) handleRouteDelete(route *routing.Route) error {
-	if route.Dst.IP == nil {
+	if route == nil {
+		return nil
+	}
+	if route.Dst == nil || route.Dst.IP == nil {
 		return fmt.Errorf("dst IP is nil")
 	}
 	if route.NextHop == nil {

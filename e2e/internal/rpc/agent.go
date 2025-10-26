@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -224,8 +223,8 @@ func (q *QAAgent) ConnectUnicast(ctx context.Context, req *pb.ConnectUnicastRequ
 			q.log.Warn("fetchStatus returned empty status")
 			return false, fmt.Errorf("empty status response")
 		}
-		currentState := status[0].DoubleZeroStatus.State
-		q.log.Info("Polling tunnel status", "state", currentState, "tunnel_name", status[0].TunnelName, "doublezero_ip", status[0].DoubleZeroIP)
+		currentState := status[0].Response.DoubleZeroStatus.SessionStatus
+		q.log.Info("Polling tunnel status", "state", currentState, "tunnel_name", status[0].Response.TunnelName, "doublezero_ip", status[0].Response.DoubleZeroIP)
 		return currentState == "up", nil
 	}
 
@@ -266,12 +265,21 @@ func (q *QAAgent) Disconnect(ctx context.Context, req *emptypb.Empty) (*pb.Resul
 }
 
 type StatusResponse struct {
-	TunnelName       string `json:"tunnel_name"`
-	DoubleZeroIP     net.IP `json:"doublezero_ip"`
-	UserType         string `json:"user_type"`
-	DoubleZeroStatus struct {
-		State string `json:"session_status"`
-	} `json:"doublezero_status"`
+	Response struct {
+		TunnelName       string `json:"tunnel_name"`
+		TunnelSrc        string `json:"tunnel_src"`
+		TunnelDst        string `json:"tunnel_dst"`
+		DoubleZeroIP     string `json:"doublezero_ip"`
+		UserType         string `json:"user_type"`
+		DoubleZeroStatus struct {
+			SessionStatus     string `json:"session_status"`
+			LastSessionUpdate int64  `json:"last_session_update"`
+		} `json:"doublezero_status"`
+	} `json:"response"`
+	CurrentDevice       string `json:"current_device"`
+	LowestLatencyDevice string `json:"lowest_latency_device"`
+	Metro               string `json:"metro"`
+	Network             string `json:"network"`
 }
 
 // GetStatus implements the GetStatus RPC, which retrieves the current status of the configured DoubleZero
@@ -289,10 +297,11 @@ func (q *QAAgent) GetStatus(ctx context.Context, req *emptypb.Empty) (*pb.Status
 	resp := &pb.StatusResponse{}
 	for _, s := range status {
 		r := &pb.Status{
-			TunnelName:    s.TunnelName,
-			DoubleZeroIp:  s.DoubleZeroIP.String(),
-			UserType:      s.UserType,
-			SessionStatus: s.DoubleZeroStatus.State,
+			TunnelName:    s.Response.TunnelName,
+			DoubleZeroIp:  s.Response.DoubleZeroIP,
+			UserType:      s.Response.UserType,
+			SessionStatus: s.Response.DoubleZeroStatus.SessionStatus,
+			CurrentDevice: s.CurrentDevice,
 		}
 		resp.Status = append(resp.Status, r)
 	}
@@ -570,30 +579,17 @@ func (q *QAAgent) GetPublicIP(ctx context.Context, req *emptypb.Empty) (*pb.GetP
 	}, nil
 }
 
-// fetchStatus retrieves the current status of the configured DoubleZero tunnel via the doublezerod
-// unix socket.
+// fetchStatus retrieves the current status of the configured DoubleZero tunnel by executing
+// the `doublezero status --json` command.
 func (q *QAAgent) fetchStatus(ctx context.Context) ([]StatusResponse, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", q.dzStatusURL, nil)
+	cmd := exec.CommandContext(ctx, "doublezero", "status", "--json")
+	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create status request: %w", err)
-	}
-	resp, err := q.dzClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("error during status request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("status request returned non-200 status: %d", resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read status response body: %w", err)
+		return nil, fmt.Errorf("failed to execute doublezero status command: %w, output: %s", err, string(output))
 	}
 
 	var status []StatusResponse
-	if err := json.Unmarshal(body, &status); err != nil {
+	if err := json.Unmarshal(output, &status); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal status response: %w", err)
 	}
 	return status, nil

@@ -56,7 +56,7 @@ func TestE2E_MultiClient(t *testing.T) {
 		// .8/29 has network address .8, allocatable up to .14, and broadcast .15
 		CYOANetworkIPHostID:          8,
 		CYOANetworkAllocatablePrefix: 29,
-		AdditionalNetworks: []string{linkNetwork.Name},
+		AdditionalNetworks:           []string{linkNetwork.Name},
 		Interfaces: map[string]string{
 			"Ethernet2": "physical",
 		},
@@ -78,7 +78,7 @@ func TestE2E_MultiClient(t *testing.T) {
 		// .16/29 has network address .16, allocatable up to .22, and broadcast .23
 		CYOANetworkIPHostID:          16,
 		CYOANetworkAllocatablePrefix: 29,
-		AdditionalNetworks: []string{linkNetwork.Name},
+		AdditionalNetworks:           []string{linkNetwork.Name},
 		Interfaces: map[string]string{
 			"Ethernet2": "physical",
 		},

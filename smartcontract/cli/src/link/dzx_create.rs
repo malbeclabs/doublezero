@@ -12,8 +12,9 @@ use clap::Args;
 use doublezero_program_common::validate_iface;
 use doublezero_sdk::{
     commands::{
-        contributor::get::GetContributorCommand, device::get::GetDeviceCommand,
-        link::create::CreateLinkCommand,
+        contributor::get::GetContributorCommand,
+        device::get::GetDeviceCommand,
+        link::{create::CreateLinkCommand, get::GetLinkCommand},
     },
     *,
 };
@@ -109,6 +110,15 @@ impl CreateDZXLinkCliCommand {
             ));
         }
 
+        if client
+            .get_link(GetLinkCommand {
+                pubkey_or_code: self.code.clone(),
+            })
+            .is_ok()
+        {
+            return Err(eyre!("Link with code '{}' already exists", self.code));
+        }
+
         let (signature, pubkey) = client.create_link(CreateLinkCommand {
             code: self.code.clone(),
             contributor_pk,
@@ -142,10 +152,14 @@ mod tests {
         requirements::{CHECK_BALANCE, CHECK_ID_JSON},
         tests::utils::create_test_client,
     };
+    use doublezero_program_common::types::NetworkV4;
     use doublezero_sdk::{
-        commands::{device::get::GetDeviceCommand, link::create::CreateLinkCommand},
+        commands::{
+            device::get::GetDeviceCommand,
+            link::{create::CreateLinkCommand, get::GetLinkCommand},
+        },
         get_device_pda, AccountType, CurrentInterfaceVersion, Device, DeviceStatus, DeviceType,
-        InterfaceStatus, LinkLinkType,
+        InterfaceStatus, Link, LinkLinkType, LinkStatus,
     };
     use doublezero_serviceability::state::device::{Interface, InterfaceType, LoopbackType};
     use mockall::predicate;
@@ -228,6 +242,58 @@ mod tests {
             max_users: 255,
             users_count: 0,
         };
+        let location3_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquCkcx");
+        let exchange3_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquCkce");
+        let device3_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquCkcf");
+        let device3 = Device {
+            account_type: AccountType::Device,
+            index: 1,
+            bump_seed: 255,
+            reference_count: 0,
+            code: "test".to_string(),
+            contributor_pk,
+            location_pk: location3_pk,
+            exchange_pk: exchange3_pk,
+            device_type: DeviceType::Switch,
+            public_ip: [10, 0, 0, 1].into(),
+            dz_prefixes: "10.1.0.0/16".parse().unwrap(),
+            metrics_publisher_pk: Pubkey::default(),
+            status: DeviceStatus::Activated,
+            owner: pda_pubkey,
+            mgmt_vrf: "default".to_string(),
+            interfaces: vec![Interface::V1(CurrentInterfaceVersion {
+                status: InterfaceStatus::Unlinked,
+                name: "Ethernet1/3".to_string(),
+                interface_type: InterfaceType::Physical,
+                loopback_type: LoopbackType::None,
+                vlan_id: 16,
+                ip_net: "10.2.0.3/24".parse().unwrap(),
+                node_segment_idx: 0,
+                user_tunnel_endpoint: true,
+            })],
+            max_users: 255,
+            users_count: 0,
+        };
+        let link = Link {
+            account_type: AccountType::Link,
+            owner: pda_pubkey,
+            index: 1,
+            bump_seed: 255,
+            side_a_pk: device1_pk,
+            side_z_pk: device2_pk,
+            link_type: LinkLinkType::WAN,
+            bandwidth: 1000000000,
+            mtu: 1500,
+            delay_ns: 10000000000,
+            jitter_ns: 5000000000,
+            tunnel_id: 500,
+            tunnel_net: NetworkV4::default(),
+            status: LinkStatus::Activated,
+            code: "test".to_string(),
+            contributor_pk,
+            side_a_iface_name: "Ethernet1/1".to_string(),
+            side_z_iface_name: "Ethernet1/2".to_string(),
+        };
 
         client
             .expect_check_requirements()
@@ -245,6 +311,19 @@ mod tests {
                 pubkey_or_code: device2_pk.to_string(),
             }))
             .returning(move |_| Ok((device2_pk, device2.clone())));
+        client
+            .expect_get_device()
+            .with(predicate::eq(GetDeviceCommand {
+                pubkey_or_code: device3_pk.to_string(),
+            }))
+            .returning(move |_| Ok((device3_pk, device3.clone())));
+        client
+            .expect_get_link()
+            .with(predicate::eq(GetLinkCommand {
+                pubkey_or_code: "test".to_string(),
+            }))
+            .times(1)
+            .returning(move |_| Err(eyre::eyre!("Link not found")));
         client
             .expect_create_link()
             .with(predicate::eq(CreateLinkCommand {
@@ -283,5 +362,33 @@ mod tests {
         assert_eq!(
             output_str,"Signature: 3QnHBSdd4doEF6FgpLCejqEw42UQjfvNhQJwoYDSpoBszpCCqVft4cGoneDCnZ6Ez3ujzavzUu85u6F79WtLhcsv\n"
         );
+
+        client
+            .expect_get_link()
+            .with(predicate::eq(GetLinkCommand {
+                pubkey_or_code: "test".to_string(),
+            }))
+            .returning(move |_| Ok((Pubkey::default(), link.clone())));
+
+        let mut output = Vec::new();
+        let res = CreateDZXLinkCliCommand {
+            code: "test".to_string(),
+            contributor: contributor_pk.to_string(),
+            side_a: device2_pk.to_string(),
+            side_z: device3_pk.to_string(),
+            bandwidth: 1000000000,
+            mtu: 1500,
+            delay_ms: 10000.0,
+            jitter_ms: 5000.0,
+            side_a_interface: "Ethernet1/2".to_string(),
+            wait: false,
+        }
+        .execute(&client, &mut output);
+        assert_eq!(
+            res.unwrap_err().to_string(),
+            "Link with code 'test' already exists"
+        );
+        let output_str = String::from_utf8(output).unwrap();
+        assert_eq!(output_str, "");
     }
 }

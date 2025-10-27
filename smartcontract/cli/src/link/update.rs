@@ -54,7 +54,7 @@ impl UpdateLinkCliCommand {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
-        let (pubkey, _) = client.get_link(GetLinkCommand {
+        let (pubkey, link) = client.get_link(GetLinkCommand {
             pubkey_or_code: self.pubkey,
         })?;
 
@@ -81,6 +81,18 @@ impl UpdateLinkCliCommand {
             .map(|s| s.parse())
             .transpose()
             .map_err(|e| eyre!("Invalid status: {e}"))?;
+
+        if let Some(ref code) = self.code {
+            if link.code != *code
+                && client
+                    .get_link(GetLinkCommand {
+                        pubkey_or_code: code.clone(),
+                    })
+                    .is_ok()
+            {
+                return Err(eyre!("Link with code '{}' already exists", &code,));
+            }
+        }
 
         let signature = client.update_link(UpdateLinkCommand {
             pubkey,
@@ -139,6 +151,7 @@ mod tests {
             code: "co01".to_string(),
         };
         let (pda_pubkey, _bump_seed) = get_link_pda(&client.get_program_id(), 1);
+        let (pda_pubkey2, _bump_seed) = get_link_pda(&client.get_program_id(), 2);
         let signature = Signature::from([
             120, 138, 162, 185, 59, 209, 241, 157, 71, 157, 74, 131, 4, 87, 54, 28, 38, 180, 222,
             82, 64, 62, 61, 62, 22, 46, 17, 203, 187, 136, 62, 43, 11, 38, 235, 17, 239, 82, 240,
@@ -149,7 +162,7 @@ mod tests {
         let device1_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcb");
         let device2_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcf");
 
-        let tunnel = Link {
+        let link1 = Link {
             account_type: AccountType::Link,
             index: 1,
             bump_seed: 255,
@@ -170,6 +183,27 @@ mod tests {
             side_z_iface_name: "eth1".to_string(),
         };
 
+        let link2 = Link {
+            account_type: AccountType::Link,
+            index: 1,
+            bump_seed: 255,
+            code: "test2".to_string(),
+            contributor_pk,
+            side_a_pk: device1_pk,
+            side_z_pk: device2_pk,
+            link_type: LinkLinkType::WAN,
+            bandwidth: 1000000000,
+            mtu: 1500,
+            delay_ns: 10000000000,
+            jitter_ns: 5000000000,
+            tunnel_id: 1,
+            tunnel_net: "10.0.0.1/16".parse().unwrap(),
+            status: LinkStatus::Activated,
+            owner: pda_pubkey,
+            side_a_iface_name: "eth2".to_string(),
+            side_z_iface_name: "eth3".to_string(),
+        };
+
         client
             .expect_get_contributor()
             .with(predicate::eq(GetContributorCommand {
@@ -185,7 +219,19 @@ mod tests {
             .with(predicate::eq(GetLinkCommand {
                 pubkey_or_code: pda_pubkey.to_string(),
             }))
-            .returning(move |_| Ok((pda_pubkey, tunnel.clone())));
+            .returning(move |_| Ok((pda_pubkey, link1.clone())));
+        client
+            .expect_get_link()
+            .with(predicate::eq(GetLinkCommand {
+                pubkey_or_code: "new_code".to_string(),
+            }))
+            .returning(move |_| Err(eyre::eyre!("Link not found")));
+        client
+            .expect_get_link()
+            .with(predicate::eq(GetLinkCommand {
+                pubkey_or_code: "test2".to_string(),
+            }))
+            .returning(move |_| Ok((pda_pubkey2, link2.clone())));
         client
             .expect_update_link()
             .with(predicate::eq(UpdateLinkCommand {
@@ -220,6 +266,26 @@ mod tests {
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(
             output_str,"Signature: 3QnHBSdd4doEF6FgpLCejqEw42UQjfvNhQJwoYDSpoBszpCCqVft4cGoneDCnZ6Ez3ujzavzUu85u6F79WtLhcsv\n"
+        );
+
+        // try to rename code to an existing one
+        let mut output = Vec::new();
+        let res = UpdateLinkCliCommand {
+            pubkey: pda_pubkey.to_string(),
+            code: Some("test2".to_string()),
+            contributor: Some(contributor_pk.to_string()),
+            tunnel_type: None,
+            bandwidth: Some(1000000000),
+            mtu: Some(1500),
+            delay_ms: Some(10.0),
+            jitter_ms: Some(5.0),
+            wait: false,
+            status: None,
+        }
+        .execute(&client, &mut output);
+        assert_eq!(
+            res.unwrap_err().to_string(),
+            "Link with code 'test2' already exists"
         );
     }
 }

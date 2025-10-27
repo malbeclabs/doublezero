@@ -78,7 +78,7 @@ message Status {
   string double_zero_ip = 2;
   string session_status = 3;
   string user_type = 4;
-
+  string current_device = 5;
 }
 
 message StatusResponse {

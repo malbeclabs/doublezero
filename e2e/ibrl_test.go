@@ -45,13 +45,13 @@ func TestE2E_IBRL(t *testing.T) {
 	if !t.Run("remove_ibgp_msdp_peer", func(t *testing.T) {
 		dn.DeleteDeviceLoopbackInterface(t.Context(), "pit-dzd01", "Loopback255")
 		time.Sleep(30 * time.Second) // Wait for the device to process the change
-		checkIbgpMsdpPeerRemoved(t, dn, device, client)
+		checkIbgpMsdpPeerRemoved(t, dn, device)
 	}) {
 		t.Fail()
 	}
 }
 
-func checkIbgpMsdpPeerRemoved(t *testing.T, dn *TestDevnet, device *devnet.Device, client *devnet.Client) {
+func checkIbgpMsdpPeerRemoved(t *testing.T, dn *TestDevnet, device *devnet.Device) {
 	dn.log.Info("==> Checking that iBGP/MSDP peers have been removed after peer's Loopback255 interface was removed")
 
 	if !t.Run("wait_for_agent_config_after_peer_removal", func(t *testing.T) {

@@ -224,7 +224,7 @@ func (q *QAAgent) ConnectUnicast(ctx context.Context, req *pb.ConnectUnicastRequ
 			return false, fmt.Errorf("empty status response")
 		}
 		currentState := status[0].Response.DoubleZeroStatus.SessionStatus
-		q.log.Info("Polling tunnel status", "state", currentState, "tunnel_name", status[0].Response.TunnelName, "doublezero_ip", status[0].Response.DoubleZeroIP)
+		q.log.Info("Polling IBRL mode tunnel status", "state", currentState, "tunnel_name", status[0].Response.TunnelName, "doublezero_ip", status[0].Response.DoubleZeroIP)
 		return currentState == "up", nil
 	}
 
@@ -344,7 +344,8 @@ func (q *QAAgent) DeleteMulticastGroup(ctx context.Context, req *pb.DeleteMultic
 }
 
 // ConnectMulticast implements the ConnectMulticast RPC, which connects to a multicast group
-// as either a publisher or subscriber.
+// as either a publisher or subscriber. This call will block until the tunnel is up according to
+// the DoubleZero status output or return an error if the tunnel is not up within 60 seconds.
 func (q *QAAgent) ConnectMulticast(ctx context.Context, req *pb.ConnectMulticastRequest) (*pb.Result, error) {
 	if req.GetCode() == "" {
 		return nil, fmt.Errorf("code is required")
@@ -366,6 +367,31 @@ func (q *QAAgent) ConnectMulticast(ctx context.Context, req *pb.ConnectMulticast
 		q.log.Error("Failed to connect multicast", "error", err, "output", result.Output)
 		return nil, err
 	}
+
+	q.log.Info("Successfully connected multicast tunnel")
+
+	condition := func() (bool, error) {
+		ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+		defer cancel()
+		status, err := q.fetchStatus(ctx)
+		if err != nil {
+			q.log.Warn("fetchStatus error", "error", err)
+			return false, err
+		}
+		if len(status) == 0 {
+			q.log.Warn("fetchStatus returned empty status")
+			return false, fmt.Errorf("empty status response")
+		}
+		currentState := status[0].Response.DoubleZeroStatus.SessionStatus
+		q.log.Info("Polling multicast tunnel status", "state", currentState, "tunnel_name", status[0].Response.TunnelName, "doublezero_ip", status[0].Response.DoubleZeroIP)
+		return currentState == "up", nil
+	}
+
+	err = poll.Until(ctx, condition, 60*time.Second, 1*time.Second)
+	if err != nil {
+		return nil, fmt.Errorf("failed while polling for multicast session status: %v", err)
+	}
+
 	return result, nil
 }
 

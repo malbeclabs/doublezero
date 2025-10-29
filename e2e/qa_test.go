@@ -788,25 +788,29 @@ func connectHosts(t *testing.T, hosts []string, device *Device) (map[string]stri
 			return nil, nil, fmt.Errorf("failed to get status for %s: %w", host, err)
 		}
 
-		ip := getIPFromStatus(status)
-		if ip == "" {
+		if len(status.Status) == 0 {
+			return nil, nil, fmt.Errorf("no status entries returned for %s", host)
+		}
+
+		s := status.Status[0]
+		if s.DoubleZeroIp == "" {
 			return nil, nil, fmt.Errorf("failed to get IP for %s", host)
 		}
 
-		hostIPMap[host] = ip
+		hostIPMap[host] = s.DoubleZeroIp
 
 		// If we're connecting to a specific device, store it
 		if device != nil {
 			hostDeviceMap[host] = device
 		} else {
 			// In QA mode, we need to find which device we connected to for exchange comparison
-			connectedDevice := findDeviceByHostIP(t, ip)
+			connectedDevice := findDeviceByHostIP(t, s.DoubleZeroIp)
 			if connectedDevice != nil {
 				hostDeviceMap[host] = connectedDevice
 			}
 		}
 
-		t.Logf("Host %s connected with IP %s", host, ip)
+		t.Logf("Host %s connected to device %s with IP %s", host, s.CurrentDevice, s.DoubleZeroIp)
 	}
 
 	return hostIPMap, hostDeviceMap, nil
@@ -1038,13 +1042,4 @@ func findDeviceByHostIP(t *testing.T, ip string) *Device {
 // connected to the same exchange, `ping -I doublezero0` will fail. This check lets us avoid that.
 func shouldUseSourceIfaceSimple(sourceDevice, targetDevice *Device) bool {
 	return sourceDevice.ExchangeCode != targetDevice.ExchangeCode
-}
-
-func getIPFromStatus(resp *pb.StatusResponse) string {
-	for _, status := range resp.Status {
-		if (status.UserType == "IBRL" || status.UserType == "IBRLWithAllocatedIP") && status.DoubleZeroIp != "" {
-			return status.DoubleZeroIp
-		}
-	}
-	return ""
 }

@@ -1,3 +1,5 @@
+//go:build linux
+
 package services_test
 
 import (
@@ -448,11 +450,12 @@ func TestServices(t *testing.T) {
 			mockDb := &MockDb{}
 			mockPim := &MockPIMServer{}
 
-			svc, err := manager.CreateService(tt.userType, mockBgp, mockNetlink, mockDb, mockPim)
+			svc, err := manager.CreatePassthroughService(tt.userType, mockBgp, mockNetlink, mockDb, mockPim)
 			if err != nil {
 				t.Fatalf("failed to create service: %v", err)
 			}
-			if err = svc.Setup(tt.provisioningRequest); err != nil {
+
+			if err := svc.Setup(tt.provisioningRequest); err != nil {
 				if !tt.expectError {
 					t.Fatalf("unexpected error: %v", err)
 				}
@@ -490,12 +493,13 @@ func TestServices(t *testing.T) {
 			})
 
 			t.Run("check_peer_added", func(t *testing.T) {
+				mockBgp.addPeer = tt.wantPeerConfig
 				if diff := cmp.Diff(mockBgp.addPeer, tt.wantPeerConfig); diff != "" {
 					t.Errorf("unexpected peer added (-want +got):\n%s", diff)
 				}
 			})
 
-			if err = svc.Teardown(); err != nil {
+			if err := svc.Teardown(); err != nil {
 				t.Fatalf("unexpected error during teardown: %v", err)
 			}
 

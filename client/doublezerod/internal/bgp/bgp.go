@@ -1,3 +1,5 @@
+//go:build linux
+
 package bgp
 
 import (
@@ -99,28 +101,27 @@ type PeerConfig struct {
 	RouteTable    int
 	FlushRoutes   bool
 	NoInstall     bool
+	RouteManager  RouteManager
 }
 
 type BgpServer struct {
-	server            *corebgp.Server
-	peerStatusChan    chan SessionEvent
-	peerStatus        map[string]Session
-	peerStatusLock    sync.Mutex
-	routeReaderWriter RouteReaderWriter
+	server         *corebgp.Server
+	peerStatusChan chan SessionEvent
+	peerStatus     map[string]Session
+	peerStatusLock sync.Mutex
 }
 
-func NewBgpServer(routerID net.IP, r RouteReaderWriter) (*BgpServer, error) {
+func NewBgpServer(routerID net.IP) (*BgpServer, error) {
 	corebgp.SetLogger(log.Print)
 	srv, err := corebgp.NewServer(netip.MustParseAddr(routerID.String()))
 	if err != nil {
 		return nil, fmt.Errorf("error creating bgp server: %v", err)
 	}
 	return &BgpServer{
-		server:            srv,
-		peerStatusChan:    make(chan SessionEvent),
-		peerStatus:        make(map[string]Session),
-		peerStatusLock:    sync.Mutex{},
-		routeReaderWriter: r,
+		server:         srv,
+		peerStatusChan: make(chan SessionEvent),
+		peerStatus:     make(map[string]Session),
+		peerStatusLock: sync.Mutex{},
 	}, nil
 }
 
@@ -142,7 +143,7 @@ func (b *BgpServer) AddPeer(p *PeerConfig, advertised []NLRI) error {
 	if p.Port != 0 {
 		peerOpts = append(peerOpts, corebgp.WithPort(p.Port))
 	}
-	plugin := NewBgpPlugin(advertised, p.RouteSrc, p.RouteTable, b.peerStatusChan, p.FlushRoutes, p.NoInstall, b.routeReaderWriter)
+	plugin := NewBgpPlugin(advertised, p.RouteSrc, p.RouteTable, b.peerStatusChan, p.FlushRoutes, p.NoInstall, p.RouteManager)
 	err := b.server.AddPeer(corebgp.PeerConfig{
 		RemoteAddress: netip.MustParseAddr(p.RemoteAddress.String()),
 		LocalAS:       p.LocalAs,

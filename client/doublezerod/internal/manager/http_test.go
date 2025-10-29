@@ -1,3 +1,5 @@
+//go:build linux
+
 package manager_test
 
 import (
@@ -107,8 +109,9 @@ func TestHttpStatus(t *testing.T) {
 	m := &MockNetlink{}
 	b := &MockBgpServer{}
 	db := &MockDb{state: nil}
-	pim := &MockPIMServer{}
-	manager := manager.NewNetlinkManager(m, b, db, pim)
+	manager := manager.NewNetlinkManager(m, b, db, func(userType api.UserType) (manager.Provisioner, error) {
+		return manager.CreatePassthroughService(userType, b, m, db, nil)
+	})
 
 	f, err := os.CreateTemp("/tmp", "doublezero.sock")
 	if err != nil {
@@ -220,7 +223,9 @@ func TestNetlinkManager_HttpEndpoints(t *testing.T) {
 	b := &MockBgpServer{}
 	db := &MockDb{state: []*api.ProvisionRequest{}}
 	pim := &MockPIMServer{}
-	manager := manager.NewNetlinkManager(m, b, db, pim)
+	manager := manager.NewNetlinkManager(m, b, db, func(userType api.UserType) (manager.Provisioner, error) {
+		return manager.CreatePassthroughService(userType, b, m, db, pim)
+	})
 
 	f, err := os.CreateTemp("/tmp", "doublezero.sock")
 	if err != nil {

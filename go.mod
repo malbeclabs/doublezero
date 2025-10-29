@@ -27,7 +27,7 @@ require (
 	github.com/near/borsh-go v0.3.1
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/osrg/gobgp v2.0.0+incompatible
-	github.com/prometheus-community/pro-bing v0.7.0
+	github.com/prometheus-community/pro-bing v0.7.1-0.20251023154604-1478ef537ea3
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2
 	github.com/prometheus/common v0.67.1

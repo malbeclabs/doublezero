@@ -1,3 +1,5 @@
+//go:build linux
+
 package services
 
 import (
@@ -17,25 +19,27 @@ import (
 )
 
 type MulticastService struct {
-	bgp                BGPReaderWriter
-	nl                 routing.Netlinker
-	db                 DBReaderWriter
-	pim                PIMWriter
-	Tunnel             *routing.Tunnel
-	DoubleZeroAddr     net.IP
-	MulticastPubGroups []net.IP
-	MulticastSubGroups []net.IP
+	bgp                 BGPReaderWriter
+	nl                  routing.Netlinker
+	db                  DBReaderWriter
+	pim                 PIMWriter
+	Tunnel              *routing.Tunnel
+	DoubleZeroAddr      net.IP
+	MulticastPubGroups  []net.IP
+	MulticastSubGroups  []net.IP
+	newRouteManagerFunc NewRouteManagerFunc
 }
 
 func (s *MulticastService) UserType() api.UserType   { return api.UserTypeMulticast }
 func (s *MulticastService) ServiceType() ServiceType { return ServiceTypeMulticast }
 
-func NewMulticastService(bgp BGPReaderWriter, nl routing.Netlinker, db DBReaderWriter, pim PIMWriter) *MulticastService {
+func NewMulticastService(bgp BGPReaderWriter, nl routing.Netlinker, db DBReaderWriter, pim PIMWriter, newRouteManagerFunc NewRouteManagerFunc) *MulticastService {
 	return &MulticastService{
-		bgp: bgp,
-		nl:  nl,
-		db:  db,
-		pim: pim,
+		bgp:                 bgp,
+		nl:                  nl,
+		db:                  db,
+		pim:                 pim,
+		newRouteManagerFunc: newRouteManagerFunc,
 	}
 }
 
@@ -46,6 +50,11 @@ func (s *MulticastService) isSubscriber() bool {
 func (s *MulticastService) Setup(p *api.ProvisionRequest) error {
 	if len(p.MulticastPubGroups) == 0 && len(p.MulticastSubGroups) == 0 {
 		return fmt.Errorf("no multicast publisher or subscriber groups specified")
+	}
+
+	rm, err := s.newRouteManagerFunc("doublezero1", p.TunnelSrc)
+	if err != nil {
+		return fmt.Errorf("error creating route manager: %v", err)
 	}
 
 	tun, err := routing.NewTunnel("doublezero1", p.TunnelSrc, p.TunnelDst, p.TunnelNet.String())
@@ -126,6 +135,7 @@ func (s *MulticastService) Setup(p *api.ProvisionRequest) error {
 		LocalAs:       p.BgpLocalAsn,
 		RemoteAs:      p.BgpRemoteAsn,
 		NoInstall:     true,
+		RouteManager:  rm,
 	}
 	err = s.bgp.AddPeer(peer, nlri)
 	if err != nil {

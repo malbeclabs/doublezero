@@ -8,7 +8,10 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
--- Add automated compatibility tests in CI to validate all actual testnet and mainnet state against the current codebase, ensuring backward compatibility across protocol versions.
+- Onchain programs
+    - Add automated compatibility tests in CI to validate all actual testnet and mainnet state against the current codebase, ensuring backward compatibility across protocol versions.
+- Client
+    - Add initial opt-in route liveness probing support to `doublezerod` via `--route-probing-enable` flag (not yet considered stable)
 
 ## [v0.6.9](https://github.com/malbeclabs/doublezero/compare/client/v0.6.7...client/v0.6.9) – 2025-10-24
 

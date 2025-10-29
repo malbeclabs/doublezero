@@ -1,3 +1,5 @@
+//go:build linux
+
 package bgp_test
 
 import (
@@ -21,28 +23,36 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-type mockRouteReaderWriter struct {
+type mockRouteManager struct {
 	routesAdded   []*routing.Route
 	routesDeleted []*routing.Route
 	routesFlushed []*routing.Route
 	mu            sync.Mutex
 }
 
-func (m *mockRouteReaderWriter) RouteAdd(route *routing.Route) error {
+func (m *mockRouteManager) PeerOnEstablished() error {
+	return nil
+}
+
+func (m *mockRouteManager) PeerOnClose() error {
+	return nil
+}
+
+func (m *mockRouteManager) RouteAdd(route *routing.Route) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.routesAdded = append(m.routesAdded, route)
 	return nil
 }
 
-func (m *mockRouteReaderWriter) RouteDelete(route *routing.Route) error {
+func (m *mockRouteManager) RouteDelete(route *routing.Route) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.routesDeleted = append(m.routesDeleted, route)
 	return nil
 }
 
-func (m *mockRouteReaderWriter) RouteByProtocol(int) ([]*routing.Route, error) {
+func (m *mockRouteManager) RouteByProtocol(int) ([]*routing.Route, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return []*routing.Route{
@@ -58,19 +68,19 @@ func (m *mockRouteReaderWriter) RouteByProtocol(int) ([]*routing.Route, error) {
 	}, nil
 }
 
-func (m *mockRouteReaderWriter) getRoutesAdded() []*routing.Route {
+func (m *mockRouteManager) getRoutesAdded() []*routing.Route {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return append([]*routing.Route(nil), m.routesAdded...)
 }
 
-func (m *mockRouteReaderWriter) getRoutesDeleted() []*routing.Route {
+func (m *mockRouteManager) getRoutesDeleted() []*routing.Route {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return append([]*routing.Route(nil), m.routesDeleted...)
 }
 
-func (m *mockRouteReaderWriter) getRoutesFlushed() []*routing.Route {
+func (m *mockRouteManager) getRoutesFlushed() []*routing.Route {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return append([]*routing.Route(nil), m.routesFlushed...)
@@ -113,8 +123,8 @@ func (p *dummyPlugin) handleUpdate(peer corebgp.PeerConfig, u []byte) *corebgp.N
 }
 
 func TestBgpServer(t *testing.T) {
-	nlr := &mockRouteReaderWriter{}
-	b, err := bgp.NewBgpServer(net.IP{1, 1, 1, 1}, nlr)
+	routeManager := &mockRouteManager{}
+	b, err := bgp.NewBgpServer(net.IP{1, 1, 1, 1})
 	if err != nil {
 		t.Fatalf("error creating bgp server: %v", err)
 	}
@@ -135,6 +145,7 @@ func TestBgpServer(t *testing.T) {
 			FlushRoutes:   true,
 			RouteTable:    syscall.RT_TABLE_MAIN,
 			RouteSrc:      net.IP{7, 7, 7, 7},
+			RouteManager:  routeManager,
 		},
 		[]bgp.NLRI{
 			{AsPath: []uint32{}, NextHop: "1.1.1.1", Prefix: "10.0.0.0", PrefixLength: 32},
@@ -243,7 +254,7 @@ func TestBgpServer(t *testing.T) {
 				Table:   syscall.RT_TABLE_MAIN,
 			},
 		}
-		if diff := checkRoutes(nlr.getRoutesDeleted(), want); diff != "" {
+		if diff := checkRoutes(routeManager.getRoutesDeleted(), want); diff != "" {
 			t.Fatalf("bgp withdraw mismatch: -(got); +(want): %s", diff)
 		}
 	})
@@ -261,7 +272,7 @@ func TestBgpServer(t *testing.T) {
 				Table:    syscall.RT_TABLE_MAIN,
 			},
 		}
-		if diff := checkRoutes(nlr.getRoutesAdded(), want); diff != "" {
+		if diff := checkRoutes(routeManager.getRoutesAdded(), want); diff != "" {
 			t.Fatalf("bgp add mismatch: -(got); +(want): %s", diff)
 		}
 	})
@@ -289,7 +300,7 @@ func TestBgpServer(t *testing.T) {
 				Table:   syscall.RT_TABLE_MAIN,
 			},
 		}
-		if diff := checkRoutes(nlr.getRoutesFlushed(), want); diff != "" {
+		if diff := checkRoutes(routeManager.getRoutesFlushed(), want); diff != "" {
 			t.Fatalf("bgp flush mismatch: -(got); +(want): %s", diff)
 		}
 	})

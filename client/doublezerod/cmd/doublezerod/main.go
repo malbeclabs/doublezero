@@ -1,3 +1,5 @@
+//go:build linux
+
 package main
 
 import (
@@ -11,27 +13,49 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/manager"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/pim"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/probing"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/runtime"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/services"
 	"github.com/malbeclabs/doublezero/config"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
+const (
+	defaultRouteProbingInterval       = 1 * time.Second
+	defaultRouteProbingMaxConcurrency = 64
+	defaultRouteProbingProbeTimeout   = 1 * time.Second
+	defaultRouteProbingUpThreshold    = 3
+	defaultRouteProbingDownThreshold  = 3
+)
+
 var (
-	sockFile             = flag.String("sock-file", "/var/run/doublezerod/doublezerod.sock", "path to doublezerod domain socket")
-	enableLatencyProbing = flag.Bool("latency-probing", true, "enable latency probing to doublezero nodes")
-	versionFlag          = flag.Bool("version", false, "build version")
-	env                  = flag.String("env", config.EnvTestnet, "environment to use")
-	programId            = flag.String("program-id", "", "override smartcontract program id to monitor")
-	rpcEndpoint          = flag.String("solana-rpc-endpoint", "", "override solana rpc endpoint url")
-	probeInterval        = flag.Int("probe-interval", 30, "latency probe interval in seconds")
-	cacheUpdateInterval  = flag.Int("cache-update-interval", 30, "latency cache update interval in seconds")
-	enableVerboseLogging = flag.Bool("v", false, "enables verbose logging")
-	enableLatencyMetrics = flag.Bool("enable-latency-metrics", false, "enables latency metrics")
-	metricsEnable        = flag.Bool("metrics-enable", false, "Enable prometheus metrics")
-	metricsAddr          = flag.String("metrics-addr", "localhost:0", "Address to listen on for prometheus metrics")
+	sockFile                   = flag.String("sock-file", "/var/run/doublezerod/doublezerod.sock", "path to doublezerod domain socket")
+	enableLatencyProbing       = flag.Bool("latency-probing", true, "enable latency probing to doublezero nodes")
+	versionFlag                = flag.Bool("version", false, "build version")
+	env                        = flag.String("env", config.EnvTestnet, "environment to use")
+	programId                  = flag.String("program-id", "", "override smartcontract program id to monitor")
+	rpcEndpoint                = flag.String("solana-rpc-endpoint", "", "override solana rpc endpoint url")
+	probeInterval              = flag.Int("probe-interval", 30, "latency probe interval in seconds")
+	cacheUpdateInterval        = flag.Int("cache-update-interval", 30, "latency cache update interval in seconds")
+	enableVerboseLogging       = flag.Bool("v", false, "enables verbose logging")
+	enableLatencyMetrics       = flag.Bool("enable-latency-metrics", false, "enables latency metrics")
+	metricsEnable              = flag.Bool("metrics-enable", false, "Enable prometheus metrics")
+	metricsAddr                = flag.String("metrics-addr", "localhost:0", "Address to listen on for prometheus metrics")
+	routeProbingEnable         = flag.Bool("route-probing-enable", false, "enables route liveness probing")
+	routeProbingInterval       = flag.Duration("route-probing-interval", defaultRouteProbingInterval, "route liveness probing interval as a duration (i.e. 5s, 10s, 30s)")
+	routeProbingProbeTimeout   = flag.Duration("route-probing-probe-timeout", defaultRouteProbingProbeTimeout, "route liveness probing probe timeout as a duration (i.e. 1s, 3s, 5s)")
+	routeProbingUpThreshold    = flag.Uint("route-probing-up-threshold", defaultRouteProbingUpThreshold, "route liveness probing up threshold")
+	routeProbingDownThreshold  = flag.Uint("route-probing-down-threshold", defaultRouteProbingDownThreshold, "route liveness probing down threshold")
+	routeProbingMaxConcurrency = flag.Uint("route-probing-max-concurrency", defaultRouteProbingMaxConcurrency, "route liveness probing max concurrency")
 
 	// set by LDFLAGS
 	version = "dev"
@@ -114,7 +138,47 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := runtime.Run(ctx, *sockFile, *enableLatencyProbing, *enableLatencyMetrics, *programId, *rpcEndpoint, *probeInterval, *cacheUpdateInterval); err != nil {
+	db, err := manager.NewDb()
+	if err != nil {
+		slog.Error("error initializing db", "error", err)
+		os.Exit(1)
+	}
+
+	nlr := routing.Netlink{}
+
+	bgps, err := bgp.NewBgpServer(net.IPv4(1, 1, 1, 1))
+	if err != nil {
+		slog.Error("error creating bgp server", "error", err)
+		os.Exit(1)
+	}
+
+	pim := pim.NewPIMServer()
+
+	nlm := manager.NewNetlinkManager(nlr, bgps, db, func(userType api.UserType) (manager.Provisioner, error) {
+		if userType != api.UserTypeIBRL || !*routeProbingEnable {
+			return manager.CreatePassthroughService(userType, bgps, nlr, db, pim)
+		}
+
+		return services.NewIBRLService(bgps, nlr, db, func(iface string, src net.IP) (bgp.RouteManager, error) {
+			if *routeProbingEnable {
+				return probing.NewRouteManager(&probing.Config{
+					Logger:         logger,
+					Context:        ctx,
+					Netlink:        nlr,
+					Liveness:       probing.NewHysteresisLivenessPolicy(*routeProbingUpThreshold, *routeProbingDownThreshold),
+					ListenFunc:     probing.DefaultListenFunc(logger, iface, src),
+					ProbeFunc:      probing.DefaultProbeFunc(logger, iface, *routeProbingProbeTimeout),
+					Interval:       *routeProbingInterval,
+					ProbeTimeout:   *routeProbingProbeTimeout,
+					MaxConcurrency: *routeProbingMaxConcurrency,
+				})
+			} else {
+				return manager.NewNetlinkerPassthroughRouteManager(nlr), nil
+			}
+		}), nil
+	})
+
+	if err := runtime.Run(ctx, nlm, *sockFile, *enableLatencyProbing, *enableLatencyMetrics, *programId, *rpcEndpoint, *probeInterval, *cacheUpdateInterval); err != nil {
 		slog.Error("runtime error", "error", err)
 		os.Exit(1)
 	}

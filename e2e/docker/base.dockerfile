@@ -188,6 +188,12 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     go build -o ${BIN_DIR}/doublezero-funder controlplane/funder/cmd/funder/main.go
 
+# Build uping tool (golang)
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go build -o ${BIN_DIR}/uping-send tools/uping/cmd/uping-send/main.go && \
+    go build -o ${BIN_DIR}/uping-recv tools/uping/cmd/uping-recv/main.go
+
 # Force COPY in later stages to always copy the binaries, even if they appear to be the same.
 ARG CACHE_BUSTER=1
 RUN echo "$CACHE_BUSTER" > ${BIN_DIR}/.cache-buster && \

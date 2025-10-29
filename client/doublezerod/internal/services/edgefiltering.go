@@ -1,3 +1,5 @@
+//go:build linux
+
 package services
 
 import (
@@ -12,23 +14,25 @@ import (
 )
 
 type EdgeFilteringService struct {
-	bgp            BGPReaderWriter
-	nl             routing.Netlinker
-	db             DBReaderWriter
-	Tunnel         *routing.Tunnel
-	DoubleZeroAddr net.IP
-	Routes         []*routing.Route
-	Rules          []*routing.IPRule
+	bgp                 BGPReaderWriter
+	nl                  routing.Netlinker
+	db                  DBReaderWriter
+	Tunnel              *routing.Tunnel
+	DoubleZeroAddr      net.IP
+	Routes              []*routing.Route
+	Rules               []*routing.IPRule
+	newRouteManagerFunc NewRouteManagerFunc
 }
 
 func (s *EdgeFilteringService) UserType() api.UserType   { return api.UserTypeEdgeFiltering }
 func (s *EdgeFilteringService) ServiceType() ServiceType { return ServiceTypeUnicast }
 
-func NewEdgeFilteringService(bgp BGPReaderWriter, nl routing.Netlinker, db DBReaderWriter) *EdgeFilteringService {
+func NewEdgeFilteringService(bgp BGPReaderWriter, nl routing.Netlinker, db DBReaderWriter, newRouteManagerFunc NewRouteManagerFunc) *EdgeFilteringService {
 	return &EdgeFilteringService{
-		bgp: bgp,
-		nl:  nl,
-		db:  db,
+		bgp:                 bgp,
+		nl:                  nl,
+		db:                  db,
+		newRouteManagerFunc: newRouteManagerFunc,
 	}
 }
 
@@ -37,6 +41,11 @@ func (s *EdgeFilteringService) Setup(p *api.ProvisionRequest) error {
 	tun, err := routing.NewTunnel("doublezero0", p.TunnelSrc, p.TunnelDst, p.TunnelNet.String())
 	if err != nil {
 		return fmt.Errorf("error generating new tunnel: %v", err)
+	}
+
+	rm, err := s.newRouteManagerFunc("doublezero0", p.TunnelSrc)
+	if err != nil {
+		return fmt.Errorf("error creating route manager: %v", err)
 	}
 
 	err = createTunnelWithIP(s.nl, tun, p.DoubleZeroIP)
@@ -64,6 +73,7 @@ func (s *EdgeFilteringService) Setup(p *api.ProvisionRequest) error {
 		RemoteAs:      p.BgpRemoteAsn,
 		RouteTable:    routing.RouteTableSpecific, // TODO: this needs to go
 		RouteSrc:      p.DoubleZeroIP,
+		RouteManager:  rm,
 	}
 	nlri, err := bgp.NewNLRI([]uint32{peer.LocalAs}, s.Tunnel.LocalOverlay.String(), p.DoubleZeroIP.String(), 32)
 	if err != nil {

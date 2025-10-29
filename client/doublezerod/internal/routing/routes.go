@@ -31,6 +31,18 @@ func NewRoute(table int, dst *net.IPNet, src, nexthop net.IP, protocol int) *Rou
 }
 
 func (r *Route) String() string {
-	return fmt.Sprintf(
-		"table: %d, dst: %s, src: %s, nh: %s protocol: %s", r.Table, r.Dst, r.Src, r.NextHop, nl.RouteProtocol(r.Protocol))
+	if r == nil {
+		return ""
+	}
+	var dst, src, nexthop string
+	if r.Dst != nil {
+		dst = r.Dst.String()
+	}
+	if r.Src != nil {
+		src = r.Src.String()
+	}
+	if r.NextHop != nil {
+		nexthop = r.NextHop.String()
+	}
+	return fmt.Sprintf("table: %d, dst: %s, src: %s, nh: %s protocol: %s", r.Table, dst, src, nexthop, nl.RouteProtocol(r.Protocol))
 }

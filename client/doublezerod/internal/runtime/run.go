@@ -1,3 +1,5 @@
+//go:build linux
+
 package runtime
 
 import (
@@ -11,29 +13,12 @@ import (
 	"time"
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
-	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/latency"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/manager"
-	"github.com/malbeclabs/doublezero/client/doublezerod/internal/pim"
-	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 	"golang.org/x/sys/unix"
 )
 
-func Run(ctx context.Context, sockFile string, enableLatencyProbing, enableLatencyMetrics bool, programId string, rpcEndpoint string, probeInterval, cacheUpdateInterval int) error {
-	nlr := routing.Netlink{}
-	bgp, err := bgp.NewBgpServer(net.IPv4(1, 1, 1, 1), nlr)
-	if err != nil {
-		return fmt.Errorf("error creating bgp server: %v", err)
-	}
-
-	db, err := manager.NewDb()
-	if err != nil {
-		return fmt.Errorf("error initializing db: %v", err)
-	}
-
-	pim := pim.NewPIMServer()
-	nlm := manager.NewNetlinkManager(nlr, bgp, db, pim)
-
+func Run(ctx context.Context, nlm *manager.NetlinkManager, sockFile string, enableLatencyProbing, enableLatencyMetrics bool, programId string, rpcEndpoint string, probeInterval, cacheUpdateInterval int) error {
 	errCh := make(chan error)
 
 	// starting network manager will attempt to recover latest provisioned state

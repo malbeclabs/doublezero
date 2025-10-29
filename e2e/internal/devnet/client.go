@@ -20,8 +20,9 @@ import (
 )
 
 type ClientSpec struct {
-	ContainerImage string
-	KeypairPath    string
+	ContainerImage     string
+	KeypairPath        string
+	RouteProbingEnable bool
 
 	// CYOANetworkIPHostID is the offset into the host portion of the subnet (must be < 2^(32 - prefixLen)).
 	CYOANetworkIPHostID uint32
@@ -152,6 +153,11 @@ func (c *Client) Start(ctx context.Context) error {
 	// We need to set this here because dockerContainerName and dockerContainerHostname use it.
 	c.Pubkey = pubkey
 
+	clientFlags := ""
+	if c.Spec.RouteProbingEnable {
+		clientFlags = "-route-probing-enable"
+	}
+
 	// Start the client container.
 	req := testcontainers.ContainerRequest{
 		Image: c.Spec.ContainerImage,
@@ -163,6 +169,7 @@ func (c *Client) Start(ctx context.Context) error {
 			"DZ_LEDGER_URL":                c.dn.Ledger.InternalRPCURL,
 			"DZ_LEDGER_WS":                 c.dn.Ledger.InternalRPCWSURL,
 			"DZ_SERVICEABILITY_PROGRAM_ID": c.dn.Manager.ServiceabilityProgramID,
+			"DZ_CLIENT_FLAGS":              clientFlags,
 		},
 		Files: []testcontainers.ContainerFile{
 			{

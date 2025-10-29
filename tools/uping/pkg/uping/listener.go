@@ -69,7 +69,7 @@ func (l *listener) Listen(ctx context.Context) error {
 	// Instance tag helps spot duplicate listeners (pid/object address).
 	inst := fmt.Sprintf("%d/%p", os.Getpid(), l)
 	if l.log != nil {
-		l.log.Info("uping/recv: starting listener", "inst", inst, "iface", l.cfg.Interface, "src", l.src4)
+		l.log.Debug("uping/recv: starting listener", "inst", inst, "iface", l.cfg.Interface, "src", l.src4)
 	}
 
 	// Raw ICMPv4 via net.IPConn so we can pin to device and use control messages.
@@ -156,7 +156,7 @@ func (l *listener) Listen(ctx context.Context) error {
 		dst := raddr.(*net.IPAddr)
 		if _, err := ip4c.WriteTo(wb, &ipv4.ControlMessage{IfIndex: l.ifIndex, Src: l.src4}, dst); err == nil {
 			if l.log != nil {
-				l.log.Info("uping/recv: replied", "inst", inst, "dst", dst.IP.String(), "id", echo.ID, "seq", echo.Seq, "iface", l.iface.Name, "src", l.src4)
+				l.log.Debug("uping/recv: replied", "inst", inst, "dst", dst.IP.String(), "id", echo.ID, "seq", echo.Seq, "iface", l.iface.Name, "src", l.src4)
 			}
 		} else if l.log != nil {
 			l.log.Debug("uping/recv: write failed", "err", err, "iface", l.iface.Name, "src", l.src4)

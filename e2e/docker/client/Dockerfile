@@ -4,10 +4,12 @@ FROM ${BASE_IMAGE} AS base
 FROM ubuntu:24.04
 
 RUN apt-get update && \
-    apt-get install -y curl jq iproute2 iputils-ping iproute2 net-tools tcpdump vim iperf fping iptables ethtool
+    apt-get install -y curl jq iproute2 iputils-ping iproute2 net-tools tcpdump vim iperf fping iptables ethtool python3 python3-scapy
 
 COPY --from=base /doublezero/bin/doublezero /usr/local/bin/
 COPY --from=base /doublezero/bin/doublezerod /usr/local/bin/
+COPY --from=base /doublezero/bin/uping-send /usr/local/bin/
+COPY --from=base /doublezero/bin/uping-recv /usr/local/bin/
 COPY --from=base /usr/local/bin/solana /usr/local/bin/
 COPY --from=base /usr/local/bin/solana-keygen /usr/local/bin/
 

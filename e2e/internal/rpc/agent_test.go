@@ -1,3 +1,5 @@
+//go:build linux
+
 package rpc
 
 import (
@@ -7,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"testing"
 
 	pb "github.com/malbeclabs/doublezero/e2e/proto/qa/gen/pb-go"
@@ -29,6 +32,10 @@ func newTestQAAgent(t *testing.T, logger *slog.Logger, opts ...Option) (*QAAgent
 }
 
 func TestQAAgentConnectivity(t *testing.T) {
+	if _, err := exec.LookPath("doublezero"); err != nil {
+		t.Skip("skipping test: doublezero binary not found in PATH")
+	}
+
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
 	// Create a mock HTTP server to simulate the doublezerod unix socket API

@@ -211,10 +211,13 @@ func (q *QAAgent) ConnectUnicast(ctx context.Context, req *pb.ConnectUnicastRequ
 
 	q.log.Info("Successfully connected IBRL mode tunnel")
 
+	current_device := "unknown"
+
 	condition := func() (bool, error) {
 		ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 		defer cancel()
 		status, err := q.fetchStatus(ctx)
+		current_device = status[0].CurrentDevice
 		if err != nil {
 			q.log.Warn("fetchStatus error", "error", err)
 			return false, err
@@ -224,13 +227,14 @@ func (q *QAAgent) ConnectUnicast(ctx context.Context, req *pb.ConnectUnicastRequ
 			return false, fmt.Errorf("empty status response")
 		}
 		currentState := status[0].Response.DoubleZeroStatus.SessionStatus
-		q.log.Info("Polling IBRL mode tunnel status", "state", currentState, "tunnel_name", status[0].Response.TunnelName, "doublezero_ip", status[0].Response.DoubleZeroIP)
+		q.log.Info("Polling IBRL mode tunnel status", "state", currentState, "tunnel_name", status[0].Response.TunnelName, "doublezero_ip", status[0].Response.DoubleZeroIP, "current_device", current_device)
 		return currentState == "up", nil
 	}
 
 	err = poll.Until(ctx, condition, 60*time.Second, 1*time.Second)
 	if err != nil {
-		return nil, fmt.Errorf("failed while polling for session status: %v", err)
+		q.log.Error("Failed while polling for IBRL mode session status", "error", err)
+		return nil, fmt.Errorf("failed while polling for IBRL mode session status (device %s): %v", current_device, err)
 	}
 
 	return res, nil

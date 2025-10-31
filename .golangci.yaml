@@ -74,6 +74,9 @@ linters:
       - third_party$
       - builtin$
       - examples$
+    rules:
+      - linters: [govet]
+        text: 'buildtag: \+build line is no longer needed'
 formatters:
   enable:
     - gofmt

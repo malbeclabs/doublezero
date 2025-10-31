@@ -218,6 +218,18 @@ func runMultiClientIBRLWorkflowTest(t *testing.T, log *slog.Logger, dn *devnet.D
 	}, 120*time.Second, 5*time.Second, "client2 should have route to client1")
 	log.Info("--> Clients have routes to each other")
 
+	// Check that the clients can reach each other via their DZ IPs, via ping.
+	log.Info("==> Checking that the clients can reach each other via their DZ IPs")
+	_, err = client1.Exec(t.Context(), []string{"ping", "-I", "doublezero0", "-c", "3", client2DZIP, "-W", "1"})
+	require.NoError(t, err)
+	_, err = client2.Exec(t.Context(), []string{"ping", "-I", "doublezero0", "-c", "3", client1DZIP, "-W", "1"})
+	require.NoError(t, err)
+	_, err = client1.Exec(t.Context(), []string{"ping", "-c", "3", client2DZIP, "-W", "1"})
+	require.NoError(t, err)
+	_, err = client2.Exec(t.Context(), []string{"ping", "-c", "3", client1DZIP, "-W", "1"})
+	require.NoError(t, err)
+	log.Info("--> Clients can reach each other via their DZ IPs")
+
 	// Disconnect client1.
 	log.Info("==> Disconnecting client1 from IBRL")
 	_, err = client1.Exec(t.Context(), []string{"doublezero", "disconnect", "--client-ip", client1.CYOANetworkIP})

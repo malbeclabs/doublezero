@@ -669,7 +669,7 @@ func runUnicastConnectivityTest(t *testing.T, hosts []string, devices []*Device)
 		hostIPMap, hostDeviceMap, err := connectHosts(t, hosts, nil)
 		require.NoError(t, err, "Failed to connect hosts")
 
-		err = testAllToAllConnectivity(t, hostIPMap, hostDeviceMap, false) // false = use simple ping
+		err = testAllToAllConnectivity(t, hostIPMap, hostDeviceMap)
 		require.NoError(t, err, "Connectivity test failed")
 		return
 	}
@@ -854,7 +854,7 @@ func testDeviceConnectivity(t *testing.T, device *Device, hosts []string, additi
 	hostDeviceMap[additionalHost] = additionalHostDevice
 
 	// Test connectivity between all hosts
-	err = testAllToAllConnectivity(t, hostIPMap, hostDeviceMap, true) // true = use retry ping
+	err = testAllToAllConnectivity(t, hostIPMap, hostDeviceMap)
 	if err != nil {
 		result.Success = false
 		result.Error = err.Error()
@@ -863,7 +863,7 @@ func testDeviceConnectivity(t *testing.T, device *Device, hosts []string, additi
 	return result
 }
 
-func testAllToAllConnectivity(t *testing.T, hostIPMap map[string]string, hostDeviceMap map[string]*Device, useRetry bool) error {
+func testAllToAllConnectivity(t *testing.T, hostIPMap map[string]string, hostDeviceMap map[string]*Device) error {
 	// Build ordered lists for consistent testing
 	var sortedHosts []string
 	for host := range hostIPMap {
@@ -892,46 +892,10 @@ func testAllToAllConnectivity(t *testing.T, hostIPMap map[string]string, hostDev
 			targetDevice := hostDeviceMap[targetHost]
 			useSourceIface := shouldUseSourceIfaceSimple(sourceDevice, targetDevice)
 
-			if useRetry {
-				// Use robust ping with retries for device testing
-				err := performPingWithRetries(t, client, sourceIP, targetIP,
-					sourceHost, targetHost, 3, useSourceIface)
-				if err != nil {
-					return err
-				}
-			} else {
-				// Use simple ping for basic QA mode
-				ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-				pingReq := &pb.PingRequest{
-					TargetIp: targetIP,
-					SourceIp: sourceIP,
-					PingType: pb.PingRequest_ICMP,
-					Timeout:  10,
-				}
-				if useSourceIface {
-					pingReq.SourceIface = "doublezero0"
-					t.Logf("Sending ping request with -I doublezero0 (inter-exchange routing): target=%s, source=%s", targetIP, sourceIP)
-				} else {
-					t.Logf("Sending ping request WITHOUT -I doublezero0 (intra-exchange routing): target=%s, source=%s", targetIP, sourceIP)
-				}
-				pingResp, err := client.Ping(ctx, pingReq)
-				cancel()
-
-				if err != nil {
-					return fmt.Errorf("ping from %s to %s failed: %w", sourceHost, targetHost, err)
-				}
-
-				if pingResp.PacketsSent == 0 || pingResp.PacketsReceived == 0 {
-					return fmt.Errorf("ping from %s to %s failed: sent=%d, received=%d",
-						sourceHost, targetHost, pingResp.PacketsSent, pingResp.PacketsReceived)
-				}
-
-				if pingResp.PacketsReceived < pingResp.PacketsSent {
-					return fmt.Errorf("ping from %s to %s had loss: sent=%d, received=%d",
-						sourceHost, targetHost, pingResp.PacketsSent, pingResp.PacketsReceived)
-				}
-
-				t.Logf("Successfully pinged %s from %s", targetHost, sourceHost)
+			err := performPingWithRetries(t, client, sourceIP, targetIP,
+				sourceHost, targetHost, 3, useSourceIface)
+			if err != nil {
+				return err
 			}
 		}
 	}

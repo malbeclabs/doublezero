@@ -1,3 +1,5 @@
+//go:build linux
+
 package manager
 
 import (
@@ -41,38 +43,23 @@ type DbReaderWriter interface {
 	SaveState(p *api.ProvisionRequest) error
 }
 
+type CreateServiceFunc func(userType api.UserType) (Provisioner, error)
+
 type NetlinkManager struct {
-	netlink          routing.Netlinker
-	Routes           []*routing.Route
-	Rules            []*routing.IPRule
-	UnicastService   Provisioner
-	MulticastService Provisioner
-	DoubleZeroAddr   net.IP
-	bgp              BGPServer
-	db               services.DBReaderWriter
-	pim              services.PIMWriter
-	mu               sync.Mutex
+	netlink           routing.Netlinker
+	Routes            []*routing.Route
+	Rules             []*routing.IPRule
+	UnicastService    Provisioner
+	MulticastService  Provisioner
+	DoubleZeroAddr    net.IP
+	bgp               BGPServer
+	db                services.DBReaderWriter
+	createServiceFunc CreateServiceFunc
+	mu                sync.Mutex
 }
 
-// CreateService creates the appropriate service based on the provisioned
-// user type.
-func CreateService(u api.UserType, bgp services.BGPReaderWriter, nl routing.Netlinker, db services.DBReaderWriter, pim services.PIMWriter) (Provisioner, error) {
-	switch u {
-	case api.UserTypeIBRL:
-		return services.NewIBRLService(bgp, nl, db), nil
-	case api.UserTypeIBRLWithAllocatedIP:
-		return services.NewIBRLServiceWithAllocatedAddress(bgp, nl, db), nil
-	case api.UserTypeEdgeFiltering:
-		return services.NewEdgeFilteringService(bgp, nl, db), nil
-	case api.UserTypeMulticast:
-		return services.NewMulticastService(bgp, nl, db, pim), nil
-	default:
-		return nil, fmt.Errorf("unsupported user type: %s", u)
-	}
-}
-
-func NewNetlinkManager(netlink routing.Netlinker, bgp BGPServer, db services.DBReaderWriter, pim services.PIMWriter) *NetlinkManager {
-	manager := &NetlinkManager{netlink: netlink, bgp: bgp, db: db, pim: pim}
+func NewNetlinkManager(netlink routing.Netlinker, bgp BGPServer, db services.DBReaderWriter, createServiceFunc CreateServiceFunc) *NetlinkManager {
+	manager := &NetlinkManager{netlink: netlink, bgp: bgp, db: db, createServiceFunc: createServiceFunc}
 	return manager
 }
 
@@ -84,7 +71,7 @@ func (n *NetlinkManager) Provision(pr api.ProvisionRequest) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
-	svc, err := CreateService(pr.UserType, n.bgp, n.netlink, n.db, n.pim)
+	svc, err := n.createServiceFunc(pr.UserType)
 	if err != nil {
 		return fmt.Errorf("error creating service: %v", err)
 	}

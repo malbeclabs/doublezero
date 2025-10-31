@@ -111,6 +111,10 @@ func TestE2E_MultiClient(t *testing.T) {
 	log.Info("==> Adding client1")
 	client1, err := dn.AddClient(t.Context(), devnet.ClientSpec{
 		CYOANetworkIPHostID: 100,
+		// Route probing disabled until we have a way to test connectivity between clients in the
+		// containerized environment.
+		// https://github.com/malbeclabs/doublezero/issues/2016
+		RouteProbingEnable: false,
 	})
 	require.NoError(t, err)
 	log.Info("--> Client1 added", "client1Pubkey", client1.Pubkey, "client1IP", client1.CYOANetworkIP)
@@ -119,6 +123,10 @@ func TestE2E_MultiClient(t *testing.T) {
 	log.Info("==> Adding client2")
 	client2, err := dn.AddClient(t.Context(), devnet.ClientSpec{
 		CYOANetworkIPHostID: 110,
+		// Route probing disabled until we have a way to test connectivity between clients in the
+		// containerized environment.
+		// https://github.com/malbeclabs/doublezero/issues/2016
+		RouteProbingEnable: false,
 	})
 	require.NoError(t, err)
 	log.Info("--> Client2 added", "client2Pubkey", client2.Pubkey, "client2IP", client2.CYOANetworkIP)

@@ -1,3 +1,5 @@
+//go:build linux
+
 package routing
 
 import (
@@ -7,6 +9,7 @@ import (
 	"syscall"
 
 	nl "github.com/vishvananda/netlink"
+	"golang.org/x/sys/unix"
 )
 
 type Netlink struct{}
@@ -99,12 +102,16 @@ func (n Netlink) RouteAdd(r *Route) error {
 
 // RouteDelete deletes a route from the kernel routing table via netlink.
 func (n Netlink) RouteDelete(r *Route) error {
-	return nl.RouteDel(&nl.Route{
+	err := nl.RouteDel(&nl.Route{
 		Dst:   r.Dst,
 		Gw:    r.NextHop,
 		Table: r.Table,
 		Src:   r.Src,
 	})
+	if errors.Is(err, unix.ESRCH) || errors.Is(err, unix.ENOENT) {
+		return ErrRouteNotFound
+	}
+	return err
 }
 
 // RouteGet retrieves a route from the kernel routing table via netlink.

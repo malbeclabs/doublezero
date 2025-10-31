@@ -1,3 +1,5 @@
+//go:build linux
+
 package bgp
 
 import (
@@ -12,14 +14,22 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+type RouteManager interface {
+	RouteAdd(route *routing.Route) error
+	RouteDelete(route *routing.Route) error
+	RouteByProtocol(protocol int) ([]*routing.Route, error)
+	PeerOnEstablished() error
+	PeerOnClose() error
+}
+
 type Plugin struct {
-	AdvertisedNLRI    []NLRI
-	PeerStatusChan    chan SessionEvent
-	RouteSrc          net.IP
-	RouteTable        int // kernel routing table to target for writing/removing
-	FlushRoutes       bool
-	NoInstall         bool
-	RouteReaderWriter RouteReaderWriter
+	AdvertisedNLRI []NLRI
+	PeerStatusChan chan SessionEvent
+	RouteSrc       net.IP
+	RouteTable     int // kernel routing table to target for writing/removing
+	FlushRoutes    bool
+	NoInstall      bool
+	RouteManager   RouteManager
 }
 
 func NewBgpPlugin(
@@ -29,15 +39,15 @@ func NewBgpPlugin(
 	peerStatus chan SessionEvent,
 	flushRoutes bool,
 	noInstall bool,
-	routeReaderWriter RouteReaderWriter) *Plugin {
+	routeManager RouteManager) *Plugin {
 	return &Plugin{
-		AdvertisedNLRI:    advertised,
-		RouteSrc:          routeSrc,
-		RouteTable:        routeTable,
-		PeerStatusChan:    peerStatus,
-		FlushRoutes:       flushRoutes,
-		NoInstall:         noInstall,
-		RouteReaderWriter: routeReaderWriter,
+		AdvertisedNLRI: advertised,
+		RouteSrc:       routeSrc,
+		RouteTable:     routeTable,
+		PeerStatusChan: peerStatus,
+		FlushRoutes:    flushRoutes,
+		NoInstall:      noInstall,
+		RouteManager:   routeManager,
 	}
 }
 
@@ -63,6 +73,11 @@ func (p *Plugin) OnOpenMessage(peer corebgp.PeerConfig, routerID netip.Addr, cap
 
 func (p *Plugin) OnEstablished(peer corebgp.PeerConfig, writer corebgp.UpdateMessageWriter) corebgp.UpdateMessageHandler {
 	slog.Info("bgp: peer established")
+
+	if err := p.RouteManager.PeerOnEstablished(); err != nil {
+		slog.Error("bgp: route manager on established error", "src_ip", p.RouteSrc, "error", err)
+	}
+
 	for _, nlri := range p.AdvertisedNLRI {
 		update, err := p.buildUpdate(nlri)
 		if err != nil {
@@ -83,6 +98,11 @@ func (p *Plugin) OnEstablished(peer corebgp.PeerConfig, writer corebgp.UpdateMes
 
 func (p *Plugin) OnClose(peer corebgp.PeerConfig) {
 	slog.Info("bgp: peer closed", "peer", peer.RemoteAddress)
+
+	if err := p.RouteManager.PeerOnClose(); err != nil {
+		slog.Error("bgp: route manager on close error", "src_ip", p.RouteSrc, "error", err)
+	}
+
 	p.PeerStatusChan <- SessionEvent{
 		PeerAddr: net.ParseIP(peer.RemoteAddress.String()),
 		Session:  Session{SessionStatus: SessionStatusDown, LastSessionUpdate: time.Now().Unix()},
@@ -91,12 +111,12 @@ func (p *Plugin) OnClose(peer corebgp.PeerConfig) {
 
 	if p.FlushRoutes {
 		protocol := unix.RTPROT_BGP // 186
-		routes, err := p.RouteReaderWriter.RouteByProtocol(protocol)
+		routes, err := p.RouteManager.RouteByProtocol(protocol)
 		if err != nil {
 			slog.Error("routes: error getting routes by protocol", "protocol", protocol)
 		}
 		for _, route := range routes {
-			if err := p.RouteReaderWriter.RouteDelete(route); err != nil {
+			if err := p.RouteManager.RouteDelete(route); err != nil {
 				slog.Error("Error deleting route", "route", route)
 				continue
 			}
@@ -124,7 +144,7 @@ func (p *Plugin) handleUpdate(peer corebgp.PeerConfig, u []byte) *corebgp.Notifi
 
 		route := &routing.Route{Src: p.RouteSrc, Dst: &net.IPNet{IP: route.Prefix, Mask: net.CIDRMask(int(route.Length), 32)}, Table: p.RouteTable, NextHop: peer.RemoteAddress.AsSlice()}
 		slog.Info("routes: removing route from table", "table", p.RouteTable, "dz route", route.String())
-		err := p.RouteReaderWriter.RouteDelete(route)
+		err := p.RouteManager.RouteDelete(route)
 		if err != nil {
 			slog.Error("routes: error removing route from table", "table", p.RouteTable, "error", err)
 		}
@@ -151,7 +171,7 @@ func (p *Plugin) handleUpdate(peer corebgp.PeerConfig, u []byte) *corebgp.Notifi
 			NextHop:  nexthop,
 			Protocol: unix.RTPROT_BGP}
 		slog.Info("routes: writing route", "table", p.RouteTable, "dz route", route.String())
-		if err := p.RouteReaderWriter.RouteAdd(route); err != nil {
+		if err := p.RouteManager.RouteAdd(route); err != nil {
 			slog.Error("routes: error writing route", "table", p.RouteTable, "error", err)
 		}
 	}

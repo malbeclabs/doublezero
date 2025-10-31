@@ -1,3 +1,5 @@
+//go:build linux
+
 package services
 
 import (
@@ -14,29 +16,37 @@ import (
 )
 
 type IBRLService struct {
-	bgp            BGPReaderWriter
-	nl             routing.Netlinker
-	db             DBReaderWriter
-	Tunnel         *routing.Tunnel
-	DoubleZeroAddr net.IP
+	bgp                 BGPReaderWriter
+	nl                  routing.Netlinker
+	db                  DBReaderWriter
+	Tunnel              *routing.Tunnel
+	DoubleZeroAddr      net.IP
+	newRouteManagerFunc NewRouteManagerFunc
 }
 
 func (s *IBRLService) UserType() api.UserType   { return api.UserTypeIBRL }
 func (s *IBRLService) ServiceType() ServiceType { return ServiceTypeUnicast }
 
-func NewIBRLService(bgp BGPReaderWriter, nl routing.Netlinker, db DBReaderWriter) *IBRLService {
+func NewIBRLService(bgp BGPReaderWriter, nl routing.Netlinker, db DBReaderWriter, newRouteManagerFunc NewRouteManagerFunc) *IBRLService {
 	return &IBRLService{
-		bgp: bgp,
-		nl:  nl,
-		db:  db,
+		bgp:                 bgp,
+		nl:                  nl,
+		db:                  db,
+		newRouteManagerFunc: newRouteManagerFunc,
 	}
 }
 
 // Setup creates an IBRL tunnel with or without an allocated IP address.
 func (s *IBRLService) Setup(p *api.ProvisionRequest) error {
-	tun, err := routing.NewTunnel("doublezero0", p.TunnelSrc, p.TunnelDst, p.TunnelNet.String())
+	iface := "doublezero0"
+	tun, err := routing.NewTunnel(iface, p.TunnelSrc, p.TunnelDst, p.TunnelNet.String())
 	if err != nil {
 		return fmt.Errorf("error generating new tunnel: %v", err)
+	}
+
+	rm, err := s.newRouteManagerFunc(iface, p.TunnelSrc)
+	if err != nil {
+		return fmt.Errorf("error creating route manager: %v", err)
 	}
 
 	flush := true
@@ -47,7 +57,7 @@ func (s *IBRLService) Setup(p *api.ProvisionRequest) error {
 		err = createTunnelWithIP(s.nl, tun, p.DoubleZeroIP)
 		flush = false
 	default:
-		return fmt.Errorf("unsupported tunnel type: %v\n", p)
+		return fmt.Errorf("unsupported tunnel type: %v", p.UserType)
 	}
 	if err != nil {
 		return fmt.Errorf("error creating tunnel interface: %v", err)
@@ -64,6 +74,7 @@ func (s *IBRLService) Setup(p *api.ProvisionRequest) error {
 		RouteSrc:      p.DoubleZeroIP,
 		RouteTable:    syscall.RT_TABLE_MAIN,
 		FlushRoutes:   flush,
+		RouteManager:  rm,
 	}
 	nlri, err := bgp.NewNLRI([]uint32{peer.LocalAs}, s.Tunnel.LocalOverlay.String(), p.DoubleZeroIP.String(), 32)
 	if err != nil {
@@ -130,12 +141,13 @@ type IBRLServiceWithAllocatedAddress struct {
 	IBRLService
 }
 
-func NewIBRLServiceWithAllocatedAddress(bgp BGPReaderWriter, nl routing.Netlinker, db DBReaderWriter) *IBRLServiceWithAllocatedAddress {
+func NewIBRLServiceWithAllocatedAddress(bgp BGPReaderWriter, nl routing.Netlinker, db DBReaderWriter, newRouteManagerFunc NewRouteManagerFunc) *IBRLServiceWithAllocatedAddress {
 	return &IBRLServiceWithAllocatedAddress{
 		IBRLService{
-			bgp: bgp,
-			nl:  nl,
-			db:  db,
+			bgp:                 bgp,
+			nl:                  nl,
+			db:                  db,
+			newRouteManagerFunc: newRouteManagerFunc,
 		},
 	}
 }

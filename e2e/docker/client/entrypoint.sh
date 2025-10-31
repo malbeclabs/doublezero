@@ -55,5 +55,26 @@ rm -f /var/run/doublezerod/doublezerod.sock
 # Create state file directory.
 mkdir -p /var/lib/doublezerod
 
+# Workaround for Arista cEOS GRE/MPLS encapsulation bug
+# ----------------------------------------------------
+# Arista containers sometimes rewrite outbound GRE packets with the wrong
+# Protocol Type (0x8847, MPLS) instead of the correct 0x0800 (IPv4).
+# This causes the receiving Linux host to reject GRE decapsulation, and the
+# inner ICMP traffic (e.g., client1 <-> client2) never reaches the tunnel.
+#
+# The tc filter below patches inbound GRE packets on the client side,
+# rewriting the GRE Protocol Type field back to 0x0800 before they reach
+# the kernel’s GRE handler. This effectively “undoes” the Arista bug so the
+# packets are treated as normal IPv4-in-GRE traffic.
+#
+# Safe to remove once cEOS (or upstream DZD routing) stops emitting
+# GREv0/MPLS frames.
+for dev in $(ip -o link show | awk -F': ' '/^ *[0-9]+: eth[0-9]+/ {print $2}' | cut -d@ -f1); do
+  tc qdisc add dev "$dev" clsact 2>/dev/null || true
+  tc filter add dev "$dev" ingress protocol ip prio 10 u32 \
+    match ip protocol 47 0xff \
+    action pedit munge offset 22 u16 set 0x0800 pipe action pass 2>/dev/null || true
+done
+
 # Start doublezerod.
 doublezerod -program-id ${DZ_SERVICEABILITY_PROGRAM_ID} -solana-rpc-endpoint ${DZ_LEDGER_URL} -probe-interval 5 -cache-update-interval 3

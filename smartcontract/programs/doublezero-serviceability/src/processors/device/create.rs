@@ -117,6 +117,18 @@ pub fn process_create_device(
     location.reference_count += 1;
     exchange.reference_count += 1;
 
+    for prefix in value.dz_prefixes.iter() {
+        if prefix.contains(value.public_ip) {
+            #[cfg(test)]
+            msg!(
+                "Public IP {} conflicts with dz_prefix {}",
+                value.public_ip,
+                prefix
+            );
+            return Err(DoubleZeroError::InvalidPublicIp.into());
+        }
+    }
+
     let device: Device = Device {
         account_type: AccountType::Device,
         owner: *payer_account.key,

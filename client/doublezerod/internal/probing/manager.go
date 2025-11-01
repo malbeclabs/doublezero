@@ -6,12 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 )
 
 // RouteManager coordinates route probing and kernel synchronization.
-// It maintains a route store and a background probing worker.
+// It holds the in-memory route store and a background worker.
 type RouteManager struct {
 	log *slog.Logger
 	cfg *Config
@@ -38,8 +39,10 @@ func NewRouteManager(cfg *Config) (*RouteManager, error) {
 	}, nil
 }
 
-// PeerOnEstablished starts the probing worker when a peer connection is established.
+// PeerOnEstablished clears any prior managed state and starts the worker.
+// Safe to call repeatedly; the worker will only be started once.
 func (m *RouteManager) PeerOnEstablished() error {
+	m.cfg.Scheduler.Clear()
 	m.store.Clear()
 	if !m.worker.IsRunning() {
 		m.worker.Start(m.cfg.Context)
@@ -47,21 +50,22 @@ func (m *RouteManager) PeerOnEstablished() error {
 	return nil
 }
 
-// PeerOnClose stops the probing worker when the peer connection closes.
+// PeerOnClose stops the worker, clears the scheduler, and resets the store.
+// Idempotent: calling multiple times is safe.
 func (m *RouteManager) PeerOnClose() error {
 	if m.worker.IsRunning() {
 		m.worker.Stop()
 	}
+	m.cfg.Scheduler.Clear()
 	m.store.Clear()
 	return nil
 }
 
-// RouteAdd adds a route to the manager. If the worker is active, it’s added to
-// the managed store; otherwise it’s directly applied to the kernel.
+// RouteAdd adds a route to managed probing if the worker is running;
+// otherwise it installs the route directly into the kernel.
 func (m *RouteManager) RouteAdd(route *routing.Route) error {
 	if m.worker.IsRunning() {
-		err := m.handleRouteAdd(route)
-		if err != nil {
+		if err := m.handleRouteAdd(route); err != nil {
 			return fmt.Errorf("probing: error adding route: %w", err)
 		}
 		return nil
@@ -69,12 +73,11 @@ func (m *RouteManager) RouteAdd(route *routing.Route) error {
 	return m.cfg.Netlink.RouteAdd(route)
 }
 
-// RouteDelete removes a route from the manager or directly from the kernel,
-// depending on whether the worker is active.
+// RouteDelete removes a route from managed probing (and kernel) if the worker
+// is running; otherwise it deletes the route directly from the kernel.
 func (m *RouteManager) RouteDelete(route *routing.Route) error {
 	if m.worker.IsRunning() {
-		err := m.handleRouteDelete(route)
-		if err != nil {
+		if err := m.handleRouteDelete(route); err != nil {
 			return fmt.Errorf("probing: error deleting route: %w", err)
 		}
 		return nil
@@ -82,13 +85,13 @@ func (m *RouteManager) RouteDelete(route *routing.Route) error {
 	return m.cfg.Netlink.RouteDelete(route)
 }
 
-// RouteByProtocol retrieves kernel routes filtered by protocol number.
+// RouteByProtocol passes through to Netlink to list routes by protocol number.
 func (m *RouteManager) RouteByProtocol(protocol int) ([]*routing.Route, error) {
 	return m.cfg.Netlink.RouteByProtocol(protocol)
 }
 
-// handleRouteAdd validates and registers a route in the managed store.
-// Routes in the store will be probed periodically.
+// handleRouteAdd validates and registers a route in the managed store,
+// and schedules it for periodic probing.
 func (m *RouteManager) handleRouteAdd(route *routing.Route) error {
 	if err := validateRoute(route); err != nil {
 		return fmt.Errorf("invalid route: %w", err)
@@ -96,6 +99,8 @@ func (m *RouteManager) handleRouteAdd(route *routing.Route) error {
 
 	// Add the route to managed route store.
 	key := newRouteKey(route)
+	now := time.Now()
+	m.cfg.Scheduler.Add(key, now)
 	m.store.Set(key, managedRoute{
 		route:    route,
 		liveness: m.cfg.Liveness.NewTracker(),
@@ -106,19 +111,19 @@ func (m *RouteManager) handleRouteAdd(route *routing.Route) error {
 }
 
 // handleRouteDelete validates and removes a route from both the managed store
-// and the kernel routing table.
+// and the kernel routing table. ErrRouteNotFound is tolerated as benign.
 func (m *RouteManager) handleRouteDelete(route *routing.Route) error {
 	if err := validateRoute(route); err != nil {
 		return fmt.Errorf("invalid route: %w", err)
 	}
 
-	// Delete the route from managed route store.
+	// Delete the route from managed route store and scheduler.
 	key := newRouteKey(route)
+	m.cfg.Scheduler.Del(key)
 	m.store.Del(key)
 
 	// Delete the route from kernel immediately.
-	err := m.cfg.Netlink.RouteDelete(route)
-	if err != nil && !errors.Is(err, routing.ErrRouteNotFound) {
+	if err := m.cfg.Netlink.RouteDelete(route); err != nil && !errors.Is(err, routing.ErrRouteNotFound) {
 		return fmt.Errorf("error deleting route from kernel: %w", err)
 	}
 

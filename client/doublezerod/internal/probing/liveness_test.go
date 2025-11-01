@@ -82,7 +82,8 @@ func TestProbing_Liveness_HysteresisTracker_Behavior(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			policy := probing.NewHysteresisLivenessPolicy(tt.up, tt.down)
+			policy, err := probing.NewHysteresisLivenessPolicy(tt.up, tt.down)
+			require.NoError(t, err)
 			tracker := policy.NewTracker()
 
 			var gotTran []probing.LivenessTransition
@@ -99,7 +100,8 @@ func TestProbing_Liveness_HysteresisTracker_Behavior(t *testing.T) {
 func TestProbing_Liveness_HysteresisTracker_Counters(t *testing.T) {
 	t.Parallel()
 
-	policy := probing.NewHysteresisLivenessPolicy(2, 2)
+	policy, err := probing.NewHysteresisLivenessPolicy(2, 2)
+	require.NoError(t, err)
 	tracker := policy.NewTracker()
 
 	require.Equal(t, uint(0), tracker.ConsecutiveOK())
@@ -122,7 +124,8 @@ func TestProbing_Liveness_HysteresisTracker_Counters(t *testing.T) {
 func TestProbing_Liveness_HysteresisPolicy_NewTracker(t *testing.T) {
 	t.Parallel()
 
-	p := probing.NewHysteresisLivenessPolicy(3, 2).(*probing.HysteresisPolicy)
+	p, err := probing.NewHysteresisLivenessPolicy(3, 2)
+	require.NoError(t, err)
 	require.Equal(t, uint(3), p.UpThreshold)
 	require.Equal(t, uint(2), p.DownThreshold)
 

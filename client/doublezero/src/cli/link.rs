@@ -1,8 +1,8 @@
 use clap::{Args, Subcommand};
 
 use doublezero_cli::link::{
-    accept::AcceptLinkCliCommand, delete::*, dzx_create::CreateDZXLinkCliCommand, get::*, list::*,
-    update::*, wan_create::*,
+    accept::AcceptLinkCliCommand, delete::*, dzx_create::CreateDZXLinkCliCommand, get::*,
+    latency::LinkLatencyCliCommand, list::*, update::*, wan_create::*,
 };
 
 #[derive(Args, Debug)]
@@ -44,6 +44,9 @@ pub enum LinkCommands {
     /// Get details for a specific link
     #[clap()]
     Get(GetLinkCliCommand),
+    /// Display latency statistics for a link
+    #[clap()]
+    Latency(LinkLatencyCliCommand),
     /// Delete a link
     #[clap()]
     Delete(DeleteLinkCliCommand),

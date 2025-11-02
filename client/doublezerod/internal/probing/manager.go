@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"time"
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 )
@@ -99,7 +98,7 @@ func (m *RouteManager) handleRouteAdd(route *routing.Route) error {
 
 	// Add the route to managed route store.
 	key := newRouteKey(route)
-	now := time.Now()
+	now := m.cfg.NowFunc()
 	m.cfg.Scheduler.Add(key, now)
 	m.store.Set(key, managedRoute{
 		route:    route,

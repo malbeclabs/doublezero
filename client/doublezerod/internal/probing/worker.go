@@ -143,8 +143,8 @@ func (w *probingWorker) Run(ctx context.Context) {
 	for {
 		// Handle “due now” immediately to avoid Reset(0) races.
 		if next, ok := w.cfg.Scheduler.Peek(); ok {
-			if !next.After(time.Now()) {
-				launchDue(time.Now())
+			if !next.After(w.cfg.NowFunc()) {
+				launchDue(w.cfg.NowFunc())
 				// After processing, loop to re-peek and re-arm.
 				continue
 			}
@@ -164,7 +164,7 @@ func (w *probingWorker) Run(ctx context.Context) {
 			wakeCh = w.cfg.Scheduler.Wake()
 
 		case <-tc:
-			launchDue(time.Now())
+			launchDue(w.cfg.NowFunc())
 		}
 	}
 }
@@ -180,7 +180,7 @@ func (w *probingWorker) runProbe(parent context.Context, rk RouteKey, mr managed
 	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
 	defer cancel()
 
-	outcome := ProbeOutcome{When: time.Now()}
+	outcome := ProbeOutcome{When: w.cfg.NowFunc()}
 	defer func() {
 		if r := recover(); r != nil {
 			outcome.OK = false
@@ -197,14 +197,11 @@ func (w *probingWorker) runProbe(parent context.Context, rk RouteKey, mr managed
 	}
 	defer rel()
 
-	start := time.Now()
 	res, err := w.cfg.ProbeFunc(ctx, mr.route)
-	outcome.When = time.Now()
+	outcome.When = w.cfg.NowFunc()
 	outcome.OK = (err == nil && res.OK)
 	outcome.Err = err
-	if err == nil {
-		outcome.RTT = outcome.When.Sub(start)
-	}
+	outcome.RTT = res.RTTMean
 
 	if ctx.Err() != nil {
 		return

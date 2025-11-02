@@ -39,6 +39,7 @@ type IntervalConfig struct {
 	Interval time.Duration // base interval between probes
 	Jitter   time.Duration // max absolute jitter (+/-) applied to the interval/phase anchor
 	Phase    bool          // whether to phase routes deterministically
+	NowFunc  NowFunc       // function to get the current time
 }
 
 // Validate ensures the configuration is usable.
@@ -48,6 +49,11 @@ func (cfg *IntervalConfig) Validate() error {
 	}
 	if cfg.Jitter < 0 {
 		return errors.New("jitter must be >= 0")
+	}
+	if cfg.NowFunc == nil {
+		cfg.NowFunc = func() time.Time {
+			return time.Now().UTC()
+		}
 	}
 	return nil
 }
@@ -105,7 +111,7 @@ func (s *IntervalScheduler) Add(k RouteKey, base time.Time) {
 		return
 	}
 	seed := hash64(k)
-	due := firstDue(base, s.cfg.Interval, s.cfg.Jitter, s.cfg.Phase, k, seed)
+	due := firstDue(base, s.cfg.Interval, s.cfg.Jitter, s.cfg.Phase, k, seed, s.cfg.NowFunc)
 	s.routes[k] = &schedulerRouteState{seed: seed, nextDue: due}
 	s.maybeSignalLocked()
 }
@@ -250,9 +256,9 @@ func phaseOffset(iv time.Duration, k RouteKey) time.Duration {
 
 // firstDue computes the initial due time for a route given the config.
 // If Phase is enabled, routes are staggered deterministically by key.
-func firstDue(base time.Time, iv time.Duration, jitter time.Duration, phase bool, k RouteKey, seed uint64) time.Time {
+func firstDue(base time.Time, iv time.Duration, jitter time.Duration, phase bool, k RouteKey, seed uint64, nowFunc NowFunc) time.Time {
 	if base.IsZero() {
-		base = time.Now()
+		base = nowFunc()
 	}
 	if phase {
 		d := base.Truncate(iv).Add(phaseOffset(iv, k))

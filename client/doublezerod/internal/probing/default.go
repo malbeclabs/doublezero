@@ -83,6 +83,7 @@ func DefaultProbeFunc(log *slog.Logger, iface string, timeout time.Duration) Pro
 			OK:       ok,
 			Sent:     stats.PacketsSent,
 			Received: stats.PacketsRecv,
+			RTTMean:  stats.AvgRtt,
 		}, nil
 	}
 }

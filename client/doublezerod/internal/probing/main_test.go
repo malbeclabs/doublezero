@@ -90,6 +90,7 @@ func newTestConfig(t *testing.T, mutate func(*Config)) *Config {
 			time.Sleep(1 * time.Millisecond)
 			return ProbeResult{OK: true, Sent: 1, Received: 1}, nil
 		},
+		NowFunc: now,
 	}
 	if mutate != nil {
 		mutate(&cfg)
@@ -293,7 +294,7 @@ func (s *fakeScheduler) Peek() (time.Time, bool) {
 	p := s.wavePending
 	s.mu.Unlock()
 	if p {
-		return time.Now(), true
+		return now(), true
 	}
 	return time.Time{}, false
 }
@@ -568,4 +569,8 @@ func (m *mockLivenessTracker) ConsecutiveOK() uint {
 }
 func (m *mockLivenessTracker) ConsecutiveFail() uint {
 	return m.ConsecutiveFailFunc()
+}
+
+func now() time.Time {
+	return time.Now().UTC()
 }

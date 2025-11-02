@@ -57,8 +57,8 @@ func TestProbing_Worker_SuccessThenFailure_TransitionsAndKernel(t *testing.T) {
 	k1, k2 := newRouteKey(r1), newRouteKey(r2)
 	w.store.Set(k1, managedRoute{route: r1, liveness: cfg.Liveness.NewTracker()})
 	w.store.Set(k2, managedRoute{route: r2, liveness: cfg.Liveness.NewTracker()})
-	sched.Add(k1, time.Now())
-	sched.Add(k2, time.Now())
+	sched.Add(k1, now())
+	sched.Add(k2, now())
 
 	w.Start(cfg.Context)
 	t.Cleanup(w.Stop)
@@ -110,8 +110,8 @@ func TestProbing_Worker_ErrorCountsAsFailure(t *testing.T) {
 	r2 := newTestRouteWithDst(net.IPv4(10, 0, 1, 2))
 	w.store.Set(newRouteKey(r1), managedRoute{route: r1, liveness: cfg.Liveness.NewTracker()})
 	w.store.Set(newRouteKey(r2), managedRoute{route: r2, liveness: cfg.Liveness.NewTracker()})
-	sched.Add(newRouteKey(r1), time.Now())
-	sched.Add(newRouteKey(r2), time.Now())
+	sched.Add(newRouteKey(r1), now())
+	sched.Add(newRouteKey(r2), now())
 
 	w.Start(cfg.Context)
 	t.Cleanup(w.Stop)
@@ -182,7 +182,7 @@ func TestProbing_Worker_RespectsLimiterConcurrency(t *testing.T) {
 		r := newTestRouteWithDst(net.IPv4(10, 0, 2, byte(i+1)))
 		rk := newRouteKey(r)
 		w.store.Set(rk, managedRoute{route: r, liveness: cfg.Liveness.NewTracker()})
-		sched.Add(rk, time.Now())
+		sched.Add(rk, now())
 	}
 
 	w.Start(cfg.Context)
@@ -239,7 +239,7 @@ func TestProbing_Worker_IgnoresResultIfRouteRemoved(t *testing.T) {
 	r := newTestRouteWithDst(net.IPv4(10, 0, 3, 1))
 	key := newRouteKey(r)
 	w.store.Set(key, managedRoute{route: r, liveness: cfg.Liveness.NewTracker()})
-	sched.Add(key, time.Now())
+	sched.Add(key, now())
 
 	w.Start(cfg.Context)
 	t.Cleanup(w.Stop)
@@ -284,7 +284,7 @@ func TestProbing_Worker_ContextCancelIsNoop(t *testing.T) {
 	r := newTestRouteWithDst(net.IPv4(10, 0, 4, 1))
 	key := newRouteKey(r)
 	w.store.Set(key, managedRoute{route: r, liveness: cfg.Liveness.NewTracker()})
-	sched.Add(key, time.Now())
+	sched.Add(key, now())
 
 	ctx, cancel := context.WithCancel(cfg.Context)
 	cfg.Context = ctx
@@ -318,7 +318,7 @@ func TestProbing_Worker_KernelError_DoesNotBlockStateAdvance(t *testing.T) {
 	r := newTestRouteWithDst(net.IPv4(10, 0, 6, 1))
 	key := newRouteKey(r)
 	w.store.Set(key, managedRoute{route: r, liveness: cfg.Liveness.NewTracker()})
-	sched.Add(key, time.Now())
+	sched.Add(key, now())
 
 	w.Start(cfg.Context)
 	defer w.Stop()

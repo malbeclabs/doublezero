@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"time"
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 )
@@ -25,9 +26,13 @@ type ProbeFunc func(context.Context, *routing.Route) (ProbeResult, error)
 // OK should reflect end-to-end success criteria for a single probe wave.
 type ProbeResult struct {
 	OK       bool
-	Sent     int
-	Received int
+	Sent     int           // number of probes sent in the wave
+	Received int           // number of probes received in the wave
+	RTTMean  time.Duration // mean RTT of all probes in the wave
 }
+
+// NowFunc returns the current time in UTC.
+type NowFunc func() time.Time
 
 // Config provides all dependencies and tunables for the probing system.
 // Fields marked “Required” must be set; Validate enforces this and applies
@@ -42,6 +47,7 @@ type Config struct {
 	Scheduler  Scheduler         // scheduler for route probing
 	ListenFunc ListenFunc        // long-lived listener (with retry/backoff)
 	ProbeFunc  ProbeFunc         // per-route probe function
+	NowFunc    NowFunc           // function to get the current time
 }
 
 // Validate verifies required fields and applies defaults for optional fields.
@@ -71,6 +77,11 @@ func (cfg *Config) Validate() error {
 	}
 	if cfg.ProbeFunc == nil {
 		return errors.New("probe func is required")
+	}
+	if cfg.NowFunc == nil {
+		cfg.NowFunc = func() time.Time {
+			return time.Now().UTC()
+		}
 	}
 
 	return nil

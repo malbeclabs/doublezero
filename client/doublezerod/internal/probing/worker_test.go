@@ -330,57 +330,6 @@ func TestProbing_Worker_ContextCancelIsNoop(t *testing.T) {
 	require.True(t, hasRouteLiveness(w, r, LivenessStatusDown, 0, 0))
 }
 
-func TestProbing_Worker_ListenRetry_UntilContextDone(t *testing.T) {
-	t.Parallel()
-
-	fourthStarted := make(chan struct{}, 1)
-	var listenCalls atomic.Int64
-
-	sched := newFakeScheduler()
-	cfg := newTestConfig(t, func(c *Config) {
-		c.Liveness = seqPolicy([]LivenessTransition{LivenessTransitionNoChange})
-		c.ProbeFunc = func(context.Context, *routing.Route) (ProbeResult, error) { return ProbeResult{OK: true}, nil }
-		c.ListenFunc = func(ctx context.Context) error {
-			n := listenCalls.Add(1)
-			if n <= 3 {
-				return errors.New("synthetic listen error")
-			}
-			select {
-			case fourthStarted <- struct{}{}:
-			default:
-			}
-			<-ctx.Done()
-			return nil
-		}
-		c.ListenBackoff = ListenBackoffConfig{Initial: time.Millisecond, Max: time.Millisecond, Multiplier: 1}
-		c.Limiter, _ = NewSemaphoreLimiter(2)
-		c.Scheduler = sched
-	})
-
-	w := newWorker(cfg.Logger, cfg, newRouteStore())
-	r := newTestRouteWithDst(net.IPv4(10, 0, 5, 10))
-	rk := newRouteKey(r)
-	w.store.Set(rk, managedRoute{route: r, liveness: cfg.Liveness.NewTracker()})
-	sched.Add(rk, time.Now())
-
-	w.Start(cfg.Context)
-	t.Cleanup(w.Stop)
-
-	requireEventuallyDump(t, func() bool { return w.IsRunning() }, 2*time.Second, 10*time.Millisecond, "worker did not start")
-
-	// Wait until the 4th listen attempt has occurred
-	requireEventuallyDump(t, func() bool {
-		select {
-		case <-fourthStarted:
-			return true
-		default:
-			return false
-		}
-	}, 5*time.Second, 5*time.Millisecond, "4th listen attempt did not start")
-
-	require.True(t, w.IsRunning())
-}
-
 func TestProbing_Worker_KernelError_DoesNotBlockStateAdvance(t *testing.T) {
 	t.Parallel()
 

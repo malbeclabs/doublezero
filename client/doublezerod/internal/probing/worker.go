@@ -41,14 +41,14 @@ func newWorker(log *slog.Logger, cfg *Config, store *routeStore) *probingWorker 
 // the provided context is canceled or Stop is called. Safe to call concurrently
 // with IsRunning/Stop.
 func (w *probingWorker) Start(ctx context.Context) {
-	if w.IsRunning() {
+	if !w.running.CompareAndSwap(false, true) {
 		return
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	w.cancelMu.Lock()
 	w.cancel = cancel
 	w.cancelMu.Unlock()
-	w.running.Store(true)
+
 	w.wg.Add(1)
 	go func() {
 		defer w.wg.Done()
@@ -87,11 +87,21 @@ func (w *probingWorker) Run(ctx context.Context) {
 		"scheduler", w.cfg.Scheduler.String(),
 	)
 
-	// Listener runs in parallel and is retried with backoff on failure.
+	// Listener runs in parallel.
 	w.wg.Add(1)
 	go func() {
 		defer w.wg.Done()
-		w.listen(ctx)
+		err := w.cfg.ListenFunc(ctx)
+		if err != nil {
+			w.log.Error("listener error", "error", err)
+
+			// Cancel the worker to stop the run loop.
+			w.cancelMu.Lock()
+			if w.cancel != nil {
+				w.cancel()
+			}
+			w.cancelMu.Unlock()
+		}
 	}()
 
 	// Single reusable timer; we re-arm it whenever the earliest due changes.
@@ -222,50 +232,6 @@ func (w *probingWorker) runProbe(parent context.Context, rk RouteKey, mr managed
 	w.applyProbeResult(&mr, outcome.OK)
 }
 
-// listen runs cfg.ListenFunc until it returns nil or ctx is canceled, retrying
-// with exponential backoff on error. Backoff sleeps are ctx-cancelable.
-// Contract: ListenFunc should return nil on a clean, permanent exit; transient
-// failures should be reported as errors to trigger backoff/retry.
-func (w *probingWorker) listen(ctx context.Context) {
-	backoff := w.cfg.ListenBackoff
-	attempt := 0
-	for {
-		if ctx.Err() != nil {
-			return
-		}
-
-		if err := w.cfg.ListenFunc(ctx); err == nil {
-			// Listener exited cleanly; we’re done.
-			return
-		} else {
-			w.log.Error("listener error", "error", err)
-		}
-
-		// Calculate the backoff duration.
-		attempt++
-		d := backoff.Initial
-		for i := 1; i < attempt; i++ {
-			d = time.Duration(float64(d) * backoff.Multiplier)
-			if d > backoff.Max {
-				d = backoff.Max
-				break
-			}
-		}
-
-		// Cancelable sleep between retries.
-		t := time.NewTimer(d)
-		select {
-		case <-t.C:
-			// Backoff timer fired; retry.
-		case <-ctx.Done():
-			if !t.Stop() {
-				<-t.C
-			}
-			return
-		}
-	}
-}
-
 // applyProbeResult updates liveness state and reconciles kernel routes:
 //
 //	Up   -> Netlink.RouteAdd
@@ -309,8 +275,7 @@ func (w *probingWorker) applyProbeResult(mr *managedRoute, ok bool) {
 		// No kernel operation required.
 	}
 
-	// Persist the updated snapshot back into the store.
-	w.store.Set(key, cur)
+	// No need to store.Set since we mutated the managedRoute in place.
 }
 
 // validateRoute enforces IPv4-only Src/Dst/NextHop. This worker currently

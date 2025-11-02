@@ -90,11 +90,6 @@ func newTestConfig(t *testing.T, mutate func(*Config)) *Config {
 			time.Sleep(1 * time.Millisecond)
 			return ProbeResult{OK: true, Sent: 1, Received: 1}, nil
 		},
-		ListenBackoff: ListenBackoffConfig{
-			Initial:    10 * time.Millisecond,
-			Max:        100 * time.Millisecond,
-			Multiplier: 2,
-		},
 	}
 	if mutate != nil {
 		mutate(&cfg)

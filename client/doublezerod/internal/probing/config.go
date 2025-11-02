@@ -6,18 +6,8 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"time"
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
-)
-
-var (
-	// defaultListenBackoff is used when no ListenBackoff is provided.
-	defaultListenBackoff = ListenBackoffConfig{
-		Initial:    1 * time.Second,
-		Max:        30 * time.Second,
-		Multiplier: 2,
-	}
 )
 
 // ListenFunc starts a long-lived listener for probe responses or control-plane
@@ -30,14 +20,6 @@ type ListenFunc func(context.Context) error
 // a per-probe deadline). Returning an error counts as a probe failure unless
 // the error is due to worker stop (ctx canceled by parent).
 type ProbeFunc func(context.Context, *routing.Route) (ProbeResult, error)
-
-// ListenBackoffConfig controls exponential backoff for ListenFunc retries.
-// Multiplier is applied to the previous backoff duration, capped at Max.
-type ListenBackoffConfig struct {
-	Initial    time.Duration // starting delay before first retry
-	Max        time.Duration // upper bound for backoff delay
-	Multiplier float64       // growth factor per retry, e.g. 2.0 for doubling
-}
 
 // ProbeResult contains probe outcome and basic packet counts.
 // OK should reflect end-to-end success criteria for a single probe wave.
@@ -60,9 +42,6 @@ type Config struct {
 	Scheduler  Scheduler         // scheduler for route probing
 	ListenFunc ListenFunc        // long-lived listener (with retry/backoff)
 	ProbeFunc  ProbeFunc         // per-route probe function
-
-	// Required scalar fields.
-	ListenBackoff ListenBackoffConfig // retry policy for ListenFunc errors; defaulted if zero
 }
 
 // Validate verifies required fields and applies defaults for optional fields.
@@ -92,11 +71,6 @@ func (cfg *Config) Validate() error {
 	}
 	if cfg.ProbeFunc == nil {
 		return errors.New("probe func is required")
-	}
-
-	// Default values.
-	if cfg.ListenBackoff == (ListenBackoffConfig{}) {
-		cfg.ListenBackoff = defaultListenBackoff
 	}
 
 	return nil

@@ -183,7 +183,7 @@ func main() {
 					Liveness:   liveness,
 					Limiter:    limiter,
 					Scheduler:  scheduler,
-					ListenFunc: probing.DefaultListenFunc(logger, iface, src),
+					ListenFunc: probing.DefaultListenFuncWithRetry(logger, iface, src),
 					ProbeFunc:  probing.DefaultProbeFunc(logger, iface, *routeProbingProbeTimeout),
 				})
 			} else {

@@ -9,17 +9,17 @@ import (
 	"net"
 	"time"
 
+	"github.com/cenkalti/backoff/v4"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 	"github.com/malbeclabs/doublezero/tools/uping/pkg/uping"
 	promprobing "github.com/prometheus-community/pro-bing"
 )
 
-// DefaultListenFunc returns a ListenFunc that starts an ICMP listener
-// using the uping package bound to the given interface and source IP.
+// DefaultListenFunc returns a ListenFunc that starts an ICMP listener bound to iface/src.
 // It blocks until the context is canceled or a fatal error occurs.
 func DefaultListenFunc(log *slog.Logger, iface string, src net.IP) ListenFunc {
 	return func(ctx context.Context) error {
-		listener, err := uping.NewListener(uping.ListenerConfig{
+		l, err := uping.NewListener(uping.ListenerConfig{
 			Logger:    log,
 			Interface: iface,
 			IP:        src,
@@ -27,7 +27,32 @@ func DefaultListenFunc(log *slog.Logger, iface string, src net.IP) ListenFunc {
 		if err != nil {
 			return err
 		}
-		return listener.Listen(ctx)
+		return l.Listen(ctx)
+	}
+}
+func DefaultListenFuncWithRetry(log *slog.Logger, iface string, src net.IP, opts ...backoff.ExponentialBackOffOpts) ListenFunc {
+	base := DefaultListenFunc(log, iface, src)
+
+	opts = append([]backoff.ExponentialBackOffOpts{
+		backoff.WithInitialInterval(100 * time.Millisecond),
+		backoff.WithMultiplier(2.0),
+		backoff.WithMaxInterval(5 * time.Second),
+		backoff.WithMaxElapsedTime(1 * time.Minute), // stop retrying after a minute…
+		backoff.WithRandomizationFactor(0),          // deterministic (no jitter)
+	}, opts...)
+	return func(ctx context.Context) error {
+		b := backoff.NewExponentialBackOff(opts...)
+
+		bo := backoff.WithContext(b, ctx) // …and also stop on ctx cancel/timeout
+
+		op := func() error {
+			err := base(ctx)
+			// If you detect a non-retryable error, wrap it:
+			// if errors.Is(err, uping.ErrInvalidInterface) { return backoff.Permanent(err) }
+			return err
+		}
+
+		return backoff.Retry(op, bo)
 	}
 }
 

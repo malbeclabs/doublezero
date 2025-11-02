@@ -342,42 +342,6 @@ func (s *fakeScheduler) Complete(k RouteKey, _ ProbeOutcome) {
 	s.mu.Unlock()
 }
 
-//nolint:unused
-func waitForProbe(t *testing.T, ch <-chan struct{}, sched *fakeScheduler, d time.Duration) {
-	t.Helper()
-	deadline := time.After(d)
-	tick := time.NewTicker(5 * time.Millisecond)
-	defer tick.Stop()
-
-	for {
-		select {
-		case <-ch:
-			return
-		case <-tick.C:
-			sched.Trigger() // keep nudging the worker
-		case <-deadline:
-			t.Fatalf("probe did not start within %v", d)
-		}
-	}
-}
-
-func startNudger(t *testing.T, sched *fakeScheduler, every time.Duration) (stop func()) {
-	done := make(chan struct{})
-	go func() {
-		tk := time.NewTicker(every)
-		defer tk.Stop()
-		for {
-			select {
-			case <-tk.C:
-				sched.Trigger()
-			case <-done:
-				return
-			}
-		}
-	}()
-	return func() { close(done) }
-}
-
 func waitEdge(t *testing.T, ch <-chan struct{}, d time.Duration, msg string) {
 	t.Helper()
 	select {
@@ -417,24 +381,6 @@ want:
 		}
 	}
 	t.Logf("\n==== BEGIN FILTERED GOROUTINES ====\n%s==== END FILTERED GOROUTINES ====\n", out.String())
-}
-
-//nolint:unused
-func requireEventuallyDump(t *testing.T, cond func() bool, wait, tick time.Duration, why string) {
-	deadline := time.Now().Add(wait)
-	for time.Now().Before(deadline) {
-		if cond() {
-			return
-		}
-		time.Sleep(tick)
-	}
-	// last chance
-	if cond() {
-		return
-	}
-	dumpGoroutines(t)
-	dumpGoroutinesFiltered(t, "/internal/probing", "probingWorker", "fakeScheduler")
-	t.Fatalf("eventually failed: %s (wait=%v tick=%v)", why, wait, tick)
 }
 
 type memoryNetlinker struct {

@@ -21,7 +21,6 @@ func TestProbing_RouteStore(t *testing.T) {
 			Dst:     &net.IPNet{IP: net.ParseIP(dstIP), Mask: net.CIDRMask(32, 32)},
 			NextHop: net.ParseIP(nextHopIP),
 			Src:     net.ParseIP("10.0.0.1"),
-			// Protocol is intentionally omitted; tests don't rely on it
 		}
 	}
 
@@ -101,12 +100,10 @@ func TestProbing_RouteStore(t *testing.T) {
 		snap := s.Clone()
 		require.Len(t, snap, 1)
 
-		// mutate store after clone; snapshot should not change in size or keys
 		s.Set(k2, managedRoute{route: r2})
-		require.Len(t, s.Clone(), 2) // store changes
-		require.Len(t, snap, 1)      // snapshot unchanged
+		require.Len(t, s.Clone(), 2)
+		require.Len(t, snap, 1)
 
-		// sanity: snapshot holds the same value it had
 		v1, ok := snap[k1]
 		require.True(t, ok)
 		require.Equal(t, r1, v1.route)
@@ -120,7 +117,6 @@ func TestProbing_RouteStore(t *testing.T) {
 		var wg sync.WaitGroup
 		wg.Add(3)
 
-		// writers
 		go func() {
 			defer wg.Done()
 			for i := range n {
@@ -130,21 +126,18 @@ func TestProbing_RouteStore(t *testing.T) {
 			}
 		}()
 
-		// readers
 		go func() {
 			defer wg.Done()
 			for i := 0; i < n; i++ {
 				_ = s.Len()
-				_, _ = s.Get(RouteKey{}) // likely miss; just exercise read lock
+				_, _ = s.Get(RouteKey{})
 				_ = s.Clone()
-				time.Sleep(time.Millisecond) // encourage interleaving
+				time.Sleep(time.Millisecond)
 			}
 		}()
 
-		// deleter
 		go func() {
 			defer wg.Done()
-			// delete some keys that may or may not exist yet
 			for i := 0; i < n; i += 3 {
 				r := newRoute(100+i, "203.0.113.1", "203.0.113.254")
 				s.Del(newRouteKey(r))
@@ -153,9 +146,8 @@ func TestProbing_RouteStore(t *testing.T) {
 
 		wg.Wait()
 
-		// Basic post-conditions: size is within [~2n/3, n] depending on race of deletes.
 		ln := s.Len()
-		require.GreaterOrEqual(t, ln, n/2) // be generous; depends on timing
+		require.GreaterOrEqual(t, ln, n/2)
 		require.LessOrEqual(t, ln, n)
 	})
 }

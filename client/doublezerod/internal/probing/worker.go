@@ -74,28 +74,19 @@ func (w *probingWorker) IsRunning() bool {
 	return w.running.Load()
 }
 
-// Run drives the main loop:
-//   - arms a single reusable timer for the current earliest due time,
-//   - waits on: timer fire, Scheduler.Wake(), or ctx cancel,
-//   - launches due probes (bounded by Limiter).
-//
-// Each completed probe feeds back via Scheduler.Complete(rk, outcome) which
-// re-arms cadence externally.
+// Run is the main loop for the probing worker.
+// It checks the scheduler for due work, launches probes when they’re due,
+// and exits on context cancel. Work that’s already due is handled immediately
+// instead of relying on a zero-duration timer.
 func (w *probingWorker) Run(ctx context.Context) {
-	w.log.Info("probing: worker started",
-		"limiter", w.cfg.Limiter.String(),
-		"scheduler", w.cfg.Scheduler.String(),
-	)
+	w.log.Info("probing: worker started", "limiter", w.cfg.Limiter.String(), "scheduler", w.cfg.Scheduler.String())
 
-	// Listener runs in parallel.
+	// Start the listener in the background. If it fails, cancel everything.
 	w.wg.Add(1)
 	go func() {
 		defer w.wg.Done()
-		err := w.cfg.ListenFunc(ctx)
-		if err != nil {
+		if err := w.cfg.ListenFunc(ctx); err != nil {
 			w.log.Error("listener error", "error", err)
-
-			// Cancel the worker to stop the run loop.
 			w.cancelMu.Lock()
 			if w.cancel != nil {
 				w.cancel()
@@ -104,22 +95,26 @@ func (w *probingWorker) Run(ctx context.Context) {
 		}
 	}()
 
-	// Single reusable timer; we re-arm it whenever the earliest due changes.
+	// Reusable timer.
 	timer := time.NewTimer(time.Hour)
 	if !timer.Stop() {
 		<-timer.C
 	}
 	defer timer.Stop()
+
 	var tc <-chan time.Time
+	// IMPORTANT: pin the current wake channel; refresh it only after it fires.
+	wakeCh := w.cfg.Scheduler.Wake()
 
 	reset := func(next time.Time) {
-		// If next is zero, disable the timer (sit idle until Wake()).
 		if next.IsZero() {
 			tc = nil
 			return
 		}
 		d := time.Until(next)
-		d = max(d, 0) // fire immediately if overdue
+		if d < 0 {
+			d = 0
+		}
 		if !timer.Stop() {
 			select {
 			case <-timer.C:
@@ -130,31 +125,32 @@ func (w *probingWorker) Run(ctx context.Context) {
 		tc = timer.C
 	}
 
+	launchDue := func(now time.Time) {
+		for _, rk := range w.cfg.Scheduler.PopDue(now) {
+			mr, ok := w.store.Get(rk)
+			if !ok {
+				w.cfg.Scheduler.Complete(rk, ProbeOutcome{OK: false, Err: context.Canceled, When: now})
+				continue
+			}
+			w.wg.Add(1)
+			go func(rk RouteKey, mr managedRoute) {
+				defer w.wg.Done()
+				w.runProbe(ctx, rk, mr)
+			}(rk, mr)
+		}
+	}
+
 	for {
-		// Arm/disarm based on current earliest due. If empty, we sit idle on Wake().
-		next, ok := w.cfg.Scheduler.Peek()
-		if ok {
+		// Handle “due now” immediately to avoid Reset(0) races.
+		if next, ok := w.cfg.Scheduler.Peek(); ok {
+			if !next.After(time.Now()) {
+				launchDue(time.Now())
+				// After processing, loop to re-peek and re-arm.
+				continue
+			}
 			reset(next)
 		} else {
 			reset(time.Time{})
-		}
-
-		// Fast path: if something is already due, process immediately instead of waiting for
-		// a re-armed timer tick.
-		now := time.Now()
-		if ok && !next.After(now) {
-			for _, rk := range w.cfg.Scheduler.PopDue(now) {
-				if mr, ok := w.store.Get(rk); ok {
-					w.wg.Add(1)
-					go func(rk RouteKey, mr managedRoute) {
-						defer w.wg.Done()
-						w.runProbe(ctx, rk, mr)
-					}(rk, mr)
-				} else {
-					w.cfg.Scheduler.Complete(rk, ProbeOutcome{OK: false, Err: context.Canceled, When: now})
-				}
-			}
-			continue
 		}
 
 		select {
@@ -162,69 +158,54 @@ func (w *probingWorker) Run(ctx context.Context) {
 			w.log.Debug("probing: worker stopped", "error", ctx.Err())
 			return
 
-		case <-w.cfg.Scheduler.Wake():
-			// earliest due changed; loop to re-arm
-			continue
+		case <-wakeCh:
+			// The scheduler signaled a change; get the next wake channel
+			// and loop to re-check due work.
+			wakeCh = w.cfg.Scheduler.Wake()
 
 		case <-tc:
-			// Timer fired; pop all routes due at or before now and launch probes.
-			now := time.Now()
-			for _, rk := range w.cfg.Scheduler.PopDue(now) {
-				mr, ok := w.store.Get(rk)
-				if !ok {
-					// Route disappeared after scheduling; Complete with a canceled outcome so the
-					// scheduler can advance its cadence and not wedge this key.
-					w.log.Debug("probing: scheduled route vanished before probe", "route", rk)
-					w.cfg.Scheduler.Complete(rk, ProbeOutcome{OK: false, Err: context.Canceled, When: now})
-					continue
-				}
-
-				w.wg.Add(1)
-				go func(rk RouteKey, mr managedRoute) {
-					defer w.wg.Done()
-					w.runProbe(ctx, rk, mr)
-				}(rk, mr)
-			}
+			launchDue(time.Now())
 		}
 	}
 }
 
-// runProbe executes a single probe for rk/mr. It acquires the limiter inside
-// the goroutine so the run-loop never blocks on capacity. It re-arms the
-// scheduler via Complete() and applies liveness/kernel reconciliation.
+// runProbe executes one probe for (rk, mr).
+// Behavior:
+//   - Per-probe context with 10s timeout.
+//   - Unconditional Scheduler.Complete in a defer (also on early return or panic).
+//   - Acquires concurrency from Limiter inside the goroutine.
+//   - Calls ProbeFunc, records RTT on success, and applies liveness→kernel reconciliation.
+//   - If the probe context is canceled before reconciliation, skips state mutation.
 func (w *probingWorker) runProbe(parent context.Context, rk RouteKey, mr managedRoute) {
-	// Per-probe deadline to bound work and limiter holds.
-	// TODO(snormore): Consider exposing as a configurable field.
 	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
 	defer cancel()
 
-	var outcome ProbeOutcome
+	outcome := ProbeOutcome{When: time.Now()}
 	defer func() {
-		if outcome.When.IsZero() {
-			outcome.When = time.Now()
+		if r := recover(); r != nil {
+			outcome.OK = false
+			outcome.Err = fmt.Errorf("panic: %v", r)
 		}
-		// Ensure Scheduler.Complete is called exactly once for this rk, even on early returns.
 		w.cfg.Scheduler.Complete(rk, outcome)
 	}()
 
 	rel, ok := w.cfg.Limiter.Acquire(ctx)
 	if !ok {
-		outcome = ProbeOutcome{OK: false, Err: ctx.Err(), When: time.Now()}
+		outcome.OK = false
+		outcome.Err = ctx.Err()
 		return
 	}
 	defer rel()
 
 	start := time.Now()
 	res, err := w.cfg.ProbeFunc(ctx, mr.route)
-
-	outcome.OK = err == nil && res.OK
-	outcome.Err = err
 	outcome.When = time.Now()
+	outcome.OK = (err == nil && res.OK)
+	outcome.Err = err
 	if err == nil {
 		outcome.RTT = outcome.When.Sub(start)
 	}
 
-	// If shutting down, skip state mutation (but Complete still runs via defer).
 	if ctx.Err() != nil {
 		return
 	}

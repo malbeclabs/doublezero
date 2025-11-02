@@ -161,13 +161,13 @@ func TestE2E_UserBan(t *testing.T) {
 
 	// Run IBRL workflow test.
 	if !t.Run("user-ban-ibrl", func(t *testing.T) {
-		runUserBanIBRLWorkflowTest(t, log, client1, client2, client3, dn, device2, deviceCode1, deviceCode2)
+		runUserBanIBRLWorkflowTest(t, log, client1, client2, client3, dn, deviceCode1, deviceCode2)
 	}) {
 		t.Fail()
 	}
 }
 
-func runUserBanIBRLWorkflowTest(t *testing.T, log *slog.Logger, client1 *devnet.Client, client2 *devnet.Client, client3 *devnet.Client, dn *devnet.Devnet, device2 *devnet.Device, deviceCode1 string, deviceCode2 string) {
+func runUserBanIBRLWorkflowTest(t *testing.T, log *slog.Logger, client1 *devnet.Client, client2 *devnet.Client, client3 *devnet.Client, dn *devnet.Devnet, deviceCode1 string, deviceCode2 string) {
 	// Check that the clients are disconnected and do not have a DZ IP allocated.
 	log.Info("==> Checking that the clients are disconnected and do not have a DZ IP allocated")
 	status, err := client1.GetTunnelStatus(t.Context())

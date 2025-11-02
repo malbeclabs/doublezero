@@ -14,8 +14,6 @@ import (
 )
 
 func TestProbing_RouteManager_PeerLifecycle_StartsAndStopsWorker_Idempotent(t *testing.T) {
-	t.Parallel()
-
 	cfg := newTestConfig(t, func(c *Config) {
 		c.Limiter, _ = NewSemaphoreLimiter(4)
 		c.Scheduler = newFakeScheduler()
@@ -38,8 +36,6 @@ func TestProbing_RouteManager_PeerLifecycle_StartsAndStopsWorker_Idempotent(t *t
 }
 
 func TestProbing_RouteManager_RouteAdd_WorkerRunning_StoresButNoKernelAdd(t *testing.T) {
-	t.Parallel()
-
 	var addCalls int64
 	cfg := newTestConfig(t, func(c *Config) {
 		c.Limiter, _ = NewSemaphoreLimiter(4)
@@ -61,11 +57,8 @@ func TestProbing_RouteManager_RouteAdd_WorkerRunning_StoresButNoKernelAdd(t *tes
 }
 
 func TestProbing_RouteManager_RouteAdd_WorkerStopped_CallsKernelAdd(t *testing.T) {
-	t.Parallel()
-
 	var addCalls int64
 	cfg := newTestConfig(t, func(c *Config) {
-		// No scheduler/limiter needed since worker won't be started
 		c.Netlink = &MockNetlinker{
 			RouteAddFunc:    func(*routing.Route) error { atomic.AddInt64(&addCalls, 1); return nil },
 			RouteDeleteFunc: func(*routing.Route) error { return nil },
@@ -81,22 +74,18 @@ func TestProbing_RouteManager_RouteAdd_WorkerStopped_CallsKernelAdd(t *testing.T
 }
 
 func TestProbing_RouteManager_RouteAdd_InvalidRoute_Err(t *testing.T) {
-	t.Parallel()
-
 	cfg := newTestConfig(t, func(c *Config) {
 		c.Limiter, _ = NewSemaphoreLimiter(1)
 		c.Scheduler = newFakeScheduler()
 	})
 	m, _ := NewRouteManager(cfg)
 	_ = m.PeerOnEstablished()
-	err := m.RouteAdd(&routing.Route{}) // invalid
+	err := m.RouteAdd(&routing.Route{})
 	require.Error(t, err)
 	require.Equal(t, 0, m.store.Len())
 }
 
 func TestProbing_RouteManager_RouteDelete_WorkerRunning_RemovesAndKernelDelete(t *testing.T) {
-	t.Parallel()
-
 	var delCalls int64
 	cfg := newTestConfig(t, func(c *Config) {
 		c.Limiter, _ = NewSemaphoreLimiter(4)
@@ -118,8 +107,6 @@ func TestProbing_RouteManager_RouteDelete_WorkerRunning_RemovesAndKernelDelete(t
 }
 
 func TestProbing_RouteManager_RouteDelete_WorkerRunning_RouteNotFoundInKernel_DoesNotReturnError(t *testing.T) {
-	t.Parallel()
-
 	var delCalls int64
 	cfg := newTestConfig(t, func(c *Config) {
 		c.Limiter, _ = NewSemaphoreLimiter(4)
@@ -141,8 +128,6 @@ func TestProbing_RouteManager_RouteDelete_WorkerRunning_RouteNotFoundInKernel_Do
 }
 
 func TestProbing_RouteManager_RouteDelete_WorkerStopped_CallsKernelDelete(t *testing.T) {
-	t.Parallel()
-
 	var delCalls int64
 	cfg := newTestConfig(t, func(c *Config) {
 		c.Netlink = &MockNetlinker{
@@ -158,8 +143,6 @@ func TestProbing_RouteManager_RouteDelete_WorkerStopped_CallsKernelDelete(t *tes
 }
 
 func TestProbing_RouteManager_RouteDelete_InvalidRoute_Err(t *testing.T) {
-	t.Parallel()
-
 	cfg := newTestConfig(t, func(c *Config) {
 		c.Limiter, _ = NewSemaphoreLimiter(1)
 		c.Scheduler = newFakeScheduler()
@@ -172,8 +155,6 @@ func TestProbing_RouteManager_RouteDelete_InvalidRoute_Err(t *testing.T) {
 }
 
 func TestProbing_RouteManager_RouteByProtocol_Passthrough(t *testing.T) {
-	t.Parallel()
-
 	r := newTestRouteWithDst(net.IPv4(10, 0, 0, 30))
 
 	cfg := newTestConfig(t, func(c *Config) {
@@ -193,16 +174,12 @@ func TestProbing_RouteManager_RouteByProtocol_Passthrough(t *testing.T) {
 }
 
 func TestProbing_RouteManager_NewRouteManager_ConfigValidateErrorBubbles(t *testing.T) {
-	t.Parallel()
-
 	cfg := newTestConfig(t, func(c *Config) { c.Logger = nil })
 	_, err := NewRouteManager(cfg)
 	require.Error(t, err)
 }
 
-func TestProbing_RouteManager_PeerOnEstablished_StartsWorkerAndProbes(t *testing.T) {
-	t.Parallel()
-
+func TestProbing_RouteManager_PeerOnEstablished_StartsAndProbes(t *testing.T) {
 	probed := make(chan struct{}, 1)
 	sched := newFakeScheduler()
 	cfg := newTestConfig(t, func(c *Config) {
@@ -227,8 +204,7 @@ func TestProbing_RouteManager_PeerOnEstablished_StartsWorkerAndProbes(t *testing
 	r2 := newTestRouteWithDst(net.IPv4(10, 0, 0, 41))
 	require.NoError(t, m.RouteAdd(r2))
 
-	stop := startNudger(t, sched, 5*time.Millisecond)
-	t.Cleanup(stop)
+	sched.Trigger()
 	waitEdge(t, probed, 2*time.Second, "probe did not start")
 
 	require.NoError(t, m.PeerOnClose())
@@ -236,8 +212,6 @@ func TestProbing_RouteManager_PeerOnEstablished_StartsWorkerAndProbes(t *testing
 }
 
 func TestProbing_RouteManager_PeerOnEstablished_ClearsStore(t *testing.T) {
-	t.Parallel()
-
 	cfg := newTestConfig(t, func(c *Config) {
 		c.Limiter, _ = NewSemaphoreLimiter(1)
 		c.Scheduler = newFakeScheduler()
@@ -251,8 +225,6 @@ func TestProbing_RouteManager_PeerOnEstablished_ClearsStore(t *testing.T) {
 }
 
 func TestProbing_RouteManager_PeerOnClose_ClearsStore(t *testing.T) {
-	t.Parallel()
-
 	cfg := newTestConfig(t, func(c *Config) {
 		c.Limiter, _ = NewSemaphoreLimiter(1)
 		c.Scheduler = newFakeScheduler()

@@ -15,8 +15,6 @@ import (
 )
 
 func TestProbing_Worker_StartStopIdempotent(t *testing.T) {
-	t.Parallel()
-
 	cfg := newTestConfig(t, func(c *Config) {
 		c.Limiter, _ = NewSemaphoreLimiter(4)
 		c.Scheduler = newFakeScheduler()
@@ -35,8 +33,6 @@ func TestProbing_Worker_StartStopIdempotent(t *testing.T) {
 }
 
 func TestProbing_Worker_SuccessThenFailure_TransitionsAndKernel(t *testing.T) {
-	t.Parallel()
-
 	sched := newFakeScheduler()
 	var modeOK atomic.Bool
 	modeOK.Store(true)
@@ -68,49 +64,39 @@ func TestProbing_Worker_SuccessThenFailure_TransitionsAndKernel(t *testing.T) {
 	t.Cleanup(w.Stop)
 	require.Eventually(t, func() bool { return w.IsRunning() }, 2*time.Second, 10*time.Millisecond)
 
-	// small periodic nudge
-	stopNudge := startNudger(t, sched, 20*time.Millisecond)
-	t.Cleanup(stopNudge)
-
-	runWave := func() {
-		t.Helper()
-		sched.Trigger()
-		sched.waitDrained(t, 3*time.Second)
-	}
-
-	runWave()
-	require.Eventually(t, func() bool {
-		return hasRouteLiveness(w, r1, LivenessStatusDown, 1, 0) &&
-			hasRouteLiveness(w, r2, LivenessStatusDown, 1, 0)
-	}, 3*time.Second, 20*time.Millisecond)
+	// wave 1 -> still DOWN; ok=1
+	sched.Trigger()
+	sched.waitDrained(t, 3*time.Second)
+	require.True(t, hasRouteLiveness(w, r1, LivenessStatusDown, 1, 0))
+	require.True(t, hasRouteLiveness(w, r2, LivenessStatusDown, 1, 0))
 	requireNetlinkRoutes(t, cfg.Netlink, []*routing.Route{})
 
-	runWave()
-	require.Eventually(t, func() bool {
-		return hasRouteLiveness(w, r1, LivenessStatusUp, 2, 0) &&
-			hasRouteLiveness(w, r2, LivenessStatusUp, 2, 0)
-	}, 3*time.Second, 20*time.Millisecond)
+	// wave 2 -> UP; ok=2
+	sched.Trigger()
+	sched.waitDrained(t, 3*time.Second)
+	require.True(t, hasRouteLiveness(w, r1, LivenessStatusUp, 2, 0))
+	require.True(t, hasRouteLiveness(w, r2, LivenessStatusUp, 2, 0))
 	requireNetlinkRoutes(t, cfg.Netlink, []*routing.Route{r1, r2})
 
+	// switch to failures
 	modeOK.Store(false)
-	runWave()
-	require.Eventually(t, func() bool {
-		return hasRouteLiveness(w, r1, LivenessStatusUp, 0, 1) &&
-			hasRouteLiveness(w, r2, LivenessStatusUp, 0, 1)
-	}, 3*time.Second, 20*time.Millisecond)
+
+	// wave 3 -> still UP; fail=1
+	sched.Trigger()
+	sched.waitDrained(t, 3*time.Second)
+	require.True(t, hasRouteLiveness(w, r1, LivenessStatusUp, 0, 1))
+	require.True(t, hasRouteLiveness(w, r2, LivenessStatusUp, 0, 1))
 	requireNetlinkRoutes(t, cfg.Netlink, []*routing.Route{r1, r2})
 
-	runWave()
-	require.Eventually(t, func() bool {
-		return hasRouteLiveness(w, r1, LivenessStatusDown, 0, 2) &&
-			hasRouteLiveness(w, r2, LivenessStatusDown, 0, 2)
-	}, 3*time.Second, 20*time.Millisecond)
+	// wave 4 -> DOWN; fail=2
+	sched.Trigger()
+	sched.waitDrained(t, 3*time.Second)
+	require.True(t, hasRouteLiveness(w, r1, LivenessStatusDown, 0, 2))
+	require.True(t, hasRouteLiveness(w, r2, LivenessStatusDown, 0, 2))
 	requireNetlinkRoutes(t, cfg.Netlink, []*routing.Route{})
 }
 
 func TestProbing_Worker_ErrorCountsAsFailure(t *testing.T) {
-	t.Parallel()
-
 	sched := newFakeScheduler()
 	cfg := newTestConfig(t, func(c *Config) {
 		c.Liveness, _ = NewHysteresisLivenessPolicy(2, 2)
@@ -130,37 +116,39 @@ func TestProbing_Worker_ErrorCountsAsFailure(t *testing.T) {
 	w.Start(cfg.Context)
 	t.Cleanup(w.Stop)
 
-	// Two waves of success to go UP
+	// wave 1 -> still DOWN; ok=1
 	sched.Trigger()
-	sched.waitDrained(t, time.Second)
+	sched.waitDrained(t, 2*time.Second)
+	require.True(t, hasRouteLiveness(w, r1, LivenessStatusDown, 1, 0))
+	require.True(t, hasRouteLiveness(w, r2, LivenessStatusDown, 1, 0))
+
+	// wave 2 -> UP; ok=2
 	sched.Trigger()
-	sched.waitDrained(t, time.Second)
-	require.Eventually(t, func() bool {
-		return hasRouteLiveness(w, r1, LivenessStatusUp, 2, 0) &&
-			hasRouteLiveness(w, r2, LivenessStatusUp, 2, 0)
-	}, 2*time.Second, 25*time.Millisecond)
+	sched.waitDrained(t, 2*time.Second)
+	require.True(t, hasRouteLiveness(w, r1, LivenessStatusUp, 2, 0))
+	require.True(t, hasRouteLiveness(w, r2, LivenessStatusUp, 2, 0))
 	requireNetlinkRoutes(t, cfg.Netlink, []*routing.Route{r1, r2})
 
-	// Now errors
+	// errors now count as failures
 	cfg.ProbeFunc = func(context.Context, *routing.Route) (ProbeResult, error) {
 		return ProbeResult{}, errors.New("probe error")
 	}
 
-	// Two waves to go DOWN
+	// wave 3 -> still UP; fail=1
 	sched.Trigger()
 	sched.waitDrained(t, 3*time.Second)
+	require.True(t, hasRouteLiveness(w, r1, LivenessStatusUp, 0, 1))
+	require.True(t, hasRouteLiveness(w, r2, LivenessStatusUp, 0, 1))
+
+	// wave 4 -> DOWN; fail=2
 	sched.Trigger()
 	sched.waitDrained(t, 3*time.Second)
-	require.Eventually(t, func() bool {
-		return hasRouteLiveness(w, r1, LivenessStatusDown, 0, 2) &&
-			hasRouteLiveness(w, r2, LivenessStatusDown, 0, 2)
-	}, 2*time.Second, 25*time.Millisecond)
+	require.True(t, hasRouteLiveness(w, r1, LivenessStatusDown, 0, 2))
+	require.True(t, hasRouteLiveness(w, r2, LivenessStatusDown, 0, 2))
 	requireNetlinkRoutes(t, cfg.Netlink, []*routing.Route{})
 }
 
 func TestProbing_Worker_RespectsLimiterConcurrency(t *testing.T) {
-	t.Parallel()
-
 	const N, capC = 16, 3
 	var cur, maxSeen int64
 	started := make(chan struct{}, N)
@@ -201,28 +189,22 @@ func TestProbing_Worker_RespectsLimiterConcurrency(t *testing.T) {
 	t.Cleanup(w.Stop)
 	require.Eventually(t, func() bool { return w.IsRunning() }, 2*time.Second, 10*time.Millisecond)
 
-	stop := startNudger(t, sched, 5*time.Millisecond)
-	t.Cleanup(stop)
-
-	// Wait until exactly capC probes have *started* (edge-driven, not polling maxSeen).
+	sched.Trigger()
 	for i := 0; i < capC; i++ {
-		waitEdge(t, started, 5*time.Second, "probe did not start before deadline")
+		waitEdge(t, started, 2*time.Second, "probe did not start before deadline")
 	}
-	require.Equal(t, int64(capC), atomic.LoadInt64(&maxSeen), "limiter not respected")
+	require.Equal(t, int64(capC), atomic.LoadInt64(&maxSeen))
 
-	// Ensure no more start while blocked
 	select {
 	case <-started:
 		t.Fatalf("limiter exceeded capacity")
-	case <-time.After(100 * time.Millisecond):
+	case <-time.After(150 * time.Millisecond):
 	}
 
 	close(block)
 }
 
 func TestProbing_Worker_IgnoresResultIfRouteRemoved(t *testing.T) {
-	t.Parallel()
-
 	started := make(chan struct{}, 1)
 	exited := make(chan struct{}, 1)
 	unblock := make(chan struct{})
@@ -262,18 +244,12 @@ func TestProbing_Worker_IgnoresResultIfRouteRemoved(t *testing.T) {
 	w.Start(cfg.Context)
 	t.Cleanup(w.Stop)
 
-	stopNudge := startNudger(t, sched, 5*time.Millisecond)
-	t.Cleanup(stopNudge)
-
-	// Kick a wave and wait until the probe goroutine has actually started.
 	sched.Trigger()
 	waitEdge(t, started, 2*time.Second, "probe did not start")
 
-	// Now remove the route before the probe completes.
 	w.store.Del(key)
 	sched.Del(key)
 
-	// Let the probe return and then confirm it exited.
 	close(unblock)
 	waitEdge(t, exited, 2*time.Second, "probe goroutine did not exit")
 
@@ -282,8 +258,6 @@ func TestProbing_Worker_IgnoresResultIfRouteRemoved(t *testing.T) {
 }
 
 func TestProbing_Worker_ContextCancelIsNoop(t *testing.T) {
-	t.Parallel()
-
 	started := make(chan struct{}, 1)
 	done := make(chan struct{}, 1)
 
@@ -318,21 +292,15 @@ func TestProbing_Worker_ContextCancelIsNoop(t *testing.T) {
 	w.Start(cfg.Context)
 	t.Cleanup(w.Stop)
 
-	stop := startNudger(t, sched, 5*time.Millisecond)
-	t.Cleanup(stop)
-
 	sched.Trigger()
 	waitEdge(t, started, 2*time.Second, "probe did not start")
 	cancel()
 	waitEdge(t, done, 2*time.Second, "probe did not exit after cancel")
 
-	// No liveness change
 	require.True(t, hasRouteLiveness(w, r, LivenessStatusDown, 0, 0))
 }
 
 func TestProbing_Worker_KernelError_DoesNotBlockStateAdvance(t *testing.T) {
-	t.Parallel()
-
 	var addErrs, delErrs int64
 	sched := newFakeScheduler()
 	cfg := newTestConfig(t, func(c *Config) {
@@ -355,13 +323,11 @@ func TestProbing_Worker_KernelError_DoesNotBlockStateAdvance(t *testing.T) {
 	w.Start(cfg.Context)
 	defer w.Stop()
 
-	// Wave 1: success → UP (add fails)
 	sched.Trigger()
-	sched.waitDrained(t, 2*time.Second) // ensure probe finished and Complete() ran
+	sched.waitDrained(t, 2*time.Second)
 	require.True(t, hasRouteLiveness(w, r, LivenessStatusUp, 1, 0))
 	require.Equal(t, int64(1), atomic.LoadInt64(&addErrs))
 
-	// Wave 2: failure → DOWN (delete fails)
 	cfg.ProbeFunc = func(context.Context, *routing.Route) (ProbeResult, error) { return ProbeResult{OK: false}, nil }
 	sched.Trigger()
 	sched.waitDrained(t, 2*time.Second)

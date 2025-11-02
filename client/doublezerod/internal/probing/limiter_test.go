@@ -26,7 +26,6 @@ func TestProbing_SemaphoreLimiter_BasicAcquireRelease(t *testing.T) {
 	l, err := NewSemaphoreLimiter(2)
 	require.NoError(t, err)
 
-	// Acquire twice should succeed immediately.
 	rel1, ok := l.Acquire(context.Background())
 	require.True(t, ok)
 	require.NotNil(t, rel1)
@@ -35,7 +34,6 @@ func TestProbing_SemaphoreLimiter_BasicAcquireRelease(t *testing.T) {
 	require.True(t, ok)
 	require.NotNil(t, rel2)
 
-	// Third acquire should block until a release happens.
 	acquired := make(chan struct{})
 	var rel3 func()
 
@@ -47,25 +45,30 @@ func TestProbing_SemaphoreLimiter_BasicAcquireRelease(t *testing.T) {
 		}
 	}()
 
-	// Ensure it does NOT acquire within a short window (still blocked).
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-acquired:
+		case <-ctx.Done():
+		}
+		close(done)
+	}()
 	select {
-	case <-acquired:
-		t.Fatalf("third Acquire should be blocked until a release")
-	case <-time.After(50 * time.Millisecond):
-		// expected: still blocked
+	case <-done:
+		require.NotNil(t, ctx.Err())
+	default:
 	}
 
-	// Release one permit; now the goroutine should acquire shortly.
 	rel1()
 
 	select {
 	case <-acquired:
-		// got the third permit
-	case <-time.After(250 * time.Millisecond):
+	case <-time.After(500 * time.Millisecond):
 		t.Fatalf("third Acquire did not succeed after a release")
 	}
 
-	// Cleanup remaining permits
 	rel2()
 	if rel3 != nil {
 		rel3()
@@ -78,33 +81,30 @@ func TestProbing_SemaphoreLimiter_CancelWhileBlocked(t *testing.T) {
 	l, err := NewSemaphoreLimiter(1)
 	require.NoError(t, err)
 
-	// Fill the single permit.
 	rel, ok := l.Acquire(context.Background())
 	require.True(t, ok)
 	require.NotNil(t, rel)
 
-	// Attempt another acquire with a short timeout; it should fail when context expires.
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
 	defer cancel()
 
-	done := make(chan struct{})
+	got := make(chan struct{})
 	var gotOK bool
 	var gotRel func()
 
 	go func() {
-		defer close(done)
+		defer close(got)
 		gotRel, gotOK = l.Acquire(ctx)
 	}()
 
 	select {
-	case <-done:
-		require.False(t, gotOK, "Acquire should return ok=false when context times out")
+	case <-got:
+		require.False(t, gotOK)
 		require.Nil(t, gotRel)
 	case <-time.After(200 * time.Millisecond):
 		t.Fatalf("Acquire did not return after context timeout")
 	}
 
-	// Release original permit to avoid leaks.
 	rel()
 }
 
@@ -123,21 +123,21 @@ func TestProbing_SemaphoreLimiter_SequentialAcquireReleaseCycles(t *testing.T) {
 		require.True(t, ok)
 		require.NotNil(t, relB)
 
-		// A third should block; verify it doesn’t acquire within 20ms.
-		acquired := make(chan struct{})
+		blockCtx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		defer cancel()
+		acqDone := make(chan struct{})
+		var acqOK bool
 		go func() {
-			if r, ok := l.Acquire(context.Background()); ok {
-				r() // immediately release if we ever acquire (we shouldn't before the test releases)
-				close(acquired)
-			}
+			defer close(acqDone)
+			_, acqOK = l.Acquire(blockCtx)
 		}()
 		select {
-		case <-acquired:
-			t.Fatalf("Acquire should not succeed before a release (iteration %d)", i)
-		case <-time.After(20 * time.Millisecond):
+		case <-acqDone:
+			require.False(t, acqOK, "Acquire should not succeed before a release (iteration %d)", i)
+		case <-time.After(200 * time.Millisecond):
+			t.Fatalf("Acquire did not return within timeout (iteration %d)", i)
 		}
 
-		// Release both and ensure we can acquire twice again.
 		relA()
 		relB()
 

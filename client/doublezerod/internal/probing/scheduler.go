@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
-	"math"
 	"math/rand"
 	"sync"
 	"time"
@@ -38,7 +37,7 @@ type Scheduler interface {
 // used by an IntervalScheduler.
 type IntervalConfig struct {
 	Interval time.Duration // base interval between probes
-	Jitter   float64       // fraction of interval to randomize (+/-)
+	Jitter   time.Duration // max absolute jitter (+/-) applied to the interval/phase anchor
 	Phase    bool          // whether to phase routes deterministically
 }
 
@@ -46,6 +45,9 @@ type IntervalConfig struct {
 func (cfg *IntervalConfig) Validate() error {
 	if cfg.Interval <= 0 {
 		return errors.New("interval must be > 0")
+	}
+	if cfg.Jitter < 0 {
+		return errors.New("jitter must be >= 0")
 	}
 	return nil
 }
@@ -72,7 +74,7 @@ type schedulerRouteState struct {
 
 // NewIntervalScheduler creates a scheduler with a fixed interval and optional
 // jitter and deterministic phase offset.
-func NewIntervalScheduler(interval time.Duration, jitter float64, phase bool) (Scheduler, error) {
+func NewIntervalScheduler(interval time.Duration, jitter time.Duration, phase bool) (Scheduler, error) {
 	cfg := IntervalConfig{Interval: interval, Jitter: jitter, Phase: phase}
 	if err := cfg.Validate(); err != nil {
 		return nil, err
@@ -86,7 +88,7 @@ func NewIntervalScheduler(interval time.Duration, jitter float64, phase bool) (S
 
 // String returns a descriptive name for the scheduler.
 func (s *IntervalScheduler) String() string {
-	return fmt.Sprintf("IntervalScheduler(interval=%s, jitter=%f, phase=%t)", s.cfg.Interval, s.cfg.Jitter, s.cfg.Phase)
+	return fmt.Sprintf("IntervalScheduler(interval=%s, jitter=%s, phase=%t)", s.cfg.Interval, s.cfg.Jitter, s.cfg.Phase)
 }
 
 // Wake returns a channel closed when the earliest due time or route set changes.
@@ -248,7 +250,7 @@ func phaseOffset(iv time.Duration, k RouteKey) time.Duration {
 
 // firstDue computes the initial due time for a route given the config.
 // If Phase is enabled, routes are staggered deterministically by key.
-func firstDue(base time.Time, iv time.Duration, jitter float64, phase bool, k RouteKey, seed uint64) time.Time {
+func firstDue(base time.Time, iv time.Duration, jitter time.Duration, phase bool, k RouteKey, seed uint64) time.Time {
 	if base.IsZero() {
 		base = time.Now()
 	}
@@ -265,16 +267,17 @@ func firstDue(base time.Time, iv time.Duration, jitter float64, phase bool, k Ro
 	return base.Add(jittered(iv, jitter, seed))
 }
 
-// jittered applies fractional jitter to an interval duration using
-// the given seed for reproducible randomness.
-func jittered(iv time.Duration, frac float64, seed uint64) time.Duration {
-	if frac <= 0 {
+// jittered applies absolute jitter to an interval duration using
+// the given seed for reproducible randomness. Result is clamped at >= 0.
+func jittered(iv time.Duration, jitter time.Duration, seed uint64) time.Duration {
+	if jitter <= 0 {
 		return iv
 	}
 	r := rand.New(rand.NewSource(int64(seed)))
-	f := 1 + (r.Float64()*2-1)*math.Min(frac, 1)
-	if f < 0.1 {
-		f = 0.1
+	offset := time.Duration((r.Float64()*2 - 1) * float64(jitter))
+	res := iv + offset
+	if res < 0 {
+		res = 0
 	}
-	return time.Duration(f * float64(iv))
+	return res
 }

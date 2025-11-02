@@ -11,7 +11,7 @@ import (
 func TestProbing_IntervalScheduler_AddPeekPopLeaseAndComplete(t *testing.T) {
 	t.Parallel()
 
-	s, err := NewIntervalScheduler(100*time.Millisecond, 0.0, false)
+	s, err := NewIntervalScheduler(100*time.Millisecond, 0, false)
 	require.NoError(t, err)
 
 	base := time.Unix(0, 0)
@@ -52,7 +52,7 @@ func TestProbing_IntervalScheduler_AddPeekPopLeaseAndComplete(t *testing.T) {
 func TestProbing_IntervalScheduler_PhaseSpreadsFirstDue(t *testing.T) {
 	t.Parallel()
 
-	s, err := NewIntervalScheduler(1*time.Second, 0.0, true)
+	s, err := NewIntervalScheduler(1*time.Second, 0, true)
 	require.NoError(t, err)
 
 	base := time.Unix(100, 0)
@@ -82,7 +82,7 @@ func TestProbing_IntervalScheduler_PhaseSpreadsFirstDue(t *testing.T) {
 func TestProbing_IntervalScheduler_DelAndClear(t *testing.T) {
 	t.Parallel()
 
-	s, err := NewIntervalScheduler(200*time.Millisecond, 0.0, false)
+	s, err := NewIntervalScheduler(200*time.Millisecond, 0, false)
 	require.NoError(t, err)
 
 	base := time.Unix(0, 0)
@@ -110,7 +110,7 @@ func TestProbing_IntervalScheduler_DelAndClear(t *testing.T) {
 func TestProbing_IntervalScheduler_LeasePreventsNonstopLoop(t *testing.T) {
 	t.Parallel()
 
-	s, err := NewIntervalScheduler(50*time.Millisecond, 0.0, false)
+	s, err := NewIntervalScheduler(50*time.Millisecond, 0, false)
 	require.NoError(t, err)
 
 	base := time.Unix(0, 0)
@@ -135,7 +135,7 @@ func TestProbing_IntervalScheduler_JitterBounds(t *testing.T) {
 	t.Parallel()
 
 	const iv = 200 * time.Millisecond
-	const jit = 0.5
+	const jit = 100 * time.Millisecond
 
 	s, err := NewIntervalScheduler(iv, jit, false)
 	require.NoError(t, err)
@@ -153,7 +153,7 @@ func TestProbing_IntervalScheduler_JitterBounds(t *testing.T) {
 	require.True(t, ok)
 
 	d := next.Sub(when)
-	low := time.Duration(0.5 * float64(iv))
-	high := time.Duration(1.5 * float64(iv))
+	low := iv - jit
+	high := iv + jit
 	require.True(t, d >= low && d <= high, "delta %v not in [%v,%v]", d, low, high)
 }

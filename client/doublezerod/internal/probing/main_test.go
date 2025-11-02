@@ -73,7 +73,7 @@ func newTestConfig(t *testing.T, mutate func(*Config)) *Config {
 	if err != nil {
 		require.NoError(t, err)
 	}
-	scheduler, err := NewIntervalScheduler(500*time.Millisecond, 0.1, false)
+	scheduler, err := NewIntervalScheduler(500*time.Millisecond, 50*time.Millisecond, false)
 	if err != nil {
 		require.NoError(t, err)
 	}

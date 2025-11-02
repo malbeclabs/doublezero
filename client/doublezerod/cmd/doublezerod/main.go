@@ -30,32 +30,34 @@ import (
 )
 
 const (
-	defaultRouteProbingInterval       = 1 * time.Second
-	defaultRouteProbingMaxConcurrency = 64
-	defaultRouteProbingProbeTimeout   = 1 * time.Second
-	defaultRouteProbingUpThreshold    = 3
-	defaultRouteProbingDownThreshold  = 3
+	defaultRouteProbingScheduleInterval      = 1 * time.Second
+	defaultRouteProbingScheduleJitter        = 100 * time.Millisecond
+	defaultRouteProbingMaxConcurrency        = 64
+	defaultRouteProbingProbeTimeout          = 1 * time.Second
+	defaultRouteProbingLivenessUpThreshold   = 3
+	defaultRouteProbingLivenessDownThreshold = 3
 )
 
 var (
-	sockFile                   = flag.String("sock-file", "/var/run/doublezerod/doublezerod.sock", "path to doublezerod domain socket")
-	enableLatencyProbing       = flag.Bool("latency-probing", true, "enable latency probing to doublezero nodes")
-	versionFlag                = flag.Bool("version", false, "build version")
-	env                        = flag.String("env", config.EnvTestnet, "environment to use")
-	programId                  = flag.String("program-id", "", "override smartcontract program id to monitor")
-	rpcEndpoint                = flag.String("solana-rpc-endpoint", "", "override solana rpc endpoint url")
-	probeInterval              = flag.Int("probe-interval", 30, "latency probe interval in seconds")
-	cacheUpdateInterval        = flag.Int("cache-update-interval", 30, "latency cache update interval in seconds")
-	enableVerboseLogging       = flag.Bool("v", false, "enables verbose logging")
-	enableLatencyMetrics       = flag.Bool("enable-latency-metrics", false, "enables latency metrics")
-	metricsEnable              = flag.Bool("metrics-enable", false, "Enable prometheus metrics")
-	metricsAddr                = flag.String("metrics-addr", "localhost:0", "Address to listen on for prometheus metrics")
-	routeProbingEnable         = flag.Bool("route-probing-enable", false, "enables route liveness probing")
-	routeProbingInterval       = flag.Duration("route-probing-interval", defaultRouteProbingInterval, "route liveness probing interval as a duration (i.e. 5s, 10s, 30s)")
-	routeProbingProbeTimeout   = flag.Duration("route-probing-probe-timeout", defaultRouteProbingProbeTimeout, "route liveness probing probe timeout as a duration (i.e. 1s, 3s, 5s)")
-	routeProbingUpThreshold    = flag.Uint("route-probing-up-threshold", defaultRouteProbingUpThreshold, "route liveness probing up threshold")
-	routeProbingDownThreshold  = flag.Uint("route-probing-down-threshold", defaultRouteProbingDownThreshold, "route liveness probing down threshold")
-	routeProbingMaxConcurrency = flag.Uint("route-probing-max-concurrency", defaultRouteProbingMaxConcurrency, "route liveness probing max concurrency")
+	sockFile                          = flag.String("sock-file", "/var/run/doublezerod/doublezerod.sock", "path to doublezerod domain socket")
+	enableLatencyProbing              = flag.Bool("latency-probing", true, "enable latency probing to doublezero nodes")
+	versionFlag                       = flag.Bool("version", false, "build version")
+	env                               = flag.String("env", config.EnvTestnet, "environment to use")
+	programId                         = flag.String("program-id", "", "override smartcontract program id to monitor")
+	rpcEndpoint                       = flag.String("solana-rpc-endpoint", "", "override solana rpc endpoint url")
+	probeInterval                     = flag.Int("probe-interval", 30, "latency probe interval in seconds")
+	cacheUpdateInterval               = flag.Int("cache-update-interval", 30, "latency cache update interval in seconds")
+	enableVerboseLogging              = flag.Bool("v", false, "enables verbose logging")
+	enableLatencyMetrics              = flag.Bool("enable-latency-metrics", false, "enables latency metrics")
+	metricsEnable                     = flag.Bool("metrics-enable", false, "Enable prometheus metrics")
+	metricsAddr                       = flag.String("metrics-addr", "localhost:0", "Address to listen on for prometheus metrics")
+	routeProbingEnable                = flag.Bool("route-probing-enable", false, "enables route liveness probing")
+	routeProbingProbeTimeout          = flag.Duration("route-probing-probe-timeout", defaultRouteProbingProbeTimeout, "route liveness probing probe timeout as a duration (i.e. 1s, 3s, 5s)")
+	routeProbingLivenessUpThreshold   = flag.Uint("route-probing-liveness-up-threshold", defaultRouteProbingLivenessUpThreshold, "route liveness probing up threshold")
+	routeProbingLivenessDownThreshold = flag.Uint("route-probing-liveness-down-threshold", defaultRouteProbingLivenessDownThreshold, "route liveness probing down threshold")
+	routeProbingMaxConcurrency        = flag.Uint("route-probing-max-concurrency", defaultRouteProbingMaxConcurrency, "route liveness probing max concurrency")
+	routeProbingScheduleInterval      = flag.Duration("route-probing-schedule-interval", defaultRouteProbingScheduleInterval, "route liveness probing schedule interval as a duration (i.e. 5s, 10s, 30s)")
+	routeProbingScheduleJitter        = flag.Duration("route-probing-schedule-jitter", defaultRouteProbingScheduleJitter, "route liveness probing schedule jitter as a duration (i.e. 5s, 10s, 30s)")
 
 	// set by LDFLAGS
 	version = "dev"
@@ -159,7 +161,7 @@ func main() {
 			return manager.CreatePassthroughService(userType, bgps, nlr, db, pim)
 		}
 
-		liveness, err := probing.NewHysteresisLivenessPolicy(*routeProbingUpThreshold, *routeProbingDownThreshold)
+		liveness, err := probing.NewHysteresisLivenessPolicy(*routeProbingLivenessUpThreshold, *routeProbingLivenessDownThreshold)
 		if err != nil {
 			return nil, fmt.Errorf("error creating hysteresis liveness policy: %v", err)
 		}
@@ -169,7 +171,7 @@ func main() {
 			return nil, fmt.Errorf("error creating semaphore limiter: %v", err)
 		}
 
-		scheduler, err := probing.NewIntervalScheduler(*routeProbingInterval, 0.1, false)
+		scheduler, err := probing.NewIntervalScheduler(*routeProbingScheduleInterval, *routeProbingScheduleJitter, false)
 		if err != nil {
 			return nil, fmt.Errorf("error creating interval scheduler: %v", err)
 		}

@@ -23,7 +23,7 @@ func validConfig() Config {
 	if err != nil {
 		panic(err)
 	}
-	scheduler, err := NewIntervalScheduler(200*time.Millisecond, 0.1, false)
+	scheduler, err := NewIntervalScheduler(200*time.Millisecond, 20*time.Millisecond, false)
 	if err != nil {
 		panic(err)
 	}

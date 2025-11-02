@@ -1,6 +1,10 @@
 package probing
 
-import "sync"
+import (
+	"errors"
+	"fmt"
+	"sync"
+)
 
 // LivenessStatus represents the current reachability of a route.
 type LivenessStatus uint8
@@ -31,6 +35,7 @@ type LivenessTracker interface {
 // LivenessPolicy creates new trackers; it encapsulates the hysteresis parameters.
 type LivenessPolicy interface {
 	NewTracker() LivenessTracker
+	String() string
 }
 
 // livenessState holds probe counters and current status.
@@ -45,7 +50,7 @@ type hysteresisTracker struct {
 	s    livenessState
 	up   uint
 	down uint
-	mu   sync.RWMutex
+	mu   sync.Mutex
 }
 
 // OnProbe updates consecutive probe counts and determines if a state transition occurred.
@@ -80,39 +85,49 @@ func (t *hysteresisTracker) OnProbe(ok bool) LivenessTransition {
 
 // Status returns the current liveness status.
 func (t *hysteresisTracker) Status() LivenessStatus {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	return t.s.status
 }
 
 // ConsecutiveOK returns the number of consecutive successful probes.
 func (t *hysteresisTracker) ConsecutiveOK() uint {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	return t.s.consecOK
 }
 
 // ConsecutiveFail returns the number of consecutive failed probes.
 func (t *hysteresisTracker) ConsecutiveFail() uint {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	return t.s.consecFail
 }
 
 // NewHysteresisLivenessPolicy constructs a policy with given up/down thresholds.
 // up: number of consecutive OK probes to mark up
 // down: number of consecutive fails to mark down
-func NewHysteresisLivenessPolicy(up, down uint) LivenessPolicy {
+func NewHysteresisLivenessPolicy(up, down uint) (*HysteresisPolicy, error) {
+	if up == 0 {
+		return nil, errors.New("up threshold must be greater than 0")
+	}
+	if down == 0 {
+		return nil, errors.New("down threshold must be greater than 0")
+	}
 	return &HysteresisPolicy{
 		UpThreshold:   up,
 		DownThreshold: down,
-	}
+	}, nil
 }
 
 // HysteresisPolicy defines thresholds for up/down transitions.
 type HysteresisPolicy struct {
 	UpThreshold   uint
 	DownThreshold uint
+}
+
+func (p *HysteresisPolicy) String() string {
+	return fmt.Sprintf("HysteresisPolicy(UpThreshold=%d, DownThreshold=%d)", p.UpThreshold, p.DownThreshold)
 }
 
 // NewTracker returns a new hysteresisTracker initialized to Down state.

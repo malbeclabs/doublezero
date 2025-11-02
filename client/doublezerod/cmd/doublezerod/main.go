@@ -159,18 +159,32 @@ func main() {
 			return manager.CreatePassthroughService(userType, bgps, nlr, db, pim)
 		}
 
+		liveness, err := probing.NewHysteresisLivenessPolicy(*routeProbingUpThreshold, *routeProbingDownThreshold)
+		if err != nil {
+			return nil, fmt.Errorf("error creating hysteresis liveness policy: %v", err)
+		}
+
+		limiter, err := probing.NewSemaphoreLimiter(*routeProbingMaxConcurrency)
+		if err != nil {
+			return nil, fmt.Errorf("error creating semaphore limiter: %v", err)
+		}
+
+		scheduler, err := probing.NewIntervalScheduler(*routeProbingInterval, 0.1, false)
+		if err != nil {
+			return nil, fmt.Errorf("error creating interval scheduler: %v", err)
+		}
+
 		return services.NewIBRLService(bgps, nlr, db, func(iface string, src net.IP) (bgp.RouteManager, error) {
 			if *routeProbingEnable {
 				return probing.NewRouteManager(&probing.Config{
-					Logger:         logger,
-					Context:        ctx,
-					Netlink:        nlr,
-					Liveness:       probing.NewHysteresisLivenessPolicy(*routeProbingUpThreshold, *routeProbingDownThreshold),
-					ListenFunc:     probing.DefaultListenFunc(logger, iface, src),
-					ProbeFunc:      probing.DefaultProbeFunc(logger, iface, *routeProbingProbeTimeout),
-					Interval:       *routeProbingInterval,
-					ProbeTimeout:   *routeProbingProbeTimeout,
-					MaxConcurrency: *routeProbingMaxConcurrency,
+					Logger:     logger,
+					Context:    ctx,
+					Netlink:    nlr,
+					Liveness:   liveness,
+					Limiter:    limiter,
+					Scheduler:  scheduler,
+					ListenFunc: probing.DefaultListenFunc(logger, iface, src),
+					ProbeFunc:  probing.DefaultProbeFunc(logger, iface, *routeProbingProbeTimeout),
 				})
 			} else {
 				return manager.NewNetlinkerPassthroughRouteManager(nlr), nil

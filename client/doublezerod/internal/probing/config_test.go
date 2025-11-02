@@ -15,16 +15,27 @@ import (
 
 func validConfig() Config {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	liveness, err := NewHysteresisLivenessPolicy(2, 2)
+	if err != nil {
+		panic(err)
+	}
+	limiter, err := NewSemaphoreLimiter(10)
+	if err != nil {
+		panic(err)
+	}
+	scheduler, err := NewIntervalScheduler(200*time.Millisecond, 0.1, false)
+	if err != nil {
+		panic(err)
+	}
 	return Config{
-		Logger:         logger,
-		Context:        context.Background(),
-		Netlink:        &MockNetlinker{},
-		Liveness:       NewHysteresisLivenessPolicy(2, 2),
-		ListenFunc:     func(ctx context.Context) error { return nil },
-		ProbeFunc:      func(ctx context.Context, route *routing.Route) (ProbeResult, error) { return ProbeResult{}, nil },
-		Interval:       200 * time.Millisecond,
-		ProbeTimeout:   500 * time.Millisecond,
-		MaxConcurrency: 10,
+		Logger:     logger,
+		Context:    context.Background(),
+		Netlink:    &MockNetlinker{},
+		Liveness:   liveness,
+		Limiter:    limiter,
+		Scheduler:  scheduler,
+		ListenFunc: func(ctx context.Context) error { return nil },
+		ProbeFunc:  func(ctx context.Context, route *routing.Route) (ProbeResult, error) { return ProbeResult{}, nil },
 	}
 }
 
@@ -74,6 +85,24 @@ func TestProbing_ConfigValidate(t *testing.T) {
 		require.EqualError(t, err, "liveness policy is required")
 	})
 
+	t.Run("nil_limiter", func(t *testing.T) {
+		t.Parallel()
+		cfg := validConfig()
+		cfg.Limiter = nil
+		err := cfg.Validate()
+		require.Error(t, err)
+		require.EqualError(t, err, "limiter is required")
+	})
+
+	t.Run("nil_scheduler", func(t *testing.T) {
+		t.Parallel()
+		cfg := validConfig()
+		cfg.Scheduler = nil
+		err := cfg.Validate()
+		require.Error(t, err)
+		require.EqualError(t, err, "scheduler is required")
+	})
+
 	t.Run("nil_listen_func", func(t *testing.T) {
 		t.Parallel()
 		cfg := validConfig()
@@ -90,32 +119,5 @@ func TestProbing_ConfigValidate(t *testing.T) {
 		err := cfg.Validate()
 		require.Error(t, err)
 		require.EqualError(t, err, "probe func is required")
-	})
-
-	t.Run("zero_interval", func(t *testing.T) {
-		t.Parallel()
-		cfg := validConfig()
-		cfg.Interval = 0
-		err := cfg.Validate()
-		require.Error(t, err)
-		require.EqualError(t, err, "interval is required")
-	})
-
-	t.Run("nonpositive_probe_timeout", func(t *testing.T) {
-		t.Parallel()
-		cfg := validConfig()
-		cfg.ProbeTimeout = 0
-		err := cfg.Validate()
-		require.Error(t, err)
-		require.EqualError(t, err, "probe timeout is required")
-	})
-
-	t.Run("nonpositive_max_concurrency", func(t *testing.T) {
-		t.Parallel()
-		cfg := validConfig()
-		cfg.MaxConcurrency = 0
-		err := cfg.Validate()
-		require.Error(t, err)
-		require.EqualError(t, err, "max concurrency must be greater than 0")
 	})
 }

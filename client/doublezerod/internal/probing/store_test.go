@@ -57,7 +57,9 @@ func TestProbing_RouteStore(t *testing.T) {
 	t.Run("managedRoute_Key_and_String", func(t *testing.T) {
 		t.Parallel()
 		r := newRoute(42, "203.0.113.9", "203.0.113.10")
-		mr := managedRoute{route: r, liveness: NewHysteresisLivenessPolicy(10, 10).NewTracker()}
+		liveness, err := NewHysteresisLivenessPolicy(10, 10)
+		require.NoError(t, err)
+		mr := managedRoute{route: r, liveness: liveness.NewTracker()}
 
 		require.Equal(t, r.String(), mr.String())
 		require.Equal(t, newRouteKey(r), mr.Key())
@@ -133,7 +135,7 @@ func TestProbing_RouteStore(t *testing.T) {
 			defer wg.Done()
 			for i := 0; i < n; i++ {
 				_ = s.Len()
-				_, _ = s.Get(routeKey{}) // likely miss; just exercise read lock
+				_, _ = s.Get(RouteKey{}) // likely miss; just exercise read lock
 				_ = s.Clone()
 				time.Sleep(time.Millisecond) // encourage interleaving
 			}

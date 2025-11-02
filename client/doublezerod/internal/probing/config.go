@@ -52,17 +52,16 @@ type ProbeResult struct {
 // defaults where appropriate.
 type Config struct {
 	// Required object fields.
-	Logger         *slog.Logger      // destination for logs
-	Context        context.Context   // root context for worker lifecycle
-	Netlink        routing.Netlinker // kernel route interface
-	Liveness       LivenessPolicy    // policy for up/down hysteresis
-	ListenFunc     ListenFunc        // long-lived listener (with retry/backoff)
-	ProbeFunc      ProbeFunc         // per-route probe function
-	MaxConcurrency uint              // max concurrent probes per Tick()
+	Logger     *slog.Logger      // destination for logs
+	Context    context.Context   // root context for worker lifecycle
+	Netlink    routing.Netlinker // kernel route interface
+	Liveness   LivenessPolicy    // policy for up/down hysteresis
+	Limiter    Limiter           // rate limiter for probing waves
+	Scheduler  Scheduler         // scheduler for route probing
+	ListenFunc ListenFunc        // long-lived listener (with retry/backoff)
+	ProbeFunc  ProbeFunc         // per-route probe function
 
 	// Required scalar fields.
-	Interval      time.Duration       // Tick() period for the worker run loop
-	ProbeTimeout  time.Duration       // max duration for a single probe (enforced by worker)
 	ListenBackoff ListenBackoffConfig // retry policy for ListenFunc errors; defaulted if zero
 }
 
@@ -82,22 +81,17 @@ func (cfg *Config) Validate() error {
 	if cfg.Liveness == nil {
 		return errors.New("liveness policy is required")
 	}
+	if cfg.Limiter == nil {
+		return errors.New("limiter is required")
+	}
+	if cfg.Scheduler == nil {
+		return errors.New("scheduler is required")
+	}
 	if cfg.ListenFunc == nil {
 		return errors.New("listen func is required")
 	}
 	if cfg.ProbeFunc == nil {
 		return errors.New("probe func is required")
-	}
-
-	// Required scalar fields.
-	if cfg.Interval <= 0 {
-		return errors.New("interval is required")
-	}
-	if cfg.ProbeTimeout <= 0 {
-		return errors.New("probe timeout is required")
-	}
-	if cfg.MaxConcurrency <= 0 {
-		return errors.New("max concurrency must be greater than 0")
 	}
 
 	// Default values.

@@ -9,6 +9,8 @@ use crate::{
         fetcher::Fetcher,
         types::FetchData,
     },
+    settings::network::Network,
+    storage,
 };
 use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
@@ -177,9 +179,8 @@ impl Exportable for FetchData {
 pub async fn create_snapshot(
     orchestrator: &Orchestrator,
     epoch: Option<u64>,
-    output_format: OutputFormat,
-    output_dir: Option<PathBuf>,
-    output_file: Option<PathBuf>,
+    local_file: Option<PathBuf>,
+    local_dir: Option<PathBuf>,
 ) -> Result<()> {
     info!("Creating complete snapshot");
 
@@ -302,15 +303,39 @@ pub async fn create_snapshot(
         snapshot.metadata.device_samples_count
     );
 
-    // Export based on options
-    let export_options = OutputOptions {
-        output_format,
-        output_dir: output_dir.map(|p| p.to_string_lossy().to_string()),
-        output_file: output_file.map(|p| p.to_string_lossy().to_string()),
+    // Determine network prefix for filename
+    let network_prefix = match orchestrator.settings().network {
+        Network::MainnetBeta | Network::Mainnet => "mn",
+        Network::Testnet => "tn",
+        Network::Devnet => "dn",
     };
 
-    let default_filename = format!("snapshot-epoch-{fetch_epoch}");
-    export_options.write(&snapshot, &default_filename)?;
+    // Export: local override or configured storage
+    if local_file.is_some() || local_dir.is_some() {
+        // Save to local filesystem (ignores storage backend config)
+        info!("Using local file export (override)");
+
+        let export_options = OutputOptions {
+            output_format: OutputFormat::JsonPretty,
+            output_dir: local_dir.map(|p| p.to_string_lossy().to_string()),
+            output_file: local_file.map(|p| p.to_string_lossy().to_string()),
+        };
+
+        let default_filename = format!("{}-epoch-{}-snapshot", network_prefix, fetch_epoch);
+        export_options.write(&snapshot, &default_filename)?;
+    } else {
+        // Use storage backend from config (S3 or local-file)
+        info!(
+            "Using configured storage backend: {:?}",
+            orchestrator.settings().scheduler.storage_backend
+        );
+
+        let storage = storage::create_storage(orchestrator.settings()).await?;
+        let filename = format!("{}-epoch-{}-snapshot.json", network_prefix, fetch_epoch);
+        let location = storage.save(&snapshot, &filename).await?;
+
+        info!("Snapshot saved to: {}", location);
+    }
 
     info!("Snapshot exported successfully");
     Ok(())

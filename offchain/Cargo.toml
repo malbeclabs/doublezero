@@ -27,10 +27,13 @@ homepage = "https://github.com/doublezerofoundation/doublezero-offchain"
 [workspace.dependencies]
 anyhow = "1"
 async-trait = "0.1"
+aws-config = "1"
+aws-sdk-s3 = "1"
 backon = "1"
 base64 = "0.22"
 bincode = "1"
 bitvec = "1"
+md5 = "0.8.0"
 borsh = { version = "1", features = ["derive"] }
 bytemuck = { version = "1", features = ["derive", "min_const_generics"] }
 chrono = { version = "0", features = ["serde"] }

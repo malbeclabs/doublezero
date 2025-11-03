@@ -107,11 +107,51 @@ interval_seconds = 300
 # Path to worker state file for tracking processed epochs
 state_file = "/var/lib/doublezero-contributor-rewards/scheduler.state"
 
+# Directory to store epoch snapshots (only used if storage_backend = "local-file")
+snapshot_dir = "/var/lib/doublezero-contributor-rewards/snapshots"
+
 # Maximum consecutive failures before halting
 max_consecutive_failures = 10
 
-# Enable dry run mode (no on-chain writes)
+# Enable dry run mode (no on-chain writes, but snapshots still upload to S3)
 enable_dry_run = false
+
+# Storage backend for snapshots
+# Options: s3, local-file
+storage_backend = "s3"
+
+# ========== AWS S3 Configuration (Required if storage_backend = "s3") ==========
+# All fields can be overridden via environment variables:
+#   DZ__AWS__REGION
+#   DZ__AWS__BUCKET
+#   DZ__AWS__ACCESS_KEY_ID
+#   DZ__AWS__SECRET_ACCESS_KEY
+#   DZ__AWS__ENDPOINT
+[aws]
+# AWS region (e.g., us-east-1)
+# Environment variable: DZ__AWS__REGION
+region = "us-east-1"
+
+# S3 bucket name
+# Environment variable: DZ__AWS__BUCKET
+# Testnet example: doublezero-contributor-rewards-testnet-snapshots
+# Mainnet example: doublezero-contributor-rewards-mn-beta-snapshots
+bucket = "doublezero-contributor-rewards-testnet-snapshots"
+
+# AWS access key ID
+# Environment variable: DZ__AWS__ACCESS_KEY_ID
+access_key_id = "${DZ__AWS__ACCESS_KEY_ID}"
+
+# AWS secret access key
+# Environment variable: DZ__AWS__SECRET_ACCESS_KEY
+secret_access_key = "${DZ__AWS__SECRET_ACCESS_KEY}"
+
+# Custom S3 endpoint (optional)
+# Environment variable: DZ__AWS__ENDPOINT
+# For MinIO or other S3-compatible services
+# Example for local development: "http://localhost:9000"
+# Leave commented out for AWS S3
+# endpoint = "http://localhost:9000"
 
 # ========== Metrics Configuration (Optional) ==========
 [metrics]

@@ -20,7 +20,11 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow.workspace = true
+async-trait.workspace = true
+aws-config.workspace = true
+aws-sdk-s3.workspace = true
 backon.workspace = true
+base64.workspace = true
 bitvec.workspace = true
 borsh.workspace = true
 chrono.workspace = true
@@ -28,6 +32,7 @@ clap.workspace = true
 config.workspace = true
 csv.workspace = true
 dotenvy.workspace = true
+md5.workspace = true
 doublezero-record.workspace = true
 doublezero-program-common.workspace = true
 doublezero-program-tools.workspace = true

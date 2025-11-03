@@ -49,9 +49,17 @@ pub fn create_test_settings(
             snapshot_dir: "/tmp/snapshots".to_string(),
             max_consecutive_failures: 10,
             enable_dry_run: false,
+            storage_backend: settings::aws::StorageBackend::LocalFile,
         },
         metrics: Some(settings::MetricsSettings {
             addr: "127.0.0.1:9090".parse().unwrap(),
+        }),
+        aws: Some(settings::aws::AwsSettings {
+            region: "us-east-1".to_string(),
+            bucket: "dummy-bucket".to_string(),
+            access_key_id: "dummy-key".to_string(),
+            secret_access_key: "dummy-secret".to_string(),
+            endpoint: None,
         }),
     }
 }

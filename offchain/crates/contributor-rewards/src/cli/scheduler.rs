@@ -1,4 +1,4 @@
-use crate::{calculator::orchestrator::Orchestrator, scheduler::ScheduleWorker};
+use crate::{calculator::orchestrator::Orchestrator, scheduler::ScheduleWorker, storage};
 use anyhow::{Result, bail};
 use clap::Subcommand;
 use std::{path::PathBuf, time::Duration};
@@ -18,8 +18,11 @@ pub enum SchedulerCommands {
         )]
         keypair: Option<PathBuf>,
 
-        /// Skip writing to ledger (useful for testing)
-        #[clap(long, help = "Run in dry-run mode without chain writes")]
+        /// Skip writing merkle root to chain (snapshots still uploaded to configured storage)
+        #[clap(
+            long,
+            help = "Run in dry-run mode: creates snapshots and calculates rewards, but skips chain writes"
+        )]
         dry_run: bool,
 
         /// Check interval in seconds (overrides config file)
@@ -39,6 +42,14 @@ pub enum SchedulerCommands {
             help = "Path to state file for tracking progress"
         )]
         state_file: Option<PathBuf>,
+
+        /// Override: save snapshots to local directory instead of configured storage
+        #[clap(
+            long,
+            value_name = "DIR",
+            help = "Override configured storage: save snapshots to local directory"
+        )]
+        local_dir: Option<PathBuf>,
     },
 }
 
@@ -49,7 +60,18 @@ pub async fn handle(orchestrator: &Orchestrator, cmd: SchedulerCommands) -> Resu
             dry_run,
             interval,
             state_file,
-        } => start_scheduler(orchestrator, keypair, dry_run, interval, state_file).await,
+            local_dir,
+        } => {
+            start_scheduler(
+                orchestrator,
+                keypair,
+                dry_run,
+                interval,
+                state_file,
+                local_dir,
+            )
+            .await
+        }
     }
 }
 
@@ -59,6 +81,7 @@ async fn start_scheduler(
     dry_run_override: bool,
     interval_override: Option<u64>,
     state_file_override: Option<PathBuf>,
+    local_dir_override: Option<PathBuf>,
 ) -> Result<()> {
     let settings = orchestrator.settings();
 
@@ -86,10 +109,26 @@ async fn start_scheduler(
 
     info!("Starting rewards scheduler");
 
+    // Create storage backend (with optional local override)
+    let storage = if let Some(local_dir) = local_dir_override {
+        // Use local filesystem regardless of config
+        info!("Using local storage override: {:?}", local_dir);
+        Box::new(storage::local::LocalFileStorage::new(local_dir))
+            as Box<dyn storage::SnapshotStorage>
+    } else {
+        // Use storage backend from config
+        info!(
+            "Using configured storage backend: {:?}",
+            settings.scheduler.storage_backend
+        );
+        storage::create_storage(settings).await?
+    };
+
     // Create and run worker
     let worker = ScheduleWorker::new(
         orchestrator,
         state_file,
+        storage,
         keypair_path,
         dry_run,
         Duration::from_secs(interval),

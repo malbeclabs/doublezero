@@ -1,0 +1,75 @@
+# DoubleZero Contributor Rewards - Test Configuration with Minio
+#
+# This configuration file is for local development and testing with minio.
+# Start minio with: docker compose up -d (from ai-docs/)
+
+# Network Configuration
+network = "testnet"
+
+# Logging level
+log_level = "info"
+
+# ========== RPC Configuration ==========
+[rpc]
+dz_url = "https://api.doublezero.com"
+solana_read_url = "https://api.mainnet-beta.solana.com"
+solana_write_url = "https://api.testnet.solana.com"
+commitment = "confirmed"
+rps_limit = 10
+
+# ========== Shapley Value Parameters ==========
+[shapley]
+operator_uptime = 0.98
+contiguity_bonus = 5.0
+demand_multiplier = 1.2
+
+# ========== Program IDs ==========
+[programs]
+serviceability_program_id = "DZServ1111111111111111111111111111111111111"
+telemetry_program_id = "DZTelem111111111111111111111111111111111111"
+
+# ========== Record Prefixes ==========
+[prefixes]
+device_telemetry = "doublezero_device_telemetry_aggregate"
+internet_telemetry = "doublezero_internet_telemetry_aggregate"
+contributor_rewards = "dz_contributor_rewards"
+reward_input = "dz_reward_input"
+
+# ========== Internet Telemetry Lookback Configuration ==========
+[inet_lookback]
+min_coverage_threshold = 0.8
+max_epochs_lookback = 5
+min_samples_per_link = 20
+enable_accumulator = true
+dedup_window_us = 10000000
+
+# ========== Telemetry Default Handling Configuration ==========
+[telemetry_defaults]
+missing_data_threshold = 0.7
+private_default_latency_ms = 1000.0
+enable_previous_epoch_lookup = true
+
+# ========== Scheduler Configuration ==========
+[scheduler]
+interval_seconds = 300
+state_file = "/tmp/doublezero-contributor-rewards-test.state"
+snapshot_dir = "/tmp/doublezero-contributor-rewards-snapshots"
+max_consecutive_failures = 10
+enable_dry_run = false
+storage_backend = "s3"
+
+# ========== AWS S3 Configuration (Minio for local testing) ==========
+[aws]
+region = "us-east-1"
+
+[aws.testnet]
+bucket = "doublezero-contributor-rewards-testnet-snapshots"
+access_key_id = "minioadmin"
+secret_access_key = "minioadmin"
+endpoint = "http://localhost:9000"
+
+[aws.mainnet-beta]
+bucket = "doublezero-contributor-rewards-mn-beta-snapshots"
+access_key_id = "minioadmin"
+secret_access_key = "minioadmin"
+endpoint = "http://localhost:9000"

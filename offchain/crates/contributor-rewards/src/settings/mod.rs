@@ -1,7 +1,9 @@
+pub mod aws;
 pub mod network;
 pub mod validation;
 
 use anyhow::{Context, Result};
+use aws::{AwsSettings, StorageBackend};
 use borsh::{BorshDeserialize, BorshSerialize};
 use config::{Config as ConfigBuilder, Environment, File};
 use network::Network;
@@ -32,6 +34,8 @@ pub struct Settings {
     pub scheduler: SchedulerSettings,
     /// Metrics settings
     pub metrics: Option<MetricsSettings>,
+    /// AWS S3 configuration for snapshot storage (required when storage_backend = S3)
+    pub aws: Option<AwsSettings>,
 }
 
 /// Shapley value calculation parameters for reward distribution
@@ -135,6 +139,9 @@ pub struct SchedulerSettings {
     pub max_consecutive_failures: u32,
     /// Enable dry run mode for worker
     pub enable_dry_run: bool,
+    /// Storage backend for snapshots
+    #[serde(default)]
+    pub storage_backend: StorageBackend,
 }
 
 /// Scheduler configuration for automated rewards calculation

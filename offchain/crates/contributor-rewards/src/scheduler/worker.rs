@@ -3,7 +3,8 @@ use crate::{
     cli::snapshot::{CompleteSnapshot, SnapshotMetadata},
     ingestor::{epoch::EpochFinder, fetcher::Fetcher},
     scheduler::state::SchedulerState,
-    settings::network::Network,
+    settings::{aws::StorageBackend, network::Network},
+    storage::SnapshotStorage,
 };
 use anyhow::{Result, anyhow, bail};
 use backon::{ExponentialBuilder, Retryable};
@@ -22,6 +23,7 @@ use std::{
     },
     time::{Duration, Instant},
 };
+use tempfile::NamedTempFile;
 use tokio::{
     signal,
     time::{MissedTickBehavior, interval},
@@ -33,6 +35,7 @@ pub struct ScheduleWorker {
     orchestrator: Orchestrator,
     state_file: PathBuf,
     snapshot_dir: PathBuf,
+    storage: Box<dyn SnapshotStorage>,
     keypair_path: Option<PathBuf>,
     dry_run: bool,
     interval: Duration,
@@ -44,6 +47,7 @@ impl ScheduleWorker {
     pub fn new(
         orchestrator: &Orchestrator,
         state_file: PathBuf,
+        storage: Box<dyn SnapshotStorage>,
         keypair_path: Option<PathBuf>,
         dry_run: bool,
         interval: Duration,
@@ -54,6 +58,7 @@ impl ScheduleWorker {
             orchestrator: orchestrator.clone(),
             state_file,
             snapshot_dir,
+            storage,
             keypair_path,
             dry_run,
             interval,
@@ -192,25 +197,28 @@ impl ScheduleWorker {
 
         // Step 1: Create snapshot for the target epoch
         info!("Step 1/2: Creating snapshot for epoch {}", target_epoch);
-        let snapshot_path = match self.create_epoch_snapshot(target_epoch).await {
-            Ok(path) => {
-                state.mark_snapshot_created(target_epoch, path.clone());
-                state.save(&self.state_file)?;
-                path
-            }
-            Err(e) => {
-                error!(
-                    "Failed to create snapshot for epoch {}: {}",
-                    target_epoch, e
-                );
-                metrics::counter!(
-                    "doublezero_contributor_rewards_snapshot_failed",
-                    "reason" => "creation_error"
-                )
-                .increment(1);
-                return Err(e);
-            }
-        };
+        let (snapshot_location, snapshot_path, _temp_guard) =
+            match self.create_epoch_snapshot(target_epoch).await {
+                Ok((location, path, temp_guard)) => {
+                    state.mark_snapshot_created(target_epoch, location.clone());
+                    state.save(&self.state_file)?;
+                    (location, path, temp_guard)
+                }
+                Err(e) => {
+                    error!(
+                        "Failed to create snapshot for epoch {}: {}",
+                        target_epoch, e
+                    );
+                    metrics::counter!(
+                        "doublezero_contributor_rewards_snapshot_failed",
+                        "reason" => "creation_error"
+                    )
+                    .increment(1);
+                    return Err(e);
+                }
+            };
+        // Note: _temp_guard is kept alive here and will be automatically
+        // cleaned up when it goes out of scope at the end of this function
 
         if self.dry_run {
             info!(
@@ -218,7 +226,8 @@ impl ScheduleWorker {
                 target_epoch
             );
             info!("DRY RUN: Skipping actual ledger writes");
-            info!("DRY RUN: Snapshot created at {:?}", snapshot_path);
+            info!("DRY RUN: Snapshot saved to: {}", snapshot_location);
+            info!("DRY RUN: Local path for processing: {:?}", snapshot_path);
 
             // Mark success even in dry run so we track what we've processed
             state.mark_success(target_epoch);
@@ -371,20 +380,35 @@ impl ScheduleWorker {
         Ok(maybe_account.value.is_some())
     }
 
-    /// Create a snapshot for a given epoch
-    async fn create_epoch_snapshot(&self, epoch: u64) -> Result<PathBuf> {
+    /// Create a snapshot for a given epoch and return:
+    /// - Storage location (S3 URL or local file path)
+    /// - Local file path for calculate_rewards
+    /// - Optional temp file guard (for S3 storage - automatically cleaned up when dropped)
+    async fn create_epoch_snapshot(
+        &self,
+        epoch: u64,
+    ) -> Result<(String, PathBuf, Option<NamedTempFile>)> {
         let start = Instant::now();
 
-        info!("Creating snapshot for epoch {}", epoch);
+        info!(
+            "Creating snapshot for epoch {} using {} storage",
+            epoch,
+            self.storage.storage_type()
+        );
 
-        // Create snapshot directory if it doesn't exist
-        fs::create_dir_all(&self.snapshot_dir).map_err(|e| {
-            anyhow!(
-                "Failed to create snapshot directory {:?}: {}",
-                self.snapshot_dir,
-                e
-            )
-        })?;
+        // Create snapshot directory if it doesn't exist (for local file storage)
+        if matches!(
+            self.orchestrator.settings.scheduler.storage_backend,
+            StorageBackend::LocalFile
+        ) {
+            fs::create_dir_all(&self.snapshot_dir).map_err(|e| {
+                anyhow!(
+                    "Failed to create snapshot directory {:?}: {}",
+                    self.snapshot_dir,
+                    e
+                )
+            })?;
+        }
 
         // Determine network prefix (mn for mainnet, tn for testnet)
         let network_prefix = match self.orchestrator.settings.network {
@@ -395,15 +419,6 @@ impl ScheduleWorker {
 
         // Generate snapshot filename
         let filename = format!("{}-epoch-{}-snapshot.json", network_prefix, epoch);
-        let snapshot_path = self.snapshot_dir.join(filename);
-
-        // Check if snapshot already exists
-        if snapshot_path.exists() {
-            warn!(
-                "Snapshot already exists at {:?}, overwriting",
-                snapshot_path
-            );
-        }
 
         // Fetch all data for the epoch
         info!("Fetching data for epoch {}", epoch);
@@ -461,12 +476,48 @@ impl ScheduleWorker {
             metadata,
         };
 
-        // Write snapshot to file
-        info!("Writing snapshot to {:?}", snapshot_path);
-        snapshot.save_to_file(&snapshot_path)?;
+        // Save snapshot using storage abstraction (S3 or local file)
+        info!(
+            "Saving snapshot using {} storage",
+            self.storage.storage_type()
+        );
+        let snapshot_location = self.storage.save(&snapshot, &filename).await?;
+
+        // For calculate_rewards, we need a local file path
+        // If using S3, create a temp file; if local storage, use the path directly
+        let (local_path, temp_file_guard) =
+            match self.orchestrator.settings.scheduler.storage_backend {
+                StorageBackend::S3 => {
+                    // Create a named temp file that will be automatically cleaned up when dropped
+                    let temp_file = NamedTempFile::new()
+                        .map_err(|e| anyhow!("Failed to create temp file: {}", e))?;
+
+                    let temp_path = temp_file.path().to_path_buf();
+
+                    // Write snapshot to temp file
+                    let json_content = serde_json::to_string_pretty(&snapshot)?;
+                    tokio::fs::write(&temp_path, json_content)
+                        .await
+                        .map_err(|e| anyhow!("Failed to write temp file: {}", e))?;
+
+                    info!(
+                        "Created temp file for calculate_rewards: {:?} (will be auto-cleaned)",
+                        temp_path
+                    );
+
+                    (temp_path, Some(temp_file))
+                }
+                StorageBackend::LocalFile => {
+                    // Storage location is already a local path - no temp file needed
+                    (PathBuf::from(&snapshot_location), None)
+                }
+            };
 
         let duration = start.elapsed();
-        let file_size = fs::metadata(&snapshot_path)?.len();
+
+        // Estimate size from serialized JSON (for metrics)
+        let json_bytes = serde_json::to_vec_pretty(&snapshot)?;
+        let snapshot_size = json_bytes.len() as u64;
 
         // Record metrics
         metrics::histogram!("doublezero_contributor_rewards_snapshot_creation_duration_seconds")
@@ -475,7 +526,7 @@ impl ScheduleWorker {
             "doublezero_contributor_rewards_snapshot_size_bytes",
             "epoch" => epoch.to_string()
         )
-        .set(file_size as f64);
+        .set(snapshot_size as f64);
         metrics::counter!(
             "doublezero_contributor_rewards_snapshot_created",
             "epoch" => epoch.to_string()
@@ -485,11 +536,11 @@ impl ScheduleWorker {
 
         info!(
             "Snapshot created successfully: {} ({:.2} MB, took {:.2}s)",
-            snapshot_path.display(),
-            file_size as f64 / 1_048_576.0,
+            snapshot_location,
+            snapshot_size as f64 / 1_048_576.0,
             duration.as_secs_f64()
         );
 
-        Ok(snapshot_path)
+        Ok((snapshot_location, local_path, temp_file_guard))
     }
 }

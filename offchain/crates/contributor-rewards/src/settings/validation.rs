@@ -157,7 +157,9 @@ mod tests {
     use super::*;
     use crate::settings::{
         InetLookbackSettings, MetricsSettings, PrefixSettings, ProgramSettings, RpcSettings,
-        SchedulerSettings, ShapleySettings, TelemetryDefaultSettings, network::Network,
+        SchedulerSettings, ShapleySettings, TelemetryDefaultSettings,
+        aws::{AwsSettings, StorageBackend},
+        network::Network,
     };
     use std::{net::SocketAddr, str::FromStr};
 
@@ -205,9 +207,17 @@ mod tests {
                 snapshot_dir: "/var/lib/doublezero-contributor-rewards/snapshots".to_string(),
                 max_consecutive_failures: 10,
                 enable_dry_run: false,
+                storage_backend: StorageBackend::LocalFile,
             },
             metrics: Some(MetricsSettings {
                 addr: SocketAddr::from_str("127.0.0.1:9090").unwrap(),
+            }),
+            aws: Some(AwsSettings {
+                region: "us-east-1".to_string(),
+                bucket: "dummy-bucket".to_string(),
+                access_key_id: "dummy-key".to_string(),
+                secret_access_key: "dummy-secret".to_string(),
+                endpoint: None,
             }),
         }
     }

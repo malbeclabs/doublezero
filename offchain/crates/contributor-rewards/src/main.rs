@@ -63,17 +63,20 @@ pub enum Commands {
     /// Create a complete snapshot for deterministic reward calculations
     #[command(
         long_about = "Creates a complete snapshot with all processing applied (internet accumulator, \
-                      previous epoch lookups, etc.). This snapshot can be used with calculate-rewards \
-                      --snapshot for deterministic, reproducible reward calculations.",
+                      previous epoch lookups, etc.). By default, uploads to configured storage backend \
+                      (S3 or local-file from config). Use --local-file or --local-dir to override and save locally.",
         after_help = r#"Examples:
-    # Export snapshot for epoch 27
-    snapshot --epoch 27 --output-file epoch-27.json
+    # Upload to configured storage backend (S3 or local-file from config)
+    snapshot --epoch 27
 
-    # Export to directory with automatic naming
-    snapshot --epoch 27 --output-dir ./snapshots/
+    # Override: save to specific local file
+    snapshot --epoch 27 --local-file ./test.json
+
+    # Override: save to local directory with automatic naming
+    snapshot --epoch 27 --local-dir ./snapshots/
 
     # Use with calculate-rewards for deterministic results
-    snapshot --epoch 27 -o snapshot.json
+    snapshot --epoch 27 --local-file snapshot.json
     calculate-rewards --snapshot snapshot.json --dry-run"#
     )]
     Snapshot {
@@ -81,17 +84,13 @@ pub enum Commands {
         #[arg(short, long, value_name = "EPOCH")]
         epoch: Option<u64>,
 
-        /// Output format for export
-        #[arg(short = 'f', long, default_value = "json-pretty")]
-        output_format: doublezero_contributor_rewards::cli::common::OutputFormat,
+        /// Override: save snapshot to local file instead of configured storage
+        #[arg(long, value_name = "FILE", conflicts_with = "local_dir")]
+        local_file: Option<PathBuf>,
 
-        /// Directory to export files
-        #[arg(short = 'o', long, value_name = "DIR")]
-        output_dir: Option<PathBuf>,
-
-        /// Specific output file path
-        #[arg(long, value_name = "FILE")]
-        output_file: Option<PathBuf>,
+        /// Override: save snapshot to local directory instead of configured storage
+        #[arg(long, value_name = "DIR", conflicts_with = "local_file")]
+        local_dir: Option<PathBuf>,
     },
     /// Analyze telemetry data (internet or device)
     Telemetry {
@@ -141,16 +140,14 @@ impl Cli {
             }
             Commands::Snapshot {
                 epoch,
-                output_format,
-                output_dir,
-                output_file,
+                local_file,
+                local_dir,
             } => {
                 doublezero_contributor_rewards::cli::snapshot::create_snapshot(
                     &orchestrator,
                     epoch,
-                    output_format,
-                    output_dir,
-                    output_file,
+                    local_file,
+                    local_dir,
                 )
                 .await
             }

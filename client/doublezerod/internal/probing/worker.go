@@ -103,7 +103,6 @@ func (w *probingWorker) Run(ctx context.Context) {
 	defer timer.Stop()
 
 	var tc <-chan time.Time
-	// IMPORTANT: pin the current wake channel; refresh it only after it fires.
 	wakeCh := w.cfg.Scheduler.Wake()
 
 	reset := func(next time.Time) {

@@ -24,17 +24,12 @@ pub struct AwsSettings {
 }
 
 /// Storage backend for snapshots
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "kebab-case")]
 pub enum StorageBackend {
     /// S3-compatible storage (AWS S3, minio, etc.)
+    #[default]
     S3,
     /// Local filesystem storage
     LocalFile,
-}
-
-impl Default for StorageBackend {
-    fn default() -> Self {
-        Self::S3 // Default to S3 for production deployments
-    }
 }

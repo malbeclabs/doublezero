@@ -52,7 +52,7 @@ cd - > /dev/null
 if [ "$VERBOSE" -eq 1 ]; then
   /app/controller start -env "$ENV" -listen-port 7000 &
 else
-  /app/controller start -enable-interfaces-and-peers -env "$ENV" -listen-port 7000 > /dev/null 2>&1 &
+  /app/controller start -env "$ENV" -listen-port 7000 > /dev/null 2>&1 &
 fi
 CONTROLLER_PID=$!
 sleep 3

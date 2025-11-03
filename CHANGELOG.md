@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 - Onchain programs
     - Check if `accesspass.owner` is equal to system program ([malbeclabs/doublezero#2088](https://github.com/malbeclabs/doublezero/pull/2088))
+- CLI
+    - Improve error message when connecting to a device that is at capacity or has max_users=0. Users now receive "Device is not accepting more users (at capacity or max_users=0)" instead of the confusing "Device not found" error when explicitly specifying an ineligible device.
 
 ### Breaking
 

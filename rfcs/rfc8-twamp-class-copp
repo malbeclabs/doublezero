@@ -1,0 +1,145 @@
+# RFC: Control Plane Policing — Dedicated TWAMP Class (UDP/862)
+
+## Summary
+
+This RFC proposes adding a dedicated control plane policing (CoPP) class for TWAMP traffic (UDP/862) within the global `copp-system-policy` on all DoubleZero switches.
+
+Currently, TWAMP packets are handled under the `copp-system-ipunicast` class, which also carries other control-plane traffic. During short, high-throughput bursts, the shared policer activates, dropping TWAMP probes and creating false packet loss/jitter signals in network telemetry.
+
+By defining a separate TWAMP class, we isolate probe traffic from other bursts, preserving measurement integrity while maintaining CPU protection.
+
+## Motivation
+
+### Observed Behavior
+
+* Devices near ledger RPC endpoints experience bursts every 10 s, peaking around 700–800 Mbps.
+* These bursts correspond to telemetry agents retrieving DoubleZero program data for devices/links.
+* The short RTT to the RPC causes a very high effective bps rate.
+* Since TWAMP traffic shares the same policing class, these bursts trigger the IP unicast CoPP shaper, dropping TWAMP packets and this results in loss/jitter in monitoring systems.
+
+### Goal
+
+Ensure TWAMP traffic (UDP 862) is isolated in its own CoPP class so that control-plane bursts from other traffic cannot affect probe accuracy.
+
+## New Terminology
+
+| Term                   | Definition                                                                           |
+| ---------------------- | ------------------------------------------------------------------------------------ |
+| **CoPP**               | Control Plane Policing. Protects the switch CPU from excessive control traffic.      |
+| **TWAMP**              | Two-Way Active Measurement Protocol (UDP 862) used for latency and loss measurement. |
+| **Dynamic CoPP Class** | User-defined class-map added to `copp-system-policy` that matches traffic via ACL.   |
+| **Static CoPP Class**  | Predefined `copp-system-*` classes shipped with EOS. Not editable but tunable.       |
+
+## Alternatives Considered
+
+1. **Do nothing:**
+   Simple but allows continued false-positive loss and unreliable corridor scoring.
+2. **Increase `copp-system-ipunicast` rates:**
+   Masks the problem but risks starving the CPU under flood conditions.
+
+A separate class provides clean isolation with minimal risk.
+
+## Detailed Design
+
+### Platform Context
+
+* Arista EOS supports one global control-plane policy: `copp-system-policy`.
+* Its possible to add dynamic classes (via ACL match) that are evaluated before static classes.
+* The existing configuration:
+
+  ```eos
+  policy-map type copp copp-system-policy
+    class copp-system-ipunicast
+      bandwidth kbps 1500
+      shape kbps 250000
+  ```
+
+### Configuration Steps
+
+1. **Create an ACL to match TWAMP traffic (UDP 862):**
+
+   ```eos
+   ip access-list TWAMP-ACL
+      10 permit udp any any eq 862
+      20 permit udp any eq 862 any
+   ```
+
+2. **Create a CoPP class-map referencing this ACL:**
+
+   ```eos
+   class-map type copp match-any TWAMP-TRAFFIC
+      match ip access-group TWAMP-ACL
+   ```
+
+3. **Add the class to the existing `copp-system-policy`:**
+
+   ```eos
+   policy-map type copp copp-system-policy
+      class TWAMP-TRAFFIC
+         bandwidth kbps 1500
+         shape kbps 10000
+   ```
+
+**Recommended rates:**
+
+* `bandwidth kbps 1500` — guarantees minimum 1,5 Mbps allocation.
+* `shape kbps 10000` — caps TWAMP CPU utilization to 10 Mbps.
+
+These values provide ample probe capacity while maintaining CPU safety below the 250 Mbps ceiling of general unicast control traffic.
+
+### Verification
+
+Commands to validate deployment:
+
+```eos
+show running-config | section copp
+show class-map type control-plane TWAMP-TRAFFIC
+show policy-map interface control-plane
+show copp counters class TWAMP-TRAFFIC
+```
+
+Expected outcomes:
+
+* `TWAMP-TRAFFIC` class appears in CoPP policy.
+* Counters increment on probe traffic.
+* No TWAMP drops observed during RPC bursts.
+
+### Rollout Plan
+
+| Stage | Action                                                                      | Verification                                        |
+| ----- | --------------------------------------------------------------------------- | --------------------------------------------------- |
+| 1     | Apply in devnet on single switch                                            | `show copp counters` confirm correct classification |
+| 2     | Confirm copp policy not dropping twamp traffic when under load on testnet   | Compare TWAMP probe loss before/after               |
+| 3     | Test with contributor on mainnet                                            | Verify no more twamp loss                           |
+| 4     | Rollout to other contributors                                               | Collect feedback from contributors                  |
+
+## Impact
+
+* **Performance:** Restores accurate TWAMP loss/jitter readings under high RPC load.
+* **CPU Protection:** Maintains strict policing for other control-plane traffic.
+* **Operational Complexity:** Minimal; adds one ACL and one class to standard template.
+* **Deployment Risk:** Very low; fully additive and easily reverted.
+
+## Security Considerations
+
+* UDP/862 remains CPU-terminated but rate-limited; no exposure increase.
+* Prevents TWAMP or malformed UDP/862 floods from degrading CPU.
+
+## Backward Compatibility
+
+Compatible with existing CoPP configurations and EOS versions.
+No impact on data-plane forwarding or management interfaces.
+
+**Rollback procedure:**
+
+```eos
+policy-map type copp copp-system-policy
+   no class TWAMP-TRAFFIC
+no class-map type copp TWAMP-TRAFFIC
+no ip access-list TWAMP-ACL
+```
+
+## Open Questions
+
+1. Should the TWAMP class shape be standardized (e.g., 10 Mbps) network-wide, or tuned per location?
+2. Should TWAMP drops above a low threshold trigger automatic alerts?

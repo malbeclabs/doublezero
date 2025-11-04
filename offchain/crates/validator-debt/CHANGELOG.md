@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- parse program logs, attach exported csv to slack msg ([#163](https://github.com/doublezerofoundation/doublezero-offchain/pull/163))
+
 ## [0.1.0-rc4](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/solana-validator-debt/v0.1.0-rc4) - 2025-10-21
 
 ### Other
@@ -31,7 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ensure distribution has passed calculation_allowed_timestamp ([#93](https://github.com/doublezerofoundation/doublezero-offchain/pull/93))
 - output result of `write_debts` to tabled format ([#88](https://github.com/doublezerofoundation/doublezero-offchain/pull/88))
 - add CLI ([#91](https://github.com/doublezerofoundation/doublezero-offchain/pull/91))
-- separate `initialize_distribution` into its own process  ([#89](https://github.com/doublezerofoundation/doublezero-offchain/pull/89))
+- separate `initialize_distribution` into its own process ([#89](https://github.com/doublezerofoundation/doublezero-offchain/pull/89))
 - fetch validator pubkeys from access passes ([#82](https://github.com/doublezerofoundation/doublezero-offchain/pull/82))
 - Add retry/backoff to Jito/solana RPC calls ([#87](https://github.com/doublezerofoundation/doublezero-offchain/pull/87))
 - add pay debt commands ([#80](https://github.com/doublezerofoundation/doublezero-offchain/pull/80))

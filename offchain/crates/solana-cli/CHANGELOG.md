@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- add `revenue-distribution relay distribute-rewards` command ([#173](https://github.com/doublezerofoundation/doublezero-offchain/pull/173))
 - fixed identity search in Solana leader schedule ([#166](https://github.com/doublezerofoundation/doublezero-offchain/pull/166))
 - testing release-plz integration
 - simplify leader schedule check ([#157](https://github.com/doublezerofoundation/doublezero-offchain/pull/157))

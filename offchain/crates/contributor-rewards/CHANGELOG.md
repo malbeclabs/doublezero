@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- fix(contributor-rewards): ci fix to derive default [#176](https://github.com/doublezerofoundation/doublezero-offchain/pull/176))
+- feat(contributor-rewards): Add S3 storage for snapshots [#174](https://github.com/doublezerofoundation/doublezero-offchain/pull/174))
+
 ## [0.2.1-rc1](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-contributor-rewards/v0.2.1-rc1) - 2025-10-21
 
 ### Other

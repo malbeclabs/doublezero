@@ -25,7 +25,6 @@ func TestRenderConfig(t *testing.T) {
 				Strings:                  StringsHelper{},
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
-				InterfacesAndPeers:       true,
 				LocalASN:                 65342,
 				Device: &Device{
 					PublicIP:              net.IP{7, 7, 7, 7},
@@ -76,7 +75,6 @@ func TestRenderConfig(t *testing.T) {
 				Strings:                  StringsHelper{},
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
-				InterfacesAndPeers:       true,
 				LocalASN:                 21682,
 				Device: &Device{
 					Interfaces:            []Interface{},
@@ -129,7 +127,6 @@ func TestRenderConfig(t *testing.T) {
 				Strings:                  StringsHelper{},
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
-				InterfacesAndPeers:       true,
 				LocalASN:                 65342,
 				Device: &Device{
 					Interfaces:            []Interface{},
@@ -213,7 +210,6 @@ func TestRenderConfig(t *testing.T) {
 				Strings:                  StringsHelper{},
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
-				InterfacesAndPeers:       true,
 				LocalASN:                 65342,
 				Device: &Device{
 					Interfaces:            []Interface{},
@@ -309,7 +305,6 @@ func TestRenderConfig(t *testing.T) {
 				NoHardware:               true,
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
-				InterfacesAndPeers:       true,
 				LocalASN:                 65342,
 				Device: &Device{
 					Interfaces:            []Interface{},
@@ -404,7 +399,6 @@ func TestRenderConfig(t *testing.T) {
 				Strings:                  StringsHelper{},
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
-				InterfacesAndPeers:       true,
 				LocalASN:                 65342,
 				Device: &Device{
 					PublicIP:              net.IP{7, 7, 7, 7},
@@ -487,7 +481,6 @@ func TestRenderConfig(t *testing.T) {
 				Strings:                  StringsHelper{},
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
-				InterfacesAndPeers:       true,
 				LocalASN:                 65342,
 				Device: &Device{
 					PublicIP:        net.IP{7, 7, 7, 7},

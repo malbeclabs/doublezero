@@ -78,18 +78,16 @@ func renderTemplateFile(filepath string, data any) (string, error) {
 
 func TestGetConfig(t *testing.T) {
 	tests := []struct {
-		Name               string
-		Description        string
-		StateCache         stateCache
-		NoHardware         bool
-		InterfacesAndPeers bool
-		Pubkey             string
-		Want               string
+		Name        string
+		Description string
+		StateCache  stateCache
+		NoHardware  bool
+		Pubkey      string
+		Want        string
 	}{
 		{
-			Name:               "render_unicast_config_successfully",
-			Description:        "render configuration for a set of unicast devices successfully",
-			InterfacesAndPeers: true,
+			Name:        "render_unicast_config_successfully",
+			Description: "render configuration for a set of unicast devices successfully",
 			StateCache: stateCache{
 				Config: serviceability.Config{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
@@ -140,9 +138,8 @@ func TestGetConfig(t *testing.T) {
 			Want:   "fixtures/unicast.tunnel.tmpl",
 		},
 		{
-			Name:               "render_multicast_config_successfully",
-			Description:        "render configuration for a set of multicast devices successfully",
-			InterfacesAndPeers: true,
+			Name:        "render_multicast_config_successfully",
+			Description: "render configuration for a set of multicast devices successfully",
 			StateCache: stateCache{
 				Config: serviceability.Config{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
@@ -226,9 +223,8 @@ func TestGetConfig(t *testing.T) {
 			Want:   "fixtures/multicast.tunnel.tmpl",
 		},
 		{
-			Name:               "get_config_mixed_tunnels_successfully",
-			Description:        "get config for a mix of unicast and multicast tunnels",
-			InterfacesAndPeers: true,
+			Name:        "get_config_mixed_tunnels_successfully",
+			Description: "get config for a mix of unicast and multicast tunnels",
 			StateCache: stateCache{
 				Config: serviceability.Config{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
@@ -322,10 +318,9 @@ func TestGetConfig(t *testing.T) {
 			Want:   "fixtures/mixed.tunnel.tmpl",
 		},
 		{
-			Name:               "get_config_nohardware_tunnels_successfully",
-			Description:        "get config for a mix of unicast and multicast tunnels with no hardware option",
-			NoHardware:         true,
-			InterfacesAndPeers: true,
+			Name:        "get_config_nohardware_tunnels_successfully",
+			Description: "get config for a mix of unicast and multicast tunnels with no hardware option",
+			NoHardware:  true,
 			StateCache: stateCache{
 				Config: serviceability.Config{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
@@ -419,9 +414,8 @@ func TestGetConfig(t *testing.T) {
 			Want:   "fixtures/nohardware.tunnel.tmpl",
 		},
 		{
-			Name:               "render_base_config_successfully",
-			Description:        "render base configuration with BGP peers",
-			InterfacesAndPeers: true,
+			Name:        "render_base_config_successfully",
+			Description: "render base configuration with BGP peers",
 			StateCache: stateCache{
 				Config: serviceability.Config{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
@@ -481,9 +475,8 @@ func TestGetConfig(t *testing.T) {
 			Want:   "fixtures/base.config.txt",
 		},
 		{
-			Name:               "render_base_config_with_mgmt_vrf_successfully",
-			Description:        "render base configuration with BGP peers",
-			InterfacesAndPeers: true,
+			Name:        "render_base_config_with_mgmt_vrf_successfully",
+			Description: "render base configuration with BGP peers",
 			StateCache: stateCache{
 				Config: serviceability.Config{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
@@ -529,9 +522,6 @@ func TestGetConfig(t *testing.T) {
 			controller := &Controller{
 				noHardware:     test.NoHardware,
 				deviceLocalASN: 65342,
-			}
-			if !test.InterfacesAndPeers {
-				controller.log = slog.New(slog.NewTextHandler(io.Discard, nil))
 			}
 			pb.RegisterControllerServer(server, controller)
 
@@ -1221,17 +1211,16 @@ func TestServiceabilityProgramClientArg(t *testing.T) {
 // can be rendered and sent back to the client via gRPC.
 func TestEndToEnd(t *testing.T) {
 	tests := []struct {
-		Name               string
-		Config             serviceability.Config
-		Users              []serviceability.User
-		Devices            []serviceability.Device
-		Links              []serviceability.Link
-		MulticastGroups    []serviceability.MulticastGroup
-		Exchanges          []serviceability.Exchange
-		InterfacesAndPeers bool
-		AgentRequest       *pb.ConfigRequest
-		DevicePubKey       string
-		Want               string
+		Name            string
+		Config          serviceability.Config
+		Users           []serviceability.User
+		Devices         []serviceability.Device
+		Links           []serviceability.Link
+		MulticastGroups []serviceability.MulticastGroup
+		Exchanges       []serviceability.Exchange
+		AgentRequest    *pb.ConfigRequest
+		DevicePubKey    string
+		Want            string
 	}{
 		{
 			Name: "fetch_accounts_and_render_config_successfully",
@@ -1251,7 +1240,6 @@ func TestEndToEnd(t *testing.T) {
 					BgpCommunity: 10050,
 				},
 			},
-			InterfacesAndPeers: true,
 			Users: []serviceability.User{
 				{
 					AccountType:  serviceability.AccountType(0),
@@ -1368,7 +1356,6 @@ func TestEndToEnd(t *testing.T) {
 					BgpCommunity: 10050,
 				},
 			},
-			InterfacesAndPeers: true,
 			Users: []serviceability.User{
 				{
 					AccountType:  serviceability.AccountType(0),
@@ -1490,8 +1477,7 @@ func TestEndToEnd(t *testing.T) {
 					BgpCommunity: 10050,
 				},
 			},
-			InterfacesAndPeers: true,
-			Users:              []serviceability.User{},
+			Users: []serviceability.User{},
 			Devices: []serviceability.Device{
 				{
 					AccountType:    serviceability.AccountType(0),

@@ -251,7 +251,6 @@ type templateData struct {
 	UnknownBgpPeers          []net.IP
 	MulticastGroupBlock      string
 	NoHardware               bool
-	InterfacesAndPeers       bool
 	TelemetryTWAMPListenPort int
 	LocalASN                 uint32
 	Strings                  StringsHelper

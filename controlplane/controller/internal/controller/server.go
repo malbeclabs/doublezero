@@ -653,7 +653,6 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 		Ipv4BgpPeers:             ipv4Peers,
 		UnknownBgpPeers:          unknownPeers,
 		NoHardware:               c.noHardware,
-		InterfacesAndPeers:       true,
 		TelemetryTWAMPListenPort: telemetryconfig.TWAMPListenPort,
 		LocalASN:                 localASN,
 		Strings:                  StringsHelper{},

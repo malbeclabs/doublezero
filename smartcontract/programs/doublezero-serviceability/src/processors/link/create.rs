@@ -169,6 +169,7 @@ pub fn process_create_link(
         status,
         side_a_iface_name: value.side_a_iface_name.clone(),
         side_z_iface_name,
+        delay_override_ns: 0,
     };
 
     account_create(

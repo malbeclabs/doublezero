@@ -65,6 +65,20 @@ pub fn validate_parse_jitter_ms(val: &str) -> Result<f64, String> {
     }
 }
 
+pub fn validate_parse_delay_override_ms(val: &str) -> Result<f64, String> {
+    if let Ok(delay) = val.parse::<f64>() {
+        if (delay == 0.0) || (0.01..=1000.0).contains(&delay) {
+            Ok(delay)
+        } else {
+            Err(String::from(
+                "Delay override must be 0 (disabled) or between 0.01 and 1000 ms",
+            ))
+        }
+    } else {
+        Err(String::from("invalid delay override format"))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -127,5 +141,16 @@ mod tests {
         assert!(validate_parse_jitter_ms("0.0001").is_err());
         assert!(validate_parse_jitter_ms("1001").is_err());
         assert!(validate_parse_jitter_ms("not_a_number").is_err());
+    }
+
+    #[test]
+    fn test_validate_delay_override_ms() {
+        assert!(validate_parse_delay_override_ms("0").is_ok());
+        assert!(validate_parse_delay_override_ms("0.01").is_ok());
+        assert!(validate_parse_delay_override_ms("1").is_ok());
+        assert!(validate_parse_delay_override_ms("1000").is_ok());
+        assert!(validate_parse_delay_override_ms("0.009").is_err());
+        assert!(validate_parse_delay_override_ms("1001").is_err());
+        assert!(validate_parse_delay_override_ms("not_a_number").is_err());
     }
 }

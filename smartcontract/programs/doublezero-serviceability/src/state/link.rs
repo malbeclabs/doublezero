@@ -155,6 +155,7 @@ pub struct Link {
     pub contributor_pk: Pubkey, // 32
     pub side_a_iface_name: String, // 4 + len
     pub side_z_iface_name: String, // 4 + len
+    pub delay_override_ns: u64,    // 8
 }
 
 impl fmt::Display for Link {
@@ -192,6 +193,7 @@ impl AccountTypeInfo for Link {
             + self.side_a_iface_name.len()
             + 4
             + self.side_z_iface_name.len()
+            + 8
     }
     fn index(&self) -> u128 {
         self.index
@@ -227,6 +229,7 @@ impl TryFrom<&[u8]> for Link {
             contributor_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             side_a_iface_name: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             side_z_iface_name: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            delay_override_ns: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::Link {
@@ -284,6 +287,13 @@ impl Validate for Link {
             msg!("Invalid jitter_ns: {}", self.jitter_ns);
             return Err(DoubleZeroError::InvalidJitter);
         }
+        // Delay override must be 0 (disabled) or between 0.01 and 1000 ms
+        if self.delay_override_ns != 0
+            && (self.delay_override_ns < 10_000 || self.delay_override_ns > 1_000_000_000)
+        {
+            msg!("Invalid delay_override_ns: {}", self.delay_override_ns);
+            return Err(DoubleZeroError::InvalidDelay);
+        }
         Ok(())
     }
 }
@@ -326,6 +336,7 @@ mod tests {
         assert_eq!(val.side_a_iface_name, "");
         assert_eq!(val.side_z_iface_name, "");
         assert_eq!(val.status, LinkStatus::default());
+        assert_eq!(val.delay_override_ns, 0);
     }
 
     #[test]
@@ -349,6 +360,7 @@ mod tests {
             status: LinkStatus::Activated,
             side_a_iface_name: "eth0".to_string(),
             side_z_iface_name: "eth1".to_string(),
+            delay_override_ns: 0,
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -392,6 +404,7 @@ mod tests {
             status: LinkStatus::Activated,
             side_a_iface_name: "eth0".to_string(),
             side_z_iface_name: "eth1".to_string(),
+            delay_override_ns: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -419,6 +432,7 @@ mod tests {
             status: LinkStatus::Activated,
             side_a_iface_name: "eth0".to_string(),
             side_z_iface_name: "eth1".to_string(),
+            delay_override_ns: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -446,6 +460,7 @@ mod tests {
             status: LinkStatus::Activated,
             side_a_iface_name: "eth0".to_string(),
             side_z_iface_name: "eth1".to_string(),
+            delay_override_ns: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -473,6 +488,7 @@ mod tests {
             status: LinkStatus::Activated,
             side_a_iface_name: "eth0".to_string(),
             side_z_iface_name: "eth1".to_string(),
+            delay_override_ns: 0,
         };
         let err_low = val_low.validate();
         assert!(err_low.is_err());
@@ -502,6 +518,7 @@ mod tests {
             mtu: 1566,
             delay_ns: 9999, // Less than minimum
             jitter_ns: 1_000_000,
+            delay_override_ns: 0,
             tunnel_id: 1,
             tunnel_net: "10.0.0.1/25".parse().unwrap(),
             code: "test-123".to_string(),
@@ -537,6 +554,7 @@ mod tests {
             mtu: 1566,
             delay_ns: 1_000_000,
             jitter_ns: 9, // Less than minimum
+            delay_override_ns: 0,
             tunnel_id: 1,
             tunnel_net: "10.0.0.1/25".parse().unwrap(),
             code: "test-123".to_string(),
@@ -555,5 +573,41 @@ mod tests {
         let err_high = val_high.validate();
         assert!(err_high.is_err());
         assert_eq!(err_high.unwrap_err(), DoubleZeroError::InvalidJitter);
+    }
+
+    #[test]
+    fn test_state_link_validate_error_invalid_delay_override() {
+        let val_low = Link {
+            account_type: AccountType::Link,
+            owner: Pubkey::new_unique(),
+            index: 123,
+            bump_seed: 1,
+            contributor_pk: Pubkey::new_unique(),
+            side_a_pk: Pubkey::new_unique(),
+            side_z_pk: Pubkey::new_unique(),
+            link_type: LinkLinkType::WAN,
+            bandwidth: 10_000_000_000,
+            mtu: 1566,
+            delay_ns: 1_000_000,
+            jitter_ns: 1_000_000,
+            delay_override_ns: 9999, // Less than minimum
+            tunnel_id: 1,
+            tunnel_net: "10.0.0.1/25".parse().unwrap(),
+            code: "test-123".to_string(),
+            status: LinkStatus::Activated,
+            side_a_iface_name: "eth0".to_string(),
+            side_z_iface_name: "eth1".to_string(),
+        };
+        let err_low = val_low.validate();
+        assert!(err_low.is_err());
+        assert_eq!(err_low.unwrap_err(), DoubleZeroError::InvalidDelay);
+
+        let val_high = Link {
+            delay_override_ns: 2_000_000_000, // Greater than maximum
+            ..val_low
+        };
+        let err_high = val_high.validate();
+        assert!(err_high.is_err());
+        assert_eq!(err_high.unwrap_err(), DoubleZeroError::InvalidDelay);
     }
 }

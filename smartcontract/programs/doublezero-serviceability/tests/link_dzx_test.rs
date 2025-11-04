@@ -626,6 +626,7 @@ async fn test_dzx_link() {
             mtu: Some(8900),
             delay_ns: Some(1000000),
             jitter_ns: Some(100000),
+            delay_override_ns: Some(0),
             status: None,
         }),
         vec![

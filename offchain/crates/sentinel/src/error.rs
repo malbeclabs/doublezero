@@ -72,7 +72,7 @@ where
     let backoff = ExponentialBuilder::default()
         .with_min_delay(Duration::from_secs(1))
         .with_max_delay(Duration::from_secs(30))
-        .with_max_times(8)
+        .with_max_times(4)
         .with_jitter();
 
     (move || op())
@@ -96,6 +96,14 @@ fn retryable_client_error(err: &ClientError) -> bool {
     match err.kind() {
         ClientErrorKind::Reqwest(reqwest_err) => {
             if reqwest_err.is_timeout() || reqwest_err.is_connect() {
+                return true;
+            }
+            if reqwest_err.is_request()
+                && reqwest_err
+                    .to_string()
+                    .to_lowercase()
+                    .contains("connection reset")
+            {
                 return true;
             }
             retryable_status(reqwest_err.status())

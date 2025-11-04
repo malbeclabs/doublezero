@@ -77,7 +77,7 @@ impl PollingSentinel {
                     ).await {
                         Ok(ids) => ids,
                         Err(err) => {
-                            error!(?err, "failed to fetch access requests after retries; will retry in next cycle");
+                            error!(?err, "failed to fetch access requests; will retry in next cycle");
                             metrics::counter!("doublezero_sentinel_poll_failed").increment(1);
                             continue;
                         }

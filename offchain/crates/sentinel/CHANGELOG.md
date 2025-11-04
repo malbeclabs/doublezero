@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Retry "connection reset by peer" errors
+
 ## [0.2.0](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/sentinel/v0.2.0) - 2025-10-21
 
 ### Fixed

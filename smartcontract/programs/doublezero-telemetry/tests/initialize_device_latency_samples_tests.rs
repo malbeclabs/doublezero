@@ -567,6 +567,7 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_owner() {
         bandwidth: 10_000_000_000,
         delay_ns: 10000,
         jitter_ns: 10000,
+        delay_override_ns: 0,
         link_type: LinkLinkType::WAN,
         mtu: 0,
         tunnel_id: 0,

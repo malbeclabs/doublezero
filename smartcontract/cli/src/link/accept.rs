@@ -218,6 +218,7 @@ mod tests {
             mtu: 1500,
             delay_ns: 10000000000,
             jitter_ns: 5000000000,
+            delay_override_ns: 0,
             tunnel_id: 1,
             tunnel_net: "10.0.0.1/16".parse().unwrap(),
             status: LinkStatus::Requested,

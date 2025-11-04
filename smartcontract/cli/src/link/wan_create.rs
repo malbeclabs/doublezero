@@ -317,6 +317,7 @@ mod tests {
             mtu: 1500,
             delay_ns: 10000000000,
             jitter_ns: 5000000000,
+            delay_override_ns: 0,
             tunnel_id: 500,
             tunnel_net: NetworkV4::default(),
             status: LinkStatus::Activated,

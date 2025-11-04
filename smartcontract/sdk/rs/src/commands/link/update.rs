@@ -17,6 +17,7 @@ pub struct UpdateLinkCommand {
     pub mtu: Option<u32>,
     pub delay_ns: Option<u64>,
     pub jitter_ns: Option<u64>,
+    pub delay_override_ns: Option<u64>,
     pub status: Option<LinkStatus>,
 }
 
@@ -48,6 +49,7 @@ impl UpdateLinkCommand {
                 mtu: self.mtu,
                 delay_ns: self.delay_ns,
                 jitter_ns: self.jitter_ns,
+                delay_override_ns: self.delay_override_ns,
                 status: self.status,
             }),
             vec![

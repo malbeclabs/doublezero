@@ -3,8 +3,9 @@ use crate::{
     poll_for_activation::poll_for_link_activated,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
     validators::{
-        validate_code, validate_parse_bandwidth, validate_parse_delay_ms, validate_parse_jitter_ms,
-        validate_parse_mtu, validate_pubkey,
+        validate_code, validate_parse_bandwidth, validate_parse_delay_ms,
+        validate_parse_delay_override_ms, validate_parse_jitter_ms, validate_parse_mtu,
+        validate_pubkey,
     },
 };
 use clap::Args;
@@ -41,6 +42,9 @@ pub struct UpdateLinkCliCommand {
     /// Jitter in milliseconds
     #[arg(long, value_parser = validate_parse_jitter_ms)]
     pub jitter_ms: Option<f64>,
+    /// RTT (Round Trip Time) delay override in milliseconds
+    #[arg(long, value_parser = validate_parse_delay_override_ms)]
+    pub delay_override_ms: Option<f64>,
     /// Updated link status (e.g. Activated, Deactivated)
     #[arg(long, hide = true)]
     pub status: Option<String>,
@@ -105,6 +109,9 @@ impl UpdateLinkCliCommand {
             jitter_ns: self
                 .jitter_ms
                 .map(|jitter_ms| (jitter_ms * 1000000.0) as u64),
+            delay_override_ns: self
+                .delay_override_ms
+                .map(|delay_override_ms| (delay_override_ms * 1000000.0) as u64),
             status,
         })?;
         writeln!(out, "Signature: {signature}",)?;
@@ -175,6 +182,7 @@ mod tests {
             mtu: 1500,
             delay_ns: 10000000000,
             jitter_ns: 5000000000,
+            delay_override_ns: 0,
             tunnel_id: 1,
             tunnel_net: "10.0.0.1/16".parse().unwrap(),
             status: LinkStatus::Activated,
@@ -196,6 +204,7 @@ mod tests {
             mtu: 1500,
             delay_ns: 10000000000,
             jitter_ns: 5000000000,
+            delay_override_ns: 0,
             tunnel_id: 1,
             tunnel_net: "10.0.0.1/16".parse().unwrap(),
             status: LinkStatus::Activated,
@@ -243,6 +252,7 @@ mod tests {
                 mtu: Some(1500),
                 delay_ns: Some(10000000),
                 jitter_ns: Some(5000000),
+                delay_override_ns: None,
                 status: None,
             }))
             .returning(move |_| Ok(signature));
@@ -258,6 +268,7 @@ mod tests {
             mtu: Some(1500),
             delay_ms: Some(10.0),
             jitter_ms: Some(5.0),
+            delay_override_ms: None,
             wait: false,
             status: None,
         }
@@ -279,6 +290,7 @@ mod tests {
             mtu: Some(1500),
             delay_ms: Some(10.0),
             jitter_ms: Some(5.0),
+            delay_override_ms: None,
             wait: false,
             status: None,
         }

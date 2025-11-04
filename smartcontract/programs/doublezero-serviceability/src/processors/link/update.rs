@@ -24,6 +24,7 @@ pub struct LinkUpdateArgs {
     pub mtu: Option<u32>,
     pub delay_ns: Option<u64>,
     pub jitter_ns: Option<u64>,
+    pub delay_override_ns: Option<u64>,
     pub status: Option<LinkStatus>,
 }
 
@@ -31,8 +32,8 @@ impl fmt::Debug for LinkUpdateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "code: {:?}, tunnel_type: {:?}, bandwidth: {:?}, mtu: {:?}, delay_ns: {:?}, jitter_ns: {:?}",
-            self.code, self.tunnel_type, self.bandwidth, self.mtu, self.delay_ns, self.jitter_ns
+            "code: {:?}, tunnel_type: {:?}, bandwidth: {:?}, mtu: {:?}, delay_ns: {:?}, jitter_ns: {:?}, delay_override_ns: {:?}",
+            self.code, self.tunnel_type, self.bandwidth, self.mtu, self.delay_ns, self.jitter_ns, self.delay_override_ns
         )
     }
 }
@@ -101,6 +102,9 @@ pub fn process_update_link(
     }
     if let Some(jitter_ns) = value.jitter_ns {
         link.jitter_ns = jitter_ns;
+    }
+    if let Some(delay_override_ns) = value.delay_override_ns {
+        link.delay_override_ns = delay_override_ns;
     }
     if let Some(status) = value.status {
         // Only allow to update the status if the payer is in the foundation allowlist

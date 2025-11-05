@@ -91,7 +91,7 @@ func NewManager(ctx context.Context, log *slog.Logger, nlr RouteReaderWriter, bi
 
 	// Wire scheduler and receiver
 	m.sched = NewScheduler(m.log, m.conn, m.onSessionDown)
-	m.recv = NewReceiver(m, m.sched)
+	m.recv = NewReceiver(m.log, m.conn, m.HandleRx)
 
 	// Start workers
 	m.wg.Add(2)
@@ -192,16 +192,16 @@ func (m *Manager) AdminDownAll() {
 	}
 }
 
-func (m *Manager) PollAll() {
-	m.log.Info("liveness: polling all")
+// func (m *Manager) PollAll() {
+// 	m.log.Info("liveness: polling all")
 
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	now := time.Now()
-	for _, s := range m.sessions {
-		m.sched.scheduleTx(now, s)
-	}
-}
+// 	m.mu.Lock()
+// 	defer m.mu.Unlock()
+// 	now := time.Now()
+// 	for _, s := range m.sessions {
+// 		m.sched.scheduleTx(now, s)
+// 	}
+// }
 
 func (m *Manager) LocalAddr() *net.UDPAddr {
 	if m.conn == nil {
@@ -211,6 +211,50 @@ func (m *Manager) LocalAddr() *net.UDPAddr {
 		return addr
 	}
 	return nil
+}
+
+func (m *Manager) HandleRx(ctrl *ControlPacket, pktSrc *net.UDPAddr, pktDst net.IP, pktIfname string) {
+	now := time.Now()
+
+	peer := NewPeer(pktIfname, pktSrc.IP, pktDst)
+
+	m.mu.Lock()
+	s := m.sessions[peer]
+	if s == nil {
+		m.log.Info("liveness: received control packet for unknown peer", "peer", peer.String())
+		m.mu.Unlock()
+		return
+	}
+
+	// Only react if the session's state actually changed.
+	changed := s.onRx(now, ctrl)
+
+	if changed {
+		switch s.state {
+		case Up:
+			// transitioned to Up
+			m.log.Info("liveness: session up", "peer", peer.String(), "route", s.route.String())
+			go m.onSessionUp(s)
+			m.sched.scheduleDetect(now, s) // keep detect armed while Up
+		case Init:
+			// transitioned to Init – arm detect; next >=Init promotes to Up
+			m.sched.scheduleDetect(now, s)
+		case Down:
+			// transitioned to Down – do NOT schedule detect again
+			// (onRx already cleared detectDeadline when mirroring Down)
+			m.log.Info("liveness: session down (rx)", "peer", peer.String(), "route", s.route.String())
+			go m.onSessionDown(s)
+		}
+	} else {
+		// No state change; only keep detect ticking for Init/Up.
+		switch s.state {
+		case Up, Init:
+			m.sched.scheduleDetect(now, s)
+		default:
+			// already Down/AdminDown: do nothing; avoid repeated “down” logs
+		}
+	}
+	m.mu.Unlock()
 }
 
 func (m *Manager) onSessionUp(s *Session) {

@@ -150,6 +150,7 @@ func (m *Manager) RegisterRoute(r *routing.Route, peerAddr *net.UDPAddr, iface s
 		peer:       &peer,
 		peerAddr:   peerAddr,
 		mgr:        m,
+		alive:      true,
 	}
 	m.sessions[peer] = s
 	// schedule TX immediately; DO NOT schedule detect yet (no continuity to monitor)
@@ -172,6 +173,11 @@ func (m *Manager) WithdrawRoute(r *routing.Route, iface string) error {
 	peer := NewPeer(iface, r.Dst.IP, r.Src)
 
 	m.mu.Lock()
+	if s := m.sessions[peer]; s != nil {
+		s.mu.Lock()
+		s.alive = false
+		s.mu.Unlock()
+	}
 	delete(m.sessions, peer)
 	m.mu.Unlock()
 

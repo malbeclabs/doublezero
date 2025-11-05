@@ -23,6 +23,53 @@ type event struct {
 	seq  uint64
 }
 
+type EventQueue struct {
+	mu  sync.Mutex
+	pq  eventHeap
+	seq uint64
+}
+
+func NewEventQueue() *EventQueue {
+	h := eventHeap{}
+	heap.Init(&h)
+	return &EventQueue{pq: h}
+}
+
+func (q *EventQueue) Push(e *event) {
+	q.mu.Lock()
+	q.seq++
+	e.seq = q.seq
+	heap.Push(&q.pq, e)
+	q.mu.Unlock()
+}
+
+func (q *EventQueue) Pop() *event {
+	q.mu.Lock()
+	if q.pq.Len() == 0 {
+		q.mu.Unlock()
+		return nil
+	}
+	ev := heap.Pop(&q.pq).(*event)
+	q.mu.Unlock()
+	return ev
+}
+
+func (q *EventQueue) PopIfDue(now time.Time) (*event, time.Duration) {
+	q.mu.Lock()
+	if q.pq.Len() == 0 {
+		q.mu.Unlock()
+		return nil, 10 * time.Millisecond
+	}
+	ev := q.pq[0]
+	if d := ev.when.Sub(now); d > 0 {
+		q.mu.Unlock()
+		return nil, d
+	}
+	ev = heap.Pop(&q.pq).(*event)
+	q.mu.Unlock()
+	return ev, 0
+}
+
 type eventHeap []*event
 
 func (h eventHeap) Len() int {
@@ -52,15 +99,13 @@ func (h *eventHeap) Pop() any {
 }
 
 type Scheduler struct {
-	m   *Manager
-	pq  eventHeap
-	seq uint64
-	mu  sync.Mutex
+	m  *Manager
+	eq *EventQueue
 }
 
 func NewScheduler(m *Manager) *Scheduler {
 	s := &Scheduler{m: m}
-	heap.Init(&s.pq)
+	s.eq = NewEventQueue()
 	return s
 }
 
@@ -68,6 +113,7 @@ func (s *Scheduler) Run(ctx context.Context) {
 	s.m.log.Info("liveness.scheduler: tx loop started")
 	t := time.NewTimer(time.Hour)
 	defer t.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -75,11 +121,20 @@ func (s *Scheduler) Run(ctx context.Context) {
 			return
 		default:
 		}
-		s.m.mu.Lock()
-		ev := s.pop()
-		s.m.mu.Unlock()
+
+		now := time.Now()
+		ev, wait := s.eq.PopIfDue(now)
 		if ev == nil {
-			t.Reset(10 * time.Millisecond)
+			if wait <= 0 {
+				wait = 10 * time.Millisecond
+			}
+			if !t.Stop() {
+				select {
+				case <-t.C:
+				default:
+				}
+			}
+			t.Reset(wait)
 			select {
 			case <-ctx.Done():
 				s.m.log.Info("liveness.scheduler: stopped by context done", "reason", ctx.Err())
@@ -88,16 +143,7 @@ func (s *Scheduler) Run(ctx context.Context) {
 				continue
 			}
 		}
-		now := time.Now()
-		if d := ev.when.Sub(now); d > 0 {
-			t.Reset(d)
-			select {
-			case <-ctx.Done():
-				s.m.log.Info("liveness.scheduler: stopped by context done", "reason", ctx.Err())
-				return
-			case <-t.C:
-			}
-		}
+
 		switch ev.typ {
 		case evTX:
 			s.doTX(ev.s)
@@ -106,7 +152,7 @@ func (s *Scheduler) Run(ctx context.Context) {
 			if s.tryExpire(ev.s) {
 				s.m.log.Info("liveness.scheduler: session down", "peer", ev.s.peer.String(), "route", ev.s.route.String())
 				go s.m.onDown(ev.s)
-				break
+				continue
 			}
 			ev.s.mu.Lock()
 			st := ev.s.state
@@ -118,23 +164,6 @@ func (s *Scheduler) Run(ctx context.Context) {
 	}
 }
 
-func (s *Scheduler) push(e *event) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.seq++
-	e.seq = s.seq
-	heap.Push(&s.pq, e)
-}
-
-func (s *Scheduler) pop() *event {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.pq.Len() == 0 {
-		return nil
-	}
-	return heap.Pop(&s.pq).(*event)
-}
-
 func (s *Scheduler) scheduleTx(now time.Time, sess *Session) {
 	sess.mu.Lock()
 	iv := sess.txInterval()
@@ -143,11 +172,15 @@ func (s *Scheduler) scheduleTx(now time.Time, sess *Session) {
 	next := now.Add(iv + jit)
 	sess.nextTx = next
 	sess.mu.Unlock()
-	s.push(&event{when: next, typ: evTX, s: sess})
+	s.eq.Push(&event{when: next, typ: evTX, s: sess})
 }
 
 func (s *Scheduler) scheduleDetect(now time.Time, sess *Session) {
 	sess.mu.Lock()
+	if !sess.alive {
+		sess.mu.Unlock()
+		return
+	}
 	if sess.detectDeadline.IsZero() {
 		sess.mu.Unlock()
 		return
@@ -158,11 +191,15 @@ func (s *Scheduler) scheduleDetect(now time.Time, sess *Session) {
 		sess.detectDeadline = ddl
 	}
 	sess.mu.Unlock()
-	s.push(&event{when: ddl, typ: evDetect, s: sess})
+	s.eq.Push(&event{when: ddl, typ: evDetect, s: sess})
 }
 
 func (s *Scheduler) doTX(sess *Session) {
 	sess.mu.Lock()
+	if !sess.alive {
+		sess.mu.Unlock()
+		return
+	}
 	pkt := (&Ctrl{
 		Version:         1,
 		State:           sess.state,
@@ -184,6 +221,10 @@ func (s *Scheduler) doTX(sess *Session) {
 func (s *Scheduler) tryExpire(sess *Session) bool {
 	now := time.Now()
 	sess.mu.Lock()
+	if !sess.alive {
+		sess.mu.Unlock()
+		return false
+	}
 	expired := (sess.state == Up || sess.state == Init) &&
 		!sess.detectDeadline.IsZero() &&
 		!now.Before(sess.detectDeadline)
@@ -193,7 +234,7 @@ func (s *Scheduler) tryExpire(sess *Session) bool {
 	}
 	sess.mu.Unlock()
 	if expired {
-		s.push(&event{when: time.Now(), typ: evTX, s: sess})
+		s.eq.Push(&event{when: time.Now(), typ: evTX, s: sess})
 	}
 	return expired
 }

@@ -26,6 +26,8 @@ type Session struct {
 
 	mgr *Manager
 	mu  sync.Mutex
+
+	alive bool
 }
 
 func (s *Session) txInterval() time.Duration {

@@ -209,21 +209,10 @@ func (s *Scheduler) doTX(sess *Session) {
 
 func (s *Scheduler) tryExpire(sess *Session) bool {
 	now := time.Now()
-	sess.mu.Lock()
-	if !sess.alive {
-		sess.mu.Unlock()
-		return false
+	if sess.ExpireIfDue(now) {
+		// kick an immediate TX to advertise Down once
+		s.eq.Push(&event{when: now, typ: evTX, s: sess})
+		return true
 	}
-	expired := (sess.state == Up || sess.state == Init) &&
-		!sess.detectDeadline.IsZero() &&
-		!now.Before(sess.detectDeadline)
-	if expired {
-		sess.state = Down
-		sess.detectDeadline = time.Time{}
-	}
-	sess.mu.Unlock()
-	if expired {
-		s.eq.Push(&event{when: time.Now(), typ: evTX, s: sess})
-	}
-	return expired
+	return false
 }

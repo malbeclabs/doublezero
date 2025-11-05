@@ -69,6 +69,27 @@ func (s *Session) ArmDetect(now time.Time) (time.Time, bool) {
 	return ddl, true
 }
 
+// ExpireIfDue checks whether the session’s detect deadline has elapsed and,
+// if so, transitions it to Down and clears the deadline. It returns true
+// if the state changed. Callers are responsible for scheduling follow-up
+// actions (e.g. notifying or rescheduling) based on the result.
+func (s *Session) ExpireIfDue(now time.Time) (expired bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.alive {
+		return false
+	}
+
+	if (s.state == Up || s.state == Init) &&
+		!s.detectDeadline.IsZero() &&
+		!now.Before(s.detectDeadline) {
+		s.state = Down
+		s.detectDeadline = time.Time{} // stop detect while Down
+		return true
+	}
+	return false
+}
+
 func (s *Session) txInterval() time.Duration {
 	iv := s.localTxMin
 	if s.remoteRxMin > iv {

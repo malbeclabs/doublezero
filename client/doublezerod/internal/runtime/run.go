@@ -13,6 +13,7 @@ import (
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/latency"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/liveness"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/manager"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/pim"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
@@ -30,7 +31,15 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 			return fmt.Errorf("error creating configured route reader writer: %v", err)
 		}
 	}
-	bgp, err := bgp.NewBgpServer(net.IPv4(1, 1, 1, 1), crw)
+
+	// TODO(snormore): Move this up into main.go and make it configurable via CLI flags.
+	lm, err := liveness.NewManager(ctx, slog.Default(), crw, "0.0.0.0", 44880)
+	if err != nil {
+		return fmt.Errorf("error creating liveness manager: %v", err)
+	}
+	defer lm.Close()
+
+	bgp, err := bgp.NewBgpServer(net.IPv4(1, 1, 1, 1), crw, lm)
 	if err != nil {
 		return fmt.Errorf("error creating bgp server: %v", err)
 	}

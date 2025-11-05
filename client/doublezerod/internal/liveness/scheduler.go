@@ -189,7 +189,7 @@ func (s *Scheduler) doTX(sess *Session) {
 		sess.mu.Unlock()
 		return
 	}
-	pkt := (&Ctrl{
+	pkt := (&ControlPacket{
 		Version:         1,
 		State:           sess.state,
 		DetectMult:      sess.detectMult,

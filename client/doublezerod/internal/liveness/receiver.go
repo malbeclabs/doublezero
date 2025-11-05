@@ -40,7 +40,7 @@ func (r *Receiver) Run(ctx context.Context) {
 			}
 		}
 
-		ctrl, err := ParseCtrl(buf[:n])
+		ctrl, err := UnmarshalControlPacket(buf[:n])
 		if err != nil {
 			r.m.log.Error("liveness.recv: error parsing control packet", "error", err)
 			continue

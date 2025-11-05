@@ -14,7 +14,7 @@ const (
 	Up
 )
 
-type Ctrl struct {
+type ControlPacket struct {
 	Version    uint8
 	Diag       uint8
 	State      State
@@ -29,7 +29,7 @@ type Ctrl struct {
 	RouteHash       uint32
 }
 
-func (c *Ctrl) Marshal() []byte {
+func (c *ControlPacket) Marshal() []byte {
 	b := make([]byte, 40)
 	vd := (c.Version&0x7)<<5 | (c.Diag & 0x1f)
 	sf := (uint8(c.State)&0x3)<<6 | (c.Flags & 0x3f)
@@ -44,7 +44,7 @@ func (c *Ctrl) Marshal() []byte {
 	return b
 }
 
-func ParseCtrl(b []byte) (*Ctrl, error) {
+func UnmarshalControlPacket(b []byte) (*ControlPacket, error) {
 	if len(b) < 40 {
 		return nil, fmt.Errorf("short")
 	}
@@ -52,7 +52,7 @@ func ParseCtrl(b []byte) (*Ctrl, error) {
 		return nil, fmt.Errorf("bad length")
 	}
 	vd, sf := b[0], b[1]
-	c := &Ctrl{
+	c := &ControlPacket{
 		Version:    (vd >> 5) & 0x7,
 		Diag:       vd & 0x1f,
 		State:      State((sf >> 6) & 0x3),

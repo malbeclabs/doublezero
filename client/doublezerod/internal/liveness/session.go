@@ -101,7 +101,7 @@ func (s *Session) detectTime() time.Duration {
 	return time.Duration(int64(s.detectMult) * int64(s.rxRef()))
 }
 
-func (s *Session) onRx(now time.Time, ctrl *Ctrl) (changed bool) {
+func (s *Session) onRx(now time.Time, ctrl *ControlPacket) (changed bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

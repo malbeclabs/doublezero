@@ -232,6 +232,9 @@ func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 		doublezero link create wan --code "sg1-dz01:ty2-dz01" --contributor co01 --side-a sg1-dz01 --side-a-interface Ethernet3 --side-z ty2-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 7
 		doublezero link create wan --code "ty2-dz01:la2-dz01" --contributor co01 --side-a ty2-dz01 --side-a-interface Ethernet3 --side-z la2-dz01 --side-z-interface Ethernet3 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 10
 
+		echo "===> Set delay override for ny5-dz01:la2-dz01 link"
+		doublezero link update --pubkey 7rDDsXAi7u923n7h2Z8hN2HzjTxDt4mA6soca1CXjjsb --delay-override-ms 500
+
 		echo "--> Tunnel information onchain:"
 		doublezero link list
 	`})

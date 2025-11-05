@@ -25,6 +25,7 @@ All notable changes to this project will be documented in this file.
     - Add ability to configure excluded routes
 - Device controller
     - Remove the deprecated -enable-interfaces-and-peers flag
+    - Use link.delay_override to set isis metric when in valid range. This provides a simple workflow for contributors to temporarily change a link's delay value without overwriting the existing value.
 - Onchain programs
     - serviceability: add delay_override_ns field to link
 

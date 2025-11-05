@@ -23,6 +23,8 @@ func TestClient_RoutingConfig_InitialExcludeBlocksRoute(t *testing.T) {
 	writeConfig(t, cfgPath, []string{"10.0.0.0"})
 
 	var adds atomic.Int64
+	var deletes atomic.Int64
+
 	nlr := newMockNetlinker()
 	nlr.Update(func(nl *MockNetlinker) {
 		nl.RouteAddFunc = func(*Route) error { adds.Add(1); return nil }
@@ -37,6 +39,17 @@ func TestClient_RoutingConfig_InitialExcludeBlocksRoute(t *testing.T) {
 
 	require.NoError(t, cr.RouteAdd(cidr(t, "192.168.0.0/16"))) // allowed → forwarded
 	require.Equal(t, int64(1), adds.Load())
+
+	nlr.Update(func(nl *MockNetlinker) {
+		nl.RouteDeleteFunc = func(*Route) error { deletes.Add(1); return nil }
+	})
+
+	require.NoError(t, cr.RouteDelete(cidr(t, "10.0.0.0/8"))) // excluded → blocked
+	require.Equal(t, int64(0), deletes.Load())
+
+	require.NoError(t, cr.RouteDelete(cidr(t, "192.168.0.0/16"))) // allowed → forwarded
+	require.Equal(t, int64(1), deletes.Load())
+
 }
 
 func TestClient_RoutingConfig_InvalidIPs(t *testing.T) {

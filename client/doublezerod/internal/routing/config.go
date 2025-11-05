@@ -34,13 +34,18 @@ func NewConfiguredRouteReaderWriter(log *slog.Logger, nlr Netlinker, path string
 func (c *ConfiguredRouteReaderWriter) RouteAdd(r *Route) error {
 	_, ok := c.exclude[r.Dst.IP.String()]
 	if ok {
-		c.log.Info("routes: excluding configured route", "route", r.String())
+		c.log.Info("routes: excluding configured route from route add", "route", r.String())
 		return nil
 	}
 	return c.nlr.RouteAdd(r)
 }
 
 func (c *ConfiguredRouteReaderWriter) RouteDelete(r *Route) error {
+	_, ok := c.exclude[r.Dst.IP.String()]
+	if ok {
+		c.log.Info("routes: excluding configured route from route delete", "route", r.String())
+		return nil
+	}
 	return c.nlr.RouteDelete(r)
 }
 

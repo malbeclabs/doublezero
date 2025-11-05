@@ -18,7 +18,6 @@ type ConfiguredRouteReaderWriter struct {
 	path    string
 	mu      sync.RWMutex
 	exclude map[string]struct{}
-	done    chan struct{}
 }
 
 func NewConfiguredRouteReaderWriter(log *slog.Logger, nlr Netlinker, path string) *ConfiguredRouteReaderWriter {
@@ -27,21 +26,23 @@ func NewConfiguredRouteReaderWriter(log *slog.Logger, nlr Netlinker, path string
 		log.Error("error loading route config", "error", err)
 		return nil
 	}
+
+	slog.Info("routes: loaded routes", "routes", len(cfg.Exclude))
 	c := &ConfiguredRouteReaderWriter{
 		log:     log,
 		nlr:     nlr,
 		path:    path,
 		exclude: makeExcludeMap(cfg.Exclude),
-		done:    make(chan struct{}),
 	}
 	return c
 }
 
 func (c *ConfiguredRouteReaderWriter) RouteAdd(r *Route) error {
 	c.mu.RLock()
-	_, excluded := c.exclude[r.Dst.String()]
+	_, excluded := c.exclude[r.Dst.IP.String()]
 	c.mu.RUnlock()
 	if excluded {
+		slog.Info("routes: excluding configured route", "route", r.String())
 		return nil
 	}
 	return c.nlr.RouteAdd(r)
@@ -53,11 +54,6 @@ func (c *ConfiguredRouteReaderWriter) RouteDelete(r *Route) error {
 
 func (c *ConfiguredRouteReaderWriter) RouteByProtocol(protocol int) ([]*Route, error) {
 	return c.nlr.RouteByProtocol(protocol)
-}
-
-func (c *ConfiguredRouteReaderWriter) Close() error {
-	close(c.done)
-	return nil
 }
 
 func loadConfig(path string) (*RouteConfig, error) {

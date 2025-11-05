@@ -30,7 +30,6 @@ func TestClient_RoutingConfig_InitialExcludeBlocksRoute(t *testing.T) {
 
 	cr := NewConfiguredRouteReaderWriter(discardLogger(), nlr, cfgPath)
 	require.NotNil(t, cr)
-	t.Cleanup(func() { _ = cr.Close() })
 
 	require.NoError(t, cr.RouteAdd(cidr(t, "10.0.0.0/8")))
 	require.Equal(t, int64(0), adds.Load())
@@ -54,7 +53,6 @@ func TestClient_RoutingConfig_ReloadUpdatesExclude(t *testing.T) {
 
 	cr := NewConfiguredRouteReaderWriter(discardLogger(), nlr, cfgPath)
 	require.NotNil(t, cr)
-	t.Cleanup(func() { _ = cr.Close() })
 
 	// Sanity: 10/8 excluded, 172.16/12 allowed
 	require.NoError(t, cr.RouteAdd(cidr(t, "10.0.0.0/8")))
@@ -75,24 +73,6 @@ func TestClient_RoutingConfig_ReloadUpdatesExclude(t *testing.T) {
 	// Now 172.16/12 should be blocked (no further increment)
 	_ = cr.RouteAdd(cidr(t, "172.16.0.0/12"))
 	require.Eventually(t, func() bool { return adds.Load() == 2 }, 3*time.Second, 100*time.Millisecond)
-}
-
-func TestClient_RoutingConfig_CloseStopsWatcher(t *testing.T) {
-	t.Parallel()
-
-	dir := t.TempDir()
-	cfgPath := filepath.Join(dir, "routes.json")
-	writeConfig(t, cfgPath, []string{"10.0.0.0/8"})
-
-	nlr := newMockNetlinker()
-	cr := NewConfiguredRouteReaderWriter(discardLogger(), nlr, cfgPath)
-	require.NotNil(t, cr)
-
-	require.NoError(t, cr.Close())
-
-	// After close, touching the file should not crash; RouteAdd should still behave.
-	writeConfig(t, cfgPath, []string{"192.168.0.0/16"})
-	_ = cr.RouteAdd(cidr(t, "10.0.0.0/8"))
 }
 
 func discardLogger() *slog.Logger {

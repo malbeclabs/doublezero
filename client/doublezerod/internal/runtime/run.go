@@ -22,10 +22,13 @@ import (
 func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLatencyProbing, enableLatencyMetrics bool, programId string, rpcEndpoint string, probeInterval, cacheUpdateInterval int) error {
 	nlr := routing.Netlink{}
 	var crw bgp.RouteReaderWriter
-	if routeConfigPath != "" {
-		crw = routing.NewConfiguredRouteReaderWriter(slog.Default(), nlr, routeConfigPath)
-	} else {
+	if _, err := os.Stat(routeConfigPath); os.IsNotExist(err) {
 		crw = nlr
+	} else {
+		crw, err = routing.NewConfiguredRouteReaderWriter(slog.Default(), nlr, routeConfigPath)
+		if err != nil {
+			return fmt.Errorf("error creating configured route reader writer: %v", err)
+		}
 	}
 	bgp, err := bgp.NewBgpServer(net.IPv4(1, 1, 1, 1), crw)
 	if err != nil {

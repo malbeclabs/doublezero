@@ -32,7 +32,7 @@ var (
 	enableLatencyMetrics = flag.Bool("enable-latency-metrics", false, "enables latency metrics")
 	metricsEnable        = flag.Bool("metrics-enable", false, "Enable prometheus metrics")
 	metricsAddr          = flag.String("metrics-addr", "localhost:0", "Address to listen on for prometheus metrics")
-	routeConfigPath      = flag.String("route-config", "/var/lib/doublezerod/route-config.json", "path to route config file")
+	routeConfigPath      = flag.String("route-config", "/var/lib/doublezerod/route-config.json", "path to route config file (unstable)")
 
 	// set by LDFLAGS
 	version = "dev"

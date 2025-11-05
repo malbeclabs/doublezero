@@ -2,6 +2,7 @@ package routing
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -10,7 +11,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -20,7 +20,7 @@ func TestClient_RoutingConfig_InitialExcludeBlocksRoute(t *testing.T) {
 
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "routes.json")
-	writeConfig(t, cfgPath, []string{"10.0.0.0/8"})
+	writeConfig(t, cfgPath, []string{"10.0.0.0"})
 
 	var adds atomic.Int64
 	nlr := newMockNetlinker()
@@ -28,22 +28,65 @@ func TestClient_RoutingConfig_InitialExcludeBlocksRoute(t *testing.T) {
 		nl.RouteAddFunc = func(*Route) error { adds.Add(1); return nil }
 	})
 
-	cr := NewConfiguredRouteReaderWriter(discardLogger(), nlr, cfgPath)
+	cr, err := NewConfiguredRouteReaderWriter(discardLogger(), nlr, cfgPath)
+	require.NoError(t, err)
 	require.NotNil(t, cr)
 
-	require.NoError(t, cr.RouteAdd(cidr(t, "10.0.0.0/8")))
+	require.NoError(t, cr.RouteAdd(cidr(t, "10.0.0.0/8"))) // excluded → blocked
 	require.Equal(t, int64(0), adds.Load())
 
-	require.NoError(t, cr.RouteAdd(cidr(t, "192.168.0.0/16")))
-	require.Eventually(t, func() bool { return adds.Load() == 1 }, 3*time.Second, 100*time.Millisecond)
+	require.NoError(t, cr.RouteAdd(cidr(t, "192.168.0.0/16"))) // allowed → forwarded
+	require.Equal(t, int64(1), adds.Load())
 }
 
-func TestClient_RoutingConfig_ReloadUpdatesExclude(t *testing.T) {
+func TestClient_RoutingConfig_InvalidIPs(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name    string
+		exclude []string
+	}{
+		{
+			name:    "invalid-string",
+			exclude: []string{"invalid"},
+		},
+		{
+			name:    "CIDR-string",
+			exclude: []string{"10.0.0.0/8"},
+		},
+		{
+			name:    "extra-octet-1",
+			exclude: []string{"10.0.0.0.0"},
+		},
+		{
+			name:    "extra-octet-2",
+			exclude: []string{"10.0.0.0.0.0"},
+		},
+		{
+			name:    "extra-octet-3",
+			exclude: []string{"10.0.0.0.0.0.0"},
+		},
+	}
+
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "routes.json")
+	for _, tc := range testCases {
+		tc := tc // capture range variable
+		t.Run(tc.name, func(t *testing.T) {
+			writeConfig(t, cfgPath, tc.exclude)
+			cr, err := NewConfiguredRouteReaderWriter(discardLogger(), newMockNetlinker(), cfgPath)
+			require.EqualError(t, err, fmt.Sprintf("error loading route config: invalid ip: %s", tc.exclude[0]))
+			require.Nil(t, cr)
+		})
+	}
+}
+
+func TestClient_RoutingConfig_ReinitWithNewConfigUpdatesExclude(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "routes.json")
-	writeConfig(t, cfgPath, []string{"10.0.0.0/8"})
+	writeConfig(t, cfgPath, []string{"10.0.0.0"})
 
 	var adds atomic.Int64
 	nlr := newMockNetlinker()
@@ -51,28 +94,49 @@ func TestClient_RoutingConfig_ReloadUpdatesExclude(t *testing.T) {
 		nl.RouteAddFunc = func(*Route) error { adds.Add(1); return nil }
 	})
 
-	cr := NewConfiguredRouteReaderWriter(discardLogger(), nlr, cfgPath)
+	// First instance: 10/8 excluded; 172.16/12 allowed
+	cr1, err := NewConfiguredRouteReaderWriter(discardLogger(), nlr, cfgPath)
+	require.NoError(t, err)
+	require.NotNil(t, cr1)
+	require.NoError(t, cr1.RouteAdd(cidr(t, "10.0.0.0/8")))
+	require.Equal(t, int64(0), adds.Load())
+	require.NoError(t, cr1.RouteAdd(cidr(t, "172.16.0.0/12")))
+	require.Equal(t, int64(1), adds.Load())
+
+	// Change config and create a new instance
+	writeConfig(t, cfgPath, []string{"172.16.0.0"})
+	cr2, err := NewConfiguredRouteReaderWriter(discardLogger(), nlr, cfgPath)
+	require.NoError(t, err)
+	require.NotNil(t, cr2)
+
+	// Now 10/8 should be allowed; 172.16/12 should be blocked
+	require.NoError(t, cr2.RouteAdd(cidr(t, "10.0.0.0/8")))
+	require.Equal(t, int64(2), adds.Load())
+	require.NoError(t, cr2.RouteAdd(cidr(t, "172.16.0.0/12")))
+	require.Equal(t, int64(2), adds.Load())
+}
+
+func TestClient_RoutingConfig_NoExcludesForwardsAll(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "routes.json")
+	writeConfig(t, cfgPath, nil) // empty exclude list
+
+	var adds atomic.Int64
+	nlr := newMockNetlinker()
+	nlr.Update(func(nl *MockNetlinker) {
+		nl.RouteAddFunc = func(*Route) error { adds.Add(1); return nil }
+	})
+
+	cr, err := NewConfiguredRouteReaderWriter(discardLogger(), nlr, cfgPath)
+	require.NoError(t, err)
 	require.NotNil(t, cr)
 
-	// Sanity: 10/8 excluded, 172.16/12 allowed
 	require.NoError(t, cr.RouteAdd(cidr(t, "10.0.0.0/8")))
-	require.Equal(t, int64(0), adds.Load())
-
 	require.NoError(t, cr.RouteAdd(cidr(t, "172.16.0.0/12")))
-	require.Eventually(t, func() bool { return adds.Load() == 1 }, 3*time.Second, 100*time.Millisecond)
-
-	// Flip exclusion to 172.16/12 and allow 10/8
-	writeConfig(t, cfgPath, []string{"172.16.0.0/12"})
-
-	// Wait until 10/8 becomes allowed (indicates reload applied)
-	require.Eventually(t, func() bool {
-		_ = cr.RouteAdd(cidr(t, "10.0.0.0/8"))
-		return adds.Load() == 2
-	}, 3*time.Second, 100*time.Millisecond)
-
-	// Now 172.16/12 should be blocked (no further increment)
-	_ = cr.RouteAdd(cidr(t, "172.16.0.0/12"))
-	require.Eventually(t, func() bool { return adds.Load() == 2 }, 3*time.Second, 100*time.Millisecond)
+	require.NoError(t, cr.RouteAdd(cidr(t, "192.168.0.0/16")))
+	require.Equal(t, int64(3), adds.Load())
 }
 
 func discardLogger() *slog.Logger {
@@ -96,7 +160,6 @@ func writeConfig(t *testing.T, path string, excludes []string) {
 
 func newMockNetlinker() *MockNetlinker {
 	m := &MockNetlinker{}
-	// Default no-ops for everything except RouteAdd, which tests override.
 	m.Update(func(nl *MockNetlinker) {
 		nl.TunnelAddFunc = func(*Tunnel) error { return nil }
 		nl.TunnelDeleteFunc = func(*Tunnel) error { return nil }
@@ -127,66 +190,52 @@ type MockNetlinker struct {
 	mu sync.Mutex
 }
 
-func (m *MockNetlinker) Update(f func(nl *MockNetlinker)) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	f(m)
-}
-
+func (m *MockNetlinker) Update(f func(nl *MockNetlinker)) { m.mu.Lock(); defer m.mu.Unlock(); f(m) }
 func (m *MockNetlinker) TunnelAdd(t *Tunnel) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.TunnelAddFunc(t)
 }
-
 func (m *MockNetlinker) TunnelDelete(t *Tunnel) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.TunnelDeleteFunc(t)
 }
-
 func (m *MockNetlinker) TunnelAddrAdd(t *Tunnel, ip string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.TunnelAddrAddFunc(t, ip)
 }
-
 func (m *MockNetlinker) TunnelUp(t *Tunnel) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.TunnelUpFunc(t)
 }
-
 func (m *MockNetlinker) RouteAdd(r *Route) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.RouteAddFunc(r)
 }
-
 func (m *MockNetlinker) RouteDelete(r *Route) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.RouteDeleteFunc(r)
 }
-
 func (m *MockNetlinker) RouteGet(ip net.IP) ([]*Route, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.RouteGetFunc(ip)
 }
-
 func (m *MockNetlinker) RuleAdd(r *IPRule) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.RuleAddFunc(r)
 }
-
 func (m *MockNetlinker) RuleDel(r *IPRule) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.RuleDelFunc(r)
 }
-
 func (m *MockNetlinker) RouteByProtocol(protocol int) ([]*Route, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

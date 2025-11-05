@@ -24,8 +24,8 @@ pub struct LinkUpdateArgs {
     pub mtu: Option<u32>,
     pub delay_ns: Option<u64>,
     pub jitter_ns: Option<u64>,
-    pub delay_override_ns: Option<u64>,
     pub status: Option<LinkStatus>,
+    pub delay_override_ns: Option<u64>,
 }
 
 impl fmt::Debug for LinkUpdateArgs {
@@ -120,4 +120,54 @@ pub fn process_update_link(
     msg!("Updated: {:?}", link);
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_deserialize_link_update_args_before_delay_override_ns() {
+        #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default, Debug)]
+        pub struct LinkUpdateArgsBeforeDelayOverrideNs {
+            pub code: Option<String>,
+            pub contributor_pk: Option<Pubkey>,
+            pub tunnel_type: Option<LinkLinkType>,
+            pub bandwidth: Option<u64>,
+            pub mtu: Option<u32>,
+            pub delay_ns: Option<u64>,
+            pub jitter_ns: Option<u64>,
+            pub status: Option<LinkStatus>,
+        }
+
+        let contributor_pk = Pubkey::new_unique();
+
+        let args_before = LinkUpdateArgsBeforeDelayOverrideNs {
+            code: Some("test-code".to_string()),
+            contributor_pk: Some(contributor_pk),
+            tunnel_type: Some(LinkLinkType::WAN),
+            bandwidth: Some(10_000_000_000),
+            mtu: Some(1500),
+            delay_ns: Some(1_000_000),
+            jitter_ns: Some(100_000),
+            status: Some(LinkStatus::Activated),
+        };
+
+        let expected = LinkUpdateArgs {
+            code: Some("test-code".to_string()),
+            contributor_pk: Some(contributor_pk),
+            tunnel_type: Some(LinkLinkType::WAN),
+            bandwidth: Some(10_000_000_000),
+            mtu: Some(1500),
+            delay_ns: Some(1_000_000),
+            jitter_ns: Some(100_000),
+            status: Some(LinkStatus::Activated),
+            delay_override_ns: None,
+        };
+
+        let serialized = borsh::to_vec(&args_before).unwrap();
+        let deserialized = LinkUpdateArgs::try_from(&serialized[..]).unwrap();
+
+        assert_eq!(expected, deserialized);
+    }
 }

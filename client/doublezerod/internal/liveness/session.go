@@ -25,10 +25,11 @@ type Session struct {
 	peer     *Peer
 	peerAddr *net.UDPAddr
 
-	mgr *Manager
-	mu  sync.Mutex
-
 	alive bool
+
+	minTxFloor, maxTxCeil time.Duration
+
+	mu sync.Mutex
 }
 
 // Compute jittered next TX time and persist it into s.nextTx.
@@ -95,11 +96,11 @@ func (s *Session) txInterval() time.Duration {
 	if s.remoteRxMin > iv {
 		iv = s.remoteRxMin
 	}
-	if iv < s.mgr.minTxFloor {
-		iv = s.mgr.minTxFloor
+	if iv < s.minTxFloor {
+		iv = s.minTxFloor
 	}
-	if iv > s.mgr.maxTxCeil {
-		iv = s.mgr.maxTxCeil
+	if iv > s.maxTxCeil {
+		iv = s.maxTxCeil
 	}
 	return iv
 }
@@ -112,8 +113,8 @@ func (s *Session) rxRef() time.Duration {
 	if ref == 0 {
 		ref = s.localRxMin
 	}
-	if ref < s.mgr.minTxFloor {
-		ref = s.mgr.minTxFloor
+	if ref < s.minTxFloor {
+		ref = s.minTxFloor
 	}
 	return ref
 }

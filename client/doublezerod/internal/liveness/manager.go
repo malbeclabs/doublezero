@@ -142,8 +142,9 @@ func (m *Manager) RegisterRoute(r *routing.Route, peerAddr *net.UDPAddr, iface s
 		localRxMin: rxMin,
 		peer:       &peer,
 		peerAddr:   peerAddr,
-		mgr:        m,
 		alive:      true,
+		minTxFloor: m.minTxFloor,
+		maxTxCeil:  m.maxTxCeil,
 	}
 	m.sessions[peer] = s
 	// schedule TX immediately; DO NOT schedule detect yet (no continuity to monitor)

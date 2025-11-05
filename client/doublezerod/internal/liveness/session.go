@@ -1,6 +1,7 @@
 package liveness
 
 import (
+	"math/rand"
 	"net"
 	"sync"
 	"time"
@@ -28,6 +29,44 @@ type Session struct {
 	mu  sync.Mutex
 
 	alive bool
+}
+
+// Compute jittered next TX time and persist it into s.nextTx.
+// Returns the chosen time.
+func (s *Session) ComputeNextTx(now time.Time, rnd *rand.Rand) time.Time {
+	s.mu.Lock()
+	iv := s.txInterval()
+	j := iv / 10
+	var r int
+	if rnd != nil {
+		r = rnd.Intn(int(2*j + 1))
+	} else {
+		r = rand.Intn(int(2*j + 1))
+	}
+	jit := time.Duration(r) - j
+	next := now.Add(iv + jit)
+	s.nextTx = next
+	s.mu.Unlock()
+	return next
+}
+
+// Ensure detect is armed and not stale; updates detectDeadline if needed.
+// Returns (deadline, true) if detect should be (re)scheduled, false if not.
+func (s *Session) ArmDetect(now time.Time) (time.Time, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.alive {
+		return time.Time{}, false
+	}
+	if s.detectDeadline.IsZero() {
+		return time.Time{}, false
+	}
+	ddl := s.detectDeadline
+	if !ddl.After(now) {
+		ddl = now.Add(s.detectTime())
+		s.detectDeadline = ddl
+	}
+	return ddl, true
 }
 
 func (s *Session) txInterval() time.Duration {

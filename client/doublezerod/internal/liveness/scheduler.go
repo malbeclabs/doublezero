@@ -4,7 +4,6 @@ import (
 	"container/heap"
 	"context"
 	"log/slog"
-	"math/rand"
 	"net"
 	"sync"
 	"time"
@@ -172,32 +171,15 @@ func (s *Scheduler) Run(ctx context.Context) {
 }
 
 func (s *Scheduler) scheduleTx(now time.Time, sess *Session) {
-	sess.mu.Lock()
-	iv := sess.txInterval()
-	j := iv / 10
-	jit := time.Duration(rand.Intn(int(2*j+1))) - j
-	next := now.Add(iv + jit)
-	sess.nextTx = next
-	sess.mu.Unlock()
+	next := sess.ComputeNextTx(now, nil)
 	s.eq.Push(&event{when: next, typ: evTX, s: sess})
 }
 
 func (s *Scheduler) scheduleDetect(now time.Time, sess *Session) {
-	sess.mu.Lock()
-	if !sess.alive {
-		sess.mu.Unlock()
+	ddl, ok := sess.ArmDetect(now)
+	if !ok {
 		return
 	}
-	if sess.detectDeadline.IsZero() {
-		sess.mu.Unlock()
-		return
-	}
-	ddl := sess.detectDeadline
-	if !ddl.After(now) {
-		ddl = now.Add(sess.detectTime())
-		sess.detectDeadline = ddl
-	}
-	sess.mu.Unlock()
 	s.eq.Push(&event{when: ddl, typ: evDetect, s: sess})
 }
 

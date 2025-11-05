@@ -19,9 +19,15 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func Run(ctx context.Context, sockFile string, enableLatencyProbing, enableLatencyMetrics bool, programId string, rpcEndpoint string, probeInterval, cacheUpdateInterval int) error {
+func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLatencyProbing, enableLatencyMetrics bool, programId string, rpcEndpoint string, probeInterval, cacheUpdateInterval int) error {
 	nlr := routing.Netlink{}
-	bgp, err := bgp.NewBgpServer(net.IPv4(1, 1, 1, 1), nlr)
+	var crw bgp.RouteReaderWriter
+	if routeConfigPath != "" {
+		crw = routing.NewConfiguredRouteReaderWriter(slog.Default(), nlr, routeConfigPath)
+	} else {
+		crw = nlr
+	}
+	bgp, err := bgp.NewBgpServer(net.IPv4(1, 1, 1, 1), crw)
 	if err != nil {
 		return fmt.Errorf("error creating bgp server: %v", err)
 	}

@@ -8,6 +8,14 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+## [v0.6.10](https://github.com/malbeclabs/doublezero/compare/client/v0.6.9...client/v0.6.10) – 2025-11-05
+
+### Breaking
+
+- None for this release
+
+### Changes
+
 - CI
     - Add automated compatibility tests in CI to validate all actual testnet and mainnet state against the current codebase, ensuring backward compatibility across protocol versions.
     - Add `--delay-override-ms` option to `doublezero link update`

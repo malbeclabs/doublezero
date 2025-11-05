@@ -3,6 +3,7 @@ package liveness
 import (
 	"container/heap"
 	"context"
+	"log/slog"
 	"math/rand"
 	"net"
 	"sync"
@@ -99,25 +100,31 @@ func (h *eventHeap) Pop() any {
 }
 
 type Scheduler struct {
-	m  *Manager
-	eq *EventQueue
+	log           *slog.Logger
+	conn          *net.UDPConn
+	onSessionDown func(s *Session)
+	eq            *EventQueue
 }
 
-func NewScheduler(m *Manager) *Scheduler {
-	s := &Scheduler{m: m}
-	s.eq = NewEventQueue()
-	return s
+func NewScheduler(log *slog.Logger, conn *net.UDPConn, onSessionDown func(s *Session)) *Scheduler {
+	eq := NewEventQueue()
+	return &Scheduler{
+		log:           log,
+		conn:          conn,
+		onSessionDown: onSessionDown,
+		eq:            eq,
+	}
 }
 
 func (s *Scheduler) Run(ctx context.Context) {
-	s.m.log.Info("liveness.scheduler: tx loop started")
+	s.log.Info("liveness.scheduler: tx loop started")
 	t := time.NewTimer(time.Hour)
 	defer t.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
-			s.m.log.Info("liveness.scheduler: stopped by context done", "reason", ctx.Err())
+			s.log.Info("liveness.scheduler: stopped by context done", "reason", ctx.Err())
 			return
 		default:
 		}
@@ -137,7 +144,7 @@ func (s *Scheduler) Run(ctx context.Context) {
 			t.Reset(wait)
 			select {
 			case <-ctx.Done():
-				s.m.log.Info("liveness.scheduler: stopped by context done", "reason", ctx.Err())
+				s.log.Info("liveness.scheduler: stopped by context done", "reason", ctx.Err())
 				return
 			case <-t.C:
 				continue
@@ -150,8 +157,8 @@ func (s *Scheduler) Run(ctx context.Context) {
 			s.scheduleTx(time.Now(), ev.s)
 		case evDetect:
 			if s.tryExpire(ev.s) {
-				s.m.log.Info("liveness.scheduler: session down", "peer", ev.s.peer.String(), "route", ev.s.route.String())
-				go s.m.onDown(ev.s)
+				s.log.Info("liveness.scheduler: session down", "peer", ev.s.peer.String(), "route", ev.s.route.String())
+				go s.onSessionDown(ev.s)
 				continue
 			}
 			ev.s.mu.Lock()
@@ -211,10 +218,10 @@ func (s *Scheduler) doTX(sess *Session) {
 		RequiredMinRxUs: uint32(sess.localRxMin / time.Microsecond),
 	}).Marshal()
 	sess.mu.Unlock()
-	_, err := writeUDP(s.m.conn, pkt, sess.peerAddr, sess.peer.iface, net.ParseIP(sess.route.Src.String()))
+	_, err := writeUDP(s.conn, pkt, sess.peerAddr, sess.peer.iface, net.ParseIP(sess.route.Src.String()))
 	if err != nil {
 		// TODO(snormore): Should we just ignore this and/or debug log instead?
-		s.m.log.Warn("liveness.scheduler: error writing UDP packet", "error", err)
+		s.log.Warn("liveness.scheduler: error writing UDP packet", "error", err)
 	}
 }
 

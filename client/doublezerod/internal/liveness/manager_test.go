@@ -53,23 +53,23 @@ func wait[T any](t *testing.T, ch <-chan T, d time.Duration, name string) T {
 func TestManager_E2E_TwoManagers_Up(t *testing.T) {
 	log := newTestLogger(t)
 
-	nlr := &MockRouteReaderWriter{}
-	m1, err := NewManager(t.Context(), log, nlr, "127.0.0.1", 0)
-	if err != nil {
-		t.Fatalf("NewManager m1: %v", err)
+	// Observe real effects on the RouteReaderWriter
+	addCh := make(chan *routing.Route, 4)
+	delCh := make(chan *routing.Route, 4)
+	nlr := &MockRouteReaderWriter{
+		RouteAddFunc:        func(r *routing.Route) error { addCh <- r; return nil },
+		RouteDeleteFunc:     func(r *routing.Route) error { delCh <- r; return nil },
+		RouteGetFunc:        func(net.IP) ([]*routing.Route, error) { return nil, nil },
+		RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, nil },
 	}
+
+	m1, err := NewManager(t.Context(), log, nlr, "127.0.0.1", 0)
+	require.NoError(t, err, "NewManager m1")
 	t.Cleanup(func() { _ = m1.Close() })
 
 	m2, err := NewManager(t.Context(), log, nlr, "127.0.0.1", 0)
-	if err != nil {
-		t.Fatalf("NewManager m2: %v", err)
-	}
+	require.NoError(t, err, "NewManager m2")
 	t.Cleanup(func() { _ = m2.Close() })
-
-	up1, up2 := make(chan *Session, 1), make(chan *Session, 1)
-	down1, down2 := make(chan *Session, 1), make(chan *Session, 1)
-	m1.onUp, m2.onUp = func(s *Session) { up1 <- s }, func(s *Session) { up2 <- s }
-	m1.onDown, m2.onDown = func(s *Session) { down1 <- s }, func(s *Session) { down2 <- s }
 
 	const txMin = 100 * time.Millisecond
 	const rxMin = 100 * time.Millisecond
@@ -80,40 +80,40 @@ func TestManager_E2E_TwoManagers_Up(t *testing.T) {
 		r.Dst = &net.IPNet{IP: m2.LocalAddr().IP, Mask: net.CIDRMask(32, 32)}
 		r.Src = m1.LocalAddr().IP
 	})
-	if err := m1.RegisterRoute(r1, m2.LocalAddr(), "lo", txMin, rxMin, det); err != nil {
-		t.Fatalf("m1 RegisterRoute: %v", err)
-	}
+	require.NoError(t, m1.RegisterRoute(r1, m2.LocalAddr(), "lo", txMin, rxMin, det))
+
 	r2 := newTestRoute(func(r *routing.Route) {
 		r.Dst = &net.IPNet{IP: m1.LocalAddr().IP, Mask: net.CIDRMask(32, 32)}
 		r.Src = m2.LocalAddr().IP
 	})
-	if err := m2.RegisterRoute(r2, m1.LocalAddr(), "lo", txMin, rxMin, det); err != nil {
-		t.Fatalf("m2 RegisterRoute: %v", err)
-	}
+	require.NoError(t, m2.RegisterRoute(r2, m1.LocalAddr(), "lo", txMin, rxMin, det))
 
-	// Both sides should reach Up.
-	select {
-	case <-up1:
-	case <-time.After(2 * time.Second):
-		t.Fatalf("timeout waiting for m1 up")
-	}
-	select {
-	case <-up2:
-	case <-time.After(2 * time.Second):
-		t.Fatalf("timeout waiting for m2 up")
-	}
+	// Expect both sides to install their route (RouteAdd called twice total).
+	gotA := wait(t, addCh, 2*time.Second, "first route add")
+	gotB := wait(t, addCh, 2*time.Second, "second route add")
 
-	// Give a few TX intervals to cycle and ensure neither side drops.
+	// Order is nondeterministic; validate set membership
+	adds := []*routing.Route{gotA, gotB}
+	assertHas := func(want *routing.Route) {
+		for _, r := range adds {
+			if r != nil &&
+				r.Src.String() == want.Src.String() &&
+				r.Dst.String() == want.Dst.String() &&
+				r.NextHop.String() == want.NextHop.String() &&
+				r.Table == want.Table {
+				return
+			}
+		}
+		t.Fatalf("expected RouteAdd for %s not observed", want.String())
+	}
+	assertHas(r1)
+	assertHas(r2)
+
+	// Let a few TX intervals pass and ensure no RouteDelete is observed.
 	time.Sleep(3 * txMin)
-
 	select {
-	case k := <-down1:
-		t.Fatalf("m1 unexpectedly went down: %+v", k)
-	default:
-	}
-	select {
-	case k := <-down2:
-		t.Fatalf("m2 unexpectedly went down: %+v", k)
+	case r := <-delCh:
+		t.Fatalf("unexpected RouteDelete: %s", r.String())
 	default:
 	}
 }
@@ -122,82 +122,88 @@ func TestManagers_E2E_UpAndExpire(t *testing.T) {
 	log1 := newTestLogger(t)
 	log2 := newTestLogger(t)
 
-	ctx := t.Context()
-	nlr := &MockRouteReaderWriter{}
-	m1, err := NewManager(ctx, log1, nlr, "127.0.0.1", 0)
-	if err != nil {
-		t.Fatalf("m1: %v", err)
+	addCh := make(chan *routing.Route, 4)
+	delCh := make(chan *routing.Route, 4)
+	nlr := &MockRouteReaderWriter{
+		RouteAddFunc:        func(r *routing.Route) error { addCh <- r; return nil },
+		RouteDeleteFunc:     func(r *routing.Route) error { delCh <- r; return nil },
+		RouteGetFunc:        func(net.IP) ([]*routing.Route, error) { return nil, nil },
+		RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, nil },
 	}
+
+	ctx := t.Context()
+	m1, err := NewManager(ctx, log1, nlr, "127.0.0.1", 0)
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = m1.Close() })
 
 	m2, err := NewManager(ctx, log2, nlr, "127.0.0.1", 0)
-	if err != nil {
-		t.Fatalf("m2: %v", err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = m2.Close() })
-
-	// Wire the peers: each manager sends to the other’s bound UDP address.
-	peer1 := m2.LocalAddr().String() // m1 will send to m2
-	peer2 := m1.LocalAddr().String() // m2 will send to m1
-	if _, _, err := net.SplitHostPort(peer1); err != nil {
-		t.Fatalf("peer1 addr: %v", err)
-	}
-	if _, _, err := net.SplitHostPort(peer2); err != nil {
-		t.Fatalf("peer2 addr: %v", err)
-	}
-
-	up1 := make(chan *Session, 1)
-	down1 := make(chan *Session, 1)
-	m1.onUp = func(s *Session) { up1 <- s }
-	m1.onDown = func(s *Session) { down1 <- s }
-
-	up2 := make(chan *Session, 1)
-	down2 := make(chan *Session, 1)
-	m2.onUp = func(s *Session) { up2 <- s }
-	m2.onDown = func(s *Session) { down2 <- s }
 
 	// Register symmetrical sessions
 	r1 := newTestRoute(func(r *routing.Route) {
 		r.Dst = &net.IPNet{IP: m2.LocalAddr().IP, Mask: net.CIDRMask(32, 32)}
 		r.Src = m1.LocalAddr().IP
 	})
-	if err := m1.RegisterRoute(r1, m2.LocalAddr(), "lo", testTxMin, testRxMin, testDetect); err != nil {
-		t.Fatalf("m1.RegisterRoute: %v", err)
-	}
+	require.NoError(t, m1.RegisterRoute(r1, m2.LocalAddr(), "lo", testTxMin, testRxMin, testDetect))
+
 	r2 := newTestRoute(func(r *routing.Route) {
 		r.Dst = &net.IPNet{IP: m1.LocalAddr().IP, Mask: net.CIDRMask(32, 32)}
 		r.Src = m2.LocalAddr().IP
 	})
-	if err := m2.RegisterRoute(r2, m1.LocalAddr(), "lo", testTxMin, testRxMin, testDetect); err != nil {
-		t.Fatalf("m2.RegisterRoute: %v", err)
+	require.NoError(t, m2.RegisterRoute(r2, m1.LocalAddr(), "lo", testTxMin, testRxMin, testDetect))
+
+	// Both should go Up → two RouteAdd calls.
+	gotA := wait(t, addCh, 3*time.Second, "first route add")
+	gotB := wait(t, addCh, 3*time.Second, "second route add")
+	// Sanity: make sure both r1 and r2 appeared in any order.
+	adds := []*routing.Route{gotA, gotB}
+	has := func(want *routing.Route) bool {
+		for _, r := range adds {
+			if r != nil &&
+				r.Src.String() == want.Src.String() &&
+				r.Dst.String() == want.Dst.String() &&
+				r.NextHop.String() == want.NextHop.String() &&
+				r.Table == want.Table {
+				return true
+			}
+		}
+		return false
 	}
-
-	// Both should go Up
-	gotUp1 := wait(t, up1, 3*time.Second, "m1 up")
-	gotUp2 := wait(t, up2, 3*time.Second, "m2 up")
-
-	require.Equal(t, "127.0.0.1", gotUp1.route.Src.String())
-	require.Equal(t, r1.Dst.String(), gotUp1.route.Dst.String())
-	require.Equal(t, r1.NextHop.String(), gotUp1.route.NextHop.String())
-
-	require.Equal(t, "127.0.0.1", gotUp2.route.Src.String())
-	require.Equal(t, r2.Dst.String(), gotUp2.route.Dst.String())
-	require.Equal(t, r2.NextHop.String(), gotUp2.route.NextHop.String())
+	require.True(t, has(r1), "RouteAdd for r1 not observed")
+	require.True(t, has(r2), "RouteAdd for r2 not observed")
 
 	// Now force expiry by silencing m2 entirely
 	_ = m2.Close()
 
-	// m1 should detect loss after detectMult * rxRef. Give generous headroom.
-	_ = wait(t, down1, 2*time.Second, "m1 down")
+	// m1 should detect loss and remove its installed route → expect one RouteDelete (for r1).
+	deleted := wait(t, delCh, 2*time.Second, "route delete after peer silence")
+	require.Equal(t, r1.Src.String(), deleted.Src.String())
+	require.Equal(t, r1.Dst.String(), deleted.Dst.String())
+	require.Equal(t, r1.NextHop.String(), deleted.NextHop.String())
+	require.Equal(t, r1.Table, deleted.Table)
+
+	// And no immediate additional deletes.
+	select {
+	case extra := <-delCh:
+		t.Fatalf("unexpected extra RouteDelete: %s", extra.String())
+	default:
+	}
 }
 
 func TestManager_WithdrawRoute_RemovesSession(t *testing.T) {
 	log := newTestLogger(t)
-	nlr := &MockRouteReaderWriter{}
-	m, err := NewManager(t.Context(), log, nlr, "127.0.0.1", 0)
-	if err != nil {
-		t.Fatalf("NewManager: %v", err)
+
+	// We don’t expect kernel adds/deletes in this test, but mock must be non-nil.
+	nlr := &MockRouteReaderWriter{
+		RouteAddFunc:        func(*routing.Route) error { return nil },
+		RouteDeleteFunc:     func(*routing.Route) error { return nil },
+		RouteGetFunc:        func(net.IP) ([]*routing.Route, error) { return nil, nil },
+		RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, nil },
 	}
+
+	m, err := NewManager(t.Context(), log, nlr, "127.0.0.1", 0)
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = m.Close() })
 
 	// Peer doesn't matter here; we won't exchange traffic.
@@ -205,9 +211,7 @@ func TestManager_WithdrawRoute_RemovesSession(t *testing.T) {
 		r.Dst = &net.IPNet{IP: m.LocalAddr().IP, Mask: net.CIDRMask(32, 32)}
 		r.Src = m.LocalAddr().IP
 	})
-	if err := m.RegisterRoute(r, m.LocalAddr(), "lo", testTxMin, testRxMin, testDetect); err != nil {
-		t.Fatalf("RegisterRoute: %v", err)
-	}
+	require.NoError(t, m.RegisterRoute(r, m.LocalAddr(), "lo", testTxMin, testRxMin, testDetect))
 	m.WithdrawRoute(r, "lo")
 	time.Sleep(50 * time.Millisecond)
 
@@ -220,20 +224,23 @@ func TestManager_WithdrawRoute_RemovesSession(t *testing.T) {
 
 func TestManager_AdminDownAll_SetsState(t *testing.T) {
 	log := newTestLogger(t)
-	nlr := &MockRouteReaderWriter{}
-	m, err := NewManager(t.Context(), log, nlr, "127.0.0.1", 0)
-	if err != nil {
-		t.Fatalf("NewManager: %v", err)
+
+	nlr := &MockRouteReaderWriter{
+		RouteAddFunc:        func(*routing.Route) error { return nil },
+		RouteDeleteFunc:     func(*routing.Route) error { return nil },
+		RouteGetFunc:        func(net.IP) ([]*routing.Route, error) { return nil, nil },
+		RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, nil },
 	}
+
+	m, err := NewManager(t.Context(), log, nlr, "127.0.0.1", 0)
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = m.Close() })
 
 	r := newTestRoute(func(r *routing.Route) {
 		r.Dst = &net.IPNet{IP: m.LocalAddr().IP, Mask: net.CIDRMask(32, 32)}
 		r.Src = m.LocalAddr().IP
 	})
-	if err := m.RegisterRoute(r, m.LocalAddr(), "lo", testTxMin, testRxMin, testDetect); err != nil {
-		t.Fatalf("RegisterRoute: %v", err)
-	}
+	require.NoError(t, m.RegisterRoute(r, m.LocalAddr(), "lo", testTxMin, testRxMin, testDetect))
 
 	m.AdminDownAll()
 
@@ -250,6 +257,8 @@ func TestManager_AdminDownAll_SetsState(t *testing.T) {
 	}
 }
 
+// --- helpers unchanged ---
+
 func newTestRoute(mutate func(*routing.Route)) *routing.Route {
 	r := &routing.Route{
 		Table:    100,
@@ -263,12 +272,6 @@ func newTestRoute(mutate func(*routing.Route)) *routing.Route {
 	}
 	return r
 }
-
-// func newTestRouteWithDst(dst net.IP) *routing.Route {
-// 	return newTestRoute(func(r *routing.Route) {
-// 		r.Dst = &net.IPNet{IP: dst, Mask: net.CIDRMask(32, 32)}
-// 	})
-// }
 
 type MockRouteReaderWriter struct {
 	RouteAddFunc        func(*routing.Route) error
@@ -284,19 +287,16 @@ func (m *MockRouteReaderWriter) RouteAdd(r *routing.Route) error {
 	defer m.mu.Unlock()
 	return m.RouteAddFunc(r)
 }
-
 func (m *MockRouteReaderWriter) RouteDelete(r *routing.Route) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.RouteDeleteFunc(r)
 }
-
 func (m *MockRouteReaderWriter) RouteGet(ip net.IP) ([]*routing.Route, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.RouteGetFunc(ip)
 }
-
 func (m *MockRouteReaderWriter) RouteByProtocol(protocol int) ([]*routing.Route, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

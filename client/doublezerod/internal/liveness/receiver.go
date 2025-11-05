@@ -65,7 +65,7 @@ func (r *Receiver) Run(ctx context.Context) {
 			case Up:
 				// transitioned to Up
 				r.m.log.Info("liveness.recv: session up", "peer", peer.String(), "route", s.route.String())
-				go r.m.onUp(s)
+				go r.m.onSessionUp(s)
 				r.sched.scheduleDetect(now, s) // keep detect armed while Up
 			case Init:
 				// transitioned to Init – arm detect; next >=Init promotes to Up
@@ -74,7 +74,7 @@ func (r *Receiver) Run(ctx context.Context) {
 				// transitioned to Down – do NOT schedule detect again
 				// (onRx already cleared detectDeadline when mirroring Down)
 				r.m.log.Info("liveness.recv: session down (rx)", "peer", peer.String(), "route", s.route.String())
-				go r.m.onDown(s)
+				go r.m.onSessionDown(s)
 			}
 		} else {
 			// No state change; only keep detect ticking for Init/Up.

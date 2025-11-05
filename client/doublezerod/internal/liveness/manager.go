@@ -54,9 +54,6 @@ type Manager struct {
 	sched *Scheduler
 	recv  *Receiver
 
-	onUp   func(s *Session)
-	onDown func(s *Session)
-
 	mu        sync.Mutex
 	desired   map[RouteKey]*routing.Route // routes we want
 	installed map[RouteKey]bool           // routes actually in kernel
@@ -82,22 +79,18 @@ func NewManager(ctx context.Context, log *slog.Logger, nlr RouteReaderWriter, bi
 		nlr:    nlr,
 		conn:   conn,
 		port:   port,
+
 		// TODO(snormore): Make these configurable
 		minTxFloor: 50 * time.Millisecond,
 		maxTxCeil:  1 * time.Second,
-		sessions:   make(map[Peer]*Session),
-		// TODO(snormore): Figure out a better way to add hooks for this for testing.
-		// onUp:      func(s *Session) {},
-		// onDown:    func(s *Session) {},
+
+		sessions:  make(map[Peer]*Session),
 		desired:   make(map[RouteKey]*routing.Route),
 		installed: make(map[RouteKey]bool),
 	}
 
-	m.onUp = m.onSessionUp
-	m.onDown = m.onSessionDown
-
 	// Wire scheduler and receiver
-	m.sched = NewScheduler(m)
+	m.sched = NewScheduler(m.log, m.conn, m.onSessionDown)
 	m.recv = NewReceiver(m, m.sched)
 
 	// Start workers
@@ -118,7 +111,7 @@ func (m *Manager) Close() error {
 	m.cancel()
 	err := m.conn.Close()
 	if err != nil {
-		m.log.Error("liveness: error closing connection", "error", err)
+		m.log.Warn("liveness: error closing connection", "error", err)
 	}
 	m.wg.Wait()
 	return err

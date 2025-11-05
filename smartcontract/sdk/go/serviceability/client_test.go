@@ -58,8 +58,8 @@ f8198607689246e25c9403fba46e89122ff5d0fcc1febb51d4b
 0c3c9010000000080969800000000000500ac10000a1f011100
 00007479322d647a30313a6c61322d647a30310001020304050
 60708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
-0b000000737769746368312f312f31030000006c6f30ad2570a
-0cf27761cab55a3f26d85fb20
+0b000000737769746368312f312f31030000006c6f30ffc99a3
+b00000000ad2570a0cf27761cab55a3f26d85fb20
 `
 
 var userPayload = `
@@ -327,8 +327,8 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 			},
 		},
 		{
-			Name:        "parse_valid_tunnel",
-			Description: "parse and populate a valid tunnel struct",
+			Name:        "parse_valid_link",
+			Description: "parse and populate a valid link struct",
 			Payload:     strings.TrimSuffix(tunnelPayload, "\n"),
 			Want: &ProgramData{
 				Links: []Link{
@@ -344,6 +344,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 						Mtu:               9000,
 						DelayNs:           30000000,
 						JitterNs:          10000000,
+						DelayOverrideNs:   999999999,
 						TunnelId:          5,
 						TunnelNet:         [5]byte{0xac, 0x10, 0x00, 0x0a, 0x1f},
 						Status:            LinkStatusActivated,

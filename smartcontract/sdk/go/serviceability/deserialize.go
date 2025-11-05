@@ -127,6 +127,7 @@ func DeserializeLink(reader *ByteReader, link *Link) {
 	link.ContributorPubKey = reader.ReadPubkey()
 	link.SideAIfaceName = reader.ReadString()
 	link.SideZIfaceName = reader.ReadString()
+	link.DelayOverrideNs = reader.ReadU64()
 	link.PubKey = reader.ReadPubkey()
 }
 

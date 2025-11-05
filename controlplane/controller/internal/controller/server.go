@@ -364,6 +364,15 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 			}
 
 			microseconds := math.Ceil(float64(link.DelayNs) / 1000.0)
+
+			if link.DelayOverrideNs != 0 {
+				if link.DelayOverrideNs < 10000 || link.DelayOverrideNs > 1_000_000_000 {
+					c.log.Warn("link delay override is outside valid range (10us - 1s), ignoring", "link_pubkey", base58.Encode(link.PubKey[:]), "device_code", device.Code, "interface", iface.Name, "delay_override_ns", link.DelayOverrideNs)
+				} else {
+					microseconds = math.Ceil(float64(link.DelayOverrideNs) / 1000.0)
+				}
+			}
+
 			d.Interfaces[i].Metric = uint32(microseconds)
 			d.Interfaces[i].IsLink = true
 			linkMetrics.WithLabelValues(device.Code, iface.Name, d.PubKey).Set(float64(d.Interfaces[i].Metric))

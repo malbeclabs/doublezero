@@ -69,6 +69,18 @@ interface Ethernet2
    isis hello padding
    isis network point-to-point
 !
+interface Ethernet4
+   mtu 2048
+   no switchport
+   ip address 172.16.0.22/31
+   pim ipv4 sparse-mode
+   isis enable 1
+   isis circuit-type level-2
+   isis hello-interval 1
+   isis metric 30000
+   isis hello padding
+   isis network point-to-point
+!
 interface Loopback255
    ip address 172.16.0.1/32
    node-segment ipv4 index 1

@@ -1,0 +1,18 @@
+[Unit]
+Description=DoubleZero IBRL monitor
+After=network.target
+
+[Service]
+Type=simple
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 /opt/doublezero_monitor/monitor_ibrl.py
+
+# Send stdout and stderr to systemd journal
+StandardOutput=journal
+StandardError=journal
+
+# Do not restart on crash/exit
+Restart=no
+
+[Install]
+WantedBy=doublezerod.service

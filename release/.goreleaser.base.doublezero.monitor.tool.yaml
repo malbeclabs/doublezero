@@ -51,7 +51,7 @@ nfpms:
         dst: /opt/doublezero_monitor/ping.py
       - src: doublezero_monitor/task_group.py
         dst: /opt/doublezero_monitor/task_group.py
-      - src: doublezero_monitor/doublezero_monitor.service
+      - src: release/packaging/scripts/doublezero_monitor/systemd/doublezero_monitor.service
         dst: /etc/systemd/system/doublezero_monitor.service
     overrides:
       deb:

@@ -49,13 +49,6 @@ func NewRouteReaderWriter(ctx context.Context, log *slog.Logger, lm *Manager, nl
 func (m *routeReaderWriter) Close() error { m.cancel(); return m.lm.Close() }
 
 func (m *routeReaderWriter) RouteAdd(r *routing.Route) error {
-	// TODO(snormore): Remove this hard-coded check.
-	if r.Dst.IP.String() == "8.8.8.8" {
-		return m.nlr.RouteAdd(r)
-	}
-
-	// TODO(snormore): Note this is the the expected peer port, which we are overloading with our
-	// own port. Maybe that's fine, maybe it should be configured separately.
 	peerAddr, err := net.ResolveUDPAddr("udp", peerAddrFor(r, m.cfg.Port))
 	if err != nil {
 		return fmt.Errorf("error resolving peer address: %v", err)
@@ -65,14 +58,13 @@ func (m *routeReaderWriter) RouteAdd(r *routing.Route) error {
 }
 
 func (m *routeReaderWriter) RouteDelete(r *routing.Route) error {
-	// TODO(snormore): Remove this hard-coded check.
-	if r.Dst.IP.String() == "8.8.8.8" {
-		return m.nlr.RouteDelete(r)
-	}
-
 	return m.lm.WithdrawRoute(r, m.cfg.Iface)
 }
 
 func (m *routeReaderWriter) RouteByProtocol(protocol int) ([]*routing.Route, error) {
 	return m.nlr.RouteByProtocol(protocol)
+}
+
+func peerAddrFor(r *routing.Route, port int) string {
+	return fmt.Sprintf("%s:%d", r.Dst.IP.String(), port)
 }

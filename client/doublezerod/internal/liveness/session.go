@@ -91,39 +91,12 @@ func (s *Session) ExpireIfDue(now time.Time) (expired bool) {
 	return false
 }
 
-func (s *Session) txInterval() time.Duration {
-	iv := s.localTxMin
-	if s.remoteRxMin > iv {
-		iv = s.remoteRxMin
-	}
-	if iv < s.minTxFloor {
-		iv = s.minTxFloor
-	}
-	if iv > s.maxTxCeil {
-		iv = s.maxTxCeil
-	}
-	return iv
-}
-
-func (s *Session) rxRef() time.Duration {
-	ref := s.remoteTxMin
-	if s.localRxMin > ref {
-		ref = s.localRxMin
-	}
-	if ref == 0 {
-		ref = s.localRxMin
-	}
-	if ref < s.minTxFloor {
-		ref = s.minTxFloor
-	}
-	return ref
-}
-
-func (s *Session) detectTime() time.Duration {
-	return time.Duration(int64(s.detectMult) * int64(s.rxRef()))
-}
-
-func (s *Session) onRx(now time.Time, ctrl *ControlPacket) (changed bool) {
+// HandleRx processes an incoming control packet and updates the session state.
+// It validates the discriminator, refreshes remote timing parameters, and resets
+// the detection deadline. Based on the peer’s advertised state, it transitions
+// between Down, Init, and Up according to the BFD state machine rules. It returns
+// true if the local session state changed as a result.
+func (s *Session) HandleRx(now time.Time, ctrl *ControlPacket) (changed bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -181,4 +154,36 @@ func (s *Session) onRx(now time.Time, ctrl *ControlPacket) (changed bool) {
 	}
 
 	return s.state != prev
+}
+
+func (s *Session) detectTime() time.Duration {
+	return time.Duration(int64(s.detectMult) * int64(s.rxRef()))
+}
+
+func (s *Session) txInterval() time.Duration {
+	iv := s.localTxMin
+	if s.remoteRxMin > iv {
+		iv = s.remoteRxMin
+	}
+	if iv < s.minTxFloor {
+		iv = s.minTxFloor
+	}
+	if iv > s.maxTxCeil {
+		iv = s.maxTxCeil
+	}
+	return iv
+}
+
+func (s *Session) rxRef() time.Duration {
+	ref := s.remoteTxMin
+	if s.localRxMin > ref {
+		ref = s.localRxMin
+	}
+	if ref == 0 {
+		ref = s.localRxMin
+	}
+	if ref < s.minTxFloor {
+		ref = s.minTxFloor
+	}
+	return ref
 }

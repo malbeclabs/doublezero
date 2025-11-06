@@ -116,14 +116,15 @@ func NewScheduler(log *slog.Logger, conn *net.UDPConn, onSessionDown func(s *Ses
 }
 
 func (s *Scheduler) Run(ctx context.Context) {
-	s.log.Info("liveness.scheduler: tx loop started")
+	s.log.Debug("liveness.scheduler: tx loop started")
+
 	t := time.NewTimer(time.Hour)
 	defer t.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
-			s.log.Info("liveness.scheduler: stopped by context done", "reason", ctx.Err())
+			s.log.Debug("liveness.scheduler: stopped by context done", "reason", ctx.Err())
 			return
 		default:
 		}
@@ -143,7 +144,7 @@ func (s *Scheduler) Run(ctx context.Context) {
 			t.Reset(wait)
 			select {
 			case <-ctx.Done():
-				s.log.Info("liveness.scheduler: stopped by context done", "reason", ctx.Err())
+				s.log.Debug("liveness.scheduler: stopped by context done", "reason", ctx.Err())
 				return
 			case <-t.C:
 				continue
@@ -156,7 +157,6 @@ func (s *Scheduler) Run(ctx context.Context) {
 			s.scheduleTx(time.Now(), ev.s)
 		case evDetect:
 			if s.tryExpire(ev.s) {
-				s.log.Info("liveness.scheduler: session down", "peer", ev.s.peer.String(), "route", ev.s.route.String())
 				go s.onSessionDown(ev.s)
 				continue
 			}

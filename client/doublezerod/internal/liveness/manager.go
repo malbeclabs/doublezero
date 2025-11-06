@@ -14,23 +14,23 @@ import (
 )
 
 type Peer struct {
-	iface   string
-	theirIP string
-	ourIP   string
+	iface    string
+	localIP  string
+	remoteIP string
 }
 
-func NewPeer(iface string, theirIP net.IP, ourIP net.IP) Peer {
-	if theirIP == nil {
-		theirIP = net.IPv4zero
+func NewPeer(iface string, localIP net.IP, remoteIP net.IP) Peer {
+	if localIP == nil {
+		localIP = net.IPv4zero
 	}
-	if ourIP == nil {
-		ourIP = net.IPv4zero
+	if remoteIP == nil {
+		remoteIP = net.IPv4zero
 	}
-	return Peer{iface: iface, theirIP: theirIP.String(), ourIP: ourIP.String()}
+	return Peer{iface: iface, localIP: localIP.String(), remoteIP: remoteIP.String()}
 }
 
 func (p *Peer) String() string {
-	return fmt.Sprintf("iface: %s, theirIP: %s, ourIP: %s", p.iface, p.theirIP, p.ourIP)
+	return fmt.Sprintf("iface: %s, localIP: %s, remoteIP: %s", p.iface, p.localIP, p.remoteIP)
 }
 
 type Manager struct {
@@ -46,7 +46,7 @@ type Manager struct {
 	minTxFloor time.Duration
 	maxTxCeil  time.Duration
 
-	// TODO(snormore): Do we need a sepaarate lock for sessions vs desired/installed routes?
+	// TODO(snormore): Do we need a separate lock for sessions vs desired/installed routes?
 	// mu sync.Mutex
 	sessions map[Peer]*Session
 
@@ -193,17 +193,6 @@ func (m *Manager) AdminDownAll() {
 	}
 }
 
-// func (m *Manager) PollAll() {
-// 	m.log.Info("liveness: polling all")
-
-// 	m.mu.Lock()
-// 	defer m.mu.Unlock()
-// 	now := time.Now()
-// 	for _, s := range m.sessions {
-// 		m.sched.scheduleTx(now, s)
-// 	}
-// }
-
 func (m *Manager) LocalAddr() *net.UDPAddr {
 	if m.conn == nil {
 		return nil
@@ -214,10 +203,8 @@ func (m *Manager) LocalAddr() *net.UDPAddr {
 	return nil
 }
 
-func (m *Manager) HandleRx(ctrl *ControlPacket, pktSrc *net.UDPAddr, pktDst net.IP, pktIfname string) {
+func (m *Manager) HandleRx(ctrl *ControlPacket, peer Peer) {
 	now := time.Now()
-
-	peer := NewPeer(pktIfname, pktSrc.IP, pktDst)
 
 	m.mu.Lock()
 	s := m.sessions[peer]
@@ -228,13 +215,12 @@ func (m *Manager) HandleRx(ctrl *ControlPacket, pktSrc *net.UDPAddr, pktDst net.
 	}
 
 	// Only react if the session's state actually changed.
-	changed := s.onRx(now, ctrl)
+	changed := s.HandleRx(now, ctrl)
 
 	if changed {
 		switch s.state {
 		case Up:
 			// transitioned to Up
-			m.log.Info("liveness: session up", "peer", peer.String(), "route", s.route.String())
 			go m.onSessionUp(s)
 			m.sched.scheduleDetect(now, s) // keep detect armed while Up
 		case Init:
@@ -243,7 +229,6 @@ func (m *Manager) HandleRx(ctrl *ControlPacket, pktSrc *net.UDPAddr, pktDst net.
 		case Down:
 			// transitioned to Down – do NOT schedule detect again
 			// (onRx already cleared detectDeadline when mirroring Down)
-			m.log.Info("liveness: session down (rx)", "peer", peer.String(), "route", s.route.String())
 			go m.onSessionDown(s)
 		}
 	} else {
@@ -269,6 +254,7 @@ func (m *Manager) onSessionUp(s *Session) {
 	m.installed[rk] = true
 	m.mu.Unlock()
 	_ = m.nlr.RouteAdd(r)
+	m.log.Info("liveness: session up", "peer", s.peer.String(), "route", s.route.String())
 }
 
 func (m *Manager) onSessionDown(s *Session) {
@@ -280,6 +266,7 @@ func (m *Manager) onSessionDown(s *Session) {
 	m.mu.Unlock()
 	if was && r != nil {
 		_ = m.nlr.RouteDelete(r)
+		m.log.Info("liveness: session down", "peer", s.peer.String(), "route", s.route.String())
 	}
 }
 
@@ -295,8 +282,4 @@ func rand32() uint32 {
 
 func routeKeyFor(iface string, r *routing.Route) RouteKey {
 	return RouteKey{Iface: iface, SrcIP: r.Src.String(), Table: r.Table, DstPrefix: r.Dst.String(), NextHop: r.NextHop.String()}
-}
-
-func peerAddrFor(r *routing.Route, port int) string {
-	return fmt.Sprintf("%s:%d", r.Dst.IP.String(), port)
 }

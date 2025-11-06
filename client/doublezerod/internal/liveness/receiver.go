@@ -10,24 +10,31 @@ import (
 type Receiver struct {
 	log      *slog.Logger
 	conn     *net.UDPConn
-	handleRx func(ctrl *ControlPacket, pktSrc *net.UDPAddr, pktDst net.IP, pktIfname string)
+	handleRx HandleRxFunc
 }
 
-func NewReceiver(log *slog.Logger, conn *net.UDPConn, handleRx func(ctrl *ControlPacket, pktSrc *net.UDPAddr, pktDst net.IP, pktIfname string)) *Receiver {
-	return &Receiver{log: log, conn: conn, handleRx: handleRx}
+type HandleRxFunc func(pkt *ControlPacket, peer Peer)
+
+func NewReceiver(log *slog.Logger, conn *net.UDPConn, handleRx HandleRxFunc) *Receiver {
+	return &Receiver{
+		log:      log,
+		conn:     conn,
+		handleRx: handleRx,
+	}
 }
 
 func (r *Receiver) Run(ctx context.Context) {
-	r.log.Info("liveness.recv: rx loop started")
+	r.log.Debug("liveness.recv: rx loop started")
+
 	buf := make([]byte, 1500)
 	for {
 		r.conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
-		n, pktSrc, pktDst, pktIfname, err := readFromUDP(r.conn, buf)
+		n, localAddr, remoteIP, ifname, err := readFromUDP(r.conn, buf)
 		if err != nil {
 			if ne, ok := err.(net.Error); ok && ne.Timeout() {
 				select {
 				case <-ctx.Done():
-					r.log.Info("liveness.recv: rx loop stopped by context done", "reason", ctx.Err())
+					r.log.Debug("liveness.recv: rx loop stopped by context done", "reason", ctx.Err())
 					return
 				default:
 					continue
@@ -35,7 +42,7 @@ func (r *Receiver) Run(ctx context.Context) {
 			}
 			select {
 			case <-ctx.Done():
-				r.log.Info("liveness.recv: rx loop stopped by context done", "reason", ctx.Err())
+				r.log.Debug("liveness.recv: rx loop stopped by context done", "reason", ctx.Err())
 				return
 			default:
 				continue
@@ -48,6 +55,8 @@ func (r *Receiver) Run(ctx context.Context) {
 			continue
 		}
 
-		r.handleRx(ctrl, pktSrc, pktDst, pktIfname)
+		peer := NewPeer(ifname, localAddr.IP, remoteIP)
+
+		r.handleRx(ctrl, peer)
 	}
 }

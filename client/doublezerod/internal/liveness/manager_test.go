@@ -12,7 +12,6 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// test tunables: keep them modest so state converges quickly but not flaky
 const (
 	testTxMin  = 100 * time.Millisecond
 	testRxMin  = 100 * time.Millisecond

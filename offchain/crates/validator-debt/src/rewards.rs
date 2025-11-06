@@ -5,15 +5,14 @@
 //! - JITO rewards per epoch
 //!
 //! The rewards from all sources for an epoch are summed and associated with a validator_id
-use crate::{block, inflation, jito};
+use std::collections::HashMap;
 
 use anyhow::{Result, anyhow};
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::Deserialize;
 use solana_sdk::clock::DEFAULT_SLOTS_PER_EPOCH;
-use std::collections::HashMap;
 
-use crate::solana_debt_calculator::ValidatorRewards;
+use crate::{block, inflation, jito, solana_debt_calculator::ValidatorRewards};
 
 const SLOT_TIME_DURATION_SECONDS: f64 = 0.4;
 
@@ -123,16 +122,17 @@ fn epoch_from_timestamp(block_time: u64, current_slot: u64, timestamp: u64) -> R
 
 #[cfg(test)]
 mod tests {
-    use crate::jito::{JitoReward, JitoRewards};
-
-    use super::*;
-    use crate::solana_debt_calculator::MockValidatorRewards;
     use solana_client::rpc_response::{
         RpcInflationReward, RpcVoteAccountInfo, RpcVoteAccountStatus,
     };
     use solana_sdk::{epoch_info::EpochInfo, reward_type::RewardType::Fee};
-
     use solana_transaction_status_client_types::UiConfirmedBlock;
+
+    use super::*;
+    use crate::{
+        jito::{JitoReward, JitoRewards},
+        solana_debt_calculator::MockValidatorRewards,
+    };
 
     #[tokio::test]
     async fn test_get_rewards_between_timestamps() {

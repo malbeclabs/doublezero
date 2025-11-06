@@ -5,6 +5,7 @@ use leaky_bucket::RateLimiter;
 use solana_client::{
     client_error::{ClientError, ClientErrorKind},
     nonblocking::rpc_client::RpcClient,
+    rpc_config::{RpcBlockConfig, RpcGetVoteAccountsConfig},
     rpc_custom_error::{
         JSON_RPC_SERVER_ERROR_LONG_TERM_STORAGE_SLOT_SKIPPED, JSON_RPC_SERVER_ERROR_SLOT_SKIPPED,
     },
@@ -12,8 +13,6 @@ use solana_client::{
 };
 use solana_sdk::commitment_config::CommitmentConfig;
 use solana_transaction_status_client_types::{TransactionDetails, UiTransactionEncoding};
-
-use solana_client::rpc_config::{RpcBlockConfig, RpcGetVoteAccountsConfig};
 use url::Url;
 
 use crate::solana_debt_calculator::SolanaDebtCalculator;

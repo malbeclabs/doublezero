@@ -1,10 +1,12 @@
+use std::net::Ipv4Addr;
+
+use doublezero_passport::instruction::AccessMode;
+use solana_sdk::pubkey::Pubkey;
+use tracing::info;
+
 use crate::{
     Error, Result, client::solana::SolRpcClientType, error::rpc_with_retry, verify_access_request,
 };
-use doublezero_passport::instruction::AccessMode;
-use solana_sdk::pubkey::Pubkey;
-use std::net::Ipv4Addr;
-use tracing::info;
 
 /// Shared validator verification logic used by both WebSocket and polling modes
 pub struct ValidatorVerifier<'a, SolRpcClient: SolRpcClientType> {

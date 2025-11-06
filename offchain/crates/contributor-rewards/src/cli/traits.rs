@@ -1,6 +1,7 @@
-use crate::cli::common::OutputFormat;
 use anyhow::Result;
 use serde::Serialize;
+
+use crate::cli::common::OutputFormat;
 
 /// Trait for types that can be exported to various formats
 pub trait Exportable {

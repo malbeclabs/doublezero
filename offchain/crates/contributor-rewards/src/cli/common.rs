@@ -1,14 +1,16 @@
-use crate::cli::traits::Exportable;
-use anyhow::Result;
-use clap::{Args, ValueEnum};
-use serde::{Deserialize, Serialize};
 use std::{
     fmt,
     fs::{File, create_dir_all},
     io::Write,
     path::Path,
 };
+
+use anyhow::Result;
+use clap::{Args, ValueEnum};
+use serde::{Deserialize, Serialize};
 use tracing::info;
+
+use crate::cli::traits::Exportable;
 
 /// Unified output format for all CLI commands
 #[derive(Debug, Clone, Copy, ValueEnum, Serialize, Deserialize)]

@@ -1,3 +1,8 @@
+use std::{
+    collections::BTreeMap,
+    fmt::{Display, Formatter},
+};
+
 use anyhow::{Result, bail};
 use chrono::{DateTime, Utc};
 use doublezero_program_common::serializer;
@@ -13,10 +18,6 @@ use doublezero_telemetry::state::{
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use solana_sdk::{account::Account, pubkey::Pubkey};
-use std::{
-    collections::BTreeMap,
-    fmt::{Display, Formatter},
-};
 
 pub type KeyedAccounts = Vec<(Pubkey, Account)>;
 
@@ -305,8 +306,9 @@ where
     D: serde::Deserializer<'de>,
     T: Deserialize<'de>,
 {
-    use serde::de::{Error, MapAccess, Visitor};
     use std::marker::PhantomData;
+
+    use serde::de::{Error, MapAccess, Visitor};
 
     struct IndexMapVisitor<T>(PhantomData<T>);
 

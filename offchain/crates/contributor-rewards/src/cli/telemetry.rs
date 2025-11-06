@@ -1,3 +1,11 @@
+use std::{collections::BTreeMap, str::FromStr};
+
+use anyhow::{Result, bail};
+use clap::Subcommand;
+use serde::{Deserialize, Serialize};
+use tabled::{Table, Tabled, settings::Style};
+use tracing::info;
+
 use crate::{
     calculator::orchestrator::Orchestrator,
     cli::{
@@ -16,12 +24,6 @@ use crate::{
         telemetry::{DZDTelemetryProcessor, DZDTelemetryStats},
     },
 };
-use anyhow::{Result, bail};
-use clap::Subcommand;
-use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, str::FromStr};
-use tabled::{Table, Tabled, settings::Style};
-use tracing::info;
 
 /// Telemetry type selection
 #[derive(Debug, Clone, Copy)]

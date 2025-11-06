@@ -1,8 +1,3 @@
-use clap::Parser;
-use config::{Config, Environment, File};
-use doublezero_serviceability::addresses::{devnet, mainnet, testnet};
-use serde::{Deserialize, Serialize};
-use solana_sdk::{pubkey::Pubkey, signer::keypair::Keypair};
 use std::{
     fs,
     net::SocketAddr,
@@ -10,6 +5,12 @@ use std::{
     str::FromStr,
     sync::Arc,
 };
+
+use clap::Parser;
+use config::{Config, Environment, File};
+use doublezero_serviceability::addresses::{devnet, mainnet, testnet};
+use serde::{Deserialize, Serialize};
+use solana_sdk::{pubkey::Pubkey, signer::keypair::Keypair};
 use url::Url;
 
 #[derive(Debug, Parser)]

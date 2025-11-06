@@ -1,5 +1,7 @@
 // TODO: keeping this for now, remove when 2z-cli is ported
 
+use std::path::PathBuf;
+
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use doublezero_contributor_rewards::{
@@ -8,7 +10,6 @@ use doublezero_contributor_rewards::{
     settings::Settings,
 };
 use metrics_exporter_prometheus::PrometheusBuilder;
-use std::path::PathBuf;
 use tracing::{debug, warn};
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 

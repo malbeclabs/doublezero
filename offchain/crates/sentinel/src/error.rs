@@ -1,14 +1,15 @@
+use std::{
+    future::Future,
+    sync::atomic::{AtomicUsize, Ordering},
+    time::Duration,
+};
+
 use backon::{ExponentialBuilder, Retryable};
 use solana_client::{
     client_error::{ClientError, ClientErrorKind, reqwest::StatusCode},
     nonblocking::pubsub_client::PubsubClientError,
 };
 use solana_sdk::signature::{ParseSignatureError, Signature};
-use std::{
-    future::Future,
-    sync::atomic::{AtomicUsize, Ordering},
-    time::Duration,
-};
 use thiserror::Error;
 use tracing::warn;
 
@@ -121,8 +122,9 @@ fn retryable_status(status: Option<StatusCode>) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{StatusCode, *};
     use solana_sdk::transaction::TransactionError;
+
+    use super::{StatusCode, *};
 
     #[test]
     fn retryable_status_codes() {

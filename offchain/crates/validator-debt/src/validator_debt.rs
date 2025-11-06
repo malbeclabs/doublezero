@@ -67,8 +67,9 @@ impl ComputedSolanaValidatorDebt {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use anyhow::Result;
+
+    use super::*;
 
     #[test]
     fn test_add_rewards_to_tree() -> Result<()> {

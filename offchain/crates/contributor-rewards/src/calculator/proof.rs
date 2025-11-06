@@ -1,14 +1,16 @@
-use crate::calculator::constants::MAX_UNIT_SHARE;
+use std::str::FromStr;
+
 use anyhow::{Context, Result, anyhow, bail};
 use borsh::{BorshDeserialize, BorshSerialize};
 use doublezero_revenue_distribution::types::{RewardShare, UnitShare32};
 use network_shapley::shapley::ShapleyOutput;
 use solana_sdk::pubkey::Pubkey;
-use std::str::FromStr;
 use svm_hash::{
     merkle::{MerkleProof, merkle_root_from_indexed_pod_leaves},
     sha2::Hash,
 };
+
+use crate::calculator::constants::MAX_UNIT_SHARE;
 
 /// Storage structure for consolidated shapley output
 /// This is what gets stored on-chain instead of individual proofs
@@ -169,8 +171,9 @@ pub fn generate_proof_from_shapley(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use network_shapley::shapley::ShapleyValue;
+
+    use super::*;
 
     fn create_test_shapley_output() -> ShapleyOutput {
         let mut output = ShapleyOutput::new();

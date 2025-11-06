@@ -1,3 +1,5 @@
+use anyhow::{Result, bail};
+
 use crate::{
     calculator::input::RewardInput,
     cli::{
@@ -6,7 +8,6 @@ use crate::{
     },
     processor::{internet::InternetTelemetryStats, telemetry::DZDTelemetryStats},
 };
-use anyhow::{Result, bail};
 
 // Implement Exportable for processor types
 

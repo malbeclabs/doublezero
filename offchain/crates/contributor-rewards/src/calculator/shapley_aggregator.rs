@@ -1,6 +1,7 @@
+use std::collections::BTreeMap;
+
 use anyhow::Result;
 use network_shapley::shapley::{ShapleyOutput, ShapleyValue};
-use std::collections::BTreeMap;
 use tabled::{builder::Builder as TableBuilder, settings::Style};
 use tracing::info;
 

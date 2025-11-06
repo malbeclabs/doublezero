@@ -1,11 +1,13 @@
-use crate::{ingestor::demand::CityStats, settings::ShapleySettings};
+use std::collections::BTreeMap;
+
 use anyhow::{Result, bail};
 use borsh::{BorshDeserialize, BorshSerialize};
 use chrono::Utc;
 use network_shapley::types::{Demands, Devices, PrivateLinks, PublicLinks};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 use svm_hash::sha2::{Hash, double_hash};
+
+use crate::{ingestor::demand::CityStats, settings::ShapleySettings};
 
 // Domain separation prefixes for telemetry checksums
 const PREFIX_DEVICE_TELEMETRY: &str = "dz_input_device_telemetry";

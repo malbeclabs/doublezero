@@ -1,11 +1,13 @@
-use crate::solana_debt_calculator::ValidatorRewards;
+use std::{collections::HashMap, time::Duration};
+
 use anyhow::{Result, bail};
 use backon::{ExponentialBuilder, Retryable};
 use futures::{StreamExt, TryStreamExt, stream};
 use solana_client::{client_error::ClientErrorKind, rpc_request::RpcError};
 use solana_sdk::{clock::DEFAULT_SLOTS_PER_EPOCH, reward_type::RewardType::Fee};
-use std::{collections::HashMap, time::Duration};
 use tracing::info;
+
+use crate::solana_debt_calculator::ValidatorRewards;
 
 pub const LAMPORT_MULTIPLE: u64 = 5000;
 pub const fn get_first_slot_for_epoch(target_epoch: u64) -> u64 {
@@ -146,10 +148,11 @@ pub async fn get_block_rewards<T: ValidatorRewards>(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::solana_debt_calculator::MockValidatorRewards;
     use solana_sdk::epoch_info::EpochInfo;
     use solana_transaction_status_client_types::{Reward, UiConfirmedBlock};
+
+    use super::*;
+    use crate::solana_debt_calculator::MockValidatorRewards;
 
     #[tokio::test]
     async fn test_get_block_rewards() {

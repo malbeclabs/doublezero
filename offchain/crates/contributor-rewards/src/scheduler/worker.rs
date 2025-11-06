@@ -1,19 +1,3 @@
-use crate::{
-    calculator::orchestrator::Orchestrator,
-    cli::snapshot::{CompleteSnapshot, SnapshotMetadata},
-    ingestor::{epoch::EpochFinder, fetcher::Fetcher},
-    scheduler::state::SchedulerState,
-    settings::{aws::StorageBackend, network::Network},
-    storage::SnapshotStorage,
-};
-use anyhow::{Result, anyhow, bail};
-use backon::{ExponentialBuilder, Retryable};
-use chrono::Utc;
-use doublezero_program_tools::zero_copy;
-use doublezero_revenue_distribution::state::ProgramConfig;
-use doublezero_sdk::record::pubkey::create_record_key;
-use solana_client::client_error::ClientError as SolanaClientError;
-use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
 use std::{
     fs,
     path::PathBuf,
@@ -23,12 +7,30 @@ use std::{
     },
     time::{Duration, Instant},
 };
+
+use anyhow::{Result, anyhow, bail};
+use backon::{ExponentialBuilder, Retryable};
+use chrono::Utc;
+use doublezero_program_tools::zero_copy;
+use doublezero_revenue_distribution::state::ProgramConfig;
+use doublezero_sdk::record::pubkey::create_record_key;
+use solana_client::client_error::ClientError as SolanaClientError;
+use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
 use tempfile::NamedTempFile;
 use tokio::{
     signal,
     time::{MissedTickBehavior, interval},
 };
 use tracing::{debug, error, info, warn};
+
+use crate::{
+    calculator::orchestrator::Orchestrator,
+    cli::snapshot::{CompleteSnapshot, SnapshotMetadata},
+    ingestor::{epoch::EpochFinder, fetcher::Fetcher},
+    scheduler::state::SchedulerState,
+    settings::{aws::StorageBackend, network::Network},
+    storage::SnapshotStorage,
+};
 
 /// Main rewards worker that runs periodically to calculate rewards
 pub struct ScheduleWorker {

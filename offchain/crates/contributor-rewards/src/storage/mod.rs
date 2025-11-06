@@ -2,13 +2,15 @@ pub mod credentials;
 pub mod local;
 pub mod s3;
 
+use std::path::PathBuf;
+
+use anyhow::{Result, anyhow};
+use async_trait::async_trait;
+
 use crate::{
     cli::snapshot::CompleteSnapshot,
     settings::{Settings, aws::StorageBackend},
 };
-use anyhow::{Result, anyhow};
-use async_trait::async_trait;
-use std::path::PathBuf;
 
 /// Trait for snapshot storage backends
 #[async_trait]

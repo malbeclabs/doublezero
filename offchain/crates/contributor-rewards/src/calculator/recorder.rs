@@ -1,3 +1,5 @@
+use std::{num::NonZeroU32, time::Duration};
+
 use anyhow::Result;
 use backon::{ExponentialBuilder, Retryable};
 use doublezero_record::{
@@ -19,7 +21,6 @@ use solana_sdk::{
     transaction::VersionedTransaction,
 };
 use solana_system_interface::instruction as system_instruction;
-use std::{num::NonZeroU32, time::Duration};
 use tracing::info;
 
 pub async fn try_create_record(

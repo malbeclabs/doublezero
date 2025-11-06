@@ -1,3 +1,5 @@
+use std::{collections::HashMap, fs, path::Path};
+
 use anyhow::Result;
 use doublezero_contributor_rewards::{
     calculator::shapley_handler::{build_devices, build_private_links},
@@ -6,7 +8,6 @@ use doublezero_contributor_rewards::{
     settings,
 };
 use serde_json::Value;
-use std::{collections::HashMap, fs, path::Path};
 
 fn load_test_data() -> Result<FetchData> {
     let data_path = Path::new("tests/testnet_snapshot.json");

@@ -1,4 +1,4 @@
-use crate::{Result, new_transaction};
+use std::{net::Ipv4Addr, sync::Arc};
 
 use async_trait::async_trait;
 use doublezero_program_tools::instruction::try_build_instruction;
@@ -17,9 +17,10 @@ use solana_sdk::{
     signature::{Keypair, Signature, Signer},
 };
 use solana_system_interface::program as system_program;
-use std::{net::Ipv4Addr, sync::Arc};
 use tracing::info;
 use url::Url;
+
+use crate::{Result, new_transaction};
 
 #[automock]
 #[async_trait]

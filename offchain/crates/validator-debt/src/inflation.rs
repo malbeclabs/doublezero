@@ -1,9 +1,11 @@
-use crate::solana_debt_calculator::ValidatorRewards;
+use std::{collections::HashMap, str::FromStr, time::Duration};
+
 use anyhow::{Result, anyhow};
 use backon::{ExponentialBuilder, Retryable};
 use solana_sdk::pubkey::Pubkey;
-use std::{collections::HashMap, str::FromStr, time::Duration};
 use tracing::info;
+
+use crate::solana_debt_calculator::ValidatorRewards;
 
 pub async fn get_inflation_rewards<T: ValidatorRewards + ?Sized>(
     solana_debt_calculator: &T,
@@ -69,11 +71,12 @@ pub async fn get_inflation_rewards<T: ValidatorRewards + ?Sized>(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::solana_debt_calculator::MockValidatorRewards;
     use solana_client::rpc_response::{
         RpcInflationReward, RpcVoteAccountInfo, RpcVoteAccountStatus,
     };
+
+    use super::*;
+    use crate::solana_debt_calculator::MockValidatorRewards;
 
     #[tokio::test]
     async fn test_get_inflation_rewards() {

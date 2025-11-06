@@ -5,10 +5,8 @@
 //! - Estimate slots from timestamps
 //! - Find epochs corresponding to specific timestamps
 
-use crate::cli::{
-    common::{OutputFormat, to_json_string},
-    traits::Exportable,
-};
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
+
 use anyhow::{Result, anyhow, bail};
 use backon::{ExponentialBuilder, Retryable};
 use chrono::Utc;
@@ -17,8 +15,12 @@ use solana_client::{
     client_error::ClientError as SolanaClientError, nonblocking::rpc_client::RpcClient,
 };
 use solana_sdk::epoch_schedule::EpochSchedule;
-use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use tracing::{debug, info};
+
+use crate::cli::{
+    common::{OutputFormat, to_json_string},
+    traits::Exportable,
+};
 
 /// Approximate slot duration in microseconds (400ms)
 pub const SLOT_DURATION_US: u64 = 400_000;

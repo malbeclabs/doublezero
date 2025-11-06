@@ -1,13 +1,15 @@
-use crate::{
-    ingestor::{internet, serviceability, telemetry, types::FetchData},
-    settings::Settings,
-};
+use std::sync::Arc;
+
 use anyhow::Result;
 use chrono::Utc;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::commitment_config::CommitmentConfig;
-use std::sync::Arc;
 use tracing::info;
+
+use crate::{
+    ingestor::{internet, serviceability, telemetry, types::FetchData},
+    settings::Settings,
+};
 
 /// Combined network and telemetry data
 #[derive(Clone)]

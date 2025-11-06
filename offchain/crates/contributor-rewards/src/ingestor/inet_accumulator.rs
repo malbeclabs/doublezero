@@ -1,9 +1,11 @@
-use crate::ingestor::types::{DZInternetData, DZInternetLatencySamples};
+use std::collections::{BTreeMap, HashMap};
+
 use anyhow::Result;
 use bitvec::prelude::*;
 use solana_sdk::pubkey::Pubkey;
-use std::collections::{BTreeMap, HashMap};
 use tracing::{debug, info};
+
+use crate::ingestor::types::{DZInternetData, DZInternetLatencySamples};
 
 /// Unique identifier for an internet telemetry route
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Ord, PartialOrd)]

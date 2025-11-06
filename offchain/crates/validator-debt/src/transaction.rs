@@ -1,4 +1,3 @@
-use crate::{ledger, validator_debt::ComputedSolanaValidatorDebts};
 use anyhow::{Result, anyhow, bail};
 use borsh::BorshDeserialize;
 use doublezero_program_tools::{instruction::try_build_instruction, zero_copy};
@@ -30,8 +29,10 @@ use solana_sdk::{
     signer::Signer,
     transaction::{TransactionError, VersionedTransaction},
 };
-
 use svm_hash::merkle::MerkleProof;
+
+use crate::{ledger, validator_debt::ComputedSolanaValidatorDebts};
+
 pub const SOLANA_SEED_PREFIX: &[u8; 21] = b"solana_validator_debt";
 
 #[derive(Debug)]
@@ -413,21 +414,21 @@ fn parse_program_logs(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::{
-        solana_debt_calculator::{SolanaDebtCalculator, ledger_rpc, solana_rpc},
-        validator_debt::{ComputedSolanaValidatorDebt, ComputedSolanaValidatorDebts},
-    };
+    use std::{path::PathBuf, str::FromStr};
 
     use solana_client::{
         nonblocking::rpc_client::RpcClient,
         rpc_config::{RpcBlockConfig, RpcGetVoteAccountsConfig},
     };
     use solana_sdk::commitment_config::CommitmentConfig;
-
     use solana_transaction_status_client_types::{TransactionDetails, UiTransactionEncoding};
-    use std::{path::PathBuf, str::FromStr};
     use svm_hash::sha2::Hash;
+
+    use super::*;
+    use crate::{
+        solana_debt_calculator::{SolanaDebtCalculator, ledger_rpc, solana_rpc},
+        validator_debt::{ComputedSolanaValidatorDebt, ComputedSolanaValidatorDebts},
+    };
 
     /// Taken from a Solana cookbook to load a keypair from a user's Solana config
     /// location.

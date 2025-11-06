@@ -1,5 +1,6 @@
-use serde::{Deserialize, Serialize};
 use std::{fmt, str::FromStr};
+
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "kebab-case")]

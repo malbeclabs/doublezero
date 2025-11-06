@@ -1,11 +1,5 @@
-use crate::{
-    calculator::constants::{BPS_TO_GBPS, DEFAULT_EDGE_BANDWIDTH_GBPS, SEC_TO_MS},
-    ingestor::{demand, fetcher::Fetcher, types::FetchData},
-    processor::{
-        internet::InternetTelemetryStatMap, telemetry::DZDTelemetryStatMap, util::quantile_r_type7,
-    },
-    settings::{Settings, network::Network},
-};
+use std::collections::BTreeMap;
+
 use anyhow::Result;
 use doublezero_serviceability::state::{
     device::DeviceStatus as DZDeviceStatus, link::LinkStatus as DZLinkStatus,
@@ -14,9 +8,17 @@ use network_shapley::types::{
     Demands, Device, Devices, PrivateLink, PrivateLinks, PublicLink, PublicLinks,
 };
 use solana_sdk::pubkey::Pubkey;
-use std::collections::BTreeMap;
 use tabled::{Table, Tabled, settings::Style};
 use tracing::{debug, info};
+
+use crate::{
+    calculator::constants::{BPS_TO_GBPS, DEFAULT_EDGE_BANDWIDTH_GBPS, SEC_TO_MS},
+    ingestor::{demand, fetcher::Fetcher, types::FetchData},
+    processor::{
+        internet::InternetTelemetryStatMap, telemetry::DZDTelemetryStatMap, util::quantile_r_type7,
+    },
+    settings::{Settings, network::Network},
+};
 
 // (city1_code, city2_code)
 type CityPair = (String, String);

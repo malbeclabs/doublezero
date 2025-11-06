@@ -1,10 +1,11 @@
 mod common;
 
+use std::{fs, path::Path};
+
 use anyhow::Result;
 use common::create_test_settings;
 use doublezero_contributor_rewards::ingestor::{demand, epoch::LeaderSchedule, types::FetchData};
 use serde_json::Value;
-use std::{fs, path::Path};
 
 fn load_test_data() -> Result<FetchData> {
     let data_path = Path::new("tests/testnet_snapshot.json");

@@ -1,9 +1,11 @@
-use crate::solana_debt_calculator::ValidatorRewards;
+use std::{collections::HashMap, time::Duration};
+
 use anyhow::{Result, anyhow};
 use backon::{ExponentialBuilder, Retryable};
 use serde::Deserialize;
-use std::{collections::HashMap, time::Duration};
 use tracing::info;
+
+use crate::solana_debt_calculator::ValidatorRewards;
 
 const JITO_BASE_URL: &str = "https://kobe.mainnet.jito.network/api/v1/";
 

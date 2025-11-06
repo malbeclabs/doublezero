@@ -1,3 +1,9 @@
+use std::path::PathBuf;
+
+use anyhow::{Result, bail};
+use serde::{Deserialize, Serialize};
+use tracing::{info, warn};
+
 use crate::{
     calculator::{data_prep::PreparedData, orchestrator::Orchestrator},
     cli::{
@@ -12,10 +18,6 @@ use crate::{
     settings::network::Network,
     storage,
 };
-use anyhow::{Result, bail};
-use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
-use tracing::{info, warn};
 
 /// Snapshot creation arguments
 #[derive(Debug)]
@@ -199,8 +201,9 @@ pub async fn create_snapshot(
 
     // Apply internet accumulator if enabled (same as PreparedData does)
     if fetcher.settings.inet_lookback.enable_accumulator {
-        use crate::ingestor::internet;
         use std::collections::BTreeSet;
+
+        use crate::ingestor::internet;
 
         // Calculate expected internet links
         let mut unique_routes = BTreeSet::new();

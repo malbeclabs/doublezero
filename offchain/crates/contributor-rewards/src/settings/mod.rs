@@ -2,13 +2,14 @@ pub mod aws;
 pub mod network;
 pub mod validation;
 
+use std::{fmt, net::SocketAddr, path::Path};
+
 use anyhow::{Context, Result};
 use aws::{AwsSettings, StorageBackend};
 use borsh::{BorshDeserialize, BorshSerialize};
 use config::{Config as ConfigBuilder, Environment, File};
 use network::Network;
 use serde::{Deserialize, Serialize};
-use std::{fmt, net::SocketAddr, path::Path};
 use validation::validate_config;
 
 /// Main settings configuration for contributor-rewards

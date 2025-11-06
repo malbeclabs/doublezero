@@ -1,15 +1,17 @@
-use crate::{
-    ingestor::types::{DZInternetLatencySamples, FetchData},
-    processor::{process::process_internet_samples, util::display_us_as_ms},
-};
+use std::collections::BTreeMap;
+
 use anyhow::Result;
 use borsh::{BorshDeserialize, BorshSerialize};
 use doublezero_program_common::serializer;
 use serde::{Deserialize, Serialize};
 use solana_sdk::pubkey::Pubkey;
-use std::collections::BTreeMap;
 use tabled::{Table, Tabled, settings::Style};
 use tracing::{debug, warn};
+
+use crate::{
+    ingestor::types::{DZInternetLatencySamples, FetchData},
+    processor::{process::process_internet_samples, util::display_us_as_ms},
+};
 
 // Key format: "{origin_code} → {target_code} ({data_provider})"
 pub type InternetTelemetryStatMap = BTreeMap<String, InternetTelemetryStats>;

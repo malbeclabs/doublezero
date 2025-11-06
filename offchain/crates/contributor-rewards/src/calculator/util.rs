@@ -1,7 +1,9 @@
-use crate::ingestor::demand::CityStats;
-use network_shapley::types::{Demand, Device, PrivateLink, PublicLink};
 use std::collections::BTreeMap;
+
+use network_shapley::types::{Demand, Device, PrivateLink, PublicLink};
 use tabled::{builder::Builder as TableBuilder, settings::Style};
+
+use crate::ingestor::demand::CityStats;
 
 /// Calculate normalized weights for each city based on stake
 ///

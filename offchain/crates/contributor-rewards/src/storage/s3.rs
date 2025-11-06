@@ -1,13 +1,14 @@
-use crate::{
-    cli::snapshot::CompleteSnapshot,
-    settings::aws::AwsSettings,
-    storage::{SnapshotStorage, credentials::CredentialLoader},
-};
 use anyhow::{Context, Result, anyhow};
 use async_trait::async_trait;
 use aws_sdk_s3::{Client as S3Client, primitives::ByteStream, types::ServerSideEncryption};
 use backon::{ExponentialBuilder, Retryable};
 use tracing::{error, info};
+
+use crate::{
+    cli::snapshot::CompleteSnapshot,
+    settings::aws::AwsSettings,
+    storage::{SnapshotStorage, credentials::CredentialLoader},
+};
 
 pub struct S3Storage {
     client: S3Client,

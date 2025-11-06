@@ -1,3 +1,11 @@
+use std::collections::BTreeMap;
+
+use anyhow::{Result, anyhow, bail};
+use doublezero_serviceability::state::user::User as DZUser;
+use network_shapley::types::{Demand, Demands};
+use rayon::prelude::*;
+use tracing::info;
+
 use crate::{
     calculator::constants::{
         DEMAND_MULTICAST_ENABLED, DEMAND_TRAFFIC, DEMAND_TYPE, SLOTS_IN_EPOCH,
@@ -9,12 +17,6 @@ use crate::{
     },
     settings::{Settings, network::Network},
 };
-use anyhow::{Result, anyhow, bail};
-use doublezero_serviceability::state::user::User as DZUser;
-use network_shapley::types::{Demand, Demands};
-use rayon::prelude::*;
-use std::collections::BTreeMap;
-use tracing::info;
 
 // key: location code, val: city stat
 pub type CityStats = BTreeMap<String, CityStat>;

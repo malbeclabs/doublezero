@@ -1,6 +1,8 @@
-use crate::settings::Settings;
-use anyhow::{Result, bail};
 use std::net::{IpAddr, SocketAddr};
+
+use anyhow::{Result, bail};
+
+use crate::settings::Settings;
 
 /// Validate the configuration values
 pub fn validate_config(settings: &Settings) -> Result<()> {
@@ -154,6 +156,8 @@ fn validate_socket_addr(addr: &SocketAddr) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::{net::SocketAddr, str::FromStr};
+
     use super::*;
     use crate::settings::{
         InetLookbackSettings, MetricsSettings, PrefixSettings, ProgramSettings, RpcSettings,
@@ -161,7 +165,6 @@ mod tests {
         aws::{AwsSettings, StorageBackend},
         network::Network,
     };
-    use std::{net::SocketAddr, str::FromStr};
 
     fn create_valid_config() -> Settings {
         Settings {

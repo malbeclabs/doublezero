@@ -1,3 +1,12 @@
+use std::{collections::BTreeMap, path::PathBuf, time::Instant};
+
+use anyhow::{Context, Result, bail};
+use network_shapley::{shapley::ShapleyInput, types::Demand};
+use rayon::prelude::*;
+use solana_sdk::pubkey::Pubkey;
+use tabled::{builder::Builder as TableBuilder, settings::Style};
+use tracing::{info, warn};
+
 use crate::{
     calculator::{
         data_prep::PreparedData, input::RewardInput, keypair_loader::load_keypair,
@@ -9,13 +18,6 @@ use crate::{
     ingestor::fetcher::Fetcher,
     settings::Settings,
 };
-use anyhow::{Context, Result, bail};
-use network_shapley::{shapley::ShapleyInput, types::Demand};
-use rayon::prelude::*;
-use solana_sdk::pubkey::Pubkey;
-use std::{collections::BTreeMap, path::PathBuf, time::Instant};
-use tabled::{builder::Builder as TableBuilder, settings::Style};
-use tracing::{info, warn};
 
 #[derive(Debug, Clone)]
 pub struct Orchestrator {

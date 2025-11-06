@@ -1,11 +1,12 @@
 #[cfg(test)]
 mod tests {
+    use std::{collections::BTreeMap, fs, path::PathBuf};
+
     use anyhow::Result;
     use doublezero_contributor_rewards::{
         calculator::keypair_loader::load_keypair,
         processor::{internet::InternetTelemetryStatMap, telemetry::DZDTelemetryStatMap},
     };
-    use std::{collections::BTreeMap, fs, path::PathBuf};
     use tempfile::TempDir;
 
     #[test]

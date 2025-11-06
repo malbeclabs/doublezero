@@ -1,3 +1,21 @@
+use std::{fmt, fs, mem::size_of, path::PathBuf, time::Duration};
+
+use anyhow::{Context, Result, anyhow, bail};
+use backon::{ExponentialBuilder, Retryable};
+use doublezero_program_tools::zero_copy;
+use doublezero_record::{instruction as record_ix, state::RecordData};
+use doublezero_revenue_distribution::state::ProgramConfig;
+use doublezero_sdk::record::pubkey::create_record_key;
+use solana_client::{
+    client_error::ClientError as SolanaClientError, nonblocking::rpc_client::RpcClient,
+};
+use solana_sdk::{
+    commitment_config::CommitmentConfig, message::Message, pubkey::Pubkey, signature::Keypair,
+    signer::Signer, transaction::Transaction,
+};
+use tabled::{Table, Tabled, settings::Style};
+use tracing::{debug, info, warn};
+
 use crate::{
     calculator::{
         input::RewardInput,
@@ -12,22 +30,6 @@ use crate::{
     },
     settings::Settings,
 };
-use anyhow::{Context, Result, anyhow, bail};
-use backon::{ExponentialBuilder, Retryable};
-use doublezero_program_tools::zero_copy;
-use doublezero_record::{instruction as record_ix, state::RecordData};
-use doublezero_revenue_distribution::state::ProgramConfig;
-use doublezero_sdk::record::pubkey::create_record_key;
-use solana_client::{
-    client_error::ClientError as SolanaClientError, nonblocking::rpc_client::RpcClient,
-};
-use solana_sdk::{
-    commitment_config::CommitmentConfig, message::Message, pubkey::Pubkey, signature::Keypair,
-    signer::Signer, transaction::Transaction,
-};
-use std::{fmt, fs, mem::size_of, path::PathBuf, time::Duration};
-use tabled::{Table, Tabled, settings::Style};
-use tracing::{debug, info, warn};
 
 // Helper functions to get prefixes from config
 fn get_device_telemetry_prefix(settings: &Settings) -> Result<Vec<u8>> {

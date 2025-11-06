@@ -1,10 +1,11 @@
+use std::{env, fs};
+
 use anyhow::{Context, Result, bail};
 use reqwest::{
     Body, Client, RequestBuilder,
     header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE},
 };
 use serde::{Deserialize, Serialize};
-use std::{env, fs};
 
 #[derive(Debug, Serialize)]
 pub struct SlackMessage {

@@ -1,7 +1,8 @@
+use std::{fs, io::Write, path::Path};
+
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::{fs, io::Write, path::Path};
 use tracing::{debug, error, info, warn};
 
 /// Worker state persisted to disk

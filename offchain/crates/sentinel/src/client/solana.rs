@@ -1,4 +1,8 @@
-use crate::{AccessId, Error, Result, new_transaction};
+use std::{
+    net::{Ipv4Addr, SocketAddr},
+    sync::Arc,
+};
+
 use async_trait::async_trait;
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64_STD};
 use bincode;
@@ -35,11 +39,9 @@ use solana_sdk::{
 use solana_transaction_status_client_types::{
     EncodedTransaction, TransactionBinaryEncoding, UiTransactionEncoding,
 };
-use std::{
-    net::{Ipv4Addr, SocketAddr},
-    sync::Arc,
-};
 use url::Url;
+
+use crate::{AccessId, Error, Result, new_transaction};
 
 const ACCESS_REQUEST_ACCOUNT_INDEX: usize = 2;
 

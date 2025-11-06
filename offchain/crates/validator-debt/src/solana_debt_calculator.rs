@@ -1,4 +1,4 @@
-use std::{collections::HashMap, error::Error};
+use std::{collections::HashMap, env, error::Error};
 
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
@@ -11,7 +11,6 @@ use solana_client::{
 };
 use solana_sdk::{commitment_config::CommitmentConfig, epoch_info::EpochInfo, pubkey::Pubkey};
 use solana_transaction_status_client_types::UiConfirmedBlock;
-use std::env;
 
 const DEFAULT_LEDGER_URL: &str = "http://localhost:8899";
 pub fn ledger_rpc() -> String {

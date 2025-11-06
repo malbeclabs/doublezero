@@ -1,3 +1,11 @@
+use std::{collections::BTreeSet, path::PathBuf};
+
+use anyhow::{Result, bail};
+use clap::Subcommand;
+use network_shapley::types::{Demand, Demands, Devices, PrivateLinks, PublicLinks};
+use solana_sdk::pubkey::Pubkey;
+use tracing::{info, warn};
+
 use crate::{
     calculator::{
         orchestrator::Orchestrator,
@@ -12,12 +20,6 @@ use crate::{
     ingestor::{demand, fetcher::Fetcher},
     processor::{internet::InternetTelemetryProcessor, telemetry::DZDTelemetryProcessor},
 };
-use anyhow::{Result, bail};
-use clap::Subcommand;
-use network_shapley::types::{Demand, Demands, Devices, PrivateLinks, PublicLinks};
-use solana_sdk::pubkey::Pubkey;
-use std::{collections::BTreeSet, path::PathBuf};
-use tracing::{info, warn};
 
 /// Inspect commands for analyzing rewards and Shapley calculations
 #[derive(Subcommand, Debug)]

@@ -1,21 +1,23 @@
+use std::{
+    net::Ipv4Addr,
+    sync::Arc,
+    time::{Duration, Instant},
+};
+
+use doublezero_passport::instruction::AccessMode;
+use retainer::Cache;
+use solana_sdk::{pubkey::Pubkey, signature::Keypair};
+use tokio::time::interval;
+use tokio_util::sync::CancellationToken;
+use tracing::{error, info};
+use url::Url;
+
 use crate::{
     AccessId, Result,
     client::{doublezero_ledger::DzRpcClient, solana::SolRpcClient},
     error::rpc_with_retry,
     sentinel::ValidatorVerifier,
 };
-use doublezero_passport::instruction::AccessMode;
-use retainer::Cache;
-use solana_sdk::{pubkey::Pubkey, signature::Keypair};
-use std::{
-    net::Ipv4Addr,
-    sync::Arc,
-    time::{Duration, Instant},
-};
-use tokio::time::interval;
-use tokio_util::sync::CancellationToken;
-use tracing::{error, info};
-use url::Url;
 
 // cache ttl: 5 minutes
 const CACHE_TTL: Duration = Duration::from_secs(300);
@@ -188,9 +190,10 @@ impl PollingSentinel {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use doublezero_passport::instruction::SolanaValidatorAttestation;
     use solana_sdk::pubkey::Pubkey;
+
+    use super::*;
 
     #[tokio::test]
     async fn test_cache_prevents_duplicate_processing() {

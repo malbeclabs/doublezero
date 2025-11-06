@@ -1,8 +1,9 @@
-use crate::settings::aws::AwsSettings;
 use anyhow::{Context, Result};
 use aws_config::BehaviorVersion;
 use aws_sdk_s3::config::{Credentials, Region};
 use tracing::info;
+
+use crate::settings::aws::AwsSettings;
 
 pub struct CredentialLoader {
     config: AwsSettings,

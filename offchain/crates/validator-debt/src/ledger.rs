@@ -134,20 +134,20 @@ async fn get_solana_epoch_from_dz_slot(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::{
-        rewards::{EpochRewards, Reward},
-        solana_debt_calculator::{SolanaDebtCalculator, ledger_rpc, solana_rpc},
-    };
+    use std::{str::FromStr, time::Duration};
 
     use solana_client::{
         nonblocking::rpc_client::RpcClient,
         rpc_config::{RpcBlockConfig, RpcGetVoteAccountsConfig},
     };
     use solana_sdk::{commitment_config::CommitmentConfig, signer::Signer};
-
     use solana_transaction_status_client_types::{TransactionDetails, UiTransactionEncoding};
-    use std::{str::FromStr, time::Duration};
+
+    use super::*;
+    use crate::{
+        rewards::{EpochRewards, Reward},
+        solana_debt_calculator::{SolanaDebtCalculator, ledger_rpc, solana_rpc},
+    };
 
     #[ignore = "needs remote connection"]
     #[tokio::test]

@@ -1,7 +1,8 @@
-use crate::{
-    ingestor::types::{DZDTelemetryData, DZDeviceLatencySamples},
-    settings::Settings,
+use std::{
+    str::FromStr,
+    time::{Duration, Instant},
 };
+
 use anyhow::{Context, Result};
 use backon::{ExponentialBuilder, Retryable};
 use doublezero_telemetry::state::{
@@ -15,11 +16,12 @@ use solana_client::{
     rpc_filter::{Memcmp, RpcFilterType},
 };
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
-use std::{
-    str::FromStr,
-    time::{Duration, Instant},
-};
 use tracing::{debug, info, warn};
+
+use crate::{
+    ingestor::types::{DZDTelemetryData, DZDeviceLatencySamples},
+    settings::Settings,
+};
 
 // Use the correct discriminator value from the AccountType enum
 // AccountType::DeviceLatencySamples = 3 (not the V0 version which is 1)

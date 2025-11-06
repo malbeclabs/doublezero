@@ -1,6 +1,8 @@
-use crate::processor::constants::{PENALTY_JITTER_US, PENALTY_RTT_US};
-use anyhow::{Result, ensure};
 use std::cmp::Ordering;
+
+use anyhow::{Result, ensure};
+
+use crate::processor::constants::{PENALTY_JITTER_US, PENALTY_RTT_US};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RttStats {

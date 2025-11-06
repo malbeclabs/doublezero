@@ -1,3 +1,8 @@
+use std::collections::BTreeMap;
+
+use anyhow::Result;
+use tracing::debug;
+
 use crate::{
     ingestor::types::{DZDeviceLatencySamples, DZInternetLatencySamples},
     processor::{
@@ -11,9 +16,6 @@ use crate::{
         },
     },
 };
-use anyhow::Result;
-use std::collections::BTreeMap;
-use tracing::debug;
 
 /// Process device telemetry samples into statistics
 pub fn process_device_samples(

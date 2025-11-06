@@ -1,3 +1,9 @@
+use std::collections::BTreeSet;
+
+use anyhow::{Result, anyhow};
+use network_shapley::types::{Demand, Devices, PrivateLinks, PublicLinks};
+use tracing::{info, warn};
+
 use crate::{
     calculator::{
         input::ShapleyInputs,
@@ -20,10 +26,6 @@ use crate::{
     },
     settings::Settings,
 };
-use anyhow::{Result, anyhow};
-use network_shapley::types::{Demand, Devices, PrivateLinks, PublicLinks};
-use std::collections::BTreeSet;
-use tracing::{info, warn};
 
 pub struct PreparedData {
     pub epoch: u64,

@@ -1,7 +1,9 @@
-use crate::slack;
+use std::env;
+
 use anyhow::{Result, bail};
 use reqwest::{Body, Client};
-use std::env;
+
+use crate::slack;
 
 const VALIDATOR_DEBT_CHANNEL_ID: &str = "C09LES1Q127"; // #tmp-validator-debt
 

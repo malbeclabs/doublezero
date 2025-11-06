@@ -1,10 +1,5 @@
-use crate::{
-    ingestor::{
-        inet_accumulator::{EpochData, InetLookbackAccumulator, InetLookbackConfig},
-        types::{DZInternetData, DZInternetLatencySamples},
-    },
-    settings::Settings,
-};
+use std::{str::FromStr, time::Duration};
+
 use anyhow::{Context, Result, bail};
 use backon::{ExponentialBuilder, Retryable};
 use doublezero_telemetry::state::{
@@ -18,8 +13,15 @@ use solana_client::{
     rpc_filter::{Memcmp, RpcFilterType},
 };
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
-use std::{str::FromStr, time::Duration};
 use tracing::{debug, info, warn};
+
+use crate::{
+    ingestor::{
+        inet_accumulator::{EpochData, InetLookbackAccumulator, InetLookbackConfig},
+        types::{DZInternetData, DZInternetLatencySamples},
+    },
+    settings::Settings,
+};
 
 // Use the correct discriminator value from the AccountType enum
 // AccountType::InternetLatencySamples = 4

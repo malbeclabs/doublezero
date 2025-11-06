@@ -62,9 +62,10 @@ pub fn new_transaction(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use doublezero_passport::instruction::SolanaValidatorAttestation;
     use solana_sdk::{pubkey::Pubkey, signature::Keypair, signer::Signer};
+
+    use super::*;
 
     #[test]
     fn test_signature_verification() {

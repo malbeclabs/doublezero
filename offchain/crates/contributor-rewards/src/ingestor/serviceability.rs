@@ -1,4 +1,8 @@
-use crate::{ingestor::types::DZServiceabilityData, settings::Settings};
+use std::{
+    str::FromStr,
+    time::{Duration, Instant},
+};
+
 use anyhow::{Context, Result};
 use backon::{ExponentialBuilder, Retryable};
 use doublezero_serviceability::state::{
@@ -13,11 +17,9 @@ use solana_client::{
     rpc_filter::{Memcmp, RpcFilterType},
 };
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
-use std::{
-    str::FromStr,
-    time::{Duration, Instant},
-};
 use tracing::{debug, info, warn};
+
+use crate::{ingestor::types::DZServiceabilityData, settings::Settings};
 
 /// Account types that we actually process in the rewards calculator
 /// We ignore GlobalState, Config, ProgramConfig, and Contributor

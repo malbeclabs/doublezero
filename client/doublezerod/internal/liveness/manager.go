@@ -46,16 +46,12 @@ type Manager struct {
 	minTxFloor time.Duration
 	maxTxCeil  time.Duration
 
-	// TODO(snormore): Do we need a separate lock for sessions vs desired/installed routes?
-	// mu sync.Mutex
-	sessions map[Peer]*Session
-
-	// composed workers
 	sched *Scheduler
 	recv  *Receiver
 
 	mu        sync.Mutex
-	desired   map[RouteKey]*routing.Route // routes we want
+	sessions  map[Peer]*Session           // tracked liveness sessions
+	desired   map[RouteKey]*routing.Route // routes we want to install
 	installed map[RouteKey]bool           // routes actually in kernel
 }
 

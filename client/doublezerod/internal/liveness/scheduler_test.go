@@ -99,3 +99,16 @@ func TestClient_Liveness_Scheduler_TryExpire_Idempotent(t *testing.T) {
 	require.True(t, s.tryExpire(sess))
 	require.False(t, s.tryExpire(sess)) // second call no effect
 }
+
+func TestClient_Liveness_Scheduler_ScheduleTx_NoEnqueueWhenAdminDown(t *testing.T) {
+	t.Parallel()
+	s := &Scheduler{eq: NewEventQueue()}
+	sess := &Session{
+		state:      AdminDown,
+		alive:      true,
+		detectMult: 1,
+		minTxFloor: time.Millisecond,
+	}
+	s.scheduleTx(time.Now(), sess)
+	require.Nil(t, s.eq.Pop(), "no TX should be scheduled while AdminDown")
+}

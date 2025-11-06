@@ -38,7 +38,7 @@ func TestClient_Liveness_Packet_MarshalEncodesHeaderAndFields(t *testing.T) {
 func TestClient_Liveness_Packet_UnmarshalRoundTrip(t *testing.T) {
 	t.Parallel()
 	orig := &ControlPacket{
-		Version:         2,
+		Version:         1,
 		State:           Init,
 		DetectMult:      7,
 		MyDiscr:         1,
@@ -50,7 +50,7 @@ func TestClient_Liveness_Packet_UnmarshalRoundTrip(t *testing.T) {
 	got, err := UnmarshalControlPacket(b)
 	require.NoError(t, err)
 
-	require.Equal(t, uint8(2), got.Version)
+	require.Equal(t, uint8(1), got.Version)
 	require.Equal(t, Init, got.State)
 	require.Equal(t, uint8(7), got.DetectMult)
 	require.Equal(t, uint8(40), got.Length)
@@ -74,7 +74,7 @@ func TestClient_Liveness_Packet_UnmarshalBadLength(t *testing.T) {
 	require.EqualError(t, err, "bad length")
 }
 
-func TestClient_Liveness_Packet_BitMaskingVersionAndState(t *testing.T) {
+func TestClient_Liveness_Packet_BitMaskingVersionAndState_MarshalOnly(t *testing.T) {
 	t.Parallel()
 	cp := &ControlPacket{
 		Version:    0xFF,
@@ -84,11 +84,22 @@ func TestClient_Liveness_Packet_BitMaskingVersionAndState(t *testing.T) {
 	b := cp.Marshal()
 	require.Equal(t, uint8(0xE0), b[0])
 	require.Equal(t, uint8(0xC0), b[1])
+}
 
-	got, err := UnmarshalControlPacket(b)
+func TestClient_Liveness_Packet_UnmarshalUnsupportedVersion(t *testing.T) {
+	t.Parallel()
+	cp := (&ControlPacket{Version: 7, State: Up, DetectMult: 1}).Marshal()
+	_, err := UnmarshalControlPacket(cp)
+	require.EqualError(t, err, "unsupported version: 7")
+}
+
+func TestClient_Liveness_Packet_UnmarshalStateMaskWithV1(t *testing.T) {
+	t.Parallel()
+	cp := (&ControlPacket{Version: 1, State: State(7), DetectMult: 1}).Marshal()
+	got, err := UnmarshalControlPacket(cp)
 	require.NoError(t, err)
-	require.Equal(t, uint8(0x7), got.Version)
-	require.Equal(t, Up, got.State)
+	require.Equal(t, uint8(1), got.Version)
+	require.Equal(t, Up, got.State) // state masked to 2 bits
 }
 
 func TestClient_Liveness_Packet_PaddingRemainsZero(t *testing.T) {

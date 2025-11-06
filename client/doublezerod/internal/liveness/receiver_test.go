@@ -14,7 +14,7 @@ import (
 func TestClient_Liveness_Receiver_CancelStopsLoop(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	conn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
@@ -46,7 +46,7 @@ func TestClient_Liveness_Receiver_IgnoresMalformedPacket(t *testing.T) {
 		atomic.AddInt32(&calls, 1)
 	})
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan struct{})
 	go func() { rx.Run(ctx); close(done) }()
 

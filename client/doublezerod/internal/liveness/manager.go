@@ -249,8 +249,14 @@ func (m *Manager) AdminDownAll() {
 	defer m.mu.Unlock()
 	for _, s := range m.sessions {
 		s.mu.Lock()
+		prev := s.state
 		s.state = AdminDown
+		s.detectDeadline = time.Time{} // stop detect while AdminDown
 		s.mu.Unlock()
+		if prev != AdminDown {
+			// Withdraw once per session when entering AdminDown.
+			go m.onSessionDown(s)
+		}
 	}
 }
 

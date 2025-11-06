@@ -47,8 +47,12 @@ func UnmarshalControlPacket(b []byte) (*ControlPacket, error) {
 		return nil, fmt.Errorf("bad length")
 	}
 	vd, sf := b[0], b[1]
+	ver := (vd >> 5) & 0x7
+	if ver != 1 {
+		return nil, fmt.Errorf("unsupported version: %d", ver)
+	}
 	c := &ControlPacket{
-		Version:    (vd >> 5) & 0x7,
+		Version:    ver,
 		State:      State((sf >> 6) & 0x3),
 		DetectMult: b[2],
 		Length:     b[3],

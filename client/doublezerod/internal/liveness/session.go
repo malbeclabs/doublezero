@@ -100,6 +100,11 @@ func (s *Session) HandleRx(now time.Time, ctrl *ControlPacket) (changed bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// Ignore all RX while locally AdminDown (operator-forced inactivity).
+	if s.state == AdminDown {
+		return false
+	}
+
 	// Ignore if peer explicitly targets a different session.
 	if ctrl.YourDiscr != 0 && ctrl.YourDiscr != s.myDisc {
 		return false
@@ -184,6 +189,9 @@ func (s *Session) rxRef() time.Duration {
 	}
 	if ref < s.minTxFloor {
 		ref = s.minTxFloor
+	}
+	if ref > s.maxTxCeil {
+		ref = s.maxTxCeil
 	}
 	return ref
 }

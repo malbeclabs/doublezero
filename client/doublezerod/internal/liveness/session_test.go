@@ -58,7 +58,7 @@ func TestClient_Liveness_Session_TxIntervalRespectsRemoteRxMinFloorAndCeil(t *te
 	require.Equal(t, 40*time.Millisecond, s.txInterval())
 }
 
-func TestClient_Liveness_Session_RxRefPrefersMaxAndFloor(t *testing.T) {
+func TestClient_Liveness_Session_RxRefPrefersMaxFloorAndCeil(t *testing.T) {
 	t.Parallel()
 	s := newSess()
 	s.remoteTxMin = 10 * time.Millisecond
@@ -70,6 +70,13 @@ func TestClient_Liveness_Session_RxRefPrefersMaxAndFloor(t *testing.T) {
 	s.localRxMin = 0
 	s.minTxFloor = 7 * time.Millisecond
 	require.Equal(t, 7*time.Millisecond, s.rxRef())
+
+	// ceiling: cap overly large refs
+	s.remoteTxMin = 5 * time.Second
+	s.localRxMin = 10 * time.Second
+	s.minTxFloor = 1 * time.Millisecond
+	s.maxTxCeil = 500 * time.Millisecond
+	require.Equal(t, 500*time.Millisecond, s.rxRef())
 }
 
 func TestClient_Liveness_Session_DetectTimeIsDetectMultTimesRxRef(t *testing.T) {
@@ -240,4 +247,16 @@ func TestClient_Liveness_Session_HandleRxSetsRemoteTimersAndDetectDeadline(t *te
 	require.Equal(t, 34*time.Millisecond, s.remoteRxMin)
 	require.False(t, s.detectDeadline.IsZero())
 	require.Equal(t, now, s.lastRx)
+}
+
+func TestClient_Liveness_Session_HandleRxIgnoredWhenAdminDown(t *testing.T) {
+	t.Parallel()
+	s := newSess()
+	s.state = AdminDown
+	now := time.Now()
+	cp := &ControlPacket{YourDiscr: 0, MyDiscr: 9, State: Up, DesiredMinTxUs: 1000, RequiredMinRxUs: 2000}
+	changed := s.HandleRx(now, cp)
+	require.False(t, changed)
+	require.Equal(t, AdminDown, s.state)
+	require.Zero(t, s.yourDisc)
 }

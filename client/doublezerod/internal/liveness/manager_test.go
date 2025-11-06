@@ -204,9 +204,11 @@ func TestClient_LivenessManager_WithdrawRoute_RemovesSessionAndDeletesIfInstalle
 
 func TestClient_LivenessManager_AdminDownAll(t *testing.T) {
 	t.Parallel()
+	addCh := make(chan *routing.Route, 1)
+	delCh := make(chan *routing.Route, 1)
 	nlr := &MockRouteReaderWriter{
-		RouteAddFunc:        func(*routing.Route) error { return nil },
-		RouteDeleteFunc:     func(*routing.Route) error { return nil },
+		RouteAddFunc:        func(r *routing.Route) error { addCh <- r; return nil },
+		RouteDeleteFunc:     func(r *routing.Route) error { delCh <- r; return nil },
 		RouteGetFunc:        func(net.IP) ([]*routing.Route, error) { return nil, nil },
 		RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, nil },
 	}
@@ -222,7 +224,27 @@ func TestClient_LivenessManager_AdminDownAll(t *testing.T) {
 	})
 	require.NoError(t, m.RegisterRoute(r, "lo"))
 
+	// Drive session to Up so a route is installed
+	var peer Peer
+	var sess *Session
+	func() {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		for p, s := range m.sessions {
+			peer, sess = p, s
+			break
+		}
+	}()
+	require.NotNil(t, sess)
+	// Down->Init
+	m.HandleRx(&ControlPacket{YourDiscr: 0, MyDiscr: 1234, State: Down}, peer)
+	// Init->Up (RouteAdd enqueued)
+	m.HandleRx(&ControlPacket{YourDiscr: sess.myDisc, MyDiscr: sess.yourDisc, State: Up}, peer)
+	_ = wait(t, addCh, 2*time.Second, "RouteAdd after Up")
+
+	// Enter AdminDownAll -> should withdraw route once
 	m.AdminDownAll()
+	_ = wait(t, delCh, 2*time.Second, "RouteDelete on AdminDownAll")
 
 	m.mu.Lock()
 	for _, s := range m.sessions {

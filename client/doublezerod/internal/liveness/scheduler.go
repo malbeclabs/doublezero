@@ -171,6 +171,12 @@ func (s *Scheduler) Run(ctx context.Context) {
 }
 
 func (s *Scheduler) scheduleTx(now time.Time, sess *Session) {
+	sess.mu.Lock()
+	isAdminDown := !sess.alive || sess.state == AdminDown
+	sess.mu.Unlock()
+	if isAdminDown {
+		return
+	}
 	next := sess.ComputeNextTx(now, nil)
 	s.eq.Push(&event{when: next, typ: evTX, s: sess})
 }
@@ -185,7 +191,7 @@ func (s *Scheduler) scheduleDetect(now time.Time, sess *Session) {
 
 func (s *Scheduler) doTX(sess *Session) {
 	sess.mu.Lock()
-	if !sess.alive {
+	if !sess.alive || sess.state == AdminDown {
 		sess.mu.Unlock()
 		return
 	}

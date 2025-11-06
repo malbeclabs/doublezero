@@ -1,6 +1,7 @@
 package liveness
 
 import (
+	"errors"
 	"log/slog"
 	"net"
 	"sync"
@@ -12,11 +13,349 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-const (
-	testTxMin  = 100 * time.Millisecond
-	testRxMin  = 100 * time.Millisecond
-	testDetect = 3
-)
+func TestClient_LivenessManager_ConfigValidate(t *testing.T) {
+	t.Parallel()
+	log := newTestLogger(t)
+
+	err := (&ManagerConfig{Netlinker: &MockRouteReaderWriter{}, BindIP: "127.0.0.1"}).Validate()
+	require.Error(t, err)
+
+	err = (&ManagerConfig{Logger: log, BindIP: "127.0.0.1"}).Validate()
+	require.Error(t, err)
+
+	err = (&ManagerConfig{Logger: log, Netlinker: &MockRouteReaderWriter{}, BindIP: ""}).Validate()
+	require.Error(t, err)
+
+	err = (&ManagerConfig{Logger: log, Netlinker: &MockRouteReaderWriter{}, BindIP: "127.0.0.1", MinTxFloor: -1}).Validate()
+	require.Error(t, err)
+	err = (&ManagerConfig{Logger: log, Netlinker: &MockRouteReaderWriter{}, BindIP: "127.0.0.1", MaxTxCeil: -1}).Validate()
+	require.Error(t, err)
+
+	err = (&ManagerConfig{
+		Logger:     log,
+		Netlinker:  &MockRouteReaderWriter{},
+		BindIP:     "127.0.0.1",
+		TxMin:      100 * time.Millisecond,
+		RxMin:      100 * time.Millisecond,
+		DetectMult: 3,
+		MinTxFloor: 200 * time.Millisecond,
+		MaxTxCeil:  100 * time.Millisecond,
+		Port:       -1, // invalid port
+	}).Validate()
+	require.EqualError(t, err, "port must be greater than or equal to 0")
+
+	cfg := &ManagerConfig{
+		Logger:     log,
+		Netlinker:  &MockRouteReaderWriter{},
+		BindIP:     "127.0.0.1",
+		TxMin:      100 * time.Millisecond,
+		RxMin:      100 * time.Millisecond,
+		DetectMult: 3,
+		MinTxFloor: 50 * time.Millisecond,
+		MaxTxCeil:  1 * time.Second,
+	}
+	err = cfg.Validate()
+	require.NoError(t, err)
+	require.NotZero(t, cfg.MinTxFloor)
+	require.NotZero(t, cfg.MaxTxCeil)
+	require.GreaterOrEqual(t, int64(cfg.MaxTxCeil), int64(cfg.MinTxFloor))
+}
+
+func TestClient_LivenessManager_NewManager_BindsAndLocalAddr(t *testing.T) {
+	t.Parallel()
+	m, err := newTestManager(t, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = m.Close() })
+
+	la := m.LocalAddr()
+	require.NotNil(t, la)
+	require.Equal(t, "127.0.0.1", la.IP.String())
+	require.NotZero(t, la.Port)
+}
+
+func TestClient_LivenessManager_RegisterRoute_Deduplicates(t *testing.T) {
+	t.Parallel()
+	m, err := newTestManager(t, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = m.Close() })
+
+	r := newTestRoute(func(r *routing.Route) {
+		r.Dst = &net.IPNet{IP: m.LocalAddr().IP, Mask: net.CIDRMask(32, 32)}
+		r.Src = m.LocalAddr().IP
+	})
+
+	err = m.RegisterRoute(r, "lo")
+	require.NoError(t, err)
+	err = m.RegisterRoute(r, "lo")
+	require.NoError(t, err)
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	require.Len(t, m.sessions, 1)
+}
+
+func TestClient_LivenessManager_HandleRx_Transitions_AddAndDelete(t *testing.T) {
+	t.Parallel()
+
+	addCh := make(chan *routing.Route, 1)
+	delCh := make(chan *routing.Route, 1)
+
+	m, err := newTestManager(t, func(cfg *ManagerConfig) {
+		cfg.Netlinker = &MockRouteReaderWriter{
+			RouteAddFunc:        func(r *routing.Route) error { addCh <- r; return nil },
+			RouteDeleteFunc:     func(r *routing.Route) error { delCh <- r; return nil },
+			RouteGetFunc:        func(net.IP) ([]*routing.Route, error) { return nil, nil },
+			RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, nil },
+		}
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = m.Close() })
+
+	r := newTestRoute(func(r *routing.Route) {
+		r.Dst = &net.IPNet{IP: m.LocalAddr().IP, Mask: net.CIDRMask(32, 32)}
+		r.Src = m.LocalAddr().IP
+	})
+	require.NoError(t, m.RegisterRoute(r, "lo"))
+
+	var sess *Session
+	var peer Peer
+	func() {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		for p, s := range m.sessions {
+			peer = p
+			sess = s
+			break
+		}
+	}()
+	require.NotNil(t, sess)
+
+	m.HandleRx(&ControlPacket{YourDiscr: 0, MyDiscr: 1234, State: Down}, peer)
+	func() {
+		sess.mu.Lock()
+		defer sess.mu.Unlock()
+		require.Equal(t, Init, sess.state)
+		require.EqualValues(t, 1234, sess.yourDisc)
+	}()
+
+	m.HandleRx(&ControlPacket{YourDiscr: sess.myDisc, MyDiscr: sess.yourDisc, State: Init}, peer)
+	added := wait(t, addCh, 2*time.Second, "RouteAdd after Up")
+	require.Equal(t, r.Table, added.Table)
+	require.Equal(t, r.Src.String(), added.Src.String())
+	require.Equal(t, r.Dst.String(), added.Dst.String())
+	require.Equal(t, r.NextHop.String(), added.NextHop.String())
+
+	m.HandleRx(&ControlPacket{YourDiscr: sess.myDisc, MyDiscr: sess.yourDisc, State: Down}, peer)
+	deleted := wait(t, delCh, 2*time.Second, "RouteDelete after Down")
+	require.Equal(t, r.Table, deleted.Table)
+	require.Equal(t, r.Src.String(), deleted.Src.String())
+	require.Equal(t, r.Dst.String(), deleted.Dst.String())
+}
+
+func TestClient_LivenessManager_WithdrawRoute_RemovesSessionAndDeletesIfInstalled(t *testing.T) {
+	t.Parallel()
+
+	addCh := make(chan *routing.Route, 1)
+	delCh := make(chan *routing.Route, 1)
+	nlr := &MockRouteReaderWriter{
+		RouteAddFunc:        func(r *routing.Route) error { addCh <- r; return nil },
+		RouteDeleteFunc:     func(r *routing.Route) error { delCh <- r; return nil },
+		RouteGetFunc:        func(net.IP) ([]*routing.Route, error) { return nil, nil },
+		RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, nil },
+	}
+
+	m, err := newTestManager(t, func(cfg *ManagerConfig) {
+		cfg.Netlinker = nlr
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = m.Close() })
+
+	r := newTestRoute(func(r *routing.Route) {
+		r.Dst = &net.IPNet{IP: m.LocalAddr().IP, Mask: net.CIDRMask(32, 32)}
+		r.Src = m.LocalAddr().IP
+	})
+	require.NoError(t, m.RegisterRoute(r, "lo"))
+
+	var peer Peer
+	var sess *Session
+	func() {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		for p, s := range m.sessions {
+			peer, sess = p, s
+			break
+		}
+	}()
+	m.HandleRx(&ControlPacket{YourDiscr: 0, MyDiscr: 1, State: Init}, peer)
+	wait(t, addCh, 2*time.Second, "RouteAdd before withdraw")
+
+	require.NoError(t, m.WithdrawRoute(r, "lo"))
+	wait(t, delCh, 2*time.Second, "RouteDelete on withdraw")
+
+	m.mu.Lock()
+	_, still := m.sessions[peer]
+	m.mu.Unlock()
+	require.False(t, still, "session should be removed after withdraw")
+
+	sess.mu.Lock()
+	require.False(t, sess.alive)
+	sess.mu.Unlock()
+}
+
+func TestClient_LivenessManager_AdminDownAll(t *testing.T) {
+	t.Parallel()
+	nlr := &MockRouteReaderWriter{
+		RouteAddFunc:        func(*routing.Route) error { return nil },
+		RouteDeleteFunc:     func(*routing.Route) error { return nil },
+		RouteGetFunc:        func(net.IP) ([]*routing.Route, error) { return nil, nil },
+		RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, nil },
+	}
+	m, err := newTestManager(t, func(cfg *ManagerConfig) {
+		cfg.Netlinker = nlr
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = m.Close() })
+
+	r := newTestRoute(func(r *routing.Route) {
+		r.Dst = &net.IPNet{IP: m.LocalAddr().IP, Mask: net.CIDRMask(32, 32)}
+		r.Src = m.LocalAddr().IP
+	})
+	require.NoError(t, m.RegisterRoute(r, "lo"))
+
+	m.AdminDownAll()
+
+	m.mu.Lock()
+	for _, s := range m.sessions {
+		s.mu.Lock()
+		require.Equal(t, AdminDown, s.state)
+		s.mu.Unlock()
+	}
+	m.mu.Unlock()
+}
+
+func TestClient_LivenessManager_Close_Idempotent(t *testing.T) {
+	t.Parallel()
+	m, err := newTestManager(t, func(cfg *ManagerConfig) {
+		cfg.Netlinker = &MockRouteReaderWriter{}
+	})
+	require.NoError(t, err)
+	require.NoError(t, m.Close())
+	require.NoError(t, m.Close())
+}
+
+func TestClient_LivenessManager_HandleRx_UnknownPeer_NoEffect(t *testing.T) {
+	t.Parallel()
+
+	nlr := &MockRouteReaderWriter{
+		RouteAddFunc:        func(*routing.Route) error { return nil },
+		RouteDeleteFunc:     func(*routing.Route) error { return nil },
+		RouteGetFunc:        func(net.IP) ([]*routing.Route, error) { return nil, nil },
+		RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, nil },
+	}
+
+	m, err := newTestManager(t, func(cfg *ManagerConfig) {
+		cfg.Netlinker = nlr
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = m.Close() })
+
+	// Register a real session to ensure maps are non-empty.
+	r := newTestRoute(func(r *routing.Route) {
+		r.Dst = &net.IPNet{IP: m.LocalAddr().IP, Mask: net.CIDRMask(32, 32)}
+		r.Src = m.LocalAddr().IP
+	})
+	require.NoError(t, m.RegisterRoute(r, "lo"))
+
+	m.mu.Lock()
+	prevSessions := len(m.sessions)
+	prevInstalled := len(m.installed)
+	m.mu.Unlock()
+
+	// Construct a peer key that doesn't exist.
+	unknown := NewPeer("lo", net.IPv4(127, 0, 0, 2), net.IPv4(127, 0, 0, 3))
+	m.HandleRx(&ControlPacket{YourDiscr: 0, MyDiscr: 1, State: Init}, unknown)
+
+	// Assert no changes.
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	require.Equal(t, prevSessions, len(m.sessions))
+	require.Equal(t, prevInstalled, len(m.installed))
+}
+
+func TestClient_LivenessManager_NetlinkerErrors_NoCrash(t *testing.T) {
+	t.Parallel()
+
+	addErr := errors.New("add boom")
+	delErr := errors.New("del boom")
+	nlr := &MockRouteReaderWriter{
+		RouteAddFunc:        func(*routing.Route) error { return addErr },
+		RouteDeleteFunc:     func(*routing.Route) error { return delErr },
+		RouteGetFunc:        func(net.IP) ([]*routing.Route, error) { return nil, nil },
+		RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, nil },
+	}
+
+	m, err := newTestManager(t, func(cfg *ManagerConfig) {
+		cfg.Netlinker = nlr
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = m.Close() })
+
+	r := newTestRoute(func(r *routing.Route) {
+		r.Dst = &net.IPNet{IP: m.LocalAddr().IP, Mask: net.CIDRMask(32, 32)}
+		r.Src = m.LocalAddr().IP
+	})
+	require.NoError(t, m.RegisterRoute(r, "lo"))
+
+	// Grab session+peer key to inspect installed flags.
+	var peer Peer
+	var sess *Session
+	func() {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		for p, s := range m.sessions {
+			peer, sess = p, s
+			break
+		}
+	}()
+	require.NotNil(t, sess)
+
+	// Drive to Up (RouteAdd returns error but should not crash; installed set true).
+	m.HandleRx(&ControlPacket{YourDiscr: 0, MyDiscr: 99, State: Down}, peer)                    // Down -> Init
+	m.HandleRx(&ControlPacket{YourDiscr: sess.myDisc, MyDiscr: sess.yourDisc, State: Up}, peer) // Init -> Up
+
+	rk := routeKeyFor(peer.iface, sess.route)
+	time.Sleep(50 * time.Millisecond) // allow onSessionUp goroutine to run
+
+	m.mu.Lock()
+	require.True(t, m.installed[rk], "installed should be true after Up even if RouteAdd errored")
+	m.mu.Unlock()
+
+	// Drive to Down (RouteDelete returns error; should not crash; installed set false).
+	m.HandleRx(&ControlPacket{YourDiscr: sess.myDisc, MyDiscr: sess.yourDisc, State: Down}, peer)
+	time.Sleep(50 * time.Millisecond)
+
+	m.mu.Lock()
+	require.False(t, m.installed[rk], "installed should be false after Down even if RouteDelete errored")
+	m.mu.Unlock()
+}
+
+func newTestManager(t *testing.T, mutate func(*ManagerConfig)) (*Manager, error) {
+	cfg := &ManagerConfig{
+		Logger:     newTestLogger(t),
+		Netlinker:  &MockRouteReaderWriter{},
+		BindIP:     "127.0.0.1",
+		Port:       0,
+		TxMin:      100 * time.Millisecond,
+		RxMin:      100 * time.Millisecond,
+		DetectMult: 3,
+		MinTxFloor: 50 * time.Millisecond,
+		MaxTxCeil:  1 * time.Second,
+	}
+	if mutate != nil {
+		mutate(cfg)
+	}
+	return NewManager(t.Context(), cfg)
+}
 
 type testWriter struct {
 	t  *testing.T
@@ -36,7 +375,6 @@ func newTestLogger(t *testing.T) *slog.Logger {
 	return slog.New(h)
 }
 
-// small helper: wait for a signal or fail
 func wait[T any](t *testing.T, ch <-chan T, d time.Duration, name string) T {
 	t.Helper()
 	select {
@@ -48,245 +386,6 @@ func wait[T any](t *testing.T, ch <-chan T, d time.Duration, name string) T {
 		return z
 	}
 }
-
-func TestManager_E2E_TwoManagers_Up(t *testing.T) {
-	log := newTestLogger(t)
-
-	// Observe real effects on the RouteReaderWriter
-	addCh := make(chan *routing.Route, 4)
-	delCh := make(chan *routing.Route, 4)
-	nlr := &MockRouteReaderWriter{
-		RouteAddFunc:        func(r *routing.Route) error { addCh <- r; return nil },
-		RouteDeleteFunc:     func(r *routing.Route) error { delCh <- r; return nil },
-		RouteGetFunc:        func(net.IP) ([]*routing.Route, error) { return nil, nil },
-		RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, nil },
-	}
-
-	m1, err := NewManager(t.Context(), &ManagerConfig{
-		Logger:    log,
-		Netlinker: nlr,
-		BindIP:    "127.0.0.1",
-		Port:      0,
-	})
-	require.NoError(t, err, "NewManager m1")
-	t.Cleanup(func() { _ = m1.Close() })
-
-	m2, err := NewManager(t.Context(), &ManagerConfig{
-		Logger:    log,
-		Netlinker: nlr,
-		BindIP:    "127.0.0.1",
-		Port:      0,
-	})
-	require.NoError(t, err, "NewManager m2")
-	t.Cleanup(func() { _ = m2.Close() })
-
-	const txMin = 100 * time.Millisecond
-	const rxMin = 100 * time.Millisecond
-	const det = 3
-
-	// Distinct prefixes so hashes don’t collide; nextHop can be anything for this test.
-	r1 := newTestRoute(func(r *routing.Route) {
-		r.Dst = &net.IPNet{IP: m2.LocalAddr().IP, Mask: net.CIDRMask(32, 32)}
-		r.Src = m1.LocalAddr().IP
-	})
-	require.NoError(t, m1.RegisterRoute(r1, m2.LocalAddr(), "lo", txMin, rxMin, det))
-
-	r2 := newTestRoute(func(r *routing.Route) {
-		r.Dst = &net.IPNet{IP: m1.LocalAddr().IP, Mask: net.CIDRMask(32, 32)}
-		r.Src = m2.LocalAddr().IP
-	})
-	require.NoError(t, m2.RegisterRoute(r2, m1.LocalAddr(), "lo", txMin, rxMin, det))
-
-	// Expect both sides to install their route (RouteAdd called twice total).
-	gotA := wait(t, addCh, 2*time.Second, "first route add")
-	gotB := wait(t, addCh, 2*time.Second, "second route add")
-
-	// Order is nondeterministic; validate set membership
-	adds := []*routing.Route{gotA, gotB}
-	assertHas := func(want *routing.Route) {
-		for _, r := range adds {
-			if r != nil &&
-				r.Src.String() == want.Src.String() &&
-				r.Dst.String() == want.Dst.String() &&
-				r.NextHop.String() == want.NextHop.String() &&
-				r.Table == want.Table {
-				return
-			}
-		}
-		t.Fatalf("expected RouteAdd for %s not observed", want.String())
-	}
-	assertHas(r1)
-	assertHas(r2)
-
-	// Let a few TX intervals pass and ensure no RouteDelete is observed.
-	time.Sleep(3 * txMin)
-	select {
-	case r := <-delCh:
-		t.Fatalf("unexpected RouteDelete: %s", r.String())
-	default:
-	}
-}
-
-func TestManagers_E2E_UpAndExpire(t *testing.T) {
-	log1 := newTestLogger(t)
-	log2 := newTestLogger(t)
-
-	addCh := make(chan *routing.Route, 4)
-	delCh := make(chan *routing.Route, 4)
-	nlr := &MockRouteReaderWriter{
-		RouteAddFunc:        func(r *routing.Route) error { addCh <- r; return nil },
-		RouteDeleteFunc:     func(r *routing.Route) error { delCh <- r; return nil },
-		RouteGetFunc:        func(net.IP) ([]*routing.Route, error) { return nil, nil },
-		RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, nil },
-	}
-
-	ctx := t.Context()
-	m1, err := NewManager(ctx, &ManagerConfig{
-		Logger:    log1,
-		Netlinker: nlr,
-		BindIP:    "127.0.0.1",
-		Port:      0,
-	})
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = m1.Close() })
-
-	m2, err := NewManager(ctx, &ManagerConfig{
-		Logger:    log2,
-		Netlinker: nlr,
-		BindIP:    "127.0.0.1",
-		Port:      0,
-	})
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = m2.Close() })
-
-	// Register symmetrical sessions
-	r1 := newTestRoute(func(r *routing.Route) {
-		r.Dst = &net.IPNet{IP: m2.LocalAddr().IP, Mask: net.CIDRMask(32, 32)}
-		r.Src = m1.LocalAddr().IP
-	})
-	require.NoError(t, m1.RegisterRoute(r1, m2.LocalAddr(), "lo", testTxMin, testRxMin, testDetect))
-
-	r2 := newTestRoute(func(r *routing.Route) {
-		r.Dst = &net.IPNet{IP: m1.LocalAddr().IP, Mask: net.CIDRMask(32, 32)}
-		r.Src = m2.LocalAddr().IP
-	})
-	require.NoError(t, m2.RegisterRoute(r2, m1.LocalAddr(), "lo", testTxMin, testRxMin, testDetect))
-
-	// Both should go Up → two RouteAdd calls.
-	gotA := wait(t, addCh, 3*time.Second, "first route add")
-	gotB := wait(t, addCh, 3*time.Second, "second route add")
-	// Sanity: make sure both r1 and r2 appeared in any order.
-	adds := []*routing.Route{gotA, gotB}
-	has := func(want *routing.Route) bool {
-		for _, r := range adds {
-			if r != nil &&
-				r.Src.String() == want.Src.String() &&
-				r.Dst.String() == want.Dst.String() &&
-				r.NextHop.String() == want.NextHop.String() &&
-				r.Table == want.Table {
-				return true
-			}
-		}
-		return false
-	}
-	require.True(t, has(r1), "RouteAdd for r1 not observed")
-	require.True(t, has(r2), "RouteAdd for r2 not observed")
-
-	// Now force expiry by silencing m2 entirely
-	_ = m2.Close()
-
-	// m1 should detect loss and remove its installed route → expect one RouteDelete (for r1).
-	deleted := wait(t, delCh, 2*time.Second, "route delete after peer silence")
-	require.Equal(t, r1.Src.String(), deleted.Src.String())
-	require.Equal(t, r1.Dst.String(), deleted.Dst.String())
-	require.Equal(t, r1.NextHop.String(), deleted.NextHop.String())
-	require.Equal(t, r1.Table, deleted.Table)
-
-	// And no immediate additional deletes.
-	select {
-	case extra := <-delCh:
-		t.Fatalf("unexpected extra RouteDelete: %s", extra.String())
-	default:
-	}
-}
-
-func TestManager_WithdrawRoute_RemovesSession(t *testing.T) {
-	log := newTestLogger(t)
-
-	// We don’t expect kernel adds/deletes in this test, but mock must be non-nil.
-	nlr := &MockRouteReaderWriter{
-		RouteAddFunc:        func(*routing.Route) error { return nil },
-		RouteDeleteFunc:     func(*routing.Route) error { return nil },
-		RouteGetFunc:        func(net.IP) ([]*routing.Route, error) { return nil, nil },
-		RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, nil },
-	}
-
-	m, err := NewManager(t.Context(), &ManagerConfig{
-		Logger:    log,
-		Netlinker: nlr,
-		BindIP:    "127.0.0.1",
-		Port:      0,
-	})
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = m.Close() })
-
-	// Peer doesn't matter here; we won't exchange traffic.
-	r := newTestRoute(func(r *routing.Route) {
-		r.Dst = &net.IPNet{IP: m.LocalAddr().IP, Mask: net.CIDRMask(32, 32)}
-		r.Src = m.LocalAddr().IP
-	})
-	require.NoError(t, m.RegisterRoute(r, m.LocalAddr(), "lo", testTxMin, testRxMin, testDetect))
-	m.WithdrawRoute(r, "lo")
-	time.Sleep(50 * time.Millisecond)
-
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if len(m.sessions) != 0 {
-		t.Fatalf("expected no sessions, have %d", len(m.sessions))
-	}
-}
-
-func TestManager_AdminDownAll_SetsState(t *testing.T) {
-	log := newTestLogger(t)
-
-	nlr := &MockRouteReaderWriter{
-		RouteAddFunc:        func(*routing.Route) error { return nil },
-		RouteDeleteFunc:     func(*routing.Route) error { return nil },
-		RouteGetFunc:        func(net.IP) ([]*routing.Route, error) { return nil, nil },
-		RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, nil },
-	}
-
-	m, err := NewManager(t.Context(), &ManagerConfig{
-		Logger:    log,
-		Netlinker: nlr,
-		BindIP:    "127.0.0.1",
-		Port:      0,
-	})
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = m.Close() })
-
-	r := newTestRoute(func(r *routing.Route) {
-		r.Dst = &net.IPNet{IP: m.LocalAddr().IP, Mask: net.CIDRMask(32, 32)}
-		r.Src = m.LocalAddr().IP
-	})
-	require.NoError(t, m.RegisterRoute(r, m.LocalAddr(), "lo", testTxMin, testRxMin, testDetect))
-
-	m.AdminDownAll()
-
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	for _, s := range m.sessions {
-		s.mu.Lock()
-		if s.state != AdminDown {
-			st := s.state
-			s.mu.Unlock()
-			t.Fatalf("session not AdminDown, got %v", st)
-		}
-		s.mu.Unlock()
-	}
-}
-
-// --- helpers unchanged ---
 
 func newTestRoute(mutate func(*routing.Route)) *routing.Route {
 	r := &routing.Route{
@@ -314,20 +413,32 @@ type MockRouteReaderWriter struct {
 func (m *MockRouteReaderWriter) RouteAdd(r *routing.Route) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.RouteAddFunc == nil {
+		return nil
+	}
 	return m.RouteAddFunc(r)
 }
 func (m *MockRouteReaderWriter) RouteDelete(r *routing.Route) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.RouteDeleteFunc == nil {
+		return nil
+	}
 	return m.RouteDeleteFunc(r)
 }
 func (m *MockRouteReaderWriter) RouteGet(ip net.IP) ([]*routing.Route, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.RouteGetFunc == nil {
+		return nil, nil
+	}
 	return m.RouteGetFunc(ip)
 }
 func (m *MockRouteReaderWriter) RouteByProtocol(protocol int) ([]*routing.Route, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.RouteByProtocolFunc == nil {
+		return nil, nil
+	}
 	return m.RouteByProtocolFunc(protocol)
 }

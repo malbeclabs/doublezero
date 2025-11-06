@@ -1,0 +1,243 @@
+package liveness
+
+import (
+	"math/rand"
+	"net"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+)
+
+func newSess() *Session {
+	return &Session{
+		route:          nil,
+		myDisc:         0xAABBCCDD,
+		yourDisc:       0,
+		state:          Down,
+		detectMult:     3,
+		localTxMin:     20 * time.Millisecond,
+		localRxMin:     15 * time.Millisecond,
+		remoteTxMin:    10 * time.Millisecond,
+		remoteRxMin:    0,
+		minTxFloor:     5 * time.Millisecond,
+		maxTxCeil:      10 * time.Second,
+		alive:          true,
+		peer:           nil,
+		peerAddr:       &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 9999},
+		nextTx:         time.Time{},
+		detectDeadline: time.Time{},
+		lastRx:         time.Time{},
+	}
+}
+
+func TestClient_Liveness_Session_ComputeNextTx_JitterWithinBoundsAndPersists(t *testing.T) {
+	t.Parallel()
+	s := newSess()
+	s.localTxMin = 100 * time.Millisecond
+	now := time.Unix(0, 0)
+	r := rand.New(rand.NewSource(1))
+	next := s.ComputeNextTx(now, r)
+
+	iv := s.txInterval()
+	j := iv / 10
+	min := now.Add(iv - j)
+	max := now.Add(iv + j)
+
+	require.True(t, !next.Before(min) && !next.After(max), "next=%v min=%v max=%v", next, min, max)
+	require.Equal(t, next, s.nextTx)
+}
+
+func TestClient_Liveness_Session_TxIntervalRespectsRemoteRxMinFloorAndCeil(t *testing.T) {
+	t.Parallel()
+	s := newSess()
+	s.localTxMin = 20 * time.Millisecond
+	s.remoteRxMin = 50 * time.Millisecond
+	s.minTxFloor = 60 * time.Millisecond
+	s.maxTxCeil = 40 * time.Millisecond
+	require.Equal(t, 40*time.Millisecond, s.txInterval())
+}
+
+func TestClient_Liveness_Session_RxRefPrefersMaxAndFloor(t *testing.T) {
+	t.Parallel()
+	s := newSess()
+	s.remoteTxMin = 10 * time.Millisecond
+	s.localRxMin = 20 * time.Millisecond
+	s.minTxFloor = 5 * time.Millisecond
+	require.Equal(t, 20*time.Millisecond, s.rxRef())
+
+	s.remoteTxMin = 0
+	s.localRxMin = 0
+	s.minTxFloor = 7 * time.Millisecond
+	require.Equal(t, 7*time.Millisecond, s.rxRef())
+}
+
+func TestClient_Liveness_Session_DetectTimeIsDetectMultTimesRxRef(t *testing.T) {
+	t.Parallel()
+	s := newSess()
+	s.detectMult = 5
+	s.remoteTxMin = 11 * time.Millisecond
+	s.localRxMin = 13 * time.Millisecond // max with remoteTxMin => 13ms
+	s.minTxFloor = 3 * time.Millisecond
+	require.Equal(t, 5*13*time.Millisecond, s.detectTime())
+}
+
+func TestClient_Liveness_Session_ArmDetectNotAliveOrZeroDeadlineReturnsFalse(t *testing.T) {
+	t.Parallel()
+	s := newSess()
+	s.alive = false
+	s.detectDeadline = time.Now().Add(1 * time.Second)
+	_, ok := s.ArmDetect(time.Now())
+	require.False(t, ok)
+
+	s = newSess()
+	s.alive = true
+	s.detectDeadline = time.Time{}
+	_, ok = s.ArmDetect(time.Now())
+	require.False(t, ok)
+}
+
+func TestClient_Liveness_Session_ArmDetectFutureDeadlineReturnsSameTrue(t *testing.T) {
+	t.Parallel()
+	s := newSess()
+	now := time.Now()
+	want := now.Add(500 * time.Millisecond)
+	s.detectDeadline = want
+	ddl, ok := s.ArmDetect(now)
+	require.True(t, ok)
+	require.Equal(t, want, ddl)
+	require.Equal(t, want, s.detectDeadline)
+}
+
+func TestClient_Liveness_Session_ArmDetectPastDeadlineReschedules(t *testing.T) {
+	t.Parallel()
+	s := newSess()
+	now := time.Now()
+	s.detectDeadline = now.Add(-1 * time.Millisecond)
+	ddl, ok := s.ArmDetect(now)
+	require.True(t, ok)
+	require.True(t, ddl.After(now))
+	require.Equal(t, ddl, s.detectDeadline)
+}
+
+func TestClient_Liveness_Session_ExpireIfDueTransitionsToDownAndClearsDeadline(t *testing.T) {
+	t.Parallel()
+	s := newSess()
+	now := time.Now()
+	s.state = Up
+	s.detectDeadline = now.Add(-1 * time.Millisecond)
+	exp := s.ExpireIfDue(now)
+	require.True(t, exp)
+	require.Equal(t, Down, s.state)
+	require.True(t, s.detectDeadline.IsZero())
+}
+
+func TestClient_Liveness_Session_ExpireIfDueNoTransitionWhenNotDueOrNotAlive(t *testing.T) {
+	t.Parallel()
+	s := newSess()
+	now := time.Now()
+	s.state = Init
+	s.detectDeadline = now.Add(1 * time.Second)
+	require.False(t, s.ExpireIfDue(now))
+	require.Equal(t, Init, s.state)
+
+	s = newSess()
+	s.state = Up
+	s.alive = false
+	s.detectDeadline = now.Add(-1 * time.Millisecond)
+	require.False(t, s.ExpireIfDue(now))
+	require.Equal(t, Up, s.state)
+}
+
+func TestClient_Liveness_Session_HandleRxIgnoresMismatchedYourDiscr(t *testing.T) {
+	t.Parallel()
+	s := newSess()
+	s.myDisc = 111
+	now := time.Now()
+	cp := &ControlPacket{YourDiscr: 222, MyDiscr: 333, State: Init}
+	changed := s.HandleRx(now, cp)
+	require.False(t, changed)
+	require.Equal(t, Down, s.state)
+	require.Zero(t, s.yourDisc)
+}
+
+func TestClient_Liveness_Session_HandleRxFromDownToInitOrUpAndArmsDetect(t *testing.T) {
+	t.Parallel()
+	s := newSess()
+	s.state = Down
+	s.myDisc = 42
+
+	now := time.Now()
+	// Peer Down -> go Init
+	cpDown := &ControlPacket{
+		YourDiscr:       0,    // acceptable (we only check mismatch if nonzero)
+		MyDiscr:         1001, // learn peer discr
+		State:           Down,
+		DesiredMinTxUs:  30_000, // 30ms
+		RequiredMinRxUs: 40_000, // 40ms
+	}
+	changed := s.HandleRx(now, cpDown)
+	require.True(t, changed)
+	require.Equal(t, Init, s.state)
+	require.EqualValues(t, 1001, s.yourDisc)
+	require.False(t, s.detectDeadline.IsZero())
+	require.Equal(t, now, s.lastRx)
+
+	// Next packet peer Init -> go Up
+	cpInit := &ControlPacket{
+		YourDiscr:       42, // matches our myDisc (strictly not required since we accept 0 or equal)
+		MyDiscr:         1001,
+		State:           Init,
+		DesiredMinTxUs:  20_000,
+		RequiredMinRxUs: 20_000,
+	}
+	changed = s.HandleRx(now.Add(10*time.Millisecond), cpInit)
+	require.True(t, changed)
+	require.Equal(t, Up, s.state)
+}
+
+func TestClient_Liveness_Session_HandleRxFromInitToUpOnPeerInitOrUp(t *testing.T) {
+	t.Parallel()
+	s := newSess()
+	s.state = Init
+	s.yourDisc = 777 // already learned
+	now := time.Now()
+
+	cp := &ControlPacket{YourDiscr: 0, MyDiscr: 777, State: Up}
+	changed := s.HandleRx(now, cp)
+	require.True(t, changed)
+	require.Equal(t, Up, s.state)
+}
+
+func TestClient_Liveness_Session_HandleRxFromUpToDownWhenPeerReportsDownAndStopDetect(t *testing.T) {
+	t.Parallel()
+	s := newSess()
+	s.state = Up
+	s.yourDisc = 1
+	now := time.Now()
+	s.detectDeadline = now.Add(10 * time.Second)
+
+	cp := &ControlPacket{YourDiscr: 0, MyDiscr: 1, State: Down}
+	changed := s.HandleRx(now, cp)
+	require.True(t, changed)
+	require.Equal(t, Down, s.state)
+	require.True(t, s.detectDeadline.IsZero())
+}
+
+func TestClient_Liveness_Session_HandleRxSetsRemoteTimersAndDetectDeadline(t *testing.T) {
+	t.Parallel()
+	s := newSess()
+	now := time.Now()
+	cp := &ControlPacket{
+		YourDiscr:       0,
+		MyDiscr:         9,
+		State:           Init,
+		DesiredMinTxUs:  12_000,
+		RequiredMinRxUs: 34_000,
+	}
+	_ = s.HandleRx(now, cp)
+	require.Equal(t, 12*time.Millisecond, s.remoteTxMin)
+	require.Equal(t, 34*time.Millisecond, s.remoteRxMin)
+	require.False(t, s.detectDeadline.IsZero())
+	require.Equal(t, now, s.lastRx)
+}

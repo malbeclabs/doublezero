@@ -10,7 +10,6 @@ import (
 	"net"
 	"net/netip"
 	"sync"
-	"time"
 
 	"github.com/jwhited/corebgp"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/liveness"
@@ -156,19 +155,7 @@ func (b *BgpServer) AddPeer(p *PeerConfig, advertised []NLRI) error {
 		var err error
 		ctx := context.Background() // TODO(snormore): Get this from the BGP server or something better than this.
 		log := slog.Default()
-		rrw, err = liveness.NewRouteReaderWriter(ctx, &liveness.RouteReaderWriterConfig{
-			Logger:    log,
-			Liveness:  b.livenessManager,
-			Netlinker: b.routeReaderWriter,
-
-			Interface: p.Interface,
-			Port:      p.LivenessPort,
-
-			// TODO(snormore): Make these configurable via CLI flag.
-			TxMin:      300 * time.Millisecond,
-			RxMin:      300 * time.Millisecond,
-			DetectMult: 3,
-		})
+		rrw, err = liveness.NewRouteReaderWriter(ctx, log, b.livenessManager, b.routeReaderWriter, p.Interface)
 		if err != nil {
 			return fmt.Errorf("error creating liveness route reader writer: %v", err)
 		}

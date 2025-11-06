@@ -38,6 +38,13 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 		Netlinker: crw,
 		BindIP:    "0.0.0.0",
 		Port:      44880,
+
+		// TODO(snormore): Make these configurable via CLI flag.
+		TxMin:      300 * time.Millisecond,
+		RxMin:      300 * time.Millisecond,
+		DetectMult: 3,
+		MinTxFloor: 50 * time.Millisecond,
+		MaxTxCeil:  1 * time.Second,
 	})
 	if err != nil {
 		return fmt.Errorf("error creating liveness manager: %v", err)

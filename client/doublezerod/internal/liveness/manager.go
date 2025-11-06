@@ -54,6 +54,10 @@ type ManagerConfig struct {
 	BindIP string
 	Port   int
 
+	TxMin      time.Duration
+	RxMin      time.Duration
+	DetectMult uint8
+
 	MinTxFloor time.Duration
 	MaxTxCeil  time.Duration
 }
@@ -70,6 +74,15 @@ func (c *ManagerConfig) Validate() error {
 	}
 	if c.Port < 0 {
 		return errors.New("port must be greater than or equal to 0")
+	}
+	if c.TxMin <= 0 {
+		return errors.New("txMin must be greater than 0")
+	}
+	if c.RxMin <= 0 {
+		return errors.New("rxMin must be greater than 0")
+	}
+	if c.DetectMult <= 0 {
+		return errors.New("detectMult must be greater than 0")
 	}
 	if c.MinTxFloor == 0 {
 		c.MinTxFloor = defaultMinTxFloor
@@ -122,7 +135,7 @@ func NewManager(ctx context.Context, cfg *ManagerConfig) (*Manager, error) {
 	}
 
 	log := cfg.Logger
-	log.Info("liveness: manager listening on", "address", conn.LocalAddr().String())
+	log.Info("liveness: manager starting", "localAddr", conn.LocalAddr().String(), "txMin", cfg.TxMin, "rxMin", cfg.RxMin, "detectMult", cfg.DetectMult)
 
 	ctx, cancel := context.WithCancel(ctx)
 	m := &Manager{
@@ -156,15 +169,26 @@ func NewManager(ctx context.Context, cfg *ManagerConfig) (*Manager, error) {
 
 func (m *Manager) Close() error {
 	m.cancel()
-	err := m.conn.Close()
-	if err != nil {
-		m.log.Warn("liveness: error closing connection", "error", err)
+
+	var cerr error
+	if m.conn != nil {
+		if err := m.conn.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+			m.log.Warn("liveness: error closing connection", "error", err)
+			cerr = err
+		}
+		m.conn = nil
 	}
+
 	m.wg.Wait()
-	return err
+	return cerr
 }
 
-func (m *Manager) RegisterRoute(r *routing.Route, peerAddr *net.UDPAddr, iface string, txMin, rxMin time.Duration, detectMult uint8) error {
+func (m *Manager) RegisterRoute(r *routing.Route, iface string) error {
+	peerAddr, err := net.ResolveUDPAddr("udp", peerAddrFor(r, m.cfg.Port))
+	if err != nil {
+		return fmt.Errorf("error resolving peer address: %v", err)
+	}
+
 	k := routeKeyFor(iface, r)
 	m.mu.Lock()
 	m.desired[k] = r
@@ -172,7 +196,7 @@ func (m *Manager) RegisterRoute(r *routing.Route, peerAddr *net.UDPAddr, iface s
 
 	peer := NewPeer(iface, r.Dst.IP, r.Src)
 
-	m.log.Info("liveness: registering route", "route", r.String(), "peerAddr", peerAddr, "txMin", txMin, "rxMin", rxMin, "detectMult", detectMult)
+	m.log.Info("liveness: registering route", "route", r.String(), "peerAddr", peerAddr)
 
 	m.mu.Lock()
 	if _, ok := m.sessions[peer]; ok {
@@ -184,9 +208,9 @@ func (m *Manager) RegisterRoute(r *routing.Route, peerAddr *net.UDPAddr, iface s
 		// Initial Phase: State = Down, random discriminator
 		myDisc:     rand32(),
 		state:      Down,
-		detectMult: detectMult,
-		localTxMin: txMin,
-		localRxMin: rxMin,
+		detectMult: m.cfg.DetectMult,
+		localTxMin: m.cfg.TxMin,
+		localRxMin: m.cfg.RxMin,
 		peer:       &peer,
 		peerAddr:   peerAddr,
 		alive:      true,
@@ -329,4 +353,8 @@ func rand32() uint32 {
 
 func routeKeyFor(iface string, r *routing.Route) RouteKey {
 	return RouteKey{Iface: iface, SrcIP: r.Src.String(), Table: r.Table, DstPrefix: r.Dst.String(), NextHop: r.NextHop.String()}
+}
+
+func peerAddrFor(r *routing.Route, port int) string {
+	return fmt.Sprintf("%s:%d", r.Dst.IP.String(), port)
 }

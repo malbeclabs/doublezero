@@ -156,9 +156,14 @@ func (b *BgpServer) AddPeer(p *PeerConfig, advertised []NLRI) error {
 		var err error
 		ctx := context.Background() // TODO(snormore): Get this from the BGP server or something better than this.
 		log := slog.Default()
-		rrw, err = liveness.NewRouteReaderWriter(ctx, log, b.livenessManager, b.routeReaderWriter, &liveness.Config{
-			Iface: p.Interface,
-			Port:  p.LivenessPort,
+		rrw, err = liveness.NewRouteReaderWriter(ctx, &liveness.RouteReaderWriterConfig{
+			Logger:    log,
+			Liveness:  b.livenessManager,
+			Netlinker: b.routeReaderWriter,
+
+			Interface: p.Interface,
+			Port:      p.LivenessPort,
+
 			// TODO(snormore): Make these configurable via CLI flag.
 			TxMin:      300 * time.Millisecond,
 			RxMin:      300 * time.Millisecond,

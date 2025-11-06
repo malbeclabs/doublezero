@@ -62,11 +62,21 @@ func TestManager_E2E_TwoManagers_Up(t *testing.T) {
 		RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, nil },
 	}
 
-	m1, err := NewManager(t.Context(), log, nlr, "127.0.0.1", 0)
+	m1, err := NewManager(t.Context(), &ManagerConfig{
+		Logger:    log,
+		Netlinker: nlr,
+		BindIP:    "127.0.0.1",
+		Port:      0,
+	})
 	require.NoError(t, err, "NewManager m1")
 	t.Cleanup(func() { _ = m1.Close() })
 
-	m2, err := NewManager(t.Context(), log, nlr, "127.0.0.1", 0)
+	m2, err := NewManager(t.Context(), &ManagerConfig{
+		Logger:    log,
+		Netlinker: nlr,
+		BindIP:    "127.0.0.1",
+		Port:      0,
+	})
 	require.NoError(t, err, "NewManager m2")
 	t.Cleanup(func() { _ = m2.Close() })
 
@@ -131,11 +141,21 @@ func TestManagers_E2E_UpAndExpire(t *testing.T) {
 	}
 
 	ctx := t.Context()
-	m1, err := NewManager(ctx, log1, nlr, "127.0.0.1", 0)
+	m1, err := NewManager(ctx, &ManagerConfig{
+		Logger:    log1,
+		Netlinker: nlr,
+		BindIP:    "127.0.0.1",
+		Port:      0,
+	})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = m1.Close() })
 
-	m2, err := NewManager(ctx, log2, nlr, "127.0.0.1", 0)
+	m2, err := NewManager(ctx, &ManagerConfig{
+		Logger:    log2,
+		Netlinker: nlr,
+		BindIP:    "127.0.0.1",
+		Port:      0,
+	})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = m2.Close() })
 
@@ -201,7 +221,12 @@ func TestManager_WithdrawRoute_RemovesSession(t *testing.T) {
 		RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, nil },
 	}
 
-	m, err := NewManager(t.Context(), log, nlr, "127.0.0.1", 0)
+	m, err := NewManager(t.Context(), &ManagerConfig{
+		Logger:    log,
+		Netlinker: nlr,
+		BindIP:    "127.0.0.1",
+		Port:      0,
+	})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = m.Close() })
 
@@ -231,7 +256,12 @@ func TestManager_AdminDownAll_SetsState(t *testing.T) {
 		RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, nil },
 	}
 
-	m, err := NewManager(t.Context(), log, nlr, "127.0.0.1", 0)
+	m, err := NewManager(t.Context(), &ManagerConfig{
+		Logger:    log,
+		Netlinker: nlr,
+		BindIP:    "127.0.0.1",
+		Port:      0,
+	})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = m.Close() })
 

@@ -202,8 +202,7 @@ func (s *Scheduler) doTX(sess *Session) {
 	sess.mu.Unlock()
 	_, err := writeUDP(s.conn, pkt, sess.peerAddr, sess.peer.iface, net.ParseIP(sess.route.Src.String()))
 	if err != nil {
-		// TODO(snormore): Should we just ignore this and/or debug log instead?
-		s.log.Warn("liveness.scheduler: error writing UDP packet", "error", err)
+		s.log.Debug("liveness.scheduler: error writing UDP packet", "error", err)
 	}
 }
 

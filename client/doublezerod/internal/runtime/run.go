@@ -33,7 +33,12 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 	}
 
 	// TODO(snormore): Move this up into main.go and make it configurable via CLI flags.
-	lm, err := liveness.NewManager(ctx, slog.Default(), crw, "0.0.0.0", 44880)
+	lm, err := liveness.NewManager(ctx, &liveness.ManagerConfig{
+		Logger:    slog.Default(),
+		Netlinker: crw,
+		BindIP:    "0.0.0.0",
+		Port:      44880,
+	})
 	if err != nil {
 		return fmt.Errorf("error creating liveness manager: %v", err)
 	}

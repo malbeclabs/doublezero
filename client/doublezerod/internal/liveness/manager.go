@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -11,6 +12,11 @@ import (
 	"time"
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
+)
+
+const (
+	defaultMinTxFloor = 50 * time.Millisecond
+	defaultMaxTxCeil  = 1 * time.Second
 )
 
 type Peer struct {
@@ -33,18 +39,64 @@ func (p *Peer) String() string {
 	return fmt.Sprintf("iface: %s, localIP: %s, remoteIP: %s", p.iface, p.localIP, p.remoteIP)
 }
 
+type RouteKey struct {
+	Iface     string
+	SrcIP     string
+	Table     int
+	DstPrefix string
+	NextHop   string
+}
+
+type ManagerConfig struct {
+	Logger    *slog.Logger
+	Netlinker RouteReaderWriter
+
+	BindIP string
+	Port   int
+
+	MinTxFloor time.Duration
+	MaxTxCeil  time.Duration
+}
+
+func (c *ManagerConfig) Validate() error {
+	if c.Logger == nil {
+		return errors.New("logger is required")
+	}
+	if c.Netlinker == nil {
+		return errors.New("netlinker is required")
+	}
+	if c.BindIP == "" {
+		return errors.New("bind IP is required")
+	}
+	if c.Port < 0 {
+		return errors.New("port must be greater than or equal to 0")
+	}
+	if c.MinTxFloor == 0 {
+		c.MinTxFloor = defaultMinTxFloor
+	}
+	if c.MinTxFloor < 0 {
+		return errors.New("minTxFloor must be greater than 0")
+	}
+	if c.MaxTxCeil == 0 {
+		c.MaxTxCeil = defaultMaxTxCeil
+	}
+	if c.MaxTxCeil < 0 {
+		return errors.New("maxTxCeil must be greater than 0")
+	}
+	if c.MaxTxCeil < c.MinTxFloor {
+		return errors.New("maxTxCeil must be greater than minTxFloor")
+	}
+	return nil
+}
+
 type Manager struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 
 	log  *slog.Logger
-	nlr  RouteReaderWriter
+	cfg  *ManagerConfig
 	conn *net.UDPConn
-	port int
-
-	minTxFloor time.Duration
-	maxTxCeil  time.Duration
 
 	sched *Scheduler
 	recv  *Receiver
@@ -55,8 +107,12 @@ type Manager struct {
 	installed map[RouteKey]bool           // routes actually in kernel
 }
 
-func NewManager(ctx context.Context, log *slog.Logger, nlr RouteReaderWriter, bindIP string, port int) (*Manager, error) {
-	laddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", bindIP, port))
+func NewManager(ctx context.Context, cfg *ManagerConfig) (*Manager, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("error validating manager config: %v", err)
+	}
+
+	laddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", cfg.BindIP, cfg.Port))
 	if err != nil {
 		return nil, err
 	}
@@ -65,31 +121,26 @@ func NewManager(ctx context.Context, log *slog.Logger, nlr RouteReaderWriter, bi
 		return nil, err
 	}
 
+	log := cfg.Logger
 	log.Info("liveness: manager listening on", "address", conn.LocalAddr().String())
 
 	ctx, cancel := context.WithCancel(ctx)
 	m := &Manager{
 		ctx:    ctx,
 		cancel: cancel,
-		log:    log,
-		nlr:    nlr,
-		conn:   conn,
-		port:   port,
 
-		// TODO(snormore): Make these configurable
-		minTxFloor: 50 * time.Millisecond,
-		maxTxCeil:  1 * time.Second,
+		log:  log,
+		cfg:  cfg,
+		conn: conn,
 
 		sessions:  make(map[Peer]*Session),
 		desired:   make(map[RouteKey]*routing.Route),
 		installed: make(map[RouteKey]bool),
 	}
 
-	// Wire scheduler and receiver
 	m.sched = NewScheduler(m.log, m.conn, m.onSessionDown)
 	m.recv = NewReceiver(m.log, m.conn, m.HandleRx)
 
-	// Start workers
 	m.wg.Add(2)
 	go func() {
 		defer m.wg.Done()
@@ -139,8 +190,8 @@ func (m *Manager) RegisterRoute(r *routing.Route, peerAddr *net.UDPAddr, iface s
 		peer:       &peer,
 		peerAddr:   peerAddr,
 		alive:      true,
-		minTxFloor: m.minTxFloor,
-		maxTxCeil:  m.maxTxCeil,
+		minTxFloor: m.cfg.MinTxFloor,
+		maxTxCeil:  m.cfg.MaxTxCeil,
 	}
 	m.sessions[peer] = s
 	// schedule TX immediately; DO NOT schedule detect yet (no continuity to monitor)
@@ -172,7 +223,7 @@ func (m *Manager) WithdrawRoute(r *routing.Route, iface string) error {
 	m.mu.Unlock()
 
 	if wasInstalled {
-		return m.nlr.RouteDelete(r)
+		return m.cfg.Netlinker.RouteDelete(r)
 	}
 	return nil
 }
@@ -205,7 +256,7 @@ func (m *Manager) HandleRx(ctrl *ControlPacket, peer Peer) {
 	m.mu.Lock()
 	s := m.sessions[peer]
 	if s == nil {
-		m.log.Info("liveness: received control packet for unknown peer", "peer", peer.String())
+		m.log.Debug("liveness: received control packet for unknown peer", "peer", peer.String())
 		m.mu.Unlock()
 		return
 	}
@@ -249,7 +300,7 @@ func (m *Manager) onSessionUp(s *Session) {
 	}
 	m.installed[rk] = true
 	m.mu.Unlock()
-	_ = m.nlr.RouteAdd(r)
+	_ = m.cfg.Netlinker.RouteAdd(r)
 	m.log.Info("liveness: session up", "peer", s.peer.String(), "route", s.route.String())
 }
 
@@ -261,7 +312,7 @@ func (m *Manager) onSessionDown(s *Session) {
 	m.installed[rk] = false
 	m.mu.Unlock()
 	if was && r != nil {
-		_ = m.nlr.RouteDelete(r)
+		_ = m.cfg.Netlinker.RouteDelete(r)
 		m.log.Info("liveness: session down", "peer", s.peer.String(), "route", s.route.String())
 	}
 }

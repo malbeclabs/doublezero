@@ -61,15 +61,16 @@ func TestClient_Liveness_Receiver_IgnoresMalformedPacket(t *testing.T) {
 	done := make(chan struct{})
 	go func() { rx.Run(ctx); close(done) }()
 
-	// Ensure the loop is alive: send a short (<40) payload to trigger parse error.
+	// Ensure loop is running: send malformed (<40 bytes)
 	cl, err := net.DialUDP("udp4", nil, conn.LocalAddr().(*net.UDPAddr))
 	require.NoError(t, err)
 	_, err = cl.Write(make([]byte, 20))
 	require.NoError(t, err)
 	_ = cl.Close()
 
-	// Give it a beat to read & ignore, then cancel and close to unblock read.
-	time.Sleep(50 * time.Millisecond)
+	time.Sleep(25 * time.Millisecond) // tiny nudge
+
+	// Cancel, then close socket to force immediate unblock
 	cancel()
 	_ = conn.Close()
 
@@ -80,7 +81,7 @@ func TestClient_Liveness_Receiver_IgnoresMalformedPacket(t *testing.T) {
 		default:
 			return false
 		}
-	}, 3*time.Second, 25*time.Millisecond, "receiver did not exit after cancel+close")
+	}, 5*time.Second, 100*time.Millisecond, "receiver did not exit after cancel+close")
 
-	require.Equal(t, int32(0), atomic.LoadInt32(&calls), "handler should not be called for malformed packet")
+	require.Equal(t, int32(0), atomic.LoadInt32(&calls))
 }

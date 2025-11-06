@@ -15,12 +15,12 @@ type Receiver struct {
 	conn     *UDPConn
 	handleRx HandleRxFunc
 
-	// throttled warning for noisy read errors
+	// Throttled warning for noisy read errors.
 	readErrEvery time.Duration
 	lastReadWarn time.Time
 	mu           sync.Mutex
 
-	// fatal socket error reporting
+	// Fatal socket error reporting.
 	fatalCh chan<- error
 }
 
@@ -38,50 +38,103 @@ func NewReceiver(log *slog.Logger, conn *UDPConn, handleRx HandleRxFunc, fatalCh
 
 func (r *Receiver) Run(ctx context.Context) {
 	r.log.Debug("liveness.recv: rx loop started")
-
 	buf := make([]byte, 1500)
+
 	for {
-		_ = r.conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
-		n, remoteAddr, localIP, ifname, err := r.conn.ReadFrom(buf)
-		if err != nil {
-			// timeout: check for stop
-			if ne, ok := err.(net.Error); ok && ne.Timeout() {
-				select {
-				case <-ctx.Done():
-					r.log.Debug("liveness.recv: rx loop stopped by context done", "reason", ctx.Err())
-					return
-				default:
-					continue
-				}
-			}
-			// context cancelled
+		// Fast path: bail early if we're asked to stop.
+		select {
+		case <-ctx.Done():
+			r.log.Debug("liveness.recv: rx loop stopped by context done", "reason", ctx.Err())
+			return
+		default:
+		}
+
+		// Handle SetReadDeadline errors (e.g., closed socket).
+		if err := r.conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond)); err != nil {
+			// If context is already canceled, exit immediately.
 			select {
 			case <-ctx.Done():
 				r.log.Debug("liveness.recv: rx loop stopped by context done", "reason", ctx.Err())
 				return
 			default:
-				// throttle non-timeout read errors
-				now := time.Now()
-				r.mu.Lock()
-				if r.lastReadWarn.IsZero() || now.Sub(r.lastReadWarn) >= r.readErrEvery {
-					r.lastReadWarn = now
-					r.mu.Unlock()
-					r.log.Warn("liveness.recv: non-timeout read error", "error", err)
-				} else {
-					r.mu.Unlock()
+			}
+			if errors.Is(err, net.ErrClosed) {
+				// Socket is gone: notify (best-effort) and exit.
+				select {
+				case r.fatalCh <- err:
+				default:
 				}
-				// if fatal, notify supervisor and exit to avoid hot loop
-				if isFatalNetErr(err) {
-					select {
-					case r.fatalCh <- err:
-					default:
-					}
-					// brief pause to avoid immediate tight spin in caller
-					time.Sleep(100 * time.Millisecond)
-					return
+				r.log.Debug("liveness.recv: socket closed during SetReadDeadline; exiting")
+				return
+			}
+			// Throttle noisy warnings.
+			now := time.Now()
+			r.mu.Lock()
+			if r.lastReadWarn.IsZero() || now.Sub(r.lastReadWarn) >= r.readErrEvery {
+				r.lastReadWarn = now
+				r.mu.Unlock()
+				r.log.Warn("liveness.recv: SetReadDeadline error", "error", err)
+			} else {
+				r.mu.Unlock()
+			}
+			// Treat fatal kernel/socket conditions as terminal.
+			if isFatalNetErr(err) {
+				select {
+				case r.fatalCh <- err:
+				default:
 				}
+				return
+			}
+			// Brief wait to avoid a hot loop on repeated errors.
+			time.Sleep(50 * time.Millisecond)
+			continue
+		}
+
+		n, remoteAddr, localIP, ifname, err := r.conn.ReadFrom(buf)
+		if err != nil {
+			// If context is already canceled, exit immediately regardless of error type.
+			select {
+			case <-ctx.Done():
+				r.log.Debug("liveness.recv: rx loop stopped by context done", "reason", ctx.Err())
+				return
+			default:
+			}
+
+			// Deadline tick.
+			if ne, ok := err.(net.Error); ok && ne.Timeout() {
 				continue
 			}
+
+			// Closed socket => terminate without spinning.
+			if errors.Is(err, net.ErrClosed) {
+				r.log.Debug("liveness.recv: socket closed; exiting")
+				select {
+				case r.fatalCh <- err:
+				default:
+				}
+				return
+			}
+
+			// Throttle non-timeout read errors to avoid log spam.
+			now := time.Now()
+			r.mu.Lock()
+			if r.lastReadWarn.IsZero() || now.Sub(r.lastReadWarn) >= r.readErrEvery {
+				r.lastReadWarn = now
+				r.mu.Unlock()
+				r.log.Warn("liveness.recv: non-timeout read error", "error", err)
+			} else {
+				r.mu.Unlock()
+			}
+
+			// Notify on fatal network conditions and exit.
+			if isFatalNetErr(err) {
+				select {
+				case r.fatalCh <- err:
+				default:
+				}
+				return
+			}
+			continue
 		}
 
 		ctrl, err := UnmarshalControlPacket(buf[:n])
@@ -89,19 +142,17 @@ func (r *Receiver) Run(ctx context.Context) {
 			r.log.Error("liveness.recv: error parsing control packet", "error", err)
 			continue
 		}
-
 		peer := Peer{Interface: ifname, LocalIP: localIP.String(), RemoteIP: remoteAddr.IP.String()}
-
 		r.handleRx(ctrl, peer)
 	}
 }
 
 func isFatalNetErr(err error) bool {
-	// closed socket
+	// Closed socket.
 	if errors.Is(err, net.ErrClosed) {
 		return true
 	}
-	// syscall-level fatal hints
+	// Syscall-level fatal hints.
 	var se syscall.Errno
 	if errors.As(err, &se) {
 		switch se {
@@ -109,7 +160,7 @@ func isFatalNetErr(err error) bool {
 			return true
 		}
 	}
-	// some platforms wrap the above in *net.OpError; treat non-temporary, non-timeout as fatal
+	// Some platforms wrap the above in *net.OpError; treat non-temporary, non-timeout as fatal.
 	var oe *net.OpError
 	if errors.As(err, &oe) && !oe.Timeout() && !oe.Temporary() {
 		return true

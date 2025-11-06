@@ -111,13 +111,15 @@ type Manager struct {
 	cfg  *ManagerConfig
 	conn *UDPConn
 
-	sched      *Scheduler
-	schedCtx   context.Context
-	schedStop  context.CancelFunc
-	recv       *Receiver
-	recvCtx    context.Context
-	recvStop   context.CancelFunc
-	fatalNetCh chan error // receiver reports fatal socket errors here
+	sched     *Scheduler
+	schedCtx  context.Context
+	schedStop context.CancelFunc
+	recv      *Receiver
+	recvCtx   context.Context
+	recvStop  context.CancelFunc
+
+	fatalNetCh    chan error // supervisor listens for fatal socket errors
+	restartSignal chan struct{}
 
 	mu        sync.Mutex
 	sessions  map[Peer]*Session           // tracked liveness sessions
@@ -157,7 +159,7 @@ func NewManager(ctx context.Context, cfg *ManagerConfig) (*Manager, error) {
 		installed: make(map[RouteKey]bool),
 
 		unkWarnEvery: 5 * time.Second,
-		fatalNetCh:   make(chan error, 1),
+		fatalNetCh:   make(chan error, 8),
 	}
 
 	// start components with their own cancellable contexts
@@ -171,6 +173,12 @@ func NewManager(ctx context.Context, cfg *ManagerConfig) (*Manager, error) {
 	}()
 
 	return m, nil
+}
+
+func (m *Manager) setRestartSignal(ch chan struct{}) {
+	m.mu.Lock()
+	m.restartSignal = ch
+	m.mu.Unlock()
 }
 
 func (m *Manager) startComponents() {
@@ -208,36 +216,16 @@ func (m *Manager) startComponents() {
 		defer m.wg.Done()
 		s.Run(c)
 	}(localSched, localSchedCtx)
-}
-
-func (m *Manager) Close() error {
-	m.cancel()
 
 	m.mu.Lock()
-	recvStop := m.recvStop
-	schedStop := m.schedStop
-	m.recvStop, m.schedStop = nil, nil
-	conn := m.conn
-	m.conn = nil
+	sig := m.restartSignal
 	m.mu.Unlock()
-
-	if recvStop != nil {
-		recvStop()
-	}
-	if schedStop != nil {
-		schedStop()
-	}
-
-	var cerr error
-	if conn != nil {
-		if err := conn.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
-			m.log.Warn("liveness: error closing connection", "error", err)
-			cerr = err
+	if sig != nil {
+		select {
+		case sig <- struct{}{}:
+		default:
 		}
 	}
-
-	m.wg.Wait()
-	return cerr
 }
 
 func (m *Manager) RegisterRoute(r *routing.Route, iface string) error {
@@ -330,6 +318,8 @@ func (m *Manager) AdminDownAll() {
 }
 
 func (m *Manager) LocalAddr() *net.UDPAddr {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if m.conn == nil {
 		return nil
 	}
@@ -337,6 +327,43 @@ func (m *Manager) LocalAddr() *net.UDPAddr {
 		return addr
 	}
 	return nil
+}
+
+func (m *Manager) Close() error {
+	// Stop supervisor and component loops first.
+	m.cancel()
+
+	// Snapshot and clear component stop funcs under lock to avoid races.
+	m.mu.Lock()
+	recvStop := m.recvStop
+	schedStop := m.schedStop
+	m.recvStop, m.schedStop = nil, nil
+	m.mu.Unlock()
+
+	// Tell components to stop (idempotent if nil).
+	if recvStop != nil {
+		recvStop()
+	}
+	if schedStop != nil {
+		schedStop()
+	}
+
+	// Wait for all goroutines (supervisor, receiver, scheduler) to exit.
+	m.wg.Wait()
+
+	// Now close and clear the socket under lock so readers can't race the swap/close.
+	var cerr error
+	m.mu.Lock()
+	if m.conn != nil {
+		if err := m.conn.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+			m.log.Warn("liveness: error closing connection", "error", err)
+			cerr = err
+		}
+		m.conn = nil
+	}
+	m.mu.Unlock()
+
+	return cerr
 }
 
 func (m *Manager) HandleRx(ctrl *ControlPacket, peer Peer) {
@@ -461,12 +488,18 @@ func (m *Manager) superviseSocket() {
 				_ = old.Close()
 			}
 
-			// Determine bind parameters (preserve ephemeral port if cfg.Port==0)
 			m.mu.Lock()
 			bindIP := m.cfg.BindIP
 			port := m.cfg.Port
-			la := m.LocalAddr()
+			curConn := m.conn
 			m.mu.Unlock()
+
+			var la *net.UDPAddr
+			if curConn != nil {
+				if ua, ok := curConn.LocalAddr().(*net.UDPAddr); ok {
+					la = ua
+				}
+			}
 			if la != nil && port == 0 {
 				port = la.Port
 			}

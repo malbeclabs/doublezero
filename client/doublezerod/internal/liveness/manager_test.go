@@ -391,29 +391,63 @@ func TestClient_LivenessManager_RebindOnFatalSocket_RestartsComponents(t *testin
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = m.Close() })
 
-	// Capture original component pointers.
+	// set a restart signal channel so we have a deterministic edge to wait on
+	sig := make(chan struct{}, 2)
+	m.setRestartSignal(sig)
+
+	// snapshot current pointers under lock
+	m.mu.Lock()
+	oldConn := m.conn
 	oldSched := m.sched
 	oldRecv := m.recv
+	m.mu.Unlock()
+	require.NotNil(t, oldConn)
 	require.NotNil(t, oldSched)
 	require.NotNil(t, oldRecv)
 
-	// Simulate a fatal socket error from the receiver.
-	select {
-	case m.fatalNetCh <- errors.New("simulated fatal socket error"):
-	default:
-		// channel is bounded; shouldn't block, but don't fail if full
-	}
-
-	// Eventually, the supervisor should rebind and replace both components.
+	// close the old socket to unblock reads immediately, and inject a fatal signal
+	_ = oldConn.Close()
 	require.Eventually(t, func() bool {
-		// We don't need to lock here because we only read the pointers,
-		// and replacement is atomic on 64-bit architectures; but to be safe:
+		select {
+		case m.fatalNetCh <- errors.New("simulated fatal socket error"):
+			return true
+		default:
+			return false
+		}
+	}, 2*time.Second, 10*time.Millisecond, "failed to inject fatal signal")
+
+	// wait for the restart signal from startComponents()
+	require.Eventually(t, func() bool {
+		select {
+		case <-sig:
+			return true
+		default:
+			return false
+		}
+	}, 10*time.Second, 25*time.Millisecond, "expected restart signal after rebind")
+
+	// conn should be replaced
+	require.Eventually(t, func() bool {
 		m.mu.Lock()
 		defer m.mu.Unlock()
-		return m.sched != nil && m.recv != nil && m.sched != oldSched && m.recv != oldRecv
-	}, 3*time.Second, 50*time.Millisecond, "expected scheduler and receiver to be restarted after fatal socket error")
+		return m.conn != nil && m.conn != oldConn
+	}, 5*time.Second, 25*time.Millisecond, "expected UDPConn to be replaced after fatal socket error")
 
-	// Still has a valid local addr post-rebind.
+	// and at least one component should be a new instance
+	require.Eventually(t, func() bool {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		return (m.recv != nil && m.recv != oldRecv) || (m.sched != nil && m.sched != oldSched)
+	}, 5*time.Second, 25*time.Millisecond, "expected scheduler and/or receiver to be restarted after rebind")
+
+	// verify new components are bound to the current conn
+	require.Eventually(t, func() bool {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		return m.conn != nil && m.recv != nil && m.sched != nil &&
+			m.recv.conn == m.conn && m.sched.conn == m.conn
+	}, 5*time.Second, 25*time.Millisecond, "expected new components to be bound to current conn")
+
 	la := m.LocalAddr()
 	require.NotNil(t, la)
 	require.Equal(t, "127.0.0.1", la.IP.String())

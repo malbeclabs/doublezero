@@ -118,6 +118,11 @@ type Manager struct {
 	sessions  map[Peer]*Session           // tracked liveness sessions
 	desired   map[RouteKey]*routing.Route // routes we want to install
 	installed map[RouteKey]bool           // routes actually in kernel
+
+	// rate-limited warnings for unknown-peer packets
+	unkWarnEvery time.Duration
+	unkWarnLast  time.Time
+	unkWarnMu    sync.Mutex
 }
 
 func NewManager(ctx context.Context, cfg *ManagerConfig) (*Manager, error) {
@@ -145,6 +150,8 @@ func NewManager(ctx context.Context, cfg *ManagerConfig) (*Manager, error) {
 		sessions:  make(map[Peer]*Session),
 		desired:   make(map[RouteKey]*routing.Route),
 		installed: make(map[RouteKey]bool),
+
+		unkWarnEvery: 5 * time.Second,
 	}
 
 	m.sched = NewScheduler(m.log, m.conn, m.onSessionDown)
@@ -284,7 +291,14 @@ func (m *Manager) HandleRx(ctrl *ControlPacket, peer Peer) {
 	m.mu.Lock()
 	s := m.sessions[peer]
 	if s == nil {
-		m.log.Debug("liveness: received control packet for unknown peer", "peer", peer.String())
+		// Throttled warning for unknown-peer packets.
+		m.unkWarnMu.Lock()
+		if m.unkWarnLast.IsZero() || time.Since(m.unkWarnLast) >= m.unkWarnEvery {
+			m.unkWarnLast = time.Now()
+			m.log.Warn("liveness: received control packet for unknown peer", "peer", peer.String())
+		}
+		m.unkWarnMu.Unlock()
+
 		m.mu.Unlock()
 		return
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net"
+	"sync"
 	"time"
 )
 
@@ -11,6 +12,11 @@ type Receiver struct {
 	log      *slog.Logger
 	conn     *UDPConn
 	handleRx HandleRxFunc
+
+	// throttled warning for noisy read errors
+	readErrEvery time.Duration
+	lastReadWarn time.Time
+	mu           sync.Mutex
 }
 
 type HandleRxFunc func(pkt *ControlPacket, peer Peer)
@@ -20,6 +26,8 @@ func NewReceiver(log *slog.Logger, conn *UDPConn, handleRx HandleRxFunc) *Receiv
 		log:      log,
 		conn:     conn,
 		handleRx: handleRx,
+
+		readErrEvery: 5 * time.Second,
 	}
 }
 
@@ -45,6 +53,16 @@ func (r *Receiver) Run(ctx context.Context) {
 				r.log.Debug("liveness.recv: rx loop stopped by context done", "reason", ctx.Err())
 				return
 			default:
+				// throttle non-timeout read errors to avoid log spam
+				now := time.Now()
+				r.mu.Lock()
+				if r.lastReadWarn.IsZero() || now.Sub(r.lastReadWarn) >= r.readErrEvery {
+					r.lastReadWarn = now
+					r.mu.Unlock()
+					r.log.Warn("liveness.recv: non-timeout read error", "error", err)
+				} else {
+					r.mu.Unlock()
+				}
 				continue
 			}
 		}

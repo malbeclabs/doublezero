@@ -28,6 +28,8 @@ func newSess() *Session {
 		nextTx:         time.Time{},
 		detectDeadline: time.Time{},
 		lastRx:         time.Time{},
+		backoffMax:     1 * time.Second,
+		backoffFactor:  1,
 	}
 }
 
@@ -35,17 +37,19 @@ func TestClient_Liveness_Session_ComputeNextTx_JitterWithinBoundsAndPersists(t *
 	t.Parallel()
 	s := newSess()
 	s.localTxMin = 100 * time.Millisecond
+	s.state = StateDown
 	now := time.Unix(0, 0)
 	r := rand.New(rand.NewSource(1))
 	next := s.ComputeNextTx(now, r)
 
-	iv := s.txInterval()
-	j := iv / 10
-	min := now.Add(iv - j)
-	max := now.Add(iv + j)
+	base := s.txInterval()
+	j := base / 10
+	min := now.Add(base - j)
+	max := now.Add(base + j)
 
 	require.True(t, !next.Before(min) && !next.After(max), "next=%v min=%v max=%v", next, min, max)
 	require.Equal(t, next, s.nextTx)
+	require.Equal(t, uint32(2), s.backoffFactor, "backoff should double after scheduling while Down")
 }
 
 func TestClient_Liveness_Session_TxIntervalRespectsRemoteRxMinFloorAndCeil(t *testing.T) {
@@ -137,6 +141,7 @@ func TestClient_Liveness_Session_ExpireIfDueTransitionsToDownAndClearsDeadline(t
 	require.True(t, exp)
 	require.Equal(t, StateDown, s.state)
 	require.True(t, s.detectDeadline.IsZero())
+	require.Equal(t, uint32(1), s.backoffFactor, "backoff should reset after transition to Down")
 }
 
 func TestClient_Liveness_Session_ExpireIfDueNoTransitionWhenNotDueOrNotAlive(t *testing.T) {
@@ -201,6 +206,7 @@ func TestClient_Liveness_Session_HandleRxFromDownToInitOrUpAndArmsDetect(t *test
 	changed = s.HandleRx(now.Add(10*time.Millisecond), cpInit)
 	require.True(t, changed)
 	require.Equal(t, StateUp, s.state)
+	require.Equal(t, uint32(1), s.backoffFactor, "backoff should reset when leaving Down")
 }
 
 func TestClient_Liveness_Session_HandleRxFromInitToUpOnPeerInitOrUp(t *testing.T) {
@@ -229,6 +235,7 @@ func TestClient_Liveness_Session_HandleRxFromUpToDownWhenPeerReportsDownAndStopD
 	require.True(t, changed)
 	require.Equal(t, StateDown, s.state)
 	require.True(t, s.detectDeadline.IsZero())
+	require.Equal(t, uint32(1), s.backoffFactor, "backoff should reset when entering Down")
 }
 
 func TestClient_Liveness_Session_HandleRxSetsRemoteTimersAndDetectDeadline(t *testing.T) {
@@ -247,6 +254,18 @@ func TestClient_Liveness_Session_HandleRxSetsRemoteTimersAndDetectDeadline(t *te
 	require.Equal(t, 34*time.Millisecond, s.remoteRxMin)
 	require.False(t, s.detectDeadline.IsZero())
 	require.Equal(t, now, s.lastRx)
+}
+
+func TestClient_Liveness_Session_BackoffResetsWhenNotDown(t *testing.T) {
+	t.Parallel()
+	s := newSess()
+	s.state = StateDown
+	s.backoffFactor = 8
+	s.backoffMax = 200 * time.Millisecond
+	_ = s.ComputeNextTx(time.Now(), nil) // will keep doubling (capped) while Down
+	s.state = StateUp
+	_ = s.ComputeNextTx(time.Now(), nil) // leaves Down -> resets
+	require.Equal(t, uint32(1), s.backoffFactor)
 }
 
 func TestClient_Liveness_Session_HandleRxIgnoredWhenAdminDown(t *testing.T) {

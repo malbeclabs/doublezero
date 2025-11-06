@@ -28,6 +28,8 @@ type Session struct {
 	alive bool
 
 	minTxFloor, maxTxCeil time.Duration
+	backoffMax            time.Duration
+	backoffFactor         uint32 // >=1; doubles while Down, resets otherwise
 
 	mu sync.Mutex
 }
@@ -36,8 +38,20 @@ type Session struct {
 // Returns the chosen time.
 func (s *Session) ComputeNextTx(now time.Time, rnd *rand.Rand) time.Time {
 	s.mu.Lock()
-	iv := s.txInterval()
-	j := iv / 10
+
+	base := s.txInterval()
+	eff := base
+	if s.state == StateDown {
+		if s.backoffFactor < 1 {
+			s.backoffFactor = 1
+		}
+		eff = base * time.Duration(s.backoffFactor)
+		if s.backoffMax > 0 && eff > s.backoffMax {
+			eff = s.backoffMax
+		}
+	}
+	j := eff / 10
+
 	var r int
 	if rnd != nil {
 		r = rnd.Intn(int(2*j + 1))
@@ -45,8 +59,22 @@ func (s *Session) ComputeNextTx(now time.Time, rnd *rand.Rand) time.Time {
 		r = rand.Intn(int(2*j + 1))
 	}
 	jit := time.Duration(r) - j
-	next := now.Add(iv + jit)
+	next := now.Add(eff + jit)
 	s.nextTx = next
+
+	// Update backoff after scheduling.
+	if s.state == StateDown {
+		if s.backoffMax == 0 || eff < s.backoffMax {
+			// geometric growth; effective cap is backoffMax
+			if s.backoffFactor == 0 {
+				s.backoffFactor = 1
+			}
+			s.backoffFactor *= 2
+		}
+	} else {
+		s.backoffFactor = 1
+	}
+
 	s.mu.Unlock()
 	return next
 }
@@ -85,6 +113,7 @@ func (s *Session) ExpireIfDue(now time.Time) (expired bool) {
 		!s.detectDeadline.IsZero() &&
 		!now.Before(s.detectDeadline) {
 		s.state = StateDown
+		s.backoffFactor = 1
 		s.detectDeadline = time.Time{} // stop detect while Down
 		return true
 	}
@@ -132,10 +161,12 @@ func (s *Session) HandleRx(now time.Time, ctrl *ControlPacket) (changed bool) {
 				// If peer is reporting Init or Up, promote our session to Up
 				// Confirmation Phase: State = Up
 				s.state = StateUp
+				s.backoffFactor = 1
 			} else {
 				// If peer is reporting Down, promote our session to Init
 				// Learning Phase: State = Init
 				s.state = StateInit
+				s.backoffFactor = 1
 			}
 		}
 
@@ -146,6 +177,7 @@ func (s *Session) HandleRx(now time.Time, ctrl *ControlPacket) (changed bool) {
 			// If peer is reporting Init or Up, promote our session to Up
 			// Confirmation Phase: State = Up
 			s.state = StateUp
+			s.backoffFactor = 1
 		}
 
 	case StateUp:
@@ -154,6 +186,7 @@ func (s *Session) HandleRx(now time.Time, ctrl *ControlPacket) (changed bool) {
 			// If peer is reporting Down, degrade our session to Down
 			// De-activation Phase: State = Down
 			s.state = StateDown
+			s.backoffFactor = 1
 			s.detectDeadline = time.Time{} // stop detect while Down
 		}
 	}

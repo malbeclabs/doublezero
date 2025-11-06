@@ -177,6 +177,9 @@ func (s *Scheduler) scheduleTx(now time.Time, sess *Session) {
 	if isAdminDown {
 		return
 	}
+	// Adaptive backoff while Down is applied inside ComputeNextTx by multiplying
+	// the base interval by an exponential backoffFactor and capping at backoffMax.
+	// AdminDown still suppresses TX entirely.
 	next := sess.ComputeNextTx(now, nil)
 	s.eq.Push(&event{when: next, typ: evTX, s: sess})
 }

@@ -30,6 +30,8 @@ func TestClient_LivenessManager_ConfigValidate(t *testing.T) {
 	require.Error(t, err)
 	err = (&ManagerConfig{Logger: log, Netlinker: &MockRouteReaderWriter{}, BindIP: "127.0.0.1", MaxTxCeil: -1}).Validate()
 	require.Error(t, err)
+	err = (&ManagerConfig{Logger: log, Netlinker: &MockRouteReaderWriter{}, BindIP: "127.0.0.1", BackoffMax: -1}).Validate()
+	require.Error(t, err)
 
 	err = (&ManagerConfig{
 		Logger:     log,
@@ -58,7 +60,9 @@ func TestClient_LivenessManager_ConfigValidate(t *testing.T) {
 	require.NoError(t, err)
 	require.NotZero(t, cfg.MinTxFloor)
 	require.NotZero(t, cfg.MaxTxCeil)
+	require.NotZero(t, cfg.BackoffMax)
 	require.GreaterOrEqual(t, int64(cfg.MaxTxCeil), int64(cfg.MinTxFloor))
+	require.GreaterOrEqual(t, int64(cfg.BackoffMax), int64(cfg.MinTxFloor))
 }
 
 func TestClient_LivenessManager_NewManager_BindsAndLocalAddr(t *testing.T) {
@@ -388,6 +392,7 @@ func newTestManager(t *testing.T, mutate func(*ManagerConfig)) (*Manager, error)
 		DetectMult: 3,
 		MinTxFloor: 50 * time.Millisecond,
 		MaxTxCeil:  1 * time.Second,
+		BackoffMax: 1 * time.Second,
 	}
 	if mutate != nil {
 		mutate(cfg)

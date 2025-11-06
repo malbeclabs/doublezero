@@ -50,6 +50,7 @@ type ManagerConfig struct {
 
 	MinTxFloor time.Duration
 	MaxTxCeil  time.Duration
+	BackoffMax time.Duration
 }
 
 func (c *ManagerConfig) Validate() error {
@@ -88,6 +89,15 @@ func (c *ManagerConfig) Validate() error {
 	}
 	if c.MaxTxCeil < c.MinTxFloor {
 		return errors.New("maxTxCeil must be greater than minTxFloor")
+	}
+	if c.BackoffMax == 0 {
+		c.BackoffMax = c.MaxTxCeil
+	}
+	if c.BackoffMax < 0 {
+		return errors.New("backoffMax must be greater than 0")
+	}
+	if c.BackoffMax < c.MinTxFloor {
+		return errors.New("backoffMax must be greater than or equal to minTxFloor")
 	}
 	return nil
 }
@@ -196,16 +206,18 @@ func (m *Manager) RegisterRoute(r *routing.Route, iface string) error {
 	s := &Session{
 		route: r,
 		// Initial Phase: State = Down, random discriminator
-		myDisc:     rand32(),
-		state:      StateDown,
-		detectMult: m.cfg.DetectMult,
-		localTxMin: m.cfg.TxMin,
-		localRxMin: m.cfg.RxMin,
-		peer:       &peer,
-		peerAddr:   peerAddr,
-		alive:      true,
-		minTxFloor: m.cfg.MinTxFloor,
-		maxTxCeil:  m.cfg.MaxTxCeil,
+		myDisc:        rand32(),
+		state:         StateDown,
+		detectMult:    m.cfg.DetectMult,
+		localTxMin:    m.cfg.TxMin,
+		localRxMin:    m.cfg.RxMin,
+		peer:          &peer,
+		peerAddr:      peerAddr,
+		alive:         true,
+		minTxFloor:    m.cfg.MinTxFloor,
+		maxTxCeil:     m.cfg.MaxTxCeil,
+		backoffMax:    m.cfg.BackoffMax,
+		backoffFactor: 1,
 	}
 	m.sessions[peer] = s
 	// schedule TX immediately; DO NOT schedule detect yet (no continuity to monitor)

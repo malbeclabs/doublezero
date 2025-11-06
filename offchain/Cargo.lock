@@ -2590,6 +2590,8 @@ dependencies = [
  "doublezero_sdk",
  "futures",
  "leaky-bucket",
+ "metrics",
+ "metrics-exporter-prometheus",
  "mockall",
  "reqwest",
  "serde",

@@ -185,6 +185,8 @@ pub async fn calculate_validator_debt<T: ValidatorRewards>(
         }
         JoinedSolanaEpochs::Duplicate(solana_epoch) => {
             log_warn!("Duplicated joined Solana epoch: {solana_epoch}");
+            let counter = metrics::counter!("doublezero_validator_debt_overlapping_epochs", "dz_epoch" => dz_epoch.to_string(), "solana_epoch" => solana_epoch.to_string());
+            counter.increment(1);
         }
     };
 
@@ -415,6 +417,10 @@ async fn write_transaction(
 
     if let Some(tx) = tx_submitted_sig {
         println!("submitted distribution tx: {tx:?}");
+        metrics::gauge!("doublezero_validator_debt_total_debt", "dz_epoch" => dz_epoch.to_string())
+            .set(total_debt as f64);
+        metrics::gauge!("doublezero_validator_debt_total_validators", "dz_epoch" => dz_epoch.to_string()).set(total_validators as f64);
+
         Ok(Some(tx))
     } else {
         Ok(None)

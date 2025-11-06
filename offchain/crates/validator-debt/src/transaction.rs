@@ -326,6 +326,8 @@ impl Transaction {
                                 }
                             }
                             _ => {
+                                let counter = metrics::counter!("doublezero_validator_debt_pay_debt_transaction_failed", "client_error" => client_error.to_string());
+                                counter.increment(1);
                                 bail!("Unhandled Solana RPC error: {}", client_error);
                             }
                         }

@@ -197,7 +197,7 @@ func (m *Manager) RegisterRoute(r *routing.Route, iface string) error {
 		route: r,
 		// Initial Phase: State = Down, random discriminator
 		myDisc:     rand32(),
-		state:      Down,
+		state:      StateDown,
 		detectMult: m.cfg.DetectMult,
 		localTxMin: m.cfg.TxMin,
 		localRxMin: m.cfg.RxMin,
@@ -250,10 +250,10 @@ func (m *Manager) AdminDownAll() {
 	for _, s := range m.sessions {
 		s.mu.Lock()
 		prev := s.state
-		s.state = AdminDown
+		s.state = StateAdminDown
 		s.detectDeadline = time.Time{} // stop detect while AdminDown
 		s.mu.Unlock()
-		if prev != AdminDown {
+		if prev != StateAdminDown {
 			// Withdraw once per session when entering AdminDown.
 			go m.onSessionDown(s)
 		}
@@ -286,14 +286,14 @@ func (m *Manager) HandleRx(ctrl *ControlPacket, peer Peer) {
 
 	if changed {
 		switch s.state {
-		case Up:
+		case StateUp:
 			// transitioned to Up
 			go m.onSessionUp(s)
 			m.sched.scheduleDetect(now, s) // keep detect armed while Up
-		case Init:
+		case StateInit:
 			// transitioned to Init – arm detect; next >=Init promotes to Up
 			m.sched.scheduleDetect(now, s)
-		case Down:
+		case StateDown:
 			// transitioned to Down – do NOT schedule detect again
 			// (onRx already cleared detectDeadline when mirroring Down)
 			go m.onSessionDown(s)
@@ -301,7 +301,7 @@ func (m *Manager) HandleRx(ctrl *ControlPacket, peer Peer) {
 	} else {
 		// No state change; only keep detect ticking for Init/Up.
 		switch s.state {
-		case Up, Init:
+		case StateUp, StateInit:
 			m.sched.scheduleDetect(now, s)
 		default:
 			// already Down/AdminDown: do nothing; avoid repeated “down” logs

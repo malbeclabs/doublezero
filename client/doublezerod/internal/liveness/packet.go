@@ -8,10 +8,10 @@ import (
 type State uint8
 
 const (
-	AdminDown State = iota
-	Down
-	Init
-	Up
+	StateAdminDown State = iota
+	StateDown
+	StateInit
+	StateUp
 )
 
 type ControlPacket struct {

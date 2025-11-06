@@ -29,7 +29,7 @@ func (r *Receiver) Run(ctx context.Context) {
 	buf := make([]byte, 1500)
 	for {
 		r.conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
-		n, localAddr, remoteIP, ifname, err := readFromUDP(r.conn, buf)
+		n, remoteAddr, localIP, ifname, err := readFromUDP(r.conn, buf)
 		if err != nil {
 			if ne, ok := err.(net.Error); ok && ne.Timeout() {
 				select {
@@ -55,7 +55,7 @@ func (r *Receiver) Run(ctx context.Context) {
 			continue
 		}
 
-		peer := Peer{Interface: ifname, LocalIP: localAddr.IP.String(), RemoteIP: remoteIP.String()}
+		peer := Peer{Interface: ifname, LocalIP: localIP.String(), RemoteIP: remoteAddr.IP.String()}
 
 		r.handleRx(ctrl, peer)
 	}

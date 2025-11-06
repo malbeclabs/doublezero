@@ -81,10 +81,10 @@ func (s *Session) ExpireIfDue(now time.Time) (expired bool) {
 		return false
 	}
 
-	if (s.state == Up || s.state == Init) &&
+	if (s.state == StateUp || s.state == StateInit) &&
 		!s.detectDeadline.IsZero() &&
 		!now.Before(s.detectDeadline) {
-		s.state = Down
+		s.state = StateDown
 		s.detectDeadline = time.Time{} // stop detect while Down
 		return true
 	}
@@ -101,7 +101,7 @@ func (s *Session) HandleRx(now time.Time, ctrl *ControlPacket) (changed bool) {
 	defer s.mu.Unlock()
 
 	// Ignore all RX while locally AdminDown (operator-forced inactivity).
-	if s.state == AdminDown {
+	if s.state == StateAdminDown {
 		return false
 	}
 
@@ -124,36 +124,36 @@ func (s *Session) HandleRx(now time.Time, ctrl *ControlPacket) (changed bool) {
 	s.detectDeadline = now.Add(s.detectTime())
 
 	switch prev {
-	case Down:
+	case StateDown:
 		// Bring-up: as soon as we can identify the peer, move to Init.
 		// If the peer already reports >= Init, go straight to Up.
 		if s.yourDisc != 0 {
-			if ctrl.State >= Init {
+			if ctrl.State >= StateInit {
 				// If peer is reporting Init or Up, promote our session to Up
 				// Confirmation Phase: State = Up
-				s.state = Up
+				s.state = StateUp
 			} else {
 				// If peer is reporting Down, promote our session to Init
 				// Learning Phase: State = Init
-				s.state = Init
+				s.state = StateInit
 			}
 		}
 
-	case Init:
+	case StateInit:
 		// Do NOT mirror Down while initializing; let detect expiry handle failure.
 		// Promote to Up once the peer reports >= Init.
-		if s.yourDisc != 0 && ctrl.State >= Init {
+		if s.yourDisc != 0 && ctrl.State >= StateInit {
 			// If peer is reporting Init or Up, promote our session to Up
 			// Confirmation Phase: State = Up
-			s.state = Up
+			s.state = StateUp
 		}
 
-	case Up:
+	case StateUp:
 		// Established and peer declares Down -> mirror once and stop detect.
-		if ctrl.State == Down {
+		if ctrl.State == StateDown {
 			// If peer is reporting Down, degrade our session to Down
 			// De-activation Phase: State = Down
-			s.state = Down
+			s.state = StateDown
 			s.detectDeadline = time.Time{} // stop detect while Down
 		}
 	}

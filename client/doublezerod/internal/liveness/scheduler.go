@@ -163,7 +163,7 @@ func (s *Scheduler) Run(ctx context.Context) {
 			ev.s.mu.Lock()
 			st := ev.s.state
 			ev.s.mu.Unlock()
-			if st == Up || st == Init {
+			if st == StateUp || st == StateInit {
 				s.scheduleDetect(time.Now(), ev.s)
 			}
 		}
@@ -172,7 +172,7 @@ func (s *Scheduler) Run(ctx context.Context) {
 
 func (s *Scheduler) scheduleTx(now time.Time, sess *Session) {
 	sess.mu.Lock()
-	isAdminDown := !sess.alive || sess.state == AdminDown
+	isAdminDown := !sess.alive || sess.state == StateAdminDown
 	sess.mu.Unlock()
 	if isAdminDown {
 		return
@@ -191,7 +191,7 @@ func (s *Scheduler) scheduleDetect(now time.Time, sess *Session) {
 
 func (s *Scheduler) doTX(sess *Session) {
 	sess.mu.Lock()
-	if !sess.alive || sess.state == AdminDown {
+	if !sess.alive || sess.state == StateAdminDown {
 		sess.mu.Unlock()
 		return
 	}

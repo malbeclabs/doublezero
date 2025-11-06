@@ -14,7 +14,7 @@ func newSess() *Session {
 		route:          nil,
 		myDisc:         0xAABBCCDD,
 		yourDisc:       0,
-		state:          Down,
+		state:          StateDown,
 		detectMult:     3,
 		localTxMin:     20 * time.Millisecond,
 		localRxMin:     15 * time.Millisecond,
@@ -131,11 +131,11 @@ func TestClient_Liveness_Session_ExpireIfDueTransitionsToDownAndClearsDeadline(t
 	t.Parallel()
 	s := newSess()
 	now := time.Now()
-	s.state = Up
+	s.state = StateUp
 	s.detectDeadline = now.Add(-1 * time.Millisecond)
 	exp := s.ExpireIfDue(now)
 	require.True(t, exp)
-	require.Equal(t, Down, s.state)
+	require.Equal(t, StateDown, s.state)
 	require.True(t, s.detectDeadline.IsZero())
 }
 
@@ -143,17 +143,17 @@ func TestClient_Liveness_Session_ExpireIfDueNoTransitionWhenNotDueOrNotAlive(t *
 	t.Parallel()
 	s := newSess()
 	now := time.Now()
-	s.state = Init
+	s.state = StateInit
 	s.detectDeadline = now.Add(1 * time.Second)
 	require.False(t, s.ExpireIfDue(now))
-	require.Equal(t, Init, s.state)
+	require.Equal(t, StateInit, s.state)
 
 	s = newSess()
-	s.state = Up
+	s.state = StateUp
 	s.alive = false
 	s.detectDeadline = now.Add(-1 * time.Millisecond)
 	require.False(t, s.ExpireIfDue(now))
-	require.Equal(t, Up, s.state)
+	require.Equal(t, StateUp, s.state)
 }
 
 func TestClient_Liveness_Session_HandleRxIgnoresMismatchedYourDiscr(t *testing.T) {
@@ -161,17 +161,17 @@ func TestClient_Liveness_Session_HandleRxIgnoresMismatchedYourDiscr(t *testing.T
 	s := newSess()
 	s.myDisc = 111
 	now := time.Now()
-	cp := &ControlPacket{YourDiscr: 222, MyDiscr: 333, State: Init}
+	cp := &ControlPacket{YourDiscr: 222, MyDiscr: 333, State: StateInit}
 	changed := s.HandleRx(now, cp)
 	require.False(t, changed)
-	require.Equal(t, Down, s.state)
+	require.Equal(t, StateDown, s.state)
 	require.Zero(t, s.yourDisc)
 }
 
 func TestClient_Liveness_Session_HandleRxFromDownToInitOrUpAndArmsDetect(t *testing.T) {
 	t.Parallel()
 	s := newSess()
-	s.state = Down
+	s.state = StateDown
 	s.myDisc = 42
 
 	now := time.Now()
@@ -179,13 +179,13 @@ func TestClient_Liveness_Session_HandleRxFromDownToInitOrUpAndArmsDetect(t *test
 	cpDown := &ControlPacket{
 		YourDiscr:       0,    // acceptable (we only check mismatch if nonzero)
 		MyDiscr:         1001, // learn peer discr
-		State:           Down,
+		State:           StateDown,
 		DesiredMinTxUs:  30_000, // 30ms
 		RequiredMinRxUs: 40_000, // 40ms
 	}
 	changed := s.HandleRx(now, cpDown)
 	require.True(t, changed)
-	require.Equal(t, Init, s.state)
+	require.Equal(t, StateInit, s.state)
 	require.EqualValues(t, 1001, s.yourDisc)
 	require.False(t, s.detectDeadline.IsZero())
 	require.Equal(t, now, s.lastRx)
@@ -194,40 +194,40 @@ func TestClient_Liveness_Session_HandleRxFromDownToInitOrUpAndArmsDetect(t *test
 	cpInit := &ControlPacket{
 		YourDiscr:       42, // matches our myDisc (strictly not required since we accept 0 or equal)
 		MyDiscr:         1001,
-		State:           Init,
+		State:           StateInit,
 		DesiredMinTxUs:  20_000,
 		RequiredMinRxUs: 20_000,
 	}
 	changed = s.HandleRx(now.Add(10*time.Millisecond), cpInit)
 	require.True(t, changed)
-	require.Equal(t, Up, s.state)
+	require.Equal(t, StateUp, s.state)
 }
 
 func TestClient_Liveness_Session_HandleRxFromInitToUpOnPeerInitOrUp(t *testing.T) {
 	t.Parallel()
 	s := newSess()
-	s.state = Init
+	s.state = StateInit
 	s.yourDisc = 777 // already learned
 	now := time.Now()
 
-	cp := &ControlPacket{YourDiscr: 0, MyDiscr: 777, State: Up}
+	cp := &ControlPacket{YourDiscr: 0, MyDiscr: 777, State: StateUp}
 	changed := s.HandleRx(now, cp)
 	require.True(t, changed)
-	require.Equal(t, Up, s.state)
+	require.Equal(t, StateUp, s.state)
 }
 
 func TestClient_Liveness_Session_HandleRxFromUpToDownWhenPeerReportsDownAndStopDetect(t *testing.T) {
 	t.Parallel()
 	s := newSess()
-	s.state = Up
+	s.state = StateUp
 	s.yourDisc = 1
 	now := time.Now()
 	s.detectDeadline = now.Add(10 * time.Second)
 
-	cp := &ControlPacket{YourDiscr: 0, MyDiscr: 1, State: Down}
+	cp := &ControlPacket{YourDiscr: 0, MyDiscr: 1, State: StateDown}
 	changed := s.HandleRx(now, cp)
 	require.True(t, changed)
-	require.Equal(t, Down, s.state)
+	require.Equal(t, StateDown, s.state)
 	require.True(t, s.detectDeadline.IsZero())
 }
 
@@ -238,7 +238,7 @@ func TestClient_Liveness_Session_HandleRxSetsRemoteTimersAndDetectDeadline(t *te
 	cp := &ControlPacket{
 		YourDiscr:       0,
 		MyDiscr:         9,
-		State:           Init,
+		State:           StateInit,
 		DesiredMinTxUs:  12_000,
 		RequiredMinRxUs: 34_000,
 	}
@@ -252,11 +252,11 @@ func TestClient_Liveness_Session_HandleRxSetsRemoteTimersAndDetectDeadline(t *te
 func TestClient_Liveness_Session_HandleRxIgnoredWhenAdminDown(t *testing.T) {
 	t.Parallel()
 	s := newSess()
-	s.state = AdminDown
+	s.state = StateAdminDown
 	now := time.Now()
-	cp := &ControlPacket{YourDiscr: 0, MyDiscr: 9, State: Up, DesiredMinTxUs: 1000, RequiredMinRxUs: 2000}
+	cp := &ControlPacket{YourDiscr: 0, MyDiscr: 9, State: StateUp, DesiredMinTxUs: 1000, RequiredMinRxUs: 2000}
 	changed := s.HandleRx(now, cp)
 	require.False(t, changed)
-	require.Equal(t, AdminDown, s.state)
+	require.Equal(t, StateAdminDown, s.state)
 	require.Zero(t, s.yourDisc)
 }

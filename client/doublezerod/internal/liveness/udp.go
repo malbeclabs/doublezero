@@ -8,7 +8,7 @@ import (
 	"golang.org/x/net/ipv6"
 )
 
-func readFromUDP(conn net.PacketConn, buf []byte) (n int, src *net.UDPAddr, dst net.IP, ifname string, err error) {
+func readFromUDP(conn net.PacketConn, buf []byte) (n int, remoteAddr *net.UDPAddr, localIP net.IP, ifname string, err error) {
 	p := ipv4.NewPacketConn(conn)
 	if err = p.SetControlMessage(ipv4.FlagInterface|ipv4.FlagDst, true); err != nil {
 		return
@@ -20,10 +20,10 @@ func readFromUDP(conn net.PacketConn, buf []byte) (n int, src *net.UDPAddr, dst 
 		return
 	}
 	if ua, ok := raddr.(*net.UDPAddr); ok {
-		src = ua
+		remoteAddr = ua
 	}
 	if cm != nil && cm.Dst != nil {
-		dst = cm.Dst
+		localIP = cm.Dst
 	}
 	if cm != nil && cm.IfIndex != 0 {
 		ifi, _ := net.InterfaceByIndex(cm.IfIndex)

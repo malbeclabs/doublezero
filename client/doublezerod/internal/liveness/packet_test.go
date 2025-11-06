@@ -12,7 +12,7 @@ func TestClient_Liveness_Packet_MarshalEncodesHeaderAndFields(t *testing.T) {
 	t.Parallel()
 	cp := &ControlPacket{
 		Version:         5,
-		State:           Up,
+		State:           StateUp,
 		DetectMult:      3,
 		MyDiscr:         0x11223344,
 		YourDiscr:       0x55667788,
@@ -24,7 +24,7 @@ func TestClient_Liveness_Packet_MarshalEncodesHeaderAndFields(t *testing.T) {
 	require.Len(t, b, 40)
 	require.Equal(t, uint8(40), b[3])
 	require.Equal(t, uint8((5&0x7)<<5), b[0])
-	require.Equal(t, uint8((uint8(Up)&0x3)<<6), b[1])
+	require.Equal(t, uint8((uint8(StateUp)&0x3)<<6), b[1])
 	require.Equal(t, uint8(3), b[2])
 
 	require.Equal(t, uint32(0x11223344), binary.BigEndian.Uint32(b[4:8]))
@@ -39,7 +39,7 @@ func TestClient_Liveness_Packet_UnmarshalRoundTrip(t *testing.T) {
 	t.Parallel()
 	orig := &ControlPacket{
 		Version:         1,
-		State:           Init,
+		State:           StateInit,
 		DetectMult:      7,
 		MyDiscr:         1,
 		YourDiscr:       2,
@@ -51,7 +51,7 @@ func TestClient_Liveness_Packet_UnmarshalRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, uint8(1), got.Version)
-	require.Equal(t, Init, got.State)
+	require.Equal(t, StateInit, got.State)
 	require.Equal(t, uint8(7), got.DetectMult)
 	require.Equal(t, uint8(40), got.Length)
 	require.Equal(t, uint32(1), got.MyDiscr)
@@ -88,7 +88,7 @@ func TestClient_Liveness_Packet_BitMaskingVersionAndState_MarshalOnly(t *testing
 
 func TestClient_Liveness_Packet_UnmarshalUnsupportedVersion(t *testing.T) {
 	t.Parallel()
-	cp := (&ControlPacket{Version: 7, State: Up, DetectMult: 1}).Marshal()
+	cp := (&ControlPacket{Version: 7, State: StateUp, DetectMult: 1}).Marshal()
 	_, err := UnmarshalControlPacket(cp)
 	require.EqualError(t, err, "unsupported version: 7")
 }
@@ -99,12 +99,12 @@ func TestClient_Liveness_Packet_UnmarshalStateMaskWithV1(t *testing.T) {
 	got, err := UnmarshalControlPacket(cp)
 	require.NoError(t, err)
 	require.Equal(t, uint8(1), got.Version)
-	require.Equal(t, Up, got.State) // state masked to 2 bits
+	require.Equal(t, StateUp, got.State) // state masked to 2 bits
 }
 
 func TestClient_Liveness_Packet_PaddingRemainsZero(t *testing.T) {
 	t.Parallel()
-	cp := &ControlPacket{Version: 3, State: Down, DetectMult: 5}
+	cp := &ControlPacket{Version: 3, State: StateDown, DetectMult: 5}
 	b := cp.Marshal()
 	require.True(t, bytes.Equal(b[20:], make([]byte, 20)))
 }

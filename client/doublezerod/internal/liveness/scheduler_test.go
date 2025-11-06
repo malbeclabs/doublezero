@@ -42,7 +42,7 @@ func TestClient_Liveness_Scheduler_TryExpireEnqueuesImmediateTX(t *testing.T) {
 	// minimal scheduler with a real EventQueue; conn/log not used here
 	s := &Scheduler{eq: NewEventQueue()}
 	sess := &Session{
-		state:          Up,
+		state:          StateUp,
 		detectDeadline: time.Now().Add(-time.Millisecond),
 		alive:          true,
 		detectMult:     1,
@@ -57,7 +57,7 @@ func TestClient_Liveness_Scheduler_TryExpireEnqueuesImmediateTX(t *testing.T) {
 	require.Equal(t, evTX, ev.typ)
 
 	// and state flipped to Down, detect cleared
-	require.Equal(t, Down, sess.state)
+	require.Equal(t, StateDown, sess.state)
 	require.True(t, sess.detectDeadline.IsZero())
 }
 
@@ -90,7 +90,7 @@ func TestClient_Liveness_Scheduler_TryExpire_Idempotent(t *testing.T) {
 	t.Parallel()
 	s := &Scheduler{eq: NewEventQueue()}
 	sess := &Session{
-		state:          Up,
+		state:          StateUp,
 		detectDeadline: time.Now().Add(-time.Millisecond),
 		alive:          true,
 		detectMult:     1,
@@ -104,7 +104,7 @@ func TestClient_Liveness_Scheduler_ScheduleTx_NoEnqueueWhenAdminDown(t *testing.
 	t.Parallel()
 	s := &Scheduler{eq: NewEventQueue()}
 	sess := &Session{
-		state:      AdminDown,
+		state:      StateAdminDown,
 		alive:      true,
 		detectMult: 1,
 		minTxFloor: time.Millisecond,

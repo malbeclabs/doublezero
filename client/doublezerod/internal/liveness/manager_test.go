@@ -80,8 +80,8 @@ func TestClient_LivenessManager_RegisterRoute_Deduplicates(t *testing.T) {
 	t.Cleanup(func() { _ = m.Close() })
 
 	r := newTestRoute(func(r *routing.Route) {
-		r.Dst = &net.IPNet{IP: m.LocalAddr().IP, Mask: net.CIDRMask(32, 32)}
-		r.Src = m.LocalAddr().IP
+		r.Src = net.IPv4(127, 0, 0, 1)
+		r.Dst = &net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(32, 32)}
 	})
 
 	err = m.RegisterRoute(r, "lo")
@@ -90,8 +90,10 @@ func TestClient_LivenessManager_RegisterRoute_Deduplicates(t *testing.T) {
 	require.NoError(t, err)
 
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	require.Len(t, m.sessions, 1)
+	require.Contains(t, m.sessions, Peer{Interface: "lo", LocalIP: r.Src.String(), RemoteIP: r.Dst.IP.String()})
+	require.NotContains(t, m.sessions, Peer{Interface: "lo", LocalIP: r.Dst.IP.String(), RemoteIP: r.Src.String()})
+	m.mu.Unlock()
 }
 
 func TestClient_LivenessManager_HandleRx_Transitions_AddAndDelete(t *testing.T) {
@@ -112,8 +114,8 @@ func TestClient_LivenessManager_HandleRx_Transitions_AddAndDelete(t *testing.T) 
 	t.Cleanup(func() { _ = m.Close() })
 
 	r := newTestRoute(func(r *routing.Route) {
-		r.Dst = &net.IPNet{IP: m.LocalAddr().IP, Mask: net.CIDRMask(32, 32)}
-		r.Src = m.LocalAddr().IP
+		r.Src = net.IPv4(127, 0, 0, 1)
+		r.Dst = &net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(32, 32)}
 	})
 	require.NoError(t, m.RegisterRoute(r, "lo"))
 
@@ -130,26 +132,40 @@ func TestClient_LivenessManager_HandleRx_Transitions_AddAndDelete(t *testing.T) 
 	}()
 	require.NotNil(t, sess)
 
-	m.HandleRx(&ControlPacket{YourDiscr: 0, MyDiscr: 1234, State: Down}, peer)
+	m.HandleRx(&ControlPacket{YourDiscr: 0, MyDiscr: 1234, State: StateDown}, peer)
 	func() {
 		sess.mu.Lock()
 		defer sess.mu.Unlock()
-		require.Equal(t, Init, sess.state)
+		require.Equal(t, StateInit, sess.state)
 		require.EqualValues(t, 1234, sess.yourDisc)
 	}()
 
-	m.HandleRx(&ControlPacket{YourDiscr: sess.myDisc, MyDiscr: sess.yourDisc, State: Init}, peer)
+	m.HandleRx(&ControlPacket{YourDiscr: sess.myDisc, MyDiscr: sess.yourDisc, State: StateInit}, peer)
 	added := wait(t, addCh, 2*time.Second, "RouteAdd after Up")
 	require.Equal(t, r.Table, added.Table)
 	require.Equal(t, r.Src.String(), added.Src.String())
 	require.Equal(t, r.Dst.String(), added.Dst.String())
 	require.Equal(t, r.NextHop.String(), added.NextHop.String())
 
-	m.HandleRx(&ControlPacket{YourDiscr: sess.myDisc, MyDiscr: sess.yourDisc, State: Down}, peer)
+	m.mu.Lock()
+	require.Len(t, m.sessions, 1)
+	require.Contains(t, m.sessions, peer)
+	require.NotContains(t, m.sessions, Peer{Interface: "lo", LocalIP: r.Dst.IP.String(), RemoteIP: r.Src.String()})
+	require.Equal(t, StateUp, sess.state)
+	m.mu.Unlock()
+
+	m.HandleRx(&ControlPacket{YourDiscr: sess.myDisc, MyDiscr: sess.yourDisc, State: StateDown}, peer)
 	deleted := wait(t, delCh, 2*time.Second, "RouteDelete after Down")
 	require.Equal(t, r.Table, deleted.Table)
 	require.Equal(t, r.Src.String(), deleted.Src.String())
 	require.Equal(t, r.Dst.String(), deleted.Dst.String())
+
+	m.mu.Lock()
+	require.Len(t, m.sessions, 1)
+	require.Contains(t, m.sessions, peer)
+	require.NotContains(t, m.sessions, Peer{Interface: "lo", LocalIP: r.Dst.IP.String(), RemoteIP: r.Src.String()})
+	require.Equal(t, StateDown, sess.state)
+	m.mu.Unlock()
 }
 
 func TestClient_LivenessManager_WithdrawRoute_RemovesSessionAndDeletesIfInstalled(t *testing.T) {
@@ -186,7 +202,7 @@ func TestClient_LivenessManager_WithdrawRoute_RemovesSessionAndDeletesIfInstalle
 			break
 		}
 	}()
-	m.HandleRx(&ControlPacket{YourDiscr: 0, MyDiscr: 1, State: Init}, peer)
+	m.HandleRx(&ControlPacket{YourDiscr: 0, MyDiscr: 1, State: StateInit}, peer)
 	wait(t, addCh, 2*time.Second, "RouteAdd before withdraw")
 
 	require.NoError(t, m.WithdrawRoute(r, "lo"))
@@ -237,9 +253,9 @@ func TestClient_LivenessManager_AdminDownAll(t *testing.T) {
 	}()
 	require.NotNil(t, sess)
 	// Down->Init
-	m.HandleRx(&ControlPacket{YourDiscr: 0, MyDiscr: 1234, State: Down}, peer)
+	m.HandleRx(&ControlPacket{YourDiscr: 0, MyDiscr: 1234, State: StateDown}, peer)
 	// Init->Up (RouteAdd enqueued)
-	m.HandleRx(&ControlPacket{YourDiscr: sess.myDisc, MyDiscr: sess.yourDisc, State: Up}, peer)
+	m.HandleRx(&ControlPacket{YourDiscr: sess.myDisc, MyDiscr: sess.yourDisc, State: StateUp}, peer)
 	_ = wait(t, addCh, 2*time.Second, "RouteAdd after Up")
 
 	// Enter AdminDownAll -> should withdraw route once
@@ -249,7 +265,7 @@ func TestClient_LivenessManager_AdminDownAll(t *testing.T) {
 	m.mu.Lock()
 	for _, s := range m.sessions {
 		s.mu.Lock()
-		require.Equal(t, AdminDown, s.state)
+		require.Equal(t, StateAdminDown, s.state)
 		s.mu.Unlock()
 	}
 	m.mu.Unlock()
@@ -295,7 +311,7 @@ func TestClient_LivenessManager_HandleRx_UnknownPeer_NoEffect(t *testing.T) {
 
 	// Construct a peer key that doesn't exist.
 	unknown := Peer{Interface: "lo", LocalIP: "127.0.0.2", RemoteIP: "127.0.0.3"}
-	m.HandleRx(&ControlPacket{YourDiscr: 0, MyDiscr: 1, State: Init}, unknown)
+	m.HandleRx(&ControlPacket{YourDiscr: 0, MyDiscr: 1, State: StateInit}, unknown)
 
 	// Assert no changes.
 	m.mu.Lock()
@@ -342,8 +358,8 @@ func TestClient_LivenessManager_NetlinkerErrors_NoCrash(t *testing.T) {
 	require.NotNil(t, sess)
 
 	// Drive to Up (RouteAdd returns error but should not crash; installed set true).
-	m.HandleRx(&ControlPacket{YourDiscr: 0, MyDiscr: 99, State: Down}, peer)                    // Down -> Init
-	m.HandleRx(&ControlPacket{YourDiscr: sess.myDisc, MyDiscr: sess.yourDisc, State: Up}, peer) // Init -> Up
+	m.HandleRx(&ControlPacket{YourDiscr: 0, MyDiscr: 99, State: StateDown}, peer)                    // Down -> Init
+	m.HandleRx(&ControlPacket{YourDiscr: sess.myDisc, MyDiscr: sess.yourDisc, State: StateUp}, peer) // Init -> Up
 
 	rk := routeKeyFor(peer.Interface, sess.route)
 	time.Sleep(50 * time.Millisecond) // allow onSessionUp goroutine to run
@@ -353,7 +369,7 @@ func TestClient_LivenessManager_NetlinkerErrors_NoCrash(t *testing.T) {
 	m.mu.Unlock()
 
 	// Drive to Down (RouteDelete returns error; should not crash; installed set false).
-	m.HandleRx(&ControlPacket{YourDiscr: sess.myDisc, MyDiscr: sess.yourDisc, State: Down}, peer)
+	m.HandleRx(&ControlPacket{YourDiscr: sess.myDisc, MyDiscr: sess.yourDisc, State: StateDown}, peer)
 	time.Sleep(50 * time.Millisecond)
 
 	m.mu.Lock()

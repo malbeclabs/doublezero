@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"syscall"
 	"time"
 
 	"golang.org/x/net/ipv4"
@@ -112,8 +111,3 @@ func (u *UDPConn) SetReadDeadline(t time.Time) error { return u.raw.SetReadDeadl
 
 // LocalAddr returns the underlying socket's local address.
 func (u *UDPConn) LocalAddr() net.Addr { return u.raw.LocalAddr() }
-
-// isProtoOpt returns true if the error is ENOPROTOOPT/EPROTONOSUPPORT (best-effort enable).
-func isProtoOpt(err error) bool {
-	return errors.Is(err, syscall.ENOPROTOOPT) || errors.Is(err, syscall.EPROTONOSUPPORT)
-}

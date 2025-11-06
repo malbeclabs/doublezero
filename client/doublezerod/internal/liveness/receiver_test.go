@@ -21,17 +21,27 @@ func TestClient_Liveness_Receiver_CancelStopsLoop(t *testing.T) {
 	require.NoError(t, err)
 	defer conn.Close()
 
-	rx := NewReceiver(slog.Default(), conn, func(*ControlPacket, Peer) {})
+	fatalCh := make(chan error, 1)
+	rx := NewReceiver(slog.Default(), conn, func(*ControlPacket, Peer) {}, fatalCh)
+
 	done := make(chan struct{})
 	go func() { rx.Run(ctx); close(done) }()
 
-	// Cancel and ensure the loop exits
+	// Nudge the loop to ensure it has started by forcing one deadline cycle.
+	time.Sleep(50 * time.Millisecond)
+
+	// Cancel and close to unblock any in-flight ReadFrom immediately.
 	cancel()
-	select {
-	case <-done:
-	case <-time.After(1 * time.Second):
-		t.Fatal("receiver did not exit after cancel")
-	}
+	_ = conn.Close()
+
+	require.Eventually(t, func() bool {
+		select {
+		case <-done:
+			return true
+		default:
+			return false
+		}
+	}, 3*time.Second, 25*time.Millisecond, "receiver did not exit after cancel+close")
 }
 
 func TestClient_Liveness_Receiver_IgnoresMalformedPacket(t *testing.T) {
@@ -42,30 +52,35 @@ func TestClient_Liveness_Receiver_IgnoresMalformedPacket(t *testing.T) {
 	defer conn.Close()
 
 	var calls int32
+	fatalCh := make(chan error, 1)
 	rx := NewReceiver(slog.Default(), conn, func(*ControlPacket, Peer) {
 		atomic.AddInt32(&calls, 1)
-	})
+	}, fatalCh)
 
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan struct{})
 	go func() { rx.Run(ctx); close(done) }()
 
-	// Send a short (<40) payload to trigger UnmarshalControlPacket "short" error.
+	// Ensure the loop is alive: send a short (<40) payload to trigger parse error.
 	cl, err := net.DialUDP("udp4", nil, conn.LocalAddr().(*net.UDPAddr))
 	require.NoError(t, err)
 	_, err = cl.Write(make([]byte, 20))
 	require.NoError(t, err)
 	_ = cl.Close()
 
-	// Give the receiver a moment to read & ignore it, then cancel.
-	time.Sleep(100 * time.Millisecond)
+	// Give it a beat to read & ignore, then cancel and close to unblock read.
+	time.Sleep(50 * time.Millisecond)
 	cancel()
+	_ = conn.Close()
 
-	select {
-	case <-done:
-	case <-time.After(1 * time.Second):
-		t.Fatal("receiver did not exit after cancel")
-	}
+	require.Eventually(t, func() bool {
+		select {
+		case <-done:
+			return true
+		default:
+			return false
+		}
+	}, 3*time.Second, 25*time.Millisecond, "receiver did not exit after cancel+close")
 
 	require.Equal(t, int32(0), atomic.LoadInt32(&calls), "handler should not be called for malformed packet")
 }

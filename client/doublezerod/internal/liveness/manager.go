@@ -111,8 +111,13 @@ type Manager struct {
 	cfg  *ManagerConfig
 	conn *UDPConn
 
-	sched *Scheduler
-	recv  *Receiver
+	sched      *Scheduler
+	schedCtx   context.Context
+	schedStop  context.CancelFunc
+	recv       *Receiver
+	recvCtx    context.Context
+	recvStop   context.CancelFunc
+	fatalNetCh chan error // receiver reports fatal socket errors here
 
 	mu        sync.Mutex
 	sessions  map[Peer]*Session           // tracked liveness sessions
@@ -152,34 +157,83 @@ func NewManager(ctx context.Context, cfg *ManagerConfig) (*Manager, error) {
 		installed: make(map[RouteKey]bool),
 
 		unkWarnEvery: 5 * time.Second,
+		fatalNetCh:   make(chan error, 1),
 	}
 
-	m.sched = NewScheduler(m.log, m.conn, m.onSessionDown)
-	m.recv = NewReceiver(m.log, m.conn, m.HandleRx)
+	// start components with their own cancellable contexts
+	m.startComponents()
 
-	m.wg.Add(2)
+	// socket supervisor
+	m.wg.Add(1)
 	go func() {
 		defer m.wg.Done()
-		m.sched.Run(m.ctx)
-	}()
-	go func() {
-		defer m.wg.Done()
-		m.recv.Run(m.ctx)
+		m.superviseSocket()
 	}()
 
 	return m, nil
 }
 
+func (m *Manager) startComponents() {
+	// Build new component contexts
+	recvCtx, recvStop := context.WithCancel(m.ctx)
+	schedCtx, schedStop := context.WithCancel(m.ctx)
+
+	// Snapshot current conn under lock for consistency
+	m.mu.Lock()
+	conn := m.conn
+	m.mu.Unlock()
+
+	// Construct new components using the current conn
+	newRecv := NewReceiver(m.log, conn, m.HandleRx, m.fatalNetCh)
+	newSched := NewScheduler(m.log, conn, m.onSessionDown)
+
+	// Publish them atomically under the mutex
+	m.mu.Lock()
+	m.recvCtx, m.recvStop = recvCtx, recvStop
+	m.schedCtx, m.schedStop = schedCtx, schedStop
+	m.recv, m.sched = newRecv, newSched
+	// capture locals for goroutines to avoid reading fields concurrently
+	localRecv, localRecvCtx := m.recv, m.recvCtx
+	localSched, localSchedCtx := m.sched, m.schedCtx
+	m.mu.Unlock()
+
+	// Launch with local pointers (no field reads inside goroutines)
+	m.wg.Add(2)
+	go func(r *Receiver, c context.Context) {
+		defer m.wg.Done()
+		r.Run(c)
+	}(localRecv, localRecvCtx)
+
+	go func(s *Scheduler, c context.Context) {
+		defer m.wg.Done()
+		s.Run(c)
+	}(localSched, localSchedCtx)
+}
+
 func (m *Manager) Close() error {
 	m.cancel()
 
+	m.mu.Lock()
+	recvStop := m.recvStop
+	schedStop := m.schedStop
+	m.recvStop, m.schedStop = nil, nil
+	conn := m.conn
+	m.conn = nil
+	m.mu.Unlock()
+
+	if recvStop != nil {
+		recvStop()
+	}
+	if schedStop != nil {
+		schedStop()
+	}
+
 	var cerr error
-	if m.conn != nil {
-		if err := m.conn.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+	if conn != nil {
+		if err := conn.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
 			m.log.Warn("liveness: error closing connection", "error", err)
 			cerr = err
 		}
-		m.conn = nil
 	}
 
 	m.wg.Wait()
@@ -309,15 +363,12 @@ func (m *Manager) HandleRx(ctrl *ControlPacket, peer Peer) {
 	if changed {
 		switch s.state {
 		case StateUp:
-			// transitioned to Up
 			go m.onSessionUp(s)
 			m.sched.scheduleDetect(now, s) // keep detect armed while Up
 		case StateInit:
-			// transitioned to Init – arm detect; next >=Init promotes to Up
-			m.sched.scheduleDetect(now, s)
+			m.sched.scheduleDetect(now, s) // arm detect; next >=Init promotes to Up
 		case StateDown:
 			// transitioned to Down – do NOT schedule detect again
-			// (onRx already cleared detectDeadline when mirroring Down)
 			go m.onSessionDown(s)
 		}
 	} else {
@@ -375,4 +426,77 @@ func routeKeyFor(iface string, r *routing.Route) RouteKey {
 
 func peerAddrFor(r *routing.Route, port int) string {
 	return fmt.Sprintf("%s:%d", r.Dst.IP.String(), port)
+}
+
+// superviseSocket listens for fatal receiver errors and re-binds the UDP socket,
+// then restarts Receiver and Scheduler with the new socket.
+func (m *Manager) superviseSocket() {
+	backoff := 250 * time.Millisecond
+	for {
+		select {
+		case <-m.ctx.Done():
+			return
+		case err := <-m.fatalNetCh:
+			m.log.Warn("liveness: UDP socket appears broken; attempting rebind", "error", err)
+
+			// Stop existing components safely under the mutex
+			var recvStop, schedStop context.CancelFunc
+			m.mu.Lock()
+			recvStop, m.recvStop = m.recvStop, nil
+			schedStop, m.schedStop = m.schedStop, nil
+			m.mu.Unlock()
+			if recvStop != nil {
+				recvStop()
+			}
+			if schedStop != nil {
+				schedStop()
+			}
+
+			// Close old socket (outside lock)
+			var old *UDPConn
+			m.mu.Lock()
+			old = m.conn
+			m.mu.Unlock()
+			if old != nil {
+				_ = old.Close()
+			}
+
+			// Determine bind parameters (preserve ephemeral port if cfg.Port==0)
+			m.mu.Lock()
+			bindIP := m.cfg.BindIP
+			port := m.cfg.Port
+			la := m.LocalAddr()
+			m.mu.Unlock()
+			if la != nil && port == 0 {
+				port = la.Port
+			}
+
+			// Rebind with backoff
+			for {
+				if m.ctx.Err() != nil {
+					return
+				}
+				newConn, rbErr := ListenUDP(bindIP, port)
+				if rbErr != nil {
+					m.log.Warn("liveness: rebind failed; retrying", "error", rbErr, "backoff", backoff)
+					time.Sleep(backoff)
+					if backoff < 5*time.Second {
+						backoff *= 2
+					}
+					continue
+				}
+
+				m.mu.Lock()
+				m.conn = newConn
+				m.mu.Unlock()
+
+				m.log.Info("liveness: UDP socket rebound successfully", "localAddr", newConn.LocalAddr().String())
+				backoff = 250 * time.Millisecond
+
+				// Start fresh components on the new conn
+				m.startComponents()
+				break
+			}
+		}
+	}
 }

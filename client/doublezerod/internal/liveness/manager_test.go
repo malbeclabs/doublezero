@@ -384,6 +384,42 @@ func TestClient_LivenessManager_NetlinkerErrors_NoCrash(t *testing.T) {
 	m.mu.Unlock()
 }
 
+func TestClient_LivenessManager_RebindOnFatalSocket_RestartsComponents(t *testing.T) {
+	t.Parallel()
+
+	m, err := newTestManager(t, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = m.Close() })
+
+	// Capture original component pointers.
+	oldSched := m.sched
+	oldRecv := m.recv
+	require.NotNil(t, oldSched)
+	require.NotNil(t, oldRecv)
+
+	// Simulate a fatal socket error from the receiver.
+	select {
+	case m.fatalNetCh <- errors.New("simulated fatal socket error"):
+	default:
+		// channel is bounded; shouldn't block, but don't fail if full
+	}
+
+	// Eventually, the supervisor should rebind and replace both components.
+	require.Eventually(t, func() bool {
+		// We don't need to lock here because we only read the pointers,
+		// and replacement is atomic on 64-bit architectures; but to be safe:
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		return m.sched != nil && m.recv != nil && m.sched != oldSched && m.recv != oldRecv
+	}, 3*time.Second, 50*time.Millisecond, "expected scheduler and receiver to be restarted after fatal socket error")
+
+	// Still has a valid local addr post-rebind.
+	la := m.LocalAddr()
+	require.NotNil(t, la)
+	require.Equal(t, "127.0.0.1", la.IP.String())
+	require.NotZero(t, la.Port)
+}
+
 func newTestManager(t *testing.T, mutate func(*ManagerConfig)) (*Manager, error) {
 	cfg := &ManagerConfig{
 		Logger:     newTestLogger(t),

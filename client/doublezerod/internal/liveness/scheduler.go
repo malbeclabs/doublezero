@@ -200,7 +200,7 @@ func (s *Scheduler) doTX(sess *Session) {
 		RequiredMinRxUs: uint32(sess.localRxMin / time.Microsecond),
 	}).Marshal()
 	sess.mu.Unlock()
-	_, err := writeUDP(s.conn, pkt, sess.peerAddr, sess.peer.iface, net.ParseIP(sess.route.Src.String()))
+	_, err := writeUDP(s.conn, pkt, sess.peerAddr, sess.peer.Interface, net.ParseIP(sess.route.Src.String()))
 	if err != nil {
 		s.log.Debug("liveness.scheduler: error writing UDP packet", "error", err)
 	}

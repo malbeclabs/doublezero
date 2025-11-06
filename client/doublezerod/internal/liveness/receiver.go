@@ -55,7 +55,7 @@ func (r *Receiver) Run(ctx context.Context) {
 			continue
 		}
 
-		peer := NewPeer(ifname, localAddr.IP, remoteIP)
+		peer := Peer{Interface: ifname, LocalIP: localAddr.IP.String(), RemoteIP: remoteIP.String()}
 
 		r.handleRx(ctrl, peer)
 	}

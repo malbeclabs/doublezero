@@ -272,7 +272,7 @@ func TestClient_LivenessManager_HandleRx_UnknownPeer_NoEffect(t *testing.T) {
 	m.mu.Unlock()
 
 	// Construct a peer key that doesn't exist.
-	unknown := NewPeer("lo", net.IPv4(127, 0, 0, 2), net.IPv4(127, 0, 0, 3))
+	unknown := Peer{Interface: "lo", LocalIP: "127.0.0.2", RemoteIP: "127.0.0.3"}
 	m.HandleRx(&ControlPacket{YourDiscr: 0, MyDiscr: 1, State: Init}, unknown)
 
 	// Assert no changes.
@@ -323,7 +323,7 @@ func TestClient_LivenessManager_NetlinkerErrors_NoCrash(t *testing.T) {
 	m.HandleRx(&ControlPacket{YourDiscr: 0, MyDiscr: 99, State: Down}, peer)                    // Down -> Init
 	m.HandleRx(&ControlPacket{YourDiscr: sess.myDisc, MyDiscr: sess.yourDisc, State: Up}, peer) // Init -> Up
 
-	rk := routeKeyFor(peer.iface, sess.route)
+	rk := routeKeyFor(peer.Interface, sess.route)
 	time.Sleep(50 * time.Millisecond) // allow onSessionUp goroutine to run
 
 	m.mu.Lock()

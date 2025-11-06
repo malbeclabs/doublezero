@@ -20,27 +20,17 @@ const (
 )
 
 type Peer struct {
-	iface    string
-	localIP  string
-	remoteIP string
-}
-
-func NewPeer(iface string, localIP net.IP, remoteIP net.IP) Peer {
-	if localIP == nil {
-		localIP = net.IPv4zero
-	}
-	if remoteIP == nil {
-		remoteIP = net.IPv4zero
-	}
-	return Peer{iface: iface, localIP: localIP.String(), remoteIP: remoteIP.String()}
+	Interface string
+	LocalIP   string
+	RemoteIP  string
 }
 
 func (p *Peer) String() string {
-	return fmt.Sprintf("iface: %s, localIP: %s, remoteIP: %s", p.iface, p.localIP, p.remoteIP)
+	return fmt.Sprintf("interface: %s, localIP: %s, remoteIP: %s", p.Interface, p.LocalIP, p.RemoteIP)
 }
 
 type RouteKey struct {
-	Iface     string
+	Interface string
 	SrcIP     string
 	Table     int
 	DstPrefix string
@@ -194,7 +184,7 @@ func (m *Manager) RegisterRoute(r *routing.Route, iface string) error {
 	m.desired[k] = r
 	m.mu.Unlock()
 
-	peer := NewPeer(iface, r.Dst.IP, r.Src)
+	peer := Peer{Interface: iface, LocalIP: r.Src.String(), RemoteIP: r.Dst.IP.String()}
 
 	m.log.Info("liveness: registering route", "route", r.String(), "peerAddr", peerAddr)
 
@@ -235,7 +225,7 @@ func (m *Manager) WithdrawRoute(r *routing.Route, iface string) error {
 	delete(m.installed, k)
 	m.mu.Unlock()
 
-	peer := NewPeer(iface, r.Dst.IP, r.Src)
+	peer := Peer{Interface: iface, LocalIP: r.Src.String(), RemoteIP: r.Dst.IP.String()}
 
 	m.mu.Lock()
 	if s := m.sessions[peer]; s != nil {
@@ -315,7 +305,7 @@ func (m *Manager) HandleRx(ctrl *ControlPacket, peer Peer) {
 }
 
 func (m *Manager) onSessionUp(s *Session) {
-	rk := routeKeyFor(s.peer.iface, s.route)
+	rk := routeKeyFor(s.peer.Interface, s.route)
 	m.mu.Lock()
 	r := m.desired[rk]
 	if r == nil || m.installed[rk] {
@@ -329,7 +319,7 @@ func (m *Manager) onSessionUp(s *Session) {
 }
 
 func (m *Manager) onSessionDown(s *Session) {
-	rk := routeKeyFor(s.peer.iface, s.route)
+	rk := routeKeyFor(s.peer.Interface, s.route)
 	m.mu.Lock()
 	r := m.desired[rk]
 	was := m.installed[rk]
@@ -352,7 +342,7 @@ func rand32() uint32 {
 }
 
 func routeKeyFor(iface string, r *routing.Route) RouteKey {
-	return RouteKey{Iface: iface, SrcIP: r.Src.String(), Table: r.Table, DstPrefix: r.Dst.String(), NextHop: r.NextHop.String()}
+	return RouteKey{Interface: iface, SrcIP: r.Src.String(), Table: r.Table, DstPrefix: r.Dst.String(), NextHop: r.NextHop.String()}
 }
 
 func peerAddrFor(r *routing.Route, port int) string {

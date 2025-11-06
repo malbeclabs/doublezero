@@ -14,14 +14,12 @@ import (
 )
 
 type IBRLService struct {
-	bgp            BGPReaderWriter
-	nl             routing.Netlinker
-	db             DBReaderWriter
-	Tunnel         *routing.Tunnel
-	DoubleZeroAddr net.IP
-
-	LivenessEnabled bool
-	LivenessPort    int
+	bgp             BGPReaderWriter
+	nl              routing.Netlinker
+	db              DBReaderWriter
+	Tunnel          *routing.Tunnel
+	DoubleZeroAddr  net.IP
+	livenessEnabled bool
 }
 
 func (s *IBRLService) UserType() api.UserType   { return api.UserTypeIBRL }
@@ -33,9 +31,7 @@ func NewIBRLService(bgp BGPReaderWriter, nl routing.Netlinker, db DBReaderWriter
 		nl:  nl,
 		db:  db,
 
-		// TODO(snormore): Make this configurable via CLI flag, and figure out rollout strategy.
-		LivenessEnabled: true,
-		LivenessPort:    44880,
+		livenessEnabled: true,
 	}
 }
 
@@ -71,8 +67,7 @@ func (s *IBRLService) Setup(p *api.ProvisionRequest) error {
 		RouteSrc:        p.DoubleZeroIP,
 		RouteTable:      syscall.RT_TABLE_MAIN,
 		FlushRoutes:     flush,
-		LivenessEnabled: s.LivenessEnabled,
-		LivenessPort:    s.LivenessPort,
+		LivenessEnabled: s.livenessEnabled,
 		Interface:       "doublezero0",
 	}
 	nlri, err := bgp.NewNLRI([]uint32{peer.LocalAs}, s.Tunnel.LocalOverlay.String(), p.DoubleZeroIP.String(), 32)

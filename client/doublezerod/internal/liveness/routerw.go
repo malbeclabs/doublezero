@@ -1,9 +1,6 @@
 package liveness
 
 import (
-	"context"
-	"log/slog"
-
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 )
 
@@ -14,27 +11,18 @@ type RouteReaderWriter interface {
 }
 
 type routeReaderWriter struct {
-	ctx    context.Context
-	cancel context.CancelFunc
-	log    *slog.Logger
-	lm     *Manager
-	rrw    RouteReaderWriter
-	iface  string
+	lm    *Manager
+	rrw   RouteReaderWriter
+	iface string
 }
 
-func NewRouteReaderWriter(ctx context.Context, log *slog.Logger, lm *Manager, rrw RouteReaderWriter, iface string) (*routeReaderWriter, error) {
-	ctx, cancel := context.WithCancel(ctx)
+func NewRouteReaderWriter(lm *Manager, rrw RouteReaderWriter, iface string) *routeReaderWriter {
 	return &routeReaderWriter{
-		ctx:    ctx,
-		cancel: cancel,
-		log:    log,
-		lm:     lm,
-		rrw:    rrw,
-		iface:  iface,
-	}, nil
+		lm:    lm,
+		rrw:   rrw,
+		iface: iface,
+	}
 }
-
-func (m *routeReaderWriter) Close() error { m.cancel(); return m.lm.Close() }
 
 func (m *routeReaderWriter) RouteAdd(r *routing.Route) error {
 	return m.lm.RegisterRoute(r, m.iface)

@@ -1,12 +1,10 @@
 package bgp
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
-	"log/slog"
 	"net"
 	"net/netip"
 	"sync"
@@ -104,7 +102,6 @@ type PeerConfig struct {
 	NoInstall       bool
 	Interface       string
 	LivenessEnabled bool
-	LivenessPort    int
 }
 
 type BgpServer struct {
@@ -152,13 +149,7 @@ func (b *BgpServer) AddPeer(p *PeerConfig, advertised []NLRI) error {
 	}
 	rrw := b.routeReaderWriter
 	if p.LivenessEnabled {
-		var err error
-		ctx := context.Background() // TODO(snormore): Get this from the BGP server or something better than this.
-		log := slog.Default()
-		rrw, err = liveness.NewRouteReaderWriter(ctx, log, b.livenessManager, b.routeReaderWriter, p.Interface)
-		if err != nil {
-			return fmt.Errorf("error creating liveness route reader writer: %v", err)
-		}
+		rrw = liveness.NewRouteReaderWriter(b.livenessManager, b.routeReaderWriter, p.Interface)
 	}
 	plugin := NewBgpPlugin(advertised, p.RouteSrc, p.RouteTable, b.peerStatusChan, p.FlushRoutes, p.NoInstall, rrw)
 	err := b.server.AddPeer(corebgp.PeerConfig{

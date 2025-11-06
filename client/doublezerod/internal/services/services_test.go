@@ -179,7 +179,6 @@ func TestServices(t *testing.T) {
 				FlushRoutes:     true,
 				Interface:       "doublezero0",
 				LivenessEnabled: true,
-				LivenessPort:    44880,
 			},
 			wantTunRemoved: &routing.Tunnel{
 				Name:           "doublezero0",

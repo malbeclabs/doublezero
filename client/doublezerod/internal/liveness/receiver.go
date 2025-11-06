@@ -9,13 +9,13 @@ import (
 
 type Receiver struct {
 	log      *slog.Logger
-	conn     *net.UDPConn
+	conn     *UDPConn
 	handleRx HandleRxFunc
 }
 
 type HandleRxFunc func(pkt *ControlPacket, peer Peer)
 
-func NewReceiver(log *slog.Logger, conn *net.UDPConn, handleRx HandleRxFunc) *Receiver {
+func NewReceiver(log *slog.Logger, conn *UDPConn, handleRx HandleRxFunc) *Receiver {
 	return &Receiver{
 		log:      log,
 		conn:     conn,
@@ -29,7 +29,7 @@ func (r *Receiver) Run(ctx context.Context) {
 	buf := make([]byte, 1500)
 	for {
 		r.conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
-		n, remoteAddr, localIP, ifname, err := readFromUDP(r.conn, buf)
+		n, remoteAddr, localIP, ifname, err := r.conn.ReadFrom(buf)
 		if err != nil {
 			if ne, ok := err.(net.Error); ok && ne.Timeout() {
 				select {

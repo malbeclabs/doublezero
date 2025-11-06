@@ -100,12 +100,12 @@ func (h *eventHeap) Pop() any {
 
 type Scheduler struct {
 	log           *slog.Logger
-	conn          *net.UDPConn
+	conn          *UDPConn
 	onSessionDown func(s *Session)
 	eq            *EventQueue
 }
 
-func NewScheduler(log *slog.Logger, conn *net.UDPConn, onSessionDown func(s *Session)) *Scheduler {
+func NewScheduler(log *slog.Logger, conn *UDPConn, onSessionDown func(s *Session)) *Scheduler {
 	eq := NewEventQueue()
 	return &Scheduler{
 		log:           log,
@@ -209,7 +209,7 @@ func (s *Scheduler) doTX(sess *Session) {
 		RequiredMinRxUs: uint32(sess.localRxMin / time.Microsecond),
 	}).Marshal()
 	sess.mu.Unlock()
-	_, err := writeUDP(s.conn, pkt, sess.peerAddr, sess.peer.Interface, net.ParseIP(sess.route.Src.String()))
+	_, err := s.conn.WriteTo(pkt, sess.peerAddr, sess.peer.Interface, net.ParseIP(sess.route.Src.String()))
 	if err != nil {
 		s.log.Debug("liveness.scheduler: error writing UDP packet", "error", err)
 	}

@@ -109,7 +109,7 @@ type Manager struct {
 
 	log  *slog.Logger
 	cfg  *ManagerConfig
-	conn *net.UDPConn
+	conn *UDPConn
 
 	sched *Scheduler
 	recv  *Receiver
@@ -125,13 +125,9 @@ func NewManager(ctx context.Context, cfg *ManagerConfig) (*Manager, error) {
 		return nil, fmt.Errorf("error validating manager config: %v", err)
 	}
 
-	laddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", cfg.BindIP, cfg.Port))
+	conn, err := ListenUDP(cfg.BindIP, cfg.Port)
 	if err != nil {
-		return nil, err
-	}
-	conn, err := net.ListenUDP("udp", laddr)
-	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error creating UDP connection: %v", err)
 	}
 
 	log := cfg.Logger

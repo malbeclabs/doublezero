@@ -286,3 +286,26 @@ func TestClient_Liveness_Session_HandleRxIgnoredWhenAdminDown(t *testing.T) {
 	require.Equal(t, StateAdminDown, s.state)
 	require.Zero(t, s.yourDisc)
 }
+
+func TestClient_Liveness_Session_HandleRxClampsTimersAndDetectMultZero(t *testing.T) {
+	t.Parallel()
+	s := newSess()
+	now := time.Now()
+	// Configure floors/ceils to make clamping observable.
+	s.minTxFloor = 7 * time.Millisecond
+	s.maxTxCeil = 40 * time.Millisecond
+
+	cp := &ControlPacket{
+		YourDiscr:       0,
+		MyDiscr:         9,
+		State:           StateInit,
+		DetectMult:      0,         // invalid → clamp to 1 (internal)
+		DesiredMinTxUs:  1_000,     // 1ms  → clamp up to 7ms
+		RequiredMinRxUs: 1_000_000, // 1s   → clamp down to 40ms
+	}
+	_ = s.HandleRx(now, cp)
+
+	require.Equal(t, 7*time.Millisecond, s.remoteTxMin)
+	require.Equal(t, 40*time.Millisecond, s.remoteRxMin)
+	require.False(t, s.detectDeadline.IsZero())
+}

@@ -155,16 +155,15 @@ func (s *Session) HandleRx(now time.Time, ctrl *ControlPacket) (changed bool) {
 	switch prev {
 	case StateDown:
 		// Bring-up: as soon as we can identify the peer, move to Init.
-		// If the peer already reports >= Init, go straight to Up.
+		// Only promote to Up once we have explicit echo (YourDiscr == myDisc).
 		if s.yourDisc != 0 {
-			if ctrl.State >= StateInit {
-				// If peer is reporting Init or Up, promote our session to Up
-				// Confirmation Phase: State = Up
+			if ctrl.State >= StateInit && ctrl.YourDiscr == s.myDisc {
+				// Confirmation Phase: explicit echo seen → Up
 				s.state = StateUp
 				s.backoffFactor = 1
 			} else {
-				// If peer is reporting Down, promote our session to Init
-				// Learning Phase: State = Init
+				// Learning Phase: we've learned yourDisc but don't yet have echo
+				// (peer still Down or not echoing our myDisc) → stay/proceed to Init
 				s.state = StateInit
 				s.backoffFactor = 1
 			}
@@ -172,10 +171,9 @@ func (s *Session) HandleRx(now time.Time, ctrl *ControlPacket) (changed bool) {
 
 	case StateInit:
 		// Do NOT mirror Down while initializing; let detect expiry handle failure.
-		// Promote to Up once the peer reports >= Init.
-		if s.yourDisc != 0 && ctrl.State >= StateInit {
-			// If peer is reporting Init or Up, promote our session to Up
-			// Confirmation Phase: State = Up
+		// Promote to Up only after explicit echo confirming bidirectional path.
+		if s.yourDisc != 0 && ctrl.State >= StateInit && ctrl.YourDiscr == s.myDisc {
+			// Confirmation Phase: explicit echo seen → Up
 			s.state = StateUp
 			s.backoffFactor = 1
 		}

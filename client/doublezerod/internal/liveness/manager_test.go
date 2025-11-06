@@ -206,7 +206,10 @@ func TestClient_LivenessManager_WithdrawRoute_RemovesSessionAndDeletesIfInstalle
 			break
 		}
 	}()
+	// Down -> Init (learn yourDisc)
 	m.HandleRx(&ControlPacket{YourDiscr: 0, MyDiscr: 1, State: StateInit}, peer)
+	// Init -> Up requires explicit echo (YourDiscr == myDisc)
+	m.HandleRx(&ControlPacket{YourDiscr: sess.myDisc, MyDiscr: sess.yourDisc, State: StateInit}, peer)
 	wait(t, addCh, 2*time.Second, "RouteAdd before withdraw")
 
 	require.NoError(t, m.WithdrawRoute(r, "lo"))

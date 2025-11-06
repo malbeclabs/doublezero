@@ -197,7 +197,7 @@ func TestClient_Liveness_Session_HandleRxFromDownToInitOrUpAndArmsDetect(t *test
 
 	// Next packet peer Init -> go Up
 	cpInit := &ControlPacket{
-		YourDiscr:       42, // matches our myDisc (strictly not required since we accept 0 or equal)
+		YourDiscr:       42, // matches our myDisc (explicit echo required)
 		MyDiscr:         1001,
 		State:           StateInit,
 		DesiredMinTxUs:  20_000,
@@ -216,8 +216,15 @@ func TestClient_Liveness_Session_HandleRxFromInitToUpOnPeerInitOrUp(t *testing.T
 	s.yourDisc = 777 // already learned
 	now := time.Now()
 
-	cp := &ControlPacket{YourDiscr: 0, MyDiscr: 777, State: StateUp}
-	changed := s.HandleRx(now, cp)
+	// Without explicit echo (YourDiscr != myDisc), do NOT promote.
+	cpNoEcho := &ControlPacket{YourDiscr: 0, MyDiscr: 777, State: StateUp}
+	changed := s.HandleRx(now, cpNoEcho)
+	require.False(t, changed)
+	require.Equal(t, StateInit, s.state)
+
+	// With explicit echo (YourDiscr == myDisc), promote to Up.
+	cpEcho := &ControlPacket{YourDiscr: s.myDisc, MyDiscr: s.yourDisc, State: StateUp}
+	changed = s.HandleRx(now, cpEcho)
 	require.True(t, changed)
 	require.Equal(t, StateUp, s.state)
 }

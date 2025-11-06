@@ -8,11 +8,14 @@ use doublezero_revenue_distribution::{
     },
     state::SolanaValidatorDeposit,
 };
-use doublezero_solana_client_tools::payer::{SolanaPayerOptions, Wallet};
+use doublezero_solana_client_tools::{
+    instruction::take_instruction,
+    payer::{SolanaPayerOptions, TransactionOutcome, Wallet},
+};
 use solana_sdk::{compute_budget::ComputeBudgetInstruction, pubkey::Pubkey};
 
 use crate::command::{
-    revenue_distribution::convert_2z::{self, Convert2zContext},
+    revenue_distribution::{SolConversionState, convert_2z::Convert2zContext},
     try_prompt_proceed_confirmation,
 };
 
@@ -99,12 +102,12 @@ impl ValidatorDepositCommand {
         };
 
         struct Convert2zContextItems {
-            user_token_account_key: Pubkey,
+            context: Convert2zContext,
             token_balance_before: u64,
             required_lamports: u64,
         }
 
-        let convert_2z_context = if let Some(limit_price_str) = convert_2z_limit_price_str {
+        let convert_2z_context_items = if let Some(limit_price_str) = convert_2z_limit_price_str {
             try_prompt_proceed_confirmation(
                 format!(
                     "By specifying --convert-2z-limit-price, you are funding {:0.9} SOL to your deposit account",
@@ -113,30 +116,33 @@ impl ValidatorDepositCommand {
                 "Aborting command with --convert-2z-limit-price".to_string(),
             )?;
 
-            let Convert2zContext {
-                instruction,
-                user_token_account_key,
-                balance_before: token_balance_before,
-                required_lamports,
-            } = Convert2zContext::try_prepare(
+            let sol_conversion_state = SolConversionState::try_fetch(&wallet.connection).await?;
+
+            let mut convert_2z_context = Convert2zContext::try_prepare(
                 &wallet,
+                &sol_conversion_state,
                 Some(limit_price_str),
                 source_2z_account_key,
                 Some(fund_lamports),
             )
             .await?;
+            let buy_sol_ix = take_instruction(&mut convert_2z_context.instruction);
+
+            let token_balance_before = convert_2z_context
+                .try_token_balance(&wallet.connection)
+                .await?;
             println!(
                 "2Z token balance: {:.8}",
                 token_balance_before as f64 * 1e-8
             );
 
-            instructions.push(instruction);
+            instructions.push(buy_sol_ix);
             compute_unit_limit += Convert2zContext::BUY_SOL_COMPUTE_UNIT_LIMIT;
 
             Some(Convert2zContextItems {
-                user_token_account_key,
+                context: convert_2z_context,
                 token_balance_before,
-                required_lamports,
+                required_lamports: sol_conversion_state.fixed_fill_quantity,
             })
         } else {
             None
@@ -170,22 +176,26 @@ impl ValidatorDepositCommand {
         let transaction = wallet.new_transaction(&instructions).await?;
         let tx_sig = wallet.send_or_simulate_transaction(&transaction).await?;
 
-        if let Some(tx_sig) = tx_sig {
+        // TODO: Add simulation result handling with state changes.
+        if let TransactionOutcome::Executed(tx_sig) = tx_sig {
             println!("Solana validator deposit: {deposit_key}");
             println!("Funded{and_initialized_str}: {tx_sig}");
             println!("Node ID: {node_id}");
             println!("Balance: {:.9} SOL", deposit_balance as f64 * 1e-9);
 
-            if let Some(convert_2z_context) = convert_2z_context {
-                let token_balance_after = convert_2z::fetch_token_balance(
-                    &wallet,
-                    Some(convert_2z_context.user_token_account_key),
-                )
-                .await?;
+            if let Some(Convert2zContextItems {
+                context: convert_2z_context,
+                token_balance_before,
+                required_lamports,
+            }) = convert_2z_context_items
+            {
+                let token_balance_after = convert_2z_context
+                    .try_token_balance(&wallet.connection)
+                    .await?;
                 println!(
                     "Converted {:.8} 2Z tokens to fund deposit with {:.9} SOL",
-                    (convert_2z_context.token_balance_before - token_balance_after) as f64 * 1e-8,
-                    (convert_2z_context.required_lamports as f64 * 1e-9)
+                    (token_balance_before - token_balance_after) as f64 * 1e-8,
+                    (required_lamports as f64 * 1e-9)
                 );
             }
 

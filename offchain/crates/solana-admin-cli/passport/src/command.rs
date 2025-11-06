@@ -9,7 +9,7 @@ use doublezero_passport::{
     state::ProgramConfig,
 };
 use doublezero_program_tools::{get_program_data_address, instruction::try_build_instruction};
-use doublezero_solana_client_tools::payer::{SolanaPayerOptions, Wallet};
+use doublezero_solana_client_tools::payer::{SolanaPayerOptions, TransactionOutcome, Wallet};
 use solana_sdk::{
     compute_budget::ComputeBudgetInstruction, instruction::Instruction, pubkey::Pubkey,
 };
@@ -139,9 +139,9 @@ pub async fn execute_initialize_program(solana_payer_options: SolanaPayerOptions
     }
 
     let transaction = wallet.new_transaction(&instructions).await?;
-    let tx_sig = wallet.send_or_simulate_transaction(&transaction).await?;
+    let tx_outcome = wallet.send_or_simulate_transaction(&transaction).await?;
 
-    if let Some(tx_sig) = tx_sig {
+    if let TransactionOutcome::Executed(tx_sig) = tx_outcome {
         println!("Initialized Passport program: {tx_sig}");
 
         wallet.print_verbose_output(&[tx_sig]).await?;
@@ -182,9 +182,9 @@ pub async fn execute_set_admin(
     }
 
     let transaction = wallet.new_transaction(&instructions).await?;
-    let tx_sig = wallet.send_or_simulate_transaction(&transaction).await?;
+    let tx_outcome = wallet.send_or_simulate_transaction(&transaction).await?;
 
-    if let Some(tx_sig) = tx_sig {
+    if let TransactionOutcome::Executed(tx_sig) = tx_outcome {
         println!("Set Passport program admin: {tx_sig}");
 
         wallet.print_verbose_output(&[tx_sig]).await?;
@@ -312,9 +312,9 @@ pub async fn execute_configure_program(
     }
 
     let transaction = wallet.new_transaction(&instructions).await?;
-    let tx_sig = wallet.send_or_simulate_transaction(&transaction).await?;
+    let tx_outcome = wallet.send_or_simulate_transaction(&transaction).await?;
 
-    if let Some(tx_sig) = tx_sig {
+    if let TransactionOutcome::Executed(tx_sig) = tx_outcome {
         println!("Configured Passport program: {tx_sig}");
 
         wallet.print_verbose_output(&[tx_sig]).await?;

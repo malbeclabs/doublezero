@@ -2490,6 +2490,7 @@ version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "base64 0.22.1",
  "borsh 1.5.7",
  "chrono",
  "clap",
@@ -2506,6 +2507,7 @@ dependencies = [
  "doublezero_sdk",
  "itertools 0.14.0",
  "reqwest",
+ "serde",
  "serde_json",
  "slack-notifier",
  "solana-account-decoder-client-types",

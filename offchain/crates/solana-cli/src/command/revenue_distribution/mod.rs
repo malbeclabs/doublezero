@@ -1,6 +1,7 @@
 mod contributor_rewards;
 mod convert_2z;
 mod fetch;
+mod harvest_2z;
 mod relay;
 mod validator_deposit;
 
@@ -51,6 +52,9 @@ pub enum RevenueDistributionSubcommand {
     #[command(name = "convert-2z")]
     Convert2z(convert_2z::Convert2zCommand),
 
+    #[command(name = "harvest-2z")]
+    Harvest2z(harvest_2z::Harvest2zCommand),
+
     /// Manage a Solana validator deposit account. Funding can be directly with
     /// SOL or with 2Z limited by specified conversion rate for 2Z -> SOL.
     ValidatorDeposit(validator_deposit::ValidatorDepositCommand),
@@ -65,6 +69,7 @@ impl RevenueDistributionSubcommand {
             Self::Fetch(command) => command.try_into_execute().await,
             Self::ContributorRewards(command) => command.try_into_execute().await,
             Self::Convert2z(command) => command.try_into_execute().await,
+            Self::Harvest2z(command) => command.try_into_execute().await,
             Self::ValidatorDeposit(command) => command.try_into_execute().await,
             Self::Relay(command) => command.inner.try_into_execute().await,
         }
@@ -139,6 +144,7 @@ pub struct SolConversionState {
     pub program_state: (Pubkey, Box<SolConversionProgramState>),
     pub configuration_registry: (Pubkey, Box<SolConversionConfigurationRegistry>),
     pub journal: (Pubkey, ZeroCopyAccountOwnedData<Journal>),
+    pub fixed_fill_quantity: u64,
 }
 
 impl SolConversionState {
@@ -160,15 +166,19 @@ impl SolConversionState {
         ensure!(account_datas.len() == 3, FAILED_FETCH_ERROR);
 
         let program_state_data = Box::<_>::deserialize(&mut &account_datas[0][8..])?;
-        let configuration_registry_data = Box::<_>::deserialize(&mut &account_datas[1][8..])?;
+        let configuration_registry_data =
+            Box::<SolConversionConfigurationRegistry>::deserialize(&mut &account_datas[1][8..])?;
 
         let journal_data = ZeroCopyAccountOwnedData::new(&account_datas[2])
             .context("Revenue Distribution program not initialized")?;
+
+        let fixed_fill_quantity = configuration_registry_data.fixed_fill_quantity;
 
         Ok(Self {
             program_state: (program_state_key, program_state_data),
             configuration_registry: (configuration_registry_key, configuration_registry_data),
             journal: (journal_key, journal_data),
+            fixed_fill_quantity,
         })
     }
 }
@@ -178,8 +188,9 @@ pub async fn try_request_oracle_conversion_price() -> Result<OraclePriceData> {
         .get(SOL_2Z_ORACLE_ENDPOINT)
         .header("User-Agent", "DoubleZero Solana CLI")
         .send()
-        .await?
+        .await
+        .with_context(|| format!("Failed to request SOL/2Z price from {SOL_2Z_ORACLE_ENDPOINT}"))?
         .json()
         .await
-        .with_context(|| format!("Failed to request SOL/2Z price from {SOL_2Z_ORACLE_ENDPOINT}"))
+        .context("Failed to parse oracle response. Please try again")
 }

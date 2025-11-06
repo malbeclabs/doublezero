@@ -15,7 +15,7 @@ use doublezero_sol_conversion_interface::{
 };
 use doublezero_solana_client_tools::{
     log_info,
-    payer::{SolanaPayerOptions, Wallet},
+    payer::{SolanaPayerOptions, TransactionOutcome, Wallet},
 };
 use solana_sdk::{
     compute_budget::ComputeBudgetInstruction, pubkey::Pubkey, signature::Keypair, signer::Signer,
@@ -140,7 +140,7 @@ async fn execute_initialize(
     )?;
 
     let transaction = wallet
-        .new_transaction_with_additional_signers(
+        .new_transaction_with_additional_signers_and_lookup_tables(
             &[
                 create_account_ix,
                 initialize_system_ix,
@@ -148,11 +148,12 @@ async fn execute_initialize(
                 toggle_system_state_ix,
             ],
             &[&fills_registry_signer],
+            &[],
         )
         .await?;
-    let tx_sig = wallet.send_or_simulate_transaction(&transaction).await?;
+    let tx_outcome = wallet.send_or_simulate_transaction(&transaction).await?;
 
-    if let Some(tx_sig) = tx_sig {
+    if let TransactionOutcome::Executed(tx_sig) = tx_outcome {
         println!("Initialized program: {tx_sig}");
 
         wallet.print_verbose_output(&[tx_sig]).await?;
@@ -175,9 +176,9 @@ async fn execute_set_admin(
     )?;
 
     let transaction = wallet.new_transaction(&[set_admin_ix]).await?;
-    let tx_sig = wallet.send_or_simulate_transaction(&transaction).await?;
+    let tx_outcome = wallet.send_or_simulate_transaction(&transaction).await?;
 
-    if let Some(tx_sig) = tx_sig {
+    if let TransactionOutcome::Executed(tx_sig) = tx_outcome {
         println!("Set admin: {tx_sig}");
 
         wallet.print_verbose_output(&[tx_sig]).await?;
@@ -317,11 +318,11 @@ impl ConfigureCommand {
         }
 
         let transaction = wallet
-            .new_transaction_with_additional_signers(&instructions, &[])
+            .new_transaction_with_additional_signers_and_lookup_tables(&instructions, &[], &[])
             .await?;
         let tx_sig = wallet.send_or_simulate_transaction(&transaction).await?;
 
-        if let Some(tx_sig) = tx_sig {
+        if let TransactionOutcome::Executed(tx_sig) = tx_sig {
             println!("Updated configuration: {tx_sig}");
 
             wallet.print_verbose_output(&[tx_sig]).await?;

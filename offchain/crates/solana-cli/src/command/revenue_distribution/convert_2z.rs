@@ -6,7 +6,11 @@ use doublezero_sol_conversion_interface::{
     ID,
     instruction::{SolConversionInstructionData, account::BuySolAccounts},
 };
-use doublezero_solana_client_tools::payer::{SolanaPayerOptions, Wallet};
+use doublezero_solana_client_tools::{
+    instruction::take_instruction,
+    payer::{SolanaPayerOptions, TransactionOutcome, Wallet},
+    rpc::SolanaConnection,
+};
 use solana_sdk::{
     compute_budget::ComputeBudgetInstruction, instruction::Instruction, program_pack::Pack,
     pubkey::Pubkey,
@@ -46,7 +50,7 @@ impl Convert2zCommand {
             solana_payer_options,
         } = self;
 
-        let wallet = Wallet::try_from(solana_payer_options)?;
+        let mut wallet = Wallet::try_from(solana_payer_options)?;
 
         let checked_lamports = match checked_sol_amount_str {
             Some(checked_sol_amount_str) => {
@@ -66,42 +70,48 @@ impl Convert2zCommand {
             None => None,
         };
 
-        let convert_2z_context = Convert2zContext::try_prepare(
+        let sol_conversion_state = SolConversionState::try_fetch(&wallet.connection).await?;
+        let fixed_fill_quantity = sol_conversion_state.fixed_fill_quantity;
+
+        let mut convert_2z_context = Convert2zContext::try_prepare(
             &wallet,
+            &sol_conversion_state,
             limit_price_str,
             source_token_account_key,
             checked_lamports,
         )
         .await?;
-        println!(
-            "2Z token balance: {:.8}",
-            convert_2z_context.balance_before as f64 * 1e-8
-        );
+        let buy_sol_ix = take_instruction(&mut convert_2z_context.instruction);
+
+        let balance_before = convert_2z_context
+            .try_token_balance(&wallet.connection)
+            .await?;
+        println!("2Z token balance: {:.8}", balance_before as f64 * 1e-8);
 
         let mut instructions = vec![
-            convert_2z_context.instruction,
+            buy_sol_ix,
             ComputeBudgetInstruction::set_compute_unit_limit(
                 Convert2zContext::BUY_SOL_COMPUTE_UNIT_LIMIT,
             ),
         ];
 
-        if let Some(ref compute_unit_price_ix) = wallet.compute_unit_price_ix {
-            instructions.push(compute_unit_price_ix.clone());
+        if let Some(compute_unit_price_ix) = wallet.compute_unit_price_ix.as_mut() {
+            instructions.push(take_instruction(compute_unit_price_ix));
         }
 
         let transaction = wallet.new_transaction(&instructions).await?;
         let tx_sig = wallet.send_or_simulate_transaction(&transaction).await?;
 
-        if let Some(tx_sig) = tx_sig {
+        if let TransactionOutcome::Executed(tx_sig) = tx_sig {
             println!("Converted 2Z to SOL: {tx_sig}");
 
-            let balance_after =
-                fetch_token_balance(&wallet, Some(convert_2z_context.user_token_account_key))
-                    .await?;
+            let balance_after = convert_2z_context
+                .try_token_balance(&wallet.connection)
+                .await?;
             println!(
                 "Converted {:.8} 2Z tokens to {:.9} SOL",
-                (convert_2z_context.balance_before - balance_after) as f64 * 1e-8,
-                (convert_2z_context.required_lamports as f64 * 1e-9)
+                (balance_before - balance_after) as f64 * 1e-8,
+                (fixed_fill_quantity as f64 * 1e-9)
             );
 
             wallet.print_verbose_output(&[tx_sig]).await?;
@@ -152,28 +162,10 @@ pub fn unwrap_token_account_or_ata(
     )
 }
 
-pub async fn fetch_token_balance(
-    wallet: &Wallet,
-    source_token_account_key: Option<Pubkey>,
-) -> Result<u64> {
-    let user_token_account_key = unwrap_token_account_or_ata(wallet, source_token_account_key);
-
-    let token_account = wallet
-        .connection
-        .get_account(&user_token_account_key)
-        .await
-        .with_context(|| format!("Token account not found: {user_token_account_key}"))?;
-
-    spl_token::state::Account::unpack(&token_account.data)
-        .map(|account| account.amount)
-        .with_context(|| format!("Account {user_token_account_key} not token account"))
-}
-
 pub struct Convert2zContext {
     pub instruction: Instruction,
     pub user_token_account_key: Pubkey,
-    pub balance_before: u64,
-    pub required_lamports: u64,
+    pub oracle_swap_rate: u64,
 }
 
 impl Convert2zContext {
@@ -181,6 +173,7 @@ impl Convert2zContext {
 
     pub async fn try_prepare(
         wallet: &Wallet,
+        sol_conversion_state: &SolConversionState,
         limit_price_str: Option<String>,
         source_token_account_key: Option<Pubkey>,
         checked_lamports: Option<u64>,
@@ -189,11 +182,12 @@ impl Convert2zContext {
 
         let SolConversionState {
             program_state: (_, sol_conversion_program_state),
-            configuration_registry: (_, configuration_registry),
+            configuration_registry: _,
             journal: (_, journal),
-        } = SolConversionState::try_fetch(&wallet.connection).await?;
+            fixed_fill_quantity,
+        } = sol_conversion_state;
 
-        let required_lamports = configuration_registry.fixed_fill_quantity;
+        let required_lamports = *fixed_fill_quantity;
         ensure!(
             journal.total_sol_balance >= required_lamports,
             "Not enough SOL liquidity to cover conversion"
@@ -209,13 +203,13 @@ impl Convert2zContext {
         }
 
         let user_token_account_key = unwrap_token_account_or_ata(wallet, source_token_account_key);
-        let balance_before = fetch_token_balance(wallet, Some(user_token_account_key)).await?;
 
         let oracle_price_data = try_request_oracle_conversion_price().await?;
+        let oracle_swap_rate = oracle_price_data.swap_rate;
 
         let limit_price = match limit_price_str {
             Some(limit_price_str) => parse_limit_price_to_u64(limit_price_str)?,
-            None => oracle_price_data.swap_rate,
+            None => oracle_swap_rate,
         };
 
         let instruction = try_build_instruction(
@@ -236,8 +230,20 @@ impl Convert2zContext {
         Ok(Self {
             instruction,
             user_token_account_key,
-            balance_before,
-            required_lamports,
+            oracle_swap_rate,
         })
+    }
+
+    pub async fn try_token_balance(&self, connection: &SolanaConnection) -> Result<u64> {
+        let user_token_account_key = self.user_token_account_key;
+
+        let token_account = connection
+            .get_account(&user_token_account_key)
+            .await
+            .with_context(|| format!("2Z token account not found: {user_token_account_key}"))?;
+
+        spl_token::state::Account::unpack(&token_account.data)
+            .map(|account| account.amount)
+            .with_context(|| format!("Account {user_token_account_key} not token account"))
     }
 }

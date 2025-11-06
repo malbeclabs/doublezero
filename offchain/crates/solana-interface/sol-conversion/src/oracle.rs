@@ -1,5 +1,7 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 
+use crate::state::ConfigurationRegistry;
+
 pub const RATE_PRECISION: u64 = 100_000_000;
 pub const MAX_DISCOUNT: u64 = 10_000;
 
@@ -17,17 +19,7 @@ pub struct OraclePriceData {
 
 impl OraclePriceData {
     pub fn checked_discounted_swap_rate(&self, discount: u64) -> Option<u64> {
-        const RATE_PRECISION_U128: u128 = RATE_PRECISION as u128;
-
-        if discount > RATE_PRECISION {
-            return None;
-        }
-
-        let swap_rate = u128::from(self.swap_rate);
-        let adjustment = swap_rate * u128::from(discount);
-
-        let discounted = (swap_rate * RATE_PRECISION_U128 - adjustment) / RATE_PRECISION_U128;
-        discounted.try_into().ok()
+        checked_discounted_swap_rate(self.swap_rate, discount)
     }
 }
 
@@ -39,6 +31,14 @@ pub struct DiscountParameters {
 }
 
 impl DiscountParameters {
+    pub fn from_configuration_registry(configuration_registry: &ConfigurationRegistry) -> Self {
+        Self {
+            coefficient: configuration_registry.coefficient,
+            max_discount: configuration_registry.max_discount_rate,
+            min_discount: configuration_registry.min_discount_rate,
+        }
+    }
+
     /// 8-decimal precision discount.
     ///
     /// discount = min(γ * (S_now - S_last) + Dmin, Dmax).
@@ -63,6 +63,21 @@ impl DiscountParameters {
 
         Some(discount_rate.min(max_discount_rate_scaled))
     }
+}
+
+#[inline]
+pub fn checked_discounted_swap_rate(swap_rate: u64, discount: u64) -> Option<u64> {
+    const RATE_PRECISION_U128: u128 = RATE_PRECISION as u128;
+
+    if discount > RATE_PRECISION {
+        return None;
+    }
+
+    let swap_rate = u128::from(swap_rate);
+    let adjustment = swap_rate * u128::from(discount);
+
+    let discounted = (swap_rate * RATE_PRECISION_U128 - adjustment) / RATE_PRECISION_U128;
+    discounted.try_into().ok()
 }
 
 #[cfg(test)]

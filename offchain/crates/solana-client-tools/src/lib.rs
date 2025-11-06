@@ -1,3 +1,4 @@
+pub mod instruction;
 pub mod log;
 pub mod payer;
 pub mod rpc;

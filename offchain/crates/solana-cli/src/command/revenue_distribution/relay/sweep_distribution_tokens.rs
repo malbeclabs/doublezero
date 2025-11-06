@@ -11,7 +11,7 @@ use doublezero_scheduled_command::{Schedulable, ScheduleOption};
 use doublezero_sol_conversion_interface::state::MAX_FILLS_QUEUE_SIZE;
 use doublezero_solana_client_tools::{
     log_info, log_warn,
-    payer::{SolanaPayerOptions, Wallet},
+    payer::{SolanaPayerOptions, TransactionOutcome, Wallet},
 };
 use solana_sdk::{compute_budget::ComputeBudgetInstruction, instruction::Instruction};
 
@@ -89,7 +89,7 @@ impl Schedulable for SweepDistributionTokens {
             }
         };
 
-        if let Some(tx_sig) = tx_sig {
+        if let TransactionOutcome::Executed(tx_sig) = tx_sig {
             log_info!(
                 "Sweep distribution tokens for epoch {}: {tx_sig}",
                 sweep_distribution_tokens_context.dz_epoch
@@ -116,8 +116,9 @@ impl SweepDistributionTokensContext {
     ) -> Result<Self> {
         let SolConversionState {
             program_state: (_, sol_conversion_program_state),
-            configuration_registry: (_, configuration_registry),
+            configuration_registry: _,
             journal: (_, journal),
+            fixed_fill_quantity,
         } = SolConversionState::try_fetch(&wallet.connection).await?;
 
         let expected_dz_epoch = journal.next_dz_epoch_to_sweep_tokens;
@@ -137,9 +138,8 @@ impl SweepDistributionTokensContext {
             }
         };
 
-        let expected_fill_count = distribution.checked_total_sol_debt().unwrap()
-            / configuration_registry.fixed_fill_quantity
-            + 1;
+        let expected_fill_count =
+            distribution.checked_total_sol_debt().unwrap() / fixed_fill_quantity + 1;
         ensure!(
             expected_fill_count <= MAX_FILLS_QUEUE_SIZE as u64,
             "Expected fill count is too large"

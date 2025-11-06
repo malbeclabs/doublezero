@@ -31,16 +31,14 @@ impl SolConversionCommand {
             program_state: (_, program_state),
             configuration_registry: (_, configuration_registry),
             journal: (_, journal),
+            fixed_fill_quantity,
         } = SolConversionState::try_fetch(&connection).await?;
         let last_slot = program_state.last_trade_slot;
 
         let current_slot = connection.rpc_client.get_slot().await?;
 
-        let discount_parameters = DiscountParameters {
-            coefficient: configuration_registry.coefficient,
-            max_discount: configuration_registry.max_discount_rate,
-            min_discount: configuration_registry.min_discount_rate,
-        };
+        let discount_parameters =
+            DiscountParameters::from_configuration_registry(&configuration_registry);
         let discount = discount_parameters
             .checked_compute(current_slot - last_slot)
             .context("Failed to calculate discount")?;
@@ -68,6 +66,12 @@ impl SolConversionCommand {
                 field: "Journal balance",
                 description: "SOL available for conversion",
                 value: format!("{:.9}", journal.total_sol_balance as f64 * 1e-9),
+                note: Default::default(),
+            },
+            SolConversionTableRow {
+                field: "SOL per swap",
+                description: "Fixed amount",
+                value: format!("{:.9}", fixed_fill_quantity as f64 * 1e-9),
                 note: Default::default(),
             },
         ];

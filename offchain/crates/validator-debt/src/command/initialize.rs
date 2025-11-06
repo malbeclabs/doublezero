@@ -9,7 +9,7 @@ use doublezero_revenue_distribution::{
 use doublezero_scheduled_command::{Schedulable, ScheduleOption};
 use doublezero_solana_client_tools::{
     log_info, log_warn,
-    payer::{SolanaPayerOptions, Wallet},
+    payer::{SolanaPayerOptions, TransactionOutcome, Wallet},
     rpc::DoubleZeroLedgerConnectionOptions,
     zero_copy::ZeroCopyAccountOwned,
 };
@@ -133,7 +133,7 @@ impl Schedulable for InitializeDistributionCommand {
         let transaction = wallet.new_transaction(&instructions).await?;
         let tx_sig = wallet.send_or_simulate_transaction(&transaction).await?;
 
-        if let Some(tx_sig) = tx_sig {
+        if let TransactionOutcome::Executed(tx_sig) = tx_sig {
             log_info!("Initialize distribution: {tx_sig}");
 
             wallet.print_verbose_output(&[tx_sig]).await?;

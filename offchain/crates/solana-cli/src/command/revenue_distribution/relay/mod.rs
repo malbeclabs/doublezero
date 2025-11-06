@@ -18,7 +18,7 @@ use doublezero_revenue_distribution::{
 };
 use doublezero_scheduled_command::Schedulable;
 use doublezero_solana_client_tools::{
-    payer::{SolanaPayerOptions, Wallet},
+    payer::{SolanaPayerOptions, TransactionOutcome, Wallet},
     rpc::DoubleZeroLedgerConnectionOptions,
 };
 use doublezero_solana_validator_debt::{
@@ -228,7 +228,7 @@ async fn try_initialize_missing_deposit_accounts(
         let transaction = wallet.new_transaction(&instructions).await?;
         let tx_sig = wallet.send_or_simulate_transaction(&transaction).await?;
 
-        if let Some(tx_sig) = tx_sig {
+        if let TransactionOutcome::Executed(tx_sig) = tx_sig {
             println!("Initialize Solana validator deposit: {tx_sig}");
 
             wallet.print_verbose_output(&[tx_sig]).await?;

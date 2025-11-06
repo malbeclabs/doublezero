@@ -11,6 +11,7 @@ repository.workspace = true
 [dependencies]
 anyhow.workspace = true
 async-trait.workspace = true
+base64.workspace = true
 borsh.workspace = true
 chrono.workspace = true
 clap.workspace = true
@@ -27,6 +28,7 @@ doublezero-solana-validator-debt.workspace = true
 doublezero_sdk.workspace = true
 itertools.workspace = true
 reqwest.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 slack-notifier.workspace = true
 solana-account-decoder-client-types.workspace = true

@@ -11,7 +11,7 @@ use doublezero_revenue_distribution::{
 use doublezero_scheduled_command::{Schedulable, ScheduleOption};
 use doublezero_solana_client_tools::{
     log_info, log_warn,
-    payer::{SolanaPayerOptions, Wallet},
+    payer::{SolanaPayerOptions, TransactionOutcome, Wallet},
 };
 use solana_sdk::{compute_budget::ComputeBudgetInstruction, instruction::Instruction};
 
@@ -96,7 +96,7 @@ impl Schedulable for FinalizeDistributionRewards {
         let transaction = wallet.new_transaction(&instructions).await?;
         let tx_sig = wallet.send_or_simulate_transaction(&transaction).await?;
 
-        if let Some(tx_sig) = tx_sig {
+        if let TransactionOutcome::Executed(tx_sig) = tx_sig {
             log_info!("Finalize distribution rewards for epoch {dz_epoch}: {tx_sig}");
 
             wallet.print_verbose_output(&[tx_sig]).await?;

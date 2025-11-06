@@ -2,11 +2,16 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result, bail, ensure};
 use clap::Args;
-use solana_client::rpc_config::RpcTransactionConfig;
+use solana_client::{
+    rpc_config::{RpcSendTransactionConfig, RpcSimulateTransactionConfig, RpcTransactionConfig},
+    rpc_response::RpcSimulateTransactionResult,
+};
 use solana_commitment_config::CommitmentConfig;
 use solana_sdk::{
+    address_lookup_table::state::AddressLookupTable,
     compute_budget::ComputeBudgetInstruction,
     instruction::Instruction,
+    message::AddressLookupTableAccount,
     pubkey::Pubkey,
     signature::{Keypair, Signature},
     signer::Signer,
@@ -53,6 +58,12 @@ pub struct SolanaSignerOptions {
     pub dry_run: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TransactionOutcome {
+    Simulated(RpcSimulateTransactionResult),
+    Executed(Signature),
+}
+
 pub struct Wallet {
     pub connection: SolanaConnection,
     pub signer: Keypair,
@@ -67,10 +78,11 @@ impl Wallet {
         self.signer.pubkey()
     }
 
-    pub async fn new_transaction_with_additional_signers(
+    pub async fn new_transaction_with_additional_signers_and_lookup_tables(
         &self,
         instructions: &[Instruction],
         additional_signers: &[&Keypair],
+        address_lookup_table_keys: &[Pubkey],
     ) -> Result<VersionedTransaction> {
         let recent_blockhash = self.connection.get_latest_blockhash().await?;
 
@@ -91,14 +103,54 @@ impl Wallet {
 
         signers.extend_from_slice(additional_signers);
 
-        new_transaction(instructions, &signers, recent_blockhash)
+        if address_lookup_table_keys.is_empty() {
+            return new_transaction(instructions, &signers, &[], recent_blockhash);
+        }
+
+        let lut_account_infos = self
+            .connection
+            .get_multiple_accounts(address_lookup_table_keys)
+            .await
+            .context("Failed to get address lookup table accounts")?
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
+        ensure!(
+            lut_account_infos.len() == address_lookup_table_keys.len(),
+            "Expected {} address lookup table accounts, got {}",
+            address_lookup_table_keys.len(),
+            lut_account_infos.len()
+        );
+
+        let address_lookup_table_accounts = lut_account_infos
+            .into_iter()
+            .zip(address_lookup_table_keys)
+            .map(|(account_info, key)| {
+                let lut =
+                    AddressLookupTable::deserialize(&account_info.data).with_context(|| {
+                        format!("Failed to deserialize {key} as address lookup table")
+                    })?;
+
+                Ok(AddressLookupTableAccount {
+                    key: *key,
+                    addresses: lut.addresses.into_owned(),
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        new_transaction(
+            instructions,
+            &signers,
+            &address_lookup_table_accounts,
+            recent_blockhash,
+        )
     }
 
     pub async fn new_transaction(
         &self,
         instructions: &[Instruction],
     ) -> Result<VersionedTransaction> {
-        self.new_transaction_with_additional_signers(instructions, &[])
+        self.new_transaction_with_additional_signers_and_lookup_tables(instructions, &[], &[])
             .await
     }
 
@@ -156,40 +208,88 @@ impl Wallet {
     pub async fn send_or_simulate_transaction(
         &self,
         transaction: &VersionedTransaction,
-    ) -> Result<Option<Signature>> {
-        if self.dry_run {
-            let simulation_response = self.connection.simulate_transaction(transaction).await?;
+    ) -> Result<TransactionOutcome> {
+        self.send_or_simulate_transaction_with_configs(
+            transaction,
+            self.default_send_transaction_config(),
+            self.default_simulate_transaction_config(),
+        )
+        .await
+    }
 
-            if let Some(tx_err) = simulation_response.value.err {
-                ensure!(
-                    matches!(tx_err, TransactionError::InstructionError(_, _)),
-                    "Simulation failed: {tx_err}"
-                );
+    pub async fn send_or_simulate_transaction_with_configs(
+        &self,
+        transaction: &VersionedTransaction,
+        send_config: RpcSendTransactionConfig,
+        simulate_config: RpcSimulateTransactionConfig,
+    ) -> Result<TransactionOutcome> {
+        if self.dry_run {
+            let simulation_response = self
+                .connection
+                .simulate_transaction_with_config(transaction, simulate_config)
+                .await?
+                .value;
+
+            let has_instruction_error = match &simulation_response.err {
+                Some(tx_err) => {
+                    ensure!(
+                        matches!(tx_err, TransactionError::InstructionError(_, _)),
+                        "Simulation failed: {tx_err}"
+                    );
+                    true
+                }
+                None => false,
+            };
+
+            if let Some(units_consumed) = &simulation_response.units_consumed {
+                log_info!("Compute units consumed: {}", units_consumed);
             }
 
             log_info!("Simulated program logs:");
             simulation_response
-                .value
                 .logs
+                .as_ref()
                 .unwrap()
                 .iter()
                 .for_each(|log| {
                     log_info!("  {log}");
                 });
 
-            Ok(None)
+            if has_instruction_error {
+                bail!("Simulation failed");
+            }
+
+            Ok(TransactionOutcome::Simulated(simulation_response))
         } else {
             let tx_sig = self
                 .connection
-                .send_and_confirm_transaction_with_spinner(transaction)
+                .send_and_confirm_transaction_with_spinner_and_config(
+                    transaction,
+                    self.connection.commitment(),
+                    send_config,
+                )
                 .await?;
 
-            Ok(Some(tx_sig))
+            Ok(TransactionOutcome::Executed(tx_sig))
         }
     }
 
     pub fn compute_units_for_bump_seed(bump: u8) -> u32 {
         1_500 * u32::from(255 - bump)
+    }
+
+    pub fn default_send_transaction_config(&self) -> RpcSendTransactionConfig {
+        RpcSendTransactionConfig {
+            preflight_commitment: Some(self.connection.commitment().commitment),
+            ..Default::default()
+        }
+    }
+
+    pub fn default_simulate_transaction_config(&self) -> RpcSimulateTransactionConfig {
+        RpcSimulateTransactionConfig {
+            commitment: Some(self.connection.commitment()),
+            ..Default::default()
+        }
     }
 }
 

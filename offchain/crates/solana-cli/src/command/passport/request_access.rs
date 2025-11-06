@@ -11,7 +11,7 @@ use doublezero_passport::{
     state::AccessRequest,
 };
 use doublezero_program_tools::instruction::try_build_instruction;
-use doublezero_solana_client_tools::payer::{SolanaPayerOptions, Wallet};
+use doublezero_solana_client_tools::payer::{SolanaPayerOptions, TransactionOutcome, Wallet};
 use solana_sdk::{
     compute_budget::ComputeBudgetInstruction, offchain_message::OffchainMessage, pubkey::Pubkey,
     signature::Signature,
@@ -57,7 +57,7 @@ impl RequestValidatorAccessCommand {
 
         let tx_sig = self.request_access(&wallet).await?;
 
-        if let Some(tx_sig) = tx_sig {
+        if let TransactionOutcome::Executed(tx_sig) = tx_sig {
             println!("Request Solana validator access: {tx_sig}");
 
             wallet.print_verbose_output(&[tx_sig]).await?;
@@ -66,7 +66,7 @@ impl RequestValidatorAccessCommand {
         Ok(())
     }
 
-    async fn request_access(&self, wallet: &Wallet) -> Result<Option<Signature>> {
+    async fn request_access(&self, wallet: &Wallet) -> Result<TransactionOutcome> {
         let wallet_key = wallet.pubkey();
         let ed25519_signature = Signature::from_str(&self.signature)?;
 

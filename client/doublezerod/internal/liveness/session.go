@@ -147,11 +147,6 @@ func (s *Session) HandleRx(now time.Time, ctrl *ControlPacket) (changed bool) {
 	}
 
 	// Peer timers + (re)arm detect on any valid RX.
-	// Clamp peer-advertised parameters to our sane bounds.
-	peerDetectMult := ctrl.DetectMult
-	if peerDetectMult == 0 {
-		peerDetectMult = 1
-	}
 	// Timers: clamp to our sane bounds [minTxFloor, maxTxCeil].
 	// DesiredMinTxUs -> remoteTxMin; RequiredMinRxUs -> remoteRxMin.
 	rtx := time.Duration(ctrl.DesiredMinTxUs) * time.Microsecond

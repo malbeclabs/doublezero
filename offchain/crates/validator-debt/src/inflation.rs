@@ -7,8 +7,8 @@ use tracing::info;
 
 use crate::solana_debt_calculator::ValidatorRewards;
 
-pub async fn get_inflation_rewards<T: ValidatorRewards + ?Sized>(
-    solana_debt_calculator: &T,
+pub async fn get_inflation_rewards(
+    solana_debt_calculator: &impl ValidatorRewards,
     validator_ids: &[String],
     epoch: u64,
 ) -> Result<HashMap<String, u64>> {

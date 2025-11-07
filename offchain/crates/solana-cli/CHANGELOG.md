@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- feat(solana-cli): add `revenue-distribution fetch distribution --view` argument ([#182](https://github.com/doublezerofoundation/doublezero-offchain/pull/182))
 - add `revenue-distribution harvest-2` command ([#180](hhttps://github.com/doublezerofoundation/doublezero-offchain/pull/180))
 - add `revenue-distribution relay distribute-rewards` command ([#173](https://github.com/doublezerofoundation/doublezero-offchain/pull/173))
 

@@ -134,7 +134,7 @@ impl ValidatorDepositsCommand {
 
         outputs.sort_by_key(|deposit| (deposit.node_id, deposit.deposit_pda));
 
-        super::print_table(outputs);
+        super::print_table(outputs, Default::default());
 
         if let Some(fund_warning_message) = fund_warning_message {
             println!("{fund_warning_message}");

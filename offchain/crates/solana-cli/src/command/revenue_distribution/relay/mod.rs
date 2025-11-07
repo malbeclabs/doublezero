@@ -5,7 +5,6 @@ mod sweep_distribution_tokens;
 //
 
 use anyhow::Result;
-use borsh::de::BorshDeserialize;
 use chrono::Utc;
 use clap::{Args, Subcommand, ValueEnum};
 use doublezero_program_tools::instruction::try_build_instruction;
@@ -19,17 +18,15 @@ use doublezero_revenue_distribution::{
 use doublezero_scheduled_command::Schedulable;
 use doublezero_solana_client_tools::{
     payer::{SolanaPayerOptions, TransactionOutcome, Wallet},
-    rpc::DoubleZeroLedgerConnectionOptions,
+    rpc::{DoubleZeroLedgerConnection, DoubleZeroLedgerConnectionOptions},
 };
 use doublezero_solana_validator_debt::{
-    ledger,
-    transaction::{SOLANA_SEED_PREFIX, Transaction},
-    validator_debt::ComputedSolanaValidatorDebts,
+    ledger, transaction::Transaction, validator_debt::ComputedSolanaValidatorDebts,
 };
 use slack_notifier::validator_debt;
-use solana_client::nonblocking::rpc_client::RpcClient;
-use solana_commitment_config::CommitmentConfig;
 use solana_sdk::{compute_budget::ComputeBudgetInstruction, pubkey::Pubkey};
+
+use crate::command::revenue_distribution::try_fetch_program_config;
 
 #[derive(Debug, Clone, ValueEnum)]
 pub enum ExportFormat {
@@ -100,19 +97,17 @@ async fn execute_pay_solana_validator_debt(
 ) -> Result<()> {
     let wallet = Wallet::try_from(solana_payer_options)?;
 
-    let dz_ledger_rpc_client = RpcClient::new_with_commitment(
-        dz_ledger_connection_options.dz_ledger_url,
-        CommitmentConfig::confirmed(),
-    );
-    let (_, record_data) = ledger::read_from_ledger(
-        &dz_ledger_rpc_client,
-        &wallet.signer,
-        &[SOLANA_SEED_PREFIX, &epoch.to_le_bytes()],
-        dz_ledger_rpc_client.commitment(),
+    let (_, config) = try_fetch_program_config(&wallet.connection).await?;
+
+    let dz_connection = DoubleZeroLedgerConnection::try_from(dz_ledger_connection_options.clone())?;
+
+    let (_, computed_debt) = ledger::try_fetch_debt_record(
+        &dz_connection,
+        &config.debt_accountant_key,
+        epoch,
+        dz_connection.commitment(),
     )
     .await?;
-
-    let computed_debt = ComputedSolanaValidatorDebts::try_from_slice(&record_data)?;
 
     try_initialize_missing_deposit_accounts(&wallet, &computed_debt).await?;
 

@@ -8,7 +8,10 @@ mod validator_deposits;
 
 use anyhow::Result;
 use clap::{Args, Subcommand};
-use tabled::{Table, Tabled, settings::Style};
+use tabled::{
+    Table, Tabled,
+    settings::{Alignment, Style, object::Columns},
+};
 
 #[derive(Debug, Args)]
 pub struct FetchCommand {
@@ -52,8 +55,21 @@ impl FetchCommand {
     }
 }
 
-fn print_table(value_rows: Vec<impl Tabled>) {
+//
+
+#[derive(Debug, Default)]
+struct TableOptions<'a> {
+    columns_aligned_right: Option<&'a [usize]>,
+}
+
+fn print_table(value_rows: Vec<impl Tabled>, options: TableOptions) {
     let mut table = Table::new(value_rows);
     table.with(Style::markdown());
+
+    if let Some(columns_aligned_right) = options.columns_aligned_right {
+        for column_index in columns_aligned_right {
+            table.modify(Columns::one(*column_index), Alignment::right());
+        }
+    }
     println!("{table}");
 }

@@ -10,9 +10,10 @@ mod validator_deposit;
 use anyhow::{Context, Result, ensure};
 use borsh::BorshDeserialize;
 use clap::{Args, Subcommand};
+use doublezero_contributor_rewards::calculator::proof::ShapleyOutputStorage;
 use doublezero_revenue_distribution::{
     state::{Distribution, Journal, ProgramConfig, SolanaValidatorDeposit},
-    types::DoubleZeroEpoch,
+    types::{DoubleZeroEpoch, RewardShare},
 };
 use doublezero_sol_conversion_interface::{
     oracle::OraclePriceData,
@@ -22,8 +23,11 @@ use doublezero_sol_conversion_interface::{
     },
 };
 use doublezero_solana_client_tools::{
-    rpc::SolanaConnection,
+    rpc::{DoubleZeroLedgerConnection, SolanaConnection},
     zero_copy::{ZeroCopyAccountOwned, ZeroCopyAccountOwnedData},
+};
+use doublezero_solana_validator_debt::validator_debt::{
+    ComputedSolanaValidatorDebt, ComputedSolanaValidatorDebts,
 };
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::pubkey::Pubkey;
@@ -183,7 +187,7 @@ impl SolConversionState {
     }
 }
 
-pub async fn try_request_oracle_conversion_price() -> Result<OraclePriceData> {
+async fn try_request_oracle_conversion_price() -> Result<OraclePriceData> {
     reqwest::Client::new()
         .get(SOL_2Z_ORACLE_ENDPOINT)
         .header("User-Agent", "DoubleZero Solana CLI")
@@ -193,4 +197,88 @@ pub async fn try_request_oracle_conversion_price() -> Result<OraclePriceData> {
         .json()
         .await
         .context("Failed to parse oracle response. Please try again")
+}
+
+fn try_is_processed_leaf(processed_leaf_data: &[u8], leaf_index: usize) -> Result<bool> {
+    // Calculate which byte contains the bit for this leaf index
+    // (8 bits per byte, so divide by 8)
+    let leaf_byte_index = leaf_index / 8;
+
+    // First, we have to grab the relevant byte from the processed data.
+    // Create ByteFlags from the byte value to check the bit.
+    let leaf_byte = processed_leaf_data
+        .get(leaf_byte_index)
+        .copied()
+        .map(doublezero_revenue_distribution::types::ByteFlags::new)
+        .with_context(|| format!("Invalid leaf index: {leaf_index}"))?;
+
+    // Calculate which bit within the byte corresponds to this leaf
+    // (modulo 8 gives us the bit position within the byte: 0-7).
+    Ok(leaf_byte.bit(leaf_index % 8))
+}
+
+async fn try_fetch_shapley_record(
+    dz_connection: &DoubleZeroLedgerConnection,
+    rewards_accountant_key: &Pubkey,
+    dz_epoch: DoubleZeroEpoch,
+) -> Result<ShapleyOutputStorage> {
+    const DEFAULT_SHAPLEY_OUTPUT_STORAGE_PREFIX: &[u8] = b"dz_contributor_rewards";
+
+    doublezero_contributor_rewards::calculator::ledger_operations::try_fetch_shapley_output(
+        dz_connection,
+        DEFAULT_SHAPLEY_OUTPUT_STORAGE_PREFIX,
+        rewards_accountant_key,
+        dz_epoch.value(),
+    )
+    .await
+}
+
+fn try_distribution_rewards_iter<'a>(
+    distribution: &ZeroCopyAccountOwnedData<Distribution>,
+    shapley_output: &'a ShapleyOutputStorage,
+) -> Result<impl Iterator<Item = (usize, &'a RewardShare, bool)>> {
+    let start_index = distribution.processed_rewards_start_index as usize;
+    let end_index = distribution.processed_rewards_end_index as usize;
+    let processed_leaf_data = &distribution.remaining_data[start_index..end_index];
+
+    let num_rewards = shapley_output.rewards.len();
+    let max_supported_rewards = processed_leaf_data.len() * 8;
+
+    ensure!(
+        max_supported_rewards >= num_rewards,
+        "Insufficient processed leaf data for epoch {}: can support {max_supported_rewards} rewards, but got {num_rewards}",
+        distribution.dz_epoch
+    );
+
+    Ok(shapley_output
+        .rewards
+        .iter()
+        .enumerate()
+        .map(|(index, reward_share)| {
+            let is_processed = try_is_processed_leaf(processed_leaf_data, index).unwrap();
+            (index, reward_share, is_processed)
+        }))
+}
+
+fn try_distribution_solana_validator_debt_iter<'a>(
+    distribution: &ZeroCopyAccountOwnedData<Distribution>,
+    computed_debt: &'a ComputedSolanaValidatorDebts,
+) -> Result<impl Iterator<Item = (usize, &'a ComputedSolanaValidatorDebt, bool)>> {
+    let start_index = distribution.processed_solana_validator_debt_start_index as usize;
+    let end_index = distribution.processed_solana_validator_debt_end_index as usize;
+    let processed_leaf_data = &distribution.remaining_data[start_index..end_index];
+
+    let num_debts = computed_debt.debts.len();
+    let max_supported_debts = processed_leaf_data.len() * 8;
+
+    ensure!(
+        max_supported_debts >= num_debts,
+        "Insufficient processed leaf data for epoch {}: can support {max_supported_debts} debts, but got {num_debts}",
+        distribution.dz_epoch
+    );
+
+    Ok(computed_debt.debts.iter().enumerate().map(|(index, debt)| {
+        let is_processed = try_is_processed_leaf(processed_leaf_data, index).unwrap();
+        (index, debt, is_processed)
+    }))
 }

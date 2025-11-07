@@ -14,8 +14,8 @@ pub const fn get_first_slot_for_epoch(target_epoch: u64) -> u64 {
     DEFAULT_SLOTS_PER_EPOCH * target_epoch
 }
 
-pub async fn get_block_rewards<T: ValidatorRewards>(
-    api_provider: &T,
+pub async fn get_block_rewards(
+    api_provider: &impl ValidatorRewards,
     validator_ids: &[String],
     epoch: u64,
 ) -> Result<HashMap<String, (u64, u64)>> {

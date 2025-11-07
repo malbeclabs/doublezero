@@ -10,6 +10,7 @@ use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use anyhow::{Result, anyhow, bail};
 use backon::{ExponentialBuilder, Retryable};
 use chrono::Utc;
+use doublezero_solana_client_tools::rpc::DoubleZeroLedgerConnection;
 use serde::{Deserialize, Serialize};
 use solana_client::{
     client_error::ClientError as SolanaClientError, nonblocking::rpc_client::RpcClient,
@@ -88,7 +89,7 @@ pub fn estimate_slot_from_timestamp(
 /// is being queried for epoch calculations.
 pub struct EpochFinder {
     /// DZ network RPC client for getting current slot and timestamps
-    dz_rpc_client: Arc<RpcClient>,
+    dz_rpc_client: Arc<DoubleZeroLedgerConnection>,
     /// Solana network RPC client for getting leader schedules
     solana_read_client: Arc<RpcClient>,
     /// Cached DZ epoch schedule
@@ -103,7 +104,10 @@ impl EpochFinder {
     /// # Arguments
     /// * `dz_rpc_client` - RPC client for the DZ network (for timestamps and current slot)
     /// * `solana_read_client` - RPC client for Solana network (for leader schedules)
-    pub fn new(dz_rpc_client: Arc<RpcClient>, solana_read_client: Arc<RpcClient>) -> Self {
+    pub fn new(
+        dz_rpc_client: Arc<DoubleZeroLedgerConnection>,
+        solana_read_client: Arc<RpcClient>,
+    ) -> Self {
         Self {
             dz_rpc_client,
             solana_read_client,

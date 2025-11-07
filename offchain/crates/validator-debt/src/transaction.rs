@@ -1,5 +1,4 @@
 use anyhow::{Result, anyhow, bail};
-use borsh::BorshDeserialize;
 use doublezero_program_tools::{instruction::try_build_instruction, zero_copy};
 use doublezero_revenue_distribution::{
     ID,
@@ -14,6 +13,7 @@ use doublezero_revenue_distribution::{
     types::{DoubleZeroEpoch, SolanaValidatorDebt},
 };
 use doublezero_sdk::record::pubkey;
+use doublezero_solana_client_tools::rpc::DoubleZeroLedgerConnection;
 use serde::Serialize;
 use solana_client::{
     client_error::{ClientError, ClientErrorKind},
@@ -32,8 +32,6 @@ use solana_sdk::{
 use svm_hash::merkle::MerkleProof;
 
 use crate::{ledger, validator_debt::ComputedSolanaValidatorDebts};
-
-pub const SOLANA_SEED_PREFIX: &[u8; 21] = b"solana_validator_debt";
 
 #[derive(Debug)]
 pub struct Transaction {
@@ -108,24 +106,19 @@ impl Transaction {
     pub async fn finalize_distribution(
         &self,
         solana_rpc_client: &RpcClient,
-        dz_ledger_rpc_client: &RpcClient,
+        dz_connection: &DoubleZeroLedgerConnection,
         dz_epoch: u64,
     ) -> Result<VersionedTransaction> {
-        let dz_epoch_bytes = dz_epoch.to_le_bytes();
-        let seeds: &[&[u8]] = &[SOLANA_SEED_PREFIX, &dz_epoch_bytes];
-
-        let read = ledger::read_from_ledger(
-            dz_ledger_rpc_client,
-            &self.signer,
-            seeds,
-            dz_ledger_rpc_client.commitment(),
+        let (_, computed_debt) = ledger::try_fetch_debt_record(
+            dz_connection,
+            &self.signer.pubkey(),
+            dz_epoch,
+            dz_connection.commitment(),
         )
         .await?;
 
-        let deserialized = ComputedSolanaValidatorDebts::try_from_slice(read.1.as_slice())?;
-
-        for debt_entry in deserialized.clone().debts {
-            let debt_proof = deserialized.find_debt_proof(&debt_entry.node_id).unwrap();
+        for debt_entry in computed_debt.debts.iter() {
+            let debt_proof = computed_debt.find_debt_proof(&debt_entry.node_id).unwrap();
             let (_, proof) = debt_proof;
 
             let leaf = SolanaValidatorDebt {
@@ -230,7 +223,10 @@ impl Transaction {
         recent_blockhash: Hash,
     ) -> Result<()> {
         let dz_epoch_bytes = dz_epoch.to_le_bytes();
-        let seed: &[&[u8]] = &[SOLANA_SEED_PREFIX, &dz_epoch_bytes];
+        let seed = &[
+            ComputedSolanaValidatorDebts::RECORD_SEED_PREFIX,
+            &dz_epoch_bytes,
+        ];
         let key = pubkey::create_record_key(&self.pubkey(), seed);
         let instruction =
             doublezero_record::instruction::close_account(&key, &self.pubkey(), &self.pubkey());
@@ -409,145 +405,5 @@ fn parse_program_logs(
         validator_id: node_id.to_string(),
         result,
         success,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::{path::PathBuf, str::FromStr};
-
-    use solana_client::{
-        nonblocking::rpc_client::RpcClient,
-        rpc_config::{RpcBlockConfig, RpcGetVoteAccountsConfig},
-    };
-    use solana_sdk::commitment_config::CommitmentConfig;
-    use solana_transaction_status_client_types::{TransactionDetails, UiTransactionEncoding};
-    use svm_hash::sha2::Hash;
-
-    use super::*;
-    use crate::{
-        solana_debt_calculator::{SolanaDebtCalculator, ledger_rpc, solana_rpc},
-        validator_debt::{ComputedSolanaValidatorDebt, ComputedSolanaValidatorDebts},
-    };
-
-    /// Taken from a Solana cookbook to load a keypair from a user's Solana config
-    /// location.
-    fn try_load_keypair(path: Option<PathBuf>) -> Result<Keypair> {
-        let home_path = std::env::var_os("HOME").unwrap();
-        let default_keypair_path = ".config/solana/id.json";
-
-        let keypair_path =
-            path.unwrap_or_else(|| PathBuf::from(home_path).join(default_keypair_path));
-        try_load_specified_keypair(&keypair_path)
-    }
-
-    fn try_load_specified_keypair(path: &PathBuf) -> Result<Keypair> {
-        let keypair_file = std::fs::read_to_string(path)?;
-        let keypair_bytes = serde_json::from_str::<Vec<u8>>(&keypair_file)?;
-        let default_keypair = Keypair::try_from(keypair_bytes.as_slice())?;
-
-        Ok(default_keypair)
-    }
-
-    #[ignore = "needs local validator"]
-    #[tokio::test]
-    async fn test_verify_merkle_root() -> anyhow::Result<()> {
-        let keypair = try_load_keypair(None).unwrap();
-        let commitment_config = CommitmentConfig::processed();
-        let ledger_rpc_client = RpcClient::new_with_commitment(ledger_rpc(), commitment_config);
-
-        let solana_rpc_client = RpcClient::new_with_commitment(solana_rpc(), commitment_config);
-        let vote_account_config = RpcGetVoteAccountsConfig {
-            vote_pubkey: None,
-            commitment: CommitmentConfig::finalized().into(),
-            keep_unstaked_delinquents: None,
-            delinquent_slot_distance: None,
-        };
-
-        let rpc_block_config = RpcBlockConfig {
-            encoding: Some(UiTransactionEncoding::Base58),
-            transaction_details: Some(TransactionDetails::None),
-            rewards: Some(true),
-            commitment: None,
-            max_supported_transaction_version: Some(0),
-        };
-        let fpc = SolanaDebtCalculator::new(
-            ledger_rpc_client,
-            solana_rpc_client,
-            rpc_block_config,
-            vote_account_config,
-        );
-        let solana_rpc_client = fpc.solana_rpc_client;
-        let dry_run = true;
-        let force = false;
-        let transaction = Transaction::new(keypair, dry_run, force);
-        let leaf = SolanaValidatorDebt {
-            node_id: Pubkey::from_str("va1i6T6vTcijrCz6G8r89H6igKjwkLfF6g5fnpvZu1b").unwrap(),
-            amount: 707,
-        };
-
-        let dz_epoch: u64 = 84;
-        let record = ComputedSolanaValidatorDebts {
-            blockhash: Hash::new_unique(),
-            first_solana_epoch: 832,
-            last_solana_epoch: 832,
-            debts: vec![ComputedSolanaValidatorDebt {
-                node_id: Pubkey::from_str("va1i6T6vTcijrCz6G8r89H6igKjwkLfF6g5fnpvZu1b").unwrap(),
-                amount: 707,
-            }],
-        };
-        let debt_proof = record.find_debt_proof(
-            &Pubkey::from_str("va1i6T6vTcijrCz6G8r89H6igKjwkLfF6g5fnpvZu1b").unwrap(),
-        );
-        let (_, proof) = debt_proof.unwrap();
-        transaction
-            .verify_merkle_root(&solana_rpc_client, dz_epoch, proof, leaf)
-            .await?;
-
-        Ok(())
-    }
-
-    #[ignore = "needs local validator"]
-    #[tokio::test]
-    async fn test_finalize_distribution() -> anyhow::Result<()> {
-        let keypair = try_load_keypair(None).unwrap();
-        let commitment_config = CommitmentConfig::processed();
-        let ledger_rpc_client = RpcClient::new_with_commitment(ledger_rpc(), commitment_config);
-
-        let solana_rpc_client = RpcClient::new_with_commitment(solana_rpc(), commitment_config);
-        let vote_account_config = RpcGetVoteAccountsConfig {
-            vote_pubkey: None,
-            commitment: CommitmentConfig::finalized().into(),
-            keep_unstaked_delinquents: None,
-            delinquent_slot_distance: None,
-        };
-
-        let rpc_block_config = RpcBlockConfig {
-            encoding: Some(UiTransactionEncoding::Base58),
-            transaction_details: Some(TransactionDetails::None),
-            rewards: Some(true),
-            commitment: None,
-            max_supported_transaction_version: Some(0),
-        };
-        let fpc = SolanaDebtCalculator::new(
-            ledger_rpc_client,
-            solana_rpc_client,
-            rpc_block_config,
-            vote_account_config,
-        );
-        let solana_rpc_client = fpc.solana_rpc_client;
-        let ledger_rpc_client = fpc.ledger_rpc_client;
-
-        let transaction = Transaction::new(keypair, false, false);
-
-        let dz_epoch: u64 = 0;
-        let finalize_transaction = transaction
-            .finalize_distribution(&solana_rpc_client, &ledger_rpc_client, dz_epoch)
-            .await?;
-
-        let _sent_transaction = transaction
-            .send_or_simulate_transaction(&solana_rpc_client, &finalize_transaction)
-            .await?;
-        Ok(())
     }
 }

@@ -11,6 +11,8 @@ pub struct ComputedSolanaValidatorDebts {
 }
 
 impl ComputedSolanaValidatorDebts {
+    pub const RECORD_SEED_PREFIX: &[u8] = b"solana_validator_debt";
+
     pub fn find_debt_proof(
         &self,
         validator_id: &Pubkey,

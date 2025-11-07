@@ -26,8 +26,8 @@ pub struct JitoReward {
 }
 
 // may need to add in pagination
-pub async fn get_jito_rewards<'a, T: ValidatorRewards>(
-    solana_debt_calculator: &T,
+pub async fn get_jito_rewards<'a>(
+    solana_debt_calculator: &impl ValidatorRewards,
     validator_ids: &'a [String],
     epoch: u64,
 ) -> Result<HashMap<&'a str, u64>> {

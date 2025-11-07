@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use chrono::Utc;
+use doublezero_solana_client_tools::rpc::DoubleZeroLedgerConnection;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::commitment_config::CommitmentConfig;
 use tracing::info;
@@ -14,7 +15,7 @@ use crate::{
 /// Combined network and telemetry data
 #[derive(Clone)]
 pub struct Fetcher {
-    pub dz_rpc_client: Arc<RpcClient>,
+    pub dz_rpc_client: Arc<DoubleZeroLedgerConnection>,
     pub solana_read_client: Arc<RpcClient>,
     pub solana_write_client: Arc<RpcClient>,
     pub settings: Settings,
@@ -22,7 +23,7 @@ pub struct Fetcher {
 
 impl Fetcher {
     pub fn from_settings(settings: &Settings) -> Result<Self> {
-        let dz_rpc_client = RpcClient::new_with_commitment(
+        let dz_rpc_client = DoubleZeroLedgerConnection::new_with_commitment(
             settings.rpc.dz_url.to_string(),
             CommitmentConfig::finalized(),
         );

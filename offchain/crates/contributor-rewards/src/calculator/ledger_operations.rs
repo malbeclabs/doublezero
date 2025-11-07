@@ -1,11 +1,12 @@
 use std::{fmt, fs, mem::size_of, path::PathBuf, time::Duration};
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Result, anyhow, bail};
 use backon::{ExponentialBuilder, Retryable};
 use doublezero_program_tools::zero_copy;
 use doublezero_record::{instruction as record_ix, state::RecordData};
 use doublezero_revenue_distribution::state::ProgramConfig;
 use doublezero_sdk::record::pubkey::create_record_key;
+use doublezero_solana_client_tools::rpc::DoubleZeroLedgerConnection;
 use solana_client::{
     client_error::ClientError as SolanaClientError, nonblocking::rpc_client::RpcClient,
 };
@@ -637,29 +638,22 @@ pub async fn read_shapley_output(
 }
 
 pub async fn try_fetch_shapley_output(
-    dz_rpc_client: &RpcClient,
+    dz_rpc_client: &DoubleZeroLedgerConnection,
     prefix: &[u8],
     accountant_key: &Pubkey,
     epoch: u64,
 ) -> Result<ShapleyOutputStorage> {
-    let storage_key = create_record_key(
-        accountant_key,
-        &[prefix, &epoch.to_le_bytes(), b"shapley_output"],
-    );
+    debug!("Fetching shapley output for epoch {epoch} recorded by {accountant_key}");
 
-    debug!("Fetching shapley output from: {}", storage_key);
+    let (_, shapley_output) = dz_rpc_client
+        .try_fetch_borsh_record_with_commitment(
+            accountant_key,
+            &[prefix, &epoch.to_le_bytes(), b"shapley_output"],
+            CommitmentConfig::confirmed(),
+        )
+        .await?;
 
-    let account_info = dz_rpc_client
-        .get_account_with_commitment(&storage_key, CommitmentConfig::confirmed())
-        .await?
-        .value
-        .with_context(|| {
-            format!("Shapley output storage account {storage_key} not found for epoch {epoch}")
-        })?;
-
-    borsh::from_slice(&account_info.data[size_of::<RecordData>()..]).with_context(|| {
-        format!("Failed to Borsh deserialize shapley output storage from record {storage_key}")
-    })
+    Ok(shapley_output)
 }
 
 /// NOTE: This is mostly just for debugging

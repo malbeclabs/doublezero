@@ -6,17 +6,15 @@ use doublezero_revenue_distribution::{
     DOUBLEZERO_MINT_KEY, ID,
     instruction::{RevenueDistributionInstructionData, account::DistributeRewardsAccounts},
     state::{ContributorRewards, Distribution, ProgramConfig},
-    types::{ByteFlags, DoubleZeroEpoch, RewardShare, UnitShare32},
+    types::{DoubleZeroEpoch, RewardShare, UnitShare32},
 };
 use doublezero_scheduled_command::{Schedulable, ScheduleOption};
 use doublezero_solana_client_tools::{
     log_info, log_warn,
     payer::{SolanaPayerOptions, TransactionOutcome, Wallet},
-    rpc::DoubleZeroLedgerConnectionOptions,
+    rpc::{DoubleZeroLedgerConnection, DoubleZeroLedgerConnectionOptions},
     zero_copy::{ZeroCopyAccountOwned, ZeroCopyAccountOwnedData},
 };
-use solana_client::nonblocking::rpc_client::RpcClient;
-use solana_commitment_config::CommitmentConfig;
 use solana_sdk::{compute_budget::ComputeBudgetInstruction, pubkey::Pubkey};
 use spl_associated_token_account_interface::{
     address::get_associated_token_address_and_bump_seed,
@@ -28,10 +26,9 @@ use crate::command::revenue_distribution::{
         finalize_distribution_rewards::FinalizeDistributionRewardsContext,
         sweep_distribution_tokens::SweepDistributionTokensContext,
     },
-    try_fetch_distribution, try_fetch_program_config,
+    try_distribution_rewards_iter, try_fetch_distribution, try_fetch_program_config,
+    try_fetch_shapley_record,
 };
-
-const DEFAULT_SHAPLEY_OUTPUT_STORAGE_PREFIX: &[u8] = b"dz_contributor_rewards";
 
 #[derive(Debug, Args, Clone)]
 pub struct DistributeRewards {
@@ -41,14 +38,14 @@ pub struct DistributeRewards {
     #[command(flatten)]
     schedule: ScheduleOption,
 
-    #[arg(long, value_name = "PUBKEY")]
-    rewards_accountant: Option<Pubkey>,
-
     #[command(flatten)]
     solana_payer_options: SolanaPayerOptions,
 
     #[command(flatten)]
     dz_ledger_connection_options: DoubleZeroLedgerConnectionOptions,
+
+    #[arg(hide = true, long, value_name = "PUBKEY")]
+    rewards_accountant: Option<Pubkey>,
 }
 
 #[async_trait::async_trait]
@@ -94,49 +91,26 @@ impl Schedulable for DistributeRewards {
         // that 2Z tokens have been swept.
         let distribution = try_prepare_distribution_rewards(&wallet, &config, dz_epoch).await?;
 
-        let dz_ledger_client = RpcClient::new_with_commitment(
-            dz_ledger_connection_options.dz_ledger_url.clone(),
-            CommitmentConfig::confirmed(),
-        );
+        let dz_connection =
+            DoubleZeroLedgerConnection::try_from(dz_ledger_connection_options.clone())?;
 
-        let shapley_output = doublezero_contributor_rewards::calculator::ledger_operations::try_fetch_shapley_output(
-            &dz_ledger_client,
-            DEFAULT_SHAPLEY_OUTPUT_STORAGE_PREFIX,
+        let shapley_output = try_fetch_shapley_record(
+            &dz_connection,
             &rewards_accountant_key.unwrap_or(config.rewards_accountant_key),
-            dz_epoch.value(),
+            dz_epoch,
         )
         .await?;
 
-        let start_index = distribution.processed_rewards_start_index as usize;
-        let end_index = distribution.processed_rewards_end_index as usize;
-        let processed_leaf_data = &distribution.remaining_data[start_index..end_index];
-        ensure!(
-            !processed_leaf_data.is_empty(),
-            "No rewards leaf data found for epoch {dz_epoch}"
-        );
-
-        for (leaf_index, reward_share) in shapley_output.rewards.iter().enumerate() {
+        for (leaf_index, reward_share, is_processed_leaf) in
+            try_distribution_rewards_iter(&distribution, &shapley_output)?
+        {
             log_info!(
                 "Processing epoch {dz_epoch} merkle leaf index {leaf_index}, contributor: {}, share: {:.9}",
                 reward_share.contributor_key,
                 reward_share.unit_share as f64 / u32::from(UnitShare32::MAX) as f64
             );
 
-            // Calculate which byte contains the bit for this leaf index
-            // (8 bits per byte, so divide by 8)
-            let leaf_byte_index = leaf_index / 8;
-
-            // First, we have to grab the relevant byte from the processed data.
-            // Create ByteFlags from the byte value to check the bit.
-            let leaf_byte = processed_leaf_data
-                .get(leaf_byte_index)
-                .copied()
-                .map(ByteFlags::new)
-                .with_context(|| format!("Invalid leaf index: {leaf_index}"))?;
-
-            // Calculate which bit within the byte corresponds to this leaf
-            // (modulo 8 gives us the bit position within the byte: 0-7).
-            if leaf_byte.bit(leaf_index % 8) {
+            if is_processed_leaf {
                 log_warn!(
                     "Merkle leaf index {} has already been processed",
                     leaf_index

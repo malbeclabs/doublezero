@@ -76,7 +76,7 @@ impl SolConversionCommand {
             },
         ];
 
-        super::print_table(value_rows);
+        super::print_table(value_rows, Default::default());
 
         Ok(())
     }

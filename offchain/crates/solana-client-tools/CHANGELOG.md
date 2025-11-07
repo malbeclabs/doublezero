@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- feat(solana-cli): add `revenue-distribution fetch distribution --view` argument ([#182](https://github.com/doublezerofoundation/doublezero-offchain/pull/182))
+
 ## [0.0.1](https://github.com/doublezerofoundation/doublezero-offchain/compare/doublezero-solana-client-tools/v0.0.0...doublezero-solana-client-tools/v0.0.1) - 2025-10-21
 
 ### Other

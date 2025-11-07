@@ -39,8 +39,8 @@ impl Schedulable for InitializeDistributionCommand {
     async fn execute_once(&self) -> Result<()> {
         self.schedule_or_force.ensure_safe_execution()?;
 
-        let mut wallet = Wallet::try_from(self.solana_payer_options.clone())?;
-        wallet.connection.cache_if_mainnet().await?;
+        let wallet = Wallet::try_from(self.solana_payer_options.clone())?;
+        let is_mainnet = wallet.connection.try_is_mainnet().await?;
 
         let program_config_info = ZeroCopyAccountOwned::<ProgramConfig>::try_from_rpc_client(
             &wallet.connection,
@@ -65,8 +65,7 @@ impl Schedulable for InitializeDistributionCommand {
             CommitmentConfig::confirmed(),
         );
 
-        super::ensure_same_network_environment(&dz_ledger_rpc_client, wallet.connection.is_mainnet)
-            .await?;
+        super::ensure_same_network_environment(&dz_ledger_rpc_client, is_mainnet).await?;
 
         // We want to make sure the next DZ epoch is in sync with the last
         // completed DZ epoch.
@@ -98,7 +97,7 @@ impl Schedulable for InitializeDistributionCommand {
             }
         }
 
-        let dz_mint_key = if wallet.connection.is_mainnet {
+        let dz_mint_key = if is_mainnet {
             doublezero_revenue_distribution::env::mainnet::DOUBLEZERO_MINT_KEY
         } else {
             doublezero_revenue_distribution::env::development::DOUBLEZERO_MINT_KEY

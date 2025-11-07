@@ -1,6 +1,6 @@
 use anyhow::{Error, Result, bail, ensure};
 use clap::Args;
-use doublezero_solana_client_tools::log_warn;
+use doublezero_solana_client_tools::{log_warn, rpc::DoubleZeroLedgerConnection};
 use leaky_bucket::RateLimiter;
 use solana_client::{
     client_error::{ClientError, ClientErrorKind},
@@ -38,8 +38,12 @@ impl TryFrom<SolanaValidatorDebtConnectionOptions> for SolanaDebtCalculator {
             dz_ledger_url,
         } = opts;
 
-        let ledger_rpc_client = Url::parse(&dz_ledger_url)
-            .map(|url| RpcClient::new_with_commitment(url.into(), CommitmentConfig::confirmed()))?;
+        let ledger_rpc_client = Url::parse(&dz_ledger_url).map(|url| {
+            DoubleZeroLedgerConnection::new_with_commitment(
+                url.into(),
+                CommitmentConfig::confirmed(),
+            )
+        })?;
 
         let solana_url_or_moniker = solana_url_or_moniker.as_deref().unwrap_or("m");
         let solana_url = Url::parse(normalize_to_url_if_moniker(solana_url_or_moniker))?;

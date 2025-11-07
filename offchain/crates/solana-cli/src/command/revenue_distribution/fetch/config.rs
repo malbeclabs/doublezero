@@ -67,6 +67,11 @@ impl ConfigCommand {
                 note: Default::default(),
             },
             ConfigTableRow {
+                field: "Next distribution",
+                value: program_config.next_completed_dz_epoch.value().to_string(),
+                note: "Current DoubleZero Ledger epoch".to_string(),
+            },
+            ConfigTableRow {
                 field: "Calculation grace period",
                 value: format!(
                     "{:?}",
@@ -82,21 +87,23 @@ impl ConfigCommand {
             },
             ConfigTableRow {
                 field: "Duration to finalize rewards",
-                value: program_config
-                    .distribution_parameters
-                    .minimum_epoch_duration_to_finalize_rewards
-                    .to_string(),
-                note: "Minimum number of epochs".to_string(),
+                value: format!(
+                    "{} epochs",
+                    program_config
+                        .distribution_parameters
+                        .minimum_epoch_duration_to_finalize_rewards
+                ),
+                note: "Minimum number required for distribution".to_string(),
             },
             ConfigTableRow {
                 field: "Next community burn rate",
                 value: format!(
-                    "{:.7}% ({})",
+                    "({}) {:.7}%",
+                    community_burn_rate_params.mode().to_string().to_lowercase(),
                     u32::from(community_burn_rate_params.next_burn_rate().unwrap()) as f64
                         / 10_000_000.0,
-                    community_burn_rate_params.mode().to_string().to_lowercase()
                 ),
-                note: "Determines the next distribution's burn rate".to_string(),
+                note: "Burn rate for the next distribution".to_string(),
             },
             ConfigTableRow {
                 field: "Community burn rate limit",
@@ -104,7 +111,7 @@ impl ConfigCommand {
                     "{:.7}%",
                     u32::from(community_burn_rate_params.limit) as f64 / 10_000_000.0
                 ),
-                note: "Determines the maximum burn rate".to_string(),
+                note: "Absolute maximum burn rate".to_string(),
             },
         ];
 
@@ -121,7 +128,7 @@ impl ConfigCommand {
                             "s"
                         },
                     ),
-                    note: "Determines the epoch when the community burn rate increases".to_string(),
+                    note: "How long until the rate increases".to_string(),
                 });
                 value_rows.push(ConfigTableRow {
                     field: "Community burn rate limit reached after",
@@ -134,8 +141,7 @@ impl ConfigCommand {
                             "s"
                         }
                     ),
-                    note: "Determines the epoch when the community burn rate limit is reached"
-                        .to_string(),
+                    note: "How long until the limit is reached".to_string(),
                 });
             }
             CommunityBurnRateMode::Increasing => {
@@ -150,8 +156,7 @@ impl ConfigCommand {
                             "s"
                         }
                     ),
-                    note: "Determines the epoch when the community burn rate limit is reached"
-                        .to_string(),
+                    note: "How long until the limit is reached".to_string(),
                 });
             }
             CommunityBurnRateMode::Limit => {}
@@ -164,7 +169,7 @@ impl ConfigCommand {
                     "{:.2}%",
                     u16::from(validator_fee_params.base_block_rewards_pct) as f64 / 100.0
                 ),
-                note: "Amount charged to Solana validators for base block rewards".to_string(),
+                note: "Proportion of base block rewards charged".to_string(),
             },
             ConfigTableRow {
                 field: "Solana validator priority block rewards fee",
@@ -172,7 +177,7 @@ impl ConfigCommand {
                     "{:.2}%",
                     u16::from(validator_fee_params.priority_block_rewards_pct) as f64 / 100.0
                 ),
-                note: "Amount charged to Solana validators for priority block rewards".to_string(),
+                note: "Proportion of priority block rewards charged".to_string(),
             },
             ConfigTableRow {
                 field: "Solana validator inflation rewards fee",
@@ -180,7 +185,7 @@ impl ConfigCommand {
                     "{:.2}%",
                     u16::from(validator_fee_params.inflation_rewards_pct) as f64 / 100.0
                 ),
-                note: "Amount charged to Solana validators for inflation rewards".to_string(),
+                note: "Proportion of inflation rewards charged".to_string(),
             },
             ConfigTableRow {
                 field: "Solana validator Jito tips fee",
@@ -188,7 +193,7 @@ impl ConfigCommand {
                     "{:.2}%",
                     u16::from(validator_fee_params.jito_tips_pct) as f64 / 100.0
                 ),
-                note: "Amount charged to Solana validators for Jito tips".to_string(),
+                note: "Proportion of Jito tips charged".to_string(),
             },
             ConfigTableRow {
                 field: "Solana validator fixed SOL fee",
@@ -196,12 +201,17 @@ impl ConfigCommand {
                     "{:.9} SOL",
                     validator_fee_params.fixed_sol_amount as f64 * 1e-9
                 ),
-                note: "Fixed SOL amount charged to Solana validators".to_string(),
+                note: "Fixed SOL amount charged".to_string(),
             },
         ];
         value_rows.extend(validator_fee_rows);
 
-        super::print_table(value_rows);
+        super::print_table(
+            value_rows,
+            super::TableOptions {
+                columns_aligned_right: Some(&[1]),
+            },
+        );
 
         Ok(())
     }
@@ -274,7 +284,7 @@ impl ValidatorFeesCommand {
             return Ok(());
         }
 
-        super::print_table(value_rows);
+        super::print_table(value_rows, Default::default());
 
         Ok(())
     }

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- feat(solana-cli): add `revenue-distribution fetch distribution --view` argument ([#182](https://github.com/doublezerofoundation/doublezero-offchain/pull/182))
+
+## [0.3.0-rc1](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-contributor-rewards/v0.3.0-rc1) - 2025-11-04
+
 - fix(contributor-rewards): ci fix to derive default [#176](https://github.com/doublezerofoundation/doublezero-offchain/pull/176))
 - feat(contributor-rewards): Add S3 storage for snapshots [#174](https://github.com/doublezerofoundation/doublezero-offchain/pull/174))
 

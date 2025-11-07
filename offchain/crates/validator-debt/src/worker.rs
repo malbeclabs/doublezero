@@ -1,6 +1,6 @@
 use std::{collections::HashMap, env, fs::File, str::FromStr};
 
-use anyhow::{Result, bail};
+use anyhow::{Result, bail, ensure};
 use doublezero_revenue_distribution::{
     instruction::RevenueDistributionInstructionData::ConfigureDistributionDebt,
     types::SolanaValidatorDebt,
@@ -13,14 +13,14 @@ use leaky_bucket::RateLimiter;
 use serde::Serialize;
 use slack_notifier;
 use solana_client::nonblocking::rpc_client::RpcClient;
-use solana_sdk::{clock::Clock, pubkey::Pubkey, sysvar::clock};
+use solana_sdk::{clock::Clock, pubkey::Pubkey, signer::Signer, sysvar::clock};
 use tabled::Tabled;
 
 use crate::{
     ledger, rewards,
     rpc::JoinedSolanaEpochs,
     solana_debt_calculator::ValidatorRewards,
-    transaction::{SOLANA_SEED_PREFIX, Transaction},
+    transaction::Transaction,
     validator_debt::{ComputedSolanaValidatorDebt, ComputedSolanaValidatorDebts},
 };
 
@@ -48,8 +48,8 @@ fn serviceability_pubkey() -> Result<Pubkey> {
     }
 }
 
-pub async fn finalize_distribution<T: ValidatorRewards>(
-    solana_debt_calculator: &T,
+pub async fn finalize_distribution(
+    solana_debt_calculator: &impl ValidatorRewards,
     transaction: Transaction,
     dz_epoch: u64,
 ) -> Result<()> {
@@ -80,33 +80,27 @@ pub async fn finalize_distribution<T: ValidatorRewards>(
     Ok(())
 }
 
-pub async fn verify_validator_debt<T: ValidatorRewards>(
-    solana_debt_calculator: &T,
+pub async fn verify_validator_debt(
+    solana_debt_calculator: &impl ValidatorRewards,
     transaction: Transaction,
     dz_epoch: u64,
     validator_id: &str,
     amount: u64,
 ) -> Result<()> {
-    let dz_epoch_bytes = dz_epoch.to_le_bytes();
-    let seed: &[&[u8]] = &[SOLANA_SEED_PREFIX, &dz_epoch_bytes];
-
-    let ledger_record = ledger::read_from_ledger(
+    let (_, computed_debt) = ledger::try_fetch_debt_record(
         solana_debt_calculator.ledger_rpc_client(),
-        &transaction.signer,
-        seed,
+        &transaction.signer.pubkey(),
+        dz_epoch,
         solana_debt_calculator.ledger_commitment_config(),
     )
     .await?;
-    let deserialized_record: ComputedSolanaValidatorDebts =
-        borsh::from_slice(ledger_record.1.as_slice())
-            .map_err(|e| anyhow::anyhow!("failed to deserialize ledger record: {e}"))?;
 
     let leaf = SolanaValidatorDebt {
         node_id: Pubkey::from_str(validator_id).unwrap(),
         amount,
     };
 
-    let debt_proof = deserialized_record.find_debt_proof(&Pubkey::from_str(validator_id).unwrap());
+    let debt_proof = computed_debt.find_debt_proof(&Pubkey::from_str(validator_id).unwrap());
     let (_, proof) = debt_proof.unwrap();
     transaction
         .verify_merkle_root(
@@ -120,8 +114,8 @@ pub async fn verify_validator_debt<T: ValidatorRewards>(
     Ok(())
 }
 
-pub async fn calculate_validator_debt<T: ValidatorRewards>(
-    solana_debt_calculator: &T,
+pub async fn calculate_validator_debt(
+    solana_debt_calculator: &impl ValidatorRewards,
     transaction: Transaction,
     dz_epoch: u64,
     csv_path: Option<String>,
@@ -195,10 +189,6 @@ pub async fn calculate_validator_debt<T: ValidatorRewards>(
         .get_latest_blockhash()
         .await?;
 
-    // create the seed
-    let dz_epoch_bytes = dz_epoch.to_le_bytes();
-    let seed: &[&[u8]] = &[SOLANA_SEED_PREFIX, &dz_epoch_bytes];
-
     // this means the previous dz epoch traversed more than one solana epoch
     // if the current dz_epoch_record's solana epoch is also in the previous record's epoch
     //  then we've already calculated the debt for that epoch and will send a zeroed-out record
@@ -213,7 +203,10 @@ pub async fn calculate_validator_debt<T: ValidatorRewards>(
             &transaction.signer,
             &computed_solana_validator_debts,
             solana_debt_calculator.ledger_commitment_config(),
-            seed,
+            &[
+                ComputedSolanaValidatorDebts::RECORD_SEED_PREFIX,
+                &dz_epoch.to_le_bytes(),
+            ],
         )
         .await?;
 
@@ -337,7 +330,7 @@ pub async fn calculate_validator_debt<T: ValidatorRewards>(
             solana_debt_calculator,
             &transaction,
             computed_solana_validator_debts.clone(),
-            seed,
+            dz_epoch,
             recent_blockhash,
         )
         .await?;
@@ -426,32 +419,28 @@ async fn write_transaction(
         Ok(None)
     }
 }
-async fn create_or_validate_ledger_record<T: ValidatorRewards>(
-    solana_debt_calculator: &T,
+async fn create_or_validate_ledger_record(
+    solana_debt_calculator: &impl ValidatorRewards,
     transaction: &Transaction,
-    computed_solana_validator_debts: ComputedSolanaValidatorDebts,
-    seed: &[&[u8]],
+    new_computed_debt: ComputedSolanaValidatorDebts,
+    dz_epoch: u64,
     recent_blockhash: solana_sdk::hash::Hash,
 ) -> Result<ComputedSolanaValidatorDebts> {
-    let record = ledger::read_from_ledger(
+    let record_result = ledger::try_fetch_debt_record(
         solana_debt_calculator.ledger_rpc_client(),
-        &transaction.signer,
-        seed,
+        &transaction.signer.pubkey(),
+        dz_epoch,
         solana_debt_calculator.ledger_commitment_config(),
     )
     .await;
 
-    match record {
-        Ok(ledger_record) => {
-            let deserialized_record: ComputedSolanaValidatorDebts =
-                borsh::from_slice(ledger_record.1.as_slice())
-                    .map_err(|e| anyhow::anyhow!("failed to deserialize ledger record: {e}"))?;
-
-            if deserialized_record.blockhash == computed_solana_validator_debts.blockhash {
+    match record_result {
+        Ok((_, existing_computed_debt)) => {
+            if existing_computed_debt.blockhash == new_computed_debt.blockhash {
                 bail!(
                     "retrieved record blockhash {} is equal to created record blockhash {}",
-                    &deserialized_record.blockhash,
-                    &computed_solana_validator_debts.blockhash
+                    &existing_computed_debt.blockhash,
+                    &new_computed_debt.blockhash
                 );
             }
 
@@ -460,25 +449,28 @@ async fn create_or_validate_ledger_record<T: ValidatorRewards>(
                     solana_debt_calculator.ledger_rpc_client(),
                     recent_blockhash,
                     &transaction.signer,
-                    &computed_solana_validator_debts,
+                    &new_computed_debt,
                     solana_debt_calculator.ledger_commitment_config(),
-                    seed,
+                    &[
+                        ComputedSolanaValidatorDebts::RECORD_SEED_PREFIX,
+                        &dz_epoch.to_le_bytes(),
+                    ],
                 )
                 .await?;
                 println!(
                     "Warning: DZ Ledger record does not match the new computed solana validator debt and has been overwritten"
                 );
             } else {
-                assert_eq!(
-                    deserialized_record.debts,
-                    computed_solana_validator_debts.debts
+                ensure!(
+                    existing_computed_debt.debts == new_computed_debt.debts,
+                    "Existing computed debt does not match new computed debt"
                 )
             };
 
             println!(
                 "computed debt and deserialized ledger record data are identical, proceeding to write transaction"
             );
-            Ok(deserialized_record)
+            Ok(existing_computed_debt)
         }
         Err(_err) => {
             // create record
@@ -487,9 +479,12 @@ async fn create_or_validate_ledger_record<T: ValidatorRewards>(
                 solana_debt_calculator.ledger_rpc_client(),
                 recent_blockhash,
                 &transaction.signer,
-                &computed_solana_validator_debts,
+                &new_computed_debt,
                 solana_debt_calculator.ledger_commitment_config(),
-                seed,
+                &[
+                    ComputedSolanaValidatorDebts::RECORD_SEED_PREFIX,
+                    &dz_epoch.to_le_bytes(),
+                ],
             )
             .await?;
             bail!("new record created; shutting down until the next check")
@@ -533,241 +528,4 @@ async fn fetch_validator_pubkeys(ledger_rpc_client: &RpcClient) -> Result<Vec<St
     }
 
     Ok(pubkeys)
-}
-
-#[cfg(test)]
-mod tests {
-    use std::{collections::HashMap, path::PathBuf};
-
-    use solana_client::{
-        nonblocking::rpc_client::RpcClient,
-        rpc_config::{RpcBlockConfig, RpcGetVoteAccountsConfig},
-        rpc_response::{RpcInflationReward, RpcVoteAccountInfo, RpcVoteAccountStatus},
-    };
-    use solana_sdk::{
-        commitment_config::CommitmentConfig, epoch_info::EpochInfo, reward_type::RewardType::Fee,
-        signature::Keypair,
-    };
-    use solana_transaction_status_client_types::{
-        TransactionDetails, UiConfirmedBlock, UiTransactionEncoding,
-    };
-
-    use super::*;
-    use crate::{
-        block,
-        jito::{JitoReward, JitoRewards},
-        solana_debt_calculator::{
-            MockValidatorRewards, SolanaDebtCalculator, ledger_rpc, solana_rpc,
-        },
-        transaction,
-    };
-
-    /// Taken from a Solana cookbook to load a keypair from a user's Solana config
-    /// location.
-    fn try_load_keypair(path: Option<PathBuf>) -> Result<Keypair> {
-        let home_path = std::env::var_os("HOME").unwrap();
-        let default_keypair_path = ".config/solana/id.json";
-
-        let keypair_path =
-            path.unwrap_or_else(|| PathBuf::from(home_path).join(default_keypair_path));
-        try_load_specified_keypair(&keypair_path)
-    }
-
-    fn try_load_specified_keypair(path: &PathBuf) -> Result<Keypair> {
-        let keypair_file = std::fs::read_to_string(path)?;
-        let keypair_bytes = serde_json::from_str::<Vec<u8>>(&keypair_file)?;
-        let default_keypair = Keypair::try_from(keypair_bytes.as_slice())?;
-
-        Ok(default_keypair)
-    }
-
-    #[ignore = "need local validator"]
-    #[tokio::test]
-    async fn test_distribution_flow() -> Result<()> {
-        // sample validator id: "va1i6T6vTcijrCz6G8r89H6igKjwkLfF6g5fnpvZu1b"
-        let keypair = try_load_keypair(None).unwrap();
-        let commitment_config = CommitmentConfig::confirmed();
-        let ledger_rpc_client = RpcClient::new_with_commitment(ledger_rpc(), commitment_config);
-
-        let solana_rpc_client = RpcClient::new_with_commitment(solana_rpc(), commitment_config);
-        let vote_account_config = RpcGetVoteAccountsConfig {
-            vote_pubkey: None,
-            commitment: CommitmentConfig::finalized().into(),
-            keep_unstaked_delinquents: None,
-            delinquent_slot_distance: None,
-        };
-
-        let rpc_block_config = RpcBlockConfig {
-            encoding: Some(UiTransactionEncoding::Base58),
-            transaction_details: Some(TransactionDetails::Signatures),
-            rewards: Some(true),
-            commitment: None,
-            max_supported_transaction_version: Some(0),
-        };
-        let fpc = SolanaDebtCalculator::new(
-            ledger_rpc_client,
-            solana_rpc_client,
-            rpc_block_config,
-            vote_account_config,
-        );
-
-        let dz_epoch = 84;
-        let transaction = Transaction::new(keypair, true, false);
-        calculate_validator_debt(&fpc, transaction, dz_epoch, None, false).await?;
-
-        let signer = try_load_keypair(None).unwrap();
-
-        let prefix = b"solana_validator_debt_test";
-        let dz_epoch_bytes = dz_epoch.to_le_bytes();
-        let seeds: &[&[u8]] = &[prefix, &dz_epoch_bytes];
-        let transaction = transaction::Transaction::new(signer, false, false);
-
-        let read = ledger::read_from_ledger(
-            fpc.ledger_rpc_client(),
-            &transaction.signer,
-            seeds,
-            fpc.ledger_commitment_config(),
-        )
-        .await?;
-
-        let deserialized: ComputedSolanaValidatorDebts = borsh::from_slice(read.1.as_slice())
-            .map_err(|e| anyhow::anyhow!("failed to deserialize ledger record: {e}"))?;
-        let (first_solana_epoch, last_solana_epoch) = ledger::get_solana_epoch_from_dz_epoch(
-            &fpc.solana_rpc_client,
-            &fpc.ledger_rpc_client,
-            dz_epoch,
-        )
-        .await?;
-
-        assert_eq!(deserialized.first_solana_epoch, first_solana_epoch);
-        assert_eq!(deserialized.last_solana_epoch, last_solana_epoch);
-
-        Ok(())
-    }
-
-    #[ignore = "this will fail without local validator"]
-    #[tokio::test]
-    async fn test_execute_worker() -> Result<()> {
-        let mut mock_solana_debt_calculator = MockValidatorRewards::new();
-        let commitment_config = CommitmentConfig::processed();
-
-        let validator_id = "devgM7SXHvoHH6jPXRsjn97gygPUo58XEnc9bqY1jpj";
-        let epoch = 0;
-        let block_reward: u64 = 5000;
-        let inflation_reward = 2500;
-        let jito_reward = 10000;
-
-        let mock_rpc_vote_account_status = RpcVoteAccountStatus {
-            current: vec![RpcVoteAccountInfo {
-                vote_pubkey: "devgM7SXHvoHH6jPXRsjn97gygPUo58XEnc9bqY1jpj".to_string(),
-                node_pubkey: validator_id.to_string(),
-                activated_stake: 4_200_000_000_000,
-                epoch_vote_account: true,
-                epoch_credits: vec![(812, 256, 128), (811, 128, 64)],
-                commission: 10,
-                last_vote: 123456789,
-                root_slot: 123456700,
-            }],
-            delinquent: vec![],
-        };
-
-        mock_solana_debt_calculator
-            .expect_solana_rpc_client()
-            .return_const(RpcClient::new_with_commitment(
-                solana_rpc(),
-                commitment_config,
-            ));
-
-        mock_solana_debt_calculator
-            .expect_ledger_rpc_client()
-            .return_const(RpcClient::new_with_commitment(
-                ledger_rpc(),
-                commitment_config,
-            ));
-
-        mock_solana_debt_calculator
-            .expect_get_vote_accounts_with_config()
-            .withf(move || true)
-            .returning(move || Ok(mock_rpc_vote_account_status.clone()));
-
-        let mock_rpc_inflation_reward = vec![Some(RpcInflationReward {
-            epoch,
-            effective_slot: 123456789,
-            amount: inflation_reward,
-            post_balance: 1_500_002_500,
-            commission: Some(1),
-        })];
-
-        mock_solana_debt_calculator
-            .expect_get_inflation_reward()
-            .returning(move |_, _| Ok(mock_rpc_inflation_reward.clone()));
-
-        let first_slot = block::get_first_slot_for_epoch(epoch);
-        let slot_index: usize = 10;
-        let slot = first_slot + slot_index as u64;
-
-        let mut leader_schedule = HashMap::new();
-        leader_schedule.insert(validator_id.to_string(), vec![slot_index]);
-
-        mock_solana_debt_calculator
-            .expect_get_leader_schedule()
-            .returning(move |_| Ok(leader_schedule.clone()));
-
-        let mock_block = UiConfirmedBlock {
-            num_reward_partitions: Some(1),
-            signatures: Some(vec!["One".to_string()]),
-            rewards: Some(vec![solana_transaction_status_client_types::Reward {
-                pubkey: validator_id.to_string(),
-                lamports: block_reward as i64,
-                post_balance: block_reward,
-                reward_type: Some(Fee),
-                commission: None,
-            }]),
-            previous_blockhash: "".to_string(),
-            blockhash: "".to_string(),
-            parent_slot: 0,
-            transactions: None,
-            block_time: None,
-            block_height: None,
-        };
-
-        let epoch_info = EpochInfo {
-            epoch,
-            slot_index: 0,
-            slots_in_epoch: 432000,
-            absolute_slot: epoch * 432000,
-            block_height: 0,
-            transaction_count: Some(0),
-        };
-
-        mock_solana_debt_calculator
-            .expect_get_epoch_info()
-            .returning(move || Ok(epoch_info.clone()));
-
-        mock_solana_debt_calculator
-            .expect_get_block_with_config()
-            .withf(move |s| *s == slot)
-            .returning(move |_| Ok(mock_block.clone()));
-
-        mock_solana_debt_calculator
-            .expect_get::<JitoRewards>()
-            .withf(move |url| url.contains(&format!("epoch={epoch}")))
-            .returning(move |_| {
-                Ok(JitoRewards {
-                    total_count: 1000,
-                    rewards: vec![JitoReward {
-                        vote_account: validator_id.to_string(),
-                        mev_revenue: jito_reward,
-                    }],
-                })
-            });
-
-        let signer = try_load_keypair(None).unwrap();
-        let transaction = Transaction::new(signer, true, false);
-
-        calculate_validator_debt(&mock_solana_debt_calculator, transaction, 45, None, false)
-            .await?;
-
-        Ok(())
-    }
 }

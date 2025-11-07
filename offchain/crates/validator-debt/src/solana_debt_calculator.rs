@@ -2,9 +2,11 @@ use std::{collections::HashMap, env, error::Error};
 
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
+use doublezero_solana_client_tools::rpc::DoubleZeroLedgerConnection;
 use mockall::automock;
 use serde::de::DeserializeOwned;
 use solana_client::{
+    client_error::ClientError,
     nonblocking::rpc_client::RpcClient,
     rpc_config::{RpcBlockConfig, RpcGetVoteAccountsConfig},
     rpc_response::{RpcInflationReward, RpcVoteAccountStatus},
@@ -31,37 +33,29 @@ pub fn solana_rpc() -> String {
 #[async_trait]
 pub trait ValidatorRewards {
     fn solana_rpc_client(&self) -> &RpcClient;
-    fn ledger_rpc_client(&self) -> &RpcClient;
+    fn ledger_rpc_client(&self) -> &DoubleZeroLedgerConnection;
     fn solana_commitment_config(&self) -> CommitmentConfig;
     fn ledger_commitment_config(&self) -> CommitmentConfig;
-    async fn get_epoch_info(&self) -> Result<EpochInfo, solana_client::client_error::ClientError>;
+    async fn get_epoch_info(&self) -> Result<EpochInfo, ClientError>;
     async fn get_leader_schedule(&self, epoch: Option<u64>) -> Result<HashMap<String, Vec<usize>>>;
-    async fn get_block_with_config(
-        &self,
-        slot: u64,
-    ) -> Result<UiConfirmedBlock, solana_client::client_error::ClientError>;
+    async fn get_block_with_config(&self, slot: u64) -> Result<UiConfirmedBlock, ClientError>;
 
     async fn get<T: DeserializeOwned + Send + 'static>(
         &self,
         url: &str,
     ) -> Result<T, Box<dyn Error + Send + Sync>>;
-    async fn get_vote_accounts_with_config(
-        &self,
-    ) -> Result<RpcVoteAccountStatus, solana_client::client_error::ClientError>;
+    async fn get_vote_accounts_with_config(&self) -> Result<RpcVoteAccountStatus, ClientError>;
     async fn get_inflation_reward(
         &self,
         vote_keys: Vec<Pubkey>,
         epoch: u64,
-    ) -> Result<Vec<Option<RpcInflationReward>>, solana_client::client_error::ClientError>;
-    async fn get_slot(&self) -> Result<u64, solana_client::client_error::ClientError>;
-    async fn get_block_time(
-        &self,
-        slot: u64,
-    ) -> Result<i64, solana_client::client_error::ClientError>;
+    ) -> Result<Vec<Option<RpcInflationReward>>, ClientError>;
+    async fn get_slot(&self) -> Result<u64, ClientError>;
+    async fn get_block_time(&self, slot: u64) -> Result<i64, ClientError>;
 }
 
 pub struct SolanaDebtCalculator {
-    pub ledger_rpc_client: RpcClient,
+    pub ledger_rpc_client: DoubleZeroLedgerConnection,
     pub solana_rpc_client: RpcClient,
     pub vote_accounts_config: RpcGetVoteAccountsConfig,
     pub rpc_block_config: RpcBlockConfig,
@@ -69,7 +63,7 @@ pub struct SolanaDebtCalculator {
 
 impl SolanaDebtCalculator {
     pub fn new(
-        ledger_rpc_client: RpcClient,
+        ledger_rpc_client: DoubleZeroLedgerConnection,
         solana_rpc_client: RpcClient,
         rpc_block_config: RpcBlockConfig,
         vote_accounts_config: RpcGetVoteAccountsConfig,
@@ -95,10 +89,10 @@ impl ValidatorRewards for SolanaDebtCalculator {
         &self.solana_rpc_client
     }
 
-    fn ledger_rpc_client(&self) -> &RpcClient {
+    fn ledger_rpc_client(&self) -> &DoubleZeroLedgerConnection {
         &self.ledger_rpc_client
     }
-    async fn get_epoch_info(&self) -> Result<EpochInfo, solana_client::client_error::ClientError> {
+    async fn get_epoch_info(&self) -> Result<EpochInfo, ClientError> {
         self.solana_rpc_client.get_epoch_info().await
     }
     async fn get_leader_schedule(&self, epoch: Option<u64>) -> Result<HashMap<String, Vec<usize>>> {
@@ -106,10 +100,7 @@ impl ValidatorRewards for SolanaDebtCalculator {
         schedule.ok_or(anyhow!("No leader schedule found"))
     }
 
-    async fn get_block_with_config(
-        &self,
-        slot: u64,
-    ) -> Result<UiConfirmedBlock, solana_client::client_error::ClientError> {
+    async fn get_block_with_config(&self, slot: u64) -> Result<UiConfirmedBlock, ClientError> {
         self.solana_rpc_client
             .get_block_with_config(slot, self.rpc_block_config)
             .await
@@ -125,9 +116,7 @@ impl ValidatorRewards for SolanaDebtCalculator {
         Ok(body)
     }
 
-    async fn get_vote_accounts_with_config(
-        &self,
-    ) -> Result<RpcVoteAccountStatus, solana_client::client_error::ClientError> {
+    async fn get_vote_accounts_with_config(&self) -> Result<RpcVoteAccountStatus, ClientError> {
         self.solana_rpc_client
             .get_vote_accounts_with_config(self.vote_accounts_config.clone())
             .await
@@ -136,19 +125,16 @@ impl ValidatorRewards for SolanaDebtCalculator {
         &self,
         vote_keys: Vec<Pubkey>,
         epoch: u64,
-    ) -> Result<Vec<Option<RpcInflationReward>>, solana_client::client_error::ClientError> {
+    ) -> Result<Vec<Option<RpcInflationReward>>, ClientError> {
         self.solana_rpc_client
             .get_inflation_reward(&vote_keys, Some(epoch))
             .await
     }
-    async fn get_slot(&self) -> Result<u64, solana_client::client_error::ClientError> {
+    async fn get_slot(&self) -> Result<u64, ClientError> {
         self.solana_rpc_client.get_slot().await
     }
 
-    async fn get_block_time(
-        &self,
-        slot: u64,
-    ) -> Result<i64, solana_client::client_error::ClientError> {
+    async fn get_block_time(&self, slot: u64) -> Result<i64, ClientError> {
         self.solana_rpc_client.get_block_time(slot).await
     }
 }

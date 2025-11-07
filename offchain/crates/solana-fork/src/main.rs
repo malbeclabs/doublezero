@@ -76,8 +76,8 @@ async fn main() -> Result<()> {
         solana_connection_options,
     } = Args::parse();
 
-    let mut connection = SolanaConnection::try_from(solana_connection_options)?;
-    connection.cache_if_mainnet().await?;
+    let connection = SolanaConnection::try_from(solana_connection_options)?;
+    let is_mainnet = connection.try_is_mainnet().await?;
 
     // Get upgrade authority from argument or default keypair.
     let upgrade_authority_key = match upgrade_authority_key {
@@ -108,8 +108,13 @@ async fn main() -> Result<()> {
 
         fs::create_dir_all(TMP_ACCOUNTS_PATH)?;
 
-        match try_fetch_and_write_accounts(&connection, upgrade_authority_key, should_god_mode)
-            .await
+        match try_fetch_and_write_accounts(
+            &connection,
+            is_mainnet,
+            upgrade_authority_key,
+            should_god_mode,
+        )
+        .await
         {
             Ok(_) => {
                 // Rename temporary directory to final location.
@@ -175,12 +180,13 @@ async fn main() -> Result<()> {
 
 async fn try_fetch_and_write_accounts(
     connection: &SolanaConnection,
+    is_mainnet: bool,
     upgrade_authority_key: Pubkey,
     should_god_mode: bool,
 ) -> Result<()> {
     // Fetch 2Z mint account.
 
-    let token_2z_mint_key = if connection.is_mainnet {
+    let token_2z_mint_key = if is_mainnet {
         env::mainnet::DOUBLEZERO_MINT_KEY
     } else {
         env::development::DOUBLEZERO_MINT_KEY

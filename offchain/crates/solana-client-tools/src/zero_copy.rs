@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use bytemuck::Pod;
 use doublezero_program_tools::{PrecomputedDiscriminator, zero_copy};
 use solana_client::nonblocking::rpc_client::RpcClient;
-use solana_sdk::pubkey::Pubkey;
+use solana_sdk::{pubkey::Pubkey, rent::Rent};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ZeroCopyAccountOwnedData<T: Pod + PrecomputedDiscriminator> {
@@ -34,6 +34,7 @@ impl<T: Pod + PrecomputedDiscriminator> Deref for ZeroCopyAccountOwnedData<T> {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ZeroCopyAccountOwned<T: Pod + PrecomputedDiscriminator> {
     pub data: Option<ZeroCopyAccountOwnedData<T>>,
+    pub data_len: usize,
     pub lamports: u64,
     pub balance: u64,
     pub owner: Pubkey,
@@ -43,13 +44,15 @@ impl<T: Pod + PrecomputedDiscriminator> ZeroCopyAccountOwned<T> {
     pub async fn try_from_rpc_client(rpc_client: &RpcClient, account_key: &Pubkey) -> Result<Self> {
         let account_info = rpc_client.get_account(account_key).await?;
 
+        let data_len = account_info.data.len();
         let lamports = account_info.lamports;
         let rent_exemption_lamports = rpc_client
-            .get_minimum_balance_for_rent_exemption(account_info.data.len())
+            .get_minimum_balance_for_rent_exemption(data_len)
             .await?;
 
         Ok(Self {
             data: ZeroCopyAccountOwnedData::new(&account_info.data),
+            data_len,
             lamports,
             balance: lamports.saturating_sub(rent_exemption_lamports),
             owner: account_info.owner,
@@ -60,6 +63,11 @@ impl<T: Pod + PrecomputedDiscriminator> ZeroCopyAccountOwned<T> {
         self.data
             .as_ref()
             .with_context(|| failed_read_zero_copy_as_type::<T>())
+    }
+
+    pub fn balance(&self, rent: &Rent) -> u64 {
+        let rent_exemption_lamports = rent.minimum_balance(self.data_len);
+        self.lamports.saturating_sub(rent_exemption_lamports)
     }
 }
 

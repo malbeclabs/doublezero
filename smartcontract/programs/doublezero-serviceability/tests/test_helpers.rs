@@ -1,5 +1,6 @@
 use borsh::to_vec;
 use doublezero_serviceability::{
+    entrypoint::process_instruction,
     instructions::*,
     state::{accountdata::AccountData, accounttype::AccountType, globalstate::GlobalState},
 };
@@ -8,10 +9,60 @@ use solana_sdk::{
     instruction::{AccountMeta, Instruction},
     pubkey::Pubkey,
     signature::{Keypair, Signer},
-    system_program,
+    system_instruction, system_program,
     transaction::Transaction,
 };
 use std::any::type_name;
+
+// Use a fixed byte array to create a constant Keypair for testing
+// This is safe for tests only; never use hardcoded keys in production!
+pub const TEST_PAYER_BYTES: [u8; 64] = [
+    169, 191, 120, 114, 135, 172, 221, 186, 245, 154, 139, 162, 103, 229, 16, 1, 170, 160, 159, 47,
+    224, 60, 179, 71, 245, 255, 116, 238, 144, 208, 19, 89, 13, 59, 115, 1, 186, 171, 180, 37, 165,
+    122, 75, 128, 161, 44, 98, 93, 190, 124, 25, 3, 175, 219, 173, 30, 195, 19, 111, 203, 78, 54,
+    241, 90,
+];
+
+pub fn test_payer() -> Keypair {
+    Keypair::from_bytes(&TEST_PAYER_BYTES).unwrap()
+}
+
+pub async fn init_test() -> (BanksClient, Pubkey, Keypair, solana_program::hash::Hash) {
+    let program_id = Pubkey::new_unique();
+
+    let (mut banks_client, payer, recent_blockhash) = ProgramTest::new(
+        "doublezero_serviceability",
+        program_id,
+        processor!(process_instruction),
+    )
+    .start()
+    .await;
+
+    transfer(
+        &mut banks_client,
+        &payer,
+        &test_payer().pubkey(),
+        100_000_000,
+    )
+    .await;
+
+    (banks_client, program_id, payer, recent_blockhash)
+}
+
+#[allow(dead_code)]
+pub async fn transfer(
+    banks_client: &mut BanksClient,
+    source: &Keypair,
+    destination: &Pubkey,
+    lamports: u64,
+) {
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    let transfer_ix = system_instruction::transfer(&source.pubkey(), destination, lamports);
+    let mut tx = Transaction::new_with_payer(&[transfer_ix], Some(&source.pubkey()));
+    tx.sign(&[&source], recent_blockhash);
+    banks_client.process_transaction(tx).await.unwrap();
+}
 
 #[allow(dead_code)]
 pub async fn get_globalstate(

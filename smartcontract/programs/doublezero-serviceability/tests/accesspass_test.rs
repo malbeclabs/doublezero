@@ -264,3 +264,95 @@ async fn test_accesspass() {
 
     println!("🟢  End test_accesspass");
 }
+
+#[tokio::test]
+async fn test_tx_lamports_to_pda_before_creation() {
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+
+    /***********************************************************************************************************************************/
+    println!("🟢  Start test_accesspass");
+
+    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
+    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+
+    println!("🟢 1. Global Initialization...");
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::InitGlobalState(),
+        vec![
+            AccountMeta::new(program_config_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    /***********************************************************************************************************************************/
+    // AccessPass tests
+
+    let client_ip = Ipv4Addr::new(100, 0, 0, 1);
+    let user_payer = Pubkey::new_unique();
+    let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &user_payer);
+    let solana_identity = Pubkey::new_unique();
+
+
+    // Transfer lamports directly to the accesspass_pubkey
+    test_helpers::transfer(&mut banks_client, &payer, &accesspass_pubkey, 128*6960).await;
+
+    /***********************************************************************************************************************************/
+    println!("🟢 1. Create AccessPass...");
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip,
+            last_access_epoch: 10,
+            allow_multiple_ip: false,
+        }),
+        vec![
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_payer, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    println!("🟢 1. ++++++++++ AFTER Create AccessPass...");
+
+    let accesspass = get_account_data(&mut banks_client, accesspass_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_accesspass()
+        .unwrap();
+    assert_eq!(accesspass.accesspass_type, AccessPassType::Prepaid);
+    assert_eq!(accesspass.client_ip, client_ip);
+    assert_eq!(accesspass.last_access_epoch, 10);
+    println!("✅ AccessPass created successfully");
+
+    // Re-execute the same txn
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip,
+            last_access_epoch: 10,
+            allow_multiple_ip: false,
+        }),
+        vec![
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_payer, false),
+        ],
+        &payer,
+    )
+    .await;
+
+}

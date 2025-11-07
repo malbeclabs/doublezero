@@ -7,7 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- retry on ECONNRESET [#177](https://github.com/doublezerofoundation/doublezero-offchain/pull/177))
+- fix(sentinel): retry on conn reset, one more time [#184](https://github.com/doublezerofoundation/doublezero-offchain/pull/184)
+
+## [0.2.1](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/sentinel/v0.2.1) - 2025-11-04
+
+- retry on ECONNRESET [#177](https://github.com/doublezerofoundation/doublezero-offchain/pull/177)
 
 ## [0.2.0](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/sentinel/v0.2.0) - 2025-10-21
 

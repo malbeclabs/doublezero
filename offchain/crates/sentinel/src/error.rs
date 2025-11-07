@@ -1,4 +1,5 @@
 use std::{
+    error::Error as StdError,
     future::Future,
     sync::atomic::{AtomicUsize, Ordering},
     time::Duration,
@@ -6,7 +7,10 @@ use std::{
 
 use backon::{ExponentialBuilder, Retryable};
 use solana_client::{
-    client_error::{ClientError, ClientErrorKind, reqwest::StatusCode},
+    client_error::{
+        ClientError, ClientErrorKind,
+        reqwest::{Error as ReqwestError, StatusCode},
+    },
     nonblocking::pubsub_client::PubsubClientError,
 };
 use solana_sdk::signature::{ParseSignatureError, Signature};
@@ -96,14 +100,9 @@ fn should_retry(err: &Error) -> bool {
 fn retryable_client_error(err: &ClientError) -> bool {
     match err.kind() {
         ClientErrorKind::Reqwest(reqwest_err) => {
-            if reqwest_err.is_timeout() || reqwest_err.is_connect() {
-                return true;
-            }
-            if reqwest_err.is_request()
-                && reqwest_err
-                    .to_string()
-                    .to_lowercase()
-                    .contains("connection reset")
+            if reqwest_err.is_timeout()
+                || reqwest_err.is_connect()
+                || is_connection_reset(reqwest_err)
             {
                 return true;
             }
@@ -111,6 +110,21 @@ fn retryable_client_error(err: &ClientError) -> bool {
         }
         _ => false,
     }
+}
+
+fn is_connection_reset(reqwest_err: &ReqwestError) -> bool {
+    let mut source = reqwest_err.source();
+
+    while let Some(err) = source {
+        if let Some(io_err) = err.downcast_ref::<std::io::Error>()
+            && io_err.kind() == std::io::ErrorKind::ConnectionReset
+        {
+            return true;
+        }
+        source = err.source();
+    }
+
+    false
 }
 
 fn retryable_status(status: Option<StatusCode>) -> bool {

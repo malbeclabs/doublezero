@@ -297,9 +297,8 @@ async fn test_tx_lamports_to_pda_before_creation() {
     let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &user_payer);
     let solana_identity = Pubkey::new_unique();
 
-
     // Transfer lamports directly to the accesspass_pubkey
-    test_helpers::transfer(&mut banks_client, &payer, &accesspass_pubkey, 128*6960).await;
+    test_helpers::transfer(&mut banks_client, &payer, &accesspass_pubkey, 128 * 6960).await;
 
     /***********************************************************************************************************************************/
     println!("🟢 1. Create AccessPass...");
@@ -354,5 +353,4 @@ async fn test_tx_lamports_to_pda_before_creation() {
         &payer,
     )
     .await;
-
 }

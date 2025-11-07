@@ -27,7 +27,7 @@ jobs:
           - component: monitor
             playbook: playbooks/monitors.yml
           - component: client
-            playbook: playbooks/validators.yml
+            playbook: playbooks/bm_clients.yml
           - component: device-telemetry-agent
             playbook: playbooks/device_telemetry_agent.yml
           - component: internet-latency-collector

@@ -129,7 +129,7 @@ pub fn process_set_access_pass(
         flags |= ALLOW_MULTIPLE_IP;
     }
 
-    if accesspass_account.data_is_empty() && accesspass_account.lamports() == 0 {
+    if *accesspass_account.owner == solana_program::system_program::id() {
         let accesspass = AccessPass {
             account_type: AccountType::AccessPass,
             bump_seed,

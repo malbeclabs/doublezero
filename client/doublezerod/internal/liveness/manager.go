@@ -212,6 +212,16 @@ func (m *Manager) RegisterRoute(r *routing.Route, iface string) error {
 		}
 	}
 
+	// Skip routes with nil source or destination IP.
+	if r.Src == nil || r.Dst.IP == nil {
+		return fmt.Errorf("error registering route: nil source or destination IP")
+	}
+
+	// Skip routes that are not IPv4.
+	if r.Src.To4() == nil || r.Dst.IP.To4() == nil {
+		return fmt.Errorf("error registering route: non-IPv4 source (%s) or destination IP (%s)", r.Src.String(), r.Dst.IP.String())
+	}
+
 	peerAddr, err := net.ResolveUDPAddr("udp", peerAddrFor(r, m.cfg.Port))
 	if err != nil {
 		return fmt.Errorf("error resolving peer address: %v", err)
@@ -222,7 +232,7 @@ func (m *Manager) RegisterRoute(r *routing.Route, iface string) error {
 	m.desired[k] = r
 	m.mu.Unlock()
 
-	peer := Peer{Interface: iface, LocalIP: r.Src.String(), RemoteIP: r.Dst.IP.String()}
+	peer := Peer{Interface: iface, LocalIP: r.Src.To4().String(), RemoteIP: r.Dst.IP.To4().String()}
 	m.log.Info("liveness: registering route", "route", r.String(), "peerAddr", peerAddr)
 
 	m.mu.Lock()
@@ -266,6 +276,16 @@ func (m *Manager) WithdrawRoute(r *routing.Route, iface string) error {
 		}
 	}
 
+	// Skip routes with nil source or destination IP.
+	if r.Src == nil || r.Dst.IP == nil {
+		return fmt.Errorf("error withdrawing route: nil source or destination IP")
+	}
+
+	// Skip routes that are not IPv4.
+	if r.Src.To4() == nil || r.Dst.IP.To4() == nil {
+		return fmt.Errorf("error withdrawing route: non-IPv4 source (%s) or destination IP (%s)", r.Src.String(), r.Dst.IP.String())
+	}
+
 	k := routeKeyFor(iface, r)
 	m.mu.Lock()
 	delete(m.desired, k)
@@ -273,7 +293,7 @@ func (m *Manager) WithdrawRoute(r *routing.Route, iface string) error {
 	delete(m.installed, k)
 	m.mu.Unlock()
 
-	peer := Peer{Interface: iface, LocalIP: r.Src.String(), RemoteIP: r.Dst.IP.String()}
+	peer := Peer{Interface: iface, LocalIP: r.Src.To4().String(), RemoteIP: r.Dst.IP.To4().String()}
 
 	// Mark session no longer managed and drop it from tracking.
 	m.mu.Lock()
@@ -357,7 +377,8 @@ func (m *Manager) HandleRx(ctrl *ControlPacket, peer Peer) {
 		m.unkWarnMu.Lock()
 		if m.unkWarnLast.IsZero() || time.Since(m.unkWarnLast) >= m.unkWarnEvery {
 			m.unkWarnLast = time.Now()
-			m.log.Warn("liveness: received control packet for unknown peer", "peer", peer.String())
+			m.log.Warn("liveness: received control packet for unknown peer", "peer", peer.String(), "yourDiscr", ctrl.YourDiscr, "myDiscr", ctrl.MyDiscr, "state", ctrl.State)
+
 		}
 		m.unkWarnMu.Unlock()
 
@@ -439,10 +460,10 @@ func rand32() uint32 {
 
 // routeKeyFor builds a RouteKey for map indexing based on interface + route fields.
 func routeKeyFor(iface string, r *routing.Route) RouteKey {
-	return RouteKey{Interface: iface, SrcIP: r.Src.String(), Table: r.Table, DstPrefix: r.Dst.String(), NextHop: r.NextHop.String()}
+	return RouteKey{Interface: iface, SrcIP: r.Src.To4().String(), Table: r.Table, DstPrefix: r.Dst.IP.To4().String(), NextHop: r.NextHop.To4().String()}
 }
 
 // peerAddrFor returns "<dst-ip>:<port>" for UDP control messages to a peer.
 func peerAddrFor(r *routing.Route, port int) string {
-	return fmt.Sprintf("%s:%d", r.Dst.IP.String(), port)
+	return fmt.Sprintf("%s:%d", r.Dst.IP.To4().String(), port)
 }

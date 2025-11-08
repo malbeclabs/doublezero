@@ -4,7 +4,6 @@ import (
 	"container/heap"
 	"context"
 	"log/slog"
-	"net"
 	"sync"
 	"time"
 )
@@ -232,7 +231,7 @@ func (s *Scheduler) doTX(sess *Session) {
 		RequiredMinRxUs: uint32(sess.localRxMin / time.Microsecond),
 	}).Marshal()
 	sess.mu.Unlock()
-	_, err := s.conn.WriteTo(pkt, sess.peerAddr, sess.peer.Interface, net.ParseIP(sess.route.Src.String()))
+	_, err := s.conn.WriteTo(pkt, sess.peerAddr, sess.peer.Interface, sess.route.Src)
 	if err != nil {
 		s.log.Debug("liveness.scheduler: error writing UDP packet", "error", err)
 	}

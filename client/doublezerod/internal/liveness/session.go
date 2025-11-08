@@ -51,20 +51,24 @@ func (s *Session) ComputeNextTx(now time.Time, rnd *rand.Rand) time.Time {
 		if s.backoffFactor < 1 {
 			s.backoffFactor = 1
 		}
-		eff = base * time.Duration(s.backoffFactor)
+		eff *= time.Duration(s.backoffFactor)
 		if s.backoffMax > 0 && eff > s.backoffMax {
 			eff = s.backoffMax
 		}
 	}
-	j := eff / 10
 
-	var r int
-	if rnd != nil {
-		r = rnd.Intn(int(2*j + 1))
-	} else {
-		r = rand.Intn(int(2*j + 1))
+	j := eff / 10
+	span := int64(2*j) + 1
+	if span < 1 {
+		span = 1
 	}
-	jit := time.Duration(r) - j
+	var off int64
+	if rnd != nil {
+		off = rnd.Int63n(span)
+	} else {
+		off = rand.Int63n(span)
+	}
+	jit := time.Duration(off) - j
 	next := now.Add(eff + jit)
 	s.nextTx = next
 
@@ -79,7 +83,6 @@ func (s *Session) ComputeNextTx(now time.Time, rnd *rand.Rand) time.Time {
 	} else {
 		s.backoffFactor = 1
 	}
-
 	s.mu.Unlock()
 	return next
 }

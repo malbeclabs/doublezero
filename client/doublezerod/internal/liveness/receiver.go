@@ -138,12 +138,17 @@ func (r *Receiver) Run(ctx context.Context) error {
 			continue
 		}
 
+		// Skip packets that are not IPv4.
+		if localIP.To4() == nil || remoteAddr.IP.To4() == nil {
+			continue
+		}
+
 		// Populate the peer descriptor: identifies which local interface/IP
 		// the packet arrived on and the remote endpoint that sent it.
 		peer := Peer{
 			Interface: ifname,
-			LocalIP:   localIP.String(),
-			RemoteIP:  remoteAddr.IP.String(),
+			LocalIP:   localIP.To4().String(),
+			RemoteIP:  remoteAddr.IP.To4().String(),
 		}
 
 		// Delegate to session or higher-level handler for processing.

@@ -1,6 +1,9 @@
 package liveness
 
 import (
+	"context"
+	"net"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -149,4 +152,56 @@ func TestClient_Liveness_Scheduler_ScheduleTx_AdaptiveBackoffWhenDown(t *testing
 	// We can't read the exact interval from the event, but we can bound the first one.
 	// Allow some slop for timing; just ensure it's not wildly larger than cap*1.5.
 	require.LessOrEqual(t, time.Until(ev1.when), time.Duration(float64(150*time.Millisecond)*1.5))
+}
+
+func TestClient_Liveness_Scheduler_Run_SendsAndReschedules(t *testing.T) {
+	t.Parallel()
+	// real UDP to count packets
+	srv, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
+	require.NoError(t, err)
+	defer srv.Close()
+	r, _ := NewUDPConn(srv)
+	cl, _ := net.ListenUDP("udp4", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
+	defer cl.Close()
+	w, _ := NewUDPConn(cl)
+
+	pkts := int32(0)
+	stop := make(chan struct{})
+	go func() {
+		buf := make([]byte, 128)
+		_ = srv.SetReadDeadline(time.Now().Add(2 * time.Second))
+		for {
+			_, _, _, _, err := r.ReadFrom(buf)
+			if err != nil {
+				return
+			}
+			atomic.AddInt32(&pkts, 1)
+		}
+	}()
+
+	log := newTestLogger(t)
+	s := NewScheduler(log, w, func(*Session) {})
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	go s.Run(ctx)
+
+	sess := &Session{
+		state:         StateInit,
+		alive:         true,
+		localTxMin:    20 * time.Millisecond,
+		localRxMin:    20 * time.Millisecond,
+		minTxFloor:    10 * time.Millisecond,
+		maxTxCeil:     200 * time.Millisecond,
+		detectMult:    3,
+		peer:          &Peer{Interface: "", LocalIP: cl.LocalAddr().(*net.UDPAddr).IP.String()},
+		peerAddr:      srv.LocalAddr().(*net.UDPAddr),
+		backoffMax:    200 * time.Millisecond,
+		backoffFactor: 1,
+	}
+	s.scheduleTx(time.Now(), sess)
+	time.Sleep(120 * time.Millisecond)
+	cancel()
+	close(stop)
+
+	require.GreaterOrEqual(t, atomic.LoadInt32(&pkts), int32(2))
 }

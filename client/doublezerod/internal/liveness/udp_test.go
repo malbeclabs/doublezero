@@ -130,6 +130,32 @@ func TestClient_Liveness_UDP_WriteUDPWithSrcHintIPv4(t *testing.T) {
 	}
 }
 
+func TestClient_Liveness_UDP_WriteTo_RejectsIPv6(t *testing.T) {
+	t.Parallel()
+	uc, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
+	require.NoError(t, err)
+	defer uc.Close()
+	u, err := NewUDPConn(uc)
+	require.NoError(t, err)
+	_, err = u.WriteTo([]byte("x"), &net.UDPAddr{IP: net.ParseIP("::1"), Port: 1}, "", nil)
+	require.EqualError(t, err, "ipv6 dst not supported")
+}
+
+func TestClient_Liveness_UDP_ReadDeadline_TimesOut(t *testing.T) {
+	t.Parallel()
+	srv, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
+	require.NoError(t, err)
+	defer srv.Close()
+	r, err := NewUDPConn(srv)
+	require.NoError(t, err)
+	require.NoError(t, r.SetReadDeadline(time.Now().Add(50*time.Millisecond)))
+	buf := make([]byte, 8)
+	_, _, _, _, err = r.ReadFrom(buf)
+	require.Error(t, err)
+	nerr, ok := err.(net.Error)
+	require.True(t, ok && nerr.Timeout())
+}
+
 func loopbackInterface(t *testing.T) net.Interface {
 	ifs, err := net.Interfaces()
 	require.NoError(t, err)

@@ -4,6 +4,7 @@ import (
 	"container/heap"
 	"context"
 	"log/slog"
+	"net"
 	"sync"
 	"time"
 )
@@ -236,7 +237,11 @@ func (s *Scheduler) doTX(sess *Session) {
 		RequiredMinRxUs: uint32(sess.localRxMin / time.Microsecond),
 	}).Marshal()
 	sess.mu.Unlock()
-	_, err := s.conn.WriteTo(pkt, sess.peerAddr, sess.peer.Interface, sess.route.Src)
+	src := net.IP(nil)
+	if sess.route != nil {
+		src = sess.route.Src
+	}
+	_, err := s.conn.WriteTo(pkt, sess.peerAddr, sess.peer.Interface, src)
 	if err != nil {
 		// Log throttled warnings for transient errors (e.g., bad FD state).
 		now := time.Now()

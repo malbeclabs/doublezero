@@ -90,3 +90,73 @@ func TestClient_Liveness_Receiver_IgnoresMalformedPacket(t *testing.T) {
 
 	require.Equal(t, int32(0), atomic.LoadInt32(&calls))
 }
+
+func TestClient_Liveness_Receiver_HandlerInvoked_WithPeerContext(t *testing.T) {
+	t.Parallel()
+	conn, err := ListenUDP("127.0.0.1", 0)
+	require.NoError(t, err)
+	defer conn.Close()
+
+	var got Peer
+	calls := int32(0)
+	rx := NewReceiver(newTestLogger(t), conn, func(cp *ControlPacket, p Peer) { got = p; atomic.AddInt32(&calls, 1) })
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	done := make(chan struct{})
+	go func() { require.NoError(t, rx.Run(ctx)); close(done) }()
+
+	// send a valid control packet
+	cl, err := net.DialUDP("udp4", nil, conn.LocalAddr().(*net.UDPAddr))
+	require.NoError(t, err)
+	defer cl.Close()
+	pkt := (&ControlPacket{Version: 1, State: StateInit, DetectMult: 1, Length: 40}).Marshal()
+	_, err = cl.Write(pkt)
+	require.NoError(t, err)
+
+	require.Eventually(t, func() bool { return atomic.LoadInt32(&calls) == 1 }, time.Second, 10*time.Millisecond)
+	require.NotEmpty(t, got.Interface) // usually lo/lo0
+	require.Equal(t, "127.0.0.1", got.LocalIP)
+	require.Equal(t, "127.0.0.1", got.RemoteIP)
+
+	cancel()
+	_ = conn.Close()
+	<-done
+}
+
+func TestClient_Liveness_Receiver_DeadlineTimeoutsAreSilent(t *testing.T) {
+	t.Parallel()
+	conn, err := ListenUDP("127.0.0.1", 0)
+	require.NoError(t, err)
+	defer conn.Close()
+
+	rx := NewReceiver(newTestLogger(t), conn, func(*ControlPacket, Peer) {})
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	done := make(chan struct{})
+	go func() { require.NoError(t, rx.Run(ctx)); close(done) }()
+
+	// no traffic; ensure loop keeps running past a few deadlines
+	time.Sleep(600 * time.Millisecond)
+	cancel()
+	_ = conn.Close()
+	<-done
+}
+
+func TestClient_Liveness_Receiver_SocketClosed_ReturnsError(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	conn, err := ListenUDP("127.0.0.1", 0)
+	require.NoError(t, err)
+
+	rx := NewReceiver(newTestLogger(t), conn, func(*ControlPacket, Peer) {})
+	errCh := make(chan error, 1)
+	go func() { errCh <- rx.Run(ctx) }()
+
+	time.Sleep(50 * time.Millisecond)
+	_ = conn.Close()
+	err = <-errCh
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "socket closed")
+}

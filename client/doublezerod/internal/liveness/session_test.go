@@ -309,3 +309,36 @@ func TestClient_Liveness_Session_HandleRxClampsTimersAndDetectMultZero(t *testin
 	require.Equal(t, 40*time.Millisecond, s.remoteRxMin)
 	require.False(t, s.detectDeadline.IsZero())
 }
+
+func TestClient_Liveness_Session_ComputeNextTx_LargeInterval_NoOverflow(t *testing.T) {
+	t.Parallel()
+	s := newSess()
+	s.localTxMin = 3 * time.Hour
+	s.state = StateUp
+	require.NotPanics(t, func() { _ = s.ComputeNextTx(time.Now(), rand.New(rand.NewSource(1))) })
+}
+
+func TestClient_Liveness_Session_HandleRx_NoChange_RearmsDetect(t *testing.T) {
+	t.Parallel()
+	s := newSess()
+	now := time.Now()
+	s.state = StateUp
+	s.detectDeadline = now.Add(100 * time.Millisecond)
+
+	callNow := now.Add(10 * time.Millisecond)
+	cp := &ControlPacket{
+		YourDiscr:       s.myDisc,   // accepted (echo ok)
+		MyDiscr:         s.yourDisc, // may be 0; fine
+		State:           StateUp,
+		DesiredMinTxUs:  20000, // 20ms
+		RequiredMinRxUs: 20000,
+	}
+	changed := s.HandleRx(callNow, cp)
+	require.False(t, changed)
+
+	// Expect re-armed to ≈ callNow + detectTime()
+	wantMin := callNow.Add(s.detectTime() - 2*time.Millisecond) // tiny slack
+	wantMax := callNow.Add(s.detectTime() + 2*time.Millisecond)
+	require.True(t, !s.detectDeadline.Before(wantMin) && !s.detectDeadline.After(wantMax),
+		"got=%v want≈%v", s.detectDeadline, callNow.Add(s.detectTime()))
+}

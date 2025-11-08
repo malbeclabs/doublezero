@@ -384,6 +384,74 @@ func TestClient_LivenessManager_NetlinkerErrors_NoCrash(t *testing.T) {
 	m.mu.Unlock()
 }
 
+func TestClient_LivenessManager_PassiveMode_ImmediateInstall_NoAutoWithdraw(t *testing.T) {
+	t.Parallel()
+	addCh := make(chan *routing.Route, 1)
+	delCh := make(chan *routing.Route, 1)
+	m, err := newTestManager(t, func(cfg *ManagerConfig) {
+		cfg.PassiveMode = true
+		cfg.Netlinker = &MockRouteReaderWriter{
+			RouteAddFunc:    func(r *routing.Route) error { addCh <- r; return nil },
+			RouteDeleteFunc: func(r *routing.Route) error { delCh <- r; return nil },
+		}
+	})
+	require.NoError(t, err)
+	defer m.Close()
+
+	r := newTestRoute(func(r *routing.Route) {
+		r.Src = net.IPv4(127, 0, 0, 1)
+		r.Dst = &net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(32, 32)}
+	})
+	require.NoError(t, m.RegisterRoute(r, "lo"))
+	_ = wait(t, addCh, time.Second, "immediate RouteAdd in PassiveMode")
+
+	// drive Up then Down; expect no RouteDelete (caller owns dataplane)
+	var peer Peer
+	var sess *Session
+	func() {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		for p, s := range m.sessions {
+			peer, sess = p, s
+			break
+		}
+	}()
+	m.HandleRx(&ControlPacket{YourDiscr: 0, MyDiscr: 1, State: StateInit}, peer)
+	m.HandleRx(&ControlPacket{YourDiscr: sess.myDisc, MyDiscr: sess.yourDisc, State: StateUp}, peer)
+	m.HandleRx(&ControlPacket{YourDiscr: sess.myDisc, MyDiscr: sess.yourDisc, State: StateDown}, peer)
+
+	select {
+	case <-delCh:
+		t.Fatalf("unexpected RouteDelete in PassiveMode")
+	case <-time.After(150 * time.Millisecond):
+	}
+}
+
+func TestClient_LivenessManager_LocalAddrNilAfterClose(t *testing.T) {
+	t.Parallel()
+	m, err := newTestManager(t, nil)
+	require.NoError(t, err)
+	require.NoError(t, m.Close())
+	require.Nil(t, m.LocalAddr())
+}
+
+func TestClient_LivenessManager_PeerKey_IPv4Canonicalization(t *testing.T) {
+	t.Parallel()
+	m, err := newTestManager(t, nil)
+	require.NoError(t, err)
+	defer m.Close()
+
+	r := newTestRoute(func(r *routing.Route) {
+		r.Src = net.IPv4(127, 0, 0, 1)
+		r.Dst = &net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(32, 32)}
+	})
+	require.NoError(t, m.RegisterRoute(r, "lo"))
+	m.mu.Lock()
+	_, ok := m.sessions[Peer{Interface: "lo", LocalIP: r.Src.To4().String(), RemoteIP: r.Dst.IP.To4().String()}]
+	m.mu.Unlock()
+	require.True(t, ok, "peer key should use IPv4 string forms")
+}
+
 func newTestManager(t *testing.T, mutate func(*ManagerConfig)) (*Manager, error) {
 	cfg := &ManagerConfig{
 		Logger:     newTestLogger(t),
@@ -464,6 +532,7 @@ func (m *MockRouteReaderWriter) RouteAdd(r *routing.Route) error {
 	}
 	return m.RouteAddFunc(r)
 }
+
 func (m *MockRouteReaderWriter) RouteDelete(r *routing.Route) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -472,6 +541,7 @@ func (m *MockRouteReaderWriter) RouteDelete(r *routing.Route) error {
 	}
 	return m.RouteDeleteFunc(r)
 }
+
 func (m *MockRouteReaderWriter) RouteGet(ip net.IP) ([]*routing.Route, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -480,6 +550,7 @@ func (m *MockRouteReaderWriter) RouteGet(ip net.IP) ([]*routing.Route, error) {
 	}
 	return m.RouteGetFunc(ip)
 }
+
 func (m *MockRouteReaderWriter) RouteByProtocol(protocol int) ([]*routing.Route, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

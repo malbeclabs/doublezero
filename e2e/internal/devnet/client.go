@@ -23,6 +23,9 @@ type ClientSpec struct {
 	ContainerImage string
 	KeypairPath    string
 
+	// RouteLivenessEnabled is a flag to enable or disable route liveness.
+	RouteLivenessEnabled bool
+
 	// CYOANetworkIPHostID is the offset into the host portion of the subnet (must be < 2^(32 - prefixLen)).
 	CYOANetworkIPHostID uint32
 }
@@ -152,6 +155,11 @@ func (c *Client) Start(ctx context.Context) error {
 	// We need to set this here because dockerContainerName and dockerContainerHostname use it.
 	c.Pubkey = pubkey
 
+	extraArgs := []string{}
+	if c.Spec.RouteLivenessEnabled {
+		extraArgs = append(extraArgs, "-route-liveness-enable")
+	}
+
 	// Start the client container.
 	req := testcontainers.ContainerRequest{
 		Image: c.Spec.ContainerImage,
@@ -163,6 +171,7 @@ func (c *Client) Start(ctx context.Context) error {
 			"DZ_LEDGER_URL":                c.dn.Ledger.InternalRPCURL,
 			"DZ_LEDGER_WS":                 c.dn.Ledger.InternalRPCWSURL,
 			"DZ_SERVICEABILITY_PROGRAM_ID": c.dn.Manager.ServiceabilityProgramID,
+			"DZ_CLIENT_EXTRA_ARGS":         strings.Join(extraArgs, " "),
 		},
 		Files: []testcontainers.ContainerFile{
 			{

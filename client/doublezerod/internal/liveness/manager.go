@@ -44,6 +44,10 @@ type ManagerConfig struct {
 	BindIP string
 	Port   int
 
+	// PassiveMode defines if the manager should not manage the kernel routing table but rather
+	// passthrough to netlinker. This is used to support incremental rollout.
+	PassiveMode bool
+
 	TxMin      time.Duration
 	RxMin      time.Duration
 	DetectMult uint8
@@ -177,6 +181,15 @@ func NewManager(ctx context.Context, cfg *ManagerConfig) (*Manager, error) {
 }
 
 func (m *Manager) RegisterRoute(r *routing.Route, iface string) error {
+	if m.cfg.PassiveMode {
+		// If we're running in passive-mode, we update the kernel routing table immediately but
+		// also continue with the rest of the liveness protocol.
+		err := m.cfg.Netlinker.RouteAdd(r)
+		if err != nil {
+			return fmt.Errorf("error registering route: %v", err)
+		}
+	}
+
 	peerAddr, err := net.ResolveUDPAddr("udp", peerAddrFor(r, m.cfg.Port))
 	if err != nil {
 		return fmt.Errorf("error resolving peer address: %v", err)
@@ -223,6 +236,15 @@ func (m *Manager) RegisterRoute(r *routing.Route, iface string) error {
 func (m *Manager) WithdrawRoute(r *routing.Route, iface string) error {
 	m.log.Info("liveness: withdrawing route", "route", r.String(), "iface", iface)
 
+	if m.cfg.PassiveMode {
+		// If we're running in passive-mode, we update the kernel routing table immediately but
+		// also continue with the rest of the liveness protocol.
+		err := m.cfg.Netlinker.RouteDelete(r)
+		if err != nil {
+			return fmt.Errorf("error withdrawing route: %v", err)
+		}
+	}
+
 	k := routeKeyFor(iface, r)
 	m.mu.Lock()
 	delete(m.desired, k)
@@ -241,7 +263,9 @@ func (m *Manager) WithdrawRoute(r *routing.Route, iface string) error {
 	delete(m.sessions, peer)
 	m.mu.Unlock()
 
-	if wasInstalled {
+	if wasInstalled && !m.cfg.PassiveMode {
+		// If we're running in passive-mode, we've already updated the kernel routing table, so no
+		// need to do it here.
 		return m.cfg.Netlinker.RouteDelete(r)
 	}
 	return nil
@@ -349,7 +373,11 @@ func (m *Manager) onSessionUp(s *Session) {
 	}
 	m.installed[rk] = true
 	m.mu.Unlock()
-	_ = m.cfg.Netlinker.RouteAdd(r)
+	// If we're running in passive-mode, the kernel routing table has already been updated on
+	// initial registration, so we don't need to install the route here.
+	if !m.cfg.PassiveMode {
+		_ = m.cfg.Netlinker.RouteAdd(r)
+	}
 	m.log.Info("liveness: session up", "peer", s.peer.String(), "route", s.route.String())
 }
 
@@ -361,7 +389,11 @@ func (m *Manager) onSessionDown(s *Session) {
 	m.installed[rk] = false
 	m.mu.Unlock()
 	if was && r != nil {
-		_ = m.cfg.Netlinker.RouteDelete(r)
+		// If we're running in passive-mode, the kernel routing table has already been updated on
+		// initial registration, so we don't need to withdraw the route here.
+		if !m.cfg.PassiveMode {
+			_ = m.cfg.Netlinker.RouteDelete(r)
+		}
 		m.log.Info("liveness: session down", "peer", s.peer.String(), "route", s.route.String())
 	}
 }

@@ -20,7 +20,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLatencyProbing, enableLatencyMetrics bool, programId string, rpcEndpoint string, probeInterval, cacheUpdateInterval int) error {
+func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLatencyProbing, enableLatencyMetrics bool, programId string, rpcEndpoint string, probeInterval, cacheUpdateInterval int, lmc *liveness.ManagerConfig) error {
 	nlr := routing.Netlink{}
 	var crw bgp.RouteReaderWriter
 	if _, err := os.Stat(routeConfigPath); os.IsNotExist(err) {
@@ -32,21 +32,8 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 		}
 	}
 
-	// TODO(snormore): Move this up into main.go and make it configurable via CLI flags.
-	// TODO(snormore): This needs to support passive-mode where protocol functions but kernel
-	// routing table is not managed, for phase 1 of the rollout.
-	lm, err := liveness.NewManager(ctx, &liveness.ManagerConfig{
-		Logger:    slog.Default(),
-		Netlinker: crw,
-		BindIP:    "0.0.0.0",
-		Port:      44880,
-
-		TxMin:      300 * time.Millisecond,
-		RxMin:      300 * time.Millisecond,
-		DetectMult: 3,
-		MinTxFloor: 50 * time.Millisecond,
-		MaxTxCeil:  1 * time.Second,
-	})
+	lmc.Netlinker = crw
+	lm, err := liveness.NewManager(ctx, lmc)
 	if err != nil {
 		return fmt.Errorf("error creating liveness manager: %v", err)
 	}

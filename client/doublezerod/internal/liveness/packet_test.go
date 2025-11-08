@@ -63,7 +63,7 @@ func TestClient_Liveness_Packet_UnmarshalRoundTrip(t *testing.T) {
 func TestClient_Liveness_Packet_UnmarshalShort(t *testing.T) {
 	t.Parallel()
 	_, err := UnmarshalControlPacket(make([]byte, 39))
-	require.EqualError(t, err, "short")
+	require.EqualError(t, err, "short packet")
 }
 
 func TestClient_Liveness_Packet_UnmarshalBadLength(t *testing.T) {
@@ -71,7 +71,7 @@ func TestClient_Liveness_Packet_UnmarshalBadLength(t *testing.T) {
 	cp := (&ControlPacket{Version: 1}).Marshal()
 	cp[3] = 99
 	_, err := UnmarshalControlPacket(cp)
-	require.EqualError(t, err, "bad length")
+	require.EqualError(t, err, "invalid length")
 }
 
 func TestClient_Liveness_Packet_BitMaskingVersionAndState_MarshalOnly(t *testing.T) {

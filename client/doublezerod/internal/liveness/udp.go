@@ -9,14 +9,18 @@ import (
 	"golang.org/x/net/ipv4"
 )
 
-// UDPConn wraps a UDP socket (IPv4-only) and provides read/write with
-// control messages configured once at construction time.
+// UDPConn wraps an IPv4 UDP socket and provides helpers for reading and writing
+// datagrams while preserving local interface and destination address context.
+// It preconfigures IPv4 control message delivery (IP_PKTINFO equivalent) so that
+// each received packet includes metadata about which interface and destination IP
+// it arrived on, and outgoing packets can explicitly set source IP and interface.
 type UDPConn struct {
-	raw *net.UDPConn
-	pc4 *ipv4.PacketConn
+	raw *net.UDPConn     // the underlying UDP socket
+	pc4 *ipv4.PacketConn // ipv4-layer wrapper for control message access
 }
 
-// ListenUDP binds to bindIP:port using IPv4 and returns a configured UDPConn.
+// ListenUDP binds an IPv4 UDP socket to bindIP:port and returns a configured UDPConn.
+// The returned connection is ready to read/write with control message support enabled.
 func ListenUDP(bindIP string, port int) (*UDPConn, error) {
 	laddr, err := net.ResolveUDPAddr("udp4", fmt.Sprintf("%s:%d", bindIP, port))
 	if err != nil {
@@ -34,21 +38,28 @@ func ListenUDP(bindIP string, port int) (*UDPConn, error) {
 	return u, nil
 }
 
-// NewUDPConn wraps an existing *net.UDPConn and preconfigures IPv4 control messages.
+// NewUDPConn wraps an existing *net.UDPConn and enables IPv4 control messages (IP_PKTINFO-like).
+// On RX we obtain the destination IP and interface index; on TX we can set source IP and interface.
 func NewUDPConn(raw *net.UDPConn) (*UDPConn, error) {
 	u := &UDPConn{raw: raw, pc4: ipv4.NewPacketConn(raw)}
-	// Enable RX + TX control messages once (dst/src IP + interface index).
+	// Enable both RX and TX control messages: destination IP, source IP, and interface index.
 	if err := u.pc4.SetControlMessage(ipv4.FlagInterface|ipv4.FlagDst|ipv4.FlagSrc, true); err != nil {
 		return nil, err
 	}
 	return u, nil
 }
 
-// Close closes the underlying socket.
+// Close shuts down the underlying UDP socket.
 func (u *UDPConn) Close() error { return u.raw.Close() }
 
-// ReadFrom reads a packet and returns (n, remote, localIP=dst, ifname).
-// Deadline should be set via SetReadDeadline on u.raw.
+// ReadFrom reads a single UDP datagram and returns:
+//   - number of bytes read
+//   - remote address (sender)
+//   - local destination IP the packet was received on
+//   - interface name where it arrived
+//
+// The caller should configure read deadlines via SetReadDeadline before calling.
+// This function extracts control message metadata (IP_PKTINFO) to provide per-packet context.
 func (u *UDPConn) ReadFrom(buf []byte) (n int, remote *net.UDPAddr, localIP net.IP, ifname string, err error) {
 	n, cm4, raddr, err := u.pc4.ReadFrom(buf)
 	if err != nil {
@@ -71,13 +82,17 @@ func (u *UDPConn) ReadFrom(buf []byte) (n int, remote *net.UDPAddr, localIP net.
 	return n, remote, localIP, ifname, nil
 }
 
-// WriteTo sends pkt to dst, optionally pinning the outgoing interface and source IP.
-// Only IPv4 destinations are supported.
+// WriteTo transmits a UDP datagram to an IPv4 destination.
+// The caller may optionally provide:
+//   - iface: name of the outgoing interface to bind transmission to
+//   - src:   source IP to use (if nil, the kernel selects one)
+//
+// Returns number of bytes written or an error.
+// This uses an ipv4.ControlMessage to set per-packet src/interface hints.
 func (u *UDPConn) WriteTo(pkt []byte, dst *net.UDPAddr, iface string, src net.IP) (int, error) {
 	if dst == nil || dst.IP == nil {
 		return 0, errors.New("nil dst")
 	}
-	// Require IPv4 destination.
 	ip4 := dst.IP.To4()
 	if ip4 == nil {
 		return 0, errors.New("ipv6 dst not supported")
@@ -99,15 +114,20 @@ func (u *UDPConn) WriteTo(pkt []byte, dst *net.UDPAddr, iface string, src net.IP
 	if src != nil {
 		if s4 := src.To4(); s4 != nil {
 			cm.Src = s4
-		} else {
-			// ignore non-IPv4 src hints in IPv4 mode
 		}
+		// Non-IPv4 src ignored silently in IPv4 mode.
 	}
+
 	return u.pc4.WriteTo(pkt, &cm, &net.UDPAddr{IP: ip4, Port: dst.Port, Zone: dst.Zone})
 }
 
-// SetReadDeadline forwards to the underlying socket.
-func (u *UDPConn) SetReadDeadline(t time.Time) error { return u.raw.SetReadDeadline(t) }
+// SetReadDeadline forwards directly to the underlying UDPConn.
+// This controls how long ReadFrom will block before returning a timeout.
+func (u *UDPConn) SetReadDeadline(t time.Time) error {
+	return u.raw.SetReadDeadline(t)
+}
 
-// LocalAddr returns the underlying socket's local address.
-func (u *UDPConn) LocalAddr() net.Addr { return u.raw.LocalAddr() }
+// LocalAddr returns the socket’s bound local address (IP and port).
+func (u *UDPConn) LocalAddr() net.Addr {
+	return u.raw.LocalAddr()
+}

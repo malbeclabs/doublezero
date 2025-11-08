@@ -9,33 +9,39 @@ import (
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 )
 
+// Session models a single bidirectional liveness relationship with a peer,
+// maintaining BFD-like state, timers, and randomized transmission scheduling.
 type Session struct {
 	route *routing.Route
 
-	myDisc   uint32
-	yourDisc uint32
-	state    State
+	myDisc, yourDisc uint32 // discriminators identify this session to each side
+	state            State  // current BFD state
 
-	detectMult               uint8
-	localTxMin, localRxMin   time.Duration
-	remoteTxMin, remoteRxMin time.Duration
+	// detectMult scales the detection timeout relative to the receive interval;
+	// it defines how many consecutive RX intervals may elapse without traffic
+	// before declaring the session Down (e.g., 3 → tolerate ~3 missed intervals).
+	detectMult uint8
 
-	nextTx, detectDeadline, lastRx time.Time
+	localTxMin, localRxMin   time.Duration // our minimum TX/RX intervals
+	remoteTxMin, remoteRxMin time.Duration // peer's advertised TX/RX intervals
+
+	nextTx, detectDeadline, lastRx time.Time // computed next transmit time, detect timeout, last RX time
 
 	peer     *Peer
 	peerAddr *net.UDPAddr
 
-	alive bool
+	alive bool // manager lifecycle flag: whether this session is still managed
 
-	minTxFloor, maxTxCeil time.Duration
-	backoffMax            time.Duration
-	backoffFactor         uint32 // >=1; doubles while Down, resets otherwise
+	minTxFloor, maxTxCeil time.Duration // global interval bounds
+	backoffMax            time.Duration // upper bound for exponential backoff
+	backoffFactor         uint32        // doubles when Down, resets when Up
 
-	mu sync.Mutex
+	mu sync.Mutex // guards mutable session state
 }
 
-// Compute jittered next TX time and persist it into s.nextTx.
-// Returns the chosen time.
+// ComputeNextTx picks the next transmit time based on current state,
+// applies exponential backoff when Down, adds ±10% jitter,
+// persists it to s.nextTx, and returns the chosen timestamp.
 func (s *Session) ComputeNextTx(now time.Time, rnd *rand.Rand) time.Time {
 	s.mu.Lock()
 
@@ -62,10 +68,9 @@ func (s *Session) ComputeNextTx(now time.Time, rnd *rand.Rand) time.Time {
 	next := now.Add(eff + jit)
 	s.nextTx = next
 
-	// Update backoff after scheduling.
+	// Backoff doubles while Down; reset once Up or Init again.
 	if s.state == StateDown {
 		if s.backoffMax == 0 || eff < s.backoffMax {
-			// geometric growth; effective cap is backoffMax
 			if s.backoffFactor == 0 {
 				s.backoffFactor = 1
 			}
@@ -79,15 +84,13 @@ func (s *Session) ComputeNextTx(now time.Time, rnd *rand.Rand) time.Time {
 	return next
 }
 
-// Ensure detect is armed and not stale; updates detectDeadline if needed.
-// Returns (deadline, true) if detect should be (re)scheduled, false if not.
+// ArmDetect ensures the detection timer is active and not stale.
+// If expired, it re-arms; if uninitialized, it returns false.
+// Returns the deadline and whether detect should be (re)scheduled.
 func (s *Session) ArmDetect(now time.Time) (time.Time, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if !s.alive {
-		return time.Time{}, false
-	}
-	if s.detectDeadline.IsZero() {
+	if !s.alive || s.detectDeadline.IsZero() {
 		return time.Time{}, false
 	}
 	ddl := s.detectDeadline
@@ -98,10 +101,8 @@ func (s *Session) ArmDetect(now time.Time) (time.Time, bool) {
 	return ddl, true
 }
 
-// ExpireIfDue checks whether the session’s detect deadline has elapsed and,
-// if so, transitions it to Down and clears the deadline. It returns true
-// if the state changed. Callers are responsible for scheduling follow-up
-// actions (e.g. notifying or rescheduling) based on the result.
+// ExpireIfDue transitions an active session to Down if its detect timer
+// has elapsed. Returns true if state changed (Up/Init → Down).
 func (s *Session) ExpireIfDue(now time.Time) (expired bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -114,41 +115,34 @@ func (s *Session) ExpireIfDue(now time.Time) (expired bool) {
 		!now.Before(s.detectDeadline) {
 		s.state = StateDown
 		s.backoffFactor = 1
-		s.detectDeadline = time.Time{} // stop detect while Down
+		s.detectDeadline = time.Time{}
 		return true
 	}
 	return false
 }
 
-// HandleRx processes an incoming control packet and updates the session state.
-// It validates the discriminator, refreshes remote timing parameters, and resets
-// the detection deadline. Based on the peer’s advertised state, it transitions
-// between Down, Init, and Up according to the BFD state machine rules. It returns
-// true if the local session state changed as a result.
+// HandleRx ingests an incoming control packet, validates discriminators,
+// updates peer timers, re-arms detection, and performs state transitions
+// according to a simplified BFD-like handshake.
 func (s *Session) HandleRx(now time.Time, ctrl *ControlPacket) (changed bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Ignore all RX while locally AdminDown (operator-forced inactivity).
 	if s.state == StateAdminDown {
 		return false
 	}
-
-	// Ignore if peer explicitly targets a different session.
 	if ctrl.YourDiscr != 0 && ctrl.YourDiscr != s.myDisc {
 		return false
 	}
 
 	prev := s.state
 
-	// Learn/refresh peer discriminator.
+	// Learn peer discriminator if not yet known.
 	if s.yourDisc == 0 && ctrl.MyDiscr != 0 {
 		s.yourDisc = ctrl.MyDiscr
 	}
 
-	// Peer timers + (re)arm detect on any valid RX.
-	// Timers: clamp to our sane bounds [minTxFloor, maxTxCeil].
-	// DesiredMinTxUs -> remoteTxMin; RequiredMinRxUs -> remoteRxMin.
+	// Update peer timing and clamp within floor/ceiling bounds.
 	rtx := time.Duration(ctrl.DesiredMinTxUs) * time.Microsecond
 	rrx := time.Duration(ctrl.RequiredMinRxUs) * time.Microsecond
 	if rtx < s.minTxFloor {
@@ -161,55 +155,49 @@ func (s *Session) HandleRx(now time.Time, ctrl *ControlPacket) (changed bool) {
 	} else if s.maxTxCeil > 0 && rrx > s.maxTxCeil {
 		rrx = s.maxTxCeil
 	}
-	s.remoteTxMin = rtx
-	s.remoteRxMin = rrx
+	s.remoteTxMin, s.remoteRxMin = rtx, rrx
 	s.lastRx = now
 	s.detectDeadline = now.Add(s.detectTime())
 
 	switch prev {
 	case StateDown:
-		// Bring-up: as soon as we can identify the peer, move to Init.
-		// Only promote to Up once we have explicit echo (YourDiscr == myDisc).
+		// Move to Init once peer identified; Up after echo confirmation.
 		if s.yourDisc != 0 {
 			if ctrl.State >= StateInit && ctrl.YourDiscr == s.myDisc {
-				// Confirmation Phase: explicit echo seen → Up
 				s.state = StateUp
 				s.backoffFactor = 1
 			} else {
-				// Learning Phase: we've learned yourDisc but don't yet have echo
-				// (peer still Down or not echoing our myDisc) → stay/proceed to Init
 				s.state = StateInit
 				s.backoffFactor = 1
 			}
 		}
 
 	case StateInit:
-		// Do NOT mirror Down while initializing; let detect expiry handle failure.
-		// Promote to Up only after explicit echo confirming bidirectional path.
+		// Promote to Up only after receiving echo referencing our myDisc.
 		if s.yourDisc != 0 && ctrl.State >= StateInit && ctrl.YourDiscr == s.myDisc {
-			// Confirmation Phase: explicit echo seen → Up
 			s.state = StateUp
 			s.backoffFactor = 1
 		}
 
 	case StateUp:
-		// Established and peer declares Down -> mirror once and stop detect.
+		// If peer advertises Down, immediately mirror it and pause detect.
 		if ctrl.State == StateDown {
-			// If peer is reporting Down, degrade our session to Down
-			// De-activation Phase: State = Down
 			s.state = StateDown
 			s.backoffFactor = 1
-			s.detectDeadline = time.Time{} // stop detect while Down
+			s.detectDeadline = time.Time{}
 		}
 	}
 
 	return s.state != prev
 }
 
+// detectTime computes detection interval as detectMult × rxInterval().
 func (s *Session) detectTime() time.Duration {
-	return time.Duration(int64(s.detectMult) * int64(s.rxRef()))
+	return time.Duration(int64(s.detectMult) * int64(s.rxInterval()))
 }
 
+// txInterval picks the effective transmit interval, bounded by floors/ceilings,
+// using the greater of localTxMin and remoteRxMin.
 func (s *Session) txInterval() time.Duration {
 	iv := s.localTxMin
 	if s.remoteRxMin > iv {
@@ -224,7 +212,9 @@ func (s *Session) txInterval() time.Duration {
 	return iv
 }
 
-func (s *Session) rxRef() time.Duration {
+// rxInterval picks the effective receive interval based on peer TX and
+// our own desired RX, clamped to the same bounds.
+func (s *Session) rxInterval() time.Duration {
 	ref := s.remoteTxMin
 	if s.localRxMin > ref {
 		ref = s.localRxMin

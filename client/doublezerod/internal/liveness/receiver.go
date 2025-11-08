@@ -11,19 +11,27 @@ import (
 	"time"
 )
 
+// Receiver is a long-lived goroutine that continuously reads UDP control packets
+// from the shared transport socket and passes valid ones to a handler.
+//
+// It abstracts read-loop robustness: manages deadlines, throttles noisy logs,
+// detects fatal network conditions, and honors context cancellation cleanly.
 type Receiver struct {
-	log      *slog.Logger
-	conn     *UDPConn
-	handleRx HandleRxFunc
-
-	// Throttled warning for noisy read errors.
-	readErrEvery time.Duration
-	lastReadWarn time.Time
-	mu           sync.Mutex
+	log          *slog.Logger  // structured logger for debug and warnings
+	conn         *UDPConn      // underlying socket with control message support
+	handleRx     HandleRxFunc  // callback invoked for each valid ControlPacket
+	readErrEvery time.Duration // min interval between repeated read warnings
+	lastReadWarn time.Time     // last time a warning was logged
+	mu           sync.Mutex    // guards lastReadWarn
 }
 
+// HandleRxFunc defines the handler signature for received control packets.
+// The callback is invoked for every successfully decoded ControlPacket,
+// along with a Peer descriptor identifying interface and IP context.
 type HandleRxFunc func(pkt *ControlPacket, peer Peer)
 
+// NewReceiver constructs a new Receiver bound to the given UDPConn and handler.
+// By default, it throttles repeated read errors to once every 5 seconds.
 func NewReceiver(log *slog.Logger, conn *UDPConn, handleRx HandleRxFunc) *Receiver {
 	return &Receiver{
 		log:          log,
@@ -33,12 +41,15 @@ func NewReceiver(log *slog.Logger, conn *UDPConn, handleRx HandleRxFunc) *Receiv
 	}
 }
 
+// Run executes the main receive loop until ctx is canceled or the socket fails.
+// It continually reads packets, unmarshals them into ControlPackets, and passes
+// them to handleRx. Errors are rate-limited and fatal errors terminate the loop.
 func (r *Receiver) Run(ctx context.Context) error {
 	r.log.Debug("liveness.recv: rx loop started")
-	buf := make([]byte, 1500)
+	buf := make([]byte, 1500) // typical MTU-sized buffer
 
 	for {
-		// Fast path: bail early if we're asked to stop.
+		// Early exit if caller canceled context.
 		select {
 		case <-ctx.Done():
 			r.log.Debug("liveness.recv: rx loop stopped by context done", "reason", ctx.Err())
@@ -46,9 +57,9 @@ func (r *Receiver) Run(ctx context.Context) error {
 		default:
 		}
 
-		// Handle SetReadDeadline errors (e.g., closed socket).
+		// Periodically set a read deadline to make the loop interruptible.
 		if err := r.conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond)); err != nil {
-			// If context is already canceled, exit immediately.
+			// Respect cancellation immediately if already stopped.
 			select {
 			case <-ctx.Done():
 				r.log.Debug("liveness.recv: rx loop stopped by context done", "reason", ctx.Err())
@@ -56,11 +67,11 @@ func (r *Receiver) Run(ctx context.Context) error {
 			default:
 			}
 			if errors.Is(err, net.ErrClosed) {
-				// Socket is gone, return as error.
 				r.log.Debug("liveness.recv: socket closed during SetReadDeadline; exiting")
 				return fmt.Errorf("socket closed during SetReadDeadline: %w", err)
 			}
-			// Throttle noisy warnings.
+
+			// Log throttled warnings for transient errors (e.g., bad FD state).
 			now := time.Now()
 			r.mu.Lock()
 			if r.lastReadWarn.IsZero() || now.Sub(r.lastReadWarn) >= r.readErrEvery {
@@ -71,19 +82,20 @@ func (r *Receiver) Run(ctx context.Context) error {
 				r.mu.Unlock()
 			}
 
-			// Treat fatal kernel/socket conditions as terminal.
+			// Exit for fatal kernel or network-level errors.
 			if isFatalNetErr(err) {
 				return fmt.Errorf("fatal network error during SetReadDeadline: %w", err)
 			}
 
-			// Brief wait to avoid a hot loop on repeated errors.
+			// Brief delay prevents a tight loop in persistent error states.
 			time.Sleep(50 * time.Millisecond)
 			continue
 		}
 
+		// Perform the actual UDP read with control message extraction.
 		n, remoteAddr, localIP, ifname, err := r.conn.ReadFrom(buf)
 		if err != nil {
-			// If context is already canceled, exit immediately regardless of error type.
+			// Stop cleanly on context cancellation.
 			select {
 			case <-ctx.Done():
 				r.log.Debug("liveness.recv: rx loop stopped by context done", "reason", ctx.Err())
@@ -91,18 +103,18 @@ func (r *Receiver) Run(ctx context.Context) error {
 			default:
 			}
 
-			// Deadline tick.
+			// Deadline timeout: simply continue polling.
 			if ne, ok := err.(net.Error); ok && ne.Timeout() {
 				continue
 			}
 
-			// Closed socket => terminate without spinning.
+			// Closed socket: terminate immediately.
 			if errors.Is(err, net.ErrClosed) {
 				r.log.Debug("liveness.recv: socket closed; exiting")
 				return fmt.Errorf("socket closed during ReadFrom: %w", err)
 			}
 
-			// Throttle non-timeout read errors to avoid log spam.
+			// Log other transient read errors, throttled.
 			now := time.Now()
 			r.mu.Lock()
 			if r.lastReadWarn.IsZero() || now.Sub(r.lastReadWarn) >= r.readErrEvery {
@@ -119,23 +131,35 @@ func (r *Receiver) Run(ctx context.Context) error {
 			continue
 		}
 
+		// Attempt to parse the received packet into a ControlPacket struct.
 		ctrl, err := UnmarshalControlPacket(buf[:n])
 		if err != nil {
 			r.log.Error("liveness.recv: error parsing control packet", "error", err)
 			continue
 		}
-		peer := Peer{Interface: ifname, LocalIP: localIP.String(), RemoteIP: remoteAddr.IP.String()}
+
+		// Populate the peer descriptor: identifies which local interface/IP
+		// the packet arrived on and the remote endpoint that sent it.
+		peer := Peer{
+			Interface: ifname,
+			LocalIP:   localIP.String(),
+			RemoteIP:  remoteAddr.IP.String(),
+		}
+
+		// Delegate to session or higher-level handler for processing.
 		r.handleRx(ctrl, peer)
 	}
 }
 
+// isFatalNetErr determines whether a network-related error is non-recoverable.
+// It checks for known fatal errno codes and unwraps platform-specific net errors.
 func isFatalNetErr(err error) bool {
-	// Closed socket.
+	// Closed socket explicitly fatal.
 	if errors.Is(err, net.ErrClosed) {
 		return true
 	}
 
-	// Syscall-level fatal hints.
+	// Inspect underlying syscall errno for hardware or interface removal.
 	var se syscall.Errno
 	if errors.As(err, &se) {
 		switch se {
@@ -144,7 +168,7 @@ func isFatalNetErr(err error) bool {
 		}
 	}
 
-	// Some platforms wrap the above in *net.OpError; treat non-temporary, non-timeout as fatal.
+	// On some systems, fatal syscall errors are wrapped in *net.OpError.
 	var oe *net.OpError
 	if errors.As(err, &oe) && !oe.Timeout() && !oe.Temporary() {
 		return true

@@ -68,19 +68,19 @@ func TestClient_Liveness_Session_RxRefPrefersMaxFloorAndCeil(t *testing.T) {
 	s.remoteTxMin = 10 * time.Millisecond
 	s.localRxMin = 20 * time.Millisecond
 	s.minTxFloor = 5 * time.Millisecond
-	require.Equal(t, 20*time.Millisecond, s.rxRef())
+	require.Equal(t, 20*time.Millisecond, s.rxInterval())
 
 	s.remoteTxMin = 0
 	s.localRxMin = 0
 	s.minTxFloor = 7 * time.Millisecond
-	require.Equal(t, 7*time.Millisecond, s.rxRef())
+	require.Equal(t, 7*time.Millisecond, s.rxInterval())
 
 	// ceiling: cap overly large refs
 	s.remoteTxMin = 5 * time.Second
 	s.localRxMin = 10 * time.Second
 	s.minTxFloor = 1 * time.Millisecond
 	s.maxTxCeil = 500 * time.Millisecond
-	require.Equal(t, 500*time.Millisecond, s.rxRef())
+	require.Equal(t, 500*time.Millisecond, s.rxInterval())
 }
 
 func TestClient_Liveness_Session_DetectTimeIsDetectMultTimesRxRef(t *testing.T) {

@@ -4,18 +4,30 @@ import (
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 )
 
+// RouteReaderWriter is the minimal interface for interacting with the routing
+// backend. It allows adding, deleting, and listing routes by protocol.
+// The BGP plugin uses this to interact with the kernel routing table through
+// the liveness subsystem, without depending on its internal implementation.
 type RouteReaderWriter interface {
 	RouteAdd(*routing.Route) error
 	RouteDelete(*routing.Route) error
 	RouteByProtocol(int) ([]*routing.Route, error)
 }
 
+// routeReaderWriter is an interface-specific adapter that connects a single
+// network interface (iface) to the liveness Manager. It is typically created
+// by the BGP plugin so that each managed interface has its own scoped view
+// of route registration and withdrawal through the Manager.
 type routeReaderWriter struct {
-	lm    *Manager
-	rrw   RouteReaderWriter
-	iface string
+	lm    *Manager          // liveness manager handling route lifecycle
+	rrw   RouteReaderWriter // underlying netlink backend
+	iface string            // interface name associated with these routes
 }
 
+// NewRouteReaderWriter creates an interface-scoped RouteReaderWriter that
+// wraps the liveness Manager and a concrete routing backend. This allows the
+// BGP plugin to use standard routing calls while the Manager tracks route
+// liveness on a per-interface basis.
 func NewRouteReaderWriter(lm *Manager, rrw RouteReaderWriter, iface string) *routeReaderWriter {
 	return &routeReaderWriter{
 		lm:    lm,
@@ -24,14 +36,20 @@ func NewRouteReaderWriter(lm *Manager, rrw RouteReaderWriter, iface string) *rou
 	}
 }
 
+// RouteAdd registers the route with the liveness Manager for the given iface,
+// enabling the Manager to monitor reachability before installation.
 func (m *routeReaderWriter) RouteAdd(r *routing.Route) error {
 	return m.lm.RegisterRoute(r, m.iface)
 }
 
+// RouteDelete withdraws the route and removes it from liveness tracking for
+// the associated interface.
 func (m *routeReaderWriter) RouteDelete(r *routing.Route) error {
 	return m.lm.WithdrawRoute(r, m.iface)
 }
 
+// RouteByProtocol delegates to the underlying backend to list routes by
+// protocol ID without involving the Manager.
 func (m *routeReaderWriter) RouteByProtocol(protocol int) ([]*routing.Route, error) {
 	return m.rrw.RouteByProtocol(protocol)
 }

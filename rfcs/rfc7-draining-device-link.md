@@ -36,10 +36,10 @@ While these processes work, they are fragile for a number of reasons.  Having di
 
 * Drained: the state where a DZD or link is removed from the active network topology.  A drained state could be applied to a single link (WAN or DZX), one or more CYOA interfaces, or to a DZD in its entirety
 * Draining: the process of moving a link, interface or DZD from activated to drained states
-* edge_status: field applied to CYOA interface to represent: provisioning/active/drained 
+* edge_status: field applied to CYOA interface to represent: active/drained 
 * Hard-drained: a link is removed from routing or a DZD is fully drained of traffic
 * Soft-drained: a link IS-IS metric is set to 1,000,000, forcing traffic to use alternative paths only if available.  A soft-drained link will still be used by DZ users if it is the only path between two users
-* traffic_status: field applied to link to represent: provisioning/active/hard_drained/soft_drained
+* traffic_status: field applied to link to represent: active/hard_drained/soft_drained
 * Undraining: the process that reverses the draining process
 
 ## Alternatives Considered

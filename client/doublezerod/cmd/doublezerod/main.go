@@ -37,7 +37,7 @@ var (
 	routeConfigPath      = flag.String("route-config", "/var/lib/doublezerod/route-config.json", "path to route config file (unstable)")
 
 	// Route liveness configuration flags.
-	routeLivenessEnabled    = flag.Bool("route-liveness-enable", defaultRouteLivenessEnabled, "enables route liveness")
+	routeLivenessEnabled    = flag.Bool("route-liveness-enable", defaultRouteLivenessEnabled, "enables route liveness (unstable)")
 	routeLivenessTxMin      = flag.Duration("route-liveness-tx-min", defaultRouteLivenessTxMin, "route liveness tx min")
 	routeLivenessRxMin      = flag.Duration("route-liveness-rx-min", defaultRouteLivenessRxMin, "route liveness rx min")
 	routeLivenessDetectMult = flag.Uint("route-liveness-detect-mult", defaultRouteLivenessDetectMult, "route liveness detect mult")

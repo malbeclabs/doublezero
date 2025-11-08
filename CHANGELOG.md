@@ -33,6 +33,8 @@ All notable changes to this project will be documented in this file.
   - Add automated compatibility tests in CI to validate all actual testnet and mainnet state against the current codebase, ensuring backward compatibility across protocol versions.
   - Add `--delay-override-ms` option to `doublezero link update`
   - Add ability to configure excluded routes
+- Client
+  - Add initial route liveness probing enabled in passive-mode
 - Device controller
   - Remove the deprecated -enable-interfaces-and-peers flag
   - Use link.delay_override to set isis metric when in valid range. This provides a simple workflow for contributors to temporarily change a link's delay value without overwriting the existing value.

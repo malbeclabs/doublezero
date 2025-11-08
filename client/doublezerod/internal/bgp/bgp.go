@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/jwhited/corebgp"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/liveness"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 )
 
@@ -90,15 +91,17 @@ type RouteReaderWriter interface {
 }
 
 type PeerConfig struct {
-	LocalAddress  net.IP
-	RemoteAddress net.IP
-	LocalAs       uint32
-	RemoteAs      uint32
-	Port          int
-	RouteSrc      net.IP
-	RouteTable    int
-	FlushRoutes   bool
-	NoInstall     bool
+	LocalAddress    net.IP
+	RemoteAddress   net.IP
+	LocalAs         uint32
+	RemoteAs        uint32
+	Port            int
+	RouteSrc        net.IP
+	RouteTable      int
+	FlushRoutes     bool
+	NoInstall       bool
+	Interface       string
+	LivenessEnabled bool
 }
 
 type BgpServer struct {
@@ -107,9 +110,10 @@ type BgpServer struct {
 	peerStatus        map[string]Session
 	peerStatusLock    sync.Mutex
 	routeReaderWriter RouteReaderWriter
+	livenessManager   *liveness.Manager
 }
 
-func NewBgpServer(routerID net.IP, r RouteReaderWriter) (*BgpServer, error) {
+func NewBgpServer(routerID net.IP, r RouteReaderWriter, lm *liveness.Manager) (*BgpServer, error) {
 	corebgp.SetLogger(log.Print)
 	srv, err := corebgp.NewServer(netip.MustParseAddr(routerID.String()))
 	if err != nil {
@@ -121,6 +125,7 @@ func NewBgpServer(routerID net.IP, r RouteReaderWriter) (*BgpServer, error) {
 		peerStatus:        make(map[string]Session),
 		peerStatusLock:    sync.Mutex{},
 		routeReaderWriter: r,
+		livenessManager:   lm,
 	}, nil
 }
 
@@ -142,7 +147,11 @@ func (b *BgpServer) AddPeer(p *PeerConfig, advertised []NLRI) error {
 	if p.Port != 0 {
 		peerOpts = append(peerOpts, corebgp.WithPort(p.Port))
 	}
-	plugin := NewBgpPlugin(advertised, p.RouteSrc, p.RouteTable, b.peerStatusChan, p.FlushRoutes, p.NoInstall, b.routeReaderWriter)
+	rrw := b.routeReaderWriter
+	if p.LivenessEnabled {
+		rrw = liveness.NewRouteReaderWriter(b.livenessManager, b.routeReaderWriter, p.Interface)
+	}
+	plugin := NewBgpPlugin(advertised, p.RouteSrc, p.RouteTable, b.peerStatusChan, p.FlushRoutes, p.NoInstall, rrw)
 	err := b.server.AddPeer(corebgp.PeerConfig{
 		RemoteAddress: netip.MustParseAddr(p.RemoteAddress.String()),
 		LocalAS:       p.LocalAs,

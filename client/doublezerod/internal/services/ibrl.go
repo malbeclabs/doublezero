@@ -14,11 +14,12 @@ import (
 )
 
 type IBRLService struct {
-	bgp            BGPReaderWriter
-	nl             routing.Netlinker
-	db             DBReaderWriter
-	Tunnel         *routing.Tunnel
-	DoubleZeroAddr net.IP
+	bgp             BGPReaderWriter
+	nl              routing.Netlinker
+	db              DBReaderWriter
+	Tunnel          *routing.Tunnel
+	DoubleZeroAddr  net.IP
+	livenessEnabled bool
 }
 
 func (s *IBRLService) UserType() api.UserType   { return api.UserTypeIBRL }
@@ -29,6 +30,8 @@ func NewIBRLService(bgp BGPReaderWriter, nl routing.Netlinker, db DBReaderWriter
 		bgp: bgp,
 		nl:  nl,
 		db:  db,
+
+		livenessEnabled: true,
 	}
 }
 
@@ -47,7 +50,7 @@ func (s *IBRLService) Setup(p *api.ProvisionRequest) error {
 		err = createTunnelWithIP(s.nl, tun, p.DoubleZeroIP)
 		flush = false
 	default:
-		return fmt.Errorf("unsupported tunnel type: %v\n", p)
+		return fmt.Errorf("unsupported tunnel type: %v", p)
 	}
 	if err != nil {
 		return fmt.Errorf("error creating tunnel interface: %v", err)
@@ -57,13 +60,15 @@ func (s *IBRLService) Setup(p *api.ProvisionRequest) error {
 	s.DoubleZeroAddr = p.DoubleZeroIP
 
 	peer := &bgp.PeerConfig{
-		RemoteAddress: s.Tunnel.RemoteOverlay,
-		LocalAddress:  s.Tunnel.LocalOverlay,
-		LocalAs:       p.BgpLocalAsn,
-		RemoteAs:      p.BgpRemoteAsn,
-		RouteSrc:      p.DoubleZeroIP,
-		RouteTable:    syscall.RT_TABLE_MAIN,
-		FlushRoutes:   flush,
+		RemoteAddress:   s.Tunnel.RemoteOverlay,
+		LocalAddress:    s.Tunnel.LocalOverlay,
+		LocalAs:         p.BgpLocalAsn,
+		RemoteAs:        p.BgpRemoteAsn,
+		RouteSrc:        p.DoubleZeroIP,
+		RouteTable:      syscall.RT_TABLE_MAIN,
+		FlushRoutes:     flush,
+		LivenessEnabled: s.livenessEnabled,
+		Interface:       "doublezero0",
 	}
 	nlri, err := bgp.NewNLRI([]uint32{peer.LocalAs}, s.Tunnel.LocalOverlay.String(), p.DoubleZeroIP.String(), 32)
 	if err != nil {

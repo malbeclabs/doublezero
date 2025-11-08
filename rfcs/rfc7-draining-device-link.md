@@ -2,7 +2,7 @@
 
 ## Summary
 
-A frequent requirement of operating a physical network is the ability to stop a device (DZD) or link from being an active part of the network topology.  This is often referred to a draining, where traffic is rerouted to alternative options or, in the case of provisioning, prevented from being actively used until formally declared Ready for Service (RFS).
+A frequent requirement of operating a physical network is the ability to remove a device (DZD) or link from being an active part of the network topology.  This is often referred to a draining, where traffic is rerouted to alternative options or, in the case of provisioning, prevented from being actively used until formally declared Ready for Service (RFS).
  
 The goal of this RFC is to define the use-cases and mechanisms for draining one or more links on a DZD, including all links which would render the DZD fully drained.
 
@@ -29,7 +29,7 @@ The existing tools that are available to achieve the equivalent of a draining st
 
 Table 1: Existing Draining Options
 
-While these processes work, they are fragile for a number of reasons.  Having different owners of different parts of the same workflow requires coordination between a contributor and the DZF, or, in the case of DZX links, between contributors themselves.  It is also not explicit the intent about setting increased link delay values, or setting max-users to 0.  Ultimately, a simple CLI option in the smart-contract that automates the multiple existing steps required with a new drained status helps operationally with ease of execution and the desired state of the network.  Additionally, a drained status can be used to support initial DZD provisioning and protecting the network during maintenance windows and outages.
+The processes described in table 1 are fragile for a number of reasons.  Having different owners of different parts of the same workflow requires coordination between a contributor and the DZF, or, in the case of DZX links, between contributors themselves.  It is also not explicit the intent about setting increased link delay values, or setting max-users to 0.  Ultimately, a simple CLI option in the smart-contract that automates the multiple existing steps required with a new drained status helps operationally with ease of execution and the desired state of the network.  Additionally, a drained status can be used to support initial DZD provisioning and protecting the network during maintenance windows and outages.
 
 
 ## New Terminology
@@ -82,10 +82,15 @@ While these processes work, they are fragile for a number of reasons.  Having di
 ```mermaid
 graph LR
     ACTIVE[Active] -->|Maintenance Started| HARD_DRAINED[Hard Drained]
-    HARD_DRAINED -->|Maintenance Completed| SOFT_DRAINED[Soft Drained] 
-    SOFT_DRAINED -->|Routing Stable| ACTIVE
-    ACTIVE -->|delay_override set| ACTIVE_OVERRIDE[Active Override]
+    ACTIVE -->|Link Depriortized| SOFT_DRAINED[Soft Drained] 
+    ACTIVE -->|delay_override set| ACTIVE_OVERRIDE[Active Override]  
+    HARD_DRAINED -->|Maintenance Completed| SOFT_DRAINED 
+    SOFT_DRAINED -->|Link Normalized/Routing Stable| WAO[Was in Active Override?]
+    WAO -->|No| ACTIVE
+    WAO -->|Yes| ACTIVE_OVERRIDE
     ACTIVE_OVERRIDE -->|delay_override unset| ACTIVE
+    ACTIVE_OVERRIDE -->|Maintenance Started| HARD_DRAINED  
+
 ```
 
 ### DZX Link
@@ -111,10 +116,9 @@ graph LR
 ```mermaid
 graph LR
     ACTIVE[Active] -->|Maintenance Started - CYOA Up| SOFT_DRAINED[Soft Drained] 
-    SOFT_DRAINED -->|Maintenance Completed - CYOA Up| ACTIVE
     ACTIVE -->|Maintenance Started - CYOA Down| HARD_DRAINED[Hard Drained]
-    HARD_DRAINED -->|Maintenance Started - CYOA Completed| SOFT_DRAINED
-    SOFT_DRAINED -->|Routing Stable| ACTIVE  
+    HARD_DRAINED -->|Maintenance Completed - CYOA Down| SOFT_DRAINED
+    SOFT_DRAINED -->|CYOA Interface Normalized/Routing Stable| ACTIVE
 ```
 
 ### DZD
@@ -133,8 +137,8 @@ graph LR
     CYOA_HARD_DRAINED --> DEVICE_DRAINED[Device Hard Drained]
     DEVICE_DRAINED --> |Maintenance Completed| LINKS_SOFT_DRAINED[Links Soft Drained]
     DEVICE_DRAINED --> |Maintenance Completed| CYOA_SOFT_DRAINED[CYOA Interface Soft Drained]
-    LINKS_SOFT_DRAINED --> |Routing Stable| ACTIVE
-    CYOA_SOFT_DRAINED --> |Routing Stable| ACTIVE                  
+    LINKS_SOFT_DRAINED --> |Link Normalized/Routing Stable| ACTIVE
+    CYOA_SOFT_DRAINED --> |CYOA Interface Normalized/Routing Stable| ACTIVE                  
 ```
 
 ## Impact

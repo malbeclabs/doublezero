@@ -1,3 +1,5 @@
+# Network Draining
+
 ## Summary
 
 A frequent requirement of operating a physical network is the ability to stop a device (DZD) or link from being an active part of the network topology.  This is often referred to a draining, where traffic is rerouted to alternative options or, in the case of provisioning, prevented from being actively used until formally declared Ready for Service (RFS).

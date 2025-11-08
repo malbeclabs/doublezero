@@ -1,368 +1,413 @@
-# DoubleZero Client Route Liveness Probing
+# DoubleZero Client Route Liveness
 
 ## Summary
 
-This proposal introduces **Route Liveness Probing** to the `doublezerod` client daemon.
+This document proposes a per-route liveness protocol for DoubleZero clients that verifies data-plane reachability rather than relying solely on BGP session state. Each client maintains a lightweight, bidirectional UDP exchange with its peer for every eligible route, using fixed-size control packets to confirm packet flow in both directions.
 
-The goal is to enable active data-plane validation of BGP-learned routes from DoubleZero Devices (DZDs), ensuring that only reachable routes are installed in the local kernel routing table.
+When a session confirms bidirectional reachability, its route transitions to `Up` and is installed in the kernel routing table. If no valid control packets are received before the detection timer expires, the session transitions to `Down`, and the route is withdrawn locally while the BGP session remains established.
 
-Each route is periodically probed via ICMP echo requests, transitioning between `UP` and `DOWN` states according to a hysteresis-based policy. Routes marked `UP` are installed; routes marked `DOWN` are removed until reachability recovers.
+The protocol draws inspiration from Bidirectional Forwarding Detection (BFD, [RFC 5880](https://datatracker.ietf.org/doc/html/rfc5880)) but is adapted for DoubleZero’s overlay model. It enables rapid fault detection through symmetric, lightweight exchanges and operates out-of-band from BGP while integrating with BGP-learned routes, requiring no changes to BGP timers or control-plane signaling.
 
-The feature will initially apply only to the IBRL service type (unicast without allocated IP), where fallback connectivity over the public internet path exists.
+The initial deployment targets IBRL mode (unicast without allocated IP addresses), where the client’s DoubleZero IP is the same as its public IP, and so, in this mode, traffic automatically uses the public Internet when the overlay route is absent from the kernel routing table.
 
 ## Motivation
 
-Currently, BGP-learned routes from DZDs are installed unconditionally. If a DZD or its tunnel fails while the BGP session remains established, these routes can remain installed even when the underlying data path is unreachable — leading to silent blackholing until the control plane detects the failure or manual configuration changes are made.
+Currently, BGP-learned routes from DoubleZero clients are installed unconditionally. If a client or its tunnel fails while the BGP session remains established, the kernel can continue forwarding traffic into an unreachable path, causing silent blackholing until control-plane timers or manual intervention remove the routes.
 
-Route liveness probing introduces a data-plane-derived reachability signal, enabling `doublezerod` to locally remove failed routes from the kernel routing table without disturbing BGP control-plane stability.
+BGP routes derived from onchain state are propagated to clients by DoubleZero Devices (DZDs). While this confirms control-plane reachability, it does not ensure that packets actually flow between peers through the data path. As a result, data-plane faults such as unidirectional or asymmetric link failures, incorrect routing, or transient congestion can leave routes installed even when traffic is undeliverable.
 
-This enhances operational reliability, accelerates convergence after partial or asymmetric failures, and aligns with the goal of making the DoubleZero client resilient to silent path degradation.
+Per-route Liveness Sessions close this gap by continuously validating bidirectional reachability at the data-plane level. Routes remain installed only while their sessions confirm two-way packet flow and are withdrawn immediately when detection fails. This enables rapid convergence, prevents prolonged forwarding to unreachable peers, and improves the reliability of the DoubleZero network.
 
 ## New Terminology
 
-- **Route Liveness Probe** — A periodic ICMP echo request used to verify reachability of a BGP-learned destination.
-- **Liveness State** — The local classification of a route as `UP` or `DOWN`, derived from recent probe results.
-- **Liveness Policy** — The decision logic (currently hysteresis-based) that governs transitions between states, using configurable thresholds for consecutive successes or failures.
-- **Probing Scheduler** — Determines per-route probe timing, re-arms routes after completion, and signals the worker when the earliest due time changes.
-- **Probing Limiter** — A concurrency guard that caps the number of in-flight probes globally.
-- **Probing Worker** — Executes probes as directed by the Scheduler, subject to the Limiter, and reports outcomes to the liveness tracker.
-- **User-Space ICMP Listener** — A lightweight listener bound to `doublezero0` that receives echo replies over the overlay interface, ensuring responses don’t traverse the public internet when routes are not installed.
-- **Probing Subsystem** — The module within `doublezerod` responsible for coordinating probe execution, state evaluation, and route installation or withdrawal.
+- **Control Packet** — Fixed-length UDP datagram containing the sender’s session state, discriminators, and timing parameters.
+- **Liveness Session** — Per-route, bidirectional relationship that validates reachability between two peers using control packets.
+- **Session State** — Lifecycle of a Liveness Session: `Down`, `Init`, `Up`, or `AdminDown`.
+- **Discriminators** — Random 32-bit identifiers that uniquely identify a session instance and allow peers to detect restarts.
+- **Transmit Interval** — Minimum spacing between consecutive outbound control packets.
+- **Detect Multiplier** — Number of missed receive intervals tolerated before declaring failure.
+- **Detection Time** — Maximum time without receiving a valid packet before declaring the session `Down`; calculated as `DetectMult × max(peer_desired_tx, local_required_rx)`.
+- **Session Binding** — Requirement that packets for a session arrive on the expected `(interface, local address, destination)` path.
+- **Liveness Manager** — Component that owns the UDP socket, session registry, and protocol coordination.
+- **Liveness Scheduler** — Timer subsystem that drives transmit and detection events across all sessions.
+- **Liveness Receiver** — Handler that processes inbound control packets and updates the corresponding session state.
 
 ## Alternatives Considered
 
-### Passive Monitoring (existing `doublezero-monitor-tool`)
-
-A passive approach could infer route health from forwarding statistics such as `nftables` or kernel FIB counters. However, it cannot distinguish between an idle route and an unreachable one and provides no proactive assurance of data-plane reachability. Detection is reactive and only occurs once user traffic has already been impacted.
-
-### BGP-Only (current in-client behavior)
-
-Relying solely on BGP session state and withdrawals, as done today, limits detection to control-plane failures. It cannot detect partial or asymmetric data-plane failures where the session remains established but forwarding has stopped, leading to silent blackholing until standard hold timers expire.
-
-### Active Liveness Probing via TWAMP
-
-TWAMP would provide a standards-based active probing mechanism but requires reflector support on the remote side and coordinated upgrades across all participating devices. Because existing clients already support kernel-space ICMP responders, ICMP-based probing can be deployed incrementally without disrupting reachability between mixed-version peers.
-
-### Active Liveness Probing via ICMP (selected)
-
-ICMP echo probing was selected for its simplicity, universality, and backward-compatible deployment. It leverages existing ICMP handling paths, requires no additional coordination between clients, and provides a reliable binary reachability signal suitable for gating route installation.
+- Rely solely on BGP session state
+- Sidecar monitor tool (e.g. `doublezero_monitor` from Anza)
+- Passive forwarding statistics (kernel or nftables counters)
+- ICMP echo-based probing
+- UDP-based bidirectional protocol (selected)
 
 ## Detailed Design
 
-### Integration Context
+### Architecture
 
-The probing subsystem integrates with the existing BGP plugin in `doublezerod`. Each service type (IBRL, IBRL with allocated IP, multicast) can declare whether route probing is active. In this proposal, probing is enabled only for IBRL (without allocated IP) mode.
+Each DoubleZero client maintains one UDP socket on 44880, multiplexing all per-route Liveness Sessions.
 
-<details>
+When an eligible route is learned, the Liveness Manager (LM) creates a session in `Down`, assigns a random local discriminator, and arms transmit/detect timers. Sessions are symmetric—both peers send fixed-size control packets over the bound path `(interface, local address, destination)`.
 
-<summary>System context diagram</summary>
+A route is installed when its session enters `Up`, and withdrawn locally on `Down`. BGP remains established. State changes flow LM → Route Reader-Writer (RRW) → Netlink.
 
 ```mermaid
-graph TB
-  DZD[Connected DZD Peer]
-  DESTS[Destinations in Advertised Prefixes]
-  INTERNET[Public Internet Path]
-
-  subgraph CLIENT[Client Host]
-    DZIF[doublezero0 Interface]
-
-    subgraph DZD_PROC[doublezerod Process]
-      BGP[BGP Plugin]
-      RM[Route Manager]
-      PW[Probing Worker]
-      SCHED[Scheduler]
-      LIM[Limiter]
-      LT[Liveness Tracker]
-      UL[User-Space ICMP Listener]
+graph LR
+  direction LR
+  subgraph CLIENT["Client Host"]
+    subgraph DZD["doublezerod process"]
+      BGP["BGP Plugin"]
+      RRW["Route Reader-Writer"]
+      LM["Route Liveness Manager"]
     end
-
-    NL[Netlink API]
-    KRT[Kernel Routing Table]
+    NL["Netlink API"]
+    KRT["Kernel Routing Table"]
   end
-
-  %% Control Plane
-  DZD -->|BGP updates: advertise / withdraw| BGP
-  BGP -->|Learned routes| RM
-
-  %% Probing Workflow
-  RM --> PW
-  PW --> SCHED
-  PW --> LIM
-  PW -->|ICMP echo via doublezero0| DESTS
-
-  %% Reply Paths
-  %% (A) Overlay reply when route installed OR listener delivers
-  DESTS -->|ICMP reply on doublezero0| UL
-  UL --> PW
-
-  %% (B) Public-path reply when route not installed (treated as failure)
-  DESTS -. ICMP reply via public path .-> INTERNET
-  INTERNET -. ignored: counts as probe failure .-> PW
-
-  PW -->|Probe results| LT
-  LT -->|State: UP / DOWN| RM
-
-  %% Routing Integration
-  RM -->|Add / Delete route| NL
+  subgraph PEER["Peer Host"]
+    subgraph DZD2["doublezerod process"]
+      LM2["Route Liveness Manager"]
+    end
+  end
+  BGP -->|Learned Routes| RRW
+  RRW -->|Register Eligible Route| LM
+  LM <-->|Per-Route UDP Control Packets| LM2
+  LM -->|Session Up / Down Events| RRW
+  RRW -->|Add / Delete Route| NL
   NL --> KRT
-  DZIF --- KRT
+  KRT -. forwards overlay traffic .-> PEER
+
 ```
 
-</details>
+### State Machine
 
-<details>
+Four states: **AdminDown**, **Down**, **Init**, **Up**. Transitions depend only on valid RX, detect timeouts, or admin control.
 
-<summary>Workflow sequence diagram</summary>
+- `Down → Init` on valid RX (learn peerDisc).
+- `Init → Up` when received `peerDisc == myLocalDisc`.
+- `Up → Down` on detect timeout or RX peer `Down`.
+- Any → `AdminDown` when disabled; `AdminDown → Down` when enabled.
+
+Mutual discriminator exchange yields restart-safe convergence; recovery completes in ≈ one TX interval + one RTT.
+
+```mermaid
+stateDiagram-v2
+  direction LR
+
+  state "ADMIN DOWN" as ADM
+  state "DOWN" as DOWN
+  state "INIT" as INIT
+  state "UP" as UP
+
+	[*] --> DOWN: Route learned via BGP
+
+  %% Administrative control
+  DOWN --> ADM: Admin disable
+  INIT --> ADM: Admin disable
+  UP --> ADM: Admin disable
+  ADM --> DOWN: Admin enable
+
+  %% Bring-up and confirmation
+  DOWN --> INIT: RX valid, learn peerDisc
+  INIT --> UP: RX valid, remoteDisc == localDisc
+
+  %% Liveness maintenance and loss
+  INIT --> DOWN: Detect timer expired
+  UP --> DOWN: Detect timer expired
+  UP --> DOWN: RX peer state == Down
+
+  %% Keep-alives
+  INIT --> INIT: RX valid, re-arm detect
+  UP --> UP: RX valid, re-arm detect
+
+```
+
+### Session Lifecycle
+
+- Route learned → create (`Down`), start timers.
+- First valid RX → `Init`.
+- Echoed localDisc observed → `Up`, install route.
+- Valid RX refreshes detect timer.
+- Detect timeout → `Down`, withdraw route; send one `Down` advertisement; enter exponential TX backoff with jitter.
+
+<details open>
+
+<summary>Sequence diagram</summary>
 
 ```mermaid
 sequenceDiagram
-  autonumber
-  participant DZD as DZD Peer
-  participant BGP as BGP Plugin
-  participant RM as Route Manager
-  participant PW as Probing Worker
-  participant SCHED as Scheduler
-  participant LIM as Limiter
-  participant UL as User-space ICMP Listener
-  participant LT as Liveness Tracker
-  participant NL as Netlink
-  participant KRT as Kernel Routing Table
-  participant DST as Destination Host
-  participant INET as Public Internet
+    participant ClientA as Client A
+    participant DZDA as DZD (Client A)
+    participant Mesh as DZD Mesh
+    participant DZDZ as DZD (Client Z)
+    participant ClientZ as Client Z
 
-  DZD->>BGP: BGP UPDATE (new/changed route)
-  BGP->>RM: Learned route notification
-  RM->>PW: Register route for probing
-  RM->>LT: Initialize liveness (starts at DOWN)
+    Note over ClientA,ClientZ: ** Phase: Route Learned via BGP **
+    DZDZ->>Mesh: BGP UPDATE (route to Client Z)
+    Mesh->>DZDA: BGP UPDATE (propagated)
+    DZDA->>ClientA: BGP UPDATE (learned route to Client Z)
+    Note over ClientA: Liveness Manager registers<br/>eligible route (state=Down)
+    ClientA->>ClientA: Schedule initial transmit<br/>and start detect timer
 
-  loop driven by scheduler (interval + jitter)
-    SCHED-->>PW: Wake when route(s) due
-    PW->>LIM: Acquire concurrency slot
-    alt slot available
-      PW->>DST: ICMP Echo via doublezero0
-      alt route installed in kernel
-        DST-->>PW: ICMP Echo Reply (kernel-handled)
-        PW->>LT: Record success
-      else route not installed
-        alt listener healthy
-          DST-->>UL: ICMP Echo Reply on doublezero0
-          UL->>PW: Deliver reply
-          PW->>LT: Record success
-        else listener down
-          DST-->>INET: Reply via public path (not delivered)
-          PW->>LT: Timeout → Record failure
-        end
-      end
-      PW->>LIM: Release slot
-      PW->>SCHED: Complete(key, outcome) → re-arm next due
-    else ctx canceled
-      PW-->>SCHED: Complete(key, canceled)
+    Note over ClientA,ClientZ: ** Phase: Session Establishment **
+    ClientA-->>Mesh: Control Packet (state=Down, localDisc=X, remoteDisc=0)
+    Mesh-->>ClientZ: Control Packet (forwarded)
+    ClientZ->>ClientZ: Learn localDisc=X,<br/>state=Init, arm detect
+    ClientZ-->>Mesh: Control Packet (state=Init, localDisc=Y, remoteDisc=X)
+    Mesh-->>ClientA: Control Packet (forwarded)
+    ClientA->>ClientA: remoteDisc==X, state=Up,<br/>install in kernel routing table
+
+    Note over ClientA,ClientZ: ** Phase: Steady-State Verification **
+    loop Periodic keepalives
+        ClientA-->>Mesh: Control Packet (state=Up, localDisc=X, remoteDisc=Y)
+        Mesh-->>ClientZ: Control Packet
+        ClientZ-->>Mesh: Control Packet (state=Up, localDisc=Y, remoteDisc=X)
+        Mesh-->>ClientA: Control Packet
+        ClientA-->>ClientA: Valid packets reset<br/>detection timers
+        ClientZ-->>ClientZ: Valid packets reset<br/>detection timers
     end
 
-    alt transition to UP
-      LT-->>RM: State = UP
-      RM->>NL: Install route
-      NL->>KRT: Add route entry
-    else transition to DOWN
-      LT-->>RM: State = DOWN
-      RM->>NL: Withdraw route
-      NL->>KRT: Delete route entry
-    else no change
-      LT-->>RM: No state change
+    Note over ClientA,ClientZ: ** Phase: Failure Detection and Withdrawal **
+    alt No valid RX before detect deadline
+        ClientA->>ClientA: Detect timer expiry,<br/>state=Down,<br/>withdraw from kernel routing table
+        ClientA-->>Mesh: Control Packet (state=Down)
+        Mesh-->>ClientZ: Control Packet (forwarded)
+        Note over ClientA,DZDA: BGP sessions remain established,<br/>only the local route is removed
     end
-  end
 
-  Note over PW: ICMP listener retries with backoff in parallel
+    Note over ClientA,ClientZ: ** Phase: Remote-Initiated Withdrawal **
+      alt Peer detects failure first
+      ClientZ->>ClientZ: Detect timer expiry<br/>or administrative down,<br/>state=Down
+      ClientZ-->>Mesh: Control Packet (state=Down, localDisc=Y, remoteDisc=X)
+      Mesh-->>ClientA: Control Packet (forwarded)
+      ClientA->>ClientA: Receive peer Down,<br/>state=Down,<br/>withdraw from kernel routing table
+    end
+
 ```
 
 </details>
 
-### Workflow
+### Message Format
 
-- **Route Announcement**
+Control packets are fixed-length 40-byte UDP datagrams (network byte order):
 
-    When a new route is learned via BGP, the route manager registers it for probing and initializes its liveness state to `DOWN`.
+```
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+| Ver(3)|0|State(2)|0|       DetectMult       |     Length      |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                       Local Discriminator                     |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                       Peer  Discriminator                     |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|              Desired Minimum TX Interval (µs)                 |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|              Required Minimum RX Interval (µs)                |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                        Reserved (zero)                        |
+|                           20 bytes                            |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+```
 
-- **Probing**
-
-    The probing worker periodically sends ICMP echo requests toward each destination.
-
-    - Echo replies are received either by the user-space ICMP listener or directly by the kernel’s ICMP stack when the route is already installed.
-    - The Scheduler determines when each route is probed, introducing jitter to avoid synchronized bursts.
-    - The Limiter bounds the number of concurrent probes to control resource usage.
-    - Each probe runs with a per-probe timeout, and the listener automatically restarts with exponential backoff if it fails.
-- **Liveness Evaluation**
-
-    Probe outcomes are aggregated by the liveness tracker according to the active policy:
-
-    - Consecutive successes above a threshold transition the route to `UP`.
-    - Consecutive failures above a threshold transition it to `DOWN`.
-    - Intermediate results cause no state change.
-- **Routing Synchronization**
-
-    The route manager reflects liveness transitions into the kernel routing table:
-
-    - Routes marked `UP` are installed.
-    - Routes marked `DOWN` are withdrawn.
-    - BGP session state remains unaffected.
-
-### Configuration Parameters
-
-| Parameter | Description | Default |
+| Field | Size | Description |
 | --- | --- | --- |
-| `--route-probing-enable` | Enables the probing subsystem | disabled |
-| `--route-probing-probe-timeout` | Timeout per probe | 1s |
-| `--route-probing-liveness-up-threshold` | Consecutive successes to mark route `Up` | 3 |
-| `--route-probing-liveness-down-threshold` | Consecutive failures to mark route `Down` | 3 |
-| `--route-probing-max-concurrency` | Maximum number of concurrent probes | 64 |
-| `--route-probing-schedule-interval` | Base probe scheduling interval | 1s |
-| `--route-probing-schedule-jitter` | Random jitter applied to probe scheduling | 100ms |
+| Version | 3 bits | Protocol version; current `1`. |
+| State | 2 bits | `AdminDown`/`Down`/`Init`/`Up`. |
+| Detect Mult | 8 bits | Missed-RX intervals tolerated. |
+| Length | 8 bits | Fixed `40`. |
+| Local Discriminator | 32 bits | Sender-chosen, non-zero. |
+| Peer Discriminator | 32 bits | Last learned peer disc or `0`. |
+| Desired Min TX Interval | 32 bits | Sender’s min TX cadence (µs). |
+| Required Min RX Interval | 32 bits | Sender’s min RX capability (µs). |
+| Reserved | 160 bits | Zero; ignored on RX. |
 
-### Liveness Policy
+**Receive processing (normative):**
 
-The initial liveness policy is hysteresis-based, prioritizing stability over short-term responsiveness. This layer is intentionally pluggable, allowing future replacement with alternative evaluation strategies such as EWMA-based smoothing, weighted failure scoring, or adaptive thresholds that respond to observed probe variance.
+1. Drop if `len≠40`, `ver≠1`, `DetectMult==0`, or reserved bits non-zero.
+2. Enforce session binding: packet must arrive on expected `(iface, local, dest)` and port 44880; otherwise drop.
+3. Clamp timing values to local bounds.
+4. Update peer parameters; if `peerDisc == myLocalDisc`, session is eligible for `Up`.
 
-### **Concurrency and Rate Limiting**
+**Version handling:** unsupported versions are treated as invalid and dropped.
 
-Probe execution is governed by a simple semaphore-based limiter that caps the number of concurrent probes.
+### Timer Semantics
 
-- A global limiter enforces a fixed ceiling on concurrent probes.
-- Each worker acquires the next available slot before launching a probe and releases it upon completion.
-- The scheduler re-arms each route after completion based on its next due time.
-- Fairness arises naturally from due-time ordering and jitter rather than strict queueing.
-- Blocked acquires respect cancellation to prevent leaks or deadlocks.
+Two monotonic timers per session.
 
-This policy provides predictable resource usage and stable operation, while leaving room for more advanced rate-limiting and convergence-optimized mechanisms in future iterations.
+| Timer | Definition | On Expiry |
+| --- | --- | --- |
+| **Transmit** | `max(local_desired_tx, peer_required_rx)` | Send control packet |
+| **Detect** | `DetectMult × max(peer_desired_tx, local_required_rx)` | Transition `Down`, withdraw route |
 
-### Scheduling and Timing
+Each side advertises its own Desired Minimum TX Interval and Required Minimum RX Interval to inform peer pacing and detection timing. These values are advisory, not negotiated, and are clamped within locally configured bounds.
 
-Probe scheduling operates on fixed intervals with random jitter to avoid synchronization across routes. This reduces burstiness, improves fairness across routes, and complements the global concurrency limiter by ensuring probes are launched in a staggered pattern rather than synchronized waves.
+After `Down`, TX uses exponential backoff with randomized jitter to avoid synchronization. Implementations SHOULD cap backoff and resume normal cadence on first valid RX.
 
-### Observability
+### Routing Integration
 
-The probing subsystem exposes a minimal set of Prometheus metrics to report probe outcomes, liveness transitions, concurrency usage, and listener health.
+| State | Kernel Action |
+| --- | --- |
+| `Up` | Install route |
+| `Init`, `Down` | Withdraw route |
+| `AdminDown` | Suppress route regardless of peer |
 
-Labels provide per-tunnel and per-device visibility while keeping cardinality low.
-
-| Name | Type | Labels | Meaning |
-| --- | --- | --- | --- |
-| `doublezero_probing_probes_total` | counter | `service_type`, `tunnel_src`, `device_code`, `result` | Total number of probe attempts, labeled by outcome (`ok`, `timeout`, `error`). |
-| `doublezero_probing_probe_rtt_seconds` | histogram | `service_type`, `tunnel_src`, `device_code` | Round-trip time distribution for successful probes. |
-| `doublezero_probing_liveness_transitions_total` | counter | `service_type`, `tunnel_src`, `device_code`, `to` | Count of route state transitions (`up`, `down`) driven by the liveness policy. |
-| `doublezero_probing_convergence_to_up_seconds` | histogram | `service_type`, `tunnel_src`, `device_code` | Time from the first successful probe while `DOWN` until transition to `UP` (includes thresholds, scheduling, limiter, kernel add). |
-| `doublezero_probing_convergence_to_down_seconds` | histogram | `service_type`, `tunnel_src`, `device_code` | Time from the first failed probe while `UP` until transition to `DOWN` (includes thresholds, scheduling, limiter, kernel delete). |
-| `doublezero_probing_routes_state` | gauge | `service_type`, `tunnel_src`, `device_code`, `state` | Current number of routes in each liveness state (`up`, `down`). |
-| `doublezero_probing_kernel_route_ops_total` | counter | `service_type`, `tunnel_src`, `device_code`, `op` | Number of route add/delete operations performed in the kernel. |
-| `doublezero_probing_limiter_in_flight` | gauge | `service_type`, `tunnel_src` | Current number of active probes. |
-| `doublezero_probing_limiter_capacity` | gauge | `service_type`, `tunnel_src` | Configured maximum number of concurrent probes. |
-| `doublezero_probing_limiter_acquire_total` | counter | `service_type`, `tunnel_src`, `result` | Attempts to acquire a concurrency slot (`acquired`, `canceled`, `timeout`). |
-| `doublezero_probing_listener_restarts_total` | counter | `service_type`, `tunnel_src` | Total restarts of the user-space ICMP listener. |
-
-The `doublezerod` client daemon also exposes an API endpoint `/status/routes`, used by the `doublezero` CLI to show per-route liveness status and recent RTTs:
-
-```
-$ doublezero status --routes
-
-SERVICE TYPE   TUNNEL SRC     DESTINATION        STATUS   RTT     NETWORK
--------------- -------------- -----------------  -------  ------  --------
-IBRL           10.0.0.1       203.0.113.42/32    DOWN     timeout devnet
-IBRL           10.0.0.1       198.51.100.14/32   DOWN     timeout devnet
-IBRL           10.0.0.1       192.0.2.18/32      UP       238ms   devnet
-IBRL           10.0.0.1       198.51.100.8/32    UP       175ms   devnet
-IBRL           10.0.0.1       203.0.113.7/32     UP       92ms    devnet
-IBRL           10.0.0.1       198.51.100.2/32    UP       44ms    devnet
-IBRL           10.0.0.1       192.0.2.5/32       UP       21ms    devnet
-```
-
-## Failure Scenarios
-
-### Probing Subsystem Failure
-
-If the probing subsystem crashes, deadlocks, or encounters runtime errors (e.g., socket exhaustion), route liveness state stops updating. Routes remain in their last known state (`UP` or `DOWN`) until recovery, which may temporarily leave stale routes installed or withdrawn. Forwarding continuity is preserved during this period.
-
-The user-space ICMP listener runs in a persistent retry loop with exponential backoff. If it fails, probes targeting destinations still present in the kernel routing table continue to succeed via kernel-handled ICMP replies, while probes that rely on user-space handling fail until the listener recovers.
-
-### ICMP Unavailability on Destination Clients
-
-If a destination DoubleZero client disables ICMP handling or filters echo replies, peers mark the associated routes as `DOWN` and withdraw them from local routing tables. Traffic to that destination then flows via the public internet path rather than the `doublezero0` interface. Reachability is preserved, but the DoubleZero overlay is bypassed until ICMP responsiveness resumes.
-
-### Transient Misclassification
-
-ICMP rate limiting, temporary congestion, or asymmetric return paths can cause sporadic probe failures and transient route-state misclassifications. The hysteresis policy mitigates short-lived noise by requiring consecutive failures or recoveries before transition, though overly aggressive thresholds can still cause unnecessary route churn.
-
-### Resource Exhaustion
-
-In large deployments, excessive concurrency or overly aggressive probe intervals can exhaust file descriptors or CPU resources. The Limiter caps in-flight probes, and the Scheduler staggers timings (interval + jitter) to avoid bursts. Severe misconfiguration can still degrade performance or delay probe processing.
+Sessions are created/removed by dynamic route events; restoration is immediate on `Up`, bounded by detection timing—not BGP hold timers.
 
 ## Impact
 
-### Operational Reliability
+- **Control-plane load**
 
-Ensures that only verifiably reachable routes remain active, preventing blackholes caused by stale or inconsistent BGP state.
+    Each active session transmits a fixed 40-byte control packet per *Transmit Interval* (typically 100 ms – 1 s).
 
-### Convergence
+    Aggregate rate: `Rate_tx = N / TxInterval`.
 
-Enables faster local convergence after data-plane failures without altering BGP session timers or advertisements.
+    Example: 1 000 sessions × 200 ms ≈ 5 000 pps (~120 kbit/s including UDP + IP headers).
 
-Randomized jitter in the Scheduler prevents synchronized probe bursts and improves stability during large-scale route changes.
+    Even 10 000 sessions × 1 s stay under 400 kB/s per direction.
 
-### Resource Usage
+    Receive processing cost scales linearly with session count and mirrors transmit rate.
 
-Introduces lightweight background ICMP traffic and minimal CPU overhead.
+- **Timer scheduling**
 
-A fixed concurrency ceiling enforced by the Limiter, combined with evenly distributed scheduling, ensures predictable scaling across large route tables.
+    All sessions share a single priority queue; no per-session threads.
 
-### Observability
+    Wakeups are coalesced into batches to reduce jitter and system-call load.
 
-Adds a small number of metrics exposing probe and scheduler activity (e.g., limiter utilization, queue depth, per-route state transitions). Operational complexity remains low; the metrics are primarily for troubleshooting and resource analysis rather than continuous monitoring.
+    Typical timer density (1–10 k timers/s) easily fits within event-loop granularity.
+
+    Detection timers use monotonic clocks and remain unaffected by NTP or wall-clock adjustments.
+
+- **Memory and CPU footprint**
+
+    Each session maintains ≈ 64 B of state (discriminators, timers, peer parameters).
+
+    At 10 000 sessions, memory use is < 1 MB.
+
+    All sessions share a single UDP socket; no per-session sockets.
+
+    Packet handling has constant computational cost due to fixed-length parsing.
+
+- **Failure detection parameters**
+
+    Operators tune *Transmit Interval* and *Detect Multiplier* to trade off detection speed versus false positives.
+
+    Conservative values handle transient congestion; aggressive values shorten fault detection.
+
+    Overall resource footprint remains small, linear, and predictable at scale.
+
+
+## Failure Scenarios
+
+- **Peer restart**
+
+    A peer restart resets its discriminator. The local side MUST detect this change within one transmit interval plus one round-trip time, transition to `Init`, and reconverge to `Up`. No manual intervention is required.
+
+- **Local process restart**
+
+    On restart, sessions MUST be reinitialized as BGP routes are re-learned. Each re-learned route MUST trigger a new discriminator assignment and session establishment. Recovery SHOULD complete within one transmit interval plus one RTT under normal network conditions.
+
+- **Data-plane loss or congestion**
+
+    If no valid control packet is received before the detection deadline (`DetectMult × RX interval`), the session MUST transition to `Down` and withdraw the corresponding route. When valid control packets resume, the session SHOULD automatically transition back to `Up` once bidirectional reachability is confirmed.
+
+- **Unidirectional or asymmetric failure**
+
+    Bidirectional reachability is required; one-way loss MUST cause a transition to `Down` to prevent blackholing during asymmetric faults.
+
+- **Burst loss tolerance**
+
+    Implementations SHOULD tolerate short loss bursts using the detection multiplier (typically ≥ 3, as in BFD) to avoid unnecessary transitions under transient loss.
+
+- **Network partition or prolonged unreachability**
+
+    When no control packets are received for the full detection window, the session MUST remain `Down` until valid traffic resumes. Recovery SHOULD occur automatically once connectivity is restored.
+
+- **Large-scale or synchronized outages**
+
+    After transitioning to `Down`, transmit scheduling SHOULD apply exponential backoff (bounded by configuration) and randomized jitter. Implementations MUST ensure that control-plane load remains bounded under widespread failures and SHOULD minimize synchronized recovery during convergence.
+
 
 ## Security Considerations
 
-The route liveness probing subsystem does not materially alter DoubleZero’s trust or threat model. It operates entirely within the client’s existing control and data plane, using ICMP echo requests to destinations learned through the trusted DZD control plane.
+- **Attack surface and trust model**
 
-Probes are sent only toward prefixes advertised by connected DZDs, so there is no risk of arbitrary or unscoped network scanning. Probe frequency and concurrency are bounded to prevent overload or amplification. Responses are handled either by the `doublezerod` process (when the user-space ICMP listener is running) or by the kernel’s ICMP stack on remote peers running earlier versions.
+    The protocol exposes a single UDP listener on port 44880 shared by all sessions. Each client transmits and receives fixed-size control packets at a fixed cadence; there is no request–response amplification vector.
 
-The feature introduces no new externally reachable services or credentials, and ICMP payloads contain no sensitive information. The primary operational consideration is that ICMP must be permitted between peers for liveness detection to function accurately.
+    Peer authenticity depends on pre-provisioned BGP or controller configuration. No in-band authentication or encryption is performed. A malicious or misconfigured peer can only affect its own session state; it cannot influence other routes or global behavior.
+
+- **Source validation and binding**
+
+    Incoming packets MUST be accepted only if their `(source IP, destination IP, interface)` triple matches a known route bound to an active session.
+
+    Packets received on unexpected interfaces, addresses, or ports **MUST** be silently discarded. This prevents off-path spoofing and enforces strict data-plane symmetry between transmit and receive paths.
+
+- **Input validation and robustness**
+
+    All packet fields MUST be validated before use:
+
+    - `Version == 1`, `Length == 40`
+    - `DetectMult > 0` and within local limits
+    - Transmit and receive intervals within configured bounds
+    - Reserved bits = 0 (non-zero → drop)
+
+    Invalid or malformed packets MUST be discarded without any state change.
+
+    Implementations SHOULD suppress excessive logging of repeated invalid inputs to avoid log flooding.
+
+- **Traffic and amplification control**
+
+    The protocol is symmetric: each host transmits at its own configured rate regardless of inbound traffic volume.
+
+    Message size is constant, and no replies are generated for unrecognized sources, eliminating reflection and amplification risks.
+
+- **Rate limiting and fairness**
+
+    Implementations SHOULD apply lightweight per-source and aggregate rate limiting (e.g., token buckets) to bound inbound processing load.
+
+    Aggregate receive caps SHOULD protect event-loop latency. Dropped packets MAY be counted for diagnostics but SHOULD NOT be logged individually.
+
+- **Resource bounding and DoS containment**
+
+    Sessions MUST be created only through explicit local registration; inbound traffic MUST NOT instantiate new state.
+
+    All memory, file descriptors, and timers MUST be bounded by configuration.
+
+    Packet parsing MUST use fixed-size structures and constant-time operations with no dynamic allocation. Even under flood conditions, CPU and memory consumption MUST scale linearly with configured session count.
+
 
 ## Backward Compatibility
 
-Route liveness probing is designed to be interoperable across mixed client versions, ensuring that enabling it does not break communication between upgraded and non-upgraded peers.
+Deployment occurs in two phases so users can upgrade clients independently while maintaining stable interoperability.
 
-### Compatibility Matrix
+### Phase 1 — Passive Liveness
 
-- **Probing enabled on source only:**
+- Clients fully run the protocol—sending and receiving control packets and maintaining session state—but do not let the protocol itself control route installation or withdrawal.
+- Users are expected to open the UDP port used by the liveness protocol so upgraded peers can exchange control traffic, verify session establishment, and be ready to participate once route management is activated in Phase 2.
+- This phase validates protocol behavior and network reachability under real conditions.
+- All clients should reach this phase before any enable active mode, unless they accept that routes toward legacy clients will be withdrawn.
 
-    If the destination’s route is installed in its kernel table, ICMP replies return over `doublezero0` and the probe can succeed. If the destination’s route is not installed (e.g., tunnel down), its kernel will return the reply via the public internet path; the source treats that as a probe failure.
+### Phase 2 — Active Liveness
 
-- **Probing enabled on both source and destination:**
+- Clients now actively manage routes in the kernel routing table as part of the liveness protocol lifecycle.
+- Participation begins as opt-in, allowing developers and early adopters to validate route management under real network conditions while others remain in passive mode.
+- Clients that have not opened the liveness protocol UDP port by this stage will be treated as unreachable by peers in active mode, which will withdraw routes toward them based on liveness state.
+- The long-term objective is full adoption of *Active Liveness* once stability and convergence are demonstrated in production.
 
-    Both clients use the DoubleZero user-space ICMP listener to exchange echo replies over the `doublezero0` interface, even when the route is not installed in the kernel table. This ensures accurate overlay-level reachability and preserves end-to-end validation within the DoubleZero fabric.
+### Compatibility
 
-- **Probing disabled on both sides:**
+Clients operating in different modes interact as follows:
 
-    Behavior remains unchanged from current deployments—routes are installed and withdrawn solely based on BGP control-plane updates.
+- **Active ↔ Active:** Normal bidirectional operation; both peers manage routes through the liveness protocol.
+- **Active ↔ Passive:** Control packets are exchanged; only the active peer modifies routes based on session state. The passive peer continues to update its routing table through existing mechanisms (e.g., BGP), independent of the liveness protocol.
+- **Active ↔ Legacy:** Legacy peers ignore the protocol; active peers mark sessions `Down` and withdraw the associated routes.
+- **Passive ↔ Passive / Passive ↔ Legacy:** Routing proceeds through normal mechanisms, unaffected by the liveness protocol. The routing table continues to change as usual, but never in response to liveness-derived state.
 
-
-### Deployment Considerations
-
-Route probing will ship as a disabled feature flag in initial releases. Operators can opt in for testing, but it will remain off by default until the subsystem has proven stable and client ICMP responsiveness is broadly consistent.
-
-Early testing shows that about 7% of existing clients do not currently respond to ICMP probes. These nodes will appear unreachable to peers performing liveness probing, even though control-plane routes and forwarding may continue to function normally.
-
-The first rollout phase should focus on ensuring ICMP reachability across all clients. During this period, probing should be enabled only in controlled or opt-in deployments, where its behavior can be observed without affecting reachability. Once ICMP handling is consistent and the subsystem demonstrates stable performance, the feature can be gradually enabled for broader use and eventually made default-on in later releases.
-
-During the transition:
-
-- Mixed environments remain compatible, as unupgraded peers still respond via their kernel-space ICMP stack when their routes are installed.
-- When overlay ICMP is unavailable on the destination, replies will traverse the public internet instead of `doublezero0` and be treated as probe failures.
-- Full overlay-level reachability validation via `doublezero0` becomes authoritative once all clients handle ICMP properly.
+Once all clients support *Passive Liveness* and have opened the liveness UDP port, users can safely enable *Active Liveness* without causing unreachable paths or asymmetric routing toward legacy peers.
 
 ## Open Questions
 
-- **Liveness Policy** — Should we keep the current hysteresis model, or adopt a smoother approach (e.g., EWMA or loss-weighted) to better handle intermittent loss and jitter?
-- **Adaptive Scheduling** — Should the Scheduler or Limiter adjust dynamically based on route count, observed loss, or system load, or offer a mode optimized for convergence speed?
-- **Route Weighting** — Should all routes contribute equally to state evaluation, or should liveness results be weighted by stake or reputation (as in `doublezero-monitor-tool`)?
-- **Convergence Tuning** — What probe intervals and success/failure thresholds yield the best balance between responsiveness and stability across diverse network conditions?
-- **Visibility and Monitoring** — How can we detect and debug flapping or systemic probe loss across clients? Should aggregate telemetry on probe health be collected globally?
-- **ICMP Reachability Rollout** — Roughly 7% of clients do not currently respond to ICMP. What coverage level is acceptable before making probing the default behavior?
-- **Reachability Detection and Notification** — How will users discover when their client is not reachable via ICMP once probing becomes default-on? Should the CLI proactively test ICMP reachability during `connect` or `status` commands and surface an error or warning? Should the daemon detect and exit if not?
+- **Per-route configuration**
+    - Should users be able to override liveness settings (e.g., transmit interval, detection multiplier) for specific routes or disable liveness on specific routes?
+- **Scalability and rate limiting**
+    - How should global transmit-rate limits (e.g., packets per second or bits per second) be applied to bound network load at scale?
+    - How should per-peer or global pacing interact with existing jitter and backoff to smooth bursts without unnecessarily delaying fault detection?
+    - How should the system balance stability and bounded overhead against faster fault detection and route convergence under constrained rate budgets?

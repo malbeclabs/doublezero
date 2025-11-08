@@ -4,7 +4,7 @@
 
 A frequent requirement of operating a physical network is the ability to stop a device (DZD) or link from being an active part of the network topology.  This is often referred to a draining, where traffic is rerouted to alternative options or, in the case of provisioning, prevented from being actively used until formally declared Ready for Service (RFS).
  
-The goal of this RFC is to define the use-cases and mechanisms for draining one or more links on a device, including all links which would render the DZD fully drained.
+The goal of this RFC is to define the use-cases and mechanisms for draining one or more links on a DZD, including all links which would render the DZD fully drained.
 
 Scenarios (workflows) where draining is used include:
 
@@ -34,10 +34,10 @@ While these processes work, they are fragile for a number of reasons.  Having di
 
 ## New Terminology
 
-* Drained: a state where traffic is not being flowing.  A drained state could be applied to a single link (WAN or DZX), one or more CYOA interfaces, or to a DZD in its entirety
-* Draining: the process of moving a link, interface or device from activated to drained states
-* edge_status: field applied to device to represent: provisioning/active/drained 
-* Hard-drained: a link is removed from routing or a device is fully drained of traffic
+* Drained: the state where a DZD or link is removed from the active network topology.  A drained state could be applied to a single link (WAN or DZX), one or more CYOA interfaces, or to a DZD in its entirety
+* Draining: the process of moving a link, interface or DZD from activated to drained states
+* edge_status: field applied to CYOA interface to represent: provisioning/active/drained 
+* Hard-drained: a link is removed from routing or a DZD is fully drained of traffic
 * Soft-drained: a link IS-IS metric is set to 1,000,000, forcing traffic to use alternative paths only if available.  A soft-drained link will still be used by DZ users if it is the only path between two users
 * traffic_status: field applied to link to represent: provisioning/active/hard_drained/soft_drained
 * Undraining: the process that reverses the draining process
@@ -97,7 +97,7 @@ graph LR
 
 * Define a new edge_status field as part of the smart-contract definition of a CYOA interface (CYOA interface concept to be defined).
   * edge_status can take on 3 states:
-    * active - steady state, available for users to connect to
+    * active - steady state, available for users to connect via
     * hard_drained:
       * `max-users = 0`
       * a CYOA interface is `shutdown`
@@ -123,7 +123,7 @@ graph LR
   * traffic_status:
     * Each link is set to `hard_drained`
   * edge_status: `soft_drained` or `hard_drained`
-  * Use-case: when performing software upgrades
+  * Use-case: when performing configuration changes outside of DZ protocol
 
 ```mermaid
 graph LR
@@ -139,7 +139,7 @@ graph LR
 
 ## Impact
 
-This RFC should improve the operational controls to manage devices and links in the network.  It introduces an intent based methodology that uses explict fields to achive the desire state.
+This RFC should improve the operational controls to manage DZDs and links in the network.  It introduces an intent based methodology that uses explict fields to achieve the desired state.
 
 The primary codebases that require updates include:
 * seviceability
@@ -152,12 +152,13 @@ The primary codebases that require updates include:
 ## Backward Compatibility
 
 * Default values for all new smart-contract fields should be defined during the initial software release.
+* Consideration should be given to links that have an outage and/or are currently overloading `delay-ms`
 
 ## Open Questions
 
-* How do we determine it is safe to drain a device?
+* How do we determine it is safe to drain a DZD?
     * Capacity
     * Alternative routes
-* What verification can be implemented to prove that a device, link or CYOA interface has been successfully drained and undrained?
+* What verification can be implemented to prove that a DZD, link or CYOA interface has been successfully drained and undrained?
 * Can we ensure that the agent can always talk to the controller if the CYOA is in a hard state?
-* How do we want to manage monitoring when a device is set to drained?
+* How do we want to manage monitoring when a DZD is set to drained?

@@ -112,6 +112,10 @@ type Scheduler struct {
 	conn          *UDPConn         // shared UDP transport for all sessions
 	onSessionDown func(s *Session) // callback invoked when a session transitions to Down
 	eq            *EventQueue      // global time-ordered event queue
+
+	writeErrWarnEvery time.Duration // min interval between repeated write warnings
+	writeErrWarnLast  time.Time     // last time a warning was logged
+	writeErrWarnMu    sync.Mutex    // guards writeErrWarnLast
 }
 
 // NewScheduler constructs a Scheduler bound to a UDP transport and logger.
@@ -119,10 +123,11 @@ type Scheduler struct {
 func NewScheduler(log *slog.Logger, conn *UDPConn, onSessionDown func(s *Session)) *Scheduler {
 	eq := NewEventQueue()
 	return &Scheduler{
-		log:           log,
-		conn:          conn,
-		onSessionDown: onSessionDown,
-		eq:            eq,
+		log:               log,
+		conn:              conn,
+		onSessionDown:     onSessionDown,
+		eq:                eq,
+		writeErrWarnEvery: 5 * time.Second,
 	}
 }
 
@@ -233,7 +238,16 @@ func (s *Scheduler) doTX(sess *Session) {
 	sess.mu.Unlock()
 	_, err := s.conn.WriteTo(pkt, sess.peerAddr, sess.peer.Interface, sess.route.Src)
 	if err != nil {
-		s.log.Debug("liveness.scheduler: error writing UDP packet", "error", err)
+		// Log throttled warnings for transient errors (e.g., bad FD state).
+		now := time.Now()
+		s.writeErrWarnMu.Lock()
+		if s.writeErrWarnLast.IsZero() || now.Sub(s.writeErrWarnLast) >= s.writeErrWarnEvery {
+			s.writeErrWarnLast = now
+			s.writeErrWarnMu.Unlock()
+			s.log.Warn("liveness.scheduler: error writing UDP packet", "error", err)
+		} else {
+			s.writeErrWarnMu.Unlock()
+		}
 	}
 }
 

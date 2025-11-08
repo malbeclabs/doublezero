@@ -17,12 +17,13 @@ import (
 // It abstracts read-loop robustness: manages deadlines, throttles noisy logs,
 // detects fatal network conditions, and honors context cancellation cleanly.
 type Receiver struct {
-	log          *slog.Logger  // structured logger for debug and warnings
-	conn         *UDPConn      // underlying socket with control message support
-	handleRx     HandleRxFunc  // callback invoked for each valid ControlPacket
-	readErrEvery time.Duration // min interval between repeated read warnings
-	lastReadWarn time.Time     // last time a warning was logged
-	mu           sync.Mutex    // guards lastReadWarn
+	log      *slog.Logger // structured logger for debug and warnings
+	conn     *UDPConn     // underlying socket with control message support
+	handleRx HandleRxFunc // callback invoked for each valid ControlPacket
+
+	readErrWarnEvery time.Duration // min interval between repeated read warnings
+	readErrWarnLast  time.Time     // last time a warning was logged
+	readErrWarnMu    sync.Mutex    // guards readErrWarnLast
 }
 
 // HandleRxFunc defines the handler signature for received control packets.
@@ -34,10 +35,10 @@ type HandleRxFunc func(pkt *ControlPacket, peer Peer)
 // By default, it throttles repeated read errors to once every 5 seconds.
 func NewReceiver(log *slog.Logger, conn *UDPConn, handleRx HandleRxFunc) *Receiver {
 	return &Receiver{
-		log:          log,
-		conn:         conn,
-		handleRx:     handleRx,
-		readErrEvery: 5 * time.Second,
+		log:              log,
+		conn:             conn,
+		handleRx:         handleRx,
+		readErrWarnEvery: 5 * time.Second,
 	}
 }
 
@@ -73,13 +74,13 @@ func (r *Receiver) Run(ctx context.Context) error {
 
 			// Log throttled warnings for transient errors (e.g., bad FD state).
 			now := time.Now()
-			r.mu.Lock()
-			if r.lastReadWarn.IsZero() || now.Sub(r.lastReadWarn) >= r.readErrEvery {
-				r.lastReadWarn = now
-				r.mu.Unlock()
+			r.readErrWarnMu.Lock()
+			if r.readErrWarnLast.IsZero() || now.Sub(r.readErrWarnLast) >= r.readErrWarnEvery {
+				r.readErrWarnLast = now
+				r.readErrWarnMu.Unlock()
 				r.log.Warn("liveness.recv: SetReadDeadline error", "error", err)
 			} else {
-				r.mu.Unlock()
+				r.readErrWarnMu.Unlock()
 			}
 
 			// Exit for fatal kernel or network-level errors.
@@ -116,13 +117,13 @@ func (r *Receiver) Run(ctx context.Context) error {
 
 			// Log other transient read errors, throttled.
 			now := time.Now()
-			r.mu.Lock()
-			if r.lastReadWarn.IsZero() || now.Sub(r.lastReadWarn) >= r.readErrEvery {
-				r.lastReadWarn = now
-				r.mu.Unlock()
+			r.readErrWarnMu.Lock()
+			if r.readErrWarnLast.IsZero() || now.Sub(r.readErrWarnLast) >= r.readErrWarnEvery {
+				r.readErrWarnLast = now
+				r.readErrWarnMu.Unlock()
 				r.log.Warn("liveness.recv: non-timeout read error", "error", err)
 			} else {
-				r.mu.Unlock()
+				r.readErrWarnMu.Unlock()
 			}
 
 			if isFatalNetErr(err) {

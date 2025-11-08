@@ -138,9 +138,9 @@ type Manager struct {
 	installed map[RouteKey]bool           // whether route is in kernel
 
 	// Rate-limited warnings for packets from unknown peers (not in sessions).
-	unkWarnEvery time.Duration
-	unkWarnLast  time.Time
-	unkWarnMu    sync.Mutex
+	unkownPeerErrWarnEvery time.Duration
+	unkownPeerErrWarnLast  time.Time
+	unkownPeerErrWarnMu    sync.Mutex
 }
 
 // NewManager constructs a Manager, opens the UDP socket, and launches the
@@ -171,7 +171,7 @@ func NewManager(ctx context.Context, cfg *ManagerConfig) (*Manager, error) {
 		desired:   make(map[RouteKey]*routing.Route),
 		installed: make(map[RouteKey]bool),
 
-		unkWarnEvery: 5 * time.Second,
+		unkownPeerErrWarnEvery: 5 * time.Second,
 	}
 
 	// Wire up IO loops.
@@ -374,13 +374,13 @@ func (m *Manager) HandleRx(ctrl *ControlPacket, peer Peer) {
 	s := m.sessions[peer]
 	if s == nil {
 		// Throttle warnings for packets from unknown peers to avoid log spam.
-		m.unkWarnMu.Lock()
-		if m.unkWarnLast.IsZero() || time.Since(m.unkWarnLast) >= m.unkWarnEvery {
-			m.unkWarnLast = time.Now()
+		m.unkownPeerErrWarnMu.Lock()
+		if m.unkownPeerErrWarnLast.IsZero() || time.Since(m.unkownPeerErrWarnLast) >= m.unkownPeerErrWarnEvery {
+			m.unkownPeerErrWarnLast = time.Now()
 			m.log.Warn("liveness: received control packet for unknown peer", "peer", peer.String(), "yourDiscr", ctrl.YourDiscr, "myDiscr", ctrl.MyDiscr, "state", ctrl.State)
 
 		}
-		m.unkWarnMu.Unlock()
+		m.unkownPeerErrWarnMu.Unlock()
 
 		m.mu.Unlock()
 		return

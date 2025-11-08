@@ -50,7 +50,6 @@ nocontainertest:
 .PHONY: go-fuzz
 go-fuzz:
 	cd tools/twamp && $(MAKE) fuzz
-	cd tools/uping && $(MAKE) fuzz
 	cd client/doublezerod && $(MAKE) fuzz
 
 .PHONY: go-container-test

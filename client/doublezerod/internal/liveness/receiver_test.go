@@ -2,7 +2,6 @@ package liveness
 
 import (
 	"context"
-	"log/slog"
 	"net"
 	"sync/atomic"
 	"testing"
@@ -21,7 +20,7 @@ func TestClient_Liveness_Receiver_CancelStopsLoop(t *testing.T) {
 	require.NoError(t, err)
 	defer conn.Close()
 
-	rx := NewReceiver(slog.Default(), conn, func(*ControlPacket, Peer) {})
+	rx := NewReceiver(newTestLogger(t), conn, func(*ControlPacket, Peer) {})
 
 	done := make(chan struct{})
 	go func() {
@@ -55,7 +54,7 @@ func TestClient_Liveness_Receiver_IgnoresMalformedPacket(t *testing.T) {
 	defer conn.Close()
 
 	var calls int32
-	rx := NewReceiver(slog.Default(), conn, func(*ControlPacket, Peer) {
+	rx := NewReceiver(newTestLogger(t), conn, func(*ControlPacket, Peer) {
 		atomic.AddInt32(&calls, 1)
 	})
 

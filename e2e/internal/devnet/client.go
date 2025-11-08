@@ -23,8 +23,8 @@ type ClientSpec struct {
 	ContainerImage string
 	KeypairPath    string
 
-	// RouteLivenessEnabled is a flag to enable or disable route liveness.
-	RouteLivenessEnabled bool
+	// RouteLivenessEnable is a flag to enable or disable route liveness.
+	RouteLivenessEnable bool
 
 	// CYOANetworkIPHostID is the offset into the host portion of the subnet (must be < 2^(32 - prefixLen)).
 	CYOANetworkIPHostID uint32
@@ -156,7 +156,7 @@ func (c *Client) Start(ctx context.Context) error {
 	c.Pubkey = pubkey
 
 	extraArgs := []string{}
-	if c.Spec.RouteLivenessEnabled {
+	if c.Spec.RouteLivenessEnable {
 		extraArgs = append(extraArgs, "-route-liveness-enable")
 	}
 

@@ -247,6 +247,10 @@ func runMultiClientIBRLWorkflowTest(t *testing.T, log *slog.Logger, dn *devnet.D
 	require.NoError(t, err)
 	log.Info("--> Clients can reach each other via their DZ IPs")
 
+	// TODO(snormore): Check that if liveness UDP probes fail, the passive-mode clients keep the routes in their routing tables.
+
+	// TODO(snormore): Check that if liveness UDP probes fail, the active-mode clients withdraw the routes from their routing tables.
+
 	// Disconnect client1.
 	log.Info("==> Disconnecting client1 from IBRL")
 	_, err = client1.Exec(t.Context(), []string{"doublezero", "disconnect", "--client-ip", client1.CYOANetworkIP})

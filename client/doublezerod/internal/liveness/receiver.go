@@ -18,7 +18,7 @@ import (
 // detects fatal network conditions, and honors context cancellation cleanly.
 type Receiver struct {
 	log      *slog.Logger // structured logger for debug and warnings
-	conn     *UDPConn     // underlying socket with control message support
+	udp      *UDPService  // underlying socket with control message support
 	handleRx HandleRxFunc // callback invoked for each valid ControlPacket
 
 	readErrWarnEvery time.Duration // min interval between repeated read warnings
@@ -31,12 +31,12 @@ type Receiver struct {
 // along with a Peer descriptor identifying interface and IP context.
 type HandleRxFunc func(pkt *ControlPacket, peer Peer)
 
-// NewReceiver constructs a new Receiver bound to the given UDPConn and handler.
+// NewReceiver constructs a new Receiver bound to the given UDPService and handler.
 // By default, it throttles repeated read errors to once every 5 seconds.
-func NewReceiver(log *slog.Logger, conn *UDPConn, handleRx HandleRxFunc) *Receiver {
+func NewReceiver(log *slog.Logger, udp *UDPService, handleRx HandleRxFunc) *Receiver {
 	return &Receiver{
 		log:              log,
-		conn:             conn,
+		udp:              udp,
 		handleRx:         handleRx,
 		readErrWarnEvery: 5 * time.Second,
 	}
@@ -59,7 +59,7 @@ func (r *Receiver) Run(ctx context.Context) error {
 		}
 
 		// Periodically set a read deadline to make the loop interruptible.
-		if err := r.conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond)); err != nil {
+		if err := r.udp.SetReadDeadline(time.Now().Add(500 * time.Millisecond)); err != nil {
 			// Respect cancellation immediately if already stopped.
 			select {
 			case <-ctx.Done():
@@ -94,7 +94,7 @@ func (r *Receiver) Run(ctx context.Context) error {
 		}
 
 		// Perform the actual UDP read with control message extraction.
-		n, remoteAddr, localIP, ifname, err := r.conn.ReadFrom(buf)
+		n, remoteAddr, localIP, ifname, err := r.udp.ReadFrom(buf)
 		if err != nil {
 			// Stop cleanly on context cancellation.
 			select {

@@ -42,7 +42,7 @@ func TestClient_Liveness_Scheduler_EventQueueOrdering(t *testing.T) {
 func TestClient_Liveness_Scheduler_TryExpireEnqueuesImmediateTX(t *testing.T) {
 	t.Parallel()
 
-	// minimal scheduler with a real EventQueue; conn/log not used here
+	// minimal scheduler with a real EventQueue; udp/log not used here
 	s := &Scheduler{eq: NewEventQueue()}
 	sess := &Session{
 		state:          StateUp,
@@ -160,10 +160,10 @@ func TestClient_Liveness_Scheduler_Run_SendsAndReschedules(t *testing.T) {
 	srv, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
 	require.NoError(t, err)
 	defer srv.Close()
-	r, _ := NewUDPConn(srv)
+	r, _ := NewUDPService(srv)
 	cl, _ := net.ListenUDP("udp4", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
 	defer cl.Close()
-	w, _ := NewUDPConn(cl)
+	w, _ := NewUDPService(cl)
 
 	pkts := int32(0)
 	stop := make(chan struct{})

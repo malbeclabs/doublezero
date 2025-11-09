@@ -110,7 +110,7 @@ func (h *eventHeap) Pop() any {
 // New sessions schedule TX immediately; detect is armed/re-armed after valid RX during Init/Up.
 type Scheduler struct {
 	log           *slog.Logger     // structured logger for observability
-	conn          *UDPConn         // shared UDP transport for all sessions
+	udp           *UDPService      // shared UDP transport for all sessions
 	onSessionDown func(s *Session) // callback invoked when a session transitions to Down
 	eq            *EventQueue      // global time-ordered event queue
 
@@ -121,11 +121,11 @@ type Scheduler struct {
 
 // NewScheduler constructs a Scheduler bound to a UDP transport and logger.
 // onSessionDown is called asynchronously whenever a session is detected as failed.
-func NewScheduler(log *slog.Logger, conn *UDPConn, onSessionDown func(s *Session)) *Scheduler {
+func NewScheduler(log *slog.Logger, udp *UDPService, onSessionDown func(s *Session)) *Scheduler {
 	eq := NewEventQueue()
 	return &Scheduler{
 		log:               log,
-		conn:              conn,
+		udp:               udp,
 		onSessionDown:     onSessionDown,
 		eq:                eq,
 		writeErrWarnEvery: 5 * time.Second,
@@ -218,7 +218,7 @@ func (s *Scheduler) scheduleDetect(now time.Time, sess *Session) {
 }
 
 // doTX builds and transmits a ControlPacket representing the session’s current state.
-// It reads protected fields under lock, serializes the packet, and sends via UDPConn.
+// It reads protected fields under lock, serializes the packet, and sends via UDPService.
 // Any transient send errors are logged at debug level.
 func (s *Scheduler) doTX(sess *Session) {
 	sess.mu.Lock()
@@ -241,7 +241,7 @@ func (s *Scheduler) doTX(sess *Session) {
 	if sess.route != nil {
 		src = sess.route.Src
 	}
-	_, err := s.conn.WriteTo(pkt, sess.peerAddr, sess.peer.Interface, src)
+	_, err := s.udp.WriteTo(pkt, sess.peerAddr, sess.peer.Interface, src)
 	if err != nil {
 		// Log throttled warnings for transient errors (e.g., bad FD state).
 		now := time.Now()

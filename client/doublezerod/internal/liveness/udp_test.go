@@ -15,7 +15,7 @@ func TestClient_Liveness_UDP_WriteUDPWithNilDst(t *testing.T) {
 	require.NoError(t, err)
 	defer uc.Close()
 
-	u, err := NewUDPConn(uc)
+	u, err := NewUDPService(uc)
 	require.NoError(t, err)
 
 	n, err := u.WriteTo([]byte("x"), nil, "", nil)
@@ -34,7 +34,7 @@ func TestClient_Liveness_UDP_WriteUDPWithBadIface(t *testing.T) {
 	require.NoError(t, err)
 	defer cl.Close()
 
-	w, err := NewUDPConn(cl)
+	w, err := NewUDPService(cl)
 	require.NoError(t, err)
 
 	dst := srv.LocalAddr().(*net.UDPAddr)
@@ -55,9 +55,9 @@ func TestClient_Liveness_UDP_IPv4RoundtripWriteAndRead(t *testing.T) {
 	defer cl.Close()
 	_ = cl.SetDeadline(time.Now().Add(2 * time.Second))
 
-	r, err := NewUDPConn(srv)
+	r, err := NewUDPService(srv)
 	require.NoError(t, err)
-	w, err := NewUDPConn(cl)
+	w, err := NewUDPService(cl)
 	require.NoError(t, err)
 
 	payload := []byte("hello-v4")
@@ -107,9 +107,9 @@ func TestClient_Liveness_UDP_WriteUDPWithSrcHintIPv4(t *testing.T) {
 	defer cl.Close()
 	_ = cl.SetDeadline(time.Now().Add(2 * time.Second))
 
-	r, err := NewUDPConn(srv)
+	r, err := NewUDPService(srv)
 	require.NoError(t, err)
-	w, err := NewUDPConn(cl)
+	w, err := NewUDPService(cl)
 	require.NoError(t, err)
 
 	payload := []byte("src-hint")
@@ -135,7 +135,7 @@ func TestClient_Liveness_UDP_WriteTo_RejectsIPv6(t *testing.T) {
 	uc, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
 	require.NoError(t, err)
 	defer uc.Close()
-	u, err := NewUDPConn(uc)
+	u, err := NewUDPService(uc)
 	require.NoError(t, err)
 	_, err = u.WriteTo([]byte("x"), &net.UDPAddr{IP: net.ParseIP("::1"), Port: 1}, "", nil)
 	require.EqualError(t, err, "ipv6 dst not supported")
@@ -146,7 +146,7 @@ func TestClient_Liveness_UDP_ReadDeadline_TimesOut(t *testing.T) {
 	srv, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
 	require.NoError(t, err)
 	defer srv.Close()
-	r, err := NewUDPConn(srv)
+	r, err := NewUDPService(srv)
 	require.NoError(t, err)
 	require.NoError(t, r.SetReadDeadline(time.Now().Add(50*time.Millisecond)))
 	buf := make([]byte, 8)

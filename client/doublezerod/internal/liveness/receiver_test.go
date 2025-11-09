@@ -16,11 +16,11 @@ func TestClient_Liveness_Receiver_CancelStopsLoop(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
-	conn, err := ListenUDP("127.0.0.1", 0)
+	udp, err := ListenUDP("127.0.0.1", 0)
 	require.NoError(t, err)
-	defer conn.Close()
+	defer udp.Close()
 
-	rx := NewReceiver(newTestLogger(t), conn, func(*ControlPacket, Peer) {})
+	rx := NewReceiver(newTestLogger(t), udp, func(*ControlPacket, Peer) {})
 
 	done := make(chan struct{})
 	go func() {
@@ -34,7 +34,7 @@ func TestClient_Liveness_Receiver_CancelStopsLoop(t *testing.T) {
 
 	// Cancel and close to unblock any in-flight ReadFrom immediately.
 	cancel()
-	_ = conn.Close()
+	_ = udp.Close()
 
 	require.Eventually(t, func() bool {
 		select {
@@ -49,12 +49,12 @@ func TestClient_Liveness_Receiver_CancelStopsLoop(t *testing.T) {
 func TestClient_Liveness_Receiver_IgnoresMalformedPacket(t *testing.T) {
 	t.Parallel()
 
-	conn, err := ListenUDP("127.0.0.1", 0)
+	udp, err := ListenUDP("127.0.0.1", 0)
 	require.NoError(t, err)
-	defer conn.Close()
+	defer udp.Close()
 
 	var calls int32
-	rx := NewReceiver(newTestLogger(t), conn, func(*ControlPacket, Peer) {
+	rx := NewReceiver(newTestLogger(t), udp, func(*ControlPacket, Peer) {
 		atomic.AddInt32(&calls, 1)
 	})
 
@@ -67,7 +67,7 @@ func TestClient_Liveness_Receiver_IgnoresMalformedPacket(t *testing.T) {
 	}()
 
 	// Ensure loop is running: send malformed (<40 bytes)
-	cl, err := net.DialUDP("udp4", nil, conn.LocalAddr().(*net.UDPAddr))
+	cl, err := net.DialUDP("udp4", nil, udp.LocalAddr().(*net.UDPAddr))
 	require.NoError(t, err)
 	_, err = cl.Write(make([]byte, 20))
 	require.NoError(t, err)
@@ -77,7 +77,7 @@ func TestClient_Liveness_Receiver_IgnoresMalformedPacket(t *testing.T) {
 
 	// Cancel, then close socket to force immediate unblock
 	cancel()
-	_ = conn.Close()
+	_ = udp.Close()
 
 	require.Eventually(t, func() bool {
 		select {
@@ -93,13 +93,13 @@ func TestClient_Liveness_Receiver_IgnoresMalformedPacket(t *testing.T) {
 
 func TestClient_Liveness_Receiver_HandlerInvoked_WithPeerContext(t *testing.T) {
 	t.Parallel()
-	conn, err := ListenUDP("127.0.0.1", 0)
+	udp, err := ListenUDP("127.0.0.1", 0)
 	require.NoError(t, err)
-	defer conn.Close()
+	defer udp.Close()
 
 	var got Peer
 	calls := int32(0)
-	rx := NewReceiver(newTestLogger(t), conn, func(cp *ControlPacket, p Peer) { got = p; atomic.AddInt32(&calls, 1) })
+	rx := NewReceiver(newTestLogger(t), udp, func(cp *ControlPacket, p Peer) { got = p; atomic.AddInt32(&calls, 1) })
 
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -107,7 +107,7 @@ func TestClient_Liveness_Receiver_HandlerInvoked_WithPeerContext(t *testing.T) {
 	go func() { require.NoError(t, rx.Run(ctx)); close(done) }()
 
 	// send a valid control packet
-	cl, err := net.DialUDP("udp4", nil, conn.LocalAddr().(*net.UDPAddr))
+	cl, err := net.DialUDP("udp4", nil, udp.LocalAddr().(*net.UDPAddr))
 	require.NoError(t, err)
 	defer cl.Close()
 	pkt := (&ControlPacket{Version: 1, State: StateInit, DetectMult: 1, Length: 40}).Marshal()
@@ -120,17 +120,17 @@ func TestClient_Liveness_Receiver_HandlerInvoked_WithPeerContext(t *testing.T) {
 	require.Equal(t, "127.0.0.1", got.RemoteIP)
 
 	cancel()
-	_ = conn.Close()
+	_ = udp.Close()
 	<-done
 }
 
 func TestClient_Liveness_Receiver_DeadlineTimeoutsAreSilent(t *testing.T) {
 	t.Parallel()
-	conn, err := ListenUDP("127.0.0.1", 0)
+	udp, err := ListenUDP("127.0.0.1", 0)
 	require.NoError(t, err)
-	defer conn.Close()
+	defer udp.Close()
 
-	rx := NewReceiver(newTestLogger(t), conn, func(*ControlPacket, Peer) {})
+	rx := NewReceiver(newTestLogger(t), udp, func(*ControlPacket, Peer) {})
 
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -140,22 +140,22 @@ func TestClient_Liveness_Receiver_DeadlineTimeoutsAreSilent(t *testing.T) {
 	// no traffic; ensure loop keeps running past a few deadlines
 	time.Sleep(600 * time.Millisecond)
 	cancel()
-	_ = conn.Close()
+	_ = udp.Close()
 	<-done
 }
 
 func TestClient_Liveness_Receiver_SocketClosed_ReturnsError(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	conn, err := ListenUDP("127.0.0.1", 0)
+	udp, err := ListenUDP("127.0.0.1", 0)
 	require.NoError(t, err)
 
-	rx := NewReceiver(newTestLogger(t), conn, func(*ControlPacket, Peer) {})
+	rx := NewReceiver(newTestLogger(t), udp, func(*ControlPacket, Peer) {})
 	errCh := make(chan error, 1)
 	go func() { errCh <- rx.Run(ctx) }()
 
 	time.Sleep(50 * time.Millisecond)
-	_ = conn.Close()
+	_ = udp.Close()
 	err = <-errCh
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "socket closed")

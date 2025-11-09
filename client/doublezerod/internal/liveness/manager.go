@@ -125,9 +125,9 @@ type Manager struct {
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 
-	log  *slog.Logger
-	cfg  *ManagerConfig
-	conn *UDPConn // shared UDP transport
+	log *slog.Logger
+	cfg *ManagerConfig
+	udp *UDPService // shared UDP transport
 
 	sched *Scheduler // time-wheel/event-loop for TX/detect
 	recv  *Receiver  // UDP packet reader → HandleRx
@@ -150,22 +150,22 @@ func NewManager(ctx context.Context, cfg *ManagerConfig) (*Manager, error) {
 		return nil, fmt.Errorf("error validating manager config: %v", err)
 	}
 
-	conn, err := ListenUDP(cfg.BindIP, cfg.Port)
+	udp, err := ListenUDP(cfg.BindIP, cfg.Port)
 	if err != nil {
 		return nil, fmt.Errorf("error creating UDP connection: %v", err)
 	}
 
 	log := cfg.Logger
-	log.Info("liveness: manager starting", "localAddr", conn.LocalAddr().String(), "txMin", cfg.TxMin, "rxMin", cfg.RxMin, "detectMult", cfg.DetectMult)
+	log.Info("liveness: manager starting", "localAddr", udp.LocalAddr().String(), "txMin", cfg.TxMin, "rxMin", cfg.RxMin, "detectMult", cfg.DetectMult)
 
 	ctx, cancel := context.WithCancel(ctx)
 	m := &Manager{
 		ctx:    ctx,
 		cancel: cancel,
 
-		log:  log,
-		cfg:  cfg,
-		conn: conn,
+		log: log,
+		cfg: cfg,
+		udp: udp,
 
 		sessions:  make(map[Peer]*Session),
 		desired:   make(map[RouteKey]*routing.Route),
@@ -175,8 +175,8 @@ func NewManager(ctx context.Context, cfg *ManagerConfig) (*Manager, error) {
 	}
 
 	// Wire up IO loops.
-	m.recv = NewReceiver(m.log, m.conn, m.HandleRx)
-	m.sched = NewScheduler(m.log, m.conn, m.onSessionDown)
+	m.recv = NewReceiver(m.log, m.udp, m.HandleRx)
+	m.sched = NewScheduler(m.log, m.udp, m.onSessionDown)
 
 	// Receiver goroutine: parses control packets and dispatches to HandleRx.
 	m.wg.Add(1)
@@ -336,10 +336,10 @@ func (m *Manager) AdminDownAll() {
 func (m *Manager) LocalAddr() *net.UDPAddr {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.conn == nil {
+	if m.udp == nil {
 		return nil
 	}
-	if addr, ok := m.conn.LocalAddr().(*net.UDPAddr); ok {
+	if addr, ok := m.udp.LocalAddr().(*net.UDPAddr); ok {
 		return addr
 	}
 	return nil
@@ -353,12 +353,12 @@ func (m *Manager) Close() error {
 
 	var cerr error
 	m.mu.Lock()
-	if m.conn != nil {
-		if err := m.conn.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+	if m.udp != nil {
+		if err := m.udp.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
 			m.log.Warn("liveness: error closing connection", "error", err)
 			cerr = err
 		}
-		m.conn = nil
+		m.udp = nil
 	}
 	m.mu.Unlock()
 

@@ -6,14 +6,20 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
+	"github.com/malbeclabs/doublezero/e2e/internal/docker"
 	"github.com/malbeclabs/doublezero/e2e/internal/random"
 	"github.com/stretchr/testify/require"
+)
+
+const (
+	routeLivenessPort = 44880
 )
 
 func TestE2E_MultiClient(t *testing.T) {
@@ -124,21 +130,32 @@ func TestE2E_MultiClient(t *testing.T) {
 	require.NoError(t, err)
 	log.Info("--> Link created onchain")
 
-	// Add a client.
+	// Add client1.
 	log.Info("==> Adding client1")
 	client1, err := dn.AddClient(t.Context(), devnet.ClientSpec{
 		CYOANetworkIPHostID: 100,
+		RouteLivenessEnable: true,
 	})
 	require.NoError(t, err)
 	log.Info("--> Client1 added", "client1Pubkey", client1.Pubkey, "client1IP", client1.CYOANetworkIP)
 
-	// Add another client.
+	// Add client2.
 	log.Info("==> Adding client2")
 	client2, err := dn.AddClient(t.Context(), devnet.ClientSpec{
 		CYOANetworkIPHostID: 110,
+		RouteLivenessEnable: false, // route liveness is disabled for this client
 	})
 	require.NoError(t, err)
 	log.Info("--> Client2 added", "client2Pubkey", client2.Pubkey, "client2IP", client2.CYOANetworkIP)
+
+	// Add client3.
+	log.Info("==> Adding client3")
+	client3, err := dn.AddClient(t.Context(), devnet.ClientSpec{
+		CYOANetworkIPHostID: 120,
+		RouteLivenessEnable: true,
+	})
+	require.NoError(t, err)
+	log.Info("--> Client3 added", "client3Pubkey", client3.Pubkey, "client3IP", client3.CYOANetworkIP)
 
 	// Wait for client latency results.
 	log.Info("==> Waiting for client latency results")
@@ -146,20 +163,22 @@ func TestE2E_MultiClient(t *testing.T) {
 	require.NoError(t, err)
 	err = client2.WaitForLatencyResults(t.Context(), devicePK2, 90*time.Second)
 	require.NoError(t, err)
+	err = client3.WaitForLatencyResults(t.Context(), devicePK1, 90*time.Second)
+	require.NoError(t, err)
 	log.Info("--> Finished waiting for client latency results")
 
 	log.Info("==> Add clients to user Access Pass")
-	// Set access pass for the client.
 	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + client1.CYOANetworkIP + " --user-payer " + client1.Pubkey})
 	require.NoError(t, err)
-	// Set access pass for the client.
 	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + client2.CYOANetworkIP + " --user-payer " + client2.Pubkey})
+	require.NoError(t, err)
+	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + client3.CYOANetworkIP + " --user-payer " + client3.Pubkey})
 	require.NoError(t, err)
 	log.Info("--> Clients added to user Access Pass")
 
 	// Run IBRL workflow test.
 	if !t.Run("ibrl", func(t *testing.T) {
-		runMultiClientIBRLWorkflowTest(t, log, dn, client1, client2, deviceCode1, deviceCode2)
+		runMultiClientIBRLWorkflowTest(t, log, dn, client1, client2, client3, deviceCode1, deviceCode2)
 	}) {
 		t.Fail()
 	}
@@ -172,7 +191,7 @@ func TestE2E_MultiClient(t *testing.T) {
 	}
 }
 
-func runMultiClientIBRLWorkflowTest(t *testing.T, log *slog.Logger, dn *devnet.Devnet, client1 *devnet.Client, client2 *devnet.Client, deviceCode1 string, deviceCode2 string) {
+func runMultiClientIBRLWorkflowTest(t *testing.T, log *slog.Logger, dn *devnet.Devnet, client1 *devnet.Client, client2 *devnet.Client, client3 *devnet.Client, deviceCode1 string, deviceCode2 string) {
 	// Check that the clients are disconnected and do not have a DZ IP allocated.
 	log.Info("==> Checking that the clients are disconnected and do not have a DZ IP allocated")
 	status, err := client1.GetTunnelStatus(t.Context())
@@ -185,13 +204,16 @@ func runMultiClientIBRLWorkflowTest(t *testing.T, log *slog.Logger, dn *devnet.D
 	require.Len(t, status, 1, status)
 	require.Nil(t, status[0].DoubleZeroIP, status)
 	require.Equal(t, devnet.ClientSessionStatusDisconnected, status[0].DoubleZeroStatus.SessionStatus)
+	status, err = client3.GetTunnelStatus(t.Context())
+	require.NoError(t, err)
+	require.Len(t, status, 1, status)
+	require.Nil(t, status[0].DoubleZeroIP, status)
+	require.Equal(t, devnet.ClientSessionStatusDisconnected, status[0].DoubleZeroStatus.SessionStatus)
 	log.Info("--> Confirmed clients are disconnected and do not have a DZ IP allocated")
 
 	// Connect client1 in IBRL mode to device1 (xlax exchange).
 	log.Info("==> Connecting client1 in IBRL mode to device1")
 	_, err = client1.Exec(t.Context(), []string{"doublezero", "connect", "ibrl", "--client-ip", client1.CYOANetworkIP, "--device", deviceCode1})
-	require.NoError(t, err)
-	err = client1.WaitForTunnelUp(t.Context(), 90*time.Second)
 	require.NoError(t, err)
 	log.Info("--> Client1 connected in IBRL mode to device1")
 
@@ -199,9 +221,23 @@ func runMultiClientIBRLWorkflowTest(t *testing.T, log *slog.Logger, dn *devnet.D
 	log.Info("==> Connecting client2 in IBRL mode to device2")
 	_, err = client2.Exec(t.Context(), []string{"doublezero", "connect", "ibrl", "--client-ip", client2.CYOANetworkIP, "--device", deviceCode2})
 	require.NoError(t, err)
+	log.Info("--> Client2 connected in IBRL mode to device2")
+
+	// Connect client3 in IBRL mode to device2 (xewr exchange).
+	log.Info("==> Connecting client3 in IBRL mode to device2")
+	_, err = client3.Exec(t.Context(), []string{"doublezero", "connect", "ibrl", "--client-ip", client3.CYOANetworkIP, "--device", deviceCode2})
+	require.NoError(t, err)
+	log.Info("--> Client3 connected in IBRL mode to device2")
+
+	// Wait for all clients to be connected.
+	log.Info("==> Waiting for all clients to be connected")
+	err = client1.WaitForTunnelUp(t.Context(), 90*time.Second)
+	require.NoError(t, err)
 	err = client2.WaitForTunnelUp(t.Context(), 90*time.Second)
 	require.NoError(t, err)
-	log.Info("--> Client2 connected in IBRL mode to device2")
+	err = client3.WaitForTunnelUp(t.Context(), 90*time.Second)
+	require.NoError(t, err)
+	log.Info("--> All clients connected")
 
 	// Check that the clients have a DZ IP equal to their client IP when not configured to use an allocated IP.
 	log.Info("==> Checking that the clients have a DZ IP as public IP when not configured to use an allocated IP")
@@ -215,41 +251,141 @@ func runMultiClientIBRLWorkflowTest(t *testing.T, log *slog.Logger, dn *devnet.D
 	client2DZIP := status[0].DoubleZeroIP.String()
 	require.NoError(t, err)
 	require.Equal(t, client2.CYOANetworkIP, client2DZIP)
+	status, err = client3.GetTunnelStatus(t.Context())
+	require.Len(t, status, 1)
+	client3DZIP := status[0].DoubleZeroIP.String()
+	require.NoError(t, err)
+	require.Equal(t, client3.CYOANetworkIP, client3DZIP)
 	log.Info("--> Clients have a DZ IP as public IP when not configured to use an allocated IP")
 
 	// Check that the clients have routes to each other.
 	log.Info("==> Checking that the clients have routes to each other")
+
+	// Client1 should have routes to client2 and client3.
 	require.Eventually(t, func() bool {
 		output, err := client1.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
-		if err != nil {
-			return false
-		}
-		return strings.Contains(string(output), client2DZIP)
+		require.NoError(t, err)
+		return strings.Contains(string(output), client2DZIP) && strings.Contains(string(output), client3DZIP)
 	}, 120*time.Second, 5*time.Second, "client1 should have route to client2")
+
+	// Client2 should have routes to client1 only.
 	require.Eventually(t, func() bool {
 		output, err := client2.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
-		if err != nil {
-			return false
-		}
+		require.NoError(t, err)
 		return strings.Contains(string(output), client1DZIP)
 	}, 120*time.Second, 5*time.Second, "client2 should have route to client1")
+
+	// Client3 should have routes to client1 only.
+	require.Eventually(t, func() bool {
+		output, err := client3.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
+		require.NoError(t, err)
+		return strings.Contains(string(output), client1DZIP)
+	}, 120*time.Second, 5*time.Second, "client3 should have route to client1")
+
+	// Client2 should not have routes to client3.
+	require.Never(t, func() bool {
+		output, err := client2.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
+		require.NoError(t, err)
+		return strings.Contains(string(output), client3DZIP)
+	}, 1*time.Second, 100*time.Millisecond, "client2 should not have route to client3")
+
+	// Client3 should not have routes to client2.
+	require.Never(t, func() bool {
+		output, err := client3.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
+		require.NoError(t, err)
+		return strings.Contains(string(output), client2DZIP)
+	}, 1*time.Second, 100*time.Millisecond, "client3 should not have route to client2")
+
 	log.Info("--> Clients have routes to each other")
 
 	// Check that the clients can reach each other via their DZ IPs, via ping.
 	log.Info("==> Checking that the clients can reach each other via their DZ IPs")
+
+	// Client1 can reach client2 and client3 over doublezero0 interface.
 	_, err = client1.Exec(t.Context(), []string{"ping", "-I", "doublezero0", "-c", "3", client2DZIP, "-W", "1"})
 	require.NoError(t, err)
+	_, err = client1.Exec(t.Context(), []string{"ping", "-I", "doublezero0", "-c", "3", client3DZIP, "-W", "1"})
+	require.NoError(t, err)
+
+	// Client2 can reach client1 over doublezero0 interface.
 	_, err = client2.Exec(t.Context(), []string{"ping", "-I", "doublezero0", "-c", "3", client1DZIP, "-W", "1"})
 	require.NoError(t, err)
+	// Client2 cannot reach client3 over doublezero0 interface.
+	_, err = client2.Exec(t.Context(), []string{"ping", "-I", "doublezero0", "-c", "3", client3DZIP, "-W", "1"}, docker.NoPrintOnError())
+	require.Error(t, err)
+
+	// Client3 can reach client1 over doublezero0 interface.
+	_, err = client3.Exec(t.Context(), []string{"ping", "-I", "doublezero0", "-c", "3", client1DZIP, "-W", "1"})
+	require.NoError(t, err)
+	// Client3 cannot reach client2 over doublezero0 interface.
+	_, err = client3.Exec(t.Context(), []string{"ping", "-I", "doublezero0", "-c", "3", client2DZIP, "-W", "1"}, docker.NoPrintOnError())
+	require.Error(t, err)
+
+	// Client1 can reach client2 and client3 without specifying the interface.
 	_, err = client1.Exec(t.Context(), []string{"ping", "-c", "3", client2DZIP, "-W", "1"})
 	require.NoError(t, err)
+	_, err = client1.Exec(t.Context(), []string{"ping", "-c", "3", client3DZIP, "-W", "1"})
+	require.NoError(t, err)
+
+	// Client2 can reach client1 and client3 without specifying the interface.
 	_, err = client2.Exec(t.Context(), []string{"ping", "-c", "3", client1DZIP, "-W", "1"})
 	require.NoError(t, err)
+	_, err = client2.Exec(t.Context(), []string{"ping", "-c", "3", client3DZIP, "-W", "1"})
+	require.NoError(t, err)
+
+	// Client3 can reach client1 and client2 without specifying the interface.
+	_, err = client3.Exec(t.Context(), []string{"ping", "-c", "3", client1DZIP, "-W", "1"})
+	require.NoError(t, err)
+	_, err = client3.Exec(t.Context(), []string{"ping", "-c", "3", client2DZIP, "-W", "1"})
+	require.NoError(t, err)
+
 	log.Info("--> Clients can reach each other via their DZ IPs")
 
-	// TODO(snormore): Check that if liveness UDP probes fail, the passive-mode clients keep the routes in their routing tables.
+	// Block UDP traffic to routeLivenessPort to client2 and client3 at the same time and check that client1 routes are dropped, and remain the same otherwise.
+	log.Info("==> Blocking UDP traffic to route liveness port to client2 and client3 and checking that client1 routes are dropped")
+	_, err = client2.Exec(t.Context(), []string{"iptables", "-A", "INPUT", "-p", "udp", "--dport", strconv.Itoa(routeLivenessPort), "-j", "DROP"})
+	require.NoError(t, err)
+	_, err = client3.Exec(t.Context(), []string{"iptables", "-A", "INPUT", "-p", "udp", "--dport", strconv.Itoa(routeLivenessPort), "-j", "DROP"})
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		output, err := client1.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
+		require.NoError(t, err)
+		return !strings.Contains(string(output), client2DZIP) && !strings.Contains(string(output), client3DZIP)
+	}, 120*time.Second, 5*time.Second, "client1 should not have route to client2 and client3")
+	require.Never(t, func() bool {
+		output, err := client2.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
+		require.NoError(t, err)
+		return strings.Contains(string(output), client3DZIP)
+	}, 1*time.Second, 500*time.Millisecond, "client2 should not have route to client3")
+	require.Never(t, func() bool {
+		output, err := client3.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
+		require.NoError(t, err)
+		return strings.Contains(string(output), client2DZIP)
+	}, 1*time.Second, 500*time.Millisecond, "client3 should not have route to client2")
+	log.Info("--> client1 routes are dropped when client2 and client3 probes start failing")
 
-	// TODO(snormore): Check that if liveness UDP probes fail, the active-mode clients withdraw the routes from their routing tables.
+	// Unblock UDP traffic to routeLivenessPort to client2 and client3 at the same time and check that client1 routes are restored, and remain the same otherwise.
+	log.Info("==> Unblocking UDP traffic to route liveness port to client2 and client3 and checking that client1 routes are restored")
+	_, err = client2.Exec(t.Context(), []string{"iptables", "-D", "INPUT", "-p", "udp", "--dport", strconv.Itoa(routeLivenessPort), "-j", "DROP"})
+	require.NoError(t, err)
+	_, err = client3.Exec(t.Context(), []string{"iptables", "-D", "INPUT", "-p", "udp", "--dport", strconv.Itoa(routeLivenessPort), "-j", "DROP"})
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		output, err := client1.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
+		require.NoError(t, err)
+		return strings.Contains(string(output), client2DZIP) && strings.Contains(string(output), client3DZIP)
+	}, 120*time.Second, 5*time.Second, "client1 should have route to client2 and client3")
+	require.Never(t, func() bool {
+		output, err := client2.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
+		require.NoError(t, err)
+		return strings.Contains(string(output), client3DZIP)
+	}, 1*time.Second, 100*time.Millisecond, "client2 should not have route to client3")
+	require.Never(t, func() bool {
+		output, err := client3.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
+		require.NoError(t, err)
+		return strings.Contains(string(output), client2DZIP)
+	}, 1*time.Second, 100*time.Millisecond, "client3 should not have route to client2")
+	log.Info("--> client1 routes are restored when client2 and client3 probes start succeeding")
 
 	// Disconnect client1.
 	log.Info("==> Disconnecting client1 from IBRL")
@@ -262,6 +398,12 @@ func runMultiClientIBRLWorkflowTest(t *testing.T, log *slog.Logger, dn *devnet.D
 	_, err = client2.Exec(t.Context(), []string{"doublezero", "disconnect", "--client-ip", client2.CYOANetworkIP})
 	require.NoError(t, err)
 	log.Info("--> Client2 disconnected from IBRL")
+
+	// Disconnect client3.
+	log.Info("==> Disconnecting client3 from IBRL")
+	_, err = client3.Exec(t.Context(), []string{"doublezero", "disconnect", "--client-ip", client3.CYOANetworkIP})
+	require.NoError(t, err)
+	log.Info("--> Client3 disconnected from IBRL")
 
 	// Wait for users to be deleted onchain.
 	log.Info("==> Waiting for users to be deleted onchain")
@@ -280,6 +422,8 @@ func runMultiClientIBRLWorkflowTest(t *testing.T, log *slog.Logger, dn *devnet.D
 	require.NoError(t, err)
 	err = client2.WaitForTunnelDisconnected(t.Context(), 60*time.Second)
 	require.NoError(t, err)
+	err = client3.WaitForTunnelDisconnected(t.Context(), 60*time.Second)
+	require.NoError(t, err)
 	status, err = client1.GetTunnelStatus(t.Context())
 	require.NoError(t, err)
 	require.Len(t, status, 1, status)
@@ -288,6 +432,11 @@ func runMultiClientIBRLWorkflowTest(t *testing.T, log *slog.Logger, dn *devnet.D
 	require.NoError(t, err)
 	require.Len(t, status, 1, status)
 	require.Nil(t, status[0].DoubleZeroIP, status)
+	status, err = client3.GetTunnelStatus(t.Context())
+	require.NoError(t, err)
+	require.Len(t, status, 1, status)
+	require.Nil(t, status[0].DoubleZeroIP, status)
+	require.Equal(t, devnet.ClientSessionStatusDisconnected, status[0].DoubleZeroStatus.SessionStatus)
 	log.Info("--> Confirmed clients are disconnected and do not have a DZ IP allocated")
 }
 

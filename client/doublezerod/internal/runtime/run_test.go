@@ -33,6 +33,7 @@ import (
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/liveness"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/pim"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/runtime"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/sys/unix"
 
@@ -1649,12 +1650,11 @@ func TestServiceNoCoExistence(t *testing.T) {
 	}()
 
 	errChan := make(chan error, 1)
-	ctx, _ := context.WithCancel(context.Background())
 
 	sockFile := filepath.Join(rootPath, "doublezerod.sock")
 	go func() {
 		programId := ""
-		err := runtime.Run(ctx, sockFile, "", false, false, programId, "", 30, 30, newTestLivenessManagerConfig())
+		err := runtime.Run(t.Context(), sockFile, "", false, false, programId, "", 30, 30, newTestLivenessManagerConfig())
 		errChan <- err
 	}()
 
@@ -2050,6 +2050,120 @@ func TestServiceCoexistence(t *testing.T) {
 			t.Fatalf("timed out waiting for close")
 		}
 	})
+}
+
+func TestRuntime_Run_ReturnsOnContextCancel(t *testing.T) {
+	errChan := make(chan error, 1)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	rootPath, err := os.MkdirTemp("", "doublezerod")
+	require.NoError(t, err)
+	defer os.RemoveAll(rootPath)
+	t.Setenv("XDG_STATE_HOME", rootPath)
+
+	path := filepath.Join(rootPath, "doublezerod")
+	if err := os.Mkdir(path, 0766); err != nil {
+		t.Fatalf("error creating state dir: %v", err)
+	}
+
+	sockFile := filepath.Join(rootPath, "doublezerod.sock")
+	go func() {
+		programId := ""
+		err := runtime.Run(ctx, sockFile, "", false, false, programId, "", 30, 30, newTestLivenessManagerConfig())
+		errChan <- err
+	}()
+
+	// Give the runtime a moment to start, then cancel the context to force exit.
+	select {
+	case err := <-errChan:
+		require.NoError(t, err)
+	case <-time.After(300 * time.Millisecond):
+	}
+
+	cancel()
+	select {
+	case err := <-errChan:
+		require.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatalf("timed out waiting for runtime to exit after context cancel")
+	}
+}
+
+func TestRuntime_Run_PropagatesLivenessStartupError(t *testing.T) {
+	errChan := make(chan error, 1)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	rootPath, err := os.MkdirTemp("", "doublezerod")
+	require.NoError(t, err)
+	defer os.RemoveAll(rootPath)
+	t.Setenv("XDG_STATE_HOME", rootPath)
+
+	// Invalid liveness config (port < 0) -> NewManager.Validate() error.
+	bad := *newTestLivenessManagerConfig()
+	bad.Port = -1
+
+	sockFile := filepath.Join(rootPath, "doublezerod.sock")
+	go func() {
+		programId := ""
+		err := runtime.Run(ctx, sockFile, "", false, false, programId, "", 30, 30, &bad)
+		errChan <- err
+	}()
+
+	select {
+	case err := <-errChan:
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "port must be greater than or equal to 0")
+	case <-time.After(5 * time.Second):
+		t.Fatalf("expected startup error from runtime.Run with bad liveness config")
+	}
+}
+
+func TestRuntime_Run_PropagatesLivenessError_FromUDPClosure(t *testing.T) {
+	errCh := make(chan error, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Minimal state dir + socket path
+	rootPath, err := os.MkdirTemp("", "doublezerod")
+	if err != nil {
+		t.Fatalf("mktemp: %v", err)
+	}
+	defer os.RemoveAll(rootPath)
+	t.Setenv("XDG_STATE_HOME", rootPath)
+	sockFile := filepath.Join(rootPath, "doublezerod.sock")
+
+	// Create a real UDPService we can close to induce a receiver error.
+	udp, err := liveness.ListenUDP("127.0.0.1", 0)
+	if err != nil {
+		t.Fatalf("ListenUDP: %v", err)
+	}
+
+	// Build a liveness config that uses our injected UDP service.
+	cfg := newTestLivenessManagerConfig()
+	cfg.UDP = udp
+	cfg.PassiveMode = true
+
+	// Start the runtime.
+	go func() {
+		programID := ""
+		errCh <- runtime.Run(ctx, sockFile, "", false, false, programID, "", 30, 30, cfg)
+	}()
+
+	// Give the liveness receiver a moment to start, then close the UDP socket.
+	time.Sleep(200 * time.Millisecond)
+	_ = udp.Close()
+
+	// The receiver should error, Manager should send on lm.Err(), and Run should return that error.
+	select {
+	case err := <-errCh:
+		if err == nil {
+			t.Fatalf("expected non-nil error propagated from liveness manager, got nil")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatalf("timeout waiting for runtime to return error from liveness manager")
+	}
 }
 
 func setupTest(t *testing.T) (func(), error) {

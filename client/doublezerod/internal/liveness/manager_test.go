@@ -452,6 +452,71 @@ func TestClient_LivenessManager_PeerKey_IPv4Canonicalization(t *testing.T) {
 	require.True(t, ok, "peer key should use IPv4 string forms")
 }
 
+func TestClient_Liveness_Manager_ReceiverFailure_PropagatesOnErr(t *testing.T) {
+	t.Parallel()
+	m, err := newTestManager(t, nil)
+	require.NoError(t, err)
+	defer func() { _ = m.Close() }()
+
+	errCh := m.Err()
+
+	// Close the UDP socket directly to force Receiver.Run to error out.
+	var udp *UDPService
+	m.mu.Lock()
+	udp = m.udp
+	m.mu.Unlock()
+	require.NotNil(t, udp)
+	_ = udp.Close()
+
+	// Expect an error to surface on Err().
+	select {
+	case e := <-errCh:
+		require.Error(t, e)
+	default:
+		select {
+		case e := <-errCh:
+			require.Error(t, e)
+		case <-time.After(2 * time.Second):
+			t.Fatalf("timeout waiting for error from manager.Err after UDP close")
+		}
+	}
+
+	// Close should complete cleanly after the receiver failure.
+	require.NoError(t, m.Close())
+}
+
+func TestClient_Liveness_Manager_Close_NoErrOnErrCh(t *testing.T) {
+	t.Parallel()
+	m, err := newTestManager(t, nil)
+	require.NoError(t, err)
+
+	// No spurious errors before close.
+	func() {
+		timer := time.NewTimer(200 * time.Millisecond)
+		defer timer.Stop()
+		select {
+		case <-timer.C:
+			return
+		case <-m.Err():
+			t.Fatalf("unexpected error before Close")
+		}
+	}()
+
+	require.NoError(t, m.Close())
+
+	// No spurious errors after close either.
+	func() {
+		timer := time.NewTimer(200 * time.Millisecond)
+		defer timer.Stop()
+		select {
+		case <-timer.C:
+			return
+		case <-m.Err():
+			t.Fatalf("unexpected error after Close")
+		}
+	}()
+}
+
 func newTestManager(t *testing.T, mutate func(*ManagerConfig)) (*Manager, error) {
 	cfg := &ManagerConfig{
 		Logger:     newTestLogger(t),

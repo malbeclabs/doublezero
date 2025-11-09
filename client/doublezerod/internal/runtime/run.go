@@ -133,5 +133,7 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 		return nil
 	case err := <-errCh:
 		return err
+	case err := <-lm.Err():
+		return err
 	}
 }

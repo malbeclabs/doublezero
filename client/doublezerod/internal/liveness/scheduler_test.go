@@ -183,7 +183,9 @@ func TestClient_Liveness_Scheduler_Run_SendsAndReschedules(t *testing.T) {
 	s := NewScheduler(log, w, func(*Session) {})
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	go s.Run(ctx)
+	go func() {
+		require.NoError(t, s.Run(ctx))
+	}()
 
 	sess := &Session{
 		state:         StateInit,

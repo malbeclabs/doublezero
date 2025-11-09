@@ -47,6 +47,7 @@ type RouteKey struct {
 type ManagerConfig struct {
 	Logger    *slog.Logger
 	Netlinker RouteReaderWriter
+	UDP       *UDPService
 
 	BindIP string // local bind address for the UDP socket (IPv4)
 	Port   int    // UDP port to listen/transmit on
@@ -124,6 +125,7 @@ type Manager struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
+	errCh  chan error
 
 	log *slog.Logger
 	cfg *ManagerConfig
@@ -150,9 +152,13 @@ func NewManager(ctx context.Context, cfg *ManagerConfig) (*Manager, error) {
 		return nil, fmt.Errorf("error validating manager config: %v", err)
 	}
 
-	udp, err := ListenUDP(cfg.BindIP, cfg.Port)
-	if err != nil {
-		return nil, fmt.Errorf("error creating UDP connection: %v", err)
+	udp := cfg.UDP
+	if udp == nil {
+		var err error
+		udp, err = ListenUDP(cfg.BindIP, cfg.Port)
+		if err != nil {
+			return nil, fmt.Errorf("error creating UDP connection: %w", err)
+		}
 	}
 
 	log := cfg.Logger
@@ -162,6 +168,7 @@ func NewManager(ctx context.Context, cfg *ManagerConfig) (*Manager, error) {
 	m := &Manager{
 		ctx:    ctx,
 		cancel: cancel,
+		errCh:  make(chan error, 10),
 
 		log: log,
 		cfg: cfg,
@@ -184,9 +191,9 @@ func NewManager(ctx context.Context, cfg *ManagerConfig) (*Manager, error) {
 		defer m.wg.Done()
 		err := m.recv.Run(m.ctx)
 		if err != nil {
-			// TODO(snormore): What should we do when this returns an error? Reconnect/retry or
-			// propagate up and exit the daemon?
 			m.log.Error("liveness: error running receiver", "error", err)
+			cancel()
+			m.errCh <- err
 		}
 	}()
 
@@ -194,10 +201,20 @@ func NewManager(ctx context.Context, cfg *ManagerConfig) (*Manager, error) {
 	m.wg.Add(1)
 	go func() {
 		defer m.wg.Done()
-		m.sched.Run(m.ctx)
+		err := m.sched.Run(m.ctx)
+		if err != nil {
+			m.log.Error("liveness: error running scheduler", "error", err)
+			cancel()
+			m.errCh <- err
+		}
 	}()
 
 	return m, nil
+}
+
+// Err returns a channel that will receive any errors from the manager.
+func (m *Manager) Err() chan error {
+	return m.errCh
 }
 
 // RegisterRoute declares interest in monitoring reachability for route r via iface.

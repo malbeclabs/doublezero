@@ -136,7 +136,7 @@ func NewScheduler(log *slog.Logger, udp *UDPService, onSessionDown func(s *Sessi
 // It continuously pops and processes due events, sleeping until the next one if necessary.
 // Each TX event sends a control packet and re-schedules the next TX;
 // each Detect event checks for timeout and invokes onSessionDown if expired.
-func (s *Scheduler) Run(ctx context.Context) {
+func (s *Scheduler) Run(ctx context.Context) error {
 	s.log.Debug("liveness.scheduler: tx loop started")
 
 	t := time.NewTimer(time.Hour)
@@ -146,7 +146,7 @@ func (s *Scheduler) Run(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			s.log.Debug("liveness.scheduler: stopped by context done", "reason", ctx.Err())
-			return
+			return nil
 		default:
 		}
 
@@ -167,7 +167,7 @@ func (s *Scheduler) Run(ctx context.Context) {
 			select {
 			case <-ctx.Done():
 				s.log.Debug("liveness.scheduler: stopped by context done", "reason", ctx.Err())
-				return
+				return nil
 			case <-t.C:
 				continue
 			}

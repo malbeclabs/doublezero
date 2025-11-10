@@ -7,6 +7,8 @@ All notable changes to this project will be documented in this file.
 - Onchain programs
     - Check if `accesspass.owner` is equal to system program ([malbeclabs/doublezero#2088](https://github.com/malbeclabs/doublezero/pull/2088))
 
+- Added `--contributor | -c` filter to `device list`, `interface list`, and `link list` commands. (#1274)
+
 ### Breaking
 
 ### Changes

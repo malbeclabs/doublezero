@@ -6,7 +6,8 @@ use doublezero_program_common::{
 };
 use doublezero_sdk::{
     commands::{
-        contributor::list::ListContributorCommand, device::list::ListDeviceCommand,
+        contributor::{get::GetContributorCommand, list::ListContributorCommand},
+        device::list::ListDeviceCommand,
         link::list::ListLinkCommand,
     },
     Link, LinkLinkType, LinkStatus,
@@ -18,6 +19,9 @@ use tabled::{settings::Style, Table, Tabled};
 
 #[derive(Args, Debug)]
 pub struct ListLinkCliCommand {
+    /// Filter by contributor (pubkey or code)
+    #[arg(long, short = 'c')]
+    pub contributor: Option<String>,
     /// List only WAN links.
     #[arg(long, default_value_t = false)]
     pub wan: bool,
@@ -71,7 +75,23 @@ impl ListLinkCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         let contributors = client.list_contributor(ListContributorCommand {})?;
         let devices = client.list_device(ListDeviceCommand)?;
-        let links = client.list_link(ListLinkCommand)?;
+        let mut links = client.list_link(ListLinkCommand)?;
+
+        // Filter by contributor if specified
+        if let Some(contributor_filter) = &self.contributor {
+            let contributor_pk = match client.get_contributor(GetContributorCommand {
+                pubkey_or_code: contributor_filter.clone(),
+            }) {
+                Ok((pk, _)) => pk,
+                Err(_) => {
+                    return Err(eyre::eyre!(
+                        "Contributor '{}' not found",
+                        contributor_filter
+                    ));
+                }
+            };
+            links.retain(|_, link| link.contributor_pk == contributor_pk);
+        }
 
         let mut links: Vec<(Pubkey, Link)> = links.into_iter().collect();
         if self.wan {
@@ -263,6 +283,7 @@ mod tests {
 
         let mut output = Vec::new();
         let res = ListLinkCliCommand {
+            contributor: None,
             wan: false,
             dzx: false,
             json: false,
@@ -276,6 +297,7 @@ mod tests {
 
         let mut output = Vec::new();
         let res = ListLinkCliCommand {
+            contributor: None,
             wan: false,
             dzx: false,
             json: false,

@@ -3,8 +3,10 @@ use clap::Args;
 use doublezero_program_common::{serializer, types::NetworkV4List};
 use doublezero_sdk::{
     commands::{
-        contributor::list::ListContributorCommand, device::list::ListDeviceCommand,
-        exchange::list::ListExchangeCommand, location::list::ListLocationCommand,
+        contributor::{get::GetContributorCommand, list::ListContributorCommand},
+        device::list::ListDeviceCommand,
+        exchange::list::ListExchangeCommand,
+        location::list::ListLocationCommand,
     },
     DeviceStatus, DeviceType,
 };
@@ -15,6 +17,9 @@ use tabled::{settings::Style, Table, Tabled};
 
 #[derive(Args, Debug)]
 pub struct ListDeviceCliCommand {
+    /// Filter by contributor (pubkey or code)
+    #[arg(long, short = 'c')]
+    pub contributor: Option<String>,
     /// Output as pretty JSON
     #[arg(long, default_value_t = false)]
     pub json: bool,
@@ -64,7 +69,23 @@ impl ListDeviceCliCommand {
         let contributors = client.list_contributor(ListContributorCommand {})?;
         let locations = client.list_location(ListLocationCommand {})?;
         let exchanges = client.list_exchange(ListExchangeCommand {})?;
-        let devices = client.list_device(ListDeviceCommand)?;
+        let mut devices = client.list_device(ListDeviceCommand)?;
+
+        // Filter by contributor if specified
+        if let Some(contributor_filter) = &self.contributor {
+            let contributor_pk = match client.get_contributor(GetContributorCommand {
+                pubkey_or_code: contributor_filter.clone(),
+            }) {
+                Ok((pk, _)) => pk,
+                Err(_) => {
+                    return Err(eyre::eyre!(
+                        "Contributor '{}' not found",
+                        contributor_filter
+                    ));
+                }
+            };
+            devices.retain(|_, device| device.contributor_pk == contributor_pk);
+        }
 
         let mut device_displays: Vec<DeviceDisplay> = devices
             .into_iter()
@@ -241,6 +262,7 @@ mod tests {
 
         let mut output = Vec::new();
         let res = ListDeviceCliCommand {
+            contributor: None,
             json: false,
             json_compact: false,
         }
@@ -251,6 +273,7 @@ mod tests {
 
         let mut output = Vec::new();
         let res = ListDeviceCliCommand {
+            contributor: None,
             json: false,
             json_compact: true,
         }

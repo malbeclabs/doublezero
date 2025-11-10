@@ -150,7 +150,6 @@ sequenceDiagram
     Note over ClientA,ClientZ: ** Phase: Session Establishment **
     ClientA-->>Mesh: Control Packet (state=Down, localDisc=X, remoteDisc=0)
     Mesh-->>ClientZ: Control Packet (forwarded)
-    ClientZ->>ClientZ: Learn localDisc=X,<br/>state=Init, arm detect
     ClientZ-->>Mesh: Control Packet (state=Init, localDisc=Y, remoteDisc=X)
     Mesh-->>ClientA: Control Packet (forwarded)
     ClientA->>ClientA: remoteDisc==X, state=Up,<br/>install in kernel routing table
@@ -170,7 +169,7 @@ sequenceDiagram
         ClientA->>ClientA: Detect timer expiry,<br/>state=Down,<br/>withdraw from kernel routing table
         ClientA-->>Mesh: Control Packet (state=Down)
         Mesh-->>ClientZ: Control Packet (forwarded)
-        Note over ClientA,DZDA: BGP sessions remain established,<br/>only the local route is removed
+        Note over ClientA,DZDA: BGP sessions remain established,<br/>Client Z's route is removed
     end
 
     Note over ClientA,ClientZ: ** Phase: Remote-Initiated Withdrawal **
@@ -464,6 +463,7 @@ Deployment occurs in two phases so users can upgrade clients independently while
 
 - Clients fully run the protocol—sending and receiving control packets and maintaining session state—but do not let the protocol itself control route installation or withdrawal.
 - Users are expected to open the UDP port used by the liveness protocol so upgraded peers can exchange control traffic, verify session establishment, and be ready to participate once route management is activated in Phase 2.
+- The liveness subsystem is expected to be feature-complete in this phase, including the specified observability mechanisms (`doublezero status --routes`).
 - This phase validates protocol behavior and network reachability under real conditions.
 - All clients should reach this phase before any enable active mode, unless they accept that routes toward legacy clients will be withdrawn.
 

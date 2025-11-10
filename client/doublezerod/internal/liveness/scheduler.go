@@ -10,20 +10,20 @@ import (
 )
 
 // evType distinguishes between scheduled transmit (TX) and detect-timeout (Detect) events.
-type evType uint8
+type eventType uint8
 
 const (
-	evTX     evType = 1 // transmit control packet
-	evDetect evType = 2 // detect timeout check
+	eventTypeTX     eventType = 1 // transmit control packet
+	eventTypeDetect eventType = 2 // detect timeout check
 )
 
 // event represents a single scheduled action tied to a session.
 // Each event is timestamped and sequence-numbered to ensure stable ordering in the heap.
 type event struct {
-	when time.Time // time when the event should fire
-	typ  evType    // type of event (TX or Detect)
-	s    *Session  // owning session
-	seq  uint64    // sequence number for deterministic ordering
+	when      time.Time // time when the event should fire
+	eventType eventType // type of event (TX or Detect)
+	session   *Session  // owning session
+	seq       uint64    // sequence number for deterministic ordering
 }
 
 // EventQueue is a thread-safe priority queue of scheduled events.
@@ -173,22 +173,22 @@ func (s *Scheduler) Run(ctx context.Context) error {
 			}
 		}
 
-		switch ev.typ {
-		case evTX:
-			s.doTX(ev.s)
-			s.scheduleTx(time.Now(), ev.s)
-		case evDetect:
-			if s.tryExpire(ev.s) {
+		switch ev.eventType {
+		case eventTypeTX:
+			s.doTX(ev.session)
+			s.scheduleTx(time.Now(), ev.session)
+		case eventTypeDetect:
+			if s.tryExpire(ev.session) {
 				// Expiration triggers asynchronous session-down handling.
-				go s.onSessionDown(ev.s)
+				go s.onSessionDown(ev.session)
 				continue
 			}
 			// Still active; re-arm detect timer for next interval.
-			ev.s.mu.Lock()
-			st := ev.s.state
-			ev.s.mu.Unlock()
+			ev.session.mu.Lock()
+			st := ev.session.state
+			ev.session.mu.Unlock()
 			if st == StateUp || st == StateInit {
-				s.scheduleDetect(time.Now(), ev.s)
+				s.scheduleDetect(time.Now(), ev.session)
 			}
 		}
 	}
@@ -204,7 +204,7 @@ func (s *Scheduler) scheduleTx(now time.Time, sess *Session) {
 		return
 	}
 	next := sess.ComputeNextTx(now, nil)
-	s.eq.Push(&event{when: next, typ: evTX, s: sess})
+	s.eq.Push(&event{when: next, eventType: eventTypeTX, session: sess})
 }
 
 // scheduleDetect arms or re-arms a session’s detection timer and enqueues a detect event.
@@ -214,7 +214,7 @@ func (s *Scheduler) scheduleDetect(now time.Time, sess *Session) {
 	if !ok {
 		return
 	}
-	s.eq.Push(&event{when: ddl, typ: evDetect, s: sess})
+	s.eq.Push(&event{when: ddl, eventType: eventTypeDetect, session: sess})
 }
 
 // doTX builds and transmits a ControlPacket representing the session’s current state.
@@ -262,7 +262,7 @@ func (s *Scheduler) doTX(sess *Session) {
 func (s *Scheduler) tryExpire(sess *Session) bool {
 	now := time.Now()
 	if sess.ExpireIfDue(now) {
-		s.eq.Push(&event{when: now, typ: evTX, s: sess})
+		s.eq.Push(&event{when: now, eventType: eventTypeTX, session: sess})
 		return true
 	}
 	return false

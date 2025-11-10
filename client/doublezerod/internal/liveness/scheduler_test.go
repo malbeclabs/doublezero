@@ -57,7 +57,7 @@ func TestClient_Liveness_Scheduler_TryExpireEnqueuesImmediateTX(t *testing.T) {
 	// first event should be immediate TX
 	ev := s.eq.Pop()
 	require.NotNil(t, ev)
-	require.Equal(t, evTX, ev.typ)
+	require.Equal(t, eventTypeTX, ev.eventType)
 
 	// and state flipped to Down, detect cleared
 	require.Equal(t, StateDown, sess.state)
@@ -86,7 +86,7 @@ func TestClient_Liveness_Scheduler_ScheduleDetect_EnqueuesDeadline(t *testing.T)
 	s.scheduleDetect(time.Now(), sess)
 	ev := s.eq.Pop()
 	require.NotNil(t, ev)
-	require.Equal(t, evDetect, ev.typ)
+	require.Equal(t, eventTypeDetect, ev.eventType)
 }
 
 func TestClient_Liveness_Scheduler_TryExpire_Idempotent(t *testing.T) {
@@ -134,14 +134,14 @@ func TestClient_Liveness_Scheduler_ScheduleTx_AdaptiveBackoffWhenDown(t *testing
 	s.scheduleTx(now, sess)
 	ev1 := s.eq.Pop()
 	require.NotNil(t, ev1)
-	require.Equal(t, evTX, ev1.typ)
+	require.Equal(t, eventTypeTX, ev1.eventType)
 	require.Greater(t, sess.backoffFactor, uint32(1)) // doubled to 2
 
 	// next schedule should further increase backoff factor (up to ceil)
 	s.scheduleTx(now.Add(time.Millisecond), sess)
 	ev2 := s.eq.Pop()
 	require.NotNil(t, ev2)
-	require.Equal(t, evTX, ev2.typ)
+	require.Equal(t, eventTypeTX, ev2.eventType)
 	require.GreaterOrEqual(t, sess.backoffFactor, uint32(4))
 	// both events should be scheduled in the future
 	require.True(t, ev1.when.After(now))

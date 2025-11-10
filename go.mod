@@ -8,9 +8,8 @@ require (
 	github.com/aristanetworks/goeapi v1.0.1-0.20250411124937-7090068b8735
 	github.com/cenkalti/backoff/v5 v5.0.3
 	github.com/dgraph-io/ristretto v0.2.0
-	github.com/docker/docker v28.5.1+incompatible
+	github.com/docker/docker v28.5.2+incompatible
 	github.com/docker/go-connections v0.6.0
-	github.com/fsnotify/fsnotify v1.4.7
 	github.com/gagliardetto/binary v0.8.0
 	github.com/gagliardetto/solana-go v1.14.0
 	github.com/gogo/protobuf v1.3.2

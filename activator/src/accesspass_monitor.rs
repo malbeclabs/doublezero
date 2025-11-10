@@ -9,11 +9,10 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
-    thread,
     time::Duration,
 };
 
-pub fn process_access_pass_monitor_thread(
+pub async fn access_pass_monitor_task(
     client: Arc<DZClient>,
     stop_signal: Arc<AtomicBool>,
 ) -> eyre::Result<()> {
@@ -35,7 +34,7 @@ pub fn process_access_pass_monitor_thread(
         }
 
         // Sleep for a while before the next iteration
-        thread::sleep(Duration::from_secs(crate::constants::SLEEP_DURATION_SECS));
+        tokio::time::sleep(Duration::from_secs(crate::constants::SLEEP_DURATION_SECS)).await;
     }
 
     Ok(())

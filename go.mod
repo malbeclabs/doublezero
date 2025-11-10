@@ -10,7 +10,6 @@ require (
 	github.com/dgraph-io/ristretto v0.2.0
 	github.com/docker/docker v28.5.1+incompatible
 	github.com/docker/go-connections v0.6.0
-	github.com/fsnotify/fsnotify v1.4.7
 	github.com/gagliardetto/binary v0.8.0
 	github.com/gagliardetto/solana-go v1.14.0
 	github.com/gogo/protobuf v1.3.2
@@ -45,7 +44,7 @@ require (
 	github.com/vishvananda/netns v0.0.5
 	golang.org/x/mod v0.29.0
 	golang.org/x/net v0.46.0
-	golang.org/x/sys v0.37.0
+	golang.org/x/sys v0.38.0
 	google.golang.org/grpc v1.76.0
 	google.golang.org/protobuf v1.36.10
 	gopkg.in/yaml.v3 v3.0.1

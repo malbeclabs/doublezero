@@ -4,7 +4,7 @@ FROM ${BASE_IMAGE} AS base
 FROM ubuntu:24.04
 
 RUN apt-get update && \
-    apt-get install -y curl jq iproute2 iputils-ping iproute2 net-tools tcpdump vim iperf fping iptables ethtool
+    apt-get install -y curl jq iproute2 iputils-ping iproute2 net-tools tcpdump tshark vim iperf fping iptables ethtool
 
 COPY --from=base /doublezero/bin/doublezero /usr/local/bin/
 COPY --from=base /doublezero/bin/doublezerod /usr/local/bin/

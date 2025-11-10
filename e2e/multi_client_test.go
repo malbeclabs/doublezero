@@ -3,6 +3,8 @@
 package e2e_test
 
 import (
+	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -340,52 +342,148 @@ func runMultiClientIBRLWorkflowTest(t *testing.T, log *slog.Logger, dn *devnet.D
 	require.NoError(t, err)
 
 	log.Info("--> Clients can reach each other via their DZ IPs")
+	// --- Route liveness block matrix ---
+	log.Info("==> Route liveness: block each client independently and require expected route behavior")
+	const wait = 120 * time.Second
+	const tick = 5 * time.Second
 
-	// Block UDP traffic to routeLivenessPort to client2 and client3 at the same time and check that client1 routes are dropped, and remain the same otherwise.
-	log.Info("==> Blocking UDP traffic to route liveness port to client2 and client3 and checking that client1 routes are dropped")
-	_, err = client2.Exec(t.Context(), []string{"iptables", "-A", "INPUT", "-p", "udp", "--dport", strconv.Itoa(routeLivenessPort), "-j", "DROP"})
-	require.NoError(t, err)
-	_, err = client3.Exec(t.Context(), []string{"iptables", "-A", "INPUT", "-p", "udp", "--dport", strconv.Itoa(routeLivenessPort), "-j", "DROP"})
-	require.NoError(t, err)
-	require.Eventually(t, func() bool {
-		output, err := client1.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
-		require.NoError(t, err)
-		return !strings.Contains(string(output), client2DZIP) && !strings.Contains(string(output), client3DZIP)
-	}, 120*time.Second, 5*time.Second, "client1 should not have route to client2 and client3")
-	require.Never(t, func() bool {
-		output, err := client2.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
-		require.NoError(t, err)
-		return strings.Contains(string(output), client3DZIP)
-	}, 1*time.Second, 500*time.Millisecond, "client2 should not have route to client3")
-	require.Never(t, func() bool {
-		output, err := client3.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
-		require.NoError(t, err)
-		return strings.Contains(string(output), client2DZIP)
-	}, 1*time.Second, 500*time.Millisecond, "client3 should not have route to client2")
-	log.Info("--> client1 routes are dropped when client2 and client3 probes start failing")
+	doRouteLivenessBaseline := func() {
+		t.Helper()
+		// Baseline should already be:
+		//   - c1 has routes to c2,c3
+		//   - c2 has route to c1, NOT to c3
+		//   - c3 has route to c1, NOT to c2
+		requireEventuallyRoute(t, client1, client2DZIP, true, wait, tick, "baseline c1->c2")
+		requireEventuallyRoute(t, client1, client3DZIP, true, wait, tick, "baseline c1->c3")
+		requireEventuallyRoute(t, client2, client1DZIP, true, wait, tick, "baseline c2->c1")
+		requireEventuallyRoute(t, client2, client3DZIP, false, wait, tick, "baseline c2->c3")
+		requireEventuallyRoute(t, client3, client1DZIP, true, wait, tick, "baseline c3->c1")
+		requireEventuallyRoute(t, client3, client2DZIP, false, wait, tick, "baseline c3->c2")
 
-	// Unblock UDP traffic to routeLivenessPort to client2 and client3 at the same time and check that client1 routes are restored, and remain the same otherwise.
-	log.Info("==> Unblocking UDP traffic to route liveness port to client2 and client3 and checking that client1 routes are restored")
-	_, err = client2.Exec(t.Context(), []string{"iptables", "-D", "INPUT", "-p", "udp", "--dport", strconv.Itoa(routeLivenessPort), "-j", "DROP"})
-	require.NoError(t, err)
-	_, err = client3.Exec(t.Context(), []string{"iptables", "-D", "INPUT", "-p", "udp", "--dport", strconv.Itoa(routeLivenessPort), "-j", "DROP"})
-	require.NoError(t, err)
-	require.Eventually(t, func() bool {
-		output, err := client1.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
-		require.NoError(t, err)
-		return strings.Contains(string(output), client2DZIP) && strings.Contains(string(output), client3DZIP)
-	}, 120*time.Second, 5*time.Second, "client1 should have route to client2 and client3")
-	require.Never(t, func() bool {
-		output, err := client2.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
-		require.NoError(t, err)
-		return strings.Contains(string(output), client3DZIP)
-	}, 1*time.Second, 100*time.Millisecond, "client2 should not have route to client3")
-	require.Never(t, func() bool {
-		output, err := client3.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
-		require.NoError(t, err)
-		return strings.Contains(string(output), client2DZIP)
-	}, 1*time.Second, 100*time.Millisecond, "client3 should not have route to client2")
-	log.Info("--> client1 routes are restored when client2 and client3 probes start succeeding")
+		// Baseline liveness packets (dz0 present where peers exist; never on eth0/eth1)
+		requireUDPLivenessOnDZ0(t, client1, client2DZIP, true, "baseline c1 liveness packets -> c2 on dz0")
+		requireUDPLivenessOnDZ0(t, client1, client3DZIP, true, "baseline c1 liveness packets -> c3 on dz0")
+		requireUDPLivenessOnDZ0(t, client2, client1DZIP, true, "baseline c2 liveness packets -> c1 on dz0 (disabled = routing-agnostic)")
+		requireUDPLivenessOnDZ0(t, client2, client3DZIP, false, "baseline c2 liveness packets -> c3 none")
+		requireUDPLivenessOnDZ0(t, client3, client1DZIP, true, "baseline c3 liveness packets -> c1 on dz0")
+		requireUDPLivenessOnDZ0(t, client3, client2DZIP, false, "baseline c3 liveness packets -> c2 none")
+		requireNoUDPLivenessOnEth01(t, client1, client2DZIP, "baseline no c1 liveness packets on eth0/1 -> c2")
+		requireNoUDPLivenessOnEth01(t, client1, client3DZIP, "baseline no c1 liveness packets on eth0/1 -> c3")
+		requireNoUDPLivenessOnEth01(t, client2, client1DZIP, "baseline no c2 liveness packets on eth0/1 -> c1")
+		requireNoUDPLivenessOnEth01(t, client3, client1DZIP, "baseline no c3 liveness packets on eth0/1 -> c1")
+	}
+
+	doRouteLivenessCaseA := func(pass int) {
+		t.Helper()
+		log.Info("==> Route liveness Case A (block client1)", "pass", pass)
+		blockUDPLiveness(t, client1)
+
+		// Routes
+		requireEventuallyRoute(t, client1, client2DZIP, false, wait, tick, "pass %d: block c1: c1->c2 removed")
+		requireEventuallyRoute(t, client1, client3DZIP, false, wait, tick, "pass %d: block c1: c1->c3 removed")
+		requireEventuallyRoute(t, client3, client1DZIP, false, wait, tick, "pass %d: block c1: c3->c1 removed")
+		requireEventuallyRoute(t, client2, client1DZIP, true, wait, tick, "pass %d: block c1: c2->c1 remains")
+		requireEventuallyRoute(t, client2, client3DZIP, false, wait, tick, "pass %d: block c1: c2->c3 remains absent")
+		requireEventuallyRoute(t, client3, client2DZIP, false, wait, tick, "pass %d: block c1: c3->c2 remains absent")
+
+		// Liveness packets on doublezero0, none on eth0/1
+		requireUDPLivenessOnDZ0(t, client1, client2DZIP, true, "pass %d: block c1: no c1 liveness packets -> c2 on dz0")
+		requireUDPLivenessOnDZ0(t, client1, client3DZIP, true, "pass %d: block c1: no c1 liveness packets -> c3 on dz0")
+		requireUDPLivenessOnDZ0(t, client3, client1DZIP, true, "pass %d: block c1: no c3 liveness packets -> c1 on dz0")
+		requireUDPLivenessOnDZ0(t, client2, client1DZIP, true, "pass %d: block c1: c2 still shows liveness packets -> c1 on dz0")
+		requireNoUDPLivenessOnEth01(t, client1, client2DZIP, "pass %d: block c1: no c1 liveness packets on eth0/1 -> c2")
+		requireNoUDPLivenessOnEth01(t, client1, client3DZIP, "pass %d: block c1: no c1 liveness packets on eth0/1 -> c3")
+		requireNoUDPLivenessOnEth01(t, client3, client1DZIP, "pass %d: block c1: no c3 liveness packets on eth0/1 -> c1")
+		requireNoUDPLivenessOnEth01(t, client2, client1DZIP, "pass %d: block c1: no c2 liveness packets on eth0/1 -> c1")
+
+		unblockUDPLiveness(t, client1)
+
+		// Routes restored
+		requireEventuallyRoute(t, client1, client2DZIP, true, wait, tick, "pass %d: unblock c1: c1->c2 restored")
+		requireEventuallyRoute(t, client1, client3DZIP, true, wait, tick, "pass %d: unblock c1: c1->c3 restored")
+		requireEventuallyRoute(t, client3, client1DZIP, true, wait, tick, "pass %d: unblock c1: c3->c1 restored")
+
+		// Liveness packets on dz0; none on eth0/1
+		requireUDPLivenessOnDZ0(t, client1, client2DZIP, true, "pass %d: unblock c1: c1 liveness packets -> c2 on dz0")
+		requireUDPLivenessOnDZ0(t, client1, client3DZIP, true, "pass %d: unblock c1: c1 liveness packets -> c3 on dz0")
+		requireUDPLivenessOnDZ0(t, client3, client1DZIP, true, "pass %d: unblock c1: c3 liveness packets -> c1 on dz0")
+		requireUDPLivenessOnDZ0(t, client2, client1DZIP, true, "pass %d: unblock c1: c2 liveness packets -> c1 on dz0")
+		requireNoUDPLivenessOnEth01(t, client1, client2DZIP, "pass %d: unblock c1: none on eth0/1 -> c2")
+		requireNoUDPLivenessOnEth01(t, client1, client3DZIP, "pass %d: unblock c1: none on eth0/1 -> c3")
+	}
+
+	doRouteLivenessCaseB := func(pass int) {
+		t.Helper()
+		log.Info("==> Route liveness Case B (block client2)", "pass", pass)
+		blockUDPLiveness(t, client2)
+
+		// Routes
+		requireEventuallyRoute(t, client1, client2DZIP, false, wait, tick, "pass %d: block c2: c1->c2 removed")
+		requireEventuallyRoute(t, client2, client1DZIP, true, wait, tick, "pass %d: block c2: c2->c1 remains")
+		requireEventuallyRoute(t, client2, client3DZIP, false, wait, tick, "pass %d: block c2: c2->c3 remains absent")
+		requireEventuallyRoute(t, client3, client2DZIP, false, wait, tick, "pass %d: block c2: c3->c2 remains absent")
+		requireEventuallyRoute(t, client1, client3DZIP, true, wait, tick, "pass %d: block c2: c1->c3 remains")
+		requireEventuallyRoute(t, client3, client1DZIP, true, wait, tick, "pass %d: block c2: c3->c1 remains")
+
+		// Liveness packets
+		requireUDPLivenessOnDZ0(t, client1, client2DZIP, true, "pass %d: block c2: c1 liveness packets -> c2 on dz0 (route withdrawn)")
+		requireUDPLivenessOnDZ0(t, client2, client1DZIP, true, "pass %d: block c2: c2 still shows liveness packets -> c1 on dz0")
+		requireNoUDPLivenessOnEth01(t, client1, client2DZIP, "pass %d: block c2: no c1 liveness packets on eth0/1 -> c2")
+		requireNoUDPLivenessOnEth01(t, client2, client1DZIP, "pass %d: block c2: no c2 liveness packets on eth0/1 -> c1")
+
+		unblockUDPLiveness(t, client2)
+
+		// Routes restored
+		requireEventuallyRoute(t, client1, client2DZIP, true, wait, tick, "pass %d: unblock c2: c1->c2 restored")
+
+		// Liveness packets on dz0; none on eth0/1
+		requireUDPLivenessOnDZ0(t, client1, client2DZIP, true, "pass %d: unblock c2: c1 liveness packets -> c2 on dz0")
+		requireUDPLivenessOnDZ0(t, client2, client1DZIP, true, "pass %d: unblock c2: c2 liveness packets -> c1 on dz0")
+		requireNoUDPLivenessOnEth01(t, client1, client2DZIP, "pass %d: unblock c2: none on eth0/1 -> c2")
+	}
+
+	doRouteLivenessCaseC := func(pass int) {
+		t.Helper()
+		log.Info("==> Route liveness Case C (block client3)", "pass", pass)
+		blockUDPLiveness(t, client3)
+
+		// Routes
+		requireEventuallyRoute(t, client1, client3DZIP, false, wait, tick, "pass %d: block c3: c1->c3 removed")
+		requireEventuallyRoute(t, client3, client1DZIP, false, wait, tick, "pass %d: block c3: c3->c1 removed")
+		requireEventuallyRoute(t, client1, client2DZIP, true, wait, tick, "pass %d: block c3: c1->c2 remains")
+		requireEventuallyRoute(t, client2, client1DZIP, true, wait, tick, "pass %d: block c3: c2->c1 remains")
+		requireEventuallyRoute(t, client2, client3DZIP, false, wait, tick, "pass %d: block c3: c2->c3 remains absent")
+		requireEventuallyRoute(t, client3, client2DZIP, false, wait, tick, "pass %d: block c3: c3->c2 remains absent")
+
+		// Liveness packets
+		requireUDPLivenessOnDZ0(t, client1, client3DZIP, true, "pass %d: block c3: c1 liveness packets -> c3 on dz0")
+		requireUDPLivenessOnDZ0(t, client3, client1DZIP, true, "pass %d: block c3: c3 liveness packets -> c1 on dz0")
+		requireUDPLivenessOnDZ0(t, client2, client1DZIP, true, "pass %d: block c3: c2 still shows liveness packets -> c1 on dz0")
+		requireNoUDPLivenessOnEth01(t, client1, client3DZIP, "pass %d: block c3: no c1 liveness packets on eth0/1 -> c3")
+		requireNoUDPLivenessOnEth01(t, client3, client1DZIP, "pass %d: block c3: no c3 liveness packets on eth0/1 -> c1")
+		requireNoUDPLivenessOnEth01(t, client2, client1DZIP, "pass %d: block c3: no c2 liveness packets on eth0/1 -> c1")
+
+		unblockUDPLiveness(t, client3)
+
+		// Routes restored
+		requireEventuallyRoute(t, client1, client3DZIP, true, wait, tick, "pass %d: unblock c3: c1->c3 restored")
+		requireEventuallyRoute(t, client3, client1DZIP, true, wait, tick, "pass %d: unblock c3: c3->c1 restored")
+
+		// Liveness packets on dz0; none on eth0/1
+		requireUDPLivenessOnDZ0(t, client1, client3DZIP, true, "pass %d: unblock c3: c1 liveness packets -> c3 on dz0")
+		requireUDPLivenessOnDZ0(t, client3, client1DZIP, true, "pass %d: unblock c3: c3 liveness packets -> c1 on dz0")
+		requireUDPLivenessOnDZ0(t, client2, client1DZIP, true, "pass %d: unblock c3: c2 liveness packets -> c1 on dz0")
+		requireNoUDPLivenessOnEth01(t, client1, client3DZIP, "pass %d: unblock c3: none on eth0/1 -> c3")
+	}
+
+	// Run the matrix multiple times to check multiple iterations of the workflow.
+	doRouteLivenessBaseline()
+	doRouteLivenessCaseA(1)
+	doRouteLivenessCaseB(1)
+	doRouteLivenessCaseC(1)
+	doRouteLivenessCaseA(2)
+
+	log.Info("--> Route liveness block matrix (repeat) complete")
 
 	// Disconnect client1.
 	log.Info("==> Disconnecting client1 from IBRL")
@@ -543,4 +641,68 @@ func runMultiClientIBRLWithAllocatedIPWorkflowTest(t *testing.T, log *slog.Logge
 	require.Nil(t, status[0].DoubleZeroIP, status)
 	require.Equal(t, devnet.ClientSessionStatusDisconnected, status[0].DoubleZeroStatus.SessionStatus)
 	log.Info("--> Confirmed clients are disconnected and do not have a DZ IP allocated")
+}
+
+func blockUDPLiveness(t *testing.T, c *devnet.Client) {
+	t.Helper()
+	cmd := []string{"iptables", "-A", "INPUT", "-p", "udp", "--dport", strconv.Itoa(routeLivenessPort), "-j", "DROP"}
+	_, err := c.Exec(t.Context(), cmd)
+	require.NoError(t, err)
+}
+
+func unblockUDPLiveness(t *testing.T, c *devnet.Client) {
+	t.Helper()
+	cmd := []string{"iptables", "-D", "INPUT", "-p", "udp", "--dport", strconv.Itoa(routeLivenessPort), "-j", "DROP"}
+	_, err := c.Exec(t.Context(), cmd)
+	require.NoError(t, err)
+}
+
+func hasRoute(t *testing.T, from *devnet.Client, ip string) bool {
+	t.Helper()
+	out, err := from.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
+	require.NoError(t, err)
+	return strings.Contains(string(out), ip)
+}
+
+func requireEventuallyRoute(t *testing.T, from *devnet.Client, ip string, want bool, wait, tick time.Duration, msg string) {
+	t.Helper()
+	require.Eventually(t, func() bool { return hasRoute(t, from, ip) == want }, wait, tick, msg)
+}
+
+func requireUDPLivenessOnDZ0(t *testing.T, c *devnet.Client, host string, want bool, msg string) {
+	t.Helper()
+	n, err := udpLivenessCaptureCount(t, c, []string{"doublezero0"}, host)
+	require.NoError(t, err)
+	require.Equal(t, want, n > 0, msg)
+}
+
+func requireNoUDPLivenessOnEth01(t *testing.T, c *devnet.Client, host string, msg string) {
+	t.Helper()
+	n, err := udpLivenessCaptureCount(t, c, []string{"eth0", "eth1"}, host)
+	require.NoError(t, err)
+	require.Equal(t, 0, n, msg)
+}
+
+func udpLivenessCaptureCount(t *testing.T, c *devnet.Client, ifaces []string, host string) (int, error) {
+	t.Helper()
+	var iargs []string
+	for _, i := range ifaces {
+		iargs = append(iargs, "-i", i)
+	}
+	cmd := fmt.Sprintf(`tshark %s -a duration:1 -Y "not gre && ip.addr==%s && udp.port==%d"`, strings.Join(iargs, " "), host, routeLivenessPort)
+	args := append([]string{"bash", "-lc"}, cmd)
+	out, err := c.Exec(t.Context(), args)
+	require.NoError(t, err)
+	// Expect a line like: "9 packets captured"
+	s := string(out)
+	for line := range strings.SplitSeq(s, "\n") {
+		if strings.Contains(line, " packets captured") {
+			idx := strings.LastIndex(line, " packets captured")
+			numStr := strings.TrimSpace(line[:idx])
+			n, err := strconv.Atoi(numStr)
+			require.NoError(t, err)
+			return n, nil
+		}
+	}
+	return 0, errors.New("no capture count found in output")
 }

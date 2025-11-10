@@ -321,8 +321,6 @@ async fn test_tx_lamports_to_pda_before_creation() {
     )
     .await;
 
-    println!("🟢 1. ++++++++++ AFTER Create AccessPass...");
-
     let accesspass = get_account_data(&mut banks_client, accesspass_pubkey)
         .await
         .expect("Unable to get Account")

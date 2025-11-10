@@ -3,6 +3,8 @@
 All notable changes to this project will be documented in this file.
 
 ## Unreleased
+### Added
+- Validate AccessPass before client connection (CLI) ([#1356](https://github.com/malbeclabs/doublezero/issues/1356))
 
 ### Breaking
 

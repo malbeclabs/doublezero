@@ -223,7 +223,7 @@ Control packets are fixed-length 40-byte UDP datagrams (network byte order):
 **Receive processing (normative):**
 
 1. Drop if `len≠40`, `ver≠1`, `DetectMult==0`, or reserved bits non-zero.
-2. Enforce session binding: packet must arrive on expected `(iface, local, dest)` and port 44880; otherwise drop.
+2. Enforce session binding: packet must arrive on expected `(iface, localIP, remoteIP)` and port 44880; otherwise drop.
 3. Clamp timing values to local bounds.
 4. Update peer parameters; if `peerDisc == myLocalDisc`, session is eligible for `Up`.
 

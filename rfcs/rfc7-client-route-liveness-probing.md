@@ -252,6 +252,88 @@ After `Down`, TX uses exponential backoff with randomized jitter to avoid synchr
 
 Sessions are created/removed by dynamic route events; restoration is immediate on `Up`, bounded by detection timing—not BGP hold timers.
 
+## Observability
+
+### Metrics
+
+The client daemon MUST expose metrics at the endpoint `/metrics` in Prometheus text format.
+
+The following metrics MUST be present:
+
+| Name | Type | Labels | Meaning |
+| --- | --- | --- | --- |
+| `doublezero_liveness_sessions` | gauge | `service_type`, `iface`, `src`, `state` | Current number of sessions by FSM state (`admin_down`, `down`, `init`, `up`). |
+| `doublezero_liveness_session_transitions_total` | counter | `service_type`, `iface`, `src`, `from`, `to`, `reason` | Count of session state transitions by from (state), to (state), and reason (`detect_timeout`, `rx_down`, `admin_down`). |
+| `doublezero_liveness_routes_installed` | gauge | `service_type`, `iface`, `src` | Number of routes currently installed by the liveness process. |
+| `doublezero_liveness_route_installs_total` | counter | `service_type`, `iface`, `src` | Total route add operations performed in the kernel. |
+| `doublezero_liveness_route_withdraws_total` | counter | `service_type`, `iface`, `src` | Total route delete operations performed in the kernel. |
+| `doublezero_liveness_convergence_to_up_seconds` | histogram | `service_type`, `iface`, `src` | Time from the first successful control message while `down` until transition to `up` (includes detect threshold, scheduler delay, and kernel install). |
+| `doublezero_liveness_convergence_to_down_seconds` | histogram | `service_type`, `iface`, `src` | Time from the first failed or missing control message while `up` until transition to `down` (includes detect expiry, scheduler delay, and kernel delete). |
+
+The following metrics SHOULD be exposed, but as opt-in due to high cardinality:
+
+| Name | Type | Labels | Meaning |
+| --- | --- | --- | --- |
+| `doublezero_liveness_peer_sessions` | gauge | `service_type`, `iface`, `src`, `dst`, `state` | Current number of sessions by peer and FSM state (`admin_down`, `down`, `init`, `up`). |
+| `doublezero_liveness_peer_session_detect_time_seconds` | gauge | `service_type`, `iface`, `src`, `dst` | Current detect time by session (after clamping with peer value). |
+
+The following metrics SHOULD be exposed:
+
+| Name | Type | Labels | Meaning |
+| --- | --- | --- | --- |
+| `doublezero_liveness_scheduler_queue_len` | gauge | `service_type`, `iface`, `src` | Current number of pending events in the scheduler queue. |
+| `doublezero_liveness_handle_rx_duration_seconds` | histogram | `service_type`, `iface`, `src` | Distribution of time to handle a valid received packet. |
+| `doublezero_liveness_control_packets_tx_total` | counter | `service_type`, `iface`, `src` | Total control packets sent. |
+| `doublezero_liveness_control_packets_rx_total` | counter | `service_type`, `iface`, `src` | Total control packets received. |
+| `doublezero_liveness_control_packets_rx_invalid_total` | counter | `service_type`, `iface`, `src`, `reason` | Invalid control packets received (e.g. `short`, `bad_version`, `bad_len`, `parse_error`, `not_ipv4`, `reserved_nonzero`). |
+| `doublezero_liveness_unknown_peer_packets_total` | counter | `service_type`, `iface`, `src` | Packets received that didn’t match any known session. |
+| `doublezero_liveness_io_errors_total` | counter | `service_type`, `iface`, `src`, `op` | Count of non-timeout I/O errors (`read`, `write`, `set_deadline`). |
+
+### API
+
+The client daemon MUST expose an API endpoint `/status/routes` as follows:
+
+```
+$ curl --unix-socket /var/run/doublezerod/doublezerod.sock http://localhost/status/routes
+
+[
+  {
+    "service_type": "IBRL",
+    "timestamp": "2025-11-08T12:34:56Z",
+    "tunnel_src": "9.169.90.110",
+    "destination": "203.0.113.42/32",
+    "status": "DOWN",
+    "network": "devnet"
+  },
+  {
+    "service_type": "IBRL",
+    "timestamp": "2025-11-08T12:34:56Z",
+    "tunnel_src": "9.169.90.110",
+    "destination": "192.0.2.5/32",
+    "status": "UP",
+    "network": "devnet"
+  }
+]
+```
+
+### CLI
+
+The client CLI MUST expose per-route liveness status using the daemon API:
+
+```
+$ doublezero status --routes
+
+Service Type   Tunnel Src     Destination        Status   Network  Timestamp
+-------------- -------------- -----------------  -------  -------- -------------------
+IBRL           9.169.90.110   203.0.113.42/32    DOWN     devnet   2025-11-08T12:00:00Z
+IBRL           9.169.90.110   198.51.100.14/32   DOWN     devnet   2025-11-08T12:00:00Z
+IBRL           9.169.90.110   192.0.2.18/32      UP       devnet   2025-11-08T12:00:00Z
+IBRL           9.169.90.110   198.51.100.8/32    UP       devnet   2025-11-08T12:00:00Z
+IBRL           9.169.90.110   203.0.113.7/32     UP       devnet   2025-11-08T12:00:00Z
+IBRL           9.169.90.110   198.51.100.2/32    UP       devnet   2025-11-08T12:00:00Z
+IBRL           9.169.90.110   192.0.2.5/32       UP       devnet   2025-11-08T12:00:00Z
+```
+
 ## Impact
 
 - **Control-plane load**

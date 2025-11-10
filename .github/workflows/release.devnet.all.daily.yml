@@ -34,6 +34,8 @@ jobs:
             playbook: playbooks/internet_latency_collectors.yml
           - component: qa-agent
             playbook: playbooks/qa_agents.yml
+          - component: sentinel
+            playbook: playbooks/sentinels.yml
     with:
       component: ${{ matrix.component }}
       playbook: ${{ matrix.playbook }}

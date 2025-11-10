@@ -21,7 +21,7 @@ This design delivers immediate value (shared visibility, consistent status logs,
 | Term | Definition |
 | --- | --- |
 | **Incident** | Unplanned service-impacting event with enumerated severity and status. |
-| **Maintenance** | Planned, time-bounded activity that may affect availability. Auto-closes after its window unless updated. |
+| **Maintenance** | Planned, time-bounded activity that may affect availability. Auto-closes after `end_at`. |
 | **Proof of Contributor** | Caller authority via per-contributor API key (MVP); later, signed requests and on-chain registry. |
 | **Gateway** | Authenticated, versioned ingress that validates identity, enforces schema, persists events, and emits notifications. |
 

@@ -297,6 +297,13 @@ impl ProvisioningCliCommand {
             })
             .map_err(|_| eyre::eyre!("Unable to get device"))?;
 
+        // If user explicitly specified a device, check if it's eligible
+        if self.device.is_some() && !device.is_device_eligible_for_provisioning() {
+            return Err(eyre::eyre!(
+                "Device is not accepting more users (at capacity or max_users=0)"
+            ));
+        }
+
         Ok((device_pk, device))
     }
 
@@ -314,8 +321,10 @@ impl ProvisioningCliCommand {
         let users = client.list_user(ListUserCommand)?;
         let mut devices = client.list_device(ListDeviceCommand)?;
 
-        // Filter to retain only activated devices with available user slots
-        devices.retain(|_, d| d.is_device_eligible_for_provisioning());
+        // Only filter devices if auto-selecting; keep all if user specified a device
+        if self.device.is_none() {
+            devices.retain(|_, d| d.is_device_eligible_for_provisioning());
+        }
 
         let matched_users = users
             .iter()
@@ -402,8 +411,10 @@ impl ProvisioningCliCommand {
         let users = client.list_user(ListUserCommand)?;
         let mut devices = client.list_device(ListDeviceCommand)?;
 
-        // Filter to retain only activated devices with available user slots
-        devices.retain(|_, d| d.is_device_eligible_for_provisioning());
+        // Only filter devices if auto-selecting; keep all if user specified a device
+        if self.device.is_none() {
+            devices.retain(|_, d| d.is_device_eligible_for_provisioning());
+        }
 
         let matched_users = users
             .iter()
@@ -1335,5 +1346,119 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("Only one tunnel currently supported"));
+    }
+
+    #[tokio::test]
+    async fn test_connect_to_device_at_max_users() {
+        let mut fixture = TestFixture::new();
+
+        // Add a device with max_users = 0
+        let (device_pk, mut device) = fixture.add_device(100, true);
+        device.max_users = 0;
+        device.users_count = 0;
+
+        // Update the device in the mock
+        fixture
+            .devices
+            .lock()
+            .unwrap()
+            .insert(device_pk, device.clone());
+
+        println!();
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::IBRL {
+                allocate_addr: false,
+            },
+            client_ip: Some("1.2.3.4".to_string()),
+            device: Some(device.code.clone()), // Explicitly specify the device
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("Device is not accepting more users"),
+            "Expected error about device not accepting users, got: {}",
+            err_msg
+        );
+        assert!(
+            !err_msg.contains("Device not found"),
+            "Should not show 'Device not found' error when device exists but is full"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_connect_to_device_at_capacity() {
+        let mut fixture = TestFixture::new();
+
+        // Add a device that's at capacity (users_count >= max_users)
+        let (device_pk, mut device) = fixture.add_device(100, true);
+        device.max_users = 10;
+        device.users_count = 10; // At capacity
+
+        // Update the device in the mock
+        fixture
+            .devices
+            .lock()
+            .unwrap()
+            .insert(device_pk, device.clone());
+
+        println!();
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::IBRL {
+                allocate_addr: false,
+            },
+            client_ip: Some("1.2.3.4".to_string()),
+            device: Some(device.code.clone()), // Explicitly specify the device
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("Device is not accepting more users"),
+            "Expected error about device not accepting users, got: {}",
+            err_msg
+        );
+    }
+
+    #[tokio::test]
+    async fn test_connect_to_nonexistent_device() {
+        let mut fixture = TestFixture::new();
+
+        fixture.add_device(100, true); // Add a device, but we'll try to connect to a different one
+
+        println!();
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::IBRL {
+                allocate_addr: false,
+            },
+            client_ip: Some("1.2.3.4".to_string()),
+            device: Some("nonexistent-device".to_string()), // Device that doesn't exist
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("Device not found"),
+            "Expected 'Device not found' error for nonexistent device, got: {}",
+            err_msg
+        );
     }
 }

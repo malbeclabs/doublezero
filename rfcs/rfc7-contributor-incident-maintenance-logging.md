@@ -1,4 +1,4 @@
-# RFC - Contributor network incident and maintenance logging
+# RFC - Network contributor incident and maintenance logging
 
 # Summary
 

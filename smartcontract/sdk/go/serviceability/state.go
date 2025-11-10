@@ -356,6 +356,7 @@ type Link struct {
 	ContributorPubKey [32]uint8
 	SideAIfaceName    string
 	SideZIfaceName    string
+	DelayOverrideNs   uint64
 	PubKey            [32]byte
 }
 

@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+- Onchain programs
+    - Check if `accesspass.owner` is equal to system program ([malbeclabs/doublezero#2088](https://github.com/malbeclabs/doublezero/pull/2088))
+
 ### Breaking
 
 ### Changes

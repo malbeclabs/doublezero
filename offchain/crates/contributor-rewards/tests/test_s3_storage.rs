@@ -39,6 +39,7 @@ fn create_test_settings(
             max_consecutive_failures: 10,
             enable_dry_run: false,
             storage_backend,
+            grace_period_max_wait_seconds: 21600,
         },
         aws,
         shapley: doublezero_contributor_rewards::settings::ShapleySettings {

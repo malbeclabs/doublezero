@@ -120,6 +120,12 @@ enable_dry_run = false
 # Options: s3, local-file
 storage_backend = "s3"
 
+# Maximum time to wait for grace period before posting merkle root (in seconds)
+# Default: 21600 (6 hours)
+# The on-chain program enforces a grace period after distribution creation
+# This setting controls how long the scheduler will wait for that grace period to expire
+grace_period_max_wait_seconds = 21600
+
 # ========== AWS S3 Configuration (Required if storage_backend = "s3") ==========
 # All fields can be overridden via environment variables:
 #   DZ__AWS__REGION

@@ -211,6 +211,7 @@ mod tests {
                 max_consecutive_failures: 10,
                 enable_dry_run: false,
                 storage_backend: StorageBackend::LocalFile,
+                grace_period_max_wait_seconds: 21600,
             },
             metrics: Some(MetricsSettings {
                 addr: SocketAddr::from_str("127.0.0.1:9090").unwrap(),

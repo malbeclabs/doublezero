@@ -1,3 +1,5 @@
+use std::time::{Duration, Instant};
+
 use anyhow::{Result, anyhow, bail};
 use doublezero_program_tools::instruction::try_build_instruction;
 use doublezero_revenue_distribution::{
@@ -8,15 +10,102 @@ use doublezero_revenue_distribution::{
     state::Distribution,
     types::DoubleZeroEpoch,
 };
+use doublezero_solana_client_tools::zero_copy::ZeroCopyAccountOwned;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::{
-    commitment_config::CommitmentConfig,
     message::{VersionedMessage, v0::Message},
     signature::{Keypair, Signer},
     transaction::VersionedTransaction,
 };
 use svm_hash::sha2::Hash;
-use tracing::info;
+use tokio::time::sleep;
+use tracing::{info, warn};
+
+/// Check if calculation is allowed for a given distribution based on current block timestamp
+async fn check_calculation_allowed(
+    rpc_client: &RpcClient,
+    distribution: &Distribution,
+) -> Result<bool> {
+    // Get current slot and its block time from Solana
+    let current_slot = rpc_client.get_slot().await?;
+    let current_timestamp = rpc_client.get_block_time(current_slot).await?;
+
+    let is_allowed = distribution
+        .checked_calculation_allowed_timestamp()
+        .is_some_and(|allowed_timestamp| current_timestamp >= allowed_timestamp);
+
+    Ok(is_allowed)
+}
+
+/// Wait for the grace period to expire before posting merkle root
+/// Returns the Distribution account data for reuse
+async fn wait_for_grace_period(
+    rpc_client: &RpcClient,
+    epoch: u64,
+    max_wait_seconds: u64,
+) -> Result<Distribution> {
+    let dz_epoch = DoubleZeroEpoch::new(epoch);
+    let (distribution_pubkey, _) = Distribution::find_address(dz_epoch);
+
+    info!(
+        "Checking grace period for epoch {} at address {}",
+        epoch, distribution_pubkey
+    );
+
+    // Fetch Distribution account
+    let distribution_account =
+        ZeroCopyAccountOwned::<Distribution>::try_from_rpc_client(rpc_client, &distribution_pubkey)
+            .await?;
+
+    let distribution = distribution_account.data.as_ref().ok_or_else(|| {
+        anyhow!(
+            "Distribution account for epoch {} does not exist at {}. \
+                It needs to be initialized by validator-debt crate first.",
+            epoch,
+            distribution_pubkey
+        )
+    })?;
+
+    // Poll until grace period is satisfied
+    let max_wait = Duration::from_secs(max_wait_seconds);
+    let poll_interval = Duration::from_secs(60);
+    let start = Instant::now();
+
+    loop {
+        if check_calculation_allowed(rpc_client, distribution).await? {
+            info!(
+                "Grace period satisfied for epoch {} after waiting {:?}",
+                epoch,
+                start.elapsed()
+            );
+            return Ok(**distribution);
+        }
+
+        if start.elapsed() >= max_wait {
+            bail!(
+                "Exceeded max wait time ({:?}) for grace period on epoch {}",
+                max_wait,
+                epoch
+            );
+        }
+
+        if let Some(allowed_timestamp) = distribution.checked_calculation_allowed_timestamp() {
+            // Get current Solana block time
+            let current_slot = rpc_client.get_slot().await?;
+            let current_timestamp = rpc_client.get_block_time(current_slot).await?;
+            let wait_seconds = allowed_timestamp - current_timestamp;
+
+            warn!(
+                "Calculation grace period not satisfied for epoch {}. Waiting approximately {} more seconds (elapsed: {:?})",
+                epoch,
+                wait_seconds.max(0),
+                start.elapsed()
+            );
+        }
+
+        sleep(poll_interval).await;
+    }
+}
 
 /// Post the contributor rewards merkle root to the revenue distribution program
 pub async fn post_rewards_merkle_root(
@@ -25,27 +114,17 @@ pub async fn post_rewards_merkle_root(
     epoch: u64,
     total_contributors: u32,
     merkle_root: Hash,
+    max_wait_seconds: u64,
 ) -> Result<()> {
     info!(
         "Posting merkle root for epoch {} with {} contributors to program {}",
         epoch, total_contributors, REVENUE_DISTRIBUTION_PROGRAM_ID
     );
 
-    // Derive the Distribution account PDA
+    // Wait for grace period and get Distribution account (validates existence and grace period)
+    let _distribution = wait_for_grace_period(rpc_client, epoch, max_wait_seconds).await?;
+
     let dz_epoch = DoubleZeroEpoch::new(epoch);
-    let (distribution_pubkey, _) = Distribution::find_address(dz_epoch);
-
-    // Check if Distribution account exists
-    let distribution_account = rpc_client
-        .get_account_with_commitment(&distribution_pubkey, CommitmentConfig::confirmed())
-        .await?;
-
-    if distribution_account.value.is_none() {
-        bail!(
-            "Distribution account for epoch {epoch} does not exist at {distribution_pubkey}. \
-            It should be initialized by validator-debt crate first.",
-        );
-    }
 
     // Build the ConfigureDistributionRewards instruction with the helper
     let ix_data = RevenueDistributionInstructionData::ConfigureDistributionRewards {

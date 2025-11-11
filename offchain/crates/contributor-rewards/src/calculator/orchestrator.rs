@@ -317,6 +317,7 @@ impl Orchestrator {
                     fetch_epoch,
                     shapley_storage.total_contributors() as u32,
                     merkle_root,
+                    self.settings.scheduler.grace_period_max_wait_seconds,
                 )
                 .await
                 {

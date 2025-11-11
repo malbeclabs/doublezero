@@ -143,6 +143,13 @@ pub struct SchedulerSettings {
     /// Storage backend for snapshots
     #[serde(default)]
     pub storage_backend: StorageBackend,
+    /// Maximum time to wait for grace period in seconds (default: 21600 = 6 hours)
+    #[serde(default = "default_grace_period_max_wait_seconds")]
+    pub grace_period_max_wait_seconds: u64,
+}
+
+fn default_grace_period_max_wait_seconds() -> u64 {
+    21600
 }
 
 /// Scheduler configuration for automated rewards calculation

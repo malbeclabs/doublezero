@@ -24,13 +24,13 @@ use solana_program::{
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
 pub struct DeviceInterfaceUpdateArgs {
     pub name: String,
-    pub interface_sub_type: Option<InterfaceSubType>,
     pub loopback_type: Option<LoopbackType>,
     pub vlan_id: Option<u16>,
     pub user_tunnel_endpoint: Option<bool>,
     pub status: Option<InterfaceStatus>,
     pub ip_net: Option<NetworkV4>,
     pub node_segment_idx: Option<u16>,
+    pub interface_sub_type: Option<InterfaceSubType>,
 }
 
 impl fmt::Debug for DeviceInterfaceUpdateArgs {

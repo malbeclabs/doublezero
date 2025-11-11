@@ -58,10 +58,10 @@ impl fmt::Display for InterfaceSubType {
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
 pub struct DeviceInterfaceCreateArgs {
     pub name: String,
-    pub interface_sub_type: InterfaceSubType,
     pub loopback_type: LoopbackType,
     pub vlan_id: u16,
     pub user_tunnel_endpoint: bool,
+    pub interface_sub_type: InterfaceSubType,
 }
 
 impl fmt::Debug for DeviceInterfaceCreateArgs {

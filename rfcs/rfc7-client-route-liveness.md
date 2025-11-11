@@ -107,7 +107,7 @@ stateDiagram-v2
 
   %% Bring-up and confirmation
   DOWN --> INIT: RX valid, learn peerDisc
-  INIT --> UP: RX valid, remoteDisc == localDisc
+  INIT --> UP: RX valid, peerDisc == localDisc
 
   %% Liveness maintenance and loss
   INIT --> DOWN: Detect timer expired
@@ -148,17 +148,17 @@ sequenceDiagram
     ClientA->>ClientA: Schedule initial transmit<br/>and start detect timer
 
     Note over ClientA,ClientZ: ** Phase: Session Establishment **
-    ClientA-->>Mesh: Control Packet (state=Down, localDisc=X, remoteDisc=0)
+    ClientA-->>Mesh: Control Packet (state=Down, localDisc=X, peerDisc=0)
     Mesh-->>ClientZ: Control Packet (forwarded)
-    ClientZ-->>Mesh: Control Packet (state=Init, localDisc=Y, remoteDisc=X)
+    ClientZ-->>Mesh: Control Packet (state=Init, localDisc=Y, peerDisc=X)
     Mesh-->>ClientA: Control Packet (forwarded)
-    ClientA->>ClientA: remoteDisc==X, state=Up,<br/>install in kernel routing table
+    ClientA->>ClientA: peerDisc==X, state=Up,<br/>install in kernel routing table
 
     Note over ClientA,ClientZ: ** Phase: Steady-State Verification **
     loop Periodic keepalives
-        ClientA-->>Mesh: Control Packet (state=Up, localDisc=X, remoteDisc=Y)
+        ClientA-->>Mesh: Control Packet (state=Up, localDisc=X, peerDisc=Y)
         Mesh-->>ClientZ: Control Packet
-        ClientZ-->>Mesh: Control Packet (state=Up, localDisc=Y, remoteDisc=X)
+        ClientZ-->>Mesh: Control Packet (state=Up, localDisc=Y, peerDisc=X)
         Mesh-->>ClientA: Control Packet
         ClientA-->>ClientA: Valid packets reset<br/>detection timers
         ClientZ-->>ClientZ: Valid packets reset<br/>detection timers
@@ -175,7 +175,7 @@ sequenceDiagram
     Note over ClientA,ClientZ: ** Phase: Remote-Initiated Withdrawal **
       alt Peer detects failure first
       ClientZ->>ClientZ: Detect timer expiry<br/>or administrative down,<br/>state=Down
-      ClientZ-->>Mesh: Control Packet (state=Down, localDisc=Y, remoteDisc=X)
+      ClientZ-->>Mesh: Control Packet (state=Down, localDisc=Y, peerDisc=X)
       Mesh-->>ClientA: Control Packet (forwarded)
       ClientA->>ClientA: Receive peer Down,<br/>state=Down,<br/>withdraw from kernel routing table
     end
@@ -222,7 +222,7 @@ Control packets are fixed-length 40-byte UDP datagrams (network byte order):
 **Receive processing (normative):**
 
 1. Drop if `len≠40`, `ver≠1`, `DetectMult==0`, or reserved bits non-zero.
-2. Enforce session binding: packet must arrive on expected `(iface, localIP, remoteIP)` and port 44880; otherwise drop.
+2. Enforce session binding: packet must arrive on expected `(iface, localIP, peerIP)` and port 44880; otherwise drop.
 3. Clamp timing values to local bounds.
 4. Update peer parameters; if `peerDisc == myLocalDisc`, session is eligible for `Up`.
 
@@ -261,32 +261,32 @@ The following metrics MUST be present:
 
 | Name | Type | Labels | Meaning |
 | --- | --- | --- | --- |
-| `doublezero_liveness_sessions` | gauge | `service_type`, `iface`, `src`, `state` | Current number of sessions by FSM state (`admin_down`, `down`, `init`, `up`). |
-| `doublezero_liveness_session_transitions_total` | counter | `service_type`, `iface`, `src`, `from`, `to`, `reason` | Count of session state transitions by from (state), to (state), and reason (`detect_timeout`, `rx_down`, `admin_down`). |
-| `doublezero_liveness_routes_installed` | gauge | `service_type`, `iface`, `src` | Number of routes currently installed by the liveness process. |
-| `doublezero_liveness_route_installs_total` | counter | `service_type`, `iface`, `src` | Total route add operations performed in the kernel. |
-| `doublezero_liveness_route_withdraws_total` | counter | `service_type`, `iface`, `src` | Total route delete operations performed in the kernel. |
-| `doublezero_liveness_convergence_to_up_seconds` | histogram | `service_type`, `iface`, `src` | Time from the first successful control message while `down` until transition to `up` (includes detect threshold, scheduler delay, and kernel install). |
-| `doublezero_liveness_convergence_to_down_seconds` | histogram | `service_type`, `iface`, `src` | Time from the first failed or missing control message while `up` until transition to `down` (includes detect expiry, scheduler delay, and kernel delete). |
+| `doublezero_liveness_sessions` | gauge | `iface`, `local_ip`, `state` | Current number of sessions by FSM state (`admin_down`, `down`, `init`, `up`). |
+| `doublezero_liveness_session_transitions_total` | counter | `iface`, `local_ip`, `from`, `to`, `reason` | Count of session state transitions by from (state), to (state), and reason (`detect_timeout`, `rx_down`, `admin_down`). |
+| `doublezero_liveness_routes_installed` | gauge | `iface`, `local_ip` | Number of routes currently installed by the liveness process. |
+| `doublezero_liveness_route_installs_total` | counter | `iface`, `local_ip` | Total route add operations performed in the kernel. |
+| `doublezero_liveness_route_withdraws_total` | counter | `iface`, `local_ip` | Total route delete operations performed in the kernel. |
+| `doublezero_liveness_convergence_to_up_seconds` | histogram | `iface`, `local_ip` | Time from the first successful control message while `down` until transition to `up` (includes detect threshold, scheduler delay, and kernel install). |
+| `doublezero_liveness_convergence_to_down_seconds` | histogram | `iface`, `local_ip` | Time from the first failed or missing control message while `up` until transition to `down` (includes detect expiry, scheduler delay, and kernel delete). |
 
 The following metrics SHOULD be exposed, but as opt-in due to high cardinality:
 
 | Name | Type | Labels | Meaning |
 | --- | --- | --- | --- |
-| `doublezero_liveness_peer_sessions` | gauge | `service_type`, `iface`, `src`, `dst`, `state` | Current number of sessions by peer and FSM state (`admin_down`, `down`, `init`, `up`). |
-| `doublezero_liveness_peer_session_detect_time_seconds` | gauge | `service_type`, `iface`, `src`, `dst` | Current detect time by session (after clamping with peer value). |
+| `doublezero_liveness_peer_sessions` | gauge | `iface`, `local_ip`, `peer_ip`, `state` | Current number of sessions by peer and FSM state (`admin_down`, `down`, `init`, `up`). |
+| `doublezero_liveness_peer_session_detect_time_seconds` | gauge | `iface`, `local_ip`, `peer_ip` | Current detect time by session (after clamping with peer value). |
 
 The following metrics SHOULD be exposed:
 
 | Name | Type | Labels | Meaning |
 | --- | --- | --- | --- |
-| `doublezero_liveness_scheduler_queue_len` | gauge | `service_type`, `iface`, `src` | Current number of pending events in the scheduler queue. |
-| `doublezero_liveness_handle_rx_duration_seconds` | histogram | `service_type`, `iface`, `src` | Distribution of time to handle a valid received packet. |
-| `doublezero_liveness_control_packets_tx_total` | counter | `service_type`, `iface`, `src` | Total control packets sent. |
-| `doublezero_liveness_control_packets_rx_total` | counter | `service_type`, `iface`, `src` | Total control packets received. |
-| `doublezero_liveness_control_packets_rx_invalid_total` | counter | `service_type`, `iface`, `src`, `reason` | Invalid control packets received (e.g. `short`, `bad_version`, `bad_len`, `parse_error`, `not_ipv4`, `reserved_nonzero`). |
-| `doublezero_liveness_unknown_peer_packets_total` | counter | `service_type`, `iface`, `src` | Packets received that didn’t match any known session. |
-| `doublezero_liveness_io_errors_total` | counter | `service_type`, `iface`, `src`, `op` | Count of non-timeout I/O errors (`read`, `write`, `set_deadline`). |
+| `doublezero_liveness_scheduler_queue_len` | gauge | `iface`, `local_ip` | Current number of pending events in the scheduler queue. |
+| `doublezero_liveness_handle_rx_duration_seconds` | histogram | `iface`, `local_ip` | Distribution of time to handle a valid received packet. |
+| `doublezero_liveness_control_packets_tx_total` | counter | `iface`, `local_ip` | Total control packets sent. |
+| `doublezero_liveness_control_packets_rx_total` | counter | `iface`, `local_ip` | Total control packets received. |
+| `doublezero_liveness_control_packets_rx_invalid_total` | counter | `iface`, `local_ip`, `reason` | Invalid control packets received (e.g. `short`, `bad_version`, `bad_len`, `parse_error`, `not_ipv4`, `reserved_nonzero`). |
+| `doublezero_liveness_unknown_peer_packets_total` | counter | `iface`, `local_ip` | Packets received that didn’t match any known session. |
+| `doublezero_liveness_io_errors_total` | counter | `iface`, `local_ip`, `op` | Count of non-timeout I/O errors (`read`, `write`, `set_deadline`). |
 
 ### API
 

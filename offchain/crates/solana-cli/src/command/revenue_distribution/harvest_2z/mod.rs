@@ -19,8 +19,6 @@ use solana_sdk::{
 
 use crate::command::revenue_distribution::{SolConversionState, convert_2z::Convert2zContext};
 
-const DEFAULT_DEX: &str = "Raydium CLMM";
-
 const DEFAULT_BUY_SOL_ADDRESS_LOOKUP_TABLE_KEY: Pubkey =
     solana_sdk::pubkey!("GnwZZZVudHSqChJiAh1RULWJe2itLHSZ9HCNXrbBQKPs");
 
@@ -28,6 +26,11 @@ const TOKEN_ACCOUNT_RENT_EXEMPTION_LAMPORTS: u64 = 2_039_280;
 
 #[derive(Debug, Args, Clone)]
 pub struct Harvest2zCommand {
+    /// See https://lite-api.jup.ag/swap/v1/program-id-to-label for available
+    /// program ID labels.
+    #[arg(long, value_name = "JUPITER_LABEL")]
+    specific_dex: Option<String>,
+
     #[command(flatten)]
     solana_payer_options: SolanaPayerOptions,
 }
@@ -35,6 +38,7 @@ pub struct Harvest2zCommand {
 impl Harvest2zCommand {
     pub async fn try_into_execute(self) -> Result<()> {
         let Self {
+            specific_dex,
             solana_payer_options,
         } = self;
 
@@ -90,7 +94,8 @@ impl Harvest2zCommand {
         };
 
         let mut quote_response =
-            try_quote_sol_to_2z(input_sol_amount, discount_params.max_discount).await?;
+            try_quote_sol_to_2z(input_sol_amount, discount_params.max_discount, specific_dex)
+                .await?;
 
         let discounted_swap_rate =
             oracle::checked_discounted_swap_rate(convert_2z_context.oracle_swap_rate, discount)
@@ -223,6 +228,7 @@ impl Harvest2zCommand {
 async fn try_quote_sol_to_2z(
     amount: u64,
     max_discount_rate: u64,
+    specific_dex: Option<String>,
 ) -> Result<JupiterLegacyQuoteResponse> {
     let slippage_bps = u16::try_from(max_discount_rate)
         .context("Overflow when calculating slippage bps with max discount rate")?;
@@ -233,7 +239,7 @@ async fn try_quote_sol_to_2z(
         amount,
         output_mint: DOUBLEZERO_MINT_KEY.to_string(),
         input_mint: spl_token::native_mint::ID.to_string(),
-        dexes: Some(DEFAULT_DEX.to_string()),
+        dexes: specific_dex,
         ..Default::default()
     };
 

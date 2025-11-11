@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- feat(solana-cli): add `--specific-dex` option for `harvest-2z` ([#189](https://github.com/doublezerofoundation/doublezero-offchain/pull/189))
+
 ## [0.2.1](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-solana/v0.2.1) - 2025-11-11
 
 - feat(solana-cli): add `revenue-distribution fetch distribution --view` argument ([#182](https://github.com/doublezerofoundation/doublezero-offchain/pull/182))

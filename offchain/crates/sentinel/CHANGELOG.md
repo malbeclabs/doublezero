@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - fix(sentinel): retry on conn reset, one more time [#184](https://github.com/doublezerofoundation/doublezero-offchain/pull/184)
+- move binary from /usr/local/bin/ to /usr/bin to comply with package management standards ([#187](https://github.com/doublezerofoundation/doublezero-offchain/pull/187))
 
 ## [0.2.1](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/sentinel/v0.2.1) - 2025-11-04
 

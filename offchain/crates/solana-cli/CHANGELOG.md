@@ -7,9 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-solana/v0.2.1) - 2025-11-11
+
 - feat(solana-cli): add `revenue-distribution fetch distribution --view` argument ([#182](https://github.com/doublezerofoundation/doublezero-offchain/pull/182))
 - add `revenue-distribution harvest-2` command ([#180](hhttps://github.com/doublezerofoundation/doublezero-offchain/pull/180))
 - add `revenue-distribution relay distribute-rewards` command ([#173](https://github.com/doublezerofoundation/doublezero-offchain/pull/173))
+- move binary from /usr/local/bin/ to /usr/bin to comply with package management standards ([#187](https://github.com/doublezerofoundation/doublezero-offchain/pull/187))
+
 
 ## [0.2.0](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-solana/v0.2.0) - 2025-10-22
 - fixed identity search in Solana leader schedule ([#166](https://github.com/doublezerofoundation/doublezero-offchain/pull/166))

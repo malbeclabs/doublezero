@@ -11,7 +11,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/doublezero-solana-validator-debt
+ExecStart=/usr/bin/doublezero-solana-validator-debt
 Restart=on-failure
 
 [Install]

@@ -11,7 +11,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/doublezero-contributor-rewards
+ExecStart=/usr/bin/doublezero-contributor-rewards
 Restart=on-failure
 
 [Install]

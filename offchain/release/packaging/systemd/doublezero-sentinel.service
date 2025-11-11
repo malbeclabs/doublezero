@@ -11,7 +11,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/doublezero-sentinel
+ExecStart=/usr/bin/doublezero-sentinel
 Restart=on-failure
 
 [Install]

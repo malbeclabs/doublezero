@@ -21,7 +21,7 @@ pub struct CreateDeviceInterfaceCliCommand {
     #[arg(value_parser = validate_iface, required = true)]
     pub name: String,
     /// Interface sub type
-    #[arg(long, default_value = "None")]
+    #[arg(long, default_value = "none")]
     pub sub_type: types::InterfaceSubType,
     /// Loopback type (if applicable)
     #[arg(long, default_value = "none")]

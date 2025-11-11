@@ -51,8 +51,8 @@ use doublezero_sdk::{
         link::{
             accept::AcceptLinkCommand, activate::ActivateLinkCommand,
             closeaccount::CloseAccountLinkCommand, create::CreateLinkCommand,
-            delete::DeleteLinkCommand, get::GetLinkCommand, list::ListLinkCommand,
-            reject::RejectLinkCommand, update::UpdateLinkCommand,
+            delete::DeleteLinkCommand, get::GetLinkCommand, latency::LatencyLinkCommand,
+            list::ListLinkCommand, reject::RejectLinkCommand, update::UpdateLinkCommand,
         },
         location::{
             create::CreateLocationCommand, delete::DeleteLocationCommand, get::GetLocationCommand,
@@ -86,6 +86,7 @@ use doublezero_sdk::{
             requestban::RequestBanUserCommand, update::UpdateUserCommand,
         },
     },
+    telemetry::LinkLatencyStats,
     DZClient, Device, DoubleZeroClient, Exchange, GetGlobalConfigCommand, GetGlobalStateCommand,
     GlobalConfig, GlobalState, Link, Location, MulticastGroup, User,
 };
@@ -93,6 +94,7 @@ use doublezero_serviceability::state::{
     accesspass::AccessPass, contributor::Contributor, programconfig::ProgramConfig,
 };
 use mockall::automock;
+use solana_client::rpc_config::RpcProgramAccountsConfig;
 use solana_sdk::{account::Account, pubkey::Pubkey, signature::Signature};
 use std::collections::HashMap;
 
@@ -112,6 +114,11 @@ pub trait CliCommand {
     fn get_epoch(&self) -> eyre::Result<u64>;
     fn get_logs(&self, pubkey: &Pubkey) -> eyre::Result<Vec<String>>;
     fn get_account(&self, pubkey: Pubkey) -> eyre::Result<Account>;
+    fn get_program_accounts(
+        &self,
+        program_id: &Pubkey,
+        config: RpcProgramAccountsConfig,
+    ) -> eyre::Result<Vec<(Pubkey, Account)>>;
 
     fn init_globalstate(&self, cmd: InitGlobalStateCommand) -> eyre::Result<Signature>;
     fn get_globalstate(&self, cmd: GetGlobalStateCommand) -> eyre::Result<(Pubkey, GlobalState)>;
@@ -182,6 +189,7 @@ pub trait CliCommand {
     fn update_link(&self, cmd: UpdateLinkCommand) -> eyre::Result<Signature>;
     fn delete_link(&self, cmd: DeleteLinkCommand) -> eyre::Result<Signature>;
     fn activate_link(&self, cmd: ActivateLinkCommand) -> eyre::Result<Signature>;
+    fn latency_link(&self, cmd: LatencyLinkCommand) -> eyre::Result<Vec<LinkLatencyStats>>;
     fn reject_link(&self, cmd: RejectLinkCommand) -> eyre::Result<Signature>;
     fn closeaccount_link(&self, cmd: CloseAccountLinkCommand) -> eyre::Result<Signature>;
 
@@ -306,6 +314,13 @@ impl CliCommand for CliCommandImpl<'_> {
     }
     fn get_account(&self, pubkey: Pubkey) -> eyre::Result<Account> {
         self.client.get_account(pubkey)
+    }
+    fn get_program_accounts(
+        &self,
+        program_id: &Pubkey,
+        config: RpcProgramAccountsConfig,
+    ) -> eyre::Result<Vec<(Pubkey, Account)>> {
+        self.client.get_program_accounts(program_id, config)
     }
 
     fn init_globalstate(&self, cmd: InitGlobalStateCommand) -> eyre::Result<Signature> {
@@ -470,6 +485,9 @@ impl CliCommand for CliCommandImpl<'_> {
         cmd.execute(self.client)
     }
     fn activate_link(&self, cmd: ActivateLinkCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn latency_link(&self, cmd: LatencyLinkCommand) -> eyre::Result<Vec<LinkLatencyStats>> {
         cmd.execute(self.client)
     }
     fn reject_link(&self, cmd: RejectLinkCommand) -> eyre::Result<Signature> {

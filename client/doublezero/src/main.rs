@@ -172,6 +172,7 @@ async fn main() -> eyre::Result<()> {
             LinkCommands::Update(args) => args.execute(&client, &mut handle),
             LinkCommands::List(args) => args.execute(&client, &mut handle),
             LinkCommands::Get(args) => args.execute(&client, &mut handle),
+            LinkCommands::Latency(args) => args.execute(&client, &mut handle),
             LinkCommands::Delete(args) => args.execute(&client, &mut handle),
         },
         Command::AccessPass(command) => match command.command {

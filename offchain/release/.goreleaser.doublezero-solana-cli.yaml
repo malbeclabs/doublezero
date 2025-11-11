@@ -51,7 +51,7 @@ nfpms:
     formats:
       - deb
       - rpm
-    bindir: /usr/local/bin
+    bindir: /usr/bin
     release: "1"
     section: default
     # NOTE: doublezero-solana-cli is not required to be a systemd service

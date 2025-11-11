@@ -50,7 +50,7 @@ nfpms:
     license: Apache 2.0
     formats:
       - deb
-    bindir: /usr/local/bin
+    bindir: /usr/bin
     release: 1
     section: default
     contents:

@@ -1,3 +1,4 @@
+
 /target
 
 # IDE
@@ -30,6 +31,7 @@ cache/
 *.bak
 *.txt
 *.log
+dist/
 
 # Local test data
 forked-accounts/

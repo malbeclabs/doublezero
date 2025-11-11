@@ -3,6 +3,8 @@
 All notable changes to this project will be documented in this file.
 
 ## Unreleased
+### Added
+- Validate AccessPass before client connection (CLI) ([#1356](https://github.com/malbeclabs/doublezero/issues/1356))
 
 - Onchain programs
     - Check if `accesspass.owner` is equal to system program ([malbeclabs/doublezero#2088](https://github.com/malbeclabs/doublezero/pull/2088))

@@ -1,0 +1,94 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema-pro.json
+# vim: set ts=2 sw=2 tw=0 fo=cnqoj
+
+version: 2
+
+project_name: doublezero-s3-uploader
+
+monorepo:
+  tag_prefix: s3-uploader/
+  dir: controlplane/s3-uploader
+
+builds:
+  - id: doublezero-s3-uploader
+    main: cmd/s3-uploader/main.go
+    binary: s3-uploader
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      -X main.version={{.Version}} -X main.commit={{.ShortCommit}} -X main.date={{.Date}}
+    goos:
+      - linux
+    goarch:
+      - amd64
+
+archives:
+  - id: s3_uploader_archive
+    formats: ['tar.gz']
+    ids: [doublezero-s3-uploader]
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+
+nfpms:
+  - id: doublezero-s3-uploader
+    package_name: doublezero-s3-uploader
+    ids: [doublezero-s3-uploader]
+    vendor: doublezero
+    homepage: doublezero.xyz
+    maintainer: Malbec Labs <dev@malbeclabs.com>
+    description: |-
+      DoubleZero S3 uploader for ARISTA EOS
+      Standalone utility for uploading files to S3 with automatic timestamping,
+      integrity verification, and retry logic.
+    license: Apache 2.0
+    formats:
+      - rpm
+    bindir: /mnt/flash
+    release: "1"
+    section: default
+    contents:
+      - src: controlplane/s3-uploader/example-config.toml
+        dst: /mnt/flash/s3_uploader_config.toml.example
+        type: config|noreplace
+        file_info:
+          mode: 0644
+      - src: controlplane/s3-uploader/scripts/upload-wrapper.sh
+        dst: /mnt/flash/upload-wrapper.sh
+        type: config|noreplace
+        file_info:
+          mode: 0755
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+release:
+  github:
+    owner: malbeclabs
+    name: doublezero
+  draft: false
+  replace_existing_artifacts: true
+
+announce:
+  slack:
+    enabled: true
+    message_template: "DoubleZero S3 Uploader {{.Tag}} has been released! Check it out at {{ .ReleaseURL }}"
+    channel: "#bots"
+
+git:
+  ignore_tags:
+    - s3-uploader/daily
+
+nightly:
+  publish_release: true
+  keep_single_release: true
+  version_template: '{{ incpatch .Version }}~git{{ .Env.BUILD_DATE }}.{{ .ShortCommit }}'
+  tag_name: 's3-uploader/daily'

@@ -162,7 +162,7 @@ func NewManager(ctx context.Context, cfg *ManagerConfig) (*Manager, error) {
 	}
 
 	log := cfg.Logger
-	log.Info("liveness: manager starting", "localAddr", udp.LocalAddr().String(), "txMin", cfg.TxMin, "rxMin", cfg.RxMin, "detectMult", cfg.DetectMult)
+	log.Info("liveness: manager starting", "localAddr", udp.LocalAddr().String(), "txMin", cfg.TxMin, "rxMin", cfg.RxMin, "detectMult", cfg.DetectMult, "passiveMode", cfg.PassiveMode)
 
 	ctx, cancel := context.WithCancel(ctx)
 	m := &Manager{
@@ -221,22 +221,22 @@ func (m *Manager) Err() chan error {
 // It optionally installs the route immediately in PassiveMode, then creates or
 // reuses a liveness Session and schedules immediate TX to begin handshake.
 func (m *Manager) RegisterRoute(r *routing.Route, iface string) error {
+	// Check that the route src and dst are valid IPv4 addresses.
+	if r.Src == nil || r.Dst.IP == nil {
+		return fmt.Errorf("error registering route: nil source or destination IP")
+	}
+	if r.Src.To4() == nil || r.Dst.IP.To4() == nil {
+		return fmt.Errorf("error registering route: non-IPv4 source (%s) or destination IP (%s)", r.Src.String(), r.Dst.IP.String())
+	}
+	srcIP := r.Src.To4().String()
+	dstIP := r.Dst.IP.To4().String()
+
 	if m.cfg.PassiveMode {
 		// In passive-mode we still update the kernel immediately (caller’s policy),
 		// while also running liveness for observability.
 		if err := m.cfg.Netlinker.RouteAdd(r); err != nil {
 			return fmt.Errorf("error registering route: %v", err)
 		}
-	}
-
-	// Skip routes with nil source or destination IP.
-	if r.Src == nil || r.Dst.IP == nil {
-		return fmt.Errorf("error registering route: nil source or destination IP")
-	}
-
-	// Skip routes that are not IPv4.
-	if r.Src.To4() == nil || r.Dst.IP.To4() == nil {
-		return fmt.Errorf("error registering route: non-IPv4 source (%s) or destination IP (%s)", r.Src.String(), r.Dst.IP.String())
 	}
 
 	peerAddr, err := net.ResolveUDPAddr("udp", peerAddrFor(r, m.cfg.Port))
@@ -249,7 +249,7 @@ func (m *Manager) RegisterRoute(r *routing.Route, iface string) error {
 	m.desired[k] = r
 	m.mu.Unlock()
 
-	peer := Peer{Interface: iface, LocalIP: r.Src.To4().String(), PeerIP: r.Dst.IP.To4().String()}
+	peer := Peer{Interface: iface, LocalIP: srcIP, PeerIP: dstIP}
 	m.log.Info("liveness: registering route", "route", r.String(), "peerAddr", peerAddr)
 
 	m.mu.Lock()
@@ -284,6 +284,16 @@ func (m *Manager) RegisterRoute(r *routing.Route, iface string) error {
 // WithdrawRoute removes interest in r via iface. It tears down the session,
 // marks it not managed (alive=false), and withdraws the route if needed.
 func (m *Manager) WithdrawRoute(r *routing.Route, iface string) error {
+	// Check that the route src and dst are valid IPv4 addresses.
+	if r.Src == nil || r.Dst.IP == nil {
+		return fmt.Errorf("error withdrawing route: nil source or destination IP")
+	}
+	if r.Src.To4() == nil || r.Dst.IP.To4() == nil {
+		return fmt.Errorf("error withdrawing route: non-IPv4 source (%s) or destination IP (%s)", r.Src.String(), r.Dst.IP.String())
+	}
+	srcIP := r.Src.To4().String()
+	dstIP := r.Dst.IP.To4().String()
+
 	m.log.Info("liveness: withdrawing route", "route", r.String(), "iface", iface)
 
 	if m.cfg.PassiveMode {
@@ -293,16 +303,6 @@ func (m *Manager) WithdrawRoute(r *routing.Route, iface string) error {
 		}
 	}
 
-	// Skip routes with nil source or destination IP.
-	if r.Src == nil || r.Dst.IP == nil {
-		return fmt.Errorf("error withdrawing route: nil source or destination IP")
-	}
-
-	// Skip routes that are not IPv4.
-	if r.Src.To4() == nil || r.Dst.IP.To4() == nil {
-		return fmt.Errorf("error withdrawing route: non-IPv4 source (%s) or destination IP (%s)", r.Src.String(), r.Dst.IP.String())
-	}
-
 	k := routeKeyFor(iface, r)
 	m.mu.Lock()
 	delete(m.desired, k)
@@ -310,7 +310,7 @@ func (m *Manager) WithdrawRoute(r *routing.Route, iface string) error {
 	delete(m.installed, k)
 	m.mu.Unlock()
 
-	peer := Peer{Interface: iface, LocalIP: r.Src.To4().String(), PeerIP: r.Dst.IP.To4().String()}
+	peer := Peer{Interface: iface, LocalIP: srcIP, PeerIP: dstIP}
 
 	// Mark session no longer managed and drop it from tracking.
 	m.mu.Lock()
@@ -336,15 +336,15 @@ func (m *Manager) AdminDownAll() {
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	for _, s := range m.sessions {
-		s.mu.Lock()
-		prev := s.state
-		s.state = StateAdminDown
-		s.detectDeadline = time.Time{} // stop detect while AdminDown
-		s.mu.Unlock()
-		if prev != StateAdminDown {
+	for _, sess := range m.sessions {
+		sess.mu.Lock()
+		prevState := sess.state
+		sess.state = StateAdminDown
+		sess.detectDeadline = time.Time{} // stop detect while AdminDown
+		sess.mu.Unlock()
+		if prevState != StateAdminDown {
 			// Withdraw once per session when entering AdminDown.
-			go m.onSessionDown(s)
+			go m.onSessionDown(sess)
 		}
 	}
 }
@@ -442,7 +442,10 @@ func (m *Manager) onSessionUp(s *Session) {
 	m.installed[rk] = true
 	m.mu.Unlock()
 	if !m.cfg.PassiveMode {
-		_ = m.cfg.Netlinker.RouteAdd(r)
+		err := m.cfg.Netlinker.RouteAdd(r)
+		if err != nil {
+			m.log.Error("liveness: error adding route on session up", "error", err, "route", r.String())
+		}
 	}
 	m.log.Info("liveness: session up", "peer", s.peer.String(), "route", s.route.String())
 }
@@ -457,7 +460,10 @@ func (m *Manager) onSessionDown(s *Session) {
 	m.mu.Unlock()
 	if was && r != nil {
 		if !m.cfg.PassiveMode {
-			_ = m.cfg.Netlinker.RouteDelete(r)
+			err := m.cfg.Netlinker.RouteDelete(r)
+			if err != nil {
+				m.log.Error("liveness: error deleting route on session down", "error", err, "route", r.String())
+			}
 		}
 		m.log.Info("liveness: session down", "peer", s.peer.String(), "route", s.route.String())
 	}

@@ -250,7 +250,7 @@ func (m *Manager) RegisterRoute(r *routing.Route, iface string) error {
 	m.mu.Unlock()
 
 	peer := Peer{Interface: iface, LocalIP: srcIP, PeerIP: dstIP}
-	m.log.Info("liveness: registering route", "route", r.String(), "peerAddr", peerAddr)
+	m.log.Info("liveness: registering route", "route", r.String(), "peerAddr", peerAddr.String())
 
 	m.mu.Lock()
 	if _, ok := m.sessions[peer]; ok {
@@ -303,21 +303,21 @@ func (m *Manager) WithdrawRoute(r *routing.Route, iface string) error {
 		}
 	}
 
-	k := routeKeyFor(iface, r)
+	rk := routeKeyFor(iface, r)
 	m.mu.Lock()
-	delete(m.desired, k)
-	wasInstalled := m.installed[k]
-	delete(m.installed, k)
+	delete(m.desired, rk)
+	wasInstalled := m.installed[rk]
+	delete(m.installed, rk)
 	m.mu.Unlock()
 
 	peer := Peer{Interface: iface, LocalIP: srcIP, PeerIP: dstIP}
 
 	// Mark session no longer managed and drop it from tracking.
 	m.mu.Lock()
-	if s := m.sessions[peer]; s != nil {
-		s.mu.Lock()
-		s.alive = false
-		s.mu.Unlock()
+	if sess := m.sessions[peer]; sess != nil {
+		sess.mu.Lock()
+		sess.alive = false
+		sess.mu.Unlock()
 	}
 	delete(m.sessions, peer)
 	m.mu.Unlock()
@@ -388,8 +388,8 @@ func (m *Manager) HandleRx(ctrl *ControlPacket, peer Peer) {
 	now := time.Now()
 
 	m.mu.Lock()
-	s := m.sessions[peer]
-	if s == nil {
+	sess := m.sessions[peer]
+	if sess == nil {
 		// Throttle warnings for packets from unknown peers to avoid log spam.
 		m.unkownPeerErrWarnMu.Lock()
 		if m.unkownPeerErrWarnLast.IsZero() || time.Since(m.unkownPeerErrWarnLast) >= m.unkownPeerErrWarnEvery {
@@ -404,24 +404,24 @@ func (m *Manager) HandleRx(ctrl *ControlPacket, peer Peer) {
 	}
 
 	// Apply RX to the session FSM; only act when state actually changes.
-	changed := s.HandleRx(now, ctrl)
+	changed := sess.HandleRx(now, ctrl)
 
 	if changed {
-		switch s.state {
+		switch sess.state {
 		case StateUp:
-			go m.onSessionUp(s)
-			m.sched.scheduleDetect(now, s) // keep detect armed while Up
+			go m.onSessionUp(sess)
+			m.sched.scheduleDetect(now, sess) // keep detect armed while Up
 		case StateInit:
-			m.sched.scheduleDetect(now, s) // arm detect; next >=Init promotes to Up
+			m.sched.scheduleDetect(now, sess) // arm detect; next >=Init promotes to Up
 		case StateDown:
 			// Transitioned to Down; withdraw and do NOT re-arm detect.
-			go m.onSessionDown(s)
+			go m.onSessionDown(sess)
 		}
 	} else {
 		// No state change: just keep detect ticking for active states.
-		switch s.state {
+		switch sess.state {
 		case StateUp, StateInit:
-			m.sched.scheduleDetect(now, s)
+			m.sched.scheduleDetect(now, sess)
 		default:
 			// Down/AdminDown: do nothing; avoid noisy logs.
 		}
@@ -431,41 +431,41 @@ func (m *Manager) HandleRx(ctrl *ControlPacket, peer Peer) {
 
 // onSessionUp installs the route if it is desired and not already installed.
 // In PassiveMode, install was already done at registration time.
-func (m *Manager) onSessionUp(s *Session) {
-	rk := routeKeyFor(s.peer.Interface, s.route)
+func (m *Manager) onSessionUp(sess *Session) {
+	rk := routeKeyFor(sess.peer.Interface, sess.route)
 	m.mu.Lock()
-	r := m.desired[rk]
-	if r == nil || m.installed[rk] {
+	route := m.desired[rk]
+	if route == nil || m.installed[rk] {
 		m.mu.Unlock()
 		return
 	}
 	m.installed[rk] = true
 	m.mu.Unlock()
 	if !m.cfg.PassiveMode {
-		err := m.cfg.Netlinker.RouteAdd(r)
+		err := m.cfg.Netlinker.RouteAdd(route)
 		if err != nil {
-			m.log.Error("liveness: error adding route on session up", "error", err, "route", r.String())
+			m.log.Error("liveness: error adding route on session up", "error", err, "route", route.String())
 		}
 	}
-	m.log.Info("liveness: session up", "peer", s.peer.String(), "route", s.route.String())
+	m.log.Info("liveness: session up", "peer", sess.peer.String(), "route", sess.route.String())
 }
 
 // onSessionDown withdraws the route if currently installed (unless PassiveMode).
-func (m *Manager) onSessionDown(s *Session) {
-	rk := routeKeyFor(s.peer.Interface, s.route)
+func (m *Manager) onSessionDown(sess *Session) {
+	rk := routeKeyFor(sess.peer.Interface, sess.route)
 	m.mu.Lock()
-	r := m.desired[rk]
-	was := m.installed[rk]
+	route := m.desired[rk]
+	wasInstalled := m.installed[rk]
 	m.installed[rk] = false
 	m.mu.Unlock()
-	if was && r != nil {
+	if wasInstalled && route != nil {
 		if !m.cfg.PassiveMode {
-			err := m.cfg.Netlinker.RouteDelete(r)
+			err := m.cfg.Netlinker.RouteDelete(route)
 			if err != nil {
-				m.log.Error("liveness: error deleting route on session down", "error", err, "route", r.String())
+				m.log.Error("liveness: error deleting route on session down", "error", err, "route", route.String())
 			}
 		}
-		m.log.Info("liveness: session down", "peer", s.peer.String(), "route", s.route.String())
+		m.log.Info("liveness: session down", "peer", sess.peer.String(), "route", sess.route.String())
 	}
 }
 

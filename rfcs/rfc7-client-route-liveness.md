@@ -27,7 +27,7 @@ Per-route Liveness Sessions close this gap by continuously validating bidirectio
 - **Transmit Interval** — Minimum spacing between consecutive outbound control packets.
 - **Detect Multiplier** — Number of missed receive intervals tolerated before declaring failure.
 - **Detection Time** — Maximum time without receiving a valid packet before declaring the session `Down`; calculated as `DetectMult × max(peer_desired_tx, local_required_rx)`.
-- **Session Binding** — Requirement that packets for a session arrive on the expected `(interface, local address, destination)` path.
+- **Session Binding** — Requirement that packets for a session arrive on the expected `(interface, local address, peer address)` path.
 - **Liveness Manager** — Component that owns the UDP socket, session registry, and protocol coordination.
 - **Liveness Scheduler** — Timer subsystem that drives transmit and detection events across all sessions.
 - **Liveness Receiver** — Handler that processes inbound control packets and updates the corresponding session state.
@@ -46,7 +46,7 @@ Per-route Liveness Sessions close this gap by continuously validating bidirectio
 
 Each DoubleZero client maintains one UDP socket on 44880, multiplexing all per-route Liveness Sessions.
 
-When an eligible route is learned, the Liveness Manager (LM) creates a session in `Down`, assigns a random local discriminator, and arms transmit/detect timers. Sessions are symmetric—both peers send fixed-size control packets over the bound path `(interface, local address, destination)`.
+When an eligible route is learned, the Liveness Manager (LM) creates a session in `Down`, assigns a random local discriminator, and arms transmit/detect timers. Sessions are symmetric—both peers send fixed-size control packets over the bound path `(interface, local address, peer address)`.
 
 A route is installed when its session enters `Up`, and withdrawn locally on `Down`. BGP remains established. State changes flow LM → Route Reader-Writer (RRW) → Netlink.
 
@@ -299,16 +299,16 @@ $ curl --unix-socket /var/run/doublezerod/doublezerod.sock http://localhost/stat
   {
     "service_type": "IBRL",
     "timestamp": "2025-11-08T12:34:56Z",
-    "tunnel_src": "9.169.90.110",
-    "destination": "203.0.113.42/32",
+    "local_ip": "9.169.90.110",
+    "peer_ip": "203.0.113.42",
     "status": "DOWN",
     "network": "devnet"
   },
   {
     "service_type": "IBRL",
     "timestamp": "2025-11-08T12:34:56Z",
-    "tunnel_src": "9.169.90.110",
-    "destination": "192.0.2.5/32",
+    "local_ip": "9.169.90.110",
+    "peer_ip": "192.0.2.5",
     "status": "UP",
     "network": "devnet"
   }
@@ -322,15 +322,15 @@ The client CLI MUST expose per-route liveness status using the daemon API:
 ```
 $ doublezero status --routes
 
-Service Type   Tunnel Src     Destination        Status   Network  Timestamp
--------------- -------------- -----------------  -------  -------- -------------------
-IBRL           9.169.90.110   203.0.113.42/32    DOWN     devnet   2025-11-08T12:00:00Z
-IBRL           9.169.90.110   198.51.100.14/32   DOWN     devnet   2025-11-08T12:00:00Z
-IBRL           9.169.90.110   192.0.2.18/32      UP       devnet   2025-11-08T12:00:00Z
-IBRL           9.169.90.110   198.51.100.8/32    UP       devnet   2025-11-08T12:00:00Z
-IBRL           9.169.90.110   203.0.113.7/32     UP       devnet   2025-11-08T12:00:00Z
-IBRL           9.169.90.110   198.51.100.2/32    UP       devnet   2025-11-08T12:00:00Z
-IBRL           9.169.90.110   192.0.2.5/32       UP       devnet   2025-11-08T12:00:00Z
+Service Type   Local IP       Peer IP         Status   Network  Timestamp
+-------------- -------------- --------------  -------  -------- -------------------
+IBRL           9.169.90.110   203.0.113.42    DOWN     devnet   2025-11-08T12:00:00Z
+IBRL           9.169.90.110   198.51.100.14   DOWN     devnet   2025-11-08T12:00:00Z
+IBRL           9.169.90.110   192.0.2.18      UP       devnet   2025-11-08T12:00:00Z
+IBRL           9.169.90.110   198.51.100.8    UP       devnet   2025-11-08T12:00:00Z
+IBRL           9.169.90.110   203.0.113.7     UP       devnet   2025-11-08T12:00:00Z
+IBRL           9.169.90.110   198.51.100.2    UP       devnet   2025-11-08T12:00:00Z
+IBRL           9.169.90.110   192.0.2.5       UP       devnet   2025-11-08T12:00:00Z
 ```
 
 ## Impact
@@ -417,7 +417,7 @@ IBRL           9.169.90.110   192.0.2.5/32       UP       devnet   2025-11-08T12
 
 - **Source validation and binding**
 
-    Incoming packets MUST be accepted only if their `(source IP, destination IP, interface)` triple matches a known route bound to an active session.
+    Incoming packets MUST be accepted only if their `(local IP, peer IP, interface)` triple matches a known route bound to an active session.
 
     Packets received on unexpected interfaces, addresses, or ports **MUST** be silently discarded. This prevents off-path spoofing and enforces strict data-plane symmetry between transmit and receive paths.
 

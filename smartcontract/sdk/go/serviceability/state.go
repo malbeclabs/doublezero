@@ -156,8 +156,8 @@ const (
 	InterfaceTypeInvalid InterfaceType = iota
 	InterfaceTypeLoopback
 	InterfaceTypePhysical
-	InterfaceTypeCyoa
-	InterfaceTypeDia
+	InterfaceTypeCYOA
+	InterfaceTypeDIA
 )
 
 func (i InterfaceType) String() string {

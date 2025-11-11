@@ -329,26 +329,6 @@ func (m *Manager) WithdrawRoute(r *routing.Route, iface string) error {
 	return nil
 }
 
-// AdminDownAll forces all sessions to AdminDown (operator action).
-// It halts detection per session and triggers a one-time withdraw.
-func (m *Manager) AdminDownAll() {
-	m.log.Info("liveness: admin down all")
-
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	for _, sess := range m.sessions {
-		sess.mu.Lock()
-		prevState := sess.state
-		sess.state = StateAdminDown
-		sess.detectDeadline = time.Time{} // stop detect while AdminDown
-		sess.mu.Unlock()
-		if prevState != StateAdminDown {
-			// Withdraw once per session when entering AdminDown.
-			go m.onSessionDown(sess)
-		}
-	}
-}
-
 // LocalAddr exposes the bound UDP address if available (or nil if closed/unset).
 func (m *Manager) LocalAddr() *net.UDPAddr {
 	m.mu.Lock()

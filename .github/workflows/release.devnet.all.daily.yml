@@ -36,9 +36,11 @@ jobs:
             playbook: playbooks/qa_agents.yml
           - component: sentinel
             playbook: playbooks/sentinels.yml
+            deploy_only: true
     with:
       component: ${{ matrix.component }}
       playbook: ${{ matrix.playbook }}
+      deploy_only: ${{ matrix.deploy_only || false }}
     secrets: inherit
     permissions:
       contents: write

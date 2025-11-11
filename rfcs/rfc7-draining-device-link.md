@@ -36,10 +36,9 @@ The processes described in table 1 are fragile for a number of reasons.  Having 
 
 * Drained: the state where a DZD or link is removed from the active network topology.  A drained state could be applied to a single link (WAN or DZX), one or more CYOA interfaces, or to a DZD in its entirety
 * Draining: the process of moving a link, interface or DZD from activated to drained states
-* edge_status: field applied to CYOA interface to represent: active/hard_drained/soft_drained
+* `edge.status`: field applied to CYOA interface to represent: active/hard_drained/soft_drained
 * Hard-drained: a link is removed from routing or a DZD is fully drained of traffic
 * Soft-drained: a link IS-IS metric is set to 1,000,000, forcing traffic to use alternative paths only if available.  A soft-drained link will still be used by DZ users if it is the only path between two users
-* traffic_status: field applied to link to represent: active/hard_drained/soft_drained
 * Undraining: the process that reverses the draining process
 
 ## Alternatives Considered
@@ -52,56 +51,49 @@ The processes described in table 1 are fragile for a number of reasons.  Having 
 
 ### WAN Link
 
-* Define a new traffic_status field as part of the smart-contract definition of a link.
-  * traffic_status can take on 3 states:
-    * active:
-      * Steady state
-      * Available to forward traffic
-      * IS-IS metric based on delay
-    * hard_drained:
-      * A link is removed from routing 
-      * IS-IS disabled by removing `isis enable 1` on interfaces
-      * Use-case: link maintenance or outage without alternatives available
-    * soft_drained:
-      * A link is deprioritized 
-      * IS-IS metric is increased to 1,000,000: `isis metric 1000000`
-      * Use-case: link maintenance or outage with alternatives (primary and secondary links) available
+* Update `link.status` field to include the following states: 
+  * activated (existing):
+    * Steady state
+    * Available to forward traffic
+    * IS-IS metric based on delay
+  * hard_drained (new):
+    * A link is removed from routing 
+    * IS-IS disabled by removing `isis enable 1` on interfaces
+    * Use-case: link maintenance or outage without alternatives available
+  * soft_drained (new):
+    * A link is deprioritized 
+    * IS-IS metric is increased to 1,000,000: `isis metric 1000000`
+    * Use-case: link maintenance or outage with alternatives (primary and secondary links) available
 
 * Define a new delay_override field as part of the smart-contract definition of a link.
   * Supports an operator-defined mechanism to affect the use of a link
   * More granular control than soft_drained or hard_drained states
   * Is set to 0 by default
-  * Is set to 1,000,000 when link in soft_drained state
+  * Is set to 1000 when link in soft_drained state
   * Use-cases: 
     * sets metric for soft_drained state
     * link demoted from primary to secondary link, but is still preferred over tertiary link
 * CLI Commands:
-  * `doublezero link --pubkey PUBKEY drained [hard|soft|undrain]`
-  * `doublezero link --pubkey PUBKEY delay-ms-override [0.01 <= X <= 1000]`
+  * `doublezero link --pubkey PUBKEY --status [hard_drained|soft_drained|activated]`
+  * `doublezero link --pubkey PUBKEY --delay-override-ms [0.01 <= X <= 1000]`
 
 ```mermaid
 graph LR
-    ACTIVE[Active] -->|Maintenance Started| HARD_DRAINED[Hard Drained]
-    ACTIVE -->|Link Depriortized| SOFT_DRAINED[Soft Drained] 
-    ACTIVE -->|delay_override set| ACTIVE_OVERRIDE[Active Override]  
+    ACTIVATED[Activated] -->|Maintenance Started| HARD_DRAINED[Hard Drained]
+    ACTIVATED -->|Link Prioritized/Depriortized| SOFT_DRAINED[Soft Drained] 
     HARD_DRAINED -->|Maintenance Completed| SOFT_DRAINED 
-    SOFT_DRAINED -->|Link Normalized/Routing Stable| WAO[Was in Active Override?]
-    WAO -->|No| ACTIVE
-    WAO -->|Yes| ACTIVE_OVERRIDE
-    ACTIVE_OVERRIDE -->|delay_override unset| ACTIVE
-    ACTIVE_OVERRIDE -->|Maintenance Started| HARD_DRAINED  
-
+    SOFT_DRAINED -->|Link Normalized/Routing Stable| ACTIVATED
 ```
 
 ### DZX Link
 
-* Leverage same traffic_status and delay_override fields described in WAN Link section
-* Update smart-contract to allow either A-Side or Z-Side contributors to trigger traffic_status transitions
+* Leverage same `link.status`and delay_override fields described in WAN Link section
+* Update smart-contract to allow either A-Side or Z-Side contributors to trigger `link.status` transitions
 
 ### CYOA Interface
 
-* Define a new edge_status field as part of the smart-contract definition of a CYOA interface (CYOA interface concept to be defined).
-  * edge_status can take on 3 states:
+* Define a new `edge.status` field as part of the smart-contract definition of a CYOA interface (CYOA interface concept to be defined).
+  * `edge.status` can take on 3 states:
     * active - steady state, available for users to connect via
     * hard_drained:
       * `max-users = 0`
@@ -115,31 +107,45 @@ graph LR
   * `doublezero device interface drain PUBKEY [hard|soft|undrain]`
 ```mermaid
 graph LR
-    ACTIVE[Active] -->|Maintenance Started - CYOA Up| SOFT_DRAINED[Soft Drained] 
-    ACTIVE -->|Maintenance Started - CYOA Down| HARD_DRAINED[Hard Drained]
+    ACTIVATED[activated] -->|Maintenance Started - CYOA Up| SOFT_DRAINED[Soft Drained] 
+    ACTIVATED -->|Maintenance Started - CYOA Down| HARD_DRAINED[Hard Drained]
     HARD_DRAINED -->|Maintenance Completed - CYOA Down| SOFT_DRAINED
-    SOFT_DRAINED -->|CYOA Interface Normalized/Routing Stable| ACTIVE
+    SOFT_DRAINED -->|CYOA Interface Normalized/Routing Stable| ACTIVATED
 ```
+
+📝 **Note**  
+Draining a CYOA interface temporarily disconnects users, they will reconnect to the same DZD on undraining unless they choose to reconnect to a different DZD during the period when the CYOA interface is drained.
 
 ### DZD
 
 * A DZD is drained if all WAN and DZX links, and CYOA interfaces, are drained
-  * traffic_status:
+  * `link.status`:
     * Each link is set to `hard_drained`
-  * edge_status: `soft_drained` or `hard_drained`
+  * `edge.status`: `soft_drained` or `hard_drained`
   * Use-case: when performing configuration changes outside of DZ protocol
 
 ```mermaid
 graph LR
-    ACTIVE[Active] -->|Maintenance Started Hard| LINKS_HARD_DRAINED[Links Hard Drained]
-    ACTIVE[Active] -->|Maintenance Started Hard| CYOA_HARD_DRAINED[CYOA Interface Hard Drained]
+    ACTIVATED[Activated] -->|Maintenance Started Hard Drained| LINKS_HARD_DRAINED[Links Hard Drained]
+    ACTIVATED -->|Maintenance Started Hard Drained| CYOA_HARD_DRAINED[CYOA Interface Hard Drained]
     LINKS_HARD_DRAINED --> DEVICE_DRAINED[Device Hard Drained]
     CYOA_HARD_DRAINED --> DEVICE_DRAINED[Device Hard Drained]
     DEVICE_DRAINED --> |Maintenance Completed| LINKS_SOFT_DRAINED[Links Soft Drained]
     DEVICE_DRAINED --> |Maintenance Completed| CYOA_SOFT_DRAINED[CYOA Interface Soft Drained]
-    LINKS_SOFT_DRAINED --> |Link Normalized/Routing Stable| ACTIVE
-    CYOA_SOFT_DRAINED --> |CYOA Interface Normalized/Routing Stable| ACTIVE                  
+    LINKS_SOFT_DRAINED --> |Link Normalized/Routing Stable| ACTIVATED
+    CYOA_SOFT_DRAINED --> |CYOA Interface Normalized/Routing Stable| ACTIVATED                  
 ```
+```mermaid
+graph LR
+    ACTIVATED[Activated] -->|Maintenance Started Hard Drained| LINKS_HARD_DRAINED[Links Hard Drained]
+    ACTIVATED -->|Maintenance Started Soft Drained| CYOA_SOFT_DRAINED[CYOA Interface Soft Drained]
+    LINKS_HARD_DRAINED --> DEVICE_DRAINED[Device Hard Drained]
+    CYOA_SOFT_DRAINED --> DEVICE_DRAINED[Device Hard Drained]
+    DEVICE_DRAINED --> |Maintenance Completed| LINKS_SOFT_DRAINED[Links Soft Drained]
+    LINKS_SOFT_DRAINED --> |Links Normalized/Routing Stable| ACTIVATED
+    CYOA_SOFT_DRAINED --> |CYOA Interface Normalized/Routing Stable| ACTIVATED                  
+```
+
 
 ## Impact
 

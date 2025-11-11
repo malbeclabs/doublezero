@@ -2,9 +2,16 @@ use crate::{
     error::DoubleZeroError,
     globalstate::globalstate_get_next,
     helper::account_write,
-    state::{accounttype::AccountType, contributor::Contributor, device::*},
+    state::{
+        accounttype::AccountType,
+        contributor::Contributor,
+        device::*,
+        interface::{
+            CurrentInterfaceVersion, Interface, InterfaceStatus, InterfaceType, LoopbackType,
+        },
+    },
 };
-use borsh::BorshSerialize;
+use borsh::{BorshDeserialize, BorshSerialize};
 use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
 use doublezero_program_common::{types::NetworkV4, validate_iface};
@@ -16,12 +23,45 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
+#[repr(u8)]
+#[derive(BorshDeserialize, BorshSerialize, Debug, PartialEq, Clone, Copy, Default)]
+#[borsh(use_discriminant = true)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum InterfaceSubType {
+    #[default]
+    None = 0,
+    CYOA = 1,
+    DIA = 2,
+}
+
+impl From<u8> for InterfaceSubType {
+    fn from(value: u8) -> Self {
+        match value {
+            0 => InterfaceSubType::None,
+            1 => InterfaceSubType::CYOA,
+            2 => InterfaceSubType::DIA,
+            _ => InterfaceSubType::None, // Default case
+        }
+    }
+}
+
+impl fmt::Display for InterfaceSubType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            InterfaceSubType::None => write!(f, "none"),
+            InterfaceSubType::CYOA => write!(f, "cyoa"),
+            InterfaceSubType::DIA => write!(f, "dia"),
+        }
+    }
+}
+
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
 pub struct DeviceInterfaceCreateArgs {
     pub name: String,
     pub loopback_type: LoopbackType,
     pub vlan_id: u16,
     pub user_tunnel_endpoint: bool,
+    pub interface_sub_type: InterfaceSubType,
 }
 
 impl fmt::Debug for DeviceInterfaceCreateArgs {
@@ -80,6 +120,12 @@ pub fn process_create_device_interface(
     let mut interface_type = InterfaceType::Physical;
     if name.starts_with("Loopback") {
         interface_type = InterfaceType::Loopback;
+    }
+
+    if value.interface_sub_type == InterfaceSubType::CYOA {
+        interface_type = InterfaceType::CYOA;
+    } else if value.interface_sub_type == InterfaceSubType::DIA {
+        interface_type = InterfaceType::DIA;
     }
 
     let mut device: Device = Device::try_from(device_account)?;

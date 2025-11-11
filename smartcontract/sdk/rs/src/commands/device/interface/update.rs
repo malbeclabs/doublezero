@@ -5,8 +5,8 @@ use crate::{
 use doublezero_program_common::types::NetworkV4;
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
-    processors::device::interface::DeviceInterfaceUpdateArgs,
-    state::device::{InterfaceStatus, LoopbackType},
+    processors::device::interface::{DeviceInterfaceUpdateArgs, InterfaceSubType},
+    state::interface::{InterfaceStatus, LoopbackType},
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
@@ -14,6 +14,7 @@ use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature}
 pub struct UpdateDeviceInterfaceCommand {
     pub pubkey: Pubkey,
     pub name: String,
+    pub interface_sub_type: Option<InterfaceSubType>,
     pub loopback_type: Option<LoopbackType>,
     pub vlan_id: Option<u16>,
     pub user_tunnel_endpoint: Option<bool>,
@@ -36,6 +37,7 @@ impl UpdateDeviceInterfaceCommand {
         client.execute_transaction(
             DoubleZeroInstruction::UpdateDeviceInterface(DeviceInterfaceUpdateArgs {
                 name: self.name.clone(),
+                interface_sub_type: self.interface_sub_type,
                 loopback_type: self.loopback_type,
                 vlan_id: self.vlan_id,
                 user_tunnel_endpoint: self.user_tunnel_endpoint,
@@ -114,6 +116,7 @@ mod tests {
                         status: None,
                         ip_net: None,
                         node_segment_idx: None,
+                        interface_sub_type: None,
                     },
                 )),
                 predicate::eq(vec![
@@ -132,6 +135,7 @@ mod tests {
             user_tunnel_endpoint: None,
             status: None,
             ip_net: None,
+            interface_sub_type: None,
             node_segment_idx: None,
         };
 

@@ -64,7 +64,7 @@ mod tests {
     use crate::tests::utils::create_test_client;
     use doublezero_program_common::types::NetworkV4List;
     use doublezero_sdk::{AccountType, CurrentInterfaceVersion, Device, DeviceStatus};
-    use doublezero_serviceability::state::device::{
+    use doublezero_serviceability::state::interface::{
         Interface, InterfaceStatus, InterfaceType, LoopbackType,
     };
     use mockall::predicate;

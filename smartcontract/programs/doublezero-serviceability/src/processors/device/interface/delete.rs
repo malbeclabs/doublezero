@@ -2,7 +2,12 @@ use crate::{
     error::DoubleZeroError,
     globalstate::globalstate_get,
     helper::*,
-    state::{accounttype::AccountType, contributor::Contributor, device::*},
+    state::{
+        accounttype::AccountType,
+        contributor::Contributor,
+        device::*,
+        interface::{Interface, InterfaceStatus},
+    },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;

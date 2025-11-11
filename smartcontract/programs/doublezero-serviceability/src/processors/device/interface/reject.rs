@@ -1,6 +1,14 @@
 use core::fmt;
 
-use crate::{error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::device::*};
+use crate::{
+    error::DoubleZeroError,
+    globalstate::globalstate_get,
+    helper::*,
+    state::{
+        device::*,
+        interface::{Interface, InterfaceStatus},
+    },
+};
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 #[cfg(test)]

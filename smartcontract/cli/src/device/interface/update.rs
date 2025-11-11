@@ -20,6 +20,9 @@ pub struct UpdateDeviceInterfaceCliCommand {
     /// Interface name
     #[arg(value_parser = validate_iface, required = true)]
     pub name: String,
+    /// Interface sub type
+    #[arg(long)]
+    pub sub_type: Option<types::InterfaceSubType>,
     /// Loopback type (if applicable)
     #[arg(long)]
     pub loopback_type: Option<types::LoopbackType>,
@@ -64,13 +67,11 @@ impl UpdateDeviceInterfaceCliCommand {
             .map_err(|e| eyre::eyre!(e.to_string()))?;
 
         if let Some(loopback_type) = self.loopback_type.clone() {
-            interface.loopback_type = loopback_type.into();
+            interface.loopback_type = (loopback_type as u8).into();
         }
 
-        if interface.interface_type
-            == doublezero_serviceability::state::device::InterfaceType::Loopback
-            && interface.loopback_type
-                == doublezero_serviceability::state::device::LoopbackType::None
+        if interface.interface_type == doublezero_sdk::InterfaceType::Loopback
+            && interface.loopback_type == doublezero_sdk::LoopbackType::None
         {
             return Err(eyre::eyre!(
                 "Loopback type must be specified for Loopback interface type"
@@ -78,9 +79,9 @@ impl UpdateDeviceInterfaceCliCommand {
         }
 
         if interface.interface_type
-            == doublezero_serviceability::state::device::InterfaceType::Physical
+            == doublezero_serviceability::state::interface::InterfaceType::Physical
             && interface.loopback_type
-                != doublezero_serviceability::state::device::LoopbackType::None
+                != doublezero_serviceability::state::interface::LoopbackType::None
         {
             return Err(eyre::eyre!(
                 "Loopback type must be None for Physical interface type"
@@ -90,6 +91,7 @@ impl UpdateDeviceInterfaceCliCommand {
         let signature = client.update_device_interface(UpdateDeviceInterfaceCommand {
             pubkey: device_pk,
             name: self.name.clone(),
+            interface_sub_type: self.sub_type.map(|ist| ist.into()),
             loopback_type: self.loopback_type.map(|lt| lt.into()),
             vlan_id: self.vlan_id,
             user_tunnel_endpoint: self.user_tunnel_endpoint,
@@ -113,7 +115,7 @@ mod tests {
     use super::*;
     use crate::tests::utils::create_test_client;
     use doublezero_sdk::{AccountType, CurrentInterfaceVersion, Device, DeviceStatus, DeviceType};
-    use doublezero_serviceability::state::device::{
+    use doublezero_serviceability::state::interface::{
         Interface, InterfaceStatus, InterfaceType, LoopbackType,
     };
     use mockall::predicate;
@@ -185,6 +187,7 @@ mod tests {
                 pubkey: device1_pubkey,
                 name: "Loopback0".to_string(),
                 loopback_type: Some(LoopbackType::Ipv4),
+                interface_sub_type: None,
                 vlan_id: Some(20),
                 user_tunnel_endpoint: None,
                 status: Some(InterfaceStatus::Activated),
@@ -200,6 +203,7 @@ mod tests {
             pubkey_or_code: device1_pubkey.to_string(),
             name: "Loopback0".to_string(),
             loopback_type: Some(types::LoopbackType::Ipv4),
+            sub_type: None,
             vlan_id: Some(20),
             user_tunnel_endpoint: None,
             status: Some(InterfaceStatus::Activated.to_string()),

@@ -7,7 +7,7 @@ use doublezero_sdk::{
     },
     Device, DoubleZeroClient, InterfaceStatus, InterfaceType, LoopbackType,
 };
-use doublezero_serviceability::state::device::InterfaceV1;
+use doublezero_serviceability::state::interface::InterfaceV1;
 use log::{error, info};
 use solana_sdk::pubkey::Pubkey;
 

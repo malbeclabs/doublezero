@@ -2,7 +2,12 @@ use crate::{
     error::DoubleZeroError,
     globalstate::globalstate_get,
     helper::*,
-    state::{accounttype::AccountType, device::*},
+    processors::device::interface::InterfaceSubType,
+    state::{
+        accounttype::AccountType,
+        device::*,
+        interface::{Interface, InterfaceStatus, InterfaceType, LoopbackType},
+    },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -25,6 +30,7 @@ pub struct DeviceInterfaceUpdateArgs {
     pub status: Option<InterfaceStatus>,
     pub ip_net: Option<NetworkV4>,
     pub node_segment_idx: Option<u16>,
+    pub interface_sub_type: Option<InterfaceSubType>,
 }
 
 impl fmt::Debug for DeviceInterfaceUpdateArgs {
@@ -101,6 +107,18 @@ pub fn process_update_device_interface(
         .map_err(|_| DoubleZeroError::InterfaceNotFound)?;
     let mut iface = device.interfaces[idx].into_current_version();
     iface.name = validate_iface(&value.name).map_err(|_| DoubleZeroError::InvalidInterfaceName)?;
+
+    if let Some(interface_sub_type) = value.interface_sub_type {
+        if interface_sub_type == InterfaceSubType::CYOA {
+            iface.interface_type = InterfaceType::CYOA;
+        } else if interface_sub_type == InterfaceSubType::DIA {
+            iface.interface_type = InterfaceType::DIA;
+        } else if iface.name.starts_with("Loopback") {
+            iface.interface_type = InterfaceType::Loopback;
+        } else {
+            iface.interface_type = InterfaceType::Physical;
+        }
+    }
 
     if let Some(loopback_type) = value.loopback_type {
         iface.loopback_type = loopback_type;

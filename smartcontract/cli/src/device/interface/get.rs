@@ -60,7 +60,7 @@ mod tests {
         commands::device::get::GetDeviceCommand, AccountType, CurrentInterfaceVersion, Device,
         DeviceStatus, DeviceType,
     };
-    use doublezero_serviceability::state::device::{
+    use doublezero_serviceability::state::interface::{
         Interface, InterfaceStatus, InterfaceType, LoopbackType,
     };
     use mockall::predicate;

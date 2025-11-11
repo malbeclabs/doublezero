@@ -2232,7 +2232,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-contributor-rewards"
-version = "0.3.0-rc1"
+version = "0.3.1-rc1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2281,7 +2281,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-ledger-sentinel"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2487,7 +2487,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-solana-cli"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2576,7 +2576,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-solana-validator-debt"
-version = "0.1.0-rc4"
+version = "0.1.0-rc6"
 dependencies = [
  "anyhow",
  "async-trait",

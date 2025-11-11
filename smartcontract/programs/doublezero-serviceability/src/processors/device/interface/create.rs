@@ -120,8 +120,6 @@ pub fn process_create_device_interface(
     let mut interface_type = InterfaceType::Physical;
     if name.starts_with("Loopback") {
         interface_type = InterfaceType::Loopback;
-    } else if interface_type == InterfaceType::Loopback {
-        return Err(DoubleZeroError::InvalidInterfaceType.into());
     }
 
     if value.interface_sub_type == InterfaceSubType::CYOA {

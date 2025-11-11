@@ -95,7 +95,6 @@ mod tests {
             interfaces: vec![],
             max_users: 255,
             users_count: 0,
-            
         };
 
         let contributor_pk = device.contributor_pk;

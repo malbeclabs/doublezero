@@ -14,16 +14,16 @@ import (
 type Session struct {
 	route *routing.Route
 
-	myDisc, yourDisc uint32 // discriminators identify this session to each side
-	state            State  // current BFD state
+	localDiscr, peerDiscr uint32 // discriminators identify this session to each side
+	state                 State  // current BFD state
 
 	// detectMult scales the detection timeout relative to the receive interval;
 	// it defines how many consecutive RX intervals may elapse without traffic
 	// before declaring the session Down (e.g., 3 → tolerate ~3 missed intervals).
 	detectMult uint8
 
-	localTxMin, localRxMin   time.Duration // our minimum TX/RX intervals
-	remoteTxMin, remoteRxMin time.Duration // peer's advertised TX/RX intervals
+	localTxMin, localRxMin time.Duration // our minimum TX/RX intervals
+	peerTxMin, peerRxMin   time.Duration // peer's advertised TX/RX intervals
 
 	nextTx, detectDeadline, lastRx time.Time // computed next transmit time, detect timeout, last RX time
 
@@ -134,15 +134,15 @@ func (s *Session) HandleRx(now time.Time, ctrl *ControlPacket) (changed bool) {
 	if s.state == StateAdminDown {
 		return false
 	}
-	if ctrl.YourDiscr != 0 && ctrl.YourDiscr != s.myDisc {
+	if ctrl.peerDiscrr != 0 && ctrl.peerDiscrr != s.localDiscr {
 		return false
 	}
 
 	prev := s.state
 
 	// Learn peer discriminator if not yet known.
-	if s.yourDisc == 0 && ctrl.MyDiscr != 0 {
-		s.yourDisc = ctrl.MyDiscr
+	if s.peerDiscr == 0 && ctrl.LocalDiscrr != 0 {
+		s.peerDiscr = ctrl.LocalDiscrr
 	}
 
 	// Update peer timing and clamp within floor/ceiling bounds.
@@ -158,15 +158,15 @@ func (s *Session) HandleRx(now time.Time, ctrl *ControlPacket) (changed bool) {
 	} else if s.maxTxCeil > 0 && rrx > s.maxTxCeil {
 		rrx = s.maxTxCeil
 	}
-	s.remoteTxMin, s.remoteRxMin = rtx, rrx
+	s.peerTxMin, s.peerRxMin = rtx, rrx
 	s.lastRx = now
 	s.detectDeadline = now.Add(s.detectTime())
 
 	switch prev {
 	case StateDown:
 		// Move to Init once peer identified; Up after echo confirmation.
-		if s.yourDisc != 0 {
-			if ctrl.State >= StateInit && ctrl.YourDiscr == s.myDisc {
+		if s.peerDiscr != 0 {
+			if ctrl.State >= StateInit && ctrl.peerDiscrr == s.localDiscr {
 				s.state = StateUp
 				s.backoffFactor = 1
 			} else {
@@ -176,8 +176,8 @@ func (s *Session) HandleRx(now time.Time, ctrl *ControlPacket) (changed bool) {
 		}
 
 	case StateInit:
-		// Promote to Up only after receiving echo referencing our myDisc.
-		if s.yourDisc != 0 && ctrl.State >= StateInit && ctrl.YourDiscr == s.myDisc {
+		// Promote to Up only after receiving echo referencing our localDiscr.
+		if s.peerDiscr != 0 && ctrl.State >= StateInit && ctrl.peerDiscrr == s.localDiscr {
 			s.state = StateUp
 			s.backoffFactor = 1
 		}
@@ -200,11 +200,11 @@ func (s *Session) detectTime() time.Duration {
 }
 
 // txInterval picks the effective transmit interval, bounded by floors/ceilings,
-// using the greater of localTxMin and remoteRxMin.
+// using the greater of localTxMin and peerRxMin.
 func (s *Session) txInterval() time.Duration {
 	iv := s.localTxMin
-	if s.remoteRxMin > iv {
-		iv = s.remoteRxMin
+	if s.peerRxMin > iv {
+		iv = s.peerRxMin
 	}
 	if iv < s.minTxFloor {
 		iv = s.minTxFloor
@@ -218,7 +218,7 @@ func (s *Session) txInterval() time.Duration {
 // rxInterval picks the effective receive interval based on peer TX and
 // our own desired RX, clamped to the same bounds.
 func (s *Session) rxInterval() time.Duration {
-	ref := s.remoteTxMin
+	ref := s.peerTxMin
 	if s.localRxMin > ref {
 		ref = s.localRxMin
 	}

@@ -54,19 +54,19 @@ func (u *UDPService) Close() error { return u.raw.Close() }
 
 // ReadFrom reads a single UDP datagram and returns:
 //   - number of bytes read
-//   - remote address (sender)
+//   - remoteAddr address (sender)
 //   - local destination IP the packet was received on
 //   - interface name where it arrived
 //
 // The caller should configure read deadlines via SetReadDeadline before calling.
 // This function extracts control message metadata (IP_PKTINFO) to provide per-packet context.
-func (u *UDPService) ReadFrom(buf []byte) (n int, remote *net.UDPAddr, localIP net.IP, ifname string, err error) {
+func (u *UDPService) ReadFrom(buf []byte) (n int, remoteAddr *net.UDPAddr, localIP net.IP, ifname string, err error) {
 	n, cm4, raddr, err := u.pc4.ReadFrom(buf)
 	if err != nil {
 		return 0, nil, nil, "", err
 	}
 	if ua, ok := raddr.(*net.UDPAddr); ok {
-		remote = ua
+		remoteAddr = ua
 	}
 	if cm4 != nil {
 		if cm4.Dst != nil {
@@ -79,7 +79,7 @@ func (u *UDPService) ReadFrom(buf []byte) (n int, remote *net.UDPAddr, localIP n
 			}
 		}
 	}
-	return n, remote, localIP, ifname, nil
+	return n, remoteAddr, localIP, ifname, nil
 }
 
 // WriteTo transmits a UDP datagram to an IPv4 destination.

@@ -94,7 +94,7 @@ func (r *Receiver) Run(ctx context.Context) error {
 		}
 
 		// Perform the actual UDP read with control message extraction.
-		n, remoteAddr, localIP, ifname, err := r.udp.ReadFrom(buf)
+		n, peerAddr, localIP, ifname, err := r.udp.ReadFrom(buf)
 		if err != nil {
 			// Stop cleanly on context cancellation.
 			select {
@@ -140,7 +140,7 @@ func (r *Receiver) Run(ctx context.Context) error {
 		}
 
 		// Skip packets that are not IPv4.
-		if localIP.To4() == nil || remoteAddr.IP.To4() == nil {
+		if localIP.To4() == nil || peerAddr.IP.To4() == nil {
 			continue
 		}
 
@@ -149,7 +149,7 @@ func (r *Receiver) Run(ctx context.Context) error {
 		peer := Peer{
 			Interface: ifname,
 			LocalIP:   localIP.To4().String(),
-			RemoteIP:  remoteAddr.IP.To4().String(),
+			PeerIP:    peerAddr.IP.To4().String(),
 		}
 
 		// Delegate to session or higher-level handler for processing.

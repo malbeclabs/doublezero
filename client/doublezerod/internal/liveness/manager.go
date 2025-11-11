@@ -22,15 +22,15 @@ const (
 )
 
 // Peer identifies a remote endpoint and the local interface context used to reach it.
-// LocalIP is the IP on which we send/receive; RemoteIP is the peer’s address.
+// LocalIP is the IP on which we send/receive; PeerIP is the peer’s address.
 type Peer struct {
 	Interface string
 	LocalIP   string
-	RemoteIP  string
+	PeerIP    string
 }
 
 func (p *Peer) String() string {
-	return fmt.Sprintf("interface: %s, localIP: %s, remoteIP: %s", p.Interface, p.LocalIP, p.RemoteIP)
+	return fmt.Sprintf("interface: %s, localIP: %s, peerIP: %s", p.Interface, p.LocalIP, p.PeerIP)
 }
 
 // RouteKey uniquely identifies a desired/installed route in the kernel.
@@ -249,7 +249,7 @@ func (m *Manager) RegisterRoute(r *routing.Route, iface string) error {
 	m.desired[k] = r
 	m.mu.Unlock()
 
-	peer := Peer{Interface: iface, LocalIP: r.Src.To4().String(), RemoteIP: r.Dst.IP.To4().String()}
+	peer := Peer{Interface: iface, LocalIP: r.Src.To4().String(), PeerIP: r.Dst.IP.To4().String()}
 	m.log.Info("liveness: registering route", "route", r.String(), "peerAddr", peerAddr)
 
 	m.mu.Lock()
@@ -260,7 +260,7 @@ func (m *Manager) RegisterRoute(r *routing.Route, iface string) error {
 	// Create a fresh session in Down with a random non-zero discriminator.
 	s := &Session{
 		route:         r,
-		myDisc:        rand32(),
+		localDiscr:    rand32(),
 		state:         StateDown,        // Initial Phase: start Down until handshake
 		detectMult:    m.cfg.DetectMult, // governs detect timeout = mult × rxInterval
 		localTxMin:    m.cfg.TxMin,
@@ -310,7 +310,7 @@ func (m *Manager) WithdrawRoute(r *routing.Route, iface string) error {
 	delete(m.installed, k)
 	m.mu.Unlock()
 
-	peer := Peer{Interface: iface, LocalIP: r.Src.To4().String(), RemoteIP: r.Dst.IP.To4().String()}
+	peer := Peer{Interface: iface, LocalIP: r.Src.To4().String(), PeerIP: r.Dst.IP.To4().String()}
 
 	// Mark session no longer managed and drop it from tracking.
 	m.mu.Lock()
@@ -394,7 +394,7 @@ func (m *Manager) HandleRx(ctrl *ControlPacket, peer Peer) {
 		m.unkownPeerErrWarnMu.Lock()
 		if m.unkownPeerErrWarnLast.IsZero() || time.Since(m.unkownPeerErrWarnLast) >= m.unkownPeerErrWarnEvery {
 			m.unkownPeerErrWarnLast = time.Now()
-			m.log.Warn("liveness: received control packet for unknown peer", "peer", peer.String(), "yourDiscr", ctrl.YourDiscr, "myDiscr", ctrl.MyDiscr, "state", ctrl.State)
+			m.log.Warn("liveness: received control packet for unknown peer", "peer", peer.String(), "peerDiscrr", ctrl.peerDiscrr, "localDiscrr", ctrl.LocalDiscrr, "state", ctrl.State)
 
 		}
 		m.unkownPeerErrWarnMu.Unlock()

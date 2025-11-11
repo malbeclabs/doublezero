@@ -24,8 +24,8 @@ type ControlPacket struct {
 	State           State  // sender's current session state
 	DetectMult      uint8  // detection multiplier (used by peer for detect timeout)
 	Length          uint8  // total length, always 40 for this fixed-size implementation
-	MyDiscr         uint32 // sender's discriminator (unique session ID)
-	YourDiscr       uint32 // discriminator of the remote session (echo back)
+	LocalDiscrr     uint32 // sender's discriminator (unique session ID)
+	peerDiscrr      uint32 // discriminator of the remote session (echo back)
 	DesiredMinTxUs  uint32 // minimum TX interval desired by sender (microseconds)
 	RequiredMinRxUs uint32 // minimum RX interval the sender can handle (microseconds)
 }
@@ -38,8 +38,8 @@ type ControlPacket struct {
 //	1: State (2 high bits)   | 6 bits unused (zero)
 //	2: DetectMult
 //	3: Length (always 40)
-//	4–7:  MyDiscr
-//	8–11: YourDiscr
+//	4–7:  LocalDiscrr
+//	8–11: peerDiscrr
 //
 // 12–15: DesiredMinTxUs
 // 16–19: RequiredMinRxUs
@@ -54,8 +54,8 @@ func (c *ControlPacket) Marshal() []byte {
 	sf := (uint8(c.State) & 0x3) << 6
 	b[0], b[1], b[2], b[3] = vd, sf, c.DetectMult, 40
 	be := binary.BigEndian
-	be.PutUint32(b[4:8], c.MyDiscr)
-	be.PutUint32(b[8:12], c.YourDiscr)
+	be.PutUint32(b[4:8], c.LocalDiscrr)
+	be.PutUint32(b[8:12], c.peerDiscrr)
 	be.PutUint32(b[12:16], c.DesiredMinTxUs)
 	be.PutUint32(b[16:20], c.RequiredMinRxUs)
 	// Remaining bytes [20:40] are reserved/padding → left zeroed
@@ -86,8 +86,8 @@ func UnmarshalControlPacket(b []byte) (*ControlPacket, error) {
 	}
 
 	rd := func(off int) uint32 { return binary.BigEndian.Uint32(b[off : off+4]) }
-	c.MyDiscr = rd(4)
-	c.YourDiscr = rd(8)
+	c.LocalDiscrr = rd(4)
+	c.peerDiscrr = rd(8)
 	c.DesiredMinTxUs = rd(12)
 	c.RequiredMinRxUs = rd(16)
 	return c, nil

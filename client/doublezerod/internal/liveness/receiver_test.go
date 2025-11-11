@@ -117,7 +117,7 @@ func TestClient_Liveness_Receiver_HandlerInvoked_WithPeerContext(t *testing.T) {
 	require.Eventually(t, func() bool { return atomic.LoadInt32(&calls) == 1 }, time.Second, 10*time.Millisecond)
 	require.NotEmpty(t, got.Interface) // usually lo/lo0
 	require.Equal(t, "127.0.0.1", got.LocalIP)
-	require.Equal(t, "127.0.0.1", got.RemoteIP)
+	require.Equal(t, "127.0.0.1", got.PeerIP)
 
 	cancel()
 	_ = udp.Close()

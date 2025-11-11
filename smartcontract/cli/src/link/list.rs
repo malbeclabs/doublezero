@@ -169,9 +169,8 @@ mod tests {
     use crate::{link::list::ListLinkCliCommand, tests::utils::create_test_client};
 
     use doublezero_sdk::{
-        commands::contributor::get::GetContributorCommand,
-        Contributor, ContributorStatus, Device, DeviceStatus, DeviceType, Link, LinkLinkType,
-        LinkStatus,
+        commands::contributor::get::GetContributorCommand, Contributor, ContributorStatus, Device,
+        DeviceStatus, DeviceType, Link, LinkLinkType, LinkStatus,
     };
     use doublezero_serviceability::state::accounttype::AccountType;
     use mockall::predicate;
@@ -360,8 +359,7 @@ mod tests {
         let exchange1_pubkey = Pubkey::new_unique();
         let exchange2_pubkey = Pubkey::new_unique();
 
-        let device1_pubkey =
-            Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9");
+        let device1_pubkey = Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9");
         let device1 = Device {
             account_type: AccountType::Device,
             index: 1,
@@ -411,8 +409,7 @@ mod tests {
             Ok(devices)
         });
 
-        let tunnel1_pubkey =
-            Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR");
+        let tunnel1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR");
         let tunnel1 = Link {
             account_type: AccountType::Link,
             index: 1,

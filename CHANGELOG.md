@@ -12,6 +12,8 @@ All notable changes to this project will be documented in this file.
     - Improve error message when connecting to a device that is at capacity or has max_users=0. Users now receive "Device is not accepting more users (at capacity or max_users=0)" instead of the confusing "Device not found" error when explicitly specifying an ineligible device.
     - Add `link latency` command to display latency statistics from the telemetry program. Supports filtering by percentile (p50, p90, p95, p99, mean, min, max, stddev, all), querying by link code or all links, and filtering by epoch. Resolves: [#1942](https://github.com/malbeclabs/doublezero/issues/1942)
 
+- Added `--contributor | -c` filter to `device list`, `interface list`, and `link list` commands. (#1274)
+
 ### Breaking
 
 ### Changes

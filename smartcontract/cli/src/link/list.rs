@@ -6,7 +6,8 @@ use doublezero_program_common::{
 };
 use doublezero_sdk::{
     commands::{
-        contributor::list::ListContributorCommand, device::list::ListDeviceCommand,
+        contributor::{get::GetContributorCommand, list::ListContributorCommand},
+        device::list::ListDeviceCommand,
         link::list::ListLinkCommand,
     },
     Link, LinkLinkType, LinkStatus,
@@ -18,6 +19,9 @@ use tabled::{settings::Style, Table, Tabled};
 
 #[derive(Args, Debug)]
 pub struct ListLinkCliCommand {
+    /// Filter by contributor (pubkey or code)
+    #[arg(long, short = 'c')]
+    pub contributor: Option<String>,
     /// List only WAN links.
     #[arg(long, default_value_t = false)]
     pub wan: bool,
@@ -71,7 +75,23 @@ impl ListLinkCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         let contributors = client.list_contributor(ListContributorCommand {})?;
         let devices = client.list_device(ListDeviceCommand)?;
-        let links = client.list_link(ListLinkCommand)?;
+        let mut links = client.list_link(ListLinkCommand)?;
+
+        // Filter by contributor if specified
+        if let Some(contributor_filter) = &self.contributor {
+            let contributor_pk = match client.get_contributor(GetContributorCommand {
+                pubkey_or_code: contributor_filter.clone(),
+            }) {
+                Ok((pk, _)) => pk,
+                Err(_) => {
+                    return Err(eyre::eyre!(
+                        "Contributor '{}' not found",
+                        contributor_filter
+                    ));
+                }
+            };
+            links.retain(|_, link| link.contributor_pk == contributor_pk);
+        }
 
         let mut links: Vec<(Pubkey, Link)> = links.into_iter().collect();
         if self.wan {
@@ -149,10 +169,11 @@ mod tests {
     use crate::{link::list::ListLinkCliCommand, tests::utils::create_test_client};
 
     use doublezero_sdk::{
-        Contributor, ContributorStatus, Device, DeviceStatus, DeviceType, Link, LinkLinkType,
-        LinkStatus,
+        commands::contributor::get::GetContributorCommand, Contributor, ContributorStatus, Device,
+        DeviceStatus, DeviceType, Link, LinkLinkType, LinkStatus,
     };
     use doublezero_serviceability::state::accounttype::AccountType;
+    use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
     use std::collections::HashMap;
 
@@ -263,6 +284,7 @@ mod tests {
 
         let mut output = Vec::new();
         let res = ListLinkCliCommand {
+            contributor: None,
             wan: false,
             dzx: false,
             json: false,
@@ -276,6 +298,7 @@ mod tests {
 
         let mut output = Vec::new();
         let res = ListLinkCliCommand {
+            contributor: None,
             wan: false,
             dzx: false,
             json: false,
@@ -286,5 +309,171 @@ mod tests {
 
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"code\":\"tunnel_code\",\"contributor_code\":\"contributor1_code\",\"side_a_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"side_a_name\":\"device2_code\",\"side_a_iface_name\":\"eth0\",\"side_z_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"side_z_name\":\"device2_code\",\"side_z_iface_name\":\"eth1\",\"link_type\":\"WAN\",\"bandwidth\":\"10Gbps\",\"mtu\":4500,\"delay_ns\":20000,\"jitter_ns\":1121,\"delay_override_ns\":0,\"tunnel_id\":1234,\"tunnel_net\":\"1.2.3.4/32\",\"status\":\"Activated\",\"owner\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\"}]\n");
+    }
+
+    #[test]
+    fn test_cli_link_list_filtered_by_contributor() {
+        let mut client = create_test_client();
+
+        let contributor1_pk =
+            Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
+        let contributor1 = Contributor {
+            account_type: AccountType::Contributor,
+            index: 1,
+            bump_seed: 2,
+            reference_count: 0,
+            code: "contributor1_code".to_string(),
+            status: ContributorStatus::Activated,
+            owner: contributor1_pk,
+        };
+        let contributor2_pk = Pubkey::new_unique();
+        let contributor2 = Contributor {
+            account_type: AccountType::Contributor,
+            index: 2,
+            bump_seed: 3,
+            reference_count: 0,
+            code: "contributor2_code".to_string(),
+            status: ContributorStatus::Activated,
+            owner: contributor2_pk,
+        };
+
+        let contributor1_for_list = contributor1.clone();
+        let contributor2_for_list = contributor2.clone();
+        client.expect_list_contributor().returning(move |_| {
+            let mut contributors = HashMap::new();
+            contributors.insert(contributor1_pk, contributor1_for_list.clone());
+            contributors.insert(contributor2_pk, contributor2_for_list.clone());
+            Ok(contributors)
+        });
+
+        let contributor_lookup = contributor1.clone();
+        client
+            .expect_get_contributor()
+            .with(predicate::eq(GetContributorCommand {
+                pubkey_or_code: "contributor1_code".to_string(),
+            }))
+            .returning(move |_| Ok((contributor1_pk, contributor_lookup.clone())));
+
+        let location1_pubkey = Pubkey::new_unique();
+        let location2_pubkey = Pubkey::new_unique();
+        let exchange1_pubkey = Pubkey::new_unique();
+        let exchange2_pubkey = Pubkey::new_unique();
+
+        let device1_pubkey = Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9");
+        let device1 = Device {
+            account_type: AccountType::Device,
+            index: 1,
+            bump_seed: 2,
+            reference_count: 0,
+            code: "device1_code".to_string(),
+            contributor_pk: contributor1_pk,
+            location_pk: location1_pubkey,
+            exchange_pk: exchange1_pubkey,
+            device_type: DeviceType::Switch,
+            public_ip: [1, 2, 3, 4].into(),
+            dz_prefixes: "1.2.3.4/32".parse().unwrap(),
+            status: DeviceStatus::Activated,
+            owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9"),
+            metrics_publisher_pk: Pubkey::default(),
+            mgmt_vrf: "default".to_string(),
+            interfaces: vec![],
+            max_users: 255,
+            users_count: 0,
+        };
+        let device2_pubkey = Pubkey::new_unique();
+        let device2 = Device {
+            account_type: AccountType::Device,
+            index: 2,
+            bump_seed: 3,
+            reference_count: 0,
+            code: "device2_code".to_string(),
+            contributor_pk: contributor2_pk,
+            location_pk: location2_pubkey,
+            exchange_pk: exchange2_pubkey,
+            device_type: DeviceType::Switch,
+            public_ip: [5, 6, 7, 8].into(),
+            dz_prefixes: "5.6.7.8/32".parse().unwrap(),
+            status: DeviceStatus::Activated,
+            owner: Pubkey::new_unique(),
+            metrics_publisher_pk: Pubkey::new_unique(),
+            mgmt_vrf: "default".to_string(),
+            interfaces: vec![],
+            max_users: 255,
+            users_count: 0,
+        };
+
+        client.expect_list_device().returning(move |_| {
+            let mut devices = HashMap::new();
+            devices.insert(device1_pubkey, device1.clone());
+            devices.insert(device2_pubkey, device2.clone());
+            Ok(devices)
+        });
+
+        let tunnel1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR");
+        let tunnel1 = Link {
+            account_type: AccountType::Link,
+            index: 1,
+            bump_seed: 2,
+            code: "tunnel_code".to_string(),
+            contributor_pk: contributor1_pk,
+            side_a_pk: device1_pubkey,
+            side_z_pk: device2_pubkey,
+            link_type: LinkLinkType::WAN,
+            bandwidth: 10_000_000_000,
+            mtu: 4500,
+            delay_ns: 20_000,
+            jitter_ns: 1121,
+            delay_override_ns: 0,
+            tunnel_id: 1234,
+            tunnel_net: "1.2.3.4/32".parse().unwrap(),
+            status: LinkStatus::Activated,
+            owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9"),
+            side_a_iface_name: "eth0".to_string(),
+            side_z_iface_name: "eth1".to_string(),
+        };
+        let tunnel2_pubkey = Pubkey::new_unique();
+        let tunnel2 = Link {
+            account_type: AccountType::Link,
+            index: 2,
+            bump_seed: 3,
+            code: "tunnel_code_two".to_string(),
+            contributor_pk: contributor2_pk,
+            side_a_pk: device2_pubkey,
+            side_z_pk: device1_pubkey,
+            link_type: LinkLinkType::WAN,
+            bandwidth: 5_000_000_000,
+            mtu: 1500,
+            delay_ns: 40_000,
+            jitter_ns: 2000,
+            delay_override_ns: 0,
+            tunnel_id: 5678,
+            tunnel_net: "5.6.7.8/32".parse().unwrap(),
+            status: LinkStatus::Activated,
+            owner: Pubkey::new_unique(),
+            side_a_iface_name: "eth2".to_string(),
+            side_z_iface_name: "eth3".to_string(),
+        };
+
+        client.expect_list_link().returning(move |_| {
+            let mut tunnels = HashMap::new();
+            tunnels.insert(tunnel1_pubkey, tunnel1.clone());
+            tunnels.insert(tunnel2_pubkey, tunnel2.clone());
+            Ok(tunnels)
+        });
+
+        let mut output = Vec::new();
+        let res = ListLinkCliCommand {
+            contributor: Some("contributor1_code".to_string()),
+            wan: false,
+            dzx: false,
+            json: false,
+            json_compact: false,
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_ok());
+
+        let output_str = String::from_utf8(output).unwrap();
+        assert!(output_str.contains("tunnel_code"));
+        assert!(!output_str.contains("tunnel_code_two"));
     }
 }

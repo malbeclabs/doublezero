@@ -11,7 +11,10 @@ use doublezero_serviceability::{
         device::{
             activate::DeviceActivateArgs,
             create::DeviceCreateArgs,
-            interface::{create::DeviceInterfaceCreateArgs, unlink::DeviceInterfaceUnlinkArgs},
+            interface::{
+                create::DeviceInterfaceCreateArgs, unlink::DeviceInterfaceUnlinkArgs,
+                InterfaceSubType,
+            },
             suspend::DeviceSuspendArgs,
         },
         exchange::{create::ExchangeCreateArgs, suspend::ExchangeSuspendArgs},
@@ -20,9 +23,10 @@ use doublezero_serviceability::{
         location::{create::LocationCreateArgs, suspend::LocationSuspendArgs},
     },
     state::{
-        device::{Device, DeviceType, LoopbackType},
+        device::{Device, DeviceType},
         exchange::Exchange,
         globalstate::GlobalState,
+        interface::LoopbackType,
         link::{Link, LinkLinkType},
         location::Location,
     },
@@ -968,6 +972,7 @@ impl ServiceabilityProgramHelper {
         self.execute_transaction(
             DoubleZeroInstruction::CreateDeviceInterface(DeviceInterfaceCreateArgs {
                 name: name.clone(),
+                interface_sub_type: InterfaceSubType::None,
                 loopback_type: LoopbackType::None,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,

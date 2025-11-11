@@ -4,7 +4,8 @@ use crate::{
 };
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
-    processors::device::interface::create::DeviceInterfaceCreateArgs, state::device::LoopbackType,
+    processors::device::interface::{create::DeviceInterfaceCreateArgs, InterfaceSubType},
+    state::interface::LoopbackType,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
@@ -12,6 +13,7 @@ use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature}
 pub struct CreateDeviceInterfaceCommand {
     pub pubkey: Pubkey,
     pub name: String,
+    pub interface_sub_type: InterfaceSubType,
     pub loopback_type: LoopbackType,
     pub vlan_id: u16,
     pub user_tunnel_endpoint: bool,
@@ -32,6 +34,7 @@ impl CreateDeviceInterfaceCommand {
             .execute_transaction(
                 DoubleZeroInstruction::CreateDeviceInterface(DeviceInterfaceCreateArgs {
                     name: self.name.clone(),
+                    interface_sub_type: self.interface_sub_type,
                     loopback_type: self.loopback_type,
                     vlan_id: self.vlan_id,
                     user_tunnel_endpoint: self.user_tunnel_endpoint,
@@ -102,6 +105,7 @@ mod tests {
                 predicate::eq(DoubleZeroInstruction::CreateDeviceInterface(
                     DeviceInterfaceCreateArgs {
                         name: "Ethernet0".to_string(),
+                        interface_sub_type: InterfaceSubType::None,
                         loopback_type: LoopbackType::None,
                         vlan_id: 100,
                         user_tunnel_endpoint: true,
@@ -118,6 +122,7 @@ mod tests {
         let command = CreateDeviceInterfaceCommand {
             pubkey: device_pubkey,
             name: "Ethernet0".to_string(),
+            interface_sub_type: InterfaceSubType::None,
             loopback_type: LoopbackType::None,
             vlan_id: 100,
             user_tunnel_endpoint: true,

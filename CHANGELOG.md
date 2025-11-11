@@ -28,6 +28,7 @@ All notable changes to this project will be documented in this file.
 
 - CI
     - Add automated compatibility tests in CI to validate all actual testnet and mainnet state against the current codebase, ensuring backward compatibility across protocol versions.
+-- Add a new sub-type field to interface definitions to support CYOA and DIA interfaces. This sub-type allows the system to distinguish between standard Physical/Loopback interfaces and specialized CYOA/DIA interfaces, enabling proper classification, validation, and configuration handling across the DZD.
     - Add `--delay-override-ms` option to `doublezero link update`
     - Add ability to configure excluded routes
 - Device controller

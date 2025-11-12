@@ -105,11 +105,10 @@ pub fn process_add_multicastgroup_pub_allowlist(
         };
 
         try_create_account(
-            payer_account.key,             // Account paying for the new account
-            accesspass_account.key,        // Account to be created
-            accesspass_account.lamports(), // Current amount of lamports on the new account
-            accesspass.size(),             // Size in bytes to allocate for the data field
-            program_id,                    // Set program owner to our program
+            payer_account.key,      // Account paying for the new account
+            accesspass_account.key, // Account to be created
+            accesspass.size(),      // Size in bytes to allocate for the data field
+            program_id,             // Set program owner to our program
             accounts,
             &[
                 SEED_PREFIX,

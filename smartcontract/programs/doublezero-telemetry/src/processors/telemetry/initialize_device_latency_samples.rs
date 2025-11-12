@@ -178,7 +178,6 @@ pub fn process_initialize_device_latency_samples(
     try_create_account(
         agent.key,
         &latency_samples_pda,
-        latency_samples_account.lamports(),
         space,
         program_id,
         accounts,

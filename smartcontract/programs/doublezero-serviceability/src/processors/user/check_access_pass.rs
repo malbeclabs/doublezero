@@ -13,10 +13,11 @@ use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
 use doublezero_program_common::resize_account::resize_account_if_needed;
+#[cfg(test)]
+use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
-    msg,
     pubkey::Pubkey,
 };
 
@@ -82,12 +83,6 @@ pub fn process_check_access_pass_user(
         accesspass_account.key, &accesspass_pda,
         "Invalid AccessPass PDA"
     );
-
-    // Invalid Access Pass
-    if accesspass_account.data_is_empty() {
-        msg!("Invalid Access Pass");
-        return Err(DoubleZeroError::Unauthorized.into());
-    }
 
     // Read Access Pass
     let mut accesspass = AccessPass::try_from(accesspass_account)?;

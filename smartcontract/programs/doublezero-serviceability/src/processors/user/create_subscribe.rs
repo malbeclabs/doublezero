@@ -106,11 +106,6 @@ pub fn process_create_subscribe_user(
         "Invalid AccessPass PDA",
     );
 
-    // Invalid Access Pass
-    if accesspass_account.data_is_empty() {
-        return Err(DoubleZeroError::Unauthorized.into());
-    }
-
     // Read Access Pass
     let mut accesspass = AccessPass::try_from(accesspass_account)?;
     if accesspass.user_payer != *payer_account.key {

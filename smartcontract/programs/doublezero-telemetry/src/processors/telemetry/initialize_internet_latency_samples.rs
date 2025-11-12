@@ -149,7 +149,6 @@ pub fn process_initialize_internet_latency_samples(
     try_create_account(
         collector_agent.key,
         &latency_samples_pda,
-        latency_samples_acct.lamports(),
         space,
         program_id,
         accounts,

@@ -102,11 +102,10 @@ pub fn process_set_globalconfig(
     if pda_account.try_borrow_data()?.is_empty() {
         // Create the index account
         try_create_account(
-            payer_account.key,      // Account paying for the new account
-            pda_account.key,        // Account to be created
-            pda_account.lamports(), // Current amount of lamports on the new account
-            account_space,          // Size in bytes to allocate for the data field
-            program_id,             // Set program owner to our program
+            payer_account.key, // Account paying for the new account
+            pda_account.key,   // Account to be created
+            account_space,     // Size in bytes to allocate for the data field
+            program_id,        // Set program owner to our program
             accounts,
             &[SEED_PREFIX, SEED_CONFIG, &[bump_seed]],
         )?;

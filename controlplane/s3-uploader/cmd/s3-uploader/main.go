@@ -114,6 +114,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Printf("\n[OK] Upload successful!\n")
-	fmt.Printf("[OK] S3 URL: %s\n", s3URL)
+	log.Info("[OK] Upload successful!")
+	log.Info("[OK] S3 URL", "url", s3URL)
 }

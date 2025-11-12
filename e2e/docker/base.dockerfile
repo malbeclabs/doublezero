@@ -7,20 +7,10 @@ RUN apt update -qq && \
     apt install --no-install-recommends -y ca-certificates curl bzip2
 
 # Install agave/solana tools
-# https://github.com/anza-xyz/agave/issues/1734
-ARG SOLANA_VERSION=2.3.6
-RUN ARCH=$(uname -m) && \
-    case "$ARCH" in \
-    x86_64) ARCH_TAG=x86_64 ;; \
-    aarch64) ARCH_TAG=aarch64 ;; \
-    *) echo "Unsupported architecture: $ARCH" && exit 1 ;; \
-    esac && \
-    mkdir -p /opt/agave && \
-    curl -sL "https://github.com/staratlasmeta/agave-dist/releases/download/v${SOLANA_VERSION}/solana-release-${ARCH_TAG}-unknown-linux-gnu.tar.bz2" -o /tmp/agave.tar.bz2 && \
-    tar -xjf /tmp/agave.tar.bz2 -C /opt/agave && \
-    mkdir -p /opt/solana/bin && \
-    cp -r /opt/agave/solana-release/bin/* /opt/solana/bin/ && \
-    rm -rf /tmp/agave.tar.bz2
+ARG SOLANA_VERSION=2.3.13
+RUN bash -c 'set -euo pipefail; curl -fsSL https://release.anza.xyz/v${SOLANA_VERSION}/install | sh'
+RUN mkdir -p /opt/solana/bin && \
+    mv /root/.local/share/solana/install/active_release/bin/* /opt/solana/bin/
 ENV PATH="/opt/solana/bin:${PATH}"
 
 # Force COPY in later stages to always copy the binaries, even if they appear to be the same.

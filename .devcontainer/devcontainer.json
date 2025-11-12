@@ -2,7 +2,10 @@
     "name": "DoubleZero Development",
     "build": {
         "dockerfile": "Dockerfile",
-        "context": "."
+        "context": ".",
+        "options": [
+            "--platform=linux/amd64"
+        ]
     },
     "runArgs": [
         "--name",

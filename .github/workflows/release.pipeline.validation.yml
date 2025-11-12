@@ -31,6 +31,8 @@ jobs:
             languages: ["go"]
           - release: qa-agent
             languages: ["go"]
+          - release: s3-uploader
+            languages: ["go"]
     name: release-validation-${{ matrix.release }}
     steps:
       - name: Checkout

@@ -32,6 +32,11 @@ impl GetDeviceInterfaceCliCommand {
             "name: {}\r\n\
 status: {}\r\n\
 loopback_type: {}\r\n\
+interface_cyoa: {}\r\n\
+bandwidth: {}\r\n\
+cir: {}\r\n\
+mtu: {}\r\n\
+routing_mode: {}\r\n\
 vlan_id: {}\r\n\
 ip_net: {}\r\n\
 node_segment_idx: {}\r\n\
@@ -40,6 +45,11 @@ device_pk: {}",
             interface.name,
             interface.status,
             interface.loopback_type,
+            interface.interface_cyoa,
+            interface.bandwidth,
+            interface.cir,
+            interface.mtu,
+            interface.routing_mode,
             interface.vlan_id,
             interface.ip_net,
             interface.node_segment_idx,
@@ -60,8 +70,8 @@ mod tests {
         commands::device::get::GetDeviceCommand, AccountType, CurrentInterfaceVersion, Device,
         DeviceStatus, DeviceType,
     };
-    use doublezero_serviceability::state::device::{
-        Interface, InterfaceStatus, InterfaceType, LoopbackType,
+    use doublezero_serviceability::state::interface::{
+        InterfaceStatus, InterfaceType, LoopbackType,
     };
     use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
@@ -91,16 +101,23 @@ mod tests {
             ),
             owner: device1_pubkey,
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![Interface::V1(CurrentInterfaceVersion {
+            interfaces: vec![CurrentInterfaceVersion {
                 status: InterfaceStatus::Activated,
                 name: "eth0".to_string(),
                 interface_type: InterfaceType::Physical,
                 loopback_type: LoopbackType::None,
+                interface_cyoa: doublezero_serviceability::state::interface::InterfaceCYOA::None,
+                interface_dia: doublezero_serviceability::state::interface::InterfaceDIA::None,
+                bandwidth: 1000,
+                cir: 500,
+                mtu: 1500,
+                routing_mode: doublezero_serviceability::state::interface::RoutingMode::Static,
                 vlan_id: 16,
                 ip_net: "10.0.0.1/24".parse().unwrap(),
                 node_segment_idx: 42,
                 user_tunnel_endpoint: true,
-            })],
+            }
+            .to_interface()],
             max_users: 255,
             users_count: 0,
         };
@@ -134,6 +151,6 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by pubkey");
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "name: eth0\r\nstatus: activated\r\nloopback_type: none\r\nvlan_id: 16\r\nip_net: 10.0.0.1/24\r\nnode_segment_idx: 42\r\nuser_tunnel_endpoint: true\r\ndevice_pk: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\n");
+        assert_eq!(output_str, "name: eth0\r\nstatus: activated\r\nloopback_type: none\r\ninterface_cyoa: none\r\nbandwidth: 1000\r\ncir: 500\r\nmtu: 1500\r\nrouting_mode: static\r\nvlan_id: 16\r\nip_net: 10.0.0.1/24\r\nnode_segment_idx: 42\r\nuser_tunnel_endpoint: true\r\ndevice_pk: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\n");
     }
 }

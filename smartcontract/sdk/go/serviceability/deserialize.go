@@ -61,15 +61,41 @@ func DeserializeContributor(reader *ByteReader, contributor *Contributor) {
 func DeserializeInterface(reader *ByteReader, iface *Interface) {
 	iface.Version = reader.ReadU8()
 
-	if iface.Version != (CurrentInterfaceVersion - 1) { // subtract 1 because the discriminant starts from 0
+	if iface.Version > (CurrentInterfaceVersion - 1) { // subtract 1 because the discriminant starts from 0
 		log.Println("DeserializeInterface: Unsupported interface version", iface.Version)
 		return
 	}
 
+	switch iface.Version {
+	case 0: // version 1
+		DeserializeInterfaceV1(reader, iface)
+	case 1: // version 2
+		DeserializeInterfaceV2(reader, iface)
+	}
+}
+
+func DeserializeInterfaceV1(reader *ByteReader, iface *Interface) {
 	iface.Status = InterfaceStatus(reader.ReadU8())
 	iface.Name = reader.ReadString()
 	iface.InterfaceType = InterfaceType(reader.ReadU8())
 	iface.LoopbackType = LoopbackType(reader.ReadU8())
+	iface.VlanId = reader.ReadU16()
+	iface.IpNet = reader.ReadNetworkV4()
+	iface.NodeSegmentIdx = reader.ReadU16()
+	iface.UserTunnelEndpoint = (reader.ReadU8() != 0)
+}
+
+func DeserializeInterfaceV2(reader *ByteReader, iface *Interface) {
+	iface.Status = InterfaceStatus(reader.ReadU8())
+	iface.Name = reader.ReadString()
+	iface.InterfaceType = InterfaceType(reader.ReadU8())
+	iface.InterfaceCYOA = InterfaceCYOA(reader.ReadU8())
+	iface.InterfaceDIA = InterfaceDIA(reader.ReadU8())
+	iface.LoopbackType = LoopbackType(reader.ReadU8())
+	iface.Bandwidth = reader.ReadU64()
+	iface.Cir = reader.ReadU64()
+	iface.Mtu = reader.ReadU16()
+	iface.RoutingMode = RoutingMode(reader.ReadU8())
 	iface.VlanId = reader.ReadU16()
 	iface.IpNet = reader.ReadNetworkV4()
 	iface.NodeSegmentIdx = reader.ReadU16()

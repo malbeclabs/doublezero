@@ -5,9 +5,9 @@ use doublezero_sdk::{
         activate::ActivateDeviceInterfaceCommand, reject::RejectDeviceInterfaceCommand,
         remove::RemoveDeviceInterfaceCommand, unlink::UnlinkDeviceInterfaceCommand,
     },
-    Device, DoubleZeroClient, InterfaceStatus, InterfaceType, LoopbackType,
+    CurrentInterfaceVersion, Device, DoubleZeroClient, InterfaceStatus, InterfaceType,
+    LoopbackType,
 };
-use doublezero_serviceability::state::device::InterfaceV1;
 use log::{error, info};
 use solana_sdk::pubkey::Pubkey;
 
@@ -44,7 +44,7 @@ impl<'a> InterfaceMgr<'a> {
         &mut self,
         device_pubkey: &Pubkey,
         device: &Device,
-        mut iface: InterfaceV1,
+        mut iface: CurrentInterfaceVersion,
     ) {
         match (iface.status, iface.interface_type) {
             (InterfaceStatus::Pending, InterfaceType::Loopback) => {
@@ -74,7 +74,7 @@ impl<'a> InterfaceMgr<'a> {
         &mut self,
         device_pubkey: &Pubkey,
         device: &Device,
-        iface: &mut InterfaceV1,
+        iface: &mut CurrentInterfaceVersion,
     ) {
         // Allocate segment routing ID if needed
         if iface.node_segment_idx == 0 && iface.loopback_type == LoopbackType::Vpnv4 {
@@ -130,7 +130,7 @@ impl<'a> InterfaceMgr<'a> {
         &mut self,
         device_pubkey: &Pubkey,
         device_code: &str,
-        iface: &InterfaceV1,
+        iface: &CurrentInterfaceVersion,
     ) {
         // Release allocated resources
         if iface.ip_net != NetworkV4::default() {

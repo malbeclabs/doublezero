@@ -2,7 +2,15 @@ use crate::{
     error::DoubleZeroError,
     globalstate::globalstate_get_next,
     helper::account_write,
-    state::{accounttype::AccountType, contributor::Contributor, device::*},
+    state::{
+        accounttype::AccountType,
+        contributor::Contributor,
+        device::*,
+        interface::{
+            CurrentInterfaceVersion, InterfaceCYOA, InterfaceDIA, InterfaceStatus, InterfaceType,
+            LoopbackType, RoutingMode,
+        },
+    },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -22,6 +30,12 @@ pub struct DeviceInterfaceCreateArgs {
     pub loopback_type: LoopbackType,
     pub vlan_id: u16,
     pub user_tunnel_endpoint: bool,
+    pub interface_cyoa: InterfaceCYOA,
+    pub interface_dia: InterfaceDIA,
+    pub bandwidth: u64,
+    pub cir: u64,
+    pub mtu: u16,
+    pub routing_mode: RoutingMode,
 }
 
 impl fmt::Debug for DeviceInterfaceCreateArgs {
@@ -88,18 +102,25 @@ pub fn process_create_device_interface(
         return Err(DoubleZeroError::InterfaceAlreadyExists.into());
     }
 
-    device
-        .interfaces
-        .push(Interface::V1(CurrentInterfaceVersion {
+    device.interfaces.push(
+        CurrentInterfaceVersion {
             status: InterfaceStatus::Pending,
             name,
             interface_type,
             loopback_type: value.loopback_type,
+            interface_cyoa: value.interface_cyoa,
+            interface_dia: value.interface_dia,
+            bandwidth: value.bandwidth,
+            cir: value.cir,
+            mtu: value.mtu,
+            routing_mode: value.routing_mode,
             vlan_id: value.vlan_id,
             ip_net: NetworkV4::default(),
             node_segment_idx: 0,
             user_tunnel_endpoint: value.user_tunnel_endpoint,
-        }));
+        }
+        .to_interface(),
+    );
 
     account_write(device_account, &device, payer_account, system_program)?;
 

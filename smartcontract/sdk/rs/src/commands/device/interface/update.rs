@@ -6,7 +6,7 @@ use doublezero_program_common::types::NetworkV4;
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
     processors::device::interface::DeviceInterfaceUpdateArgs,
-    state::device::{InterfaceStatus, LoopbackType},
+    state::interface::{InterfaceCYOA, InterfaceDIA, InterfaceStatus, LoopbackType, RoutingMode},
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
@@ -15,6 +15,12 @@ pub struct UpdateDeviceInterfaceCommand {
     pub pubkey: Pubkey,
     pub name: String,
     pub loopback_type: Option<LoopbackType>,
+    pub interface_cyoa: Option<InterfaceCYOA>,
+    pub interface_dia: Option<InterfaceDIA>,
+    pub bandwidth: Option<u64>,
+    pub cir: Option<u64>,
+    pub mtu: Option<u16>,
+    pub routing_mode: Option<RoutingMode>,
     pub vlan_id: Option<u16>,
     pub user_tunnel_endpoint: Option<bool>,
     pub status: Option<InterfaceStatus>,
@@ -37,6 +43,12 @@ impl UpdateDeviceInterfaceCommand {
             DoubleZeroInstruction::UpdateDeviceInterface(DeviceInterfaceUpdateArgs {
                 name: self.name.clone(),
                 loopback_type: self.loopback_type,
+                interface_cyoa: self.interface_cyoa,
+                interface_dia: self.interface_dia,
+                bandwidth: self.bandwidth,
+                cir: self.cir,
+                mtu: self.mtu,
+                routing_mode: self.routing_mode,
                 vlan_id: self.vlan_id,
                 user_tunnel_endpoint: self.user_tunnel_endpoint,
                 status: self.status,
@@ -109,8 +121,14 @@ mod tests {
                     DeviceInterfaceUpdateArgs {
                         name: "Ethernet0".to_string(),
                         loopback_type: None,
+                        bandwidth: None,
+                        cir: None,
+                        mtu: None,
+                        routing_mode: None,
+                        interface_dia: None,
                         vlan_id: Some(42),
                         user_tunnel_endpoint: None,
+                        interface_cyoa: None,
                         status: None,
                         ip_net: None,
                         node_segment_idx: None,
@@ -128,10 +146,16 @@ mod tests {
             pubkey: device_pubkey,
             name: "Ethernet0".to_string(),
             loopback_type: None,
+            interface_cyoa: None,
+            bandwidth: None,
+            cir: None,
+            mtu: None,
+            routing_mode: None,
             vlan_id: Some(42),
             user_tunnel_endpoint: None,
             status: None,
             ip_net: None,
+            interface_dia: None,
             node_segment_idx: None,
         };
 

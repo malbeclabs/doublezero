@@ -104,8 +104,8 @@ mod tests {
         get_link_pda, AccountType, Contributor, ContributorStatus, Device, DeviceStatus,
         DeviceType, InterfaceStatus, Link, LinkLinkType, LinkStatus,
     };
-    use doublezero_serviceability::state::device::{
-        CurrentInterfaceVersion, Interface, InterfaceType, LoopbackType,
+    use doublezero_serviceability::state::interface::{
+        CurrentInterfaceVersion, InterfaceType, LoopbackType,
     };
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
@@ -143,12 +143,13 @@ mod tests {
             exchange_pk: Pubkey::default(),
             code: "dev01".to_string(),
 
-            interfaces: vec![Interface::V1(CurrentInterfaceVersion {
+            interfaces: vec![CurrentInterfaceVersion {
                 name: "Ethernet1/1".to_string(),
                 status: InterfaceStatus::Unlinked,
                 interface_type: InterfaceType::Physical,
                 ..Default::default()
-            })],
+            }
+            .to_interface()],
             device_type: DeviceType::Switch,
             public_ip: "127.0.0.1".parse().unwrap(),
             status: DeviceStatus::Activated,
@@ -175,7 +176,7 @@ mod tests {
             index: 2,
             reference_count: 0,
             code: "dev02".to_string(),
-            interfaces: vec![Interface::V1(CurrentInterfaceVersion {
+            interfaces: vec![CurrentInterfaceVersion {
                 status: InterfaceStatus::Unlinked,
                 name: "Ethernet1/2".to_string(),
                 interface_type: InterfaceType::Physical,
@@ -184,7 +185,9 @@ mod tests {
                 ip_net: "10.0.0.1/32".parse().unwrap(),
                 node_segment_idx: 0,
                 user_tunnel_endpoint: false,
-            })],
+                ..Default::default()
+            }
+            .to_interface()],
             location_pk: Pubkey::default(),
             exchange_pk: Pubkey::default(),
             device_type: doublezero_sdk::DeviceType::Switch,

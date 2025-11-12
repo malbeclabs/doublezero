@@ -1,6 +1,11 @@
 use core::fmt;
 
-use crate::{error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::device::*};
+use crate::{
+    error::DoubleZeroError,
+    globalstate::globalstate_get,
+    helper::*,
+    state::{device::*, interface::InterfaceStatus},
+};
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 #[cfg(test)]
@@ -60,7 +65,7 @@ pub fn process_reject_device_interface(
         .map_err(|_| DoubleZeroError::InterfaceNotFound)?;
 
     iface.status = InterfaceStatus::Rejected;
-    device.interfaces[idx] = Interface::V1(iface);
+    device.interfaces[idx] = iface.to_interface();
 
     account_write(device_account, &device, payer_account, system_program)?;
 

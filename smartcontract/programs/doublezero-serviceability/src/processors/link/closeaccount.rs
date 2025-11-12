@@ -2,7 +2,7 @@ use crate::{
     error::DoubleZeroError,
     globalstate::globalstate_get,
     helper::*,
-    state::{contributor::Contributor, device::*, link::*},
+    state::{contributor::Contributor, device::*, interface::InterfaceStatus, link::*},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -97,14 +97,14 @@ pub fn process_closeaccount_link(
         let mut updated_iface = side_a_iface.clone();
         updated_iface.status = InterfaceStatus::Unlinked;
         updated_iface.ip_net = NetworkV4::default();
-        side_a_dev.interfaces[idx_a] = Interface::V1(updated_iface);
+        side_a_dev.interfaces[idx_a] = updated_iface.to_interface();
     }
 
     if let Ok((idx_z, side_z_iface)) = side_z_dev.find_interface(&link.side_z_iface_name) {
         let mut updated_iface = side_z_iface.clone();
         updated_iface.status = InterfaceStatus::Unlinked;
         updated_iface.ip_net = NetworkV4::default();
-        side_z_dev.interfaces[idx_z] = Interface::V1(updated_iface);
+        side_z_dev.interfaces[idx_z] = updated_iface.to_interface();
     }
 
     contributor.reference_count = contributor.reference_count.saturating_sub(1);

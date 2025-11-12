@@ -24,6 +24,7 @@ serde = { workspace = true, optional = true }
 serde_bytes = { workspace = true, optional = true }
 solana-program.workspace = true
 thiserror.workspace = true
+bitflags.workspace = true
 
 [dev-dependencies]
 solana-sdk.workspace = true

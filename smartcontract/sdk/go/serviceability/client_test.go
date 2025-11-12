@@ -227,7 +227,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 						MgmtVrf:                "default",
 						Interfaces: []Interface{
 							{
-								Version:            CurrentInterfaceVersion - 1,
+								Version:            0,
 								Status:             InterfaceStatusPending,
 								Name:               "switch1/1/1",
 								InterfaceType:      InterfaceTypePhysical,
@@ -238,7 +238,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 								UserTunnelEndpoint: false,
 							},
 							{
-								Version:            CurrentInterfaceVersion - 1,
+								Version:            0,
 								Status:             InterfaceStatusPending,
 								Name:               "lo0",
 								InterfaceType:      InterfaceTypeLoopback,

@@ -1,6 +1,11 @@
 use core::fmt;
 
-use crate::{error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::device::*};
+use crate::{
+    error::DoubleZeroError,
+    globalstate::globalstate_get,
+    helper::*,
+    state::{device::*, interface::InterfaceStatus},
+};
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 use doublezero_program_common::types::NetworkV4;
@@ -66,7 +71,7 @@ pub fn process_unlink_device_interface(
 
     iface.status = InterfaceStatus::Unlinked;
     iface.ip_net = NetworkV4::default();
-    device.interfaces[idx] = Interface::V1(iface);
+    device.interfaces[idx] = iface.to_interface();
 
     account_write(device_account, &device, payer_account, system_program)?;
 

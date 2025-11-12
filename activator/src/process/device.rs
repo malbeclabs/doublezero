@@ -106,7 +106,7 @@ mod tests {
     use super::*;
     use doublezero_program_common::types::NetworkV4;
     use doublezero_sdk::{
-        AccountData, AccountType, CurrentInterfaceVersion, DeviceType, Interface, InterfaceStatus,
+        AccountData, AccountType, CurrentInterfaceVersion, DeviceType, InterfaceStatus,
         InterfaceType, LoopbackType,
     };
     use doublezero_serviceability::{
@@ -152,7 +152,7 @@ mod tests {
                 dz_prefixes: "10.0.0.1/24,10.0.1.1/24".parse().unwrap(),
                 mgmt_vrf: "default".to_string(),
                 interfaces: vec![
-                    Interface::V1(CurrentInterfaceVersion {
+                    CurrentInterfaceVersion {
                         status: InterfaceStatus::Pending,
                         name: "Ethernet0".to_string(),
                         interface_type: InterfaceType::Physical,
@@ -161,8 +161,10 @@ mod tests {
                         ip_net: NetworkV4::default(),
                         node_segment_idx: 0,
                         user_tunnel_endpoint: false,
-                    }),
-                    Interface::V1(CurrentInterfaceVersion {
+                        ..Default::default()
+                    }
+                    .to_interface(),
+                    CurrentInterfaceVersion {
                         status: InterfaceStatus::Pending,
                         name: "Loopback0".to_string(),
                         interface_type: InterfaceType::Loopback,
@@ -171,7 +173,9 @@ mod tests {
                         ip_net: NetworkV4::default(),
                         node_segment_idx: 0,
                         user_tunnel_endpoint: false,
-                    }),
+                        ..Default::default()
+                    }
+                    .to_interface(),
                 ],
                 max_users: 255,
                 users_count: 0,
@@ -330,7 +334,7 @@ mod tests {
             dz_prefixes: "10.0.0.1/24".parse().unwrap(),
             mgmt_vrf: "default".to_string(),
             interfaces: vec![
-                Interface::V1(CurrentInterfaceVersion {
+                CurrentInterfaceVersion {
                     status: InterfaceStatus::Pending,
                     name: "Ethernet0".to_string(),
                     interface_type: InterfaceType::Physical,
@@ -339,8 +343,10 @@ mod tests {
                     ip_net: NetworkV4::default(),
                     node_segment_idx: 0,
                     user_tunnel_endpoint: false,
-                }),
-                Interface::V1(CurrentInterfaceVersion {
+                    ..Default::default()
+                }
+                .to_interface(),
+                CurrentInterfaceVersion {
                     status: InterfaceStatus::Pending,
                     name: "Loopback0".to_string(),
                     interface_type: InterfaceType::Loopback,
@@ -349,7 +355,9 @@ mod tests {
                     ip_net: NetworkV4::default(),
                     node_segment_idx: 0,
                     user_tunnel_endpoint: false,
-                }),
+                    ..Default::default()
+                }
+                .to_interface(),
             ],
             max_users: 255,
             users_count: 0,
@@ -411,7 +419,7 @@ mod tests {
 
         device.interfaces = expected_interfaces
             .iter()
-            .map(|iface| Interface::V1(iface.clone()))
+            .map(|iface| iface.to_interface())
             .collect::<Vec<_>>();
         process_device_event(
             &client,

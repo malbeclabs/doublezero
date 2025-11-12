@@ -481,7 +481,8 @@ mod tests {
     use crate::{
         processors::exchange::setdevice::SetDeviceOption,
         state::{
-            device::{DeviceType, LoopbackType},
+            device::DeviceType,
+            interface::{LoopbackType, RoutingMode},
             link::LinkLinkType,
             user::{UserCYOA, UserType},
         },
@@ -967,6 +968,12 @@ mod tests {
         test_instruction(
             DoubleZeroInstruction::CreateDeviceInterface(DeviceInterfaceCreateArgs {
                 name: "name".to_string(),
+                interface_dia: crate::state::interface::InterfaceDIA::None,
+                interface_cyoa: crate::state::interface::InterfaceCYOA::None,
+                bandwidth: 0,
+                cir: 0,
+                mtu: 1500,
+                routing_mode: RoutingMode::Static,
                 loopback_type: LoopbackType::None,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
@@ -989,6 +996,12 @@ mod tests {
             DoubleZeroInstruction::UpdateDeviceInterface(DeviceInterfaceUpdateArgs {
                 name: "name".to_string(),
                 loopback_type: Some(LoopbackType::None),
+                interface_dia: Some(crate::state::interface::InterfaceDIA::None),
+                interface_cyoa: Some(crate::state::interface::InterfaceCYOA::None),
+                bandwidth: Some(0),
+                cir: Some(0),
+                mtu: Some(1500),
+                routing_mode: Some(RoutingMode::Static),
                 vlan_id: Some(0),
                 user_tunnel_endpoint: Some(false),
                 ip_net: Some("10.0.0.0/3".parse().unwrap()),

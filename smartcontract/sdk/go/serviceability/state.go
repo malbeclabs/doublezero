@@ -194,12 +194,80 @@ func (l LoopbackType) MarshalJSON() ([]byte, error) {
 	return json.Marshal(l.String())
 }
 
+type InterfaceCYOA uint8
+
+const (
+	InterfaceCYOANone InterfaceCYOA = iota
+	InterfaceCYOAGREOverDIA
+	InterfaceCYOAGREOverFabric
+	InterfaceCYOAGREOverPrivatePeering
+	InterfaceCYOAGREOverPublicPeering
+	InterfaceCYOAGREOverCable
+)
+
+func (l InterfaceCYOA) String() string {
+	return [...]string{
+		"none",
+		"gre_over_dia",
+		"gre_over_fabric",
+		"gre_over_private_peering",
+		"gre_over_public_peering",
+		"gre_over_cable",
+	}[l]
+}
+
+func (l InterfaceCYOA) MarshalJSON() ([]byte, error) {
+	return json.Marshal(l.String())
+}
+
+type InterfaceDIA uint8
+
+const (
+	InterfaceDIANone InterfaceDIA = iota
+	InterfaceDIADIA
+)
+
+func (l InterfaceDIA) String() string {
+	return [...]string{
+		"none",
+		"dia",
+	}[l]
+}
+
+func (l InterfaceDIA) MarshalJSON() ([]byte, error) {
+	return json.Marshal(l.String())
+}
+
+type RoutingMode uint8
+
+const (
+	RoutingModeStatic RoutingMode = iota
+	RoutingModeBGP
+)
+
+func (l RoutingMode) String() string {
+	return [...]string{
+		"static",
+		"bgp",
+	}[l]
+}
+
+func (l RoutingMode) MarshalJSON() ([]byte, error) {
+	return json.Marshal(l.String())
+}
+
 type Interface struct {
 	Version            uint8
 	Status             InterfaceStatus
 	Name               string
 	InterfaceType      InterfaceType
+	InterfaceCYOA      InterfaceCYOA
+	InterfaceDIA       InterfaceDIA
 	LoopbackType       LoopbackType
+	Bandwidth          uint64
+	Cir                uint64
+	Mtu                uint16
+	RoutingMode        RoutingMode
 	VlanId             uint16
 	IpNet              [5]uint8
 	NodeSegmentIdx     uint16
@@ -228,7 +296,7 @@ func (i Interface) MarshalJSON() ([]byte, error) {
 	return json.Marshal(jsonIface)
 }
 
-const CurrentInterfaceVersion = 1
+const CurrentInterfaceVersion = 2
 
 type Device struct {
 	AccountType            AccountType

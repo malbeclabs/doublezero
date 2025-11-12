@@ -2,12 +2,16 @@ use crate::{
     error::DoubleZeroError,
     globalstate::globalstate_get,
     helper::*,
-    state::{accounttype::AccountType, device::*},
+    state::{
+        accounttype::AccountType,
+        device::*,
+        interface::{InterfaceCYOA, InterfaceDIA, InterfaceStatus, LoopbackType, RoutingMode},
+    },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
-use doublezero_program_common::{types::NetworkV4, validate_iface};
+use doublezero_program_common::types::NetworkV4;
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -25,6 +29,12 @@ pub struct DeviceInterfaceUpdateArgs {
     pub status: Option<InterfaceStatus>,
     pub ip_net: Option<NetworkV4>,
     pub node_segment_idx: Option<u16>,
+    pub interface_cyoa: Option<InterfaceCYOA>,
+    pub interface_dia: Option<InterfaceDIA>,
+    pub bandwidth: Option<u64>,
+    pub cir: Option<u64>,
+    pub mtu: Option<u16>,
+    pub routing_mode: Option<RoutingMode>,
 }
 
 impl fmt::Debug for DeviceInterfaceUpdateArgs {
@@ -100,10 +110,30 @@ pub fn process_update_device_interface(
         .find_interface(&value.name)
         .map_err(|_| DoubleZeroError::InterfaceNotFound)?;
     let mut iface = device.interfaces[idx].into_current_version();
-    iface.name = validate_iface(&value.name).map_err(|_| DoubleZeroError::InvalidInterfaceName)?;
 
-    if let Some(loopback_type) = value.loopback_type {
-        iface.loopback_type = loopback_type;
+    if let Some(loopback_type) = &value.loopback_type {
+        if *loopback_type == LoopbackType::None {
+            return Err(DoubleZeroError::InvalidLoopbackType.into());
+        }
+        iface.loopback_type = *loopback_type;
+    }
+    if let Some(interface_cyoa) = &value.interface_cyoa {
+        iface.interface_cyoa = *interface_cyoa;
+    }
+    if let Some(interface_dia) = &value.interface_dia {
+        iface.interface_dia = *interface_dia;
+    }
+    if let Some(bandwidth) = value.bandwidth {
+        iface.bandwidth = bandwidth;
+    }
+    if let Some(cir) = value.cir {
+        iface.cir = cir;
+    }
+    if let Some(mtu) = value.mtu {
+        iface.mtu = mtu;
+    }
+    if let Some(routing_mode) = value.routing_mode {
+        iface.routing_mode = routing_mode;
     }
     if let Some(vlan_id) = value.vlan_id {
         iface.vlan_id = vlan_id;
@@ -120,7 +150,7 @@ pub fn process_update_device_interface(
     if let Some(node_segment_idx) = value.node_segment_idx {
         iface.node_segment_idx = node_segment_idx;
     }
-    device.interfaces[idx] = Interface::V1(iface);
+    device.interfaces[idx] = iface.to_interface();
 
     account_write(device_account, &device, payer_account, system_program)?;
 

@@ -2,7 +2,7 @@ use crate::{
     error::DoubleZeroError,
     globalstate::globalstate_get,
     helper::*,
-    state::{device::*, link::*},
+    state::{device::*, interface::InterfaceStatus, link::*},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -108,13 +108,13 @@ pub fn process_activate_link(
     updated_iface_a.status = InterfaceStatus::Activated;
     updated_iface_a.ip_net =
         NetworkV4::new(value.tunnel_net.nth(0).unwrap(), value.tunnel_net.prefix()).unwrap();
-    side_a_dev.interfaces[idx_a] = Interface::V1(updated_iface_a);
+    side_a_dev.interfaces[idx_a] = updated_iface_a.to_interface();
 
     let mut updated_iface_z = side_z_iface.clone();
     updated_iface_z.status = InterfaceStatus::Activated;
     updated_iface_z.ip_net =
         NetworkV4::new(value.tunnel_net.nth(1).unwrap(), value.tunnel_net.prefix()).unwrap();
-    side_z_dev.interfaces[idx_z] = Interface::V1(updated_iface_z);
+    side_z_dev.interfaces[idx_z] = updated_iface_z.to_interface();
 
     link.tunnel_id = value.tunnel_id;
     link.tunnel_net = value.tunnel_net;

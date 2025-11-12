@@ -1,3 +1,5 @@
+ARG ARISTA_CEOS_IMAGE=ghcr.io/malbeclabs/ceos:4.33.1F
+
 # ----------------------------------------------------------------------------
 # Builder stage for building the control plane agent binary.
 # ----------------------------------------------------------------------------
@@ -24,7 +26,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # ----------------------------------------------------------------------------
 # EOS stage with the device image.
 # ----------------------------------------------------------------------------
-FROM ghcr.io/malbeclabs/ceos:4.33.1F AS eos
+FROM ${ARISTA_CEOS_IMAGE} AS eos
 
 ARG DOCKERFILE_DIR
 

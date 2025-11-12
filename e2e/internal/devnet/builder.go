@@ -33,6 +33,16 @@ func BuildContainerImages(ctx context.Context, log *slog.Logger, workspaceDir st
 	}
 	baseImageArg := fmt.Sprintf("BASE_IMAGE=%s", os.Getenv("DZ_BASE_IMAGE"))
 
+	// Add the ARISTA_CEOS_IMAGE device image build args if set
+	var ceosImageArg string
+	if os.Getenv("ARISTA_CEOS_IMAGE") != "" {
+		ceosImageArg = fmt.Sprintf("ARISTA_CEOS_IMAGE=%s", os.Getenv("ARISTA_CEOS_IMAGE"))
+	}
+	deviceExtraArgs := append([]string{}, extraArgs...)
+	if ceosImageArg != "" {
+		deviceExtraArgs = append(deviceExtraArgs, "--build-arg", ceosImageArg)
+	}
+
 	// Define build tasks
 	buildTasks := []struct {
 		name       string
@@ -62,7 +72,7 @@ func BuildContainerImages(ctx context.Context, log *slog.Logger, workspaceDir st
 			name:       "device",
 			image:      os.Getenv("DZ_DEVICE_IMAGE"),
 			dockerfile: filepath.Join(dockerfilesDir, "device", "Dockerfile"),
-			args:       append([]string{"--build-arg", baseImageArg, "--build-arg", "DOCKERFILE_DIR=" + filepath.Join(dockerfilesDirRelativeToWorkspace, "device")}, extraArgs...),
+			args:       append([]string{"--build-arg", baseImageArg, "--build-arg", "DOCKERFILE_DIR=" + filepath.Join(dockerfilesDirRelativeToWorkspace, "device")}, deviceExtraArgs...),
 		},
 		{
 			name:       "ledger",

@@ -93,11 +93,11 @@ func (p *Plugin) OnClose(peer corebgp.PeerConfig) {
 		protocol := unix.RTPROT_BGP // 186
 		routes, err := p.RouteReaderWriter.RouteByProtocol(protocol)
 		if err != nil {
-			slog.Error("routes: error getting routes by protocol", "protocol", protocol)
+			slog.Error("routes: error getting routes by protocol on peer close", "protocol", protocol, "error", err)
 		}
 		for _, route := range routes {
 			if err := p.RouteReaderWriter.RouteDelete(route); err != nil {
-				slog.Error("Error deleting route", "route", route)
+				slog.Error("routes: error deleting route on peer close", "route", route.String(), "error", err)
 				continue
 			}
 		}
@@ -126,7 +126,7 @@ func (p *Plugin) handleUpdate(peer corebgp.PeerConfig, u []byte) *corebgp.Notifi
 		slog.Info("routes: removing route from table", "table", p.RouteTable, "dz route", route.String())
 		err := p.RouteReaderWriter.RouteDelete(route)
 		if err != nil {
-			slog.Error("routes: error removing route from table", "table", p.RouteTable, "error", err)
+			slog.Error("routes: error removing route from table", "table", p.RouteTable, "error", err, "route", route.String())
 		}
 	}
 
@@ -152,7 +152,7 @@ func (p *Plugin) handleUpdate(peer corebgp.PeerConfig, u []byte) *corebgp.Notifi
 			Protocol: unix.RTPROT_BGP}
 		slog.Info("routes: writing route", "table", p.RouteTable, "dz route", route.String())
 		if err := p.RouteReaderWriter.RouteAdd(route); err != nil {
-			slog.Error("routes: error writing route", "table", p.RouteTable, "error", err)
+			slog.Error("routes: error writing route", "table", p.RouteTable, "error", err, "route", route.String())
 		}
 	}
 	return nil

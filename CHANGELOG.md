@@ -6,7 +6,6 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- Validate AccessPass before client connection (CLI) ([#1356](https://github.com/malbeclabs/doublezero/issues/1356))
 
 - Onchain programs
   - Check if `accesspass.owner` is equal to system program ([malbeclabs/doublezero#2088](https://github.com/malbeclabs/doublezero/pull/2088))
@@ -14,8 +13,10 @@ All notable changes to this project will be documented in this file.
   - Add a new sub-type field to interface definitions to support CYOA and DIA interfaces. This sub-type allows the system to distinguish between standard Physical/Loopback interfaces and specialized CYOA/DIA interfaces, enabling proper classification, validation, and configuration handling across the DZD.
   - Improve error message when connecting to a device that is at capacity or has max_users=0. Users now receive "Device is not accepting more users (at capacity or max_users=0)" instead of the confusing "Device not found" error when explicitly specifying an ineligible device.
   - Add `link latency` command to display latency statistics from the telemetry program. Supports filtering by percentile (p50, p90, p95, p99, mean, min, max, stddev, all), querying by link code or all links, and filtering by epoch. Resolves: [#1942](https://github.com/malbeclabs/doublezero/issues/1942)
-
-- Added `--contributor | -c` filter to `device list`, `interface list`, and `link list` commands. (#1274)
+  - Added `--contributor | -c` filter to `device list`, `interface list`, and `link list` commands. (#1274)
+  - Validate AccessPass before client connection ([#1356](https://github.com/malbeclabs/doublezero/issues/1356))
+- Client
+  - Add initial route liveness probing, initially disabled for rollout
 
 ### Breaking
 

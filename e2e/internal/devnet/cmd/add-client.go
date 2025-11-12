@@ -17,6 +17,8 @@ func NewAddClientCmd() *AddClientCmd {
 func (c *AddClientCmd) Command() *cobra.Command {
 	var cyoaNetworkHostID uint32
 	var keypairPath string
+	var routeLivenessEnablePassive bool
+	var routeLivenessEnableActive bool
 
 	cmd := &cobra.Command{
 		Use:   "add-client",
@@ -28,8 +30,10 @@ func (c *AddClientCmd) Command() *cobra.Command {
 			}
 
 			_, err = dn.AddClient(ctx, devnet.ClientSpec{
-				CYOANetworkIPHostID: cyoaNetworkHostID,
-				KeypairPath:         keypairPath,
+				CYOANetworkIPHostID:        cyoaNetworkHostID,
+				KeypairPath:                keypairPath,
+				RouteLivenessEnablePassive: routeLivenessEnablePassive,
+				RouteLivenessEnableActive:  routeLivenessEnableActive,
 			})
 			if err != nil {
 				return fmt.Errorf("failed to add client: %w", err)
@@ -43,6 +47,8 @@ func (c *AddClientCmd) Command() *cobra.Command {
 	_ = cmd.MarkFlagRequired("cyoa-network-host-id")
 
 	cmd.Flags().StringVar(&keypairPath, "keypair-path", "", "Path to the keypair file (optional)")
+	cmd.Flags().BoolVar(&routeLivenessEnablePassive, "route-liveness-enable-passive", false, "Enable route liveness in passive mode (experimental)")
+	cmd.Flags().BoolVar(&routeLivenessEnableActive, "route-liveness-enable-active", false, "Enable route liveness in active mode (experimental)")
 
 	return cmd
 }

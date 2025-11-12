@@ -23,6 +23,17 @@ type ClientSpec struct {
 	ContainerImage string
 	KeypairPath    string
 
+	// Route liveness passive/active mode flags.
+	// TODO(snormore): These flags are temporary for initial rollout testing.
+	// They will be superceded by a single `route-liveness-enable` flag, where false means passive-mode
+	// and true means active-mode.
+	RouteLivenessEnablePassive bool
+	RouteLivenessEnableActive  bool
+
+	// RouteLivenessEnable is a flag to enable or disable route liveness. False puts the system in
+	// passive-mode, and true puts it in active-mode.
+	// RouteLivenessEnable bool
+
 	// CYOANetworkIPHostID is the offset into the host portion of the subnet (must be < 2^(32 - prefixLen)).
 	CYOANetworkIPHostID uint32
 }
@@ -152,6 +163,14 @@ func (c *Client) Start(ctx context.Context) error {
 	// We need to set this here because dockerContainerName and dockerContainerHostname use it.
 	c.Pubkey = pubkey
 
+	extraArgs := []string{}
+	if c.Spec.RouteLivenessEnablePassive {
+		extraArgs = append(extraArgs, "-route-liveness-enable-passive")
+	}
+	if c.Spec.RouteLivenessEnableActive {
+		extraArgs = append(extraArgs, "-route-liveness-enable-active")
+	}
+
 	// Start the client container.
 	req := testcontainers.ContainerRequest{
 		Image: c.Spec.ContainerImage,
@@ -163,6 +182,7 @@ func (c *Client) Start(ctx context.Context) error {
 			"DZ_LEDGER_URL":                c.dn.Ledger.InternalRPCURL,
 			"DZ_LEDGER_WS":                 c.dn.Ledger.InternalRPCWSURL,
 			"DZ_SERVICEABILITY_PROGRAM_ID": c.dn.Manager.ServiceabilityProgramID,
+			"DZ_CLIENT_EXTRA_ARGS":         strings.Join(extraArgs, " "),
 		},
 		Files: []testcontainers.ContainerFile{
 			{

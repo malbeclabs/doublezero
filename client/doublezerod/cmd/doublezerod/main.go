@@ -11,7 +11,9 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/liveness"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/runtime"
 	"github.com/malbeclabs/doublezero/config"
 	"github.com/prometheus/client_golang/prometheus"
@@ -34,10 +36,36 @@ var (
 	metricsAddr          = flag.String("metrics-addr", "localhost:0", "Address to listen on for prometheus metrics")
 	routeConfigPath      = flag.String("route-config", "/var/lib/doublezerod/route-config.json", "path to route config file (unstable)")
 
+	// Route liveness configuration flags.
+	routeLivenessTxMin      = flag.Duration("route-liveness-tx-min", defaultRouteLivenessTxMin, "route liveness tx min")
+	routeLivenessRxMin      = flag.Duration("route-liveness-rx-min", defaultRouteLivenessRxMin, "route liveness rx min")
+	routeLivenessDetectMult = flag.Uint("route-liveness-detect-mult", defaultRouteLivenessDetectMult, "route liveness detect mult")
+	routeLivenessMinTxFloor = flag.Duration("route-liveness-min-tx-floor", defaultRouteLivenessMinTxFloor, "route liveness min tx floor")
+	routeLivenessMaxTxCeil  = flag.Duration("route-liveness-max-tx-ceil", defaultRouteLivenessMaxTxCeil, "route liveness max tx ceil")
+
+	// TODO(snormore): These flags are temporary for initial rollout testing.
+	// They will be superceded by a single `route-liveness-enable` flag, where false means
+	// passive-mode and true means active-mode.
+	routeLivenessEnablePassive = flag.Bool("route-liveness-enable-passive", false, "enables route liveness in passive mode (experimental)")
+	routeLivenessEnableActive  = flag.Bool("route-liveness-enable-active", false, "enables route liveness in active mode (experimental)")
+
 	// set by LDFLAGS
 	version = "dev"
 	commit  = "none"
 	date    = "unknown"
+)
+
+const (
+	defaultRouteLivenessTxMin      = 300 * time.Millisecond
+	defaultRouteLivenessRxMin      = 300 * time.Millisecond
+	defaultRouteLivenessDetectMult = 3
+	defaultRouteLivenessMinTxFloor = 50 * time.Millisecond
+	defaultRouteLivenessMaxTxCeil  = 1 * time.Second
+
+	// The liveness port is not configurable since clients need to use the same one so they know
+	// how to connect to each other.
+	defaultRouteLivenessPort   = 44880
+	defaultRouteLivenessBindIP = "0.0.0.0"
 )
 
 func main() {
@@ -112,10 +140,33 @@ func main() {
 		}()
 	}
 
+	// If either passive or active mode is enabled, create a manager config.
+	// If neither is enabled, completely disable the liveness subsystem.
+	// TODO(snormore): The scenario where the liveness subsystem is completely disabled is
+	// temporary for initial rollout testing.
+	var lmc *liveness.ManagerConfig
+	if *routeLivenessEnablePassive || *routeLivenessEnableActive {
+		lmc = &liveness.ManagerConfig{
+			Logger: slog.Default(),
+			BindIP: defaultRouteLivenessBindIP,
+			Port:   defaultRouteLivenessPort,
+
+			// If active mode is enabled, set passive mode to false.
+			// The manager only knows about passive mode, with the negation of it being active mode.
+			PassiveMode: !*routeLivenessEnableActive,
+
+			TxMin:      *routeLivenessTxMin,
+			RxMin:      *routeLivenessRxMin,
+			DetectMult: uint8(*routeLivenessDetectMult),
+			MinTxFloor: *routeLivenessMinTxFloor,
+			MaxTxCeil:  *routeLivenessMaxTxCeil,
+		}
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := runtime.Run(ctx, *sockFile, *routeConfigPath, *enableLatencyProbing, *enableLatencyMetrics, *programId, *rpcEndpoint, *probeInterval, *cacheUpdateInterval); err != nil {
+	if err := runtime.Run(ctx, *sockFile, *routeConfigPath, *enableLatencyProbing, *enableLatencyMetrics, *programId, *rpcEndpoint, *probeInterval, *cacheUpdateInterval, lmc); err != nil {
 		slog.Error("runtime error", "error", err)
 		os.Exit(1)
 	}

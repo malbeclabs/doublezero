@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"log/slog"
 	"net"
 	"net/netip"
 	"strings"
@@ -15,9 +16,11 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/jwhited/corebgp"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/liveness"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 	gobgp "github.com/osrg/gobgp/pkg/packet/bgp"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
 )
 
@@ -114,7 +117,20 @@ func (p *dummyPlugin) handleUpdate(peer corebgp.PeerConfig, u []byte) *corebgp.N
 
 func TestBgpServer(t *testing.T) {
 	nlr := &mockRouteReaderWriter{}
-	b, err := bgp.NewBgpServer(net.IP{1, 1, 1, 1}, nlr)
+	lm, err := liveness.NewManager(t.Context(), &liveness.ManagerConfig{
+		Logger:     slog.Default(),
+		Netlinker:  nlr,
+		BindIP:     "127.0.0.1",
+		Port:       0,
+		TxMin:      100 * time.Millisecond,
+		RxMin:      100 * time.Millisecond,
+		DetectMult: 3,
+		MinTxFloor: 50 * time.Millisecond,
+		MaxTxCeil:  1 * time.Second,
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = lm.Close() })
+	b, err := bgp.NewBgpServer(net.IP{1, 1, 1, 1}, nlr, lm)
 	if err != nil {
 		t.Fatalf("error creating bgp server: %v", err)
 	}

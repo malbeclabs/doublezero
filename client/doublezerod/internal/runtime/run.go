@@ -13,13 +13,14 @@ import (
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/latency"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/liveness"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/manager"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/pim"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 	"golang.org/x/sys/unix"
 )
 
-func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLatencyProbing, enableLatencyMetrics bool, programId string, rpcEndpoint string, probeInterval, cacheUpdateInterval int) error {
+func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLatencyProbing, enableLatencyMetrics bool, programId string, rpcEndpoint string, probeInterval, cacheUpdateInterval int, lmc *liveness.ManagerConfig) error {
 	nlr := routing.Netlink{}
 	var crw bgp.RouteReaderWriter
 	if _, err := os.Stat(routeConfigPath); os.IsNotExist(err) {
@@ -30,7 +31,23 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 			return fmt.Errorf("error creating configured route reader writer: %v", err)
 		}
 	}
-	bgp, err := bgp.NewBgpServer(net.IPv4(1, 1, 1, 1), crw)
+
+	// If the liveness manager config is not nil, create a new manager.
+	// Otherwise, completely disable the liveness subsystem.
+	// TODO(snormore): The scenario where the liveness subsystem is completely disabled is
+	// temporary for initial rollout testing.
+	var lm *liveness.Manager
+	if lmc != nil {
+		lmc.Netlinker = crw
+		var err error
+		lm, err = liveness.NewManager(ctx, lmc)
+		if err != nil {
+			return fmt.Errorf("error creating liveness manager: %v", err)
+		}
+		defer lm.Close()
+	}
+
+	bgp, err := bgp.NewBgpServer(net.IPv4(1, 1, 1, 1), crw, lm)
 	if err != nil {
 		return fmt.Errorf("error creating bgp server: %v", err)
 	}
@@ -116,6 +133,14 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 		errCh <- err
 	}()
 
+	// The liveness manager can be nil if the liveness subsystem is disabled.
+	// TODO(snormore): The scenario where the liveness subsystem is completely disabled is
+	// temporary for initial rollout testing.
+	var lmErrCh <-chan error
+	if lm != nil {
+		lmErrCh = lm.Err()
+	}
+
 	select {
 	case <-ctx.Done():
 		slog.Info("teardown: cleaning up and closing")
@@ -123,6 +148,8 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 		api.Close()
 		return nil
 	case err := <-errCh:
+		return err
+	case err := <-lmErrCh:
 		return err
 	}
 }

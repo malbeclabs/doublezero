@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"testing"
 
 	pb "github.com/malbeclabs/doublezero/e2e/proto/qa/gen/pb-go"
@@ -74,6 +75,10 @@ func TestQAAgentConnectivity(t *testing.T) {
 	})
 
 	t.Run("GetStatus", func(t *testing.T) {
+		if _, err := exec.LookPath("doublezero"); err != nil {
+			t.Skip("skipping test: doublezero binary not found")
+		}
+
 		statusResult, err := client.GetStatus(ctx, &emptypb.Empty{})
 		require.NoError(t, err)
 		require.NotNil(t, statusResult)

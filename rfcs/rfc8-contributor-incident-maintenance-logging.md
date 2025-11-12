@@ -14,7 +14,7 @@ Operational awareness across contributors is fragmented in private systems and S
 
 A unified gateway gives one authoritative ingress for operational events. Slack remains the collaboration surface, but the canonical record of status and lifecycle changes becomes machine-verifiable and future-proof for decentralization.
 
-This design delivers immediate value (shared visibility, consistent status logs, network-wide coordination) while maintaining a clean migration path to on-chain anchoring.
+This design delivers immediate value (shared visibility, consistent status logs, network-wide coordination) while maintaining a clean migration path to onchain anchoring.
 
 # **New Terminology**
 
@@ -22,7 +22,7 @@ This design delivers immediate value (shared visibility, consistent status logs,
 | --- | --- |
 | **Incident** | Unplanned service-impacting event with enumerated severity and status. |
 | **Maintenance** | Planned, time-bounded activity that may affect availability. Auto-closes after `end_at`. |
-| **Proof of Contributor** | Caller authority via per-contributor API key (MVP); later, signed requests and on-chain registry. |
+| **Proof of Contributor** | Caller authority via per-contributor API key (MVP); later, signed requests and onchain registry. |
 | **Gateway** | Authenticated, versioned ingress that validates identity, enforces schema, persists events, and emits notifications. |
 
 # **Alternatives Considered**
@@ -30,7 +30,7 @@ This design delivers immediate value (shared visibility, consistent status logs,
 - **Do nothing:** Keeps fragmented visibility and manual coordination.
 - **Point-to-point bridges:** N² maintenance trap across diverse contributor systems.
 - **Mandate one product:** Simplifies normalization but undermines autonomy.
-- **Go fully on-chain day one:** Slows adoption and tooling readiness.
+- **Go fully onchain day one:** Slows adoption and tooling readiness.
 
 A **gateway-first** design achieves fast adoption and a clear path to progressive decentralization.
 
@@ -40,7 +40,7 @@ A **gateway-first** design achieves fast adoption and a clear path to progressiv
 
 - **Ingress**: Versioned REST API and web form (writes through the API).
 - **Identity**: API key bound to a Contributor `pubkey` (service key).
-- **Storage**: Airtable (MVP) →  on-chain anchors.
+- **Storage**: Airtable (MVP) →  onchain anchors.
 - **Notifications**: Slack channel for new records, status changes (MVP).
 
 ## Cross-Contributor Tickets
@@ -58,25 +58,25 @@ A **gateway-first** design achieves fast adoption and a clear path to progressiv
 
 - All contributors can view all open tickets (incidents + maintenance) and append updates/comments in slack threads.
 
-## Commenting, Updates, and Attachments (Slack, API, On-Chain)
+## Commenting, Updates, and Attachments (Slack, API, Onchain)
 
 **Design choice (MVP)**: Single ingress for structured facts (open ticket / create maintenance, close ticket / close maintenance) via API/webform; Slack used for human conversation and notifications.
 
 **Why**:
 
 - **Consistency**: Slack threads differ in structure, permissions, edits/deletes, and attachments. Bi-directional real-time sync introduces race conditions and partial failures.
-- **Clarity**: One authoritative store simplifies future on-chain anchoring and auditability.
+- **Clarity**: One authoritative store simplifies future onchain anchoring and auditability.
 - **Pragmatism**: Teams can still converse in Slack. Which makes it easy to share logs, screenshots or start a call to collaborate on a particular issue.
 
 **How (MVP)**:
 
-- The gateway forces the contributor to fill in all required fields and authenticates via an API key that is bound to the contributor. This makes sure we capture all required information which we could also use to start developing the on-chain registration of incidents/maintenance.
+- The gateway forces the contributor to fill in all required fields and authenticates via an API key that is bound to the contributor. This makes sure we capture all required information which we could also use to start developing the onchain registration of incidents/maintenance.
 - The gateway posts a Slack message per ticket and maintenance item in `#contributor-incidents` or `#contributor-maintenance`
 
 ## Identity Stages
 
 - **Now (MVP)**: API key per contributor bound to `pubkey`.
-- **Later**: On-chain registry binds `pubkey` to contributor.
+- **Later**: Onchain registry binds `pubkey` to contributor.
 
 ## Enumerations
 
@@ -134,12 +134,12 @@ A **gateway-first** design achieves fast adoption and a clear path to progressiv
 - **Incidents**: Manual close, via form or direct via the API.
 - Slack: should follow our internal data retention policy.
 
-## Going Fully On-Chain: Trade-offs
+## Going Fully Onchain: Trade-offs
 
 - **Pros**: Public verifiability; replayable audit; independent explorers; resilience.
 - **Cons**: Higher engineering lift now; comments/attachments require off-chain CAS; Rich media UX still need portals.
 
-**Path**: Use the API gateway + Slack now for fast adoption. In parallel, build the on-chain registration of incidents/maintenance. 
+**Path**: Use the API gateway + Slack now for fast adoption. In parallel, build the onchain registration of incidents/maintenance. 
 
 # **Impact**
 
@@ -147,13 +147,13 @@ A **gateway-first** design achieves fast adoption and a clear path to progressiv
 - Cross-contributor visibility and possibility to collaborate.
 - Dedicated Slack channels for contributor incidents and contributor maintenance.
 - Slack remains useful for collaboration, sharing rich media and visibility.
-- Clear migration path to verifiable, on-chain anchors.
+- Clear migration path to verifiable, onchain anchors.
 
 # **Security Considerations**
 
 - Authentication via API key bound to contributor `pubkey`; TLS for transport.
 - Per-key rate limits; optional IP allowlists.
-- On-chain anchoring publishes only high-level data (e.g. status of a link: healthy/incident/maintenance).
+- Onchain anchoring publishes only high-level data (e.g. status of a link: healthy/incident/maintenance).
 
 # **Backwards Compatibility**
 

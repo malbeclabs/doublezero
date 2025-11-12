@@ -98,6 +98,13 @@ func (q *EventQueue) CountFor(iface, localIP string) int {
 	return c
 }
 
+// Len returns the total number of events in the queue.
+func (q *EventQueue) Len() int {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return q.pq.Len()
+}
+
 // eventHeap implements heap.Interface for event scheduling by time then seq.
 type eventHeap []*event
 
@@ -129,6 +136,7 @@ type Scheduler struct {
 	udp           *UDPService      // shared UDP transport for all sessions
 	onSessionDown func(s *Session) // callback invoked when a session transitions to Down
 	eq            *EventQueue      // global time-ordered event queue
+	maxEvents     int              // 0 = unlimited
 
 	writeErrWarnEvery time.Duration // min interval between repeated write warnings
 	writeErrWarnLast  time.Time     // last time a warning was logged
@@ -137,7 +145,7 @@ type Scheduler struct {
 
 // NewScheduler constructs a Scheduler bound to a UDP transport and logger.
 // onSessionDown is called asynchronously whenever a session is detected as failed.
-func NewScheduler(log *slog.Logger, udp *UDPService, onSessionDown func(s *Session)) *Scheduler {
+func NewScheduler(log *slog.Logger, udp *UDPService, onSessionDown func(s *Session), maxEvents int) *Scheduler {
 	eq := NewEventQueue()
 	return &Scheduler{
 		log:               log,
@@ -145,6 +153,7 @@ func NewScheduler(log *slog.Logger, udp *UDPService, onSessionDown func(s *Sessi
 		onSessionDown:     onSessionDown,
 		eq:                eq,
 		writeErrWarnEvery: 5 * time.Second,
+		maxEvents:         maxEvents,
 	}
 }
 
@@ -189,21 +198,30 @@ func (s *Scheduler) Run(ctx context.Context) error {
 			}
 		}
 
-		// Clear scheduled marker if this event is the one we planned for.
-		ev.session.mu.Lock()
-		if ev.eventType == eventTypeTX && ev.when.Equal(ev.session.nextTxScheduled) {
-			ev.session.nextTxScheduled = time.Time{}
-		}
-		if ev.eventType == eventTypeDetect && ev.when.Equal(ev.session.nextDetectScheduled) {
-			ev.session.nextDetectScheduled = time.Time{}
-		}
-		ev.session.mu.Unlock()
-
 		switch ev.eventType {
 		case eventTypeTX:
+			ev.session.mu.Lock()
+			if ev.when.Equal(ev.session.nextTxScheduled) {
+				ev.session.nextTxScheduled = time.Time{}
+			}
+			ev.session.mu.Unlock()
 			s.doTX(ev.session)
 			s.scheduleTx(time.Now(), ev.session)
 		case eventTypeDetect:
+			// drop stale detect events
+			ev.session.mu.Lock()
+			if !ev.when.Equal(ev.session.detectDeadline) {
+				if ev.when.Equal(ev.session.nextDetectScheduled) {
+					ev.session.nextDetectScheduled = time.Time{}
+				}
+				ev.session.mu.Unlock()
+				continue
+			}
+			if ev.when.Equal(ev.session.nextDetectScheduled) {
+				ev.session.nextDetectScheduled = time.Time{}
+			}
+			ev.session.mu.Unlock()
+
 			if s.tryExpire(ev.session) {
 				// Expiration triggers asynchronous session-down handling.
 				go s.onSessionDown(ev.session)
@@ -218,6 +236,20 @@ func (s *Scheduler) Run(ctx context.Context) error {
 			}
 		}
 	}
+}
+
+func (s *Scheduler) maybeDropOnOverflow(et eventType) bool {
+	if s.maxEvents <= 0 {
+		return false
+	}
+	if s.eq.Len() < s.maxEvents {
+		return false
+	}
+	if et == eventTypeTX {
+		// never drop TX
+		return false
+	}
+	return true
 }
 
 // scheduleTx schedules the next transmit event for the given session.
@@ -261,6 +293,16 @@ func (s *Scheduler) scheduleDetect(now time.Time, sess *Session) {
 	}
 	sess.nextDetectScheduled = ddl
 	sess.mu.Unlock()
+
+	if s.maybeDropOnOverflow(eventTypeDetect) {
+		// undo marker since we didn’t enqueue
+		sess.mu.Lock()
+		if sess.nextDetectScheduled.Equal(ddl) {
+			sess.nextDetectScheduled = time.Time{}
+		}
+		sess.mu.Unlock()
+		return
+	}
 
 	s.eq.Push(&event{when: ddl, eventType: eventTypeDetect, session: sess})
 }

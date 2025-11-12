@@ -19,6 +19,8 @@ const (
 	// overly chatty probes and to keep failure detection reasonably fast.
 	defaultMinTxFloor = 50 * time.Millisecond
 	defaultMaxTxCeil  = 1 * time.Second
+
+	defaultMaxEvents = 10240
 )
 
 // Peer identifies a remote endpoint and the local interface context used to reach it.
@@ -66,6 +68,13 @@ type ManagerConfig struct {
 	MinTxFloor time.Duration
 	MaxTxCeil  time.Duration
 	BackoffMax time.Duration
+
+	// Maximum number of events to keep in the scheduler queue.
+	// This is an upper bound for safety to prevent unbounded
+	// memory usage in the event of regressions.
+	// suggested: 4 * expected number of sessions
+	// default: 10,240
+	MaxEvents int
 }
 
 // Validate fills defaults and enforces constraints for ManagerConfig.
@@ -115,6 +124,12 @@ func (c *ManagerConfig) Validate() error {
 	}
 	if c.BackoffMax < c.MinTxFloor {
 		return errors.New("backoffMax must be greater than or equal to minTxFloor")
+	}
+	if c.MaxEvents == 0 {
+		c.MaxEvents = defaultMaxEvents
+	}
+	if c.MaxEvents < 0 {
+		return errors.New("maxEvents must be greater than 0")
 	}
 	return nil
 }
@@ -183,7 +198,7 @@ func NewManager(ctx context.Context, cfg *ManagerConfig) (*Manager, error) {
 
 	// Wire up IO loops.
 	m.recv = NewReceiver(m.log, m.udp, m.HandleRx)
-	m.sched = NewScheduler(m.log, m.udp, m.onSessionDown)
+	m.sched = NewScheduler(m.log, m.udp, m.onSessionDown, m.cfg.MaxEvents)
 
 	// Receiver goroutine: parses control packets and dispatches to HandleRx.
 	m.wg.Add(1)

@@ -187,7 +187,7 @@ func TestClient_Liveness_Scheduler_Run_SendsAndReschedules(t *testing.T) {
 	}()
 
 	log := newTestLogger(t)
-	s := NewScheduler(log, w, func(*Session) {})
+	s := NewScheduler(log, w, func(*Session) {}, 0)
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	go func() {
@@ -365,4 +365,116 @@ func TestClient_Liveness_Scheduler_ScheduleTx_AllowsRescheduleAfterPop(t *testin
 	require.NotNil(t, ev2)
 	require.Equal(t, eventTypeTX, ev2.eventType)
 	require.Nil(t, s.eq.Pop())
+}
+
+func TestClient_Liveness_Scheduler_ScheduleDetect_DropsOnOverflowAndClearsMarker(t *testing.T) {
+	t.Parallel()
+
+	s := &Scheduler{eq: NewEventQueue(), maxEvents: 1}
+	sess := &Session{
+		alive:      true,
+		detectMult: 1,
+		minTxFloor: time.Millisecond,
+		peer:       &Peer{Interface: "eth0", LocalIP: "192.0.2.1"},
+	}
+
+	// Fill the queue to the cap with an unrelated event
+	other := &Session{peer: &Peer{Interface: "ethX", LocalIP: "198.51.100.1"}}
+	s.eq.Push(&event{when: time.Now().Add(time.Second), eventType: eventTypeTX, session: other})
+	require.Equal(t, 1, s.eq.Len())
+
+	// Try to schedule Detect; should be dropped due to overflow and marker cleared
+	now := time.Now()
+	sess.mu.Lock()
+	sess.detectDeadline = now.Add(50 * time.Millisecond)
+	sess.mu.Unlock()
+
+	s.scheduleDetect(now, sess)
+
+	require.Equal(t, 1, s.eq.Len(), "queue should remain at cap; detect dropped")
+	sess.mu.Lock()
+	require.True(t, sess.nextDetectScheduled.IsZero(), "dedupe marker must be cleared on drop")
+	sess.mu.Unlock()
+}
+
+func TestClient_Liveness_Scheduler_Run_CullsStaleDetectAndClearsMarker(t *testing.T) {
+	t.Parallel()
+
+	log := newTestLogger(t)
+	s := NewScheduler(log, nil, func(*Session) {}, 0)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	sess := &Session{
+		alive:      true,
+		detectMult: 1,
+		minTxFloor: time.Millisecond,
+		peer:       &Peer{Interface: "eth0", LocalIP: "192.0.2.1"},
+	}
+
+	// Make a stale detect: queued deadline d1, but current detectDeadline is d2.
+	now := time.Now()
+	d1 := now.Add(-1 * time.Millisecond) // already due -> scheduler will pop immediately
+	d2 := now.Add(90 * time.Millisecond) // current detect deadline (different from d1)
+
+	sess.mu.Lock()
+	sess.detectDeadline = d2
+	sess.nextDetectScheduled = d1 // simulate prior scheduling for d1
+	sess.mu.Unlock()
+
+	// Enqueue the stale detect event.
+	s.eq.Push(&event{when: d1, eventType: eventTypeDetect, session: sess})
+	require.Equal(t, 1, s.eq.Len())
+
+	done := make(chan struct{})
+	go func() { _ = s.Run(ctx); close(done) }()
+
+	// Wait until the queue is empty (stale event culled) or time out
+	deadline := time.Now().Add(200 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		if s.eq.Len() == 0 {
+			break
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	cancel()
+	<-done
+
+	require.Equal(t, 0, s.eq.Len(), "stale detect should be culled without rescheduling")
+
+	sess.mu.Lock()
+	require.True(t, sess.nextDetectScheduled.IsZero(), "marker must be cleared when stale event is dropped")
+	require.Equal(t, d2, sess.detectDeadline, "current deadline must remain unchanged")
+	sess.mu.Unlock()
+}
+
+func TestClient_Liveness_Scheduler_ScheduleTx_NotDroppedByOverflow(t *testing.T) {
+	t.Parallel()
+
+	s := &Scheduler{eq: NewEventQueue(), maxEvents: 1}
+	sess := &Session{
+		state:         StateInit,
+		alive:         true,
+		localTxMin:    20 * time.Millisecond,
+		localRxMin:    20 * time.Millisecond,
+		minTxFloor:    10 * time.Millisecond,
+		maxTxCeil:     200 * time.Millisecond,
+		backoffMax:    200 * time.Millisecond,
+		backoffFactor: 1,
+		peer:          &Peer{Interface: "eth0", LocalIP: "192.0.2.1"},
+	}
+
+	// Fill the queue to the cap with an unrelated event
+	other := &Session{peer: &Peer{Interface: "ethX", LocalIP: "198.51.100.1"}}
+	s.eq.Push(&event{when: time.Now().Add(time.Second), eventType: eventTypeDetect, session: other})
+	require.Equal(t, 1, s.eq.Len())
+
+	// scheduleTx should still enqueue despite overflow (policy: never drop TX)
+	s.scheduleTx(time.Now(), sess)
+	require.Equal(t, 2, s.eq.Len(), "TX must not be dropped by the soft cap")
+
+	// Clean up: pop both; first could be either depending on 'when'
+	require.NotNil(t, s.eq.Pop())
+	require.NotNil(t, s.eq.Pop())
+	require.Equal(t, 0, s.eq.Len())
 }

@@ -29,18 +29,22 @@ clean:
 .PHONY: go-build
 go-build:
 	CGO_ENABLED=0 go build -v -tags "qa e2e" ./...
+	cd controlplane/s3-uploader && go build -v ./...
 
 .PHONY: go-lint
 go-lint:
 	golangci-lint run -c ./.golangci.yaml
+	cd controlplane/s3-uploader && golangci-lint run
 
 .PHONY: go-fmt
 go-fmt:
 	go fmt ./...
+	cd controlplane/s3-uploader && go fmt ./...
 
 .PHONY: go-test
 go-test:
 	go test -exec "sudo -E" -race -v ./...
+	cd controlplane/s3-uploader && go test -race -v ./...
 	$(if $(findstring nocontainertest,$(MAKECMDGOALS)),,$(MAKE) go-container-test)
 
 .PHONY: nocontainertest

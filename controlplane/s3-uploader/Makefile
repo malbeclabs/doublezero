@@ -19,7 +19,7 @@ build-linux:
 
 test:
 	@echo "Running tests..."
-	go test -v -cover ./...
+	go test -race -v -cover ./...
 
 test-coverage:
 	@echo "Running tests with coverage report..."

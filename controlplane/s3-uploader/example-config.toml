@@ -1,0 +1,31 @@
+# S3 Uploader Configuration Example
+# This file can be placed at /mnt/flash/s3_uploader_config.toml on ARISTA EOS devices
+
+[aws]
+# AWS region where the S3 bucket is located
+region = "us-east-1"
+
+# S3 bucket name
+bucket = "my-bucket"
+
+# AWS credentials
+access_key_id = "access_key_id"
+secret_access_key = "secret_access_key"
+
+# Optional: Custom S3 endpoint for MinIO or other S3-compatible services
+# endpoint_url = "http://localhost:9000"
+
+[upload]
+# Timestamp format: "iso8601" or "unix"
+# iso8601: 2025-11-05T12-30-45Z_filename.json
+# unix: 1730815845_filename.json
+timestamp_format = "iso8601"
+
+# Enable server-side encryption (AES256)
+enable_encryption = true
+
+# Verify upload after completion (HEAD request + size check)
+verify_upload = true
+
+# Optional: Prefix for S3 keys
+# key_prefix = "uploads"

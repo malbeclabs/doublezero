@@ -129,28 +129,35 @@ func TestClient_Liveness_Scheduler_ScheduleTx_AdaptiveBackoffWhenDown(t *testing
 		maxTxCeil:     1 * time.Second,
 		backoffMax:    150 * time.Millisecond,
 		backoffFactor: 1,
+		peer:          &Peer{Interface: "eth0", LocalIP: "192.0.2.1"},
 	}
+
 	now := time.Now()
+
+	// First schedule: should enqueue a TX and bump backoffFactor in ComputeNextTx.
 	s.scheduleTx(now, sess)
 	ev1 := s.eq.Pop()
 	require.NotNil(t, ev1)
 	require.Equal(t, eventTypeTX, ev1.eventType)
 	require.Greater(t, sess.backoffFactor, uint32(1)) // doubled to 2
+	require.True(t, ev1.when.After(now))
 
-	// next schedule should further increase backoff factor (up to ceil)
+	// Simulate Run loop clearing the pending TX marker when the event is consumed.
+	sess.mu.Lock()
+	if ev1.when.Equal(sess.nextTxScheduled) {
+		sess.nextTxScheduled = time.Time{}
+	}
+	sess.mu.Unlock()
+
+	// Second schedule: allowed now, should enqueue another TX and further backoff (up to cap).
 	s.scheduleTx(now.Add(time.Millisecond), sess)
 	ev2 := s.eq.Pop()
 	require.NotNil(t, ev2)
 	require.Equal(t, eventTypeTX, ev2.eventType)
 	require.GreaterOrEqual(t, sess.backoffFactor, uint32(4))
-	// both events should be scheduled in the future
-	require.True(t, ev1.when.After(now))
 	require.True(t, ev2.when.After(now))
 
-	// With a small backoffMax, the scheduled gap should not exceed ~backoffMax + jitter
-	// (jitter is eff/10; eff capped to backoffMax).
-	// We can't read the exact interval from the event, but we can bound the first one.
-	// Allow some slop for timing; just ensure it's not wildly larger than cap*1.5.
+	// Bound first interval by backoffMax (+ jitter slack)
 	require.LessOrEqual(t, time.Until(ev1.when), time.Duration(float64(150*time.Millisecond)*1.5))
 }
 
@@ -206,4 +213,156 @@ func TestClient_Liveness_Scheduler_Run_SendsAndReschedules(t *testing.T) {
 	close(stop)
 
 	require.GreaterOrEqual(t, atomic.LoadInt32(&pkts), int32(2))
+}
+
+func TestClient_Liveness_Scheduler_ScheduleDetect_DedupSameDeadline(t *testing.T) {
+	t.Parallel()
+
+	s := &Scheduler{eq: NewEventQueue()}
+	sess := &Session{
+		alive:      true,
+		detectMult: 1,
+		minTxFloor: time.Millisecond,
+		peer:       &Peer{Interface: "eth0", LocalIP: "192.0.2.1"},
+	}
+
+	// Use a fixed 'now' strictly before detectDeadline so ArmDetect does not re-arm.
+	fixedNow := time.Now()
+	sess.mu.Lock()
+	sess.detectDeadline = fixedNow.Add(50 * time.Millisecond)
+	sess.mu.Unlock()
+
+	// First enqueue for the deadline.
+	s.scheduleDetect(fixedNow, sess)
+	// Spam scheduleDetect with the SAME fixed 'now'; must not enqueue duplicates.
+	for i := 0; i < 100; i++ {
+		s.scheduleDetect(fixedNow, sess)
+	}
+
+	require.Equal(t, 1, s.eq.CountFor("eth0", "192.0.2.1"))
+
+	ev := s.eq.Pop()
+	require.NotNil(t, ev)
+	require.Equal(t, eventTypeDetect, ev.eventType)
+	require.Nil(t, s.eq.Pop())
+}
+
+func TestClient_Liveness_Scheduler_ScheduleDetect_AllowsNewDeadlineButStillDedupsPerDeadline(t *testing.T) {
+	t.Parallel()
+
+	s := &Scheduler{eq: NewEventQueue()}
+	sess := &Session{
+		alive:      true,
+		detectMult: 1,
+		minTxFloor: time.Millisecond,
+		peer:       &Peer{Interface: "eth0", LocalIP: "192.0.2.1"},
+	}
+
+	base := time.Now()
+	d1 := base.Add(40 * time.Millisecond)
+
+	// Phase 1: schedule for D1 with fixed time < D1
+	sess.mu.Lock()
+	sess.detectDeadline = d1
+	sess.mu.Unlock()
+	s.scheduleDetect(base, sess)
+	for i := 0; i < 10; i++ {
+		s.scheduleDetect(base, sess)
+	}
+	require.Equal(t, 1, s.eq.CountFor("eth0", "192.0.2.1"))
+
+	// Phase 2: move to a new deadline D2; still call with fixed time < D2
+	d2 := base.Add(90 * time.Millisecond)
+	sess.mu.Lock()
+	sess.detectDeadline = d2
+	sess.mu.Unlock()
+	for i := 0; i < 10; i++ {
+		s.scheduleDetect(base, sess)
+	}
+
+	// Exactly two detect events queued for this peer (D1 and D2)
+	require.Equal(t, 2, s.eq.CountFor("eth0", "192.0.2.1"))
+
+	// Pop order must be D1 then D2
+	ev1 := s.eq.Pop()
+	require.NotNil(t, ev1)
+	require.Equal(t, eventTypeDetect, ev1.eventType)
+	ev2 := s.eq.Pop()
+	require.NotNil(t, ev2)
+	require.Equal(t, eventTypeDetect, ev2.eventType)
+	require.True(t, ev1.when.Before(ev2.when) || ev1.when.Equal(ev2.when))
+
+	require.Nil(t, s.eq.Pop())
+}
+
+func TestClient_Liveness_Scheduler_ScheduleTx_DedupWhilePending(t *testing.T) {
+	t.Parallel()
+
+	s := &Scheduler{eq: NewEventQueue()}
+	sess := &Session{
+		state:         StateInit,
+		alive:         true,
+		localTxMin:    20 * time.Millisecond,
+		localRxMin:    20 * time.Millisecond,
+		minTxFloor:    10 * time.Millisecond,
+		maxTxCeil:     200 * time.Millisecond,
+		backoffMax:    200 * time.Millisecond,
+		backoffFactor: 1,
+		peer:          &Peer{Interface: "eth0", LocalIP: "192.0.2.1"},
+	}
+
+	// First schedule should enqueue exactly one TX.
+	now := time.Now()
+	s.scheduleTx(now, sess)
+
+	// Repeated schedules while a TX is already pending must NOT enqueue more.
+	for i := 0; i < 100; i++ {
+		s.scheduleTx(now.Add(time.Duration(i)*time.Millisecond), sess)
+	}
+
+	require.Equal(t, 1, s.eq.CountFor("eth0", "192.0.2.1"))
+
+	ev := s.eq.Pop()
+	require.NotNil(t, ev)
+	require.Equal(t, eventTypeTX, ev.eventType)
+	require.Nil(t, s.eq.Pop())
+}
+
+func TestClient_Liveness_Scheduler_ScheduleTx_AllowsRescheduleAfterPop(t *testing.T) {
+	t.Parallel()
+
+	s := &Scheduler{eq: NewEventQueue()}
+	sess := &Session{
+		state:         StateInit,
+		alive:         true,
+		localTxMin:    20 * time.Millisecond,
+		localRxMin:    20 * time.Millisecond,
+		minTxFloor:    10 * time.Millisecond,
+		maxTxCeil:     200 * time.Millisecond,
+		backoffMax:    200 * time.Millisecond,
+		backoffFactor: 1,
+		peer:          &Peer{Interface: "eth0", LocalIP: "192.0.2.1"},
+	}
+
+	now := time.Now()
+	s.scheduleTx(now, sess)
+	ev := s.eq.Pop()
+	require.NotNil(t, ev)
+	require.Equal(t, eventTypeTX, ev.eventType)
+
+	// Simulate the Run loop clearing the scheduled marker when the TX event is consumed.
+	sess.mu.Lock()
+	if ev.when.Equal(sess.nextTxScheduled) {
+		sess.nextTxScheduled = time.Time{}
+	}
+	sess.mu.Unlock()
+
+	// Now we should be able to schedule the next TX.
+	s.scheduleTx(now.Add(5*time.Millisecond), sess)
+	require.Equal(t, 1, s.eq.CountFor("eth0", "192.0.2.1"))
+
+	ev2 := s.eq.Pop()
+	require.NotNil(t, ev2)
+	require.Equal(t, eventTypeTX, ev2.eventType)
+	require.Nil(t, s.eq.Pop())
 }

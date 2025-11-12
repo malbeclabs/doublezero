@@ -37,6 +37,10 @@ type Session struct {
 	backoffFactor         uint32        // doubles when Down, resets when Up
 
 	mu sync.Mutex // guards mutable session state
+
+	// Scheduled time of the next enqueued detect and tx events (zero means nothing enqueued)
+	nextTxScheduled     time.Time
+	nextDetectScheduled time.Time
 }
 
 // ComputeNextTx picks the next transmit time based on current state,

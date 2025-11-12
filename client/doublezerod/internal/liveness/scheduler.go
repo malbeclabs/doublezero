@@ -82,6 +82,22 @@ func (q *EventQueue) PopIfDue(now time.Time) (*event, time.Duration) {
 	return ev, 0
 }
 
+// CountFor returns the number of events in the queue for a given interface and local IP.
+func (q *EventQueue) CountFor(iface, localIP string) int {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	c := 0
+	for _, ev := range q.pq {
+		if ev != nil && ev.session != nil && ev.session.peer != nil {
+			p := ev.session.peer
+			if p.Interface == iface && p.LocalIP == localIP {
+				c++
+			}
+		}
+	}
+	return c
+}
+
 // eventHeap implements heap.Interface for event scheduling by time then seq.
 type eventHeap []*event
 
@@ -173,6 +189,16 @@ func (s *Scheduler) Run(ctx context.Context) error {
 			}
 		}
 
+		// Clear scheduled marker if this event is the one we planned for.
+		ev.session.mu.Lock()
+		if ev.eventType == eventTypeTX && ev.when.Equal(ev.session.nextTxScheduled) {
+			ev.session.nextTxScheduled = time.Time{}
+		}
+		if ev.eventType == eventTypeDetect && ev.when.Equal(ev.session.nextDetectScheduled) {
+			ev.session.nextDetectScheduled = time.Time{}
+		}
+		ev.session.mu.Unlock()
+
 		switch ev.eventType {
 		case eventTypeTX:
 			s.doTX(ev.session)
@@ -197,13 +223,26 @@ func (s *Scheduler) Run(ctx context.Context) error {
 // scheduleTx schedules the next transmit event for the given session.
 // Skips sessions that are not alive or are AdminDown; backoff is handled by ComputeNextTx.
 func (s *Scheduler) scheduleTx(now time.Time, sess *Session) {
+	// If TX already scheduled, bail without recomputing.
 	sess.mu.Lock()
-	isAdminDown := !sess.alive || sess.state == StateAdminDown
-	sess.mu.Unlock()
-	if isAdminDown {
+	if !sess.alive || sess.state == StateAdminDown || !sess.nextTxScheduled.IsZero() {
+		sess.mu.Unlock()
 		return
 	}
+	sess.mu.Unlock()
+
+	// Compute next (locks internally, updates sess.nextTx)
 	next := sess.ComputeNextTx(now, nil)
+
+	// Publish the scheduled marker (re-check in case of race).
+	sess.mu.Lock()
+	if !sess.alive || sess.state == StateAdminDown || !sess.nextTxScheduled.IsZero() {
+		sess.mu.Unlock()
+		return
+	}
+	sess.nextTxScheduled = next
+	sess.mu.Unlock()
+
 	s.eq.Push(&event{when: next, eventType: eventTypeTX, session: sess})
 }
 
@@ -214,6 +253,15 @@ func (s *Scheduler) scheduleDetect(now time.Time, sess *Session) {
 	if !ok {
 		return
 	}
+
+	sess.mu.Lock()
+	if sess.nextDetectScheduled.Equal(ddl) {
+		sess.mu.Unlock()
+		return // already scheduled for this exact deadline
+	}
+	sess.nextDetectScheduled = ddl
+	sess.mu.Unlock()
+
 	s.eq.Push(&event{when: ddl, eventType: eventTypeDetect, session: sess})
 }
 

@@ -5,6 +5,7 @@ use doublezero_revenue_distribution::env::mainnet::DOUBLEZERO_MINT_KEY;
 use doublezero_sol_conversion_interface::{
     ID,
     instruction::{SolConversionInstructionData, account::BuySolAccounts},
+    oracle,
 };
 use doublezero_solana_client_tools::{
     instruction::take_instruction,
@@ -165,7 +166,8 @@ pub fn unwrap_token_account_or_ata(
 pub struct Convert2zContext {
     pub instruction: Instruction,
     pub user_token_account_key: Pubkey,
-    pub oracle_swap_rate: u64,
+    pub limit_price: u64,
+    pub discount_params: oracle::DiscountParameters,
 }
 
 impl Convert2zContext {
@@ -204,12 +206,23 @@ impl Convert2zContext {
 
         let user_token_account_key = unwrap_token_account_or_ata(wallet, source_token_account_key);
 
+        let current_slot = wallet.connection.get_slot().await?;
         let oracle_price_data = try_request_oracle_conversion_price().await?;
-        let oracle_swap_rate = oracle_price_data.swap_rate;
+
+        // Compute discount.
+        let discount_params = oracle::DiscountParameters::from_configuration_registry(
+            &sol_conversion_state.configuration_registry.1,
+        );
+
+        let discount = discount_params
+            .checked_compute(current_slot - sol_conversion_state.program_state.1.last_trade_slot)
+            .context("Failed to calculate discount")?;
+        let discounted_swap_rate =
+            oracle::checked_discounted_swap_rate(oracle_price_data.swap_rate, discount).unwrap();
 
         let limit_price = match limit_price_str {
             Some(limit_price_str) => parse_limit_price_to_u64(limit_price_str)?,
-            None => oracle_swap_rate,
+            None => discounted_swap_rate,
         };
 
         let instruction = try_build_instruction(
@@ -230,7 +243,8 @@ impl Convert2zContext {
         Ok(Self {
             instruction,
             user_token_account_key,
-            oracle_swap_rate,
+            limit_price,
+            discount_params,
         })
     }
 

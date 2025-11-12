@@ -3,7 +3,6 @@ mod jupiter;
 use anyhow::{Context, Result, bail, ensure};
 use clap::Args;
 use doublezero_revenue_distribution::env::mainnet::DOUBLEZERO_MINT_KEY;
-use doublezero_sol_conversion_interface::oracle;
 use doublezero_solana_client_tools::{
     instruction::take_instruction,
     payer::{SolanaPayerOptions, TransactionOutcome, Wallet},
@@ -49,19 +48,9 @@ impl Harvest2zCommand {
         );
 
         let wallet_key = wallet.pubkey();
-        let current_slot = wallet.connection.get_slot().await?;
         let lamports_balance_before = wallet.connection.get_balance(&wallet_key).await?;
 
         let sol_conversion_state = SolConversionState::try_fetch(&wallet.connection).await?;
-
-        let discount_params = oracle::DiscountParameters::from_configuration_registry(
-            &sol_conversion_state.configuration_registry.1,
-        );
-
-        let discount = discount_params
-            .checked_compute(current_slot - sol_conversion_state.program_state.1.last_trade_slot)
-            .context("Failed to calculate discount")?;
-
         let fixed_fill_quantity = sol_conversion_state.fixed_fill_quantity;
 
         let mut convert_2z_context = Convert2zContext::try_prepare(
@@ -93,13 +82,14 @@ impl Harvest2zCommand {
             }
         };
 
-        let mut quote_response =
-            try_quote_sol_to_2z(input_sol_amount, discount_params.max_discount, specific_dex)
-                .await?;
+        let mut quote_response = try_quote_sol_to_2z(
+            input_sol_amount,
+            convert_2z_context.discount_params.max_discount,
+            specific_dex,
+        )
+        .await?;
 
-        let discounted_swap_rate =
-            oracle::checked_discounted_swap_rate(convert_2z_context.oracle_swap_rate, discount)
-                .unwrap();
+        let discounted_swap_rate = convert_2z_context.limit_price;
         let min_amount_out = u128::from(discounted_swap_rate) * u128::from(input_sol_amount)
             / u128::from(LAMPORTS_PER_SOL);
         let min_amount_out =
@@ -207,6 +197,10 @@ impl Harvest2zCommand {
                 let token_balance_after = spl_token::state::Account::unpack(&ata_account_data)
                     .unwrap()
                     .amount;
+                ensure!(
+                    token_balance_after >= token_balance_before,
+                    "Simulated harvesting 2Z tokens failed"
+                );
                 println!(
                     "Simulated harvesting {:.8} 2Z tokens with {:.9} SOL",
                     (token_balance_after - token_balance_before) as f64 * 1e-8,

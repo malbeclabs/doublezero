@@ -32,12 +32,20 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 		}
 	}
 
-	lmc.Netlinker = crw
-	lm, err := liveness.NewManager(ctx, lmc)
-	if err != nil {
-		return fmt.Errorf("error creating liveness manager: %v", err)
+	// If the liveness manager config is not nil, create a new manager.
+	// Otherwise, completely disable the liveness subsystem.
+	// TODO(snormore): The scenario where the liveness subsystem is completely disabled is
+	// temporary for initial rollout testing.
+	var lm *liveness.Manager
+	if lmc != nil {
+		lmc.Netlinker = crw
+		var err error
+		lm, err = liveness.NewManager(ctx, lmc)
+		if err != nil {
+			return fmt.Errorf("error creating liveness manager: %v", err)
+		}
+		defer lm.Close()
 	}
-	defer lm.Close()
 
 	bgp, err := bgp.NewBgpServer(net.IPv4(1, 1, 1, 1), crw, lm)
 	if err != nil {
@@ -125,6 +133,14 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 		errCh <- err
 	}()
 
+	// The liveness manager can be nil if the liveness subsystem is disabled.
+	// TODO(snormore): The scenario where the liveness subsystem is completely disabled is
+	// temporary for initial rollout testing.
+	var lmErrCh <-chan error
+	if lm != nil {
+		lmErrCh = lm.Err()
+	}
+
 	select {
 	case <-ctx.Done():
 		slog.Info("teardown: cleaning up and closing")
@@ -133,7 +149,7 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 		return nil
 	case err := <-errCh:
 		return err
-	case err := <-lm.Err():
+	case err := <-lmErrCh:
 		return err
 	}
 }

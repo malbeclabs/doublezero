@@ -148,7 +148,7 @@ func (b *BgpServer) AddPeer(p *PeerConfig, advertised []NLRI) error {
 		peerOpts = append(peerOpts, corebgp.WithPort(p.Port))
 	}
 	rrw := b.routeReaderWriter
-	if p.LivenessEnabled {
+	if p.LivenessEnabled && b.livenessManager != nil {
 		rrw = liveness.NewRouteReaderWriter(b.livenessManager, b.routeReaderWriter, p.Interface)
 	}
 	plugin := NewBgpPlugin(advertised, p.RouteSrc, p.RouteTable, b.peerStatusChan, p.FlushRoutes, p.NoInstall, rrw)

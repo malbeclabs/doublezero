@@ -34,6 +34,10 @@ type ClientSpec struct {
 	// passive-mode, and true puts it in active-mode.
 	// RouteLivenessEnable bool
 
+	// RouteLivenessPeerMetrics is a flag to enable or disable per per-peer metrics for route
+	// liveness (high cardinality).
+	RouteLivenessPeerMetrics bool
+
 	// CYOANetworkIPHostID is the offset into the host portion of the subnet (must be < 2^(32 - prefixLen)).
 	CYOANetworkIPHostID uint32
 }
@@ -169,6 +173,9 @@ func (c *Client) Start(ctx context.Context) error {
 	}
 	if c.Spec.RouteLivenessEnableActive {
 		extraArgs = append(extraArgs, "-route-liveness-enable-active")
+	}
+	if c.Spec.RouteLivenessPeerMetrics {
+		extraArgs = append(extraArgs, "-route-liveness-peer-metrics")
 	}
 
 	// Start the client container.

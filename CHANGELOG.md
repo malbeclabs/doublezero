@@ -17,6 +17,7 @@ All notable changes to this project will be documented in this file.
   - Validate AccessPass before client connection ([#1356](https://github.com/malbeclabs/doublezero/issues/1356))
 - Client
   - Add initial route liveness probing, initially disabled for rollout
+  - Add route liveness prometheus metrics
 
 ### Breaking
 

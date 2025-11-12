@@ -2,7 +2,13 @@ package liveness
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
+)
+
+var (
+	ErrShortPacket   = errors.New("short packet")
+	ErrInvalidLength = errors.New("invalid length")
 )
 
 // State encodes the finite-state machine for a BFD-like session.
@@ -16,6 +22,23 @@ const (
 	StateInit                   // attempting to establish connectivity
 	StateUp                     // session fully established
 )
+
+// String returns a human-readable string representation of the state.
+//
+// Returns UNKNOWN(<state>) for unknown states.
+func (s State) String() string {
+	switch s {
+	case StateAdminDown:
+		return "ADMIN_DOWN"
+	case StateDown:
+		return "DOWN"
+	case StateInit:
+		return "INIT"
+	case StateUp:
+		return "UP"
+	}
+	return fmt.Sprintf("UNKNOWN(%d)", s)
+}
 
 // ControlPacket represents the wire format of a minimal BFD control packet.
 // Fields mirror RFC 5880 §4.1 in a compact form using microsecond units for timers.
@@ -67,10 +90,10 @@ func (c *ControlPacket) Marshal() []byte {
 // extracts all header values using big-endian order.
 func UnmarshalControlPacket(b []byte) (*ControlPacket, error) {
 	if len(b) < 40 {
-		return nil, fmt.Errorf("short packet")
+		return nil, ErrShortPacket
 	}
 	if b[3] != 40 {
-		return nil, fmt.Errorf("invalid length")
+		return nil, ErrInvalidLength
 	}
 	vd, sf := b[0], b[1]
 	ver := (vd >> 5) & 0x7

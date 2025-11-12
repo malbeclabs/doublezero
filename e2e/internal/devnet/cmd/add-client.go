@@ -19,6 +19,7 @@ func (c *AddClientCmd) Command() *cobra.Command {
 	var keypairPath string
 	var routeLivenessEnablePassive bool
 	var routeLivenessEnableActive bool
+	var routeLivenessPeerMetrics bool
 
 	cmd := &cobra.Command{
 		Use:   "add-client",
@@ -34,6 +35,7 @@ func (c *AddClientCmd) Command() *cobra.Command {
 				KeypairPath:                keypairPath,
 				RouteLivenessEnablePassive: routeLivenessEnablePassive,
 				RouteLivenessEnableActive:  routeLivenessEnableActive,
+				RouteLivenessPeerMetrics:   routeLivenessPeerMetrics,
 			})
 			if err != nil {
 				return fmt.Errorf("failed to add client: %w", err)
@@ -49,6 +51,7 @@ func (c *AddClientCmd) Command() *cobra.Command {
 	cmd.Flags().StringVar(&keypairPath, "keypair-path", "", "Path to the keypair file (optional)")
 	cmd.Flags().BoolVar(&routeLivenessEnablePassive, "route-liveness-enable-passive", false, "Enable route liveness in passive mode (experimental)")
 	cmd.Flags().BoolVar(&routeLivenessEnableActive, "route-liveness-enable-active", false, "Enable route liveness in active mode (experimental)")
+	cmd.Flags().BoolVar(&routeLivenessPeerMetrics, "route-liveness-peer-metrics", false, "Enable per peer metrics for route liveness (high cardinality)")
 
 	return cmd
 }

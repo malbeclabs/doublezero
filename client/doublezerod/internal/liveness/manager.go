@@ -69,6 +69,9 @@ type ManagerConfig struct {
 	MaxTxCeil  time.Duration
 	BackoffMax time.Duration
 
+	// Enable per peer metrics for route liveness (high cardinality).
+	PeerMetrics bool
+
 	// Maximum number of events to keep in the scheduler queue.
 	// This is an upper bound for safety to prevent unbounded
 	// memory usage in the event of regressions.
@@ -177,7 +180,7 @@ func NewManager(ctx context.Context, cfg *ManagerConfig) (*Manager, error) {
 	}
 
 	log := cfg.Logger
-	log.Info("liveness: manager starting", "localAddr", udp.LocalAddr().String(), "txMin", cfg.TxMin, "rxMin", cfg.RxMin, "detectMult", cfg.DetectMult, "passiveMode", cfg.PassiveMode)
+	log.Info("liveness: manager starting", "localAddr", udp.LocalAddr().String(), "txMin", cfg.TxMin, "rxMin", cfg.RxMin, "detectMult", cfg.DetectMult, "passiveMode", cfg.PassiveMode, "peerMetrics", cfg.PeerMetrics)
 
 	ctx, cancel := context.WithCancel(ctx)
 	m := &Manager{
@@ -198,7 +201,7 @@ func NewManager(ctx context.Context, cfg *ManagerConfig) (*Manager, error) {
 
 	// Wire up IO loops.
 	m.recv = NewReceiver(m.log, m.udp, m.HandleRx)
-	m.sched = NewScheduler(m.log, m.udp, m.onSessionDown, m.cfg.MaxEvents)
+	m.sched = NewScheduler(m.log, m.udp, m.onSessionDown, m.cfg.MaxEvents, m.cfg.PeerMetrics)
 
 	// Receiver goroutine: parses control packets and dispatches to HandleRx.
 	m.wg.Add(1)
@@ -250,8 +253,10 @@ func (m *Manager) RegisterRoute(r *routing.Route, iface string) error {
 		// In passive-mode we still update the kernel immediately (caller’s policy),
 		// while also running liveness for observability.
 		if err := m.cfg.Netlinker.RouteAdd(r); err != nil {
+			metricRouteInstallFailures.WithLabelValues(iface, srcIP).Inc()
 			return fmt.Errorf("error registering route: %v", err)
 		}
+		emitRouteInstallMetrics(iface, srcIP)
 	}
 
 	peerAddr, err := net.ResolveUDPAddr("udp", peerAddrFor(r, m.cfg.Port))
@@ -273,7 +278,7 @@ func (m *Manager) RegisterRoute(r *routing.Route, iface string) error {
 		return nil // session already exists
 	}
 	// Create a fresh session in Down with a random non-zero discriminator.
-	s := &Session{
+	sess := &Session{
 		route:         r,
 		localDiscr:    rand32(),
 		state:         StateDown,        // Initial Phase: start Down until handshake
@@ -288,9 +293,17 @@ func (m *Manager) RegisterRoute(r *routing.Route, iface string) error {
 		backoffMax:    m.cfg.BackoffMax, // cap for exponential backoff while Down
 		backoffFactor: 1,
 	}
-	m.sessions[peer] = s
+	m.sessions[peer] = sess
+	emitSessionStateMetrics(sess, nil, "register_route", m.cfg.PeerMetrics)
+	if m.cfg.PeerMetrics {
+		// Set initial detect time based on current view (localRxMin until peer timers arrive)
+		sess.mu.Lock()
+		dt := sess.detectTime()
+		sess.mu.Unlock()
+		emitPeerDetectTimeGauge(sess, dt)
+	}
 	// Kick off the first TX immediately; detect is armed after we see valid RX.
-	m.sched.scheduleTx(time.Now(), s)
+	m.sched.scheduleTx(time.Now(), sess)
 	m.mu.Unlock()
 
 	return nil
@@ -314,8 +327,10 @@ func (m *Manager) WithdrawRoute(r *routing.Route, iface string) error {
 	if m.cfg.PassiveMode {
 		// Passive-mode: caller wants immediate kernel update independent of liveness.
 		if err := m.cfg.Netlinker.RouteDelete(r); err != nil {
+			metricRouteUninstallFailures.WithLabelValues(iface, srcIP).Inc()
 			return fmt.Errorf("error withdrawing route: %v", err)
 		}
+		emitRouteWithdrawMetrics(iface, srcIP)
 	}
 
 	rk := routeKeyFor(iface, r)
@@ -333,13 +348,19 @@ func (m *Manager) WithdrawRoute(r *routing.Route, iface string) error {
 		sess.mu.Lock()
 		sess.alive = false
 		sess.mu.Unlock()
+		metricsCleanupOnWithdrawRoute(sess, m.cfg.PeerMetrics)
 	}
 	delete(m.sessions, peer)
 	m.mu.Unlock()
 
 	// If we previously installed the route (and not in PassiveMode), remove it now.
 	if wasInstalled && !m.cfg.PassiveMode {
-		return m.cfg.Netlinker.RouteDelete(r)
+		err := m.cfg.Netlinker.RouteDelete(r)
+		if err != nil {
+			metricRouteUninstallFailures.WithLabelValues(iface, srcIP).Inc()
+			return err
+		}
+		emitRouteWithdrawMetrics(iface, srcIP)
 	}
 	return nil
 }
@@ -385,6 +406,8 @@ func (m *Manager) HandleRx(ctrl *ControlPacket, peer Peer) {
 	m.mu.Lock()
 	sess := m.sessions[peer]
 	if sess == nil {
+		metricUnknownPeerPackets.WithLabelValues(peer.Interface, peer.LocalIP).Inc()
+
 		// Throttle warnings for packets from unknown peers to avoid log spam.
 		m.unkownPeerErrWarnMu.Lock()
 		if m.unkownPeerErrWarnLast.IsZero() || time.Since(m.unkownPeerErrWarnLast) >= m.unkownPeerErrWarnEvery {
@@ -399,9 +422,11 @@ func (m *Manager) HandleRx(ctrl *ControlPacket, peer Peer) {
 	}
 
 	// Apply RX to the session FSM; only act when state actually changes.
+	prevState := sess.state
 	changed := sess.HandleRx(now, ctrl)
 
 	if changed {
+		emitSessionStateMetrics(sess, &prevState, "handle_rx", m.cfg.PeerMetrics)
 		switch sess.state {
 		case StateUp:
 			go m.onSessionUp(sess)
@@ -421,6 +446,15 @@ func (m *Manager) HandleRx(ctrl *ControlPacket, peer Peer) {
 			// Down/AdminDown: do nothing; avoid noisy logs.
 		}
 	}
+
+	if m.cfg.PeerMetrics {
+		// detect time = detectMult × rxInterval() with current clamped timers
+		sess.mu.Lock()
+		dt := sess.detectTime()
+		sess.mu.Unlock()
+		emitPeerDetectTimeGauge(sess, dt)
+	}
+
 	m.mu.Unlock()
 }
 
@@ -440,9 +474,26 @@ func (m *Manager) onSessionUp(sess *Session) {
 		err := m.cfg.Netlinker.RouteAdd(route)
 		if err != nil {
 			m.log.Error("liveness: error adding route on session up", "error", err, "route", route.String())
+			metricRouteInstallFailures.WithLabelValues(sess.peer.Interface, sess.peer.LocalIP).Inc()
+		} else {
+			emitRouteInstallMetrics(sess.peer.Interface, sess.peer.LocalIP)
 		}
 	}
-	m.log.Info("liveness: session up", "peer", sess.peer.String(), "route", sess.route.String())
+
+	// Convergence-to-up duration: from first valid RX while Down to post-install.
+	now := time.Now()
+	var start time.Time
+	sess.mu.Lock()
+	start = sess.convUpStart
+	sess.convUpStart = time.Time{}
+	sess.mu.Unlock()
+	var convergence time.Duration
+	if !start.IsZero() && now.After(start) {
+		convergence = now.Sub(start)
+		emitConvergenceToUpMetrics(sess, convergence)
+	}
+
+	m.log.Info("liveness: session up", "peer", sess.peer.String(), "route", sess.route.String(), "convergence", convergence.String())
 }
 
 // onSessionDown withdraws the route if currently installed (unless PassiveMode).
@@ -458,9 +509,30 @@ func (m *Manager) onSessionDown(sess *Session) {
 			err := m.cfg.Netlinker.RouteDelete(route)
 			if err != nil {
 				m.log.Error("liveness: error deleting route on session down", "error", err, "route", route.String())
+				metricRouteUninstallFailures.WithLabelValues(sess.peer.Interface, sess.peer.LocalIP).Inc()
+			} else {
+				emitRouteWithdrawMetrics(sess.peer.Interface, sess.peer.LocalIP)
 			}
 		}
-		m.log.Info("liveness: session down", "peer", sess.peer.String(), "route", sess.route.String())
+	}
+
+	// Convergence-to-down duration: from first failed/missing while Up to post-delete.
+	now := time.Now()
+	var start time.Time
+	sess.mu.Lock()
+	start = sess.convDownStart
+	sess.convDownStart = time.Time{}
+	sess.mu.Unlock()
+	var convergence time.Duration
+	if !start.IsZero() && now.After(start) {
+		convergence = now.Sub(start)
+		emitConvergenceToDownMetrics(sess, convergence)
+	}
+
+	if wasInstalled && route != nil {
+		m.log.Info("liveness: session down", "peer", sess.peer.String(), "route", sess.route.String(), "convergence", convergence.String())
+	} else {
+		m.log.Info("liveness: session down (route already uninstalled)", "peer", sess.peer.String(), "route", sess.route.String())
 	}
 }
 

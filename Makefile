@@ -95,6 +95,7 @@ rust-fmt-check:
 rust-test:
 	cargo test --workspace --exclude doublezero-telemetry --exclude doublezero-serviceability --exclude doublezero-program-common --exclude doublezero-record --all-features
 	cd smartcontract && $(MAKE) test-programs
+	$(MAKE) rust-program-accounts-compat
 
 .PHONY: rust-test-programs
 rust-test-programs:
@@ -105,7 +106,7 @@ rust-validator-test:
 	bash smartcontract/test/run_record_test.sh
 
 .PHONY: rust-ci
-rust-ci: rust-build rust-lint rust-test rust-validator-test rust-program-accounts-compat
+rust-ci: rust-build rust-lint rust-test rust-validator-test
 
 .PHONY: rust-program-accounts-compat
 rust-program-accounts-compat:

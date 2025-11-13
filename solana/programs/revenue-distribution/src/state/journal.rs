@@ -1,5 +1,6 @@
 use bytemuck::{Pod, Zeroable};
 use doublezero_program_tools::{Discriminator, PrecomputedDiscriminator};
+use ruint::Uint;
 use solana_account_info::MAX_PERMITTED_DATA_INCREASE;
 use solana_pubkey::Pubkey;
 
@@ -32,6 +33,8 @@ pub struct Journal {
     pub swapped_sol_amount: u64,
 
     pub next_dz_epoch_to_sweep_tokens: DoubleZeroEpoch,
+
+    pub lifetime_swapped_2z_amount: Uint<128, 2>,
 }
 
 impl PrecomputedDiscriminator for Journal {
@@ -44,13 +47,31 @@ impl Journal {
     pub fn find_address() -> (Pubkey, u8) {
         Pubkey::find_program_address(&[Self::SEED_PREFIX], &crate::ID)
     }
+
+    pub fn lifetime_swapped_2z_amount(&self) -> u128 {
+        u128::try_from(self.lifetime_swapped_2z_amount).unwrap()
+    }
 }
 
 //
 
-const _: () = assert!(size_of::<Journal>() == 48, "`Journal` size changed");
+const _: () = assert!(size_of::<Journal>() == 64, "`Journal` size changed");
 
 const _: () = assert!(
     doublezero_program_tools::zero_copy::data_end::<Journal>() <= MAX_PERMITTED_DATA_INCREASE,
     "`Journal` total data length exceeds 10kb"
 );
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_lifetime_swept_2z_amount() {
+        let journal = Journal {
+            lifetime_swapped_2z_amount: Uint::from(69_420),
+            ..Default::default()
+        };
+        assert_eq!(journal.lifetime_swapped_2z_amount(), 69_420);
+    }
+}

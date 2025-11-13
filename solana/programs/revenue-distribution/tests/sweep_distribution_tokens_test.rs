@@ -360,6 +360,14 @@ async fn test_sweep_distribution_tokens() {
         swap_destination_balance_before - swap_destination_balance_after,
         expected_swept_2z_amount_1
     );
+    assert_eq!(
+        swap_destination_balance_after,
+        journal.swap_2z_destination_balance
+    );
+    assert_eq!(
+        journal.lifetime_swapped_2z_amount(),
+        u128::from(expected_swept_2z_amount_1 + expected_swept_2z_amount_2)
+    );
 
     let (distribution_key, distribution, remaining_distribution_data, _, distribution_2z_token_pda) =
         test_setup.fetch_distribution(dz_epoch).await;
@@ -423,6 +431,29 @@ async fn test_sweep_distribution_tokens() {
 
     let (_, journal, _) = test_setup.fetch_journal().await;
     assert_eq!(journal.total_sol_balance, 0);
+
+    let swap_destination_balance_before = swap_destination_balance_after;
+
+    // Swap destination account should have a balance change reflecting the
+    // amount of SOL debt collected.
+    let swap_destination_balance_after = test_setup
+        .fetch_token_account(&swap_destination_key)
+        .await
+        .unwrap()
+        .amount;
+    assert_eq!(
+        swap_destination_balance_before - swap_destination_balance_after,
+        expected_swept_2z_amount_2
+    );
+    assert_eq!(
+        swap_destination_balance_after,
+        journal.swap_2z_destination_balance
+    );
+    assert_eq!(journal.swap_2z_destination_balance, 0);
+    assert_eq!(
+        journal.lifetime_swapped_2z_amount(),
+        u128::from(expected_swept_2z_amount_1 + expected_swept_2z_amount_2)
+    );
 
     // No data in the distribution changes except for the bit reflecting the
     // uncollectible debt.

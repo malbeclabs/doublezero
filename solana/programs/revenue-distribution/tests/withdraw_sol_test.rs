@@ -146,7 +146,7 @@ async fn test_withdraw_sol() {
     let sol_destination_key = Pubkey::new_unique();
 
     test_setup
-        .transfer_2z(&src_token_account_key, amount_2z_in)
+        .transfer_2z(&src_token_account_key, 2 * amount_2z_in)
         .await
         .unwrap();
 
@@ -170,6 +170,7 @@ async fn test_withdraw_sol() {
         total_solana_validator_debt - amount_sol_out
     );
     assert_eq!(journal.swap_2z_destination_balance, amount_2z_in);
+    assert_eq!(journal.lifetime_swapped_2z_amount(), amount_2z_in as u128);
 
     let sol_destination_balance = test_setup
         .context
@@ -189,4 +190,27 @@ async fn test_withdraw_sol() {
         .unwrap()
         .amount;
     assert_eq!(swap_destination_balance, amount_2z_in);
+
+    test_setup
+        .mock_buy_sol(
+            &src_token_account_key,
+            &transfer_authority_signer,
+            &sol_destination_key,
+            amount_2z_in,
+            amount_sol_out,
+        )
+        .await
+        .unwrap();
+
+    // Check the journal's balances.
+    let (_, journal, _) = test_setup.fetch_journal().await;
+    assert_eq!(
+        journal.total_sol_balance,
+        total_solana_validator_debt - 2 * amount_sol_out
+    );
+    assert_eq!(journal.swap_2z_destination_balance, 2 * amount_2z_in);
+    assert_eq!(
+        journal.lifetime_swapped_2z_amount(),
+        2 * amount_2z_in as u128
+    );
 }

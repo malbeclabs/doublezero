@@ -1368,6 +1368,7 @@ dependencies = [
  "bytemuck",
  "doublezero-program-tools",
  "mock-swap-sol-2z",
+ "ruint",
  "solana-account-info",
  "solana-cpi",
  "solana-instruction",

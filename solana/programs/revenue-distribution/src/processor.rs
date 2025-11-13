@@ -12,6 +12,7 @@ use doublezero_program_tools::{
     },
     zero_copy::{self, ZeroCopyAccount, ZeroCopyMutAccount},
 };
+use ruint::Uint;
 use solana_account_info::{AccountInfo, MAX_PERMITTED_DATA_INCREASE};
 use solana_cpi::invoke_signed_unchecked;
 use solana_msg::msg;
@@ -2220,6 +2221,12 @@ fn try_sweep_distribution_tokens(accounts: &[AccountInfo]) -> ProgramResult {
     );
     msg!("Transferred {} 2Z tokens to distribution", token_2z_amount);
 
+    journal.swap_2z_destination_balance -= token_2z_amount;
+    msg!(
+        "2Z swap destination balance now {}",
+        journal.swap_2z_destination_balance
+    );
+
     Ok(())
 }
 
@@ -2350,6 +2357,12 @@ fn try_withdraw_sol(accounts: &[AccountInfo], amount: u64) -> ProgramResult {
         "2Z swap destination balance now {} after transfer of {}",
         journal.swap_2z_destination_balance,
         transfer_amount
+    );
+
+    journal.lifetime_swapped_2z_amount += Uint::from(transfer_amount);
+    msg!(
+        "Lifetime swapped 2Z amount now {}",
+        journal.lifetime_swapped_2z_amount
     );
 
     // Move lamports from the journal to the SOL destination.
@@ -2688,11 +2701,9 @@ fn try_process_remaining_data_leaf_index(
 ///
 /// # Why are we migrating?
 ///
-/// The program deployed on Solana devnet was migrated to fix the program
-/// config (https://github.com/doublezerofoundation/doublezero-solana/pull/23).
-/// This instruction processor is used to reset the program config to the
-/// original state. It is safe to perform this migration multiple times because
-/// the program config will not be migrated again.
+/// The program deployed on Solana mainnet-beta had a bug that did not properly
+/// track the 2Z token account balance on the journal. This instruction
+/// processor will correct the journal to fix the balance.
 fn try_migrate_program_accounts(accounts: &[AccountInfo]) -> ProgramResult {
     msg!("Migrate program accounts");
 
@@ -2701,6 +2712,10 @@ fn try_migrate_program_accounts(accounts: &[AccountInfo]) -> ProgramResult {
     //      program).
     // - 1: The program's owner (i.e., upgrade authority).
     // - 2: Program config.
+    // - 3: Journal.
+    //
+    // Remaining accounts are distribution accounts where tokens have been
+    // swept.
     let mut accounts_iter = accounts.iter().enumerate();
 
     // Account 0 must be the program data belonging to this program.
@@ -2712,8 +2727,59 @@ fn try_migrate_program_accounts(accounts: &[AccountInfo]) -> ProgramResult {
     let mut program_config =
         ZeroCopyMutAccount::<ProgramConfig>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
 
-    msg!("No longer migrated");
-    program_config.set_is_migrated(false);
+    if program_config.is_migrated() {
+        msg!("Program has already been migrated. Nothing to do");
+        return Ok(());
+    }
+
+    program_config.set_is_migrated(true);
+
+    // Account 3 must be the journal.
+    let mut journal =
+        ZeroCopyMutAccount::<Journal>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+
+    // Copy balance, which is actually the lifetime amount.
+    journal.lifetime_swapped_2z_amount = Uint::from(journal.swap_2z_destination_balance);
+    msg!(
+        "Fixed lifetime swapped 2Z amount to {}",
+        journal.lifetime_swapped_2z_amount
+    );
+
+    let first_epoch = 31;
+    let until_epoch = journal.next_dz_epoch_to_sweep_tokens.value();
+
+    // Iterate over all epochs with rewards. We need to make sure the
+    // distribution accounts are passed in the order we expect.
+    for epoch in first_epoch..until_epoch {
+        let distribution =
+            ZeroCopyAccount::<Distribution>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+
+        if distribution.dz_epoch != epoch {
+            msg!("Invalid distribution epoch: {}", distribution.dz_epoch);
+            return Err(ProgramError::InvalidAccountData);
+        }
+
+        // Be extra sure that the distribution has swept 2Z tokens. This check
+        // should never fail.
+        if !distribution.has_swept_2z_tokens() {
+            msg!("Distribution has not swept 2Z tokens for epoch {}", epoch);
+            return Err(ProgramError::InvalidAccountData);
+        }
+
+        let collected_2z_amount = distribution.collected_2z_converted_from_sol;
+        msg!("  Epoch {}: {} 2Z", epoch, collected_2z_amount);
+
+        // Catch underflow here.
+        journal.swap_2z_destination_balance = journal
+            .swap_2z_destination_balance
+            .checked_sub(collected_2z_amount)
+            .unwrap();
+    }
+
+    msg!(
+        "Fixed journal swap 2Z destination balance to {}",
+        journal.swap_2z_destination_balance
+    );
 
     Ok(())
 }

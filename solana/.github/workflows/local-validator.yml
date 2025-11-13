@@ -7,10 +7,10 @@ on:
 
 env:
   SOLANA_CLI: v2.3.9
+  DOUBLEZERO_OFFCHAIN_GIT_INSTALL: --git https://github.com/doublezerofoundation/doublezero-offchain.git
 
 jobs:
-  test-devnet-upgrade:
-    if: false
+  mainnet-fork-upgrade:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,9 +22,34 @@ jobs:
           echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
       - name: Generate ~/.config/solana/id.json
         run: solana-keygen new --silent --no-bip39-passphrase
-      - name: Start Solana test validator in background
-        run: bash sh/run_local_validator_fork_devnet.sh > /dev/null 2>&1 &
-      - name: Build 2z CLI
-        run: cargo build --release --bin 2z
-      - name: Run 2z CLI tests
-        run: bash sh/test_devnet_upgrade.sh
+      - name: Install `doublezero-solana-fork` CLI
+        run: cargo install doublezero-solana-fork-cli $DOUBLEZERO_OFFCHAIN_GIT_INSTALL
+      - name: Start Solana mainnet-beta fork in background
+        run: doublezero-solana-fork -um --reset --god-mode > /dev/null 2>&1 &
+      - name: Install `doublezero-revenue-distribution-admin` CLI
+        run: cargo install doublezero-revenue-distribution-admin-cli $DOUBLEZERO_OFFCHAIN_GIT_INSTALL
+      - name: Build Revenue Distribution program
+        run: make build-artifacts
+      - name: Wait for local validator to be ready
+        run: |
+          echo "Waiting for solana-test-validator to start..."
+          for i in {1..30}; do
+            if solana cluster-version -ul > /dev/null 2>&1; then
+              solana cluster-version -ul
+              break
+            fi
+            echo "Attempt $i: solana-test-validator not ready yet, waiting..."
+            sleep 5
+          done
+          if ! solana cluster-version -ul > /dev/null 2>&1; then
+            echo "solana-test-validator failed to start within timeout"
+            exit 1
+          fi
+      - name: Upgrade Revenue Distribution program
+        run: solana program deploy -ul --program-id dzrevZC94tBLwuHw1dyynZxaXTWyp7yocsinyEVPtt4 artifacts-mainnet-beta/doublezero_revenue_distribution.so
+      - name: Wait for upgrade to finalize
+        run: sleep 15
+      - name: Perform Revenue Distribution program migration
+        run: doublezero-revenue-distribution-admin migrate-program-accounts -ul -v
+      - name: Perform Revenue Distribution program migration again
+        run: doublezero-revenue-distribution-admin migrate-program-accounts -ul -v

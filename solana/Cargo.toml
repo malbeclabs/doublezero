@@ -46,9 +46,6 @@ sha2-const-stable = "=0.1.0"
 solana-program-test = "=2.3.9"
 solana-sdk = "=2.3"
 
-[workspace.dependencies.doublezero-solana-client-tools]
-path = "crates/client-tools"
-
 [workspace.dependencies.doublezero-passport]
 path = "programs/passport"
 

@@ -166,7 +166,7 @@ func TestClient_Liveness_Session_HandleRxIgnoresMismatchedpeerDiscrr(t *testing.
 	s := newSess()
 	s.localDiscr = 111
 	now := time.Now()
-	cp := &ControlPacket{peerDiscrr: 222, LocalDiscrr: 333, State: StateInit}
+	cp := &ControlPacket{PeerDiscr: 222, LocalDiscr: 333, State: StateInit}
 	changed := s.HandleRx(now, cp)
 	require.False(t, changed)
 	require.Equal(t, StateDown, s.state)
@@ -182,8 +182,8 @@ func TestClient_Liveness_Session_HandleRxFromDownToInitOrUpAndArmsDetect(t *test
 	now := time.Now()
 	// Peer Down -> go Init
 	cpDown := &ControlPacket{
-		peerDiscrr:      0,    // acceptable (we only check mismatch if nonzero)
-		LocalDiscrr:     1001, // learn peer discr
+		PeerDiscr:       0,    // acceptable (we only check mismatch if nonzero)
+		LocalDiscr:      1001, // learn peer discr
 		State:           StateDown,
 		DesiredMinTxUs:  30_000, // 30ms
 		RequiredMinRxUs: 40_000, // 40ms
@@ -197,8 +197,8 @@ func TestClient_Liveness_Session_HandleRxFromDownToInitOrUpAndArmsDetect(t *test
 
 	// Next packet peer Init -> go Up
 	cpInit := &ControlPacket{
-		peerDiscrr:      42, // matches our localDiscr (explicit echo required)
-		LocalDiscrr:     1001,
+		PeerDiscr:       42, // matches our localDiscr (explicit echo required)
+		LocalDiscr:      1001,
 		State:           StateInit,
 		DesiredMinTxUs:  20_000,
 		RequiredMinRxUs: 20_000,
@@ -216,14 +216,14 @@ func TestClient_Liveness_Session_HandleRxFromInitToUpOnPeerInitOrUp(t *testing.T
 	s.peerDiscr = 777 // already learned
 	now := time.Now()
 
-	// Without explicit echo (peerDiscrr != localDiscr), do NOT promote.
-	cpNoEcho := &ControlPacket{peerDiscrr: 0, LocalDiscrr: 777, State: StateUp}
+	// Without explicit echo (PeerDiscr != localDiscr), do NOT promote.
+	cpNoEcho := &ControlPacket{PeerDiscr: 0, LocalDiscr: 777, State: StateUp}
 	changed := s.HandleRx(now, cpNoEcho)
 	require.False(t, changed)
 	require.Equal(t, StateInit, s.state)
 
-	// With explicit echo (peerDiscrr == localDiscr), promote to Up.
-	cpEcho := &ControlPacket{peerDiscrr: s.localDiscr, LocalDiscrr: s.peerDiscr, State: StateUp}
+	// With explicit echo (PeerDiscr == localDiscr), promote to Up.
+	cpEcho := &ControlPacket{PeerDiscr: s.localDiscr, LocalDiscr: s.peerDiscr, State: StateUp}
 	changed = s.HandleRx(now, cpEcho)
 	require.True(t, changed)
 	require.Equal(t, StateUp, s.state)
@@ -237,7 +237,7 @@ func TestClient_Liveness_Session_HandleRxFromUpToDownWhenPeerReportsDownAndStopD
 	now := time.Now()
 	s.detectDeadline = now.Add(10 * time.Second)
 
-	cp := &ControlPacket{peerDiscrr: 0, LocalDiscrr: 1, State: StateDown}
+	cp := &ControlPacket{PeerDiscr: 0, LocalDiscr: 1, State: StateDown}
 	changed := s.HandleRx(now, cp)
 	require.True(t, changed)
 	require.Equal(t, StateDown, s.state)
@@ -250,8 +250,8 @@ func TestClient_Liveness_Session_HandleRxSetsPeerTimersAndDetectDeadline(t *test
 	s := newSess()
 	now := time.Now()
 	cp := &ControlPacket{
-		peerDiscrr:      0,
-		LocalDiscrr:     9,
+		PeerDiscr:       0,
+		LocalDiscr:      9,
 		State:           StateInit,
 		DesiredMinTxUs:  12_000,
 		RequiredMinRxUs: 34_000,
@@ -280,7 +280,7 @@ func TestClient_Liveness_Session_HandleRxIgnoredWhenAdminDown(t *testing.T) {
 	s := newSess()
 	s.state = StateAdminDown
 	now := time.Now()
-	cp := &ControlPacket{peerDiscrr: 0, LocalDiscrr: 9, State: StateUp, DesiredMinTxUs: 1000, RequiredMinRxUs: 2000}
+	cp := &ControlPacket{PeerDiscr: 0, LocalDiscr: 9, State: StateUp, DesiredMinTxUs: 1000, RequiredMinRxUs: 2000}
 	changed := s.HandleRx(now, cp)
 	require.False(t, changed)
 	require.Equal(t, StateAdminDown, s.state)
@@ -296,8 +296,8 @@ func TestClient_Liveness_Session_HandleRxClampsTimersAndDetectMultZero(t *testin
 	s.maxTxCeil = 40 * time.Millisecond
 
 	cp := &ControlPacket{
-		peerDiscrr:      0,
-		LocalDiscrr:     9,
+		PeerDiscr:       0,
+		LocalDiscr:      9,
 		State:           StateInit,
 		DetectMult:      0,         // invalid → clamp to 1 (internal)
 		DesiredMinTxUs:  1_000,     // 1ms  → clamp up to 7ms
@@ -327,8 +327,8 @@ func TestClient_Liveness_Session_HandleRx_NoChange_RearmsDetect(t *testing.T) {
 
 	callNow := now.Add(10 * time.Millisecond)
 	cp := &ControlPacket{
-		peerDiscrr:      s.localDiscr, // accepted (echo ok)
-		LocalDiscrr:     s.peerDiscr,  // may be 0; fine
+		PeerDiscr:       s.localDiscr, // accepted (echo ok)
+		LocalDiscr:      s.peerDiscr,  // may be 0; fine
 		State:           StateUp,
 		DesiredMinTxUs:  20000, // 20ms
 		RequiredMinRxUs: 20000,

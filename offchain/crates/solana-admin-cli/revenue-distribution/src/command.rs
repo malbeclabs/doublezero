@@ -11,9 +11,13 @@ use doublezero_revenue_distribution::{
             InitializeSwapDestinationAccounts, SetAdminAccounts, SetRewardsManagerAccounts,
         },
     },
-    state::{self, ContributorRewards, Journal, ProgramConfig},
+    state::{self, ContributorRewards, Distribution, Journal, ProgramConfig},
+    types::DoubleZeroEpoch,
 };
-use doublezero_solana_client_tools::payer::{SolanaPayerOptions, TransactionOutcome, Wallet};
+use doublezero_solana_client_tools::{
+    payer::{SolanaPayerOptions, TransactionOutcome, Wallet},
+    zero_copy::ZeroCopyAccountOwned,
+};
 use solana_sdk::{
     compute_budget::ComputeBudgetInstruction,
     instruction::{AccountMeta, Instruction},
@@ -281,13 +285,32 @@ pub async fn execute_migrate_program_accounts(
     let wallet = Wallet::try_from(solana_payer_options)?;
     let wallet_key = wallet.pubkey();
 
+    let mut accounts = vec![
+        AccountMeta::new_readonly(get_program_data_address(&ID).0, false),
+        AccountMeta::new_readonly(wallet_key, true),
+        AccountMeta::new(ProgramConfig::find_address().0, false),
+    ];
+
+    let journal_key = Journal::find_address().0;
+    accounts.push(AccountMeta::new(journal_key, false));
+
+    let journal = ZeroCopyAccountOwned::<Journal>::try_from_rpc_client(
+        &wallet.connection.rpc_client,
+        &journal_key,
+    )
+    .await?;
+
+    let first_dz_epoch = 31;
+    let until_dz_epoch = journal.data.unwrap().next_dz_epoch_to_sweep_tokens.value();
+
+    for dz_epoch in first_dz_epoch..until_dz_epoch {
+        let distribution_key = Distribution::find_address(DoubleZeroEpoch::new(dz_epoch)).0;
+        accounts.push(AccountMeta::new_readonly(distribution_key, false));
+    }
+
     let migrate_program_accounts_ix = try_build_instruction(
         &ID,
-        vec![
-            AccountMeta::new_readonly(get_program_data_address(&ID).0, false),
-            AccountMeta::new_readonly(wallet_key, true),
-            AccountMeta::new(ProgramConfig::find_address().0, false),
-        ],
+        accounts,
         &RevenueDistributionInstructionData::MigrateProgramAccounts,
     )?;
 

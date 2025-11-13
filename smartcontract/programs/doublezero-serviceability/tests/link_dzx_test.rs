@@ -3,7 +3,7 @@ use doublezero_serviceability::{
     pda::*,
     processors::{
         contributor::create::ContributorCreateArgs,
-        device::interface::{DeviceInterfaceUnlinkArgs, InterfaceSubType},
+        device::interface::DeviceInterfaceUnlinkArgs,
         link::{
             accept::LinkAcceptArgs, activate::*, create::*, delete::*, resume::*, suspend::*,
             update::*,
@@ -13,8 +13,7 @@ use doublezero_serviceability::{
     state::{
         accounttype::AccountType,
         contributor::ContributorStatus,
-        device::{DeviceStatus, DeviceType},
-        interface::LoopbackType,
+        device::{DeviceStatus, DeviceType, LoopbackType},
         link::*,
     },
 };
@@ -235,7 +234,6 @@ async fn test_dzx_link() {
         DoubleZeroInstruction::CreateDeviceInterface(
             device::interface::create::DeviceInterfaceCreateArgs {
                 name: "Ethernet0".to_string(),
-                interface_sub_type: InterfaceSubType::None,
                 loopback_type: LoopbackType::None,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
@@ -319,7 +317,6 @@ async fn test_dzx_link() {
         DoubleZeroInstruction::CreateDeviceInterface(
             device::interface::create::DeviceInterfaceCreateArgs {
                 name: "Ethernet1".to_string(),
-                interface_sub_type: InterfaceSubType::None,
                 loopback_type: LoopbackType::None,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,

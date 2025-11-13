@@ -11,12 +11,7 @@ use doublezero_serviceability::{
         },
         *,
     },
-    state::{
-        accounttype::AccountType,
-        contributor::ContributorStatus,
-        device::*,
-        interface::{InterfaceStatus, InterfaceType, LoopbackType},
-    },
+    state::{accounttype::AccountType, contributor::ContributorStatus, device::*},
 };
 use globalconfig::set::SetGlobalConfigArgs;
 use solana_program_test::*;
@@ -263,7 +258,6 @@ async fn test_device_interfaces() {
         program_id,
         DoubleZeroInstruction::CreateDeviceInterface(DeviceInterfaceCreateArgs {
             name: "Et1/1".to_string(),
-            interface_sub_type: InterfaceSubType::None,
             loopback_type: LoopbackType::None,
             vlan_id: 42,
             user_tunnel_endpoint: false,
@@ -282,47 +276,7 @@ async fn test_device_interfaces() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::CreateDeviceInterface(DeviceInterfaceCreateArgs {
-            name: "Et2/1".to_string(),
-            interface_sub_type: InterfaceSubType::CYOA,
-            loopback_type: LoopbackType::None,
-            vlan_id: 43,
-            user_tunnel_endpoint: true,
-        }),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(contributor_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateDeviceInterface(DeviceInterfaceCreateArgs {
-            name: "Et3/1".to_string(),
-            interface_sub_type: InterfaceSubType::DIA,
-            loopback_type: LoopbackType::None,
-            vlan_id: 0,
-            user_tunnel_endpoint: false,
-        }),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(contributor_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateDeviceInterface(DeviceInterfaceCreateArgs {
             name: "loopback0".to_string(),
-            interface_sub_type: InterfaceSubType::None,
             loopback_type: LoopbackType::Vpnv4,
             vlan_id: 0,
             user_tunnel_endpoint: false,
@@ -342,7 +296,6 @@ async fn test_device_interfaces() {
         program_id,
         DoubleZeroInstruction::CreateDeviceInterface(DeviceInterfaceCreateArgs {
             name: "Loopback1".to_string(),
-            interface_sub_type: InterfaceSubType::None,
             loopback_type: LoopbackType::Ipv4,
             vlan_id: 0,
             user_tunnel_endpoint: false,
@@ -363,7 +316,6 @@ async fn test_device_interfaces() {
         program_id,
         DoubleZeroInstruction::CreateDeviceInterface(DeviceInterfaceCreateArgs {
             name: "Loopback1".to_string(),
-            interface_sub_type: InterfaceSubType::None,
             loopback_type: LoopbackType::Ipv4,
             vlan_id: 1,
             user_tunnel_endpoint: false,
@@ -393,21 +345,6 @@ async fn test_device_interfaces() {
     assert_eq!(iface1.vlan_id, 42);
     assert!(!iface1.user_tunnel_endpoint);
     assert_eq!(iface1.status, InterfaceStatus::Pending);
-
-    let iface1 = device.find_interface("Ethernet2/1").unwrap().1;
-    assert_eq!(iface1.interface_type, InterfaceType::CYOA);
-    assert_eq!(iface1.loopback_type, LoopbackType::None);
-    assert_eq!(iface1.vlan_id, 43);
-    assert!(iface1.user_tunnel_endpoint);
-    assert_eq!(iface1.status, InterfaceStatus::Pending);
-
-    let iface1 = device.find_interface("Ethernet3/1").unwrap().1;
-    assert_eq!(iface1.interface_type, InterfaceType::DIA);
-    assert_eq!(iface1.loopback_type, LoopbackType::None);
-    assert_eq!(iface1.vlan_id, 0);
-    assert!(!iface1.user_tunnel_endpoint);
-    assert_eq!(iface1.status, InterfaceStatus::Pending);
-
     let iface2 = device.find_interface("Loopback0").unwrap().1;
     assert_eq!(iface2.interface_type, InterfaceType::Loopback);
     assert_eq!(iface2.loopback_type, LoopbackType::Vpnv4);
@@ -430,36 +367,6 @@ async fn test_device_interfaces() {
         program_id,
         DoubleZeroInstruction::UnlinkDeviceInterface(DeviceInterfaceUnlinkArgs {
             name: "ethernet1/1".to_string(),
-        }),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::UnlinkDeviceInterface(DeviceInterfaceUnlinkArgs {
-            name: "ethernet2/1".to_string(),
-        }),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::UnlinkDeviceInterface(DeviceInterfaceUnlinkArgs {
-            name: "ethernet3/1".to_string(),
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -509,10 +416,6 @@ async fn test_device_interfaces() {
 
     let iface1 = device.find_interface("Ethernet1/1").unwrap().1;
     assert_eq!(iface1.status, InterfaceStatus::Unlinked);
-    let iface1 = device.find_interface("Ethernet2/1").unwrap().1;
-    assert_eq!(iface1.status, InterfaceStatus::Unlinked);
-    let iface1 = device.find_interface("Ethernet3/1").unwrap().1;
-    assert_eq!(iface1.status, InterfaceStatus::Unlinked);
     let iface2 = device.find_interface("Loopback0").unwrap().1;
     assert_eq!(iface2.ip_net, "10.1.1.0/31".parse().unwrap());
     assert_eq!(iface2.node_segment_idx, 10);
@@ -529,38 +432,6 @@ async fn test_device_interfaces() {
         program_id,
         DoubleZeroInstruction::DeleteDeviceInterface(DeviceInterfaceDeleteArgs {
             name: "ethernet1/1".to_string(),
-        }),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(contributor_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::DeleteDeviceInterface(DeviceInterfaceDeleteArgs {
-            name: "ethernet2/1".to_string(),
-        }),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(contributor_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::DeleteDeviceInterface(DeviceInterfaceDeleteArgs {
-            name: "ethernet3/1".to_string(),
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -611,10 +482,6 @@ async fn test_device_interfaces() {
 
     let iface1 = device.find_interface("Ethernet1/1").unwrap().1;
     assert_eq!(iface1.status, InterfaceStatus::Deleting);
-    let iface1 = device.find_interface("Ethernet2/1").unwrap().1;
-    assert_eq!(iface1.status, InterfaceStatus::Deleting);
-    let iface1 = device.find_interface("Ethernet3/1").unwrap().1;
-    assert_eq!(iface1.status, InterfaceStatus::Deleting);
     let iface2 = device.find_interface("Loopback0").unwrap().1;
     assert_eq!(iface2.status, InterfaceStatus::Deleting);
     let iface3 = device.find_interface("Loopback1").unwrap().1;
@@ -629,36 +496,6 @@ async fn test_device_interfaces() {
         program_id,
         DoubleZeroInstruction::RemoveDeviceInterface(DeviceInterfaceRemoveArgs {
             name: "ethernet1/1".to_string(),
-        }),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::RemoveDeviceInterface(DeviceInterfaceRemoveArgs {
-            name: "ethernet2/1".to_string(),
-        }),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::RemoveDeviceInterface(DeviceInterfaceRemoveArgs {
-            name: "ethernet3/1".to_string(),
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -705,8 +542,6 @@ async fn test_device_interfaces() {
         .unwrap();
 
     assert!(device.find_interface("Ethernet1/1").is_err());
-    assert!(device.find_interface("Ethernet2/1").is_err());
-    assert!(device.find_interface("Ethernet3/1").is_err());
     assert!(device.find_interface("Loopback0").is_err());
     assert!(device.find_interface("Loopback1").is_err());
     assert_eq!(device.interfaces.len(), 0);

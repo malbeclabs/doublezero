@@ -104,7 +104,7 @@ mod tests {
         get_link_pda, AccountType, Contributor, ContributorStatus, Device, DeviceStatus,
         DeviceType, InterfaceStatus, Link, LinkLinkType, LinkStatus,
     };
-    use doublezero_serviceability::state::interface::{
+    use doublezero_serviceability::state::device::{
         CurrentInterfaceVersion, Interface, InterfaceType, LoopbackType,
     };
     use mockall::predicate;

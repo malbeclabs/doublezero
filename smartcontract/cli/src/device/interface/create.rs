@@ -20,9 +20,6 @@ pub struct CreateDeviceInterfaceCliCommand {
     /// Interface name
     #[arg(value_parser = validate_iface, required = true)]
     pub name: String,
-    /// Interface sub type
-    #[arg(long, default_value = "none")]
-    pub sub_type: types::InterfaceSubType,
     /// Loopback type (if applicable)
     #[arg(long, default_value = "none")]
     pub loopback_type: types::LoopbackType,
@@ -74,7 +71,6 @@ impl CreateDeviceInterfaceCliCommand {
         let (signature, _) = client.create_device_interface(CreateDeviceInterfaceCommand {
             pubkey: device_pk,
             name: self.name.clone(),
-            interface_sub_type: self.sub_type.into(),
             loopback_type: self.loopback_type.into(),
             vlan_id: self.vlan_id,
             user_tunnel_endpoint: self.user_tunnel_endpoint,
@@ -98,7 +94,6 @@ mod tests {
         AccountType, CurrentInterfaceVersion, Device, DeviceStatus, DeviceType, Interface,
         InterfaceStatus, InterfaceType, LoopbackType,
     };
-    use doublezero_serviceability::processors::device::interface::InterfaceSubType;
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
@@ -157,7 +152,6 @@ mod tests {
             .with(predicate::eq(CreateDeviceInterfaceCommand {
                 pubkey: device1_pubkey,
                 name: "Loopback0".to_string(),
-                interface_sub_type: InterfaceSubType::None,
                 loopback_type: LoopbackType::Ipv4,
                 vlan_id: 20,
                 user_tunnel_endpoint: false,
@@ -169,7 +163,6 @@ mod tests {
         let res = CreateDeviceInterfaceCliCommand {
             device: device1_pubkey.to_string(),
             name: "Loopback0".to_string(),
-            sub_type: types::InterfaceSubType::None,
             loopback_type: types::LoopbackType::Ipv4,
             vlan_id: 20,
             user_tunnel_endpoint: false,

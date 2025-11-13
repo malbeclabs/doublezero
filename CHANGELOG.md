@@ -4,23 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
-### Added
+### Breaking
 
+### Changes
 
 - Onchain programs
   - Check if `accesspass.owner` is equal to system program ([malbeclabs/doublezero#2088](https://github.com/malbeclabs/doublezero/pull/2088))
 - CLI
-  - Add a new sub-type field to interface definitions to support CYOA and DIA interfaces. This sub-type allows the system to distinguish between standard Physical/Loopback interfaces and specialized CYOA/DIA interfaces, enabling proper classification, validation, and configuration handling across the DZD.
   - Improve error message when connecting to a device that is at capacity or has max_users=0. Users now receive "Device is not accepting more users (at capacity or max_users=0)" instead of the confusing "Device not found" error when explicitly specifying an ineligible device.
   - Add `link latency` command to display latency statistics from the telemetry program. Supports filtering by percentile (p50, p90, p95, p99, mean, min, max, stddev, all), querying by link code or all links, and filtering by epoch. Resolves: [#1942](https://github.com/malbeclabs/doublezero/issues/1942)
   - Added `--contributor | -c` filter to `device list`, `interface list`, and `link list` commands. (#1274)
   - Validate AccessPass before client connection ([#1356](https://github.com/malbeclabs/doublezero/issues/1356))
 - Client
   - Add initial route liveness probing, initially disabled for rollout
-
-### Breaking
-
-### Changes
 
 ## [v0.6.10](https://github.com/malbeclabs/doublezero/compare/client/v0.6.9...client/v0.6.10) – 2025-11-05
 
@@ -191,7 +187,7 @@ All notable changes to this project will be documented in this file.
   - Add more descriptive error logging
   - Telemetry program: embed serviceability program ID via build feature instead of env variable
 - Activator
-    Support for interface IP reclamation
+  - Support for interface IP reclamation
   - Devices are now initialized with max_users = 0 by default.
   - Devices with max_users = 0 cannot accept user connections until updated.
 - Onchain monitor
@@ -288,26 +284,26 @@ All notable changes to this project will be documented in this file.
 ## [v0.5.3](https://github.com/malbeclabs/doublezero/compare/client/v0.5.0...client/v0.5.3) – 2025-08-19
 
 - **CLI & UX Improvements**
- 	- Improve sorting of device, exchange, link, location, and user displays
- 	- New installation package for the admin CLI for contributors based on controller/doublezero-admin
- 	- Do not allow users to connect to a device with zero available tunnel slots remaining
- 	- Improve handling of interface names for `doublezero device interface` commands
+  - Improve sorting of device, exchange, link, location, and user displays
+  - New installation package for the admin CLI for contributors based on controller/doublezero-admin
+  - Do not allow users to connect to a device with zero available tunnel slots remaining
+  - Improve handling of interface names for `doublezero device interface` commands
 - **Serviceability Model Improvements**
- 	- funder: configure recipients as flag
- 	- sdk/rs: add record program handling
- 	- config: use ledger RPC LB endpoint
- 	- Validate account codes and replace whitespace
- 	- config: add ability to override DZ ledger RPC url; update URLs
- 	- Remove old CloseAccount instruction from both the smart contract and SDK client code
+  - funder: configure recipients as flag
+  - sdk/rs: add record program handling
+  - config: use ledger RPC LB endpoint
+  - Validate account codes and replace whitespace
+  - config: add ability to override DZ ledger RPC url; update URLs
+  - Remove old CloseAccount instruction from both the smart contract and SDK client code
 - **Network Controller Improvements**
- 	- Increase user tunnel slots per device from 64 to 128
- 	- Add flag controlling whether interfaces and peers are rendered to assist with testnet migration
+  - Increase user tunnel slots per device from 64 to 128
+  - Add flag controlling whether interfaces and peers are rendered to assist with testnet migration
 - **Device and Internet Latency Telemetry**
- 	- Internet latency samples in data CLI and dashboard API
- 	- internet-latency-collector, telemetry data api/cli: collect internet latency between exchanges, not locations
- 	- internet-latency-collector: add ripeatlas credit metric
+  - Internet latency samples in data CLI and dashboard API
+  - internet-latency-collector, telemetry data api/cli: collect internet latency between exchanges, not locations
+  - internet-latency-collector: add ripeatlas credit metric
 - **End-to-End Tooling**
- 	- New doublezero QA agent improves quality by thoroughly testing the software stack end-to-end in each doublezero environment (devnet, testnet, mainnet-beta) after each release.
+  - New doublezero QA agent improves quality by thoroughly testing the software stack end-to-end in each doublezero environment (devnet, testnet, mainnet-beta) after each release.
 
 ## [v0.5.0](https://github.com/malbeclabs/doublezero/compare/client/v0.4.0...client/v0.5.0) – 2025-08-11
 

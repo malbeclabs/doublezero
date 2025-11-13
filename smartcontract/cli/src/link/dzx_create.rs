@@ -161,7 +161,7 @@ mod tests {
         get_device_pda, AccountType, CurrentInterfaceVersion, Device, DeviceStatus, DeviceType,
         InterfaceStatus, Link, LinkLinkType, LinkStatus,
     };
-    use doublezero_serviceability::state::interface::{Interface, InterfaceType, LoopbackType};
+    use doublezero_serviceability::state::device::{Interface, InterfaceType, LoopbackType};
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
 

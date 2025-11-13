@@ -3,15 +3,14 @@ use doublezero_serviceability::{
     pda::*,
     processors::{
         contributor::create::ContributorCreateArgs,
-        device::interface::{DeviceInterfaceUnlinkArgs, InterfaceSubType},
+        device::interface::DeviceInterfaceUnlinkArgs,
         link::{activate::*, create::*, delete::*, resume::*, suspend::*, update::*},
         *,
     },
     state::{
         accounttype::AccountType,
         contributor::ContributorStatus,
-        device::{DeviceStatus, DeviceType},
-        interface::{InterfaceStatus, InterfaceType, LoopbackType},
+        device::{DeviceStatus, DeviceType, InterfaceStatus, InterfaceType, LoopbackType},
         link::*,
     },
 };
@@ -197,7 +196,6 @@ async fn test_wan_link() {
         DoubleZeroInstruction::CreateDeviceInterface(
             device::interface::create::DeviceInterfaceCreateArgs {
                 name: "Ethernet0".to_string(),
-                interface_sub_type: InterfaceSubType::None,
                 loopback_type: LoopbackType::None,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
@@ -319,7 +317,6 @@ async fn test_wan_link() {
         DoubleZeroInstruction::CreateDeviceInterface(
             device::interface::create::DeviceInterfaceCreateArgs {
                 name: "Ethernet1".to_string(),
-                interface_sub_type: InterfaceSubType::None,
                 loopback_type: LoopbackType::None,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,

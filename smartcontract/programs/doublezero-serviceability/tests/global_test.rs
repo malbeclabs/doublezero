@@ -8,7 +8,7 @@ use doublezero_serviceability::{
         device::{
             activate::DeviceActivateArgs,
             create::*,
-            interface::{DeviceInterfaceCreateArgs, DeviceInterfaceUnlinkArgs, InterfaceSubType},
+            interface::{DeviceInterfaceCreateArgs, DeviceInterfaceUnlinkArgs},
             update::DeviceUpdateArgs,
         },
         exchange::create::*,
@@ -22,7 +22,6 @@ use doublezero_serviceability::{
         accounttype::AccountType,
         contributor::ContributorStatus,
         device::*,
-        interface::LoopbackType,
         link::*,
         location::*,
         user::*,
@@ -371,7 +370,6 @@ async fn test_doublezero_program() {
     println!("Creating LA Device Interfaces...");
     let device_interface_la = DeviceInterfaceCreateArgs {
         name: "Ethernet0".to_string(),
-        interface_sub_type: InterfaceSubType::None,
         loopback_type: LoopbackType::None,
         vlan_id: 0,
         user_tunnel_endpoint: false,
@@ -528,7 +526,6 @@ async fn test_doublezero_program() {
     println!("Creating NY Device Interfaces...");
     let device_interface_ny = DeviceInterfaceCreateArgs {
         name: "Ethernet1".to_string(),
-        interface_sub_type: InterfaceSubType::None,
         loopback_type: LoopbackType::None,
         vlan_id: 0,
         user_tunnel_endpoint: false,

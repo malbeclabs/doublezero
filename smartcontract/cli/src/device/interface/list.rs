@@ -2,7 +2,7 @@ use crate::{doublezerocommand::CliCommand, validators::validate_pubkey_or_code};
 use clap::Args;
 use doublezero_program_common::types::NetworkV4;
 use doublezero_sdk::commands::device::get::GetDeviceCommand;
-use doublezero_serviceability::state::interface::LoopbackType;
+use doublezero_serviceability::state::device::LoopbackType;
 use serde::Serialize;
 use std::io::Write;
 use tabled::{settings::Style, Table, Tabled};
@@ -82,7 +82,7 @@ mod tests {
         commands::device::get::GetDeviceCommand, AccountType, CurrentInterfaceVersion, Device,
         DeviceStatus, DeviceType,
     };
-    use doublezero_serviceability::state::interface::{
+    use doublezero_serviceability::state::device::{
         Interface, InterfaceStatus, InterfaceType, LoopbackType,
     };
     use mockall::predicate;

@@ -161,15 +161,15 @@ func (s *Session) HandleRx(now time.Time, ctrl *ControlPacket) (changed bool) {
 	if s.state == StateAdminDown {
 		return false
 	}
-	if ctrl.peerDiscrr != 0 && ctrl.peerDiscrr != s.localDiscr {
+	if ctrl.PeerDiscr != 0 && ctrl.PeerDiscr != s.localDiscr {
 		return false
 	}
 
 	prev := s.state
 
 	// Learn peer discriminator if not yet known.
-	if s.peerDiscr == 0 && ctrl.LocalDiscrr != 0 {
-		s.peerDiscr = ctrl.LocalDiscrr
+	if s.peerDiscr == 0 && ctrl.LocalDiscr != 0 {
+		s.peerDiscr = ctrl.LocalDiscr
 	}
 
 	// Update peer timing and clamp within floor/ceiling bounds.
@@ -198,7 +198,7 @@ func (s *Session) HandleRx(now time.Time, ctrl *ControlPacket) (changed bool) {
 
 		// Move to Init once peer identified; Up after echo confirmation.
 		if s.peerDiscr != 0 {
-			if ctrl.State >= StateInit && ctrl.peerDiscrr == s.localDiscr {
+			if ctrl.State >= StateInit && ctrl.PeerDiscr == s.localDiscr {
 				s.state = StateUp
 				s.backoffFactor = 1
 			} else {
@@ -209,7 +209,7 @@ func (s *Session) HandleRx(now time.Time, ctrl *ControlPacket) (changed bool) {
 
 	case StateInit:
 		// Promote to Up only after receiving echo referencing our localDiscr.
-		if s.peerDiscr != 0 && ctrl.State >= StateInit && ctrl.peerDiscrr == s.localDiscr {
+		if s.peerDiscr != 0 && ctrl.State >= StateInit && ctrl.PeerDiscr == s.localDiscr {
 			s.state = StateUp
 			s.backoffFactor = 1
 		}

@@ -1064,6 +1064,14 @@ fn try_finalize_distribution_rewards(accounts: &[AccountInfo]) -> ProgramResult 
     // finalized.
     distribution.try_require_finalized_debt_calculation()?;
 
+    // Ensure that the rewards root is not null if there is calculated debt.
+    if distribution.checked_total_sol_debt().unwrap() != 0
+        && distribution.rewards_merkle_root == Hash::default()
+    {
+        msg!("Rewards root cannot be null with calculated debt");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
     // The distribution must have been created at least the minimum number of
     // epochs ago.
     let minimum_dz_epoch_to_finalize = program_config

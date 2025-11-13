@@ -104,14 +104,6 @@ async fn test_finalize_distribution_rewards() {
         .warp_timestamp_by(60)
         .await
         .unwrap()
-        .configure_distribution_rewards(
-            dz_epoch,
-            &rewards_accountant_signer,
-            total_contributors,
-            rewards_merkle_root,
-        )
-        .await
-        .unwrap()
         .configure_distribution_debt(
             dz_epoch,
             &debt_accountant_signer,
@@ -137,6 +129,29 @@ async fn test_finalize_distribution_rewards() {
 
     test_setup
         .finalize_distribution_debt(dz_epoch, &debt_accountant_signer)
+        .await
+        .unwrap();
+
+    // Cannot finalize until the rewards root is not null.
+
+    let (tx_err, program_logs) =
+        cannot_finalize_distribution_rewards(&mut test_setup, dz_epoch).await;
+    assert_eq!(
+        tx_err,
+        TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
+    );
+    assert_eq!(
+        program_logs.get(3).unwrap(),
+        "Program log: Rewards root cannot be null with calculated debt"
+    );
+
+    test_setup
+        .configure_distribution_rewards(
+            dz_epoch,
+            &rewards_accountant_signer,
+            total_contributors,
+            rewards_merkle_root,
+        )
         .await
         .unwrap();
 

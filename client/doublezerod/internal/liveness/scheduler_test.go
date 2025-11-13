@@ -187,7 +187,7 @@ func TestClient_Liveness_Scheduler_Run_SendsAndReschedules(t *testing.T) {
 	}()
 
 	log := newTestLogger(t)
-	s := NewScheduler(log, w, func(*Session) {}, 0)
+	s := NewScheduler(log, w, func(*Session) {}, 0, false)
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	go func() {
@@ -401,7 +401,7 @@ func TestClient_Liveness_Scheduler_Run_CullsStaleDetectAndClearsMarker(t *testin
 	t.Parallel()
 
 	log := newTestLogger(t)
-	s := NewScheduler(log, nil, func(*Session) {}, 0)
+	s := NewScheduler(log, nil, func(*Session) {}, 0, false)
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 

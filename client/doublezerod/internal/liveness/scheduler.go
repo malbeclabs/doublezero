@@ -141,11 +141,13 @@ type Scheduler struct {
 	writeErrWarnEvery time.Duration // min interval between repeated write warnings
 	writeErrWarnLast  time.Time     // last time a warning was logged
 	writeErrWarnMu    sync.Mutex    // guards writeErrWarnLast
+
+	peerMetrics bool
 }
 
 // NewScheduler constructs a Scheduler bound to a UDP transport and logger.
 // onSessionDown is called asynchronously whenever a session is detected as failed.
-func NewScheduler(log *slog.Logger, udp *UDPService, onSessionDown func(s *Session), maxEvents int) *Scheduler {
+func NewScheduler(log *slog.Logger, udp *UDPService, onSessionDown func(s *Session), maxEvents int, peerMetrics bool) *Scheduler {
 	eq := NewEventQueue()
 	return &Scheduler{
 		log:               log,
@@ -154,6 +156,7 @@ func NewScheduler(log *slog.Logger, udp *UDPService, onSessionDown func(s *Sessi
 		eq:                eq,
 		writeErrWarnEvery: 5 * time.Second,
 		maxEvents:         maxEvents,
+		peerMetrics:       peerMetrics,
 	}
 }
 
@@ -198,6 +201,10 @@ func (s *Scheduler) Run(ctx context.Context) error {
 			}
 		}
 
+		emitSchedulerServiceQueueLengthGauge(s.eq, ev.session)
+
+		prevState := ev.session.GetState()
+
 		switch ev.eventType {
 		case eventTypeTX:
 			ev.session.mu.Lock()
@@ -215,6 +222,8 @@ func (s *Scheduler) Run(ctx context.Context) error {
 					ev.session.nextDetectScheduled = time.Time{}
 				}
 				ev.session.mu.Unlock()
+				metricSchedulerEventsDropped.WithLabelValues("detect", "stale").Inc()
+				metricSchedulerTotalQueueLen.Set(float64(s.eq.Len()))
 				continue
 			}
 			if ev.when.Equal(ev.session.nextDetectScheduled) {
@@ -223,14 +232,13 @@ func (s *Scheduler) Run(ctx context.Context) error {
 			ev.session.mu.Unlock()
 
 			if s.tryExpire(ev.session) {
+				emitSessionStateMetrics(ev.session, &prevState, "detect_timeout", s.peerMetrics)
 				// Expiration triggers asynchronous session-down handling.
 				go s.onSessionDown(ev.session)
 				continue
 			}
 			// Still active; re-arm detect timer for next interval.
-			ev.session.mu.Lock()
-			st := ev.session.state
-			ev.session.mu.Unlock()
+			st := ev.session.GetState()
 			if st == StateUp || st == StateInit {
 				s.scheduleDetect(time.Now(), ev.session)
 			}
@@ -249,6 +257,7 @@ func (s *Scheduler) maybeDropOnOverflow(et eventType) bool {
 		// never drop TX
 		return false
 	}
+	metricSchedulerEventsDropped.WithLabelValues("detect", "overflow").Inc()
 	return true
 }
 
@@ -276,6 +285,7 @@ func (s *Scheduler) scheduleTx(now time.Time, sess *Session) {
 	sess.mu.Unlock()
 
 	s.eq.Push(&event{when: next, eventType: eventTypeTX, session: sess})
+	emitSchedulerServiceQueueLengthGauge(s.eq, sess)
 }
 
 // scheduleDetect arms or re-arms a session’s detection timer and enqueues a detect event.
@@ -305,6 +315,8 @@ func (s *Scheduler) scheduleDetect(now time.Time, sess *Session) {
 	}
 
 	s.eq.Push(&event{when: ddl, eventType: eventTypeDetect, session: sess})
+	metricSchedulerTotalQueueLen.Set(float64(s.eq.Len()))
+	emitSchedulerServiceQueueLengthGauge(s.eq, sess)
 }
 
 // doTX builds and transmits a ControlPacket representing the session’s current state.
@@ -333,6 +345,8 @@ func (s *Scheduler) doTX(sess *Session) {
 	}
 	_, err := s.udp.WriteTo(pkt, sess.peerAddr, sess.peer.Interface, src)
 	if err != nil {
+		metricWriteSocketErrors.WithLabelValues(sess.peer.Interface, sess.peer.LocalIP).Inc()
+
 		// Log throttled warnings for transient errors (e.g., bad FD state).
 		now := time.Now()
 		s.writeErrWarnMu.Lock()
@@ -343,6 +357,8 @@ func (s *Scheduler) doTX(sess *Session) {
 		} else {
 			s.writeErrWarnMu.Unlock()
 		}
+	} else {
+		metricControlPacketsTX.WithLabelValues(sess.peer.Interface, sess.peer.LocalIP).Inc()
 	}
 }
 

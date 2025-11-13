@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -115,6 +116,8 @@ func (r *Receiver) Run(ctx context.Context) error {
 				return fmt.Errorf("socket closed during ReadFrom: %w", err)
 			}
 
+			metricReadSocketErrors.WithLabelValues(ifname, localIP.String()).Inc()
+
 			// Log other transient read errors, throttled.
 			now := time.Now()
 			r.readErrWarnMu.Lock()
@@ -131,29 +134,52 @@ func (r *Receiver) Run(ctx context.Context) error {
 			}
 			continue
 		}
+		start := time.Now()
 
 		// Attempt to parse the received packet into a ControlPacket struct.
 		ctrl, err := UnmarshalControlPacket(buf[:n])
 		if err != nil {
 			r.log.Error("liveness.recv: error parsing control packet", "error", err)
+
+			lip := localIP.To4().String()
+			switch {
+			case errors.Is(err, ErrShortPacket):
+				metricControlPacketsRxInvalid.WithLabelValues(ifname, lip, "short").Inc()
+			case errors.Is(err, ErrInvalidLength):
+				metricControlPacketsRxInvalid.WithLabelValues(ifname, lip, "bad_len").Inc()
+			default:
+				if strings.Contains(err.Error(), "unsupported version") {
+					metricControlPacketsRxInvalid.WithLabelValues(ifname, lip, "bad_version").Inc()
+				} else {
+					metricControlPacketsRxInvalid.WithLabelValues(ifname, lip, "parse_error").Inc()
+				}
+			}
+
 			continue
 		}
 
 		// Skip packets that are not IPv4.
 		if localIP.To4() == nil || peerAddr.IP.To4() == nil {
+			if localIP.To4() != nil {
+				metricControlPacketsRxInvalid.WithLabelValues(ifname, localIP.To4().String(), "not_ipv4").Inc()
+			}
 			continue
 		}
+		localIP4 := localIP.To4().String()
+
+		metricControlPacketsRX.WithLabelValues(ifname, localIP4).Inc()
 
 		// Populate the peer descriptor: identifies which local interface/IP
 		// the packet arrived on and the remote endpoint that sent it.
 		peer := Peer{
 			Interface: ifname,
-			LocalIP:   localIP.To4().String(),
+			LocalIP:   localIP4,
 			PeerIP:    peerAddr.IP.To4().String(),
 		}
 
 		// Delegate to session or higher-level handler for processing.
 		r.handleRx(ctrl, peer)
+		metricHandleRxDuration.WithLabelValues(peer.Interface, peer.LocalIP).Observe(time.Since(start).Seconds())
 	}
 }
 

@@ -36,11 +36,22 @@ type Session struct {
 	backoffMax            time.Duration // upper bound for exponential backoff
 	backoffFactor         uint32        // doubles when Down, resets when Up
 
+	// Convergence time tracking.
+	convUpStart   time.Time // first valid RX while Down
+	convDownStart time.Time // first failed/missing RX while Up (or explicit Down RX)
+
 	mu sync.Mutex // guards mutable session state
 
 	// Scheduled time of the next enqueued detect and tx events (zero means nothing enqueued)
 	nextTxScheduled     time.Time
 	nextDetectScheduled time.Time
+}
+
+// GetState returns the current state of the session.
+func (s *Session) GetState() State {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.state
 }
 
 // ComputeNextTx picks the next transmit time based on current state,
@@ -120,6 +131,18 @@ func (s *Session) ExpireIfDue(now time.Time) (expired bool) {
 	if (s.state == StateUp || s.state == StateInit) &&
 		!s.detectDeadline.IsZero() &&
 		!now.Before(s.detectDeadline) {
+
+		// If we were Up, the first "missing" moment is when the next RX should
+		// have arrived after the last successful RX.
+		if s.state == StateUp && s.convDownStart.IsZero() {
+			start := s.lastRx.Add(s.rxInterval())
+			if now.After(start) {
+				s.convDownStart = start
+			} else {
+				s.convDownStart = now
+			}
+		}
+
 		s.state = StateDown
 		s.backoffFactor = 1
 		s.detectDeadline = time.Time{}
@@ -168,6 +191,11 @@ func (s *Session) HandleRx(now time.Time, ctrl *ControlPacket) (changed bool) {
 
 	switch prev {
 	case StateDown:
+		// Mark convergence-to-up start at the first successful RX while Down.
+		if s.convUpStart.IsZero() {
+			s.convUpStart = now
+		}
+
 		// Move to Init once peer identified; Up after echo confirmation.
 		if s.peerDiscr != 0 {
 			if ctrl.State >= StateInit && ctrl.peerDiscrr == s.localDiscr {
@@ -189,6 +217,10 @@ func (s *Session) HandleRx(now time.Time, ctrl *ControlPacket) (changed bool) {
 	case StateUp:
 		// If peer advertises Down, immediately mirror it and pause detect.
 		if ctrl.State == StateDown {
+			if s.convDownStart.IsZero() {
+				// Start convergence-to-down at this RX moment if not already set.
+				s.convDownStart = now
+			}
 			s.state = StateDown
 			s.backoffFactor = 1
 			s.detectDeadline = time.Time{}

@@ -180,7 +180,7 @@ func NewManager(ctx context.Context, cfg *ManagerConfig) (*Manager, error) {
 	}
 
 	log := cfg.Logger
-	log.Info("liveness: manager starting", "localAddr", udp.LocalAddr().String(), "txMin", cfg.TxMin, "rxMin", cfg.RxMin, "detectMult", cfg.DetectMult, "passiveMode", cfg.PassiveMode, "peerMetrics", cfg.PeerMetrics)
+	log.Info("liveness: manager starting", "localAddr", udp.LocalAddr().String(), "txMin", cfg.TxMin.String(), "rxMin", cfg.RxMin.String(), "detectMult", cfg.DetectMult, "passiveMode", cfg.PassiveMode, "peerMetrics", cfg.PeerMetrics)
 
 	ctx, cancel := context.WithCancel(ctx)
 	m := &Manager{
@@ -412,7 +412,7 @@ func (m *Manager) HandleRx(ctrl *ControlPacket, peer Peer) {
 		m.unkownPeerErrWarnMu.Lock()
 		if m.unkownPeerErrWarnLast.IsZero() || time.Since(m.unkownPeerErrWarnLast) >= m.unkownPeerErrWarnEvery {
 			m.unkownPeerErrWarnLast = time.Now()
-			m.log.Warn("liveness: received control packet for unknown peer", "peer", peer.String(), "peerDiscrr", ctrl.peerDiscrr, "localDiscrr", ctrl.LocalDiscrr, "state", ctrl.State)
+			m.log.Warn("liveness: received control packet for unknown peer", "peer", peer.String(), "peerDiscr", ctrl.PeerDiscr, "localDiscr", ctrl.LocalDiscr, "state", ctrl.State)
 
 		}
 		m.unkownPeerErrWarnMu.Unlock()

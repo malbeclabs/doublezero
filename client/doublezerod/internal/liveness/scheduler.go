@@ -333,8 +333,8 @@ func (s *Scheduler) doTX(sess *Session) {
 		State:           sess.state,
 		DetectMult:      sess.detectMult,
 		Length:          40,
-		LocalDiscrr:     sess.localDiscr,
-		peerDiscrr:      sess.peerDiscr,
+		LocalDiscr:      sess.localDiscr,
+		PeerDiscr:       sess.peerDiscr,
 		DesiredMinTxUs:  uint32(sess.localTxMin / time.Microsecond),
 		RequiredMinRxUs: uint32(sess.localRxMin / time.Microsecond),
 	}).Marshal()

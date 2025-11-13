@@ -14,8 +14,8 @@ func TestClient_Liveness_Packet_MarshalEncodesHeaderAndFields(t *testing.T) {
 		Version:         5,
 		State:           StateUp,
 		DetectMult:      3,
-		LocalDiscrr:     0x11223344,
-		peerDiscrr:      0x55667788,
+		LocalDiscr:      0x11223344,
+		PeerDiscr:       0x55667788,
 		DesiredMinTxUs:  0x01020304,
 		RequiredMinRxUs: 0x0A0B0C0D,
 	}
@@ -41,8 +41,8 @@ func TestClient_Liveness_Packet_UnmarshalRoundTrip(t *testing.T) {
 		Version:         1,
 		State:           StateInit,
 		DetectMult:      7,
-		LocalDiscrr:     1,
-		peerDiscrr:      2,
+		LocalDiscr:      1,
+		PeerDiscr:       2,
 		DesiredMinTxUs:  3,
 		RequiredMinRxUs: 4,
 	}
@@ -54,8 +54,8 @@ func TestClient_Liveness_Packet_UnmarshalRoundTrip(t *testing.T) {
 	require.Equal(t, StateInit, got.State)
 	require.Equal(t, uint8(7), got.DetectMult)
 	require.Equal(t, uint8(40), got.Length)
-	require.Equal(t, uint32(1), got.LocalDiscrr)
-	require.Equal(t, uint32(2), got.peerDiscrr)
+	require.Equal(t, uint32(1), got.LocalDiscr)
+	require.Equal(t, uint32(2), got.PeerDiscr)
 	require.Equal(t, uint32(3), got.DesiredMinTxUs)
 	require.Equal(t, uint32(4), got.RequiredMinRxUs)
 }

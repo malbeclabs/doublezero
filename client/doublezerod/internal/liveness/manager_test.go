@@ -136,7 +136,7 @@ func TestClient_LivenessManager_HandleRx_Transitions_AddAndDelete(t *testing.T) 
 	}()
 	require.NotNil(t, sess)
 
-	m.HandleRx(&ControlPacket{peerDiscrr: 0, LocalDiscrr: 1234, State: StateDown}, peer)
+	m.HandleRx(&ControlPacket{PeerDiscr: 0, LocalDiscr: 1234, State: StateDown}, peer)
 	func() {
 		sess.mu.Lock()
 		defer sess.mu.Unlock()
@@ -144,7 +144,7 @@ func TestClient_LivenessManager_HandleRx_Transitions_AddAndDelete(t *testing.T) 
 		require.EqualValues(t, 1234, sess.peerDiscr)
 	}()
 
-	m.HandleRx(&ControlPacket{peerDiscrr: sess.localDiscr, LocalDiscrr: sess.peerDiscr, State: StateInit}, peer)
+	m.HandleRx(&ControlPacket{PeerDiscr: sess.localDiscr, LocalDiscr: sess.peerDiscr, State: StateInit}, peer)
 	added := wait(t, addCh, 2*time.Second, "RouteAdd after Up")
 	require.Equal(t, r.Table, added.Table)
 	require.Equal(t, r.Src.String(), added.Src.String())
@@ -158,7 +158,7 @@ func TestClient_LivenessManager_HandleRx_Transitions_AddAndDelete(t *testing.T) 
 	require.Equal(t, StateUp, sess.state)
 	m.mu.Unlock()
 
-	m.HandleRx(&ControlPacket{peerDiscrr: sess.localDiscr, LocalDiscrr: sess.peerDiscr, State: StateDown}, peer)
+	m.HandleRx(&ControlPacket{PeerDiscr: sess.localDiscr, LocalDiscr: sess.peerDiscr, State: StateDown}, peer)
 	deleted := wait(t, delCh, 2*time.Second, "RouteDelete after Down")
 	require.Equal(t, r.Table, deleted.Table)
 	require.Equal(t, r.Src.String(), deleted.Src.String())
@@ -207,9 +207,9 @@ func TestClient_LivenessManager_WithdrawRoute_RemovesSessionAndDeletesIfInstalle
 		}
 	}()
 	// Down -> Init (learn peerDiscr)
-	m.HandleRx(&ControlPacket{peerDiscrr: 0, LocalDiscrr: 1, State: StateInit}, peer)
-	// Init -> Up requires explicit echo (peerDiscrr == localDiscr)
-	m.HandleRx(&ControlPacket{peerDiscrr: sess.localDiscr, LocalDiscrr: sess.peerDiscr, State: StateInit}, peer)
+	m.HandleRx(&ControlPacket{PeerDiscr: 0, LocalDiscr: 1, State: StateInit}, peer)
+	// Init -> Up requires explicit echo (PeerDiscr == localDiscr)
+	m.HandleRx(&ControlPacket{PeerDiscr: sess.localDiscr, LocalDiscr: sess.peerDiscr, State: StateInit}, peer)
 	wait(t, addCh, 2*time.Second, "RouteAdd before withdraw")
 
 	require.NoError(t, m.WithdrawRoute(r, "lo"))
@@ -265,7 +265,7 @@ func TestClient_LivenessManager_HandleRx_UnknownPeer_NoEffect(t *testing.T) {
 
 	// Construct a peer key that doesn't exist.
 	unknown := Peer{Interface: "lo", LocalIP: "127.0.0.2", PeerIP: "127.0.0.3"}
-	m.HandleRx(&ControlPacket{peerDiscrr: 0, LocalDiscrr: 1, State: StateInit}, unknown)
+	m.HandleRx(&ControlPacket{PeerDiscr: 0, LocalDiscr: 1, State: StateInit}, unknown)
 
 	// Assert no changes.
 	m.mu.Lock()
@@ -312,8 +312,8 @@ func TestClient_LivenessManager_NetlinkerErrors_NoCrash(t *testing.T) {
 	require.NotNil(t, sess)
 
 	// Drive to Up (RouteAdd returns error but should not crash; installed set true).
-	m.HandleRx(&ControlPacket{peerDiscrr: 0, LocalDiscrr: 99, State: StateDown}, peer)                         // Down -> Init
-	m.HandleRx(&ControlPacket{peerDiscrr: sess.localDiscr, LocalDiscrr: sess.peerDiscr, State: StateUp}, peer) // Init -> Up
+	m.HandleRx(&ControlPacket{PeerDiscr: 0, LocalDiscr: 99, State: StateDown}, peer)                         // Down -> Init
+	m.HandleRx(&ControlPacket{PeerDiscr: sess.localDiscr, LocalDiscr: sess.peerDiscr, State: StateUp}, peer) // Init -> Up
 
 	rk := routeKeyFor(peer.Interface, sess.route)
 	time.Sleep(50 * time.Millisecond) // allow onSessionUp goroutine to run
@@ -323,7 +323,7 @@ func TestClient_LivenessManager_NetlinkerErrors_NoCrash(t *testing.T) {
 	m.mu.Unlock()
 
 	// Drive to Down (RouteDelete returns error; should not crash; installed set false).
-	m.HandleRx(&ControlPacket{peerDiscrr: sess.localDiscr, LocalDiscrr: sess.peerDiscr, State: StateDown}, peer)
+	m.HandleRx(&ControlPacket{PeerDiscr: sess.localDiscr, LocalDiscr: sess.peerDiscr, State: StateDown}, peer)
 	time.Sleep(50 * time.Millisecond)
 
 	m.mu.Lock()
@@ -363,9 +363,9 @@ func TestClient_LivenessManager_PassiveMode_ImmediateInstall_NoAutoWithdraw(t *t
 			break
 		}
 	}()
-	m.HandleRx(&ControlPacket{peerDiscrr: 0, LocalDiscrr: 1, State: StateInit}, peer)
-	m.HandleRx(&ControlPacket{peerDiscrr: sess.localDiscr, LocalDiscrr: sess.peerDiscr, State: StateUp}, peer)
-	m.HandleRx(&ControlPacket{peerDiscrr: sess.localDiscr, LocalDiscrr: sess.peerDiscr, State: StateDown}, peer)
+	m.HandleRx(&ControlPacket{PeerDiscr: 0, LocalDiscr: 1, State: StateInit}, peer)
+	m.HandleRx(&ControlPacket{PeerDiscr: sess.localDiscr, LocalDiscr: sess.peerDiscr, State: StateUp}, peer)
+	m.HandleRx(&ControlPacket{PeerDiscr: sess.localDiscr, LocalDiscr: sess.peerDiscr, State: StateDown}, peer)
 
 	select {
 	case <-delCh:

@@ -1,0 +1,22 @@
+[package]
+name = "scheduler_doublezero"
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+anyhow.workspace = true
+doublezero-solana-client-tools.workspace = true
+doublezero-solana-validator-debt.workspace = true
+rustler = "0.37.0"
+serde_json.workspace = true
+solana-client.workspace = true
+solana-commitment-config.workspace = true
+solana-sdk.workspace = true
+slack-notifier.workspace = true
+solana-transaction-status-client-types.workspace = true
+tokio.workspace = true

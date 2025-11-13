@@ -12,6 +12,7 @@ members = [
     "crates/solana-client-tools",
     "crates/solana-fork",
     "crates/validator-debt",
+    "scheduler/native/scheduler_doublezero"
 ]
 resolver = "2"
 

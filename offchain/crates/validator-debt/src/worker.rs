@@ -1,26 +1,40 @@
 use std::{collections::HashMap, env, fs::File, str::FromStr};
 
-use anyhow::{Result, bail, ensure};
+use anyhow::{Context, Result, bail, ensure};
+use doublezero_program_tools::instruction::try_build_instruction;
 use doublezero_revenue_distribution::{
-    instruction::RevenueDistributionInstructionData::ConfigureDistributionDebt,
+    ID,
+    instruction::{
+        RevenueDistributionInstructionData::{self, ConfigureDistributionDebt},
+        account::InitializeSolanaValidatorDepositAccounts,
+    },
+    state::{ProgramConfig, SolanaValidatorDeposit},
     types::SolanaValidatorDebt,
 };
 use doublezero_serviceability::state::{
     accesspass::AccessPassType, accountdata::AccountData, accounttype::AccountType,
 };
-use doublezero_solana_client_tools::{log_info, log_warn};
+use doublezero_solana_client_tools::{
+    log_info, log_warn,
+    payer::{TransactionOutcome, Wallet},
+    rpc::{DoubleZeroLedgerConnection, SolanaConnection},
+    zero_copy::ZeroCopyAccountOwned,
+};
 use leaky_bucket::RateLimiter;
 use serde::Serialize;
 use slack_notifier;
 use solana_client::nonblocking::rpc_client::RpcClient;
-use solana_sdk::{clock::Clock, pubkey::Pubkey, signer::Signer, sysvar::clock};
+use solana_sdk::{
+    clock::Clock, compute_budget::ComputeBudgetInstruction, pubkey::Pubkey, signer::Signer,
+    sysvar::clock,
+};
 use tabled::Tabled;
 
 use crate::{
     ledger, rewards,
     rpc::JoinedSolanaEpochs,
     solana_debt_calculator::ValidatorRewards,
-    transaction::Transaction,
+    transaction::{DebtCollectionResults, Transaction},
     validator_debt::{ComputedSolanaValidatorDebt, ComputedSolanaValidatorDebts},
 };
 
@@ -376,6 +390,30 @@ pub async fn calculate_validator_debt(
     Ok(write_summary)
 }
 
+pub async fn pay_solana_validator_debt(
+    wallet: Wallet,
+    dz_ledger: DoubleZeroLedgerConnection,
+    dz_epoch: u64,
+) -> Result<DebtCollectionResults> {
+    let (_, config) = try_fetch_program_config(&wallet.connection).await?;
+
+    let (_, computed_debt) = ledger::try_fetch_debt_record(
+        &dz_ledger,
+        &config.debt_accountant_key,
+        dz_epoch,
+        dz_ledger.commitment(),
+    )
+    .await?;
+    try_initialize_missing_deposit_accounts(&wallet, &computed_debt).await?;
+
+    let transaction = Transaction::new(wallet.signer, wallet.dry_run, false);
+
+    let tx_results = transaction
+        .pay_solana_validator_debt(&wallet.connection.rpc_client, computed_debt, dz_epoch)
+        .await?;
+    Ok(tx_results)
+}
+
 async fn write_transaction(
     solana_rpc_client: &RpcClient,
     computed_solana_validator_debts: &ComputedSolanaValidatorDebts,
@@ -528,4 +566,100 @@ async fn fetch_validator_pubkeys(ledger_rpc_client: &RpcClient) -> Result<Vec<St
     }
 
     Ok(pubkeys)
+}
+
+async fn try_initialize_missing_deposit_accounts(
+    wallet: &Wallet,
+    computed_debt: &ComputedSolanaValidatorDebts,
+) -> Result<()> {
+    let wallet_key = wallet.pubkey();
+
+    let node_ids = computed_debt
+        .debts
+        .iter()
+        .map(|debt| debt.node_id)
+        .collect::<Vec<_>>();
+
+    let mut uninitialized_items = Vec::<(Pubkey, (Pubkey, u8))>::new();
+
+    for node_ids_chunk in node_ids.chunks(100) {
+        let deposit_keys_and_bumps = node_ids_chunk
+            .iter()
+            .map(SolanaValidatorDeposit::find_address)
+            .collect::<Vec<_>>();
+        let deposit_accounts = wallet
+            .connection
+            .get_multiple_accounts(
+                &deposit_keys_and_bumps
+                    .iter()
+                    .map(|(key, _)| key)
+                    .copied()
+                    .collect::<Vec<_>>(),
+            )
+            .await?;
+
+        uninitialized_items.extend(
+            deposit_accounts
+                .iter()
+                .zip(deposit_keys_and_bumps)
+                .zip(node_ids_chunk.iter().copied())
+                .filter_map(|((account, deposit_key_and_bump), node_id)| {
+                    if account.is_none() {
+                        Some((node_id, deposit_key_and_bump))
+                    } else {
+                        None
+                    }
+                }),
+        );
+    }
+
+    for uninitialized_items_chunk in uninitialized_items.chunks(16) {
+        let mut instructions = Vec::new();
+        let mut compute_unit_limit = 5_000;
+
+        for (node_id, (deposit_key, bump)) in uninitialized_items_chunk {
+            let ix = try_build_instruction(
+                &ID,
+                InitializeSolanaValidatorDepositAccounts {
+                    new_solana_validator_deposit_key: *deposit_key,
+                    payer_key: wallet_key,
+                },
+                &RevenueDistributionInstructionData::InitializeSolanaValidatorDeposit(*node_id),
+            )?;
+            instructions.push(ix);
+            compute_unit_limit += 10_000 + Wallet::compute_units_for_bump_seed(*bump);
+        }
+
+        instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(
+            compute_unit_limit,
+        ));
+
+        if let Some(ref compute_unit_price_ix) = wallet.compute_unit_price_ix {
+            instructions.push(compute_unit_price_ix.clone());
+        }
+
+        let transaction = wallet.new_transaction(&instructions).await?;
+        let tx_sig = wallet.send_or_simulate_transaction(&transaction).await?;
+
+        if let TransactionOutcome::Executed(tx_sig) = tx_sig {
+            println!("Initialize Solana validator deposit: {tx_sig}");
+
+            wallet.print_verbose_output(&[tx_sig]).await?;
+        }
+    }
+
+    Ok(())
+}
+
+async fn try_fetch_program_config(
+    connection: &SolanaConnection,
+) -> Result<(Pubkey, Box<ProgramConfig>)> {
+    let (program_config_key, _) = ProgramConfig::find_address();
+
+    let program_config =
+        ZeroCopyAccountOwned::try_from_rpc_client(&connection.rpc_client, &program_config_key)
+            .await
+            .context("Revenue Distribution program not initialized")?;
+
+    Ok((program_config_key, program_config.data.unwrap().mucked_data))
 }

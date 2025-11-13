@@ -13,7 +13,8 @@ use doublezero_serviceability::{
     state::{
         accounttype::AccountType,
         contributor::ContributorStatus,
-        device::{DeviceStatus, DeviceType, LoopbackType},
+        device::{DeviceStatus, DeviceType},
+        interface::{InterfaceCYOA, InterfaceDIA, LoopbackType, RoutingMode},
         link::*,
     },
 };
@@ -234,7 +235,13 @@ async fn test_dzx_link() {
         DoubleZeroInstruction::CreateDeviceInterface(
             device::interface::create::DeviceInterfaceCreateArgs {
                 name: "Ethernet0".to_string(),
+                interface_dia: InterfaceDIA::None,
                 loopback_type: LoopbackType::None,
+                interface_cyoa: InterfaceCYOA::None,
+                bandwidth: 0,
+                cir: 0,
+                mtu: 1500,
+                routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
             },
@@ -317,7 +324,13 @@ async fn test_dzx_link() {
         DoubleZeroInstruction::CreateDeviceInterface(
             device::interface::create::DeviceInterfaceCreateArgs {
                 name: "Ethernet1".to_string(),
+                interface_dia: InterfaceDIA::None,
                 loopback_type: LoopbackType::None,
+                interface_cyoa: InterfaceCYOA::None,
+                bandwidth: 0,
+                cir: 0,
+                mtu: 1500,
+                routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
             },

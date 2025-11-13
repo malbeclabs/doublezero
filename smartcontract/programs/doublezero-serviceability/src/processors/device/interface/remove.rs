@@ -1,4 +1,9 @@
-use crate::{error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::device::*};
+use crate::{
+    error::DoubleZeroError,
+    globalstate::globalstate_get,
+    helper::*,
+    state::{device::*, interface::InterfaceStatus},
+};
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;

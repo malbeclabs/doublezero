@@ -1655,6 +1655,7 @@ name = "doublezero-serviceability"
 version = "0.6.10"
 dependencies = [
  "base64 0.22.1",
+ "bitflags 2.9.1",
  "borsh 1.5.7",
  "borsh-incremental",
  "doublezero-program-common",

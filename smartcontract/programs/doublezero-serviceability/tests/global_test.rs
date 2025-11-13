@@ -22,6 +22,7 @@ use doublezero_serviceability::{
         accounttype::AccountType,
         contributor::ContributorStatus,
         device::*,
+        interface::{InterfaceCYOA, InterfaceDIA, LoopbackType, RoutingMode},
         link::*,
         location::*,
         user::*,
@@ -370,7 +371,13 @@ async fn test_doublezero_program() {
     println!("Creating LA Device Interfaces...");
     let device_interface_la = DeviceInterfaceCreateArgs {
         name: "Ethernet0".to_string(),
+        interface_cyoa: InterfaceCYOA::None,
         loopback_type: LoopbackType::None,
+        interface_dia: InterfaceDIA::None,
+        bandwidth: 0,
+        cir: 0,
+        mtu: 1500,
+        routing_mode: RoutingMode::Static,
         vlan_id: 0,
         user_tunnel_endpoint: false,
     };
@@ -526,7 +533,13 @@ async fn test_doublezero_program() {
     println!("Creating NY Device Interfaces...");
     let device_interface_ny = DeviceInterfaceCreateArgs {
         name: "Ethernet1".to_string(),
+        interface_cyoa: InterfaceCYOA::None,
         loopback_type: LoopbackType::None,
+        interface_dia: InterfaceDIA::None,
+        bandwidth: 0,
+        cir: 0,
+        mtu: 1500,
+        routing_mode: RoutingMode::Static,
         vlan_id: 0,
         user_tunnel_endpoint: false,
     };

@@ -1,6 +1,11 @@
 use core::fmt;
 
-use crate::{error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::device::*};
+use crate::{
+    error::DoubleZeroError,
+    globalstate::globalstate_get,
+    helper::*,
+    state::{device::*, interface::InterfaceStatus},
+};
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 use doublezero_program_common::types::NetworkV4;
@@ -75,7 +80,7 @@ pub fn process_activate_device_interface(
     updated_iface.ip_net = value.ip_net;
     updated_iface.node_segment_idx = value.node_segment_idx;
 
-    device.interfaces[idx] = Interface::V1(updated_iface);
+    device.interfaces[idx] = updated_iface.to_interface();
 
     account_write(device_account, &device, payer_account, system_program)?;
 

@@ -3,7 +3,7 @@ use crate::{
     doublezerocommand::CliCommand,
     poll_for_activation::poll_for_device_interface_activated,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
-    validators::validate_pubkey_or_code,
+    validators::{validate_parse_bandwidth, validate_pubkey_or_code},
 };
 use clap::Args;
 use doublezero_program_common::validate_iface;
@@ -20,9 +20,27 @@ pub struct CreateDeviceInterfaceCliCommand {
     /// Interface name
     #[arg(value_parser = validate_iface, required = true)]
     pub name: String,
-    /// Loopback type (if applicable)
-    #[arg(long, default_value = "none")]
-    pub loopback_type: types::LoopbackType,
+    /// Loopback type (for loopback interfaces)
+    #[arg(long)]
+    pub loopback_type: Option<types::LoopbackType>,
+    /// Interface CYOA (for CYOA interfaces)
+    #[arg(long)]
+    pub interface_cyoa: Option<types::InterfaceCYOA>,
+    /// DIA Port (for DIA interfaces)
+    #[arg(long)]
+    pub interface_dia: Option<types::InterfaceDIA>,
+    /// Bandwidth in Mbps
+    #[arg(long, value_parser = validate_parse_bandwidth, default_value = "0")]
+    pub bandwidth: u64,
+    /// Committed Information Rate in Mbps
+    #[arg(long, value_parser = validate_parse_bandwidth, default_value = "0")]
+    pub cir: u64,
+    /// MTU
+    #[arg(long, default_value = "1500")]
+    pub mtu: u16,
+    /// Routing mode
+    #[arg(long, default_value = "static")]
+    pub routing_mode: types::RoutingMode,
     /// VLAN ID (default: 0, i.e. not set)
     #[arg(long, default_value = "0")]
     pub vlan_id: u16,
@@ -56,22 +74,16 @@ impl CreateDeviceInterfaceCliCommand {
                 ))
             })?;
 
-        if self.name.starts_with("Loopback") && self.loopback_type == types::LoopbackType::None {
-            return Err(eyre::eyre!(
-                "Loopback type must be specified for Loopback interface type"
-            ));
-        }
-
-        if !self.name.starts_with("Loopback") && self.loopback_type != types::LoopbackType::None {
-            return Err(eyre::eyre!(
-                "Loopback type must be None for Physical interface type"
-            ));
-        }
-
         let (signature, _) = client.create_device_interface(CreateDeviceInterfaceCommand {
             pubkey: device_pk,
             name: self.name.clone(),
-            loopback_type: self.loopback_type.into(),
+            loopback_type: self.loopback_type.map(|lt| lt.into()).unwrap_or_default(),
+            interface_cyoa: self.interface_cyoa.map(|ic| ic.into()).unwrap_or_default(),
+            interface_dia: self.interface_dia.map(|id| id.into()).unwrap_or_default(),
+            bandwidth: self.bandwidth,
+            cir: self.cir,
+            mtu: self.mtu,
+            routing_mode: self.routing_mode.into(),
             vlan_id: self.vlan_id,
             user_tunnel_endpoint: self.user_tunnel_endpoint,
         })?;
@@ -91,9 +103,10 @@ mod tests {
     use super::*;
     use crate::tests::utils::create_test_client;
     use doublezero_sdk::{
-        AccountType, CurrentInterfaceVersion, Device, DeviceStatus, DeviceType, Interface,
-        InterfaceStatus, InterfaceType, LoopbackType,
+        AccountType, CurrentInterfaceVersion, Device, DeviceStatus, DeviceType, InterfaceStatus,
+        InterfaceType, LoopbackType,
     };
+    use doublezero_serviceability::state::interface::{InterfaceCYOA, InterfaceDIA, RoutingMode};
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
@@ -122,16 +135,23 @@ mod tests {
             ),
             owner: device1_pubkey,
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![Interface::V1(CurrentInterfaceVersion {
+            interfaces: vec![CurrentInterfaceVersion {
                 status: InterfaceStatus::Pending,
                 name: "Ethernet0".to_string(),
                 interface_type: InterfaceType::Physical,
                 loopback_type: LoopbackType::None,
+                interface_cyoa: InterfaceCYOA::None,
+                interface_dia: InterfaceDIA::None,
+                bandwidth: 1000,
+                cir: 500,
+                mtu: 1500,
+                routing_mode: RoutingMode::Static,
                 vlan_id: 16,
                 ip_net: "10.0.0.1/24".parse().unwrap(),
                 node_segment_idx: 0,
                 user_tunnel_endpoint: true,
-            })],
+            }
+            .to_interface()],
             max_users: 255,
             users_count: 0,
         };
@@ -153,6 +173,12 @@ mod tests {
                 pubkey: device1_pubkey,
                 name: "Loopback0".to_string(),
                 loopback_type: LoopbackType::Ipv4,
+                interface_cyoa: InterfaceCYOA::GREOverDIA,
+                interface_dia: InterfaceDIA::DIA,
+                bandwidth: 0,
+                cir: 0,
+                mtu: 1500,
+                routing_mode: RoutingMode::Static,
                 vlan_id: 20,
                 user_tunnel_endpoint: false,
             }))
@@ -163,7 +189,13 @@ mod tests {
         let res = CreateDeviceInterfaceCliCommand {
             device: device1_pubkey.to_string(),
             name: "Loopback0".to_string(),
-            loopback_type: types::LoopbackType::Ipv4,
+            loopback_type: Some(types::LoopbackType::Ipv4),
+            interface_cyoa: Some(types::InterfaceCYOA::GREOverDIA),
+            interface_dia: Some(types::InterfaceDIA::DIA),
+            bandwidth: 0,
+            cir: 0,
+            mtu: 1500,
+            routing_mode: types::RoutingMode::Static,
             vlan_id: 20,
             user_tunnel_endpoint: false,
             wait: false,

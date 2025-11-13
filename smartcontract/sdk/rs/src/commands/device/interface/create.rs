@@ -4,7 +4,8 @@ use crate::{
 };
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
-    processors::device::interface::create::DeviceInterfaceCreateArgs, state::device::LoopbackType,
+    processors::device::interface::create::DeviceInterfaceCreateArgs,
+    state::interface::{InterfaceCYOA, InterfaceDIA, LoopbackType, RoutingMode},
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
@@ -12,7 +13,13 @@ use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature}
 pub struct CreateDeviceInterfaceCommand {
     pub pubkey: Pubkey,
     pub name: String,
+    pub interface_cyoa: InterfaceCYOA,
     pub loopback_type: LoopbackType,
+    pub interface_dia: InterfaceDIA,
+    pub bandwidth: u64,
+    pub cir: u64,
+    pub mtu: u16,
+    pub routing_mode: RoutingMode,
     pub vlan_id: u16,
     pub user_tunnel_endpoint: bool,
 }
@@ -33,6 +40,12 @@ impl CreateDeviceInterfaceCommand {
                 DoubleZeroInstruction::CreateDeviceInterface(DeviceInterfaceCreateArgs {
                     name: self.name.clone(),
                     loopback_type: self.loopback_type,
+                    interface_cyoa: self.interface_cyoa,
+                    interface_dia: self.interface_dia,
+                    bandwidth: self.bandwidth,
+                    cir: self.cir,
+                    mtu: self.mtu,
+                    routing_mode: self.routing_mode,
                     vlan_id: self.vlan_id,
                     user_tunnel_endpoint: self.user_tunnel_endpoint,
                 }),
@@ -103,6 +116,12 @@ mod tests {
                     DeviceInterfaceCreateArgs {
                         name: "Ethernet0".to_string(),
                         loopback_type: LoopbackType::None,
+                        interface_cyoa: InterfaceCYOA::None,
+                        interface_dia: InterfaceDIA::DIA,
+                        bandwidth: 0,
+                        cir: 0,
+                        mtu: 1500,
+                        routing_mode: RoutingMode::Static,
                         vlan_id: 100,
                         user_tunnel_endpoint: true,
                     },
@@ -118,7 +137,13 @@ mod tests {
         let command = CreateDeviceInterfaceCommand {
             pubkey: device_pubkey,
             name: "Ethernet0".to_string(),
+            interface_cyoa: InterfaceCYOA::None,
             loopback_type: LoopbackType::None,
+            interface_dia: InterfaceDIA::DIA,
+            bandwidth: 0,
+            cir: 0,
+            mtu: 1500,
+            routing_mode: RoutingMode::Static,
             vlan_id: 100,
             user_tunnel_endpoint: true,
         };

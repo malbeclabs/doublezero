@@ -161,7 +161,7 @@ mod tests {
         get_device_pda, AccountType, CurrentInterfaceVersion, Device, DeviceStatus, DeviceType,
         InterfaceStatus, Link, LinkLinkType, LinkStatus,
     };
-    use doublezero_serviceability::state::device::{Interface, InterfaceType, LoopbackType};
+    use doublezero_serviceability::state::interface::{InterfaceType, LoopbackType};
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
@@ -197,7 +197,7 @@ mod tests {
             status: DeviceStatus::Activated,
             owner: pda_pubkey,
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![Interface::V1(CurrentInterfaceVersion {
+            interfaces: vec![CurrentInterfaceVersion {
                 status: InterfaceStatus::Unlinked,
                 name: "Ethernet1/1".to_string(),
                 interface_type: InterfaceType::Physical,
@@ -206,7 +206,9 @@ mod tests {
                 ip_net: "10.2.0.1/24".parse().unwrap(),
                 node_segment_idx: 0,
                 user_tunnel_endpoint: true,
-            })],
+                ..Default::default()
+            }
+            .to_interface()],
             max_users: 255,
             users_count: 0,
         };
@@ -229,7 +231,7 @@ mod tests {
             status: DeviceStatus::Activated,
             owner: pda_pubkey,
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![Interface::V1(CurrentInterfaceVersion {
+            interfaces: vec![CurrentInterfaceVersion {
                 status: InterfaceStatus::Unlinked,
                 name: "Ethernet1/2".to_string(),
                 interface_type: InterfaceType::Physical,
@@ -238,7 +240,9 @@ mod tests {
                 ip_net: "10.2.0.2/24".parse().unwrap(),
                 node_segment_idx: 0,
                 user_tunnel_endpoint: true,
-            })],
+                ..Default::default()
+            }
+            .to_interface()],
             max_users: 255,
             users_count: 0,
         };
@@ -261,7 +265,7 @@ mod tests {
             status: DeviceStatus::Activated,
             owner: pda_pubkey,
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![Interface::V1(CurrentInterfaceVersion {
+            interfaces: vec![CurrentInterfaceVersion {
                 status: InterfaceStatus::Unlinked,
                 name: "Ethernet1/3".to_string(),
                 interface_type: InterfaceType::Physical,
@@ -270,7 +274,9 @@ mod tests {
                 ip_net: "10.2.0.3/24".parse().unwrap(),
                 node_segment_idx: 0,
                 user_tunnel_endpoint: true,
-            })],
+                ..Default::default()
+            }
+            .to_interface()],
             max_users: 255,
             users_count: 0,
         };

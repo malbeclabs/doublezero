@@ -13,13 +13,13 @@ pub use doublezero_serviceability::{
         accountdata::AccountData,
         accounttype::AccountType,
         contributor::{Contributor, ContributorStatus},
-        device::{
-            CurrentInterfaceVersion, Device, DeviceStatus, DeviceType, Interface, InterfaceStatus,
-            InterfaceType, LoopbackType,
-        },
+        device::{Device, DeviceStatus, DeviceType},
         exchange::{Exchange, ExchangeStatus, BGP_COMMUNITY_MAX, BGP_COMMUNITY_MIN},
         globalconfig::GlobalConfig,
         globalstate::GlobalState,
+        interface::{
+            CurrentInterfaceVersion, Interface, InterfaceStatus, InterfaceType, LoopbackType,
+        },
         link::{Link, LinkLinkType, LinkStatus},
         location::{Location, LocationStatus},
         multicastgroup::{MulticastGroup, MulticastGroupStatus},

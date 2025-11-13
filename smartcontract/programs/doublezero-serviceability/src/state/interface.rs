@@ -253,7 +253,7 @@ impl fmt::Display for InterfaceDIA {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             InterfaceDIA::None => write!(f, "none"),
-            InterfaceDIA::DIA => write!(f, "yes"),
+            InterfaceDIA::DIA => write!(f, "dia"),
         }
     }
 }
@@ -454,4 +454,63 @@ impl TryFrom<&[u8]> for Interface {
             _ => Ok(Interface::V1(InterfaceV1::default())), // Default case
         }
     }
+}
+
+#[test]
+fn test_interface_version() {
+    let iface = InterfaceV1 {
+        status: InterfaceStatus::Activated,
+        name: "Loopback0".to_string(),
+        interface_type: InterfaceType::Loopback,
+        loopback_type: LoopbackType::Ipv4,
+        vlan_id: 100,
+        ip_net: "10.0.0.0/24".parse().unwrap(),
+        node_segment_idx: 200,
+        user_tunnel_endpoint: true,
+    }
+    .to_interface();
+
+    assert!(
+        matches!(iface, Interface::V1(_)),
+        "iface is not Interface::V1"
+    );
+    let iface_v2: CurrentInterfaceVersion = iface.into_current_version();
+    assert_eq!(iface_v2.name, "Loopback0");
+    assert_eq!(iface_v2.interface_type, InterfaceType::Loopback);
+    assert_eq!(iface_v2.loopback_type, LoopbackType::Ipv4);
+    assert_eq!(iface_v2.vlan_id, 100);
+    assert_eq!(iface_v2.ip_net, "10.0.0.0/24".parse().unwrap());
+    assert_eq!(iface_v2.node_segment_idx, 200);
+    assert!(iface_v2.user_tunnel_endpoint);
+
+    let iface = InterfaceV2 {
+        status: InterfaceStatus::Activated,
+        name: "Loopback0".to_string(),
+        interface_type: InterfaceType::Loopback,
+        interface_cyoa: InterfaceCYOA::GREOverDIA,
+        interface_dia: InterfaceDIA::DIA,
+        loopback_type: LoopbackType::Ipv4,
+        bandwidth: 1000,
+        cir: 500,
+        mtu: 1500,
+        routing_mode: RoutingMode::BGP,
+        vlan_id: 100,
+        ip_net: "10.0.0.0/24".parse().unwrap(),
+        node_segment_idx: 200,
+        user_tunnel_endpoint: true,
+    }
+    .to_interface();
+
+    assert!(
+        matches!(iface, Interface::V2(_)),
+        "iface is not Interface::V2"
+    );
+    let iface_v2: CurrentInterfaceVersion = iface.into_current_version();
+    assert_eq!(iface_v2.name, "Loopback0");
+    assert_eq!(iface_v2.interface_type, InterfaceType::Loopback);
+    assert_eq!(iface_v2.loopback_type, LoopbackType::Ipv4);
+    assert_eq!(iface_v2.vlan_id, 100);
+    assert_eq!(iface_v2.ip_net, "10.0.0.0/24".parse().unwrap());
+    assert_eq!(iface_v2.node_segment_idx, 200);
+    assert!(iface_v2.user_tunnel_endpoint);
 }

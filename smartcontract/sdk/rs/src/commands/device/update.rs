@@ -20,6 +20,7 @@ pub struct UpdateDeviceCommand {
     pub dz_prefixes: Option<NetworkV4List>,
     pub metrics_publisher: Option<Pubkey>,
     pub contributor_pk: Option<Pubkey>,
+    pub location_pk: Option<Pubkey>,
     pub mgmt_vrf: Option<String>,
     pub interfaces: Option<Vec<Interface>>,
     pub max_users: Option<u16>,
@@ -59,6 +60,8 @@ impl UpdateDeviceCommand {
             vec![
                 AccountMeta::new(self.pubkey, false),
                 AccountMeta::new(device.contributor_pk, false),
+                AccountMeta::new(device.location_pk, false),
+                AccountMeta::new(self.location_pk.unwrap_or(device.location_pk), false),
                 AccountMeta::new(globalstate_pubkey, false),
             ],
         )
@@ -143,6 +146,7 @@ mod tests {
             dz_prefixes: Some("10.0.0.0/8".parse().unwrap()),
             metrics_publisher: None,
             mgmt_vrf: Some("mgmt".to_string()),
+            location_pk: None,
             interfaces: None,
             max_users: None,
             users_count: None,

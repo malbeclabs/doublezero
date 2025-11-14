@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+- Updated the device update command to allow modifying a device’s location.
+
 ### Changes
 
 ## [v0.7.0](https://github.com/malbeclabs/doublezero/compare/client/v0.6.11...client/v0.7.0) – 2025-11-14
@@ -70,6 +72,7 @@ All notable changes to this project will be documented in this file.
   - serviceability: prevent device interface name duplication
   - Update serviceability and telemetry program instruction args to use the `BorshDeserializeIncremental` derive macro incremental, backward-compatible, deserialization of structs.
   - Add explicit signer checks for payer accounts across various processors to improve security and ensure correct transaction authorization.
+    - Add the ability to update a Device’s location, managing the reference counters accordingly.
 - CLI
   - Removed `--bgp-community` option from `doublezero exchange create` since these values are now assigned automatically
   - Add `--next-bgp-community` option to `doublezero global-config set` so authorized users can control which bgp_community will be assigned next

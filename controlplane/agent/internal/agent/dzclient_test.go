@@ -87,7 +87,7 @@ func TestGetConfigFromServer_GetConfigRequestValidation(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.Name, func(t *testing.T) {
-			_, err = GetConfigFromServer(context.Background(), client, test.LocalDevicePubkey, test.NeighborIpMap, &test.Timeout)
+			_, err = GetConfigFromServer(context.Background(), client, test.LocalDevicePubkey, test.NeighborIpMap, &test.Timeout, "test-version", "test-commit", "test-date")
 			if err != nil {
 				t.Fatalf("GetConfigFromServer failed: %v", err)
 			}

@@ -17,6 +17,8 @@ message ConfigRequest {
     string hash = 3;
     map<string, BgpPeers> bgp_peers_by_vrf = 4;
     optional string agent_version = 5;
+    optional string agent_commit = 6;
+    optional string agent_date = 7;
 }
 
 // Represents a list of BGP peers

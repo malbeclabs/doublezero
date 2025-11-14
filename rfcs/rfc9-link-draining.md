@@ -26,7 +26,7 @@ The existing tools that are available to achieve the equivalent of a draining st
 
 Table 1: Existing Draining Options
 
-The processes described in table 1 are fragile for a number of reasons.  Having different owners of different parts of the same workflow requires coordination between a contributor and the DZF, or, in the case of DZX links, between contributors themselves.  It is also not explicit the intent about setting increased link delay values, or setting max-users to 0.  Ultimately, a simple CLI option in the smart-contract that automates the multiple existing steps required with a new drained status helps operationally with ease of execution and the desired state of the network.  Additionally, a drained status can be used to support initial DZD provisioning and protecting the network during maintenance windows and outages.
+The processes described in table 1 are fragile for a number of reasons.  Having different owners of different parts of the same workflow requires coordination between a contributor and the DZF, or, in the case of DZX links, between contributors themselves.  It is also not explicit the intent about setting increased link delay values.  Ultimately, a simple CLI option in the smart-contract that automates the multiple existing steps required with a new drained status helps operationally with ease of execution and the desired state of the network.  Additionally, a drained status can be used to support initial DZD provisioning and protecting the network during maintenance windows and outages.
 
 
 ## New Terminology
@@ -86,7 +86,7 @@ graph LR
 * Update smart-contract to allow either A-Side or Z-Side contributors to trigger `link.status` transitions
 
 ### Verification
-Appropriate verification should be implemented to ensure that a link has been successfully drained.  Additionally, appropriate verification should be implemented to before a link can be set to `activated` (ink Normalized/Routing Stable).  This verification process will be detailed in a future RFC.
+Appropriate verification should be implemented to ensure that a link has been successfully drained.  Additionally, appropriate verification should be implemented before a link can be set to `activated` (ink Normalized/Routing Stable).  This verification process will be detailed in a future RFC.
 
 ### Monitoring
 Link status should be used to silence alerts in appropriate monitoring systems.  For example, a drained link should silence alerts related to Device Telemetry.

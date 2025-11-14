@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Result, bail};
 use doublezero_record::state::RecordData;
 use doublezero_sdk::record as doublezero_record;
 use doublezero_solana_client_tools::rpc::DoubleZeroLedgerConnection;
@@ -14,6 +14,9 @@ use solana_sdk::{
 use crate::validator_debt::ComputedSolanaValidatorDebts;
 
 const SLOT_TIME_DURATION_SECONDS: f64 = 0.4;
+
+pub const DOUBLEZERO_LEDGER_MAINNET_BETA_GENESIS_HASH: Pubkey =
+    solana_sdk::pubkey!("5wVUvkFcFGYiKRUZ8Jp8Wc5swjhDEqT7hTdyssxDpC7P");
 
 pub async fn get_solana_epoch_from_dz_epoch(
     solana_client: &RpcClient,
@@ -129,4 +132,23 @@ async fn get_solana_epoch_from_dz_slot(
         (solana_epoch_info.epoch * solana_epoch_info.slots_in_epoch - num_slots)
             / solana_epoch_info.slots_in_epoch,
     )
+}
+
+pub async fn ensure_same_network_environment(
+    dz_ledger_rpc: &RpcClient,
+    is_mainnet: bool,
+) -> Result<()> {
+    let genesis_hash = dz_ledger_rpc.get_genesis_hash().await?;
+
+    // This check is safe to do because there are only two possible DoubleZero
+    // Ledger networks: mainnet and testnet.
+    if (is_mainnet
+        && genesis_hash.to_bytes() != DOUBLEZERO_LEDGER_MAINNET_BETA_GENESIS_HASH.to_bytes())
+        || (!is_mainnet
+            && genesis_hash.to_bytes() == DOUBLEZERO_LEDGER_MAINNET_BETA_GENESIS_HASH.to_bytes())
+    {
+        bail!("DoubleZero Ledger environment is not the same as the Solana environment");
+    }
+
+    Ok(())
 }

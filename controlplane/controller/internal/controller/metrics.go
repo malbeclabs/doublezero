@@ -31,7 +31,7 @@ var (
 		Name: "controller_grpc_getconfig_requests_total",
 		Help: "The total number of getconfig requests",
 	},
-		[]string{"pubkey", "device_code", "contributor_code", "exchange_code", "location_code"},
+		[]string{"pubkey", "device_code", "contributor_code", "exchange_code", "location_code", "agent_version"},
 	)
 
 	getConfigMsgSize = prometheus.NewHistogram(prometheus.HistogramOpts{

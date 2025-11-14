@@ -8,11 +8,11 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
-## [v0.6.11](https://github.com/malbeclabs/doublezero/compare/client/v0.6.10...client/v0.6.11) – 2025-11-13
+## [v0.7.0](https://github.com/malbeclabs/doublezero/compare/client/v0.6.11...client/v0.7.0) – 2025-11-14
 
 ### Breaking
-
-- None for this release
+- Smart contract
+  - Introduces CYOA and DIA as new possible interface types
 
 ### Changes
 
@@ -27,6 +27,17 @@ All notable changes to this project will be documented in this file.
 - Client
   - Add initial route liveness probing, initially disabled for rollout
   - Add route liveness prometheus metrics
+
+## [v0.6.11](https://github.com/malbeclabs/doublezero/compare/client/v0.6.10...client/v0.6.11) – 2025-11-13
+
+### Breaking
+
+- None for this release
+
+### Changes
+
+- Note that the changes from this release have been bundled into 0.7.0
+
 
 ## [v0.6.10](https://github.com/malbeclabs/doublezero/compare/client/v0.6.9...client/v0.6.10) – 2025-11-05
 

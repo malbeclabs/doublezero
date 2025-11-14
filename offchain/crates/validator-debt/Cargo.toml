@@ -11,7 +11,10 @@ repository.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+arrow.workspace = true
 async-trait.workspace = true
+aws-config.workspace = true
+aws-sdk-s3.workspace = true
 backon.workspace = true
 bincode.workspace = true
 borsh.workspace = true
@@ -30,6 +33,7 @@ leaky-bucket.workspace = true
 metrics.workspace = true
 metrics-exporter-prometheus.workspace = true
 mockall.workspace = true
+parquet.workspace = true
 reqwest.workspace = true
 serde_json.workspace = true
 serde.workspace = true
@@ -40,6 +44,7 @@ solana-sdk.workspace = true
 solana-transaction-status-client-types.workspace = true
 svm-hash.workspace = true
 tabled.workspace = true
+tempfile.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true

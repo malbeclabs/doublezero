@@ -27,6 +27,7 @@ homepage = "https://github.com/doublezerofoundation/doublezero-offchain"
 
 [workspace.dependencies]
 anyhow = "1"
+arrow = "57"
 async-trait = "0.1"
 aws-config = "1"
 aws-sdk-s3 = "1"
@@ -51,6 +52,7 @@ leaky-bucket = "1"
 metrics = "0"
 metrics-exporter-prometheus = "0"
 mockall = "0.13"
+parquet = { version = "57", features = [ "async" ] }
 rand = "0"
 rayon = "1"
 reqwest = { version = "0", features = ["json"] }

@@ -76,7 +76,7 @@ impl TryFrom<SolanaValidatorDebtConnectionOptions> for SolanaDebtCalculator {
 }
 
 // Forked from solana-clap-utils.
-fn normalize_to_url_if_moniker(url_or_moniker: &str) -> &str {
+pub fn normalize_to_url_if_moniker(url_or_moniker: &str) -> &str {
     match url_or_moniker {
         "m" | "mainnet-beta" => "https://api.mainnet-beta.solana.com",
         "t" | "testnet" => "https://api.testnet.solana.com",

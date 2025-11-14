@@ -31,9 +31,6 @@ pub struct CalculateValidatorDebtCommand {
     #[arg(long)]
     epoch: Option<u64>,
 
-    #[arg(long)]
-    csv_path: Option<String>,
-
     #[command(flatten)]
     schedule_or_force: super::ScheduleOrForce,
 
@@ -61,7 +58,6 @@ impl Schedulable for CalculateValidatorDebtCommand {
     async fn execute_once(&self) -> Result<()> {
         let Self {
             epoch,
-            csv_path,
             schedule_or_force,
             solana_payer_options,
             dz_ledger_connection_options,
@@ -102,7 +98,6 @@ impl Schedulable for CalculateValidatorDebtCommand {
             &solana_debt_calculator,
             transaction,
             epoch,
-            csv_path.clone(),
             *post_to_ledger_only,
         )
         .await?;

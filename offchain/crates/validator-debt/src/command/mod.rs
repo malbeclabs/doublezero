@@ -1,4 +1,5 @@
 mod calculate;
+mod export_validators;
 mod initialize;
 mod verify;
 //
@@ -34,6 +35,9 @@ pub enum ValidatorDebtCommand {
 
     VerifyValidatorDebt(verify::VerifyValidatorDebtCommand),
 
+    /// Export validator pubkeys for a given Solana epoch.
+    ExportValidators(export_validators::ExportValidatorsCommand),
+
     /// Finalize Epoch Distribution.
     FinalizeDistribution {
         #[command(flatten)]
@@ -54,6 +58,7 @@ impl ValidatorDebtCommand {
             ValidatorDebtCommand::CalculateValidatorDebt(command) => command.execute().await,
             ValidatorDebtCommand::FindSolanaEpoch(command) => command.execute().await,
             ValidatorDebtCommand::VerifyValidatorDebt(command) => command.execute().await,
+            ValidatorDebtCommand::ExportValidators(command) => command.execute().await,
             ValidatorDebtCommand::FinalizeDistribution {
                 solana_connection_options,
                 epoch,

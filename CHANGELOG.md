@@ -7,6 +7,9 @@ All notable changes to this project will be documented in this file.
 ### Breaking
 
 ### Changes
+- RFCs
+  - RFC9 Link Draining
+
 
 ## [v0.7.0](https://github.com/malbeclabs/doublezero/compare/client/v0.6.11...client/v0.7.0) – 2025-11-14
 

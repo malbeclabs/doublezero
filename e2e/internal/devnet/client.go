@@ -38,6 +38,9 @@ type ClientSpec struct {
 	// liveness (high cardinality).
 	RouteLivenessPeerMetrics bool
 
+	// RouteLivenessDebug is a flag to enable or disable debug logging for route liveness.
+	RouteLivenessDebug bool
+
 	// CYOANetworkIPHostID is the offset into the host portion of the subnet (must be < 2^(32 - prefixLen)).
 	CYOANetworkIPHostID uint32
 }
@@ -176,6 +179,9 @@ func (c *Client) Start(ctx context.Context) error {
 	}
 	if c.Spec.RouteLivenessPeerMetrics {
 		extraArgs = append(extraArgs, "-route-liveness-peer-metrics")
+	}
+	if c.Spec.RouteLivenessDebug {
+		extraArgs = append(extraArgs, "-route-liveness-debug")
 	}
 
 	// Start the client container.

@@ -231,7 +231,7 @@ func NewManager(ctx context.Context, cfg *ManagerConfig) (*Manager, error) {
 }
 
 // Err returns a channel that will receive any errors from the manager.
-func (m *Manager) Err() chan error {
+func (m *Manager) Err() <-chan error {
 	return m.errCh
 }
 
@@ -398,8 +398,22 @@ func (m *Manager) Close() error {
 	return cerr
 }
 
-// HandleRx is the receiver callback: it routes an inbound control packet to the
-// correct Session, drives its state machine, and schedules detect as needed.
+// HandleRx dispatches an inbound control packet to the correct Session and
+// applies manager-level effects triggered by any state transition.
+//
+// Responsibilities:
+//   - Look up the Session for the peer (ignoring packets from unknown peers).
+//   - Call sess.HandleRx to apply the RX-driven FSM update.
+//   - If the session’s state changed:
+//     |- emit state metrics
+//     |- call onSessionUp/onSessionDown as appropriate
+//     |- (re-)schedule detect for Up/Init; do not schedule detect for Down/AdminDown
+//   - If the state did not change:
+//     |- keep detect armed for Init/Up
+//     |- no action for Down/AdminDown
+//
+// All transition rules live in Session.HandleRx. Manager.HandleRx only
+// performs the side-effects and scheduling associated with the resulting state.
 func (m *Manager) HandleRx(ctrl *ControlPacket, peer Peer) {
 	now := time.Now()
 
@@ -421,13 +435,42 @@ func (m *Manager) HandleRx(ctrl *ControlPacket, peer Peer) {
 		return
 	}
 
-	// Apply RX to the session FSM; only act when state actually changes.
-	prevState := sess.state
+	prevSnap := sess.Snapshot()
+
+	m.log.Debug("liveness: HandleRx begin",
+		"peer", peer.String(),
+		"prevState", prevSnap.State.String(),
+		"ctrlState", ctrl.State.String(),
+		"sessLocalDiscr", prevSnap.LocalDiscr,
+		"sessPeerDiscr", prevSnap.PeerDiscr,
+		"ctrlLocalDiscr", ctrl.LocalDiscr,
+		"ctrlPeerDiscr", ctrl.PeerDiscr,
+		"convUpStart", prevSnap.ConvUpStart.String(),
+		"convDownStart", prevSnap.ConvDownStart.String(),
+		"upSince", prevSnap.UpSince.UTC().String(),
+		"downSince", prevSnap.DownSince.UTC().String(),
+		"lastDownReason", prevSnap.LastDownReason.String(),
+	)
+
 	changed := sess.HandleRx(now, ctrl)
 
+	// Apply RX to the session FSM; only act when state actually changes.
 	if changed {
-		emitSessionStateMetrics(sess, &prevState, "handle_rx", m.cfg.PeerMetrics)
-		switch sess.state {
+		newSnap := sess.Snapshot()
+		m.log.Debug("liveness: HandleRx state changed",
+			"peer", peer.String(),
+			"from", prevSnap.State.String(),
+			"to", newSnap.State.String(),
+			"convUpStart", newSnap.ConvUpStart.String(),
+			"convDownStart", newSnap.ConvDownStart.String(),
+			"upSince", newSnap.UpSince.UTC().String(),
+			"downSince", newSnap.DownSince.UTC().String(),
+			"lastDownReason", newSnap.LastDownReason.String(),
+		)
+
+		emitSessionStateMetrics(sess, &prevSnap.State, "handle_rx", m.cfg.PeerMetrics)
+
+		switch sess.GetState() {
 		case StateUp:
 			go m.onSessionUp(sess)
 			m.sched.scheduleDetect(now, sess) // keep detect armed while Up
@@ -436,14 +479,27 @@ func (m *Manager) HandleRx(ctrl *ControlPacket, peer Peer) {
 		case StateDown:
 			// Transitioned to Down; withdraw and do NOT re-arm detect.
 			go m.onSessionDown(sess)
+		case StateAdminDown:
+			// Transitioned to Down; withdraw and do NOT re-arm detect.
+			go m.onSessionDown(sess)
 		}
 	} else {
+		m.log.Debug("liveness: HandleRx no state change",
+			"peer", peer.String(),
+			"state", sess.state.String(),
+			"convUpStart", prevSnap.ConvUpStart.String(),
+			"convDownStart", prevSnap.ConvDownStart.String(),
+			"upSince", prevSnap.UpSince.UTC().String(),
+			"downSince", prevSnap.DownSince.UTC().String(),
+			"lastDownReason", prevSnap.LastDownReason.String(),
+		)
+
 		// No state change: just keep detect ticking for active states.
-		switch sess.state {
+		switch sess.GetState() {
 		case StateUp, StateInit:
 			m.sched.scheduleDetect(now, sess)
 		default:
-			// Down/AdminDown: do nothing; avoid noisy logs.
+			// Down/AdminDown: do nothing.
 		}
 	}
 
@@ -456,6 +512,45 @@ func (m *Manager) HandleRx(ctrl *ControlPacket, peer Peer) {
 	}
 
 	m.mu.Unlock()
+}
+
+// AdminDownRoute transitions a session to AdminDown and withdraws the route.
+func (m *Manager) AdminDownRoute(r *routing.Route, iface string) {
+	peer := Peer{
+		Interface: iface,
+		LocalIP:   r.Src.To4().String(),
+		PeerIP:    r.Dst.IP.To4().String(),
+	}
+
+	m.mu.Lock()
+	sess := m.sessions[peer]
+	m.mu.Unlock()
+	if sess == nil {
+		return
+	}
+
+	now := time.Now()
+	sess.mu.Lock()
+	prev := sess.state
+	if prev != StateAdminDown {
+		if (prev == StateUp || prev == StateInit) && sess.convDownStart.IsZero() {
+			sess.convDownStart = now
+		}
+		sess.state = StateAdminDown
+		sess.downSince = now
+		sess.lastDownReason = DownReasonLocalAdmin
+		sess.upSince = time.Time{}
+		sess.detectDeadline = time.Time{}
+		sess.nextDetectScheduled = time.Time{}
+	}
+	sess.mu.Unlock()
+
+	if prev != StateAdminDown {
+		// Withdraw route as an admin-driven down.
+		go m.onSessionDown(sess)
+		// Ensure we send at least one AdminDown packet promptly.
+		m.sched.scheduleTx(now, sess)
+	}
 }
 
 // onSessionUp installs the route if it is desired and not already installed.
@@ -486,6 +581,8 @@ func (m *Manager) onSessionUp(sess *Session) {
 	sess.mu.Lock()
 	start = sess.convUpStart
 	sess.convUpStart = time.Time{}
+	peer := *sess.peer
+	upSince := sess.upSince
 	sess.mu.Unlock()
 	var convergence time.Duration
 	if !start.IsZero() && now.After(start) {
@@ -493,26 +590,37 @@ func (m *Manager) onSessionUp(sess *Session) {
 		emitConvergenceToUpMetrics(sess, convergence)
 	}
 
-	m.log.Info("liveness: session up", "peer", sess.peer.String(), "route", sess.route.String(), "convergence", convergence.String())
+	m.log.Info("liveness: session up", "peer", peer.String(), "route", route.String(), "convergence", convergence.String(), "upSince", upSince.UTC().String())
 }
 
 // onSessionDown withdraws the route if currently installed (unless PassiveMode).
 func (m *Manager) onSessionDown(sess *Session) {
 	rk := routeKeyFor(sess.peer.Interface, sess.route)
+
 	m.mu.Lock()
 	route := m.desired[rk]
 	wasInstalled := m.installed[rk]
 	m.installed[rk] = false
 	m.mu.Unlock()
-	if wasInstalled && route != nil {
-		if !m.cfg.PassiveMode {
-			err := m.cfg.Netlinker.RouteDelete(route)
-			if err != nil {
-				m.log.Error("liveness: error deleting route on session down", "error", err, "route", route.String())
-				metricRouteUninstallFailures.WithLabelValues(sess.peer.Interface, sess.peer.LocalIP).Inc()
-			} else {
-				emitRouteWithdrawMetrics(sess.peer.Interface, sess.peer.LocalIP)
-			}
+
+	// If we never installed it in this epoch or it's no longer desired, then log debug and return.
+	if !wasInstalled || route == nil {
+		m.log.Debug("liveness: session down (no-op: not installed or not desired)",
+			"peer", sess.peer.String(),
+			"routePresent", route != nil,
+			"downSince", sess.downSince.UTC().String(),
+			"downReason", sess.lastDownReason.String())
+		return
+	}
+
+	// If we're not in PassiveMode, delete the route.
+	if !m.cfg.PassiveMode {
+		err := m.cfg.Netlinker.RouteDelete(route)
+		if err != nil {
+			m.log.Error("liveness: error deleting route on session down", "error", err, "route", route.String())
+			metricRouteUninstallFailures.WithLabelValues(sess.peer.Interface, sess.peer.LocalIP).Inc()
+		} else {
+			emitRouteWithdrawMetrics(sess.peer.Interface, sess.peer.LocalIP)
 		}
 	}
 
@@ -528,12 +636,14 @@ func (m *Manager) onSessionDown(sess *Session) {
 		convergence = now.Sub(start)
 		emitConvergenceToDownMetrics(sess, convergence)
 	}
+	snap := sess.Snapshot()
 
-	if wasInstalled && route != nil {
-		m.log.Info("liveness: session down", "peer", sess.peer.String(), "route", sess.route.String(), "convergence", convergence.String())
-	} else {
-		m.log.Info("liveness: session down (route already uninstalled)", "peer", sess.peer.String(), "route", sess.route.String())
-	}
+	m.log.Info("liveness: session down",
+		"peer", snap.Peer.String(),
+		"route", snap.Route.String(),
+		"convergence", convergence.String(),
+		"downSince", snap.DownSince.UTC().String(),
+		"downReason", snap.LastDownReason.String())
 }
 
 // rand32 returns a non-zero random uint32 for use as a discriminator.

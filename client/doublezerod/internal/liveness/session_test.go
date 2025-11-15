@@ -142,6 +142,8 @@ func TestClient_Liveness_Session_ExpireIfDueTransitionsToDownAndClearsDeadline(t
 	require.Equal(t, StateDown, s.state)
 	require.True(t, s.detectDeadline.IsZero())
 	require.Equal(t, uint32(1), s.backoffFactor, "backoff should reset after transition to Down")
+	require.Equal(t, DownReasonTimeout, s.lastDownReason)
+	require.False(t, s.downSince.IsZero())
 }
 
 func TestClient_Liveness_Session_ExpireIfDueNoTransitionWhenNotDueOrNotAlive(t *testing.T) {
@@ -175,38 +177,51 @@ func TestClient_Liveness_Session_HandleRxIgnoresMismatchedpeerDiscrr(t *testing.
 
 func TestClient_Liveness_Session_HandleRxFromDownToInitOrUpAndArmsDetect(t *testing.T) {
 	t.Parallel()
+
 	s := newSess()
 	s.state = StateDown
 	s.localDiscr = 42
 
 	now := time.Now()
-	// Peer Down -> go Init
-	cpDown := &ControlPacket{
-		PeerDiscr:       0,    // acceptable (we only check mismatch if nonzero)
-		LocalDiscr:      1001, // learn peer discr
-		State:           StateDown,
+
+	// First packet: peer advertises INIT and has a discriminator.
+	// We should learn peerDiscr, go INIT, and arm detect.
+	cpInit1 := &ControlPacket{
+		Version:         1,
+		State:           StateInit,
+		DetectMult:      3,
+		Length:          40,
+		LocalDiscr:      1001, // peer's discr
+		PeerDiscr:       0,
 		DesiredMinTxUs:  30_000, // 30ms
 		RequiredMinRxUs: 40_000, // 40ms
 	}
-	changed := s.HandleRx(now, cpDown)
+
+	changed := s.HandleRx(now, cpInit1)
 	require.True(t, changed)
 	require.Equal(t, StateInit, s.state)
 	require.EqualValues(t, 1001, s.peerDiscr)
 	require.False(t, s.detectDeadline.IsZero())
 	require.Equal(t, now, s.lastRx)
 
-	// Next packet peer Init -> go Up
-	cpInit := &ControlPacket{
-		PeerDiscr:       42, // matches our localDiscr (explicit echo required)
-		LocalDiscr:      1001,
+	// Second packet: peer INIT and echoing our localDiscr → go UP.
+	cpInit2 := &ControlPacket{
+		Version:         1,
 		State:           StateInit,
+		DetectMult:      3,
+		Length:          40,
+		LocalDiscr:      1001, // same peer discr
+		PeerDiscr:       42,   // echo our localDiscr
 		DesiredMinTxUs:  20_000,
 		RequiredMinRxUs: 20_000,
 	}
-	changed = s.HandleRx(now.Add(10*time.Millisecond), cpInit)
+
+	changed = s.HandleRx(now.Add(10*time.Millisecond), cpInit2)
 	require.True(t, changed)
 	require.Equal(t, StateUp, s.state)
-	require.Equal(t, uint32(1), s.backoffFactor, "backoff should reset when leaving Down")
+	require.Equal(t, uint32(1), s.backoffFactor, "backoff should reset when leaving Down/Init")
+	require.True(t, s.upSince.After(time.Time{}))
+	require.Equal(t, DownReasonNone, s.lastDownReason)
 }
 
 func TestClient_Liveness_Session_HandleRxFromInitToUpOnPeerInitOrUp(t *testing.T) {
@@ -227,9 +242,10 @@ func TestClient_Liveness_Session_HandleRxFromInitToUpOnPeerInitOrUp(t *testing.T
 	changed = s.HandleRx(now, cpEcho)
 	require.True(t, changed)
 	require.Equal(t, StateUp, s.state)
+	require.Equal(t, DownReasonNone, s.lastDownReason)
 }
 
-func TestClient_Liveness_Session_HandleRxFromUpToDownWhenPeerReportsDownAndStopDetect(t *testing.T) {
+func TestClient_Liveness_Session_HandleRxFromUpToDownWhenPeerReportsAdminDown(t *testing.T) {
 	t.Parallel()
 	s := newSess()
 	s.state = StateUp
@@ -237,12 +253,15 @@ func TestClient_Liveness_Session_HandleRxFromUpToDownWhenPeerReportsDownAndStopD
 	now := time.Now()
 	s.detectDeadline = now.Add(10 * time.Second)
 
-	cp := &ControlPacket{PeerDiscr: 0, LocalDiscr: 1, State: StateDown}
+	// Peer goes AdminDown; we treat this as intentional remote disable → Down.
+	cp := &ControlPacket{PeerDiscr: 0, LocalDiscr: 1, State: StateAdminDown}
 	changed := s.HandleRx(now, cp)
 	require.True(t, changed)
 	require.Equal(t, StateDown, s.state)
 	require.True(t, s.detectDeadline.IsZero())
 	require.Equal(t, uint32(1), s.backoffFactor, "backoff should reset when entering Down")
+	require.Equal(t, DownReasonRemoteAdmin, s.lastDownReason)
+	require.False(t, s.downSince.IsZero())
 }
 
 func TestClient_Liveness_Session_HandleRxSetsPeerTimersAndDetectDeadline(t *testing.T) {
@@ -280,14 +299,31 @@ func TestClient_Liveness_Session_HandleRxIgnoredWhenAdminDown(t *testing.T) {
 	s := newSess()
 	s.state = StateAdminDown
 	now := time.Now()
-	cp := &ControlPacket{PeerDiscr: 0, LocalDiscr: 9, State: StateUp, DesiredMinTxUs: 1000, RequiredMinRxUs: 2000}
+
+	// Pre-populate some fields to ensure they don't change.
+	s.peerDiscr = 0
+	s.peerTxMin = 10 * time.Millisecond
+	s.peerRxMin = 20 * time.Millisecond
+	s.detectDeadline = time.Time{}
+	s.lastRx = time.Time{}
+
+	cp := &ControlPacket{
+		PeerDiscr:       0,
+		LocalDiscr:      9,
+		State:           StateUp,
+		DesiredMinTxUs:  1000,
+		RequiredMinRxUs: 2000,
+	}
+
 	changed := s.HandleRx(now, cp)
 	require.False(t, changed)
 	require.Equal(t, StateAdminDown, s.state)
 	require.Zero(t, s.peerDiscr)
+	require.True(t, s.detectDeadline.IsZero())
+	require.True(t, s.lastRx.IsZero())
 }
 
-func TestClient_Liveness_Session_HandleRxClampsTimersAndDetectMultZero(t *testing.T) {
+func TestClient_Liveness_Session_HandleRxClampsPeerTimersAndArmsDetect(t *testing.T) {
 	t.Parallel()
 	s := newSess()
 	now := time.Now()
@@ -299,7 +335,7 @@ func TestClient_Liveness_Session_HandleRxClampsTimersAndDetectMultZero(t *testin
 		PeerDiscr:       0,
 		LocalDiscr:      9,
 		State:           StateInit,
-		DetectMult:      0,         // invalid → clamp to 1 (internal)
+		DetectMult:      0,         // ignored by HandleRx in current design
 		DesiredMinTxUs:  1_000,     // 1ms  → clamp up to 7ms
 		RequiredMinRxUs: 1_000_000, // 1s   → clamp down to 40ms
 	}
@@ -341,4 +377,60 @@ func TestClient_Liveness_Session_HandleRx_NoChange_RearmsDetect(t *testing.T) {
 	wantMax := callNow.Add(s.detectTime() + 2*time.Millisecond)
 	require.True(t, !s.detectDeadline.Before(wantMin) && !s.detectDeadline.After(wantMax),
 		"got=%v want≈%v", s.detectDeadline, callNow.Add(s.detectTime()))
+}
+
+func TestClient_Liveness_Session_HandleRxFromUp_IgnoresPeerDownWithinDetectInterval(t *testing.T) {
+	t.Parallel()
+
+	s := newSess()
+	now := time.Now()
+
+	// Put session in Up, but "just" Up (UpFor < detectInterval).
+	s.state = StateUp
+	s.peerDiscr = 123
+	s.upSince = now
+
+	cp := &ControlPacket{
+		PeerDiscr:       s.localDiscr, // echo our localDiscr so it's accepted
+		LocalDiscr:      s.peerDiscr,  // peer's discr
+		State:           StateDown,    // peer declares Down
+		DesiredMinTxUs:  20_000,
+		RequiredMinRxUs: 20_000,
+	}
+
+	callNow := now.Add(5 * time.Millisecond) // less than typical detectTime (3 * 15ms = 45ms in newSess)
+	changed := s.HandleRx(callNow, cp)
+
+	require.False(t, changed, "state should not change when UpFor < detect interval")
+	require.Equal(t, StateUp, s.state, "session should remain Up")
+	require.True(t, s.upSince.Equal(now), "upSince should not be reset on ignored Down")
+}
+
+func TestClient_Liveness_Session_HandleRxFromUpToDownWhenPeerReportsDownAfterDetectInterval(t *testing.T) {
+	t.Parallel()
+
+	s := newSess()
+	now := time.Now()
+
+	// Configure a stable Up long enough ago that UpFor >= detect interval.
+	s.state = StateUp
+	s.peerDiscr = 123
+	detect := s.detectTime()
+	s.upSince = now.Add(-2 * detect) // comfortably beyond one full detect interval
+
+	cp := &ControlPacket{
+		PeerDiscr:       s.localDiscr, // echo our localDiscr so it's accepted
+		LocalDiscr:      s.peerDiscr,
+		State:           StateDown,
+		DesiredMinTxUs:  20_000,
+		RequiredMinRxUs: 20_000,
+	}
+
+	changed := s.HandleRx(now, cp)
+
+	require.True(t, changed, "state should change when UpFor >= detect interval and peer reports Down")
+	require.Equal(t, StateDown, s.state)
+	require.False(t, s.downSince.IsZero(), "downSince should be set on remote Down")
+	require.True(t, s.detectDeadline.IsZero(), "detectDeadline should be cleared when transitioning to Down on remote Down")
+	require.Equal(t, uint32(1), s.backoffFactor, "backoff should reset when entering Down")
 }

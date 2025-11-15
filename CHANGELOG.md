@@ -7,6 +7,9 @@ All notable changes to this project will be documented in this file.
 ### Breaking
 
 ### Changes
+- RFCs
+  - RFC9 Link Draining
+
 
 - Client
   - Switch to 64 byte latency probes instead of 32 bytes

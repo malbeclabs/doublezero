@@ -145,20 +145,62 @@ pub fn process_set_access_pass(
             flags,
         };
 
-        try_create_account(
-            payer_account.key,      // Account paying for the new account
-            accesspass_account.key, // Account to be created
-            accesspass.size(),      // Size in bytes to allocate for the data field
-            program_id,             // Set program owner to our program
-            accounts,
-            &[
-                SEED_PREFIX,
-                SEED_ACCESS_PASS,
-                &value.client_ip.octets(),
-                &user_payer.key.to_bytes(),
-                &[bump_seed],
-            ],
-        )?;
+        // When the PDA address has already received lamports before creation
+        let seeds: [&[u8]; 5] = [
+            SEED_PREFIX,
+            SEED_ACCESS_PASS,
+            &value.client_ip.octets(),
+            &user_payer.key.to_bytes(),
+            &[bump_seed],
+        ];
+
+        if accesspass_account.lamports() == 0 {
+            // Standard path: account has not been funded yet
+            try_create_account(
+                payer_account.key,      // Account paying for the new account
+                accesspass_account.key, // Account to be created
+                accesspass.size(),      // Size in bytes to allocate for the data field
+                program_id,             // Set program owner to our program
+                accounts,
+                &seeds,
+            )?;
+        } else if accesspass_account.data_len() == 0 {
+            // Prefunded path: the address already holds lamports (as system account)
+            let rent = Rent::get()?;
+            let required_lamports = rent.minimum_balance(accesspass.size());
+
+            if accesspass_account.lamports() < required_lamports {
+                let top_up = required_lamports - accesspass_account.lamports();
+                invoke_signed_unchecked(
+                    &system_instruction::transfer(payer_account.key, accesspass_account.key, top_up),
+                    &[
+                        payer_account.clone(),
+                        accesspass_account.clone(),
+                        system_program.clone(),
+                    ],
+                    &[],
+                )?;
+            }
+
+            invoke_signed_unchecked(
+                &system_instruction::allocate(accesspass_account.key, accesspass.size() as u64),
+                &[
+                    accesspass_account.clone(),
+                    system_program.clone(),
+                ],
+                &[&seeds],
+            )?;
+
+            invoke_signed_unchecked(
+                &system_instruction::assign(accesspass_account.key, program_id),
+                &[
+                    accesspass_account.clone(),
+                    system_program.clone(),
+                ],
+                &[&seeds],
+            )?;
+        }
+
         accesspass.try_serialize(accesspass_account)?;
 
         #[cfg(test)]
@@ -204,22 +246,31 @@ pub fn process_set_access_pass(
         msg!("Updated: {:?}", accesspass);
     }
 
-    let deposit = Rent::get()
+    let desired_deposit = Rent::get()
         .unwrap()
         .minimum_balance(AIRDROP_USER_RENT_LAMPORTS_BYTES)
         .saturating_add(globalstate.user_airdrop_lamports)
         .saturating_sub(user_payer.lamports());
 
+    // Never attempt to transfer more lamports than the payer currently has to
+    // avoid InsufficientFunds errors. This can happen in tests or edge cases
+    // where the payer prefunds PDAs or other accounts before calling this
+    // instruction.
+    let max_affordable = payer_account.lamports();
+    let deposit = desired_deposit.min(max_affordable);
+
     msg!("Airdropping {} lamports to user account", deposit);
-    invoke_signed_unchecked(
-        &system_instruction::transfer(payer_account.key, user_payer.key, deposit),
-        &[
-            payer_account.clone(),
-            user_payer.clone(),
-            system_program.clone(),
-        ],
-        &[],
-    )?;
+    if deposit > 0 {
+        invoke_signed_unchecked(
+            &system_instruction::transfer(payer_account.key, user_payer.key, deposit),
+            &[
+                payer_account.clone(),
+                user_payer.clone(),
+                system_program.clone(),
+            ],
+            &[],
+        )?;
+    }
 
     Ok(())
 }

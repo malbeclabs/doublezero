@@ -174,23 +174,63 @@ pub fn process_initialize_device_latency_samples(
     msg!("Agent lamports before: {}", agent.lamports());
     msg!("System program: {}", system_program.key);
 
-    // Allocate the account with the correct seed.
-    try_create_account(
-        agent.key,
-        &latency_samples_pda,
-        space,
-        program_id,
-        accounts,
-        &[
-            SEED_PREFIX,
-            SEED_DEVICE_LATENCY_SAMPLES,
-            origin_device_account.key.as_ref(),
-            target_device_account.key.as_ref(),
-            link_account.key.as_ref(),
-            &args.epoch.to_le_bytes(),
-            &[latency_samples_bump_seed],
-        ],
-    )?;
+    let seeds: [&[u8]; 7] = [
+        SEED_PREFIX,
+        SEED_DEVICE_LATENCY_SAMPLES,
+        origin_device_account.key.as_ref(),
+        target_device_account.key.as_ref(),
+        link_account.key.as_ref(),
+        &args.epoch.to_le_bytes(),
+        &[latency_samples_bump_seed],
+    ];
+
+    // If the PDA has not been funded yet, use the shared helper which issues a
+    // `create_account` CPI. Otherwise, handle the pre-funded PDA by topping up
+    // to rent-exempt if needed and then allocating and assigning using the PDA
+    // seeds.
+    if latency_samples_account.lamports() == 0 {
+        // Standard path: no lamports yet; create the account from scratch.
+        try_create_account(
+            agent.key,
+            &latency_samples_pda,
+            space,
+            program_id,
+            accounts,
+            &seeds,
+        )?;
+    } else if latency_samples_account.data_len() == 0 {
+        // Prefunded path
+        let required_lamports = lamports;
+        if latency_samples_account.lamports() < required_lamports {
+            let top_up = required_lamports - latency_samples_account.lamports();
+            solana_program::program::invoke(
+                &solana_program::system_instruction::transfer(agent.key, latency_samples_account.key, top_up),
+                &[
+                    agent.clone(),
+                    latency_samples_account.clone(),
+                    system_program.clone(),
+                ],
+            )?;
+        }
+
+        solana_program::program::invoke_signed(
+            &solana_program::system_instruction::allocate(latency_samples_account.key, space as u64),
+            &[
+                latency_samples_account.clone(),
+                system_program.clone(),
+            ],
+            &[&seeds],
+        )?;
+
+        solana_program::program::invoke_signed(
+            &solana_program::system_instruction::assign(latency_samples_account.key, program_id),
+            &[
+                latency_samples_account.clone(),
+                system_program.clone(),
+            ],
+            &[&seeds],
+        )?;
+    }
 
     // Initialize account contents with metadata and an empty sample list.
     let header = DeviceLatencySamplesHeader {

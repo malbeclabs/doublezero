@@ -31,6 +31,7 @@ func UdpPing(ctx context.Context, d serviceability.Device) LatencyResult {
 
 	pinger.Count = 3
 	pinger.Timeout = 10 * time.Second
+	pinger.Size = 56 // 64 bytes - 8 byte ICMP header
 	pinger.SetPrivileged(true)
 
 	if err := pinger.Run(); err != nil {

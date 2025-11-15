@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Client
+  - Switch to 64 byte latency probes instead of 32 bytes
+
 ## [v0.7.0](https://github.com/malbeclabs/doublezero/compare/client/v0.6.11...client/v0.7.0) – 2025-11-14
 
 ### Breaking

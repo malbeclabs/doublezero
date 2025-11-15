@@ -42,7 +42,7 @@ var (
 	clientsMutex sync.RWMutex
 
 	hostList []string
-	devices  []*Device
+	devices  map[string]*Device
 )
 
 type Device struct {
@@ -97,7 +97,7 @@ func TestMain(m *testing.M) {
 			MaxUsers:     int(d.MaxUsers),
 			UsersCount:   int(d.UsersCount),
 		}
-		devices = append(devices, dev)
+		devices[d.Code] = dev
 	}
 
 	fmt.Printf("Found %d devices onchain\n", len(devices))
@@ -745,10 +745,11 @@ func runUnicastConnectivityTest(t *testing.T, hosts []string, devices []*Device)
 }
 
 // connectHosts connects the specified hosts, optionally to a specific device
+// Waits for routes to be installed on each host before returning
 // Returns maps of host->IP and host->device code
-func connectHosts(t *testing.T, hosts []string, device *Device) (map[string]string, map[string]string, error) {
+func connectHosts(t *testing.T, hosts []string, device *Device) (map[string]string, map[string]*Device, error) {
 	hostIPMap := make(map[string]string)
-	hostDeviceMap := make(map[string]string)
+	hostDeviceMap := make(map[string]*Device)
 	ctx := context.Background()
 
 	for _, host := range hosts {
@@ -798,9 +799,46 @@ func connectHosts(t *testing.T, hosts []string, device *Device) (map[string]stri
 		}
 
 		hostIPMap[host] = s.DoubleZeroIp
-		hostDeviceMap[host] = s.CurrentDevice
+
+		device, ok := devices[s.CurrentDevice]
+		if !ok {
+			return nil, nil, fmt.Errorf("device %s not found for host %s", s.CurrentDevice, host)
+		}
+		hostDeviceMap[host] = device
 
 		t.Logf("Host %s connected to device %s with IP %s", host, s.CurrentDevice, s.DoubleZeroIp)
+	}
+
+	// Wait for routes to be installed on each host
+	for host, client := range clients {
+		err := poll.Until(t.Context(), func() (bool, error) {
+			device := hostDeviceMap[host]
+			if device == nil {
+				return false, fmt.Errorf("device not found for host %s", host)
+			}
+			resp, err := client.GetRoutes(t.Context(), &emptypb.Empty{})
+			if err != nil {
+				return false, err
+			}
+			installedIPs := make(map[string]struct{})
+			for _, route := range resp.InstalledRoutes {
+				installedIPs[route.DstIp] = struct{}{}
+			}
+			for otherHost, expectedIP := range hostIPMap {
+				otherDevice := hostDeviceMap[otherHost]
+				if otherDevice == nil {
+					return false, fmt.Errorf("device not found for host %s", otherHost)
+				}
+				if device.ExchangeCode != otherDevice.ExchangeCode {
+					continue
+				}
+				if _, ok := installedIPs[expectedIP]; !ok {
+					return false, nil
+				}
+			}
+			return true, nil
+		}, 30*time.Second, 1*time.Second)
+		require.NoError(t, err, "Failed to wait for routes to be installed on client %s", host)
 	}
 
 	return hostIPMap, hostDeviceMap, nil
@@ -841,7 +879,7 @@ func testDeviceConnectivity(t *testing.T, device *Device, hosts []string, additi
 
 	// Add the already-connected first host to the maps
 	hostIPMap[additionalHost] = additionalIP
-	hostDeviceMap[additionalHost] = additionalHostDevice.Code
+	hostDeviceMap[additionalHost] = additionalHostDevice
 
 	// Test connectivity between all hosts
 	err = testAllToAllConnectivity(t, hostIPMap, hostDeviceMap)
@@ -853,7 +891,7 @@ func testDeviceConnectivity(t *testing.T, device *Device, hosts []string, additi
 	return result
 }
 
-func testAllToAllConnectivity(t *testing.T, hostIPMap map[string]string, hostDeviceMap map[string]string) error {
+func testAllToAllConnectivity(t *testing.T, hostIPMap map[string]string, hostDeviceMap map[string]*Device) error {
 	// Build ordered lists for consistent testing
 	var sortedHosts []string
 	for host := range hostIPMap {
@@ -878,9 +916,7 @@ func testAllToAllConnectivity(t *testing.T, hostIPMap map[string]string, hostDev
 			t.Logf("Testing ping from %s (%s) to %s (%s)", sourceHost, sourceIP, targetHost, targetIP)
 
 			// Determine if we need to use SourceIface based on exchange comparison
-			sourceDeviceCode := hostDeviceMap[sourceHost]
-			targetDeviceCode := hostDeviceMap[targetHost]
-			useSourceIface := shouldUseSourceIface(t, sourceDeviceCode, targetDeviceCode)
+			useSourceIface := shouldUseSourceIface(t, hostDeviceMap[sourceHost], hostDeviceMap[targetHost])
 
 			err := performPingWithRetries(t, client, sourceIP, targetIP,
 				sourceHost, targetHost, 3, useSourceIface)
@@ -959,27 +995,10 @@ func performPingWithRetries(t *testing.T, client pb.QAAgentServiceClient, source
 // The intra-exchange routing policy defined in rfc6 dictates that unicast clients that are connected to the
 // same exchange will communicate with each other over the internet instead of doublezero0. If they are
 // connected to the same exchange, `ping -I doublezero0` will fail. This check lets us avoid that.
-func shouldUseSourceIface(t *testing.T, sourceDeviceCode, targetDeviceCode string) bool {
-	if sourceDeviceCode == "" || targetDeviceCode == "" {
-		t.Fatalf("Device codes cannot be empty: source=%q, target=%q", sourceDeviceCode, targetDeviceCode)
+func shouldUseSourceIface(t *testing.T, source, target *Device) bool {
+	if source == nil || target == nil {
+		t.Fatalf("Devices cannot be nil: source=%q, target=%q", source, target)
 	}
 
-	var sourceDevice, targetDevice *Device
-	for _, d := range devices {
-		if d.Code == sourceDeviceCode {
-			sourceDevice = d
-		}
-		if d.Code == targetDeviceCode {
-			targetDevice = d
-		}
-	}
-
-	if sourceDevice == nil {
-		t.Fatalf("Could not find device with code %q", sourceDeviceCode)
-	}
-	if targetDevice == nil {
-		t.Fatalf("Could not find device with code %q", targetDeviceCode)
-	}
-
-	return sourceDevice.ExchangeCode != targetDevice.ExchangeCode
+	return source.ExchangeCode != target.ExchangeCode
 }

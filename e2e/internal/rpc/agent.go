@@ -17,6 +17,7 @@ import (
 	pb "github.com/malbeclabs/doublezero/e2e/proto/qa/gen/pb-go"
 	probing "github.com/prometheus-community/pro-bing"
 	"golang.org/x/net/ipv4"
+	"golang.org/x/sys/unix"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
@@ -29,6 +30,7 @@ type Joiner interface {
 
 type Netlinker interface {
 	RouteGet(src net.IP) ([]Route, error)
+	RouteByProtocol(protocol int) ([]Route, error)
 }
 
 type Option func(*QAAgent)
@@ -310,6 +312,22 @@ func (q *QAAgent) GetStatus(ctx context.Context, req *emptypb.Empty) (*pb.Status
 		resp.Status = append(resp.Status, r)
 	}
 	return resp, nil
+}
+
+// GetRoutes implements the GetRoutes RPC, which retrieves the installed routes in the kernel routing table.
+func (q *QAAgent) GetRoutes(ctx context.Context, req *emptypb.Empty) (*pb.GetRoutesResponse, error) {
+	q.log.Info("Received GetRoutes request")
+	rts, err := q.netlinker.RouteByProtocol(unix.RTPROT_BGP)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get routes: %w", err)
+	}
+	routes := make([]*pb.Route, len(rts))
+	for i, rt := range rts {
+		routes[i] = &pb.Route{
+			DstIp: rt.Dst.IP.String(),
+		}
+	}
+	return &pb.GetRoutesResponse{InstalledRoutes: routes}, nil
 }
 
 // CreateMulticastGroup implements the CreateMulticastGroup RPC, which creates a multicast group

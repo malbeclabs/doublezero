@@ -128,15 +128,17 @@ func (h *eventHeap) Pop() any {
 	return x
 }
 
+type SessionDownFunc func(s *Session)
+
 // Scheduler drives session state progression and control message exchange.
 // It runs a single event loop that processes transmit (TX) and detect events across sessions.
 // New sessions schedule TX immediately; detect is armed/re-armed after valid RX during Init/Up.
 type Scheduler struct {
-	log           *slog.Logger     // structured logger for observability
-	udp           *UDPService      // shared UDP transport for all sessions
-	onSessionDown func(s *Session) // callback invoked when a session transitions to Down
-	eq            *EventQueue      // global time-ordered event queue
-	maxEvents     int              // 0 = unlimited
+	log           *slog.Logger    // structured logger for observability
+	udp           *UDPService     // shared UDP transport for all sessions
+	onSessionDown SessionDownFunc // callback invoked when a session transitions to Down
+	eq            *EventQueue     // global time-ordered event queue
+	maxEvents     int             // 0 = unlimited
 
 	writeErrWarnEvery time.Duration // min interval between repeated write warnings
 	writeErrWarnLast  time.Time     // last time a warning was logged
@@ -147,7 +149,7 @@ type Scheduler struct {
 
 // NewScheduler constructs a Scheduler bound to a UDP transport and logger.
 // onSessionDown is called asynchronously whenever a session is detected as failed.
-func NewScheduler(log *slog.Logger, udp *UDPService, onSessionDown func(s *Session), maxEvents int, peerMetrics bool) *Scheduler {
+func NewScheduler(log *slog.Logger, udp *UDPService, onSessionDown SessionDownFunc, maxEvents int, peerMetrics bool) *Scheduler {
 	eq := NewEventQueue()
 	return &Scheduler{
 		log:               log,
@@ -213,7 +215,10 @@ func (s *Scheduler) Run(ctx context.Context) error {
 			}
 			ev.session.mu.Unlock()
 			s.doTX(ev.session)
-			s.scheduleTx(time.Now(), ev.session)
+			// Do not reschedule periodic TX while AdminDown; we only want the explicit one
+			if ev.session.GetState() != StateAdminDown {
+				s.scheduleTx(time.Now(), ev.session)
+			}
 		case eventTypeDetect:
 			// drop stale detect events
 			ev.session.mu.Lock()
@@ -230,6 +235,11 @@ func (s *Scheduler) Run(ctx context.Context) error {
 				ev.session.nextDetectScheduled = time.Time{}
 			}
 			ev.session.mu.Unlock()
+
+			s.log.Debug("liveness.scheduler: detect event",
+				"peer", ev.session.peer.String(),
+				"when", ev.when,
+			)
 
 			if s.tryExpire(ev.session) {
 				emitSessionStateMetrics(ev.session, &prevState, "detect_timeout", s.peerMetrics)
@@ -262,11 +272,11 @@ func (s *Scheduler) maybeDropOnOverflow(et eventType) bool {
 }
 
 // scheduleTx schedules the next transmit event for the given session.
-// Skips sessions that are not alive or are AdminDown; backoff is handled by ComputeNextTx.
+// Skips sessions that are not alive; backoff is handled by ComputeNextTx.
 func (s *Scheduler) scheduleTx(now time.Time, sess *Session) {
 	// If TX already scheduled, bail without recomputing.
 	sess.mu.Lock()
-	if !sess.alive || sess.state == StateAdminDown || !sess.nextTxScheduled.IsZero() {
+	if !sess.alive || !sess.nextTxScheduled.IsZero() {
 		sess.mu.Unlock()
 		return
 	}
@@ -277,7 +287,7 @@ func (s *Scheduler) scheduleTx(now time.Time, sess *Session) {
 
 	// Publish the scheduled marker (re-check in case of race).
 	sess.mu.Lock()
-	if !sess.alive || sess.state == StateAdminDown || !sess.nextTxScheduled.IsZero() {
+	if !sess.alive || !sess.nextTxScheduled.IsZero() {
 		sess.mu.Unlock()
 		return
 	}
@@ -324,10 +334,13 @@ func (s *Scheduler) scheduleDetect(now time.Time, sess *Session) {
 // Any transient send errors are logged at debug level.
 func (s *Scheduler) doTX(sess *Session) {
 	sess.mu.Lock()
-	if !sess.alive || sess.state == StateAdminDown {
+	if !sess.alive {
 		sess.mu.Unlock()
 		return
 	}
+	state := sess.state
+	localDiscr := sess.localDiscr
+	peerDiscr := sess.peerDiscr
 	pkt := (&ControlPacket{
 		Version:         1,
 		State:           sess.state,
@@ -338,6 +351,7 @@ func (s *Scheduler) doTX(sess *Session) {
 		DesiredMinTxUs:  uint32(sess.localTxMin / time.Microsecond),
 		RequiredMinRxUs: uint32(sess.localRxMin / time.Microsecond),
 	}).Marshal()
+	peer := *sess.peer
 	sess.mu.Unlock()
 	src := net.IP(nil)
 	if sess.route != nil {
@@ -353,12 +367,20 @@ func (s *Scheduler) doTX(sess *Session) {
 		if s.writeErrWarnLast.IsZero() || now.Sub(s.writeErrWarnLast) >= s.writeErrWarnEvery {
 			s.writeErrWarnLast = now
 			s.writeErrWarnMu.Unlock()
-			s.log.Warn("liveness.scheduler: error writing UDP packet", "error", err)
+			s.log.Warn("liveness.scheduler: error writing UDP packet", "error", err, "peer", sess.peer.String())
 		} else {
 			s.writeErrWarnMu.Unlock()
 		}
 	} else {
 		metricControlPacketsTX.WithLabelValues(sess.peer.Interface, sess.peer.LocalIP).Inc()
+		s.log.Debug("liveness.scheduler: sent control packet",
+			"iface", peer.Interface,
+			"localIP", peer.LocalIP,
+			"peerIP", peer.PeerIP,
+			"state", state.String(),
+			"localDiscr", localDiscr,
+			"peerDiscr", peerDiscr,
+		)
 	}
 }
 
@@ -368,6 +390,9 @@ func (s *Scheduler) doTX(sess *Session) {
 func (s *Scheduler) tryExpire(sess *Session) bool {
 	now := time.Now()
 	if sess.ExpireIfDue(now) {
+		s.log.Debug("liveness.scheduler: detect timeout -> Down",
+			"peer", sess.peer.String(),
+		)
 		s.eq.Push(&event{when: now, eventType: eventTypeTX, session: sess})
 		return true
 	}

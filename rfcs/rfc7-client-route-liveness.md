@@ -79,14 +79,34 @@ graph LR
 
 ### State Machine
 
-Four states: **AdminDown**, **Down**, **Init**, **Up**. Transitions depend only on valid RX, detect timeouts, or admin control.
+States: `AdminDown`, `Down`, `Init`, `Up`.
 
-- `Down → Init` on valid RX (learn peerDisc).
-- `Init → Up` when received `peerDisc == myLocalDisc`.
-- `Up → Down` on detect timeout or RX peer `Down`.
-- Any → `AdminDown` when disabled; `AdminDown → Down` when enabled.
+- **AdminDown**
 
-Mutual discriminator exchange yields restart-safe convergence; recovery completes in ≈ one TX interval + one RTT.
+    Operator-disabled; advertise unavailable.
+
+    - `AdminDown → Down`: session re-enabled.
+- **Down**
+
+    Initial or failed state; remain here when first enabled, on detection timeout, or when peer is `AdminDown`.
+
+    - `Down → Init`: valid packet with peer `Down` or `Init`.
+    - `Down → Up`: valid packet, matching `peerDiscr`, peer `Init` or `Up`.
+    - `Down → AdminDown`: local disable.
+- **Init**
+
+    Peer reachable; handshake in progress.
+
+    - `Init → Up`: peer `Init` or `Up`.
+    - `Init → Down`: detection timeout or peer `Down`/`AdminDown`.
+    - `Init → AdminDown`: local disable.
+- **Up**
+
+    Session established; timers enforce fast liveness.
+
+    - `Up → Down`: detection timeout; or peer `AdminDown`; or peer `Down` after ≥1 detect interval in Up (earlier `Down` is ignored as stale during re-establishment).
+    - `Up → AdminDown`: local disable.
+    - No `Up → Init`: peer `Init` is treated as failure (→ `Down`).
 
 ```mermaid
 stateDiagram-v2
@@ -97,36 +117,42 @@ stateDiagram-v2
   state "INIT" as INIT
   state "UP" as UP
 
-	[*] --> DOWN: Route learned via BGP
+  [*] --> DOWN: Route learned via BGP
 
-  %% Administrative control
+  %% Administrative control (local)
   DOWN --> ADM: Admin disable
   INIT --> ADM: Admin disable
   UP --> ADM: Admin disable
   ADM --> DOWN: Admin enable
 
-  %% Bring-up and confirmation
-  DOWN --> INIT: RX valid, learn peerDisc
-  INIT --> UP: RX valid, peerDisc == localDisc
+  %% Bring-up and confirmation (handshake)
+  DOWN --> INIT: RX valid, peer state DOWN or INIT
+  DOWN --> UP: RX valid, peerDiscr matches and peer state INIT or UP
+  INIT --> UP: RX valid, peerDiscr matches and peer state INIT or UP
 
-  %% Liveness maintenance and loss
-  INIT --> DOWN: Detect timer expired
-  UP --> DOWN: Detect timer expired
-  UP --> DOWN: RX peer state == Down
+  %% Liveness maintenance and failure handling
+  INIT --> DOWN: Detect timer expired or RX peer state ADMIN DOWN or DOWN
+  UP --> DOWN: Detect timer expired or RX peer state ADMIN DOWN
+  UP --> DOWN: RX peer state DOWN and UpFor >= detect interval
 
-  %% Keep-alives
+  %% Keep-alives / steady-state
   INIT --> INIT: RX valid, re-arm detect
-  UP --> UP: RX valid, re-arm detect
-
+  UP --> UP: RX valid, re-arm detect and update peerDiscr if changed
 ```
 
 ### Session Lifecycle
 
-- Route learned → create (`Down`), start timers.
-- First valid RX → `Init`.
-- Echoed localDisc observed → `Up`, install route.
-- Valid RX refreshes detect timer.
-- Detect timeout → `Down`, withdraw route; send one `Down` advertisement; enter exponential TX backoff with jitter.
+- Learn route → create session in `Down`, schedule TX.
+- First valid RX → `Init` (learn `peerDisc`).
+- RX with `peerDisc` matching ours and peer state `Init`/`Up` → `Up`, install route.
+- Valid RX in `Init`/`Up` → refresh detect timer.
+- Detect timeout → `Down`, withdraw route, send one `Down`, enter TX backoff.
+- RX peer `Down` only after being `Up` ≥ one detect interval → treat as valid failure → `Down` + withdraw route.
+
+    (Earlier peer-Down during re-establishment is ignored as stale.)
+
+- Local admin disable → `AdminDown` (suppress detect, advertise AdminDown).
+- RX peer `AdminDown` → `Down`, withdraw route (intentional remote disable).
 
 <details open>
 
@@ -144,42 +170,61 @@ sequenceDiagram
     DZDZ->>Mesh: BGP UPDATE (route to Client Z)
     Mesh->>DZDA: BGP UPDATE (propagated)
     DZDA->>ClientA: BGP UPDATE (learned route to Client Z)
-    Note over ClientA: Liveness Manager registers<br/>eligible route (state=Down)
-    ClientA->>ClientA: Schedule initial transmit<br/>and start detect timer
+    Note over ClientA: Liveness Manager registers eligible route<br/>(session state = Down)
+    ClientA->>ClientA: Schedule initial transmit<br/>(detect will arm on first valid RX)
 
     Note over ClientA,ClientZ: ** Phase: Session Establishment **
-    ClientA-->>Mesh: Control Packet (state=Down, localDisc=X, peerDisc=0)
+    ClientA-->>Mesh: Control Packet (state = Down, localDiscr = X, peerDiscr = 0)
     Mesh-->>ClientZ: Control Packet (forwarded)
-    ClientZ-->>Mesh: Control Packet (state=Init, localDisc=Y, peerDisc=X)
+    ClientZ-->>Mesh: Control Packet (state = Init, localDiscr = Y, peerDiscr = X)
     Mesh-->>ClientA: Control Packet (forwarded)
-    ClientA->>ClientA: peerDisc==X, state=Up,<br/>install in kernel routing table
+    ClientA->>ClientA: Learn peerDiscr = Y,<br/>RX valid while Down → Init
+    ClientA-->>Mesh: Control Packet (state = Init, localDiscr = X, peerDiscr = Y)
+    Mesh-->>ClientZ: Control Packet (forwarded)
+    ClientZ-->>Mesh: Control Packet (state = Up, localDiscr = Y, peerDiscr = X)
+    Mesh-->>ClientA: Control Packet (forwarded)
+    ClientA->>ClientA: RX with peerDiscr == localDiscr and<br/>peer state Init/Up → state = Up,<br/>install route in kernel
 
     Note over ClientA,ClientZ: ** Phase: Steady-State Verification **
     loop Periodic keepalives
-        ClientA-->>Mesh: Control Packet (state=Up, localDisc=X, peerDisc=Y)
+        ClientA-->>Mesh: Control Packet (state = Up, localDiscr = X, peerDiscr = Y)
         Mesh-->>ClientZ: Control Packet
-        ClientZ-->>Mesh: Control Packet (state=Up, localDisc=Y, peerDisc=X)
+        ClientZ-->>Mesh: Control Packet (state = Up, localDiscr = Y, peerDiscr = X)
         Mesh-->>ClientA: Control Packet
-        ClientA-->>ClientA: Valid packets reset<br/>detection timers
-        ClientZ-->>ClientZ: Valid packets reset<br/>detection timers
+        ClientA-->>ClientA: Valid packets<br/>reset detection timer
+        ClientZ-->>ClientZ: Valid packets<br/>reset detection timer
     end
 
-    Note over ClientA,ClientZ: ** Phase: Failure Detection and Withdrawal **
-    alt No valid RX before detect deadline
-        ClientA->>ClientA: Detect timer expiry,<br/>state=Down,<br/>withdraw from kernel routing table
-        ClientA-->>Mesh: Control Packet (state=Down)
+    Note over ClientA,ClientZ: ** Phase: Failure Detection and Withdrawal (local timeout) **
+    alt No valid RX before detect deadline at Client A
+        ClientA->>ClientA: Detect timer expiry → state = Down<br/>(reason = timeout),<br/>withdraw route from kernel
+        ClientA-->>Mesh: Control Packet (state = Down, localDiscr = X, peerDiscr = Y)
         Mesh-->>ClientZ: Control Packet (forwarded)
-        Note over ClientA,DZDA: BGP sessions remain established,<br/>Client Z's route is removed
+        Note over ClientA,DZDA: BGP sessions remain established,<br/>only the next-hop route is removed
     end
 
-    Note over ClientA,ClientZ: ** Phase: Remote-Initiated Withdrawal **
-      alt Peer detects failure first
-      ClientZ->>ClientZ: Detect timer expiry<br/>or administrative down,<br/>state=Down
-      ClientZ-->>Mesh: Control Packet (state=Down, localDisc=Y, peerDisc=X)
-      Mesh-->>ClientA: Control Packet (forwarded)
-      ClientA->>ClientA: Receive peer Down,<br/>state=Down,<br/>withdraw from kernel routing table
+    Note over ClientA,ClientZ: ** Phase: Remote Administrative Withdrawal **
+    alt Peer administrative disable at Client Z
+        ClientZ->>ClientZ: Local admin action → state = AdminDown<br/>(reason = local_admin),<br/>withdraw route from kernel
+        ClientZ-->>Mesh: Control Packet (state = AdminDown, localDiscr = Y, peerDiscr = X)
+        Mesh-->>ClientA: Control Packet (forwarded)
+        ClientA->>ClientA: RX peer state = AdminDown → state = Down<br/>(reason = remote_admin),<br/>withdraw route from kernel
+        Note over ClientA,DZDA: BGP sessions remain established,<br/>withdrawal is treated as intentional remote admin
     end
 
+    Note over ClientA,ClientZ: ** Phase: Remote Failure (peer declares Down) **
+    alt Stale Down leaked during re-establishment (UpFor < detect interval at Client A)
+        ClientZ->>ClientZ: Detect timer expired<br/>earlier → state = Down
+        ClientZ-->>Mesh: Control Packet (state = Down, localDiscr = Y, peerDiscr = X)
+        Mesh-->>ClientA: Control Packet (forwarded)
+        ClientA->>ClientA: RX peer state = Down while recently Up<br/>(UpFor < detect interval) → ignore,<br/>remain in Up, route stays installed
+    else Genuine remote failure after stable Up (UpFor ≥ detect interval)
+        ClientZ->>ClientZ: Detect timer expired or<br/>remote failure → state = Down<br/>(reason = timeout or local policy),<br/>withdraw route from kernel
+        ClientZ-->>Mesh: Control Packet (state = Down, localDiscr = Y, peerDiscr = X)
+        Mesh-->>ClientA: Control Packet (forwarded)
+        ClientA->>ClientA: RX peer state = Down and<br/>UpFor ≥ detect interval → state = Down<br/>(reason = remote_down),<br/>withdraw route from kernel
+        Note over ClientA,DZDA: BGP sessions remain established,<br/>remote failure is treated as hard liveness loss
+    end
 ```
 
 </details>

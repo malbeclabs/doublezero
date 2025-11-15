@@ -1,6 +1,7 @@
 package liveness
 
 import (
+	"fmt"
 	"math/rand"
 	"net"
 	"sync"
@@ -9,6 +10,32 @@ import (
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 )
 
+type DownReason uint8
+
+const (
+	DownReasonNone DownReason = iota
+	DownReasonTimeout
+	DownReasonRemoteAdmin
+	DownReasonLocalAdmin
+	DownReasonRemoteDown
+)
+
+func (d DownReason) String() string {
+	switch d {
+	case DownReasonNone:
+		return "none"
+	case DownReasonTimeout:
+		return "timeout"
+	case DownReasonRemoteAdmin:
+		return "remote_admin"
+	case DownReasonLocalAdmin:
+		return "local_admin"
+	case DownReasonRemoteDown:
+		return "remote_down"
+	}
+	return fmt.Sprintf("unknown(%d)", d)
+}
+
 // Session models a single bidirectional liveness relationship with a peer,
 // maintaining BFD-like state, timers, and randomized transmission scheduling.
 type Session struct {
@@ -16,6 +43,10 @@ type Session struct {
 
 	localDiscr, peerDiscr uint32 // discriminators identify this session to each side
 	state                 State  // current BFD state
+
+	upSince        time.Time  // time we transitioned to Up
+	downSince      time.Time  // time we transitioned to Down
+	lastDownReason DownReason // reason for last transition to Down
 
 	// detectMult scales the detection timeout relative to the receive interval;
 	// it defines how many consecutive RX intervals may elapse without traffic
@@ -144,28 +175,83 @@ func (s *Session) ExpireIfDue(now time.Time) (expired bool) {
 		}
 
 		s.state = StateDown
+		s.downSince = now
+		s.lastDownReason = DownReasonTimeout
+		s.upSince = time.Time{}
 		s.backoffFactor = 1
 		s.detectDeadline = time.Time{}
+		s.convUpStart = time.Time{}
 		return true
 	}
 	return false
 }
 
-// HandleRx ingests an incoming control packet, validates discriminators,
-// updates peer timers, re-arms detection, and performs state transitions
-// according to a simplified BFD-like handshake.
+// HandleRx processes one control packet.
+//
+// - Ignore all packets while in AdminDown.
+// - Drop if PeerDiscr is non-zero and not equal to our localDiscr.
+// - If ctrl.State==AdminDown: transition → Down, clear detect, reset backoff.
+// - If ctrl.State==Down while we are Up/Init: transition → Down (peer signaled failure).
+// - Learn peerDiscr if unset. Update peer timers. Refresh detectDeadline.
+// - Down: if peerDiscr known and peer echoes our localDiscr with State≥Init → Up; else → Init.
+// - Init: promote to Up when peer echoes our localDiscr with State≥Init.
+// - Up: refresh detect; allow LocalDiscr changes (peer restart).
+// - Timeout handling occurs in ExpireIfDue().
 func (s *Session) HandleRx(now time.Time, ctrl *ControlPacket) (changed bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// Local AdminDown: ignore all incoming control packets.
 	if s.state == StateAdminDown {
 		return false
 	}
+
+	// Reject packets that claim some other session (wrong PeerDiscr).
 	if ctrl.PeerDiscr != 0 && ctrl.PeerDiscr != s.localDiscr {
 		return false
 	}
 
 	prev := s.state
+
+	// If peer is in AdminDown, treat this as an intentional shutdown.
+	if ctrl.State == StateAdminDown {
+		if (prev == StateUp || prev == StateInit) && s.convDownStart.IsZero() {
+			s.convDownStart = now
+		}
+		s.state = StateDown
+		s.downSince = now
+		s.lastDownReason = DownReasonRemoteAdmin
+		s.upSince = time.Time{}
+		s.detectDeadline = time.Time{}
+		s.backoffFactor = 1
+		return s.state != prev
+	}
+
+	// If peer says Down while we are Up/Init, treat as failure,
+	// but suppress stale Down if we only just came Up (re-establishment race).
+	if ctrl.State == StateDown && (prev == StateUp || prev == StateInit) {
+		if prev == StateUp && !s.upSince.IsZero() {
+			age := now.Sub(s.upSince)
+			dt := s.detectTime() // detectMult × rxInterval
+			if dt > 0 && age < dt {
+				// Ignore stale remote_down that leaked from the peer's
+				// detect timeout during re-establishment.
+				return false
+			}
+		}
+
+		if s.convDownStart.IsZero() {
+			s.convDownStart = now
+		}
+		s.state = StateDown
+		s.downSince = now
+		s.lastDownReason = DownReasonRemoteDown
+		s.upSince = time.Time{}
+		s.detectDeadline = time.Time{}
+		s.backoffFactor = 1
+		s.convUpStart = time.Time{}
+		return s.state != prev
+	}
 
 	// Learn peer discriminator if not yet known.
 	if s.peerDiscr == 0 && ctrl.LocalDiscr != 0 {
@@ -191,39 +277,40 @@ func (s *Session) HandleRx(now time.Time, ctrl *ControlPacket) (changed bool) {
 
 	switch prev {
 	case StateDown:
-		// Mark convergence-to-up start at the first successful RX while Down.
 		if s.convUpStart.IsZero() {
 			s.convUpStart = now
 		}
-
-		// Move to Init once peer identified; Up after echo confirmation.
 		if s.peerDiscr != 0 {
-			if ctrl.State >= StateInit && ctrl.PeerDiscr == s.localDiscr {
+			if ctrl.PeerDiscr == s.localDiscr && ctrl.State >= StateInit {
 				s.state = StateUp
-				s.backoffFactor = 1
+				s.upSince = now
+				s.downSince = time.Time{}
+				s.lastDownReason = DownReasonNone
 			} else {
 				s.state = StateInit
-				s.backoffFactor = 1
+				s.downSince = time.Time{}
+				s.lastDownReason = DownReasonNone
 			}
+			s.backoffFactor = 1
 		}
 
 	case StateInit:
-		// Promote to Up only after receiving echo referencing our localDiscr.
-		if s.peerDiscr != 0 && ctrl.State >= StateInit && ctrl.PeerDiscr == s.localDiscr {
+		if s.peerDiscr != 0 &&
+			ctrl.State >= StateInit &&
+			ctrl.PeerDiscr == s.localDiscr {
 			s.state = StateUp
+			s.upSince = now
+			s.downSince = time.Time{}
+			s.lastDownReason = DownReasonNone
 			s.backoffFactor = 1
 		}
 
 	case StateUp:
-		// If peer advertises Down, immediately mirror it and pause detect.
-		if ctrl.State == StateDown {
-			if s.convDownStart.IsZero() {
-				// Start convergence-to-down at this RX moment if not already set.
-				s.convDownStart = now
-			}
-			s.state = StateDown
-			s.backoffFactor = 1
-			s.detectDeadline = time.Time{}
+		// Handle peer restart: new LocalDiscr, but keep session Up
+		// as long as packets keep flowing; timeout will detect real failure.
+		if ctrl.LocalDiscr != 0 && ctrl.LocalDiscr != s.peerDiscr {
+			s.peerDiscr = ctrl.LocalDiscr
+			s.convUpStart = now
 		}
 	}
 
@@ -268,4 +355,34 @@ func (s *Session) rxInterval() time.Duration {
 		ref = s.maxTxCeil
 	}
 	return ref
+}
+
+type SessionSnapshot struct {
+	Peer           Peer
+	Route          routing.Route
+	State          State
+	LocalDiscr     uint32
+	PeerDiscr      uint32
+	ConvUpStart    time.Time
+	ConvDownStart  time.Time
+	UpSince        time.Time
+	DownSince      time.Time
+	LastDownReason DownReason
+}
+
+func (s *Session) Snapshot() SessionSnapshot {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return SessionSnapshot{
+		Peer:           *s.peer,
+		Route:          *s.route,
+		State:          s.state,
+		LocalDiscr:     s.localDiscr,
+		PeerDiscr:      s.peerDiscr,
+		ConvUpStart:    s.convUpStart,
+		ConvDownStart:  s.convDownStart,
+		UpSince:        s.upSince,
+		DownSince:      s.downSince,
+		LastDownReason: s.lastDownReason,
+	}
 }

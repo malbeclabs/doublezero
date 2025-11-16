@@ -14,6 +14,7 @@ service QAAgentService {
   rpc ConnectMulticast(ConnectMulticastRequest) returns (Result);
   rpc GetStatus(google.protobuf.Empty) returns (StatusResponse);
   rpc GetPublicIP(google.protobuf.Empty) returns (GetPublicIPResponse);
+  rpc GetRoutes(google.protobuf.Empty) returns (GetRoutesResponse);
   rpc Disconnect(google.protobuf.Empty) returns (Result);
   rpc Ping(PingRequest) returns (PingResult);
   rpc MulticastJoin(MulticastJoinRequest) returns (MulticastJoinResult);
@@ -89,6 +90,14 @@ message GetPublicIPResponse {
   string public_ip = 1;
 }
 
+message GetRoutesResponse {
+  repeated Route installed_routes = 1;
+}
+
+message Route {
+  string dst_ip = 1;
+}
+
 message PingRequest {
   enum PingType {
     UNSPECIFIED = 0;
@@ -101,6 +110,7 @@ message PingRequest {
   string source_iface = 3;
   uint32 timeout = 4; // in seconds
   PingType ping_type = 5;
+  uint32 count = 6;
 }
 
 message PingResult {

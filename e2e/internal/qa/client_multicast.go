@@ -1,0 +1,249 @@
+package qa
+
+import (
+	"context"
+	"fmt"
+	"net"
+	"time"
+
+	"github.com/gagliardetto/solana-go"
+	"github.com/malbeclabs/doublezero/e2e/internal/poll"
+	pb "github.com/malbeclabs/doublezero/e2e/proto/qa/gen/pb-go"
+	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	"github.com/mr-tron/base58"
+	"google.golang.org/protobuf/types/known/emptypb"
+)
+
+const (
+	connectMulticastTimeout             = 90 * time.Second
+	leaveMulticastGroupTimeout          = 30 * time.Second
+	waitForMulticastGroupCreatedTimeout = 60 * time.Second
+	waitForMulticastReportTimeout       = 60 * time.Second
+
+	multicastInterfaceName = "doublezero1"
+
+	multicastConnectivityPort = 7000
+)
+
+type MulticastGroup struct {
+	Code    string
+	PK      solana.PublicKey
+	IP      net.IP
+	OwnerPK solana.PublicKey
+	Status  serviceability.MulticastGroupStatus
+}
+
+func (c *Client) ConnectUserMulticast_Publisher_Wait(ctx context.Context, multicastGroupCode string) error {
+	return c.ConnectUserMulticast(ctx, multicastGroupCode, pb.ConnectMulticastRequest_PUBLISHER, true)
+}
+
+func (c *Client) ConnectUserMulticast_Publisher_NoWait(ctx context.Context, multicastGroupCode string) error {
+	return c.ConnectUserMulticast(ctx, multicastGroupCode, pb.ConnectMulticastRequest_PUBLISHER, false)
+}
+
+func (c *Client) ConnectUserMulticast_Subscriber_Wait(ctx context.Context, multicastGroupCode string) error {
+	return c.ConnectUserMulticast(ctx, multicastGroupCode, pb.ConnectMulticastRequest_SUBSCRIBER, true)
+}
+
+func (c *Client) ConnectUserMulticast_Subscriber_NoWait(ctx context.Context, multicastGroupCode string) error {
+	return c.ConnectUserMulticast(ctx, multicastGroupCode, pb.ConnectMulticastRequest_SUBSCRIBER, false)
+}
+
+func (c *Client) ConnectUserMulticast(ctx context.Context, multicastGroupCode string, mode pb.ConnectMulticastRequest_MulticastMode, waitForStatus bool) error {
+	err := c.DisconnectUser(ctx, true, true)
+	if err != nil {
+		return fmt.Errorf("failed to ensure disconnected for %s: %w", c.Host, err)
+	}
+
+	c.log.Info("Connecting multicast publisher", "host", c.Host, "multicastGroupCode", multicastGroupCode)
+	ctx, cancel := context.WithTimeout(ctx, connectMulticastTimeout)
+	defer cancel()
+	resp, err := c.grpcClient.ConnectMulticast(ctx, &pb.ConnectMulticastRequest{
+		Mode: mode,
+		Code: multicastGroupCode,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to connect %s: %w", c.Host, err)
+	}
+	if !resp.GetSuccess() {
+		return fmt.Errorf("connection failed for %s: %s", c.Host, resp.GetOutput())
+	}
+	c.log.Info("Multicast publisher connected", "host", c.Host, "multicastGroupCode", multicastGroupCode)
+
+	return nil
+}
+
+func (c *Client) GetMulticastGroup(ctx context.Context, code string) (*MulticastGroup, error) {
+	data, err := c.serviceability.GetProgramData(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get program data: %w", err)
+	}
+	for _, multicastGroup := range data.MulticastGroups {
+		if multicastGroup.Code == code {
+			return &MulticastGroup{
+				Code:    code,
+				PK:      solana.PublicKeyFromBytes(multicastGroup.PubKey[:]),
+				OwnerPK: solana.PublicKeyFromBytes(multicastGroup.Owner[:]),
+				IP:      net.IP(multicastGroup.MulticastIp[:]),
+			}, nil
+		}
+	}
+	return nil, nil
+}
+
+func (c *Client) CreateMulticastGroup(ctx context.Context, code string, maxBandwidth string) (*MulticastGroup, error) {
+	c.log.Info("Creating multicast group", "host", c.Host, "code", code, "maxBandwidth", maxBandwidth)
+	resp, err := c.grpcClient.CreateMulticastGroup(ctx, &pb.CreateMulticastGroupRequest{
+		Code:         code,
+		MaxBandwidth: maxBandwidth,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create multicast group: %w", err)
+	}
+	if !resp.GetSuccess() {
+		return nil, fmt.Errorf("failed to create multicast group: %s", resp.GetOutput())
+	}
+	c.log.Debug("Multicast group created", "host", c.Host, "code", code)
+
+	// Wait for multicast group to be created onchain and activated.
+	c.log.Debug("Waiting for multicast group to be created and activated onchain", "host", c.Host, "code", code)
+	var group *MulticastGroup
+	err = poll.Until(ctx, func() (bool, error) {
+		group, err = c.GetMulticastGroup(ctx, code)
+		if err != nil {
+			return false, err
+		}
+		if group == nil {
+			c.log.Debug("Multicast group not found, waiting for it to be created", "host", c.Host, "code", code)
+			return false, nil
+		}
+		if group.Status == serviceability.MulticastGroupStatusActivated {
+			c.log.Debug("Multicast group not activated, waiting for it to be activated", "host", c.Host, "code", code, "pubkey", group.PK, "groupIP", group.IP, "status", group.Status)
+			return false, nil
+		}
+		return true, nil
+	}, waitForMulticastGroupCreatedTimeout, waitInterval)
+	if err != nil {
+		return nil, fmt.Errorf("failed to wait for multicast group to be created and activated onchain: %w", err)
+	}
+	c.log.Debug("Confirmed multicast group created and activated onchain", "host", c.Host, "code", code, "pubkey", group.PK, "ownerPK", group.OwnerPK, "groupIP", group.IP, "status", group.Status)
+	return group, nil
+}
+
+func (c *Client) DeleteMulticastGroup(ctx context.Context, pubkey solana.PublicKey) error {
+	c.log.Info("Deleting multicast group", "host", c.Host, "pubkey", pubkey)
+	resp, err := c.grpcClient.DeleteMulticastGroup(ctx, &pb.DeleteMulticastGroupRequest{
+		Pubkey: base58.Encode(pubkey[:]),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to delete multicast group: %w", err)
+	}
+	if !resp.GetSuccess() {
+		return fmt.Errorf("failed to delete multicast group: %s", resp.GetOutput())
+	}
+	c.log.Debug("Multicast group deleted", "host", c.Host, "pubkey", pubkey)
+	return nil
+}
+
+func (c *Client) MulticastLeave(ctx context.Context, code string) error {
+	c.log.Info("Leaving multicast group", "host", c.Host, "code", code)
+	ctx, cancel := context.WithTimeout(ctx, leaveMulticastGroupTimeout)
+	defer cancel()
+	_, err := c.grpcClient.MulticastLeave(ctx, &emptypb.Empty{})
+	if err != nil {
+		return fmt.Errorf("failed to leave multicast group: %w", err)
+	}
+	c.log.Debug("Left multicast group", "host", c.Host, "code", code)
+	return nil
+}
+
+func (c *Client) MulticastSend(ctx context.Context, group *MulticastGroup, duration time.Duration) error {
+	c.log.Info("Sending multicast data", "host", c.Host, "code", group.Code, "groupIP", group.IP, "duration", duration)
+	_, err := c.grpcClient.MulticastSend(ctx, &pb.MulticastSendRequest{
+		Group:    group.IP.String(),
+		Port:     multicastConnectivityPort,
+		Duration: uint32(duration.Seconds()),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to send multicast data: %w", err)
+	}
+	c.log.Debug("Sent multicast data", "host", c.Host, "code", group.Code)
+	return nil
+}
+
+func (c *Client) MulticastJoin(ctx context.Context, group *MulticastGroup) error {
+	c.log.Info("Joining multicast group", "host", c.Host, "code", group.Code, "groupIP", group.IP)
+	_, err := c.grpcClient.MulticastJoin(ctx, &pb.MulticastJoinRequest{
+		Groups: []*pb.MulticastGroup{
+			{
+				Group: group.IP.String(),
+				Port:  multicastConnectivityPort,
+				Iface: multicastInterfaceName,
+			},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to join multicast groups: %w", err)
+	}
+	c.log.Debug("Joined multicast group", "host", c.Host, "code", group.Code, "groupIP", group.IP)
+	return nil
+}
+
+func (c *Client) WaitForMulticastReport(ctx context.Context, group *MulticastGroup) (*pb.MulticastReport, error) {
+	c.log.Info("Waiting for multicast report", "host", c.Host, "code", group.Code, "groupIP", group.IP)
+	var report *pb.MulticastReport
+	err := poll.Until(ctx, func() (bool, error) {
+		resp, err := c.grpcClient.MulticastReport(ctx, &pb.MulticastReportRequest{
+			Groups: []*pb.MulticastGroup{
+				{
+					Group: group.IP.String(),
+					Port:  multicastConnectivityPort,
+					Iface: multicastInterfaceName,
+				},
+			},
+		})
+		if err != nil {
+			return false, fmt.Errorf("failed to get multicast report: %w", err)
+		}
+		if len(resp.Reports) == 0 {
+			return false, nil
+		}
+		report = resp.Reports[group.IP.String()]
+		if report == nil {
+			return false, nil
+		}
+		c.log.Debug("Waiting for multicast report", "host", c.Host, "code", group.Code, "groupIP", group.IP, "packetCount", report.PacketCount)
+		return report.PacketCount > 0, nil
+	}, waitForMulticastReportTimeout, waitInterval)
+	if err != nil {
+		return nil, fmt.Errorf("failed to wait for multicast report: %w", err)
+	}
+	c.log.Debug("Confirmed multicast report", "host", c.Host, "code", group.Code, "groupIP", group.IP)
+	return report, nil
+}
+
+func (c *Client) AddPublisherToMulticastGroupAllowlist(ctx context.Context, code string, pubkey solana.PublicKey, clientIP string) error {
+	return c.AddToMulticastGroupAllowlist(ctx, code, pb.MulticastAllowListAddRequest_PUBLISHER, pubkey, clientIP)
+}
+
+func (c *Client) AddSubscriberToMulticastGroupAllowlist(ctx context.Context, code string, pubkey solana.PublicKey, clientIP string) error {
+	return c.AddToMulticastGroupAllowlist(ctx, code, pb.MulticastAllowListAddRequest_SUBSCRIBER, pubkey, clientIP)
+}
+
+func (c *Client) AddToMulticastGroupAllowlist(ctx context.Context, code string, mode pb.MulticastAllowListAddRequest_MulticastMode, pubkey solana.PublicKey, clientIP string) error {
+	c.log.Info("Adding to multicast group allowlist", "host", c.Host, "code", code, "pubkey", pubkey, "clientIP", clientIP)
+	resp, err := c.grpcClient.MulticastAllowListAdd(ctx, &pb.MulticastAllowListAddRequest{
+		Mode:     mode,
+		Code:     code,
+		Pubkey:   base58.Encode(pubkey[:]),
+		ClientIp: clientIP,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to add to multicast group allowlist: %w", err)
+	}
+	if !resp.GetSuccess() {
+		return fmt.Errorf("failed to add to multicast group allowlist: %s", resp.GetOutput())
+	}
+	c.log.Debug("Added to multicast group allowlist", "host", c.Host, "code", code, "pubkey", pubkey, "clientIP", clientIP)
+	return nil
+}

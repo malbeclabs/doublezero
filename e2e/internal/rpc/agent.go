@@ -1,3 +1,5 @@
+//go:build linux
+
 package rpc
 
 import (
@@ -13,10 +15,10 @@ import (
 	"time"
 
 	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
-	"github.com/malbeclabs/doublezero/e2e/internal/poll"
 	pb "github.com/malbeclabs/doublezero/e2e/proto/qa/gen/pb-go"
 	probing "github.com/prometheus-community/pro-bing"
 	"golang.org/x/net/ipv4"
+	"golang.org/x/sys/unix"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
@@ -29,6 +31,7 @@ type Joiner interface {
 
 type Netlinker interface {
 	RouteGet(src net.IP) ([]Route, error)
+	RouteByProtocol(protocol int) ([]Route, error)
 }
 
 type Option func(*QAAgent)
@@ -150,7 +153,11 @@ func (q *QAAgent) Ping(ctx context.Context, req *pb.PingRequest) (*pb.PingResult
 	if req.GetPingType() == pb.PingRequest_UDP {
 		pinger.SetPrivileged(false)
 	}
-	pinger.Count = 5
+	if req.GetCount() > 0 {
+		pinger.Count = int(req.GetCount())
+	} else {
+		pinger.Count = 5
+	}
 	pinger.Source = req.GetSourceIp()
 	pinger.InterfaceName = req.GetSourceIface()
 	if req.GetTimeout() > 0 {
@@ -208,35 +215,7 @@ func (q *QAAgent) ConnectUnicast(ctx context.Context, req *pb.ConnectUnicastRequ
 		q.log.Error("Failed to connect unicast for client", "client_ip", clientIP, "output", res.GetOutput())
 		return res, fmt.Errorf("failed to connect unicast for client %s: %v", clientIP, err)
 	}
-
 	q.log.Info("Successfully connected IBRL mode tunnel")
-
-	current_device := "unknown"
-
-	condition := func() (bool, error) {
-		ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
-		defer cancel()
-		status, err := q.fetchStatus(ctx)
-		current_device = status[0].CurrentDevice
-		if err != nil {
-			q.log.Warn("fetchStatus error", "error", err)
-			return false, err
-		}
-		if len(status) == 0 {
-			q.log.Warn("fetchStatus returned empty status")
-			return false, fmt.Errorf("empty status response")
-		}
-		currentState := status[0].Response.DoubleZeroStatus.SessionStatus
-		q.log.Info("Polling IBRL mode tunnel status", "state", currentState, "tunnel_name", status[0].Response.TunnelName, "doublezero_ip", status[0].Response.DoubleZeroIP, "current_device", current_device)
-		return currentState == "up", nil
-	}
-
-	err = poll.Until(ctx, condition, 60*time.Second, 1*time.Second)
-	if err != nil {
-		q.log.Error("Failed while polling for IBRL mode session status", "error", err)
-		return nil, fmt.Errorf("failed while polling for IBRL mode session status (device %s): %v", current_device, err)
-	}
-
 	return res, nil
 }
 
@@ -312,6 +291,22 @@ func (q *QAAgent) GetStatus(ctx context.Context, req *emptypb.Empty) (*pb.Status
 	return resp, nil
 }
 
+// GetRoutes implements the GetRoutes RPC, which retrieves the installed routes in the kernel routing table.
+func (q *QAAgent) GetRoutes(ctx context.Context, req *emptypb.Empty) (*pb.GetRoutesResponse, error) {
+	q.log.Info("Received GetRoutes request")
+	rts, err := q.netlinker.RouteByProtocol(unix.RTPROT_BGP)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get routes: %w", err)
+	}
+	routes := make([]*pb.Route, len(rts))
+	for i, rt := range rts {
+		routes[i] = &pb.Route{
+			DstIp: rt.Dst.IP.String(),
+		}
+	}
+	return &pb.GetRoutesResponse{InstalledRoutes: routes}, nil
+}
+
 // CreateMulticastGroup implements the CreateMulticastGroup RPC, which creates a multicast group
 // with the specified code and maximum bandwidth.
 func (q *QAAgent) CreateMulticastGroup(ctx context.Context, req *pb.CreateMulticastGroupRequest) (*pb.Result, error) {
@@ -371,31 +366,7 @@ func (q *QAAgent) ConnectMulticast(ctx context.Context, req *pb.ConnectMulticast
 		q.log.Error("Failed to connect multicast", "error", err, "output", result.Output)
 		return nil, err
 	}
-
 	q.log.Info("Successfully connected multicast tunnel")
-
-	condition := func() (bool, error) {
-		ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
-		defer cancel()
-		status, err := q.fetchStatus(ctx)
-		if err != nil {
-			q.log.Warn("fetchStatus error", "error", err)
-			return false, err
-		}
-		if len(status) == 0 {
-			q.log.Warn("fetchStatus returned empty status")
-			return false, fmt.Errorf("empty status response")
-		}
-		currentState := status[0].Response.DoubleZeroStatus.SessionStatus
-		q.log.Info("Polling multicast tunnel status", "state", currentState, "tunnel_name", status[0].Response.TunnelName, "doublezero_ip", status[0].Response.DoubleZeroIP)
-		return currentState == "up", nil
-	}
-
-	err = poll.Until(ctx, condition, 60*time.Second, 1*time.Second)
-	if err != nil {
-		return nil, fmt.Errorf("failed while polling for multicast session status: %v", err)
-	}
-
 	return result, nil
 }
 

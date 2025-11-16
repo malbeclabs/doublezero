@@ -69,11 +69,12 @@ func NewClient(ctx context.Context, log *slog.Logger, hostname string, port int,
 	if err != nil {
 		return nil, fmt.Errorf("failed to get public IP: %v", err)
 	}
-	log.Info("Got public IP", "host", hostname, "publicIP", resp.PublicIp)
 	publicIP := net.ParseIP(resp.PublicIp)
 	if publicIP == nil || publicIP.To4() == nil {
 		return nil, fmt.Errorf("invalid public IP: %v", resp.PublicIp)
 	}
+
+	log.Info("Initializing client", "host", hostname, "publicIP", publicIP.To4().String())
 
 	serviceabilityClient := serviceability.New(rpc.New(networkConfig.LedgerPublicRPCURL), networkConfig.ServiceabilityProgramID)
 

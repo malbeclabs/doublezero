@@ -35,11 +35,18 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 	if len(devices) == 0 {
 		t.Skip("No valid devices found with sufficient capacity")
 	}
-	deviceCodes := qa.Map(devices, func(d *qa.Device) string { return d.Code })
-	log.Info("Planning to test", "devices", strings.Join(deviceCodes, ","), "device_count", len(devices), "client_count", len(clients))
 
 	// Batch size is number of clients, but we never reuse devices within a batch.
 	batchSize := min(len(clients), len(devices))
+
+	deviceCodes := qa.Map(devices, func(d *qa.Device) string { return d.Code })
+	log.Info("Planning to test",
+		"devices", strings.Join(deviceCodes, ","),
+		"deviceCount", len(devices),
+		"clientCount", len(clients),
+		"batchSize", batchSize,
+		"totalBatches", len(devices)/batchSize,
+	)
 
 	// Random source used to shuffle clients so we don't always test the same client-device pairs.
 	rs := rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -56,8 +63,9 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 		})
 		activeClients := shuffled[:len(batch)]
 
-		t.Run(fmt.Sprintf("batch_%d", (start/batchSize)+1), func(t *testing.T) {
-			log.Info("Testing batch", "devices", strings.Join(qa.Map(batch, func(d *qa.Device) string { return d.Code }), ","))
+		batchNumber := (start / batchSize) + 1
+		t.Run(fmt.Sprintf("batch_%d", batchNumber), func(t *testing.T) {
+			log.Info("Testing batch", "batch", batchNumber, "devices", strings.Join(qa.Map(batch, func(d *qa.Device) string { return d.Code }), ","))
 
 			// Build 1:1 assignments: client -> device, and inverse device -> client.
 			clientToDevice := make(map[*qa.Client]*qa.Device, len(batch))
@@ -86,7 +94,6 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 			// to avoid ledger race conditions.
 			for _, c := range activeClients {
 				d := clientToDevice[c]
-				log.Info("Connecting client to device", "client", c.Host, "device", d.Code)
 				err := c.ConnectUserUnicast_NoWait(ctx, d.Code)
 				require.NoError(t, err, "failed to connect user %s to device %s", c.Host, d.Code)
 			}
@@ -128,32 +135,19 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 					subCtx := t.Context()
 
 					var wg sync.WaitGroup
-					errCh := make(chan error, len(activeClients)-1)
-
-					for _, dst := range activeClients {
-						if dst.Host == srcClient.Host {
+					for _, target := range activeClients {
+						if target.Host == srcClient.Host {
 							continue
 						}
-						src := srcClient
-						target := dst
 
 						wg.Add(1)
-						go func() {
+						go func(src, target *qa.Client) {
 							defer wg.Done()
-							if e := src.TestUnicastConnectivity(subCtx, target); e != nil {
-								errCh <- fmt.Errorf("connectivity %s -> %s on device %s: %w", src.Host, target.Host, device.Code, e)
-								return
-							}
-							log.Info("Connectivity test passed", "device", device.Code, "source", src.Host, "target", target.Host)
-						}()
+							err := src.TestUnicastConnectivity(subCtx, target)
+							require.NoError(t, err)
+						}(srcClient, target)
 					}
-
 					wg.Wait()
-					close(errCh)
-
-					for e := range errCh {
-						require.NoError(t, e)
-					}
 				})
 			}
 		})

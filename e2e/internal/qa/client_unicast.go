@@ -105,7 +105,14 @@ func (c *Client) TestUnicastConnectivity(ctx context.Context, targetClient *Clie
 		return fmt.Errorf("packet loss detected: sent=%d, received=%d from %s to %s", resp.PacketsSent, resp.PacketsReceived, sourceIP, targetIP)
 	}
 
-	c.log.Info("Successfully pinged", "source", sourceIP, "target", targetIP, "iface", iface)
+	c.log.Info("Successfully pinged",
+		"sourceHost", c.Host,
+		"targetHost", targetClient.Host,
+		"iface", iface,
+		"sourceDevice", clientDevice.Code,
+		"targetDevice", otherClientDevice.Code,
+		"packets", resp.PacketsSent,
+	)
 
 	return nil
 }

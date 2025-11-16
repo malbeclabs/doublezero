@@ -74,7 +74,7 @@ func (c *Client) ConnectUserMulticast(ctx context.Context, multicastGroupCode st
 }
 
 func (c *Client) GetMulticastGroup(ctx context.Context, code string) (*MulticastGroup, error) {
-	data, err := c.serviceability.GetProgramData(ctx)
+	data, err := getProgramDataWithRetry(ctx, c.serviceability)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get program data: %w", err)
 	}

@@ -50,8 +50,14 @@ func TestQA_UnicastConnectivity(t *testing.T) {
 
 	// Wait for routes to be installed on each host.
 	for _, c := range clients {
-		err := c.WaitForRoutes(ctx, qa.MapFilter(clients, func(other *qa.Client) (net.IP, bool) {
-			if other.Host == c.Host {
+		device, err := c.GetCurrentDevice(ctx)
+		require.NoError(t, err, "failed to get current device for client %s", c.Host)
+		err = c.WaitForRoutes(ctx, qa.MapFilter(clients, func(other *qa.Client) (net.IP, bool) {
+			otherDevice, err := other.GetCurrentDevice(ctx)
+			if err != nil {
+				return nil, false
+			}
+			if other.Host == c.Host || otherDevice.ExchangeCode == device.ExchangeCode {
 				return nil, false
 			}
 			return other.PublicIP(), true

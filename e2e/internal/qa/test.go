@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cenkalti/backoff/v4"
 	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
@@ -119,7 +120,7 @@ func (c *Test) GetClient(host string) *Client {
 
 func getDevices(ctx context.Context, serviceabilityClient *serviceability.Client) (map[string]*Device, error) {
 	devices := make(map[string]*Device)
-	data, err := serviceabilityClient.GetProgramData(ctx)
+	data, err := getProgramDataWithRetry(ctx, serviceabilityClient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get program data: %v", err)
 	}
@@ -138,4 +139,27 @@ func getDevices(ctx context.Context, serviceabilityClient *serviceability.Client
 		}
 	}
 	return devices, nil
+}
+
+func getProgramDataWithRetry(ctx context.Context, serviceabilityClient *serviceability.Client) (*serviceability.ProgramData, error) {
+	var result *serviceability.ProgramData
+
+	operation := func() error {
+		data, err := serviceabilityClient.GetProgramData(ctx)
+		if err != nil {
+			return err
+		}
+		result = data
+		return nil
+	}
+
+	exp := backoff.NewExponentialBackOff()
+	retryPolicy := backoff.WithMaxRetries(exp, 5)
+	retryPolicy = backoff.WithContext(retryPolicy, ctx)
+
+	if err := backoff.Retry(operation, retryPolicy); err != nil {
+		return nil, fmt.Errorf("failed to get program data after retries: %v", err)
+	}
+
+	return result, nil
 }

@@ -10,7 +10,7 @@ import (
 
 const (
 	connectUnicastTimeout = 90 * time.Second
-	unicastPingTimeout    = 30 * time.Second
+	unicastPingTimeout    = 60 * time.Second
 
 	unicastInterfaceName = "doublezero0"
 )

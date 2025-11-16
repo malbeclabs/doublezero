@@ -128,7 +128,7 @@ func (c *Client) DisconnectUser(ctx context.Context, waitForStatus bool, waitFor
 	if waitForDeletion {
 		publicIP := c.publicIP.To4().String()
 
-		data, err := c.serviceability.GetProgramData(ctx)
+		data, err := getProgramDataWithRetry(ctx, c.serviceability)
 		if err != nil {
 			return fmt.Errorf("failed to get program data: %w", err)
 		}
@@ -144,7 +144,7 @@ func (c *Client) DisconnectUser(ctx context.Context, waitForStatus bool, waitFor
 		ctx, cancel := context.WithTimeout(ctx, waitForUserDeletionTimeout)
 		defer cancel()
 		err = poll.Until(ctx, func() (bool, error) {
-			data, err := c.serviceability.GetProgramData(ctx)
+			data, err := getProgramDataWithRetry(ctx, c.serviceability)
 			if err != nil {
 				return false, err
 			}
@@ -182,6 +182,14 @@ func (c *Client) GetUserStatus(ctx context.Context) (*pb.Status, error) {
 	return resp.Status[0], nil
 }
 
+func (c *Client) GetCurrentDevice(ctx context.Context) (*Device, error) {
+	status, err := c.GetUserStatus(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user status: %w", err)
+	}
+	return c.devices[status.CurrentDevice], nil
+}
+
 func (c *Client) GetInstalledRoutes(ctx context.Context) ([]*pb.Route, error) {
 	resp, err := c.grpcClient.GetRoutes(ctx, &emptypb.Empty{})
 	if err != nil {
@@ -201,7 +209,7 @@ func (c *Client) WaitForStatusUp(ctx context.Context) error {
 }
 
 func (c *Client) GetOwnerPubkey(ctx context.Context) (solana.PublicKey, error) {
-	data, err := c.serviceability.GetProgramData(ctx)
+	data, err := getProgramDataWithRetry(ctx, c.serviceability)
 	if err != nil {
 		return solana.PublicKey{}, fmt.Errorf("failed to get program data: %w", err)
 	}

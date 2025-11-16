@@ -1,3 +1,5 @@
+//go:build linux
+
 package rpc
 
 import (
@@ -91,6 +93,14 @@ func TestQAAgentConnectivity(t *testing.T) {
 		require.NotNil(t, resp)
 		require.Equal(t, "6.6.6.6", resp.GetPublicIp())
 	})
+
+	t.Run("GetRoutes", func(t *testing.T) {
+		resp, err := client.GetRoutes(ctx, &emptypb.Empty{})
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.Equal(t, 1, len(resp.GetInstalledRoutes()))
+		require.Equal(t, "0.0.0.0", resp.GetInstalledRoutes()[0].GetDstIp())
+	})
 }
 
 type DummyJoiner struct{}
@@ -112,6 +122,17 @@ func (d *DummyNetlinker) RouteGet(dest net.IP) ([]Route, error) {
 			},
 			Src: net.ParseIP("6.6.6.6"),
 			Gw:  net.ParseIP("10.1.1.1"),
+		},
+	}, nil
+}
+
+func (d *DummyNetlinker) RouteByProtocol(protocol int) ([]Route, error) {
+	return []Route{
+		{
+			Dst: &net.IPNet{
+				IP:   net.ParseIP("0.0.0.0"),
+				Mask: net.CIDRMask(0, 0),
+			},
 		},
 	}, nil
 }

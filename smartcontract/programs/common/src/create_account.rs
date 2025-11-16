@@ -1,8 +1,14 @@
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
-    account_info::AccountInfo, entrypoint::ProgramResult, program::invoke_signed_unchecked,
-    pubkey::Pubkey, rent::Rent, system_instruction, sysvar::Sysvar,
+    account_info::AccountInfo,
+    entrypoint::ProgramResult,
+    program::invoke_signed_unchecked,
+    program_error::ProgramError,
+    pubkey::Pubkey,
+    rent::Rent,
+    system_instruction::{self, SystemError},
+    sysvar::Sysvar,
 };
 
 /// This method allows a program to avoid a denial-of-service attack that can prevent its account
@@ -20,7 +26,6 @@ use solana_program::{
 pub fn try_create_account(
     payer_key: &Pubkey,
     new_account_key: &Pubkey,
-    current_lamports: u64,
     data_len: usize,
     program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -30,45 +35,58 @@ pub fn try_create_account(
         .expect("Unable to get rent")
         .minimum_balance(data_len);
 
-    if current_lamports == 0 {
-        #[cfg(test)]
-        msg!(
-            "Creating account with {} lamports and {} bytes",
-            rent_exemption_lamports,
-            data_len
-        );
-        let create_account_ix = system_instruction::create_account(
-            payer_key,
-            new_account_key,
-            rent_exemption_lamports,
-            data_len as u64,
-            program_id,
-        );
-        invoke_signed_unchecked(&create_account_ix, accounts, &[new_account_signer_seeds])?;
-    } else {
-        #[cfg(test)]
-        msg!(
-            "Account already has {} lamports, resizing to {} bytes if needed",
-            current_lamports,
-            data_len
-        );
-        let allocate_ix = system_instruction::allocate(new_account_key, data_len as u64);
-        invoke_signed_unchecked(&allocate_ix, accounts, &[new_account_signer_seeds])?;
+    let create_account_ix = system_instruction::create_account(
+        payer_key,
+        new_account_key,
+        rent_exemption_lamports,
+        data_len as u64,
+        program_id,
+    );
 
-        let assign_ix = system_instruction::assign(new_account_key, program_id);
-        invoke_signed_unchecked(&assign_ix, accounts, &[new_account_signer_seeds])?;
-
-        let lamport_diff = rent_exemption_lamports.saturating_sub(current_lamports);
-
-        // Transfer as much as we need for this account to be rent-exempt.
-        if lamport_diff != 0 {
+    match invoke_signed_unchecked(&create_account_ix, accounts, &[new_account_signer_seeds]) {
+        Ok(()) => {
             #[cfg(test)]
-            msg!("Transferring {} lamports to new account", lamport_diff);
-            let transfer_ix =
-                system_instruction::transfer(payer_key, new_account_key, lamport_diff);
-            invoke_signed_unchecked(&transfer_ix, accounts, &[])?;
+            msg!(
+                "Creating account with {} lamports and {} bytes",
+                rent_exemption_lamports,
+                data_len
+            );
+            Ok(())
         }
-    }
+        Err(ProgramError::Custom(code))
+            if code == SystemError::AccountAlreadyInUse as u32
+                || code == SystemError::ResultWithNegativeLamports as u32 =>
+        {
+            let new_account_info = accounts
+                .iter()
+                .find(|account_info| account_info.key == new_account_key)
+                .expect("New account info not provided to try_create_account");
 
-    Ok(())
+            #[cfg(test)]
+            msg!(
+                "Account already has {} lamports, resizing to {} bytes if needed",
+                new_account_info.lamports(),
+                data_len
+            );
+
+            let allocate_ix = system_instruction::allocate(new_account_key, data_len as u64);
+            invoke_signed_unchecked(&allocate_ix, accounts, &[new_account_signer_seeds])?;
+
+            let assign_ix = system_instruction::assign(new_account_key, program_id);
+            invoke_signed_unchecked(&assign_ix, accounts, &[new_account_signer_seeds])?;
+
+            let lamport_diff = rent_exemption_lamports.saturating_sub(new_account_info.lamports());
+
+            if lamport_diff > 0 {
+                #[cfg(test)]
+                msg!("Transferring {} lamports to new account", lamport_diff);
+                let transfer_ix =
+                    system_instruction::transfer(payer_key, new_account_key, lamport_diff);
+                invoke_signed_unchecked(&transfer_ix, accounts, &[])?;
+            }
+
+            Ok(())
+        }
+        Err(err) => Err(err),
+    }
 }

@@ -274,7 +274,7 @@ func TestClient_Liveness_Scheduler_ScheduleDetect_AllowsNewDeadlineButStillDedup
 	sess.detectDeadline = d1
 	sess.mu.Unlock()
 	s.scheduleDetect(base, sess)
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		s.scheduleDetect(base, sess)
 	}
 	require.Equal(t, 1, s.eq.CountFor("eth0", "192.0.2.1"))
@@ -284,7 +284,7 @@ func TestClient_Liveness_Scheduler_ScheduleDetect_AllowsNewDeadlineButStillDedup
 	sess.mu.Lock()
 	sess.detectDeadline = d2
 	sess.mu.Unlock()
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		s.scheduleDetect(base, sess)
 	}
 

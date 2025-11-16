@@ -210,8 +210,8 @@ func NewManager(ctx context.Context, cfg *ManagerConfig) (*Manager, error) {
 		err := m.recv.Run(m.ctx)
 		if err != nil {
 			m.log.Error("liveness: error running receiver", "error", err)
-			cancel()
 			m.errCh <- err
+			cancel()
 		}
 	}()
 
@@ -222,8 +222,8 @@ func NewManager(ctx context.Context, cfg *ManagerConfig) (*Manager, error) {
 		err := m.sched.Run(m.ctx)
 		if err != nil {
 			m.log.Error("liveness: error running scheduler", "error", err)
-			cancel()
 			m.errCh <- err
+			cancel()
 		}
 	}()
 
@@ -262,6 +262,9 @@ func (m *Manager) RegisterRoute(r *routing.Route, iface string) error {
 	peerAddr, err := net.ResolveUDPAddr("udp", peerAddrFor(r, m.cfg.Port))
 	if err != nil {
 		return fmt.Errorf("error resolving peer address: %v", err)
+	}
+	if peerAddr == nil {
+		return fmt.Errorf("error resolving peer address: nil address")
 	}
 
 	k := routeKeyFor(iface, r)
@@ -376,6 +379,43 @@ func (m *Manager) LocalAddr() *net.UDPAddr {
 		return addr
 	}
 	return nil
+}
+
+// GetSession returns the session for the given peer.
+func (m *Manager) GetSession(peer Peer) (*Session, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	sess, ok := m.sessions[peer]
+	return sess, ok
+}
+
+// HasSession returns true if the manager has a session for the given peer.
+func (m *Manager) HasSession(peer Peer) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	_, ok := m.sessions[peer]
+	return ok
+}
+
+// GetInstalled returns the installed route for the given peer.
+func (m *Manager) IsInstalled(rk RouteKey) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.installed[rk]
+}
+
+// GetSessionsLen returns the number of sessions in the manager.
+func (m *Manager) GetSessionsLen() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.sessions)
+}
+
+// GetInstalledRoutesLen returns the number of routes in the manager.
+func (m *Manager) GetInstalledLen() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.installed)
 }
 
 // Close stops goroutines, waits for exit, and closes the UDP socket.

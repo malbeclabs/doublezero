@@ -24,15 +24,11 @@ func TestClient_Liveness_RouteRW_RouteAdd_RegistersWithManager(t *testing.T) {
 	err = rrw.RouteAdd(r)
 	require.NoError(t, err)
 
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	require.Len(t, m.sessions, 1)
+	require.Equal(t, 1, m.GetSessionsLen())
 
-	var peer Peer
-	for p := range m.sessions {
-		peer = p
-		break
-	}
+	peer := Peer{Interface: "test-iface", LocalIP: r.Src.To4().String(), PeerIP: r.Dst.IP.To4().String()}
+	require.Equal(t, 1, m.GetSessionsLen())
+	require.True(t, m.HasSession(peer))
 	require.Equal(t, "test-iface", peer.Interface)
 	require.Equal(t, r.Src.To4().String(), peer.LocalIP)
 	require.Equal(t, r.Dst.IP.To4().String(), peer.PeerIP)
@@ -52,16 +48,15 @@ func TestClient_Liveness_RouteRW_RouteDelete_WithdrawsFromManager(t *testing.T) 
 
 	require.NoError(t, m.RegisterRoute(r, "test-iface"))
 
-	m.mu.Lock()
-	require.Len(t, m.sessions, 1)
-	m.mu.Unlock()
+	require.Equal(t, 1, m.GetSessionsLen())
+	peer := Peer{Interface: "test-iface", LocalIP: r.Src.To4().String(), PeerIP: r.Dst.IP.To4().String()}
+	require.True(t, m.HasSession(peer))
 
 	err = rrw.RouteDelete(r)
 	require.NoError(t, err)
 
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	require.Len(t, m.sessions, 0, "session should be removed after RouteDelete/WithdrawRoute")
+	require.Equal(t, 0, m.GetSessionsLen())
+	require.False(t, m.HasSession(peer))
 }
 
 func TestClient_Liveness_RouteRW_RouteAdd_PassiveMode_PassesThroughToBackend(t *testing.T) {

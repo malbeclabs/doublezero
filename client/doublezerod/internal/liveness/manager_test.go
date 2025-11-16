@@ -2,15 +2,12 @@ package liveness
 
 import (
 	"errors"
-	"log/slog"
 	"net"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/sys/unix"
 )
 
 func TestClient_Liveness_Manager_ConfigValidate(t *testing.T) {
@@ -93,11 +90,9 @@ func TestClient_Liveness_Manager_RegisterRoute_Deduplicates(t *testing.T) {
 	err = m.RegisterRoute(r, "lo")
 	require.NoError(t, err)
 
-	m.mu.Lock()
-	require.Len(t, m.sessions, 1)
-	require.Contains(t, m.sessions, Peer{Interface: "lo", LocalIP: r.Src.String(), PeerIP: r.Dst.IP.String()})
-	require.NotContains(t, m.sessions, Peer{Interface: "lo", LocalIP: r.Dst.IP.String(), PeerIP: r.Src.String()})
-	m.mu.Unlock()
+	require.Equal(t, 1, m.GetSessionsLen())
+	require.True(t, m.HasSession(Peer{Interface: "lo", LocalIP: r.Src.String(), PeerIP: r.Dst.IP.String()}))
+	require.False(t, m.HasSession(Peer{Interface: "lo", LocalIP: r.Dst.IP.String(), PeerIP: r.Src.String()}))
 }
 
 func TestClient_Liveness_Manager_HandleRx_Transitions_AddAndDelete(t *testing.T) {
@@ -123,26 +118,14 @@ func TestClient_Liveness_Manager_HandleRx_Transitions_AddAndDelete(t *testing.T)
 	})
 	require.NoError(t, m.RegisterRoute(r, "lo"))
 
-	var sess *Session
-	var peer Peer
-	func() {
-		m.mu.Lock()
-		defer m.mu.Unlock()
-		for p, s := range m.sessions {
-			peer = p
-			sess = s
-			break
-		}
-	}()
+	peer := Peer{Interface: "lo", LocalIP: r.Src.String(), PeerIP: r.Dst.IP.String()}
+	sess, ok := m.GetSession(peer)
+	require.True(t, ok)
 	require.NotNil(t, sess)
 
 	m.HandleRx(&ControlPacket{PeerDiscr: 0, LocalDiscr: 1234, State: StateInit}, peer)
-	func() {
-		sess.mu.Lock()
-		defer sess.mu.Unlock()
-		require.Equal(t, StateInit, sess.state)
-		require.EqualValues(t, 1234, sess.peerDiscr)
-	}()
+	require.Equal(t, StateInit, sess.GetState())
+	require.EqualValues(t, 1234, sess.peerDiscr)
 
 	m.HandleRx(&ControlPacket{PeerDiscr: sess.localDiscr, LocalDiscr: sess.peerDiscr, State: StateInit}, peer)
 	added := wait(t, addCh, 2*time.Second, "RouteAdd after Up")
@@ -151,12 +134,11 @@ func TestClient_Liveness_Manager_HandleRx_Transitions_AddAndDelete(t *testing.T)
 	require.Equal(t, r.Dst.String(), added.Dst.String())
 	require.Equal(t, r.NextHop.String(), added.NextHop.String())
 
-	m.mu.Lock()
-	require.Len(t, m.sessions, 1)
-	require.Contains(t, m.sessions, peer)
-	require.NotContains(t, m.sessions, Peer{Interface: "lo", LocalIP: r.Dst.IP.String(), PeerIP: r.Src.String()})
+	sess, ok = m.GetSession(peer)
+	require.True(t, ok)
+	require.NotNil(t, sess)
+	require.Equal(t, 1, m.GetSessionsLen())
 	require.Equal(t, StateUp, sess.GetState())
-	m.mu.Unlock()
 
 	m.HandleRx(&ControlPacket{PeerDiscr: sess.localDiscr, LocalDiscr: sess.peerDiscr, State: StateAdminDown}, peer)
 	deleted := wait(t, delCh, 2*time.Second, "RouteDelete after Down")
@@ -164,12 +146,11 @@ func TestClient_Liveness_Manager_HandleRx_Transitions_AddAndDelete(t *testing.T)
 	require.Equal(t, r.Src.String(), deleted.Src.String())
 	require.Equal(t, r.Dst.String(), deleted.Dst.String())
 
-	m.mu.Lock()
-	require.Len(t, m.sessions, 1)
-	require.Contains(t, m.sessions, peer)
-	require.NotContains(t, m.sessions, Peer{Interface: "lo", LocalIP: r.Dst.IP.String(), PeerIP: r.Src.String()})
+	sess, ok = m.GetSession(peer)
+	require.True(t, ok)
+	require.NotNil(t, sess)
+	require.Equal(t, 1, m.GetSessionsLen())
 	require.Equal(t, StateDown, sess.GetState())
-	m.mu.Unlock()
 }
 
 func TestClient_Liveness_Manager_WithdrawRoute_RemovesSessionAndDeletesIfInstalled(t *testing.T) {
@@ -196,16 +177,11 @@ func TestClient_Liveness_Manager_WithdrawRoute_RemovesSessionAndDeletesIfInstall
 	})
 	require.NoError(t, m.RegisterRoute(r, "lo"))
 
-	var peer Peer
-	var sess *Session
-	func() {
-		m.mu.Lock()
-		defer m.mu.Unlock()
-		for p, s := range m.sessions {
-			peer, sess = p, s
-			break
-		}
-	}()
+	peer := Peer{Interface: "lo", LocalIP: r.Src.String(), PeerIP: r.Dst.IP.String()}
+	sess, ok := m.GetSession(peer)
+	require.True(t, ok)
+	require.NotNil(t, sess)
+
 	// Down -> Init (learn peerDiscr)
 	m.HandleRx(&ControlPacket{PeerDiscr: 0, LocalDiscr: 1, State: StateInit}, peer)
 	// Init -> Up requires explicit echo (PeerDiscr == localDiscr)
@@ -215,14 +191,8 @@ func TestClient_Liveness_Manager_WithdrawRoute_RemovesSessionAndDeletesIfInstall
 	require.NoError(t, m.WithdrawRoute(r, "lo"))
 	wait(t, delCh, 2*time.Second, "RouteDelete on withdraw")
 
-	m.mu.Lock()
-	_, still := m.sessions[peer]
-	m.mu.Unlock()
-	require.False(t, still, "session should be removed after withdraw")
-
-	sess.mu.Lock()
+	require.Equal(t, 0, m.GetSessionsLen())
 	require.False(t, sess.alive)
-	sess.mu.Unlock()
 }
 
 func TestClient_Liveness_Manager_Close_Idempotent(t *testing.T) {
@@ -258,20 +228,16 @@ func TestClient_Liveness_Manager_HandleRx_UnknownPeer_NoEffect(t *testing.T) {
 	})
 	require.NoError(t, m.RegisterRoute(r, "lo"))
 
-	m.mu.Lock()
-	prevSessions := len(m.sessions)
-	prevInstalled := len(m.installed)
-	m.mu.Unlock()
+	prevSessions := m.GetSessionsLen()
+	prevInstalled := m.GetInstalledLen()
 
 	// Construct a peer key that doesn't exist.
 	unknown := Peer{Interface: "lo", LocalIP: "127.0.0.2", PeerIP: "127.0.0.3"}
 	m.HandleRx(&ControlPacket{PeerDiscr: 0, LocalDiscr: 1, State: StateInit}, unknown)
 
 	// Assert no changes.
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	require.Equal(t, prevSessions, len(m.sessions))
-	require.Equal(t, prevInstalled, len(m.installed))
+	require.Equal(t, prevSessions, m.GetSessionsLen())
+	require.Equal(t, prevInstalled, m.GetInstalledLen())
 }
 
 func TestClient_Liveness_Manager_NetlinkerErrors_NoCrash(t *testing.T) {
@@ -299,16 +265,9 @@ func TestClient_Liveness_Manager_NetlinkerErrors_NoCrash(t *testing.T) {
 	require.NoError(t, m.RegisterRoute(r, "lo"))
 
 	// Grab session+peer key to inspect installed flags.
-	var peer Peer
-	var sess *Session
-	func() {
-		m.mu.Lock()
-		defer m.mu.Unlock()
-		for p, s := range m.sessions {
-			peer, sess = p, s
-			break
-		}
-	}()
+	peer := Peer{Interface: "lo", LocalIP: r.Src.String(), PeerIP: r.Dst.IP.String()}
+	sess, ok := m.GetSession(peer)
+	require.True(t, ok)
 	require.NotNil(t, sess)
 
 	// Drive to Up (RouteAdd returns error but should not crash; installed set true).
@@ -318,17 +277,13 @@ func TestClient_Liveness_Manager_NetlinkerErrors_NoCrash(t *testing.T) {
 	rk := routeKeyFor(peer.Interface, sess.route)
 	time.Sleep(50 * time.Millisecond) // allow onSessionUp goroutine to run
 
-	m.mu.Lock()
-	require.True(t, m.installed[rk], "installed should be true after Up even if RouteAdd errored")
-	m.mu.Unlock()
+	require.True(t, m.IsInstalled(rk), "installed should be true after Up even if RouteAdd errored")
 
 	// Drive to Down via remote AdminDown (RouteDelete returns error; should not crash; installed set false).
 	m.HandleRx(&ControlPacket{PeerDiscr: sess.localDiscr, LocalDiscr: sess.peerDiscr, State: StateAdminDown}, peer)
 	time.Sleep(50 * time.Millisecond)
 
-	m.mu.Lock()
-	require.False(t, m.installed[rk], "installed should be false after Down even if RouteDelete errored")
-	m.mu.Unlock()
+	require.False(t, m.IsInstalled(rk), "installed should be false after Down even if RouteDelete errored")
 }
 
 func TestClient_Liveness_Manager_PassiveMode_ImmediateInstall_NoAutoWithdraw(t *testing.T) {
@@ -353,16 +308,10 @@ func TestClient_Liveness_Manager_PassiveMode_ImmediateInstall_NoAutoWithdraw(t *
 	_ = wait(t, addCh, time.Second, "immediate RouteAdd in PassiveMode")
 
 	// drive Up then Down; expect no RouteDelete (caller owns dataplane)
-	var peer Peer
-	var sess *Session
-	func() {
-		m.mu.Lock()
-		defer m.mu.Unlock()
-		for p, s := range m.sessions {
-			peer, sess = p, s
-			break
-		}
-	}()
+	peer := Peer{Interface: "lo", LocalIP: r.Src.String(), PeerIP: r.Dst.IP.String()}
+	sess, ok := m.GetSession(peer)
+	require.True(t, ok)
+	require.NotNil(t, sess)
 	m.HandleRx(&ControlPacket{PeerDiscr: 0, LocalDiscr: 1, State: StateInit}, peer)
 	m.HandleRx(&ControlPacket{PeerDiscr: sess.localDiscr, LocalDiscr: sess.peerDiscr, State: StateUp}, peer)
 	m.HandleRx(&ControlPacket{PeerDiscr: sess.localDiscr, LocalDiscr: sess.peerDiscr, State: StateAdminDown}, peer)
@@ -393,9 +342,10 @@ func TestClient_Liveness_Manager_PeerKey_IPv4Canonicalization(t *testing.T) {
 		r.Dst = &net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(32, 32)}
 	})
 	require.NoError(t, m.RegisterRoute(r, "lo"))
-	m.mu.Lock()
-	_, ok := m.sessions[Peer{Interface: "lo", LocalIP: r.Src.To4().String(), PeerIP: r.Dst.IP.To4().String()}]
-	m.mu.Unlock()
+	peer := Peer{Interface: "lo", LocalIP: r.Src.To4().String(), PeerIP: r.Dst.IP.To4().String()}
+	sess, ok := m.GetSession(peer)
+	require.True(t, ok)
+	require.NotNil(t, sess)
 	require.True(t, ok, "peer key should use IPv4 string forms")
 }
 
@@ -404,8 +354,6 @@ func TestClient_Liveness_Manager_ReceiverFailure_PropagatesOnErr(t *testing.T) {
 	m, err := newTestManager(t, nil)
 	require.NoError(t, err)
 	defer func() { _ = m.Close() }()
-
-	errCh := m.Err()
 
 	// Close the UDP socket directly to force Receiver.Run to error out.
 	var udp *UDPService
@@ -417,10 +365,10 @@ func TestClient_Liveness_Manager_ReceiverFailure_PropagatesOnErr(t *testing.T) {
 
 	// Expect an error to surface on Err().
 	select {
-	case e := <-errCh:
+	case e := <-m.Err():
 		require.Error(t, e)
 	case <-time.After(5 * time.Second):
-		t.Fatalf("timeout waiting for error from manager.Err after UDP close (len=%d)", len(errCh))
+		t.Fatalf("timeout waiting for error from manager.Err after UDP close")
 	}
 
 	// Close should complete cleanly after the receiver failure.
@@ -483,16 +431,9 @@ func TestClient_Liveness_Manager_AdminDownRoute_WithdrawsAndMarksAdminDown(t *te
 	})
 	require.NoError(t, m.RegisterRoute(r, "lo"))
 
-	var peer Peer
-	var sess *Session
-	func() {
-		m.mu.Lock()
-		defer m.mu.Unlock()
-		for p, s := range m.sessions {
-			peer, sess = p, s
-			break
-		}
-	}()
+	peer := Peer{Interface: "lo", LocalIP: r.Src.String(), PeerIP: r.Dst.IP.String()}
+	sess, ok := m.GetSession(peer)
+	require.True(t, ok)
 	require.NotNil(t, sess)
 
 	m.HandleRx(&ControlPacket{PeerDiscr: 0, LocalDiscr: 42, State: StateInit}, peer)
@@ -504,9 +445,7 @@ func TestClient_Liveness_Manager_AdminDownRoute_WithdrawsAndMarksAdminDown(t *te
 
 	rk := routeKeyFor(peer.Interface, sess.route)
 	time.Sleep(50 * time.Millisecond)
-	m.mu.Lock()
-	require.True(t, m.installed[rk], "route should be marked installed after Up")
-	m.mu.Unlock()
+	require.True(t, m.IsInstalled(rk), "route should be marked installed after Up")
 
 	m.AdminDownRoute(r, "lo")
 
@@ -515,25 +454,16 @@ func TestClient_Liveness_Manager_AdminDownRoute_WithdrawsAndMarksAdminDown(t *te
 	require.Equal(t, r.Src.String(), deleted.Src.String())
 	require.Equal(t, r.Dst.String(), deleted.Dst.String())
 
-	m.mu.Lock()
-	require.False(t, m.installed[rk], "route should be marked not installed after AdminDownRoute")
-	m.mu.Unlock()
+	require.False(t, m.IsInstalled(rk), "route should be marked not installed after AdminDownRoute")
 
-	sess.mu.Lock()
-	state := sess.state
-	downReason := sess.lastDownReason
-	downSince := sess.downSince
-	upSince := sess.upSince
-	detectDeadline := sess.detectDeadline
-	nextDetect := sess.nextDetectScheduled
-	sess.mu.Unlock()
+	snap := sess.Snapshot()
 
-	require.Equal(t, StateAdminDown, state)
-	require.Equal(t, DownReasonLocalAdmin, downReason)
-	require.False(t, downSince.IsZero(), "downSince should be set")
-	require.True(t, upSince.IsZero(), "upSince should be cleared")
-	require.True(t, detectDeadline.IsZero(), "detectDeadline should be cleared")
-	require.True(t, nextDetect.IsZero(), "nextDetectScheduled should be cleared")
+	require.Equal(t, StateAdminDown, snap.State)
+	require.Equal(t, DownReasonLocalAdmin, snap.LastDownReason)
+	require.False(t, snap.DownSince.IsZero(), "downSince should be set")
+	require.True(t, snap.UpSince.IsZero(), "upSince should be cleared")
+	require.True(t, snap.DetectDeadline.IsZero(), "detectDeadline should be cleared")
+	require.True(t, snap.NextDetectScheduled.IsZero(), "nextDetectScheduled should be cleared")
 }
 
 func TestClient_Liveness_Manager_AdminDownRoute_PassiveMode_NoDelete_Idempotent(t *testing.T) {
@@ -562,16 +492,9 @@ func TestClient_Liveness_Manager_AdminDownRoute_PassiveMode_NoDelete_Idempotent(
 
 	_ = wait(t, addCh, time.Second, "immediate RouteAdd in PassiveMode")
 
-	var peer Peer
-	var sess *Session
-	func() {
-		m.mu.Lock()
-		defer m.mu.Unlock()
-		for p, s := range m.sessions {
-			peer, sess = p, s
-			break
-		}
-	}()
+	peer := Peer{Interface: "lo", LocalIP: r.Src.String(), PeerIP: r.Dst.IP.String()}
+	sess, ok := m.GetSession(peer)
+	require.True(t, ok)
 	require.NotNil(t, sess)
 
 	m.HandleRx(&ControlPacket{PeerDiscr: 0, LocalDiscr: 7, State: StateInit}, peer)
@@ -579,9 +502,7 @@ func TestClient_Liveness_Manager_AdminDownRoute_PassiveMode_NoDelete_Idempotent(
 
 	rk := routeKeyFor(peer.Interface, sess.route)
 	time.Sleep(50 * time.Millisecond)
-	m.mu.Lock()
-	require.True(t, m.installed[rk], "installed should be true after Up even in PassiveMode")
-	m.mu.Unlock()
+	require.True(t, m.IsInstalled(rk), "installed should be true after Up even in PassiveMode")
 
 	m.AdminDownRoute(r, "lo")
 
@@ -591,16 +512,11 @@ func TestClient_Liveness_Manager_AdminDownRoute_PassiveMode_NoDelete_Idempotent(
 	case <-time.After(200 * time.Millisecond):
 	}
 
-	m.mu.Lock()
-	require.False(t, m.installed[rk], "installed should be false after AdminDownRoute even in PassiveMode")
-	m.mu.Unlock()
+	require.False(t, m.IsInstalled(rk), "installed should be false after AdminDownRoute even in PassiveMode")
 
-	sess.mu.Lock()
-	state := sess.state
-	downReason := sess.lastDownReason
-	sess.mu.Unlock()
-	require.Equal(t, StateAdminDown, state)
-	require.Equal(t, DownReasonLocalAdmin, downReason)
+	snap := sess.Snapshot()
+	require.Equal(t, StateAdminDown, snap.State)
+	require.Equal(t, DownReasonLocalAdmin, snap.LastDownReason)
 
 	m.AdminDownRoute(r, "lo")
 
@@ -637,16 +553,9 @@ func TestClient_Liveness_Manager_WithdrawRoute_PassiveMode_DeletesAndRemovesSess
 
 	_ = wait(t, addCh, time.Second, "immediate RouteAdd in PassiveMode")
 
-	var peer Peer
-	var sess *Session
-	func() {
-		m.mu.Lock()
-		defer m.mu.Unlock()
-		for p, s := range m.sessions {
-			peer, sess = p, s
-			break
-		}
-	}()
+	peer := Peer{Interface: "lo", LocalIP: r.Src.String(), PeerIP: r.Dst.IP.String()}
+	sess, ok := m.GetSession(peer)
+	require.True(t, ok)
 	require.NotNil(t, sess)
 
 	m.HandleRx(&ControlPacket{PeerDiscr: 0, LocalDiscr: 1, State: StateInit}, peer)
@@ -661,14 +570,10 @@ func TestClient_Liveness_Manager_WithdrawRoute_PassiveMode_DeletesAndRemovesSess
 	case <-time.After(200 * time.Millisecond):
 	}
 
-	m.mu.Lock()
-	_, still := m.sessions[peer]
-	m.mu.Unlock()
-	require.False(t, still, "session should be removed after withdraw in PassiveMode")
-
-	sess.mu.Lock()
-	require.False(t, sess.alive)
-	sess.mu.Unlock()
+	require.Equal(t, 0, m.GetInstalledLen(), "installed should be false after withdraw in PassiveMode")
+	require.Equal(t, 0, m.GetSessionsLen(), "session should be removed after withdraw in PassiveMode")
+	require.False(t, m.HasSession(peer), "session should be removed after withdraw in PassiveMode")
+	require.False(t, sess.alive, "session should be marked not alive after withdraw in PassiveMode")
 }
 
 func TestClient_Liveness_Manager_AdminDownRoute_NoSession_NoDelete(t *testing.T) {
@@ -768,16 +673,9 @@ func TestClient_Liveness_Manager_HandleRx_RemoteDownHonoredOnlyAfterDetectInterv
 	require.NoError(t, m.RegisterRoute(r, "lo"))
 
 	// Grab the session + peer.
-	var peer Peer
-	var sess *Session
-	func() {
-		m.mu.Lock()
-		defer m.mu.Unlock()
-		for p, s := range m.sessions {
-			peer, sess = p, s
-			break
-		}
-	}()
+	peer := Peer{Interface: "lo", LocalIP: r.Src.String(), PeerIP: r.Dst.IP.String()}
+	sess, ok := m.GetSession(peer)
+	require.True(t, ok)
 	require.NotNil(t, sess)
 
 	// Drive Down -> Init -> Up so the route is installed.
@@ -789,9 +687,7 @@ func TestClient_Liveness_Manager_HandleRx_RemoteDownHonoredOnlyAfterDetectInterv
 	rk := routeKeyFor(peer.Interface, sess.route)
 	time.Sleep(50 * time.Millisecond)
 
-	m.mu.Lock()
-	require.True(t, m.installed[rk], "route should be marked installed after Up")
-	m.mu.Unlock()
+	require.True(t, m.IsInstalled(rk), "route should be marked installed after Up")
 
 	// 1) Remote Down while UpFor < detect interval → should be ignored (no delete).
 	sess.mu.Lock()
@@ -810,9 +706,7 @@ func TestClient_Liveness_Manager_HandleRx_RemoteDownHonoredOnlyAfterDetectInterv
 	case <-time.After(200 * time.Millisecond):
 	}
 
-	m.mu.Lock()
-	require.True(t, m.installed[rk], "route should remain installed after early remote Down")
-	m.mu.Unlock()
+	require.True(t, m.IsInstalled(rk), "route should remain installed after early remote Down")
 
 	// 2) Remote Down after UpFor >= detect interval → should withdraw route.
 	var detect time.Duration
@@ -831,9 +725,7 @@ func TestClient_Liveness_Manager_HandleRx_RemoteDownHonoredOnlyAfterDetectInterv
 	require.Equal(t, r.Dst.String(), deleted.Dst.String())
 
 	time.Sleep(50 * time.Millisecond)
-	m.mu.Lock()
-	require.False(t, m.installed[rk], "route should be marked not installed after remote Down")
-	m.mu.Unlock()
+	require.False(t, m.IsInstalled(rk), "route should be marked not installed after remote Down")
 }
 
 func newTestManager(t *testing.T, mutate func(*ManagerConfig)) (*Manager, error) {
@@ -853,94 +745,4 @@ func newTestManager(t *testing.T, mutate func(*ManagerConfig)) (*Manager, error)
 		mutate(cfg)
 	}
 	return NewManager(t.Context(), cfg)
-}
-
-type testWriter struct {
-	t  *testing.T
-	mu sync.Mutex
-}
-
-func (w *testWriter) Write(p []byte) (int, error) {
-	w.t.Helper()
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	w.t.Logf("%s", p)
-	return len(p), nil
-}
-
-func newTestLogger(t *testing.T) *slog.Logger {
-	w := &testWriter{t: t}
-	h := slog.NewTextHandler(w, &slog.HandlerOptions{Level: slog.LevelInfo})
-	return slog.New(h)
-}
-
-func wait[T any](t *testing.T, ch <-chan T, d time.Duration, name string) T {
-	t.Helper()
-	select {
-	case v := <-ch:
-		return v
-	case <-time.After(d):
-		t.Fatalf("timeout waiting for %s", name)
-		var z T
-		return z
-	}
-}
-
-func newTestRoute(mutate func(*routing.Route)) *routing.Route {
-	r := &routing.Route{
-		Table:    100,
-		Src:      net.IPv4(10, 4, 0, 1),
-		Dst:      &net.IPNet{IP: net.IPv4(10, 4, 0, 11), Mask: net.CIDRMask(32, 32)},
-		NextHop:  net.IPv4(10, 5, 0, 1),
-		Protocol: unix.RTPROT_BGP,
-	}
-	if mutate != nil {
-		mutate(r)
-	}
-	return r
-}
-
-type MockRouteReaderWriter struct {
-	RouteAddFunc        func(*routing.Route) error
-	RouteDeleteFunc     func(*routing.Route) error
-	RouteGetFunc        func(net.IP) ([]*routing.Route, error)
-	RouteByProtocolFunc func(int) ([]*routing.Route, error)
-
-	mu sync.Mutex
-}
-
-func (m *MockRouteReaderWriter) RouteAdd(r *routing.Route) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.RouteAddFunc == nil {
-		return nil
-	}
-	return m.RouteAddFunc(r)
-}
-
-func (m *MockRouteReaderWriter) RouteDelete(r *routing.Route) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.RouteDeleteFunc == nil {
-		return nil
-	}
-	return m.RouteDeleteFunc(r)
-}
-
-func (m *MockRouteReaderWriter) RouteGet(ip net.IP) ([]*routing.Route, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.RouteGetFunc == nil {
-		return nil, nil
-	}
-	return m.RouteGetFunc(ip)
-}
-
-func (m *MockRouteReaderWriter) RouteByProtocol(protocol int) ([]*routing.Route, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.RouteByProtocolFunc == nil {
-		return nil, nil
-	}
-	return m.RouteByProtocolFunc(protocol)
 }

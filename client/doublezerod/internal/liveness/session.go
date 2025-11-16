@@ -358,31 +358,35 @@ func (s *Session) rxInterval() time.Duration {
 }
 
 type SessionSnapshot struct {
-	Peer           Peer
-	Route          routing.Route
-	State          State
-	LocalDiscr     uint32
-	PeerDiscr      uint32
-	ConvUpStart    time.Time
-	ConvDownStart  time.Time
-	UpSince        time.Time
-	DownSince      time.Time
-	LastDownReason DownReason
+	Peer                Peer
+	Route               routing.Route
+	State               State
+	LocalDiscr          uint32
+	PeerDiscr           uint32
+	ConvUpStart         time.Time
+	ConvDownStart       time.Time
+	UpSince             time.Time
+	DownSince           time.Time
+	LastDownReason      DownReason
+	DetectDeadline      time.Time
+	NextDetectScheduled time.Time
 }
 
 func (s *Session) Snapshot() SessionSnapshot {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return SessionSnapshot{
-		Peer:           *s.peer,
-		Route:          *s.route,
-		State:          s.state,
-		LocalDiscr:     s.localDiscr,
-		PeerDiscr:      s.peerDiscr,
-		ConvUpStart:    s.convUpStart,
-		ConvDownStart:  s.convDownStart,
-		UpSince:        s.upSince,
-		DownSince:      s.downSince,
-		LastDownReason: s.lastDownReason,
+		Peer:                *s.peer,
+		Route:               *s.route,
+		State:               s.state,
+		LocalDiscr:          s.localDiscr,
+		PeerDiscr:           s.peerDiscr,
+		ConvUpStart:         s.convUpStart,
+		ConvDownStart:       s.convDownStart,
+		UpSince:             s.upSince,
+		DownSince:           s.downSince,
+		LastDownReason:      s.lastDownReason,
+		DetectDeadline:      s.detectDeadline,
+		NextDetectScheduled: s.nextDetectScheduled,
 	}
 }

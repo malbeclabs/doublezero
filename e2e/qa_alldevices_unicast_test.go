@@ -5,10 +5,12 @@ package e2e
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"net"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/malbeclabs/doublezero/e2e/internal/qa"
 	"github.com/stretchr/testify/assert"
@@ -39,13 +41,20 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 	// Batch size is number of clients, but we never reuse devices within a batch.
 	batchSize := min(len(clients), len(devices))
 
+	// Random source used to shuffle clients so we don't always test the same client-device pairs.
+	rs := rand.New(rand.NewSource(time.Now().UnixNano()))
+
 	for start := 0; start < len(devices); start += batchSize {
 		end := min(start+batchSize, len(devices))
 		batch := devices[start:end]
 
-		// Use one client per device in this batch; if there are fewer devices than clients,
-		// we just use the first len(batch) clients and leave the rest idle this round.
-		activeClients := clients[:len(batch)]
+		// Take all clients, shuffle, then take the first len(batch)
+		shuffled := make([]*qa.Client, len(clients))
+		copy(shuffled, clients)
+		rs.Shuffle(len(shuffled), func(i, j int) {
+			shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
+		})
+		activeClients := shuffled[:len(batch)]
 
 		t.Run(fmt.Sprintf("batch_%d", (start/batchSize)+1), func(t *testing.T) {
 			log.Info("Testing batch", "devices", strings.Join(qa.Map(batch, func(d *qa.Device) string { return d.Code }), ","))

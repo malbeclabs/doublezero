@@ -2,6 +2,7 @@ package liveness
 
 import (
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
+	"golang.org/x/sys/unix"
 )
 
 // RouteReaderWriter is the minimal interface for interacting with the routing
@@ -51,5 +52,16 @@ func (m *routeReaderWriter) RouteDelete(r *routing.Route) error {
 // RouteByProtocol delegates to the underlying backend to list routes by
 // protocol ID without involving the Manager.
 func (m *routeReaderWriter) RouteByProtocol(protocol int) ([]*routing.Route, error) {
-	return m.rrw.RouteByProtocol(protocol)
+	if protocol != unix.RTPROT_BGP {
+		return m.rrw.RouteByProtocol(protocol)
+	}
+
+	// Return all routes that we are tracking, whether installed in the kernel or not.
+	// This method is used to flush routes when a BGP session is closed, so we need to  return
+	// all routes that need to be cleaned up.
+	routes := []*routing.Route{}
+	for _, sess := range m.lm.sessions {
+		routes = append(routes, sess.route)
+	}
+	return routes, nil
 }

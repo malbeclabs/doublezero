@@ -13,6 +13,7 @@ All notable changes to this project will be documented in this file.
 
 - Client
   - Switch to 64 byte latency probes instead of 32 bytes
+  - Route liveness admin-down signalling and ignore stale remote-down messages
 
 ## [v0.7.0](https://github.com/malbeclabs/doublezero/compare/client/v0.6.11...client/v0.7.0) – 2025-11-14
 

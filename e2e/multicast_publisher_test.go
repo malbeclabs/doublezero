@@ -4,6 +4,7 @@ package e2e_test
 
 import (
 	"fmt"
+	"net"
 	"strings"
 	"testing"
 	"time"
@@ -62,7 +63,14 @@ func checkMulticastPublisherPostConnect(t *testing.T, dn *TestDevnet, device *de
 	t.Run("check_post_connect", func(t *testing.T) {
 		dn.log.Info("==> Checking multicast publisher post-connect requirements")
 
-		expectedAllocatedClientIP, err := nextAllocatableIP(device.CYOANetworkIP, int(device.Spec.CYOANetworkAllocatablePrefix), map[string]bool{})
+		// Parse the dz_prefix to get the base IP and prefix length
+		// User IPs are allocated from the dz_prefix, not the public IP
+		dzPrefixIP, dzPrefixNet, err := parseCIDR(device.DZPrefix)
+		require.NoError(t, err)
+		ones, _ := dzPrefixNet.Mask.Size()
+		allocatableBits := 32 - ones // number of host bits
+
+		expectedAllocatedClientIP, err := nextAllocatableIP(dzPrefixIP, allocatableBits, map[string]bool{})
 		require.NoError(t, err)
 
 		if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {
@@ -325,4 +333,13 @@ func checkMulticastPublisherPostDisconnect(t *testing.T, dn *TestDevnet, device 
 
 		dn.log.Info("--> Multicast publisher post-disconnect requirements checked")
 	})
+}
+
+// parseCIDR parses a CIDR string and returns the IP and network.
+func parseCIDR(cidr string) (string, *net.IPNet, error) {
+	ip, network, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return "", nil, err
+	}
+	return ip.String(), network, nil
 }

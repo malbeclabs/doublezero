@@ -580,6 +580,10 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 		return nil, err
 	}
 
+	agentVersion := req.GetAgentVersion()
+	agentCommit := req.GetAgentCommit()
+	agentDate := req.GetAgentDate()
+
 	// Record metrics with device labels
 	getConfigOps.WithLabelValues(
 		req.GetPubkey(),
@@ -587,6 +591,9 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 		device.ContributorCode,
 		device.ExchangeCode,
 		device.LocationCode,
+		agentVersion,
+		agentCommit,
+		agentDate,
 	).Inc()
 
 	// compare peers from device to on-chain

@@ -7,10 +7,13 @@ All notable changes to this project will be documented in this file.
 ### Breaking
 
 ### Changes
+
 - RFCs
   - RFC9 Link Draining
-
-
+- Device controller
+  - Now accepts the config agent's version in the grpc GetConfig call and includes it as a label in the controller_grpc_getconfig_requests_total metric
+- Device Agent
+  - Now sends its version to the controller in the grpc GetConfig call
 - Client
   - Switch to 64 byte latency probes instead of 32 bytes
 

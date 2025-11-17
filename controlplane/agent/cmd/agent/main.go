@@ -37,7 +37,7 @@ var (
 	date    = "unknown"
 )
 
-func pollControllerAndConfigureDevice(ctx context.Context, dzclient pb.ControllerClient, eapiClient *arista.EAPIClient, pubkey string, verbose *bool, maxLockAge int) error {
+func pollControllerAndConfigureDevice(ctx context.Context, dzclient pb.ControllerClient, eapiClient *arista.EAPIClient, pubkey string, verbose *bool, maxLockAge int, agentVersion string, agentCommit string, agentDate string) error {
 	var err error
 
 	// The dz controller needs to know what BGP sessions we have configured locally
@@ -49,7 +49,7 @@ func pollControllerAndConfigureDevice(ctx context.Context, dzclient pb.Controlle
 	}
 
 	var configText string
-	configText, err = agent.GetConfigFromServer(ctx, dzclient, pubkey, neighborIpMap, controllerTimeoutInSeconds)
+	configText, err = agent.GetConfigFromServer(ctx, dzclient, pubkey, neighborIpMap, controllerTimeoutInSeconds, agentVersion, agentCommit, agentDate)
 	if err != nil {
 		log.Printf("pollControllerAndConfigureDevice failed to call agent.GetConfigFromServer: %q", err)
 		agent.ErrorsGetConfig.Inc()
@@ -126,7 +126,7 @@ func main() {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			err := pollControllerAndConfigureDevice(ctx, dzclient, eapiClient, *localDevicePubkey, verbose, *maxLockAge)
+			err := pollControllerAndConfigureDevice(ctx, dzclient, eapiClient, *localDevicePubkey, verbose, *maxLockAge, version, commit, date)
 			if err != nil {
 				log.Println("ERROR: pollAndConfigureDevice returned", err)
 			}

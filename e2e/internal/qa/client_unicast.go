@@ -79,9 +79,11 @@ func (c *Client) TestUnicastConnectivity(ctx context.Context, targetClient *Clie
 	var iface string
 	if clientDevice.ExchangeCode != otherClientDevice.ExchangeCode {
 		iface = unicastInterfaceName
+		c.log.Info("Pinging", "source", sourceIP, "target", targetIP, "iface", iface, "sourceExchange", clientDevice.ExchangeCode, "targetExchange", otherClientDevice.ExchangeCode)
+	} else {
+		c.log.Info("Pinging (intra-exchange routing)", "source", sourceIP, "target", targetIP, "exchange", clientDevice.ExchangeCode)
 	}
 
-	c.log.Info("Pinging", "source", sourceIP, "target", targetIP, "iface", iface)
 	ctx, cancel := context.WithTimeout(ctx, unicastPingTimeout)
 	defer cancel()
 	resp, err := c.grpcClient.Ping(ctx, &pb.PingRequest{

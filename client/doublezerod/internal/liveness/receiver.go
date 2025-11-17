@@ -177,6 +177,19 @@ func (r *Receiver) Run(ctx context.Context) error {
 			PeerIP:    peerAddr.IP.To4().String(),
 		}
 
+		// Log the control packet at DEBUG level.
+		r.log.Debug("liveness.recv: parsed control packet",
+			"iface", peer.Interface,
+			"localIP", peer.LocalIP,
+			"peerIP", peer.PeerIP,
+			"state", ctrl.State.String(),
+			"localDiscr", ctrl.LocalDiscr,
+			"peerDiscr", ctrl.PeerDiscr,
+			"detectMult", ctrl.DetectMult,
+			"desiredMinTxUs", ctrl.DesiredMinTxUs,
+			"requiredMinRxUs", ctrl.RequiredMinRxUs,
+		)
+
 		// Delegate to session or higher-level handler for processing.
 		r.handleRx(ctrl, peer)
 		metricHandleRxDuration.WithLabelValues(peer.Interface, peer.LocalIP).Observe(time.Since(start).Seconds())

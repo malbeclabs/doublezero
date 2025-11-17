@@ -25,19 +25,19 @@ const (
 
 // String returns a human-readable string representation of the state.
 //
-// Returns UNKNOWN(<state>) for unknown states.
+// Returns unknown(<state>) for unknown states.
 func (s State) String() string {
 	switch s {
 	case StateAdminDown:
-		return "ADMIN_DOWN"
+		return "admin_down"
 	case StateDown:
-		return "DOWN"
+		return "down"
 	case StateInit:
-		return "INIT"
+		return "init"
 	case StateUp:
-		return "UP"
+		return "up"
 	}
-	return fmt.Sprintf("UNKNOWN(%d)", s)
+	return fmt.Sprintf("unknown(%d)", s)
 }
 
 // ControlPacket represents the wire format of a minimal BFD control packet.

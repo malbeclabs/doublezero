@@ -93,6 +93,7 @@ async fn main() -> eyre::Result<()> {
                 FoundationAllowlistCommands::Add(args) => args.execute(&client, &mut handle),
                 FoundationAllowlistCommands::Remove(args) => args.execute(&client, &mut handle),
             },
+            GlobalConfigCommands::SetVersion(args) => args.execute(&client, &mut handle),
         },
         Command::Account(args) => args.execute(&dzclient, &mut handle),
         Command::Accounts(args) => args.execute(&dzclient, &mut handle),

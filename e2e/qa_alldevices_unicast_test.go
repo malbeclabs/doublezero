@@ -5,12 +5,10 @@ package e2e
 import (
 	"context"
 	"fmt"
-	"math/rand"
 	"net"
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/malbeclabs/doublezero/e2e/internal/qa"
 	"github.com/stretchr/testify/assert"
@@ -30,8 +28,9 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 	clients := test.Clients()
 	require.GreaterOrEqual(t, len(clients), 2, "At least 2 clients are required for connectivity testing")
 
-	// Filter devices to only include those with sufficient capacity and skip test devices.
-	devices := test.ValidDevices(2)
+	// Filter devices to only include those with sufficient capacity and skip test devices, and
+	// shuffle them to avoid always testing connectivity via the same devices.
+	devices := test.ShuffledValidDevices(2)
 	if len(devices) == 0 {
 		t.Skip("No valid devices found with sufficient capacity")
 	}
@@ -48,20 +47,11 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 		"totalBatches", len(devices)/batchSize,
 	)
 
-	// Random source used to shuffle clients so we don't always test the same client-device pairs.
-	rs := rand.New(rand.NewSource(time.Now().UnixNano()))
-
 	for start := 0; start < len(devices); start += batchSize {
 		end := min(start+batchSize, len(devices))
 		batch := devices[start:end]
 
-		// Take all clients, shuffle, then take the first len(batch)
-		shuffled := make([]*qa.Client, len(clients))
-		copy(shuffled, clients)
-		rs.Shuffle(len(shuffled), func(i, j int) {
-			shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
-		})
-		activeClients := shuffled[:len(batch)]
+		activeClients := clients[:len(batch)]
 
 		batchNumber := (start / batchSize) + 1
 		t.Run(fmt.Sprintf("batch_%d", batchNumber), func(t *testing.T) {

@@ -11,7 +11,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-func GetConfigFromServer(ctx context.Context, client pb.ControllerClient, localDevicePubkey string, neighborIpMap map[string][]string, controllerTimeoutInSeconds *float64) (config string, err error) {
+func GetConfigFromServer(ctx context.Context, client pb.ControllerClient, localDevicePubkey string, neighborIpMap map[string][]string, controllerTimeoutInSeconds *float64, agentVersion string, agentCommit string, agentDate string) (config string, err error) {
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(*controllerTimeoutInSeconds*float64(time.Second)))
 	defer cancel()
 
@@ -23,7 +23,7 @@ func GetConfigFromServer(ctx context.Context, client pb.ControllerClient, localD
 	}
 	slices.Sort(bgpPeers)
 
-	req := &pb.ConfigRequest{Pubkey: localDevicePubkey, BgpPeers: bgpPeers, BgpPeersByVrf: bgpPeersByVrf}
+	req := &pb.ConfigRequest{Pubkey: localDevicePubkey, BgpPeers: bgpPeers, BgpPeersByVrf: bgpPeersByVrf, AgentVersion: &agentVersion, AgentCommit: &agentCommit, AgentDate: &agentDate}
 	resp, err := client.GetConfig(ctx, req)
 	if err != nil {
 		log.Printf("Error calling GetConfig: %v\n", err)

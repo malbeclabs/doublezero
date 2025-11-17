@@ -9,10 +9,9 @@ All notable changes to this project will be documented in this file.
 ### Changes
 - RFCs
   - RFC9 Link Draining
-
-
 - Client
   - Switch to 64 byte latency probes instead of 32 bytes
+  - Fix two cases where errors returned by doublezerod to the local socket were not json-formatted
 
 ## [v0.7.0](https://github.com/malbeclabs/doublezero/compare/client/v0.6.11...client/v0.7.0) – 2025-11-14
 

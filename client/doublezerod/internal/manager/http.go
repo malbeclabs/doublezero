@@ -82,8 +82,9 @@ func (n *NetlinkManager) ServeStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	status, err := n.Status()
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte(fmt.Sprintf(`{"status": "error", "description": "error while getting status: %v"}`, err)))
+		slog.Error("error while getting status", "error", err)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`[{"doublezero_status": {"session_status": "error"}}]`))
 		return
 	}
 	if len(status) == 0 {
@@ -92,8 +93,9 @@ func (n *NetlinkManager) ServeStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err = json.NewEncoder(w).Encode(status); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte(fmt.Sprintf(`{"status": "error", "description": "error while encoding status: %v"}`, err)))
+		slog.Error("error while encoding status", "error", err)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`[{"doublezero_status": {"session_status": "error"}}]`))
 		return
 	}
 }

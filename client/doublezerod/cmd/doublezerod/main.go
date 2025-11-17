@@ -43,6 +43,7 @@ var (
 	routeLivenessMinTxFloor  = flag.Duration("route-liveness-min-tx-floor", defaultRouteLivenessMinTxFloor, "route liveness min tx floor")
 	routeLivenessMaxTxCeil   = flag.Duration("route-liveness-max-tx-ceil", defaultRouteLivenessMaxTxCeil, "route liveness max tx ceil")
 	routeLivenessPeerMetrics = flag.Bool("route-liveness-peer-metrics", false, "enables per peer metrics for route liveness (high cardinality)")
+	routeLivenessDebug       = flag.Bool("route-liveness-debug", false, "enables debug logging for route liveness")
 
 	// TODO(snormore): These flags are temporary for initial rollout testing.
 	// They will be superceded by a single `route-liveness-enable` flag, where false means
@@ -72,13 +73,11 @@ const (
 func main() {
 	flag.Parse()
 
-	opts := &slog.HandlerOptions{}
+	level := slog.LevelInfo
 	if *enableVerboseLogging {
-		opts = &slog.HandlerOptions{
-			Level: slog.LevelDebug,
-		}
+		level = slog.LevelDebug
 	}
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, opts))
+	logger := newLogger(level)
 	slog.SetDefault(logger)
 
 	if *versionFlag {
@@ -147,8 +146,12 @@ func main() {
 	// temporary for initial rollout testing.
 	var lmc *liveness.ManagerConfig
 	if *routeLivenessEnablePassive || *routeLivenessEnableActive {
+		log := logger
+		if *routeLivenessDebug {
+			log = newLogger(slog.LevelDebug)
+		}
 		lmc = &liveness.ManagerConfig{
-			Logger: slog.Default(),
+			Logger: log,
 			BindIP: defaultRouteLivenessBindIP,
 			Port:   defaultRouteLivenessPort,
 
@@ -172,4 +175,10 @@ func main() {
 		slog.Error("runtime error", "error", err)
 		os.Exit(1)
 	}
+}
+
+func newLogger(level slog.Level) *slog.Logger {
+	return slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: level,
+	}))
 }

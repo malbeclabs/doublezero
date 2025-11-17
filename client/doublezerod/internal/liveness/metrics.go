@@ -205,7 +205,7 @@ func emitSessionStateMetrics(sess *Session, prevState *State, operation string, 
 	if prevState != nil {
 		prevStateStr = prevState.String()
 	} else {
-		prevStateStr = "NEW"
+		prevStateStr = "new"
 	}
 	metricSessionTransitions.WithLabelValues(sess.peer.Interface, sess.peer.LocalIP, prevStateStr, sess.state.String(), operation).Inc()
 	metricSessions.WithLabelValues(sess.peer.Interface, sess.peer.LocalIP, sess.state.String()).Inc()

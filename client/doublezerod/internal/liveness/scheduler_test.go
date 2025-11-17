@@ -43,13 +43,14 @@ func TestClient_Liveness_Scheduler_TryExpireEnqueuesImmediateTX(t *testing.T) {
 	t.Parallel()
 
 	// minimal scheduler with a real EventQueue; udp/log not used here
-	s := &Scheduler{eq: NewEventQueue()}
+	s := &Scheduler{log: newTestLogger(t), eq: NewEventQueue()}
 	sess := &Session{
 		state:          StateUp,
 		detectDeadline: time.Now().Add(-time.Millisecond),
 		alive:          true,
 		detectMult:     1,
 		minTxFloor:     time.Millisecond,
+		peer:           &Peer{Interface: "eth0", LocalIP: "192.0.2.1"},
 	}
 	ok := s.tryExpire(sess)
 	require.True(t, ok)
@@ -66,7 +67,7 @@ func TestClient_Liveness_Scheduler_TryExpireEnqueuesImmediateTX(t *testing.T) {
 
 func TestClient_Liveness_Scheduler_ScheduleDetect_NoArmNoEnqueue(t *testing.T) {
 	t.Parallel()
-	s := &Scheduler{eq: NewEventQueue()}
+	s := &Scheduler{log: newTestLogger(t), eq: NewEventQueue()}
 	sess := &Session{alive: false} // ArmDetect will return false
 
 	s.scheduleDetect(time.Now(), sess)
@@ -75,7 +76,7 @@ func TestClient_Liveness_Scheduler_ScheduleDetect_NoArmNoEnqueue(t *testing.T) {
 
 func TestClient_Liveness_Scheduler_ScheduleDetect_EnqueuesDeadline(t *testing.T) {
 	t.Parallel()
-	s := &Scheduler{eq: NewEventQueue()}
+	s := &Scheduler{log: newTestLogger(t), eq: NewEventQueue()}
 	sess := &Session{
 		alive:          true,
 		detectDeadline: time.Now().Add(50 * time.Millisecond),
@@ -91,34 +92,41 @@ func TestClient_Liveness_Scheduler_ScheduleDetect_EnqueuesDeadline(t *testing.T)
 
 func TestClient_Liveness_Scheduler_TryExpire_Idempotent(t *testing.T) {
 	t.Parallel()
-	s := &Scheduler{eq: NewEventQueue()}
+	s := &Scheduler{log: newTestLogger(t), eq: NewEventQueue()}
 	sess := &Session{
 		state:          StateUp,
 		detectDeadline: time.Now().Add(-time.Millisecond),
 		alive:          true,
 		detectMult:     1,
 		minTxFloor:     time.Millisecond,
+		peer:           &Peer{Interface: "eth0", LocalIP: "192.0.2.1"},
 	}
 	require.True(t, s.tryExpire(sess))
 	require.False(t, s.tryExpire(sess)) // second call no effect
 }
 
-func TestClient_Liveness_Scheduler_ScheduleTx_NoEnqueueWhenAdminDown(t *testing.T) {
+func TestClient_Liveness_Scheduler_ScheduleTx_AdminDownAllowsSingleAdvert(t *testing.T) {
 	t.Parallel()
-	s := &Scheduler{eq: NewEventQueue()}
+	s := &Scheduler{log: newTestLogger(t), eq: NewEventQueue()}
 	sess := &Session{
 		state:      StateAdminDown,
 		alive:      true,
 		detectMult: 1,
 		minTxFloor: time.Millisecond,
+		peer:       &Peer{Interface: "eth0", LocalIP: "192.0.2.1"},
 	}
+
+	// Explicit call (like AdminDownRoute) should enqueue a TX event.
 	s.scheduleTx(time.Now(), sess)
-	require.Nil(t, s.eq.Pop(), "no TX should be scheduled while AdminDown")
+	ev := s.eq.Pop()
+	require.NotNil(t, ev, "AdminDown should still be able to schedule one TX advert")
+	require.Equal(t, eventTypeTX, ev.eventType)
+	require.Nil(t, s.eq.Pop(), "no additional TX should be queued by scheduleTx itself")
 }
 
 func TestClient_Liveness_Scheduler_ScheduleTx_AdaptiveBackoffWhenDown(t *testing.T) {
 	t.Parallel()
-	s := &Scheduler{eq: NewEventQueue()}
+	s := &Scheduler{log: newTestLogger(t), eq: NewEventQueue()}
 	sess := &Session{
 		state:         StateDown,
 		alive:         true,
@@ -218,7 +226,7 @@ func TestClient_Liveness_Scheduler_Run_SendsAndReschedules(t *testing.T) {
 func TestClient_Liveness_Scheduler_ScheduleDetect_DedupSameDeadline(t *testing.T) {
 	t.Parallel()
 
-	s := &Scheduler{eq: NewEventQueue()}
+	s := &Scheduler{log: newTestLogger(t), eq: NewEventQueue()}
 	sess := &Session{
 		alive:      true,
 		detectMult: 1,
@@ -250,7 +258,7 @@ func TestClient_Liveness_Scheduler_ScheduleDetect_DedupSameDeadline(t *testing.T
 func TestClient_Liveness_Scheduler_ScheduleDetect_AllowsNewDeadlineButStillDedupsPerDeadline(t *testing.T) {
 	t.Parallel()
 
-	s := &Scheduler{eq: NewEventQueue()}
+	s := &Scheduler{log: newTestLogger(t), eq: NewEventQueue()}
 	sess := &Session{
 		alive:      true,
 		detectMult: 1,
@@ -266,7 +274,7 @@ func TestClient_Liveness_Scheduler_ScheduleDetect_AllowsNewDeadlineButStillDedup
 	sess.detectDeadline = d1
 	sess.mu.Unlock()
 	s.scheduleDetect(base, sess)
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		s.scheduleDetect(base, sess)
 	}
 	require.Equal(t, 1, s.eq.CountFor("eth0", "192.0.2.1"))
@@ -276,7 +284,7 @@ func TestClient_Liveness_Scheduler_ScheduleDetect_AllowsNewDeadlineButStillDedup
 	sess.mu.Lock()
 	sess.detectDeadline = d2
 	sess.mu.Unlock()
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		s.scheduleDetect(base, sess)
 	}
 
@@ -298,7 +306,7 @@ func TestClient_Liveness_Scheduler_ScheduleDetect_AllowsNewDeadlineButStillDedup
 func TestClient_Liveness_Scheduler_ScheduleTx_DedupWhilePending(t *testing.T) {
 	t.Parallel()
 
-	s := &Scheduler{eq: NewEventQueue()}
+	s := &Scheduler{log: newTestLogger(t), eq: NewEventQueue()}
 	sess := &Session{
 		state:         StateInit,
 		alive:         true,
@@ -331,7 +339,7 @@ func TestClient_Liveness_Scheduler_ScheduleTx_DedupWhilePending(t *testing.T) {
 func TestClient_Liveness_Scheduler_ScheduleTx_AllowsRescheduleAfterPop(t *testing.T) {
 	t.Parallel()
 
-	s := &Scheduler{eq: NewEventQueue()}
+	s := &Scheduler{log: newTestLogger(t), eq: NewEventQueue()}
 	sess := &Session{
 		state:         StateInit,
 		alive:         true,
@@ -370,7 +378,7 @@ func TestClient_Liveness_Scheduler_ScheduleTx_AllowsRescheduleAfterPop(t *testin
 func TestClient_Liveness_Scheduler_ScheduleDetect_DropsOnOverflowAndClearsMarker(t *testing.T) {
 	t.Parallel()
 
-	s := &Scheduler{eq: NewEventQueue(), maxEvents: 1}
+	s := &Scheduler{log: newTestLogger(t), eq: NewEventQueue(), maxEvents: 1}
 	sess := &Session{
 		alive:      true,
 		detectMult: 1,
@@ -451,7 +459,7 @@ func TestClient_Liveness_Scheduler_Run_CullsStaleDetectAndClearsMarker(t *testin
 func TestClient_Liveness_Scheduler_ScheduleTx_NotDroppedByOverflow(t *testing.T) {
 	t.Parallel()
 
-	s := &Scheduler{eq: NewEventQueue(), maxEvents: 1}
+	s := &Scheduler{log: newTestLogger(t), eq: NewEventQueue(), maxEvents: 1}
 	sess := &Session{
 		state:         StateInit,
 		alive:         true,

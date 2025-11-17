@@ -14,6 +14,7 @@ use solana_program::{
     entrypoint::ProgramResult,
     pubkey::Pubkey,
 };
+use std::str::FromStr;
 
 pub fn initialize_global_state(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
@@ -40,6 +41,10 @@ pub fn initialize_global_state(program_id: &Pubkey, accounts: &[AccountInfo]) ->
             account_type: AccountType::ProgramConfig,
             bump_seed: program_config_bump_seed, // This is not used in this context
             version: ProgramVersion::current(),  // Default version for initialization
+            min_compatible_version: ProgramVersion::from_str(
+                crate::min_version::MIN_COMPATIBLE_VERSION,
+            )
+            .unwrap(),
         },
         program_id,
         payer_account,

@@ -110,9 +110,6 @@ state_file = "/var/lib/doublezero-contributor-rewards/scheduler.state"
 # Directory to store epoch snapshots (only used if storage_backend = "local-file")
 snapshot_dir = "/var/lib/doublezero-contributor-rewards/snapshots"
 
-# Maximum consecutive failures before halting
-max_consecutive_failures = 10
-
 # Enable dry run mode (no on-chain writes, but snapshots still upload to S3)
 enable_dry_run = false
 

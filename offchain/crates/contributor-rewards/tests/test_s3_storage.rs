@@ -36,7 +36,6 @@ fn create_test_settings(
             interval_seconds: 300,
             state_file: "/tmp/test.state".to_string(),
             snapshot_dir,
-            max_consecutive_failures: 10,
             enable_dry_run: false,
             storage_backend,
             grace_period_max_wait_seconds: 21600,

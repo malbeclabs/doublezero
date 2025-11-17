@@ -41,7 +41,6 @@ pub struct ScheduleWorker {
     keypair_path: Option<PathBuf>,
     dry_run: bool,
     interval: Duration,
-    max_consecutive_failures: u32,
 }
 
 impl ScheduleWorker {
@@ -54,7 +53,6 @@ impl ScheduleWorker {
         dry_run: bool,
         interval: Duration,
     ) -> Self {
-        let max_consecutive_failures = orchestrator.settings.scheduler.max_consecutive_failures;
         let snapshot_dir = PathBuf::from(&orchestrator.settings.scheduler.snapshot_dir);
         Self {
             orchestrator: orchestrator.clone(),
@@ -64,7 +62,6 @@ impl ScheduleWorker {
             keypair_path,
             dry_run,
             interval,
-            max_consecutive_failures,
         }
     }
 
@@ -75,10 +72,6 @@ impl ScheduleWorker {
         info!("  Interval: {:?}", self.interval);
         info!("  Dry run: {}", self.dry_run);
         info!("  State file: {:?}", self.state_file);
-        info!(
-            "  Max consecutive failures: {}",
-            self.max_consecutive_failures
-        );
 
         if self.dry_run {
             info!("  Running in DRY RUN mode - no chain writes will occur");
@@ -124,16 +117,6 @@ impl ScheduleWorker {
             // Mark that we're checking
             state.mark_check();
 
-            // Check if we're in failure state
-            if state.is_in_failure_state(self.max_consecutive_failures) {
-                error!(
-                    "Worker is in failure state ({} consecutive failures), halting",
-                    state.consecutive_failures
-                );
-                state.save(&self.state_file)?;
-                bail!("Too many consecutive failures");
-            }
-
             // Process rewards
             match self.process_rewards(&mut state).await {
                 Ok(processed) => {
@@ -155,9 +138,12 @@ impl ScheduleWorker {
                     metrics::counter!("doublezero_contributor_rewards_scheduler_failure")
                         .increment(1);
 
-                    // Continue running unless we hit max failures
-                    if !state.is_in_failure_state(self.max_consecutive_failures) {
-                        warn!("Will retry on next interval");
+                    // Alert every 10 consecutive failures for Grafana monitoring
+                    if state.consecutive_failures > 0 && state.consecutive_failures % 10 == 0 {
+                        error!(
+                            "Worker has failed {} consecutive times, continuing to retry at normal interval",
+                            state.consecutive_failures
+                        );
                     }
                 }
             }
@@ -170,7 +156,15 @@ impl ScheduleWorker {
     async fn process_rewards(&self, state: &mut SchedulerState) -> Result<bool> {
         // Get current epoch
         let fetcher = Fetcher::from_settings(&self.orchestrator.settings)?;
-        let epoch_info = fetcher.dz_rpc_client.get_epoch_info().await?;
+        let epoch_info = (|| async { fetcher.dz_rpc_client.get_epoch_info().await })
+            .retry(&ExponentialBuilder::default().with_jitter())
+            .notify(|err: &SolanaClientError, dur: Duration| {
+                info!(
+                    "retrying get_epoch_info error: {:?} with sleeping {:?}",
+                    err, dur
+                )
+            })
+            .await?;
         let current_epoch = epoch_info.epoch;
 
         // Target epoch is current - 1 (we process the previous completed epoch)

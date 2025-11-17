@@ -62,7 +62,6 @@ fn test_settings() -> settings::Settings {
             interval_seconds: 300,
             state_file: "/var/lib/doublezero-contributor-rewards/scheduler.state".to_string(),
             snapshot_dir: "/tmp/snapshots".to_string(),
-            max_consecutive_failures: 10,
             enable_dry_run: false,
             storage_backend: settings::aws::StorageBackend::LocalFile,
             grace_period_max_wait_seconds: 21600,

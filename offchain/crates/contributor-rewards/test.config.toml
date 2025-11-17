@@ -54,7 +54,6 @@ enable_previous_epoch_lookup = true
 interval_seconds = 300
 state_file = "/tmp/doublezero-contributor-rewards-test.state"
 snapshot_dir = "/tmp/doublezero-contributor-rewards-snapshots"
-max_consecutive_failures = 10
 enable_dry_run = false
 storage_backend = "s3"
 

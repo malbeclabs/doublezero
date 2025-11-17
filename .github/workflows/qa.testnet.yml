@@ -13,4 +13,4 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - run: go test -tags=qa -short -v ./e2e --args -hosts=sfo-tn-qa01,nyc-tn-qa01,fra-tn-qa01,sgp-tn-qa01 -env testnet -use-group mg01
+      - run: go test -tags=qa -short -v ./e2e --args -hosts=sfo-tn-qa01,nyc-tn-qa01,fra-tn-qa01,sgp-tn-qa01 -env testnet -multicast-group mg01

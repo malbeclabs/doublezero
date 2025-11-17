@@ -30,6 +30,7 @@ type QAAgentServiceClient interface {
 	ConnectMulticast(ctx context.Context, in *ConnectMulticastRequest, opts ...grpc.CallOption) (*Result, error)
 	GetStatus(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*StatusResponse, error)
 	GetPublicIP(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*GetPublicIPResponse, error)
+	GetRoutes(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*GetRoutesResponse, error)
 	Disconnect(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*Result, error)
 	Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingResult, error)
 	MulticastJoin(ctx context.Context, in *MulticastJoinRequest, opts ...grpc.CallOption) (*MulticastJoinResult, error)
@@ -109,6 +110,15 @@ func (c *qAAgentServiceClient) GetPublicIP(ctx context.Context, in *emptypb.Empt
 	return out, nil
 }
 
+func (c *qAAgentServiceClient) GetRoutes(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*GetRoutesResponse, error) {
+	out := new(GetRoutesResponse)
+	err := c.cc.Invoke(ctx, "/qa.QAAgentService/GetRoutes", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *qAAgentServiceClient) Disconnect(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*Result, error) {
 	out := new(Result)
 	err := c.cc.Invoke(ctx, "/qa.QAAgentService/Disconnect", in, out, opts...)
@@ -174,6 +184,7 @@ type QAAgentServiceServer interface {
 	ConnectMulticast(context.Context, *ConnectMulticastRequest) (*Result, error)
 	GetStatus(context.Context, *emptypb.Empty) (*StatusResponse, error)
 	GetPublicIP(context.Context, *emptypb.Empty) (*GetPublicIPResponse, error)
+	GetRoutes(context.Context, *emptypb.Empty) (*GetRoutesResponse, error)
 	Disconnect(context.Context, *emptypb.Empty) (*Result, error)
 	Ping(context.Context, *PingRequest) (*PingResult, error)
 	MulticastJoin(context.Context, *MulticastJoinRequest) (*MulticastJoinResult, error)
@@ -206,6 +217,9 @@ func (UnimplementedQAAgentServiceServer) GetStatus(context.Context, *emptypb.Emp
 }
 func (UnimplementedQAAgentServiceServer) GetPublicIP(context.Context, *emptypb.Empty) (*GetPublicIPResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetPublicIP not implemented")
+}
+func (UnimplementedQAAgentServiceServer) GetRoutes(context.Context, *emptypb.Empty) (*GetRoutesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetRoutes not implemented")
 }
 func (UnimplementedQAAgentServiceServer) Disconnect(context.Context, *emptypb.Empty) (*Result, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Disconnect not implemented")
@@ -363,6 +377,24 @@ func _QAAgentService_GetPublicIP_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _QAAgentService_GetRoutes_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QAAgentServiceServer).GetRoutes(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/qa.QAAgentService/GetRoutes",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QAAgentServiceServer).GetRoutes(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _QAAgentService_Disconnect_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(emptypb.Empty)
 	if err := dec(in); err != nil {
@@ -505,6 +537,10 @@ var QAAgentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetPublicIP",
 			Handler:    _QAAgentService_GetPublicIP_Handler,
+		},
+		{
+			MethodName: "GetRoutes",
+			Handler:    _QAAgentService_GetRoutes_Handler,
 		},
 		{
 			MethodName: "Disconnect",

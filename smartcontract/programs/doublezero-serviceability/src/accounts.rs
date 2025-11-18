@@ -47,8 +47,6 @@ pub fn write_account<'a, D: BorshSerialize + AccountSize + AccountSeed>(
     } else {
         // If the account is already initialized, we need to check if it has enough space
         if account.data_len() != required_space {
-            account.realloc(required_space, false)?;
-
             // If the account is not large enough, we need to transfer more lamports
             if required_space > account.data_len() {
                 let payment = required_lamports - account.lamports();
@@ -59,6 +57,9 @@ pub fn write_account<'a, D: BorshSerialize + AccountSize + AccountSeed>(
                     &[&[seed.as_slice()]],
                 )?;
             }
+
+            // Reallocate the account to the new size
+            account.realloc(required_space, false)?;
         }
     }
 

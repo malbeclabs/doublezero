@@ -7,17 +7,23 @@ All notable changes to this project will be documented in this file.
 ### Breaking
 
 ### Changes
+
+## [v0.7.1](https://github.com/malbeclabs/doublezero/compare/client/v0.7.0...client/v0.7.1) – 2025-11-18
+
+### Breaking
+
+- None for this release
+
+### Changes
+
 - RFCs
   - RFC9 Link Draining
-
 - Client
   - Switch to 64 byte latency probes instead of 32 bytes
   - Route liveness admin-down signalling and ignore stale remote-down messages
   - Added an on-chain minimum supported CLI version to allow multiple CLI versions to operate simultaneously.
-  
 - Smart contract
   - Delay V2 Interface Activation Until All Clients Support V2 Reading
-
 - Device controller
   - Now accepts the config agent's version in the grpc GetConfig call and includes it as a label in the controller_grpc_getconfig_requests_total metric
 - Device Agent

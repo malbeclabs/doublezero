@@ -2,10 +2,7 @@ use borsh::BorshSerialize;
 use doublezero_program_common::{
     create_account::try_create_account, resize_account::resize_account_if_needed,
 };
-use solana_program::{
-    account_info::AccountInfo, entrypoint::ProgramResult, program_error::ProgramError,
-    pubkey::Pubkey, system_program,
-};
+use solana_program::{account_info::AccountInfo, entrypoint::ProgramResult, pubkey::Pubkey};
 
 pub trait AccountSize {
     fn size(&self) -> usize;
@@ -48,24 +45,6 @@ pub fn write_account<'a, D: BorshSerialize + AccountSize + AccountSeed>(
 
     let mut account_data = &mut account.data.borrow_mut()[..];
     data.serialize(&mut account_data).unwrap();
-
-    Ok(())
-}
-
-pub fn account_close(
-    close_account: &AccountInfo,
-    receiving_account: &AccountInfo,
-) -> ProgramResult {
-    // Transfere the rent lamports to the receiving account
-    **receiving_account.lamports.borrow_mut() = receiving_account
-        .lamports()
-        .checked_add(close_account.lamports())
-        .ok_or(ProgramError::InsufficientFunds)?;
-    **close_account.lamports.borrow_mut() = 0;
-
-    // Close the account
-    close_account.realloc(0, false)?;
-    close_account.assign(&system_program::ID);
 
     Ok(())
 }

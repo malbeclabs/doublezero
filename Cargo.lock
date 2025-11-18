@@ -1636,6 +1636,9 @@ dependencies = [
  "serde",
  "serde_json",
  "solana-program",
+ "solana-program-test",
+ "solana-sdk",
+ "tokio",
 ]
 
 [[package]]

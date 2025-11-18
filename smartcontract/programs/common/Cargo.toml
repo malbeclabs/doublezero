@@ -21,4 +21,7 @@ ipnetwork.workspace = true
 solana-program.workspace = true
 
 [dev-dependencies]
+solana-program-test.workspace = true
+solana-sdk.workspace = true
 serde_json.workspace = true
+tokio.workspace = true

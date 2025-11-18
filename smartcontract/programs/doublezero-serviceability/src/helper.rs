@@ -6,18 +6,12 @@ use crate::{
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::AccountInfo, entrypoint::ProgramResult, program_error::ProgramError,
-    pubkey::Pubkey, system_program,
+    pubkey::Pubkey,
 };
 use std::{
     fmt::{self, Debug},
     net::Ipv4Addr,
 };
-
-use doublezero_program_common::{
-    create_account::try_create_account, resize_account::resize_account_if_needed,
-};
-#[cfg(test)]
-use solana_program::msg;
 
 pub fn account_create<'a, T>(
     account: &AccountInfo<'a>,
@@ -32,20 +26,12 @@ where
     // Validate the instance
     instance.validate()?;
 
-    let account_space = AccountTypeInfo::size(instance);
-
-    // Create the index account
-    try_create_account(
-        payer_account.key,  // Account paying for the new account
-        account.key,        // Account to be created
-        account.lamports(), // Current amount of lamports on the new account
-        account_space,      // Size in bytes to allocate for the data field
-        program_id,         // Set program owner to our program
-        &[
-            account.clone(),
-            payer_account.clone(),
-            system_program.clone(),
-        ],
+    doublezero_program_common::write_new_account(
+        account,
+        payer_account,
+        system_program,
+        program_id,
+        instance,
         &[
             SEED_PREFIX,
             instance.seed(),
@@ -53,12 +39,6 @@ where
             &[instance.bump_seed()],
         ],
     )?;
-
-    let mut account_data = &mut account.data.borrow_mut()[..];
-    instance.serialize(&mut account_data).unwrap();
-
-    #[cfg(test)]
-    msg!("Created: {:?}", instance);
 
     Ok(())
 }
@@ -74,19 +54,12 @@ where
 {
     instance.validate()?;
 
-    resize_account_if_needed(
+    doublezero_program_common::write_existing_account(
         account,
         payer_account,
-        &[
-            account.clone(),
-            payer_account.clone(),
-            system_program.clone(),
-        ],
-        instance.size(),
+        system_program,
+        instance,
     )?;
-
-    let data = &mut account.data.borrow_mut();
-    instance.serialize(&mut &mut data[..])?;
 
     Ok(())
 }
@@ -95,17 +68,7 @@ pub fn account_close(
     close_account: &AccountInfo,
     receiving_account: &AccountInfo,
 ) -> ProgramResult {
-    // Transfere the rent lamports to the receiving account
-    **receiving_account.lamports.borrow_mut() = receiving_account
-        .lamports()
-        .checked_add(close_account.lamports())
-        .ok_or(ProgramError::InsufficientFunds)?;
-    **close_account.lamports.borrow_mut() = 0;
-
-    // Close the account
-    close_account.realloc(0, false)?;
-    close_account.assign(&system_program::ID);
-
+    doublezero_program_common::close_account(close_account, receiving_account)?;
     Ok(())
 }
 

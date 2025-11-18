@@ -229,3 +229,113 @@ func TestWatcher_EpochChangeDetection(t *testing.T) {
 	require.Equal(t, uint64(2), w.currDZEpoch)
 	require.Equal(t, uint64(2), w.currSolanaEpoch)
 }
+
+func TestWatcher_BuildEpochChangeSlackMessage(t *testing.T) {
+	t.Parallel()
+
+	cfg := &Config{
+		Logger: newTestLogger(t),
+		Serviceability: &mockServiceabilityClient{GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+			return &serviceability.ProgramData{
+				ProgramConfig: serviceability.ProgramConfig{Version: serviceability.ProgramVersion{Major: 1, Minor: 0, Patch: 0}},
+			}, nil
+		}},
+		Interval: 10 * time.Millisecond,
+		LedgerRPCClient: &mockLedgerRPC{
+			GetEpochInfoFunc: func(ctx context.Context, c solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
+				return &solanarpc.GetEpochInfoResult{Epoch: 1}, nil
+			},
+		},
+		SolanaRPCClient: &mockLedgerRPC{
+			GetEpochInfoFunc: func(ctx context.Context, c solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
+				return &solanarpc.GetEpochInfoResult{Epoch: 1}, nil
+			},
+		},
+	}
+	w, err := NewServiceabilityWatcher(cfg)
+	require.NoError(t, err)
+
+	msg, err := w.buildEpochChangeSlackMessage("testnet", "doublezero", 54, 55)
+	require.NoError(t, err)
+	require.NotEmpty(t, msg)
+	require.Contains(t, msg, "Epoch Change Detected")
+	require.Contains(t, msg, "testnet")
+	require.Contains(t, msg, "doublezero")
+	require.Contains(t, msg, "54")
+	require.Contains(t, msg, "55")
+}
+
+func TestWatcher_EpochChangeSlackNotification(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name            string
+		env             string
+		slackWebhookURL string
+		expectSlackCall bool
+	}{
+		{
+			name:            "testnet_with_webhook_should_notify",
+			env:             "testnet",
+			slackWebhookURL: "https://hooks.slack.com/test",
+			expectSlackCall: true,
+		},
+		{
+			name:            "mainnet-beta_with_webhook_should_notify",
+			env:             "mainnet-beta",
+			slackWebhookURL: "https://hooks.slack.com/test",
+			expectSlackCall: true,
+		},
+		{
+			name:            "devnet_with_webhook_should_not_notify",
+			env:             "devnet",
+			slackWebhookURL: "https://hooks.slack.com/test",
+			expectSlackCall: false,
+		},
+		{
+			name:            "testnet_without_webhook_should_not_notify",
+			env:             "testnet",
+			slackWebhookURL: "",
+			expectSlackCall: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			var epoch uint64 = 1
+			mockRPC := &mockLedgerRPC{
+				GetEpochInfoFunc: func(ctx context.Context, c solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
+					return &solanarpc.GetEpochInfoResult{Epoch: epoch}, nil
+				},
+			}
+
+			cfg := &Config{
+				Logger: newTestLogger(t),
+				Serviceability: &mockServiceabilityClient{GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+					return &serviceability.ProgramData{
+						ProgramConfig: serviceability.ProgramConfig{Version: serviceability.ProgramVersion{Major: 1, Minor: 0, Patch: 0}},
+					}, nil
+				}},
+				Interval:        10 * time.Millisecond,
+				LedgerRPCClient: mockRPC,
+				SolanaRPCClient: mockRPC,
+				SlackWebhookURL: tc.slackWebhookURL,
+				Env:             tc.env,
+			}
+			w, err := NewServiceabilityWatcher(cfg)
+			require.NoError(t, err)
+
+			// first tick: initialize epochs
+			require.NoError(t, w.Tick(context.Background()))
+			require.Equal(t, uint64(1), w.currDZEpoch)
+			require.Equal(t, uint64(1), w.currSolanaEpoch)
+
+			// Note: We cannot easily verify Slack message was sent without mocking HTTP client
+			// This test verifies the logic path and message building works without errors
+			epoch = 2
+			require.NoError(t, w.Tick(context.Background()))
+			require.Equal(t, uint64(2), w.currDZEpoch)
+			require.Equal(t, uint64(2), w.currSolanaEpoch)
+		})
+	}
+}

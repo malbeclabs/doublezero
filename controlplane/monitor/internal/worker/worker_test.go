@@ -155,9 +155,9 @@ func TestMonitor_Worker(t *testing.T) {
 		done := make(chan struct{})
 		go func() { _ = w.Run(ctx); close(done) }()
 
-		time.Sleep(10 * time.Millisecond)
-		require.Equal(t, int32(1), started1.Load())
-		require.Equal(t, int32(1), started2.Load())
+		require.Eventually(t, func() bool {
+			return started1.Load() == 1 && started2.Load() == 1
+		}, 3*time.Second, 100*time.Millisecond)
 
 		cancel()
 		select {

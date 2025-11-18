@@ -74,6 +74,10 @@ Invariant: every supported version must read state written by any version in the
 
 This is one possible pattern; other approaches are fine as long as the compatibility window is preserved.
 
+### Future Generalization
+
+This proposal focuses on the CLI, but the same model can later support separate compatibility windows for components like the controller, device agents, or the activator. For now, a single unified window keeps things simpler until finer-grained versioning is needed.
+
 ## Security Considerations
 
 - **Window size** — A larger compatibility window keeps older code paths active longer, which increases maintenance and complicates auditing.

@@ -85,6 +85,7 @@ func (c *Client) GetMulticastGroup(ctx context.Context, code string) (*Multicast
 				PK:      solana.PublicKeyFromBytes(multicastGroup.PubKey[:]),
 				OwnerPK: solana.PublicKeyFromBytes(multicastGroup.Owner[:]),
 				IP:      net.IP(multicastGroup.MulticastIp[:]),
+				Status:  multicastGroup.Status,
 			}, nil
 		}
 	}
@@ -117,7 +118,7 @@ func (c *Client) CreateMulticastGroup(ctx context.Context, code string, maxBandw
 			c.log.Debug("Multicast group not found, waiting for it to be created", "host", c.Host, "code", code)
 			return false, nil
 		}
-		if group.Status == serviceability.MulticastGroupStatusActivated {
+		if group.Status != serviceability.MulticastGroupStatusActivated {
 			c.log.Debug("Multicast group not activated, waiting for it to be activated", "host", c.Host, "code", code, "pubkey", group.PK, "groupIP", group.IP, "status", group.Status)
 			return false, nil
 		}

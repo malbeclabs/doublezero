@@ -65,7 +65,7 @@ mod tests {
     use doublezero_program_common::types::NetworkV4List;
     use doublezero_sdk::{AccountType, CurrentInterfaceVersion, Device, DeviceStatus};
     use doublezero_serviceability::state::interface::{
-        InterfaceCYOA, InterfaceStatus, InterfaceType, LoopbackType, RoutingMode,
+        InterfaceStatus, InterfaceType, LoopbackType,
     };
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
@@ -99,12 +99,13 @@ mod tests {
                     name: "Ethernet0".to_string(),
                     interface_type: InterfaceType::Physical,
                     loopback_type: LoopbackType::None,
-                    interface_cyoa: InterfaceCYOA::None,
-                    interface_dia: doublezero_serviceability::state::interface::InterfaceDIA::None,
-                    bandwidth: 1000,
-                    cir: 500,
-                    mtu: 1500,
-                    routing_mode: RoutingMode::Static,
+                    // TODO: Uncomment this in next phase of InterfaceV2 rollout.
+                    // interface_cyoa: InterfaceCYOA::None,
+                    // interface_dia: doublezero_serviceability::state::interface::InterfaceDIA::None,
+                    // bandwidth: 1000,
+                    // cir: 500,
+                    // mtu: 1500,
+                    // routing_mode: RoutingMode::Static,
                     vlan_id: 0,
                     ip_net: "10.0.0.1/24".parse().unwrap(),
                     node_segment_idx: 12,
@@ -116,12 +117,13 @@ mod tests {
                     name: "Loopback0".to_string(),
                     interface_type: InterfaceType::Loopback,
                     loopback_type: LoopbackType::Vpnv4,
-                    interface_cyoa: InterfaceCYOA::None,
-                    interface_dia: doublezero_serviceability::state::interface::InterfaceDIA::None,
-                    bandwidth: 500,
-                    cir: 250,
-                    mtu: 1400,
-                    routing_mode: RoutingMode::Static,
+                    // TODO: Uncomment this in next phase of InterfaceV2 rollout.
+                    // interface_cyoa: InterfaceCYOA::None,
+                    // interface_dia: doublezero_serviceability::state::interface::InterfaceDIA::None,
+                    // bandwidth: 500,
+                    // cir: 250,
+                    // mtu: 1400,
+                    // routing_mode: RoutingMode::Static,
                     vlan_id: 16,
                     ip_net: "10.0.1.1/24".parse().unwrap(),
                     node_segment_idx: 13,

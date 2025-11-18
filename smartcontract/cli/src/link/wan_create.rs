@@ -237,7 +237,8 @@ mod tests {
                 ip_net: "10.2.0.1/24".parse().unwrap(),
                 node_segment_idx: 0,
                 user_tunnel_endpoint: true,
-                ..Default::default()
+                // TODO: Uncomment this in next phase of InterfaceV2 rollout.
+                // ..Default::default()
             }
             .to_interface()],
             max_users: 255,
@@ -271,7 +272,8 @@ mod tests {
                 ip_net: "10.2.0.2/24".parse().unwrap(),
                 node_segment_idx: 0,
                 user_tunnel_endpoint: true,
-                ..Default::default()
+                // TODO: Uncomment this in next phase of InterfaceV2 rollout.
+                // ..Default::default()
             }
             .to_interface()],
             max_users: 255,
@@ -305,7 +307,8 @@ mod tests {
                 ip_net: "10.2.0.3/24".parse().unwrap(),
                 node_segment_idx: 0,
                 user_tunnel_endpoint: true,
-                ..Default::default()
+                // TODO: Uncomment this in next phase of InterfaceV2 rollout.
+                // ..Default::default()
             }
             .to_interface()],
             max_users: 255,

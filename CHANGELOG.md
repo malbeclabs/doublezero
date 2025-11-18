@@ -7,18 +7,18 @@ All notable changes to this project will be documented in this file.
 ### Breaking
 
 ### Changes
+
 - RFCs
   - RFC9 Link Draining
-
-
 - Client
   - Switch to 64 byte latency probes instead of 32 bytes
   - Route liveness admin-down signalling and ignore stale remote-down messages
-
 - Device controller
   - Now accepts the config agent's version in the grpc GetConfig call and includes it as a label in the controller_grpc_getconfig_requests_total metric
 - Device Agent
   - Now sends its version to the controller in the grpc GetConfig call
+- Onchain programs
+  - Support reading device `InterfaceV2` but continue to write `InterfaceV1` for compatability window
 
 ## [v0.7.0](https://github.com/malbeclabs/doublezero/compare/client/v0.6.11...client/v0.7.0) – 2025-11-14
 

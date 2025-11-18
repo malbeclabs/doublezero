@@ -185,7 +185,8 @@ mod tests {
                 ip_net: "10.0.0.1/32".parse().unwrap(),
                 node_segment_idx: 0,
                 user_tunnel_endpoint: false,
-                ..Default::default()
+                // TODO: Uncomment this in next phase of InterfaceV2 rollout.
+                // ..Default::default()
             }
             .to_interface()],
             location_pk: Pubkey::default(),

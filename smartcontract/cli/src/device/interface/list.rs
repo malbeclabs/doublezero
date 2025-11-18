@@ -2,9 +2,7 @@ use crate::{doublezerocommand::CliCommand, validators::validate_pubkey_or_code};
 use clap::Args;
 use doublezero_program_common::types::NetworkV4;
 use doublezero_sdk::{commands::device::get::GetDeviceCommand, InterfaceType};
-use doublezero_serviceability::state::interface::{
-    InterfaceCYOA, InterfaceDIA, LoopbackType, RoutingMode,
-};
+use doublezero_serviceability::state::interface::LoopbackType;
 use serde::Serialize;
 use std::io::Write;
 use tabled::{settings::Style, Table, Tabled};
@@ -27,12 +25,13 @@ pub struct DeviceInterfaceDisplay {
     pub name: String,
     pub interface_type: InterfaceType,
     pub loopback_type: LoopbackType,
-    pub interface_cyoa: InterfaceCYOA,
-    pub interface_dia: InterfaceDIA,
-    pub bandwidth: u64,
-    pub cir: u64,
-    pub mtu: u16,
-    pub routing_mode: RoutingMode,
+    // TODO: Uncomment this in next phase of InterfaceV2 rollout.
+    // pub interface_cyoa: InterfaceCYOA,
+    // pub interface_dia: InterfaceDIA,
+    // pub bandwidth: u64,
+    // pub cir: u64,
+    // pub mtu: u16,
+    // pub routing_mode: RoutingMode,
     pub vlan_id: u16,
     pub ip_net: NetworkV4,
     pub node_segment_idx: u16,
@@ -57,12 +56,13 @@ impl ListDeviceInterfaceCliCommand {
                     name: iface.name.clone(),
                     interface_type: iface.interface_type,
                     loopback_type: iface.loopback_type,
-                    interface_cyoa: iface.interface_cyoa,
-                    interface_dia: iface.interface_dia,
-                    bandwidth: iface.bandwidth,
-                    cir: iface.cir,
-                    mtu: iface.mtu,
-                    routing_mode: iface.routing_mode,
+                    // TODO: Uncomment this in next phase of InterfaceV2 rollout.
+                    // interface_cyoa: iface.interface_cyoa,
+                    // interface_dia: iface.interface_dia,
+                    // bandwidth: iface.bandwidth,
+                    // cir: iface.cir,
+                    // mtu: iface.mtu,
+                    // routing_mode: iface.routing_mode,
                     vlan_id: iface.vlan_id,
                     ip_net: iface.ip_net,
                     node_segment_idx: iface.node_segment_idx,
@@ -131,13 +131,14 @@ mod tests {
                     name: "eth0".to_string(),
                     interface_type: InterfaceType::Physical,
                     loopback_type: LoopbackType::None,
-                    interface_cyoa:
-                        doublezero_serviceability::state::interface::InterfaceCYOA::None,
-                    interface_dia: doublezero_serviceability::state::interface::InterfaceDIA::None,
-                    bandwidth: 1000,
-                    cir: 500,
-                    mtu: 1500,
-                    routing_mode: doublezero_serviceability::state::interface::RoutingMode::Static,
+                    // TODO: Uncomment this in next phase of InterfaceV2 rollout.
+                    // interface_cyoa:
+                    //     doublezero_serviceability::state::interface::InterfaceCYOA::None,
+                    // interface_dia: doublezero_serviceability::state::interface::InterfaceDIA::None,
+                    // bandwidth: 1000,
+                    // cir: 500,
+                    // mtu: 1500,
+                    // routing_mode: doublezero_serviceability::state::interface::RoutingMode::Static,
                     vlan_id: 0,
                     ip_net: "10.0.0.1/24".parse().unwrap(),
                     node_segment_idx: 12,
@@ -149,13 +150,14 @@ mod tests {
                     name: "lo0".to_string(),
                     interface_type: InterfaceType::Loopback,
                     loopback_type: LoopbackType::Vpnv4,
-                    interface_cyoa:
-                        doublezero_serviceability::state::interface::InterfaceCYOA::None,
-                    interface_dia: doublezero_serviceability::state::interface::InterfaceDIA::None,
-                    bandwidth: 100,
-                    cir: 50,
-                    mtu: 1400,
-                    routing_mode: doublezero_serviceability::state::interface::RoutingMode::Static,
+                    // TODO: Uncomment this in next phase of InterfaceV2 rollout.
+                    // interface_cyoa:
+                    //     doublezero_serviceability::state::interface::InterfaceCYOA::None,
+                    // interface_dia: doublezero_serviceability::state::interface::InterfaceDIA::None,
+                    // bandwidth: 100,
+                    // cir: 50,
+                    // mtu: 1400,
+                    // routing_mode: doublezero_serviceability::state::interface::RoutingMode::Static,
                     vlan_id: 16,
                     ip_net: "10.0.1.1/24".parse().unwrap(),
                     node_segment_idx: 13,

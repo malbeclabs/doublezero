@@ -369,6 +369,24 @@ impl TryFrom<&InterfaceV1> for InterfaceV2 {
     }
 }
 
+// TODO: Remove this after InterfaceV2 rollout.
+impl TryFrom<&InterfaceV2> for InterfaceV1 {
+    type Error = ProgramError;
+
+    fn try_from(data: &InterfaceV2) -> Result<Self, Self::Error> {
+        Ok(Self {
+            status: data.status,
+            name: data.name.clone(),
+            interface_type: data.interface_type,
+            loopback_type: data.loopback_type,
+            vlan_id: data.vlan_id,
+            ip_net: data.ip_net,
+            node_segment_idx: data.node_segment_idx,
+            user_tunnel_endpoint: data.user_tunnel_endpoint,
+        })
+    }
+}
+
 impl Default for InterfaceV2 {
     fn default() -> Self {
         Self {
@@ -399,13 +417,17 @@ pub enum Interface {
     V2(InterfaceV2),
 }
 
-pub type CurrentInterfaceVersion = InterfaceV2;
+pub type CurrentInterfaceVersion = InterfaceV1;
 
 impl Interface {
     pub fn into_current_version(&self) -> CurrentInterfaceVersion {
         match self {
-            Interface::V1(v1) => v1.try_into().unwrap_or_default(),
-            Interface::V2(v2) => v2.clone(),
+            // TODO: Uncomment this in next phase of InterfaceV2 rollout.
+            // Interface::V1(v1) => v1.try_into().unwrap_or_default(),
+            // Interface::V2(v2) => v2.clone(),
+            // TODO: Remove this in next phase of InterfaceV2 rollout.
+            Interface::V1(v1) => v1.clone(),
+            Interface::V2(v2) => v2.try_into().unwrap_or_default(),
         }
     }
 

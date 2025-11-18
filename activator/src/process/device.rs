@@ -161,7 +161,8 @@ mod tests {
                         ip_net: NetworkV4::default(),
                         node_segment_idx: 0,
                         user_tunnel_endpoint: false,
-                        ..Default::default()
+                        // TODO: Uncomment this in next phase of InterfaceV2 rollout.
+                        // ..Default::default()
                     }
                     .to_interface(),
                     CurrentInterfaceVersion {
@@ -173,7 +174,8 @@ mod tests {
                         ip_net: NetworkV4::default(),
                         node_segment_idx: 0,
                         user_tunnel_endpoint: false,
-                        ..Default::default()
+                        // TODO: Uncomment this in next phase of InterfaceV2 rollout.
+                        // ..Default::default()
                     }
                     .to_interface(),
                 ],
@@ -343,7 +345,8 @@ mod tests {
                     ip_net: NetworkV4::default(),
                     node_segment_idx: 0,
                     user_tunnel_endpoint: false,
-                    ..Default::default()
+                    // TODO: Uncomment this in next phase of InterfaceV2 rollout.
+                    // ..Default::default()
                 }
                 .to_interface(),
                 CurrentInterfaceVersion {
@@ -355,7 +358,8 @@ mod tests {
                     ip_net: NetworkV4::default(),
                     node_segment_idx: 0,
                     user_tunnel_endpoint: false,
-                    ..Default::default()
+                    // TODO: Uncomment this in next phase of InterfaceV2 rollout.
+                    // ..Default::default()
                 }
                 .to_interface(),
             ],

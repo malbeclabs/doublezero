@@ -5,7 +5,7 @@ use crate::{
     state::{
         accounttype::AccountType,
         device::*,
-        interface::{InterfaceCYOA, InterfaceDIA, InterfaceStatus, LoopbackType, RoutingMode},
+        interface::{InterfaceStatus, LoopbackType},
     },
 };
 use borsh::BorshSerialize;
@@ -29,12 +29,13 @@ pub struct DeviceInterfaceUpdateArgs {
     pub status: Option<InterfaceStatus>,
     pub ip_net: Option<NetworkV4>,
     pub node_segment_idx: Option<u16>,
-    pub interface_cyoa: Option<InterfaceCYOA>,
-    pub interface_dia: Option<InterfaceDIA>,
-    pub bandwidth: Option<u64>,
-    pub cir: Option<u64>,
-    pub mtu: Option<u16>,
-    pub routing_mode: Option<RoutingMode>,
+    // TODO: Uncomment this in next phase of InterfaceV2 rollout.
+    // pub interface_cyoa: Option<InterfaceCYOA>,
+    // pub interface_dia: Option<InterfaceDIA>,
+    // pub bandwidth: Option<u64>,
+    // pub cir: Option<u64>,
+    // pub mtu: Option<u16>,
+    // pub routing_mode: Option<RoutingMode>,
 }
 
 impl fmt::Debug for DeviceInterfaceUpdateArgs {
@@ -117,24 +118,25 @@ pub fn process_update_device_interface(
         }
         iface.loopback_type = *loopback_type;
     }
-    if let Some(interface_cyoa) = &value.interface_cyoa {
-        iface.interface_cyoa = *interface_cyoa;
-    }
-    if let Some(interface_dia) = &value.interface_dia {
-        iface.interface_dia = *interface_dia;
-    }
-    if let Some(bandwidth) = value.bandwidth {
-        iface.bandwidth = bandwidth;
-    }
-    if let Some(cir) = value.cir {
-        iface.cir = cir;
-    }
-    if let Some(mtu) = value.mtu {
-        iface.mtu = mtu;
-    }
-    if let Some(routing_mode) = value.routing_mode {
-        iface.routing_mode = routing_mode;
-    }
+    // TODO: Uncomment this in next phase of InterfaceV2 rollout.
+    // if let Some(interface_cyoa) = &value.interface_cyoa {
+    //     iface.interface_cyoa = *interface_cyoa;
+    // }
+    // if let Some(interface_dia) = &value.interface_dia {
+    //     iface.interface_dia = *interface_dia;
+    // }
+    // if let Some(bandwidth) = value.bandwidth {
+    //     iface.bandwidth = bandwidth;
+    // }
+    // if let Some(cir) = value.cir {
+    //     iface.cir = cir;
+    // }
+    // if let Some(mtu) = value.mtu {
+    //     iface.mtu = mtu;
+    // }
+    // if let Some(routing_mode) = value.routing_mode {
+    //     iface.routing_mode = routing_mode;
+    // }
     if let Some(vlan_id) = value.vlan_id {
         iface.vlan_id = vlan_id;
     }

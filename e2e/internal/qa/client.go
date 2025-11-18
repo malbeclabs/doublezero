@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/cenkalti/backoff/v4"
 	"github.com/gagliardetto/solana-go"
 	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/config"
@@ -32,6 +33,9 @@ const (
 	waitForRoutesTimeout = 90 * time.Second
 
 	waitInterval = 1 * time.Second
+
+	grpcDialTimeout    = 10 * time.Second
+	grpcDialMaxRetries = 5
 
 	UserStatusUp           = "up"
 	UserStatusDisconnected = "disconnected"
@@ -58,7 +62,7 @@ type Client struct {
 
 func NewClient(ctx context.Context, log *slog.Logger, hostname string, port int, networkConfig *config.NetworkConfig, devices map[string]*Device) (*Client, error) {
 	target := net.JoinHostPort(hostname, strconv.Itoa(port))
-	grpcConn, err := grpc.NewClient(target, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	grpcConn, err := newClientWithRetry(ctx, target, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create gRPC client: %v", err)
 	}
@@ -284,4 +288,36 @@ func (c *Client) waitForStatus(ctx context.Context, wantStatus string, timeout t
 		}
 		return true, nil
 	}, timeout, interval)
+}
+
+func newClientWithRetry(ctx context.Context, target string, opts ...grpc.DialOption) (*grpc.ClientConn, error) {
+	var conn *grpc.ClientConn
+
+	operation := func() error {
+		attemptCtx, cancel := context.WithTimeout(ctx, grpcDialTimeout)
+		defer cancel()
+
+		c, err := grpc.NewClient(target, append(opts, grpc.WithBlock())...)
+		if err != nil {
+			return err
+		}
+
+		if attemptCtx.Err() != nil {
+			_ = c.Close()
+			return attemptCtx.Err()
+		}
+
+		conn = c
+		return nil
+	}
+
+	exp := backoff.NewExponentialBackOff()
+	retryPolicy := backoff.WithMaxRetries(exp, grpcDialMaxRetries)
+	retryPolicy = backoff.WithContext(retryPolicy, ctx)
+
+	if err := backoff.Retry(operation, retryPolicy); err != nil {
+		return nil, fmt.Errorf("failed to dial %s after retries: %w", target, err)
+	}
+
+	return conn, nil
 }

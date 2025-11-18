@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- RFCs
+  - RFC-10: Version Compatibility Windows
 - CLI
     - IP address lookups via ifconfig.me are retried up to 3 times to minimize transient network errors.
 

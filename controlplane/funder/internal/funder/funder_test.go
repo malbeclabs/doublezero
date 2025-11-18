@@ -307,10 +307,11 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 			_ = f.Run(ctx)
 		}()
 
-		time.Sleep(10 * time.Millisecond)
-		cancel()
+		require.Eventually(t, func() bool {
+			return funderBalance.Load() >= 1
+		}, 3*time.Second, 100*time.Millisecond)
 
-		require.GreaterOrEqual(t, funderBalance.Load(), int32(1))
+		cancel()
 	})
 
 	t.Run("skips loop when GetRecipientsFunc returns error", func(t *testing.T) {

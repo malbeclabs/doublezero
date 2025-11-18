@@ -180,6 +180,12 @@ func main() {
 				recipients = append(recipients, funder.NewRecipient(name, solana.PublicKeyFromBytes(device.MetricsPublisherPubKey[:])))
 			}
 
+			for _, mcastgroup := range data.MulticastGroups {
+				mcastgroupPK := solana.PublicKeyFromBytes(mcastgroup.PubKey[:])
+				name := fmt.Sprintf("mcastgroup-%s", mcastgroupPK.String())
+				recipients = append(recipients, funder.NewRecipient(name, solana.PublicKeyFromBytes(mcastgroup.Owner[:])))
+			}
+
 			recipients = append(recipients, funder.NewRecipient("internet-latency-collector", internetLatencyCollectorPK))
 
 			return recipients, nil

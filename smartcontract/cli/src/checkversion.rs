@@ -12,7 +12,7 @@ pub fn check_version<C: CliCommand, W: Write>(
         // Compare the program version with the client version
         // If the program version is incompatible, return an error
         if client_version < pconfig.min_compatible_version {
-            eyre::bail!("Your client version is no longer up to date. Please update it before continuing to use the client.")
+            eyre::bail!("A new version of the client is available: {} → {}\nYour client version is no longer up to date. Please update it before continuing to use the client.", client_version, pconfig.min_compatible_version);
         }
         // Warn the user if their client version is older than the program version
         if client_version < pconfig.version {
@@ -111,5 +111,23 @@ mod tests {
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(output_str, "A new version of the client is available: 1.2.0 → 1.5.10\nWe recommend updating to the latest version for the best experience.\n");
+    }
+
+    #[test]
+    fn test_check_version_build_error() {
+        let mut output = Vec::new();
+        let res = test_check_version(
+            &mut output,
+            ProgramVersion::new(1, 5, 10),
+            ProgramVersion::new(1, 1, 0),
+            ProgramVersion::new(1, 0, 0),
+        );
+        assert!(res.is_err());
+        assert_eq!(
+            res.unwrap_err().to_string(),
+            "A new version of the client is available: 1.0.0 → 1.1.0\nYour client version is no longer up to date. Please update it before continuing to use the client."
+        );
+        let output_str = String::from_utf8(output).unwrap();
+        assert_eq!(output_str, "");
     }
 }

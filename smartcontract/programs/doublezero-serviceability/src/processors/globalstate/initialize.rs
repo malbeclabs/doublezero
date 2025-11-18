@@ -38,36 +38,21 @@ pub fn initialize_global_state(program_id: &Pubkey, accounts: &[AccountInfo]) ->
     );
 
     // Initialize or update the ProgramConfig account
-    if program_config_account.data_is_empty() {
-        write_account(
-            program_config_account,
-            &ProgramConfig {
-                account_type: AccountType::ProgramConfig,
-                bump_seed: program_config_bump_seed, // This is not used in this context
-                version: ProgramVersion::current(),  // Default version for initialization
-                min_compatible_version: ProgramVersion::from_str(
-                    crate::min_version::MIN_COMPATIBLE_VERSION,
-                )
-                .unwrap(),
-            },
-            program_id,
-            payer_account,
-            system_program,
-        )?;
-    } else {
-        let mut config = ProgramConfig::try_from(program_config_account)?;
-        // Update to the current version if needed
-        config.version = ProgramVersion::current();
-        config.min_compatible_version =
-            ProgramVersion::from_str(crate::min_version::MIN_COMPATIBLE_VERSION).unwrap();
-        write_account(
-            program_config_account,
-            &config,
-            program_id,
-            payer_account,
-            system_program,
-        )?;
-    }
+    write_account(
+        program_config_account,
+        &ProgramConfig {
+            account_type: AccountType::ProgramConfig,
+            bump_seed: program_config_bump_seed, // This is not used in this context
+            version: ProgramVersion::current(),  // Default version for initialization
+            min_compatible_version: ProgramVersion::from_str(
+                crate::min_version::MIN_COMPATIBLE_VERSION,
+            )
+            .unwrap(),
+        },
+        program_id,
+        payer_account,
+        system_program,
+    )?;
 
     let (expected_pda_account, bump_seed) = get_globalstate_pda(program_id);
     assert_eq!(

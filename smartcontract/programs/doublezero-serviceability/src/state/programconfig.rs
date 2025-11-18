@@ -7,14 +7,17 @@ use crate::{
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
-use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError};
+use solana_program::{
+    account_info::AccountInfo, entrypoint::ProgramResult, msg, program_error::ProgramError,
+};
 
 #[derive(BorshSerialize, Debug, PartialEq, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ProgramConfig {
-    pub account_type: AccountType, // 1
-    pub bump_seed: u8,             // 1
-    pub version: ProgramVersion,   // 12
+    pub account_type: AccountType,              // 1
+    pub bump_seed: u8,                          // 1
+    pub version: ProgramVersion,                // 12
+    pub min_compatible_version: ProgramVersion, // 12
 }
 
 impl fmt::Display for ProgramConfig {
@@ -40,6 +43,7 @@ impl AccountSize for ProgramConfig {
         1 // account_type
             + 1 // bump_seed
             + 12 // version (major + minor + patch)
+            + 12 // min_compatible_version (major + minor + patch)
     }
 }
 
@@ -51,6 +55,11 @@ impl TryFrom<&[u8]> for ProgramConfig {
             account_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             bump_seed: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             version: ProgramVersion {
+                major: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+                minor: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+                patch: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            },
+            min_compatible_version: ProgramVersion {
                 major: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
                 minor: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
                 patch: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
@@ -78,6 +87,14 @@ impl TryFrom<&AccountInfo<'_>> for ProgramConfig {
             );
         }
         res
+    }
+}
+impl ProgramConfig {
+    pub fn try_serialize(&self, account: &AccountInfo) -> ProgramResult {
+        let mut data = &mut account.data.borrow_mut()[..];
+        self.serialize(&mut data)?;
+
+        Ok(())
     }
 }
 
@@ -116,6 +133,10 @@ mod tests {
         assert_eq!(val.version.major, 0);
         assert_eq!(val.version.minor, 0);
         assert_eq!(val.version.patch, 0);
+
+        assert_eq!(val.min_compatible_version.major, 0);
+        assert_eq!(val.min_compatible_version.minor, 0);
+        assert_eq!(val.min_compatible_version.patch, 0);
     }
 
     #[test]
@@ -128,6 +149,7 @@ mod tests {
                 minor: 2,
                 patch: 3,
             },
+            min_compatible_version: ProgramVersion::default(),
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -152,6 +174,11 @@ mod tests {
                 major: 1,
                 minor: 2,
                 patch: 3,
+            },
+            min_compatible_version: ProgramVersion {
+                major: 1,
+                minor: 0,
+                patch: 0,
             },
         };
         let err = val.validate();

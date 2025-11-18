@@ -46,7 +46,7 @@ use doublezero_sdk::{
         globalconfig::set::SetGlobalConfigCommand,
         globalstate::{
             init::InitGlobalStateCommand, setairdrop::SetAirdropCommand,
-            setauthority::SetAuthorityCommand,
+            setauthority::SetAuthorityCommand, setversion::SetVersionCommand,
         },
         link::{
             accept::AcceptLinkCommand, activate::ActivateLinkCommand,
@@ -127,6 +127,7 @@ pub trait CliCommand {
     fn set_airdrop(&self, cmd: SetAirdropCommand) -> eyre::Result<Signature>;
     fn set_authority(&self, cmd: SetAuthorityCommand) -> eyre::Result<Signature>;
     fn set_globalconfig(&self, cmd: SetGlobalConfigCommand) -> eyre::Result<Signature>;
+    fn set_minversion(&self, cmd: SetVersionCommand) -> eyre::Result<Signature>;
 
     fn create_location(&self, cmd: CreateLocationCommand) -> eyre::Result<(Signature, Pubkey)>;
     fn get_location(&self, cmd: GetLocationCommand) -> eyre::Result<(Pubkey, Location)>;
@@ -342,6 +343,9 @@ impl CliCommand for CliCommandImpl<'_> {
         cmd.execute(self.client)
     }
     fn set_globalconfig(&self, cmd: SetGlobalConfigCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn set_minversion(&self, cmd: SetVersionCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
 

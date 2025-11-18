@@ -9,6 +9,7 @@ use doublezero_cli::{
         authority::{get::GetAuthorityCliCommand, set::SetAuthorityCliCommand},
         get::GetGlobalConfigCliCommand,
         set::SetGlobalConfigCliCommand,
+        setversion::SetVersionCliCommand,
     },
 };
 
@@ -35,6 +36,9 @@ pub enum GlobalConfigCommands {
     /// Manage the foundation allowlist
     #[clap()]
     Allowlist(FoundationAllowlistCliCommand),
+    /// Set the minimum compatible client version
+    #[clap(hide = true)]
+    SetVersion(SetVersionCliCommand),
 }
 
 #[derive(Args, Debug)]

@@ -33,7 +33,9 @@ use crate::processors::{
         setdevice::ExchangeSetDeviceArgs, suspend::ExchangeSuspendArgs, update::ExchangeUpdateArgs,
     },
     globalconfig::set::SetGlobalConfigArgs,
-    globalstate::{setairdrop::SetAirdropArgs, setauthority::SetAuthorityArgs},
+    globalstate::{
+        setairdrop::SetAirdropArgs, setauthority::SetAuthorityArgs, setversion::SetVersionArgs,
+    },
     link::{
         accept::LinkAcceptArgs, activate::LinkActivateArgs, closeaccount::LinkCloseAccountArgs,
         create::LinkCreateArgs, delete::LinkDeleteArgs, reject::LinkRejectArgs,
@@ -170,6 +172,8 @@ pub enum DoubleZeroInstruction {
     UpdateDeviceInterface(DeviceInterfaceUpdateArgs),     // variant 76
     UnlinkDeviceInterface(DeviceInterfaceUnlinkArgs),     // variant 77
     RejectDeviceInterface(DeviceInterfaceRejectArgs),     // variant 78
+
+    SetMinVersion(SetVersionArgs), // variant 79
 }
 
 impl DoubleZeroInstruction {
@@ -275,6 +279,8 @@ impl DoubleZeroInstruction {
             77 => Ok(Self::UnlinkDeviceInterface(DeviceInterfaceUnlinkArgs::try_from(rest).unwrap())),
             78 => Ok(Self::RejectDeviceInterface(DeviceInterfaceRejectArgs::try_from(rest).unwrap())),
 
+            79 => Ok(Self::SetMinVersion(SetVersionArgs::try_from(rest).unwrap())),
+
             _ => Err(ProgramError::InvalidInstructionData),
         }
     }
@@ -377,6 +383,8 @@ impl DoubleZeroInstruction {
             Self::UpdateDeviceInterface(_) => "UpdateDeviceInterface".to_string(),     // variant 76
             Self::UnlinkDeviceInterface(_) => "UnlinkDeviceInterface".to_string(),     // variant 77
             Self::RejectDeviceInterface(_) => "RejectDeviceInterface".to_string(),     // variant 78
+
+            Self::SetMinVersion(_) => "SetMinVersion".to_string(), // variant 79
         }
     }
 
@@ -472,6 +480,8 @@ impl DoubleZeroInstruction {
             Self::UpdateDeviceInterface(args) => format!("{args:?}"),   // variant 76
             Self::UnlinkDeviceInterface(args) => format!("{args:?}"),   // variant 77
             Self::RejectDeviceInterface(args) => format!("{args:?}"),   // variant 78
+
+            Self::SetMinVersion(args) => format!("{args:?}"), // variant 79
         }
     }
 }
@@ -1021,6 +1031,12 @@ mod tests {
                 name: "name".to_string(),
             }),
             "RejectDeviceInterface",
+        );
+        test_instruction(
+            DoubleZeroInstruction::SetMinVersion(SetVersionArgs {
+                min_compatible_version: "1.0.0".parse().unwrap(),
+            }),
+            "SetMinVersion",
         );
     }
 }

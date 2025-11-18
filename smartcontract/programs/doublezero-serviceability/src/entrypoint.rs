@@ -45,7 +45,7 @@ use crate::{
         globalconfig::set::process_set_globalconfig,
         globalstate::{
             initialize::initialize_global_state, setairdrop::process_set_airdrop,
-            setauthority::process_set_authority,
+            setauthority::process_set_authority, setversion::process_set_version,
         },
         link::{
             accept::process_accept_link, activate::process_activate_link,
@@ -338,6 +338,9 @@ pub fn process_instruction(
         }
         DoubleZeroInstruction::RejectDeviceInterface(value) => {
             process_reject_device_interface(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::SetMinVersion(value) => {
+            process_set_version(program_id, accounts, &value)?
         }
     };
     Ok(())

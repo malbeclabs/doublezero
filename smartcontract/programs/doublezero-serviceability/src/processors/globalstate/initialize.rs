@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use crate::{
     accounts::write_account,
     pda::*,
@@ -34,12 +36,18 @@ pub fn initialize_global_state(program_id: &Pubkey, accounts: &[AccountInfo]) ->
         program_config_account.key, &program_config_pda,
         "Invalid ProgramConfig PubKey"
     );
+
+    // Initialize or update the ProgramConfig account
     write_account(
         program_config_account,
         &ProgramConfig {
             account_type: AccountType::ProgramConfig,
             bump_seed: program_config_bump_seed, // This is not used in this context
             version: ProgramVersion::current(),  // Default version for initialization
+            min_compatible_version: ProgramVersion::from_str(
+                crate::min_version::MIN_COMPATIBLE_VERSION,
+            )
+            .unwrap(),
         },
         program_id,
         payer_account,

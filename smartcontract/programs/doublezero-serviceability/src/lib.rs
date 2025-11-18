@@ -3,6 +3,7 @@
 pub mod entrypoint;
 mod globalstate;
 mod helper;
+mod min_version;
 
 pub mod accounts;
 pub mod addresses;

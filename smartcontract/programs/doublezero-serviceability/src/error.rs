@@ -121,6 +121,8 @@ pub enum DoubleZeroError {
     InvalidInterfaceType, // variant 57
     #[error("Invalid Loopback Type")]
     InvalidLoopbackType, // variant 58
+    #[error("Invalid Minimum Compatible Version")]
+    InvalidMinCompatibleVersion, // variant 59
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -185,6 +187,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::InterfaceAlreadyExists => ProgramError::Custom(56),
             DoubleZeroError::InvalidInterfaceType => ProgramError::Custom(57),
             DoubleZeroError::InvalidLoopbackType => ProgramError::Custom(58),
+            DoubleZeroError::InvalidMinCompatibleVersion => ProgramError::Custom(59),
         }
     }
 }
@@ -250,6 +253,7 @@ impl From<u32> for DoubleZeroError {
             56 => DoubleZeroError::InterfaceAlreadyExists,
             57 => DoubleZeroError::InvalidInterfaceType,
             58 => DoubleZeroError::InvalidLoopbackType,
+            59 => DoubleZeroError::InvalidMinCompatibleVersion,
             _ => DoubleZeroError::Custom(e),
         }
     }
@@ -335,6 +339,7 @@ mod tests {
             InterfaceAlreadyExists,
             InvalidInterfaceType,
             InvalidLoopbackType,
+            InvalidMinCompatibleVersion,
         ];
         for err in variants {
             let pe: ProgramError = err.clone().into();

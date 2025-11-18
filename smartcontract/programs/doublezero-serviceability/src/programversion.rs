@@ -1,13 +1,31 @@
-use borsh::BorshSerialize;
+use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
-use std::str::FromStr;
+use std::{cmp::Ordering, str::FromStr};
 
-#[derive(BorshSerialize, Debug, PartialEq, Clone, Default)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Eq, Clone, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ProgramVersion {
     pub major: u32,
     pub minor: u32,
     pub patch: u32,
+}
+
+impl PartialOrd for ProgramVersion {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for ProgramVersion {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match self.major.cmp(&other.major) {
+            Ordering::Equal => match self.minor.cmp(&other.minor) {
+                Ordering::Equal => self.patch.cmp(&other.patch),
+                ord => ord,
+            },
+            ord => ord,
+        }
+    }
 }
 
 impl fmt::Display for ProgramVersion {
@@ -55,16 +73,6 @@ impl ProgramVersion {
             patch: env!("CARGO_PKG_VERSION_PATCH").parse().unwrap_or_default(),
         }
     }
-
-    // Check if the current version is compatible with the required version
-    pub fn warning(&self, client: &ProgramVersion) -> bool {
-        self.major == client.major && self.minor == client.minor && self.patch > client.patch
-    }
-
-    // Check if the current version is incompatible with the required version
-    pub fn error(&self, client: &ProgramVersion) -> bool {
-        self.major > client.major || (self.major == client.major && self.minor > client.minor)
-    }
 }
 
 #[cfg(test)]
@@ -78,58 +86,19 @@ mod tests {
     }
 
     #[test]
-    fn test_program_version_warning1() {
-        let program = ProgramVersion::new(1, 1, 3);
-        let client = ProgramVersion::new(1, 2, 0);
-        assert!(!program.warning(&client));
-    }
+    fn test_program_version_ordering() {
+        let v1 = ProgramVersion::new(1, 2, 3);
+        let v2 = ProgramVersion::new(1, 2, 4);
+        let v3 = ProgramVersion::new(1, 3, 0);
+        let v4 = ProgramVersion::new(2, 0, 0);
 
-    #[test]
-    fn test_program_version_warning2() {
-        let program = ProgramVersion::new(1, 2, 2);
-        let client = ProgramVersion::new(1, 2, 3);
-        assert!(!program.warning(&client));
-    }
+        assert!(v1 < v2);
+        assert!(v2 < v3);
+        assert!(v3 < v4);
 
-    #[test]
-    fn test_program_version_warning3() {
-        let program = ProgramVersion::new(1, 2, 3);
-        let client = ProgramVersion::new(1, 2, 3);
-        assert!(!program.warning(&client));
-    }
-
-    #[test]
-    fn test_program_version_warning4() {
-        let program = ProgramVersion::new(1, 2, 3);
-        let client = ProgramVersion::new(1, 2, 2);
-        assert!(program.warning(&client));
-    }
-
-    #[test]
-    fn test_program_version_error1() {
-        let program = ProgramVersion::new(1, 2, 3);
-        let client = ProgramVersion::new(1, 3, 0);
-        assert!(!program.error(&client));
-    }
-
-    #[test]
-    fn test_program_version_error2() {
-        let program = ProgramVersion::new(2, 0, 3);
-        let client = ProgramVersion::new(1, 2, 0);
-        assert!(program.error(&client));
-    }
-
-    #[test]
-    fn test_program_version_error3() {
-        let program = ProgramVersion::new(1, 3, 3);
-        let client = ProgramVersion::new(1, 2, 0);
-        assert!(program.error(&client));
-    }
-
-    #[test]
-    fn test_program_version_error4() {
-        let program = ProgramVersion::new(1, 0, 3);
-        let client = ProgramVersion::new(2, 2, 0);
-        assert!(!program.error(&client));
+        assert!(v4 > v1);
+        assert!(v2 >= v1);
+        assert!(v1 <= v2);
+        assert!(v1 <= v1);
     }
 }

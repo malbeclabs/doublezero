@@ -9,7 +9,8 @@ All notable changes to this project will be documented in this file.
 ### Changes
 - RFCs
   - RFC9 Link Draining
-
+- Onchain programs
+  - Fix CreateMulticastGroup to use incremented globalstate.account_index for PDA derivation instead of client-provided index, to ensure the contract is the authoritative source for account indices
 
 - Client
   - Switch to 64 byte latency probes instead of 32 bytes

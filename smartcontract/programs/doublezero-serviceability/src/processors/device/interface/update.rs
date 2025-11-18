@@ -150,7 +150,8 @@ pub fn process_update_device_interface(
     if let Some(node_segment_idx) = value.node_segment_idx {
         iface.node_segment_idx = node_segment_idx;
     }
-    device.interfaces[idx] = iface.to_interface();
+    // until we have release V2 version for interfaces, always convert to v1
+    device.interfaces[idx] = iface.to_interface_v1();
 
     account_write(device_account, &device, payer_account, system_program)?;
 

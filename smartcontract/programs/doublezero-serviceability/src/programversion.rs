@@ -84,4 +84,21 @@ mod tests {
         let version = ProgramVersion::new(1, 2, 3);
         assert_eq!(version.to_string(), "1.2.3");
     }
+
+    #[test]
+    fn test_program_version_ordering() {
+        let v1 = ProgramVersion::new(1, 2, 3);
+        let v2 = ProgramVersion::new(1, 2, 4);
+        let v3 = ProgramVersion::new(1, 3, 0);
+        let v4 = ProgramVersion::new(2, 0, 0);
+
+        assert!(v1 < v2);
+        assert!(v2 < v3);
+        assert!(v3 < v4);
+
+        assert!(v4 > v1);
+        assert!(v2 >= v1);
+        assert!(v1 <= v2);
+        assert!(v1 <= v1);
+    }
 }

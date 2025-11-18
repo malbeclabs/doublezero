@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
   - Switch to 64 byte latency probes instead of 32 bytes
   - Route liveness admin-down signalling and ignore stale remote-down messages
   - Added an on-chain minimum supported CLI version to allow multiple CLI versions to operate simultaneously.
+  
+- Smart contract
   - Delay V2 Interface Activation Until All Clients Support V2 Reading
 
 - Device controller

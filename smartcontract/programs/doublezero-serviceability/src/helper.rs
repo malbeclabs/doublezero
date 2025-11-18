@@ -5,20 +5,17 @@ use crate::{
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
-    account_info::AccountInfo,
-    entrypoint::ProgramResult,
-    program::invoke_signed,
-    program_error::ProgramError,
-    pubkey::Pubkey,
-    system_instruction, system_program,
-    sysvar::{rent::Rent, Sysvar},
+    account_info::AccountInfo, entrypoint::ProgramResult, program_error::ProgramError,
+    pubkey::Pubkey, system_program,
 };
 use std::{
     fmt::{self, Debug},
     net::Ipv4Addr,
 };
 
-use doublezero_program_common::create_account::try_create_account;
+use doublezero_program_common::{
+    create_account::try_create_account, resize_account::resize_account_if_needed,
+};
 #[cfg(test)]
 use solana_program::msg;
 
@@ -37,12 +34,6 @@ where
 
     let account_space = AccountTypeInfo::size(instance);
 
-    #[cfg(test)]
-    {
-        let rent = Rent::get().expect("Unable to get rent");
-        let required_lamports = rent.minimum_balance(account_space);
-        msg!("Rent: {}", required_lamports);
-    }
     // Create the index account
     try_create_account(
         payer_account.key,  // Account paying for the new account
@@ -81,53 +72,21 @@ pub fn account_write<'a, T>(
 where
     T: AccountTypeInfo + BorshSerialize + Validate + Debug,
 {
-    // Validate the instance
     instance.validate()?;
 
-    let actual_len = account.data_len();
-    let new_len = instance.size();
-    {
-        if actual_len != new_len {
-            account
-                .realloc(new_len, false)
-                .expect("Unable to realoc the account");
-        }
+    resize_account_if_needed(
+        account,
+        payer_account,
+        &[
+            account.clone(),
+            payer_account.clone(),
+            system_program.clone(),
+        ],
+        instance.size(),
+    )?;
 
-        let data = &mut account.data.borrow_mut();
-        instance.serialize(&mut &mut data[..])?;
-    }
-
-    if actual_len < new_len {
-        let rent = Rent::get().expect("Unble to read rent");
-        let required_lamports = rent.minimum_balance(new_len);
-
-        if required_lamports > account.lamports() {
-            let payment = required_lamports - account.lamports();
-
-            #[cfg(test)]
-            msg!(
-                "Rent Requered: {} Actual: {} Transfer: {}",
-                required_lamports,
-                account.lamports(),
-                payment
-            );
-
-            invoke_signed(
-                &system_instruction::transfer(payer_account.key, account.key, payment),
-                &[
-                    account.clone(),
-                    payer_account.clone(),
-                    system_program.clone(),
-                ],
-                &[&[
-                    SEED_PREFIX,
-                    instance.seed(),
-                    &instance.index().to_le_bytes(),
-                    &[instance.bump_seed()],
-                ]],
-            )?;
-        }
-    }
+    let data = &mut account.data.borrow_mut();
+    instance.serialize(&mut &mut data[..])?;
 
     Ok(())
 }

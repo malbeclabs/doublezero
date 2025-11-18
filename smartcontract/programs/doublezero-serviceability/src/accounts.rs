@@ -1,13 +1,10 @@
 use borsh::BorshSerialize;
-use doublezero_program_common::create_account::try_create_account;
+use doublezero_program_common::{
+    create_account::try_create_account, resize_account::resize_account_if_needed,
+};
 use solana_program::{
-    account_info::AccountInfo,
-    entrypoint::ProgramResult,
-    program::invoke_signed,
-    program_error::ProgramError,
-    pubkey::Pubkey,
-    system_instruction, system_program,
-    sysvar::{rent::Rent, Sysvar},
+    account_info::AccountInfo, entrypoint::ProgramResult, program_error::ProgramError,
+    pubkey::Pubkey, system_program,
 };
 
 pub trait AccountSize {
@@ -27,10 +24,6 @@ pub fn write_account<'a, D: BorshSerialize + AccountSize + AccountSeed>(
     // Size of our index account
     let required_space = data.size();
 
-    // Calculate minimum balance for rent exemption
-    let rent = Rent::get()?;
-    let required_lamports = rent.minimum_balance(required_space);
-
     let mut seed: Vec<u8> = Vec::new();
     data.seed(&mut seed);
 
@@ -45,22 +38,12 @@ pub fn write_account<'a, D: BorshSerialize + AccountSize + AccountSeed>(
             &[seed.as_slice()],
         )?;
     } else {
-        // If the account is already initialized, we need to check if it has enough space
-        if account.data_len() != required_space {
-            // If the account is not large enough, we need to transfer more lamports
-            if required_space > account.data_len() {
-                let payment = required_lamports - account.lamports();
-
-                invoke_signed(
-                    &system_instruction::transfer(payer.key, account.key, payment),
-                    &[account.clone(), payer.clone(), system_program.clone()],
-                    &[&[seed.as_slice()]],
-                )?;
-            }
-
-            // Reallocate the account to the new size
-            account.realloc(required_space, false)?;
-        }
+        resize_account_if_needed(
+            account,
+            payer,
+            &[account.clone(), payer.clone(), system_program.clone()],
+            required_space,
+        )?;
     }
 
     let mut account_data = &mut account.data.borrow_mut()[..];

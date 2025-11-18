@@ -24,22 +24,22 @@ pub struct UpdateDeviceInterfaceCliCommand {
     #[arg(long)]
     pub loopback_type: Option<types::LoopbackType>,
     /// Interface CYOA
-    #[arg(long)]
+    #[arg(long, hide = true)]
     pub interface_cyoa: Option<types::InterfaceCYOA>,
     /// DIA Port (for DIA interfaces)
-    #[arg(long)]
+    #[arg(long, hide = true)]
     pub interface_dia: Option<types::InterfaceDIA>,
     /// Bandwidth in Mbps
-    #[arg(long, value_parser = validate_parse_bandwidth)]
+    #[arg(long, value_parser = validate_parse_bandwidth, hide = true)]
     pub bandwidth: Option<u64>,
     /// Committed Information Rate in Mbps
-    #[arg(long, value_parser = validate_parse_bandwidth)]
+    #[arg(long, value_parser = validate_parse_bandwidth, hide = true)]
     pub cir: Option<u64>,
     /// MTU
-    #[arg(long)]
+    #[arg(long, hide = true)]
     pub mtu: Option<u16>,
     /// Routing mode
-    #[arg(long)]
+    #[arg(long, hide = true)]
     pub routing_mode: Option<types::RoutingMode>,
     /// VLAN ID (default: 0, i.e. not set)
     #[arg(long)]

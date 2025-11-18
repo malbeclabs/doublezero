@@ -24,22 +24,22 @@ pub struct CreateDeviceInterfaceCliCommand {
     #[arg(long)]
     pub loopback_type: Option<types::LoopbackType>,
     /// Interface CYOA (for CYOA interfaces)
-    #[arg(long)]
+    #[arg(long, hide = true)]
     pub interface_cyoa: Option<types::InterfaceCYOA>,
     /// DIA Port (for DIA interfaces)
-    #[arg(long)]
+    #[arg(long, hide = true)]
     pub interface_dia: Option<types::InterfaceDIA>,
     /// Bandwidth in Mbps
-    #[arg(long, value_parser = validate_parse_bandwidth, default_value = "0")]
+    #[arg(long, value_parser = validate_parse_bandwidth, default_value = "0", hide = true)]
     pub bandwidth: u64,
     /// Committed Information Rate in Mbps
     #[arg(long, value_parser = validate_parse_bandwidth, default_value = "0")]
     pub cir: u64,
     /// MTU
-    #[arg(long, default_value = "1500")]
+    #[arg(long, default_value = "1500", hide = true)]
     pub mtu: u16,
     /// Routing mode
-    #[arg(long, default_value = "static")]
+    #[arg(long, default_value = "static", hide = true)]
     pub routing_mode: types::RoutingMode,
     /// VLAN ID (default: 0, i.e. not set)
     #[arg(long, default_value = "0")]

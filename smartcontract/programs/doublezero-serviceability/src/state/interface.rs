@@ -315,6 +315,19 @@ impl InterfaceV2 {
         Interface::V2(self.clone())
     }
 
+    pub fn to_interface_v1(&self) -> Interface {
+        Interface::V1(InterfaceV1 {
+            status: self.status,
+            name: self.name.clone(),
+            interface_type: self.interface_type,
+            loopback_type: self.loopback_type,
+            vlan_id: self.vlan_id,
+            ip_net: self.ip_net,
+            node_segment_idx: self.node_segment_idx,
+            user_tunnel_endpoint: self.user_tunnel_endpoint,
+        })
+    }
+
     pub fn size_given_name_len(name_len: usize) -> usize {
         1 + 4 + name_len + 1 + 1 + 1 + 1 + 8 + 8 + 2 + 1 + 2 + 5 + 2 + 1
     }

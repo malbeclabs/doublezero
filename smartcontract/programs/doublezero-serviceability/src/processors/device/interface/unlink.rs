@@ -71,7 +71,7 @@ pub fn process_unlink_device_interface(
 
     iface.status = InterfaceStatus::Unlinked;
     iface.ip_net = NetworkV4::default();
-    device.interfaces[idx] = iface.to_interface();
+    device.interfaces[idx] = iface.to_interface_v1();
 
     account_write(device_account, &device, payer_account, system_program)?;
 

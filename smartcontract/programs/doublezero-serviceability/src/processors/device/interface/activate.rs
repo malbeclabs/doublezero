@@ -80,7 +80,7 @@ pub fn process_activate_device_interface(
     updated_iface.ip_net = value.ip_net;
     updated_iface.node_segment_idx = value.node_segment_idx;
 
-    device.interfaces[idx] = updated_iface.to_interface();
+    device.interfaces[idx] = updated_iface.to_interface_v1();
 
     account_write(device_account, &device, payer_account, system_program)?;
 

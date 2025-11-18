@@ -127,8 +127,9 @@ func (q *QAAgent) Start(ctx context.Context) error {
 
 	select {
 	case <-ctx.Done():
-		q.log.Info("Stopping QA Agent...")
-		agent.GracefulStop()
+		q.log.Info("Stopping QA Agent gRPC server...")
+		agent.Stop()
+		q.log.Info("Stopping multicast listener...")
 		q.mcastListener.Stop()
 		return <-errChan
 	case err := <-errChan:

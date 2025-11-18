@@ -16,9 +16,9 @@ import (
 
 const (
 	connectMulticastTimeout             = 90 * time.Second
-	leaveMulticastGroupTimeout          = 30 * time.Second
-	waitForMulticastGroupCreatedTimeout = 60 * time.Second
-	waitForMulticastReportTimeout       = 60 * time.Second
+	leaveMulticastGroupTimeout          = 90 * time.Second
+	waitForMulticastGroupCreatedTimeout = 90 * time.Second
+	waitForMulticastReportTimeout       = 90 * time.Second
 
 	multicastInterfaceName = "doublezero1"
 

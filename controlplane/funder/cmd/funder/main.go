@@ -169,26 +169,7 @@ func main() {
 	collector, err := funder.New(funder.Config{
 		Logger: log,
 		GetRecipientsFunc: func(ctx context.Context) ([]funder.Recipient, error) {
-			data, err := serviceabilityClient.GetProgramData(ctx)
-			if err != nil {
-				return nil, fmt.Errorf("failed to load serviceability state: %w", err)
-			}
-
-			for _, device := range data.Devices {
-				devicePK := solana.PublicKeyFromBytes(device.PubKey[:])
-				name := fmt.Sprintf("device-%s", devicePK.String())
-				recipients = append(recipients, funder.NewRecipient(name, solana.PublicKeyFromBytes(device.MetricsPublisherPubKey[:])))
-			}
-
-			for _, mcastgroup := range data.MulticastGroups {
-				mcastgroupPK := solana.PublicKeyFromBytes(mcastgroup.PubKey[:])
-				name := fmt.Sprintf("mcastgroup-%s", mcastgroupPK.String())
-				recipients = append(recipients, funder.NewRecipient(name, solana.PublicKeyFromBytes(mcastgroup.Owner[:])))
-			}
-
-			recipients = append(recipients, funder.NewRecipient("internet-latency-collector", internetLatencyCollectorPK))
-
-			return recipients, nil
+			return getRecipients(ctx, serviceabilityClient, recipients, internetLatencyCollectorPK)
 		},
 		Solana:        rpcClient,
 		Signer:        keypair,
@@ -206,4 +187,32 @@ func main() {
 		log.Error("funder exited with error", "error", err)
 		os.Exit(1)
 	}
+}
+
+func getRecipients(
+	ctx context.Context,
+	serviceabilityClient serviceability.ProgramDataProvider,
+	recipients []funder.Recipient,
+	internetLatencyCollectorPK solana.PublicKey,
+) ([]funder.Recipient, error) {
+	data, err := serviceabilityClient.GetProgramData(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load serviceability state: %w", err)
+	}
+
+	for _, device := range data.Devices {
+		devicePK := solana.PublicKeyFromBytes(device.PubKey[:])
+		name := fmt.Sprintf("device-%s", devicePK.String())
+		recipients = append(recipients, funder.NewRecipient(name, solana.PublicKeyFromBytes(device.MetricsPublisherPubKey[:])))
+	}
+
+	for _, mcastgroup := range data.MulticastGroups {
+		mcastgroupPK := solana.PublicKeyFromBytes(mcastgroup.PubKey[:])
+		name := fmt.Sprintf("mcastgroup-%s", mcastgroupPK.String())
+		recipients = append(recipients, funder.NewRecipient(name, solana.PublicKeyFromBytes(mcastgroup.Owner[:])))
+	}
+
+	recipients = append(recipients, funder.NewRecipient("internet-latency-collector", internetLatencyCollectorPK))
+
+	return recipients, nil
 }

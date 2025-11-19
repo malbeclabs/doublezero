@@ -12,6 +12,7 @@ import (
 	"time"
 
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
+	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/mr-tron/base58"
 )
@@ -145,7 +146,7 @@ func (w *ServiceabilityWatcher) detectEpochChange(chainName string, rpcClient Le
 		w.log.Info("epoch change detected", "chain", chainName, "prev_epoch_start", prevEpochStart, "next_epoch_start", nextEpochStart, "previous_epoch", *lastEpoch, "current_epoch", currEpoch)
 
 		// send Slack notification for testnet and mainnet-beta only
-		if w.cfg.SlackWebhookURL != "" && (w.cfg.Env == "testnet" || w.cfg.Env == "mainnet-beta") {
+		if w.cfg.SlackWebhookURL != "" && (w.cfg.Env == config.EnvTestnet || w.cfg.Env == config.EnvMainnetBeta) {
 			msg, err := w.buildEpochChangeSlackMessage(w.cfg.Env, chainName, *lastEpoch, currEpoch)
 			if err != nil {
 				w.log.Error("failed to build epoch change slack message", "error", err)

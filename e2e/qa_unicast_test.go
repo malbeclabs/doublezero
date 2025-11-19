@@ -66,6 +66,7 @@ func TestQA_UnicastConnectivity(t *testing.T) {
 	}
 
 	// Test connectivity between all clients.
+	var testsWithPartialLosses uint32
 	for _, srcClient := range clients {
 		for _, dstClient := range clients {
 			if srcClient.Host == dstClient.Host {
@@ -82,9 +83,16 @@ func TestQA_UnicastConnectivity(t *testing.T) {
 				})
 				subCtx := t.Context()
 
-				err := srcClient.TestUnicastConnectivity(subCtx, dstClient)
+				result, err := srcClient.TestUnicastConnectivity(subCtx, dstClient)
 				require.NoError(t, err, "failed to test connectivity")
+
+				if result.PacketsReceived < result.PacketsSent {
+					testsWithPartialLosses++
+				}
 			})
 		}
 	}
+
+	// Tolerate at most one test with partial losses.
+	require.LessOrEqual(t, testsWithPartialLosses, uint32(1), "too many connectivity tests with partial packet loss")
 }

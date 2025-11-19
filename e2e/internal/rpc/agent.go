@@ -169,6 +169,9 @@ func (q *QAAgent) Ping(ctx context.Context, req *pb.PingRequest) (*pb.PingResult
 	}
 	stats := pinger.Statistics()
 	q.log.Info("Ping statistics", "target_ip", req.GetTargetIp(), "packets_sent", stats.PacketsSent, "packets_received", stats.PacketsRecv)
+	if stats.PacketsRecv < stats.PacketsSent {
+		q.log.Warn("Packet loss detected", "target_ip", req.GetTargetIp(), "packets_sent", stats.PacketsSent, "packets_received", stats.PacketsRecv)
+	}
 	return &pb.PingResult{PacketsSent: uint32(stats.PacketsSent), PacketsReceived: uint32(stats.PacketsRecv)}, nil
 }
 

@@ -114,3 +114,7 @@ func (c *Client) GetProgramData(ctx context.Context) (*ProgramData, error) {
 		ProgramConfig:   programConfig,
 	}, errs
 }
+
+type ProgramDataProvider interface {
+	GetProgramData(ctx context.Context) (*ProgramData, error)
+}

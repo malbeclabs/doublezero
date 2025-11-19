@@ -5,12 +5,15 @@ use doublezero_solana_client_tools::{
     payer::Wallet,
     rpc::{DoubleZeroLedgerConnection, SolanaConnection},
 };
-use doublezero_solana_validator_debt::worker;
+use doublezero_solana_validator_debt::{
+    rpc::SolanaValidatorDebtConnectionOptions, solana_debt_calculator::SolanaDebtCalculator,
+    transaction::Transaction, worker,
+};
 use rustler::Error as NifError;
 use slack_notifier::validator_debt;
 use solana_sdk::{commitment_config::CommitmentConfig, signature::Keypair};
 
-#[rustler::nif]
+#[rustler::nif(schedule = "DirtyIo")]
 pub fn pay_debt(dz_epoch: u64, ledger_rpc: String, solana_rpc: String) -> Result<(), NifError> {
     let rt = tokio::runtime::Runtime::new().map_err(|e| NifError::Term(Box::new(e.to_string())))?;
 
@@ -27,6 +30,17 @@ pub fn initialize_distribution(ledger_rpc: String, solana_rpc: String) -> Result
 
     // Block the current thread and wait for the async operation to complete.
     rt.block_on(async { async_initialize_distribution(ledger_rpc, solana_rpc).await })
+        .map_err(|e| NifError::Term(Box::new(e.to_string())))?;
+
+    Ok(())
+}
+
+#[rustler::nif(schedule = "DirtyIo")]
+pub fn calculate_distribution(ledger_rpc: String, solana_rpc: String) -> Result<(), NifError> {
+    let rt = tokio::runtime::Runtime::new().map_err(|e| NifError::Term(Box::new(e.to_string())))?;
+
+    // Block the current thread and wait for the async operation to complete.
+    rt.block_on(async { async_calculate_distribution(ledger_rpc, solana_rpc).await })
         .map_err(|e| NifError::Term(Box::new(e.to_string())))?;
 
     Ok(())
@@ -79,6 +93,43 @@ async fn async_initialize_distribution(ledger_rpc: String, solana_rpc: String) -
     };
 
     worker::initialize_distribution(wallet, ledger_rpc_client).await?;
+    Ok(())
+}
+
+async fn async_calculate_distribution(ledger_rpc: String, solana_rpc: String) -> Result<()> {
+    let connection_options = SolanaValidatorDebtConnectionOptions {
+        solana_url_or_moniker: Some(solana_rpc),
+        dz_ledger_url: ledger_rpc,
+    };
+    let solana_debt_calculator: SolanaDebtCalculator =
+        SolanaDebtCalculator::try_from(connection_options)?;
+
+    let dz_epoch = solana_debt_calculator
+        .ledger_rpc_client
+        .get_epoch_info()
+        .await?;
+    let epoch_to_calculate = dz_epoch.epoch - 1;
+    let transaction = Transaction::new(try_load_keypair(None)?, false, false);
+
+    let write_summary = worker::calculate_distribution(
+        &solana_debt_calculator,
+        transaction,
+        epoch_to_calculate,
+        false,
+    )
+    .await?;
+
+    slack_notifier::validator_debt::post_distribution_to_slack(
+        None,
+        write_summary.solana_epoch,
+        write_summary.dz_epoch,
+        false,
+        write_summary.total_debt,
+        write_summary.total_validators,
+        write_summary.transaction_id,
+    )
+    .await?;
+
     Ok(())
 }
 

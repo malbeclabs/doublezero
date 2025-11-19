@@ -20,7 +20,9 @@ defmodule Scheduler.Worker.PayDebt do
         {:noreply, state, {:continue, :queue_debt_payment}}
 
       {:error, error} ->
-        if String.contains?(error, "Record account not found at address") do
+        ## one of these errors is reached when we have exceeded a finalized distribution
+        if String.contains?(error, "Record account not found at address") ||
+             String.contains?(error, "Failed to fetch record") do
           {:stop, "scheduler completed sweep at epoch #{state.current_epoch}", state}
         else
           Logger.error(

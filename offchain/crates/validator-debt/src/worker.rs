@@ -119,7 +119,7 @@ pub async fn verify_validator_debt(
     Ok(())
 }
 
-pub async fn calculate_validator_debt(
+pub async fn calculate_distribution(
     solana_debt_calculator: &impl ValidatorRewards,
     transaction: Transaction,
     dz_epoch: u64,
@@ -261,10 +261,12 @@ pub async fn calculate_validator_debt(
     );
 
     // Convert to validator pubkey strings for rewards calculation
-    let validator_pubkeys: Vec<String> = s3_validator_keys
+    let mut validator_pubkeys: Vec<String> = s3_validator_keys
         .iter()
         .map(|vk| vk.pubkey.clone())
         .collect();
+
+    validator_pubkeys.sort();
 
     // Use S3-fetched validators and calculate rewards
     let validator_rewards =

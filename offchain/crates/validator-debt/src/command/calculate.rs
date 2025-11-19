@@ -94,7 +94,7 @@ impl Schedulable for CalculateValidatorDebtCommand {
             schedule_or_force.force,
         );
         let dry_run = transaction.dry_run;
-        let write_summary = crate::worker::calculate_validator_debt(
+        let write_summary = crate::worker::calculate_distribution(
             &solana_debt_calculator,
             transaction,
             epoch,

@@ -58,7 +58,6 @@ pub async fn get_block_rewards(
                 }),
         )
         .map(|(validator_id, slot)| async move {
-            println!("getting blocks for {}", validator_id.clone());
             match (|| async { api_provider.get_block_with_config(slot).await })
                 .retry(
                     &ExponentialBuilder::default()
@@ -71,7 +70,7 @@ pub async fn get_block_rewards(
                     match err.kind() {
                         ClientErrorKind::RpcError(RpcError::RpcResponseError { code, .. }) => {
                             // Don't retry if block isn't found
-                            println!("{}", *code);
+                            println!("{validator_id}: {} for slot {slot}", *code);
                             !matches!(*code, -32009 | -32007)
                         }
                         _ => true, // Retry on all other errors

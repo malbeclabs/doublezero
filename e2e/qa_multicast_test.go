@@ -82,21 +82,11 @@ func TestQA_MulticastConnectivity(t *testing.T) {
 		require.NotNil(t, group, "multicast group not found: %s", groupCode)
 	}
 
-	// Connect publisher to multicast group.
-	err = publisher.ConnectUserMulticast_Publisher_Wait(ctx, group.Code)
-	require.NoError(t, err, "failed to connect publisher to multicast group")
-
 	// Disconnect source client on cleanup.
 	t.Cleanup(func() {
 		err := publisher.DisconnectUser(context.Background(), true, true)
 		assert.NoError(t, err, "failed to disconnect user")
 	})
-
-	// Connect subscribers to multicast group.
-	for _, subscriber := range subscribers {
-		err = subscriber.ConnectUserMulticast_Subscriber_Wait(ctx, group.Code)
-		require.NoError(t, err, "failed to connect subscriber to multicast group")
-	}
 
 	// Disconnect subscribers on cleanup.
 	t.Cleanup(func() {
@@ -111,6 +101,16 @@ func TestQA_MulticastConnectivity(t *testing.T) {
 		}
 		wg.Wait()
 	})
+
+	// Connect publisher to multicast group.
+	err = publisher.ConnectUserMulticast_Publisher_Wait(ctx, group.Code)
+	require.NoError(t, err, "failed to connect publisher to multicast group")
+
+	// Connect subscribers to multicast group.
+	for _, subscriber := range subscribers {
+		err = subscriber.ConnectUserMulticast_Subscriber_Wait(ctx, group.Code)
+		require.NoError(t, err, "failed to connect subscriber to multicast group")
+	}
 
 	// Wait for status of all clients to be up.
 	for _, client := range clients {

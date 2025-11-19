@@ -109,6 +109,7 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 			// Each subtest:
 			//   - Uses the client assigned to that device as the source
 			//   - Tests connectivity from that client to all other clients
+			var testsWithPartialLosses uint32
 			for _, device := range batch {
 				srcClient := deviceToClient[device]
 				require.NotNil(t, srcClient, "no client assigned to device %s in batch", device.Code)
@@ -133,13 +134,22 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 						wg.Add(1)
 						go func(src, target *qa.Client) {
 							defer wg.Done()
-							err := src.TestUnicastConnectivity(subCtx, target)
+							result, err := src.TestUnicastConnectivity(subCtx, target)
 							require.NoError(t, err)
+							if result.PacketsReceived < result.PacketsSent {
+								testsWithPartialLosses++
+							}
 						}(srcClient, target)
 					}
 					wg.Wait()
 				})
 			}
+
+			// Tolerate at most one test with partial losses.
+			// TestUnicastConnectivity will return error if there are losses that exceed the acceptable
+			// threshold, resulting in the QA test to fail earlier than this check. This check is responsible
+			// for tolerating at most 1 test with "acceptable" partial loss, or else fail the QA test.
+			require.LessOrEqual(t, testsWithPartialLosses, uint32(1), "too many connectivity tests with partial packet loss")
 		})
 	}
 }

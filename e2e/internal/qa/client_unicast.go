@@ -66,18 +66,23 @@ func (c *Client) ConnectUserUnicast(ctx context.Context, deviceCode string, wait
 	return nil
 }
 
-func (c *Client) TestUnicastConnectivity(ctx context.Context, targetClient *Client) error {
+type UnicastTestConnectivityResult struct {
+	PacketsSent     uint32
+	PacketsReceived uint32
+}
+
+func (c *Client) TestUnicastConnectivity(ctx context.Context, targetClient *Client) (*UnicastTestConnectivityResult, error) {
 	sourceIP := c.publicIP.To4().String()
 	targetIP := targetClient.publicIP.To4().String()
 
 	clientDevice, err := c.getConnectedDevice(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get connected device: %w", err)
+		return nil, fmt.Errorf("failed to get connected device: %w", err)
 	}
 
 	otherClientDevice, err := targetClient.getConnectedDevice(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get connected device: %w", err)
+		return nil, fmt.Errorf("failed to get connected device: %w", err)
 	}
 
 	var iface string
@@ -99,20 +104,20 @@ func (c *Client) TestUnicastConnectivity(ctx context.Context, targetClient *Clie
 		Count:       uint32(unicastPingProbeCount),
 	})
 	if err != nil {
-		return fmt.Errorf("failed to ping: %w", err)
+		return nil, fmt.Errorf("failed to ping: %w", err)
 	}
 
 	if resp.PacketsSent == 0 {
-		return fmt.Errorf("no packets sent from %s to %s", sourceIP, targetIP)
+		return nil, fmt.Errorf("no packets sent from %s to %s", sourceIP, targetIP)
 	}
 	if resp.PacketsReceived == 0 {
-		return fmt.Errorf("no packets received by %s from %s (sent=%d)", targetIP, sourceIP, resp.PacketsSent)
+		return nil, fmt.Errorf("no packets received by %s from %s (sent=%d)", targetIP, sourceIP, resp.PacketsSent)
 	}
 	if resp.PacketsReceived < resp.PacketsSent {
 		// If we have packet loss, check if routes were uninstalled and log an error for visibility.
 		installedRoutes, err := c.GetInstalledRoutes(ctx)
 		if err != nil {
-			return fmt.Errorf("failed to get installed routes: %w", err)
+			return nil, fmt.Errorf("failed to get installed routes: %w", err)
 		}
 		installedIPs := make(map[string]struct{})
 		for _, route := range installedRoutes {
@@ -132,7 +137,7 @@ func (c *Client) TestUnicastConnectivity(ctx context.Context, targetClient *Clie
 
 		// If we have more than the threshold of packet loss, return an error, otherwise log.
 		if resp.PacketsReceived <= resp.PacketsSent-unicastPingProbeLossThreshold {
-			return fmt.Errorf("packet loss detected: sent=%d, received=%d from %s to %s", resp.PacketsSent, resp.PacketsReceived, sourceIP, targetIP)
+			return nil, fmt.Errorf("packet loss detected: sent=%d, received=%d from %s to %s", resp.PacketsSent, resp.PacketsReceived, sourceIP, targetIP)
 		} else {
 			c.log.Warn("Partial packet loss detected",
 				"sourceHost", c.Host,
@@ -158,5 +163,8 @@ func (c *Client) TestUnicastConnectivity(ctx context.Context, targetClient *Clie
 		"packetsReceived", resp.PacketsReceived,
 	)
 
-	return nil
+	return &UnicastTestConnectivityResult{
+		PacketsSent:     resp.PacketsSent,
+		PacketsReceived: resp.PacketsReceived,
+	}, nil
 }

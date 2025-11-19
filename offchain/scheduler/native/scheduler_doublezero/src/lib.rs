@@ -35,12 +35,45 @@ pub fn initialize_distribution(ledger_rpc: String, solana_rpc: String) -> Result
     Ok(())
 }
 
-#[rustler::nif(schedule = "DirtyIo")]
-pub fn calculate_distribution(ledger_rpc: String, solana_rpc: String) -> Result<(), NifError> {
+#[rustler::nif]
+pub fn current_dz_epoch(ledger_rpc: String) -> Result<u64, NifError> {
     let rt = tokio::runtime::Runtime::new().map_err(|e| NifError::Term(Box::new(e.to_string())))?;
 
     // Block the current thread and wait for the async operation to complete.
-    rt.block_on(async { async_calculate_distribution(ledger_rpc, solana_rpc).await })
+    let dz_epoch = rt
+        .block_on(async { async_current_dz_epoch(ledger_rpc).await })
+        .map_err(|e| NifError::Term(Box::new(e.to_string())))?;
+    Ok(dz_epoch)
+}
+
+#[rustler::nif(schedule = "DirtyIo")]
+pub fn calculate_distribution(
+    dz_epoch: u64,
+    ledger_rpc: String,
+    solana_rpc: String,
+    post_to_slack: bool,
+) -> Result<(), NifError> {
+    let rt = tokio::runtime::Runtime::new().map_err(|e| NifError::Term(Box::new(e.to_string())))?;
+
+    // Block the current thread and wait for the async operation to complete.
+    rt.block_on(async {
+        async_calculate_distribution(dz_epoch, ledger_rpc, solana_rpc, post_to_slack).await
+    })
+    .map_err(|e| NifError::Term(Box::new(e.to_string())))?;
+
+    Ok(())
+}
+
+#[rustler::nif(schedule = "DirtyIo")]
+pub fn finalize_distribution(
+    dz_epoch: u64,
+    ledger_rpc: String,
+    solana_rpc: String,
+) -> Result<(), NifError> {
+    let rt = tokio::runtime::Runtime::new().map_err(|e| NifError::Term(Box::new(e.to_string())))?;
+
+    // Block the current thread and wait for the async operation to complete.
+    rt.block_on(async { async_finalize_distribution(dz_epoch, ledger_rpc, solana_rpc).await })
         .map_err(|e| NifError::Term(Box::new(e.to_string())))?;
 
     Ok(())
@@ -81,7 +114,8 @@ async fn async_initialize_distribution(ledger_rpc: String, solana_rpc: String) -
     let sc =
         SolanaConnection::try_new_with_commitment(solana_rpc, CommitmentConfig::confirmed(), None)?;
 
-    let ledger_rpc_client = DoubleZeroLedgerConnection::new(ledger_rpc);
+    let ledger_rpc_client =
+        DoubleZeroLedgerConnection::new_with_commitment(ledger_rpc, CommitmentConfig::confirmed());
 
     let wallet = Wallet {
         connection: sc,
@@ -96,7 +130,12 @@ async fn async_initialize_distribution(ledger_rpc: String, solana_rpc: String) -
     Ok(())
 }
 
-async fn async_calculate_distribution(ledger_rpc: String, solana_rpc: String) -> Result<()> {
+async fn async_calculate_distribution(
+    dz_epoch: u64,
+    ledger_rpc: String,
+    solana_rpc: String,
+    post_to_slack: bool,
+) -> Result<()> {
     let connection_options = SolanaValidatorDebtConnectionOptions {
         solana_url_or_moniker: Some(solana_rpc),
         dz_ledger_url: ledger_rpc,
@@ -104,33 +143,51 @@ async fn async_calculate_distribution(ledger_rpc: String, solana_rpc: String) ->
     let solana_debt_calculator: SolanaDebtCalculator =
         SolanaDebtCalculator::try_from(connection_options)?;
 
-    let dz_epoch = solana_debt_calculator
-        .ledger_rpc_client
-        .get_epoch_info()
-        .await?;
-    let epoch_to_calculate = dz_epoch.epoch - 1;
     let transaction = Transaction::new(try_load_keypair(None)?, false, false);
 
-    let write_summary = worker::calculate_distribution(
-        &solana_debt_calculator,
-        transaction,
-        epoch_to_calculate,
-        false,
-    )
-    .await?;
+    let write_summary =
+        worker::calculate_distribution(&solana_debt_calculator, transaction, dz_epoch, false)
+            .await?;
 
-    slack_notifier::validator_debt::post_distribution_to_slack(
-        None,
-        write_summary.solana_epoch,
-        write_summary.dz_epoch,
-        false,
-        write_summary.total_debt,
-        write_summary.total_validators,
-        write_summary.transaction_id,
-    )
-    .await?;
+    if post_to_slack {
+        slack_notifier::validator_debt::post_distribution_to_slack(
+            None,
+            write_summary.solana_epoch,
+            write_summary.dz_epoch,
+            false,
+            write_summary.total_debt,
+            write_summary.total_validators,
+            write_summary.transaction_id,
+        )
+        .await?;
+    }
 
     Ok(())
+}
+
+async fn async_finalize_distribution(
+    dz_epoch: u64,
+    ledger_rpc: String,
+    solana_rpc: String,
+) -> Result<()> {
+    let connection_options = SolanaValidatorDebtConnectionOptions {
+        solana_url_or_moniker: Some(solana_rpc),
+        dz_ledger_url: ledger_rpc,
+    };
+    let solana_debt_calculator: SolanaDebtCalculator =
+        SolanaDebtCalculator::try_from(connection_options)?;
+
+    let transaction = Transaction::new(try_load_keypair(None)?, false, false);
+
+    worker::finalize_distribution(&solana_debt_calculator, transaction, dz_epoch).await?;
+    Ok(())
+}
+
+async fn async_current_dz_epoch(ledger_rpc: String) -> Result<u64> {
+    let ledger_rpc_client =
+        DoubleZeroLedgerConnection::new_with_commitment(ledger_rpc, CommitmentConfig::confirmed());
+    let dz_epoch_info = ledger_rpc_client.get_epoch_info().await?;
+    Ok(dz_epoch_info.epoch)
 }
 
 fn try_load_keypair(path: Option<PathBuf>) -> Result<Keypair> {

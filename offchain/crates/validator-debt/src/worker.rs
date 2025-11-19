@@ -142,6 +142,10 @@ pub async fn calculate_distribution(
         .read_distribution(dz_epoch, solana_debt_calculator.solana_rpc_client())
         .await?;
 
+    if distribution.is_debt_calculation_finalized() {
+        bail!("distribution has already been finalized for dz epoch {dz_epoch}");
+    }
+
     // get solana current timestamp
     let clock_account = solana_debt_calculator
         .solana_rpc_client()

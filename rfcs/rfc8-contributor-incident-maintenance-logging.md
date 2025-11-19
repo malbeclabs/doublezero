@@ -2,6 +2,8 @@
 
 # Summary
 
+**Status: Draft**
+
 This RFC proposes a gateway-first mechanism for creating and updating incidents and planned maintenance across the DoubleZero network. Contributors use a single, versioned API to publish operational events while retaining their internal tools. The gateway validates identity (API key bound to contributor), enforces enumerations, normalizes payloads, stores them in a  datastore, and notifies coordination channels in Slack.
 
 Contributors can create incidents or maintenance via a shared form (backed by Airtable or similar) which submits through the API gateway, or directly through the API itself. Slack remains the primary interface for awareness, conversation, and history, all open and historical events appear in `#contributor-incidents` and `#contributor-maintenance`.

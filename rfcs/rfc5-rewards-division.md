@@ -1,5 +1,7 @@
 # **Summary**
 
+**Status: Active**
+
 This document specifies the architecture for the `rewards-calculator`, a stateless off-chain service responsible for calculating contributor reward proportions and the epoch-specific burn rate for the DoubleZero network. The design prioritizes correctness, verifiability, and a clean separation of concerns between off-chain computation and on-chain settlement.
 
 The system is a single, scheduled batch service. After each reward epoch, the service fetches all required on-chain data, calculates each contributor's fair _proportion_ of the total rewards (via Shapley values), and determines a `burn_rate`. The final outputs are a **Merkle root** derived from these values and the corresponding **Merkle leaves**. The Merkle root is published to the on-chain Revenue Distribution Program on Solana, while the full set of leaves is published to the DZ Ledger.

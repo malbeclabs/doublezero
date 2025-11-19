@@ -20,6 +20,21 @@ var (
 	},
 		[]string{"source_ip", "target_ip"},
 	)
+
+	ConnectUnicastDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name: "doublezero_qaagent_connect_unicast_duration_seconds",
+		Help: "Duration of unicast connect tests",
+	})
+
+	ConnectMulticastDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name: "doublezero_qaagent_connect_multicast_duration_seconds",
+		Help: "Duration of multicast connect tests",
+	})
+
+	DisconnectDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name: "doublezero_qaagent_disconnect_duration_seconds",
+		Help: "Duration of disconnect tests",
+	})
 )
 
 func init() {

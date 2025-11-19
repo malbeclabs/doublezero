@@ -206,6 +206,7 @@ func (q *QAAgent) MulticastLeave(ctx context.Context, in *emptypb.Empty) (*empty
 // output or return an error if the tunnel is not up within 20 seconds.
 func (q *QAAgent) ConnectUnicast(ctx context.Context, req *pb.ConnectUnicastRequest) (*pb.Result, error) {
 	q.log.Info("Received ConnectUnicast request", "client_ip", req.GetClientIp(), "device_code", req.GetDeviceCode())
+	start := time.Now()
 	clientIP := req.GetClientIp()
 	deviceCode := req.GetDeviceCode()
 	cmds := []string{"connect", "ibrl"}
@@ -221,15 +222,21 @@ func (q *QAAgent) ConnectUnicast(ctx context.Context, req *pb.ConnectUnicastRequ
 		q.log.Error("Failed to connect unicast for client", "client_ip", clientIP, "output", res.GetOutput())
 		return res, fmt.Errorf("failed to connect unicast for client %s: %v", clientIP, err)
 	}
-	q.log.Info("Successfully connected IBRL mode tunnel")
+	duration := time.Since(start)
+	ConnectUnicastDuration.Observe(duration.Seconds())
+	q.log.Info("Successfully connected IBRL mode tunnel", "duration", duration.String())
 	return res, nil
 }
 
 // Disconnect implements the Disconnect RPC, which removes the current tunnel from DoubleZero.
 func (q *QAAgent) Disconnect(ctx context.Context, req *emptypb.Empty) (*pb.Result, error) {
 	q.log.Info("Received Disconnect request")
+	start := time.Now()
 	cmd := exec.Command("doublezero", "disconnect")
 	output, err := cmd.CombinedOutput()
+	duration := time.Since(start)
+	DisconnectDuration.Observe(duration.Seconds())
+	q.log.Info("Successfully disconnected", "duration", duration.String())
 
 	res := &pb.Result{
 		Output: strings.Split(string(output), "\n"),
@@ -352,6 +359,7 @@ func (q *QAAgent) DeleteMulticastGroup(ctx context.Context, req *pb.DeleteMultic
 // as either a publisher or subscriber. This call will block until the tunnel is up according to
 // the DoubleZero status output or return an error if the tunnel is not up within 60 seconds.
 func (q *QAAgent) ConnectMulticast(ctx context.Context, req *pb.ConnectMulticastRequest) (*pb.Result, error) {
+	start := time.Now()
 	if req.GetCode() == "" {
 		return nil, fmt.Errorf("code is required")
 	}
@@ -372,7 +380,9 @@ func (q *QAAgent) ConnectMulticast(ctx context.Context, req *pb.ConnectMulticast
 		q.log.Error("Failed to connect multicast", "error", err, "output", result.Output)
 		return nil, err
 	}
-	q.log.Info("Successfully connected multicast tunnel")
+	duration := time.Since(start)
+	ConnectMulticastDuration.Observe(duration.Seconds())
+	q.log.Info("Successfully connected multicast tunnel", "duration", duration.String())
 	return result, nil
 }
 

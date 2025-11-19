@@ -12,6 +12,7 @@ import (
 	"time"
 
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
+	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/mr-tron/base58"
 )
@@ -143,6 +144,19 @@ func (w *ServiceabilityWatcher) detectEpochChange(chainName string, rpcClient Le
 	// if epoch is 0, we just restarted
 	if currEpoch > *lastEpoch && *lastEpoch != 0 {
 		w.log.Info("epoch change detected", "chain", chainName, "prev_epoch_start", prevEpochStart, "next_epoch_start", nextEpochStart, "previous_epoch", *lastEpoch, "current_epoch", currEpoch)
+
+		// send Slack notification for testnet and mainnet-beta only
+		if w.cfg.SlackWebhookURL != "" && (w.cfg.Env == config.EnvTestnet || w.cfg.Env == config.EnvMainnetBeta) {
+			msg, err := w.buildEpochChangeSlackMessage(w.cfg.Env, chainName, *lastEpoch, currEpoch)
+			if err != nil {
+				w.log.Error("failed to build epoch change slack message", "error", err)
+			} else {
+				w.log.Info("posting epoch change slack message", "chain", chainName, "epoch", currEpoch)
+				if err := w.postSlackMessage(msg); err != nil {
+					w.log.Error("failed to post epoch change slack message", "error", err)
+				}
+			}
+		}
 	}
 	*lastEpoch = currEpoch
 }
@@ -308,6 +322,18 @@ func (w *ServiceabilityWatcher) buildSlackMessage(event []ServiceabilityUserEven
 	header := fmt.Sprintf(":yay-frog: :frog-wow-scroll: :elmo-fire: :lfg-dz: %s :lfg-dz: :elmo-fire: :frog-wow-scroll: :yay-frog:", title)
 	footer := fmt.Sprintf("Total Users: %d", totalUsers)
 	return GenerateSlackTableMessage(header, users, nil, footer)
+}
+
+func (w *ServiceabilityWatcher) buildEpochChangeSlackMessage(environment, network string, previousEpoch, currentEpoch uint64) (string, error) {
+	timestamp := time.Now().UTC().Format("2006-01-02 15:04:05 UTC")
+
+	rows := [][]string{
+		{"Environment", "Network", "Previous Epoch", "Current Epoch", "Timestamp"},
+		{environment, network, strconv.FormatUint(previousEpoch, 10), strconv.FormatUint(currentEpoch, 10), timestamp},
+	}
+
+	header := "Epoch Change Detected"
+	return GenerateSlackTableMessage(header, rows, nil, "")
 }
 
 func (w *ServiceabilityWatcher) notifyNewUsers(newUsers []ServiceabilityUserEvent, devices []serviceability.Device, totalUsers int) {

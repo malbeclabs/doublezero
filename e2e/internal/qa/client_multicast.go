@@ -55,7 +55,7 @@ func (c *Client) ConnectUserMulticast(ctx context.Context, multicastGroupCode st
 		return fmt.Errorf("failed to ensure disconnected for %s: %w", c.Host, err)
 	}
 
-	c.log.Info("Connecting multicast publisher", "host", c.Host, "multicastGroupCode", multicastGroupCode)
+	c.log.Info("Connecting multicast", "host", c.Host, "multicastGroupCode", multicastGroupCode, "mode", mode.String())
 	ctx, cancel := context.WithTimeout(ctx, connectMulticastTimeout)
 	defer cancel()
 	resp, err := c.grpcClient.ConnectMulticast(ctx, &pb.ConnectMulticastRequest{
@@ -68,7 +68,7 @@ func (c *Client) ConnectUserMulticast(ctx context.Context, multicastGroupCode st
 	if !resp.GetSuccess() {
 		return fmt.Errorf("connection failed for %s: %s", c.Host, resp.GetOutput())
 	}
-	c.log.Info("Multicast publisher connected", "host", c.Host, "multicastGroupCode", multicastGroupCode)
+	c.log.Info("Multicast connected", "host", c.Host, "multicastGroupCode", multicastGroupCode, "mode", mode.String())
 
 	return nil
 }

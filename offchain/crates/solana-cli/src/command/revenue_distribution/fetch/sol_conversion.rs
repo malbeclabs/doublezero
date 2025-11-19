@@ -25,7 +25,7 @@ impl SolConversionCommand {
     pub async fn try_into_execute(self) -> Result<()> {
         let Self { connection_options } = self;
 
-        let connection = SolanaConnection::try_from(connection_options)?;
+        let connection = SolanaConnection::from(connection_options);
 
         let SolConversionState {
             program_state: (_, program_state),
@@ -35,7 +35,7 @@ impl SolConversionCommand {
         } = SolConversionState::try_fetch(&connection).await?;
         let last_slot = program_state.last_trade_slot;
 
-        let current_slot = connection.rpc_client.get_slot().await?;
+        let current_slot = connection.get_slot().await?;
 
         let discount_parameters =
             DiscountParameters::from_configuration_registry(&configuration_registry);

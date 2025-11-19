@@ -88,13 +88,24 @@ pub async fn create_record_on_ledger<T: borsh::BorshSerialize>(
     Ok(())
 }
 
+pub fn debt_record_key(payer_key: &Pubkey, dz_epoch: u64) -> Pubkey {
+    doublezero_sdk::record::pubkey::create_record_key(
+        payer_key,
+        &[
+            ComputedSolanaValidatorDebts::RECORD_SEED_PREFIX,
+            &dz_epoch.to_le_bytes(),
+        ],
+    )
+}
+
+// TODO: Use BorshRecordAccountData as return type instead?
 pub async fn try_fetch_debt_record(
     connection: &DoubleZeroLedgerConnection,
     payer_key: &Pubkey,
     dz_epoch: u64,
     commitment_config: CommitmentConfig,
 ) -> Result<(RecordData, ComputedSolanaValidatorDebts)> {
-    connection
+    let debt_record = connection
         .try_fetch_borsh_record_with_commitment(
             payer_key,
             &[
@@ -103,7 +114,9 @@ pub async fn try_fetch_debt_record(
             ],
             commitment_config,
         )
-        .await
+        .await?;
+
+    Ok((debt_record.header, debt_record.data))
 }
 
 async fn get_solana_epoch_from_dz_slot(

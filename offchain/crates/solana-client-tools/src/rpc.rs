@@ -1,14 +1,19 @@
 use std::ops::Deref;
 
-use anyhow::{Context, Error, Result, bail};
+use anyhow::{Context, Result, ensure};
 use borsh::BorshDeserialize;
+use bytemuck::Pod;
 use clap::Args;
-use doublezero_sdk::record::{pubkey::create_record_key, state::RecordData};
-use solana_client::nonblocking::{pubsub_client::PubsubClient, rpc_client::RpcClient};
+use doublezero_program_tools::PrecomputedDiscriminator;
+use doublezero_sdk::record::pubkey::create_record_key;
+use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_commitment_config::CommitmentConfig;
-use solana_sdk::{pubkey::Pubkey, sysvar::Sysvar};
-use url::Url;
+use solana_sdk::{account::Account, pubkey::Pubkey, sysvar::Sysvar};
 
+use crate::account::{record::BorshRecordAccountData, zero_copy::ZeroCopyAccountOwnedData};
+
+// TODO: We should be able to remove this and anything that depends on this
+// connection option. `DoubleZeroLedgerEnvironment` should be the replacement.
 #[derive(Debug, Args, Clone)]
 pub struct DoubleZeroLedgerConnectionOptions {
     /// URL for DoubleZero Ledger's JSON RPC. Required.
@@ -16,16 +21,45 @@ pub struct DoubleZeroLedgerConnectionOptions {
     pub dz_ledger_url: String,
 }
 
-#[derive(Debug, Args, Clone)]
-pub struct PossibleDoubleZeroLedgerConnectionOptions {
-    /// URL for DoubleZero Ledger's JSON RPC. Required.
-    #[arg(long)]
-    pub dz_ledger_url: Option<String>,
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum DoubleZeroLedgerEnvironment {
+    #[default]
+    MainnetBeta,
+    Testnet,
+    Localnet,
 }
 
-impl PossibleDoubleZeroLedgerConnectionOptions {
-    pub fn into_connection(self) -> Option<DoubleZeroLedgerConnection> {
-        self.dz_ledger_url.map(DoubleZeroLedgerConnection::new)
+impl DoubleZeroLedgerEnvironment {
+    pub const DEFAULT_MAINNET_BETA_URL: &str =
+        "https://doublezero-mainnet-beta.rpcpool.com/db336024-e7a8-46b1-80e5-352dd77060ab";
+    pub const DEFAULT_TESTNET_URL: &str =
+        "https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16";
+    pub const DEFAULT_LOCALNET_URL: &str = "http://localhost:8899";
+
+    pub const fn url(&self) -> &str {
+        match self {
+            DoubleZeroLedgerEnvironment::MainnetBeta => Self::DEFAULT_MAINNET_BETA_URL,
+            DoubleZeroLedgerEnvironment::Testnet => Self::DEFAULT_TESTNET_URL,
+            DoubleZeroLedgerEnvironment::Localnet => Self::DEFAULT_LOCALNET_URL,
+        }
+    }
+
+    pub fn is_mainnet(&self) -> bool {
+        self == &DoubleZeroLedgerEnvironment::MainnetBeta
+    }
+
+    pub fn is_testnet(&self) -> bool {
+        self == &DoubleZeroLedgerEnvironment::Testnet
+    }
+
+    pub fn is_localnet(&self) -> bool {
+        self == &DoubleZeroLedgerEnvironment::Localnet
+    }
+}
+
+impl From<DoubleZeroLedgerEnvironment> for DoubleZeroLedgerConnection {
+    fn from(opts: DoubleZeroLedgerEnvironment) -> Self {
+        DoubleZeroLedgerConnection::new(opts.url().to_string())
     }
 }
 
@@ -35,84 +69,94 @@ pub struct SolanaConnectionOptions {
     /// [mainnet-beta, testnet, localhost].
     #[arg(long = "url", short = 'u', value_name = "URL_OR_MONIKER")]
     pub solana_url_or_moniker: Option<String>,
-
-    /// WebSocket URL for the solana cluster.
-    #[arg(long = "ws", value_name = "WEBSOCKET_URL")]
-    pub solana_ws_url: Option<String>,
 }
 
-pub struct SolanaConnection {
-    pub rpc_client: RpcClient,
-    pub ws_url: Url,
-}
+pub struct SolanaConnection(pub RpcClient);
 
 impl SolanaConnection {
-    pub fn try_new_with_commitment(
-        rpc_url: String,
-        commitment_config: CommitmentConfig,
-        ws_url: Option<String>,
-    ) -> Result<Self> {
-        let rpc_url = Url::parse(&rpc_url).context("Invalid RPC URL")?;
+    pub const MAINNET_BETA_GENESIS_HASH: Pubkey =
+        solana_sdk::pubkey!("5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d");
+    pub const TESTNET_GENESIS_HASH: Pubkey =
+        solana_sdk::pubkey!("4uhcVJyU9pJkvQyS88uRDiswHXSCkY3zQawwpjk2NsNY");
 
-        let ws_url = match ws_url {
-            Some(ws_url) => Url::parse(&ws_url).context("Invalid websocket URL")?,
-            None => {
-                let mut default_ws_url = rpc_url.clone();
-
-                // TODO: Is unwrapping for each set scheme safe?
-                match default_ws_url.scheme() {
-                    "http" => default_ws_url.set_scheme("ws").unwrap(),
-                    "https" => default_ws_url.set_scheme("wss").unwrap(),
-                    _ => bail!("invalid url scheme"),
-                };
-
-                default_ws_url
-            }
-        };
-
-        Ok(Self {
-            rpc_client: RpcClient::new_with_commitment(rpc_url.into(), commitment_config),
-            ws_url,
-        })
+    pub fn new(url: String) -> Self {
+        Self::new_with_commitment(url, CommitmentConfig::confirmed())
     }
 
-    const SOLANA_MAINNET_GENESIS_HASH: Pubkey =
-        solana_sdk::pubkey!("5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d");
+    pub fn new_with_commitment(url: String, commitment_config: CommitmentConfig) -> Self {
+        Self(RpcClient::new_with_commitment(url, commitment_config))
+    }
 
     pub async fn try_is_mainnet(&self) -> Result<bool> {
-        let genesis_hash = self.get_genesis_hash().await?;
-        Ok(genesis_hash.to_bytes() == Self::SOLANA_MAINNET_GENESIS_HASH.to_bytes())
+        let genesis_hash = self.0.get_genesis_hash().await?;
+        Ok(genesis_hash.to_bytes() == Self::MAINNET_BETA_GENESIS_HASH.to_bytes())
     }
 
-    pub async fn new_websocket_client(&self) -> Result<PubsubClient> {
-        PubsubClient::new(self.ws_url.as_ref())
-            .await
-            .context("Failed to create Solana websocket client")
+    pub async fn try_dz_environment(&self) -> Result<DoubleZeroLedgerEnvironment> {
+        let genesis_hash = self.0.get_genesis_hash().await?;
+
+        let dz_env = match Pubkey::from(genesis_hash.to_bytes()) {
+            Self::MAINNET_BETA_GENESIS_HASH => DoubleZeroLedgerEnvironment::MainnetBeta,
+            Self::TESTNET_GENESIS_HASH => DoubleZeroLedgerEnvironment::Testnet,
+            _ => DoubleZeroLedgerEnvironment::Localnet,
+        };
+
+        Ok(dz_env)
     }
 
-    pub async fn get_sysvar<T: Sysvar>(&self) -> Result<T> {
-        let sysvar_account_info = self.rpc_client.get_account(&T::id()).await?;
-        solana_sdk::account::from_account(&sysvar_account_info)
-            .context("Failed to deserialize sysvar")
+    pub async fn try_fetch_sysvar<T: Sysvar>(&self) -> Result<T> {
+        try_fetch_sysvar(&self.0).await
+    }
+
+    pub async fn try_fetch_zero_copy_data_with_commitment<T: Pod + PrecomputedDiscriminator>(
+        &self,
+        key: &Pubkey,
+        commitment_config: CommitmentConfig,
+    ) -> Result<ZeroCopyAccountOwnedData<T>> {
+        try_fetch_zero_copy_data_with_commitment(&self.0, key, commitment_config).await
+    }
+
+    pub async fn try_fetch_zero_copy_data<T: Pod + PrecomputedDiscriminator>(
+        &self,
+        key: &Pubkey,
+    ) -> Result<ZeroCopyAccountOwnedData<T>> {
+        try_fetch_zero_copy_data_with_commitment(&self.0, key, self.0.commitment()).await
+    }
+
+    pub async fn try_fetch_multiple_accounts(&self, keys: &[Pubkey]) -> Result<Vec<Account>> {
+        let account_infos = try_fetch_multiple_accounts(&self.0, keys)
+            .await?
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
+        ensure!(
+            account_infos.len() == keys.len(),
+            "Failed to fetch all accounts"
+        );
+
+        Ok(account_infos)
+    }
+
+    pub async fn try_fetch_multiple_zero_copy_data<T: Pod + PrecomputedDiscriminator>(
+        &self,
+        keys: &[Pubkey],
+    ) -> Result<Vec<ZeroCopyAccountOwnedData<T>>> {
+        self.try_fetch_multiple_accounts(keys)
+            .await?
+            .into_iter()
+            .map(TryInto::try_into)
+            .collect()
     }
 }
 
-impl TryFrom<SolanaConnectionOptions> for SolanaConnection {
-    type Error = Error;
-
-    fn try_from(opts: SolanaConnectionOptions) -> Result<Self> {
+impl From<SolanaConnectionOptions> for SolanaConnection {
+    fn from(opts: SolanaConnectionOptions) -> Self {
         let SolanaConnectionOptions {
-            solana_url_or_moniker: url_or_moniker,
-            solana_ws_url: ws_url,
+            solana_url_or_moniker,
         } = opts;
 
-        let url_or_moniker = url_or_moniker.as_deref().unwrap_or("m");
-
-        Self::try_new_with_commitment(
-            normalize_to_solana_url_if_moniker(url_or_moniker).to_string(),
-            CommitmentConfig::confirmed(),
-            ws_url,
-        )
+        let url_or_moniker = solana_url_or_moniker.as_deref().unwrap_or("m");
+        Self::new(normalize_to_solana_url_if_moniker(url_or_moniker).to_string())
     }
 }
 
@@ -120,7 +164,7 @@ impl Deref for SolanaConnection {
     type Target = RpcClient;
 
     fn deref(&self) -> &Self::Target {
-        &self.rpc_client
+        &self.0
     }
 }
 
@@ -139,7 +183,7 @@ impl DoubleZeroLedgerConnection {
         &self,
         payer_key: &Pubkey,
         record_seeds: &[&[u8]],
-    ) -> Result<(RecordData, T)> {
+    ) -> Result<BorshRecordAccountData<T>> {
         self.try_fetch_borsh_record_with_commitment(payer_key, record_seeds, self.0.commitment())
             .await
     }
@@ -149,37 +193,9 @@ impl DoubleZeroLedgerConnection {
         payer_key: &Pubkey,
         record_seeds: &[&[u8]],
         commitment_config: CommitmentConfig,
-    ) -> Result<(RecordData, T)> {
-        let record_key = create_record_key(payer_key, record_seeds);
-        let account_info = self
-            .get_account_with_commitment(&record_key, commitment_config)
-            .await?
-            .value
-            .with_context(|| format!("Failed to fetch record {record_key}"))?;
-
-        let (header_data, record_data) = account_info.data.split_at(size_of::<RecordData>());
-
-        let header = bytemuck::from_bytes::<RecordData>(header_data);
-        let record = borsh::from_slice(record_data).with_context(|| {
-            format!(
-                "Failed to Borsh deserialize record {record_key} as {}",
-                std::any::type_name::<T>()
-            )
-        })?;
-
-        Ok((*header, record))
-    }
-}
-
-impl TryFrom<DoubleZeroLedgerConnectionOptions> for DoubleZeroLedgerConnection {
-    type Error = Error;
-
-    fn try_from(opts: DoubleZeroLedgerConnectionOptions) -> Result<Self> {
-        let DoubleZeroLedgerConnectionOptions { dz_ledger_url } = opts;
-
-        let rpc_url = Url::parse(&dz_ledger_url)?;
-
-        Ok(Self::new(rpc_url.into()))
+    ) -> Result<BorshRecordAccountData<T>> {
+        try_fetch_borsh_record_with_commitment(&self.0, payer_key, record_seeds, commitment_config)
+            .await
     }
 }
 
@@ -189,6 +205,58 @@ impl Deref for DoubleZeroLedgerConnection {
     fn deref(&self) -> &Self::Target {
         &self.0
     }
+}
+
+pub async fn try_fetch_sysvar<T: Sysvar>(rpc_client: &RpcClient) -> Result<T> {
+    let sysvar_account_info = rpc_client.get_account(&T::id()).await?;
+    solana_sdk::account::from_account(&sysvar_account_info).context("Failed to deserialize sysvar")
+}
+
+pub async fn try_fetch_zero_copy_data_with_commitment<T: Pod + PrecomputedDiscriminator>(
+    rpc_client: &RpcClient,
+    key: &Pubkey,
+    commitment_config: CommitmentConfig,
+) -> Result<ZeroCopyAccountOwnedData<T>> {
+    rpc_client
+        .get_account_with_commitment(key, commitment_config)
+        .await?
+        .value
+        .with_context(|| format!("Failed to fetch account {key}"))?
+        .try_into()
+}
+
+pub async fn try_fetch_borsh_record_with_commitment<T: BorshDeserialize>(
+    rpc_client: &RpcClient,
+    payer_key: &Pubkey,
+    record_seeds: &[&[u8]],
+    commitment_config: CommitmentConfig,
+) -> Result<BorshRecordAccountData<T>> {
+    let record_key = create_record_key(payer_key, record_seeds);
+
+    rpc_client
+        .get_account_with_commitment(&record_key, commitment_config)
+        .await?
+        .value
+        .with_context(|| format!("Failed to fetch record {record_key}"))?
+        .try_into()
+}
+
+// TODO: Make more efficient with async fetches. Adding async fetches will
+// require a rate limiter.
+pub async fn try_fetch_multiple_accounts(
+    rpc_client: &RpcClient,
+    keys: &[Pubkey],
+) -> Result<Vec<Option<Account>>> {
+    const MAX_FETCH_SIZE: usize = 100;
+
+    let mut accounts = Vec::with_capacity(keys.len());
+
+    for keys_chunk in keys.chunks(MAX_FETCH_SIZE) {
+        let accounts_chunk = rpc_client.get_multiple_accounts(keys_chunk).await?;
+        accounts.extend(accounts_chunk);
+    }
+
+    Ok(accounts)
 }
 
 // Forked from solana-clap-utils.

@@ -11,7 +11,7 @@ use doublezero_solana_validator_debt::{
 };
 use rustler::Error as NifError;
 use slack_notifier::validator_debt;
-use solana_sdk::{commitment_config::CommitmentConfig, signature::Keypair};
+use solana_sdk::signature::Keypair;
 
 #[rustler::nif(schedule = "DirtyIo")]
 pub fn pay_debt(dz_epoch: u64, ledger_rpc: String, solana_rpc: String) -> Result<(), NifError> {
@@ -80,8 +80,7 @@ pub fn finalize_distribution(
 }
 
 async fn async_pay_debt(dz_epoch: u64, ledger_rpc: String, solana_rpc: String) -> Result<()> {
-    let sc =
-        SolanaConnection::try_new_with_commitment(solana_rpc, CommitmentConfig::confirmed(), None)?;
+    let sc = SolanaConnection::new(solana_rpc);
 
     let ledger_rpc_client = DoubleZeroLedgerConnection::new(ledger_rpc);
 
@@ -111,11 +110,9 @@ async fn async_pay_debt(dz_epoch: u64, ledger_rpc: String, solana_rpc: String) -
 }
 
 async fn async_initialize_distribution(ledger_rpc: String, solana_rpc: String) -> Result<()> {
-    let sc =
-        SolanaConnection::try_new_with_commitment(solana_rpc, CommitmentConfig::confirmed(), None)?;
+    let sc = SolanaConnection::new(solana_rpc);
 
-    let ledger_rpc_client =
-        DoubleZeroLedgerConnection::new_with_commitment(ledger_rpc, CommitmentConfig::confirmed());
+    let ledger_rpc_client = DoubleZeroLedgerConnection::new(ledger_rpc);
 
     let wallet = Wallet {
         connection: sc,
@@ -184,8 +181,7 @@ async fn async_finalize_distribution(
 }
 
 async fn async_current_dz_epoch(ledger_rpc: String) -> Result<u64> {
-    let ledger_rpc_client =
-        DoubleZeroLedgerConnection::new_with_commitment(ledger_rpc, CommitmentConfig::confirmed());
+    let ledger_rpc_client = DoubleZeroLedgerConnection::new(ledger_rpc);
     let dz_epoch_info = ledger_rpc_client.get_epoch_info().await?;
     Ok(dz_epoch_info.epoch)
 }

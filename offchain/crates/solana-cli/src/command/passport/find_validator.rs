@@ -36,9 +36,9 @@ impl FindValidatorCommand {
         println!("DoubleZero Passport - Find Validator");
 
         // Establish a connection to the Solana cluster
-        let connection = SolanaConnection::try_from(solana_connection_options)?;
+        let connection = SolanaConnection::from(solana_connection_options);
         let sol_client = SolRpcClient::new(
-            Url::parse(&connection.rpc_client.url()).expect("Invalid RPC URL"),
+            Url::parse(&connection.url()).unwrap(),
             Arc::new(Keypair::new()),
         );
 

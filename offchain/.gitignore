@@ -31,6 +31,7 @@ cache/
 *.bak
 *.txt
 *.log
+*.out
 dist/
 
 # Local test data

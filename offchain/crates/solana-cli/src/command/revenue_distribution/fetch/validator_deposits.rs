@@ -1,8 +1,11 @@
-use anyhow::{Context, Result, bail};
+use anyhow::{Result, bail};
 use clap::Args;
-use doublezero_program_tools::{PrecomputedDiscriminator, zero_copy};
+use doublezero_program_tools::PrecomputedDiscriminator;
 use doublezero_revenue_distribution::state::SolanaValidatorDeposit;
-use doublezero_solana_client_tools::rpc::{SolanaConnection, SolanaConnectionOptions};
+use doublezero_solana_client_tools::{
+    account::zero_copy::ZeroCopyAccountOwnedData,
+    rpc::{SolanaConnection, SolanaConnectionOptions},
+};
 use solana_account_decoder_client_types::UiAccountEncoding;
 use solana_client::{
     rpc_config::{RpcAccountInfoConfig, RpcProgramAccountsConfig},
@@ -10,7 +13,7 @@ use solana_client::{
 };
 use solana_sdk::pubkey::Pubkey;
 
-use crate::command::revenue_distribution::fetch_solana_validator_deposit;
+use crate::command::revenue_distribution::try_fetch_solana_validator_deposit;
 
 #[derive(Debug, Args)]
 pub struct ValidatorDepositsCommand {
@@ -40,11 +43,11 @@ impl ValidatorDepositsCommand {
             connection_options,
         } = self;
 
-        let connection = SolanaConnection::try_from(connection_options)?;
+        let connection = SolanaConnection::from(connection_options);
 
-        let (mut outputs, fund_warning_message) = if let Some(node_id) = node_id {
+        let (outputs, fund_warning_message) = if let Some(node_id) = node_id {
             let (deposit_key, deposit, deposit_balance) =
-                fetch_solana_validator_deposit(&connection, &node_id).await;
+                try_fetch_solana_validator_deposit(&connection, &node_id).await?;
 
             if let Some(deposit) = deposit {
                 if balance_only {
@@ -104,37 +107,44 @@ impl ValidatorDepositsCommand {
                 ..Default::default()
             };
 
-            let accounts = connection
+            let rent_sysvar = connection
+                .try_fetch_sysvar::<solana_sdk::rent::Rent>()
+                .await?;
+
+            let mut outputs = connection
                 .get_program_accounts_with_config(&doublezero_revenue_distribution::ID, config)
-                .await?;
+                .await?
+                .into_iter()
+                .map(|(deposit_key, deposit_account_info)| {
+                    let balance = doublezero_solana_client_tools::account::balance(
+                        &deposit_account_info,
+                        &rent_sysvar,
+                    );
+                    let deposit_account =
+                        ZeroCopyAccountOwnedData::<SolanaValidatorDeposit>::from_account(
+                            &deposit_account_info,
+                        )
+                        .unwrap();
 
-            let rent_exemption = connection
-                .rpc_client
-                .get_minimum_balance_for_rent_exemption(
-                    zero_copy::data_end::<SolanaValidatorDeposit>(),
-                )
-                .await?;
+                    ValidatorDepositsTableRow {
+                        deposit_pda: deposit_key,
+                        node_id: deposit_account.node_id,
+                        amount: format!("{:.9}", balance as f64 * 1e-9),
+                    }
+                })
+                .collect::<Vec<_>>();
 
-            let mut outputs = Vec::with_capacity(accounts.len());
-            for (pubkey, account) in accounts {
-                let balance = account.lamports.saturating_sub(rent_exemption);
-                let (account, _) = zero_copy::checked_from_bytes_with_discriminator::<
-                    SolanaValidatorDeposit,
-                >(&account.data)
-                .context("Failed to deserialize Solana validator deposit")?;
-                outputs.push(ValidatorDepositsTableRow {
-                    deposit_pda: pubkey,
-                    node_id: account.node_id,
-                    amount: format!("{:.9}", balance as f64 * 1e-9),
-                });
-            }
+            outputs.sort_by_key(|row| row.node_id.to_string());
 
             (outputs, None)
         };
 
-        outputs.sort_by_key(|deposit| (deposit.node_id, deposit.deposit_pda));
-
-        super::print_table(outputs, Default::default());
+        super::print_table(
+            outputs,
+            super::TableOptions {
+                columns_aligned_right: Some(&[2]),
+            },
+        );
 
         if let Some(fund_warning_message) = fund_warning_message {
             println!("{fund_warning_message}");

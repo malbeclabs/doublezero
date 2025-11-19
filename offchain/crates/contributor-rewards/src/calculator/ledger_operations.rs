@@ -645,7 +645,7 @@ pub async fn try_fetch_shapley_output(
 ) -> Result<ShapleyOutputStorage> {
     debug!("Fetching shapley output for epoch {epoch} recorded by {accountant_key}");
 
-    let (_, shapley_output) = dz_rpc_client
+    let shapley_record = dz_rpc_client
         .try_fetch_borsh_record_with_commitment(
             accountant_key,
             &[prefix, &epoch.to_le_bytes(), b"shapley_output"],
@@ -653,7 +653,7 @@ pub async fn try_fetch_shapley_output(
         )
         .await?;
 
-    Ok(shapley_output)
+    Ok(shapley_record.data)
 }
 
 /// NOTE: This is mostly just for debugging

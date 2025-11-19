@@ -64,7 +64,7 @@ impl ValidatorDepositCommand {
 
         // First check if the Solana validator deposit is already initialized.
         let (deposit_key, deposit, mut deposit_balance) =
-            super::fetch_solana_validator_deposit(&wallet.connection, &node_id).await;
+            super::try_fetch_solana_validator_deposit(&wallet.connection, &node_id).await?;
 
         if initialize && deposit.is_some() {
             bail!("Solana validator deposit already initialized");

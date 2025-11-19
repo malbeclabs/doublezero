@@ -1,6 +1,6 @@
 use std::{collections::HashMap, str::FromStr};
 
-use anyhow::{Context, Result, bail, ensure};
+use anyhow::{Result, bail, ensure};
 use doublezero_program_tools::instruction::try_build_instruction;
 use doublezero_revenue_distribution::{
     ID,
@@ -15,7 +15,6 @@ use doublezero_solana_client_tools::{
     log_info, log_warn,
     payer::{TransactionOutcome, Wallet},
     rpc::{DoubleZeroLedgerConnection, SolanaConnection},
-    zero_copy::ZeroCopyAccountOwned,
 };
 use leaky_bucket::RateLimiter;
 use serde::Serialize;
@@ -395,7 +394,7 @@ pub async fn pay_solana_validator_debt(
     let transaction = Transaction::new(wallet.signer, wallet.dry_run, false);
 
     let tx_results = transaction
-        .pay_solana_validator_debt(&wallet.connection.rpc_client, computed_debt, dz_epoch)
+        .pay_solana_validator_debt(&wallet.connection, computed_debt, dz_epoch)
         .await?;
     Ok(tx_results)
 }
@@ -450,18 +449,14 @@ pub async fn initialize_distribution(
 ) -> Result<()> {
     let is_mainnet = wallet.connection.try_is_mainnet().await?;
 
-    let program_config_info = ZeroCopyAccountOwned::<ProgramConfig>::try_from_rpc_client(
-        &wallet.connection,
-        &ProgramConfig::find_address().0,
-    )
-    .await?;
-
-    // This is safe to unwrap because the account exists.
     let ProgramConfig {
         next_completed_dz_epoch: next_dz_epoch,
         debt_accountant_key: expected_accountant_key,
         ..
-    } = *program_config_info.data.unwrap().mucked_data;
+    } = *wallet
+        .connection
+        .try_fetch_zero_copy_data::<ProgramConfig>(&ProgramConfig::find_address().0)
+        .await?;
 
     ensure!(
         wallet.signer.pubkey() == expected_accountant_key,
@@ -688,10 +683,9 @@ async fn try_fetch_program_config(
 ) -> Result<(Pubkey, Box<ProgramConfig>)> {
     let (program_config_key, _) = ProgramConfig::find_address();
 
-    let program_config =
-        ZeroCopyAccountOwned::try_from_rpc_client(&connection.rpc_client, &program_config_key)
-            .await
-            .context("Revenue Distribution program not initialized")?;
+    let program_config = connection
+        .try_fetch_zero_copy_data::<ProgramConfig>(&program_config_key)
+        .await?;
 
-    Ok((program_config_key, program_config.data.unwrap().mucked_data))
+    Ok((program_config_key, program_config.mucked_data))
 }

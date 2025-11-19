@@ -11,6 +11,7 @@ use doublezero_passport::{
 };
 use doublezero_solana_client_tools::rpc::{SolanaConnection, SolanaConnectionOptions};
 use solana_sdk::{pubkey::Pubkey, signature::Keypair};
+use url::Url;
 
 use crate::utils::{find_node_by_node_id, identify_cluster};
 
@@ -48,10 +49,9 @@ impl PrepareValidatorAccessCommand {
         } = self;
 
         // Establish a connection to the Solana cluster
-        let connection = SolanaConnection::try_from(solana_connection_options)?;
+        let connection = SolanaConnection::from(solana_connection_options);
         let sol_client = SolRpcClient::new(
-            solana_client::client_error::reqwest::Url::parse(&connection.rpc_client.url())
-                .expect("Invalid RPC URL"),
+            Url::parse(&connection.url()).unwrap(),
             Arc::new(Keypair::new()),
         );
 

@@ -23,14 +23,14 @@ use doublezero_sol_conversion_interface::{
     },
 };
 use doublezero_solana_client_tools::{
+    account::zero_copy::ZeroCopyAccountOwnedData,
     rpc::{DoubleZeroLedgerConnection, SolanaConnection},
-    zero_copy::{ZeroCopyAccountOwned, ZeroCopyAccountOwnedData},
 };
 use doublezero_solana_validator_debt::validator_debt::{
     ComputedSolanaValidatorDebt, ComputedSolanaValidatorDebts,
 };
 use solana_client::nonblocking::rpc_client::RpcClient;
-use solana_sdk::pubkey::Pubkey;
+use solana_sdk::{pubkey::Pubkey, rent::Rent};
 
 // TODO: Add testnet?
 const SOL_2Z_ORACLE_ENDPOINT: &str =
@@ -87,43 +87,57 @@ async fn try_fetch_program_config(
 ) -> Result<(Pubkey, Box<ProgramConfig>)> {
     let (program_config_key, _) = ProgramConfig::find_address();
 
-    let program_config =
-        ZeroCopyAccountOwned::try_from_rpc_client(&connection.rpc_client, &program_config_key)
-            .await
-            .context("Revenue Distribution program not initialized")?;
-
-    Ok((program_config_key, program_config.data.unwrap().mucked_data))
+    let program_config = connection
+        .try_fetch_zero_copy_data::<ProgramConfig>(&program_config_key)
+        .await
+        .context("Revenue Distribution program not initialized")?;
+    Ok((program_config_key, program_config.mucked_data))
 }
 
-async fn fetch_solana_validator_deposit(
+async fn try_fetch_solana_validator_deposit(
     connection: &SolanaConnection,
     node_id: &Pubkey,
-) -> (
+) -> Result<(
     Pubkey,
     Option<SolanaValidatorDeposit>,
     u64, // balance
-) {
+)> {
     let (solana_validator_deposit_key, _) = SolanaValidatorDeposit::find_address(node_id);
 
-    match ZeroCopyAccountOwned::try_from_rpc_client(
-        &connection.rpc_client,
-        &solana_validator_deposit_key,
-    )
-    .await
+    match connection
+        .get_multiple_accounts(&[solana_validator_deposit_key, solana_sdk::sysvar::rent::ID])
+        .await
     {
-        Ok(solana_validator_deposit) => match solana_validator_deposit.data {
-            Some(data) => (
-                solana_validator_deposit_key,
-                Some(*data.mucked_data),
-                solana_validator_deposit.balance,
-            ),
-            None => (
-                solana_validator_deposit_key,
-                None,
-                solana_validator_deposit.lamports,
-            ),
-        },
-        Err(_) => (solana_validator_deposit_key, None, 0),
+        Ok(account_infos) => {
+            let account_infos = account_infos
+                .into_iter()
+                .map(Option::unwrap_or_default)
+                .collect::<Vec<_>>();
+
+            let solana_validator_deposit_info = &account_infos[0];
+            let rent_sysvar =
+                solana_sdk::account::from_account::<Rent, _>(&account_infos[1]).unwrap();
+
+            let balance = doublezero_solana_client_tools::account::balance(
+                solana_validator_deposit_info,
+                &rent_sysvar,
+            );
+
+            let solana_validator_deposit =
+                ZeroCopyAccountOwnedData::<SolanaValidatorDeposit>::from_account(
+                    solana_validator_deposit_info,
+                );
+
+            match solana_validator_deposit {
+                Some(data) => Ok((
+                    solana_validator_deposit_key,
+                    Some(*data.mucked_data),
+                    balance,
+                )),
+                None => Ok((solana_validator_deposit_key, None, balance)),
+            }
+        }
+        Err(_) => Ok((solana_validator_deposit_key, None, 0)),
     }
 }
 
@@ -133,15 +147,11 @@ async fn try_fetch_distribution(
 ) -> Result<(Pubkey, ZeroCopyAccountOwnedData<Distribution>)> {
     let (distribution_key, _) = Distribution::find_address(dz_epoch);
 
-    let failed_fetch_error = || format!("Distribution not found for epoch {dz_epoch}");
-
-    let distribution =
-        ZeroCopyAccountOwned::try_from_rpc_client(&connection.rpc_client, &distribution_key)
-            .await
-            .with_context(failed_fetch_error)?;
-
-    let data = distribution.data.with_context(failed_fetch_error)?;
-    Ok((distribution_key, data))
+    let distribution = connection
+        .try_fetch_zero_copy_data::<Distribution>(&distribution_key)
+        .await
+        .with_context(|| format!("Distribution not found for epoch {dz_epoch}"))?;
+    Ok((distribution_key, distribution))
 }
 
 pub struct SolConversionState {
@@ -159,21 +169,21 @@ impl SolConversionState {
         let (configuration_registry_key, _) = SolConversionConfigurationRegistry::find_address();
         let (journal_key, _) = Journal::find_address();
 
-        let accounts = rpc_client
+        let account_infos = rpc_client
             .get_multiple_accounts(&[program_state_key, configuration_registry_key, journal_key])
             .await
-            .context(FAILED_FETCH_ERROR)?;
-        let account_datas = accounts
+            .context(FAILED_FETCH_ERROR)?
             .into_iter()
-            .filter_map(|account| account.map(|account| account.data))
+            .flatten()
             .collect::<Vec<_>>();
-        ensure!(account_datas.len() == 3, FAILED_FETCH_ERROR);
+        ensure!(account_infos.len() == 3, FAILED_FETCH_ERROR);
 
-        let program_state_data = Box::<_>::deserialize(&mut &account_datas[0][8..])?;
-        let configuration_registry_data =
-            Box::<SolConversionConfigurationRegistry>::deserialize(&mut &account_datas[1][8..])?;
+        let program_state_data = Box::<_>::deserialize(&mut &account_infos[0].data[8..])?;
+        let configuration_registry_data = Box::<SolConversionConfigurationRegistry>::deserialize(
+            &mut &account_infos[1].data[8..],
+        )?;
 
-        let journal_data = ZeroCopyAccountOwnedData::new(&account_datas[2])
+        let journal_data = ZeroCopyAccountOwnedData::from_account(&account_infos[2])
             .context("Revenue Distribution program not initialized")?;
 
         let fixed_fill_quantity = configuration_registry_data.fixed_fill_quantity;

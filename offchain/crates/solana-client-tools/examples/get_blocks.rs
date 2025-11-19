@@ -73,13 +73,12 @@ impl GetBlocksExampleApp {
             solana_connection_options,
         } = self;
 
-        let connection = SolanaConnection::try_from(solana_connection_options)?;
-        let rpc_client = connection.rpc_client;
+        let connection = SolanaConnection::from(solana_connection_options);
 
         let last_slot = match last_slot {
             Some(last_slot) => last_slot,
             None => {
-                let epoch_info = rpc_client.get_epoch_info().await?;
+                let epoch_info = connection.get_epoch_info().await?;
                 epoch_info.absolute_slot
             }
         };
@@ -105,7 +104,7 @@ impl GetBlocksExampleApp {
             ..Default::default()
         };
 
-        let rpc_client = Arc::new(rpc_client);
+        let rpc_client = Arc::new(connection);
 
         let mut tasks = vec![];
         for (i, slot) in (first_slot..=last_slot).enumerate() {

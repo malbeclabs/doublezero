@@ -8,11 +8,8 @@ use doublezero_revenue_distribution::{
     types::{DoubleZeroEpoch, UnitShare32},
 };
 use doublezero_solana_client_tools::{
-    rpc::{
-        DoubleZeroLedgerConnection, PossibleDoubleZeroLedgerConnectionOptions, SolanaConnection,
-        SolanaConnectionOptions,
-    },
-    zero_copy::ZeroCopyAccountOwnedData,
+    account::zero_copy::ZeroCopyAccountOwnedData,
+    rpc::{DoubleZeroLedgerConnection, SolanaConnection, SolanaConnectionOptions},
 };
 use solana_client::{
     rpc_config::RpcProgramAccountsConfig,
@@ -46,8 +43,8 @@ pub struct DistributionCommand {
     #[command(flatten)]
     solana_connection_options: SolanaConnectionOptions,
 
-    #[command(flatten)]
-    dz_ledger_connection_options: PossibleDoubleZeroLedgerConnectionOptions,
+    #[arg(hide = true, long, value_name = "PUBKEY")]
+    debt_accountant: Option<Pubkey>,
 
     #[arg(hide = true, long, value_name = "PUBKEY")]
     rewards_accountant: Option<Pubkey>,
@@ -87,11 +84,11 @@ impl DistributionCommand {
             dz_epoch,
             view: view_mode,
             solana_connection_options,
-            dz_ledger_connection_options,
+            debt_accountant: debt_accountant_key,
             rewards_accountant: rewards_accountant_key,
         } = self;
 
-        let solana_connection = SolanaConnection::try_from(solana_connection_options)?;
+        let solana_connection = SolanaConnection::from(solana_connection_options);
 
         let (_, config) = try_fetch_program_config(&solana_connection).await?;
 
@@ -114,14 +111,13 @@ impl DistributionCommand {
                     "Debt calculation is not finalized yet"
                 );
 
-                let dz_connection = dz_ledger_connection_options
-                    .into_connection()
-                    .context("DoubleZero Ledger URL required for --display debt")?;
+                let dz_env = solana_connection.try_dz_environment().await?;
+                let dz_connection = DoubleZeroLedgerConnection::from(dz_env);
 
                 try_print_distribution_debt_table(
                     &solana_connection,
                     &dz_connection,
-                    &config.debt_accountant_key,
+                    &debt_accountant_key.unwrap_or(config.debt_accountant_key),
                     &distribution,
                     view_mode == DistributionViewMode::UnprocessedValidatorDebt,
                 )
@@ -133,9 +129,8 @@ impl DistributionCommand {
                     "Rewards calculation is not finalized yet"
                 );
 
-                let dz_connection = dz_ledger_connection_options
-                    .into_connection()
-                    .context("DoubleZero Ledger URL required for --display rewards")?;
+                let dz_env = solana_connection.try_dz_environment().await?;
+                let dz_connection = DoubleZeroLedgerConnection::from(dz_env);
 
                 try_print_distribution_rewards_table(
                     &dz_connection,
@@ -399,11 +394,7 @@ async fn try_print_distribution_debt_table(
         return Ok(());
     }
 
-    let mut debt_rows = Vec::with_capacity(distribution.total_solana_validators as usize);
-
-    let rent = solana_connection
-        .get_sysvar::<solana_sdk::rent::Rent>()
-        .await?;
+    let mut outputs = Vec::with_capacity(distribution.total_solana_validators as usize);
 
     let mut deposit_keys = Vec::with_capacity(computed_debt.debts.len());
     let mut cached_debt_amounts = Vec::with_capacity(computed_debt.debts.len());
@@ -415,7 +406,7 @@ async fn try_print_distribution_debt_table(
             continue;
         }
 
-        debt_rows.push(DistributionSolanaValidatorDebtTableRow {
+        outputs.push(DistributionSolanaValidatorDebtTableRow {
             dz_epoch,
             index: leaf_index,
             node_id: debt.node_id.to_string(),
@@ -429,23 +420,19 @@ async fn try_print_distribution_debt_table(
         cached_debt_amounts.push(debt.amount);
     }
 
-    let mut deposit_balances = Vec::with_capacity(debt_rows.len());
+    let rent_sysvar = solana_connection
+        .try_fetch_sysvar::<solana_sdk::rent::Rent>()
+        .await?;
 
-    for deposit_keys_chunk in deposit_keys.chunks(100) {
-        let balances = solana_connection
-            .get_multiple_accounts(deposit_keys_chunk)
-            .await?
-            .into_iter()
-            .flatten()
-            .map(|account_info| {
-                account_info
-                    .lamports
-                    .saturating_sub(rent.minimum_balance(account_info.data.len()))
-            });
-        deposit_balances.extend(balances);
-    }
+    let deposit_balances = solana_connection
+        .try_fetch_multiple_accounts(&deposit_keys)
+        .await?
+        .into_iter()
+        .map(|account_info| {
+            doublezero_solana_client_tools::account::balance(&account_info, &rent_sysvar)
+        });
 
-    for ((value_row, debt_amount), deposit_balance) in debt_rows
+    for ((value_row, debt_amount), deposit_balance) in outputs
         .iter_mut()
         .zip(cached_debt_amounts)
         .zip(deposit_balances)
@@ -472,7 +459,7 @@ async fn try_print_distribution_debt_table(
     }
 
     print_table(
-        debt_rows,
+        outputs,
         TableOptions {
             columns_aligned_right: Some(&[0, 1, 3, 4, 5]),
         },

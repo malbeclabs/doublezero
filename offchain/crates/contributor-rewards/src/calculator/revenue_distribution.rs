@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use doublezero_program_tools::instruction::try_build_instruction;
 use doublezero_revenue_distribution::{
     ID as REVENUE_DISTRIBUTION_PROGRAM_ID,
@@ -10,7 +10,7 @@ use doublezero_revenue_distribution::{
     state::Distribution,
     types::DoubleZeroEpoch,
 };
-use doublezero_solana_client_tools::zero_copy::ZeroCopyAccountOwned;
+use doublezero_solana_client_tools::rpc::try_fetch_zero_copy_data_with_commitment;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::{
     message::{VersionedMessage, v0::Message},
@@ -45,24 +45,25 @@ async fn wait_for_grace_period(
     max_wait_seconds: u64,
 ) -> Result<Distribution> {
     let dz_epoch = DoubleZeroEpoch::new(epoch);
-    let (distribution_pubkey, _) = Distribution::find_address(dz_epoch);
+    let (distribution_key, _) = Distribution::find_address(dz_epoch);
 
     info!(
         "Checking grace period for epoch {} at address {}",
-        epoch, distribution_pubkey
+        epoch, distribution_key
     );
 
     // Fetch Distribution account
-    let distribution_account =
-        ZeroCopyAccountOwned::<Distribution>::try_from_rpc_client(rpc_client, &distribution_pubkey)
-            .await?;
-
-    let distribution = distribution_account.data.as_ref().ok_or_else(|| {
-        anyhow!(
+    let distribution = try_fetch_zero_copy_data_with_commitment::<Distribution>(
+        rpc_client,
+        &distribution_key,
+        rpc_client.commitment(),
+    )
+    .await
+    .with_context(|| {
+        format!(
             "Distribution account for epoch {} does not exist at {}. \
-                It needs to be initialized by validator-debt crate first.",
-            epoch,
-            distribution_pubkey
+                    It needs to be initialized by validator-debt crate first.",
+            epoch, distribution_key
         )
     })?;
 
@@ -72,13 +73,13 @@ async fn wait_for_grace_period(
     let start = Instant::now();
 
     loop {
-        if check_calculation_allowed(rpc_client, distribution).await? {
+        if check_calculation_allowed(rpc_client, &distribution).await? {
             info!(
                 "Grace period satisfied for epoch {} after waiting {:?}",
                 epoch,
                 start.elapsed()
             );
-            return Ok(**distribution);
+            return Ok(*distribution);
         }
 
         if start.elapsed() >= max_wait {

@@ -1,3 +1,3 @@
-# DoubleZero OffChain
+# DoubleZero Offchain
 
-Off chain components for the DoubleZero Network.
+Offchain components for the DoubleZero Network.

@@ -76,7 +76,7 @@ async fn main() -> Result<()> {
         solana_connection_options,
     } = Args::parse();
 
-    let connection = SolanaConnection::try_from(solana_connection_options)?;
+    let connection = SolanaConnection::from(solana_connection_options);
     let is_mainnet = connection.try_is_mainnet().await?;
 
     // Get upgrade authority from argument or default keypair.
@@ -146,7 +146,7 @@ async fn main() -> Result<()> {
     let mut command = Command::new("solana-test-validator");
     command
         .arg("--url")
-        .arg(connection.rpc_client.url())
+        .arg(connection.url())
         .arg("--account-dir")
         .arg(ACCOUNTS_PATH)
         .arg("--upgradeable-program")
@@ -535,7 +535,7 @@ fn try_dump_program(
         .arg("program")
         .arg("dump")
         .arg("--url")
-        .arg(connection.rpc_client.url())
+        .arg(connection.url())
         .arg(program_id.to_string())
         .arg(output_path)
         .status()?;

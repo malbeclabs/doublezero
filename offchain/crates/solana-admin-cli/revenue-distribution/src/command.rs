@@ -14,10 +14,7 @@ use doublezero_revenue_distribution::{
     state::{self, ContributorRewards, Distribution, Journal, ProgramConfig},
     types::DoubleZeroEpoch,
 };
-use doublezero_solana_client_tools::{
-    payer::{SolanaPayerOptions, TransactionOutcome, Wallet},
-    zero_copy::ZeroCopyAccountOwned,
-};
+use doublezero_solana_client_tools::payer::{SolanaPayerOptions, TransactionOutcome, Wallet};
 use solana_sdk::{
     compute_budget::ComputeBudgetInstruction,
     instruction::{AccountMeta, Instruction},
@@ -294,14 +291,13 @@ pub async fn execute_migrate_program_accounts(
     let journal_key = Journal::find_address().0;
     accounts.push(AccountMeta::new(journal_key, false));
 
-    let journal = ZeroCopyAccountOwned::<Journal>::try_from_rpc_client(
-        &wallet.connection.rpc_client,
-        &journal_key,
-    )
-    .await?;
+    let journal = wallet
+        .connection
+        .try_fetch_zero_copy_data::<Journal>(&journal_key)
+        .await?;
 
     let first_dz_epoch = 31;
-    let until_dz_epoch = journal.data.unwrap().next_dz_epoch_to_sweep_tokens.value();
+    let until_dz_epoch = journal.next_dz_epoch_to_sweep_tokens.value();
 
     for dz_epoch in first_dz_epoch..until_dz_epoch {
         let distribution_key = Distribution::find_address(DoubleZeroEpoch::new(dz_epoch)).0;

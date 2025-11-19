@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- add `debt_record_key` method ([#201](https://github.com/doublezerofoundation/doublezero-offchain/pull/201))
 - feat(validator-debt): use s3 bucket to fetch validator keys ([#196](https://github.com/doublezerofoundation/doublezero-offchain/pull/196))
 
 ## [0.1.0-rc6](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/solana-validator-debt/v0.1.0-rc6) - 2025-11-11

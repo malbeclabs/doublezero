@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- solana-cli: add `revenue-distribution fetch validator-debts` command ([#201](https://github.com/doublezerofoundation/doublezero-offchain/pull/201))
+
 ## [0.2.2](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-solana/v0.2.2) - 2025-11-12
 
 - solana-cli: uptick to 0.2.2 ([#191](https://github.com/doublezerofoundation/doublezero-offchain/pull/191))

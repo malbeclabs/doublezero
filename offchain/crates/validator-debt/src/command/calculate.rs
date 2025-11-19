@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use chrono::Utc;
 use clap::{Args, ValueEnum};
 use doublezero_revenue_distribution::state::ProgramConfig;
@@ -7,7 +7,6 @@ use doublezero_solana_client_tools::{
     log_info, log_warn,
     payer::{SolanaPayerOptions, try_load_keypair},
     rpc::{DoubleZeroLedgerConnectionOptions, SolanaConnection, SolanaConnectionOptions},
-    zero_copy::ZeroCopyAccountOwned,
 };
 use leaky_bucket::RateLimiter;
 use solana_client::nonblocking::rpc_client::RpcClient;
@@ -201,7 +200,7 @@ impl Schedulable for FindSolanaEpochCommand {
             .interval(std::time::Duration::from_secs(1))
             .build();
 
-        let solana_connection = SolanaConnection::try_from(solana_connection_options.clone())?;
+        let solana_connection = SolanaConnection::from(solana_connection_options.clone());
 
         let dz_ledger_rpc_client = RpcClient::new_with_commitment(
             dz_ledger_connection_options.dz_ledger_url.clone(),
@@ -230,11 +229,13 @@ impl Schedulable for FindSolanaEpochCommand {
     }
 }
 
+// TODO: Does the dz ledger connection need to be an argument? Also, this is a
+// duplicate of the function in verify.rs.
 async fn latest_distribution_epoch(
     solana_connection_options: &SolanaConnectionOptions,
     dz_ledger_connection_options: &DoubleZeroLedgerConnectionOptions,
 ) -> Result<u64> {
-    let solana_connection = SolanaConnection::try_from(solana_connection_options.clone())?;
+    let solana_connection = SolanaConnection::from(solana_connection_options.clone());
     let is_mainnet = solana_connection.try_is_mainnet().await?;
 
     let dz_ledger_rpc_client = RpcClient::new_with_commitment(
@@ -244,17 +245,11 @@ async fn latest_distribution_epoch(
 
     super::ensure_same_network_environment(&dz_ledger_rpc_client, is_mainnet).await?;
 
-    let program_config_info = ZeroCopyAccountOwned::<ProgramConfig>::try_from_rpc_client(
-        &solana_connection,
-        &ProgramConfig::find_address().0,
-    )
-    .await
-    .map_err(|_| anyhow!("Revenue Distribution program not initialized"))?;
+    let program_config = solana_connection
+        .try_fetch_zero_copy_data::<ProgramConfig>(&ProgramConfig::find_address().0)
+        .await?;
 
-    Ok(program_config_info
-        .data
-        .unwrap()
-        .mucked_data
+    Ok(program_config
         .next_completed_dz_epoch
         .value()
         .saturating_sub(1))

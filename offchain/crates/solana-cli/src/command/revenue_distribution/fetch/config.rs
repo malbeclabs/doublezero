@@ -22,7 +22,7 @@ impl ConfigCommand {
     pub async fn try_into_execute(self) -> Result<()> {
         let Self { connection_options } = self;
 
-        let connection = SolanaConnection::try_from(connection_options)?;
+        let connection = SolanaConnection::from(connection_options);
         let (program_config_key, program_config) = try_fetch_program_config(&connection).await?;
 
         if program_config.is_paused() {
@@ -226,7 +226,7 @@ pub struct ValidatorFeesCommand {
 impl ValidatorFeesCommand {
     pub async fn try_into_execute(self) -> Result<()> {
         let Self { connection_options } = self;
-        let connection = SolanaConnection::try_from(connection_options)?;
+        let connection = SolanaConnection::from(connection_options);
         let (_, program_config) = try_fetch_program_config(&connection).await?;
 
         let mut value_rows = Vec::new();

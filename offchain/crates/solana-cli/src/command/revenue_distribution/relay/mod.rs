@@ -10,7 +10,7 @@ use clap::{Args, Subcommand, ValueEnum};
 use doublezero_scheduled_command::Schedulable;
 use doublezero_solana_client_tools::{
     payer::{SolanaPayerOptions, Wallet},
-    rpc::{DoubleZeroLedgerConnection, DoubleZeroLedgerConnectionOptions},
+    rpc::DoubleZeroLedgerConnection,
 };
 use doublezero_solana_validator_debt::worker;
 use slack_notifier::validator_debt;
@@ -40,9 +40,6 @@ pub enum RevenueDistributionRelaySubcommand {
 
         #[command(flatten)]
         solana_payer_options: SolanaPayerOptions,
-
-        #[command(flatten)]
-        dz_ledger_connection_options: DoubleZeroLedgerConnectionOptions,
     },
 
     SweepDistributionTokens(sweep_distribution_tokens::SweepDistributionTokens),
@@ -58,17 +55,8 @@ impl RevenueDistributionRelaySubcommand {
             Self::PaySolanaValidatorDebt {
                 dz_epoch,
                 solana_payer_options,
-                dz_ledger_connection_options,
                 export,
-            } => {
-                execute_pay_solana_validator_debt(
-                    dz_epoch,
-                    solana_payer_options,
-                    dz_ledger_connection_options,
-                    export,
-                )
-                .await
-            }
+            } => execute_pay_solana_validator_debt(dz_epoch, solana_payer_options, export).await,
             Self::SweepDistributionTokens(command) => command.execute().await,
             Self::FinalizeDistributionRewards(command) => command.execute().await,
             Self::DistributeRewards(command) => command.execute().await,
@@ -79,12 +67,13 @@ impl RevenueDistributionRelaySubcommand {
 async fn execute_pay_solana_validator_debt(
     epoch: u64,
     solana_payer_options: SolanaPayerOptions,
-    dz_ledger_connection_options: DoubleZeroLedgerConnectionOptions,
     export: Option<ExportFormat>,
 ) -> Result<()> {
     let wallet = Wallet::try_from(solana_payer_options)?;
 
-    let dz_connection = DoubleZeroLedgerConnection::try_from(dz_ledger_connection_options.clone())?;
+    let dz_env = wallet.connection.try_dz_environment().await?;
+    let dz_connection = DoubleZeroLedgerConnection::from(dz_env);
+
     let dry_run = wallet.dry_run;
     let tx_results = worker::pay_solana_validator_debt(wallet, dz_connection, epoch).await?;
 

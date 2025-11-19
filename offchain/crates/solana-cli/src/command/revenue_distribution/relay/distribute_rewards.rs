@@ -10,10 +10,10 @@ use doublezero_revenue_distribution::{
 };
 use doublezero_scheduled_command::{Schedulable, ScheduleOption};
 use doublezero_solana_client_tools::{
+    account::zero_copy::ZeroCopyAccountOwnedData,
     log_info, log_warn,
     payer::{SolanaPayerOptions, TransactionOutcome, Wallet},
-    rpc::{DoubleZeroLedgerConnection, DoubleZeroLedgerConnectionOptions},
-    zero_copy::{ZeroCopyAccountOwned, ZeroCopyAccountOwnedData},
+    rpc::DoubleZeroLedgerConnection,
 };
 use solana_sdk::{compute_budget::ComputeBudgetInstruction, pubkey::Pubkey};
 use spl_associated_token_account_interface::{
@@ -41,9 +41,6 @@ pub struct DistributeRewards {
     #[command(flatten)]
     solana_payer_options: SolanaPayerOptions,
 
-    #[command(flatten)]
-    dz_ledger_connection_options: DoubleZeroLedgerConnectionOptions,
-
     #[arg(hide = true, long, value_name = "PUBKEY")]
     rewards_accountant: Option<Pubkey>,
 }
@@ -60,7 +57,6 @@ impl Schedulable for DistributeRewards {
             schedule,
             rewards_accountant: rewards_accountant_key,
             solana_payer_options,
-            dz_ledger_connection_options,
         } = self;
 
         ensure!(
@@ -91,8 +87,8 @@ impl Schedulable for DistributeRewards {
         // that 2Z tokens have been swept.
         let distribution = try_prepare_distribution_rewards(&wallet, &config, dz_epoch).await?;
 
-        let dz_connection =
-            DoubleZeroLedgerConnection::try_from(dz_ledger_connection_options.clone())?;
+        let dz_env = wallet.connection.try_dz_environment().await?;
+        let dz_connection = DoubleZeroLedgerConnection::from(dz_env);
 
         let shapley_output = try_fetch_shapley_record(
             &dz_connection,
@@ -206,16 +202,13 @@ async fn try_distribute_contributor_rewards(
         ContributorRewards::find_address(&reward_share.contributor_key);
 
     // Fetch contributor reward recipients.
-    let recipient_shares = match ZeroCopyAccountOwned::<ContributorRewards>::try_from_rpc_client(
-        &wallet.connection,
-        &contributor_rewards_key,
-    )
-    .await
+    let recipient_shares = match wallet
+        .connection
+        .try_fetch_zero_copy_data::<ContributorRewards>(&contributor_rewards_key)
+        .await
     {
-        Ok(ZeroCopyAccountOwned {
-            data: Some(data), ..
-        }) => {
-            let recipient_shares = data
+        Ok(contributor_rewards) => {
+            let recipient_shares = contributor_rewards
                 .recipient_shares
                 .active_iter()
                 .copied()

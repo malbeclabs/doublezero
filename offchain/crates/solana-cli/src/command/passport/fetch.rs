@@ -24,7 +24,7 @@ impl FetchCommand {
             solana_connection_options,
         } = self;
 
-        let connection = SolanaConnection::try_from(solana_connection_options)?;
+        let connection = SolanaConnection::from(solana_connection_options);
 
         if config {
             let (program_config_key, program_config) =

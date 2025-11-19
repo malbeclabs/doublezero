@@ -324,7 +324,7 @@ impl TryFrom<SolanaPayerOptions> for Wallet {
         };
 
         Ok(Wallet {
-            connection: SolanaConnection::try_from(connection_options)?,
+            connection: connection_options.into(),
             signer,
             compute_unit_price_ix: with_compute_unit_price
                 .map(ComputeBudgetInstruction::set_compute_unit_price),

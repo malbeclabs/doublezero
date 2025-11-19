@@ -354,6 +354,7 @@ impl Transaction {
         Ok(debt_collection_results)
     }
 
+    // TODO: Get rid of this because only one thing calls it.
     pub async fn read_distribution(
         &self,
         dz_epoch: u64,

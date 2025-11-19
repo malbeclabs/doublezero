@@ -146,6 +146,9 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 			}
 
 			// Tolerate at most one test with partial losses.
+			// TestUnicastConnectivity will return error if there are losses that exceed the acceptable
+			// threshold, resulting in the QA test to fail earlier than this check. This check is responsible
+			// for tolerating at most 1 test with "acceptable" partial loss, or else fail the QA test.
 			require.LessOrEqual(t, testsWithPartialLosses, uint32(1), "too many connectivity tests with partial packet loss")
 		})
 	}

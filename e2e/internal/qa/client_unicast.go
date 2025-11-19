@@ -9,8 +9,12 @@ import (
 )
 
 const (
-	connectUnicastTimeout = 90 * time.Second
-	unicastPingTimeout    = 60 * time.Second
+	connectUnicastTimeout     = 90 * time.Second
+	unicastPingRequestTimeout = 60 * time.Second
+	unicastPingProbeTimeout   = 5 * time.Second
+
+	unicastPingProbeCount         = 5
+	unicastPingProbeLossThreshold = 2
 
 	unicastInterfaceName = "doublezero0"
 )
@@ -84,14 +88,15 @@ func (c *Client) TestUnicastConnectivity(ctx context.Context, targetClient *Clie
 		c.log.Info("Pinging (intra-exchange routing)", "source", sourceIP, "target", targetIP, "exchange", clientDevice.ExchangeCode)
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, unicastPingTimeout)
+	ctx, cancel := context.WithTimeout(ctx, unicastPingRequestTimeout)
 	defer cancel()
 	resp, err := c.grpcClient.Ping(ctx, &pb.PingRequest{
 		TargetIp:    targetIP,
 		SourceIp:    sourceIP,
 		PingType:    pb.PingRequest_ICMP,
 		SourceIface: iface,
-		Timeout:     uint32(unicastPingTimeout.Seconds()),
+		Timeout:     uint32(unicastPingProbeTimeout.Seconds()), // per-probe timeout
+		Count:       uint32(unicastPingProbeCount),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to ping: %w", err)
@@ -104,7 +109,43 @@ func (c *Client) TestUnicastConnectivity(ctx context.Context, targetClient *Clie
 		return fmt.Errorf("no packets received by %s from %s (sent=%d)", targetIP, sourceIP, resp.PacketsSent)
 	}
 	if resp.PacketsReceived < resp.PacketsSent {
-		return fmt.Errorf("packet loss detected: sent=%d, received=%d from %s to %s", resp.PacketsSent, resp.PacketsReceived, sourceIP, targetIP)
+		// If we have packet loss, check if routes were uninstalled and log an error for visibility.
+		installedRoutes, err := c.GetInstalledRoutes(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to get installed routes: %w", err)
+		}
+		installedIPs := make(map[string]struct{})
+		for _, route := range installedRoutes {
+			installedIPs[route.DstIp] = struct{}{}
+		}
+		if _, ok := installedIPs[targetIP]; !ok {
+			c.log.Error("Routes disappeared while pinging, packet loss detected",
+				"sourceHost", c.Host,
+				"targetHost", targetClient.Host,
+				"iface", iface,
+				"sourceDevice", clientDevice.Code,
+				"targetDevice", otherClientDevice.Code,
+				"packetsSent", resp.PacketsSent,
+				"packetsReceived", resp.PacketsReceived,
+			)
+		}
+
+		// If we have more than the threshold of packet loss, return an error, otherwise log.
+		if resp.PacketsReceived <= resp.PacketsSent-unicastPingProbeLossThreshold {
+			return fmt.Errorf("packet loss detected: sent=%d, received=%d from %s to %s", resp.PacketsSent, resp.PacketsReceived, sourceIP, targetIP)
+		} else {
+			c.log.Warn("Partial packet loss detected",
+				"sourceHost", c.Host,
+				"targetHost", targetClient.Host,
+				"iface", iface,
+				"sourceDevice", clientDevice.Code,
+				"targetDevice", otherClientDevice.Code,
+				"packetsSent", resp.PacketsSent,
+				"packetsReceived", resp.PacketsReceived,
+				"probeCount", unicastPingProbeCount,
+				"probeLossThreshold", unicastPingProbeLossThreshold,
+			)
+		}
 	}
 
 	c.log.Info("Successfully pinged",
@@ -113,7 +154,8 @@ func (c *Client) TestUnicastConnectivity(ctx context.Context, targetClient *Clie
 		"iface", iface,
 		"sourceDevice", clientDevice.Code,
 		"targetDevice", otherClientDevice.Code,
-		"packets", resp.PacketsSent,
+		"packetsSent", resp.PacketsSent,
+		"packetsReceived", resp.PacketsReceived,
 	)
 
 	return nil

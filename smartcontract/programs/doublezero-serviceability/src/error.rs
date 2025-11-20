@@ -345,7 +345,6 @@ mod tests {
             InvalidLoopbackType,
             InvalidMinCompatibleVersion,
             InvalidActualLocation,
-            
         ];
         for err in variants {
             let pe: ProgramError = err.clone().into();

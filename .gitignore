@@ -10,6 +10,7 @@ test-ledger/
 
 **/bin/*
 smartcontract/cli/config/*
+controlplane/funder/cmd/funder/funder
 
 .idea
 .private

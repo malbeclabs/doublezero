@@ -47,6 +47,7 @@ type Session struct {
 	upSince        time.Time  // time we transitioned to Up
 	downSince      time.Time  // time we transitioned to Down
 	lastDownReason DownReason // reason for last transition to Down
+	lastUpdated    time.Time  // time we last updated the session
 
 	// detectMult scales the detection timeout relative to the receive interval;
 	// it defines how many consecutive RX intervals may elapse without traffic
@@ -181,6 +182,7 @@ func (s *Session) ExpireIfDue(now time.Time) (expired bool) {
 		s.backoffFactor = 1
 		s.detectDeadline = time.Time{}
 		s.convUpStart = time.Time{}
+		s.lastUpdated = now
 		return true
 	}
 	return false
@@ -224,6 +226,7 @@ func (s *Session) HandleRx(now time.Time, ctrl *ControlPacket) (changed bool) {
 		s.upSince = time.Time{}
 		s.detectDeadline = time.Time{}
 		s.backoffFactor = 1
+		s.lastUpdated = now
 		return s.state != prev
 	}
 
@@ -250,6 +253,7 @@ func (s *Session) HandleRx(now time.Time, ctrl *ControlPacket) (changed bool) {
 		s.detectDeadline = time.Time{}
 		s.backoffFactor = 1
 		s.convUpStart = time.Time{}
+		s.lastUpdated = now
 		return s.state != prev
 	}
 
@@ -292,6 +296,7 @@ func (s *Session) HandleRx(now time.Time, ctrl *ControlPacket) (changed bool) {
 				s.lastDownReason = DownReasonNone
 			}
 			s.backoffFactor = 1
+			s.lastUpdated = now
 		}
 
 	case StateInit:
@@ -303,6 +308,7 @@ func (s *Session) HandleRx(now time.Time, ctrl *ControlPacket) (changed bool) {
 			s.downSince = time.Time{}
 			s.lastDownReason = DownReasonNone
 			s.backoffFactor = 1
+			s.lastUpdated = now
 		}
 
 	case StateUp:
@@ -311,6 +317,7 @@ func (s *Session) HandleRx(now time.Time, ctrl *ControlPacket) (changed bool) {
 		if ctrl.LocalDiscr != 0 && ctrl.LocalDiscr != s.peerDiscr {
 			s.peerDiscr = ctrl.LocalDiscr
 			s.convUpStart = now
+			s.lastUpdated = now
 		}
 	}
 
@@ -370,6 +377,7 @@ type SessionSnapshot struct {
 	LastDownReason      DownReason
 	DetectDeadline      time.Time
 	NextDetectScheduled time.Time
+	LastUpdated         time.Time
 }
 
 func (s *Session) Snapshot() SessionSnapshot {
@@ -388,5 +396,6 @@ func (s *Session) Snapshot() SessionSnapshot {
 		LastDownReason:      s.lastDownReason,
 		DetectDeadline:      s.detectDeadline,
 		NextDetectScheduled: s.nextDetectScheduled,
+		LastUpdated:         s.lastUpdated,
 	}
 }

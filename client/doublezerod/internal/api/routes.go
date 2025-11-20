@@ -1,0 +1,152 @@
+package api
+
+import (
+	"encoding/json"
+	"net/http"
+	"sort"
+	"time"
+
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/liveness"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
+	"github.com/malbeclabs/doublezero/config"
+	"golang.org/x/sys/unix"
+)
+
+type RTState string
+
+const (
+	RTStateUnknown RTState = "unknown"
+	RTStatePresent RTState = "present"
+	RTStateAbsent  RTState = "absent"
+)
+
+func (r RTState) String() string {
+	return string(r)
+}
+
+type Route struct {
+	Network             string  `json:"network"`
+	LocalIP             string  `json:"local_ip"`
+	PeerIP              string  `json:"peer_ip"`
+	RTState             RTState `json:"rt_state"`
+	LivenessLastUpdated string  `json:"liveness_last_updated,omitempty"`
+	LivenessState       string  `json:"liveness_state,omitempty"`
+}
+
+type routeKey struct {
+	Src     string
+	Dst     string
+	NextHop string
+}
+
+func routeKeyFor(rt *routing.Route) routeKey {
+	return routeKey{
+		Src:     rt.Src.To4().String(),
+		Dst:     rt.Dst.IP.To4().String(),
+		NextHop: rt.NextHop.To4().String(),
+	}
+}
+
+type LivenessManager interface {
+	GetSessions() []liveness.SessionSnapshot
+}
+
+func ServeRoutesHandler(nlr bgp.RouteReaderWriter, lm LivenessManager, networkConfig *config.NetworkConfig) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+
+		rts, err := nlr.RouteByProtocol(unix.RTPROT_BGP)
+		if err != nil {
+			http.Error(w, "failed to get routes", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+
+		kernelRoutes := make(map[routeKey]*Route, len(rts))
+		for _, rt := range rts {
+			if rt.Src == nil || rt.Dst == nil || rt.Src.To4() == nil || rt.Dst.IP.To4() == nil {
+				continue
+			}
+			kernelRoutes[routeKeyFor(rt)] = &Route{
+				Network: networkConfig.Moniker,
+				LocalIP: rt.Src.To4().String(),
+				PeerIP:  rt.Dst.IP.To4().String(),
+				RTState: RTStatePresent,
+			}
+		}
+
+		var routes []Route
+
+		if lm != nil {
+			// If the liveness manager is enabled, we need to get the routes from the liveness manager.
+			sessions := lm.GetSessions()
+			sessionsByRoute := make(map[routeKey]*liveness.SessionSnapshot, len(sessions))
+			for _, sess := range sessions {
+				sessionsByRoute[routeKeyFor(&sess.Route)] = &sess
+			}
+			routes = make([]Route, 0, len(sessions))
+
+			// Add routes that are in the kernel routing table but not in the liveness manager.
+			for rk, rt := range kernelRoutes {
+				_, ok := sessionsByRoute[rk]
+				if ok {
+					continue
+				}
+				routes = append(routes, *rt)
+			}
+
+			// Add routes that are in the liveness manager, with liveness state.
+			for rk, sess := range sessionsByRoute {
+				var rtState RTState
+				if _, ok := kernelRoutes[rk]; ok {
+					rtState = RTStatePresent
+				} else {
+					rtState = RTStateAbsent
+				}
+				routes = append(routes, Route{
+					Network:             networkConfig.Moniker,
+					LocalIP:             sess.Route.Src.To4().String(),
+					PeerIP:              sess.Route.Dst.IP.To4().String(),
+					RTState:             rtState,
+					LivenessLastUpdated: sess.LastUpdated.UTC().Format(time.RFC3339),
+					LivenessState:       sess.State.String(),
+				})
+			}
+		} else {
+			// If the liveness manager is not enabled, we can just get the routes from the netlink backend.
+			routes = make([]Route, 0, len(kernelRoutes))
+			for _, rt := range kernelRoutes {
+				routes = append(routes, *rt)
+			}
+		}
+
+		// Sort for consistent ordering in the API response.
+		sort.Slice(routes, func(i, j int) bool {
+			a, b := routes[i], routes[j]
+			if a.Network != b.Network {
+				return a.Network < b.Network
+			}
+			if a.LocalIP != b.LocalIP {
+				return a.LocalIP < b.LocalIP
+			}
+			if a.PeerIP != b.PeerIP {
+				return a.PeerIP < b.PeerIP
+			}
+			if a.RTState != b.RTState {
+				return a.RTState < b.RTState
+			}
+			if a.LivenessState != b.LivenessState {
+				return a.LivenessState < b.LivenessState
+			}
+			return false
+		})
+
+		w.WriteHeader(http.StatusOK)
+
+		if err := json.NewEncoder(w).Encode(routes); err != nil {
+			http.Error(w, "failed to encode routes", http.StatusInternalServerError)
+			return
+		}
+	}
+}

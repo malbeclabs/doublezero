@@ -26,4 +26,13 @@ const (
 	DevnetInternetLatencyCollectorPK = "3fXen9LP5JUAkaaDJtyLo1ohPiJ2LdzVqAnmhtGgAmwJ"
 	DevnetDeviceLocalASN             = 21682
 	DevnetTwoZOracleURL              = ""
+
+	// Localnet constants.
+	LocalnetLedgerPublicRPCURL         = "http://localhost:8899"
+	LocalnetServiceabilityProgramID    = "7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX"
+	LocalnetTelemetryProgramID         = "C9xqH76NSm11pBS6maNnY163tWHT8Govww47uyEmSnoG"
+	LocalnetInternetLatencyCollectorPK = "3fXen9LP5JUAkaaDJtyLo1ohPiJ2LdzVqAnmhtGgAmwJ"
+	LocalnetDeviceLocalASN             = 21682
+	LocalnetTwoZOracleURL              = ""
+	LocalnetSolanaRPC                  = "http://localhost:8899"
 )

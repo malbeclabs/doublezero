@@ -295,6 +295,7 @@ func (m *Manager) RegisterRoute(r *routing.Route, iface string) error {
 		maxTxCeil:     m.cfg.MaxTxCeil,  // clamp upper bound
 		backoffMax:    m.cfg.BackoffMax, // cap for exponential backoff while Down
 		backoffFactor: 1,
+		lastUpdated:   time.Now(),
 	}
 	m.sessions[peer] = sess
 	emitSessionStateMetrics(sess, nil, "register_route", m.cfg.PeerMetrics)
@@ -379,6 +380,17 @@ func (m *Manager) LocalAddr() *net.UDPAddr {
 		return addr
 	}
 	return nil
+}
+
+// GetSessions returns the snapshots of all sessions in the manager.
+func (m *Manager) GetSessions() []SessionSnapshot {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	snapshots := make([]SessionSnapshot, 0, len(m.sessions))
+	for _, sess := range m.sessions {
+		snapshots = append(snapshots, sess.Snapshot())
+	}
+	return snapshots
 }
 
 // GetSession returns the session for the given peer.
@@ -582,6 +594,7 @@ func (m *Manager) AdminDownRoute(r *routing.Route, iface string) {
 		sess.upSince = time.Time{}
 		sess.detectDeadline = time.Time{}
 		sess.nextDetectScheduled = time.Time{}
+		sess.lastUpdated = now
 	}
 	sess.mu.Unlock()
 

@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gagliardetto/solana-go"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/liveness"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/runtime"
 	"github.com/malbeclabs/doublezero/config"
@@ -92,27 +93,32 @@ func main() {
 		os.Exit(1)
 	}
 
+	var networkConfig *config.NetworkConfig
 	if *env != "" {
-		networkConfig, err := config.NetworkConfigForEnv(*env)
+		var err error
+		networkConfig, err = config.NetworkConfigForEnv(*env)
 		if err != nil {
 			slog.Error("failed to get network config", "error", err)
 			os.Exit(1)
 		}
-		if *programId == "" {
-			*programId = networkConfig.ServiceabilityProgramID.String()
-		}
-		if *rpcEndpoint == "" {
-			*rpcEndpoint = networkConfig.LedgerPublicRPCURL
-		}
 	}
 
-	if *programId == "" {
-		slog.Error("program-id is required")
-		os.Exit(1)
-	}
-	if *rpcEndpoint == "" {
-		slog.Error("rpc-endpoint is required")
-		os.Exit(1)
+	if networkConfig == nil {
+		if *programId == "" {
+			slog.Error("program-id is required")
+			os.Exit(1)
+		}
+		if *rpcEndpoint == "" {
+			slog.Error("rpc-endpoint is required")
+			os.Exit(1)
+		}
+	} else {
+		if *programId != "" {
+			networkConfig.ServiceabilityProgramID = solana.MustPublicKeyFromBase58(*programId)
+		}
+		if *rpcEndpoint != "" {
+			networkConfig.LedgerPublicRPCURL = *rpcEndpoint
+		}
 	}
 
 	if *metricsEnable {
@@ -171,7 +177,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := runtime.Run(ctx, *sockFile, *routeConfigPath, *enableLatencyProbing, *enableLatencyMetrics, *programId, *rpcEndpoint, *probeInterval, *cacheUpdateInterval, lmc); err != nil {
+	if err := runtime.Run(ctx, *sockFile, *routeConfigPath, *enableLatencyProbing, *enableLatencyMetrics, networkConfig, *probeInterval, *cacheUpdateInterval, lmc); err != nil {
 		slog.Error("runtime error", "error", err)
 		os.Exit(1)
 	}

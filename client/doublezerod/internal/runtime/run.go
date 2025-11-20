@@ -17,10 +17,11 @@ import (
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/manager"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/pim"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
+	"github.com/malbeclabs/doublezero/config"
 	"golang.org/x/sys/unix"
 )
 
-func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLatencyProbing, enableLatencyMetrics bool, programId string, rpcEndpoint string, probeInterval, cacheUpdateInterval int, lmc *liveness.ManagerConfig) error {
+func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLatencyProbing, enableLatencyMetrics bool, networkConfig *config.NetworkConfig, probeInterval, cacheUpdateInterval int, lmc *liveness.ManagerConfig) error {
 	nlr := routing.Netlink{}
 	var crw bgp.RouteReaderWriter
 	if _, err := os.Stat(routeConfigPath); os.IsNotExist(err) {
@@ -73,11 +74,12 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 	mux.HandleFunc("POST /provision", nlm.ServeProvision)
 	mux.HandleFunc("POST /remove", nlm.ServeRemove)
 	mux.HandleFunc("GET /status", nlm.ServeStatus)
+	mux.HandleFunc("GET /routes", api.ServeRoutesHandler(nlr, lm, networkConfig))
 
 	if enableLatencyProbing {
 		latencyManager := latency.NewLatencyManager(
-			latency.WithProgramID(programId),
-			latency.WithRpcEndpoint(rpcEndpoint),
+			latency.WithProgramID(networkConfig.ServiceabilityProgramID.String()),
+			latency.WithRpcEndpoint(networkConfig.LedgerPublicRPCURL),
 			latency.WithProbeInterval(time.Duration(probeInterval)*time.Second),
 			latency.WithCacheUpdateInterval(time.Duration(cacheUpdateInterval)*time.Second),
 			latency.WithMetricsEnabled(enableLatencyMetrics),
@@ -98,8 +100,8 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		resp := map[string]string{
-			"program_id": programId,
-			"rpc_url":    rpcEndpoint,
+			"program_id": networkConfig.ServiceabilityProgramID.String(),
+			"rpc_url":    networkConfig.LedgerPublicRPCURL,
 		}
 		if err := json.NewEncoder(w).Encode(resp); err != nil {
 			http.Error(w, "failed to encode response", http.StatusInternalServerError)

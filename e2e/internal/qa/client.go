@@ -111,7 +111,7 @@ func (c *Client) DisconnectUser(ctx context.Context, waitForStatus bool, waitFor
 	if err != nil {
 		return fmt.Errorf("failed to get user status: %w", err)
 	}
-	if status.SessionStatus != UserStatusUp {
+	if status.SessionStatus == UserStatusDisconnected {
 		c.log.Debug("User already disconnected", "host", c.Host)
 	} else {
 		c.log.Info("Disconnecting user", "host", c.Host)

@@ -69,6 +69,10 @@ pub struct ProvisioningCliCommand {
     #[arg(long, global = true)]
     pub device: Option<String>,
 
+    /// Ignore device max users and provisioning eligibility when selecting a device
+    #[arg(long, global = true, default_value_t = false)]
+    pub ignore_device_max_users: bool,
+
     /// Verbose output
     #[arg(short, long, global = true, default_value_t = false)]
     pub verbose: bool,
@@ -284,7 +288,10 @@ impl ProvisioningCliCommand {
                 }
             },
             None => {
-                let latency = best_latency(controller, devices, true, Some(spinner), None).await?;
+                let ignore_unprovisionable = !self.ignore_device_max_users;
+                let latency =
+                    best_latency(controller, devices, ignore_unprovisionable, Some(spinner), None)
+                        .await?;
                 spinner.set_message("Reading device account...");
                 Pubkey::from_str(&latency.device_pk)
                     .map_err(|_| eyre::eyre!("Unable to parse pubkey"))?
@@ -298,7 +305,10 @@ impl ProvisioningCliCommand {
             .map_err(|_| eyre::eyre!("Unable to get device"))?;
 
         // If user explicitly specified a device, check if it's eligible
-        if self.device.is_some() && !device.is_device_eligible_for_provisioning() {
+        if self.device.is_some()
+            && !self.ignore_device_max_users
+            && !device.is_device_eligible_for_provisioning()
+        {
             return Err(eyre::eyre!(
                 "Device is not accepting more users (at capacity or max_users=0)"
             ));
@@ -321,8 +331,9 @@ impl ProvisioningCliCommand {
         let users = client.list_user(ListUserCommand)?;
         let mut devices = client.list_device(ListDeviceCommand)?;
 
-        // Only filter devices if auto-selecting; keep all if user specified a device
-        if self.device.is_none() {
+        // Only filter devices if auto-selecting and not forcing device selection; keep all if user
+        // specified a device or when ignoring device capacity
+        if self.device.is_none() && !self.ignore_device_max_users {
             devices.retain(|_, d| d.is_device_eligible_for_provisioning());
         }
 
@@ -1051,6 +1062,7 @@ mod tests {
             },
             client_ip: Some(user.client_ip.to_string()),
             device: None,
+            ignore_device_max_users: false,
             verbose: false,
         };
 
@@ -1070,6 +1082,7 @@ mod tests {
             },
             client_ip: Some(user.client_ip.to_string()),
             device: None,
+            ignore_device_max_users: false,
             verbose: false,
         };
 
@@ -1107,6 +1120,7 @@ mod tests {
             },
             client_ip: Some(user.client_ip.to_string()),
             device: None,
+            ignore_device_max_users: false,
             verbose: false,
         };
 
@@ -1131,6 +1145,7 @@ mod tests {
             },
             client_ip: Some(user.client_ip.to_string()),
             device: None,
+            ignore_device_max_users: false,
             verbose: false,
         };
 
@@ -1172,6 +1187,7 @@ mod tests {
             },
             client_ip: Some(user.client_ip.to_string()),
             device: None,
+            ignore_device_max_users: false,
             verbose: false,
         };
 
@@ -1211,6 +1227,7 @@ mod tests {
             },
             client_ip: Some(user.client_ip.to_string()),
             device: None,
+            ignore_device_max_users: false,
             verbose: false,
         };
 
@@ -1227,6 +1244,7 @@ mod tests {
             },
             client_ip: Some(user.client_ip.to_string()),
             device: None,
+            ignore_device_max_users: false,
             verbose: false,
         };
 
@@ -1246,6 +1264,7 @@ mod tests {
             },
             client_ip: Some(user.client_ip.to_string()),
             device: None,
+            ignore_device_max_users: false,
             verbose: false,
         };
 
@@ -1293,6 +1312,7 @@ mod tests {
             },
             client_ip: Some(user.client_ip.to_string()),
             device: None,
+            ignore_device_max_users: false,
             verbose: false,
         };
 
@@ -1315,6 +1335,7 @@ mod tests {
             },
             client_ip: Some(user.client_ip.to_string()),
             device: None,
+            ignore_device_max_users: false,
             verbose: false,
         };
 
@@ -1335,6 +1356,7 @@ mod tests {
             },
             client_ip: Some(user.client_ip.to_string()),
             device: None,
+            ignore_device_max_users: false,
             verbose: false,
         };
 
@@ -1372,6 +1394,7 @@ mod tests {
             },
             client_ip: Some("1.2.3.4".to_string()),
             device: Some(device.code.clone()), // Explicitly specify the device
+            ignore_device_max_users: false,
             verbose: false,
         };
 
@@ -1416,6 +1439,7 @@ mod tests {
             },
             client_ip: Some("1.2.3.4".to_string()),
             device: Some(device.code.clone()), // Explicitly specify the device
+            ignore_device_max_users: false,
             verbose: false,
         };
 
@@ -1446,6 +1470,7 @@ mod tests {
             },
             client_ip: Some("1.2.3.4".to_string()),
             device: Some("nonexistent-device".to_string()), // Device that doesn't exist
+            ignore_device_max_users: false,
             verbose: false,
         };
 

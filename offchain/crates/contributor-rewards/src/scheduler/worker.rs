@@ -12,10 +12,15 @@ use anyhow::{Result, anyhow, bail};
 use backon::{ExponentialBuilder, Retryable};
 use chrono::Utc;
 use doublezero_program_tools::zero_copy;
-use doublezero_revenue_distribution::state::ProgramConfig;
+use doublezero_revenue_distribution::{
+    state::{Distribution, ProgramConfig},
+    types::DoubleZeroEpoch,
+};
 use doublezero_sdk::record::pubkey::create_record_key;
+use doublezero_solana_client_tools::rpc::try_fetch_zero_copy_data_with_commitment;
 use solana_client::client_error::ClientError as SolanaClientError;
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
+use svm_hash::sha2::Hash;
 use tempfile::NamedTempFile;
 use tokio::{
     signal,
@@ -260,24 +265,39 @@ impl ScheduleWorker {
     }
 
     /// Check if rewards already exist for a given epoch
+    ///
+    /// Returns true only if ALL steps are complete:
+    /// 1. Records exist (contributor rewards OR reward input)
+    /// 2. Merkle root posted to Distribution account
     async fn rewards_exist_for_epoch(&self, fetcher: &Fetcher, epoch: u64) -> Result<bool> {
-        // Check for contributor rewards record
-        if self
+        // Check if records exist (either contributor rewards or reward input)
+        let contributor_rewards_exists = self
             .check_contributor_rewards_record(fetcher, epoch)
-            .await?
-        {
-            debug!("Contributor rewards record exists for epoch {}", epoch);
-            return Ok(true);
+            .await?;
+
+        let reward_input_exists = self.check_reward_input_record(fetcher, epoch).await?;
+
+        let records_exist = contributor_rewards_exists || reward_input_exists;
+
+        // Check if merkle root has been posted
+        let merkle_root_posted = self.check_distribution_merkle_root(fetcher, epoch).await?;
+
+        // All steps must be complete
+        let all_complete = records_exist && merkle_root_posted;
+
+        if all_complete {
+            debug!(
+                "All rewards steps complete for epoch {}: records_exist={}, merkle_root_posted={}",
+                epoch, records_exist, merkle_root_posted
+            );
+        } else {
+            debug!(
+                "Rewards incomplete for epoch {}: records_exist={}, merkle_root_posted={}",
+                epoch, records_exist, merkle_root_posted
+            );
         }
 
-        // Check for reward input record
-        if self.check_reward_input_record(fetcher, epoch).await? {
-            debug!("Reward input record exists for epoch {}", epoch);
-            return Ok(true);
-        }
-
-        debug!("No existing rewards found for epoch {}", epoch);
-        Ok(false)
+        Ok(all_complete)
     }
 
     /// Check if contributor rewards record exists
@@ -323,6 +343,70 @@ impl ScheduleWorker {
         // Check if account exists
         let exists = self.account_exists(fetcher, &record_key).await?;
         Ok(exists)
+    }
+
+    /// Check if merkle root has been posted to Distribution account
+    async fn check_distribution_merkle_root(&self, fetcher: &Fetcher, epoch: u64) -> Result<bool> {
+        let dz_epoch = DoubleZeroEpoch::new(epoch);
+        let (distribution_key, _) = Distribution::find_address(dz_epoch);
+
+        debug!(
+            "Checking for Distribution merkle root at {} for epoch {}",
+            distribution_key, epoch
+        );
+
+        // Try to fetch Distribution account
+        let distribution_result = (|| async {
+            try_fetch_zero_copy_data_with_commitment::<Distribution>(
+                &fetcher.solana_write_client,
+                &distribution_key,
+                CommitmentConfig::confirmed(),
+            )
+            .await
+        })
+        .retry(&ExponentialBuilder::default().with_jitter())
+        .notify(|err, dur: Duration| {
+            debug!(
+                "retrying get Distribution account error: {:?} with sleeping {:?}",
+                err, dur
+            )
+        })
+        .await;
+
+        // If account doesn't exist, merkle root hasn't been posted yet
+        let distribution = match distribution_result {
+            Ok(dist) => dist,
+            Err(_) => {
+                debug!(
+                    "Distribution account does not exist for epoch {}, merkle root not posted",
+                    epoch
+                );
+                return Ok(false);
+            }
+        };
+
+        // Check if merkle root is non-zero (has been set)
+        let is_merkle_root_set = distribution.rewards_merkle_root != Hash::default();
+
+        // Check if total contributors is non-zero
+        let is_contributors_set = distribution.total_contributors > 0;
+
+        // All done?
+        let is_done = is_merkle_root_set && is_contributors_set;
+
+        if is_done {
+            debug!(
+                "Distribution merkle root exists for epoch {}: root={:?}, contributors={}",
+                epoch, distribution.rewards_merkle_root, distribution.total_contributors
+            );
+        } else {
+            debug!(
+                "Distribution merkle root incomplete for epoch {}: merkle_root_set={}, contributors_set={}",
+                epoch, is_merkle_root_set, is_contributors_set
+            );
+        }
+
+        Ok(is_done)
     }
 
     /// Get rewards accountant from program config

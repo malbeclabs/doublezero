@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- fix(contributor-rewards): add Distribution merkle root check to idempotency ([#202](https://github.com/doublezerofoundation/doublezero-offchain/pull/202)
+
+## [0.3.2](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-contributor-rewards/v0.3.2) - 2025-11-17
+
+- fix(contributor-rewards): make scheduler retry infinitely ([#198](https://github.com/doublezerofoundation/doublezero-offchain/pull/198)
+
 ## [0.3.1-rc1](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-contributor-rewards/v0.3.1-rc1) - 2025-11-11
 
 - feat(solana-cli): add `revenue-distribution fetch distribution --view` argument ([#182](https://github.com/doublezerofoundation/doublezero-offchain/pull/182))

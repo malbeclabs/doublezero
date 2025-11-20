@@ -350,6 +350,8 @@ async fn test_doublezero_program() {
         vec![
             AccountMeta::new(device_la_pubkey, false),
             AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(location_la_pubkey, false),
+            AccountMeta::new(location_la_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
@@ -469,6 +471,8 @@ async fn test_doublezero_program() {
         vec![
             AccountMeta::new(device_ny_pubkey, false),
             AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(location_ny_pubkey, false),
+            AccountMeta::new(location_ny_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,

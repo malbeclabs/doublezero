@@ -5,23 +5,28 @@ use doublezero_serviceability::{
     pda::*,
     processors::{
         contributor::create::ContributorCreateArgs,
-        device::{closeaccount::*, create::*, delete::*, resume::*, suspend::*, update::*},
+        device::{closeaccount::*, create::*, delete::*, update::*},
         *,
     },
     state::{accounttype::AccountType, contributor::ContributorStatus, device::*},
 };
 use globalconfig::set::SetGlobalConfigArgs;
 use solana_program_test::*;
-use solana_sdk::{
-    hash::Hash, instruction::AccountMeta, pubkey::Pubkey, signature::Keypair, signer::Signer,
-};
+use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signer::Signer};
 
 mod test_helpers;
 use test_helpers::*;
 
 #[tokio::test]
-async fn test_device() {
-    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+async fn device_update_location_test() {
+    let program_id = Pubkey::new_unique();
+    let (mut banks_client, payer, recent_blockhash) = ProgramTest::new(
+        "doublezero_serviceability",
+        program_id,
+        processor!(process_instruction),
+    )
+    .start()
+    .await;
 
     /***********************************************************************************************************************************/
     println!("🟢  Start test_device");
@@ -71,7 +76,8 @@ async fn test_device() {
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     assert_eq!(globalstate_account.account_index, 0);
 
-    let (location_pubkey, _) = get_location_pda(&program_id, globalstate_account.account_index + 1);
+    let (location_la_pubkey, _) =
+        get_location_pda(&program_id, globalstate_account.account_index + 1);
 
     execute_transaction(
         &mut banks_client,
@@ -86,7 +92,7 @@ async fn test_device() {
             loc_id: 0,
         }),
         vec![
-            AccountMeta::new(location_pubkey, false),
+            AccountMeta::new(location_la_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
@@ -94,9 +100,37 @@ async fn test_device() {
     .await;
 
     /***********************************************************************************************************************************/
-    println!("🟢 4. Create Exchange...");
+    println!("🟢 4. Create Location...");
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     assert_eq!(globalstate_account.account_index, 1);
+
+    let (location_ny_pubkey, _) =
+        get_location_pda(&program_id, globalstate_account.account_index + 1);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateLocation(location::create::LocationCreateArgs {
+            code: "ny".to_string(),
+            name: "New York".to_string(),
+            country: "us".to_string(),
+            lat: 1.234,
+            lng: 4.567,
+            loc_id: 0,
+        }),
+        vec![
+            AccountMeta::new(location_ny_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    /***********************************************************************************************************************************/
+    println!("🟢 5. Create Exchange...");
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    assert_eq!(globalstate_account.account_index, 2);
 
     let (exchange_pubkey, _) = get_exchange_pda(&program_id, globalstate_account.account_index + 1);
 
@@ -120,10 +154,10 @@ async fn test_device() {
     )
     .await;
     /***********************************************************************************************************************************/
-    println!("🟢 5. Create Contributor...");
+    println!("🟢 6. Create Contributor...");
     let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    assert_eq!(globalstate_account.account_index, 2);
+    assert_eq!(globalstate_account.account_index, 3);
 
     let (contributor_pubkey, _) =
         get_contributor_pda(&program_id, globalstate_account.account_index + 1);
@@ -157,11 +191,11 @@ async fn test_device() {
     println!("✅ Contributor initialized successfully",);
     /***********************************************************************************************************************************/
     // Device _la
-    println!("🟢 6. Create Device...");
+    println!("🟢 7. Create Device...");
     let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
 
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    assert_eq!(globalstate_account.account_index, 3);
+    assert_eq!(globalstate_account.account_index, 4);
 
     let (device_pubkey, _) = get_device_pda(&program_id, globalstate_account.account_index + 1);
 
@@ -180,7 +214,7 @@ async fn test_device() {
         vec![
             AccountMeta::new(device_pubkey, false),
             AccountMeta::new(contributor_pubkey, false),
-            AccountMeta::new(location_pubkey, false),
+            AccountMeta::new(location_la_pubkey, false),
             AccountMeta::new(exchange_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
@@ -197,6 +231,11 @@ async fn test_device() {
     assert_eq!(device.code, "la".to_string());
     assert_eq!(device.status, DeviceStatus::Pending);
 
+    println!("✅ Device Created successfully",);
+    /***********************************************************************************************************************************/
+    // Device _la
+    println!("🟢 8. Update Device ...");
+
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -208,8 +247,8 @@ async fn test_device() {
         vec![
             AccountMeta::new(device_pubkey, false),
             AccountMeta::new(contributor_pubkey, false),
-            AccountMeta::new(location_pubkey, false),
-            AccountMeta::new(location_pubkey, false),
+            AccountMeta::new(location_la_pubkey, false),
+            AccountMeta::new(location_ny_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
@@ -222,6 +261,7 @@ async fn test_device() {
         .get_device()
         .unwrap();
     assert_eq!(device_la.max_users, 128);
+    assert_eq!(device_la.location_pk, location_ny_pubkey);
 
     // check reference counts
     let contributor = get_account_data(&mut banks_client, contributor_pubkey)
@@ -231,12 +271,19 @@ async fn test_device() {
         .unwrap();
     assert_eq!(contributor.reference_count, 1);
     //check reference counts
-    let location = get_account_data(&mut banks_client, location_pubkey)
+    let location_la = get_account_data(&mut banks_client, location_la_pubkey)
         .await
         .expect("Unable to get Account")
         .get_location()
         .unwrap();
-    assert_eq!(location.reference_count, 1);
+    assert_eq!(location_la.reference_count, 0);
+    //check reference counts
+    let location_ny = get_account_data(&mut banks_client, location_ny_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_location()
+        .unwrap();
+    assert_eq!(location_ny.reference_count, 1);
     //check reference counts
     let exchange = get_account_data(&mut banks_client, exchange_pubkey)
         .await
@@ -247,7 +294,7 @@ async fn test_device() {
 
     println!("✅ Device initialized successfully",);
     /*****************************************************************************************************************************************************/
-    println!("🟢 7. Activate Device...");
+    println!("🟢 9. Activate Device...");
 
     execute_transaction(
         &mut banks_client,
@@ -271,57 +318,7 @@ async fn test_device() {
     assert_eq!(device.code, "la".to_string());
     assert_eq!(device.status, DeviceStatus::Activated);
 
-    println!("✅ Device activated");
-    /*****************************************************************************************************************************************************/
-    println!("🟢 8. Suspend Device...");
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::SuspendDevice(DeviceSuspendArgs {}),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(contributor_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let device_la = get_account_data(&mut banks_client, device_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_device()
-        .unwrap();
-    assert_eq!(device_la.account_type, AccountType::Device);
-    assert_eq!(device_la.status, DeviceStatus::Suspended);
-
-    println!("✅ Device suspended");
-    /*****************************************************************************************************************************************************/
-    println!("🟢 9. Resume Device...");
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ResumeDevice(DeviceResumeArgs {}),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(contributor_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let device = get_account_data(&mut banks_client, device_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_device()
-        .unwrap();
-    assert_eq!(device.account_type, AccountType::Device);
-    assert_eq!(device.status, DeviceStatus::Activated);
-
-    println!("✅ Device resumed");
+    println!("✅ Device updated");
     /*****************************************************************************************************************************************************/
     println!("🟢 10. Update Device...");
     execute_transaction(
@@ -329,21 +326,21 @@ async fn test_device() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
-            code: Some("la2".to_string()),
-            device_type: Some(DeviceType::Switch),
+            code: None,
+            device_type: None,
             contributor_pk: None,
-            public_ip: Some([8, 8, 8, 8].into()), // Global public IP
-            dz_prefixes: Some("110.1.0.0/23".parse().unwrap()),
-            metrics_publisher_pk: Some(Pubkey::default()),
-            mgmt_vrf: Some("mgmt".to_string()),
+            public_ip: None,
+            dz_prefixes: None,
+            metrics_publisher_pk: None,
+            mgmt_vrf: None,
             max_users: None,
             users_count: None,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
             AccountMeta::new(contributor_pubkey, false),
-            AccountMeta::new(location_pubkey, false),
-            AccountMeta::new(location_pubkey, false),
+            AccountMeta::new(location_ny_pubkey, false),
+            AccountMeta::new(location_ny_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
@@ -356,13 +353,44 @@ async fn test_device() {
         .get_device()
         .unwrap();
     assert_eq!(device_la.account_type, AccountType::Device);
-    assert_eq!(device_la.code, "la2".to_string());
-    assert_eq!(device_la.public_ip.to_string(), "8.8.8.8");
+    assert_eq!(device_la.code, "la".to_string());
+    assert_eq!(device_la.location_pk, location_ny_pubkey);
     assert_eq!(device_la.status, DeviceStatus::Activated);
 
     println!("✅ Device updated");
     /*****************************************************************************************************************************************************/
-    println!("🟢 11. Deleting Device...");
+    println!("🟢 11. Update Device fail...");
+    let res = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
+            code: None,
+            device_type: None,
+            contributor_pk: None,
+            public_ip: None,
+            dz_prefixes: None,
+            metrics_publisher_pk: None,
+            mgmt_vrf: None,
+            max_users: None,
+            users_count: None,
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(location_la_pubkey, false),
+            AccountMeta::new(location_ny_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    assert!(res.is_err());
+
+    println!("✅ Device update failed correctly.");
+    /*****************************************************************************************************************************************************/
+    println!("🟢 12. Deleting Device...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -383,12 +411,12 @@ async fn test_device() {
         .get_device()
         .unwrap();
     assert_eq!(device_la.account_type, AccountType::Device);
-    assert_eq!(device_la.code, "la2".to_string());
+    assert_eq!(device_la.code, "la".to_string());
     assert_eq!(device_la.public_ip.to_string(), "8.8.8.8");
     assert_eq!(device_la.status, DeviceStatus::Deleting);
 
     /*****************************************************************************************************************************************************/
-    println!("🟢 12. CloseAccount Device...");
+    println!("🟢 13. CloseAccount Device...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -417,7 +445,7 @@ async fn test_device() {
         .unwrap();
     assert_eq!(contributor.reference_count, 0);
     //check reference counts
-    let location = get_account_data(&mut banks_client, location_pubkey)
+    let location = get_account_data(&mut banks_client, location_la_pubkey)
         .await
         .expect("Unable to get Account")
         .get_location()
@@ -433,276 +461,4 @@ async fn test_device() {
 
     println!("✅ Device deleted successfully");
     println!("🟢🟢🟢  End test_device  🟢🟢🟢");
-}
-
-#[tokio::test]
-async fn test_device_update_metrics_publisher_by_foundation_allowlist_account() {
-    let (
-        mut banks_client,
-        payer,
-        program_id,
-        _globalstate_pubkey,
-        location_pubkey,
-        exchange_pubkey,
-        contributor_pubkey,
-    ) = setup_program_with_location_and_exchange().await;
-
-    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
-
-    // Create device
-    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
-    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    assert_eq!(globalstate_account.account_index, 3);
-    let (device_pubkey, _) = get_device_pda(&program_id, globalstate_account.account_index + 1);
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
-            code: "la".to_string(),
-            device_type: DeviceType::Switch,
-            public_ip: [100, 0, 0, 1].into(),
-            dz_prefixes: "110.1.0.0/23".parse().unwrap(),
-            metrics_publisher_pk: Pubkey::default(),
-            mgmt_vrf: "mgmt".to_string(),
-        }),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(contributor_pubkey, false),
-            AccountMeta::new(location_pubkey, false),
-            AccountMeta::new(exchange_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-    let device = get_account_data(&mut banks_client, device_pubkey)
-        .await
-        .unwrap()
-        .get_device()
-        .unwrap();
-    assert_eq!(device.account_type, AccountType::Device);
-    assert_eq!(device.code, "la".to_string());
-    assert_eq!(device.status, DeviceStatus::Pending);
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
-            max_users: Some(128),
-            ..DeviceUpdateArgs::default()
-        }),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(contributor_pubkey, false),
-            AccountMeta::new(location_pubkey, false),
-            AccountMeta::new(location_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let device_la = get_account_data(&mut banks_client, device_pubkey)
-        .await
-        .expect("Unable to get Device")
-        .get_device()
-        .unwrap();
-    assert_eq!(device_la.max_users, 128);
-
-    // Update device metrics publisher by foundation allowlist account (payer)
-    let metrics_publisher_pk = Pubkey::new_unique();
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
-            code: None,
-            device_type: None,
-            contributor_pk: None,
-            public_ip: None,
-            dz_prefixes: None,
-            metrics_publisher_pk: Some(metrics_publisher_pk),
-            mgmt_vrf: None,
-            max_users: None,
-            users_count: None,
-        }),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(contributor_pubkey, false),
-            AccountMeta::new(location_pubkey, false),
-            AccountMeta::new(location_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-    let device = get_account_data(&mut banks_client, device_pubkey)
-        .await
-        .unwrap()
-        .get_device()
-        .unwrap();
-    assert_eq!(device.account_type, AccountType::Device);
-    assert_eq!(device.code, "la".to_string());
-    assert_eq!(device.public_ip.to_string(), "100.0.0.1");
-    assert_eq!(device.metrics_publisher_pk, metrics_publisher_pk);
-}
-
-async fn setup_program_with_location_and_exchange(
-) -> (BanksClient, Keypair, Pubkey, Pubkey, Pubkey, Pubkey, Pubkey) {
-    let program_id = Pubkey::new_unique();
-    let (mut banks_client, payer, recent_blockhash) = ProgramTest::new(
-        "doublezero_serviceability",
-        program_id,
-        processor!(process_instruction),
-    )
-    .start()
-    .await;
-
-    // Start with a fresh program
-    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
-    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::InitGlobalState(),
-        vec![
-            AccountMeta::new(program_config_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Initialize GlobalConfig
-    let (config_pubkey, _) = get_globalconfig_pda(&program_id);
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::SetGlobalConfig(SetGlobalConfigArgs {
-            local_asn: 65000,
-            remote_asn: 65001,
-            device_tunnel_block: "10.0.0.0/24".parse().unwrap(),
-            user_tunnel_block: "10.0.0.0/24".parse().unwrap(),
-            multicastgroup_block: "224.0.0.0/4".parse().unwrap(),
-            next_bgp_community: None,
-        }),
-        vec![
-            AccountMeta::new(config_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Create Location
-    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    assert_eq!(globalstate_account.account_index, 0);
-
-    let (location_pubkey, _) = get_location_pda(&program_id, globalstate_account.account_index + 1);
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateLocation(location::create::LocationCreateArgs {
-            code: "la".to_string(),
-            name: "Los Angeles".to_string(),
-            country: "us".to_string(),
-            lat: 1.234,
-            lng: 4.567,
-            loc_id: 0,
-        }),
-        vec![
-            AccountMeta::new(location_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Create Exchange
-    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    assert_eq!(globalstate_account.account_index, 1);
-
-    let (exchange_pubkey, _) = get_exchange_pda(&program_id, globalstate_account.account_index + 1);
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateExchange(exchange::create::ExchangeCreateArgs {
-            code: "la".to_string(),
-            name: "Los Angeles".to_string(),
-            lat: 1.234,
-            lng: 4.567,
-            reserved: 0,
-        }),
-        vec![
-            AccountMeta::new(exchange_pubkey, false),
-            AccountMeta::new(config_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Create Contributor
-    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
-    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    assert_eq!(globalstate_account.account_index, 2);
-
-    let (contributor_pubkey, _) =
-        get_contributor_pda(&program_id, globalstate_account.account_index + 1);
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
-            code: "cont".to_string(),
-        }),
-        vec![
-            AccountMeta::new(contributor_pubkey, false),
-            AccountMeta::new(payer.pubkey(), false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let contributor = get_account_data(&mut banks_client, contributor_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_contributor()
-        .unwrap();
-    assert_eq!(contributor.account_type, AccountType::Contributor);
-    assert_eq!(contributor.code, "cont".to_string());
-    assert_eq!(contributor.status, ContributorStatus::Activated);
-
-    (
-        banks_client,
-        payer,
-        program_id,
-        globalstate_pubkey,
-        location_pubkey,
-        exchange_pubkey,
-        contributor_pubkey,
-    )
-}
-
-async fn wait_for_new_blockhash(banks_client: &mut BanksClient) -> Hash {
-    let current_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-
-    let mut new_blockhash = current_blockhash;
-    while new_blockhash == current_blockhash {
-        new_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-    }
-
-    new_blockhash
 }

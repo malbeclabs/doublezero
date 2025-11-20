@@ -2,6 +2,7 @@ use doublezero_serviceability::{
     instructions::*,
     pda::*,
     processors::{
+        allowlist::foundation::add::AddFoundationAllowlistArgs,
         contributor::create::ContributorCreateArgs,
         device::interface::DeviceInterfaceUnlinkArgs,
         link::{
@@ -168,6 +169,22 @@ async fn test_dzx_link() {
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     assert_eq!(globalstate_account.account_index, 3);
 
+    let payer2 = solana_sdk::signer::keypair::Keypair::new();
+    transfer(&mut banks_client, &payer, &payer2.pubkey(), 10_000_000_000).await;
+
+    println!("Add to allowlist...");
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::AddFoundationAllowlist(AddFoundationAllowlistArgs {
+            pubkey: payer2.pubkey(),
+        }),
+        vec![AccountMeta::new(globalstate_pubkey, false)],
+        &payer,
+    )
+    .await;
+
     let (contributor2_pubkey, _) =
         get_contributor_pda(&program_id, globalstate_account.account_index + 1);
 
@@ -180,10 +197,10 @@ async fn test_dzx_link() {
         }),
         vec![
             AccountMeta::new(contributor2_pubkey, false),
-            AccountMeta::new(payer.pubkey(), false),
+            AccountMeta::new(payer2.pubkey(), false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
-        &payer,
+        &payer2,
     )
     .await;
 
@@ -313,7 +330,7 @@ async fn test_dzx_link() {
             AccountMeta::new(exchange_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
-        &payer,
+        &payer2,
     )
     .await;
 
@@ -340,7 +357,7 @@ async fn test_dzx_link() {
             AccountMeta::new(contributor2_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
-        &payer,
+        &payer2,
     )
     .await;
 
@@ -423,7 +440,7 @@ async fn test_dzx_link() {
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     assert_eq!(globalstate_account.account_index, 6);
 
-    let (tunnel_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
+    let (link_dzx_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
 
     execute_transaction(
         &mut banks_client,
@@ -440,7 +457,7 @@ async fn test_dzx_link() {
             side_z_iface_name: None,
         }),
         vec![
-            AccountMeta::new(tunnel_pubkey, false),
+            AccountMeta::new(link_dzx_pubkey, false),
             AccountMeta::new(contributor1_pubkey, false),
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
@@ -450,7 +467,7 @@ async fn test_dzx_link() {
     )
     .await;
 
-    let tunnel_la = get_account_data(&mut banks_client, tunnel_pubkey)
+    let tunnel_la = get_account_data(&mut banks_client, link_dzx_pubkey)
         .await
         .expect("Unable to get Account")
         .get_tunnel()
@@ -494,7 +511,7 @@ async fn test_dzx_link() {
             side_z_iface_name: "Ethernet1".to_string(),
         }),
         vec![
-            AccountMeta::new(tunnel_pubkey, false),
+            AccountMeta::new(link_dzx_pubkey, false),
             AccountMeta::new(contributor1_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
@@ -505,7 +522,7 @@ async fn test_dzx_link() {
 
     assert!(res.is_err());
 
-    let tunnel_la = get_account_data(&mut banks_client, tunnel_pubkey)
+    let tunnel_la = get_account_data(&mut banks_client, link_dzx_pubkey)
         .await
         .expect("Unable to get Account")
         .get_tunnel()
@@ -525,16 +542,16 @@ async fn test_dzx_link() {
             side_z_iface_name: "Ethernet1".to_string(),
         }),
         vec![
-            AccountMeta::new(tunnel_pubkey, false),
+            AccountMeta::new(link_dzx_pubkey, false),
             AccountMeta::new(contributor2_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
-        &payer,
+        &payer2,
     )
     .await;
 
-    let tunnel_la = get_account_data(&mut banks_client, tunnel_pubkey)
+    let tunnel_la = get_account_data(&mut banks_client, link_dzx_pubkey)
         .await
         .expect("Unable to get Account")
         .get_tunnel()
@@ -555,7 +572,7 @@ async fn test_dzx_link() {
             tunnel_net: "10.0.0.0/21".parse().unwrap(),
         }),
         vec![
-            AccountMeta::new(tunnel_pubkey, false),
+            AccountMeta::new(link_dzx_pubkey, false),
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
@@ -564,7 +581,7 @@ async fn test_dzx_link() {
     )
     .await;
 
-    let tunnel_la = get_account_data(&mut banks_client, tunnel_pubkey)
+    let tunnel_la = get_account_data(&mut banks_client, link_dzx_pubkey)
         .await
         .expect("Unable to get Account")
         .get_tunnel()
@@ -583,7 +600,7 @@ async fn test_dzx_link() {
         program_id,
         DoubleZeroInstruction::SuspendLink(LinkSuspendArgs {}),
         vec![
-            AccountMeta::new(tunnel_pubkey, false),
+            AccountMeta::new(link_dzx_pubkey, false),
             AccountMeta::new(contributor1_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
@@ -591,7 +608,7 @@ async fn test_dzx_link() {
     )
     .await;
 
-    let tunnel_la = get_account_data(&mut banks_client, tunnel_pubkey)
+    let tunnel_la = get_account_data(&mut banks_client, link_dzx_pubkey)
         .await
         .expect("Unable to get Account")
         .get_tunnel()
@@ -608,7 +625,7 @@ async fn test_dzx_link() {
         program_id,
         DoubleZeroInstruction::ResumeLink(LinkResumeArgs {}),
         vec![
-            AccountMeta::new(tunnel_pubkey, false),
+            AccountMeta::new(link_dzx_pubkey, false),
             AccountMeta::new(contributor1_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
@@ -616,7 +633,7 @@ async fn test_dzx_link() {
     )
     .await;
 
-    let link = get_account_data(&mut banks_client, tunnel_pubkey)
+    let link = get_account_data(&mut banks_client, link_dzx_pubkey)
         .await
         .expect("Unable to get Account")
         .get_tunnel()
@@ -643,7 +660,7 @@ async fn test_dzx_link() {
             status: None,
         }),
         vec![
-            AccountMeta::new(tunnel_pubkey, false),
+            AccountMeta::new(link_dzx_pubkey, false),
             AccountMeta::new(contributor1_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
@@ -651,7 +668,7 @@ async fn test_dzx_link() {
     )
     .await;
 
-    let tunnel_la = get_account_data(&mut banks_client, tunnel_pubkey)
+    let tunnel_la = get_account_data(&mut banks_client, link_dzx_pubkey)
         .await
         .expect("Unable to get Account")
         .get_tunnel()
@@ -666,14 +683,48 @@ async fn test_dzx_link() {
     println!("✅ Link updated");
 
     /*****************************************************************************************************************************************************/
-    println!("🟢 14. Deleting Link...");
+    println!("🟢 14. Update Link by Contributor B...");
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
+            delay_override_ns: Some(500000),
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(link_dzx_pubkey, false),
+            AccountMeta::new(contributor2_pubkey, false),
+            AccountMeta::new(device_z_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer2,
+    )
+    .await;
+
+    let link_dzx = get_account_data(&mut banks_client, link_dzx_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_tunnel()
+        .unwrap();
+    assert_eq!(link_dzx.account_type, AccountType::Link);
+    assert_eq!(link_dzx.code, "la2".to_string());
+    assert_eq!(link_dzx.bandwidth, 20000000000);
+    assert_eq!(link_dzx.mtu, 8900);
+    assert_eq!(link_dzx.delay_ns, 1000000);
+    assert_eq!(link_dzx.status, LinkStatus::Activated);
+
+    println!("✅ Link updated");
+
+    /*****************************************************************************************************************************************************/
+    println!("🟢 15. Deleting Link...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {}),
         vec![
-            AccountMeta::new(tunnel_pubkey, false),
+            AccountMeta::new(link_dzx_pubkey, false),
             AccountMeta::new(contributor1_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
@@ -681,7 +732,7 @@ async fn test_dzx_link() {
     )
     .await;
 
-    let tunnel_la = get_account_data(&mut banks_client, tunnel_pubkey)
+    let tunnel_la = get_account_data(&mut banks_client, link_dzx_pubkey)
         .await
         .expect("Unable to get Account")
         .get_tunnel()
@@ -696,14 +747,14 @@ async fn test_dzx_link() {
     println!("✅ Link deleting");
 
     /*****************************************************************************************************************************************************/
-    println!("🟢 15. CloseAccount Link...");
+    println!("🟢 16. CloseAccount Link...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::CloseAccountLink(LinkCloseAccountArgs {}),
         vec![
-            AccountMeta::new(tunnel_pubkey, false),
+            AccountMeta::new(link_dzx_pubkey, false),
             AccountMeta::new(link.owner, false),
             AccountMeta::new(link.contributor_pk, false),
             AccountMeta::new(link.side_a_pk, false),
@@ -714,7 +765,7 @@ async fn test_dzx_link() {
     )
     .await;
 
-    let tunnel_la = get_account_data(&mut banks_client, tunnel_pubkey).await;
+    let tunnel_la = get_account_data(&mut banks_client, link_dzx_pubkey).await;
     assert_eq!(tunnel_la, None);
 
     // check reference counts

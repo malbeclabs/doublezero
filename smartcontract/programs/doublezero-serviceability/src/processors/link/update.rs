@@ -2,17 +2,17 @@ use crate::{
     error::DoubleZeroError,
     globalstate::globalstate_get,
     helper::*,
-    state::{contributor::Contributor, link::*},
+    state::{contributor::Contributor, device::Device, link::*},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
 use doublezero_program_common::validate_account_code;
-#[cfg(test)]
-use solana_program::msg;
+
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
+    msg,
     pubkey::Pubkey,
 };
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
@@ -30,11 +30,35 @@ pub struct LinkUpdateArgs {
 
 impl fmt::Debug for LinkUpdateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "code: {:?}, tunnel_type: {:?}, bandwidth: {:?}, mtu: {:?}, delay_ns: {:?}, jitter_ns: {:?}, delay_override_ns: {:?}",
-            self.code, self.tunnel_type, self.bandwidth, self.mtu, self.delay_ns, self.jitter_ns, self.delay_override_ns
-        )
+        let mut parts = Vec::new();
+        if let Some(ref code) = self.code {
+            parts.push(format!("code: {:?}", code));
+        }
+        if let Some(ref contributor_pk) = self.contributor_pk {
+            parts.push(format!("contributor_pk: {:?}", contributor_pk));
+        }
+        if let Some(ref tunnel_type) = self.tunnel_type {
+            parts.push(format!("tunnel_type: {:?}", tunnel_type));
+        }
+        if let Some(bandwidth) = self.bandwidth {
+            parts.push(format!("bandwidth: {:?}", bandwidth));
+        }
+        if let Some(mtu) = self.mtu {
+            parts.push(format!("mtu: {:?}", mtu));
+        }
+        if let Some(delay_ns) = self.delay_ns {
+            parts.push(format!("delay_ns: {:?}", delay_ns));
+        }
+        if let Some(jitter_ns) = self.jitter_ns {
+            parts.push(format!("jitter_ns: {:?}", jitter_ns));
+        }
+        if let Some(ref status) = self.status {
+            parts.push(format!("status: {:?}", status));
+        }
+        if let Some(delay_override_ns) = self.delay_override_ns {
+            parts.push(format!("delay_override_ns: {:?}", delay_override_ns));
+        }
+        write!(f, "{}", parts.join(", "))
     }
 }
 
@@ -47,6 +71,11 @@ pub fn process_update_link(
 
     let link_account = next_account_info(accounts_iter)?;
     let contributor_account = next_account_info(accounts_iter)?;
+    let side_z_account: Option<&AccountInfo> = if accounts.len() > 5 {
+        Some(next_account_info(accounts_iter)?)
+    } else {
+        None
+    };
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
@@ -55,7 +84,11 @@ pub fn process_update_link(
     msg!("process_update_link({:?})", value);
 
     // Check if the payer is a signer
-    assert!(payer_account.is_signer, "Payer must be a signer");
+    assert!(
+        payer_account.is_signer,
+        "Payer must be a signer {:?}",
+        payer_account
+    );
 
     // Check the owner of the accounts
     assert_eq!(link_account.owner, program_id, "Invalid PDA Account Owner");
@@ -77,38 +110,77 @@ pub fn process_update_link(
     if contributor.owner != *payer_account.key
         && !globalstate.foundation_allowlist.contains(payer_account.key)
     {
+        msg!("contributor owner: {:?}", contributor.owner);
         return Err(DoubleZeroError::NotAllowed.into());
     }
+    if let Some(side_z_account) = side_z_account {
+        if side_z_account.owner != program_id {
+            return Err(DoubleZeroError::InvalidAccountOwner.into());
+        }
+    }
 
+    // Deserialize the optional side_z device account
+    let side_z: Option<Device> = if let Some(side_z_account) = side_z_account {
+        Some(Device::try_from(side_z_account)?)
+    } else {
+        None
+    };
+
+    // Deserialize the link account
     let mut link: Link = Link::try_from(link_account)?;
 
-    if let Some(ref code) = value.code {
-        link.code = validate_account_code(code).map_err(|_| DoubleZeroError::InvalidAccountCode)?;
+    if side_z.is_none() {
+        // Link should be owned by the contributor A
+        if link.contributor_pk != *contributor_account.key {
+            msg!("link contributor_pk: {:?}", link.contributor_pk);
+            return Err(DoubleZeroError::NotAllowed.into());
+        }
+    } else if let Some(side_z) = side_z {
+        // Link should be owned by the side_z device's contributor B
+        if link.side_z_pk != *side_z_account.unwrap().key {
+            return Err(DoubleZeroError::InvalidAccountOwner.into());
+        }
+        if side_z.contributor_pk != *contributor_account.key {
+            msg!("side_z contributor_pk: {:?}", side_z.contributor_pk);
+            return Err(DoubleZeroError::NotAllowed.into());
+        }
     }
-    if let Some(contributor_pk) = value.contributor_pk {
-        link.contributor_pk = contributor_pk;
+
+    // can be updated by either contributor A or B
+    if link.contributor_pk == *contributor_account.key {
+        if let Some(ref code) = value.code {
+            link.code =
+                validate_account_code(code).map_err(|_| DoubleZeroError::InvalidAccountCode)?;
+        }
+        if let Some(tunnel_type) = value.tunnel_type {
+            link.link_type = tunnel_type;
+        }
+        if let Some(bandwidth) = value.bandwidth {
+            link.bandwidth = bandwidth;
+        }
+        if let Some(mtu) = value.mtu {
+            link.mtu = mtu;
+        }
+        if let Some(delay_ns) = value.delay_ns {
+            link.delay_ns = delay_ns;
+        }
+        if let Some(jitter_ns) = value.jitter_ns {
+            link.jitter_ns = jitter_ns;
+        }
     }
-    if let Some(tunnel_type) = value.tunnel_type {
-        link.link_type = tunnel_type;
-    }
-    if let Some(bandwidth) = value.bandwidth {
-        link.bandwidth = bandwidth;
-    }
-    if let Some(mtu) = value.mtu {
-        link.mtu = mtu;
-    }
-    if let Some(delay_ns) = value.delay_ns {
-        link.delay_ns = delay_ns;
-    }
-    if let Some(jitter_ns) = value.jitter_ns {
-        link.jitter_ns = jitter_ns;
-    }
+    // Can be updated by both contributors A and B
     if let Some(delay_override_ns) = value.delay_override_ns {
         link.delay_override_ns = delay_override_ns;
     }
+
+    // For now only allow foundation to update status
     if let Some(status) = value.status {
         // Only allow to update the status if the payer is in the foundation allowlist
         if !globalstate.foundation_allowlist.contains(payer_account.key) {
+            msg!(
+                "Payer is not in the foundation allowlist: {:?}",
+                payer_account.key
+            );
             return Err(DoubleZeroError::NotAllowed.into());
         }
         link.status = status;

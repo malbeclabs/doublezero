@@ -13,7 +13,11 @@ All notable changes to this project will be documented in this file.
 - CLI
     - IP address lookups via ifconfig.me are retried up to 3 times to minimize transient network errors.
     - Added global `--no-version-warning` flag to the `doublezero` client and now emit version warnings to STDERR instead of STDOUT to improve scriptability and logging.
+    - Add the ability to update a Device’s location, managing the reference counters accordingly.
 - Funder: fund multicast group owners
+- Onchain programs
+  - Serviceability Program: Updated the device update command to allow modifying a device’s location.
+
 
 ## [v0.7.1](https://github.com/malbeclabs/doublezero/compare/client/v0.7.0...client/v0.7.1) – 2025-11-18
 

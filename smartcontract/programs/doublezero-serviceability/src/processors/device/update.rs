@@ -2,17 +2,16 @@ use crate::{
     error::DoubleZeroError,
     globalstate::globalstate_get,
     helper::*,
-    state::{accounttype::AccountType, contributor::Contributor, device::*},
+    state::{accounttype::AccountType, contributor::Contributor, device::*, location::Location},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
 use doublezero_program_common::{types::NetworkV4List, validate_account_code};
-#[cfg(test)]
-use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
+    msg,
     pubkey::Pubkey,
 };
 
@@ -71,6 +70,17 @@ pub fn process_update_device(
 
     let device_account = next_account_info(accounts_iter)?;
     let contributor_account = next_account_info(accounts_iter)?;
+    // Update location accounts (old and new)
+
+    let (location_old_account, location_new_account) = if accounts.len() == 7 {
+        (
+            Some(next_account_info(accounts_iter)?),
+            Some(next_account_info(accounts_iter)?),
+        )
+    } else {
+        (None, None)
+    };
+
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
@@ -146,6 +156,43 @@ pub fn process_update_device(
     }
     if let Some(max_users) = value.max_users {
         device.max_users = max_users;
+    }
+
+    // Handle location update if both old and new location accounts are provided
+    if let (Some(location_old_account), Some(location_new_account)) =
+        (location_old_account, location_new_account)
+    {
+        if location_old_account.key != location_new_account.key {
+            let mut location_old = Location::try_from(location_old_account)?;
+            let mut location_new = Location::try_from(location_new_account)?;
+            if device.location_pk != *location_old_account.key {
+                msg!(
+                    "Invalid location account. Device location_pk: {}, location_old_account: {}",
+                    device.location_pk,
+                    location_old_account.key
+                );
+                return Err(DoubleZeroError::InvalidActualLocation.into());
+            }
+
+            location_old.reference_count = location_old.reference_count.saturating_sub(1);
+            location_new.reference_count = location_new.reference_count.saturating_add(1);
+
+            // Set new location pk in device
+            device.location_pk = *location_new_account.key;
+
+            account_write(
+                location_old_account,
+                &location_old,
+                payer_account,
+                system_program,
+            )?;
+            account_write(
+                location_new_account,
+                &location_new,
+                payer_account,
+                system_program,
+            )?;
+        }
     }
 
     account_write(device_account, &device, payer_account, system_program)?;

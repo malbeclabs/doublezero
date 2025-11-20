@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
   - RFC-10: Version Compatibility Windows
 - CLI
     - IP address lookups via ifconfig.me are retried up to 3 times to minimize transient network errors.
+    - Added global `--no-version-warning` flag to the `doublezero` client and now emit version warnings to STDERR instead of STDOUT to improve scriptability and logging.
 - Funder: fund multicast group owners
 
 ## [v0.7.1](https://github.com/malbeclabs/doublezero/compare/client/v0.7.0...client/v0.7.1) – 2025-11-18

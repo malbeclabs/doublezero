@@ -2,6 +2,8 @@
 
 ## Summary
 
+**Status: Active**
+
 This RFC provides a framework to manage software configuration and compatibility through semantic versioning, feature flags, and well-formed and intentional commits. Standardization unlocks automation and should keep human involvement with deployment and verification to a minimum.
 
 ## Motivation

@@ -2,6 +2,8 @@
 
 ## Summary
 
+**Status: Active**
+
 A frequent requirement of operating a physical network is the ability to remove a link from being an active part of the network topology.  This is often referred to as draining, where traffic is rerouted to alternative options or, in the case of provisioning, prevented from being actively used until formally declared Ready for Service (RFS).
  
 The goal of this RFC is to define the use-cases and mechanisms for draining one or more links on a DZD.
@@ -69,8 +71,8 @@ The processes described in table 1 are fragile for a number of reasons.  Having 
   * Use-cases: 
     * link demoted from primary to secondary link, but is still preferred over tertiary link
 * CLI Commands:
-  * `doublezero link --pubkey PUBKEY --status [hard_drained|soft_drained|activated]`
-  * `doublezero link --pubkey PUBKEY --delay-override-ms [0.01 <= X <= 1000]`
+  * `doublezero link update --pubkey PUBKEY --status [hard_drained|soft_drained|activated]`
+  * `doublezero link update --pubkey PUBKEY --delay-override-ms [0.01 <= X <= 1000]`
 
 ```mermaid
 graph LR

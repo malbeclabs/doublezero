@@ -2,6 +2,8 @@
 
 ## Summary
 
+**Status: Active**
+
 This document proposes a windowed version-compatibility model for DoubleZero. The serviceability program will store both:
 
 - `program_version`: the current program version

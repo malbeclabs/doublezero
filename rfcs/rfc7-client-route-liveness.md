@@ -2,6 +2,8 @@
 
 ## Summary
 
+**Status: Active**
+
 This document proposes a per-route liveness protocol for DoubleZero clients that verifies data-plane reachability rather than relying solely on BGP session state. Each client maintains a lightweight, bidirectional UDP exchange with its peer for every eligible route, using fixed-size control packets to confirm packet flow in both directions.
 
 When a session confirms bidirectional reachability, its route transitions to `Up` and is installed in the kernel routing table. If no valid control packets are received before the detection timer expires, the session transitions to `Down`, and the route is withdrawn locally while the BGP session remains established.

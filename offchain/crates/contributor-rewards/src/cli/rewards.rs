@@ -18,6 +18,15 @@ pub enum RewardsCommands {
     # Dry run to preview without writing to DZ ledger
     calculate-rewards --snapshot mn-epoch-27-snapshot.json --dry-run
 
+    # Skip only device telemetry write (write everything else)
+    calculate-rewards --snapshot mn-epoch-27-snapshot.json -k keypair.json --skip-device-telemetry
+
+    # Skip multiple writes (e.g., skip telemetry but write rewards)
+    calculate-rewards --snapshot mn-epoch-27-snapshot.json -k keypair.json --skip-device-telemetry --skip-internet-telemetry
+
+    # Repost only merkle root (skip all DZ Ledger writes)
+    calculate-rewards --snapshot mn-epoch-27-snapshot.json -k keypair.json --skip-device-telemetry --skip-internet-telemetry --skip-reward-input --skip-shapley-output
+
     # Create a snapshot first using the snapshot command
     snapshot all --epoch 27 --output-file mn-epoch-27-snapshot.json"#
     )]
@@ -43,6 +52,26 @@ pub enum RewardsCommands {
             required_unless_present = "dry_run"
         )]
         keypair: Option<PathBuf>,
+
+        /// Skip writing device telemetry aggregates to DZ Ledger
+        #[arg(long)]
+        skip_device_telemetry: bool,
+
+        /// Skip writing internet telemetry aggregates to DZ Ledger
+        #[arg(long)]
+        skip_internet_telemetry: bool,
+
+        /// Skip writing reward calculation input to DZ Ledger
+        #[arg(long)]
+        skip_reward_input: bool,
+
+        /// Skip writing shapley output storage to DZ Ledger
+        #[arg(long)]
+        skip_shapley_output: bool,
+
+        /// Skip posting merkle root to Solana
+        #[arg(long)]
+        skip_merkle_root: bool,
     },
     #[command(
         about = "Read and display telemetry aggregate statistics from the ledger",
@@ -222,9 +251,47 @@ pub async fn handle(orchestrator: &Orchestrator, cmd: RewardsCommands) -> Result
             snapshot,
             dry_run,
             keypair,
+            skip_device_telemetry,
+            skip_internet_telemetry,
+            skip_reward_input,
+            skip_shapley_output,
+            skip_merkle_root,
         } => {
+            use tracing::warn;
+
+            // Construct WriteConfig from CLI flags
+            let write_config = crate::calculator::WriteConfig::from_flags(
+                skip_device_telemetry,
+                skip_internet_telemetry,
+                skip_reward_input,
+                skip_shapley_output,
+                skip_merkle_root,
+            );
+
+            // Validation: Warn if dry-run is combined with skip flags
+            if dry_run && write_config.skipped_count() > 0 {
+                warn!(
+                    "Both --dry-run and skip flags specified. --dry-run takes precedence and all writes will be skipped."
+                );
+            }
+
+            // Validation: Warn if all skip flags are set (suggest using --dry-run instead)
+            if !dry_run && write_config.all_writes_skipped() {
+                warn!(
+                    "All write operations are skipped via flags. Consider using --dry-run instead for clearer intent."
+                );
+            }
+
+            // Validation: Require keypair if not dry-run and any writes are enabled
+            if !dry_run && write_config.any_writes_enabled() && keypair.is_none() {
+                anyhow::bail!(
+                    "Keypair is required when write operations are enabled. \
+                     Provide --keypair or use --dry-run to skip all writes."
+                );
+            }
+
             orchestrator
-                .calculate_rewards(None, keypair, Some(snapshot), dry_run)
+                .calculate_rewards(None, keypair, Some(snapshot), dry_run, write_config)
                 .await
         }
         RewardsCommands::ReadTelemAgg {

@@ -10,3 +10,7 @@ pub mod revenue_distribution;
 pub mod shapley_aggregator;
 pub mod shapley_handler;
 pub mod util;
+pub mod write_config;
+
+// Re-export WriteConfig for access
+pub use write_config::WriteConfig;

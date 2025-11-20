@@ -9,7 +9,7 @@ use tracing::{info, warn};
 
 use crate::{
     calculator::{
-        data_prep::PreparedData, input::RewardInput, keypair_loader::load_keypair,
+        WriteConfig, data_prep::PreparedData, input::RewardInput, keypair_loader::load_keypair,
         ledger_operations, proof::ShapleyOutputStorage,
         revenue_distribution::post_rewards_merkle_root,
         shapley_aggregator::aggregate_shapley_outputs, util::print_demands,
@@ -41,6 +41,7 @@ impl Orchestrator {
         keypair_path: Option<PathBuf>,
         snapshot_path: Option<PathBuf>,
         dry_run: bool,
+        write_config: WriteConfig,
     ) -> Result<()> {
         let epoch_start = Instant::now();
 
@@ -240,7 +241,8 @@ impl Orchestrator {
             .set(shapley_storage_len as f64);
 
             // Perform batch writes to ledger
-            if !dry_run {
+            if !dry_run && write_config.any_writes_enabled() {
+                // Only load keypair if at least one write operation is enabled
                 let payer_signer = load_keypair(&keypair_path)?;
 
                 // Validate keypair matches ProgramConfig
@@ -254,83 +256,103 @@ impl Orchestrator {
                 let ledger_start = Instant::now();
 
                 // Write device telemetry
-                let device_prefix = self.settings.prefixes.device_telemetry.as_bytes();
-                ledger_operations::write_serialized_and_track(
-                    &fetcher.dz_rpc_client,
-                    &payer_signer,
-                    &[device_prefix, &fetch_epoch_bytes],
-                    &device_telemetry_bytes,
-                    "device telemetry aggregates",
-                    &mut summary,
-                    self.settings.rpc.rps_limit,
-                )
-                .await;
+                if !write_config.should_skip_device_telemetry() {
+                    let device_prefix = self.settings.prefixes.device_telemetry.as_bytes();
+                    ledger_operations::write_serialized_and_track(
+                        &fetcher.dz_rpc_client,
+                        &payer_signer,
+                        &[device_prefix, &fetch_epoch_bytes],
+                        &device_telemetry_bytes,
+                        "device telemetry aggregates",
+                        &mut summary,
+                        self.settings.rpc.rps_limit,
+                    )
+                    .await;
+                } else {
+                    info!("[SKIP] Device telemetry write (--skip-device-telemetry)");
+                }
 
                 // Write internet telemetry
-                let internet_prefix = self.settings.prefixes.internet_telemetry.as_bytes();
-                ledger_operations::write_serialized_and_track(
-                    &fetcher.dz_rpc_client,
-                    &payer_signer,
-                    &[internet_prefix, &fetch_epoch_bytes],
-                    &internet_telemetry_bytes,
-                    "internet telemetry aggregates",
-                    &mut summary,
-                    self.settings.rpc.rps_limit,
-                )
-                .await;
+                if !write_config.should_skip_internet_telemetry() {
+                    let internet_prefix = self.settings.prefixes.internet_telemetry.as_bytes();
+                    ledger_operations::write_serialized_and_track(
+                        &fetcher.dz_rpc_client,
+                        &payer_signer,
+                        &[internet_prefix, &fetch_epoch_bytes],
+                        &internet_telemetry_bytes,
+                        "internet telemetry aggregates",
+                        &mut summary,
+                        self.settings.rpc.rps_limit,
+                    )
+                    .await;
+                } else {
+                    info!("[SKIP] Internet telemetry write (--skip-internet-telemetry)");
+                }
 
                 // Write reward input
-                let reward_prefix = self.settings.prefixes.reward_input.as_bytes();
-                ledger_operations::write_serialized_and_track(
-                    &fetcher.dz_rpc_client,
-                    &payer_signer,
-                    &[reward_prefix, &fetch_epoch_bytes],
-                    &reward_input_bytes,
-                    "reward calculation input",
-                    &mut summary,
-                    self.settings.rpc.rps_limit,
-                )
-                .await;
+                if !write_config.should_skip_reward_input() {
+                    let reward_prefix = self.settings.prefixes.reward_input.as_bytes();
+                    ledger_operations::write_serialized_and_track(
+                        &fetcher.dz_rpc_client,
+                        &payer_signer,
+                        &[reward_prefix, &fetch_epoch_bytes],
+                        &reward_input_bytes,
+                        "reward calculation input",
+                        &mut summary,
+                        self.settings.rpc.rps_limit,
+                    )
+                    .await;
+                } else {
+                    info!("[SKIP] Reward input write (--skip-reward-input)");
+                }
 
                 // Write shapley output storage instead of individual proofs
-                ledger_operations::write_shapley_output(
-                    &fetcher.dz_rpc_client,
-                    &payer_signer,
-                    fetch_epoch,
-                    &shapley_storage,
-                    &shapley_storage_bytes,
-                    &self.settings,
-                )
-                .await?;
+                if !write_config.should_skip_shapley_output() {
+                    ledger_operations::write_shapley_output(
+                        &fetcher.dz_rpc_client,
+                        &payer_signer,
+                        fetch_epoch,
+                        &shapley_storage,
+                        &shapley_storage_bytes,
+                        &self.settings,
+                    )
+                    .await?;
 
-                summary.add_success("shapley output storage".to_string());
+                    summary.add_success("shapley output storage".to_string());
+                } else {
+                    info!("[SKIP] Shapley output storage write (--skip-shapley-output)");
+                }
 
                 // Post merkle root to revenue distribution program
-                info!(
-                    "Posting merkle root for epoch {}: {:?}",
-                    fetch_epoch, merkle_root
-                );
+                if !write_config.should_skip_merkle_root() {
+                    info!(
+                        "Posting merkle root for epoch {}: {:?}",
+                        fetch_epoch, merkle_root
+                    );
 
-                match post_rewards_merkle_root(
-                    &fetcher.solana_write_client,
-                    &payer_signer,
-                    fetch_epoch,
-                    shapley_storage.total_contributors() as u32,
-                    merkle_root,
-                    self.settings.scheduler.grace_period_max_wait_seconds,
-                )
-                .await
-                {
-                    Ok(_) => {
-                        info!(
-                            "[OK] Successfully posted merkle root to revenue distribution program"
-                        );
-                        summary.add_success("merkle root posting".to_string());
+                    match post_rewards_merkle_root(
+                        &fetcher.solana_write_client,
+                        &payer_signer,
+                        fetch_epoch,
+                        shapley_storage.total_contributors() as u32,
+                        merkle_root,
+                        self.settings.scheduler.grace_period_max_wait_seconds,
+                    )
+                    .await
+                    {
+                        Ok(_) => {
+                            info!(
+                                "[OK] Successfully posted merkle root to revenue distribution program"
+                            );
+                            summary.add_success("merkle root posting".to_string());
+                        }
+                        Err(e) => {
+                            warn!("[FAILED] Failed to post merkle root: {}", e);
+                            summary.add_failure("merkle root posting".to_string(), e.to_string());
+                        }
                     }
-                    Err(e) => {
-                        warn!("[FAILED] Failed to post merkle root: {}", e);
-                        summary.add_failure("merkle root posting".to_string(), e.to_string());
-                    }
+                } else {
+                    info!("[SKIP] Merkle root posting (--skip-merkle-root)");
                 }
 
                 // Track ledger operation metrics
@@ -357,7 +379,7 @@ impl Orchestrator {
                         summary.total_count()
                     );
                 }
-            } else {
+            } else if dry_run {
                 info!(
                     "DRY-RUN: Would perform batch writes for epoch {}",
                     fetch_epoch
@@ -372,6 +394,27 @@ impl Orchestrator {
                 );
                 info!("  - Merkle root to post: {:?}", merkle_root);
                 info!("  - Would post merkle root to revenue distribution program");
+            } else {
+                // All writes are skipped via skip flags
+                info!(
+                    "All writes skipped for epoch {} (skip flags enabled)",
+                    fetch_epoch
+                );
+                info!(
+                    "  - Device telemetry: {} bytes [SKIPPED]",
+                    device_payload_bytes
+                );
+                info!(
+                    "  - Internet telemetry: {} bytes [SKIPPED]",
+                    internet_payload_bytes
+                );
+                info!("  - Reward input: {} bytes [SKIPPED]", reward_input_len);
+                info!(
+                    "  - Shapley output storage: {} bytes ({} contributors) [SKIPPED]",
+                    shapley_storage_len,
+                    shapley_storage.total_contributors()
+                );
+                info!("  - Merkle root to post: {:?} [SKIPPED]", merkle_root);
             }
         }
 

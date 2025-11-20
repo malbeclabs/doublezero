@@ -250,7 +250,13 @@ impl ScheduleWorker {
             // Step 2: Calculate and write rewards using the snapshot
             info!("Step 2/2: Calculating rewards from snapshot");
             self.orchestrator
-                .calculate_rewards(None, self.keypair_path.clone(), Some(snapshot_path), false)
+                .calculate_rewards(
+                    None,
+                    self.keypair_path.clone(),
+                    Some(snapshot_path),
+                    false,
+                    crate::calculator::WriteConfig::default(),
+                )
                 .await?;
 
             // Mark success

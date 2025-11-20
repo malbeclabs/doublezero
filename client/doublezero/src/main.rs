@@ -59,7 +59,19 @@ async fn main() -> eyre::Result<()> {
     }
 
     let (url, ws, program_id) = if let Some(env) = app.env {
-        let config = env.parse::<Environment>()?.config()?;
+        let config = match env.parse::<Environment>() {
+            Ok(env) => match env.config() {
+                Ok(config) => config,
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            },
+            Err(e) => {
+                eprintln!("Error: {e}");
+                std::process::exit(1);
+            }
+        };
         (
             Some(config.ledger_public_rpc_url),
             Some(config.ledger_public_ws_rpc_url),

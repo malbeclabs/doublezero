@@ -1,0 +1,72 @@
+name: releaser.offchain-scheduler
+
+on:
+  push:
+    tags:
+      - "offchain-scheduler/v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          working-directory: scheduler
+          key: offchain-scheduler
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install OpenSSL 1.1
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget
+          wget http://ports.ubuntu.com/pool/main/o/openssl/openssl_1.1.1f-1ubuntu2_arm64.deb
+          wget http://ports.ubuntu.com/pool/main/o/openssl/libssl-dev_1.1.1f-1ubuntu2_arm64.deb
+          wget http://ports.ubuntu.com/pool/main/o/openssl/libssl1.1_1.1.1f-1ubuntu2_arm64.deb
+
+          # install downloaded binary packages
+          sudo dpkg -i libssl1.1_1.1.1f-1ubuntu2_arm64.deb
+          sudo dpkg -i libssl-dev_1.1.1f-1ubuntu2_arm64.deb
+          sudo dpkg -i openssl_1.1.1f-1ubuntu2_arm64.deb
+
+      - name: Verify OpenSSL version
+        run: openssl version
+
+      - name: Set up Elixir and Erlang
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: '1.19.3'
+          otp-version: '28.1'
+
+      - name: Retrieve Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          shared-key: offchain-scheduler
+
+      - name: Install dependencies
+        run: mix deps.get
+        working-directory: ./scheduler
+
+      - name: Build release
+        run: MIX_ENV=prod mix release
+        working-directory: ./scheduler
+
+      - name: Publish package to Cloudsmith
+        uses: cloudsmith-io/cloudsmith-cli-action@v1
+        with:
+          api_key: ${{ secrets.CLOUDSMITH_API_KEY }}
+          command: push
+          format: raw
+          owner: malbeclabs
+          repo: doublezero
+          filename: scheduler/_build/prod/scheduler-0.1.0.tar.gz # need to derive the tag

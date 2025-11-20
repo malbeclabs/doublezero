@@ -45,6 +45,9 @@ struct App {
     /// Path to the keypair file
     #[arg(long, value_name = "KEYPAIR", global = true)]
     keypair: Option<PathBuf>,
+    /// Suppress version warning output
+    #[arg(long, global = true)]
+    no_version_warning: bool,
 }
 
 #[tokio::main]
@@ -73,13 +76,16 @@ async fn main() -> eyre::Result<()> {
     let mut handle = stdout.lock();
 
     // Skip version check for Status command to allow checking status of services when the program is running
-    if !matches!(app.command, Command::Status(_))
+    if !app.no_version_warning
+        && !matches!(app.command, Command::Status(_))
         && !matches!(app.command, Command::Address(_))
         && !matches!(app.command, Command::Balance(_))
         && !matches!(app.command, Command::Export(_))
         && !matches!(app.command, Command::Completion(_))
     {
-        check_version(&client, &mut handle, ProgramVersion::current())?;
+        let stderr = std::io::stderr();
+        let mut err_handle = stderr.lock();
+        check_version(&client, &mut err_handle, ProgramVersion::current())?;
     }
 
     let res = match app.command {

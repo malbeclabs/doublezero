@@ -2,12 +2,13 @@ package liveness
 
 import (
 	"context"
+	"io"
+	"log/slog"
 	"net"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 )
 
@@ -488,25 +489,44 @@ func TestClient_Liveness_Scheduler_ScheduleTx_NotDroppedByOverflow(t *testing.T)
 	require.Equal(t, 0, s.eq.Len())
 }
 
-func TestClient_Liveness_Scheduler_doTX_SkipsWriteErrorMetricsAfterContextCancel(t *testing.T) {
+func TestClient_Liveness_Scheduler_doTX_RespectsContextCancelOnWriteError(t *testing.T) {
 	t.Parallel()
 
-	srv, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
+	srv, err := net.ListenUDP("udp4", &net.UDPAddr{
+		IP:   net.ParseIP("127.0.0.1"),
+		Port: 0,
+	})
 	require.NoError(t, err)
 	defer srv.Close()
-	_, err = NewUDPService(srv)
+
+	// Client conn that we'll wrap in UDPService and then close to force WriteTo errors.
+	cl, err := net.ListenUDP("udp4", &net.UDPAddr{
+		IP:   net.ParseIP("127.0.0.1"),
+		Port: 0,
+	})
 	require.NoError(t, err)
 
-	cl, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
-	require.NoError(t, err)
-	w, err := NewUDPService(cl)
+	udp, err := NewUDPService(cl)
 	require.NoError(t, err)
 
-	log := newTestLogger(t)
-	s := NewScheduler(log, w, func(*Session) {}, 0, false)
+	peerAddr := srv.LocalAddr().(*net.UDPAddr)
+	localAddr := cl.LocalAddr().(*net.UDPAddr)
 
-	iface := ""
-	localIP := cl.LocalAddr().(*net.UDPAddr).IP.String()
+	// Force the underlying socket to be unusable for sending.
+	require.NoError(t, cl.Close())
+
+	// Sanity check: after Close, UDPService.WriteTo must fail; if this fails,
+	// our assumptions about UDPService are wrong and the test should fail loudly.
+	_, err = udp.WriteTo([]byte{0x01}, peerAddr, "", nil)
+	require.Error(t, err, "expected UDPService.WriteTo to fail after closing underlying conn")
+
+	var warns int32
+	base := slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelDebug})
+	log := slog.New(&warnCountingHandler{inner: base, warnCount: &warns})
+
+	s := NewScheduler(log, udp, func(*Session) {}, 0, false)
+	// Disable throttling so every error can emit a warn if allowed by ctx.
+	s.writeErrWarnEvery = 0
 
 	sess := &Session{
 		state:         StateInit,
@@ -516,27 +536,60 @@ func TestClient_Liveness_Scheduler_doTX_SkipsWriteErrorMetricsAfterContextCancel
 		minTxFloor:    10 * time.Millisecond,
 		maxTxCeil:     200 * time.Millisecond,
 		detectMult:    3,
-		peer:          &Peer{Interface: iface, LocalIP: localIP, PeerIP: srv.LocalAddr().(*net.UDPAddr).IP.String()},
-		peerAddr:      srv.LocalAddr().(*net.UDPAddr),
 		backoffMax:    200 * time.Millisecond,
 		backoffFactor: 1,
+		peer: &Peer{
+			Interface: "",
+			LocalIP:   localAddr.IP.String(),
+			PeerIP:    peerAddr.IP.String(),
+		},
+		peerAddr: peerAddr,
 	}
 
-	// Force the writer to fail by closing the underlying conn.
-	require.NoError(t, cl.Close())
+	// Live context: we EXPECT a warn on write error.
+	ctxLive := context.Background()
+	s.doTX(ctxLive, sess)
+	require.GreaterOrEqual(t, atomic.LoadInt32(&warns), int32(1), "expected at least one warn with live context")
 
-	// Cancel the context before calling doTX.
-	ctx, cancel := context.WithCancel(t.Context())
+	// Reset warn count and throttling timestamp.
+	atomic.StoreInt32(&warns, 0)
+	s.writeErrWarnLast = time.Time{}
+
+	// Canceled context: we EXPECT NO warn despite the write error.
+	ctxCanceled, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	// Read metric before.
-	before := testutil.ToFloat64(metricWriteSocketErrors.WithLabelValues(iface, localIP))
+	s.doTX(ctxCanceled, sess)
 
-	// Call doTX with a canceled context; it should hit the WriteTo error path
-	// but then see ctx.Done and return without bumping the metric.
-	s.doTX(ctx, sess)
+	require.Equal(t, int32(0), atomic.LoadInt32(&warns), "no warn should be logged when ctx is already canceled")
+}
 
-	// Metric must not have changed.
-	after := testutil.ToFloat64(metricWriteSocketErrors.WithLabelValues(iface, localIP))
-	require.Equal(t, before, after)
+type warnCountingHandler struct {
+	inner     slog.Handler
+	warnCount *int32
+}
+
+func (h *warnCountingHandler) Enabled(ctx context.Context, level slog.Level) bool {
+	return h.inner.Enabled(ctx, level)
+}
+
+func (h *warnCountingHandler) Handle(ctx context.Context, r slog.Record) error {
+	if r.Level >= slog.LevelWarn {
+		atomic.AddInt32(h.warnCount, 1)
+	}
+	return h.inner.Handle(ctx, r)
+}
+
+func (h *warnCountingHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return &warnCountingHandler{
+		inner:     h.inner.WithAttrs(attrs),
+		warnCount: h.warnCount,
+	}
+}
+
+func (h *warnCountingHandler) WithGroup(name string) slog.Handler {
+	return &warnCountingHandler{
+		inner:     h.inner.WithGroup(name),
+		warnCount: h.warnCount,
+	}
 }

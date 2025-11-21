@@ -98,4 +98,16 @@ func TestQA_UnicastConnectivity(t *testing.T) {
 	// threshold, resulting in the QA test to fail earlier than this check. This check is responsible
 	// for tolerating at most 1 test with "acceptable" partial loss, or else fail the QA test.
 	require.LessOrEqual(t, testsWithPartialLosses, uint32(1), "too many connectivity tests with partial packet loss")
+
+	// Disconnect all clients at the end of the test.
+	var wg sync.WaitGroup
+	for _, client := range clients {
+		wg.Add(1)
+		go func(client *qa.Client) {
+			defer wg.Done()
+			err := client.DisconnectUser(context.Background(), true, true)
+			assert.NoError(t, err, "failed to disconnect user")
+		}(client)
+	}
+	wg.Wait()
 }

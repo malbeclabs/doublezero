@@ -20,7 +20,7 @@ defmodule Scheduler.Worker.InitializeDistribution do
         Logger.info("initialize_distribution: completed with msg: #{msg}")
     end
 
-    {:stop, "initialize_distribution shutting down", state}
+    {:stop, :shutdown, state}
   end
 
   def handle_info(msg, state) do

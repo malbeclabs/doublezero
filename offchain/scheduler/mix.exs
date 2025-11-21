@@ -8,11 +8,6 @@ defmodule Scheduler.MixProject do
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
-      releases: [
-        scheduler: [
-          steps: [:assemble, :tar]
-        ]
-      ]
     ]
   end
 

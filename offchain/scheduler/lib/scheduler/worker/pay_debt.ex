@@ -23,13 +23,14 @@ defmodule Scheduler.Worker.PayDebt do
         ## one of these errors is reached when we have exceeded a finalized distribution
         if String.contains?(error, "Record account not found at address") ||
              String.contains?(error, "Failed to fetch record") do
-          {:stop, "scheduler completed sweep at epoch #{state.current_epoch}", state}
+          Logger.info("scheduler completed sweep at epoch #{state.current_epoch}")
+          {:stop, :shutdown, state}
         else
           Logger.error(
             "scheduler encountered unexpected error at epoch #{state.current_epoch}: #{inspect(error)}"
           )
 
-          {:stop, "scheduler encountered unexpected error", state}
+          {:stop,:shutdown, state}
         end
 
       _ ->

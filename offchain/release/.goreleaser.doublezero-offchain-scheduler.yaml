@@ -1,0 +1,109 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema-pro.json
+# vim: set ts=2 sw=2 tw=0 fo=cnqoj
+
+version: 2
+
+project_name: doublezero-offchain-scheduler
+
+monorepo:
+  tag_prefix: offchain-scheduler/
+
+builds:
+  - id: doublezero-offchain-scheduler
+    binary: doublezero-offchain-scheduler
+    builder: prebuilt
+    goos:
+      - linux
+    goarch:
+      - amd64
+    env:
+      - MIX_ENV=prod
+      - CARGO_TERM_VERBOSE=true
+    hooks:
+      pre:
+        - cmd: echo $MIX_ENV
+        - cmd: mix deps.clean --all
+          dir: scheduler
+        - cmd: mix deps.get --only prod
+          dir: scheduler
+        - cmd: mix compile --warnings-as-errors --verbose
+          dir: scheduler
+        - cmd: mix release
+          dir: scheduler
+    prebuilt:
+      path: ./scheduler/_build/prod/rel/scheduler/bin/scheduler
+
+archives:
+  - id: doublezero_offchain_scheduler_archive
+    formats: ["tar.gz"]
+    ids: [doublezero-offchain-scheduler]
+    # this name template makes the OS and Arch compatible with the results of `uname`
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+
+nfpms:
+  - id: doublezero-offchain-scheduler
+    package_name: doublezero-offchain-scheduler
+    meta: true
+    vendor: doublezero
+    homepage: doublezero.xyz
+    maintainer: tech <tech@malbeclabs.com>
+    description: |-
+      DoubleZero Offchain Scheduler
+    license: Apache 2.0
+    formats:
+      - deb
+    release: 1
+    section: default
+    contents:
+      - src: release/packaging/systemd/doublezero-offchain-scheduler.service
+        dst: /lib/systemd/system/doublezero-offchain-scheduler.service
+        type: config
+      - src: scheduler/_build/prod/rel/scheduler
+        dst: /opt/doublezero-offchain-scheduler
+        type: tree
+      - src: /opt/doublezero-offchain-scheduler/bin/scheduler
+        dst: /usr/bin/doublezero-offchain-scheduler
+        type: symlink
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+release:
+  github:
+    owner: doublezerofoundation
+    name: doublezero-offchain
+  draft: false
+  replace_existing_artifacts: true
+
+announce:
+  slack:
+    enabled: true
+    message_template: "DoubleZero Offchain Scheduler {{ .Tag }} has been released! Check it out at {{ .ReleaseURL }}"
+    channel: "#bots"
+
+git:
+  ignore_tags:
+    - offchain-scheduler/daily
+
+nightly:
+  publish_release: true
+  keep_single_release: true
+  version_template: "{{ incpatch .Version }}~git{{ .Env.BUILD_DATE }}.{{ .ShortCommit }}"
+  tag_name: "offchain-scheduler/daily"
+
+cloudsmiths:
+  - organization: malbeclabs
+    repository: doublezero
+    distributions:
+      deb: "any-distro/any-version"
+      rpm: "any-distro/any-version"

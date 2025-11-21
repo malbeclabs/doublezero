@@ -9,64 +9,59 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  goreleaser:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        platform: [linux/amd64]
     steps:
+      - name: Set platform
+        run: echo "Running on ${{ matrix.platform }}"
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          working-directory: scheduler
-          key: offchain-scheduler
-
-      - name: Set up Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install OpenSSL 1.1
+      - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y wget
-          wget http://ports.ubuntu.com/pool/main/o/openssl/openssl_1.1.1f-1ubuntu2_arm64.deb
-          wget http://ports.ubuntu.com/pool/main/o/openssl/libssl-dev_1.1.1f-1ubuntu2_arm64.deb
-          wget http://ports.ubuntu.com/pool/main/o/openssl/libssl1.1_1.1.1f-1ubuntu2_arm64.deb
-
-          # install downloaded binary packages
-          sudo dpkg -i libssl1.1_1.1.1f-1ubuntu2_arm64.deb
-          sudo dpkg -i libssl-dev_1.1.1f-1ubuntu2_arm64.deb
-          sudo dpkg -i openssl_1.1.1f-1ubuntu2_arm64.deb
-
-      - name: Verify OpenSSL version
-        run: openssl version
+          sudo apt update
+          sudo apt-get install -y pkg-config libssl-dev openssl
 
       - name: Set up Elixir and Erlang
         uses: erlef/setup-beam@v1
         with:
-          elixir-version: '1.19.3'
-          otp-version: '28.1'
+          elixir-version: "1.19.3"
+          otp-version: "28.1"
 
-      - name: Retrieve Cargo dependencies
-        uses: Swatinem/rust-cache@v2
+      - name: Cache deps
+        id: cache-deps
+        uses: actions/cache@v3
+        env:
+          cache-name: cache-elixir-deps
         with:
-          cache-on-failure: true
-          shared-key: offchain-scheduler
+          path: deps
+          key: mix-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            mix-${{ env.cache-name }}-
 
-      - name: Install dependencies
-        run: mix deps.get
-        working-directory: ./scheduler
-
-      - name: Build release
-        run: MIX_ENV=prod mix release
-        working-directory: ./scheduler
-
-      - name: Publish package to Cloudsmith
-        uses: cloudsmith-io/cloudsmith-cli-action@v1
+      - name: Cache compiled build
+        id: cache-build
+        uses: actions/cache@v3
+        env:
+          cache-name: cache-compiled-build
         with:
-          api_key: ${{ secrets.CLOUDSMITH_API_KEY }}
-          command: push
-          format: raw
-          owner: malbeclabs
-          repo: doublezero
-          filename: scheduler/_build/prod/scheduler-0.1.0.tar.gz # need to derive the tag
+          path: _build
+          key: mix-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            mix-${{ env.cache-name }}-
+            ${{ runner.os }}-mix-
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser-pro
+          args: release -f release/.goreleaser.doublezero-offchain-scheduler.yaml --clean --verbose
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_BOTS_WEBHOOK }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
+          CLOUDSMITH_TOKEN: ${{ secrets.CLOUDSMITH_TOKEN }}

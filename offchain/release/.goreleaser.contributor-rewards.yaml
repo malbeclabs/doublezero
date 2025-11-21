@@ -51,7 +51,7 @@ nfpms:
     formats:
       - deb
     bindir: /usr/bin
-    release: 1
+    release: "1"
     section: default
     contents:
       - src: release/packaging/systemd/doublezero-contributor-rewards.service

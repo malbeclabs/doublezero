@@ -28,7 +28,7 @@ defmodule Scheduler.Worker.CalculateDistribution do
 
       error ->
         Logger.error("calculate_distribution: failed to get dz_epoch: #{inspect(error)}")
-        {:stop, "calculate_distribution failed to get dz_epoch", state}
+        {:stop, :shutdown, state}
     end
   end
 
@@ -41,7 +41,7 @@ defmodule Scheduler.Worker.CalculateDistribution do
          ) do
       {:error, error} ->
         Logger.error("calculate_distribution: received error: #{inspect(error)}")
-        {:stop, "calculate_distribution shutting down", state}
+        {:stop, :shutdown, state}
 
       _ ->
         Logger.info("Proceeding to finalize debt")
@@ -58,7 +58,7 @@ defmodule Scheduler.Worker.CalculateDistribution do
          ) do
       {:error, error} ->
         Logger.error("calculate_distribution: received error: #{inspect(error)}")
-        {:stop, "calculate_distribution shutting down", state}
+        {:stop, :shutdown, state}
 
       _ ->
         state = %{state | count: state.count + 1}
@@ -80,7 +80,7 @@ defmodule Scheduler.Worker.CalculateDistribution do
         )
     end
 
-    {:stop, "calculate_distribution shutting down", state}
+    {:stop, :shutdown, state}
   end
 
   def handle_info(msg, state) do

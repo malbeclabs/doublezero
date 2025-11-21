@@ -16,6 +16,7 @@ All notable changes to this project will be documented in this file.
   - Add the ability to update a Device’s location, managing the reference counters accordingly.
 - Client
   - Add `/routes` daemon API endpoint providing a merged view of kernel routes and liveness-tracked routes.
+  - Route liveness scheduler avoid logging UDP send failure after shutdown
 - Funder: fund multicast group owners
 - Onchain programs
   - Serviceability Program: Updated the device update command to allow modifying a device’s location.

@@ -214,7 +214,7 @@ func (s *Scheduler) Run(ctx context.Context) error {
 				ev.session.nextTxScheduled = time.Time{}
 			}
 			ev.session.mu.Unlock()
-			s.doTX(ev.session)
+			s.doTX(ctx, ev.session)
 			// Do not reschedule periodic TX while AdminDown; we only want the explicit one
 			if ev.session.GetState() != StateAdminDown {
 				s.scheduleTx(time.Now(), ev.session)
@@ -332,7 +332,7 @@ func (s *Scheduler) scheduleDetect(now time.Time, sess *Session) {
 // doTX builds and transmits a ControlPacket representing the session’s current state.
 // It reads protected fields under lock, serializes the packet, and sends via UDPService.
 // Any transient send errors are logged at debug level.
-func (s *Scheduler) doTX(sess *Session) {
+func (s *Scheduler) doTX(ctx context.Context, sess *Session) {
 	sess.mu.Lock()
 	if !sess.alive {
 		sess.mu.Unlock()
@@ -359,6 +359,12 @@ func (s *Scheduler) doTX(sess *Session) {
 	}
 	_, err := s.udp.WriteTo(pkt, sess.peerAddr, sess.peer.Interface, src)
 	if err != nil {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
 		metricWriteSocketErrors.WithLabelValues(sess.peer.Interface, sess.peer.LocalIP).Inc()
 
 		// Log throttled warnings for transient errors (e.g., bad FD state).

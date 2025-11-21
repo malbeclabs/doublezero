@@ -108,6 +108,11 @@ interface {{ .Name }}
    isis circuit-type level-2
    isis hello-interval 1
    isis metric {{ .Metric }}
+   {{- if eq .LinkStatus.String "hard-drained" }}
+   isis passive
+   {{- else }}
+   no isis passive
+   {{- end }}
    isis hello padding
    isis network point-to-point
    {{- end }}

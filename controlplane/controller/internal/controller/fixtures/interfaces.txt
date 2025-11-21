@@ -82,6 +82,7 @@ interface Switch1/1/1
    isis circuit-type level-2
    isis hello-interval 1
    isis metric 40000
+   no isis passive
    isis hello padding
    isis network point-to-point
 !
@@ -110,6 +111,7 @@ interface Switch1/1/2.300
    isis circuit-type level-2
    isis hello-interval 1
    isis metric 40000
+   no isis passive
    isis hello padding
    isis network point-to-point
 !
@@ -121,6 +123,33 @@ interface Vlan4001
    isis circuit-type level-2
    isis hello-interval 1
    isis metric 10000
+   no isis passive
+   isis hello padding
+   isis network point-to-point
+!
+interface Switch1/1/3
+   mtu 2048
+   no switchport
+   ip address 172.16.0.10/31
+   pim ipv4 sparse-mode
+   isis enable 1
+   isis circuit-type level-2
+   isis hello-interval 1
+   isis metric 1000000
+   no isis passive
+   isis hello padding
+   isis network point-to-point
+!
+interface Switch1/1/4
+   mtu 2048
+   no switchport
+   ip address 172.16.0.12/31
+   pim ipv4 sparse-mode
+   isis enable 1
+   isis circuit-type level-2
+   isis hello-interval 1
+   isis metric 30000
+   isis passive
    isis hello padding
    isis network point-to-point
 !

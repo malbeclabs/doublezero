@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/malbeclabs/doublezero/controlplane/controller/config"
+	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
 func TestRenderConfig(t *testing.T) {
@@ -428,6 +429,7 @@ func TestRenderConfig(t *testing.T) {
 							InterfaceType: InterfaceTypePhysical,
 							Metric:        40000,
 							IsLink:        true,
+							LinkStatus:    serviceability.LinkStatusActivated,
 						},
 						{
 							Name:                 "Switch1/1/2",
@@ -460,6 +462,7 @@ func TestRenderConfig(t *testing.T) {
 							InterfaceType:  InterfaceTypePhysical,
 							Metric:         40000,
 							IsLink:         true,
+							LinkStatus:     serviceability.LinkStatusActivated,
 						},
 						{
 							Name:          "Vlan4001",
@@ -467,6 +470,23 @@ func TestRenderConfig(t *testing.T) {
 							InterfaceType: InterfaceTypePhysical,
 							Metric:        10000,
 							IsLink:        true,
+							LinkStatus:    serviceability.LinkStatusActivated,
+						},
+						{
+							Name:          "Switch1/1/3",
+							Ip:            netip.MustParsePrefix("172.16.0.10/31"),
+							InterfaceType: InterfaceTypePhysical,
+							Metric:        1000000,
+							IsLink:        true,
+							LinkStatus:    serviceability.LinkStatusSoftDrained,
+						},
+						{
+							Name:          "Switch1/1/4",
+							Ip:            netip.MustParsePrefix("172.16.0.12/31"),
+							InterfaceType: InterfaceTypePhysical,
+							Metric:        30000,
+							IsLink:        true,
+							LinkStatus:    serviceability.LinkStatusHardDrained,
 						},
 					},
 				},

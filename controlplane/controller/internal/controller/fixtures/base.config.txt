@@ -78,6 +78,7 @@ interface Ethernet1/1
    isis circuit-type level-2
    isis hello-interval 1
    isis metric 40000
+   no isis passive
    isis hello padding
    isis network point-to-point
 !

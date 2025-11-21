@@ -8,6 +8,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/malbeclabs/doublezero/e2e/internal/qa"
@@ -105,7 +106,7 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 				require.NoError(t, err, "failed to wait for routes on client %s", c.Host)
 			}
 
-			var testsWithPartialLosses uint32
+			var testsWithPartialLosses atomic.Uint32
 			t.Run("connectivity", func(t *testing.T) {
 				// Now run per-device subtests for this batch.
 				// Each subtest:
@@ -138,7 +139,7 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 								result, err := src.TestUnicastConnectivity(subCtx, target)
 								require.NoError(t, err)
 								if result.PacketsReceived < result.PacketsSent {
-									testsWithPartialLosses++
+									testsWithPartialLosses.Add(1)
 								}
 							}(srcClient, target)
 						}
@@ -151,7 +152,7 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 			// TestUnicastConnectivity will return error if there are losses that exceed the acceptable
 			// threshold, resulting in the QA test to fail earlier than this check. This check is responsible
 			// for tolerating at most 1 test with "acceptable" partial loss, or else fail the QA test.
-			require.LessOrEqual(t, testsWithPartialLosses, uint32(1), "too many connectivity tests with partial packet loss")
+			require.LessOrEqual(t, testsWithPartialLosses.Load(), uint32(1), "too many connectivity tests with partial packet loss")
 
 			// Disconnect all clients at the end of the test case.
 			var wg sync.WaitGroup

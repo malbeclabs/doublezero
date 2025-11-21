@@ -74,7 +74,7 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 	mux.HandleFunc("POST /provision", nlm.ServeProvision)
 	mux.HandleFunc("POST /remove", nlm.ServeRemove)
 	mux.HandleFunc("GET /status", nlm.ServeStatus)
-	mux.HandleFunc("GET /routes", api.ServeRoutesHandler(nlr, lm, networkConfig))
+	mux.HandleFunc("GET /routes", api.ServeRoutesHandler(nlr, lm, db, networkConfig))
 
 	if enableLatencyProbing {
 		latencyManager := latency.NewLatencyManager(

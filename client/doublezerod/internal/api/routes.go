@@ -26,12 +26,13 @@ func (r RTState) String() string {
 }
 
 type Route struct {
-	Network             string  `json:"network"`
-	LocalIP             string  `json:"local_ip"`
-	PeerIP              string  `json:"peer_ip"`
-	RTState             RTState `json:"rt_state"`
-	LivenessLastUpdated string  `json:"liveness_last_updated,omitempty"`
-	LivenessState       string  `json:"liveness_state,omitempty"`
+	Network             string   `json:"network"`
+	UserType            UserType `json:"user_type"`
+	LocalIP             string   `json:"local_ip"`
+	PeerIP              string   `json:"peer_ip"`
+	RTState             RTState  `json:"rt_state"`
+	LivenessLastUpdated string   `json:"liveness_last_updated,omitempty"`
+	LivenessState       string   `json:"liveness_state,omitempty"`
 }
 
 type routeKey struct {
@@ -52,9 +53,12 @@ type LivenessManager interface {
 	GetSessions() []liveness.SessionSnapshot
 }
 
-func ServeRoutesHandler(nlr bgp.RouteReaderWriter, lm LivenessManager, networkConfig *config.NetworkConfig) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+type DBReader interface {
+	GetState(userTypes ...UserType) []*ProvisionRequest
+}
 
+func ServeRoutesHandler(nlr bgp.RouteReaderWriter, lm LivenessManager, db DBReader, networkConfig *config.NetworkConfig) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
 		rts, err := nlr.RouteByProtocol(unix.RTPROT_BGP)
 		if err != nil {
 			http.Error(w, "failed to get routes", http.StatusInternalServerError)
@@ -63,61 +67,77 @@ func ServeRoutesHandler(nlr bgp.RouteReaderWriter, lm LivenessManager, networkCo
 
 		w.Header().Set("Content-Type", "application/json")
 
+		services := db.GetState()
+
+		// Get the routes from the kernel, filtered by doublezero services.
 		kernelRoutes := make(map[routeKey]*Route, len(rts))
 		for _, rt := range rts {
 			if rt.Src == nil || rt.Dst == nil || rt.Src.To4() == nil || rt.Dst.IP.To4() == nil {
 				continue
 			}
-			kernelRoutes[routeKeyFor(rt)] = &Route{
-				Network: networkConfig.Moniker,
-				LocalIP: rt.Src.To4().String(),
-				PeerIP:  rt.Dst.IP.To4().String(),
-				RTState: RTStatePresent,
+			for _, svc := range services {
+				if svc.TunnelSrc == nil || svc.TunnelNet == nil || svc.TunnelNet.IP == nil {
+					continue
+				}
+				if svc.TunnelSrc.Equal(rt.Src) && svc.TunnelNet.IP.Equal(rt.NextHop) {
+					kernelRoutes[routeKeyFor(rt)] = &Route{
+						Network:  networkConfig.Moniker,
+						UserType: svc.UserType,
+						LocalIP:  rt.Src.To4().String(),
+						PeerIP:   rt.Dst.IP.To4().String(),
+						RTState:  RTStatePresent,
+					}
+					break
+				}
 			}
 		}
 
-		var routes []Route
-
+		// If the liveness manager is enabled, we need to get the routes from the liveness manager.
+		livenessRoutes := make(map[routeKey]*Route, 0)
 		if lm != nil {
-			// If the liveness manager is enabled, we need to get the routes from the liveness manager.
 			sessions := lm.GetSessions()
-			sessionsByRoute := make(map[routeKey]*liveness.SessionSnapshot, len(sessions))
+			livenessRoutes = make(map[routeKey]*Route, len(sessions))
 			for _, sess := range sessions {
-				sessionsByRoute[routeKeyFor(&sess.Route)] = &sess
-			}
-			routes = make([]Route, 0, len(sessions))
-
-			// Add routes that are in the kernel routing table but not in the liveness manager.
-			for rk, rt := range kernelRoutes {
-				_, ok := sessionsByRoute[rk]
-				if ok {
+				rt := &sess.Route
+				if rt.Src == nil || rt.Dst == nil || rt.Src.To4() == nil || rt.Dst.IP.To4() == nil {
 					continue
 				}
-				routes = append(routes, *rt)
-			}
+				for _, svc := range services {
+					if svc.TunnelSrc == nil || svc.TunnelNet == nil || svc.TunnelNet.IP == nil {
+						continue
+					}
+					if !svc.TunnelSrc.Equal(rt.Src) || !svc.TunnelNet.IP.Equal(rt.NextHop) {
+						continue
+					}
 
-			// Add routes that are in the liveness manager, with liveness state.
-			for rk, sess := range sessionsByRoute {
-				var rtState RTState
-				if _, ok := kernelRoutes[rk]; ok {
-					rtState = RTStatePresent
-				} else {
-					rtState = RTStateAbsent
+					rk := routeKeyFor(rt)
+					rtState := RTStateAbsent
+					if _, ok := kernelRoutes[rk]; ok {
+						rtState = RTStatePresent
+					}
+
+					livenessRoutes[rk] = &Route{
+						Network:             networkConfig.Moniker,
+						UserType:            svc.UserType,
+						LocalIP:             rt.Src.To4().String(),
+						PeerIP:              rt.Dst.IP.To4().String(),
+						RTState:             rtState,
+						LivenessLastUpdated: sess.LastUpdated.UTC().Format(time.RFC3339),
+						LivenessState:       sess.State.String(),
+					}
+					break
 				}
-				routes = append(routes, Route{
-					Network:             networkConfig.Moniker,
-					LocalIP:             sess.Route.Src.To4().String(),
-					PeerIP:              sess.Route.Dst.IP.To4().String(),
-					RTState:             rtState,
-					LivenessLastUpdated: sess.LastUpdated.UTC().Format(time.RFC3339),
-					LivenessState:       sess.State.String(),
-				})
 			}
-		} else {
-			// If the liveness manager is not enabled, we can just get the routes from the netlink backend.
-			routes = make([]Route, 0, len(kernelRoutes))
-			for _, rt := range kernelRoutes {
-				routes = append(routes, *rt)
+		}
+
+		// Merge kernel and liveness routes.
+		var routes []*Route
+		for _, rt := range livenessRoutes {
+			routes = append(routes, rt)
+		}
+		for rk, rt := range kernelRoutes {
+			if _, ok := livenessRoutes[rk]; !ok {
+				routes = append(routes, rt)
 			}
 		}
 

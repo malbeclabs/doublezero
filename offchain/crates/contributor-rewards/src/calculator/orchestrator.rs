@@ -42,8 +42,11 @@ impl Orchestrator {
         snapshot_path: Option<PathBuf>,
         dry_run: bool,
         write_config: WriteConfig,
-    ) -> Result<()> {
+    ) -> Result<ledger_operations::WriteSummary> {
         let epoch_start = Instant::now();
+
+        // Create write summary to track all operations
+        let mut summary = ledger_operations::WriteSummary::default();
 
         // Prepare all data - either from snapshot or from RPC
         let prep_data = if let Some(snapshot_file) = snapshot_path {
@@ -252,7 +255,6 @@ impl Orchestrator {
                 )
                 .await?;
 
-                let mut summary = ledger_operations::WriteSummary::default();
                 let ledger_start = Instant::now();
 
                 // Write device telemetry
@@ -340,11 +342,14 @@ impl Orchestrator {
                     )
                     .await
                     {
-                        Ok(_) => {
+                        Ok(signature) => {
                             info!(
                                 "[OK] Successfully posted merkle root to revenue distribution program"
                             );
-                            summary.add_success("merkle root posting".to_string());
+                            summary.add_success_with_id(
+                                "merkle root posting".to_string(),
+                                signature.to_string(),
+                            );
                         }
                         Err(e) => {
                             warn!("[FAILED] Failed to post merkle root: {}", e);
@@ -380,6 +385,28 @@ impl Orchestrator {
                     );
                 }
             } else if dry_run {
+                // Populate mock data in summary for Slack testing in dry-run mode
+                summary.add_success_with_id(
+                    "device telemetry aggregates".to_string(),
+                    "DRY-RUN-DEVICE-RECORD-ADDRESS".to_string(),
+                );
+                summary.add_success_with_id(
+                    "internet telemetry aggregates".to_string(),
+                    "DRY-RUN-INTERNET-RECORD-ADDRESS".to_string(),
+                );
+                summary.add_success_with_id(
+                    "reward calculation input".to_string(),
+                    "DRY-RUN-REWARD-INPUT-RECORD-ADDRESS".to_string(),
+                );
+                summary.add_success_with_id(
+                    "shapley output storage".to_string(),
+                    "DRY-RUN-SHAPLEY-OUTPUT-RECORD-ADDRESS".to_string(),
+                );
+                summary.add_success_with_id(
+                    "merkle root posting".to_string(),
+                    "DRY-RUN-MERKLE-ROOT-SIGNATURE".to_string(),
+                );
+
                 info!(
                     "DRY-RUN: Would perform batch writes for epoch {}",
                     fetch_epoch
@@ -425,7 +452,7 @@ impl Orchestrator {
         metrics::histogram!("doublezero_contributor_rewards_epoch_processing_duration")
             .record(epoch_start.elapsed().as_secs_f64());
 
-        Ok(())
+        Ok(summary)
     }
 
     pub async fn read_telemetry_aggregates(

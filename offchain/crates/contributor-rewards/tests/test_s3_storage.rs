@@ -76,6 +76,7 @@ fn create_test_settings(
             enable_previous_epoch_lookup: true,
         },
         metrics: None,
+        slack: None,
     }
 }
 

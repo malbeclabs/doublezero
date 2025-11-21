@@ -102,8 +102,8 @@ pub async fn validate_rewards_accountant_keypair(
 /// Result of a write operation
 #[derive(Debug)]
 pub enum WriteResult {
-    Success(String),
-    Failed(String, String), // (description, error)
+    Success(String, String), // (description, identifier: address/signature)
+    Failed(String, String),  // (description, error)
 }
 
 /// Summary of all ledger writes
@@ -113,8 +113,16 @@ pub struct WriteSummary {
 }
 
 impl WriteSummary {
+    /// Add a successful write result with "N/A" as identifier (backward compatibility)
     pub fn add_success(&mut self, description: String) {
-        self.results.push(WriteResult::Success(description));
+        self.results
+            .push(WriteResult::Success(description, "N/A".to_string()));
+    }
+
+    /// Add a successful write result with a specific identifier (address/signature)
+    pub fn add_success_with_id(&mut self, description: String, identifier: String) {
+        self.results
+            .push(WriteResult::Success(description, identifier));
     }
 
     pub fn add_failure(&mut self, description: String, error: String) {
@@ -124,7 +132,7 @@ impl WriteSummary {
     pub fn successful_count(&self) -> usize {
         self.results
             .iter()
-            .filter(|r| matches!(r, WriteResult::Success(_)))
+            .filter(|r| matches!(r, WriteResult::Success(_, _)))
             .count()
     }
 
@@ -166,7 +174,7 @@ impl fmt::Display for WriteSummary {
         writeln!(f, " All writes:")?;
         for result in &self.results {
             match result {
-                WriteResult::Success(desc) => writeln!(f, "  [OK] {desc}")?,
+                WriteResult::Success(desc, _) => writeln!(f, "  [OK] {desc}")?,
                 WriteResult::Failed(desc, _) => writeln!(f, "  [FAILED] {desc}")?,
             }
         }
@@ -195,9 +203,9 @@ pub async fn write_serialized_and_track(
     )
     .await
     {
-        Ok(_) => {
+        Ok(record_address) => {
             info!("[OK] Successfully wrote {}", description);
-            summary.add_success(description.to_string());
+            summary.add_success_with_id(description.to_string(), record_address.to_string());
         }
         Err(e) => {
             warn!("[FAILED] Failed to write {}: {}", description, e);

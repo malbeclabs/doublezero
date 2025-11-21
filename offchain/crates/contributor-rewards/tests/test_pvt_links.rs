@@ -150,6 +150,7 @@ fn test_settings() -> settings::Settings {
             secret_access_key: "dummy-secret".to_string(),
             endpoint: None,
         }),
+        slack: None,
     }
 }
 

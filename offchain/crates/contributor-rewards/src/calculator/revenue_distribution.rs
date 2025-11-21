@@ -14,7 +14,7 @@ use doublezero_solana_client_tools::rpc::try_fetch_zero_copy_data_with_commitmen
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::{
     message::{VersionedMessage, v0::Message},
-    signature::{Keypair, Signer},
+    signature::{Keypair, Signature, Signer},
     transaction::VersionedTransaction,
 };
 use svm_hash::sha2::Hash;
@@ -116,7 +116,7 @@ pub async fn post_rewards_merkle_root(
     total_contributors: u32,
     merkle_root: Hash,
     max_wait_seconds: u64,
-) -> Result<()> {
+) -> Result<Signature> {
     info!(
         "Posting merkle root for epoch {} with {} contributors to program {}",
         epoch, total_contributors, REVENUE_DISTRIBUTION_PROGRAM_ID
@@ -146,14 +146,15 @@ pub async fn post_rewards_merkle_root(
         VersionedTransaction::try_new(VersionedMessage::V0(message), &[payer_signer])?;
 
     // Send transaction
-    rpc_client
+    let signature = rpc_client
         .send_and_confirm_transaction(&transaction)
         .await
-        .map(|signature| {
-            info!(
-                "Successfully posted merkle root for epoch {} with signature: {}",
-                epoch, signature
-            );
-        })
-        .map_err(|e| anyhow!("Failed to post merkle root for epoch {epoch}: {e}"))
+        .map_err(|e| anyhow!("Failed to post merkle root for epoch {epoch}: {e}"))?;
+
+    info!(
+        "Successfully posted merkle root for epoch {} with signature: {}",
+        epoch, signature
+    );
+
+    Ok(signature)
 }

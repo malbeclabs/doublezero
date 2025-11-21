@@ -2531,6 +2531,7 @@ dependencies = [
  "rust_decimal",
  "serde",
  "serde_json",
+ "slack-notifier",
  "solana-account-decoder",
  "solana-client",
  "solana-sdk",
@@ -7034,6 +7035,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "tabled",
  "tokio",
 ]
 

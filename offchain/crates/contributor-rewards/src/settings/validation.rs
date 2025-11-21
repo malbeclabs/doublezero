@@ -144,6 +144,22 @@ pub fn validate_config(settings: &Settings) -> Result<()> {
         bail!("Invalid SocketAddr: {}", metrics.addr)
     }
 
+    // Validate Slack settings
+    if let Some(slack) = &settings.slack {
+        if slack.enabled && slack.webhook_url.is_none() {
+            bail!("Slack webhook_url is required when Slack notifications are enabled");
+        }
+
+        if let Some(webhook_url) = &slack.webhook_url
+            && !webhook_url.starts_with("https://hooks.slack.com/")
+            && !webhook_url.starts_with("http://")
+        {
+            bail!(
+                "Slack webhook_url must be a valid Slack webhook URL (starts with https://hooks.slack.com/)"
+            );
+        }
+    }
+
     Ok(())
 }
 
@@ -222,6 +238,7 @@ mod tests {
                 secret_access_key: "dummy-secret".to_string(),
                 endpoint: None,
             }),
+            slack: None,
         }
     }
 

@@ -18,6 +18,7 @@ use doublezero_revenue_distribution::{
 };
 use doublezero_sdk::record::pubkey::create_record_key;
 use doublezero_solana_client_tools::rpc::try_fetch_zero_copy_data_with_commitment;
+use slack_notifier::contributor_rewards::{WriteResultInfo, post_detailed_completion};
 use solana_client::client_error::ClientError as SolanaClientError;
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
 use svm_hash::sha2::Hash;
@@ -29,7 +30,7 @@ use tokio::{
 use tracing::{debug, error, info, warn};
 
 use crate::{
-    calculator::orchestrator::Orchestrator,
+    calculator::{WriteConfig, ledger_operations::WriteResult, orchestrator::Orchestrator},
     cli::snapshot::{CompleteSnapshot, SnapshotMetadata},
     ingestor::{epoch::EpochFinder, fetcher::Fetcher},
     scheduler::state::SchedulerState,
@@ -249,13 +250,14 @@ impl ScheduleWorker {
 
             // Step 2: Calculate and write rewards using the snapshot
             info!("Step 2/2: Calculating rewards from snapshot");
-            self.orchestrator
+            let write_summary = self
+                .orchestrator
                 .calculate_rewards(
                     None,
                     self.keypair_path.clone(),
                     Some(snapshot_path),
                     false,
-                    crate::calculator::WriteConfig::default(),
+                    WriteConfig::default(),
                 )
                 .await?;
 
@@ -265,6 +267,43 @@ impl ScheduleWorker {
                 "Successfully calculated and wrote rewards for epoch {}",
                 target_epoch
             );
+
+            // Post Slack notification if enabled
+            if let Some(slack_settings) = &self.orchestrator.settings.slack
+                && slack_settings.enabled
+                && let Some(webhook_url) = &slack_settings.webhook_url
+            {
+                // Convert network to string
+                let network = format!("{:?}", self.orchestrator.settings.network);
+
+                // Convert WriteSummary results to WriteResultInfo
+                let write_results: Vec<WriteResultInfo> = write_summary
+                    .results
+                    .iter()
+                    .map(|result| match result {
+                        WriteResult::Success(description, identifier) => WriteResultInfo::Success {
+                            description: description.clone(),
+                            identifier: identifier.clone(),
+                        },
+                        WriteResult::Failed(description, error) => WriteResultInfo::Failed {
+                            description: description.clone(),
+                            error: error.clone(),
+                        },
+                    })
+                    .collect();
+
+                // Post notification
+                match post_detailed_completion(webhook_url, network, target_epoch, write_results)
+                    .await
+                {
+                    Ok(_) => {
+                        info!("[OK] Posted Slack notification for epoch {}", target_epoch);
+                    }
+                    Err(e) => {
+                        warn!("[WARN] Failed to post Slack notification: {}", e);
+                    }
+                }
+            }
         }
 
         Ok(true)

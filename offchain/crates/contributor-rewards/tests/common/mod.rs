@@ -61,5 +61,6 @@ pub fn create_test_settings(
             secret_access_key: "dummy-secret".to_string(),
             endpoint: None,
         }),
+        slack: None,
     }
 }

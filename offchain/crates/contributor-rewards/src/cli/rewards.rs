@@ -2,9 +2,14 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use clap::Subcommand;
+use slack_notifier::contributor_rewards::{WriteResultInfo, post_detailed_completion};
 use solana_sdk::pubkey::Pubkey;
+use tracing::info;
 
-use crate::calculator::orchestrator::Orchestrator;
+use crate::{
+    calculator::{ledger_operations::WriteResult, orchestrator::Orchestrator},
+    cli::snapshot::CompleteSnapshot,
+};
 
 /// Reward-related commands
 #[derive(Subcommand, Debug)]
@@ -72,6 +77,10 @@ pub enum RewardsCommands {
         /// Skip posting merkle root to Solana
         #[arg(long)]
         skip_merkle_root: bool,
+
+        /// Send Slack notification after completion (requires Slack settings in config)
+        #[arg(long)]
+        slack_notify: bool,
     },
     #[command(
         about = "Read and display telemetry aggregate statistics from the ledger",
@@ -256,6 +265,7 @@ pub async fn handle(orchestrator: &Orchestrator, cmd: RewardsCommands) -> Result
             skip_reward_input,
             skip_shapley_output,
             skip_merkle_root,
+            slack_notify,
         } => {
             use tracing::warn;
 
@@ -290,9 +300,61 @@ pub async fn handle(orchestrator: &Orchestrator, cmd: RewardsCommands) -> Result
                 );
             }
 
-            orchestrator
-                .calculate_rewards(None, keypair, Some(snapshot), dry_run, write_config)
-                .await
+            let write_summary = orchestrator
+                .calculate_rewards(None, keypair, Some(snapshot.clone()), dry_run, write_config)
+                .await?;
+
+            // Send Slack notification if requested
+            if slack_notify {
+                // Load snapshot to get epoch
+                let snapshot_data = CompleteSnapshot::load_from_file(&snapshot)?;
+                let epoch = snapshot_data.dz_epoch;
+
+                // Check if Slack is configured
+                if let Some(slack_settings) = &orchestrator.settings.slack {
+                    if let Some(webhook_url) = &slack_settings.webhook_url {
+                        let network = format!("{:?}", orchestrator.settings.network);
+
+                        // Convert WriteSummary to WriteResultInfo
+                        let write_results: Vec<WriteResultInfo> = write_summary
+                            .results
+                            .iter()
+                            .map(|result| match result {
+                                WriteResult::Success(description, identifier) => {
+                                    WriteResultInfo::Success {
+                                        description: description.clone(),
+                                        identifier: identifier.clone(),
+                                    }
+                                }
+                                WriteResult::Failed(description, error) => {
+                                    WriteResultInfo::Failed {
+                                        description: description.clone(),
+                                        error: error.clone(),
+                                    }
+                                }
+                            })
+                            .collect();
+
+                        // Post notification
+                        match post_detailed_completion(webhook_url, network, epoch, write_results)
+                            .await
+                        {
+                            Ok(_) => {
+                                info!("[OK] Posted Slack notification for epoch {}", epoch);
+                            }
+                            Err(e) => {
+                                warn!("[WARN] Failed to post Slack notification: {}", e);
+                            }
+                        }
+                    } else {
+                        warn!("[WARN] Slack notification requested but webhook_url not configured");
+                    }
+                } else {
+                    warn!("[WARN] Slack notification requested but Slack settings not configured");
+                }
+            }
+
+            Ok(())
         }
         RewardsCommands::ReadTelemAgg {
             epoch,

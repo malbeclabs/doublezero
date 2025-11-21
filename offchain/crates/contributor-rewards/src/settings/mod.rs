@@ -37,6 +37,9 @@ pub struct Settings {
     pub metrics: Option<MetricsSettings>,
     /// AWS S3 configuration for snapshot storage (required when storage_backend = S3)
     pub aws: Option<AwsSettings>,
+    /// Slack notification settings
+    #[serde(default)]
+    pub slack: Option<SlackSettings>,
 }
 
 /// Shapley value calculation parameters for reward distribution
@@ -150,10 +153,23 @@ fn default_grace_period_max_wait_seconds() -> u64 {
     21600
 }
 
-/// Scheduler configuration for automated rewards calculation
+/// Metrics configuration for Prometheus
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MetricsSettings {
     pub addr: SocketAddr,
+}
+
+/// Slack notification settings for reward cycle completion alerts
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SlackSettings {
+    /// Enable Slack notifications
+    pub enabled: bool,
+    /// Webhook URL
+    #[serde(default)]
+    pub webhook_url: Option<String>,
+    /// Channel ID
+    #[serde(default)]
+    pub channel_id: Option<String>,
 }
 
 impl Settings {

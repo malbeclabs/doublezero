@@ -61,6 +61,8 @@ pub enum LinkStatus {
     Deleting = 3,
     Rejected = 4,
     Requested = 5,
+    HardDrained = 6,
+    SoftDrained = 7,
 }
 
 impl From<u8> for LinkStatus {
@@ -72,6 +74,8 @@ impl From<u8> for LinkStatus {
             3 => LinkStatus::Deleting,
             4 => LinkStatus::Rejected,
             5 => LinkStatus::Requested,
+            6 => LinkStatus::HardDrained,
+            7 => LinkStatus::SoftDrained,
             _ => LinkStatus::Pending,
         }
     }
@@ -88,6 +92,8 @@ impl FromStr for LinkStatus {
             "deleting" => Ok(LinkStatus::Deleting),
             "rejected" => Ok(LinkStatus::Rejected),
             "requested" => Ok(LinkStatus::Requested),
+            "hard-drained" => Ok(LinkStatus::HardDrained),
+            "soft-drained" => Ok(LinkStatus::SoftDrained),
             _ => Err(format!("Invalid LinkStatus: {s}")),
         }
     }
@@ -102,6 +108,8 @@ impl fmt::Display for LinkStatus {
             LinkStatus::Deleting => write!(f, "deleting"),
             LinkStatus::Rejected => write!(f, "rejected"),
             LinkStatus::Requested => write!(f, "requested"),
+            LinkStatus::HardDrained => write!(f, "hard-drained"),
+            LinkStatus::SoftDrained => write!(f, "soft-drained"),
         }
     }
 }

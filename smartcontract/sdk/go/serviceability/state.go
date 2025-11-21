@@ -388,6 +388,8 @@ const (
 	LinkStatusDeleted
 	LinkStatusRejected
 	LinkStatusRequested
+	LinkStatusSoftDrained
+	LinkStatusHardDrained
 )
 
 func (l LinkStatus) String() string {

@@ -11,15 +11,14 @@ All notable changes to this project will be documented in this file.
 - RFCs
   - RFC-10: Version Compatibility Windows
 - CLI
-  - IP address lookups via ifconfig.me are retried up to 3 times to minimize transient network errors.
-  - Added global `--no-version-warning` flag to the `doublezero` client and now emit version warnings to STDERR instead of STDOUT to improve scriptability and logging.
-  - Add the ability to update a Device’s location, managing the reference counters accordingly.
-- Client
-  - Add `/routes` daemon API endpoint providing a merged view of kernel routes and liveness-tracked routes.
-  - Route liveness scheduler avoid logging UDP send failure after shutdown
+    - IP address lookups via ifconfig.me are retried up to 3 times to minimize transient network errors.
+    - Added global `--no-version-warning` flag to the `doublezero` client and now emit version warnings to STDERR instead of STDOUT to improve scriptability and logging.
+    - Add the ability to update a Device’s location, managing the reference counters accordingly.
+    - Added support in the link update command to set a link’s status to soft_drained or hard_drained.
 - Funder: fund multicast group owners
 - Onchain programs
   - Serviceability Program: Updated the device update command to allow modifying a device’s location.
+  - Added new `soft_drained` and `hard_drained` link status values to serviceability to support traffic offloading as defined in RFC-9.
 
 
 ## [v0.7.1](https://github.com/malbeclabs/doublezero/compare/client/v0.7.0...client/v0.7.1) – 2025-11-18

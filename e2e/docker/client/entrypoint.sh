@@ -77,4 +77,4 @@ for dev in $(ip -o link show | awk -F': ' '/^ *[0-9]+: eth[0-9]+/ {print $2}' | 
 done
 
 # Start doublezerod.
-doublezerod -program-id ${DZ_SERVICEABILITY_PROGRAM_ID} -solana-rpc-endpoint ${DZ_LEDGER_URL} -probe-interval 5 -cache-update-interval 3 -metrics-enable -metrics-addr 0.0.0.0:8080 ${DZ_CLIENT_EXTRA_ARGS}
+doublezerod --env localnet -program-id ${DZ_SERVICEABILITY_PROGRAM_ID} -solana-rpc-endpoint ${DZ_LEDGER_URL} -probe-interval 5 -cache-update-interval 3 -metrics-enable -metrics-addr 0.0.0.0:8080 ${DZ_CLIENT_EXTRA_ARGS}

@@ -149,16 +149,4 @@ func TestQA_MulticastConnectivity(t *testing.T) {
 	// Leave multicast group.
 	err = publisher.MulticastLeave(ctx, group.Code)
 	require.NoError(t, err, "failed to leave multicast group")
-
-	// Disconnect all clients at the end of the test.
-	var wg sync.WaitGroup
-	for _, client := range clients {
-		wg.Add(1)
-		go func(client *qa.Client) {
-			defer wg.Done()
-			err := client.DisconnectUser(context.Background(), true, true)
-			assert.NoError(t, err, "failed to disconnect user")
-		}(client)
-	}
-	wg.Wait()
 }

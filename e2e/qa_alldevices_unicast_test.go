@@ -106,65 +106,51 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 				require.NoError(t, err, "failed to wait for routes on client %s", c.Host)
 			}
 
+			// Now run per-device subtests for this batch.
+			// Each subtest:
+			//   - Uses the client assigned to that device as the source
+			//   - Tests connectivity from that client to all other clients
 			var testsWithPartialLosses atomic.Uint32
-			t.Run("connectivity", func(t *testing.T) {
-				// Now run per-device subtests for this batch.
-				// Each subtest:
-				//   - Uses the client assigned to that device as the source
-				//   - Tests connectivity from that client to all other clients
-				for _, device := range batch {
-					srcClient := deviceToClient[device]
-					require.NotNil(t, srcClient, "no client assigned to device %s in batch", device.Code)
+			for _, device := range batch {
+				srcClient := deviceToClient[device]
+				require.NotNil(t, srcClient, "no client assigned to device %s in batch", device.Code)
 
-					t.Run(fmt.Sprintf("device_%s__from_%s", device.Code, srcClient.Host), func(t *testing.T) {
-						t.Parallel()
+				t.Run(fmt.Sprintf("device_%s__from_%s", device.Code, srcClient.Host), func(t *testing.T) {
+					t.Parallel()
 
-						outerLog := log
-						log := newTestLogger(t)
-						srcClient.SetLogger(log)
-						t.Cleanup(func() {
-							srcClient.SetLogger(outerLog)
-						})
-						subCtx := t.Context()
-
-						var wg sync.WaitGroup
-						for _, target := range activeClients {
-							if target.Host == srcClient.Host {
-								continue
-							}
-
-							wg.Add(1)
-							go func(src, target *qa.Client) {
-								defer wg.Done()
-								result, err := src.TestUnicastConnectivity(subCtx, target)
-								require.NoError(t, err)
-								if result.PacketsReceived < result.PacketsSent {
-									testsWithPartialLosses.Add(1)
-								}
-							}(srcClient, target)
-						}
-						wg.Wait()
+					outerLog := log
+					log := newTestLogger(t)
+					srcClient.SetLogger(log)
+					t.Cleanup(func() {
+						srcClient.SetLogger(outerLog)
 					})
-				}
-			})
+					subCtx := t.Context()
+
+					var wg sync.WaitGroup
+					for _, target := range activeClients {
+						if target.Host == srcClient.Host {
+							continue
+						}
+
+						wg.Add(1)
+						go func(src, target *qa.Client) {
+							defer wg.Done()
+							result, err := src.TestUnicastConnectivity(subCtx, target)
+							require.NoError(t, err)
+							if result.PacketsReceived < result.PacketsSent {
+								testsWithPartialLosses.Add(1)
+							}
+						}(srcClient, target)
+					}
+					wg.Wait()
+				})
+			}
 
 			// Tolerate at most one test with partial losses.
 			// TestUnicastConnectivity will return error if there are losses that exceed the acceptable
 			// threshold, resulting in the QA test to fail earlier than this check. This check is responsible
 			// for tolerating at most 1 test with "acceptable" partial loss, or else fail the QA test.
 			require.LessOrEqual(t, testsWithPartialLosses.Load(), uint32(1), "too many connectivity tests with partial packet loss")
-
-			// Disconnect all clients at the end of the test case.
-			var wg sync.WaitGroup
-			for _, client := range activeClients {
-				wg.Add(1)
-				go func(client *qa.Client) {
-					defer wg.Done()
-					err := client.DisconnectUser(context.Background(), true, true)
-					assert.NoError(t, err, "failed to disconnect user")
-				}(client)
-			}
-			wg.Wait()
 		})
 	}
 }

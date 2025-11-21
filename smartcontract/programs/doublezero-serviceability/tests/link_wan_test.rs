@@ -643,9 +643,92 @@ async fn test_wan_link() {
     assert_eq!(tunnel_la.status, LinkStatus::Activated);
 
     println!("✅ Link updated");
-
     /*****************************************************************************************************************************************************/
-    println!("🟢 12. Deleting Link...");
+    println!("🟢 12. Update Link to Soft Draining...");
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
+            status: Some(LinkStatus::SoftDrained),
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(tunnel_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let tunnel_la = get_account_data(&mut banks_client, tunnel_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_tunnel()
+        .unwrap();
+    assert_eq!(tunnel_la.account_type, AccountType::Link);
+    assert_eq!(tunnel_la.status, LinkStatus::SoftDrained);
+
+    println!("✅ Link updated to soft draining");
+    /*****************************************************************************************************************************************************/
+    println!("🟢 13. Update Link to Hard Draining...");
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
+            status: Some(LinkStatus::HardDrained),
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(tunnel_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let tunnel_la = get_account_data(&mut banks_client, tunnel_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_tunnel()
+        .unwrap();
+    assert_eq!(tunnel_la.account_type, AccountType::Link);
+    assert_eq!(tunnel_la.status, LinkStatus::HardDrained);
+
+    println!("✅ Link updated to hard draining");
+    /*****************************************************************************************************************************************************/
+    println!("🟢 14. Update Link to activated...");
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
+            status: Some(LinkStatus::Activated),
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(tunnel_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let tunnel_la = get_account_data(&mut banks_client, tunnel_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_tunnel()
+        .unwrap();
+    assert_eq!(tunnel_la.account_type, AccountType::Link);
+    assert_eq!(tunnel_la.status, LinkStatus::Activated);
+
+    println!("✅ Link updated to activated");
+    /*****************************************************************************************************************************************************/
+    println!("🟢 15. Deleting Link...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -675,7 +758,7 @@ async fn test_wan_link() {
     println!("✅ Link deleting");
 
     /*****************************************************************************************************************************************************/
-    println!("🟢 13. CloseAccount Link...");
+    println!("🟢 16. CloseAccount Link...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,

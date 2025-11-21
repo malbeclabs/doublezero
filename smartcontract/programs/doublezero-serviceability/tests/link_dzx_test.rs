@@ -2,7 +2,6 @@ use doublezero_serviceability::{
     instructions::*,
     pda::*,
     processors::{
-        allowlist::foundation::add::AddFoundationAllowlistArgs,
         contributor::create::ContributorCreateArgs,
         device::interface::DeviceInterfaceUnlinkArgs,
         link::{
@@ -172,19 +171,6 @@ async fn test_dzx_link() {
     let payer2 = solana_sdk::signer::keypair::Keypair::new();
     transfer(&mut banks_client, &payer, &payer2.pubkey(), 10_000_000_000).await;
 
-    println!("Add to allowlist...");
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::AddFoundationAllowlist(AddFoundationAllowlistArgs {
-            pubkey: payer2.pubkey(),
-        }),
-        vec![AccountMeta::new(globalstate_pubkey, false)],
-        &payer,
-    )
-    .await;
-
     let (contributor2_pubkey, _) =
         get_contributor_pda(&program_id, globalstate_account.account_index + 1);
 
@@ -200,7 +186,7 @@ async fn test_dzx_link() {
             AccountMeta::new(payer2.pubkey(), false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
-        &payer2,
+        &payer,
     )
     .await;
 
@@ -681,7 +667,6 @@ async fn test_dzx_link() {
     assert_eq!(tunnel_la.status, LinkStatus::Activated);
 
     println!("✅ Link updated");
-
     /*****************************************************************************************************************************************************/
     println!("🟢 14. Update Link by Contributor B...");
     execute_transaction(
@@ -715,9 +700,122 @@ async fn test_dzx_link() {
     assert_eq!(link_dzx.status, LinkStatus::Activated);
 
     println!("✅ Link updated");
-
     /*****************************************************************************************************************************************************/
-    println!("🟢 15. Deleting Link...");
+    println!("🟢 15. Update Link by Contributor B to SoftDrained...");
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
+            status: Some(LinkStatus::SoftDrained),
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(link_dzx_pubkey, false),
+            AccountMeta::new(contributor2_pubkey, false),
+            AccountMeta::new(device_z_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer2,
+    )
+    .await;
+
+    let link_dzx = get_account_data(&mut banks_client, link_dzx_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_tunnel()
+        .unwrap();
+    assert_eq!(link_dzx.status, LinkStatus::SoftDrained);
+
+    println!("✅ Link updated to SoftDrained");
+    /*****************************************************************************************************************************************************/
+    println!("🟢 16. Update Link by Contributor B to HardDrained...");
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
+            status: Some(LinkStatus::HardDrained),
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(link_dzx_pubkey, false),
+            AccountMeta::new(contributor2_pubkey, false),
+            AccountMeta::new(device_z_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer2,
+    )
+    .await;
+
+    let link_dzx = get_account_data(&mut banks_client, link_dzx_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_tunnel()
+        .unwrap();
+    assert_eq!(link_dzx.status, LinkStatus::HardDrained);
+
+    println!("✅ Link updated to HardDrained");
+    /*****************************************************************************************************************************************************/
+    println!("🟢 17. Update Link by Contributor B to Activated...");
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
+            status: Some(LinkStatus::Activated),
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(link_dzx_pubkey, false),
+            AccountMeta::new(contributor2_pubkey, false),
+            AccountMeta::new(device_z_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer2,
+    )
+    .await;
+
+    let link_dzx = get_account_data(&mut banks_client, link_dzx_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_tunnel()
+        .unwrap();
+    assert_eq!(link_dzx.status, LinkStatus::Activated);
+
+    println!("✅ Link updated to Activated");
+    /*****************************************************************************************************************************************************/
+    println!("🟢 18. Update Link by Contributor B to Suspended (should fail)...");
+    let res = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
+            status: Some(LinkStatus::Suspended),
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(link_dzx_pubkey, false),
+            AccountMeta::new(contributor2_pubkey, false),
+            AccountMeta::new(device_z_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer2,
+    )
+    .await;
+
+    assert!(res.is_err());
+
+    let link_dzx = get_account_data(&mut banks_client, link_dzx_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_tunnel()
+        .unwrap();
+    assert_eq!(link_dzx.status, LinkStatus::Activated);
+
+    println!("✅ Failed to update to Suspended as expected; link remained Activated");
+    /*****************************************************************************************************************************************************/
+    println!("🟢 19. Deleting Link...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -747,7 +845,7 @@ async fn test_dzx_link() {
     println!("✅ Link deleting");
 
     /*****************************************************************************************************************************************************/
-    println!("🟢 16. CloseAccount Link...");
+    println!("🟢 20. CloseAccount Link...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,

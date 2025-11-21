@@ -173,17 +173,25 @@ pub fn process_update_link(
         link.delay_override_ns = delay_override_ns;
     }
 
-    // For now only allow foundation to update status
     if let Some(status) = value.status {
-        // Only allow to update the status if the payer is in the foundation allowlist
-        if !globalstate.foundation_allowlist.contains(payer_account.key) {
-            msg!(
-                "Payer is not in the foundation allowlist: {:?}",
-                payer_account.key
-            );
-            return Err(DoubleZeroError::NotAllowed.into());
+        // Foundation members can set any status
+        if globalstate.foundation_allowlist.contains(payer_account.key) {
+            link.status = status;
+        } else {
+            // Contributors can only transition between Activated <-> Drained states & Drained <-> Drained states
+            // to allow for maintenance draining of links
+            match (link.status, status) {
+                (LinkStatus::Activated, LinkStatus::HardDrained)
+                | (LinkStatus::Activated, LinkStatus::SoftDrained)
+                | (LinkStatus::HardDrained, LinkStatus::SoftDrained)
+                | (LinkStatus::SoftDrained, LinkStatus::HardDrained)
+                | (LinkStatus::HardDrained, LinkStatus::Activated)
+                | (LinkStatus::SoftDrained, LinkStatus::Activated) => {
+                    link.status = status;
+                }
+                _ => return Err(DoubleZeroError::NotAllowed.into()),
+            }
         }
-        link.status = status;
     }
 
     account_write(link_account, &link, payer_account, system_program)?;

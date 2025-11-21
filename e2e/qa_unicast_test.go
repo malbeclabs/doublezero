@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/malbeclabs/doublezero/e2e/internal/qa"
@@ -66,7 +67,7 @@ func TestQA_UnicastConnectivity(t *testing.T) {
 	}
 
 	// Test connectivity between all clients.
-	var testsWithPartialLosses uint32
+	var testsWithPartialLosses atomic.Uint32
 	for _, srcClient := range clients {
 		for _, dstClient := range clients {
 			if srcClient.Host == dstClient.Host {
@@ -87,7 +88,7 @@ func TestQA_UnicastConnectivity(t *testing.T) {
 				require.NoError(t, err, "failed to test connectivity")
 
 				if result.PacketsReceived < result.PacketsSent {
-					testsWithPartialLosses++
+					testsWithPartialLosses.Add(1)
 				}
 			})
 		}
@@ -97,5 +98,5 @@ func TestQA_UnicastConnectivity(t *testing.T) {
 	// TestUnicastConnectivity will return error if there are losses that exceed the acceptable
 	// threshold, resulting in the QA test to fail earlier than this check. This check is responsible
 	// for tolerating at most 1 test with "acceptable" partial loss, or else fail the QA test.
-	require.LessOrEqual(t, testsWithPartialLosses, uint32(1), "too many connectivity tests with partial packet loss")
+	require.LessOrEqual(t, testsWithPartialLosses.Load(), uint32(1), "too many connectivity tests with partial packet loss")
 }

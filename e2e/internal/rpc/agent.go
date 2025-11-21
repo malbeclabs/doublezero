@@ -235,8 +235,6 @@ func (q *QAAgent) Disconnect(ctx context.Context, req *emptypb.Empty) (*pb.Resul
 	cmd := exec.Command("doublezero", "disconnect")
 	output, err := cmd.CombinedOutput()
 	duration := time.Since(start)
-	DisconnectDuration.Observe(duration.Seconds())
-	q.log.Info("Successfully disconnected", "duration", duration.String())
 
 	res := &pb.Result{
 		Output: strings.Split(string(output), "\n"),
@@ -244,7 +242,7 @@ func (q *QAAgent) Disconnect(ctx context.Context, req *emptypb.Empty) (*pb.Resul
 
 	if err != nil {
 		res.Success = false
-		q.log.Error("Failed to disconnect", "output", string(output))
+		q.log.Error("Failed to disconnect", "output", string(output), "duration", duration.String())
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			res.ReturnCode = int32(exitErr.ExitCode())
 		} else {
@@ -254,7 +252,8 @@ func (q *QAAgent) Disconnect(ctx context.Context, req *emptypb.Empty) (*pb.Resul
 	} else {
 		res.Success = true
 		res.ReturnCode = 0
-		q.log.Info("Successfully disconnected")
+		q.log.Info("Successfully disconnected", "duration", duration.String())
+		DisconnectDuration.Observe(duration.Seconds())
 	}
 
 	return res, nil

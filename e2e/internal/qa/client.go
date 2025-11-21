@@ -126,7 +126,7 @@ func (c *Client) DisconnectUser(ctx context.Context, waitForStatus bool, waitFor
 	if waitForStatus {
 		err = c.WaitForStatusDisconnected(ctx)
 		if err != nil {
-			return fmt.Errorf("failed to wait for status to be disconnected: %w", err)
+			return fmt.Errorf("failed to wait for status to be disconnected: host %s, current status %s: %w", c.Host, status.SessionStatus, err)
 		}
 	}
 
@@ -270,7 +270,7 @@ func (c *Client) getConnectedDevice(ctx context.Context) (*Device, error) {
 		return nil, fmt.Errorf("failed to get user status: %w", err)
 	}
 	if status.SessionStatus != UserStatusUp {
-		return nil, fmt.Errorf("user status is not up")
+		return nil, fmt.Errorf("user status is not up: %s", status.SessionStatus)
 	}
 	return c.devices[status.CurrentDevice], nil
 }

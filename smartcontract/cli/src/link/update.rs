@@ -45,7 +45,7 @@ pub struct UpdateLinkCliCommand {
     /// RTT (Round Trip Time) delay override in milliseconds
     #[arg(long, value_parser = validate_parse_delay_override_ms)]
     pub delay_override_ms: Option<f64>,
-    /// Updated link status (e.g. Activated, HardDrained, SoftDrained)
+    /// Updated link status (e.g. activated, soft-drained, hard-drained)
     #[arg(long)]
     pub status: Option<String>,
     /// Wait for the device to be activated

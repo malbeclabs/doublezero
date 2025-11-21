@@ -14,16 +14,18 @@ All notable changes to this project will be documented in this file.
     - IP address lookups via ifconfig.me are retried up to 3 times to minimize transient network errors.
     - Added global `--no-version-warning` flag to the `doublezero` client and now emit version warnings to STDERR instead of STDOUT to improve scriptability and logging.
     - Add the ability to update a Device’s location, managing the reference counters accordingly.
-    - Added support in the link update command to set a link’s status to soft_drained or hard_drained.
+    - Added support in the link update command to set a link’s status to soft-drained or hard-drained.
 - Funder: fund multicast group owners
 - Onchain programs
   - Serviceability Program: Updated the device update command to allow modifying a device’s location.
-  - Added new `soft_drained` and `hard_drained` link status values to serviceability to support traffic offloading as defined in RFC-9.
+  - Added new `soft-drained` and `hard-drained` link status values to serviceability to support traffic offloading as defined in RFC9.
   - Fix ProgramConfig resize during global state initialization.
 - QA
   - Traceroute when packet loss is detected
 - Tools
   - Add `solana-tpu-quic-ping` tool for testing Solana TPU-QUIC connections with stats emitted periodically
+- Device controller
+  - Handle new link.status values (soft-drained and hard-drained) as per [RFC9](https://github.com/malbeclabs/doublezero/blob/main/rfcs/rfc9-link-draining.md) 
 
 ## [v0.7.1](https://github.com/malbeclabs/doublezero/compare/client/v0.7.0...client/v0.7.1) – 2025-11-18
 

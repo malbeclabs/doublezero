@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 )
 
@@ -485,4 +486,57 @@ func TestClient_Liveness_Scheduler_ScheduleTx_NotDroppedByOverflow(t *testing.T)
 	require.NotNil(t, s.eq.Pop())
 	require.NotNil(t, s.eq.Pop())
 	require.Equal(t, 0, s.eq.Len())
+}
+
+func TestClient_Liveness_Scheduler_doTX_SkipsWriteErrorMetricsAfterContextCancel(t *testing.T) {
+	t.Parallel()
+
+	srv, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
+	require.NoError(t, err)
+	defer srv.Close()
+	_, err = NewUDPService(srv)
+	require.NoError(t, err)
+
+	cl, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
+	require.NoError(t, err)
+	w, err := NewUDPService(cl)
+	require.NoError(t, err)
+
+	log := newTestLogger(t)
+	s := NewScheduler(log, w, func(*Session) {}, 0, false)
+
+	iface := ""
+	localIP := cl.LocalAddr().(*net.UDPAddr).IP.String()
+
+	sess := &Session{
+		state:         StateInit,
+		alive:         true,
+		localTxMin:    20 * time.Millisecond,
+		localRxMin:    20 * time.Millisecond,
+		minTxFloor:    10 * time.Millisecond,
+		maxTxCeil:     200 * time.Millisecond,
+		detectMult:    3,
+		peer:          &Peer{Interface: iface, LocalIP: localIP, PeerIP: srv.LocalAddr().(*net.UDPAddr).IP.String()},
+		peerAddr:      srv.LocalAddr().(*net.UDPAddr),
+		backoffMax:    200 * time.Millisecond,
+		backoffFactor: 1,
+	}
+
+	// Force the writer to fail by closing the underlying conn.
+	require.NoError(t, cl.Close())
+
+	// Cancel the context before calling doTX.
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	// Read metric before.
+	before := testutil.ToFloat64(metricWriteSocketErrors.WithLabelValues(iface, localIP))
+
+	// Call doTX with a canceled context; it should hit the WriteTo error path
+	// but then see ctx.Done and return without bumping the metric.
+	s.doTX(ctx, sess)
+
+	// Metric must not have changed.
+	after := testutil.ToFloat64(metricWriteSocketErrors.WithLabelValues(iface, localIP))
+	require.Equal(t, before, after)
 }

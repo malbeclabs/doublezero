@@ -1,8 +1,8 @@
 # DoubleZero Client Route Liveness
 
-## Summary
-
 **Status: Active**
+
+## Summary
 
 This document proposes a per-route liveness protocol for DoubleZero clients that verifies data-plane reachability rather than relying solely on BGP session state. Each client maintains a lightweight, bidirectional UDP exchange with its peer for every eligible route, using fixed-size control packets to confirm packet flow in both directions.
 
@@ -344,7 +344,7 @@ $ curl --unix-socket /var/run/doublezerod/doublezerod.sock http://localhost/rout
 
 [
   {
-    "service_type": "IBRL",
+    "user_type": "IBRL",
     "network": "devnet",
     "local_ip": "9.169.90.110",
     "peer_ip": "203.0.113.42",
@@ -353,7 +353,7 @@ $ curl --unix-socket /var/run/doublezerod/doublezerod.sock http://localhost/rout
     "liveness_last_updated": "2025-11-08T12:34:56Z"
   },
   {
-    "service_type": "IBRL",
+    "user_type": "IBRL",
     "network": "devnet",
     "local_ip": "9.169.90.110",
     "peer_ip": "192.0.2.5",
@@ -371,15 +371,15 @@ The client CLI MUST expose per-route liveness status using the daemon API:
 ```
 $ doublezero status --routes
 
-Service Type   Local IP       Peer IP        RT Status Liveness Status Network Liveness Last Updated
--------------- -------------- -------------- --------- --------------- ------- ---------------------
-IBRL           9.169.90.110   203.0.113.42   absent    down            devnet  2025-11-08T12:00:00Z
-IBRL           9.169.90.110   198.51.100.14  absent    down            devnet  2025-11-08T12:00:00Z
-IBRL           9.169.90.110   192.0.2.18     present   up              devnet  2025-11-08T12:00:00Z
-IBRL           9.169.90.110   198.51.100.8   present   up              devnet  2025-11-08T12:00:00Z
-IBRL           9.169.90.110   203.0.113.7    present   up              devnet  2025-11-08T12:00:00Z
-IBRL           9.169.90.110   198.51.100.2   present   up              devnet  2025-11-08T12:00:00Z
-IBRL           9.169.90.110   192.0.2.5      present   up              devnet  2025-11-08T12:00:00Z
+User Type Local IP       Peer IP        RT Status Liveness Status Network Liveness Last Updated
+--------- -------------- -------------- --------- --------------- ------- ---------------------
+IBRL      9.169.90.110   203.0.113.42   absent    down            devnet  2025-11-08T12:00:00Z
+IBRL      9.169.90.110   198.51.100.14  absent    down            devnet  2025-11-08T12:00:00Z
+IBRL      9.169.90.110   192.0.2.18     present   up              devnet  2025-11-08T12:00:00Z
+IBRL      9.169.90.110   198.51.100.8   present   up              devnet  2025-11-08T12:00:00Z
+IBRL      9.169.90.110   203.0.113.7    present   up              devnet  2025-11-08T12:00:00Z
+IBRL      9.169.90.110   198.51.100.2   present   up              devnet  2025-11-08T12:00:00Z
+IBRL      9.169.90.110   192.0.2.5      present   up              devnet  2025-11-08T12:00:00Z
 ```
 
 ## Impact

@@ -18,8 +18,9 @@ All notable changes to this project will be documented in this file.
 - Funder: fund multicast group owners
 - Onchain programs
   - Serviceability Program: Updated the device update command to allow modifying a device’s location.
-  - Added new `soft_drained` and `hard_drained` link status values to serviceability to support traffic offloading as defined in RFC-9.
-
+  - Added new `soft_drained` and `hard_drained` link status values to serviceability to support traffic offloading as defined in RFC9.
+- Device controller
+  - Handle new link.status values (soft_drained and hard_drained) as per [RFC9](https://github.com/malbeclabs/doublezero/blob/main/rfcs/rfc9-link-draining.md) 
 
 ## [v0.7.1](https://github.com/malbeclabs/doublezero/compare/client/v0.7.0...client/v0.7.1) – 2025-11-18
 

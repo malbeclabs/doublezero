@@ -67,31 +67,33 @@ func TestQA_UnicastConnectivity(t *testing.T) {
 
 	// Test connectivity between all clients.
 	var testsWithPartialLosses uint32
-	for _, srcClient := range clients {
-		for _, dstClient := range clients {
-			if srcClient.Host == dstClient.Host {
-				continue
-			}
-
-			t.Run(fmt.Sprintf("connectivity_%s_to_%s", srcClient.Host, dstClient.Host), func(t *testing.T) {
-				t.Parallel()
-
-				outerLog := log
-				srcClient.SetLogger(newTestLogger(t))
-				t.Cleanup(func() {
-					srcClient.SetLogger(outerLog)
-				})
-				subCtx := t.Context()
-
-				result, err := srcClient.TestUnicastConnectivity(subCtx, dstClient)
-				require.NoError(t, err, "failed to test connectivity")
-
-				if result.PacketsReceived < result.PacketsSent {
-					testsWithPartialLosses++
+	t.Run("connectivity", func(t *testing.T) {
+		for _, srcClient := range clients {
+			for _, dstClient := range clients {
+				if srcClient.Host == dstClient.Host {
+					continue
 				}
-			})
+
+				t.Run(fmt.Sprintf("%s_to_%s", srcClient.Host, dstClient.Host), func(t *testing.T) {
+					t.Parallel()
+
+					outerLog := log
+					srcClient.SetLogger(newTestLogger(t))
+					t.Cleanup(func() {
+						srcClient.SetLogger(outerLog)
+					})
+					subCtx := t.Context()
+
+					result, err := srcClient.TestUnicastConnectivity(subCtx, dstClient)
+					require.NoError(t, err, "failed to test connectivity")
+
+					if result.PacketsReceived < result.PacketsSent {
+						testsWithPartialLosses++
+					}
+				})
+			}
 		}
-	}
+	})
 
 	// Tolerate at most one test with partial losses.
 	// TestUnicastConnectivity will return error if there are losses that exceed the acceptable

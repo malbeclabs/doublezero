@@ -105,45 +105,47 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 				require.NoError(t, err, "failed to wait for routes on client %s", c.Host)
 			}
 
-			// Now run per-device subtests for this batch.
-			// Each subtest:
-			//   - Uses the client assigned to that device as the source
-			//   - Tests connectivity from that client to all other clients
 			var testsWithPartialLosses uint32
-			for _, device := range batch {
-				srcClient := deviceToClient[device]
-				require.NotNil(t, srcClient, "no client assigned to device %s in batch", device.Code)
+			t.Run("connectivity", func(t *testing.T) {
+				// Now run per-device subtests for this batch.
+				// Each subtest:
+				//   - Uses the client assigned to that device as the source
+				//   - Tests connectivity from that client to all other clients
+				for _, device := range batch {
+					srcClient := deviceToClient[device]
+					require.NotNil(t, srcClient, "no client assigned to device %s in batch", device.Code)
 
-				t.Run(fmt.Sprintf("device_%s__from_%s", device.Code, srcClient.Host), func(t *testing.T) {
-					t.Parallel()
+					t.Run(fmt.Sprintf("device_%s__from_%s", device.Code, srcClient.Host), func(t *testing.T) {
+						t.Parallel()
 
-					outerLog := log
-					log := newTestLogger(t)
-					srcClient.SetLogger(log)
-					t.Cleanup(func() {
-						srcClient.SetLogger(outerLog)
-					})
-					subCtx := t.Context()
+						outerLog := log
+						log := newTestLogger(t)
+						srcClient.SetLogger(log)
+						t.Cleanup(func() {
+							srcClient.SetLogger(outerLog)
+						})
+						subCtx := t.Context()
 
-					var wg sync.WaitGroup
-					for _, target := range activeClients {
-						if target.Host == srcClient.Host {
-							continue
-						}
-
-						wg.Add(1)
-						go func(src, target *qa.Client) {
-							defer wg.Done()
-							result, err := src.TestUnicastConnectivity(subCtx, target)
-							require.NoError(t, err)
-							if result.PacketsReceived < result.PacketsSent {
-								testsWithPartialLosses++
+						var wg sync.WaitGroup
+						for _, target := range activeClients {
+							if target.Host == srcClient.Host {
+								continue
 							}
-						}(srcClient, target)
-					}
-					wg.Wait()
-				})
-			}
+
+							wg.Add(1)
+							go func(src, target *qa.Client) {
+								defer wg.Done()
+								result, err := src.TestUnicastConnectivity(subCtx, target)
+								require.NoError(t, err)
+								if result.PacketsReceived < result.PacketsSent {
+									testsWithPartialLosses++
+								}
+							}(srcClient, target)
+						}
+						wg.Wait()
+					})
+				}
+			})
 
 			// Tolerate at most one test with partial losses.
 			// TestUnicastConnectivity will return error if there are losses that exceed the acceptable

@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"net"
 	"strings"
@@ -14,6 +15,10 @@ import (
 	"github.com/malbeclabs/doublezero/e2e/internal/qa"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+)
+
+var (
+	devicesFlag = flag.String("devices", "", "comma separated list of devices to run tests against")
 )
 
 func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
@@ -34,6 +39,21 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 	devices := test.ShuffledValidDevices(2)
 	if len(devices) == 0 {
 		t.Skip("No valid devices found with sufficient capacity")
+	}
+
+	// If devices flag is provided, filter devices to only include those in the list.
+	if *devicesFlag != "" {
+		deviceCodes := make(map[string]struct{}, len(devices))
+		for deviceCode := range strings.SplitSeq(strings.TrimSpace(*devicesFlag), ",") {
+			deviceCodes[deviceCode] = struct{}{}
+		}
+		filteredDevices := make([]*qa.Device, 0, len(devices))
+		for _, device := range devices {
+			if _, ok := deviceCodes[device.Code]; ok {
+				filteredDevices = append(filteredDevices, device)
+			}
+		}
+		devices = filteredDevices
 	}
 
 	// Batch size is number of clients, but we never reuse devices within a batch.
@@ -136,7 +156,10 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 						go func(src, target *qa.Client) {
 							defer wg.Done()
 							result, err := src.TestUnicastConnectivity(subCtx, target)
-							require.NoError(t, err)
+							if err != nil {
+								log.Error("Connectivity test failed", "error", err, "source", src.Host, "target", target.Host, "sourceDevice", clientToDevice[src].Code, "targetDevice", clientToDevice[target].Code)
+								require.NoError(t, err)
+							}
 							if result.PacketsReceived < result.PacketsSent {
 								testsWithPartialLosses.Add(1)
 							}

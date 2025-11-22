@@ -606,7 +606,7 @@ func (q *QAAgent) fetchStatus(ctx context.Context) ([]StatusResponse, error) {
 
 	var status []StatusResponse
 	if err := json.Unmarshal(output, &status); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal status response: %w", err)
+		return nil, fmt.Errorf("failed to unmarshal status response: error: %w, output: %s", err, string(output))
 	}
 	return status, nil
 }

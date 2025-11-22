@@ -289,6 +289,15 @@ impl Validate for Device {
             msg!("Invalid device prefixes: {:?}", self.dz_prefixes);
             return Err(DoubleZeroError::InvalidDzPrefix);
         }
+        // users_count must be less than max_users when max_users > 0
+        if self.max_users > 0 && self.users_count >= self.max_users {
+            msg!(
+                "Max users exceeded or invalid: users_count = {}, max_users = {}",
+                self.users_count,
+                self.max_users
+            );
+            return Err(DoubleZeroError::MaxUsersExceeded);
+        }
         // validate Interfaces
         for interface in &self.interfaces {
             interface.validate()?;

@@ -165,12 +165,13 @@ func main() {
 			// The manager only knows about passive mode, with the negation of it being active mode.
 			PassiveMode: !*routeLivenessEnableActive,
 
-			TxMin:       *routeLivenessTxMin,
-			RxMin:       *routeLivenessRxMin,
-			DetectMult:  uint8(*routeLivenessDetectMult),
-			MinTxFloor:  *routeLivenessMinTxFloor,
-			MaxTxCeil:   *routeLivenessMaxTxCeil,
-			PeerMetrics: *routeLivenessPeerMetrics,
+			TxMin:      *routeLivenessTxMin,
+			RxMin:      *routeLivenessRxMin,
+			DetectMult: uint8(*routeLivenessDetectMult),
+			MinTxFloor: *routeLivenessMinTxFloor,
+			MaxTxCeil:  *routeLivenessMaxTxCeil,
+
+			EnablePeerMetrics: *routeLivenessPeerMetrics,
 		}
 	}
 

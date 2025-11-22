@@ -40,7 +40,7 @@ func NewRouteReaderWriter(lm *Manager, rrw RouteReaderWriter, iface string) *rou
 // RouteAdd registers the route with the liveness Manager for the given iface,
 // enabling the Manager to monitor reachability before installation.
 func (m *routeReaderWriter) RouteAdd(r *routing.Route) error {
-	return m.lm.RegisterRoute(r, m.iface)
+	return m.lm.RegisterRoute(r, m.iface, m.lm.cfg.Port)
 }
 
 // RouteDelete withdraws the route and removes it from liveness tracking for

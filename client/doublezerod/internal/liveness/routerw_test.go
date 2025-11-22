@@ -46,7 +46,7 @@ func TestClient_Liveness_RouteRW_RouteDelete_WithdrawsFromManager(t *testing.T) 
 
 	r := newTestRoute(nil)
 
-	require.NoError(t, m.RegisterRoute(r, "test-iface"))
+	require.NoError(t, m.RegisterRoute(r, "test-iface", 0))
 
 	require.Equal(t, 1, m.GetSessionsLen())
 	peer := Peer{Interface: "test-iface", LocalIP: r.Src.To4().String(), PeerIP: r.Dst.IP.To4().String()}
@@ -114,7 +114,7 @@ func TestClient_Liveness_RouteRW_RouteDelete_PassiveMode_PassesThroughToBackend(
 	r := newTestRoute(nil)
 
 	// Seed a session so WithdrawRoute has something to work with.
-	require.NoError(t, m.RegisterRoute(r, "lo"))
+	require.NoError(t, m.RegisterRoute(r, "lo", 0))
 
 	err = rrw.RouteDelete(r)
 	require.NoError(t, err)
@@ -179,8 +179,8 @@ func TestClient_Liveness_RouteRW_RouteByProtocol_BGP_UsesManagerSessions(t *test
 		}
 	})
 
-	require.NoError(t, m.RegisterRoute(r1, "lo"))
-	require.NoError(t, m.RegisterRoute(r2, "lo"))
+	require.NoError(t, m.RegisterRoute(r1, "lo", 0))
+	require.NoError(t, m.RegisterRoute(r2, "lo", 0))
 
 	routes, err := rrw.RouteByProtocol(unix.RTPROT_BGP)
 	require.NoError(t, err)

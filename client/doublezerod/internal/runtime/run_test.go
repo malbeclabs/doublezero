@@ -34,6 +34,7 @@ import (
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/pim"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/runtime"
 	"github.com/malbeclabs/doublezero/config"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/sys/unix"
@@ -2546,14 +2547,15 @@ func newTestNetworkConfig(t *testing.T) *config.NetworkConfig {
 
 func newTestLivenessManagerConfig() *liveness.ManagerConfig {
 	return &liveness.ManagerConfig{
-		Logger:      slog.Default(),
-		BindIP:      "0.0.0.0",
-		Port:        44880,
-		PassiveMode: true,
-		TxMin:       300 * time.Millisecond,
-		RxMin:       300 * time.Millisecond,
-		DetectMult:  3,
-		MinTxFloor:  50 * time.Millisecond,
-		MaxTxCeil:   1 * time.Second,
+		Logger:          slog.Default(),
+		BindIP:          "0.0.0.0",
+		Port:            44880,
+		PassiveMode:     true,
+		TxMin:           300 * time.Millisecond,
+		RxMin:           300 * time.Millisecond,
+		DetectMult:      3,
+		MinTxFloor:      50 * time.Millisecond,
+		MaxTxCeil:       1 * time.Second,
+		MetricsRegistry: prometheus.NewRegistry(),
 	}
 }

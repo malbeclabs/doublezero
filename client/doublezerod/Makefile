@@ -6,10 +6,17 @@ LDFLAGS=-ldflags "-X=$(PREFIX)/build.Build=$(BUILD)"
 test:
 	go test -exec "sudo -E" -race -v ./...
 	$(MAKE) test-e2e
+	$(MAKE) test-faults
 
 .PHONY: test-e2e
 test-e2e:
 	go run ../../tools/container-test/main.go -v
+
+.PHONY: test-faults
+test-faults:
+	ulimit -n 65535
+	go clean -testcache
+	go test ./internal/liveness -v -run=TestClient_Liveness_Faults -clients=100 -stable-duration=10s
 
 .PHONY: lint
 lint:

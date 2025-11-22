@@ -20,7 +20,7 @@ func TestClient_Liveness_Receiver_CancelStopsLoop(t *testing.T) {
 	require.NoError(t, err)
 	defer udp.Close()
 
-	rx := NewReceiver(newTestLogger(t), udp, func(*ControlPacket, Peer) {})
+	rx := NewReceiver(newTestLogger(t), udp, func(*ControlPacket, Peer) {}, newMetrics())
 
 	done := make(chan struct{})
 	go func() {
@@ -56,7 +56,7 @@ func TestClient_Liveness_Receiver_IgnoresMalformedPacket(t *testing.T) {
 	var calls int32
 	rx := NewReceiver(newTestLogger(t), udp, func(*ControlPacket, Peer) {
 		atomic.AddInt32(&calls, 1)
-	})
+	}, newMetrics())
 
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan struct{})
@@ -99,7 +99,7 @@ func TestClient_Liveness_Receiver_HandlerInvoked_WithPeerContext(t *testing.T) {
 
 	var got Peer
 	calls := int32(0)
-	rx := NewReceiver(newTestLogger(t), udp, func(cp *ControlPacket, p Peer) { got = p; atomic.AddInt32(&calls, 1) })
+	rx := NewReceiver(newTestLogger(t), udp, func(cp *ControlPacket, p Peer) { got = p; atomic.AddInt32(&calls, 1) }, newMetrics())
 
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -130,7 +130,7 @@ func TestClient_Liveness_Receiver_DeadlineTimeoutsAreSilent(t *testing.T) {
 	require.NoError(t, err)
 	defer udp.Close()
 
-	rx := NewReceiver(newTestLogger(t), udp, func(*ControlPacket, Peer) {})
+	rx := NewReceiver(newTestLogger(t), udp, func(*ControlPacket, Peer) {}, newMetrics())
 
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -150,7 +150,7 @@ func TestClient_Liveness_Receiver_SocketClosed_ReturnsError(t *testing.T) {
 	udp, err := ListenUDP("127.0.0.1", 0)
 	require.NoError(t, err)
 
-	rx := NewReceiver(newTestLogger(t), udp, func(*ControlPacket, Peer) {})
+	rx := NewReceiver(newTestLogger(t), udp, func(*ControlPacket, Peer) {}, newMetrics())
 	errCh := make(chan error, 1)
 	go func() { errCh <- rx.Run(ctx) }()
 

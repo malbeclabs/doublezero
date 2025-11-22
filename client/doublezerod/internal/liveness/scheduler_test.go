@@ -45,7 +45,7 @@ func TestClient_Liveness_Scheduler_TryExpireEnqueuesImmediateTX(t *testing.T) {
 	t.Parallel()
 
 	// minimal scheduler with a real EventQueue; udp/log not used here
-	s := &Scheduler{log: newTestLogger(t), eq: NewEventQueue()}
+	s := &Scheduler{log: newTestLogger(t), eq: NewEventQueue(), metrics: newMetrics()}
 	sess := &Session{
 		state:          StateUp,
 		detectDeadline: time.Now().Add(-time.Millisecond),
@@ -69,7 +69,7 @@ func TestClient_Liveness_Scheduler_TryExpireEnqueuesImmediateTX(t *testing.T) {
 
 func TestClient_Liveness_Scheduler_ScheduleDetect_NoArmNoEnqueue(t *testing.T) {
 	t.Parallel()
-	s := &Scheduler{log: newTestLogger(t), eq: NewEventQueue()}
+	s := &Scheduler{log: newTestLogger(t), eq: NewEventQueue(), metrics: newMetrics()}
 	sess := &Session{alive: false} // ArmDetect will return false
 
 	s.scheduleDetect(time.Now(), sess)
@@ -78,12 +78,13 @@ func TestClient_Liveness_Scheduler_ScheduleDetect_NoArmNoEnqueue(t *testing.T) {
 
 func TestClient_Liveness_Scheduler_ScheduleDetect_EnqueuesDeadline(t *testing.T) {
 	t.Parallel()
-	s := &Scheduler{log: newTestLogger(t), eq: NewEventQueue()}
+	s := &Scheduler{log: newTestLogger(t), eq: NewEventQueue(), metrics: newMetrics()}
 	sess := &Session{
 		alive:          true,
 		detectDeadline: time.Now().Add(50 * time.Millisecond),
 		detectMult:     1,
 		minTxFloor:     time.Millisecond,
+		peer:           &Peer{Interface: "eth0", LocalIP: "192.0.2.1"},
 	}
 
 	s.scheduleDetect(time.Now(), sess)
@@ -94,7 +95,7 @@ func TestClient_Liveness_Scheduler_ScheduleDetect_EnqueuesDeadline(t *testing.T)
 
 func TestClient_Liveness_Scheduler_TryExpire_Idempotent(t *testing.T) {
 	t.Parallel()
-	s := &Scheduler{log: newTestLogger(t), eq: NewEventQueue()}
+	s := &Scheduler{log: newTestLogger(t), eq: NewEventQueue(), metrics: newMetrics()}
 	sess := &Session{
 		state:          StateUp,
 		detectDeadline: time.Now().Add(-time.Millisecond),
@@ -109,7 +110,7 @@ func TestClient_Liveness_Scheduler_TryExpire_Idempotent(t *testing.T) {
 
 func TestClient_Liveness_Scheduler_ScheduleTx_AdminDownAllowsSingleAdvert(t *testing.T) {
 	t.Parallel()
-	s := &Scheduler{log: newTestLogger(t), eq: NewEventQueue()}
+	s := &Scheduler{log: newTestLogger(t), eq: NewEventQueue(), metrics: newMetrics()}
 	sess := &Session{
 		state:      StateAdminDown,
 		alive:      true,
@@ -128,7 +129,7 @@ func TestClient_Liveness_Scheduler_ScheduleTx_AdminDownAllowsSingleAdvert(t *tes
 
 func TestClient_Liveness_Scheduler_ScheduleTx_AdaptiveBackoffWhenDown(t *testing.T) {
 	t.Parallel()
-	s := &Scheduler{log: newTestLogger(t), eq: NewEventQueue()}
+	s := &Scheduler{log: newTestLogger(t), eq: NewEventQueue(), metrics: newMetrics()}
 	sess := &Session{
 		state:         StateDown,
 		alive:         true,
@@ -197,7 +198,7 @@ func TestClient_Liveness_Scheduler_Run_SendsAndReschedules(t *testing.T) {
 	}()
 
 	log := newTestLogger(t)
-	s := NewScheduler(log, w, func(*Session) {}, 0, false)
+	s := NewScheduler(log, w, func(*Session) {}, 0, false, newMetrics())
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	go func() {
@@ -228,7 +229,7 @@ func TestClient_Liveness_Scheduler_Run_SendsAndReschedules(t *testing.T) {
 func TestClient_Liveness_Scheduler_ScheduleDetect_DedupSameDeadline(t *testing.T) {
 	t.Parallel()
 
-	s := &Scheduler{log: newTestLogger(t), eq: NewEventQueue()}
+	s := &Scheduler{log: newTestLogger(t), eq: NewEventQueue(), metrics: newMetrics()}
 	sess := &Session{
 		alive:      true,
 		detectMult: 1,
@@ -260,7 +261,7 @@ func TestClient_Liveness_Scheduler_ScheduleDetect_DedupSameDeadline(t *testing.T
 func TestClient_Liveness_Scheduler_ScheduleDetect_AllowsNewDeadlineButStillDedupsPerDeadline(t *testing.T) {
 	t.Parallel()
 
-	s := &Scheduler{log: newTestLogger(t), eq: NewEventQueue()}
+	s := &Scheduler{log: newTestLogger(t), eq: NewEventQueue(), metrics: newMetrics()}
 	sess := &Session{
 		alive:      true,
 		detectMult: 1,
@@ -308,7 +309,7 @@ func TestClient_Liveness_Scheduler_ScheduleDetect_AllowsNewDeadlineButStillDedup
 func TestClient_Liveness_Scheduler_ScheduleTx_DedupWhilePending(t *testing.T) {
 	t.Parallel()
 
-	s := &Scheduler{log: newTestLogger(t), eq: NewEventQueue()}
+	s := &Scheduler{log: newTestLogger(t), eq: NewEventQueue(), metrics: newMetrics()}
 	sess := &Session{
 		state:         StateInit,
 		alive:         true,
@@ -341,7 +342,7 @@ func TestClient_Liveness_Scheduler_ScheduleTx_DedupWhilePending(t *testing.T) {
 func TestClient_Liveness_Scheduler_ScheduleTx_AllowsRescheduleAfterPop(t *testing.T) {
 	t.Parallel()
 
-	s := &Scheduler{log: newTestLogger(t), eq: NewEventQueue()}
+	s := &Scheduler{log: newTestLogger(t), eq: NewEventQueue(), metrics: newMetrics()}
 	sess := &Session{
 		state:         StateInit,
 		alive:         true,
@@ -380,7 +381,7 @@ func TestClient_Liveness_Scheduler_ScheduleTx_AllowsRescheduleAfterPop(t *testin
 func TestClient_Liveness_Scheduler_ScheduleDetect_DropsOnOverflowAndClearsMarker(t *testing.T) {
 	t.Parallel()
 
-	s := &Scheduler{log: newTestLogger(t), eq: NewEventQueue(), maxEvents: 1}
+	s := &Scheduler{log: newTestLogger(t), eq: NewEventQueue(), maxEvents: 1, metrics: newMetrics()}
 	sess := &Session{
 		alive:      true,
 		detectMult: 1,
@@ -411,7 +412,7 @@ func TestClient_Liveness_Scheduler_Run_CullsStaleDetectAndClearsMarker(t *testin
 	t.Parallel()
 
 	log := newTestLogger(t)
-	s := NewScheduler(log, nil, func(*Session) {}, 0, false)
+	s := NewScheduler(log, nil, func(*Session) {}, 0, false, newMetrics())
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
@@ -461,7 +462,7 @@ func TestClient_Liveness_Scheduler_Run_CullsStaleDetectAndClearsMarker(t *testin
 func TestClient_Liveness_Scheduler_ScheduleTx_NotDroppedByOverflow(t *testing.T) {
 	t.Parallel()
 
-	s := &Scheduler{log: newTestLogger(t), eq: NewEventQueue(), maxEvents: 1}
+	s := &Scheduler{log: newTestLogger(t), eq: NewEventQueue(), maxEvents: 1, metrics: newMetrics()}
 	sess := &Session{
 		state:         StateInit,
 		alive:         true,
@@ -524,7 +525,7 @@ func TestClient_Liveness_Scheduler_doTX_RespectsContextCancelOnWriteError(t *tes
 	base := slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelDebug})
 	log := slog.New(&warnCountingHandler{inner: base, warnCount: &warns})
 
-	s := NewScheduler(log, udp, func(*Session) {}, 0, false)
+	s := NewScheduler(log, udp, func(*Session) {}, 0, false, newMetrics())
 	// Disable throttling so every error can emit a warn if allowed by ctx.
 	s.writeErrWarnEvery = 0
 

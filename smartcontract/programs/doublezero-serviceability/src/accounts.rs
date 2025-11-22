@@ -38,7 +38,6 @@ pub fn write_account<'a, D: BorshSerialize + AccountSize + AccountSeed>(
         try_create_account(
             payer.key,
             account.key,
-            account.lamports(),
             required_space,
             program_id,
             &[account.clone(), payer.clone(), system_program.clone()],

@@ -364,7 +364,7 @@ mod tests {
             device_type: DeviceType::Switch,
             location_pk: Pubkey::new_unique(),
             exchange_pk: Pubkey::new_unique(),
-            dz_prefixes: "10.0.0.1/24".parse().unwrap(),
+            dz_prefixes: "100.0.0.1/24".parse().unwrap(),
             public_ip: [1, 2, 3, 4].into(),
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::new_unique(),
@@ -511,6 +511,60 @@ mod tests {
         let err = val.validate();
         assert!(err.is_err());
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidDzPrefix);
+    }
+
+    #[test]
+    fn test_state_device_validate_locked_device_allows_zero_users() {
+        let val = Device {
+            account_type: AccountType::Device,
+            owner: Pubkey::new_unique(),
+            index: 123,
+            bump_seed: 1,
+            reference_count: 0,
+            contributor_pk: Pubkey::new_unique(),
+            code: "test-321".to_string(),
+            device_type: DeviceType::Switch,
+            location_pk: Pubkey::new_unique(),
+            exchange_pk: Pubkey::new_unique(),
+            dz_prefixes: "100.0.0.1/24".parse().unwrap(),
+            public_ip: [1, 2, 3, 4].into(),
+            status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::new_unique(),
+            mgmt_vrf: "default".to_string(),
+            interfaces: vec![],
+            users_count: 0,
+            max_users: 0,
+        };
+        // max_users == 0 means "locked", so validation should still succeed
+        val.validate().unwrap();
+    }
+
+    #[test]
+    fn test_state_device_validate_error_max_users_exceeded() {
+        let val = Device {
+            account_type: AccountType::Device,
+            owner: Pubkey::new_unique(),
+            index: 123,
+            bump_seed: 1,
+            reference_count: 0,
+            contributor_pk: Pubkey::new_unique(),
+            code: "test-321".to_string(),
+            device_type: DeviceType::Switch,
+            location_pk: Pubkey::new_unique(),
+            exchange_pk: Pubkey::new_unique(),
+            dz_prefixes: "100.0.0.1/24".parse().unwrap(),
+            public_ip: [1, 2, 3, 4].into(),
+            status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::new_unique(),
+            mgmt_vrf: "default".to_string(),
+            interfaces: vec![],
+            users_count: 5,
+            max_users: 5,
+        };
+
+        let err = val.validate();
+        assert!(err.is_err());
+        assert_eq!(err.unwrap_err(), DoubleZeroError::MaxUsersExceeded);
     }
 
     #[test]

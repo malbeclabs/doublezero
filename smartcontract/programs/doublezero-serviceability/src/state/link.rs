@@ -270,6 +270,7 @@ impl Validate for Link {
         // Tunnel network must be private
         if self.status != LinkStatus::Requested
             && self.status != LinkStatus::Pending
+            && self.status != LinkStatus::Rejected
             && !self.tunnel_net.ip().is_private()
         {
             msg!("Invalid tunnel_net: {}", self.tunnel_net);
@@ -445,6 +446,34 @@ mod tests {
         let err = val.validate();
         assert!(err.is_err());
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidTunnelNet);
+    }
+
+    #[test]
+    fn test_state_link_validate_ok_rejected_ignores_tunnel_net() {
+        let val = Link {
+            account_type: AccountType::Link,
+            owner: Pubkey::new_unique(),
+            index: 123,
+            bump_seed: 1,
+            contributor_pk: Pubkey::new_unique(),
+            side_a_pk: Pubkey::new_unique(),
+            side_z_pk: Pubkey::new_unique(),
+            link_type: LinkLinkType::WAN,
+            bandwidth: 10_000_000_000,
+            mtu: 1566,
+            delay_ns: 1_000_000,
+            jitter_ns: 1_000_000,
+            tunnel_id: 1,
+            tunnel_net: "8.8.8.8/25".parse().unwrap(),
+            code: "test-123".to_string(),
+            status: LinkStatus::Rejected,
+            side_a_iface_name: "eth0".to_string(),
+            side_z_iface_name: "eth1".to_string(),
+            delay_override_ns: 0,
+        };
+
+        // For Rejected status, tunnel_net is not validated and should succeed
+        val.validate().unwrap();
     }
 
     #[test]

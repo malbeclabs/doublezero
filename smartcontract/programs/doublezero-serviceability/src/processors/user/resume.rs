@@ -64,8 +64,10 @@ pub fn process_resume_user(
     }
 
     let mut accesspass = AccessPass::try_from(accesspass_account)?;
-    assert_eq!(accesspass.client_ip, user.client_ip, "Invalid AccessPass");
     assert_eq!(accesspass.user_payer, user.owner, "Invalid AccessPass");
+    if !accesspass.allow_multiple_ip() && accesspass.client_ip != user.client_ip {
+        return Err(DoubleZeroError::Unauthorized.into());
+    }
 
     user.try_activate(&mut accesspass)?;
 

@@ -94,16 +94,21 @@ pub fn process_subscribe_multicastgroup(
     }
 
     let (accesspass_pda, _) = get_accesspass_pda(program_id, &value.client_ip, payer_account.key);
-    assert_eq!(
-        accesspass_account.key, &accesspass_pda,
-        "Invalid AccessPass PDA"
+    let (accesspass_dynamic_pda, _) = get_accesspass_pda(program_id, &Ipv4Addr::UNSPECIFIED, payer_account.key);
+    assert!(
+        accesspass_account.key == &accesspass_pda || accesspass_account.key == &accesspass_dynamic_pda,
+        "Invalid AccessPass PDA",
     );
 
     let accesspass = AccessPass::try_from(accesspass_account)?;
-    assert!(
-        accesspass.client_ip == user.client_ip,
-        "AccessPass client_ip does not match"
-    );
+    if !accesspass.allow_multiple_ip() && accesspass.client_ip != user.client_ip {
+        msg!(
+            "AccessPass client_ip does not match. accesspass.client_ip: {} user.client_ip: {}",
+            accesspass.client_ip,
+            user.client_ip
+        );
+        return Err(DoubleZeroError::Unauthorized.into());
+    }
 
     // Check if the user is in the allowlist
     if value.publisher && !accesspass.mgroup_pub_allowlist.contains(mgroup_account.key) {

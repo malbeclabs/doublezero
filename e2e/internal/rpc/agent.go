@@ -223,7 +223,7 @@ func (q *QAAgent) ConnectUnicast(ctx context.Context, req *pb.ConnectUnicastRequ
 		return res, fmt.Errorf("failed to connect unicast for client %s: %v", clientIP, err)
 	}
 	duration := time.Since(start)
-	ConnectUnicastDuration.Observe(duration.Seconds())
+	UserConnectDuration.WithLabelValues("unicast").Observe(duration.Seconds())
 	q.log.Info("Successfully connected IBRL mode tunnel", "duration", duration.String())
 	return res, nil
 }
@@ -253,7 +253,7 @@ func (q *QAAgent) Disconnect(ctx context.Context, req *emptypb.Empty) (*pb.Resul
 		res.Success = true
 		res.ReturnCode = 0
 		q.log.Info("Successfully disconnected", "duration", duration.String())
-		DisconnectDuration.Observe(duration.Seconds())
+		UserDisconnectDuration.Observe(duration.Seconds())
 	}
 
 	return res, nil
@@ -380,7 +380,7 @@ func (q *QAAgent) ConnectMulticast(ctx context.Context, req *pb.ConnectMulticast
 		return nil, err
 	}
 	duration := time.Since(start)
-	ConnectMulticastDuration.Observe(duration.Seconds())
+	UserConnectDuration.WithLabelValues("multicast").Observe(duration.Seconds())
 	q.log.Info("Successfully connected multicast tunnel", "duration", duration.String())
 	return result, nil
 }

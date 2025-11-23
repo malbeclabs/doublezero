@@ -4,40 +4,33 @@ package rpc
 
 import (
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
 var (
-	BuildInfo = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+	BuildInfo = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "doublezero_qaagent_build_info",
 		Help: "Build information of the QA agent",
 	},
 		[]string{"version", "commit", "date"},
 	)
 
-	PingPacketsLostTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+	PingPacketsLostTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "doublezero_qaagent_ping_packets_lost_total",
 		Help: "Total number of packets lost during ping tests",
 	},
 		[]string{"source_ip", "target_ip"},
 	)
 
-	ConnectUnicastDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
-		Name: "doublezero_qaagent_connect_unicast_duration_seconds",
-		Help: "Duration of unicast connect tests",
-	})
+	UserConnectDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "doublezero_qaagent_user_connect_duration_seconds",
+		Help:    "Duration of connect operations",
+		Buckets: prometheus.ExponentialBuckets(1, 1.5, 12), // 1s to 128s
+	}, []string{"user_type"})
 
-	ConnectMulticastDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
-		Name: "doublezero_qaagent_connect_multicast_duration_seconds",
-		Help: "Duration of multicast connect tests",
-	})
-
-	DisconnectDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
-		Name: "doublezero_qaagent_disconnect_duration_seconds",
-		Help: "Duration of disconnect tests",
+	UserDisconnectDuration = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "doublezero_qaagent_user_disconnect_duration_seconds",
+		Help:    "Duration of disconnect operations",
+		Buckets: prometheus.ExponentialBuckets(1, 1.5, 12), // 1s to 128s
 	})
 )
-
-func init() {
-	prometheus.MustRegister(BuildInfo)
-	prometheus.MustRegister(PingPacketsLostTotal)
-}

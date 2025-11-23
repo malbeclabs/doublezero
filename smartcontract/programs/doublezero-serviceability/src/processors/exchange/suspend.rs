@@ -64,9 +64,7 @@ pub fn process_suspend_exchange(
     //  - Alternatively, any account in the foundation_allowlist may suspend the
     //    exchange.
     let is_owner = exchange.owner == *payer_account.key;
-    let is_foundation = globalstate
-        .foundation_allowlist
-        .contains(payer_account.key);
+    let is_foundation = globalstate.foundation_allowlist.contains(payer_account.key);
 
     if !is_owner && !is_foundation {
         return Err(DoubleZeroError::NotAllowed.into());

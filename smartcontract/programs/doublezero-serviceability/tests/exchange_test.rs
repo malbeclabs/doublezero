@@ -3,9 +3,9 @@ use doublezero_serviceability::{
     instructions::*,
     pda::*,
     processors::{
+        allowlist::foundation::add::AddFoundationAllowlistArgs,
         exchange::{create::*, delete::*, resume::*, suspend::*, update::*},
         globalconfig::set::SetGlobalConfigArgs,
-        allowlist::foundation::add::AddFoundationAllowlistArgs,
     },
     state::{accounttype::AccountType, exchange::*},
 };
@@ -254,8 +254,7 @@ async fn test_exchange_owner_and_foundation_can_update_status() {
 
     // 3. Create an exchange owned by payer
     let globalstate = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (exchange_pubkey, _) =
-        get_exchange_pda(&program_id, globalstate.account_index + 1);
+    let (exchange_pubkey, _) = get_exchange_pda(&program_id, globalstate.account_index + 1);
 
     execute_transaction(
         &mut banks_client,
@@ -334,12 +333,8 @@ async fn test_exchange_owner_and_foundation_can_update_status() {
         .unwrap();
     assert_eq!(exchange.status, ExchangeStatus::Activated);
 
-    println!(
-        "✅ Owner and foundation-allowlisted non-owner can suspend/resume the exchange"
-    );
-    println!(
-        "🟢  End test_exchange_owner_and_foundation_can_update_status"
-    );
+    println!("✅ Owner and foundation-allowlisted non-owner can suspend/resume the exchange");
+    println!("🟢  End test_exchange_owner_and_foundation_can_update_status");
 }
 
 #[tokio::test]

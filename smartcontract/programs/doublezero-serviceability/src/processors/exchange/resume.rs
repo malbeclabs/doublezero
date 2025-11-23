@@ -66,10 +66,7 @@ pub fn process_resume_exchange(
 
     // Authorization:
     //  - Only accounts in the foundation_allowlist may resume the exchange.
-    if !globalstate
-        .foundation_allowlist
-        .contains(payer_account.key)
-    {
+    if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }
 

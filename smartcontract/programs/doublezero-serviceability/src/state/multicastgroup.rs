@@ -175,7 +175,10 @@ impl Validate for MulticastGroup {
             return Err(DoubleZeroError::InvalidAccountType);
         }
         // Multicast IP must be in the range
-        if self.status != MulticastGroupStatus::Pending && !self.multicast_ip.is_multicast() {
+        if self.status != MulticastGroupStatus::Pending
+            && self.status != MulticastGroupStatus::Rejected
+            && !self.multicast_ip.is_multicast()
+        {
             msg!("Invalid multicast IP: {}", self.multicast_ip);
             return Err(DoubleZeroError::InvalidMulticastIp);
         }
@@ -245,6 +248,26 @@ mod tests {
         let err = val.validate();
         assert!(err.is_err());
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidAccountType);
+    }
+
+    #[test]
+    fn test_state_multicastgroup_validate_ok_rejected_ignores_multicast_ip() {
+        let val = MulticastGroup {
+            account_type: AccountType::MulticastGroup,
+            owner: Pubkey::new_unique(),
+            index: 123,
+            bump_seed: 1,
+            tenant_pk: Pubkey::new_unique(),
+            multicast_ip: Ipv4Addr::new(1, 1, 1, 1),
+            max_bandwidth: 1000,
+            status: MulticastGroupStatus::Rejected,
+            code: "test".to_string(),
+            publisher_count: 0,
+            subscriber_count: 0,
+        };
+
+        // For Rejected status, multicast_ip is not validated and should succeed
+        val.validate().unwrap();
     }
 
     #[test]

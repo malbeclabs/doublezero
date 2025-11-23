@@ -46,10 +46,17 @@ impl SubscribeMulticastGroupCommand {
         }
 
         let (accesspass_pubkey, accesspass) = GetAccessPassCommand {
-            client_ip: self.client_ip,
+            client_ip: Ipv4Addr::UNSPECIFIED,
             user_payer: user.owner,
         }
         .execute(client)
+        .or_else(|_| {
+            GetAccessPassCommand {
+                client_ip: self.client_ip,
+                user_payer: user.owner,
+            }
+            .execute(client)
+        })
         .map_err(|_err| eyre::eyre!("AccessPass not found"))?;
 
         if self.publisher && !accesspass.mgroup_pub_allowlist.contains(&self.group_pk) {
@@ -161,6 +168,20 @@ mod tests {
             mgroup_sub_allowlist: vec![mgroup_pubkey],
             flags: 0,
         };
+
+        // First call in SubscribeMulticastGroupCommand::execute tries the dynamic (UNSPECIFIED) PDA,
+        // which should fail with a non-AccessPass to trigger the fallback to the fixed client_ip PDA.
+        let (dynamic_accesspass_pubkey, _) = get_accesspass_pda(
+            &client.get_program_id(),
+            &Ipv4Addr::UNSPECIFIED,
+            &client.get_payer(),
+        );
+        let user_clone_for_dynamic = user.clone();
+        client
+            .expect_get()
+            .with(predicate::eq(dynamic_accesspass_pubkey))
+            .returning(move |_| Ok(AccountData::User(user_clone_for_dynamic.clone())));
+
         client
             .expect_get()
             .with(predicate::eq(accesspass_pubkey))

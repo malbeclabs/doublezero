@@ -3,6 +3,7 @@ package qa
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	pb "github.com/malbeclabs/doublezero/e2e/proto/qa/gen/pb-go"
@@ -12,9 +13,11 @@ const (
 	connectUnicastTimeout     = 90 * time.Second
 	unicastPingRequestTimeout = 60 * time.Second
 	unicastPingProbeTimeout   = 5 * time.Second
+	unicastTracerouteTimeout  = 5 * time.Second
 
 	unicastPingProbeCount         = 5
 	unicastPingProbeLossThreshold = 2
+	unicastTracerouteCount        = 10
 
 	unicastInterfaceName = "doublezero0"
 )
@@ -167,4 +170,19 @@ func (c *Client) TestUnicastConnectivity(ctx context.Context, targetClient *Clie
 		PacketsSent:     resp.PacketsSent,
 		PacketsReceived: resp.PacketsReceived,
 	}, nil
+}
+
+func (c *Client) TracerouteRaw(ctx context.Context, targetIP string) (string, error) {
+	sourceIP := c.publicIP.To4().String()
+	output, err := c.grpcClient.TracerouteRaw(ctx, &pb.TracerouteRequest{
+		TargetIp:    targetIP,
+		SourceIp:    sourceIP,
+		SourceIface: unicastInterfaceName,
+		Timeout:     uint32(unicastTracerouteTimeout.Seconds()),
+		Count:       unicastTracerouteCount,
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to traceroute: %w", err)
+	}
+	return strings.Join(output.Output, "\n"), nil
 }

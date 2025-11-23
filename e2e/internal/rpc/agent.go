@@ -177,6 +177,77 @@ func (q *QAAgent) Ping(ctx context.Context, req *pb.PingRequest) (*pb.PingResult
 	return &pb.PingResult{PacketsSent: uint32(stats.PacketsSent), PacketsReceived: uint32(stats.PacketsRecv)}, nil
 }
 
+// Traceroute implements the Traceroute RPC, which traces the route to the target IP, and returns the results.
+func (q *QAAgent) Traceroute(ctx context.Context, req *pb.TracerouteRequest) (*pb.TracerouteResult, error) {
+	q.log.Info("Received Traceroute request", "target_ip", req.TargetIp, "source_ip", req.SourceIp, "source_iface", req.SourceIface, "timeout", req.Timeout, "count", req.Count)
+	if !hasMTRBinary() {
+		return nil, fmt.Errorf("mtr binary not found")
+	}
+	args, err := buildMTRCommandArgs(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build traceroute command: %v", err)
+	}
+	args = append(args, "--json")
+	cmd := exec.Command("mtr", args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("failed to run mtr traceroute: %v", err)
+	}
+	var result MyTracerouteResult
+	err = json.Unmarshal(output, &result)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal mtr traceroute result: %v", err)
+	}
+	hops := make([]*pb.TracerouteHop, len(result.Report.Hubs))
+	for i, hub := range result.Report.Hubs {
+		hops[i] = &pb.TracerouteHop{
+			Ttl:         hub.Count,
+			Host:        hub.Host,
+			SentPackets: hub.Sent,
+			LossPercent: hub.LossPct,
+			RttLast:     hub.Last,
+			RttMin:      hub.Best,
+			RttMax:      hub.Worst,
+			RttAvg:      hub.Avg,
+			RttStddev:   hub.StdDev,
+		}
+	}
+	return &pb.TracerouteResult{
+		TargetIp: req.TargetIp,
+		SourceIp: req.SourceIp,
+		Timeout:  req.Timeout,
+		Tests:    result.Report.MTR.Tests,
+		Hops:     hops,
+	}, nil
+}
+
+// TracerouteRaw implements the TracerouteRaw RPC, which traces the route to the target IP, and returns the raw output.
+func (q *QAAgent) TracerouteRaw(ctx context.Context, req *pb.TracerouteRequest) (*pb.Result, error) {
+	q.log.Info("Received TracerouteRaw request", "target_ip", req.TargetIp, "source_ip", req.SourceIp, "source_iface", req.SourceIface, "timeout", req.Timeout, "count", req.Count)
+	if !hasMTRBinary() {
+		return nil, fmt.Errorf("mtr binary not found")
+	}
+	args, err := buildMTRCommandArgs(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build traceroute command: %v", err)
+	}
+	args = append(args, "--report")
+	cmd := exec.Command("mtr", args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return &pb.Result{
+			Success:    false,
+			ReturnCode: 1,
+			Output:     strings.Split(string(output), "\n"),
+		}, fmt.Errorf("failed to run mtr traceroute: %v", err)
+	}
+	return &pb.Result{
+		Success:    true,
+		ReturnCode: 0,
+		Output:     strings.Split(string(output), "\n"),
+	}, nil
+}
+
 // MulticastJoin implements the MulticastJoin RPC, joins the requested multicast group and counts
 // received packets per joined group. Use the GetStatistics RPC to retrieve the stats.
 func (q *QAAgent) MulticastJoin(ctx context.Context, req *pb.MulticastJoinRequest) (*pb.MulticastJoinResult, error) {

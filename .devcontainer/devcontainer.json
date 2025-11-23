@@ -25,7 +25,8 @@
             "extensions": [
                 "golang.go",
                 "rust-lang.rust-analyzer",
-                "casualjim.gotemplate"
+                "casualjim.gotemplate",
+                "zxh404.vscode-proto3"
             ],
             "settings": {
                 "files.associations": {

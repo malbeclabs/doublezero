@@ -35,6 +35,10 @@ impl CreateDeviceInterfaceCommand {
         }
         .execute(client)?;
 
+        if device.find_interface(&self.name).is_ok() {
+            return Err(eyre::eyre!("Interface with this name already exists for the device"));
+        }
+
         client
             .execute_transaction(
                 DoubleZeroInstruction::CreateDeviceInterface(DeviceInterfaceCreateArgs {
@@ -69,6 +73,7 @@ mod tests {
             accountdata::AccountData,
             accounttype::AccountType,
             device::{Device, DeviceStatus, DeviceType},
+            interface::{CurrentInterfaceVersion, InterfaceCYOA, InterfaceDIA, InterfaceStatus, InterfaceType, LoopbackType, RoutingMode},
         },
     };
     use mockall::predicate;
@@ -150,5 +155,73 @@ mod tests {
 
         let res = command.execute(&client);
         assert!(res.is_ok());
+    }
+
+    #[test]
+    fn test_commands_device_create_interface_command_duplicate_name_fails() {
+        let mut client = create_test_client();
+
+        let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
+
+        let device_pubkey = Pubkey::new_unique();
+
+        let existing_interface = CurrentInterfaceVersion {
+            status: InterfaceStatus::Activated,
+            name: "Ethernet0".to_string(),
+            interface_type: InterfaceType::Physical,
+            interface_cyoa: InterfaceCYOA::None,
+            loopback_type: LoopbackType::None,
+            interface_dia: InterfaceDIA::None,
+            bandwidth: 0,
+            cir: 0,
+            mtu: 1500,
+            routing_mode: RoutingMode::Static,
+            vlan_id: 100,
+            ip_net: "10.0.0.1/24".parse().unwrap(),
+            node_segment_idx: 42,
+            user_tunnel_endpoint: true,
+        }.to_interface();
+
+        let device = Device {
+            account_type: AccountType::Device,
+            owner: Pubkey::new_unique(),
+            index: 0,
+            reference_count: 0,
+            bump_seed: 0,
+            contributor_pk: Pubkey::new_unique(),
+            location_pk: Pubkey::new_unique(),
+            exchange_pk: Pubkey::new_unique(),
+            device_type: DeviceType::Switch,
+            public_ip: [192, 168, 1, 2].into(),
+            status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::default(),
+            code: "TestDevice".to_string(),
+            dz_prefixes: "10.0.0.1/24".parse().unwrap(),
+            mgmt_vrf: "default".to_string(),
+            interfaces: vec![existing_interface],
+            max_users: 255,
+            users_count: 0,
+        };
+
+        client.expect_get()
+            .with(predicate::eq(device_pubkey))
+            .returning(move |_| Ok(AccountData::Device(device.clone())));
+
+        let command = CreateDeviceInterfaceCommand {
+            pubkey: device_pubkey,
+            name: "Ethernet0".to_string(),
+            interface_cyoa: InterfaceCYOA::None,
+            loopback_type: LoopbackType::None,
+            interface_dia: InterfaceDIA::DIA,
+            bandwidth: 0,
+            cir: 0,
+            mtu: 1500,
+            routing_mode: RoutingMode::Static,
+            vlan_id: 100,
+            user_tunnel_endpoint: true,
+        };
+
+        let res = command.execute(&client);
+        assert!(res.is_err());
     }
 }

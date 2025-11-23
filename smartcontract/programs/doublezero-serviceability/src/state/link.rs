@@ -302,6 +302,11 @@ impl Validate for Link {
             msg!("Invalid delay_override_ns: {}", self.delay_override_ns);
             return Err(DoubleZeroError::InvalidDelay);
         }
+        // Link endpoints must be different when set
+        if self.side_a_pk != Pubkey::default() && self.side_a_pk == self.side_z_pk {
+            msg!("Invalid link endpoints: side_a_pk and side_z_pk must be different");
+            return Err(DoubleZeroError::InvalidDevicePubkey);
+        }
         Ok(())
     }
 }
@@ -545,6 +550,36 @@ mod tests {
         let err_high = val_high.validate();
         assert!(err_high.is_err());
         assert_eq!(err_high.unwrap_err(), DoubleZeroError::InvalidDelay);
+    }
+
+    #[test]
+    fn test_state_link_validate_error_same_side_pubkeys() {
+        let same_device = Pubkey::new_unique();
+        let val = Link {
+            account_type: AccountType::Link,
+            owner: Pubkey::new_unique(),
+            index: 123,
+            bump_seed: 1,
+            contributor_pk: Pubkey::new_unique(),
+            side_a_pk: same_device,
+            side_z_pk: same_device,
+            link_type: LinkLinkType::WAN,
+            bandwidth: 10_000_000_000,
+            mtu: 1566,
+            delay_ns: 1_000_000,
+            jitter_ns: 1_000_000,
+            tunnel_id: 1,
+            tunnel_net: "10.0.0.1/25".parse().unwrap(),
+            code: "test-123".to_string(),
+            status: LinkStatus::Activated,
+            side_a_iface_name: "eth0".to_string(),
+            side_z_iface_name: "eth1".to_string(),
+            delay_override_ns: 0,
+        };
+
+        let err = val.validate();
+        assert!(err.is_err());
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidDevicePubkey);
     }
 
     #[test]

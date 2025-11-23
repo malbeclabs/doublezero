@@ -185,6 +185,10 @@ impl Validate for Exchange {
             msg!("Invalid BGP community: {}", self.bgp_community);
             return Err(DoubleZeroError::InvalidBgpCommunity);
         }
+        if self.device1_pk != Pubkey::default() && self.device1_pk == self.device2_pk {
+            msg!("Invalid device pubkeys: device1_pk and device2_pk must be different");
+            return Err(DoubleZeroError::InvalidDevicePubkey);
+        }
 
         Ok(())
     }
@@ -444,6 +448,31 @@ mod tests {
         let err = val_too_high.validate();
         assert!(err.is_err());
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidBgpCommunity);
+    }
+
+    #[test]
+    fn test_state_exchange_validate_error_same_device_pubkeys() {
+        let same_device = Pubkey::new_unique();
+        let val = Exchange {
+            account_type: AccountType::Exchange,
+            owner: Pubkey::new_unique(),
+            index: 123,
+            bump_seed: 1,
+            reference_count: 0,
+            lat: 10.0,
+            lng: 10.0,
+            device1_pk: same_device,
+            device2_pk: same_device,
+            bgp_community: 10500,
+            unused: 0,
+            code: "test-321".to_string(),
+            name: "test-test-test".to_string(),
+            status: ExchangeStatus::Activated,
+        };
+
+        let err = val.validate();
+        assert!(err.is_err());
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidDevicePubkey);
     }
 
     #[test]

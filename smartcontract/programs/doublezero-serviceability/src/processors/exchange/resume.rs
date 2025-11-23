@@ -65,16 +65,11 @@ pub fn process_resume_exchange(
     let mut exchange: Exchange = Exchange::try_from(exchange_account)?;
 
     // Authorization:
-    //  - The exchange owner can always resume their own exchange, even if they
-    //    are no longer in the foundation_allowlist.
-    //  - Alternatively, any account in the foundation_allowlist may resume the
-    //    exchange.
-    let is_owner = exchange.owner == *payer_account.key;
-    let is_foundation = globalstate
+    //  - Only accounts in the foundation_allowlist may resume the exchange.
+    if !globalstate
         .foundation_allowlist
-        .contains(payer_account.key);
-
-    if !is_owner && !is_foundation {
+        .contains(payer_account.key)
+    {
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
@@ -94,9 +89,8 @@ mod tests {
     use crate::state::{accounttype::AccountType, globalstate::GlobalState};
 
     #[test]
-    fn owner_can_resume_even_if_not_in_foundation_allowlist() {
-        let owner = Pubkey::new_unique();
-        let payer = owner;
+    fn payer_not_in_foundation_allowlist_cannot_resume() {
+        let payer = Pubkey::new_unique();
 
         let globalstate = GlobalState {
             account_type: AccountType::GlobalState,
@@ -111,34 +105,12 @@ mod tests {
             user_airdrop_lamports: 0,
         };
 
-        let exchange = Exchange {
-            account_type: crate::state::accounttype::AccountType::Exchange,
-            owner,
-            index: 0,
-            bump_seed: 0,
-            lat: 0.0,
-            lng: 0.0,
-            bgp_community: 0,
-            unused: 0,
-            status: ExchangeStatus::Pending,
-            code: String::new(),
-            name: String::new(),
-            reference_count: 0,
-            device1_pk: Pubkey::default(),
-            device2_pk: Pubkey::default(),
-        };
-
-        let is_owner = exchange.owner == payer;
         let is_foundation = globalstate.foundation_allowlist.contains(&payer);
-
-        assert!(is_owner);
         assert!(!is_foundation);
-        assert!(is_owner || is_foundation);
     }
 
     #[test]
-    fn non_owner_must_be_in_foundation_allowlist_to_resume() {
-        let owner = Pubkey::new_unique();
+    fn payer_in_foundation_allowlist_can_resume() {
         let payer = Pubkey::new_unique();
 
         let mut globalstate = GlobalState {
@@ -154,32 +126,13 @@ mod tests {
             user_airdrop_lamports: 0,
         };
 
-        let exchange = Exchange {
-            account_type: crate::state::accounttype::AccountType::Exchange,
-            owner,
-            index: 0,
-            bump_seed: 0,
-            lat: 0.0,
-            lng: 0.0,
-            bgp_community: 0,
-            unused: 0,
-            status: ExchangeStatus::Pending,
-            code: String::new(),
-            name: String::new(),
-            reference_count: 0,
-            device1_pk: Pubkey::default(),
-            device2_pk: Pubkey::default(),
-        };
-
         // Not in allowlist: should fail auth condition
-        let is_owner = exchange.owner == payer;
         let is_foundation = globalstate.foundation_allowlist.contains(&payer);
-        assert!(!is_owner && !is_foundation);
+        assert!(!is_foundation);
 
-        // After adding to allowlist: should pass auth condition even as non-owner
+        // After adding to allowlist: should pass auth condition
         globalstate.foundation_allowlist.push(payer);
         let is_foundation = globalstate.foundation_allowlist.contains(&payer);
-        assert!(!is_owner && is_foundation);
-        assert!(is_owner || is_foundation);
+        assert!(is_foundation);
     }
 }

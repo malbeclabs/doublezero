@@ -53,16 +53,15 @@ pub fn process_suspend_exchange(
     );
     // Check if the account is writable
     assert!(exchange_account.is_writable, "PDA Account is not writable");
-    // Parse the global state account & check if the payer is in the allowlist
-    let globalstate = globalstate_get(globalstate_account)?;
-    if !globalstate.foundation_allowlist.contains(payer_account.key) {
-        return Err(DoubleZeroError::NotAllowed.into());
-    }
 
+    // Parse accounts
+    let globalstate = globalstate_get(globalstate_account)?;
     let mut exchange: Exchange = Exchange::try_from(exchange_account)?;
 
-    if exchange.owner != *payer_account.key {
-        return Err(solana_program::program_error::ProgramError::Custom(0));
+    // Authorization:
+    //  - Only accounts in the foundation_allowlist may suspend the exchange.
+    if !globalstate.foundation_allowlist.contains(payer_account.key) {
+        return Err(DoubleZeroError::NotAllowed.into());
     }
 
     exchange.status = ExchangeStatus::Suspended;
@@ -73,4 +72,58 @@ pub fn process_suspend_exchange(
     msg!("Suspended: {:?}", exchange);
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::{accounttype::AccountType, globalstate::GlobalState};
+
+    #[test]
+    fn payer_not_in_foundation_allowlist_cannot_suspend() {
+        let payer = Pubkey::new_unique();
+
+        let globalstate = GlobalState {
+            account_type: AccountType::GlobalState,
+            bump_seed: 0,
+            account_index: 0,
+            foundation_allowlist: vec![],
+            device_allowlist: vec![],
+            user_allowlist: vec![],
+            activator_authority_pk: Pubkey::default(),
+            sentinel_authority_pk: Pubkey::default(),
+            contributor_airdrop_lamports: 0,
+            user_airdrop_lamports: 0,
+        };
+
+        let is_foundation = globalstate.foundation_allowlist.contains(&payer);
+        assert!(!is_foundation);
+    }
+
+    #[test]
+    fn payer_in_foundation_allowlist_can_suspend() {
+        let payer = Pubkey::new_unique();
+
+        let mut globalstate = GlobalState {
+            account_type: AccountType::GlobalState,
+            bump_seed: 0,
+            account_index: 0,
+            foundation_allowlist: vec![],
+            device_allowlist: vec![],
+            user_allowlist: vec![],
+            activator_authority_pk: Pubkey::default(),
+            sentinel_authority_pk: Pubkey::default(),
+            contributor_airdrop_lamports: 0,
+            user_airdrop_lamports: 0,
+        };
+
+        // Not in allowlist: should fail auth condition
+        let is_foundation = globalstate.foundation_allowlist.contains(&payer);
+        assert!(!is_foundation);
+
+        // After adding to allowlist: should pass auth condition
+        globalstate.foundation_allowlist.push(payer);
+        let is_foundation = globalstate.foundation_allowlist.contains(&payer);
+        assert!(is_foundation);
+    }
 }

@@ -3,13 +3,14 @@ use doublezero_serviceability::{
     instructions::*,
     pda::*,
     processors::{
+        allowlist::foundation::add::AddFoundationAllowlistArgs,
         exchange::{create::*, delete::*, resume::*, suspend::*, update::*},
         globalconfig::set::SetGlobalConfigArgs,
     },
     state::{accounttype::AccountType, exchange::*},
 };
 use solana_program_test::*;
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey};
+use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signer};
 
 mod test_helpers;
 use test_helpers::*;
@@ -204,6 +205,136 @@ async fn test_exchange() {
 
     println!("✅ Exchange deleted successfully");
     println!("🟢  End test_exchange");
+}
+
+#[tokio::test]
+async fn test_exchange_owner_and_foundation_can_update_status() {
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+
+    println!("🟢  Start test_exchange_owner_and_foundation_can_update_status");
+
+    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
+    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+
+    // 1. Init global state
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::InitGlobalState(),
+        vec![
+            AccountMeta::new(program_config_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // 2. Init globalconfig
+    let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetGlobalConfig(SetGlobalConfigArgs {
+            local_asn: 65000,
+            remote_asn: 65001,
+            device_tunnel_block: "10.0.0.0/24".parse().unwrap(),
+            user_tunnel_block: "10.0.0.0/24".parse().unwrap(),
+            multicastgroup_block: "224.0.0.0/4".parse().unwrap(),
+            next_bgp_community: None,
+        }),
+        vec![
+            AccountMeta::new(globalconfig_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // 3. Create an exchange owned by payer
+    let globalstate = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (exchange_pubkey, _) = get_exchange_pda(&program_id, globalstate.account_index + 1);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
+            code: "own".to_string(),
+            name: "Owner Exchange".to_string(),
+            lat: 0.0,
+            lng: 0.0,
+            reserved: 0,
+        }),
+        vec![
+            AccountMeta::new(exchange_pubkey, false),
+            AccountMeta::new(globalconfig_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // 4. Suspend the exchange as the owner (sanity check)
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SuspendExchange(ExchangeSuspendArgs {}),
+        vec![
+            AccountMeta::new(exchange_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let exchange = get_account_data(&mut banks_client, exchange_pubkey)
+        .await
+        .expect("Unable to get Exchange")
+        .get_exchange()
+        .unwrap();
+    assert_eq!(exchange.status, ExchangeStatus::Suspended);
+
+    // 5. Add a different foundation allowlisted account
+    let foundation_actor = test_payer();
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::AddFoundationAllowlist(AddFoundationAllowlistArgs {
+            pubkey: foundation_actor.pubkey(),
+        }),
+        vec![AccountMeta::new(globalstate_pubkey, false)],
+        &payer,
+    )
+    .await;
+
+    // 6. Resume the exchange using the foundation allowlisted non-owner
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ResumeExchange(ExchangeResumeArgs {}),
+        vec![
+            AccountMeta::new(exchange_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &foundation_actor,
+    )
+    .await;
+
+    let exchange = get_account_data(&mut banks_client, exchange_pubkey)
+        .await
+        .expect("Unable to get Exchange")
+        .get_exchange()
+        .unwrap();
+    assert_eq!(exchange.status, ExchangeStatus::Activated);
+
+    println!("✅ Owner and foundation-allowlisted non-owner can suspend/resume the exchange");
+    println!("🟢  End test_exchange_owner_and_foundation_can_update_status");
 }
 
 #[tokio::test]

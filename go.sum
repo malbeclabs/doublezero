@@ -273,8 +273,8 @@ github.com/testcontainers/testcontainers-go v0.40.0 h1:pSdJYLOVgLE8YdUY2FHQ1Fxu+
 github.com/testcontainers/testcontainers-go v0.40.0/go.mod h1:FSXV5KQtX2HAMlm7U3APNyLkkap35zNLxukw9oBi/MY=
 github.com/testcontainers/testcontainers-go/modules/clickhouse v0.40.0 h1:JhYAFtoTCEpzB5jF+wcEP5mL01+JChUUpaaX8sWuEzo=
 github.com/testcontainers/testcontainers-go/modules/clickhouse v0.40.0/go.mod h1:UoMHEYTzGmwKyeCQaKfcQHSVs/kQwimfzX+y1gVSRIk=
-github.com/testcontainers/testcontainers-go/modules/redpanda v0.39.0 h1:lFfmWvWQoDkYPvS0Uwq//lBke7lXGdT3OU8nJFl+8Xc=
-github.com/testcontainers/testcontainers-go/modules/redpanda v0.39.0/go.mod h1:C7mq1kpciaBkC3J2h85RR9e6Ook5iAROVNB4wVGAVKU=
+github.com/testcontainers/testcontainers-go/modules/redpanda v0.40.0 h1:B8f4pGYc2aRlG/3aEEdn/jqLfJL3+q8xAPJypxk2ttg=
+github.com/testcontainers/testcontainers-go/modules/redpanda v0.40.0/go.mod h1:PFyDDGtSHEsVmWFzqKudRh1dRBRLywmAgFqtcUatA78=
 github.com/tidwall/pretty v1.0.0/go.mod h1:XNkn88O1ChpSDQmQeStsy+sBenx6DDtFZJxhVysOjyk=
 github.com/tklauser/go-sysconf v0.3.15 h1:VE89k0criAymJ/Os65CSn1IXaol+1wrsFHEB8Ol49K4=
 github.com/tklauser/go-sysconf v0.3.15/go.mod h1:Dmjwr6tYFIseJw7a3dRLJfsHAMXZ3nEnL/aZY+0IuI4=

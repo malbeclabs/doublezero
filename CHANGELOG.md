@@ -19,6 +19,7 @@ All notable changes to this project will be documented in this file.
 - Onchain programs
   - Serviceability Program: Updated the device update command to allow modifying a device’s location.
   - Added new `soft_drained` and `hard_drained` link status values to serviceability to support traffic offloading as defined in RFC-9.
+  - Fix ProgramConfig resize during global state initialization.
 - QA
   - Traceroute when packet loss is detected
 

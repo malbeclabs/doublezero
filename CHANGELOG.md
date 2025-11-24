@@ -16,7 +16,10 @@ All notable changes to this project will be documented in this file.
     - Add the ability to update a Device’s location, managing the reference counters accordingly.
     - Added support in the link update command to set a link’s status to soft_drained or hard_drained.
     - Add support for updating `contributor.ops_manager_key`.
-- Funder: fund multicast group owners
+- Client
+  - Add route liveness fault-injection simulation tests.
+- Funder
+  - Fund multicast group owners
 - Onchain programs
   - Serviceability Program: Updated the device update command to allow modifying a device’s location.
   - Added new `soft-drained` and `hard-drained` link status values to serviceability to support traffic offloading as defined in RFC9.

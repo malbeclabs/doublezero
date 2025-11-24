@@ -7,22 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- solana-cli: add `revenue-distribution fetch validator-debts` command ([#201](https://github.com/doublezerofoundation/doublezero-offchain/pull/201))
+- uptick to v0.3.0 ([#210](https://github.com/doublezerofoundation/doublezero-offchain/pull/210))
+- add `revenue-distribution fetch validator-debts` command ([#201](https://github.com/doublezerofoundation/doublezero-offchain/pull/201))
 
 ## [0.2.2](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-solana/v0.2.2) - 2025-11-12
 
-- solana-cli: uptick to 0.2.2 ([#191](https://github.com/doublezerofoundation/doublezero-offchain/pull/191))
-- fix(solana-cli): correct default limit price for `convert-2z` and `harvest-2z` ([#190](https://github.com/doublezerofoundation/doublezero-offchain/pull/190))
-- feat(solana-cli): add `--specific-dex` option for `harvest-2z` ([#189](https://github.com/doublezerofoundation/doublezero-offchain/pull/189))
+- uptick to v0.2.2 ([#191](https://github.com/doublezerofoundation/doublezero-offchain/pull/191))
+- correct default limit price for `convert-2z` and `harvest-2z` ([#190](https://github.com/doublezerofoundation/doublezero-offchain/pull/190))
+- add `--specific-dex` option for `harvest-2z` ([#189](https://github.com/doublezerofoundation/doublezero-offchain/pull/189))
 
 ## [0.2.1](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-solana/v0.2.1) - 2025-11-11
 
-- feat(solana-cli): add `revenue-distribution fetch distribution --view` argument ([#182](https://github.com/doublezerofoundation/doublezero-offchain/pull/182))
+- add `revenue-distribution fetch distribution --view` argument ([#182](https://github.com/doublezerofoundation/doublezero-offchain/pull/182))
 - add `revenue-distribution harvest-2` command ([#180](hhttps://github.com/doublezerofoundation/doublezero-offchain/pull/180))
 - add `revenue-distribution relay distribute-rewards` command ([#173](https://github.com/doublezerofoundation/doublezero-offchain/pull/173))
 - move binary from /usr/local/bin/ to /usr/bin to comply with package management standards ([#187](https://github.com/doublezerofoundation/doublezero-offchain/pull/187))
 
 ## [0.2.0](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-solana/v0.2.0) - 2025-10-22
+
 - fixed identity search in Solana leader schedule ([#166](https://github.com/doublezerofoundation/doublezero-offchain/pull/166))
 - testing release-plz integration
 - simplify leader schedule check ([#157](https://github.com/doublezerofoundation/doublezero-offchain/pull/157))
@@ -34,9 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.1](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-solana/v0.1.1) - 2025-10-14
 
-### Other
-
-- version 0.1.1 ([#152](https://github.com/doublezerofoundation/doublezero-offchain/pull/152))
+- uptick to v0.1.1 ([#152](https://github.com/doublezerofoundation/doublezero-offchain/pull/152))
 - bump doublezero-solana-cli version to 0.1.10 ([#151](https://github.com/doublezerofoundation/doublezero-offchain/pull/151))
 - fix backup validator leader schedule check output ([#150](https://github.com/doublezerofoundation/doublezero-offchain/pull/150))
 - fix instruction data when requesting access ([#149](https://github.com/doublezerofoundation/doublezero-offchain/pull/149))

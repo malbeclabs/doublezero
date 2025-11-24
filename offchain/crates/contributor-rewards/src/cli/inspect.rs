@@ -15,6 +15,7 @@ use crate::{
     },
     cli::{
         common::{OutputFormat, OutputOptions, to_json_string},
+        snapshot::CompleteSnapshot,
         traits::Exportable,
     },
     ingestor::{demand, fetcher::Fetcher},
@@ -59,6 +60,9 @@ pub enum InspectCommands {
     # Use test demands for debugging
     inspect shapley --epoch 9 --use-test-demands
 
+    # Use snapshot for historical epochs (loads all data from snapshot)
+    inspect shapley -s mn-epoch-46-snapshot.json
+
     # Export ShapleyInputs to JSON
     inspect shapley --epoch 9 --skip-users --output-format json-pretty --output-dir ./debug/"#
     )]
@@ -66,6 +70,10 @@ pub enum InspectCommands {
         /// DZ epoch to debug
         #[arg(short, long, value_name = "EPOCH")]
         epoch: Option<u64>,
+
+        /// Path to snapshot file (loads all data from snapshot, mutually exclusive with --epoch)
+        #[arg(short = 's', long, value_name = "FILE")]
+        snapshot: Option<PathBuf>,
 
         /// Skip serviceability user requirement check
         #[arg(long)]
@@ -87,6 +95,17 @@ pub enum InspectCommands {
         #[arg(long, value_name = "FILE")]
         output_file: Option<PathBuf>,
     },
+}
+
+/// Arguments for shapley inspection
+struct ShapleyInspectArgs {
+    epoch: Option<u64>,
+    snapshot: Option<PathBuf>,
+    skip_users: bool,
+    use_test_demands: bool,
+    output_format: OutputFormat,
+    output_dir: Option<PathBuf>,
+    output_file: Option<PathBuf>,
 }
 
 /// Container for Shapley inputs using existing types
@@ -125,22 +144,23 @@ pub async fn handle(orchestrator: &Orchestrator, cmd: InspectCommands) -> Result
         } => handle_inspect_rewards(orchestrator, epoch, rewards_accountant, r#type).await,
         InspectCommands::Shapley {
             epoch,
+            snapshot,
             skip_users,
             use_test_demands,
             output_format,
             output_dir,
             output_file,
         } => {
-            handle_inspect_shapley(
-                orchestrator,
+            let args = ShapleyInspectArgs {
                 epoch,
+                snapshot,
                 skip_users,
                 use_test_demands,
                 output_format,
                 output_dir,
                 output_file,
-            )
-            .await
+            };
+            handle_inspect_shapley(orchestrator, args).await
         }
     }
 }
@@ -158,26 +178,57 @@ async fn handle_inspect_rewards(
 
 async fn handle_inspect_shapley(
     orchestrator: &Orchestrator,
-    epoch: Option<u64>,
-    skip_users: bool,
-    use_test_demands: bool,
-    output_format: OutputFormat,
-    output_dir: Option<PathBuf>,
-    output_file: Option<PathBuf>,
+    args: ShapleyInspectArgs,
 ) -> Result<()> {
+    // Validate conflicting flags
+    if args.use_test_demands && args.snapshot.is_some() {
+        bail!("Cannot use both --use-test-demands and --snapshot together");
+    }
+    if args.epoch.is_some() && args.snapshot.is_some() {
+        bail!(
+            "Cannot use both --epoch and --snapshot together. The snapshot contains its own epoch."
+        );
+    }
+
+    let demand_source = if args.use_test_demands {
+        "test"
+    } else if args.snapshot.is_some() {
+        "snapshot"
+    } else {
+        "real"
+    };
     info!(
         "Debugging Shapley calculations with {} demands",
-        if use_test_demands { "test" } else { "real" }
+        demand_source
     );
 
-    // Fetch data
-    let fetcher = Fetcher::from_settings(orchestrator.settings())?;
-    let (fetch_epoch, fetch_data) = fetcher.fetch(epoch).await?;
+    // Load data from snapshot or fetch from network
+    let (fetch_epoch, fetch_data, snapshot_leader_schedule) =
+        if let Some(ref snapshot_path) = args.snapshot {
+            info!("Loading all data from snapshot: {:?}", snapshot_path);
+            let loaded_snapshot = CompleteSnapshot::load_from_file(snapshot_path)?;
+            let leader_schedule = loaded_snapshot.leader_schedule.ok_or_else(|| {
+                anyhow::anyhow!("Snapshot {:?} missing leader schedule", snapshot_path)
+            })?;
+            info!(
+                "Loaded snapshot for DZ epoch {} (Solana epoch: {})",
+                loaded_snapshot.dz_epoch, leader_schedule.solana_epoch
+            );
+            (
+                loaded_snapshot.dz_epoch,
+                loaded_snapshot.fetch_data,
+                Some(leader_schedule),
+            )
+        } else {
+            let fetcher = Fetcher::from_settings(orchestrator.settings())?;
+            let (epoch, data) = fetcher.fetch(args.epoch).await?;
+            (epoch, data, None)
+        };
 
     info!("Using data from epoch {}", fetch_epoch);
 
     // Check for users if not skipping
-    if !skip_users && fetch_data.dz_serviceability.users.is_empty() {
+    if !args.skip_users && fetch_data.dz_serviceability.users.is_empty() {
         warn!("No users found in serviceability data!");
         bail!(
             "No users found. Use --skip-users to proceed anyway or --use-test-demands for testing."
@@ -218,11 +269,25 @@ async fn handle_inspect_shapley(
     info!("Found {} unique cities", cities_vec.len());
 
     // Generate demands
-    let demands = if use_test_demands {
+    let demands = if args.use_test_demands {
         info!("Using uniform test demands for debugging");
         generate_uniform_test_demands(&cities_vec)?
+    } else if let Some(leader_schedule) = snapshot_leader_schedule {
+        info!(
+            "Using leader schedule from snapshot (Solana epoch: {})",
+            leader_schedule.solana_epoch
+        );
+        let demand_output =
+            demand::build_with_schedule(orchestrator.settings(), &fetch_data, &leader_schedule)?;
+        info!(
+            "Generated {} demands from {} cities with validators",
+            demand_output.demands.len(),
+            demand_output.city_stats.len()
+        );
+        demand_output.demands
     } else {
         info!("Fetching real leader schedule from Solana");
+        let fetcher = Fetcher::from_settings(orchestrator.settings())?;
         let demand_output = demand::build(&fetcher, &fetch_data).await?;
         info!(
             "Generated {} real demands from {} cities with validators",
@@ -237,7 +302,7 @@ async fn handle_inspect_shapley(
     // Create export structure using existing types
     let shapley_inputs = ShapleyInputs {
         epoch: fetch_epoch,
-        is_test_data: use_test_demands,
+        is_test_data: args.use_test_demands,
         devices,
         private_links,
         public_links,
@@ -247,25 +312,19 @@ async fn handle_inspect_shapley(
 
     // Export results
     let output_options = OutputOptions {
-        output_format,
-        output_dir: output_dir.map(|p| p.to_string_lossy().to_string()),
-        output_file: output_file.map(|p| p.to_string_lossy().to_string()),
+        output_format: args.output_format,
+        output_dir: args.output_dir.map(|p| p.to_string_lossy().to_string()),
+        output_file: args.output_file.map(|p| p.to_string_lossy().to_string()),
     };
 
-    let default_filename = format!(
-        "shapley-debug-{}-epoch-{fetch_epoch}",
-        if use_test_demands { "test" } else { "real" }
-    );
+    let default_filename = format!("shapley-debug-{demand_source}-epoch-{fetch_epoch}");
     output_options.write(&shapley_inputs, &default_filename)?;
 
     // Print summary
     println!("\nShapley Debug Summary:");
     println!("----------------------");
     println!("Epoch: {fetch_epoch}");
-    println!(
-        "Demands: {}",
-        if use_test_demands { "Test" } else { "Real" }
-    );
+    println!("Demand source: {demand_source}");
     println!("Cities: {}", shapley_inputs.cities.len());
     println!("Devices: {}", shapley_inputs.devices.len());
     println!("Private Links: {}", shapley_inputs.private_links.len());

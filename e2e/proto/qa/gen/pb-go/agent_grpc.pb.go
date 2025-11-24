@@ -33,6 +33,8 @@ type QAAgentServiceClient interface {
 	GetRoutes(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*GetRoutesResponse, error)
 	Disconnect(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*Result, error)
 	Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingResult, error)
+	Traceroute(ctx context.Context, in *TracerouteRequest, opts ...grpc.CallOption) (*TracerouteResult, error)
+	TracerouteRaw(ctx context.Context, in *TracerouteRequest, opts ...grpc.CallOption) (*Result, error)
 	MulticastJoin(ctx context.Context, in *MulticastJoinRequest, opts ...grpc.CallOption) (*MulticastJoinResult, error)
 	MulticastLeave(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	MulticastReport(ctx context.Context, in *MulticastReportRequest, opts ...grpc.CallOption) (*MulticastReportResult, error)
@@ -137,6 +139,24 @@ func (c *qAAgentServiceClient) Ping(ctx context.Context, in *PingRequest, opts .
 	return out, nil
 }
 
+func (c *qAAgentServiceClient) Traceroute(ctx context.Context, in *TracerouteRequest, opts ...grpc.CallOption) (*TracerouteResult, error) {
+	out := new(TracerouteResult)
+	err := c.cc.Invoke(ctx, "/qa.QAAgentService/Traceroute", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *qAAgentServiceClient) TracerouteRaw(ctx context.Context, in *TracerouteRequest, opts ...grpc.CallOption) (*Result, error) {
+	out := new(Result)
+	err := c.cc.Invoke(ctx, "/qa.QAAgentService/TracerouteRaw", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *qAAgentServiceClient) MulticastJoin(ctx context.Context, in *MulticastJoinRequest, opts ...grpc.CallOption) (*MulticastJoinResult, error) {
 	out := new(MulticastJoinResult)
 	err := c.cc.Invoke(ctx, "/qa.QAAgentService/MulticastJoin", in, out, opts...)
@@ -187,6 +207,8 @@ type QAAgentServiceServer interface {
 	GetRoutes(context.Context, *emptypb.Empty) (*GetRoutesResponse, error)
 	Disconnect(context.Context, *emptypb.Empty) (*Result, error)
 	Ping(context.Context, *PingRequest) (*PingResult, error)
+	Traceroute(context.Context, *TracerouteRequest) (*TracerouteResult, error)
+	TracerouteRaw(context.Context, *TracerouteRequest) (*Result, error)
 	MulticastJoin(context.Context, *MulticastJoinRequest) (*MulticastJoinResult, error)
 	MulticastLeave(context.Context, *emptypb.Empty) (*emptypb.Empty, error)
 	MulticastReport(context.Context, *MulticastReportRequest) (*MulticastReportResult, error)
@@ -226,6 +248,12 @@ func (UnimplementedQAAgentServiceServer) Disconnect(context.Context, *emptypb.Em
 }
 func (UnimplementedQAAgentServiceServer) Ping(context.Context, *PingRequest) (*PingResult, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Ping not implemented")
+}
+func (UnimplementedQAAgentServiceServer) Traceroute(context.Context, *TracerouteRequest) (*TracerouteResult, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Traceroute not implemented")
+}
+func (UnimplementedQAAgentServiceServer) TracerouteRaw(context.Context, *TracerouteRequest) (*Result, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method TracerouteRaw not implemented")
 }
 func (UnimplementedQAAgentServiceServer) MulticastJoin(context.Context, *MulticastJoinRequest) (*MulticastJoinResult, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method MulticastJoin not implemented")
@@ -431,6 +459,42 @@ func _QAAgentService_Ping_Handler(srv interface{}, ctx context.Context, dec func
 	return interceptor(ctx, in, info, handler)
 }
 
+func _QAAgentService_Traceroute_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TracerouteRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QAAgentServiceServer).Traceroute(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/qa.QAAgentService/Traceroute",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QAAgentServiceServer).Traceroute(ctx, req.(*TracerouteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _QAAgentService_TracerouteRaw_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TracerouteRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QAAgentServiceServer).TracerouteRaw(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/qa.QAAgentService/TracerouteRaw",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QAAgentServiceServer).TracerouteRaw(ctx, req.(*TracerouteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _QAAgentService_MulticastJoin_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(MulticastJoinRequest)
 	if err := dec(in); err != nil {
@@ -549,6 +613,14 @@ var QAAgentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Ping",
 			Handler:    _QAAgentService_Ping_Handler,
+		},
+		{
+			MethodName: "Traceroute",
+			Handler:    _QAAgentService_Traceroute_Handler,
+		},
+		{
+			MethodName: "TracerouteRaw",
+			Handler:    _QAAgentService_TracerouteRaw_Handler,
 		},
 		{
 			MethodName: "MulticastJoin",

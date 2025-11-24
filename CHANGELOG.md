@@ -19,6 +19,8 @@ All notable changes to this project will be documented in this file.
 - Onchain programs
   - Serviceability Program: Updated the device update command to allow modifying a device’s location.
   - Added new `soft_drained` and `hard_drained` link status values to serviceability to support traffic offloading as defined in RFC-9.
+- QA
+  - Traceroute when packet loss is detected
 
 
 ## [v0.7.1](https://github.com/malbeclabs/doublezero/compare/client/v0.7.0...client/v0.7.1) – 2025-11-18

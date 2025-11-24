@@ -76,6 +76,46 @@ func TestQAAgentConnectivity(t *testing.T) {
 		require.NotNil(t, pingResult)
 	})
 
+	t.Run("Traceroute", func(t *testing.T) {
+		if !hasMTRBinary() {
+			t.Skip("skipping test: mtr binary not found")
+		}
+
+		res, err := client.Traceroute(ctx, &pb.TracerouteRequest{
+			TargetIp:    "127.0.0.1",
+			SourceIp:    "127.0.0.1",
+			SourceIface: "lo",
+			Timeout:     1,
+			Count:       1,
+		})
+		require.NoError(t, err)
+		require.NotNil(t, res)
+		require.Len(t, res.Hops, 1)
+		require.Equal(t, "127.0.0.1", res.TargetIp)
+		require.Equal(t, "127.0.0.1", res.SourceIp)
+		require.Equal(t, uint32(1), res.Timeout)
+		require.Equal(t, uint32(1), res.Tests)
+	})
+
+	t.Run("TracerouteRaw", func(t *testing.T) {
+		if !hasMTRBinary() {
+			t.Skip("skipping test: mtr binary not found")
+		}
+
+		res, err := client.TracerouteRaw(ctx, &pb.TracerouteRequest{
+			TargetIp:    "127.0.0.1",
+			SourceIp:    "127.0.0.1",
+			SourceIface: "lo",
+			Timeout:     1,
+			Count:       1,
+		})
+		require.NoError(t, err)
+		require.NotNil(t, res)
+		require.True(t, res.Success)
+		require.Equal(t, int32(0), res.ReturnCode)
+		require.NotEmpty(t, res.Output)
+	})
+
 	t.Run("GetStatus", func(t *testing.T) {
 		if _, err := exec.LookPath("doublezero"); err != nil {
 			t.Skip("skipping test: doublezero binary not found")

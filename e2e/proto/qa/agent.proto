@@ -17,6 +17,8 @@ service QAAgentService {
   rpc GetRoutes(google.protobuf.Empty) returns (GetRoutesResponse);
   rpc Disconnect(google.protobuf.Empty) returns (Result);
   rpc Ping(PingRequest) returns (PingResult);
+  rpc Traceroute(TracerouteRequest) returns (TracerouteResult);
+  rpc TracerouteRaw(TracerouteRequest) returns (Result);
   rpc MulticastJoin(MulticastJoinRequest) returns (MulticastJoinResult);
   rpc MulticastLeave(google.protobuf.Empty) returns (google.protobuf.Empty);
   rpc MulticastReport(MulticastReportRequest) returns (MulticastReportResult);
@@ -116,6 +118,34 @@ message PingRequest {
 message PingResult {
   uint32 packets_sent = 1;
   uint32 packets_received = 2;
+}
+
+message TracerouteRequest {
+  string target_ip = 1;
+  string source_ip = 2;
+  string source_iface = 3;
+  uint32 timeout = 4; // in seconds
+  uint32 count = 5;
+}
+
+message TracerouteResult {
+  string target_ip = 1;
+  string source_ip = 2;
+  uint32 timeout = 3; // in seconds
+  uint32 tests = 4;
+  repeated TracerouteHop hops = 5;
+}
+
+message TracerouteHop {
+  uint32 ttl = 1;
+  string host = 2;
+  uint32 sent_packets = 3;
+  float loss_percent = 5;
+  float rtt_last = 6;
+  float rtt_min = 7;
+  float rtt_max = 8;
+  float rtt_avg = 9;
+  float rtt_stddev = 10;
 }
 
 message MulticastGroup {

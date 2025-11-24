@@ -89,6 +89,11 @@ func TestQA_UnicastConnectivity(t *testing.T) {
 
 				if result.PacketsReceived < result.PacketsSent {
 					testsWithPartialLosses.Add(1)
+
+					// If there are any losses, run a traceroute and dump the output for visibility.
+					res, err := srcClient.TracerouteRaw(subCtx, dstClient.PublicIP().String())
+					require.NoError(t, err)
+					t.Logf("Traceroute for %s -> %s: %s", srcClient.Host, dstClient.Host, res)
 				}
 			})
 		}

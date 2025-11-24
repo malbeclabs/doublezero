@@ -1,10 +1,12 @@
 use crate::{
-    commands::{accesspass::get::GetAccessPassCommand, globalstate::get::GetGlobalStateCommand, user::get::GetUserCommand},
+    commands::{
+        accesspass::get::GetAccessPassCommand, globalstate::get::GetGlobalStateCommand,
+        user::get::GetUserCommand,
+    },
     DoubleZeroClient,
 };
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction,
-    processors::user::resume::UserResumeArgs,
+    instructions::DoubleZeroInstruction, processors::user::resume::UserResumeArgs,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 

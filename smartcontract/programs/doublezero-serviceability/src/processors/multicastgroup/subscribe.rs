@@ -93,14 +93,20 @@ pub fn process_subscribe_multicastgroup(
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 
-    let (accesspass_pda, _) = get_accesspass_pda(program_id, &value.client_ip, payer_account.key);
-    let (accesspass_dynamic_pda, _) = get_accesspass_pda(program_id, &Ipv4Addr::UNSPECIFIED, payer_account.key);
-    assert!(
-        accesspass_account.key == &accesspass_pda || accesspass_account.key == &accesspass_dynamic_pda,
+    let accesspass = AccessPass::try_from(accesspass_account)?;
+
+    let ip_seed = if accesspass.allow_multiple_ip() {
+        Ipv4Addr::UNSPECIFIED
+    } else {
+        user.client_ip
+    };
+
+    let (accesspass_pda, _) = get_accesspass_pda(program_id, &ip_seed, payer_account.key);
+    assert_eq!(
+        accesspass_account.key, &accesspass_pda,
         "Invalid AccessPass PDA",
     );
 
-    let accesspass = AccessPass::try_from(accesspass_account)?;
     if !accesspass.allow_multiple_ip() && accesspass.client_ip != user.client_ip {
         msg!(
             "AccessPass client_ip does not match. accesspass.client_ip: {} user.client_ip: {}",

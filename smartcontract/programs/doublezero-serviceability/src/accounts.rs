@@ -3,7 +3,7 @@ use doublezero_program_common::create_account::try_create_account;
 use solana_program::{
     account_info::AccountInfo,
     entrypoint::ProgramResult,
-    program::invoke_signed,
+    program::invoke,
     program_error::ProgramError,
     pubkey::Pubkey,
     system_instruction, system_program,
@@ -24,10 +24,7 @@ pub fn write_account<'a, D: BorshSerialize + AccountSize + AccountSeed>(
     payer: &AccountInfo<'a>,
     system_program: &AccountInfo<'a>,
 ) -> ProgramResult {
-    // Size of our index account
     let required_space = data.size();
-
-    // Calculate minimum balance for rent exemption
     let rent = Rent::get()?;
     let required_lamports = rent.minimum_balance(required_space);
 
@@ -45,20 +42,19 @@ pub fn write_account<'a, D: BorshSerialize + AccountSize + AccountSeed>(
             &[seed.as_slice()],
         )?;
     } else {
-        // If the account is already initialized, we need to check if it has enough space
-        if account.data_len() != required_space {
-            account.realloc(required_space, false)?;
-
-            // If the account is not large enough, we need to transfer more lamports
-            if required_space > account.data_len() {
-                let payment = required_lamports - account.lamports();
-
-                invoke_signed(
-                    &system_instruction::transfer(payer.key, account.key, payment),
-                    &[account.clone(), payer.clone(), system_program.clone()],
-                    &[&[seed.as_slice()]],
-                )?;
+        let old_len = account.data_len();
+        if old_len != required_space {
+            if required_space > old_len {
+                let payment = required_lamports.saturating_sub(account.lamports());
+                if payment > 0 {
+                    invoke(
+                        &system_instruction::transfer(payer.key, account.key, payment),
+                        &[account.clone(), payer.clone(), system_program.clone()],
+                    )?;
+                }
             }
+
+            account.realloc(required_space, false)?;
         }
     }
 

@@ -29,7 +29,7 @@ use indicatif::ProgressBar;
 use solana_sdk::pubkey::Pubkey;
 use std::{collections::HashMap, net::Ipv4Addr, str::FromStr, time::Duration};
 
-#[derive(Clone, Debug, ValueEnum)]
+#[derive(Clone, Debug, PartialEq, ValueEnum)]
 pub enum MulticastMode {
     Publisher,
     Subscriber,
@@ -427,7 +427,7 @@ impl ProvisioningCliCommand {
         }
 
         let user_pubkey = match matched_users.first() {
-            Some((_, user)) => {
+            Some((user_pk, user)) => {
                 if user.user_type != UserType::Multicast {
                     spinner.println(format!(
                         "❌  User with IP {} already exists with type {:?}. Expected type {:?}. Only one tunnel currently supported.",
@@ -438,14 +438,23 @@ impl ProvisioningCliCommand {
                     eyre::bail!("User with different type already exists. Only one tunnel currently supported.");
                 }
 
-                let err_msg = format!(
-                    r#"❌ Multicast user already exists for IP: {client_ip}
-Multicast supports only one subscription at this time.
-Disconnect and connect again!"#,
-                );
+                let already_subscribed = match multicast_mode {
+                    MulticastMode::Publisher => user.publishers.contains(mcast_group_pk),
+                    MulticastMode::Subscriber => user.subscribers.contains(mcast_group_pk),
+                };
 
-                spinner.println(err_msg.clone());
-                eyre::bail!(err_msg);
+                if !already_subscribed {
+                    let err_msg = format!(
+                        r#"❌ Multicast user already exists for IP: {client_ip}
+    Multicast supports only one subscription at this time.
+    Disconnect and connect again!"#,
+                    );
+
+                    spinner.println(err_msg.clone());
+                    eyre::bail!(err_msg);
+                }
+
+                **user_pk
             }
             None => {
                 spinner.println(format!("    Creating an account for the IP: {client_ip}"));
@@ -1141,7 +1150,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_connect_command_multicast_producer() {
+    async fn test_connect_command_multicast_publisher() {
         let mut fixture = TestFixture::new();
 
         let (mcast_group_pk, mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
@@ -1179,6 +1188,111 @@ mod tests {
             .execute_with_service_controller(&fixture.client, &fixture.controller)
             .await;
         assert!(result.is_ok());
+    }
+
+    async fn execute_multicast_test_fail_already_in_a_group(multicast_mode: MulticastMode) {
+        let mut fixture = TestFixture::new();
+
+        let (mcast_group_pk, _mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
+        let (_mcast_group2_pk, _mcast_group2) =
+            fixture.add_multicast_group("test-group2", "239.0.0.2");
+        let (device1_pk, _device1) = fixture.add_device(100, true);
+        let mut user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
+
+        if multicast_mode == MulticastMode::Subscriber {
+            user.subscribers.push(mcast_group_pk);
+        } else {
+            user.publishers.push(mcast_group_pk);
+        }
+
+        fixture.add_user(&user);
+
+        // print new line for readability in test output
+        println!();
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::Multicast {
+                mode: multicast_mode,
+                multicast_group: "test-group2".to_string(),
+            },
+            client_ip: Some(user.client_ip.to_string()),
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_connect_command_multicast_publisher_fail_multiple_groups() {
+        execute_multicast_test_fail_already_in_a_group(MulticastMode::Publisher).await;
+    }
+
+    #[tokio::test]
+    async fn test_connect_command_multicast_subscriber_fail_multiple_groups() {
+        execute_multicast_test_fail_already_in_a_group(MulticastMode::Subscriber).await;
+    }
+
+    async fn execute_multicast_test_succeed_already_in_the_group(multicast_mode: MulticastMode) {
+        let mut fixture = TestFixture::new();
+
+        let (mcast_group_pk, mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
+        let (device1_pk, device1) = fixture.add_device(100, true);
+        let mut user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
+
+        let expect_publishers;
+        let expect_subscribers;
+
+        if multicast_mode == MulticastMode::Subscriber {
+            user.subscribers.push(mcast_group_pk);
+            expect_publishers = Some(vec![]);
+            expect_subscribers = Some(vec![mcast_group.multicast_ip.to_string()]);
+        } else {
+            user.publishers.push(mcast_group_pk);
+            expect_publishers = Some(vec![mcast_group.multicast_ip.to_string()]);
+            expect_subscribers = Some(vec![]);
+        }
+
+        fixture.add_user(&user);
+
+        fixture.expected_provisioning_request(
+            UserType::Multicast,
+            user.client_ip.to_string().as_str(),
+            device1.public_ip.to_string().as_str(),
+            expect_publishers,
+            expect_subscribers,
+        );
+
+        // print new line for readability in test output
+        println!();
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::Multicast {
+                mode: multicast_mode,
+                multicast_group: "test-group".to_string(),
+            },
+            client_ip: Some(user.client_ip.to_string()),
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_connect_command_multicast_publisher_succeed_already_in_group() {
+        execute_multicast_test_succeed_already_in_the_group(MulticastMode::Publisher).await;
+    }
+
+    #[tokio::test]
+    async fn test_connect_command_multicast_subscriber_succeed_already_in_group() {
+        execute_multicast_test_succeed_already_in_the_group(MulticastMode::Subscriber).await;
     }
 
     #[tokio::test]

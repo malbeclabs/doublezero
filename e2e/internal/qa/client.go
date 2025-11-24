@@ -2,12 +2,15 @@ package qa
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"maps"
 	"net"
 	"slices"
 	"strconv"
+	"strings"
+	"syscall"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
@@ -18,7 +21,9 @@ import (
 	pb "github.com/malbeclabs/doublezero/e2e/proto/qa/gen/pb-go"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -293,11 +298,30 @@ func (c *Client) waitForStatus(ctx context.Context, wantStatus string, timeout t
 func newClientWithRetry(ctx context.Context, target string, opts ...grpc.DialOption) (*grpc.ClientConn, error) {
 	var conn *grpc.ClientConn
 
+	baseOpts := []grpc.DialOption{
+		grpc.WithBlock(),
+		grpc.WithUnaryInterceptor(retryUnaryInterceptor(4, 500*time.Millisecond)),
+		grpc.WithDefaultServiceConfig(`{
+          "methodConfig": [{
+            "name": [ { "service": "" } ],
+            "retryPolicy": {
+              "MaxAttempts": 4,
+              "InitialBackoff": ".5s",
+              "MaxBackoff": "5s",
+              "BackoffMultiplier": 2.0,
+              "RetryableStatusCodes": ["UNAVAILABLE","ABORTED"]
+            }
+          }]
+        }`),
+	}
+
+	dialOpts := append(opts, baseOpts...)
+
 	operation := func() error {
 		attemptCtx, cancel := context.WithTimeout(ctx, grpcDialTimeout)
 		defer cancel()
 
-		c, err := grpc.NewClient(target, append(opts, grpc.WithBlock())...)
+		c, err := grpc.NewClient(target, dialOpts...)
 		if err != nil {
 			return err
 		}
@@ -320,4 +344,49 @@ func newClientWithRetry(ctx context.Context, target string, opts ...grpc.DialOpt
 	}
 
 	return conn, nil
+}
+
+func retryUnaryInterceptor(maxAttempts int, baseBackoff time.Duration) grpc.UnaryClientInterceptor {
+	return func(ctx context.Context, method string, req, reply any,
+		cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+
+		var lastErr error
+		for attempt := 1; attempt <= maxAttempts; attempt++ {
+			if attempt > 1 {
+				backoffDelay := baseBackoff * time.Duration(attempt-1)
+				select {
+				case <-time.After(backoffDelay):
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			}
+
+			lastErr = invoker(ctx, method, req, reply, cc, opts...)
+			if lastErr == nil || !isRetryable(lastErr) {
+				return lastErr
+			}
+		}
+		return lastErr
+	}
+}
+
+func isRetryable(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	if st, ok := status.FromError(err); ok {
+		switch st.Code() {
+		case codes.Unavailable, codes.Aborted:
+			return true
+		}
+	}
+
+	if errors.Is(err, syscall.ECONNRESET) {
+		return true
+	}
+	if strings.Contains(err.Error(), "connection reset by peer") {
+		return true
+	}
+	return false
 }

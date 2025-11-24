@@ -290,7 +290,7 @@ impl Validate for Device {
             return Err(DoubleZeroError::InvalidDzPrefix);
         }
         // users_count must be less than max_users when max_users > 0
-        if self.max_users > 0 && self.users_count >= self.max_users {
+        if self.users_count > self.max_users {
             msg!(
                 "Max users exceeded or invalid: users_count = {}, max_users = {}",
                 self.users_count,
@@ -374,7 +374,6 @@ mod tests {
             max_users: 2,
         };
         let err = val.validate();
-        assert!(err.is_err());
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidAccountType);
     }
 
@@ -401,7 +400,6 @@ mod tests {
             max_users: 2,
         };
         let err = val.validate();
-        assert!(err.is_err());
         assert_eq!(err.unwrap_err(), DoubleZeroError::CodeTooLong);
     }
 
@@ -428,7 +426,6 @@ mod tests {
             max_users: 2,
         };
         let err = val.validate();
-        assert!(err.is_err());
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidLocation);
     }
 
@@ -482,7 +479,6 @@ mod tests {
             max_users: 2,
         };
         let err = val.validate();
-        assert!(err.is_err());
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidClientIp);
     }
 
@@ -509,7 +505,6 @@ mod tests {
             max_users: 2,
         };
         let err = val.validate();
-        assert!(err.is_err());
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidDzPrefix);
     }
 
@@ -558,12 +553,11 @@ mod tests {
             metrics_publisher_pk: Pubkey::new_unique(),
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
-            users_count: 5,
+            users_count: 6,
             max_users: 5,
         };
 
         let err = val.validate();
-        assert!(err.is_err());
         assert_eq!(err.unwrap_err(), DoubleZeroError::MaxUsersExceeded);
     }
 

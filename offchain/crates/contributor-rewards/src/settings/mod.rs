@@ -217,6 +217,22 @@ impl Settings {
 
         Ok(settings)
     }
+
+    pub fn get_device_telemetry_prefix(&self) -> Vec<u8> {
+        self.prefixes.device_telemetry.as_bytes().to_vec()
+    }
+
+    pub fn get_internet_telemetry_prefix(&self) -> Vec<u8> {
+        self.prefixes.internet_telemetry.as_bytes().to_vec()
+    }
+
+    pub fn get_contributor_rewards_prefix(&self) -> Vec<u8> {
+        self.prefixes.contributor_rewards.as_bytes().to_vec()
+    }
+
+    pub fn get_reward_input_prefix(&self) -> Vec<u8> {
+        self.prefixes.reward_input.as_bytes().to_vec()
+    }
 }
 
 impl fmt::Display for Settings {

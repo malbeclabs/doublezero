@@ -310,17 +310,17 @@ impl Orchestrator {
 
                 // Write shapley output storage instead of individual proofs
                 if !write_config.should_skip_shapley_output() {
-                    ledger_operations::write_shapley_output(
+                    let prefix = &self.settings.get_contributor_rewards_prefix();
+                    ledger_operations::write_serialized_and_track(
                         &fetcher.dz_rpc_client,
                         &payer_signer,
-                        fetch_epoch,
-                        &shapley_storage,
+                        &[prefix, &fetch_epoch_bytes, b"shapley_output"],
                         &shapley_storage_bytes,
-                        &self.settings,
+                        "shapley output storage",
+                        &mut summary,
+                        self.settings.rpc.rps_limit,
                     )
-                    .await?;
-
-                    summary.add_success("shapley output storage".to_string());
+                    .await;
                 } else {
                     info!("[SKIP] Shapley output storage write (--skip-shapley-output)");
                 }

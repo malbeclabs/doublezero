@@ -32,25 +32,6 @@ use crate::{
     settings::Settings,
 };
 
-// Helper functions to get prefixes from config
-fn get_device_telemetry_prefix(settings: &Settings) -> Result<Vec<u8>> {
-    Ok(settings.prefixes.device_telemetry.as_bytes().to_vec())
-}
-
-fn get_internet_telemetry_prefix(settings: &Settings) -> Result<Vec<u8>> {
-    Ok(settings.prefixes.internet_telemetry.as_bytes().to_vec())
-}
-
-fn get_contributor_rewards_prefix(settings: &Settings) -> Result<Vec<u8>> {
-    Ok(settings.prefixes.contributor_rewards.as_bytes().to_vec())
-}
-
-fn get_reward_input_prefix(settings: &Settings) -> Result<Vec<u8>> {
-    Ok(settings.prefixes.reward_input.as_bytes().to_vec())
-}
-
-// ========== PROGRAMCONFIG HELPERS ==========
-
 /// Fetch the rewards_accountant from ProgramConfig, with optional override
 pub async fn get_rewards_accountant(
     rpc_client: &RpcClient,
@@ -241,7 +222,7 @@ pub async fn read_telemetry_aggregates(
 
     // Read device telemetry if requested
     if telemetry_type == "device" || telemetry_type == "all" {
-        let prefix = get_device_telemetry_prefix(settings)?;
+        let prefix = settings.get_device_telemetry_prefix();
         let epoch_bytes = epoch.to_le_bytes();
         let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
         let record_key = create_record_key(&rewards_accountant, seeds);
@@ -276,7 +257,7 @@ pub async fn read_telemetry_aggregates(
 
     // Read internet telemetry if requested
     if telemetry_type == "internet" || telemetry_type == "all" {
-        let prefix = get_internet_telemetry_prefix(settings)?;
+        let prefix = settings.get_internet_telemetry_prefix();
         let epoch_bytes = epoch.to_le_bytes();
         let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
         let record_key = create_record_key(&rewards_accountant, seeds);
@@ -412,7 +393,7 @@ pub async fn read_reward_input(
     let rewards_accountant =
         get_rewards_accountant(&fetcher.solana_write_client, rewards_accountant).await?;
 
-    let prefix = get_reward_input_prefix(settings)?;
+    let prefix = settings.get_reward_input_prefix();
     let epoch_bytes = epoch.to_le_bytes();
     let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
     let record_key = create_record_key(&rewards_accountant, seeds);
@@ -513,7 +494,7 @@ pub async fn check_contributor_reward(
     let rewards_accountant =
         get_rewards_accountant(&fetcher.solana_write_client, rewards_accountant).await?;
 
-    let prefix = get_contributor_rewards_prefix(settings)?;
+    let prefix = settings.get_contributor_rewards_prefix();
 
     // Fetch the shapley output storage
     let shapley_storage =
@@ -596,38 +577,6 @@ pub async fn check_contributor_reward(
     Ok(())
 }
 
-/// Write shapley output storage to the ledger
-pub async fn write_shapley_output(
-    rpc_client: &RpcClient,
-    payer_signer: &Keypair,
-    epoch: u64,
-    _shapley_storage: &ShapleyOutputStorage,
-    shapley_storage_bytes: &[u8],
-    settings: &Settings,
-) -> Result<()> {
-    let prefix = get_contributor_rewards_prefix(settings)?;
-    let epoch_bytes = epoch.to_le_bytes();
-    let seeds: &[&[u8]] = &[&prefix, &epoch_bytes, b"shapley_output"];
-
-    let mut summary = WriteSummary::default();
-    write_serialized_and_track(
-        rpc_client,
-        payer_signer,
-        seeds,
-        shapley_storage_bytes,
-        "shapley output storage",
-        &mut summary,
-        settings.rpc.rps_limit,
-    )
-    .await;
-
-    if !summary.all_successful() {
-        bail!("Failed to write shapley output storage");
-    }
-
-    Ok(())
-}
-
 /// Read shapley output storage from the ledger
 pub async fn read_shapley_output(
     settings: &Settings,
@@ -640,7 +589,7 @@ pub async fn read_shapley_output(
     let rewards_accountant =
         get_rewards_accountant(&fetcher.solana_write_client, rewards_accountant).await?;
 
-    let prefix = get_contributor_rewards_prefix(settings)?;
+    let prefix = settings.get_contributor_rewards_prefix();
 
     try_fetch_shapley_output(&fetcher.dz_rpc_client, &prefix, &rewards_accountant, epoch).await
 }
@@ -687,22 +636,22 @@ pub async fn realloc_record(
     let epoch_bytes = epoch.to_le_bytes();
     let record_key = match r#type {
         "device-telemetry" => {
-            let prefix = get_device_telemetry_prefix(settings)?;
+            let prefix = settings.get_device_telemetry_prefix();
             let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
             create_record_key(&payer_signer.pubkey(), seeds)
         }
         "internet-telemetry" => {
-            let prefix = get_internet_telemetry_prefix(settings)?;
+            let prefix = settings.get_internet_telemetry_prefix();
             let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
             create_record_key(&payer_signer.pubkey(), seeds)
         }
         "reward-input" => {
-            let prefix = get_reward_input_prefix(settings)?;
+            let prefix = settings.get_reward_input_prefix();
             let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
             create_record_key(&payer_signer.pubkey(), seeds)
         }
         "contributor-rewards" => {
-            let prefix = get_contributor_rewards_prefix(settings)?;
+            let prefix = settings.get_contributor_rewards_prefix();
             let seeds: &[&[u8]] = &[&prefix, &epoch_bytes, b"shapley_output"];
             create_record_key(&payer_signer.pubkey(), seeds)
         }
@@ -791,22 +740,22 @@ pub async fn close_record(
     let epoch_bytes = epoch.to_le_bytes();
     let record_key = match r#type {
         "device-telemetry" => {
-            let prefix = get_device_telemetry_prefix(settings)?;
+            let prefix = settings.get_device_telemetry_prefix();
             let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
             create_record_key(&payer_signer.pubkey(), seeds)
         }
         "internet-telemetry" => {
-            let prefix = get_internet_telemetry_prefix(settings)?;
+            let prefix = settings.get_internet_telemetry_prefix();
             let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
             create_record_key(&payer_signer.pubkey(), seeds)
         }
         "reward-input" => {
-            let prefix = get_reward_input_prefix(settings)?;
+            let prefix = settings.get_reward_input_prefix();
             let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
             create_record_key(&payer_signer.pubkey(), seeds)
         }
         "contributor-rewards" => {
-            let prefix = get_contributor_rewards_prefix(settings)?;
+            let prefix = settings.get_contributor_rewards_prefix();
             let seeds: &[&[u8]] = &[&prefix, &epoch_bytes, b"shapley_output"];
             create_record_key(&payer_signer.pubkey(), seeds)
         }
@@ -923,22 +872,22 @@ pub async fn inspect_records(
     for r_type in record_types {
         let record_key = match r_type.as_str() {
             "device-telemetry" => {
-                let prefix = get_device_telemetry_prefix(settings)?;
+                let prefix = settings.get_device_telemetry_prefix();
                 let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
                 create_record_key(&rewards_accountant, seeds)
             }
             "internet-telemetry" => {
-                let prefix = get_internet_telemetry_prefix(settings)?;
+                let prefix = settings.get_internet_telemetry_prefix();
                 let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
                 create_record_key(&rewards_accountant, seeds)
             }
             "reward-input" => {
-                let prefix = get_reward_input_prefix(settings)?;
+                let prefix = settings.get_reward_input_prefix();
                 let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
                 create_record_key(&rewards_accountant, seeds)
             }
             "contributor-rewards" => {
-                let prefix = get_contributor_rewards_prefix(settings)?;
+                let prefix = settings.get_contributor_rewards_prefix();
                 let seeds: &[&[u8]] = &[&prefix, &epoch_bytes, b"shapley_output"];
                 create_record_key(&rewards_accountant, seeds)
             }

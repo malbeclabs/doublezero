@@ -3,7 +3,7 @@ use doublezero_program_common::create_account::try_create_account;
 use solana_program::{
     account_info::AccountInfo,
     entrypoint::ProgramResult,
-    program::invoke_signed,
+    program::invoke,
     program_error::ProgramError,
     pubkey::Pubkey,
     system_instruction, system_program,
@@ -47,10 +47,9 @@ pub fn write_account<'a, D: BorshSerialize + AccountSize + AccountSeed>(
             if required_space > old_len {
                 let payment = required_lamports.saturating_sub(account.lamports());
                 if payment > 0 {
-                    invoke_signed(
+                    invoke(
                         &system_instruction::transfer(payer.key, account.key, payment),
                         &[account.clone(), payer.clone(), system_program.clone()],
-                        &[&[seed.as_slice()]],
                     )?;
                 }
             }

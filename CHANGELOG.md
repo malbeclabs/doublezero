@@ -22,7 +22,8 @@ All notable changes to this project will be documented in this file.
   - Fix ProgramConfig resize during global state initialization.
 - QA
   - Traceroute when packet loss is detected
-
+- Tools
+  - Add `solana-tpu-quic-ping` tool for testing Solana TPU-QUIC connections with stats emitted periodically
 
 ## [v0.7.1](https://github.com/malbeclabs/doublezero/compare/client/v0.7.0...client/v0.7.1) – 2025-11-18
 

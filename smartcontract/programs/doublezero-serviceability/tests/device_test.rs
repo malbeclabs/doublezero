@@ -338,6 +338,7 @@ async fn test_device() {
             mgmt_vrf: Some("mgmt".to_string()),
             max_users: None,
             users_count: None,
+            status: None,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -362,7 +363,115 @@ async fn test_device() {
 
     println!("✅ Device updated");
     /*****************************************************************************************************************************************************/
-    println!("🟢 11. Deleting Device...");
+    println!("🟢 11. Update Device - SoftDrained...");
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
+            status: Some(DeviceStatus::SoftDrained),
+            ..DeviceUpdateArgs::default()
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let device_la = get_account_data(&mut banks_client, device_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_device()
+        .unwrap();
+    assert_eq!(device_la.status, DeviceStatus::SoftDrained);
+
+    println!("✅ Device updated to SoftDrained");
+    /*****************************************************************************************************************************************************/
+    println!("🟢 12. Update Device - HardDrained...");
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
+            status: Some(DeviceStatus::HardDrained),
+            ..DeviceUpdateArgs::default()
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let device_la = get_account_data(&mut banks_client, device_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_device()
+        .unwrap();
+    assert_eq!(device_la.status, DeviceStatus::HardDrained);
+
+    println!("✅ Device updated to HardDrained");
+    /*****************************************************************************************************************************************************/
+    println!("🟢 13. Update Device - SoftDrained...");
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
+            status: Some(DeviceStatus::SoftDrained),
+            ..DeviceUpdateArgs::default()
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let device_la = get_account_data(&mut banks_client, device_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_device()
+        .unwrap();
+    assert_eq!(device_la.status, DeviceStatus::SoftDrained);
+
+    println!("✅ Device updated to SoftDrained");
+    /*****************************************************************************************************************************************************/
+    println!("🟢 14. Update Device - Activated...");
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
+            status: Some(DeviceStatus::Activated),
+            ..DeviceUpdateArgs::default()
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let device_la = get_account_data(&mut banks_client, device_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_device()
+        .unwrap();
+    assert_eq!(device_la.status, DeviceStatus::Activated);
+
+    println!("✅ Device updated to Activated");
+    /*****************************************************************************************************************************************************/
+    println!("🟢 15. Deleting Device...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -388,7 +497,7 @@ async fn test_device() {
     assert_eq!(device_la.status, DeviceStatus::Deleting);
 
     /*****************************************************************************************************************************************************/
-    println!("🟢 12. CloseAccount Device...");
+    println!("🟢 16. CloseAccount Device...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -527,6 +636,7 @@ async fn test_device_update_metrics_publisher_by_foundation_allowlist_account() 
             mgmt_vrf: None,
             max_users: None,
             users_count: None,
+            status: None,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),

@@ -617,6 +617,7 @@ mod tests {
                 mgmt_vrf: Some("mgmt".to_string()),
                 max_users: None,
                 users_count: None,
+                status: None,
             }),
             "UpdateDevice",
         );

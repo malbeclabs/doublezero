@@ -47,6 +47,9 @@ pub struct UpdateDeviceCliCommand {
     /// Number of users connected to the device (optional)
     #[arg(long)]
     pub users_count: Option<u16>,
+    /// Updated status for the device (optional)
+    #[arg(long)]
+    pub status: Option<String>,
     /// Wait for the device to be activated
     #[arg(short, long, default_value_t = false)]
     pub wait: bool,
@@ -108,6 +111,12 @@ impl UpdateDeviceCliCommand {
             None
         };
 
+        let status = self
+            .status
+            .map(|s| s.parse())
+            .transpose()
+            .map_err(|e| eyre::eyre!("Invalid status: {e}"))?;
+
         let signature = client.update_device(UpdateDeviceCommand {
             pubkey,
             code: self.code,
@@ -124,6 +133,7 @@ impl UpdateDeviceCliCommand {
             interfaces: None,
             max_users: self.max_users,
             users_count: self.users_count,
+            status,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -272,6 +282,7 @@ mod tests {
                 interfaces: None,
                 max_users: Some(1025),
                 users_count: Some(0),
+                status: None,
             }))
             .times(1)
             .returning(move |_| Ok(signature));
@@ -289,6 +300,7 @@ mod tests {
             mgmt_vrf: Some("default".to_string()),
             max_users: Some(1025),
             users_count: Some(0),
+            status: None,
             wait: false,
         }
         .execute(&client, &mut output);
@@ -380,6 +392,7 @@ mod tests {
             mgmt_vrf: None,
             max_users: Some(255),
             users_count: Some(0),
+            status: None,
             wait: false,
         }
         .execute(&client, &mut output);
@@ -470,6 +483,7 @@ mod tests {
             mgmt_vrf: None,
             max_users: None,
             users_count: None,
+            status: None,
             wait: false,
         }
         .execute(&client, &mut output);

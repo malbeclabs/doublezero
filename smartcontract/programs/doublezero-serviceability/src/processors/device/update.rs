@@ -26,6 +26,7 @@ pub struct DeviceUpdateArgs {
     pub mgmt_vrf: Option<String>,
     pub max_users: Option<u16>,
     pub users_count: Option<u16>,
+    pub status: Option<DeviceStatus>,
 }
 
 impl fmt::Debug for DeviceUpdateArgs {
@@ -56,6 +57,9 @@ impl fmt::Debug for DeviceUpdateArgs {
         }
         if self.users_count.is_some() {
             write!(f, "users: {:?}, ", self.users_count)?;
+        }
+        if self.status.is_some() {
+            write!(f, "status: {:?}, ", self.status)?;
         }
         Ok(())
     }
@@ -192,6 +196,27 @@ pub fn process_update_device(
                 payer_account,
                 system_program,
             )?;
+        }
+    }
+
+    if let Some(status) = value.status {
+        // Foundation members can set any status
+        if globalstate.foundation_allowlist.contains(payer_account.key) {
+            device.status = status;
+        } else {
+            // Contributors can only transition between Activated <-> Drained states & Drained <-> Drained states
+            // to allow for maintenance draining of links
+            match (device.status, status) {
+                (DeviceStatus::Activated, DeviceStatus::HardDrained)
+                | (DeviceStatus::Activated, DeviceStatus::SoftDrained)
+                | (DeviceStatus::HardDrained, DeviceStatus::SoftDrained)
+                | (DeviceStatus::SoftDrained, DeviceStatus::HardDrained)
+                // | (DeviceStatus::HardDrained, DeviceStatus::Activated) // Devices move from HardDrained to SoftDrained before moving to Activated to verify establishment of connections
+                | (DeviceStatus::SoftDrained, DeviceStatus::Activated) => {
+                    device.status = status;
+                }
+                _ => return Err(DoubleZeroError::NotAllowed.into()),
+            }
         }
     }
 

@@ -8,6 +8,7 @@ use crate::{
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
+use doublezero_program_common::validate_iface;
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -60,8 +61,10 @@ pub fn process_reject_device_interface(
 
     let mut device: Device = Device::try_from(device_account)?;
 
+    let name = validate_iface(&value.name).map_err(|_| DoubleZeroError::InvalidInterfaceName)?;
+
     let (idx, mut iface) = device
-        .find_interface(&value.name)
+        .find_interface(&name)
         .map_err(|_| DoubleZeroError::InterfaceNotFound)?;
 
     iface.status = InterfaceStatus::Rejected;

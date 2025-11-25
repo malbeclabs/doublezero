@@ -140,7 +140,7 @@ impl Device {
             .iter()
             .map(|iface| iface.into_current_version())
             .enumerate()
-            .find(|(_, iface)| iface.name.eq_ignore_ascii_case(name))
+            .find(|(_, iface)| iface.name == name)
             .ok_or_else(|| format!("Interface with name '{name}' not found"))
     }
 

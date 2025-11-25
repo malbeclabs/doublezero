@@ -19,6 +19,7 @@ All notable changes to this project will be documented in this file.
     - Add support for updating `contributor.ops_manager_key`.
 - Client
   - Add route liveness fault-injection simulation tests.
+    - Updated the `interface list` command to display all interfaces when no device is specified.
 - Funder
   - Fund multicast group owners
 - Onchain programs

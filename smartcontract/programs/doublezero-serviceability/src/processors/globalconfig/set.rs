@@ -1,5 +1,5 @@
 use crate::{
-    error::DoubleZeroError,
+    error::{DoubleZeroError, Validate},
     globalstate::{globalconfig_write_with_realloc, globalstate_get},
     pda::*,
     seeds::{SEED_CONFIG, SEED_PREFIX},
@@ -96,6 +96,8 @@ pub fn process_set_globalconfig(
         multicastgroup_block: value.multicastgroup_block,
         next_bgp_community,
     };
+
+    data.validate()?;
 
     let account_space = data.size();
 

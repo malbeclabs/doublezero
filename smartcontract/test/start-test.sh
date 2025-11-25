@@ -2,7 +2,7 @@
 
 clear
 killall solana-test-validator > /dev/null 2>&1
-killall -9 doublezero-activator > /dev/null 2>&1
+killall doublezero-activator > /dev/null 2>&1
 killall solana > /dev/null 2>&1
 
 set -e

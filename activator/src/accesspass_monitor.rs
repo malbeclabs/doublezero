@@ -2,19 +2,18 @@ use doublezero_sdk::{
     commands::accesspass::{
         check_status::CheckStatusAccessPassCommand, list::ListAccessPassCommand,
     },
-    DZClient,
+    DoubleZeroClient,
 };
 use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
-    thread,
     time::Duration,
 };
 
-pub fn process_access_pass_monitor_thread(
-    client: Arc<DZClient>,
+pub async fn access_pass_monitor_task<T: DoubleZeroClient>(
+    client: Arc<T>,
     stop_signal: Arc<AtomicBool>,
 ) -> eyre::Result<()> {
     while !stop_signal.load(Ordering::Relaxed) {
@@ -35,7 +34,7 @@ pub fn process_access_pass_monitor_thread(
         }
 
         // Sleep for a while before the next iteration
-        thread::sleep(Duration::from_secs(crate::constants::SLEEP_DURATION_SECS));
+        tokio::time::sleep(Duration::from_secs(crate::constants::SLEEP_DURATION_SECS)).await;
     }
 
     Ok(())

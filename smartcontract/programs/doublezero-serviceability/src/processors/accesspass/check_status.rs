@@ -79,11 +79,6 @@ pub fn process_check_status_access_pass(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    assert_eq!(
-        accesspass_account.owner, program_id,
-        "Invalid PDA Account Owner"
-    );
-
     let mut accesspass = AccessPass::try_from(accesspass_account)?;
     // Update status
     accesspass.update_status()?;

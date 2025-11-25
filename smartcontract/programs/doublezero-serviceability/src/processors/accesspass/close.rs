@@ -70,10 +70,6 @@ pub fn process_close_access_pass(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    if accesspass_account.owner != program_id {
-        return Err(DoubleZeroError::InvalidAccountOwner.into());
-    }
-
     if let Ok(data) = accesspass_account.try_borrow_data() {
         if data.is_empty() {
             msg!("Account data length is zero");

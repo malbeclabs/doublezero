@@ -81,19 +81,17 @@ pub fn initialize_global_state(program_id: &Pubkey, accounts: &[AccountInfo]) ->
 
     // Size of our index account
     let account_space = data.size();
-
-    if pda_account.try_borrow_data()?.is_empty() {
-        // Create the index account
-        try_create_account(
-            payer_account.key,      // Account paying for the new account
-            pda_account.key,        // Account to be created
-            pda_account.lamports(), // Current amount of lamports on the new account
-            account_space,          // Size in bytes to allocate for the data field
-            program_id,             // Set program owner to our program
-            accounts,
-            &[SEED_PREFIX, SEED_GLOBALSTATE, &[bump_seed]],
-        )?;
-    }
+    // At this point, the account data is guaranteed to be empty due to the earlier check.
+    // Create the index account
+    try_create_account(
+        payer_account.key,      // Account paying for the new account
+        pda_account.key,        // Account to be created
+        pda_account.lamports(), // Current amount of lamports on the new account
+        account_space,          // Size in bytes to allocate for the data field
+        program_id,             // Set program owner to our program
+        accounts,
+        &[SEED_PREFIX, SEED_GLOBALSTATE, &[bump_seed]],
+    )?;
 
     let mut account_data = &mut pda_account.data.borrow_mut()[..];
     data.serialize(&mut account_data).unwrap();

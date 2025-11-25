@@ -36,7 +36,9 @@ impl CreateDeviceInterfaceCommand {
         .execute(client)?;
 
         if device.find_interface(&self.name).is_ok() {
-            return Err(eyre::eyre!("Interface with this name already exists for the device"));
+            return Err(eyre::eyre!(
+                "Interface with this name already exists for the device"
+            ));
         }
 
         client
@@ -73,7 +75,10 @@ mod tests {
             accountdata::AccountData,
             accounttype::AccountType,
             device::{Device, DeviceStatus, DeviceType},
-            interface::{CurrentInterfaceVersion, InterfaceCYOA, InterfaceDIA, InterfaceStatus, InterfaceType, LoopbackType, RoutingMode},
+            interface::{
+                CurrentInterfaceVersion, InterfaceCYOA, InterfaceDIA, InterfaceStatus,
+                InterfaceType, LoopbackType, RoutingMode,
+            },
         },
     };
     use mockall::predicate;
@@ -161,7 +166,7 @@ mod tests {
     fn test_commands_device_create_interface_command_duplicate_name_fails() {
         let mut client = create_test_client();
 
-        let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
+        let (_globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
 
         let device_pubkey = Pubkey::new_unique();
 
@@ -180,7 +185,8 @@ mod tests {
             ip_net: "10.0.0.1/24".parse().unwrap(),
             node_segment_idx: 42,
             user_tunnel_endpoint: true,
-        }.to_interface();
+        }
+        .to_interface();
 
         let device = Device {
             account_type: AccountType::Device,
@@ -203,7 +209,8 @@ mod tests {
             users_count: 0,
         };
 
-        client.expect_get()
+        client
+            .expect_get()
             .with(predicate::eq(device_pubkey))
             .returning(move |_| Ok(AccountData::Device(device.clone())));
 

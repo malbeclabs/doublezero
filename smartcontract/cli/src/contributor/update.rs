@@ -1,7 +1,7 @@
 use crate::{
     doublezerocommand::CliCommand,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
-    validators::{validate_code, validate_pubkey_or_code},
+    validators::{validate_code, validate_pubkey, validate_pubkey_or_code},
 };
 use clap::Args;
 use doublezero_sdk::commands::contributor::{
@@ -21,6 +21,9 @@ pub struct UpdateContributorCliCommand {
     /// Updated owner for the contributor
     #[arg(long, value_parser = validate_pubkey_or_code)]
     pub owner: Option<String>,
+    /// Updated ops manager pubkey for the contributor
+    #[arg(long, value_parser = validate_pubkey)]
+    pub ops_manager: Option<String>,
 }
 
 impl UpdateContributorCliCommand {
@@ -50,6 +53,15 @@ impl UpdateContributorCliCommand {
             None
         };
 
+        let ops_manager_pk = if let Some(ops_manager_str) = &self.ops_manager {
+            Some(
+                Pubkey::from_str(ops_manager_str)
+                    .map_err(|_| eyre::eyre!("Invalid ops manager public key"))?,
+            )
+        } else {
+            None
+        };
+
         let (pubkey, _) = client.get_contributor(GetContributorCommand {
             pubkey_or_code: self.pubkey,
         })?;
@@ -58,6 +70,7 @@ impl UpdateContributorCliCommand {
             pubkey,
             code: self.code,
             owner,
+            ops_manager_pk,
         })?;
 
         writeln!(out, "Signature: {signature}",)?;
@@ -104,6 +117,7 @@ mod tests {
             reference_count: 0,
             status: ContributorStatus::Activated,
             owner: Pubkey::new_unique(),
+            ops_manager_pk: Pubkey::default(),
         };
 
         client
@@ -121,6 +135,7 @@ mod tests {
                             code: "test".to_string(),
                             status: ContributorStatus::Activated,
                             bump_seed: 0,
+                            ops_manager_pk: Pubkey::default(),
                         },
                     ),
                     (
@@ -133,6 +148,7 @@ mod tests {
                             code: "test2".to_string(),
                             status: ContributorStatus::Activated,
                             bump_seed: 0,
+                            ops_manager_pk: Pubkey::default(),
                         },
                     ),
                 ]
@@ -150,12 +166,14 @@ mod tests {
             }))
             .returning(move |_| Ok((pda_pubkey, contributor.clone())));
 
+        let ops_manager_pk = Pubkey::new_unique();
         client
             .expect_update_contributor()
             .with(predicate::eq(UpdateContributorCommand {
                 pubkey: pda_pubkey,
                 code: Some("test_new".to_string()),
                 owner: Some(Pubkey::default()),
+                ops_manager_pk: Some(ops_manager_pk),
             }))
             .times(1)
             .returning(move |_| Ok(signature));
@@ -166,6 +184,7 @@ mod tests {
             pubkey: pda_pubkey.to_string(),
             code: Some("test2".to_string()),
             owner: Some(Pubkey::default().to_string()),
+            ops_manager: Some(ops_manager_pk.to_string()),
         }
         .execute(&client, &mut output);
         assert!(res.is_err());
@@ -176,6 +195,7 @@ mod tests {
             pubkey: pda_pubkey.to_string(),
             code: Some("test_new".to_string()),
             owner: Some(Pubkey::default().to_string()),
+            ops_manager: Some(ops_manager_pk.to_string()),
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

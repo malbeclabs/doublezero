@@ -61,6 +61,7 @@ classDiagram
         ContributorStatus status
         Pubkey ata_owner_pk
         String code
+        Pubkey ops_manager_pk
     }
     class Device {
         AccountType account_type
@@ -228,7 +229,7 @@ stateDiagram-v2
 
 ## Contributor
 
-Network Contributors are responsible for administering devices and tunnels in the DoubleZero network. These users expand and maintain the network by adding and managing hardware and connectivity. 
+Network Contributors are responsible for administering devices and tunnels in the DoubleZero network. These users expand and maintain the network by adding and managing hardware and connectivity.
 
 ```mermaid
 stateDiagram-v2

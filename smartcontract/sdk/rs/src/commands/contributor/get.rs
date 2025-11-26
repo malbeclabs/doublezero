@@ -59,6 +59,7 @@ mod tests {
         let mut client = create_test_client();
 
         let contributor_pubkey = Pubkey::new_unique();
+        let ops_manager_pk = Pubkey::new_unique();
         let contributor = Contributor {
             account_type: AccountType::Contributor,
             index: 1,
@@ -67,6 +68,7 @@ mod tests {
             code: "contributor_code".to_string(),
             status: ContributorStatus::Activated,
             owner: Pubkey::new_unique(),
+            ops_manager_pk,
         };
 
         let contributor2 = contributor.clone();
@@ -93,7 +95,9 @@ mod tests {
         .execute(&client);
 
         assert!(res.is_ok());
-        assert_eq!(res.unwrap().1.code, "contributor_code".to_string());
+        let res = res.unwrap();
+        assert_eq!(res.1.code, "contributor_code".to_string());
+        assert_eq!(res.1.ops_manager_pk, ops_manager_pk);
 
         // Search by code
         let res = GetContributorCommand {
@@ -102,7 +106,9 @@ mod tests {
         .execute(&client);
 
         assert!(res.is_ok());
-        assert_eq!(res.unwrap().1.code, "contributor_code".to_string());
+        let res = res.unwrap();
+        assert_eq!(res.1.code, "contributor_code".to_string());
+        assert_eq!(res.1.ops_manager_pk, ops_manager_pk);
 
         // Invalid search
         let res = GetContributorCommand {

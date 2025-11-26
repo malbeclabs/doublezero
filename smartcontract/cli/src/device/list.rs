@@ -224,6 +224,7 @@ mod tests {
             code: "contributor1_code".to_string(),
             status: ContributorStatus::Activated,
             owner: contributor_pk,
+            ops_manager_pk: Pubkey::default(),
         };
 
         client.expect_list_contributor().returning(move |_| {

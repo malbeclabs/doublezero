@@ -93,6 +93,7 @@ mod tests {
                         code: "test2".to_string(),
                         status: ContributorStatus::Activated,
                         bump_seed: 0,
+                        ops_manager_pk: Pubkey::default(),
                     },
                 )]
                 .into_iter()

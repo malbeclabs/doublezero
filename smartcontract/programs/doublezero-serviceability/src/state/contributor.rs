@@ -84,14 +84,20 @@ pub struct Contributor {
     pub status: ContributorStatus, // 1
     pub code: String,              // 4 + len
     pub reference_count: u32,      // 4
+    pub ops_manager_pk: Pubkey,    // 32
 }
 
 impl fmt::Display for Contributor {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, owner: {}, index: {}, bump_seed: {}, code: {}",
-            self.account_type, self.owner, self.index, self.bump_seed, self.code
+            "account_type: {}, owner: {}, index: {}, bump_seed: {}, code: {}, ops_manager_pk: {}",
+            self.account_type,
+            self.owner,
+            self.index,
+            self.bump_seed,
+            self.code,
+            self.ops_manager_pk
         )
     }
 }
@@ -101,7 +107,7 @@ impl AccountTypeInfo for Contributor {
         SEED_CONTRIBUTOR
     }
     fn size(&self) -> usize {
-        1 + 32 + 16 + 1 + 1 + 4 + self.code.len() + 4
+        1 + 32 + 16 + 1 + 1 + 4 + self.code.len() + 4 + 32
     }
     fn bump_seed(&self) -> u8 {
         self.bump_seed
@@ -126,6 +132,7 @@ impl TryFrom<&[u8]> for Contributor {
             status: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             code: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             reference_count: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            ops_manager_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::Contributor {
@@ -198,6 +205,7 @@ mod tests {
         assert_eq!(val.status, ContributorStatus::None);
         assert_eq!(val.code, "");
         assert_eq!(val.reference_count, 0);
+        assert_eq!(val.ops_manager_pk, Pubkey::default());
     }
 
     #[test]
@@ -210,6 +218,7 @@ mod tests {
             reference_count: 0,
             status: ContributorStatus::Activated,
             code: "test".to_string(),
+            ops_manager_pk: Pubkey::new_unique(),
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -238,6 +247,7 @@ mod tests {
             reference_count: 0,
             status: ContributorStatus::Activated,
             code: "test".to_string(),
+            ops_manager_pk: Pubkey::new_unique(),
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -254,6 +264,7 @@ mod tests {
             reference_count: 0,
             status: ContributorStatus::Activated,
             code: "a".repeat(33), // More than 32
+            ops_manager_pk: Pubkey::new_unique(),
         };
         let err = val.validate();
         assert!(err.is_err());

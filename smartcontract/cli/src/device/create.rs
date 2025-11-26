@@ -216,6 +216,7 @@ mod tests {
             code: "test".to_string(),
             status: ContributorStatus::Activated,
             owner: contributor_pk,
+            ops_manager_pk: Pubkey::default(),
         };
 
         client

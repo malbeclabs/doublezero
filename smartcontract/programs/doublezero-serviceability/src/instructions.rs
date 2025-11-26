@@ -909,6 +909,7 @@ mod tests {
             DoubleZeroInstruction::UpdateContributor(ContributorUpdateArgs {
                 code: Some("test".to_string()),
                 owner: Some(Pubkey::new_unique()),
+                ops_manager_pk: Some(Pubkey::new_unique()),
             }),
             "UpdateContributor",
         );

@@ -74,6 +74,7 @@ mod tests {
             status: ContributorStatus::Activated,
             reference_count: 0,
             owner: Pubkey::default(),
+            ops_manager_pk: Pubkey::default(),
         };
 
         client

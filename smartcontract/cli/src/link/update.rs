@@ -156,6 +156,7 @@ mod tests {
             index: 1,
             status: ContributorStatus::Activated,
             code: "co01".to_string(),
+            ops_manager_pk: Pubkey::default(),
         };
         let (pda_pubkey, _bump_seed) = get_link_pda(&client.get_program_id(), 1);
         let (pda_pubkey2, _bump_seed) = get_link_pda(&client.get_program_id(), 2);

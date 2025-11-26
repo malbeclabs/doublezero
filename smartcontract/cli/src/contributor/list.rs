@@ -87,6 +87,7 @@ mod tests {
             reference_count: 0,
             status: Activated,
             owner: contributor1_pubkey,
+            ops_manager_pk: Pubkey::default(),
         };
         client
             .expect_list_contributor()

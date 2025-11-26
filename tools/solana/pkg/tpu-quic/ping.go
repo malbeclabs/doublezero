@@ -21,9 +21,9 @@ import (
 )
 
 const (
-	DefaultDuration = 10 * time.Second
-	DefaultInterval = 3 * time.Second
-	DefaultTimeout  = 3 * time.Second
+	DefaultCount    = 3
+	DefaultInterval = 1 * time.Second
+	DefaultTimeout  = 5 * time.Second
 
 	ALPNTPUProtocolID = "solana-tpu"
 	DefaultCommonName = "Solana node"
@@ -40,12 +40,13 @@ type PingConfig struct {
 	// StatsChan that results will be streamed to as they are available.
 	StatsChan chan *quic.ConnectionStats
 
-	Quiet    bool          `json:"quiet"`
-	Duration time.Duration `json:"duration"`
-	Interval time.Duration `json:"interval"`
-	Timeout  time.Duration `json:"timeout"`
-	Src      string        `json:"src"`
-	Dst      string        `json:"dst"`
+	Quiet     bool          `json:"quiet"`
+	Count     int           `json:"count"`
+	Interval  time.Duration `json:"interval"`
+	Timeout   time.Duration `json:"timeout"`
+	Interface string        `json:"interface"`
+	Src       string        `json:"src"`
+	Dst       string        `json:"dst"`
 }
 
 type PingResult struct {
@@ -67,8 +68,8 @@ func (cfg *PingConfig) Validate() error {
 		}
 		cfg.Logger = slog.New(slog.NewTextHandler(writer, nil))
 	}
-	if cfg.Duration == 0 {
-		cfg.Duration = DefaultDuration
+	if cfg.Count == 0 {
+		cfg.Count = DefaultCount
 	}
 	if cfg.Interval == 0 {
 		cfg.Interval = DefaultInterval
@@ -91,8 +92,6 @@ func Ping(cfg PingConfig) (*PingResult, error) {
 	}
 
 	log := cfg.Logger
-	ctx, cancel := context.WithTimeout(cfg.Context, cfg.Duration)
-	defer cancel()
 
 	// Resolve destination UDP address
 	dstAddr, err := net.ResolveUDPAddr("udp", cfg.Dst)
@@ -113,17 +112,19 @@ func Ping(cfg PingConfig) (*PingResult, error) {
 	}
 	defer srcConn.Close()
 
+	// Bind to interface if specified
+	if cfg.Interface != "" {
+		if err := bindToDevice(srcConn, cfg.Interface); err != nil {
+			return nil, fmt.Errorf("failed to bind to device %s: %w", cfg.Interface, err)
+		}
+	}
+
 	if !cfg.Quiet {
 		log.Info("Connecting via QUIC", "src", srcConn.LocalAddr(), "dst", dstAddr)
 	}
 
-	quicConf := &quic.Config{
-		MaxIdleTimeout:  cfg.Timeout,
-		KeepAlivePeriod: cfg.Interval,
-	}
-
-	// Separate context for dial
-	dialCtx, dialCancel := context.WithTimeout(ctx, cfg.Timeout)
+	// Separate context for dial based on configured timeout
+	dialCtx, dialCancel := context.WithTimeout(cfg.Context, cfg.Timeout)
 	defer dialCancel()
 
 	// Create TLS config
@@ -133,7 +134,11 @@ func Ping(cfg PingConfig) (*PingResult, error) {
 	}
 
 	// Dial QUIC session
-	session, err := quic.Dial(dialCtx, srcConn, dstAddr, tlsConfig, quicConf)
+	session, err := quic.Dial(dialCtx, srcConn, dstAddr, tlsConfig, &quic.Config{
+		MaxIdleTimeout:       cfg.Timeout,
+		HandshakeIdleTimeout: cfg.Timeout,
+		KeepAlivePeriod:      cfg.Interval,
+	})
 	if err != nil {
 		return &PingResult{
 			Error: fmt.Errorf("failed to connect to %s from %s: %w", dstAddr, srcAddr, err),
@@ -145,43 +150,50 @@ func Ping(cfg PingConfig) (*PingResult, error) {
 
 	// Start stats ticker loop
 	result := &PingResult{
-		ConnectionStats: make([]*quic.ConnectionStats, 0, cfg.Duration/cfg.Interval),
+		ConnectionStats: make([]*quic.ConnectionStats, 0, cfg.Count),
 		Success:         true,
 		Error:           nil,
 	}
 	ticker := time.NewTicker(cfg.Interval)
 	defer ticker.Stop()
-	for {
+	for i := range cfg.Count {
 		select {
-		case <-ctx.Done():
+		case <-cfg.Context.Done():
+			tickConnectionStats(log, i, session, result, &cfg)
 			if !cfg.Quiet {
-				log.Info("Completed QUIC ping session", "duration", cfg.Duration)
+				log.Info("Completed QUIC ping session", "count", cfg.Count)
 			}
 			return result, nil
 		case <-ticker.C:
-			stats := session.ConnectionStats()
-			result.ConnectionStats = append(result.ConnectionStats, &stats)
-			if cfg.StatsChan != nil {
-				select {
-				case cfg.StatsChan <- &stats:
-				default:
-				}
-			}
-			if !cfg.Quiet {
-				log.Info("QUIC stats",
-					"rttMin", stats.MinRTT,
-					"rttLatest", stats.LatestRTT,
-					"rttSmoothed", stats.SmoothedRTT,
-					"rttDev", stats.MeanDeviation,
-					"sentBytes", stats.BytesSent,
-					"sentPackets", stats.PacketsSent,
-					"recvBytes", stats.BytesReceived,
-					"recvPackets", stats.PacketsReceived,
-					"lostBytes", stats.BytesLost,
-					"lostPackets", stats.PacketsLost,
-				)
-			}
+			tickConnectionStats(log, i, session, result, &cfg)
 		}
+	}
+	return result, nil
+}
+
+func tickConnectionStats(log *slog.Logger, i int, session *quic.Conn, result *PingResult, cfg *PingConfig) {
+	stats := session.ConnectionStats()
+	result.ConnectionStats = append(result.ConnectionStats, &stats)
+	if cfg.StatsChan != nil {
+		select {
+		case cfg.StatsChan <- &stats:
+		default:
+		}
+	}
+	if !cfg.Quiet {
+		log.Info("QUIC stats",
+			"interval", i+1,
+			"rttMin", stats.MinRTT,
+			"rttLatest", stats.LatestRTT,
+			"rttSmoothed", stats.SmoothedRTT,
+			"rttDev", stats.MeanDeviation,
+			"sentBytes", stats.BytesSent,
+			"sentPackets", stats.PacketsSent,
+			"recvBytes", stats.BytesReceived,
+			"recvPackets", stats.PacketsReceived,
+			"lostBytes", stats.BytesLost,
+			"lostPackets", stats.PacketsLost,
+		)
 	}
 }
 

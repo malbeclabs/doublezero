@@ -21,7 +21,7 @@ func TestTools_Solana_TPUQUICPing_ConfigValidateDefaults(t *testing.T) {
 	require.NoError(t, cfg.Validate())
 	require.NotNil(t, cfg.Context)
 	require.NotNil(t, cfg.Logger)
-	require.Equal(t, DefaultDuration, cfg.Duration)
+	require.Equal(t, DefaultCount, cfg.Count)
 	require.Equal(t, DefaultInterval, cfg.Interval)
 	require.Equal(t, DefaultTimeout, cfg.Timeout)
 	require.Equal(t, DefaultSrc.String(), cfg.Src)
@@ -123,7 +123,7 @@ func TestTools_Solana_TPUQUICPing_SuccessAgainstLocalQUICServer(t *testing.T) {
 	cfg := PingConfig{
 		Dst:       dst,
 		Src:       net.JoinHostPort("0.0.0.0", "0"),
-		Duration:  250 * time.Millisecond,
+		Count:     3,
 		Interval:  50 * time.Millisecond,
 		Timeout:   500 * time.Millisecond,
 		StatsChan: statsCh,
@@ -252,4 +252,132 @@ func TestTools_Solana_TPUQUICPing_SubjectAltNameExt(t *testing.T) {
 	ext := createSubjectAltNameExtension()
 	require.Equal(t, asn1.ObjectIdentifier{2, 5, 29, 17}, ext.Id)
 	require.NotEmpty(t, ext.Value)
+}
+
+func TestTools_Solana_TPUQUICPing_SuccessAgainstLocalQUICServer_Interface(t *testing.T) {
+	t.Parallel()
+
+	ifaceName, _ := getLoopbackInterfaceV4(t)
+
+	serverAddrCh := make(chan string, 1)
+	serverDone := make(chan struct{})
+	errCh := make(chan error, 1)
+
+	go func() {
+		defer close(serverDone)
+
+		tlsConf, err := createTlsConfig()
+		if err != nil {
+			errCh <- err
+			return
+		}
+		tlsConf.ClientAuth = tls.NoClientCert
+
+		quicConf := &quic.Config{
+			MaxIdleTimeout:  time.Second,
+			KeepAlivePeriod: 100 * time.Millisecond,
+		}
+
+		l, err := quic.ListenAddr("127.0.0.1:0", tlsConf, quicConf)
+		if err != nil {
+			errCh <- err
+			return
+		}
+		defer l.Close()
+
+		serverAddrCh <- l.Addr().String()
+
+		sess, err := l.Accept(context.Background())
+		if err != nil {
+			errCh <- err
+			return
+		}
+		<-sess.Context().Done()
+	}()
+
+	dst := <-serverAddrCh
+	statsCh := make(chan *quic.ConnectionStats, 10)
+
+	cfg := PingConfig{
+		Dst:       dst,
+		Interface: ifaceName,
+		Count:     3,
+		Interval:  50 * time.Millisecond,
+		Timeout:   500 * time.Millisecond,
+		StatsChan: statsCh,
+		Quiet:     true,
+	}
+
+	res, err := Ping(cfg)
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	require.True(t, res.Success)
+	require.NotEmpty(t, res.ConnectionStats)
+	require.NotEmpty(t, statsCh)
+
+	select {
+	case <-serverDone:
+	case <-time.After(time.Second):
+		t.Fatal("server did not exit")
+	}
+
+	select {
+	case err := <-errCh:
+		require.NoError(t, err)
+	default:
+	}
+}
+
+func TestTools_Solana_TPUQUICPing_BindToDevice_Interface_NoPanic(t *testing.T) {
+	t.Parallel()
+
+	ifaceName, ifaceIP := getLoopbackInterfaceV4(t)
+
+	laddr := &net.UDPAddr{IP: ifaceIP, Port: 0}
+	conn, err := net.ListenUDP("udp", laddr)
+	require.NoError(t, err)
+	defer conn.Close()
+
+	// We deliberately do NOT assert on the error, because:
+	// - Linux SO_BINDTODEVICE often requires capabilities and may return EPERM.
+	// - Darwin IP_BOUND_IF/IPV6_BOUND_IF should usually work, but we don't
+	//   want tests to depend on privileges.
+	// This is mainly a smoke test + coverage for bindToDevice.
+	_ = bindToDevice(conn, ifaceName)
+}
+
+func getLoopbackInterfaceV4(t *testing.T) (name string, ip net.IP) {
+	t.Helper()
+
+	ifaces, err := net.Interfaces()
+	require.NoError(t, err)
+
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagLoopback == 0 || iface.Flags&net.FlagUp == 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		require.NoError(t, err)
+
+		for _, a := range addrs {
+			var ipNet *net.IPNet
+			switch v := a.(type) {
+			case *net.IPNet:
+				ipNet = v
+			case *net.IPAddr:
+				ipNet = &net.IPNet{IP: v.IP, Mask: v.IP.DefaultMask()}
+			default:
+				continue
+			}
+			if ipNet == nil || ipNet.IP == nil {
+				continue
+			}
+			if v4 := ipNet.IP.To4(); v4 != nil {
+				return iface.Name, v4
+			}
+		}
+	}
+
+	t.Skip("no up loopback interface with IPv4 address found")
+	return "", nil
 }

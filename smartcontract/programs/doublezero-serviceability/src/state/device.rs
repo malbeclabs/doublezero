@@ -10,7 +10,7 @@ use crate::{
 use borsh::{BorshDeserialize, BorshSerialize};
 use doublezero_program_common::types::NetworkV4List;
 use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError, pubkey::Pubkey};
-use std::{fmt, net::Ipv4Addr};
+use std::{fmt, net::Ipv4Addr, str::FromStr};
 
 #[repr(u8)]
 #[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Default)]
@@ -49,6 +49,8 @@ pub enum DeviceStatus {
     Suspended = 2,
     Deleting = 3,
     Rejected = 4,
+    SoftDrained = 5,
+    HardDrained = 6,
 }
 
 impl From<u8> for DeviceStatus {
@@ -59,6 +61,8 @@ impl From<u8> for DeviceStatus {
             2 => DeviceStatus::Suspended,
             3 => DeviceStatus::Deleting,
             4 => DeviceStatus::Rejected,
+            5 => DeviceStatus::SoftDrained,
+            6 => DeviceStatus::HardDrained,
             _ => DeviceStatus::Pending,
         }
     }
@@ -72,6 +76,25 @@ impl fmt::Display for DeviceStatus {
             DeviceStatus::Suspended => write!(f, "suspended"),
             DeviceStatus::Deleting => write!(f, "deleting"),
             DeviceStatus::Rejected => write!(f, "rejected"),
+            DeviceStatus::SoftDrained => write!(f, "soft-drained"),
+            DeviceStatus::HardDrained => write!(f, "hard-drained"),
+        }
+    }
+}
+
+impl FromStr for DeviceStatus {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "pending" => Ok(DeviceStatus::Pending),
+            "activated" => Ok(DeviceStatus::Activated),
+            "suspended" => Ok(DeviceStatus::Suspended),
+            "deleting" => Ok(DeviceStatus::Deleting),
+            "rejected" => Ok(DeviceStatus::Rejected),
+            "hard-drained" => Ok(DeviceStatus::HardDrained),
+            "soft-drained" => Ok(DeviceStatus::SoftDrained),
+            _ => Err(format!("Invalid DeviceStatus: {s}")),
         }
     }
 }

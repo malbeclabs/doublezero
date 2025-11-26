@@ -6,7 +6,10 @@ use doublezero_program_common::{types::NetworkV4List, validate_account_code};
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
     processors::device::update::DeviceUpdateArgs,
-    state::{device::DeviceType, interface::Interface},
+    state::{
+        device::{DeviceStatus, DeviceType},
+        interface::Interface,
+    },
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 use std::net::Ipv4Addr;
@@ -25,6 +28,7 @@ pub struct UpdateDeviceCommand {
     pub interfaces: Option<Vec<Interface>>,
     pub max_users: Option<u16>,
     pub users_count: Option<u16>,
+    pub status: Option<DeviceStatus>,
 }
 
 impl UpdateDeviceCommand {
@@ -56,6 +60,7 @@ impl UpdateDeviceCommand {
                 mgmt_vrf: self.mgmt_vrf.clone(),
                 max_users: self.max_users,
                 users_count: self.users_count,
+                status: self.status,
             }),
             vec![
                 AccountMeta::new(self.pubkey, false),
@@ -132,6 +137,7 @@ mod tests {
                     contributor_pk: None,
                     max_users: None,
                     users_count: None,
+                    status: None,
                 })),
                 predicate::always(),
             )
@@ -150,6 +156,7 @@ mod tests {
             interfaces: None,
             max_users: None,
             users_count: None,
+            status: None,
         };
 
         let update_invalid = UpdateDeviceCommand {

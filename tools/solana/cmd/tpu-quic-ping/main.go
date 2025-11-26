@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"io"
 	"log/slog"
@@ -10,14 +9,17 @@ import (
 
 	"github.com/lmittmann/tint"
 	tpuquic "github.com/malbeclabs/doublezero/tools/solana/pkg/tpu-quic"
+	flag "github.com/spf13/pflag"
 )
 
 func main() {
-	duration := flag.Duration("duration", tpuquic.DefaultDuration, "how long to keep the QUIC connection open")
-	interval := flag.Duration("interval", tpuquic.DefaultInterval, "how often to print connection stats")
-	timeout := flag.Duration("timeout", tpuquic.DefaultTimeout, "how long to wait for the connection to be established")
-	srcAddr := flag.String("src-addr", tpuquic.DefaultSrc.String(), "source address to bind (optional)")
-	quiet := flag.Bool("q", false, "quiet mode - only show errors")
+	count := flag.IntP("count", "c", tpuquic.DefaultCount, "how many intervals to ping for (optional)")
+	interval := flag.DurationP("interval", "i", tpuquic.DefaultInterval, "how often to print connection stats (optional)")
+	timeout := flag.DurationP("timeout", "t", tpuquic.DefaultTimeout, "how long to wait for the connection to be established (optional)")
+	srcAddr := flag.StringP("src", "S", tpuquic.DefaultSrc.String(), "source address to bind to (optional)")
+	iface := flag.StringP("interface", "I", "", "interface to bind to (optional)")
+	quiet := flag.BoolP("quiet", "q", false, "quiet mode - only show errors")
+
 	flag.Parse()
 
 	if flag.NArg() != 1 {
@@ -31,12 +33,13 @@ func main() {
 	cfg := tpuquic.PingConfig{
 		Logger: log,
 
-		Quiet:    *quiet,
-		Duration: *duration,
-		Interval: *interval,
-		Timeout:  *timeout,
-		Src:      *srcAddr,
-		Dst:      dstAddr,
+		Quiet:     *quiet,
+		Count:     *count,
+		Interval:  *interval,
+		Timeout:   *timeout,
+		Src:       *srcAddr,
+		Interface: *iface,
+		Dst:       dstAddr,
 	}
 
 	result, err := tpuquic.Ping(cfg)

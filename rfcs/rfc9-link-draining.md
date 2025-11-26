@@ -56,7 +56,7 @@ The processes described in table 1 are fragile for a number of reasons.  Having 
     * IS-IS metric based on delay
   * hard_drained (new):
     * A link is removed from routing 
-    * IS-IS disabled by removing `isis enable 1` on interfaces
+    * IS-IS disabled by setting `isis passive` on interfaces
     * Use-case: link maintenance or outage without alternatives available
   * soft_drained (new):
     * A link is deprioritized 
@@ -84,8 +84,64 @@ graph LR
 
 ### DZX Link
 
-* Leverage same `link.status`and delay_override fields described in WAN Link section
+* Leverage same `link.status` and delay_override fields described in WAN Link section
 * Update smart-contract to allow either A-Side or Z-Side contributors to trigger `link.status` transitions
+
+### Network configuration
+
+In order to implement link draining in the network, the devices connected to the affected link need configuration changes. These changes are deployed to the device using the existing controlplane/controller and controlplane/agent componenets. The controller needs to do the following when the new link statuses are set:
+
+#### Network configuration - soft-drained
+In normal operation, the controller sets the link isis metric using `link.delay_ms`. If `link.delay_override_ms` is set to a valid non-zero value, that value is used to set the isis metric instead. When `link.status` is set to `soft-drained`, both delay fields are overridden with a delay value of 1 second. Since DoubleZero sets the metric to the link delay in nanoseconds, this results in an isis metric of 1000000, for example:
+```
+interface Ethernet2
+   mtu 2048
+   no switchport
+   ip address 172.16.0.19/31
+   pim ipv4 sparse-mode
+   isis enable 1
+   isis circuit-type level-2
+   isis hello-interval 1
+   isis metric 1000000
+   isis hello padding
+   isis network point-to-point
+!
+```
+#### Network configuration - hard-drained
+Under normal operation, when `link.status` is set to `activated` or `soft-drained`, isis is enabled on the device interfaces associated with the link using the following Arista EOS configuration statements, for example, with a link delay (or delay override) of 40ms:
+```
+interface Ethernet2
+   mtu 2048
+   no switchport
+   ip address 172.16.0.19/31
+   pim ipv4 sparse-mode
+   isis enable 1
+   isis circuit-type level-2
+   isis hello-interval 1
+   isis metric 40000
+   isis hello padding
+   isis network point-to-point
+!
+```
+When `link.status` is set to `hard-drained`, the controller adds the line `isis passive` to the configuration like so:
+```
+interface Ethernet2
+   mtu 2048
+   no switchport
+   ip address 172.16.0.19/31
+   pim ipv4 sparse-mode
+   isis enable 1
+   isis circuit-type level-2
+   isis hello-interval 1
+   isis metric 40000
+   isis passive
+   isis hello padding
+   isis network point-to-point
+!
+```
+This configuration statement stops the two connected devices from forming an isis adjacency over the link, which means the link will not pass any unicast, multicast, or MPLS/SR traffic. The link network will still be present in the isis topology database. 
+
+Note that the `hard-drained` status does not have any impact on the metric, which continues to be set using `link.delay_ms` or `link.delay_override_ms`. Once the link is set back to `soft-drained` or `activated` status, the controller removes the `isis passive` line from the interface configuration.
 
 ### Verification
 Appropriate verification should be implemented to ensure that a link has been successfully drained.  Additionally, appropriate verification should be implemented before a link can be set to `activated` (ink Normalized/Routing Stable).  This verification process will be detailed in a future RFC.

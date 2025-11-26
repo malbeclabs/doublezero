@@ -931,6 +931,7 @@ func TestStateCache(t *testing.T) {
 								Name:          "Ethernet1/1",
 								IsLink:        true,
 								Metric:        400000,
+								LinkStatus:    serviceability.LinkStatusActivated,
 							},
 							{
 								InterfaceType: InterfaceTypePhysical,
@@ -938,6 +939,7 @@ func TestStateCache(t *testing.T) {
 								Name:          "Ethernet1/2",
 								IsLink:        true,
 								Metric:        1,
+								LinkStatus:    serviceability.LinkStatusActivated,
 							},
 							{
 								InterfaceType: InterfaceTypePhysical,
@@ -945,6 +947,7 @@ func TestStateCache(t *testing.T) {
 								Name:          "Ethernet1/3",
 								IsLink:        true,
 								Metric:        50,
+								LinkStatus:    serviceability.LinkStatusActivated,
 							},
 							{
 								InterfaceType: InterfaceTypeLoopback,

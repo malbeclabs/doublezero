@@ -41,6 +41,7 @@ type Interface struct {
 	LoopbackType         LoopbackType
 	Metric               uint32
 	IsLink               bool
+	LinkStatus           serviceability.LinkStatus
 }
 
 // toInterface validates onchain data for a serviceability interface and converts it to a controller interface.

@@ -185,7 +185,7 @@ pub fn process_update_link(
                 | (LinkStatus::Activated, LinkStatus::SoftDrained)
                 | (LinkStatus::HardDrained, LinkStatus::SoftDrained)
                 | (LinkStatus::SoftDrained, LinkStatus::HardDrained)
-                | (LinkStatus::HardDrained, LinkStatus::Activated)
+                // | (LinkStatus::HardDrained, LinkStatus::Activated) // Links move from HardDrained to SoftDrained before moving to Activated to verify establishment of isis adjacency
                 | (LinkStatus::SoftDrained, LinkStatus::Activated) => {
                     link.status = status;
                 }

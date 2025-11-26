@@ -352,9 +352,10 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 		for i, iface := range d.Interfaces {
 			link := findLink(iface)
 
-			if link == (serviceability.Link{}) || link.Status != serviceability.LinkStatusActivated {
+			if link == (serviceability.Link{}) || (link.Status != serviceability.LinkStatusActivated && link.Status != serviceability.LinkStatusSoftDrained && link.Status != serviceability.LinkStatusHardDrained) {
 				d.Interfaces[i].IsLink = false
 				d.Interfaces[i].Metric = 0
+				d.Interfaces[i].LinkStatus = serviceability.LinkStatusPending
 				continue
 			}
 
@@ -365,6 +366,7 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 
 			microseconds := math.Ceil(float64(link.DelayNs) / 1000.0)
 
+			// apply delay override if set
 			if link.DelayOverrideNs != 0 {
 				if link.DelayOverrideNs < 10000 || link.DelayOverrideNs > 1_000_000_000 {
 					c.log.Warn("link delay override is outside valid range (10us - 1s), ignoring", "link_pubkey", base58.Encode(link.PubKey[:]), "device_code", device.Code, "interface", iface.Name, "delay_override_ns", link.DelayOverrideNs)
@@ -373,8 +375,14 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 				}
 			}
 
+			// override all delay values if link is soft drained
+			if link.Status == serviceability.LinkStatusSoftDrained {
+				microseconds = 1000000
+			}
+
 			d.Interfaces[i].Metric = uint32(microseconds)
 			d.Interfaces[i].IsLink = true
+			d.Interfaces[i].LinkStatus = link.Status
 			linkMetrics.WithLabelValues(device.Code, iface.Name, d.PubKey).Set(float64(d.Interfaces[i].Metric))
 		}
 

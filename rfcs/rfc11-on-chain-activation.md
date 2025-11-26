@@ -98,12 +98,12 @@ This RFC moves allocation logic on-chain, eliminating these concerns while maint
                                          │ Emit UserActivated event
                                          ▼
                                     ┌──────────┐
-                                    │Controller│ Subscribes to events
-                                    │          │ (or via stripped-down
-                                    └──────────┘  activator)
+                                    │Controller│ Polls on-chain state
+                                    │          │ (unchanged behavior)
+                                    └──────────┘
 ```
 
-**Key Difference:** No off-chain allocation. All resource assignment happens atomically in a single transaction. The controller (or a minimal activator) only needs to listen for events to configure the network.
+**Key Difference:** No off-chain allocation. All resource assignment happens atomically in a single transaction. The controller continues polling on-chain state as before—the only change is that accounts are now created in `Activated` state.
 
 ### Core Insight
 
@@ -357,29 +357,37 @@ Two mechanisms handle expiration:
 1. **Opportunistic check:** CreateAndActivateUser validates expiry before creating users
 2. **Batch sweep:** Owner/admin calls SweepExpiredUsers to mark existing users
 
-## Controller Notification
+## Controller Impact
 
-The current activator combines two responsibilities:
+**Current architecture:**
 
-1. **Allocation** — Assign IPs to pending accounts (WebSocket subscription + processor in `activator.rs`)
-2. **Notification** — Inform controller of state changes
+```
+┌──────────┐                      ┌──────────────┐
+│Activator │──── Writes ─────────>│  Blockchain  │
+└──────────┘   (activate pending) │  (On-Chain)  │
+                                  └──────┬───────┘
+                                         │
+┌──────────┐                             │
+│Controller│<──── Polls ─────────────────┘
+└──────────┘   (reads state, generates configs)
+```
 
-With on-chain activation, responsibility #1 moves into the smart contract. Responsibility #2 remains, but is greatly simplified:
+The activator and controller operate independently—both interact with on-chain state, but there is no direct communication between them. The controller polls on-chain accounts to generate device configurations.
 
-**Option A: Retain activator's WebSocket subscription**
+**After this RFC:**
 
-Keep the existing `websocket_task` in `activator/src/activator.rs` but remove all allocation logic. It becomes a stateless event forwarder.
+```
+┌──────────────┐
+│  Blockchain  │<──── Atomic create+activate
+│  (On-Chain)  │
+└──────┬───────┘
+       │
+┌──────┴──────┐
+│  Controller │<──── Polls (unchanged)
+└─────────────┘
+```
 
-**Option B: Controller subscribes directly**
-
-Controller subscribes to program events itself, eliminating the activator entirely.
-
-Either approach:
-
-1. Subscribes to program logs via WebSocket (`program_subscribe`)
-2. Parses activation events (UserActivated, LinkActivated, etc.)
-3. Forwards to controller for network configuration
-4. Runs periodic reconciliation (reuse existing `get_snapshot_poll` pattern)
+The controller's behavior is unchanged. It continues polling the same on-chain accounts. The only difference is that accounts are now created in `Activated` state instead of transitioning from `Pending` to `Activated`.
 
 ## Capacity Analysis
 

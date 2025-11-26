@@ -477,14 +477,26 @@ impl Orchestrator {
         contributor: &Pubkey,
         epoch: u64,
         rewards_accountant: Option<Pubkey>,
+        json_output: bool,
     ) -> Result<()> {
         ledger_operations::check_contributor_reward(
             &self.settings,
             contributor,
             epoch,
             rewards_accountant,
+            json_output,
         )
         .await
+    }
+
+    pub async fn read_all_rewards(
+        &self,
+        epoch: u64,
+        rewards_accountant: Option<Pubkey>,
+        json_output: bool,
+    ) -> Result<()> {
+        ledger_operations::read_all_rewards(&self.settings, epoch, rewards_accountant, json_output)
+            .await
     }
 
     pub async fn read_reward_input(

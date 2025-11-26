@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- feat(contributor-rewards): add read-rewards command ([#212](https://github.com/doublezerofoundation/doublezero-offchain/pull/212)
+
+## [0.3.5](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-contributor-rewards/v0.3.5) - 2025-11-24
+
 - feat(contributor-rewards): add snapshot flag to inspect shapley cmd ([#209](https://github.com/doublezerofoundation/doublezero-offchain/pull/209)
 - fix(contributor-rewards): track shapley output record address for slack notifications ([#208](https://github.com/doublezerofoundation/doublezero-offchain/pull/208)
 

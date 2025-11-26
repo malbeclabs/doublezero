@@ -118,7 +118,10 @@ pub enum RewardsCommands {
     check-reward --contributor 7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV --epoch 123
 
     # Check with explicit rewards accountant
-    check-reward -c 7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV -e 123 -r <ACCOUNTANT_PUBKEY>"#
+    check-reward -c 7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV -e 123 -r <ACCOUNTANT_PUBKEY>
+
+    # Output as JSON
+    check-reward -c 7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV -e 123 --json"#
     )]
     CheckReward {
         /// Contributor's public key (base58 encoded)
@@ -132,6 +135,10 @@ pub enum RewardsCommands {
         /// Rewards accountant public key (auto-fetched from ProgramConfig if not provided)
         #[arg(short = 'r', long, value_name = "PUBKEY")]
         rewards_accountant: Option<Pubkey>,
+
+        /// Output as JSON instead of table
+        #[arg(long)]
+        json: bool,
     },
     #[command(
         about = "Read and display the reward input configuration for an epoch",
@@ -150,6 +157,31 @@ pub enum RewardsCommands {
         /// Rewards accountant public key (auto-fetched from ProgramConfig if not provided)
         #[arg(short = 'r', long, value_name = "PUBKEY")]
         rewards_accountant: Option<Pubkey>,
+    },
+    #[command(
+        about = "Read and display all contributor rewards for an epoch",
+        after_help = r#"Examples:
+    # Read all rewards for epoch 56
+    read-rewards --epoch 56
+
+    # Read with JSON output
+    read-rewards --epoch 56 --json
+
+    # Read with specific rewards accountant
+    read-rewards --epoch 56 --rewards-accountant <PUBKEY>"#
+    )]
+    ReadRewards {
+        /// DZ epoch number to read rewards from
+        #[arg(short, long, value_name = "EPOCH")]
+        epoch: u64,
+
+        /// Rewards accountant public key (auto-fetched from ProgramConfig if not provided)
+        #[arg(short = 'r', long, value_name = "PUBKEY")]
+        rewards_accountant: Option<Pubkey>,
+
+        /// Output as JSON instead of table
+        #[arg(long)]
+        json: bool,
     },
     #[command(
         about = "Reallocate a record account to change its size",
@@ -370,9 +402,10 @@ pub async fn handle(orchestrator: &Orchestrator, cmd: RewardsCommands) -> Result
             contributor,
             epoch,
             rewards_accountant,
+            json,
         } => {
             orchestrator
-                .check_contributor_reward(&contributor, epoch, rewards_accountant)
+                .check_contributor_reward(&contributor, epoch, rewards_accountant, json)
                 .await
         }
         RewardsCommands::ReadRewardInput {
@@ -381,6 +414,15 @@ pub async fn handle(orchestrator: &Orchestrator, cmd: RewardsCommands) -> Result
         } => {
             orchestrator
                 .read_reward_input(epoch, rewards_accountant)
+                .await
+        }
+        RewardsCommands::ReadRewards {
+            epoch,
+            rewards_accountant,
+            json,
+        } => {
+            orchestrator
+                .read_all_rewards(epoch, rewards_accountant, json)
                 .await
         }
         RewardsCommands::ReallocRecord {

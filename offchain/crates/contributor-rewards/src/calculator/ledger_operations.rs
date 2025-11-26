@@ -56,7 +56,7 @@ pub async fn get_rewards_accountant(
             .0;
 
     let rewards_accountant = program_config.rewards_accountant_key;
-    info!(
+    debug!(
         "Retrieved rewards_accountant from ProgramConfig: {}",
         rewards_accountant
     );
@@ -481,12 +481,25 @@ pub async fn read_reward_input(
     Ok(())
 }
 
+/// JSON output struct for check_contributor_reward
+#[derive(serde::Serialize)]
+pub struct CheckRewardOutput {
+    pub epoch: u64,
+    pub contributor: String,
+    pub unit_share: u32,
+    pub merkle_root: String,
+    pub total_contributors: usize,
+    pub total_units: u32,
+    pub verified: bool,
+}
+
 /// Check contributor reward and verify merkle proof dynamically
 pub async fn check_contributor_reward(
     settings: &Settings,
     contributor_pubkey: &Pubkey,
     epoch: u64,
     rewards_accountant: Option<Pubkey>,
+    json_output: bool,
 ) -> Result<()> {
     let fetcher = Fetcher::from_settings(settings)?;
 
@@ -519,59 +532,192 @@ pub async fn check_contributor_reward(
     .unwrap();
     let verification_result = verification_root == computed_root;
 
-    #[derive(Tabled)]
-    struct RewardVerification {
-        #[tabled(rename = "Field")]
-        field: String,
-        #[tabled(rename = "Value")]
-        value: String,
-    }
+    if json_output {
+        let output = CheckRewardOutput {
+            epoch,
+            contributor: reward.contributor_key.to_string(),
+            unit_share: reward.unit_share,
+            merkle_root: computed_root.to_string(),
+            total_contributors: shapley_storage.rewards.len(),
+            total_units: shapley_storage.total_unit_shares,
+            verified: verification_result,
+        };
+        println!("{}", serde_json::to_string(&output)?);
+    } else {
+        #[derive(Tabled)]
+        struct RewardVerification {
+            #[tabled(rename = "Field")]
+            field: String,
+            #[tabled(rename = "Value")]
+            value: String,
+        }
 
-    let verification_data = vec![
-        RewardVerification {
-            field: "Epoch".to_string(),
-            value: epoch.to_string(),
-        },
-        RewardVerification {
-            field: "Contributor Pubkey".to_string(),
-            value: reward.contributor_key.to_string(),
-        },
-        RewardVerification {
-            field: "Unit Share".to_string(),
-            value: format!("{}", reward.unit_share),
-        },
-        RewardVerification {
-            field: "Merkle Root".to_string(),
-            value: format!("{computed_root:?}"),
-        },
-        RewardVerification {
-            field: "Total Contributors".to_string(),
-            value: shapley_storage.rewards.len().to_string(),
-        },
-        RewardVerification {
-            field: "Total Units".to_string(),
-            value: format!(
-                "{} (should be 1,000,000,000)",
-                shapley_storage.total_unit_shares
-            ),
-        },
-        RewardVerification {
-            field: "Verification Status".to_string(),
-            value: if verification_result {
-                "[VALID] Proof verified successfully!".to_string()
-            } else {
-                "[INVALID] Proof verification failed!".to_string()
+        let verification_data = vec![
+            RewardVerification {
+                field: "Epoch".to_string(),
+                value: epoch.to_string(),
             },
-        },
-    ];
+            RewardVerification {
+                field: "Contributor Pubkey".to_string(),
+                value: reward.contributor_key.to_string(),
+            },
+            RewardVerification {
+                field: "Unit Share".to_string(),
+                value: format!("{}", reward.unit_share),
+            },
+            RewardVerification {
+                field: "Merkle Root".to_string(),
+                value: computed_root.to_string(),
+            },
+            RewardVerification {
+                field: "Total Contributors".to_string(),
+                value: shapley_storage.rewards.len().to_string(),
+            },
+            RewardVerification {
+                field: "Total Units".to_string(),
+                value: format!(
+                    "{} (should be 1,000,000,000)",
+                    shapley_storage.total_unit_shares
+                ),
+            },
+            RewardVerification {
+                field: "Verification Status".to_string(),
+                value: if verification_result {
+                    "[VALID] Proof verified successfully!".to_string()
+                } else {
+                    "[INVALID] Proof verification failed!".to_string()
+                },
+            },
+        ];
 
-    println!(
-        "{}",
-        Table::new(verification_data).with(Style::psql().remove_horizontals())
-    );
+        println!(
+            "{}",
+            Table::new(verification_data).with(Style::psql().remove_horizontals())
+        );
+    }
 
     if !verification_result {
         bail!("Merkle proof verification failed");
+    }
+
+    Ok(())
+}
+
+/// JSON output struct for a single reward entry
+#[derive(serde::Serialize)]
+pub struct RewardEntry {
+    pub contributor: String,
+    pub unit_share: u32,
+}
+
+/// JSON output struct for read_all_rewards
+#[derive(serde::Serialize)]
+pub struct AllRewardsOutput {
+    pub epoch: u64,
+    pub merkle_root: String,
+    pub total_contributors: usize,
+    pub total_units: u32,
+    pub rewards: Vec<RewardEntry>,
+}
+
+/// Read all contributor rewards for an epoch
+pub async fn read_all_rewards(
+    settings: &Settings,
+    epoch: u64,
+    rewards_accountant: Option<Pubkey>,
+    json_output: bool,
+) -> Result<()> {
+    let fetcher = Fetcher::from_settings(settings)?;
+
+    // Auto-fetch rewards_accountant if not provided
+    let rewards_accountant =
+        get_rewards_accountant(&fetcher.solana_write_client, rewards_accountant).await?;
+
+    let prefix = settings.get_contributor_rewards_prefix();
+
+    // Fetch the shapley output storage
+    let shapley_storage =
+        try_fetch_shapley_output(&fetcher.dz_rpc_client, &prefix, &rewards_accountant, epoch)
+            .await?;
+
+    // Compute merkle root
+    let merkle_root = shapley_storage.compute_merkle_root()?;
+
+    if json_output {
+        let rewards: Vec<RewardEntry> = shapley_storage
+            .rewards
+            .iter()
+            .map(|r| RewardEntry {
+                contributor: r.contributor_key.to_string(),
+                unit_share: r.unit_share,
+            })
+            .collect();
+
+        let output = AllRewardsOutput {
+            epoch,
+            merkle_root: format!("{merkle_root:?}"),
+            total_contributors: shapley_storage.rewards.len(),
+            total_units: shapley_storage.total_unit_shares,
+            rewards,
+        };
+        println!("{}", serde_json::to_string(&output)?);
+    } else {
+        // Print summary table
+        #[derive(Tabled)]
+        struct SummaryRow {
+            #[tabled(rename = "Field")]
+            field: String,
+            #[tabled(rename = "Value")]
+            value: String,
+        }
+
+        let summary_data = vec![
+            SummaryRow {
+                field: "Epoch".to_string(),
+                value: epoch.to_string(),
+            },
+            SummaryRow {
+                field: "Merkle Root".to_string(),
+                value: format!("{merkle_root:?}"),
+            },
+            SummaryRow {
+                field: "Total Contributors".to_string(),
+                value: shapley_storage.rewards.len().to_string(),
+            },
+            SummaryRow {
+                field: "Total Units".to_string(),
+                value: shapley_storage.total_unit_shares.to_string(),
+            },
+        ];
+
+        println!(
+            "{}",
+            Table::new(summary_data).with(Style::psql().remove_horizontals())
+        );
+
+        // Print rewards table
+        #[derive(Tabled)]
+        struct RewardRow {
+            #[tabled(rename = "Contributor")]
+            contributor: String,
+            #[tabled(rename = "Unit Share")]
+            unit_share: u32,
+        }
+
+        let reward_rows: Vec<RewardRow> = shapley_storage
+            .rewards
+            .iter()
+            .map(|r| RewardRow {
+                contributor: r.contributor_key.to_string(),
+                unit_share: r.unit_share,
+            })
+            .collect();
+
+        println!();
+        println!(
+            "{}",
+            Table::new(reward_rows).with(Style::psql().remove_horizontals())
+        );
     }
 
     Ok(())

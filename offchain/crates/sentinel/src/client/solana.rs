@@ -45,6 +45,8 @@ use crate::{AccessId, Error, Result, new_transaction};
 
 const ACCESS_REQUEST_ACCOUNT_INDEX: usize = 2;
 
+const SLOTS_PER_EPOCH: u64 = 432_000;
+
 #[automock]
 #[async_trait]
 pub trait SolRpcClientType {
@@ -281,9 +283,9 @@ impl SolRpcClient {
         validator_id: &Pubkey,
         previous_leader_epochs: u8,
     ) -> Result<bool> {
-        let latest_slot = self.client.get_slot().await?;
+        let epoch_slots = self.client.get_slot().await.map(PreviousEpochSlots)?;
 
-        for slot in PreviousEpochSlots::new(latest_slot).take(previous_leader_epochs as usize) {
+        for slot in epoch_slots.take(previous_leader_epochs as usize) {
             let config = RpcLeaderScheduleConfig {
                 identity: Some(validator_id.to_string()),
                 ..Default::default()
@@ -348,33 +350,21 @@ fn is_request_access_instruction(ix: &CompiledInstruction, static_account_keys: 
             == PassportInstructionData::REQUEST_ACCESS
 }
 
-pub struct PreviousEpochSlots {
-    current: u64,
-    step: u64,
-}
-
-impl PreviousEpochSlots {
-    // Number of slots per epoch
-    const SLOTS_PER_EPOCH: u64 = 432_000;
-
-    pub fn new(start: u64) -> Self {
-        Self {
-            current: start,
-            step: Self::SLOTS_PER_EPOCH,
-        }
-    }
-}
+struct PreviousEpochSlots(u64);
 
 impl Iterator for PreviousEpochSlots {
     type Item = u64;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let result = self.current;
-        if self.current < self.step {
-            return None;
+        let next_slot = &mut self.0;
+
+        if *next_slot == 0 {
+            None
+        } else {
+            let current_slot = *next_slot;
+            *next_slot = next_slot.saturating_sub(SLOTS_PER_EPOCH);
+            Some(current_slot)
         }
-        self.current -= self.step;
-        Some(result)
     }
 }
 
@@ -386,14 +376,14 @@ mod test {
     fn test_reverse_iter() {
         let start_slot = 2_000_000;
         let num_epochs = 4;
-        let epoch_slots = PreviousEpochSlots::new(start_slot)
+        let epoch_slots = PreviousEpochSlots(start_slot)
             .take(num_epochs)
             .collect::<Vec<_>>();
         assert_eq!(epoch_slots.len(), 4);
         assert_eq!(epoch_slots.first().unwrap(), &start_slot);
         assert_eq!(
             epoch_slots.last().unwrap(),
-            &(start_slot - 3 * PreviousEpochSlots::SLOTS_PER_EPOCH),
+            &(start_slot - 3 * SLOTS_PER_EPOCH),
         );
     }
 }

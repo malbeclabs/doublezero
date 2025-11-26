@@ -177,7 +177,7 @@ async fn test_forgive_solana_validator_debt() {
 
     let (tx_err, program_logs) = test_setup
         .unwrap_simulation_error(
-            &[forgive_solana_validator_debt_ix.clone()],
+            std::slice::from_ref(&forgive_solana_validator_debt_ix),
             &[&debt_accountant_signer],
         )
         .await;

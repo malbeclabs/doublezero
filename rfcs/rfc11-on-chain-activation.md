@@ -81,9 +81,9 @@ This RFC moves allocation logic on-chain, eliminating these concerns while maint
            │  ┌────────────┐      ┌─────────────┐      ┌────────────┐  │
            │  │GlobalState │      │   Device    │      │ AccessPass │  │
            │  │            │      │   Account   │      │  Account   │  │
-           │  │ tunnel_id++│      │ dz_ip++     │      │ users++    │  │
-           │  │ tunnel_net │      │             │      │            │  │
-           │  │   offset++ │      │             │      │            │  │
+           │  │ tunnel_net │      │ dz_ip++     │      │ users++    │  │
+           │  │   offset++ │      │ tunnel_id++ │      │            │  │
+           │  │            │      │             │      │            │  │
            │  └────────────┘      └─────────────┘      └────────────┘  │
            │                             │                             │
            │                             ▼                             │
@@ -111,26 +111,27 @@ The activator maintains simple counters and allocates sequentially from configur
 
 ### Account Modifications
 
-#### GlobalState Account (add ~72 bytes)
+#### GlobalState Account (add ~48 bytes)
 
 | Field                     | Type   | Purpose                                            |
 | ------------------------- | ------ | -------------------------------------------------- |
 | `admin_authority`         | Pubkey | Admin for privileged operations (sweeps, recovery) |
 | `next_user_tunnel_offset` | u32    | Next offset in user_tunnel_block                   |
 | `next_link_tunnel_offset` | u32    | Next offset in device_tunnel_block                 |
-| `next_user_tunnel_id`     | u32    | Next tunnel ID for users (global)                  |
-| `next_link_tunnel_id`     | u32    | Next tunnel ID for links                           |
 | `next_multicast_offset`   | u32    | Next offset in multicast_group_block               |
 
 **Note:** `admin_authority` is set at program initialization and can be updated via governance. Used for SweepExpiredUsers and UpdateDeviceContributor.
 
-#### Device Account (add ~12 bytes)
+#### Device Account (add ~14 bytes)
 
 | Field                     | Type | Purpose                                                 |
 | ------------------------- | ---- | ------------------------------------------------------- |
 | `next_dz_ip_offset`       | u32  | Next offset within device's dz_prefix                   |
+| `next_tunnel_id`          | u16  | Next tunnel ID for interface naming (per-device)        |
 | `next_segment_routing_id` | u16  | Next segment routing ID for loopback interfaces         |
 | `dz_ip_reserved_count`    | u8   | Number of reserved IPs to skip (network, gateway, etc.) |
+
+**Tunnel ID constraint:** Interface naming (`TunnelXXX`) is limited to 4095 on Arista EOS. Keeping `tunnel_id` per-device (u16, starting at 500) allows ~3595 tunnels per device, matching current activator behavior.
 
 **Reserved IP handling:** DZ IP allocation skips the first `dz_ip_reserved_count` offsets (typically 2: network address .0 and gateway .1) and the last offset (broadcast). Set during device activation based on prefix size.
 
@@ -197,18 +198,20 @@ This ensures one user per (device, client_ip, accesspass) tuple. Duplicate attem
 5. Validate prefix_index within device.dz_prefixes bounds
 6. Validate range capacity: `globalstate.next_user_tunnel_offset * 2 < globalconfig.user_tunnel_block.host_count()`
 7. Validate DZ IP capacity: `device.next_dz_ip_offset + reserved < prefix.host_count() - 1`
-8. Allocate tunnel_id: `globalstate.next_user_tunnel_id++`
-9. Allocate tunnel_net: compute from `globalconfig.user_tunnel_block + (globalstate.next_user_tunnel_offset++ * 2)`
-10. Allocate dz_ip: compute from `device.dz_prefixes[prefix_index] + (device.next_dz_ip_offset++ + reserved)`
-11. Create user account with `Activated` status
-12. Increment `accesspass.active_user_count`
-13. Emit `UserActivated` event
+8. Validate tunnel_id capacity: `device.next_tunnel_id < 4096`
+9. Allocate tunnel_id: `device.next_tunnel_id++` (per-device, for interface naming)
+10. Allocate tunnel_net: compute from `globalconfig.user_tunnel_block + (globalstate.next_user_tunnel_offset++ * 2)`
+11. Allocate dz_ip: compute from `device.dz_prefixes[prefix_index] + (device.next_dz_ip_offset++ + reserved)`
+12. Create user account with `Activated` status
+13. Increment `accesspass.active_user_count`
+14. Emit `UserActivated` event
 
 **Error Cases:**
 
 - `AccountAlreadyExists`: User PDA already exists for this (device, client_ip, accesspass)
 - `UserTunnelNetExhausted`: Global user_tunnel_block range is full
 - `DzIpExhausted`: Device's dz_prefix for this index is full
+- `TunnelIdExhausted`: Device has reached 4095 tunnel interfaces
 
 ### CreateAndActivateLink
 
@@ -241,15 +244,17 @@ Sorting device keys ensures (A→B) and (B→A) resolve to the same PDA, prevent
 5. Validate contributors belong to their respective devices
 6. Validate caller is contributor owner for at least one device
 7. Validate range capacity: `globalstate.next_link_tunnel_offset * 2 < globalconfig.device_tunnel_block.host_count()`
-8. Allocate tunnel_id: `globalstate.next_link_tunnel_id++`
-9. Allocate tunnel_net: compute from `globalconfig.device_tunnel_block + (globalstate.next_link_tunnel_offset++ * 2)`
-10. Create link with `Activated` status
-11. Emit `LinkActivated` event
+8. Validate tunnel_id capacity on both devices: `device_a.next_tunnel_id < 4096 && device_b.next_tunnel_id < 4096`
+9. Allocate tunnel_id: `device_a.next_tunnel_id++` (from lower-sorted device for determinism)
+10. Allocate tunnel_net: compute from `globalconfig.device_tunnel_block + (globalstate.next_link_tunnel_offset++ * 2)`
+11. Create link with `Activated` status
+12. Emit `LinkActivated` event
 
 **Error Cases:**
 
 - `LinkAlreadyExists`: Link PDA already exists between these devices
 - `LinkTunnelNetExhausted`: Global device_tunnel_block range is full
+- `TunnelIdExhausted`: One of the devices has reached 4095 tunnel interfaces
 
 ### CreateAndActivateInterface
 
@@ -391,15 +396,14 @@ The controller's behavior is unchanged. It continues polling the same on-chain a
 
 ## Capacity Analysis
 
-| Resource        | Scope      | Capacity          | Source                         |
-| --------------- | ---------- | ----------------- | ------------------------------ |
-| User tunnel_net | Global     | ~32K /31 blocks   | 169.254.0.0/16 (configurable)  |
-| Link tunnel_net | Global     | ~32K /31 blocks   | 172.16.0.0/16 (configurable)   |
-| User tunnel_id  | Global     | 4 billion         | u32 counter                    |
-| Link tunnel_id  | Global     | 4 billion         | u32 counter                    |
-| DZ IP           | Per device | Depends on prefix | Device's dz_prefixes           |
-| Multicast       | Global     | ~256 addresses    | 233.84.178.0/24 (configurable) |
-| **Devices**     | **Global** | **Unlimited**     | No artificial cap              |
+| Resource        | Scope      | Capacity          | Source                           |
+| --------------- | ---------- | ----------------- | -------------------------------- |
+| User tunnel_net | Global     | ~32K /31 blocks   | 169.254.0.0/16 (configurable)    |
+| Link tunnel_net | Global     | ~32K /31 blocks   | 172.16.0.0/16 (configurable)     |
+| Tunnel ID       | Per device | ~3,595 interfaces | u16, 500-4095 (Arista EOS limit) |
+| DZ IP           | Per device | Depends on prefix | Device's dz_prefixes             |
+| Multicast       | Global     | ~256 addresses    | 233.84.178.0/24 (configurable)   |
+| **Devices**     | **Global** | **Unlimited**     | No artificial cap                |
 
 **Current mainnet usage:**
 
@@ -447,7 +451,7 @@ Run one-time migration script:
 1. Query GlobalConfig for current IP ranges
 2. Query all activated users, compute max tunnel_net offset from user_tunnel_block
 3. Query all activated links, compute max tunnel_net offset from device_tunnel_block
-4. Query all devices, compute max dz_ip offset per device per prefix
+4. Query all devices, compute max dz_ip offset and max tunnel_id per device
 5. **Validate:** Ensure all computed offsets fit within configured ranges
 6. Set counters to max + 1
 
@@ -456,11 +460,10 @@ GlobalState:
   admin_authority = <configured admin pubkey>
   next_user_tunnel_offset = max(user.tunnel_net offsets) + 1
   next_link_tunnel_offset = max(link.tunnel_net offsets) + 1
-  next_user_tunnel_id = max(user.tunnel_id) + 1
-  next_link_tunnel_id = max(link.tunnel_id) + 1
 
 Per Device:
   next_dz_ip_offset = max(user.dz_ip offset for this device) + 1
+  next_tunnel_id = max(user.tunnel_id, link.tunnel_id for this device) + 1
   dz_ip_reserved_count = 2  // Skip .0 (network) and .1 (gateway)
 ```
 
@@ -469,6 +472,7 @@ Per Device:
 - `next_user_tunnel_offset * 2 < globalconfig.user_tunnel_block.host_count()`
 - `next_link_tunnel_offset * 2 < globalconfig.device_tunnel_block.host_count()`
 - Per device: `next_dz_ip_offset + reserved < prefix.host_count() - 1`
+- Per device: `next_tunnel_id < 4096`
 
 Migration fails with clear error if any validation fails, preventing silent overflow.
 
@@ -508,8 +512,8 @@ These can be added incrementally without breaking changes.
 
 This RFC eliminates the activator service with minimal changes:
 
-- **~72 bytes new state** on GlobalState
-- **~12 bytes new state** per Device
+- **~48 bytes new state** on GlobalState
+- **~14 bytes new state** per Device
 - **~300 lines of new code**
 - **Zero breaking changes** to IP ranges or allocation strategy
 - **No artificial device limits**

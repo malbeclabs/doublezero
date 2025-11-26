@@ -7,7 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- fix(sentinel): improve previous epoch slot evaluation ([#213](https://github.com/doublezerofoundation/doublezero-offchain/pull/213))
+- fix leader schedule evaluation ([#214](https://github.com/doublezerofoundation/doublezero-offchain/pull/214))
+- improve previous epoch slot evaluation ([#213](https://github.com/doublezerofoundation/doublezero-offchain/pull/213))
 
 ## [0.2.2](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/sentinel/v0.2.2) - 2025-11-11
 

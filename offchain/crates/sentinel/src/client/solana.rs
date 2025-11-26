@@ -278,12 +278,22 @@ impl SolRpcClient {
         Ok(access_ids)
     }
 
+    /// NOTE: If previous_leader_epochs is 0, this method has no leader
+    /// schedules to evaluate, so it will return false.
     pub async fn is_scheduled_leader(
         &self,
         validator_id: &Pubkey,
         previous_leader_epochs: u8,
     ) -> Result<bool> {
+        if previous_leader_epochs == 0 {
+            return Ok(false);
+        }
+
         let epoch_slots = self.client.get_slot().await.map(PreviousEpochSlots)?;
+
+        // We want to ensure that the number of leader schedules evaluated is
+        // equal to the number of epochs requested.
+        let mut schedule_count = 0;
 
         for slot in epoch_slots.take(previous_leader_epochs as usize) {
             let config = RpcLeaderScheduleConfig {
@@ -296,14 +306,16 @@ impl SolRpcClient {
                 .get_leader_schedule_with_config(Some(slot), config)
                 .await?;
 
-            if let Some(slots) = schedule
-                && !slots.is_empty()
-            {
-                return Ok(true);
+            // Bail out early if there is either no leader schedule or this
+            // validator has no slot indices.
+            if schedule.is_none_or(|slot_indices| slot_indices.is_empty()) {
+                return Ok(false);
             }
+
+            schedule_count += 1;
         }
 
-        Ok(false)
+        Ok(schedule_count == previous_leader_epochs)
     }
 
     pub async fn get_validator_ip(&self, validator_id: &Pubkey) -> Result<Option<Ipv4Addr>> {

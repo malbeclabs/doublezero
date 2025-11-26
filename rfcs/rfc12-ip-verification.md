@@ -1,4 +1,4 @@
-# RFC: IP Ownership Verification Service for user connection
+# RFC 12: IP Ownership Verification Service for user connection
 
 ## Summary
 

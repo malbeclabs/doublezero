@@ -86,7 +86,7 @@ mod tests {
             contributor_pk: contributor_pubkey,
             location_pk: location_pubkey,
             exchange_pk: exchange1_pubkey,
-            device_type: DeviceType::Switch,
+            device_type: DeviceType::Hybrid,
             public_ip: [192, 168, 1, 1].into(),
             status: DeviceStatus::Pending,
             code: "TestDevice".to_string(),

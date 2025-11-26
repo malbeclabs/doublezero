@@ -97,7 +97,10 @@ impl ProvisioningCliCommand {
         let (client_ip, client_ip_str) = look_for_ip(&self.client_ip, &spinner).await?;
 
         if !check_accesspass(client, client_ip)? {
-            println!("❌  Unable to find a valid AccessPass for the IP: {client_ip_str}",);
+            println!(
+                "❌  Unable to find a valid AccessPass for the IP: {client_ip_str} UserPayer: {}",
+                client.get_payer()
+            );
             return Err(eyre::eyre!(
                 "A valid AccessPass is required to connect. Please contact support to obtain one."
             ));
@@ -844,7 +847,12 @@ mod tests {
             fixture
         }
 
-        pub fn add_device(&mut self, latency_ns: i32, reachable: bool) -> (Pubkey, Device) {
+        pub fn add_device(
+            &mut self,
+            device_type: DeviceType,
+            latency_ns: i32,
+            reachable: bool,
+        ) -> (Pubkey, Device) {
             let mut devices = self.devices.lock().unwrap();
             let device_number = devices.len() + 1;
             let pk = Pubkey::new_unique();
@@ -861,13 +869,13 @@ mod tests {
             let device = Device {
                 account_type: AccountType::Device,
                 owner: Pubkey::new_unique(),
-                index: 1,
-                bump_seed: 1,
+                index: device_number as u128,
+                bump_seed: 255,
                 reference_count: 0,
                 contributor_pk: Pubkey::new_unique(),
                 location_pk: Pubkey::new_unique(),
                 exchange_pk: Pubkey::new_unique(),
-                device_type: DeviceType::Switch,
+                device_type,
                 public_ip: device_ip.parse().unwrap(),
                 status: DeviceStatus::Activated,
                 metrics_publisher_pk: Pubkey::default(),
@@ -1037,10 +1045,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_connect_command_ibrl() {
+    async fn test_connect_command_ibrl_hybrid() {
         let mut fixture = TestFixture::new();
 
-        let (device1_pk, device1) = fixture.add_device(100, true);
+        let (device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
         let user = fixture.create_user(UserType::IBRL, device1_pk, "1.2.3.4");
         fixture.expect_create_user(Pubkey::new_unique(), &user);
         fixture.expected_provisioning_request(
@@ -1093,10 +1101,92 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_connect_command_ibrl_allocate() {
+    async fn test_connect_command_ibrl_edge() {
         let mut fixture = TestFixture::new();
 
-        let (device1_pk, device1) = fixture.add_device(100, true);
+        let (device1_pk, device1) = fixture.add_device(DeviceType::Edge, 100, true);
+        let user = fixture.create_user(UserType::IBRL, device1_pk, "1.2.3.4");
+        fixture.expect_create_user(Pubkey::new_unique(), &user);
+        fixture.expected_provisioning_request(
+            UserType::IBRL,
+            user.client_ip.to_string().as_str(),
+            device1.public_ip.to_string().as_str(),
+            None,
+            None,
+        );
+
+        // print new line for readability in test output
+        println!();
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::IBRL {
+                allocate_addr: false,
+            },
+            client_ip: Some(user.client_ip.to_string()),
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        assert!(result.is_ok());
+
+        println!("Test that adding an IBRL tunnel with an existing multicast fails");
+        // Test that adding an IBRL tunnel with an existing multicast fails
+        (_, _) = fixture.add_multicast_group("test-group", "239.0.0.1");
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::Multicast {
+                mode: MulticastMode::Publisher,
+                multicast_group: "test-group".to_string(),
+            },
+            client_ip: Some(user.client_ip.to_string()),
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Only one tunnel currently supported"));
+    }
+
+    #[tokio::test]
+    async fn test_connect_command_ibrl_transit() {
+        let mut fixture = TestFixture::new();
+
+        let (device1_pk, _device1) = fixture.add_device(DeviceType::Transit, 100, true);
+        let user = fixture.create_user(UserType::IBRL, device1_pk, "1.2.3.4");
+
+        // print new line for readability in test output
+        println!();
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::IBRL {
+                allocate_addr: false,
+            },
+            client_ip: Some(user.client_ip.to_string()),
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        // Should fail because Transit devices are not allowed for IBRL
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_connect_command_ibrl_allocate_hybrid() {
+        let mut fixture = TestFixture::new();
+
+        let (device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
         let user = fixture.create_user(UserType::IBRLWithAllocatedIP, device1_pk, "1.2.3.4");
         fixture.expect_create_user(Pubkey::new_unique(), &user);
         fixture.expected_provisioning_request(
@@ -1126,10 +1216,69 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_connect_command_ibrl_allocate_edge() {
+        let mut fixture = TestFixture::new();
+
+        let (device1_pk, device1) = fixture.add_device(DeviceType::Edge, 100, true);
+        let user = fixture.create_user(UserType::IBRLWithAllocatedIP, device1_pk, "1.2.3.4");
+        fixture.expect_create_user(Pubkey::new_unique(), &user);
+        fixture.expected_provisioning_request(
+            UserType::IBRLWithAllocatedIP,
+            user.client_ip.to_string().as_str(),
+            device1.public_ip.to_string().as_str(),
+            None,
+            None,
+        );
+
+        // print new line for readability in test output
+        println!();
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::IBRL {
+                allocate_addr: true,
+            },
+            client_ip: Some(user.client_ip.to_string()),
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_connect_command_ibrl_allocate_transit() {
+        let mut fixture = TestFixture::new();
+
+        let (device1_pk, _device1) = fixture.add_device(DeviceType::Transit, 100, true);
+        let user = fixture.create_user(UserType::IBRLWithAllocatedIP, device1_pk, "1.2.3.4");
+
+        // print new line for readability in test output
+        println!();
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::IBRL {
+                allocate_addr: true,
+            },
+            client_ip: Some(user.client_ip.to_string()),
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        // Should fail because Transit devices are not allowed for IBRL with allocate_addr
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
     async fn test_connect_banned_user() {
         let mut fixture = TestFixture::new();
 
-        let (device1_pk, _device1) = fixture.add_device(100, true);
+        let (device1_pk, _device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
         let mut user = fixture.create_user(UserType::IBRL, device1_pk, "1.2.3.4");
         user.status = UserStatus::Banned;
         fixture.add_user(&user);
@@ -1154,7 +1303,7 @@ mod tests {
         let mut fixture = TestFixture::new();
 
         let (mcast_group_pk, mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
-        let (device1_pk, device1) = fixture.add_device(100, true);
+        let (device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
         let user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
         fixture.expect_create_subscribe_user(
             Pubkey::new_unique(),
@@ -1196,7 +1345,7 @@ mod tests {
         let (mcast_group_pk, _mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
         let (_mcast_group2_pk, _mcast_group2) =
             fixture.add_multicast_group("test-group2", "239.0.0.2");
-        let (device1_pk, _device1) = fixture.add_device(100, true);
+        let (device1_pk, _device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
         let mut user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
 
         if multicast_mode == MulticastMode::Subscriber {
@@ -1240,7 +1389,7 @@ mod tests {
         let mut fixture = TestFixture::new();
 
         let (mcast_group_pk, mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
-        let (device1_pk, device1) = fixture.add_device(100, true);
+        let (device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
         let mut user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
 
         let expect_publishers;
@@ -1301,7 +1450,7 @@ mod tests {
 
         let (mcast_group_pk, mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
         (_, _) = fixture.add_multicast_group("test-group2", "239.0.0.2");
-        let (device1_pk, device1) = fixture.add_device(100, true);
+        let (device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
         let user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
         fixture.expect_create_subscribe_user(
             Pubkey::new_unique(),
@@ -1379,7 +1528,7 @@ mod tests {
 
         let (mcast_group_pk, mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
         (_, _) = fixture.add_multicast_group("test-group2", "239.0.0.2");
-        let (device1_pk, device1) = fixture.add_device(100, true);
+        let (device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
         let user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
         fixture.expect_create_subscribe_user(
             Pubkey::new_unique(),
@@ -1467,7 +1616,7 @@ mod tests {
         let mut fixture = TestFixture::new();
 
         // Add a device with max_users = 0
-        let (device_pk, mut device) = fixture.add_device(100, true);
+        let (device_pk, mut device) = fixture.add_device(DeviceType::Hybrid, 100, true);
         device.max_users = 0;
         device.users_count = 0;
 
@@ -1511,7 +1660,7 @@ mod tests {
         let mut fixture = TestFixture::new();
 
         // Add a device that's at capacity (users_count >= max_users)
-        let (device_pk, mut device) = fixture.add_device(100, true);
+        let (device_pk, mut device) = fixture.add_device(DeviceType::Hybrid, 100, true);
         device.max_users = 10;
         device.users_count = 10; // At capacity
 
@@ -1550,7 +1699,7 @@ mod tests {
     async fn test_connect_to_nonexistent_device() {
         let mut fixture = TestFixture::new();
 
-        fixture.add_device(100, true); // Add a device, but we'll try to connect to a different one
+        fixture.add_device(DeviceType::Hybrid, 100, true); // Add a device, but we'll try to connect to a different one
 
         println!();
 

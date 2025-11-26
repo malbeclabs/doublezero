@@ -175,7 +175,7 @@ async fn test_wan_link() {
         program_id,
         DoubleZeroInstruction::CreateDevice(device::create::DeviceCreateArgs {
             code: "A".to_string(),
-            device_type: DeviceType::Switch,
+            device_type: DeviceType::Hybrid,
             public_ip: [110, 0, 0, 1].into(),
             dz_prefixes: "100.1.0.0/24".parse().unwrap(),
             metrics_publisher_pk: Pubkey::default(),
@@ -302,7 +302,7 @@ async fn test_wan_link() {
         program_id,
         DoubleZeroInstruction::CreateDevice(device::create::DeviceCreateArgs {
             code: "Z".to_string(),
-            device_type: DeviceType::Switch,
+            device_type: DeviceType::Hybrid,
             public_ip: [11, 0, 0, 1].into(),
             dz_prefixes: "11.1.0.0/23".parse().unwrap(),
             metrics_publisher_pk: Pubkey::default(),

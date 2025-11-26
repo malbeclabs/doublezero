@@ -171,7 +171,7 @@ async fn test_device() {
         program_id,
         DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
             code: "la".to_string(),
-            device_type: DeviceType::Switch,
+            device_type: DeviceType::Hybrid,
             public_ip: [8, 8, 8, 8].into(), // Global public IP
             dz_prefixes: "110.1.0.0/23".parse().unwrap(), // Global prefix
             metrics_publisher_pk: Pubkey::default(),
@@ -330,7 +330,7 @@ async fn test_device() {
         program_id,
         DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
             code: Some("la2".to_string()),
-            device_type: Some(DeviceType::Switch),
+            device_type: Some(DeviceType::Hybrid),
             contributor_pk: None,
             public_ip: Some([8, 8, 8, 8].into()), // Global public IP
             dz_prefixes: Some("110.1.0.0/23".parse().unwrap()),
@@ -569,7 +569,7 @@ async fn test_device_update_metrics_publisher_by_foundation_allowlist_account() 
         program_id,
         DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
             code: "la".to_string(),
-            device_type: DeviceType::Switch,
+            device_type: DeviceType::Hybrid,
             public_ip: [100, 0, 0, 1].into(),
             dz_prefixes: "110.1.0.0/23".parse().unwrap(),
             metrics_publisher_pk: Pubkey::default(),

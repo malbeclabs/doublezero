@@ -129,7 +129,7 @@ mod tests {
                 bump_seed: 0,
                 location_pk: Pubkey::default(),
                 exchange_pk: Pubkey::default(),
-                device_type: DeviceType::Switch,
+                device_type: DeviceType::Hybrid,
                 public_ip: std::net::Ipv4Addr::UNSPECIFIED,
                 status,
                 code: "device".to_string(),

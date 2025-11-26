@@ -27,6 +27,9 @@ pub struct CreateDeviceCliCommand {
     /// Contributor (pubkey or code) associated with the device
     #[arg(long, value_parser = validate_pubkey_or_code)]
     pub contributor: String,
+    /// Device type (hybrid, transit, edge)
+    #[arg(long, default_value = "hybrid")]
+    pub device_type: String,
     /// Location (pubkey or code) associated with the device
     #[arg(long, value_parser = validate_pubkey_or_code)]
     pub location: String,
@@ -118,12 +121,17 @@ impl CreateDeviceCliCommand {
             client.get_payer()
         };
 
+        let device_type = match DeviceType::from_str(&self.device_type) {
+            Ok(dt) => dt,
+            Err(e) => return Err(eyre::eyre!(e)),
+        };
+
         let (signature, pubkey) = client.create_device(CreateDeviceCommand {
             code: self.code.clone(),
             contributor_pk,
             location_pk,
             exchange_pk,
-            device_type: DeviceType::Switch,
+            device_type,
             public_ip: self.public_ip,
             dz_prefixes: self.dz_prefixes,
             metrics_publisher,
@@ -253,7 +261,7 @@ mod tests {
                 contributor_pk,
                 location_pk,
                 exchange_pk,
-                device_type: DeviceType::Switch,
+                device_type: DeviceType::Hybrid,
                 public_ip: [100, 0, 0, 1].into(),
                 dz_prefixes: "10.1.0.0/16".parse().unwrap(),
                 metrics_publisher: Pubkey::default(),
@@ -267,6 +275,7 @@ mod tests {
             contributor: contributor_pk.to_string(),
             location: location_pk.to_string(),
             exchange: exchange_pk.to_string(),
+            device_type: "hybrid".to_string(),
             public_ip: [100, 0, 0, 1].into(),
             dz_prefixes: "10.1.0.0/16".parse().unwrap(),
             metrics_publisher: Some(Pubkey::default().to_string()),

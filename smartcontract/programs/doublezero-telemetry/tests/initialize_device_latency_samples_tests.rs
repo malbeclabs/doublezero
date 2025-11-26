@@ -421,7 +421,7 @@ async fn test_initialize_device_latency_samples_fail_origin_device_wrong_owner()
         owner: agent.pubkey(),
         contributor_pk: Pubkey::new_unique(),
         exchange_pk: Pubkey::new_unique(),
-        device_type: DeviceType::Switch,
+        device_type: DeviceType::Hybrid,
         public_ip: Ipv4Addr::UNSPECIFIED,
         status: DeviceStatus::Activated,
         metrics_publisher_pk: agent.pubkey(),
@@ -495,7 +495,7 @@ async fn test_initialize_device_latency_samples_fail_target_device_wrong_owner()
         reference_count: 0,
         contributor_pk: Pubkey::new_unique(),
         exchange_pk: Pubkey::new_unique(),
-        device_type: DeviceType::Switch,
+        device_type: DeviceType::Hybrid,
         public_ip: Ipv4Addr::UNSPECIFIED,
         code: "invalid".to_string(),
         mgmt_vrf: "default".to_string(),
@@ -664,7 +664,7 @@ async fn test_initialize_device_latency_samples_fail_origin_device_not_activated
         .create_device(
             DeviceCreateArgs {
                 code: "OriginDevice".to_string(),
-                device_type: DeviceType::Switch,
+                device_type: DeviceType::Hybrid,
                 public_ip: [100, 0, 0, 1].into(),
                 dz_prefixes: vec!["108.0.0.0/24".parse().unwrap()].into(),
                 metrics_publisher_pk: agent.pubkey(),
@@ -689,7 +689,7 @@ async fn test_initialize_device_latency_samples_fail_origin_device_not_activated
         .create_and_activate_device(
             DeviceCreateArgs {
                 code: "TargetDevice".to_string(),
-                device_type: DeviceType::Switch,
+                device_type: DeviceType::Hybrid,
                 public_ip: [100, 0, 0, 1].into(),
                 dz_prefixes: vec!["108.0.0.0/24".parse().unwrap()].into(),
                 metrics_publisher_pk: agent.pubkey(),
@@ -800,7 +800,7 @@ async fn test_initialize_device_latency_samples_fail_target_device_not_activated
         .create_and_activate_device(
             DeviceCreateArgs {
                 code: "OriginDevice".to_string(),
-                device_type: DeviceType::Switch,
+                device_type: DeviceType::Hybrid,
                 public_ip: [100, 0, 0, 1].into(),
                 dz_prefixes: vec!["108.0.0.0/24".parse().unwrap()].into(),
                 metrics_publisher_pk: agent.pubkey(),
@@ -825,7 +825,7 @@ async fn test_initialize_device_latency_samples_fail_target_device_not_activated
         .create_device(
             DeviceCreateArgs {
                 code: "TargetDevice".to_string(),
-                device_type: DeviceType::Switch,
+                device_type: DeviceType::Hybrid,
                 public_ip: [100, 0, 0, 1].into(),
                 dz_prefixes: vec!["108.0.0.0/24".parse().unwrap()].into(),
                 metrics_publisher_pk: agent.pubkey(),
@@ -935,7 +935,7 @@ async fn test_initialize_device_latency_samples_fail_link_not_activated() {
         .create_and_activate_device(
             DeviceCreateArgs {
                 code: "OriginDevice".to_string(),
-                device_type: DeviceType::Switch,
+                device_type: DeviceType::Hybrid,
                 public_ip: [100, 0, 0, 1].into(),
                 dz_prefixes: vec!["108.0.0.0/24".parse().unwrap()].into(),
                 metrics_publisher_pk: agent.pubkey(),
@@ -959,7 +959,7 @@ async fn test_initialize_device_latency_samples_fail_link_not_activated() {
         .create_and_activate_device(
             DeviceCreateArgs {
                 code: "TargetDevice".to_string(),
-                device_type: DeviceType::Switch,
+                device_type: DeviceType::Hybrid,
                 public_ip: [100, 0, 0, 2].into(),
                 dz_prefixes: vec!["108.0.0.0/24".parse().unwrap()].into(),
                 metrics_publisher_pk: agent.pubkey(),
@@ -1067,7 +1067,7 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_devices() {
         .create_and_activate_device(
             DeviceCreateArgs {
                 code: "OriginDevice".to_string(),
-                device_type: DeviceType::Switch,
+                device_type: DeviceType::Hybrid,
                 public_ip: [100, 0, 0, 1].into(),
                 dz_prefixes: vec!["108.0.0.0/24".parse().unwrap()].into(),
                 metrics_publisher_pk: agent.pubkey(),
@@ -1085,7 +1085,7 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_devices() {
         .create_and_activate_device(
             DeviceCreateArgs {
                 code: "TargetDevice".to_string(),
-                device_type: DeviceType::Switch,
+                device_type: DeviceType::Hybrid,
                 public_ip: [100, 0, 0, 2].into(),
                 dz_prefixes: vec!["108.0.0.0/24".parse().unwrap()].into(),
                 metrics_publisher_pk: agent.pubkey(),
@@ -1104,7 +1104,7 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_devices() {
         .create_and_activate_device(
             DeviceCreateArgs {
                 code: "DeviceX".to_string(),
-                device_type: DeviceType::Switch,
+                device_type: DeviceType::Hybrid,
                 public_ip: [100, 0, 0, 3].into(),
                 dz_prefixes: vec!["108.0.0.0/24".parse().unwrap()].into(),
                 ..DeviceCreateArgs::default()
@@ -1127,7 +1127,7 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_devices() {
         .create_and_activate_device(
             DeviceCreateArgs {
                 code: "DeviceY".to_string(),
-                device_type: DeviceType::Switch,
+                device_type: DeviceType::Hybrid,
                 public_ip: [100, 0, 0, 4].into(),
                 dz_prefixes: vec!["108.0.0.0/24".parse().unwrap()].into(),
                 ..DeviceCreateArgs::default()
@@ -1236,7 +1236,7 @@ async fn test_initialize_device_latency_samples_succeeds_with_reversed_link_side
         .create_and_activate_device(
             DeviceCreateArgs {
                 code: "OriginDevice".into(),
-                device_type: DeviceType::Switch,
+                device_type: DeviceType::Hybrid,
                 public_ip: [100, 0, 0, 1].into(),
                 dz_prefixes: vec!["109.0.0.0/24".parse().unwrap()].into(),
                 metrics_publisher_pk: agent.pubkey(),
@@ -1260,7 +1260,7 @@ async fn test_initialize_device_latency_samples_succeeds_with_reversed_link_side
         .create_and_activate_device(
             DeviceCreateArgs {
                 code: "TargetDevice".into(),
-                device_type: DeviceType::Switch,
+                device_type: DeviceType::Hybrid,
                 public_ip: [100, 0, 0, 2].into(),
                 dz_prefixes: vec!["108.0.0.0/24".parse().unwrap()].into(),
                 metrics_publisher_pk: agent.pubkey(),
@@ -1507,7 +1507,7 @@ async fn test_initialize_device_latency_samples_fail_agent_not_owner_of_origin_d
         .create_and_activate_device(
             DeviceCreateArgs {
                 code: "A".to_string(),
-                device_type: DeviceType::Switch,
+                device_type: DeviceType::Hybrid,
                 public_ip: [100, 0, 0, 1].into(),
                 dz_prefixes: vec!["108.0.0.0/24".parse().unwrap()].into(),
                 metrics_publisher_pk: owner_agent.pubkey(),
@@ -1532,7 +1532,7 @@ async fn test_initialize_device_latency_samples_fail_agent_not_owner_of_origin_d
         .create_and_activate_device(
             DeviceCreateArgs {
                 code: "Z".to_string(),
-                device_type: DeviceType::Switch,
+                device_type: DeviceType::Hybrid,
                 public_ip: [100, 0, 0, 2].into(),
                 dz_prefixes: vec!["108.0.0.0/24".parse().unwrap()].into(),
                 metrics_publisher_pk: unauthorized_agent.pubkey(),

@@ -18,14 +18,18 @@ use std::{fmt, net::Ipv4Addr, str::FromStr};
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum DeviceType {
     #[default]
-    Switch = 0,
+    Hybrid = 0,
+    Transit = 1,
+    Edge = 2,
 }
 
 impl From<u8> for DeviceType {
     fn from(value: u8) -> Self {
         match value {
-            0 => DeviceType::Switch,
-            _ => DeviceType::Switch, // Default case
+            0 => DeviceType::Hybrid,
+            1 => DeviceType::Transit,
+            2 => DeviceType::Edge,
+            _ => DeviceType::Hybrid, // Default case
         }
     }
 }
@@ -33,7 +37,22 @@ impl From<u8> for DeviceType {
 impl fmt::Display for DeviceType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            DeviceType::Switch => write!(f, "switch"),
+            DeviceType::Hybrid => write!(f, "hybrid"),
+            DeviceType::Transit => write!(f, "transit"),
+            DeviceType::Edge => write!(f, "edge"),
+        }
+    }
+}
+
+impl FromStr for DeviceType {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "hybrid" => Ok(DeviceType::Hybrid),
+            "transit" => Ok(DeviceType::Transit),
+            "edge" => Ok(DeviceType::Edge),
+            _ => Err(format!("Invalid device type: {}", s)),
         }
     }
 }
@@ -157,6 +176,31 @@ pub struct Device {
     pub max_users: u16,            // 2
 }
 
+impl Default for Device {
+    fn default() -> Self {
+        Self {
+            account_type: AccountType::Device,
+            owner: Pubkey::default(),
+            index: 0,
+            bump_seed: 0,
+            location_pk: Pubkey::default(),
+            exchange_pk: Pubkey::default(),
+            device_type: DeviceType::Hybrid,
+            public_ip: Ipv4Addr::new(0, 0, 0, 0),
+            status: DeviceStatus::Pending,
+            code: String::new(),
+            dz_prefixes: Vec::new().into(),
+            metrics_publisher_pk: Pubkey::default(),
+            contributor_pk: Pubkey::default(),
+            mgmt_vrf: String::new(),
+            interfaces: Vec::new(),
+            reference_count: 0,
+            users_count: 0,
+            max_users: 0,
+        }
+    }
+}
+
 impl Device {
     pub fn find_interface(&self, name: &str) -> Result<(usize, CurrentInterfaceVersion), String> {
         self.interfaces
@@ -168,7 +212,14 @@ impl Device {
     }
 
     pub fn is_device_eligible_for_provisioning(&self) -> bool {
+        /*
+         * Device eligibility for provisioning requires:
+         * - Device must be activated
+         * - Device type must be Edge or Hybrid
+         * - Device must have available user slots
+         */
         self.status == DeviceStatus::Activated
+            && (self.device_type == DeviceType::Edge || self.device_type == DeviceType::Hybrid)
             && (self.max_users > 0 && self.users_count < self.max_users)
     }
 }
@@ -339,6 +390,54 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_device_is_device_eligible_for_provisioning() {
+        let device = Device {
+            status: DeviceStatus::Activated,
+            device_type: DeviceType::Edge,
+            users_count: 2,
+            max_users: 5,
+            ..Device::default()
+        };
+        assert!(device.is_device_eligible_for_provisioning());
+
+        let device = Device {
+            status: DeviceStatus::Activated,
+            device_type: DeviceType::Hybrid,
+            users_count: 2,
+            max_users: 5,
+            ..Device::default()
+        };
+        assert!(device.is_device_eligible_for_provisioning());
+
+        let device = Device {
+            status: DeviceStatus::Activated,
+            device_type: DeviceType::Transit,
+            users_count: 2,
+            max_users: 5,
+            ..Device::default()
+        };
+        assert!(!device.is_device_eligible_for_provisioning());
+
+        let device = Device {
+            status: DeviceStatus::Pending,
+            device_type: DeviceType::Hybrid,
+            users_count: 2,
+            max_users: 5,
+            ..Device::default()
+        };
+        assert!(!device.is_device_eligible_for_provisioning());
+
+        let device = Device {
+            status: DeviceStatus::Activated,
+            device_type: DeviceType::Hybrid,
+            users_count: 5,
+            max_users: 5,
+            ..Device::default()
+        };
+        assert!(!device.is_device_eligible_for_provisioning());
+    }
+
+    #[test]
     fn test_state_compatibility_device() {
         /* To generate the base64 strings, use the following commands after deploying the program and creating accounts:
 
@@ -364,7 +463,7 @@ mod tests {
         assert_eq!(val.exchange_pk, Pubkey::default());
         assert_eq!(val.public_ip, Ipv4Addr::new(0, 0, 0, 0));
         assert_eq!(val.status, DeviceStatus::Pending);
-        assert_eq!(val.device_type, DeviceType::Switch);
+        assert_eq!(val.device_type, DeviceType::Hybrid);
         assert_eq!(val.metrics_publisher_pk, Pubkey::default());
         assert_eq!(val.contributor_pk, Pubkey::default());
         assert_eq!(val.mgmt_vrf, "");
@@ -384,7 +483,7 @@ mod tests {
             reference_count: 0,
             contributor_pk: Pubkey::new_unique(),
             code: "test-321".to_string(),
-            device_type: DeviceType::Switch,
+            device_type: DeviceType::Hybrid,
             location_pk: Pubkey::new_unique(),
             exchange_pk: Pubkey::new_unique(),
             dz_prefixes: "100.0.0.1/24".parse().unwrap(),
@@ -410,7 +509,7 @@ mod tests {
             reference_count: 0,
             contributor_pk: Pubkey::new_unique(),
             code: "a".repeat(33), // More than 32 bytes
-            device_type: DeviceType::Switch,
+            device_type: DeviceType::Hybrid,
             location_pk: Pubkey::new_unique(),
             exchange_pk: Pubkey::new_unique(),
             dz_prefixes: "10.0.0.1/24".parse().unwrap(),
@@ -436,7 +535,7 @@ mod tests {
             reference_count: 0,
             contributor_pk: Pubkey::new_unique(),
             code: "test-321".to_string(),
-            device_type: DeviceType::Switch,
+            device_type: DeviceType::Hybrid,
             location_pk: Pubkey::default(), // Invalid
             exchange_pk: Pubkey::new_unique(),
             dz_prefixes: "10.0.0.1/24".parse().unwrap(),
@@ -462,7 +561,7 @@ mod tests {
             reference_count: 0,
             contributor_pk: Pubkey::new_unique(),
             code: "test-321".to_string(),
-            device_type: DeviceType::Switch,
+            device_type: DeviceType::Hybrid,
             location_pk: Pubkey::new_unique(),
             exchange_pk: Pubkey::default(), // Invalid
             dz_prefixes: "10.0.0.1/24".parse().unwrap(),
@@ -489,7 +588,7 @@ mod tests {
             reference_count: 0,
             contributor_pk: Pubkey::new_unique(),
             code: "test-321".to_string(),
-            device_type: DeviceType::Switch,
+            device_type: DeviceType::Hybrid,
             location_pk: Pubkey::new_unique(),
             exchange_pk: Pubkey::new_unique(),
             dz_prefixes: "10.0.0.1/24".parse().unwrap(),
@@ -515,7 +614,7 @@ mod tests {
             reference_count: 0,
             contributor_pk: Pubkey::new_unique(),
             code: "test-321".to_string(),
-            device_type: DeviceType::Switch,
+            device_type: DeviceType::Hybrid,
             location_pk: Pubkey::new_unique(),
             exchange_pk: Pubkey::new_unique(),
             dz_prefixes: "0.0.0.0".parse().unwrap(),
@@ -541,7 +640,7 @@ mod tests {
             reference_count: 0,
             contributor_pk: Pubkey::new_unique(),
             code: "test-321".to_string(),
-            device_type: DeviceType::Switch,
+            device_type: DeviceType::Hybrid,
             location_pk: Pubkey::new_unique(),
             exchange_pk: Pubkey::new_unique(),
             dz_prefixes: "100.0.0.1/24".parse().unwrap(),
@@ -567,7 +666,7 @@ mod tests {
             reference_count: 0,
             contributor_pk: Pubkey::new_unique(),
             code: "test-321".to_string(),
-            device_type: DeviceType::Switch,
+            device_type: DeviceType::Hybrid,
             location_pk: Pubkey::new_unique(),
             exchange_pk: Pubkey::new_unique(),
             dz_prefixes: "100.0.0.1/24".parse().unwrap(),
@@ -594,7 +693,7 @@ mod tests {
             reference_count: 0,
             contributor_pk: Pubkey::new_unique(),
             code: "test-321".to_string(),
-            device_type: DeviceType::Switch,
+            device_type: DeviceType::Hybrid,
             location_pk: Pubkey::new_unique(),
             exchange_pk: Pubkey::new_unique(),
             dz_prefixes: "0.0.0.0/24".parse().unwrap(), // Invalid
@@ -638,7 +737,7 @@ mod tests {
             reference_count: 0,
             contributor_pk: Pubkey::new_unique(),
             code: "test-321".to_string(),
-            device_type: DeviceType::Switch,
+            device_type: DeviceType::Hybrid,
             location_pk: Pubkey::new_unique(),
             exchange_pk: Pubkey::new_unique(),
             dz_prefixes: "10.0.0.1/24".parse().unwrap(),
@@ -665,7 +764,7 @@ mod tests {
             reference_count: 0,
             contributor_pk: Pubkey::new_unique(),
             code: "test-321".to_string(),
-            device_type: DeviceType::Switch,
+            device_type: DeviceType::Hybrid,
             location_pk: Pubkey::new_unique(),
             exchange_pk: Pubkey::new_unique(),
             dz_prefixes: "100.0.0.1/24,101.0.0.1/24".parse().unwrap(),
@@ -754,7 +853,7 @@ mod tests {
             reference_count: 0,
             contributor_pk: Pubkey::new_unique(),
             code: "test-321".to_string(),
-            device_type: DeviceType::Switch,
+            device_type: DeviceType::Hybrid,
             location_pk: Pubkey::new_unique(),
             exchange_pk: Pubkey::new_unique(),
             dz_prefixes: "10.0.0.1/24,11.0.0.1/24".parse().unwrap(),

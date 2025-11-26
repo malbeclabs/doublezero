@@ -151,7 +151,7 @@ mod tests {
                 ..Default::default()
             }
             .to_interface()],
-            device_type: DeviceType::Switch,
+            device_type: DeviceType::Hybrid,
             public_ip: "127.0.0.1".parse().unwrap(),
             status: DeviceStatus::Activated,
             dz_prefixes: "10.0.0.1/32".parse().unwrap(),
@@ -191,7 +191,7 @@ mod tests {
             .to_interface()],
             location_pk: Pubkey::default(),
             exchange_pk: Pubkey::default(),
-            device_type: doublezero_sdk::DeviceType::Switch,
+            device_type: doublezero_sdk::DeviceType::Hybrid,
             public_ip: "127.0.0.1".parse().unwrap(),
             status: DeviceStatus::Activated,
             dz_prefixes: "10.0.0.1/32".parse().unwrap(),

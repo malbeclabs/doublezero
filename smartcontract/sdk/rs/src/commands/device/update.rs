@@ -108,7 +108,7 @@ mod tests {
             contributor_pk: Pubkey::default(),
             location_pk: Pubkey::default(),
             exchange_pk: Pubkey::default(),
-            device_type: DeviceType::Switch,
+            device_type: DeviceType::Hybrid,
             public_ip: [1, 2, 3, 4].into(),
             dz_prefixes: "1.2.3.4/32".parse().unwrap(),
             status: DeviceStatus::Activated,
@@ -129,7 +129,7 @@ mod tests {
             .with(
                 predicate::eq(DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
                     code: Some("test_device".to_string()),
-                    device_type: Some(DeviceType::Switch),
+                    device_type: Some(DeviceType::Hybrid),
                     public_ip: None,
                     dz_prefixes: Some("10.0.0.0/8".parse().unwrap()),
                     metrics_publisher_pk: None,
@@ -147,7 +147,7 @@ mod tests {
             pubkey: device_pubkey,
             code: Some("test_device".to_string()),
             contributor_pk: None,
-            device_type: Some(DeviceType::Switch),
+            device_type: Some(DeviceType::Hybrid),
             public_ip: None,
             dz_prefixes: Some("10.0.0.0/8".parse().unwrap()),
             metrics_publisher: None,

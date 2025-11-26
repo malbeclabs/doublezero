@@ -50,6 +50,9 @@ pub struct UpdateDeviceCliCommand {
     /// Updated status for the device (optional)
     #[arg(long)]
     pub status: Option<String>,
+    /// Device type (optional)
+    #[arg(long)]
+    pub device_type: Option<DeviceType>,
     /// Wait for the device to be activated
     #[arg(short, long, default_value_t = false)]
     pub wait: bool,
@@ -120,7 +123,7 @@ impl UpdateDeviceCliCommand {
         let signature = client.update_device(UpdateDeviceCommand {
             pubkey,
             code: self.code,
-            device_type: Some(DeviceType::Switch),
+            device_type: self.device_type,
             public_ip: self.public_ip,
             dz_prefixes: self.dz_prefixes,
             metrics_publisher,
@@ -189,7 +192,7 @@ mod tests {
             contributor_pk,
             location_pk,
             exchange_pk,
-            device_type: DeviceType::Switch,
+            device_type: DeviceType::Hybrid,
             public_ip: [1, 2, 3, 4].into(),
             dz_prefixes: "1.2.3.4/32".parse().unwrap(),
             status: DeviceStatus::Activated,
@@ -209,7 +212,7 @@ mod tests {
             contributor_pk,
             location_pk,
             exchange_pk,
-            device_type: DeviceType::Switch,
+            device_type: DeviceType::Hybrid,
             public_ip: [2, 3, 4, 5].into(),
             dz_prefixes: "2.3.4.5/32".parse().unwrap(),
             status: DeviceStatus::Activated,
@@ -229,7 +232,7 @@ mod tests {
             contributor_pk,
             location_pk,
             exchange_pk,
-            device_type: DeviceType::Switch,
+            device_type: DeviceType::Hybrid,
             public_ip: [3, 4, 5, 6].into(),
             dz_prefixes: "3.4.5.6/32".parse().unwrap(),
             status: DeviceStatus::Activated,
@@ -266,7 +269,7 @@ mod tests {
             .with(predicate::eq(UpdateDeviceCommand {
                 pubkey: pda_pubkey,
                 code: Some("test".to_string()),
-                device_type: Some(DeviceType::Switch),
+                device_type: Some(DeviceType::Hybrid),
                 public_ip: Some([1, 2, 3, 4].into()),
                 dz_prefixes: Some("1.2.3.4/32".parse().unwrap()),
                 metrics_publisher: Some(Pubkey::from_str_const(
@@ -293,6 +296,7 @@ mod tests {
             pubkey: pda_pubkey.to_string(),
             code: Some("test".to_string()),
             public_ip: Some([1, 2, 3, 4].into()),
+            device_type: Some(DeviceType::Hybrid),
             dz_prefixes: Some("1.2.3.4/32".parse().unwrap()),
             metrics_publisher: Some("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx".to_string()),
             contributor: Some("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx".to_string()),
@@ -330,7 +334,7 @@ mod tests {
             contributor_pk,
             location_pk,
             exchange_pk,
-            device_type: DeviceType::Switch,
+            device_type: DeviceType::Hybrid,
             public_ip: [1, 2, 3, 4].into(),
             dz_prefixes: "1.2.3.4/32".parse().unwrap(),
             status: DeviceStatus::Activated,
@@ -350,7 +354,7 @@ mod tests {
             contributor_pk,
             location_pk,
             exchange_pk,
-            device_type: DeviceType::Switch,
+            device_type: DeviceType::Hybrid,
             public_ip: [2, 3, 4, 5].into(),
             dz_prefixes: "2.3.4.5/32".parse().unwrap(),
             status: DeviceStatus::Activated,
@@ -384,6 +388,7 @@ mod tests {
         let res = UpdateDeviceCliCommand {
             pubkey: pda_pubkey.to_string(),
             code: Some("existing_code".to_string()),
+            device_type: None,
             public_ip: None,
             dz_prefixes: None,
             metrics_publisher: None,
@@ -422,7 +427,7 @@ mod tests {
             contributor_pk,
             location_pk,
             exchange_pk,
-            device_type: DeviceType::Switch,
+            device_type: DeviceType::Hybrid,
             public_ip: [1, 2, 3, 4].into(),
             dz_prefixes: "1.2.3.4/32".parse().unwrap(),
             status: DeviceStatus::Activated,
@@ -442,7 +447,7 @@ mod tests {
             contributor_pk,
             location_pk,
             exchange_pk,
-            device_type: DeviceType::Switch,
+            device_type: DeviceType::Hybrid,
             public_ip: [10, 20, 30, 40].into(),
             dz_prefixes: "10.20.30.40/32".parse().unwrap(),
             status: DeviceStatus::Activated,
@@ -478,6 +483,7 @@ mod tests {
             public_ip: Some([10, 20, 30, 40].into()),
             dz_prefixes: None,
             metrics_publisher: None,
+            device_type: None,
             location: None,
             contributor: None,
             mgmt_vrf: None,

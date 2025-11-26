@@ -134,7 +134,7 @@ mod tests {
             .with(
                 predicate::eq(DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
                     code: "test_device".to_string(),
-                    device_type: DeviceType::Switch,
+                    device_type: DeviceType::Hybrid,
                     public_ip: [10, 0, 0, 1].into(),
                     dz_prefixes: "10.0.0.0/8".parse().unwrap(),
                     metrics_publisher_pk: pubmetrics_publisher,
@@ -155,7 +155,7 @@ mod tests {
             contributor_pk: contributor_pubkey,
             location_pk: location_pubkey,
             exchange_pk: exchange_pubkey,
-            device_type: DeviceType::Switch,
+            device_type: DeviceType::Hybrid,
             public_ip: [10, 0, 0, 1].into(),
             dz_prefixes: "10.0.0.0/8".parse().unwrap(),
             metrics_publisher: pubmetrics_publisher,

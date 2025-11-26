@@ -205,7 +205,7 @@ async fn device_update_location_test() {
         program_id,
         DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
             code: "la".to_string(),
-            device_type: DeviceType::Switch,
+            device_type: DeviceType::Hybrid,
             public_ip: [8, 8, 8, 8].into(), // Global public IP
             dz_prefixes: "110.1.0.0/23".parse().unwrap(), // Global prefix
             metrics_publisher_pk: Pubkey::default(),

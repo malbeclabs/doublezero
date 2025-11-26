@@ -118,7 +118,7 @@ mod tests {
             contributor_pk: Pubkey::default(),
             location_pk: Pubkey::default(),
             exchange_pk: Pubkey::default(),
-            device_type: DeviceType::Switch,
+            device_type: DeviceType::Hybrid,
             public_ip: [1, 2, 3, 4].into(),
             dz_prefixes: "1.2.3.4/32".parse().unwrap(),
             status: DeviceStatus::Activated,

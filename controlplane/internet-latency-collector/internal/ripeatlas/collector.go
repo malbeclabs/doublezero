@@ -487,17 +487,21 @@ func (c *Collector) ExportMeasurementResults(ctx context.Context, stateDir strin
 
 	// Track missing samples metric for circuits that were expected but not received
 	missingSamples := 0
+	var missingCircuits []string
 	for circuit := range circuitExpectedSamples {
 		if _, exists := circuitActualSamples[circuit]; !exists {
 			metrics.LatencySamplesPerCollectionIntervalMissing.WithLabelValues(c.env, circuit, "ripeatlas").Add(1)
 			missingSamples++
+			missingCircuits = append(missingCircuits, circuit)
 		}
 	}
 	if missingSamples > 0 {
+		sort.Strings(missingCircuits)
 		c.log.Info("RIPE Atlas - Tracked missing samples",
 			slog.Int("missing_samples", missingSamples),
 			slog.Int("expected_circuits", len(circuitExpectedSamples)),
-			slog.Int("actual_circuits", len(circuitActualSamples)))
+			slog.Int("actual_circuits", len(circuitActualSamples)),
+			slog.Any("missing_circuits", missingCircuits))
 	}
 
 	c.log.Info("Successfully exported measurement results",
@@ -726,18 +730,45 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 
 	// Step 4: Detect unresponsive probes (no exports after 1 hour)
 	currentTime := time.Now().Unix()
-	oneHourAgo := currentTime - 3600
+	probeTimeout := currentTime - 14400	// 4 hours (14400 seconds)
+	newUnresponsiveProbes := 0
 	for _, measurement := range doubleZeroMeasurements {
 		if meta, hasMeta := measurementState.GetMetadata(measurement.ID); hasMeta {
-			// Check if measurement is stale (created > 1 hour ago but never exported)
-			if meta.LastExportAt == 0 && meta.CreatedAt > 0 && meta.CreatedAt < oneHourAgo {
+			// Check if measurement is stale - either never exported, or last export was too long ago
+			isStale := false
+			var reason string
+
+			if meta.LastExportAt == 0 && meta.CreatedAt > 0 && meta.CreatedAt < probeTimeout {
+				// Case 1: Created > 1 hour ago but never exported
+				isStale = true
+				reason = "never_exported"
+			} else if meta.LastExportAt > 0 && meta.LastExportAt < probeTimeout {
+				// Case 2: Last export was > 1 hour ago
+				isStale = true
+				reason = "no_recent_exports"
+			}
+
+			if isStale {
 				c.log.Warn("Marking probe as unresponsive - no exports after 1 hour",
 					slog.Int("measurement_id", measurement.ID),
 					slog.Int("probe_id", meta.TargetProbeID),
 					slog.String("target_location", meta.TargetLocation),
-					slog.Time("created_at", time.Unix(meta.CreatedAt, 0)))
+					slog.String("reason", reason),
+					slog.Time("created_at", time.Unix(meta.CreatedAt, 0)),
+					slog.Time("last_export_at", time.Unix(meta.LastExportAt, 0)))
 				measurementState.AddUnresponsiveProbe(meta.TargetProbeID)
+				newUnresponsiveProbes++
 			}
+		}
+	}
+
+	// Save state if we detected any new unresponsive probes
+	if newUnresponsiveProbes > 0 {
+		if err := measurementState.Save(); err != nil {
+			c.log.Warn("Failed to save measurement state after detecting unresponsive probes", slog.String("error", err.Error()))
+		} else {
+			c.log.Info("Saved unresponsive probe state",
+				slog.Int("new_unresponsive_probes", newUnresponsiveProbes))
 		}
 	}
 
@@ -759,10 +790,22 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 			// No existing measurement for this target, create it
 			toCreate = append(toCreate, wanted)
 		} else {
-			// Check if existing measurement has the correct source probes
+			// Check if existing measurement has the correct target and source probes
 			meta, hasMeta := measurementState.GetMetadata(existing.ID)
 			if !hasMeta {
 				// No metadata, can't verify sources, recreate
+				toCreate = append(toCreate, wanted)
+				continue
+			}
+
+			// Check if target probe has changed
+			targetProbeChanged := meta.TargetProbeID != wanted.TargetProbe.ID
+			if targetProbeChanged {
+				c.log.Info("Measurement has outdated target probe, marking for recreation",
+					slog.Int("measurement_id", existing.ID),
+					slog.String("target", wanted.TargetLocationCode),
+					slog.Int("existing_probe_id", meta.TargetProbeID),
+					slog.Int("wanted_probe_id", wanted.TargetProbe.ID))
 				toCreate = append(toCreate, wanted)
 				continue
 			}
@@ -801,15 +844,21 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 		}
 	}
 
-	// Remove measurements for targets we no longer want, measurements without metadata, or measurements with outdated sources
+	// Remove measurements for targets we no longer want, measurements without metadata, or measurements with outdated target/source probes
 	toRemove := []Measurement{}
 	measurementsToRecreate := make(map[string]bool)
 
-	// First, identify measurements that need recreation due to outdated sources
+	// First, identify measurements that need recreation due to outdated target or source probes
 	for _, wanted := range wantedMeasurements {
 		if existing, exists := existingByTarget[wanted.TargetLocationCode]; exists {
 			meta, hasMeta := measurementState.GetMetadata(existing.ID)
 			if hasMeta {
+				// Check if target probe has changed
+				if meta.TargetProbeID != wanted.TargetProbe.ID {
+					measurementsToRecreate[wanted.TargetLocationCode] = true
+					continue
+				}
+
 				// Check if sources match
 				existingSources := make(map[string]bool)
 				for _, source := range meta.Sources {
@@ -857,7 +906,7 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 				if !wantedTargets[targetLocation] {
 					toRemove = append(toRemove, measurement)
 				} else if measurementsToRecreate[targetLocation] {
-					// This measurement needs to be recreated due to outdated sources
+					// This measurement needs to be recreated due to outdated target or source probes
 					toRemove = append(toRemove, measurement)
 				}
 			}

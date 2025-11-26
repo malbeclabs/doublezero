@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand"
+	"net"
 	"sort"
 	"strings"
 	"time"
@@ -21,13 +22,14 @@ type Test struct {
 	clients        map[string]*Client
 	serviceability *serviceability.Client
 	devices        map[string]*Device
+	users          map[string]*User
 	rand           *rand.Rand
 }
 
 func NewTest(ctx context.Context, log *slog.Logger, hosts []string, port int, networkConfig *config.NetworkConfig) (*Test, error) {
 	serviceabilityClient := serviceability.New(rpc.New(networkConfig.LedgerPublicRPCURL), networkConfig.ServiceabilityProgramID)
 
-	devices, err := getDevices(context.Background(), serviceabilityClient)
+	devices, users, err := getDevicesAndUsers(context.Background(), serviceabilityClient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get devices: %v", err)
 	}
@@ -48,6 +50,7 @@ func NewTest(ctx context.Context, log *slog.Logger, hosts []string, port int, ne
 		clients:        clients,
 		serviceability: serviceabilityClient,
 		devices:        devices,
+		users:          users,
 		rand:           rand,
 	}, nil
 }
@@ -75,6 +78,10 @@ func (t *Test) RandomMulticastGroupCode() string {
 
 func (t *Test) Devices() map[string]*Device {
 	return t.devices
+}
+
+func (t *Test) Users() map[string]*User {
+	return t.users
 }
 
 func (t *Test) ValidDevices(minCapacity int) []*Device {
@@ -126,27 +133,42 @@ func (c *Test) GetClient(host string) *Client {
 	return c.clients[host]
 }
 
-func getDevices(ctx context.Context, serviceabilityClient *serviceability.Client) (map[string]*Device, error) {
+func getDevicesAndUsers(ctx context.Context, serviceabilityClient *serviceability.Client) (map[string]*Device, map[string]*User, error) {
 	devices := make(map[string]*Device)
 	data, err := getProgramDataWithRetry(ctx, serviceabilityClient)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get program data: %v", err)
+		return nil, nil, fmt.Errorf("failed to get program data: %v", err)
 	}
 	exchanges := make(map[[32]uint8]string)
 	for _, e := range data.Exchanges {
 		exchanges[e.PubKey] = e.Code
 	}
+	devicesByPK := make(map[string]*Device)
 	for _, device := range data.Devices {
 		exchangeCode := exchanges[device.ExchangePubKey]
-		devices[device.Code] = &Device{
-			PubKey:       base58.Encode(device.PubKey[:]),
+		devicePK := base58.Encode(device.PubKey[:])
+		device := &Device{
+			PubKey:       devicePK,
 			Code:         device.Code,
 			ExchangeCode: exchangeCode,
 			MaxUsers:     int(device.MaxUsers),
 			UsersCount:   int(device.UsersCount),
 		}
+		devices[device.Code] = device
+		devicesByPK[devicePK] = device
 	}
-	return devices, nil
+	users := make(map[string]*User)
+	for _, user := range data.Users {
+		userPK := base58.Encode(user.PubKey[:])
+		devicePK := base58.Encode(user.DevicePubKey[:])
+		users[userPK] = &User{
+			PubKey:   userPK,
+			DZIP:     net.IP(user.DzIp[:]),
+			UserType: user.UserType,
+			Device:   devicesByPK[devicePK],
+		}
+	}
+	return devices, users, nil
 }
 
 func getProgramDataWithRetry(ctx context.Context, serviceabilityClient *serviceability.Client) (*serviceability.ProgramData, error) {

@@ -1198,12 +1198,6 @@ fn try_distribute_rewards(
         ZeroCopyMutAccount::<Distribution>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
     msg!("DZ epoch: {}", distribution.dz_epoch);
 
-    // Make sure the distribution rewards calculation is finalized.
-    if !distribution.is_rewards_calculation_finalized() {
-        msg!("Distribution rewards have not been finalized");
-        return Err(ProgramError::InvalidAccountData);
-    }
-
     // Make sure 2Z tokens have been swept.
     if !distribution.has_swept_2z_tokens() {
         msg!("Distribution has not swept 2Z tokens");
@@ -1806,7 +1800,7 @@ fn try_forgive_solana_validator_debt(
     // - 0: Program config.
     // - 1: Debt accountant.
     // - 2: Distribution.
-    // - 3: Next distribution.
+    // - 3: Write-off distribution.
     let mut accounts_iter = accounts.iter().enumerate();
 
     // Account 0 must be the program config.
@@ -1819,14 +1813,15 @@ fn try_forgive_solana_validator_debt(
     // Account 2 must be the distribution.
     let mut distribution =
         ZeroCopyMutAccount::<Distribution>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
-    msg!("DZ epoch: {}", distribution.dz_epoch);
+    let dz_epoch = distribution.dz_epoch;
+    msg!("DZ epoch: {}", dz_epoch);
 
     // We cannot pay Solana validator debt until the accountant has finalized
     // the debt calculation.
     distribution
         .try_require_finalized_debt_calculation()
         .inspect_err(|_| {
-            msg!("Epoch {} has unfinalized debt", distribution.dz_epoch);
+            msg!("Epoch {} has unfinalized debt", dz_epoch);
         })?;
 
     // This merkle root will be used to verify the debt after we determine
@@ -1845,7 +1840,7 @@ fn try_forgive_solana_validator_debt(
     .inspect_err(|_| {
         msg!(
             "Solana validator debt already processed for epoch {}",
-            distribution.dz_epoch
+            dz_epoch
         );
     })?;
 
@@ -1857,40 +1852,46 @@ fn try_forgive_solana_validator_debt(
         return Err(ProgramError::InvalidInstructionData);
     }
 
-    // Account 3 must be the distribution reflecting an epoch ahead of the
-    // current distribution's epoch.
-    let mut next_distribution =
-        ZeroCopyMutAccount::<Distribution>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
-    msg!("Next DZ epoch: {}", next_distribution.dz_epoch);
+    // We should drop the reference to this account just in case the write-off
+    // distribution is the same as the distribution above.
+    drop(distribution);
 
-    if next_distribution.dz_epoch <= distribution.dz_epoch {
-        msg!("Next distribution's epoch must be ahead of the current distribution's epoch");
+    // Account 3 must be the same distribution or a distribution reflecting an
+    // epoch ahead of the current distribution's epoch.
+    let mut write_off_distribution =
+        ZeroCopyMutAccount::<Distribution>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+    msg!("Write-off DZ epoch: {}", write_off_distribution.dz_epoch);
+
+    if write_off_distribution.dz_epoch < dz_epoch {
+        msg!(
+            "Write-off distribution's epoch must be at least the epoch of the current distribution"
+        );
         return Err(ProgramError::InvalidAccountData);
     }
 
-    // We cannot account for uncollectible debt if the next distribution has
-    // already swept 2Z tokens.
-    next_distribution
+    // We cannot account for uncollectible debt if the write-off distribution
+    // has already swept 2Z tokens.
+    write_off_distribution
         .try_require_has_not_swept_2z_tokens()
         .inspect_err(|_| {
             msg!(
-                "Next epoch {} has already swept 2Z tokens",
-                next_distribution.dz_epoch
+                "Write-off epoch {} has already swept 2Z tokens",
+                write_off_distribution.dz_epoch
             );
         })?;
 
-    // Out of paranoia, prevent accounting for uncollectible debt if the next
-    // distribution is not finalized.
-    next_distribution
+    // Out of paranoia, prevent accounting for uncollectible debt if the
+    // write-off distribution is not finalized.
+    write_off_distribution
         .try_require_finalized_debt_calculation()
         .inspect_err(|_| {
             msg!(
-                "Next epoch {} has unfinalized debt",
-                next_distribution.dz_epoch
+                "Write-off epoch {} has unfinalized debt",
+                write_off_distribution.dz_epoch
             );
         })?;
 
-    // Update the uncollectible SOL debt amount of the next distribution.
+    // Update the uncollectible SOL debt amount of the write-off distribution.
     //
     // We make the assumption that with the existence of this distribution, the
     // last distribution may have swept 2Z tokens so rewards can be distributed
@@ -1899,19 +1900,21 @@ fn try_forgive_solana_validator_debt(
     // By tracking the uncollectible debt here, the rewards paid to contributors
     // will be reduced for this distribution by the amount of SOL debt that was
     // forgiven.
-    next_distribution.uncollectible_sol_debt += debt.amount;
+    write_off_distribution.uncollectible_sol_debt += debt.amount;
 
     // Double-check that the uncollectible debt does not exceed the total debt
     // for this distribution.
-    next_distribution.checked_total_sol_debt().ok_or_else(|| {
-        msg!("Uncollectible SOL debt exceeds total debt");
-        ProgramError::ArithmeticOverflow
-    })?;
+    write_off_distribution
+        .checked_total_sol_debt()
+        .ok_or_else(|| {
+            msg!("Uncollectible SOL debt exceeds total debt for write-off epoch");
+            ProgramError::ArithmeticOverflow
+        })?;
 
     msg!(
         "Updated uncollectible SOL debt to {} for distribution epoch {}",
-        next_distribution.uncollectible_sol_debt,
-        next_distribution.dz_epoch
+        write_off_distribution.uncollectible_sol_debt,
+        write_off_distribution.dz_epoch
     );
 
     Ok(())
@@ -2026,8 +2029,11 @@ fn try_sweep_distribution_tokens(accounts: &[AccountInfo]) -> ProgramResult {
     distribution.try_require_has_not_swept_2z_tokens()?;
     distribution.set_has_swept_2z_tokens(true);
 
-    // Make sure the distribution debt calculation is finalized.
-    distribution.try_require_finalized_debt_calculation()?;
+    // Make sure the distribution rewards calculation is finalized.
+    if !distribution.is_rewards_calculation_finalized() {
+        msg!("Distribution rewards have not been finalized");
+        return Err(ProgramError::InvalidAccountData);
+    }
 
     // Account 2 must be the journal.
     let mut journal =

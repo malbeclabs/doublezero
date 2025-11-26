@@ -114,8 +114,7 @@ async fn test_finalize_distribution_rewards() {
         .await
         .unwrap();
 
-    // Cannot finalize until debt have not been finalized.
-
+    // Cannot finalize rewards until debt has been finalized.
     let (tx_err, program_logs) =
         cannot_finalize_distribution_rewards(&mut test_setup, dz_epoch).await;
     assert_eq!(
@@ -132,8 +131,7 @@ async fn test_finalize_distribution_rewards() {
         .await
         .unwrap();
 
-    // Cannot finalize until the rewards root is not null.
-
+    // Cannot finalize if the rewards root is null.
     let (tx_err, program_logs) =
         cannot_finalize_distribution_rewards(&mut test_setup, dz_epoch).await;
     assert_eq!(
@@ -156,7 +154,6 @@ async fn test_finalize_distribution_rewards() {
         .unwrap();
 
     // Cannot finalize until the minimum number of epochs has been configured.
-
     let (tx_err, program_logs) =
         cannot_finalize_distribution_rewards(&mut test_setup, dz_epoch).await;
     assert_eq!(
@@ -203,7 +200,6 @@ async fn test_finalize_distribution_rewards() {
 
     // Initialize another distribution to move next DZ epoch to allow rewards to
     // be finalized.
-
     test_setup
         .initialize_distribution(&debt_accountant_signer)
         .await
@@ -214,8 +210,6 @@ async fn test_finalize_distribution_rewards() {
         program_config.next_completed_dz_epoch,
         minimum_dz_epoch_to_finalize
     );
-
-    //
 
     let (_, _, remaining_distribution_data_before, distribution_lamports_balance_before, _) =
         test_setup.fetch_distribution(dz_epoch).await;
@@ -277,7 +271,6 @@ async fn test_finalize_distribution_rewards() {
     );
 
     // Cannot configure distribution rewards after finalization.
-
     let configure_distribution_rewards_ix = try_build_instruction(
         &ID,
         ConfigureDistributionRewardsAccounts::new(&rewards_accountant_signer.pubkey(), dz_epoch),
@@ -304,7 +297,6 @@ async fn test_finalize_distribution_rewards() {
     );
 
     // Cannot finalize again.
-
     let (tx_err, program_logs) =
         cannot_finalize_distribution_rewards(&mut test_setup, dz_epoch).await;
     assert_eq!(

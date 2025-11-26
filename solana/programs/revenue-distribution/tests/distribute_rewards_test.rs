@@ -55,10 +55,6 @@ async fn test_distribute_rewards() {
     let distribute_rewards_relay_lamports = 128 * 6_960;
 
     // Distribution debt.
-
-    let dz_epoch = DoubleZeroEpoch::new(1);
-    let next_dz_epoch = dz_epoch.saturating_add_duration(1);
-
     let debt_data = (0..8)
         .map(|i| SolanaValidatorDebt {
             node_id: Pubkey::new_unique(),
@@ -79,7 +75,12 @@ async fn test_distribute_rewards() {
     let expected_swept_2z_amount_1 = 69 * u64::pow(10, 8);
     let expected_swept_2z_amount_2 = 420 * u64::pow(10, 8);
 
+    // Distribution rewards.
     let minimum_epoch_duration_to_finalize_rewards = 1;
+
+    // Target epochs.
+    let dz_epoch = DoubleZeroEpoch::new(1);
+    let next_dz_epoch = dz_epoch.saturating_add_duration(1);
 
     test_setup
         .transfer_2z(
@@ -178,6 +179,12 @@ async fn test_distribute_rewards() {
         .unwrap()
         .finalize_distribution_debt(next_dz_epoch, &debt_accountant_signer)
         .await
+        .unwrap()
+        .finalize_distribution_rewards(Default::default())
+        .await
+        .unwrap()
+        .sweep_distribution_tokens(Default::default())
+        .await
         .unwrap();
 
     // 1. Initialize Solana validator deposit accounts.
@@ -253,15 +260,6 @@ async fn test_distribute_rewards() {
             expected_swept_2z_amount_2,
             total_solana_validator_debt - uncollectible_debt.amount,
         )
-        .await
-        .unwrap()
-        .sweep_distribution_tokens(DoubleZeroEpoch::default())
-        .await
-        .unwrap()
-        .sweep_distribution_tokens(dz_epoch)
-        .await
-        .unwrap()
-        .sweep_distribution_tokens(next_dz_epoch)
         .await
         .unwrap();
 
@@ -419,6 +417,12 @@ async fn test_distribute_rewards() {
         .await
         .unwrap()
         .finalize_distribution_rewards(next_dz_epoch)
+        .await
+        .unwrap()
+        .sweep_distribution_tokens(dz_epoch)
+        .await
+        .unwrap()
+        .sweep_distribution_tokens(next_dz_epoch)
         .await
         .unwrap();
 

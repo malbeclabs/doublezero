@@ -22,7 +22,10 @@ use solana_sdk::{
     signature::{Keypair, Signer},
     transaction::TransactionError,
 };
-use svm_hash::merkle::{merkle_root_from_indexed_pod_leaves, MerkleProof};
+use svm_hash::{
+    merkle::{merkle_root_from_indexed_pod_leaves, MerkleProof},
+    sha2::Hash,
+};
 
 //
 // Sweep distribution tokens.
@@ -56,9 +59,6 @@ async fn test_sweep_distribution_tokens() {
     let distribute_rewards_relay_lamports = 10_000;
 
     // Distribution debt.
-
-    let dz_epoch = DoubleZeroEpoch::new(1);
-
     let debt_data = (0..8)
         .map(|i| SolanaValidatorDebt {
             node_id: Pubkey::new_unique(),
@@ -78,6 +78,17 @@ async fn test_sweep_distribution_tokens() {
 
     let expected_swept_2z_amount_1 = 69 * u64::pow(10, 8);
     let expected_swept_2z_amount_2 = 420 * u64::pow(10, 8);
+
+    // Distribution rewards.
+    let minimum_epoch_duration_to_finalize_rewards = 1;
+
+    let total_contributors = 2;
+    let rewards_merkle_root = Hash::new_unique();
+
+    // Target epochs.
+    let dz_epoch = DoubleZeroEpoch::new(0);
+    let next_dz_epoch = dz_epoch.saturating_add_duration(1);
+    let and_another_dz_epoch = next_dz_epoch.saturating_add_duration(1);
 
     test_setup
         .transfer_2z(
@@ -120,6 +131,9 @@ async fn test_sweep_distribution_tokens() {
                 ),
                 ProgramConfiguration::CalculationGracePeriodMinutes(1),
                 ProgramConfiguration::DistributionInitializationGracePeriodMinutes(1),
+                ProgramConfiguration::MinimumEpochDurationToFinalizeRewards(
+                    minimum_epoch_duration_to_finalize_rewards,
+                ),
                 ProgramConfiguration::Flag(ProgramFlagConfiguration::IsPaused(false)),
             ],
         )
@@ -138,7 +152,7 @@ async fn test_sweep_distribution_tokens() {
         .await
         .unwrap()
         .configure_distribution_debt(
-            dz_epoch,
+            next_dz_epoch,
             &debt_accountant_signer,
             total_solana_validators,
             total_solana_validator_debt,
@@ -146,7 +160,15 @@ async fn test_sweep_distribution_tokens() {
         )
         .await
         .unwrap()
-        .finalize_distribution_debt(dz_epoch, &debt_accountant_signer)
+        .finalize_distribution_debt(next_dz_epoch, &debt_accountant_signer)
+        .await
+        .unwrap()
+        .configure_distribution_rewards(
+            next_dz_epoch,
+            &rewards_accountant_signer,
+            total_contributors,
+            rewards_merkle_root,
+        )
         .await
         .unwrap()
         .initialize_swap_destination(&DOUBLEZERO_MINT_KEY)
@@ -187,13 +209,12 @@ async fn test_sweep_distribution_tokens() {
             .transfer_lamports(&deposit_key, amount)
             .await
             .unwrap()
-            .pay_solana_validator_debt(dz_epoch, node_id, amount, proof)
+            .pay_solana_validator_debt(next_dz_epoch, node_id, amount, proof)
             .await
             .unwrap();
     }
 
-    // Cannot sweep until distribution 0 is swept.
-
+    // Cannot sweep until distribution 0 is finalized.
     let sweep_distribution_tokens_ix = try_build_instruction(
         &ID,
         SweepDistributionTokensAccounts::new(
@@ -214,25 +235,56 @@ async fn test_sweep_distribution_tokens() {
     );
     assert_eq!(
         program_logs.get(3).unwrap(),
+        "Program log: Distribution rewards have not been finalized"
+    );
+
+    test_setup
+        .finalize_distribution_debt(dz_epoch, &debt_accountant_signer)
+        .await
+        .unwrap()
+        .finalize_distribution_rewards(dz_epoch)
+        .await
+        .unwrap()
+        .finalize_distribution_rewards(next_dz_epoch)
+        .await
+        .unwrap();
+
+    // Cannot sweep until distribution 0 is swept.
+    let sweep_distribution_tokens_ix = try_build_instruction(
+        &ID,
+        SweepDistributionTokensAccounts::new(
+            next_dz_epoch,
+            &Pubkey::new_unique(),
+            &Pubkey::new_unique(),
+        ),
+        &RevenueDistributionInstructionData::SweepDistributionTokens,
+    )
+    .unwrap();
+
+    let (tx_err, program_logs) = test_setup
+        .unwrap_simulation_error(&[sweep_distribution_tokens_ix], &[])
+        .await;
+    assert_eq!(
+        tx_err,
+        TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
+    );
+    assert_eq!(
+        program_logs.get(3).unwrap(),
         "Program log: Can only sweep tokens for DZ epoch 0"
     );
 
     test_setup
-        .finalize_distribution_debt(DoubleZeroEpoch::default(), &debt_accountant_signer)
-        .await
-        .unwrap()
-        .sweep_distribution_tokens(DoubleZeroEpoch::default())
+        .sweep_distribution_tokens(dz_epoch)
         .await
         .unwrap();
 
     // Cannot sweep if there is not enough swapped SOL to cover the debt.
-
     let sol_2z_swap_fills_registry_key = test_setup.sol_2z_swap_fills_registry_key;
 
     let sweep_distribution_tokens_ix = try_build_instruction(
         &ID,
         SweepDistributionTokensAccounts::new(
-            dz_epoch,
+            next_dz_epoch,
             &mock_swap_sol_2z::ID,
             &sol_2z_swap_fills_registry_key,
         ),
@@ -254,9 +306,6 @@ async fn test_sweep_distribution_tokens() {
 
     // Initialize another distribution. Out of convenience, use the same debt
     // calculations.
-
-    let next_dz_epoch = dz_epoch.saturating_add_duration(1);
-
     test_setup
         .initialize_distribution(&debt_accountant_signer)
         .await
@@ -265,7 +314,7 @@ async fn test_sweep_distribution_tokens() {
         .await
         .unwrap()
         .configure_distribution_debt(
-            next_dz_epoch,
+            and_another_dz_epoch,
             &debt_accountant_signer,
             total_solana_validators,
             total_solana_validator_debt,
@@ -273,7 +322,18 @@ async fn test_sweep_distribution_tokens() {
         )
         .await
         .unwrap()
-        .finalize_distribution_debt(next_dz_epoch, &debt_accountant_signer)
+        .finalize_distribution_debt(and_another_dz_epoch, &debt_accountant_signer)
+        .await
+        .unwrap()
+        .configure_distribution_rewards(
+            and_another_dz_epoch,
+            &rewards_accountant_signer,
+            total_contributors,
+            rewards_merkle_root,
+        )
+        .await
+        .unwrap()
+        .finalize_distribution_rewards(and_another_dz_epoch)
         .await
         .unwrap();
 
@@ -296,7 +356,7 @@ async fn test_sweep_distribution_tokens() {
             .transfer_lamports(&deposit_key, amount)
             .await
             .unwrap()
-            .pay_solana_validator_debt(next_dz_epoch, node_id, amount, proof)
+            .pay_solana_validator_debt(and_another_dz_epoch, node_id, amount, proof)
             .await
             .unwrap();
     }
@@ -339,7 +399,7 @@ async fn test_sweep_distribution_tokens() {
     let journal_sol_balance_before = journal.swapped_sol_amount;
 
     test_setup
-        .sweep_distribution_tokens(dz_epoch)
+        .sweep_distribution_tokens(next_dz_epoch)
         .await
         .unwrap();
 
@@ -370,17 +430,18 @@ async fn test_sweep_distribution_tokens() {
     );
 
     let (distribution_key, distribution, remaining_distribution_data, _, distribution_2z_token_pda) =
-        test_setup.fetch_distribution(dz_epoch).await;
+        test_setup.fetch_distribution(next_dz_epoch).await;
 
     assert_eq!(distribution_2z_token_pda.amount, expected_swept_2z_amount_1);
 
     let mut expected_distribution = Distribution::default();
     expected_distribution.set_is_debt_calculation_finalized(true);
+    expected_distribution.set_is_rewards_calculation_finalized(true);
     expected_distribution.set_has_swept_2z_tokens(true);
-    expected_distribution.bump_seed = Distribution::find_address(dz_epoch).1;
+    expected_distribution.bump_seed = Distribution::find_address(next_dz_epoch).1;
     expected_distribution.token_2z_pda_bump_seed =
         state::find_2z_token_pda_address(&distribution_key).1;
-    expected_distribution.dz_epoch = dz_epoch;
+    expected_distribution.dz_epoch = next_dz_epoch;
     expected_distribution.community_burn_rate = BurnRate::new(initial_cbr).unwrap();
     expected_distribution
         .solana_validator_fee_parameters
@@ -392,8 +453,13 @@ async fn test_sweep_distribution_tokens() {
     expected_distribution.collected_solana_validator_payments =
         total_solana_validator_debt - uncollectible_debt.amount;
     expected_distribution.solana_validator_debt_merkle_root = solana_validator_debt_merkle_root;
+    expected_distribution.total_contributors = total_contributors;
+    expected_distribution.rewards_merkle_root = rewards_merkle_root;
     expected_distribution.collected_2z_converted_from_sol = expected_swept_2z_amount_1;
     expected_distribution.processed_solana_validator_debt_end_index = total_solana_validators / 8;
+    expected_distribution.processed_rewards_start_index = total_solana_validators / 8;
+    expected_distribution.processed_rewards_end_index =
+        (total_solana_validators / 8) + (total_contributors / 8 + 1);
     expected_distribution.distribute_rewards_relay_lamports = distribute_rewards_relay_lamports;
     expected_distribution.calculation_allowed_timestamp = test_setup
         .get_clock()
@@ -401,8 +467,7 @@ async fn test_sweep_distribution_tokens() {
         .unix_timestamp
         .saturating_sub(60) as u32;
     assert_eq!(distribution, expected_distribution);
-
-    assert_eq!(remaining_distribution_data, vec![0b11111011]);
+    assert_eq!(remaining_distribution_data, vec![0b11111011, 0b0]);
 
     // Forgive debt for the uncollectible validator.
     let proof = MerkleProof::from_indexed_pod_leaves(
@@ -414,8 +479,8 @@ async fn test_sweep_distribution_tokens() {
 
     test_setup
         .forgive_solana_validator_debt(
-            dz_epoch,
             next_dz_epoch,
+            and_another_dz_epoch,
             &debt_accountant_signer,
             &uncollectible_debt,
             proof,
@@ -425,7 +490,7 @@ async fn test_sweep_distribution_tokens() {
 
     // Sweep next distribution.
     test_setup
-        .sweep_distribution_tokens(next_dz_epoch)
+        .sweep_distribution_tokens(and_another_dz_epoch)
         .await
         .unwrap();
 
@@ -458,9 +523,9 @@ async fn test_sweep_distribution_tokens() {
     // No data in the distribution changes except for the bit reflecting the
     // uncollectible debt.
     let (_, distribution, remaining_distribution_data, _, _) =
-        test_setup.fetch_distribution(dz_epoch).await;
+        test_setup.fetch_distribution(next_dz_epoch).await;
     assert_eq!(distribution, expected_distribution);
-    assert_eq!(remaining_distribution_data, vec![0b11111111]);
+    assert_eq!(remaining_distribution_data, vec![0b11111111, 0b0]);
 
     let (
         distribution_key,
@@ -468,15 +533,16 @@ async fn test_sweep_distribution_tokens() {
         remaining_distribution_data,
         _,
         _distribution_2z_token_pda,
-    ) = test_setup.fetch_distribution(next_dz_epoch).await;
+    ) = test_setup.fetch_distribution(and_another_dz_epoch).await;
 
     let mut expected_distribution = Distribution::default();
     expected_distribution.set_is_debt_calculation_finalized(true);
+    expected_distribution.set_is_rewards_calculation_finalized(true);
     expected_distribution.set_has_swept_2z_tokens(true);
-    expected_distribution.bump_seed = Distribution::find_address(next_dz_epoch).1;
+    expected_distribution.bump_seed = Distribution::find_address(and_another_dz_epoch).1;
     expected_distribution.token_2z_pda_bump_seed =
         state::find_2z_token_pda_address(&distribution_key).1;
-    expected_distribution.dz_epoch = next_dz_epoch;
+    expected_distribution.dz_epoch = and_another_dz_epoch;
     expected_distribution.community_burn_rate = BurnRate::new(initial_cbr).unwrap();
     expected_distribution
         .solana_validator_fee_parameters
@@ -487,13 +553,17 @@ async fn test_sweep_distribution_tokens() {
     expected_distribution.total_solana_validator_debt = total_solana_validator_debt;
     expected_distribution.collected_solana_validator_payments = total_solana_validator_debt;
     expected_distribution.solana_validator_debt_merkle_root = solana_validator_debt_merkle_root;
+    expected_distribution.total_contributors = total_contributors;
+    expected_distribution.rewards_merkle_root = rewards_merkle_root;
     expected_distribution.collected_2z_converted_from_sol = expected_swept_2z_amount_2;
     expected_distribution.uncollectible_sol_debt = uncollectible_debt.amount;
     expected_distribution.processed_solana_validator_debt_end_index = total_solana_validators / 8;
+    expected_distribution.processed_rewards_start_index = total_solana_validators / 8;
+    expected_distribution.processed_rewards_end_index =
+        (total_solana_validators / 8) + (total_contributors / 8 + 1);
     expected_distribution.distribute_rewards_relay_lamports = distribute_rewards_relay_lamports;
     expected_distribution.calculation_allowed_timestamp =
         test_setup.get_clock().await.unix_timestamp as u32;
     assert_eq!(distribution, expected_distribution);
-
-    assert_eq!(remaining_distribution_data, vec![0b11111111]);
+    assert_eq!(remaining_distribution_data, vec![0b11111111, 0b0]);
 }

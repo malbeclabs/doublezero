@@ -11,15 +11,16 @@ All notable changes to this project will be documented in this file.
 - RFCs
   - RFC-10: Version Compatibility Windows
 - CLI
-    - IP address lookups via ifconfig.me are retried up to 3 times to minimize transient network errors.
-    - Added global `--no-version-warning` flag to the `doublezero` client and now emit version warnings to STDERR instead of STDOUT to improve scriptability and logging.
-    - Add the ability to update a Device’s location, managing the reference counters accordingly.
-    - Added support in the link update command to set a link’s status to soft_drained or hard_drained.
-    - Added support for specifying `device_type` at creation, updating it via device update, and displaying it in list/detail outputs.
-    - Add support for updating `contributor.ops_manager_key`.
+  - IP address lookups via ifconfig.me are retried up to 3 times to minimize transient network errors.
+  - Added global `--no-version-warning` flag to the `doublezero` client and now emit version warnings to STDERR instead of STDOUT to improve scriptability and logging.
+  - Add the ability to update a Device’s location, managing the reference counters accordingly.
+  - Added support in the link update command to set a link’s status to soft_drained or hard_drained.
+  - Added support for specifying `device_type` at creation, updating it via device update, and displaying it in list/detail outputs.
+  - Add support for updating `contributor.ops_manager_key`.
 - Client
   - Add route liveness fault-injection simulation tests.
-    - Updated the `interface list` command to display all interfaces when no device is specified.
+  - Updated the `interface list` command to display all interfaces when no device is specified.
+  - Route liveness treats peers that advertise passive mode as selectively passive; does not manage their routes directly.
 - Funder
   - Fund multicast group owners
 - Onchain programs

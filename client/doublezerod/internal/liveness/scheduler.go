@@ -146,11 +146,13 @@ type Scheduler struct {
 
 	enablePeerMetrics bool
 	metrics           *Metrics
+
+	passiveMode bool
 }
 
 // NewScheduler constructs a Scheduler bound to a UDP transport and logger.
 // onSessionDown is called asynchronously whenever a session is detected as failed.
-func NewScheduler(log *slog.Logger, udp UDPService, onSessionDown SessionDownFunc, maxEvents int, enablePeerMetrics bool, metrics *Metrics) *Scheduler {
+func NewScheduler(log *slog.Logger, udp UDPService, onSessionDown SessionDownFunc, maxEvents int, enablePeerMetrics bool, metrics *Metrics, passiveMode bool) *Scheduler {
 	eq := NewEventQueue()
 	return &Scheduler{
 		log:               log,
@@ -161,6 +163,7 @@ func NewScheduler(log *slog.Logger, udp UDPService, onSessionDown SessionDownFun
 		maxEvents:         maxEvents,
 		enablePeerMetrics: enablePeerMetrics,
 		metrics:           metrics,
+		passiveMode:       passiveMode,
 	}
 }
 
@@ -349,7 +352,7 @@ func (s *Scheduler) doTX(ctx context.Context, sess *Session) {
 	state := sess.state
 	localDiscr := sess.localDiscr
 	peerDiscr := sess.peerDiscr
-	pkt := (&ControlPacket{
+	pkt := &ControlPacket{
 		Version:         1,
 		State:           sess.state,
 		DetectMult:      sess.detectMult,
@@ -358,14 +361,18 @@ func (s *Scheduler) doTX(ctx context.Context, sess *Session) {
 		PeerDiscr:       sess.peerDiscr,
 		DesiredMinTxUs:  uint32(sess.localTxMin / time.Microsecond),
 		RequiredMinRxUs: uint32(sess.localRxMin / time.Microsecond),
-	}).Marshal()
+	}
+	if s.passiveMode {
+		pkt.SetPassive()
+	}
+	bpkt := pkt.Marshal()
 	peer := *sess.peer
 	sess.mu.Unlock()
 	src := net.IP(nil)
 	if sess.route != nil {
 		src = sess.route.Src
 	}
-	_, err := s.udp.WriteTo(pkt, sess.peerAddr, sess.peer.Interface, src)
+	_, err := s.udp.WriteTo(bpkt, sess.peerAddr, sess.peer.Interface, src)
 	if err != nil {
 		select {
 		case <-ctx.Done():

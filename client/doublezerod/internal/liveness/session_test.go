@@ -434,3 +434,44 @@ func TestClient_Liveness_Session_HandleRxFromUpToDownWhenPeerReportsDownAfterDet
 	require.True(t, s.detectDeadline.IsZero(), "detectDeadline should be cleared when transitioning to Down on remote Down")
 	require.Equal(t, uint32(1), s.backoffFactor, "backoff should reset when entering Down")
 }
+
+func TestClient_Liveness_Session_HandleRx_TracksCurrentPeerAdvertisedPassive(t *testing.T) {
+	t.Parallel()
+
+	s := newSess()
+	s.state = StateDown
+	s.localDiscr = 42
+
+	now := time.Now()
+
+	// First packet: peer advertises passive.
+	cpPassive := &ControlPacket{
+		Version:         1,
+		State:           StateInit,
+		DetectMult:      3,
+		Length:          40,
+		LocalDiscr:      1001,
+		PeerDiscr:       0,
+		DesiredMinTxUs:  30_000,
+		RequiredMinRxUs: 40_000,
+	}
+	cpPassive.SetPassive()
+
+	_ = s.HandleRx(now, cpPassive)
+	require.Equal(t, PeerModePassive, s.peerAdvertisedMode, "should reflect current passive=on")
+
+	// Second packet: same session, but peer no longer advertises passive.
+	cpActive := &ControlPacket{
+		Version:         1,
+		State:           StateInit,
+		DetectMult:      3,
+		Length:          40,
+		LocalDiscr:      1001, // same peer discr
+		PeerDiscr:       42,   // echo our localDiscr
+		DesiredMinTxUs:  20_000,
+		RequiredMinRxUs: 20_000,
+	}
+	_ = s.HandleRx(now.Add(10*time.Millisecond), cpActive)
+
+	require.Equal(t, PeerModeActive, s.peerAdvertisedMode, "peerAdvertisedMode should reflect current (no passive flag)")
+}

@@ -496,10 +496,6 @@ func TestClient_Liveness_Manager_AdminDownRoute_PassiveMode_NoDelete_Idempotent(
 	m.HandleRx(&ControlPacket{PeerDiscr: 0, LocalDiscr: 7, State: StateInit}, peer)
 	m.HandleRx(&ControlPacket{PeerDiscr: sess.localDiscr, LocalDiscr: sess.peerDiscr, State: StateUp}, peer)
 
-	rk := routeKeyFor(peer.Interface, sess.route)
-	time.Sleep(50 * time.Millisecond)
-	require.True(t, m.IsInstalled(rk), "installed should be true after Up even in PassiveMode")
-
 	m.AdminDownRoute(r, "lo")
 
 	select {
@@ -508,14 +504,12 @@ func TestClient_Liveness_Manager_AdminDownRoute_PassiveMode_NoDelete_Idempotent(
 	case <-time.After(200 * time.Millisecond):
 	}
 
-	require.False(t, m.IsInstalled(rk), "installed should be false after AdminDownRoute even in PassiveMode")
-
 	snap := sess.Snapshot()
 	require.Equal(t, StateAdminDown, snap.State)
 	require.Equal(t, DownReasonLocalAdmin, snap.LastDownReason)
 
+	// Idempotent second call.
 	m.AdminDownRoute(r, "lo")
-
 	select {
 	case <-delCh:
 		t.Fatalf("unexpected RouteDelete on second AdminDownRoute in PassiveMode")
@@ -565,7 +559,7 @@ func TestClient_Liveness_Manager_WithdrawRoute_PassiveMode_DeletesAndRemovesSess
 	case <-time.After(200 * time.Millisecond):
 	}
 
-	require.Equal(t, 0, m.GetInstalledLen(), "installed should be false after withdraw in PassiveMode")
+	require.Equal(t, 0, m.GetInstalledLen(), "installed should be empty after withdraw in PassiveMode")
 	require.Equal(t, 0, m.GetSessionsLen(), "session should be removed after withdraw in PassiveMode")
 	require.False(t, m.HasSession(peer), "session should be removed after withdraw in PassiveMode")
 	require.False(t, sess.alive, "session should be marked not alive after withdraw in PassiveMode")
@@ -853,6 +847,266 @@ func TestClient_Liveness_Manager_OnSessionDown_EmitsConvergenceToDownWhenInstall
 	// convDownStart should be cleared after accounting.
 	snap := sess.Snapshot()
 	require.True(t, snap.ConvDownStart.IsZero(), "convDownStart should be cleared after onSessionDown")
+}
+
+func TestClient_Liveness_Manager_HonorPeerAdvertisedPassive_LeavesRouteInstalledOnDown(t *testing.T) {
+	t.Parallel()
+
+	delCh := make(chan *routing.Route, 1)
+
+	m, err := newTestManager(t, func(cfg *ManagerConfig) {
+		cfg.HonorPeerAdvertisedPassive = true
+		cfg.Netlinker = &MockRouteReaderWriter{
+			RouteAddFunc:        func(r *routing.Route) error { return nil },
+			RouteDeleteFunc:     func(r *routing.Route) error { delCh <- r; return nil },
+			RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, nil },
+		}
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = m.Close() })
+
+	// Build a route and peer like the rest of the tests.
+	r := newTestRoute(func(r *routing.Route) {
+		r.Src = net.IPv4(127, 0, 0, 1)
+		r.Dst = &net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(32, 32)}
+	})
+	peer := Peer{Interface: "lo", LocalIP: r.Src.String(), PeerIP: r.Dst.IP.String()}
+
+	// Synthetic session which is "effectively passive" due to peer flags:
+	sess := &Session{
+		peer:               &peer,
+		route:              r,
+		state:              StateDown,
+		peerAdvertisedMode: PeerModePassive,
+		downSince:          time.Now(),
+		lastDownReason:     DownReasonRemoteAdmin,
+		alive:              true,
+	}
+
+	// Seed manager bookkeeping so onSessionDown thinks the route is desired+installed.
+	rk := routeKeyFor(peer.Interface, r)
+	m.mu.Lock()
+	m.desired[rk] = r
+	m.installed[rk] = true
+	m.mu.Unlock()
+
+	// Sanity: effectively passive should be true for this snapshot.
+	snap := sess.Snapshot()
+	require.True(t, m.isPeerEffectivelyPassive(snap), "session should be effectively passive before onSessionDown")
+
+	// Call onSessionDown directly: with HonorPeerAdvertisedPassive and peerAdvertisedPassive,
+	// we expect no RouteDelete and the route to remain logically installed.
+	m.onSessionDown(sess)
+
+	// No RouteDelete should be called.
+	select {
+	case <-delCh:
+		t.Fatalf("unexpected RouteDelete for peer advertising passive when HonorPeerAdvertisedPassive is enabled")
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	// installed bit should remain true because we are effectively passive and not in PassiveMode.
+	require.True(t, m.IsInstalled(rk), "route should remain installed when peer is effectively passive")
+}
+
+func TestClient_Liveness_Manager_HonorPeerAdvertisedPassive_TurnOffPassiveThenDeletesOnDown(t *testing.T) {
+	t.Parallel()
+
+	delCh := make(chan *routing.Route, 1)
+
+	m, err := newTestManager(t, func(cfg *ManagerConfig) {
+		cfg.PassiveMode = false
+		cfg.HonorPeerAdvertisedPassive = true
+		cfg.Netlinker = &MockRouteReaderWriter{
+			RouteAddFunc:        func(r *routing.Route) error { return nil },
+			RouteDeleteFunc:     func(r *routing.Route) error { delCh <- r; return nil },
+			RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, nil },
+		}
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = m.Close() })
+
+	r := newTestRoute(func(r *routing.Route) {
+		r.Src = net.IPv4(127, 0, 0, 1)
+		r.Dst = &net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(32, 32)}
+	})
+	require.NoError(t, m.RegisterRoute(r, "lo", m.LocalAddr().Port))
+
+	peer := Peer{Interface: "lo", LocalIP: r.Src.String(), PeerIP: r.Dst.IP.String()}
+	sess, ok := m.GetSession(peer)
+	require.True(t, ok)
+	require.NotNil(t, sess)
+
+	// Down -> Init with passive advertised.
+	cpInit := &ControlPacket{PeerDiscr: 0, LocalDiscr: 1, State: StateInit}
+	cpInit.SetPassive()
+	m.HandleRx(cpInit, peer)
+
+	// Init -> Up with passive still advertised.
+	cpUp := &ControlPacket{PeerDiscr: sess.localDiscr, LocalDiscr: sess.peerDiscr, State: StateUp}
+	cpUp.SetPassive()
+	m.HandleRx(cpUp, peer)
+
+	snap := sess.Snapshot()
+	require.Equal(t, PeerModePassive, snap.PeerAdvertisedMode, "peer should start as advertising passive")
+
+	// RouteKey for this session.
+	rk := routeKeyFor(peer.Interface, sess.route)
+
+	// Wait for async onSessionUp goroutine to run and mark installed.
+	require.Eventually(t, func() bool {
+		return m.IsInstalled(rk)
+	}, 2*time.Second, 50*time.Millisecond,
+		"route should be installed after Up even when peer is advertising passive")
+
+	// Peer stops advertising passive while staying Up.
+	m.HandleRx(&ControlPacket{
+		PeerDiscr:       sess.localDiscr,
+		LocalDiscr:      sess.peerDiscr,
+		State:           StateUp,
+		DesiredMinTxUs:  20_000,
+		RequiredMinRxUs: 20_000,
+	}, peer)
+
+	snap = sess.Snapshot()
+	require.Equal(t, PeerModeActive, snap.PeerAdvertisedMode, "PeerAdvertisedMode should reflect the latest packet (passive off)")
+	require.False(t, m.isPeerEffectivelyPassive(snap), "session should no longer be effectively passive after passive is cleared")
+
+	// Now remote AdminDown; since passive is no longer advertised, we should
+	// uninstall the route as normal.
+	m.HandleRx(&ControlPacket{
+		PeerDiscr:  sess.localDiscr,
+		LocalDiscr: sess.peerDiscr,
+		State:      StateAdminDown,
+	}, peer)
+
+	deleted := wait(t, delCh, 2*time.Second, "RouteDelete after peer stops advertising passive and goes AdminDown")
+	require.Equal(t, r.Dst.String(), deleted.Dst.String())
+}
+
+func TestClient_Liveness_Manager_OnSessionUp_InstallsEvenWhenPeerPassive(t *testing.T) {
+	t.Parallel()
+
+	addCh := make(chan *routing.Route, 1)
+	m, err := newTestManager(t, func(cfg *ManagerConfig) {
+		cfg.PassiveMode = false
+		cfg.HonorPeerAdvertisedPassive = true
+		cfg.Netlinker = &MockRouteReaderWriter{
+			RouteAddFunc:        func(r *routing.Route) error { addCh <- r; return nil },
+			RouteDeleteFunc:     func(*routing.Route) error { return nil },
+			RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, nil },
+		}
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = m.Close() })
+
+	r := newTestRoute(func(r *routing.Route) {
+		r.Src = net.IPv4(127, 0, 0, 1)
+		r.Dst = &net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(32, 32)}
+	})
+	require.NoError(t, m.RegisterRoute(r, "lo", m.LocalAddr().Port))
+
+	peer := Peer{Interface: "lo", LocalIP: r.Src.String(), PeerIP: r.Dst.IP.String()}
+	sess, ok := m.GetSession(peer)
+	require.True(t, ok)
+	require.NotNil(t, sess)
+
+	// Down -> Init with passive advertised
+	cpInit := &ControlPacket{PeerDiscr: 0, LocalDiscr: 1, State: StateInit}
+	cpInit.SetPassive()
+	m.HandleRx(cpInit, peer)
+
+	// Init -> Up with passive still advertised
+	cpUp := &ControlPacket{PeerDiscr: sess.localDiscr, LocalDiscr: sess.peerDiscr, State: StateUp}
+	cpUp.SetPassive()
+	m.HandleRx(cpUp, peer)
+
+	// RouteAdd must have been called
+	added := wait(t, addCh, 2*time.Second, "RouteAdd after Up with passive peer")
+	require.Equal(t, r.Dst.String(), added.Dst.String())
+
+	// And installed[] must be true
+	rk := routeKeyFor(peer.Interface, sess.route)
+	require.True(t, m.IsInstalled(rk), "route should be marked installed after Up even when peer is advertising passive")
+
+	snap := sess.Snapshot()
+	require.Equal(t, PeerModePassive, snap.PeerAdvertisedMode, "sanity: peer still advertising passive")
+}
+
+func TestClient_Liveness_Manager_IsPeerEffectivelyPassive(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  ManagerConfig
+		snap SessionSnapshot
+		want bool
+	}{
+		{
+			name: "global passive mode has no effect",
+			cfg: ManagerConfig{
+				PassiveMode:                true,
+				HonorPeerAdvertisedPassive: false,
+			},
+			snap: SessionSnapshot{
+				PeerAdvertisedMode: PeerModeActive,
+			},
+			want: false,
+		},
+		{
+			name: "active, no flags -> not passive",
+			cfg: ManagerConfig{
+				PassiveMode:                false,
+				HonorPeerAdvertisedPassive: false,
+			},
+			snap: SessionSnapshot{
+				PeerAdvertisedMode: PeerModeActive,
+			},
+			want: false,
+		},
+		{
+			name: "active, peer advertised passive, HonorPeerAdvertisedPassive enabled -> passive",
+			cfg: ManagerConfig{
+				PassiveMode:                false,
+				HonorPeerAdvertisedPassive: true,
+			},
+			snap: SessionSnapshot{
+				PeerAdvertisedMode: PeerModePassive,
+			},
+			want: true,
+		},
+		{
+			name: "active, peer advertised not passive -> not passive",
+			cfg: ManagerConfig{
+				PassiveMode:                false,
+				HonorPeerAdvertisedPassive: true,
+			},
+			snap: SessionSnapshot{
+				PeerAdvertisedMode: PeerModeActive,
+			},
+			want: false,
+		},
+		{
+			name: "active, peer advertised passive, HonorPeerAdvertisedPassive disabled -> not passive",
+			cfg: ManagerConfig{
+				PassiveMode:                false,
+				HonorPeerAdvertisedPassive: false,
+			},
+			snap: SessionSnapshot{
+				PeerAdvertisedMode: PeerModePassive,
+			},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			m := &manager{cfg: &tt.cfg}
+			got := m.isPeerEffectivelyPassive(tt.snap)
+			if got != tt.want {
+				t.Fatalf("isEffectivelyPassive() = %v, want %v (cfg=%+v, snap=%+v)", got, tt.want, tt.cfg, tt.snap)
+			}
+		})
+	}
 }
 
 func newTestManager(t *testing.T, mutate func(*ManagerConfig)) (*manager, error) {

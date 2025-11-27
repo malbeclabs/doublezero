@@ -4,6 +4,11 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"strings"
+)
+
+const (
+	FlagPassive uint8 = 1 << 0
 )
 
 var (
@@ -51,6 +56,7 @@ type ControlPacket struct {
 	PeerDiscr       uint32 // discriminator of the remote session (echo back)
 	DesiredMinTxUs  uint32 // minimum TX interval desired by sender (microseconds)
 	RequiredMinRxUs uint32 // minimum RX interval the sender can handle (microseconds)
+	Flags           uint8  // flags (e.g. passive mode)
 }
 
 // Marshal serializes a ControlPacket into its fixed 40-byte wire format.
@@ -66,7 +72,8 @@ type ControlPacket struct {
 //
 // 12–15: DesiredMinTxUs
 // 16–19: RequiredMinRxUs
-// 20–39: zero padding (unused / reserved)
+// 20: Flags
+// 21–39: zero padding (unused / reserved)
 //
 // Only a subset of the full BFD header is implemented; authentication and
 // optional fields are omitted for simplicity.
@@ -81,7 +88,8 @@ func (c *ControlPacket) Marshal() []byte {
 	be.PutUint32(b[8:12], c.PeerDiscr)
 	be.PutUint32(b[12:16], c.DesiredMinTxUs)
 	be.PutUint32(b[16:20], c.RequiredMinRxUs)
-	// Remaining bytes [20:40] are reserved/padding → left zeroed
+	b[20] = c.Flags
+	// Remaining bytes [21:40] are reserved/padding → left zeroed
 	return b
 }
 
@@ -113,5 +121,28 @@ func UnmarshalControlPacket(b []byte) (*ControlPacket, error) {
 	c.PeerDiscr = rd(8)
 	c.DesiredMinTxUs = rd(12)
 	c.RequiredMinRxUs = rd(16)
+	c.Flags = b[20]
 	return c, nil
+}
+
+// Mark this packet as “peer is passive / monitoring-only” (advertises passive mode).
+func (c *ControlPacket) SetPassive() {
+	c.Flags |= FlagPassive
+}
+
+// Returns true if the peer advertised passive mode.
+func (c *ControlPacket) IsPassive() bool {
+	return c.Flags&FlagPassive != 0
+}
+
+// Returns a human-readable string representation of the flags.
+func (c *ControlPacket) FlagsString() string {
+	if c.Flags == 0 {
+		return "none"
+	}
+	var parts []string
+	if c.Flags&FlagPassive != 0 {
+		parts = append(parts, "passive")
+	}
+	return strings.Join(parts, ",")
 }

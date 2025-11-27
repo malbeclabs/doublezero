@@ -251,7 +251,7 @@ func (s *Scheduler) Run(ctx context.Context) error {
 			)
 
 			if s.tryExpire(ev.session) {
-				s.metrics.sessionStateTransition(peer, &prevState, "detect_timeout", s.enablePeerMetrics)
+				s.metrics.sessionStateTransition(peer, &prevState, StateDown, "detect_timeout", s.enablePeerMetrics)
 				// Expiration triggers asynchronous session-down handling.
 				go s.onSessionDown(ev.session)
 				continue

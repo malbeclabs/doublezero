@@ -344,7 +344,7 @@ func (m *manager) RegisterRoute(r *routing.Route, iface string, port int) error 
 		lastUpdated:   time.Now(),
 	}
 	m.sessions[peer] = sess
-	m.metrics.sessionStateTransition(peer, nil, "register_route", m.cfg.EnablePeerMetrics)
+	m.metrics.sessionStateTransition(peer, nil, StateDown, "register_route", m.cfg.EnablePeerMetrics)
 	if m.cfg.EnablePeerMetrics {
 		// Set initial detect time based on current view (localRxMin until peer timers arrive)
 		sess.mu.Lock()
@@ -586,7 +586,7 @@ func (m *manager) HandleRx(ctrl *ControlPacket, peer Peer) {
 			"lastDownReason", newSnap.LastDownReason.String(),
 		)
 
-		m.metrics.sessionStateTransition(peer, &prevSnap.State, "handle_rx", m.cfg.EnablePeerMetrics)
+		m.metrics.sessionStateTransition(peer, &prevSnap.State, newSnap.State, "handle_rx", m.cfg.EnablePeerMetrics)
 
 		switch sess.GetState() {
 		case StateUp:

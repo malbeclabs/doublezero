@@ -230,20 +230,26 @@ func (m *Metrics) Register(r prometheus.Registerer) {
 	)
 }
 
-func (m *Metrics) sessionStateTransition(peer Peer, prevState *State, operation string, peerMetrics bool) {
+func (m *Metrics) sessionStateTransition(peer Peer, prevState *State, newState State, operation string, peerMetrics bool) {
 	var prevStateStr string
 	if prevState != nil {
 		prevStateStr = prevState.String()
 	} else {
 		prevStateStr = "new"
 	}
-	m.SessionTransitions.WithLabelValues(peer.Interface, peer.LocalIP, prevStateStr, StateDown.String(), operation).Inc()
-	m.Sessions.WithLabelValues(peer.Interface, peer.LocalIP, StateDown.String()).Inc()
+	newStateStr := newState.String()
+
+	m.SessionTransitions.WithLabelValues(
+		peer.Interface, peer.LocalIP, prevStateStr, newStateStr, operation,
+	).Inc()
+
+	m.Sessions.WithLabelValues(peer.Interface, peer.LocalIP, newStateStr).Inc()
 	if prevState != nil {
 		m.Sessions.WithLabelValues(peer.Interface, peer.LocalIP, prevStateStr).Dec()
 	}
+
 	if peerMetrics {
-		m.PeerSessions.WithLabelValues(peer.Interface, peer.LocalIP, peer.PeerIP, StateDown.String()).Inc()
+		m.PeerSessions.WithLabelValues(peer.Interface, peer.LocalIP, peer.PeerIP, newStateStr).Inc()
 		if prevState != nil {
 			m.PeerSessions.WithLabelValues(peer.Interface, peer.LocalIP, peer.PeerIP, prevStateStr).Dec()
 		}
@@ -265,7 +271,7 @@ func (m *Metrics) peerDetectTime(peer Peer, dt time.Duration) {
 }
 
 func (m *Metrics) cleanupWithdrawRoute(peer Peer, peerMetrics bool) {
-	m.Sessions.WithLabelValues(peer.Interface, peer.LocalIP, StateDown.String()).Dec()
+	m.Sessions.WithLabelValues(peer.Interface, peer.LocalIP, StateDown.String()).Set(0)
 	if peerMetrics {
 		m.PeerSessions.DeleteLabelValues(peer.Interface, peer.LocalIP, peer.PeerIP, StateDown.String())
 		m.PeerSessions.DeleteLabelValues(peer.Interface, peer.LocalIP, peer.PeerIP, StateInit.String())

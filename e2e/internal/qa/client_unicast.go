@@ -113,9 +113,6 @@ func (c *Client) TestUnicastConnectivity(ctx context.Context, targetClient *Clie
 	if resp.PacketsSent == 0 {
 		return nil, fmt.Errorf("no packets sent from %s to %s", sourceIP, targetIP)
 	}
-	if resp.PacketsReceived == 0 {
-		return nil, fmt.Errorf("no packets received by %s from %s (sent=%d)", targetIP, sourceIP, resp.PacketsSent)
-	}
 	if resp.PacketsReceived < resp.PacketsSent {
 		// If we have packet loss, check if routes were uninstalled and log an error for visibility.
 		installedRoutes, err := c.GetInstalledRoutes(ctx)

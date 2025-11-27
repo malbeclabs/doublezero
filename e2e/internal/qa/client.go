@@ -116,16 +116,19 @@ func (c *Client) DisconnectUser(ctx context.Context, waitForStatus bool, waitFor
 	if err != nil {
 		return fmt.Errorf("failed to get user status: %w", err)
 	}
-	if status.SessionStatus == UserStatusDisconnected {
-		c.log.Debug("User already disconnected", "host", c.Host)
-	} else {
+	if status.SessionStatus != UserStatusDisconnected {
 		c.log.Info("Disconnecting user", "host", c.Host)
-		ctx, cancel := context.WithTimeout(ctx, disconnectTimeout)
-		defer cancel()
-		_, err = c.grpcClient.Disconnect(ctx, &emptypb.Empty{})
-		if err != nil {
-			return fmt.Errorf("failed to disconnect from host %s: %w", c.Host, err)
-		}
+	}
+
+	// Always try disconnecting, even if it looks like the user is already disconnected.
+	// We do this to handle the case where the client thinks it's disconnected but the user exists
+	// onchain, which can happen if the previous connect attempt timed out in the CLI but eventually
+	// succeeded in the activator.
+	ctx, cancel := context.WithTimeout(ctx, disconnectTimeout)
+	defer cancel()
+	_, err = c.grpcClient.Disconnect(ctx, &emptypb.Empty{})
+	if err != nil {
+		return fmt.Errorf("failed to disconnect from host %s: %w", c.Host, err)
 	}
 
 	if waitForStatus {

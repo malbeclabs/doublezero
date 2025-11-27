@@ -2,6 +2,7 @@ package liveness
 
 import (
 	"flag"
+	"io"
 	"log/slog"
 	"net"
 	"os"
@@ -15,6 +16,7 @@ import (
 
 var (
 	debugFlag = flag.Bool("debug", false, "enable debug logging")
+	quietFlag = flag.Bool("quiet", false, "disable logging")
 )
 
 func TestMain(m *testing.M) {
@@ -36,9 +38,18 @@ func (w *testWriter) Write(p []byte) (int, error) {
 }
 
 func newTestLogger(t *testing.T) *slog.Logger {
-	w := &testWriter{t: t}
+	return newTestLoggerWith(t, *quietFlag, *debugFlag)
+}
+
+func newTestLoggerWith(t *testing.T, quiet bool, debug bool) *slog.Logger {
+	var w io.Writer
+	if quiet {
+		w = io.Discard
+	} else {
+		w = &testWriter{t: t}
+	}
 	logLevel := slog.LevelInfo
-	if *debugFlag {
+	if debug {
 		logLevel = slog.LevelDebug
 	}
 	h := slog.NewTextHandler(w, &slog.HandlerOptions{Level: logLevel})
@@ -74,7 +85,6 @@ func newTestRoute(mutate func(*routing.Route)) *routing.Route {
 type MockRouteReaderWriter struct {
 	RouteAddFunc        func(*routing.Route) error
 	RouteDeleteFunc     func(*routing.Route) error
-	RouteGetFunc        func(net.IP) ([]*routing.Route, error)
 	RouteByProtocolFunc func(int) ([]*routing.Route, error)
 
 	mu sync.Mutex
@@ -96,15 +106,6 @@ func (m *MockRouteReaderWriter) RouteDelete(r *routing.Route) error {
 		return nil
 	}
 	return m.RouteDeleteFunc(r)
-}
-
-func (m *MockRouteReaderWriter) RouteGet(ip net.IP) ([]*routing.Route, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.RouteGetFunc == nil {
-		return nil, nil
-	}
-	return m.RouteGetFunc(ip)
 }
 
 func (m *MockRouteReaderWriter) RouteByProtocol(protocol int) ([]*routing.Route, error) {

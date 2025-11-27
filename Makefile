@@ -46,6 +46,7 @@ go-test:
 	go test -exec "sudo -E" -race -v ./...
 	cd controlplane/s3-uploader && go test -race -v ./...
 	$(if $(findstring nocontainertest,$(MAKECMDGOALS)),,$(MAKE) go-container-test)
+	$(MAKE) -C client/doublezerod test-faults
 
 .PHONY: nocontainertest
 nocontainertest:

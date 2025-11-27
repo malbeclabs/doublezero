@@ -19,12 +19,14 @@ import (
 // detects fatal network conditions, and honors context cancellation cleanly.
 type Receiver struct {
 	log      *slog.Logger // structured logger for debug and warnings
-	udp      *UDPService  // underlying socket with control message support
+	udp      UDPService   // underlying socket with control message support
 	handleRx HandleRxFunc // callback invoked for each valid ControlPacket
 
 	readErrWarnEvery time.Duration // min interval between repeated read warnings
 	readErrWarnLast  time.Time     // last time a warning was logged
 	readErrWarnMu    sync.Mutex    // guards readErrWarnLast
+
+	metrics *Metrics
 }
 
 // HandleRxFunc defines the handler signature for received control packets.
@@ -34,12 +36,13 @@ type HandleRxFunc func(pkt *ControlPacket, peer Peer)
 
 // NewReceiver constructs a new Receiver bound to the given UDPService and handler.
 // By default, it throttles repeated read errors to once every 5 seconds.
-func NewReceiver(log *slog.Logger, udp *UDPService, handleRx HandleRxFunc) *Receiver {
+func NewReceiver(log *slog.Logger, udp UDPService, handleRx HandleRxFunc, metrics *Metrics) *Receiver {
 	return &Receiver{
 		log:              log,
 		udp:              udp,
 		handleRx:         handleRx,
 		readErrWarnEvery: 5 * time.Second,
+		metrics:          metrics,
 	}
 }
 
@@ -116,7 +119,7 @@ func (r *Receiver) Run(ctx context.Context) error {
 				return fmt.Errorf("socket closed during ReadFrom: %w", err)
 			}
 
-			metricReadSocketErrors.WithLabelValues(ifname, localIP.String()).Inc()
+			r.metrics.ReadSocketErrors.WithLabelValues(ifname, localIP.String()).Inc()
 
 			// Log other transient read errors, throttled.
 			now := time.Now()
@@ -144,14 +147,14 @@ func (r *Receiver) Run(ctx context.Context) error {
 			lip := localIP.To4().String()
 			switch {
 			case errors.Is(err, ErrShortPacket):
-				metricControlPacketsRxInvalid.WithLabelValues(ifname, lip, "short").Inc()
+				r.metrics.ControlPacketsRxInvalid.WithLabelValues(ifname, lip, "short").Inc()
 			case errors.Is(err, ErrInvalidLength):
-				metricControlPacketsRxInvalid.WithLabelValues(ifname, lip, "bad_len").Inc()
+				r.metrics.ControlPacketsRxInvalid.WithLabelValues(ifname, lip, "bad_len").Inc()
 			default:
 				if strings.Contains(err.Error(), "unsupported version") {
-					metricControlPacketsRxInvalid.WithLabelValues(ifname, lip, "bad_version").Inc()
+					r.metrics.ControlPacketsRxInvalid.WithLabelValues(ifname, lip, "bad_version").Inc()
 				} else {
-					metricControlPacketsRxInvalid.WithLabelValues(ifname, lip, "parse_error").Inc()
+					r.metrics.ControlPacketsRxInvalid.WithLabelValues(ifname, lip, "parse_error").Inc()
 				}
 			}
 
@@ -161,13 +164,13 @@ func (r *Receiver) Run(ctx context.Context) error {
 		// Skip packets that are not IPv4.
 		if localIP.To4() == nil || peerAddr.IP.To4() == nil {
 			if localIP.To4() != nil {
-				metricControlPacketsRxInvalid.WithLabelValues(ifname, localIP.To4().String(), "not_ipv4").Inc()
+				r.metrics.ControlPacketsRxInvalid.WithLabelValues(ifname, localIP.To4().String(), "not_ipv4").Inc()
 			}
 			continue
 		}
 		localIP4 := localIP.To4().String()
 
-		metricControlPacketsRX.WithLabelValues(ifname, localIP4).Inc()
+		r.metrics.ControlPacketsRX.WithLabelValues(ifname, localIP4).Inc()
 
 		// Populate the peer descriptor: identifies which local interface/IP
 		// the packet arrived on and the remote endpoint that sent it.
@@ -192,7 +195,7 @@ func (r *Receiver) Run(ctx context.Context) error {
 
 		// Delegate to session or higher-level handler for processing.
 		r.handleRx(ctrl, peer)
-		metricHandleRxDuration.WithLabelValues(peer.Interface, peer.LocalIP).Observe(time.Since(start).Seconds())
+		r.metrics.HandleRxDuration.WithLabelValues(peer.Interface, peer.LocalIP).Observe(time.Since(start).Seconds())
 	}
 }
 

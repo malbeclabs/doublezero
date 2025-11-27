@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 )
 
@@ -85,9 +86,9 @@ func TestClient_Liveness_Manager_RegisterRoute_Deduplicates(t *testing.T) {
 		r.Dst = &net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(32, 32)}
 	})
 
-	err = m.RegisterRoute(r, "lo")
+	err = m.RegisterRoute(r, "lo", m.LocalAddr().Port)
 	require.NoError(t, err)
-	err = m.RegisterRoute(r, "lo")
+	err = m.RegisterRoute(r, "lo", m.LocalAddr().Port)
 	require.NoError(t, err)
 
 	require.Equal(t, 1, m.GetSessionsLen())
@@ -105,7 +106,6 @@ func TestClient_Liveness_Manager_HandleRx_Transitions_AddAndDelete(t *testing.T)
 		cfg.Netlinker = &MockRouteReaderWriter{
 			RouteAddFunc:        func(r *routing.Route) error { addCh <- r; return nil },
 			RouteDeleteFunc:     func(r *routing.Route) error { delCh <- r; return nil },
-			RouteGetFunc:        func(net.IP) ([]*routing.Route, error) { return nil, nil },
 			RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, nil },
 		}
 	})
@@ -116,7 +116,7 @@ func TestClient_Liveness_Manager_HandleRx_Transitions_AddAndDelete(t *testing.T)
 		r.Src = net.IPv4(127, 0, 0, 1)
 		r.Dst = &net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(32, 32)}
 	})
-	require.NoError(t, m.RegisterRoute(r, "lo"))
+	require.NoError(t, m.RegisterRoute(r, "lo", m.LocalAddr().Port))
 
 	peer := Peer{Interface: "lo", LocalIP: r.Src.String(), PeerIP: r.Dst.IP.String()}
 	sess, ok := m.GetSession(peer)
@@ -161,7 +161,6 @@ func TestClient_Liveness_Manager_WithdrawRoute_RemovesSessionAndDeletesIfInstall
 	nlr := &MockRouteReaderWriter{
 		RouteAddFunc:        func(r *routing.Route) error { addCh <- r; return nil },
 		RouteDeleteFunc:     func(r *routing.Route) error { delCh <- r; return nil },
-		RouteGetFunc:        func(net.IP) ([]*routing.Route, error) { return nil, nil },
 		RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, nil },
 	}
 
@@ -175,7 +174,7 @@ func TestClient_Liveness_Manager_WithdrawRoute_RemovesSessionAndDeletesIfInstall
 		r.Dst = &net.IPNet{IP: m.LocalAddr().IP, Mask: net.CIDRMask(32, 32)}
 		r.Src = m.LocalAddr().IP
 	})
-	require.NoError(t, m.RegisterRoute(r, "lo"))
+	require.NoError(t, m.RegisterRoute(r, "lo", m.LocalAddr().Port))
 
 	peer := Peer{Interface: "lo", LocalIP: r.Src.String(), PeerIP: r.Dst.IP.String()}
 	sess, ok := m.GetSession(peer)
@@ -211,7 +210,6 @@ func TestClient_Liveness_Manager_HandleRx_UnknownPeer_NoEffect(t *testing.T) {
 	nlr := &MockRouteReaderWriter{
 		RouteAddFunc:        func(*routing.Route) error { return nil },
 		RouteDeleteFunc:     func(*routing.Route) error { return nil },
-		RouteGetFunc:        func(net.IP) ([]*routing.Route, error) { return nil, nil },
 		RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, nil },
 	}
 
@@ -226,7 +224,7 @@ func TestClient_Liveness_Manager_HandleRx_UnknownPeer_NoEffect(t *testing.T) {
 		r.Dst = &net.IPNet{IP: m.LocalAddr().IP, Mask: net.CIDRMask(32, 32)}
 		r.Src = m.LocalAddr().IP
 	})
-	require.NoError(t, m.RegisterRoute(r, "lo"))
+	require.NoError(t, m.RegisterRoute(r, "lo", m.LocalAddr().Port))
 
 	prevSessions := m.GetSessionsLen()
 	prevInstalled := m.GetInstalledLen()
@@ -248,7 +246,6 @@ func TestClient_Liveness_Manager_NetlinkerErrors_NoCrash(t *testing.T) {
 	nlr := &MockRouteReaderWriter{
 		RouteAddFunc:        func(*routing.Route) error { return addErr },
 		RouteDeleteFunc:     func(*routing.Route) error { return delErr },
-		RouteGetFunc:        func(net.IP) ([]*routing.Route, error) { return nil, nil },
 		RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, nil },
 	}
 
@@ -262,7 +259,7 @@ func TestClient_Liveness_Manager_NetlinkerErrors_NoCrash(t *testing.T) {
 		r.Dst = &net.IPNet{IP: m.LocalAddr().IP, Mask: net.CIDRMask(32, 32)}
 		r.Src = m.LocalAddr().IP
 	})
-	require.NoError(t, m.RegisterRoute(r, "lo"))
+	require.NoError(t, m.RegisterRoute(r, "lo", m.LocalAddr().Port))
 
 	// Grab session+peer key to inspect installed flags.
 	peer := Peer{Interface: "lo", LocalIP: r.Src.String(), PeerIP: r.Dst.IP.String()}
@@ -304,7 +301,7 @@ func TestClient_Liveness_Manager_PassiveMode_ImmediateInstall_NoAutoWithdraw(t *
 		r.Src = net.IPv4(127, 0, 0, 1)
 		r.Dst = &net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(32, 32)}
 	})
-	require.NoError(t, m.RegisterRoute(r, "lo"))
+	require.NoError(t, m.RegisterRoute(r, "lo", m.LocalAddr().Port))
 	_ = wait(t, addCh, time.Second, "immediate RouteAdd in PassiveMode")
 
 	// drive Up then Down; expect no RouteDelete (caller owns dataplane)
@@ -341,7 +338,7 @@ func TestClient_Liveness_Manager_PeerKey_IPv4Canonicalization(t *testing.T) {
 		r.Src = net.IPv4(127, 0, 0, 1)
 		r.Dst = &net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(32, 32)}
 	})
-	require.NoError(t, m.RegisterRoute(r, "lo"))
+	require.NoError(t, m.RegisterRoute(r, "lo", m.LocalAddr().Port))
 	peer := Peer{Interface: "lo", LocalIP: r.Src.To4().String(), PeerIP: r.Dst.IP.To4().String()}
 	sess, ok := m.GetSession(peer)
 	require.True(t, ok)
@@ -356,7 +353,7 @@ func TestClient_Liveness_Manager_ReceiverFailure_PropagatesOnErr(t *testing.T) {
 	defer func() { _ = m.Close() }()
 
 	// Close the UDP socket directly to force Receiver.Run to error out.
-	var udp *UDPService
+	var udp UDPService
 	m.mu.Lock()
 	udp = m.udp
 	m.mu.Unlock()
@@ -415,7 +412,6 @@ func TestClient_Liveness_Manager_AdminDownRoute_WithdrawsAndMarksAdminDown(t *te
 	nlr := &MockRouteReaderWriter{
 		RouteAddFunc:        func(r *routing.Route) error { addCh <- r; return nil },
 		RouteDeleteFunc:     func(r *routing.Route) error { delCh <- r; return nil },
-		RouteGetFunc:        func(net.IP) ([]*routing.Route, error) { return nil, nil },
 		RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, nil },
 	}
 
@@ -429,7 +425,7 @@ func TestClient_Liveness_Manager_AdminDownRoute_WithdrawsAndMarksAdminDown(t *te
 		r.Src = net.IPv4(127, 0, 0, 1)
 		r.Dst = &net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(32, 32)}
 	})
-	require.NoError(t, m.RegisterRoute(r, "lo"))
+	require.NoError(t, m.RegisterRoute(r, "lo", m.LocalAddr().Port))
 
 	peer := Peer{Interface: "lo", LocalIP: r.Src.String(), PeerIP: r.Dst.IP.String()}
 	sess, ok := m.GetSession(peer)
@@ -477,7 +473,6 @@ func TestClient_Liveness_Manager_AdminDownRoute_PassiveMode_NoDelete_Idempotent(
 		cfg.Netlinker = &MockRouteReaderWriter{
 			RouteAddFunc:        func(r *routing.Route) error { addCh <- r; return nil },
 			RouteDeleteFunc:     func(r *routing.Route) error { delCh <- r; return nil },
-			RouteGetFunc:        func(net.IP) ([]*routing.Route, error) { return nil, nil },
 			RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, nil },
 		}
 	})
@@ -488,7 +483,7 @@ func TestClient_Liveness_Manager_AdminDownRoute_PassiveMode_NoDelete_Idempotent(
 		r.Src = net.IPv4(127, 0, 0, 1)
 		r.Dst = &net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(32, 32)}
 	})
-	require.NoError(t, m.RegisterRoute(r, "lo"))
+	require.NoError(t, m.RegisterRoute(r, "lo", m.LocalAddr().Port))
 
 	_ = wait(t, addCh, time.Second, "immediate RouteAdd in PassiveMode")
 
@@ -538,7 +533,6 @@ func TestClient_Liveness_Manager_WithdrawRoute_PassiveMode_DeletesAndRemovesSess
 		cfg.Netlinker = &MockRouteReaderWriter{
 			RouteAddFunc:        func(r *routing.Route) error { addCh <- r; return nil },
 			RouteDeleteFunc:     func(r *routing.Route) error { delCh <- r; return nil },
-			RouteGetFunc:        func(net.IP) ([]*routing.Route, error) { return nil, nil },
 			RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, nil },
 		}
 	})
@@ -549,7 +543,7 @@ func TestClient_Liveness_Manager_WithdrawRoute_PassiveMode_DeletesAndRemovesSess
 		r.Dst = &net.IPNet{IP: m.LocalAddr().IP, Mask: net.CIDRMask(32, 32)}
 		r.Src = m.LocalAddr().IP
 	})
-	require.NoError(t, m.RegisterRoute(r, "lo"))
+	require.NoError(t, m.RegisterRoute(r, "lo", m.LocalAddr().Port))
 
 	_ = wait(t, addCh, time.Second, "immediate RouteAdd in PassiveMode")
 
@@ -584,7 +578,6 @@ func TestClient_Liveness_Manager_AdminDownRoute_NoSession_NoDelete(t *testing.T)
 		cfg.Netlinker = &MockRouteReaderWriter{
 			RouteDeleteFunc:     func(r *routing.Route) error { delCh <- r; return nil },
 			RouteAddFunc:        func(*routing.Route) error { return nil },
-			RouteGetFunc:        func(net.IP) ([]*routing.Route, error) { return nil, nil },
 			RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, nil },
 		}
 	})
@@ -615,14 +608,14 @@ func TestClient_Liveness_Manager_RegisterRoute_InvalidIPv4Validation(t *testing.
 	rNilSrc := newTestRoute(func(r *routing.Route) {
 		r.Src = nil
 	})
-	err = m.RegisterRoute(rNilSrc, "lo")
+	err = m.RegisterRoute(rNilSrc, "lo", m.LocalAddr().Port)
 	require.Error(t, err)
-	require.ErrorContains(t, err, "nil source or destination IP")
+	require.ErrorContains(t, err, "nil source (<nil>) or destination IP (10.4.0.11)")
 
 	rNonIPv4 := newTestRoute(func(r *routing.Route) {
 		r.Src = net.ParseIP("::1")
 	})
-	err = m.RegisterRoute(rNonIPv4, "lo")
+	err = m.RegisterRoute(rNonIPv4, "lo", m.LocalAddr().Port)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "non-IPv4 source")
 }
@@ -659,7 +652,6 @@ func TestClient_Liveness_Manager_HandleRx_RemoteDownHonoredOnlyAfterDetectInterv
 		cfg.Netlinker = &MockRouteReaderWriter{
 			RouteAddFunc:        func(r *routing.Route) error { addCh <- r; return nil },
 			RouteDeleteFunc:     func(r *routing.Route) error { delCh <- r; return nil },
-			RouteGetFunc:        func(net.IP) ([]*routing.Route, error) { return nil, nil },
 			RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, nil },
 		}
 	})
@@ -670,7 +662,7 @@ func TestClient_Liveness_Manager_HandleRx_RemoteDownHonoredOnlyAfterDetectInterv
 		r.Src = net.IPv4(127, 0, 0, 1)
 		r.Dst = &net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(32, 32)}
 	})
-	require.NoError(t, m.RegisterRoute(r, "lo"))
+	require.NoError(t, m.RegisterRoute(r, "lo", m.LocalAddr().Port))
 
 	// Grab the session + peer.
 	peer := Peer{Interface: "lo", LocalIP: r.Src.String(), PeerIP: r.Dst.IP.String()}
@@ -729,20 +721,28 @@ func TestClient_Liveness_Manager_HandleRx_RemoteDownHonoredOnlyAfterDetectInterv
 }
 
 func newTestManager(t *testing.T, mutate func(*ManagerConfig)) (*Manager, error) {
+	m, _, err := newTestManagerWithMetrics(t, mutate)
+	return m, err
+}
+
+func newTestManagerWithMetrics(t *testing.T, mutate func(*ManagerConfig)) (*Manager, *prometheus.Registry, error) {
+	reg := prometheus.NewRegistry()
 	cfg := &ManagerConfig{
-		Logger:     newTestLogger(t),
-		Netlinker:  &MockRouteReaderWriter{},
-		BindIP:     "127.0.0.1",
-		Port:       0,
-		TxMin:      100 * time.Millisecond,
-		RxMin:      100 * time.Millisecond,
-		DetectMult: 3,
-		MinTxFloor: 50 * time.Millisecond,
-		MaxTxCeil:  1 * time.Second,
-		BackoffMax: 1 * time.Second,
+		Logger:          newTestLogger(t),
+		Netlinker:       &MockRouteReaderWriter{},
+		MetricsRegistry: reg,
+		BindIP:          "127.0.0.1",
+		Port:            0,
+		TxMin:           100 * time.Millisecond,
+		RxMin:           100 * time.Millisecond,
+		DetectMult:      3,
+		MinTxFloor:      50 * time.Millisecond,
+		MaxTxCeil:       1 * time.Second,
+		BackoffMax:      1 * time.Second,
 	}
 	if mutate != nil {
 		mutate(cfg)
 	}
-	return NewManager(t.Context(), cfg)
+	m, err := NewManager(t.Context(), cfg)
+	return m, reg, err
 }

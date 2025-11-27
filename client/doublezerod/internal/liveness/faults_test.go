@@ -523,7 +523,7 @@ func getLivenessTestConfig(t *testing.T) livenessTestConfig {
 
 type testClient struct {
 	id      uint32
-	mgr     *Manager
+	mgr     Manager
 	metrics *prometheus.Registry
 	nlr     RouteReaderWriter
 	iface   string

@@ -34,17 +34,17 @@ pub struct ProvisioningResponse {
 
 #[derive(Clone, Tabled, Deserialize, Serialize, Debug)]
 pub struct LatencyRecord {
-    #[tabled(rename = "pubkey")]
+    #[tabled(rename = "Pubkey")]
     pub device_pk: String,
-    #[tabled(rename = "code")]
+    #[tabled(rename = "Code")]
     pub device_code: String,
-    #[tabled(rename = "ip")]
+    #[tabled(rename = "IP")]
     pub device_ip: String,
-    #[tabled(display = "display_as_ms", rename = "min")]
+    #[tabled(display = "display_as_ms", rename = "Min")]
     pub min_latency_ns: i32,
-    #[tabled(display = "display_as_ms", rename = "max")]
+    #[tabled(display = "display_as_ms", rename = "Max")]
     pub max_latency_ns: i32,
-    #[tabled(display = "display_as_ms", rename = "avg")]
+    #[tabled(display = "display_as_ms", rename = "Avg")]
     pub avg_latency_ns: i32,
     pub reachable: bool,
 }
@@ -87,9 +87,9 @@ pub struct StatusResponse {
     pub doublezero_status: DoubleZeroStatus,
     #[tabled(rename = "Tunnel Name")]
     pub tunnel_name: Option<String>,
-    #[tabled(rename = "Tunnel src")]
+    #[tabled(rename = "Tunnel Src")]
     pub tunnel_src: Option<String>,
-    #[tabled(rename = "Tunnel dst")]
+    #[tabled(rename = "Tunnel Dst")]
     pub tunnel_dst: Option<String>,
     #[tabled(rename = "Doublezero IP")]
     pub doublezero_ip: Option<String>,
@@ -105,10 +105,35 @@ pub struct GetConfigResponse {
 
 #[derive(Tabled, Serialize, Deserialize, Debug, Clone)]
 pub struct DoubleZeroStatus {
-    #[tabled(rename = "Tunnel status")]
+    #[tabled(rename = "Tunnel Status")]
     pub session_status: String,
     #[tabled(rename = "Last Session Update", display = "maybe_i64_to_dt_str")]
     pub last_session_update: Option<i64>,
+}
+
+#[derive(Clone, Tabled, Deserialize, Serialize, Debug, PartialEq)]
+#[tabled(display(Option, "display::option", ""))]
+pub struct RouteRecord {
+    #[tabled(rename = "Network")]
+    pub network: String,
+    #[tabled(rename = "User Type")]
+    pub user_type: String,
+    #[tabled(rename = "Local IP")]
+    pub local_ip: String,
+    #[tabled(rename = "Peer IP")]
+    pub peer_ip: String,
+    #[tabled(rename = "Kernel State")]
+    pub kernel_state: String,
+    #[tabled(rename = "Liveness Last Updated")]
+    pub liveness_last_updated: Option<String>,
+    #[tabled(rename = "Liveness State")]
+    pub liveness_state: Option<String>,
+}
+
+impl fmt::Display for RouteRecord {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "local_ip: {}, peer_ip: {}", self.local_ip, self.peer_ip)
+    }
 }
 
 fn maybe_i64_to_dt_str(maybe_i64_dt: &Option<i64>) -> String {
@@ -138,6 +163,7 @@ pub trait ServiceController {
     async fn provisioning(&self, args: ProvisioningRequest) -> eyre::Result<ProvisioningResponse>;
     async fn remove(&self, args: RemoveTunnelCliCommand) -> eyre::Result<RemoveResponse>;
     async fn status(&self) -> eyre::Result<Vec<StatusResponse>>;
+    async fn routes(&self) -> eyre::Result<Vec<RouteRecord>>;
 }
 
 pub struct ServiceControllerImpl {
@@ -332,5 +358,17 @@ impl ServiceController for ServiceControllerImpl {
             }
             Err(e) => Err(eyre!("Unable to connect to doublezero daemon: {e}")),
         }
+    }
+
+    async fn routes(&self) -> eyre::Result<Vec<RouteRecord>> {
+        let client = Client::builder(TokioExecutor::new()).build(UnixConnector);
+        let req = Request::builder()
+            .method(Method::GET)
+            .uri(Uri::new(&self.socket_path, "/routes"))
+            .body(Empty::<Bytes>::new())?;
+        let res = client.request(req).await?;
+        let data = res.into_body().collect().await?.to_bytes();
+        let response = serde_json::from_slice::<Vec<RouteRecord>>(&data)?;
+        Ok(response)
     }
 }

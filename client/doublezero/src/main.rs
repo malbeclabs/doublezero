@@ -4,6 +4,7 @@ use std::path::PathBuf;
 mod cli;
 mod command;
 mod dzd_latency;
+mod routes;
 use doublezero_config::Environment;
 mod requirements;
 mod servicecontroller;
@@ -107,6 +108,7 @@ async fn main() -> eyre::Result<()> {
         Command::Status(args) => args.execute(&client).await,
         Command::Disconnect(args) => args.execute(&client).await,
         Command::Latency(args) => args.execute(&client).await,
+        Command::Routes(args) => args.execute(&client).await,
 
         Command::Init(args) => args.execute(&client, &mut handle),
         Command::Config(command) => match command.command {

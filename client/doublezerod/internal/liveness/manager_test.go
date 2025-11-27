@@ -720,12 +720,12 @@ func TestClient_Liveness_Manager_HandleRx_RemoteDownHonoredOnlyAfterDetectInterv
 	require.False(t, m.IsInstalled(rk), "route should be marked not installed after remote Down")
 }
 
-func newTestManager(t *testing.T, mutate func(*ManagerConfig)) (*Manager, error) {
+func newTestManager(t *testing.T, mutate func(*ManagerConfig)) (*manager, error) {
 	m, _, err := newTestManagerWithMetrics(t, mutate)
 	return m, err
 }
 
-func newTestManagerWithMetrics(t *testing.T, mutate func(*ManagerConfig)) (*Manager, *prometheus.Registry, error) {
+func newTestManagerWithMetrics(t *testing.T, mutate func(*ManagerConfig)) (*manager, *prometheus.Registry, error) {
 	reg := prometheus.NewRegistry()
 	cfg := &ManagerConfig{
 		Logger:          newTestLogger(t),

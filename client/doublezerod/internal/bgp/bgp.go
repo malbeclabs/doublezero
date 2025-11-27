@@ -102,6 +102,7 @@ type PeerConfig struct {
 	NoInstall       bool
 	Interface       string
 	LivenessEnabled bool
+	LivenessPort    int
 }
 
 type BgpServer struct {
@@ -110,10 +111,10 @@ type BgpServer struct {
 	peerStatus        map[string]Session
 	peerStatusLock    sync.Mutex
 	routeReaderWriter RouteReaderWriter
-	livenessManager   *liveness.Manager
+	livenessManager   liveness.Manager
 }
 
-func NewBgpServer(routerID net.IP, r RouteReaderWriter, lm *liveness.Manager) (*BgpServer, error) {
+func NewBgpServer(routerID net.IP, r RouteReaderWriter, lm liveness.Manager) (*BgpServer, error) {
 	corebgp.SetLogger(log.Print)
 	srv, err := corebgp.NewServer(netip.MustParseAddr(routerID.String()))
 	if err != nil {

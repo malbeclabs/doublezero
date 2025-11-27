@@ -9,19 +9,27 @@ import (
 	"golang.org/x/net/ipv4"
 )
 
+type UDPService interface {
+	ReadFrom(buf []byte) (n int, remoteAddr *net.UDPAddr, localIP net.IP, ifname string, err error)
+	WriteTo(pkt []byte, dst *net.UDPAddr, iface string, src net.IP) (int, error)
+	SetReadDeadline(t time.Time) error
+	LocalAddr() net.Addr
+	Close() error
+}
+
 // UDPService wraps an IPv4 UDP socket and provides helpers for reading and writing
 // datagrams while preserving local interface and destination address context.
 // It preconfigures IPv4 control message delivery (IP_PKTINFO equivalent) so that
 // each received packet includes metadata about which interface and destination IP
 // it arrived on, and outgoing packets can explicitly set source IP and interface.
-type UDPService struct {
+type udpService struct {
 	raw *net.UDPConn     // the underlying UDP socket
 	pc4 *ipv4.PacketConn // ipv4-layer wrapper for control message access
 }
 
 // ListenUDP binds an IPv4 UDP socket to bindIP:port and returns a configured UDPService.
 // The returned connection is ready to read/write with control message support enabled.
-func ListenUDP(bindIP string, port int) (*UDPService, error) {
+func ListenUDP(bindIP string, port int) (*udpService, error) {
 	laddr, err := net.ResolveUDPAddr("udp4", fmt.Sprintf("%s:%d", bindIP, port))
 	if err != nil {
 		return nil, err
@@ -40,8 +48,8 @@ func ListenUDP(bindIP string, port int) (*UDPService, error) {
 
 // NewUDPService wraps an existing *net.UDPConn and enables IPv4 control messages (IP_PKTINFO-like).
 // On RX we obtain the destination IP and interface index; on TX we can set source IP and interface.
-func NewUDPService(raw *net.UDPConn) (*UDPService, error) {
-	u := &UDPService{raw: raw, pc4: ipv4.NewPacketConn(raw)}
+func NewUDPService(raw *net.UDPConn) (*udpService, error) {
+	u := &udpService{raw: raw, pc4: ipv4.NewPacketConn(raw)}
 	// Enable both RX and TX control messages: destination IP, source IP, and interface index.
 	if err := u.pc4.SetControlMessage(ipv4.FlagInterface|ipv4.FlagDst|ipv4.FlagSrc, true); err != nil {
 		return nil, err
@@ -50,7 +58,7 @@ func NewUDPService(raw *net.UDPConn) (*UDPService, error) {
 }
 
 // Close shuts down the underlying UDP socket.
-func (u *UDPService) Close() error { return u.raw.Close() }
+func (u *udpService) Close() error { return u.raw.Close() }
 
 // ReadFrom reads a single UDP datagram and returns:
 //   - number of bytes read
@@ -60,7 +68,7 @@ func (u *UDPService) Close() error { return u.raw.Close() }
 //
 // The caller should configure read deadlines via SetReadDeadline before calling.
 // This function extracts control message metadata (IP_PKTINFO) to provide per-packet context.
-func (u *UDPService) ReadFrom(buf []byte) (n int, remoteAddr *net.UDPAddr, localIP net.IP, ifname string, err error) {
+func (u *udpService) ReadFrom(buf []byte) (n int, remoteAddr *net.UDPAddr, localIP net.IP, ifname string, err error) {
 	n, cm4, raddr, err := u.pc4.ReadFrom(buf)
 	if err != nil {
 		return 0, nil, nil, "", err
@@ -89,7 +97,7 @@ func (u *UDPService) ReadFrom(buf []byte) (n int, remoteAddr *net.UDPAddr, local
 //
 // Returns number of bytes written or an error.
 // This uses an ipv4.ControlMessage to set per-packet src/interface hints.
-func (u *UDPService) WriteTo(pkt []byte, dst *net.UDPAddr, iface string, src net.IP) (int, error) {
+func (u *udpService) WriteTo(pkt []byte, dst *net.UDPAddr, iface string, src net.IP) (int, error) {
 	if dst == nil || dst.IP == nil {
 		return 0, errors.New("nil dst")
 	}
@@ -123,11 +131,11 @@ func (u *UDPService) WriteTo(pkt []byte, dst *net.UDPAddr, iface string, src net
 
 // SetReadDeadline forwards directly to the underlying UDPService.
 // This controls how long ReadFrom will block before returning a timeout.
-func (u *UDPService) SetReadDeadline(t time.Time) error {
+func (u *udpService) SetReadDeadline(t time.Time) error {
 	return u.raw.SetReadDeadline(t)
 }
 
 // LocalAddr returns the socket’s bound local address (IP and port).
-func (u *UDPService) LocalAddr() net.Addr {
+func (u *udpService) LocalAddr() net.Addr {
 	return u.raw.LocalAddr()
 }

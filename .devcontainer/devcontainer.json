@@ -8,8 +8,8 @@
         ]
     },
     "runArgs": [
-        "--name",
-        "dz-dev-workspace-vsc"
+        "--name=dz-dev-workspace-vsc",
+        "--ulimit=nofile=65535"
     ],
     "features": {
         "ghcr.io/devcontainers/features/common-utils:2": {},

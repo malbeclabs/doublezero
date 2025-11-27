@@ -1,4 +1,4 @@
-use std::net::Ipv4Addr;
+use std::{io::IsTerminal, net::Ipv4Addr};
 
 use crate::doublezerocommand::CliCommand;
 use doublezero_sdk::{
@@ -10,11 +10,26 @@ use doublezero_sdk::{
         },
     },
     get_doublezero_pubkey,
+    keypair::ENV_KEYPAIR,
 };
 use indicatif::ProgressBar;
 
-fn has_keypair_argument() -> bool {
-    std::env::args().any(|arg| arg == "--keypair" || arg == "-k")
+/// Check if a keypair source is available (CLI arg, env var, or piped stdin).
+///
+/// Returns true if any of these sources are available, which means we should
+/// skip the pre-flight keypair file check and let `DZClient::new()` handle
+/// loading with proper error messages.
+fn has_keypair_source() -> bool {
+    // Check CLI argument
+    let has_cli_arg = std::env::args().any(|arg| arg == "--keypair" || arg == "-k");
+
+    // Check environment variable
+    let has_env_var = std::env::var(ENV_KEYPAIR).is_ok();
+
+    // Check if stdin is piped (not a TTY)
+    let has_stdin = !std::io::stdin().is_terminal();
+
+    has_cli_arg || has_env_var || has_stdin
 }
 
 pub const CHECK_ID_JSON: u8 = 1;
@@ -27,8 +42,8 @@ pub fn check_requirements(
     spinner: Option<&ProgressBar>,
     checks: u8,
 ) -> eyre::Result<()> {
-    // Check that have your id.json
-    if (checks & CHECK_ID_JSON != 0) && !has_keypair_argument() {
+    // Check that have your id.json (skip if alternative keypair source is available)
+    if (checks & CHECK_ID_JSON != 0) && !has_keypair_source() {
         check_id(spinner)?;
     }
 
@@ -48,17 +63,20 @@ pub fn check_id(spinner: Option<&ProgressBar>) -> eyre::Result<()> {
     match get_doublezero_pubkey() {
         Ok(_) => Ok(()),
         Err(_) => {
+            let error_msg =
+                "DoubleZero keypair not found at default location (~/.config/doublezero/id.json)";
             if let Some(spinner) = spinner {
-                spinner.println(format!(
-                    "    {}: DoubleZero id.json not found (~/.config/doublezero/id.json)",
-                    "Error"
-                ));
+                spinner.println(format!("    Error: {error_msg}"));
             } else {
-                eprintln!("DoubleZero id.json not found (~/.config/doublezero/id.json)",);
+                eprintln!("{error_msg}");
             }
 
             Err(eyre::eyre!(
-                "Please create a new id.json (doublezero keygen)"
+                "Provide keypair via:\n  \
+                 - doublezero --keypair /path/to/key.json\n  \
+                 - cat key.json | doublezero ...\n  \
+                 - export DOUBLEZERO_KEYPAIR=/path/to/key.json\n  \
+                 - doublezero keygen"
             ))
         }
     }

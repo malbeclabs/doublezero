@@ -21,6 +21,7 @@ All notable changes to this project will be documented in this file.
   - Add route liveness fault-injection simulation tests.
   - Updated the `interface list` command to display all interfaces when no device is specified.
   - Route liveness treats peers that advertise passive mode as selectively passive; does not manage their routes directly.
+  - Route liveness sets set of routes configured as excluded to `AdminDown`.
 - Funder
   - Fund multicast group owners
 - Onchain programs

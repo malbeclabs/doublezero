@@ -169,6 +169,7 @@ type manager struct {
 	cfg     *ManagerConfig
 	udp     UDPService // shared UDP transport
 	metrics *Metrics
+	cr      *routing.ConfiguredRoutes
 
 	sched *Scheduler // time-wheel/event-loop for TX/detect
 	recv  *Receiver  // UDP packet reader → HandleRx
@@ -191,7 +192,7 @@ type manager struct {
 
 // NewManager constructs a Manager, opens the UDP socket, and launches the
 // receiver and scheduler loops. The context governs their lifetime.
-func NewManager(ctx context.Context, cfg *ManagerConfig) (*manager, error) {
+func NewManager(ctx context.Context, cfg *ManagerConfig, cr *routing.ConfiguredRoutes) (*manager, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("error validating manager config: %v", err)
 	}
@@ -225,6 +226,7 @@ func NewManager(ctx context.Context, cfg *ManagerConfig) (*manager, error) {
 		log: log,
 		cfg: cfg,
 		udp: udp,
+		cr:  cr,
 
 		sessions:  make(map[Peer]*Session),
 		desired:   make(map[RouteKey]*routing.Route),
@@ -267,6 +269,18 @@ func NewManager(ctx context.Context, cfg *ManagerConfig) (*manager, error) {
 			cancel()
 		}
 	}()
+
+	// If any routes are configured to be excluded, mark then as AdminDown immediately.
+	if m.cr != nil {
+		for ip := range m.cr.GetExcluded() {
+			r := &routing.Route{
+				Src:     net.ParseIP(ip),
+				Dst:     &net.IPNet{IP: net.ParseIP(ip), Mask: net.CIDRMask(32, 32)},
+				NextHop: net.ParseIP(ip),
+			}
+			m.AdminDownRoute(r, "doublezero0")
+		}
+	}
 
 	return m, nil
 }

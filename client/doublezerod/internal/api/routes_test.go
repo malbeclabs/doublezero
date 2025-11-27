@@ -126,14 +126,14 @@ func TestServeRoutesHandler_NoLiveness_WithIPv4AndIPv6(t *testing.T) {
 			UserType:    userType1,
 			LocalIP:     "10.0.0.1",
 			PeerIP:      "192.0.2.1",
-			KernelState: "present",
+			KernelState: liveness.KernelStatePresent.String(),
 		},
 		{
 			Network:     config.EnvLocalnet,
 			UserType:    userType2,
 			LocalIP:     "10.0.0.2",
 			PeerIP:      "192.0.2.2",
-			KernelState: "present",
+			KernelState: liveness.KernelStatePresent.String(),
 		},
 	}
 
@@ -146,6 +146,8 @@ func TestServeRoutesHandler_NoLiveness_WithIPv4AndIPv6(t *testing.T) {
 		require.Emptyf(t, got[i].LivenessLastUpdated, "route[%d] LivenessLastUpdated", i)
 		require.Emptyf(t, got[i].LivenessState, "route[%d] LivenessState", i)
 		require.Emptyf(t, got[i].LivenessStateReason, "route[%d] LivenessStateReason", i)
+		require.Emptyf(t, got[i].LivenessExpectedKernelState, "route[%d] LivenessExpectedKernelState", i)
+		require.Emptyf(t, got[i].LivenessPeerMode, "route[%d] LivenessPeerMode", i)
 	}
 }
 
@@ -231,10 +233,12 @@ func TestClient_API_ServeRoutesHandler_WithLiveness_KernelOnly(t *testing.T) {
 	require.Equal(t, userType, rt.UserType)
 	require.Equal(t, "10.0.0.1", rt.LocalIP)
 	require.Equal(t, "192.0.2.1", rt.PeerIP)
-	require.Equal(t, KernelStatePresent, rt.KernelState)
+	require.Equal(t, liveness.KernelStatePresent.String(), rt.KernelState)
 	require.Empty(t, rt.LivenessLastUpdated)
 	require.Empty(t, rt.LivenessState)
 	require.Empty(t, rt.LivenessStateReason)
+	require.Empty(t, rt.LivenessExpectedKernelState)
+	require.Empty(t, rt.LivenessPeerMode)
 }
 
 func TestClient_API_ServeRoutesHandler_WithLiveness_PresentInBoth(t *testing.T) {
@@ -253,9 +257,11 @@ func TestClient_API_ServeRoutesHandler_WithLiveness_PresentInBoth(t *testing.T) 
 
 	now := time.Now().UTC()
 	sess := liveness.SessionSnapshot{
-		Route:       *route,
-		LastUpdated: now,
-		State:       liveness.StateUp,
+		Route:               *route,
+		LastUpdated:         now,
+		State:               liveness.StateUp,
+		ExpectedKernelState: liveness.KernelStatePresent,
+		PeerAdvertisedMode:  liveness.PeerModeActive,
 	}
 
 	svc := &ProvisionRequest{
@@ -299,10 +305,12 @@ func TestClient_API_ServeRoutesHandler_WithLiveness_PresentInBoth(t *testing.T) 
 	require.Equal(t, userType, rt.UserType)
 	require.Equal(t, "10.0.0.1", rt.LocalIP)
 	require.Equal(t, "192.0.2.1", rt.PeerIP)
-	require.Equal(t, KernelStatePresent, rt.KernelState)
+	require.Equal(t, liveness.KernelStatePresent.String(), rt.KernelState)
 	require.Equal(t, liveness.StateUp.String(), rt.LivenessState)
 	require.NotEmpty(t, rt.LivenessLastUpdated)
 	require.Empty(t, rt.LivenessStateReason)
+	require.Equal(t, liveness.KernelStatePresent.String(), rt.LivenessExpectedKernelState)
+	require.Equal(t, LivenessPeerModeActive.String(), rt.LivenessPeerMode)
 }
 
 func TestClient_API_ServeRoutesHandler_WithLiveness_AbsentInKernel(t *testing.T) {
@@ -321,9 +329,11 @@ func TestClient_API_ServeRoutesHandler_WithLiveness_AbsentInKernel(t *testing.T)
 
 	now := time.Now().UTC()
 	sess := liveness.SessionSnapshot{
-		Route:       *route,
-		LastUpdated: now,
-		State:       liveness.StateDown,
+		Route:               *route,
+		LastUpdated:         now,
+		State:               liveness.StateDown,
+		ExpectedKernelState: liveness.KernelStateAbsent,
+		PeerAdvertisedMode:  liveness.PeerModePassive,
 	}
 
 	svc := &ProvisionRequest{
@@ -364,9 +374,11 @@ func TestClient_API_ServeRoutesHandler_WithLiveness_AbsentInKernel(t *testing.T)
 
 	rt := got[0]
 	require.Equal(t, userType, rt.UserType)
-	require.Equal(t, KernelStateAbsent, rt.KernelState)
+	require.Equal(t, liveness.KernelStateAbsent.String(), rt.KernelState)
 	require.Equal(t, liveness.StateDown.String(), rt.LivenessState)
 	require.NotEmpty(t, rt.LivenessLastUpdated)
+	require.Equal(t, liveness.KernelStateAbsent.String(), rt.LivenessExpectedKernelState)
+	require.Equal(t, LivenessPeerModePassive.String(), rt.LivenessPeerMode)
 	require.Equal(t, liveness.DownReasonNone.String(), rt.LivenessStateReason)
 }
 
@@ -386,10 +398,12 @@ func TestClient_API_ServeRoutesHandler_WithLiveness_SetsLivenessStateReason(t *t
 
 	now := time.Now().UTC()
 	sess := liveness.SessionSnapshot{
-		Route:          *route,
-		LastUpdated:    now,
-		State:          liveness.StateDown,
-		LastDownReason: liveness.DownReasonRemoteAdmin,
+		Route:               *route,
+		LastUpdated:         now,
+		State:               liveness.StateDown,
+		LastDownReason:      liveness.DownReasonRemoteAdmin,
+		ExpectedKernelState: liveness.KernelStateAbsent,
+		PeerAdvertisedMode:  liveness.PeerModePassive,
 	}
 
 	svc := &ProvisionRequest{
@@ -433,9 +447,11 @@ func TestClient_API_ServeRoutesHandler_WithLiveness_SetsLivenessStateReason(t *t
 	require.Equal(t, userType, rt.UserType)
 	require.Equal(t, "10.0.0.1", rt.LocalIP)
 	require.Equal(t, "192.0.2.1", rt.PeerIP)
-	require.Equal(t, KernelStateAbsent, rt.KernelState)
+	require.Equal(t, liveness.KernelStateAbsent.String(), rt.KernelState)
 	require.Equal(t, liveness.StateDown.String(), rt.LivenessState)
 	require.NotEmpty(t, rt.LivenessLastUpdated)
+	require.Equal(t, liveness.KernelStateAbsent.String(), rt.LivenessExpectedKernelState)
+	require.Equal(t, LivenessPeerModePassive.String(), rt.LivenessPeerMode)
 	require.Equal(t, liveness.DownReasonRemoteAdmin.String(), rt.LivenessStateReason)
 }
 

@@ -18,6 +18,7 @@ All notable changes to this project will be documented in this file.
     - Add support for updating `contributor.ops_manager_key`.
 - Client
   - Add route liveness fault-injection simulation tests.
+  - Route liveness treats peers that advertise passive mode as selectively passive; does not manage their routes directly.
 - Funder
   - Fund multicast group owners
 - Onchain programs

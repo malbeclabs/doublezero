@@ -855,12 +855,12 @@ func TestClient_Liveness_Manager_OnSessionDown_EmitsConvergenceToDownWhenInstall
 	require.True(t, snap.ConvDownStart.IsZero(), "convDownStart should be cleared after onSessionDown")
 }
 
-func newTestManager(t *testing.T, mutate func(*ManagerConfig)) (*Manager, error) {
+func newTestManager(t *testing.T, mutate func(*ManagerConfig)) (*manager, error) {
 	m, _, err := newTestManagerWithMetrics(t, mutate)
 	return m, err
 }
 
-func newTestManagerWithMetrics(t *testing.T, mutate func(*ManagerConfig)) (*Manager, *prometheus.Registry, error) {
+func newTestManagerWithMetrics(t *testing.T, mutate func(*ManagerConfig)) (*manager, *prometheus.Registry, error) {
 	reg := prometheus.NewRegistry()
 	cfg := &ManagerConfig{
 		Logger:          newTestLogger(t),

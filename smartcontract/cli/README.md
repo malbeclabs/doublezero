@@ -95,7 +95,7 @@ classDiagram
         UserStatus status
     }
     Device --> Contributor : contributor_pk
-    Device --> Exchange : exchange_pk    
+    Device --> Exchange : exchange_pk
     Device --> Location  : location_pk
     Tunnel --> Device : side_a_pk
     Tunnel --> Device : side_z_pk
@@ -146,7 +146,7 @@ Below is a list of available CLI commands for each main on-chain structure:
     |------------|--------|-----------------------|
     | --pubkey   | Pubkey | Location public key   |
 - `location list` — List all locations
-        
+
     | Field           | Type     | Description                       |
     |-----------------|----------|-----------------------------------|
     | account         | Pubkey   | Location public key               |
@@ -187,7 +187,7 @@ Below is a list of available CLI commands for each main on-chain structure:
     | --pubkey   | Pubkey | Exchange public key   |
 - `exchange list` — List all exchanges
     *(none)*
-    
+
     | Field           | Type     | Description                       |
     |-----------------|----------|-----------------------------------|
     | account         | Pubkey   | Exchange public key               |
@@ -254,7 +254,7 @@ Below is a list of available CLI commands for each main on-chain structure:
     |------------|--------|---------------------|
     | --pubkey   | Pubkey | Device public key   |
 - `device list` — List all devices
-    
+
     | Field           | Type     | Description                       |
     |-----------------|----------|-----------------------------------|
     | account         | Pubkey   | Device public key                 |
@@ -304,7 +304,7 @@ Below is a list of available CLI commands for each main on-chain structure:
     |------------|--------|---------------------|
     | --pubkey   | Pubkey | Tunnel public key   |
 - `tunnel list` — List all tunnels
-    
+
     | Field           | Type     | Description                       |
     |-----------------|----------|-----------------------------------|
     | account         | Pubkey   | Tunnel public key                 |
@@ -317,7 +317,7 @@ Below is a list of available CLI commands for each main on-chain structure:
     | delay_ns        | u64      | Delay (milliseconds)              |
     | jitter_ns       | u64      | Jitter (milliseconds)             |
     | tunnel_net      | NetworkV4| Tunnel network prefix             |
-    | status          | Enum     | Tunnel status                     |
+    | status          | Enum     | Tunnel Status                     |
     | owner           | Pubkey   | Owner's public key                |
 - `tunnel update` — Update tunnel information
     | Argument        | Type     | Description                        |
@@ -347,7 +347,7 @@ Below is a list of available CLI commands for each main on-chain structure:
     |------------|--------|---------------------|
     | --pubkey   | Pubkey | User public key     |
 - `user list` — List all users
-    
+
     | Field           | Type     | Description                       |
     |-----------------|----------|-----------------------------------|
     | account         | Pubkey   | User public key                   |

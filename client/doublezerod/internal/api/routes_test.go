@@ -122,18 +122,18 @@ func TestServeRoutesHandler_NoLiveness_WithIPv4AndIPv6(t *testing.T) {
 
 	want := []Route{
 		{
-			Network:  config.EnvLocalnet,
-			UserType: userType1,
-			LocalIP:  "10.0.0.1",
-			PeerIP:   "192.0.2.1",
-			RTState:  RTStatePresent,
+			Network:     config.EnvLocalnet,
+			UserType:    userType1,
+			LocalIP:     "10.0.0.1",
+			PeerIP:      "192.0.2.1",
+			KernelState: "present",
 		},
 		{
-			Network:  config.EnvLocalnet,
-			UserType: userType2,
-			LocalIP:  "10.0.0.2",
-			PeerIP:   "192.0.2.2",
-			RTState:  RTStatePresent,
+			Network:     config.EnvLocalnet,
+			UserType:    userType2,
+			LocalIP:     "10.0.0.2",
+			PeerIP:      "192.0.2.2",
+			KernelState: "present",
 		},
 	}
 
@@ -142,7 +142,7 @@ func TestServeRoutesHandler_NoLiveness_WithIPv4AndIPv6(t *testing.T) {
 		require.Equalf(t, want[i].UserType, got[i].UserType, "route[%d] UserType", i)
 		require.Equalf(t, want[i].LocalIP, got[i].LocalIP, "route[%d] LocalIP", i)
 		require.Equalf(t, want[i].PeerIP, got[i].PeerIP, "route[%d] PeerIP", i)
-		require.Equalf(t, want[i].RTState, got[i].RTState, "route[%d] RTState", i)
+		require.Equalf(t, want[i].KernelState, got[i].KernelState, "route[%d] KernelState", i)
 		require.Emptyf(t, got[i].LivenessLastUpdated, "route[%d] LivenessLastUpdated", i)
 		require.Emptyf(t, got[i].LivenessState, "route[%d] LivenessState", i)
 	}
@@ -230,7 +230,7 @@ func TestClient_API_ServeRoutesHandler_WithLiveness_KernelOnly(t *testing.T) {
 	require.Equal(t, userType, rt.UserType)
 	require.Equal(t, "10.0.0.1", rt.LocalIP)
 	require.Equal(t, "192.0.2.1", rt.PeerIP)
-	require.Equal(t, RTStatePresent, rt.RTState)
+	require.Equal(t, KernelStatePresent, rt.KernelState)
 	require.Empty(t, rt.LivenessLastUpdated)
 	require.Empty(t, rt.LivenessState)
 }
@@ -297,7 +297,7 @@ func TestClient_API_ServeRoutesHandler_WithLiveness_PresentInBoth(t *testing.T) 
 	require.Equal(t, userType, rt.UserType)
 	require.Equal(t, "10.0.0.1", rt.LocalIP)
 	require.Equal(t, "192.0.2.1", rt.PeerIP)
-	require.Equal(t, RTStatePresent, rt.RTState)
+	require.Equal(t, KernelStatePresent, rt.KernelState)
 	require.Equal(t, liveness.StateUp.String(), rt.LivenessState)
 	require.NotEmpty(t, rt.LivenessLastUpdated)
 }
@@ -361,7 +361,7 @@ func TestClient_API_ServeRoutesHandler_WithLiveness_AbsentInKernel(t *testing.T)
 
 	rt := got[0]
 	require.Equal(t, userType, rt.UserType)
-	require.Equal(t, RTStateAbsent, rt.RTState)
+	require.Equal(t, KernelStateAbsent, rt.KernelState)
 	require.Equal(t, liveness.StateDown.String(), rt.LivenessState)
 	require.NotEmpty(t, rt.LivenessLastUpdated)
 }

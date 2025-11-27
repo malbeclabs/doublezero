@@ -65,9 +65,6 @@ const (
 	defaultRouteLivenessMinTxFloor = 50 * time.Millisecond
 	defaultRouteLivenessMaxTxCeil  = 1 * time.Second
 
-	// The liveness port is not configurable since clients need to use the same one so they know
-	// how to connect to each other.
-	defaultRouteLivenessPort   = 44880
 	defaultRouteLivenessBindIP = "0.0.0.0"
 )
 
@@ -159,7 +156,7 @@ func main() {
 		lmc = &liveness.ManagerConfig{
 			Logger: log,
 			BindIP: defaultRouteLivenessBindIP,
-			Port:   defaultRouteLivenessPort,
+			Port:   liveness.DefaultLivenessPort,
 
 			// If active mode is enabled, set passive mode to false.
 			// The manager only knows about passive mode, with the negation of it being active mode.

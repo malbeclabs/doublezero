@@ -730,7 +730,10 @@ func (m *manager) onSessionUp(sess *Session) {
 		"peer", peer.String(),
 		"route", snap.Route.String(),
 		"convergence", convergence.String(),
-		"upSince", snap.UpSince.UTC().String())
+		"upSince", snap.UpSince.UTC().String(),
+		"peerAdvertisedMode", snap.PeerAdvertisedMode.String(),
+		"peerClientVersion", snap.PeerClientVersion.String(),
+	)
 }
 
 // onSessionDown withdraws the route if currently installed (unless PassiveMode
@@ -760,7 +763,9 @@ func (m *manager) onSessionDown(sess *Session) {
 			"peer", peer.String(),
 			"routePresent", route != nil,
 			"downSince", snap.DownSince.UTC().String(),
-			"downReason", snap.LastDownReason.String())
+			"downReason", snap.LastDownReason.String(),
+			"peerClientVersion", snap.PeerClientVersion.String(),
+		)
 		return
 	}
 
@@ -769,7 +774,9 @@ func (m *manager) onSessionDown(sess *Session) {
 			"peer", peer.String(),
 			"route", snap.Route.String(),
 			"downSince", snap.DownSince.UTC().String(),
-			"downReason", snap.LastDownReason.String())
+			"downReason", snap.LastDownReason.String(),
+			"peerClientVersion", snap.PeerClientVersion.String(),
+		)
 		return
 	}
 
@@ -778,7 +785,9 @@ func (m *manager) onSessionDown(sess *Session) {
 			"peer", peer.String(),
 			"route", snap.Route.String(),
 			"downSince", snap.DownSince.UTC().String(),
-			"downReason", snap.LastDownReason.String())
+			"downReason", snap.LastDownReason.String(),
+			"peerClientVersion", snap.PeerClientVersion.String(),
+		)
 		return
 	}
 
@@ -805,7 +814,9 @@ func (m *manager) onSessionDown(sess *Session) {
 		"route", snap.Route.String(),
 		"convergence", convergence.String(),
 		"downSince", snap.DownSince.UTC().String(),
-		"downReason", snap.LastDownReason.String())
+		"downReason", snap.LastDownReason.String(),
+		"peerClientVersion", snap.PeerClientVersion.String(),
+	)
 }
 
 // isPeerEffectivelyPassive returns true when this session should not have its

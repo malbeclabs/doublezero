@@ -239,6 +239,7 @@ func TestClient_API_ServeRoutesHandler_WithLiveness_KernelOnly(t *testing.T) {
 	require.Empty(t, rt.LivenessStateReason)
 	require.Empty(t, rt.LivenessExpectedKernelState)
 	require.Empty(t, rt.LivenessPeerMode)
+	require.Empty(t, rt.PeerClientVersion)
 }
 
 func TestClient_API_ServeRoutesHandler_WithLiveness_PresentInBoth(t *testing.T) {
@@ -262,6 +263,7 @@ func TestClient_API_ServeRoutesHandler_WithLiveness_PresentInBoth(t *testing.T) 
 		State:               liveness.StateUp,
 		ExpectedKernelState: liveness.KernelStatePresent,
 		PeerAdvertisedMode:  liveness.PeerModeActive,
+		PeerClientVersion:   liveness.ClientVersion{Major: 1, Minor: 2, Patch: 3, Channel: liveness.VersionChannelStable},
 	}
 
 	svc := &ProvisionRequest{
@@ -311,6 +313,7 @@ func TestClient_API_ServeRoutesHandler_WithLiveness_PresentInBoth(t *testing.T) 
 	require.Empty(t, rt.LivenessStateReason)
 	require.Equal(t, liveness.KernelStatePresent.String(), rt.LivenessExpectedKernelState)
 	require.Equal(t, LivenessPeerModeActive.String(), rt.LivenessPeerMode)
+	require.Equal(t, sess.PeerClientVersion.String(), rt.PeerClientVersion)
 }
 
 func TestClient_API_ServeRoutesHandler_WithLiveness_AbsentInKernel(t *testing.T) {
@@ -334,6 +337,7 @@ func TestClient_API_ServeRoutesHandler_WithLiveness_AbsentInKernel(t *testing.T)
 		State:               liveness.StateDown,
 		ExpectedKernelState: liveness.KernelStateAbsent,
 		PeerAdvertisedMode:  liveness.PeerModePassive,
+		PeerClientVersion:   liveness.ClientVersion{Major: 1, Minor: 2, Patch: 3, Channel: liveness.VersionChannelStable},
 	}
 
 	svc := &ProvisionRequest{
@@ -380,6 +384,7 @@ func TestClient_API_ServeRoutesHandler_WithLiveness_AbsentInKernel(t *testing.T)
 	require.Equal(t, liveness.KernelStateAbsent.String(), rt.LivenessExpectedKernelState)
 	require.Equal(t, LivenessPeerModePassive.String(), rt.LivenessPeerMode)
 	require.Equal(t, liveness.DownReasonNone.String(), rt.LivenessStateReason)
+	require.Equal(t, sess.PeerClientVersion.String(), rt.PeerClientVersion)
 }
 
 func TestClient_API_ServeRoutesHandler_WithLiveness_SetsLivenessStateReason(t *testing.T) {
@@ -404,6 +409,7 @@ func TestClient_API_ServeRoutesHandler_WithLiveness_SetsLivenessStateReason(t *t
 		LastDownReason:      liveness.DownReasonRemoteAdmin,
 		ExpectedKernelState: liveness.KernelStateAbsent,
 		PeerAdvertisedMode:  liveness.PeerModePassive,
+		PeerClientVersion:   liveness.ClientVersion{Major: 1, Minor: 2, Patch: 3, Channel: liveness.VersionChannelStable},
 	}
 
 	svc := &ProvisionRequest{
@@ -453,6 +459,7 @@ func TestClient_API_ServeRoutesHandler_WithLiveness_SetsLivenessStateReason(t *t
 	require.Equal(t, liveness.KernelStateAbsent.String(), rt.LivenessExpectedKernelState)
 	require.Equal(t, LivenessPeerModePassive.String(), rt.LivenessPeerMode)
 	require.Equal(t, liveness.DownReasonRemoteAdmin.String(), rt.LivenessStateReason)
+	require.Equal(t, sess.PeerClientVersion.String(), rt.PeerClientVersion)
 }
 
 type mockLivenessManager struct {

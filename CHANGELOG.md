@@ -19,6 +19,7 @@ All notable changes to this project will be documented in this file.
 - Client
   - Add route liveness fault-injection simulation tests.
   - Route liveness treats peers that advertise passive mode as selectively passive; does not manage their routes directly.
+  - Advertise peer client version with route liveness control packets.
 - Funder
   - Fund multicast group owners
 - Onchain programs

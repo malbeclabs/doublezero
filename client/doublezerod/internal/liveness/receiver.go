@@ -170,7 +170,7 @@ func (r *Receiver) Run(ctx context.Context) error {
 		}
 		localIP4 := localIP.To4().String()
 
-		r.metrics.ControlPacketsRX.WithLabelValues(ifname, localIP4).Inc()
+		r.metrics.ControlPacketsRX.WithLabelValues(ifname, localIP4, ctrl.ClientVersion.String()).Inc()
 
 		// Populate the peer descriptor: identifies which local interface/IP
 		// the packet arrived on and the remote endpoint that sent it.

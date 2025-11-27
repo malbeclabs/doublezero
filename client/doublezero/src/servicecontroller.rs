@@ -128,6 +128,8 @@ pub struct RouteRecord {
     pub liveness_last_updated: Option<String>,
     #[tabled(rename = "Liveness State")]
     pub liveness_state: Option<String>,
+    #[tabled(rename = "Liveness State Reason")]
+    pub liveness_state_reason: Option<String>,
 }
 
 impl fmt::Display for RouteRecord {

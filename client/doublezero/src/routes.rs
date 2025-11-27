@@ -35,6 +35,7 @@ mod tests {
             kernel_state: "present".to_string(),
             liveness_last_updated: None,
             liveness_state: None,
+            liveness_state_reason: None,
             peer_ip: peer_ip.to_string(),
         }
     }

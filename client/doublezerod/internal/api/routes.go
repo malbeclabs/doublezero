@@ -33,6 +33,7 @@ type Route struct {
 	KernelState         KernelState `json:"kernel_state"`
 	LivenessLastUpdated string      `json:"liveness_last_updated,omitempty"`
 	LivenessState       string      `json:"liveness_state,omitempty"`
+	LivenessStateReason string      `json:"liveness_state_reason,omitempty"`
 }
 
 type routeKey struct {
@@ -116,6 +117,11 @@ func ServeRoutesHandler(nlr bgp.RouteReaderWriter, lm LivenessManager, db DBRead
 						kernelState = KernelStatePresent
 					}
 
+					var stateReason string
+					if sess.State == liveness.StateDown {
+						stateReason = sess.LastDownReason.String()
+					}
+
 					livenessRoutes[rk] = &Route{
 						Network:             networkConfig.Moniker,
 						UserType:            svc.UserType,
@@ -124,6 +130,7 @@ func ServeRoutesHandler(nlr bgp.RouteReaderWriter, lm LivenessManager, db DBRead
 						KernelState:         kernelState,
 						LivenessLastUpdated: sess.LastUpdated.UTC().Format(time.RFC3339),
 						LivenessState:       sess.State.String(),
+						LivenessStateReason: stateReason,
 					}
 					break
 				}

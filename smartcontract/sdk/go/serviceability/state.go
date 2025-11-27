@@ -427,25 +427,25 @@ func (l LinkStatus) MarshalJSON() ([]byte, error) {
 
 type Link struct {
 	AccountType       AccountType
-	Owner             [32]uint8
-	Index             Uint128
-	Bump_seed         uint8
-	SideAPubKey       [32]uint8
-	SideZPubKey       [32]uint8
-	LinkType          LinkLinkType
-	Bandwidth         uint64
-	Mtu               uint32
-	DelayNs           uint64
-	JitterNs          uint64
-	TunnelId          uint16
-	TunnelNet         [5]uint8
-	Status            LinkStatus
-	Code              string
-	ContributorPubKey [32]uint8
-	SideAIfaceName    string
-	SideZIfaceName    string
-	DelayOverrideNs   uint64
-	PubKey            [32]byte
+	Owner             [32]uint8    `influx:"tag,owner,pubkey"`
+	Index             Uint128      `influx:"-"`
+	Bump_seed         uint8        `influx:"-"`
+	SideAPubKey       [32]uint8    `influx:"tag,side_a_pubkey,pubkey"`
+	SideZPubKey       [32]uint8    `influx:"tag,side_z_pubkey,pubkey"`
+	LinkType          LinkLinkType `influx:"tag,link_type"`
+	Bandwidth         uint64       `influx:"field,bandwidth"`
+	Mtu               uint32       `influx:"field,mtu"`
+	DelayNs           uint64       `influx:"field,delay_ns"`
+	JitterNs          uint64       `influx:"field,jitter_ns"`
+	TunnelId          uint16       `influx:"tag,tunnel_id"`
+	TunnelNet         [5]uint8     `influx:"tag,tunnel_net,cidr"`
+	Status            LinkStatus   `influx:"tag,status"`
+	Code              string       `influx:"tag,code"`
+	ContributorPubKey [32]uint8    `influx:"tag,contributor_pubkey,pubkey"`
+	SideAIfaceName    string       `influx:"tag,side_a_iface_name"`
+	SideZIfaceName    string       `influx:"tag,side_z_iface_name"`
+	DelayOverrideNs   uint64       `influx:"field,delay_override_ns"`
+	PubKey            [32]byte     `influx:"tag,pubkey,pubkey"`
 }
 
 func (l Link) MarshalJSON() ([]byte, error) {

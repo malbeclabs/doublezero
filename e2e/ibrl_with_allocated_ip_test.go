@@ -4,7 +4,6 @@ package e2e_test
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +14,7 @@ import (
 	"github.com/malbeclabs/doublezero/e2e/internal/docker"
 	"github.com/malbeclabs/doublezero/e2e/internal/fixtures"
 	"github.com/malbeclabs/doublezero/e2e/internal/netlink"
+	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
 	"github.com/stretchr/testify/require"
 )
 
@@ -85,10 +85,17 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *d
 	t.Run("check_post_connect", func(t *testing.T) {
 		dn.log.Info("==> Checking IBRL with allocated IP post-connect requirements")
 
-		expectedAllocatedClientIP, err := nextAllocatableIP(device.CYOANetworkIP, int(device.Spec.CYOANetworkAllocatablePrefix), map[string]bool{})
+		// Parse the dz_prefix to get the base IP and prefix length
+		// User IPs are allocated from the dz_prefix, not the public IP
+		dzPrefixIP, dzPrefixNet, err := netutil.ParseCIDR(device.DZPrefix)
+		require.NoError(t, err)
+		ones, _ := dzPrefixNet.Mask.Size()
+		allocatableBits := 32 - ones // number of host bits
+
+		expectedAllocatedClientIP, err := nextAllocatableIP(dzPrefixIP, allocatableBits, map[string]bool{})
 		require.NoError(t, err)
 
-		dn.log.Info("--> Expected allocated client IP", "expectedAllocatedClientIP", expectedAllocatedClientIP, "deviceCYOAIP", device.CYOANetworkIP)
+		dn.log.Info("--> Expected allocated client IP", "expectedAllocatedClientIP", expectedAllocatedClientIP, "deviceCYOAIP", device.CYOANetworkIP, "dzPrefix", device.DZPrefix)
 
 		if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {
 			config, err := fixtures.Render("fixtures/ibrl_with_allocated_addr/doublezero_agent_config_user_added.tmpl", map[string]any{
@@ -133,9 +140,9 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *d
 				name:        "doublezero_device_list",
 				fixturePath: "fixtures/ibrl_with_allocated_addr/doublezero_device_list.tmpl",
 				data: map[string]any{
-					"DeviceIP":                device.CYOANetworkIP,
-					"ManagerPubkey":           dn.Manager.Pubkey,
-					"DeviceAllocatablePrefix": strconv.Itoa(int(device.Spec.CYOANetworkAllocatablePrefix)),
+					"DeviceIP":       device.CYOANetworkIP,
+					"ManagerPubkey":  dn.Manager.Pubkey,
+					"DeviceDZPrefix": device.DZPrefix,
 				},
 				cmd: []string{"doublezero", "device", "list"},
 			},

@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - uptick to v0.3.0 ([#210](https://github.com/doublezerofoundation/doublezero-offchain/pull/210))
 - add `revenue-distribution fetch validator-debts` command ([#201](https://github.com/doublezerofoundation/doublezero-offchain/pull/201))
+- solana-cli: add shared validator access validation for `prepare-validator-access` and `request-validator-access` commands, with a hidden `--force` flag on the request command ([#211](https://github.com/doublezerofoundation/doublezero-offchain/pull/211))
+
 
 ## [0.2.2](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-solana/v0.2.2) - 2025-11-12
 

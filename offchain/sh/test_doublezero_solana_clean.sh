@@ -72,13 +72,14 @@ NODE_ID=$(solana address -k $VALIDATOR_KEYPAIR)
 MESSAGE="service_key=$DUMMY_KEY"
 SIGNATURE=$(solana sign-offchain-message -k $VALIDATOR_KEYPAIR service_key=$DUMMY_KEY)
 
-echo "doublezero-solana passport request-validator-access -ul -v --primary-validator-id $NODE_ID --signature $SIGNATURE --doublezero-address $DUMMY_KEY"
+echo "doublezero-solana passport request-validator-access -ul -v --primary-validator-id $NODE_ID --signature $SIGNATURE --doublezero-address $DUMMY_KEY --leader-schedule-epochs 1"
 $CLI_BIN passport request-validator-access \
     -ul \
     -v \
     --primary-validator-id $NODE_ID \
     --signature $SIGNATURE \
-    --doublezero-address $DUMMY_KEY
+    --doublezero-address $DUMMY_KEY \
+    --leader-schedule-epochs 1
 echo
 
 echo "doublezero-solana passport fetch -ul --access-request $DUMMY_KEY"

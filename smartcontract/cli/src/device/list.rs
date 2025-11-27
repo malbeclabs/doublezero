@@ -243,7 +243,7 @@ mod tests {
             contributor_pk,
             location_pk: location1_pubkey,
             exchange_pk: exchange1_pubkey,
-            device_type: DeviceType::Switch,
+            device_type: DeviceType::Hybrid,
             public_ip: [1, 2, 3, 4].into(),
             dz_prefixes: "1.2.3.4/32".parse().unwrap(),
             status: DeviceStatus::Activated,
@@ -270,7 +270,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | code         | contributor       | location       | exchange       | device_type | public_ip | dz_prefixes | users | max_users | status    | mgmt_vrf | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | device1_code | contributor1_code | location1_code | exchange1_code | switch      | 1.2.3.4   | 1.2.3.4/32  | 0     | 255       | activated | default  | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
+        assert_eq!(output_str, " account                                   | code         | contributor       | location       | exchange       | device_type | public_ip | dz_prefixes | users | max_users | status    | mgmt_vrf | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | device1_code | contributor1_code | location1_code | exchange1_code | hybrid      | 1.2.3.4   | 1.2.3.4/32  | 0     | 255       | activated | default  | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
 
         let mut output = Vec::new();
         let res = ListDeviceCliCommand {
@@ -281,6 +281,6 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"code\":\"device1_code\",\"bump_seed\":2,\"location_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"contributor_code\":\"contributor1_code\",\"location_code\":\"location1_code\",\"location_name\":\"location1_name\",\"exchange_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA\",\"exchange_code\":\"exchange1_code\",\"exchange_name\":\"exchange1_name\",\"device_type\":\"Switch\",\"public_ip\":\"1.2.3.4\",\"dz_prefixes\":\"1.2.3.4/32\",\"users\":0,\"max_users\":255,\"status\":\"Activated\",\"mgmt_vrf\":\"default\",\"owner\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\"}]\n");
+        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"code\":\"device1_code\",\"bump_seed\":2,\"location_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"contributor_code\":\"contributor1_code\",\"location_code\":\"location1_code\",\"location_name\":\"location1_name\",\"exchange_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA\",\"exchange_code\":\"exchange1_code\",\"exchange_name\":\"exchange1_name\",\"device_type\":\"Hybrid\",\"public_ip\":\"1.2.3.4\",\"dz_prefixes\":\"1.2.3.4/32\",\"users\":0,\"max_users\":255,\"status\":\"Activated\",\"mgmt_vrf\":\"default\",\"owner\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\"}]\n");
     }
 }

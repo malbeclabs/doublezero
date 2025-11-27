@@ -595,7 +595,7 @@ mod tests {
             DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
                 code: "test".to_string(),
                 public_ip: [1, 2, 3, 4].into(),
-                device_type: DeviceType::Switch,
+                device_type: DeviceType::Hybrid,
                 dz_prefixes: "1.2.3.4/1".parse().unwrap(),
                 metrics_publisher_pk: Pubkey::new_unique(),
                 mgmt_vrf: "mgmt".to_string(),
@@ -611,7 +611,7 @@ mod tests {
                 code: Some("test".to_string()),
                 public_ip: Some([1, 2, 3, 4].into()),
                 contributor_pk: Some(Pubkey::new_unique()),
-                device_type: Some(DeviceType::Switch),
+                device_type: Some(DeviceType::Hybrid),
                 dz_prefixes: Some("1.2.3.4/1".parse().unwrap()),
                 metrics_publisher_pk: Some(Pubkey::new_unique()),
                 mgmt_vrf: Some("mgmt".to_string()),

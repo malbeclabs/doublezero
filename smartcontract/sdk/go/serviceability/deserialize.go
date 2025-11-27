@@ -109,7 +109,7 @@ func DeserializeDevice(reader *ByteReader, dev *Device) {
 	dev.Bump_seed = reader.ReadU8()
 	dev.LocationPubKey = reader.ReadPubkey()
 	dev.ExchangePubKey = reader.ReadPubkey()
-	dev.DeviceType = reader.ReadU8()
+	dev.DeviceType = DeviceDeviceType(reader.ReadU8())
 	dev.PublicIp = reader.ReadIPv4()
 	dev.Status = DeviceStatus(reader.ReadU8())
 	dev.Code = reader.ReadString()

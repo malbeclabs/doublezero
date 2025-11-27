@@ -105,7 +105,7 @@ mod tests {
             contributor_pk,
             location_pk: Pubkey::new_unique(),
             exchange_pk: Pubkey::new_unique(),
-            device_type: DeviceType::Switch,
+            device_type: DeviceType::Hybrid,
             public_ip: [10, 0, 0, 1].into(),
             dz_prefixes: "10.0.0.1/24,11.0.0.1/24".parse().unwrap(),
             owner: device_pubkey,

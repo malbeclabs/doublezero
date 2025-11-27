@@ -86,7 +86,7 @@ mod tests {
             contributor_pk: Pubkey::default(),
             location_pk: Pubkey::default(),
             exchange_pk: Pubkey::default(),
-            device_type: doublezero_sdk::DeviceType::Switch,
+            device_type: doublezero_sdk::DeviceType::Hybrid,
             public_ip: [10, 0, 0, 1].into(),
             dz_prefixes: NetworkV4List::default(),
             status: DeviceStatus::Activated,

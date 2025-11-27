@@ -302,7 +302,7 @@ async fn test_doublezero_program() {
     let (device_la_pubkey, _) = get_device_pda(&program_id, globalstate_account.account_index + 1);
     let device_la: DeviceCreateArgs = DeviceCreateArgs {
         code: device_la_code.clone(),
-        device_type: DeviceType::Switch,
+        device_type: DeviceType::Hybrid,
         public_ip: [100, 0, 0, 1].into(),
         dz_prefixes: "100.1.0.0/23".parse().unwrap(),
         metrics_publisher_pk: Pubkey::default(), // Assuming no metrics publisher for this test
@@ -425,7 +425,7 @@ async fn test_doublezero_program() {
     let (device_ny_pubkey, _) = get_device_pda(&program_id, globalstate_account.account_index + 1);
     let device_ny: DeviceCreateArgs = DeviceCreateArgs {
         code: device_ny_code.clone(),
-        device_type: DeviceType::Switch,
+        device_type: DeviceType::Hybrid,
         public_ip: [100, 0, 0, 2].into(),
         dz_prefixes: vec!["100.1.0.1/24".parse().unwrap()].into(),
         metrics_publisher_pk: Pubkey::default(), // Assuming no metrics publisher for this test

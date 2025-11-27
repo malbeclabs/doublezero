@@ -178,7 +178,7 @@ async fn test_accesspass_allow_multiple_ip() {
         program_id,
         DoubleZeroInstruction::CreateDevice(device::create::DeviceCreateArgs {
             code: "la".to_string(),
-            device_type: DeviceType::Switch,
+            device_type: DeviceType::Hybrid,
             public_ip: [100, 0, 0, 1].into(),
             dz_prefixes: "100.1.0.0/23".parse().unwrap(),
             metrics_publisher_pk: Pubkey::default(),

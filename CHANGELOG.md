@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.
     - Added global `--no-version-warning` flag to the `doublezero` client and now emit version warnings to STDERR instead of STDOUT to improve scriptability and logging.
     - Add the ability to update a Device’s location, managing the reference counters accordingly.
     - Added support in the link update command to set a link’s status to soft_drained or hard_drained.
+    - Added support for specifying `device_type` at creation, updating it via device update, and displaying it in list/detail outputs.
     - Add support for updating `contributor.ops_manager_key`.
 - Client
   - Add route liveness fault-injection simulation tests.
@@ -24,6 +25,7 @@ All notable changes to this project will be documented in this file.
   - Serviceability Program: Updated the device update command to allow modifying a device’s location.
   - Added new `soft-drained` and `hard-drained` link status values to serviceability to support traffic offloading as defined in RFC9.
   - Fix ProgramConfig resize during global state initialization.
+  - Standardized the `device_type` enum to `Edge`, `Transit`, and `Hybrid`, added validation rules, and defaulted existing devices to `Hybrid` for backward compatibility.
   - Add `contributor.ops_manager_key` for authorizing incident management operations.
 - QA
   - Traceroute when packet loss is detected

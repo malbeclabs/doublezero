@@ -218,7 +218,7 @@ mod tests {
             bump_seed: 255,
             reference_count: 0,
             code: "test_device".to_string(),
-            device_type: doublezero_sdk::DeviceType::Switch,
+            device_type: doublezero_sdk::DeviceType::Hybrid,
             contributor_pk,
             location_pk: Pubkey::default(),
             status: DeviceStatus::Activated,

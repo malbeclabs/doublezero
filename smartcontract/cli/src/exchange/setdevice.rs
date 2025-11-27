@@ -99,7 +99,7 @@ mod tests {
             exchange_pk: exchange_pubkey,
             metrics_publisher_pk: Pubkey::new_unique(),
             status: DeviceStatus::Activated,
-            device_type: DeviceType::Switch,
+            device_type: DeviceType::Hybrid,
             dz_prefixes: "10.0.0.1/31".parse().unwrap(),
             interfaces: Vec::new(),
             mgmt_vrf: "".to_string(),

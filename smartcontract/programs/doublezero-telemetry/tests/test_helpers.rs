@@ -117,7 +117,7 @@ impl DeviceCreateArgsExt for DeviceCreateArgs {
     fn default() -> DeviceCreateArgs {
         DeviceCreateArgs {
             code: "".to_string(),
-            device_type: DeviceType::Switch,
+            device_type: DeviceType::Hybrid,
             public_ip: "100.0.0.1".parse().unwrap(),
             dz_prefixes: vec!["110.0.0.0/24".parse().unwrap()].into(),
             metrics_publisher_pk: Pubkey::default(),
@@ -321,7 +321,7 @@ impl LedgerHelper {
             .create_and_activate_device(
                 DeviceCreateArgs {
                     code: "origin_device".to_string(),
-                    device_type: DeviceType::Switch,
+                    device_type: DeviceType::Hybrid,
                     public_ip: [100, 0, 0, 1].into(),
                     dz_prefixes: vec!["108.0.0.0/24".parse().unwrap()].into(),
                     metrics_publisher_pk: origin_device_agent_pk,
@@ -343,7 +343,7 @@ impl LedgerHelper {
             .create_and_activate_device(
                 DeviceCreateArgs {
                     code: "target_device".to_string(),
-                    device_type: DeviceType::Switch,
+                    device_type: DeviceType::Hybrid,
                     public_ip: [100, 0, 0, 2].into(),
                     dz_prefixes: vec!["108.0.0.0/24".parse().unwrap()].into(),
                     metrics_publisher_pk: Pubkey::new_unique(),

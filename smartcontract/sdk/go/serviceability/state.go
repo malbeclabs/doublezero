@@ -98,6 +98,22 @@ type Exchange struct {
 	PubKey       [32]byte       `influx:"tag,pubkey,pubkey"`
 }
 
+type DeviceDeviceType uint8
+
+const (
+	DeviceDeviceTypeHybrid DeviceDeviceType = iota
+	DeviceDeviceTypeTransit
+	DeviceDeviceTypeEdge
+)
+
+func (d DeviceDeviceType) String() string {
+	return [...]string{
+		"hybrid",
+		"transit",
+		"edge",
+	}[d]
+}
+
 type DeviceStatus uint8
 
 const (
@@ -300,24 +316,24 @@ const CurrentInterfaceVersion = 2
 
 type Device struct {
 	AccountType            AccountType
-	Owner                  [32]uint8    `influx:"tag,owner,pubkey"`
-	Index                  Uint128      `influx:"-"`
-	Bump_seed              uint8        `influx:"-"`
-	LocationPubKey         [32]uint8    `influx:"tag,location_pubkey,pubkey"`
-	ExchangePubKey         [32]uint8    `influx:"tag,exchange_pubkey,pubkey"`
-	DeviceType             uint8        `influx:"tag,device_type"`
-	PublicIp               [4]uint8     `influx:"tag,public_ip,ip"`
-	Status                 DeviceStatus `influx:"tag,status"`
-	Code                   string       `influx:"tag,code"`
-	DzPrefixes             [][5]uint8   `influx:"field,dz_prefixes,cidr"`
-	MetricsPublisherPubKey [32]uint8    `influx:"tag,metrics_publisher_pubkey,pubkey"`
-	ContributorPubKey      [32]byte     `influx:"tag,contributor_pubkey,pubkey"`
-	MgmtVrf                string       `influx:"field,mgmt_vrf"`
-	Interfaces             []Interface  `influx:"-"`
-	ReferenceCount         uint32       `influx:"field,reference_count"`
-	UsersCount             uint16       `influx:"field,users_count"`
-	MaxUsers               uint16       `influx:"field,max_users"`
-	PubKey                 [32]byte     `influx:"tag,pubkey,pubkey"`
+	Owner                  [32]uint8        `influx:"tag,owner,pubkey"`
+	Index                  Uint128          `influx:"-"`
+	Bump_seed              uint8            `influx:"-"`
+	LocationPubKey         [32]uint8        `influx:"tag,location_pubkey,pubkey"`
+	ExchangePubKey         [32]uint8        `influx:"tag,exchange_pubkey,pubkey"`
+	DeviceType             DeviceDeviceType `influx:"tag,device_type"`
+	PublicIp               [4]uint8         `influx:"tag,public_ip,ip"`
+	Status                 DeviceStatus     `influx:"tag,status"`
+	Code                   string           `influx:"tag,code"`
+	DzPrefixes             [][5]uint8       `influx:"field,dz_prefixes,cidr"`
+	MetricsPublisherPubKey [32]uint8        `influx:"tag,metrics_publisher_pubkey,pubkey"`
+	ContributorPubKey      [32]byte         `influx:"tag,contributor_pubkey,pubkey"`
+	MgmtVrf                string           `influx:"field,mgmt_vrf"`
+	Interfaces             []Interface      `influx:"-"`
+	ReferenceCount         uint32           `influx:"field,reference_count"`
+	UsersCount             uint16           `influx:"field,users_count"`
+	MaxUsers               uint16           `influx:"field,max_users"`
+	PubKey                 [32]byte         `influx:"tag,pubkey,pubkey"`
 }
 
 func (d Device) MarshalJSON() ([]byte, error) {

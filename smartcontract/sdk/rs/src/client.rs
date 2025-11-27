@@ -39,7 +39,7 @@ use std::{
 
 use crate::{
     config::*, doublezeroclient::DoubleZeroClient, dztransaction::DZTransaction,
-    rpckeyedaccount_decode::rpckeyedaccount_decode, utils::*, AccountData,
+    keypair::load_keypair, rpckeyedaccount_decode::rpckeyedaccount_decode, AccountData,
 };
 
 pub struct DZClient {
@@ -65,7 +65,9 @@ impl DZClient {
             convert_ws_moniker(websocket_url.unwrap_or(config.websocket_url.unwrap_or(ws_url)));
 
         let client = RpcClient::new_with_commitment(rpc_url.clone(), CommitmentConfig::confirmed());
-        let payer = read_keypair_from_file(keypair.unwrap_or(config.keypair_path)).ok();
+        let payer = load_keypair(keypair, None, config.keypair_path)
+            .ok()
+            .map(|r| r.keypair);
 
         let program_id = match program_id {
             None => match config.program_id.as_ref() {

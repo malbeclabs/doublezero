@@ -37,6 +37,7 @@ mod errors;
 
 pub mod commands;
 pub mod doublezeroclient;
+pub mod keypair;
 pub mod record;
 pub mod rpckeyedaccount_decode;
 pub mod telemetry;

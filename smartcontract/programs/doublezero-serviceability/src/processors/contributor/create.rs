@@ -98,6 +98,7 @@ pub fn process_create_contributor(
         bump_seed,
         code,
         status: ContributorStatus::Activated,
+        ops_manager_pk: Pubkey::default(),
     };
 
     let deposit = Rent::get()

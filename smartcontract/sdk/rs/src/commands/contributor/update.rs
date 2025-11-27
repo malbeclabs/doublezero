@@ -10,6 +10,7 @@ pub struct UpdateContributorCommand {
     pub pubkey: Pubkey,
     pub code: Option<String>,
     pub owner: Option<Pubkey>,
+    pub ops_manager_pk: Option<Pubkey>,
 }
 
 impl UpdateContributorCommand {
@@ -28,6 +29,7 @@ impl UpdateContributorCommand {
             DoubleZeroInstruction::UpdateContributor(ContributorUpdateArgs {
                 code,
                 owner: self.owner.to_owned(),
+                ops_manager_pk: self.ops_manager_pk.to_owned(),
             }),
             vec![
                 AccountMeta::new(self.pubkey, false),
@@ -65,6 +67,7 @@ mod tests {
                     ContributorUpdateArgs {
                         code: Some("test".to_string()),
                         owner: Some(Pubkey::default()),
+                        ops_manager_pk: Some(Pubkey::default()),
                     },
                 )),
                 predicate::eq(vec![
@@ -78,6 +81,7 @@ mod tests {
             pubkey: pda_pubkey,
             code: Some("test".to_string()),
             owner: Some(Pubkey::default()),
+            ops_manager_pk: Some(Pubkey::default()),
         }
         .execute(&client);
 

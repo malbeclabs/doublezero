@@ -190,6 +190,7 @@ mod tests {
             code: "contributor1_code".to_string(),
             status: ContributorStatus::Activated,
             owner: contributor_pk,
+            ops_manager_pk: Pubkey::default(),
         };
 
         client.expect_list_contributor().returning(move |_| {
@@ -325,6 +326,7 @@ mod tests {
             code: "contributor1_code".to_string(),
             status: ContributorStatus::Activated,
             owner: contributor1_pk,
+            ops_manager_pk: Pubkey::default(),
         };
         let contributor2_pk = Pubkey::new_unique();
         let contributor2 = Contributor {
@@ -335,6 +337,7 @@ mod tests {
             code: "contributor2_code".to_string(),
             status: ContributorStatus::Activated,
             owner: contributor2_pk,
+            ops_manager_pk: Pubkey::default(),
         };
 
         let contributor1_for_list = contributor1.clone();

@@ -16,11 +16,16 @@ use std::fmt;
 pub struct ContributorUpdateArgs {
     pub code: Option<String>,
     pub owner: Option<Pubkey>,
+    pub ops_manager_pk: Option<Pubkey>,
 }
 
 impl fmt::Debug for ContributorUpdateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "code: {:?}, owner: {:?}", self.code, self.owner)
+        write!(
+            f,
+            "code: {:?}, owner: {:?}, ops_manager_pk: {:?}",
+            self.code, self.owner, self.ops_manager_pk
+        )
     }
 }
 
@@ -76,7 +81,9 @@ pub fn process_update_contributor(
     if let Some(ref owner) = value.owner {
         contributor.owner = *owner;
     }
-
+    if let Some(ref ops_manager_pk) = value.ops_manager_pk {
+        contributor.ops_manager_pk = *ops_manager_pk;
+    }
     account_write(
         contributor_account,
         &contributor,

@@ -45,6 +45,7 @@ mod tests {
         let mut client = create_test_client();
 
         let contributor1_pubkey = Pubkey::new_unique();
+        let ops_manager_pk1 = Pubkey::new_unique();
         let contributor1 = Contributor {
             account_type: AccountType::Contributor,
             index: 1,
@@ -53,9 +54,11 @@ mod tests {
             code: "contributor1_code".to_string(),
             status: ContributorStatus::Activated,
             owner: Pubkey::new_unique(),
+            ops_manager_pk: ops_manager_pk1,
         };
 
         let contributor2_pubkey = Pubkey::new_unique();
+        let ops_manager_pk2 = Pubkey::new_unique();
         let contributor2 = Contributor {
             account_type: AccountType::Contributor,
             index: 1,
@@ -64,6 +67,7 @@ mod tests {
             code: "contributor2_code".to_string(),
             status: ContributorStatus::Activated,
             owner: Pubkey::new_unique(),
+            ops_manager_pk: ops_manager_pk2,
         };
 
         client
@@ -89,5 +93,13 @@ mod tests {
         let list = res.unwrap();
         assert!(list.len() == 2);
         assert!(list.contains_key(&contributor1_pubkey));
+        assert_eq!(
+            list.get(&contributor1_pubkey).unwrap().ops_manager_pk,
+            ops_manager_pk1
+        );
+        assert_eq!(
+            list.get(&contributor2_pubkey).unwrap().ops_manager_pk,
+            ops_manager_pk2
+        );
     }
 }

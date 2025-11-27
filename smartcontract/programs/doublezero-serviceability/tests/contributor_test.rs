@@ -72,6 +72,7 @@ async fn test_contributor() {
     assert_eq!(contributor_la.account_type, AccountType::Contributor);
     assert_eq!(contributor_la.code, "la".to_string());
     assert_eq!(contributor_la.status, ContributorStatus::Activated);
+    assert_eq!(contributor_la.ops_manager_pk, Pubkey::default());
 
     println!("✅ Contributor initialized successfully",);
     /*****************************************************************************************************************************************************/
@@ -124,6 +125,7 @@ async fn test_contributor() {
     println!("✅ Contributor resumed");
     /*****************************************************************************************************************************************************/
     println!("Testing Contributor update...");
+    let ops_manager_pk = Pubkey::new_unique();
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -131,6 +133,7 @@ async fn test_contributor() {
         DoubleZeroInstruction::UpdateContributor(ContributorUpdateArgs {
             code: Some("la2".to_string()),
             owner: Some(Pubkey::new_unique()),
+            ops_manager_pk: Some(ops_manager_pk),
         }),
         vec![
             AccountMeta::new(contributor_pubkey, false),
@@ -148,6 +151,7 @@ async fn test_contributor() {
     assert_eq!(contributor_la.account_type, AccountType::Contributor);
     assert_eq!(contributor_la.code, "la2".to_string());
     assert_eq!(contributor_la.status, ContributorStatus::Activated);
+    assert_eq!(contributor_la.ops_manager_pk, ops_manager_pk);
 
     println!("✅ Contributor updated");
     /*****************************************************************************************************************************************************/

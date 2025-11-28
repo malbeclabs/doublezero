@@ -1054,6 +1054,61 @@ func TestClient_Liveness_Manager_PeerSessionsMetrics_StateTransitions(t *testing
 	require.GreaterOrEqual(t, peerGauge(StateUp), 0.0)
 }
 
+func TestClient_Liveness_Manager_OnSessionDown_EmitsConvergenceToDownWhenInstalled(t *testing.T) {
+	t.Parallel()
+
+	m, reg, err := newTestManagerWithMetrics(t, func(cfg *ManagerConfig) {
+		cfg.PassiveMode = false
+		cfg.Netlinker = &MockRouteReaderWriter{
+			RouteAddFunc:        func(*routing.Route) error { return nil },
+			RouteDeleteFunc:     func(*routing.Route) error { return nil },
+			RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, nil },
+		}
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = m.Close() })
+
+	r := newTestRoute(func(r *routing.Route) {
+		r.Src = net.IPv4(127, 0, 0, 1)
+		r.Dst = &net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(32, 32)}
+	})
+	peer := Peer{Interface: "lo", LocalIP: r.Src.String(), PeerIP: r.Dst.IP.String()}
+
+	// Synthetic session that just went Down after being installed.
+	sess := &Session{
+		peer:           &peer,
+		route:          r,
+		state:          StateDown,
+		downSince:      time.Now(),
+		lastDownReason: DownReasonTimeout,
+		alive:          false,
+	}
+	// Pretend convergence started 200ms ago.
+	sess.mu.Lock()
+	sess.convDownStart = time.Now().Add(-200 * time.Millisecond)
+	sess.mu.Unlock()
+
+	rk := routeKeyFor(peer.Interface, r)
+	m.mu.Lock()
+	m.desired[rk] = r
+	m.installed[rk] = true
+	m.mu.Unlock()
+
+	// Call onSessionDown directly.
+	m.onSessionDown(sess)
+
+	labels := prometheus.Labels{
+		LabelIface:   peer.Interface,
+		LabelLocalIP: peer.LocalIP,
+	}
+	count := getHistogramCount(t, reg, "doublezero_liveness_convergence_to_down_seconds", labels)
+	require.Equal(t, float64(1), count, "expected one convergence_to_down sample when route was installed")
+
+	// convDownStart should be cleared after accounting.
+	snap := sess.Snapshot()
+	require.True(t, snap.ConvDownStart.IsZero(), "convDownStart should be cleared after onSessionDown")
+}
+
 func newTestManager(t *testing.T, mutate func(*ManagerConfig)) (*manager, error) {
 	m, _, err := newTestManagerWithMetrics(t, mutate)
 	return m, err
@@ -1120,4 +1175,26 @@ func metricHasLabels(m *prom.Metric, labels prometheus.Labels) bool {
 		}
 	}
 	return true
+}
+
+func getHistogramCount(t *testing.T, reg *prometheus.Registry, name string, labels prometheus.Labels) float64 {
+	t.Helper()
+
+	mfs, err := reg.Gather()
+	require.NoError(t, err)
+
+	for _, mf := range mfs {
+		if mf.GetName() != name {
+			continue
+		}
+		for _, m := range mf.Metric {
+			if metricHasLabels(m, labels) {
+				if h := m.GetHistogram(); h != nil {
+					return float64(h.GetSampleCount())
+				}
+			}
+		}
+	}
+	// Treat “no sample” as 0 for histograms too.
+	return 0
 }

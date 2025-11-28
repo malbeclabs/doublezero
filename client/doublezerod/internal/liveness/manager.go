@@ -769,10 +769,23 @@ func (m *manager) onSessionDown(sess *Session) {
 		return
 	}
 
+	// At this point we had a desired, installed route: record convergence-to-down
+	// regardless of dataplane policy (PassiveMode / peer-passive).
+	now := time.Now()
+	var convergence time.Duration
+	if !snap.ConvDownStart.IsZero() && now.After(snap.ConvDownStart) {
+		convergence = now.Sub(snap.ConvDownStart)
+		m.metrics.convergenceToDown(peer, convergence)
+	}
+	sess.mu.Lock()
+	sess.convDownStart = time.Time{}
+	sess.mu.Unlock()
+
 	if m.cfg.PassiveMode {
 		m.log.Info("liveness: session down (global passive; keeping route)",
 			"peer", peer.String(),
 			"route", snap.Route.String(),
+			"convergence", convergence.String(),
 			"downSince", snap.DownSince.UTC().String(),
 			"downReason", snap.LastDownReason.String(),
 			"peerClientVersion", snap.PeerClientVersion.String(),
@@ -784,6 +797,7 @@ func (m *manager) onSessionDown(sess *Session) {
 		m.log.Info("liveness: session down (peer passive; keeping route)",
 			"peer", peer.String(),
 			"route", snap.Route.String(),
+			"convergence", convergence.String(),
 			"downSince", snap.DownSince.UTC().String(),
 			"downReason", snap.LastDownReason.String(),
 			"peerClientVersion", snap.PeerClientVersion.String(),
@@ -798,16 +812,6 @@ func (m *manager) onSessionDown(sess *Session) {
 	} else {
 		m.metrics.routeWithdraw(peer.Interface, peer.LocalIP)
 	}
-
-	now := time.Now()
-	var convergence time.Duration
-	if !snap.ConvDownStart.IsZero() && now.After(snap.ConvDownStart) {
-		convergence = now.Sub(snap.ConvDownStart)
-		m.metrics.convergenceToDown(peer, convergence)
-	}
-	sess.mu.Lock()
-	sess.convDownStart = time.Time{}
-	sess.mu.Unlock()
 
 	m.log.Info("liveness: session down",
 		"peer", peer.String(),

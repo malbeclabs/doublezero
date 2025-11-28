@@ -55,11 +55,6 @@ pub fn process_delete_user(
         return Err(DoubleZeroError::AccessPassNotFound.into());
     }
     assert_eq!(
-        accesspass_account.owner, program_id,
-        "Invalid AccessPass Account Owner"
-    );
-
-    assert_eq!(
         globalstate_account.owner, program_id,
         "Invalid GlobalState Account Owner"
     );

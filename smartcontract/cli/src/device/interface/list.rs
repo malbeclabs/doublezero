@@ -1,7 +1,10 @@
 use crate::{doublezerocommand::CliCommand, validators::validate_pubkey_or_code};
 use clap::Args;
 use doublezero_program_common::types::NetworkV4;
-use doublezero_sdk::{commands::device::get::GetDeviceCommand, InterfaceType};
+use doublezero_sdk::{
+    commands::device::{get::GetDeviceCommand, list::ListDeviceCommand},
+    CurrentInterfaceVersion, InterfaceType,
+};
 use doublezero_serviceability::state::interface::{
     InterfaceCYOA, InterfaceDIA, LoopbackType, RoutingMode,
 };
@@ -11,9 +14,9 @@ use tabled::{settings::Style, Table, Tabled};
 
 #[derive(Args, Debug)]
 pub struct ListDeviceInterfaceCliCommand {
-    /// Device Pubkey or Code
-    #[arg(value_parser = validate_pubkey_or_code, required = true)]
-    pub device: String,
+    /// Device Pubkey or Code (empty for all)
+    #[arg(value_parser = validate_pubkey_or_code)]
+    pub device: Option<String>,
     /// Output as pretty JSON
     #[arg(long, default_value_t = false)]
     pub json: bool,
@@ -24,6 +27,7 @@ pub struct ListDeviceInterfaceCliCommand {
 
 #[derive(Tabled, Serialize)]
 pub struct DeviceInterfaceDisplay {
+    pub device: String,
     pub name: String,
     pub interface_type: InterfaceType,
     pub loopback_type: LoopbackType,
@@ -42,35 +46,31 @@ pub struct DeviceInterfaceDisplay {
 
 impl ListDeviceInterfaceCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
-        let (_, device) = client
-            .get_device(GetDeviceCommand {
-                pubkey_or_code: self.device,
-            })
-            .map_err(|_| eyre::eyre!("Device not found"))?;
+        let iface_displays: Vec<DeviceInterfaceDisplay> = if let Some(device) = self.device {
+            let (_, device) = client
+                .get_device(GetDeviceCommand {
+                    pubkey_or_code: device,
+                })
+                .map_err(|_| eyre::eyre!("Device not found"))?;
 
-        let iface_displays: Vec<DeviceInterfaceDisplay> = device
-            .interfaces
-            .iter()
-            .map(|iface| {
-                let iface = iface.into_current_version();
-                DeviceInterfaceDisplay {
-                    name: iface.name.clone(),
-                    interface_type: iface.interface_type,
-                    loopback_type: iface.loopback_type,
-                    interface_cyoa: iface.interface_cyoa,
-                    interface_dia: iface.interface_dia,
-                    bandwidth: iface.bandwidth,
-                    cir: iface.cir,
-                    mtu: iface.mtu,
-                    routing_mode: iface.routing_mode,
-                    vlan_id: iface.vlan_id,
-                    ip_net: iface.ip_net,
-                    node_segment_idx: iface.node_segment_idx,
-                    user_tunnel_endpoint: iface.user_tunnel_endpoint,
-                    status: iface.status.to_string(),
-                }
-            })
-            .collect();
+            device
+                .interfaces
+                .iter()
+                .map(|iface| build_display(&iface.into_current_version(), &device.code))
+                .collect()
+        } else {
+            let devices = client.list_device(ListDeviceCommand {})?;
+
+            devices
+                .iter()
+                .flat_map(|(_, device)| {
+                    device
+                        .interfaces
+                        .iter()
+                        .map(|iface| build_display(&iface.into_current_version(), &device.code))
+                })
+                .collect()
+        };
 
         let res = if self.json {
             serde_json::to_string_pretty(&iface_displays)?
@@ -85,6 +85,26 @@ impl ListDeviceInterfaceCliCommand {
         writeln!(out, "{res}")?;
 
         Ok(())
+    }
+}
+
+fn build_display(iface: &CurrentInterfaceVersion, device_code: &str) -> DeviceInterfaceDisplay {
+    DeviceInterfaceDisplay {
+        device: device_code.to_string(),
+        name: iface.name.clone(),
+        interface_type: iface.interface_type,
+        loopback_type: iface.loopback_type,
+        interface_cyoa: iface.interface_cyoa,
+        interface_dia: iface.interface_dia,
+        bandwidth: iface.bandwidth,
+        cir: iface.cir,
+        mtu: iface.mtu,
+        routing_mode: iface.routing_mode,
+        vlan_id: iface.vlan_id,
+        ip_net: iface.ip_net,
+        node_segment_idx: iface.node_segment_idx,
+        user_tunnel_endpoint: iface.user_tunnel_endpoint,
+        status: iface.status.to_string(),
     }
 }
 
@@ -180,24 +200,24 @@ mod tests {
 
         let mut output = Vec::new();
         let res = ListDeviceInterfaceCliCommand {
-            device: device1_pubkey.to_string(),
+            device: Some(device1_pubkey.to_string()),
             json: false,
             json_compact: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " name | interface_type | loopback_type | interface_cyoa | interface_dia | bandwidth | cir | mtu  | routing_mode | vlan_id | ip_net      | node_segment_idx | user_tunnel_endpoint | status    \n eth0 | physical       | none          | none           | none          | 1000      | 500 | 1500 | static       | 0       | 10.0.0.1/24 | 12               | true                 | activated \n lo0  | loopback       | vpnv4         | none           | none          | 100       | 50  | 1400 | static       | 16      | 10.0.1.1/24 | 13               | false                | activated \n");
+        assert_eq!(output_str, " device       | name | interface_type | loopback_type | interface_cyoa | interface_dia | bandwidth | cir | mtu  | routing_mode | vlan_id | ip_net      | node_segment_idx | user_tunnel_endpoint | status    \n device1_code | eth0 | physical       | none          | none           | none          | 1000      | 500 | 1500 | static       | 0       | 10.0.0.1/24 | 12               | true                 | activated \n device1_code | lo0  | loopback       | vpnv4         | none           | none          | 100       | 50  | 1400 | static       | 16      | 10.0.1.1/24 | 13               | false                | activated \n");
 
         let mut output = Vec::new();
         let res = ListDeviceInterfaceCliCommand {
-            device: device1_pubkey.to_string(),
+            device: Some(device1_pubkey.to_string()),
             json: false,
             json_compact: true,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"name\":\"eth0\",\"interface_type\":\"Physical\",\"loopback_type\":\"None\",\"interface_cyoa\":\"None\",\"interface_dia\":\"None\",\"bandwidth\":1000,\"cir\":500,\"mtu\":1500,\"routing_mode\":\"Static\",\"vlan_id\":0,\"ip_net\":\"10.0.0.1/24\",\"node_segment_idx\":12,\"user_tunnel_endpoint\":true,\"status\":\"activated\"},{\"name\":\"lo0\",\"interface_type\":\"Loopback\",\"loopback_type\":\"Vpnv4\",\"interface_cyoa\":\"None\",\"interface_dia\":\"None\",\"bandwidth\":100,\"cir\":50,\"mtu\":1400,\"routing_mode\":\"Static\",\"vlan_id\":16,\"ip_net\":\"10.0.1.1/24\",\"node_segment_idx\":13,\"user_tunnel_endpoint\":false,\"status\":\"activated\"}]\n");
+        assert_eq!(output_str, "[{\"device\":\"device1_code\",\"name\":\"eth0\",\"interface_type\":\"Physical\",\"loopback_type\":\"None\",\"interface_cyoa\":\"None\",\"interface_dia\":\"None\",\"bandwidth\":1000,\"cir\":500,\"mtu\":1500,\"routing_mode\":\"Static\",\"vlan_id\":0,\"ip_net\":\"10.0.0.1/24\",\"node_segment_idx\":12,\"user_tunnel_endpoint\":true,\"status\":\"activated\"},{\"device\":\"device1_code\",\"name\":\"lo0\",\"interface_type\":\"Loopback\",\"loopback_type\":\"Vpnv4\",\"interface_cyoa\":\"None\",\"interface_dia\":\"None\",\"bandwidth\":100,\"cir\":50,\"mtu\":1400,\"routing_mode\":\"Static\",\"vlan_id\":16,\"ip_net\":\"10.0.1.1/24\",\"node_segment_idx\":13,\"user_tunnel_endpoint\":false,\"status\":\"activated\"}]\n");
     }
 }

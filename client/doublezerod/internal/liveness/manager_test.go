@@ -8,6 +8,7 @@ import (
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 	"github.com/prometheus/client_golang/prometheus"
+	prom "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
 )
 
@@ -720,6 +721,140 @@ func TestClient_Liveness_Manager_HandleRx_RemoteDownHonoredOnlyAfterDetectInterv
 	require.False(t, m.IsInstalled(rk), "route should be marked not installed after remote Down")
 }
 
+func TestClient_Liveness_Manager_PeerSessionsMetrics_StateTransitions(t *testing.T) {
+	t.Parallel()
+
+	m, reg, err := newTestManagerWithMetrics(t, func(cfg *ManagerConfig) {
+		cfg.EnablePeerMetrics = true
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = m.Close() })
+
+	r := newTestRoute(func(r *routing.Route) {
+		r.Src = net.IPv4(127, 0, 0, 1)
+		r.Dst = &net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(32, 32)}
+	})
+	require.NoError(t, m.RegisterRoute(r, "lo", m.LocalAddr().Port))
+
+	peer := Peer{Interface: "lo", LocalIP: r.Src.String(), PeerIP: r.Dst.IP.String()}
+
+	// Helper to read the peer_sessions gauge for a specific state.
+	peerGauge := func(state State) float64 {
+		return getGaugeValue(t, reg, "doublezero_liveness_peer_sessions", prometheus.Labels{
+			LabelIface:   peer.Interface,
+			LabelLocalIP: peer.LocalIP,
+			LabelPeerIP:  peer.PeerIP,
+			LabelState:   state.String(),
+		})
+	}
+
+	// After RegisterRoute: session starts Down.
+	require.Equal(t, 1.0, peerGauge(StateDown))
+	require.Equal(t, 0.0, peerGauge(StateInit))
+	require.Equal(t, 0.0, peerGauge(StateUp))
+	require.GreaterOrEqual(t, peerGauge(StateDown), 0.0)
+	require.GreaterOrEqual(t, peerGauge(StateInit), 0.0)
+	require.GreaterOrEqual(t, peerGauge(StateUp), 0.0)
+
+	// Drive Down -> Init.
+	m.HandleRx(&ControlPacket{PeerDiscr: 0, LocalDiscr: 1, State: StateInit}, peer)
+
+	require.Equal(t, 0.0, peerGauge(StateDown))
+	require.Equal(t, 1.0, peerGauge(StateInit))
+	require.Equal(t, 0.0, peerGauge(StateUp))
+	require.GreaterOrEqual(t, peerGauge(StateDown), 0.0)
+	require.GreaterOrEqual(t, peerGauge(StateInit), 0.0)
+	require.GreaterOrEqual(t, peerGauge(StateUp), 0.0)
+
+	// Grab session so we can echo discriminators.
+	sess, ok := m.GetSession(peer)
+	require.True(t, ok)
+	require.NotNil(t, sess)
+
+	// Init -> Up.
+	m.HandleRx(&ControlPacket{
+		PeerDiscr:  sess.localDiscr,
+		LocalDiscr: sess.peerDiscr,
+		State:      StateInit,
+	}, peer)
+
+	require.Equal(t, 0.0, peerGauge(StateDown))
+	require.Equal(t, 0.0, peerGauge(StateInit))
+	require.Equal(t, 1.0, peerGauge(StateUp))
+	require.GreaterOrEqual(t, peerGauge(StateDown), 0.0)
+	require.GreaterOrEqual(t, peerGauge(StateInit), 0.0)
+	require.GreaterOrEqual(t, peerGauge(StateUp), 0.0)
+
+	// Up -> remote AdminDown (Session.HandleRx maps this to StateDown).
+	m.HandleRx(&ControlPacket{
+		PeerDiscr:  sess.localDiscr,
+		LocalDiscr: sess.peerDiscr,
+		State:      StateAdminDown,
+	}, peer)
+
+	require.Equal(t, 1.0, peerGauge(StateDown))
+	require.Equal(t, 0.0, peerGauge(StateInit))
+	require.Equal(t, 0.0, peerGauge(StateUp))
+	require.GreaterOrEqual(t, peerGauge(StateDown), 0.0)
+	require.GreaterOrEqual(t, peerGauge(StateInit), 0.0)
+	require.GreaterOrEqual(t, peerGauge(StateUp), 0.0)
+}
+
+func TestClient_Liveness_Manager_OnSessionDown_EmitsConvergenceToDownWhenInstalled(t *testing.T) {
+	t.Parallel()
+
+	m, reg, err := newTestManagerWithMetrics(t, func(cfg *ManagerConfig) {
+		cfg.PassiveMode = false
+		cfg.Netlinker = &MockRouteReaderWriter{
+			RouteAddFunc:        func(*routing.Route) error { return nil },
+			RouteDeleteFunc:     func(*routing.Route) error { return nil },
+			RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, nil },
+		}
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = m.Close() })
+
+	r := newTestRoute(func(r *routing.Route) {
+		r.Src = net.IPv4(127, 0, 0, 1)
+		r.Dst = &net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(32, 32)}
+	})
+	peer := Peer{Interface: "lo", LocalIP: r.Src.String(), PeerIP: r.Dst.IP.String()}
+
+	// Synthetic session that just went Down after being installed.
+	sess := &Session{
+		peer:           &peer,
+		route:          r,
+		state:          StateDown,
+		downSince:      time.Now(),
+		lastDownReason: DownReasonTimeout,
+		alive:          false,
+	}
+	// Pretend convergence started 200ms ago.
+	sess.mu.Lock()
+	sess.convDownStart = time.Now().Add(-200 * time.Millisecond)
+	sess.mu.Unlock()
+
+	rk := routeKeyFor(peer.Interface, r)
+	m.mu.Lock()
+	m.desired[rk] = r
+	m.installed[rk] = true
+	m.mu.Unlock()
+
+	// Call onSessionDown directly.
+	m.onSessionDown(sess)
+
+	labels := prometheus.Labels{
+		LabelIface:   peer.Interface,
+		LabelLocalIP: peer.LocalIP,
+	}
+	count := getHistogramCount(t, reg, "doublezero_liveness_convergence_to_down_seconds", labels)
+	require.Equal(t, float64(1), count, "expected one convergence_to_down sample when route was installed")
+
+	// convDownStart should be cleared after accounting.
+	snap := sess.Snapshot()
+	require.True(t, snap.ConvDownStart.IsZero(), "convDownStart should be cleared after onSessionDown")
+}
+
 func newTestManager(t *testing.T, mutate func(*ManagerConfig)) (*Manager, error) {
 	m, _, err := newTestManagerWithMetrics(t, mutate)
 	return m, err
@@ -745,4 +880,67 @@ func newTestManagerWithMetrics(t *testing.T, mutate func(*ManagerConfig)) (*Mana
 	}
 	m, err := NewManager(t.Context(), cfg)
 	return m, reg, err
+}
+
+func getGaugeValue(t *testing.T, reg *prometheus.Registry, name string, labels prometheus.Labels) float64 {
+	t.Helper()
+
+	mfs, err := reg.Gather()
+	require.NoError(t, err)
+
+	for _, mf := range mfs {
+		if mf.GetName() != name {
+			continue
+		}
+		for _, m := range mf.Metric {
+			if metricHasLabels(m, labels) {
+				if g := m.GetGauge(); g != nil {
+					return g.GetValue()
+				}
+			}
+		}
+	}
+	// Treat “no sample” as 0 for gauges.
+	return 0
+}
+
+func metricHasLabels(m *prom.Metric, labels prometheus.Labels) bool {
+	if len(labels) == 0 {
+		return true
+	}
+	for k, v := range labels {
+		found := false
+		for _, lp := range m.Label {
+			if lp.GetName() == k && lp.GetValue() == v {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+
+func getHistogramCount(t *testing.T, reg *prometheus.Registry, name string, labels prometheus.Labels) float64 {
+	t.Helper()
+
+	mfs, err := reg.Gather()
+	require.NoError(t, err)
+
+	for _, mf := range mfs {
+		if mf.GetName() != name {
+			continue
+		}
+		for _, m := range mf.Metric {
+			if metricHasLabels(m, labels) {
+				if h := m.GetHistogram(); h != nil {
+					return float64(h.GetSampleCount())
+				}
+			}
+		}
+	}
+	// Treat “no sample” as 0 for histograms too.
+	return 0
 }

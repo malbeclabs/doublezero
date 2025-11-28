@@ -175,6 +175,16 @@ func filterValidProbes(probes []Probe) []Probe {
 	return validProbes
 }
 
+func filterResponsiveProbes(probes []Probe, measurementState *MeasurementState) []Probe {
+	var responsiveProbes []Probe
+	for _, probe := range probes {
+		if !measurementState.IsProbeUnresponsive(probe.ID) && probe.Address != "" {
+			responsiveProbes = append(responsiveProbes, probe)
+		}
+	}
+	return responsiveProbes
+}
+
 func (c *Collector) parseLatencyFromResult(result any) (time.Duration, time.Time, int) {
 	resultMap, ok := result.(map[string]any)
 	if !ok {
@@ -730,7 +740,7 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 
 	// Step 4: Detect unresponsive probes (no exports after 1 hour)
 	currentTime := time.Now().Unix()
-	probeTimeout := currentTime - 14400	// 4 hours (14400 seconds)
+	probeTimeout := currentTime - 14400 // 4 hours (14400 seconds)
 	newUnresponsiveProbes := 0
 	for _, measurement := range doubleZeroMeasurements {
 		if meta, hasMeta := measurementState.GetMetadata(measurement.ID); hasMeta {
@@ -1157,28 +1167,19 @@ func (c *Collector) generateWantedMeasurements(locationMatches []LocationProbeMa
 			continue
 		}
 
-		// Find best probe that isn't unresponsive
-		var targetProbe Probe
-		targetProbes := getNearestProbesSorted(targetLocation.NearbyProbes,
-			targetLocation.Latitude, targetLocation.Longitude, probesPerLocation*2) // Get extra probes in case some are unresponsive
-
-		foundResponsiveProbe := false
-		for _, probe := range targetProbes {
-			if !measurementState.IsProbeUnresponsive(probe.ID) && probe.Address != "" {
-				targetProbe = probe
-				foundResponsiveProbe = true
-				break
-			}
-			c.log.Debug("Skipping unresponsive probe as target",
-				slog.Int("probe_id", probe.ID),
-				slog.String("location", targetLocation.LocationCode))
-		}
-
-		if !foundResponsiveProbe {
+		responsiveProbes := filterResponsiveProbes(targetLocation.NearbyProbes, measurementState)
+		if len(responsiveProbes) == 0 {
 			c.log.Warn("No responsive probes found for location",
 				slog.String("location", targetLocation.LocationCode))
 			continue
 		}
+
+		targetProbes := getNearestProbesSorted(responsiveProbes,
+			targetLocation.Latitude, targetLocation.Longitude, probesPerLocation)
+		if len(targetProbes) == 0 {
+			continue
+		}
+		targetProbe := targetProbes[0]
 
 		// Collect source probes from all other locations
 		// Since we're iterating in alphabetical order and only need to measure once between any pair,
@@ -1200,21 +1201,18 @@ func (c *Collector) generateWantedMeasurements(locationMatches []LocationProbeMa
 				continue
 			}
 
-			sourceProbes := getNearestProbesSorted(sourceLocation.NearbyProbes,
-				sourceLocation.Latitude, sourceLocation.Longitude, probesPerLocation*2) // Get extra probes in case some are unresponsive
+			responsiveSourceProbes := filterResponsiveProbes(sourceLocation.NearbyProbes, measurementState)
+			if len(responsiveSourceProbes) == 0 {
+				continue
+			}
 
-			// Find first responsive probe
-			for _, probe := range sourceProbes {
-				if !measurementState.IsProbeUnresponsive(probe.ID) {
-					sourceSpecs = append(sourceSpecs, SourceSpec{
-						LocationCode: sourceLocation.LocationCode,
-						Probe:        probe,
-					})
-					break
-				}
-				c.log.Debug("Skipping unresponsive probe as source",
-					slog.Int("probe_id", probe.ID),
-					slog.String("location", sourceLocation.LocationCode))
+			sourceProbes := getNearestProbesSorted(responsiveSourceProbes,
+				sourceLocation.Latitude, sourceLocation.Longitude, probesPerLocation)
+			if len(sourceProbes) > 0 {
+				sourceSpecs = append(sourceSpecs, SourceSpec{
+					LocationCode: sourceLocation.LocationCode,
+					Probe:        sourceProbes[0],
+				})
 			}
 		}
 

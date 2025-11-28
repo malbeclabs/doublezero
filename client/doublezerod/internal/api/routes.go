@@ -13,26 +13,27 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-type RTState string
+type KernelState string
 
 const (
-	RTStateUnknown RTState = "unknown"
-	RTStatePresent RTState = "present"
-	RTStateAbsent  RTState = "absent"
+	KernelStateUnknown KernelState = "unknown"
+	KernelStatePresent KernelState = "present"
+	KernelStateAbsent  KernelState = "absent"
 )
 
-func (r RTState) String() string {
+func (r KernelState) String() string {
 	return string(r)
 }
 
 type Route struct {
-	Network             string   `json:"network"`
-	UserType            UserType `json:"user_type"`
-	LocalIP             string   `json:"local_ip"`
-	PeerIP              string   `json:"peer_ip"`
-	RTState             RTState  `json:"rt_state"`
-	LivenessLastUpdated string   `json:"liveness_last_updated,omitempty"`
-	LivenessState       string   `json:"liveness_state,omitempty"`
+	Network             string      `json:"network"`
+	UserType            UserType    `json:"user_type"`
+	LocalIP             string      `json:"local_ip"`
+	PeerIP              string      `json:"peer_ip"`
+	KernelState         KernelState `json:"kernel_state"`
+	LivenessLastUpdated string      `json:"liveness_last_updated,omitempty"`
+	LivenessState       string      `json:"liveness_state,omitempty"`
+	LivenessStateReason string      `json:"liveness_state_reason,omitempty"`
 }
 
 type routeKey struct {
@@ -81,11 +82,11 @@ func ServeRoutesHandler(nlr bgp.RouteReaderWriter, lm LivenessManager, db DBRead
 				}
 				if svc.TunnelSrc.Equal(rt.Src) && svc.TunnelNet.IP.Equal(rt.NextHop) {
 					kernelRoutes[routeKeyFor(rt)] = &Route{
-						Network:  networkConfig.Moniker,
-						UserType: svc.UserType,
-						LocalIP:  rt.Src.To4().String(),
-						PeerIP:   rt.Dst.IP.To4().String(),
-						RTState:  RTStatePresent,
+						Network:     networkConfig.Moniker,
+						UserType:    svc.UserType,
+						LocalIP:     rt.Src.To4().String(),
+						PeerIP:      rt.Dst.IP.To4().String(),
+						KernelState: KernelStatePresent,
 					}
 					break
 				}
@@ -111,9 +112,14 @@ func ServeRoutesHandler(nlr bgp.RouteReaderWriter, lm LivenessManager, db DBRead
 					}
 
 					rk := routeKeyFor(rt)
-					rtState := RTStateAbsent
+					kernelState := KernelStateAbsent
 					if _, ok := kernelRoutes[rk]; ok {
-						rtState = RTStatePresent
+						kernelState = KernelStatePresent
+					}
+
+					var stateReason string
+					if sess.State == liveness.StateDown {
+						stateReason = sess.LastDownReason.String()
 					}
 
 					livenessRoutes[rk] = &Route{
@@ -121,9 +127,10 @@ func ServeRoutesHandler(nlr bgp.RouteReaderWriter, lm LivenessManager, db DBRead
 						UserType:            svc.UserType,
 						LocalIP:             rt.Src.To4().String(),
 						PeerIP:              rt.Dst.IP.To4().String(),
-						RTState:             rtState,
+						KernelState:         kernelState,
 						LivenessLastUpdated: sess.LastUpdated.UTC().Format(time.RFC3339),
 						LivenessState:       sess.State.String(),
+						LivenessStateReason: stateReason,
 					}
 					break
 				}
@@ -131,7 +138,7 @@ func ServeRoutesHandler(nlr bgp.RouteReaderWriter, lm LivenessManager, db DBRead
 		}
 
 		// Merge kernel and liveness routes.
-		var routes []*Route
+		routes := make([]*Route, 0, max(len(livenessRoutes), len(kernelRoutes)))
 		for _, rt := range livenessRoutes {
 			routes = append(routes, rt)
 		}
@@ -153,8 +160,8 @@ func ServeRoutesHandler(nlr bgp.RouteReaderWriter, lm LivenessManager, db DBRead
 			if a.PeerIP != b.PeerIP {
 				return a.PeerIP < b.PeerIP
 			}
-			if a.RTState != b.RTState {
-				return a.RTState < b.RTState
+			if a.KernelState != b.KernelState {
+				return a.KernelState < b.KernelState
 			}
 			if a.LivenessState != b.LivenessState {
 				return a.LivenessState < b.LivenessState

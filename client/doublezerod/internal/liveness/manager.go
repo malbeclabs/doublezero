@@ -139,9 +139,19 @@ func (c *ManagerConfig) Validate() error {
 	return nil
 }
 
+type Manager interface {
+	RegisterRoute(r *routing.Route, iface string, port int) error
+	WithdrawRoute(r *routing.Route, iface string) error
+	LocalAddr() *net.UDPAddr
+	GetSessions() []SessionSnapshot
+	GetSession(peer Peer) (*Session, bool)
+	Close() error
+	Err() <-chan error
+}
+
 // Manager orchestrates liveness sessions per peer, integrates with routing,
 // and runs the receiver/scheduler goroutines. It is safe for concurrent use.
-type Manager struct {
+type manager struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
@@ -168,7 +178,7 @@ type Manager struct {
 
 // NewManager constructs a Manager, opens the UDP socket, and launches the
 // receiver and scheduler loops. The context governs their lifetime.
-func NewManager(ctx context.Context, cfg *ManagerConfig) (*Manager, error) {
+func NewManager(ctx context.Context, cfg *ManagerConfig) (*manager, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("error validating manager config: %v", err)
 	}
@@ -186,7 +196,7 @@ func NewManager(ctx context.Context, cfg *ManagerConfig) (*Manager, error) {
 	log.Info("liveness: manager starting", "localAddr", udp.LocalAddr().String(), "txMin", cfg.TxMin.String(), "rxMin", cfg.RxMin.String(), "detectMult", cfg.DetectMult, "passiveMode", cfg.PassiveMode, "peerMetrics", cfg.EnablePeerMetrics)
 
 	ctx, cancel := context.WithCancel(ctx)
-	m := &Manager{
+	m := &manager{
 		ctx:    ctx,
 		cancel: cancel,
 		errCh:  make(chan error, 10),
@@ -241,14 +251,14 @@ func NewManager(ctx context.Context, cfg *ManagerConfig) (*Manager, error) {
 }
 
 // Err returns a channel that will receive any errors from the manager.
-func (m *Manager) Err() <-chan error {
+func (m *manager) Err() <-chan error {
 	return m.errCh
 }
 
 // RegisterRoute declares interest in monitoring reachability for route r via iface.
 // It optionally installs the route immediately in PassiveMode, then creates or
 // reuses a liveness Session and schedules immediate TX to begin handshake.
-func (m *Manager) RegisterRoute(r *routing.Route, iface string, port int) error {
+func (m *manager) RegisterRoute(r *routing.Route, iface string, port int) error {
 	// Check that the route src and dst are valid IPv4 addresses.
 	if r.Src == nil || r.Dst.IP == nil {
 		return fmt.Errorf("error registering route: nil source (%s) or destination IP (%s)", r.Src.String(), r.Dst.IP.String())
@@ -325,7 +335,7 @@ func (m *Manager) RegisterRoute(r *routing.Route, iface string, port int) error 
 
 // WithdrawRoute removes interest in r via iface. It tears down the session,
 // marks it not managed (alive=false), and withdraws the route if needed.
-func (m *Manager) WithdrawRoute(r *routing.Route, iface string) error {
+func (m *manager) WithdrawRoute(r *routing.Route, iface string) error {
 	// Check that the route src and dst are valid IPv4 addresses.
 	if r.Src == nil || r.Dst.IP == nil {
 		return fmt.Errorf("error withdrawing route: nil source or destination IP")
@@ -380,7 +390,7 @@ func (m *Manager) WithdrawRoute(r *routing.Route, iface string) error {
 }
 
 // LocalAddr exposes the bound UDP address if available (or nil if closed/unset).
-func (m *Manager) LocalAddr() *net.UDPAddr {
+func (m *manager) LocalAddr() *net.UDPAddr {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.udp == nil {
@@ -393,7 +403,7 @@ func (m *Manager) LocalAddr() *net.UDPAddr {
 }
 
 // GetSessions returns the snapshots of all sessions in the manager.
-func (m *Manager) GetSessions() []SessionSnapshot {
+func (m *manager) GetSessions() []SessionSnapshot {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	snapshots := make([]SessionSnapshot, 0, len(m.sessions))
@@ -404,7 +414,7 @@ func (m *Manager) GetSessions() []SessionSnapshot {
 }
 
 // GetSession returns the session for the given peer.
-func (m *Manager) GetSession(peer Peer) (*Session, bool) {
+func (m *manager) GetSession(peer Peer) (*Session, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	sess, ok := m.sessions[peer]
@@ -412,7 +422,7 @@ func (m *Manager) GetSession(peer Peer) (*Session, bool) {
 }
 
 // HasSession returns true if the manager has a session for the given peer.
-func (m *Manager) HasSession(peer Peer) bool {
+func (m *manager) HasSession(peer Peer) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	_, ok := m.sessions[peer]
@@ -420,21 +430,21 @@ func (m *Manager) HasSession(peer Peer) bool {
 }
 
 // GetInstalled returns the installed route for the given peer.
-func (m *Manager) IsInstalled(rk RouteKey) bool {
+func (m *manager) IsInstalled(rk RouteKey) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.installed[rk]
 }
 
 // GetSessionsLen returns the number of sessions in the manager.
-func (m *Manager) GetSessionsLen() int {
+func (m *manager) GetSessionsLen() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return len(m.sessions)
 }
 
 // GetInstalledRoutesLen returns the number of routes in the manager.
-func (m *Manager) GetInstalledLen() int {
+func (m *manager) GetInstalledLen() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return len(m.installed)
@@ -442,7 +452,7 @@ func (m *Manager) GetInstalledLen() int {
 
 // Close stops goroutines, waits for exit, and closes the UDP socket.
 // Returns the last close error, if any.
-func (m *Manager) Close() error {
+func (m *manager) Close() error {
 	m.cancel()
 	m.wg.Wait()
 
@@ -476,7 +486,7 @@ func (m *Manager) Close() error {
 //
 // All transition rules live in Session.HandleRx. Manager.HandleRx only
 // performs the side-effects and scheduling associated with the resulting state.
-func (m *Manager) HandleRx(ctrl *ControlPacket, peer Peer) {
+func (m *manager) HandleRx(ctrl *ControlPacket, peer Peer) {
 	now := time.Now()
 
 	m.mu.Lock()
@@ -577,7 +587,7 @@ func (m *Manager) HandleRx(ctrl *ControlPacket, peer Peer) {
 }
 
 // AdminDownRoute transitions a session to AdminDown and withdraws the route.
-func (m *Manager) AdminDownRoute(r *routing.Route, iface string) {
+func (m *manager) AdminDownRoute(r *routing.Route, iface string) {
 	peer := Peer{
 		Interface: iface,
 		LocalIP:   r.Src.To4().String(),
@@ -618,7 +628,7 @@ func (m *Manager) AdminDownRoute(r *routing.Route, iface string) {
 
 // onSessionUp installs the route if it is desired and not already installed.
 // In PassiveMode, install was already done at registration time.
-func (m *Manager) onSessionUp(sess *Session) {
+func (m *manager) onSessionUp(sess *Session) {
 	snap := sess.Snapshot()
 	peer := snap.Peer
 	rk := routeKeyFor(peer.Interface, &snap.Route)
@@ -655,7 +665,7 @@ func (m *Manager) onSessionUp(sess *Session) {
 }
 
 // onSessionDown withdraws the route if currently installed (unless PassiveMode).
-func (m *Manager) onSessionDown(sess *Session) {
+func (m *manager) onSessionDown(sess *Session) {
 	snap := sess.Snapshot()
 	peer := snap.Peer
 	rk := routeKeyFor(peer.Interface, &snap.Route)

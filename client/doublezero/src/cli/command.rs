@@ -8,7 +8,7 @@ use crate::{
     },
     command::{
         connect::ProvisioningCliCommand, disconnect::DecommissioningCliCommand,
-        latency::LatencyCliCommand, status::StatusCliCommand,
+        latency::LatencyCliCommand, routes::RoutesCliCommand, status::StatusCliCommand,
     },
 };
 use clap::{Args, Subcommand};
@@ -35,6 +35,9 @@ pub enum Command {
     /// Get device latencies
     #[command()]
     Latency(LatencyCliCommand),
+    /// View your installed routes
+    #[command()]
+    Routes(RoutesCliCommand),
     /// Get your public key
     #[command()]
     Address(AddressCliCommand),

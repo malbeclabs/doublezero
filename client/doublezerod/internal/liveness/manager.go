@@ -308,7 +308,7 @@ func (m *Manager) RegisterRoute(r *routing.Route, iface string, port int) error 
 		lastUpdated:   time.Now(),
 	}
 	m.sessions[peer] = sess
-	m.metrics.sessionStateTransition(peer, nil, "register_route", m.cfg.EnablePeerMetrics)
+	m.metrics.sessionStateTransition(peer, nil, StateDown, "register_route", m.cfg.EnablePeerMetrics)
 	if m.cfg.EnablePeerMetrics {
 		// Set initial detect time based on current view (localRxMin until peer timers arrive)
 		sess.mu.Lock()
@@ -530,7 +530,7 @@ func (m *Manager) HandleRx(ctrl *ControlPacket, peer Peer) {
 			"lastDownReason", newSnap.LastDownReason.String(),
 		)
 
-		m.metrics.sessionStateTransition(peer, &prevSnap.State, "handle_rx", m.cfg.EnablePeerMetrics)
+		m.metrics.sessionStateTransition(peer, &prevSnap.State, newSnap.State, "handle_rx", m.cfg.EnablePeerMetrics)
 
 		switch sess.GetState() {
 		case StateUp:
@@ -676,6 +676,18 @@ func (m *Manager) onSessionDown(sess *Session) {
 		return
 	}
 
+	// At this point we had a desired, installed route: record convergence-to-down
+	// regardless of dataplane policy (PassiveMode / peer-passive).
+	now := time.Now()
+	var convergence time.Duration
+	if !snap.ConvDownStart.IsZero() && now.After(snap.ConvDownStart) {
+		convergence = now.Sub(snap.ConvDownStart)
+		m.metrics.convergenceToDown(peer, convergence)
+	}
+	sess.mu.Lock()
+	sess.convDownStart = time.Time{}
+	sess.mu.Unlock()
+
 	// If we're not in PassiveMode, delete the route.
 	if !m.cfg.PassiveMode {
 		err := m.cfg.Netlinker.RouteDelete(route)
@@ -686,17 +698,6 @@ func (m *Manager) onSessionDown(sess *Session) {
 			m.metrics.routeWithdraw(peer.Interface, peer.LocalIP)
 		}
 	}
-
-	// Convergence-to-down duration: from first failed/missing while Up to post-delete.
-	now := time.Now()
-	var convergence time.Duration
-	if !snap.ConvDownStart.IsZero() && now.After(snap.ConvDownStart) {
-		convergence = now.Sub(snap.ConvDownStart)
-		m.metrics.convergenceToDown(peer, convergence)
-	}
-	sess.mu.Lock()
-	sess.convDownStart = time.Time{}
-	sess.mu.Unlock()
 
 	m.log.Info("liveness: session down",
 		"peer", peer.String(),

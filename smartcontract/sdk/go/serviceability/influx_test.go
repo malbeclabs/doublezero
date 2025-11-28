@@ -19,6 +19,9 @@ func TestToLineProtocol(t *testing.T) {
 	copy(pubKey2[:], "22222222222222222222222222222222")
 	pubKey2B58 := "C2n2b2n2b2n2b2n2b2n2b2n2b2n2b2n2b2n2b2n2b"
 
+	var pubKey1Uint8 [32]uint8
+	copy(pubKey1Uint8[:], pubKey1[:])
+
 	ts := time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)
 	tsNano := ts.UnixNano()
 
@@ -122,6 +125,71 @@ func TestToLineProtocol(t *testing.T) {
 				"env": "testnet",
 			},
 			expected:  `exchanges,code=dev-01,env=testnet,name=test-exchange,owner=` + pubKey1B58 + `,status=activated lat=10,lng=20`,
+			expectErr: false,
+		},
+		{
+			name:        "full link struct",
+			measurement: "links",
+			input: Link{
+				Owner:             pubKey1Uint8,
+				SideAPubKey:       pubKey1Uint8,
+				SideZPubKey:       pubKey1Uint8,
+				LinkType:          LinkLinkTypeWAN,
+				Bandwidth:         1000,
+				Mtu:               1500,
+				DelayNs:           1000000,
+				JitterNs:          500000,
+				TunnelId:          42,
+				TunnelNet:         [5]uint8{172, 16, 0, 0, 24},
+				Status:            LinkStatusActivated,
+				Code:              "link-01",
+				ContributorPubKey: pubKey1Uint8,
+				SideAIfaceName:    "xe-0/0/0",
+				SideZIfaceName:    "xe-0/0/1",
+				DelayOverrideNs:   2000000,
+				PubKey:            pubKey1,
+			},
+			ts: ts,
+			additionalTags: map[string]string{
+				"env": "testnet",
+			},
+			expected: `links,code=link-01,contributor_pubkey=` + pubKey1B58 +
+				`,env=testnet,link_type=WAN,owner=` + pubKey1B58 +
+				`,pubkey=` + pubKey1B58 +
+				`,side_a_iface_name=xe-0/0/0,side_a_pubkey=` + pubKey1B58 +
+				`,side_z_iface_name=xe-0/0/1,side_z_pubkey=` + pubKey1B58 +
+				`,status=activated,tunnel_id=42,tunnel_net=172.16.0.0/24 bandwidth=1000,delay_ns=1e+06,delay_override_ns=2e+06,jitter_ns=500000,mtu=1500`,
+			expectErr: false,
+		},
+		{
+			name:        "link with empty optional tags",
+			measurement: "links",
+			input: Link{
+				Owner:             pubKey1Uint8,
+				SideAPubKey:       pubKey1Uint8,
+				SideZPubKey:       pubKey1Uint8,
+				LinkType:          LinkLinkTypeDZX,
+				Bandwidth:         0,
+				Mtu:               0,
+				DelayNs:           0,
+				JitterNs:          0,
+				TunnelId:          7,
+				Status:            LinkStatusPending,
+				Code:              "link-empty",
+				ContributorPubKey: pubKey1Uint8,
+				DelayOverrideNs:   0,
+				PubKey:            pubKey1,
+			},
+			ts: ts,
+			additionalTags: map[string]string{
+				"env": "testnet",
+			},
+			expected: `links,code=link-empty,contributor_pubkey=` + pubKey1B58 +
+				`,env=testnet,link_type=DZX,owner=` + pubKey1B58 +
+				`,pubkey=` + pubKey1B58 +
+				`,side_a_pubkey=` + pubKey1B58 +
+				`,side_z_pubkey=` + pubKey1B58 +
+				`,status=pending,tunnel_id=7 bandwidth=0,delay_ns=0,delay_override_ns=0,jitter_ns=0,mtu=0`,
 			expectErr: false,
 		},
 		{

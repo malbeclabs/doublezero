@@ -115,6 +115,7 @@ func (w *ServiceabilityWatcher) Tick(ctx context.Context) error {
 		w.exportDevicesToInflux(data.Devices)
 		w.exportContributorsToInflux(data.Contributors)
 		w.exportExchangesToInflux(data.Exchanges)
+		w.exportLinksToInflux(data.Links)
 	}
 
 	// save current on-chain state for next comparison interval
@@ -176,6 +177,26 @@ func (w *ServiceabilityWatcher) exportDevicesToInflux(devices []serviceability.D
 			continue
 		}
 		w.log.Debug("writing device record to influx", "line", line)
+		w.cfg.InfluxWriter.WriteRecord(line)
+	}
+	w.cfg.InfluxWriter.Flush()
+}
+
+func (w *ServiceabilityWatcher) exportLinksToInflux(links []serviceability.Link) {
+	if w.cfg.InfluxWriter == nil {
+		return
+	}
+	additionalTags := map[string]string{
+		"env": w.cfg.Env,
+	}
+	// write each link as a separate line protocol entry
+	for _, link := range links {
+		line, err := serviceability.ToLineProtocol("links", link, time.Now(), additionalTags)
+		if err != nil {
+			w.log.Error("failed to create influx line protocol for link", "link_code", link.Code, "error", err)
+			continue
+		}
+		w.log.Debug("writing link record to influx", "line", line)
 		w.cfg.InfluxWriter.WriteRecord(line)
 	}
 	w.cfg.InfluxWriter.Flush()

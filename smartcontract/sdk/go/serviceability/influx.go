@@ -74,16 +74,30 @@ func ToLineProtocol(measurement string, s any, ts time.Time, additionalTags map[
 				return "", fmt.Errorf("field '%s' tagged as 'ip' but is not [4]uint8", fieldType.Name)
 			}
 		} else if hasCidrOption {
-			if slice, ok := fieldValue.Interface().([][5]uint8); ok {
+			switch v := fieldValue.Interface().(type) {
+			case [][5]uint8:
 				var prefixes []string
-				for _, p := range slice {
-					ip := net.IP(p[0:4])
+				for _, p := range v {
 					mask := int(p[4])
+					// Mirror onChainNetToString: skip invalid or zero prefix
+					if mask <= 0 || mask > 32 {
+						continue
+					}
+					ip := net.IP(p[0:4])
 					prefixes = append(prefixes, fmt.Sprintf("%s/%d", ip.String(), mask))
 				}
 				finalValue = strings.Join(prefixes, ",")
-			} else {
-				return "", fmt.Errorf("field '%s' tagged as 'cidr' but is not [][5]uint8", fieldType.Name)
+			case [5]uint8:
+				mask := int(v[4])
+				if mask <= 0 || mask > 32 {
+					// invalid/zero prefix -> treat as unset
+					finalValue = ""
+				} else {
+					ip := net.IP(v[0:4])
+					finalValue = fmt.Sprintf("%s/%d", ip.String(), mask)
+				}
+			default:
+				return "", fmt.Errorf("field '%s' tagged as 'cidr' but is not [][5]uint8 or [5]uint8", fieldType.Name)
 			}
 		} else {
 			finalValue = fieldValue.Interface()

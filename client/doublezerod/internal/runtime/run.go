@@ -37,7 +37,7 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 	// Otherwise, completely disable the liveness subsystem.
 	// TODO(snormore): The scenario where the liveness subsystem is completely disabled is
 	// temporary for initial rollout testing.
-	var lm *liveness.Manager
+	var lm liveness.Manager
 	if lmc != nil {
 		lmc.Netlinker = crw
 		var err error

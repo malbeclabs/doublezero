@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	connectUnicastTimeout     = 90 * time.Second
+	connectUnicastTimeout     = 150 * time.Second
 	unicastPingRequestTimeout = 60 * time.Second
 	unicastPingProbeTimeout   = 5 * time.Second
 	unicastTracerouteTimeout  = 5 * time.Second

@@ -169,6 +169,10 @@ func main() {
 			MaxTxCeil:  *routeLivenessMaxTxCeil,
 
 			EnablePeerMetrics: *routeLivenessPeerMetrics,
+
+			// Default to treating peers that advertise passive mode as passive. That is, we will
+			// install their routes immediately and never uninstall them on down events.
+			HonorPeerAdvertisedPassive: true,
 		}
 	}
 

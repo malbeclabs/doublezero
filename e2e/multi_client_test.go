@@ -436,7 +436,7 @@ func runMultiClientIBRLWorkflowTest(t *testing.T, log *slog.Logger, dn *devnet.D
 		blockUDPLiveness(t, client1)
 
 		// Routes
-		requireEventuallyRoute(t, client1, client2DZIP, false, wait, tick, "pass %d: block c1: c1->c2 removed")
+		requireEventuallyRoute(t, client1, client2DZIP, true, wait, tick, "pass %d: block c1: c1->c2 remains")
 		requireEventuallyRoute(t, client1, client3DZIP, false, wait, tick, "pass %d: block c1: c1->c3 removed")
 		requireEventuallyRoute(t, client1, client4DZIP, false, wait, tick, "pass %d: block c1: c1->c4 removed")
 		requireEventuallyRoute(t, client3, client1DZIP, false, wait, tick, "pass %d: block c1: c3->c1 removed")
@@ -458,7 +458,7 @@ func runMultiClientIBRLWorkflowTest(t *testing.T, log *slog.Logger, dn *devnet.D
 		unblockUDPLiveness(t, client1)
 
 		// Routes restored
-		requireEventuallyRoute(t, client1, client2DZIP, true, wait, tick, "pass %d: unblock c1: c1->c2 restored")
+		requireEventuallyRoute(t, client1, client2DZIP, true, wait, tick, "pass %d: unblock c1: c1->c2 remains")
 		requireEventuallyRoute(t, client1, client3DZIP, true, wait, tick, "pass %d: unblock c1: c1->c3 restored")
 		requireEventuallyRoute(t, client3, client1DZIP, true, wait, tick, "pass %d: unblock c1: c3->c1 restored")
 
@@ -477,7 +477,7 @@ func runMultiClientIBRLWorkflowTest(t *testing.T, log *slog.Logger, dn *devnet.D
 		blockUDPLiveness(t, client2)
 
 		// Routes
-		requireEventuallyRoute(t, client1, client2DZIP, false, wait, tick, "pass %d: block c2: c1->c2 removed")
+		requireEventuallyRoute(t, client1, client2DZIP, true, wait, tick, "pass %d: block c2: c1->c2 remains")
 		requireEventuallyRoute(t, client2, client1DZIP, true, wait, tick, "pass %d: block c2: c2->c1 remains")
 		requireEventuallyRoute(t, client2, client3DZIP, false, wait, tick, "pass %d: block c2: c2->c3 remains absent")
 		requireEventuallyRoute(t, client3, client2DZIP, false, wait, tick, "pass %d: block c2: c3->c2 remains absent")
@@ -493,7 +493,7 @@ func runMultiClientIBRLWorkflowTest(t *testing.T, log *slog.Logger, dn *devnet.D
 		unblockUDPLiveness(t, client2)
 
 		// Routes restored
-		requireEventuallyRoute(t, client1, client2DZIP, true, wait, tick, "pass %d: unblock c2: c1->c2 restored")
+		requireEventuallyRoute(t, client1, client2DZIP, true, wait, tick, "pass %d: unblock c2: c1->c2 remains")
 
 		// Liveness packets on dz0; none on eth0/1
 		requireUDPLivenessOnDZ0(t, client1, client2DZIP, true, "pass %d: unblock c2: c1 liveness packets -> c2 on dz0")

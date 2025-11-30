@@ -198,7 +198,7 @@ func TestClient_Liveness_Scheduler_Run_SendsAndReschedules(t *testing.T) {
 	}()
 
 	log := newTestLogger(t)
-	s := NewScheduler(log, w, func(*Session) {}, 0, false, newMetrics())
+	s := NewScheduler(log, w, func(*Session) {}, 0, false, newMetrics(), false)
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	go func() {
@@ -412,7 +412,7 @@ func TestClient_Liveness_Scheduler_Run_CullsStaleDetectAndClearsMarker(t *testin
 	t.Parallel()
 
 	log := newTestLogger(t)
-	s := NewScheduler(log, nil, func(*Session) {}, 0, false, newMetrics())
+	s := NewScheduler(log, nil, func(*Session) {}, 0, false, newMetrics(), false)
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
@@ -525,7 +525,7 @@ func TestClient_Liveness_Scheduler_doTX_RespectsContextCancelOnWriteError(t *tes
 	base := slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelDebug})
 	log := slog.New(&warnCountingHandler{inner: base, warnCount: &warns})
 
-	s := NewScheduler(log, udp, func(*Session) {}, 0, false, newMetrics())
+	s := NewScheduler(log, udp, func(*Session) {}, 0, false, newMetrics(), false)
 	// Disable throttling so every error can emit a warn if allowed by ctx.
 	s.writeErrWarnEvery = 0
 
@@ -563,6 +563,92 @@ func TestClient_Liveness_Scheduler_doTX_RespectsContextCancelOnWriteError(t *tes
 	s.doTX(ctxCanceled, sess)
 
 	require.Equal(t, int32(0), atomic.LoadInt32(&warns), "no warn should be logged when ctx is already canceled")
+}
+
+func TestClient_Liveness_Scheduler_ScheduleTx_NoEnqueueWhenNotAlive(t *testing.T) {
+	t.Parallel()
+
+	s := &Scheduler{
+		log:     newTestLogger(t),
+		eq:      NewEventQueue(),
+		metrics: newMetrics(),
+	}
+
+	sess := &Session{
+		state:         StateInit,
+		alive:         false,
+		localTxMin:    20 * time.Millisecond,
+		localRxMin:    20 * time.Millisecond,
+		minTxFloor:    10 * time.Millisecond,
+		maxTxCeil:     200 * time.Millisecond,
+		backoffMax:    200 * time.Millisecond,
+		backoffFactor: 1,
+		peer:          &Peer{Interface: "eth0", LocalIP: "192.0.2.1"},
+	}
+
+	now := time.Now()
+
+	// Not alive, non-AdminDown: no TX should be queued.
+	s.scheduleTx(now, sess)
+	require.Equal(t, 0, s.eq.Len(), "no TX should be scheduled when session is not alive")
+
+	// Not alive, AdminDown: still no TX (AdminDown one-shot advert only applies when alive).
+	sess.state = StateAdminDown
+	s.scheduleTx(now.Add(5*time.Millisecond), sess)
+	require.Equal(t, 0, s.eq.Len(), "no TX should be scheduled when session is not alive, even in AdminDown")
+}
+
+func TestClient_Liveness_Scheduler_doTX_SetsPassiveBitWhenPassiveModeEnabled(t *testing.T) {
+	t.Parallel()
+
+	srv, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
+	require.NoError(t, err)
+	defer srv.Close()
+	r, _ := NewUDPService(srv)
+
+	cl, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
+	require.NoError(t, err)
+	defer cl.Close()
+	w, _ := NewUDPService(cl)
+
+	peerAddr := srv.LocalAddr().(*net.UDPAddr)
+
+	// passiveMode=true here is the thing under test.
+	s := NewScheduler(newTestLogger(t), w, func(*Session) {}, 0, false, newMetrics(), true)
+
+	sess := &Session{
+		state:         StateUp,
+		alive:         true,
+		localTxMin:    20 * time.Millisecond,
+		localRxMin:    20 * time.Millisecond,
+		minTxFloor:    10 * time.Millisecond,
+		maxTxCeil:     200 * time.Millisecond,
+		detectMult:    3,
+		backoffMax:    200 * time.Millisecond,
+		backoffFactor: 1,
+		localDiscr:    123,
+		peerDiscr:     456,
+		peer: &Peer{
+			Interface: "",
+			LocalIP:   cl.LocalAddr().(*net.UDPAddr).IP.String(),
+			PeerIP:    peerAddr.IP.String(),
+		},
+		peerAddr: peerAddr,
+	}
+
+	ctx := context.Background()
+	s.doTX(ctx, sess)
+
+	// Read one packet and decode it.
+	buf := make([]byte, 128)
+	_ = srv.SetReadDeadline(time.Now().Add(time.Second))
+	n, _, _, _, err := r.ReadFrom(buf)
+	require.NoError(t, err)
+
+	cp, err := UnmarshalControlPacket(buf[:n])
+	require.NoError(t, err)
+
+	require.True(t, cp.IsPassive(), "expected Passive bit set when scheduler.passiveMode is true")
 }
 
 type warnCountingHandler struct {

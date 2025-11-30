@@ -16,6 +16,7 @@ import (
 
 	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
 	pb "github.com/malbeclabs/doublezero/e2e/proto/qa/gen/pb-go"
+	tpuquic "github.com/malbeclabs/doublezero/tools/solana/pkg/tpu-quic"
 	probing "github.com/prometheus-community/pro-bing"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/sys/unix"
@@ -245,6 +246,43 @@ func (q *QAAgent) TracerouteRaw(ctx context.Context, req *pb.TracerouteRequest) 
 		Success:    true,
 		ReturnCode: 0,
 		Output:     strings.Split(string(output), "\n"),
+	}, nil
+}
+
+func (q *QAAgent) SolanaTPUQUICPing(ctx context.Context, req *pb.SolanaTPUQUICPingRequest) (*pb.SolanaTPUQUICPingResult, error) {
+	q.log.Info("Received SolanaTPUQUICPing request", "src_addr", req.SrcAddr, "interface", req.Interface, "dst_addr", req.DstAddr, "count", req.Count, "interval", req.Interval, "timeout", req.Timeout)
+	pingCtx, pingCancel := context.WithTimeout(ctx, time.Duration(req.Timeout)*time.Second)
+	defer pingCancel()
+	res, err := tpuquic.Ping(pingCtx, q.log, req.DstAddr, tpuquic.PingConfig{
+		Count:    int(req.Count),
+		Interval: time.Duration(req.Interval) * time.Second,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to ping TPU QUIC: %w", err)
+	}
+	stats := make([]*pb.SolanaTPUConnectionStats, 0, len(res.ConnectionStats))
+	for _, stat := range res.ConnectionStats {
+		stats = append(stats, &pb.SolanaTPUConnectionStats{
+			MinRtt:          uint32(stat.MinRTT.Milliseconds()),
+			LatestRtt:       uint32(stat.LatestRTT.Milliseconds()),
+			SmoothedRtt:     uint32(stat.SmoothedRTT.Milliseconds()),
+			MeanDeviation:   uint32(stat.MeanDeviation.Milliseconds()),
+			BytesSent:       uint32(stat.BytesSent),
+			PacketsSent:     uint32(stat.PacketsSent),
+			BytesReceived:   uint32(stat.BytesReceived),
+			PacketsReceived: uint32(stat.PacketsReceived),
+			BytesLost:       uint32(stat.BytesLost),
+			PacketsLost:     uint32(stat.PacketsLost),
+		})
+	}
+	var resErr string
+	if res.Error != nil {
+		resErr = res.Error.Error()
+	}
+	return &pb.SolanaTPUQUICPingResult{
+		Success: res.Success,
+		Error:   resErr,
+		Stats:   stats,
 	}, nil
 }
 

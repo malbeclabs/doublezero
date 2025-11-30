@@ -7,7 +7,10 @@ import (
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/pem"
+	"io"
+	"log/slog"
 	"net"
+	"runtime"
 	"testing"
 	"time"
 
@@ -15,67 +18,98 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func testLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
 func TestTools_Solana_TPUQUICPing_ConfigValidateDefaults(t *testing.T) {
 	t.Parallel()
-	cfg := PingConfig{Dst: "127.0.0.1:1234"}
+	cfg := PingConfig{}
 	require.NoError(t, cfg.Validate())
-	require.NotNil(t, cfg.Context)
-	require.NotNil(t, cfg.Logger)
+
 	require.Equal(t, DefaultCount, cfg.Count)
 	require.Equal(t, DefaultInterval, cfg.Interval)
-	require.Equal(t, DefaultTimeout, cfg.Timeout)
-	require.Equal(t, DefaultSrc.String(), cfg.Src)
-	require.Equal(t, "127.0.0.1:1234", cfg.Dst)
+	require.NotNil(t, cfg.Clock)
+
+	// DialConfig defaults
+	require.Equal(t, DefaultSrc.String(), cfg.DialConfig.Src)
+	require.Equal(t, DefaultKeepAlivePeriod, cfg.DialConfig.KeepAlivePeriod)
 }
 
 func TestTools_Solana_TPUQUICPing_ConfigValidateRequiresDst(t *testing.T) {
 	t.Parallel()
+
+	// Config.Validate no longer knows about dst, but Ping requires a dst.
+	ctx := context.Background()
+	log := testLogger()
 	cfg := PingConfig{}
-	require.Error(t, cfg.Validate())
+
+	res, err := Ping(ctx, log, "", cfg)
+	require.Error(t, err)
+	require.Nil(t, res)
 }
 
 func TestTools_Solana_TPUQUICPing_PingMissingDst(t *testing.T) {
 	t.Parallel()
-	cfg := PingConfig{Quiet: true}
-	res, err := Ping(cfg)
+
+	ctx := context.Background()
+	log := testLogger()
+	cfg := PingConfig{} // all defaults
+
+	res, err := Ping(ctx, log, "", cfg)
 	require.Error(t, err)
 	require.Nil(t, res)
 }
 
 func TestTools_Solana_TPUQUICPing_PingInvalidDst(t *testing.T) {
 	t.Parallel()
-	cfg := PingConfig{Dst: "not-a-valid-address", Quiet: true}
-	res, err := Ping(cfg)
+
+	ctx := context.Background()
+	log := testLogger()
+	cfg := PingConfig{}
+
+	// Invalid address format -> net.ResolveUDPAddr should fail
+	res, err := Ping(ctx, log, "not-a-valid-address", cfg)
 	require.Error(t, err)
 	require.Nil(t, res)
 }
 
 func TestTools_Solana_TPUQUICPing_PingInvalidSrc(t *testing.T) {
 	t.Parallel()
-	cfg := PingConfig{Dst: "127.0.0.1:1234", Src: "invalid-local", Quiet: true}
-	res, err := Ping(cfg)
+
+	ctx := context.Background()
+	log := testLogger()
+	cfg := PingConfig{
+		DialConfig: DialConfig{
+			Src: "invalid-local", // missing port
+		},
+	}
+
+	res, err := Ping(ctx, log, "127.0.0.1:1234", cfg)
 	require.Error(t, err)
 	require.Nil(t, res)
 }
 
 func TestTools_Solana_TPUQUICPing_DialFailure(t *testing.T) {
 	t.Parallel()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 
+	log := testLogger()
+
 	cfg := PingConfig{
-		Context: ctx,
-		Dst:     "127.0.0.1:9",
-		Src:     "0.0.0.0:0",
-		Timeout: 50 * time.Millisecond,
-		Quiet:   true,
+		DialConfig: DialConfig{
+			Src: "0.0.0.0:0",
+			// Timeouts are passed through to quic-go; we mostly care that
+			// a failure is surfaced as an error from Ping.
+		},
 	}
 
-	res, err := Ping(cfg)
-	require.NoError(t, err)
-	require.NotNil(t, res)
-	require.False(t, res.Success)
-	require.Error(t, res.Error)
+	// Port 9 is typically discard/no QUIC server; handshake should fail.
+	res, err := Ping(ctx, log, "127.0.0.1:9", cfg)
+	require.Error(t, err)
+	require.Nil(t, res)
 }
 
 func TestTools_Solana_TPUQUICPing_SuccessAgainstLocalQUICServer(t *testing.T) {
@@ -118,24 +152,24 @@ func TestTools_Solana_TPUQUICPing_SuccessAgainstLocalQUICServer(t *testing.T) {
 	}()
 
 	dst := <-serverAddrCh
-	statsCh := make(chan *quic.ConnectionStats, 10)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	log := testLogger()
 
 	cfg := PingConfig{
-		Dst:       dst,
-		Src:       net.JoinHostPort("0.0.0.0", "0"),
-		Count:     3,
-		Interval:  50 * time.Millisecond,
-		Timeout:   500 * time.Millisecond,
-		StatsChan: statsCh,
-		Quiet:     true,
+		DialConfig: DialConfig{
+			Src: "0.0.0.0:0",
+		},
+		Count:    3,
+		Interval: 50 * time.Millisecond,
 	}
 
-	res, err := Ping(cfg)
+	res, err := Ping(ctx, log, dst, cfg)
 	require.NoError(t, err)
 	require.NotNil(t, res)
 	require.True(t, res.Success)
-	require.NotEmpty(t, res.ConnectionStats)
-	require.NotEmpty(t, statsCh)
+	require.Len(t, res.ConnectionStats, cfg.Count)
 
 	select {
 	case <-serverDone:
@@ -187,18 +221,19 @@ func TestTools_Solana_TPUQUICPing_FailureAgainstLocalQUICServer(t *testing.T) {
 
 	dst := <-serverAddrCh
 
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	log := testLogger()
+
 	cfg := PingConfig{
-		Dst:     dst,
-		Src:     "0.0.0.0:0",
-		Timeout: 200 * time.Millisecond,
-		Quiet:   true,
+		DialConfig: DialConfig{
+			Src: "0.0.0.0:0",
+		},
 	}
 
-	res, err := Ping(cfg)
-	require.NoError(t, err)
-	require.NotNil(t, res)
-	require.False(t, res.Success)
-	require.Error(t, res.Error)
+	res, err := Ping(ctx, log, dst, cfg)
+	require.Error(t, err)
+	require.Nil(t, res)
 
 	select {
 	case <-serverDone:
@@ -257,6 +292,11 @@ func TestTools_Solana_TPUQUICPing_SubjectAltNameExt(t *testing.T) {
 func TestTools_Solana_TPUQUICPing_SuccessAgainstLocalQUICServer_Interface(t *testing.T) {
 	t.Parallel()
 
+	// On non-Linux/Darwin we only have a stub bindToDevice, so skip.
+	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
+		t.Skip("interface binding not implemented on this platform")
+	}
+
 	ifaceName, _ := getLoopbackInterfaceV4(t)
 
 	serverAddrCh := make(chan string, 1)
@@ -296,24 +336,25 @@ func TestTools_Solana_TPUQUICPing_SuccessAgainstLocalQUICServer_Interface(t *tes
 	}()
 
 	dst := <-serverAddrCh
-	statsCh := make(chan *quic.ConnectionStats, 10)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	log := testLogger()
 
 	cfg := PingConfig{
-		Dst:       dst,
-		Interface: ifaceName,
-		Count:     3,
-		Interval:  50 * time.Millisecond,
-		Timeout:   500 * time.Millisecond,
-		StatsChan: statsCh,
-		Quiet:     true,
+		DialConfig: DialConfig{
+			Interface: ifaceName,
+			Src:       "0.0.0.0:0",
+		},
+		Count:    3,
+		Interval: 50 * time.Millisecond,
 	}
 
-	res, err := Ping(cfg)
+	res, err := Ping(ctx, log, dst, cfg)
 	require.NoError(t, err)
 	require.NotNil(t, res)
 	require.True(t, res.Success)
-	require.NotEmpty(t, res.ConnectionStats)
-	require.NotEmpty(t, statsCh)
+	require.Len(t, res.ConnectionStats, cfg.Count)
 
 	select {
 	case <-serverDone:
@@ -342,6 +383,7 @@ func TestTools_Solana_TPUQUICPing_BindToDevice_Interface_NoPanic(t *testing.T) {
 	// - Linux SO_BINDTODEVICE often requires capabilities and may return EPERM.
 	// - Darwin IP_BOUND_IF/IPV6_BOUND_IF should usually work, but we don't
 	//   want tests to depend on privileges.
+	// - Other platforms use a stub that just returns an error.
 	// This is mainly a smoke test + coverage for bindToDevice.
 	_ = bindToDevice(conn, ifaceName)
 }

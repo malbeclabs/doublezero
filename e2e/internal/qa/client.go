@@ -54,6 +54,20 @@ type Device struct {
 	UsersCount   int
 }
 
+type User struct {
+	PubKey   string
+	DZIP     net.IP
+	UserType serviceability.UserUserType
+	Device   *Device
+}
+
+type WaitConfig struct {
+	Timeout  time.Duration
+	Interval time.Duration
+}
+
+var ErrWaitTimeout = errors.New("wait timed out")
+
 type Client struct {
 	log            *slog.Logger
 	grpcClient     pb.QAAgentServiceClient
@@ -247,7 +261,17 @@ func (c *Client) WaitForStatusDisconnected(ctx context.Context) error {
 }
 
 func (c *Client) WaitForRoutes(ctx context.Context, expectedIPs []net.IP) error {
-	c.log.Info("Waiting for routes to be installed", "host", c.Host, "expectedIPs", expectedIPs)
+	return c.WaitForRoutesWith(ctx, expectedIPs, nil)
+}
+
+func (c *Client) WaitForRoutesWith(ctx context.Context, expectedIPs []net.IP, cfg *WaitConfig) error {
+	timeout := waitForRoutesTimeout
+	interval := waitInterval
+	if cfg != nil {
+		timeout = cfg.Timeout
+		interval = cfg.Interval
+	}
+	c.log.Debug("Waiting for routes to be installed", "host", c.Host, "expectedIPs", expectedIPs)
 	err := poll.Until(ctx, func() (bool, error) {
 		installedRoutes, err := c.GetInstalledRoutes(ctx)
 		if err != nil {
@@ -264,7 +288,7 @@ func (c *Client) WaitForRoutes(ctx context.Context, expectedIPs []net.IP) error 
 			}
 		}
 		return true, nil
-	}, waitForRoutesTimeout, waitInterval)
+	}, timeout, interval)
 	if err != nil {
 		return fmt.Errorf("failed to wait for routes to be installed: %w", err)
 	}

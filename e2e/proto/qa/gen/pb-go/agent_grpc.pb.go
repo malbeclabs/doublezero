@@ -39,6 +39,7 @@ type QAAgentServiceClient interface {
 	MulticastLeave(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	MulticastReport(ctx context.Context, in *MulticastReportRequest, opts ...grpc.CallOption) (*MulticastReportResult, error)
 	MulticastSend(ctx context.Context, in *MulticastSendRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	SolanaTPUQUICPing(ctx context.Context, in *SolanaTPUQUICPingRequest, opts ...grpc.CallOption) (*SolanaTPUQUICPingResult, error)
 }
 
 type qAAgentServiceClient struct {
@@ -193,6 +194,15 @@ func (c *qAAgentServiceClient) MulticastSend(ctx context.Context, in *MulticastS
 	return out, nil
 }
 
+func (c *qAAgentServiceClient) SolanaTPUQUICPing(ctx context.Context, in *SolanaTPUQUICPingRequest, opts ...grpc.CallOption) (*SolanaTPUQUICPingResult, error) {
+	out := new(SolanaTPUQUICPingResult)
+	err := c.cc.Invoke(ctx, "/qa.QAAgentService/SolanaTPUQUICPing", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // QAAgentServiceServer is the server API for QAAgentService service.
 // All implementations should embed UnimplementedQAAgentServiceServer
 // for forward compatibility
@@ -213,6 +223,7 @@ type QAAgentServiceServer interface {
 	MulticastLeave(context.Context, *emptypb.Empty) (*emptypb.Empty, error)
 	MulticastReport(context.Context, *MulticastReportRequest) (*MulticastReportResult, error)
 	MulticastSend(context.Context, *MulticastSendRequest) (*emptypb.Empty, error)
+	SolanaTPUQUICPing(context.Context, *SolanaTPUQUICPingRequest) (*SolanaTPUQUICPingResult, error)
 }
 
 // UnimplementedQAAgentServiceServer should be embedded to have forward compatible implementations.
@@ -266,6 +277,9 @@ func (UnimplementedQAAgentServiceServer) MulticastReport(context.Context, *Multi
 }
 func (UnimplementedQAAgentServiceServer) MulticastSend(context.Context, *MulticastSendRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method MulticastSend not implemented")
+}
+func (UnimplementedQAAgentServiceServer) SolanaTPUQUICPing(context.Context, *SolanaTPUQUICPingRequest) (*SolanaTPUQUICPingResult, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SolanaTPUQUICPing not implemented")
 }
 
 // UnsafeQAAgentServiceServer may be embedded to opt out of forward compatibility for this service.
@@ -567,6 +581,24 @@ func _QAAgentService_MulticastSend_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _QAAgentService_SolanaTPUQUICPing_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SolanaTPUQUICPingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QAAgentServiceServer).SolanaTPUQUICPing(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/qa.QAAgentService/SolanaTPUQUICPing",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QAAgentServiceServer).SolanaTPUQUICPing(ctx, req.(*SolanaTPUQUICPingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // QAAgentService_ServiceDesc is the grpc.ServiceDesc for QAAgentService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -637,6 +669,10 @@ var QAAgentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "MulticastSend",
 			Handler:    _QAAgentService_MulticastSend_Handler,
+		},
+		{
+			MethodName: "SolanaTPUQUICPing",
+			Handler:    _QAAgentService_SolanaTPUQUICPing_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

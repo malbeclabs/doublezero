@@ -3,6 +3,7 @@ package qa
 import (
 	"context"
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
@@ -18,6 +19,10 @@ const (
 	unicastPingProbeCount         = 5
 	unicastPingProbeLossThreshold = 2
 	unicastTracerouteCount        = 10
+
+	solanaTPUQUICPingCount    = 1
+	solanaTPUQUICPingInterval = 500 * time.Millisecond
+	solanaTPUQUICPingTimeout  = 10 * time.Second
 
 	unicastInterfaceName = "doublezero0"
 )
@@ -67,6 +72,40 @@ func (c *Client) ConnectUserUnicast(ctx context.Context, deviceCode string, wait
 	}
 
 	return nil
+}
+
+func (c *Client) TestSolanaTPUQUICConnectivity(ctx context.Context, dstAddr string) (*pb.SolanaTPUQUICPingResult, error) {
+	res, err := c.grpcClient.SolanaTPUQUICPing(ctx, &pb.SolanaTPUQUICPingRequest{
+		DstAddr:  dstAddr,
+		Count:    uint32(solanaTPUQUICPingCount),
+		Interval: uint32(solanaTPUQUICPingInterval.Seconds()),
+		Timeout:  uint32(solanaTPUQUICPingTimeout.Seconds()),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to test TPU QUIC connectivity: %w", err)
+	}
+	if !res.Success {
+		// If ping fails over DZ, check if routes were uninstalled and log an error for visibility.
+		installedRoutes, err := c.GetInstalledRoutes(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get installed routes: %w", err)
+		}
+		installedIPs := make(map[string]struct{})
+		for _, route := range installedRoutes {
+			installedIPs[route.DstIp] = struct{}{}
+		}
+		dstIP, _, err := net.SplitHostPort(dstAddr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to split host port: %w", err)
+		}
+		if _, ok := installedIPs[dstIP]; !ok {
+			c.log.Error("Routes disappeared while pinging TPU QUIC, ping failed",
+				"sourceHost", c.Host,
+				"dstAddr", dstAddr,
+			)
+		}
+	}
+	return res, nil
 }
 
 type UnicastTestConnectivityResult struct {

@@ -988,8 +988,18 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 		c.log.Info("Cleaning up orphaned metadata entries",
 			slog.Int("count", len(orphanedIDs)))
 		for _, id := range orphanedIDs {
-			c.log.Debug("Removing orphaned metadata",
-				slog.Int("measurement_id", id))
+			if meta, hasMeta := measurementState.GetMetadata(id); hasMeta {
+				ageSeconds := currentTime - meta.CreatedAt
+				c.log.Info("Removing orphaned metadata",
+					slog.Int("measurement_id", id),
+					slog.String("target_location", meta.TargetLocation),
+					slog.Int("target_probe_id", meta.TargetProbeID),
+					slog.Time("created_at", time.Unix(meta.CreatedAt, 0)),
+					slog.Int64("age_seconds", ageSeconds))
+			} else {
+				c.log.Info("Removing orphaned metadata (no metadata found)",
+					slog.Int("measurement_id", id))
+			}
 			measurementState.RemoveMetadata(id)
 		}
 		if err := measurementState.Save(); err != nil {

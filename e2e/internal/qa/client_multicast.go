@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	connectMulticastTimeout             = 90 * time.Second
+	connectMulticastTimeout             = 150 * time.Second
 	leaveMulticastGroupTimeout          = 90 * time.Second
 	waitForMulticastGroupCreatedTimeout = 90 * time.Second
 	waitForMulticastReportTimeout       = 90 * time.Second

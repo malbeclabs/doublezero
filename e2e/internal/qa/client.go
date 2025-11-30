@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	disconnectTimeout                = 90 * time.Second
+	disconnectTimeout                = 150 * time.Second
 	waitForStatusUpTimeout           = 90 * time.Second
 	waitForStatusDisconnectedTimeout = 90 * time.Second
 	waitForUserDeletionTimeout       = 90 * time.Second

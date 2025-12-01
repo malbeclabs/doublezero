@@ -1,7 +1,11 @@
-use crate::{error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::user::*};
+use crate::{
+    error::DoubleZeroError,
+    globalstate::globalstate_get,
+    state::{accounttype::AccountTypeInfo, user::*},
+};
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
-use doublezero_program_common::types::NetworkV4;
+use doublezero_program_common::{resize_account::resize_account_if_needed, types::NetworkV4};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
@@ -70,7 +74,8 @@ pub fn process_reject_user(
     user.status = UserStatus::Rejected;
     msg!("Reason: {:?}", value.reason);
 
-    account_write(user_account, &user, payer_account, system_program)?;
+    resize_account_if_needed(user_account, payer_account, accounts, user.size())?;
+    user.try_serialize(user_account)?;
 
     #[cfg(test)]
     msg!("Rejected: {:?}", user);

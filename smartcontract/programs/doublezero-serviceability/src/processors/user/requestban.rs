@@ -1,7 +1,12 @@
-use crate::{error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::user::*};
+use crate::{
+    error::DoubleZeroError,
+    globalstate::globalstate_get,
+    state::{accounttype::AccountTypeInfo, user::*},
+};
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
+use doublezero_program_common::resize_account::resize_account_if_needed;
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -59,7 +64,8 @@ pub fn process_request_ban_user(
     let mut user: User = User::try_from(user_account)?;
     user.status = UserStatus::PendingBan;
 
-    account_write(user_account, &user, payer_account, system_program)?;
+    resize_account_if_needed(user_account, payer_account, accounts, user.size())?;
+    user.try_serialize(user_account)?;
 
     #[cfg(test)]
     msg!("Deleting: {:?}", user);

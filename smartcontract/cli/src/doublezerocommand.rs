@@ -58,6 +58,7 @@ use doublezero_sdk::{
             create::CreateLocationCommand, delete::DeleteLocationCommand, get::GetLocationCommand,
             list::ListLocationCommand, update::UpdateLocationCommand,
         },
+        migrate::MigrateCommand,
         multicastgroup::{
             activate::ActivateMulticastGroupCommand,
             allowlist::{
@@ -121,6 +122,7 @@ pub trait CliCommand {
     ) -> eyre::Result<Vec<(Pubkey, Account)>>;
 
     fn init_globalstate(&self, cmd: InitGlobalStateCommand) -> eyre::Result<Signature>;
+    fn migrate(&self, cmd: MigrateCommand) -> eyre::Result<Vec<Signature>>;
     fn get_globalstate(&self, cmd: GetGlobalStateCommand) -> eyre::Result<(Pubkey, GlobalState)>;
     fn get_globalconfig(&self, cmd: GetGlobalConfigCommand)
         -> eyre::Result<(Pubkey, GlobalConfig)>;
@@ -325,6 +327,9 @@ impl CliCommand for CliCommandImpl<'_> {
     }
 
     fn init_globalstate(&self, cmd: InitGlobalStateCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn migrate(&self, cmd: MigrateCommand) -> eyre::Result<Vec<Signature>> {
         cmd.execute(self.client)
     }
     fn get_globalstate(&self, cmd: GetGlobalStateCommand) -> eyre::Result<(Pubkey, GlobalState)> {

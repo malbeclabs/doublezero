@@ -1,7 +1,6 @@
 use crate::{
     error::DoubleZeroError,
     globalstate::globalstate_get,
-    helper::account_write,
     state::{
         accesspass::AccessPass,
         accounttype::AccountTypeInfo,
@@ -104,7 +103,8 @@ pub fn process_activate_user(
     user.dz_ip = value.dz_ip;
     user.try_activate(&mut accesspass)?;
 
-    account_write(user_account, &user, payer_account, system_program)?;
+    resize_account_if_needed(user_account, payer_account, accounts, user.size())?;
+    user.try_serialize(user_account)?;
     resize_account_if_needed(
         accesspass_account,
         payer_account,

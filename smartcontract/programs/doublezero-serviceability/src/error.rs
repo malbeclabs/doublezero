@@ -125,8 +125,10 @@ pub enum DoubleZeroError {
     InvalidMinCompatibleVersion, // variant 59
     #[error("Invalid Actual Location")]
     InvalidActualLocation, // variant 60
+    #[error("Invalid User Pubkey")]
+    InvalidUserPubkey, // variant 61
     #[error("Invalid Public IP: IP conflicts with DZ prefix")]
-    InvalidPublicIp, // variant 61
+    InvalidPublicIp, // variant 62
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -193,7 +195,8 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::InvalidLoopbackType => ProgramError::Custom(58),
             DoubleZeroError::InvalidMinCompatibleVersion => ProgramError::Custom(59),
             DoubleZeroError::InvalidActualLocation => ProgramError::Custom(60),
-            DoubleZeroError::InvalidPublicIp => ProgramError::Custom(61),
+            DoubleZeroError::InvalidUserPubkey => ProgramError::Custom(61),
+            DoubleZeroError::InvalidPublicIp => ProgramError::Custom(62),
         }
     }
 }
@@ -261,7 +264,8 @@ impl From<u32> for DoubleZeroError {
             58 => DoubleZeroError::InvalidLoopbackType,
             59 => DoubleZeroError::InvalidMinCompatibleVersion,
             60 => DoubleZeroError::InvalidActualLocation,
-            61 => DoubleZeroError::InvalidPublicIp,
+            61 => DoubleZeroError::InvalidUserPubkey,
+            62 => DoubleZeroError::InvalidPublicIp,
             _ => DoubleZeroError::Custom(e),
         }
     }
@@ -349,6 +353,7 @@ mod tests {
             InvalidLoopbackType,
             InvalidMinCompatibleVersion,
             InvalidActualLocation,
+            InvalidUserPubkey,
             InvalidPublicIp,
         ];
         for err in variants {

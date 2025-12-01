@@ -25,7 +25,7 @@ mod test_helpers;
 use test_helpers::*;
 
 #[tokio::test]
-async fn test_user() {
+async fn test_old_user() {
     let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
 
     /***********************************************************************************************************************************/
@@ -294,7 +294,7 @@ async fn test_user() {
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     assert_eq!(globalstate_account.account_index, 4);
 
-    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::IBRL);
+    let (user_pubkey, _) = get_user_old_pda(&program_id, globalstate_account.account_index + 1);
 
     execute_transaction(
         &mut banks_client,

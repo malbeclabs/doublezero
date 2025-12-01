@@ -45,6 +45,7 @@ csv = "1"
 dotenvy = "0.15"
 futures = "0.3"
 governor = "0.6"
+home = "0.5"
 indexmap = { version = "2", features = ["serde"] }
 itertools = "0.14"
 leaky-bucket = "1"

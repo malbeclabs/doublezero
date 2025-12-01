@@ -17,6 +17,7 @@ All notable changes to this project will be documented in this file.
     - Added support in the link update command to set a link’s status to soft_drained or hard_drained.
     - Added support for specifying `device_type` at creation, updating it via device update, and displaying it in list/detail outputs.
     - Add support for updating `contributor.ops_manager_key`.
+    - Enhance `access-pass list` with client-IP and user-payer filters
 - Client
   - Add route liveness fault-injection simulation tests.
     - Updated the `interface list` command to display all interfaces when no device is specified.

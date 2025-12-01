@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log/slog"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/lmittmann/tint"
@@ -14,11 +17,11 @@ import (
 
 func main() {
 	count := flag.IntP("count", "c", tpuquic.DefaultCount, "how many intervals to ping for (optional)")
-	interval := flag.DurationP("interval", "i", tpuquic.DefaultInterval, "how often to print connection stats (optional)")
-	timeout := flag.DurationP("timeout", "t", tpuquic.DefaultTimeout, "how long to wait for the connection to be established (optional)")
 	srcAddr := flag.StringP("src", "S", tpuquic.DefaultSrc.String(), "source address to bind to (optional)")
 	iface := flag.StringP("interface", "I", "", "interface to bind to (optional)")
-	quiet := flag.BoolP("quiet", "q", false, "quiet mode - only show errors")
+	maxIdleTimeout := flag.Duration("max-idle-timeout", 0, "max idle timeout (optional)")
+	handshakeIdleTimeout := flag.Duration("handshake-idle-timeout", 0, "handshake idle timeout (optional)")
+	keepAlivePeriod := flag.Duration("keep-alive-period", 0, "keep alive period (optional)")
 
 	flag.Parse()
 
@@ -29,30 +32,28 @@ func main() {
 	}
 	dstAddr := flag.Arg(0)
 
-	log := newLogger(*quiet)
+	log := newLogger(false)
 	cfg := tpuquic.PingConfig{
-		Logger: log,
-
-		Quiet:     *quiet,
-		Count:     *count,
-		Interval:  *interval,
-		Timeout:   *timeout,
-		Src:       *srcAddr,
-		Interface: *iface,
-		Dst:       dstAddr,
+		Count: *count,
+		DialConfig: tpuquic.DialConfig{
+			Src:                  *srcAddr,
+			Interface:            *iface,
+			MaxIdleTimeout:       *maxIdleTimeout,
+			HandshakeIdleTimeout: *handshakeIdleTimeout,
+			KeepAlivePeriod:      *keepAlivePeriod,
+		},
 	}
 
-	result, err := tpuquic.Ping(cfg)
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	result, err := tpuquic.Ping(ctx, log, dstAddr, cfg)
 	if err != nil {
-		if !*quiet {
-			log.Error("Failed to ping", "error", err)
-		}
+		log.Error("Failed to ping", "error", err)
 		os.Exit(1)
 	}
 	if result.Error != nil {
-		if !*quiet {
-			log.Error("Failed to ping", "error", result.Error)
-		}
+		log.Error("Failed to ping", "error", result.Error)
 		os.Exit(1)
 	}
 }

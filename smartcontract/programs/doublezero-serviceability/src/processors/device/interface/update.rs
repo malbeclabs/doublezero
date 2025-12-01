@@ -151,7 +151,7 @@ pub fn process_update_device_interface(
         iface.node_segment_idx = node_segment_idx;
     }
     // until we have release V2 version for interfaces, always convert to v1
-    device.interfaces[idx] = iface.to_interface_v1();
+    device.interfaces[idx] = iface.to_interface();
 
     account_write(device_account, &device, payer_account, system_program)?;
 

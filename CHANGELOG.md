@@ -28,6 +28,7 @@ All notable changes to this project will be documented in this file.
   - Fix ProgramConfig resize during global state initialization.
   - Standardized the `device_type` enum to `Edge`, `Transit`, and `Hybrid`, added validation rules, and defaulted existing devices to `Hybrid` for backward compatibility.
   - Add `contributor.ops_manager_key` for authorizing incident management operations.
+  - Enable on-chain storage of InterfaceV2, allowing devices to register updated interface metadata
 - QA
   - Traceroute when packet loss is detected
 - Tools

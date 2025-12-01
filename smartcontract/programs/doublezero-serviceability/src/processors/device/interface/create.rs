@@ -119,7 +119,7 @@ pub fn process_create_device_interface(
             node_segment_idx: 0,
             user_tunnel_endpoint: value.user_tunnel_endpoint,
         }
-        .to_interface_v1(),
+        .to_interface(),
     );
 
     account_write(device_account, &device, payer_account, system_program)?;

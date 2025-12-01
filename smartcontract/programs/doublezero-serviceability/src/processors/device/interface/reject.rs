@@ -65,7 +65,7 @@ pub fn process_reject_device_interface(
         .map_err(|_| DoubleZeroError::InterfaceNotFound)?;
 
     iface.status = InterfaceStatus::Rejected;
-    device.interfaces[idx] = iface.to_interface_v1();
+    device.interfaces[idx] = iface.to_interface();
 
     account_write(device_account, &device, payer_account, system_program)?;
 

@@ -10,7 +10,7 @@ use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, net::Ipv4Addr};
 use tabled::{settings::Style, Table, Tabled};
 
-#[derive(Args, Debug)]
+#[derive(Args, Debug, Default)]
 pub struct ListAccessPassCliCommand {
     /// List prepaid access passes
     #[arg(long, default_value_t = false)]
@@ -34,20 +34,6 @@ pub struct ListAccessPassCliCommand {
     /// Output as compact JSON
     #[arg(long, default_value_t = false)]
     pub json_compact: bool,
-}
-
-impl Default for ListAccessPassCliCommand {
-    fn default() -> Self {
-        Self {
-            prepaid: false,
-            solana_validator: false,
-            solana_identity: None,
-            client_ip: None,
-            user_payer: None,
-            json: false,
-            json_compact: false,
-        }
-    }
 }
 
 #[derive(Tabled, Serialize)]

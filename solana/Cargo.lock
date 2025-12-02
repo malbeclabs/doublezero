@@ -1362,7 +1362,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-passport"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "base64 0.22.1",
  "bincode",
@@ -1379,7 +1379,7 @@ dependencies = [
  "solana-program-test",
  "solana-pubkey 3.0.0",
  "solana-sdk",
- "solana-system-interface 3.0.0",
+ "solana-system-interface 2.0.0",
  "solana-sysvar",
 ]
 
@@ -1407,7 +1407,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-revenue-distribution"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bincode",
  "borsh",
@@ -1427,7 +1427,7 @@ dependencies = [
  "solana-program-test",
  "solana-pubkey 3.0.0",
  "solana-sdk",
- "solana-system-interface 3.0.0",
+ "solana-system-interface 2.0.0",
  "solana-sysvar",
  "spl-associated-token-account-interface",
  "spl-token-interface",

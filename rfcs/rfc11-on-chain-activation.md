@@ -746,11 +746,28 @@ The controller's behavior is unchanged. It continues polling the same on-chain a
 | Multicast       | Global     | ~256 addresses    | 233.84.178.0/24 (configurable)   | Yes       |
 | **Devices**     | **Global** | **Unlimited**     | No artificial cap                | N/A       |
 
-**Current mainnet usage:**
+### Current Usage (December 2025)
 
-- 717 users using ~1,434 IPs from 169.254.0.0/16 (2% of 65K capacity)
-- 121 links using ~242 IPs from 172.16.0.0/16 (<1% of 65K capacity)
-- Plenty of headroom for growth
+| Metric           | Mainnet-Beta | Testnet | Devnet |
+| ---------------- | ------------ | ------- | ------ |
+| Devices          | 72           | 9       | 9      |
+| Users            | 755          | 438     | 1      |
+| Links            | 124          | 8       | 6      |
+| Interfaces       | 410          | 36      | 27     |
+| Multicast Groups | 4            | 7       | 23     |
+
+**Tunnel Net Utilization:**
+
+| Resource        | Env     | Allocated | Capacity | Utilization |
+| --------------- | ------- | --------- | -------- | ----------- |
+| User tunnel_net | mainnet | 754       | 32,768   | 2.30%       |
+|                 | testnet | 435       | 32,768   | 1.32%       |
+|                 | devnet  | 1         | 32,768   | ~0%         |
+| Link tunnel_net | mainnet | 123       | 32,768   | 0.37%       |
+|                 | testnet | 8         | 32,768   | 0.02%       |
+|                 | devnet  | 6         | 32,768   | 0.01%       |
+
+All environments have abundant capacity. Even mainnet at peak usage is under 3% utilization for user tunnel_net.
 
 ### Concurrent vs Cumulative Capacity
 

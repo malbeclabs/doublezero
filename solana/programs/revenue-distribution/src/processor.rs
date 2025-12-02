@@ -21,7 +21,7 @@ use solana_pubkey::Pubkey;
 use solana_system_interface::instruction as system_instruction;
 use solana_sysvar::{clock::Clock, rent::Rent, Sysvar};
 use spl_associated_token_account_interface::address::get_associated_token_address;
-use spl_token::instruction as token_instruction;
+use spl_token_interface::instruction as token_instruction;
 use svm_hash::{merkle::MerkleProof, sha2::Hash};
 
 use crate::{
@@ -1324,7 +1324,7 @@ fn try_distribute_rewards(
         total_transferred_share_amount += recipient_share_amount;
 
         let token_transfer_ix = token_instruction::transfer(
-            &spl_token::ID,
+            &spl_token_interface::ID,
             distribution_2z_token_pda_info.key,
             &ata_key,
             distribution.info.key,
@@ -1358,7 +1358,7 @@ fn try_distribute_rewards(
     distribution.distributed_rewards_count += 1;
 
     let token_burn_ix = token_instruction::burn(
-        &spl_token::ID,
+        &spl_token_interface::ID,
         distribution_2z_token_pda_info.key,
         &DOUBLEZERO_MINT_KEY,
         distribution.info.key,
@@ -2327,8 +2327,8 @@ fn try_sweep_distribution_tokens(accounts: &[AccountInfo]) -> ProgramResult {
         None, // bump_seed
     )?;
 
-    let token_transfer_ix = spl_token::instruction::transfer(
-        &spl_token::ID,
+    let token_transfer_ix = token_instruction::transfer(
+        &spl_token_interface::ID,
         swap_destination_2z_info.key,
         distribution_2z_token_pda_info.key,
         swap_authority_info.key,
@@ -2425,7 +2425,7 @@ fn try_withdraw_sol(accounts: &[AccountInfo], amount: u64) -> ProgramResult {
     // 2Z tokens must be transferred before SOL can be withdrawn.
     //
     // First, check that the program is the SPL Token program.
-    if sibling_ix.program_id != spl_token::ID {
+    if sibling_ix.program_id != spl_token_interface::ID {
         msg!("Sibling instruction's program ID is not SPL Token");
         return Err(ProgramError::InvalidInstructionData);
     }
@@ -2434,10 +2434,10 @@ fn try_withdraw_sol(accounts: &[AccountInfo], amount: u64) -> ProgramResult {
     // checked requires the mint account, which we will verify is the 2Z mint.
     // We will need the transfer amount to update the journal's balance of the
     // swap destination account.
-    let transfer_amount = if let Ok(spl_token::instruction::TokenInstruction::TransferChecked {
+    let transfer_amount = if let Ok(token_instruction::TokenInstruction::TransferChecked {
         amount,
         decimals: _,
-    }) = spl_token::instruction::TokenInstruction::unpack(&sibling_ix.data)
+    }) = token_instruction::TokenInstruction::unpack(&sibling_ix.data)
     {
         amount
     } else {
@@ -2687,7 +2687,7 @@ fn try_next_token_program_info(accounts_iter: &mut EnumeratedAccountInfoIter) ->
         try_next_enumerated_account(accounts_iter, Default::default())?;
 
     // Enforce this account location.
-    if token_program_info.key != &spl_token::ID {
+    if token_program_info.key != &spl_token_interface::ID {
         msg!(
             "Invalid address for SPL Token program (account {})",
             account_index

@@ -130,7 +130,7 @@ pub fn buy_sol(
             AccountMeta::new(withdraw_sol_authority_key, false),
             AccountMeta::new(rd_journal_key, false),
             AccountMeta::new(sol_destination_key, false),
-            AccountMeta::new_readonly(spl_token::ID, false),
+            AccountMeta::new_readonly(spl_token_interface::ID, false),
             AccountMeta::new_readonly(doublezero_revenue_distribution::ID, false),
         ],
         &MockSwapSol2zInstructionData::BuySol {

@@ -12,7 +12,7 @@ use solana_cpi::invoke_signed_unchecked;
 use solana_msg::msg;
 use solana_program_error::{ProgramError, ProgramResult};
 use solana_pubkey::Pubkey;
-use spl_token::instruction as token_instruction;
+use spl_token_interface::instruction as token_instruction;
 
 use crate::{
     instruction::MockSwapSol2zInstructionData,
@@ -89,7 +89,7 @@ fn try_buy_sol(accounts: &[AccountInfo], amount_2z_in: u64, amount_sol_out: u64)
 
     // Transfer 2Z to the swap destination.
     let token_transfer_ix = token_instruction::transfer_checked(
-        &spl_token::ID,
+        &spl_token_interface::ID,
         src_token_info.key,
         mint_info.key,
         dst_token_info.key,

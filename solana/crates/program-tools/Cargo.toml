@@ -22,10 +22,11 @@ solana-instruction.workspace = true
 solana-loader-v3-interface = { workspace = true, features = ["serde"] }
 solana-msg.workspace = true
 solana-program-error.workspace = true
+solana-program-pack.workspace = true
 solana-pubkey.workspace = true
 solana-system-interface.workspace = true
 solana-sysvar = { workspace = true, features = ["bincode"] }
-spl-token.workspace = true
+spl-token-interface.workspace = true
 
 [features]
 default = []

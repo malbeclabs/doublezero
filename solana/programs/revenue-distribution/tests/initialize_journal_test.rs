@@ -9,7 +9,7 @@ use doublezero_revenue_distribution::{
 };
 use solana_program_pack::Pack;
 use solana_program_test::tokio;
-use spl_token::state::{Account as TokenAccount, AccountState as SplTokenAccountState};
+use spl_token_interface::state::{Account as TokenAccount, AccountState as SplTokenAccountState};
 
 //
 // Initialize journal.

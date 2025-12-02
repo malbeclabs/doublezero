@@ -48,7 +48,7 @@ impl From<InitializeProgramAccounts> for Vec<AccountMeta> {
             AccountMeta::new(new_program_config_key, false),
             AccountMeta::new(new_reserve_2z_key, false),
             AccountMeta::new_readonly(dz_mint_key, false),
-            AccountMeta::new_readonly(spl_token::ID, false),
+            AccountMeta::new_readonly(spl_token_interface::ID, false),
             AccountMeta::new_readonly(system_program::ID, false),
         ]
     }
@@ -151,7 +151,7 @@ impl From<InitializeJournalAccounts> for Vec<AccountMeta> {
             AccountMeta::new(new_journal_key, false),
             AccountMeta::new(new_journal_2z_token_pda_key, false),
             AccountMeta::new_readonly(dz_mint_key, false),
-            AccountMeta::new_readonly(spl_token::ID, false),
+            AccountMeta::new_readonly(spl_token_interface::ID, false),
             AccountMeta::new_readonly(system_program::ID, false),
         ]
     }
@@ -245,7 +245,7 @@ impl From<InitializeDistributionAccounts> for Vec<AccountMeta> {
             AccountMeta::new(new_distribution_key, false),
             AccountMeta::new(new_distribution_2z_token_pda_key, false),
             AccountMeta::new_readonly(dz_mint_key, false),
-            AccountMeta::new_readonly(spl_token::ID, false),
+            AccountMeta::new_readonly(spl_token_interface::ID, false),
             AccountMeta::new(journal_key, false),
             AccountMeta::new(journal_2z_token_pda_key, false),
             AccountMeta::new_readonly(system_program::ID, false),
@@ -451,7 +451,7 @@ impl From<DistributeRewardsAccounts> for Vec<AccountMeta> {
             AccountMeta::new(distribution_2z_token_pda_key, false),
             AccountMeta::new(dz_mint_key, false),
             AccountMeta::new(relayer_key, false),
-            AccountMeta::new_readonly(spl_token::ID, false),
+            AccountMeta::new_readonly(spl_token_interface::ID, false),
         ];
 
         let recipient_ata_accounts = recipient_ata_keys
@@ -767,7 +767,7 @@ impl From<InitializeSwapDestinationAccounts> for Vec<AccountMeta> {
             AccountMeta::new_readonly(swap_authority_key, false),
             AccountMeta::new(new_swap_destination_key, false),
             AccountMeta::new_readonly(mint_key, false),
-            AccountMeta::new_readonly(spl_token::ID, false),
+            AccountMeta::new_readonly(spl_token_interface::ID, false),
             AccountMeta::new_readonly(system_program::ID, false),
         ]
     }
@@ -892,7 +892,7 @@ impl From<SweepDistributionTokensAccounts> for Vec<AccountMeta> {
             AccountMeta::new(distribution_2z_token_pda_key, false),
             AccountMeta::new_readonly(swap_authority_key, false),
             AccountMeta::new(swap_2z_token_pda_key, false),
-            AccountMeta::new_readonly(spl_token::ID, false),
+            AccountMeta::new_readonly(spl_token_interface::ID, false),
         ]
     }
 }

@@ -41,12 +41,11 @@ use solana_sdk::{
     signature::{Keypair, Signer},
     transaction::{TransactionError, VersionedTransaction},
 };
-use spl_token::{
+use spl_token_interface::{
     instruction as token_instruction,
     state::{Account as TokenAccount, AccountState as SplTokenAccountState, Mint},
 };
 use svm_hash::merkle::MerkleProof;
-
 pub const TOTAL_2Z_SUPPLY: u64 = 10_000_000_000 * u64::pow(10, 8);
 
 pub struct TestAccount {
@@ -95,7 +94,7 @@ pub async fn start_test_with_accounts(accounts: Vec<TestAccount>) -> ProgramTest
     // Add the 2Z mint.
     let mint_acct = Account {
         lamports: 69,
-        owner: spl_token::ID,
+        owner: spl_token_interface::ID,
         data: mint_account_data,
         ..Default::default()
     };
@@ -117,7 +116,7 @@ pub async fn start_test_with_accounts(accounts: Vec<TestAccount>) -> ProgramTest
     // Add 2Z test treasury.
     let treasury_token_acct = Account {
         lamports: 69,
-        owner: spl_token::ID,
+        owner: spl_token_interface::ID,
         data: treasury_account_data,
         ..Default::default()
     };
@@ -186,7 +185,7 @@ pub fn generate_token_accounts_for_test(mint_key: &Pubkey, owners: &[Pubkey]) ->
                 key: Pubkey::new_unique(),
                 info: Account {
                     lamports: 69,
-                    owner: spl_token::ID,
+                    owner: spl_token_interface::ID,
                     data: token_account_data,
                     ..Default::default()
                 },
@@ -290,7 +289,7 @@ impl ProgramTestWithOwner {
             &payer_key,
             owner_key,
             &DOUBLEZERO_MINT_KEY,
-            &spl_token::ID,
+            &spl_token_interface::ID,
         );
 
         self.context.last_blockhash = process_instructions_for_test(
@@ -313,7 +312,7 @@ impl ProgramTestWithOwner {
         let owner_signer = &self.owner_signer;
 
         let token_transfer_ix = token_instruction::transfer(
-            &spl_token::ID,
+            &spl_token_interface::ID,
             &self.treasury_2z_key,
             dst_token_account_key,
             &owner_signer.pubkey(),

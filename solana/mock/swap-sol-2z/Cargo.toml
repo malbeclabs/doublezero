@@ -23,7 +23,7 @@ solana-program-error.workspace = true
 solana-pubkey = { workspace = true, features = ["borsh"] }
 solana-system-interface.workspace = true
 solana-sysvar.workspace = true
-spl-token.workspace = true
+spl-token-interface.workspace = true
 
 [features]
 default = []

@@ -8,7 +8,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
-## [v0.7.2](https://github.com/malbeclabs/doublezero/compare/client/v0.7.1...client/v0.7.2) – 2025-12-02
+## [v0.8.0](https://github.com/malbeclabs/doublezero/compare/client/v0.7.1...client/v0.8.0) – 2025-12-02
 
 ### Breaking
 
@@ -25,6 +25,7 @@ All notable changes to this project will be documented in this file.
     - Added support for specifying `device_type` at creation, updating it via device update, and displaying it in list/detail outputs.
     - Add support for updating `contributor.ops_manager_key`.
     - Enhance `access-pass list` with client-IP and user-payer filters
+    - Support added to load keypair from stdin
 - Client
   - Add route liveness fault-injection simulation tests.
     - Updated the `interface list` command to display all interfaces when no device is specified.

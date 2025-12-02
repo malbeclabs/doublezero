@@ -38,6 +38,8 @@ All notable changes to this project will be documented in this file.
   - Handle new link.status values (soft-drained and hard-drained) as per [RFC9](https://github.com/malbeclabs/doublezero/blob/main/rfcs/rfc9-link-draining.md)
 - Monitor
   - Export links data to InfluxDB
+- Activator
+  - Uses asynchronous coroutines instead of blocking operations and threads.
 
 ## [v0.7.1](https://github.com/malbeclabs/doublezero/compare/client/v0.7.0...client/v0.7.1) – 2025-11-18
 

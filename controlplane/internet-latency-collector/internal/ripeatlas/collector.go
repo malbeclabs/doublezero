@@ -553,25 +553,24 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 	}
 
 	if len(results) == 0 {
-		c.log.Debug("No new results for measurement", slog.Int("measurement_id", measurement.ID))
+		c.log.Debug("No new results for measurement",
+			slog.Int("measurement_id", measurement.ID),
+			slog.String("target_location", meta.TargetLocation),
+			slog.Int64("query_start_timestamp", lastTimestampUnix))
 		return 0, nil, nil
 	}
 
-	c.log.Debug("Retrieved new results for measurement",
+	c.log.Info("Retrieved new results for measurement",
 		slog.Int("measurement_id", measurement.ID),
-		slog.Int("result_count", len(results)))
+		slog.String("target_location", meta.TargetLocation),
+		slog.Int("result_count", len(results)),
+		slog.Int64("query_start_timestamp", lastTimestampUnix))
 
 	var maxTimestamp time.Time
 	processedResults := 0
 
-	type measurementSourceKey struct {
-		MeasurementID int
-		Source        string
-		ProbeID       int
-	}
-
-	// Process results.
-	recordsByMeasurementID := map[measurementSourceKey]exporter.Record{}
+	// Process results - use slice to preserve all samples
+	var records []exporter.Record
 	for _, result := range results {
 		// Parse latency from result (now also returns probe ID)
 		latency, timestamp, probeID := c.parseLatencyFromResult(result)
@@ -585,14 +584,7 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 				sourceLocation = loc
 			}
 
-			// Keep only 1 record per measurement ID and probe ID.
-			// Note: We swap source and target here to match the semantic meaning:
-			// The measurement "belongs to" the target exchange and measures "to" the source probe's exchange
-			recordsByMeasurementID[measurementSourceKey{
-				MeasurementID: measurement.ID,
-				Source:        sourceLocation,
-				ProbeID:       probeID,
-			}] = exporter.Record{
+			records = append(records, exporter.Record{
 				DataProvider: exporter.DataProviderNameRIPEAtlas,
 				// Source and target are swapped here to match alphabetical ordering expected by downstream systems.
 				// We alphabetically sort the measurements by exchange code, but from the perspective of the measurement
@@ -601,15 +593,10 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 				TargetExchangeCode: sourceLocation,
 				Timestamp:          timestamp,
 				RTT:                latency,
-			}
+			})
 
 			processedResults++
 		}
-	}
-
-	records := make([]exporter.Record, 0, len(recordsByMeasurementID))
-	for _, record := range recordsByMeasurementID {
-		records = append(records, record)
 	}
 
 	// Write the batch of records with the exporter.
@@ -623,10 +610,21 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 	// Update the timestamp tracker with the newest timestamp seen
 	if maxTimestamp.After(lastTimestamp) {
 		measurementState.UpdateTimestamp(measurement.ID, maxTimestamp.Unix())
-		c.log.Debug("Updated timestamp for measurement",
+		c.log.Info("Updated timestamp for measurement",
 			slog.Int("measurement_id", measurement.ID),
+			slog.String("target_location", meta.TargetLocation),
+			slog.Time("old_timestamp", lastTimestamp),
 			slog.Time("new_timestamp", maxTimestamp),
-			slog.Int("processed_results", processedResults))
+			slog.Int("raw_results", len(results)),
+			slog.Int("valid_latencies", processedResults),
+			slog.Int("exported_records", len(records)))
+	} else if len(records) > 0 {
+		c.log.Warn("Exported records but timestamp not updated (old results?)",
+			slog.Int("measurement_id", measurement.ID),
+			slog.String("target_location", meta.TargetLocation),
+			slog.Time("last_timestamp", lastTimestamp),
+			slog.Time("max_result_timestamp", maxTimestamp),
+			slog.Int("exported_records", len(records)))
 	}
 
 	return len(records), records, nil
@@ -740,7 +738,7 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 
 	// Step 4: Detect unresponsive probes (no exports after 1 hour)
 	currentTime := time.Now().Unix()
-	probeTimeout := currentTime - 14400 // 4 hours (14400 seconds)
+	probeTimeout := currentTime - 3600 // 1 hours (3660 seconds)
 	newUnresponsiveProbes := 0
 	for _, measurement := range doubleZeroMeasurements {
 		if meta, hasMeta := measurementState.GetMetadata(measurement.ID); hasMeta {

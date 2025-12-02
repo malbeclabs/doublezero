@@ -1,3 +1,5 @@
+use std::fs::File;
+
 use anyhow::{Result, anyhow, bail};
 use doublezero_program_tools::{instruction::try_build_instruction, zero_copy};
 use doublezero_revenue_distribution::{
@@ -256,8 +258,35 @@ impl Transaction {
         let mut debt_collection_result: Vec<DebtCollectionResult> =
             Vec::with_capacity(debt.debts.len());
 
+        let mut overrides = Vec::new();
+
+        // TODO: This is a temporary fix to exclude a couple of validators
+        // the longer term fix will be using data on-chain as it's more transparent, less error-prone
+        if let Ok(file) = File::open("/opt/doublezero-offchain-scheduler/overrides.csv") {
+            let mut rdr = csv::Reader::from_reader(file);
+            overrides.extend(
+                rdr.records()
+                    .filter_map(|result| result.ok())
+                    .filter_map(|record| {
+                        let pubkey = record.get(0)?;
+                        let epoch = record.get(1)?.parse::<u64>().ok()?;
+                        Some((pubkey.to_string(), epoch))
+                    }),
+            );
+        }
+
         let debt_clone = debt.clone();
         for d in debt.debts {
+            let node_id_str = d.node_id.to_string();
+            if overrides
+                .iter()
+                .any(|(key, epoch)| key == &node_id_str && *epoch == dz_epoch)
+            {
+                println!(
+                    "Validator {node_id_str} for epoch #{dz_epoch} excluded from debt collection"
+                );
+                continue;
+            }
             let debt_proof = debt_clone.find_debt_proof(&d.node_id).unwrap();
             let (_, proof) = debt_proof;
             let instruction = try_build_instruction(

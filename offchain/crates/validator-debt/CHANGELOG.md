@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-
+- feat(validator-debt): add overrides flat file to exclude validators from debt collection ([216](https://github.com/doublezerofoundation/doublezero-offchain/pull/216))
 - add `debt_record_key` method ([#201](https://github.com/doublezerofoundation/doublezero-offchain/pull/201))
 - feat(validator-debt): use s3 bucket to fetch validator keys ([#196](https://github.com/doublezerofoundation/doublezero-offchain/pull/196))
 

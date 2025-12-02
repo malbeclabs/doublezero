@@ -51,6 +51,7 @@
 [#71]: https://github.com/doublezerofoundation/doublezero-solana/pull/71
 [#81]: https://github.com/doublezerofoundation/doublezero-solana/pull/81
 [#92]: https://github.com/doublezerofoundation/doublezero-solana/pull/92
+[#94]: https://github.com/doublezerofoundation/doublezero-solana/pull/94
 [#95]: https://github.com/doublezerofoundation/doublezero-solana/pull/95
 [v0.1.0]: https://github.com/doublezerofoundation/doublezero-solana/tree/passport/v0.1.0
 [v0.1.1]: https://github.com/doublezerofoundation/doublezero-solana/tree/passport/v0.1.1

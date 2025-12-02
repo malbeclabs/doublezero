@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use bytemuck::{Pod, Zeroable};
 use doublezero_program_tools::{
     types::{Flags, StorageGap},
@@ -85,7 +87,11 @@ pub struct Distribution {
     pub distributed_2z_amount: u64,
     pub burned_2z_amount: u64,
 
-    _storage_gap: StorageGap<7>,
+    pub processed_solana_validator_debt_write_off_start_index: u32,
+    pub processed_solana_validator_debt_write_off_end_index: u32,
+    _padding_1: [u8; 24],
+
+    _storage_gap: StorageGap<6>,
 }
 
 impl PrecomputedDiscriminator for Distribution {
@@ -99,6 +105,7 @@ impl Distribution {
     pub const FLAG_IS_DEBT_CALCULATION_FINALIZED_BIT: usize = 1;
     pub const FLAG_IS_REWARDS_CALCULATION_FINALIZED_BIT: usize = 2;
     pub const FLAG_HAS_SWEPT_2Z_TOKENS_BIT: usize = 3;
+    pub const FLAG_IS_SOLANA_VALIDATOR_DEBT_WRITE_OFF_ENABLED_BIT: usize = 4;
 
     pub fn find_address(dz_epoch: DoubleZeroEpoch) -> (Pubkey, u8) {
         Pubkey::find_program_address(&[Self::SEED_PREFIX, &dz_epoch.as_seed()], &crate::ID)
@@ -126,6 +133,19 @@ impl Distribution {
         self.flags.set_bit(
             Self::FLAG_IS_REWARDS_CALCULATION_FINALIZED_BIT,
             should_finalize,
+        );
+    }
+
+    #[inline]
+    pub fn is_solana_validator_debt_write_off_enabled(&self) -> bool {
+        self.flags
+            .bit(Self::FLAG_IS_SOLANA_VALIDATOR_DEBT_WRITE_OFF_ENABLED_BIT)
+    }
+
+    pub fn set_is_solana_validator_debt_write_off_enabled(&mut self, should_enable: bool) {
+        self.flags.set_bit(
+            Self::FLAG_IS_SOLANA_VALIDATOR_DEBT_WRITE_OFF_ENABLED_BIT,
+            should_enable,
         );
     }
 
@@ -185,6 +205,23 @@ impl Distribution {
         } else {
             Some(i64::from(allowed_timestamp))
         }
+    }
+
+    #[inline]
+    pub fn processed_solana_validator_debt_bitmap_range(&self) -> Range<usize> {
+        self.processed_solana_validator_debt_start_index as usize
+            ..self.processed_solana_validator_debt_end_index as usize
+    }
+
+    #[inline]
+    pub fn processed_rewards_bitmap_range(&self) -> Range<usize> {
+        self.processed_rewards_start_index as usize..self.processed_rewards_end_index as usize
+    }
+
+    #[inline]
+    pub fn processed_solana_validator_debt_write_off_bitmap_range(&self) -> Range<usize> {
+        self.processed_solana_validator_debt_write_off_start_index as usize
+            ..self.processed_solana_validator_debt_write_off_end_index as usize
     }
 }
 

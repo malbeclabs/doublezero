@@ -185,6 +185,9 @@ async fn test_distribute_rewards() {
         .unwrap()
         .sweep_distribution_tokens(Default::default())
         .await
+        .unwrap()
+        .enable_solana_validator_debt_write_off(dz_epoch)
+        .await
         .unwrap();
 
     // 1. Initialize Solana validator deposit accounts.
@@ -212,10 +215,10 @@ async fn test_distribute_rewards() {
                 .transfer_lamports(&deposit_key, amount)
                 .await
                 .unwrap()
-                .pay_solana_validator_debt(next_dz_epoch, node_id, amount, proof.clone())
+                .pay_solana_validator_debt(next_dz_epoch, debt, proof.clone())
                 .await
                 .unwrap()
-                .forgive_solana_validator_debt(
+                .write_off_solana_validator_debt(
                     dz_epoch,
                     next_dz_epoch,
                     &debt_accountant_signer,
@@ -232,10 +235,10 @@ async fn test_distribute_rewards() {
                 .transfer_lamports(&deposit_key, 2 * amount)
                 .await
                 .unwrap()
-                .pay_solana_validator_debt(dz_epoch, node_id, amount, proof.clone())
+                .pay_solana_validator_debt(dz_epoch, debt, proof.clone())
                 .await
                 .unwrap()
-                .pay_solana_validator_debt(next_dz_epoch, node_id, amount, proof)
+                .pay_solana_validator_debt(next_dz_epoch, debt, proof)
                 .await
                 .unwrap();
         }
@@ -495,6 +498,7 @@ async fn test_distribute_rewards() {
     expected_distribution.set_is_debt_calculation_finalized(true);
     expected_distribution.set_is_rewards_calculation_finalized(true);
     expected_distribution.set_has_swept_2z_tokens(true);
+    expected_distribution.set_is_solana_validator_debt_write_off_enabled(true);
     expected_distribution.bump_seed = Distribution::find_address(dz_epoch).1;
     expected_distribution.token_2z_pda_bump_seed =
         state::find_2z_token_pda_address(&distribution_key).1;
@@ -517,9 +521,13 @@ async fn test_distribute_rewards() {
     expected_distribution.distributed_2z_amount = 6_210_000_000;
     expected_distribution.burned_2z_amount = 690_000_000;
     expected_distribution.processed_solana_validator_debt_end_index = total_solana_validators / 8;
-    expected_distribution.processed_rewards_start_index = total_solana_validators / 8;
+    expected_distribution.processed_solana_validator_debt_write_off_start_index =
+        total_solana_validators / 8;
+    expected_distribution.processed_solana_validator_debt_write_off_end_index =
+        2 * (total_solana_validators / 8);
+    expected_distribution.processed_rewards_start_index = 2 * (total_solana_validators / 8);
     expected_distribution.processed_rewards_end_index =
-        (total_solana_validators / 8) + (total_contributors / 8 + 1);
+        2 * (total_solana_validators / 8) + (total_contributors / 8 + 1);
     expected_distribution.distribute_rewards_relay_lamports = distribute_rewards_relay_lamports;
     expected_distribution.calculation_allowed_timestamp = test_setup
         .get_clock()
@@ -532,12 +540,20 @@ async fn test_distribute_rewards() {
         expected_swept_2z_amount_1
     );
 
-    // First byte reflects debt tracking. Second and third bytes reflect rewards
-    // tracking.
-    assert_eq!(
-        remaining_distribution_data,
-        vec![0b11111111, 0b11111111, 0b1111]
-    );
+    // First byte reflects debt tracking.
+    let processed_debt_bitmap =
+        &remaining_distribution_data[distribution.processed_solana_validator_debt_bitmap_range()];
+    assert_eq!(processed_debt_bitmap, [0b11111111]);
+
+    // Second byte reflects write off tracking.
+    let write_off_bitmap = &remaining_distribution_data
+        [distribution.processed_solana_validator_debt_write_off_bitmap_range()];
+    assert_eq!(write_off_bitmap, [0b00000100]);
+
+    // Third and fourth bytes reflect rewards tracking.
+    let rewards_bitmap =
+        &remaining_distribution_data[distribution.processed_rewards_bitmap_range()];
+    assert_eq!(rewards_bitmap, [0b11111111, 0b1111]);
 
     // All relay lamports should have been paid, leaving only the rent exemption
     // as the remaining balance in the distribution account.

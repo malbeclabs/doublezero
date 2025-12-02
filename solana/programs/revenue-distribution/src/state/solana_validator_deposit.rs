@@ -7,7 +7,10 @@ use solana_pubkey::Pubkey;
 pub struct SolanaValidatorDeposit {
     pub node_id: Pubkey,
 
-    _storage_gap: StorageGap<2>,
+    pub written_off_sol_debt: u64,
+    _padding: [u8; 24],
+
+    _storage_gap: StorageGap<1>,
 }
 
 impl PrecomputedDiscriminator for SolanaValidatorDeposit {

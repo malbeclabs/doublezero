@@ -51,10 +51,11 @@ async fn test_withdraw_sol() {
     let node_id = Pubkey::new_unique();
     let total_solana_validator_debt = 10 * u64::pow(10, 9); // 10 SOL.
 
-    let debt_data = vec![SolanaValidatorDebt {
+    let debt = SolanaValidatorDebt {
         node_id,
         amount: total_solana_validator_debt,
-    }];
+    };
+    let debt_data = vec![debt];
 
     let total_solana_validators = debt_data.len() as u32;
     let solana_validator_debt_merkle_root =
@@ -134,7 +135,7 @@ async fn test_withdraw_sol() {
         )
         .await
         .unwrap()
-        .pay_solana_validator_debt(dz_epoch, &node_id, total_solana_validator_debt, proof)
+        .pay_solana_validator_debt(dz_epoch, &debt, proof)
         .await
         .unwrap();
 

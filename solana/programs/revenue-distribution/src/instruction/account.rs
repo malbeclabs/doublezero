@@ -649,42 +649,81 @@ impl From<PaySolanaValidatorDebtAccounts> for Vec<AccountMeta> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ForgiveSolanaValidatorDebtAccounts {
+pub struct EnableSolanaValidatorDebtWriteOffAccounts {
+    pub program_config_key: Pubkey,
+    pub distribution_key: Pubkey,
+    pub payer_key: Pubkey,
+}
+
+impl EnableSolanaValidatorDebtWriteOffAccounts {
+    pub fn new(dz_epoch: DoubleZeroEpoch, payer_key: &Pubkey) -> Self {
+        Self {
+            program_config_key: ProgramConfig::find_address().0,
+            distribution_key: Distribution::find_address(dz_epoch).0,
+            payer_key: *payer_key,
+        }
+    }
+}
+
+impl From<EnableSolanaValidatorDebtWriteOffAccounts> for Vec<AccountMeta> {
+    fn from(accounts: EnableSolanaValidatorDebtWriteOffAccounts) -> Self {
+        let EnableSolanaValidatorDebtWriteOffAccounts {
+            program_config_key,
+            distribution_key,
+            payer_key,
+        } = accounts;
+
+        vec![
+            AccountMeta::new_readonly(program_config_key, false),
+            AccountMeta::new(distribution_key, false),
+            AccountMeta::new(payer_key, true),
+            AccountMeta::new_readonly(system_program::ID, false),
+        ]
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WriteOffSolanaValidatorDebtAccounts {
     pub program_config_key: Pubkey,
     pub debt_accountant_key: Pubkey,
     pub distribution_key: Pubkey,
-    pub next_distribution_key: Pubkey,
+    pub solana_validator_deposit_key: Pubkey,
+    pub write_off_distribution_key: Pubkey,
 }
 
-impl ForgiveSolanaValidatorDebtAccounts {
+impl WriteOffSolanaValidatorDebtAccounts {
     pub fn new(
         debt_accountant_key: &Pubkey,
         dz_epoch: DoubleZeroEpoch,
-        next_dz_epoch: DoubleZeroEpoch,
+        node_id: &Pubkey,
+        write_off_dz_epoch: DoubleZeroEpoch,
     ) -> Self {
         Self {
             program_config_key: ProgramConfig::find_address().0,
             debt_accountant_key: *debt_accountant_key,
             distribution_key: Distribution::find_address(dz_epoch).0,
-            next_distribution_key: Distribution::find_address(next_dz_epoch).0,
+            solana_validator_deposit_key: SolanaValidatorDeposit::find_address(node_id).0,
+            write_off_distribution_key: Distribution::find_address(write_off_dz_epoch).0,
         }
     }
 }
 
-impl From<ForgiveSolanaValidatorDebtAccounts> for Vec<AccountMeta> {
-    fn from(accounts: ForgiveSolanaValidatorDebtAccounts) -> Self {
-        let ForgiveSolanaValidatorDebtAccounts {
+impl From<WriteOffSolanaValidatorDebtAccounts> for Vec<AccountMeta> {
+    fn from(accounts: WriteOffSolanaValidatorDebtAccounts) -> Self {
+        let WriteOffSolanaValidatorDebtAccounts {
             program_config_key,
             debt_accountant_key,
             distribution_key,
-            next_distribution_key,
+            solana_validator_deposit_key,
+            write_off_distribution_key,
         } = accounts;
 
         vec![
             AccountMeta::new_readonly(program_config_key, false),
             AccountMeta::new_readonly(debt_accountant_key, true),
             AccountMeta::new(distribution_key, false),
-            AccountMeta::new(next_distribution_key, false),
+            AccountMeta::new(solana_validator_deposit_key, false),
+            AccountMeta::new(write_off_distribution_key, false),
         ]
     }
 }

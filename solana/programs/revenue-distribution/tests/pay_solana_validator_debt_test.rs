@@ -259,7 +259,7 @@ async fn test_pay_solana_validator_debt() {
     for ((debt, balance_before), proof) in debt_data.iter().zip(balances_before).zip(proofs.clone())
     {
         test_setup
-            .pay_solana_validator_debt(dz_epoch, &debt.node_id, debt.amount, proof)
+            .pay_solana_validator_debt(dz_epoch, debt, proof)
             .await
             .unwrap();
 
@@ -298,7 +298,9 @@ async fn test_pay_solana_validator_debt() {
         test_setup.get_clock().await.unix_timestamp as u32;
     assert_eq!(distribution, expected_distribution);
 
-    assert_eq!(remaining_distribution_data, vec![0b11111111, 0b11111111]);
+    let processed_debt_bitmap =
+        &remaining_distribution_data[distribution.processed_solana_validator_debt_bitmap_range()];
+    assert_eq!(processed_debt_bitmap, [0b11111111, 0b11111111]);
 
     let (_, journal, _) = test_setup.fetch_journal().await;
     assert_eq!(journal.total_sol_balance, total_solana_validator_debt);

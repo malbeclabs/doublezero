@@ -5,8 +5,8 @@ mod common;
 use doublezero_program_tools::instruction::try_build_instruction;
 use doublezero_revenue_distribution::{
     instruction::{
-        account::{ConfigureDistributionDebtAccounts, FinalizeDistributionDebtAccounts},
-        ProgramConfiguration, ProgramFlagConfiguration, RevenueDistributionInstructionData,
+        account::EnableSolanaValidatorDebtWriteOffAccounts, ProgramConfiguration,
+        ProgramFlagConfiguration, RevenueDistributionInstructionData,
     },
     state::{self, Distribution},
     types::{BurnRate, DoubleZeroEpoch, ValidatorFee},
@@ -21,11 +21,11 @@ use solana_sdk::{
 use svm_hash::sha2::Hash;
 
 //
-// Finalize distribution debt.
+// Enable Solana validator debt write off.
 //
 
 #[tokio::test]
-async fn test_finalize_distribution_debt() {
+async fn test_enable_solana_validator_debt_write_off() {
     let mut test_setup = common::start_test().await;
 
     let admin_signer = Keypair::new();
@@ -112,10 +112,33 @@ async fn test_finalize_distribution_debt() {
         .await
         .unwrap();
 
-    //
+    let payer_key = test_setup.payer_signer().pubkey();
+
+    // Cannot enable write offs before debt calculation is finalized.
+    let enable_solana_validator_debt_write_off_ix = try_build_instruction(
+        &ID,
+        EnableSolanaValidatorDebtWriteOffAccounts::new(dz_epoch, &payer_key),
+        &RevenueDistributionInstructionData::EnableSolanaValidatorDebtWriteOff,
+    )
+    .unwrap();
+
+    let (tx_err, program_logs) = test_setup
+        .unwrap_simulation_error(&[enable_solana_validator_debt_write_off_ix], &[])
+        .await;
+    assert_eq!(
+        tx_err,
+        TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
+    );
+    assert_eq!(
+        program_logs.get(3).unwrap(),
+        "Program log: Distribution debt calculation is not finalized yet"
+    );
 
     test_setup
         .finalize_distribution_debt(dz_epoch, &debt_accountant_signer)
+        .await
+        .unwrap()
+        .enable_solana_validator_debt_write_off(dz_epoch)
         .await
         .unwrap();
 
@@ -124,6 +147,7 @@ async fn test_finalize_distribution_debt() {
 
     let mut expected_distribution = Distribution::default();
     expected_distribution.set_is_debt_calculation_finalized(true);
+    expected_distribution.set_is_solana_validator_debt_write_off_enabled(true);
     expected_distribution.bump_seed = Distribution::find_address(dz_epoch).1;
     expected_distribution.token_2z_pda_bump_seed =
         state::find_2z_token_pda_address(&distribution_key).1;
@@ -138,39 +162,35 @@ async fn test_finalize_distribution_debt() {
     expected_distribution.solana_validator_debt_merkle_root = solana_validator_debt_merkle_root;
     expected_distribution.processed_solana_validator_debt_end_index =
         total_solana_validators / 8 + 1;
+    expected_distribution.processed_solana_validator_debt_write_off_start_index =
+        total_solana_validators / 8 + 1;
+    expected_distribution.processed_solana_validator_debt_write_off_end_index =
+        2 * (total_solana_validators / 8 + 1);
     expected_distribution.distribute_rewards_relay_lamports = distribute_rewards_relay_lamports;
     expected_distribution.calculation_allowed_timestamp =
         test_setup.get_clock().await.unix_timestamp as u32;
     assert_eq!(distribution, expected_distribution);
 
-    let expected_remaining_distribution_data_len = 1;
+    let expected_remaining_distribution_data_len = 2;
     assert_eq!(
         expected_remaining_distribution_data_len,
-        total_solana_validators as usize / 8 + 1
+        2 * (total_solana_validators as usize / 8 + 1)
     );
     assert_eq!(
         remaining_distribution_data,
         vec![0; expected_remaining_distribution_data_len]
     );
 
-    // Cannot configure distribution debt after they are finalized.
-
-    let configure_distribution_rewards_ix = try_build_instruction(
+    // Cannot enable write offs again.
+    let enable_solana_validator_debt_write_off_ix = try_build_instruction(
         &ID,
-        ConfigureDistributionDebtAccounts::new(&debt_accountant_signer.pubkey(), dz_epoch),
-        &RevenueDistributionInstructionData::ConfigureDistributionDebt {
-            total_validators: 3,
-            total_debt: 1,
-            merkle_root: Hash::new_unique(),
-        },
+        EnableSolanaValidatorDebtWriteOffAccounts::new(dz_epoch, &payer_key),
+        &RevenueDistributionInstructionData::EnableSolanaValidatorDebtWriteOff,
     )
     .unwrap();
 
     let (tx_err, program_logs) = test_setup
-        .unwrap_simulation_error(
-            &[configure_distribution_rewards_ix],
-            &[&debt_accountant_signer],
-        )
+        .unwrap_simulation_error(&[enable_solana_validator_debt_write_off_ix], &[])
         .await;
     assert_eq!(
         tx_err,
@@ -178,35 +198,6 @@ async fn test_finalize_distribution_debt() {
     );
     assert_eq!(
         program_logs.get(3).unwrap(),
-        "Program log: Distribution debt calculation has already been finalized"
-    );
-
-    // Cannot finalize again.
-    let payer_key = test_setup.payer_signer().pubkey();
-
-    let finalize_distribution_rewards_ix = try_build_instruction(
-        &ID,
-        FinalizeDistributionDebtAccounts::new(
-            &debt_accountant_signer.pubkey(),
-            dz_epoch,
-            &payer_key,
-        ),
-        &RevenueDistributionInstructionData::FinalizeDistributionDebt,
-    )
-    .unwrap();
-
-    let (tx_err, program_logs) = test_setup
-        .unwrap_simulation_error(
-            &[finalize_distribution_rewards_ix],
-            &[&debt_accountant_signer],
-        )
-        .await;
-    assert_eq!(
-        tx_err,
-        TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
-    );
-    assert_eq!(
-        program_logs.get(3).unwrap(),
-        "Program log: Distribution debt calculation has already been finalized"
+        "Program log: Solana validator debt write off is already enabled"
     );
 }

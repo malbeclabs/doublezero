@@ -8,13 +8,14 @@ use doublezero_revenue_distribution::{
         account::{
             ConfigureContributorRewardsAccounts, ConfigureDistributionDebtAccounts,
             ConfigureDistributionRewardsAccounts, ConfigureProgramAccounts,
-            DistributeRewardsAccounts, FinalizeDistributionDebtAccounts,
-            FinalizeDistributionRewardsAccounts, ForgiveSolanaValidatorDebtAccounts,
+            DistributeRewardsAccounts, EnableSolanaValidatorDebtWriteOffAccounts,
+            FinalizeDistributionDebtAccounts, FinalizeDistributionRewardsAccounts,
             InitializeContributorRewardsAccounts, InitializeDistributionAccounts,
             InitializeJournalAccounts, InitializeProgramAccounts,
             InitializeSolanaValidatorDepositAccounts, InitializeSwapDestinationAccounts,
             PaySolanaValidatorDebtAccounts, SetAdminAccounts, SetRewardsManagerAccounts,
             SweepDistributionTokensAccounts, VerifyDistributionMerkleRootAccounts,
+            WriteOffSolanaValidatorDebtAccounts,
         },
         ContributorRewardsConfiguration, DistributionMerkleRootKind, ProgramConfiguration,
         RevenueDistributionInstructionData,
@@ -770,16 +771,18 @@ impl ProgramTestWithOwner {
     pub async fn pay_solana_validator_debt(
         &mut self,
         dz_epoch: DoubleZeroEpoch,
-        node_id: &Pubkey,
-        amount: u64,
+        debt: &SolanaValidatorDebt,
         proof: MerkleProof,
     ) -> Result<&mut Self, BanksClientError> {
         let payer_signer = &self.context.payer;
 
         let pay_solana_validator_debt_ix = try_build_instruction(
             &ID,
-            PaySolanaValidatorDebtAccounts::new(dz_epoch, node_id),
-            &RevenueDistributionInstructionData::PaySolanaValidatorDebt { amount, proof },
+            PaySolanaValidatorDebtAccounts::new(dz_epoch, &debt.node_id),
+            &RevenueDistributionInstructionData::PaySolanaValidatorDebt {
+                amount: debt.amount,
+                proof,
+            },
         )
         .unwrap();
 
@@ -794,31 +797,59 @@ impl ProgramTestWithOwner {
         Ok(self)
     }
 
-    pub async fn forgive_solana_validator_debt(
+    pub async fn enable_solana_validator_debt_write_off(
         &mut self,
         dz_epoch: DoubleZeroEpoch,
-        next_dz_epoch: DoubleZeroEpoch,
-        debt_accountant_signer: &Keypair,
-        debt: &SolanaValidatorDebt,
-        proof: MerkleProof,
     ) -> Result<&mut Self, BanksClientError> {
         let payer_signer = &self.context.payer;
 
-        let forgive_solana_validator_debt_ix = try_build_instruction(
+        let enable_solana_validator_debt_write_off_ix = try_build_instruction(
             &ID,
-            ForgiveSolanaValidatorDebtAccounts::new(
-                &debt_accountant_signer.pubkey(),
-                dz_epoch,
-                next_dz_epoch,
-            ),
-            &RevenueDistributionInstructionData::ForgiveSolanaValidatorDebt { debt: *debt, proof },
+            EnableSolanaValidatorDebtWriteOffAccounts::new(dz_epoch, &payer_signer.pubkey()),
+            &RevenueDistributionInstructionData::EnableSolanaValidatorDebtWriteOff,
         )
         .unwrap();
 
         self.context.last_blockhash = process_instructions_for_test(
             &mut self.context.banks_client,
             &self.context.last_blockhash,
-            &[forgive_solana_validator_debt_ix],
+            &[enable_solana_validator_debt_write_off_ix],
+            &[payer_signer],
+        )
+        .await?;
+
+        Ok(self)
+    }
+
+    pub async fn write_off_solana_validator_debt(
+        &mut self,
+        dz_epoch: DoubleZeroEpoch,
+        write_off_dz_epoch: DoubleZeroEpoch,
+        debt_accountant_signer: &Keypair,
+        debt: &SolanaValidatorDebt,
+        proof: MerkleProof,
+    ) -> Result<&mut Self, BanksClientError> {
+        let payer_signer = &self.context.payer;
+
+        let write_off_solana_validator_debt_ix = try_build_instruction(
+            &ID,
+            WriteOffSolanaValidatorDebtAccounts::new(
+                &debt_accountant_signer.pubkey(),
+                dz_epoch,
+                &debt.node_id,
+                write_off_dz_epoch,
+            ),
+            &RevenueDistributionInstructionData::WriteOffSolanaValidatorDebt {
+                amount: debt.amount,
+                proof,
+            },
+        )
+        .unwrap();
+
+        self.context.last_blockhash = process_instructions_for_test(
+            &mut self.context.banks_client,
+            &self.context.last_blockhash,
+            &[write_off_solana_validator_debt_ix],
             &[payer_signer, debt_accountant_signer],
         )
         .await?;

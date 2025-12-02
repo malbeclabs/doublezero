@@ -5,7 +5,7 @@ mod common;
 use doublezero_program_tools::instruction::try_build_instruction;
 use doublezero_revenue_distribution::{
     instruction::{
-        account::ForgiveSolanaValidatorDebtAccounts, ProgramConfiguration,
+        account::WriteOffSolanaValidatorDebtAccounts, ProgramConfiguration,
         ProgramFlagConfiguration, RevenueDistributionInstructionData,
     },
     state::{self, Distribution, SolanaValidatorDeposit},
@@ -22,11 +22,11 @@ use solana_sdk::{
 use svm_hash::merkle::{merkle_root_from_indexed_pod_leaves, MerkleProof};
 
 //
-// Forgive Solana validator debt.
+// Write off Solana validator debt.
 //
 
 #[tokio::test]
-async fn test_forgive_solana_validator_debt() {
+async fn test_write_off_solana_validator_debt() {
     let mut test_setup = common::start_test().await;
 
     let admin_signer = Keypair::new();
@@ -150,26 +150,35 @@ async fn test_forgive_solana_validator_debt() {
         .await
         .unwrap();
 
+    // Initialize Solana validator deposit accounts.
+    for debt in debt_data.iter() {
+        test_setup
+            .initialize_solana_validator_deposit(&debt.node_id)
+            .await
+            .unwrap();
+    }
+
     // Pay debt for one validator.
-    let arbitrary_index = 2;
-    let debt = debt_data[arbitrary_index];
+    let arbitrary_bad_debt_index = 2;
+    let arbitrary_bad_debt = debt_data[arbitrary_bad_debt_index];
     let proof = MerkleProof::from_indexed_pod_leaves(
         &debt_data,
-        arbitrary_index.try_into().unwrap(),
+        arbitrary_bad_debt_index.try_into().unwrap(),
         Some(SolanaValidatorDebt::LEAF_PREFIX),
     )
     .unwrap();
 
-    // Cannot forgive debt for unfinalized distributions.
-    let forgive_solana_validator_debt_ix = try_build_instruction(
+    // Cannot write off debt for distribution without enabling write off.
+    let write_off_solana_validator_debt_ix = try_build_instruction(
         &ID,
-        ForgiveSolanaValidatorDebtAccounts::new(
+        WriteOffSolanaValidatorDebtAccounts::new(
             &debt_accountant_signer.pubkey(),
             dz_epoch,
+            &arbitrary_bad_debt.node_id,
             next_dz_epoch,
         ),
-        &RevenueDistributionInstructionData::ForgiveSolanaValidatorDebt {
-            debt,
+        &RevenueDistributionInstructionData::WriteOffSolanaValidatorDebt {
+            amount: arbitrary_bad_debt.amount,
             proof: proof.clone(),
         },
     )
@@ -177,7 +186,7 @@ async fn test_forgive_solana_validator_debt() {
 
     let (tx_err, program_logs) = test_setup
         .unwrap_simulation_error(
-            std::slice::from_ref(&forgive_solana_validator_debt_ix),
+            std::slice::from_ref(&write_off_solana_validator_debt_ix),
             &[&debt_accountant_signer],
         )
         .await;
@@ -186,22 +195,22 @@ async fn test_forgive_solana_validator_debt() {
         TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
     );
     assert_eq!(
-        program_logs.get(3).unwrap(),
-        "Program log: Distribution debt calculation is not finalized yet"
-    );
-    assert_eq!(
         program_logs.get(4).unwrap(),
-        &format!("Program log: Epoch {dz_epoch} has unfinalized debt")
+        "Program log: Solana validator debt write off is not enabled yet"
     );
 
     test_setup
         .finalize_distribution_debt(dz_epoch, &debt_accountant_signer)
         .await
+        .unwrap()
+        .enable_solana_validator_debt_write_off(dz_epoch)
+        .await
         .unwrap();
 
+    // Cannot write off debt for distribution with unfinalized debt.
     let (tx_err, program_logs) = test_setup
         .unwrap_simulation_error(
-            &[forgive_solana_validator_debt_ix],
+            &[write_off_solana_validator_debt_ix],
             &[&debt_accountant_signer],
         )
         .await;
@@ -210,11 +219,11 @@ async fn test_forgive_solana_validator_debt() {
         TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
     );
     assert_eq!(
-        program_logs.get(4).unwrap(),
+        program_logs.get(5).unwrap(),
         "Program log: Distribution debt calculation is not finalized yet"
     );
     assert_eq!(
-        program_logs.get(5).unwrap(),
+        program_logs.get(6).unwrap(),
         &format!("Program log: Write-off epoch {next_dz_epoch} has unfinalized debt")
     );
 
@@ -223,17 +232,18 @@ async fn test_forgive_solana_validator_debt() {
         .await
         .unwrap();
 
-    // Cannot forgive debt using an epoch that is not at least the current
-    // epoch we intend to forgive debt for.
-    let forgive_solana_validator_debt_ix = try_build_instruction(
+    // Cannot write off debt using an epoch that is not at least the current
+    // epoch we intend to write off debt for.
+    let write_off_solana_validator_debt_ix = try_build_instruction(
         &ID,
-        ForgiveSolanaValidatorDebtAccounts::new(
+        WriteOffSolanaValidatorDebtAccounts::new(
             &debt_accountant_signer.pubkey(),
             dz_epoch,
+            &arbitrary_bad_debt.node_id,
             DoubleZeroEpoch::new(0),
         ),
-        &RevenueDistributionInstructionData::ForgiveSolanaValidatorDebt {
-            debt,
+        &RevenueDistributionInstructionData::WriteOffSolanaValidatorDebt {
+            amount: arbitrary_bad_debt.amount,
             proof: proof.clone(),
         },
     )
@@ -241,7 +251,7 @@ async fn test_forgive_solana_validator_debt() {
 
     let (tx_err, program_logs) = test_setup
         .unwrap_simulation_error(
-            &[forgive_solana_validator_debt_ix],
+            &[write_off_solana_validator_debt_ix],
             &[&debt_accountant_signer],
         )
         .await;
@@ -250,7 +260,7 @@ async fn test_forgive_solana_validator_debt() {
         TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
     );
     assert_eq!(
-        program_logs.get(4).unwrap(),
+        program_logs.get(5).unwrap(),
         "Program log: Write-off distribution's epoch must be at least the epoch of the current distribution"
     );
 
@@ -265,21 +275,53 @@ async fn test_forgive_solana_validator_debt() {
     .unwrap();
 
     test_setup
-        .initialize_solana_validator_deposit(&paid_debt.node_id)
-        .await
-        .unwrap()
         .transfer_lamports(
             &SolanaValidatorDeposit::find_address(&paid_debt.node_id).0,
             paid_debt.amount,
         )
         .await
-        .unwrap()
-        .pay_solana_validator_debt(dz_epoch, &paid_debt.node_id, paid_debt.amount, proof)
+        .unwrap();
+
+    // Cannot write off debt for a deposit account that has enough lamports to
+    // cover debt.
+    let write_off_solana_validator_debt_ix = try_build_instruction(
+        &ID,
+        WriteOffSolanaValidatorDebtAccounts::new(
+            &debt_accountant_signer.pubkey(),
+            dz_epoch,
+            &paid_debt.node_id,
+            dz_epoch,
+        ),
+        &RevenueDistributionInstructionData::WriteOffSolanaValidatorDebt {
+            amount: paid_debt.amount,
+            proof: proof.clone(),
+        },
+    )
+    .unwrap();
+
+    let (tx_err, program_logs) = test_setup
+        .unwrap_simulation_error(
+            &[write_off_solana_validator_debt_ix],
+            &[&debt_accountant_signer],
+        )
+        .await;
+    assert_eq!(
+        tx_err,
+        TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
+    );
+    assert_eq!(
+        program_logs.get(4).unwrap(),
+        "Program log: Lamports balance in deposit account is enough to cover debt amount"
+    );
+
+    test_setup
+        .pay_solana_validator_debt(dz_epoch, &paid_debt, proof)
         .await
         .unwrap();
 
-    // Forgive some debt at epoch 1.
+    // Write off some debt at epoch 1.
     for (i, debt) in debt_data.iter().enumerate().skip(split_write_off_index) {
+        assert_ne!(i, arbitrary_bad_debt_index);
         assert_ne!(i, upstanding_citizen_index);
 
         let proof = MerkleProof::from_indexed_pod_leaves(
@@ -290,12 +332,18 @@ async fn test_forgive_solana_validator_debt() {
         .unwrap();
 
         test_setup
-            .forgive_solana_validator_debt(dz_epoch, dz_epoch, &debt_accountant_signer, debt, proof)
+            .write_off_solana_validator_debt(
+                dz_epoch,
+                dz_epoch,
+                &debt_accountant_signer,
+                debt,
+                proof,
+            )
             .await
             .unwrap();
     }
 
-    // Forgive debt for the rest at epoch 2.
+    // Write off debt for the rest at epoch 2.
     for (i, debt) in debt_data.iter().enumerate().take(split_write_off_index) {
         if i == upstanding_citizen_index {
             continue;
@@ -309,7 +357,7 @@ async fn test_forgive_solana_validator_debt() {
         .unwrap();
 
         test_setup
-            .forgive_solana_validator_debt(
+            .write_off_solana_validator_debt(
                 dz_epoch,
                 next_dz_epoch,
                 &debt_accountant_signer,
@@ -325,6 +373,7 @@ async fn test_forgive_solana_validator_debt() {
 
     let mut expected_distribution = Distribution::default();
     expected_distribution.set_is_debt_calculation_finalized(true);
+    expected_distribution.set_is_solana_validator_debt_write_off_enabled(true);
     expected_distribution.bump_seed = Distribution::find_address(dz_epoch).1;
     expected_distribution.token_2z_pda_bump_seed =
         state::find_2z_token_pda_address(&distribution_key).1;
@@ -341,6 +390,10 @@ async fn test_forgive_solana_validator_debt() {
     expected_distribution.uncollectible_sol_debt = debt_write_off_first;
     expected_distribution.collected_solana_validator_payments = paid_debt.amount;
     expected_distribution.processed_solana_validator_debt_end_index = total_solana_validators / 8;
+    expected_distribution.processed_solana_validator_debt_write_off_start_index =
+        total_solana_validators / 8;
+    expected_distribution.processed_solana_validator_debt_write_off_end_index =
+        2 * (total_solana_validators / 8);
     expected_distribution.distribute_rewards_relay_lamports = distribute_rewards_relay_lamports;
     expected_distribution.calculation_allowed_timestamp = test_setup
         .get_clock()
@@ -349,7 +402,15 @@ async fn test_forgive_solana_validator_debt() {
         .saturating_sub(60) as u32;
     assert_eq!(distribution, expected_distribution);
 
-    assert_eq!(remaining_distribution_data, vec![0b11111111, 0b11111111]);
+    // First two bytes reflect debt tracking.
+    let processed_bitmap =
+        &remaining_distribution_data[distribution.processed_solana_validator_debt_bitmap_range()];
+    assert_eq!(processed_bitmap, [0b11111111, 0b11111111]);
+
+    // Third and fourth bytes reflect write off tracking.
+    let write_off_bitmap = &remaining_distribution_data
+        [distribution.processed_solana_validator_debt_write_off_bitmap_range()];
+    assert_eq!(write_off_bitmap, [0b11110111, 0b11111111]);
 
     let (distribution_key, distribution, remaining_distribution_data, _, _) =
         test_setup.fetch_distribution(next_dz_epoch).await;
@@ -375,13 +436,33 @@ async fn test_forgive_solana_validator_debt() {
         test_setup.get_clock().await.unix_timestamp as u32;
     assert_eq!(distribution, expected_distribution);
 
-    assert_eq!(remaining_distribution_data, vec![0, 0]);
+    // First two bytes reflect debt tracking.
+    let processed_bitmap =
+        &remaining_distribution_data[distribution.processed_solana_validator_debt_bitmap_range()];
+    assert_eq!(processed_bitmap, [0; 2]);
+
+    let write_off_bitmap = &remaining_distribution_data
+        [distribution.processed_solana_validator_debt_write_off_bitmap_range()];
+    assert!(write_off_bitmap.is_empty());
 
     let (_, journal, _) = test_setup.fetch_journal().await;
     assert_eq!(journal.total_sol_balance, paid_debt.amount);
 
-    // Cannot forgive debt again. This includes attempting to forgive debt for
-    // the upstanding citizen who paid.
+    // Solana validator deposit accounts should have written off debt updated.
+    for (i, debt) in debt_data.iter().enumerate() {
+        let (_, solana_validator_deposit) = test_setup
+            .fetch_solana_validator_deposit(&debt.node_id)
+            .await;
+
+        if i == upstanding_citizen_index {
+            assert_eq!(solana_validator_deposit.written_off_sol_debt, 0);
+        } else {
+            assert_eq!(solana_validator_deposit.written_off_sol_debt, debt.amount);
+        }
+    }
+
+    // Cannot write off debt again. This includes attempting to write off debt
+    // for the upstanding citizen who paid.
     //
     // NOTE: This test also demonstrates that even though the debt was written
     // off at epoch 1, it cannot be written off using another epoch's
@@ -396,20 +477,24 @@ async fn test_forgive_solana_validator_debt() {
         )
         .unwrap();
 
-        let forgive_solana_validator_debt_ix = try_build_instruction(
+        let write_off_solana_validator_debt_ix = try_build_instruction(
             &ID,
-            ForgiveSolanaValidatorDebtAccounts::new(
+            WriteOffSolanaValidatorDebtAccounts::new(
                 &debt_accountant_signer.pubkey(),
                 dz_epoch,
+                &debt.node_id,
                 next_dz_epoch,
             ),
-            &RevenueDistributionInstructionData::ForgiveSolanaValidatorDebt { debt: *debt, proof },
+            &RevenueDistributionInstructionData::WriteOffSolanaValidatorDebt {
+                amount: debt.amount,
+                proof,
+            },
         )
         .unwrap();
 
         let (tx_err, program_logs) = test_setup
             .unwrap_simulation_error(
-                &[forgive_solana_validator_debt_ix],
+                &[write_off_solana_validator_debt_ix],
                 &[&debt_accountant_signer],
             )
             .await;
@@ -419,12 +504,23 @@ async fn test_forgive_solana_validator_debt() {
         );
 
         assert_eq!(
-            program_logs.get(3).unwrap(),
+            program_logs.get(4).unwrap(),
             &format!("Program log: Merkle leaf index {leaf_index} has already been processed")
         );
-        assert_eq!(
-            program_logs.get(4).unwrap(),
-            &format!("Program log: Solana validator debt already processed for epoch {dz_epoch}")
-        )
+        if i == upstanding_citizen_index {
+            assert_eq!(
+                program_logs.get(5).unwrap(),
+                &format!(
+                    "Program log: Solana validator debt already processed for epoch {dz_epoch}"
+                )
+            )
+        } else {
+            assert_eq!(
+                program_logs.get(5).unwrap(),
+                &format!(
+                    "Program log: Solana validator debt already written off for epoch {dz_epoch}"
+                )
+            )
+        }
     }
 }

@@ -216,18 +216,16 @@ pub foundation_allowlist: Vec<Pubkey>
 
 ### PDA Seeds
 
-Entity PDAs (aligned with PR #1977 where applicable):
-
 | Entity               | PDA Seeds                                                      |
 | -------------------- | -------------------------------------------------------------- |
-| User                 | `["doublezero", "user", client_ip, user_type]` (PR #1977)      |
-| Link                 | `["doublezero", "link", index]` (existing)                     |
-| Interface            | `["doublezero", "interface", index]` (existing)                |
-| MulticastGroup       | `["doublezero", "multicast", index]` (existing)                |
+| User                 | `["doublezero", "user", client_ip, user_type]`                 |
+| Link                 | `["doublezero", "link", device_lo, device_hi]` (sorted)        |
+| Interface            | `["doublezero", "interface", device, name]`                    |
+| MulticastGroup       | `["doublezero", "multicast", group_address]`                   |
 | ResourceAccount      | `["doublezero", "resource", resource_type, block_network]`     |
 | DzIp ResourceAccount | `["doublezero", "resource", "dz_ip", device_pk, prefix_index]` |
 
-**User PDA change (PR #1977):** The new User PDA uses `client_ip` and `user_type` instead of a global index. This prevents duplicate users for the same client IP and ensures deterministic account generation without race conditions.
+**Index-free PDA design:** All entity PDAs use content-addressable seeds rather than global indices. This eliminates race conditions in concurrent creation and simplifies account lookups. User PDA changes are being implemented in [PR#2332](https://github.com/malbeclabs/doublezero/pull/2332); Link, Interface, and MulticastGroup follow the same pattern.
 
 ### IP Address Computation
 
@@ -350,7 +348,7 @@ This enables off-chain indexers to track allocations without parsing account dat
 
 **Purpose:** Atomically creates and activates a user with allocated resources.
 
-**PDA Derivation (aligned with PR #1977):**
+**PDA Derivation**
 
 ```
 seeds = ["doublezero", "user", client_ip, user_type]
@@ -394,7 +392,7 @@ struct User {
 
 **Error Cases:**
 
-- `AccountAlreadyExists`: User PDA already exists for this (device, client_ip, accesspass)
+- `AccountAlreadyExists`: User PDA already exists for this (client_ip, user_type)
 - `UserTunnelNetExhausted`: All slots allocated in UserTunnelNet ResourceAccount
 - `DzIpExhausted`: All slots allocated in device's DzIp ResourceAccount
 - `TunnelIdExhausted`: All 4096 tunnel_id slots allocated on device
@@ -407,7 +405,7 @@ struct User {
 
 ```
 (device_lo, device_hi) = sort(device_a_pk, device_b_pk)
-seeds = ["link", device_lo, device_hi]
+seeds = ["doublezero", "link", device_lo, device_hi]
 ```
 
 Sorting device keys ensures (A→B) and (B→A) resolve to the same PDA, preventing duplicate links.

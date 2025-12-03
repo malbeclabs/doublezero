@@ -1,0 +1,40 @@
+name: changelog-reminder
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+jobs:
+  changelog:
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-changelog') }}
+
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: check-changelog
+        run: |
+          set -euo pipefail
+
+          base_branch="${GITHUB_BASE_REF:-}"
+
+          if [ -z "$base_branch" ]; then
+            default_remote_head=$(git symbolic-ref --short refs/remotes/origin/HEAD)
+            base_branch="${default_remote_head#origin/}"
+          fi
+
+          git fetch origin "$base_branch"
+
+          base_ref="origin/$base_branch"
+          head_ref="HEAD"
+
+          changed_files=$(git diff --name-only "$base_ref"..."$head_ref")
+
+          if echo "$changed_files" | grep -q "^CHANGELOG.md$"; then
+            exit 0
+          fi
+
+          echo "CHANGELOG.md was not updated."
+          exit 1

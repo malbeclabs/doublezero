@@ -1,0 +1,2 @@
+3887d5ab559e73fbc6153eb4c9602065c08a1a621bd559e070680d54c41e7062  artifacts-mainnet-beta/doublezero_passport.so
+05a0b2c88638b7ff9ee10b8022c83d16805dae7a46335601bbe266e7c19ce54b  artifacts-mainnet-beta/doublezero_revenue_distribution.so

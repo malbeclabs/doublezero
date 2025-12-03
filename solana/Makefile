@@ -26,14 +26,12 @@ build-sbf:
 	cargo build-sbf --features $(CARGO_FEATURES) --manifest-path $(PASSPORT_PATH)
 	cargo build-sbf --features $(CARGO_FEATURES) --manifest-path $(REVENUE_DISTRIBUTION_PATH)
 
-artifacts-$(NETWORK): build-sbf
-	@if [ ! -d "$@" ]; then \
-		mkdir -p "$@" && \
-		cp target/deploy/*.so "$@/"; \
-	else \
-		echo "$@ already exists"; \
-		exit 1; \
-	fi
+artifacts-$(NETWORK):
+	DOCKER_BUILDKIT=1 docker build \
+	--build-arg NETWORK=${NETWORK} \
+	--platform linux/amd64 \
+	--output type=local,dest=./artifacts-${NETWORK} \
+	.
 
 .PHONY: build-artifacts
 build-artifacts: artifacts-$(NETWORK)

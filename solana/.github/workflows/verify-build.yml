@@ -1,0 +1,16 @@
+name: verify-build
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  sha256sums:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: make build-artifacts
+      - run: sha256sum --check programs/sha256sums_mainnet_beta.txt
+      - run: NETWORK=development make build-artifacts
+      - run: sha256sum --check programs/sha256sums_development.txt

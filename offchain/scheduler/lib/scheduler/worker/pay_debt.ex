@@ -1,4 +1,10 @@
 defmodule Scheduler.Worker.PayDebt do
+  @moduledoc """
+    - Genserver that collects debt
+    - it runs every two hours
+    - currently it starts at the genesis epoch of 31
+    - once debt forgiveness comes into play, that will change
+  """
   use GenServer
 
   require Logger

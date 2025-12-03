@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
+- feat(add_prom_metrics): Add prom metrics collector and instrument a few critical functions as well as add a `health_check` endpoint ([#207](https://github.com/doublezerofoundation/doublezero-offchain/pull/207))
 - feat(summarize_debt): Summarize debt for each epoch and then for all epochs ([#218](https://github.com/doublezerofoundation/doublezero-offchain/pull/218))
 
 ## [v0.1.3]

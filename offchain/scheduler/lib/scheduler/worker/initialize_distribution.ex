@@ -1,4 +1,8 @@
 defmodule Scheduler.Worker.InitializeDistribution do
+  @moduledoc """
+    - GenServer that initializes a distribution
+    - it runs once a minute and either initializes the distribution or shuts down
+  """
   use GenServer
 
   require Logger

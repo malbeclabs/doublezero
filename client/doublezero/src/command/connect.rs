@@ -92,7 +92,11 @@ impl ProvisioningCliCommand {
         check_requirements(client, Some(&spinner), CHECK_ID_JSON | CHECK_BALANCE)?;
         check_doublezero(controller, client, Some(&spinner)).await?;
 
-        spinner.println("🔗  Start Provisioning User...");
+        spinner.println(format!(
+            "🔗  Start Provisioning User to {}...",
+            client.get_environment()
+        ));
+
         // Get public IP
         let (client_ip, client_ip_str) = look_for_ip(&self.client_ip, &spinner).await?;
 
@@ -107,6 +111,7 @@ impl ProvisioningCliCommand {
         }
 
         spinner.inc(1);
+        spinner.println(format!("    DoubleZero ID: {}", client.get_payer()));
         spinner.println(format!("🔍  Provisioning User for IP: {client_ip_str}"));
 
         match self.parse_dz_mode() {
@@ -363,13 +368,13 @@ impl ProvisioningCliCommand {
                 **pubkey
             }
             None => {
-                spinner.println("    User account created");
+                spinner.println("    Creating user account...");
 
                 let (device_pk, device) = self
                     .find_or_create_device(client, controller, &devices, spinner)
                     .await?;
 
-                spinner.println(format!("    Connected to device: {} ", device.code));
+                spinner.println(format!("    Device selected: {} ", device.code));
                 spinner.inc(1);
 
                 let res = client.create_user(CreateUserCommand {

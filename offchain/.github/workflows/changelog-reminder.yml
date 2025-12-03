@@ -6,9 +6,8 @@ on:
 
 jobs:
   changelog:
-    if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-changelog') }}
-
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
         with:
@@ -17,6 +16,11 @@ jobs:
       - name: check-changelogs
         run: |
           set -euo pipefail
+
+          if echo "${{ toJson(github.event.pull_request.labels.*.name) }}" | grep -q "skip-changelog"; then
+            echo "skip-changelog label present; passing without requiring changelog updates."
+            exit 0
+          fi
 
           base_branch="${GITHUB_BASE_REF:-}"
 

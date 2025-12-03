@@ -1,0 +1,45 @@
+name: changelog-reminder
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+jobs:
+  changelog:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: check-changelog
+        run: |
+          set -euo pipefail
+
+          if echo "${{ toJson(github.event.pull_request.labels.*.name) }}" | grep -q "skip-changelog"; then
+            echo "skip-changelog label present; passing without requiring changelog update."
+            exit 0
+          fi
+
+          base_branch="${GITHUB_BASE_REF:-}"
+
+          if [ -z "$base_branch" ]; then
+            default_remote_head=$(git symbolic-ref --short refs/remotes/origin/HEAD)
+            base_branch="${default_remote_head#origin/}"
+          fi
+
+          git fetch origin "$base_branch"
+
+          base_ref="origin/$base_branch"
+          head_ref="HEAD"
+
+          changed_files=$(git diff --name-only "$base_ref"..."$head_ref")
+
+          if echo "$changed_files" | grep -q "^CHANGELOG.md$"; then
+            exit 0
+          fi
+
+          echo "CHANGELOG.md was not updated."
+          echo "If this change intentionally does not require a changelog, add the 'skip-changelog' label to the PR."
+          exit 1

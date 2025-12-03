@@ -37,4 +37,5 @@ jobs:
           fi
 
           echo "CHANGELOG.md was not updated."
+          echo "If this change intentionally does not require a changelog, add the 'skip-changelog' label to the PR."
           exit 1

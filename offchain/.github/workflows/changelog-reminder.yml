@@ -1,0 +1,75 @@
+name: changelog-reminder
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+jobs:
+  changelog:
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-changelog') }}
+
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: check-changelogs
+        run: |
+          set -euo pipefail
+
+          base_branch="${GITHUB_BASE_REF:-}"
+
+          if [ -z "$base_branch" ]; then
+            default_remote_head=$(git symbolic-ref --short refs/remotes/origin/HEAD)
+            base_branch="${default_remote_head#origin/}"
+          fi
+
+          git fetch origin "$base_branch"
+
+          base_ref="origin/$base_branch"
+          head_ref="HEAD"
+
+          changed_files=$(git diff --name-only "$base_ref"..."$head_ref")
+
+          projects=(
+            "crates/contributor-rewards::crates/contributor-rewards/CHANGELOG.md"
+            "crates/scheduled-command::crates/scheduled-command/CHANGELOG.md"
+            "crates/sentinel::crates/sentinel/CHANGELOG.md"
+            "crates/slack-notifier::crates/slack-notifier/CHANGELOG.md"
+            "crates/solana-admin-cli/passport::crates/solana-admin-cli/passport/CHANGELOG.md"
+            "crates/solana-admin-cli/revenue-distribution::crates/solana-admin-cli/revenue-distribution/CHANGELOG.md"
+            "crates/solana-admin-cli/sol-conversion::crates/solana-admin-cli/sol-conversion/CHANGELOG.md"
+            "crates/solana-cli::crates/solana-cli/CHANGELOG.md"
+            "crates/solana-client-tools::crates/solana-client-tools/CHANGELOG.md"
+            "crates/solana-fork::crates/solana-fork/CHANGELOG.md"
+            "crates/solana-interface/sol-conversion::crates/solana-interface/sol-conversion/CHANGELOG.md"
+            "crates/validator-debt::crates/validator-debt/CHANGELOG.md"
+            "scheduler::scheduler/CHANGELOG.md"
+          )
+
+          missing=()
+
+          for entry in "${projects[@]}"; do
+            subdir=${entry%%::*}
+            changelog=${entry##*::}
+
+            if echo "$changed_files" | grep -q "^${subdir}/"; then
+              if ! echo "$changed_files" | grep -q "^${changelog}$"; then
+                missing+=("$subdir (expected ${changelog})")
+              fi
+            fi
+          done
+
+          if [ ${#missing[@]} -eq 0 ]; then
+            exit 0
+          fi
+
+          echo "The following subprojects changed but their changelog was not updated:"
+          for m in "${missing[@]}"; do
+            echo "  - $m"
+          done
+
+          echo
+          echo "If this change intentionally does not require a changelog, add the 'skip-changelog' label to the PR."
+          exit 1

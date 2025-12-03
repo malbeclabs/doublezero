@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -46,9 +45,6 @@ func main() {
 		}
 
 		s3, err := minio.New(s3Endpoint, s3AccessKey, s3SecretKey, true)
-		if err != nil {
-			log.Fatal(err)
-		}
 		if err != nil {
 			logger.Error("Failed to create S3 client", "error", err)
 			os.Exit(1)

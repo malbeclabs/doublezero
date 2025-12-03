@@ -85,8 +85,9 @@ func TestQA_UnicastConnectivity(t *testing.T) {
 				subCtx := t.Context()
 
 				result, err := srcClient.TestUnicastConnectivity(subCtx, dstClient)
-				require.NoError(t, err, "failed to test connectivity")
-
+				if err != nil {
+					log.Error("Connectivity test failed", "error", err, "source", srcClient.Host, "target", dstClient.Host)
+				}
 				if result.PacketsReceived < result.PacketsSent {
 					testsWithPartialLosses.Add(1)
 
@@ -95,6 +96,7 @@ func TestQA_UnicastConnectivity(t *testing.T) {
 					require.NoError(t, err)
 					t.Logf("Traceroute for %s -> %s: %s", srcClient.Host, dstClient.Host, res)
 				}
+				require.NoError(t, err, "failed to test connectivity")
 			})
 		}
 	}

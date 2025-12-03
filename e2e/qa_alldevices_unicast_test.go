@@ -158,7 +158,6 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 							result, err := src.TestUnicastConnectivity(subCtx, target)
 							if err != nil {
 								log.Error("Connectivity test failed", "error", err, "source", src.Host, "target", target.Host, "sourceDevice", clientToDevice[src].Code, "targetDevice", clientToDevice[target].Code)
-								require.NoError(t, err)
 							}
 							if result.PacketsReceived < result.PacketsSent {
 								testsWithPartialLosses.Add(1)
@@ -168,6 +167,7 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 								require.NoError(t, err)
 								t.Logf("Traceroute for %s (device %s) -> %s (device %s): %s", src.Host, clientToDevice[src].Code, target.Host, clientToDevice[target].Code, res)
 							}
+							require.NoError(t, err, "failed to test connectivity")
 						}(srcClient, target)
 					}
 					wg.Wait()

@@ -1,3 +1,10 @@
+# TODO
+- Foundation should be able to override status
+- Actually we're doing parts of phase 2 - checking for influx and telemetry
+- Also verify that loopbacks exist (via controller's prometheus metric)
+- Pick grafana alerts as mechanism for surfacing health info to contributors; move this onchain in the future
+- Port scan: out of scope? 
+
 # Network Provisioning Framework
 
 ## Summary
@@ -25,7 +32,7 @@ The provisioning process for DoubleZero Devices (DZDs) and links currently invol
 * We can look at procuring a commercial network provisioning system such as Cisco Network Services Orchestrator, Juniper Apstra, SolarWinds Network Configuration Manager, or others. However, Malbec Labs has experience with using these systems. In the best case these systems tend to be expensive and they do not solve anything out of the box - they require customization. They also use traditional database backends, and would require customization to integrate with the DZ ledger (if doing so is even feasible). We prefer the approach of building a minimal, purpose-built system that deeply integrates with the rest of the DoubleZero stack.
 
 ## Scope
-This rfc covers device and link onboarding, and device draining for maintenance purposes like firmware upgrades and parts replacement. Offboarding of devices is out scope because we don't currently have demand for removing devices from the network.
+This rfc covers device and link onboarding, and device draining for maintenance purposes like firmware upgrades and parts replacement. Offboarding of devices is out of scope because we don't currently have demand for removing devices from the network.
 
 Link draining is already covered by rfcs/rfc9-link-draining.md.
 
@@ -133,7 +140,7 @@ Here are the same phases as a list:
     1. Verify telemetry agent logs
 1. Register device interfaces onchain
     1. Loopback256 - ipv4
-    1. Loopback2556 - vpnv4
+    1. Loopback255 - vpnv4
     1. Interfaces to be used for wan/dzx links
     1. Interfaces to be used for CYOA
 1. Register wan/dzx links onchain with link.status set to `soft-drained`
@@ -213,7 +220,7 @@ We propose to add logic to the existing `monitor` component so that it periodica
 
 ##### Link maintenance - steps
 1. Contributor sets link.desired_status to `hard-drained`
-1. On link.desired_status update, the serviceability link program sets link.status to `hard-drained
+1. On link.desired_status update, the serviceability link program sets link.status to `hard-drained`
 1. Controller sets `isis passive` on link interfaces
 1. When maintenance is complete, contributor sets link.desired_status to `activated`
 1. Follow [the link onboarding steps](#link-onboarding---steps) above to bring the link back into service
@@ -235,7 +242,7 @@ Move device to activated status first, then move links to activated status, then
     1. public_ip - set
     1. dz_prefixes - at least one /29
     1. max_users - set to 0
-    1. status = `hard-drained`
+    1. status = `drained`
 1. DIA
     1. At least 1 DIA interface defined on chain with status = activated
     1. At least 1 DIA interface up for 24 hours with zero errors and non-zero utilization
@@ -266,7 +273,7 @@ The following criteria are out of scope because they depend on data that we curr
      
 
 ### Device maintenance
-When a device needs maintenance that will interrupt user traffic, such as a firmware upgrade or hardware part replacement, we first soft-drain the devices links to re-route transit traffic around the device. Next, we drain the device itself by having the controller add , which shuts down all user BGP sessions. At this point, from the user's perspective, `doublezero status` will show a tunnel status of `pending`, and the user will be able to route any traffic over DoubleZero. 
+When a device needs maintenance that will interrupt user traffic, such as a firmware upgrade or hardware part replacement, we first soft-drain the device's links to re-route transit traffic around the device. Next, we drain user traffic from the device itself by having the controller add `neighbor <w.x.y.z> shutdown` to every user BGP session. At this point, from the user's perspective, `doublezero status` will show a tunnel status of `pending`, and the user will not be able to route any traffic over DoubleZero. 
 
 For IBRL users, traffic will re-route via the internet. For multicast users, traffic will be interrupted for the duration of the maintenance, so users will need to fall back on other means to receive the same data over the internet. If users want to remain connected to DoubleZero during the maintenance, they will need to take action to disconnect and reconnect to a different device. 
 
@@ -313,11 +320,13 @@ pub enum DeviceHealth {
 #### - serviceability: add device.desired_status
 ```
 pub enum DeviceDesiredStatus {
-    Activated = 0,
-    Drained = 1,
-    Deleted = 2,
+    Unknown = 0,
+    Activated = 1,
+    Drained = 2,
+    Deleted = 3,
 }
 ```
+
 #### - monitor: add logic to update link.health and device.health
 #### - serviceability link program: add logic to update link.status
 #### - serviceability device program: add logic to update device.status
@@ -325,7 +334,7 @@ pub enum DeviceDesiredStatus {
 #### - controller: add logic that shuts down user BGP sessions when device.status is drained
 #### - qa: update alldevices test to emit prometheus metrics
 #### - client: don't attempt to connect to a device whose status is not activated
-#### - grafanaa: don't alert on links and devices that are not in activated status
+#### - Grafana: don't alert on links and devices that are not in activated status
 
 ## Impact
 
@@ -352,7 +361,7 @@ Explain whether current nodes, data, or integrations continue to work unchanged.
 
 ## Open Questions
 
-* How should the device and link RFS criteria be exposed to contributors? Options:
+* How should the device and link RFS criteria, status of each criteria, and time left on 24 hours timer, be exposed to contributors? Options:
     1. Grafana alert statuses
     1. Add a bunch of individual RFS criteria fields to serviceability.link and serviceability.device
     1. Add a string field to serviceability.link and serviceability.device containing a json representation of the RFS criteria statuses

@@ -4,12 +4,14 @@ use crate::{
     pda::get_accesspass_pda,
     state::{
         accesspass::AccessPass,
+        accounttype::AccountTypeInfo,
         multicastgroup::{MulticastGroup, MulticastGroupStatus},
         user::{User, UserStatus},
     },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
+use doublezero_program_common::resize_account::resize_account_if_needed;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
@@ -169,7 +171,8 @@ pub fn process_subscribe_multicastgroup(
     }
 
     account_write(mgroup_account, &mgroup, payer_account, system_program)?;
-    account_write(user_account, &user, payer_account, system_program)?;
+    resize_account_if_needed(user_account, payer_account, accounts, user.size())?;
+    user.try_serialize(user_account)?;
 
     #[cfg(test)]
     msg!("Updated: {:?}", mgroup);

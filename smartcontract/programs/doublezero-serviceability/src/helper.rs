@@ -72,6 +72,52 @@ where
     Ok(())
 }
 
+pub fn account_create_with_seed<'a, T>(
+    account: &AccountInfo<'a>,
+    instance: &T,
+    payer_account: &AccountInfo<'a>,
+    system_program: &AccountInfo<'a>,
+    program_id: &Pubkey,
+    new_account_signer_seeds: &[&[u8]],
+) -> ProgramResult
+where
+    T: AccountTypeInfo + BorshSerialize + Validate + Debug,
+{
+    // Validate the instance
+    instance.validate()?;
+
+    let account_space = AccountTypeInfo::size(instance);
+
+    #[cfg(test)]
+    {
+        let rent = Rent::get().expect("Unable to get rent");
+        let required_lamports = rent.minimum_balance(account_space);
+        msg!("Rent: {}", required_lamports);
+    }
+    // Create the index account
+    try_create_account(
+        payer_account.key,  // Account paying for the new account
+        account.key,        // Account to be created
+        account.lamports(), // Current amount of lamports on the new account
+        account_space,      // Size in bytes to allocate for the data field
+        program_id,         // Set program owner to our program
+        &[
+            account.clone(),
+            payer_account.clone(),
+            system_program.clone(),
+        ],
+        new_account_signer_seeds,
+    )?;
+
+    let mut account_data = &mut account.data.borrow_mut()[..];
+    instance.serialize(&mut account_data).unwrap();
+
+    #[cfg(test)]
+    msg!("Created: {:?}", instance);
+
+    Ok(())
+}
+
 pub fn account_write<'a, T>(
     account: &AccountInfo<'a>,
     instance: &T,

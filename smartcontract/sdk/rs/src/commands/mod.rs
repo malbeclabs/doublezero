@@ -7,6 +7,7 @@ pub mod globalconfig;
 pub mod globalstate;
 pub mod link;
 pub mod location;
+pub mod migrate;
 pub mod multicastgroup;
 pub mod programconfig;
 pub mod user;

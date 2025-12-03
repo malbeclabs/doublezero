@@ -24,6 +24,7 @@ All notable changes to this project will be documented in this file.
     - Added support in the link update command to set a link’s status to soft_drained or hard_drained.
     - Added support for specifying `device_type` at creation, updating it via device update, and displaying it in list/detail outputs.
     - Add support for updating `contributor.ops_manager_key`.
+    - Add migrate command to upgrade legacy user accounts from index-based PDAs to the new IP + connection-type scheme.
     - Enhance `access-pass list` with client-IP and user-payer filters
     - Support added to load keypair from stdin
 - Client
@@ -37,6 +38,7 @@ All notable changes to this project will be documented in this file.
   - Fix ProgramConfig resize during global state initialization.
   - Standardized the `device_type` enum to `Edge`, `Transit`, and `Hybrid`, added validation rules, and defaulted existing devices to `Hybrid` for backward compatibility.
   - Add `contributor.ops_manager_key` for authorizing incident management operations.
+  - User Account: Replace global-index PDA generation with deterministic IP + connection-type seeds, eliminating user-creation race conditions.
   - Enable on-chain storage of InterfaceV2, allowing devices to register updated interface metadata
   - Serviceability: validate that a device's public IP doesn't clash with its dz_prefixes
 - QA

@@ -205,8 +205,8 @@ echo "Creating multicast user & subscribe"
 
 
 
-./target/doublezero user subscribe --user vwHPjLfH7aU4G2vDBAqV3on5WQgXLEKq67kNw7Q5Mos --group mg01 --publisher -w
-./target/doublezero user subscribe --user vwHPjLfH7aU4G2vDBAqV3on5WQgXLEKq67kNw7Q5Mos --group mg02 --publisher -w
+./target/doublezero user subscribe --user 2tFgzmPXwMecnGZ5ctAc2D6n6d9WmhXB5aAkkGKXFKQN --group mg01 --publisher -w
+./target/doublezero user subscribe --user 2tFgzmPXwMecnGZ5ctAc2D6n6d9WmhXB5aAkkGKXFKQN --group mg02 --publisher -w
 
 
 solana transfer testGjWJiksK7wdGmH7ZZsaqRGU695LHgvjRd6jfHYF 5 --allow-unfunded-recipient

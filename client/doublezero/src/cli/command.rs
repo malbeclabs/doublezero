@@ -16,13 +16,15 @@ use clap_complete::Shell;
 use doublezero_cli::{
     account::GetAccountCliCommand, accounts::GetAccountsCliCommand, address::AddressCliCommand,
     balance::BalanceCliCommand, export::ExportCliCommand, init::InitCliCommand,
-    keygen::KeyGenCliCommand, logcommand::LogCliCommand,
+    keygen::KeyGenCliCommand, logcommand::LogCliCommand, migrate::MigrateCliCommand,
 };
 
 #[derive(Subcommand, Debug)]
 pub enum Command {
     #[command(hide = true)]
     Init(InitCliCommand),
+    #[command(hide = true)]
+    Migrate(MigrateCliCommand),
     /// Connect your server to a doublezero device
     #[command()]
     Connect(ProvisioningCliCommand),

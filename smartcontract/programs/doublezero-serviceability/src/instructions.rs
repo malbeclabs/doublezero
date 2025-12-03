@@ -45,6 +45,7 @@ use crate::processors::{
         create::LocationCreateArgs, delete::LocationDeleteArgs, resume::LocationResumeArgs,
         suspend::LocationSuspendArgs, update::LocationUpdateArgs,
     },
+    migrate::MigrateArgs,
     multicastgroup::{
         activate::MulticastGroupActivateArgs,
         allowlist::{
@@ -81,7 +82,7 @@ use std::cmp::PartialEq;
 // Instructions that our program can execute
 #[derive(BorshSerialize, Debug, PartialEq, Clone)]
 pub enum DoubleZeroInstruction {
-    None(),                               // variant 0
+    Migrate(MigrateArgs),                 // variant 0
     InitGlobalState(),                    // variant 1
     SetAuthority(SetAuthorityArgs),       // variant 2
     SetGlobalConfig(SetGlobalConfigArgs), // variant 3
@@ -187,6 +188,7 @@ impl DoubleZeroInstruction {
             .ok_or(ProgramError::InvalidInstructionData)?;
 
         match instruction {
+            0 => Ok(Self::Migrate(MigrateArgs::try_from(rest).unwrap())),
             1 => Ok(Self::InitGlobalState()),
             2 => Ok(Self::SetAuthority(SetAuthorityArgs::try_from(rest).unwrap())),
             3 => Ok(Self::SetGlobalConfig(SetGlobalConfigArgs::try_from(rest).unwrap())),
@@ -287,7 +289,7 @@ impl DoubleZeroInstruction {
 
     pub fn get_name(&self) -> String {
         match self {
-            Self::None() => "None".to_string(), // variant 0
+            Self::Migrate(_) => "Migrate".to_string(), // variant 0
             Self::InitGlobalState() => "InitGlobalState".to_string(), // variant 1
             Self::SetAuthority(_) => "SetAuthority".to_string(), // variant 2
             Self::SetGlobalConfig(_) => "SetGlobalConfig".to_string(), // variant 3
@@ -390,9 +392,9 @@ impl DoubleZeroInstruction {
 
     pub fn get_args(&self) -> String {
         match self {
-            Self::None() => "".to_string(),                     // variant 0
-            Self::InitGlobalState() => "".to_string(),          // variant 1
-            Self::SetAuthority(args) => format!("{args:?}"),    // variant 2
+            Self::Migrate(args) => format!("{args:?}"), // variant 0
+            Self::InitGlobalState() => "".to_string(),  // variant 1
+            Self::SetAuthority(args) => format!("{args:?}"), // variant 2
             Self::SetGlobalConfig(args) => format!("{args:?}"), // variant 3
 
             Self::AddFoundationAllowlist(args) => format!("{args:?}"), // variant 4
@@ -513,6 +515,7 @@ mod tests {
 
     #[test]
     fn test_doublezero_instruction() {
+        test_instruction(DoubleZeroInstruction::Migrate(MigrateArgs {}), "Migrate");
         test_instruction(DoubleZeroInstruction::InitGlobalState(), "InitGlobalState");
         test_instruction(
             DoubleZeroInstruction::SetGlobalConfig(SetGlobalConfigArgs {

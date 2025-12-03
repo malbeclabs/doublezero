@@ -31,3 +31,12 @@ func DeriveIPFromCIDR(cidr string, hostID uint32) (net.IP, error) {
 	binary.BigEndian.PutUint32(result, ipInt)
 	return result, nil
 }
+
+// ParseCIDR parses a CIDR string and returns the IP and network.
+func ParseCIDR(cidr string) (string, *net.IPNet, error) {
+	ip, network, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return "", nil, err
+	}
+	return ip.String(), network, nil
+}

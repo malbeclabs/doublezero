@@ -11,4 +11,7 @@ defmodule Scheduler.DoubleZero do
     do: :erlang.nif_error(:nif_not_loaded)
 
   def current_dz_epoch(_ledger_rpc), do: :erlang.nif_error(:nif_not_loaded)
+
+  def post_debt_summary(_insufficient_funds_count, _total_debt, _total_paid),
+    do: :erlang.nif_error(:nif_not_loaded)
 end

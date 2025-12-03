@@ -6,22 +6,84 @@ use doublezero_solana_client_tools::{
     rpc::{DoubleZeroLedgerConnection, SolanaConnection},
 };
 use doublezero_solana_validator_debt::{
-    rpc::SolanaValidatorDebtConnectionOptions, solana_debt_calculator::SolanaDebtCalculator,
-    transaction::Transaction, worker,
+    rpc::SolanaValidatorDebtConnectionOptions,
+    solana_debt_calculator::SolanaDebtCalculator,
+    transaction::{DebtCollectionResults, Transaction},
+    worker,
 };
-use rustler::Error as NifError;
-use slack_notifier::validator_debt;
+use rustler::{Error as NifError, NifStruct};
 use solana_sdk::signature::Keypair;
 
+#[derive(NifStruct)]
+#[module = "Scheduler.ValidatorDebt.DebtCollection"]
+pub struct DebtCollection {
+    pub total_paid: u64,
+    pub total_debt: u64,
+    pub total_validators: usize,
+    pub insufficient_funds_count: usize,
+}
+
+#[derive(NifStruct)]
+#[module = "Scheduler.ValidatorDebt.Debt"]
+pub struct Debt {
+    pub validator_id: String,
+    pub amount: u64,
+    pub result: Option<String>,
+    pub success: bool,
+}
+#[rustler::nif]
+pub fn post_debt_summary(
+    insufficient_funds_count: usize,
+    total_debt: u64,
+    total_paid: u64,
+) -> Result<(), NifError> {
+    let rt = tokio::runtime::Runtime::new().map_err(|e| NifError::Term(Box::new(e.to_string())))?;
+    rt.block_on(async {
+        async_post_debt_summary(insufficient_funds_count, total_debt, total_paid).await
+    })
+    .map_err(|e| NifError::Term(Box::new(e.to_string())))?;
+
+    Ok(())
+}
+
 #[rustler::nif(schedule = "DirtyIo")]
-pub fn pay_debt(dz_epoch: u64, ledger_rpc: String, solana_rpc: String) -> Result<(), NifError> {
+pub fn pay_debt(
+    dz_epoch: u64,
+    ledger_rpc: String,
+    solana_rpc: String,
+) -> Result<DebtCollection, NifError> {
     let rt = tokio::runtime::Runtime::new().map_err(|e| NifError::Term(Box::new(e.to_string())))?;
 
     // Block the current thread and wait for the async operation to complete.
-    rt.block_on(async { async_pay_debt(dz_epoch, ledger_rpc, solana_rpc).await })
+    let tx_results = rt
+        .block_on(async { async_pay_debt(dz_epoch, ledger_rpc, solana_rpc).await })
         .map_err(|e| NifError::Term(Box::new(e.to_string())))?;
 
-    Ok(())
+    let total_validators = tx_results.collection_results.len();
+
+    let total_debt: u64 = tx_results
+        .collection_results
+        .iter()
+        .map(|tx| tx.amount)
+        .sum();
+
+    let insufficient_funds_count = tx_results.insufficient_funds.len();
+
+    let already_paid: u64 = tx_results.already_paid.iter().map(|tx| tx.amount).sum();
+    let successful_transactions: u64 = tx_results
+        .successful_transactions
+        .iter()
+        .map(|tx| tx.amount)
+        .sum();
+    let total_paid = already_paid + successful_transactions;
+    let debt_collection = DebtCollection {
+        total_debt,
+        total_paid,
+        total_validators,
+        insufficient_funds_count,
+    };
+
+    Ok(debt_collection)
 }
 
 #[rustler::nif]
@@ -78,8 +140,40 @@ pub fn finalize_distribution(
 
     Ok(())
 }
+async fn async_post_debt_summary(
+    insufficient_funds_count: usize,
+    total_debt: u64,
+    total_paid: u64,
+) -> Result<()> {
+    let client = reqwest::Client::new();
 
-async fn async_pay_debt(dz_epoch: u64, ledger_rpc: String, solana_rpc: String) -> Result<()> {
+    let header = "Total Debt Collection";
+    let table_header = vec![
+        "Total Paid".to_string(),
+        "Total Debt".to_string(),
+        "Total Insufficient Funds Count".to_string(),
+    ];
+    let table_values = vec![
+        total_paid.to_string(),
+        total_debt.to_string(),
+        insufficient_funds_count.to_string(),
+    ];
+    slack_notifier::validator_debt::post_to_slack(
+        None,
+        &client,
+        header,
+        table_header,
+        table_values,
+    )
+    .await?;
+    Ok(())
+}
+
+async fn async_pay_debt(
+    dz_epoch: u64,
+    ledger_rpc: String,
+    solana_rpc: String,
+) -> Result<DebtCollectionResults> {
     let sc = SolanaConnection::new(solana_rpc);
 
     let ledger_rpc_client = DoubleZeroLedgerConnection::new(ledger_rpc);
@@ -95,18 +189,9 @@ async fn async_pay_debt(dz_epoch: u64, ledger_rpc: String, solana_rpc: String) -
 
     let tx_results = worker::pay_solana_validator_debt(wallet, ledger_rpc_client, dz_epoch).await?;
 
-    validator_debt::post_debt_collection_to_slack(
-        tx_results.total_transactions_attempted,
-        tx_results.successful_transactions,
-        tx_results.insufficient_funds,
-        tx_results.already_paid,
-        dz_epoch,
-        None,
-        false,
-    )
-    .await?;
+    worker::post_debt_collection_to_slack(tx_results.clone(), false, None).await?;
 
-    Ok(())
+    Ok(tx_results)
 }
 
 async fn async_initialize_distribution(ledger_rpc: String, solana_rpc: String) -> Result<()> {

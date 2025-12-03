@@ -42,16 +42,16 @@ pub struct Transaction {
     pub force: bool,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct DebtCollectionResults {
+    pub dz_epoch: u64,
     pub collection_results: Vec<DebtCollectionResult>,
-    pub total_transactions_attempted: usize,
-    pub successful_transactions: usize,
-    pub insufficient_funds: usize,
-    pub already_paid: usize,
+    pub insufficient_funds: Vec<DebtCollectionResult>,
+    pub already_paid: Vec<DebtCollectionResult>,
+    pub successful_transactions: Vec<DebtCollectionResult>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct DebtCollectionResult {
     pub validator_id: String,
     pub amount: u64,
@@ -362,23 +362,24 @@ impl Transaction {
             }
         }
 
-        let total_transactions = debt_collection_result.len();
-        let total_success = debt_collection_result
-            .iter()
+        let successful_transactions: Vec<DebtCollectionResult> = debt_collection_result
+            .clone()
+            .into_iter()
             .filter(|pr| pr.success)
-            .count();
+            .collect();
 
-        let insufficient_funds_count =
-            count_failed_debt_collection("Insufficient funds", debt_collection_result.as_ref());
-        let already_paid_count =
-            count_failed_debt_collection("Merkle leaf", debt_collection_result.as_ref());
+        let already_paid =
+            count_failed_debt_collection("Merkle leaf", debt_collection_result.clone());
+
+        let insufficient_funds =
+            count_failed_debt_collection("Insufficient funds", debt_collection_result.clone());
 
         let debt_collection_results = DebtCollectionResults {
+            dz_epoch,
+            successful_transactions,
             collection_results: debt_collection_result,
-            total_transactions_attempted: total_transactions,
-            successful_transactions: total_success,
-            insufficient_funds: insufficient_funds_count,
-            already_paid: already_paid_count,
+            insufficient_funds,
+            already_paid,
         };
         Ok(debt_collection_results)
     }
@@ -402,14 +403,17 @@ impl Transaction {
     }
 }
 
-fn count_failed_debt_collection(error_type: &str, dcr: &[DebtCollectionResult]) -> usize {
-    dcr.iter()
+fn count_failed_debt_collection(
+    error_type: &str,
+    dcr: Vec<DebtCollectionResult>,
+) -> Vec<DebtCollectionResult> {
+    dcr.into_iter()
         .filter(|pr| {
             pr.result
                 .as_ref()
                 .is_some_and(|res| res.contains(error_type))
         })
-        .count()
+        .collect()
 }
 
 fn parse_program_logs(

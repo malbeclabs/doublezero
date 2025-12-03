@@ -522,6 +522,81 @@ pub async fn initialize_distribution(
     Ok(())
 }
 
+pub async fn post_debt_collection_to_slack(
+    debt_collection_results: DebtCollectionResults,
+    dry_run: bool,
+    filepath: Option<String>,
+) -> Result<()> {
+    let client = reqwest::Client::new();
+    let header = if dry_run {
+        "DRY RUN Debt Collected DRY RUN"
+    } else {
+        "Debt Collected"
+    };
+
+    let table_header = vec![
+        "DoubleZero Epoch".to_string(),
+        "Total Paid".to_string(),
+        "Total Debt".to_string(),
+        "Percentage Paid".to_string(),
+        "Total Attempted Transactions".to_string(),
+        "Successful Transactions".to_string(),
+        "Insufficient Funds".to_string(),
+        "Already Paid".to_string(),
+    ];
+
+    let total_attempted_transactions_count = debt_collection_results.collection_results.len();
+    let successful_transactions_count = debt_collection_results.successful_transactions.len();
+    let already_paid_count = debt_collection_results.already_paid.len();
+
+    let percentage_paid: f64 = if total_attempted_transactions_count == 0 {
+        0.0
+    } else {
+        (already_paid_count + successful_transactions_count) as f64
+            / total_attempted_transactions_count as f64
+    };
+
+    // the total amount paid for an epoch is `total_collected_this_run` + `already_paid`
+    let already_paid_total: u64 = debt_collection_results
+        .already_paid
+        .iter()
+        .map(|ap| ap.amount)
+        .sum();
+    let total_collected_this_run: u64 = debt_collection_results
+        .successful_transactions
+        .iter()
+        .map(|ap| ap.amount)
+        .sum();
+
+    let total_paid = already_paid_total + total_collected_this_run;
+    let total_debt: u64 = debt_collection_results
+        .collection_results
+        .iter()
+        .map(|cr| cr.amount)
+        .sum();
+    let table_values = vec![
+        debt_collection_results.dz_epoch.to_string(),
+        total_paid.to_string(),
+        total_debt.to_string(),
+        format!("{:.2}%", percentage_paid * 100.0),
+        total_attempted_transactions_count.to_string(),
+        successful_transactions_count.to_string(),
+        debt_collection_results.insufficient_funds.len().to_string(),
+        already_paid_count.to_string(),
+    ];
+
+    slack_notifier::validator_debt::post_to_slack(
+        filepath,
+        &client,
+        header,
+        table_header,
+        table_values,
+    )
+    .await?;
+
+    Ok(())
+}
+
 async fn create_or_validate_ledger_record(
     solana_debt_calculator: &impl ValidatorRewards,
     transaction: &Transaction,

@@ -39,7 +39,7 @@ pub async fn post_distribution_to_slack(
         transaction.unwrap_or("No transaction details".to_string()),
     ];
 
-    post_to_slack(filepath, client, header, table_header, table_values).await?;
+    post_to_slack(filepath, &client, header, table_header, table_values).await?;
 
     Ok(())
 }
@@ -60,51 +60,14 @@ pub async fn post_finalized_distribution_to_slack(
 
     let table_values = vec![dz_epoch.to_string(), finalized_sig.to_string()];
 
-    post_to_slack(None, client, header, table_header, table_values).await?;
+    post_to_slack(None, &client, header, table_header, table_values).await?;
 
     Ok(())
 }
 
-pub async fn post_debt_collection_to_slack(
-    total_transactions: usize,
-    total_success: usize,
-    insufficient_funds: usize,
-    already_paid: usize,
-    dz_epoch: u64,
+pub async fn post_to_slack(
     filepath: Option<String>,
-    dry_run: bool,
-) -> Result<()> {
-    let client = reqwest::Client::new();
-    let header = if dry_run {
-        "DRY RUN Debt Collected DRY RUN"
-    } else {
-        "Debt Collected"
-    };
-
-    let table_header = vec![
-        "DoubleZero Epoch".to_string(),
-        "Total Attempted Transactions".to_string(),
-        "Successful Transactions".to_string(),
-        "Insufficient Funds".to_string(),
-        "Already Paid".to_string(),
-    ];
-
-    let table_values = vec![
-        dz_epoch.to_string(),
-        total_transactions.to_string(),
-        total_success.to_string(),
-        insufficient_funds.to_string(),
-        already_paid.to_string(),
-    ];
-
-    post_to_slack(filepath, client, header, table_header, table_values).await?;
-
-    Ok(())
-}
-
-async fn post_to_slack(
-    filepath: Option<String>,
-    client: Client,
+    client: &Client,
     header: &str,
     mut table_header: Vec<String>,
     mut table_values: Vec<String>,
@@ -121,7 +84,7 @@ async fn post_to_slack(
 
     let payload = serde_json::to_string(&msg)?;
     let body = Body::from(payload);
-    let request = slack::build_message_request(&client, body, slack_webhook()?)?;
+    let request = slack::build_message_request(client, body, slack_webhook()?)?;
     let _resp = request.send().await?;
 
     Ok(())

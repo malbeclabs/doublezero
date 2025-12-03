@@ -4,7 +4,14 @@ defmodule Scheduler.Worker.PayDebt do
   require Logger
 
   def start_link(_var \\ []) do
-    state = %{genesis_epoch: genesis_epoch(), current_epoch: genesis_epoch()}
+    state = %{
+      genesis_epoch: genesis_epoch(),
+      current_epoch: genesis_epoch(),
+      total_debt: 0,
+      total_paid: 0,
+      insufficient_funds_count: 0
+    }
+
     GenServer.start_link(__MODULE__, state, name: __MODULE__)
   end
 
@@ -24,18 +31,34 @@ defmodule Scheduler.Worker.PayDebt do
         if String.contains?(error, "Record account not found at address") ||
              String.contains?(error, "Failed to fetch record") do
           Logger.info("scheduler completed sweep at epoch #{state.current_epoch}")
+
+          Scheduler.DoubleZero.post_debt_summary(
+            state.insufficient_funds_count,
+            state.total_debt,
+            state.total_paid
+          )
+
           {:stop, :shutdown, state}
         else
           Logger.error(
             "scheduler encountered unexpected error at epoch #{state.current_epoch}: #{inspect(error)}"
           )
 
-          {:stop,:shutdown, state}
+          {:stop, :shutdown, state}
         end
 
-      _ ->
+      debt ->
         Logger.info("completed epoch #{state.current_epoch}")
-        state = %{state | current_epoch: state.current_epoch + 1}
+
+        state = %{
+          state
+          | current_epoch: state.current_epoch + 1,
+            total_debt: state.total_debt + debt.total_debt,
+            total_paid: state.total_paid + debt.total_paid,
+            insufficient_funds_count:
+              state.insufficient_funds_count + debt.insufficient_funds_count
+        }
+
         {:noreply, state, {:continue, :queue_debt_payment}}
     end
   end

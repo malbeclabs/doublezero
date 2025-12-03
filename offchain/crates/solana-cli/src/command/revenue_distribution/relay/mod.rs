@@ -13,7 +13,6 @@ use doublezero_solana_client_tools::{
     rpc::DoubleZeroLedgerConnection,
 };
 use doublezero_solana_validator_debt::worker;
-use slack_notifier::validator_debt;
 
 #[derive(Debug, Clone, ValueEnum)]
 pub enum ExportFormat {
@@ -89,23 +88,15 @@ async fn execute_pay_solana_validator_debt(
         };
         let mut writer = csv::Writer::from_path(string_filename.clone())?;
 
-        for tx_result in tx_results.collection_results {
+        for tx_result in tx_results.collection_results.clone() {
             writer.serialize(tx_result)?;
         }
         filename = Some(string_filename);
         writer.flush()?;
     };
+
     if let Some(ExportFormat::Slack) = export {
-        validator_debt::post_debt_collection_to_slack(
-            tx_results.total_transactions_attempted,
-            tx_results.successful_transactions,
-            tx_results.insufficient_funds,
-            tx_results.already_paid,
-            epoch,
-            filename,
-            dry_run,
-        )
-        .await?;
+        worker::post_debt_collection_to_slack(tx_results, dry_run, filename).await?;
     }
 
     Ok(())

@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- fix(sentinel): improve retry handling for transient RPC errors([#220](https://github.com/doublezerofoundation/doublezero-offchain/pull/220))
 - fix leader schedule evaluation ([#214](https://github.com/doublezerofoundation/doublezero-offchain/pull/214))
 - improve previous epoch slot evaluation ([#213](https://github.com/doublezerofoundation/doublezero-offchain/pull/213))
 

@@ -421,7 +421,7 @@ func TestInternetLatency_RIPEAtlas_ExportMeasurementResults(t *testing.T) {
 	require.Contains(t, targetsSeen, "chi")
 }
 
-func TestInternetLatency_RIPEAtlas_ExportMeasurementResults_DeduplicatesByMeasurementSourceKey(t *testing.T) {
+func TestInternetLatency_RIPEAtlas_ExportMeasurementResults_PreservesAllSamples(t *testing.T) {
 	t.Parallel()
 
 	log := logger.With("test", t.Name())
@@ -506,7 +506,7 @@ func TestInternetLatency_RIPEAtlas_ExportMeasurementResults_DeduplicatesByMeasur
 	r := csv.NewReader(csvFile)
 	records, err := r.ReadAll()
 	require.NoError(t, err)
-	require.Len(t, records, 2, "Expected 1 header + 1 deduplicated data row")
+	require.Len(t, records, 4, "Expected 1 header + 3 data rows (all samples preserved)")
 
 	header := records[0]
 	timestampIdx := slices.Index(header, "timestamp")
@@ -514,14 +514,26 @@ func TestInternetLatency_RIPEAtlas_ExportMeasurementResults_DeduplicatesByMeasur
 	require.NotEqual(t, -1, timestampIdx)
 	require.NotEqual(t, -1, rttIdx)
 
-	dataRow := records[1]
-	timestamp, err := time.Parse(time.RFC3339, dataRow[timestampIdx])
-	require.NoError(t, err)
-	require.Equal(t, time.Unix(1609459320, 0).UTC(), timestamp)
+	// Verify all 3 samples are present
+	expectedSamples := []struct {
+		timestamp int64
+		rtt       time.Duration
+	}{
+		{1609459200, 24 * time.Millisecond},
+		{1609459260, 25 * time.Millisecond},
+		{1609459320, 26 * time.Millisecond},
+	}
 
-	rtt, err := time.ParseDuration(dataRow[rttIdx])
-	require.NoError(t, err)
-	require.Equal(t, 26*time.Millisecond, rtt)
+	for i, expected := range expectedSamples {
+		dataRow := records[i+1]
+		timestamp, err := time.Parse(time.RFC3339, dataRow[timestampIdx])
+		require.NoError(t, err)
+		require.Equal(t, time.Unix(expected.timestamp, 0).UTC(), timestamp)
+
+		rtt, err := time.ParseDuration(dataRow[rttIdx])
+		require.NoError(t, err)
+		require.Equal(t, expected.rtt, rtt)
+	}
 }
 
 func TestInternetLatency_RIPEAtlas_ListMeasurements(t *testing.T) {

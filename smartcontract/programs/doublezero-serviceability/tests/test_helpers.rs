@@ -84,7 +84,7 @@ pub fn get_type_name<T>() -> String {
 }
 
 #[allow(dead_code)]
-pub async fn get_account_data(
+pub async fn get_account_data<'a>(
     banks_client: &mut BanksClient,
     pubkey: Pubkey,
 ) -> Option<AccountData> {

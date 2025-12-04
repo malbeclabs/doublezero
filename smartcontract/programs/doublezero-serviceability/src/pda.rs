@@ -4,9 +4,10 @@ use solana_program::pubkey::Pubkey;
 
 use crate::{
     seeds::{
-        SEED_ACCESS_PASS, SEED_CONFIG, SEED_CONTRIBUTOR, SEED_DEVICE, SEED_EXCHANGE,
-        SEED_GLOBALSTATE, SEED_LINK, SEED_LOCATION, SEED_MULTICAST_GROUP, SEED_PREFIX,
-        SEED_PROGRAM_CONFIG, SEED_USER,
+        SEED_ACCESS_PASS, SEED_CONFIG, SEED_CONTRIBUTOR, SEED_DEVICE, SEED_DEVICE_TUNNEL_BLOCK,
+        SEED_DZ_PREFIX_BLOCK, SEED_EXCHANGE, SEED_GLOBALSTATE, SEED_LINK, SEED_LOCATION,
+        SEED_MULTICASTGROUP_BLOCK, SEED_MULTICAST_GROUP, SEED_PREFIX, SEED_PROGRAM_CONFIG,
+        SEED_USER, SEED_USER_TUNNEL_BLOCK,
     },
     state::user::UserType,
 };
@@ -87,4 +88,67 @@ pub fn get_accesspass_pda(
         ],
         program_id,
     )
+}
+
+pub fn get_device_tunnel_block_pda(program_id: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[SEED_PREFIX, SEED_DEVICE_TUNNEL_BLOCK], program_id)
+}
+
+pub fn get_user_tunnel_block_pda(program_id: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[SEED_PREFIX, SEED_USER_TUNNEL_BLOCK], program_id)
+}
+
+pub fn get_multicast_group_block_pda(program_id: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[SEED_PREFIX, SEED_MULTICASTGROUP_BLOCK], program_id)
+}
+
+pub fn get_dz_prefix_block_pda(
+    program_id: &Pubkey,
+    device_pk: &Pubkey,
+    index: usize,
+) -> (Pubkey, u8) {
+    Pubkey::find_program_address(
+        &[
+            SEED_PREFIX,
+            SEED_DZ_PREFIX_BLOCK,
+            &device_pk.to_bytes(),
+            &index.to_le_bytes(),
+        ],
+        program_id,
+    )
+}
+
+pub fn get_resource_extension_pda(
+    program_id: &Pubkey,
+    ip_block_type: crate::resource::IpBlockType,
+) -> (Pubkey, u8, &'static [u8]) {
+    match ip_block_type {
+        crate::resource::IpBlockType::DeviceTunnelBlock => {
+            let (pda, bump_seed) =
+                Pubkey::find_program_address(&[SEED_PREFIX, SEED_DEVICE_TUNNEL_BLOCK], program_id);
+            (pda, bump_seed, SEED_DEVICE_TUNNEL_BLOCK)
+        }
+        crate::resource::IpBlockType::UserTunnelBlock => {
+            let (pda, bump_seed) =
+                Pubkey::find_program_address(&[SEED_PREFIX, SEED_USER_TUNNEL_BLOCK], program_id);
+            (pda, bump_seed, SEED_USER_TUNNEL_BLOCK)
+        }
+        crate::resource::IpBlockType::MulticastGroupBlock => {
+            let (pda, bump_seed) =
+                Pubkey::find_program_address(&[SEED_PREFIX, SEED_MULTICASTGROUP_BLOCK], program_id);
+            (pda, bump_seed, SEED_MULTICASTGROUP_BLOCK)
+        }
+        crate::resource::IpBlockType::DzPrefixBlock(ref associated_pk, index) => {
+            let (pda, bump_seed) = Pubkey::find_program_address(
+                &[
+                    SEED_PREFIX,
+                    SEED_DZ_PREFIX_BLOCK,
+                    &associated_pk.to_bytes(),
+                    &index.to_le_bytes(),
+                ],
+                program_id,
+            );
+            (pda, bump_seed, SEED_DZ_PREFIX_BLOCK)
+        }
+    }
 }

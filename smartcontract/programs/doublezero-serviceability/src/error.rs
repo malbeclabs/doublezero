@@ -129,6 +129,10 @@ pub enum DoubleZeroError {
     InvalidUserPubkey, // variant 61
     #[error("Invalid Public IP: IP conflicts with DZ prefix")]
     InvalidPublicIp, // variant 62
+    #[error("Allocation failed, resource exhausted")]
+    AllocationFailed, // variant 63
+    #[error("Allocation failed, resource exhausted")]
+    SerializationFailure, // variant 64
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -197,6 +201,8 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::InvalidActualLocation => ProgramError::Custom(60),
             DoubleZeroError::InvalidUserPubkey => ProgramError::Custom(61),
             DoubleZeroError::InvalidPublicIp => ProgramError::Custom(62),
+            DoubleZeroError::AllocationFailed => ProgramError::Custom(63),
+            DoubleZeroError::SerializationFailure => ProgramError::Custom(64),
         }
     }
 }
@@ -266,6 +272,8 @@ impl From<u32> for DoubleZeroError {
             60 => DoubleZeroError::InvalidActualLocation,
             61 => DoubleZeroError::InvalidUserPubkey,
             62 => DoubleZeroError::InvalidPublicIp,
+            63 => DoubleZeroError::AllocationFailed,
+            64 => DoubleZeroError::SerializationFailure,
             _ => DoubleZeroError::Custom(e),
         }
     }
@@ -355,6 +363,8 @@ mod tests {
             InvalidActualLocation,
             InvalidUserPubkey,
             InvalidPublicIp,
+            AllocationFailed,
+            SerializationFailure,
         ];
         for err in variants {
             let pe: ProgramError = err.clone().into();

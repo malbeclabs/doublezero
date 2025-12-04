@@ -30,7 +30,7 @@ This RFC moves allocation logic on-chain, eliminating these concerns while maint
 ## Non-Goals
 
 1. **Changing IP ranges** — Keep using GlobalConfig values (169.254.0.0/16 for users, 172.16.0.0/16 for links)
-2. **Per-device IP pool partitioning** — Keep global pool allocation for tunnel_net (matches current activator)
+2. **Modifying existing on-chain accounts** — ResourceExtension is a new account type; existing Device, User, Link accounts remain unchanged
 
 ## Design
 
@@ -79,11 +79,12 @@ This RFC moves allocation logic on-chain, eliminating these concerns while maint
            │         ATOMIC TRANSACTION  │                             │
            │                             ▼                             │
            │  ┌────────────┐      ┌─────────────┐      ┌────────────┐  │
-           │  │GlobalState │      │   Device    │      │ AccessPass │  │
-           │  │            │      │   Account   │      │  Account   │  │
-           │  │ tunnel_net │      │ dz_ip++     │      │ users++    │  │
-           │  │   offset++ │      │ tunnel_id++ │      │            │  │
-           │  │            │      │             │      │            │  │
+           │  │ Resource   │      │   Device    │      │ AccessPass │  │
+           │  │ Extension  │      │   Account   │      │  Account   │  │
+           │  │ (device)   │      │             │      │ users++    │  │
+           │  │ tunnel_net │      │             │      │            │  │
+           │  │ tunnel_id  │      │             │      │            │  │
+           │  │ dz_ip      │      │             │      │            │  │
            │  └────────────┘      └─────────────┘      └────────────┘  │
            │                             │                             │
            │                             ▼                             │
@@ -107,84 +108,143 @@ This RFC moves allocation logic on-chain, eliminating these concerns while maint
 
 ### Core Insight
 
-The activator maintains counters and allocates sequentially from configured IP ranges. Users are created and deleted on every connection, requiring full resource recycling. We move allocation on-chain using bitmap-based ResourceAccounts that enable O(1) allocation and deallocation with complete resource reuse.
+The activator maintains counters and allocates sequentially from configured IP ranges. Users are created and deleted on every connection, requiring full resource recycling. We move allocation on-chain using bitmap-based ResourceExtension accounts that enable efficient allocation and deallocation with complete resource reuse.
 
 ### Account Modifications
 
-#### New Account: ResourceAccount
+#### Design Principle: No Changes to Existing Accounts
 
-A ResourceAccount manages allocation from an IP block using a bitmap for O(1) allocation/deallocation with full recycling.
+This RFC introduces a new `ResourceExtension` account type that manages resource allocation **without modifying existing on-chain accounts** (Device, User, Link, etc.). Each ResourceExtension is associated with either:
+
+- A specific Device (per-device resources)
+- `Pubkey::default()` (global resources)
+
+This approach reduces migration risk and simplifies the upgrade path.
+
+#### New Account: ResourceExtension
+
+A ResourceExtension manages both ID allocations (tunnel IDs, segment routing IDs) and IP block allocations (tunnel_net, dz_ip) using bitmaps.
 
 ```rust
-struct ResourceAccount {
-    account_type: AccountType,      // Discriminator
-    resource_type: ResourceType,    // UserTunnelNet, LinkTunnelNet, Multicast, DzIp
-    block: Ipv4Network,             // e.g., 169.254.0.0/16
-    slot_size: u8,                  // Bits per slot (e.g., 1 for /31 = 2 IPs)
-    total_slots: u32,               // Total allocatable slots
-    allocated_count: u32,           // Current allocation count
-    bitmap: Vec<u64>,               // 1 bit per slot (0 = free, 1 = allocated)
+struct ResourceExtension {
+    account_type: AccountType,       // Discriminator
+    associated_with: Pubkey,         // Device PK or Pubkey::default() for global
+
+    // ID bitmaps (fixed-size, inline)
+    id_allocations: Vec<IdBitmap>,
+
+    // IP block bitmaps (variable-size)
+    ip_allocations: Vec<IpBlockBitmap>,
 }
 
-enum ResourceType {
-    UserTunnelNet,    // /31 blocks from user_tunnel_block
-    LinkTunnelNet,    // /31 blocks from device_tunnel_block
-    Multicast,        // /32 from multicast_group_block
-    DzIp,             // /32 from device dz_prefixes
+struct IdBitmap {
+    id_type: IdType,                 // TunnelId, SegmentRoutingId
+    start_offset: u16,               // e.g., 500 for tunnel IDs (Arista EOS naming)
+    bitmap: [u64; 64],               // 4,096 slots
+    allocated_count: u16,
+}
+
+struct IpBlockBitmap {
+    block_type: IpBlockType,         // UserTunnelNet, LinkTunnelNet, DzIp, Multicast
+    block: Ipv4Network,              // e.g., 169.254.0.0/16
+    slot_size: u8,                   // Bits per slot (1 for /31 = 2 IPs, 0 for /32)
+    reserved_start: u8,              // Slots to skip at start (network, gateway)
+    reserved_end: u8,                // Slots to skip at end (broadcast)
+    bitmap: Vec<u64>,                // 1 bit per slot (0 = free, 1 = allocated)
+    allocated_count: u32,
+}
+
+enum IdType {
+    TunnelId,           // Interface naming (Tunnel500-Tunnel4095)
+    SegmentRoutingId,   // Segment routing labels
+}
+
+enum IpBlockType {
+    UserTunnelNet,      // /31 blocks for user tunnels
+    LinkTunnelNet,      // /31 blocks for device-to-device links
+    DzIp,               // /32 addresses from device prefixes
+    Multicast,          // /32 multicast group addresses
 }
 ```
 
 **Bitmap operations:**
 
-- **Allocate:** Find first zero bit, set it, return slot index. O(1) average case.
+- **Allocate:** Scan bitmap for first zero bit (u64 chunks), set it, return slot index. O(n/64) worst case; typically fast given low utilization.
 - **Deallocate:** Clear bit at slot index. O(1).
-- **Slot to IP:** `block.network() + (slot * (1 << slot_size))`
+- **Slot to IP:** `block.network() + reserved_start + (slot * (1 << slot_size))`
 
-**Account sizes:**
-
-| Resource          | Block Size | Slots  | Bitmap Size | Total Account |
-| ----------------- | ---------- | ------ | ----------- | ------------- |
-| UserTunnelNet     | /16        | 32,768 | 4 KB        | ~4.1 KB       |
-| LinkTunnelNet     | /16        | 32,768 | 4 KB        | ~4.1 KB       |
-| Multicast         | /24        | 256    | 32 bytes    | ~100 bytes    |
-| DzIp (per device) | /24        | 256    | 32 bytes    | ~100 bytes    |
-
-**PDA seeds:**
+#### PDA Scheme
 
 ```
-ResourceAccount: ["resource", resource_type, block_network_address]
-DzIp:            ["resource", "dz_ip", device_pk, prefix_index]
+Global ResourceExtension:     ["resource_ext", Pubkey::default()]
+Per-Device ResourceExtension: ["resource_ext", device_pk]
 ```
 
-#### Device Account (add ~1 KB)
+| Scope      | PDA Seeds                             | Contains                                        |
+| ---------- | ------------------------------------- | ----------------------------------------------- |
+| Global     | `["resource_ext", Pubkey::default()]` | LinkTunnelNet, Multicast                        |
+| Per-device | `["resource_ext", device_pk]`         | TunnelId, SegmentRoutingId, DzIp, UserTunnelNet |
 
-| Field                    | Type      | Purpose                                           |
-| ------------------------ | --------- | ------------------------------------------------- |
-| `tunnel_id_bitmap`       | [u64; 64] | 4,096 slots for tunnel interface IDs              |
-| `segment_routing_bitmap` | [u64; 64] | 4,096 slots for segment routing IDs               |
-| `dz_ip_reserved_count`   | u8        | Number of reserved IPs to skip (network, gateway) |
+**Per-device UserTunnelNet:** Each device manages its own user tunnel allocation from the global `user_tunnel_block`. This ensures users connected to a device have tunnel IPs managed by that device's ResourceExtension.
 
-**Inline bitmaps:** TunnelId and SegmentRoutingId are stored inline in the Device account rather than as separate ResourceAccounts. With only 100-200 devices expected, the ~1 KB overhead per device is acceptable and simplifies the design.
+#### Account Sizes
 
-**Tunnel ID constraint:** Interface naming (`TunnelXXX`) is limited to 4095 on Arista EOS. The bitmap supports slots 0-4095, with allocation typically starting at 500.
+| ResourceExtension Scope | ID Bitmaps                                 | IP Blocks                              | Estimated Size |
+| ----------------------- | ------------------------------------------ | -------------------------------------- | -------------- |
+| Global                  | None                                       | LinkTunnelNet (4 KB), Multicast (32 B) | ~4.2 KB        |
+| Per-device              | TunnelId (512 B), SegmentRoutingId (512 B) | UserTunnelNet (4 KB), DzIp (32 B each) | ~5.1 KB        |
 
-**Reserved IP handling:** DZ IP allocation skips the first `dz_ip_reserved_count` offsets (typically 2: network address .0 and gateway .1) and the last offset (broadcast).
+**Tunnel ID constraint:** Interface naming (`TunnelXXX`) is limited to 4095 on Arista EOS. The bitmap supports slots 0-4095, with `start_offset` typically set to 500.
+
+**Reserved IP handling:** `reserved_start` (typically 2: network .0, gateway .1) and `reserved_end` (typically 1: broadcast) are pre-marked during initialization.
 
 #### Resource Relationships
 
 ```
 GlobalConfig
     │
-    ├── user_tunnel_block ──────► ResourceAccount (UserTunnelNet)
-    ├── device_tunnel_block ────► ResourceAccount (LinkTunnelNet)
-    └── multicast_group_block ──► ResourceAccount (Multicast)
+    └── Pubkey::default() ──────► ResourceExtension (Global)
+                                      ├── LinkTunnelNet bitmap (device_tunnel_block)
+                                      └── Multicast bitmap (multicast_group_block)
 
 Device
     │
-    ├── dz_prefixes[0] ─────────► ResourceAccount (DzIp)
-    ├── dz_prefixes[1] ─────────► ResourceAccount (DzIp)
-    ├── tunnel_id_bitmap ───────► [inline, 512 bytes]
-    └── segment_routing_bitmap ─► [inline, 512 bytes]
+    └── device_pk ──────────────► ResourceExtension (Per-Device)
+                                      ├── TunnelId bitmap
+                                      ├── SegmentRoutingId bitmap
+                                      ├── UserTunnelNet bitmap (user_tunnel_block)
+                                      └── DzIp bitmap(s) (dz_prefixes)
+```
+
+#### Entity Account Additions
+
+Existing entity accounts (User, Link, Interface, MulticastGroup) gain slot tracking fields for deallocation. These are **new fields only**, not modifications to existing data:
+
+```rust
+struct User {
+    // ... existing fields unchanged ...
+    tunnel_net_slot: u32,    // Slot in device's UserTunnelNet bitmap
+    dz_ip_slot: u32,         // Slot in device's DzIp bitmap
+    tunnel_id_slot: u16,     // Slot in device's TunnelId bitmap
+}
+
+struct Link {
+    // ... existing fields unchanged ...
+    tunnel_net_slot: u32,        // Slot in global LinkTunnelNet bitmap
+    tunnel_id_slot_a: u16,       // Slot in device_a's TunnelId bitmap
+    tunnel_id_slot_b: u16,       // Slot in device_b's TunnelId bitmap
+}
+
+struct Interface {
+    // ... existing fields unchanged ...
+    segment_routing_slot: Option<u16>,  // Slot in device's SegmentRoutingId bitmap
+    dz_ip_slot: Option<u32>,            // Slot in device's DzIp bitmap
+}
+
+struct MulticastGroup {
+    // ... existing fields unchanged ...
+    multicast_slot: u32,  // Slot in global Multicast bitmap
+}
 ```
 
 ### Authority Model
@@ -198,69 +258,74 @@ pub foundation_allowlist: Vec<Pubkey>
 
 **Authorization levels:**
 
-| Operation                  | Required Authority                |
-| -------------------------- | --------------------------------- |
-| CreateResourceAccount      | foundation_allowlist member       |
-| SetResourceState           | foundation_allowlist member       |
-| BanUser                    | foundation_allowlist member       |
-| UpdateDeviceContributor    | foundation_allowlist member       |
-| CreateAndActivateUser      | AccessPass owner                  |
-| CreateAndActivateLink      | Contributor owner (either device) |
-| CreateAndActivateDevice    | Contributor owner                 |
-| CreateAndActivateInterface | Contributor owner                 |
-| DeleteUser                 | AccessPass owner                  |
-| DeleteLink                 | Creator or Contributor owner      |
-| DeleteDevice               | Contributor owner                 |
-| DeleteInterface            | Contributor owner                 |
-| SweepExpiredUsers          | Permissionless                    |
+| Operation                  | Required Authority                  |
+| -------------------------- | ----------------------------------- |
+| CreateResourceExtension    | foundation_allowlist member         |
+| AllocateResource           | foundation_allowlist OR program CPI |
+| ReleaseResource            | foundation_allowlist OR program CPI |
+| SetResourceState           | foundation_allowlist member         |
+| BanUser                    | foundation_allowlist member         |
+| UpdateDeviceContributor    | foundation_allowlist member         |
+| CreateAndActivateUser      | AccessPass owner                    |
+| CreateAndActivateLink      | Contributor owner (either device)   |
+| CreateAndActivateDevice    | Contributor owner                   |
+| CreateAndActivateInterface | Contributor owner                   |
+| DeleteUser                 | AccessPass owner                    |
+| DeleteLink                 | Creator or Contributor owner        |
+| DeleteDevice               | Contributor owner                   |
+| DeleteInterface            | Contributor owner                   |
+| SweepExpiredUsers          | Permissionless                      |
 
 ### PDA Seeds
 
-| Entity               | PDA Seeds                                                      |
-| -------------------- | -------------------------------------------------------------- |
-| User                 | `["doublezero", "user", client_ip, user_type]`                 |
-| Link                 | `["doublezero", "link", device_lo, device_hi]` (sorted)        |
-| Interface            | `["doublezero", "interface", device, name]`                    |
-| MulticastGroup       | `["doublezero", "multicast", group_address]`                   |
-| ResourceAccount      | `["doublezero", "resource", resource_type, block_network]`     |
-| DzIp ResourceAccount | `["doublezero", "resource", "dz_ip", device_pk, prefix_index]` |
+| Entity                         | PDA Seeds                                               |
+| ------------------------------ | ------------------------------------------------------- |
+| User                           | `["doublezero", "user", client_ip, user_type]`          |
+| Link                           | `["doublezero", "link", device_lo, device_hi]` (sorted) |
+| Interface                      | `["doublezero", "interface", device, name]`             |
+| MulticastGroup                 | `["doublezero", "multicast", group_address]`            |
+| ResourceExtension (global)     | `["resource_ext", Pubkey::default()]`                   |
+| ResourceExtension (per-device) | `["resource_ext", device_pk]`                           |
 
 **Index-free PDA design:** All entity PDAs use content-addressable seeds rather than global indices. This eliminates race conditions in concurrent creation and simplifies account lookups. User PDA changes are being implemented in [PR#2332](https://github.com/malbeclabs/doublezero/pull/2332); Link, Interface, and MulticastGroup follow the same pattern.
 
 ### IP Address Computation
 
-Addresses are computed from ResourceAccount bitmaps:
+Addresses are computed from ResourceExtension bitmaps:
 
-**User tunnel_net:**
-
-```
-resource = ResourceAccount(UserTunnelNet)   // manages 169.254.0.0/16
-slot = resource.allocate()                  // finds first free bit, sets it
-tunnel_net = resource.block + (slot * 2)    // /31 block (2 IPs per user)
-```
-
-**Link tunnel_net:**
+**User tunnel_net (per-device):**
 
 ```
-resource = ResourceAccount(LinkTunnelNet)   // manages 172.16.0.0/16
-slot = resource.allocate()                  // finds first free bit, sets it
-tunnel_net = resource.block + (slot * 2)    // /31 block (2 IPs per link)
+ext = ResourceExtension(device_pk)          // device's resource extension
+bitmap = ext.get_ip_bitmap(UserTunnelNet)   // manages portion of 169.254.0.0/16
+slot = bitmap.allocate()                    // finds first free bit, sets it
+tunnel_net = bitmap.block + (slot * 2)      // /31 block (2 IPs per user)
+```
+
+**Link tunnel_net (global):**
+
+```
+ext = ResourceExtension(Pubkey::default())  // global resource extension
+bitmap = ext.get_ip_bitmap(LinkTunnelNet)   // manages 172.16.0.0/16
+slot = bitmap.allocate()                    // finds first free bit, sets it
+tunnel_net = bitmap.block + (slot * 2)      // /31 block (2 IPs per link)
 ```
 
 **DZ IP (per-device):**
 
 ```
-resource = ResourceAccount(DzIp, device, prefix_index)   // manages device's prefix
-slot = resource.allocate()                               // finds first free bit
-dz_ip = resource.block + slot                            // /32 address
+ext = ResourceExtension(device_pk)          // device's resource extension
+bitmap = ext.get_ip_bitmap(DzIp)            // manages device's dz_prefixes
+slot = bitmap.allocate()                    // finds first free bit
+dz_ip = bitmap.block + slot                 // /32 address
 ```
 
-Reserved IPs (.0 network, .1 gateway, broadcast) are pre-marked as allocated during ResourceAccount creation.
+Reserved IPs (.0 network, .1 gateway, broadcast) are pre-marked as allocated during ResourceExtension creation via `reserved_start` and `reserved_end`.
 
 **Deallocation:**
 
 ```
-resource.deallocate(slot)  // clears bit, slot available for reuse
+bitmap.deallocate(slot)  // clears bit, slot available for reuse
 ```
 
 ### Logging
@@ -280,69 +345,130 @@ This enables off-chain indexers to track allocations without parsing account dat
 
 ## New Instructions
 
-### CreateResourceAccount
+### CreateResourceExtension
 
-**Purpose:** Initialize a ResourceAccount for managing an IP block.
+**Purpose:** Initialize a ResourceExtension account for managing resource allocation.
 
 **Accounts:**
 
-1. `resource_account` (PDA to create, writable)
-2. `globalconfig_account` (for block reference)
-3. `device_account` (optional, for DzIp type)
+1. `resource_extension` (PDA to create, writable)
+2. `globalconfig_account` (for IP block references)
+3. `associated_account` (Device PK for per-device, or system program for global)
 4. `authority` (signer, foundation_allowlist member)
 5. `payer` (signer)
 
+**Parameters:**
+
+- `id_bitmaps: Vec<IdBitmapConfig>` — ID bitmap configurations to initialize
+- `ip_blocks: Vec<IpBlockConfig>` — IP block configurations to initialize
+
 **Steps:**
 
-1. Derive PDA from resource_type and block
+1. Derive PDA: `["resource_ext", associated_with]`
 2. Validate authority is in foundation_allowlist
-3. Calculate bitmap size from block prefix length and slot_size
-4. Initialize bitmap with reserved slots pre-marked (e.g., .0, .1, broadcast)
-5. Create ResourceAccount with allocated_count reflecting reserved slots
+3. For each ID bitmap: initialize with zeroed bitmap, set start_offset
+4. For each IP block: calculate bitmap size, pre-mark reserved slots
+5. Create ResourceExtension account
 
-### SetResourceState
+### AllocateResource
 
-**Purpose:** Set bitmap state for migration from current allocations.
+**Purpose:** Allocate a resource slot from a ResourceExtension bitmap.
 
 **Accounts:**
 
-1. `resource_account` (writable) OR `device_account` (writable, for inline bitmaps)
+1. `resource_extension` (writable)
+2. `authority` (signer, foundation_allowlist member OR program CPI)
+
+**Parameters:**
+
+- `resource_type: ResourceType` — Which bitmap to allocate from (TunnelId, SegmentRoutingId, UserTunnelNet, etc.)
+
+**Returns:** Allocated slot index (logged and returned in instruction data)
+
+**Steps:**
+
+1. Validate authority (foundation_allowlist OR valid program CPI)
+2. Find target bitmap by resource_type
+3. Scan bitmap for first zero bit (O(n/64) with u64 chunks)
+4. Set bit, increment allocated_count
+5. Log and return slot index
+
+**Usage:** Called by foundation manually for operational needs, or internally by CreateAndActivate\* instructions via CPI.
+
+### ReleaseResource
+
+**Purpose:** Release a previously allocated resource slot.
+
+**Accounts:**
+
+1. `resource_extension` (writable)
+2. `authority` (signer, foundation_allowlist member OR program CPI)
+
+**Parameters:**
+
+- `resource_type: ResourceType` — Which bitmap to release from
+- `slot: u32` — Slot index to release
+
+**Steps:**
+
+1. Validate authority (foundation_allowlist OR valid program CPI)
+2. Find target bitmap by resource_type
+3. Validate slot is currently allocated (bit is set)
+4. Clear bit, decrement allocated_count
+5. Log released slot
+
+**Usage:** Called by foundation manually, or internally by Delete\* instructions via CPI.
+
+### SetResourceState
+
+**Purpose:** Batch set bitmap state for migration from current allocations.
+
+**Accounts:**
+
+1. `resource_extension` (writable)
 2. `authority` (signer, foundation_allowlist member)
 
 **Parameters:**
 
+- `resource_type: ResourceType` — Which bitmap to update
 - `slots: Vec<u32>` — Slot indices to mark as allocated
-- `target: ResourceTarget` — Which bitmap to update (ResourceAccount, TunnelIdBitmap, SegmentRoutingBitmap)
 
 **Steps:**
 
 1. Validate authority is in foundation_allowlist
-2. For each slot in slots:
+2. Find target bitmap by resource_type
+3. For each slot in slots:
    - Validate slot < total_slots
    - Set bit in bitmap
    - Increment allocated_count
-3. Log slots marked as allocated
+4. Log slots marked as allocated
 
 **Usage:** Called during migration to mark currently-allocated resources in the new bitmap system.
 
 ### CreateAndActivateDevice
 
-**Purpose:** Atomically create a device with initialized resource bitmaps.
+**Purpose:** Atomically create a device and its associated ResourceExtension.
 
 **Accounts:**
 
 1. `device_account` (PDA to create, writable)
-2. `contributor_account`
-3. `authority` (signer, contributor owner)
-4. `payer` (signer)
+2. `resource_extension` (PDA to create, writable)
+3. `globalconfig_account` (for IP block references)
+4. `contributor_account`
+5. `authority` (signer, contributor owner)
+6. `payer` (signer)
 
 **Steps:**
 
 1. Validate contributor is valid
-2. Initialize device with zeroed tunnel_id_bitmap and segment_routing_bitmap
-3. Set dz_ip_reserved_count based on prefix sizes
-4. Create DzIp ResourceAccounts for each prefix in dz_prefixes
-5. Set device status to `Activated`
+2. Create device account with standard fields
+3. Create ResourceExtension with PDA `["resource_ext", device_pk]`:
+   - Initialize TunnelId bitmap (start_offset=500)
+   - Initialize SegmentRoutingId bitmap
+   - Initialize UserTunnelNet bitmap from globalconfig.user_tunnel_block
+   - Initialize DzIp bitmap(s) from device's dz_prefixes
+4. Set device status to `Activated`
+5. Log device and ResourceExtension creation
 
 ### CreateAndActivateUser
 
@@ -359,11 +485,10 @@ This ensures one user per (client_ip, user_type) tuple. Duplicate attempts fail 
 **Accounts:**
 
 1. `user_account` (PDA to create, writable)
-2. `device_account` (writable, for tunnel_id_bitmap)
-3. `accesspass_account` (writable)
-4. `user_tunnel_resource` (ResourceAccount, writable)
-5. `dz_ip_resource` (ResourceAccount for device prefix, writable)
-6. `payer` (signer)
+2. `device_account`
+3. `device_resource_ext` (ResourceExtension for device, writable)
+4. `accesspass_account` (writable)
+5. `payer` (signer)
 
 **Steps:**
 
@@ -371,30 +496,19 @@ This ensures one user per (client_ip, user_type) tuple. Duplicate attempts fail 
 2. Validate `user_account` does not already exist (data_is_empty)
 3. Validate device is `Activated`
 4. Validate AccessPass: caller is owner, not expired, under max_users limit
-5. Allocate tunnel_id from `device.tunnel_id_bitmap`
-6. Allocate tunnel_net slot from `user_tunnel_resource`, compute IP
-7. Allocate dz_ip slot from `dz_ip_resource`, compute IP
+5. CPI to AllocateResource: allocate tunnel_id from device's TunnelId bitmap
+6. CPI to AllocateResource: allocate tunnel_net from device's UserTunnelNet bitmap, compute IP
+7. CPI to AllocateResource: allocate dz_ip from device's DzIp bitmap, compute IP
 8. Store slot indices in user account (for deallocation on delete)
 9. Create user account with `Activated` status
 10. Increment `accesspass.active_user_count`
 11. Log allocated tunnel_net, dz_ip, tunnel_id
 
-**User Account Fields (for resource tracking):**
-
-```rust
-struct User {
-    // ... existing fields ...
-    tunnel_net_slot: u32,    // Slot in UserTunnelNet ResourceAccount
-    dz_ip_slot: u32,         // Slot in DzIp ResourceAccount
-    tunnel_id_slot: u16,     // Slot in Device.tunnel_id_bitmap
-}
-```
-
 **Error Cases:**
 
 - `AccountAlreadyExists`: User PDA already exists for this (client_ip, user_type)
-- `UserTunnelNetExhausted`: All slots allocated in UserTunnelNet ResourceAccount
-- `DzIpExhausted`: All slots allocated in device's DzIp ResourceAccount
+- `UserTunnelNetExhausted`: All slots allocated in device's UserTunnelNet bitmap
+- `DzIpExhausted`: All slots allocated in device's DzIp bitmap
 - `TunnelIdExhausted`: All 4096 tunnel_id slots allocated on device
 
 ### CreateAndActivateLink
@@ -413,11 +527,12 @@ Sorting device keys ensures (A→B) and (B→A) resolve to the same PDA, prevent
 **Accounts:**
 
 1. `link_account` (PDA to create, writable)
-2. `device_a_account` (writable, for tunnel_id_bitmap)
-3. `device_b_account` (writable, for tunnel_id_bitmap)
-4. `contributor_a_account`, `contributor_b_account`
-5. `link_tunnel_resource` (ResourceAccount, writable)
-6. `payer` (signer)
+2. `device_a_account`, `device_b_account`
+3. `device_a_resource_ext` (ResourceExtension for device_a, writable)
+4. `device_b_resource_ext` (ResourceExtension for device_b, writable)
+5. `global_resource_ext` (ResourceExtension for global, writable)
+6. `contributor_a_account`, `contributor_b_account`
+7. `payer` (signer)
 
 **Steps:**
 
@@ -426,29 +541,18 @@ Sorting device keys ensures (A→B) and (B→A) resolve to the same PDA, prevent
 3. Validate `link_account` does not already exist (data_is_empty)
 4. Validate both devices are `Activated`
 5. Validate contributors belong to their respective devices
-6. Validate caller is contributor owner for at least one device
-7. Allocate tunnel_id from `device_a.tunnel_id_bitmap`
-8. Allocate tunnel_id from `device_b.tunnel_id_bitmap`
-9. Allocate tunnel_net slot from `link_tunnel_resource`, compute IP
+6. Validate caller is contributor owner for either device
+7. CPI to AllocateResource: allocate tunnel_id from device_a's TunnelId bitmap
+8. CPI to AllocateResource: allocate tunnel_id from device_b's TunnelId bitmap
+9. CPI to AllocateResource: allocate tunnel_net from global LinkTunnelNet bitmap, compute IP
 10. Store slot indices in link account (for deallocation on delete)
 11. Create link with `Activated` status
 12. Log allocated tunnel_net, tunnel_id_a, tunnel_id_b
 
-**Link Account Fields (for resource tracking):**
-
-```rust
-struct Link {
-    // ... existing fields ...
-    tunnel_net_slot: u32,        // Slot in LinkTunnelNet ResourceAccount
-    tunnel_id_slot_a: u16,       // Slot in device_a.tunnel_id_bitmap
-    tunnel_id_slot_b: u16,       // Slot in device_b.tunnel_id_bitmap
-}
-```
-
 **Error Cases:**
 
 - `LinkAlreadyExists`: Link PDA already exists between these devices
-- `LinkTunnelNetExhausted`: All slots allocated in LinkTunnelNet ResourceAccount
+- `LinkTunnelNetExhausted`: All slots allocated in global LinkTunnelNet bitmap
 - `TunnelIdExhausted`: One of the devices has all 4096 tunnel_id slots allocated
 
 ### CreateAndActivateInterface
@@ -458,8 +562,8 @@ struct Link {
 **Accounts:**
 
 1. `interface_account` (PDA to create, writable)
-2. `device_account` (writable, for segment_routing_bitmap)
-3. `dz_ip_resource` (ResourceAccount, writable, if loopback needs IP)
+2. `device_account`
+3. `device_resource_ext` (ResourceExtension for device, writable)
 4. `authority` (signer, contributor owner)
 5. `payer` (signer)
 
@@ -468,23 +572,13 @@ struct Link {
 1. Validate device is `Activated`
 2. Validate caller is contributor owner
 3. If loopback interface:
-   - Allocate segment_routing_id from `device.segment_routing_bitmap`
-   - Allocate IP from `dz_ip_resource` if configured
+   - CPI to AllocateResource: allocate segment_routing_id from device's SegmentRoutingId bitmap
+   - CPI to AllocateResource: allocate IP from device's DzIp bitmap if configured
 4. If physical interface:
    - Set status to unlinked
 5. Store slot indices in interface account (for deallocation on delete)
 6. Create interface account with `Activated` status
 7. Log allocated segment_routing_id, dz_ip (if applicable)
-
-**Interface Account Fields (for resource tracking):**
-
-```rust
-struct Interface {
-    // ... existing fields ...
-    segment_routing_slot: Option<u16>,  // Slot in Device.segment_routing_bitmap
-    dz_ip_slot: Option<u32>,            // Slot in DzIp ResourceAccount
-}
-```
 
 ### CreateAndActivateMulticastGroup
 
@@ -493,26 +587,18 @@ struct Interface {
 **Accounts:**
 
 1. `multicast_account` (PDA to create, writable)
-2. `multicast_resource` (ResourceAccount, writable)
-3. `authority` (signer)
+2. `global_resource_ext` (ResourceExtension for global, writable)
+3. `authority` (signer, foundation_allowlist member)
 4. `payer` (signer)
 
 **Steps:**
 
-1. Allocate slot from `multicast_resource`
-2. Compute address from `multicast_resource.block + slot`
-3. Store slot index in multicast account (for deallocation on delete)
-4. Create in `Activated` state
-5. Log allocated multicast address
-
-**MulticastGroup Account Fields (for resource tracking):**
-
-```rust
-struct MulticastGroup {
-    // ... existing fields ...
-    multicast_slot: u32,  // Slot in Multicast ResourceAccount
-}
-```
+1. Validate authority is in foundation_allowlist
+2. CPI to AllocateResource: allocate slot from global Multicast bitmap
+3. Compute address from bitmap block + slot
+4. Store slot index in multicast account (for deallocation on delete)
+5. Create in `Activated` state
+6. Log allocated multicast address
 
 ### DeleteUser
 
@@ -521,19 +607,18 @@ struct MulticastGroup {
 **Accounts:**
 
 1. `user_account` (writable, to close)
-2. `device_account` (writable, for tunnel_id_bitmap)
-3. `accesspass_account` (writable)
-4. `user_tunnel_resource` (ResourceAccount, writable)
-5. `dz_ip_resource` (ResourceAccount, writable)
-6. `authority` (signer, accesspass owner)
+2. `device_account`
+3. `device_resource_ext` (ResourceExtension for device, writable)
+4. `accesspass_account` (writable)
+5. `authority` (signer, accesspass owner)
 
 **Steps:**
 
 1. Validate user account exists
 2. Validate caller is accesspass owner
-3. Deallocate tunnel_id: clear bit at `user.tunnel_id_slot` in `device.tunnel_id_bitmap`
-4. Deallocate tunnel_net: clear bit at `user.tunnel_net_slot` in `user_tunnel_resource`
-5. Deallocate dz_ip: clear bit at `user.dz_ip_slot` in `dz_ip_resource`
+3. CPI to ReleaseResource: release tunnel_id slot from device's TunnelId bitmap
+4. CPI to ReleaseResource: release tunnel_net slot from device's UserTunnelNet bitmap
+5. CPI to ReleaseResource: release dz_ip slot from device's DzIp bitmap
 6. Decrement `accesspass.active_user_count`
 7. Close account (return lamports to owner)
 8. Log deallocated slots
@@ -547,31 +632,32 @@ Resources are immediately available for reuse by subsequent CreateAndActivateUse
 **Accounts:**
 
 1. `link_account` (writable, to close)
-2. `device_a_account` (writable, for tunnel_id_bitmap)
-3. `device_b_account` (writable, for tunnel_id_bitmap)
-4. `link_tunnel_resource` (ResourceAccount, writable)
-5. `authority` (signer, creator or contributor owner)
+2. `device_a_account`, `device_b_account`
+3. `device_a_resource_ext` (ResourceExtension for device_a, writable)
+4. `device_b_resource_ext` (ResourceExtension for device_b, writable)
+5. `global_resource_ext` (ResourceExtension for global, writable)
+6. `authority` (signer, creator or contributor owner)
 
-**Authorization:** Creator OR contributor of either device.
+**Authorization:** Creator OR contributor owner of either device.
 
 **Steps:**
 
 1. Validate link account exists
 2. Validate caller is authorized (creator or contributor owner)
-3. Deallocate tunnel_id_a: clear bit at `link.tunnel_id_slot_a` in `device_a.tunnel_id_bitmap`
-4. Deallocate tunnel_id_b: clear bit at `link.tunnel_id_slot_b` in `device_b.tunnel_id_bitmap`
-5. Deallocate tunnel_net: clear bit at `link.tunnel_net_slot` in `link_tunnel_resource`
+3. CPI to ReleaseResource: release tunnel_id_a from device_a's TunnelId bitmap
+4. CPI to ReleaseResource: release tunnel_id_b from device_b's TunnelId bitmap
+5. CPI to ReleaseResource: release tunnel_net from global LinkTunnelNet bitmap
 6. Close account (return lamports to payer)
 7. Log deallocated slots
 
 ### DeleteDevice
 
-**Purpose:** Closes device account and all associated resources.
+**Purpose:** Closes device account and its associated ResourceExtension.
 
 **Accounts:**
 
 1. `device_account` (writable, to close)
-2. `dz_ip_resources[]` (ResourceAccounts, writable, to close)
+2. `device_resource_ext` (ResourceExtension for device, writable, to close)
 3. `authority` (signer, contributor owner)
 
 **Prerequisites:**
@@ -585,7 +671,7 @@ Resources are immediately available for reuse by subsequent CreateAndActivateUse
 1. Validate device has no active users (check or require explicit proof)
 2. Validate device has no active links
 3. Validate device has no active interfaces
-4. Close all DzIp ResourceAccounts for this device
+4. Close device's ResourceExtension account (return lamports)
 5. Close device account (return lamports)
 
 ### DeleteInterface
@@ -595,8 +681,8 @@ Resources are immediately available for reuse by subsequent CreateAndActivateUse
 **Accounts:**
 
 1. `interface_account` (writable, to close)
-2. `device_account` (writable, for segment_routing_bitmap)
-3. `dz_ip_resource` (ResourceAccount, writable, if interface had IP)
+2. `device_account`
+3. `device_resource_ext` (ResourceExtension for device, writable)
 4. `authority` (signer, contributor owner)
 
 **Steps:**
@@ -604,9 +690,9 @@ Resources are immediately available for reuse by subsequent CreateAndActivateUse
 1. Validate interface account exists
 2. Validate caller is contributor owner
 3. If loopback with segment_routing_id:
-   - Deallocate: clear bit at `interface.segment_routing_slot` in `device.segment_routing_bitmap`
+   - CPI to ReleaseResource: release segment_routing slot from device's SegmentRoutingId bitmap
 4. If interface had dz_ip:
-   - Deallocate: clear bit at `interface.dz_ip_slot` in `dz_ip_resource`
+   - CPI to ReleaseResource: release dz_ip slot from device's DzIp bitmap
 5. Close account (return lamports)
 6. Log deallocated slots
 
@@ -617,14 +703,14 @@ Resources are immediately available for reuse by subsequent CreateAndActivateUse
 **Accounts:**
 
 1. `multicast_account` (writable, to close)
-2. `multicast_resource` (ResourceAccount, writable)
-3. `authority` (signer)
+2. `global_resource_ext` (ResourceExtension for global, writable)
+3. `authority` (signer, foundation_allowlist member)
 
 **Steps:**
 
 1. Validate multicast account exists
-2. Validate caller is authorized
-3. Deallocate: clear bit at `multicast.multicast_slot` in `multicast_resource`
+2. Validate caller is in foundation_allowlist
+3. CPI to ReleaseResource: release multicast slot from global Multicast bitmap
 4. Close account (return lamports)
 5. Log deallocated slot
 
@@ -635,17 +721,20 @@ Resources are immediately available for reuse by subsequent CreateAndActivateUse
 **Accounts:**
 
 1. `user_account` (writable)
-2. `device_account` (writable, for tunnel_id_bitmap)
-3. `user_tunnel_resource` (ResourceAccount, writable)
-4. `dz_ip_resource` (ResourceAccount, writable)
+2. `device_account`
+3. `device_resource_ext` (ResourceExtension for device, writable)
+4. `accesspass_account` (writable)
 5. `authority` (signer, foundation_allowlist member)
 
 **Steps:**
 
 1. Validate authority is in foundation_allowlist
-2. Deallocate all resources (same as DeleteUser steps 3-5)
-3. Mark user status as `Banned`
-4. Log deallocated slots
+2. CPI to ReleaseResource: release tunnel_id slot from device's TunnelId bitmap
+3. CPI to ReleaseResource: release tunnel_net slot from device's UserTunnelNet bitmap
+4. CPI to ReleaseResource: release dz_ip slot from device's DzIp bitmap
+5. Decrement `accesspass.active_user_count`
+6. Mark user status as `Banned`
+7. Log deallocated slots
 
 Resources are reclaimed but account remains for audit trail. Account can be closed separately if needed.
 
@@ -672,6 +761,8 @@ Resources are reclaimed but account remains for audit trail. Account can be clos
 4. Log count of users marked as OutOfCredits
 
 **Permissionless rationale:** Expiration is a factual state (timestamp comparison). Restricting who can trigger cleanup adds operational burden with no security benefit. Anyone can verify an AccessPass is expired.
+
+**Resources NOT released:** SweepExpiredUsers intentionally does NOT release allocated resources (tunnel_net, dz_ip, tunnel_id). Users marked as OutOfCredits may regain access if the AccessPass is renewed or credits are added. Resources are only released on explicit DeleteUser. This preserves the user's network identity during temporary expiration.
 
 **Lazy Invalidation:** Users on expired AccessPasses are also blocked at CreateAndActivateUser (opportunistic check). Sweeps are for explicit cleanup; users can still be lazily invalidated when they attempt operations.
 
@@ -779,43 +870,48 @@ With bitmap-based recycling, capacity is measured in **concurrent** allocations,
 | Link tunnel_net        | ~32K simultaneous   | Unlimited over time        |
 | Tunnel ID (per device) | ~3,595 per device   | Unlimited over time        |
 
-### ResourceAccount Storage Costs
+### ResourceExtension Storage Costs
 
-| Account                | Size       | Rent-exempt (SOL)  |
-| ---------------------- | ---------- | ------------------ |
-| UserTunnelNet          | ~4.1 KB    | ~0.03 SOL          |
-| LinkTunnelNet          | ~4.1 KB    | ~0.03 SOL          |
-| Multicast              | ~100 bytes | ~0.001 SOL         |
-| DzIp (per device)      | ~100 bytes | ~0.001 SOL         |
-| Device bitmap overhead | ~1 KB      | Included in Device |
+| Account                      | Size    | Rent-exempt (SOL) |
+| ---------------------------- | ------- | ----------------- |
+| Global ResourceExtension     | ~4.2 KB | ~0.03 SOL         |
+| Per-device ResourceExtension | ~5.1 KB | ~0.04 SOL         |
 
-**Total new storage:** ~8.5 KB global + ~1.1 KB per device
+**Total new storage:** ~4.2 KB global + ~5.1 KB per device
+
+**Note:** No modifications to existing Device, User, Link, Interface, or MulticastGroup accounts. New slot tracking fields are added only to newly created entities.
+
+**Pre-migration entity handling:** Entities created before migration lack slot tracking fields (`tunnel_net_slot`, `dz_ip_slot`, etc.). These entities cannot be deleted via the new Delete\* instructions since there are no slot indices to release. Pre-migration entities must be handled via the legacy activator flow until they naturally expire/disconnect, or via a separate migration instruction that backfills slot indices from their IP addresses.
 
 ## Migration
 
 ### Phase 1: Deploy Program Update
 
-1. Add ResourceAccount type to program
-2. Add bitmap fields to Device account
-3. Add slot tracking fields to User, Link, Interface, MulticastGroup accounts
-4. Program upgrade handles account resizing
+1. Add ResourceExtension account type to program
+2. Add AllocateResource and ReleaseResource instructions
+3. Add slot tracking fields to User, Link, Interface, MulticastGroup account types
+4. No changes to existing on-chain account data
 
-### Phase 2: Create ResourceAccounts
+### Phase 2: Create ResourceExtensions
 
-Create the global ResourceAccounts:
+Create the global ResourceExtension:
 
 ```
-CreateResourceAccount(UserTunnelNet, globalconfig.user_tunnel_block)
-CreateResourceAccount(LinkTunnelNet, globalconfig.device_tunnel_block)
-CreateResourceAccount(Multicast, globalconfig.multicast_group_block)
+CreateResourceExtension(
+    associated_with: Pubkey::default(),
+    ip_blocks: [LinkTunnelNet, Multicast]
+)
 ```
 
-For each device, create DzIp ResourceAccounts:
+For each existing device, create its ResourceExtension:
 
 ```
 For each device:
-  For each prefix in device.dz_prefixes:
-    CreateResourceAccount(DzIp, device, prefix_index)
+  CreateResourceExtension(
+      associated_with: device_pk,
+      id_bitmaps: [TunnelId, SegmentRoutingId],
+      ip_blocks: [UserTunnelNet, DzIp...]
+  )
 ```
 
 ### Phase 3: Initialize Resource State
@@ -830,29 +926,56 @@ interfaces = query_all_interfaces()
 multicast_groups = query_all_multicast_groups()
 
 # Compute slots from existing IP addresses
-user_tunnel_slots = [ip_to_slot(u.tunnel_net, user_tunnel_block) for u in users]
+user_tunnel_slots_by_device = group_by_device([ip_to_slot(u.tunnel_net) for u in users])
 link_tunnel_slots = [ip_to_slot(l.tunnel_net, link_tunnel_block) for l in links]
 # ... etc
 
-# Set bitmap state
-SetResourceState(user_tunnel_resource, user_tunnel_slots)
-SetResourceState(link_tunnel_resource, link_tunnel_slots)
-SetResourceState(multicast_resource, multicast_slots)
+# Set global ResourceExtension state
+SetResourceState(global_resource_ext, LinkTunnelNet, link_tunnel_slots)
+SetResourceState(global_resource_ext, Multicast, multicast_slots)
 
+# Set per-device ResourceExtension state
 For each device:
-  SetResourceState(device, TunnelIdBitmap, device_tunnel_id_slots)
-  SetResourceState(device, SegmentRoutingBitmap, device_sr_slots)
-  SetResourceState(dz_ip_resource, dz_ip_slots)
+  SetResourceState(device_resource_ext, TunnelId, device_tunnel_id_slots)
+  SetResourceState(device_resource_ext, SegmentRoutingId, device_sr_slots)
+  SetResourceState(device_resource_ext, UserTunnelNet, user_tunnel_slots_by_device[device])
+  SetResourceState(device_resource_ext, DzIp, dz_ip_slots)
 ```
 
-### Phase 4: Deploy New Instructions
+### Phase 4: Backfill Pre-existing Entities (Optional)
+
+For pre-existing entities to use the new Delete\* instructions, their slot indices must be backfilled:
+
+```
+BackfillEntitySlots {
+    entity_account: Pubkey,          // User, Link, Interface, or MulticastGroup
+    tunnel_net_slot: Option<u32>,    // Computed from entity's tunnel_net IP
+    dz_ip_slot: Option<u32>,         // Computed from entity's dz_ip
+    tunnel_id_slot: Option<u16>,     // Computed from entity's tunnel_id
+    // ... other slots as applicable
+}
+```
+
+**Authorization:** foundation_allowlist member only.
+
+**Steps:**
+
+1. Validate authority is in foundation_allowlist
+2. Validate entity exists and lacks slot indices (all zero/unset)
+3. Validate provided slots match entity's current IP addresses
+4. Write slot indices to entity account
+
+**Alternative:** Allow pre-existing entities to expire naturally. Users disconnect frequently, so most pre-migration users will be replaced by post-migration users over time.
+
+### Phase 5: Deploy New Instructions
 
 1. Add CreateAndActivate\* instructions
 2. Add Delete\* instructions with resource reclaim
-3. Update SDK to use new instructions
-4. Mark old Create + Activate as deprecated
+3. Add BackfillEntitySlots instruction (optional)
+4. Update SDK to use new instructions
+5. Mark old Create + Activate as deprecated
 
-### Phase 5: Deprecate Activator
+### Phase 6: Deprecate Activator
 
 1. New entities use atomic instructions
 2. Process remaining pending entities via activator
@@ -875,11 +998,14 @@ For each device:
 
 This RFC eliminates the activator service with bitmap-based resource management:
 
-- **~8.5 KB new global state** (ResourceAccounts for UserTunnelNet, LinkTunnelNet, Multicast)
-- **~1.1 KB new state per Device** (inline bitmaps + DzIp ResourceAccounts)
-- **Full resource recycling** via O(1) bitmap allocation/deallocation
+- **~4.2 KB new global state** (Global ResourceExtension for LinkTunnelNet, Multicast)
+- **~5.1 KB new state per Device** (Per-device ResourceExtension for TunnelId, SegmentRoutingId, UserTunnelNet, DzIp)
+- **No modifications to existing accounts** — ResourceExtension is a new account type
+- **Full resource recycling** via O(n/64) bitmap allocation and O(1) deallocation
+- **Generic AllocateResource/ReleaseResource API** — usable by foundation manually or program via CPI
 - **Zero breaking changes** to IP ranges or allocation strategy
 - **No artificial device limits**
+- **Per-device UserTunnelNet** — each device manages its own user tunnel allocations
 - **Handles high connect/disconnect churn** (users created per-connection)
 
 The design moves allocation on-chain while supporting the full lifecycle of network resources—creation, activation, and deletion with immediate resource reuse.

@@ -4,7 +4,7 @@ use crate::{
         accesspass::AccessPass, accounttype::AccountType, contributor::Contributor, device::Device,
         exchange::Exchange, globalconfig::GlobalConfig, globalstate::GlobalState, link::Link,
         location::Location, multicastgroup::MulticastGroup, programconfig::ProgramConfig,
-        user::User,
+        resource_extension::ResourceExtensionOwned, user::User,
     },
 };
 use solana_program::program_error::ProgramError;
@@ -25,6 +25,7 @@ pub enum AccountData {
     ProgramConfig(ProgramConfig),
     Contributor(Contributor),
     AccessPass(AccessPass),
+    ResourceExtension(ResourceExtensionOwned),
 }
 
 impl AccountData {
@@ -42,6 +43,7 @@ impl AccountData {
             AccountData::ProgramConfig(_) => "ProgramConfig",
             AccountData::Contributor(_) => "Contributor",
             AccountData::AccessPass(_) => "AccessPass",
+            AccountData::ResourceExtension(_) => "ResourceExtension",
         }
     }
 
@@ -59,6 +61,7 @@ impl AccountData {
             AccountData::ProgramConfig(program_config) => program_config.to_string(),
             AccountData::Contributor(contributor) => contributor.to_string(),
             AccountData::AccessPass(access_pass) => access_pass.to_string(),
+            AccountData::ResourceExtension(resource_extension) => resource_extension.to_string(),
         }
     }
 
@@ -160,23 +163,32 @@ impl TryFrom<&[u8]> for AccountData {
         }
         match AccountType::from(bytes[0]) {
             AccountType::None => Ok(AccountData::None),
-            AccountType::GlobalState => Ok(AccountData::GlobalState(GlobalState::try_from(bytes)?)),
-            AccountType::GlobalConfig => {
-                Ok(AccountData::GlobalConfig(GlobalConfig::try_from(bytes)?))
-            }
-            AccountType::Location => Ok(AccountData::Location(Location::try_from(bytes)?)),
-            AccountType::Exchange => Ok(AccountData::Exchange(Exchange::try_from(bytes)?)),
-            AccountType::Device => Ok(AccountData::Device(Device::try_from(bytes)?)),
-            AccountType::Link => Ok(AccountData::Link(Link::try_from(bytes)?)),
-            AccountType::User => Ok(AccountData::User(User::try_from(bytes)?)),
+            AccountType::GlobalState => Ok(AccountData::GlobalState(GlobalState::try_from(
+                bytes as &[u8],
+            )?)),
+            AccountType::GlobalConfig => Ok(AccountData::GlobalConfig(GlobalConfig::try_from(
+                bytes as &[u8],
+            )?)),
+            AccountType::Location => Ok(AccountData::Location(Location::try_from(bytes as &[u8])?)),
+            AccountType::Exchange => Ok(AccountData::Exchange(Exchange::try_from(bytes as &[u8])?)),
+            AccountType::Device => Ok(AccountData::Device(Device::try_from(bytes as &[u8])?)),
+            AccountType::Link => Ok(AccountData::Link(Link::try_from(bytes as &[u8])?)),
+            AccountType::User => Ok(AccountData::User(User::try_from(bytes as &[u8])?)),
             AccountType::MulticastGroup => Ok(AccountData::MulticastGroup(
-                MulticastGroup::try_from(bytes)?,
+                MulticastGroup::try_from(bytes as &[u8])?,
             )),
-            AccountType::ProgramConfig => {
-                Ok(AccountData::ProgramConfig(ProgramConfig::try_from(bytes)?))
-            }
-            AccountType::Contributor => Ok(AccountData::Contributor(Contributor::try_from(bytes)?)),
-            AccountType::AccessPass => Ok(AccountData::AccessPass(AccessPass::try_from(bytes)?)),
+            AccountType::ProgramConfig => Ok(AccountData::ProgramConfig(ProgramConfig::try_from(
+                bytes as &[u8],
+            )?)),
+            AccountType::Contributor => Ok(AccountData::Contributor(Contributor::try_from(
+                bytes as &[u8],
+            )?)),
+            AccountType::AccessPass => Ok(AccountData::AccessPass(AccessPass::try_from(
+                bytes as &[u8],
+            )?)),
+            AccountType::ResourceExtension => Ok(AccountData::ResourceExtension(
+                ResourceExtensionOwned::try_from(bytes)?,
+            )),
         }
     }
 }

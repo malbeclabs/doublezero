@@ -20,6 +20,7 @@ pub enum AccountType {
     ProgramConfig = 9,
     Contributor = 10,
     AccessPass = 11,
+    ResourceExtension = 12,
 }
 
 pub trait AccountTypeInfo {
@@ -64,6 +65,7 @@ impl fmt::Display for AccountType {
             AccountType::ProgramConfig => write!(f, "programconfig"),
             AccountType::Contributor => write!(f, "contributor"),
             AccountType::AccessPass => write!(f, "accesspass"),
+            AccountType::ResourceExtension => write!(f, "resourceextension"),
         }
     }
 }

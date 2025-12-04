@@ -9,6 +9,7 @@ pub mod accounts;
 pub mod addresses;
 pub mod error;
 pub mod instructions;
+pub mod ip_allocator;
 pub mod pda;
 pub mod processors;
 pub mod programversion;

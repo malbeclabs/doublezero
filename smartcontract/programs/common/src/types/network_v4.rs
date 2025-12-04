@@ -26,6 +26,18 @@ impl NetworkV4 {
     pub fn nth(&self, n: u32) -> Option<Ipv4Addr> {
         self.0.nth(n)
     }
+
+    pub fn size(&self) -> u32 {
+        self.0.size()
+    }
+
+    pub fn contains(&self, ip: Ipv4Addr) -> bool {
+        self.0.contains(ip)
+    }
+
+    pub fn is_subnet_of(&self, other: &NetworkV4) -> bool {
+        self.0.is_subnet_of(other.0)
+    }
 }
 
 impl Default for NetworkV4 {

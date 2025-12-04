@@ -1,0 +1,375 @@
+use doublezero_program_common::types::NetworkV4;
+use std::net::Ipv4Addr;
+
+/// Manages a block of allocatable IP addresses using a bitmap.
+pub struct IpAllocator<'a> {
+    /// The starting IP address and netmask of the resource block.
+    pub base_net: NetworkV4,
+    /// The number of **individual addresses** in one allocation block.
+    /// E.g., 1 for /32, 2 for /31, 8 for /29.
+    pub allocation_size: u32,
+    /// Bitmap where each bit represents an allocatable unit.
+    /// Bit 'i' corresponds to the address block starting at:
+    /// base_net.addr + (i * allocation_size)
+    pub bitmap: &'a mut [u8],
+}
+
+impl<'a> IpAllocator<'a> {
+    pub fn new(
+        base_net: NetworkV4,
+        allocation_size: u32,
+        bitmap: &'a mut [u8],
+    ) -> Result<Self, String> {
+        let allocation_prefix_len =
+            address_count_to_prefix_len(allocation_size).ok_or("Invalid allocation size.")?;
+
+        if allocation_prefix_len < base_net.prefix() || allocation_prefix_len > 32 {
+            return Err("Allocation prefix must be within the base net's range (base_net.prefix_len() <= allocation_prefix_len <= 32)".into());
+        }
+
+        // Total number of allocatable blocks in the base net
+        let total_addresses: u32 = base_net.size();
+        let total_allocations = total_addresses / allocation_size;
+
+        if total_allocations == 0 {
+            return Err("The base network is too small for the specified allocation size.".into());
+        }
+
+        // Calculate the required size of the bitmap in bytes
+        let bitmap_len: usize = (total_allocations as usize + 7) / 8;
+
+        if bitmap.len() < bitmap_len {
+            return Err(format!(
+                "Bitmap length mismatch: expected {}, got {}",
+                bitmap_len,
+                bitmap.len()
+            ));
+        }
+
+        Ok(IpAllocator {
+            base_net,
+            allocation_size,
+            bitmap,
+        })
+    }
+
+    pub fn allocate(&mut self) -> Option<NetworkV4> {
+        let allocation_prefix_len = address_count_to_prefix_len(self.allocation_size).unwrap();
+
+        let total_bits = self.base_net.size() / self.allocation_size;
+        let mut remaining_bits = total_bits as usize;
+
+        // Iterate through the bitmap bytes with the optimization
+        for (byte_index, byte) in self.bitmap.iter_mut().enumerate() {
+            if remaining_bits == 0 {
+                break;
+            }
+
+            // OPTIMIZATION: Skip the byte if it's full (all bits set)
+            if *byte == 0xFF {
+                remaining_bits = remaining_bits.saturating_sub(8);
+                continue;
+            }
+
+            // Check each bit within the byte
+            for bit_offset in 0..remaining_bits.min(8) {
+                let mask: u8 = 1 << bit_offset;
+                if (*byte & mask) == 0 {
+                    // Bit is free (0)
+                    let global_bit_index = (byte_index * 8 + bit_offset) as u32;
+
+                    // Ensure we don't exceed the total allocatable blocks
+                    assert!(global_bit_index < total_bits);
+
+                    // 1. **Mark as allocated** (set the bit to 1)
+                    *byte |= mask;
+
+                    // 2. **Calculate the allocated IPNet**
+                    let base_ip_v4 = self.base_net.ip();
+
+                    // The allocated IP address is: base_ip + (index * allocation_size)
+                    let allocated_ip_int = u32::from_be_bytes(base_ip_v4.octets())
+                        + (global_bit_index * self.allocation_size);
+
+                    let allocated_ip = Ipv4Addr::from(allocated_ip_int);
+
+                    // Construct the NetworkV4 (IP + prefix length)
+                    let allocated_net = NetworkV4::new(allocated_ip, allocation_prefix_len)
+                        .expect("Valid IP and prefix length");
+
+                    return Some(allocated_net);
+                }
+            }
+
+            remaining_bits = remaining_bits.saturating_sub(8);
+        }
+
+        // No free blocks found
+        None
+    }
+
+    pub fn allocate_specific(&mut self, ip_net: NetworkV4) -> Result<(), String> {
+        // Check if the ip_net is within the base network
+        if !ip_net.is_subnet_of(&self.base_net) {
+            return Err("The specified IP is outside the base network.".into());
+        }
+
+        if ip_net.prefix() != address_count_to_prefix_len(self.allocation_size).unwrap() {
+            return Err("The specified IP does not match the allocation size.".into());
+        }
+
+        let base_ip_int = u32::from_be_bytes(self.base_net.ip().octets());
+        let ip_int = u32::from_be_bytes(ip_net.ip().octets());
+
+        // Calculate offset and check alignment
+        let offset = ip_int.checked_sub(base_ip_int).unwrap();
+        if offset % self.allocation_size != 0 {
+            return Err("Requested IP is not aligned to allocation size.".into());
+        }
+
+        let global_bit_index = offset / self.allocation_size;
+        let total_bits = self.base_net.size() / self.allocation_size;
+        if global_bit_index >= total_bits {
+            return Err("The specified IP is outside the allocatable range.".into());
+        }
+
+        let byte_index = (global_bit_index / 8) as usize;
+        let bit_offset = (global_bit_index % 8) as u8;
+        let mask: u8 = 1 << bit_offset;
+
+        if (self.bitmap[byte_index] & mask) != 0 {
+            return Err("The specified IP is already allocated.".into());
+        }
+
+        self.bitmap[byte_index] |= mask;
+
+        Ok(())
+    }
+
+    pub fn deallocate(&mut self, release_net: &NetworkV4) -> bool {
+        let allocation_prefix_len = address_count_to_prefix_len(self.allocation_size).unwrap();
+
+        // 1. Validate the network being released
+        if release_net.prefix() != allocation_prefix_len
+            || !release_net.is_subnet_of(&self.base_net)
+        {
+            return false;
+        }
+
+        // 2. Calculate the global bit index
+        let base_ip_v4 = self.base_net.ip();
+        let release_ip_v4 = release_net.ip();
+
+        let base_ip_int = u32::from_be_bytes(base_ip_v4.octets());
+        let release_ip_int = u32::from_be_bytes(release_ip_v4.octets());
+
+        let offset_addresses = release_ip_int - base_ip_int;
+
+        // The index of the bit to clear
+        let global_bit_index = offset_addresses / self.allocation_size;
+
+        let total_bits = (self.bitmap.len() * 8) as u32;
+
+        if global_bit_index >= total_bits {
+            return false;
+        }
+
+        // 3. Clear the corresponding bit
+        let byte_index = (global_bit_index / 8) as usize;
+        let bit_offset = (global_bit_index % 8) as u8;
+        let mask: u8 = 1 << bit_offset;
+
+        // Check if the bit was set before clearing (optional but good for debugging/validation)
+        let was_set = (self.bitmap[byte_index] & mask) != 0;
+
+        // Clear the bit (set to 0)
+        self.bitmap[byte_index] &= !mask;
+
+        was_set
+    }
+
+    pub fn iter_allocated<'b>(&'b self) -> impl Iterator<Item = NetworkV4> + 'b {
+        let base_addr = self.base_net.ip().to_bits();
+        let netmask = address_count_to_prefix_len(self.allocation_size).unwrap();
+        self.bitmap
+            .iter()
+            .enumerate()
+            .flat_map(move |(byte_idx, byte)| {
+                (0..8).filter_map(move |bit_idx| {
+                    let i = byte_idx * 8 + bit_idx;
+                    if (byte >> bit_idx) & 1 == 1 {
+                        // Calculate the starting address for this allocation
+                        let addr = base_addr + (i as u32) * self.allocation_size;
+                        Some(NetworkV4::new(Ipv4Addr::from_bits(addr), netmask).unwrap())
+                    } else {
+                        None
+                    }
+                })
+            })
+    }
+}
+
+fn address_count_to_prefix_len(num_addresses: u32) -> Option<u8> {
+    if num_addresses == 0 || (num_addresses & (num_addresses - 1)) != 0 {
+        return None; // Cannot convert non-power-of-2 address count
+    }
+
+    let host_bits = num_addresses.trailing_zeros();
+    Some(32 - host_bits as u8)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_allocate_and_deallocate() {
+        // 192.168.1.0/30 has 4 addresses, /32 allocations = 4 allocatable blocks
+        let mut bitmap = [0u8; 1];
+        let mut allocator =
+            IpAllocator::new("192.168.1.0/30".parse().unwrap(), 1, &mut bitmap).unwrap();
+
+        let mut allocated = vec![];
+        for _ in 0..4 {
+            let net = allocator.allocate();
+            assert!(net.is_some());
+            allocated.push(net.unwrap());
+            println!("Allocated: {}", allocated.last().unwrap());
+        }
+        // No more allocations should be possible
+        assert!(allocator.allocate().is_none());
+
+        // Deallocate one and allocate again
+        assert!(allocator.deallocate(&allocated[2]));
+        let net = allocator.allocate();
+        assert_eq!(net, Some(allocated[2]));
+    }
+
+    #[test]
+    fn test_deallocate_invalid() {
+        let mut bitmap = [0u8; 1];
+        let mut allocator =
+            IpAllocator::new("10.0.0.0/30".parse().unwrap(), 1, &mut bitmap).unwrap();
+
+        // Not allocated yet
+        let net = "10.0.0.2/32".parse().unwrap();
+        assert!(!allocator.deallocate(&net));
+
+        // Wrong prefix
+        let net_wrong = "10.0.0.2/31".parse().unwrap();
+        assert!(!allocator.deallocate(&net_wrong));
+
+        // Outside base net
+        let net_out = "10.0.1.0/32".parse().unwrap();
+        assert!(!allocator.deallocate(&net_out));
+    }
+
+    #[test]
+    fn test_bitmap_length_mismatch() {
+        let base_net = "192.168.0.0/29".parse().unwrap();
+        // /32 allocations: 8 addresses, 8 allocatable blocks, needs 1 byte
+        let mut bitmap = [0u8; 0]; // too short
+        let res = IpAllocator::new(base_net, 32, &mut bitmap);
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_allocation_prefix_range_check() {
+        let base_net = "192.168.0.0/24".parse().unwrap();
+        let mut bitmap = [0u8; 1];
+        // allocation_prefix_len < base_net.prefix()
+        let res = IpAllocator::new(base_net, 16, &mut bitmap);
+        assert!(res.is_err());
+        // allocation_prefix_len > 32
+        let res = IpAllocator::new(base_net, 33, &mut bitmap);
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_allocate_specific_success() {
+        let base_net = "192.168.0.0/24".parse().unwrap();
+        let mut bitmap = [0u8; 2];
+        let mut allocator = IpAllocator::new(base_net, 16, &mut bitmap).unwrap();
+
+        let ip = "192.168.0.16/28".parse().unwrap();
+        let result = allocator.allocate_specific(ip);
+        assert!(result.is_ok());
+        assert!(allocator.deallocate(&ip));
+    }
+
+    #[test]
+    fn test_allocate_specific_mismatched_allocation_size() {
+        let base_net = "192.168.0.0/24".parse().unwrap();
+        let mut bitmap = [0u8; 2];
+        let mut allocator = IpAllocator::new(base_net, 16, &mut bitmap).unwrap();
+
+        let ip = "192.168.0.16/32".parse().unwrap();
+        let result = allocator.allocate_specific(ip);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_allocate_specific_not_in_base_net() {
+        let base_net = "192.168.0.0/24".parse().unwrap();
+        let mut bitmap = [0u8; 2];
+        let mut allocator = IpAllocator::new(base_net, 16, &mut bitmap).unwrap();
+        let ip = "10.0.0.0/28".parse().unwrap();
+        assert!(allocator.allocate_specific(ip).is_err());
+    }
+
+    #[test]
+    fn test_allocate_specific_not_aligned() {
+        let base_net = "192.168.0.0/24".parse().unwrap();
+        let mut bitmap = [0u8; 2];
+        let mut allocator = IpAllocator::new(base_net, 16, &mut bitmap).unwrap();
+        let ip = "192.168.0.3/28".parse().unwrap(); // Not aligned to allocation_size=16
+        assert!(allocator.allocate_specific(ip).is_err());
+    }
+
+    #[test]
+    fn test_allocate_specific_already_allocated() {
+        let base_net = "192.168.0.0/24".parse().unwrap();
+        let mut bitmap = [0u8; 2];
+        let mut allocator = IpAllocator::new(base_net, 16, &mut bitmap).unwrap();
+        let ip = "192.168.0.32/28".parse().unwrap();
+        assert!(allocator.allocate_specific(ip).is_ok());
+        // Try to allocate again
+        assert!(allocator.allocate_specific(ip).is_err());
+    }
+
+    #[test]
+    fn test_iter_allocated() {
+        let base_net = "192.168.0.0/24".parse().unwrap();
+        let mut bitmap = [0u8; 32];
+        let mut allocator = IpAllocator::new(base_net, 1, &mut bitmap).unwrap();
+        assert!(allocator.allocate().is_some());
+        assert!(allocator.allocate().is_some());
+        assert!(allocator.allocate().is_some());
+        assert!(allocator.allocate().is_some());
+
+        let ip = "192.168.0.10/32".parse().unwrap();
+        assert!(allocator.allocate_specific(ip).is_ok());
+
+        let ip = "192.168.0.42/32".parse().unwrap();
+        assert!(allocator.allocate_specific(ip).is_ok());
+
+        let allocated_ips: Vec<NetworkV4> = allocator.iter_allocated().collect();
+        assert_eq!(allocated_ips.len(), 6);
+        assert_eq!(allocated_ips[0], "192.168.0.0/32".parse().unwrap());
+        assert_eq!(allocated_ips[1], "192.168.0.1/32".parse().unwrap());
+        assert_eq!(allocated_ips[2], "192.168.0.2/32".parse().unwrap());
+        assert_eq!(allocated_ips[3], "192.168.0.3/32".parse().unwrap());
+        assert_eq!(allocated_ips[4], "192.168.0.10/32".parse().unwrap());
+        assert_eq!(allocated_ips[5], "192.168.0.42/32".parse().unwrap());
+
+        assert!(allocator.deallocate(&"192.168.0.1/32".parse().unwrap()));
+        assert!(allocator.deallocate(&"192.168.0.3/32".parse().unwrap()));
+
+        let allocated_ips: Vec<NetworkV4> = allocator.iter_allocated().collect();
+        assert_eq!(allocated_ips.len(), 4);
+        assert_eq!(allocated_ips[0], "192.168.0.0/32".parse().unwrap());
+        assert_eq!(allocated_ips[1], "192.168.0.2/32".parse().unwrap());
+        assert_eq!(allocated_ips[2], "192.168.0.10/32".parse().unwrap());
+        assert_eq!(allocated_ips[3], "192.168.0.42/32".parse().unwrap());
+    }
+}

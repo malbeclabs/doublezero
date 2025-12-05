@@ -13,27 +13,28 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-type KernelState string
+type LivenessPeerMode string
 
 const (
-	KernelStateUnknown KernelState = "unknown"
-	KernelStatePresent KernelState = "present"
-	KernelStateAbsent  KernelState = "absent"
+	LivenessPeerModeActive  LivenessPeerMode = "active"
+	LivenessPeerModePassive LivenessPeerMode = "passive"
 )
 
-func (r KernelState) String() string {
-	return string(r)
+func (l LivenessPeerMode) String() string {
+	return string(l)
 }
 
 type Route struct {
-	Network             string      `json:"network"`
-	UserType            UserType    `json:"user_type"`
-	LocalIP             string      `json:"local_ip"`
-	PeerIP              string      `json:"peer_ip"`
-	KernelState         KernelState `json:"kernel_state"`
-	LivenessLastUpdated string      `json:"liveness_last_updated,omitempty"`
-	LivenessState       string      `json:"liveness_state,omitempty"`
-	LivenessStateReason string      `json:"liveness_state_reason,omitempty"`
+	Network                     string   `json:"network"`
+	UserType                    UserType `json:"user_type"`
+	LocalIP                     string   `json:"local_ip"`
+	PeerIP                      string   `json:"peer_ip"`
+	KernelState                 string   `json:"kernel_state,omitempty"`
+	LivenessLastUpdated         string   `json:"liveness_last_updated,omitempty"`
+	LivenessState               string   `json:"liveness_state,omitempty"`
+	LivenessStateReason         string   `json:"liveness_state_reason,omitempty"`
+	LivenessExpectedKernelState string   `json:"liveness_expected_kernel_state,omitempty"`
+	LivenessPeerMode            string   `json:"liveness_peer_mode,omitempty"`
 }
 
 type routeKey struct {
@@ -77,16 +78,16 @@ func ServeRoutesHandler(nlr bgp.RouteReaderWriter, lm LivenessManager, db DBRead
 				continue
 			}
 			for _, svc := range services {
-				if svc.TunnelSrc == nil || svc.TunnelNet == nil || svc.TunnelNet.IP == nil {
+				if svc.DoubleZeroIP == nil || svc.TunnelSrc == nil || svc.TunnelNet == nil || svc.TunnelNet.IP == nil {
 					continue
 				}
-				if svc.TunnelSrc.Equal(rt.Src) && svc.TunnelNet.IP.Equal(rt.NextHop) {
+				if svc.DoubleZeroIP.Equal(rt.Src) && svc.TunnelNet.IP.Equal(rt.NextHop) {
 					kernelRoutes[routeKeyFor(rt)] = &Route{
 						Network:     networkConfig.Moniker,
 						UserType:    svc.UserType,
 						LocalIP:     rt.Src.To4().String(),
 						PeerIP:      rt.Dst.IP.To4().String(),
-						KernelState: KernelStatePresent,
+						KernelState: liveness.KernelStatePresent.String(),
 					}
 					break
 				}
@@ -104,17 +105,17 @@ func ServeRoutesHandler(nlr bgp.RouteReaderWriter, lm LivenessManager, db DBRead
 					continue
 				}
 				for _, svc := range services {
-					if svc.TunnelSrc == nil || svc.TunnelNet == nil || svc.TunnelNet.IP == nil {
+					if svc.DoubleZeroIP == nil || svc.TunnelNet == nil || svc.TunnelNet.IP == nil {
 						continue
 					}
-					if !svc.TunnelSrc.Equal(rt.Src) || !svc.TunnelNet.IP.Equal(rt.NextHop) {
+					if !svc.DoubleZeroIP.Equal(rt.Src) || !svc.TunnelNet.IP.Equal(rt.NextHop) {
 						continue
 					}
 
 					rk := routeKeyFor(rt)
-					kernelState := KernelStateAbsent
+					kernelState := liveness.KernelStateAbsent.String()
 					if _, ok := kernelRoutes[rk]; ok {
-						kernelState = KernelStatePresent
+						kernelState = liveness.KernelStatePresent.String()
 					}
 
 					var stateReason string
@@ -123,14 +124,16 @@ func ServeRoutesHandler(nlr bgp.RouteReaderWriter, lm LivenessManager, db DBRead
 					}
 
 					livenessRoutes[rk] = &Route{
-						Network:             networkConfig.Moniker,
-						UserType:            svc.UserType,
-						LocalIP:             rt.Src.To4().String(),
-						PeerIP:              rt.Dst.IP.To4().String(),
-						KernelState:         kernelState,
-						LivenessLastUpdated: sess.LastUpdated.UTC().Format(time.RFC3339),
-						LivenessState:       sess.State.String(),
-						LivenessStateReason: stateReason,
+						Network:                     networkConfig.Moniker,
+						UserType:                    svc.UserType,
+						LocalIP:                     rt.Src.To4().String(),
+						PeerIP:                      rt.Dst.IP.To4().String(),
+						KernelState:                 kernelState,
+						LivenessLastUpdated:         sess.LastUpdated.UTC().Format(time.RFC3339),
+						LivenessState:               sess.State.String(),
+						LivenessStateReason:         stateReason,
+						LivenessExpectedKernelState: sess.ExpectedKernelState.String(),
+						LivenessPeerMode:            sess.PeerAdvertisedMode.String(),
 					}
 					break
 				}

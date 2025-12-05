@@ -108,3 +108,47 @@ func TestClient_Liveness_Packet_PaddingRemainsZero(t *testing.T) {
 	b := cp.Marshal()
 	require.True(t, bytes.Equal(b[20:], make([]byte, 20)))
 }
+
+func TestClient_Liveness_Packet_PassiveFlagRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	cp := &ControlPacket{
+		Version:         1,
+		State:           StateUp,
+		DetectMult:      3,
+		LocalDiscr:      0x11223344,
+		PeerDiscr:       0x55667788,
+		DesiredMinTxUs:  0x01020304,
+		RequiredMinRxUs: 0x0A0B0C0D,
+	}
+	require.False(t, cp.IsPassive())
+	require.Equal(t, "none", cp.FlagsString())
+
+	cp.SetPassive()
+	require.True(t, cp.IsPassive())
+	require.Equal(t, "passive", cp.FlagsString())
+
+	b := cp.Marshal()
+	require.Len(t, b, 40)
+	require.Equal(t, uint8(FlagPassive), b[20], "passive flag should be encoded at byte 20")
+
+	got, err := UnmarshalControlPacket(b)
+	require.NoError(t, err)
+	require.True(t, got.IsPassive())
+	require.Equal(t, "passive", got.FlagsString())
+}
+
+func TestClient_Liveness_Packet_SetPassiveIsIdempotent(t *testing.T) {
+	t.Parallel()
+
+	cp := &ControlPacket{Version: 1, State: StateUp, DetectMult: 1}
+	require.False(t, cp.IsPassive())
+
+	cp.SetPassive()
+	require.True(t, cp.IsPassive())
+	firstFlags := cp.Flags
+
+	cp.SetPassive()
+	require.True(t, cp.IsPassive())
+	require.Equal(t, firstFlags, cp.Flags, "SetPassive should not flip other bits")
+}

@@ -39,8 +39,14 @@ var (
 	notQuietFlag = flag.Bool("not-quiet", false, "do not quiet logging")
 )
 
+func parallelIfNotCI(t *testing.T) {
+	if os.Getenv("CI") != "" {
+		t.Parallel()
+	}
+}
+
 func TestClient_Liveness_Faults_FlapsOnConnectivityLoss(t *testing.T) {
-	t.Parallel()
+	parallelIfNotCI(t)
 
 	if testing.Short() {
 		t.Skip("Skipping flapping test in short mode")
@@ -157,7 +163,7 @@ func TestClient_Liveness_Faults_FlapsOnConnectivityLoss(t *testing.T) {
 }
 
 func TestClient_Liveness_Faults_SoftLoss_PartialPacketLoss(t *testing.T) {
-	t.Parallel()
+	parallelIfNotCI(t)
 
 	if testing.Short() {
 		t.Skip("Skipping soft-loss test in short mode")
@@ -260,7 +266,7 @@ func TestClient_Liveness_Faults_SoftLoss_PartialPacketLoss(t *testing.T) {
 }
 
 func TestClient_Liveness_Faults_HardLoss_PermanentOutage(t *testing.T) {
-	t.Parallel()
+	parallelIfNotCI(t)
 
 	if testing.Short() {
 		t.Skip("Skipping hard-loss test in short mode")
@@ -357,7 +363,7 @@ func TestClient_Liveness_Faults_HardLoss_PermanentOutage(t *testing.T) {
 }
 
 func TestClient_Liveness_Faults_SoftLoss_TimeoutAtHighLoss(t *testing.T) {
-	t.Parallel()
+	parallelIfNotCI(t)
 
 	if testing.Short() {
 		t.Skip("Skipping high soft-loss timeout test in short mode")
@@ -499,7 +505,7 @@ func TestClient_Liveness_Faults_SoftLoss_TimeoutAtHighLoss(t *testing.T) {
 }
 
 func TestClient_Liveness_Faults_MixedPassiveConfigs_RemoteAdminAndTimeoutKeepRouteInstalled(t *testing.T) {
-	t.Parallel()
+	parallelIfNotCI(t)
 
 	if testing.Short() {
 		t.Skip("Skipping mixed passive fault test in short mode")

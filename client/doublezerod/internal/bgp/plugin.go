@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net"
 	"net/netip"
+	"sync/atomic"
 	"time"
 
 	"github.com/jwhited/corebgp"
@@ -20,6 +21,10 @@ type Plugin struct {
 	FlushRoutes       bool
 	NoInstall         bool
 	RouteReaderWriter RouteReaderWriter
+
+	// These fields are used to track the initial establishment of the BGP session.
+	startedAt              time.Time
+	initialallyEstablished atomic.Bool
 }
 
 func NewBgpPlugin(
@@ -38,6 +43,7 @@ func NewBgpPlugin(
 		FlushRoutes:       flushRoutes,
 		NoInstall:         noInstall,
 		RouteReaderWriter: routeReaderWriter,
+		startedAt:         time.Now(),
 	}
 }
 
@@ -62,7 +68,17 @@ func (p *Plugin) OnOpenMessage(peer corebgp.PeerConfig, routerID netip.Addr, cap
 }
 
 func (p *Plugin) OnEstablished(peer corebgp.PeerConfig, writer corebgp.UpdateMessageWriter) corebgp.UpdateMessageHandler {
-	slog.Info("bgp: peer established")
+	if p.initialallyEstablished.CompareAndSwap(false, true) {
+		// If this is the first time we've established the session, record the duration.
+		// If the session is closed and then re-established within the lifetime of the same BGP plugin,
+		// we don't want to record the duration again since we have no starting time to compare to for
+		// those instances.
+		duration := time.Since(p.startedAt)
+		MetricSessionEstablishedDuration.WithLabelValues(peer.RemoteAddress.String()).Observe(duration.Seconds())
+		slog.Info("bgp: peer established", "duration", duration.String(), "peer", peer.RemoteAddress)
+	} else {
+		slog.Info("bgp: peer re-established", "peer", peer.RemoteAddress)
+	}
 	for _, nlri := range p.AdvertisedNLRI {
 		update, err := p.buildUpdate(nlri)
 		if err != nil {

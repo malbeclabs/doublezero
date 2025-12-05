@@ -13,6 +13,8 @@ All notable changes to this project will be documented in this file.
   - Fixed a bug that caused ripeatlas samples to be dropped when they were delayed to the next collection cycle
 - Controller
   - Add histogram metric for GetConfig request duration
+- Device agents
+  - Increase default controller request timeout in config agent
 
 ## [v0.8.0](https://github.com/malbeclabs/doublezero/compare/client/v0.7.1...client/v0.8.0) – 2025-12-02
 

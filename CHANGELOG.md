@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- CLI
+  - IP address lookup responses that do not contain a valid IPv4 address (such as upstream timeout messages) are now treated as retryable errors instead of being parsed as IPs.
+
 ## [v0.8.0](https://github.com/malbeclabs/doublezero/compare/client/v0.7.1...client/v0.8.0) – 2025-12-02
 
 ### Breaking

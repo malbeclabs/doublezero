@@ -105,7 +105,7 @@ func ServeRoutesHandler(nlr bgp.RouteReaderWriter, lm LivenessManager, db DBRead
 					continue
 				}
 				for _, svc := range services {
-					if svc.DoubleZeroIP == nil || svc.TunnelNet == nil || svc.TunnelNet.IP == nil {
+					if svc.DoubleZeroIP == nil || svc.TunnelSrc == nil || svc.TunnelNet == nil || svc.TunnelNet.IP == nil {
 						continue
 					}
 					if !svc.DoubleZeroIP.Equal(rt.Src) || !svc.TunnelNet.IP.Equal(rt.NextHop) {

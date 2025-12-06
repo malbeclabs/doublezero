@@ -1,0 +1,215 @@
+city,country_code,metro
+Port Elizabeth,ZA,Port Elizabeth
+Sao Paulo,BR,São Paulo
+São Paulo,BR,São Paulo
+Frankfurt am Main,DE,Frankfurt
+City of London,GB,London
+Singapore,SG,Singapore
+Mexico City,MX,Mexico City
+Tower Hamlets,GB,London
+Piscataway,US,New York
+Lisbon,PT,Lisbon
+Bratislava,SK,Bratislava
+Tokyo,JP,Tokyo
+Madrid,ES,Madrid
+Strasbourg,FR,Strasbourg
+Kent,US,Seattle
+Isando,ZA,Johannesburg
+Johannesburg,ZA,Johannesburg
+Miami,US,Miami
+Whitechapel,GB,London
+Vienna,AT,Vienna
+Espoo,FI,Helsinki
+Montreal,CA,Montreal
+Santa Clara,US,San Jose
+Toronto,CA,Toronto
+Amsterdam,NL,Amsterdam
+Elk Grove Village,US,Chicago
+Dallas,US,Dallas
+Offenbach,DE,Frankfurt
+Atlanta,US,Atlanta
+Loganville,US,Atlanta
+Riga,LV,Riga
+Fechenheim,DE,Frankfurt
+Norwalk,US,New York
+Bogota,CO,Bogota
+Chicago,US,Chicago
+Ashburn,US,Washington
+Paris,FR,Paris
+Boston,US,Boston
+Stockholm,SE,Stockholm
+New York,US,New York
+Weesp,NL,Amsterdam
+Munich,DE,Munich
+Charlotte,US,Charlotte
+London,GB,London
+Prague,CZ,Prague
+Clifton,US,New York
+Los Angeles,US,Los Angeles
+Aubervilliers,FR,Paris
+Dublin,IE,Dublin
+Pittsburgh,US,Pittsburgh
+Newark,US,New York
+Edinburgh,GB,Edinburgh
+Rotterdam,NL,Rotterdam
+Anchorage,US,Anchorage
+Ogden,US,Salt Lake City
+Slough,GB,London
+Osasco,BR,Sao Paulo
+Queretaro City,MX,Querétaro City
+Querétaro City,MX,Querétaro City
+Tampa,US,Tampa
+Groningen,NL,Groningen
+Boardman,US,Boardman
+Draper,US,Salt Lake City
+Haarlem,NL,Amsterdam
+Hattersheim,DE,Frankfurt
+Vancouver,CA,Vancouver
+Russelsheim am Main,DE,Frankfurt
+Bluffdale,US,Salt Lake City
+Hong Kong,HK,Hong Kong
+Rugby,GB,Birmingham
+Warsaw,PL,Warsaw
+Bexley,GB,London
+Tirana,AL,Tirana
+Falkenstein,DE,Falkenstein
+San Jose,US,San Jose
+Santiago,CL,Santiago
+Staten Island,US,New York
+Secaucus,US,New York
+Frankfurt (Oder),DE,Frankfurt
+Metairie,US,New Orleans
+Moscow,RU,Moscow
+Urdorf,CH,Zurich
+Oslo,NO,Oslo
+Zurich,CH,Zurich
+Gurugram,IN,Delhi
+Siauliai,LT,Siauliai
+Kyiv,UA,Kyiv
+Frechen,DE,Rhine-Ruhr
+Rüsselsheim am Main,DE,Rhine-Ruhr
+Langenzersdorf,AT,Vienna
+City of Westminster,GB,London
+Coventry,GB,Birmingham
+Halfweg,NL,Amsterdam
+Lviv,UA,Lviv
+Las Vegas,US,Las Vegas
+Boyd,US,Dallas
+Odesa,UA,Odesa
+Buenos Aires,AR,Buenos Aires
+Washington,US,Washington
+Santiago de Queretaro,MX,Queretaro City
+Oi,JP,Tokyo
+Salt Lake City,US,Salt Lake City
+Seoul,KR,Seoul
+Kwai Chung,HK,Hong Kong
+Togoshi,JP,Tokyo
+New Springville,US,New York
+Benoni,ZA,Johannesburg
+Lille,FR,Lille
+Alcobendas,ES,Madrid
+St. Louis,US,St. Louis
+Swinton,GB,Manchester
+Campbell,US,San Jose
+Ponte San Pietro,IT,Milan
+Saint-Germain-les-Arpajon,FR,Paris
+Cambridge,US,Boston
+Utrecht,NL,Utrecht
+Crumlin,IE,Dublin
+New York City,US,New York
+Roswell,US,Atlanta
+Portland,US,Portland
+East Kilbride,GB,Glasgow
+El Colorado,MX,Queretaro City
+Paripark,KR,Seoul
+Pilsen,CZ,Pilsen
+Kazan,RU,Kazan
+Kursk,RU,Kursk
+Novosibirsk,RU,Novosibirsk
+Calais,FR,Calais
+Kudryashovskiy,RU,Novosibirsk
+Roosendaal,NL,Breda
+Queenstown Estate,SG,Singapore
+Tsuen Wan,HK,Hong Kong
+Birmingham,GB,Birmingham
+Luxembourg,LU,Luxembourg
+Sofia,BG,Sofia
+Limburg an der Lahn,DE,Frankfurt
+Kriftel,DE,Frankfurt
+Kemerovo,RU,Kemerovo
+Lelystad,NL,Amsterdam
+La Rinconada,ES,Seville
+Podolsk,RU,Moscow
+Khimki,RU,Moscow
+Berlin,DE,Berlin
+Bucharest,RO,Bucharest
+Aachen,DE,Aachen
+Garden City,US,New York
+Miami Beach,US,Miami
+Chabany,UA,Kyiv
+Parsippany,US,New York
+Baton Rouge,US,Baton Rouge
+Brussels,BE,Brussels
+Matawan,US,New York
+Perm,RU,Perm
+Saint Petersburg,RU,Saint Petersburg
+Bend,US,Bend
+Milan,IT,Milan
+Houston,US,Houston
+Porvoo,FI,Helsinki
+Krnov,CZ,Ostrava
+Sala,SK,Bratislava
+Roubaix,FR,Lille
+Durbanville,ZA,Cape Town
+Beauharnois,CA,Montreal
+Worms,DE,Mannheim
+Duluth,US,Atlanta
+Remscheid,DE,Rhine-Ruhr
+Mooresville,US,Charlotte
+Vilnius,LT,Vilnius
+Šiauliai,LT,Šiauliai
+Frankfurt,DE,Frankfurt
+Gravelines,FR,Calais
+Fort Lauderdale,US,Miami
+Mountain Ranch,US,Mountain Ranch
+Fort Worth,US,Dallas
+Pfeffingen,CH,Basel
+Pitesti,RO,Pitesti
+Austin,US,Austin
+Seville,ES,Seville
+St Petersburg,RU,Saint Petersburg
+Sydney,AU,Sydney
+Fulham,GB,London
+Hackney,GB,London
+Newcastle upon Tyne,GB,Newcastle
+Poplar,GB,London
+Stepney,GB,London
+Conyers,US,Atlanta
+Council Bluffs,US,Omaha
+Dania Beach,US,Miami
+Davenport,US,Quad Cities
+New Orleans,US,New Orleans
+Kenner,US,New Orleans
+Powell,US,Knoxville
+Haugesund,NO,Haugesund
+Limassol,CY,Limassol
+,HK,Hong Kong
+,LU,Luxembourg
+,SG,Singapore
+Bad Konigshofen im Grabfeld,DE,Frankfurt
+Buffalo,US,Buffalo
+Chatsworth,US,Los Angeles
+Duivendrecht,NL,Amsterdam
+Hamburg,DE,Hamburg
+Helsinki,FI,Helsinki
+Horna Sec,SK,Bratislava
+Horná Seč,SK,Bratislava
+Krasnodar,RU,Krasnodar
+Manchester,GB,Manchester
+Minamishinagawa,JP,Tokyo
+Reston,US,Washington
+Southwark,GB,London
+Spanga,SE,Stockholm
+Spånga,SE,Stockholm
+St Louis,US,St. Louis
+Tallinn,EE,Tallinn

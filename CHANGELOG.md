@@ -17,6 +17,7 @@ All notable changes to this project will be documented in this file.
   - Increase default controller request timeout in config agent
 - Client
   - Route liveness treats peers that advertise passive mode as selectively passive; does not manage their routes directly.
+  - Add histogram metric for BGP session establishment duration
 
 ## [v0.8.0](https://github.com/malbeclabs/doublezero/compare/client/v0.7.1...client/v0.8.0) – 2025-12-02
 

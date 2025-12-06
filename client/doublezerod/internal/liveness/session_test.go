@@ -444,6 +444,19 @@ func TestClient_Liveness_Session_HandleRx_TracksCurrentPeerAdvertisedPassive(t *
 
 	now := time.Now()
 
+	cvPassive := ClientVersion{
+		Major:   1,
+		Minor:   2,
+		Patch:   3,
+		Channel: VersionChannelAlpha,
+	}
+	cvActive := ClientVersion{
+		Major:   2,
+		Minor:   0,
+		Patch:   0,
+		Channel: VersionChannelDev,
+	}
+
 	// First packet: peer advertises passive.
 	cpPassive := &ControlPacket{
 		Version:         1,
@@ -454,13 +467,17 @@ func TestClient_Liveness_Session_HandleRx_TracksCurrentPeerAdvertisedPassive(t *
 		PeerDiscr:       0,
 		DesiredMinTxUs:  30_000,
 		RequiredMinRxUs: 40_000,
+		ClientVersion:   cvPassive,
 	}
 	cpPassive.SetPassive()
 
 	_ = s.HandleRx(now, cpPassive)
 	require.Equal(t, PeerModePassive, s.peerAdvertisedMode, "should reflect current passive=on")
 
-	// Second packet: same session, but peer no longer advertises passive.
+	snap := s.Snapshot()
+	require.Equal(t, cvPassive, snap.PeerClientVersion, "snapshot should reflect peer's advertised client version (passive packet)")
+
+	// Second packet: same session, but peer no longer advertises passive and changes version.
 	cpActive := &ControlPacket{
 		Version:         1,
 		State:           StateInit,
@@ -470,8 +487,12 @@ func TestClient_Liveness_Session_HandleRx_TracksCurrentPeerAdvertisedPassive(t *
 		PeerDiscr:       42,   // echo our localDiscr
 		DesiredMinTxUs:  20_000,
 		RequiredMinRxUs: 20_000,
+		ClientVersion:   cvActive,
 	}
 	_ = s.HandleRx(now.Add(10*time.Millisecond), cpActive)
 
 	require.Equal(t, PeerModeActive, s.peerAdvertisedMode, "peerAdvertisedMode should reflect current (no passive flag)")
+
+	snap = s.Snapshot()
+	require.Equal(t, cvActive, snap.PeerClientVersion, "snapshot should reflect latest advertised client version")
 }

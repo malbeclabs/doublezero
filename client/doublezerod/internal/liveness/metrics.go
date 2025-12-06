@@ -8,14 +8,15 @@ import (
 
 const (
 	// Labels.
-	LabelIface     = "iface"
-	LabelLocalIP   = "local_ip"
-	LabelPeerIP    = "peer_ip"
-	LabelState     = "state"
-	LabelStateTo   = "state_to"
-	LabelStateFrom = "state_from"
-	LabelReason    = "reason"
-	LabelOperation = "operation"
+	LabelIface             = "iface"
+	LabelLocalIP           = "local_ip"
+	LabelPeerIP            = "peer_ip"
+	LabelState             = "state"
+	LabelStateTo           = "state_to"
+	LabelStateFrom         = "state_from"
+	LabelReason            = "reason"
+	LabelOperation         = "operation"
+	LabelPeerClientVersion = "peer_client_version"
 )
 
 type Metrics struct {
@@ -154,7 +155,7 @@ func newMetrics() *Metrics {
 				Name: "doublezero_liveness_control_packets_rx_total",
 				Help: "Total control packets received.",
 			},
-			serviceLabels,
+			withServiceLabels(LabelPeerClientVersion),
 		),
 		ControlPacketsRxInvalid: prometheus.NewCounterVec(
 			prometheus.CounterOpts{

@@ -147,12 +147,13 @@ type Scheduler struct {
 	enablePeerMetrics bool
 	metrics           *Metrics
 
-	passiveMode bool
+	passiveMode   bool
+	clientVersion ClientVersion
 }
 
 // NewScheduler constructs a Scheduler bound to a UDP transport and logger.
 // onSessionDown is called asynchronously whenever a session is detected as failed.
-func NewScheduler(log *slog.Logger, udp UDPService, onSessionDown SessionDownFunc, maxEvents int, enablePeerMetrics bool, metrics *Metrics, passiveMode bool) *Scheduler {
+func NewScheduler(log *slog.Logger, udp UDPService, onSessionDown SessionDownFunc, maxEvents int, enablePeerMetrics bool, metrics *Metrics, passiveMode bool, clientVersion ClientVersion) *Scheduler {
 	eq := NewEventQueue()
 	return &Scheduler{
 		log:               log,
@@ -164,6 +165,7 @@ func NewScheduler(log *slog.Logger, udp UDPService, onSessionDown SessionDownFun
 		enablePeerMetrics: enablePeerMetrics,
 		metrics:           metrics,
 		passiveMode:       passiveMode,
+		clientVersion:     clientVersion,
 	}
 }
 
@@ -365,6 +367,7 @@ func (s *Scheduler) doTX(ctx context.Context, sess *Session) {
 	if s.passiveMode {
 		pkt.SetPassive()
 	}
+	pkt.ClientVersion = s.clientVersion
 	bpkt := pkt.Marshal()
 	peer := *sess.peer
 	sess.mu.Unlock()

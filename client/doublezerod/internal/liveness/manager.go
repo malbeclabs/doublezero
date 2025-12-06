@@ -86,6 +86,9 @@ type ManagerConfig struct {
 	// liveness still tracks state and metrics, but will not install or
 	// uninstall its routes in the kernel for that session.
 	HonorPeerAdvertisedPassive bool
+
+	// Client version to advertise to peers in control packets.
+	ClientVersion string
 }
 
 // Validate fills defaults and enforces constraints for ManagerConfig.
@@ -142,6 +145,9 @@ func (c *ManagerConfig) Validate() error {
 	if c.MaxEvents < 0 {
 		return errors.New("maxEvents must be greater than 0")
 	}
+	if c.ClientVersion == "" {
+		return errors.New("clientVersion is required")
+	}
 	return nil
 }
 
@@ -196,6 +202,11 @@ func NewManager(ctx context.Context, cfg *ManagerConfig) (*manager, error) {
 		return nil, fmt.Errorf("error validating manager config: %v", err)
 	}
 
+	clientVersion, err := ParseClientVersion(cfg.ClientVersion)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing client version: %v", err)
+	}
+
 	udp := cfg.UDP
 	if udp == nil {
 		var err error
@@ -242,7 +253,7 @@ func NewManager(ctx context.Context, cfg *ManagerConfig) (*manager, error) {
 
 	// Wire up IO loops.
 	m.recv = NewReceiver(m.log, m.udp, m.HandleRx, m.metrics)
-	m.sched = NewScheduler(m.log, m.udp, m.onSessionDown, m.cfg.MaxEvents, m.cfg.EnablePeerMetrics, m.metrics, m.cfg.PassiveMode)
+	m.sched = NewScheduler(m.log, m.udp, m.onSessionDown, m.cfg.MaxEvents, m.cfg.EnablePeerMetrics, m.metrics, m.cfg.PassiveMode, clientVersion)
 
 	// Receiver goroutine: parses control packets and dispatches to HandleRx.
 	m.wg.Add(1)
@@ -730,7 +741,10 @@ func (m *manager) onSessionUp(sess *Session) {
 		"peer", peer.String(),
 		"route", snap.Route.String(),
 		"convergence", convergence.String(),
-		"upSince", snap.UpSince.UTC().String())
+		"upSince", snap.UpSince.UTC().String(),
+		"peerAdvertisedMode", snap.PeerAdvertisedMode.String(),
+		"peerClientVersion", snap.PeerClientVersion.String(),
+	)
 }
 
 // onSessionDown withdraws the route if currently installed (unless PassiveMode
@@ -772,7 +786,9 @@ func (m *manager) onSessionDown(sess *Session) {
 			"peer", peer.String(),
 			"routePresent", route != nil,
 			"downSince", snap.DownSince.UTC().String(),
-			"downReason", snap.LastDownReason.String())
+			"downReason", snap.LastDownReason.String(),
+			"peerClientVersion", snap.PeerClientVersion.String(),
+		)
 		return
 	}
 
@@ -781,7 +797,9 @@ func (m *manager) onSessionDown(sess *Session) {
 			"peer", peer.String(),
 			"route", snap.Route.String(),
 			"downSince", snap.DownSince.UTC().String(),
-			"downReason", snap.LastDownReason.String())
+			"downReason", snap.LastDownReason.String(),
+			"peerClientVersion", snap.PeerClientVersion.String(),
+		)
 		return
 	}
 
@@ -790,7 +808,9 @@ func (m *manager) onSessionDown(sess *Session) {
 			"peer", peer.String(),
 			"route", snap.Route.String(),
 			"downSince", snap.DownSince.UTC().String(),
-			"downReason", snap.LastDownReason.String())
+			"downReason", snap.LastDownReason.String(),
+			"peerClientVersion", snap.PeerClientVersion.String(),
+		)
 		return
 	}
 
@@ -807,7 +827,9 @@ func (m *manager) onSessionDown(sess *Session) {
 		"route", snap.Route.String(),
 		"convergence", convergence.String(),
 		"downSince", snap.DownSince.UTC().String(),
-		"downReason", snap.LastDownReason.String())
+		"downReason", snap.LastDownReason.String(),
+		"peerClientVersion", snap.PeerClientVersion.String(),
+	)
 }
 
 // isPeerEffectivelyPassive returns true when this session should not have its

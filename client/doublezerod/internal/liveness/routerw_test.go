@@ -18,10 +18,10 @@ func TestClient_Liveness_RouteRW_RouteAdd_RegistersWithManager(t *testing.T) {
 	t.Cleanup(func() { _ = m.Close() })
 
 	backend := &MockRouteReaderWriter{}
-	rrw := NewRouteReaderWriter(m, backend, "test-iface")
+	rrw := NewRouteReaderWriter(m, backend, "test-iface", false)
 
 	r := newTestRoute(nil)
-	err = rrw.RouteAdd(r)
+	err = rrw.RouteAdd(&r.Route)
 	require.NoError(t, err)
 
 	require.Equal(t, 1, m.GetSessionsLen())
@@ -42,7 +42,7 @@ func TestClient_Liveness_RouteRW_RouteDelete_WithdrawsFromManager(t *testing.T) 
 	t.Cleanup(func() { _ = m.Close() })
 
 	backend := &MockRouteReaderWriter{}
-	rrw := NewRouteReaderWriter(m, backend, "test-iface")
+	rrw := NewRouteReaderWriter(m, backend, "test-iface", false)
 
 	r := newTestRoute(nil)
 
@@ -52,7 +52,7 @@ func TestClient_Liveness_RouteRW_RouteDelete_WithdrawsFromManager(t *testing.T) 
 	peer := Peer{Interface: "test-iface", LocalIP: r.Src.To4().String(), PeerIP: r.Dst.IP.To4().String()}
 	require.True(t, m.HasSession(peer))
 
-	err = rrw.RouteDelete(r)
+	err = rrw.RouteDelete(&r.Route)
 	require.NoError(t, err)
 
 	require.Equal(t, 0, m.GetSessionsLen())
@@ -78,10 +78,10 @@ func TestClient_Liveness_RouteRW_RouteAdd_PassiveMode_PassesThroughToBackend(t *
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = m.Close() })
 
-	rrw := NewRouteReaderWriter(m, backend, "lo")
+	rrw := NewRouteReaderWriter(m, backend, "lo", false)
 	r := newTestRoute(nil)
 
-	err = rrw.RouteAdd(r)
+	err = rrw.RouteAdd(&r.Route)
 	require.NoError(t, err)
 
 	added := wait(t, addCh, time.Second, "RouteAdd passthrough in PassiveMode")
@@ -110,13 +110,13 @@ func TestClient_Liveness_RouteRW_RouteDelete_PassiveMode_PassesThroughToBackend(
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = m.Close() })
 
-	rrw := NewRouteReaderWriter(m, backend, "lo")
+	rrw := NewRouteReaderWriter(m, backend, "lo", false)
 	r := newTestRoute(nil)
 
 	// Seed a session so WithdrawRoute has something to work with.
 	require.NoError(t, m.RegisterRoute(r, "lo", 0))
 
-	err = rrw.RouteDelete(r)
+	err = rrw.RouteDelete(&r.Route)
 	require.NoError(t, err)
 
 	deleted := wait(t, delCh, time.Second, "RouteDelete passthrough in PassiveMode")
@@ -133,24 +133,24 @@ func TestClient_Liveness_RouteRW_RouteByProtocol_NonBGP_DelegatesToBackend(t *te
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = m.Close() })
 
-	expected := []*routing.Route{newTestRoute(nil)}
+	expected := newTestRoute(nil)
 	var seenProtocol int
 
 	backend := &MockRouteReaderWriter{
 		RouteByProtocolFunc: func(p int) ([]*routing.Route, error) {
 			seenProtocol = p
-			return expected, nil
+			return []*routing.Route{&expected.Route}, nil
 		},
 	}
 
-	rrw := NewRouteReaderWriter(m, backend, "test-iface")
+	rrw := NewRouteReaderWriter(m, backend, "test-iface", false)
 
 	const proto = 123 // anything that's not unix.RTPROT_BGP (186)
 	require.NotEqual(t, unix.RTPROT_BGP, proto)
 	routes, err := rrw.RouteByProtocol(proto)
 	require.NoError(t, err)
 	require.Equal(t, proto, seenProtocol, "backend should see the same protocol")
-	require.Equal(t, expected, routes, "wrapper should return backend routes as-is")
+	require.Equal(t, []*routing.Route{&expected.Route}, routes, "wrapper should return backend routes as-is")
 }
 
 func TestClient_Liveness_RouteRW_RouteByProtocol_BGP_UsesManagerSessions(t *testing.T) {
@@ -168,11 +168,11 @@ func TestClient_Liveness_RouteRW_RouteByProtocol_BGP_UsesManagerSessions(t *test
 		},
 	}
 
-	rrw := NewRouteReaderWriter(m, backend, "lo")
+	rrw := NewRouteReaderWriter(m, backend, "lo", false)
 
 	// Register two distinct routes so we have two sessions.
 	r1 := newTestRoute(nil)
-	r2 := newTestRoute(func(r *routing.Route) {
+	r2 := newTestRoute(func(r *Route) {
 		r.Dst = &net.IPNet{
 			IP:   net.IPv4(10, 4, 0, 12),
 			Mask: net.CIDRMask(32, 32),

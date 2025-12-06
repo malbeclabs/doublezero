@@ -30,7 +30,6 @@ mod tests {
     fn make_route(local_ip: &str, peer_ip: &str) -> RouteRecord {
         RouteRecord {
             network: "test".to_string(),
-            user_type: "test".to_string(),
             local_ip: local_ip.to_string(),
             kernel_state: "present".to_string(),
             liveness_last_updated: None,

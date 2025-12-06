@@ -805,7 +805,7 @@ func registerFullMeshRoutes(t *testing.T, clients []*testClient, nextHop net.IP)
 			wg.Add(1)
 			go func(c1 *testClient, c2 *testClient) {
 				defer wg.Done()
-				err := c1.mgr.RegisterRoute(&routing.Route{
+				err := c1.mgr.RegisterRoute(&Route{Route: routing.Route{
 					Table: 100,
 					Src:   c1.mgr.LocalAddr().IP,
 					Dst: &net.IPNet{
@@ -814,7 +814,7 @@ func registerFullMeshRoutes(t *testing.T, clients []*testClient, nextHop net.IP)
 					},
 					NextHop:  nextHop,
 					Protocol: unix.RTPROT_BGP,
-				}, c1.iface, c1.mgr.LocalAddr().Port)
+				}}, c1.iface, c1.mgr.LocalAddr().Port)
 				require.NoError(t, err)
 			}(c1, c2)
 		}

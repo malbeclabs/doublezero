@@ -25,16 +25,15 @@ func (l LivenessPeerMode) String() string {
 }
 
 type Route struct {
-	Network                     string   `json:"network"`
-	UserType                    UserType `json:"user_type"`
-	LocalIP                     string   `json:"local_ip"`
-	PeerIP                      string   `json:"peer_ip"`
-	KernelState                 string   `json:"kernel_state,omitempty"`
-	LivenessLastUpdated         string   `json:"liveness_last_updated,omitempty"`
-	LivenessState               string   `json:"liveness_state,omitempty"`
-	LivenessStateReason         string   `json:"liveness_state_reason,omitempty"`
-	LivenessExpectedKernelState string   `json:"liveness_expected_kernel_state,omitempty"`
-	LivenessPeerMode            string   `json:"liveness_peer_mode,omitempty"`
+	Network                     string `json:"network"`
+	LocalIP                     string `json:"local_ip"`
+	PeerIP                      string `json:"peer_ip"`
+	KernelState                 string `json:"kernel_state,omitempty"`
+	LivenessLastUpdated         string `json:"liveness_last_updated,omitempty"`
+	LivenessState               string `json:"liveness_state,omitempty"`
+	LivenessStateReason         string `json:"liveness_state_reason,omitempty"`
+	LivenessExpectedKernelState string `json:"liveness_expected_kernel_state,omitempty"`
+	LivenessPeerMode            string `json:"liveness_peer_mode,omitempty"`
 }
 
 type routeKey struct {
@@ -84,7 +83,6 @@ func ServeRoutesHandler(nlr bgp.RouteReaderWriter, lm LivenessManager, db DBRead
 				if svc.DoubleZeroIP.Equal(rt.Src) && svc.TunnelNet.IP.Equal(rt.NextHop) {
 					kernelRoutes[routeKeyFor(rt)] = &Route{
 						Network:     networkConfig.Moniker,
-						UserType:    svc.UserType,
 						LocalIP:     rt.Src.To4().String(),
 						PeerIP:      rt.Dst.IP.To4().String(),
 						KernelState: liveness.KernelStatePresent.String(),
@@ -112,7 +110,7 @@ func ServeRoutesHandler(nlr bgp.RouteReaderWriter, lm LivenessManager, db DBRead
 						continue
 					}
 
-					rk := routeKeyFor(rt)
+					rk := routeKeyFor(&rt.Route)
 					kernelState := liveness.KernelStateAbsent.String()
 					if _, ok := kernelRoutes[rk]; ok {
 						kernelState = liveness.KernelStatePresent.String()
@@ -125,7 +123,6 @@ func ServeRoutesHandler(nlr bgp.RouteReaderWriter, lm LivenessManager, db DBRead
 
 					livenessRoutes[rk] = &Route{
 						Network:                     networkConfig.Moniker,
-						UserType:                    svc.UserType,
 						LocalIP:                     rt.Src.To4().String(),
 						PeerIP:                      rt.Dst.IP.To4().String(),
 						KernelState:                 kernelState,

@@ -116,8 +116,6 @@ pub struct DoubleZeroStatus {
 pub struct RouteRecord {
     #[tabled(rename = "Network")]
     pub network: String,
-    #[tabled(rename = "User Type")]
-    pub user_type: String,
     #[tabled(rename = "Local IP")]
     pub local_ip: String,
     #[tabled(rename = "Peer IP")]

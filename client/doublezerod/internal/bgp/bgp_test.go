@@ -148,7 +148,7 @@ func TestBgpServer(t *testing.T) {
 			LocalAs:       65000,
 			RemoteAs:      65001,
 			Port:          6666,
-			FlushRoutes:   true,
+			NoUninstall:   false,
 			RouteTable:    syscall.RT_TABLE_MAIN,
 			RouteSrc:      net.IP{7, 7, 7, 7},
 		},

@@ -15,11 +15,13 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	"github.com/gogo/protobuf/proto"
+	grpcprom "github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus"
 	"github.com/malbeclabs/doublezero/config"
 	pb "github.com/malbeclabs/doublezero/controlplane/proto/controller/gen/pb-go"
 	telemetryconfig "github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/config"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/mr-tron/base58"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -548,8 +550,17 @@ func (c *Controller) Run(ctx context.Context) error {
 		}
 	}()
 
+	srvMetrics := grpcprom.NewServerMetrics(
+		grpcprom.WithServerHandlingTimeHistogram(
+			grpcprom.WithHistogramBuckets([]float64{0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 5}),
+		),
+	)
+	prometheus.MustRegister(srvMetrics)
+
 	// start gRPC server
-	opts := []grpc.ServerOption{}
+	opts := []grpc.ServerOption{
+		grpc.UnaryInterceptor(srvMetrics.UnaryServerInterceptor()),
+	}
 	if c.tlsConfig != nil {
 		opts = append(opts, grpc.Creds(credentials.NewTLS(c.tlsConfig)))
 	}

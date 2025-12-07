@@ -13,6 +13,7 @@ All notable changes to this project will be documented in this file.
   - Fixed a bug that caused ripeatlas samples to be dropped when they were delayed to the next collection cycle
 - Controller
   - Add histogram metric for GetConfig request duration
+  - Add gRPC middleware for prometheus metrics
 - Device agents
   - Increase default controller request timeout in config agent
 - Client

@@ -2,6 +2,8 @@ package controller
 
 import (
 	"github.com/prometheus/client_golang/prometheus"
+
+	grpcprom "github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus"
 )
 
 var (
@@ -75,6 +77,12 @@ var (
 	},
 		[]string{"link_pubkey", "device_code", "interface"},
 	)
+
+	srvMetrics = grpcprom.NewServerMetrics(
+		grpcprom.WithServerHandlingTimeHistogram(
+			grpcprom.WithHistogramBuckets([]float64{0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 5}),
+		),
+	)
 )
 
 func init() {
@@ -92,4 +100,7 @@ func init() {
 	prometheus.MustRegister(cacheUpdateErrors)
 	prometheus.MustRegister(cacheUpdateFetchErrors)
 	prometheus.MustRegister(cacheUpdateOps)
+
+	// gRPC middleware metrics
+	prometheus.MustRegister(srvMetrics)
 }

@@ -25,69 +25,6 @@ RUN ARCH="$(uname -m)" && \
     curl -sSL "https://go.dev/dl/go${GO_VERSION}.linux-${GOARCH}.tar.gz" | tar -C /usr/local -xz
 ENV PATH="/usr/local/go/bin:/root/go/bin:${PATH}"
 
-# Install rust
-RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
-ENV PATH="/root/.cargo/bin:${PATH}"
-
-
-# -----------------------------------------------------------------------------
-# Rust workspace builder
-#
-# We can build the whole rust workspace in a single stage, to take advantage of
-# caching and cargo's own parallelization.
-# -----------------------------------------------------------------------------
-FROM builder-base AS builder-rust
-
-# Set build arguments
-ARG DZ_ENV=localnet
-ARG BUILD_VERSION=undefined
-ARG BUILD_COMMIT=undefined
-ARG BUILD_DATE=undefined
-
-ENV BUILD_VERSION=${BUILD_VERSION}
-ENV BUILD_COMMIT=${BUILD_COMMIT}
-ENV BUILD_DATE=${BUILD_DATE}
-
-RUN if [ "${DZ_ENV}" = "undefined" ]; then \
-    echo "DZ_ENV must be defined" && \
-    exit 1; \
-    fi
-
-RUN if [ "${BUILD_VERSION}" = "undefined" ] || [ "${BUILD_COMMIT}" = "undefined" ] || [ "${BUILD_DATE}" = "undefined" ]; then \
-    echo "Build arguments must be defined" && \
-    exit 1; \
-    fi
-
-# Set cargo environment variables for build caching
-ENV CARGO_HOME=/cargo
-ENV CARGO_TARGET_DIR=/target
-ENV CARGO_INCREMENTAL=0
-
-WORKDIR /doublezero
-COPY . .
-
-# Pre-fetch and cache rust dependencies
-RUN --mount=type=cache,target=/cargo \
-    --mount=type=cache,target=/target \
-    cargo fetch
-
-# Set up a binaries directory
-ENV BIN_DIR=/doublezero/bin
-RUN mkdir -p ${BIN_DIR}
-
-# Build all rust components.
-RUN --mount=type=cache,target=/cargo \
-    --mount=type=cache,target=/target \
-    RUSTFLAGS="-C link-arg=-fuse-ld=mold" cargo build --workspace --release && \
-    cp /target/release/doublezero ${BIN_DIR}/ && \
-    cp /target/release/doublezero-activator ${BIN_DIR}/ && \
-    cp /target/release/doublezero-admin ${BIN_DIR}/
-
-# Force COPY in later stages to always copy the binaries, even if they appear to be the same.
-ARG CACHE_BUSTER=1
-RUN echo "$CACHE_BUSTER" > ${BIN_DIR}/.cache-buster && \
-    find ${BIN_DIR} -type f -exec touch {} +
-
 
 # -----------------------------------------------------------------------------
 # Go builder
@@ -201,7 +138,6 @@ RUN apt update -qq && \
 ENV PATH="/doublezero/bin:${PATH}"
 
 # Copy binaries from the builder stage.
-COPY --from=builder-rust /doublezero/bin/. /doublezero/bin/.
 COPY --from=builder-go /doublezero/bin/. /doublezero/bin/.
 
 CMD ["/bin/bash"]

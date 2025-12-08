@@ -88,7 +88,7 @@ func TestQA_UnicastConnectivity(t *testing.T) {
 				if err != nil {
 					log.Error("Connectivity test failed", "error", err, "source", srcClient.Host, "target", dstClient.Host)
 				}
-				if result.PacketsReceived < result.PacketsSent {
+				if result != nil && result.PacketsReceived < result.PacketsSent {
 					testsWithPartialLosses.Add(1)
 
 					// If there are any losses, run a traceroute and dump the output for visibility.

@@ -60,26 +60,6 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     go build -ldflags "${GO_LDFLAGS}" -o ${BIN_DIR}/doublezero-api api/cmd/server/main.go
 
-# Build config agent (golang)
-RUN --mount=type=cache,target=/go/pkg/mod \
-    --mount=type=cache,target=/root/.cache/go-build \
-    go build -ldflags "${GO_LDFLAGS}" -o ${BIN_DIR}/doublezero-config-agent controlplane/agent/cmd/agent/main.go
-
-# Build telemetry agent (golang)
-RUN --mount=type=cache,target=/go/pkg/mod \
-    --mount=type=cache,target=/root/.cache/go-build \
-    go build -ldflags "${GO_LDFLAGS}" -o ${BIN_DIR}/doublezero-telemetry-agent controlplane/telemetry/cmd/telemetry/main.go
-
-# Build client/doublezerod (golang)
-RUN --mount=type=cache,target=/go/pkg/mod \
-    --mount=type=cache,target=/root/.cache/go-build \
-    go build -ldflags "${GO_LDFLAGS}" -o ${BIN_DIR}/doublezerod client/doublezerod/cmd/doublezerod/main.go
-
-# Build the controller (golang)
-RUN --mount=type=cache,target=/go/pkg/mod \
-    --mount=type=cache,target=/root/.cache/go-build \
-    go build -ldflags "${GO_LDFLAGS}" -o ${BIN_DIR}/doublezero-controller controlplane/controller/cmd/controller/main.go
-
 # Build the funder (golang)
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
@@ -89,16 +69,6 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     go build -ldflags "${GO_LDFLAGS}" -o ${BIN_DIR}/doublezero-monitor controlplane/monitor/cmd/monitor/main.go
-
-# Build the qa agent (golang)
-RUN --mount=type=cache,target=/go/pkg/mod \
-    --mount=type=cache,target=/root/.cache/go-build \
-    go build -ldflags "${GO_LDFLAGS}" -o ${BIN_DIR}/doublezero-qa-agent e2e/cmd/qaagent/main.go
-
-# Build the internet latency collector (golang)
-RUN --mount=type=cache,target=/go/pkg/mod \
-    --mount=type=cache,target=/root/.cache/go-build \
-    go build -ldflags "${GO_LDFLAGS}" -o ${BIN_DIR}/doublezero-internet-latency-collector controlplane/internet-latency-collector/cmd/collector/main.go
 
 # Build the telemetry data API (golang)
 RUN --mount=type=cache,target=/go/pkg/mod \

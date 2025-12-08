@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-      - snor/release-docker-core
+      - snor/release-docker-all
     tags:
       - 'v*.*.*' # stable
       - 'v*.*.*-*' # pre-releases

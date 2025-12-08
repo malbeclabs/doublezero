@@ -19,7 +19,12 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	addr, err := net.ResolveUDPAddr("udp", ":9000")
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "6343"
+	}
+
+	addr, err := net.ResolveUDPAddr("udp", ":"+port)
 	if err != nil {
 		log.Fatalf("resolve udp: %v", err)
 	}

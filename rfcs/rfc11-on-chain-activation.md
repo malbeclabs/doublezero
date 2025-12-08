@@ -1,10 +1,10 @@
-# RFC-11: On-Chain Activation
+# RFC-11: Onchain Activation
 
 **Status:** Draft
 
 ## Objective
 
-- Make the activator service stateless by moving allocation state on-chain
+- Make the activator service stateless by moving allocation state onchain
 - Enable restartable activator without complex state reconciliation
 - Zero breaking changes to IP ranges or allocation strategy
 
@@ -12,25 +12,25 @@
 
 The current activator service introduces operational complexity:
 
-- **Off-chain polling and WebSocket connections** — The activator must maintain persistent connections to detect account changes. WebSocket disconnections cause missed events, requiring periodic full-state polling as a fallback.
+- **Offchain polling and WebSocket connections** - The activator must maintain persistent connections to detect account changes. WebSocket disconnections cause missed events, requiring periodic full-state polling as a fallback.
 
-- **Race conditions between allocation and activation** — Local state can diverge from on-chain state between when a resource is allocated locally and when the activation transaction confirms. If the activator restarts or the transaction fails, allocated resources may be orphaned or double-allocated.
+- **Race conditions between allocation and activation** - Local state can diverge from onchain state between when a resource is allocated locally and when the activation transaction confirms. If the activator restarts or the transaction fails, allocated resources may be orphaned or double-allocated.
 
-- **Single point of failure for resource allocation** — Only the activator can allocate resources. If it goes down, no new users, links, or interfaces can be activated until it recovers.
+- **Single point of failure for resource allocation** - Only the activator can allocate resources. If it goes down, no new users, links, or interfaces can be activated until it recovers.
 
-- **Complex state reconciliation on restart** — On restart, the activator must read all on-chain accounts and infer which resources are allocated by examining `tunnel_net`, `dz_ip`, and `tunnel_id` values. This is error-prone and slow for large networks.
+- **Complex state reconciliation on restart** - On restart, the activator must read all onchain accounts and infer which resources are allocated by examining `tunnel_net`, `dz_ip`, and `tunnel_id` values. This is error-prone and slow for large networks.
 
-- **Deadlock incidents reported via internal monitoring** — Production incidents have occurred where the activator's local state became inconsistent, requiring manual intervention.
+- **Deadlock incidents reported via internal monitoring** - Production incidents have occurred where the activator's local state became inconsistent, requiring manual intervention.
 
 ## Background: The Activator Service
 
-The activator is a Rust service that bridges on-chain DoubleZero Ledger state with network operations. Understanding its current role is essential to understanding why moving allocation on-chain simplifies the system.
+The activator is a Rust service that bridges onchain DoubleZero Ledger state with network operations. Understanding its current role is essential to understanding why moving allocation onchain simplifies the system.
 
 ### What the Activator Does Today
 
 The activator performs three core functions:
 
-1. **Monitoring**: Watches for account changes via WebSocket subscriptions and periodic polling. When a client creates a User, Link, or other entity on-chain with `status=Pending`, the activator detects this event.
+1. **Monitoring**: Watches for account changes via WebSocket subscriptions and periodic polling. When a client creates a User, Link, or other entity onchain with `status=Pending`, the activator detects this event.
 
 2. **Allocation**: Reserves network resources from shared pools before activation. This includes IP addresses for tunnels, tunnel IDs, and segment routing IDs. The activator maintains local bitmaps and allocators to track which resources are in use.
 
@@ -51,7 +51,7 @@ The activator currently maintains allocation state in memory:
 └──────────────────────────────────────────────────────┘
 ```
 
-On restart, the activator must reconstruct this state by reading all on-chain accounts and inferring which resources are allocated. This reconciliation is error-prone and has caused production incidents.
+On restart, the activator must reconstruct this state by reading all onchain accounts and inferring which resources are allocated. This reconciliation is error-prone and has caused production incidents.
 
 ### Resource Allocation Explained
 
@@ -72,26 +72,26 @@ On restart, the activator must reconstruct this state by reading all on-chain ac
 
 Each entity type requires different resources from the shared pools:
 
-| Entity             | tunnel_net | tunnel_id  |   dz_ip    | segment_routing_id | multicast_ip | ResourceExtension Accounts |
-| ------------------ | :--------: | :--------: | :--------: | :----------------: | :----------: | -------------------------- |
-| **User**           |   Global   | Per-device | Per-device |         —          |      —       | Global + Device            |
-| **Link**           |   Global   |     —      |     —      |         —          |      —       | Global only                |
-| **Interface**      |     —      |     —      |     —      |     Per-device     |      —       | Device only                |
-| **MulticastGroup** |     —      |     —      |     —      |         —          |    Global    | Global only                |
+| Entity             | tunnel_net |     tunnel_id     |   dz_ip    | segment_routing_id | multicast_ip | ResourceExtension Accounts |
+| ------------------ | :--------: | :---------------: | :--------: | :----------------: | :----------: | -------------------------- |
+| **User**           |   Global   |    Per-device     | Per-device |         -          |      -       | Global + Device            |
+| **Link**           |   Global   | Per-device (both) |     -      |         -          |      -       | Global + Both Devices      |
+| **Interface**      |     -      |         -         | Per-device |     Per-device     |      -       | Device only                |
+| **MulticastGroup** |     -      |         -         |     -      |         -          |    Global    | Global only                |
 
 This shows why multiple entity types must coordinate through shared allocation pools - a Link and a User could collide if they drew from the same `tunnel_net` pool without centralized tracking.
 
 ## Goals
 
-1. **Stateless activator** — Move allocation state on-chain via ResourceExtension accounts
-2. **Restartable without reconciliation** — Activator can restart without rebuilding local state
-3. **Zero breaking changes** — Same IP ranges, same allocation strategy
-4. **Full resource recycling** — Reclaim IPs and IDs on deletion
-5. **Simple rollback** — Phase 1 can be reverted by restoring local state in activator
+1. **Stateless activator** - Move allocation state onchain via ResourceExtension accounts
+2. **Restartable without reconciliation** - Activator can restart without rebuilding local state
+3. **Zero breaking changes** - Same IP ranges, same allocation strategy
+4. **Full resource recycling** - Reclaim IPs and IDs on deletion
+5. **Simple rollback** - Phase 1 can be reverted by restoring local state in activator
 
 ## Non-Goals
 
-1. Changing IP ranges (keep 169.254.0.0/16 for users, 172.16.0.0/16 for links)
+1. Changing existing IP range allocations
 2. Eliminating the activator service (future scope)
 
 ## Architecture Overview
@@ -99,7 +99,7 @@ This shows why multiple entity types must coordinate through shared allocation p
 ### Current Flow
 
 ```
-     Client                    Activator                       On-Chain
+     Client                    Activator                        Onchain
        │                       (stateful)                         │
        │                     ┌─────────────┐                      │
        │                     │ Local state │                      │
@@ -132,7 +132,7 @@ This shows why multiple entity types must coordinate through shared allocation p
 For users created by old clients (without ResourceExtension), the activator handles activation:
 
 ```
-     Client                    Activator                       On-Chain
+     Client                    Activator                        Onchain
     (old SDK)                 (stateless)               ┌──────────────────┐
        │                           │                    │ Program          │
        │                           │                    │ ResourceExtension│
@@ -157,7 +157,7 @@ For users created by old clients (without ResourceExtension), the activator hand
 New clients pass ResourceExtension accounts to CreateUser for atomic create+allocate+activate:
 
 ```
-     Client                                                On-Chain
+     Client                                                 Onchain
     (new SDK)                                       ┌──────────────────┐
        │                                            │ Program          │
        │                                            │ ResourceExtension│
@@ -184,27 +184,27 @@ New clients pass ResourceExtension accounts to CreateUser for atomic create+allo
 ### What Changes
 
 - New `ResourceExtension` account type with bitmap-based allocation
-- Modified instructions with on-chain allocation:
-  - `CreateUser` — now does create → allocate → activate atomically (ResourceExtension required)
-  - `ActivateUser` — now does allocate → activate (for Pending users from old clients)
-  - `DeleteUser` — now does deallocate → delete atomically
+- Modified instructions with onchain allocation:
+  - `CreateUser` - now does create -> allocate -> activate atomically (ResourceExtension required)
+  - `ActivateUser` - now does allocate -> activate (for Pending users from old clients)
+  - `DeleteUser` - now does delete -> deallocate -> close atomically
 - New Foundation escape hatch instructions:
-  - `CreateResourceExtension` — initialize ResourceExtension PDA
-  - `AllocateResource` — manually allocate a specific slot
-  - `ReleaseResource` — manually release a specific slot
-  - `SetResourceState` — batch set bitmap (migration)
-- Activator removes local state, uses on-chain allocation instead
+  - `CreateResourceExtension` - initialize ResourceExtension PDA
+  - `AllocateResource` - manually allocate a specific slot
+  - `ReleaseResource` - manually release a specific slot
+  - `SetResourceState` - batch set bitmap (migration)
+- Activator removes local state, uses onchain allocation instead
 - Activator becomes restartable without state reconciliation
 
-### Why On-Chain Allocation Works
+### Why Onchain Allocation Works
 
-Moving allocation on-chain is technically feasible because:
+Moving allocation onchain is technically feasible because:
 
 1. **Bitmaps are compact**: A 4KB bitmap can track 32,768 slots. The global ResourceExtension (~8KB) handles all user and link tunnel allocations. Per-device extensions (~1KB each) handle device-scoped resources.
 
 2. **Allocation is atomic**: Allocation happens inside the instruction (CreateUser, ActivateUser). The program reads the bitmap, finds the next available slot, marks it allocated, and writes the resource value—all atomically. No race conditions possible.
 
-3. **Bitmap scanning is fast**: With <3% utilization, finding an available slot requires scanning very few bits. Worst case is O(n) where n = 512 words (32K bits), but expected case at current utilization is O(1) — the first word typically has free slots.
+3. **Bitmap scanning is fast**: With <3% utilization, finding an available slot requires scanning very few bits. Worst case is O(n) where n = 512 words (32K bits), but expected case at current utilization is O(1) - the first word typically has free slots.
 
 4. **State is reconstructible**: If needed, bitmaps can be reconstructed from existing account data using `SetResourceState`. This provides a recovery path without complex reconciliation logic.
 
@@ -215,9 +215,9 @@ Moving allocation on-chain is technically feasible because:
 ```rust
 struct ResourceExtension {
     account_type: AccountType,
-    associated_with: Pubkey,         // Device PK or Pubkey::default() for global
-    id_allocations: Vec<IdBitmap>,   // TunnelId, SegmentRoutingId
-    ip_allocations: Vec<IpBlockBitmap>, // UserTunnelNet, LinkTunnelNet, DzIp, Multicast
+    associated_with: Pubkey,		    // Device PK or Pubkey::default() for global
+    id_allocations: Vec<IdBitmap>,	    // TunnelId, SegmentRoutingId
+    ip_allocations: Vec<IpBlockBitmap>,	    // UserTunnelNet, LinkTunnelNet, DzIp, Multicast
 }
 ```
 
@@ -232,15 +232,53 @@ struct ResourceExtension {
 
 **Modified Instructions:**
 
-| Instruction  | Flow                           | ResourceExtension        | Authorization                                      |
-| ------------ | ------------------------------ | ------------------------ | -------------------------------------------------- |
-| CreateUser   | create -> allocate -> activate | Optional (device+global) | AccessPass owner                                   |
-| ActivateUser | allocate -> activate           | Required (device+global) | `activator_authority_pk` OR `foundation_allowlist` |
-| DeleteUser   | deallocate -> delete           | Required (device+global) | `activator_authority_pk` OR `foundation_allowlist` |
+| Instruction            | Flow                           | ResourceExtension              | Authorization                                      |
+| ---------------------- | ------------------------------ | ------------------------------ | -------------------------------------------------- |
+| CreateUser             | create -> allocate -> activate | Optional (device+global)       | AccessPass owner                                   |
+| ActivateUser           | allocate -> activate           | Required (device+global)       | `activator_authority_pk` OR `foundation_allowlist` |
+| DeleteUser             | delete -> deallocate -> close  | Required (device+global)       | `activator_authority_pk` OR `foundation_allowlist` |
+| CreateLink             | create -> allocate -> activate | Optional (global+both devices) | Contributor owner (either device)                  |
+| ActivateLink           | allocate -> activate           | Required (global+both devices) | `activator_authority_pk` OR `foundation_allowlist` |
+| DeleteLink             | delete -> deallocate -> close  | Required (global+both devices) | Creator OR Contributor owner                       |
+| CreateDevice           | create -> activate             | N/A (triggers creation)        | Contributor owner                                  |
+| ActivateDevice         | activate                       | N/A (triggers creation)        | `activator_authority_pk` OR `foundation_allowlist` |
+| DeleteDevice           | delete -> close                | N/A                            | Contributor owner                                  |
+| CreateInterface        | create -> allocate -> activate | Optional (device)              | Contributor owner                                  |
+| ActivateInterface      | allocate -> activate           | Required (device)              | `activator_authority_pk` OR `foundation_allowlist` |
+| DeleteInterface        | delete -> deallocate -> close  | Required (device)              | Contributor owner                                  |
+| CreateMulticastGroup   | create -> allocate -> activate | Optional (global)              | Authority signer                                   |
+| ActivateMulticastGroup | allocate -> activate           | Required (global)              | `activator_authority_pk` OR `foundation_allowlist` |
+| DeleteMulticastGroup   | delete -> deallocate -> close  | Required (global)              | Authority signer                                   |
+
+**User Instructions:**
 
 - **CreateUser**: With ResourceExtension accounts, atomically creates, allocates resources, and activates. Without ResourceExtension accounts (old clients), creates Pending user as before—activator handles activation via ActivateUser.
 - **ActivateUser**: For backward compatibility with Pending users created before migration. Program allocates from bitmap and activates.
 - **DeleteUser**: Atomically releases resources back to bitmap and closes account.
+
+**Link Instructions:**
+
+- **CreateLink**: With ResourceExtension accounts (global + both devices), atomically creates link, allocates `tunnel_net` from global pool and `tunnel_id` from each device's bitmap, and activates. Without ResourceExtension accounts, creates Pending link for activator.
+- **ActivateLink**: For backward compatibility with Pending links. Program allocates `tunnel_net` and both `tunnel_id` slots.
+- **DeleteLink**: Atomically releases `tunnel_net` and both `tunnel_id` slots back to bitmaps and closes account.
+
+**Device Instructions:**
+
+- **CreateDevice**: Creates device in Pending state. Does not allocate resources—Device itself is a container for per-device resources.
+- **ActivateDevice**: Transitions device to Activated. Activator creates per-device ResourceExtension if it doesn't exist (see "New Device Onboarding").
+- **DeleteDevice**: Closes device account. Requires all users, links, and interfaces on device to be deleted first.
+
+**Interface Instructions:**
+
+- **CreateInterface**: With ResourceExtension account (device), atomically creates interface. For loopback interfaces, allocates `segment_routing_id` from device bitmap and `dz_ip` if configured. Physical interfaces are set to unlinked status.
+- **ActivateInterface**: For backward compatibility with Pending interfaces. Program allocates resources based on interface type.
+- **DeleteInterface**: Atomically releases `segment_routing_id` and `dz_ip` (if allocated) back to bitmaps and closes account.
+
+**MulticastGroup Instructions:**
+
+- **CreateMulticastGroup**: With ResourceExtension account (global), atomically creates group and allocates `multicast_ip` from global pool.
+- **ActivateMulticastGroup**: For backward compatibility with Pending groups. Program allocates `multicast_ip`.
+- **DeleteMulticastGroup**: Atomically releases `multicast_ip` back to bitmap and closes account.
 
 **New Foundation Instructions:**
 
@@ -251,7 +289,7 @@ struct ResourceExtension {
 | ReleaseResource         | Manually release a specific slot  | `foundation_allowlist` |
 | SetResourceState        | Batch set bitmap (migration)      | `foundation_allowlist` |
 
-These are escape hatches for migration, recovery, and edge cases. Normal operations use CreateUser/ActivateUser/DeleteUser.
+These are escape hatches for migration, recovery, and edge cases. Normal operations use Create/Activate/Delete instructions.
 
 ### Device Selection
 
@@ -290,11 +328,11 @@ For per-device resources (TunnelId, DzIp, SegmentRoutingId), the program must kn
 
 ### State Verification
 
-Before migrating to on-chain allocation, the activator must verify that its local state matches the current on-chain state. This ensures the bitmap initialization via `SetResourceState` is accurate.
+Before migrating to onchain allocation, the activator must verify that its local state matches the current onchain state. This ensures the bitmap initialization via `SetResourceState` is accurate.
 
 **Verification process:**
 
-1. Activator reads all existing User, Link, Interface, and MulticastGroup accounts from on-chain
+1. Activator reads all existing User, Link, Interface, and MulticastGroup accounts from onchain
 2. Activator compares derived allocations (tunnel_id, tunnel_net, dz_ip) against its local state
 3. Any discrepancies are logged with account pubkey, expected value, and actual value
 4. Discrepancy report is reviewed by maintainers before proceeding with migration
@@ -302,9 +340,9 @@ Before migrating to on-chain allocation, the activator must verify that its loca
 
 **Discrepancy handling:**
 
-- If on-chain has allocations not in local state: local state was lost (e.g., restart without persistence)
-- If local state has allocations not on-chain: entities were deleted but local state not updated
-- Resolution: Use on-chain state as source of truth for bitmap initialization
+- If onchain has allocations not in local state: local state was lost (e.g., restart without persistence)
+- If local state has allocations not onchain: entities were deleted but local state not updated
+- Resolution: Use onchain state as source of truth for bitmap initialization
 
 This verification is a prerequisite for migration step 5 (Initialize bitmaps via `SetResourceState`).
 
@@ -313,7 +351,7 @@ This verification is a prerequisite for migration step 5 (Initialize bitmaps via
 1. Deploy program update with ResourceExtension and modified instructions
 2. Create global ResourceExtension (UserTunnelNet, LinkTunnelNet, Multicast)
 3. Create per-device ResourceExtensions for all existing devices (TunnelId, SegmentRoutingId, DzIp)
-4. **Run state verification** — activator compares local state with on-chain entities
+4. **Run state verification** - activator compares local state with onchain entities
 5. Initialize bitmaps from existing allocations via `SetResourceState`
 6. Deploy updated activator that passes ResourceExtension to ActivateUser/DeleteUser
 7. Verify activator processes pending entities correctly
@@ -329,7 +367,7 @@ This verification is a prerequisite for migration step 5 (Initialize bitmaps via
 
 1. **Immediate:** Deploy activator with local state restored (ignores ResourceExtension)
 2. **Full rollback:** Continue running activator with local state indefinitely
-3. **State recovery:** `SetResourceState` can reinitialize from on-chain entity data
+3. **State recovery:** `SetResourceState` can reinitialize from onchain entity data
 
 ### SDK Client Considerations
 
@@ -350,7 +388,7 @@ After rollback, SDK clients behave as follows:
 | ---------------------------------- | ---------------------------------- |
 | ResourceExtension allocation fails | Deploy activator with local state  |
 | Bitmap corruption suspected        | Reinitialize with SetResourceState |
-| On-chain transaction latency       | Deploy activator with local state  |
+| Onchain transaction latency        | Deploy activator with local state  |
 
 ## Security Considerations
 
@@ -388,27 +426,27 @@ All environments have abundant capacity (<3% utilization).
 
 ### Storage Costs
 
-| Account                      | Size    | Rent-exempt (SOL) |
-| ---------------------------- | ------- | ----------------- |
-| Global ResourceExtension     | ~8.2 KB | ~0.06 SOL         |
-| Per-device ResourceExtension | ~1.1 KB | ~0.008 SOL        |
+| Account                      | Size     | Rent-exempt (SOL) |
+| ---------------------------- | -------- | ----------------- |
+| Global ResourceExtension     | ~8.21 KB | ~0.06 SOL         |
+| Per-device ResourceExtension | ~1.11 KB | ~0.008 SOL        |
 
-**Total:** `~8.2 KB + (~1.1 KB x 72 devices) = ~87 KB`
+**Total:** `~8.21 KB + (~1.11 KB × 72 devices) = ~88 KB`
 
 ## Summary
 
-| Phase   | What Changes                            | Activator State      | Rollback            |
-| ------- | --------------------------------------- | -------------------- | ------------------- |
-| Current | —                                       | Stateful (local)     | —                   |
-| Phase 1 | Add ResourceExtension, new instructions | Stateless (on-chain) | Restore local state |
+| Phase   | What Changes                            | Activator State     | Rollback            |
+| ------- | --------------------------------------- | ------------------- | ------------------- |
+| Current | -                                       | Stateful (local)    | -                   |
+| Phase 1 | Add ResourceExtension, new instructions | Stateless (onchain) | Restore local state |
 
-**Phase 1 benefits:** Stateless activator, no reconciliation on restart, allocation visible on-chain
+**Phase 1 benefits:** Stateless activator, no reconciliation on restart, allocation visible onchain
 
 ## Future Scope: Phase 2
 
 Phase 2 (Permissionless Activation) is planned as future work. With the new design, Phase 2 becomes simpler:
 
-- **CreateUser already does atomic activation** — clients just need authorization
+- **CreateUser already does atomic activation** - clients just need authorization
 - **Remove `activator_authority_pk` check** from ActivateUser (keep `foundation_allowlist` for manual operations)
 - **ActivateUser becomes obsolete** for new clients (only needed for legacy Pending users)
 
@@ -430,6 +468,7 @@ struct IdBitmap {
     start_offset: u16,               // e.g., 500 for tunnel IDs
     bitmap: [u64; 64],               // 4,096 slots
     allocated_count: u16,
+    first_free_index: u32,           // Index of first word with free bit (optimization)
 }
 
 struct IpBlockBitmap {
@@ -440,8 +479,15 @@ struct IpBlockBitmap {
     reserved_end: u8,                // Slots to skip at end
     bitmap: Vec<u64>,                // 1 bit per slot
     allocated_count: u32,
+    first_free_index: u32,           // Index of first word with free bit (optimization)
 }
 ```
+
+**`first_free_index` Maintenance:**
+
+- **On allocate:** Start scan at `first_free_index` instead of 0. After allocation, if the word becomes full, increment `first_free_index` to the next word.
+- **On deallocate:** If the freed bit is in a word before `first_free_index`, update `first_free_index` to that word's index.
+- **Result:** O(1) allocation in the common case (sparse bitmaps), avoiding repeated scans of filled words.
 
 ### Slot-to-IP Conversion
 
@@ -468,10 +514,12 @@ fn ip_to_slot(ip: Ipv4Addr, block: Ipv4Network, slot_size: u8, reserved_start: u
 
 ### Account Sizes
 
-| ResourceExtension Scope | ID Bitmaps                                 | IP Blocks                                                    | Size    |
-| ----------------------- | ------------------------------------------ | ------------------------------------------------------------ | ------- |
-| Global                  | None                                       | UserTunnelNet (4 KB), LinkTunnelNet (4 KB), Multicast (32 B) | ~8.2 KB |
-| Per-device              | TunnelId (512 B), SegmentRoutingId (512 B) | DzIp (32 B each)                                             | ~1.1 KB |
+| ResourceExtension Scope | ID Bitmaps                                 | IP Blocks                                                    | Size     |
+| ----------------------- | ------------------------------------------ | ------------------------------------------------------------ | -------- |
+| Global                  | None                                       | UserTunnelNet (4 KB), LinkTunnelNet (4 KB), Multicast (32 B) | ~8.21 KB |
+| Per-device              | TunnelId (512 B), SegmentRoutingId (512 B) | DzIp (32 B each)                                             | ~1.11 KB |
+
+> **Note:** Each bitmap includes a `first_free_index: u32` field (4 bytes) for O(1) allocation optimization. Global ResourceExtension has 3 bitmaps (+12 bytes), per-device has 3 bitmaps (+12 bytes). This overhead is included in the sizes above.
 
 ### Code Examples
 
@@ -566,44 +614,86 @@ ReleaseResourceCommand {
 
 **Current flow (pre-migration):**
 
-1. Contributor or Foundation calls `CreateDevice` → Device created with `status: Pending`
-2. Activator detects Pending device, calls `ActivateDevice` → Device `status: Activated`
+1. Contributor or Foundation calls `CreateDevice` -> Device created with `status: Pending`
+2. Activator detects Pending device, calls `ActivateDevice` -> Device `status: Activated`
 3. Activator creates local `DeviceState` with per-device allocators (tunnel_ids, dz_ips)
 
 **Post-migration flow:**
 
-1. Contributor or Foundation calls `CreateDevice` → Device created with `status: Pending`
+1. Contributor or Foundation calls `CreateDevice` -> Device created with `status: Pending`
 2. Activator detects Pending device:
    - Checks if per-device `ResourceExtension` exists for this device
    - If not, calls `CreateResourceExtension` to create it (activator is on `foundation_allowlist`)
-3. Activator calls `ActivateDevice` → Device `status: Activated`
-4. Activator can now process users/links for this device using on-chain ResourceExtension
+3. Activator calls `ActivateDevice` -> Device `status: Activated`
+4. Activator can now process users/links for this device using onchain ResourceExtension
 
 **Key difference:** The activator gains a new responsibility—creating per-device ResourceExtension accounts. This replaces the old responsibility of maintaining local `DeviceState` allocators. The activator's keypair is already on `foundation_allowlist` (required for existing reject operations), so no additional authorization is needed.
 
 ### Other Entity Types
 
-Link, Interface, and MulticastGroup follow similar patterns:
+All entity types follow the same instruction pattern:
 
 | Entity         | Create Instruction   | Activate Instruction   | Delete Instruction   |
 | -------------- | -------------------- | ---------------------- | -------------------- |
 | User           | CreateUser           | ActivateUser           | DeleteUser           |
 | Link           | CreateLink           | ActivateLink           | DeleteLink           |
+| Device         | CreateDevice         | ActivateDevice         | DeleteDevice         |
 | Interface      | CreateInterface      | ActivateInterface      | DeleteInterface      |
 | MulticastGroup | CreateMulticastGroup | ActivateMulticastGroup | DeleteMulticastGroup |
 
 Each instruction allocates/deallocates the resources specified in the Entity Resource Requirements table.
 
+**User Account Fields (for resource tracking):**
+
+```rust
+struct User {
+    // ... existing fields ...
+    tunnel_net_slot: u32,    // Slot in UserTunnelNet (global ResourceExtension)
+    tunnel_id_slot: u16,     // Slot in device's tunnel_id bitmap
+    dz_ip_slot: u32,         // Slot in device's DzIp bitmap
+}
+```
+
+**Link Account Fields (for resource tracking):**
+
+```rust
+struct Link {
+    // ... existing fields ...
+    tunnel_net_slot: u32,        // Slot in LinkTunnelNet (global ResourceExtension)
+    tunnel_id_slot_a: u16,       // Slot in device_a's tunnel_id bitmap
+    tunnel_id_slot_b: u16,       // Slot in device_b's tunnel_id bitmap
+}
+```
+
+**Interface Account Fields (for resource tracking):**
+
+```rust
+struct Interface {
+    // ... existing fields ...
+    segment_routing_slot: Option<u16>,  // Slot in device's segment_routing bitmap (loopback only)
+    dz_ip_slot: Option<u32>,            // Slot in device's DzIp ResourceAccount (loopback only)
+}
+```
+
+**MulticastGroup Account Fields (for resource tracking):**
+
+```rust
+struct MulticastGroup {
+    // ... existing fields ...
+    multicast_slot: u32,  // Slot in Multicast (global ResourceExtension)
+}
+```
+
 ## Appendix: Glossary
 
 | Term                     | Definition                                                                                                                                                     |
 | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Activator**            | Rust service that monitors on-chain state, allocates resources, and submits activation transactions                                                            |
+| **Activator**            | Rust service that monitors onchain state, allocates resources, and submits activation transactions                                                             |
 | **Allocation**           | Reserving a network resource (IP address, tunnel ID) from a shared pool for exclusive use by an entity                                                         |
 | **Bitmap slot**          | A single position in a bitmap representing one allocatable resource unit                                                                                       |
 | **DZ IP**                | A routable IP address from a device's announced prefix, assigned to users for network connectivity                                                             |
 | **foundation_allowlist** | List of public keys authorized to perform privileged operations (CreateResourceExtension, SetResourceState, reject operations); includes the activator keypair |
 | **PDA seed**             | Data used to derive a Program Derived Address; for User accounts, this is `client_ip`                                                                          |
-| **ResourceExtension**    | On-chain account storing allocation bitmaps; can be global or per-device scoped                                                                                |
+| **ResourceExtension**    | Onchain account storing allocation bitmaps; can be global or per-device scoped                                                                                 |
 | **tunnel_net**           | A /31 IP block used for GRE tunnel endpoints between client and DZD (users) or between devices (links)                                                         |
 | **tunnel_id**            | Device-scoped identifier for tunnel interfaces, range 500-4095 on Arista devices                                                                               |

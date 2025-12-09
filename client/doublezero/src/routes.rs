@@ -36,6 +36,7 @@ mod tests {
             liveness_state: None,
             liveness_state_reason: None,
             peer_ip: peer_ip.to_string(),
+            peer_client_version: None,
         }
     }
 

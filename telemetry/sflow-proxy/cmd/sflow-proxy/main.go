@@ -12,8 +12,11 @@ import (
 	"syscall"
 	"time"
 
+	"strconv"
+
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/netsampler/goflow2/v2/decoders/sflow"
+	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/kversion"
 	"github.com/twmb/franz-go/pkg/sasl/aws"
@@ -61,7 +64,6 @@ func main() {
 	seeds := kgo.SeedBrokers(strings.Split(kafkaBrokers, ",")...)
 	opts := []kgo.Opt{
 		seeds,
-		kgo.AllowAutoTopicCreation(),
 		kgo.RequiredAcks(kgo.AllISRAcks()),
 		kgo.ProducerBatchCompression(kgo.SnappyCompression()),
 		kgo.ProducerLinger(1 * time.Second),
@@ -93,6 +95,10 @@ func main() {
 	}
 	defer kafkaClient.Close()
 
+	if err := createTopic(ctx, kafkaClient); err != nil {
+		log.Fatalf("failed to create topic: %v", err)
+	}
+
 	workerCount := runtime.NumCPU()
 	for i := 0; i < workerCount; i++ {
 		go ingestWorker(ctx, i, packets, kafkaClient)
@@ -105,6 +111,28 @@ func main() {
 
 	// give workers a moment to drain; or use a WaitGroup if you care
 	log.Printf("server stopped")
+}
+
+func createTopic(ctx context.Context, client *kgo.Client) error {
+	kafkaPartitionsStr := os.Getenv("KAFKA_TOPIC_PARTITIONS")
+	if kafkaPartitionsStr == "" {
+		kafkaPartitionsStr = "1"
+	}
+	kafkaPartitions, err := strconv.Atoi(kafkaPartitionsStr)
+	if err != nil {
+		return err
+	}
+
+	adm := kadm.NewClient(client)
+	topic := "flows_raw_devnet"
+	_, err = adm.CreateTopic(ctx, int32(kafkaPartitions), 1, nil, topic)
+	if err != nil {
+		// if topic already exists, we can ignore the error
+		if !strings.Contains(err.Error(), "TOPIC_ALREADY_EXISTS") {
+			return err
+		}
+	}
+	return nil
 }
 
 func readLoop(ctx context.Context, conn *net.UDPConn, out chan<- packet) {

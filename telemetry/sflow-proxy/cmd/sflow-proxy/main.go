@@ -155,7 +155,7 @@ func ingestWorker(ctx context.Context, id int, in <-chan packet, kafkaClient *kg
 func ingestPacket(ctx context.Context, workerID int, p packet, kafkaClient *kgo.Client) {
 	// we need to check this a valid sflow packet before sending to kafka
 	var msg sflow.Packet
-	err := sflow.DecodeMessage(bytes.NewBuffer(p.data), &msg)
+	err := sflow.DecodeMessageVersion(bytes.NewBuffer(p.data), &msg)
 	if err != nil {
 		log.Printf("worker %d: sflow decode error: %v", workerID, err)
 		return

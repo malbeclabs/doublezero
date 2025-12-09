@@ -47,11 +47,10 @@ func main() {
 	opts := []enricher.EnricherOption{
 		enricher.WithClickhouseAddr(*clickhouseAddr),
 		enricher.WithClickhouseCreds(*clickhouseUser, os.Getenv("CLICKHOUSE_PASS")),
-		enricher.WithRedpandaBroker(*redpandaBroker),
+		enricher.WithRedpandaBroker(os.Getenv("KAFKA_BROKERS")),
 		enricher.WithRedpandaCreds(*redpandaUser, os.Getenv("REDPANDA_PASS")),
-		enricher.WithRedpandaConsumerTopic(*redpandaTopicRaw),
-		enricher.WithRedpandaConsumerGroup(*redpandaConsumerGroup),
-		enricher.WithRedpandaProducerTopic(*redpandaTopicEnriched),
+		enricher.WithRedpandaConsumerTopic(os.Getenv("KAFKA_TOPIC")),
+		enricher.WithRedpandaConsumerGroup(os.Getenv("KAFKA_CONSUMER_GROUP")),
 		enricher.WithRedpandaMetrics(true),
 	}
 	enricher := enricher.NewEnricher(opts...)

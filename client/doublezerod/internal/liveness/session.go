@@ -6,8 +6,6 @@ import (
 	"net"
 	"sync"
 	"time"
-
-	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 )
 
 type DownReason uint8
@@ -79,7 +77,7 @@ func (p PeerMode) String() string {
 // Session models a single bidirectional liveness relationship with a peer,
 // maintaining BFD-like state, timers, and randomized transmission scheduling.
 type Session struct {
-	route *routing.Route
+	route *Route
 
 	localDiscr, peerDiscr uint32 // discriminators identify this session to each side
 	state                 State  // current BFD state
@@ -415,7 +413,7 @@ func (s *Session) rxInterval() time.Duration {
 
 type SessionSnapshot struct {
 	Peer                Peer
-	Route               routing.Route
+	Route               Route
 	State               State
 	LocalDiscr          uint32
 	PeerDiscr           uint32

@@ -123,14 +123,12 @@ func TestServeRoutesHandler_NoLiveness_WithIPv4AndIPv6(t *testing.T) {
 	want := []Route{
 		{
 			Network:     config.EnvLocalnet,
-			UserType:    userType1,
 			LocalIP:     "10.0.0.1",
 			PeerIP:      "192.0.2.1",
 			KernelState: liveness.KernelStatePresent.String(),
 		},
 		{
 			Network:     config.EnvLocalnet,
-			UserType:    userType2,
 			LocalIP:     "10.0.0.2",
 			PeerIP:      "192.0.2.2",
 			KernelState: liveness.KernelStatePresent.String(),
@@ -139,7 +137,6 @@ func TestServeRoutesHandler_NoLiveness_WithIPv4AndIPv6(t *testing.T) {
 
 	for i := range want {
 		require.Equalf(t, want[i].Network, got[i].Network, "route[%d] Network", i)
-		require.Equalf(t, want[i].UserType, got[i].UserType, "route[%d] UserType", i)
 		require.Equalf(t, want[i].LocalIP, got[i].LocalIP, "route[%d] LocalIP", i)
 		require.Equalf(t, want[i].PeerIP, got[i].PeerIP, "route[%d] PeerIP", i)
 		require.Equalf(t, want[i].KernelState, got[i].KernelState, "route[%d] KernelState", i)
@@ -230,7 +227,6 @@ func TestClient_API_ServeRoutesHandler_WithLiveness_KernelOnly(t *testing.T) {
 
 	rt := got[0]
 	require.Equal(t, config.EnvLocalnet, rt.Network)
-	require.Equal(t, userType, rt.UserType)
 	require.Equal(t, "10.0.0.1", rt.LocalIP)
 	require.Equal(t, "192.0.2.1", rt.PeerIP)
 	require.Equal(t, liveness.KernelStatePresent.String(), rt.KernelState)
@@ -257,7 +253,7 @@ func TestClient_API_ServeRoutesHandler_WithLiveness_PresentInBoth(t *testing.T) 
 
 	now := time.Now().UTC()
 	sess := liveness.SessionSnapshot{
-		Route:               *route,
+		Route:               liveness.Route{Route: *route},
 		LastUpdated:         now,
 		State:               liveness.StateUp,
 		ExpectedKernelState: liveness.KernelStatePresent,
@@ -302,7 +298,6 @@ func TestClient_API_ServeRoutesHandler_WithLiveness_PresentInBoth(t *testing.T) 
 
 	rt := got[0]
 	require.Equal(t, config.EnvLocalnet, rt.Network)
-	require.Equal(t, userType, rt.UserType)
 	require.Equal(t, "10.0.0.1", rt.LocalIP)
 	require.Equal(t, "192.0.2.1", rt.PeerIP)
 	require.Equal(t, liveness.KernelStatePresent.String(), rt.KernelState)
@@ -329,7 +324,7 @@ func TestClient_API_ServeRoutesHandler_WithLiveness_AbsentInKernel(t *testing.T)
 
 	now := time.Now().UTC()
 	sess := liveness.SessionSnapshot{
-		Route:               *route,
+		Route:               liveness.Route{Route: *route},
 		LastUpdated:         now,
 		State:               liveness.StateDown,
 		ExpectedKernelState: liveness.KernelStateAbsent,
@@ -373,7 +368,6 @@ func TestClient_API_ServeRoutesHandler_WithLiveness_AbsentInKernel(t *testing.T)
 	require.Len(t, got, 1)
 
 	rt := got[0]
-	require.Equal(t, userType, rt.UserType)
 	require.Equal(t, liveness.KernelStateAbsent.String(), rt.KernelState)
 	require.Equal(t, liveness.StateDown.String(), rt.LivenessState)
 	require.NotEmpty(t, rt.LivenessLastUpdated)
@@ -398,7 +392,7 @@ func TestClient_API_ServeRoutesHandler_WithLiveness_SetsLivenessStateReason(t *t
 
 	now := time.Now().UTC()
 	sess := liveness.SessionSnapshot{
-		Route:               *route,
+		Route:               liveness.Route{Route: *route},
 		LastUpdated:         now,
 		State:               liveness.StateDown,
 		LastDownReason:      liveness.DownReasonRemoteAdmin,
@@ -444,7 +438,6 @@ func TestClient_API_ServeRoutesHandler_WithLiveness_SetsLivenessStateReason(t *t
 
 	rt := got[0]
 	require.Equal(t, config.EnvLocalnet, rt.Network)
-	require.Equal(t, userType, rt.UserType)
 	require.Equal(t, "10.0.0.1", rt.LocalIP)
 	require.Equal(t, "192.0.2.1", rt.PeerIP)
 	require.Equal(t, liveness.KernelStateAbsent.String(), rt.KernelState)

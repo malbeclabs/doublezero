@@ -68,14 +68,14 @@ func wait[T any](t *testing.T, ch <-chan T, d time.Duration, name string) T {
 	}
 }
 
-func newTestRoute(mutate func(*routing.Route)) *routing.Route {
-	r := &routing.Route{
+func newTestRoute(mutate func(*Route)) *Route {
+	r := &Route{Route: routing.Route{
 		Table:    100,
 		Src:      net.IPv4(10, 4, 0, 1),
 		Dst:      &net.IPNet{IP: net.IPv4(10, 4, 0, 11), Mask: net.CIDRMask(32, 32)},
 		NextHop:  net.IPv4(10, 5, 0, 1),
 		Protocol: unix.RTPROT_BGP,
-	}
+	}}
 	if mutate != nil {
 		mutate(r)
 	}

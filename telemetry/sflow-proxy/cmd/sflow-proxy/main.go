@@ -183,4 +183,5 @@ func ingestPacket(ctx context.Context, workerID int, p packet, kafkaClient *kgo.
 			log.Printf("worker %d: kafka produce error: %v", workerID, err)
 		}
 	})
+	log.Printf("worker %d: ingested sflow packet from %s", workerID, p.addr.String())
 }

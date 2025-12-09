@@ -15,7 +15,6 @@ const (
 	LabelStateTo           = "state_to"
 	LabelStateFrom         = "state_from"
 	LabelReason            = "reason"
-	LabelOperation         = "operation"
 	LabelPeerClientVersion = "peer_client_version"
 )
 
@@ -114,7 +113,7 @@ func newMetrics() *Metrics {
 				Name: "doublezero_liveness_scheduler_events_dropped_total",
 				Help: "Count of events dropped by the scheduler",
 			},
-			serviceLabels,
+			withServiceLabels(LabelReason),
 		),
 		SchedulerTotalQueueLen: prometheus.NewGauge(
 			prometheus.GaugeOpts{
@@ -270,13 +269,12 @@ func (m *Metrics) peerDetectTime(peer Peer, dt time.Duration) {
 	m.PeerDetectTime.WithLabelValues(peer.Interface, peer.LocalIP, peer.PeerIP).Set(dt.Seconds())
 }
 
-func (m *Metrics) cleanupWithdrawRoute(peer Peer, peerMetrics bool) {
-	m.Sessions.WithLabelValues(peer.Interface, peer.LocalIP, StateDown.String()).Set(0)
+func (m *Metrics) cleanupWithdrawRoute(peer Peer, state State, peerMetrics bool) {
+	m.Sessions.WithLabelValues(peer.Interface, peer.LocalIP, state.String()).Dec()
 	if peerMetrics {
-		m.PeerSessions.DeleteLabelValues(peer.Interface, peer.LocalIP, peer.PeerIP, StateDown.String())
-		m.PeerSessions.DeleteLabelValues(peer.Interface, peer.LocalIP, peer.PeerIP, StateInit.String())
-		m.PeerSessions.DeleteLabelValues(peer.Interface, peer.LocalIP, peer.PeerIP, StateUp.String())
-		m.PeerSessions.DeleteLabelValues(peer.Interface, peer.LocalIP, peer.PeerIP, StateAdminDown.String())
+		for _, state := range allStates {
+			m.PeerSessions.DeleteLabelValues(peer.Interface, peer.LocalIP, peer.PeerIP, state.String())
+		}
 		m.PeerDetectTime.DeleteLabelValues(peer.Interface, peer.LocalIP, peer.PeerIP)
 	}
 }

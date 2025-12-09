@@ -28,6 +28,10 @@ const (
 	StateUp                     // session fully established
 )
 
+var (
+	allStates = []State{StateAdminDown, StateDown, StateInit, StateUp}
+)
+
 // String returns a human-readable string representation of the state.
 //
 // Returns unknown(<state>) for unknown states.

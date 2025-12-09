@@ -238,7 +238,7 @@ func (s *Scheduler) Run(ctx context.Context) error {
 					ev.session.nextDetectScheduled = time.Time{}
 				}
 				ev.session.mu.Unlock()
-				s.metrics.SchedulerEventsDropped.WithLabelValues("detect", "stale").Inc()
+				s.metrics.SchedulerEventsDropped.WithLabelValues(peer.Interface, peer.LocalIP, "stale").Inc()
 				s.metrics.SchedulerTotalQueueLen.Set(float64(s.eq.Len()))
 				continue
 			}
@@ -267,7 +267,7 @@ func (s *Scheduler) Run(ctx context.Context) error {
 	}
 }
 
-func (s *Scheduler) maybeDropOnOverflow(et eventType) bool {
+func (s *Scheduler) maybeDropOnOverflow(et eventType, peer Peer) bool {
 	if s.maxEvents <= 0 {
 		return false
 	}
@@ -278,7 +278,7 @@ func (s *Scheduler) maybeDropOnOverflow(et eventType) bool {
 		// never drop TX
 		return false
 	}
-	s.metrics.SchedulerEventsDropped.WithLabelValues("detect", "overflow").Inc()
+	s.metrics.SchedulerEventsDropped.WithLabelValues(peer.Interface, peer.LocalIP, "overflow").Inc()
 	return true
 }
 
@@ -307,6 +307,7 @@ func (s *Scheduler) scheduleTx(now time.Time, sess *Session) {
 	sess.mu.Unlock()
 
 	s.eq.Push(&event{when: next, eventType: eventTypeTX, session: sess})
+	s.metrics.SchedulerTotalQueueLen.Set(float64(s.eq.Len()))
 	s.metrics.schedulerServiceQueueLength(s.eq, peer)
 }
 
@@ -327,7 +328,7 @@ func (s *Scheduler) scheduleDetect(now time.Time, sess *Session) {
 	peer := *sess.peer
 	sess.mu.Unlock()
 
-	if s.maybeDropOnOverflow(eventTypeDetect) {
+	if s.maybeDropOnOverflow(eventTypeDetect, peer) {
 		// undo marker since we didn’t enqueue
 		sess.mu.Lock()
 		if sess.nextDetectScheduled.Equal(ddl) {
@@ -421,6 +422,8 @@ func (s *Scheduler) tryExpire(sess *Session) bool {
 			"peer", peer.String(),
 		)
 		s.eq.Push(&event{when: now, eventType: eventTypeTX, session: sess})
+		s.metrics.SchedulerTotalQueueLen.Set(float64(s.eq.Len()))
+		s.metrics.schedulerServiceQueueLength(s.eq, peer)
 		return true
 	}
 	return false

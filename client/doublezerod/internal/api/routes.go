@@ -34,6 +34,7 @@ type Route struct {
 	LivenessStateReason         string `json:"liveness_state_reason,omitempty"`
 	LivenessExpectedKernelState string `json:"liveness_expected_kernel_state,omitempty"`
 	LivenessPeerMode            string `json:"liveness_peer_mode,omitempty"`
+	PeerClientVersion           string `json:"peer_client_version,omitempty"`
 }
 
 type routeKey struct {
@@ -131,6 +132,7 @@ func ServeRoutesHandler(nlr bgp.RouteReaderWriter, lm LivenessManager, db DBRead
 						LivenessStateReason:         stateReason,
 						LivenessExpectedKernelState: sess.ExpectedKernelState.String(),
 						LivenessPeerMode:            sess.PeerAdvertisedMode.String(),
+						PeerClientVersion:           sess.PeerClientVersion.String(),
 					}
 					break
 				}

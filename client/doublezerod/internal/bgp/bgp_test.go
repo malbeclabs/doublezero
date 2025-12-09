@@ -118,15 +118,16 @@ func (p *dummyPlugin) handleUpdate(peer corebgp.PeerConfig, u []byte) *corebgp.N
 func TestBgpServer(t *testing.T) {
 	nlr := &mockRouteReaderWriter{}
 	lm, err := liveness.NewManager(t.Context(), &liveness.ManagerConfig{
-		Logger:     slog.Default(),
-		Netlinker:  nlr,
-		BindIP:     "127.0.0.1",
-		Port:       0,
-		TxMin:      100 * time.Millisecond,
-		RxMin:      100 * time.Millisecond,
-		DetectMult: 3,
-		MinTxFloor: 50 * time.Millisecond,
-		MaxTxCeil:  1 * time.Second,
+		Logger:        slog.Default(),
+		Netlinker:     nlr,
+		BindIP:        "127.0.0.1",
+		Port:          0,
+		TxMin:         100 * time.Millisecond,
+		RxMin:         100 * time.Millisecond,
+		DetectMult:    3,
+		MinTxFloor:    50 * time.Millisecond,
+		MaxTxCeil:     1 * time.Second,
+		ClientVersion: "1.2.3-dev",
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = lm.Close() })

@@ -1,13 +1,22 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"log"
 	"net"
 	"os"
 	"os/signal"
 	"runtime"
+	"strings"
 	"syscall"
+	"time"
+
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/netsampler/goflow2/v2/decoders/sflow"
+	"github.com/twmb/franz-go/pkg/kgo"
+	"github.com/twmb/franz-go/pkg/kversion"
+	"github.com/twmb/franz-go/pkg/sasl/aws"
 )
 
 type packet struct {
@@ -44,9 +53,49 @@ func main() {
 
 	packets := make(chan packet, 1024)
 
+	kafkaBrokers := os.Getenv("KAFKA_BROKERS")
+	if kafkaBrokers == "" {
+		kafkaBrokers = "127.0.0.1:19092"
+	}
+
+	seeds := kgo.SeedBrokers(strings.Split(kafkaBrokers, ",")...)
+	opts := []kgo.Opt{
+		seeds,
+		kgo.AllowAutoTopicCreation(),
+		kgo.RequiredAcks(kgo.AllISRAcks()),
+		kgo.ProducerBatchCompression(kgo.SnappyCompression()),
+		kgo.ProducerLinger(1 * time.Second),
+		kgo.MaxVersions(kversion.V2_8_0()),
+	}
+
+	if strings.ToLower(os.Getenv("KAFKA_AUTH_IAM_ENABLED")) == "true" {
+		awsCfg, err := config.LoadDefaultConfig(ctx)
+		if err != nil {
+			log.Fatalf("failed to load aws config: %v", err)
+		}
+		opts = append(opts, kgo.SASL(aws.ManagedStreamingIAM(func(ctx context.Context) (aws.Auth, error) {
+			creds, err := awsCfg.Credentials.Retrieve(ctx)
+			if err != nil {
+				return aws.Auth{}, err
+			}
+			return aws.Auth{
+				AccessKey:    creds.AccessKeyID,
+				SecretKey:    creds.SecretAccessKey,
+				SessionToken: creds.SessionToken,
+			}, nil
+		})))
+		opts = append(opts, kgo.DialTLS())
+	}
+
+	kafkaClient, err := kgo.NewClient(opts...)
+	if err != nil {
+		log.Fatalf("kafka client: %v", err)
+	}
+	defer kafkaClient.Close()
+
 	workerCount := runtime.NumCPU()
 	for i := 0; i < workerCount; i++ {
-		go ingestWorker(ctx, i, packets)
+		go ingestWorker(ctx, i, packets, kafkaClient)
 	}
 
 	readLoop(ctx, conn, packets)
@@ -86,7 +135,7 @@ func readLoop(ctx context.Context, conn *net.UDPConn, out chan<- packet) {
 	}
 }
 
-func ingestWorker(ctx context.Context, id int, in <-chan packet) {
+func ingestWorker(ctx context.Context, id int, in <-chan packet, kafkaClient *kgo.Client) {
 	log.Printf("worker %d started", id)
 	for {
 		select {
@@ -98,13 +147,40 @@ func ingestWorker(ctx context.Context, id int, in <-chan packet) {
 				log.Printf("worker %d channel closed, exiting", id)
 				return
 			}
-			ingestPacket(id, p)
+			ingestPacket(ctx, id, p, kafkaClient)
 		}
 	}
 }
 
-// replace this with "write to DB / queue / whatever"
-func ingestPacket(workerID int, p packet) {
-	log.Printf("worker %d: %d bytes from %s", workerID, len(p.data), p.addr.String())
-	// parse p.data and do your real ingestion here
+func ingestPacket(ctx context.Context, workerID int, p packet, kafkaClient *kgo.Client) {
+	// we need to check this a valid sflow packet before sending to kafka
+	var msg sflow.Packet
+	err := sflow.DecodeMessage(bytes.NewBuffer(p.data), &msg)
+	if err != nil {
+		log.Printf("worker %d: sflow decode error: %v", workerID, err)
+		return
+	}
+
+	var hasFlowSample bool
+	for _, sample := range msg.Samples {
+		if _, ok := sample.(sflow.FlowSample); ok {
+			hasFlowSample = true
+			break
+		}
+	}
+
+	if !hasFlowSample {
+		return // skip packets without flow samples
+	}
+
+	rec := &kgo.Record{
+		Topic: "flows_raw_devnet",
+		Value: p.data,
+	}
+
+	kafkaClient.Produce(ctx, rec, func(r *kgo.Record, err error) {
+		if err != nil {
+			log.Printf("worker %d: kafka produce error: %v", workerID, err)
+		}
+	})
 }

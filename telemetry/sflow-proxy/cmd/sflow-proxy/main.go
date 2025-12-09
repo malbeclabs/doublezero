@@ -2,12 +2,16 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net"
 	"os"
 	"os/signal"
 	"runtime"
 	"syscall"
+	"time"
+
+	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 )
 
 type packet struct {
@@ -18,6 +22,26 @@ type packet struct {
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	bootstrapServers := os.Getenv("KAFKA_BOOTSTRAP_SERVERS")
+	if bootstrapServers == "" {
+		log.Fatalf("KAFKA_BOOTSTRAP_SERVERS environment variable is not set")
+	}
+
+	cfg := &kafka.ConfigMap{
+		"bootstrap.servers": bootstrapServers,
+		// TLS/SASL config here if needed
+	}
+
+	admin, err := kafka.NewAdminClient(cfg)
+	if err != nil {
+		log.Fatalf("failed to create admin client: %v", err)
+	}
+	defer admin.Close()
+
+	if err := ensureTopic(admin, "test-topic", 6, 3); err != nil {
+		log.Fatalf("failed to ensure topic: %v", err)
+	}
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -107,4 +131,36 @@ func ingestWorker(ctx context.Context, id int, in <-chan packet) {
 func ingestPacket(workerID int, p packet) {
 	log.Printf("worker %d: %d bytes from %s", workerID, len(p.data), p.addr.String())
 	// parse p.data and do your real ingestion here
+}
+
+func ensureTopic(admin *kafka.AdminClient, topic string, partitions, rf int) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	specs := []kafka.TopicSpecification{{
+		Topic:             topic,
+		NumPartitions:     partitions,
+		ReplicationFactor: rf,
+	}}
+
+	results, err := admin.CreateTopics(ctx, specs, kafka.SetAdminOperationTimeout(15*time.Second))
+	if err != nil {
+		return fmt.Errorf("CreateTopics RPC failed: %w", err)
+	}
+
+	if len(results) != 1 {
+		return fmt.Errorf("expected 1 result, got %d", len(results))
+	}
+
+	r := results[0]
+	switch r.Error.Code() {
+	case kafka.ErrNoError:
+		fmt.Printf("created topic %s\n", r.Topic)
+		return nil
+	case kafka.ErrTopicAlreadyExists:
+		fmt.Printf("topic %s already exists, OK\n", r.Topic)
+		return nil
+	default:
+		return fmt.Errorf("failed to create topic %s: %w", r.Topic, r.Error)
+	}
 }

@@ -87,7 +87,8 @@ type Session struct {
 	lastDownReason DownReason // reason for last transition to Down
 	lastUpdated    time.Time  // time we last updated the session
 
-	peerAdvertisedMode PeerMode // peer advertised mode
+	peerAdvertisedMode PeerMode      // peer advertised mode
+	peerClientVersion  ClientVersion // peer advertised client version
 
 	// detectMult scales the detection timeout relative to the receive interval;
 	// it defines how many consecutive RX intervals may elapse without traffic
@@ -260,6 +261,9 @@ func (s *Session) HandleRx(now time.Time, ctrl *ControlPacket) (changed bool) {
 		s.peerAdvertisedMode = PeerModeActive
 	}
 
+	// Learn client version advertised by the peer.
+	s.peerClientVersion = ctrl.ClientVersion
+
 	prev := s.state
 
 	// If peer is in AdminDown, treat this as an intentional shutdown.
@@ -426,15 +430,24 @@ type SessionSnapshot struct {
 	NextDetectScheduled time.Time
 	LastUpdated         time.Time
 	PeerAdvertisedMode  PeerMode
+	PeerClientVersion   ClientVersion
 	ExpectedKernelState KernelState
 }
 
 func (s *Session) Snapshot() SessionSnapshot {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	var peer Peer
+	if s.peer != nil {
+		peer = *s.peer
+	}
+	var route Route
+	if s.route != nil {
+		route = *s.route
+	}
 	return SessionSnapshot{
-		Peer:                *s.peer,
-		Route:               *s.route,
+		Peer:                peer,
+		Route:               route,
 		State:               s.state,
 		LocalDiscr:          s.localDiscr,
 		PeerDiscr:           s.peerDiscr,
@@ -447,5 +460,6 @@ func (s *Session) Snapshot() SessionSnapshot {
 		NextDetectScheduled: s.nextDetectScheduled,
 		LastUpdated:         s.lastUpdated,
 		PeerAdvertisedMode:  s.peerAdvertisedMode,
+		PeerClientVersion:   s.peerClientVersion,
 	}
 }

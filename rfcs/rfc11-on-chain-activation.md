@@ -185,9 +185,9 @@ New clients pass ResourceExtension accounts to CreateUser for atomic create+allo
 
 - New `ResourceExtension` account type with bitmap-based allocation
 - Modified instructions with onchain allocation:
-  - `CreateUser` - now does create -> allocate -> activate atomically (ResourceExtension required)
+  - `CreateUser` - now does create -> allocate -> activate atomically (when ResourceExtension provided)
   - `ActivateUser` - now does allocate -> activate (for Pending users from old clients)
-  - `DeleteUser` - now does delete -> deallocate -> close atomically
+  - `DeleteUser` - sets status=Deleting; `CloseAccountUser` does deallocation and account closure
 - New Foundation escape hatch instructions:
   - `CreateResourceExtension` - initialize ResourceExtension PDA
   - `AllocateResource` - manually allocate a specific slot
@@ -232,53 +232,65 @@ struct ResourceExtension {
 
 **Modified Instructions:**
 
-| Instruction            | Flow                           | ResourceExtension              | Authorization                                      |
-| ---------------------- | ------------------------------ | ------------------------------ | -------------------------------------------------- |
-| CreateUser             | create -> allocate -> activate | Optional (device+global)       | AccessPass owner                                   |
-| ActivateUser           | allocate -> activate           | Required (device+global)       | `activator_authority_pk` OR `foundation_allowlist` |
-| DeleteUser             | delete -> deallocate -> close  | Required (device+global)       | `activator_authority_pk` OR `foundation_allowlist` |
-| CreateLink             | create -> allocate -> activate | Optional (global+both devices) | Contributor owner (either device)                  |
-| ActivateLink           | allocate -> activate           | Required (global+both devices) | `activator_authority_pk` OR `foundation_allowlist` |
-| DeleteLink             | delete -> deallocate -> close  | Required (global+both devices) | Creator OR Contributor owner                       |
-| CreateDevice           | create -> activate             | N/A (triggers creation)        | Contributor owner                                  |
-| ActivateDevice         | activate                       | N/A (triggers creation)        | `activator_authority_pk` OR `foundation_allowlist` |
-| DeleteDevice           | delete -> close                | N/A                            | Contributor owner                                  |
-| CreateInterface        | create -> allocate -> activate | Optional (device)              | Contributor owner                                  |
-| ActivateInterface      | allocate -> activate           | Required (device)              | `activator_authority_pk` OR `foundation_allowlist` |
-| DeleteInterface        | delete -> deallocate -> close  | Required (device)              | Contributor owner                                  |
-| CreateMulticastGroup   | create -> allocate -> activate | Optional (global)              | Authority signer                                   |
-| ActivateMulticastGroup | allocate -> activate           | Required (global)              | `activator_authority_pk` OR `foundation_allowlist` |
-| DeleteMulticastGroup   | delete -> deallocate -> close  | Required (global)              | Authority signer                                   |
+| Instruction                | Flow                           | ResourceExtension              | Authorization                                      |
+| -------------------------- | ------------------------------ | ------------------------------ | -------------------------------------------------- |
+| CreateUser                 | create -> allocate -> activate | Optional (device+global)       | AccessPass owner                                   |
+| ActivateUser               | allocate -> activate           | Required (device+global)       | `activator_authority_pk` OR `foundation_allowlist` |
+| DeleteUser                 | set status=Deleting            | N/A                            | User owner OR `foundation_allowlist`               |
+| CloseAccountUser           | deallocate -> close            | Required (device+global)       | `activator_authority_pk` OR `foundation_allowlist` |
+| CreateLink                 | create -> allocate -> activate | Optional (global+both devices) | Contributor owner (either device)                  |
+| ActivateLink               | allocate -> activate           | Required (global+both devices) | `activator_authority_pk` OR `foundation_allowlist` |
+| DeleteLink                 | set status=Deleting            | N/A                            | Contributor owner OR `foundation_allowlist`        |
+| CloseAccountLink           | deallocate -> close            | Required (global+both devices) | `activator_authority_pk` OR `foundation_allowlist` |
+| CreateDevice               | create (Pending)               | N/A (triggers creation)        | Contributor owner                                  |
+| ActivateDevice             | activate                       | N/A (triggers creation)        | `activator_authority_pk` OR `foundation_allowlist` |
+| DeleteDevice               | set status=Deleting            | N/A                            | Contributor owner OR `foundation_allowlist`        |
+| CloseAccountDevice         | close                          | N/A                            | `activator_authority_pk` OR `foundation_allowlist` |
+| CreateInterface            | create -> allocate -> activate | Optional (device)              | Contributor owner                                  |
+| ActivateInterface          | allocate -> activate           | Required (device)              | `activator_authority_pk` OR `foundation_allowlist` |
+| DeleteInterface            | set status=Deleting            | N/A                            | Contributor owner OR `foundation_allowlist`        |
+| CloseAccountInterface      | deallocate -> close            | Required (device)              | `activator_authority_pk` OR `foundation_allowlist` |
+| CreateMulticastGroup       | create -> allocate -> activate | Optional (global)              | Authority signer                                   |
+| ActivateMulticastGroup     | allocate -> activate           | Required (global)              | `activator_authority_pk` OR `foundation_allowlist` |
+| DeleteMulticastGroup       | set status=Deleting            | N/A                            | Authority signer                                   |
+| CloseAccountMulticastGroup | deallocate -> close            | Required (global)              | `activator_authority_pk` OR `foundation_allowlist` |
 
 **User Instructions:**
 
 - **CreateUser**: With ResourceExtension accounts, atomically creates, allocates resources, and activates. Without ResourceExtension accounts (old clients), creates Pending user as before—activator handles activation via ActivateUser.
 - **ActivateUser**: For backward compatibility with Pending users created before migration. Program allocates from bitmap and activates.
-- **DeleteUser**: Atomically releases resources back to bitmap and closes account.
+- **DeleteUser**: Sets `status=Deleting`. Activator detects this and calls CloseAccountUser.
+- **CloseAccountUser**: Requires `status=Deleting`. Releases resources (tunnel_net, tunnel_id, dz_ip) back to bitmaps and closes account.
 
 **Link Instructions:**
 
 - **CreateLink**: With ResourceExtension accounts (global + both devices), atomically creates link, allocates `tunnel_net` from global pool and `tunnel_id` from each device's bitmap, and activates. Without ResourceExtension accounts, creates Pending link for activator.
 - **ActivateLink**: For backward compatibility with Pending links. Program allocates `tunnel_net` and both `tunnel_id` slots.
-- **DeleteLink**: Atomically releases `tunnel_net` and both `tunnel_id` slots back to bitmaps and closes account.
+- **DeleteLink**: Sets `status=Deleting`. Activator detects this and calls CloseAccountLink.
+- **CloseAccountLink**: Requires `status=Deleting`. Releases `tunnel_net` and both `tunnel_id` slots back to bitmaps, resets interface statuses to Unlinked, and closes account.
 
 **Device Instructions:**
 
 - **CreateDevice**: Creates device in Pending state. Does not allocate resources—Device itself is a container for per-device resources.
 - **ActivateDevice**: Transitions device to Activated. Activator creates per-device ResourceExtension if it doesn't exist (see "New Device Onboarding").
-- **DeleteDevice**: Closes device account. Requires all users, links, and interfaces on device to be deleted first.
+- **DeleteDevice**: Sets `status=Deleting`. Requires all users, links, and interfaces on device to be deleted first. Activator detects this and calls CloseAccountDevice.
+- **CloseAccountDevice**: Requires `status=Deleting`. Decrements reference counts on Contributor, Location, and Exchange, then closes account.
 
 **Interface Instructions:**
 
-- **CreateInterface**: With ResourceExtension account (device), atomically creates interface. For loopback interfaces, allocates `segment_routing_id` from device bitmap and `dz_ip` if configured. Physical interfaces are set to unlinked status.
+> **Note:** Interfaces are embedded within Device accounts, not separate PDAs. The instructions below modify the interface data within the parent Device account.
+
+- **CreateInterface**: With ResourceExtension account (device), atomically creates interface within Device. For loopback interfaces, allocates `segment_routing_id` from device bitmap and `dz_ip` if configured. Physical interfaces are set to unlinked status.
 - **ActivateInterface**: For backward compatibility with Pending interfaces. Program allocates resources based on interface type.
-- **DeleteInterface**: Atomically releases `segment_routing_id` and `dz_ip` (if allocated) back to bitmaps and closes account.
+- **DeleteInterface**: Sets interface `status=Deleting` within Device account. Activator detects this and calls CloseAccountInterface.
+- **CloseAccountInterface**: Requires interface `status=Deleting`. Releases `segment_routing_id` and `dz_ip` (if allocated) back to bitmaps and removes interface from Device account.
 
 **MulticastGroup Instructions:**
 
 - **CreateMulticastGroup**: With ResourceExtension account (global), atomically creates group and allocates `multicast_ip` from global pool.
 - **ActivateMulticastGroup**: For backward compatibility with Pending groups. Program allocates `multicast_ip`.
-- **DeleteMulticastGroup**: Atomically releases `multicast_ip` back to bitmap and closes account.
+- **DeleteMulticastGroup**: Sets `status=Deleting`. Activator detects this and calls CloseAccountMulticastGroup.
+- **CloseAccountMulticastGroup**: Requires `status=Deleting`. Releases `multicast_ip` back to bitmap and closes account.
 
 **New Foundation Instructions:**
 
@@ -353,7 +365,7 @@ This verification is a prerequisite for migration step 5 (Initialize bitmaps via
 3. Create per-device ResourceExtensions for all existing devices (TunnelId, SegmentRoutingId, DzIp)
 4. **Run state verification** - activator compares local state with onchain entities
 5. Initialize bitmaps from existing allocations via `SetResourceState`
-6. Deploy updated activator that passes ResourceExtension to ActivateUser/DeleteUser
+6. Deploy updated activator that passes ResourceExtension to ActivateUser/CloseAccountUser
 7. Verify activator processes pending entities correctly
 8. Release updated SDK requiring ResourceExtension for CreateUser
 
@@ -454,7 +466,8 @@ The activator would only be needed for:
 
 1. New device onboarding (CreateResourceExtension)
 2. Legacy Pending user cleanup (ActivateUser)
-3. Operational tasks (reject operations)
+3. CloseAccount operations (CloseAccountUser, CloseAccountLink, etc.)
+4. Operational tasks (reject operations)
 
 This phase will be designed and documented separately once Phase 1 is stable in production.
 
@@ -587,11 +600,18 @@ ActivateUserCommand {
 
 > **Note:** The program reads ResourceExtension bitmaps, finds next available slots, marks them allocated, computes resource values, and writes to user account—all in a single atomic instruction. If bitmap is full, instruction fails.
 
-**User Deletion - After:**
+**User Deletion - Two-Step Flow:**
 
 ```rust
-// Program releases resources to bitmap and closes account atomically
+// Step 1: Owner marks user for deletion (sets status=Deleting)
 DeleteUserCommand {
+    user: user_pubkey,
+}.execute(client)?;
+// User status is now Deleting
+
+// Step 2: Activator detects Deleting status, calls CloseAccount
+// Program releases resources to bitmap and closes account
+CloseAccountUserCommand {
     user: user_pubkey,
     device_resource_ext,   // Required - program releases TunnelId, DzIp
     global_resource_ext,   // Required - program releases UserTunnelNet
@@ -631,17 +651,19 @@ ReleaseResourceCommand {
 
 ### Other Entity Types
 
-All entity types follow the same instruction pattern:
+All entity types follow the same instruction pattern with a two-step deletion flow:
 
-| Entity         | Create Instruction   | Activate Instruction   | Delete Instruction   |
-| -------------- | -------------------- | ---------------------- | -------------------- |
-| User           | CreateUser           | ActivateUser           | DeleteUser           |
-| Link           | CreateLink           | ActivateLink           | DeleteLink           |
-| Device         | CreateDevice         | ActivateDevice         | DeleteDevice         |
-| Interface      | CreateInterface      | ActivateInterface      | DeleteInterface      |
-| MulticastGroup | CreateMulticastGroup | ActivateMulticastGroup | DeleteMulticastGroup |
+| Entity         | Create Instruction   | Activate Instruction   | Delete Instruction   | CloseAccount Instruction   |
+| -------------- | -------------------- | ---------------------- | -------------------- | -------------------------- |
+| User           | CreateUser           | ActivateUser           | DeleteUser           | CloseAccountUser           |
+| Link           | CreateLink           | ActivateLink           | DeleteLink           | CloseAccountLink           |
+| Device         | CreateDevice         | ActivateDevice         | DeleteDevice         | CloseAccountDevice         |
+| Interface      | CreateInterface      | ActivateInterface      | DeleteInterface      | CloseAccountInterface      |
+| MulticastGroup | CreateMulticastGroup | ActivateMulticastGroup | DeleteMulticastGroup | CloseAccountMulticastGroup |
 
-Each instruction allocates/deallocates the resources specified in the Entity Resource Requirements table.
+**Deletion flow:** Owner calls Delete (sets `status=Deleting`) → Activator detects → Activator calls CloseAccount (deallocates resources, closes account).
+
+Each Create/Activate instruction allocates the resources specified in the Entity Resource Requirements table. Each CloseAccount instruction deallocates those same resources.
 
 **User Account Fields (for resource tracking):**
 
@@ -671,7 +693,7 @@ struct Link {
 struct Interface {
     // ... existing fields ...
     segment_routing_slot: Option<u16>,  // Slot in device's segment_routing bitmap (loopback only)
-    dz_ip_slot: Option<u32>,            // Slot in device's DzIp ResourceAccount (loopback only)
+    dz_ip_slot: Option<u32>,            // Slot in device's DzIp bitmap (loopback only)
 }
 ```
 
@@ -691,6 +713,7 @@ struct MulticastGroup {
 | **Activator**            | Rust service that monitors onchain state, allocates resources, and submits activation transactions                                                             |
 | **Allocation**           | Reserving a network resource (IP address, tunnel ID) from a shared pool for exclusive use by an entity                                                         |
 | **Bitmap slot**          | A single position in a bitmap representing one allocatable resource unit                                                                                       |
+| **CloseAccount**         | Instruction that finalizes entity deletion: verifies `status=Deleting`, releases allocated resources back to bitmaps, and closes the account                   |
 | **DZ IP**                | A routable IP address from a device's announced prefix, assigned to users for network connectivity                                                             |
 | **foundation_allowlist** | List of public keys authorized to perform privileged operations (CreateResourceExtension, SetResourceState, reject operations); includes the activator keypair |
 | **PDA seed**             | Data used to derive a Program Derived Address; for User accounts, this is `client_ip`                                                                          |

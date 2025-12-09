@@ -1,0 +1,329 @@
+package bgp
+
+import (
+	"net"
+	"net/netip"
+	"testing"
+
+	"github.com/jwhited/corebgp"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
+	gobgp "github.com/osrg/gobgp/pkg/packet/bgp"
+	"github.com/stretchr/testify/require"
+	"golang.org/x/sys/unix"
+)
+
+type mockUpdateWriter struct {
+	updates []*gobgp.BGPUpdate
+}
+
+func (m *mockUpdateWriter) WriteUpdate(u []byte) error {
+	upd := &gobgp.BGPUpdate{}
+	if err := upd.DecodeFromBytes(u); err != nil {
+		return err
+	}
+	m.updates = append(m.updates, upd)
+	return nil
+}
+
+func TestClient_BGPPlugin_GetCapabilitiesSendsPendingStatus(t *testing.T) {
+	t.Parallel()
+
+	peerStatus := make(chan SessionEvent, 1)
+	p := &Plugin{
+		PeerStatusChan: peerStatus,
+	}
+
+	peer := corebgp.PeerConfig{
+		RemoteAddress: netip.MustParseAddr("192.0.2.1"),
+	}
+
+	caps := p.GetCapabilities(peer)
+	require.Len(t, caps, 1)
+
+	select {
+	case ev := <-peerStatus:
+		require.True(t, ev.PeerAddr.Equal(net.ParseIP("192.0.2.1")), "unexpected peer addr: %v", ev.PeerAddr)
+		require.Equal(t, SessionStatusPending, ev.Session.SessionStatus)
+	default:
+		require.Fail(t, "expected a SessionEvent on PeerStatusChan")
+	}
+}
+
+func TestClient_BGPPlugin_OnOpenMessageSendsInitializingStatus(t *testing.T) {
+	t.Parallel()
+
+	peerStatus := make(chan SessionEvent, 1)
+	p := &Plugin{
+		PeerStatusChan: peerStatus,
+	}
+
+	peer := corebgp.PeerConfig{
+		RemoteAddress: netip.MustParseAddr("198.51.100.1"),
+	}
+
+	notif := p.OnOpenMessage(peer, netip.MustParseAddr("203.0.113.1"), nil)
+	require.Nil(t, notif)
+
+	select {
+	case ev := <-peerStatus:
+		require.True(t, ev.PeerAddr.Equal(net.ParseIP("198.51.100.1")), "unexpected peer addr: %v", ev.PeerAddr)
+		require.Equal(t, SessionStatusInitializing, ev.Session.SessionStatus)
+	default:
+		require.Fail(t, "expected a SessionEvent on PeerStatusChan")
+	}
+}
+
+func TestClient_BGPPlugin_OnEstablishedAdvertisesAllNLRIsAndSendsUpStatus(t *testing.T) {
+	t.Parallel()
+
+	peerStatus := make(chan SessionEvent, 1)
+	writer := &mockUpdateWriter{}
+	nlris := []NLRI{
+		{Prefix: "10.0.0.0", PrefixLength: 24, NextHop: "192.0.2.254", AsPath: []uint32{64512}},
+		{Prefix: "10.0.1.0", PrefixLength: 24, NextHop: "192.0.2.254", AsPath: []uint32{64512, 64513}},
+	}
+
+	p := &Plugin{
+		AdvertisedNLRI: nlris,
+		PeerStatusChan: peerStatus,
+	}
+
+	peer := corebgp.PeerConfig{
+		RemoteAddress: netip.MustParseAddr("192.0.2.2"),
+	}
+
+	handler := p.OnEstablished(peer, writer)
+	require.NotNil(t, handler)
+
+	require.Len(t, writer.updates, len(nlris))
+
+	select {
+	case ev := <-peerStatus:
+		require.Equal(t, SessionStatusUp, ev.Session.SessionStatus)
+	default:
+		require.Fail(t, "expected a SessionEvent on PeerStatusChan")
+	}
+}
+
+func TestClient_BGPPlugin_OnCloseDeletesRoutesAndSendsDownStatus(t *testing.T) {
+	t.Parallel()
+
+	peerStatus := make(chan SessionEvent, 1)
+
+	var gotProtocol int
+	var deletedRoute *routing.Route
+
+	mockRW := &MockRouteReaderWriter{
+		RouteByProtocolFunc: func(p int) ([]*routing.Route, error) {
+			gotProtocol = p
+			return []*routing.Route{
+				{
+					Dst: &net.IPNet{
+						IP:   net.IP{1, 1, 1, 1},
+						Mask: net.CIDRMask(32, 32),
+					},
+				},
+			}, nil
+		},
+		RouteDeleteFunc: func(r *routing.Route) error {
+			deletedRoute = r
+			return nil
+		},
+	}
+
+	p := &Plugin{
+		PeerStatusChan:    peerStatus,
+		RouteReaderWriter: mockRW,
+	}
+
+	peer := corebgp.PeerConfig{
+		RemoteAddress: netip.MustParseAddr("203.0.113.1"),
+	}
+
+	p.OnClose(peer)
+
+	select {
+	case ev := <-peerStatus:
+		require.Equal(t, SessionStatusDown, ev.Session.SessionStatus)
+	default:
+		require.Fail(t, "expected a SessionEvent on PeerStatusChan")
+	}
+
+	require.Equal(t, unix.RTPROT_BGP, gotProtocol)
+	require.NotNil(t, deletedRoute)
+	require.NotNil(t, deletedRoute.Dst)
+	require.Equal(t, "1.1.1.1/32", deletedRoute.Dst.String())
+}
+
+func TestClient_BGPPlugin_HandleUpdateWithdrawDeletesRouteWithPeerAsNextHop(t *testing.T) {
+	t.Parallel()
+
+	var deleted []*routing.Route
+
+	mockRW := &MockRouteReaderWriter{
+		RouteDeleteFunc: func(r *routing.Route) error {
+			deleted = append(deleted, r)
+			return nil
+		},
+	}
+
+	p := &Plugin{
+		RouteSrc:          net.IPv4(172, 16, 0, 1),
+		RouteTable:        254,
+		RouteReaderWriter: mockRW,
+	}
+
+	peer := corebgp.PeerConfig{
+		RemoteAddress: netip.MustParseAddr("192.0.2.10"),
+	}
+
+	withdraw := gobgp.NewIPAddrPrefix(32, "10.10.10.10")
+	msg := gobgp.NewBGPUpdateMessage([]*gobgp.IPAddrPrefix{withdraw}, nil, nil)
+	body, err := msg.Body.Serialize()
+	require.NoError(t, err)
+
+	notif := p.handleUpdate(peer, body)
+	require.Nil(t, notif)
+
+	require.Len(t, deleted, 1)
+
+	r := deleted[0]
+	require.True(t, r.Src.Equal(p.RouteSrc), "unexpected src, got %v want %v", r.Src, p.RouteSrc)
+	require.Equal(t, p.RouteTable, r.Table)
+	require.NotNil(t, r.Dst)
+	require.Equal(t, "10.10.10.10/32", r.Dst.String())
+	require.True(t, r.NextHop.Equal(net.IP(peer.RemoteAddress.AsSlice())),
+		"unexpected nexthop, got %v want %v", r.NextHop, peer.RemoteAddress.AsSlice())
+}
+
+func TestClient_BGPPlugin_HandleUpdateInstallRouteFromNlriAndNextHop(t *testing.T) {
+	t.Parallel()
+
+	var added []*routing.Route
+
+	mockRW := &MockRouteReaderWriter{
+		RouteAddFunc: func(r *routing.Route) error {
+			added = append(added, r)
+			return nil
+		},
+	}
+
+	p := &Plugin{
+		RouteSrc:          net.IPv4(10, 0, 0, 1),
+		RouteTable:        100,
+		RouteReaderWriter: mockRW,
+	}
+
+	peer := corebgp.PeerConfig{
+		RemoteAddress: netip.MustParseAddr("192.0.2.20"),
+	}
+
+	nexthop := "192.0.2.254"
+	attrNH := gobgp.NewPathAttributeNextHop(nexthop)
+	nlri := gobgp.NewIPAddrPrefix(24, "203.0.113.0")
+
+	msg := gobgp.NewBGPUpdateMessage(nil, []gobgp.PathAttributeInterface{attrNH}, []*gobgp.IPAddrPrefix{nlri})
+	body, err := msg.Body.Serialize()
+	require.NoError(t, err)
+
+	notif := p.handleUpdate(peer, body)
+	require.Nil(t, notif)
+
+	require.Len(t, added, 1)
+
+	r := added[0]
+	require.True(t, r.Src.Equal(p.RouteSrc), "unexpected src, got %v want %v", r.Src, p.RouteSrc)
+	require.Equal(t, p.RouteTable, r.Table)
+	require.NotNil(t, r.Dst)
+	require.Equal(t, "203.0.113.0/24", r.Dst.String())
+	require.True(t, r.NextHop.Equal(net.ParseIP(nexthop)),
+		"unexpected nexthop, got %v want %v", r.NextHop, nexthop)
+	require.Equal(t, unix.RTPROT_BGP, r.Protocol)
+}
+
+func TestClient_BGPPlugin_HandleUpdateNoInstallSkipsRouteChanges(t *testing.T) {
+	t.Parallel()
+
+	var calledAdd, calledDel bool
+
+	mockRW := &MockRouteReaderWriter{
+		RouteAddFunc: func(r *routing.Route) error {
+			calledAdd = true
+			return nil
+		},
+		RouteDeleteFunc: func(r *routing.Route) error {
+			calledDel = true
+			return nil
+		},
+	}
+
+	p := &Plugin{
+		RouteSrc:          net.IPv4(10, 0, 0, 1),
+		RouteTable:        100,
+		RouteReaderWriter: mockRW,
+		NoInstall:         true,
+	}
+
+	peer := corebgp.PeerConfig{
+		RemoteAddress: netip.MustParseAddr("192.0.2.30"),
+	}
+
+	nexthop := "192.0.2.254"
+	attrNH := gobgp.NewPathAttributeNextHop(nexthop)
+	nlri := gobgp.NewIPAddrPrefix(24, "198.51.100.0")
+
+	msg := gobgp.NewBGPUpdateMessage(nil, []gobgp.PathAttributeInterface{attrNH}, []*gobgp.IPAddrPrefix{nlri})
+	body, err := msg.Body.Serialize()
+	require.NoError(t, err)
+
+	_ = p.handleUpdate(peer, body)
+
+	require.False(t, calledAdd, "expected no RouteAdd calls when NoInstall is true")
+	require.False(t, calledDel, "expected no RouteDelete calls when NoInstall is true")
+}
+
+func TestClient_BGPPlugin_BuildUpdateRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	p := &Plugin{}
+
+	nlri := NLRI{
+		Prefix:       "198.51.100.0",
+		PrefixLength: 24,
+		NextHop:      "192.0.2.254",
+		AsPath:       []uint32{64512, 64513},
+	}
+
+	body, err := p.buildUpdate(nlri)
+	require.NoError(t, err)
+
+	var upd gobgp.BGPUpdate
+	require.NoError(t, upd.DecodeFromBytes(body))
+
+	require.Len(t, upd.NLRI, 1)
+	require.Equal(t, nlri.Prefix, upd.NLRI[0].Prefix.String())
+	require.Equal(t, int(nlri.PrefixLength), int(upd.NLRI[0].Length))
+
+	var gotNextHop net.IP
+	var gotAsPath []uint32
+
+	for _, attr := range upd.PathAttributes {
+		switch attr.GetType() {
+		case gobgp.BGP_ATTR_TYPE_NEXT_HOP:
+			gotNextHop = attr.(*gobgp.PathAttributeNextHop).Value
+		case gobgp.BGP_ATTR_TYPE_AS4_PATH, gobgp.BGP_ATTR_TYPE_AS_PATH:
+			asAttr := attr.(*gobgp.PathAttributeAsPath)
+			for _, pth := range asAttr.Value {
+				gotAsPath = append(gotAsPath, pth.GetAS()...)
+			}
+		}
+	}
+
+	require.True(t, gotNextHop.Equal(net.ParseIP(nlri.NextHop)),
+		"unexpected nexthop, got %v want %v", gotNextHop, nlri.NextHop)
+
+	require.Len(t, gotAsPath, len(nlri.AsPath))
+	for i := range nlri.AsPath {
+		require.Equal(t, nlri.AsPath[i], gotAsPath[i], "unexpected AS at index %d", i)
+	}
+}

@@ -82,7 +82,7 @@ func TestClient_Liveness_Manager_RegisterRoute_Deduplicates(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = m.Close() })
 
-	r := newTestRoute(func(r *routing.Route) {
+	r := newTestRoute(func(r *Route) {
 		r.Src = net.IPv4(127, 0, 0, 1)
 		r.Dst = &net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(32, 32)}
 	})
@@ -113,7 +113,7 @@ func TestClient_Liveness_Manager_HandleRx_Transitions_AddAndDelete(t *testing.T)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = m.Close() })
 
-	r := newTestRoute(func(r *routing.Route) {
+	r := newTestRoute(func(r *Route) {
 		r.Src = net.IPv4(127, 0, 0, 1)
 		r.Dst = &net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(32, 32)}
 	})
@@ -171,7 +171,7 @@ func TestClient_Liveness_Manager_WithdrawRoute_RemovesSessionAndDeletesIfInstall
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = m.Close() })
 
-	r := newTestRoute(func(r *routing.Route) {
+	r := newTestRoute(func(r *Route) {
 		r.Dst = &net.IPNet{IP: m.LocalAddr().IP, Mask: net.CIDRMask(32, 32)}
 		r.Src = m.LocalAddr().IP
 	})
@@ -221,7 +221,7 @@ func TestClient_Liveness_Manager_HandleRx_UnknownPeer_NoEffect(t *testing.T) {
 	t.Cleanup(func() { _ = m.Close() })
 
 	// Register a real session to ensure maps are non-empty.
-	r := newTestRoute(func(r *routing.Route) {
+	r := newTestRoute(func(r *Route) {
 		r.Dst = &net.IPNet{IP: m.LocalAddr().IP, Mask: net.CIDRMask(32, 32)}
 		r.Src = m.LocalAddr().IP
 	})
@@ -256,7 +256,7 @@ func TestClient_Liveness_Manager_NetlinkerErrors_NoCrash(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = m.Close() })
 
-	r := newTestRoute(func(r *routing.Route) {
+	r := newTestRoute(func(r *Route) {
 		r.Dst = &net.IPNet{IP: m.LocalAddr().IP, Mask: net.CIDRMask(32, 32)}
 		r.Src = m.LocalAddr().IP
 	})
@@ -298,7 +298,7 @@ func TestClient_Liveness_Manager_PassiveMode_ImmediateInstall_NoAutoWithdraw(t *
 	require.NoError(t, err)
 	defer m.Close()
 
-	r := newTestRoute(func(r *routing.Route) {
+	r := newTestRoute(func(r *Route) {
 		r.Src = net.IPv4(127, 0, 0, 1)
 		r.Dst = &net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(32, 32)}
 	})
@@ -335,7 +335,7 @@ func TestClient_Liveness_Manager_PeerKey_IPv4Canonicalization(t *testing.T) {
 	require.NoError(t, err)
 	defer m.Close()
 
-	r := newTestRoute(func(r *routing.Route) {
+	r := newTestRoute(func(r *Route) {
 		r.Src = net.IPv4(127, 0, 0, 1)
 		r.Dst = &net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(32, 32)}
 	})
@@ -422,7 +422,7 @@ func TestClient_Liveness_Manager_AdminDownRoute_WithdrawsAndMarksAdminDown(t *te
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = m.Close() })
 
-	r := newTestRoute(func(r *routing.Route) {
+	r := newTestRoute(func(r *Route) {
 		r.Src = net.IPv4(127, 0, 0, 1)
 		r.Dst = &net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(32, 32)}
 	})
@@ -480,7 +480,7 @@ func TestClient_Liveness_Manager_AdminDownRoute_PassiveMode_NoDelete_Idempotent(
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = m.Close() })
 
-	r := newTestRoute(func(r *routing.Route) {
+	r := newTestRoute(func(r *Route) {
 		r.Src = net.IPv4(127, 0, 0, 1)
 		r.Dst = &net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(32, 32)}
 	})
@@ -534,7 +534,7 @@ func TestClient_Liveness_Manager_WithdrawRoute_PassiveMode_DeletesAndRemovesSess
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = m.Close() })
 
-	r := newTestRoute(func(r *routing.Route) {
+	r := newTestRoute(func(r *Route) {
 		r.Dst = &net.IPNet{IP: m.LocalAddr().IP, Mask: net.CIDRMask(32, 32)}
 		r.Src = m.LocalAddr().IP
 	})
@@ -579,7 +579,7 @@ func TestClient_Liveness_Manager_AdminDownRoute_NoSession_NoDelete(t *testing.T)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = m.Close() })
 
-	r := newTestRoute(func(r *routing.Route) {
+	r := newTestRoute(func(r *Route) {
 		r.Src = net.IPv4(127, 0, 0, 1)
 		r.Dst = &net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(32, 32)}
 	})
@@ -600,14 +600,14 @@ func TestClient_Liveness_Manager_RegisterRoute_InvalidIPv4Validation(t *testing.
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = m.Close() })
 
-	rNilSrc := newTestRoute(func(r *routing.Route) {
+	rNilSrc := newTestRoute(func(r *Route) {
 		r.Src = nil
 	})
 	err = m.RegisterRoute(rNilSrc, "lo", m.LocalAddr().Port)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "nil source (<nil>) or destination IP (10.4.0.11)")
 
-	rNonIPv4 := newTestRoute(func(r *routing.Route) {
+	rNonIPv4 := newTestRoute(func(r *Route) {
 		r.Src = net.ParseIP("::1")
 	})
 	err = m.RegisterRoute(rNonIPv4, "lo", m.LocalAddr().Port)
@@ -622,14 +622,14 @@ func TestClient_Liveness_Manager_WithdrawRoute_InvalidIPv4Validation(t *testing.
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = m.Close() })
 
-	rNilDst := newTestRoute(func(r *routing.Route) {
+	rNilDst := newTestRoute(func(r *Route) {
 		r.Dst = &net.IPNet{IP: nil, Mask: net.CIDRMask(32, 32)}
 	})
 	err = m.WithdrawRoute(rNilDst, "lo")
 	require.Error(t, err)
 	require.ErrorContains(t, err, "nil source or destination IP")
 
-	rNonIPv4 := newTestRoute(func(r *routing.Route) {
+	rNonIPv4 := newTestRoute(func(r *Route) {
 		r.Dst = &net.IPNet{IP: net.ParseIP("::1"), Mask: net.CIDRMask(128, 128)}
 	})
 	err = m.WithdrawRoute(rNonIPv4, "lo")
@@ -653,7 +653,7 @@ func TestClient_Liveness_Manager_HandleRx_RemoteDownHonoredOnlyAfterDetectInterv
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = m.Close() })
 
-	r := newTestRoute(func(r *routing.Route) {
+	r := newTestRoute(func(r *Route) {
 		r.Src = net.IPv4(127, 0, 0, 1)
 		r.Dst = &net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(32, 32)}
 	})
@@ -724,7 +724,7 @@ func TestClient_Liveness_Manager_PeerSessionsMetrics_StateTransitions(t *testing
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = m.Close() })
 
-	r := newTestRoute(func(r *routing.Route) {
+	r := newTestRoute(func(r *Route) {
 		r.Src = net.IPv4(127, 0, 0, 1)
 		r.Dst = &net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(32, 32)}
 	})
@@ -808,7 +808,7 @@ func TestClient_Liveness_Manager_OnSessionDown_EmitsConvergenceToDownWhenInstall
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = m.Close() })
 
-	r := newTestRoute(func(r *routing.Route) {
+	r := newTestRoute(func(r *Route) {
 		r.Src = net.IPv4(127, 0, 0, 1)
 		r.Dst = &net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(32, 32)}
 	})
@@ -866,7 +866,7 @@ func TestClient_Liveness_Manager_HonorPeerAdvertisedPassive_LeavesRouteInstalled
 	t.Cleanup(func() { _ = m.Close() })
 
 	// Build a route and peer like the rest of the tests.
-	r := newTestRoute(func(r *routing.Route) {
+	r := newTestRoute(func(r *Route) {
 		r.Src = net.IPv4(127, 0, 0, 1)
 		r.Dst = &net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(32, 32)}
 	})
@@ -926,7 +926,7 @@ func TestClient_Liveness_Manager_HonorPeerAdvertisedPassive_TurnOffPassiveThenDe
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = m.Close() })
 
-	r := newTestRoute(func(r *routing.Route) {
+	r := newTestRoute(func(r *Route) {
 		r.Src = net.IPv4(127, 0, 0, 1)
 		r.Dst = &net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(32, 32)}
 	})
@@ -1000,7 +1000,7 @@ func TestClient_Liveness_Manager_OnSessionUp_InstallsEvenWhenPeerPassive(t *test
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = m.Close() })
 
-	r := newTestRoute(func(r *routing.Route) {
+	r := newTestRoute(func(r *Route) {
 		r.Src = net.IPv4(127, 0, 0, 1)
 		r.Dst = &net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(32, 32)}
 	})
@@ -1107,6 +1107,112 @@ func TestClient_Liveness_Manager_IsPeerEffectivelyPassive(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestClient_Liveness_Manager_WithdrawRoute_PassiveMode_NoUninstall_NoDelete(t *testing.T) {
+	t.Parallel()
+
+	addCh := make(chan *routing.Route, 1)
+	delCh := make(chan *routing.Route, 1)
+
+	m, err := newTestManager(t, func(cfg *ManagerConfig) {
+		cfg.PassiveMode = true
+		cfg.Netlinker = &MockRouteReaderWriter{
+			RouteAddFunc:        func(r *routing.Route) error { addCh <- r; return nil },
+			RouteDeleteFunc:     func(r *routing.Route) error { delCh <- r; return nil },
+			RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, nil },
+		}
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = m.Close() })
+
+	r := newTestRoute(func(r *Route) {
+		r.Dst = &net.IPNet{IP: m.LocalAddr().IP, Mask: net.CIDRMask(32, 32)}
+		r.Src = m.LocalAddr().IP
+		r.NoUninstall = true
+	})
+
+	require.NoError(t, m.RegisterRoute(r, "lo", m.LocalAddr().Port))
+	_ = wait(t, addCh, time.Second, "immediate RouteAdd in PassiveMode")
+
+	peer := Peer{Interface: "lo", LocalIP: r.Src.String(), PeerIP: r.Dst.IP.String()}
+	sess, ok := m.GetSession(peer)
+	require.True(t, ok)
+	require.NotNil(t, sess)
+
+	require.NoError(t, m.WithdrawRoute(r, "lo"))
+
+	// No RouteDelete should be invoked because NoUninstall is set.
+	select {
+	case <-delCh:
+		t.Fatalf("unexpected RouteDelete in PassiveMode WithdrawRoute when NoUninstall is set")
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	require.Equal(t, 0, m.GetInstalledLen(), "installed should be empty after withdraw with NoUninstall in PassiveMode")
+	require.Equal(t, 0, m.GetSessionsLen(), "session should be removed after withdraw with NoUninstall in PassiveMode")
+	require.False(t, m.HasSession(peer), "session should be removed after withdraw with NoUninstall in PassiveMode")
+	require.False(t, sess.alive, "session should be marked not alive after withdraw with NoUninstall in PassiveMode")
+}
+
+func TestClient_Liveness_Manager_OnSessionDown_NoUninstall_SkipsRouteDeleteButClearsInstalled(t *testing.T) {
+	t.Parallel()
+
+	delCh := make(chan *routing.Route, 1)
+
+	m, _, err := newTestManagerWithMetrics(t, func(cfg *ManagerConfig) {
+		cfg.PassiveMode = false
+		cfg.Netlinker = &MockRouteReaderWriter{
+			RouteAddFunc:        func(*routing.Route) error { return nil },
+			RouteDeleteFunc:     func(r *routing.Route) error { delCh <- r; return nil },
+			RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, nil },
+		}
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = m.Close() })
+
+	r := newTestRoute(func(r *Route) {
+		r.Src = net.IPv4(127, 0, 0, 1)
+		r.Dst = &net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(32, 32)}
+		r.NoUninstall = true
+	})
+	peer := Peer{Interface: "lo", LocalIP: r.Src.String(), PeerIP: r.Dst.IP.String()}
+
+	// Synthetic session that just went Down with an installed, desired route.
+	sess := &Session{
+		peer:           &peer,
+		route:          r,
+		state:          StateDown,
+		downSince:      time.Now(),
+		lastDownReason: DownReasonTimeout,
+		alive:          false,
+	}
+	sess.mu.Lock()
+	sess.convDownStart = time.Now().Add(-200 * time.Millisecond)
+	sess.mu.Unlock()
+
+	rk := routeKeyFor(peer.Interface, r)
+	m.mu.Lock()
+	m.desired[rk] = r
+	m.installed[rk] = true
+	m.mu.Unlock()
+
+	require.True(t, m.IsInstalled(rk), "precondition: route should be marked installed before onSessionDown")
+
+	m.onSessionDown(sess)
+
+	// No RouteDelete should be called because NoUninstall is set.
+	select {
+	case <-delCh:
+		t.Fatalf("unexpected RouteDelete on onSessionDown when NoUninstall is set")
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	// But the manager's installed bookkeeping must still be cleared.
+	require.False(t, m.IsInstalled(rk), "installed should be false after onSessionDown when NoUninstall is set")
+
+	snap := sess.Snapshot()
+	require.True(t, snap.ConvDownStart.IsZero(), "convDownStart should be cleared after onSessionDown")
 }
 
 func newTestManager(t *testing.T, mutate func(*ManagerConfig)) (*manager, error) {

@@ -14,12 +14,11 @@ import (
 )
 
 type IBRLService struct {
-	bgp             BGPReaderWriter
-	nl              routing.Netlinker
-	db              DBReaderWriter
-	Tunnel          *routing.Tunnel
-	DoubleZeroAddr  net.IP
-	livenessEnabled bool
+	bgp            BGPReaderWriter
+	nl             routing.Netlinker
+	db             DBReaderWriter
+	Tunnel         *routing.Tunnel
+	DoubleZeroAddr net.IP
 }
 
 func (s *IBRLService) UserType() api.UserType   { return api.UserTypeIBRL }
@@ -30,8 +29,6 @@ func NewIBRLService(bgp BGPReaderWriter, nl routing.Netlinker, db DBReaderWriter
 		bgp: bgp,
 		nl:  nl,
 		db:  db,
-
-		livenessEnabled: true,
 	}
 }
 
@@ -42,13 +39,13 @@ func (s *IBRLService) Setup(p *api.ProvisionRequest) error {
 		return fmt.Errorf("error generating new tunnel: %v", err)
 	}
 
-	flush := true
+	var noUninstall bool
 	switch p.UserType {
 	case api.UserTypeIBRL:
 		err = createBaseTunnel(s.nl, tun)
 	case api.UserTypeIBRLWithAllocatedIP:
 		err = createTunnelWithIP(s.nl, tun, p.DoubleZeroIP)
-		flush = false
+		noUninstall = true
 	default:
 		return fmt.Errorf("unsupported tunnel type: %v", p)
 	}
@@ -60,15 +57,19 @@ func (s *IBRLService) Setup(p *api.ProvisionRequest) error {
 	s.DoubleZeroAddr = p.DoubleZeroIP
 
 	peer := &bgp.PeerConfig{
-		RemoteAddress:   s.Tunnel.RemoteOverlay,
-		LocalAddress:    s.Tunnel.LocalOverlay,
-		LocalAs:         p.BgpLocalAsn,
-		RemoteAs:        p.BgpRemoteAsn,
-		RouteSrc:        p.DoubleZeroIP,
-		RouteTable:      syscall.RT_TABLE_MAIN,
-		FlushRoutes:     flush,
-		LivenessEnabled: s.livenessEnabled,
-		Interface:       "doublezero0",
+		RemoteAddress: s.Tunnel.RemoteOverlay,
+		LocalAddress:  s.Tunnel.LocalOverlay,
+		LocalAs:       p.BgpLocalAsn,
+		RemoteAs:      p.BgpRemoteAsn,
+		RouteSrc:      p.DoubleZeroIP,
+		RouteTable:    syscall.RT_TABLE_MAIN,
+		NoUninstall:   noUninstall,
+		Interface:     "doublezero0",
+
+		// In IBRL or IBRL-with-allocated-IP, we allow route liveness to be enabled.
+		// This does not override the global setting, but just indicates that the service _can_ be
+		// in enabled mode if globally configured.
+		AllowLivenessEnabled: true,
 	}
 	nlri, err := bgp.NewNLRI([]uint32{peer.LocalAs}, s.Tunnel.LocalOverlay.String(), p.DoubleZeroIP.String(), 32)
 	if err != nil {

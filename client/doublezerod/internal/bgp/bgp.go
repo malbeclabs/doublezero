@@ -91,18 +91,18 @@ type RouteReaderWriter interface {
 }
 
 type PeerConfig struct {
-	LocalAddress    net.IP
-	RemoteAddress   net.IP
-	LocalAs         uint32
-	RemoteAs        uint32
-	Port            int
-	RouteSrc        net.IP
-	RouteTable      int
-	FlushRoutes     bool
-	NoInstall       bool
-	Interface       string
-	LivenessEnabled bool
-	LivenessPort    int
+	LocalAddress         net.IP
+	RemoteAddress        net.IP
+	LocalAs              uint32
+	RemoteAs             uint32
+	Port                 int
+	RouteSrc             net.IP
+	RouteTable           int
+	NoUninstall          bool
+	NoInstall            bool
+	Interface            string
+	AllowLivenessEnabled bool
+	LivenessPort         int
 }
 
 type BgpServer struct {
@@ -114,7 +114,7 @@ type BgpServer struct {
 	livenessManager   liveness.Manager
 }
 
-func NewBgpServer(routerID net.IP, r RouteReaderWriter, lm liveness.Manager) (*BgpServer, error) {
+func NewBgpServer(routerID net.IP, rrw RouteReaderWriter, lm liveness.Manager) (*BgpServer, error) {
 	corebgp.SetLogger(log.Print)
 	srv, err := corebgp.NewServer(netip.MustParseAddr(routerID.String()))
 	if err != nil {
@@ -125,7 +125,7 @@ func NewBgpServer(routerID net.IP, r RouteReaderWriter, lm liveness.Manager) (*B
 		peerStatusChan:    make(chan SessionEvent),
 		peerStatus:        make(map[string]Session),
 		peerStatusLock:    sync.Mutex{},
-		routeReaderWriter: r,
+		routeReaderWriter: rrw,
 		livenessManager:   lm,
 	}, nil
 }
@@ -148,11 +148,11 @@ func (b *BgpServer) AddPeer(p *PeerConfig, advertised []NLRI) error {
 	if p.Port != 0 {
 		peerOpts = append(peerOpts, corebgp.WithPort(p.Port))
 	}
-	rrw := b.routeReaderWriter
-	if p.LivenessEnabled && b.livenessManager != nil {
-		rrw = liveness.NewRouteReaderWriter(b.livenessManager, b.routeReaderWriter, p.Interface)
+	rrw := newRouteReaderWriterWithNoUninstall(b.routeReaderWriter, p.NoUninstall)
+	if p.AllowLivenessEnabled && b.livenessManager != nil {
+		rrw = liveness.NewRouteReaderWriter(b.livenessManager, b.routeReaderWriter, p.Interface, p.NoUninstall)
 	}
-	plugin := NewBgpPlugin(advertised, p.RouteSrc, p.RouteTable, b.peerStatusChan, p.FlushRoutes, p.NoInstall, rrw)
+	plugin := NewBgpPlugin(advertised, p.RouteSrc, p.RouteTable, b.peerStatusChan, p.NoInstall, rrw)
 	err := b.server.AddPeer(corebgp.PeerConfig{
 		RemoteAddress: netip.MustParseAddr(p.RemoteAddress.String()),
 		LocalAS:       p.LocalAs,

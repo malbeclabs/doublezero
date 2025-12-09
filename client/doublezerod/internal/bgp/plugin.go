@@ -17,7 +17,6 @@ type Plugin struct {
 	PeerStatusChan    chan SessionEvent
 	RouteSrc          net.IP
 	RouteTable        int // kernel routing table to target for writing/removing
-	FlushRoutes       bool
 	NoInstall         bool
 	RouteReaderWriter RouteReaderWriter
 }
@@ -27,7 +26,6 @@ func NewBgpPlugin(
 	routeSrc net.IP,
 	routeTable int,
 	peerStatus chan SessionEvent,
-	flushRoutes bool,
 	noInstall bool,
 	routeReaderWriter RouteReaderWriter) *Plugin {
 	return &Plugin{
@@ -35,7 +33,6 @@ func NewBgpPlugin(
 		RouteSrc:          routeSrc,
 		RouteTable:        routeTable,
 		PeerStatusChan:    peerStatus,
-		FlushRoutes:       flushRoutes,
 		NoInstall:         noInstall,
 		RouteReaderWriter: routeReaderWriter,
 	}
@@ -89,19 +86,18 @@ func (p *Plugin) OnClose(peer corebgp.PeerConfig) {
 	}
 	slog.Info("bgp: sending peer flush message", "peer", peer.RemoteAddress)
 
-	if p.FlushRoutes {
-		protocol := unix.RTPROT_BGP // 186
-		routes, err := p.RouteReaderWriter.RouteByProtocol(protocol)
-		if err != nil {
-			slog.Error("routes: error getting routes by protocol on peer close", "protocol", protocol, "error", err)
-		}
-		for _, route := range routes {
-			if err := p.RouteReaderWriter.RouteDelete(route); err != nil {
-				slog.Error("routes: error deleting route on peer close", "route", route.String(), "error", err)
-				continue
-			}
+	protocol := unix.RTPROT_BGP // 186
+	routes, err := p.RouteReaderWriter.RouteByProtocol(protocol)
+	if err != nil {
+		slog.Error("routes: error getting routes by protocol on peer close", "protocol", protocol, "error", err)
+	}
+	for _, route := range routes {
+		if err := p.RouteReaderWriter.RouteDelete(route); err != nil {
+			slog.Error("routes: error deleting route on peer close", "route", route.String(), "error", err)
+			continue
 		}
 	}
+
 	MetricSessionStatus.Set(0)
 }
 

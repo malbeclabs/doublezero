@@ -11,15 +11,16 @@ import (
 	"context"
 	"crypto/tls"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/twmb/franz-go/pkg/kgo"
-	"github.com/twmb/franz-go/pkg/sasl/scram"
+	"github.com/twmb/franz-go/pkg/sasl/aws"
 	"github.com/twmb/franz-go/plugin/kprom"
+
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 )
 
 type EnricherOption func(*Enricher)
@@ -160,11 +161,31 @@ func (e *Enricher) Run(ctx context.Context) error {
 	rpOpts := []kgo.Opt{}
 	rpOpts = append(rpOpts,
 		kgo.SeedBrokers(e.rpBroker),
-		kgo.SASL(scram.Auth{User: e.rpUser, Pass: e.rpPass}.AsSha256Mechanism()),
+		//kgo.SASL(scram.Auth{User: e.rpUser, Pass: e.rpPass}.AsSha256Mechanism()),
+		kgo.SASL(aws.ManagedStreamingIAM(func(ctx context.Context) (aws.Auth, error) {
+			cfg, err := awsconfig.LoadDefaultConfig(ctx)
+			if err != nil {
+				return aws.Auth{}, fmt.Errorf("failed to load aws config: %w", err)
+			}
+
+			// Retrieve the temporary credentials
+			creds, err := cfg.Credentials.Retrieve(ctx)
+			if err != nil {
+				return aws.Auth{}, fmt.Errorf("failed to retrieve credentials: %w", err)
+			}
+
+			// Return them in the format franz-go expects
+			return aws.Auth{
+				AccessKey:    creds.AccessKeyID,
+				SecretKey:    creds.SecretAccessKey,
+				SessionToken: creds.SessionToken,
+			}, nil
+		})),
 		kgo.SeedBrokers(e.rpBroker),
 		kgo.ConsumeTopics(e.rpConsumerTopic),
 		kgo.ConsumerGroup(e.rpConsumerGroup),
 		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()),
+		kgo.DialTLS(),
 	)
 	if e.rpTLS {
 		rpOpts = append(rpOpts, kgo.DialTLSConfig(new(tls.Config)))
@@ -176,7 +197,7 @@ func (e *Enricher) Run(ctx context.Context) error {
 
 		go func() {
 			http.Handle("/metrics", metrics.Handler())
-			log.Fatal(http.ListenAndServe("localhost:8888", nil))
+			log.Fatal(http.ListenAndServe("localhost:2112", nil))
 		}()
 	}
 
@@ -209,32 +230,33 @@ func (e *Enricher) Run(ctx context.Context) error {
 			})
 			fetches.EachRecord(func(record *kgo.Record) {
 				// unmarshal flow record
-				flow := &FlowSample{}
-				err := json.Unmarshal(record.Value, flow)
-				if err != nil {
-					log.Printf("error unmarshalling flow record: %v", err)
-					return
-				}
-				// annotate flow record
-				for _, a := range e.annotators {
-					if err := a.Annotate(flow); err != nil {
-						log.Printf("error annotating flow with %s: %v", a.String(), err)
-					}
-				}
-				// write flow record back onto topic
-				body, err := json.Marshal(flow)
-				if err != nil {
-					log.Printf("error marshaling enriched record to json: %v", err)
-					return
-				}
-				record.Topic = e.rpProducerTopic
-				record.Value = body
-				client.Produce(ctx, record, func(record *kgo.Record, err error) {
-					if err != nil {
-						// TODO: metric
-						fmt.Printf("error producing message to redpanda: %v \n", err)
-					}
-				})
+				log.Println("received record for enrichment")
+				// flow := &FlowSample{}
+				// err := json.Unmarshal(record.Value, flow)
+				// if err != nil {
+				// 	log.Printf("error unmarshalling flow record: %v", err)
+				// 	return
+				// }
+				// // annotate flow record
+				// for _, a := range e.annotators {
+				// 	if err := a.Annotate(flow); err != nil {
+				// 		log.Printf("error annotating flow with %s: %v", a.String(), err)
+				// 	}
+				// }
+				// // write flow record back onto topic
+				// body, err := json.Marshal(flow)
+				// if err != nil {
+				// 	log.Printf("error marshaling enriched record to json: %v", err)
+				// 	return
+				// }
+				// record.Topic = e.rpProducerTopic
+				// record.Value = body
+				// client.Produce(ctx, record, func(record *kgo.Record, err error) {
+				// 	if err != nil {
+				// 		// TODO: metric
+				// 		fmt.Printf("error producing message to redpanda: %v \n", err)
+				// 	}
+				// })
 			})
 			if err := client.CommitUncommittedOffsets(ctx); err != nil {
 				// TODO: metric
@@ -255,7 +277,7 @@ type Annotator interface {
 // Annotators must implement the Annotator interface.
 func (e *Enricher) RegisterAnnotators(ctx context.Context) error {
 	e.annotators = []Annotator{
-		NewIfNameAnnotator(),
+		// NewIfNameAnnotator(),
 	}
 
 	for _, a := range e.annotators {

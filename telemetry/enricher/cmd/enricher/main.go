@@ -36,13 +36,13 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if os.Getenv("CLICKHOUSE_PASS") == "" {
-		log.Fatalf("CLICKHOUSE_PASS env var not set")
-	}
+	// if os.Getenv("CLICKHOUSE_PASS") == "" {
+	// 	log.Fatalf("CLICKHOUSE_PASS env var not set")
+	// }
 
-	if os.Getenv("REDPANDA_PASS") == "" {
-		log.Fatalf("REDPANDA_PASS env var not set")
-	}
+	// if os.Getenv("REDPANDA_PASS") == "" {
+	// 	log.Fatalf("REDPANDA_PASS env var not set")
+	// }
 
 	opts := []enricher.EnricherOption{
 		enricher.WithClickhouseAddr(*clickhouseAddr),
@@ -55,7 +55,9 @@ func main() {
 		enricher.WithRedpandaMetrics(true),
 	}
 	enricher := enricher.NewEnricher(opts...)
+	log.Println("starting enricher...")
 	if err := enricher.Run(ctx); err != nil {
 		log.Fatalf("error while running enricher: %v", err)
 	}
+	log.Println("enricher stopped")
 }

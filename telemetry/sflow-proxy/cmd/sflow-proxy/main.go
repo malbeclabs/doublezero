@@ -181,6 +181,8 @@ func ingestPacket(ctx context.Context, workerID int, p packet, kafkaClient *kgo.
 	kafkaClient.Produce(ctx, rec, func(r *kgo.Record, err error) {
 		if err != nil {
 			log.Printf("worker %d: kafka produce error: %v", workerID, err)
+		} else {
+			log.Printf("produced record to topic %s partition %d offset %d", r.Topic, r.Partition, r.Offset)
 		}
 	})
 	log.Printf("worker %d: ingested sflow packet from %s", workerID, p.addr.String())

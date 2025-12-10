@@ -25,9 +25,7 @@ const (
 )
 
 var AllowedKinds = map[string]struct{}{
-	"latency": {},
-	"metrics": {},
-	"logs":    {},
+	"snmp-mib-ifmib-ifindex": {},
 }
 
 type UploadURLRequest struct {

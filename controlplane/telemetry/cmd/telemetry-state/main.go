@@ -13,6 +13,8 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	"github.com/malbeclabs/doublezero/config"
+	"github.com/malbeclabs/doublezero/controlplane/agent/pkg/arista"
+	aristapb "github.com/malbeclabs/doublezero/controlplane/proto/arista/gen/pb-go/arista/EosSdkRpc"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/netns"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/state"
 	stateingest "github.com/malbeclabs/doublezero/telemetry/state-ingest/pkg/client"
@@ -30,9 +32,10 @@ var (
 	keypairPath         = flag.String("keypair", "", "The path to the metrics publisher keypair.")
 	localDevicePK       = flag.String("local-device-pubkey", defaultLocalDevicePubkey, "The pubkey of the local device.")
 	managementNamespace = flag.String("management-namespace", "", "The name of the management namespace to use for ledger communication. If not provided, the default namespace will be used. (default: '')")
+	stateInterval       = flag.Duration("state-interval", defaultStateInterval, "The interval to collect and submit state snapshots.")
+	eapiAddr            = flag.String("eapi-addr", "127.0.0.1:9543", "IP Address and port of the Arist EOS API. Should always be the local switch at 127.0.0.1:9543.")
 	verbose             = flag.Bool("verbose", false, "Enable verbose logging.")
 	showVersion         = flag.Bool("version", false, "Print the version of the doublezero-agent and exit.")
-	stateInterval       = flag.Duration("state-interval", defaultStateInterval, "The interval to collect and submit state snapshots.")
 
 	// Set by LDFLAGS
 	version = "dev"
@@ -142,12 +145,21 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Build EAPI client.
+	clientConn, err := arista.NewClientConn(*eapiAddr)
+	if err != nil {
+		log.Error("failed to create EAPI client", "error", err)
+		os.Exit(1)
+	}
+	eapiMgrServiceClient := aristapb.NewEapiMgrServiceClient(clientConn)
+
 	// Initialize telemetry state collector.
 	stateCollector, err := state.NewCollector(&state.CollectorConfig{
 		Logger:      log,
 		StateIngest: stateIngestClient,
 		Interval:    *stateInterval,
 		DevicePK:    localDevicePK,
+		EAPI:        eapiMgrServiceClient,
 	})
 	if err != nil {
 		log.Error("failed to create telemetry state collector", "error", err)

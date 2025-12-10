@@ -104,6 +104,39 @@ func main() {
 		go ingestWorker(ctx, i, packets, kafkaClient)
 	}
 
+	healthPort := os.Getenv("HEALTH_PORT")
+	if healthPort == "" {
+		healthPort = port // reuse same env var unless overridden
+	}
+
+	go func() {
+		ln, err := net.Listen("tcp", ":"+healthPort)
+		if err != nil {
+			log.Fatalf("listen tcp: %v", err)
+		}
+		log.Printf("listening for TCP on %s", ln.Addr())
+
+		go func() {
+			<-ctx.Done()
+			log.Printf("shutdown requested, closing TCP listener")
+			_ = ln.Close()
+		}()
+
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				if ctx.Err() != nil {
+					log.Printf("tcp listener exiting: %v", err)
+					return
+				}
+				log.Printf("tcp accept error: %v", err)
+				continue
+			}
+			// health endpoints usually just close
+			_ = c.Close()
+		}
+	}()
+
 	readLoop(ctx, conn, packets)
 
 	// reader exited; no more packets will be produced

@@ -63,13 +63,27 @@ func (v ClientVersion) String() string {
 func ParseClientVersion(s string) (ClientVersion, error) {
 	var v ClientVersion
 
+	s = strings.TrimSpace(s)
 	if s == "" {
 		return v, fmt.Errorf("empty version string")
 	}
 
+	// Split off channel-style suffix: "1.2.3-dev" → ["1.2.3", "dev"]
 	parts := strings.SplitN(s, "-", 2)
 
-	nums := strings.Split(parts[0], ".")
+	// Numeric part may contain extra metadata: "0.8.1~git..." or "1.2.3+build.1".
+	// Strip anything after '~' or '+' before parsing MAJOR.MINOR.PATCH.
+	rawNumeric := parts[0]
+	numeric := rawNumeric
+	meta := ""
+	if idx := strings.IndexAny(rawNumeric, "~+"); idx != -1 {
+		numeric = rawNumeric[:idx]
+		if idx+1 < len(rawNumeric) {
+			meta = rawNumeric[idx+1:]
+		}
+	}
+
+	nums := strings.Split(numeric, ".")
 	if len(nums) != 3 {
 		return v, fmt.Errorf("invalid version %q: expected MAJOR.MINOR.PATCH", s)
 	}
@@ -89,7 +103,13 @@ func ParseClientVersion(s string) (ClientVersion, error) {
 
 	ch := VersionChannelStable
 	if len(parts) == 2 {
-		switch parts[1] {
+		suffix := parts[1]
+
+		// Trim any extra metadata after the channel: "dev+meta", "dev~git...", "alpha.1", etc.
+		if idx := strings.IndexAny(suffix, "+~."); idx != -1 {
+			suffix = suffix[:idx]
+		}
+		switch strings.ToLower(suffix) {
 		case "alpha":
 			ch = VersionChannelAlpha
 		case "beta":
@@ -100,6 +120,14 @@ func ParseClientVersion(s string) (ClientVersion, error) {
 			ch = VersionChannelDev
 		default:
 			ch = VersionChannelOther
+		}
+	}
+
+	// If we didn't see an explicit channel, but the metadata clearly indicates
+	// a git/edge build (e.g. "0.8.1~git2025..."), classify as dev.
+	if ch == VersionChannelStable {
+		if strings.Contains(strings.ToLower(meta), "git") {
+			ch = VersionChannelDev
 		}
 	}
 

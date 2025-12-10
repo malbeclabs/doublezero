@@ -608,7 +608,7 @@ func TestClient_Liveness_Manager_RegisterRoute_InvalidIPv4Validation(t *testing.
 	})
 	err = m.RegisterRoute(rNilSrc, "lo", m.LocalAddr().Port)
 	require.Error(t, err)
-	require.ErrorContains(t, err, "nil source (<nil>) or destination IP (10.4.0.11)")
+	require.ErrorContains(t, err, "error registering route: non-IPv4 source () or destination IP (10.4.0.11)")
 
 	rNonIPv4 := newTestRoute(func(r *Route) {
 		r.Src = net.ParseIP("::1")
@@ -1218,6 +1218,229 @@ func TestClient_Liveness_Manager_OnSessionDown_NoUninstall_SkipsRouteDeleteButCl
 	require.True(t, snap.ConvDownStart.IsZero(), "convDownStart should be cleared after onSessionDown")
 }
 
+func TestClient_Liveness_Manager_Metrics_RouteInstallAndWithdraw_Counts(t *testing.T) {
+	t.Parallel()
+
+	m, reg, err := newTestManagerWithMetrics(t, func(cfg *ManagerConfig) {
+		cfg.PassiveMode = true
+		cfg.Netlinker = &MockRouteReaderWriter{
+			RouteAddFunc:        func(*routing.Route) error { return nil },
+			RouteDeleteFunc:     func(*routing.Route) error { return nil },
+			RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, nil },
+		}
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = m.Close() })
+
+	r := newTestRoute(func(r *Route) {
+		r.Src = net.IPv4(127, 0, 0, 1)
+		r.Dst = &net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(32, 32)}
+	})
+
+	labels := prometheus.Labels{
+		LabelIface:   "lo",
+		LabelLocalIP: r.Src.String(),
+	}
+
+	// adjust metric names if your metrics.go uses slightly different ones
+	const (
+		installMetric  = "doublezero_liveness_route_installs_total"
+		withdrawMetric = "doublezero_liveness_route_withdraws_total"
+	)
+
+	beforeInstall := getCounterValue(t, reg, installMetric, labels)
+	require.NoError(t, m.RegisterRoute(r, "lo", 12345))
+	afterInstall := getCounterValue(t, reg, installMetric, labels)
+	require.Equal(t, beforeInstall+1, afterInstall, "one route install counter should increment on RegisterRoute")
+
+	beforeWithdraw := getCounterValue(t, reg, withdrawMetric, labels)
+	require.NoError(t, m.WithdrawRoute(r, "lo"))
+	afterWithdraw := getCounterValue(t, reg, withdrawMetric, labels)
+	require.Equal(t, beforeWithdraw+1, afterWithdraw, "one route withdraw counter should increment on WithdrawRoute")
+}
+
+func TestClient_Liveness_Manager_Metrics_RouteInstallFailures_Counts(t *testing.T) {
+	t.Parallel()
+
+	addErr := errors.New("boom")
+	m, reg, err := newTestManagerWithMetrics(t, func(cfg *ManagerConfig) {
+		cfg.PassiveMode = true
+		cfg.Netlinker = &MockRouteReaderWriter{
+			RouteAddFunc:        func(*routing.Route) error { return addErr },
+			RouteDeleteFunc:     func(*routing.Route) error { return nil },
+			RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, nil },
+		}
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = m.Close() })
+
+	r := newTestRoute(func(r *Route) {
+		r.Src = net.IPv4(127, 0, 0, 1)
+		r.Dst = &net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(32, 32)}
+	})
+
+	labels := prometheus.Labels{
+		LabelIface:   "lo",
+		LabelLocalIP: r.Src.String(),
+	}
+
+	const installFailMetric = "doublezero_liveness_route_install_failures_total"
+
+	before := getCounterValue(t, reg, installFailMetric, labels)
+	err = m.RegisterRoute(r, "lo", 12345)
+	require.Error(t, err)
+	after := getCounterValue(t, reg, installFailMetric, labels)
+	require.Equal(t, before+1, after)
+}
+
+func TestClient_Liveness_Manager_Metrics_RouteUninstallFailures_Counts(t *testing.T) {
+	t.Parallel()
+
+	delErr := errors.New("boom")
+	m, reg, err := newTestManagerWithMetrics(t, func(cfg *ManagerConfig) {
+		cfg.PassiveMode = true
+		cfg.Netlinker = &MockRouteReaderWriter{
+			RouteAddFunc:        func(*routing.Route) error { return nil },
+			RouteDeleteFunc:     func(*routing.Route) error { return delErr },
+			RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, nil },
+		}
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = m.Close() })
+
+	r := newTestRoute(func(r *Route) {
+		r.Src = net.IPv4(127, 0, 0, 1)
+		r.Dst = &net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(32, 32)}
+	})
+
+	require.NoError(t, m.RegisterRoute(r, "lo", 12345))
+
+	labels := prometheus.Labels{
+		LabelIface:   "lo",
+		LabelLocalIP: r.Src.String(),
+	}
+
+	const uninstallFailMetric = "doublezero_liveness_route_uninstall_failures_total"
+
+	before := getCounterValue(t, reg, uninstallFailMetric, labels)
+	err = m.WithdrawRoute(r, "lo")
+	require.Error(t, err)
+	after := getCounterValue(t, reg, uninstallFailMetric, labels)
+	require.Equal(t, before+1, after)
+}
+
+func TestClient_Liveness_Manager_OnSessionUp_EmitsConvergenceToUpWhenConvUpStartSet(t *testing.T) {
+	t.Parallel()
+
+	m, reg, err := newTestManagerWithMetrics(t, func(cfg *ManagerConfig) {
+		cfg.Netlinker = &MockRouteReaderWriter{
+			RouteAddFunc:        func(*routing.Route) error { return nil },
+			RouteDeleteFunc:     func(*routing.Route) error { return nil },
+			RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, nil },
+		}
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = m.Close() })
+
+	r := newTestRoute(func(r *Route) {
+		r.Src = net.IPv4(127, 0, 0, 1)
+		r.Dst = &net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(32, 32)}
+	})
+	peer := Peer{Interface: "lo", LocalIP: r.Src.String(), PeerIP: r.Dst.IP.String()}
+
+	sess := &Session{
+		peer:  &peer,
+		route: r,
+		state: StateUp,
+		alive: true,
+	}
+	sess.mu.Lock()
+	sess.convUpStart = time.Now().Add(-150 * time.Millisecond)
+	sess.mu.Unlock()
+
+	rk := routeKeyFor(peer.Interface, r)
+	m.mu.Lock()
+	m.desired[rk] = r
+	m.mu.Unlock()
+
+	m.onSessionUp(sess)
+
+	labels := prometheus.Labels{
+		LabelIface:   peer.Interface,
+		LabelLocalIP: peer.LocalIP,
+	}
+	count := getHistogramCount(t, reg, "doublezero_liveness_convergence_to_up_seconds", labels)
+	require.Equal(t, float64(1), count, "expected one convergence_to_up sample when convUpStart was set")
+
+	snap := sess.Snapshot()
+	require.True(t, snap.ConvUpStart.IsZero(), "convUpStart should be cleared after onSessionUp")
+}
+
+func TestClient_Liveness_Manager_SessionsGauge_LifecycleBalanced(t *testing.T) {
+	t.Parallel()
+
+	m, reg, err := newTestManagerWithMetrics(t, func(cfg *ManagerConfig) {
+		cfg.Netlinker = &MockRouteReaderWriter{
+			RouteAddFunc:        func(*routing.Route) error { return nil },
+			RouteDeleteFunc:     func(*routing.Route) error { return nil },
+			RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, nil },
+		}
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = m.Close() })
+
+	iface := "lo"
+	src := net.IPv4(127, 0, 0, 1)
+
+	makeRoute := func(i int) *Route {
+		return newTestRoute(func(r *Route) {
+			r.Src = src
+			r.Dst = &net.IPNet{
+				IP:   net.IPv4(127, 0, 0, byte(10+i)),
+				Mask: net.CIDRMask(32, 32),
+			}
+		})
+	}
+
+	const n = 10
+
+	for i := 0; i < n; i++ {
+		r := makeRoute(i)
+		require.NoError(t, m.RegisterRoute(r, iface, m.LocalAddr().Port))
+
+		peer := Peer{Interface: iface, LocalIP: r.Src.String(), PeerIP: r.Dst.IP.String()}
+		sess, ok := m.GetSession(peer)
+		require.True(t, ok)
+		require.NotNil(t, sess)
+
+		m.HandleRx(&ControlPacket{PeerDiscr: 0, LocalDiscr: 1, State: StateInit}, peer)
+		m.HandleRx(&ControlPacket{PeerDiscr: sess.localDiscr, LocalDiscr: sess.peerDiscr, State: StateUp}, peer)
+	}
+
+	for i := 0; i < n; i++ {
+		r := makeRoute(i)
+		require.NoError(t, m.WithdrawRoute(r, iface))
+	}
+
+	labels := func(state State) prometheus.Labels {
+		return prometheus.Labels{
+			LabelIface:   iface,
+			LabelLocalIP: src.String(),
+			LabelState:   state.String(),
+		}
+	}
+
+	up := getGaugeValue(t, reg, "doublezero_liveness_sessions", labels(StateUp))
+	down := getGaugeValue(t, reg, "doublezero_liveness_sessions", labels(StateDown))
+	init := getGaugeValue(t, reg, "doublezero_liveness_sessions", labels(StateInit))
+	adminDown := getGaugeValue(t, reg, "doublezero_liveness_sessions", labels(StateAdminDown))
+
+	require.Equal(t, 0.0, up, "sessions{state=\"up\"} should return to 0 after all lifecycles")
+	require.Equal(t, 0.0, down, "sessions{state=\"down\"} should return to 0 after all lifecycles")
+	require.Equal(t, 0.0, init, "sessions{state=\"init\"} should return to 0 after all lifecycles")
+	require.Equal(t, 0.0, adminDown, "sessions{state=\"admin_down\"} should return to 0 after all lifecycles")
+}
+
 func newTestManager(t *testing.T, mutate func(*ManagerConfig)) (*manager, error) {
 	m, _, err := newTestManagerWithMetrics(t, mutate)
 	return m, err
@@ -1244,6 +1467,29 @@ func newTestManagerWithMetrics(t *testing.T, mutate func(*ManagerConfig)) (*mana
 	}
 	m, err := NewManager(t.Context(), cfg)
 	return m, reg, err
+}
+
+func getCounterValue(t *testing.T, reg *prometheus.Registry, name string, labels prometheus.Labels) float64 {
+	t.Helper()
+
+	mfs, err := reg.Gather()
+	require.NoError(t, err)
+
+	var sum float64
+	for _, mf := range mfs {
+		if mf.GetName() != name {
+			continue
+		}
+		for _, m := range mf.Metric {
+			if !metricHasLabels(m, labels) {
+				continue
+			}
+			if c := m.GetCounter(); c != nil {
+				sum += c.GetValue()
+			}
+		}
+	}
+	return sum
 }
 
 func getGaugeValue(t *testing.T, reg *prometheus.Registry, name string, labels prometheus.Labels) float64 {

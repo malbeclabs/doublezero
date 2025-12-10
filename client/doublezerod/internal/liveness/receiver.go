@@ -119,7 +119,11 @@ func (r *Receiver) Run(ctx context.Context) error {
 				return fmt.Errorf("socket closed during ReadFrom: %w", err)
 			}
 
-			r.metrics.ReadSocketErrors.WithLabelValues(ifname, localIP.String()).Inc()
+			var localIPStr string
+			if localIP != nil {
+				localIPStr = localIP.String()
+			}
+			r.metrics.ReadSocketErrors.WithLabelValues(ifname, localIPStr).Inc()
 
 			// Log other transient read errors, throttled.
 			now := time.Now()
@@ -142,9 +146,12 @@ func (r *Receiver) Run(ctx context.Context) error {
 		// Attempt to parse the received packet into a ControlPacket struct.
 		ctrl, err := UnmarshalControlPacket(buf[:n])
 		if err != nil {
-			r.log.Error("liveness.recv: error parsing control packet", "error", err)
+			r.log.Debug("liveness.recv: error parsing control packet", "error", err)
 
-			lip := localIP.To4().String()
+			var lip string
+			if localIP != nil && localIP.To4() != nil {
+				lip = localIP.To4().String()
+			}
 			switch {
 			case errors.Is(err, ErrShortPacket):
 				r.metrics.ControlPacketsRxInvalid.WithLabelValues(ifname, lip, "short").Inc()
@@ -162,13 +169,18 @@ func (r *Receiver) Run(ctx context.Context) error {
 		}
 
 		// Skip packets that are not IPv4.
-		if localIP.To4() == nil || peerAddr.IP.To4() == nil {
-			if localIP.To4() != nil {
-				r.metrics.ControlPacketsRxInvalid.WithLabelValues(ifname, localIP.To4().String(), "not_ipv4").Inc()
-			}
+		var localIP4 string
+		if localIP != nil && localIP.To4() != nil {
+			localIP4 = localIP.To4().String()
+		}
+		var peerIP4 string
+		if peerAddr.IP != nil && peerAddr.IP.To4() != nil {
+			peerIP4 = peerAddr.IP.To4().String()
+		}
+		if localIP4 == "" || peerIP4 == "" {
+			r.metrics.ControlPacketsRxInvalid.WithLabelValues(ifname, localIP4, "not_ipv4").Inc()
 			continue
 		}
-		localIP4 := localIP.To4().String()
 
 		r.metrics.ControlPacketsRX.WithLabelValues(ifname, localIP4, ctrl.ClientVersion.String()).Inc()
 
@@ -177,7 +189,7 @@ func (r *Receiver) Run(ctx context.Context) error {
 		peer := Peer{
 			Interface: ifname,
 			LocalIP:   localIP4,
-			PeerIP:    peerAddr.IP.To4().String(),
+			PeerIP:    peerIP4,
 		}
 
 		// Log the control packet at DEBUG level.

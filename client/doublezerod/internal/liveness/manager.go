@@ -197,9 +197,9 @@ type manager struct {
 	installed map[RouteKey]bool
 
 	// Rate-limited warnings for packets from unknown peers (not in sessions).
-	unkownPeerErrWarnEvery time.Duration
-	unkownPeerErrWarnLast  time.Time
-	unkownPeerErrWarnMu    sync.Mutex
+	unknownPeerErrWarnEvery time.Duration
+	unknownPeerErrWarnLast  time.Time
+	unknownPeerErrWarnMu    sync.Mutex
 }
 
 // NewManager constructs a Manager, opens the UDP socket, and launches the
@@ -248,7 +248,7 @@ func NewManager(ctx context.Context, cfg *ManagerConfig) (*manager, error) {
 		desired:   make(map[RouteKey]*Route),
 		installed: make(map[RouteKey]bool),
 
-		unkownPeerErrWarnEvery: 5 * time.Second,
+		unknownPeerErrWarnEvery: 5 * time.Second,
 	}
 
 	m.metrics = newMetrics()
@@ -298,15 +298,18 @@ func (m *manager) Err() <-chan error {
 // It optionally installs the route immediately in PassiveMode, then creates or
 // reuses a liveness Session and schedules immediate TX to begin handshake.
 func (m *manager) RegisterRoute(r *Route, iface string, port int) error {
+	var srcIP, dstIP string
+	if r.Src != nil && r.Src.To4() != nil {
+		srcIP = r.Src.To4().String()
+	}
+	if r.Dst.IP != nil && r.Dst.IP.To4() != nil {
+		dstIP = r.Dst.IP.To4().String()
+	}
+
 	// Check that the route src and dst are valid IPv4 addresses.
-	if r.Src == nil || r.Dst.IP == nil {
-		return fmt.Errorf("error registering route: nil source (%s) or destination IP (%s)", r.Src.String(), r.Dst.IP.String())
+	if srcIP == "" || dstIP == "" {
+		return fmt.Errorf("error registering route: non-IPv4 source (%s) or destination IP (%s)", srcIP, dstIP)
 	}
-	if r.Src.To4() == nil || r.Dst.IP.To4() == nil {
-		return fmt.Errorf("error registering route: non-IPv4 source (%s) or destination IP (%s)", r.Src.String(), r.Dst.IP.String())
-	}
-	srcIP := r.Src.To4().String()
-	dstIP := r.Dst.IP.To4().String()
 
 	rk := routeKeyFor(iface, r)
 	if m.cfg.PassiveMode {
@@ -414,9 +417,10 @@ func (m *manager) WithdrawRoute(r *Route, iface string) error {
 	m.mu.Lock()
 	if sess := m.sessions[peer]; sess != nil {
 		sess.mu.Lock()
+		state := sess.state
 		sess.alive = false
 		sess.mu.Unlock()
-		m.metrics.cleanupWithdrawRoute(peer, m.cfg.EnablePeerMetrics)
+		m.metrics.cleanupWithdrawRoute(peer, state, m.cfg.EnablePeerMetrics)
 	}
 	delete(m.sessions, peer)
 	m.mu.Unlock()
@@ -559,13 +563,13 @@ func (m *manager) HandleRx(ctrl *ControlPacket, peer Peer) {
 		m.metrics.UnknownPeerPackets.WithLabelValues(peer.Interface, peer.LocalIP).Inc()
 
 		// Throttle warnings for packets from unknown peers to avoid log spam.
-		m.unkownPeerErrWarnMu.Lock()
-		if m.unkownPeerErrWarnLast.IsZero() || time.Since(m.unkownPeerErrWarnLast) >= m.unkownPeerErrWarnEvery {
-			m.unkownPeerErrWarnLast = time.Now()
+		m.unknownPeerErrWarnMu.Lock()
+		if m.unknownPeerErrWarnLast.IsZero() || time.Since(m.unknownPeerErrWarnLast) >= m.unknownPeerErrWarnEvery {
+			m.unknownPeerErrWarnLast = time.Now()
 			m.log.Info("liveness: received control packet for unknown peer", "peer", peer.String(), "peerDiscr", ctrl.PeerDiscr, "localDiscr", ctrl.LocalDiscr, "state", ctrl.State)
 
 		}
-		m.unkownPeerErrWarnMu.Unlock()
+		m.unknownPeerErrWarnMu.Unlock()
 
 		m.mu.Unlock()
 		return
@@ -686,6 +690,9 @@ func (m *manager) AdminDownRoute(r *Route, iface string) {
 
 		// Ensure we send at least one AdminDown packet promptly.
 		m.sched.scheduleTx(now, sess)
+
+		// Update metrics for the state transition.
+		m.metrics.sessionStateTransition(peer, &prev, StateAdminDown, "admin_down_route", m.cfg.EnablePeerMetrics)
 	}
 }
 
@@ -864,7 +871,18 @@ func rand32() uint32 {
 
 // routeKeyFor builds a RouteKey for map indexing based on interface + route fields.
 func routeKeyFor(iface string, r *Route) RouteKey {
-	return RouteKey{Interface: iface, SrcIP: r.Src.To4().String(), Table: r.Table, DstPrefix: r.Dst.IP.To4().String(), NextHop: r.NextHop.To4().String()}
+	var srcIP, dstIP string
+	if r.Src != nil && r.Src.To4() != nil {
+		srcIP = r.Src.To4().String()
+	}
+	if r.Dst.IP != nil && r.Dst.IP.To4() != nil {
+		dstIP = r.Dst.IP.To4().String()
+	}
+	var nextHopIP string
+	if r.NextHop != nil && r.NextHop.To4() != nil {
+		nextHopIP = r.NextHop.To4().String()
+	}
+	return RouteKey{Interface: iface, SrcIP: srcIP, Table: r.Table, DstPrefix: dstIP, NextHop: nextHopIP}
 }
 
 // peerAddrFor returns "<dst-ip>:<port>" for UDP control messages to a peer.

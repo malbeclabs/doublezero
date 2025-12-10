@@ -265,6 +265,7 @@ func TestClient_API_ServeRoutesHandler_WithLiveness_PresentInBoth(t *testing.T) 
 	svc := &ProvisionRequest{
 		UserType:     userType,
 		DoubleZeroIP: ipSrc,
+		TunnelSrc:    ipSrc,
 		TunnelNet:    &net.IPNet{IP: nextHop, Mask: net.CIDRMask(32, 32)},
 	}
 
@@ -338,6 +339,7 @@ func TestClient_API_ServeRoutesHandler_WithLiveness_AbsentInKernel(t *testing.T)
 	svc := &ProvisionRequest{
 		UserType:     userType,
 		DoubleZeroIP: ipSrc,
+		TunnelSrc:    ipSrc,
 		TunnelNet:    &net.IPNet{IP: nextHop, Mask: net.CIDRMask(32, 32)},
 	}
 
@@ -409,6 +411,7 @@ func TestClient_API_ServeRoutesHandler_WithLiveness_SetsLivenessStateReason(t *t
 	svc := &ProvisionRequest{
 		UserType:     userType,
 		DoubleZeroIP: ipSrc,
+		TunnelSrc:    ipSrc,
 		TunnelNet:    &net.IPNet{IP: nextHop, Mask: net.CIDRMask(32, 32)},
 	}
 

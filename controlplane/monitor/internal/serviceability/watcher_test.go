@@ -127,15 +127,10 @@ func TestMonitor_Serviceability_Watcher(t *testing.T) {
 			{Code: "exch1"},
 			{Code: "exch2"},
 		}
-		links := []serviceability.Link{
-			{Code: "link1"},
-			{Code: "link2"},
-		}
 		programData := &serviceability.ProgramData{
 			Devices:      devices,
 			Contributors: contributors,
 			Exchanges:    exchanges,
-			Links:        links,
 		}
 
 		cfg := &Config{
@@ -150,8 +145,8 @@ func TestMonitor_Serviceability_Watcher(t *testing.T) {
 		require.NoError(t, err)
 
 		require.NoError(t, w.Tick(context.Background()))
-		require.Equal(t, int32(len(devices)+len(contributors)+len(exchanges)+len(links)), mockWriter.writeCount.Load(), "WriteRecord should be called for each device, contributor, exchange, and link")
-		require.Equal(t, int32(4), mockWriter.flushCount.Load(), "Flush should be called once per tick")
+		require.Equal(t, int32(len(devices)+len(contributors)+len(exchanges)), mockWriter.writeCount.Load(), "WriteRecord should be called for each device, contributor, and exchange")
+		require.Equal(t, int32(3), mockWriter.flushCount.Load(), "Flush should be called once per tick")
 	})
 
 	t.Run("run_stops_on_context_cancel", func(t *testing.T) {

@@ -1,6 +1,7 @@
 use crate::{
     error::DoubleZeroError,
     globalstate::globalstate_get,
+    helper::*,
     pda::get_accesspass_pda,
     state::{
         accesspass::{AccessPass, AccessPassStatus},
@@ -136,8 +137,7 @@ pub fn process_delete_user(
 
     user.status = UserStatus::Deleting;
 
-    resize_account_if_needed(user_account, payer_account, accounts, user.size())?;
-    user.try_serialize(user_account)?;
+    account_write(user_account, &user, payer_account, system_program)?;
 
     #[cfg(test)]
     msg!("Deleting: {:?}", user);

@@ -31,7 +31,7 @@ pub struct CreateSubscribeUserCommand {
 
 impl CreateSubscribeUserCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<(Signature, Pubkey)> {
-        let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
+        let (globalstate_pubkey, globalstate) = GetGlobalStateCommand
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
@@ -60,8 +60,7 @@ impl CreateSubscribeUserCommand {
         })
         .map_err(|_| eyre::eyre!("You have no Access Pass"))?;
 
-        let (pda_pubkey, _) =
-            get_user_pda(&client.get_program_id(), &self.client_ip, self.user_type);
+        let (pda_pubkey, _) = get_user_pda(&client.get_program_id(), globalstate.account_index + 1);
         client
             .execute_transaction(
                 DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {

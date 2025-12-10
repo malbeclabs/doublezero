@@ -58,7 +58,6 @@ use crate::{
             resume::process_resume_location, suspend::process_suspend_location,
             update::process_update_location,
         },
-        migrate::process_migrate,
         multicastgroup::{
             activate::process_activate_multicastgroup,
             allowlist::{
@@ -109,7 +108,7 @@ pub fn process_instruction(
     msg!("Instruction: {:?}", instruction);
 
     match instruction {
-        DoubleZeroInstruction::Migrate(value) => process_migrate(program_id, accounts, &value)?,
+        DoubleZeroInstruction::None() => {}
         DoubleZeroInstruction::InitGlobalState() => initialize_global_state(program_id, accounts)?,
         DoubleZeroInstruction::SetAirdrop(value) => {
             process_set_airdrop(program_id, accounts, &value)?

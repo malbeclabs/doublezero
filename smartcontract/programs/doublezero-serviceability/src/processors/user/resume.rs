@@ -1,11 +1,11 @@
 use crate::{
     error::DoubleZeroError,
-    state::{accesspass::AccessPass, accounttype::AccountTypeInfo, user::*},
+    helper::*,
+    state::{accesspass::AccessPass, user::*},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
-use doublezero_program_common::resize_account::resize_account_if_needed;
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -71,8 +71,7 @@ pub fn process_resume_user(
 
     user.try_activate(&mut accesspass)?;
 
-    resize_account_if_needed(user_account, payer_account, accounts, user.size())?;
-    user.try_serialize(user_account)?;
+    account_write(user_account, &user, payer_account, system_program)?;
 
     #[cfg(test)]
     msg!("Resumed: {:?}", user);

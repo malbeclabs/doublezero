@@ -19,7 +19,6 @@ pub mod keygen;
 pub mod link;
 pub mod location;
 pub mod logcommand;
-pub mod migrate;
 pub mod multicastgroup;
 pub mod poll_for_activation;
 pub mod requirements;

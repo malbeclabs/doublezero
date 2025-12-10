@@ -92,17 +92,12 @@ pub async fn get_account_data(
 
     match banks_client.get_account(pubkey).await {
         Ok(account) => match account {
-            Some(account_data) => match AccountData::try_from(&account_data.data[..]) {
-                Ok(object) => {
-                    println!("{object:?}");
-                    Some(object)
-                }
-                Err(err) => {
-                    println!("{account_data:?}");
-                    println!("Failed to deserialize account data: {err:?}");
-                    None
-                }
-            },
+            Some(account_data) => {
+                let object = AccountData::try_from(&account_data.data[..]).unwrap();
+                println!("{object:?}");
+
+                Some(object)
+            }
             None => None,
         },
         Err(err) => panic!("account not found: {err:?}"),

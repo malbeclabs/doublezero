@@ -2,8 +2,7 @@ use crate::{
     error::DoubleZeroError,
     globalstate::{globalstate_get_next, globalstate_write},
     helper::*,
-    pda::{get_accesspass_pda, get_user_old_pda, get_user_pda},
-    seeds::{SEED_PREFIX, SEED_USER},
+    pda::{get_accesspass_pda, get_user_pda},
     state::{
         accesspass::{AccessPass, AccessPassStatus, AccessPassType},
         accounttype::{AccountType, AccountTypeInfo},
@@ -47,12 +46,6 @@ impl fmt::Debug for UserCreateSubscribeArgs {
     }
 }
 
-#[derive(PartialEq)]
-enum PDAVersion {
-    V1,
-    V2,
-}
-
 pub fn process_create_subscribe_user(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -87,24 +80,11 @@ pub fn process_create_subscribe_user(
 
     let globalstate = globalstate_get_next(globalstate_account)?;
 
-    let (expected_old_pda_account, bump_old_seed) =
-        get_user_old_pda(program_id, globalstate.account_index);
-    let (expected_pda_account, bump_seed) =
-        get_user_pda(program_id, &value.client_ip, value.user_type);
-
-    let pda_ver = if user_account.key == &expected_pda_account {
-        PDAVersion::V2
-    } else if user_account.key == &expected_old_pda_account {
-        PDAVersion::V1
-    } else {
-        msg!(
-            "Invalid User PDA. expected: {} or {}, found: {}",
-            expected_pda_account,
-            expected_old_pda_account,
-            user_account.key
-        );
-        return Err(DoubleZeroError::InvalidUserPubkey.into());
-    };
+    let (expected_pda_account, bump_seed) = get_user_pda(program_id, globalstate.account_index);
+    assert_eq!(
+        user_account.key, &expected_pda_account,
+        "Invalid User PubKey"
+    );
 
     // Check account Types
     if device_account.data_is_empty()
@@ -213,16 +193,8 @@ pub fn process_create_subscribe_user(
     let user: User = User {
         account_type: AccountType::User,
         owner: *payer_account.key,
-        bump_seed: if pda_ver == PDAVersion::V1 {
-            bump_old_seed
-        } else {
-            bump_seed
-        },
-        index: if pda_ver == PDAVersion::V1 {
-            globalstate.account_index
-        } else {
-            0
-        },
+        bump_seed,
+        index: globalstate.account_index,
         tenant_pk: Pubkey::default(),
         user_type: value.user_type,
         device_pk: *device_account.key,
@@ -251,40 +223,16 @@ pub fn process_create_subscribe_user(
         mgroup.subscriber_count = mgroup.subscriber_count.saturating_add(1);
     }
 
-    if pda_ver == PDAVersion::V1 {
-        account_create_with_seed(
-            user_account,
-            &user,
-            payer_account,
-            system_program,
-            program_id,
-            &[
-                SEED_PREFIX,
-                SEED_USER,
-                &user.index.to_le_bytes(),
-                &[bump_old_seed],
-            ],
-        )?;
-        globalstate_write(globalstate_account, &globalstate)?;
-    } else {
-        account_create_with_seed(
-            user_account,
-            &user,
-            payer_account,
-            system_program,
-            program_id,
-            &[
-                SEED_PREFIX,
-                SEED_USER,
-                &user.client_ip.octets(),
-                &[user.user_type as u8],
-                &[bump_seed],
-            ],
-        )?;
-    }
-
     account_write(mgroup_account, &mgroup, payer_account, system_program)?;
+    account_create(
+        user_account,
+        &user,
+        payer_account,
+        system_program,
+        program_id,
+    )?;
     account_write(device_account, &device, payer_account, system_program)?;
+    globalstate_write(globalstate_account, &globalstate)?;
     resize_account_if_needed(
         accesspass_account,
         payer_account,

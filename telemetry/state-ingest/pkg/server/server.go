@@ -181,13 +181,15 @@ func (s *Server) uploadURLHandler(w http.ResponseWriter, r *http.Request) {
 	snapTS = snapTS.UTC()
 
 	date := snapTS.Format("2006-01-02")
+	hour := snapTS.Format("15")
 	filename := fmt.Sprintf("%s.json", req.SnapshotSHA256)
 
 	key := fmt.Sprintf(
-		"snapshots/kind=%s/device=%s/date=%s/timestamp=%s/%s",
+		"snapshots/kind=%s/device=%s/date=%s/hour=%s/timestamp=%s/%s",
 		req.Kind,
 		req.DevicePubkey,
 		date,
+		hour,
 		req.SnapshotTimestamp,
 		filename,
 	)

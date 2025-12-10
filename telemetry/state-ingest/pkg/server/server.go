@@ -185,7 +185,7 @@ func (s *Server) uploadURLHandler(w http.ResponseWriter, r *http.Request) {
 	filename := fmt.Sprintf("%s.json", req.SnapshotSHA256)
 
 	key := fmt.Sprintf(
-		"snapshots/kind=%s/device=%s/date=%s/hour=%s/timestamp=%s/%s",
+		"snapshots/%s/device=%s/date=%s/hour=%s/timestamp=%s/%s",
 		req.Kind,
 		req.DevicePubkey,
 		date,

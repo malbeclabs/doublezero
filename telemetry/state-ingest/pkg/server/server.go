@@ -11,10 +11,12 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/mr-tron/base58"
 )
 
@@ -45,21 +47,28 @@ type UploadURLResponse struct {
 	} `json:"upload"`
 }
 
-type Server struct {
-	log         *slog.Logger
-	presign     *s3.PresignClient
-	bucket      string
-	prefix      string
-	allowDevice func(ctx context.Context, pubkey string) bool
+type ServiceabilityRPC interface {
+	GetProgramData(ctx context.Context) (*serviceability.ProgramData, error)
 }
 
-func New(log *slog.Logger, presign *s3.PresignClient, bucket, prefix string, allowDevice func(ctx context.Context, pubkey string) bool) (*Server, error) {
+type Server struct {
+	log               *slog.Logger
+	presign           *s3.PresignClient
+	bucket            string
+	prefix            string
+	serviceabilityRPC ServiceabilityRPC
+
+	devices map[string]serviceability.Device
+	mu      sync.Mutex
+}
+
+func New(log *slog.Logger, presign *s3.PresignClient, bucket, prefix string, serviceabilityRPC ServiceabilityRPC) (*Server, error) {
 	s := &Server{
-		log:         log,
-		presign:     presign,
-		bucket:      bucket,
-		prefix:      prefix,
-		allowDevice: allowDevice,
+		log:               log,
+		presign:           presign,
+		bucket:            bucket,
+		prefix:            prefix,
+		serviceabilityRPC: serviceabilityRPC,
 	}
 	return s, nil
 }
@@ -80,6 +89,24 @@ func (s *Server) Start(ctx context.Context, cancel context.CancelFunc, listener 
 }
 
 func (s *Server) Run(ctx context.Context, listener net.Listener) error {
+
+	if err := s.refreshDevices(ctx); err != nil {
+		s.log.Error("failed to refresh devices", "error", err)
+	}
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(1 * time.Minute):
+				if err := s.refreshDevices(ctx); err != nil {
+					s.log.Error("failed to refresh devices", "error", err)
+				}
+			}
+		}
+	}()
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/snapshots/upload-url", s.uploadURLHandler)
 	srv := &http.Server{
@@ -88,16 +115,31 @@ func (s *Server) Run(ctx context.Context, listener net.Listener) error {
 	return srv.Serve(listener)
 }
 
+func (s *Server) refreshDevices(ctx context.Context) error {
+	devices, err := s.serviceabilityRPC.GetProgramData(ctx)
+	if err != nil {
+		return err
+	}
+	devicesByPK := make(map[string]serviceability.Device)
+	for _, device := range devices.Devices {
+		devicesByPK[base58.Encode(device.PubKey[:])] = device
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.devices = devicesByPK
+	return nil
+}
+
 func (s *Server) uploadURLHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	pubkeyB58 := r.Header.Get("X-DZ-Pubkey")
+	devicePK := r.Header.Get("X-DZ-Device")
 	sigB58 := r.Header.Get("X-DZ-Signature")
 	tsHeader := r.Header.Get("X-DZ-Timestamp")
-	if pubkeyB58 == "" || sigB58 == "" || tsHeader == "" {
+	if devicePK == "" || sigB58 == "" || tsHeader == "" {
 		http.Error(w, "missing auth headers", http.StatusUnauthorized)
 		return
 	}
@@ -112,8 +154,16 @@ func (s *Server) uploadURLHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pubkeyBytes, err := base58.Decode(pubkeyB58)
-	if err != nil || len(pubkeyBytes) != ed25519.PublicKeySize {
+	// Find device by pubkey
+	device, ok := s.devices[devicePK]
+	if !ok {
+		http.Error(w, "device not authorized", http.StatusUnauthorized)
+		return
+	}
+	metricsPublisherPK := base58.Encode(device.MetricsPublisherPubKey[:])
+
+	metricsPublisherPKBytes, err := base58.Decode(metricsPublisherPK)
+	if err != nil || len(metricsPublisherPKBytes) != ed25519.PublicKeySize {
 		http.Error(w, "invalid X-DZ-Pubkey", http.StatusUnauthorized)
 		return
 	}
@@ -138,13 +188,8 @@ func (s *Server) uploadURLHandler(w http.ResponseWriter, r *http.Request) {
 		tsHeader,
 		bodyHash[:],
 	)
-	if !ed25519.Verify(ed25519.PublicKey(pubkeyBytes), []byte(canonical), sigBytes) {
+	if !ed25519.Verify(ed25519.PublicKey(metricsPublisherPKBytes), []byte(canonical), sigBytes) {
 		http.Error(w, "invalid signature", http.StatusUnauthorized)
-		return
-	}
-
-	if s.allowDevice != nil && !s.allowDevice(r.Context(), pubkeyB58) {
-		http.Error(w, "device not authorized", http.StatusForbidden)
 		return
 	}
 
@@ -154,8 +199,8 @@ func (s *Server) uploadURLHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.DevicePubkey == "" || req.DevicePubkey != pubkeyB58 {
-		http.Error(w, "device_pubkey mismatch", http.StatusUnauthorized)
+	if req.DevicePubkey == "" || req.DevicePubkey != devicePK {
+		http.Error(w, "device pubkey mismatch", http.StatusUnauthorized)
 		return
 	}
 	pkBytes, err := base58.Decode(req.DevicePubkey)

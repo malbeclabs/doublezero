@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -99,7 +100,19 @@ func (c *Collector) tick(ctx context.Context) error {
 	return nil
 }
 
+type StateSnapshot struct {
+	Metadata StateSnapshotMetadata `json:"metadata"`
+	Data     json.RawMessage       `json:"data"`
+}
+
+type StateSnapshotMetadata struct {
+	Kind      string `json:"kind"`
+	Timestamp string `json:"timestamp"`
+	Device    string `json:"device"`
+}
+
 func (c *Collector) collectStateSnapshot(ctx context.Context, command string) error {
+	now := time.Now().UTC()
 	response, err := c.cfg.EAPI.RunShowCmd(ctx, &aristapb.RunShowCmdRequest{
 		Command: command,
 	})
@@ -116,11 +129,25 @@ func (c *Collector) collectStateSnapshot(ctx context.Context, command string) er
 		return fmt.Errorf("no responses from arista eapi for command %q", command)
 	}
 	data := []byte(response.Response.Responses[0])
-
 	kind := sanitizeCommandAsKind(command)
-	c.log.Info("state: uploading snapshot", "kind", kind, "command", command, "response", string(data), "dataSize", len(data))
 
-	if _, err := c.cfg.StateIngest.UploadSnapshot(ctx, kind, time.Now().UTC(), data); err != nil {
+	snap := StateSnapshot{
+		Metadata: StateSnapshotMetadata{
+			Kind:      kind,
+			Timestamp: now.Format(time.RFC3339),
+			Device:    c.cfg.DevicePK.String(),
+		},
+		Data: json.RawMessage(data),
+	}
+
+	c.log.Info("state: uploading snapshot", "kind", kind, "command", command, "dataSize", len(data))
+
+	snapJSON, err := json.Marshal(snap)
+	if err != nil {
+		return fmt.Errorf("failed to marshal state snapshot: %w", err)
+	}
+
+	if _, err := c.cfg.StateIngest.UploadSnapshot(ctx, kind, now, snapJSON); err != nil {
 		return fmt.Errorf("failed to upload state snapshot for command %q: %w", command, err)
 	}
 

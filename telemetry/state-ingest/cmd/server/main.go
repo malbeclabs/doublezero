@@ -103,9 +103,7 @@ func run() error {
 		presignClient,
 		bucket,
 		prefix,
-		func(ctx context.Context, pubkey string) bool {
-			return true
-		},
+		serviceabilityRPC,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create server: %w", err)

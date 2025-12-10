@@ -9,6 +9,8 @@ const (
 	MainnetDeviceLocalASN             = 209321
 	MainnetTwoZOracleURL              = "https://sol-2z-oracle-api-v1.mainnet-beta.doublezero.xyz"
 	MainnetSolanaRPC                  = "https://api.mainnet-beta.solana.com"
+	MainnetTelemetrySflowIngestURL    = "http://telemetry-sflow-in.mainnet-beta.dz.snor.dev"
+	MainnetTelemetryStateIngestURL    = "http://telemetry-state-in.mainnet-beta.dz.snor.dev"
 
 	// Testnet constants.
 	TestnetLedgerPublicRPCURL         = "https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16"
@@ -18,6 +20,8 @@ const (
 	TestnetDeviceLocalASN             = 65342
 	TestnetTwoZOracleURL              = "https://sol-2z-oracle-api-v1.testnet.doublezero.xyz"
 	TestnetSolanaRPC                  = "https://api.testnet.solana.com"
+	TestnetTelemetrySflowIngestURL    = "http://telemetry-sflow-in.testnet.dz.snor.dev"
+	TestnetTelemetryStateIngestURL    = "http://telemetry-state-in.testnet.dz.snor.dev"
 
 	// Devnet constants.
 	DevnetLedgerPublicRPCURL         = "https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16"
@@ -26,6 +30,8 @@ const (
 	DevnetInternetLatencyCollectorPK = "3fXen9LP5JUAkaaDJtyLo1ohPiJ2LdzVqAnmhtGgAmwJ"
 	DevnetDeviceLocalASN             = 21682
 	DevnetTwoZOracleURL              = ""
+	DevnetTelemetrySflowIngestURL    = "http://telemetry-sflow-in.devnet.dz.snor.dev"
+	DevnetTelemetryStateIngestURL    = "http://telemetry-state-in.devnet.dz.snor.dev"
 
 	// Localnet constants.
 	LocalnetLedgerPublicRPCURL         = "http://localhost:8899"
@@ -35,4 +41,6 @@ const (
 	LocalnetDeviceLocalASN             = 21682
 	LocalnetTwoZOracleURL              = ""
 	LocalnetSolanaRPC                  = "http://localhost:8899"
+	LocalnetTelemetrySflowIngestURL    = "http://localhost:8910"
+	LocalnetTelemetryStateIngestURL    = "http://localhost:8911"
 )

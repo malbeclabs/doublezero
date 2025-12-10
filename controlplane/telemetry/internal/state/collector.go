@@ -4,18 +4,19 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/gagliardetto/solana-go"
-	"github.com/malbeclabs/doublezero/controlplane/agent/pkg/arista"
-	"github.com/malbeclabs/doublezero/telemetry/state-ingest/pkg/ingest"
+	aristapb "github.com/malbeclabs/doublezero/controlplane/proto/arista/gen/pb-go/arista/EosSdkRpc"
+	stateingest "github.com/malbeclabs/doublezero/telemetry/state-ingest/pkg/client"
 )
 
 type CollectorConfig struct {
 	Logger *slog.Logger
 
-	EAPI   *arista.EAPIClient
-	Ingest *ingest.Client
+	EAPI        aristapb.EapiMgrServiceClient
+	StateIngest *stateingest.Client
 
 	Interval time.Duration
 	DevicePK solana.PublicKey
@@ -28,7 +29,7 @@ func (c *CollectorConfig) Validate() error {
 	if c.EAPI == nil {
 		return fmt.Errorf("eapi is required")
 	}
-	if c.Ingest == nil {
+	if c.StateIngest == nil {
 		return fmt.Errorf("ingest is required")
 	}
 	if c.Interval <= 0 {
@@ -42,10 +43,10 @@ func (c *CollectorConfig) Validate() error {
 
 type Collector struct {
 	log *slog.Logger
-	cfg CollectorConfig
+	cfg *CollectorConfig
 }
 
-func NewCollector(cfg CollectorConfig) (*Collector, error) {
+func NewCollector(cfg *CollectorConfig) (*Collector, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -91,27 +92,42 @@ func (c *Collector) Run(ctx context.Context) error {
 }
 
 func (c *Collector) tick(ctx context.Context) error {
-	resp, command, err := c.cfg.EAPI.ShowSnmpMibIfmibIfindex(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get ifindex: %w", err)
+	command := "show snmp mib ifmib ifindex"
+	if err := c.collectStateSnapshot(ctx, command); err != nil {
+		c.log.Error("state: failed to collect snapshot", "command", command, "error", err)
 	}
+	return nil
+}
 
-	kind := "snmp-mib-ifmib-ifindex"
-	c.log.Info("state: running command", "kind", kind, "command", string(command), "ifindex", resp.IfIndex)
-	for ifName, ifIndex := range resp.IfIndex {
-		c.log.Info("state: ifindex", "ifname", ifName, "ifindex", ifIndex)
-	}
-	err = c.cfg.Ingest.Push(ctx, kind, ingest.PushRequest{
-		Metadata: ingest.Metadata{
-			SnapshotTimestamp: time.Now().UTC().Format(time.RFC3339),
-			Command:           string(command),
-			DevicePubkey:      c.cfg.DevicePK,
-		},
-		Data: resp.IfIndex,
+func (c *Collector) collectStateSnapshot(ctx context.Context, command string) error {
+	response, err := c.cfg.EAPI.RunShowCmd(ctx, &aristapb.RunShowCmdRequest{
+		Command: command,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to push to ingest: %w", err)
+		return fmt.Errorf("failed to execute command %q: %w", command, err)
+	}
+	if response.Response == nil {
+		return fmt.Errorf("no response from arista eapi for command %q", command)
+	}
+	if !response.Response.Success {
+		return fmt.Errorf("error from arista eapi for command %q: code=%d, message=%s", command, response.Response.ErrorCode, response.Response.ErrorMessage)
+	}
+	if len(response.Response.Responses) == 0 {
+		return fmt.Errorf("no responses from arista eapi for command %q", command)
+	}
+	data := []byte(response.Response.Responses[0])
+
+	kind := sanitizeCommandAsKind(command)
+	c.log.Info("state: uploading snapshot", "kind", kind, "command", command, "response", string(data), "dataSize", len(data))
+
+	if _, err := c.cfg.StateIngest.UploadSnapshot(ctx, kind, time.Now().UTC(), data); err != nil {
+		return fmt.Errorf("failed to upload state snapshot for command %q: %w", command, err)
 	}
 
 	return nil
+}
+
+func sanitizeCommandAsKind(command string) string {
+	command = strings.TrimPrefix(command, "show ")
+	return strings.ReplaceAll(strings.ToLower(command), " ", "-")
 }

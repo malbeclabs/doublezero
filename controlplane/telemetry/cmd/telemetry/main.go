@@ -18,10 +18,12 @@ import (
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/metrics"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/netns"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/netutil"
+	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/state"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/telemetry"
 	telemetryconfig "github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/config"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	sdktelemetry "github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
+	stateingest "github.com/malbeclabs/doublezero/telemetry/state-ingest/pkg/client"
 	twamplight "github.com/malbeclabs/doublezero/tools/twamp/pkg/light"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -36,6 +38,7 @@ const (
 	defaultSenderTTL               = 5 * time.Minute
 	defaultLedgerRPCURL            = ""
 	defaultProgramId               = ""
+	defaultStateIngestURL          = ""
 	defaultLocalDevicePubkey       = ""
 	defaultSubmitterMaxConcurrency = 10
 
@@ -47,6 +50,7 @@ var (
 	ledgerRPCURL            = flag.String("ledger-rpc-url", defaultLedgerRPCURL, "The url of the ledger rpc. If env is provided, this flag is ignored.")
 	serviceabilityProgramID = flag.String("serviceability-program-id", defaultProgramId, "The id of the serviceability program. If env is provided, this flag is ignored.")
 	telemetryProgramID      = flag.String("telemetry-program-id", defaultProgramId, "The id of the telemetry program. If env is provided, this flag is ignored.")
+	stateIngestURL          = flag.String("state-ingest-url", defaultStateIngestURL, "The url of the state ingest endpoint. If env is provided, this flag is ignored.")
 	keypairPath             = flag.String("keypair", "", "The path to the metrics publisher keypair.")
 	localDevicePK           = flag.String("local-device-pubkey", defaultLocalDevicePubkey, "The pubkey of the local device.")
 	twampListenPort         = flag.Uint("twamp-listen-port", uint(defaultTWAMPListenPort), "The port to listen for twamp probes.")
@@ -108,6 +112,11 @@ func main() {
 			flag.Usage()
 			os.Exit(1)
 		}
+		if *stateIngestURL == "" {
+			log.Error("Missing required flag", "flag", "state-ingest-url")
+			flag.Usage()
+			os.Exit(1)
+		}
 	} else {
 		networkConfig, err := config.NetworkConfigForEnv(*env)
 		if err != nil {
@@ -118,6 +127,7 @@ func main() {
 		*ledgerRPCURL = networkConfig.LedgerPublicRPCURL
 		*serviceabilityProgramID = networkConfig.ServiceabilityProgramID.String()
 		*telemetryProgramID = networkConfig.TelemetryProgramID.String()
+		*stateIngestURL = networkConfig.TelemetryStateIngestURL
 	}
 
 	if *localDevicePK == "" {
@@ -254,6 +264,31 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Initialize state ingest client.
+	signer, err := newSigner(*keypairPath)
+	if err != nil {
+		log.Error("failed to create signer", "error", err)
+		os.Exit(1)
+	}
+	stateIngestClient, err := stateingest.NewClient(*stateIngestURL, signer)
+	if err != nil {
+		log.Error("failed to create state ingest client", "error", err)
+		os.Exit(1)
+	}
+
+	// Initialize telemetry state collector.
+	stateCollector, err := state.NewCollector(&state.CollectorConfig{
+		Logger:      log,
+		StateIngest: stateIngestClient,
+		Interval:    *submissionInterval,
+		DevicePK:    localDevicePK,
+	})
+	if err != nil {
+		log.Error("failed to create telemetry state collector", "error", err)
+		os.Exit(1)
+	}
+	stateCollectorErrCh := stateCollector.Start(ctx, cancel)
+
 	// Initialize collector.
 	collector, err := telemetry.New(log, telemetry.Config{
 		LocalDevicePK:          localDevicePK,
@@ -279,9 +314,49 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Run the collector.
-	if err := collector.Run(ctx); err != nil {
-		log.Error("collector exited with error", "error", err)
+	// Start the link latency collector.
+	linkLatencyCollectorErrCh := make(chan error, 1)
+	go func() {
+		if err := collector.Run(ctx); err != nil {
+			log.Error("collector exited with error", "error", err)
+			linkLatencyCollectorErrCh <- err
+		}
+	}()
+
+	// Wait for the context to be done or an error to be returned.
+	select {
+	case <-ctx.Done():
+		log.Info("context done, stopping")
+		return
+	case err := <-linkLatencyCollectorErrCh:
+		log.Error("link latency collector exited with error", "error", err)
+		os.Exit(1)
+	case err := <-stateCollectorErrCh:
+		log.Error("state collector exited with error", "error", err)
 		os.Exit(1)
 	}
+}
+
+func newSigner(keypairPath string) (stateingest.Signer, error) {
+	keypair, err := solana.PrivateKeyFromSolanaKeygenFile(keypairPath)
+	if err != nil {
+		return nil, err
+	}
+	return &signer{keypair: keypair}, nil
+}
+
+type signer struct {
+	keypair solana.PrivateKey
+}
+
+func (s *signer) PublicKey() solana.PublicKey {
+	return s.keypair.PublicKey()
+}
+
+func (s *signer) Sign(ctx context.Context, data []byte) ([]byte, error) {
+	signature, err := s.keypair.Sign(data)
+	if err != nil {
+		return nil, err
+	}
+	return signature[:], nil
 }

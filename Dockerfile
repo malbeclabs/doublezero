@@ -85,6 +85,11 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     go build -ldflags "${GO_LDFLAGS}" -o ${BIN_DIR}/doublezero-sflow-proxy telemetry/sflow-proxy/cmd/sflow-proxy/main.go
 
+# Build the telemetry-state-ingest (golang)
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go build -ldflags "${GO_LDFLAGS}" -o ${BIN_DIR}/doublezero-telemetry-state-ingest telemetry/state-ingest/cmd/server/main.go
+
 # Force COPY in later stages to always copy the binaries, even if they appear to be the same.
 ARG CACHE_BUSTER=1
 RUN echo "$CACHE_BUSTER" > ${BIN_DIR}/.cache-buster && \

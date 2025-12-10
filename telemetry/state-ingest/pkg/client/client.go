@@ -60,13 +60,15 @@ type Client struct {
 	BaseURL    string
 	HTTPClient *http.Client
 	signer     Signer
+	device     solana.PublicKey
 }
 
-func NewClient(baseURL string, signer Signer, opts ...Option) (*Client, error) {
+func NewClient(baseURL string, device solana.PublicKey, signer Signer, opts ...Option) (*Client, error) {
 	c := &Client{
 		BaseURL:    baseURL,
 		HTTPClient: &http.Client{Timeout: 10 * time.Second},
 		signer:     signer,
+		device:     device,
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -79,7 +81,7 @@ func (c *Client) RequestUploadURL(ctx context.Context, kind string, snapshotTS t
 	snapHashHex := hex.EncodeToString(snapHash[:])
 
 	bodyStruct := UploadURLRequest{
-		DevicePubkey:      c.signer.PublicKey().String(),
+		DevicePubkey:      c.device.String(),
 		SnapshotTimestamp: snapshotTS.UTC().Format(time.RFC3339),
 		SnapshotSHA256:    snapHashHex,
 		Kind:              kind,
@@ -111,7 +113,7 @@ func (c *Client) RequestUploadURL(ctx context.Context, kind string, snapshotTS t
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-DZ-Pubkey", c.signer.PublicKey().String())
+	req.Header.Set("X-DZ-Device", c.device.String())
 	req.Header.Set("X-DZ-Timestamp", now)
 	req.Header.Set("X-DZ-Signature", sigB58)
 

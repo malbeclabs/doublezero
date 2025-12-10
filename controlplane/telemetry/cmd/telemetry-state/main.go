@@ -139,7 +139,12 @@ func main() {
 		log.Error("failed to create signer", "error", err)
 		os.Exit(1)
 	}
-	stateIngestClient, err := stateingest.NewClient(networkConfig.TelemetryStateIngestURL, signer, stateingest.WithHTTPClient(httpClient))
+	stateIngestClient, err := stateingest.NewClient(
+		networkConfig.TelemetryStateIngestURL,
+		localDevicePK,
+		signer,
+		stateingest.WithHTTPClient(httpClient),
+	)
 	if err != nil {
 		log.Error("failed to create state ingest client", "error", err)
 		os.Exit(1)

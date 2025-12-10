@@ -82,14 +82,64 @@ func TestClient_Liveness_ParseClientVersion_Success(t *testing.T) {
 		{"otherSuffix", "1.2.3-foo", 1, 2, 3, VersionChannelOther},
 		{"otherWithHyphen", "1.2.3-foo-bar", 1, 2, 3, VersionChannelOther},
 		{"maxValues", "255.255.255-dev", 255, 255, 255, VersionChannelDev},
+		{
+			name:    "gitSuffixDevFromMetadata",
+			in:      "0.8.1~git20251210140934.6dc3cef6",
+			maj:     0,
+			min:     8,
+			patch:   1,
+			channel: VersionChannelDev,
+		},
+		{
+			name:    "gitSuffixDevExplicit",
+			in:      "0.8.1-dev~git20251210140934.6dc3cef6",
+			maj:     0,
+			min:     8,
+			patch:   1,
+			channel: VersionChannelDev,
+		},
+		{
+			name:    "buildMetadataPlus",
+			in:      "1.2.3+build.1",
+			maj:     1,
+			min:     2,
+			patch:   3,
+			channel: VersionChannelStable,
+		},
+		{
+			name:    "tildeMetadata",
+			in:      "1.2.3~edge",
+			maj:     1,
+			min:     2,
+			patch:   3,
+			channel: VersionChannelStable,
+		},
+		{
+			name:    "devWithPlusMetadata",
+			in:      "1.2.3-dev+meta",
+			maj:     1,
+			min:     2,
+			patch:   3,
+			channel: VersionChannelDev,
+		},
+		{
+			name:    "alphaDotExtended",
+			in:      "1.2.3-alpha.1",
+			maj:     1,
+			min:     2,
+			patch:   3,
+			channel: VersionChannelAlpha,
+		},
 	}
 
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+
 			got, err := ParseClientVersion(tc.in)
 			require.NoError(t, err)
+
 			require.Equal(t, tc.maj, got.Major)
 			require.Equal(t, tc.min, got.Minor)
 			require.Equal(t, tc.patch, got.Patch)
@@ -145,11 +195,10 @@ func TestClient_Liveness_ClientVersion_RoundTrip_StringAndParse(t *testing.T) {
 		v := v
 		t.Run(v.String(), func(t *testing.T) {
 			t.Parallel()
+
 			s := v.String()
 			got, err := ParseClientVersion(s)
 			require.NoError(t, err, "case %d", i)
-			// For VersionChannelOther, ParseClientVersion only understands "-other",
-			// which matches ClientVersionChannel.String(), so equality is fine.
 			require.Equal(t, v, got)
 		})
 	}

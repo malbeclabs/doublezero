@@ -699,7 +699,7 @@ func setupLivenessClients(t *testing.T, basePort int) ([]*testClient, *fakeUDPSw
 			MaxTxCeil:       cfg.txMin,
 			BackoffMax:      cfg.backoffMax,
 			ClientVersion:   "1.2.3-dev",
-		})
+		}, nil)
 		require.NoError(t, err)
 
 		tc := &testClient{
@@ -772,7 +772,7 @@ func setupMixedPassiveLivenessClients(t *testing.T, basePort int) ([]*testClient
 			mcfg.PassiveMode = true
 		}
 
-		lm, err := NewManager(t.Context(), mcfg)
+		lm, err := NewManager(t.Context(), mcfg, nil)
 		require.NoError(t, err)
 
 		tc := &testClient{

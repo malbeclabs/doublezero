@@ -30,13 +30,16 @@ func TestClient_RoutingConfig_InitialExcludeBlocksRoute(t *testing.T) {
 		nl.RouteAddFunc = func(*Route) error { adds.Add(1); return nil }
 	})
 
-	cr, err := NewConfiguredRouteReaderWriter(discardLogger(), nlr, cfgPath)
+	cfg, err := NewConfiguredRoutes(cfgPath)
+	require.NoError(t, err)
+	require.NotNil(t, cfg)
+
+	cr, err := NewConfiguredRouteReaderWriter(discardLogger(), nlr, cfg)
 	require.NoError(t, err)
 	require.NotNil(t, cr)
 
 	require.NoError(t, cr.RouteAdd(cidr(t, "10.0.0.0/8"))) // excluded → blocked
 	require.Equal(t, int64(0), adds.Load())
-
 	require.NoError(t, cr.RouteAdd(cidr(t, "192.168.0.0/16"))) // allowed → forwarded
 	require.Equal(t, int64(1), adds.Load())
 
@@ -46,10 +49,8 @@ func TestClient_RoutingConfig_InitialExcludeBlocksRoute(t *testing.T) {
 
 	require.NoError(t, cr.RouteDelete(cidr(t, "10.0.0.0/8"))) // excluded → blocked
 	require.Equal(t, int64(0), deletes.Load())
-
 	require.NoError(t, cr.RouteDelete(cidr(t, "192.168.0.0/16"))) // allowed → forwarded
 	require.Equal(t, int64(1), deletes.Load())
-
 }
 
 func TestClient_RoutingConfig_InvalidIPs(t *testing.T) {
@@ -87,9 +88,9 @@ func TestClient_RoutingConfig_InvalidIPs(t *testing.T) {
 		tc := tc // capture range variable
 		t.Run(tc.name, func(t *testing.T) {
 			writeConfig(t, cfgPath, tc.exclude)
-			cr, err := NewConfiguredRouteReaderWriter(discardLogger(), newMockNetlinker(), cfgPath)
+			cfg, err := NewConfiguredRoutes(cfgPath)
 			require.EqualError(t, err, fmt.Sprintf("error loading route config: invalid ip: %s", tc.exclude[0]))
-			require.Nil(t, cr)
+			require.Nil(t, cfg)
 		})
 	}
 }
@@ -108,17 +109,26 @@ func TestClient_RoutingConfig_ReinitWithNewConfigUpdatesExclude(t *testing.T) {
 	})
 
 	// First instance: 10/8 excluded; 172.16/12 allowed
-	cr1, err := NewConfiguredRouteReaderWriter(discardLogger(), nlr, cfgPath)
+	cfg1, err := NewConfiguredRoutes(cfgPath)
+	require.NoError(t, err)
+	require.NotNil(t, cfg1)
+
+	cr1, err := NewConfiguredRouteReaderWriter(discardLogger(), nlr, cfg1)
 	require.NoError(t, err)
 	require.NotNil(t, cr1)
+
 	require.NoError(t, cr1.RouteAdd(cidr(t, "10.0.0.0/8")))
 	require.Equal(t, int64(0), adds.Load())
 	require.NoError(t, cr1.RouteAdd(cidr(t, "172.16.0.0/12")))
 	require.Equal(t, int64(1), adds.Load())
 
-	// Change config and create a new instance
+	// Change config and create a new ConfiguredRoutes + ReaderWriter
 	writeConfig(t, cfgPath, []string{"172.16.0.0"})
-	cr2, err := NewConfiguredRouteReaderWriter(discardLogger(), nlr, cfgPath)
+	cfg2, err := NewConfiguredRoutes(cfgPath)
+	require.NoError(t, err)
+	require.NotNil(t, cfg2)
+
+	cr2, err := NewConfiguredRouteReaderWriter(discardLogger(), nlr, cfg2)
 	require.NoError(t, err)
 	require.NotNil(t, cr2)
 
@@ -142,7 +152,11 @@ func TestClient_RoutingConfig_NoExcludesForwardsAll(t *testing.T) {
 		nl.RouteAddFunc = func(*Route) error { adds.Add(1); return nil }
 	})
 
-	cr, err := NewConfiguredRouteReaderWriter(discardLogger(), nlr, cfgPath)
+	cfg, err := NewConfiguredRoutes(cfgPath)
+	require.NoError(t, err)
+	require.NotNil(t, cfg)
+
+	cr, err := NewConfiguredRouteReaderWriter(discardLogger(), nlr, cfg)
 	require.NoError(t, err)
 	require.NotNil(t, cr)
 
@@ -150,6 +164,64 @@ func TestClient_RoutingConfig_NoExcludesForwardsAll(t *testing.T) {
 	require.NoError(t, cr.RouteAdd(cidr(t, "172.16.0.0/12")))
 	require.NoError(t, cr.RouteAdd(cidr(t, "192.168.0.0/16")))
 	require.Equal(t, int64(3), adds.Load())
+}
+
+func TestConfiguredRoutes_IsExcludedAndGetExcluded(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "routes.json")
+	excludes := []string{"10.0.0.1", "192.168.1.1"}
+	writeConfig(t, cfgPath, excludes)
+
+	cfg, err := NewConfiguredRoutes(cfgPath)
+	require.NoError(t, err)
+	require.NotNil(t, cfg)
+
+	require.True(t, cfg.IsExcluded("10.0.0.1"))
+	require.True(t, cfg.IsExcluded("192.168.1.1"))
+	require.False(t, cfg.IsExcluded("8.8.8.8"))
+
+	excludedMap := cfg.GetExcluded()
+	require.Len(t, excludedMap, 2)
+	_, ok1 := excludedMap["10.0.0.1"]
+	_, ok2 := excludedMap["192.168.1.1"]
+	require.True(t, ok1)
+	require.True(t, ok2)
+}
+
+func TestConfiguredRouteReaderWriter_RouteByProtocolDelegates(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "routes.json")
+	writeConfig(t, cfgPath, nil)
+
+	cfg, err := NewConfiguredRoutes(cfgPath)
+	require.NoError(t, err)
+	require.NotNil(t, cfg)
+
+	var (
+		calledWith atomic.Int64
+		routes     = []*Route{{}, {}}
+	)
+
+	nlr := newMockNetlinker()
+	nlr.Update(func(nl *MockNetlinker) {
+		nl.RouteByProtocolFunc = func(proto int) ([]*Route, error) {
+			calledWith.Store(int64(proto))
+			return routes, nil
+		}
+	})
+
+	cr, err := NewConfiguredRouteReaderWriter(discardLogger(), nlr, cfg)
+	require.NoError(t, err)
+	require.NotNil(t, cr)
+
+	got, err := cr.RouteByProtocol(123)
+	require.NoError(t, err)
+	require.Equal(t, int64(123), calledWith.Load())
+	require.Equal(t, routes, got)
 }
 
 func discardLogger() *slog.Logger {

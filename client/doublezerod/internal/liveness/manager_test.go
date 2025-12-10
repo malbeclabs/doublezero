@@ -1,8 +1,11 @@
 package liveness
 
 import (
+	"encoding/json"
 	"errors"
 	"net"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -1504,6 +1507,57 @@ func TestClient_Liveness_Manager_Metrics_MapSizeGauges_TrackMapLengths(t *testin
 	require.Equal(t, 0.0, desiredGauge())
 }
 
+func TestClient_Liveness_Manager_NewManager_WithConfiguredRoutes_StartupAdminDownNoop(t *testing.T) {
+	t.Parallel()
+
+	// Build a real ConfiguredRoutes with one or more excluded IPs.
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "routes.json")
+
+	excluded := []string{"127.0.0.10", "127.0.0.11"}
+	{
+		rc := routing.RouteConfig{Exclude: excluded}
+		data, err := json.Marshal(rc)
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(cfgPath, data, 0o644))
+	}
+
+	cr, err := routing.NewConfiguredRoutes(cfgPath)
+	require.NoError(t, err)
+	require.NotNil(t, cr)
+
+	// Build a ManagerConfig like newTestManagerWithMetrics, but pass cr to NewManager.
+	reg := prometheus.NewRegistry()
+	cfg := &ManagerConfig{
+		Logger:          newTestLogger(t),
+		Netlinker:       &MockRouteReaderWriter{},
+		MetricsRegistry: reg,
+		BindIP:          "127.0.0.1",
+		Port:            0,
+		TxMin:           100 * time.Millisecond,
+		RxMin:           100 * time.Millisecond,
+		DetectMult:      3,
+		MinTxFloor:      50 * time.Millisecond,
+		MaxTxCeil:       1 * time.Second,
+		BackoffMax:      1 * time.Second,
+		ClientVersion:   "1.2.3-dev",
+	}
+	require.NoError(t, cfg.Validate())
+
+	m, err := NewManager(t.Context(), cfg, cr)
+	require.NoError(t, err)
+	require.NotNil(t, m)
+	t.Cleanup(func() { _ = m.Close() })
+
+	// The manager should hold the same ConfiguredRoutes pointer.
+	require.Same(t, cr, m.cr)
+
+	// Startup AdminDownRoute calls (for excluded IPs) should be safe no-ops
+	// when there are no sessions: no sessions and no installed routes.
+	require.Equal(t, 0, m.GetSessionsLen(), "no sessions should exist immediately after NewManager")
+	require.Equal(t, 0, m.GetInstalledLen(), "no installed routes should exist immediately after NewManager")
+}
+
 func newTestManager(t *testing.T, mutate func(*ManagerConfig)) (*manager, error) {
 	m, _, err := newTestManagerWithMetrics(t, mutate)
 	return m, err
@@ -1528,7 +1582,7 @@ func newTestManagerWithMetrics(t *testing.T, mutate func(*ManagerConfig)) (*mana
 	if mutate != nil {
 		mutate(cfg)
 	}
-	m, err := NewManager(t.Context(), cfg)
+	m, err := NewManager(t.Context(), cfg, nil)
 	return m, reg, err
 }
 

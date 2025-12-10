@@ -17,6 +17,8 @@ impl GetResourceCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         let (_, resource_extension) = client.get_resource(GetResourceCommand {})?;
 
+        println!("Resource Extension: {resource_extension}");
+
         let resource_displays = resource_extension
             .iter_allocated_ips()
             .into_iter()

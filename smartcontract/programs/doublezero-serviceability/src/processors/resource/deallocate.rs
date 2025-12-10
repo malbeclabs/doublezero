@@ -50,7 +50,7 @@ pub fn process_deallocate_resource(
     let system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
-    msg!("process_allocate_resource({:?})", value);
+    msg!("process_deallocate_resource({:?})", value);
 
     // Check if the payer is a signer
     assert!(payer_account.is_signer, "Payer must be a signer");

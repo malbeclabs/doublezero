@@ -31,7 +31,6 @@ impl DeallocateResourceCommand {
             vec![
                 AccountMeta::new(resource_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
-                AccountMeta::new(globalconfig_pubkey, false),
             ],
         )
     }

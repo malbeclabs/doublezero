@@ -13,7 +13,7 @@ use crate::{
 use borsh::{BorshDeserialize, BorshSerialize};
 use borsh_incremental::BorshDeserializeIncremental;
 use doublezero_program_common::create_account::try_create_account;
-//#[cfg(test)]
+#[cfg(test)]
 use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -54,7 +54,7 @@ pub fn process_allocate_resource(
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
-    //#[cfg(test)]
+    #[cfg(test)]
     msg!("process_allocate_resource({:?})", value);
 
     // Check if the payer is a signer
@@ -151,7 +151,6 @@ pub fn process_allocate_resource(
 
     let mut buffer = resource_account.data.borrow_mut();
     let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
-    msg!("Resource Extension: {}", resource);
     resource.allocate().unwrap();
 
     Ok(())

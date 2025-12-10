@@ -20,7 +20,7 @@ pub struct ResourceExtensionOwned {
     pub owner: Pubkey,                         // 32
     pub bump_seed: u8,                         // 1
     pub assocatiated_with: Pubkey,             // 32
-    pub extension_type: ResourceExtensionType, // Variable
+    pub extension_type: ResourceExtensionType, // 9
     pub storage: Vec<u8>,                      // Variable
 }
 
@@ -43,14 +43,8 @@ impl TryFrom<&[u8]> for ResourceExtensionOwned {
             owner: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             bump_seed: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             assocatiated_with: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            extension_type: {
-                let ext_type: u8 = BorshDeserialize::deserialize(&mut data).unwrap_or_default();
-                match ext_type {
-                    0 => ResourceExtensionType::Ip(IpAllocator::deserialize(&mut data)?),
-                    _ => return Err(ProgramError::InvalidAccountData),
-                }
-            },
-            storage: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            extension_type: BorshDeserialize::deserialize(&mut data).unwrap(),
+            storage: data[..].to_vec(),
         };
 
         if out.account_type != AccountType::ResourceExtension {
@@ -63,7 +57,32 @@ impl TryFrom<&[u8]> for ResourceExtensionOwned {
 
 impl fmt::Display for ResourceExtensionOwned {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "TODO")
+        write!(
+            f,
+            "ResourceExtensionOwned {{ account_type: {:?}, owner: {}, bump_seed: {}, assocatiated_with: {}, extension_type: {:?} }}",
+            self.account_type,
+            self.owner,
+            self.bump_seed,
+            self.assocatiated_with,
+            self.extension_type,
+        )?;
+
+        match &self.extension_type {
+            ResourceExtensionType::Ip(ip_allocator) => {
+                write!(f, ", allocated_ips: [")?;
+                let mut first = true;
+                for ip in ip_allocator.iter_allocated(self.storage.as_slice()) {
+                    if !first {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", ip)?;
+                    first = false;
+                }
+                write!(f, "]")?;
+            }
+        }
+
+        fmt::Result::Ok(())
     }
 }
 
@@ -83,7 +102,7 @@ impl<'a> ResourceExtensionBorrowed<'a> {
         bump_seed: u8,
         assocatiated_with: Pubkey,
         base_net: NetworkV4,
-        allocation_size: u8,
+        allocation_size: u32,
     ) -> Result<(), ProgramError> {
         let mut buffer = account.data.borrow_mut();
         let mut cursor = Cursor::new(&mut buffer[..]);
@@ -100,33 +119,25 @@ impl<'a> ResourceExtensionBorrowed<'a> {
         assocatiated_with
             .serialize(&mut cursor)
             .map_err(|_| ProgramError::InvalidAccountData)?;
-        0u8.serialize(&mut cursor)
-            .map_err(|_| ProgramError::InvalidAccountData)?;
-        base_net
-            .serialize(&mut cursor)
-            .map_err(|_| ProgramError::InvalidAccountData)?;
-        allocation_size
-            .serialize(&mut cursor)
-            .map_err(|_| ProgramError::InvalidAccountData)?;
+        ResourceExtensionType::Ip(
+            IpAllocator::new(base_net, allocation_size)
+                .map_err(|_| ProgramError::InvalidArgument)?,
+        )
+        .serialize(&mut cursor)
+        .map_err(|_| ProgramError::InvalidAccountData)?;
 
         Ok(())
     }
 
     pub fn inplace_from(data: &'a mut [u8]) -> Result<Self, ProgramError> {
-        let (data, bitmap) = data.split_at_mut(67);
+        let (data, bitmap) = data.split_at_mut(76);
         let mut cursor: &[u8] = data;
         let out = Self {
             account_type: BorshDeserialize::deserialize(&mut cursor).unwrap_or_default(),
             owner: BorshDeserialize::deserialize(&mut cursor).unwrap_or_default(),
             bump_seed: BorshDeserialize::deserialize(&mut cursor).unwrap_or_default(),
             assocatiated_with: BorshDeserialize::deserialize(&mut cursor).unwrap_or_default(),
-            extension_type: {
-                let ext_type: u8 = BorshDeserialize::deserialize(&mut cursor).unwrap_or_default();
-                match ext_type {
-                    0 => ResourceExtensionType::Ip(IpAllocator::deserialize(&mut cursor)?),
-                    _ => return Err(ProgramError::InvalidAccountData),
-                }
-            },
+            extension_type: BorshDeserialize::deserialize(&mut cursor).unwrap(),
             storage: bitmap,
         };
 
@@ -160,13 +171,29 @@ impl<'a> fmt::Display for ResourceExtensionBorrowed<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "ResourceExtensionBorrowed {{ account_type: {:?}, owner: {}, bump_seed: {}, assocatiated_with: {}, extension_type: {:?}, storage_len: {} }}",
+            "ResourceExtensionBorrowed {{ account_type: {:?}, owner: {}, bump_seed: {}, assocatiated_with: {}, extension_type: {:?} }}",
             self.account_type,
             self.owner,
             self.bump_seed,
             self.assocatiated_with,
             self.extension_type,
-            self.storage.len()
-        )
+        )?;
+
+        match &self.extension_type {
+            ResourceExtensionType::Ip(ip_allocator) => {
+                write!(f, ", allocated_ips: [")?;
+                let mut first = true;
+                for ip in ip_allocator.iter_allocated(self.storage) {
+                    if !first {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", ip)?;
+                    first = false;
+                }
+                write!(f, "]")?;
+            }
+        }
+
+        fmt::Result::Ok(())
     }
 }

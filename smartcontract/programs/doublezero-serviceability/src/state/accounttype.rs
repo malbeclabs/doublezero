@@ -45,6 +45,7 @@ impl From<u8> for AccountType {
             9 => AccountType::ProgramConfig,
             10 => AccountType::Contributor,
             11 => AccountType::AccessPass,
+            12 => AccountType::ResourceExtension,
             _ => AccountType::None,
         }
     }

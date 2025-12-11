@@ -73,6 +73,12 @@ pub fn process_suspend_exchange(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
+    if exchange.status != ExchangeStatus::Activated {
+        #[cfg(test)]
+        msg!("{:?}", exchange);
+        return Err(DoubleZeroError::InvalidStatus.into());
+    }
+
     exchange.status = ExchangeStatus::Suspended;
 
     try_acc_write(&exchange, exchange_account, payer_account, accounts)?;

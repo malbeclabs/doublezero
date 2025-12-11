@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 - CLI
   - Remove log noise on resolve route
 - Onchain programs
+  - Enforce Activated status check before suspending contributor, exchange, location, and multicastgroup accounts
   - Removed device and user allowlist functionality, updating the global state, initialization flow, tests, and processors accordingly, and cleaning up unused account checks.
   - Serviceability: require DeactivateMulticastGroup to only close multicast group accounts when both `publisher_count` and `subscriber_count` are zero, preventing deletion of groups that still have active publishers or subscribers.
   - Deprecated the user suspend status, as it is no longer used.

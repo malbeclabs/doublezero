@@ -541,3 +541,78 @@ async fn test_multicastgroup_reactivate_invalid_status_fails() {
     println!("✅ Correctly rejected ReactivateMulticastGroup for non-Suspended status");
     println!("🟢  End test_multicastgroup_reactivate_invalid_status_fails");
 }
+
+#[tokio::test]
+async fn test_suspend_multicastgroup_from_pending_fails() {
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+
+    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
+    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+
+    // Initialize global state
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::InitGlobalState(),
+        vec![
+            AccountMeta::new(program_config_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Create a multicast group (starts in Pending status)
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (multicastgroup_pubkey, _) =
+        get_multicastgroup_pda(&program_id, globalstate_account.account_index + 1);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
+            code: "test".to_string(),
+            max_bandwidth: 1000,
+            owner: Pubkey::new_unique(),
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Verify multicast group is in Pending status
+    let multicastgroup = get_account_data(&mut banks_client, multicastgroup_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_multicastgroup()
+        .unwrap();
+    assert_eq!(multicastgroup.status, MulticastGroupStatus::Pending);
+
+    // Try to suspend from Pending (should fail with InvalidStatus)
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SuspendMulticastGroup(MulticastGroupSuspendArgs {}),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    assert!(result.is_err());
+    let error_string = format!("{:?}", result.unwrap_err());
+    assert!(
+        error_string.contains("Custom(7)"),
+        "Expected InvalidStatus error (Custom(7)), got: {}",
+        error_string
+    );
+    println!("✅ Suspending pending multicastgroup correctly fails with InvalidStatus");
+}

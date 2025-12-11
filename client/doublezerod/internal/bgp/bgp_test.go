@@ -128,7 +128,7 @@ func TestBgpServer(t *testing.T) {
 		MinTxFloor:    50 * time.Millisecond,
 		MaxTxCeil:     1 * time.Second,
 		ClientVersion: "1.2.3-dev",
-	})
+	}, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = lm.Close() })
 	b, err := bgp.NewBgpServer(net.IP{1, 1, 1, 1}, nlr, lm)

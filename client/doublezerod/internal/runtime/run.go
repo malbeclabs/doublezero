@@ -28,10 +28,15 @@ const (
 func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLatencyProbing, enableLatencyMetrics bool, networkConfig *config.NetworkConfig, probeInterval, cacheUpdateInterval int, lmc *liveness.ManagerConfig) error {
 	nlr := routing.Netlink{}
 	var crw bgp.RouteReaderWriter
+	var cr *routing.ConfiguredRoutes
 	if _, err := os.Stat(routeConfigPath); os.IsNotExist(err) {
 		crw = nlr
 	} else {
-		crw, err = routing.NewConfiguredRouteReaderWriter(slog.Default(), nlr, routeConfigPath)
+		cr, err = routing.NewConfiguredRoutes(routeConfigPath)
+		if err != nil {
+			return fmt.Errorf("error creating configured routes: %v", err)
+		}
+		crw, err = routing.NewConfiguredRouteReaderWriter(slog.Default(), nlr, cr)
 		if err != nil {
 			return fmt.Errorf("error creating configured route reader writer: %v", err)
 		}
@@ -45,7 +50,7 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 	if lmc != nil {
 		lmc.Netlinker = crw
 		var err error
-		lm, err = liveness.NewManager(ctx, lmc)
+		lm, err = liveness.NewManager(ctx, lmc, cr)
 		if err != nil {
 			return fmt.Errorf("error creating liveness manager: %v", err)
 		}

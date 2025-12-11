@@ -4,8 +4,11 @@ import (
 	"log"
 	"net"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
+	flow "github.com/malbeclabs/doublezero/telemetry/proto/flow/gen/pb-go"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func TestDecodeSFlow(t *testing.T) {
@@ -93,39 +96,39 @@ func TestDecodeSFlow(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		input     []byte
+		input     *flow.FlowSample
 		expected  []FlowSample
 		expectErr bool
 	}{
 		{
 			name:  "Valid IPv4 Sampled Flow from bytes",
-			input: validSFlowPacketBytes,
+			input: &flow.FlowSample{ReceiveTimestamp: &timestamppb.Timestamp{Seconds: 1625243456, Nanos: 0}, FlowPayload: validSFlowPacketBytes},
 			expected: []FlowSample{
 				{
-					EType:           "IPv4",
-					Bytes:           1428,
-					Packets:         1,
-					SamplingRate:    1024,
-					InputIfIndex:    8001063,
-					OutputIfIndex:   8001134,
-					TimeFlowStartNs: 1625243456000000000,
-					SrcAddress:      net.ParseIP("137.174.145.145"),
-					DstAddress:      net.ParseIP("137.174.145.147"),
-					SrcPort:         41306,
-					DstPort:         5001,
-					Proto:           "UDP",
-					TcpFlags:        0,
-					SrcMac:          "0c:42:a1:07:b9:da",
-					DstMac:          "c4:ca:2b:4d:f1:f4",
-					IpTtl:           64,
-					IpFlags:         2,
+					EType:          "IPv4",
+					Bytes:          1428,
+					Packets:        1,
+					SamplingRate:   1024,
+					InputIfIndex:   8001063,
+					OutputIfIndex:  8001134,
+					TimeReceivedNs: time.Unix(1625243456, 0),
+					SrcAddress:     net.ParseIP("137.174.145.145"),
+					DstAddress:     net.ParseIP("137.174.145.147"),
+					SrcPort:        41306,
+					DstPort:        5001,
+					Proto:          "UDP",
+					TcpFlags:       0,
+					SrcMac:         "0c:42:a1:07:b9:da",
+					DstMac:         "c4:ca:2b:4d:f1:f4",
+					IpTtl:          64,
+					IpFlags:        2,
 				},
 			},
 			expectErr: false,
 		},
 		{
 			name:      "Malformed Packet",
-			input:     []byte{0x00, 0x01, 0x02},
+			input:     &flow.FlowSample{FlowPayload: []byte{0x00, 0x01, 0x02}},
 			expected:  nil,
 			expectErr: true,
 		},

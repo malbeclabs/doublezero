@@ -324,6 +324,7 @@ func (m *manager) RegisterRoute(r *Route, iface string, port int) error {
 
 		m.mu.Lock()
 		m.installed[rk] = true
+		m.metrics.InstalledMapSize.Set(float64(len(m.installed)))
 		m.mu.Unlock()
 	}
 
@@ -337,6 +338,7 @@ func (m *manager) RegisterRoute(r *Route, iface string, port int) error {
 
 	m.mu.Lock()
 	m.desired[rk] = r
+	m.metrics.DesiredMapSize.Set(float64(len(m.desired)))
 	m.mu.Unlock()
 
 	peer := Peer{Interface: iface, LocalIP: srcIP, PeerIP: dstIP}
@@ -365,6 +367,7 @@ func (m *manager) RegisterRoute(r *Route, iface string, port int) error {
 		lastUpdated:   time.Now(),
 	}
 	m.sessions[peer] = sess
+	m.metrics.SessionsMapSize.Set(float64(len(m.sessions)))
 	m.metrics.sessionStateTransition(peer, nil, StateDown, "register_route", m.cfg.EnablePeerMetrics)
 	if m.cfg.EnablePeerMetrics {
 		// Set initial detect time based on current view (localRxMin until peer timers arrive)
@@ -407,8 +410,10 @@ func (m *manager) WithdrawRoute(r *Route, iface string) error {
 	rk := routeKeyFor(iface, r)
 	m.mu.Lock()
 	delete(m.desired, rk)
+	m.metrics.DesiredMapSize.Set(float64(len(m.desired)))
 	wasInstalled := m.installed[rk]
 	delete(m.installed, rk)
+	m.metrics.InstalledMapSize.Set(float64(len(m.installed)))
 	m.mu.Unlock()
 
 	peer := Peer{Interface: iface, LocalIP: srcIP, PeerIP: dstIP}
@@ -423,6 +428,7 @@ func (m *manager) WithdrawRoute(r *Route, iface string) error {
 		m.metrics.cleanupWithdrawRoute(peer, state, m.cfg.EnablePeerMetrics)
 	}
 	delete(m.sessions, peer)
+	m.metrics.SessionsMapSize.Set(float64(len(m.sessions)))
 	m.mu.Unlock()
 
 	// If we previously installed the route (and not in PassiveMode), remove it now.
@@ -434,6 +440,7 @@ func (m *manager) WithdrawRoute(r *Route, iface string) error {
 		}
 		m.metrics.routeWithdraw(iface, srcIP)
 	}
+
 	return nil
 }
 
@@ -686,6 +693,7 @@ func (m *manager) AdminDownRoute(r *Route, iface string) {
 		rk := routeKeyFor(iface, r)
 		m.mu.Lock()
 		m.installed[rk] = false
+		m.metrics.InstalledMapSize.Set(float64(len(m.installed)))
 		m.mu.Unlock()
 
 		// Ensure we send at least one AdminDown packet promptly.
@@ -729,6 +737,7 @@ func (m *manager) onSessionUp(sess *Session) {
 		}
 	} else {
 		m.installed[rk] = true
+		m.metrics.InstalledMapSize.Set(float64(len(m.installed)))
 		m.mu.Unlock()
 
 		if err := m.cfg.Netlinker.RouteAdd(&route.Route); err != nil {
@@ -779,6 +788,7 @@ func (m *manager) onSessionDown(sess *Session) {
 	} else {
 		if wasInstalled {
 			m.installed[rk] = false
+			m.metrics.InstalledMapSize.Set(float64(len(m.installed)))
 		}
 		m.mu.Unlock()
 	}

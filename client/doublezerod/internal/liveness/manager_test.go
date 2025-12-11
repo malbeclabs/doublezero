@@ -1441,6 +1441,69 @@ func TestClient_Liveness_Manager_SessionsGauge_LifecycleBalanced(t *testing.T) {
 	require.Equal(t, 0.0, adminDown, "sessions{state=\"admin_down\"} should return to 0 after all lifecycles")
 }
 
+func TestClient_Liveness_Manager_Metrics_MapSizeGauges_TrackMapLengths(t *testing.T) {
+	t.Parallel()
+
+	m, reg, err := newTestManagerWithMetrics(t, func(cfg *ManagerConfig) {
+		cfg.PassiveMode = true
+		cfg.Netlinker = &MockRouteReaderWriter{
+			RouteAddFunc:        func(*routing.Route) error { return nil },
+			RouteDeleteFunc:     func(*routing.Route) error { return nil },
+			RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, nil },
+		}
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = m.Close() })
+
+	// Helper to read the three map-size gauges (no labels).
+	sessionsGauge := func() float64 {
+		return getGaugeValue(t, reg, "doublezero_liveness_sessions_map_size", nil)
+	}
+	installedGauge := func() float64 {
+		return getGaugeValue(t, reg, "doublezero_liveness_installed_map_size", nil)
+	}
+	desiredGauge := func() float64 {
+		return getGaugeValue(t, reg, "doublezero_liveness_desired_map_size", nil)
+	}
+
+	require.Equal(t, 0.0, sessionsGauge())
+	require.Equal(t, 0.0, installedGauge())
+	require.Equal(t, 0.0, desiredGauge())
+
+	// Build two distinct routes so we get two distinct peers/sessions.
+	r1 := newTestRoute(func(r *Route) {
+		r.Src = net.IPv4(127, 0, 0, 1)
+		r.Dst = &net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(32, 32)}
+	})
+	r2 := newTestRoute(func(r *Route) {
+		r.Src = net.IPv4(127, 0, 0, 1)
+		r.Dst = &net.IPNet{IP: net.IPv4(127, 0, 0, 3), Mask: net.CIDRMask(32, 32)}
+	})
+
+	require.NoError(t, m.RegisterRoute(r1, "lo", m.LocalAddr().Port))
+	require.NoError(t, m.RegisterRoute(r2, "lo", m.LocalAddr().Port))
+
+	require.Equal(t, 2, m.GetSessionsLen())
+	require.Equal(t, 2, m.GetInstalledLen())
+	require.Equal(t, 2.0, sessionsGauge())
+	require.Equal(t, 2.0, installedGauge())
+	require.Equal(t, 2.0, desiredGauge())
+
+	require.NoError(t, m.WithdrawRoute(r1, "lo"))
+	require.Equal(t, 1, m.GetSessionsLen())
+	require.Equal(t, 1, m.GetInstalledLen())
+	require.Equal(t, 1.0, sessionsGauge())
+	require.Equal(t, 1.0, installedGauge())
+	require.Equal(t, 1.0, desiredGauge())
+
+	require.NoError(t, m.WithdrawRoute(r2, "lo"))
+	require.Equal(t, 0, m.GetSessionsLen())
+	require.Equal(t, 0, m.GetInstalledLen())
+	require.Equal(t, 0.0, sessionsGauge())
+	require.Equal(t, 0.0, installedGauge())
+	require.Equal(t, 0.0, desiredGauge())
+}
+
 func newTestManager(t *testing.T, mutate func(*ManagerConfig)) (*manager, error) {
 	m, _, err := newTestManagerWithMetrics(t, mutate)
 	return m, err

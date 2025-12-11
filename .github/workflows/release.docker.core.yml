@@ -6,8 +6,9 @@ on:
       - main
       - snor/release-docker-all
     tags:
-      - 'v*.*.*' # stable
-      - 'v*.*.*-*' # pre-releases
+      - 'v*.*.*'     # stable
+      - 'v*.*.*-*'   # pre-releases
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -31,8 +32,17 @@ jobs:
           SHORT_SHA="${GITHUB_SHA::8}"
           echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
 
-          if [[ "${{ github.ref_type }}" == "branch" && "${{ github.ref_name }}" == "main" || "${{ github.ref_name }}" == "snor/release-docker-all" ]]; then
-            echo "channel=edge" >> $GITHUB_OUTPUT
+          if [[ "${{ github.ref_type }}" == "branch" ]]; then
+            if [[ "${{ github.ref_name }}" == "main" ]]; then
+              echo "channel=edge" >> $GITHUB_OUTPUT
+            else
+              echo "channel=branch" >> $GITHUB_OUTPUT
+
+              SAN_BRANCH="${{ github.ref_name }}"
+              SAN_BRANCH="${SAN_BRANCH//\//-}"
+              echo "branch_name=$SAN_BRANCH" >> $GITHUB_OUTPUT
+              echo "version_sanitized=${SAN_BRANCH}-${SHORT_SHA}" >> $GITHUB_OUTPUT
+            fi
           else
             TAG="${{ github.ref_name }}"  # e.g. v1.2.3 or v1.2.3-rc.1
             # classify pre vs release
@@ -77,6 +87,30 @@ jobs:
           tags: |
             ${{ env.IMAGE }}:sha-${{ steps.v.outputs.short_sha }}
             ${{ env.IMAGE }}:edge
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      # Build & push for manual branch builds (workflow_dispatch on non-main branches)
+      - name: Build & push (manual branch build)
+        if: steps.v.outputs.channel == 'branch'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILD_VERSION=${{ steps.v.outputs.version_sanitized }}
+            BUILD_COMMIT=${{ steps.v.outputs.short_sha }}
+            BUILD_DATE=${{ github.event.head_commit.timestamp || github.run_started_at }}
+          tags: |
+            ${{ env.IMAGE }}:${{ steps.v.outputs.version_sanitized }}
+            ${{ env.IMAGE }}:${{ steps.v.outputs.branch_name }}
+            ${{ env.IMAGE }}:sha-${{ steps.v.outputs.short_sha }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}

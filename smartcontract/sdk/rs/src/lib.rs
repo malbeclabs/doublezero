@@ -24,6 +24,7 @@ pub use doublezero_serviceability::{
         location::{Location, LocationStatus},
         multicastgroup::{MulticastGroup, MulticastGroupStatus},
         programconfig::ProgramConfig,
+        resource_extension::ResourceExtensionOwned,
         user::{User, UserCYOA, UserStatus, UserType},
     },
 };

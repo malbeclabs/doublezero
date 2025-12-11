@@ -4,9 +4,9 @@ use solana_program::pubkey::Pubkey;
 
 use crate::{
     seeds::{
-        SEED_ACCESS_PASS, SEED_CONFIG, SEED_CONTRIBUTOR, SEED_DEVICE, SEED_EXCHANGE,
-        SEED_GLOBALSTATE, SEED_LINK, SEED_LOCATION, SEED_MULTICAST_GROUP, SEED_PREFIX,
-        SEED_PROGRAM_CONFIG, SEED_USER,
+        SEED_ACCESS_PASS, SEED_CONFIG, SEED_CONTRIBUTOR, SEED_DEVICE, SEED_DEVICE_TUNNEL_BLOCK,
+        SEED_EXCHANGE, SEED_GLOBALSTATE, SEED_LINK, SEED_LOCATION, SEED_MULTICASTGROUP_BLOCK,
+        SEED_MULTICAST_GROUP, SEED_PREFIX, SEED_PROGRAM_CONFIG, SEED_USER, SEED_USER_TUNNEL_BLOCK,
     },
     state::user::UserType,
 };
@@ -84,6 +84,34 @@ pub fn get_accesspass_pda(
             SEED_ACCESS_PASS,
             &client_ip.octets(),
             &user_payer.to_bytes(),
+        ],
+        program_id,
+    )
+}
+
+pub fn get_device_tunnel_block_pda(program_id: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[SEED_PREFIX, SEED_DEVICE_TUNNEL_BLOCK], program_id)
+}
+
+pub fn get_user_tunnel_block_pda(program_id: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[SEED_PREFIX, SEED_USER_TUNNEL_BLOCK], program_id)
+}
+
+pub fn get_multicast_group_block_pda(program_id: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[SEED_PREFIX, SEED_MULTICASTGROUP_BLOCK], program_id)
+}
+
+pub fn get_dz_prefix_block_pda(
+    program_id: &Pubkey,
+    device_pk: &Pubkey,
+    index: usize,
+) -> (Pubkey, u8) {
+    Pubkey::find_program_address(
+        &[
+            SEED_PREFIX,
+            SEED_DZ_PREFIX_BLOCK,
+            &device_pk.to_bytes(),
+            &index.to_le_bytes(),
         ],
         program_id,
     )

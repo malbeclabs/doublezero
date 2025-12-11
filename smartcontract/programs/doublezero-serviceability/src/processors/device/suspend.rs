@@ -76,6 +76,13 @@ pub fn process_suspend_device(
     }
 
     let mut device: Device = Device::try_from(device_account)?;
+
+    if device.status != DeviceStatus::Activated {
+        #[cfg(test)]
+        msg!("{:?}", device);
+        return Err(DoubleZeroError::InvalidStatus.into());
+    }
+
     device.status = DeviceStatus::Suspended;
 
     account_write(device_account, &device, payer_account, system_program)?;

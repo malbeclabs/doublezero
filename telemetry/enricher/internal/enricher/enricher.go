@@ -14,8 +14,11 @@ import (
 	"log"
 	"net/http"
 
+	"google.golang.org/protobuf/proto"
+
 	"github.com/ClickHouse/clickhouse-go/v2"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	flow "github.com/malbeclabs/doublezero/telemetry/proto/flow/gen/pb-go"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/sasl/aws"
 	"github.com/twmb/franz-go/plugin/kprom"
@@ -298,8 +301,15 @@ func (e *Enricher) Run(ctx context.Context) error {
 			fetches.EachRecord(func(record *kgo.Record) {
 				log.Println("received record for enrichment")
 
+				// unmarshal protobuf
+				var sample flow.FlowSample
+				if err := proto.Unmarshal(record.Value, &sample); err != nil {
+					log.Printf("error unmarshalling protobuf: %v", err)
+					return
+				}
+
 				// decode sflow samples
-				samples, err := DecodeSFlow(record.Value)
+				samples, err := DecodeSFlow(&sample)
 				if err != nil {
 					log.Printf("error decoding sflow record: %v", err)
 					return

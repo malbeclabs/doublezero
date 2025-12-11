@@ -3,25 +3,24 @@ package enricher
 import (
 	"bytes"
 	"log"
-	"time"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	flow "github.com/malbeclabs/doublezero/telemetry/proto/flow/gen/pb-go"
 	"github.com/netsampler/goflow2/v2/decoders/sflow"
 )
 
 // DecodeSFlow decodes a sFlow flow record from raw bytes.
-func DecodeSFlow(data []byte) ([]FlowSample, error) {
+func DecodeSFlow(sflowSample *flow.FlowSample) ([]FlowSample, error) {
 	var samples []FlowSample
 	packet := sflow.Packet{}
-	err := sflow.DecodeMessageVersion(bytes.NewBuffer(data), &packet)
+	err := sflow.DecodeMessageVersion(bytes.NewBuffer(sflowSample.FlowPayload), &packet)
 	if err != nil {
 		return nil, err
 	}
 	for _, s := range packet.Samples {
 		var sample FlowSample
-		// TODO: take this from sflow-proxy set time
-		sample.TimeReceivedNs = time.Now()
+		sample.TimeReceivedNs = sflowSample.ReceiveTimestamp.AsTime()
 		log.Printf("processing sFlow sample: %+v", s)
 		var records []sflow.FlowRecord
 		switch flowSample := s.(type) {

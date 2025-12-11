@@ -12,9 +12,13 @@ import (
 	"syscall"
 	"time"
 
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	"strconv"
 
 	"github.com/aws/aws-sdk-go-v2/config"
+	flowproto "github.com/malbeclabs/doublezero/telemetry/proto/flow/gen/pb-go"
 	"github.com/netsampler/goflow2/v2/decoders/sflow"
 	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kgo"
@@ -234,9 +238,20 @@ func ingestPacket(ctx context.Context, workerID int, p packet, kafkaClient *kgo.
 		return // skip packets without flow samples
 	}
 
+	sample := &flowproto.FlowSample{
+		ReceiveTimestamp: timestamppb.Now(),
+		FlowPayload:      p.data,
+	}
+
+	payload, err := proto.Marshal(sample)
+	if err != nil {
+		log.Printf("worker %d: proto marshal error: %v", workerID, err)
+		return
+	}
+
 	rec := &kgo.Record{
 		Topic: "flows_raw_devnet",
-		Value: p.data,
+		Value: payload,
 	}
 
 	kafkaClient.Produce(ctx, rec, func(r *kgo.Record, err error) {

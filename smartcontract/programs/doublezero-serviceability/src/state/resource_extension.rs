@@ -44,7 +44,7 @@ impl TryFrom<&[u8]> for ResourceExtensionOwned {
             bump_seed: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             assocatiated_with: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             extension_type: BorshDeserialize::deserialize(&mut data).unwrap(),
-            storage: data[..].to_vec(),
+            storage: data[4..].to_vec(),
         };
 
         if out.account_type != AccountType::ResourceExtension {
@@ -96,6 +96,11 @@ pub struct ResourceExtensionBorrowed<'a> {
 }
 
 impl<'a> ResourceExtensionBorrowed<'a> {
+    pub fn size(base_net: &NetworkV4, allocation_size: u32) -> usize {
+        // last +4 is to pad out the bitmap to align on u64
+        1 + 32 + 1 + 32 + 1 + IpAllocator::size(base_net, allocation_size) + 4
+    }
+
     pub fn construct_ip_resource(
         account: &AccountInfo,
         owner: Pubkey,
@@ -130,7 +135,7 @@ impl<'a> ResourceExtensionBorrowed<'a> {
     }
 
     pub fn inplace_from(data: &'a mut [u8]) -> Result<Self, ProgramError> {
-        let (data, bitmap) = data.split_at_mut(76);
+        let (data, bitmap) = data.split_at_mut(80);
         let mut cursor: &[u8] = data;
         let out = Self {
             account_type: BorshDeserialize::deserialize(&mut cursor).unwrap_or_default(),

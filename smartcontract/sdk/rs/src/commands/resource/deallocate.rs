@@ -2,7 +2,7 @@ use crate::{DoubleZeroClient, GetGlobalStateCommand};
 use doublezero_program_common::types::NetworkV4;
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
-    pda::{get_device_tunnel_block_pda, get_globalconfig_pda},
+    pda::get_device_tunnel_block_pda,
     processors::resource::deallocate::{IpBlockType, ResourceDeallocateArgs},
 };
 use solana_sdk::{instruction::AccountMeta, signature::Signature};
@@ -18,7 +18,6 @@ impl DeallocateResourceCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (globalconfig_pubkey, _) = get_globalconfig_pda(&client.get_program_id());
         let (resource_pubkey, _) = get_device_tunnel_block_pda(&client.get_program_id());
 
         let resource_deallocate_args = ResourceDeallocateArgs {

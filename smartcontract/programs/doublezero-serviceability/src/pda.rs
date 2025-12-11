@@ -100,3 +100,19 @@ pub fn get_user_tunnel_block_pda(program_id: &Pubkey) -> (Pubkey, u8) {
 pub fn get_multicast_group_block_pda(program_id: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[SEED_PREFIX, SEED_MULTICASTGROUP_BLOCK], program_id)
 }
+
+pub fn get_dz_prefix_block_pda(
+    program_id: &Pubkey,
+    device_pk: &Pubkey,
+    index: usize,
+) -> (Pubkey, u8) {
+    Pubkey::find_program_address(
+        &[
+            SEED_PREFIX,
+            SEED_DZ_PREFIX_BLOCK,
+            &device_pk.to_bytes(),
+            &index.to_le_bytes(),
+        ],
+        program_id,
+    )
+}

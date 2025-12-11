@@ -13,3 +13,4 @@ pub const SEED_CONTRIBUTOR: &[u8] = b"contributor";
 pub const SEED_DEVICE_TUNNEL_BLOCK: &[u8] = b"devicetunnelblock";
 pub const SEED_USER_TUNNEL_BLOCK: &[u8] = b"usertunnelblock";
 pub const SEED_MULTICASTGROUP_BLOCK: &[u8] = b"multicastgroupblock";
+pub const SEED_DZ_PREFIX_BLOCK: &[u8] = b"dzprefixblock";

@@ -1,0 +1,166 @@
+name: release.docker.core
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*.*.*'     # stable
+      - 'v*.*.*-*'   # pre-releases
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/doublezero-core
+  DOCKER_BUILDKIT: 1
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-24.04-16c-64gb
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute versions
+        id: v
+        shell: bash
+        run: |
+          SHORT_SHA="${GITHUB_SHA::8}"
+          echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
+
+          if [[ "${{ github.ref_type }}" == "branch" ]]; then
+            if [[ "${{ github.ref_name }}" == "main" ]]; then
+              echo "channel=edge" >> $GITHUB_OUTPUT
+            else
+              echo "channel=branch" >> $GITHUB_OUTPUT
+
+              SAN_BRANCH="${{ github.ref_name }}"
+              SAN_BRANCH="${SAN_BRANCH//\//-}"
+              echo "branch_name=$SAN_BRANCH" >> $GITHUB_OUTPUT
+              echo "version_sanitized=${SAN_BRANCH}-${SHORT_SHA}" >> $GITHUB_OUTPUT
+            fi
+          else
+            TAG="${{ github.ref_name }}"  # e.g. v1.2.3 or v1.2.3-rc.1
+            # classify pre vs release
+            if [[ "$TAG" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+-[A-Za-z0-9.]+$ ]]; then
+              CH=pre
+            else
+              CH=release
+            fi
+            echo "channel=$CH" >> $GITHUB_OUTPUT
+            # sanitize docker tag: trim leading 'v', replace '/' → '-'
+            SAN="${TAG#v}"
+            SAN="${SAN//\//-}"
+            echo "version_sanitized=$SAN" >> $GITHUB_OUTPUT
+          fi
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Build & push for edge (main)
+      - name: Build & push (edge/dev)
+        if: steps.v.outputs.channel == 'edge'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          # platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILD_VERSION=edge-${{ steps.v.outputs.short_sha }}
+            BUILD_COMMIT=${{ steps.v.outputs.short_sha }}
+            BUILD_DATE=${{ github.event.head_commit.timestamp || github.run_started_at }}
+          tags: |
+            ${{ env.IMAGE }}:sha-${{ steps.v.outputs.short_sha }}
+            ${{ env.IMAGE }}:edge
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      # Build & push for manual branch builds (workflow_dispatch on non-main branches)
+      - name: Build & push (manual branch build)
+        if: steps.v.outputs.channel == 'branch'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILD_VERSION=${{ steps.v.outputs.version_sanitized }}
+            BUILD_COMMIT=${{ steps.v.outputs.short_sha }}
+            BUILD_DATE=${{ github.event.head_commit.timestamp || github.run_started_at }}
+          tags: |
+            ${{ env.IMAGE }}:${{ steps.v.outputs.version_sanitized }}
+            ${{ env.IMAGE }}:${{ steps.v.outputs.branch_name }}
+            ${{ env.IMAGE }}:sha-${{ steps.v.outputs.short_sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      # Build & push for pre-releases (no :latest, add :beta)
+      - name: Build & push (pre-release)
+        if: steps.v.outputs.channel == 'pre'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILD_VERSION=${{ steps.v.outputs.version_sanitized }}
+            BUILD_COMMIT=${{ steps.v.outputs.short_sha }}
+            BUILD_DATE=${{ github.event.head_commit.timestamp || github.run_started_at }}
+          tags: |
+            ${{ env.IMAGE }}:${{ steps.v.outputs.version_sanitized }}
+            ${{ env.IMAGE }}:beta
+            ${{ env.IMAGE }}:sha-${{ steps.v.outputs.short_sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.v.outputs.version_sanitized }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      # Build & push for stable releases (promote to :latest and :stable)
+      - name: Build & push (stable release)
+        if: steps.v.outputs.channel == 'release'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILD_VERSION=${{ steps.v.outputs.version_sanitized }}
+            BUILD_COMMIT=${{ steps.v.outputs.short_sha }}
+            BUILD_DATE=${{ github.event.head_commit.timestamp || github.run_started_at }}
+          tags: |
+            ${{ env.IMAGE }}:${{ steps.v.outputs.version_sanitized }}
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:stable
+            ${{ env.IMAGE }}:sha-${{ steps.v.outputs.short_sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.v.outputs.version_sanitized }}
+            org.opencontainers.image.revision=${{ github.sha }}

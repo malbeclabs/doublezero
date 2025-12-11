@@ -23,6 +23,8 @@ All notable changes to this project will be documented in this file.
   - Add `doublezero_bgp_routes_installed` gauge metric for number of installed BGP routes
   - Add route liveness gauges for in-memory maps
   - Route liveness sets set of routes configured as excluded to `AdminDown`.
+- Release
+  - Publish a Docker image for core components.
 
 ## [v0.8.0](https://github.com/malbeclabs/doublezero/compare/client/v0.7.1...client/v0.8.0) – 2025-12-02
 

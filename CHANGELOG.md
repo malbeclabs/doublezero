@@ -23,6 +23,7 @@ All notable changes to this project will be documented in this file.
   - Add `doublezero_bgp_routes_installed` gauge metric for number of installed BGP routes
   - Add route liveness gauges for in-memory maps
   - Route liveness sets set of routes configured as excluded to `AdminDown`.
+  - Add histogram metric for BGP session establishment duration
 - Release
   - Publish a Docker image for core components.
 

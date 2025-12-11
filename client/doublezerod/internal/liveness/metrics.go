@@ -21,7 +21,6 @@ const (
 type Metrics struct {
 	Sessions                 *prometheus.GaugeVec
 	SessionTransitions       *prometheus.CounterVec
-	RoutesInstalled          *prometheus.GaugeVec
 	RouteInstalls            *prometheus.CounterVec
 	RouteWithdraws           *prometheus.CounterVec
 	ConvergenceToUp          *prometheus.HistogramVec
@@ -38,6 +37,9 @@ type Metrics struct {
 	UnknownPeerPackets       *prometheus.CounterVec
 	ReadSocketErrors         *prometheus.CounterVec
 	WriteSocketErrors        *prometheus.CounterVec
+	SessionsMapSize          prometheus.Gauge
+	InstalledMapSize         prometheus.Gauge
+	DesiredMapSize           prometheus.Gauge
 	PeerSessions             *prometheus.GaugeVec
 	PeerDetectTime           *prometheus.GaugeVec
 }
@@ -65,13 +67,6 @@ func newMetrics() *Metrics {
 				Help: "Count of session state transitions",
 			},
 			withServiceLabels(LabelStateFrom, LabelStateTo, LabelReason),
-		),
-		RoutesInstalled: prometheus.NewGaugeVec(
-			prometheus.GaugeOpts{
-				Name: "doublezero_liveness_routes_installed",
-				Help: "Number of routes installed",
-			},
-			serviceLabels,
 		),
 		RouteInstalls: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
@@ -184,6 +179,18 @@ func newMetrics() *Metrics {
 			},
 			serviceLabels,
 		),
+		SessionsMapSize: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Name: "doublezero_liveness_sessions_map_size",
+				Help: "Size of the sessions map",
+			},
+		),
+		InstalledMapSize: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Name: "doublezero_liveness_installed_map_size",
+				Help: "Size of the installed map",
+			},
+		),
 		// Per peer metrics for route liveness (high cardinality).
 		PeerSessions: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
@@ -199,6 +206,12 @@ func newMetrics() *Metrics {
 			},
 			withServiceLabels(LabelPeerIP),
 		),
+		DesiredMapSize: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Name: "doublezero_liveness_desired_map_size",
+				Help: "Size of the desired map",
+			},
+		),
 	}
 }
 
@@ -207,7 +220,6 @@ func (m *Metrics) Register(r prometheus.Registerer) {
 	r.MustRegister(
 		m.Sessions,
 		m.SessionTransitions,
-		m.RoutesInstalled,
 		m.RouteInstalls,
 		m.RouteWithdraws,
 		m.ConvergenceToUp,
@@ -224,6 +236,9 @@ func (m *Metrics) Register(r prometheus.Registerer) {
 		m.UnknownPeerPackets,
 		m.ReadSocketErrors,
 		m.WriteSocketErrors,
+		m.SessionsMapSize,
+		m.InstalledMapSize,
+		m.DesiredMapSize,
 		m.PeerSessions,
 		m.PeerDetectTime,
 	)
@@ -256,12 +271,10 @@ func (m *Metrics) sessionStateTransition(peer Peer, prevState *State, newState S
 }
 
 func (m *Metrics) routeInstall(iface, localIP string) {
-	m.RoutesInstalled.WithLabelValues(iface, localIP).Inc()
 	m.RouteInstalls.WithLabelValues(iface, localIP).Inc()
 }
 
 func (m *Metrics) routeWithdraw(iface, localIP string) {
-	m.RoutesInstalled.WithLabelValues(iface, localIP).Dec()
 	m.RouteWithdraws.WithLabelValues(iface, localIP).Inc()
 }
 

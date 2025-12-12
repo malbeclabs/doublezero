@@ -11,10 +11,10 @@ vrf instance vrf1
 ip routing vrf vrf1
 !
 {{- if .ManagementNS }}
-vrf instance management
-ip routing vrf management
-ip route vrf management 0.0.0.0/0 {{.DefaultNetworkGateway}}
-ip name-server vrf management 8.8.8.8
+vrf instance mgmt
+ip routing vrf mgmt
+ip route vrf mgmt 0.0.0.0/0 {{.DefaultNetworkGateway}}
+ip name-server vrf mgmt 8.8.8.8
 !
 {{- end }}
 daemon doublezero-agent
@@ -37,21 +37,21 @@ management api http-commands
 {{- end }}
    no shutdown
 {{- if .ManagementNS }}
-   vrf management
+   vrf mgmt
       ip access-group allow-all
       no shutdown
 {{- end }}
 !
 management api eos-sdk-rpc
    transport grpc foo
-      localhost loopback {{ if .ManagementNS }}vrf management{{ end }}
+      localhost loopback {{ if .ManagementNS }}vrf mgmt{{ end }}
       service all
       no disabled
 !
 management api gnmi
    transport grpc gnmi
 {{- if .ManagementNS }}
-   vrf management
+   vrf mgmt
 {{- end }}
 !
 ip access-list MAIN-CONTROL-PLANE-ACL-MGMT
@@ -90,7 +90,7 @@ ip access-list MAIN-CONTROL-PLANE-ACL-MGMT
    {{- end }}
 !
 system control-plane
-   ip access-group MAIN-CONTROL-PLANE-ACL-MGMT vrf management in
+   ip access-group MAIN-CONTROL-PLANE-ACL-MGMT vrf mgmt in
 !
 no service interface inactive port-id allocation disabled
 !
@@ -123,7 +123,7 @@ interface Ethernet1
 !
 interface Management0
 {{- if .ManagementNS }}
-   vrf management
+   vrf mgmt
 {{- end }}
    no shutdown
    ip address {{.DefaultNetworkIP}}/{{.DefaultNetworkCIDRPrefix}}

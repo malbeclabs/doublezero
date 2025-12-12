@@ -54,8 +54,9 @@ ip access-list MAIN-CONTROL-PLANE-ACL
    280 remark Permit TWAMP (UDP 862)
    290 permit udp any any eq 862
 !
+no system control-plane
 system control-plane
-   ip access-group MAIN-CONTROL-PLANE-ACL in
+   ip access-group MAIN-CONTROL-PLANE-ACL vrf mgmt in
 !
 interface Ethernet2
    mtu 2048

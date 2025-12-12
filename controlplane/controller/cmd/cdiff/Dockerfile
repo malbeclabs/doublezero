@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM golang:1.24 as builder
+FROM golang:1.25 as builder
 WORKDIR /app
 COPY ../../../../.. .
 RUN cd controlplane/controller/cmd/controller && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /app/controller

@@ -15,7 +15,7 @@
     "features": {
         "ghcr.io/devcontainers/features/common-utils:2": {},
         "ghcr.io/devcontainers/features/go:1": {
-            "version": "1.24.3"
+            "version": "1.25.5"
         },
         "ghcr.io/devcontainers/features/rust:1": {
             "version": "1.90.0"

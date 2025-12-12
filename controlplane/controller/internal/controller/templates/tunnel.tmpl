@@ -77,8 +77,13 @@ ip access-list MAIN-CONTROL-PLANE-ACL
    280 remark Permit TWAMP (UDP {{ .TelemetryTWAMPListenPort }})
    290 permit udp any any eq {{ .TelemetryTWAMPListenPort }}
 !
+no system control-plane
 system control-plane
+{{- if .Device.MgmtVrf }}
+   ip access-group MAIN-CONTROL-PLANE-ACL vrf {{ .Device.MgmtVrf }} in
+{{- else }}
    ip access-group MAIN-CONTROL-PLANE-ACL in
+{{- end }}
 !
 {{- range .Device.Interfaces }}
 interface {{ .Name }}

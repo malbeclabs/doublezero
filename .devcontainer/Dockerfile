@@ -3,7 +3,7 @@ FROM mcr.microsoft.com/devcontainers/go:1.25
 # Install goreleaser, mtr, docker.io
 RUN echo 'deb [trusted=yes] https://repo.goreleaser.com/apt/ /' | tee /etc/apt/sources.list.d/goreleaser.list && \
     apt update -qq && \
-    apt install -y goreleaser-pro mtr docker.io && \
+    apt install -y goreleaser-pro gcc-x86-64-linux-gnu mtr docker.io && \
     apt clean -y && \
     rm -rf /var/lib/apt/lists/*
 

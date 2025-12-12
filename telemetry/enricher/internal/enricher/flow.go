@@ -116,7 +116,7 @@ type FlowSample struct {
 	BgpCommunities             []string  `json:"bgp_communities"`
 	AsPath                     []int     `json:"as_path"`
 	MplsTtl                    []int     `json:"mpls_ttl"`
-	MplsLabel                  []int     `json:"mpls_label"`
+	MplsLabel                  []string  `json:"mpls_label"`
 	MplsIp                     []string  `json:"mpls_ip"`
 	ObservationDomainId        int       `json:"observation_domain_id"`
 	ObservationPointId         int       `json:"observation_point_id"`

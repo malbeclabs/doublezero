@@ -3,9 +3,10 @@ package enricher
 import (
 	"bytes"
 	"log"
+	"strconv"
 
-	"github.com/google/gopacket"
-	"github.com/google/gopacket/layers"
+	"github.com/gopacket/gopacket"
+	"github.com/gopacket/gopacket/layers"
 	flow "github.com/malbeclabs/doublezero/telemetry/proto/flow/gen/pb-go"
 	"github.com/netsampler/goflow2/v2/decoders/sflow"
 )
@@ -45,14 +46,27 @@ func DecodeSFlow(sflowSample *flow.FlowSample) ([]FlowSample, error) {
 				// We can parse it with gopacket.
 				// The link layer type is typically Ethernet.
 				p := gopacket.NewPacket(r.HeaderData, layers.LinkTypeEthernet, gopacket.Default)
-				// Get the Ethernet layer
+
 				if ethLayer := p.Layer(layers.LayerTypeEthernet); ethLayer != nil {
 					eth, _ := ethLayer.(*layers.Ethernet)
 					sample.SrcMac = eth.SrcMAC.String()
 					sample.DstMac = eth.DstMAC.String()
 					sample.EType = eth.EthernetType.String()
 				}
-				// Get the IP layer
+
+				if mpls := p.Layer(layers.LayerTypeMPLS); mpls != nil {
+					if m, ok := mpls.(*layers.MPLS); ok {
+						sample.MplsLabel = append(sample.MplsLabel, strconv.Itoa(int(m.Label)))
+					}
+				}
+
+				// User ingress traffic is always going to be GRE so we need to read the inner IP layer
+				if greLayer := p.Layer(layers.LayerTypeGRE); greLayer != nil {
+					if gre, ok := greLayer.(*layers.GRE); ok {
+						p = gopacket.NewPacket(gre.Payload, gre.Protocol.LayerType(), gopacket.Default)
+					}
+				}
+
 				if ipLayer := p.Layer(layers.LayerTypeIPv4); ipLayer != nil {
 					ip, _ := ipLayer.(*layers.IPv4)
 					sample.SrcAddress = ip.SrcIP
@@ -70,7 +84,6 @@ func DecodeSFlow(sflowSample *flow.FlowSample) ([]FlowSample, error) {
 					sample.Proto = ip6.NextHeader.String()
 					sample.Ipv6FlowLabel = int(ip6.FlowLabel)
 				}
-				// Get the transport layer
 				if tcpLayer := p.Layer(layers.LayerTypeTCP); tcpLayer != nil {
 					tcp, _ := tcpLayer.(*layers.TCP)
 					sample.SrcPort = int(tcp.SrcPort)

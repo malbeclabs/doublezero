@@ -2,23 +2,24 @@
     "name": "DoubleZero Development",
     "build": {
         "dockerfile": "Dockerfile",
-        "context": ".",
-        "options": [
-            "--platform=linux/amd64"
-        ]
+        "context": "."
     },
     "runArgs": [
         "--name=dz-dev-workspace-vsc",
         "--ulimit",
         "nofile=1048576:1048576"
     ],
+    "containerEnv": {
+        "CARGO_TARGET_DIR": "/cargo-target"
+    },
     "features": {
         "ghcr.io/devcontainers/features/common-utils:2": {},
         "ghcr.io/devcontainers/features/go:1": {
             "version": "1.24.3"
         },
-        "ghcr.io/devcontainers/features/rust:1": {},
-        "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+        "ghcr.io/devcontainers/features/rust:1": {
+            "version": "1.90.0"
+        },
     },
     "postCreateCommand": "rustup component add --toolchain nightly rustfmt",
     "customizations": {
@@ -57,7 +58,8 @@
     },
     "remoteUser": "root",
     "mounts": [
-        "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
+        "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind",
+        "source=cargo-target-doublezero-devcontainer,target=/cargo-target,type=volume"
     ],
     "capAdd": [
         "NET_ADMIN",

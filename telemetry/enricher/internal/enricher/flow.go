@@ -1,6 +1,9 @@
 package enricher
 
-import "net"
+import (
+	"net"
+	"time"
+)
 
 /*
 	{
@@ -71,56 +74,56 @@ import "net"
 
 // FlowSample represents an enriched flow record
 type FlowSample struct {
-	Type                       string   `json:"type"`
-	TimeReceivedNs             int64    `json:"time_received_ns"`
-	SequenceNum                int      `json:"sequence_num"`
-	SamplingRate               int      `json:"sampling_rate"`
-	SamplerAddress             net.IP   `json:"sampler_address"`
-	TimeFlowStartNs            int64    `json:"time_flow_start_ns"`
-	TimeFlowEndNs              int64    `json:"time_flow_end_ns"`
-	Bytes                      int      `json:"bytes"`
-	Packets                    int      `json:"packets"`
-	SrcAddress                 net.IP   `json:"src_addr"`
-	DstAddress                 net.IP   `json:"dst_addr"`
-	EType                      string   `json:"etype"`
-	Proto                      string   `json:"proto"`
-	SrcPort                    int      `json:"src_port"`
-	DstPort                    int      `json:"dst_port"`
-	InputIfIndex               int      `json:"in_if"`
-	OutputIfIndex              int      `json:"out_if"`
-	SrcMac                     string   `json:"src_mac"`
-	DstMac                     string   `json:"dst_mac"`
-	SrcVlan                    int      `json:"src_vlan"`
-	DstVlan                    int      `json:"dst_vlan"`
-	VlanId                     int      `json:"vlan_id"`
-	IpTos                      int      `json:"ip_tos"`
-	ForwardingStatus           int      `json:"forwarding_status"`
-	IpTtl                      int      `json:"ip_ttl"`
-	IpFlags                    int      `json:"ip_flags"`
-	TcpFlags                   int      `json:"tcp_flags"`
-	IcmpType                   int      `json:"icmp_type"`
-	IcmpCode                   int      `json:"icmp_code"`
-	Ipv6FlowLabel              int      `json:"ipv6_flow_label"`
-	FragmentId                 int      `json:"fragment_id"`
-	FragmentOffset             int      `json:"fragment_offset"`
-	SrcAs                      int      `json:"src_as"`
-	DstAs                      int      `json:"dst_as"`
-	NextHop                    net.IP   `json:"next_hop"`
-	NextHopAs                  int      `json:"next_hop_as"`
-	SrcNet                     string   `json:"src_net"`
-	DstNet                     string   `json:"dst_net"`
-	BgpNextHop                 net.IP   `json:"bgp_next_hop"`
-	BgpCommunities             []string `json:"bgp_communities"`
-	AsPath                     []int    `json:"as_path"`
-	MplsTtl                    []int    `json:"mpls_ttl"`
-	MplsLabel                  []int    `json:"mpls_label"`
-	MplsIp                     []string `json:"mpls_ip"`
-	ObservationDomainId        int      `json:"observation_domain_id"`
-	ObservationPointId         int      `json:"observation_point_id"`
-	LayerStack                 []string `json:"layer_stack"`
-	LayerSize                  []int    `json:"layer_size"`
-	Ipv6RoutingHeaderAddresses []net.IP `json:"ipv6_routing_header_addresses"`
-	Ipv6RoutingHeaderSegLeft   int      `json:"ipv6_routing_header_seg_left"`
+	Type                       string    `json:"type"`
+	TimeReceivedNs             time.Time `json:"time_received_ns"`
+	SequenceNum                int       `json:"sequence_num"`
+	SamplingRate               int       `json:"sampling_rate"`
+	SamplerAddress             net.IP    `json:"sampler_address"`
+	TimeFlowStartNs            int64     `json:"time_flow_start_ns"`
+	TimeFlowEndNs              int64     `json:"time_flow_end_ns"`
+	Bytes                      int       `json:"bytes"`
+	Packets                    int       `json:"packets"`
+	SrcAddress                 net.IP    `json:"src_addr"`
+	DstAddress                 net.IP    `json:"dst_addr"`
+	EType                      string    `json:"etype"`
+	Proto                      string    `json:"proto"`
+	SrcPort                    int       `json:"src_port"`
+	DstPort                    int       `json:"dst_port"`
+	InputIfIndex               int       `json:"in_if"`
+	OutputIfIndex              int       `json:"out_if"`
+	SrcMac                     string    `json:"src_mac"`
+	DstMac                     string    `json:"dst_mac"`
+	SrcVlan                    int       `json:"src_vlan"`
+	DstVlan                    int       `json:"dst_vlan"`
+	VlanId                     int       `json:"vlan_id"`
+	IpTos                      int       `json:"ip_tos"`
+	ForwardingStatus           int       `json:"forwarding_status"`
+	IpTtl                      int       `json:"ip_ttl"`
+	IpFlags                    int       `json:"ip_flags"`
+	TcpFlags                   int       `json:"tcp_flags"`
+	IcmpType                   int       `json:"icmp_type"`
+	IcmpCode                   int       `json:"icmp_code"`
+	Ipv6FlowLabel              int       `json:"ipv6_flow_label"`
+	FragmentId                 int       `json:"fragment_id"`
+	FragmentOffset             int       `json:"fragment_offset"`
+	SrcAs                      int       `json:"src_as"`
+	DstAs                      int       `json:"dst_as"`
+	NextHop                    net.IP    `json:"next_hop"`
+	NextHopAs                  int       `json:"next_hop_as"`
+	SrcNet                     string    `json:"src_net"`
+	DstNet                     string    `json:"dst_net"`
+	BgpNextHop                 net.IP    `json:"bgp_next_hop"`
+	BgpCommunities             []string  `json:"bgp_communities"`
+	AsPath                     []int     `json:"as_path"`
+	MplsTtl                    []int     `json:"mpls_ttl"`
+	MplsLabel                  []string  `json:"mpls_label"`
+	MplsIp                     []string  `json:"mpls_ip"`
+	ObservationDomainId        int       `json:"observation_domain_id"`
+	ObservationPointId         int       `json:"observation_point_id"`
+	LayerStack                 []string  `json:"layer_stack"`
+	LayerSize                  []int     `json:"layer_size"`
+	Ipv6RoutingHeaderAddresses []net.IP  `json:"ipv6_routing_header_addresses"`
+	Ipv6RoutingHeaderSegLeft   int       `json:"ipv6_routing_header_seg_left"`
 
 	// New enriched fields should be inserted below this comment.
 	// Fields above are the default fields sent via Goflow.

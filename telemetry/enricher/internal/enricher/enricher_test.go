@@ -173,12 +173,12 @@ func TestFlowEnrichment(t *testing.T) {
 		WithClickhouseAddr(chConn),
 		WithClickhouseCreds(chUser, chPassword),
 		WithClickhouseTLSEnabled(false),
-		WithRedpandaBroker(rpBroker),
-		WithRedpandaTLSEnabled(false),
-		WithRedpandaCreds(rpUser, rpPassword),
-		WithRedpandaConsumerTopic(rpTopicRaw),
-		WithRedpandaConsumerGroup(rpConsumerGroup),
-		WithRedpandaProducerTopic(rpTopicEnriched),
+		WithKafkaBroker(rpBroker),
+		WithKafkaTLSEnabled(false),
+		WithKafkaCreds(rpUser, rpPassword),
+		WithKafkaConsumerTopic(rpTopicRaw),
+		WithKafkaConsumerGroup(rpConsumerGroup),
+		WithKafkaProducerTopic(rpTopicEnriched),
 	}
 	enricher := NewEnricher(opts...)
 	go func() {

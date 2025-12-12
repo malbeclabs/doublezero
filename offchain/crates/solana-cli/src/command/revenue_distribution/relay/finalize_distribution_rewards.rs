@@ -9,10 +9,7 @@ use doublezero_revenue_distribution::{
     types::DoubleZeroEpoch,
 };
 use doublezero_scheduled_command::{Schedulable, ScheduleOption};
-use doublezero_solana_client_tools::{
-    log_info, log_warn,
-    payer::{SolanaPayerOptions, TransactionOutcome, Wallet},
-};
+use doublezero_solana_client_tools::payer::{SolanaPayerOptions, TransactionOutcome, Wallet};
 use solana_sdk::{compute_budget::ComputeBudgetInstruction, instruction::Instruction};
 
 use crate::command::revenue_distribution::{try_fetch_distribution, try_fetch_program_config};
@@ -71,7 +68,7 @@ impl Schedulable for FinalizeDistributionRewards {
 
         if distribution.is_rewards_calculation_finalized() {
             if schedule.is_scheduled() {
-                log_warn!("Rewards calculation already finalized for epoch {dz_epoch}");
+                tracing::warn!("Rewards calculation already finalized for epoch {dz_epoch}");
 
                 return Ok(());
             } else {
@@ -97,7 +94,7 @@ impl Schedulable for FinalizeDistributionRewards {
         let tx_sig = wallet.send_or_simulate_transaction(&transaction).await?;
 
         if let TransactionOutcome::Executed(tx_sig) = tx_sig {
-            log_info!("Finalize distribution rewards for epoch {dz_epoch}: {tx_sig}");
+            tracing::info!("Finalize distribution rewards for epoch {dz_epoch}: {tx_sig}");
 
             wallet.print_verbose_output(&[tx_sig]).await?;
         }

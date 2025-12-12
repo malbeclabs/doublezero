@@ -12,7 +12,6 @@ use doublezero_revenue_distribution::{
     types::SolanaValidatorDebt,
 };
 use doublezero_solana_client_tools::{
-    log_info, log_warn,
     payer::{TransactionOutcome, Wallet},
     rpc::{DoubleZeroLedgerConnection, SolanaConnection},
 };
@@ -181,11 +180,11 @@ pub async fn calculate_distribution(
         JoinedSolanaEpochs::Range(solana_epoch_range) => {
             solana_epoch_range.into_iter().for_each(|solana_epoch| {
                 epochs.push(solana_epoch);
-                log_info!("Joined Solana epoch: {solana_epoch}");
+                tracing::info!("Joined Solana epoch: {solana_epoch}");
             });
         }
         JoinedSolanaEpochs::Duplicate(solana_epoch) => {
-            log_warn!("Duplicated joined Solana epoch: {solana_epoch}");
+            tracing::warn!("Duplicated joined Solana epoch: {solana_epoch}");
             let counter = metrics::counter!("doublezero_validator_debt_overlapping_epochs", "dz_epoch" => dz_epoch.to_string(), "solana_epoch" => solana_epoch.to_string());
             counter.increment(1);
         }
@@ -250,7 +249,7 @@ pub async fn calculate_distribution(
     };
 
     // Fetch validator pubkeys from S3 using the canonical approach
-    log_info!("Fetching validator pubkeys from S3 for epoch {solana_epoch}");
+    tracing::info!("Fetching validator pubkeys from S3 for epoch {solana_epoch}");
     let s3_validator_keys = s3_fetcher::fetch_validator_pubkeys(
         solana_epoch,
         solana_debt_calculator.solana_rpc_client(),
@@ -258,7 +257,7 @@ pub async fn calculate_distribution(
     )
     .await?;
 
-    log_info!(
+    tracing::info!(
         "Found {} validators from S3 (after 12-hour rule)",
         s3_validator_keys.len()
     );
@@ -514,7 +513,7 @@ pub async fn initialize_distribution(
     let tx_sig = wallet.send_or_simulate_transaction(&transaction).await?;
 
     if let TransactionOutcome::Executed(tx_sig) = tx_sig {
-        log_info!("Initialize distribution: {tx_sig}");
+        tracing::info!("Initialize distribution: {tx_sig}");
 
         wallet.print_verbose_output(&[tx_sig]).await?;
     }

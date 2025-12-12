@@ -1,6 +1,6 @@
 use anyhow::{Error, Result, bail, ensure};
 use clap::Args;
-use doublezero_solana_client_tools::{log_warn, rpc::DoubleZeroLedgerConnection};
+use doublezero_solana_client_tools::rpc::DoubleZeroLedgerConnection;
 use leaky_bucket::RateLimiter;
 use solana_client::{
     client_error::{ClientError, ClientErrorKind},
@@ -103,7 +103,7 @@ impl JoinedSolanaEpochs {
         const ESTIMATED_SKIP_TIME: i64 = 4;
         const MAX_SLOTS_TO_SEARCH: u32 = 432_000;
 
-        log_warn!(
+        tracing::warn!(
             "Block time for slot {} in epoch {} not found. Estimating block time",
             slot,
             current_epoch,
@@ -127,7 +127,7 @@ impl JoinedSolanaEpochs {
                         - ESTIMATED_SKIP_TIME * i64::from(slots_count) / i64::from(SLOTS_TO_SKIP));
                 }
                 _ => {
-                    log_warn!(
+                    tracing::warn!(
                         "Block time for slot {} in epoch {} not found. Continuing search...",
                         search_slot,
                         current_epoch,

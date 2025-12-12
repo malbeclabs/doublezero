@@ -3,7 +3,6 @@ use clap::Args;
 use doublezero_revenue_distribution::state::ProgramConfig;
 use doublezero_scheduled_command::{Schedulable, ScheduleOption};
 use doublezero_solana_client_tools::{
-    log_info, log_warn,
     payer::{SolanaPayerOptions, try_load_keypair},
     rpc::{DoubleZeroLedgerConnectionOptions, SolanaConnection, SolanaConnectionOptions},
 };
@@ -134,7 +133,7 @@ impl Schedulable for FindSolanaEpochCommand {
                 .await?;
 
         let target_dz_epoch = epoch.as_ref().copied().unwrap_or(latest_distribution_epoch);
-        log_info!("Target DZ epoch: {target_dz_epoch}");
+        tracing::info!("Target DZ epoch: {target_dz_epoch}");
 
         let rate_limiter = RateLimiter::builder()
             .max(*solana_rate_limit)
@@ -160,11 +159,11 @@ impl Schedulable for FindSolanaEpochCommand {
         {
             JoinedSolanaEpochs::Range(solana_epoch_range) => {
                 solana_epoch_range.into_iter().for_each(|solana_epoch| {
-                    log_info!("Joined Solana epoch: {solana_epoch}");
+                    tracing::info!("Joined Solana epoch: {solana_epoch}");
                 });
             }
             JoinedSolanaEpochs::Duplicate(solana_epoch) => {
-                log_warn!("Duplicated joined Solana epoch: {solana_epoch}");
+                tracing::warn!("Duplicated joined Solana epoch: {solana_epoch}");
             }
         };
 

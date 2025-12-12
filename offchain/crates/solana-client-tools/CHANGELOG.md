@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- remove tracing feature and log submodule ([#226](https://github.com/doublezerofoundation/doublezero-offchain/pull/226))
 - feat(solana-client-tools): add stdin support for keypair loading ([#217](https://github.com/doublezerofoundation/doublezero-offchain/pull/217))
 - add accounts submodule and refactor RPC methods ([#201](https://github.com/doublezerofoundation/doublezero-offchain/pull/201))
 - feat(solana-cli): add `revenue-distribution fetch distribution --view` argument ([#182](https://github.com/doublezerofoundation/doublezero-offchain/pull/182))

@@ -13,10 +13,7 @@ use doublezero_sol_conversion_interface::{
     },
     state::FillsRegistry,
 };
-use doublezero_solana_client_tools::{
-    log_info,
-    payer::{SolanaPayerOptions, TransactionOutcome, Wallet},
-};
+use doublezero_solana_client_tools::payer::{SolanaPayerOptions, TransactionOutcome, Wallet};
 use solana_sdk::{
     compute_budget::ComputeBudgetInstruction, pubkey::Pubkey, signature::Keypair, signer::Signer,
 };
@@ -94,7 +91,7 @@ async fn execute_initialize(
     let max_discount_rate = parse_discount_rate_percentage(max_discount_rate_pct_str)?;
 
     let fills_registry_signer = Keypair::new();
-    log_info!(
+    println!(
         "Generated fills registry: {}",
         fills_registry_signer.pubkey()
     );

@@ -11,7 +11,6 @@ use doublezero_revenue_distribution::{
 use doublezero_scheduled_command::{Schedulable, ScheduleOption};
 use doublezero_solana_client_tools::{
     account::zero_copy::ZeroCopyAccountOwnedData,
-    log_info, log_warn,
     payer::{SolanaPayerOptions, TransactionOutcome, Wallet},
     rpc::DoubleZeroLedgerConnection,
 };
@@ -100,14 +99,14 @@ impl Schedulable for DistributeRewards {
         for (leaf_index, reward_share, is_processed_leaf) in
             try_distribution_rewards_iter(&distribution, &shapley_output)?
         {
-            log_info!(
+            tracing::info!(
                 "Processing epoch {dz_epoch} merkle leaf index {leaf_index}, contributor: {}, share: {:.9}",
                 reward_share.contributor_key,
                 reward_share.unit_share as f64 / u32::from(UnitShare32::MAX) as f64
             );
 
             if is_processed_leaf {
-                log_warn!(
+                tracing::warn!(
                     "Merkle leaf index {} has already been processed",
                     leaf_index
                 );
@@ -160,7 +159,7 @@ async fn try_prepare_distribution_rewards(
     };
 
     if instructions.is_empty() {
-        log_info!("No instructions to prepare distribution rewards for epoch {dz_epoch}");
+        tracing::info!("No instructions to prepare distribution rewards for epoch {dz_epoch}");
 
         return Ok(distribution);
     }
@@ -177,7 +176,7 @@ async fn try_prepare_distribution_rewards(
     let tx_outcome = wallet.send_or_simulate_transaction(&transaction).await?;
 
     if let TransactionOutcome::Executed(tx_sig) = tx_outcome {
-        log_info!("Prepare distribution rewards for epoch {dz_epoch}: {tx_sig}");
+        tracing::info!("Prepare distribution rewards for epoch {dz_epoch}: {tx_sig}");
 
         wallet.print_verbose_output(&[tx_sig]).await?;
     }
@@ -215,7 +214,7 @@ async fn try_distribute_contributor_rewards(
                 .collect::<Vec<_>>();
 
             if recipient_shares.is_empty() {
-                log_warn!(
+                tracing::warn!(
                     "No recipients in {contributor_rewards_key} for contributor {}",
                     reward_share.contributor_key
                 );
@@ -226,7 +225,7 @@ async fn try_distribute_contributor_rewards(
             recipient_shares
         }
         _ => {
-            log_warn!(
+            tracing::warn!(
                 "Contributor rewards {contributor_rewards_key} not found for contributor {}",
                 reward_share.contributor_key
             );
@@ -301,7 +300,7 @@ async fn try_distribute_contributor_rewards(
         .unzip();
 
     if !instructions.is_empty() {
-        log_warn!("Creating {} ATAs", instructions.len());
+        tracing::warn!("Creating {} ATAs", instructions.len());
     }
 
     instructions.push(distribute_rewards_ix);
@@ -323,7 +322,7 @@ async fn try_distribute_contributor_rewards(
     let tx_outcome = wallet.send_or_simulate_transaction(&transaction).await?;
 
     if let TransactionOutcome::Executed(tx_sig) = tx_outcome {
-        log_info!(
+        tracing::info!(
             "Distribute rewards for epoch {}: {tx_sig}",
             distribution.dz_epoch
         );

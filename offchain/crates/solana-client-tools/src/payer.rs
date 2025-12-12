@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use anyhow::{Context, Result, bail, ensure};
+use anyhow::{Context, Result, ensure};
 use clap::Args;
 use solana_client::{
     rpc_config::{RpcSendTransactionConfig, RpcSimulateTransactionConfig, RpcTransactionConfig},
@@ -22,7 +22,6 @@ use solana_transaction_status_client_types::UiTransactionEncoding;
 // Re-export for backward compatibility
 pub use crate::keypair::try_load_keypair;
 use crate::{
-    log_info,
     rpc::{SolanaConnection, SolanaConnectionOptions},
     transaction::new_transaction,
 };
@@ -158,11 +157,11 @@ impl Wallet {
 
     pub async fn print_verbose_output(&self, tx_sigs: &[Signature]) -> Result<()> {
         if self.verbose {
-            log_info!("");
-            log_info!("Url: {}", self.connection.url());
-            log_info!("Signer: {}", self.signer.pubkey());
+            println!();
+            println!("Url: {}", self.connection.url());
+            println!("Signer: {}", self.signer.pubkey());
             if let Some(fee_payer) = &self.fee_payer {
-                log_info!("Fee payer: {}", fee_payer.pubkey());
+                println!("Fee payer: {}", fee_payer.pubkey());
             }
 
             for tx_sig in tx_sigs {
@@ -191,17 +190,17 @@ impl Wallet {
             .meta
             .context("Transaction meta not found")?;
 
-        log_info!("\nTransaction details for {tx_sig}");
-        log_info!("  Fee (lamports): {}", tx_meta.fee);
-        log_info!(
+        println!("\nTransaction details for {tx_sig}");
+        println!("  Fee (lamports): {}", tx_meta.fee);
+        println!(
             "  Compute units: {}",
             tx_meta.compute_units_consumed.unwrap()
         );
-        log_info!("  Cost units: {}", tx_meta.cost_units.unwrap());
+        println!("  Cost units: {}", tx_meta.cost_units.unwrap());
 
-        log_info!("\n  Program logs:");
+        println!("\n  Program logs:");
         tx_meta.log_messages.unwrap().iter().for_each(|log| {
-            log_info!("    {log}");
+            println!("    {log}");
         });
 
         Ok(())
@@ -244,23 +243,20 @@ impl Wallet {
             };
 
             if let Some(units_consumed) = &simulation_response.units_consumed {
-                log_info!("Compute units consumed: {}", units_consumed);
+                println!("Compute units consumed: {}", units_consumed);
             }
 
-            log_info!("Simulated program logs:");
+            println!("Simulated program logs:");
             simulation_response
                 .logs
                 .as_ref()
                 .unwrap()
                 .iter()
                 .for_each(|log| {
-                    log_info!("  {log}");
+                    println!("  {log}");
                 });
 
-            if has_instruction_error {
-                bail!("Simulation failed");
-            }
-
+            ensure!(!has_instruction_error, "Simulation failed");
             Ok(TransactionOutcome::Simulated(simulation_response))
         } else {
             let tx_sig = self
@@ -316,9 +312,10 @@ impl TryFrom<SolanaPayerOptions> for Wallet {
         let fee_payer = match fee_payer_path {
             Some(path) => {
                 let payer_signer = try_load_specified_keypair(&PathBuf::from(path))?;
-                if payer_signer.pubkey() == signer.pubkey() {
-                    bail!("Specify fee payer if it differs from the main keypair");
-                }
+                ensure!(
+                    payer_signer.pubkey() != signer.pubkey(),
+                    "Specify fee payer if it differs from the main keypair"
+                );
 
                 Some(payer_signer)
             }

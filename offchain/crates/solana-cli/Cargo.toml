@@ -41,6 +41,7 @@ spl-associated-token-account-interface.workspace = true
 spl-token.workspace = true
 tabled.workspace = true
 tokio.workspace = true
+tracing.workspace = true
 tracing-subscriber.workspace = true
 url.workspace = true
 

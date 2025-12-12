@@ -12,7 +12,6 @@ borsh.workspace = true
 bytemuck.workspace = true
 clap.workspace = true
 doublezero-program-tools.workspace = true
-doublezero-scheduled-command.workspace = true
 doublezero_sdk.workspace = true
 home.workspace = true
 serde_json.workspace = true
@@ -21,7 +20,6 @@ solana-commitment-config.workspace = true
 solana-sdk.workspace = true
 solana-transaction-status-client-types.workspace = true
 thiserror.workspace = true
-tracing = { optional = true, workspace = true }
 url.workspace = true
 
 [dev-dependencies]
@@ -30,7 +28,5 @@ solana-reward-info = "2"
 solana-rpc-client-types = "2"
 tempfile.workspace = true
 tokio.workspace = true
+tracing.workspace = true
 tracing-subscriber.workspace = true
-
-[features]
-tracing = ["dep:tracing"]

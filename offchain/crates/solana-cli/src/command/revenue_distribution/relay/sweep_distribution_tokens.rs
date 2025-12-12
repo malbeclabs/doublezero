@@ -9,10 +9,7 @@ use doublezero_revenue_distribution::{
 };
 use doublezero_scheduled_command::{Schedulable, ScheduleOption};
 use doublezero_sol_conversion_interface::state::MAX_FILLS_QUEUE_SIZE;
-use doublezero_solana_client_tools::{
-    log_info, log_warn,
-    payer::{SolanaPayerOptions, TransactionOutcome, Wallet},
-};
+use doublezero_solana_client_tools::payer::{SolanaPayerOptions, TransactionOutcome, Wallet};
 use solana_sdk::{compute_budget::ComputeBudgetInstruction, instruction::Instruction};
 
 use crate::command::revenue_distribution::{
@@ -51,7 +48,7 @@ impl Schedulable for SweepDistributionTokens {
             Ok(context) => context,
             Err(e) => {
                 if schedule.is_scheduled() {
-                    log_warn!("{e}");
+                    tracing::warn!("{e}");
 
                     return Ok(());
                 } else {
@@ -80,7 +77,7 @@ impl Schedulable for SweepDistributionTokens {
             Ok(tx_sig) => tx_sig,
             Err(e) => {
                 if schedule.is_scheduled() {
-                    log_warn!("{e}");
+                    tracing::warn!("{e}");
 
                     return Ok(());
                 } else {
@@ -90,7 +87,7 @@ impl Schedulable for SweepDistributionTokens {
         };
 
         if let TransactionOutcome::Executed(tx_sig) = tx_sig {
-            log_info!(
+            tracing::info!(
                 "Sweep distribution tokens for epoch {}: {tx_sig}",
                 sweep_distribution_tokens_context.dz_epoch
             );

@@ -2,10 +2,7 @@ use std::sync::Arc;
 
 use anyhow::{Result, bail};
 use clap::Parser;
-use doublezero_solana_client_tools::{
-    log_error, log_info, log_warn,
-    rpc::{SolanaConnection, SolanaConnectionOptions},
-};
+use doublezero_solana_client_tools::rpc::{SolanaConnection, SolanaConnectionOptions};
 use leaky_bucket::RateLimiter;
 use solana_client::{
     client_error::{ClientError, ClientErrorKind},
@@ -18,6 +15,7 @@ use solana_client::{
 use solana_commitment_config::CommitmentConfig;
 use solana_reward_info::RewardType;
 use solana_transaction_status_client_types::TransactionDetails;
+use tracing_subscriber::FmtSubscriber;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -54,16 +52,11 @@ struct BlockInfo {
 
 impl GetBlocksExampleApp {
     async fn into_execute(self) -> Result<()> {
-        #[cfg(feature = "tracing")]
-        {
-            use tracing_subscriber::FmtSubscriber;
+        let subscriber = FmtSubscriber::builder()
+            .with_max_level(tracing::Level::DEBUG)
+            .finish();
 
-            let subscriber = FmtSubscriber::builder()
-                .with_max_level(tracing::Level::DEBUG)
-                .finish();
-
-            tracing::subscriber::set_global_default(subscriber).unwrap();
-        }
+        tracing::subscriber::set_global_default(subscriber).unwrap();
 
         let Self {
             first_slot,
@@ -114,7 +107,7 @@ impl GetBlocksExampleApp {
             let rpc_client = Arc::clone(&rpc_client);
 
             let task = tokio::spawn(async move {
-                log_info!("Fetching i={i}, slot={slot}");
+                tracing::info!("Fetching i={i}, slot={slot}");
 
                 let mut block = None;
 
@@ -148,13 +141,15 @@ impl GetBlocksExampleApp {
                             kind: ClientErrorKind::Reqwest(_),
                         }) => {
                             if debug {
-                                log_warn!("Reqwest error at slot={slot}: Retry after 1 second");
+                                tracing::warn!(
+                                    "Reqwest error at slot={slot}: Retry after 1 second"
+                                );
                             }
                             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                             rate_limiter.acquire_one().await;
                         }
                         Err(e) => {
-                            log_error!("Failed to get block {slot}: {e:?}");
+                            tracing::error!("Failed to get block {slot}: {e:?}");
                             return None;
                         }
                     };
@@ -191,9 +186,9 @@ impl GetBlocksExampleApp {
 
         block_infos.sort_by_key(|info| info.i);
 
-        log_info!("Block infos:");
+        tracing::info!("Block infos:");
         for info in block_infos {
-            log_info!("i={}, slot={}, rewards={}", info.i, info.slot, info.rewards);
+            tracing::info!("i={}, slot={}, rewards={}", info.i, info.slot, info.rewards);
         }
 
         Ok(())

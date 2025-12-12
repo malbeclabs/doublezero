@@ -243,9 +243,9 @@ type Hop struct {
 }
 
 func parseMTR(input string) ([]Hop, error) {
-	re := regexp.MustCompile(`^\s*(\d+)\.\|\-\-\s+(\S+)\s+(\d+\.\d+|\d+)%`)
-	var hops []Hop
+	re := regexp.MustCompile(`^\s*(\d+)\.\|\-\-\s+(\S+)\s+(\d+(?:\.\d+)?)(?:%)?\s+(\d+)\b`)
 
+	var hops []Hop
 	sc := bufio.NewScanner(strings.NewReader(input))
 	for sc.Scan() {
 		line := sc.Text()
@@ -253,9 +253,18 @@ func parseMTR(input string) ([]Hop, error) {
 		if m == nil {
 			continue
 		}
-		num, _ := strconv.Atoi(m[1])
-		loss, _ := strconv.ParseFloat(m[3], 64)
+		num, err := strconv.Atoi(m[1])
+		if err != nil {
+			return nil, fmt.Errorf("parse hop num %q: %w", m[1], err)
+		}
+		loss, err := strconv.ParseFloat(m[3], 64)
+		if err != nil {
+			return nil, fmt.Errorf("parse loss %q: %w", m[3], err)
+		}
 		hops = append(hops, Hop{Num: num, Loss: loss, Raw: line})
 	}
-	return hops, sc.Err()
+	if err := sc.Err(); err != nil {
+		return nil, err
+	}
+	return hops, nil
 }

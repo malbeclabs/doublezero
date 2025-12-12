@@ -3,7 +3,7 @@ ARG ARISTA_CEOS_IMAGE=ghcr.io/malbeclabs/ceos:4.33.1F
 # ----------------------------------------------------------------------------
 # Builder stage for building the control plane agent binary.
 # ----------------------------------------------------------------------------
-FROM golang:1.24.3 AS builder
+FROM golang:1.25.5 AS builder
 
 WORKDIR /work
 COPY . .

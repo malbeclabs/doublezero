@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package flow;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/malbeclabs/doublezero/telemetry/proto/flow";
+
+message FlowSample {
+    google.protobuf.Timestamp receive_timestamp = 1;
+    bytes flow_payload = 2;
+}

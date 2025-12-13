@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- CLI
+  - IP address lookup responses that do not contain a valid IPv4 address (such as upstream timeout messages) are now treated as retryable errors instead of being parsed as IPs.
 - Internet Latency Telemetry
   - Fixed a bug that prevented unresponsive ripeatlas probes from being replaced
   - Fixed a bug that caused ripeatlas samples to be dropped when they were delayed to the next collection cycle

@@ -17,10 +17,9 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
-	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	flow "github.com/malbeclabs/doublezero/telemetry/proto/flow/gen/pb-go"
 	"github.com/twmb/franz-go/pkg/kgo"
-	"github.com/twmb/franz-go/pkg/sasl/aws"
+	"github.com/twmb/franz-go/pkg/sasl/scram"
 	"github.com/twmb/franz-go/plugin/kprom"
 )
 
@@ -146,8 +145,8 @@ func NewEnricher(opts ...EnricherOption) *Enricher {
 func (e *Enricher) Run(ctx context.Context) error {
 	// Setup clickhouse client
 	chOpts := &clickhouse.Options{
-		Addr:     []string{e.chAddr},
-		Protocol: clickhouse.Native,
+		Addr: []string{e.chAddr},
+		// Protocol: clickhouse.Native,
 		Auth: clickhouse.Auth{
 			Username: e.chUser,
 			Password: e.chPass,
@@ -166,31 +165,31 @@ func (e *Enricher) Run(ctx context.Context) error {
 	kOpts := []kgo.Opt{}
 	kOpts = append(kOpts,
 		kgo.SeedBrokers(e.kBroker),
-		// kgo.SASL(scram.Auth{User: e.kUser, Pass: e.kPass}.AsSha256Mechanism()),
-		kgo.SASL(aws.ManagedStreamingIAM(func(ctx context.Context) (aws.Auth, error) {
-			cfg, err := awsconfig.LoadDefaultConfig(ctx)
-			if err != nil {
-				return aws.Auth{}, fmt.Errorf("failed to load aws config: %w", err)
-			}
+		kgo.SASL(scram.Auth{User: e.kUser, Pass: e.kPass}.AsSha256Mechanism()),
+		// kgo.SASL(aws.ManagedStreamingIAM(func(ctx context.Context) (aws.Auth, error) {
+		// 	cfg, err := awsconfig.LoadDefaultConfig(ctx)
+		// 	if err != nil {
+		// 		return aws.Auth{}, fmt.Errorf("failed to load aws config: %w", err)
+		// 	}
 
-			// Retrieve the temporary credentials
-			creds, err := cfg.Credentials.Retrieve(ctx)
-			if err != nil {
-				return aws.Auth{}, fmt.Errorf("failed to retrieve credentials: %w", err)
-			}
+		// 	// Retrieve the temporary credentials
+		// 	creds, err := cfg.Credentials.Retrieve(ctx)
+		// 	if err != nil {
+		// 		return aws.Auth{}, fmt.Errorf("failed to retrieve credentials: %w", err)
+		// 	}
 
-			// Return them in the format franz-go expects
-			return aws.Auth{
-				AccessKey:    creds.AccessKeyID,
-				SecretKey:    creds.SecretAccessKey,
-				SessionToken: creds.SessionToken,
-			}, nil
-		})),
+		// 	// Return them in the format franz-go expects
+		// 	return aws.Auth{
+		// 		AccessKey:    creds.AccessKeyID,
+		// 		SecretKey:    creds.SecretAccessKey,
+		// 		SessionToken: creds.SessionToken,
+		// 	}, nil
+		// })),
 		kgo.SeedBrokers(e.kBroker),
 		kgo.ConsumeTopics(e.kConsumerTopic),
 		kgo.ConsumerGroup(e.kConsumerGroup),
 		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()),
-		kgo.DialTLS(),
+		// kgo.DialTLS(),
 	)
 	if e.kTLS {
 		kOpts = append(kOpts, kgo.DialTLSConfig(new(tls.Config)))
@@ -395,9 +394,10 @@ func (e *Enricher) Run(ctx context.Context) error {
 					_ = batch.Close()
 					continue
 				}
-			}
-			if err := batch.Close(); err != nil {
-				log.Printf("error closing clickhouse batch: %v", err)
+				if err := batch.Close(); err != nil {
+					log.Printf("error closing clickhouse batch: %v", err)
+				}
+				log.Print("sent records to clickhouse:", count)
 			}
 
 			if err := e.kConn.CommitUncommittedOffsets(ctx); err != nil {

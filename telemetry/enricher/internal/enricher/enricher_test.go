@@ -4,14 +4,20 @@ package enricher
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
-	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/google/go-cmp/cmp"
+	"time"
+
+	"github.com/stretchr/testify/require"
+
+	flow "github.com/malbeclabs/doublezero/telemetry/proto/flow/gen/pb-go"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
+	ch "github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/clickhouse"
 	"github.com/testcontainers/testcontainers-go/modules/redpanda"
@@ -31,8 +37,7 @@ var (
 	rpBroker        string
 	rpUser          = "enricher"
 	rpPassword      = "redpanda"
-	rpTopicRaw      = "flows_raw"
-	rpTopicEnriched = "flows_enriched"
+	rpTopicEnriched = "flows_raw_devnet"
 	rpConsumerGroup = "enricher"
 	rpClient        *kgo.Client
 
@@ -48,6 +53,7 @@ func setupClickhouseContainer(ctx context.Context) error {
 		clickhouse.WithInitScripts(
 			filepath.Join("fixtures", "create_table_device_ifindex.sql"),
 			filepath.Join("fixtures", "insert_device_ifindex.sql"),
+			filepath.Join("fixtures", "create_table_flows.sql"),
 		),
 	)
 	return err
@@ -79,10 +85,6 @@ func setupRedpandaContainer(ctx context.Context) error {
 	rpOpts = append(rpOpts,
 		kgo.SeedBrokers(rpBroker),
 		kgo.SASL(scram.Auth{User: rpUser, Pass: rpPassword}.AsSha256Mechanism()),
-		kgo.SeedBrokers(rpBroker),
-		kgo.ConsumeTopics(rpTopicEnriched),
-		kgo.ConsumerGroup("flow_test"),
-		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()),
 	)
 
 	rpClient, err = kgo.NewClient(rpOpts...)
@@ -97,7 +99,7 @@ func setupRedpandaContainer(ctx context.Context) error {
 	admin := kadm.NewClient(rpClient)
 
 	// Create a topic with a single partition and single replica
-	resp, err := admin.CreateTopics(ctx, 1, -1, nil, rpTopicRaw, rpTopicEnriched)
+	resp, err := admin.CreateTopics(ctx, 1, -1, nil, rpTopicEnriched)
 	if err != nil {
 		return fmt.Errorf("error creating topics: %v", err)
 	}
@@ -133,37 +135,6 @@ func TestFlowEnrichment(t *testing.T) {
 	}
 	testcontainers.CleanupContainer(t, redpandaCtr)
 
-	// Read unenriched flow from file
-	file, err := os.ReadFile("fixtures/unenriched_flow.json")
-	if err != nil {
-		t.Fatalf("cannot read test message from file: %v", err)
-	}
-
-	// make sure unenriched flow isn't malformed before writing to topic
-	var testFlow FlowSample
-	err = json.Unmarshal(file, &testFlow)
-	if err != nil {
-		t.Fatalf("error unmarshaling test message: %v", err)
-	}
-	t.Logf("unenriched flow: %v", testFlow)
-
-	body, err := json.Marshal(testFlow)
-	if err != nil {
-		t.Fatalf("error marshaling test flow: %v\n", err)
-	}
-
-	// Produce test flow onto flow_unenriched topic
-	record := &kgo.Record{
-		Topic: rpTopicRaw,
-		Key:   []byte(`test`),
-		Value: body,
-	}
-	rpClient.Produce(ctx, record, func(record *kgo.Record, err error) {
-		if err != nil {
-			t.Fatalf("Error sending message: %v\n", err)
-		}
-	})
-
 	// Start enricher
 	chConn, err := clickhouseCtr.ConnectionHost(context.Background())
 	if err != nil {
@@ -176,9 +147,8 @@ func TestFlowEnrichment(t *testing.T) {
 		WithKafkaBroker(rpBroker),
 		WithKafkaTLSEnabled(false),
 		WithKafkaCreds(rpUser, rpPassword),
-		WithKafkaConsumerTopic(rpTopicRaw),
+		WithKafkaConsumerTopic(rpTopicEnriched),
 		WithKafkaConsumerGroup(rpConsumerGroup),
-		WithKafkaProducerTopic(rpTopicEnriched),
 	}
 	enricher := NewEnricher(opts...)
 	go func() {
@@ -187,35 +157,55 @@ func TestFlowEnrichment(t *testing.T) {
 		}
 	}()
 
-	// Poll flows_enriched topic until we get the enriched flow from the enricher
-	var enrichedflow FlowSample
-	fetches := rpClient.PollRecords(ctx, 1)
-	if errs := fetches.Errors(); len(errs) > 0 {
-		t.Fatalf("error during polling: %v", errs)
-	}
-	iter := fetches.RecordIter()
-	for !iter.Done() {
-		record := iter.Next()
+	payload := readPcap(t, "./fixtures/sflow_ingress_user_traffic.pcap")
 
-		err := json.Unmarshal(record.Value, &enrichedflow)
+	f := &flow.FlowSample{
+		ReceiveTimestamp: &timestamppb.Timestamp{Seconds: 1625243456, Nanos: 0},
+		FlowPayload:      payload,
+	}
+
+	body, err := proto.Marshal(f)
+	if err != nil {
+		t.Fatalf("error marshaling test flow: %v", err)
+	}
+	// Produce test flow onto flow_unenriched topic
+	record := &kgo.Record{
+		Topic: rpTopicEnriched,
+		Value: body,
+	}
+	rpClient.Produce(ctx, record, func(record *kgo.Record, err error) {
 		if err != nil {
-			t.Logf("error unmarshalling flow record: %v", err)
+			t.Fatalf("Error sending message: %v\n", err)
 		}
-		t.Logf("flow record consumed: %v", enrichedflow)
-	}
+	})
 
-	// Compare enriched record to golden file
-	f, err := os.ReadFile("fixtures/enriched_flow.json")
-	if err != nil {
-		t.Fatalf("error reading enriched flow: %v", err)
-	}
+	t.Log("produced record")
 
-	var goldenFlow FlowSample
-	err = json.Unmarshal(f, &goldenFlow)
-	if err != nil {
-		t.Fatalf("error unmarshaling golden flow: %v", err)
-	}
-	if diff := cmp.Diff(goldenFlow, enrichedflow); diff != "" {
-		t.Fatalf("mismatched flowoutput: +(want), -(got): %s\n", diff)
-	}
+	conn := ch.OpenDB(&ch.Options{
+		Addr: []string{chConn},
+		Auth: ch.Auth{
+			Database: chDbname,
+			Username: chUser,
+			Password: chPassword,
+		},
+	})
+
+	var count int
+	require.Eventually(t, func() bool {
+		count = 0 // Reset count at the start of each attempt
+		rows, err := conn.Query("select * from default.flows")
+		if err != nil {
+			t.Logf("error querying flows table: %v", err)
+			return false
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			t.Log("found row in flows table")
+			count++
+		}
+		return count > 0
+	}, 20*time.Second, 1*time.Second, "no rows found in flows table")
+
+	t.Logf("found %d rows in flows table", count)
 }

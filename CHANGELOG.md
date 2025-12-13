@@ -26,6 +26,8 @@ All notable changes to this project will be documented in this file.
   - Add histogram metric for BGP session establishment duration
 - Release
   - Publish a Docker image for core components.
+- Telemetry
+  - Add sflow-proxy service
 
 ## [v0.8.0](https://github.com/malbeclabs/doublezero/compare/client/v0.7.1...client/v0.8.0) – 2025-12-02
 

@@ -264,7 +264,7 @@ async fn test_dzx_link() {
         .get_device()
         .unwrap();
     assert_eq!(device_a.account_type, AccountType::Device);
-    assert_eq!(device_a.code, "A".to_string());
+    assert_eq!(device_a.code, "a".to_string());
     assert_eq!(device_a.status, DeviceStatus::Pending);
 
     // check reference counts
@@ -353,7 +353,7 @@ async fn test_dzx_link() {
         .get_device()
         .unwrap();
     assert_eq!(device_z.account_type, AccountType::Device);
-    assert_eq!(device_z.code, "Z".to_string());
+    assert_eq!(device_z.code, "z".to_string());
     assert_eq!(device_z.status, DeviceStatus::Pending);
 
     // check reference counts

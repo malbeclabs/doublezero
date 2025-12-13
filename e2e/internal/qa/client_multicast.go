@@ -52,7 +52,7 @@ func (c *Client) ConnectUserMulticast_Subscriber_NoWait(ctx context.Context, mul
 func (c *Client) ConnectUserMulticast(ctx context.Context, multicastGroupCode string, mode pb.ConnectMulticastRequest_MulticastMode, waitForStatus bool) error {
 	err := c.DisconnectUser(ctx, true, true)
 	if err != nil {
-		return fmt.Errorf("failed to ensure disconnected for %s: %w", c.Host, err)
+		return fmt.Errorf("failed to ensure disconnected on host %s: %w", c.Host, err)
 	}
 
 	c.log.Info("Connecting multicast publisher", "host", c.Host, "multicastGroupCode", multicastGroupCode)
@@ -63,10 +63,10 @@ func (c *Client) ConnectUserMulticast(ctx context.Context, multicastGroupCode st
 		Code: multicastGroupCode,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to connect %s: %w", c.Host, err)
+		return fmt.Errorf("failed to connect on host %s: %w", c.Host, err)
 	}
 	if !resp.GetSuccess() {
-		return fmt.Errorf("connection failed for %s: %s", c.Host, resp.GetOutput())
+		return fmt.Errorf("connection failed on host %s: %s", c.Host, resp.GetOutput())
 	}
 	c.log.Info("Multicast publisher connected", "host", c.Host, "multicastGroupCode", multicastGroupCode)
 
@@ -76,7 +76,7 @@ func (c *Client) ConnectUserMulticast(ctx context.Context, multicastGroupCode st
 func (c *Client) GetMulticastGroup(ctx context.Context, code string) (*MulticastGroup, error) {
 	data, err := getProgramDataWithRetry(ctx, c.serviceability)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get program data: %w", err)
+		return nil, fmt.Errorf("failed to get program data on host %s: %w", c.Host, err)
 	}
 	for _, multicastGroup := range data.MulticastGroups {
 		if multicastGroup.Code == code {
@@ -99,10 +99,10 @@ func (c *Client) CreateMulticastGroup(ctx context.Context, code string, maxBandw
 		MaxBandwidth: maxBandwidth,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to create multicast group: %w", err)
+		return nil, fmt.Errorf("failed to create multicast group on host %s: %w", c.Host, err)
 	}
 	if !resp.GetSuccess() {
-		return nil, fmt.Errorf("failed to create multicast group: %s", resp.GetOutput())
+		return nil, fmt.Errorf("failed to create multicast group on host %s: %s", c.Host, resp.GetOutput())
 	}
 	c.log.Debug("Multicast group created", "host", c.Host, "code", code)
 
@@ -125,7 +125,7 @@ func (c *Client) CreateMulticastGroup(ctx context.Context, code string, maxBandw
 		return true, nil
 	}, waitForMulticastGroupCreatedTimeout, waitInterval)
 	if err != nil {
-		return nil, fmt.Errorf("failed to wait for multicast group to be created and activated onchain: %w", err)
+		return nil, fmt.Errorf("failed to wait for multicast group to be created and activated onchain on host %s: %w", c.Host, err)
 	}
 	c.log.Debug("Confirmed multicast group created and activated onchain", "host", c.Host, "code", code, "pubkey", group.PK, "ownerPK", group.OwnerPK, "groupIP", group.IP, "status", group.Status)
 	return group, nil
@@ -137,10 +137,10 @@ func (c *Client) DeleteMulticastGroup(ctx context.Context, pubkey solana.PublicK
 		Pubkey: base58.Encode(pubkey[:]),
 	})
 	if err != nil {
-		return fmt.Errorf("failed to delete multicast group: %w", err)
+		return fmt.Errorf("failed to delete multicast group on host %s: %w", c.Host, err)
 	}
 	if !resp.GetSuccess() {
-		return fmt.Errorf("failed to delete multicast group: %s", resp.GetOutput())
+		return fmt.Errorf("failed to delete multicast group on host %s: %s", c.Host, resp.GetOutput())
 	}
 	c.log.Debug("Multicast group deleted", "host", c.Host, "pubkey", pubkey)
 	return nil
@@ -152,7 +152,7 @@ func (c *Client) MulticastLeave(ctx context.Context, code string) error {
 	defer cancel()
 	_, err := c.grpcClient.MulticastLeave(ctx, &emptypb.Empty{})
 	if err != nil {
-		return fmt.Errorf("failed to leave multicast group: %w", err)
+		return fmt.Errorf("failed to leave multicast group on host %s: %w", c.Host, err)
 	}
 	c.log.Debug("Left multicast group", "host", c.Host, "code", code)
 	return nil
@@ -166,7 +166,7 @@ func (c *Client) MulticastSend(ctx context.Context, group *MulticastGroup, durat
 		Duration: uint32(duration.Seconds()),
 	})
 	if err != nil {
-		return fmt.Errorf("failed to send multicast data: %w", err)
+		return fmt.Errorf("failed to send multicast data on host %s: %w", c.Host, err)
 	}
 	c.log.Debug("Sent multicast data", "host", c.Host, "code", group.Code)
 	return nil
@@ -184,7 +184,7 @@ func (c *Client) MulticastJoin(ctx context.Context, group *MulticastGroup) error
 		},
 	})
 	if err != nil {
-		return fmt.Errorf("failed to join multicast groups: %w", err)
+		return fmt.Errorf("failed to join multicast groups on host %s: %w", c.Host, err)
 	}
 	c.log.Debug("Joined multicast group", "host", c.Host, "code", group.Code, "groupIP", group.IP)
 	return nil
@@ -204,7 +204,7 @@ func (c *Client) WaitForMulticastReport(ctx context.Context, group *MulticastGro
 			},
 		})
 		if err != nil {
-			return false, fmt.Errorf("failed to get multicast report: %w", err)
+			return false, fmt.Errorf("failed to get multicast report on host %s: %w", c.Host, err)
 		}
 		if len(resp.Reports) == 0 {
 			return false, nil
@@ -217,7 +217,7 @@ func (c *Client) WaitForMulticastReport(ctx context.Context, group *MulticastGro
 		return report.PacketCount > 0, nil
 	}, waitForMulticastReportTimeout, waitInterval)
 	if err != nil {
-		return nil, fmt.Errorf("failed to wait for multicast report: %w", err)
+		return nil, fmt.Errorf("failed to wait for multicast report on host %s: %w", c.Host, err)
 	}
 	c.log.Debug("Confirmed multicast report", "host", c.Host, "code", group.Code, "groupIP", group.IP)
 	return report, nil
@@ -240,10 +240,10 @@ func (c *Client) AddToMulticastGroupAllowlist(ctx context.Context, code string, 
 		ClientIp: clientIP,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to add to multicast group allowlist: %w", err)
+		return fmt.Errorf("failed to add to multicast group allowlist on host %s: %w", c.Host, err)
 	}
 	if !resp.GetSuccess() {
-		return fmt.Errorf("failed to add to multicast group allowlist: %s", resp.GetOutput())
+		return fmt.Errorf("failed to add to multicast group allowlist on host %s: %s", c.Host, resp.GetOutput())
 	}
 	c.log.Debug("Added to multicast group allowlist", "host", c.Host, "code", code, "pubkey", pubkey, "clientIP", clientIP)
 	return nil

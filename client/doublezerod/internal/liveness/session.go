@@ -6,8 +6,6 @@ import (
 	"net"
 	"sync"
 	"time"
-
-	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 )
 
 type DownReason uint8
@@ -36,10 +34,50 @@ func (d DownReason) String() string {
 	return fmt.Sprintf("unknown(%d)", d)
 }
 
+type KernelState uint8
+
+const (
+	KernelStateUnknown KernelState = iota
+	KernelStateAbsent
+	KernelStatePresent
+)
+
+func (s KernelState) String() string {
+	switch s {
+	case KernelStateUnknown:
+		return "unknown"
+	case KernelStateAbsent:
+		return "absent"
+	case KernelStatePresent:
+		return "present"
+	}
+	return fmt.Sprintf("unknown(%d)", s)
+}
+
+type PeerMode uint8
+
+const (
+	PeerModeUnknown PeerMode = iota
+	PeerModeActive
+	PeerModePassive
+)
+
+func (p PeerMode) String() string {
+	switch p {
+	case PeerModeUnknown:
+		return "unknown"
+	case PeerModeActive:
+		return "active"
+	case PeerModePassive:
+		return "passive"
+	}
+	return fmt.Sprintf("unknown(%d)", p)
+}
+
 // Session models a single bidirectional liveness relationship with a peer,
 // maintaining BFD-like state, timers, and randomized transmission scheduling.
 type Session struct {
-	route *routing.Route
+	route *Route
 
 	localDiscr, peerDiscr uint32 // discriminators identify this session to each side
 	state                 State  // current BFD state
@@ -48,6 +86,9 @@ type Session struct {
 	downSince      time.Time  // time we transitioned to Down
 	lastDownReason DownReason // reason for last transition to Down
 	lastUpdated    time.Time  // time we last updated the session
+
+	peerAdvertisedMode PeerMode      // peer advertised mode
+	peerClientVersion  ClientVersion // peer advertised client version
 
 	// detectMult scales the detection timeout relative to the receive interval;
 	// it defines how many consecutive RX intervals may elapse without traffic
@@ -213,6 +254,16 @@ func (s *Session) HandleRx(now time.Time, ctrl *ControlPacket) (changed bool) {
 		return false
 	}
 
+	// Learn mode advertised by the peer.
+	if ctrl.IsPassive() {
+		s.peerAdvertisedMode = PeerModePassive
+	} else {
+		s.peerAdvertisedMode = PeerModeActive
+	}
+
+	// Learn client version advertised by the peer.
+	s.peerClientVersion = ctrl.ClientVersion
+
 	prev := s.state
 
 	// If peer is in AdminDown, treat this as an intentional shutdown.
@@ -366,7 +417,7 @@ func (s *Session) rxInterval() time.Duration {
 
 type SessionSnapshot struct {
 	Peer                Peer
-	Route               routing.Route
+	Route               Route
 	State               State
 	LocalDiscr          uint32
 	PeerDiscr           uint32
@@ -378,14 +429,25 @@ type SessionSnapshot struct {
 	DetectDeadline      time.Time
 	NextDetectScheduled time.Time
 	LastUpdated         time.Time
+	PeerAdvertisedMode  PeerMode
+	PeerClientVersion   ClientVersion
+	ExpectedKernelState KernelState
 }
 
 func (s *Session) Snapshot() SessionSnapshot {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	var peer Peer
+	if s.peer != nil {
+		peer = *s.peer
+	}
+	var route Route
+	if s.route != nil {
+		route = *s.route
+	}
 	return SessionSnapshot{
-		Peer:                *s.peer,
-		Route:               *s.route,
+		Peer:                peer,
+		Route:               route,
 		State:               s.state,
 		LocalDiscr:          s.localDiscr,
 		PeerDiscr:           s.peerDiscr,
@@ -397,5 +459,7 @@ func (s *Session) Snapshot() SessionSnapshot {
 		DetectDeadline:      s.detectDeadline,
 		NextDetectScheduled: s.nextDetectScheduled,
 		LastUpdated:         s.lastUpdated,
+		PeerAdvertisedMode:  s.peerAdvertisedMode,
+		PeerClientVersion:   s.peerClientVersion,
 	}
 }

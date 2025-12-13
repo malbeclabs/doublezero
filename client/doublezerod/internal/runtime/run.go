@@ -21,13 +21,22 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+const (
+	updateInstalledRoutesGaugeInterval = 10 * time.Second
+)
+
 func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLatencyProbing, enableLatencyMetrics bool, networkConfig *config.NetworkConfig, probeInterval, cacheUpdateInterval int, lmc *liveness.ManagerConfig) error {
 	nlr := routing.Netlink{}
 	var crw bgp.RouteReaderWriter
+	var cr *routing.ConfiguredRoutes
 	if _, err := os.Stat(routeConfigPath); os.IsNotExist(err) {
 		crw = nlr
 	} else {
-		crw, err = routing.NewConfiguredRouteReaderWriter(slog.Default(), nlr, routeConfigPath)
+		cr, err = routing.NewConfiguredRoutes(routeConfigPath)
+		if err != nil {
+			return fmt.Errorf("error creating configured routes: %v", err)
+		}
+		crw, err = routing.NewConfiguredRouteReaderWriter(slog.Default(), nlr, cr)
 		if err != nil {
 			return fmt.Errorf("error creating configured route reader writer: %v", err)
 		}
@@ -41,7 +50,7 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 	if lmc != nil {
 		lmc.Netlinker = crw
 		var err error
-		lm, err = liveness.NewManager(ctx, lmc)
+		lm, err = liveness.NewManager(ctx, lmc, cr)
 		if err != nil {
 			return fmt.Errorf("error creating liveness manager: %v", err)
 		}
@@ -135,6 +144,8 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 		errCh <- err
 	}()
 
+	go updateInstalledRoutesGauge(ctx, nlr)
+
 	// The liveness manager can be nil if the liveness subsystem is disabled.
 	// TODO(snormore): The scenario where the liveness subsystem is completely disabled is
 	// temporary for initial rollout testing.
@@ -153,5 +164,50 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 		return err
 	case err := <-lmErrCh:
 		return err
+	}
+}
+
+func updateInstalledRoutesGauge(ctx context.Context, nlr routing.Netlinker) {
+	tick := func() {
+		routes, err := nlr.RouteByProtocol(unix.RTPROT_BGP)
+		if err != nil {
+			slog.Error("runtime: error listing kernel bgp routes", "error", err)
+			return
+		}
+
+		routesBySrcNextHop := make(map[string]map[string]int)
+		for _, route := range routes {
+			if route.Protocol != unix.RTPROT_BGP {
+				continue
+			}
+			if route.Src == nil || route.NextHop == nil || route.Src.To4() == nil || route.NextHop.To4() == nil {
+				continue
+			}
+			src := route.Src.To4().String()
+			nextHop := route.NextHop.To4().String()
+			if _, ok := routesBySrcNextHop[src]; !ok {
+				routesBySrcNextHop[src] = make(map[string]int)
+			}
+			routesBySrcNextHop[src][nextHop]++
+		}
+
+		metricBGPRoutesInstalled.Reset()
+		for src, nextHops := range routesBySrcNextHop {
+			for nextHop, count := range nextHops {
+				metricBGPRoutesInstalled.WithLabelValues(src, nextHop).Set(float64(count))
+			}
+		}
+	}
+
+	tick()
+	ticker := time.NewTicker(updateInstalledRoutesGaugeInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			tick()
+		}
 	}
 }

@@ -53,7 +53,7 @@ var (
 	routeLivenessEnableActive  = flag.Bool("route-liveness-enable-active", false, "enables route liveness in active mode (experimental)")
 
 	// set by LDFLAGS
-	version = "dev"
+	version = "0.0.0-dev"
 	commit  = "none"
 	date    = "unknown"
 )
@@ -154,9 +154,10 @@ func main() {
 			log = newLogger(slog.LevelDebug)
 		}
 		lmc = &liveness.ManagerConfig{
-			Logger: log,
-			BindIP: defaultRouteLivenessBindIP,
-			Port:   liveness.DefaultLivenessPort,
+			Logger:        log,
+			BindIP:        defaultRouteLivenessBindIP,
+			Port:          liveness.DefaultLivenessPort,
+			ClientVersion: version,
 
 			// If active mode is enabled, set passive mode to false.
 			// The manager only knows about passive mode, with the negation of it being active mode.
@@ -169,6 +170,10 @@ func main() {
 			MaxTxCeil:  *routeLivenessMaxTxCeil,
 
 			EnablePeerMetrics: *routeLivenessPeerMetrics,
+
+			// Default to treating peers that advertise passive mode as passive. That is, we will
+			// install their routes immediately and never uninstall them on down events.
+			HonorPeerAdvertisedPassive: true,
 		}
 	}
 

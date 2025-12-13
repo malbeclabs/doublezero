@@ -27,7 +27,7 @@ jobs:
       - uses: golangci/golangci-lint-action@v8
       - run: make go-lint
   go-test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-16c-64gb
     needs: go-build
     steps:
       - uses: actions/checkout@v4
@@ -36,6 +36,7 @@ jobs:
           go-version-file: go.mod
           cache: true
       - run: sudo sysctl -w net.ipv4.ping_group_range="0 0"
+      - run: make go-test nocontainertest
   go-container-test:
     runs-on: ubuntu-latest
     needs: go-build

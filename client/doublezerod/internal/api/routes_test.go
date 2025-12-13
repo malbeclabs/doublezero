@@ -82,14 +82,16 @@ func TestServeRoutesHandler_NoLiveness_WithIPv4AndIPv6(t *testing.T) {
 	userType2 := UserTypeMulticast
 
 	svc1 := &ProvisionRequest{
-		UserType:  userType1,
-		TunnelSrc: ip4Src1,
-		TunnelNet: &net.IPNet{IP: nh1, Mask: net.CIDRMask(32, 32)},
+		UserType:     userType1,
+		DoubleZeroIP: ip4Src1,
+		TunnelSrc:    ip4Src1,
+		TunnelNet:    &net.IPNet{IP: nh1, Mask: net.CIDRMask(32, 32)},
 	}
 	svc2 := &ProvisionRequest{
-		UserType:  userType2,
-		TunnelSrc: ip4Src2,
-		TunnelNet: &net.IPNet{IP: nh2, Mask: net.CIDRMask(32, 32)},
+		UserType:     userType2,
+		DoubleZeroIP: ip4Src2,
+		TunnelSrc:    ip4Src2,
+		TunnelNet:    &net.IPNet{IP: nh2, Mask: net.CIDRMask(32, 32)},
 	}
 
 	rrw := &mockRouteReaderWriter{
@@ -123,29 +125,28 @@ func TestServeRoutesHandler_NoLiveness_WithIPv4AndIPv6(t *testing.T) {
 	want := []Route{
 		{
 			Network:     config.EnvLocalnet,
-			UserType:    userType1,
 			LocalIP:     "10.0.0.1",
 			PeerIP:      "192.0.2.1",
-			KernelState: "present",
+			KernelState: liveness.KernelStatePresent.String(),
 		},
 		{
 			Network:     config.EnvLocalnet,
-			UserType:    userType2,
 			LocalIP:     "10.0.0.2",
 			PeerIP:      "192.0.2.2",
-			KernelState: "present",
+			KernelState: liveness.KernelStatePresent.String(),
 		},
 	}
 
 	for i := range want {
 		require.Equalf(t, want[i].Network, got[i].Network, "route[%d] Network", i)
-		require.Equalf(t, want[i].UserType, got[i].UserType, "route[%d] UserType", i)
 		require.Equalf(t, want[i].LocalIP, got[i].LocalIP, "route[%d] LocalIP", i)
 		require.Equalf(t, want[i].PeerIP, got[i].PeerIP, "route[%d] PeerIP", i)
 		require.Equalf(t, want[i].KernelState, got[i].KernelState, "route[%d] KernelState", i)
 		require.Emptyf(t, got[i].LivenessLastUpdated, "route[%d] LivenessLastUpdated", i)
 		require.Emptyf(t, got[i].LivenessState, "route[%d] LivenessState", i)
 		require.Emptyf(t, got[i].LivenessStateReason, "route[%d] LivenessStateReason", i)
+		require.Emptyf(t, got[i].LivenessExpectedKernelState, "route[%d] LivenessExpectedKernelState", i)
+		require.Emptyf(t, got[i].LivenessPeerMode, "route[%d] LivenessPeerMode", i)
 	}
 }
 
@@ -191,9 +192,10 @@ func TestClient_API_ServeRoutesHandler_WithLiveness_KernelOnly(t *testing.T) {
 	}
 
 	svc := &ProvisionRequest{
-		UserType:  userType,
-		TunnelSrc: ipSrc,
-		TunnelNet: &net.IPNet{IP: nextHop, Mask: net.CIDRMask(32, 32)},
+		UserType:     userType,
+		DoubleZeroIP: ipSrc,
+		TunnelSrc:    ipSrc,
+		TunnelNet:    &net.IPNet{IP: nextHop, Mask: net.CIDRMask(32, 32)},
 	}
 
 	rrw := &mockRouteReaderWriter{
@@ -228,13 +230,15 @@ func TestClient_API_ServeRoutesHandler_WithLiveness_KernelOnly(t *testing.T) {
 
 	rt := got[0]
 	require.Equal(t, config.EnvLocalnet, rt.Network)
-	require.Equal(t, userType, rt.UserType)
 	require.Equal(t, "10.0.0.1", rt.LocalIP)
 	require.Equal(t, "192.0.2.1", rt.PeerIP)
-	require.Equal(t, KernelStatePresent, rt.KernelState)
+	require.Equal(t, liveness.KernelStatePresent.String(), rt.KernelState)
 	require.Empty(t, rt.LivenessLastUpdated)
 	require.Empty(t, rt.LivenessState)
 	require.Empty(t, rt.LivenessStateReason)
+	require.Empty(t, rt.LivenessExpectedKernelState)
+	require.Empty(t, rt.LivenessPeerMode)
+	require.Empty(t, rt.PeerClientVersion)
 }
 
 func TestClient_API_ServeRoutesHandler_WithLiveness_PresentInBoth(t *testing.T) {
@@ -253,15 +257,19 @@ func TestClient_API_ServeRoutesHandler_WithLiveness_PresentInBoth(t *testing.T) 
 
 	now := time.Now().UTC()
 	sess := liveness.SessionSnapshot{
-		Route:       *route,
-		LastUpdated: now,
-		State:       liveness.StateUp,
+		Route:               liveness.Route{Route: *route},
+		LastUpdated:         now,
+		State:               liveness.StateUp,
+		ExpectedKernelState: liveness.KernelStatePresent,
+		PeerAdvertisedMode:  liveness.PeerModeActive,
+		PeerClientVersion:   liveness.ClientVersion{Major: 1, Minor: 2, Patch: 3, Channel: liveness.VersionChannelStable},
 	}
 
 	svc := &ProvisionRequest{
-		UserType:  userType,
-		TunnelSrc: ipSrc,
-		TunnelNet: &net.IPNet{IP: nextHop, Mask: net.CIDRMask(32, 32)},
+		UserType:     userType,
+		DoubleZeroIP: ipSrc,
+		TunnelSrc:    ipSrc,
+		TunnelNet:    &net.IPNet{IP: nextHop, Mask: net.CIDRMask(32, 32)},
 	}
 
 	rrw := &mockRouteReaderWriter{
@@ -296,13 +304,15 @@ func TestClient_API_ServeRoutesHandler_WithLiveness_PresentInBoth(t *testing.T) 
 
 	rt := got[0]
 	require.Equal(t, config.EnvLocalnet, rt.Network)
-	require.Equal(t, userType, rt.UserType)
 	require.Equal(t, "10.0.0.1", rt.LocalIP)
 	require.Equal(t, "192.0.2.1", rt.PeerIP)
-	require.Equal(t, KernelStatePresent, rt.KernelState)
+	require.Equal(t, liveness.KernelStatePresent.String(), rt.KernelState)
 	require.Equal(t, liveness.StateUp.String(), rt.LivenessState)
 	require.NotEmpty(t, rt.LivenessLastUpdated)
 	require.Empty(t, rt.LivenessStateReason)
+	require.Equal(t, liveness.KernelStatePresent.String(), rt.LivenessExpectedKernelState)
+	require.Equal(t, LivenessPeerModeActive.String(), rt.LivenessPeerMode)
+	require.Equal(t, sess.PeerClientVersion.String(), rt.PeerClientVersion)
 }
 
 func TestClient_API_ServeRoutesHandler_WithLiveness_AbsentInKernel(t *testing.T) {
@@ -321,15 +331,19 @@ func TestClient_API_ServeRoutesHandler_WithLiveness_AbsentInKernel(t *testing.T)
 
 	now := time.Now().UTC()
 	sess := liveness.SessionSnapshot{
-		Route:       *route,
-		LastUpdated: now,
-		State:       liveness.StateDown,
+		Route:               liveness.Route{Route: *route},
+		LastUpdated:         now,
+		State:               liveness.StateDown,
+		ExpectedKernelState: liveness.KernelStateAbsent,
+		PeerAdvertisedMode:  liveness.PeerModePassive,
+		PeerClientVersion:   liveness.ClientVersion{Major: 1, Minor: 2, Patch: 3, Channel: liveness.VersionChannelStable},
 	}
 
 	svc := &ProvisionRequest{
-		UserType:  userType,
-		TunnelSrc: ipSrc,
-		TunnelNet: &net.IPNet{IP: nextHop, Mask: net.CIDRMask(32, 32)},
+		UserType:     userType,
+		DoubleZeroIP: ipSrc,
+		TunnelSrc:    ipSrc,
+		TunnelNet:    &net.IPNet{IP: nextHop, Mask: net.CIDRMask(32, 32)},
 	}
 
 	rrw := &mockRouteReaderWriter{
@@ -363,11 +377,13 @@ func TestClient_API_ServeRoutesHandler_WithLiveness_AbsentInKernel(t *testing.T)
 	require.Len(t, got, 1)
 
 	rt := got[0]
-	require.Equal(t, userType, rt.UserType)
-	require.Equal(t, KernelStateAbsent, rt.KernelState)
+	require.Equal(t, liveness.KernelStateAbsent.String(), rt.KernelState)
 	require.Equal(t, liveness.StateDown.String(), rt.LivenessState)
 	require.NotEmpty(t, rt.LivenessLastUpdated)
+	require.Equal(t, liveness.KernelStateAbsent.String(), rt.LivenessExpectedKernelState)
+	require.Equal(t, LivenessPeerModePassive.String(), rt.LivenessPeerMode)
 	require.Equal(t, liveness.DownReasonNone.String(), rt.LivenessStateReason)
+	require.Equal(t, sess.PeerClientVersion.String(), rt.PeerClientVersion)
 }
 
 func TestClient_API_ServeRoutesHandler_WithLiveness_SetsLivenessStateReason(t *testing.T) {
@@ -386,16 +402,20 @@ func TestClient_API_ServeRoutesHandler_WithLiveness_SetsLivenessStateReason(t *t
 
 	now := time.Now().UTC()
 	sess := liveness.SessionSnapshot{
-		Route:          *route,
-		LastUpdated:    now,
-		State:          liveness.StateDown,
-		LastDownReason: liveness.DownReasonRemoteAdmin,
+		Route:               liveness.Route{Route: *route},
+		LastUpdated:         now,
+		State:               liveness.StateDown,
+		LastDownReason:      liveness.DownReasonRemoteAdmin,
+		ExpectedKernelState: liveness.KernelStateAbsent,
+		PeerAdvertisedMode:  liveness.PeerModePassive,
+		PeerClientVersion:   liveness.ClientVersion{Major: 1, Minor: 2, Patch: 3, Channel: liveness.VersionChannelStable},
 	}
 
 	svc := &ProvisionRequest{
-		UserType:  userType,
-		TunnelSrc: ipSrc,
-		TunnelNet: &net.IPNet{IP: nextHop, Mask: net.CIDRMask(32, 32)},
+		UserType:     userType,
+		DoubleZeroIP: ipSrc,
+		TunnelSrc:    ipSrc,
+		TunnelNet:    &net.IPNet{IP: nextHop, Mask: net.CIDRMask(32, 32)},
 	}
 
 	rrw := &mockRouteReaderWriter{
@@ -430,13 +450,109 @@ func TestClient_API_ServeRoutesHandler_WithLiveness_SetsLivenessStateReason(t *t
 
 	rt := got[0]
 	require.Equal(t, config.EnvLocalnet, rt.Network)
-	require.Equal(t, userType, rt.UserType)
 	require.Equal(t, "10.0.0.1", rt.LocalIP)
 	require.Equal(t, "192.0.2.1", rt.PeerIP)
-	require.Equal(t, KernelStateAbsent, rt.KernelState)
+	require.Equal(t, liveness.KernelStateAbsent.String(), rt.KernelState)
 	require.Equal(t, liveness.StateDown.String(), rt.LivenessState)
 	require.NotEmpty(t, rt.LivenessLastUpdated)
+	require.Equal(t, liveness.KernelStateAbsent.String(), rt.LivenessExpectedKernelState)
+	require.Equal(t, LivenessPeerModePassive.String(), rt.LivenessPeerMode)
 	require.Equal(t, liveness.DownReasonRemoteAdmin.String(), rt.LivenessStateReason)
+	require.Equal(t, sess.PeerClientVersion.String(), rt.PeerClientVersion)
+}
+
+func TestServeRoutesHandler_UsesDoubleZeroIP_NotTunnelSrc(t *testing.T) {
+	t.Parallel()
+
+	dzIP := net.ParseIP("10.10.10.10")   // DoubleZeroIP — should match rt.Src
+	tunnelSrc := net.ParseIP("10.0.0.1") // TunnelSrc — intentionally different
+	dst := net.ParseIP("192.0.2.1")
+	nextHop := net.ParseIP("203.0.113.1")
+
+	route := &routing.Route{
+		Src:     dzIP,
+		Dst:     &net.IPNet{IP: dst, Mask: net.CIDRMask(32, 32)},
+		NextHop: nextHop,
+	}
+
+	svc := &ProvisionRequest{
+		UserType:     UserTypeIBRL,
+		DoubleZeroIP: dzIP,
+		TunnelSrc:    tunnelSrc,
+		TunnelNet:    &net.IPNet{IP: nextHop, Mask: net.CIDRMask(32, 32)},
+	}
+
+	rrw := &mockRouteReaderWriter{
+		RouteByProtocolFunc: func(_ int) ([]*routing.Route, error) {
+			return []*routing.Route{route}, nil
+		},
+	}
+
+	nc := &config.NetworkConfig{Moniker: config.EnvLocalnet}
+
+	db := &mockDBReader{
+		GetStateFunc: func(userTypes ...UserType) []*ProvisionRequest {
+			return []*ProvisionRequest{svc}
+		},
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/routes", nil)
+	rr := httptest.NewRecorder()
+
+	handler := ServeRoutesHandler(rrw, nil, db, nc)
+	handler.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	var got []Route
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&got))
+
+	require.Len(t, got, 1)
+
+	require.Equal(t, "10.10.10.10", got[0].LocalIP) // proves DoubleZeroIP was used
+	require.Equal(t, "192.0.2.1", got[0].PeerIP)
+	require.Equal(t, liveness.KernelStatePresent.String(), got[0].KernelState)
+}
+
+func TestServeRoutesHandler_RequiresDoubleZeroIPForKernelMatch(t *testing.T) {
+	t.Parallel()
+
+	ipSrc := net.ParseIP("10.0.0.1")
+	ipDst := net.ParseIP("192.0.2.1")
+	nextHop := net.ParseIP("203.0.113.1")
+
+	routes := []*routing.Route{{
+		Src:     ipSrc,
+		Dst:     &net.IPNet{IP: ipDst, Mask: net.CIDRMask(32, 32)},
+		NextHop: nextHop,
+	}}
+
+	svc := &ProvisionRequest{
+		UserType:  UserTypeIBRL,
+		TunnelSrc: ipSrc,
+		TunnelNet: &net.IPNet{IP: nextHop, Mask: net.CIDRMask(32, 32)},
+		// DoubleZeroIP intentionally nil: should not match
+	}
+
+	rrw := &mockRouteReaderWriter{
+		RouteByProtocolFunc: func(_ int) ([]*routing.Route, error) { return routes, nil },
+	}
+	nc := &config.NetworkConfig{Moniker: config.EnvLocalnet}
+	db := &mockDBReader{
+		GetStateFunc: func(userTypes ...UserType) []*ProvisionRequest { return []*ProvisionRequest{svc} },
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/routes", nil)
+	rr := httptest.NewRecorder()
+
+	handler := ServeRoutesHandler(rrw, nil, db, nc)
+	handler.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	var got []Route
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&got))
+	require.Len(t, got, 0)
 }
 
 type mockLivenessManager struct {

@@ -116,8 +116,6 @@ pub struct DoubleZeroStatus {
 pub struct RouteRecord {
     #[tabled(rename = "Network")]
     pub network: String,
-    #[tabled(rename = "User Type")]
-    pub user_type: String,
     #[tabled(rename = "Local IP")]
     pub local_ip: String,
     #[tabled(rename = "Peer IP")]
@@ -130,6 +128,8 @@ pub struct RouteRecord {
     pub liveness_state: Option<String>,
     #[tabled(rename = "Liveness State Reason")]
     pub liveness_state_reason: Option<String>,
+    #[tabled(rename = "Peer Client Version")]
+    pub peer_client_version: Option<String>,
 }
 
 impl fmt::Display for RouteRecord {

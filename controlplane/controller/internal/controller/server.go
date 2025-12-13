@@ -15,6 +15,7 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	"github.com/gogo/protobuf/proto"
+
 	"github.com/malbeclabs/doublezero/config"
 	pb "github.com/malbeclabs/doublezero/controlplane/proto/controller/gen/pb-go"
 	telemetryconfig "github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/config"
@@ -549,7 +550,9 @@ func (c *Controller) Run(ctx context.Context) error {
 	}()
 
 	// start gRPC server
-	opts := []grpc.ServerOption{}
+	opts := []grpc.ServerOption{
+		grpc.UnaryInterceptor(srvMetrics.UnaryServerInterceptor()),
+	}
 	if c.tlsConfig != nil {
 		opts = append(opts, grpc.Creds(credentials.NewTLS(c.tlsConfig)))
 	}
@@ -575,6 +578,7 @@ func (c *Controller) Run(ctx context.Context) error {
 
 // GetConfig renders the latest device configuration based on cached device data
 func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.ConfigResponse, error) {
+	reqStart := time.Now()
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	device, ok := c.cache.Devices[req.GetPubkey()]
@@ -690,6 +694,7 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 	}
 	resp := &pb.ConfigResponse{Config: config}
 	getConfigMsgSize.Observe(float64(proto.Size(resp)))
+	getConfigDuration.Observe(float64(time.Since(reqStart).Seconds()))
 	return resp, nil
 }
 

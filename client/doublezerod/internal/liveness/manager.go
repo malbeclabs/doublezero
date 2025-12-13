@@ -80,6 +80,15 @@ type ManagerConfig struct {
 	// suggested: 4 * expected number of sessions
 	// default: 10,240
 	MaxEvents int
+
+	// When true, a peer that advertises passive mode via control packet
+	// (PeerAdvertisedPassive == true) is treated as dataplane-passive:
+	// liveness still tracks state and metrics, but will not install or
+	// uninstall its routes in the kernel for that session.
+	HonorPeerAdvertisedPassive bool
+
+	// Client version to advertise to peers in control packets.
+	ClientVersion string
 }
 
 // Validate fills defaults and enforces constraints for ManagerConfig.
@@ -136,15 +145,27 @@ func (c *ManagerConfig) Validate() error {
 	if c.MaxEvents < 0 {
 		return errors.New("maxEvents must be greater than 0")
 	}
+	if c.ClientVersion == "" {
+		return errors.New("clientVersion is required")
+	}
 	return nil
 }
 
+type Route struct {
+	routing.Route
+
+	// If true, the route will not be uninstalled from the kernel on route withdrawal
+	NoUninstall bool
+}
+
 type Manager interface {
-	RegisterRoute(r *routing.Route, iface string, port int) error
-	WithdrawRoute(r *routing.Route, iface string) error
+	RegisterRoute(r *Route, iface string, port int) error
+	WithdrawRoute(r *Route, iface string) error
 	LocalAddr() *net.UDPAddr
 	GetSessions() []SessionSnapshot
 	GetSession(peer Peer) (*Session, bool)
+	IsInstalled(rk RouteKey) bool
+	AdminDownRoute(r *Route, iface string)
 	Close() error
 	Err() <-chan error
 }
@@ -161,26 +182,37 @@ type manager struct {
 	cfg     *ManagerConfig
 	udp     UDPService // shared UDP transport
 	metrics *Metrics
+	cr      *routing.ConfiguredRoutes
 
 	sched *Scheduler // time-wheel/event-loop for TX/detect
 	recv  *Receiver  // UDP packet reader → HandleRx
 
-	mu        sync.Mutex
-	sessions  map[Peer]*Session           // active sessions keyed by Peer
-	desired   map[RouteKey]*routing.Route // routes we want installed
-	installed map[RouteKey]bool           // whether route is in kernel
+	mu       sync.Mutex
+	sessions map[Peer]*Session   // active sessions keyed by Peer
+	desired  map[RouteKey]*Route // routes we want installed
+
+	// installed tracks routes that this Manager believes it has installed
+	// in the kernel via Netlinker.RouteAdd, regardless of PassiveMode.
+	// Dataplane policy (PassiveMode and HonorPeerAdvertisedPassive) only
+	// affects whether we uninstall them on session down.
+	installed map[RouteKey]bool
 
 	// Rate-limited warnings for packets from unknown peers (not in sessions).
-	unkownPeerErrWarnEvery time.Duration
-	unkownPeerErrWarnLast  time.Time
-	unkownPeerErrWarnMu    sync.Mutex
+	unknownPeerErrWarnEvery time.Duration
+	unknownPeerErrWarnLast  time.Time
+	unknownPeerErrWarnMu    sync.Mutex
 }
 
 // NewManager constructs a Manager, opens the UDP socket, and launches the
 // receiver and scheduler loops. The context governs their lifetime.
-func NewManager(ctx context.Context, cfg *ManagerConfig) (*manager, error) {
+func NewManager(ctx context.Context, cfg *ManagerConfig, cr *routing.ConfiguredRoutes) (*manager, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("error validating manager config: %v", err)
+	}
+
+	clientVersion, err := ParseClientVersion(cfg.ClientVersion)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing client version: %v", err)
 	}
 
 	udp := cfg.UDP
@@ -193,7 +225,15 @@ func NewManager(ctx context.Context, cfg *ManagerConfig) (*manager, error) {
 	}
 
 	log := cfg.Logger
-	log.Info("liveness: manager starting", "localAddr", udp.LocalAddr().String(), "txMin", cfg.TxMin.String(), "rxMin", cfg.RxMin.String(), "detectMult", cfg.DetectMult, "passiveMode", cfg.PassiveMode, "peerMetrics", cfg.EnablePeerMetrics)
+	log.Info("liveness: manager starting",
+		"localAddr", udp.LocalAddr().String(),
+		"txMin", cfg.TxMin.String(),
+		"rxMin", cfg.RxMin.String(),
+		"detectMult", cfg.DetectMult,
+		"passiveMode", cfg.PassiveMode,
+		"peerMetrics", cfg.EnablePeerMetrics,
+		"honorPeerAdvertisedPassive", cfg.HonorPeerAdvertisedPassive,
+	)
 
 	ctx, cancel := context.WithCancel(ctx)
 	m := &manager{
@@ -204,12 +244,13 @@ func NewManager(ctx context.Context, cfg *ManagerConfig) (*manager, error) {
 		log: log,
 		cfg: cfg,
 		udp: udp,
+		cr:  cr,
 
 		sessions:  make(map[Peer]*Session),
-		desired:   make(map[RouteKey]*routing.Route),
+		desired:   make(map[RouteKey]*Route),
 		installed: make(map[RouteKey]bool),
 
-		unkownPeerErrWarnEvery: 5 * time.Second,
+		unknownPeerErrWarnEvery: 5 * time.Second,
 	}
 
 	m.metrics = newMetrics()
@@ -221,7 +262,7 @@ func NewManager(ctx context.Context, cfg *ManagerConfig) (*manager, error) {
 
 	// Wire up IO loops.
 	m.recv = NewReceiver(m.log, m.udp, m.HandleRx, m.metrics)
-	m.sched = NewScheduler(m.log, m.udp, m.onSessionDown, m.cfg.MaxEvents, m.cfg.EnablePeerMetrics, m.metrics)
+	m.sched = NewScheduler(m.log, m.udp, m.onSessionDown, m.cfg.MaxEvents, m.cfg.EnablePeerMetrics, m.metrics, m.cfg.PassiveMode, clientVersion)
 
 	// Receiver goroutine: parses control packets and dispatches to HandleRx.
 	m.wg.Add(1)
@@ -247,6 +288,18 @@ func NewManager(ctx context.Context, cfg *ManagerConfig) (*manager, error) {
 		}
 	}()
 
+	// If any routes are configured to be excluded, mark then as AdminDown immediately.
+	if m.cr != nil {
+		for ip := range m.cr.GetExcluded() {
+			r := &routing.Route{
+				Src:     net.ParseIP(ip),
+				Dst:     &net.IPNet{IP: net.ParseIP(ip), Mask: net.CIDRMask(32, 32)},
+				NextHop: net.ParseIP(ip),
+			}
+			m.AdminDownRoute(&Route{Route: *r}, "doublezero0")
+		}
+	}
+
 	return m, nil
 }
 
@@ -258,25 +311,35 @@ func (m *manager) Err() <-chan error {
 // RegisterRoute declares interest in monitoring reachability for route r via iface.
 // It optionally installs the route immediately in PassiveMode, then creates or
 // reuses a liveness Session and schedules immediate TX to begin handshake.
-func (m *manager) RegisterRoute(r *routing.Route, iface string, port int) error {
-	// Check that the route src and dst are valid IPv4 addresses.
-	if r.Src == nil || r.Dst.IP == nil {
-		return fmt.Errorf("error registering route: nil source (%s) or destination IP (%s)", r.Src.String(), r.Dst.IP.String())
+func (m *manager) RegisterRoute(r *Route, iface string, port int) error {
+	var srcIP, dstIP string
+	if r.Src != nil && r.Src.To4() != nil {
+		srcIP = r.Src.To4().String()
 	}
-	if r.Src.To4() == nil || r.Dst.IP.To4() == nil {
-		return fmt.Errorf("error registering route: non-IPv4 source (%s) or destination IP (%s)", r.Src.String(), r.Dst.IP.String())
+	if r.Dst.IP != nil && r.Dst.IP.To4() != nil {
+		dstIP = r.Dst.IP.To4().String()
 	}
-	srcIP := r.Src.To4().String()
-	dstIP := r.Dst.IP.To4().String()
 
+	// Check that the route src and dst are valid IPv4 addresses.
+	if srcIP == "" || dstIP == "" {
+		return fmt.Errorf("error registering route: non-IPv4 source (%s) or destination IP (%s)", srcIP, dstIP)
+	}
+
+	rk := routeKeyFor(iface, r)
 	if m.cfg.PassiveMode {
-		// In passive-mode we still update the kernel immediately (caller’s policy),
-		// while also running liveness for observability.
-		if err := m.cfg.Netlinker.RouteAdd(r); err != nil {
+		// In PassiveMode we update the kernel immediately, while also running liveness
+		// for observability. We still track installed[] so onSessionDown can log
+		// accurately while leaving the route in place.
+		if err := m.cfg.Netlinker.RouteAdd(&r.Route); err != nil {
 			m.metrics.RouteInstallFailures.WithLabelValues(iface, srcIP).Inc()
 			return fmt.Errorf("error registering route: %v", err)
 		}
 		m.metrics.routeInstall(iface, srcIP)
+
+		m.mu.Lock()
+		m.installed[rk] = true
+		m.metrics.InstalledMapSize.Set(float64(len(m.installed)))
+		m.mu.Unlock()
 	}
 
 	peerAddr, err := net.ResolveUDPAddr("udp", peerAddrFor(r, port))
@@ -287,9 +350,9 @@ func (m *manager) RegisterRoute(r *routing.Route, iface string, port int) error 
 		return fmt.Errorf("error resolving peer address: nil address")
 	}
 
-	k := routeKeyFor(iface, r)
 	m.mu.Lock()
-	m.desired[k] = r
+	m.desired[rk] = r
+	m.metrics.DesiredMapSize.Set(float64(len(m.desired)))
 	m.mu.Unlock()
 
 	peer := Peer{Interface: iface, LocalIP: srcIP, PeerIP: dstIP}
@@ -318,6 +381,7 @@ func (m *manager) RegisterRoute(r *routing.Route, iface string, port int) error 
 		lastUpdated:   time.Now(),
 	}
 	m.sessions[peer] = sess
+	m.metrics.SessionsMapSize.Set(float64(len(m.sessions)))
 	m.metrics.sessionStateTransition(peer, nil, StateDown, "register_route", m.cfg.EnablePeerMetrics)
 	if m.cfg.EnablePeerMetrics {
 		// Set initial detect time based on current view (localRxMin until peer timers arrive)
@@ -335,7 +399,7 @@ func (m *manager) RegisterRoute(r *routing.Route, iface string, port int) error 
 
 // WithdrawRoute removes interest in r via iface. It tears down the session,
 // marks it not managed (alive=false), and withdraws the route if needed.
-func (m *manager) WithdrawRoute(r *routing.Route, iface string) error {
+func (m *manager) WithdrawRoute(r *Route, iface string) error {
 	// Check that the route src and dst are valid IPv4 addresses.
 	if r.Src == nil || r.Dst.IP == nil {
 		return fmt.Errorf("error withdrawing route: nil source or destination IP")
@@ -348,9 +412,9 @@ func (m *manager) WithdrawRoute(r *routing.Route, iface string) error {
 
 	m.log.Info("liveness: withdrawing route", "route", r.String(), "iface", iface)
 
-	if m.cfg.PassiveMode {
+	if m.cfg.PassiveMode && !r.NoUninstall {
 		// Passive-mode: caller wants immediate kernel update independent of liveness.
-		if err := m.cfg.Netlinker.RouteDelete(r); err != nil {
+		if err := m.cfg.Netlinker.RouteDelete(&r.Route); err != nil {
 			m.metrics.RouteUninstallFailures.WithLabelValues(iface, srcIP).Inc()
 			return fmt.Errorf("error withdrawing route: %v", err)
 		}
@@ -360,8 +424,10 @@ func (m *manager) WithdrawRoute(r *routing.Route, iface string) error {
 	rk := routeKeyFor(iface, r)
 	m.mu.Lock()
 	delete(m.desired, rk)
+	m.metrics.DesiredMapSize.Set(float64(len(m.desired)))
 	wasInstalled := m.installed[rk]
 	delete(m.installed, rk)
+	m.metrics.InstalledMapSize.Set(float64(len(m.installed)))
 	m.mu.Unlock()
 
 	peer := Peer{Interface: iface, LocalIP: srcIP, PeerIP: dstIP}
@@ -370,22 +436,25 @@ func (m *manager) WithdrawRoute(r *routing.Route, iface string) error {
 	m.mu.Lock()
 	if sess := m.sessions[peer]; sess != nil {
 		sess.mu.Lock()
+		state := sess.state
 		sess.alive = false
 		sess.mu.Unlock()
-		m.metrics.cleanupWithdrawRoute(peer, m.cfg.EnablePeerMetrics)
+		m.metrics.cleanupWithdrawRoute(peer, state, m.cfg.EnablePeerMetrics)
 	}
 	delete(m.sessions, peer)
+	m.metrics.SessionsMapSize.Set(float64(len(m.sessions)))
 	m.mu.Unlock()
 
 	// If we previously installed the route (and not in PassiveMode), remove it now.
-	if wasInstalled && !m.cfg.PassiveMode {
-		err := m.cfg.Netlinker.RouteDelete(r)
+	if wasInstalled && !m.cfg.PassiveMode && !r.NoUninstall {
+		err := m.cfg.Netlinker.RouteDelete(&r.Route)
 		if err != nil {
 			m.metrics.RouteUninstallFailures.WithLabelValues(iface, srcIP).Inc()
 			return err
 		}
 		m.metrics.routeWithdraw(iface, srcIP)
 	}
+
 	return nil
 }
 
@@ -406,9 +475,25 @@ func (m *manager) LocalAddr() *net.UDPAddr {
 func (m *manager) GetSessions() []SessionSnapshot {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	snapshots := make([]SessionSnapshot, 0, len(m.sessions))
 	for _, sess := range m.sessions {
-		snapshots = append(snapshots, sess.Snapshot())
+		snap := sess.Snapshot()
+
+		rk := routeKeyFor(snap.Peer.Interface, &snap.Route)
+		_, desired := m.desired[rk]
+		installed := m.installed[rk]
+
+		switch {
+		case !desired:
+			snap.ExpectedKernelState = KernelStateUnknown
+		case installed:
+			snap.ExpectedKernelState = KernelStatePresent
+		default:
+			snap.ExpectedKernelState = KernelStateAbsent
+		}
+
+		snapshots = append(snapshots, snap)
 	}
 	return snapshots
 }
@@ -429,7 +514,11 @@ func (m *manager) HasSession(peer Peer) bool {
 	return ok
 }
 
-// GetInstalled returns the installed route for the given peer.
+// IsInstalled reports whether this Manager believes it installed the route in
+// the kernel for this key. This is only meaningful when the Manager is actively
+// managing dataplane (PassiveMode == false and the session is not treated as
+// peer-passive). In PassiveMode or peer-passive cases this may return false
+// even if the route exists in the kernel.
 func (m *manager) IsInstalled(rk RouteKey) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -495,13 +584,13 @@ func (m *manager) HandleRx(ctrl *ControlPacket, peer Peer) {
 		m.metrics.UnknownPeerPackets.WithLabelValues(peer.Interface, peer.LocalIP).Inc()
 
 		// Throttle warnings for packets from unknown peers to avoid log spam.
-		m.unkownPeerErrWarnMu.Lock()
-		if m.unkownPeerErrWarnLast.IsZero() || time.Since(m.unkownPeerErrWarnLast) >= m.unkownPeerErrWarnEvery {
-			m.unkownPeerErrWarnLast = time.Now()
-			m.log.Warn("liveness: received control packet for unknown peer", "peer", peer.String(), "peerDiscr", ctrl.PeerDiscr, "localDiscr", ctrl.LocalDiscr, "state", ctrl.State)
+		m.unknownPeerErrWarnMu.Lock()
+		if m.unknownPeerErrWarnLast.IsZero() || time.Since(m.unknownPeerErrWarnLast) >= m.unknownPeerErrWarnEvery {
+			m.unknownPeerErrWarnLast = time.Now()
+			m.log.Debug("liveness: received control packet for unknown peer", "peer", peer.String(), "peerDiscr", ctrl.PeerDiscr, "localDiscr", ctrl.LocalDiscr, "state", ctrl.State)
 
 		}
-		m.unkownPeerErrWarnMu.Unlock()
+		m.unknownPeerErrWarnMu.Unlock()
 
 		m.mu.Unlock()
 		return
@@ -556,16 +645,6 @@ func (m *manager) HandleRx(ctrl *ControlPacket, peer Peer) {
 			go m.onSessionDown(sess)
 		}
 	} else {
-		m.log.Debug("liveness: HandleRx no state change",
-			"peer", peer.String(),
-			"state", sess.state.String(),
-			"convUpStart", prevSnap.ConvUpStart.String(),
-			"convDownStart", prevSnap.ConvDownStart.String(),
-			"upSince", prevSnap.UpSince.UTC().String(),
-			"downSince", prevSnap.DownSince.UTC().String(),
-			"lastDownReason", prevSnap.LastDownReason.String(),
-		)
-
 		// No state change: just keep detect ticking for active states.
 		switch sess.GetState() {
 		case StateUp, StateInit:
@@ -587,7 +666,7 @@ func (m *manager) HandleRx(ctrl *ControlPacket, peer Peer) {
 }
 
 // AdminDownRoute transitions a session to AdminDown and withdraws the route.
-func (m *manager) AdminDownRoute(r *routing.Route, iface string) {
+func (m *manager) AdminDownRoute(r *Route, iface string) {
 	peer := Peer{
 		Interface: iface,
 		LocalIP:   r.Src.To4().String(),
@@ -619,38 +698,72 @@ func (m *manager) AdminDownRoute(r *routing.Route, iface string) {
 	sess.mu.Unlock()
 
 	if prev != StateAdminDown {
-		// Withdraw route as an admin-driven down.
-		go m.onSessionDown(sess)
+		// Withdraw route as an admin-driven down (respecting PassiveMode /
+		// effective-passive for whether we touch the kernel).
+		m.onSessionDown(sess)
+
+		// Regardless of dataplane policy, an admin-down should clear our
+		// internal "installed" bookkeeping so IsInstalled() returns false.
+		rk := routeKeyFor(iface, r)
+		m.mu.Lock()
+		m.installed[rk] = false
+		m.metrics.InstalledMapSize.Set(float64(len(m.installed)))
+		m.mu.Unlock()
+
 		// Ensure we send at least one AdminDown packet promptly.
 		m.sched.scheduleTx(now, sess)
+
+		// Update metrics for the state transition.
+		m.metrics.sessionStateTransition(peer, &prev, StateAdminDown, "admin_down_route", m.cfg.EnablePeerMetrics)
 	}
 }
 
 // onSessionUp installs the route if it is desired and not already installed.
-// In PassiveMode, install was already done at registration time.
+// In PassiveMode, install was already done at registration time and we do
+// not touch installed[] here.
+//
+// Peer-advertised passive does NOT prevent installation: it only affects
+// the Down path (onSessionDown), where we may decide to leave the route
+// in place and skip RouteDelete.
 func (m *manager) onSessionUp(sess *Session) {
 	snap := sess.Snapshot()
 	peer := snap.Peer
 	rk := routeKeyFor(peer.Interface, &snap.Route)
+
 	m.mu.Lock()
 	route := m.desired[rk]
-	if route == nil || m.installed[rk] {
+	alreadyInstalled := m.installed[rk]
+
+	var logSuffix string
+
+	// If route is missing from desired, already installed, or we’re in
+	// global PassiveMode, do not touch dataplane or installed[] here.
+	if route == nil || alreadyInstalled || m.cfg.PassiveMode {
 		m.mu.Unlock()
-		return
-	}
-	m.installed[rk] = true
-	m.mu.Unlock()
-	if !m.cfg.PassiveMode {
-		err := m.cfg.Netlinker.RouteAdd(route)
-		if err != nil {
-			m.log.Error("liveness: error adding route on session up", "error", err, "route", route.String())
+
+		switch {
+		case m.cfg.PassiveMode:
+			logSuffix = " (global passive; no-op)"
+		case alreadyInstalled:
+			logSuffix = " (already installed; no-op)"
+		case route == nil:
+			logSuffix = " (not desired; no-op)"
+		}
+	} else {
+		m.installed[rk] = true
+		m.metrics.InstalledMapSize.Set(float64(len(m.installed)))
+		m.mu.Unlock()
+
+		if err := m.cfg.Netlinker.RouteAdd(&route.Route); err != nil {
+			m.log.Error("liveness: error adding route on session up",
+				"error", err, "route", route.String())
 			m.metrics.RouteInstallFailures.WithLabelValues(peer.Interface, peer.LocalIP).Inc()
 		} else {
 			m.metrics.routeInstall(peer.Interface, peer.LocalIP)
 		}
 	}
 
-	// Convergence-to-up duration: from first valid RX while Down to post-install.
+	// Convergence-to-up metrics
 	now := time.Now()
 	var convergence time.Duration
 	if !snap.ConvUpStart.IsZero() && now.After(snap.ConvUpStart) {
@@ -661,29 +774,37 @@ func (m *manager) onSessionUp(sess *Session) {
 	sess.convUpStart = time.Time{}
 	sess.mu.Unlock()
 
-	m.log.Debug("liveness: session up", "peer", peer.String(), "route", route.String(), "convergence", convergence.String(), "upSince", snap.UpSince.UTC().String())
+	m.log.Info("liveness: session up"+logSuffix,
+		"peer", peer.String(),
+		"route", snap.Route.String(),
+		"convergence", convergence.String(),
+		"upSince", snap.UpSince.UTC().String(),
+		"peerAdvertisedMode", snap.PeerAdvertisedMode.String(),
+		"peerClientVersion", snap.PeerClientVersion.String(),
+	)
 }
 
-// onSessionDown withdraws the route if currently installed (unless PassiveMode).
+// onSessionDown withdraws the route if currently installed (unless PassiveMode
+// or the session is effectively passive due to peer advertising passive mode).
 func (m *manager) onSessionDown(sess *Session) {
 	snap := sess.Snapshot()
 	peer := snap.Peer
 	rk := routeKeyFor(peer.Interface, &snap.Route)
 
+	effectivelyPassive := m.isPeerEffectivelyPassive(snap)
+
 	m.mu.Lock()
 	route := m.desired[rk]
 	wasInstalled := m.installed[rk]
-	m.installed[rk] = false
-	m.mu.Unlock()
 
-	// If we never installed it in this epoch or it's no longer desired, then log debug and return.
-	if !wasInstalled || route == nil {
-		m.log.Debug("liveness: session down (no-op: not installed or not desired)",
-			"peer", peer.String(),
-			"routePresent", route != nil,
-			"downSince", snap.DownSince.UTC().String(),
-			"downReason", snap.LastDownReason.String())
-		return
+	if m.cfg.PassiveMode || effectivelyPassive {
+		m.mu.Unlock()
+	} else {
+		if wasInstalled {
+			m.installed[rk] = false
+			m.metrics.InstalledMapSize.Set(float64(len(m.installed)))
+		}
+		m.mu.Unlock()
 	}
 
 	// At this point we had a desired, installed route: record convergence-to-down
@@ -698,11 +819,43 @@ func (m *manager) onSessionDown(sess *Session) {
 	sess.convDownStart = time.Time{}
 	sess.mu.Unlock()
 
-	// If we're not in PassiveMode, delete the route.
-	if !m.cfg.PassiveMode {
-		err := m.cfg.Netlinker.RouteDelete(route)
-		if err != nil {
-			m.log.Error("liveness: error deleting route on session down", "error", err, "route", route.String())
+	if !wasInstalled || route == nil {
+		m.log.Debug("liveness: session down (no-op: not installed or not desired)",
+			"peer", peer.String(),
+			"routePresent", route != nil,
+			"downSince", snap.DownSince.UTC().String(),
+			"downReason", snap.LastDownReason.String(),
+			"peerClientVersion", snap.PeerClientVersion.String(),
+		)
+		return
+	}
+
+	if m.cfg.PassiveMode {
+		m.log.Info("liveness: session down (global passive; keeping route)",
+			"peer", peer.String(),
+			"route", snap.Route.String(),
+			"downSince", snap.DownSince.UTC().String(),
+			"downReason", snap.LastDownReason.String(),
+			"peerClientVersion", snap.PeerClientVersion.String(),
+		)
+		return
+	}
+
+	if effectivelyPassive {
+		m.log.Info("liveness: session down (peer passive; keeping route)",
+			"peer", peer.String(),
+			"route", snap.Route.String(),
+			"downSince", snap.DownSince.UTC().String(),
+			"downReason", snap.LastDownReason.String(),
+			"peerClientVersion", snap.PeerClientVersion.String(),
+		)
+		return
+	}
+
+	if !route.NoUninstall {
+		if err := m.cfg.Netlinker.RouteDelete(&route.Route); err != nil {
+			m.log.Error("liveness: error deleting route on session down",
+				"error", err, "route", route.String())
 			m.metrics.RouteUninstallFailures.WithLabelValues(peer.Interface, peer.LocalIP).Inc()
 		} else {
 			m.metrics.routeWithdraw(peer.Interface, peer.LocalIP)
@@ -714,7 +867,18 @@ func (m *manager) onSessionDown(sess *Session) {
 		"route", snap.Route.String(),
 		"convergence", convergence.String(),
 		"downSince", snap.DownSince.UTC().String(),
-		"downReason", snap.LastDownReason.String())
+		"downReason", snap.LastDownReason.String(),
+		"peerClientVersion", snap.PeerClientVersion.String(),
+	)
+}
+
+// isPeerEffectivelyPassive returns true when this session should not have its
+// dataplane (kernel route) managed due to peer-advertised passive mode.
+//
+// Global PassiveMode is handled separately: it disables dataplane changes for
+// all sessions, but we still track installed[] only for non-passive sessions.
+func (m *manager) isPeerEffectivelyPassive(snap SessionSnapshot) bool {
+	return m.cfg.HonorPeerAdvertisedPassive && snap.PeerAdvertisedMode == PeerModePassive
 }
 
 // rand32 returns a non-zero random uint32 for use as a discriminator.
@@ -730,11 +894,22 @@ func rand32() uint32 {
 }
 
 // routeKeyFor builds a RouteKey for map indexing based on interface + route fields.
-func routeKeyFor(iface string, r *routing.Route) RouteKey {
-	return RouteKey{Interface: iface, SrcIP: r.Src.To4().String(), Table: r.Table, DstPrefix: r.Dst.IP.To4().String(), NextHop: r.NextHop.To4().String()}
+func routeKeyFor(iface string, r *Route) RouteKey {
+	var srcIP, dstIP string
+	if r.Src != nil && r.Src.To4() != nil {
+		srcIP = r.Src.To4().String()
+	}
+	if r.Dst.IP != nil && r.Dst.IP.To4() != nil {
+		dstIP = r.Dst.IP.To4().String()
+	}
+	var nextHopIP string
+	if r.NextHop != nil && r.NextHop.To4() != nil {
+		nextHopIP = r.NextHop.To4().String()
+	}
+	return RouteKey{Interface: iface, SrcIP: srcIP, Table: r.Table, DstPrefix: dstIP, NextHop: nextHopIP}
 }
 
 // peerAddrFor returns "<dst-ip>:<port>" for UDP control messages to a peer.
-func peerAddrFor(r *routing.Route, port int) string {
+func peerAddrFor(r *Route, port int) string {
 	return fmt.Sprintf("%s:%d", r.Dst.IP.To4().String(), port)
 }

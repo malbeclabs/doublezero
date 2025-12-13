@@ -4,6 +4,11 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"strings"
+)
+
+const (
+	FlagPassive uint8 = 1 << 0
 )
 
 var (
@@ -21,6 +26,10 @@ const (
 	StateDown                   // no session detected or timed out
 	StateInit                   // attempting to establish connectivity
 	StateUp                     // session fully established
+)
+
+var (
+	allStates = []State{StateAdminDown, StateDown, StateInit, StateUp}
 )
 
 // String returns a human-readable string representation of the state.
@@ -43,14 +52,16 @@ func (s State) String() string {
 // ControlPacket represents the wire format of a minimal BFD control packet.
 // Fields mirror RFC 5880 §4.1 in a compact form using microsecond units for timers.
 type ControlPacket struct {
-	Version         uint8  // protocol version; expected to be 1
-	State           State  // sender's current session state
-	DetectMult      uint8  // detection multiplier (used by peer for detect timeout)
-	Length          uint8  // total length, always 40 for this fixed-size implementation
-	LocalDiscr      uint32 // sender's discriminator (unique session ID)
-	PeerDiscr       uint32 // discriminator of the remote session (echo back)
-	DesiredMinTxUs  uint32 // minimum TX interval desired by sender (microseconds)
-	RequiredMinRxUs uint32 // minimum RX interval the sender can handle (microseconds)
+	Version         uint8         // protocol version; expected to be 1
+	State           State         // sender's current session state
+	DetectMult      uint8         // detection multiplier (used by peer for detect timeout)
+	Length          uint8         // total length, always 40 for this fixed-size implementation
+	LocalDiscr      uint32        // sender's discriminator (unique session ID)
+	PeerDiscr       uint32        // discriminator of the remote session (echo back)
+	DesiredMinTxUs  uint32        // minimum TX interval desired by sender (microseconds)
+	RequiredMinRxUs uint32        // minimum RX interval the sender can handle (microseconds)
+	Flags           uint8         // flags (e.g. passive mode)
+	ClientVersion   ClientVersion // build/version info of the sender
 }
 
 // Marshal serializes a ControlPacket into its fixed 40-byte wire format.
@@ -66,7 +77,12 @@ type ControlPacket struct {
 //
 // 12–15: DesiredMinTxUs
 // 16–19: RequiredMinRxUs
-// 20–39: zero padding (unused / reserved)
+// 20: Flags
+// 21: ClientVersion.Major
+// 22: ClientVersion.Minor
+// 23: ClientVersion.Patch
+// 24: ClientVersion.Channel
+// 25–39: zero padding (unused / reserved)
 //
 // Only a subset of the full BFD header is implemented; authentication and
 // optional fields are omitted for simplicity.
@@ -81,7 +97,14 @@ func (c *ControlPacket) Marshal() []byte {
 	be.PutUint32(b[8:12], c.PeerDiscr)
 	be.PutUint32(b[12:16], c.DesiredMinTxUs)
 	be.PutUint32(b[16:20], c.RequiredMinRxUs)
-	// Remaining bytes [20:40] are reserved/padding → left zeroed
+	b[20] = c.Flags
+
+	// ClientVersion
+	b[21] = c.ClientVersion.Major
+	b[22] = c.ClientVersion.Minor
+	b[23] = c.ClientVersion.Patch
+	b[24] = uint8(c.ClientVersion.Channel)
+	// Remaining bytes [25:40] are reserved/padding → left zeroed
 	return b
 }
 
@@ -113,5 +136,36 @@ func UnmarshalControlPacket(b []byte) (*ControlPacket, error) {
 	c.PeerDiscr = rd(8)
 	c.DesiredMinTxUs = rd(12)
 	c.RequiredMinRxUs = rd(16)
+	c.Flags = b[20]
+
+	c.ClientVersion = ClientVersion{
+		Major:   b[21],
+		Minor:   b[22],
+		Patch:   b[23],
+		Channel: ClientVersionChannel(b[24]),
+	}
+
 	return c, nil
+}
+
+// Mark this packet as “peer is passive / monitoring-only” (advertises passive mode).
+func (c *ControlPacket) SetPassive() {
+	c.Flags |= FlagPassive
+}
+
+// Returns true if the peer advertised passive mode.
+func (c *ControlPacket) IsPassive() bool {
+	return c.Flags&FlagPassive != 0
+}
+
+// Returns a human-readable string representation of the flags.
+func (c *ControlPacket) FlagsString() string {
+	if c.Flags == 0 {
+		return "none"
+	}
+	var parts []string
+	if c.Flags&FlagPassive != 0 {
+		parts = append(parts, "passive")
+	}
+	return strings.Join(parts, ",")
 }

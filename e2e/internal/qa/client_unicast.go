@@ -1,12 +1,17 @@
 package qa
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
+	"testing"
 	"time"
 
 	pb "github.com/malbeclabs/doublezero/e2e/proto/qa/gen/pb-go"
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -74,7 +79,7 @@ type UnicastTestConnectivityResult struct {
 	PacketsReceived uint32
 }
 
-func (c *Client) TestUnicastConnectivity(ctx context.Context, targetClient *Client) (*UnicastTestConnectivityResult, error) {
+func (c *Client) TestUnicastConnectivity(t *testing.T, ctx context.Context, targetClient *Client) (*UnicastTestConnectivityResult, error) {
 	sourceIP := c.publicIP.To4().String()
 	targetIP := targetClient.publicIP.To4().String()
 
@@ -135,8 +140,24 @@ func (c *Client) TestUnicastConnectivity(ctx context.Context, targetClient *Clie
 			)
 		}
 
-		// If we have more than the threshold of packet loss, return an error, otherwise log.
-		if resp.PacketsReceived <= resp.PacketsSent-unicastPingProbeLossThreshold {
+		// If there are any losses, run a traceroute and dump the output for visibility.
+		res, err := c.TracerouteRaw(ctx, targetIP)
+		require.NoError(t, err)
+		t.Logf("Traceroute for %s -> %s: %s", c.Host, targetClient.Host, res)
+		isLossOutsideNetwork, err := isLossOutsideNetwork(res)
+		if err != nil {
+			return nil, fmt.Errorf("failed to check if loss is outside of network: %w", err)
+		}
+		if isLossOutsideNetwork {
+			c.log.Warn("Packet loss detected in traceroute outside of network; ignoring for connectivity test",
+				"sourceHost", c.Host,
+				"targetHost", targetClient.Host,
+				"iface", iface,
+				"sourceDevice", clientDevice.Code,
+				"targetDevice", otherClientDevice.Code,
+			)
+		} else if resp.PacketsReceived <= resp.PacketsSent-unicastPingProbeLossThreshold {
+			// If we have more than the threshold of packet loss, return an error.
 			return nil, fmt.Errorf("packet loss detected: sent=%d, received=%d from %s to %s", resp.PacketsSent, resp.PacketsReceived, sourceIP, targetIP)
 		} else {
 			c.log.Warn("Partial packet loss detected",
@@ -182,4 +203,68 @@ func (c *Client) TracerouteRaw(ctx context.Context, targetIP string) (string, er
 		return "", fmt.Errorf("failed to traceroute: %w", err)
 	}
 	return strings.Join(output.Output, "\n"), nil
+}
+
+func isLossOutsideNetwork(mtr string) (bool, error) {
+	hops, err := parseMTR(mtr)
+	if err != nil {
+		return false, err
+	}
+	if len(hops) == 0 {
+		return false, nil
+	}
+
+	firstLoss := hops[0].Loss > 0
+	lastLoss := hops[len(hops)-1].Loss > 0
+
+	middleLoss := false
+	for i := 1; i < len(hops)-1; i++ {
+		if hops[i].Loss > 0 {
+			middleLoss = true
+			break
+		}
+	}
+
+	// outside-of-network = ONLY first hop OR ONLY last hop has loss
+	if firstLoss && !lastLoss && !middleLoss {
+		return true, nil
+	}
+	if lastLoss && !firstLoss && !middleLoss {
+		return true, nil
+	}
+
+	return false, nil
+}
+
+type Hop struct {
+	Num  int
+	Loss float64
+	Raw  string
+}
+
+func parseMTR(input string) ([]Hop, error) {
+	re := regexp.MustCompile(`^\s*(\d+)\.\|\-\-\s+(\S+)\s+(\d+(?:\.\d+)?)(?:%)?\s+(\d+)\b`)
+
+	var hops []Hop
+	sc := bufio.NewScanner(strings.NewReader(input))
+	for sc.Scan() {
+		line := sc.Text()
+		m := re.FindStringSubmatch(line)
+		if m == nil {
+			continue
+		}
+		num, err := strconv.Atoi(m[1])
+		if err != nil {
+			return nil, fmt.Errorf("parse hop num %q: %w", m[1], err)
+		}
+		loss, err := strconv.ParseFloat(m[3], 64)
+		if err != nil {
+			return nil, fmt.Errorf("parse loss %q: %w", m[3], err)
+		}
+		hops = append(hops, Hop{Num: num, Loss: loss, Raw: line})
+	}
+	if err := sc.Err(); err != nil {
+		return nil, err
+	}
+	return hops, nil
 }

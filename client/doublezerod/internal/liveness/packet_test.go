@@ -18,6 +18,12 @@ func TestClient_Liveness_Packet_MarshalEncodesHeaderAndFields(t *testing.T) {
 		PeerDiscr:       0x55667788,
 		DesiredMinTxUs:  0x01020304,
 		RequiredMinRxUs: 0x0A0B0C0D,
+		ClientVersion: ClientVersion{
+			Major:   1,
+			Minor:   2,
+			Patch:   3,
+			Channel: VersionChannelDev,
+		},
 	}
 
 	b := cp.Marshal()
@@ -32,7 +38,14 @@ func TestClient_Liveness_Packet_MarshalEncodesHeaderAndFields(t *testing.T) {
 	require.Equal(t, uint32(0x01020304), binary.BigEndian.Uint32(b[12:16]))
 	require.Equal(t, uint32(0x0A0B0C0D), binary.BigEndian.Uint32(b[16:20]))
 
-	require.True(t, bytes.Equal(b[20:40], make([]byte, 20)))
+	// ClientVersion encoding
+	require.Equal(t, uint8(1), b[21])
+	require.Equal(t, uint8(2), b[22])
+	require.Equal(t, uint8(3), b[23])
+	require.Equal(t, uint8(VersionChannelDev), b[24])
+
+	// Remaining padding bytes [25:39] are zero
+	require.True(t, bytes.Equal(b[25:40], make([]byte, 15)))
 }
 
 func TestClient_Liveness_Packet_UnmarshalRoundTrip(t *testing.T) {
@@ -45,6 +58,12 @@ func TestClient_Liveness_Packet_UnmarshalRoundTrip(t *testing.T) {
 		PeerDiscr:       2,
 		DesiredMinTxUs:  3,
 		RequiredMinRxUs: 4,
+		ClientVersion: ClientVersion{
+			Major:   9,
+			Minor:   8,
+			Patch:   7,
+			Channel: VersionChannelBeta,
+		},
 	}
 	b := orig.Marshal()
 	got, err := UnmarshalControlPacket(b)
@@ -58,6 +77,9 @@ func TestClient_Liveness_Packet_UnmarshalRoundTrip(t *testing.T) {
 	require.Equal(t, uint32(2), got.PeerDiscr)
 	require.Equal(t, uint32(3), got.DesiredMinTxUs)
 	require.Equal(t, uint32(4), got.RequiredMinRxUs)
+
+	// ClientVersion round-trip
+	require.Equal(t, orig.ClientVersion, got.ClientVersion)
 }
 
 func TestClient_Liveness_Packet_UnmarshalShort(t *testing.T) {
@@ -106,5 +128,52 @@ func TestClient_Liveness_Packet_PaddingRemainsZero(t *testing.T) {
 	t.Parallel()
 	cp := &ControlPacket{Version: 3, State: StateDown, DetectMult: 5}
 	b := cp.Marshal()
-	require.True(t, bytes.Equal(b[20:], make([]byte, 20)))
+
+	// Flags (20) and ClientVersion (21–24) are part of the defined header;
+	// only the remaining padding bytes must be zero.
+	require.True(t, bytes.Equal(b[25:40], make([]byte, 15)))
+}
+
+func TestClient_Liveness_Packet_PassiveFlagRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	cp := &ControlPacket{
+		Version:         1,
+		State:           StateUp,
+		DetectMult:      3,
+		LocalDiscr:      0x11223344,
+		PeerDiscr:       0x55667788,
+		DesiredMinTxUs:  0x01020304,
+		RequiredMinRxUs: 0x0A0B0C0D,
+	}
+	require.False(t, cp.IsPassive())
+	require.Equal(t, "none", cp.FlagsString())
+
+	cp.SetPassive()
+	require.True(t, cp.IsPassive())
+	require.Equal(t, "passive", cp.FlagsString())
+
+	b := cp.Marshal()
+	require.Len(t, b, 40)
+	require.Equal(t, uint8(FlagPassive), b[20], "passive flag should be encoded at byte 20")
+
+	got, err := UnmarshalControlPacket(b)
+	require.NoError(t, err)
+	require.True(t, got.IsPassive())
+	require.Equal(t, "passive", got.FlagsString())
+}
+
+func TestClient_Liveness_Packet_SetPassiveIsIdempotent(t *testing.T) {
+	t.Parallel()
+
+	cp := &ControlPacket{Version: 1, State: StateUp, DetectMult: 1}
+	require.False(t, cp.IsPassive())
+
+	cp.SetPassive()
+	require.True(t, cp.IsPassive())
+	firstFlags := cp.Flags
+
+	cp.SetPassive()
+	require.True(t, cp.IsPassive())
+	require.Equal(t, firstFlags, cp.Flags, "SetPassive should not flip other bits")
 }

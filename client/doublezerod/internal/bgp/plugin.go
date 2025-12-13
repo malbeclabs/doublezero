@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net"
 	"net/netip"
+	"sync/atomic"
 	"time"
 
 	"github.com/jwhited/corebgp"
@@ -17,9 +18,12 @@ type Plugin struct {
 	PeerStatusChan    chan SessionEvent
 	RouteSrc          net.IP
 	RouteTable        int // kernel routing table to target for writing/removing
-	FlushRoutes       bool
 	NoInstall         bool
 	RouteReaderWriter RouteReaderWriter
+
+	// These fields are used to track the initial establishment of the BGP session.
+	startedAt              time.Time
+	initialallyEstablished atomic.Bool
 }
 
 func NewBgpPlugin(
@@ -27,7 +31,6 @@ func NewBgpPlugin(
 	routeSrc net.IP,
 	routeTable int,
 	peerStatus chan SessionEvent,
-	flushRoutes bool,
 	noInstall bool,
 	routeReaderWriter RouteReaderWriter) *Plugin {
 	return &Plugin{
@@ -35,9 +38,9 @@ func NewBgpPlugin(
 		RouteSrc:          routeSrc,
 		RouteTable:        routeTable,
 		PeerStatusChan:    peerStatus,
-		FlushRoutes:       flushRoutes,
 		NoInstall:         noInstall,
 		RouteReaderWriter: routeReaderWriter,
+		startedAt:         time.Now(),
 	}
 }
 
@@ -62,7 +65,17 @@ func (p *Plugin) OnOpenMessage(peer corebgp.PeerConfig, routerID netip.Addr, cap
 }
 
 func (p *Plugin) OnEstablished(peer corebgp.PeerConfig, writer corebgp.UpdateMessageWriter) corebgp.UpdateMessageHandler {
-	slog.Info("bgp: peer established")
+	if p.initialallyEstablished.CompareAndSwap(false, true) {
+		// If this is the first time we've established the session, record the duration.
+		// If the session is closed and then re-established within the lifetime of the same BGP plugin,
+		// we don't want to record the duration again since we have no starting time to compare to for
+		// those instances.
+		duration := time.Since(p.startedAt)
+		MetricSessionEstablishedDuration.WithLabelValues(peer.RemoteAddress.String()).Observe(duration.Seconds())
+		slog.Info("bgp: peer established", "duration", duration.String(), "peer", peer.RemoteAddress)
+	} else {
+		slog.Info("bgp: peer re-established", "peer", peer.RemoteAddress)
+	}
 	for _, nlri := range p.AdvertisedNLRI {
 		update, err := p.buildUpdate(nlri)
 		if err != nil {
@@ -89,19 +102,18 @@ func (p *Plugin) OnClose(peer corebgp.PeerConfig) {
 	}
 	slog.Info("bgp: sending peer flush message", "peer", peer.RemoteAddress)
 
-	if p.FlushRoutes {
-		protocol := unix.RTPROT_BGP // 186
-		routes, err := p.RouteReaderWriter.RouteByProtocol(protocol)
-		if err != nil {
-			slog.Error("routes: error getting routes by protocol on peer close", "protocol", protocol, "error", err)
-		}
-		for _, route := range routes {
-			if err := p.RouteReaderWriter.RouteDelete(route); err != nil {
-				slog.Error("routes: error deleting route on peer close", "route", route.String(), "error", err)
-				continue
-			}
+	protocol := unix.RTPROT_BGP // 186
+	routes, err := p.RouteReaderWriter.RouteByProtocol(protocol)
+	if err != nil {
+		slog.Error("routes: error getting routes by protocol on peer close", "protocol", protocol, "error", err)
+	}
+	for _, route := range routes {
+		if err := p.RouteReaderWriter.RouteDelete(route); err != nil {
+			slog.Error("routes: error deleting route on peer close", "route", route.String(), "error", err)
+			continue
 		}
 	}
+
 	MetricSessionStatus.Set(0)
 }
 

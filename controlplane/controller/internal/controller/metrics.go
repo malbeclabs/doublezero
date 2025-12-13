@@ -2,6 +2,8 @@ package controller
 
 import (
 	"github.com/prometheus/client_golang/prometheus"
+
+	grpcprom "github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus"
 )
 
 var (
@@ -40,6 +42,12 @@ var (
 		Buckets: prometheus.ExponentialBucketsRange(16384, 1048576, 8),
 	})
 
+	getConfigDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "controller_grpc_getconfig_duration_seconds",
+		Help:    "The duration of GetConfig requests in seconds",
+		Buckets: []float64{0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 5},
+	})
+
 	// cache update metrics
 	cacheUpdateErrors = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "controller_cache_update_errors_total",
@@ -69,6 +77,12 @@ var (
 	},
 		[]string{"link_pubkey", "device_code", "interface"},
 	)
+
+	srvMetrics = grpcprom.NewServerMetrics(
+		grpcprom.WithServerHandlingTimeHistogram(
+			grpcprom.WithHistogramBuckets([]float64{0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 5}),
+		),
+	)
 )
 
 func init() {
@@ -80,9 +94,13 @@ func init() {
 	prometheus.MustRegister(getConfigRenderErrors)
 	prometheus.MustRegister(getConfigOps)
 	prometheus.MustRegister(getConfigMsgSize)
+	prometheus.MustRegister(getConfigDuration)
 
 	// cache update metrics
 	prometheus.MustRegister(cacheUpdateErrors)
 	prometheus.MustRegister(cacheUpdateFetchErrors)
 	prometheus.MustRegister(cacheUpdateOps)
+
+	// gRPC middleware metrics
+	prometheus.MustRegister(srvMetrics)
 }

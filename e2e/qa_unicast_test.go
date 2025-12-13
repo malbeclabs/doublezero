@@ -84,17 +84,12 @@ func TestQA_UnicastConnectivity(t *testing.T) {
 				})
 				subCtx := t.Context()
 
-				result, err := srcClient.TestUnicastConnectivity(subCtx, dstClient)
+				result, err := srcClient.TestUnicastConnectivity(t, subCtx, dstClient)
 				if err != nil {
 					log.Error("Connectivity test failed", "error", err, "source", srcClient.Host, "target", dstClient.Host)
 				}
-				if result.PacketsReceived < result.PacketsSent {
+				if result != nil && result.PacketsReceived < result.PacketsSent {
 					testsWithPartialLosses.Add(1)
-
-					// If there are any losses, run a traceroute and dump the output for visibility.
-					res, err := srcClient.TracerouteRaw(subCtx, dstClient.PublicIP().String())
-					require.NoError(t, err)
-					t.Logf("Traceroute for %s -> %s: %s", srcClient.Host, dstClient.Host, res)
 				}
 				require.NoError(t, err, "failed to test connectivity")
 			})

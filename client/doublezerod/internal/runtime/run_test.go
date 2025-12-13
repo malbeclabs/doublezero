@@ -2557,5 +2557,6 @@ func newTestLivenessManagerConfig() *liveness.ManagerConfig {
 		MinTxFloor:      50 * time.Millisecond,
 		MaxTxCeil:       1 * time.Second,
 		MetricsRegistry: prometheus.NewRegistry(),
+		ClientVersion:   "1.2.3-dev",
 	}
 }

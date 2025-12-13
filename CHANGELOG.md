@@ -10,6 +10,24 @@ All notable changes to this project will be documented in this file.
 
 - CLI
   - IP address lookup responses that do not contain a valid IPv4 address (such as upstream timeout messages) are now treated as retryable errors instead of being parsed as IPs.
+- Internet Latency Telemetry
+  - Fixed a bug that prevented unresponsive ripeatlas probes from being replaced
+  - Fixed a bug that caused ripeatlas samples to be dropped when they were delayed to the next collection cycle
+- Controller
+  - Add histogram metric for GetConfig request duration
+  - Add gRPC middleware for prometheus metrics
+- Device agents
+  - Increase default controller request timeout in config agent
+- Client
+  - Route liveness treats peers that advertise passive mode as selectively passive; does not manage their routes directly.
+  - Route liveness runs in passive mode for IBRL with allocated IP, if global passive mode is enabled.
+  - Advertise peer client version with route liveness control packets.
+  - Add `doublezero_bgp_routes_installed` gauge metric for number of installed BGP routes
+  - Add route liveness gauges for in-memory maps
+  - Route liveness sets set of routes configured as excluded to `AdminDown`.
+  - Add histogram metric for BGP session establishment duration
+- Release
+  - Publish a Docker image for core components.
 
 ## [v0.8.0](https://github.com/malbeclabs/doublezero/compare/client/v0.7.1...client/v0.8.0) – 2025-12-02
 
@@ -32,7 +50,7 @@ All notable changes to this project will be documented in this file.
     - Support added to load keypair from stdin
 - Client
   - Add route liveness fault-injection simulation tests.
-    - Updated the `interface list` command to display all interfaces when no device is specified.
+  - Updated the `interface list` command to display all interfaces when no device is specified.
 - Funder
   - Fund multicast group owners
 - Onchain programs

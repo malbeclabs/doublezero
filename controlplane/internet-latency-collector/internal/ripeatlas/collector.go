@@ -175,6 +175,16 @@ func filterValidProbes(probes []Probe) []Probe {
 	return validProbes
 }
 
+func filterResponsiveProbes(probes []Probe, measurementState *MeasurementState) []Probe {
+	var responsiveProbes []Probe
+	for _, probe := range probes {
+		if !measurementState.IsProbeUnresponsive(probe.ID) && probe.Address != "" {
+			responsiveProbes = append(responsiveProbes, probe)
+		}
+	}
+	return responsiveProbes
+}
+
 func (c *Collector) parseLatencyFromResult(result any) (time.Duration, time.Time, int) {
 	resultMap, ok := result.(map[string]any)
 	if !ok {
@@ -487,17 +497,21 @@ func (c *Collector) ExportMeasurementResults(ctx context.Context, stateDir strin
 
 	// Track missing samples metric for circuits that were expected but not received
 	missingSamples := 0
+	var missingCircuits []string
 	for circuit := range circuitExpectedSamples {
 		if _, exists := circuitActualSamples[circuit]; !exists {
 			metrics.LatencySamplesPerCollectionIntervalMissing.WithLabelValues(c.env, circuit, "ripeatlas").Add(1)
 			missingSamples++
+			missingCircuits = append(missingCircuits, circuit)
 		}
 	}
 	if missingSamples > 0 {
+		sort.Strings(missingCircuits)
 		c.log.Info("RIPE Atlas - Tracked missing samples",
 			slog.Int("missing_samples", missingSamples),
 			slog.Int("expected_circuits", len(circuitExpectedSamples)),
-			slog.Int("actual_circuits", len(circuitActualSamples)))
+			slog.Int("actual_circuits", len(circuitActualSamples)),
+			slog.Any("missing_circuits", missingCircuits))
 	}
 
 	c.log.Info("Successfully exported measurement results",
@@ -539,25 +553,24 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 	}
 
 	if len(results) == 0 {
-		c.log.Debug("No new results for measurement", slog.Int("measurement_id", measurement.ID))
+		c.log.Debug("No new results for measurement",
+			slog.Int("measurement_id", measurement.ID),
+			slog.String("target_location", meta.TargetLocation),
+			slog.Int64("query_start_timestamp", lastTimestampUnix))
 		return 0, nil, nil
 	}
 
-	c.log.Debug("Retrieved new results for measurement",
+	c.log.Info("Retrieved new results for measurement",
 		slog.Int("measurement_id", measurement.ID),
-		slog.Int("result_count", len(results)))
+		slog.String("target_location", meta.TargetLocation),
+		slog.Int("result_count", len(results)),
+		slog.Int64("query_start_timestamp", lastTimestampUnix))
 
 	var maxTimestamp time.Time
 	processedResults := 0
 
-	type measurementSourceKey struct {
-		MeasurementID int
-		Source        string
-		ProbeID       int
-	}
-
-	// Process results.
-	recordsByMeasurementID := map[measurementSourceKey]exporter.Record{}
+	// Process results - use slice to preserve all samples
+	var records []exporter.Record
 	for _, result := range results {
 		// Parse latency from result (now also returns probe ID)
 		latency, timestamp, probeID := c.parseLatencyFromResult(result)
@@ -571,14 +584,7 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 				sourceLocation = loc
 			}
 
-			// Keep only 1 record per measurement ID and probe ID.
-			// Note: We swap source and target here to match the semantic meaning:
-			// The measurement "belongs to" the target exchange and measures "to" the source probe's exchange
-			recordsByMeasurementID[measurementSourceKey{
-				MeasurementID: measurement.ID,
-				Source:        sourceLocation,
-				ProbeID:       probeID,
-			}] = exporter.Record{
+			records = append(records, exporter.Record{
 				DataProvider: exporter.DataProviderNameRIPEAtlas,
 				// Source and target are swapped here to match alphabetical ordering expected by downstream systems.
 				// We alphabetically sort the measurements by exchange code, but from the perspective of the measurement
@@ -587,15 +593,10 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 				TargetExchangeCode: sourceLocation,
 				Timestamp:          timestamp,
 				RTT:                latency,
-			}
+			})
 
 			processedResults++
 		}
-	}
-
-	records := make([]exporter.Record, 0, len(recordsByMeasurementID))
-	for _, record := range recordsByMeasurementID {
-		records = append(records, record)
 	}
 
 	// Write the batch of records with the exporter.
@@ -609,10 +610,21 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 	// Update the timestamp tracker with the newest timestamp seen
 	if maxTimestamp.After(lastTimestamp) {
 		measurementState.UpdateTimestamp(measurement.ID, maxTimestamp.Unix())
-		c.log.Debug("Updated timestamp for measurement",
+		c.log.Info("Updated timestamp for measurement",
 			slog.Int("measurement_id", measurement.ID),
+			slog.String("target_location", meta.TargetLocation),
+			slog.Time("old_timestamp", lastTimestamp),
 			slog.Time("new_timestamp", maxTimestamp),
-			slog.Int("processed_results", processedResults))
+			slog.Int("raw_results", len(results)),
+			slog.Int("valid_latencies", processedResults),
+			slog.Int("exported_records", len(records)))
+	} else if len(records) > 0 {
+		c.log.Warn("Exported records but timestamp not updated (old results?)",
+			slog.Int("measurement_id", measurement.ID),
+			slog.String("target_location", meta.TargetLocation),
+			slog.Time("last_timestamp", lastTimestamp),
+			slog.Time("max_result_timestamp", maxTimestamp),
+			slog.Int("exported_records", len(records)))
 	}
 
 	return len(records), records, nil
@@ -726,18 +738,45 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 
 	// Step 4: Detect unresponsive probes (no exports after 1 hour)
 	currentTime := time.Now().Unix()
-	oneHourAgo := currentTime - 3600
+	probeTimeout := currentTime - 3600 // 1 hours (3660 seconds)
+	newUnresponsiveProbes := 0
 	for _, measurement := range doubleZeroMeasurements {
 		if meta, hasMeta := measurementState.GetMetadata(measurement.ID); hasMeta {
-			// Check if measurement is stale (created > 1 hour ago but never exported)
-			if meta.LastExportAt == 0 && meta.CreatedAt > 0 && meta.CreatedAt < oneHourAgo {
+			// Check if measurement is stale - either never exported, or last export was too long ago
+			isStale := false
+			var reason string
+
+			if meta.LastExportAt == 0 && meta.CreatedAt > 0 && meta.CreatedAt < probeTimeout {
+				// Case 1: Created > 1 hour ago but never exported
+				isStale = true
+				reason = "never_exported"
+			} else if meta.LastExportAt > 0 && meta.LastExportAt < probeTimeout {
+				// Case 2: Last export was > 1 hour ago
+				isStale = true
+				reason = "no_recent_exports"
+			}
+
+			if isStale {
 				c.log.Warn("Marking probe as unresponsive - no exports after 1 hour",
 					slog.Int("measurement_id", measurement.ID),
 					slog.Int("probe_id", meta.TargetProbeID),
 					slog.String("target_location", meta.TargetLocation),
-					slog.Time("created_at", time.Unix(meta.CreatedAt, 0)))
+					slog.String("reason", reason),
+					slog.Time("created_at", time.Unix(meta.CreatedAt, 0)),
+					slog.Time("last_export_at", time.Unix(meta.LastExportAt, 0)))
 				measurementState.AddUnresponsiveProbe(meta.TargetProbeID)
+				newUnresponsiveProbes++
 			}
+		}
+	}
+
+	// Save state if we detected any new unresponsive probes
+	if newUnresponsiveProbes > 0 {
+		if err := measurementState.Save(); err != nil {
+			c.log.Warn("Failed to save measurement state after detecting unresponsive probes", slog.String("error", err.Error()))
+		} else {
+			c.log.Info("Saved unresponsive probe state",
+				slog.Int("new_unresponsive_probes", newUnresponsiveProbes))
 		}
 	}
 
@@ -759,10 +798,22 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 			// No existing measurement for this target, create it
 			toCreate = append(toCreate, wanted)
 		} else {
-			// Check if existing measurement has the correct source probes
+			// Check if existing measurement has the correct target and source probes
 			meta, hasMeta := measurementState.GetMetadata(existing.ID)
 			if !hasMeta {
 				// No metadata, can't verify sources, recreate
+				toCreate = append(toCreate, wanted)
+				continue
+			}
+
+			// Check if target probe has changed
+			targetProbeChanged := meta.TargetProbeID != wanted.TargetProbe.ID
+			if targetProbeChanged {
+				c.log.Info("Measurement has outdated target probe, marking for recreation",
+					slog.Int("measurement_id", existing.ID),
+					slog.String("target", wanted.TargetLocationCode),
+					slog.Int("existing_probe_id", meta.TargetProbeID),
+					slog.Int("wanted_probe_id", wanted.TargetProbe.ID))
 				toCreate = append(toCreate, wanted)
 				continue
 			}
@@ -801,15 +852,21 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 		}
 	}
 
-	// Remove measurements for targets we no longer want, measurements without metadata, or measurements with outdated sources
+	// Remove measurements for targets we no longer want, measurements without metadata, or measurements with outdated target/source probes
 	toRemove := []Measurement{}
 	measurementsToRecreate := make(map[string]bool)
 
-	// First, identify measurements that need recreation due to outdated sources
+	// First, identify measurements that need recreation due to outdated target or source probes
 	for _, wanted := range wantedMeasurements {
 		if existing, exists := existingByTarget[wanted.TargetLocationCode]; exists {
 			meta, hasMeta := measurementState.GetMetadata(existing.ID)
 			if hasMeta {
+				// Check if target probe has changed
+				if meta.TargetProbeID != wanted.TargetProbe.ID {
+					measurementsToRecreate[wanted.TargetLocationCode] = true
+					continue
+				}
+
 				// Check if sources match
 				existingSources := make(map[string]bool)
 				for _, source := range meta.Sources {
@@ -857,7 +914,7 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 				if !wantedTargets[targetLocation] {
 					toRemove = append(toRemove, measurement)
 				} else if measurementsToRecreate[targetLocation] {
-					// This measurement needs to be recreated due to outdated sources
+					// This measurement needs to be recreated due to outdated target or source probes
 					toRemove = append(toRemove, measurement)
 				}
 			}
@@ -929,8 +986,18 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 		c.log.Info("Cleaning up orphaned metadata entries",
 			slog.Int("count", len(orphanedIDs)))
 		for _, id := range orphanedIDs {
-			c.log.Debug("Removing orphaned metadata",
-				slog.Int("measurement_id", id))
+			if meta, hasMeta := measurementState.GetMetadata(id); hasMeta {
+				ageSeconds := currentTime - meta.CreatedAt
+				c.log.Info("Removing orphaned metadata",
+					slog.Int("measurement_id", id),
+					slog.String("target_location", meta.TargetLocation),
+					slog.Int("target_probe_id", meta.TargetProbeID),
+					slog.Time("created_at", time.Unix(meta.CreatedAt, 0)),
+					slog.Int64("age_seconds", ageSeconds))
+			} else {
+				c.log.Info("Removing orphaned metadata (no metadata found)",
+					slog.Int("measurement_id", id))
+			}
 			measurementState.RemoveMetadata(id)
 		}
 		if err := measurementState.Save(); err != nil {
@@ -1108,28 +1175,19 @@ func (c *Collector) generateWantedMeasurements(locationMatches []LocationProbeMa
 			continue
 		}
 
-		// Find best probe that isn't unresponsive
-		var targetProbe Probe
-		targetProbes := getNearestProbesSorted(targetLocation.NearbyProbes,
-			targetLocation.Latitude, targetLocation.Longitude, probesPerLocation*2) // Get extra probes in case some are unresponsive
-
-		foundResponsiveProbe := false
-		for _, probe := range targetProbes {
-			if !measurementState.IsProbeUnresponsive(probe.ID) && probe.Address != "" {
-				targetProbe = probe
-				foundResponsiveProbe = true
-				break
-			}
-			c.log.Debug("Skipping unresponsive probe as target",
-				slog.Int("probe_id", probe.ID),
-				slog.String("location", targetLocation.LocationCode))
-		}
-
-		if !foundResponsiveProbe {
+		responsiveProbes := filterResponsiveProbes(targetLocation.NearbyProbes, measurementState)
+		if len(responsiveProbes) == 0 {
 			c.log.Warn("No responsive probes found for location",
 				slog.String("location", targetLocation.LocationCode))
 			continue
 		}
+
+		targetProbes := getNearestProbesSorted(responsiveProbes,
+			targetLocation.Latitude, targetLocation.Longitude, probesPerLocation)
+		if len(targetProbes) == 0 {
+			continue
+		}
+		targetProbe := targetProbes[0]
 
 		// Collect source probes from all other locations
 		// Since we're iterating in alphabetical order and only need to measure once between any pair,
@@ -1151,21 +1209,18 @@ func (c *Collector) generateWantedMeasurements(locationMatches []LocationProbeMa
 				continue
 			}
 
-			sourceProbes := getNearestProbesSorted(sourceLocation.NearbyProbes,
-				sourceLocation.Latitude, sourceLocation.Longitude, probesPerLocation*2) // Get extra probes in case some are unresponsive
+			responsiveSourceProbes := filterResponsiveProbes(sourceLocation.NearbyProbes, measurementState)
+			if len(responsiveSourceProbes) == 0 {
+				continue
+			}
 
-			// Find first responsive probe
-			for _, probe := range sourceProbes {
-				if !measurementState.IsProbeUnresponsive(probe.ID) {
-					sourceSpecs = append(sourceSpecs, SourceSpec{
-						LocationCode: sourceLocation.LocationCode,
-						Probe:        probe,
-					})
-					break
-				}
-				c.log.Debug("Skipping unresponsive probe as source",
-					slog.Int("probe_id", probe.ID),
-					slog.String("location", sourceLocation.LocationCode))
+			sourceProbes := getNearestProbesSorted(responsiveSourceProbes,
+				sourceLocation.Latitude, sourceLocation.Longitude, probesPerLocation)
+			if len(sourceProbes) > 0 {
+				sourceSpecs = append(sourceSpecs, SourceSpec{
+					LocationCode: sourceLocation.LocationCode,
+					Probe:        sourceProbes[0],
+				})
 			}
 		}
 

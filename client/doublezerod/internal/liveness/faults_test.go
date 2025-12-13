@@ -498,6 +498,133 @@ func TestClient_Liveness_Faults_SoftLoss_TimeoutAtHighLoss(t *testing.T) {
 	}
 }
 
+func TestClient_Liveness_Faults_MixedPassiveConfigs_RemoteAdminAndTimeoutKeepRouteInstalled(t *testing.T) {
+	t.Parallel()
+
+	if testing.Short() {
+		t.Skip("Skipping mixed passive fault test in short mode")
+	}
+
+	clients, sw, cfg := setupMixedPassiveLivenessClients(t, 24000)
+	clientCount := cfg.clientCount
+	if clientCount < 2 {
+		t.Skip("need at least 2 clients for mixed passive test")
+	}
+
+	nextHop := net.IPv4(10, 5, 0, 1)
+	registerFullMeshRoutes(t, clients, nextHop)
+	requireFullMeshUp(t, clients, clientCount-1, 30*time.Second)
+
+	// By construction:
+	//   clients[0] -> HonorPeerAdvertisedPassive = true
+	//   clients[1] -> PassiveMode = true
+	honor := clients[0]
+	passive := clients[1]
+
+	ipHonor := honor.mgr.LocalAddr().IP
+	ipPassive := passive.mgr.LocalAddr().IP
+
+	peerHonorToPassive := Peer{
+		Interface: honor.iface,
+		LocalIP:   ipHonor.To4().String(),
+		PeerIP:    ipPassive.To4().String(),
+	}
+	peerPassiveToHonor := Peer{
+		Interface: passive.iface,
+		LocalIP:   ipPassive.To4().String(),
+		PeerIP:    ipHonor.To4().String(),
+	}
+
+	// Ensure the honor-side session is Up.
+	require.Eventually(t, func() bool {
+		sess, ok := honor.mgr.GetSession(peerHonorToPassive)
+		if !ok || sess == nil {
+			return false
+		}
+		snap := sess.Snapshot()
+		return snap.State == StateUp
+	}, 10*time.Second, 200*time.Millisecond, "honor client's session must reach Up")
+
+	// Ensure honor side has learned that the peer advertises passive.
+	require.Eventually(t, func() bool {
+		sess, ok := honor.mgr.GetSession(peerHonorToPassive)
+		if !ok || sess == nil {
+			return false
+		}
+		snap := sess.Snapshot()
+		return snap.PeerAdvertisedMode == PeerModePassive
+	}, 5*time.Second, 200*time.Millisecond, "honor client must see peer as passive")
+
+	// Capture route key and confirm installed before any faults.
+	sessHonor, ok := honor.mgr.GetSession(peerHonorToPassive)
+	require.True(t, ok)
+	require.NotNil(t, sessHonor)
+	rkHonor := routeKeyFor(peerHonorToPassive.Interface, sessHonor.route)
+	require.True(t, honor.mgr.IsInstalled(rkHonor), "route should be installed before any faults")
+
+	// ---- Phase 1: Hard loss -> detect timeout, but route kept installed ----
+
+	sw.SetHardLoss(ipPassive, ipHonor)
+
+	detectTime := cfg.rxMin * time.Duration(cfg.detectMult)
+	waitDown := 10 * detectTime
+
+	require.Eventually(t, func() bool {
+		s, ok := honor.mgr.GetSession(peerHonorToPassive)
+		if !ok || s == nil {
+			return false
+		}
+		snap := s.Snapshot()
+		return snap.State == StateDown && snap.LastDownReason == DownReasonTimeout
+	}, waitDown, 200*time.Millisecond, "honor client should time out under hard loss")
+
+	require.True(t, honor.mgr.IsInstalled(rkHonor),
+		"route should remain installed on honor side after timeout when peer is effectively passive")
+
+	// Clear hard loss so we can do a clean remote AdminDown next.
+	sw.SetNoFault(ipPassive, ipHonor)
+
+	// Let the sessions converge back to Up.
+	require.Eventually(t, func() bool {
+		sessH, okH := honor.mgr.GetSession(peerHonorToPassive)
+		sessP, okP := passive.mgr.GetSession(peerPassiveToHonor)
+		if !okH || !okP || sessH == nil || sessP == nil {
+			return false
+		}
+		snapH := sessH.Snapshot()
+		snapP := sessP.Snapshot()
+		return snapH.State == StateUp && snapP.State == StateUp
+	}, 30*time.Second, 500*time.Millisecond, "sessions should return to Up after clearing hard loss")
+
+	require.True(t, honor.mgr.IsInstalled(rkHonor),
+		"route should still be installed on honor side after recovery from hard loss")
+
+	// ---- Phase 2: Remote AdminDown from the passive client -> no withdraw ----
+
+	sessPassive, ok := passive.mgr.GetSession(peerPassiveToHonor)
+	require.True(t, ok)
+	require.NotNil(t, sessPassive)
+	remoteSnap := sessPassive.Snapshot()
+	remoteRoute := &remoteSnap.Route
+
+	// AdminDownRoute on the passive side will send an AdminDown control packet with PASSIVE set.
+	passive.mgr.AdminDownRoute(remoteRoute, passive.iface)
+
+	// Honor side should see Down with reason remote_admin, but keep the route installed
+	// because the peer is effectively passive and HonorPeerAdvertisedPassive is enabled.
+	require.Eventually(t, func() bool {
+		s, ok := honor.mgr.GetSession(peerHonorToPassive)
+		if !ok || s == nil {
+			return false
+		}
+		snap := s.Snapshot()
+		return snap.State == StateDown && snap.LastDownReason == DownReasonRemoteAdmin
+	}, 10*time.Second, 200*time.Millisecond, "honor client should see remote-admin Down")
+
+	require.True(t, honor.mgr.IsInstalled(rkHonor),
+		"route should remain installed on honor side after remote AdminDown from effectively passive peer")
+}
+
 type livenessTestConfig struct {
 	clientCount int
 	txMin       time.Duration
@@ -571,7 +698,81 @@ func setupLivenessClients(t *testing.T, basePort int) ([]*testClient, *fakeUDPSw
 			MinTxFloor:      cfg.txMin,
 			MaxTxCeil:       cfg.txMin,
 			BackoffMax:      cfg.backoffMax,
+			ClientVersion:   "1.2.3-dev",
+		}, nil)
+		require.NoError(t, err)
+
+		tc := &testClient{
+			id:      cid,
+			mgr:     lm,
+			metrics: reg,
+			nlr:     nlr,
+			iface:   iface,
+		}
+		clients = append(clients, tc)
+
+		t.Cleanup(func() {
+			if err := lm.Close(); err != nil {
+				log.Warn("error closing manager", "error", err)
+			}
 		})
+	}
+
+	return clients, sw, cfg
+}
+
+// setupMixedPassiveLivenessClients sets up a mixed passive/active liveness clients.
+// The first client is active, the second is passive.
+func setupMixedPassiveLivenessClients(t *testing.T, basePort int) ([]*testClient, *fakeUDPSwitch, livenessTestConfig) {
+	t.Helper()
+
+	cfg := getLivenessTestConfig(t)
+	log := newTestLoggerWith(t, !*notQuietFlag, *debugFlag)
+	sw := newFakeUDPSwitch()
+
+	clients := make([]*testClient, 0, cfg.clientCount)
+
+	for i := range cfg.clientCount {
+		cid := uint32(i + 1)
+
+		nlr := &MockRouteReaderWriter{
+			RouteAddFunc:        func(r *routing.Route) error { return nil },
+			RouteDeleteFunc:     func(r *routing.Route) error { return nil },
+			RouteByProtocolFunc: func(protocol int) ([]*routing.Route, error) { return nil, nil },
+		}
+
+		iface := "lo"
+		ip := nthTestIPv4(i)
+		udp := newFakeUDPConn(sw, ip.String(), basePort+i, iface)
+
+		reg := prometheus.NewRegistry()
+
+		mcfg := &ManagerConfig{
+			Logger:          log.With("clientID", cid),
+			Netlinker:       nlr,
+			MetricsRegistry: reg,
+			UDP:             udp,
+			BindIP:          ip.String(),
+			Port:            udp.LocalAddr().(*net.UDPAddr).Port,
+			TxMin:           cfg.txMin,
+			RxMin:           cfg.rxMin,
+			DetectMult:      cfg.detectMult,
+			MinTxFloor:      cfg.txMin,
+			MaxTxCeil:       cfg.txMin,
+			BackoffMax:      cfg.backoffMax,
+			ClientVersion:   "1.2.3-dev",
+		}
+
+		switch i {
+		case 0:
+			// Client 0: honors peer advertised passive, but is otherwise active.
+			mcfg.HonorPeerAdvertisedPassive = true
+		case 1:
+			// Client 1: globally passive (always advertises PASSIVE bit).
+			mcfg.PassiveMode = true
+		}
+
+		lm, err := NewManager(t.Context(), mcfg, nil)
 		require.NoError(t, err)
 
 		tc := &testClient{
@@ -606,7 +807,7 @@ func registerFullMeshRoutes(t *testing.T, clients []*testClient, nextHop net.IP)
 			wg.Add(1)
 			go func(c1 *testClient, c2 *testClient) {
 				defer wg.Done()
-				err := c1.mgr.RegisterRoute(&routing.Route{
+				err := c1.mgr.RegisterRoute(&Route{Route: routing.Route{
 					Table: 100,
 					Src:   c1.mgr.LocalAddr().IP,
 					Dst: &net.IPNet{
@@ -615,7 +816,7 @@ func registerFullMeshRoutes(t *testing.T, clients []*testClient, nextHop net.IP)
 					},
 					NextHop:  nextHop,
 					Protocol: unix.RTPROT_BGP,
-				}, c1.iface, c1.mgr.LocalAddr().Port)
+				}}, c1.iface, c1.mgr.LocalAddr().Port)
 				require.NoError(t, err)
 			}(c1, c2)
 		}

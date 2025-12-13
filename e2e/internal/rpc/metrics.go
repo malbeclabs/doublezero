@@ -25,12 +25,12 @@ var (
 	UserConnectDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "doublezero_qaagent_user_connect_duration_seconds",
 		Help:    "Duration of connect operations",
-		Buckets: prometheus.ExponentialBuckets(1, 1.5, 12), // 1s to 128s
+		Buckets: prometheus.ExponentialBuckets(1, 1.5, 13), // 1s to 129s
 	}, []string{"user_type"})
 
 	UserDisconnectDuration = promauto.NewHistogram(prometheus.HistogramOpts{
 		Name:    "doublezero_qaagent_user_disconnect_duration_seconds",
 		Help:    "Duration of disconnect operations",
-		Buckets: prometheus.ExponentialBuckets(1, 1.5, 12), // 1s to 128s
+		Buckets: prometheus.ExponentialBuckets(1, 1.5, 13), // 1s to 129s
 	})
 )

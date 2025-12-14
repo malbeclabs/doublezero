@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema-pro.json
+# vim: set ts=2 sw=2 tw=0 fo=cnqoj
+
+includes:
+  - from_file:
+      path: release/.goreleaser.base.global-monitor.yaml
+
+cloudsmiths:
+  - organization: malbeclabs
+    repository: doublezero
+    distributions:
+      deb: "any-distro/any-version"
+      rpm: "any-distro/any-version"

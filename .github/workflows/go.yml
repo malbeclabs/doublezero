@@ -27,7 +27,7 @@ jobs:
       - uses: golangci/golangci-lint-action@v8
       - run: make go-lint
   go-test:
-    runs-on: ubuntu-24.04-16c-64gb
+    runs-on: doublezero-k8s-generic
     needs: go-build
     steps:
       - uses: actions/checkout@v4

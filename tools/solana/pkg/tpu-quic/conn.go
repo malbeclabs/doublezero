@@ -15,6 +15,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/cenkalti/backoff/v4"
 	"github.com/quic-go/quic-go"
 )
 
@@ -55,7 +56,56 @@ func Dial(ctx context.Context, dst string, cfg *DialConfig) (*Conn, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("failed to validate dial config: %w", err)
 	}
+	return dialOnce(ctx, dst, cfg)
+}
 
+// DialWithRetry calls Dial (via dialOnce) with a backoff-based retry loop.
+// If bo is nil, a default exponential backoff is used.
+func DialWithRetry(ctx context.Context, dst string, cfg *DialConfig, bo backoff.BackOff) (*Conn, error) {
+	if cfg == nil {
+		cfg = &DialConfig{}
+	}
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("failed to validate dial config: %w", err)
+	}
+
+	if bo == nil {
+		ebo := backoff.NewExponentialBackOff()
+		ebo.MaxElapsedTime = 0 // let ctx control the overall deadline
+		bo = ebo
+	}
+	bo = backoff.WithContext(bo, ctx)
+
+	var (
+		c       *Conn
+		lastErr error
+	)
+
+	op := func() error {
+		if ctx.Err() != nil {
+			return backoff.Permanent(ctx.Err())
+		}
+		conn, err := dialOnce(ctx, dst, cfg)
+		if err != nil {
+			lastErr = err
+			return err
+		}
+		c = conn
+		return nil
+	}
+
+	if err := backoff.Retry(op, bo); err != nil {
+		if lastErr != nil && !errors.Is(err, lastErr) {
+			return nil, lastErr
+		}
+		return nil, err
+	}
+	return c, nil
+}
+
+// dialOnce contains the actual UDP bind + TLS + QUIC Dial logic.
+// It assumes cfg has already been validated.
+func dialOnce(ctx context.Context, dst string, cfg *DialConfig) (*Conn, error) {
 	// Resolve destination UDP address
 	dstAddr, err := net.ResolveUDPAddr("udp", dst)
 	if err != nil {
@@ -74,17 +124,23 @@ func Dial(ctx context.Context, dst string, cfg *DialConfig) (*Conn, error) {
 		return nil, fmt.Errorf("failed to listen on %s: %w", srcAddr, err)
 	}
 
+	// Ensure we don’t leak srcConn on errors below
+	cleanup := func(e error) (*Conn, error) {
+		_ = srcConn.Close()
+		return nil, e
+	}
+
 	// Bind to interface if specified
 	if cfg.Interface != "" {
 		if err := bindToDevice(srcConn, cfg.Interface); err != nil {
-			return nil, fmt.Errorf("failed to bind to device %s: %w", cfg.Interface, err)
+			return cleanup(fmt.Errorf("failed to bind to device %s: %w", cfg.Interface, err))
 		}
 	}
 
 	// Create TLS config
 	tlsConfig, err := createTlsConfig()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create TLS config: %w", err)
+		return cleanup(fmt.Errorf("failed to create TLS config: %w", err))
 	}
 
 	// Dial QUIC session
@@ -94,7 +150,7 @@ func Dial(ctx context.Context, dst string, cfg *DialConfig) (*Conn, error) {
 		KeepAlivePeriod:      cfg.KeepAlivePeriod,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to %s from %s: %w", dstAddr, srcAddr, err)
+		return cleanup(fmt.Errorf("failed to connect to %s from %s: %w", dstAddr, srcAddr, err))
 	}
 
 	return &Conn{

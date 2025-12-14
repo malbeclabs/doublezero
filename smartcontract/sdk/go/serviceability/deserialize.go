@@ -173,6 +173,7 @@ func DeserializeUser(reader *ByteReader, user *User) {
 	user.Status = UserStatus(reader.ReadU8())
 	user.Publishers = reader.ReadPubkeySlice()
 	user.Subscribers = reader.ReadPubkeySlice()
+	user.ValidatorPubKey = reader.ReadPubkey()
 	user.PubKey = reader.ReadPubkey()
 }
 

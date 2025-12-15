@@ -33,6 +33,8 @@ jobs:
             languages: ["go"]
           - release: s3-uploader
             languages: ["go"]
+          - release: global-monitor
+            languages: ["go"]
     name: release-validation-${{ matrix.release }}
     steps:
       - name: Checkout

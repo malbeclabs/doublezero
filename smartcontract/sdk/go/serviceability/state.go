@@ -607,22 +607,23 @@ func (u UserStatus) MarshalJSON() ([]byte, error) {
 }
 
 type User struct {
-	AccountType  AccountType
-	Owner        [32]uint8
-	Index        Uint128
-	Bump_seed    uint8
-	UserType     UserUserType
-	TenantPubKey [32]uint8
-	DevicePubKey [32]uint8
-	CyoaType     CyoaType
-	ClientIp     [4]uint8
-	DzIp         [4]uint8
-	TunnelId     uint16
-	TunnelNet    [5]uint8
-	Status       UserStatus
-	Publishers   [][32]uint8
-	Subscribers  [][32]uint8
-	PubKey       [32]byte
+	AccountType     AccountType
+	Owner           [32]uint8
+	Index           Uint128
+	Bump_seed       uint8
+	UserType        UserUserType
+	TenantPubKey    [32]uint8
+	DevicePubKey    [32]uint8
+	CyoaType        CyoaType
+	ClientIp        [4]uint8
+	DzIp            [4]uint8
+	TunnelId        uint16
+	TunnelNet       [5]uint8
+	Status          UserStatus
+	Publishers      [][32]uint8
+	Subscribers     [][32]uint8
+	ValidatorPubKey [32]uint8
+	PubKey          [32]byte
 }
 
 func (u User) MarshalJSON() ([]byte, error) {
@@ -640,32 +641,34 @@ func (u User) MarshalJSON() ([]byte, error) {
 
 	jsonUser := &struct {
 		UserAlias
-		Owner        string   `json:"Owner"`
-		TenantPubKey string   `json:"TenantPubKey"`
-		DevicePubKey string   `json:"DevicePubKey"`
-		ClientIp     string   `json:"ClientIp"`
-		DzIp         string   `json:"DzIp"`
-		TunnelNet    string   `json:"TunnelNet"`
-		Publishers   []string `json:"Publishers"`
-		Subscribers  []string `json:"Subscribers"`
-		Status       string   `json:"Status"`
-		CyoaType     string   `json:"CyoaType"`
-		UserType     string   `json:"UserType"`
-		PubKey       string   `json:"PubKey"`
+		Owner           string   `json:"Owner"`
+		TenantPubKey    string   `json:"TenantPubKey"`
+		DevicePubKey    string   `json:"DevicePubKey"`
+		ClientIp        string   `json:"ClientIp"`
+		DzIp            string   `json:"DzIp"`
+		TunnelNet       string   `json:"TunnelNet"`
+		Publishers      []string `json:"Publishers"`
+		Subscribers     []string `json:"Subscribers"`
+		ValidatorPubKey string   `json:"ValidatorPubKey"`
+		Status          string   `json:"Status"`
+		CyoaType        string   `json:"CyoaType"`
+		UserType        string   `json:"UserType"`
+		PubKey          string   `json:"PubKey"`
 	}{
-		UserAlias:    UserAlias(u),
-		Owner:        base58.Encode(u.Owner[:]),
-		TenantPubKey: base58.Encode(u.TenantPubKey[:]),
-		DevicePubKey: base58.Encode(u.DevicePubKey[:]),
-		ClientIp:     net.IP(u.ClientIp[:]).String(),
-		DzIp:         net.IP(u.DzIp[:]).String(),
-		TunnelNet:    onChainNetToString(u.TunnelNet),
-		Publishers:   publishers,
-		Subscribers:  subscribers,
-		Status:       u.Status.String(),
-		CyoaType:     u.CyoaType.String(),
-		UserType:     u.UserType.String(),
-		PubKey:       base58.Encode(u.PubKey[:]),
+		UserAlias:       UserAlias(u),
+		Owner:           base58.Encode(u.Owner[:]),
+		TenantPubKey:    base58.Encode(u.TenantPubKey[:]),
+		DevicePubKey:    base58.Encode(u.DevicePubKey[:]),
+		ClientIp:        net.IP(u.ClientIp[:]).String(),
+		DzIp:            net.IP(u.DzIp[:]).String(),
+		TunnelNet:       onChainNetToString(u.TunnelNet),
+		Publishers:      publishers,
+		Subscribers:     subscribers,
+		ValidatorPubKey: base58.Encode(u.ValidatorPubKey[:]),
+		Status:          u.Status.String(),
+		CyoaType:        u.CyoaType.String(),
+		UserType:        u.UserType.String(),
+		PubKey:          base58.Encode(u.PubKey[:]),
 	}
 
 	return json.Marshal(jsonUser)

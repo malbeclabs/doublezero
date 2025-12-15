@@ -26,6 +26,8 @@ All notable changes to this project will be documented in this file.
   - Add route liveness gauges for in-memory maps
   - Route liveness sets set of routes configured as excluded to `AdminDown`.
   - Add histogram metric for BGP session establishment duration
+- Global monitor
+  - Initial implementation
 - Release
   - Publish a Docker image for core components.
 

@@ -1,7 +1,6 @@
 package enricher
 
 import (
-	"log"
 	"net"
 	"os"
 	"testing"
@@ -164,7 +163,6 @@ func TestDecodeSFlow(t *testing.T) {
 				}
 				// The test packet contains multiple samples, we'll check the first one.
 				g := got
-				log.Printf("Decoded Flow Sample: %+v", g)
 				expected := tt.expected
 
 				if diff := cmp.Diff(expected, g); diff != "" {

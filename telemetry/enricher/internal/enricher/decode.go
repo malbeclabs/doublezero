@@ -2,7 +2,6 @@ package enricher
 
 import (
 	"bytes"
-	"log"
 	"strconv"
 
 	"github.com/gopacket/gopacket"
@@ -22,7 +21,6 @@ func DecodeSFlow(sflowSample *flow.FlowSample) ([]FlowSample, error) {
 	for _, s := range packet.Samples {
 		var sample FlowSample
 		sample.TimeReceivedNs = sflowSample.ReceiveTimestamp.AsTime()
-		log.Printf("processing sFlow sample: %+v", s)
 		var records []sflow.FlowRecord
 		switch flowSample := s.(type) {
 		case sflow.FlowSample:
@@ -31,7 +29,6 @@ func DecodeSFlow(sflowSample *flow.FlowSample) ([]FlowSample, error) {
 			sample.OutputIfIndex = int(flowSample.Output)
 			sample.SamplingRate = int(flowSample.SamplingRate)
 			sample.Packets = 1
-			log.Printf("flow sample input_if=%d output_if=%d sampling_rate=%d", sample.InputIfIndex, sample.OutputIfIndex, sample.SamplingRate)
 		case sflow.ExpandedFlowSample:
 			records = flowSample.Records
 		}

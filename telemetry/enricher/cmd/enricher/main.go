@@ -37,39 +37,55 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	chWriter, err := enricher.NewClickhouseWriter(
-		enricher.WithClickhouseAddr(os.Getenv("CLICKHOUSE_ADDR")),
+	chOpts := []enricher.ClickhouseOption{}
+	if os.Getenv("CLICKHOUSE_TLS_DISABLED") == "true" {
+		chOpts = append(chOpts, enricher.WithTLSDisabled(true))
+	}
+
+	chOpts = append(chOpts, enricher.WithClickhouseAddr(os.Getenv("CLICKHOUSE_ADDR")),
 		enricher.WithClickhouseDB("default"),
-		enricher.WithClickhouseUser(*clickhouseUser),
+		enricher.WithClickhouseUser(os.Getenv("CLICKHOUSE_USER")),
 		enricher.WithClickhousePassword(os.Getenv("CLICKHOUSE_PASS")),
-		enricher.WithTLS(*useTls),
 		enricher.WithClickhouseLogger(logger),
 	)
+	chWriter, err := enricher.NewClickhouseWriter(chOpts...)
 	if err != nil {
 		logger.Error("error creating clickhouse writer", "error", err)
 		os.Exit(1)
 	}
 
+	kOpts := []enricher.KafkaOption{}
+	if os.Getenv("KAFKA_TLS_DISABLED") == "true" {
+		kOpts = append(kOpts, enricher.WithKafkaTLSDisabled(true))
+	}
+
+	if os.Getenv("KAFKA_AUTH_TYPE") == "SCRAM" && os.Getenv("KAFKA_USER") != "" && os.Getenv("KAFKA_PASS") != "" {
+		kOpts = append(kOpts, enricher.WithKafkaUser(os.Getenv("KAFKA_USER")),
+			enricher.WithKafkaPassword(os.Getenv("KAFKA_PASS")),
+			enricher.WithKafkaAuthType(enricher.KafkaAuthTypeSCRAM),
+		)
+	} else {
+		kOpts = append(kOpts, enricher.WithKafkaAuthType(enricher.KafkaAuthTypeAWSMSK))
+	}
+
 	brokers := strings.Split(os.Getenv("KAFKA_BROKERS"), ",")
-	flowConsumer, err := enricher.NewKafkaFlowConsumer(
-		enricher.WithKafkaBroker(brokers),
-		enricher.WithKafkaUser(*kafkaUser),
-		enricher.WithKafkaPassword(os.Getenv("KAFKA_PASS")),
+	kOpts = append(kOpts, enricher.WithKafkaBroker(brokers),
 		enricher.WithKafkaConsumerTopic(os.Getenv("KAFKA_TOPIC")),
 		enricher.WithKafkaConsumerGroup(os.Getenv("KAFKA_CONSUMER_GROUP")),
-		enricher.WithKafkaTLS(*useTls),
 		enricher.WithKafkaLogger(logger),
 	)
+	flowConsumer, err := enricher.NewKafkaFlowConsumer(kOpts...)
 	if err != nil {
 		logger.Error("error creating kafka flow consumer", "error", err)
 		os.Exit(1)
 	}
 
-	enricher := enricher.NewEnricher(
+	enricherOpts := []enricher.EnricherOption{
 		enricher.WithClickhouseWriter(chWriter),
 		enricher.WithFlowConsumer(flowConsumer),
 		enricher.WithLogger(logger),
-	)
+	}
+	enricher := enricher.NewEnricher(enricherOpts...)
 	logger.Info("starting enricher...")
 	if err := enricher.Run(ctx); err != nil {
 		logger.Error("error while running enricher", "error", err)

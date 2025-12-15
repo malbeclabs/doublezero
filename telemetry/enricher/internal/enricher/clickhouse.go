@@ -13,13 +13,13 @@ import (
 type ClickhouseOption func(*ClickhouseWriter)
 
 type ClickhouseWriter struct {
-	db     string
-	addr   string
-	user   string
-	pass   string
-	useTLS bool
-	conn   clickhouse.Conn
-	logger *slog.Logger
+	db         string
+	addr       string
+	user       string
+	pass       string
+	disableTLS bool
+	conn       clickhouse.Conn
+	logger     *slog.Logger
 }
 
 func WithClickhouseLogger(logger *slog.Logger) ClickhouseOption {
@@ -52,18 +52,18 @@ func WithClickhouseAddr(addr string) ClickhouseOption {
 	}
 }
 
-func WithTLS(useTLS bool) ClickhouseOption {
+func WithTLSDisabled(disableTLS bool) ClickhouseOption {
 	return func(cw *ClickhouseWriter) {
-		cw.useTLS = useTLS
+		cw.disableTLS = disableTLS
 	}
 }
 
 func NewClickhouseWriter(opts ...ClickhouseOption) (*ClickhouseWriter, error) {
 	cw := &ClickhouseWriter{
-		user:   "default",
-		pass:   "default",
-		addr:   "localhost:9440",
-		useTLS: false,
+		user:       "default",
+		pass:       "default",
+		addr:       "localhost:9440",
+		disableTLS: false,
 	}
 	for _, opt := range opts {
 		opt(cw)
@@ -81,7 +81,7 @@ func NewClickhouseWriter(opts ...ClickhouseOption) (*ClickhouseWriter, error) {
 			Password: cw.pass,
 		},
 	}
-	if cw.useTLS {
+	if !cw.disableTLS {
 		chOpts.TLS = &tls.Config{}
 	}
 	conn, err := clickhouse.Open(chOpts)

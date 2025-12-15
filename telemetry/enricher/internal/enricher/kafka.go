@@ -15,15 +15,15 @@ import (
 )
 
 type KafkaFlowConsumer struct {
-	broker   []string
-	user     string
-	pass     string
-	topic    string
-	group    string
-	authType KafkaAuthType
-	useTLS   bool
-	client   *kgo.Client
-	logger   *slog.Logger
+	broker     []string
+	user       string
+	pass       string
+	topic      string
+	group      string
+	authType   KafkaAuthType
+	disableTLS bool
+	client     *kgo.Client
+	logger     *slog.Logger
 }
 
 type KafkaOption func(*KafkaFlowConsumer)
@@ -64,9 +64,9 @@ func WithKafkaConsumerGroup(group string) KafkaOption {
 	}
 }
 
-func WithKafkaTLS(useTLS bool) KafkaOption {
+func WithKafkaTLSDisabled(disableTLS bool) KafkaOption {
 	return func(kfc *KafkaFlowConsumer) {
-		kfc.useTLS = useTLS
+		kfc.disableTLS = disableTLS
 	}
 }
 
@@ -121,7 +121,7 @@ func NewKafkaFlowConsumer(opts ...KafkaOption) (*KafkaFlowConsumer, error) {
 			}, nil
 		})))
 	}
-	if kfc.useTLS {
+	if !kfc.disableTLS {
 		kOpts = append(kOpts, kgo.DialTLS())
 	}
 	kOpts = append(kOpts,

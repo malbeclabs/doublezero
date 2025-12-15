@@ -117,10 +117,10 @@ func setupRedpandaContainer(ctx context.Context) error {
 
 // TestFlowEnrichement does the following:
 //   - sets up a clickhouse container and populates dependent tables,
-//   - sets up a redpanda cluster and creates a flows_raw topic and a flows_unenriched topic
-//   - produces a test flow onto the flows_raw topic which is consumed by the enricher, enriched
-//     and placed on the flow_enriched topic
-//   - consumes the enriched flow from the flows_enriched topic and compared against a golden file
+//   - sets up a redpanda cluster and creates a flows_raw_devnet topic
+//   - produces a test flow onto the flows_raw_devnet topic which is consumed by the enricher, enriched
+//     and written to clickhous
+//   - queries clickhouse to verify that the enriched flow is present
 func TestFlowEnrichment(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -149,7 +149,7 @@ func TestFlowEnrichment(t *testing.T) {
 		WithClickhouseDB(chDbname),
 		WithClickhouseUser(chUser),
 		WithClickhousePassword(chPassword),
-		WithTLS(false),
+		WithTLSDisabled(true),
 		WithClickhouseLogger(logger),
 	)
 	if err != nil {
@@ -163,7 +163,7 @@ func TestFlowEnrichment(t *testing.T) {
 		WithKafkaPassword(rpPassword),
 		WithKafkaConsumerTopic(rpTopicEnriched),
 		WithKafkaConsumerGroup(rpConsumerGroup),
-		WithKafkaTLS(false),
+		WithKafkaTLSDisabled(true),
 		WithKafkaLogger(logger),
 	)
 

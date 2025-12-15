@@ -4,9 +4,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/malbeclabs/doublezero/telemetry/enricher/internal/enricher"
@@ -16,12 +17,8 @@ var (
 	clickhouseAddr = flag.String("clickhouse-addr", "localhost:9440", "clickhouse address")
 	clickhouseUser = flag.String("clickhouse-user", "default", "clickhouse user")
 
-	kafkaBroker        = flag.String("kafka-broker", "localhost:9000", "kafka broker")
-	kafkaUser          = flag.String("kafka-user", "enricher", "kafka username")
-	kafkaTopicRaw      = flag.String("kafka-topic-raw", "flows_raw", "kafka topic to read raw flows")
-	kafkaTopicEnriched = flag.String("kafka-topic-enriched", "flows_enriched", "kafka topic to produce enriched flows")
-	kafkaConsumerGroup = flag.String("kafka-consumer-group", "enricher", "kafka consumer group")
-	useTls             = flag.Bool("use-tls", false, "use TLS for kafka and clickhouse connections")
+	kafkaUser = flag.String("kafka-user", "enricher", "kafka username")
+	useTls    = flag.Bool("use-tls", false, "use TLS for kafka and clickhouse connections")
 
 	version = flag.Bool("version", false, "version info")
 	Build   string
@@ -34,30 +31,49 @@ func main() {
 		fmt.Printf("build: %s\n", Build)
 		os.Exit(0)
 	}
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// if os.Getenv("CLICKHOUSE_PASS") == "" {
-	// 	log.Fatalf("CLICKHOUSE_PASS env var not set")
-	// }
-
-	// if os.Getenv("REDPANDA_PASS") == "" {
-	// 	log.Fatalf("REDPANDA_PASS env var not set")
-	// }
-
-	opts := []enricher.EnricherOption{
+	chWriter, err := enricher.NewClickhouseWriter(
 		enricher.WithClickhouseAddr(os.Getenv("CLICKHOUSE_ADDR")),
-		enricher.WithClickhouseCreds(*clickhouseUser, os.Getenv("CLICKHOUSE_PASS")),
-		enricher.WithKafkaBroker(os.Getenv("KAFKA_BROKERS")),
-		enricher.WithKafkaCreds(*kafkaUser, os.Getenv("KAFKA_PASS")),
+		enricher.WithClickhouseDB("default"),
+		enricher.WithClickhouseUser(*clickhouseUser),
+		enricher.WithClickhousePassword(os.Getenv("CLICKHOUSE_PASS")),
+		enricher.WithTLS(*useTls),
+		enricher.WithClickhouseLogger(logger),
+	)
+	if err != nil {
+		logger.Error("error creating clickhouse writer", "error", err)
+		os.Exit(1)
+	}
+
+	brokers := strings.Split(os.Getenv("KAFKA_BROKERS"), ",")
+	flowConsumer, err := enricher.NewKafkaFlowConsumer(
+		enricher.WithKafkaBroker(brokers),
+		enricher.WithKafkaUser(*kafkaUser),
+		enricher.WithKafkaPassword(os.Getenv("KAFKA_PASS")),
 		enricher.WithKafkaConsumerTopic(os.Getenv("KAFKA_TOPIC")),
 		enricher.WithKafkaConsumerGroup(os.Getenv("KAFKA_CONSUMER_GROUP")),
-		enricher.WithKafkaMetrics(true),
+		enricher.WithKafkaTLS(*useTls),
+		enricher.WithKafkaLogger(logger),
+	)
+	if err != nil {
+		logger.Error("error creating kafka flow consumer", "error", err)
+		os.Exit(1)
 	}
-	enricher := enricher.NewEnricher(opts...)
-	log.Println("starting enricher...")
+
+	enricher := enricher.NewEnricher(
+		enricher.WithClickhouseWriter(chWriter),
+		enricher.WithFlowConsumer(flowConsumer),
+		enricher.WithLogger(logger),
+	)
+	logger.Info("starting enricher...")
 	if err := enricher.Run(ctx); err != nil {
-		log.Fatalf("error while running enricher: %v", err)
+		logger.Error("error while running enricher", "error", err)
+		os.Exit(1)
 	}
-	log.Println("enricher stopped")
+	logger.Info("enricher stopped")
 }

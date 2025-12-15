@@ -6,7 +6,7 @@ use std::{
 use indicatif::{ProgressBar, ProgressStyle};
 use solana_sdk::pubkey::Pubkey;
 use std::{
-    net::{TcpStream, ToSocketAddrs},
+    net::{Ipv4Addr, TcpStream, ToSocketAddrs},
     str::FromStr,
     time::Duration,
 };
@@ -50,12 +50,13 @@ pub fn get_public_ipv4() -> Result<String, Box<dyn std::error::Error>> {
 
     // The IP will be in the body after the HTTP headers
     if let Some(body_start) = response_text.find("\r\n\r\n") {
-        let ip = &response_text[body_start + 4..].trim();
-
-        return Ok(ip.to_string());
+        let ip = response_text[body_start + 4..].trim();
+        ip.parse::<Ipv4Addr>()
+            .map(|_| ip.to_string())
+            .map_err(|_| "Failed to parse IPv4 address from response".into())
+    } else {
+        Err("Failed to extract the IP from the response".into())
     }
-
-    Err("Failed to extract the IP from the response".into())
 }
 
 pub fn init_command(len: u64) -> ProgressBar {

@@ -14,12 +14,6 @@ import (
 )
 
 var (
-	clickhouseAddr = flag.String("clickhouse-addr", "localhost:9440", "clickhouse address")
-	clickhouseUser = flag.String("clickhouse-user", "default", "clickhouse user")
-
-	kafkaUser = flag.String("kafka-user", "enricher", "kafka username")
-	useTls    = flag.Bool("use-tls", false, "use TLS for kafka and clickhouse connections")
-
 	version = flag.Bool("version", false, "version info")
 	Build   string
 )

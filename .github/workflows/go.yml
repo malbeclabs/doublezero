@@ -24,6 +24,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - run: sudo apt install -y libpcap-dev
       - uses: golangci/golangci-lint-action@v8
       - run: make go-lint
   go-test:
@@ -36,6 +37,7 @@ jobs:
           go-version-file: go.mod
           cache: true
       - run: sudo sysctl -w net.ipv4.ping_group_range="0 0"
+      - run: sudo apt install -y libpcap-dev
       - run: make go-test nocontainertest
   go-container-test:
     runs-on: ubuntu-latest

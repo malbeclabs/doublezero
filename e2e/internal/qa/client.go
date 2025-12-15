@@ -69,18 +69,18 @@ func NewClient(ctx context.Context, log *slog.Logger, hostname string, port int,
 	target := net.JoinHostPort(hostname, strconv.Itoa(port))
 	grpcConn, err := newClientWithRetry(ctx, target, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create gRPC client: %v", err)
+		return nil, fmt.Errorf("failed to create gRPC client on host %s: %v", hostname, err)
 	}
 
 	grpcClient := pb.NewQAAgentServiceClient(grpcConn)
 
 	resp, err := grpcClient.GetPublicIP(ctx, &emptypb.Empty{})
 	if err != nil {
-		return nil, fmt.Errorf("failed to get public IP: %v", err)
+		return nil, fmt.Errorf("failed to get public IP on host %s: %v", hostname, err)
 	}
 	publicIP := net.ParseIP(resp.PublicIp)
 	if publicIP == nil || publicIP.To4() == nil {
-		return nil, fmt.Errorf("invalid public IP: %v", resp.PublicIp)
+		return nil, fmt.Errorf("invalid public IP on host %s: %v", hostname, resp.PublicIp)
 	}
 
 	log.Info("Initializing client", "host", hostname, "publicIP", publicIP.To4().String())
@@ -114,7 +114,7 @@ func (c *Client) PublicIP() net.IP {
 func (c *Client) DisconnectUser(ctx context.Context, waitForStatus bool, waitForDeletion bool) error {
 	status, err := c.GetUserStatus(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get user status: %w", err)
+		return fmt.Errorf("failed to get user status on host %s: %w", c.Host, err)
 	}
 	if status.SessionStatus != UserStatusDisconnected {
 		c.log.Info("Disconnecting user", "host", c.Host)
@@ -128,13 +128,13 @@ func (c *Client) DisconnectUser(ctx context.Context, waitForStatus bool, waitFor
 	defer cancel()
 	_, err = c.grpcClient.Disconnect(ctx, &emptypb.Empty{})
 	if err != nil {
-		return fmt.Errorf("failed to disconnect from host %s: %w", c.Host, err)
+		return fmt.Errorf("failed to disconnect on host %s: %w", c.Host, err)
 	}
 
 	if waitForStatus {
 		err = c.WaitForStatusDisconnected(ctx)
 		if err != nil {
-			return fmt.Errorf("failed to wait for status to be disconnected: host %s, current status %s: %w", c.Host, status.SessionStatus, err)
+			return fmt.Errorf("failed to wait for status to be disconnected on host %s, current status %s: %w", c.Host, status.SessionStatus, err)
 		}
 	}
 
@@ -143,7 +143,7 @@ func (c *Client) DisconnectUser(ctx context.Context, waitForStatus bool, waitFor
 
 		data, err := getProgramDataWithRetry(ctx, c.serviceability)
 		if err != nil {
-			return fmt.Errorf("failed to get program data: %w", err)
+			return fmt.Errorf("failed to get program data for user on host %s: %w", c.Host, err)
 		}
 		for _, user := range data.Users {
 			userClientIP := net.IP(user.ClientIp[:]).String()
@@ -173,7 +173,7 @@ func (c *Client) DisconnectUser(ctx context.Context, waitForStatus bool, waitFor
 			return true, nil
 		}, waitForUserDeletionTimeout, waitInterval)
 		if err != nil {
-			return fmt.Errorf("timed out waiting for user deletion for IP %s: %w", publicIP, err)
+			return fmt.Errorf("timed out waiting for user deletion for IP %s on host %s: %w", publicIP, c.Host, err)
 		}
 		c.log.Debug("Confirmed user deleted onchain", "ip", publicIP)
 	}
@@ -184,13 +184,13 @@ func (c *Client) DisconnectUser(ctx context.Context, waitForStatus bool, waitFor
 func (c *Client) GetUserStatus(ctx context.Context) (*pb.Status, error) {
 	resp, err := c.grpcClient.GetStatus(ctx, &emptypb.Empty{})
 	if err != nil {
-		return nil, fmt.Errorf("failed to get status: %w", err)
+		return nil, fmt.Errorf("failed to get status on host %s: %w", c.Host, err)
 	}
 	if len(resp.Status) == 0 {
-		return nil, fmt.Errorf("no user status found")
+		return nil, fmt.Errorf("no user status found on host %s", c.Host)
 	}
 	if len(resp.Status) > 1 {
-		return nil, fmt.Errorf("multiple user statuses found")
+		return nil, fmt.Errorf("multiple user statuses found on host %s", c.Host)
 	}
 	return resp.Status[0], nil
 }
@@ -198,7 +198,7 @@ func (c *Client) GetUserStatus(ctx context.Context) (*pb.Status, error) {
 func (c *Client) GetCurrentDevice(ctx context.Context) (*Device, error) {
 	status, err := c.GetUserStatus(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get user status: %w", err)
+		return nil, fmt.Errorf("failed to get user status on host %s: %w", c.Host, err)
 	}
 	return c.devices[status.CurrentDevice], nil
 }
@@ -206,7 +206,7 @@ func (c *Client) GetCurrentDevice(ctx context.Context) (*Device, error) {
 func (c *Client) GetInstalledRoutes(ctx context.Context) ([]*pb.Route, error) {
 	resp, err := c.grpcClient.GetRoutes(ctx, &emptypb.Empty{})
 	if err != nil {
-		return nil, fmt.Errorf("failed to get routes: %w", err)
+		return nil, fmt.Errorf("failed to get routes on host %s: %w", c.Host, err)
 	}
 	return resp.InstalledRoutes, nil
 }
@@ -215,7 +215,7 @@ func (c *Client) WaitForStatusUp(ctx context.Context) error {
 	c.log.Debug("Waiting for status to be up", "host", c.Host)
 	err := c.waitForStatus(ctx, UserStatusUp, waitForStatusUpTimeout, waitInterval)
 	if err != nil {
-		return fmt.Errorf("failed to wait for status to be up: %w", err)
+		return fmt.Errorf("failed to wait for status to be up on host %s: %w", c.Host, err)
 	}
 	c.log.Debug("Confirmed status is up", "host", c.Host)
 	return nil
@@ -224,7 +224,7 @@ func (c *Client) WaitForStatusUp(ctx context.Context) error {
 func (c *Client) GetOwnerPubkey(ctx context.Context) (solana.PublicKey, error) {
 	data, err := getProgramDataWithRetry(ctx, c.serviceability)
 	if err != nil {
-		return solana.PublicKey{}, fmt.Errorf("failed to get program data: %w", err)
+		return solana.PublicKey{}, fmt.Errorf("failed to get program data on host %s: %w", c.Host, err)
 	}
 	publicIP := c.publicIP.To4().String()
 	for _, user := range data.Users {
@@ -233,14 +233,14 @@ func (c *Client) GetOwnerPubkey(ctx context.Context) (solana.PublicKey, error) {
 			return solana.PublicKeyFromBytes(user.PubKey[:]), nil
 		}
 	}
-	return solana.PublicKey{}, fmt.Errorf("owner pubkey not found")
+	return solana.PublicKey{}, fmt.Errorf("owner pubkey not found on host %s", c.Host)
 }
 
 func (c *Client) WaitForStatusDisconnected(ctx context.Context) error {
 	c.log.Debug("Waiting for status to be disconnected", "host", c.Host)
 	err := c.waitForStatus(ctx, UserStatusDisconnected, waitForStatusDisconnectedTimeout, waitInterval)
 	if err != nil {
-		return fmt.Errorf("failed to wait for status to be disconnected: %w", err)
+		return fmt.Errorf("failed to wait for status to be disconnected on host %s: %w", c.Host, err)
 	}
 	c.log.Debug("Confirmed status is disconnected", "host", c.Host)
 	return nil
@@ -266,7 +266,7 @@ func (c *Client) WaitForRoutes(ctx context.Context, expectedIPs []net.IP) error 
 		return true, nil
 	}, waitForRoutesTimeout, waitInterval)
 	if err != nil {
-		return fmt.Errorf("failed to wait for routes to be installed: %w", err)
+		return fmt.Errorf("failed to wait for routes to be installed on host %s: %w", c.Host, err)
 	}
 	c.log.Debug("Confirmed routes installed", "host", c.Host, "expectedIPs", expectedIPs)
 	return nil
@@ -275,10 +275,10 @@ func (c *Client) WaitForRoutes(ctx context.Context, expectedIPs []net.IP) error 
 func (c *Client) getConnectedDevice(ctx context.Context) (*Device, error) {
 	status, err := c.GetUserStatus(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get user status: %w", err)
+		return nil, fmt.Errorf("failed to get user status on host %s: %w", c.Host, err)
 	}
 	if status.SessionStatus != UserStatusUp {
-		return nil, fmt.Errorf("user status is not up: %s", status.SessionStatus)
+		return nil, fmt.Errorf("user status is not up on host %s: %s", c.Host, status.SessionStatus)
 	}
 	return c.devices[status.CurrentDevice], nil
 }

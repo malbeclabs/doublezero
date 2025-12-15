@@ -46,7 +46,7 @@ func (c *Client) ConnectUserUnicast_NoWait(ctx context.Context, deviceCode strin
 func (c *Client) ConnectUserUnicast(ctx context.Context, deviceCode string, waitForStatus bool) error {
 	err := c.DisconnectUser(ctx, true, true)
 	if err != nil {
-		return fmt.Errorf("failed to ensure disconnected for %s: %w", c.Host, err)
+		return fmt.Errorf("failed to ensure disconnected on host %s: %w", c.Host, err)
 	}
 
 	c.log.Info("Connecting unicast user", "host", c.Host, "device", deviceCode)
@@ -57,17 +57,17 @@ func (c *Client) ConnectUserUnicast(ctx context.Context, deviceCode string, wait
 		DeviceCode: deviceCode,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to connect %s: %w", c.Host, err)
+		return fmt.Errorf("failed to connect on host %s: %w", c.Host, err)
 	}
 	if !resp.GetSuccess() {
-		return fmt.Errorf("connection failed for %s: %s", c.Host, resp.GetOutput())
+		return fmt.Errorf("connection failed on host %s: %s", c.Host, resp.GetOutput())
 	}
 	c.log.Info("Unicast user connected", "host", c.Host, "device", deviceCode)
 
 	if waitForStatus {
 		err := c.WaitForStatusUp(ctx)
 		if err != nil {
-			return fmt.Errorf("failed to wait for status to be up: %w", err)
+			return fmt.Errorf("failed to wait for status to be up on host %s: %w", c.Host, err)
 		}
 	}
 
@@ -200,7 +200,7 @@ func (c *Client) TracerouteRaw(ctx context.Context, targetIP string) (string, er
 		Count:       unicastTracerouteCount,
 	})
 	if err != nil {
-		return "", fmt.Errorf("failed to traceroute: %w", err)
+		return "", fmt.Errorf("failed to traceroute on host %s: %w", c.Host, err)
 	}
 	return strings.Join(output.Output, "\n"), nil
 }

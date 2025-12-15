@@ -1,10 +1,3 @@
-# TODO
-- Foundation should be able to override status
-- Actually we're doing parts of phase 2 - checking for influx and telemetry
-- Also verify that loopbacks exist (via controller's prometheus metric)
-- Pick grafana alerts as mechanism for surfacing health info to contributors; move this onchain in the future
-- Port scan: out of scope? 
-
 # Network Provisioning Framework
 
 ## Summary
@@ -15,33 +8,40 @@ This RFC defines the network provisioning process used by DoubleZero contributor
 
 ## Motivation
 
-The provisioning process for DoubleZero Devices (DZDs) and links currently involves a lot of manual effort, is prone to human error, and includes overhead and delays from coordination between contributors and the DoubleZero Foundation. We want to define the process, and identify which parts of the process to prioritize for automation.
+The provisioning process for DoubleZero Devices (DZDs) and links currently requires manual effort, is prone to human error, and includes overhead and delays from coordination between contributors and the DoubleZero Foundation (DZF). Therefore we propose to define the process, identify which parts of the process to prioritize for automation, and take initial implementation steps. 
 
 ## New Terminology
 
-- **Onboarding** - The process of adding a new device or link to the network, starting with the point at which the contributor and DZF have decided to add the device or link
-- **Offboarding** - The process of removing an existing device or link from the network, starting with the point at which the contributor has decided to remove the link or device
+- **Onboarding** - The process of adding a new device or link to the network, starting with contributor's decision to add a device or link
+- **Offboarding** - The process of removing an existing device or link from the network, starting with the contributor's decision to remove the link or device
 - **Edge device** - A DoubleZero Device (DZD) that terminates user tunnels (max-users > 0). It has at least 1 CYOA interface with DIA. It has at least 1 WAN or DZX link. 
 - **Transit device** - A DZD that routes traffic between other DZDs but does not terminate user tunnels. It has at least 1 non-CYOA DIA interface. It has at least 2 WAN and/or DZX links.
 - **Hybrid device** - A DZD that terminates user tunnels and also routes traffic between other DZDs. Has at least 1 CYOA interface with DIA. Has at least 2 WAN or DZX links.
-- **RFS** - Ready For Service criteria are a set of rules that must be met for a device or link to be considered healthy and therefore ready for service.
+- **RFS** - Ready For Service criteria are a set of conditions that must be met for a device or link to be considered healthy and therefore ready for service.
+- **Burn-in period** - The amount of time a link or device must pass all its health checks before it can be activated. For links and devices activated for the first time this is 200,000 slots on the [DoubleZero ledger](https://explorer.solana.com/?cluster=custom&customUrl=https%3A%2F%2Fdoublezero-mainnet-beta-local.rpcpool.com%2Fdb336024-e7a8-46b1-80e5-352dd77060ab), which at 370ms per slot is about 20 hours. For links and devices being re-activated after maintenance this is 50,000 slots, about 5 hours.
 
 ## Alternatives Considered
 
 * We can keep the current loosely defined manual process in place. This will allow us to prioritize other development work, but it will keep operational overhead high for contributors, and make the DoubleZero mainnet-beta network more difficult to scale.
-* We can look at procuring a commercial network provisioning system such as Cisco Network Services Orchestrator, Juniper Apstra, SolarWinds Network Configuration Manager, or others. However, Malbec Labs has experience with using these systems. In the best case these systems tend to be expensive and they do not solve anything out of the box - they require customization. They also use traditional database backends, and would require customization to integrate with the DZ ledger (if doing so is even feasible). We prefer the approach of building a minimal, purpose-built system that deeply integrates with the rest of the DoubleZero stack.
+* We can look at procuring a commercial network provisioning system such as Cisco Network Services Orchestrator, Juniper Apstra, SolarWinds Network Configuration Manager, or others. However, based on team members' experience with these systems, in the best case they systems tend to be expensive and require extensive investment in customization. They also use traditional database backends, and would require additional customization to integrate with the DZ ledger (if doing so is even feasible). We prefer a minimal, purpose-built system that deeply integrates with the rest of the DoubleZero stack.
 
 ## Scope
-This rfc covers device and link onboarding, and device draining for maintenance purposes like firmware upgrades and parts replacement. Offboarding of devices is out of scope because we don't currently have demand for removing devices from the network.
+This rfc covers device and link onboarding, and device draining for maintenance purposes like firmware upgrades and parts replacement. 
 
-Link draining is already covered by rfcs/rfc9-link-draining.md.
-
-Also out of scope:
-- Automatic re-connection of users to nearby devices is out of scope. Users will remain connected to their current device, and will need to take action if they want to re-connect to another nearby device
-- Visibility into the history of the network topology is out of scope
+The following are out of scope:
+- Offboarding of devices is out of scope because we don't currently have demand for removing devices from the network. 
+- Automatically moving devices or links to a drained status, for example due to failing health checks, is out of scope due to the operational risk it would introduce. For now, this will still require action by the contributor owning the device or link.
+- Link draining is already covered by rfcs/rfc9-link-draining.md.
+- Automatic re-connection of users to nearby devices is out of scope. During device draining, users will remain connected to their current device, and will need to take action if they want to re-connect to another nearby device
+- Providing visibility into the history of the network topology is out of scope.
+- Providing users with visibility into a schedule of planned maintenance is out of scope.
+- Automatically determining whether the network has enough capacity to safely drain a given DZD is out of scope.
 - Draining of CYOA interfaces is out of scope, although draining a device will shut down all user BGP sessions, and so it will have the effect of removing all user traffic from all CYOA interfaces.
+- We would like to publish detailed health info to contributors onchain, but to keep the scope tight, we will start by using Grafana to publish health info to contributors.
+- We would like to add a health check that performs a port scan on devices, but that is currently out of scope.
+- Some device/link RFS criteria are out of scope because we don't currently have a way to retrieve relevant data from devices, and we don't want to delay the first version of this framework in order to incorporate them. For example we currently have no way to verify that NTP is configured correctly.
+- Providing a means for DZDs to talk to the controller when internet access is down is out of scope.
 
-In addition, some device/link prerequisites are out of scope because we don't currently have a way to retrieve relevant data from DZDs, and we don't want to delay the first version of this framework in order to incorporate them. For example we currently have no way to verify that NTP is configured correctly. These items are called out below.
 
 ## Detailed Design
 
@@ -100,7 +100,7 @@ Phase 3 - Health check and enable user connections
 %%{init: {"themeVariables": {"fontSize": "16px"}, "flowchart": {"curve": "basis", "htmlLabels": true}, "scale": 1.5}}%%
 flowchart TD
   O[ML/contributor<br>verifiy health of new assets]
-  O --> P{Healthy? Links,<br> routing policy, security etc.}
+  O --> P{Healthy? Links,<br> routing policy, security,<br>interfaces, config agent,<br>telemetry agent etc.}
   P -- No --> O
   P -- Yes --> Q{Device is edge or hybrid?}
   Q -- No --> U
@@ -113,7 +113,7 @@ flowchart TD
   U --> Z[Done]
 ```
 
-Here are the same phases as a list:
+Here are the same phases as lists:
 
 #### Phase 1
 1. Rack & power device
@@ -148,7 +148,8 @@ Here are the same phases as a list:
 
 #### Phase 3
 1. Contributor verifies health of new assets
-    1. Are links, routing protocols, routing policy, security, etc, configured correctly?
+    1. Are interfaces links, routing protocols, routing policy, security, etc, configured correctly?
+    1. Are the device's config and telemetry configured and operating correctly?
 1. For edge/hybrid devices
     1. Run QA test via device's CYOA interface(s)
     1. On failure, troubleshoot errors and repeat QA test
@@ -157,12 +158,12 @@ Here are the same phases as a list:
     1. Contributor un-drains the link by setting link.status to `activated`
 
 ### Architecture
-We propose to add logic to the existing `monitor` component so that it periodically monitors the health of links and devices and updates a new `health` field on the serviceability `link` and `device` programs to `Healthy` if all ready-for-service criteria are met, or `Impaired` if any criteria are not met. The controller, in turn, supplies the fleet of DZDs with configuration statements that implement the desired network configuration for each status.  The diagram shows the case where a link or device is in a drained status, has passed all health checks, and has a desired_status of activated. 
+We propose to create a new `monitor-oracle` component tha periodically monitors the health of links and devices and updates new `health` fields in the serviceability `link` and `device` to `Healthy` if all ready-for-service criteria are met, or `Impaired` if any criteria are not met. The controller, in turn, supplies the fleet of DZDs with configuration statements that implement the desired network configuration for each status. The diagram shows the case where a link or device is in a drained status, has passed all health checks, and has a desired_status of activated. 
 
 ```
-                    ┌─────────┐
-                    │ monitor │
-                    └────┬────┘
+                 ┌────────────────┐
+                 │ monitor-oracle │
+                 └───────┬────────┘
                          │
             ┌────────────┴─────────────┐───────────────────────────────────────────────┐                             
             │                          │                                               │                             
@@ -206,12 +207,15 @@ We propose to add logic to the existing `monitor` component so that it periodica
 ### Link (WAN or DZX) onboarding/maintenance/offboarding
 
 #### Link onboarding - RFS criteria
-1. Link record exists on DZ ledger with link.status = `soft-drained` or `hard-drained`
-1. The link's A and Z interfaces have 24 hours of data in InfluxDB with zero errors and non-zero utilization
-1. The link has 24 hours of data in the DoubleZero ledger telemetry program with zero loss
+1. Link record created on DZ ledger with link.status = `pending` and link.desired_status = `activated`
+1. The link's A and Z interfaces have <burn-in slots> worth of data in InfluxDB with zero errors and non-zero utilization
+1. The link has <burn-in slots> of data in the DoubleZero ledger telemetry program with zero loss
 
 #### Link onboarding - steps
-1. The `monitor` component, when all ready-for-service criteria are met, sets link.health to `healthy`
+0. Determine the burn-in period to use:
+    1. If link.health is `pending` (new link), use a burn-in period of 200K DZ Ledger slots (about 20 hours)
+    1. If link.health is `drained` (link is in maintenance), use a monitoring-oracle of 50K DZ Ledger slots (about 5 hours)
+1. The `monitor-oracle` component, when all ready-for-service criteria have been met for the burn-in period, sets link.health to `healthy`
 1. On link.health update, the serviceability link program sets link.status to `activated` when:
         1. link.desired_status = activated
         1. and link.health = healthy 
@@ -220,7 +224,7 @@ We propose to add logic to the existing `monitor` component so that it periodica
 
 ##### Link maintenance - steps
 1. Contributor sets link.desired_status to `hard-drained`
-1. On link.desired_status update, the serviceability link program sets link.status to `hard-drained`
+1. When the contributor sets link.desired_status to `hard-drained`, the serviceability device program sets link.status to `drained`
 1. Controller sets `isis passive` on link interfaces
 1. When maintenance is complete, contributor sets link.desired_status to `activated`
 1. Follow [the link onboarding steps](#link-onboarding---steps) above to bring the link back into service
@@ -229,25 +233,33 @@ We propose to add logic to the existing `monitor` component so that it periodica
 1. Contributor sets link.status to `hard-drained`
 1. Controller sets `isis passive` on link interfaces
 1. Contributor runs `doublezero link delete --pubkey <pubkey>`
-1. Contributor optionally runs `doublezero device interface delete <device-code> <interface-name>`
+1. Contributor optionally runs `doublezero device interface delete <device-code> <interface-name>` for all interfaces
 1. Contributor manually removes the interface configuration with `default interface <interface-name>`
 
 ### Device onboarding
 As of December 2025, 72 device have been onboarded to DoubleZero mainnet-beta using the manual health check process described in [phase 3](#phase-3) above. The automated process outlined here replaces the manual process.
 
-Move device to activated status first, then move links to activated status, then (for edge/hybrid) set max-users > 0.
+The high level steps for device onboarding are as follows:
+1. Set the device's desired_status to activated status
+1. Set the device's connected links's desired_status to activated
+1. Once the links pass all prerequisites for the burn-in period, set their status to activated
+1. Once the device passes all prerequisites for the burn-in period, set its status to activated
+1. For edge/hybrid devices, set max-users to the network-wide max (currently 96)
 
 #### Device onboarding - RFS criteria
 1. Device record created with
     1. public_ip - set
     1. dz_prefixes - at least one /29
     1. max_users - set to 0
-    1. status = `drained`
+    1. status = `pending`
+    1. Loopback255 exists with loopback_type = vpnv4
+    1. Loopback256 exists with loopback_type = ipv4
 1. DIA
     1. At least 1 DIA interface defined on chain with status = activated
     1. At least 1 DIA interface up for 24 hours with zero errors and non-zero utilization
 1. At least 1 DZX/WAN link interface defined on chain with status = activated
 1. At least 1 DZX or WAN link up for 24 hours with zero errors and non-zero utilization (already established by link RFS criteria)
+1. Device meets the criteria for its device.type (edge, hybrid, transit)
 1. Device is reporting to InfluxDB for 24 hours (already established by link RFS criteria)
 1. Config agent installed and running for 24 hours
 1. Telemetry agent installed and running for 24 hours (already established by link RFS criteria)
@@ -259,28 +271,35 @@ The following criteria are out of scope because they depend on data that we curr
     1. BGP routes received from DIA are marked with `no-advertise`
     1. An ACL is applied to inbound DIA traffic
     1. The 0th IP in the device's first dz_prefix is configured on loopback100 and reachable via DIA
-    1. NTP is configured and synced
-    1. DNS is configured and working
-    1. TCAM profile is set
-    1. `service routing protocols model multi-agent` has been set
+1. NTP is configured and synced
+1. DNS is configured and working
+1. TCAM profile is set
+1. `service routing protocols model multi-agent` has been set
 
 #### Device onboarding - steps
-1. The `monitor` component, when all ready-for-service criteria are met, sets device.health to `healthy`
+0. Determine the burn-in period to use:
+    1. If device.health is `pending` (new device), use a burn-in period of 200K DZ Ledger slots (about 20 hours)
+    1. If device.health is `drained` (device is in maintenance), use a monitoring-oracle of 50K DZ Ledger slots (about 5 hours)
+1. The `monitor-oracle` component, when all ready-for-service criteria have been met for the burn-in period, sets device.health to `healthy`
 1. On device.health update, the serviceability link program sets device.status to `activated` and device.max-users to 96 (for edge/hybrid devices only) when the following are all true:
     1. device.desired_status = activated
     1. and device.health = healthy 
     1. and device.status = `drained`
-     
 
 ### Device maintenance
-When a device needs maintenance that will interrupt user traffic, such as a firmware upgrade or hardware part replacement, we first soft-drain the device's links to re-route transit traffic around the device. Next, we drain user traffic from the device itself by having the controller add `neighbor <w.x.y.z> shutdown` to every user BGP session. At this point, from the user's perspective, `doublezero status` will show a tunnel status of `pending`, and the user will not be able to route any traffic over DoubleZero. 
+When a device needs maintenance that will interrupt user traffic, such as a firmware upgrade or hardware part replacement, we first soft-drain the device's links to re-route transit traffic around the device. Next, we drain user traffic from the device itself by having the controller add `neighbor <w.x.y.z> shutdown` to every user BGP session. At this point, from the user's perspective, `doublezero status` will show a tunnel status of `pending`, and the user will not be able to route any traffic over DoubleZero unless they take action by disconnecting a connecting to a different device.
 
 For IBRL users, traffic will re-route via the internet. For multicast users, traffic will be interrupted for the duration of the maintenance, so users will need to fall back on other means to receive the same data over the internet. If users want to remain connected to DoubleZero during the maintenance, they will need to take action to disconnect and reconnect to a different device. 
 
 ##### Device maintenance - steps
-1. Contributor sets device.desired_status to `hard-drained`
-1. On device.desired_status update, the serviceability device program sets device.status to `hard-drained`
+1. Contributor runs `doublezero link update --pubkey PUBKEY --desired-status drained` for each link connected to the device
+1. Contributor runs `doublezero device update --pubkey PUBKEY --desired-status drained`
+1. When the contributor sets device.desired_status to `drained`, the serviceability device program sets device.status to `drained`
 
+1. On link.desired_status update, the serviceability link program sets link.status to `hard-drained` and sets link.health to `drained`.
+1. Controller sets `isis passive` on link interfaces
+1. When maintenance is complete, contributor sets link.desired_status to `activated`
+1. Follow [the link onboarding steps](#link-onboarding---steps) above to bring the link back into service
 
 #### Device offboarding
 Out of scope
@@ -293,7 +312,8 @@ pub enum LinkHealth {
     Unknown = 0,
     Pending = 1,
     Healthy = 2,
-    Impaired = 3,
+    Drained = 3    
+    Impaired = 4,
 }
 ```
 
@@ -313,7 +333,8 @@ pub enum DeviceHealth {
     Unknown = 0,
     Pending = 1,
     Healthy = 2,
-    Impaired = 3,
+    Drained = 3,
+    Impaired = 4,
 }
 ```
 
@@ -327,9 +348,20 @@ pub enum DeviceDesiredStatus {
 }
 ```
 
-#### - monitor: add logic to update link.health and device.health
-#### - serviceability link program: add logic to update link.status
-#### - serviceability device program: add logic to update device.status
+#### - monitor-oracle: add logic to update link.health and device.health
+#### - serviceability link program
+- add LinkHealth
+- add LinkDesiredStatus
+- add `Drained` to LinkStatus
+- add logic to update link.status
+- allow foundation to override device.status
+#### - serviceability device program
+- add DeviceHealth
+- add DeviceDesiredStatus
+- add `Drained` to DeviceStatus
+- add logic to update device.status
+- allow foundation to override device.status
+#### - activator/serviceability: when devices and links are created, don't change their status to activated
 #### - activator/serviceability: don't allow users to connect when device.status is drained
 #### - controller: add logic that shuts down user BGP sessions when device.status is drained
 #### - qa: update alldevices test to emit prometheus metrics
@@ -339,34 +371,26 @@ pub enum DeviceDesiredStatus {
 ## Impact
 
 Changes are needed to the following components:
-* monitor
 * serviceability link and device
 * controller
 * QA alldevices test
 
 This RFC should improve the operational controls to manage DZDs and links in the network.  It introduces an intent based methodology that uses explict fields to achieve the desired state.
 
-This RFC significantly changes the scope of the monitor component. Today, the monitor collects data from Solana and the DZ ledger (serviceability and telemetry), and writes data to Prometheus and InfluxDB. It will now, in addition, read data from Prometheus and InfluxDB and write data to serviceability.
+This RFC adds a new monitor-oracle component that collects data from Solana and the DZ ledger (serviceability and telemetry), reads data from Grafana and InfluxDB, and writes data to serviceability.
+
+Contributors should not be rewarded for devices and links that are not in activated status. This check is already present in contributor-rewards (doublezero-offchain/crates/contributor-rewards/src/calculator/shapley_handler.rs).
 
 ## Security Considerations
 
-- The monitor component will need a key with write access to link.health and device.health. If this key is leaked, an attacker could move a device into activated status even though it's not healthy.
+- The monitor-oracle component will API keys for reading from Grafana and InfluxDB, as well as a key with write access to link.health and device.health. If this key is leaked, an attacker could move a device into activated status even though it's not healthy.
 - An attacker could shut down user BGP sessions on DZDs if they gains the ability to update device.status or device.desired_status to `drained`.
 
 ## Backward Compatibility
 
 *Interaction with existing deployments.*
 Explain whether current nodes, data, or integrations continue to work unchanged. If not, spell out migration paths, feature gates, version negotiation, or deprecation timelines.
-- The changes can be deployed in a backward-compatible manner, starting with the program updates, followed by the qa and monitor updates, followed by the controller updates.
+- The changes can be deployed in a backward-compatible manner, starting with the program updates, followed by the qa and monitor-oracle updates, followed by the controller updates.
 
 ## Open Questions
-
-* How should the device and link RFS criteria, status of each criteria, and time left on 24 hours timer, be exposed to contributors? Options:
-    1. Grafana alert statuses
-    1. Add a bunch of individual RFS criteria fields to serviceability.link and serviceability.device
-    1. Add a string field to serviceability.link and serviceability.device containing a json representation of the RFS criteria statuses
-* How do we determine it is safe to drain a DZD?
-    * Capacity
-    * Alternative routes
 * What verification can be implemented to prove that a DZD, link or CYOA interface has been successfully drained and undrained?
-* How can we ensure that the agent can still talk to the controller when internet access is down?

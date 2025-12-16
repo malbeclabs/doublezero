@@ -12,8 +12,11 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"sync"
+	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
 // FlowConsumer defines the minimal interface for consuming flow records.
@@ -26,6 +29,10 @@ type FlowConsumer interface {
 // Clicker defines the minimal interface the Enricher needs to interact with ClickHouse.
 type Clicker interface {
 	BatchInsert(context.Context, []FlowSample) error
+}
+
+type ServiceabilityFetcher interface {
+	GetProgramData(context.Context) (*serviceability.ProgramData, error)
 }
 
 type EnricherOption func(*Enricher)
@@ -57,20 +64,40 @@ func WithEnricherMetrics(metrics *EnricherMetrics) EnricherOption {
 	}
 }
 
+func WithServiceabilityFetcher(fetcher ServiceabilityFetcher) EnricherOption {
+	return func(e *Enricher) {
+		e.serviceability = fetcher
+	}
+}
+
+func WithServiceabilityFetchInterval(interval time.Duration) EnricherOption {
+	return func(e *Enricher) {
+		e.serviceabilityFetchInterval = interval
+	}
+}
+
 type Enricher struct {
-	chWriter     Clicker
-	flowConsumer FlowConsumer
-	annotators   []Annotator
-	logger       *slog.Logger
-	metrics      *EnricherMetrics
+	chWriter                    Clicker
+	flowConsumer                FlowConsumer
+	serviceability              ServiceabilityFetcher
+	annotators                  []Annotator
+	logger                      *slog.Logger
+	metrics                     *EnricherMetrics
+	programData                 *serviceability.ProgramData
+	programDataMutex            sync.Mutex
+	serviceabilityFetchInterval time.Duration
 }
 
 func NewEnricher(opts ...EnricherOption) *Enricher {
-	e := &Enricher{}
+	e := &Enricher{
+		serviceabilityFetchInterval: 10 * time.Second,
+		programData:                 &serviceability.ProgramData{},
+	}
 
 	for _, opt := range opts {
 		opt(e)
 	}
+
 	if e.logger == nil {
 		e.logger = slog.New(slog.NewTextHandler(os.Stderr, nil))
 	}
@@ -90,6 +117,18 @@ func (e *Enricher) Run(ctx context.Context) error {
 	if err := e.RegisterAnnotators(ctx); err != nil {
 		return fmt.Errorf("error while initializing annotators: %v", err)
 	}
+
+	// Make sure we have a serviceability dataset before starting enrichment
+	var err error
+	e.logger.Info("fetching initial serviceability data")
+	e.programDataMutex.Lock()
+	e.programData, err = e.serviceability.GetProgramData(ctx)
+	e.programDataMutex.Unlock()
+	if err != nil {
+		return fmt.Errorf("error fetching serviceability data: %v", err)
+	}
+
+	go e.fetchServiceabilityData(ctx)
 
 	// Let's annotate some flow records
 	for {
@@ -118,6 +157,27 @@ func (e *Enricher) Run(ctx context.Context) error {
 				continue
 			}
 			e.metrics.FlowsProcessedTotal.Add(float64(len(samples)))
+		}
+	}
+}
+
+func (e *Enricher) fetchServiceabilityData(ctx context.Context) {
+	ticker := time.NewTicker(e.serviceabilityFetchInterval)
+	for {
+		select {
+		case <-ticker.C:
+			newData, err := e.serviceability.GetProgramData(ctx)
+			if err != nil {
+				e.logger.Error("error refreshing serviceability data", "error", err)
+				e.metrics.ServiceabilityFetchErrors.Inc()
+				continue
+			}
+			e.programDataMutex.Lock()
+			e.programData = newData
+			e.programDataMutex.Unlock()
+		case <-ctx.Done():
+			ticker.Stop()
+			return
 		}
 	}
 }

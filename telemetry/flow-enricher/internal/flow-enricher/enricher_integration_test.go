@@ -179,6 +179,7 @@ func TestFlowEnrichment(t *testing.T) {
 		WithClickhouseWriter(chWriter),
 		WithLogger(logger),
 		WithEnricherMetrics(NewEnricherMetrics(reg)),
+		WithServiceabilityFetcher(&MockServiceabilityFetcher{}),
 	)
 	go func() {
 		if err := enricher.Run(ctx); err != nil {

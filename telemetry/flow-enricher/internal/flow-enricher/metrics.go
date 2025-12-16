@@ -6,13 +6,14 @@ import (
 )
 
 type EnricherMetrics struct {
-	FlowsProcessedTotal     prometheus.Counter
-	FlowsEnrichedTotal      prometheus.Counter
-	FlowsEnrichmentFailed   prometheus.Counter
-	FlowsEnrichmentDuration prometheus.Histogram
-	ClickhouseInsertErrors  prometheus.Counter
-	KafkaConsumeErrors      prometheus.Counter
-	KafkaCommitErrors       prometheus.Counter
+	FlowsProcessedTotal       prometheus.Counter
+	FlowsEnrichedTotal        prometheus.Counter
+	FlowsEnrichmentFailed     prometheus.Counter
+	FlowsEnrichmentDuration   prometheus.Histogram
+	ClickhouseInsertErrors    prometheus.Counter
+	KafkaConsumeErrors        prometheus.Counter
+	KafkaCommitErrors         prometheus.Counter
+	ServiceabilityFetchErrors prometheus.Counter
 }
 
 func NewEnricherMetrics(reg prometheus.Registerer) *EnricherMetrics {
@@ -46,6 +47,10 @@ func NewEnricherMetrics(reg prometheus.Registerer) *EnricherMetrics {
 		KafkaCommitErrors: factory.NewCounter(prometheus.CounterOpts{
 			Name: "kafka_commit_errors_total",
 			Help: "Total number of errors committing offsets to Kafka",
+		}),
+		ServiceabilityFetchErrors: factory.NewCounter(prometheus.CounterOpts{
+			Name: "serviceability_fetch_errors_total",
+			Help: "Total number of errors fetching serviceability data",
 		}),
 	}
 }

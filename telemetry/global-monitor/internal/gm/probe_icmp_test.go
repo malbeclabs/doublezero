@@ -177,6 +177,81 @@ func requireICMPProbeCapable(t *testing.T, log *slog.Logger, iface string) {
 	require.True(t, res.OK, "icmp probe capability check failed unexpectedly: reason=%v err=%v", res.FailReason, res.FailError)
 }
 
+func TestGlobalMonitor_ICMPProbeTarget_Probe_pinger_timeout_can_fire_before_ctx_deadline(t *testing.T) {
+	t.Parallel()
+
+	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	iface := loopbackIfaceName(t)
+	requireICMPProbeCapable(t, log, iface)
+
+	// Make the ping session want to run longer than either timeout.
+	cfg := &ICMPProbeTargetConfig{Count: 1000, Interval: 200 * time.Millisecond}
+	target, err := NewICMPProbeTarget(log, iface, net.ParseIP("127.0.0.1"), cfg)
+	require.NoError(t, err)
+
+	// Deadline with a big fractional part so truncation shaves almost a whole second off.
+	ctx, cancel := context.WithTimeout(context.Background(), 5900*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	res, err := target.Probe(ctx)
+	elapsed := time.Since(start)
+
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	require.NotNil(t, res.Stats)
+	require.Greater(t, res.Stats.PacketsSent, uint64(0))
+	require.Greater(t, res.Stats.PacketsRecv, uint64(0))
+
+	// If pinger.Timeout fired before the ctx deadline, we should NOT see ctx deadline exceeded.
+	require.False(t, errors.Is(res.FailError, context.DeadlineExceeded))
+	require.Empty(t, res.FailReason)
+
+	// And we should return noticeably before 5.9s (allowing for scheduling jitter).
+	require.Less(t, elapsed, 5600*time.Millisecond)
+}
+
+func TestGlobalMonitor_ICMPProbeTarget_Probe_subsecond_deadline_does_not_panic(t *testing.T) {
+	t.Parallel()
+
+	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	iface := loopbackIfaceName(t)
+	requireICMPProbeCapable(t, log, iface)
+
+	cfg := &ICMPProbeTargetConfig{Count: 1000, Interval: 10 * time.Millisecond}
+	target, err := NewICMPProbeTarget(log, iface, net.ParseIP("127.0.0.1"), cfg)
+	require.NoError(t, err)
+
+	require.NotPanics(t, func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 450*time.Millisecond)
+		defer cancel()
+		res, err := target.Probe(ctx)
+		require.NoError(t, err)
+		require.NotNil(t, res)
+	})
+}
+
+func TestGlobalMonitor_ICMPProbeTarget_Probe_timeout_still_maps_to_fail_reason(t *testing.T) {
+	t.Parallel()
+
+	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	iface := loopbackIfaceName(t)
+	requireICMPProbeCapable(t, log, iface)
+
+	cfg := &ICMPProbeTargetConfig{Count: 1000, Interval: 200 * time.Millisecond}
+	target, err := NewICMPProbeTarget(log, iface, net.ParseIP("127.0.0.1"), cfg)
+	require.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		ctx, cancel := context.WithTimeout(context.Background(), 650*time.Millisecond)
+		defer cancel()
+		res, err := target.Probe(ctx)
+		return err == nil && res != nil &&
+			res.FailReason == ProbeFailReasonTimeout &&
+			errors.Is(res.FailError, context.DeadlineExceeded)
+	}, 6*time.Second, 200*time.Millisecond)
+}
+
 func isICMPPermissionError(err error) bool {
 	if err == nil {
 		return false

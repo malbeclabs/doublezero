@@ -80,6 +80,11 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     go build -ldflags "${GO_LDFLAGS}" -o ${BIN_DIR}/doublezero-telemetry-data-cli controlplane/telemetry/cmd/data-cli/main.go
 
+# Build the telemetry flow enricher (golang)
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go build -ldflags "${GO_LDFLAGS}" -o ${BIN_DIR}/doublezero-telemetry-flow-enricher telemetry/flow-enricher/cmd/flow-enricher/main.go
+
 # Force COPY in later stages to always copy the binaries, even if they appear to be the same.
 ARG CACHE_BUSTER=1
 RUN echo "$CACHE_BUSTER" > ${BIN_DIR}/.cache-buster && \

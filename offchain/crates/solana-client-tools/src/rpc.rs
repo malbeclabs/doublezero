@@ -1,9 +1,9 @@
-use std::ops::Deref;
+use std::{ops::Deref, str::FromStr};
 
-use anyhow::{Context, Result, ensure};
+use anyhow::{Context, Result, bail, ensure};
 use borsh::BorshDeserialize;
 use bytemuck::Pod;
-use clap::Args;
+use clap::{Args, ValueEnum};
 use doublezero_program_tools::PrecomputedDiscriminator;
 use doublezero_sdk::record::pubkey::create_record_key;
 use solana_client::nonblocking::rpc_client::RpcClient;
@@ -21,45 +21,84 @@ pub struct DoubleZeroLedgerConnectionOptions {
     pub dz_ledger_url: String,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum DoubleZeroLedgerEnvironment {
+/// If specified, the DoubleZero Ledger environment will not be the same as the
+/// Solana connection's. This argument is useful for local development.
+#[derive(Debug, Args, Clone)]
+pub struct DoubleZeroLedgerEnvironmentOverride {
+    #[arg(hide = true, long)]
+    pub dz_env: Option<NetworkEnvironment>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ValueEnum)]
+pub enum NetworkEnvironment {
     #[default]
     MainnetBeta,
     Testnet,
     Localnet,
 }
 
-impl DoubleZeroLedgerEnvironment {
-    pub const DEFAULT_MAINNET_BETA_URL: &str =
-        "https://doublezero-mainnet-beta.rpcpool.com/db336024-e7a8-46b1-80e5-352dd77060ab";
-    pub const DEFAULT_TESTNET_URL: &str =
-        "https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16";
+impl NetworkEnvironment {
     pub const DEFAULT_LOCALNET_URL: &str = "http://localhost:8899";
 
-    pub const fn url(&self) -> &str {
+    pub const PUBLIC_SOLANA_MAINNET_BETA_URL: &str = "https://api.mainnet-beta.solana.com";
+    pub const PUBLIC_SOLANA_TESTNET_URL: &str = "https://api.testnet.solana.com";
+
+    pub const PUBLIC_DOUBLEZERO_LEDGER_MAINNET_BETA_URL: &str =
+        "https://doublezero-mainnet-beta.rpcpool.com/db336024-e7a8-46b1-80e5-352dd77060ab";
+    pub const PUBLIC_DOUBLEZERO_LEDGER_TESTNET_URL: &str =
+        "https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16";
+
+    pub const fn doublezero_ledger_public_url(&self) -> &'static str {
         match self {
-            DoubleZeroLedgerEnvironment::MainnetBeta => Self::DEFAULT_MAINNET_BETA_URL,
-            DoubleZeroLedgerEnvironment::Testnet => Self::DEFAULT_TESTNET_URL,
-            DoubleZeroLedgerEnvironment::Localnet => Self::DEFAULT_LOCALNET_URL,
+            NetworkEnvironment::MainnetBeta => Self::PUBLIC_DOUBLEZERO_LEDGER_MAINNET_BETA_URL,
+            NetworkEnvironment::Testnet => Self::PUBLIC_DOUBLEZERO_LEDGER_TESTNET_URL,
+            NetworkEnvironment::Localnet => Self::DEFAULT_LOCALNET_URL,
         }
     }
 
-    pub fn is_mainnet(&self) -> bool {
-        self == &DoubleZeroLedgerEnvironment::MainnetBeta
+    pub const fn solana_public_url(&self) -> &'static str {
+        match self {
+            NetworkEnvironment::MainnetBeta => Self::PUBLIC_SOLANA_MAINNET_BETA_URL,
+            NetworkEnvironment::Testnet => Self::PUBLIC_SOLANA_TESTNET_URL,
+            NetworkEnvironment::Localnet => Self::DEFAULT_LOCALNET_URL,
+        }
+    }
+
+    pub fn is_mainnet_beta(&self) -> bool {
+        self == &NetworkEnvironment::MainnetBeta
     }
 
     pub fn is_testnet(&self) -> bool {
-        self == &DoubleZeroLedgerEnvironment::Testnet
+        self == &NetworkEnvironment::Testnet
     }
 
     pub fn is_localnet(&self) -> bool {
-        self == &DoubleZeroLedgerEnvironment::Localnet
+        self == &NetworkEnvironment::Localnet
     }
 }
 
-impl From<DoubleZeroLedgerEnvironment> for DoubleZeroLedgerConnection {
-    fn from(opts: DoubleZeroLedgerEnvironment) -> Self {
-        DoubleZeroLedgerConnection::new(opts.url().to_string())
+impl From<NetworkEnvironment> for DoubleZeroLedgerConnection {
+    fn from(opts: NetworkEnvironment) -> Self {
+        DoubleZeroLedgerConnection::new(opts.doublezero_ledger_public_url().to_string())
+    }
+}
+
+impl From<NetworkEnvironment> for SolanaConnection {
+    fn from(opts: NetworkEnvironment) -> Self {
+        SolanaConnection::new(opts.solana_public_url().to_string())
+    }
+}
+
+impl FromStr for NetworkEnvironment {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self> {
+        match s {
+            "m" | "mainnet-beta" => Ok(NetworkEnvironment::MainnetBeta),
+            "t" | "testnet" => Ok(NetworkEnvironment::Testnet),
+            "l" | "localhost" => Ok(NetworkEnvironment::Localnet),
+            _ => bail!("Cannot convert moniker '{s}' to network environment"),
+        }
     }
 }
 
@@ -87,21 +126,14 @@ impl SolanaConnection {
         Self(RpcClient::new_with_commitment(url, commitment_config))
     }
 
-    pub async fn try_is_mainnet(&self) -> Result<bool> {
-        let genesis_hash = self.0.get_genesis_hash().await?;
-        Ok(genesis_hash.to_bytes() == Self::MAINNET_BETA_GENESIS_HASH.to_bytes())
-    }
-
-    pub async fn try_dz_environment(&self) -> Result<DoubleZeroLedgerEnvironment> {
+    pub async fn try_network_environment(&self) -> Result<NetworkEnvironment> {
         let genesis_hash = self.0.get_genesis_hash().await?;
 
-        let dz_env = match Pubkey::from(genesis_hash.to_bytes()) {
-            Self::MAINNET_BETA_GENESIS_HASH => DoubleZeroLedgerEnvironment::MainnetBeta,
-            Self::TESTNET_GENESIS_HASH => DoubleZeroLedgerEnvironment::Testnet,
-            _ => DoubleZeroLedgerEnvironment::Localnet,
-        };
-
-        Ok(dz_env)
+        match Pubkey::from(genesis_hash.to_bytes()) {
+            Self::MAINNET_BETA_GENESIS_HASH => Ok(NetworkEnvironment::MainnetBeta),
+            Self::TESTNET_GENESIS_HASH => Ok(NetworkEnvironment::Testnet),
+            _ => Ok(NetworkEnvironment::Localnet),
+        }
     }
 
     pub async fn try_fetch_sysvar<T: Sysvar>(&self) -> Result<T> {
@@ -156,7 +188,14 @@ impl From<SolanaConnectionOptions> for SolanaConnection {
         } = opts;
 
         let url_or_moniker = solana_url_or_moniker.as_deref().unwrap_or("m");
-        Self::new(normalize_to_solana_url_if_moniker(url_or_moniker).to_string())
+
+        // Give it the ol' college try to convert a moniker. If it fails, assume
+        // a URL was provided.
+        let url = <NetworkEnvironment as FromStr>::from_str(url_or_moniker)
+            .as_ref()
+            .map(NetworkEnvironment::solana_public_url)
+            .unwrap_or(url_or_moniker);
+        Self::new(url.to_string())
     }
 }
 
@@ -247,6 +286,7 @@ pub async fn try_fetch_multiple_accounts(
     rpc_client: &RpcClient,
     keys: &[Pubkey],
 ) -> Result<Vec<Option<Account>>> {
+    // https://solana.com/docs/rpc/http/getmultipleaccounts#:~:text=up%20to%20a%20maximum%20of%20100.
     const MAX_FETCH_SIZE: usize = 100;
 
     let mut accounts = Vec::with_capacity(keys.len());
@@ -257,14 +297,4 @@ pub async fn try_fetch_multiple_accounts(
     }
 
     Ok(accounts)
-}
-
-// Forked from solana-clap-utils.
-fn normalize_to_solana_url_if_moniker(url_or_moniker: &str) -> &str {
-    match url_or_moniker {
-        "m" | "mainnet-beta" => "https://api.mainnet-beta.solana.com",
-        "t" | "testnet" => "https://api.testnet.solana.com",
-        "l" | "localhost" => "http://localhost:8899",
-        url => url,
-    }
 }

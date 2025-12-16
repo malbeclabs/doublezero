@@ -1,8 +1,6 @@
-use std::path::PathBuf;
-
 use anyhow::Result;
 use doublezero_solana_client_tools::{
-    payer::Wallet,
+    payer::{Wallet, try_load_keypair},
     rpc::{DoubleZeroLedgerConnection, SolanaConnection},
 };
 use doublezero_solana_validator_debt::{
@@ -12,7 +10,8 @@ use doublezero_solana_validator_debt::{
     worker,
 };
 use rustler::{Error as NifError, NifStruct};
-use solana_sdk::signature::Keypair;
+use tokio::runtime::Runtime;
+use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 #[derive(NifStruct)]
 #[module = "Scheduler.ValidatorDebt.DebtCollection"]
@@ -31,17 +30,34 @@ pub struct Debt {
     pub result: Option<String>,
     pub success: bool,
 }
+
+#[rustler::nif]
+pub fn initialize_tracing_subscriber() -> Result<(), NifError> {
+    tracing_subscriber::registry()
+        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_target(false)
+                .with_thread_ids(false)
+                .with_thread_names(false),
+        )
+        .init();
+
+    Ok(())
+}
+
 #[rustler::nif]
 pub fn post_debt_summary(
     insufficient_funds_count: usize,
     total_debt: u64,
     total_paid: u64,
 ) -> Result<(), NifError> {
-    let rt = tokio::runtime::Runtime::new().map_err(|e| NifError::Term(Box::new(e.to_string())))?;
-    rt.block_on(async {
-        async_post_debt_summary(insufficient_funds_count, total_debt, total_paid).await
-    })
-    .map_err(|e| NifError::Term(Box::new(e.to_string())))?;
+    Runtime::new()
+        .map_err(display_to_nif_error)?
+        .block_on(async {
+            async_post_debt_summary(insufficient_funds_count, total_debt, total_paid).await
+        })
+        .map_err(display_to_nif_error)?;
 
     Ok(())
 }
@@ -52,12 +68,11 @@ pub fn pay_debt(
     ledger_rpc: String,
     solana_rpc: String,
 ) -> Result<DebtCollection, NifError> {
-    let rt = tokio::runtime::Runtime::new().map_err(|e| NifError::Term(Box::new(e.to_string())))?;
-
     // Block the current thread and wait for the async operation to complete.
-    let tx_results = rt
+    let tx_results = Runtime::new()
+        .map_err(display_to_nif_error)?
         .block_on(async { async_pay_debt(dz_epoch, ledger_rpc, solana_rpc).await })
-        .map_err(|e| NifError::Term(Box::new(e.to_string())))?;
+        .map_err(display_to_nif_error)?;
 
     let total_validators = tx_results.collection_results.len();
 
@@ -87,24 +102,40 @@ pub fn pay_debt(
 }
 
 #[rustler::nif]
-pub fn initialize_distribution(ledger_rpc: String, solana_rpc: String) -> Result<(), NifError> {
-    let rt = tokio::runtime::Runtime::new().map_err(|e| NifError::Term(Box::new(e.to_string())))?;
+pub fn initialize_distribution(solana_rpc: String) -> Result<(), NifError> {
+    Runtime::new()
+        .map_err(display_to_nif_error)?
+        .block_on(async {
+            let wallet = Wallet {
+                connection: SolanaConnection::new(solana_rpc),
+                signer: try_load_keypair(None)?,
+                compute_unit_price_ix: None,
+                verbose: false,
+                fee_payer: None,
+                dry_run: false,
+            };
 
-    // Block the current thread and wait for the async operation to complete.
-    rt.block_on(async { async_initialize_distribution(ledger_rpc, solana_rpc).await })
-        .map_err(|e| NifError::Term(Box::new(e.to_string())))?;
+            worker::try_initialize_distribution(
+                wallet, //
+                None,   // dz_env
+                false,  // bypass_dz_epoch_check
+                None,   // record_accountant_key
+                false,  // enable_debt_write_off
+            )
+            .await
+        })
+        .map_err(display_to_nif_error)?;
 
     Ok(())
 }
 
 #[rustler::nif]
 pub fn current_dz_epoch(ledger_rpc: String) -> Result<u64, NifError> {
-    let rt = tokio::runtime::Runtime::new().map_err(|e| NifError::Term(Box::new(e.to_string())))?;
-
-    // Block the current thread and wait for the async operation to complete.
-    let dz_epoch = rt
+    let dz_epoch = Runtime::new()
+        .map_err(display_to_nif_error)?
         .block_on(async { async_current_dz_epoch(ledger_rpc).await })
-        .map_err(|e| NifError::Term(Box::new(e.to_string())))?;
+        .map_err(display_to_nif_error)?;
+
     Ok(dz_epoch)
 }
 
@@ -115,13 +146,13 @@ pub fn calculate_distribution(
     solana_rpc: String,
     post_to_slack: bool,
 ) -> Result<(), NifError> {
-    let rt = tokio::runtime::Runtime::new().map_err(|e| NifError::Term(Box::new(e.to_string())))?;
+    let rt = tokio::runtime::Runtime::new().map_err(display_to_nif_error)?;
 
     // Block the current thread and wait for the async operation to complete.
     rt.block_on(async {
         async_calculate_distribution(dz_epoch, ledger_rpc, solana_rpc, post_to_slack).await
     })
-    .map_err(|e| NifError::Term(Box::new(e.to_string())))?;
+    .map_err(display_to_nif_error)?;
 
     Ok(())
 }
@@ -132,11 +163,11 @@ pub fn finalize_distribution(
     ledger_rpc: String,
     solana_rpc: String,
 ) -> Result<(), NifError> {
-    let rt = tokio::runtime::Runtime::new().map_err(|e| NifError::Term(Box::new(e.to_string())))?;
+    let rt = tokio::runtime::Runtime::new().map_err(display_to_nif_error)?;
 
     // Block the current thread and wait for the async operation to complete.
     rt.block_on(async { async_finalize_distribution(dz_epoch, ledger_rpc, solana_rpc).await })
-        .map_err(|e| NifError::Term(Box::new(e.to_string())))?;
+        .map_err(display_to_nif_error)?;
 
     Ok(())
 }
@@ -192,24 +223,6 @@ async fn async_pay_debt(
     worker::post_debt_collection_to_slack(tx_results.clone(), false, None).await?;
 
     Ok(tx_results)
-}
-
-async fn async_initialize_distribution(ledger_rpc: String, solana_rpc: String) -> Result<()> {
-    let sc = SolanaConnection::new(solana_rpc);
-
-    let ledger_rpc_client = DoubleZeroLedgerConnection::new(ledger_rpc);
-
-    let wallet = Wallet {
-        connection: sc,
-        signer: try_load_keypair(None)?,
-        compute_unit_price_ix: None,
-        verbose: false,
-        fee_payer: None,
-        dry_run: false,
-    };
-
-    worker::initialize_distribution(wallet, ledger_rpc_client).await?;
-    Ok(())
 }
 
 async fn async_calculate_distribution(
@@ -271,20 +284,8 @@ async fn async_current_dz_epoch(ledger_rpc: String) -> Result<u64> {
     Ok(dz_epoch_info.epoch)
 }
 
-fn try_load_keypair(path: Option<PathBuf>) -> Result<Keypair> {
-    let home_path = std::env::var_os("HOME").unwrap();
-    let default_keypair_path = ".config/solana/id.json";
-
-    let keypair_path = path.unwrap_or_else(|| PathBuf::from(home_path).join(default_keypair_path));
-    try_load_specified_keypair(&keypair_path)
-}
-
-fn try_load_specified_keypair(path: &PathBuf) -> Result<Keypair> {
-    let keypair_file = std::fs::read_to_string(path)?;
-    let keypair_bytes = serde_json::from_str::<Vec<u8>>(&keypair_file)?;
-    let default_keypair = Keypair::try_from(keypair_bytes.as_slice())?;
-
-    Ok(default_keypair)
+fn display_to_nif_error(e: impl std::fmt::Display) -> NifError {
+    NifError::Term(Box::new(e.to_string()))
 }
 
 rustler::init!("Elixir.Scheduler.DoubleZero");

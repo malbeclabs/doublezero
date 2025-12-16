@@ -21,3 +21,4 @@ solana-sdk.workspace = true
 slack-notifier.workspace = true
 solana-transaction-status-client-types.workspace = true
 tokio.workspace = true
+tracing-subscriber.workspace = true

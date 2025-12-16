@@ -1,15 +1,17 @@
 use anyhow::{Result, anyhow, bail, ensure};
 use clap::Args;
-use doublezero_program_tools::instruction::try_build_instruction;
-use doublezero_revenue_distribution::{
-    ID,
-    instruction::{
-        RevenueDistributionInstructionData, account::FinalizeDistributionRewardsAccounts,
-    },
-    types::DoubleZeroEpoch,
-};
 use doublezero_scheduled_command::{Schedulable, ScheduleOption};
 use doublezero_solana_client_tools::payer::{SolanaPayerOptions, TransactionOutcome, Wallet};
+use doublezero_solana_sdk::{
+    revenue_distribution::{
+        ID,
+        instruction::{
+            RevenueDistributionInstructionData, account::FinalizeDistributionRewardsAccounts,
+        },
+        types::DoubleZeroEpoch,
+    },
+    try_build_instruction,
+};
 use solana_sdk::{compute_budget::ComputeBudgetInstruction, instruction::Instruction};
 
 use crate::command::revenue_distribution::{try_fetch_distribution, try_fetch_program_config};

@@ -12,6 +12,7 @@ defmodule Scheduler.Application do
     ]
 
     opts = [strategy: :one_for_one, name: Scheduler.Supervisor]
+    Scheduler.DoubleZero.initialize_tracing_subscriber()
     Supervisor.start_link(children, opts)
   end
 

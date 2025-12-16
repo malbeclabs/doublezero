@@ -3,16 +3,18 @@ use std::{str::FromStr, sync::Arc};
 use anyhow::{Result, bail};
 use clap::Args;
 use doublezero_ledger_sentinel::client::solana::SolRpcClient;
-use doublezero_passport::{
-    ID,
-    instruction::{
-        AccessMode, PassportInstructionData, SolanaValidatorAttestation,
-        account::RequestAccessAccounts,
-    },
-    state::AccessRequest,
-};
-use doublezero_program_tools::instruction::try_build_instruction;
 use doublezero_solana_client_tools::payer::{SolanaPayerOptions, TransactionOutcome, Wallet};
+use doublezero_solana_sdk::{
+    passport::{
+        ID,
+        instruction::{
+            AccessMode, PassportInstructionData, SolanaValidatorAttestation,
+            account::RequestAccessAccounts,
+        },
+        state::AccessRequest,
+    },
+    try_build_instruction,
+};
 use solana_sdk::{
     compute_budget::ComputeBudgetInstruction,
     offchain_message::OffchainMessage,

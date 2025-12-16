@@ -11,6 +11,7 @@ members = [
     "crates/solana-cli",
     "crates/solana-client-tools",
     "crates/solana-fork",
+    "crates/solana-sdk",
     "crates/validator-debt",
     "scheduler/native/scheduler_doublezero"
 ]
@@ -147,6 +148,9 @@ path = "crates/solana-interface/sol-conversion"
 
 [workspace.dependencies.doublezero-solana-client-tools]
 path = "crates/solana-client-tools"
+
+[workspace.dependencies.doublezero-solana-sdk]
+path = "crates/solana-sdk"
 
 [workspace.dependencies.doublezero-solana-validator-debt]
 path = "crates/validator-debt"

@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::Args;
-use doublezero_revenue_distribution::state::CommunityBurnRateMode;
 use doublezero_solana_client_tools::rpc::{SolanaConnection, SolanaConnectionOptions};
+use doublezero_solana_sdk::revenue_distribution::state::CommunityBurnRateMode;
 
 use crate::command::revenue_distribution::try_fetch_program_config;
 

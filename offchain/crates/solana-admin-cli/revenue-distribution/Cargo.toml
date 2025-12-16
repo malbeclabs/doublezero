@@ -9,9 +9,8 @@ version.workspace = true
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
-doublezero-program-tools.workspace = true
-doublezero-revenue-distribution.workspace = true
 doublezero-solana-client-tools.workspace = true
+doublezero-solana-sdk.workspace = true
 solana-sdk.workspace = true
 tokio.workspace = true
 

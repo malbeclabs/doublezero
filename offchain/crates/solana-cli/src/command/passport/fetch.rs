@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::Args;
-use doublezero_passport::instruction::AccessMode;
 use doublezero_solana_client_tools::rpc::{SolanaConnection, SolanaConnectionOptions};
+use doublezero_solana_sdk::passport::instruction::AccessMode;
 use solana_sdk::pubkey::Pubkey;
 
 #[derive(Debug, Args)]

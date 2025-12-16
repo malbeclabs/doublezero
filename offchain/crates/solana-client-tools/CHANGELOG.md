@@ -7,15 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- add instruction batching and better network env handling ([#225](https://github.com/doublezerofoundation/doublezero-offchain/pull/225))
 - remove tracing feature and log submodule ([#226](https://github.com/doublezerofoundation/doublezero-offchain/pull/226))
-- feat(solana-client-tools): add stdin support for keypair loading ([#217](https://github.com/doublezerofoundation/doublezero-offchain/pull/217))
+- add stdin support for keypair loading ([#217](https://github.com/doublezerofoundation/doublezero-offchain/pull/217))
 - add accounts submodule and refactor RPC methods ([#201](https://github.com/doublezerofoundation/doublezero-offchain/pull/201))
-- feat(solana-cli): add `revenue-distribution fetch distribution --view` argument ([#182](https://github.com/doublezerofoundation/doublezero-offchain/pull/182))
+- add Solana RPC helpers ([#182](https://github.com/doublezerofoundation/doublezero-offchain/pull/182))
 
-## [0.0.1](https://github.com/doublezerofoundation/doublezero-offchain/compare/doublezero-solana-client-tools/v0.0.0...doublezero-solana-client-tools/v0.0.1) - 2025-10-21
+## [0.0.1](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-solana-client-tools/v0.0.1) - 2025-10-21
 
-### Other
-
-- add SOL conversion commands ([#159](https://github.com/doublezerofoundation/doublezero-offchain/pull/159))
-- add sol-conversion-admin-cli ([#156](https://github.com/doublezerofoundation/doublezero-offchain/pull/156))
+- add error contexts ([#159](https://github.com/doublezerofoundation/doublezero-offchain/pull/159))
+- add better error handling and fix tracing macros ([#156](https://github.com/doublezerofoundation/doublezero-offchain/pull/156))
 - port client-tools and admin CLIs from doublezero-solana ([#154](https://github.com/doublezerofoundation/doublezero-offchain/pull/154))

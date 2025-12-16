@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use clap::Args;
-use doublezero_sol_conversion_interface::oracle::DiscountParameters;
 use doublezero_solana_client_tools::rpc::{SolanaConnection, SolanaConnectionOptions};
+use doublezero_solana_sdk::sol_conversion::oracle::DiscountParameters;
 
 use crate::command::revenue_distribution::{
     SolConversionState, try_request_oracle_conversion_price,

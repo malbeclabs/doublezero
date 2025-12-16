@@ -70,7 +70,7 @@ async fn execute_pay_solana_validator_debt(
 ) -> Result<()> {
     let wallet = Wallet::try_from(solana_payer_options)?;
 
-    let dz_env = wallet.connection.try_dz_environment().await?;
+    let dz_env = wallet.connection.try_network_environment().await?;
     let dz_connection = DoubleZeroLedgerConnection::from(dz_env);
 
     let dry_run = wallet.dry_run;

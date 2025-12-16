@@ -11,20 +11,23 @@ use anyhow::{Context, Result, ensure};
 use borsh::BorshDeserialize;
 use clap::{Args, Subcommand};
 use doublezero_contributor_rewards::calculator::proof::ShapleyOutputStorage;
-use doublezero_revenue_distribution::{
-    state::{Distribution, Journal, ProgramConfig, SolanaValidatorDeposit},
-    types::{DoubleZeroEpoch, RewardShare},
-};
-use doublezero_sol_conversion_interface::{
-    oracle::OraclePriceData,
-    state::{
-        ConfigurationRegistry as SolConversionConfigurationRegistry,
-        ProgramState as SolConversionProgramState,
-    },
-};
 use doublezero_solana_client_tools::{
     account::zero_copy::ZeroCopyAccountOwnedData,
     rpc::{DoubleZeroLedgerConnection, SolanaConnection},
+};
+use doublezero_solana_sdk::{
+    revenue_distribution::{
+        state::{Distribution, Journal, ProgramConfig, SolanaValidatorDeposit},
+        try_is_processed_leaf,
+        types::{DoubleZeroEpoch, RewardShare},
+    },
+    sol_conversion::{
+        oracle::OraclePriceData,
+        state::{
+            ConfigurationRegistry as SolConversionConfigurationRegistry,
+            ProgramState as SolConversionProgramState,
+        },
+    },
 };
 use doublezero_solana_validator_debt::validator_debt::{
     ComputedSolanaValidatorDebt, ComputedSolanaValidatorDebts,
@@ -209,24 +212,6 @@ async fn try_request_oracle_conversion_price() -> Result<OraclePriceData> {
         .context("Failed to parse oracle response. Please try again")
 }
 
-fn try_is_processed_leaf(processed_leaf_data: &[u8], leaf_index: usize) -> Result<bool> {
-    // Calculate which byte contains the bit for this leaf index
-    // (8 bits per byte, so divide by 8)
-    let leaf_byte_index = leaf_index / 8;
-
-    // First, we have to grab the relevant byte from the processed data.
-    // Create ByteFlags from the byte value to check the bit.
-    let leaf_byte = processed_leaf_data
-        .get(leaf_byte_index)
-        .copied()
-        .map(doublezero_revenue_distribution::types::ByteFlags::new)
-        .with_context(|| format!("Invalid leaf index: {leaf_index}"))?;
-
-    // Calculate which bit within the byte corresponds to this leaf
-    // (modulo 8 gives us the bit position within the byte: 0-7).
-    Ok(leaf_byte.bit(leaf_index % 8))
-}
-
 async fn try_fetch_shapley_record(
     dz_connection: &DoubleZeroLedgerConnection,
     rewards_accountant_key: &Pubkey,
@@ -273,7 +258,16 @@ fn try_distribution_rewards_iter<'a>(
 fn try_distribution_solana_validator_debt_iter<'a>(
     distribution: &ZeroCopyAccountOwnedData<Distribution>,
     computed_debt: &'a ComputedSolanaValidatorDebts,
-) -> Result<impl Iterator<Item = (usize, &'a ComputedSolanaValidatorDebt, bool)>> {
+) -> Result<
+    impl Iterator<
+        Item = (
+            usize,
+            &'a ComputedSolanaValidatorDebt,
+            bool, // is_processed_leaf
+            bool, // is_written_off_leaf
+        ),
+    >,
+> {
     let start_index = distribution.processed_solana_validator_debt_start_index as usize;
     let end_index = distribution.processed_solana_validator_debt_end_index as usize;
     let processed_leaf_data = &distribution.remaining_data[start_index..end_index];
@@ -281,14 +275,30 @@ fn try_distribution_solana_validator_debt_iter<'a>(
     let num_debts = computed_debt.debts.len();
     let max_supported_debts = processed_leaf_data.len() * 8;
 
+    let written_off_leaf_data = if distribution.is_solana_validator_debt_write_off_enabled() {
+        let start_index =
+            distribution.processed_solana_validator_debt_write_off_start_index as usize;
+        let end_index = distribution.processed_solana_validator_debt_write_off_end_index as usize;
+        Some(&distribution.remaining_data[start_index..end_index])
+    } else {
+        None
+    };
+
     ensure!(
         max_supported_debts >= num_debts,
         "Insufficient processed leaf data for epoch {}: can support {max_supported_debts} debts, but got {num_debts}",
         distribution.dz_epoch
     );
 
-    Ok(computed_debt.debts.iter().enumerate().map(|(index, debt)| {
-        let is_processed = try_is_processed_leaf(processed_leaf_data, index).unwrap();
-        (index, debt, is_processed)
-    }))
+    Ok(computed_debt
+        .debts
+        .iter()
+        .enumerate()
+        .map(move |(index, debt)| {
+            let is_processed = try_is_processed_leaf(processed_leaf_data, index).unwrap();
+            let is_written_off = written_off_leaf_data
+                .map(|data| try_is_processed_leaf(data, index).unwrap())
+                .unwrap_or(false);
+            (index, debt, is_processed, is_written_off)
+        }))
 }

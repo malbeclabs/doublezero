@@ -23,7 +23,7 @@ use solana_transaction_status_client_types::UiTransactionEncoding;
 pub use crate::keypair::try_load_keypair;
 use crate::{
     rpc::{SolanaConnection, SolanaConnectionOptions},
-    transaction::new_transaction,
+    transaction::try_new_transaction,
 };
 
 #[derive(Debug, Args, Clone)]
@@ -105,7 +105,7 @@ impl Wallet {
         signers.extend_from_slice(additional_signers);
 
         if address_lookup_table_keys.is_empty() {
-            return new_transaction(instructions, &signers, &[], recent_blockhash);
+            return try_new_transaction(instructions, &signers, &[], recent_blockhash);
         }
 
         let lut_account_infos = self
@@ -139,7 +139,7 @@ impl Wallet {
             })
             .collect::<Result<Vec<_>>>()?;
 
-        new_transaction(
+        try_new_transaction(
             instructions,
             &signers,
             &address_lookup_table_accounts,
@@ -288,6 +288,14 @@ impl Wallet {
             commitment: Some(self.connection.commitment()),
             ..Default::default()
         }
+    }
+}
+
+impl std::ops::Deref for Wallet {
+    type Target = Keypair;
+
+    fn deref(&self) -> &Self::Target {
+        &self.signer
     }
 }
 

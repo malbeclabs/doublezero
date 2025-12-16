@@ -7,10 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- add debt write-off logic ([#225](https://github.com/doublezerofoundation/doublezero-offchain/pull/225))
 - replace old client-tools log macros with `tracing` ([#226](https://github.com/doublezerofoundation/doublezero-offchain/pull/226))
-- feat(validator-debt): add overrides flat file to exclude validators from debt collection ([216](https://github.com/doublezerofoundation/doublezero-offchain/pull/216))
+- add overrides flat file to exclude validators from debt collection ([216](https://github.com/doublezerofoundation/doublezero-offchain/pull/216))
 - add `debt_record_key` method ([#201](https://github.com/doublezerofoundation/doublezero-offchain/pull/201))
-- feat(validator-debt): use s3 bucket to fetch validator keys ([#196](https://github.com/doublezerofoundation/doublezero-offchain/pull/196))
+- use s3 bucket to fetch validator keys ([#196](https://github.com/doublezerofoundation/doublezero-offchain/pull/196))
 
 ## [0.1.0-rc6](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/solana-validator-debt/v0.1.0-rc6) - 2025-11-11
 
@@ -19,8 +20,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - move binary from /usr/local/bin/ to /usr/bin to comply with package management standards ([#187](https://github.com/doublezerofoundation/doublezero-offchain/pull/187))
 
 ## [0.1.0-rc4](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/solana-validator-debt/v0.1.0-rc4) - 2025-10-21
-
-### Other
 
 - testing release-plz integration
 - integrate slack notifications ([#161](https://github.com/doublezerofoundation/doublezero-offchain/pull/161))

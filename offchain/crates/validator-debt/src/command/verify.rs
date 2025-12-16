@@ -1,18 +1,15 @@
 use anyhow::Result;
 use clap::Args;
-use doublezero_revenue_distribution::state::ProgramConfig;
-use doublezero_scheduled_command::{Schedulable, ScheduleOption};
 use doublezero_solana_client_tools::{
     payer::{SolanaPayerOptions, try_load_keypair},
     rpc::{DoubleZeroLedgerConnectionOptions, SolanaConnection, SolanaConnectionOptions},
 };
-use leaky_bucket::RateLimiter;
+use doublezero_solana_sdk::revenue_distribution::state::ProgramConfig;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::commitment_config::CommitmentConfig;
 
 use crate::{
-    rpc::{JoinedSolanaEpochs, SolanaValidatorDebtConnectionOptions},
-    solana_debt_calculator::SolanaDebtCalculator,
+    rpc::SolanaValidatorDebtConnectionOptions, solana_debt_calculator::SolanaDebtCalculator,
     transaction::Transaction,
 };
 
@@ -28,39 +25,28 @@ pub struct VerifyValidatorDebtCommand {
     amount: u64,
 
     #[command(flatten)]
-    schedule_or_force: super::ScheduleOrForce,
-
-    #[command(flatten)]
     solana_payer_options: SolanaPayerOptions,
 
     #[command(flatten)]
     dz_ledger_connection_options: DoubleZeroLedgerConnectionOptions,
 }
 
-#[async_trait::async_trait]
-impl Schedulable for VerifyValidatorDebtCommand {
-    fn schedule(&self) -> &ScheduleOption {
-        &self.schedule_or_force.schedule
-    }
-
-    async fn execute_once(&self) -> Result<()> {
+impl VerifyValidatorDebtCommand {
+    pub async fn try_into_execute(self) -> Result<()> {
         let Self {
             epoch,
             validator_id,
             amount,
-            schedule_or_force,
             solana_payer_options,
             dz_ledger_connection_options,
         } = self;
 
-        schedule_or_force.ensure_safe_execution()?;
-
         let epoch = match epoch {
-            Some(e) => *e,
+            Some(epoch) => epoch,
             None => {
                 latest_distribution_epoch(
                     &solana_payer_options.connection_options,
-                    dz_ledger_connection_options,
+                    &dz_ledger_connection_options,
                 )
                 .await?
             }
@@ -83,89 +69,9 @@ impl Schedulable for VerifyValidatorDebtCommand {
             transaction,
             epoch,
             validator_id.as_str(),
-            *amount,
+            amount,
         )
         .await?;
-
-        Ok(())
-    }
-}
-
-#[derive(Debug, Args, Clone)]
-pub struct FindSolanaEpochCommand {
-    /// Target DoubleZero Ledger epoch.
-    #[arg(long)]
-    epoch: Option<u64>,
-
-    #[command(flatten)]
-    schedule_or_force: super::ScheduleOrForce,
-
-    #[command(flatten)]
-    solana_connection_options: SolanaConnectionOptions,
-
-    #[command(flatten)]
-    dz_ledger_connection_options: DoubleZeroLedgerConnectionOptions,
-
-    /// Limit requests per second for Solana RPC.
-    #[arg(long, default_value_t = 10)]
-    solana_rate_limit: usize,
-}
-
-#[async_trait::async_trait]
-impl Schedulable for FindSolanaEpochCommand {
-    fn schedule(&self) -> &ScheduleOption {
-        &self.schedule_or_force.schedule
-    }
-
-    async fn execute_once(&self) -> Result<()> {
-        let Self {
-            epoch,
-            schedule_or_force,
-            solana_connection_options,
-            dz_ledger_connection_options,
-            solana_rate_limit,
-        } = self;
-
-        schedule_or_force.ensure_safe_execution()?;
-
-        let latest_distribution_epoch =
-            latest_distribution_epoch(solana_connection_options, dz_ledger_connection_options)
-                .await?;
-
-        let target_dz_epoch = epoch.as_ref().copied().unwrap_or(latest_distribution_epoch);
-        tracing::info!("Target DZ epoch: {target_dz_epoch}");
-
-        let rate_limiter = RateLimiter::builder()
-            .max(*solana_rate_limit)
-            .initial(*solana_rate_limit)
-            .refill(*solana_rate_limit)
-            .interval(std::time::Duration::from_secs(1))
-            .build();
-
-        let solana_connection = SolanaConnection::from(solana_connection_options.clone());
-
-        let dz_ledger_rpc_client = RpcClient::new_with_commitment(
-            dz_ledger_connection_options.dz_ledger_url.clone(),
-            CommitmentConfig::confirmed(),
-        );
-
-        match JoinedSolanaEpochs::try_new(
-            &solana_connection,
-            &dz_ledger_rpc_client,
-            target_dz_epoch,
-            &rate_limiter,
-        )
-        .await?
-        {
-            JoinedSolanaEpochs::Range(solana_epoch_range) => {
-                solana_epoch_range.into_iter().for_each(|solana_epoch| {
-                    tracing::info!("Joined Solana epoch: {solana_epoch}");
-                });
-            }
-            JoinedSolanaEpochs::Duplicate(solana_epoch) => {
-                tracing::warn!("Duplicated joined Solana epoch: {solana_epoch}");
-            }
-        };
 
         Ok(())
     }
@@ -178,7 +84,10 @@ async fn latest_distribution_epoch(
     dz_ledger_connection_options: &DoubleZeroLedgerConnectionOptions,
 ) -> Result<u64> {
     let solana_connection = SolanaConnection::from(solana_connection_options.clone());
-    let is_mainnet = solana_connection.try_is_mainnet().await?;
+    let is_mainnet = solana_connection
+        .try_network_environment()
+        .await?
+        .is_mainnet_beta();
 
     let dz_ledger_rpc_client = RpcClient::new_with_commitment(
         dz_ledger_connection_options.dz_ledger_url.clone(),

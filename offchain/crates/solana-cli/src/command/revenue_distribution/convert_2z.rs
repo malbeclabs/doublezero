@@ -1,16 +1,18 @@
 use anyhow::{Context, Result, ensure};
 use clap::Args;
-use doublezero_program_tools::instruction::try_build_instruction;
-use doublezero_revenue_distribution::env::mainnet::DOUBLEZERO_MINT_KEY;
-use doublezero_sol_conversion_interface::{
-    ID,
-    instruction::{SolConversionInstructionData, account::BuySolAccounts},
-    oracle,
-};
 use doublezero_solana_client_tools::{
     instruction::take_instruction,
     payer::{SolanaPayerOptions, TransactionOutcome, Wallet},
     rpc::SolanaConnection,
+};
+use doublezero_solana_sdk::{
+    revenue_distribution::env::mainnet::DOUBLEZERO_MINT_KEY,
+    sol_conversion::{
+        ID,
+        instruction::{SolConversionInstructionData, account::BuySolAccounts},
+        oracle,
+    },
+    try_build_instruction,
 };
 use solana_sdk::{
     compute_budget::ComputeBudgetInstruction, instruction::Instruction, program_pack::Pack,
@@ -125,7 +127,8 @@ impl Convert2zCommand {
 //
 
 fn parse_limit_price_to_u64(bid_price_str: String) -> Result<u64> {
-    const RATE_PRECISION: f64 = doublezero_sol_conversion_interface::oracle::RATE_PRECISION as f64;
+    const RATE_PRECISION: f64 =
+        doublezero_solana_sdk::sol_conversion::oracle::RATE_PRECISION as f64;
 
     let bid_price_str = bid_price_str.trim();
     ensure!(!bid_price_str.is_empty(), "Bid price cannot be empty");
@@ -180,6 +183,11 @@ impl Convert2zContext {
         source_token_account_key: Option<Pubkey>,
         checked_lamports: Option<u64>,
     ) -> Result<Self> {
+        let network_env = wallet.connection.try_network_environment().await?;
+        ensure!(
+            network_env.is_mainnet_beta(),
+            "2Z conversion is only supported on mainnet-beta"
+        );
         let wallet_key = wallet.pubkey();
 
         let SolConversionState {

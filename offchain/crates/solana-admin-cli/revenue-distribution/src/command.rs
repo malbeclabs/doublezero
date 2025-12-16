@@ -1,20 +1,23 @@
 use anyhow::{Result, anyhow, bail};
 use clap::{Args, Subcommand};
-use doublezero_program_tools::{get_program_data_address, instruction::try_build_instruction};
-use doublezero_revenue_distribution::{
-    ID,
-    instruction::{
-        ProgramConfiguration, ProgramFlagConfiguration, RevenueDistributionInstructionData,
-        account::{
-            ConfigureProgramAccounts, InitializeContributorRewardsAccounts,
-            InitializeJournalAccounts, InitializeProgramAccounts,
-            InitializeSwapDestinationAccounts, SetAdminAccounts, SetRewardsManagerAccounts,
-        },
-    },
-    state::{self, ContributorRewards, Distribution, Journal, ProgramConfig},
-    types::DoubleZeroEpoch,
-};
 use doublezero_solana_client_tools::payer::{SolanaPayerOptions, TransactionOutcome, Wallet};
+use doublezero_solana_sdk::{
+    environment_2z_token_mint_key, get_program_data_address,
+    revenue_distribution::{
+        GENESIS_DZ_EPOCH_MAINNET_BETA, ID,
+        instruction::{
+            ProgramConfiguration, ProgramFlagConfiguration, RevenueDistributionInstructionData,
+            account::{
+                ConfigureProgramAccounts, InitializeContributorRewardsAccounts,
+                InitializeJournalAccounts, InitializeProgramAccounts,
+                InitializeSwapDestinationAccounts, SetAdminAccounts, SetRewardsManagerAccounts,
+            },
+        },
+        state::{self, ContributorRewards, Distribution, Journal, ProgramConfig},
+        types::DoubleZeroEpoch,
+    },
+    try_build_instruction,
+};
 use solana_sdk::{
     compute_budget::ComputeBudgetInstruction,
     instruction::{AccountMeta, Instruction},
@@ -191,13 +194,11 @@ pub async fn execute_initialize_program(solana_payer_options: SolanaPayerOptions
     let wallet = Wallet::try_from(solana_payer_options)?;
     let wallet_key = wallet.pubkey();
 
-    let is_mainnet = wallet.connection.try_is_mainnet().await?;
-
-    let dz_mint_key = if is_mainnet {
-        doublezero_revenue_distribution::env::mainnet::DOUBLEZERO_MINT_KEY
-    } else {
-        doublezero_revenue_distribution::env::development::DOUBLEZERO_MINT_KEY
-    };
+    let dz_mint_key = wallet
+        .connection
+        .try_network_environment()
+        .await
+        .map(environment_2z_token_mint_key)?;
 
     let initialize_program_ix = try_build_instruction(
         &ID,
@@ -296,10 +297,9 @@ pub async fn execute_migrate_program_accounts(
         .try_fetch_zero_copy_data::<Journal>(&journal_key)
         .await?;
 
-    let first_dz_epoch = 31;
     let until_dz_epoch = journal.next_dz_epoch_to_sweep_tokens.value();
 
-    for dz_epoch in first_dz_epoch..until_dz_epoch {
+    for dz_epoch in GENESIS_DZ_EPOCH_MAINNET_BETA..until_dz_epoch {
         let distribution_key = Distribution::find_address(DoubleZeroEpoch::new(dz_epoch)).0;
         accounts.push(AccountMeta::new_readonly(distribution_key, false));
     }

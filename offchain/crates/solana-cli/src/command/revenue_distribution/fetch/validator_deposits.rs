@@ -1,10 +1,12 @@
 use anyhow::{Result, bail};
 use clap::Args;
-use doublezero_program_tools::PrecomputedDiscriminator;
-use doublezero_revenue_distribution::state::SolanaValidatorDeposit;
 use doublezero_solana_client_tools::{
     account::zero_copy::ZeroCopyAccountOwnedData,
     rpc::{SolanaConnection, SolanaConnectionOptions},
+};
+use doublezero_solana_sdk::{
+    PrecomputedDiscriminator,
+    revenue_distribution::{self, state::SolanaValidatorDeposit},
 };
 use solana_account_decoder_client_types::UiAccountEncoding;
 use solana_client::{
@@ -32,7 +34,8 @@ pub struct ValidatorDepositsCommand {
 struct ValidatorDepositsTableRow {
     deposit_pda: Pubkey,
     node_id: Pubkey,
-    amount: String,
+    balance: String,
+    written_off_debt: String,
 }
 
 impl ValidatorDepositsCommand {
@@ -60,7 +63,12 @@ impl ValidatorDepositsCommand {
                     vec![ValidatorDepositsTableRow {
                         deposit_pda: deposit_key,
                         node_id: deposit.node_id,
-                        amount: format!("{:.9}", deposit_balance as f64 * 1e-9),
+                        balance: format!("{:.9} SOL", deposit_balance as f64 * 1e-9),
+                        written_off_debt: if deposit.written_off_sol_debt == 0 {
+                            Default::default()
+                        } else {
+                            format!("{:.9} SOL", deposit.written_off_sol_debt as f64 * 1e-9)
+                        },
                     }],
                     None,
                 )
@@ -81,7 +89,8 @@ impl ValidatorDepositsCommand {
                     vec![ValidatorDepositsTableRow {
                         deposit_pda: deposit_key,
                         node_id,
-                        amount: format!("{:.9}", deposit_balance as f64 * 1e-9),
+                        balance: format!("{:.9} SOL", deposit_balance as f64 * 1e-9),
+                        written_off_debt: Default::default(),
                     }],
                     Some(warning_message),
                 )
@@ -112,7 +121,7 @@ impl ValidatorDepositsCommand {
                 .await?;
 
             let mut outputs = connection
-                .get_program_accounts_with_config(&doublezero_revenue_distribution::ID, config)
+                .get_program_accounts_with_config(&revenue_distribution::ID, config)
                 .await?
                 .into_iter()
                 .map(|(deposit_key, deposit_account_info)| {
@@ -129,7 +138,15 @@ impl ValidatorDepositsCommand {
                     ValidatorDepositsTableRow {
                         deposit_pda: deposit_key,
                         node_id: deposit_account.node_id,
-                        amount: format!("{:.9}", balance as f64 * 1e-9),
+                        balance: format!("{:.9} SOL", balance as f64 * 1e-9),
+                        written_off_debt: if deposit_account.written_off_sol_debt == 0 {
+                            Default::default()
+                        } else {
+                            format!(
+                                "{:.9} SOL",
+                                deposit_account.written_off_sol_debt as f64 * 1e-9
+                            )
+                        },
                     }
                 })
                 .collect::<Vec<_>>();
@@ -142,7 +159,7 @@ impl ValidatorDepositsCommand {
         super::print_table(
             outputs,
             super::TableOptions {
-                columns_aligned_right: Some(&[2]),
+                columns_aligned_right: Some(&[2, 3]),
             },
         );
 

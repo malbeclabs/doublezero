@@ -2,20 +2,23 @@ use std::collections::HashSet;
 
 use anyhow::{Context, Result, ensure};
 use clap::{Args, ValueEnum};
-use doublezero_revenue_distribution::{
-    state::{Distribution, SolanaValidatorDeposit},
-    types::DoubleZeroEpoch,
-};
 use doublezero_solana_client_tools::{
     account::{record::BorshRecordAccountData, zero_copy::ZeroCopyAccountOwnedData},
-    rpc::{DoubleZeroLedgerConnection, SolanaConnection, SolanaConnectionOptions},
+    rpc::{
+        DoubleZeroLedgerConnection, DoubleZeroLedgerEnvironmentOverride, SolanaConnection,
+        SolanaConnectionOptions,
+    },
+};
+use doublezero_solana_sdk::revenue_distribution::{
+    GENESIS_DZ_EPOCH_MAINNET_BETA,
+    state::{Distribution, SolanaValidatorDeposit},
+    try_is_processed_leaf,
+    types::DoubleZeroEpoch,
 };
 use doublezero_solana_validator_debt::validator_debt::ComputedSolanaValidatorDebts;
 use solana_sdk::{native_token::LAMPORTS_PER_SOL, pubkey::Pubkey};
 
-use crate::command::revenue_distribution::{try_fetch_program_config, try_is_processed_leaf};
-
-const DEFAULT_SINCE_DZ_EPOCH_MAINNET: u64 = 31;
+use crate::command::revenue_distribution::try_fetch_program_config;
 
 #[derive(Debug, Clone, PartialEq, Eq, ValueEnum)]
 pub enum ValidatorDebtsViewMode {
@@ -34,8 +37,11 @@ pub struct ValidatorDebtsCommand {
     #[command(flatten)]
     solana_connection_options: SolanaConnectionOptions,
 
-    #[arg(hide = true, long, value_name = "PUBKEY")]
+    #[arg(hide = true, long)]
     debt_accountant: Option<Pubkey>,
+
+    #[command(flatten)]
+    dz_env: DoubleZeroLedgerEnvironmentOverride,
 }
 
 #[derive(Debug, tabled::Tabled)]
@@ -53,6 +59,7 @@ struct ValidatorDebtsNodeTableRow {
     solana_epoch: String,
     amount: String,
     processed: &'static str,
+    written_off: &'static str,
 }
 
 impl ValidatorDebtsCommand {
@@ -62,6 +69,7 @@ impl ValidatorDebtsCommand {
             view,
             solana_connection_options,
             debt_accountant: debt_accountant_key,
+            dz_env,
         } = self;
 
         let solana_connection = SolanaConnection::from(solana_connection_options);
@@ -72,7 +80,7 @@ impl ValidatorDebtsCommand {
         // Limit to either the last 100 epochs or the default (first) epoch.
         let since_dz_epoch = last_dz_epoch
             .saturating_sub(100)
-            .max(DEFAULT_SINCE_DZ_EPOCH_MAINNET);
+            .max(GENESIS_DZ_EPOCH_MAINNET_BETA);
 
         let distribution_keys = (since_dz_epoch..=last_dz_epoch)
             .map(|dz_epoch| Distribution::find_address(DoubleZeroEpoch::new(dz_epoch)).0)
@@ -87,7 +95,8 @@ impl ValidatorDebtsCommand {
             .filter(|distribution| distribution.is_debt_calculation_finalized())
             .collect::<Vec<_>>();
 
-        let dz_env = solana_connection.try_dz_environment().await?;
+        let network_env = solana_connection.try_network_environment().await?;
+        let dz_env = dz_env.dz_env.unwrap_or(network_env);
         let dz_connection = DoubleZeroLedgerConnection::from(dz_env);
 
         let debt_record_keys = distributions
@@ -238,13 +247,12 @@ fn try_print_validator_debts_node_table(
 ) -> Result<()> {
     let mut outputs = Vec::with_capacity(debt_records.len());
 
-    for (debt_record, distribution) in debt_records.iter().zip(distributions) {
-        if debt_record.debts.is_empty() {
+    for (computed_debt, distribution) in debt_records.iter().zip(distributions) {
+        if computed_debt.debts.is_empty() {
             continue;
         }
 
-        let index = debt_record
-            .data
+        let index = computed_debt
             .debts
             .iter()
             .position(|debt| &debt.node_id == node_id);
@@ -256,12 +264,22 @@ fn try_print_validator_debts_node_table(
 
             let is_processed = try_is_processed_leaf(processed_leaf_data, index).unwrap();
 
-            let debt = &debt_record.data.debts[index];
+            let is_written_off = if distribution.is_solana_validator_debt_write_off_enabled() {
+                let start_index =
+                    distribution.processed_solana_validator_debt_write_off_start_index as usize;
+                let end_index =
+                    distribution.processed_solana_validator_debt_write_off_end_index as usize;
+                let written_off_leaf_data = &distribution.remaining_data[start_index..end_index];
+                try_is_processed_leaf(written_off_leaf_data, index).unwrap()
+            } else {
+                false
+            };
+
+            let debt = &computed_debt.debts[index];
 
             // Unlikely to happen, but there can be multiple Solana epochs per
             // DZ epoch.
-            let solana_epoch = (debt_record.data.first_solana_epoch
-                ..=debt_record.data.last_solana_epoch)
+            let solana_epoch = (computed_debt.first_solana_epoch..=computed_debt.last_solana_epoch)
                 .map(|epoch| epoch.to_string())
                 .collect::<Vec<_>>()
                 .join(",");
@@ -272,6 +290,7 @@ fn try_print_validator_debts_node_table(
                 solana_epoch,
                 amount: format!("{:.9} SOL", debt.amount as f64 * 1e-9),
                 processed: if is_processed { "yes" } else { "no" },
+                written_off: if is_written_off { "yes" } else { "no" },
             });
         }
     }
@@ -281,7 +300,7 @@ fn try_print_validator_debts_node_table(
     super::print_table(
         outputs,
         super::TableOptions {
-            columns_aligned_right: Some(&[1, 2, 3, 4]),
+            columns_aligned_right: Some(&[1, 2, 3, 4, 5]),
         },
     );
 

@@ -25,7 +25,7 @@ pub struct ExportValidatorsCommand {
 }
 
 impl ExportValidatorsCommand {
-    pub async fn execute(self) -> Result<()> {
+    pub async fn try_into_execute(self) -> Result<()> {
         let Self {
             epoch,
             output,

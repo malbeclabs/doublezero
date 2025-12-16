@@ -2,15 +2,13 @@ mod calculate;
 mod export_validators;
 mod initialize;
 mod verify;
+
 //
 
-use std::path::PathBuf;
-
 use anyhow::{Result, bail};
-use clap::{Args, Subcommand};
-use doublezero_scheduled_command::{Schedulable, ScheduleOption};
+use doublezero_solana_client_tools::payer::try_load_keypair;
 use solana_client::nonblocking::rpc_client::RpcClient;
-use solana_sdk::{pubkey::Pubkey, signer::keypair::Keypair};
+use solana_sdk::pubkey::Pubkey;
 
 use crate::{
     rpc::SolanaValidatorDebtConnectionOptions, solana_debt_calculator::SolanaDebtCalculator,
@@ -20,11 +18,8 @@ use crate::{
 const DOUBLEZERO_LEDGER_MAINNET_BETA_GENESIS_HASH: Pubkey =
     solana_sdk::pubkey!("5wVUvkFcFGYiKRUZ8Jp8Wc5swjhDEqT7hTdyssxDpC7P");
 
-#[derive(Debug, Subcommand)]
+#[derive(Debug, clap::Subcommand)]
 pub enum ValidatorDebtCommand {
-    /// Initialize a new distribution on Solana.
-    InitializeDistribution(initialize::InitializeDistributionCommand),
-
     /// Calculate Validator Debt.
     CalculateValidatorDebt(calculate::CalculateValidatorDebtCommand),
 
@@ -46,16 +41,27 @@ pub enum ValidatorDebtCommand {
         #[arg(long, value_name = "FORCE")]
         force: bool,
     },
+
+    // Initialize a new distribution on Solana.
+    //
+    // TODO: Consider only allowing localnet for this command since the
+    // scheduler handles initialization.
+    #[command(hide = true)]
+    InitializeDistribution(initialize::InitializeDistributionCommand),
 }
 
 impl ValidatorDebtCommand {
     pub async fn try_into_execute(self) -> Result<()> {
         match self {
-            ValidatorDebtCommand::InitializeDistribution(command) => command.execute().await,
-            ValidatorDebtCommand::CalculateValidatorDebt(command) => command.execute().await,
-            ValidatorDebtCommand::FindSolanaEpoch(command) => command.execute().await,
-            ValidatorDebtCommand::VerifyValidatorDebt(command) => command.execute().await,
-            ValidatorDebtCommand::ExportValidators(command) => command.execute().await,
+            ValidatorDebtCommand::InitializeDistribution(command) => {
+                command.try_into_execute().await
+            }
+            ValidatorDebtCommand::CalculateValidatorDebt(command) => {
+                command.try_into_execute().await
+            }
+            ValidatorDebtCommand::FindSolanaEpoch(command) => command.try_into_execute().await,
+            ValidatorDebtCommand::VerifyValidatorDebt(command) => command.try_into_execute().await,
+            ValidatorDebtCommand::ExportValidators(command) => command.try_into_execute().await,
             ValidatorDebtCommand::FinalizeDistribution {
                 solana_connection_options,
                 epoch,
@@ -76,26 +82,10 @@ async fn execute_finalize_transaction(
 ) -> Result<()> {
     let solana_debt_calculator: SolanaDebtCalculator =
         SolanaDebtCalculator::try_from(solana_connection_options)?;
-    let signer = try_load_keypair(None).expect("failed to load keypair");
+    let signer = try_load_keypair(None)?;
     let transaction = Transaction::new(signer, dry_run, force);
     worker::finalize_distribution(&solana_debt_calculator, transaction, epoch).await?;
     Ok(())
-}
-
-fn try_load_keypair(path: Option<PathBuf>) -> Result<Keypair> {
-    let home_path = std::env::var_os("HOME").unwrap();
-    let default_keypair_path = ".config/solana/id.json";
-
-    let keypair_path = path.unwrap_or_else(|| PathBuf::from(home_path).join(default_keypair_path));
-    try_load_specified_keypair(&keypair_path)
-}
-
-fn try_load_specified_keypair(path: &PathBuf) -> Result<Keypair> {
-    let keypair_file = std::fs::read_to_string(path)?;
-    let keypair_bytes = serde_json::from_str::<Vec<u8>>(&keypair_file)?;
-    let default_keypair = Keypair::try_from(keypair_bytes.as_slice())?;
-
-    Ok(default_keypair)
 }
 
 //
@@ -117,25 +107,4 @@ async fn ensure_same_network_environment(
     }
 
     Ok(())
-}
-
-#[derive(Debug, Args, Clone)]
-struct ScheduleOrForce {
-    /// Force the command to execute immediately. NOTE: This may not bypass all
-    /// safety checks.
-    #[arg(long, short = 'f')]
-    force: bool,
-
-    #[command(flatten)]
-    schedule: ScheduleOption,
-}
-
-impl ScheduleOrForce {
-    fn ensure_safe_execution(&self) -> Result<()> {
-        if self.schedule.is_scheduled() && self.force {
-            bail!("Schedule is not supported with force");
-        }
-
-        Ok(())
-    }
 }

@@ -1,18 +1,21 @@
 use anyhow::{Context, Result, ensure};
 use clap::Args;
 use doublezero_contributor_rewards::calculator::proof::ShapleyOutputStorage;
-use doublezero_program_tools::instruction::try_build_instruction;
-use doublezero_revenue_distribution::{
-    DOUBLEZERO_MINT_KEY, ID,
-    instruction::{RevenueDistributionInstructionData, account::DistributeRewardsAccounts},
-    state::{ContributorRewards, Distribution, ProgramConfig},
-    types::{DoubleZeroEpoch, RewardShare, UnitShare32},
-};
 use doublezero_scheduled_command::{Schedulable, ScheduleOption};
 use doublezero_solana_client_tools::{
     account::zero_copy::ZeroCopyAccountOwnedData,
     payer::{SolanaPayerOptions, TransactionOutcome, Wallet},
-    rpc::DoubleZeroLedgerConnection,
+    rpc::{DoubleZeroLedgerConnection, DoubleZeroLedgerEnvironmentOverride},
+};
+use doublezero_solana_sdk::{
+    environment_2z_token_mint_key,
+    revenue_distribution::{
+        ID,
+        instruction::{RevenueDistributionInstructionData, account::DistributeRewardsAccounts},
+        state::{ContributorRewards, Distribution, ProgramConfig},
+        types::{DoubleZeroEpoch, RewardShare, UnitShare32},
+    },
+    try_build_instruction,
 };
 use solana_sdk::{compute_budget::ComputeBudgetInstruction, pubkey::Pubkey};
 use spl_associated_token_account_interface::{
@@ -40,7 +43,10 @@ pub struct DistributeRewards {
     #[command(flatten)]
     solana_payer_options: SolanaPayerOptions,
 
-    #[arg(hide = true, long, value_name = "PUBKEY")]
+    #[command(flatten)]
+    dz_env: DoubleZeroLedgerEnvironmentOverride,
+
+    #[arg(hide = true, long)]
     rewards_accountant: Option<Pubkey>,
 }
 
@@ -54,8 +60,9 @@ impl Schedulable for DistributeRewards {
         let Self {
             dz_epoch,
             schedule,
-            rewards_accountant: rewards_accountant_key,
             solana_payer_options,
+            dz_env,
+            rewards_accountant: rewards_accountant_key,
         } = self;
 
         ensure!(
@@ -86,7 +93,10 @@ impl Schedulable for DistributeRewards {
         // that 2Z tokens have been swept.
         let distribution = try_prepare_distribution_rewards(&wallet, &config, dz_epoch).await?;
 
-        let dz_env = wallet.connection.try_dz_environment().await?;
+        let network_env = wallet.connection.try_network_environment().await?;
+        let dz_mint_key = environment_2z_token_mint_key(network_env);
+
+        let dz_env = dz_env.dz_env.unwrap_or(network_env);
         let dz_connection = DoubleZeroLedgerConnection::from(dz_env);
 
         let shapley_output = try_fetch_shapley_record(
@@ -115,6 +125,7 @@ impl Schedulable for DistributeRewards {
 
             try_distribute_contributor_rewards(
                 &wallet,
+                &dz_mint_key,
                 &distribution,
                 &shapley_output,
                 leaf_index,
@@ -190,11 +201,16 @@ async fn try_prepare_distribution_rewards(
 
 async fn try_distribute_contributor_rewards(
     wallet: &Wallet,
+    dz_mint_key: &Pubkey,
     distribution: &Distribution,
     shapley_output: &ShapleyOutputStorage,
     leaf_index: usize,
     reward_share: &RewardShare,
 ) -> Result<()> {
+    const DISTRIBUTE_REWARDS_CU_BASE: u32 = 30_000;
+    const CREATE_ATA_CU_BASE: u32 = 25_000;
+    const PER_RECIPIENT_CU: u32 = 12_500;
+
     let wallet_key = wallet.pubkey();
 
     let (contributor_rewards_key, _) =
@@ -244,7 +260,7 @@ async fn try_distribute_contributor_rewards(
         DistributeRewardsAccounts::new(
             distribution.dz_epoch,
             &reward_share.contributor_key,
-            &DOUBLEZERO_MINT_KEY,
+            dz_mint_key,
             &wallet_key,
             &recipient_keys,
         ),
@@ -262,7 +278,7 @@ async fn try_distribute_contributor_rewards(
         .map(|recipient_key| {
             get_associated_token_address_and_bump_seed(
                 recipient_key,
-                &DOUBLEZERO_MINT_KEY,
+                dz_mint_key,
                 &spl_associated_token_account_interface::program::ID,
                 &spl_token::id(),
             )
@@ -271,7 +287,7 @@ async fn try_distribute_contributor_rewards(
 
     // Build instructions to create missing ATAs. We are using idempotent just
     // in case there is a race when creating the ATAs.
-    let (mut instructions, compute_unit_limits): (Vec<_>, Vec<_>) = wallet
+    let (mut instructions, create_ata_compute_units) = wallet
         .connection
         .get_multiple_accounts(&ata_keys)
         .await?
@@ -289,15 +305,15 @@ async fn try_distribute_contributor_rewards(
             let ix = create_associated_token_account_idempotent(
                 &wallet_key,
                 recipient_key,
-                &DOUBLEZERO_MINT_KEY,
+                dz_mint_key,
                 &spl_token::id(),
             );
 
-            let compute_unit_limit = 25_000 + Wallet::compute_units_for_bump_seed(bump);
+            let compute_unit_limit = CREATE_ATA_CU_BASE + Wallet::compute_units_for_bump_seed(bump);
 
             (ix, compute_unit_limit)
         })
-        .unzip();
+        .unzip::<_, _, Vec<_>, Vec<_>>();
 
     if !instructions.is_empty() {
         tracing::warn!("Creating {} ATAs", instructions.len());
@@ -305,11 +321,10 @@ async fn try_distribute_contributor_rewards(
 
     instructions.push(distribute_rewards_ix);
 
-    let compute_unit_limit =
-        30_000 // Base processing.
-        + recipient_keys.len() as u32 * 12_500 // Transfer to recipients.
-        + compute_unit_limits.iter().sum::<u32>() // ATA creation.
-        ;
+    let compute_unit_limit = DISTRIBUTE_REWARDS_CU_BASE
+        + recipient_keys.len() as u32 * PER_RECIPIENT_CU
+        + create_ata_compute_units.iter().sum::<u32>();
+
     instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(
         compute_unit_limit,
     ));

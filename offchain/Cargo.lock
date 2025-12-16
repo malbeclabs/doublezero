@@ -2626,9 +2626,8 @@ version = "0.0.1"
 dependencies = [
  "anyhow",
  "clap",
- "doublezero-program-tools",
- "doublezero-revenue-distribution",
  "doublezero-solana-client-tools",
+ "doublezero-solana-sdk",
  "solana-sdk",
  "tokio",
 ]
@@ -2702,12 +2701,9 @@ dependencies = [
  "csv",
  "doublezero-contributor-rewards",
  "doublezero-ledger-sentinel",
- "doublezero-passport",
- "doublezero-program-tools",
- "doublezero-revenue-distribution",
  "doublezero-scheduled-command",
- "doublezero-sol-conversion-interface",
  "doublezero-solana-client-tools",
+ "doublezero-solana-sdk",
  "doublezero-solana-validator-debt",
  "doublezero_sdk",
  "itertools 0.14.0",
@@ -2735,6 +2731,7 @@ name = "doublezero-solana-client-tools"
 version = "0.0.1"
 dependencies = [
  "anyhow",
+ "bincode 1.3.3",
  "borsh 1.5.7",
  "bytemuck",
  "clap",
@@ -2766,12 +2763,8 @@ dependencies = [
  "borsh 1.5.7",
  "bytemuck",
  "clap",
- "doublezero-passport",
- "doublezero-program-tools",
- "doublezero-revenue-distribution",
- "doublezero-sol-conversion-interface",
  "doublezero-solana-client-tools",
- "reqwest",
+ "doublezero-solana-sdk",
  "serde",
  "serde_json",
  "solana-account-decoder-client-types",
@@ -2779,6 +2772,20 @@ dependencies = [
  "solana-sdk",
  "spl-token",
  "tokio",
+]
+
+[[package]]
+name = "doublezero-solana-sdk"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "doublezero-passport",
+ "doublezero-program-tools",
+ "doublezero-revenue-distribution",
+ "doublezero-sol-conversion-interface",
+ "doublezero-solana-client-tools",
+ "solana-sdk",
+ "svm-hash",
 ]
 
 [[package]]
@@ -2796,12 +2803,10 @@ dependencies = [
  "chrono",
  "clap",
  "csv",
- "doublezero-program-tools",
  "doublezero-record",
- "doublezero-revenue-distribution",
- "doublezero-scheduled-command",
  "doublezero-serviceability",
  "doublezero-solana-client-tools",
+ "doublezero-solana-sdk",
  "doublezero_sdk",
  "futures",
  "leaky-bucket",
@@ -2817,7 +2822,6 @@ dependencies = [
  "solana-client",
  "solana-sdk",
  "solana-transaction-status-client-types",
- "svm-hash",
  "tabled",
  "tempfile",
  "tokio",
@@ -6547,6 +6551,7 @@ dependencies = [
  "solana-sdk",
  "solana-transaction-status-client-types",
  "tokio",
+ "tracing-subscriber",
 ]
 
 [[package]]

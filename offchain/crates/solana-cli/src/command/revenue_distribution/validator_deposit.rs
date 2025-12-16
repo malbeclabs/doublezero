@@ -1,16 +1,18 @@
 use anyhow::{Result, bail};
 use clap::Args;
-use doublezero_program_tools::instruction::try_build_instruction;
-use doublezero_revenue_distribution::{
-    ID,
-    instruction::{
-        RevenueDistributionInstructionData, account::InitializeSolanaValidatorDepositAccounts,
-    },
-    state::SolanaValidatorDeposit,
-};
 use doublezero_solana_client_tools::{
     instruction::take_instruction,
     payer::{SolanaPayerOptions, TransactionOutcome, Wallet},
+};
+use doublezero_solana_sdk::{
+    revenue_distribution::{
+        ID,
+        instruction::{
+            RevenueDistributionInstructionData, account::InitializeSolanaValidatorDepositAccounts,
+        },
+        state::SolanaValidatorDeposit,
+    },
+    try_build_instruction,
 };
 use solana_sdk::{compute_budget::ComputeBudgetInstruction, pubkey::Pubkey};
 

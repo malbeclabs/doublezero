@@ -2,14 +2,19 @@ use std::collections::HashMap;
 
 use anyhow::{Context, Result, ensure};
 use clap::{Args, ValueEnum};
-use doublezero_revenue_distribution::{
-    DOUBLEZERO_MINT_DECIMALS,
-    state::{Distribution, SolanaValidatorDeposit},
-    types::{DoubleZeroEpoch, UnitShare32},
-};
 use doublezero_solana_client_tools::{
     account::zero_copy::ZeroCopyAccountOwnedData,
-    rpc::{DoubleZeroLedgerConnection, SolanaConnection, SolanaConnectionOptions},
+    rpc::{
+        DoubleZeroLedgerConnection, DoubleZeroLedgerEnvironmentOverride, SolanaConnection,
+        SolanaConnectionOptions,
+    },
+};
+use doublezero_solana_sdk::{
+    DOUBLEZERO_MINT_DECIMALS,
+    revenue_distribution::{
+        state::{Distribution, SolanaValidatorDeposit},
+        types::{DoubleZeroEpoch, UnitShare32},
+    },
 };
 use solana_client::{
     rpc_config::RpcProgramAccountsConfig,
@@ -29,6 +34,7 @@ pub enum DistributionViewMode {
     Summary,
     ValidatorDebt,
     UnprocessedValidatorDebt,
+    WrittenOffValidatorDebt,
     Rewards,
 }
 
@@ -43,11 +49,14 @@ pub struct DistributionCommand {
     #[command(flatten)]
     solana_connection_options: SolanaConnectionOptions,
 
-    #[arg(hide = true, long, value_name = "PUBKEY")]
+    #[arg(hide = true, long)]
     debt_accountant: Option<Pubkey>,
 
-    #[arg(hide = true, long, value_name = "PUBKEY")]
+    #[arg(hide = true, long)]
     rewards_accountant: Option<Pubkey>,
+
+    #[command(flatten)]
+    dz_env: DoubleZeroLedgerEnvironmentOverride,
 }
 
 #[derive(Debug, Tabled)]
@@ -60,11 +69,13 @@ struct DistributionSummaryTableRow {
 #[derive(Debug, Tabled)]
 struct DistributionSolanaValidatorDebtTableRow {
     dz_epoch: u64,
+    solana_epoch: String,
     index: usize,
     node_id: String,
     amount: String,
     deposit_balance: String,
     processed: &'static str,
+    written_off: &'static str,
     note: String,
 }
 
@@ -86,9 +97,14 @@ impl DistributionCommand {
             solana_connection_options,
             debt_accountant: debt_accountant_key,
             rewards_accountant: rewards_accountant_key,
+            dz_env,
         } = self;
 
         let solana_connection = SolanaConnection::from(solana_connection_options);
+
+        let network_env = solana_connection.try_network_environment().await?;
+        let dz_env = dz_env.dz_env.unwrap_or(network_env);
+        let dz_connection = DoubleZeroLedgerConnection::from(dz_env);
 
         let (_, config) = try_fetch_program_config(&solana_connection).await?;
 
@@ -97,29 +113,35 @@ impl DistributionCommand {
             None => DoubleZeroEpoch::new(config.next_completed_dz_epoch.value().saturating_sub(1)),
         };
 
+        let debt_accountant_key = debt_accountant_key.unwrap_or(config.debt_accountant_key);
+
         let (distribution_key, distribution) =
             try_fetch_distribution(&solana_connection, epoch).await?;
 
         match view_mode {
             DistributionViewMode::Summary => {
-                try_print_distribution_summary_table(&distribution_key, &distribution).await
+                try_print_distribution_summary_table(
+                    &dz_connection,
+                    &distribution_key,
+                    &distribution,
+                    &debt_accountant_key,
+                )
+                .await
             }
             DistributionViewMode::ValidatorDebt
-            | DistributionViewMode::UnprocessedValidatorDebt => {
+            | DistributionViewMode::UnprocessedValidatorDebt
+            | DistributionViewMode::WrittenOffValidatorDebt => {
                 ensure!(
                     distribution.is_debt_calculation_finalized(),
                     "Debt calculation is not finalized yet"
                 );
 
-                let dz_env = solana_connection.try_dz_environment().await?;
-                let dz_connection = DoubleZeroLedgerConnection::from(dz_env);
-
                 try_print_distribution_debt_table(
                     &solana_connection,
                     &dz_connection,
-                    &debt_accountant_key.unwrap_or(config.debt_accountant_key),
+                    &debt_accountant_key,
                     &distribution,
-                    view_mode == DistributionViewMode::UnprocessedValidatorDebt,
+                    view_mode,
                 )
                 .await
             }
@@ -128,9 +150,6 @@ impl DistributionCommand {
                     distribution.is_rewards_calculation_finalized(),
                     "Rewards calculation is not finalized yet"
                 );
-
-                let dz_env = solana_connection.try_dz_environment().await?;
-                let dz_connection = DoubleZeroLedgerConnection::from(dz_env);
 
                 try_print_distribution_rewards_table(
                     &dz_connection,
@@ -146,13 +165,17 @@ impl DistributionCommand {
 //
 
 async fn try_print_distribution_summary_table(
+    dz_connection: &DoubleZeroLedgerConnection,
     distribution_key: &Pubkey,
     distribution: &Distribution,
+    debt_accountant_key: &Pubkey,
 ) -> Result<()> {
+    let dz_epoch = distribution.dz_epoch.value();
+
     let mut value_rows = vec![
         DistributionSummaryTableRow {
             field: "Distribution",
-            value: distribution.dz_epoch.to_string(),
+            value: dz_epoch.to_string(),
             note: "Epoch of DoubleZero Ledger Network".to_string(),
         },
         DistributionSummaryTableRow {
@@ -225,6 +248,26 @@ async fn try_print_distribution_summary_table(
     let has_solana_validator_debt = solana_validator_debt_merkle_root != Default::default();
 
     if has_solana_validator_debt {
+        let (_, computed_debt) = doublezero_solana_validator_debt::ledger::try_fetch_debt_record(
+            dz_connection,
+            debt_accountant_key,
+            dz_epoch,
+            dz_connection.commitment(),
+        )
+        .await?;
+
+        // Unlikely to happen, but there can be multiple Solana epochs per DZ epoch.
+        if !computed_debt.debts.is_empty() {
+            value_rows.push(DistributionSummaryTableRow {
+                field: "Solana epoch",
+                value: (computed_debt.first_solana_epoch..=computed_debt.last_solana_epoch)
+                    .map(|epoch| epoch.to_string())
+                    .collect::<Vec<_>>()
+                    .join(","),
+                note: Default::default(),
+            });
+        };
+
         let unpaid_solana_validators_count =
             distribution.total_solana_validators - distribution.solana_validator_payments_count;
 
@@ -277,7 +320,26 @@ async fn try_print_distribution_summary_table(
                         as f64
                         / LAMPORTS_PER_SOL as f64,
                 ),
-                note: Default::default(),
+                note: if distribution.is_solana_validator_debt_write_off_enabled() {
+                    "Write-off enabled".to_string()
+                } else {
+                    Default::default()
+                },
+            },
+            DistributionSummaryTableRow {
+                field: "SOL to be exchanged",
+                value: format!(
+                    "{:.9} SOL",
+                    distribution.checked_total_sol_debt().unwrap() as f64 / LAMPORTS_PER_SOL as f64,
+                ),
+                note: if distribution.uncollectible_sol_debt == 0 {
+                    Default::default()
+                } else {
+                    format!(
+                        "{:.9} SOL written off",
+                        distribution.uncollectible_sol_debt as f64 / LAMPORTS_PER_SOL as f64
+                    )
+                },
             },
         ];
         value_rows.extend(more_rows);
@@ -377,7 +439,7 @@ async fn try_print_distribution_debt_table(
     dz_connection: &DoubleZeroLedgerConnection,
     debt_accountant_key: &Pubkey,
     distribution: &ZeroCopyAccountOwnedData<Distribution>,
-    show_unprocessed_only: bool,
+    view_mode: DistributionViewMode,
 ) -> Result<()> {
     let dz_epoch = distribution.dz_epoch.value();
 
@@ -394,25 +456,43 @@ async fn try_print_distribution_debt_table(
         return Ok(());
     }
 
+    // Unlikely to happen, but there can be multiple Solana epochs per DZ epoch.
+    let solana_epoch = (computed_debt.first_solana_epoch..=computed_debt.last_solana_epoch)
+        .map(|epoch| epoch.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+
     let mut outputs = Vec::with_capacity(distribution.total_solana_validators as usize);
 
     let mut deposit_keys = Vec::with_capacity(computed_debt.debts.len());
     let mut cached_debt_amounts = Vec::with_capacity(computed_debt.debts.len());
 
-    for (leaf_index, debt, is_processed_leaf) in
+    for (leaf_index, debt, is_processed_leaf, is_written_off_leaf) in
         try_distribution_solana_validator_debt_iter(distribution, &computed_debt)?
     {
-        if show_unprocessed_only && is_processed_leaf {
-            continue;
+        match view_mode {
+            DistributionViewMode::UnprocessedValidatorDebt => {
+                if is_processed_leaf {
+                    continue;
+                }
+            }
+            DistributionViewMode::WrittenOffValidatorDebt => {
+                if !is_written_off_leaf {
+                    continue;
+                }
+            }
+            _ => (),
         }
 
         outputs.push(DistributionSolanaValidatorDebtTableRow {
             dz_epoch,
+            solana_epoch: solana_epoch.clone(),
             index: leaf_index,
             node_id: debt.node_id.to_string(),
             amount: format!("{:.9} SOL", debt.amount as f64 / LAMPORTS_PER_SOL as f64),
             deposit_balance: Default::default(),
             processed: if is_processed_leaf { "yes" } else { "no" },
+            written_off: if is_written_off_leaf { "yes" } else { "no" },
             note: Default::default(),
         });
 
@@ -461,7 +541,7 @@ async fn try_print_distribution_debt_table(
     print_table(
         outputs,
         TableOptions {
-            columns_aligned_right: Some(&[0, 1, 3, 4, 5]),
+            columns_aligned_right: Some(&[0, 1, 2, 4, 5, 6, 7]),
         },
     );
 

@@ -16,12 +16,12 @@ defmodule Scheduler.Worker.InitializeDistribution do
   end
 
   def handle_continue(:initialize_distribution, state) do
-    case Scheduler.DoubleZero.initialize_distribution(ledger_rpc(), solana_rpc()) do
+    case Scheduler.DoubleZero.initialize_distribution(solana_rpc()) do
       {:error, error} ->
         Logger.error("initialize_distribution: received error: #{inspect(error)}")
 
-      {:ok, msg} ->
-        Logger.info("initialize_distribution: completed with msg: #{msg}")
+      {} ->
+        Logger.info("initialize_distribution: completed")
     end
 
     {:stop, :shutdown, state}
@@ -30,10 +30,6 @@ defmodule Scheduler.Worker.InitializeDistribution do
   def handle_info(msg, state) do
     Logger.warning("Received unexpected msg: #{msg}")
     {:noreply, state}
-  end
-
-  defp ledger_rpc do
-    Application.get_env(:scheduler, :ledger_rpc)
   end
 
   defp solana_rpc do

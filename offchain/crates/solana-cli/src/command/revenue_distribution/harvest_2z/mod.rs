@@ -1,12 +1,12 @@
 mod jupiter;
-//
+
 use anyhow::{Context, Result, bail, ensure};
 use clap::Args;
-use doublezero_revenue_distribution::env::mainnet::DOUBLEZERO_MINT_KEY;
 use doublezero_solana_client_tools::{
     instruction::take_instruction,
     payer::{SolanaPayerOptions, TransactionOutcome, Wallet},
 };
+use doublezero_solana_sdk::revenue_distribution::env::mainnet::DOUBLEZERO_MINT_KEY;
 use jupiter::quote::JupiterLegacyQuoteResponse;
 use solana_client::rpc_config::{
     RpcSimulateTransactionAccountsConfig, RpcSimulateTransactionConfig,

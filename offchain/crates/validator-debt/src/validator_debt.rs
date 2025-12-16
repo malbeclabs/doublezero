@@ -1,6 +1,9 @@
 use borsh::{BorshDeserialize, BorshSerialize};
+use doublezero_solana_sdk::{
+    merkle::{MerkleProof, merkle_root_from_indexed_byte_ref_leaves},
+    sha2,
+};
 use solana_sdk::{hash::Hash, pubkey::Pubkey};
-use svm_hash::merkle::{MerkleProof, merkle_root_from_indexed_byte_ref_leaves};
 
 #[derive(Debug, Default, BorshDeserialize, BorshSerialize, Clone, PartialEq, Eq)]
 pub struct ComputedSolanaValidatorDebts {
@@ -32,7 +35,7 @@ impl ComputedSolanaValidatorDebts {
         Some((solana_validator_debt_entry, proof))
     }
 
-    pub fn merkle_root(&self) -> Option<svm_hash::sha2::Hash> {
+    pub fn merkle_root(&self) -> Option<sha2::Hash> {
         let leaves = self.to_byte_leaves();
         merkle_root_from_indexed_byte_ref_leaves(
             &leaves,
@@ -57,7 +60,7 @@ pub struct ComputedSolanaValidatorDebt {
 impl ComputedSolanaValidatorDebt {
     pub const LEAF_PREFIX: &'static [u8] = b"solana_validator_debt";
 
-    pub fn merkle_root(&self, proof: MerkleProof) -> svm_hash::sha2::Hash {
+    pub fn merkle_root(&self, proof: MerkleProof) -> sha2::Hash {
         let mut leaf = [0; 40];
 
         // This is infallible because we know the size of the struct.

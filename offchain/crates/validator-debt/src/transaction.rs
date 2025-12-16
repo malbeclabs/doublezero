@@ -1,21 +1,24 @@
 use std::fs::File;
 
 use anyhow::{Result, anyhow, bail};
-use doublezero_program_tools::{instruction::try_build_instruction, zero_copy};
-use doublezero_revenue_distribution::{
-    ID,
-    instruction::{
-        DistributionMerkleRootKind, RevenueDistributionInstructionData,
-        account::{
-            ConfigureDistributionDebtAccounts, FinalizeDistributionDebtAccounts,
-            PaySolanaValidatorDebtAccounts, VerifyDistributionMerkleRootAccounts,
-        },
-    },
-    state::Distribution,
-    types::{DoubleZeroEpoch, SolanaValidatorDebt},
-};
 use doublezero_sdk::record::pubkey;
 use doublezero_solana_client_tools::rpc::DoubleZeroLedgerConnection;
+use doublezero_solana_sdk::{
+    merkle::MerkleProof,
+    revenue_distribution::{
+        ID,
+        instruction::{
+            DistributionMerkleRootKind, RevenueDistributionInstructionData,
+            account::{
+                ConfigureDistributionDebtAccounts, FinalizeDistributionDebtAccounts,
+                PaySolanaValidatorDebtAccounts, VerifyDistributionMerkleRootAccounts,
+            },
+        },
+        state::Distribution,
+        types::{DoubleZeroEpoch, SolanaValidatorDebt},
+    },
+    try_build_instruction, zero_copy,
+};
 use serde::Serialize;
 use solana_client::{
     client_error::{ClientError, ClientErrorKind},
@@ -31,7 +34,6 @@ use solana_sdk::{
     signer::Signer,
     transaction::{TransactionError, VersionedTransaction},
 };
-use svm_hash::merkle::MerkleProof;
 
 use crate::{ledger, validator_debt::ComputedSolanaValidatorDebts};
 

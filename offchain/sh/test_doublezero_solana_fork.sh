@@ -1,5 +1,7 @@
 #!/bin/bash
 
+GENESIS_DZ_EPOCH=31
+
 set -eu
 
 # Wait for Solana fork to start. Only try for 60 seconds.
@@ -144,16 +146,36 @@ echo "doublezero-solana revenue-distribution fetch validator-deposits -ul"
 $CLI_BIN revenue-distribution fetch validator-deposits -ul
 echo
 
-echo "doublezero-solana revenue-distribution fetch distribution -ul"
-$CLI_BIN revenue-distribution fetch distribution -ul
+echo "doublezero-solana revenue-distribution fetch distribution -ul --dz-env mainnet-beta"
+$CLI_BIN revenue-distribution fetch distribution -ul --dz-env mainnet-beta
 echo
 
-echo "doublezero-solana revenue-distribution fetch distribution -ul --dz-epoch 1"
-$CLI_BIN revenue-distribution fetch distribution -ul --dz-epoch 1
+echo "doublezero-solana revenue-distribution fetch distribution -um --dz-epoch $GENESIS_DZ_EPOCH"
+$CLI_BIN revenue-distribution fetch distribution -um --dz-epoch $GENESIS_DZ_EPOCH
 echo
 
-echo "doublezero-solana revenue-distribution fetch distribution -ul -e 1"
-$CLI_BIN revenue-distribution fetch distribution -ul -e 1
+echo "doublezero-solana revenue-distribution fetch distribution -um -e $GENESIS_DZ_EPOCH"
+$CLI_BIN revenue-distribution fetch distribution -um -e $GENESIS_DZ_EPOCH
+echo
+
+echo "doublezero-solana revenue-distribution fetch distribution -um -e $GENESIS_DZ_EPOCH --view summary"
+$CLI_BIN revenue-distribution fetch distribution -um -e $GENESIS_DZ_EPOCH --view summary
+echo
+
+echo "doublezero-solana revenue-distribution fetch distribution -um -e $GENESIS_DZ_EPOCH --view validator-debt"
+$CLI_BIN revenue-distribution fetch distribution -um -e $GENESIS_DZ_EPOCH --view validator-debt
+echo
+
+echo "doublezero-solana revenue-distribution fetch distribution -um -e $GENESIS_DZ_EPOCH --view unprocessed-validator-debt"
+$CLI_BIN revenue-distribution fetch distribution -um -e $GENESIS_DZ_EPOCH --view unprocessed-validator-debt
+echo
+
+echo "doublezero-solana revenue-distribution fetch distribution -um -e $GENESIS_DZ_EPOCH --view written-off-validator-debt"
+$CLI_BIN revenue-distribution fetch distribution -um -e $GENESIS_DZ_EPOCH --view written-off-validator-debt
+echo
+
+echo "doublezero-solana revenue-distribution fetch distribution -um -e $GENESIS_DZ_EPOCH --view rewards"
+$CLI_BIN revenue-distribution fetch distribution -um -e $GENESIS_DZ_EPOCH --view rewards
 echo
 
 ### Clean up.

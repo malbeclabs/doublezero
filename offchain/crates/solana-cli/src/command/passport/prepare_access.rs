@@ -3,11 +3,11 @@ use std::sync::Arc;
 use anyhow::Result;
 use clap::Args;
 use doublezero_ledger_sentinel::client::solana::SolRpcClient;
-use doublezero_passport::{
+use doublezero_solana_client_tools::rpc::{SolanaConnection, SolanaConnectionOptions};
+use doublezero_solana_sdk::passport::{
     instruction::{AccessMode, SolanaValidatorAttestation},
     state::AccessRequest,
 };
-use doublezero_solana_client_tools::rpc::{SolanaConnection, SolanaConnectionOptions};
 use solana_sdk::signature::Keypair;
 use url::Url;
 

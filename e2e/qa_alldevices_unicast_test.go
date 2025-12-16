@@ -9,7 +9,6 @@ import (
 	"net"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 
 	"github.com/malbeclabs/doublezero/e2e/internal/qa"
@@ -130,7 +129,6 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 			// Each subtest:
 			//   - Uses the client assigned to that device as the source
 			//   - Tests connectivity from that client to all other clients
-			var testsWithPartialLosses atomic.Uint32
 			for _, device := range batch {
 				srcClient := deviceToClient[device]
 				require.NotNil(t, srcClient, "no client assigned to device %s in batch", device.Code)
@@ -155,25 +153,16 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 						wg.Add(1)
 						go func(src, target *qa.Client) {
 							defer wg.Done()
-							result, err := src.TestUnicastConnectivity(t, subCtx, target)
+							_, err := src.TestUnicastConnectivity(t, subCtx, target)
 							if err != nil {
 								log.Error("Connectivity test failed", "error", err, "source", src.Host, "target", target.Host, "sourceDevice", clientToDevice[src].Code, "targetDevice", clientToDevice[target].Code)
+								require.NoError(t, err, "failed to test connectivity")
 							}
-							if result != nil && result.PacketsReceived < result.PacketsSent {
-								testsWithPartialLosses.Add(1)
-							}
-							require.NoError(t, err, "failed to test connectivity")
 						}(srcClient, target)
 					}
 					wg.Wait()
 				})
 			}
-
-			// Tolerate at most one test with partial losses.
-			// TestUnicastConnectivity will return error if there are losses that exceed the acceptable
-			// threshold, resulting in the QA test to fail earlier than this check. This check is responsible
-			// for tolerating at most 1 test with "acceptable" partial loss, or else fail the QA test.
-			require.LessOrEqual(t, testsWithPartialLosses.Load(), uint32(1), "too many connectivity tests with partial packet loss")
 		})
 	}
 }

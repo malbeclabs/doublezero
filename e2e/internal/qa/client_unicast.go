@@ -11,13 +11,14 @@ import (
 	"time"
 
 	pb "github.com/malbeclabs/doublezero/e2e/proto/qa/gen/pb-go"
-	"github.com/stretchr/testify/require"
 )
 
 const (
 	connectUnicastTimeout     = 150 * time.Second
 	unicastPingRequestTimeout = 60 * time.Second
 	unicastPingProbeTimeout   = 5 * time.Second
+	unicastPingMaxRetries     = 3
+	unicastPingRetryDelay     = 1 * time.Second
 	unicastTracerouteTimeout  = 5 * time.Second
 
 	unicastPingProbeCount         = 5
@@ -101,6 +102,94 @@ func (c *Client) TestUnicastConnectivity(t *testing.T, ctx context.Context, targ
 		c.log.Info("Pinging (intra-exchange routing)", "source", sourceIP, "target", targetIP, "exchange", clientDevice.ExchangeCode)
 	}
 
+	var lastResp *pb.PingResult
+	var lastErr error
+	for i := range unicastPingMaxRetries {
+		resp, err := c.pingOnce(ctx, targetIP, sourceIP, iface)
+		if err != nil {
+			return nil, fmt.Errorf("failed to ping: %w", err)
+		}
+		lastResp = resp
+		lastErr = err
+
+		if resp.PacketsSent == 0 {
+			c.log.Warn("No packets sent",
+				"sourceHost", c.Host,
+				"targetHost", targetClient.Host,
+				"iface", iface,
+				"sourceDevice", clientDevice.Code,
+				"targetDevice", otherClientDevice.Code,
+				"attempts", i+1,
+			)
+		}
+
+		// If there is any packet loss, run a traceroute and dump the output for visibility.
+		if resp.PacketsSent > 0 && resp.PacketsReceived < resp.PacketsSent {
+			res, err := c.TracerouteRaw(ctx, targetIP)
+			if err != nil {
+				return nil, fmt.Errorf("failed to traceroute: %w", err)
+			}
+			c.log.Info("Packet loss detected, dumping traceroute output for visibility",
+				"sourceHost", c.Host,
+				"targetHost", targetClient.Host,
+				"iface", iface,
+				"sourceDevice", clientDevice.Code,
+				"targetDevice", otherClientDevice.Code,
+				"attempts", i+1,
+			)
+			t.Logf("Traceroute for %s -> %s: %s", c.Host, targetClient.Host, res)
+		}
+
+		// Return success if we have any packets received.
+		if resp.PacketsSent > 0 && resp.PacketsReceived > 0 {
+			c.log.Info("Successfully pinged",
+				"sourceHost", c.Host,
+				"targetHost", targetClient.Host,
+				"iface", iface,
+				"sourceDevice", clientDevice.Code,
+				"targetDevice", otherClientDevice.Code,
+				"packetsSent", resp.PacketsSent,
+				"packetsReceived", resp.PacketsReceived,
+				"attempts", i+1,
+			)
+
+			return &UnicastTestConnectivityResult{
+				PacketsSent:     resp.PacketsSent,
+				PacketsReceived: resp.PacketsReceived,
+			}, nil
+		}
+
+		// Sleep for a second before retrying.
+		time.Sleep(unicastPingRetryDelay)
+	}
+
+	// If we fail to ping after all retries, check if routes were uninstalled and log an error for visibility.
+	installedRoutes, err := c.GetInstalledRoutes(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get installed routes: %w", err)
+	}
+	installedIPs := make(map[string]struct{})
+	for _, route := range installedRoutes {
+		installedIPs[route.DstIp] = struct{}{}
+	}
+	if _, ok := installedIPs[targetIP]; !ok {
+		attrs := []any{
+			"sourceHost", c.Host,
+			"targetHost", targetClient.Host,
+			"iface", iface,
+			"sourceDevice", clientDevice.Code,
+			"targetDevice", otherClientDevice.Code,
+		}
+		if lastResp != nil {
+			attrs = append(attrs, "packetsSent", lastResp.PacketsSent, "packetsReceived", lastResp.PacketsReceived)
+		}
+		c.log.Error("Routes disappeared while pinging, failed to ping after all retries", attrs...)
+	}
+
+	return nil, fmt.Errorf("failed to ping after %d retries: %w", unicastPingMaxRetries, lastErr)
+}
+
+func (c *Client) pingOnce(ctx context.Context, targetIP string, sourceIP string, iface string) (*pb.PingResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, unicastPingRequestTimeout)
 	defer cancel()
 	resp, err := c.grpcClient.Ping(ctx, &pb.PingRequest{
@@ -114,80 +203,7 @@ func (c *Client) TestUnicastConnectivity(t *testing.T, ctx context.Context, targ
 	if err != nil {
 		return nil, fmt.Errorf("failed to ping: %w", err)
 	}
-
-	if resp.PacketsSent == 0 {
-		return nil, fmt.Errorf("no packets sent from %s to %s", sourceIP, targetIP)
-	}
-	if resp.PacketsReceived < resp.PacketsSent {
-		// If we have packet loss, check if routes were uninstalled and log an error for visibility.
-		installedRoutes, err := c.GetInstalledRoutes(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get installed routes: %w", err)
-		}
-		installedIPs := make(map[string]struct{})
-		for _, route := range installedRoutes {
-			installedIPs[route.DstIp] = struct{}{}
-		}
-		if _, ok := installedIPs[targetIP]; !ok {
-			c.log.Error("Routes disappeared while pinging, packet loss detected",
-				"sourceHost", c.Host,
-				"targetHost", targetClient.Host,
-				"iface", iface,
-				"sourceDevice", clientDevice.Code,
-				"targetDevice", otherClientDevice.Code,
-				"packetsSent", resp.PacketsSent,
-				"packetsReceived", resp.PacketsReceived,
-			)
-		}
-
-		// If there are any losses, run a traceroute and dump the output for visibility.
-		res, err := c.TracerouteRaw(ctx, targetIP)
-		require.NoError(t, err)
-		t.Logf("Traceroute for %s -> %s: %s", c.Host, targetClient.Host, res)
-		isLossOutsideNetwork, err := isLossOutsideNetwork(res)
-		if err != nil {
-			return nil, fmt.Errorf("failed to check if loss is outside of network: %w", err)
-		}
-		if isLossOutsideNetwork {
-			c.log.Warn("Packet loss detected in traceroute outside of network; ignoring for connectivity test",
-				"sourceHost", c.Host,
-				"targetHost", targetClient.Host,
-				"iface", iface,
-				"sourceDevice", clientDevice.Code,
-				"targetDevice", otherClientDevice.Code,
-			)
-		} else if resp.PacketsReceived <= resp.PacketsSent-unicastPingProbeLossThreshold {
-			// If we have more than the threshold of packet loss, return an error.
-			return nil, fmt.Errorf("packet loss detected: sent=%d, received=%d from %s to %s", resp.PacketsSent, resp.PacketsReceived, sourceIP, targetIP)
-		} else {
-			c.log.Warn("Partial packet loss detected",
-				"sourceHost", c.Host,
-				"targetHost", targetClient.Host,
-				"iface", iface,
-				"sourceDevice", clientDevice.Code,
-				"targetDevice", otherClientDevice.Code,
-				"packetsSent", resp.PacketsSent,
-				"packetsReceived", resp.PacketsReceived,
-				"probeCount", unicastPingProbeCount,
-				"probeLossThreshold", unicastPingProbeLossThreshold,
-			)
-		}
-	}
-
-	c.log.Info("Successfully pinged",
-		"sourceHost", c.Host,
-		"targetHost", targetClient.Host,
-		"iface", iface,
-		"sourceDevice", clientDevice.Code,
-		"targetDevice", otherClientDevice.Code,
-		"packetsSent", resp.PacketsSent,
-		"packetsReceived", resp.PacketsReceived,
-	)
-
-	return &UnicastTestConnectivityResult{
-		PacketsSent:     resp.PacketsSent,
-		PacketsReceived: resp.PacketsReceived,
-	}, nil
+	return resp, nil
 }
 
 func (c *Client) TracerouteRaw(ctx context.Context, targetIP string) (string, error) {

@@ -10,7 +10,11 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
+	"github.com/gagliardetto/solana-go/rpc"
+	"github.com/malbeclabs/doublezero/config"
+	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	enricher "github.com/malbeclabs/doublezero/telemetry/flow-enricher/internal/flow-enricher"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -88,11 +92,21 @@ func main() {
 		os.Exit(1)
 	}
 
+	networkConfig, err := config.NetworkConfigForEnv(os.Getenv("DZ_ENV"))
+	if err != nil {
+		logger.Error("error getting network config", "error", err)
+		os.Exit(1)
+	}
+
+	serviceabilityClient := serviceability.New(rpc.New(networkConfig.LedgerPublicRPCURL), networkConfig.ServiceabilityProgramID)
+
 	enricherOpts := []enricher.EnricherOption{
 		enricher.WithClickhouseWriter(chWriter),
 		enricher.WithFlowConsumer(flowConsumer),
 		enricher.WithLogger(logger),
 		enricher.WithEnricherMetrics(enricher.NewEnricherMetrics(reg)),
+		enricher.WithServiceabilityFetcher(serviceabilityClient),
+		enricher.WithServiceabilityFetchInterval(10 * time.Second),
 	}
 	enricher := enricher.NewEnricher(enricherOpts...)
 

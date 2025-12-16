@@ -33,6 +33,7 @@ All notable changes to this project will be documented in this file.
 - Telemetry
   - Refactor flow enricher
   - Add metrics to flow enricher
+  - Add serviceability data fetching to flow enricher
 
 ## [v0.8.0](https://github.com/malbeclabs/doublezero/compare/client/v0.7.1...client/v0.8.0) – 2025-12-02
 

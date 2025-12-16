@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	flow "github.com/malbeclabs/doublezero/telemetry/proto/flow/gen/pb-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -73,6 +74,41 @@ func (m *MockClicker) BatchInsert(ctx context.Context, samples []FlowSample) err
 	return nil
 }
 
+type MockServiceabilityFetcher struct {
+	mu          sync.Mutex
+	programData *serviceability.ProgramData
+	err         error
+	callCount   int
+}
+
+func (m *MockServiceabilityFetcher) GetProgramData(ctx context.Context) (*serviceability.ProgramData, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.callCount++
+	if m.err != nil {
+		return &serviceability.ProgramData{}, m.err
+	}
+	return m.programData, nil
+}
+
+func (m *MockServiceabilityFetcher) SetError(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.err = err
+}
+
+func (m *MockServiceabilityFetcher) SetProgramData(data *serviceability.ProgramData) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.programData = data
+}
+
+func (m *MockServiceabilityFetcher) CallCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.callCount
+}
+
 func TestEnricher(t *testing.T) {
 	payload := readPcap(t, "./fixtures/sflow_ingress_user_traffic.pcap")
 	rawKafkaMessage := &flow.FlowSample{
@@ -88,6 +124,9 @@ func TestEnricher(t *testing.T) {
 		SamplesToReturn: [][]FlowSample{expectedSamples},
 	}
 	mockWriter := &MockClicker{}
+	mockServiceability := &MockServiceabilityFetcher{
+		programData: &serviceability.ProgramData{},
+	}
 
 	reg := prometheus.NewRegistry()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -96,6 +135,7 @@ func TestEnricher(t *testing.T) {
 		WithClickhouseWriter(mockWriter),
 		WithLogger(logger),
 		WithEnricherMetrics(NewEnricherMetrics(reg)),
+		WithServiceabilityFetcher(mockServiceability),
 	)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -182,6 +222,7 @@ func TestEnricherMetrics(t *testing.T) {
 				WithFlowConsumer(tt.mockConsumer),
 				WithClickhouseWriter(tt.mockWriter),
 				WithEnricherMetrics(metrics),
+				WithServiceabilityFetcher(&MockServiceabilityFetcher{}),
 			)
 
 			ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
@@ -198,4 +239,60 @@ func TestEnricherMetrics(t *testing.T) {
 			require.Equal(t, tt.expectedKafkaCommitErrs, testutil.ToFloat64(metrics.KafkaCommitErrors), "KafkaCommitErrors mismatch")
 		})
 	}
+}
+
+func TestEnricherServiceabilityFetching(t *testing.T) {
+	mockFetcher := &MockServiceabilityFetcher{}
+	mockFetcher.SetProgramData(&serviceability.ProgramData{
+		Contributors: []serviceability.Contributor{{Name: "Initial Contributor"}},
+	})
+
+	reg := prometheus.NewRegistry()
+	metrics := NewEnricherMetrics(reg)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	fetchInterval := 50 * time.Millisecond
+
+	enricher := NewEnricher(
+		WithFlowConsumer(&MockFlowConsumer{}),
+		WithClickhouseWriter(&MockClicker{}),
+		WithServiceabilityFetcher(mockFetcher),
+		WithEnricherMetrics(metrics),
+		WithLogger(logger),
+		WithServiceabilityFetchInterval(fetchInterval),
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		_ = enricher.Run(ctx)
+	}()
+
+	require.Eventually(t, func() bool {
+		enricher.serviceabilityData.mutex.Lock()
+		defer enricher.serviceabilityData.mutex.Unlock()
+		return len(enricher.serviceabilityData.ProgramData.Contributors) > 0 &&
+			enricher.serviceabilityData.ProgramData.Contributors[0].Name == "Initial Contributor"
+	}, 1*time.Second, 10*time.Millisecond, "Enricher did not fetch initial serviceability data")
+
+	mockFetcher.SetProgramData(&serviceability.ProgramData{
+		Contributors: []serviceability.Contributor{{Name: "Updated Contributor"}},
+	})
+	require.Eventually(t, func() bool {
+		enricher.serviceabilityData.mutex.Lock()
+		defer enricher.serviceabilityData.mutex.Unlock()
+		return len(enricher.serviceabilityData.ProgramData.Contributors) > 0 &&
+			enricher.serviceabilityData.ProgramData.Contributors[0].Name == "Updated Contributor"
+	}, 1*time.Second, 10*time.Millisecond, "Enricher did not update to the new serviceability data")
+
+	mockFetcher.SetError(errors.New("fetch failed"))
+	currentErrCount := testutil.ToFloat64(metrics.ServiceabilityFetchErrors)
+	require.Eventually(t, func() bool {
+		return testutil.ToFloat64(metrics.ServiceabilityFetchErrors) > currentErrCount
+	}, 1*time.Second, 10*time.Millisecond, "ServiceabilityFetchErrors metric was not incremented on fetch failure")
+
+	cancel()
+	wg.Wait()
 }

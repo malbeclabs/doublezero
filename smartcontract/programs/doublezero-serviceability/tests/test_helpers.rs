@@ -89,11 +89,11 @@ pub fn get_type_name<T>() -> String {
 }
 
 #[allow(dead_code)]
-pub async fn get_account_data<'a>(
+pub async fn get_account_data(
     banks_client: &mut BanksClient,
     pubkey: Pubkey,
 ) -> Option<AccountData> {
-    print!("⬅️  Read: ");
+    print!("Read: ");
 
     match banks_client.get_account(pubkey).await {
         Ok(account) => match account {
@@ -248,6 +248,7 @@ pub fn create_transaction(
     )
 }
 
+#[allow(dead_code)]
 pub async fn get_resource_extension_data(
     banks_client: &mut BanksClient,
     pubkey: Pubkey,

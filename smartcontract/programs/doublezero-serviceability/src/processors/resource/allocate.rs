@@ -63,14 +63,11 @@ pub fn process_allocate_resource(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    match value.ip_block_type {
-        crate::resource::IpBlockType::DzPrefixBlock(ref associated_pk, _) => {
-            assert_eq!(
-                associated_account.key, associated_pk,
-                "Associated account pubkeys do not match"
-            );
-        }
-        _ => {}
+    if let crate::resource::IpBlockType::DzPrefixBlock(ref associated_pk, _) = value.ip_block_type {
+        assert_eq!(
+            associated_account.key, associated_pk,
+            "Associated account pubkeys do not match"
+        );
     }
 
     let (expected_resource_pda, _, _) = get_resource_extension_pda(program_id, value.ip_block_type);

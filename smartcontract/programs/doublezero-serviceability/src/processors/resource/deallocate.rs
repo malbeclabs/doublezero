@@ -69,14 +69,11 @@ pub fn process_deallocate_resource(
         "Invalid Resource Account PubKey"
     );
 
-    match value.ip_block_type {
-        crate::resource::IpBlockType::DzPrefixBlock(ref associated_pk, _) => {
-            assert_eq!(
-                associated_account.key, associated_pk,
-                "Associated account pubkeys do not match"
-            );
-        }
-        _ => {}
+    if let crate::resource::IpBlockType::DzPrefixBlock(ref associated_pk, _) = value.ip_block_type {
+        assert_eq!(
+            associated_account.key, associated_pk,
+            "Associated account pubkeys do not match"
+        );
     }
 
     assert!(!resource_account.data.borrow().is_empty());

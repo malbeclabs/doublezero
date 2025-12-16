@@ -58,20 +58,17 @@ impl DeallocateResourceCliCommand {
 
         let args: DeallocateResourceCommand = self.into();
 
-        match args.ip_block_type {
-            IpBlockType::DzPrefixBlock(pk, index) => {
-                let get_device_cmd = GetDeviceCommand {
-                    pubkey_or_code: pk.to_string(),
-                };
-                let (_device_pk, device) = client.get_device(get_device_cmd)?;
-                if device.dz_prefixes.len() <= index {
-                    return Err(eyre::eyre!(
-                        "Device does not have a DzPrefixBlock at index {}",
-                        index
-                    ));
-                }
+        if let IpBlockType::DzPrefixBlock(pk, index) = args.ip_block_type {
+            let get_device_cmd = GetDeviceCommand {
+                pubkey_or_code: pk.to_string(),
+            };
+            let (_device_pk, device) = client.get_device(get_device_cmd)?;
+            if device.dz_prefixes.len() <= index {
+                return Err(eyre::eyre!(
+                    "Device does not have a DzPrefixBlock at index {}",
+                    index
+                ));
             }
-            _ => {}
         }
 
         let signature = client.deallocate_resource(args)?;

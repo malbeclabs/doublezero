@@ -20,7 +20,7 @@ impl IpAllocator {
 
     pub fn bitmap_required_size(prefix_len: u8, allocation_size: u32) -> usize {
         let total_allocations = 2_usize.pow(32 - prefix_len as u32) / allocation_size as usize;
-        (total_allocations + 7) / 8
+        (total_allocations + 7).div_ceil(8)
     }
 
     pub fn check_bitmap_require_size(bitmap: &[u8], prefix_len: u8, allocation_size: u32) -> bool {
@@ -266,11 +266,17 @@ mod tests {
         // base_net is /24 (prefix=24), allocation_size=512 gives prefix=23
         // 23 < 24, so this should fail (can't allocate blocks larger than the base net)
         let res = IpAllocator::new(base_net, 512);
-        assert!(res.is_err(), "allocation_size=512 (/23) should fail for /24 base_net");
+        assert!(
+            res.is_err(),
+            "allocation_size=512 (/23) should fail for /24 base_net"
+        );
 
         // Non-power-of-2 allocation_size should fail
         let res = IpAllocator::new(base_net, 33);
-        assert!(res.is_err(), "allocation_size=33 (not power of 2) should fail");
+        assert!(
+            res.is_err(),
+            "allocation_size=33 (not power of 2) should fail"
+        );
 
         // allocation_size=0 should fail
         let res = IpAllocator::new(base_net, 0);

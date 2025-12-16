@@ -10,19 +10,23 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/malbeclabs/doublezero/telemetry/enricher/internal/enricher"
+	enricher "github.com/malbeclabs/doublezero/telemetry/flow-enricher/internal/flow-enricher"
 )
 
 var (
-	version = flag.Bool("version", false, "version info")
-	Build   string
+	// set by LDFLAGS
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+
+	showVersion = flag.Bool("version", false, "print version information and exit")
 )
 
 func main() {
 	flag.Parse()
 
-	if *version {
-		fmt.Printf("build: %s\n", Build)
+	if *showVersion {
+		fmt.Printf("version: %s\ncommit: %s\ndate: %s\n", version, commit, date)
 		os.Exit(0)
 	}
 

@@ -1,7 +1,7 @@
 // Package enricher implements the enricher process and associated annotators.
 // The enricher process reads off of redpanda topic containing unenriched flow
-// records in json format, enriches the flow with additional information from
-// each annotator, and publishes the flow to an enriched redpanda topic.
+// records in protobuf format, enriches the flow with additional information from
+// each annotator, and writes the flows as a batch to clickhouse.
 //
 // Annotators must be registered in the RegisterAnnotators method of the enricher
 // and must implement the Annotator interface.
@@ -50,12 +50,19 @@ func WithLogger(logger *slog.Logger) EnricherOption {
 	}
 }
 
+// WithEnricherMetrics injects prometheus metrics into the Enricher.
+func WithEnricherMetrics(metrics *EnricherMetrics) EnricherOption {
+	return func(e *Enricher) {
+		e.metrics = metrics
+	}
+}
+
 type Enricher struct {
-	// Dependencies are now interfaces
 	chWriter     Clicker
 	flowConsumer FlowConsumer
 	annotators   []Annotator
 	logger       *slog.Logger
+	metrics      *EnricherMetrics
 }
 
 func NewEnricher(opts ...EnricherOption) *Enricher {
@@ -101,14 +108,16 @@ func (e *Enricher) Run(ctx context.Context) error {
 
 			if err := e.chWriter.BatchInsert(ctx, samples); err != nil {
 				e.logger.Error("error inserting batch via Clicker", "error", err)
+				e.metrics.ClickhouseInsertErrors.Inc()
 				continue
 			}
 
 			if err := e.flowConsumer.CommitOffsets(ctx); err != nil {
-				// TODO: metric
 				e.logger.Error("commit records failed", "error", err)
+				e.metrics.KafkaCommitErrors.Inc()
 				continue
 			}
+			e.metrics.FlowsProcessedTotal.Add(float64(len(samples)))
 		}
 	}
 }

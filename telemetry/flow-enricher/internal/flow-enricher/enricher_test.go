@@ -5,11 +5,14 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net"
 	"sync"
 	"testing"
 	"time"
 
 	flow "github.com/malbeclabs/doublezero/telemetry/proto/flow/gen/pb-go"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -86,11 +89,13 @@ func TestEnricher(t *testing.T) {
 	}
 	mockWriter := &MockClicker{}
 
+	reg := prometheus.NewRegistry()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	enricher := NewEnricher(
 		WithFlowConsumer(mockConsumer),
 		WithClickhouseWriter(mockWriter),
 		WithLogger(logger),
+		WithEnricherMetrics(NewEnricherMetrics(reg)),
 	)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -121,4 +126,76 @@ func TestEnricher(t *testing.T) {
 	mockWriter.mu.Lock()
 	defer mockWriter.mu.Unlock()
 	require.Equal(t, expectedSamples, mockWriter.ReceivedSamples, "The records received by the writer do not match the records generated from the pcap")
+}
+
+func TestEnricherMetrics(t *testing.T) {
+	tests := []struct {
+		name                    string
+		mockConsumer            *MockFlowConsumer
+		mockWriter              *MockClicker
+		expectedFlowsProcessed  float64
+		expectedClickhouseErrs  float64
+		expectedKafkaCommitErrs float64
+	}{
+		{
+			name: "Successful run increments FlowsProcessedTotal",
+			mockConsumer: &MockFlowConsumer{
+				SamplesToReturn: [][]FlowSample{{{SrcAddress: net.IP("1.1.1.1")}, {SrcAddress: net.IP("2.2.2.2")}}},
+			},
+			mockWriter:             &MockClicker{},
+			expectedFlowsProcessed: 2,
+		},
+		{
+			name: "ClickHouse insert error increments ClickhouseInsertErrors",
+			mockConsumer: &MockFlowConsumer{
+				SamplesToReturn: [][]FlowSample{{{SrcAddress: net.IP("1.1.1.1")}, {SrcAddress: net.IP("2.2.2.2")}}},
+			},
+			mockWriter: &MockClicker{
+				InsertError: errors.New("clickhouse failed"),
+			},
+			expectedClickhouseErrs: 1,
+		},
+		{
+			name: "Kafka commit error increments KafkaCommitErrors",
+			mockConsumer: &MockFlowConsumer{
+				SamplesToReturn: [][]FlowSample{{{SrcAddress: net.IP("1.1.1.1")}, {SrcAddress: net.IP("2.2.2.2")}}},
+				CommitError:     errors.New("kafka commit failed"),
+			},
+			mockWriter:              &MockClicker{},
+			expectedKafkaCommitErrs: 1,
+		},
+		{
+			name: "No samples processed does not increment metrics",
+			mockConsumer: &MockFlowConsumer{
+				SamplesToReturn: [][]FlowSample{},
+			},
+			mockWriter: &MockClicker{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reg := prometheus.NewRegistry()
+			metrics := NewEnricherMetrics(reg)
+
+			enricher := NewEnricher(
+				WithFlowConsumer(tt.mockConsumer),
+				WithClickhouseWriter(tt.mockWriter),
+				WithEnricherMetrics(metrics),
+			)
+
+			ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+			defer cancel()
+
+			go func() {
+				_ = enricher.Run(ctx)
+			}()
+
+			<-ctx.Done()
+
+			require.Equal(t, tt.expectedFlowsProcessed, testutil.ToFloat64(metrics.FlowsProcessedTotal), "FlowsProcessedTotal mismatch")
+			require.Equal(t, tt.expectedClickhouseErrs, testutil.ToFloat64(metrics.ClickhouseInsertErrors), "ClickhouseInsertErrors mismatch")
+			require.Equal(t, tt.expectedKafkaCommitErrs, testutil.ToFloat64(metrics.KafkaCommitErrors), "KafkaCommitErrors mismatch")
+		})
+	}
 }

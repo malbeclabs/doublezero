@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 type ClickhouseOption func(*ClickhouseWriter)
@@ -20,6 +21,7 @@ type ClickhouseWriter struct {
 	disableTLS bool
 	conn       clickhouse.Conn
 	logger     *slog.Logger
+	metrics    *ClickhouseMetrics
 }
 
 func WithClickhouseLogger(logger *slog.Logger) ClickhouseOption {
@@ -55,6 +57,12 @@ func WithClickhouseAddr(addr string) ClickhouseOption {
 func WithTLSDisabled(disableTLS bool) ClickhouseOption {
 	return func(cw *ClickhouseWriter) {
 		cw.disableTLS = disableTLS
+	}
+}
+
+func WithClickhouseMetrics(metrics *ClickhouseMetrics) ClickhouseOption {
+	return func(cw *ClickhouseWriter) {
+		cw.metrics = metrics
 	}
 }
 
@@ -219,10 +227,13 @@ func (cw *ClickhouseWriter) BatchInsert(ctx context.Context, samples []FlowSampl
 			cw.logger.Error("error appending to clickhouse batch", "error", err)
 		}
 	}
+	timer := prometheus.NewTimer(cw.metrics.InsertDuration)
 	if err := batch.Send(); err != nil {
 		_ = batch.Close()
 		return fmt.Errorf("error sending clickhouse batch: %v", err)
 	}
+	timer.ObserveDuration()
+
 	if err := batch.Close(); err != nil {
 		return fmt.Errorf("error closing clickhouse batch: %v", err)
 	}

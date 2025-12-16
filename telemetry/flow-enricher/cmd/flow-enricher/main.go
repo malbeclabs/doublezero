@@ -12,10 +12,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	enricher "github.com/malbeclabs/doublezero/telemetry/flow-enricher/internal/flow-enricher"
+	"github.com/malbeclabs/doublezero/tools/solana/pkg/rpc"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -98,7 +98,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	serviceabilityClient := serviceability.New(rpc.New(networkConfig.LedgerPublicRPCURL), networkConfig.ServiceabilityProgramID)
+	rpcClient := rpc.NewWithRetries(networkConfig.LedgerPublicRPCURL, nil)
+	serviceabilityClient := serviceability.New(rpcClient, networkConfig.ServiceabilityProgramID)
 
 	enricherOpts := []enricher.EnricherOption{
 		enricher.WithClickhouseWriter(chWriter),

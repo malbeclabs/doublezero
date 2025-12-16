@@ -35,7 +35,7 @@ jobs:
       - name: Setup | Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.91.0
+          toolchain: 1.92.0
           components: clippy, rustfmt, llvm-tools-preview
 
       - name: Setup | Rust cache

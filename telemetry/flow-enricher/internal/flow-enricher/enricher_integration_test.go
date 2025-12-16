@@ -164,6 +164,10 @@ func TestFlowEnrichment(t *testing.T) {
 		WithKafkaTLSDisabled(true),
 		WithKafkaLogger(logger),
 	)
+	if err != nil {
+		logger.Error("error creating kafka flow consumer", "error", err)
+		os.Exit(1)
+	}
 
 	enricher := NewEnricher(
 		WithFlowConsumer(flowConsumer),

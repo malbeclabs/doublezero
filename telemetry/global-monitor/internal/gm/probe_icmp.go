@@ -96,6 +96,14 @@ func (t *ICMPProbeTarget) Probe(ctx context.Context) (*ProbeResult, error) {
 	pinger.Interval = t.cfg.Interval
 	pinger.Size = defaultICMPSize
 
+	var timeout time.Duration
+	if deadline, ok := ctx.Deadline(); ok {
+		timeout = time.Until(deadline.Truncate(time.Second)).Truncate(time.Second)
+	}
+	if timeout > 0 {
+		pinger.Timeout = timeout
+	}
+
 	if err := pinger.RunWithContext(ctx); err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
 			return &ProbeResult{

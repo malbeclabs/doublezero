@@ -24,6 +24,7 @@ type KafkaFlowConsumer struct {
 	disableTLS bool
 	client     *kgo.Client
 	logger     *slog.Logger
+	metrics    *FlowConsumerMetrics
 }
 
 type KafkaOption func(*KafkaFlowConsumer)
@@ -80,6 +81,12 @@ const (
 func WithKafkaAuthType(authType KafkaAuthType) KafkaOption {
 	return func(kfc *KafkaFlowConsumer) {
 		kfc.authType = authType
+	}
+}
+
+func WithFlowConsumerMetrics(metrics *FlowConsumerMetrics) KafkaOption {
+	return func(kfc *KafkaFlowConsumer) {
+		kfc.metrics = metrics
 	}
 }
 
@@ -157,14 +164,17 @@ func (kfc *KafkaFlowConsumer) ConsumeFlowRecords(ctx context.Context) ([]FlowSam
 		var sample flow.FlowSample
 		if err := proto.Unmarshal(rec.Value, &sample); err != nil {
 			kfc.logger.Error("error unmarshaling flow record from kafka", "error", err)
+			kfc.metrics.FlowUnmarshalErrors.Inc()
 			return
 		}
 		samples, err = DecodeSFlow(&sample)
 		if err != nil {
 			kfc.logger.Error("error decoding sFlow", "error", err)
+			kfc.metrics.FlowDecodeErrors.Inc()
 			return
 		}
 	})
+	kfc.metrics.FlowsDecodedTotal.Add(float64(len(samples)))
 	return samples, nil
 }
 

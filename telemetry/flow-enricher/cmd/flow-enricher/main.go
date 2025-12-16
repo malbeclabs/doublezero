@@ -5,12 +5,15 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
 
 	enricher "github.com/malbeclabs/doublezero/telemetry/flow-enricher/internal/flow-enricher"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 var (
@@ -20,6 +23,7 @@ var (
 	date    = "unknown"
 
 	showVersion = flag.Bool("version", false, "print version information and exit")
+	metricsAddr = flag.String("metrics-addr", "127.0.0.1:2112", "The address the metric endpoint binds to.")
 )
 
 func main() {
@@ -35,6 +39,9 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	reg := prometheus.WrapRegistererWithPrefix("enricher_", prometheus.DefaultRegisterer)
+
+	// setup clickhouse writer
 	chOpts := []enricher.ClickhouseOption{}
 	if os.Getenv("CLICKHOUSE_TLS_DISABLED") == "true" {
 		chOpts = append(chOpts, enricher.WithTLSDisabled(true))
@@ -45,6 +52,7 @@ func main() {
 		enricher.WithClickhouseUser(os.Getenv("CLICKHOUSE_USER")),
 		enricher.WithClickhousePassword(os.Getenv("CLICKHOUSE_PASS")),
 		enricher.WithClickhouseLogger(logger),
+		enricher.WithClickhouseMetrics(enricher.NewClickhouseMetrics(reg)),
 	)
 	chWriter, err := enricher.NewClickhouseWriter(chOpts...)
 	if err != nil {
@@ -52,6 +60,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	// setup kafka flow consumer
 	kOpts := []enricher.KafkaOption{}
 	if os.Getenv("KAFKA_TLS_DISABLED") == "true" {
 		kOpts = append(kOpts, enricher.WithKafkaTLSDisabled(true))
@@ -71,6 +80,7 @@ func main() {
 		enricher.WithKafkaConsumerTopic(os.Getenv("KAFKA_TOPIC")),
 		enricher.WithKafkaConsumerGroup(os.Getenv("KAFKA_CONSUMER_GROUP")),
 		enricher.WithKafkaLogger(logger),
+		enricher.WithFlowConsumerMetrics(enricher.NewFlowConsumerMetrics(reg)),
 	)
 	flowConsumer, err := enricher.NewKafkaFlowConsumer(kOpts...)
 	if err != nil {
@@ -82,8 +92,17 @@ func main() {
 		enricher.WithClickhouseWriter(chWriter),
 		enricher.WithFlowConsumer(flowConsumer),
 		enricher.WithLogger(logger),
+		enricher.WithEnricherMetrics(enricher.NewEnricherMetrics(reg)),
 	}
 	enricher := enricher.NewEnricher(enricherOpts...)
+
+	// start prometheus
+	go func() {
+		mux := http.NewServeMux()
+		mux.Handle("/metrics", promhttp.Handler())
+		http.ListenAndServe(*metricsAddr, mux) //nolint
+	}()
+
 	logger.Info("starting enricher...")
 	if err := enricher.Run(ctx); err != nil {
 		logger.Error("error while running enricher", "error", err)

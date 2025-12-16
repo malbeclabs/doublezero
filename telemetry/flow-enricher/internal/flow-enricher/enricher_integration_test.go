@@ -10,6 +10,7 @@ import (
 
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
 	flow "github.com/malbeclabs/doublezero/telemetry/proto/flow/gen/pb-go"
@@ -137,6 +138,8 @@ func TestFlowEnrichment(t *testing.T) {
 	}
 	testcontainers.CleanupContainer(t, redpandaCtr)
 
+	reg := prometheus.NewRegistry()
+
 	// Start enricher
 	chConn, err := clickhouseCtr.ConnectionHost(context.Background())
 	if err != nil {
@@ -149,6 +152,7 @@ func TestFlowEnrichment(t *testing.T) {
 		WithClickhousePassword(chPassword),
 		WithTLSDisabled(true),
 		WithClickhouseLogger(logger),
+		WithClickhouseMetrics(NewClickhouseMetrics(reg)),
 	)
 	if err != nil {
 		logger.Error("error creating clickhouse writer", "error", err)
@@ -163,6 +167,7 @@ func TestFlowEnrichment(t *testing.T) {
 		WithKafkaConsumerGroup(rpConsumerGroup),
 		WithKafkaTLSDisabled(true),
 		WithKafkaLogger(logger),
+		WithFlowConsumerMetrics(NewFlowConsumerMetrics(reg)),
 	)
 	if err != nil {
 		logger.Error("error creating kafka flow consumer", "error", err)
@@ -173,6 +178,7 @@ func TestFlowEnrichment(t *testing.T) {
 		WithFlowConsumer(flowConsumer),
 		WithClickhouseWriter(chWriter),
 		WithLogger(logger),
+		WithEnricherMetrics(NewEnricherMetrics(reg)),
 	)
 	go func() {
 		if err := enricher.Run(ctx); err != nil {

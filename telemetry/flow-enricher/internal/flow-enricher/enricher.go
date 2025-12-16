@@ -76,11 +76,6 @@ func WithServiceabilityFetchInterval(interval time.Duration) EnricherOption {
 	}
 }
 
-type ServiceabilityData struct {
-	ProgramData *serviceability.ProgramData
-	mutex       sync.Mutex
-}
-
 type Enricher struct {
 	chWriter                    Clicker
 	flowConsumer                FlowConsumer
@@ -88,17 +83,15 @@ type Enricher struct {
 	annotators                  []Annotator
 	logger                      *slog.Logger
 	metrics                     *EnricherMetrics
-	serviceabilityData          ServiceabilityData
+	programData                 *serviceability.ProgramData
+	programDataMutex            sync.Mutex
 	serviceabilityFetchInterval time.Duration
 }
 
 func NewEnricher(opts ...EnricherOption) *Enricher {
 	e := &Enricher{
 		serviceabilityFetchInterval: 10 * time.Second,
-		serviceabilityData: ServiceabilityData{
-			ProgramData: &serviceability.ProgramData{},
-			mutex:       sync.Mutex{},
-		},
+		programData:                 &serviceability.ProgramData{},
 	}
 
 	for _, opt := range opts {
@@ -128,9 +121,9 @@ func (e *Enricher) Run(ctx context.Context) error {
 	// Make sure we have a serviceability dataset before starting enrichment
 	var err error
 	e.logger.Info("fetching initial serviceability data")
-	e.serviceabilityData.mutex.Lock()
-	e.serviceabilityData.ProgramData, err = e.serviceability.GetProgramData(ctx)
-	e.serviceabilityData.mutex.Unlock()
+	e.programDataMutex.Lock()
+	e.programData, err = e.serviceability.GetProgramData(ctx)
+	e.programDataMutex.Unlock()
 	if err != nil {
 		return fmt.Errorf("error fetching serviceability data: %v", err)
 	}
@@ -179,9 +172,9 @@ func (e *Enricher) fetchServiceabilityData(ctx context.Context) {
 				e.metrics.ServiceabilityFetchErrors.Inc()
 				continue
 			}
-			e.serviceabilityData.mutex.Lock()
-			e.serviceabilityData.ProgramData = newData
-			e.serviceabilityData.mutex.Unlock()
+			e.programDataMutex.Lock()
+			e.programData = newData
+			e.programDataMutex.Unlock()
 		case <-ctx.Done():
 			ticker.Stop()
 			return

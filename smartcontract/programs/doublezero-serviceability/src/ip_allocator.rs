@@ -261,12 +261,20 @@ mod tests {
     #[test]
     fn test_allocation_prefix_range_check() {
         let base_net = "192.168.0.0/24".parse().unwrap();
-        // allocation_prefix_len < base_net.prefix()
-        let res = IpAllocator::new(base_net, 16);
-        assert!(res.is_err());
-        // allocation_prefix_len > 32
+
+        // allocation_prefix_len < base_net.prefix():
+        // base_net is /24 (prefix=24), allocation_size=512 gives prefix=23
+        // 23 < 24, so this should fail (can't allocate blocks larger than the base net)
+        let res = IpAllocator::new(base_net, 512);
+        assert!(res.is_err(), "allocation_size=512 (/23) should fail for /24 base_net");
+
+        // Non-power-of-2 allocation_size should fail
         let res = IpAllocator::new(base_net, 33);
-        assert!(res.is_err());
+        assert!(res.is_err(), "allocation_size=33 (not power of 2) should fail");
+
+        // allocation_size=0 should fail
+        let res = IpAllocator::new(base_net, 0);
+        assert!(res.is_err(), "allocation_size=0 should fail");
     }
 
     #[test]

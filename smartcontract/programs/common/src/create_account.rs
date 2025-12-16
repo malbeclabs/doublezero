@@ -1,7 +1,6 @@
 //#[cfg(test)]
-use solana_program::msg;
 use solana_program::{
-    account_info::AccountInfo, entrypoint::ProgramResult, program::invoke_signed_unchecked,
+    account_info::AccountInfo, entrypoint::ProgramResult, msg, program::invoke_signed_unchecked,
     pubkey::Pubkey, rent::Rent, system_instruction, sysvar::Sysvar,
 };
 

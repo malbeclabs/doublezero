@@ -152,6 +152,14 @@ impl AccountData {
             Err(DoubleZeroError::InvalidAccountType)
         }
     }
+
+    pub fn get_resource_extension(&self) -> Result<ResourceExtensionOwned, DoubleZeroError> {
+        if let AccountData::ResourceExtension(resource_extension) = self {
+            Ok(resource_extension.clone())
+        } else {
+            Err(DoubleZeroError::InvalidAccountType)
+        }
+    }
 }
 
 impl TryFrom<&[u8]> for AccountData {

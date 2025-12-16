@@ -2,7 +2,12 @@ use borsh::to_vec;
 use doublezero_serviceability::{
     entrypoint::process_instruction,
     instructions::*,
-    state::{accountdata::AccountData, accounttype::AccountType, globalstate::GlobalState},
+    pda::{get_globalconfig_pda, get_globalstate_pda, get_program_config_pda},
+    processors::globalconfig::set::SetGlobalConfigArgs,
+    state::{
+        accountdata::AccountData, accounttype::AccountType, globalstate::GlobalState,
+        resource_extension::ResourceExtensionOwned,
+    },
 };
 use solana_program_test::*;
 use solana_sdk::{
@@ -240,5 +245,106 @@ pub fn create_transaction(
             .concat(),
         )],
         Some(&payer.pubkey()),
+    )
+}
+
+pub async fn get_resource_extension_data(
+    banks_client: &mut BanksClient,
+    pubkey: Pubkey,
+) -> Option<ResourceExtensionOwned> {
+    print!("Read ResourceExtension: ");
+
+    match banks_client.get_account(pubkey).await {
+        Ok(account) => match account {
+            Some(account_data) => match ResourceExtensionOwned::try_from(&account_data.data[..]) {
+                Ok(resource) => {
+                    println!("{resource}");
+                    Some(resource)
+                }
+                Err(err) => {
+                    println!("Failed to deserialize ResourceExtension: {err:?}");
+                    None
+                }
+            },
+            None => {
+                println!("Account not found");
+                None
+            }
+        },
+        Err(err) => panic!("Failed to get account: {err:?}"),
+    }
+}
+
+/// Wait for a new blockhash to avoid transaction deduplication
+#[allow(dead_code)]
+pub async fn wait_for_new_blockhash(banks_client: &mut BanksClient) -> solana_program::hash::Hash {
+    let current_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let mut new_blockhash = current_blockhash;
+    while new_blockhash == current_blockhash {
+        new_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    }
+    new_blockhash
+}
+
+/// Setup program with global state and global config initialized.
+/// Returns (banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey)
+#[allow(dead_code)]
+pub async fn setup_program_with_globalconfig() -> (BanksClient, Keypair, Pubkey, Pubkey, Pubkey) {
+    let program_id = Pubkey::new_unique();
+
+    let (mut banks_client, payer, recent_blockhash) = ProgramTest::new(
+        "doublezero_serviceability",
+        program_id,
+        processor!(process_instruction),
+    )
+    .start()
+    .await;
+
+    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
+    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+    let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);
+
+    // Initialize global state
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::InitGlobalState(),
+        vec![
+            AccountMeta::new(program_config_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Set global config with tunnel blocks for resource testing
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetGlobalConfig(SetGlobalConfigArgs {
+            local_asn: 65000,
+            remote_asn: 65001,
+            device_tunnel_block: "10.100.0.0/24".parse().unwrap(),
+            user_tunnel_block: "10.200.0.0/24".parse().unwrap(),
+            multicastgroup_block: "239.0.0.0/24".parse().unwrap(),
+            next_bgp_community: None,
+        }),
+        vec![
+            AccountMeta::new(globalconfig_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    (
+        banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
     )
 }

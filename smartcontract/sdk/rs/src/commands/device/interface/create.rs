@@ -37,7 +37,8 @@ impl CreateDeviceInterfaceCommand {
 
         if device.find_interface(&self.name).is_ok() {
             return Err(eyre::eyre!(
-                "Interface with this name already exists for the device"
+                "Interface '{}' already exists for the device",
+                self.name
             ));
         }
 

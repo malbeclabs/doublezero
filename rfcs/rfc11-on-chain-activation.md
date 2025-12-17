@@ -57,14 +57,15 @@ On restart, the activator must reconstruct this state by reading all onchain acc
 
 "Allocation" means reserving network resources from shared pools. Each resource type serves a specific networking purpose:
 
-| Resource               | Scope      | Purpose                                                   | Example        |
-| ---------------------- | ---------- | --------------------------------------------------------- | -------------- |
-| **User tunnel_net**    | Global     | /31 block for GRE tunnel between client and DZD           | 169.254.0.2/31 |
-| **Link tunnel_net**    | Global     | /31 block for device-to-device tunnels                    | 172.16.0.2/31  |
-| **Tunnel ID**          | Per-device | Identifier for tunnel interfaces (Arista range: 500-4095) | 501            |
-| **DZ IP**              | Per-device | Routable IP from device's announced prefix                | 10.0.0.5       |
-| **Multicast IP**       | Global     | Public IP for multicast group traffic                     | 233.84.178.10  |
-| **Segment Routing ID** | Per-device | Identifier for device interface routing                   | 1001           |
+| Resource               | Scope      | Purpose                                                        | Example        |
+| ---------------------- | ---------- | -------------------------------------------------------------- | -------------- |
+| **User tunnel_net**    | Global     | /31 block for GRE tunnel between client and DZD                | 169.254.0.2/31 |
+| **Device tunnel_net**  | Global     | /31 block for device-to-device tunnels                         | 172.16.0.2/31  |
+| **Link tunnel_id**     | Global     | Identifier for link tunnel interfaces                          | 1              |
+| **User tunnel_id**     | Per-device | Identifier for user tunnel interfaces (Arista range: 500-4095) | 501            |
+| **DZ IP**              | Per-device | Routable IP from device's announced prefix                     | 10.0.0.5       |
+| **Multicast IP**       | Global     | Public IP for multicast group traffic                          | 233.84.178.10  |
+| **Segment Routing ID** | Per-device | Identifier for device interface routing                        | 1001           |
 
 **Important distinction:** These allocated resources are separate from PDA seeds. For example, a User account's PDA is derived from the client's public IP (`client_ip`), but the `tunnel_net` and `dz_ip` allocated to that user come from entirely different IP pools. This is a common source of confusion—the PDA seed identifies the account, while allocated resources configure the network path.
 
@@ -72,12 +73,12 @@ On restart, the activator must reconstruct this state by reading all onchain acc
 
 Each entity type requires different resources from the shared pools:
 
-| Entity             | tunnel_net |     tunnel_id     |   dz_ip    | segment_routing_id | multicast_ip | ResourceExtension Accounts |
-| ------------------ | :--------: | :---------------: | :--------: | :----------------: | :----------: | -------------------------- |
-| **User**           |   Global   |    Per-device     | Per-device |         -          |      -       | Global + Device            |
-| **Link**           |   Global   | Per-device (both) |     -      |         -          |      -       | Global + Both Devices      |
-| **Interface**      |     -      |         -         | Per-device |     Per-device     |      -       | Device only                |
-| **MulticastGroup** |     -      |         -         |     -      |         -          |    Global    | Global only                |
+| Entity             | tunnel_net | tunnel_id  | dz_ip      | segment_routing_id | multicast_ip | ResourceExtension Accounts |
+| ------------------ | ---------- | ---------- | ---------- | ------------------ | ------------ | -------------------------- |
+| **User**           | Global     | Per-device | Per-device | -                  | -            | Global + Device            |
+| **Link**           | Global     | Global     | -          | -                  | -            | Global only                |
+| **Interface**      | -          | -          | Per-device | Per-device         | -            | Device only                |
+| **MulticastGroup** | -          | -          | -          | -                  | Global       | Global only                |
 
 This shows why multiple entity types must coordinate through shared allocation pools - a Link and a User could collide if they drew from the same `tunnel_net` pool without centralized tracking.
 
@@ -217,44 +218,44 @@ Moving allocation onchain is technically feasible because:
 struct ResourceExtension {
     account_type: AccountType,
     associated_with: Pubkey,		    // Device PK or Pubkey::default() for global
-    id_allocations: Vec<IdBitmap>,	    // TunnelId, SegmentRoutingId
-    ip_allocations: Vec<IpBlockBitmap>,	    // UserTunnelNet, LinkTunnelNet, DzIp, Multicast
+    id_allocations: Vec<IdBitmap>,	    // LinkTunnelId (global), UserTunnelId/SegmentRoutingId (per-device)
+    ip_allocations: Vec<IpBlockBitmap>,	    // UserTunnelNet, DeviceTunnelNet, DzIp, Multicast
 }
 ```
 
 **Scope:**
 
-| Scope      | PDA Seeds                             | Contains                                |
-| ---------- | ------------------------------------- | --------------------------------------- |
-| Global     | `["resource_ext", Pubkey::default()]` | UserTunnelNet, LinkTunnelNet, Multicast |
-| Per-device | `["resource_ext", device_pk]`         | TunnelId, SegmentRoutingId, DzIp        |
+| Scope      | PDA Seeds                             | Contains                                                |
+| ---------- | ------------------------------------- | ------------------------------------------------------- |
+| Global     | `["resource_ext", Pubkey::default()]` | UserTunnelNet, DeviceTunnelNet, LinkTunnelId, Multicast |
+| Per-device | `["resource_ext", device_pk]`         | UserTunnelId, SegmentRoutingId, DzIp                    |
 
 ### Instruction Changes
 
 **Modified Instructions:**
 
-| Instruction                | Flow                           | ResourceExtension              | Authorization                                      |
-| -------------------------- | ------------------------------ | ------------------------------ | -------------------------------------------------- |
-| CreateUser                 | create -> allocate -> activate | Optional (device+global)       | AccessPass owner                                   |
-| ActivateUser               | allocate -> activate           | Required (device+global)       | `activator_authority_pk` OR `foundation_allowlist` |
-| DeleteUser                 | delete -> deallocate -> close  | Optional (device+global)       | User owner OR `foundation_allowlist`               |
-| CloseAccountUser           | deallocate -> close            | Required (device+global)       | `activator_authority_pk` OR `foundation_allowlist` |
-| CreateLink                 | create -> allocate -> activate | Optional (global+both devices) | Contributor owner (either device)                  |
-| ActivateLink               | allocate -> activate           | Required (global+both devices) | `activator_authority_pk` OR `foundation_allowlist` |
-| DeleteLink                 | delete -> deallocate -> close  | Optional (global+both devices) | Contributor owner OR `foundation_allowlist`        |
-| CloseAccountLink           | deallocate -> close            | Required (global+both devices) | `activator_authority_pk` OR `foundation_allowlist` |
-| CreateDevice               | create (Pending)               | N/A (triggers creation)        | Contributor owner                                  |
-| ActivateDevice             | activate                       | N/A (triggers creation)        | `activator_authority_pk` OR `foundation_allowlist` |
-| DeleteDevice               | delete -> close                | Optional (device)              | Contributor owner OR `foundation_allowlist`        |
-| CloseAccountDevice         | close                          | N/A                            | `activator_authority_pk` OR `foundation_allowlist` |
-| CreateInterface            | create -> allocate -> activate | Optional (device)              | Contributor owner                                  |
-| ActivateInterface          | allocate -> activate           | Required (device)              | `activator_authority_pk` OR `foundation_allowlist` |
-| DeleteInterface            | delete -> deallocate -> close  | Optional (device)              | Contributor owner OR `foundation_allowlist`        |
-| CloseAccountInterface      | deallocate -> close            | Required (device)              | `activator_authority_pk` OR `foundation_allowlist` |
-| CreateMulticastGroup       | create -> allocate -> activate | Optional (global)              | Authority signer                                   |
-| ActivateMulticastGroup     | allocate -> activate           | Required (global)              | `activator_authority_pk` OR `foundation_allowlist` |
-| DeleteMulticastGroup       | delete -> deallocate -> close  | Optional (global)              | Authority signer                                   |
-| CloseAccountMulticastGroup | deallocate -> close            | Required (global)              | `activator_authority_pk` OR `foundation_allowlist` |
+| Instruction                | Flow                           | ResourceExtension        | Authorization                                      |
+| -------------------------- | ------------------------------ | ------------------------ | -------------------------------------------------- |
+| CreateUser                 | create -> allocate -> activate | Optional (device+global) | AccessPass owner                                   |
+| ActivateUser               | allocate -> activate           | Required (device+global) | `activator_authority_pk` OR `foundation_allowlist` |
+| DeleteUser                 | delete -> deallocate -> close  | Optional (device+global) | User owner OR `foundation_allowlist`               |
+| CloseAccountUser           | deallocate -> close            | Required (device+global) | `activator_authority_pk` OR `foundation_allowlist` |
+| CreateLink                 | create -> allocate -> activate | Optional (global only)   | Contributor owner (either device)                  |
+| ActivateLink               | allocate -> activate           | Required (global only)   | `activator_authority_pk` OR `foundation_allowlist` |
+| DeleteLink                 | delete -> deallocate -> close  | Optional (global only)   | Contributor owner OR `foundation_allowlist`        |
+| CloseAccountLink           | deallocate -> close            | Required (global only)   | `activator_authority_pk` OR `foundation_allowlist` |
+| CreateDevice               | create (Pending)               | N/A (triggers creation)  | Contributor owner                                  |
+| ActivateDevice             | activate                       | N/A (triggers creation)  | `activator_authority_pk` OR `foundation_allowlist` |
+| DeleteDevice               | delete -> close                | Optional (device)        | Contributor owner OR `foundation_allowlist`        |
+| CloseAccountDevice         | close                          | N/A                      | `activator_authority_pk` OR `foundation_allowlist` |
+| CreateInterface            | create -> allocate -> activate | Optional (device)        | Contributor owner                                  |
+| ActivateInterface          | allocate -> activate           | Required (device)        | `activator_authority_pk` OR `foundation_allowlist` |
+| DeleteInterface            | delete -> deallocate -> close  | Optional (device)        | Contributor owner OR `foundation_allowlist`        |
+| CloseAccountInterface      | deallocate -> close            | Required (device)        | `activator_authority_pk` OR `foundation_allowlist` |
+| CreateMulticastGroup       | create -> allocate -> activate | Optional (global)        | Authority signer                                   |
+| ActivateMulticastGroup     | allocate -> activate           | Required (global)        | `activator_authority_pk` OR `foundation_allowlist` |
+| DeleteMulticastGroup       | delete -> deallocate -> close  | Optional (global)        | Authority signer                                   |
+| CloseAccountMulticastGroup | deallocate -> close            | Required (global)        | `activator_authority_pk` OR `foundation_allowlist` |
 
 **User Instructions:**
 
@@ -265,9 +266,9 @@ struct ResourceExtension {
 
 **Link Instructions:**
 
-- **CreateLink**: With ResourceExtension accounts (global + both devices), atomically creates link, allocates `tunnel_net` from global pool and `tunnel_id` from each device's bitmap, and activates. Without ResourceExtension accounts, creates Pending link for activator.
-- **ActivateLink**: For backward compatibility with Pending links. Program allocates `tunnel_net` and both `tunnel_id` slots.
-- **DeleteLink**: With ResourceExtension accounts, atomically releases `tunnel_net` and both `tunnel_id` slots back to bitmaps, resets interface statuses to Unlinked, and closes account. Without ResourceExtension accounts, sets `status=Deleting`—activator handles closure via CloseAccountLink.
+- **CreateLink**: With ResourceExtension accounts (global only), atomically creates link, allocates `tunnel_net` and `tunnel_id` from global pool, and activates. Without ResourceExtension accounts, creates Pending link for activator.
+- **ActivateLink**: For backward compatibility with Pending links. Program allocates `tunnel_net` and `tunnel_id` from global pool.
+- **DeleteLink**: With ResourceExtension accounts, atomically releases `tunnel_net` and `tunnel_id` back to global bitmaps, resets interface statuses to Unlinked, and closes account. Without ResourceExtension accounts, sets `status=Deleting`—activator handles closure via CloseAccountLink.
 - **CloseAccountLink**: For backward compatibility with Deleting links. Requires `status=Deleting`. Releases resources back to bitmaps, resets interface statuses, and closes account.
 
 **Device Instructions:**
@@ -306,9 +307,9 @@ These are escape hatches for migration, recovery, and edge cases. Normal operati
 
 ### Device Selection
 
-For per-device resources (TunnelId, DzIp, SegmentRoutingId), the program must know which device's ResourceExtension to allocate from. Device selection works as follows:
+For per-device resources (UserTunnelId, DzIp, SegmentRoutingId), the program must know which device's ResourceExtension to allocate from. Device selection works as follows:
 
-- **CreateUser/ActivateUser**: The client specifies a `device_pubkey` argument. The program derives the per-device ResourceExtension PDA from `["resource_ext", device_pubkey]` and allocates TunnelId and DzIp from that device's bitmaps.
+- **CreateUser/ActivateUser**: The client specifies a `device_pubkey` argument. The program derives the per-device ResourceExtension PDA from `["resource_ext", device_pubkey]` and allocates UserTunnelId and DzIp from that device's bitmaps.
 
 - **Device validation**: The program verifies the specified device is valid (exists, is Activated) and has capacity in its ResourceExtension bitmaps.
 
@@ -362,8 +363,8 @@ This verification is a prerequisite for migration step 5 (Initialize bitmaps via
 ### Migration Steps
 
 1. Deploy program update with ResourceExtension and modified instructions
-2. Create global ResourceExtension (UserTunnelNet, LinkTunnelNet, Multicast)
-3. Create per-device ResourceExtensions for all existing devices (TunnelId, SegmentRoutingId, DzIp)
+2. Create global ResourceExtension (UserTunnelNet, DeviceTunnelNet, LinkTunnelId, Multicast)
+3. Create per-device ResourceExtensions for all existing devices (UserTunnelId, SegmentRoutingId, DzIp)
 4. **Run state verification** - activator compares local state with onchain entities
 5. Initialize bitmaps from existing allocations via `SetResourceState`
 6. Deploy updated activator that passes ResourceExtension to ActivateUser/CloseAccountUser
@@ -417,13 +418,15 @@ After rollback, SDK clients behave as follows:
 
 ## Capacity Analysis
 
-| Resource        | Scope      | Capacity          | Source                       | Recycling |
-| --------------- | ---------- | ----------------- | ---------------------------- | --------- |
-| User tunnel_net | Global     | ~32K /31 blocks   | 169.254.0.0/16               | Yes       |
-| Link tunnel_net | Global     | ~32K /31 blocks   | 172.16.0.0/16                | Yes       |
-| Tunnel ID       | Per device | ~3,595 interfaces | u16, 500-4095 (Arista limit) | Yes       |
-| DZ IP           | Per device | Depends on prefix | Device's dz_prefixes         | Yes       |
-| Multicast       | Global     | ~256 addresses    | 233.84.178.0/24              | Yes       |
+| Resource           | Scope      | Capacity          | Source                       | Recycling |
+| ------------------ | ---------- | ----------------- | ---------------------------- | --------- |
+| User tunnel_net    | Global     | ~32K /31 blocks   | 169.254.0.0/16               | Yes       |
+| Device tunnel_net  | Global     | ~32K /31 blocks   | 172.16.0.0/16                | Yes       |
+| Link tunnel_id     | Global     | ~65K IDs          | u16, starting at 0           | Yes       |
+| User tunnel_id     | Per device | ~3,595 IDs        | u16, 500-4095 (Arista limit) | Yes       |
+| DZ IP              | Per device | Depends on prefix | Device's dz_prefixes         | Yes       |
+| Multicast          | Global     | ~256 addresses    | 233.84.178.0/24              | Yes       |
+| Segment Routing ID | Per device | ~65K IDs          | u16, starting at 1           | Yes       |
 
 ### Current Usage (December 2025)
 
@@ -480,15 +483,15 @@ This phase will be designed and documented separately once Phase 1 is stable in 
 
 ```rust
 struct IdBitmap {
-    id_type: IdType,                 // TunnelId, SegmentRoutingId
-    start_offset: u16,               // e.g., 500 for tunnel IDs
+    id_type: IdType,                 // LinkTunnelId, UserTunnelId, SegmentRoutingId
+    start_offset: u16,               // e.g., 0 for link tunnel IDs, 500 for user tunnel IDs
     bitmap: [u64; 64],               // 4,096 slots
     allocated_count: u16,
     first_free_index: u32,           // Index of first word with free bit (optimization)
 }
 
 struct IpBlockBitmap {
-    block_type: IpBlockType,         // UserTunnelNet, LinkTunnelNet, DzIp, Multicast
+    block_type: IpBlockType,         // UserTunnelNet, DeviceTunnelNet, DzIp, Multicast
     block: Ipv4Network,              // e.g., 169.254.0.0/16
     slot_size: u8,                   // 0=/32, 1=/31, 2=/30
     reserved_start: u8,              // Slots to skip at start
@@ -522,20 +525,20 @@ fn ip_to_slot(ip: Ipv4Addr, block: Ipv4Network, slot_size: u8, reserved_start: u
 
 **Examples:**
 
-| Block                          | slot_size | reserved_start | Slot 0         | Slot 1         |
-| ------------------------------ | --------- | -------------- | -------------- | -------------- |
-| 169.254.0.0/16 (UserTunnelNet) | 1 (/31)   | 2              | 169.254.0.2/31 | 169.254.0.4/31 |
-| 172.16.0.0/16 (LinkTunnelNet)  | 1 (/31)   | 2              | 172.16.0.2/31  | 172.16.0.4/31  |
-| 10.0.0.0/24 (DzIp)             | 0 (/32)   | 2              | 10.0.0.2       | 10.0.0.3       |
+| Block                           | slot_size | reserved_start | Slot 0         | Slot 1         |
+| ------------------------------- | --------- | -------------- | -------------- | -------------- |
+| 169.254.0.0/16 (UserTunnelNet)  | 1 (/31)   | 2              | 169.254.0.2/31 | 169.254.0.4/31 |
+| 172.16.0.0/16 (DeviceTunnelNet) | 1 (/31)   | 2              | 172.16.0.2/31  | 172.16.0.4/31  |
+| 10.0.0.0/24 (DzIp)              | 0 (/32)   | 2              | 10.0.0.2       | 10.0.0.3       |
 
 ### Account Sizes
 
-| ResourceExtension Scope | ID Bitmaps                                 | IP Blocks                                                    | Size     |
-| ----------------------- | ------------------------------------------ | ------------------------------------------------------------ | -------- |
-| Global                  | None                                       | UserTunnelNet (4 KB), LinkTunnelNet (4 KB), Multicast (32 B) | ~8.21 KB |
-| Per-device              | TunnelId (512 B), SegmentRoutingId (512 B) | DzIp (32 B each)                                             | ~1.11 KB |
+| ResourceExtension Scope | ID Bitmaps                                     | IP Blocks                                                      | Size     |
+| ----------------------- | ---------------------------------------------- | -------------------------------------------------------------- | -------- |
+| Global                  | LinkTunnelId (8 KB)                            | UserTunnelNet (4 KB), DeviceTunnelNet (4 KB), Multicast (32 B) | ~16.2 KB |
+| Per-device              | UserTunnelId (512 B), SegmentRoutingId (512 B) | DzIp (32 B each)                                               | ~1.11 KB |
 
-> **Note:** Each bitmap includes a `first_free_index: u32` field (4 bytes) for O(1) allocation optimization. Global ResourceExtension has 3 bitmaps (+12 bytes), per-device has 3 bitmaps (+12 bytes). This overhead is included in the sizes above.
+> **Note:** Each bitmap includes a `first_free_index: u32` field (4 bytes) for O(1) allocation optimization. Global ResourceExtension has 4 bitmaps (+16 bytes), per-device has 3 bitmaps (+12 bytes). This overhead is included in the sizes above.
 
 ### Code Examples
 
@@ -564,7 +567,7 @@ CreateUserCommand {
     client_ip,
     user_type,
     cyoa_type,
-    device_resource_ext,   // Required - program allocates TunnelId, DzIp
+    device_resource_ext,   // Required - program allocates UserTunnelId, DzIp
     global_resource_ext,   // Required - program allocates UserTunnelNet
     // ... other args
 }.execute(client)?;
@@ -593,7 +596,7 @@ For Pending users created by old clients before migration:
 // Program allocates from bitmap and activates atomically
 ActivateUserCommand {
     user: user_pubkey,
-    device_resource_ext,   // Required - program allocates TunnelId, DzIp
+    device_resource_ext,   // Required - program allocates UserTunnelId, DzIp
     global_resource_ext,   // Required - program allocates UserTunnelNet
     // No tunnel_id, tunnel_net, dz_ip args - program derives from bitmap
 }.execute(client)?;
@@ -610,7 +613,7 @@ ActivateUserCommand {
 // Program does delete + deallocate + close atomically
 DeleteUserCommand {
     user: user_pubkey,
-    device_resource_ext,   // Optional - if provided, program releases TunnelId, DzIp
+    device_resource_ext,   // Optional - if provided, program releases UserTunnelId, DzIp
     global_resource_ext,   // Optional - if provided, program releases UserTunnelNet
 }.execute(client)?;
 // Slots released, account closed - no activator needed!
@@ -629,7 +632,7 @@ DeleteUserCommand {
 // Step 2: Activator detects Deleting status, calls CloseAccount
 CloseAccountUserCommand {
     user: user_pubkey,
-    device_resource_ext,   // Required - program releases TunnelId, DzIp
+    device_resource_ext,   // Required - program releases UserTunnelId, DzIp
     global_resource_ext,   // Required - program releases UserTunnelNet
 }.execute(client)?;
 // Slots released, account closed
@@ -700,9 +703,8 @@ struct User {
 ```rust
 struct Link {
     // ... existing fields ...
-    tunnel_net_slot: u32,        // Slot in LinkTunnelNet (global ResourceExtension)
-    tunnel_id_slot_a: u16,       // Slot in device_a's tunnel_id bitmap
-    tunnel_id_slot_b: u16,       // Slot in device_b's tunnel_id bitmap
+    tunnel_net_slot: u32,        // Slot in DeviceTunnelNet (global ResourceExtension)
+    tunnel_id_slot: u32,         // Slot in LinkTunnelId (global ResourceExtension)
 }
 ```
 
@@ -738,4 +740,4 @@ struct MulticastGroup {
 | **PDA seed**             | Data used to derive a Program Derived Address; for User accounts, this is `client_ip`                                                                          |
 | **ResourceExtension**    | Onchain account storing allocation bitmaps; can be global or per-device scoped                                                                                 |
 | **tunnel_net**           | A /31 IP block used for GRE tunnel endpoints between client and DZD (users) or between devices (links)                                                         |
-| **tunnel_id**            | Device-scoped identifier for tunnel interfaces, range 500-4095 on Arista devices                                                                               |
+| **tunnel_id**            | Identifier for tunnel interfaces. Link tunnel_id is global (starts at 0). User tunnel_id is per-device (range 500-4095 on Arista devices)                      |

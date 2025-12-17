@@ -1,6 +1,6 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
-use doublezero_sdk::{commands::resource::get::GetResourceCommand, IpBlockType};
+use doublezero_sdk::commands::resource::get::GetResourceCommand;
 use std::io::Write;
 use tabled::{Table, Tabled};
 
@@ -19,29 +19,22 @@ pub struct GetResourceCliCommand {
 
 impl From<GetResourceCliCommand> for GetResourceCommand {
     fn from(cmd: GetResourceCliCommand) -> Self {
-        let ip_block_type = match cmd.resource_extension_type {
-            super::ResourceExtensionType::DeviceTunnelBlock => IpBlockType::DeviceTunnelBlock,
-            super::ResourceExtensionType::UserTunnelBlock => IpBlockType::UserTunnelBlock,
-            super::ResourceExtensionType::MulticastGroupBlock => IpBlockType::MulticastGroupBlock,
-            super::ResourceExtensionType::DzPrefixBlock => {
-                let pk = cmd
-                    .associated_pubkey
-                    .as_ref()
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or_default();
-                let index = cmd.index.unwrap_or(0);
-                IpBlockType::DzPrefixBlock(pk, index)
-            }
-        };
+        let resource_block_type = super::resource_extension_to_resource_block(
+            cmd.resource_extension_type,
+            cmd.associated_pubkey.as_ref().and_then(|s| s.parse().ok()),
+            cmd.index,
+        );
 
-        GetResourceCommand { ip_block_type }
+        GetResourceCommand {
+            resource_block_type,
+        }
     }
 }
 
 #[derive(Tabled)]
 pub struct ResourceDisplay {
     #[tabled(rename = "Allocated Resources")]
-    pub ip: String,
+    pub resource: String,
 }
 
 impl GetResourceCliCommand {
@@ -49,9 +42,11 @@ impl GetResourceCliCommand {
         let (_, resource_extension) = client.get_resource(self.into())?;
 
         let resource_displays = resource_extension
-            .iter_allocated_ips()
+            .iter_allocated()
             .into_iter()
-            .map(|ip| ResourceDisplay { ip: ip.to_string() })
+            .map(|res| ResourceDisplay {
+                resource: res.to_string(),
+            })
             .collect::<Vec<_>>();
         let table = Table::new(resource_displays).to_string();
         writeln!(out, "{table}")?;

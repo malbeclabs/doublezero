@@ -3,9 +3,10 @@ use crate::{
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
 };
 use clap::Args;
+use doublezero_program_common::types::NetworkV4;
 use doublezero_sdk::{
     commands::{device::get::GetDeviceCommand, resource::allocate::AllocateResourceCommand},
-    IpBlockType,
+    IdOrIp, ResourceBlockType,
 };
 use std::io::Write;
 
@@ -27,29 +28,33 @@ pub struct AllocateResourceCliCommand {
 
 impl From<AllocateResourceCliCommand> for AllocateResourceCommand {
     fn from(cmd: AllocateResourceCliCommand) -> Self {
-        let ip_block_type = match cmd.resource_extension_type {
-            super::ResourceExtensionType::DeviceTunnelBlock => IpBlockType::DeviceTunnelBlock,
-            super::ResourceExtensionType::UserTunnelBlock => IpBlockType::UserTunnelBlock,
-            super::ResourceExtensionType::MulticastGroupBlock => IpBlockType::MulticastGroupBlock,
-            super::ResourceExtensionType::DzPrefixBlock => {
-                let pk = cmd
-                    .associated_pubkey
-                    .as_ref()
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or_default();
-                let index = cmd.index.unwrap_or(0);
-                IpBlockType::DzPrefixBlock(pk, index)
-            }
-        };
+        let resource_block_type = super::resource_extension_to_resource_block(
+            cmd.resource_extension_type,
+            cmd.associated_pubkey.as_ref().and_then(|s| s.parse().ok()),
+            cmd.index,
+        );
 
-        let requested_network = cmd
+        let requested = cmd
             .requested_allocation
-            .as_ref()
-            .and_then(|s| s.parse().ok());
+            .map(|x| match cmd.resource_extension_type {
+                super::ResourceExtensionType::DeviceTunnelBlock
+                | super::ResourceExtensionType::UserTunnelBlock
+                | super::ResourceExtensionType::MulticastGroupBlock
+                | super::ResourceExtensionType::DzPrefixBlock => IdOrIp::Ip(
+                    x.parse::<NetworkV4>()
+                        .expect("Failed to parse IP address")
+                        .into(),
+                ),
+                super::ResourceExtensionType::TunnelIds
+                | super::ResourceExtensionType::LinkIds
+                | super::ResourceExtensionType::SegmentRoutingIds => {
+                    IdOrIp::Id(x.parse::<u16>().expect("Failed to parse ID").into())
+                }
+            });
 
         AllocateResourceCommand {
-            ip_block_type,
-            requested_network,
+            resource_block_type,
+            requested,
         }
     }
 }
@@ -61,17 +66,21 @@ impl AllocateResourceCliCommand {
 
         let args: AllocateResourceCommand = self.into();
 
-        if let IpBlockType::DzPrefixBlock(pk, index) = args.ip_block_type {
-            let get_device_cmd = GetDeviceCommand {
-                pubkey_or_code: pk.to_string(),
-            };
-            let (_device_pk, device) = client.get_device(get_device_cmd)?;
-            if device.dz_prefixes.len() <= index {
-                return Err(eyre::eyre!(
-                    "Device does not have a DzPrefixBlock at index {}",
-                    index
-                ));
+        match args.resource_block_type {
+            ResourceBlockType::DzPrefixBlock(pk, index)
+            | ResourceBlockType::TunnelIds(pk, index) => {
+                let get_device_cmd = GetDeviceCommand {
+                    pubkey_or_code: pk.to_string(),
+                };
+                let (_device_pk, device) = client.get_device(get_device_cmd)?;
+                if device.dz_prefixes.len() <= index {
+                    return Err(eyre::eyre!(
+                        "Device does not have a DzPrefixBlock at index {}",
+                        index
+                    ));
+                }
             }
+            _ => {}
         }
 
         let signature = client.allocate_resource(args)?;

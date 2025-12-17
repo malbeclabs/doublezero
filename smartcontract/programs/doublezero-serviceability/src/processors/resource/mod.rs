@@ -1,24 +1,26 @@
 use crate::{
     pda::{get_globalconfig_pda, get_resource_extension_pda},
-    resource::IpBlockType,
+    resource::ResourceBlockType,
     seeds::SEED_PREFIX,
     state::{
-        device::Device, globalconfig::GlobalConfig, resource_extension::ResourceExtensionBorrowed,
+        device::Device,
+        globalconfig::GlobalConfig,
+        resource_extension::{ResourceExtensionBorrowed, ResourceExtensionRange},
     },
 };
-use doublezero_program_common::{create_account::try_create_account, types::NetworkV4};
+use doublezero_program_common::create_account::try_create_account;
 use solana_program::{account_info::AccountInfo, entrypoint::ProgramResult, pubkey::Pubkey};
 
 pub mod allocate;
 pub mod create;
 pub mod deallocate;
 
-pub fn get_resource_extension_ip_block(
+pub fn get_resource_extension_range(
     program_id: &Pubkey,
     globalconfig: &GlobalConfig,
     associated_account: &AccountInfo,
-    ip_block_type: IpBlockType,
-) -> (NetworkV4, u32) {
+    resource_block_type: ResourceBlockType,
+) -> ResourceExtensionRange {
     let mut device = None;
     if associated_account.key != &Pubkey::default() {
         assert_eq!(
@@ -29,28 +31,43 @@ pub fn get_resource_extension_ip_block(
             "Failed to deserialize associated account as Device when getting resource extension IP block",
         ));
     }
-    match ip_block_type {
-        IpBlockType::DeviceTunnelBlock => (globalconfig.device_tunnel_block, 2),
-        IpBlockType::UserTunnelBlock => (globalconfig.user_tunnel_block, 2),
-        IpBlockType::MulticastGroupBlock => (globalconfig.multicastgroup_block, 1),
-        IpBlockType::DzPrefixBlock(_, index) => {
+    match resource_block_type {
+        ResourceBlockType::DeviceTunnelBlock => {
+            ResourceExtensionRange::IpBlock(globalconfig.device_tunnel_block, 2)
+        }
+        ResourceBlockType::UserTunnelBlock => {
+            ResourceExtensionRange::IpBlock(globalconfig.user_tunnel_block, 2)
+        }
+        ResourceBlockType::MulticastGroupBlock => {
+            ResourceExtensionRange::IpBlock(globalconfig.multicastgroup_block, 1)
+        }
+        ResourceBlockType::DzPrefixBlock(_, index) => {
             assert!(
                 device.is_some(),
                 "Associated account must be a device for DzPrefixBlock"
             );
-            (device.unwrap().dz_prefixes[index], 1)
+            ResourceExtensionRange::IpBlock(device.unwrap().dz_prefixes[index], 1)
         }
+        ResourceBlockType::TunnelIds(_, _) => {
+            assert!(
+                device.is_some(),
+                "Associated account must be a device for DzPrefixBlock"
+            );
+            ResourceExtensionRange::IdRange(500, 4596)
+        }
+        ResourceBlockType::LinkIds => ResourceExtensionRange::IdRange(0, 65535),
+        ResourceBlockType::SegmentRoutingIds => ResourceExtensionRange::IdRange(1, 65535),
     }
 }
 
-pub fn create_ip_resource(
+pub fn create_resource(
     program_id: &Pubkey,
     resource_account: &AccountInfo,
     associated_account: &AccountInfo,
     globalconfig_account: &AccountInfo,
     payer_account: &AccountInfo,
     accounts: &[AccountInfo],
-    ip_block_type: IpBlockType,
+    resource_block_type: ResourceBlockType,
 ) -> ProgramResult {
     // Check if the account is writable
     assert!(resource_account.is_writable, "PDA Account is not writable");
@@ -63,12 +80,12 @@ pub fn create_ip_resource(
     );
 
     let (expected_resource_pda, bump_seed, base_seed) =
-        get_resource_extension_pda(program_id, ip_block_type);
-    let (ip_block, ip_allocations) = get_resource_extension_ip_block(
+        get_resource_extension_pda(program_id, resource_block_type);
+    let resource_range = get_resource_extension_range(
         program_id,
         &globalconfig,
         associated_account,
-        ip_block_type,
+        resource_block_type,
     );
 
     assert_eq!(
@@ -78,9 +95,9 @@ pub fn create_ip_resource(
 
     assert!(resource_account.data.borrow().is_empty());
 
-    let data_size: usize = ResourceExtensionBorrowed::size(&ip_block, ip_allocations);
-    match ip_block_type {
-        IpBlockType::DzPrefixBlock(_, index) => {
+    let data_size: usize = ResourceExtensionBorrowed::size(&resource_range);
+    match resource_block_type {
+        ResourceBlockType::DzPrefixBlock(_, index) | ResourceBlockType::TunnelIds(_, index) => {
             try_create_account(
                 payer_account.key,           // Account paying for the new account
                 resource_account.key,        // Account to be created
@@ -109,13 +126,12 @@ pub fn create_ip_resource(
             )?;
         }
     };
-    ResourceExtensionBorrowed::construct_ip_resource(
+    ResourceExtensionBorrowed::construct_resource(
         resource_account,
         program_id,
         bump_seed,
         associated_account.key,
-        &ip_block,
-        ip_allocations,
+        &resource_range,
     )?;
 
     Ok(())

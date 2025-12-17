@@ -1,10 +1,11 @@
 use crate::{
-    error::DoubleZeroError, globalstate::globalstate_get, pda::get_resource_extension_pda,
-    resource::IpBlockType, state::resource_extension::ResourceExtensionBorrowed,
+    error::DoubleZeroError,
+    globalstate::globalstate_get,
+    pda::get_resource_extension_pda,
+    resource::{IdOrIp, ResourceBlockType},
+    state::resource_extension::ResourceExtensionBorrowed,
 };
-use borsh::BorshSerialize;
-use borsh_incremental::BorshDeserializeIncremental;
-use doublezero_program_common::types::NetworkV4;
+use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -14,10 +15,19 @@ use solana_program::{
 };
 use std::fmt;
 
-#[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct ResourceDeallocateArgs {
-    pub ip_block_type: IpBlockType,
-    pub network: NetworkV4,
+    pub resource_block_type: ResourceBlockType,
+    pub value: IdOrIp,
+}
+
+impl TryFrom<&[u8]> for ResourceDeallocateArgs {
+    type Error = DoubleZeroError;
+
+    fn try_from(mut value: &[u8]) -> Result<Self, DoubleZeroError> {
+        ResourceDeallocateArgs::deserialize(&mut value)
+            .map_err(|_| DoubleZeroError::InvalidArgument)
+    }
 }
 
 impl fmt::Debug for ResourceDeallocateArgs {
@@ -63,17 +73,22 @@ pub fn process_deallocate_resource(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    let (expected_resource_pda, _, _) = get_resource_extension_pda(program_id, value.ip_block_type);
+    let (expected_resource_pda, _, _) =
+        get_resource_extension_pda(program_id, value.resource_block_type);
     assert_eq!(
         resource_account.key, &expected_resource_pda,
         "Invalid Resource Account PubKey"
     );
 
-    if let crate::resource::IpBlockType::DzPrefixBlock(ref associated_pk, _) = value.ip_block_type {
-        assert_eq!(
-            associated_account.key, associated_pk,
-            "Associated account pubkeys do not match"
-        );
+    match value.resource_block_type {
+        ResourceBlockType::DzPrefixBlock(ref associated_pk, _)
+        | ResourceBlockType::TunnelIds(ref associated_pk, _) => {
+            assert_eq!(
+                associated_account.key, associated_pk,
+                "Associated account pubkeys do not match"
+            );
+        }
+        _ => {}
     }
 
     assert!(!resource_account.data.borrow().is_empty());
@@ -85,7 +100,7 @@ pub fn process_deallocate_resource(
     let mut buffer = resource_account.data.borrow_mut();
     let mut resource = ResourceExtensionBorrowed::inplace_from(&mut buffer[..])?;
 
-    resource.deallocate(&value.network);
+    resource.deallocate(&value.value);
 
     Ok(())
 }

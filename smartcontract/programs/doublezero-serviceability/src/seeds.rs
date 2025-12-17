@@ -14,3 +14,6 @@ pub const SEED_DEVICE_TUNNEL_BLOCK: &[u8] = b"devicetunnelblock";
 pub const SEED_USER_TUNNEL_BLOCK: &[u8] = b"usertunnelblock";
 pub const SEED_MULTICASTGROUP_BLOCK: &[u8] = b"multicastgroupblock";
 pub const SEED_DZ_PREFIX_BLOCK: &[u8] = b"dzprefixblock";
+pub const SEED_TUNNEL_IDS: &[u8] = b"tunnelids";
+pub const SEED_LINK_IDS: &[u8] = b"linkids";
+pub const SEED_SEGMENT_ROUTING_IDS: &[u8] = b"segmentroutingids";

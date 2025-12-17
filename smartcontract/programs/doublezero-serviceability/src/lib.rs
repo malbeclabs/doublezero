@@ -8,6 +8,7 @@ mod min_version;
 pub mod accounts;
 pub mod addresses;
 pub mod error;
+pub mod id_allocator;
 pub mod instructions;
 pub mod ip_allocator;
 pub mod pda;

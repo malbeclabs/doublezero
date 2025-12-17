@@ -1,15 +1,16 @@
 use crate::{DoubleZeroClient, GetGlobalStateCommand};
-use doublezero_program_common::types::NetworkV4;
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_resource_extension_pda,
-    processors::resource::allocate::ResourceAllocateArgs, resource::IpBlockType,
+    instructions::DoubleZeroInstruction,
+    pda::get_resource_extension_pda,
+    processors::resource::allocate::ResourceAllocateArgs,
+    resource::{IdOrIp, ResourceBlockType},
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct AllocateResourceCommand {
-    pub ip_block_type: IpBlockType,
-    pub requested_network: Option<NetworkV4>,
+    pub resource_block_type: ResourceBlockType,
+    pub requested: Option<IdOrIp>,
 }
 
 impl AllocateResourceCommand {
@@ -19,15 +20,15 @@ impl AllocateResourceCommand {
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
         let (resource_pubkey, _, _) =
-            get_resource_extension_pda(&client.get_program_id(), self.ip_block_type);
+            get_resource_extension_pda(&client.get_program_id(), self.resource_block_type);
 
         let resource_allocate_args = ResourceAllocateArgs {
-            ip_block_type: self.ip_block_type,
-            requested_network: self.requested_network,
+            resource_block_type: self.resource_block_type,
+            requested: self.requested.clone(),
         };
 
-        let associated_account_pk = match self.ip_block_type {
-            IpBlockType::DzPrefixBlock(pk, _) => pk,
+        let associated_account_pk = match self.resource_block_type {
+            ResourceBlockType::DzPrefixBlock(pk, _) | ResourceBlockType::TunnelIds(pk, _) => pk,
             _ => Pubkey::default(),
         };
 

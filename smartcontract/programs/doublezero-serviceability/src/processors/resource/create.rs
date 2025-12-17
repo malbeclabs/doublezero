@@ -12,7 +12,7 @@ use std::fmt;
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
 pub struct ResourceCreateArgs {
-    pub ip_block_type: crate::resource::IpBlockType,
+    pub resource_block_type: crate::resource::ResourceBlockType,
 }
 
 impl fmt::Debug for ResourceCreateArgs {
@@ -63,14 +63,14 @@ pub fn process_create_resource(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    super::create_ip_resource(
+    super::create_resource(
         program_id,
         resource_account,
         associated_account,
         globalconfig_account,
         payer_account,
         accounts,
-        value.ip_block_type,
+        value.resource_block_type,
     )?;
 
     Ok(())

@@ -5,7 +5,7 @@ use crate::{
 use clap::Args;
 use doublezero_sdk::{
     commands::{device::get::GetDeviceCommand, resource::create::CreateResourceCommand},
-    IpBlockType,
+    ResourceBlockType,
 };
 use std::io::Write;
 
@@ -24,22 +24,15 @@ pub struct CreateResourceCliCommand {
 
 impl From<CreateResourceCliCommand> for CreateResourceCommand {
     fn from(cmd: CreateResourceCliCommand) -> Self {
-        let ip_block_type = match cmd.resource_extension_type {
-            super::ResourceExtensionType::DeviceTunnelBlock => IpBlockType::DeviceTunnelBlock,
-            super::ResourceExtensionType::UserTunnelBlock => IpBlockType::UserTunnelBlock,
-            super::ResourceExtensionType::MulticastGroupBlock => IpBlockType::MulticastGroupBlock,
-            super::ResourceExtensionType::DzPrefixBlock => {
-                let pk = cmd
-                    .associated_pubkey
-                    .as_ref()
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or_default();
-                let index = cmd.index.unwrap_or(0);
-                IpBlockType::DzPrefixBlock(pk, index)
-            }
-        };
+        let resource_block_type = super::resource_extension_to_resource_block(
+            cmd.resource_extension_type,
+            cmd.associated_pubkey.as_ref().and_then(|s| s.parse().ok()),
+            cmd.index,
+        );
 
-        CreateResourceCommand { ip_block_type }
+        CreateResourceCommand {
+            resource_block_type,
+        }
     }
 }
 
@@ -50,17 +43,21 @@ impl CreateResourceCliCommand {
 
         let args: CreateResourceCommand = self.into();
 
-        if let IpBlockType::DzPrefixBlock(pk, index) = args.ip_block_type {
-            let get_device_cmd = GetDeviceCommand {
-                pubkey_or_code: pk.to_string(),
-            };
-            let (_device_pk, device) = client.get_device(get_device_cmd)?;
-            if device.dz_prefixes.len() <= index {
-                return Err(eyre::eyre!(
-                    "Device does not have a DzPrefixBlock at index {}",
-                    index
-                ));
+        match args.resource_block_type {
+            ResourceBlockType::DzPrefixBlock(pk, index)
+            | ResourceBlockType::TunnelIds(pk, index) => {
+                let get_device_cmd = GetDeviceCommand {
+                    pubkey_or_code: pk.to_string(),
+                };
+                let (_device_pk, device) = client.get_device(get_device_cmd)?;
+                if device.dz_prefixes.len() <= index {
+                    return Err(eyre::eyre!(
+                        "Device does not have a DzPrefixBlock at index {}",
+                        index
+                    ));
+                }
             }
+            _ => {}
         }
 
         let signature = client.create_resource(args)?;

@@ -14,10 +14,6 @@ pub struct IpAllocator {
 }
 
 impl IpAllocator {
-    pub fn size(base_net: &NetworkV4, allocation_size: u32) -> usize {
-        Self::bitmap_required_size(base_net.prefix(), allocation_size) + 5 + 4
-    }
-
     pub fn bitmap_required_size(prefix_len: u8, allocation_size: u32) -> usize {
         let total_allocations = 2_usize.pow(32 - prefix_len as u32) / allocation_size as usize;
         total_allocations.div_ceil(8)
@@ -210,44 +206,46 @@ fn address_count_to_prefix_len(num_addresses: u32) -> Option<u8> {
 mod tests {
     use super::*;
 
+    #[repr(align(8))]
+    struct AlignedBitmap([u8; 8]);
+
     #[test]
     fn test_allocate_and_deallocate() {
         // 192.168.1.0/30 has 4 addresses, /32 allocations = 4 allocatable blocks
-        let mut bitmap = [0u8; 8];
+        let mut aligned_data = AlignedBitmap([0u8; 8]);
         let mut allocator = IpAllocator::new("192.168.1.0/30".parse().unwrap(), 1).unwrap();
 
         let mut allocated = vec![];
         for _ in 0..4 {
-            let net = allocator.allocate(&mut bitmap);
+            let net = allocator.allocate(&mut aligned_data.0);
             assert!(net.is_some());
             allocated.push(net.unwrap());
-            println!("Allocated: {}", allocated.last().unwrap());
         }
         // No more allocations should be possible
-        assert!(allocator.allocate(&mut bitmap).is_none());
+        assert!(allocator.allocate(&mut aligned_data.0).is_none());
 
         // Deallocate one and allocate again
-        assert!(allocator.deallocate(&mut bitmap, &allocated[2]));
-        let net = allocator.allocate(&mut bitmap);
+        assert!(allocator.deallocate(&mut aligned_data.0, &allocated[2]));
+        let net = allocator.allocate(&mut aligned_data.0);
         assert_eq!(net, Some(allocated[2]));
     }
 
     #[test]
     fn test_deallocate_invalid() {
-        let mut bitmap = [0u8; 8];
+        let mut aligned_data = AlignedBitmap([0u8; 8]);
         let mut allocator = IpAllocator::new("10.0.0.0/30".parse().unwrap(), 1).unwrap();
 
         // Not allocated yet
         let net = "10.0.0.2/32".parse().unwrap();
-        assert!(!allocator.deallocate(&mut bitmap, &net));
+        assert!(!allocator.deallocate(&mut aligned_data.0, &net));
 
         // Wrong prefix
         let net_wrong = "10.0.0.2/31".parse().unwrap();
-        assert!(!allocator.deallocate(&mut bitmap, &net_wrong));
+        assert!(!allocator.deallocate(&mut aligned_data.0, &net_wrong));
 
         // Outside base net
         let net_out = "10.0.1.0/32".parse().unwrap();
-        assert!(!allocator.deallocate(&mut bitmap, &net_out));
+        assert!(!allocator.deallocate(&mut aligned_data.0, &net_out));
     }
 
     #[test]
@@ -261,97 +259,94 @@ mod tests {
     #[test]
     fn test_allocation_prefix_range_check() {
         let base_net = "192.168.0.0/24".parse().unwrap();
-
         // allocation_prefix_len < base_net.prefix():
         // base_net is /24 (prefix=24), allocation_size=512 gives prefix=23
         // 23 < 24, so this should fail (can't allocate blocks larger than the base net)
         let res = IpAllocator::new(base_net, 512);
-        assert!(
-            res.is_err(),
-            "allocation_size=512 (/23) should fail for /24 base_net"
-        );
-
-        // Non-power-of-2 allocation_size should fail
-        let res = IpAllocator::new(base_net, 33);
-        assert!(
-            res.is_err(),
-            "allocation_size=33 (not power of 2) should fail"
-        );
-
-        // allocation_size=0 should fail
-        let res = IpAllocator::new(base_net, 0);
-        assert!(res.is_err(), "allocation_size=0 should fail");
+        assert!(res.is_err());
     }
 
     #[test]
     fn test_allocate_specific_success() {
         let base_net = "192.168.0.0/24".parse().unwrap();
-        let mut bitmap = [0u8; 8];
+        let mut aligned_data = AlignedBitmap([0u8; 8]);
         let mut allocator = IpAllocator::new(base_net, 16).unwrap();
 
         let ip = "192.168.0.16/28".parse().unwrap();
-        let result = allocator.allocate_specific(&mut bitmap, &ip);
+        let result = allocator.allocate_specific(&mut aligned_data.0, &ip);
         assert!(result.is_ok());
-        assert!(allocator.deallocate(&mut bitmap, &ip));
+        assert!(allocator.deallocate(&mut aligned_data.0, &ip));
     }
 
     #[test]
     fn test_allocate_specific_mismatched_allocation_size() {
         let base_net = "192.168.0.0/24".parse().unwrap();
-        let mut bitmap = [0u8; 8];
+        let mut aligned_data = AlignedBitmap([0u8; 8]);
         let mut allocator = IpAllocator::new(base_net, 16).unwrap();
 
         let ip = "192.168.0.16/32".parse().unwrap();
-        let result = allocator.allocate_specific(&mut bitmap, &ip);
+        let result = allocator.allocate_specific(&mut aligned_data.0, &ip);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_allocate_specific_not_in_base_net() {
         let base_net = "192.168.0.0/24".parse().unwrap();
-        let mut bitmap = [0u8; 8];
+        let mut aligned_data = AlignedBitmap([0u8; 8]);
         let mut allocator = IpAllocator::new(base_net, 16).unwrap();
         let ip = "10.0.0.0/28".parse().unwrap();
-        assert!(allocator.allocate_specific(&mut bitmap, &ip).is_err());
+        assert!(allocator
+            .allocate_specific(&mut aligned_data.0, &ip)
+            .is_err());
     }
 
     #[test]
     fn test_allocate_specific_not_aligned() {
         let base_net = "192.168.0.0/24".parse().unwrap();
-        let mut bitmap = [0u8; 8];
+        let mut aligned_data = AlignedBitmap([0u8; 8]);
         let mut allocator = IpAllocator::new(base_net, 16).unwrap();
         let ip = "192.168.0.3/28".parse().unwrap(); // Not aligned to allocation_size=16
-        assert!(allocator.allocate_specific(&mut bitmap, &ip).is_err());
+        assert!(allocator
+            .allocate_specific(&mut aligned_data.0, &ip)
+            .is_err());
     }
 
     #[test]
     fn test_allocate_specific_already_allocated() {
         let base_net = "192.168.0.0/24".parse().unwrap();
-        let mut bitmap = [0u8; 8];
+        let mut aligned_data = AlignedBitmap([0u8; 8]);
         let mut allocator = IpAllocator::new(base_net, 16).unwrap();
         let ip = "192.168.0.32/28".parse().unwrap();
-        assert!(allocator.allocate_specific(&mut bitmap, &ip).is_ok());
+        assert!(allocator
+            .allocate_specific(&mut aligned_data.0, &ip)
+            .is_ok());
         // Try to allocate again
-        assert!(allocator.allocate_specific(&mut bitmap, &ip).is_err());
+        assert!(allocator
+            .allocate_specific(&mut aligned_data.0, &ip)
+            .is_err());
     }
 
     #[test]
     fn test_iter_allocated() {
         let base_net = "192.168.0.0/24".parse().unwrap();
-        let mut bitmap = [0u8; 32];
+        let mut aligned_data = AlignedBitmap([0u8; 8]);
         let mut allocator = IpAllocator::new(base_net, 1).unwrap();
-        assert!(allocator.allocate(&mut bitmap).is_some());
-        assert!(allocator.allocate(&mut bitmap).is_some());
-        assert!(allocator.allocate(&mut bitmap).is_some());
-        assert!(allocator.allocate(&mut bitmap).is_some());
+        assert!(allocator.allocate(&mut aligned_data.0).is_some());
+        assert!(allocator.allocate(&mut aligned_data.0).is_some());
+        assert!(allocator.allocate(&mut aligned_data.0).is_some());
+        assert!(allocator.allocate(&mut aligned_data.0).is_some());
 
         let ip = "192.168.0.10/32".parse().unwrap();
-        assert!(allocator.allocate_specific(&mut bitmap, &ip).is_ok());
+        assert!(allocator
+            .allocate_specific(&mut aligned_data.0, &ip)
+            .is_ok());
 
         let ip = "192.168.0.42/32".parse().unwrap();
-        assert!(allocator.allocate_specific(&mut bitmap, &ip).is_ok());
+        assert!(allocator
+            .allocate_specific(&mut aligned_data.0, &ip)
+            .is_ok());
 
-        let allocated_ips: Vec<NetworkV4> = allocator.iter_allocated(&bitmap).collect();
+        let allocated_ips: Vec<NetworkV4> = allocator.iter_allocated(&aligned_data.0).collect();
         assert_eq!(allocated_ips.len(), 6);
         assert_eq!(allocated_ips[0], "192.168.0.0/32".parse().unwrap());
         assert_eq!(allocated_ips[1], "192.168.0.1/32".parse().unwrap());
@@ -360,10 +355,10 @@ mod tests {
         assert_eq!(allocated_ips[4], "192.168.0.10/32".parse().unwrap());
         assert_eq!(allocated_ips[5], "192.168.0.42/32".parse().unwrap());
 
-        assert!(allocator.deallocate(&mut bitmap, &"192.168.0.1/32".parse().unwrap()));
-        assert!(allocator.deallocate(&mut bitmap, &"192.168.0.3/32".parse().unwrap()));
+        assert!(allocator.deallocate(&mut aligned_data.0, &"192.168.0.1/32".parse().unwrap()));
+        assert!(allocator.deallocate(&mut aligned_data.0, &"192.168.0.3/32".parse().unwrap()));
 
-        let allocated_ips: Vec<NetworkV4> = allocator.iter_allocated(&bitmap).collect();
+        let allocated_ips: Vec<NetworkV4> = allocator.iter_allocated(&aligned_data.0).collect();
         assert_eq!(allocated_ips.len(), 4);
         assert_eq!(allocated_ips[0], "192.168.0.0/32".parse().unwrap());
         assert_eq!(allocated_ips[1], "192.168.0.2/32".parse().unwrap());

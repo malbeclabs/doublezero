@@ -3,13 +3,13 @@ use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
     pda::{get_globalconfig_pda, get_resource_extension_pda},
     processors::resource::create::ResourceCreateArgs,
-    resource::IpBlockType,
+    resource::ResourceBlockType,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct CreateResourceCommand {
-    pub ip_block_type: IpBlockType,
+    pub resource_block_type: ResourceBlockType,
 }
 
 impl CreateResourceCommand {
@@ -21,14 +21,14 @@ impl CreateResourceCommand {
         let (globalconfig_pubkey, _) = get_globalconfig_pda(&client.get_program_id());
 
         let (resource_pubkey, _, _) =
-            get_resource_extension_pda(&client.get_program_id(), self.ip_block_type);
+            get_resource_extension_pda(&client.get_program_id(), self.resource_block_type);
 
         let resource_create_args = ResourceCreateArgs {
-            ip_block_type: self.ip_block_type,
+            resource_block_type: self.resource_block_type,
         };
 
-        let associated_account_pk = match self.ip_block_type {
-            IpBlockType::DzPrefixBlock(pk, _) => pk,
+        let associated_account_pk = match self.resource_block_type {
+            ResourceBlockType::DzPrefixBlock(pk, _) | ResourceBlockType::TunnelIds(pk, _) => pk,
             _ => Pubkey::default(),
         };
 

@@ -4,7 +4,7 @@ use doublezero_solana_client_tools::payer::{SolanaPayerOptions, TransactionOutco
 use doublezero_solana_sdk::{
     environment_2z_token_mint_key, get_program_data_address,
     revenue_distribution::{
-        GENESIS_DZ_EPOCH_MAINNET_BETA, ID,
+        ID,
         instruction::{
             ProgramConfiguration, ProgramFlagConfiguration, RevenueDistributionInstructionData,
             account::{
@@ -13,8 +13,7 @@ use doublezero_solana_sdk::{
                 InitializeSwapDestinationAccounts, SetAdminAccounts, SetRewardsManagerAccounts,
             },
         },
-        state::{self, ContributorRewards, Distribution, Journal, ProgramConfig},
-        types::DoubleZeroEpoch,
+        state::{self, ContributorRewards, Journal, ProgramConfig},
     },
     try_build_instruction,
 };
@@ -283,26 +282,11 @@ pub async fn execute_migrate_program_accounts(
     let wallet = Wallet::try_from(solana_payer_options)?;
     let wallet_key = wallet.pubkey();
 
-    let mut accounts = vec![
+    let accounts = vec![
         AccountMeta::new_readonly(get_program_data_address(&ID).0, false),
         AccountMeta::new_readonly(wallet_key, true),
         AccountMeta::new(ProgramConfig::find_address().0, false),
     ];
-
-    let journal_key = Journal::find_address().0;
-    accounts.push(AccountMeta::new(journal_key, false));
-
-    let journal = wallet
-        .connection
-        .try_fetch_zero_copy_data::<Journal>(&journal_key)
-        .await?;
-
-    let until_dz_epoch = journal.next_dz_epoch_to_sweep_tokens.value();
-
-    for dz_epoch in GENESIS_DZ_EPOCH_MAINNET_BETA..until_dz_epoch {
-        let distribution_key = Distribution::find_address(DoubleZeroEpoch::new(dz_epoch)).0;
-        accounts.push(AccountMeta::new_readonly(distribution_key, false));
-    }
 
     let migrate_program_accounts_ix = try_build_instruction(
         &ID,

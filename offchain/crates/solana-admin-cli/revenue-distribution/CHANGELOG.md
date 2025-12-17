@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- update migration command ([#229](https://github.com/doublezerofoundation/doublezero-offchain/pull/229))
 - use `doublezero-solana-sdk` as dependency ([#225](https://github.com/doublezerofoundation/doublezero-offchain/pull/225))
 - update migration command ([#195](https://github.com/doublezerofoundation/doublezero-offchain/pull/195))
 

@@ -89,7 +89,9 @@ pub struct Distribution {
 
     pub processed_solana_validator_debt_write_off_start_index: u32,
     pub processed_solana_validator_debt_write_off_end_index: u32,
-    _padding_1: [u8; 24],
+
+    pub solana_validator_write_off_count: u32,
+    _padding_1: [u8; 20],
 
     _storage_gap: StorageGap<6>,
 }
@@ -223,6 +225,21 @@ impl Distribution {
         self.processed_solana_validator_debt_write_off_start_index as usize
             ..self.processed_solana_validator_debt_write_off_end_index as usize
     }
+
+    #[inline]
+    pub fn is_all_solana_validator_debt_processed(&self) -> bool {
+        self.total_solana_validators
+            .saturating_sub(self.solana_validator_payments_count)
+            .saturating_sub(self.solana_validator_write_off_count)
+            == 0
+    }
+
+    #[inline]
+    pub fn are_all_rewards_distributed(&self) -> bool {
+        self.total_contributors
+            .saturating_sub(self.distributed_rewards_count)
+            == 0
+    }
 }
 
 //
@@ -231,3 +248,274 @@ const _: () = assert!(
     size_of::<Distribution>() == 448,
     "`Distribution` size changed"
 );
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{BurnRate, RewardShare};
+    use solana_pubkey::Pubkey;
+
+    #[test]
+    fn test_is_debt_calculation_finalized() {
+        let mut distribution = Distribution::default();
+        assert!(!distribution.is_debt_calculation_finalized());
+
+        distribution.set_is_debt_calculation_finalized(true);
+        assert!(distribution.is_debt_calculation_finalized());
+
+        distribution.set_is_debt_calculation_finalized(false);
+        assert!(!distribution.is_debt_calculation_finalized());
+    }
+
+    #[test]
+    fn test_is_rewards_calculation_finalized() {
+        let mut distribution = Distribution::default();
+        assert!(!distribution.is_rewards_calculation_finalized());
+
+        distribution.set_is_rewards_calculation_finalized(true);
+        assert!(distribution.is_rewards_calculation_finalized());
+
+        distribution.set_is_rewards_calculation_finalized(false);
+        assert!(!distribution.is_rewards_calculation_finalized());
+    }
+
+    #[test]
+    fn test_is_solana_validator_debt_write_off_enabled() {
+        let mut distribution = Distribution::default();
+        assert!(!distribution.is_solana_validator_debt_write_off_enabled());
+
+        distribution.set_is_solana_validator_debt_write_off_enabled(true);
+        assert!(distribution.is_solana_validator_debt_write_off_enabled());
+
+        distribution.set_is_solana_validator_debt_write_off_enabled(false);
+        assert!(!distribution.is_solana_validator_debt_write_off_enabled());
+    }
+
+    #[test]
+    fn test_has_swept_2z_tokens() {
+        let mut distribution = Distribution::default();
+        assert!(!distribution.has_swept_2z_tokens());
+
+        distribution.set_has_swept_2z_tokens(true);
+        assert!(distribution.has_swept_2z_tokens());
+
+        distribution.set_has_swept_2z_tokens(false);
+        assert!(!distribution.has_swept_2z_tokens());
+    }
+
+    #[test]
+    fn test_checked_total_sol_debt() {
+        let mut distribution = Distribution::default();
+        // When both are 0, checked_sub returns Some(0).
+        assert_eq!(distribution.checked_total_sol_debt().unwrap(), 0);
+
+        distribution.total_solana_validator_debt = 100;
+        distribution.uncollectible_sol_debt = 10;
+        assert_eq!(distribution.checked_total_sol_debt().unwrap(), 90);
+
+        distribution.uncollectible_sol_debt = 100;
+        assert_eq!(distribution.checked_total_sol_debt().unwrap(), 0);
+
+        distribution.uncollectible_sol_debt = 101;
+        // When uncollectible exceeds total, checked_sub returns None.
+        assert!(distribution.checked_total_sol_debt().is_none());
+    }
+
+    #[test]
+    fn test_checked_calculation_allowed_timestamp() {
+        let mut distribution = Distribution::default();
+        assert!(distribution
+            .checked_calculation_allowed_timestamp()
+            .is_none());
+
+        distribution.calculation_allowed_timestamp = 69;
+        assert_eq!(
+            distribution
+                .checked_calculation_allowed_timestamp()
+                .unwrap(),
+            69
+        );
+    }
+
+    #[test]
+    fn test_total_collected_2z_tokens() {
+        let mut distribution = Distribution::default();
+        assert_eq!(distribution.total_collected_2z_tokens(), 0);
+
+        distribution.collected_prepaid_2z_payments = 100;
+        assert_eq!(distribution.total_collected_2z_tokens(), 100);
+
+        distribution.collected_2z_converted_from_sol = 200;
+        assert_eq!(distribution.total_collected_2z_tokens(), 300);
+
+        distribution.collected_prepaid_2z_payments = 50;
+        distribution.collected_2z_converted_from_sol = 75;
+        assert_eq!(distribution.total_collected_2z_tokens(), 125);
+    }
+
+    #[test]
+    fn test_burn_rate() {
+        let community_burn_rate = BurnRate::new(200_000_000).unwrap(); // 20%
+        let distribution = Distribution {
+            community_burn_rate,
+            ..Default::default()
+        };
+
+        let economic_burn_rate = BurnRate::new(100_000_000).unwrap(); // 10%
+
+        // Community burn rate is higher, so it should be used.
+        assert_eq!(
+            distribution.burn_rate(economic_burn_rate),
+            community_burn_rate
+        );
+
+        let higher_economic_burn_rate = BurnRate::new(300_000_000).unwrap(); // 30%
+
+        // Economic burn rate is higher, so it should be used.
+        assert_eq!(
+            distribution.burn_rate(higher_economic_burn_rate),
+            higher_economic_burn_rate
+        );
+
+        // Equal rates.
+        let equal_economic_burn_rate = BurnRate::new(200_000_000).unwrap(); // 20%
+        assert_eq!(
+            distribution.burn_rate(equal_economic_burn_rate),
+            community_burn_rate
+        );
+    }
+
+    #[test]
+    fn test_split_2z_amount() {
+        let distribution = Distribution {
+            collected_prepaid_2z_payments: 1_000,
+            collected_2z_converted_from_sol: 2_000,
+            community_burn_rate: BurnRate::new(100_000_000).unwrap(), // 10%
+            ..Default::default()
+        };
+
+        let contributor_key = Pubkey::new_unique();
+        let unit_share = 100_000_000; // 10%
+        let economic_burn_rate = 50_000_000; // 5%
+
+        let reward_share =
+            RewardShare::new(contributor_key, unit_share, false, economic_burn_rate).unwrap();
+
+        // Total: 3,000, share: 10% = 300.
+        // Economic burn rate: 5%, but community burn rate is 10%, so use 10%.
+        // Burn amount: 300 * 10% = 30.
+        // Distribute amount: 300 - 30 = 270.
+        let (burn_amount, distribute_amount) = distribution.split_2z_amount(&reward_share).unwrap();
+        assert_eq!(burn_amount, 30);
+        assert_eq!(distribute_amount, 270);
+
+        // Test with economic burn rate higher than community.
+        let higher_economic_burn_rate = 200_000_000; // 20%
+        let reward_share_higher = RewardShare::new(
+            contributor_key,
+            unit_share,
+            false,
+            higher_economic_burn_rate,
+        )
+        .unwrap();
+
+        // Total: 3,000, share: 10% = 300.
+        // Economic burn rate: 20% > community 10%, so use 20%.
+        // Burn amount: 300 * 20% = 60.
+        // Distribute amount: 300 - 60 = 240.
+        let (burn_amount, distribute_amount) =
+            distribution.split_2z_amount(&reward_share_higher).unwrap();
+        assert_eq!(burn_amount, 60);
+        assert_eq!(distribute_amount, 240);
+
+        // Test with invalid reward share (unit_share too large).
+        let invalid_reward_share = RewardShare {
+            contributor_key,
+            unit_share: 2_000_000_000, // Invalid: exceeds MAX
+            remaining_bytes: [0; 4],
+        };
+        assert!(distribution
+            .split_2z_amount(&invalid_reward_share)
+            .is_none());
+    }
+
+    #[test]
+    fn test_processed_solana_validator_debt_bitmap_range() {
+        let mut distribution = Distribution {
+            processed_solana_validator_debt_end_index: 10,
+            ..Default::default()
+        };
+
+        assert_eq!(
+            distribution.processed_solana_validator_debt_bitmap_range(),
+            0..10
+        );
+
+        distribution.processed_solana_validator_debt_start_index = 5;
+        distribution.processed_solana_validator_debt_end_index = 15;
+        assert_eq!(
+            distribution.processed_solana_validator_debt_bitmap_range(),
+            5..15
+        );
+    }
+
+    #[test]
+    fn test_processed_rewards_bitmap_range() {
+        let mut distribution = Distribution {
+            processed_rewards_end_index: 20,
+            ..Default::default()
+        };
+
+        assert_eq!(distribution.processed_rewards_bitmap_range(), 0..20);
+
+        distribution.processed_rewards_start_index = 10;
+        distribution.processed_rewards_end_index = 30;
+        assert_eq!(distribution.processed_rewards_bitmap_range(), 10..30);
+    }
+
+    #[test]
+    fn test_processed_solana_validator_debt_write_off_bitmap_range() {
+        let mut distribution = Distribution {
+            processed_solana_validator_debt_write_off_end_index: 5,
+            ..Default::default()
+        };
+
+        assert_eq!(
+            distribution.processed_solana_validator_debt_write_off_bitmap_range(),
+            0..5
+        );
+
+        distribution.processed_solana_validator_debt_write_off_start_index = 1;
+        distribution.processed_solana_validator_debt_write_off_end_index = 2;
+        assert_eq!(
+            distribution.processed_solana_validator_debt_write_off_bitmap_range(),
+            1..2
+        );
+    }
+
+    #[test]
+    fn test_is_all_solana_validator_debt_processed() {
+        let mut distribution = Distribution::default();
+        assert!(distribution.is_all_solana_validator_debt_processed());
+
+        distribution.total_solana_validators = 10;
+        distribution.solana_validator_payments_count = 7;
+        distribution.solana_validator_write_off_count = 3;
+
+        assert!(distribution.is_all_solana_validator_debt_processed());
+
+        // 10 - 7 - 2 = 1, not all processed.
+        distribution.solana_validator_write_off_count = 2;
+        assert!(!distribution.is_all_solana_validator_debt_processed());
+
+        distribution.solana_validator_payments_count = 8;
+        distribution.solana_validator_write_off_count = 2;
+        assert!(distribution.is_all_solana_validator_debt_processed());
+
+        // Test with overflow protection.
+        distribution.total_solana_validators = 5;
+        distribution.solana_validator_payments_count = 10;
+        distribution.solana_validator_write_off_count = 10;
+        assert!(distribution.is_all_solana_validator_debt_processed());
+    }
+}

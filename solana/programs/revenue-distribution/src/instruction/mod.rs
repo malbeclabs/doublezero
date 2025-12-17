@@ -9,7 +9,7 @@ use doublezero_program_tools::{Discriminator, DISCRIMINATOR_LEN};
 use solana_pubkey::Pubkey;
 use svm_hash::{merkle::MerkleProof, sha2::Hash};
 
-use crate::types::{EpochDuration, RewardShare, SolanaValidatorDebt};
+use crate::types::{DoubleZeroEpoch, EpochDuration, RewardShare, SolanaValidatorDebt};
 
 #[derive(Debug, BorshDeserialize, BorshSerialize, Clone, PartialEq, Eq)]
 pub enum ProgramConfiguration {
@@ -38,11 +38,20 @@ pub enum ProgramConfiguration {
     DistributeRewardsRelayLamports(u32),
     MinimumEpochDurationToFinalizeRewards(u8),
     DistributionInitializationGracePeriodMinutes(u16),
+    FeatureActivation {
+        feature: ProgramFeatureConfiguration,
+        activation_epoch: DoubleZeroEpoch,
+    },
 }
 
 #[derive(Debug, BorshDeserialize, BorshSerialize, Clone, PartialEq, Eq)]
 pub enum ProgramFlagConfiguration {
     IsPaused(bool),
+}
+
+#[derive(Debug, BorshDeserialize, BorshSerialize, Clone, Copy, PartialEq, Eq)]
+pub enum ProgramFeatureConfiguration {
+    SolanaValidatorDebtWriteOff,
 }
 
 #[derive(Debug, BorshDeserialize, BorshSerialize, Clone, PartialEq, Eq)]

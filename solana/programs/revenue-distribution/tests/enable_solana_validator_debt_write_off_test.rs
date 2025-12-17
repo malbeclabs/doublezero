@@ -6,7 +6,7 @@ use doublezero_program_tools::instruction::try_build_instruction;
 use doublezero_revenue_distribution::{
     instruction::{
         account::EnableSolanaValidatorDebtWriteOffAccounts, ProgramConfiguration,
-        ProgramFlagConfiguration, RevenueDistributionInstructionData,
+        ProgramFeatureConfiguration, ProgramFlagConfiguration, RevenueDistributionInstructionData,
     },
     state::{self, Distribution},
     types::{BurnRate, DoubleZeroEpoch, ValidatorFee},
@@ -46,6 +46,7 @@ async fn test_enable_solana_validator_debt_write_off() {
     // Distribution debt.
 
     let dz_epoch = DoubleZeroEpoch::new(1);
+    let activation_epoch = dz_epoch.saturating_add_duration(2);
 
     let total_solana_validators = 2;
     let total_solana_validator_debt = 100 * u64::pow(10, 9);
@@ -114,7 +115,6 @@ async fn test_enable_solana_validator_debt_write_off() {
 
     let payer_key = test_setup.payer_signer().pubkey();
 
-    // Cannot enable write offs before debt calculation is finalized.
     let enable_solana_validator_debt_write_off_ix = try_build_instruction(
         &ID,
         EnableSolanaValidatorDebtWriteOffAccounts::new(dz_epoch, &payer_key),
@@ -122,6 +122,66 @@ async fn test_enable_solana_validator_debt_write_off() {
     )
     .unwrap();
 
+    // Cannot enable write-offs before the feature is activated.
+    let (tx_err, program_logs) = test_setup
+        .unwrap_simulation_error(
+            std::slice::from_ref(&enable_solana_validator_debt_write_off_ix),
+            &[],
+        )
+        .await;
+
+    assert_eq!(
+        tx_err,
+        TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
+    );
+    assert_eq!(
+        program_logs.get(2).unwrap(),
+        "Program log: Debt write-off feature activation epoch not configured"
+    );
+
+    test_setup
+        .configure_program(
+            &admin_signer,
+            [ProgramConfiguration::FeatureActivation {
+                feature: ProgramFeatureConfiguration::SolanaValidatorDebtWriteOff,
+                activation_epoch,
+            }],
+        )
+        .await
+        .unwrap();
+
+    // Cannot enable write-offs before the activation epoch.
+    let program_config = test_setup.fetch_program_config().await.1;
+    assert!(!program_config.is_debt_write_off_feature_activated());
+
+    let (tx_err, program_logs) = test_setup
+        .unwrap_simulation_error(
+            std::slice::from_ref(&enable_solana_validator_debt_write_off_ix),
+            &[],
+        )
+        .await;
+
+    assert_eq!(
+        tx_err,
+        TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
+    );
+    assert_eq!(
+        program_logs.get(2).unwrap(),
+        &format!(
+            "Program log: Debt write-off feature activates at epoch {}",
+            activation_epoch
+        )
+    );
+
+    test_setup
+        .initialize_distribution(&debt_accountant_signer)
+        .await
+        .unwrap();
+
+    let program_config = test_setup.fetch_program_config().await.1;
+    assert!(program_config.is_debt_write_off_feature_activated());
+
+    // Cannot enable write offs before debt calculation is finalized.
     let (tx_err, program_logs) = test_setup
         .unwrap_simulation_error(&[enable_solana_validator_debt_write_off_ix], &[])
         .await;

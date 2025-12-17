@@ -6,7 +6,7 @@ use doublezero_program_tools::instruction::try_build_instruction;
 use doublezero_revenue_distribution::{
     instruction::{
         account::WriteOffSolanaValidatorDebtAccounts, ProgramConfiguration,
-        ProgramFlagConfiguration, RevenueDistributionInstructionData,
+        ProgramFeatureConfiguration, ProgramFlagConfiguration, RevenueDistributionInstructionData,
     },
     state::{self, Distribution, SolanaValidatorDeposit},
     types::{BurnRate, DoubleZeroEpoch, SolanaValidatorDebt, ValidatorFee},
@@ -109,6 +109,10 @@ async fn test_write_off_solana_validator_debt() {
                 ProgramConfiguration::CalculationGracePeriodMinutes(1),
                 ProgramConfiguration::DistributionInitializationGracePeriodMinutes(1),
                 ProgramConfiguration::Flag(ProgramFlagConfiguration::IsPaused(false)),
+                ProgramConfiguration::FeatureActivation {
+                    feature: ProgramFeatureConfiguration::SolanaValidatorDebtWriteOff,
+                    activation_epoch: DoubleZeroEpoch::new(1),
+                },
             ],
         )
         .await
@@ -400,6 +404,7 @@ async fn test_write_off_solana_validator_debt() {
         .await
         .unix_timestamp
         .saturating_sub(60) as u32;
+    expected_distribution.solana_validator_write_off_count = total_solana_validators - 1;
     assert_eq!(distribution, expected_distribution);
 
     // First two bytes reflect debt tracking.

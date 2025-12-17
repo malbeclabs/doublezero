@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- debt write off activation ([#99])
+
+## [v0.2.0]
+
 - add null rewards root protection ([#86])
 - fix swap balance in journal ([#87])
 - allow same-distribution debt write-offs ([#91])
@@ -97,5 +101,7 @@
 [#93]: https://github.com/doublezerofoundation/doublezero-solana/pull/93
 [#94]: https://github.com/doublezerofoundation/doublezero-solana/pull/94
 [#95]: https://github.com/doublezerofoundation/doublezero-solana/pull/95
+[#99]: https://github.com/doublezerofoundation/doublezero-solana/pull/99
 [v0.1.0]: https://github.com/doublezerofoundation/doublezero-solana/tree/revenue-distribution/v0.1.0
 [v0.1.1]: https://github.com/doublezerofoundation/doublezero-solana/tree/revenue-distribution/v0.1.1
+[v0.2.0]: https://github.com/doublezerofoundation/doublezero-solana/tree/revenue-distribution/v0.2.0

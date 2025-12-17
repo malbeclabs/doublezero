@@ -27,8 +27,8 @@ use svm_hash::{merkle::MerkleProof, sha2::Hash};
 use crate::{
     instruction::{
         account::DequeueFillsCpiAccounts, ContributorRewardsConfiguration,
-        DistributionMerkleRootKind, ProgramConfiguration, ProgramFlagConfiguration,
-        RevenueDistributionInstructionData,
+        DistributionMerkleRootKind, ProgramConfiguration, ProgramFeatureConfiguration,
+        ProgramFlagConfiguration, RevenueDistributionInstructionData,
     },
     state::{
         self, CommunityBurnRateParameters, ContributorRewards, Distribution, Journal,
@@ -541,6 +541,25 @@ fn try_configure_program(accounts: &[AccountInfo], setting: ProgramConfiguration
             program_config
                 .distribution_parameters
                 .initialization_grace_period_minutes = grace_period_minutes;
+        }
+        ProgramConfiguration::FeatureActivation {
+            feature,
+            activation_epoch,
+        } => {
+            if activation_epoch == 0 {
+                msg!("Cannot activate feature at epoch zero");
+                return Err(ProgramError::InvalidInstructionData);
+            }
+
+            match feature {
+                ProgramFeatureConfiguration::SolanaValidatorDebtWriteOff => {
+                    msg!(
+                        "Set Solana validator debt write-off feature activation epoch: {}",
+                        activation_epoch
+                    );
+                    program_config.debt_write_off_feature_activation_epoch = activation_epoch;
+                }
+            }
         }
     }
 
@@ -1199,14 +1218,14 @@ fn try_distribute_rewards(
         ZeroCopyMutAccount::<Distribution>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
     msg!("DZ epoch: {}", distribution.dz_epoch);
 
-    // Make sure 2Z tokens have been swept.
-    if !distribution.has_swept_2z_tokens() {
-        msg!("Distribution has not swept 2Z tokens");
+    if distribution.are_all_rewards_distributed() {
+        msg!("All rewards have already been distributed");
         return Err(ProgramError::InvalidAccountData);
     }
 
-    if distribution.distributed_rewards_count == distribution.total_contributors {
-        msg!("All rewards have already been distributed");
+    // Make sure 2Z tokens have been swept.
+    if !distribution.has_swept_2z_tokens() {
+        msg!("Distribution has not swept 2Z tokens");
         return Err(ProgramError::InvalidAccountData);
     }
 
@@ -1801,6 +1820,22 @@ fn try_enable_solana_validator_debt_write_off(accounts: &[AccountInfo]) -> Progr
     // Make sure the program is not paused.
     program_config.try_require_unpaused()?;
 
+    // Cannot enable write-offs before the activation epoch.
+    if !program_config.is_debt_write_off_feature_activated() {
+        let activation_epoch = program_config.debt_write_off_feature_activation_epoch;
+
+        if activation_epoch == 0 {
+            msg!("Debt write-off feature activation epoch not configured");
+        } else {
+            msg!(
+                "Debt write-off feature activates at epoch {}",
+                activation_epoch
+            );
+        }
+
+        return Err(ProgramError::InvalidAccountData);
+    }
+
     // Account 1 must be the distribution.
     let mut distribution =
         ZeroCopyMutAccount::<Distribution>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
@@ -1932,6 +1967,8 @@ fn try_write_off_solana_validator_debt(
         msg!("Solana validator debt write off is not enabled yet");
         return Err(ProgramError::InvalidAccountData);
     }
+
+    distribution.solana_validator_write_off_count += 1;
 
     // Bits indicating whether debt has been written off for specific leaf
     // indices are stored in the distribution's remaining data.
@@ -2833,9 +2870,8 @@ fn try_process_remaining_data_leaf_index(
 ///
 /// # Why are we migrating?
 ///
-/// The program deployed on Solana mainnet-beta had a bug that did not properly
-/// track the 2Z token account balance on the journal. This instruction
-/// processor will correct the journal to fix the balance.
+/// After the last migration, the migrated bit is set to true. This instruction
+/// will reset this bit to false.
 fn try_migrate_program_accounts(accounts: &[AccountInfo]) -> ProgramResult {
     msg!("Migrate program accounts");
 
@@ -2844,10 +2880,6 @@ fn try_migrate_program_accounts(accounts: &[AccountInfo]) -> ProgramResult {
     //      program).
     // - 1: The program's owner (i.e., upgrade authority).
     // - 2: Program config.
-    // - 3: Journal.
-    //
-    // Remaining accounts are distribution accounts where tokens have been
-    // swept.
     let mut accounts_iter = accounts.iter().enumerate();
 
     // Account 0 must be the program data belonging to this program.
@@ -2859,59 +2891,8 @@ fn try_migrate_program_accounts(accounts: &[AccountInfo]) -> ProgramResult {
     let mut program_config =
         ZeroCopyMutAccount::<ProgramConfig>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
 
-    if program_config.is_migrated() {
-        msg!("Program has already been migrated. Nothing to do");
-        return Ok(());
-    }
-
-    program_config.set_is_migrated(true);
-
-    // Account 3 must be the journal.
-    let mut journal =
-        ZeroCopyMutAccount::<Journal>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
-
-    // Copy balance, which is actually the lifetime amount.
-    journal.lifetime_swapped_2z_amount = Uint::from(journal.swap_2z_destination_balance);
-    msg!(
-        "Fixed lifetime swapped 2Z amount to {}",
-        journal.lifetime_swapped_2z_amount
-    );
-
-    let first_epoch = 31;
-    let until_epoch = journal.next_dz_epoch_to_sweep_tokens.value();
-
-    // Iterate over all epochs with rewards. We need to make sure the
-    // distribution accounts are passed in the order we expect.
-    for epoch in first_epoch..until_epoch {
-        let distribution =
-            ZeroCopyAccount::<Distribution>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
-
-        if distribution.dz_epoch != epoch {
-            msg!("Invalid distribution epoch: {}", distribution.dz_epoch);
-            return Err(ProgramError::InvalidAccountData);
-        }
-
-        // Be extra sure that the distribution has swept 2Z tokens. This check
-        // should never fail.
-        if !distribution.has_swept_2z_tokens() {
-            msg!("Distribution has not swept 2Z tokens for epoch {}", epoch);
-            return Err(ProgramError::InvalidAccountData);
-        }
-
-        let collected_2z_amount = distribution.collected_2z_converted_from_sol;
-        msg!("  Epoch {}: {} 2Z", epoch, collected_2z_amount);
-
-        // Catch underflow here.
-        journal.swap_2z_destination_balance = journal
-            .swap_2z_destination_balance
-            .checked_sub(collected_2z_amount)
-            .unwrap();
-    }
-
-    msg!(
-        "Fixed journal swap 2Z destination balance to {}",
-        journal.swap_2z_destination_balance
-    );
+    program_config.set_is_migrated(false);
+    msg!("Set flag is_migrated to false");
 
     Ok(())
 }

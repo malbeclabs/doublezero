@@ -4,19 +4,24 @@ mod common;
 
 use std::collections::HashMap;
 
-use doublezero_program_tools::zero_copy;
+use doublezero_program_tools::{instruction::try_build_instruction, zero_copy};
 use doublezero_revenue_distribution::{
     instruction::{
-        ContributorRewardsConfiguration, DistributionMerkleRootKind, ProgramConfiguration,
-        ProgramFlagConfiguration,
+        account::DistributeRewardsAccounts, ContributorRewardsConfiguration,
+        DistributionMerkleRootKind, ProgramConfiguration, ProgramFeatureConfiguration,
+        ProgramFlagConfiguration, RevenueDistributionInstructionData,
     },
     state::{self, Distribution, SolanaValidatorDeposit},
     types::{BurnRate, DoubleZeroEpoch, RewardShare, SolanaValidatorDebt, ValidatorFee},
-    DOUBLEZERO_MINT_KEY,
+    DOUBLEZERO_MINT_KEY, ID,
 };
 use solana_program_test::tokio;
 use solana_pubkey::Pubkey;
-use solana_sdk::signature::{Keypair, Signer};
+use solana_sdk::{
+    instruction::InstructionError,
+    signature::{Keypair, Signer},
+    transaction::TransactionError,
+};
 use svm_hash::merkle::{merkle_root_from_indexed_pod_leaves, MerkleProof};
 
 //
@@ -131,6 +136,10 @@ async fn test_distribute_rewards() {
                 ProgramConfiguration::CalculationGracePeriodMinutes(1),
                 ProgramConfiguration::DistributionInitializationGracePeriodMinutes(1),
                 ProgramConfiguration::Flag(ProgramFlagConfiguration::IsPaused(false)),
+                ProgramConfiguration::FeatureActivation {
+                    feature: ProgramFeatureConfiguration::SolanaValidatorDebtWriteOff,
+                    activation_epoch: dz_epoch,
+                },
             ],
         )
         .await
@@ -429,7 +438,10 @@ async fn test_distribute_rewards() {
         .await
         .unwrap();
 
-    for (share, proof) in rewards_data.iter().copied().zip(proofs) {
+    let mut first_epoch_processed_rewards_count = 0;
+    for (share, proof) in rewards_data.iter().copied().zip(proofs.iter()) {
+        first_epoch_processed_rewards_count += 1;
+
         let contributor_key = &share.contributor_key;
         let recipient_keys = recipient_shares[contributor_key]
             .iter()
@@ -459,6 +471,46 @@ async fn test_distribute_rewards() {
             .unwrap();
         assert_eq!(relayer_balance, distribute_rewards_relay_lamports as u64);
 
+        // Cannot distribute rewards again for the same contributor.
+        let distribute_rewards_ix = try_build_instruction(
+            &ID,
+            DistributeRewardsAccounts::new(
+                dz_epoch,
+                &share.contributor_key,
+                &DOUBLEZERO_MINT_KEY,
+                &relayer_key,
+                &recipient_keys,
+            ),
+            &RevenueDistributionInstructionData::DistributeRewards {
+                unit_share: share.unit_share,
+                economic_burn_rate: share.economic_burn_rate(),
+                proof: proof.clone(),
+            },
+        )
+        .unwrap();
+
+        let (tx_err, program_logs) = test_setup
+            .unwrap_simulation_error(&[distribute_rewards_ix], &[])
+            .await;
+        assert_eq!(
+            tx_err,
+            TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
+        );
+        if first_epoch_processed_rewards_count == rewards_data.len() {
+            assert_eq!(
+                program_logs.get(3).unwrap(),
+                "Program log: All rewards have already been distributed"
+            );
+        } else {
+            assert_eq!(
+                program_logs.get(3).unwrap(),
+                &format!(
+                    "Program log: Merkle leaf index {} has already been processed",
+                    proof.leaf_index.unwrap()
+                )
+            );
+        }
+
         // Distribute for the second epoch.
         test_setup
             .distribute_rewards(
@@ -467,7 +519,7 @@ async fn test_distribute_rewards() {
                 &DOUBLEZERO_MINT_KEY,
                 &relayer_key,
                 &recipient_keys,
-                proof,
+                proof.clone(),
             )
             .await
             .unwrap();
@@ -534,6 +586,7 @@ async fn test_distribute_rewards() {
         .await
         .unix_timestamp
         .saturating_sub(60) as u32;
+    expected_distribution.solana_validator_write_off_count = 1;
     assert_eq!(distribution, expected_distribution);
     assert_eq!(
         distribution.distributed_2z_amount + distribution.burned_2z_amount,
@@ -637,4 +690,75 @@ async fn test_distribute_rewards() {
 
     // All tokens should have been transferred to all recipients.
     assert_eq!(distribution_2z_token_pda.amount, 0);
+
+    // Cannot distribute rewards again.
+    for (share, proof) in rewards_data.iter().copied().zip(proofs) {
+        let contributor_key = &share.contributor_key;
+        let recipient_keys = recipient_shares[contributor_key]
+            .iter()
+            .map(|(key, _)| key)
+            .collect::<Vec<_>>();
+
+        let relayer_key = Pubkey::new_unique();
+
+        // Attempt to distribute rewards again for the first epoch.
+        let distribute_rewards_ix = try_build_instruction(
+            &ID,
+            DistributeRewardsAccounts::new(
+                dz_epoch,
+                &share.contributor_key,
+                &DOUBLEZERO_MINT_KEY,
+                &relayer_key,
+                &recipient_keys,
+            ),
+            &RevenueDistributionInstructionData::DistributeRewards {
+                unit_share: share.unit_share,
+                economic_burn_rate: share.economic_burn_rate(),
+                proof: proof.clone(),
+            },
+        )
+        .unwrap();
+
+        let (tx_err, program_logs) = test_setup
+            .unwrap_simulation_error(&[distribute_rewards_ix], &[])
+            .await;
+        assert_eq!(
+            tx_err,
+            TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
+        );
+        assert_eq!(
+            program_logs.get(3).unwrap(),
+            "Program log: All rewards have already been distributed"
+        );
+
+        // Attempt to distribute rewards again for the second epoch.
+        let distribute_rewards_ix = try_build_instruction(
+            &ID,
+            DistributeRewardsAccounts::new(
+                next_dz_epoch,
+                &share.contributor_key,
+                &DOUBLEZERO_MINT_KEY,
+                &relayer_key,
+                &recipient_keys,
+            ),
+            &RevenueDistributionInstructionData::DistributeRewards {
+                unit_share: share.unit_share,
+                economic_burn_rate: share.economic_burn_rate(),
+                proof: proof.clone(),
+            },
+        )
+        .unwrap();
+
+        let (tx_err, program_logs) = test_setup
+            .unwrap_simulation_error(&[distribute_rewards_ix], &[])
+            .await;
+        assert_eq!(
+            tx_err,
+            TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
+        );
+        assert_eq!(
+            program_logs.get(3).unwrap(),
+            "Program log: All rewards have already been distributed"
+        );
+    }
 }

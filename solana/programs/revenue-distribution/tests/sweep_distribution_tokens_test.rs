@@ -5,8 +5,8 @@ mod common;
 use doublezero_program_tools::instruction::try_build_instruction;
 use doublezero_revenue_distribution::{
     instruction::{
-        account::SweepDistributionTokensAccounts, ProgramConfiguration, ProgramFlagConfiguration,
-        RevenueDistributionInstructionData,
+        account::SweepDistributionTokensAccounts, ProgramConfiguration,
+        ProgramFeatureConfiguration, ProgramFlagConfiguration, RevenueDistributionInstructionData,
     },
     state::{
         self, find_2z_token_pda_address, find_swap_authority_address, Distribution,
@@ -135,6 +135,10 @@ async fn test_sweep_distribution_tokens() {
                     minimum_epoch_duration_to_finalize_rewards,
                 ),
                 ProgramConfiguration::Flag(ProgramFlagConfiguration::IsPaused(false)),
+                ProgramConfiguration::FeatureActivation {
+                    feature: ProgramFeatureConfiguration::SolanaValidatorDebtWriteOff,
+                    activation_epoch: DoubleZeroEpoch::new(1),
+                },
             ],
         )
         .await
@@ -546,6 +550,8 @@ async fn test_sweep_distribution_tokens() {
     // uncollectible debt.
     let (_, distribution, remaining_distribution_data, _, _) =
         test_setup.fetch_distribution(next_dz_epoch).await;
+
+    expected_distribution.solana_validator_write_off_count = 1;
     assert_eq!(distribution, expected_distribution);
 
     // First byte reflects debt tracking.

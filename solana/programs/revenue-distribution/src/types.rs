@@ -37,6 +37,11 @@ impl DoubleZeroEpoch {
     pub fn saturating_add_duration(&self, epoch_duration: EpochDuration) -> Self {
         Self(self.0.saturating_add(epoch_duration.into()))
     }
+
+    pub fn checked_sub_duration(&self, epoch_duration: EpochDuration) -> Option<Self> {
+        let value = self.0.checked_sub(epoch_duration.into())?;
+        Some(Self(value))
+    }
 }
 
 impl Display for DoubleZeroEpoch {

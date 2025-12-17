@@ -3,11 +3,11 @@ mod common;
 //
 
 use doublezero_revenue_distribution::{
-    instruction::{ProgramConfiguration, ProgramFlagConfiguration},
+    instruction::{ProgramConfiguration, ProgramFeatureConfiguration, ProgramFlagConfiguration},
     state::{
         self, find_withdraw_sol_authority_address, CommunityBurnRateParameters, ProgramConfig,
     },
-    types::{BurnRate, ValidatorFee},
+    types::{BurnRate, DoubleZeroEpoch, ValidatorFee},
 };
 use solana_program_test::tokio;
 use solana_pubkey::Pubkey;
@@ -62,6 +62,9 @@ async fn test_configure_program() {
     // Relay settings.
     let distribute_rewards_relay_lamports = 10_000;
 
+    // Feature activation.
+    let debt_write_off_feature_activation_epoch = DoubleZeroEpoch::new(1);
+
     test_setup
         .configure_program(
             &admin_signer,
@@ -94,6 +97,10 @@ async fn test_configure_program() {
                 ProgramConfiguration::MinimumEpochDurationToFinalizeRewards(
                     minimum_epoch_duration_to_finalize_rewards,
                 ),
+                ProgramConfiguration::FeatureActivation {
+                    feature: ProgramFeatureConfiguration::SolanaValidatorDebtWriteOff,
+                    activation_epoch: debt_write_off_feature_activation_epoch,
+                },
             ],
         )
         .await
@@ -115,6 +122,8 @@ async fn test_configure_program() {
     expected_program_config.debt_accountant_key = debt_accountant_key;
     expected_program_config.rewards_accountant_key = rewards_accountant_key;
     expected_program_config.sol_2z_swap_program_id = sol_2z_swap_program_id;
+    expected_program_config.debt_write_off_feature_activation_epoch =
+        debt_write_off_feature_activation_epoch;
 
     let expected_distribution_params = &mut expected_program_config.distribution_parameters;
     expected_distribution_params.calculation_grace_period_minutes =

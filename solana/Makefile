@@ -57,3 +57,8 @@ lint:
 .PHONY: doc
 doc:
 	cargo doc --all-features --no-deps --document-private-items
+
+.PHONY: write-checksums
+write-checksums:
+	shasum -a 256 artifacts-mainnet-beta/*.so > programs/sha256sums_mainnet_beta.txt
+	shasum -a 256 artifacts-development/*.so > programs/sha256sums_development.txt

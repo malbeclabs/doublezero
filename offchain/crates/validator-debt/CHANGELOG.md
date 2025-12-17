@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- fix(validator-debt): track eligibility by vote account instead of identity ([#230](https://github.com/doublezerofoundation/doublezero-offchain/pull/230))
 - add debt write-off logic ([#225](https://github.com/doublezerofoundation/doublezero-offchain/pull/225))
 - replace old client-tools log macros with `tracing` ([#226](https://github.com/doublezerofoundation/doublezero-offchain/pull/226))
 - add overrides flat file to exclude validators from debt collection ([216](https://github.com/doublezerofoundation/doublezero-offchain/pull/216))

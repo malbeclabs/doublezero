@@ -58,6 +58,15 @@ impl ExportValidatorsCommand {
         let output_path =
             output.unwrap_or_else(|| PathBuf::from(format!("validators_{}.csv", epoch)));
 
+        // Sort by identity_count (desc) to surface rotated validators first,
+        // then by vote_account_pubkey to group them together
+        let mut validator_keys = validator_keys;
+        validator_keys.sort_by(|a, b| {
+            b.identity_count
+                .cmp(&a.identity_count)
+                .then_with(|| a.vote_account_pubkey.cmp(&b.vote_account_pubkey))
+        });
+
         // Write to CSV
         println!("Writing to {}...", output_path.display());
         let mut writer = csv::WriterBuilder::new().from_path(&output_path)?;

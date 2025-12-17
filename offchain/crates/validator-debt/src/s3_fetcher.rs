@@ -21,7 +21,12 @@
 //! - `VALIDATOR_DEBT_S3_MAX_CONSECUTIVE_FAILURES`: Max consecutive failures before stopping (default: 12)
 //! - `VALIDATOR_DEBT_S3_ENDPOINT`: Custom S3 endpoint for S3-compatible services (optional)
 
-use std::{collections::HashMap, env, fs::File as StdFile, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    env,
+    fs::File as StdFile,
+    sync::Arc,
+};
 
 use anyhow::{Context, Result};
 use arrow::{
@@ -47,10 +52,31 @@ const MAINNET_THRESHOLD: &str = "2025-09-12T21:00:00Z";
 /// Maximum number of concurrent S3 downloads
 const MAX_CONCURRENT_DOWNLOADS: usize = 10;
 
-/// Validator identity pubkey
+/// Vote account key -> Number of hours recorded
+type VoteAccountHours = HashMap<String, usize>;
+
+/// Vote account key -> Set of validator pubkeys
+type VoteAccountIdentities = HashMap<String, HashSet<String>>;
+
+/// Validator identity pubkey with associated vote account
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 pub struct ValidatorKey {
+    /// The validator's identity pubkey (NodeID)
     pub pubkey: String,
+    /// The validator's vote account pubkey (stable identifier)
+    pub vote_account_pubkey: String,
+    /// Number of identity pubkeys used by this vote account (>1 indicates rotation)
+    pub identity_count: usize,
+}
+
+impl ValidatorKey {
+    pub fn new(pubkey: String, vote_account_pubkey: String, identity_count: usize) -> Self {
+        Self {
+            pubkey,
+            vote_account_pubkey,
+            identity_count,
+        }
+    }
 }
 
 /// Network type for dataset selection
@@ -194,7 +220,10 @@ pub async fn fetch_validator_pubkeys(
     }
 
     // Collect results as they complete
-    let mut all_validators: HashMap<String, usize> = HashMap::new();
+    // Count hours by vote_account_pubkey (not identity_pubkey) to prevent rotation
+    let mut vote_account_hours = VoteAccountHours::new();
+    // Track all identity_pubkeys associated with each vote_account_pubkey
+    let mut vote_account_identities = VoteAccountIdentities::new();
     let mut processed_count = 0;
     let mut failed_count = 0;
     let total_hours = tasks.len();
@@ -205,18 +234,24 @@ pub async fn fetch_validator_pubkeys(
                 processed_count += 1;
                 let count = validators.len();
 
-                // Count appearances for each validator
+                // Count appearances by vote_account_pubkey and track all identities
                 for validator in validators {
-                    *all_validators.entry(validator.pubkey).or_insert(0) += 1;
+                    *vote_account_hours
+                        .entry(validator.vote_account_pubkey.clone())
+                        .or_insert(0) += 1;
+                    vote_account_identities
+                        .entry(validator.vote_account_pubkey)
+                        .or_default()
+                        .insert(validator.pubkey);
                 }
 
                 info!(
-                    "Hour {} [{}/{}]: Found {} validators (total unique: {})",
+                    "Hour {} [{}/{}]: Found {} validators (total unique vote accounts: {})",
                     timestamp.format("%Y-%m-%d %H:00"),
                     processed_count,
                     total_hours,
                     count,
-                    all_validators.len()
+                    vote_account_hours.len()
                 );
             }
             Ok((timestamp, Err(e))) => {
@@ -251,20 +286,43 @@ pub async fn fetch_validator_pubkeys(
         }
     }
 
-    // Apply 12-hour connection rule: keep only validators with >12 appearances
-    let qualified_validators: Vec<ValidatorKey> = all_validators
-        .into_iter()
-        .filter_map(|(identity, count)| {
-            if count > 12 {
-                Some(ValidatorKey { pubkey: identity })
-            } else {
-                None
+    // Log validators with multiple NodeIDs (rotation detection)
+    for (vote_account, identities) in &vote_account_identities {
+        if identities.len() > 1 {
+            info!(
+                "Vote account {} used {} NodeIDs: {:?}",
+                vote_account,
+                identities.len(),
+                identities
+            );
+        }
+    }
+
+    // Apply 12-hour connection rule by vote_account_pubkey
+    // When a vote_account qualifies, return ALL associated identity_pubkeys
+    let mut qualified_validators: Vec<ValidatorKey> = Vec::new();
+    let mut qualified_vote_accounts = 0;
+
+    for (vote_account, hours) in vote_account_hours {
+        if hours > 12 {
+            qualified_vote_accounts += 1;
+            // Get all identity_pubkeys for this qualifying vote_account
+            if let Some(identities) = vote_account_identities.remove(&vote_account) {
+                let identity_count = identities.len();
+                for identity in identities {
+                    qualified_validators.push(ValidatorKey::new(
+                        identity,
+                        vote_account.clone(),
+                        identity_count,
+                    ));
+                }
             }
-        })
-        .collect();
+        }
+    }
 
     info!(
-        "Applied 12-hour rule: {} validators qualified (appeared in >12 hourly snapshots)",
+        "Applied 12-hour rule: {} vote accounts qualified, {} identity pubkeys returned",
+        qualified_vote_accounts,
         qualified_validators.len()
     );
 
@@ -375,8 +433,8 @@ async fn process_hourly_data(
         devices_batches,
     )?;
 
-    // Extract validator keys
-    extract_validator_keys(merged)
+    // Extract validator identities (with vote account)
+    extract_validator_identities(merged)
 }
 
 /// Downloads a Parquet file from S3 and parses it with Arrow
@@ -467,7 +525,9 @@ fn merge_hourly_datasets(
     );
 
     // Perform manual joins
-    let mut results = Vec::new();
+    // Store (identity_pubkey, vote_account_pubkey) pairs
+    let mut identity_results: Vec<String> = Vec::new();
+    let mut vote_account_results: Vec<String> = Vec::new();
 
     for (identity_pubkey, gossip_row) in &gossip_map {
         // Join with validators on identity_pubkey
@@ -482,6 +542,19 @@ fn merge_hourly_datasets(
                 continue;
             }
 
+            // Extract vote_account_pubkey from validator row
+            let vote_account_pubkey = match validator_row.get("vote_account_pubkey") {
+                Some(v) => v.clone(),
+                None => {
+                    // Skip validators without vote_account_pubkey (should not happen)
+                    warn!(
+                        "Validator {} missing vote_account_pubkey, skipping",
+                        identity_pubkey
+                    );
+                    continue;
+                }
+            };
+
             // Join with users on ip_address -> client_ip
             if let Some(ip_address) = get_string_field(gossip_row, "ip_address")
                 && let Some(user_row) = users_map.get(ip_address)
@@ -490,22 +563,28 @@ fn merge_hourly_datasets(
                 if let Some(device_pubkey) = get_string_field(user_row, "device_pubkey")
                     && devices_map.contains_key(device_pubkey)
                 {
-                    // All joins succeeded, keep this identity_pubkey
-                    results.push(identity_pubkey.clone());
+                    // All joins succeeded, keep both identity and vote account
+                    identity_results.push(identity_pubkey.clone());
+                    vote_account_results.push(vote_account_pubkey);
                 }
             }
         }
     }
 
-    debug!("After merging and filtering: {} validators", results.len());
+    debug!(
+        "After merging and filtering: {} validators",
+        identity_results.len()
+    );
 
-    // Convert results to RecordBatch format (just identity_pubkey column)
-    let identity_array = Arc::new(StringArray::from(results));
+    // Convert results to RecordBatch format with both columns
+    let identity_array = Arc::new(StringArray::from(identity_results));
+    let vote_account_array = Arc::new(StringArray::from(vote_account_results));
     let schema = Arc::new(arrow::datatypes::Schema::new(vec![
         arrow::datatypes::Field::new("identity_pubkey", DataType::Utf8, false),
+        arrow::datatypes::Field::new("vote_account_pubkey", DataType::Utf8, false),
     ]));
 
-    let batch = RecordBatch::try_new(schema, vec![identity_array])?;
+    let batch = RecordBatch::try_new(schema, vec![identity_array, vote_account_array])?;
     Ok(vec![batch])
 }
 
@@ -585,8 +664,8 @@ fn get_column_value_as_string(col: &Arc<dyn Array>, row_idx: usize) -> Option<St
     }
 }
 
-/// Extracts validator keys from merged record batches
-fn extract_validator_keys(batches: Vec<RecordBatch>) -> Result<Vec<ValidatorKey>> {
+/// Extracts validator identities (identity + vote account) from merged record batches
+fn extract_validator_identities(batches: Vec<RecordBatch>) -> Result<Vec<ValidatorKey>> {
     let mut validators = Vec::new();
 
     for batch in batches {
@@ -594,16 +673,27 @@ fn extract_validator_keys(batches: Vec<RecordBatch>) -> Result<Vec<ValidatorKey>
             .column_by_name("identity_pubkey")
             .context("Missing identity_pubkey column")?;
 
+        let vote_account_col = batch
+            .column_by_name("vote_account_pubkey")
+            .context("Missing vote_account_pubkey column")?;
+
         let identity_array = identity_col
             .as_any()
             .downcast_ref::<StringArray>()
             .context("identity_pubkey is not a string array")?;
 
+        let vote_account_array = vote_account_col
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .context("vote_account_pubkey is not a string array")?;
+
         for i in 0..batch.num_rows() {
-            if !identity_array.is_null(i) {
-                validators.push(ValidatorKey {
-                    pubkey: identity_array.value(i).to_string(),
-                });
+            if !identity_array.is_null(i) && !vote_account_array.is_null(i) {
+                validators.push(ValidatorKey::new(
+                    identity_array.value(i).to_string(),
+                    vote_account_array.value(i).to_string(),
+                    0,
+                ));
             }
         }
     }

@@ -8,3 +8,4 @@ node_modules
 .tmp
 .DS_Store
 test-ledger/
+.venv/

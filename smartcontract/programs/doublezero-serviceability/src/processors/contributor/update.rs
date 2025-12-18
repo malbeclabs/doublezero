@@ -66,7 +66,7 @@ pub fn process_update_contributor(
         "PDA Account is not writable"
     );
 
-    let mut contributor: Contributor = Contributor::try_from(contributor_account)?;
+    let mut contributor = Contributor::try_from(contributor_account)?;
     let globalstate = globalstate_get(globalstate_account)?;
 
     let only_ops_manager_update =

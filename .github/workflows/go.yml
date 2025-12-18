@@ -14,6 +14,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - run: sudo apt install -y libpcap-dev build-essential
       - run: make go-build
   go-lint:
     runs-on: ubuntu-latest

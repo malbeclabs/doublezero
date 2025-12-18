@@ -9,7 +9,9 @@ package enricher
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"sync"
@@ -139,10 +141,16 @@ func (e *Enricher) Run(ctx context.Context) error {
 		default:
 			samples, err := e.flowConsumer.ConsumeFlowRecords(ctx)
 			if err != nil {
+				// EOF signals the consumer has no more data (e.g., pcap exhausted)
+				if errors.Is(err, io.EOF) {
+					e.logger.Info("no more records to consume")
+					return nil
+				}
 				e.logger.Error("error consuming flow records", "error", err)
 				continue
 			}
 			if len(samples) == 0 {
+				e.logger.Info("no records to enrich")
 				continue
 			}
 

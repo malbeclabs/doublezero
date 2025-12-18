@@ -10,6 +10,7 @@ import (
 
 	"time"
 
+	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
@@ -174,12 +175,74 @@ func TestFlowEnrichment(t *testing.T) {
 		os.Exit(1)
 	}
 
+	// Mock serviceability data with two users
+	// User 1: 137.174.145.144 on device "test-device-1" in location "TEST-LOC1" and exchange "tst1"
+	// User 2: 137.174.145.145 on device "test-device-2" in location "TEST-LOC2" and exchange "tst2"
+	device1PK := [32]byte{1}
+	device2PK := [32]byte{2}
+	location1PK := [32]byte{3}
+	location2PK := [32]byte{4}
+	exchange1PK := [32]byte{5}
+	exchange2PK := [32]byte{6}
+
+	mockServiceability := &MockServiceabilityFetcher{}
+	mockServiceability.SetProgramData(&serviceability.ProgramData{
+		Users: []serviceability.User{
+			{
+				DzIp:         [4]uint8{137, 174, 145, 144},
+				DevicePubKey: device1PK,
+			},
+			{
+				DzIp:         [4]uint8{137, 174, 145, 145},
+				DevicePubKey: device2PK,
+			},
+		},
+		Devices: []serviceability.Device{
+			{
+				PubKey:         device1PK,
+				Code:           "test-device-1",
+				LocationPubKey: location1PK,
+				ExchangePubKey: exchange1PK,
+			},
+			{
+				PubKey:         device2PK,
+				Code:           "test-device-2",
+				LocationPubKey: location2PK,
+				ExchangePubKey: exchange2PK,
+			},
+		},
+		Locations: []serviceability.Location{
+			{
+				PubKey: location1PK,
+				Code:   "TEST-LOC1",
+				Name:   "Test Location 1",
+			},
+			{
+				PubKey: location2PK,
+				Code:   "TEST-LOC2",
+				Name:   "Test Location 2",
+			},
+		},
+		Exchanges: []serviceability.Exchange{
+			{
+				PubKey: exchange1PK,
+				Code:   "tst1",
+				Name:   "Test Exchange 1",
+			},
+			{
+				PubKey: exchange2PK,
+				Code:   "tst2",
+				Name:   "Test Exchange 2",
+			},
+		},
+	})
+
 	enricher := NewEnricher(
 		WithFlowConsumer(flowConsumer),
 		WithClickhouseWriter(chWriter),
 		WithLogger(logger),
 		WithEnricherMetrics(NewEnricherMetrics(reg)),
-		WithServiceabilityFetcher(&MockServiceabilityFetcher{}),
+		WithServiceabilityFetcher(mockServiceability),
 	)
 	go func() {
 		if err := enricher.Run(ctx); err != nil {

@@ -35,6 +35,7 @@ All notable changes to this project will be documented in this file.
   - Add metrics to flow enricher
   - Add serviceability data fetching to flow enricher
   - Add flow-ingest service
+  - Add annotation of flow records with serviceability data
 
 ## [v0.8.0](https://github.com/malbeclabs/doublezero/compare/client/v0.7.1...client/v0.8.0) – 2025-12-02
 

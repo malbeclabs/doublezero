@@ -1,6 +1,6 @@
 # **Summary**
 
-**Status: Active**
+**Status: Implemented**
 
 This document specifies the architecture for the `rewards-calculator`, a stateless off-chain service responsible for calculating contributor reward proportions and the epoch-specific burn rate for the DoubleZero network. The design prioritizes correctness, verifiability, and a clean separation of concerns between off-chain computation and on-chain settlement.
 

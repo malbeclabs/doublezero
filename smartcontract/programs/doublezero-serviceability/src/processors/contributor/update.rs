@@ -65,14 +65,25 @@ pub fn process_update_contributor(
         contributor_account.is_writable,
         "PDA Account is not writable"
     );
-    // Parse the global state account & check if the payer is in the allowlist
+
+    let mut contributor: Contributor = Contributor::try_from(contributor_account)?;
     let globalstate = globalstate_get(globalstate_account)?;
-    if !globalstate.foundation_allowlist.contains(payer_account.key) {
+
+    let only_ops_manager_update =
+        value.code.is_none() && value.owner.is_none() && value.ops_manager_pk.is_some();
+
+    // If only ops_manager_pk is being updated, allow contributor owner or foundation allowlist
+    // Otherwise, only allow foundation allowlist
+    let is_authorized = if only_ops_manager_update {
+        globalstate.foundation_allowlist.contains(payer_account.key)
+            || contributor.owner == *payer_account.key
+    } else {
+        globalstate.foundation_allowlist.contains(payer_account.key)
+    };
+
+    if !is_authorized {
         return Err(DoubleZeroError::NotAllowed.into());
     }
-
-    // Parse the contributor account
-    let mut contributor: Contributor = Contributor::try_from(contributor_account)?;
 
     if let Some(ref code) = value.code {
         contributor.code =

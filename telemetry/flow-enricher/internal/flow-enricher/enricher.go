@@ -15,8 +15,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // FlowConsumer defines the minimal interface for consuming flow records.
@@ -114,10 +114,6 @@ func (e *Enricher) Run(ctx context.Context) error {
 	}
 	defer e.flowConsumer.Close()
 
-	if err := e.RegisterAnnotators(ctx); err != nil {
-		return fmt.Errorf("error while initializing annotators: %v", err)
-	}
-
 	// Make sure we have a serviceability dataset before starting enrichment
 	var err error
 	e.logger.Info("fetching initial serviceability data")
@@ -129,6 +125,11 @@ func (e *Enricher) Run(ctx context.Context) error {
 	}
 
 	go e.fetchServiceabilityData(ctx)
+
+	// some annotators depends on serviceability data, so we need to register them after
+	if err := e.RegisterAnnotators(ctx); err != nil {
+		return fmt.Errorf("error while initializing annotators: %v", err)
+	}
 
 	// Let's annotate some flow records
 	for {
@@ -143,6 +144,17 @@ func (e *Enricher) Run(ctx context.Context) error {
 			}
 			if len(samples) == 0 {
 				continue
+			}
+
+			for i := range samples {
+				timer := prometheus.NewTimer(e.metrics.FlowsEnrichmentDuration)
+				for _, annotator := range e.annotators {
+					if err := annotator.Annotate(&samples[i]); err != nil {
+						e.logger.Error("error annotating flow sample", "error", err, "annotator", annotator.String())
+						e.metrics.FlowsEnrichmentErrors.Inc()
+					}
+				}
+				timer.ObserveDuration()
 			}
 
 			if err := e.chWriter.BatchInsert(ctx, samples); err != nil {
@@ -182,8 +194,17 @@ func (e *Enricher) fetchServiceabilityData(ctx context.Context) {
 	}
 }
 
+func (e *Enricher) serviceabilityData() serviceability.ProgramData {
+	e.programDataMutex.Lock()
+	defer e.programDataMutex.Unlock()
+	if e.programData == nil {
+		return serviceability.ProgramData{}
+	}
+	return *e.programData
+}
+
 type Annotator interface {
-	Init(context.Context, clickhouse.Conn) error
+	Init(context.Context, func() serviceability.ProgramData) error
 	Annotate(*FlowSample) error
 	String() string
 }
@@ -192,12 +213,11 @@ type Annotator interface {
 // Annotators must implement the Annotator interface.
 func (e *Enricher) RegisterAnnotators(ctx context.Context) error {
 	e.annotators = []Annotator{
-		// NewIfNameAnnotator(),
+		NewServiceabilityAnnotator(),
 	}
 
 	for _, a := range e.annotators {
-		// TODO: The clickhouse connection is passed here but it's nil.
-		if err := a.Init(ctx, nil); err != nil {
+		if err := a.Init(ctx, e.serviceabilityData); err != nil {
 			return fmt.Errorf("error initializing annotator %s: %v", a.String(), err)
 		}
 	}

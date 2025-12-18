@@ -129,4 +129,10 @@ type FlowSample struct {
 	// Fields above are the default fields sent via Goflow.
 	InputInterface  string `json:"in_ifname"`
 	OutputInterface string `json:"out_ifname"`
+	SrcDeviceCode   string `json:"src_device_code"`
+	DstDeviceCode   string `json:"dst_device_code"`
+	SrcLocation     string `json:"src_location"`
+	DstLocation     string `json:"dst_location"`
+	SrcExchange     string `json:"src_exchange"`
+	DstExchange     string `json:"dst_exchange"`
 }

@@ -16,13 +16,13 @@ import (
 )
 
 func TestNetNS_SingleThreadTransport(t *testing.T) {
-	t.Run("no body", func(t *testing.T) {
+	t.Run("nil DialContext", func(t *testing.T) {
 		tp := &netns.SingleThreadTransport{}
 		req, _ := http.NewRequest("GET", "http://example.com", nil)
 
 		_, err := tp.RoundTrip(req)
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "request body required")
+		require.Contains(t, err.Error(), "DialContext is nil")
 	})
 
 	t.Run("dial error", func(t *testing.T) {
@@ -39,15 +39,39 @@ func TestNetNS_SingleThreadTransport(t *testing.T) {
 		require.Contains(t, err.Error(), "dial failed")
 	})
 
-	t.Run("success", func(t *testing.T) {
+	t.Run("GET without body success", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			require.Equal(t, http.MethodGet, r.Method)
 			_, err := io.Copy(io.Discard, r.Body)
 			require.NoError(t, err)
-			w.WriteHeader(204)
+			w.WriteHeader(http.StatusNoContent)
 		}))
 		defer srv.Close()
 
-		req, _ := http.NewRequest("POST", srv.URL, io.NopCloser(strings.NewReader("hi")))
+		req, _ := http.NewRequest(http.MethodGet, srv.URL, nil)
+
+		tp := &netns.SingleThreadTransport{
+			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				return net.Dial("tcp", addr)
+			},
+		}
+
+		resp, err := tp.RoundTrip(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	})
+
+	t.Run("POST success", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			require.Equal(t, http.MethodPost, r.Method)
+			_, err := io.Copy(io.Discard, r.Body)
+			require.NoError(t, err)
+			w.WriteHeader(http.StatusNoContent)
+		}))
+		defer srv.Close()
+
+		req, _ := http.NewRequest(http.MethodPost, srv.URL, io.NopCloser(strings.NewReader("hi")))
 
 		tp := &netns.SingleThreadTransport{
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
@@ -57,24 +81,29 @@ func TestNetNS_SingleThreadTransport(t *testing.T) {
 		resp, err := tp.RoundTrip(req)
 		require.NoError(t, err)
 		defer resp.Body.Close()
-		require.Equal(t, 204, resp.StatusCode)
+		require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	})
 
 	t.Run("response error", func(t *testing.T) {
-		ln, _ := net.Listen("tcp", "127.0.0.1:0")
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		require.NoError(t, err)
+		defer ln.Close()
+
 		go func() {
-			conn, _ := ln.Accept()
-			_, err := conn.Write([]byte("invalid response"))
+			conn, err := ln.Accept()
+			require.NoError(t, err)
+			_, err = conn.Write([]byte("invalid response"))
 			require.NoError(t, err)
 			conn.Close()
 		}()
+
 		tp := &netns.SingleThreadTransport{
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 				return net.Dial("tcp", ln.Addr().String())
 			},
 		}
-		req, _ := http.NewRequest("POST", "http://fake", io.NopCloser(strings.NewReader("x")))
-		_, err := tp.RoundTrip(req)
+		req, _ := http.NewRequest(http.MethodPost, "http://fake", io.NopCloser(strings.NewReader("x")))
+		_, err = tp.RoundTrip(req)
 		require.Error(t, err)
 	})
 
@@ -82,11 +111,11 @@ func TestNetNS_SingleThreadTransport(t *testing.T) {
 		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			_, err := io.Copy(io.Discard, r.Body)
 			require.NoError(t, err)
-			w.WriteHeader(204)
+			w.WriteHeader(http.StatusNoContent)
 		}))
 		defer srv.Close()
 
-		req, _ := http.NewRequest("POST", srv.URL, io.NopCloser(strings.NewReader("hi")))
+		req, _ := http.NewRequest(http.MethodPost, srv.URL, io.NopCloser(strings.NewReader("hi")))
 
 		tp := &netns.SingleThreadTransport{
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
@@ -100,6 +129,6 @@ func TestNetNS_SingleThreadTransport(t *testing.T) {
 		resp, err := tp.RoundTrip(req)
 		require.NoError(t, err)
 		defer resp.Body.Close()
-		require.Equal(t, 204, resp.StatusCode)
+		require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	})
 }

@@ -1,24 +1,19 @@
 use std::collections::HashSet;
 
-use anyhow::{Context, Result, ensure};
+use anyhow::{Context, Result};
 use clap::{Args, ValueEnum};
 use doublezero_solana_client_tools::{
     account::{record::BorshRecordAccountData, zero_copy::ZeroCopyAccountOwnedData},
-    rpc::{
-        DoubleZeroLedgerConnection, DoubleZeroLedgerEnvironmentOverride, SolanaConnection,
-        SolanaConnectionOptions,
-    },
+    rpc::{DoubleZeroLedgerEnvironmentOverride, SolanaConnection, SolanaConnectionOptions},
 };
 use doublezero_solana_sdk::revenue_distribution::{
-    GENESIS_DZ_EPOCH_MAINNET_BETA,
     state::{Distribution, SolanaValidatorDeposit},
     try_is_processed_leaf,
-    types::DoubleZeroEpoch,
 };
-use doublezero_solana_validator_debt::validator_debt::ComputedSolanaValidatorDebts;
+use doublezero_solana_validator_debt::{
+    rpc::try_fetch_debt_records_and_distributions, validator_debt::ComputedSolanaValidatorDebts,
+};
 use solana_sdk::{native_token::LAMPORTS_PER_SOL, pubkey::Pubkey};
-
-use crate::command::revenue_distribution::try_fetch_program_config;
 
 #[derive(Debug, Clone, PartialEq, Eq, ValueEnum)]
 pub enum ValidatorDebtsViewMode {
@@ -74,54 +69,14 @@ impl ValidatorDebtsCommand {
 
         let solana_connection = SolanaConnection::from(solana_connection_options);
 
-        let (_, config) = try_fetch_program_config(&solana_connection).await?;
-        let last_dz_epoch = config.next_completed_dz_epoch.value().saturating_sub(1);
-
-        // Limit to either the last 100 epochs or the default (first) epoch.
-        let since_dz_epoch = last_dz_epoch
-            .saturating_sub(100)
-            .max(GENESIS_DZ_EPOCH_MAINNET_BETA);
-
-        let distribution_keys = (since_dz_epoch..=last_dz_epoch)
-            .map(|dz_epoch| Distribution::find_address(DoubleZeroEpoch::new(dz_epoch)).0)
-            .collect::<Vec<_>>();
-
-        let distributions = solana_connection
-            .get_multiple_accounts(&distribution_keys)
-            .await?
-            .iter()
-            .flatten()
-            .filter_map(ZeroCopyAccountOwnedData::<Distribution>::from_account)
-            .filter(|distribution| distribution.is_debt_calculation_finalized())
-            .collect::<Vec<_>>();
-
-        let network_env = solana_connection.try_network_environment().await?;
-        let dz_env = dz_env.dz_env.unwrap_or(network_env);
-        let dz_connection = DoubleZeroLedgerConnection::from(dz_env);
-
-        let debt_record_keys = distributions
-            .iter()
-            .map(|distribution| {
-                doublezero_solana_validator_debt::ledger::debt_record_key(
-                    &debt_accountant_key.unwrap_or(config.debt_accountant_key),
-                    distribution.dz_epoch.value(),
-                )
-            })
-            .collect::<Vec<_>>();
-
-        let debt_records = dz_connection
-            .get_multiple_accounts(&debt_record_keys)
-            .await?
-            .iter()
-            .flatten()
-            .filter_map(BorshRecordAccountData::<ComputedSolanaValidatorDebts>::from_account)
-            .collect::<Vec<_>>();
-        ensure!(
-            debt_records.len() == distributions.len(),
-            "Expected {} debt records, but got {}",
-            distributions.len(),
-            debt_records.len()
-        );
+        let (debt_records, distributions) = try_fetch_debt_records_and_distributions(
+            &solana_connection,
+            dz_env.dz_env,
+            debt_accountant_key.as_ref(),
+        )
+        .await?
+        .into_iter()
+        .unzip::<_, _, Vec<_>, Vec<_>>();
 
         match view {
             ValidatorDebtsViewMode::Outstanding => {

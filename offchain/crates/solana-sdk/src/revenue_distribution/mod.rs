@@ -1,4 +1,5 @@
 pub mod compute_unit;
+pub mod fetch;
 
 //
 

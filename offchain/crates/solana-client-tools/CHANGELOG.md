@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- use `unwrap_or_default` for `try_fetch_multiple_accounts` ([#231](https://github.com/doublezerofoundation/doublezero-offchain/pull/231))
 - add instruction batching and better network env handling ([#225](https://github.com/doublezerofoundation/doublezero-offchain/pull/225))
 - remove tracing feature and log submodule ([#226](https://github.com/doublezerofoundation/doublezero-offchain/pull/226))
 - add stdin support for keypair loading ([#217](https://github.com/doublezerofoundation/doublezero-offchain/pull/217))

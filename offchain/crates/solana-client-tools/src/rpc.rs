@@ -1,6 +1,6 @@
 use std::{ops::Deref, str::FromStr};
 
-use anyhow::{Context, Result, bail, ensure};
+use anyhow::{Context, Result, bail};
 use borsh::BorshDeserialize;
 use bytemuck::Pod;
 use clap::{Args, ValueEnum};
@@ -159,12 +159,8 @@ impl SolanaConnection {
         let account_infos = try_fetch_multiple_accounts(&self.0, keys)
             .await?
             .into_iter()
-            .flatten()
+            .map(Option::unwrap_or_default)
             .collect::<Vec<_>>();
-        ensure!(
-            account_infos.len() == keys.len(),
-            "Failed to fetch all accounts"
-        );
 
         Ok(account_infos)
     }

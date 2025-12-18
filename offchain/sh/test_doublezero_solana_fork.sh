@@ -5,7 +5,7 @@ GENESIS_DZ_EPOCH=31
 set -eu
 
 # Wait for Solana fork to start. Only try for 60 seconds.
-for i in {1..30}; do
+for i in {1..60}; do
     if solana cluster-version -u l > /dev/null 2>&1; then
         echo "Solana fork is ready."
         break
@@ -176,6 +176,33 @@ echo
 
 echo "doublezero-solana revenue-distribution fetch distribution -um -e $GENESIS_DZ_EPOCH --view rewards"
 $CLI_BIN revenue-distribution fetch distribution -um -e $GENESIS_DZ_EPOCH --view rewards
+echo
+
+### Pay outstanding debt for a random validator.
+NODE_ID=12i8gndWWWMTRzJBFhnYkobNgZB3XMUUJq75HeUrshrk
+
+echo "doublezero-solana revenue-distribution fetch validator-deposits -ul --node-id $NODE_ID"
+$CLI_BIN revenue-distribution fetch validator-deposits -ul --node-id $NODE_ID
+echo
+
+echo "doublezero-solana revenue-distribution fetch validator-debts -ul --node-id $NODE_ID --dz-env mainnet-beta"
+$CLI_BIN revenue-distribution fetch validator-debts -ul --node-id $NODE_ID --dz-env mainnet-beta
+echo
+
+echo "doublezero-solana revenue-distribution validator-deposit --node-id $NODE_ID -ul --fund-outstanding-debt --dz-env mainnet-beta"
+$CLI_BIN revenue-distribution validator-deposit \
+    --node-id $NODE_ID \
+    -ul \
+    --fund-outstanding-debt \
+    --dz-env mainnet-beta
+echo
+
+echo "doublezero-solana revenue-distribution fetch validator-deposits -ul --node-id $NODE_ID"
+$CLI_BIN revenue-distribution fetch validator-deposits -ul --node-id $NODE_ID
+echo
+
+echo "doublezero-solana revenue-distribution fetch validator-debts -ul --node-id $NODE_ID --dz-env mainnet-beta"
+$CLI_BIN revenue-distribution fetch validator-debts -ul --node-id $NODE_ID --dz-env mainnet-beta
 echo
 
 ### Clean up.

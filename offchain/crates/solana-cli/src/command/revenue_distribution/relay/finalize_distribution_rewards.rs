@@ -5,6 +5,7 @@ use doublezero_solana_client_tools::payer::{SolanaPayerOptions, TransactionOutco
 use doublezero_solana_sdk::{
     revenue_distribution::{
         ID,
+        fetch::try_fetch_config,
         instruction::{
             RevenueDistributionInstructionData, account::FinalizeDistributionRewardsAccounts,
         },
@@ -14,7 +15,7 @@ use doublezero_solana_sdk::{
 };
 use solana_sdk::{compute_budget::ComputeBudgetInstruction, instruction::Instruction};
 
-use crate::command::revenue_distribution::{try_fetch_distribution, try_fetch_program_config};
+use crate::command::revenue_distribution::try_fetch_distribution;
 
 #[derive(Debug, Args, Clone)]
 pub struct FinalizeDistributionRewards {
@@ -51,7 +52,7 @@ impl Schedulable for FinalizeDistributionRewards {
         let dz_epoch = match dz_epoch {
             Some(dz_epoch) => DoubleZeroEpoch::new(*dz_epoch),
             None => {
-                let (_, program_config) = try_fetch_program_config(&wallet.connection).await?;
+                let (_, program_config) = try_fetch_config(&wallet.connection).await?;
                 let deferral_period = program_config
                     .checked_minimum_epoch_duration_to_finalize_rewards()
                     .ok_or(anyhow!(

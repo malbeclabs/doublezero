@@ -11,6 +11,7 @@ use doublezero_solana_sdk::{
     environment_2z_token_mint_key,
     revenue_distribution::{
         ID,
+        fetch::try_fetch_config,
         instruction::{RevenueDistributionInstructionData, account::DistributeRewardsAccounts},
         state::{ContributorRewards, Distribution, ProgramConfig},
         types::{DoubleZeroEpoch, RewardShare, UnitShare32},
@@ -28,8 +29,7 @@ use crate::command::revenue_distribution::{
         finalize_distribution_rewards::FinalizeDistributionRewardsContext,
         sweep_distribution_tokens::SweepDistributionTokensContext,
     },
-    try_distribution_rewards_iter, try_fetch_distribution, try_fetch_program_config,
-    try_fetch_shapley_record,
+    try_distribution_rewards_iter, try_fetch_distribution, try_fetch_shapley_record,
 };
 
 #[derive(Debug, Args, Clone)]
@@ -72,7 +72,7 @@ impl Schedulable for DistributeRewards {
 
         let wallet = Wallet::try_from(solana_payer_options.clone())?;
 
-        let (_, config) = try_fetch_program_config(&wallet.connection).await?;
+        let (_, config) = try_fetch_config(&wallet.connection).await?;
 
         let dz_epoch = match dz_epoch {
             Some(dz_epoch) => DoubleZeroEpoch::new(*dz_epoch),

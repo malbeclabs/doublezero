@@ -1,9 +1,9 @@
 use anyhow::Result;
 use clap::Args;
 use doublezero_solana_client_tools::rpc::{SolanaConnection, SolanaConnectionOptions};
-use doublezero_solana_sdk::revenue_distribution::state::CommunityBurnRateMode;
-
-use crate::command::revenue_distribution::try_fetch_program_config;
+use doublezero_solana_sdk::revenue_distribution::{
+    fetch::try_fetch_config, state::CommunityBurnRateMode,
+};
 
 #[derive(Debug, Args)]
 pub struct ConfigCommand {
@@ -23,14 +23,14 @@ impl ConfigCommand {
         let Self { connection_options } = self;
 
         let connection = SolanaConnection::from(connection_options);
-        let (program_config_key, program_config) = try_fetch_program_config(&connection).await?;
+        let (config_key, config) = try_fetch_config(&connection).await?;
 
-        if program_config.is_paused() {
+        if config.is_paused() {
             println!("⚠️  Warning: Program is paused");
             println!();
         }
 
-        let distribution_parameters = &program_config.distribution_parameters;
+        let distribution_parameters = &config.distribution_parameters;
         let community_burn_rate_params = &distribution_parameters.community_burn_rate_parameters;
         let community_burn_rate_mode = community_burn_rate_params.mode();
         let validator_fee_params = &distribution_parameters.solana_validator_fee_parameters;
@@ -38,37 +38,37 @@ impl ConfigCommand {
         let mut value_rows = vec![
             ConfigTableRow {
                 field: "PDA key",
-                value: program_config_key.to_string(),
+                value: config_key.to_string(),
                 note: Default::default(),
             },
             ConfigTableRow {
                 field: "Administrator",
-                value: program_config.admin_key.to_string(),
+                value: config.admin_key.to_string(),
                 note: Default::default(),
             },
             ConfigTableRow {
                 field: "Debt accountant",
-                value: program_config.debt_accountant_key.to_string(),
+                value: config.debt_accountant_key.to_string(),
                 note: Default::default(),
             },
             ConfigTableRow {
                 field: "Rewards accountant",
-                value: program_config.rewards_accountant_key.to_string(),
+                value: config.rewards_accountant_key.to_string(),
                 note: Default::default(),
             },
             ConfigTableRow {
                 field: "Contributor manager",
-                value: program_config.contributor_manager_key.to_string(),
+                value: config.contributor_manager_key.to_string(),
                 note: Default::default(),
             },
             ConfigTableRow {
                 field: "SOL Conversion program",
-                value: program_config.sol_2z_swap_program_id.to_string(),
+                value: config.sol_2z_swap_program_id.to_string(),
                 note: Default::default(),
             },
             ConfigTableRow {
                 field: "Next distribution",
-                value: program_config.next_completed_dz_epoch.value().to_string(),
+                value: config.next_completed_dz_epoch.value().to_string(),
                 note: "Current DoubleZero Ledger epoch".to_string(),
             },
             ConfigTableRow {
@@ -77,7 +77,7 @@ impl ConfigCommand {
                     "{:?}",
                     std::time::Duration::from_secs(
                         u64::from(
-                            program_config
+                            config
                                 .distribution_parameters
                                 .calculation_grace_period_minutes,
                         ) * 60,
@@ -89,7 +89,7 @@ impl ConfigCommand {
                 field: "Duration to finalize rewards",
                 value: format!(
                     "{} epochs",
-                    program_config
+                    config
                         .distribution_parameters
                         .minimum_epoch_duration_to_finalize_rewards
                 ),
@@ -227,11 +227,11 @@ impl ValidatorFeesCommand {
     pub async fn try_into_execute(self) -> Result<()> {
         let Self { connection_options } = self;
         let connection = SolanaConnection::from(connection_options);
-        let (_, program_config) = try_fetch_program_config(&connection).await?;
+        let (_, config) = try_fetch_config(&connection).await?;
 
         let mut value_rows = Vec::new();
 
-        if let Some(fee_params) = program_config.checked_solana_validator_fee_parameters() {
+        if let Some(fee_params) = config.checked_solana_validator_fee_parameters() {
             if fee_params.base_block_rewards_pct != Default::default() {
                 value_rows.push(ConfigTableRow {
                     field: "Base block rewards fee",

@@ -1,6 +1,16 @@
 use anyhow::{Error, Result, bail, ensure};
 use clap::Args;
-use doublezero_solana_client_tools::rpc::DoubleZeroLedgerConnection;
+use doublezero_solana_client_tools::{
+    account::{record::BorshRecordAccountData, zero_copy::ZeroCopyAccountOwnedData},
+    rpc::{DoubleZeroLedgerConnection, SolanaConnection},
+};
+use doublezero_solana_sdk::{
+    NetworkEnvironment, Pubkey,
+    revenue_distribution::{
+        GENESIS_DZ_EPOCH_MAINNET_BETA, fetch::try_fetch_config, state::Distribution,
+        types::DoubleZeroEpoch,
+    },
+};
 use leaky_bucket::RateLimiter;
 use solana_client::{
     client_error::{ClientError, ClientErrorKind},
@@ -15,7 +25,9 @@ use solana_sdk::commitment_config::CommitmentConfig;
 use solana_transaction_status_client_types::{TransactionDetails, UiTransactionEncoding};
 use url::Url;
 
-use crate::solana_debt_calculator::SolanaDebtCalculator;
+use crate::{
+    solana_debt_calculator::SolanaDebtCalculator, validator_debt::ComputedSolanaValidatorDebts,
+};
 
 #[derive(Debug, Args)]
 pub struct SolanaValidatorDebtConnectionOptions {
@@ -290,4 +302,69 @@ impl JoinedSolanaEpochs {
             Ok(Self::Range(first_solana_epoch..=last_solana_epoch))
         }
     }
+}
+
+pub async fn try_fetch_debt_records_and_distributions(
+    solana_connection: &SolanaConnection,
+    dz_env_override: Option<NetworkEnvironment>,
+    accountant_key: Option<&Pubkey>,
+) -> Result<
+    Vec<(
+        BorshRecordAccountData<ComputedSolanaValidatorDebts>,
+        ZeroCopyAccountOwnedData<Distribution>,
+    )>,
+> {
+    let (_, config) = try_fetch_config(solana_connection).await?;
+    let last_dz_epoch = config
+        .last_completed_epoch()
+        .unwrap_or(DoubleZeroEpoch::new(GENESIS_DZ_EPOCH_MAINNET_BETA))
+        .value();
+
+    // Limit to either the last 100 epochs or the default (first) epoch.
+    let since_dz_epoch = last_dz_epoch
+        .saturating_sub(100)
+        .max(GENESIS_DZ_EPOCH_MAINNET_BETA);
+
+    let distribution_keys = (since_dz_epoch..=last_dz_epoch)
+        .map(|dz_epoch| Distribution::find_address(DoubleZeroEpoch::new(dz_epoch)).0)
+        .collect::<Vec<_>>();
+
+    let distributions = solana_connection
+        .get_multiple_accounts(&distribution_keys)
+        .await?
+        .iter()
+        .flatten()
+        .filter_map(ZeroCopyAccountOwnedData::<Distribution>::from_account)
+        .filter(|distribution| distribution.is_debt_calculation_finalized())
+        .collect::<Vec<_>>();
+
+    let network_env = solana_connection.try_network_environment().await?;
+    let dz_env = dz_env_override.unwrap_or(network_env);
+    let dz_connection = DoubleZeroLedgerConnection::from(dz_env);
+
+    let debt_record_keys = distributions
+        .iter()
+        .map(|distribution| {
+            crate::ledger::debt_record_key(
+                accountant_key.unwrap_or(&config.debt_accountant_key),
+                distribution.dz_epoch.value(),
+            )
+        })
+        .collect::<Vec<_>>();
+
+    let debt_records = dz_connection
+        .get_multiple_accounts(&debt_record_keys)
+        .await?
+        .iter()
+        .flatten()
+        .filter_map(BorshRecordAccountData::<ComputedSolanaValidatorDebts>::from_account)
+        .collect::<Vec<_>>();
+    ensure!(
+        debt_records.len() == distributions.len(),
+        "Expected {} debt records, but got {}",
+        distributions.len(),
+        debt_records.len()
+    );
+
+    Ok(debt_records.into_iter().zip(distributions).collect())
 }

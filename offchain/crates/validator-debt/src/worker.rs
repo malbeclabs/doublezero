@@ -3,12 +3,13 @@ use std::{collections::HashMap, str::FromStr};
 use anyhow::{Context, Result, bail, ensure};
 use doublezero_solana_client_tools::{
     payer::{TransactionOutcome, Wallet},
-    rpc::{DoubleZeroLedgerConnection, NetworkEnvironment, SolanaConnection},
+    rpc::{DoubleZeroLedgerConnection, NetworkEnvironment},
 };
 use doublezero_solana_sdk::{
     environment_2z_token_mint_key,
     revenue_distribution::{
         self, GENESIS_DZ_EPOCH_MAINNET_BETA, ID,
+        fetch::try_fetch_config,
         instruction::{
             RevenueDistributionInstructionData::{self, ConfigureDistributionDebt},
             account::{
@@ -390,7 +391,7 @@ pub async fn pay_solana_validator_debt(
     dz_ledger: DoubleZeroLedgerConnection,
     dz_epoch: u64,
 ) -> Result<DebtCollectionResults> {
-    let (_, config) = try_fetch_program_config(&wallet.connection).await?;
+    let (_, config) = try_fetch_config(&wallet.connection).await?;
 
     let (_, computed_debt) = ledger::try_fetch_debt_record(
         &dz_ledger,
@@ -802,18 +803,6 @@ async fn try_initialize_missing_deposit_accounts(
     }
 
     Ok(())
-}
-
-async fn try_fetch_program_config(
-    connection: &SolanaConnection,
-) -> Result<(Pubkey, Box<ProgramConfig>)> {
-    let (program_config_key, _) = ProgramConfig::find_address();
-
-    let program_config = connection
-        .try_fetch_zero_copy_data::<ProgramConfig>(&program_config_key)
-        .await?;
-
-    Ok((program_config_key, program_config.mucked_data))
 }
 
 // TODO: This method may need a rate limiter for account fetches.

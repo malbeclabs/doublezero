@@ -17,7 +17,7 @@ use doublezero_solana_client_tools::{
 };
 use doublezero_solana_sdk::{
     revenue_distribution::{
-        state::{Distribution, Journal, ProgramConfig, SolanaValidatorDeposit},
+        state::{Distribution, Journal, SolanaValidatorDeposit},
         try_is_processed_leaf,
         types::{DoubleZeroEpoch, RewardShare},
     },
@@ -84,18 +84,6 @@ impl RevenueDistributionSubcommand {
 }
 
 //
-
-async fn try_fetch_program_config(
-    connection: &SolanaConnection,
-) -> Result<(Pubkey, Box<ProgramConfig>)> {
-    let (program_config_key, _) = ProgramConfig::find_address();
-
-    let program_config = connection
-        .try_fetch_zero_copy_data::<ProgramConfig>(&program_config_key)
-        .await
-        .context("Revenue Distribution program not initialized")?;
-    Ok((program_config_key, program_config.mucked_data))
-}
 
 async fn try_fetch_solana_validator_deposit(
     connection: &SolanaConnection,

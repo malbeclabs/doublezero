@@ -12,6 +12,7 @@ use doublezero_solana_client_tools::{
 use doublezero_solana_sdk::{
     DOUBLEZERO_MINT_DECIMALS,
     revenue_distribution::{
+        fetch::try_fetch_config,
         state::{Distribution, SolanaValidatorDeposit},
         types::{DoubleZeroEpoch, UnitShare32},
     },
@@ -26,7 +27,7 @@ use tabled::Tabled;
 use crate::command::revenue_distribution::{
     fetch::{TableOptions, print_table},
     try_distribution_rewards_iter, try_distribution_solana_validator_debt_iter,
-    try_fetch_distribution, try_fetch_program_config, try_fetch_shapley_record,
+    try_fetch_distribution, try_fetch_shapley_record,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, ValueEnum)]
@@ -106,7 +107,7 @@ impl DistributionCommand {
         let dz_env = dz_env.dz_env.unwrap_or(network_env);
         let dz_connection = DoubleZeroLedgerConnection::from(dz_env);
 
-        let (_, config) = try_fetch_program_config(&solana_connection).await?;
+        let (_, config) = try_fetch_config(&solana_connection).await?;
 
         let epoch = match dz_epoch {
             Some(epoch) => DoubleZeroEpoch::new(epoch),

@@ -5,7 +5,7 @@ MAINNET_BETA_DEBT_ACCOUNTANT_KEY=acLisxTpNkoctPZoqssyo58pcdnHzJyRFhod7Wxkz5a
 set -eu
 
 # Wait for Solana fork to start. Only try for 60 seconds.
-for i in {1..30}; do
+for i in {1..60}; do
     if solana cluster-version -u l > /dev/null 2>&1; then
         echo "Solana fork is ready."
         break

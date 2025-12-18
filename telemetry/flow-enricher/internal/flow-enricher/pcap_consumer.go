@@ -8,7 +8,7 @@ import (
 
 	"github.com/gopacket/gopacket"
 	"github.com/gopacket/gopacket/layers"
-	"github.com/gopacket/gopacket/pcap"
+	"github.com/gopacket/gopacket/pcapgo"
 	flow "github.com/malbeclabs/doublezero/telemetry/proto/flow/gen/pb-go"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -40,11 +40,10 @@ func (p *PcapFlowConsumer) ConsumeFlowRecords(ctx context.Context) ([]FlowSample
 	}
 	defer f.Close()
 
-	handle, err := pcap.OpenOfflineFile(f)
+	handle, err := pcapgo.NewReader(f)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse pcap file: %w", err)
 	}
-	defer handle.Close()
 
 	var allSamples []FlowSample
 	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())

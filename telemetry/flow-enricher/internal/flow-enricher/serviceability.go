@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"net/netip"
+	"sync"
 	"time"
 
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
@@ -17,6 +18,7 @@ type ServiceabilityAnnotator struct {
 	users          map[netip.Addr]serviceability.User   // keyed by DzIp
 	locations      map[[32]byte]serviceability.Location // keyed by PubKey
 	exchanges      map[[32]byte]serviceability.Exchange // keyed by PubKey
+	mu             sync.RWMutex
 }
 
 func NewServiceabilityAnnotator() *ServiceabilityAnnotator {
@@ -56,6 +58,9 @@ func (s *ServiceabilityAnnotator) lookupByIP(ip net.IP) (deviceCode, locationCod
 		return
 	}
 
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	user, found := s.users[addr]
 	if !found {
 		return
@@ -83,11 +88,19 @@ func (s *ServiceabilityAnnotator) String() string {
 }
 
 func (s *ServiceabilityAnnotator) updateServiceabilityCache() {
-	s.programData = s.getProgramData()
-	s.users = BuildUserMap(&s.programData)
-	s.devices = BuildDeviceMap(&s.programData)
-	s.locations = BuildLocationMap(&s.programData)
-	s.exchanges = BuildExchangeMap(&s.programData)
+	programData := s.getProgramData()
+	users := BuildUserMap(&programData)
+	devices := BuildDeviceMap(&programData)
+	locations := BuildLocationMap(&programData)
+	exchanges := BuildExchangeMap(&programData)
+
+	s.mu.Lock()
+	s.programData = programData
+	s.users = users
+	s.devices = devices
+	s.locations = locations
+	s.exchanges = exchanges
+	s.mu.Unlock()
 }
 
 // BuildUserMap creates a map of serviceability.User keyed by their DzIp address.

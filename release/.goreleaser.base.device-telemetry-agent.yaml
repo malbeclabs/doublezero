@@ -78,5 +78,5 @@ git:
 nightly:
   publish_release: true
   keep_single_release: true
-  version_template: '{{ incpatch .Version }}~git{{ .Env.BUILD_DATE }}.{{ .ShortCommit }}'
+  version_template: '{{ incpatch .Version }}git{{ .Env.BUILD_DATE }}.{{ .ShortCommit }}'
   tag_name: 'device-telemetry-agent/daily'

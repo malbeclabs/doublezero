@@ -2,6 +2,7 @@ package enricher
 
 import (
 	"bytes"
+	"net"
 	"strconv"
 
 	"github.com/gopacket/gopacket"
@@ -29,6 +30,7 @@ func DecodeSFlow(sflowSample *flow.FlowSample) ([]FlowSample, error) {
 			sample.OutputIfIndex = int(flowSample.Output)
 			sample.SamplingRate = int(flowSample.SamplingRate)
 			sample.Packets = 1
+			sample.SamplerAddress = net.IP(packet.AgentIP)
 		case sflow.ExpandedFlowSample:
 			records = flowSample.Records
 		}

@@ -9,7 +9,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/gopacket/gopacket"
 	"github.com/gopacket/gopacket/layers"
-	"github.com/gopacket/gopacket/pcap"
+	"github.com/gopacket/gopacket/pcapgo"
 	flow "github.com/malbeclabs/doublezero/telemetry/proto/flow/gen/pb-go"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -21,11 +21,10 @@ func readPcap(t *testing.T, file string) []byte {
 		t.Fatalf("failed to open pcap file: %v", err)
 	}
 	defer f.Close()
-	handle, err := pcap.OpenOfflineFile(f)
+	handle, err := pcapgo.NewReader(f)
 	if err != nil {
 		t.Fatalf("failed to open pcap file: %v", err)
 	}
-	defer handle.Close()
 
 	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
 	for packet := range packetSource.Packets() {
@@ -62,6 +61,7 @@ func TestDecodeSFlow(t *testing.T) {
 					Bytes:          1428,
 					Packets:        1,
 					SamplingRate:   1024,
+					SamplerAddress: net.ParseIP("137.174.145.144"),
 					InputIfIndex:   8001063,
 					OutputIfIndex:  8001134,
 					TimeReceivedNs: time.Unix(1625243456, 0),
@@ -81,6 +81,7 @@ func TestDecodeSFlow(t *testing.T) {
 					Bytes:          1428,
 					Packets:        1,
 					SamplingRate:   1024,
+					SamplerAddress: net.ParseIP("137.174.145.144"),
 					InputIfIndex:   8001063,
 					OutputIfIndex:  8001134,
 					TimeReceivedNs: time.Unix(1625243456, 0),
@@ -108,6 +109,7 @@ func TestDecodeSFlow(t *testing.T) {
 					Bytes:          1428,
 					Packets:        1,
 					SamplingRate:   1024,
+					SamplerAddress: net.ParseIP("137.174.145.144"),
 					InputIfIndex:   8001134,
 					OutputIfIndex:  8001063,
 					TimeReceivedNs: time.Unix(1625243456, 0),
@@ -129,6 +131,7 @@ func TestDecodeSFlow(t *testing.T) {
 					Bytes:          1428,
 					Packets:        1,
 					SamplingRate:   1024,
+					SamplerAddress: net.ParseIP("137.174.145.144"),
 					InputIfIndex:   8001134,
 					OutputIfIndex:  8001063,
 					TimeReceivedNs: time.Unix(1625243456, 0),

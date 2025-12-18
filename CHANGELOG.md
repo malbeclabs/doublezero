@@ -39,6 +39,7 @@ All notable changes to this project will be documented in this file.
   - Add serviceability data fetching to flow enricher
   - Add flow-ingest service
   - Add annotation of flow records with serviceability data
+  - Add pcap input and json ouput to flow enricher
 - CI
   - Cancel existing e2e test runs on the push of new commits
 - RFCs

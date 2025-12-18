@@ -71,7 +71,8 @@ solana-sdk = "2"
 solana-system-interface = "1"
 solana-transaction-status-client-types = "2"
 spl-associated-token-account-interface = "1"
-spl-token = { version = "8", features = ["no-entrypoint"] }
+spl-memo-interface = "1"
+spl-token-interface = "1"
 strum = { version = "0.27", features = ["derive"] }
 svm-hash = { version = "0.1", features = ["bytemuck", "borsh"] }
 tabled = { version = "0.20", features = ["std", "derive"] }

@@ -8,7 +8,7 @@ use doublezero_solana_client_tools::{
     rpc::{DoubleZeroLedgerConnection, DoubleZeroLedgerEnvironmentOverride},
 };
 use doublezero_solana_sdk::{
-    environment_2z_token_mint_key,
+    build_memo_instruction, environment_2z_token_mint_key,
     revenue_distribution::{
         ID,
         fetch::try_fetch_config,
@@ -31,6 +31,8 @@ use crate::command::revenue_distribution::{
     },
     try_distribution_rewards_iter, try_fetch_distribution, try_fetch_shapley_record,
 };
+
+const RELAY_MEMO_CU: u32 = 5_000;
 
 #[derive(Debug, Args, Clone)]
 pub struct DistributeRewards {
@@ -175,6 +177,10 @@ async fn try_prepare_distribution_rewards(
         return Ok(distribution);
     }
 
+    // Add simple memo to indicate that distributing rewards was relayed.
+    instructions.push(build_memo_instruction(b"Relay"));
+    compute_unit_limit += RELAY_MEMO_CU;
+
     instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(
         compute_unit_limit,
     ));
@@ -280,7 +286,7 @@ async fn try_distribute_contributor_rewards(
                 recipient_key,
                 dz_mint_key,
                 &spl_associated_token_account_interface::program::ID,
-                &spl_token::id(),
+                &spl_token_interface::ID,
             )
         })
         .unzip::<_, _, Vec<_>, Vec<_>>();
@@ -306,7 +312,7 @@ async fn try_distribute_contributor_rewards(
                 &wallet_key,
                 recipient_key,
                 dz_mint_key,
-                &spl_token::id(),
+                &spl_token_interface::ID,
             );
 
             let compute_unit_limit = CREATE_ATA_CU_BASE + Wallet::compute_units_for_bump_seed(bump);
@@ -321,9 +327,13 @@ async fn try_distribute_contributor_rewards(
 
     instructions.push(distribute_rewards_ix);
 
+    // Add simple memo to indicate that distributing rewards was relayed.
+    instructions.push(build_memo_instruction(b"Relay"));
+
     let compute_unit_limit = DISTRIBUTE_REWARDS_CU_BASE
         + recipient_keys.len() as u32 * PER_RECIPIENT_CU
-        + create_ata_compute_units.iter().sum::<u32>();
+        + create_ata_compute_units.iter().sum::<u32>()
+        + RELAY_MEMO_CU;
 
     instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(
         compute_unit_limit,

@@ -15,7 +15,7 @@ serde = { optional = true, workspace = true }
 solana-instruction.workspace = true
 solana-pubkey.workspace = true
 solana-system-interface.workspace = true
-spl-token.workspace = true
+spl-token-interface.workspace = true
 
 [features]
 serde = ["dep:serde"]

@@ -18,4 +18,5 @@ doublezero-revenue-distribution.workspace = true
 doublezero-sol-conversion-interface.workspace = true
 doublezero-solana-client-tools.workspace = true
 solana-sdk.workspace = true
+spl-memo-interface.workspace = true
 svm-hash.workspace = true

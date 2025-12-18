@@ -21,7 +21,7 @@ serde_json.workspace = true
 solana-account-decoder-client-types.workspace = true
 solana-client.workspace = true
 solana-sdk.workspace = true
-spl-token.workspace = true
+spl-token-interface.workspace = true
 tokio.workspace = true
 
 [[bin]]

@@ -7,9 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.0.1](https://github.com/doublezerofoundation/doublezero-offchain/compare/doublezero-sol-conversion-interface/v0.0.0...doublezero-sol-conversion-interface/v0.0.1) - 2025-10-21
+- replace `spl-token` with `spl-token-interface` ([#232](https://github.com/doublezerofoundation/doublezero-offchain/pull/232))
 
-### Other
+## [0.0.1](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-sol-conversion-interface/v0.0.1) - 2025-10-21
 
 - add SOL conversion commands ([#159](https://github.com/doublezerofoundation/doublezero-offchain/pull/159))
 - add god mode ([#146](https://github.com/doublezerofoundation/doublezero-offchain/pull/146))

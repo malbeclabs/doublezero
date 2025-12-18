@@ -24,6 +24,7 @@ use serde::{Deserialize, Serialize};
 use solana_account_decoder_client_types::UiAccountEncoding;
 use solana_client::rpc_config::{RpcAccountInfoConfig, RpcProgramAccountsConfig};
 use solana_sdk::{account::Account, program_pack::Pack, pubkey::Pubkey, signer::Signer};
+use spl_token_interface::state::Mint;
 
 const ACCOUNTS_PATH: &str = "forked-accounts";
 const TMP_ACCOUNTS_PATH: &str = "forked-accounts.tmp";
@@ -304,10 +305,10 @@ async fn try_fetch_and_write_accounts(
         let mut mint_wrapper = serde_json::from_str::<WrittenAccount>(&mint_json)?;
         let mut mint_data = BASE64.decode(&mint_wrapper.account.data.0)?;
 
-        let mut mint = spl_token::state::Mint::unpack(&mint_data)?;
+        let mut mint = Mint::unpack(&mint_data)?;
         mint.mint_authority = upgrade_authority_key.into();
 
-        spl_token::state::Mint::pack(mint, &mut mint_data)?;
+        Mint::pack(mint, &mut mint_data)?;
         mint_wrapper.account.data.0 = BASE64.encode(&mint_data);
         try_write_wrapped_account_to_file(&token_2z_mint_key, &mint_wrapper, TMP_ACCOUNTS_PATH)?;
     }

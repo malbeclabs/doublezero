@@ -6,7 +6,7 @@ use doublezero_solana_client_tools::{
     rpc::{DoubleZeroLedgerEnvironmentOverride, SolanaConnection},
 };
 use doublezero_solana_sdk::{
-    NetworkEnvironment,
+    NetworkEnvironment, build_memo_instruction,
     revenue_distribution::{
         ID,
         instruction::{
@@ -92,13 +92,16 @@ impl ValidatorDepositCommand {
 
         // If specified, fund any outstanding debt. Otherwise, use the specified
         // fund amount.
-        let fund_lamports = if should_fund_outstanding_debt {
+        let (fund_lamports, memo_ix_and_compute_units) = if should_fund_outstanding_debt {
             ensure!(
                 fund_amount_str.is_none(),
                 "Cannot use --fund and --fund-outstanding-debt together"
             );
 
-            let outstanding_debt_amount = try_compute_outstanding_debt(
+            let OutstandingDebt {
+                amount: outstanding_debt_amount,
+                last_solana_epoch,
+            } = try_compute_outstanding_debt(
                 &wallet.connection,
                 &node_id,
                 deposit_balance,
@@ -112,14 +115,22 @@ impl ValidatorDepositCommand {
                 return Ok(());
             }
 
-            outstanding_debt_amount
+            let memo_ix = build_memo_instruction(
+                format!("Funded through Solana epoch {last_solana_epoch}").as_bytes(),
+            );
+
+            (outstanding_debt_amount, Some((memo_ix, 15_000)))
         }
         // Parse fund amount from SOL string (representing 9 decimal places at
         // most) to lamports.
         else if let Some(fund_str) = fund_amount_str {
-            crate::utils::parse_sol_amount_to_lamports(fund_str)?
+            let fund_lamports = crate::utils::parse_sol_amount_to_lamports(fund_str)?;
+
+            let memo_ix = build_memo_instruction(b"Funded");
+
+            (fund_lamports, Some((memo_ix, 5_000)))
         } else {
-            0
+            Default::default()
         };
 
         // Ensure that we initialize if it does not exist and we are funding.
@@ -207,6 +218,11 @@ impl ValidatorDepositCommand {
             "Please specify `--initialize`, `--fund-outstanding-debt` or `--fund`"
         );
 
+        if let Some((memo_ix, memo_compute_units)) = memo_ix_and_compute_units {
+            instructions.push(memo_ix);
+            compute_unit_limit += memo_compute_units;
+        }
+
         instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(
             compute_unit_limit,
         ));
@@ -252,13 +268,18 @@ impl ValidatorDepositCommand {
     }
 }
 
+struct OutstandingDebt {
+    amount: u64,
+    last_solana_epoch: u64,
+}
+
 async fn try_compute_outstanding_debt(
     solana_connection: &SolanaConnection,
     node_id: &Pubkey,
     deposit_balance: u64,
     dz_env_override: Option<NetworkEnvironment>,
     debt_accountant_key: Option<&Pubkey>,
-) -> Result<u64> {
+) -> Result<OutstandingDebt> {
     let debt_records_and_distributions = try_fetch_debt_records_and_distributions(
         solana_connection,
         dz_env_override,
@@ -267,6 +288,7 @@ async fn try_compute_outstanding_debt(
     .await?;
 
     let mut total_debt = 0;
+    let mut last_solana_epoch = 0;
 
     for (debt_record, distribution) in debt_records_and_distributions {
         if debt_record.debts.is_empty() {
@@ -280,17 +302,20 @@ async fn try_compute_outstanding_debt(
             .position(|debt| &debt.node_id == node_id);
 
         if let Some(index) = index {
-            let start_index = distribution.processed_solana_validator_debt_start_index as usize;
-            let end_index = distribution.processed_solana_validator_debt_end_index as usize;
-            let processed_leaf_data = &distribution.remaining_data[start_index..end_index];
+            let processed_range = distribution.processed_solana_validator_debt_bitmap_range();
+            let processed_leaf_data = &distribution.remaining_data[processed_range];
 
             if try_is_processed_leaf(processed_leaf_data, index).unwrap() {
                 continue;
             }
 
             total_debt += debt_record.data.debts[index].amount;
+            last_solana_epoch = debt_record.data.last_solana_epoch;
         }
     }
 
-    Ok(total_debt.saturating_sub(deposit_balance))
+    Ok(OutstandingDebt {
+        amount: total_debt.saturating_sub(deposit_balance),
+        last_solana_epoch,
+    })
 }

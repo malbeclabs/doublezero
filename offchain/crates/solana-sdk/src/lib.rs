@@ -10,6 +10,7 @@ pub use doublezero_program_tools::{
 pub use doublezero_revenue_distribution::DOUBLEZERO_MINT_DECIMALS;
 pub use doublezero_sol_conversion_interface as sol_conversion;
 pub use doublezero_solana_client_tools::rpc::NetworkEnvironment;
+use solana_sdk::instruction::Instruction;
 pub use solana_sdk::pubkey::Pubkey;
 pub use svm_hash::{merkle, sha2};
 
@@ -23,4 +24,12 @@ pub fn environment_2z_token_mint_key(network_env: NetworkEnvironment) -> Pubkey 
         NetworkEnvironment::Testnet => revenue_distribution::env::development::DOUBLEZERO_MINT_KEY,
         _ => revenue_distribution::env::mainnet::DOUBLEZERO_MINT_KEY,
     }
+}
+
+pub fn build_memo_instruction(memo: &[u8]) -> Instruction {
+    spl_memo_interface::instruction::build_memo(
+        &spl_memo_interface::v3::ID,
+        memo,
+        Default::default(),
+    )
 }

@@ -264,7 +264,7 @@ impl Convert2zContext {
             .await
             .with_context(|| format!("2Z token account not found: {user_token_account_key}"))?;
 
-        spl_token::state::Account::unpack(&token_account.data)
+        spl_token_interface::state::Account::unpack(&token_account.data)
             .map(|account| account.amount)
             .with_context(|| format!("Account {user_token_account_key} not token account"))
     }

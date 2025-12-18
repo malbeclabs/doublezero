@@ -194,9 +194,10 @@ impl Harvest2zCommand {
                     .data
                     .decode()
                     .context("Failed to decode ATA account info")?;
-                let token_balance_after = spl_token::state::Account::unpack(&ata_account_data)
-                    .unwrap()
-                    .amount;
+                let token_balance_after =
+                    spl_token_interface::state::Account::unpack(&ata_account_data)
+                        .unwrap()
+                        .amount;
                 ensure!(
                     token_balance_after >= token_balance_before,
                     "Simulated harvesting 2Z tokens failed"
@@ -232,7 +233,7 @@ async fn try_quote_sol_to_2z(
         restrict_intermediate_tokens: Some(true),
         amount,
         output_mint: DOUBLEZERO_MINT_KEY.to_string(),
-        input_mint: spl_token::native_mint::ID.to_string(),
+        input_mint: spl_token_interface::native_mint::ID.to_string(),
         dexes: specific_dex,
         ..Default::default()
     };

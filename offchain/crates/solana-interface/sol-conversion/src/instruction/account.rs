@@ -259,7 +259,7 @@ impl From<BuySolAccounts> for Vec<AccountMeta> {
             AccountMeta::new_readonly(dz_mint_key, false),
             AccountMeta::new_readonly(dz_config_key, false),
             AccountMeta::new(dz_journal_key, false),
-            AccountMeta::new_readonly(spl_token::id(), false),
+            AccountMeta::new_readonly(spl_token_interface::ID, false),
             AccountMeta::new_readonly(REVENUE_DISTRIBUTION_PROGRAM_ID, false),
             AccountMeta::new(user_key, true),
         ]

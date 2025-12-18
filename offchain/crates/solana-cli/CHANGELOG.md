@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- add memos to `relay distribute-rewards` and `validator-deposit` commands ([#232](https://github.com/doublezerofoundation/doublezero-offchain/pull/232))
 - add `--fund-outstanding-debt` to `revenue-distribution validator-deposit` ([#231](https://github.com/doublezerofoundation/doublezero-offchain/pull/231))
 - incorporate debt write-off in views ([#225](https://github.com/doublezerofoundation/doublezero-offchain/pull/225))
 - use tracing for `revenue-distribution relay` commands ([#226](https://github.com/doublezerofoundation/doublezero-offchain/pull/226))

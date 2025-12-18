@@ -8,7 +8,7 @@ import (
 type EnricherMetrics struct {
 	FlowsProcessedTotal       prometheus.Counter
 	FlowsEnrichedTotal        prometheus.Counter
-	FlowsEnrichmentFailed     prometheus.Counter
+	FlowsEnrichmentErrors     prometheus.Counter
 	FlowsEnrichmentDuration   prometheus.Histogram
 	ClickhouseInsertErrors    prometheus.Counter
 	KafkaConsumeErrors        prometheus.Counter
@@ -28,8 +28,8 @@ func NewEnricherMetrics(reg prometheus.Registerer) *EnricherMetrics {
 			Name: "flows_enriched_total",
 			Help: "Total number of flows successfully enriched",
 		}),
-		FlowsEnrichmentFailed: factory.NewCounter(prometheus.CounterOpts{
-			Name: "flows_enrichment_failed_total",
+		FlowsEnrichmentErrors: factory.NewCounter(prometheus.CounterOpts{
+			Name: "flows_enrichment_errors_total",
 			Help: "Total number of flows that failed enrichment",
 		}),
 		ClickhouseInsertErrors: factory.NewCounter(prometheus.CounterOpts{

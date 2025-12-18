@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // FlowConsumer defines the minimal interface for consuming flow records.
@@ -146,11 +147,14 @@ func (e *Enricher) Run(ctx context.Context) error {
 			}
 
 			for i := range samples {
+				timer := prometheus.NewTimer(e.metrics.FlowsEnrichmentDuration)
 				for _, annotator := range e.annotators {
 					if err := annotator.Annotate(&samples[i]); err != nil {
 						e.logger.Error("error annotating flow sample", "error", err, "annotator", annotator.String())
+						e.metrics.FlowsEnrichmentErrors.Inc()
 					}
 				}
+				timer.ObserveDuration()
 			}
 
 			if err := e.chWriter.BatchInsert(ctx, samples); err != nil {

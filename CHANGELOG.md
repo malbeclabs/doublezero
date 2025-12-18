@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+- RFCs
+  - RFC-11: Onchain Activation ([#2302](https://github.com/malbeclabs/doublezero/pull/2302))
+
 ### Breaking
 
 ### Changes
@@ -48,18 +51,19 @@ All notable changes to this project will be documented in this file.
 - None for this release
 
 ### Changes
+
 - RFCs
   - RFC-10: Version Compatibility Windows
 - CLI
-    - IP address lookups via ifconfig.me are retried up to 3 times to minimize transient network errors.
-    - Added global `--no-version-warning` flag to the `doublezero` client and now emit version warnings to STDERR instead of STDOUT to improve scriptability and logging.
-    - Add the ability to update a Device’s location, managing the reference counters accordingly.
-    - Added support in the link update command to set a link’s status to soft_drained or hard_drained.
-    - Added support for specifying `device_type` at creation, updating it via device update, and displaying it in list/detail outputs.
-    - Add support for updating `contributor.ops_manager_key`.
-    - Add migrate command to upgrade legacy user accounts from index-based PDAs to the new IP + connection-type scheme.
-    - Enhance `access-pass list` with client-IP and user-payer filters
-    - Support added to load keypair from stdin
+  - IP address lookups via ifconfig.me are retried up to 3 times to minimize transient network errors.
+  - Added global `--no-version-warning` flag to the `doublezero` client and now emit version warnings to STDERR instead of STDOUT to improve scriptability and logging.
+  - Add the ability to update a Device’s location, managing the reference counters accordingly.
+  - Added support in the link update command to set a link’s status to soft_drained or hard_drained.
+  - Added support for specifying `device_type` at creation, updating it via device update, and displaying it in list/detail outputs.
+  - Add support for updating `contributor.ops_manager_key`.
+  - Add migrate command to upgrade legacy user accounts from index-based PDAs to the new IP + connection-type scheme.
+  - Enhance `access-pass list` with client-IP and user-payer filters
+  - Support added to load keypair from stdin
 - Client
   - Add route liveness fault-injection simulation tests.
   - Updated the `interface list` command to display all interfaces when no device is specified.
@@ -109,6 +113,7 @@ All notable changes to this project will be documented in this file.
 ## [v0.7.0](https://github.com/malbeclabs/doublezero/compare/client/v0.6.11...client/v0.7.0) – 2025-11-14
 
 ### Breaking
+
 - Smart contract
   - Introduces CYOA and DIA as new possible interface types
 
@@ -135,7 +140,6 @@ All notable changes to this project will be documented in this file.
 ### Changes
 
 - Note that the changes from this release have been bundled into 0.7.0
-
 
 ## [v0.6.10](https://github.com/malbeclabs/doublezero/compare/client/v0.6.9...client/v0.6.10) – 2025-11-05
 

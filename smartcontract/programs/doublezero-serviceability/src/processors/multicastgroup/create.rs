@@ -21,8 +21,6 @@ use solana_program::msg;
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
 pub struct MulticastGroupCreateArgs {
-    pub index: u128,
-    pub bump_seed: u8,
     pub code: String,
     pub max_bandwidth: u64,
     pub owner: Pubkey,
@@ -72,20 +70,18 @@ pub fn process_create_multicastgroup(
     );
     // Check if the account is writable
     assert!(mgroup_account.is_writable, "PDA Account is not writable");
-    // get the PDA pubkey and bump seed for the account multicastgroup & check if it matches the account
-    let (expected_pda_account, bump_seed) = get_multicastgroup_pda(program_id, value.index);
-    assert_eq!(
-        mgroup_account.key, &expected_pda_account,
-        "Invalid MulticastGroup Pubkey"
-    );
-    assert_eq!(
-        bump_seed, value.bump_seed,
-        "Invalid MulticastGroup Bump Seed"
-    );
+
     // Parse the global state account & check if the payer is in the allowlist
     let mut globalstate = GlobalState::try_from(globalstate_account)?;
     globalstate.account_index += 1;
 
+    // Get the PDA pubkey and bump seed for the account multicastgroup & check if it matches the account
+    let (expected_pda_account, bump_seed) =
+        get_multicastgroup_pda(program_id, globalstate.account_index);
+    assert_eq!(
+        mgroup_account.key, &expected_pda_account,
+        "Invalid MulticastGroup Pubkey"
+    );
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }

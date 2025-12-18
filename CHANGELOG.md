@@ -64,6 +64,8 @@ All notable changes to this project will be documented in this file.
 - E2E tests
   - Add GetLatency call to qaagent
   - The QA alldevices test now considers device location and connects hosts to nearby devices
+- Onchain programs
+  - Fix CreateMulticastGroup to use incremented globalstate.account_index for PDA derivation instead of client-provided index, to ensure the contract is the authoritative source for account indices
 
 ## [v0.8.0](https://github.com/malbeclabs/doublezero/compare/client/v0.7.1...client/v0.8.0) – 2025-12-02
 

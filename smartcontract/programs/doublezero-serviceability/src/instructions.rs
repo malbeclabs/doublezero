@@ -815,8 +815,6 @@ mod tests {
 
         test_instruction(
             DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
-                index: 123,
-                bump_seed: 255,
                 max_bandwidth: 1000,
                 code: "test".to_string(),
                 owner: Pubkey::new_unique(),

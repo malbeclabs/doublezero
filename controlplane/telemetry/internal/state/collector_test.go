@@ -336,7 +336,11 @@ func TestTelemetry_StateCollector_Run_InitialTickAndTickerTicks(t *testing.T) {
 
 	var uploads atomic.Int64
 	initialDone := make(chan struct{})
+	firstTickerDone := make(chan struct{})
+	allUploadsDone := make(chan struct{})
 	var initialOnce sync.Once
+	var firstTickerOnce sync.Once
+	var allOnce sync.Once
 
 	cfg.EAPI = &MockEapiMgrServiceClient{
 		RunShowCmdFunc: func(ctx context.Context, in *aristapb.RunShowCmdRequest, _ ...grpc.CallOption) (*aristapb.RunShowCmdResponse, error) {
@@ -353,6 +357,7 @@ func TestTelemetry_StateCollector_Run_InitialTickAndTickerTicks(t *testing.T) {
 	wantTicks := int64(3) // 1 immediate + 2 ticker
 	wantUploads := wantTicks * int64(len(showCommands))
 	initialUploads := int64(len(showCommands))
+	firstTickerUploads := initialUploads * 2 // initial + first ticker
 
 	cfg.StateIngest = &MockStateIngestClient{
 		GetStateToCollectFunc: func(ctx context.Context) ([]ShowCommand, error) {
@@ -363,8 +368,14 @@ func TestTelemetry_StateCollector_Run_InitialTickAndTickerTicks(t *testing.T) {
 			if n >= initialUploads {
 				initialOnce.Do(func() { close(initialDone) })
 			}
+			if n >= firstTickerUploads {
+				firstTickerOnce.Do(func() { close(firstTickerDone) })
+			}
 			if n >= wantUploads {
-				cancel()
+				allOnce.Do(func() {
+					close(allUploadsDone)
+					cancel()
+				})
 			}
 			return "id", nil
 		},
@@ -386,8 +397,23 @@ func TestTelemetry_StateCollector_Run_InitialTickAndTickerTicks(t *testing.T) {
 	defer blockCancel()
 	require.NoError(t, fc.BlockUntilContext(blockCtx, 1))
 
+	// Advance clock for first ticker tick and wait for it to complete
 	fc.Advance(cfg.Interval)
+	select {
+	case <-firstTickerDone:
+	case <-time.After(2 * time.Second):
+		require.FailNow(t, "timed out waiting for first ticker tick uploads")
+	}
+
+	// Advance clock for second ticker tick
 	fc.Advance(cfg.Interval)
+
+	// Wait for all uploads to complete before checking if Run() exits
+	select {
+	case <-allUploadsDone:
+	case <-time.After(2 * time.Second):
+		require.FailNow(t, "timed out waiting for all uploads to complete")
+	}
 
 	select {
 	case err := <-done:

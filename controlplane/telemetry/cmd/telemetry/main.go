@@ -66,7 +66,7 @@ var (
 	senderTTL               = flag.Duration("sender-ttl", defaultSenderTTL, "The time to live for a sender instance until it's recreated.")
 	submitterMaxConcurrency = flag.Int("submitter-max-concurrency", defaultSubmitterMaxConcurrency, "The maximum number of concurrent submissions.")
 	managementNamespace     = flag.String("management-namespace", "", "The name of the management namespace to use for communication over the internet. If not provided, the default namespace will be used. (default: '')")
-	stateCollectionEnabled  = flag.Bool("state-collect-enabled", false, "Enable state collection (unstable)")
+	stateCollectEnable      = flag.Bool("state-collect-enable", false, "Enable state collection (unstable)")
 	stateCollectInterval    = flag.Duration("state-collect-interval", defaultStateCollectInterval, "The interval to collect and submit state snapshots.")
 	stateIngestURL          = flag.String("state-ingest-url", "", "The URL of the state ingest server.")
 	eapiAddr                = flag.String("eapi-addr", "127.0.0.1:9543", "IP Address and port of the Arist EOS API. Should always be the local switch at 127.0.0.1:9543.")
@@ -120,7 +120,7 @@ func main() {
 			flag.Usage()
 			os.Exit(1)
 		}
-		if *stateCollectionEnabled && *stateIngestURL == "" {
+		if *stateCollectEnable && *stateIngestURL == "" {
 			log.Error("Missing required flag", "flag", "state-ingest-url")
 			flag.Usage()
 			os.Exit(1)
@@ -308,7 +308,7 @@ func main() {
 
 	// Run state collector if enabled.
 	var stateCollectorErrCh <-chan error
-	if *stateCollectionEnabled {
+	if *stateCollectEnable {
 		stateCollectorErrCh = startStateCollector(ctx, cancel, log, keypair, localDevicePK)
 	}
 

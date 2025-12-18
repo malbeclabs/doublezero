@@ -22,6 +22,8 @@ type JSONRPCClientOptions struct {
 	HTTPTimeout   time.Duration
 }
 
+type HTTPClientOptions = JSONRPCClientOptions
+
 var (
 	defaultJSONRPCClientOptions = &JSONRPCClientOptions{
 		DialTimeout:   5 * time.Second,
@@ -29,6 +31,34 @@ var (
 		HTTPTimeout:   10 * time.Second,
 	}
 )
+
+// NewNamespacedHTTPClient returns an *http.Client that issues all requests
+// using a single-threaded transport and a namespaced dialer.
+func NewNamespacedHTTPClient(namespace string, opts *HTTPClientOptions) (*http.Client, error) {
+	if opts == nil {
+		opts = defaultJSONRPCClientOptions
+	}
+
+	transport := &SingleThreadTransport{
+		DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+			return RunInNamespace(namespace, func() (net.Conn, error) {
+				return (&net.Dialer{
+					Timeout:       opts.DialTimeout,
+					KeepAlive:     opts.DialKeepAlive,
+					DualStack:     false,
+					FallbackDelay: -1,
+				}).DialContext(ctx, network, address)
+			})
+		},
+	}
+
+	client := &http.Client{
+		Transport: gzhttp.Transport(transport),
+		Timeout:   opts.HTTPTimeout,
+	}
+
+	return client, nil
+}
 
 // NewNamespacedJSONRPCClient returns a JSON-RPC client that performs network
 // operations within the context of a given network namespace. It constructs a
@@ -77,8 +107,8 @@ type SingleThreadTransport struct {
 }
 
 func (t *SingleThreadTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	if req.Body == nil {
-		return nil, errors.New("request body required")
+	if t.DialContext == nil {
+		return nil, errors.New("SingleThreadTransport: DialContext is nil")
 	}
 
 	addr := canonicalAddr(req.URL)
@@ -107,13 +137,11 @@ func (t *SingleThreadTransport) RoundTrip(req *http.Request) (*http.Response, er
 		conn = rawConn
 	}
 
-	// Write the HTTP request manually
 	if err := req.Write(conn); err != nil {
 		conn.Close()
 		return nil, err
 	}
 
-	// Parse response
 	br := bufio.NewReader(conn)
 	resp, err := http.ReadResponse(br, req)
 	if err != nil {
@@ -121,7 +149,6 @@ func (t *SingleThreadTransport) RoundTrip(req *http.Request) (*http.Response, er
 		return nil, err
 	}
 
-	// Hook conn into resp.Body so it's closed properly
 	resp.Body = &readCloserWithConn{ReadCloser: resp.Body, conn: conn}
 	return resp, nil
 }

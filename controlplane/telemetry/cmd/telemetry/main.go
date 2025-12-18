@@ -15,15 +15,21 @@ import (
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/config"
+	"github.com/malbeclabs/doublezero/controlplane/agent/pkg/arista"
+	aristapb "github.com/malbeclabs/doublezero/controlplane/proto/arista/gen/pb-go/arista/EosSdkRpc"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/metrics"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/netns"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/netutil"
+	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/state"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/telemetry"
 	telemetryconfig "github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/config"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	sdktelemetry "github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
+	stateingest "github.com/malbeclabs/doublezero/telemetry/state-ingest/pkg/client"
 	twamplight "github.com/malbeclabs/doublezero/tools/twamp/pkg/light"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 const (
@@ -38,8 +44,10 @@ const (
 	defaultProgramId               = ""
 	defaultLocalDevicePubkey       = ""
 	defaultSubmitterMaxConcurrency = 10
+	defaultStateCollectInterval    = 60 * time.Second
 
-	waitForNamespaceTimeout = 30 * time.Second
+	waitForNamespaceTimeout             = 30 * time.Second
+	defaultStateIngestHTTPClientTimeout = 10 * time.Second
 )
 
 var (
@@ -57,7 +65,11 @@ var (
 	peersRefreshInterval    = flag.Duration("peers-refresh-interval", defaultPeersRefreshInterval, "The interval to refresh the peer discovery.")
 	senderTTL               = flag.Duration("sender-ttl", defaultSenderTTL, "The time to live for a sender instance until it's recreated.")
 	submitterMaxConcurrency = flag.Int("submitter-max-concurrency", defaultSubmitterMaxConcurrency, "The maximum number of concurrent submissions.")
-	managementNamespace     = flag.String("management-namespace", "", "The name of the management namespace to use for ledger communication. If not provided, the default namespace will be used. (default: '')")
+	managementNamespace     = flag.String("management-namespace", "", "The name of the management namespace to use for communication over the internet. If not provided, the default namespace will be used. (default: '')")
+	stateCollectEnable      = flag.Bool("state-collect-enable", false, "Enable state collection (unstable)")
+	stateCollectInterval    = flag.Duration("state-collect-interval", defaultStateCollectInterval, "The interval to collect and submit state snapshots.")
+	stateIngestURL          = flag.String("state-ingest-url", "", "The URL of the state ingest server.")
+	eapiAddr                = flag.String("eapi-addr", "127.0.0.1:9543", "IP Address and port of the Arist EOS API. Should always be the local switch at 127.0.0.1:9543.")
 	verbose                 = flag.Bool("verbose", false, "Enable verbose logging.")
 	showVersion             = flag.Bool("version", false, "Print the version of the doublezero-agent and exit.")
 	metricsEnable           = flag.Bool("metrics-enable", false, "Enable prometheus metrics.")
@@ -108,6 +120,11 @@ func main() {
 			flag.Usage()
 			os.Exit(1)
 		}
+		if *stateCollectEnable && *stateIngestURL == "" {
+			log.Error("Missing required flag", "flag", "state-ingest-url")
+			flag.Usage()
+			os.Exit(1)
+		}
 	} else {
 		networkConfig, err := config.NetworkConfigForEnv(*env)
 		if err != nil {
@@ -118,6 +135,7 @@ func main() {
 		*ledgerRPCURL = networkConfig.LedgerPublicRPCURL
 		*serviceabilityProgramID = networkConfig.ServiceabilityProgramID.String()
 		*telemetryProgramID = networkConfig.TelemetryProgramID.String()
+		*stateIngestURL = networkConfig.TelemetryStateIngestURL
 	}
 
 	if *localDevicePK == "" {
@@ -279,9 +297,102 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Run the collector.
-	if err := collector.Run(ctx); err != nil {
-		log.Error("collector exited with error", "error", err)
+	errCh := make(chan error, 2)
+
+	// Run the onchain device-link latency collector.
+	go func() {
+		if err := collector.Run(ctx); err != nil {
+			errCh <- err
+		}
+	}()
+
+	// Run state collector if enabled.
+	var stateCollectorErrCh <-chan error
+	if *stateCollectEnable {
+		stateCollectorErrCh = startStateCollector(ctx, cancel, log, keypair, localDevicePK)
+	}
+
+	// Wait for the context to be done or an error to be returned.
+	select {
+	case <-ctx.Done():
+		log.Info("telemetry collector shutting down")
+	case err := <-errCh:
+		log.Error("telemetry collector exited with error", "error", err)
+		cancel()
+		os.Exit(1)
+	case err := <-stateCollectorErrCh:
+		log.Error("state collector exited with error", "error", err)
+		cancel()
 		os.Exit(1)
 	}
+}
+
+func startStateCollector(ctx context.Context, cancel context.CancelFunc, log *slog.Logger, keypair solana.PrivateKey, localDevicePK solana.PublicKey) <-chan error {
+	// Build state ingest HTTP client.
+	var stateIngestHTTPClient *http.Client
+	if *managementNamespace != "" {
+		var err error
+		stateIngestHTTPClient, err = netns.NewNamespacedHTTPClient(*managementNamespace, nil)
+		if err != nil {
+			log.Error("failed to create namespace-safe state ingest HTTP client", "error", err)
+			os.Exit(1)
+		}
+	} else {
+		stateIngestHTTPClient = &http.Client{
+			Timeout:   defaultStateIngestHTTPClientTimeout,
+			Transport: http.DefaultTransport,
+		}
+	}
+
+	// Initialize state ingest client.
+	signer := state.NewKeypairSigner(keypair)
+	stateIngestClientRaw, err := stateingest.NewClient(
+		*stateIngestURL,
+		localDevicePK,
+		signer,
+		stateingest.WithHTTPClient(stateIngestHTTPClient),
+	)
+	if err != nil {
+		log.Error("failed to create state ingest client", "error", err)
+		os.Exit(1)
+	}
+	stateIngestClient := state.NewClientAdapter(stateIngestClientRaw)
+
+	// Build EAPI client.
+	var clientConn *grpc.ClientConn
+	if *managementNamespace != "" {
+		clientConn, err = netns.NewNamespacedGRPCConnFromIP(ctx, *managementNamespace, *eapiAddr,
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		)
+		if err != nil {
+			log.Error("failed to create namespace-safe EAPI client", "error", err)
+			os.Exit(1)
+		}
+	} else {
+		clientConn, err = arista.NewClientConn(*eapiAddr)
+		if err != nil {
+			log.Error("failed to create EAPI client", "error", err)
+			os.Exit(1)
+		}
+	}
+	eapiMgrServiceClient := aristapb.NewEapiMgrServiceClient(clientConn)
+
+	// Initialize the state collector.
+	if err != nil {
+		log.Error("failed to create state ingest client", "error", err)
+		os.Exit(1)
+	}
+	stateCollector, err := state.NewCollector(&state.CollectorConfig{
+		Logger:      log,
+		StateIngest: stateIngestClient,
+		Interval:    *stateCollectInterval,
+		DevicePK:    localDevicePK,
+		EAPI:        eapiMgrServiceClient,
+	})
+	if err != nil {
+		log.Error("failed to create state collector", "error", err)
+		os.Exit(1)
+	}
+
+	return stateCollector.Start(ctx, cancel)
 }

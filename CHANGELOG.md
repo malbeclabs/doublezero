@@ -21,6 +21,7 @@ All notable changes to this project will be documented in this file.
   - Add gRPC middleware for prometheus metrics
 - Device agents
   - Increase default controller request timeout in config agent
+  - Initial state collect in telemetry agent
 - Client
   - Route liveness treats peers that advertise passive mode as selectively passive; does not manage their routes directly.
   - Route liveness runs in passive mode for IBRL with allocated IP, if global passive mode is enabled.
@@ -40,10 +41,11 @@ All notable changes to this project will be documented in this file.
   - Add flow-ingest service
   - Add annotation of flow records with serviceability data
   - Add pcap input and json ouput to flow enricher
+  - Initial state-ingest service with client SDK
 - CI
   - Cancel existing e2e test runs on the push of new commits
 - RFCs
-  - RFC - Network Provisioning 
+  - RFC - Network Provisioning
 
 ## [v0.8.0](https://github.com/malbeclabs/doublezero/compare/client/v0.7.1...client/v0.8.0) – 2025-12-02
 

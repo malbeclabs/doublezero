@@ -38,6 +38,8 @@ All notable changes to this project will be documented in this file.
   - Add annotation of flow records with serviceability data
 - CI
   - Cancel existing e2e test runs on the push of new commits
+- RFCs
+  - RFC - Network Provisioning 
 
 ## [v0.8.0](https://github.com/malbeclabs/doublezero/compare/client/v0.7.1...client/v0.8.0) – 2025-12-02
 

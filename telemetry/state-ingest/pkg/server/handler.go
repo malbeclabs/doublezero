@@ -19,11 +19,6 @@ import (
 	"github.com/malbeclabs/doublezero/telemetry/state-ingest/pkg/types"
 )
 
-var AllowedKinds = map[string]struct{}{
-	"snmp-mib-ifmib-ifindex": {},
-	"isis-database-detail":   {},
-}
-
 type Handler struct {
 	log      *slog.Logger
 	cfg      Config
@@ -75,6 +70,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc(types.HealthzPath, h.healthzHandler)
 	mux.HandleFunc(types.ReadyzPath, h.readyzHandler)
 	mux.HandleFunc(types.UploadURLPath, h.uploadURLHandler)
+	mux.HandleFunc(types.StateToCollectPath, h.stateToCollectHandler)
 }
 
 func (h *Handler) uploadURLHandler(w http.ResponseWriter, r *http.Request) {
@@ -139,7 +135,7 @@ func (h *Handler) uploadURLHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, ok := AllowedKinds[req.Kind]; !ok {
+	if _, ok := h.cfg.StateToCollectShowCommands[req.Kind]; !ok {
 		h.writeJSONError(w, http.StatusBadRequest, "invalid kind")
 		UploadRequestErrorsTotal.WithLabelValues("invalid_kind", authed.DevicePK, "unknown").Inc()
 		return
@@ -225,6 +221,28 @@ func (h *Handler) readyzHandler(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"status": "ready",
 	})
+}
+
+func (h *Handler) stateToCollectHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
+		h.writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	showCommands := make([]types.ShowCommand, 0, len(h.cfg.StateToCollectShowCommands))
+	for kind, cmd := range h.cfg.StateToCollectShowCommands {
+		showCommands = append(showCommands, types.ShowCommand{
+			Kind:    kind,
+			Command: cmd,
+		})
+	}
+
+	resp := types.StateToCollectResponse{
+		ShowCommands: showCommands,
+	}
+
+	h.writeJSON(w, http.StatusOK, resp)
 }
 
 func (h *Handler) presignPut(ctx context.Context, key string) (*awssigner.PresignedHTTPRequest, error) {

@@ -192,3 +192,27 @@ func (c *Client) UploadSnapshot(ctx context.Context, kind string, snapshotTS tim
 
 	return uploadInfo.S3Key, nil
 }
+
+func (c *Client) GetStateToCollect(ctx context.Context) (*types.StateToCollectResponse, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+types.StateToCollectPath, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := c.httpClient().Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, decodeServerError(resp)
+	}
+
+	var out types.StateToCollectResponse
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+
+	return &out, nil
+}

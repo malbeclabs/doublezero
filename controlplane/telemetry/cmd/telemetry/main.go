@@ -346,7 +346,7 @@ func startStateCollector(ctx context.Context, cancel context.CancelFunc, log *sl
 
 	// Initialize state ingest client.
 	signer := state.NewKeypairSigner(keypair)
-	stateIngestClient, err := stateingest.NewClient(
+	stateIngestClientRaw, err := stateingest.NewClient(
 		*stateIngestURL,
 		localDevicePK,
 		signer,
@@ -356,6 +356,7 @@ func startStateCollector(ctx context.Context, cancel context.CancelFunc, log *sl
 		log.Error("failed to create state ingest client", "error", err)
 		os.Exit(1)
 	}
+	stateIngestClient := state.NewClientAdapter(stateIngestClientRaw)
 
 	// Build EAPI client.
 	var clientConn *grpc.ClientConn

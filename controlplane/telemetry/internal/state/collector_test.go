@@ -19,7 +19,8 @@ import (
 )
 
 type MockStateIngestClient struct {
-	UploadSnapshotFunc func(ctx context.Context, kind string, timestamp time.Time, data []byte) (string, error)
+	UploadSnapshotFunc    func(ctx context.Context, kind string, timestamp time.Time, data []byte) (string, error)
+	GetStateToCollectFunc func(ctx context.Context) ([]ShowCommand, error)
 }
 
 func (m *MockStateIngestClient) UploadSnapshot(ctx context.Context, kind string, timestamp time.Time, data []byte) (string, error) {
@@ -27,6 +28,13 @@ func (m *MockStateIngestClient) UploadSnapshot(ctx context.Context, kind string,
 		return "", nil
 	}
 	return m.UploadSnapshotFunc(ctx, kind, timestamp, data)
+}
+
+func (m *MockStateIngestClient) GetStateToCollect(ctx context.Context) ([]ShowCommand, error) {
+	if m.GetStateToCollectFunc == nil {
+		return nil, nil
+	}
+	return m.GetStateToCollectFunc(ctx)
 }
 
 type MockEapiMgrServiceClient struct {
@@ -107,33 +115,6 @@ func TestTelemetry_StateCollector_ConfigValidate_Defaults(t *testing.T) {
 		require.Equal(t, defaultConcurrency, cfg.Concurrency)
 	})
 
-	t.Run("defaults commands when empty", func(t *testing.T) {
-		t.Parallel()
-		cfg := newValidCollectorCfg(t)
-		cfg.Commands = nil
-		require.NoError(t, cfg.Validate())
-		require.Equal(t, defaultCommands, cfg.Commands)
-	})
-}
-
-func TestTelemetry_StateCollector_SanitizeCommandAsKind(t *testing.T) {
-	t.Parallel()
-
-	cases := []struct {
-		in, want string
-	}{
-		{"show snmp mib ifmib ifindex", "snmp-mib-ifmib-ifindex"},
-		{"show isis database detail", "isis-database-detail"},
-		{"SHOW isis database detail", "show-isis-database-detail"}, // case-sensitive prefix
-	}
-
-	for _, tc := range cases {
-		tc := tc
-		t.Run(tc.in, func(t *testing.T) {
-			t.Parallel()
-			require.Equal(t, tc.want, sanitizeCommandAsKind(tc.in))
-		})
-	}
 }
 
 func TestTelemetry_StateCollector_CollectStateSnapshot_Success_UploadPayload(t *testing.T) {
@@ -142,9 +123,8 @@ func TestTelemetry_StateCollector_CollectStateSnapshot_Success_UploadPayload(t *
 	fc := clockwork.NewFakeClockAt(time.Date(2025, 12, 18, 15, 4, 5, 0, time.UTC))
 	cfg := newValidCollectorCfg(t)
 	cfg.Clock = fc
-	cfg.Commands = []string{"show snmp mib ifmib ifindex"}
 
-	command := cfg.Commands[0]
+	command := "show snmp mib ifmib ifindex"
 	wantKind := "snmp-mib-ifmib-ifindex"
 	wantNow := fc.Now().UTC()
 
@@ -176,7 +156,7 @@ func TestTelemetry_StateCollector_CollectStateSnapshot_Success_UploadPayload(t *
 	col, err := NewCollector(cfg)
 	require.NoError(t, err)
 
-	require.NoError(t, col.collectStateSnapshot(context.Background(), command))
+	require.NoError(t, col.collectStateSnapshot(context.Background(), wantKind, command))
 
 	require.Equal(t, wantKind, gotKind)
 	require.True(t, gotTS.Equal(wantNow))
@@ -210,7 +190,7 @@ func TestTelemetry_StateCollector_CollectStateSnapshot_ErrorCases(t *testing.T) 
 		}
 		col, err := NewCollector(cfg)
 		require.NoError(t, err)
-		require.ErrorContains(t, col.collectStateSnapshot(context.Background(), "show x"), "failed to execute command")
+		require.ErrorContains(t, col.collectStateSnapshot(context.Background(), "x", "show x"), "failed to execute command")
 	})
 
 	t.Run("nil response wrapper", func(t *testing.T) {
@@ -223,7 +203,7 @@ func TestTelemetry_StateCollector_CollectStateSnapshot_ErrorCases(t *testing.T) 
 		}
 		col, err := NewCollector(cfg)
 		require.NoError(t, err)
-		require.ErrorContains(t, col.collectStateSnapshot(context.Background(), "show x"), "no response from arista eapi")
+		require.ErrorContains(t, col.collectStateSnapshot(context.Background(), "x", "show x"), "no response from arista eapi")
 	})
 
 	t.Run("response success=false", func(t *testing.T) {
@@ -242,7 +222,7 @@ func TestTelemetry_StateCollector_CollectStateSnapshot_ErrorCases(t *testing.T) 
 		}
 		col, err := NewCollector(cfg)
 		require.NoError(t, err)
-		err = col.collectStateSnapshot(context.Background(), "show x")
+		err = col.collectStateSnapshot(context.Background(), "x", "show x")
 		require.ErrorContains(t, err, "error from arista eapi")
 		require.ErrorContains(t, err, "code=42")
 	})
@@ -262,7 +242,7 @@ func TestTelemetry_StateCollector_CollectStateSnapshot_ErrorCases(t *testing.T) 
 		}
 		col, err := NewCollector(cfg)
 		require.NoError(t, err)
-		require.ErrorContains(t, col.collectStateSnapshot(context.Background(), "show x"), "no responses from arista eapi")
+		require.ErrorContains(t, col.collectStateSnapshot(context.Background(), "x", "show x"), "no responses from arista eapi")
 	})
 
 	t.Run("upload error wraps command", func(t *testing.T) {
@@ -286,7 +266,8 @@ func TestTelemetry_StateCollector_CollectStateSnapshot_ErrorCases(t *testing.T) 
 		col, err := NewCollector(cfg)
 		require.NoError(t, err)
 		cmd := "show upload test"
-		err = col.collectStateSnapshot(context.Background(), cmd)
+		kind := "upload-test"
+		err = col.collectStateSnapshot(context.Background(), kind, cmd)
 		require.ErrorContains(t, err, "failed to upload state snapshot")
 		require.ErrorContains(t, err, cmd)
 	})
@@ -298,12 +279,13 @@ func TestTelemetry_StateCollector_Tick_CollectsAllCommandsOnce(t *testing.T) {
 	fc := clockwork.NewFakeClockAt(time.Date(2025, 12, 18, 0, 0, 0, 0, time.UTC))
 	cfg := newValidCollectorCfg(t)
 	cfg.Clock = fc
-	cfg.Commands = []string{
-		"show a b",
-		"show c d",
-		"show e f",
-	}
 	cfg.Concurrency = 2
+
+	showCommands := []ShowCommand{
+		{Kind: "a-b", Command: "show a b"},
+		{Kind: "c-d", Command: "show c d"},
+		{Kind: "e-f", Command: "show e f"},
+	}
 
 	var runShowCalls atomic.Int64
 	var uploadCalls atomic.Int64
@@ -321,6 +303,9 @@ func TestTelemetry_StateCollector_Tick_CollectsAllCommandsOnce(t *testing.T) {
 	}
 
 	cfg.StateIngest = &MockStateIngestClient{
+		GetStateToCollectFunc: func(ctx context.Context) ([]ShowCommand, error) {
+			return showCommands, nil
+		},
 		UploadSnapshotFunc: func(ctx context.Context, kind string, ts time.Time, data []byte) (string, error) {
 			uploadCalls.Add(1)
 			return "id", nil
@@ -331,8 +316,8 @@ func TestTelemetry_StateCollector_Tick_CollectsAllCommandsOnce(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, col.tick(context.Background()))
-	require.Equal(t, int64(len(cfg.Commands)), runShowCalls.Load())
-	require.Equal(t, int64(len(cfg.Commands)), uploadCalls.Load())
+	require.Equal(t, int64(len(showCommands)), runShowCalls.Load())
+	require.Equal(t, int64(len(showCommands)), uploadCalls.Load())
 }
 
 func TestTelemetry_StateCollector_Run_InitialTickAndTickerTicks(t *testing.T) {
@@ -342,8 +327,12 @@ func TestTelemetry_StateCollector_Run_InitialTickAndTickerTicks(t *testing.T) {
 	cfg := newValidCollectorCfg(t)
 	cfg.Clock = fc
 	cfg.Interval = 10 * time.Second
-	cfg.Commands = []string{"show a", "show b"}
 	cfg.Concurrency = 4
+
+	showCommands := []ShowCommand{
+		{Kind: "a", Command: "show a"},
+		{Kind: "b", Command: "show b"},
+	}
 
 	var uploads atomic.Int64
 	initialDone := make(chan struct{})
@@ -362,10 +351,13 @@ func TestTelemetry_StateCollector_Run_InitialTickAndTickerTicks(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	wantTicks := int64(3) // 1 immediate + 2 ticker
-	wantUploads := wantTicks * int64(len(cfg.Commands))
-	initialUploads := int64(len(cfg.Commands))
+	wantUploads := wantTicks * int64(len(showCommands))
+	initialUploads := int64(len(showCommands))
 
 	cfg.StateIngest = &MockStateIngestClient{
+		GetStateToCollectFunc: func(ctx context.Context) ([]ShowCommand, error) {
+			return showCommands, nil
+		},
 		UploadSnapshotFunc: func(ctx context.Context, kind string, ts time.Time, data []byte) (string, error) {
 			n := uploads.Add(1)
 			if n >= initialUploads {
@@ -407,6 +399,115 @@ func TestTelemetry_StateCollector_Run_InitialTickAndTickerTicks(t *testing.T) {
 	require.Equal(t, wantUploads, uploads.Load())
 }
 
+func TestTelemetry_StateCollector_Tick_GetStateToCollectError_SkipsCollection(t *testing.T) {
+	t.Parallel()
+
+	cfg := newValidCollectorCfg(t)
+	var getStateCalls atomic.Int64
+	var runShowCalls atomic.Int64
+
+	cfg.StateIngest = &MockStateIngestClient{
+		GetStateToCollectFunc: func(ctx context.Context) ([]ShowCommand, error) {
+			getStateCalls.Add(1)
+			return nil, errors.New("server error")
+		},
+	}
+
+	cfg.EAPI = &MockEapiMgrServiceClient{
+		RunShowCmdFunc: func(ctx context.Context, in *aristapb.RunShowCmdRequest, _ ...grpc.CallOption) (*aristapb.RunShowCmdResponse, error) {
+			runShowCalls.Add(1)
+			return nil, nil
+		},
+	}
+
+	col, err := NewCollector(cfg)
+	require.NoError(t, err)
+
+	require.NoError(t, col.tick(context.Background()))
+	require.Equal(t, int64(1), getStateCalls.Load())
+	require.Equal(t, int64(0), runShowCalls.Load(), "should not run any commands when GetStateToCollect fails")
+}
+
+func TestTelemetry_StateCollector_Tick_EmptyCommands_SkipsCollection(t *testing.T) {
+	t.Parallel()
+
+	cfg := newValidCollectorCfg(t)
+	var getStateCalls atomic.Int64
+	var runShowCalls atomic.Int64
+
+	cfg.StateIngest = &MockStateIngestClient{
+		GetStateToCollectFunc: func(ctx context.Context) ([]ShowCommand, error) {
+			getStateCalls.Add(1)
+			return []ShowCommand{}, nil
+		},
+	}
+
+	cfg.EAPI = &MockEapiMgrServiceClient{
+		RunShowCmdFunc: func(ctx context.Context, in *aristapb.RunShowCmdRequest, _ ...grpc.CallOption) (*aristapb.RunShowCmdResponse, error) {
+			runShowCalls.Add(1)
+			return nil, nil
+		},
+	}
+
+	col, err := NewCollector(cfg)
+	require.NoError(t, err)
+
+	require.NoError(t, col.tick(context.Background()))
+	require.Equal(t, int64(1), getStateCalls.Load())
+	require.Equal(t, int64(0), runShowCalls.Load(), "should not run any commands when server returns empty map")
+}
+
+func TestTelemetry_StateCollector_Tick_CallsGetStateToCollectOnEachTick(t *testing.T) {
+	t.Parallel()
+
+	fc := clockwork.NewFakeClockAt(time.Date(2025, 12, 18, 0, 0, 0, 0, time.UTC))
+	cfg := newValidCollectorCfg(t)
+	cfg.Clock = fc
+	cfg.Interval = 10 * time.Second
+
+	showCommands := []ShowCommand{
+		{Kind: "test", Command: "show test"},
+	}
+
+	var getStateCalls atomic.Int64
+
+	cfg.StateIngest = &MockStateIngestClient{
+		GetStateToCollectFunc: func(ctx context.Context) ([]ShowCommand, error) {
+			getStateCalls.Add(1)
+			return showCommands, nil
+		},
+		UploadSnapshotFunc: func(ctx context.Context, kind string, ts time.Time, data []byte) (string, error) {
+			return "id", nil
+		},
+	}
+
+	cfg.EAPI = &MockEapiMgrServiceClient{
+		RunShowCmdFunc: func(ctx context.Context, in *aristapb.RunShowCmdRequest, _ ...grpc.CallOption) (*aristapb.RunShowCmdResponse, error) {
+			return &aristapb.RunShowCmdResponse{
+				Response: &aristapb.EapiResponse{
+					Success:   true,
+					Responses: []string{`{"ok":true}`},
+				},
+			}, nil
+		},
+	}
+
+	col, err := NewCollector(cfg)
+	require.NoError(t, err)
+
+	// First tick
+	require.NoError(t, col.tick(context.Background()))
+	require.Equal(t, int64(1), getStateCalls.Load())
+
+	// Second tick
+	require.NoError(t, col.tick(context.Background()))
+	require.Equal(t, int64(2), getStateCalls.Load())
+
+	// Third tick
+	require.NoError(t, col.tick(context.Background()))
+	require.Equal(t, int64(3), getStateCalls.Load())
+}
+
 func newValidCollectorCfg(t *testing.T) *CollectorConfig {
 	t.Helper()
 	return &CollectorConfig{
@@ -416,7 +517,6 @@ func newValidCollectorCfg(t *testing.T) *CollectorConfig {
 		StateIngest: &MockStateIngestClient{},
 		Interval:    1 * time.Second,
 		DevicePK:    solana.NewWallet().PrivateKey.PublicKey(),
-		Commands:    []string{"show foo bar"},
 		Concurrency: 2,
 	}
 }

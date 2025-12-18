@@ -10,6 +10,7 @@ import (
 const AuthPrefixV1 = "DOUBLEZERO_V1"
 
 const UploadURLPath = "/v1/snapshots/upload-url"
+const StateToCollectPath = "/v1/state-to-collect"
 const HealthzPath = "/healthz"
 const ReadyzPath = "/readyz"
 
@@ -33,6 +34,15 @@ type UploadURLResponse struct {
 type ErrorResponse struct {
 	Error string `json:"error"`
 	Code  int    `json:"code"`
+}
+
+type ShowCommand struct {
+	Kind    string `json:"kind"`
+	Command string `json:"command"`
+}
+
+type StateToCollectResponse struct {
+	ShowCommands []ShowCommand `json:"show_commands"`
 }
 
 func CanonicalAuthMessage(prefix, method, path, timestamp string, body []byte) string {

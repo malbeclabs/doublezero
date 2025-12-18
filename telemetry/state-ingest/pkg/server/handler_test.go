@@ -776,3 +776,90 @@ func TestTelemetry_StateIngest_Handler_Readyz_NotReady_HEAD_EmptyBody(t *testing
 	require.Equal(t, "application/json", rr.Header().Get("Content-Type"))
 	require.Len(t, rr.Body.Bytes(), 0)
 }
+
+func TestTelemetry_StateIngest_Handler_StateToCollect_MethodNotAllowed(t *testing.T) {
+	t.Parallel()
+
+	h := &Handler{}
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, types.StateToCollectPath, nil)
+
+	h.stateToCollectHandler(rr, req)
+
+	require.Equal(t, http.StatusMethodNotAllowed, rr.Code)
+	require.Equal(t, http.MethodGet, rr.Header().Get("Allow"))
+
+	er := mustErrResp(t, rr)
+	require.Equal(t, http.StatusMethodNotAllowed, er.Code)
+	require.Contains(t, er.Error, "method not allowed")
+}
+
+func TestTelemetry_StateIngest_Handler_StateToCollect_Success_ReturnsShowCommands(t *testing.T) {
+	t.Parallel()
+
+	showCommandsMap := map[string]string{
+		"snmp-mib-ifmib-ifindex": "show snmp mib ifmib ifindex",
+		"isis-database-detail":   "show isis database detail",
+		"custom-kind":            "show custom command",
+	}
+
+	cfg := Config{StateToCollectShowCommands: showCommandsMap}
+	_ = cfg.Validate()
+
+	h := &Handler{cfg: cfg}
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, types.StateToCollectPath, nil)
+
+	h.stateToCollectHandler(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	require.Equal(t, "application/json", rr.Header().Get("Content-Type"))
+
+	var resp types.StateToCollectResponse
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+	require.Len(t, resp.ShowCommands, len(showCommandsMap))
+
+	// Convert response to map for easier comparison
+	respMap := make(map[string]string)
+	for _, sc := range resp.ShowCommands {
+		respMap[sc.Kind] = sc.Command
+	}
+	require.Equal(t, showCommandsMap, respMap)
+}
+
+func TestTelemetry_StateIngest_Handler_StateToCollect_UsesDefaultShowCommands(t *testing.T) {
+	t.Parallel()
+
+	cfg := Config{
+		Presign: mockPresignClient{PresignPutObjectFunc: func(ctx context.Context, input *s3.PutObjectInput, opts ...func(*s3.PresignOptions)) (*awssigner.PresignedHTTPRequest, error) {
+			return nil, nil
+		}},
+		BucketName: "test-bucket",
+		ServiceabilityRPC: mockServiceabilityRPC{GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+			return nil, nil
+		}},
+	}
+	require.NoError(t, cfg.Validate())
+
+	h := &Handler{cfg: cfg}
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, types.StateToCollectPath, nil)
+
+	h.stateToCollectHandler(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	var resp types.StateToCollectResponse
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+	require.Len(t, resp.ShowCommands, 2)
+
+	// Convert response to map for easier comparison
+	respMap := make(map[string]string)
+	for _, sc := range resp.ShowCommands {
+		respMap[sc.Kind] = sc.Command
+	}
+	require.Equal(t, map[string]string{
+		"snmp-mib-ifmib-ifindex": "show snmp mib ifmib ifindex",
+		"isis-database-detail":   "show isis database detail",
+	}, respMap)
+}

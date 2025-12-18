@@ -19,6 +19,13 @@ const (
 	defaultMaxBodySize                   = 1 << 20 // 1 MiB
 )
 
+var (
+	defaultStateToCollectShowCommands = map[string]string{
+		"snmp-mib-ifmib-ifindex": "show snmp mib ifmib ifindex",
+		"isis-database-detail":   "show isis database detail",
+	}
+)
+
 type PresignClient interface {
 	PresignPutObject(ctx context.Context, input *s3.PutObjectInput, opts ...func(*s3.PresignOptions)) (*awssigner.PresignedHTTPRequest, error)
 }
@@ -40,6 +47,7 @@ type Config struct {
 	ServiceabilityRefreshInterval time.Duration
 	ShutdownTimeout               time.Duration
 	MaxBodySize                   int64
+	StateToCollectShowCommands    map[string]string
 }
 
 func (c *Config) Validate() error {
@@ -71,6 +79,9 @@ func (c *Config) Validate() error {
 	}
 	if c.MaxBodySize <= 0 {
 		c.MaxBodySize = defaultMaxBodySize
+	}
+	if c.StateToCollectShowCommands == nil {
+		c.StateToCollectShowCommands = defaultStateToCollectShowCommands
 	}
 	return nil
 }

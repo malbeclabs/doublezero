@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"strings"
 	"sync"
 	"time"
 
@@ -15,15 +14,17 @@ import (
 )
 
 var (
-	defaultCommands = []string{
-		"show snmp mib ifmib ifindex",
-		"show isis database detail",
-	}
 	defaultConcurrency = 16
 )
 
+type ShowCommand struct {
+	Kind    string
+	Command string
+}
+
 type StateIngestClient interface {
 	UploadSnapshot(ctx context.Context, kind string, timestamp time.Time, data []byte) (string, error)
+	GetStateToCollect(ctx context.Context) ([]ShowCommand, error)
 }
 
 type CollectorConfig struct {
@@ -36,7 +37,6 @@ type CollectorConfig struct {
 	Interval time.Duration
 	DevicePK solana.PublicKey
 
-	Commands    []string
 	Concurrency int
 }
 
@@ -61,9 +61,6 @@ func (c *CollectorConfig) Validate() error {
 	}
 	if c.Concurrency <= 0 {
 		c.Concurrency = defaultConcurrency
-	}
-	if len(c.Commands) == 0 {
-		c.Commands = defaultCommands
 	}
 	return nil
 }
@@ -100,7 +97,6 @@ func (c *Collector) Start(ctx context.Context, cancel context.CancelFunc) <-chan
 
 func (c *Collector) Run(ctx context.Context) error {
 	c.log.Info("state: collector started",
-		"commands", c.cfg.Commands,
 		"concurrency", c.cfg.Concurrency,
 		"interval", c.cfg.Interval,
 		"device", c.cfg.DevicePK.String(),
@@ -126,19 +122,32 @@ func (c *Collector) Run(ctx context.Context) error {
 }
 
 func (c *Collector) tick(ctx context.Context) error {
+	showCommands, err := c.cfg.StateIngest.GetStateToCollect(ctx)
+	if err != nil {
+		c.log.Warn("state: failed to fetch commands from server, skipping collection", "error", err)
+		return nil
+	}
+
+	if len(showCommands) == 0 {
+		c.log.Debug("state: no commands to collect from server")
+		return nil
+	}
+
+	c.log.Debug("state: fetched commands from server", "count", len(showCommands))
+
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, c.cfg.Concurrency)
 
-	for _, command := range c.cfg.Commands {
+	for _, sc := range showCommands {
 		wg.Add(1)
-		go func(command string) {
+		go func(kind, command string) {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			if err := c.collectStateSnapshot(ctx, command); err != nil {
-				c.log.Error("state: failed to collect snapshot", "command", command, "error", err)
+			if err := c.collectStateSnapshot(ctx, kind, command); err != nil {
+				c.log.Error("state: failed to collect snapshot", "kind", kind, "command", command, "error", err)
 			}
-		}(command)
+		}(sc.Kind, sc.Command)
 	}
 
 	wg.Wait()
@@ -146,7 +155,7 @@ func (c *Collector) tick(ctx context.Context) error {
 	return nil
 }
 
-func (c *Collector) collectStateSnapshot(ctx context.Context, command string) error {
+func (c *Collector) collectStateSnapshot(ctx context.Context, kind, command string) error {
 	now := c.cfg.Clock.Now().UTC()
 	response, err := c.cfg.EAPI.RunShowCmd(ctx, &aristapb.RunShowCmdRequest{
 		Command: command,
@@ -164,7 +173,6 @@ func (c *Collector) collectStateSnapshot(ctx context.Context, command string) er
 		return fmt.Errorf("no responses from arista eapi for command %q", command)
 	}
 	data := []byte(response.Response.Responses[0])
-	kind := sanitizeCommandAsKind(command)
 
 	snap := StateSnapshot{
 		Metadata: StateSnapshotMetadata{
@@ -187,9 +195,4 @@ func (c *Collector) collectStateSnapshot(ctx context.Context, command string) er
 	}
 
 	return nil
-}
-
-func sanitizeCommandAsKind(command string) string {
-	command = strings.TrimPrefix(command, "show ")
-	return strings.ReplaceAll(strings.ToLower(command), " ", "-")
 }

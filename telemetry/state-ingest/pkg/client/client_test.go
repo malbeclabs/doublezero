@@ -601,3 +601,147 @@ func srvURLForTest(r *http.Request) string {
 	}
 	return scheme + "://" + r.Host
 }
+
+func TestTelemetry_StateIngest_Client_GetStateToCollect_Success_ReturnsShowCommands(t *testing.T) {
+	t.Parallel()
+
+	device := solana.NewWallet().PublicKey()
+	signer := &testSigner{sig: bytes.Repeat([]byte{1}, 64)}
+
+	expectedShowCommands := []types.ShowCommand{
+		{Kind: "snmp-mib-ifmib-ifindex", Command: "show snmp mib ifmib ifindex"},
+		{Kind: "isis-database-detail", Command: "show isis database detail"},
+	}
+
+	var gotPath string
+	var gotMethod string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotMethod = r.Method
+		w.Header().Set("Content-Type", "application/json")
+		resp := types.StateToCollectResponse{ShowCommands: expectedShowCommands}
+		_, _ = w.Write(mustJSON(t, resp))
+	}))
+	t.Cleanup(srv.Close)
+
+	c, err := NewClient(srv.URL, device, signer, WithHTTPClient(srv.Client()))
+	require.NoError(t, err)
+
+	resp, err := c.GetStateToCollect(context.Background())
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.Equal(t, expectedShowCommands, resp.ShowCommands)
+
+	require.Equal(t, types.StateToCollectPath, gotPath)
+	require.Equal(t, http.MethodGet, gotMethod)
+}
+
+func TestTelemetry_StateIngest_Client_GetStateToCollect_HTTPNon200_JSONErrorResponse(t *testing.T) {
+	t.Parallel()
+
+	device := solana.NewWallet().PublicKey()
+	signer := &testSigner{sig: bytes.Repeat([]byte{1}, 64)}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error":"server error","code":500}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	c, err := NewClient(srv.URL, device, signer, WithHTTPClient(srv.Client()))
+	require.NoError(t, err)
+
+	_, err = c.GetStateToCollect(context.Background())
+	require.Error(t, err)
+
+	var he *HTTPError
+	require.ErrorAs(t, err, &he)
+	require.Equal(t, 500, he.StatusCode)
+	require.Contains(t, he.Message, "server error")
+}
+
+func TestTelemetry_StateIngest_Client_GetStateToCollect_HTTPNon200_NonJSONBodyFallback(t *testing.T) {
+	t.Parallel()
+
+	device := solana.NewWallet().PublicKey()
+	signer := &testSigner{sig: bytes.Repeat([]byte{1}, 64)}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "not found", http.StatusNotFound)
+	}))
+	t.Cleanup(srv.Close)
+
+	c, err := NewClient(srv.URL, device, signer, WithHTTPClient(srv.Client()))
+	require.NoError(t, err)
+
+	_, err = c.GetStateToCollect(context.Background())
+	require.Error(t, err)
+
+	var he *HTTPError
+	require.ErrorAs(t, err, &he)
+	require.Equal(t, 404, he.StatusCode)
+	require.Contains(t, he.Message, "not found")
+}
+
+func TestTelemetry_StateIngest_Client_GetStateToCollect_InvalidJSONResponseReturnsError(t *testing.T) {
+	t.Parallel()
+
+	device := solana.NewWallet().PublicKey()
+	signer := &testSigner{sig: bytes.Repeat([]byte{1}, 64)}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"show_commands":{`))
+	}))
+	t.Cleanup(srv.Close)
+
+	c, err := NewClient(srv.URL, device, signer, WithHTTPClient(srv.Client()))
+	require.NoError(t, err)
+
+	_, err = c.GetStateToCollect(context.Background())
+	require.Error(t, err)
+}
+
+func TestTelemetry_StateIngest_Client_GetStateToCollect_HTTPTransportErrorPropagates(t *testing.T) {
+	t.Parallel()
+
+	device := solana.NewWallet().PublicKey()
+	signer := &testSigner{sig: bytes.Repeat([]byte{1}, 64)}
+
+	want := errors.New("dial boom")
+	hc := &http.Client{
+		Transport: rtFunc(func(r *http.Request) (*http.Response, error) {
+			return nil, want
+		}),
+	}
+
+	c, err := NewClient("http://example.invalid", device, signer, WithHTTPClient(hc))
+	require.NoError(t, err)
+
+	_, err = c.GetStateToCollect(context.Background())
+	require.ErrorIs(t, err, want)
+}
+
+func TestTelemetry_StateIngest_Client_GetStateToCollect_PathIsConstant(t *testing.T) {
+	t.Parallel()
+
+	device := solana.NewWallet().PublicKey()
+	signer := &testSigner{sig: bytes.Repeat([]byte{1}, 64)}
+
+	var got string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		resp := types.StateToCollectResponse{ShowCommands: []types.ShowCommand{}}
+		_, _ = w.Write(mustJSON(t, resp))
+	}))
+	t.Cleanup(srv.Close)
+
+	c, err := NewClient(strings.TrimRight(srv.URL, "/"), device, signer, WithHTTPClient(srv.Client()))
+	require.NoError(t, err)
+
+	_, err = c.GetStateToCollect(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, types.StateToCollectPath, got)
+}

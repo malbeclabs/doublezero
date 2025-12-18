@@ -1,6 +1,6 @@
 # RFC-11: Onchain Activation
 
-**Status:** Draft
+**Status:** Approved
 
 ## Objective
 

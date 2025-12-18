@@ -2,7 +2,7 @@
 
 # Summary
 
-**Status: Active**
+**Status: Implemented**
 
 This document defines a decentralized process for collecting, storing, and evaluating network telemetry data on the DZ Serviceability sidechain. Telemetry is accumulated on-chain via a dedicated smart contract, with requirements defined in this document. Telemetry enables transparent and tamper-resistant tracking of network performance and resource utilization. This data is then used to assess each contributor's participation in the network and to verify that they have met their agreed-upon commitments. The approach ensures accountability, incentivizes high-quality service, and provides a foundation for automated rewards or penalties based on objective, on-chain evidence.
 

@@ -34,6 +34,7 @@ All notable changes to this project will be documented in this file.
   - Add route liveness gauges for in-memory maps
   - Route liveness sets set of routes configured as excluded to `AdminDown`.
   - Add histogram metric for BGP session establishment duration
+  - For IBRL with allocated IP mode, resolve tunnel source IP from routing table via resolve-route API endpoint instead of using client IP to support clients behind NAT
 - Global monitor
   - Initial implementation
 - Release

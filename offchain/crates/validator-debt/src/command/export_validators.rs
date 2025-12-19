@@ -32,7 +32,7 @@ impl ExportValidatorsCommand {
             solana_url_or_moniker,
         } = self;
 
-        println!("Exporting validators for Solana epoch {}", epoch);
+        tracing::info!("Exporting validators for Solana epoch {}", epoch);
 
         // Create RPC client
         let solana_url_or_moniker = solana_url_or_moniker.as_deref().unwrap_or("m");
@@ -41,7 +41,7 @@ impl ExportValidatorsCommand {
             RpcClient::new_with_commitment(solana_url.into(), CommitmentConfig::confirmed());
 
         // Fetch validators from S3
-        println!("Fetching validator pubkeys from S3...");
+        tracing::info!("Fetching validator pubkeys from S3...");
         let validator_keys = s3_fetcher::fetch_validator_pubkeys(
             epoch,
             &rpc_client,
@@ -49,7 +49,7 @@ impl ExportValidatorsCommand {
         )
         .await?;
 
-        println!(
+        tracing::info!(
             "[OK] Found {} validators (after 12-hour rule)",
             validator_keys.len()
         );
@@ -68,7 +68,7 @@ impl ExportValidatorsCommand {
         });
 
         // Write to CSV
-        println!("Writing to {}...", output_path.display());
+        tracing::info!("Writing to {}...", output_path.display());
         let mut writer = csv::WriterBuilder::new().from_path(&output_path)?;
 
         // Write validator data
@@ -78,15 +78,15 @@ impl ExportValidatorsCommand {
 
         writer.flush()?;
 
-        println!(
+        tracing::info!(
             "[OK] Exported {} validators to {}",
             validator_keys.len(),
             output_path.display()
         );
-        println!("Summary:");
-        println!("  Epoch: {}", epoch);
-        println!("  Validators: {}", validator_keys.len());
-        println!("  Output: {}", output_path.display());
+        tracing::info!("Summary:");
+        tracing::info!("  Epoch: {}", epoch);
+        tracing::info!("  Validators: {}", validator_keys.len());
+        tracing::info!("  Output: {}", output_path.display());
 
         Ok(())
     }

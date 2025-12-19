@@ -1,18 +1,18 @@
 use std::{collections::HashMap, time::Duration};
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use backon::{ExponentialBuilder, Retryable};
 use futures::{StreamExt, TryStreamExt, stream};
-use solana_client::{client_error::ClientErrorKind, rpc_request::RpcError};
-use solana_sdk::{clock::DEFAULT_SLOTS_PER_EPOCH, reward_type::RewardType::Fee};
-use tracing::info;
+use solana_client::{
+    client_error::{ClientError, ClientErrorKind},
+    rpc_custom_error::{
+        JSON_RPC_SERVER_ERROR_LONG_TERM_STORAGE_SLOT_SKIPPED, JSON_RPC_SERVER_ERROR_SLOT_SKIPPED,
+    },
+    rpc_request::RpcError,
+};
+use solana_sdk::reward_type::RewardType;
 
 use crate::solana_debt_calculator::ValidatorRewards;
-
-pub const LAMPORT_MULTIPLE: u64 = 5000;
-pub const fn get_first_slot_for_epoch(target_epoch: u64) -> u64 {
-    DEFAULT_SLOTS_PER_EPOCH * target_epoch
-}
 
 pub async fn get_block_rewards(
     api_provider: &impl ValidatorRewards,
@@ -23,6 +23,8 @@ pub async fn get_block_rewards(
     let first_slot_in_current_epoch = epoch_info.absolute_slot - epoch_info.slot_index;
 
     let epoch_diff = epoch_info.epoch - epoch;
+
+    // TODO: Do we need this check?
     if epoch_diff >= 5 {
         bail!("Epoch diff is greater than 5")
     }
@@ -32,7 +34,7 @@ pub async fn get_block_rewards(
     let leader_schedule = api_provider.get_leader_schedule(Some(first_slot)).await?;
 
     // Build validator schedules
-    println!("Building validator schedules");
+    tracing::info!("Building validator schedules");
     let validator_schedules: HashMap<String, Vec<u64>> = validator_ids
         .iter()
         .filter_map(|validator_id| {
@@ -51,7 +53,7 @@ pub async fn get_block_rewards(
             validator_schedules
                 .into_iter()
                 .flat_map(|(validator_id, slots)| {
-                    println!("getting block rewards for {}", validator_id.clone());
+                    tracing::info!("getting block rewards for {}", validator_id.clone());
                     slots
                         .into_iter()
                         .map(move |slot| (validator_id.clone(), slot))
@@ -67,19 +69,19 @@ pub async fn get_block_rewards(
                         .with_jitter(),
                 )
                 .when(|err| {
-                    match err.kind() {
-                        ClientErrorKind::RpcError(RpcError::RpcResponseError { code, .. }) => {
-                            // Don't retry if block isn't found
-                            println!("{validator_id}: {} for slot {slot}", *code);
-                            !matches!(*code, -32009 | -32007)
-                        }
-                        _ => true, // Retry on all other errors
+                    let should_retry = !client_error_matches_slot_skipped_code(err);
+
+                    if should_retry {
+                        tracing::info!("{validator_id}: {err} for slot {slot}, retrying");
                     }
+
+                    should_retry
                 })
                 .notify(|err, dur: Duration| {
-                    info!(
+                    tracing::info!(
                         "get_block_with_config call failed, retrying in {:?}: {}",
-                        dur, err
+                        dur,
+                        err
                     );
                 })
                 .await
@@ -88,53 +90,42 @@ pub async fn get_block_rewards(
                     let mut signature_lamports: u64 = 0;
                     if let Some(sigs) = &block.signatures {
                         signature_lamports = sigs.len() as u64;
-                        signature_lamports *= 2500;
+                        signature_lamports *= 2_500;
                     };
                     let lamports: u64 = block
                         .rewards
-                        .as_ref()
                         .map(|rewards| {
                             rewards
                                 .iter()
                                 .filter_map(|reward| {
-                                    if reward.reward_type == Some(Fee) {
-                                        Some(reward.lamports as u64)
+                                    if reward.reward_type == Some(RewardType::Fee)
+                                        && reward.lamports > 0
+                                    {
+                                        Some(reward.lamports.unsigned_abs())
                                     } else {
                                         None
                                     }
                                 })
                                 .sum()
                         })
-                        .ok_or_else(|| anyhow::anyhow!("no block rewards"))?;
+                        .context("no block rewards")?;
                     Ok((
                         validator_id,
                         (signature_lamports, lamports - signature_lamports),
                     ))
                 }
-
-                Err(e) => {
-                    if let ClientErrorKind::RpcError(RpcError::RpcResponseError { code, .. }) =
-                        e.kind()
-                    {
-                        // -32_009 -  Slot x was skipped, or missing in long-term storage
-                        // -32_007 -  Requested block or slot does not exist
-                        if *code == -32_009 || *code == -32_007 {
-                            Ok((validator_id, (0, 0)))
-                        } else {
-                            bail!("Failed to fetch block for slot {slot}: {e}")
-                        }
-                    } else {
-                        bail!("Failed to fetch block for slot {slot}: {e}")
-                    }
+                Err(ref err) if client_error_matches_slot_skipped_code(err) => {
+                    Ok((validator_id, Default::default()))
                 }
+                Err(other_err) => bail!("Failed to fetch block for slot {slot}: {other_err}"),
             }
         })
         .buffer_unordered(20)
         .try_fold(
-            HashMap::new(),
+            Default::default(),
             |mut acc: HashMap<String, (u64, u64)>,
              (validator_id, (signature_lamports, lamports))| async move {
-                let entry = acc.entry(validator_id).or_insert((0, 0));
+                let entry = acc.entry(validator_id).or_default();
                 entry.0 += signature_lamports;
                 entry.1 += lamports;
                 Ok(acc)
@@ -143,6 +134,18 @@ pub async fn get_block_rewards(
         .await?;
 
     Ok(block_rewards)
+}
+
+fn client_error_matches_slot_skipped_code(err: &ClientError) -> bool {
+    if let ClientErrorKind::RpcError(RpcError::RpcResponseError { code, .. }) = err.kind() {
+        matches!(
+            code,
+            &JSON_RPC_SERVER_ERROR_LONG_TERM_STORAGE_SLOT_SKIPPED
+                | &JSON_RPC_SERVER_ERROR_SLOT_SKIPPED
+        )
+    } else {
+        false
+    }
 }
 
 #[cfg(test)]
@@ -181,7 +184,7 @@ mod tests {
                 pubkey: validator_id.clone(),
                 lamports: block_reward.0,
                 post_balance: 10000,
-                reward_type: Some(Fee),
+                reward_type: Some(RewardType::Fee),
                 commission: None,
             }]),
             previous_blockhash: "".to_string(),

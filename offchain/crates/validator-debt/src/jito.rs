@@ -3,7 +3,6 @@ use std::{collections::HashMap, time::Duration};
 use anyhow::{Result, anyhow};
 use backon::{ExponentialBuilder, Retryable};
 use serde::Deserialize;
-use tracing::info;
 
 use crate::solana_debt_calculator::ValidatorRewards;
 
@@ -37,7 +36,7 @@ pub async fn get_jito_rewards<'a>(
         "{JITO_BASE_URL}validator_rewards?epoch={epoch}&limit={JITO_REWARDS_LIMIT}"
     );
 
-    println!("Fetching Jito rewards for epoch {epoch}");
+    tracing::info!("Fetching Jito rewards for epoch {epoch}");
     let rewards = (|| async { solana_debt_calculator.get::<JitoRewards>(&url).await })
         .retry(
             &ExponentialBuilder::default()
@@ -47,7 +46,7 @@ pub async fn get_jito_rewards<'a>(
                 .with_jitter(),
         )
         .notify(|err, dur: Duration| {
-            info!("Jito API call failed, retrying in {:?}: {}", dur, err);
+            tracing::info!("Jito API call failed, retrying in {:?}: {}", dur, err);
         })
         .await
         .map_err(|e| {
@@ -55,7 +54,7 @@ pub async fn get_jito_rewards<'a>(
         })?;
 
     if rewards.total_count > JITO_REWARDS_LIMIT {
-        println!(
+        tracing::info!(
             "Unexpectedly received total count higher than 1500; actual count is {}",
             rewards.total_count
         );
@@ -63,7 +62,7 @@ pub async fn get_jito_rewards<'a>(
     let jito_rewards = validator_ids
         .iter()
         .map(|validator_id| {
-            println!("Fetching Jito rewards for validator_id {validator_id}");
+            tracing::info!("Fetching Jito rewards for validator_id {validator_id}");
             let mev_revenue = rewards
                 .rewards
                 .iter()

@@ -126,7 +126,7 @@ impl CalculateValidatorDebtCommand {
             .await?;
         }
 
-        println!(
+        tracing::info!(
             "Validator rewards for solana epoch {} and validator debt for DoubleZero epoch {}:\n{}",
             write_summary.solana_epoch,
             write_summary.dz_epoch,

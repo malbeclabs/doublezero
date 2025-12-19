@@ -3,7 +3,6 @@ use std::{collections::HashMap, str::FromStr, time::Duration};
 use anyhow::{Result, anyhow};
 use backon::{ExponentialBuilder, Retryable};
 use solana_sdk::pubkey::Pubkey;
-use tracing::info;
 
 use crate::solana_debt_calculator::ValidatorRewards;
 
@@ -14,7 +13,7 @@ pub async fn get_inflation_rewards(
 ) -> Result<HashMap<String, u64>> {
     let mut vote_keys: Vec<Pubkey> = Vec::with_capacity(validator_ids.len());
 
-    println!("get inflation rewards for epoch {epoch}");
+    tracing::info!("get inflation rewards for epoch {epoch}");
     let vote_accounts = (|| async {
         solana_debt_calculator
         .get_vote_accounts_with_config()
@@ -25,13 +24,13 @@ pub async fn get_inflation_rewards(
         .with_max_delay(Duration::from_secs(10))
         .with_jitter())
     .notify(|err, dur: Duration| {
-        info!("get_vote_accounts_with_config call failed, retrying in {:?}: {}", dur, err);
+        tracing::info!("get_vote_accounts_with_config call failed, retrying in {:?}: {}", dur, err);
     }).await.map_err(|e| {
         anyhow!("Failed to fetch get_vote_accounts_with_config for epoch {epoch} after retries: {e:#?}")
     })?;
 
     // this can be cleaned up i'm sure
-    println!("getting vote account keys for inflation rewards");
+    tracing::info!("getting vote account keys for inflation rewards");
     for validator_id in validator_ids {
         match vote_accounts
             .current
@@ -45,7 +44,7 @@ pub async fn get_inflation_rewards(
         {
             Some(vote_account) => vote_keys.push(vote_account),
             None => {
-                eprintln!("Validator ID {validator_id} not found");
+                tracing::warn!("Validator ID {validator_id} not found");
                 continue;
             }
         };

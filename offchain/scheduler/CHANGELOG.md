@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- update `initialize_distribution` call ([#237](https://github.com/doublezerofoundation/doublezero-offchain/pull/237))
+
+## [v0.1.4](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/offchain-scheduler/v0.1.4)
+
 - inline initialize distribution call and remove ledger RPC argument ([#225](https://github.com/doublezerofoundation/doublezero-offchain/pull/225))
 - add prom metrics collector and instrument a few critical functions as well as add a `health_check` endpoint ([#207](https://github.com/doublezerofoundation/doublezero-offchain/pull/207))
 - summarize debt for each epoch and then for all epochs ([#218](https://github.com/doublezerofoundation/doublezero-offchain/pull/218))

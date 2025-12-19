@@ -64,7 +64,7 @@ pub async fn create_record_on_ledger<T: borsh::BorshSerialize>(
     )
     .await?;
 
-    println!("Attempting to create record {:#?}", created_record);
+    tracing::info!("Attempting to create record {:#?}", created_record);
 
     for chunk in doublezero_record::instruction::write_record_chunks(&payer_key, seeds, &serialized)
     {
@@ -81,7 +81,7 @@ pub async fn create_record_on_ledger<T: borsh::BorshSerialize>(
             )
             .await?;
     }
-    println!(
+    tracing::info!(
         "wrote {} bytes for blockhash {recent_blockhash}",
         serialized.len()
     );

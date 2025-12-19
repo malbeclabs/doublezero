@@ -120,7 +120,6 @@ pub fn initialize_distribution(solana_rpc: String) -> Result<(), NifError> {
                 None,   // dz_env
                 false,  // bypass_dz_epoch_check
                 None,   // record_accountant_key
-                false,  // enable_debt_write_off
             )
             .await
         })

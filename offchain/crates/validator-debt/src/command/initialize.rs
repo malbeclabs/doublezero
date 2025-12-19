@@ -39,7 +39,6 @@ impl InitializeDistributionCommand {
             dz_env.dz_env,
             bypass_dz_epoch_check,
             record_accountant_key,
-            false, // enable_debt_write_off
         )
         .await
     }

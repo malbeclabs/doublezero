@@ -196,7 +196,7 @@ impl Transaction {
             "simulation verification failed"
         );
 
-        println!(
+        tracing::info!(
             "Verification Result: {:#?}",
             verification.value.logs.unwrap_or(Vec::new())
         );
@@ -246,7 +246,7 @@ impl Transaction {
             .send_or_simulate_transaction(ledger_rpc_client, &verified_transaction)
             .await?;
 
-        println!("{:#?}", tx);
+        tracing::info!("{:#?}", tx);
 
         Ok(())
     }
@@ -284,7 +284,7 @@ impl Transaction {
                 .iter()
                 .any(|(key, epoch)| key == &node_id_str && *epoch == dz_epoch)
             {
-                println!(
+                tracing::info!(
                     "Validator {node_id_str} for epoch #{dz_epoch} excluded from debt collection"
                 );
                 continue;
@@ -317,9 +317,10 @@ impl Transaction {
             match result {
                 Ok(success) => {
                     let payment_result = parse_program_logs(d.amount, d.node_id, success);
-                    println!(
+                    tracing::info!(
                         "{}: {:#?}",
-                        payment_result.validator_id, payment_result.result
+                        payment_result.validator_id,
+                        payment_result.result
                     );
                     debt_collection_result.push(payment_result);
                 }
@@ -346,9 +347,10 @@ impl Transaction {
                                         },
                                         success: false,
                                     };
-                                    println!(
+                                    tracing::info!(
                                         "{}: {:#?}",
-                                        payment_result.validator_id, payment_result.result
+                                        payment_result.validator_id,
+                                        payment_result.result
                                     );
                                     debt_collection_result.push(payment_result);
                                 }

@@ -456,15 +456,14 @@ async fn write_transaction(
 
 pub async fn try_initialize_distribution(
     wallet: Wallet,
-    dz_env: Option<NetworkEnvironment>,
+    dz_env_override: Option<NetworkEnvironment>,
     bypass_dz_epoch_check: bool,
     record_accountant_key: Option<Pubkey>,
-    enable_debt_write_off: bool,
 ) -> Result<()> {
     let network_env = wallet.connection.try_network_environment().await?;
 
     // Allow an override to the DoubleZero Ledger environment.
-    let dz_env = dz_env.unwrap_or(network_env);
+    let dz_env = dz_env_override.unwrap_or(network_env);
     let dz_connection = DoubleZeroLedgerConnection::from(dz_env);
 
     let config = wallet
@@ -524,9 +523,7 @@ pub async fn try_initialize_distribution(
         .checked_minimum_epoch_duration_to_finalize_rewards()
         .context("Minimum epoch duration to finalize rewards not set")?;
 
-    // TODO: Remove when the accountant should take advantage of this new
-    // feature.
-    if enable_debt_write_off {
+    if config.is_debt_write_off_feature_activated() {
         // Try to write off distribution debt for the distribution that will have
         // rewards distributed to network contributors. If rewards were already
         // distributed or all debt is already accounted for, this is a no-op.
@@ -538,6 +535,8 @@ pub async fn try_initialize_distribution(
             minimum_epoch_duration_to_finalize_rewards,
         )
         .await?;
+    } else {
+        tracing::warn!("Debt write off feature is not activated yet");
     }
 
     let wallet_key = wallet.pubkey();
@@ -813,6 +812,8 @@ async fn try_write_off_distribution_debt(
     next_dz_epoch: DoubleZeroEpoch,
     minimum_epoch_duration_to_finalize_rewards: u32,
 ) -> Result<()> {
+    let wallet_key = wallet.pubkey();
+
     // Track running deposit balances when we iterate through epochs.
     let mut deposit_balances = HashMap::new();
 
@@ -823,7 +824,7 @@ async fn try_write_off_distribution_debt(
     tracing::info!("Processing debt write-offs affecting epoch {rewards_dz_epoch}");
 
     let (distribution_key, _) = Distribution::find_address(DoubleZeroEpoch::new(rewards_dz_epoch));
-    let rewards_distribution = wallet
+    let mut rewards_distribution = wallet
         .connection
         .try_fetch_zero_copy_data::<Distribution>(&distribution_key)
         .await?;
@@ -838,12 +839,25 @@ async fn try_write_off_distribution_debt(
         return Ok(());
     }
 
+    // Write-offs will have to terminate if the uncollectible debt exceeds the
+    // total debt. This boolean will never be false if the only debt written off
+    // is from the same epoch. But for any lingering bad debt, we may have to
+    // bail out.
+    let mut must_terminate_debt_write_offs = false;
+
     // Traverse backwards through epochs to write off debt.
     //
     // TODO: We should be able to terminate this loop early if we find that
     // all processed debt is already accounted for. But for now, we will just
     // iterate through all epochs.
     for dz_epoch in (GENESIS_DZ_EPOCH_MAINNET_BETA..=rewards_dz_epoch).rev() {
+        if must_terminate_debt_write_offs {
+            tracing::warn!(
+                "Terminating debt write-offs because uncollectible debt exceeds total debt"
+            );
+            break;
+        }
+
         let (distribution_key, _) = Distribution::find_address(DoubleZeroEpoch::new(dz_epoch));
 
         let distribution = if dz_epoch == rewards_dz_epoch {
@@ -855,13 +869,12 @@ async fn try_write_off_distribution_debt(
                 .await?
         };
 
-        if distribution.solana_validator_payments_count == distribution.total_solana_validators {
+        if distribution.is_all_solana_validator_debt_processed() {
             continue;
         }
 
-        let start_index = distribution.processed_solana_validator_debt_start_index as usize;
-        let end_index = distribution.processed_solana_validator_debt_end_index as usize;
-        let processed_leaf_data = &distribution.remaining_data[start_index..end_index];
+        let processed_range = distribution.processed_solana_validator_debt_bitmap_range();
+        let processed_leaf_data = &distribution.remaining_data[processed_range];
 
         let (_, computed_debt) = ledger::try_fetch_debt_record(
             dz_ledger_connection,
@@ -870,21 +883,6 @@ async fn try_write_off_distribution_debt(
             dz_ledger_connection.commitment(),
         )
         .await?;
-
-        // First scan to check whether all are processed.
-        let mut all_processed = true;
-        for (leaf_index, _) in computed_debt.debts.iter().enumerate() {
-            if !revenue_distribution::try_is_processed_leaf(processed_leaf_data, leaf_index)
-                .unwrap()
-            {
-                all_processed = false;
-                break;
-            }
-        }
-
-        if all_processed {
-            continue;
-        }
 
         let rent_sysvar = wallet
             .connection
@@ -898,6 +896,11 @@ async fn try_write_off_distribution_debt(
         let mut write_off_count = 0;
 
         for (leaf_index, debt) in computed_debt.debts.iter().enumerate() {
+            if rewards_distribution.checked_total_sol_debt().is_none() {
+                must_terminate_debt_write_offs = true;
+                break;
+            }
+
             if revenue_distribution::try_is_processed_leaf(processed_leaf_data, leaf_index).unwrap()
             {
                 continue;
@@ -905,26 +908,16 @@ async fn try_write_off_distribution_debt(
 
             let node_id = debt.node_id;
             let (deposit_key, deposit_bump) = SolanaValidatorDeposit::find_address(&node_id);
-            let deposit_account_info = wallet.connection.get_account(&deposit_key).await?;
 
             if let std::collections::hash_map::Entry::Vacant(entry) =
                 deposit_balances.entry(node_id)
             {
-                let deposit_balance = doublezero_solana_client_tools::account::balance(
-                    &deposit_account_info,
-                    &rent_sysvar,
-                );
-                entry.insert(deposit_balance);
-                tracing::debug!("Fetched deposit balance for node {node_id}: {deposit_balance}");
-            }
+                let deposit_account_info = wallet
+                    .connection
+                    .get_account(&deposit_key)
+                    .await
+                    .unwrap_or_default();
 
-            let deposit_balance = deposit_balances.get_mut(&node_id).unwrap();
-
-            let (_, proof) = computed_debt.find_debt_proof(&node_id).unwrap();
-
-            let wallet_key = wallet.pubkey();
-
-            if *deposit_balance >= debt.amount {
                 if deposit_account_info.data.is_empty() {
                     let instruction = try_build_instruction(
                         &ID,
@@ -939,6 +932,19 @@ async fn try_write_off_distribution_debt(
                     instructions_and_compute_units.push((instruction, compute_units));
                 }
 
+                let deposit_balance = doublezero_solana_client_tools::account::balance(
+                    &deposit_account_info,
+                    &rent_sysvar,
+                );
+                entry.insert(deposit_balance);
+                tracing::debug!("Fetched deposit balance for node {node_id}: {deposit_balance}");
+            }
+
+            let deposit_balance = deposit_balances.get_mut(&node_id).unwrap();
+
+            let (_, proof) = computed_debt.find_debt_proof(&node_id).unwrap();
+
+            if *deposit_balance >= debt.amount {
                 let compute_units =
                     revenue_distribution::compute_unit::pay_solana_validator_debt(&proof);
 
@@ -992,6 +998,9 @@ async fn try_write_off_distribution_debt(
 
                 instructions_and_compute_units.push((instruction, compute_units));
                 write_off_count += 1;
+
+                // Update the uncollectible debt locally.
+                rewards_distribution.mucked_data.uncollectible_sol_debt += debt.amount;
             };
         }
 

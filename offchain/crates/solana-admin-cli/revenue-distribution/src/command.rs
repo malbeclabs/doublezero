@@ -1,12 +1,17 @@
 use anyhow::{Result, anyhow, bail};
 use clap::{Args, Subcommand};
-use doublezero_solana_client_tools::payer::{SolanaPayerOptions, TransactionOutcome, Wallet};
+use doublezero_solana_client_tools::{
+    payer::{SolanaPayerOptions, TransactionOutcome, Wallet},
+    rpc::{SolanaConnection, SolanaConnectionOptions},
+};
 use doublezero_solana_sdk::{
     environment_2z_token_mint_key, get_program_data_address,
     revenue_distribution::{
         ID,
+        fetch::try_fetch_config,
         instruction::{
-            ProgramConfiguration, ProgramFlagConfiguration, RevenueDistributionInstructionData,
+            ProgramConfiguration, ProgramFeatureConfiguration, ProgramFlagConfiguration,
+            RevenueDistributionInstructionData,
             account::{
                 ConfigureProgramAccounts, InitializeContributorRewardsAccounts,
                 InitializeJournalAccounts, InitializeProgramAccounts,
@@ -14,6 +19,7 @@ use doublezero_solana_sdk::{
             },
         },
         state::{self, ContributorRewards, Journal, ProgramConfig},
+        types::DoubleZeroEpoch,
     },
     try_build_instruction,
 };
@@ -67,6 +73,11 @@ pub enum RevenueDistributionAdminSubcommand {
         #[command(flatten)]
         solana_payer_options: SolanaPayerOptions,
     },
+
+    FetchCurrentEpoch {
+        #[command(flatten)]
+        solana_connection_options: SolanaConnectionOptions,
+    },
 }
 
 impl RevenueDistributionAdminSubcommand {
@@ -74,22 +85,22 @@ impl RevenueDistributionAdminSubcommand {
         match self {
             Self::Initialize {
                 solana_payer_options,
-            } => execute_initialize_program(solana_payer_options).await,
+            } => try_execute_initialize_program(solana_payer_options).await,
             Self::SetAdmin {
                 admin_key,
                 solana_payer_options,
-            } => execute_set_admin(admin_key, solana_payer_options).await,
+            } => try_execute_set_admin(admin_key, solana_payer_options).await,
             Self::Configure {
                 configure_options,
                 solana_payer_options,
-            } => execute_configure_program(configure_options, solana_payer_options).await,
+            } => try_execute_configure_program(configure_options, solana_payer_options).await,
             Self::SetRewardsManager {
                 service_key,
                 rewards_manager_key,
                 initialize_contributor_rewards,
                 solana_payer_options,
             } => {
-                execute_set_rewards_manager(
+                try_execute_set_rewards_manager(
                     service_key,
                     rewards_manager_key,
                     initialize_contributor_rewards,
@@ -99,7 +110,10 @@ impl RevenueDistributionAdminSubcommand {
             }
             Self::MigrateProgramAccounts {
                 solana_payer_options,
-            } => execute_migrate_program_accounts(solana_payer_options).await,
+            } => try_execute_migrate_program_accounts(solana_payer_options).await,
+            Self::FetchCurrentEpoch {
+                solana_connection_options,
+            } => try_execute_fetch_current_epoch(solana_connection_options).await,
         }
     }
 }
@@ -183,13 +197,18 @@ pub struct ConfigureRevenueDistributionOptions {
     /// decimals).
     #[arg(long, value_name = "PERCENTAGE")]
     pub initial_community_burn_rate: Option<String>,
+
+    #[arg(long, value_name = "EPOCH")]
+    pub solana_validator_debt_write_off_feature_activation_epoch: Option<u64>,
 }
 
 //
 // RevenueDistributionAdminSubcommand::Initialize.
 //
 
-pub async fn execute_initialize_program(solana_payer_options: SolanaPayerOptions) -> Result<()> {
+pub async fn try_execute_initialize_program(
+    solana_payer_options: SolanaPayerOptions,
+) -> Result<()> {
     let wallet = Wallet::try_from(solana_payer_options)?;
     let wallet_key = wallet.pubkey();
 
@@ -276,7 +295,7 @@ pub async fn execute_initialize_program(solana_payer_options: SolanaPayerOptions
 // RevenueDistributionAdminSubcommand::MigrateProgramAccounts.
 //
 
-pub async fn execute_migrate_program_accounts(
+pub async fn try_execute_migrate_program_accounts(
     solana_payer_options: SolanaPayerOptions,
 ) -> Result<()> {
     let wallet = Wallet::try_from(solana_payer_options)?;
@@ -321,7 +340,7 @@ pub async fn execute_migrate_program_accounts(
 // RevenueDistributionAdminSubcommand::SetAdmin.
 //
 
-pub async fn execute_set_admin(
+pub async fn try_execute_set_admin(
     admin_key: Pubkey,
     solana_payer_options: SolanaPayerOptions,
 ) -> Result<()> {
@@ -363,7 +382,7 @@ pub async fn execute_set_admin(
 // RevenueDistributionAdminSubcommand::Configure.
 //
 
-pub async fn execute_configure_program(
+pub async fn try_execute_configure_program(
     configure_options: Box<ConfigureRevenueDistributionOptions>,
     solana_payer_options: SolanaPayerOptions,
 ) -> Result<()> {
@@ -387,6 +406,7 @@ pub async fn execute_configure_program(
         epochs_to_increasing_community_burn_rate,
         epochs_to_community_burn_rate_limit,
         initial_community_burn_rate,
+        solana_validator_debt_write_off_feature_activation_epoch,
     } = *configure_options;
 
     let wallet = Wallet::try_from(solana_payer_options)?;
@@ -578,6 +598,18 @@ pub async fn execute_configure_program(
         }
     }
 
+    if let Some(activation_epoch) = solana_validator_debt_write_off_feature_activation_epoch {
+        let configure_program_ix = try_build_configure_program_instruction(
+            &wallet_key,
+            ProgramConfiguration::FeatureActivation {
+                feature: ProgramFeatureConfiguration::SolanaValidatorDebtWriteOff,
+                activation_epoch: DoubleZeroEpoch::new(activation_epoch),
+            },
+        )?;
+        instructions.push(configure_program_ix);
+        compute_unit_limit += 5_000;
+    }
+
     if instructions.is_empty() {
         bail!("No configuration options provided");
     }
@@ -609,7 +641,7 @@ pub async fn execute_configure_program(
 // RevenueDistributionAdminSubcommand::SetRewardsManager.
 //
 
-pub async fn execute_set_rewards_manager(
+pub async fn try_execute_set_rewards_manager(
     service_key: Pubkey,
     rewards_manager_key: Pubkey,
     initialize_contributor_rewards: bool,
@@ -657,6 +689,21 @@ pub async fn execute_set_rewards_manager(
 
         wallet.print_verbose_output(&[tx_sig]).await?;
     }
+
+    Ok(())
+}
+
+//
+// RevenueDistributionAdminSubcommand::FetchCurrentEpoch.
+//
+
+pub async fn try_execute_fetch_current_epoch(
+    solana_connection_options: SolanaConnectionOptions,
+) -> Result<()> {
+    let connection = SolanaConnection::from(solana_connection_options);
+
+    let (_, config) = try_fetch_config(&connection).await?;
+    println!("{}", config.next_completed_dz_epoch.value());
 
     Ok(())
 }

@@ -1,13 +1,14 @@
 use chrono::DateTime;
 use doublezero_config::Environment;
 use eyre::eyre;
+use http::StatusCode;
 use http_body_util::{BodyExt, Empty, Full};
 use hyper::{body::Bytes, Method, Request};
 use hyper_util::{client::legacy::Client, rt::TokioExecutor};
 use hyperlocal::{UnixConnector, Uri};
 use mockall::automock;
 use serde::{Deserialize, Serialize};
-use std::{fmt, fs::File, path::Path};
+use std::{fmt, fs::File, net::Ipv4Addr, path::Path};
 use tabled::{derive::display, Tabled};
 
 const NANOS_TO_MS: f32 = 1000000.0;
@@ -138,6 +139,27 @@ impl fmt::Display for RouteRecord {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ResolveRouteRequest {
+    pub dst: Ipv4Addr,
+}
+impl fmt::Display for ResolveRouteRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "dst: {}", self.dst)
+    }
+}
+
+#[derive(Deserialize, Debug)]
+pub struct ResolveRouteResponse {
+    pub src: Option<Ipv4Addr>,
+}
+
+impl fmt::Display for ResolveRouteResponse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "src: {:?}", self.src)
+    }
+}
+
 fn maybe_i64_to_dt_str(maybe_i64_dt: &Option<i64>) -> String {
     maybe_i64_dt.as_ref().map_or_else(
         || "no session data".to_string(),
@@ -166,6 +188,7 @@ pub trait ServiceController {
     async fn remove(&self, args: RemoveTunnelCliCommand) -> eyre::Result<RemoveResponse>;
     async fn status(&self) -> eyre::Result<Vec<StatusResponse>>;
     async fn routes(&self) -> eyre::Result<Vec<RouteRecord>>;
+    async fn resolve_route(&self, args: ResolveRouteRequest) -> eyre::Result<ResolveRouteResponse>;
 }
 
 pub struct ServiceControllerImpl {
@@ -371,6 +394,26 @@ impl ServiceController for ServiceControllerImpl {
         let res = client.request(req).await?;
         let data = res.into_body().collect().await?.to_bytes();
         let response = serde_json::from_slice::<Vec<RouteRecord>>(&data)?;
+        Ok(response)
+    }
+
+    async fn resolve_route(&self, args: ResolveRouteRequest) -> eyre::Result<ResolveRouteResponse> {
+        let client = Client::builder(TokioExecutor::new()).build(UnixConnector);
+        let body_bytes =
+            serde_json::to_vec(&args).map_err(|e| eyre!("Unable to serialize request: {e}"))?;
+        let req = Request::builder()
+            .method(Method::POST)
+            .uri(Uri::new(&self.socket_path, "/resolve-route"))
+            .body(Full::new(Bytes::from(body_bytes)))?;
+        let res = client.request(req).await?;
+
+        // If route not found (404) or API error, return src=None instead of error
+        if res.status() == StatusCode::NOT_FOUND || !res.status().is_success() {
+            return Ok(ResolveRouteResponse { src: None });
+        }
+
+        let data = res.into_body().collect().await?.to_bytes();
+        let response = serde_json::from_slice::<ResolveRouteResponse>(&data)?;
         Ok(response)
     }
 }

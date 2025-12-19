@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.
   - IP address lookup responses that do not contain a valid IPv4 address (such as upstream timeout messages) are now treated as retryable errors instead of being parsed as IPs.
 - Onchain programs
   - Allow contributor owner to update ops manager key
+  - Add new arguments on create interface cli command
 - Internet Latency Telemetry
   - Fixed a bug that prevented unresponsive ripeatlas probes from being replaced
   - Fixed a bug that caused ripeatlas samples to be dropped when they were delayed to the next collection cycle

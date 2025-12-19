@@ -4,7 +4,7 @@
 
 **Status: Draft**
 
-Some modifications to QUIC will be required to allow an FPGA in the DoubleZero network to provide edge filtering services for Solana validators. The overarching goal is to make minimal changes to Solana Validator and QUIC library code, as compared to Version 1 of QUIC currently used. Additionally, as much as possible to make changes in such a way that that client-side (such as RPCs) code requires little to no change, or changes can be phased in. This RFC proposes making changes or restrictions in three areas of QUIC: Encryption, Flow Control, and Packet Formatting.
+Some modifications to QUIC will be required to allow an FPGA in the DoubleZero network to provide edge filtering services for Solana validators. The overarching goal is to make minimal changes to Solana Validator and QUIC library code, as compared to Version 1 of QUIC currently used. Additionally, as much as possible to make changes in such a way that client-side (such as RPCs) code requires little to no change, or changes can be phased in. This RFC proposes making changes or restrictions in three areas of QUIC: Encryption, Flow Control, and Packet Formatting.
 
 <br>
 
@@ -117,10 +117,10 @@ Once the server has finished the TLS handshake, it sends a `HANDSHAKE_DONE` pack
 where `SECRET_STRUCT` looks like:
 
 ```
-pub struct SECRET_STRUCT{
-magic: String = "CLIENTKEY:", // Magic Key
-cid: u64,                     // Server's CID
-secret: vec<u8>               // Client Secret for this connection- 48 bytes.
+pub struct SECRET_STRUCT {
+    magic: String,             // Magic Key (e.g., "CLIENTKEY:")
+    cid: u64,                  // Server's CID
+    secret: [u8; 48],          // Client Secret for this connection - 48 bytes.
 }
 ```
 
@@ -181,7 +181,7 @@ Agave: This approach would generally work without any changes to the underlying 
 
 - if Agave continues to use `MAX_DATA` as a backstop, it will be more reliable if the changes described in (1) above are made to Quinn. 
 
-- if Quinn receives a `RESET_STREAM` with a different `FINAL_LENGTH` then it has already determined, Quinn must not issue a `FNAL_SIZE_ERROR`. This is slightly different from the previous point, and addresses an edge case where the `RESET_STREAM` replaced a packet without the Fin but, but that packet has already been received by the server.
+- if Quinn receives a `RESET_STREAM` with a different `FINAL_LENGTH` than it has already determined, Quinn must not issue a `FINAL_SIZE_ERROR`. This is slightly different from the previous point, and addresses an edge case where the `RESET_STREAM` replaced a packet without the Fin, but that packet has already been received by the server.
 
 **4k Transactions & Fragmentation:** Transactions which are fragmented across multiple packets may not be dropped until the last packet depending on the criteria causing the drop. There isn’t a workaround for this other than storing and forwarding, which is not practicable for the amount of traffic a single edge filtering node might be handling. The FPGA must issue the `RESET_STREAM` as soon as it knows that a drop is desired.
 
@@ -285,7 +285,7 @@ Some in the Solana community may be concerned that the DoubleZero FPGA will have
 ### Bogus Session Secrets
 The FPGA trusts that session secrets coming from a server's IP are, in fact, from that server. If a malicious actor could spoof the server's IP, they could provide a bogus session secret for a connection, thus either disabling filtering for that connection or causing all traffic on that connection to be dropped. 
 
-This is mitigated because traffic from the server originates inside the DoubleZero edge filtration VRF. As such DoubleZero will have other systems in place to ensure that the source IP won't be spoofed, see RFCxx for more on edge filtration routing.
+This is mitigated because traffic from the server originates inside the DoubleZero edge filtration VRF. As such, DoubleZero will have other systems in place to ensure that the source IP won't be spoofed; see the RFC on edge filtration routing for more details.
 
 <br>
 

@@ -11,11 +11,11 @@ import (
 )
 
 type ResolveRouteRequest struct {
-	Dst net.IP
+	Dst net.IP `json:"dst"`
 }
 
 type ResolveRouteResponse struct {
-	Src net.IP
+	Src net.IP `json:"src"`
 }
 
 func (r *ResolveRouteRequest) Validate() error {

@@ -414,7 +414,7 @@ func TestWatcher_Tick_AccountNotFound_IncrementsAccountNotFoundMetric(t *testing
 	require.NoError(t, w.Tick(context.Background()))
 
 	circuitKey := circuitKey("A", "B", link)
-	require.Equal(t, 1.0, testutil.ToFloat64(cfg.Metrics.AccountNotFound.WithLabelValues(circuitKey)))
+	require.Equal(t, 1.0, testutil.ToFloat64(cfg.Metrics.AccountNotFound.WithLabelValues(circuitKey, "pending")))
 }
 
 func TestWatcher_Tick_DeletesMetrics_WhenCircuitDisappears(t *testing.T) {

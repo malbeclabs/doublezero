@@ -157,7 +157,7 @@ Here are the same phases as lists:
     1. Contributor un-drains the link by setting link.status to Activated
 
 ### Architecture
-We propose to create a new `monitor-oracle` component to periodically monitor the health of links and devices and update a new `health` field in serviceability's `link` and `device` to reflect each link's and device's current health status, as defined by the set of ready-for-service (RFS) criteria defined below. The existing controller component, in turn, supplies the fleet of DZDs with configuration statements that implement the desired network configuration for each status.
+We propose to create a new `device-health-oracle` component to periodically monitor the health of links and devices and update a new `health` field in serviceability's `link` and `device` to reflect each link's and device's current health status, as defined by the set of ready-for-service (RFS) criteria defined below. The existing controller component, in turn, supplies the fleet of DZDs with configuration statements that implement the desired network configuration for each status.
 
 ### Link (WAN or DZX) onboarding/maintenance/offboarding
 
@@ -166,11 +166,11 @@ Link onboarding has two stages:
 2. link meets all RFS criteria, status set to Activated.
 
 ```
-                 ┌────────────────┐
-                 │ monitor-oracle │
-                 └───────┬────────┘
-                         │
-            ┌────────────┴─────────────┐
+               ┌──────────────────────┐
+               │ device-health-oracle │
+               └───────┬──────────────┘
+                       │
+            ┌──────────┴───────────────┐
             │                          │ When all link RFS criteria are met,
         poll│                          │ update link.health to ReadyForService
             │                          │
@@ -222,7 +222,7 @@ Link onboarding has two stages:
 #### Link onboarding - steps
 0. Prerequisites
     1. Contributor creates new link (desired_status = Activated, status = Provisioning)
-1. The `monitor-oracle` component, when all RFS criteria have been met for the burn-in period, sets link.health to ReadyForService
+1. The `device-health-oracle` component, when all RFS criteria have been met for the burn-in period, sets link.health to ReadyForService
 1. On link.health update, the serviceability link program sets link.status to Activated when:
     1. link.desired_status = activated
     1. and link.health = healthy
@@ -253,9 +253,9 @@ Device activation has three stages:
 3. device meets all RFS criteria for users, status set to Activated.
 
 ```
-                 ┌────────────────┐
-                 │ monitor-oracle │
-                 └───────┬────────┘
+               ┌──────────────────────┐
+               │ device-health-oracle │
+               └─────────┬────────────┘
                          │
             ┌────────────┴─────────────┐
             │                          │ When all device RFS (link) criteria are met,
@@ -339,7 +339,7 @@ The following criteria are out of scope because they depend on data that we curr
 1. `service routing protocols model multi-agent` has been set
 
 #### Device onboarding - steps
-1. The `monitor-oracle` component, when all RFS criteria have been met for the burn-in period, sets device.health to ReadyForUsers
+1. The `device-health-oracle` component, when all RFS criteria have been met for the burn-in period, sets device.health to ReadyForUsers
 1. On device.health update, the serviceability link program sets device.status to Activated and device.max-users to 96 (for edge/hybrid devices only) when the following are all true:
     1. device.desired_status = activated
     1. and device.health = healthy
@@ -382,7 +382,7 @@ pub enum LinkStatus {
 ```
 
 #### - serviceability: add link.health
-This new link field is updated by the new `monitor-oracle` component.
+This new link field is updated by the new `device-health-oracle` component.
 ```
 pub enum LinkHealth {
     Unknown = 0,
@@ -404,7 +404,7 @@ pub enum LinkDesiredStatus {
 ```
 
 #### - serviceability: add DeviceProvisioning and LinkProvisioning to device.status
-Add two new statuses to DeviceStatus -- DeviceProvisioning and LinkProvisioning. Currently, new devices are created with the Pending status and immediately moved to Activated status after resources are assigned. Now, new devices will instead be moved to DeviceProvisioning status after resources are assigned. Once `monitor-oracle` determines all RFS (device) criteria are met, it sets device.health to ReadyForLinks (defined below), and serviceability moves device.status to LinkProvisioning. Once `monitor-oracle` determines all RFS (links) criteria are met, it sets device.health to ReadyForUsers, and serviceability moves device.status to Activated.
+Add two new statuses to DeviceStatus -- DeviceProvisioning and LinkProvisioning. Currently, new devices are created with the Pending status and immediately moved to Activated status after resources are assigned. Now, new devices will instead be moved to DeviceProvisioning status after resources are assigned. Once `device-health-oracle` determines all RFS (device) criteria are met, it sets device.health to ReadyForLinks (defined below), and serviceability moves device.status to LinkProvisioning. Once `device-health-oracle` determines all RFS (links) criteria are met, it sets device.health to ReadyForUsers, and serviceability moves device.status to Activated.
 
 ```
 pub enum DeviceStatus {
@@ -440,8 +440,8 @@ pub enum DeviceDesiredStatus {
 }
 ```
 
-#### - monitor-oracle: add logic to update link.health and device.health
-#### - monitor-oracle: send Slack notifications
+#### - device-health-oracle: add logic to update link.health and device.health
+#### - device-health-oracle: send Slack notifications
 #### - serviceability link program
 - add LinkHealth
 - add LinkDesiredStatus
@@ -472,20 +472,20 @@ Changes are needed to the following components:
 
 This RFC should improve the operational controls to manage DZDs and links in the network.  It introduces an intent based methodology that uses explict fields to achieve the desired state.
 
-This RFC adds a new monitor-oracle component that collects data from Solana and the DZ ledger (serviceability and telemetry), reads data from Grafana and InfluxDB, and writes data to serviceability.
+This RFC adds a new device-health-oracle component that collects data from Solana and the DZ ledger (serviceability and telemetry), reads data from Grafana and InfluxDB, and writes data to serviceability.
 
 Contributors should not be rewarded for devices and links that are not in activated status. This check is already present in contributor-rewards (doublezero-offchain/crates/contributor-rewards/src/calculator/shapley_handler.rs).
 
-This RFC improves network operations, but it also works against DoubleZero's long-term goal of being fully decentralized by adding a centralized component, `monitor-oracle`. Two possible approaches to decentralizing this in the future are: 1) move all health data and related logic to the DZ Ledger, and 2) have contributors run instances of `monitor-oracle` that operate only on that contributor's links and devices.
+This RFC improves network operations, but it also works against DoubleZero's long-term goal of being fully decentralized by adding a centralized component, `device-health-oracle`. Two possible approaches to decentralizing this in the future are: 1) move all health data and related logic to the DZ Ledger, and 2) have contributors run instances of `device-health-oracle` that operate only on that contributor's links and devices.
 
 ## Security Considerations
 
-- The monitor-oracle component will API keys for reading from Grafana and InfluxDB, as well as a key with write access to link.health and device.health. If this key is leaked, an attacker could move a device into activated status even though it's not healthy.
+- The device-health-oracle component will API keys for reading from Grafana and InfluxDB, as well as a key with write access to link.health and device.health. If this key is leaked, an attacker could move a device into activated status even though it's not healthy.
 - An attacker could shut down user BGP sessions on DZDs if they gains the ability to update device.status or device.desired_status to Drained.
 
 ## Backward Compatibility
 
-- The changes can be deployed in a backward-compatible manner, starting with the program updates, followed by the qa and monitor-oracle updates, followed by the controller updates.
+- The changes can be deployed in a backward-compatible manner, starting with the program updates, followed by the qa and device-health-oracle updates, followed by the controller updates.
 
 ## Open Questions
 * What verification can be implemented to prove that a DZD, link or CYOA interface has been successfully drained and undrained?

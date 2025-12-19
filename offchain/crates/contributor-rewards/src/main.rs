@@ -6,7 +6,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use doublezero_contributor_rewards::{
     calculator::orchestrator::Orchestrator,
-    cli::{inspect::InspectCommands, rewards::RewardsCommands},
+    cli::{export::ExportCommands, inspect::InspectCommands, rewards::RewardsCommands},
     settings::Settings,
 };
 use metrics_exporter_prometheus::PrometheusBuilder;
@@ -60,6 +60,11 @@ pub enum Commands {
     Inspect {
         #[command(subcommand)]
         cmd: InspectCommands,
+    },
+    /// Export Shapley calculation data
+    Export {
+        #[command(subcommand)]
+        cmd: ExportCommands,
     },
     /// Create a complete snapshot for deterministic reward calculations
     #[command(
@@ -138,6 +143,9 @@ impl Cli {
             }
             Commands::Inspect { cmd } => {
                 doublezero_contributor_rewards::cli::inspect::handle(&orchestrator, cmd).await
+            }
+            Commands::Export { cmd } => {
+                doublezero_contributor_rewards::cli::export::handle(&orchestrator, cmd).await
             }
             Commands::Snapshot {
                 epoch,

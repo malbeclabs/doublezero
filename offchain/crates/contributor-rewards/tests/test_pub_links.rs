@@ -2,7 +2,7 @@ use std::{collections::HashMap, fs, path::Path};
 
 use anyhow::Result;
 use doublezero_contributor_rewards::{
-    calculator::shapley_handler::{PreviousEpochCache, build_public_links},
+    calculator::shapley::handler::{PreviousEpochCache, build_public_links},
     ingestor::types::FetchData,
     processor::internet::InternetTelemetryProcessor,
     settings,

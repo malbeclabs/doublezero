@@ -7,25 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- feat(contributor-rewards): add read-rewards command ([#212](https://github.com/doublezerofoundation/doublezero-offchain/pull/212)
+- feat(contributor-rewards): add export shapley command ([#234](https://github.com/doublezerofoundation/doublezero-offchain/pull/234))
+- feat(contributor-rewards): add read-rewards command ([#212](https://github.com/doublezerofoundation/doublezero-offchain/pull/212))
 
 ## [0.3.5](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-contributor-rewards/v0.3.5) - 2025-11-24
 
-- feat(contributor-rewards): add snapshot flag to inspect shapley cmd ([#209](https://github.com/doublezerofoundation/doublezero-offchain/pull/209)
-- fix(contributor-rewards): track shapley output record address for slack notifications ([#208](https://github.com/doublezerofoundation/doublezero-offchain/pull/208)
+- feat(contributor-rewards): add snapshot flag to inspect shapley cmd ([#209](https://github.com/doublezerofoundation/doublezero-offchain/pull/209))
+- fix(contributor-rewards): track shapley output record address for slack notifications ([#208](https://github.com/doublezerofoundation/doublezero-offchain/pull/208))
 
 ## [0.3.4](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-contributor-rewards/v0.3.4) - 2025-11-21
 
-- feat(contributor-rewards): add support to send slack notifications ([#206](https://github.com/doublezerofoundation/doublezero-offchain/pull/206)
+- feat(contributor-rewards): add support to send slack notifications ([#206](https://github.com/doublezerofoundation/doublezero-offchain/pull/206))
 
 ## [0.3.3](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-contributor-rewards/v0.3.3) - 2025-11-20
 
 - feat(contributor-rewards): add granular support to skip writes ([#203](https://github.com/doublezerofoundation/doublezero-offchain/pull/203)
-- fix(contributor-rewards): add Distribution merkle root check to idempotency ([#202](https://github.com/doublezerofoundation/doublezero-offchain/pull/202)
+- fix(contributor-rewards): add Distribution merkle root check to idempotency ([#202](https://github.com/doublezerofoundation/doublezero-offchain/pull/202))
 
 ## [0.3.2](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-contributor-rewards/v0.3.2) - 2025-11-17
 
-- fix(contributor-rewards): make scheduler retry infinitely ([#198](https://github.com/doublezerofoundation/doublezero-offchain/pull/198)
+- fix(contributor-rewards): make scheduler retry infinitely ([#198](https://github.com/doublezerofoundation/doublezero-offchain/pull/198))
 
 ## [0.3.1-rc1](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-contributor-rewards/v0.3.1-rc1) - 2025-11-11
 
@@ -35,8 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.3.0-rc1](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-contributor-rewards/v0.3.0-rc1) - 2025-11-04
 
-- fix(contributor-rewards): ci fix to derive default [#176](https://github.com/doublezerofoundation/doublezero-offchain/pull/176))
-- feat(contributor-rewards): Add S3 storage for snapshots [#174](https://github.com/doublezerofoundation/doublezero-offchain/pull/174))
+- fix(contributor-rewards): ci fix to derive default ([#176](https://github.com/doublezerofoundation/doublezero-offchain/pull/176))
+- feat(contributor-rewards): Add S3 storage for snapshots ([#174](https://github.com/doublezerofoundation/doublezero-offchain/pull/174))
 
 ## [0.2.1-rc1](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-contributor-rewards/v0.2.1-rc1) - 2025-10-21
 

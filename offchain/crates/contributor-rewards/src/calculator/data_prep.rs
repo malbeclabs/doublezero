@@ -7,7 +7,7 @@ use tracing::{info, warn};
 use crate::{
     calculator::{
         input::ShapleyInputs,
-        shapley_handler::{
+        shapley::handler::{
             DeviceIdMap, PreviousEpochCache, build_demands, build_devices, build_private_links,
             build_public_links,
         },

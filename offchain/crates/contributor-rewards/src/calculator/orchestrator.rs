@@ -1,18 +1,14 @@
-use std::{collections::BTreeMap, path::PathBuf, time::Instant};
+use std::{path::PathBuf, time::Instant};
 
-use anyhow::{Context, Result, bail};
-use network_shapley::{shapley::ShapleyInput, types::Demand};
-use rayon::prelude::*;
+use anyhow::{Result, bail};
 use solana_sdk::pubkey::Pubkey;
-use tabled::{builder::Builder as TableBuilder, settings::Style};
 use tracing::{info, warn};
 
 use crate::{
     calculator::{
         WriteConfig, data_prep::PreparedData, input::RewardInput, keypair_loader::load_keypair,
         ledger_operations, proof::ShapleyOutputStorage,
-        revenue_distribution::post_rewards_merkle_root,
-        shapley_aggregator::aggregate_shapley_outputs, util::print_demands,
+        revenue_distribution::post_rewards_merkle_root, shapley::evaluator::compute_shapley_values,
     },
     cli::snapshot::CompleteSnapshot,
     ingestor::fetcher::Fetcher,
@@ -91,126 +87,20 @@ impl Orchestrator {
         let device_payload_bytes = device_telemetry_bytes.len();
         let internet_payload_bytes = internet_telemetry_bytes.len();
 
-        // Group demands by start city
-        let mut demands_by_city: BTreeMap<String, Vec<Demand>> = BTreeMap::new();
-        for demand in shapley_inputs.demands.clone() {
-            demands_by_city
-                .entry(demand.start.clone())
-                .or_default()
-                .push(demand);
-        }
-        let demand_groups: Vec<(String, Vec<Demand>)> = demands_by_city.into_iter().collect();
-
-        // Collect per-city Shapley outputs in parallel
+        // Compute Shapley values using shared function
         let start_time = Instant::now();
-        let per_city_shapley_outputs: BTreeMap<String, Vec<(String, f64)>> = demand_groups
-            .par_iter()
-            .map(|(city, demands)| {
-                let city_name = city.clone();
-                let city_start = Instant::now();
-                info!(
-                    "City: {city_name}, Demand: \n{}",
-                    print_demands(demands, 1_000_000)
-                );
-
-                // Build shapley inputs
-                let input = ShapleyInput {
-                    private_links: shapley_inputs.private_links.clone(),
-                    devices: shapley_inputs.devices.clone(),
-                    demands: demands.clone(),
-                    public_links: shapley_inputs.public_links.clone(),
-                    operator_uptime: self.settings.shapley.operator_uptime,
-                    contiguity_bonus: self.settings.shapley.contiguity_bonus,
-                    demand_multiplier: self.settings.shapley.demand_multiplier,
-                };
-
-                // Shapley output
-                let output = input
-                    .compute()
-                    .map_err(|err| {
-                        metrics::counter!(
-                            "doublezero_contributor_rewards_shapley_computations_failed",
-                            "city" => city_name.clone()
-                        )
-                        .increment(1);
-                        warn!(error = ?err, city = %city_name, "Failed to compute Shapley values");
-                        err
-                    })
-                    .with_context(|| format!("failed to compute Shapley values for {city_name}"))?;
-
-                // Track Shapley computation metrics
-                metrics::histogram!(
-                    "doublezero_contributor_rewards_shapley_computation_duration",
-                    "city" => city_name.clone()
-                )
-                .record(city_start.elapsed().as_secs_f64());
-                metrics::counter!(
-                    "doublezero_contributor_rewards_shapley_computations",
-                    "city" => city_name.clone()
-                )
-                .increment(1);
-
-                // Print per-city table
-                let table = TableBuilder::from(output.clone())
-                    .build()
-                    .with(Style::psql().remove_horizontals())
-                    .to_string();
-                info!("Shapley Output for {city_name}:\n{}", table);
-
-                // Store raw values for aggregation
-                let city_values: Vec<(String, f64)> = output
-                    .into_iter()
-                    .map(|(operator, shapley_value)| (operator, shapley_value.value))
-                    .collect();
-
-                Ok((city_name, city_values))
-            })
-            .collect::<Result<Vec<_>>>()?
-            .into_iter()
-            .collect();
-
+        let compute_result = compute_shapley_values(&shapley_inputs, &self.settings.shapley)?;
         let elapsed = start_time.elapsed();
 
         // Track total Shapley computation time
         metrics::histogram!("doublezero_contributor_rewards_shapley_total_duration")
             .record(elapsed.as_secs_f64());
 
-        let processed_cities = per_city_shapley_outputs.len();
-        info!(
-            "Shapley computation completed in {:.2?} for {} cities",
-            elapsed, processed_cities
-        );
-        metrics::gauge!("doublezero_contributor_rewards_shapley_cities_processed")
-            .set(processed_cities as f64);
+        info!("Shapley computation completed in {:.2?}", elapsed);
 
-        // Aggregate consolidated Shapley output
-        if !per_city_shapley_outputs.is_empty() {
-            let shapley_output =
-                aggregate_shapley_outputs(&per_city_shapley_outputs, &shapley_inputs.city_weights)?;
-
-            // Print shapley_output table
-            let mut table_builder = TableBuilder::default();
-            table_builder.push_record(["Operator", "Value", "Proportion (%)"]);
-
-            for (operator, val) in shapley_output.iter() {
-                table_builder.push_record([
-                    operator,
-                    &val.value.to_string(),
-                    &format!("{:.2}", val.proportion * 100.0),
-                ]);
-            }
-
-            let table = table_builder
-                .build()
-                .with(Style::psql().remove_horizontals())
-                .to_string();
-            info!("Shapley Output:\n{}", table);
-
-            let total_value: f64 = shapley_output.values().map(|val| val.value).sum();
-            metrics::gauge!("doublezero_contributor_rewards_shapley_total_value").set(total_value);
-            metrics::gauge!("doublezero_contributor_rewards_shapley_operator_count")
-                .set(shapley_output.len() as f64);
-
+        // Process results if we have any
+        let shapley_output = compute_result.aggregated_output;
+        if !shapley_output.is_empty() {
             // Construct merkle tree from shapley output
             let shapley_storage = ShapleyOutputStorage::new(fetch_epoch, &shapley_output)?;
             let merkle_root = shapley_storage.compute_merkle_root()?;

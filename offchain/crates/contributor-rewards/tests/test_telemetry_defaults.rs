@@ -2,7 +2,7 @@ mod common;
 
 use common::create_test_settings;
 use doublezero_contributor_rewards::{
-    calculator::shapley_handler::PreviousEpochCache,
+    calculator::shapley::handler::PreviousEpochCache,
     processor::{
         internet::{InternetTelemetryStatMap, InternetTelemetryStats},
         telemetry::{DZDTelemetryStatMap, DZDTelemetryStats},

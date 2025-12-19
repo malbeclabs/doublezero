@@ -7,8 +7,7 @@ pub mod orchestrator;
 pub mod proof;
 pub mod recorder;
 pub mod revenue_distribution;
-pub mod shapley_aggregator;
-pub mod shapley_handler;
+pub mod shapley;
 pub mod util;
 pub mod write_config;
 

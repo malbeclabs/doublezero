@@ -22,7 +22,7 @@ use crate::{
 pub type CityStats = BTreeMap<String, CityStat>;
 
 /// Statistics for validators in a city
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CityStat {
     /// Number of validators in this city
     pub validator_count: usize,

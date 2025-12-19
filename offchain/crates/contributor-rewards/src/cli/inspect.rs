@@ -9,7 +9,7 @@ use tracing::{info, warn};
 use crate::{
     calculator::{
         orchestrator::Orchestrator,
-        shapley_handler::{
+        shapley::handler::{
             PreviousEpochCache, build_devices, build_private_links, build_public_links,
         },
     },
@@ -317,11 +317,11 @@ async fn handle_inspect_shapley(
         output_file: args.output_file.map(|p| p.to_string_lossy().to_string()),
     };
 
-    let default_filename = format!("shapley-debug-{demand_source}-epoch-{fetch_epoch}");
+    let default_filename = format!("shapley-inputs-{demand_source}-epoch-{fetch_epoch}");
     output_options.write(&shapley_inputs, &default_filename)?;
 
     // Print summary
-    println!("\nShapley Debug Summary:");
+    println!("\nShapley Inputs Summary:");
     println!("----------------------");
     println!("Epoch: {fetch_epoch}");
     println!("Demand source: {demand_source}");

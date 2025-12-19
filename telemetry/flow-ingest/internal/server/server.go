@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -211,13 +212,13 @@ func (s *Server) ingestPacket(ctx context.Context, workerID int, p packet) {
 		return
 	}
 
-	hasFlowSample := false
-	for _, sample := range msg.Samples {
-		if _, ok := sample.(sflow.FlowSample); ok {
-			hasFlowSample = true
-			break
+	hasFlowSample := slices.ContainsFunc(msg.Samples, func(s any) bool {
+		switch s.(type) {
+		case sflow.FlowSample, sflow.ExpandedFlowSample:
+			return true
 		}
-	}
+		return false
+	})
 	if !hasFlowSample {
 		metrics.PacketsWithoutFlowSample.Inc()
 		return

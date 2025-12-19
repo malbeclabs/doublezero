@@ -271,6 +271,7 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 
 		d.MgmtVrf = device.MgmtVrf
 		d.Code = device.Code
+		d.Status = device.Status
 
 		if contributor, ok := contributorMap[device.ContributorPubKey]; ok {
 			d.ContributorCode = contributor.Code
@@ -603,6 +604,7 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 		device.ContributorCode,
 		device.ExchangeCode,
 		device.LocationCode,
+		device.Status.String(),
 		agentVersion,
 		agentCommit,
 		agentDate,

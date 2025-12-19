@@ -19,9 +19,10 @@ All notable changes to this project will be documented in this file.
 - Internet Latency Telemetry
   - Fixed a bug that prevented unresponsive ripeatlas probes from being replaced
   - Fixed a bug that caused ripeatlas samples to be dropped when they were delayed to the next collection cycle
-- Controller
+- Device controller
   - Add histogram metric for GetConfig request duration
   - Add gRPC middleware for prometheus metrics
+  - Add device status label to controller_grpc_getconfig_requests_total metric
 - Device agents
   - Increase default controller request timeout in config agent
   - Initial state collect in telemetry agent

@@ -2,7 +2,7 @@
 
 ## Summary
 
-**Status: Active**
+**Status: Implemented**
 
 A frequent requirement of operating a physical network is the ability to remove a link from being an active part of the network topology.  This is often referred to as draining, where traffic is rerouted to alternative options or, in the case of provisioning, prevented from being actively used until formally declared Ready for Service (RFS).
  

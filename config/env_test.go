@@ -28,6 +28,7 @@ func TestConfig_NetworkConfigForEnv(t *testing.T) {
 				TwoZOracleURL:              config.MainnetTwoZOracleURL,
 				SolanaRPCURL:               config.MainnetSolanaRPC,
 				TelemetryFlowIngestURL:     config.MainnetTelemetryFlowIngestURL,
+				TelemetryStateIngestURL:    config.MainnetTelemetryStateIngestURL,
 			},
 		},
 		{
@@ -42,6 +43,7 @@ func TestConfig_NetworkConfigForEnv(t *testing.T) {
 				TwoZOracleURL:              config.MainnetTwoZOracleURL,
 				SolanaRPCURL:               config.MainnetSolanaRPC,
 				TelemetryFlowIngestURL:     config.MainnetTelemetryFlowIngestURL,
+				TelemetryStateIngestURL:    config.MainnetTelemetryStateIngestURL,
 			},
 		},
 		{
@@ -56,6 +58,7 @@ func TestConfig_NetworkConfigForEnv(t *testing.T) {
 				TwoZOracleURL:              config.TestnetTwoZOracleURL,
 				SolanaRPCURL:               config.TestnetSolanaRPC,
 				TelemetryFlowIngestURL:     config.TestnetTelemetryFlowIngestURL,
+				TelemetryStateIngestURL:    config.TestnetTelemetryStateIngestURL,
 			},
 		},
 		{
@@ -70,6 +73,7 @@ func TestConfig_NetworkConfigForEnv(t *testing.T) {
 				TwoZOracleURL:              config.DevnetTwoZOracleURL,
 				SolanaRPCURL:               config.TestnetSolanaRPC,
 				TelemetryFlowIngestURL:     config.DevnetTelemetryFlowIngestURL,
+				TelemetryStateIngestURL:    config.DevnetTelemetryStateIngestURL,
 			},
 		},
 		{

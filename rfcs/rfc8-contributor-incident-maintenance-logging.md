@@ -2,7 +2,7 @@
 
 # Summary
 
-**Status: Draft**
+**Status: Approved**
 
 This RFC proposes a gateway-first mechanism for creating and updating incidents and planned maintenance across the DoubleZero network. Contributors use a single, versioned API to publish operational events while retaining their internal tools. The gateway validates identity (API key bound to contributor), enforces enumerations, normalizes payloads, stores them in a  datastore, and notifies coordination channels in Slack.
 

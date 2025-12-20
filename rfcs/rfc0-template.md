@@ -10,8 +10,8 @@ Use this template when proposing any substantive change to the DoubleZero projec
 
 *The current status of this RFC.* Possible values for `<status>`:
 - Draft: The RFC is still a work in progress
-- Pending: The RFC has reached its first complete version and is awaiting approval
-- Active: The feature(s) described in the RFC has been approved for release
+- Approved: The feature(s) described in the RFC has been approved for release
+- Implemented: The feature(s) described in the RFC has been implemented and merged
 - Deferred: The team has decided not to take action on the RFC at this time
 - Deprecated: The team has decided to remove the feature(s)
 

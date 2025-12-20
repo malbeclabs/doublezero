@@ -4,20 +4,28 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+- RFCs
+  - RFC-11: Onchain Activation ([#2302](https://github.com/malbeclabs/doublezero/pull/2302))
+
 ### Breaking
 
 ### Changes
 
 - CLI
   - IP address lookup responses that do not contain a valid IPv4 address (such as upstream timeout messages) are now treated as retryable errors instead of being parsed as IPs.
+- Onchain programs
+  - Allow contributor owner to update ops manager key
+  - Add new arguments on create interface cli command
 - Internet Latency Telemetry
   - Fixed a bug that prevented unresponsive ripeatlas probes from being replaced
   - Fixed a bug that caused ripeatlas samples to be dropped when they were delayed to the next collection cycle
-- Controller
+- Device controller
   - Add histogram metric for GetConfig request duration
   - Add gRPC middleware for prometheus metrics
+  - Add device status label to controller_grpc_getconfig_requests_total metric
 - Device agents
   - Increase default controller request timeout in config agent
+  - Initial state collect in telemetry agent
 - Client
   - Route liveness treats peers that advertise passive mode as selectively passive; does not manage their routes directly.
   - Route liveness runs in passive mode for IBRL with allocated IP, if global passive mode is enabled.
@@ -36,7 +44,14 @@ All notable changes to this project will be documented in this file.
   - Add serviceability data fetching to flow enricher
   - Add flow-ingest service
   - Add annotation of flow records with serviceability data
-  - Add rw mutext to serviceabilitry annotator in flow-enricher
+  - Add pcap input and json ouput to flow enricher
+  - Initial state-ingest service with client SDK
+- CI
+  - Cancel existing e2e test runs on the push of new commits
+- RFCs
+  - RFC - Network Provisioning
+- Monitor
+  - Add link status to device-telemetry metrics to enable Grafana alerts to filter out links that are not in activated status
 
 ## [v0.8.0](https://github.com/malbeclabs/doublezero/compare/client/v0.7.1...client/v0.8.0) – 2025-12-02
 
@@ -45,18 +60,19 @@ All notable changes to this project will be documented in this file.
 - None for this release
 
 ### Changes
+
 - RFCs
   - RFC-10: Version Compatibility Windows
 - CLI
-    - IP address lookups via ifconfig.me are retried up to 3 times to minimize transient network errors.
-    - Added global `--no-version-warning` flag to the `doublezero` client and now emit version warnings to STDERR instead of STDOUT to improve scriptability and logging.
-    - Add the ability to update a Device’s location, managing the reference counters accordingly.
-    - Added support in the link update command to set a link’s status to soft_drained or hard_drained.
-    - Added support for specifying `device_type` at creation, updating it via device update, and displaying it in list/detail outputs.
-    - Add support for updating `contributor.ops_manager_key`.
-    - Add migrate command to upgrade legacy user accounts from index-based PDAs to the new IP + connection-type scheme.
-    - Enhance `access-pass list` with client-IP and user-payer filters
-    - Support added to load keypair from stdin
+  - IP address lookups via ifconfig.me are retried up to 3 times to minimize transient network errors.
+  - Added global `--no-version-warning` flag to the `doublezero` client and now emit version warnings to STDERR instead of STDOUT to improve scriptability and logging.
+  - Add the ability to update a Device’s location, managing the reference counters accordingly.
+  - Added support in the link update command to set a link’s status to soft_drained or hard_drained.
+  - Added support for specifying `device_type` at creation, updating it via device update, and displaying it in list/detail outputs.
+  - Add support for updating `contributor.ops_manager_key`.
+  - Add migrate command to upgrade legacy user accounts from index-based PDAs to the new IP + connection-type scheme.
+  - Enhance `access-pass list` with client-IP and user-payer filters
+  - Support added to load keypair from stdin
 - Client
   - Add route liveness fault-injection simulation tests.
   - Updated the `interface list` command to display all interfaces when no device is specified.
@@ -106,6 +122,7 @@ All notable changes to this project will be documented in this file.
 ## [v0.7.0](https://github.com/malbeclabs/doublezero/compare/client/v0.6.11...client/v0.7.0) – 2025-11-14
 
 ### Breaking
+
 - Smart contract
   - Introduces CYOA and DIA as new possible interface types
 
@@ -132,7 +149,6 @@ All notable changes to this project will be documented in this file.
 ### Changes
 
 - Note that the changes from this release have been bundled into 0.7.0
-
 
 ## [v0.6.10](https://github.com/malbeclabs/doublezero/compare/client/v0.6.9...client/v0.6.10) – 2025-11-05
 

@@ -9,7 +9,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/gopacket/gopacket"
 	"github.com/gopacket/gopacket/layers"
-	"github.com/gopacket/gopacket/pcap"
+	"github.com/gopacket/gopacket/pcapgo"
 	flow "github.com/malbeclabs/doublezero/telemetry/proto/flow/gen/pb-go"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -21,11 +21,10 @@ func readPcap(t *testing.T, file string) []byte {
 		t.Fatalf("failed to open pcap file: %v", err)
 	}
 	defer f.Close()
-	handle, err := pcap.OpenOfflineFile(f)
+	handle, err := pcapgo.NewReader(f)
 	if err != nil {
 		t.Fatalf("failed to open pcap file: %v", err)
 	}
-	defer handle.Close()
 
 	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
 	for packet := range packetSource.Packets() {
@@ -62,6 +61,7 @@ func TestDecodeSFlow(t *testing.T) {
 					Bytes:          1428,
 					Packets:        1,
 					SamplingRate:   1024,
+					SamplerAddress: net.ParseIP("137.174.145.144"),
 					InputIfIndex:   8001063,
 					OutputIfIndex:  8001134,
 					TimeReceivedNs: time.Unix(1625243456, 0),
@@ -81,6 +81,7 @@ func TestDecodeSFlow(t *testing.T) {
 					Bytes:          1428,
 					Packets:        1,
 					SamplingRate:   1024,
+					SamplerAddress: net.ParseIP("137.174.145.144"),
 					InputIfIndex:   8001063,
 					OutputIfIndex:  8001134,
 					TimeReceivedNs: time.Unix(1625243456, 0),
@@ -108,6 +109,7 @@ func TestDecodeSFlow(t *testing.T) {
 					Bytes:          1428,
 					Packets:        1,
 					SamplingRate:   1024,
+					SamplerAddress: net.ParseIP("137.174.145.144"),
 					InputIfIndex:   8001134,
 					OutputIfIndex:  8001063,
 					TimeReceivedNs: time.Unix(1625243456, 0),
@@ -129,6 +131,7 @@ func TestDecodeSFlow(t *testing.T) {
 					Bytes:          1428,
 					Packets:        1,
 					SamplingRate:   1024,
+					SamplerAddress: net.ParseIP("137.174.145.144"),
 					InputIfIndex:   8001134,
 					OutputIfIndex:  8001063,
 					TimeReceivedNs: time.Unix(1625243456, 0),
@@ -143,6 +146,77 @@ func TestDecodeSFlow(t *testing.T) {
 					IpTtl:          63,
 					IpFlags:        2,
 					MplsLabel:      []string{"116386"},
+					IpTos:          0,
+				},
+			},
+		},
+		{name: "Ingress user traffic w/ expanded format",
+			input: &flow.FlowSample{
+				ReceiveTimestamp: &timestamppb.Timestamp{Seconds: 1625243456, Nanos: 0},
+				FlowPayload:      readPcap(t, "./fixtures/sflow_ingress_user_traffic_expanded.pcap"),
+			},
+			expected: []FlowSample{
+				{
+					EType:          "IPv4",
+					Bytes:          1077,
+					Packets:        1,
+					SamplingRate:   4096,
+					SamplerAddress: net.ParseIP("64.86.249.22"),
+					InputIfIndex:   8001147,
+					OutputIfIndex:  8001013,
+					TimeReceivedNs: time.Unix(1625243456, 0),
+					SrcAddress:     net.ParseIP("84.32.71.38"),
+					DstAddress:     net.ParseIP("94.158.242.122"),
+					SrcPort:        8001,
+					DstPort:        8001,
+					Proto:          "UDP",
+					TcpFlags:       0,
+					SrcMac:         "88:e0:f3:85:81:9f",
+					DstMac:         "c4:ca:2b:4d:73:97",
+					IpTtl:          64,
+					IpFlags:        2,
+					IpTos:          0,
+				},
+				{
+					EType:          "IPv4",
+					Bytes:          1077,
+					Packets:        1,
+					SamplingRate:   4096,
+					SamplerAddress: net.ParseIP("64.86.249.22"),
+					InputIfIndex:   8001147,
+					OutputIfIndex:  8001013,
+					TimeReceivedNs: time.Unix(1625243456, 0),
+					SrcAddress:     net.ParseIP("84.32.71.38"),
+					DstAddress:     net.ParseIP("216.18.214.178"),
+					SrcPort:        8001,
+					DstPort:        8000,
+					Proto:          "UDP",
+					TcpFlags:       0,
+					SrcMac:         "88:e0:f3:85:81:9f",
+					DstMac:         "c4:ca:2b:4d:73:97",
+					IpTtl:          64,
+					IpFlags:        2,
+					IpTos:          0,
+				},
+				{
+					EType:          "IPv4",
+					Bytes:          533,
+					Packets:        1,
+					SamplingRate:   4096,
+					SamplerAddress: net.ParseIP("64.86.249.22"),
+					InputIfIndex:   8001147,
+					OutputIfIndex:  8001013,
+					TimeReceivedNs: time.Unix(1625243456, 0),
+					SrcAddress:     net.ParseIP("186.233.187.141"),
+					DstAddress:     net.ParseIP("107.155.92.114"),
+					SrcPort:        8000,
+					DstPort:        8001,
+					Proto:          "UDP",
+					TcpFlags:       0,
+					SrcMac:         "88:e0:f3:85:81:9f",
+					DstMac:         "c4:ca:2b:4d:73:97",
+					IpTtl:          64,
+					IpFlags:        2,
 					IpTos:          0,
 				},
 			},

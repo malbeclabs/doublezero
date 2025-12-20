@@ -25,6 +25,7 @@ type NetworkConfig struct {
 	TwoZOracleURL              string
 	SolanaRPCURL               string
 	TelemetryFlowIngestURL     string
+	TelemetryStateIngestURL    string
 }
 
 func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
@@ -53,6 +54,7 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 			TwoZOracleURL:              MainnetTwoZOracleURL,
 			SolanaRPCURL:               MainnetSolanaRPC,
 			TelemetryFlowIngestURL:     MainnetTelemetryFlowIngestURL,
+			TelemetryStateIngestURL:    MainnetTelemetryStateIngestURL,
 		}
 	case EnvTestnet:
 		serviceabilityProgramID, err := solana.PublicKeyFromBase58(TestnetServiceabilityProgramID)
@@ -77,6 +79,7 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 			TwoZOracleURL:              TestnetTwoZOracleURL,
 			SolanaRPCURL:               TestnetSolanaRPC,
 			TelemetryFlowIngestURL:     TestnetTelemetryFlowIngestURL,
+			TelemetryStateIngestURL:    TestnetTelemetryStateIngestURL,
 		}
 	case EnvDevnet:
 		serviceabilityProgramID, err := solana.PublicKeyFromBase58(DevnetServiceabilityProgramID)
@@ -101,6 +104,7 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 			TwoZOracleURL:              DevnetTwoZOracleURL,
 			SolanaRPCURL:               TestnetSolanaRPC,
 			TelemetryFlowIngestURL:     DevnetTelemetryFlowIngestURL,
+			TelemetryStateIngestURL:    DevnetTelemetryStateIngestURL,
 		}
 	case EnvLocalnet:
 		serviceabilityProgramID, err := solana.PublicKeyFromBase58(LocalnetServiceabilityProgramID)
@@ -125,6 +129,7 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 			TwoZOracleURL:              LocalnetTwoZOracleURL,
 			SolanaRPCURL:               LocalnetSolanaRPC,
 			TelemetryFlowIngestURL:     LocalnetTelemetryFlowIngestURL,
+			TelemetryStateIngestURL:    LocalnetTelemetryStateIngestURL,
 		}
 	default:
 		// We intentionally do not include localnet in the error message.

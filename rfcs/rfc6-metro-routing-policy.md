@@ -2,7 +2,7 @@
 
 ## Summary
 
-**Status: Active**
+**Status: Implemented**
 
 This rfc proposes an optimization to network traffic flow within each DoubleZero exchange. Currently, DoubleZero sends /32 routes representing the `dz_ip`s of all connected users, regardless of where they are physically located. After this change, DoubleZero will only send /32 routes representing users who are NOT connected to the same DoubleZero exchange. For example, after this change, traffic between users connected to devices in the Frankfurt exchange will no longer traverse the DoubleZero network, and will instead traverse the local internet infrastructure in Frankfurt.
 

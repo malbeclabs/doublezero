@@ -1,6 +1,6 @@
 # DoubleZero Client Route Liveness
 
-**Status: Active**
+**Status: Approved**
 
 ## Summary
 

@@ -9,9 +9,6 @@
         "--ulimit",
         "nofile=1048576:1048576"
     ],
-    "containerEnv": {
-        "CARGO_TARGET_DIR": "/cargo-target"
-    },
     "features": {
         "ghcr.io/devcontainers/features/common-utils:2": {},
         "ghcr.io/devcontainers/features/go:1": {
@@ -59,7 +56,7 @@
     "remoteUser": "root",
     "mounts": [
         "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind",
-        "source=cargo-target-doublezero-devcontainer,target=/cargo-target,type=volume"
+        "source=devcontainer-target,target=/workspaces/doublezero/target,type=volume"
     ],
     "capAdd": [
         "NET_ADMIN",

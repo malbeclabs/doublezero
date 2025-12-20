@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 - RFCs
   - RFC-11: Onchain Activation ([#2302](https://github.com/malbeclabs/doublezero/pull/2302))
+  - RFC12: Amend device type definition
 
 ### Breaking
 

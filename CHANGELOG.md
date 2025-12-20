@@ -50,6 +50,7 @@ All notable changes to this project will be documented in this file.
   - Cancel existing e2e test runs on the push of new commits
 - RFCs
   - RFC - Network Provisioning
+  - RFC - QUIC Changes for Edge Filtering
 
 ## [v0.8.0](https://github.com/malbeclabs/doublezero/compare/client/v0.7.1...client/v0.8.0) – 2025-12-02
 

@@ -272,6 +272,7 @@ func isRetryableContainerStartErr(err error) bool {
 	s := err.Error()
 	return strings.Contains(s, "wait until ready") ||
 		strings.Contains(s, "mapped port") ||
+		strings.Contains(s, "timeout") ||
 		strings.Contains(s, "context deadline exceeded") ||
 		strings.Contains(s, "/containers/") && strings.Contains(s, "json") ||
 		strings.Contains(s, "Get \"http://%2Fvar%2Frun%2Fdocker.sock")

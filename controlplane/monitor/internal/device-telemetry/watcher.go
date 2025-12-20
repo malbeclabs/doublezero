@@ -28,7 +28,7 @@ type DeviceTelemetryWatcher struct {
 	stats     map[string]CircuitTelemetryStats
 	mu        sync.RWMutex
 
-	prevCircuits map[string]struct{}
+	prevCircuits map[string]string
 }
 
 func NewDeviceTelemetryWatcher(cfg *Config) (*DeviceTelemetryWatcher, error) {
@@ -39,7 +39,7 @@ func NewDeviceTelemetryWatcher(cfg *Config) (*DeviceTelemetryWatcher, error) {
 		log:          cfg.Logger.With("watcher", watcherName),
 		cfg:          cfg,
 		stats:        map[string]CircuitTelemetryStats{},
-		prevCircuits: map[string]struct{}{},
+		prevCircuits: map[string]string{},
 	}, nil
 }
 
@@ -105,11 +105,11 @@ func (w *DeviceTelemetryWatcher) Tick(ctx context.Context) error {
 	// if no circuits, delete metrics for everything we saw previously and return
 	if len(circuits) == 0 {
 		w.mu.Lock()
-		for code := range w.prevCircuits {
-			w.cfg.Metrics.Successes.DeleteLabelValues(code)
-			w.cfg.Metrics.Losses.DeleteLabelValues(code)
-			w.cfg.Metrics.Samples.DeleteLabelValues(code)
-			w.cfg.Metrics.AccountNotFound.DeleteLabelValues(code)
+		for code, linkStatus := range w.prevCircuits {
+			w.cfg.Metrics.Successes.DeleteLabelValues(code, linkStatus)
+			w.cfg.Metrics.Losses.DeleteLabelValues(code, linkStatus)
+			w.cfg.Metrics.Samples.DeleteLabelValues(code, linkStatus)
+			w.cfg.Metrics.AccountNotFound.DeleteLabelValues(code, linkStatus)
 			for k := range w.stats {
 				if strings.HasSuffix(k, "-"+code) {
 					delete(w.stats, k)
@@ -117,15 +117,15 @@ func (w *DeviceTelemetryWatcher) Tick(ctx context.Context) error {
 			}
 			w.log.Debug("deleted metrics for absent circuit", "code", code)
 		}
-		w.prevCircuits = map[string]struct{}{}
+		w.prevCircuits = map[string]string{}
 		w.mu.Unlock()
 		return nil
 	}
 
 	// build the current set of circuits for diffing
-	currCircuits := make(map[string]struct{}, len(circuits))
+	currCircuits := make(map[string]string, len(circuits))
 	for _, c := range circuits {
-		currCircuits[c.Code] = struct{}{}
+		currCircuits[c.Code] = c.Link.Status.String()
 	}
 
 	var wg sync.WaitGroup
@@ -150,7 +150,7 @@ func (w *DeviceTelemetryWatcher) Tick(ctx context.Context) error {
 			if err != nil {
 				if errors.Is(err, telemetry.ErrAccountNotFound) {
 					w.log.Debug("device latency samples account not found", "error", err, "circuit_code", circuit.Code)
-					w.cfg.Metrics.AccountNotFound.WithLabelValues(circuit.Code).Add(1)
+					w.cfg.Metrics.AccountNotFound.WithLabelValues(circuit.Code, circuit.Link.Status.String()).Add(1)
 					return
 				}
 				w.cfg.Metrics.Errors.WithLabelValues(MetricErrorTypeGetLatencySamples).Inc()
@@ -198,13 +198,13 @@ func (w *DeviceTelemetryWatcher) Tick(ctx context.Context) error {
 				samplesDelta = successCountDelta + lossCountDelta
 
 				if successCountDelta > 0 {
-					w.cfg.Metrics.Successes.WithLabelValues(circuit.Code).Add(float64(successCountDelta))
+					w.cfg.Metrics.Successes.WithLabelValues(circuit.Code, circuit.Link.Status.String()).Add(float64(successCountDelta))
 				}
 				if lossCountDelta > 0 {
-					w.cfg.Metrics.Losses.WithLabelValues(circuit.Code).Add(float64(lossCountDelta))
+					w.cfg.Metrics.Losses.WithLabelValues(circuit.Code, circuit.Link.Status.String()).Add(float64(lossCountDelta))
 				}
 				if samplesDelta > 0 {
-					w.cfg.Metrics.Samples.WithLabelValues(circuit.Code).Add(float64(samplesDelta))
+					w.cfg.Metrics.Samples.WithLabelValues(circuit.Code, circuit.Link.Status.String()).Add(float64(samplesDelta))
 				}
 			}
 			w.mu.RUnlock()
@@ -242,12 +242,12 @@ func (w *DeviceTelemetryWatcher) Tick(ctx context.Context) error {
 
 	// delete metrics for circuits that disappeared since the previous tick
 	w.mu.Lock()
-	for code := range w.prevCircuits {
+	for code, linkStatus := range w.prevCircuits {
 		if _, ok := currCircuits[code]; !ok {
-			w.cfg.Metrics.Successes.DeleteLabelValues(code)
-			w.cfg.Metrics.Losses.DeleteLabelValues(code)
-			w.cfg.Metrics.Samples.DeleteLabelValues(code)
-			w.cfg.Metrics.AccountNotFound.DeleteLabelValues(code)
+			w.cfg.Metrics.Successes.DeleteLabelValues(code, linkStatus)
+			w.cfg.Metrics.Losses.DeleteLabelValues(code, linkStatus)
+			w.cfg.Metrics.Samples.DeleteLabelValues(code, linkStatus)
+			w.cfg.Metrics.AccountNotFound.DeleteLabelValues(code, linkStatus)
 			for k := range w.stats {
 				if strings.HasSuffix(k, "-"+code) {
 					delete(w.stats, k)

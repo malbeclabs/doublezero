@@ -13,8 +13,9 @@ const (
 	MetricNameAccountNotFound = "doublezero_monitor_device_telemetry_account_not_found_total"
 
 	// Labels.
-	MetricLabelErrorType = "error_type"
-	MetricLabelCircuit   = "circuit"
+	MetricLabelErrorType  = "error_type"
+	MetricLabelCircuit    = "circuit"
+	MetricLabelLinkStatus = "link_status"
 
 	// Error types.
 	MetricErrorTypeGetCircuits       = "get_circuits"
@@ -45,28 +46,28 @@ func NewMetrics() *Metrics {
 				Name: MetricNameSamples,
 				Help: "Number of samples",
 			},
-			[]string{MetricLabelCircuit},
+			[]string{MetricLabelCircuit, MetricLabelLinkStatus},
 		),
 		Successes: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Name: MetricNameSuccesses,
 				Help: "Number of successes",
 			},
-			[]string{MetricLabelCircuit},
+			[]string{MetricLabelCircuit, MetricLabelLinkStatus},
 		),
 		Losses: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Name: MetricNameLosses,
 				Help: "Number of losses",
 			},
-			[]string{MetricLabelCircuit},
+			[]string{MetricLabelCircuit, MetricLabelLinkStatus},
 		),
 		AccountNotFound: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Name: MetricNameAccountNotFound,
 				Help: "Number of account not found",
 			},
-			[]string{MetricLabelCircuit},
+			[]string{MetricLabelCircuit, MetricLabelLinkStatus},
 		),
 	}
 }

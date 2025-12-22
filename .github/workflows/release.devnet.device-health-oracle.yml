@@ -1,0 +1,15 @@
+name: release.devnet.device-health-oracle.daily
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release:
+    uses: ./.github/workflows/release.daily.yml
+    with:
+      component: device-health-oracle
+      playbook: playbooks/device-health-oracles.yml
+    secrets: inherit
+    permissions:
+      contents: write
+      packages: write

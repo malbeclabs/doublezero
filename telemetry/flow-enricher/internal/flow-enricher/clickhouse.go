@@ -15,6 +15,7 @@ type ClickhouseOption func(*ClickhouseWriter)
 
 type ClickhouseWriter struct {
 	db         string
+	table      string
 	addr       string
 	user       string
 	pass       string
@@ -33,6 +34,12 @@ func WithClickhouseLogger(logger *slog.Logger) ClickhouseOption {
 func WithClickhouseDB(db string) ClickhouseOption {
 	return func(cw *ClickhouseWriter) {
 		cw.db = db
+	}
+}
+
+func WithClickhouseTable(table string) ClickhouseOption {
+	return func(cw *ClickhouseWriter) {
+		cw.table = table
 	}
 }
 
@@ -71,6 +78,7 @@ func NewClickhouseWriter(opts ...ClickhouseOption) (*ClickhouseWriter, error) {
 		user:       "default",
 		pass:       "default",
 		addr:       "localhost:9440",
+		table:      "flows",
 		disableTLS: false,
 	}
 	for _, opt := range opts {
@@ -104,7 +112,7 @@ func (cw *ClickhouseWriter) BatchInsert(ctx context.Context, samples []FlowSampl
 	if len(samples) == 0 {
 		return nil
 	}
-	batch, err := cw.conn.PrepareBatch(ctx, `INSERT INTO default.flows (
+	batch, err := cw.conn.PrepareBatch(ctx, fmt.Sprintf(`INSERT INTO %s.%s (`, cw.db, cw.table)+`
 				type,
 				time_received_ns,
 				sequence_num,

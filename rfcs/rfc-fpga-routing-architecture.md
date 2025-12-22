@@ -277,7 +277,7 @@ router bgp 65342
   neighbor {{ CYOA_POINT_TO_POINT }} route-map RM-CYOA-OUT
 
   network 148.51.0.0/24
-  network 148.52.2.0/24
+  network 148.51.2.0/24
 ```
 
 ### DZD User and Host Routing

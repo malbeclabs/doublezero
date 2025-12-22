@@ -247,7 +247,7 @@ doublezero exchange --pubkey <PUBKEY> request-ip-prefix
 ```
 For the set of prefixes assigned to the metro, each must be advertised from every CYOA.  This has a number of advantages, particularly with optimizing address allocation as well as using the most efficient peering for traffic ingressing from the Internet to EF users.  Each CYOA must include the option for all DZ prefixes within the aggregate address block to be advertised to the Internet: `148.51.0.0/17 le 24 ge 17`.
 
-Note that this will by design create asymetrical routing within the metro, with ingress and egress traffic potentially entering and exiting DZDs.
+Note that this will by design create asymmetrical routing within the metro, with ingress and egress traffic potentially entering and exiting DZDs.
 
 <p align="center">
   <img src="images/rfc-fpga-routing/FPGA-F7.png" alt="FPGA Diagram" width="800">

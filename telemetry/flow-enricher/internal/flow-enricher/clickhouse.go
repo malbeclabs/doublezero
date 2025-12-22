@@ -156,7 +156,13 @@ func (cw *ClickhouseWriter) BatchInsert(ctx context.Context, samples []FlowSampl
 				ipv6_routing_header_addresses,
 				ipv6_routing_header_seg_left,
 				in_ifname,
-				out_ifname
+				out_ifname,
+				src_device_code,
+				dst_device_code,
+				src_location,
+				dst_location,
+				src_exchange,
+				dst_exchange
 			)`)
 	if err != nil {
 		return fmt.Errorf("error beginning clickhouse batch: %v", err)
@@ -222,6 +228,12 @@ func (cw *ClickhouseWriter) BatchInsert(ctx context.Context, samples []FlowSampl
 			sample.Ipv6RoutingHeaderSegLeft,
 			sample.InputInterface,
 			sample.OutputInterface,
+			sample.SrcDeviceCode,
+			sample.DstDeviceCode,
+			sample.SrcLocation,
+			sample.DstLocation,
+			sample.SrcExchange,
+			sample.DstExchange,
 		)
 		if err != nil {
 			cw.logger.Error("error appending to clickhouse batch", "error", err)

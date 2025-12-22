@@ -283,22 +283,69 @@ func TestFlowEnrichment(t *testing.T) {
 		},
 	})
 
-	var count int
+	type flowRow struct {
+		SrcAddr       string `db:"src_addr"`
+		DstAddr       string `db:"dst_addr"`
+		SrcPort       uint16 `db:"src_port"`
+		DstPort       uint16 `db:"dst_port"`
+		Proto         string `db:"proto"`
+		EType         string `db:"etype"`
+		SrcDeviceCode string `db:"src_device_code"`
+		DstDeviceCode string `db:"dst_device_code"`
+		SrcLocation   string `db:"src_location"`
+		DstLocation   string `db:"dst_location"`
+		SrcExchange   string `db:"src_exchange"`
+		DstExchange   string `db:"dst_exchange"`
+	}
+
+	var rows []flowRow
 	require.Eventually(t, func() bool {
-		count = 0 // Reset count at the start of each attempt
-		rows, err := conn.Query("select * from default.flows")
+		rows = nil // Reset at the start of each attempt
+		dbRows, err := conn.Query(`
+			SELECT src_addr, dst_addr, src_port, dst_port, proto, etype,
+			       src_device_code, dst_device_code, src_location, dst_location, src_exchange, dst_exchange
+			FROM default.flows
+		`)
 		if err != nil {
 			t.Logf("error querying flows table: %v", err)
 			return false
 		}
-		defer rows.Close()
+		defer dbRows.Close()
 
-		for rows.Next() {
-			t.Log("found row in flows table")
-			count++
+		for dbRows.Next() {
+			var row flowRow
+			if err := dbRows.Scan(
+				&row.SrcAddr, &row.DstAddr, &row.SrcPort, &row.DstPort, &row.Proto, &row.EType,
+				&row.SrcDeviceCode, &row.DstDeviceCode, &row.SrcLocation, &row.DstLocation, &row.SrcExchange, &row.DstExchange,
+			); err != nil {
+				t.Logf("error scanning row: %v", err)
+				return false
+			}
+			rows = append(rows, row)
 		}
-		return count > 0
-	}, 20*time.Second, 1*time.Second, "no rows found in flows table")
+		return len(rows) >= 2
+	}, 20*time.Second, 1*time.Second, "expected at least 2 rows in flows table")
 
-	t.Logf("found %d rows in flows table", count)
+	t.Logf("found %d rows in flows table", len(rows))
+
+	// The pcap contains flows from 137.174.145.145 (test-device-2) to 137.174.145.147 (not in serviceability)
+	for _, row := range rows {
+		require.Equal(t, "137.174.145.145", row.SrcAddr, "unexpected src_addr")
+		require.Equal(t, "137.174.145.147", row.DstAddr, "unexpected dst_addr")
+		require.Equal(t, uint16(47252), row.SrcPort, "unexpected src_port")
+		require.Equal(t, uint16(5001), row.DstPort, "unexpected dst_port")
+		require.Equal(t, "UDP", row.Proto, "unexpected proto")
+		require.Equal(t, "IPv4", row.EType, "unexpected etype")
+
+		// Validate enriched serviceability fields
+		// Source IP 137.174.145.145 maps to test-device-2, TEST-LOC2, tst2
+		require.Equal(t, "test-device-2", row.SrcDeviceCode, "unexpected src_device_code")
+		require.Equal(t, "TEST-LOC2", row.SrcLocation, "unexpected src_location")
+		require.Equal(t, "tst2", row.SrcExchange, "unexpected src_exchange")
+
+		// Destination IP 137.174.145.147 is not in serviceability data, so fields should be empty
+		require.Equal(t, "", row.DstDeviceCode, "unexpected dst_device_code")
+		require.Equal(t, "", row.DstLocation, "unexpected dst_location")
+		require.Equal(t, "", row.DstExchange, "unexpected dst_exchange")
+	}
 }

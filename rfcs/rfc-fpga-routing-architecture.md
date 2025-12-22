@@ -33,7 +33,7 @@ Provider Independent (PI) Address Space - address space assigned to a customer (
 - N/A
 
 ## Detailed Design
-With IBRL mode, DZ facilitates connectivity between DZ users only, with all traffic flows that terminate at a non-DZ user routed via the Internet.  In EF mode, a user can be reached by any host - DZ connected or not - via the user's `doublezero0` interface.  As such, EF mode will require the use of DZ assigned address space, with routing policies enabled to support access via the DZD CYOA interfaces.
+With IBRL mode, DZ facilitates connectivity between DZ users only, with all traffic flows that terminate at a non-DZ user routed via the Internet.  In EF mode, a user can be reached by any host - DZ connected or not - via the user's `doublezero0` interface.  As such, EF mode will require the use of DZ assigned address space, with routing policies enabled to support access via the DZD CYOA interfaces. For a DZD to supporting EF, it must have at least one CYOA interface of type `gre-over-dia` or `gre-over-public-peering` to facilitate Internet access.
 
 In the existing IBRL and multicast connection modes, user tunnels are terminated in an L3VPN VRF (`VRF1`) and in the `default` VRF respectively.  This facilitates a number of properties of the DZ network, including address reuse and segment routing for IBRL mode, and native IPv4 shortest path routing for multicast mode.  To ensure that packets for EF users traverse the FPGA hardware while supporting IBRL and multicast modes, the DZ network topology will be enhanced by further virtualizing the DZD hardware through the addition of a new VRF lite instance called `vrf1-edge-filtration`, responsible for terminating tunnel overlays for EF users.
 
@@ -156,7 +156,7 @@ BGP will be used to control routing policy between `vrf1-edge-filtration` and bo
 
 To support both `FPGA Loopback` and `Inter-VRF Loopback` path, BGP attributes will be set on the neighbor configuration applied under `vrf1-edge-filtration`.  Local-preference will be increased to support primary egress via the `FPGA Loopback` peering while metric will be increased via the `Inter-VRF Loopback` peering to  support primary ingress via `FPGA Loopback`. 
 
-In summary, BGP policy is:
+In summary, EF BGP policy is:
   - Traffic Flows/Policy (set within `vrf1-edge-filtration` only):
     - FPGA Loopback:
       - Local Preference inbound: 1000
@@ -173,9 +173,11 @@ In summary, BGP policy is:
     - `vrf1`:
       - outbound: 
         - All
-        - Default Route originated by local DZD
+        - Default Route originated from local CYOA (DIA)
       - inbound: 
         - All
+
+See example configuration below.
 
 <p align="center">
   <img src="images/rfc-fpga-routing/FPGA-F6.png" alt="FPGA Diagram" width="800">
@@ -202,12 +204,11 @@ route-map RM-FILTER-INTER-VRF-OUT permit 10
 !
 router bgp 65342
    bgp asn notation asdot
+   !
    neighbor {{ POINT_TO_POINT_1 }} remote-as 65342.{device.id}
    neighbor {{ POINT_TO_POINT_1 }} description VRF1-FPGA-LOOPBACK
-   neighbor {{ POINT_TO_POINT_1 }} default-originate always
    neighbor {{ POINT_TO_POINT_2 }} remote-as 65342.{device.id}
    neighbor {{ POINT_TO_POINT_2 }} description VRF1-INTER-VRF
-   neighbor {{ POINT_TO_POINT_2 }} default-originate always 
 
    vrf vrf1
     neighbor {{ POINT_TO_POINT_3 }} remote-as 65342.{device.id}
@@ -236,16 +237,42 @@ router bgp 65342
     neighbor {{ POINT_TO_POINT_2 }} route-map RM-FILTER-INTER-VRF-OUT out
 ```
 
-### Internet Routing and IP Address Management
-The addressing of EF users can be done in two different ways:
-- Existing `dz-prefixes` space as registered onchain
-- Use of DZ owned PI address space
+### Default Route and iBGP Routing Policy
+The scope of the default route in the network is currently limited to within the `default` VRF of a single DZD i.e. Internet services are not shared between DZDs.  This is controlled through static route configuration or through the use of BGP's well-known community `no-advertise`, applied by contributors outside of the DZ protocol.  With EF, the scope of the default route increases to both the `vrf1-edge-filtration` VRF and via eBGP to `EF` users.  As such, contributors will be required to remove configuration applying `no-advertise`.
 
-The choice of address space influences the choices available to announce the prefixes to the Internet.  For example, PA address space is restricted to the provider that owns the space.  Conversely, leveraging DZ owned address space allows flexibility as it can be announced to any provider. This proposal suggests utilizing DZ owned address space 148.51.0.0/17 originated from DZ ASN `209321`, with a single /24 prefix assigned per metro during the creation of a doublezero `exchange`, allowing up to 255 EF users per metro.  Additional /24 prefixes should be able to be requested through a CLI command, for example:
+To maintain the policy of limiting the scope of the default route to a single DZD, routing policy changes will be implemented between iBGP neighbors within the `default` VRF, preventing default route propagation across the DZ network.  The implementation of iBGP filtering has an additional benefit of controlling and explicitly whitelisting from onchain data prefixes that can be propagated between contributors via iBGP, eliminating an existing vulnerability in the network.
+
+Route-map configuration to support iBGP filtering will reference two match conditions:
+  - For multicast sources, a match on `COMM-ALL_MCAST_USERS` community will be used
+  - For EF prefixes, a static prefix-list will be used
+
+```
+!Matches all possible EF user IP addresses
+ip prefix-list PL-DZ-PA-AGGREGATE seq 10 permit 147.51.0.0/17 ge 32
+!
+route-map RM-IBGP-POLICY-OUT permit 10
+   match community COMM-ALL_MCAST_USERS
+route-map RM-IBGP-POLICY-OUT permit 20
+   match ip address prefix-list PL-DZ-PA-AGGREGATE
+route-map RM-IBGP-POLICY-IN permit 10
+   match community COMM-ALL_MCAST_USERS
+route-map RM-IBGP-POLICY-IN permit 20
+   match ip address prefix-list PL-DZ-PA-AGGREGATE
+!
+router bgp 65342
+   images/rfc-fpga-routing/FPGA-F7.png!
+   neighbor {{ WAN_POINT_TO_POINT }} route-map RM-IBGP-POLICY out
+   neighbor {{ WAN_POINT_TO_POINT }} route-map RM-IBGP-POLICY in
+   !
+```
+
+### Internet Routing and IP Address Management
+The addressing of EF users must use DZ owned PI address space. While existing contributor-owned `dz_prefixes` were considered, the choice of address space directly impacts flexibility when announcing prefixes to the Internet. PA address space is constrained to the upstream provider that owns it, whereas DZ owned PI address space can be announced to any provider. This proposal, therefore, recommends using DZ owned address space 148.51.0.0/17, originated from DZ ASN 209321. By default, a single /24 prefix is allocated per metro during the creation of a DoubleZero `exchange`, supporting up to 255 EF users per metro.  Additional /24 prefixes should be able to be requested through a CLI command, for example:
+
 ```
 doublezero exchange --pubkey <PUBKEY> request-ip-prefix
 ```
-For the set of prefixes assigned to the metro, each must be advertised from every CYOA.  This has a number of advantages, particularly with optimizing address allocation as well as using the most efficient peering for traffic ingressing from the Internet to EF users.  Each CYOA must include the option for all DZ prefixes within the aggregate address block to be advertised to the Internet: `148.51.0.0/17 le 24 ge 17`.
+For the set of prefixes assigned to the metro, all must be advertised from every CYOA within the metro.  This has a number of advantages, particularly with optimizing address allocation as well as using the most efficient peering for traffic ingressing from the Internet to EF users.  A contributor must ensure that the full DZ aggregate block `148.51.0.0/17 le 24 ge 17` is permissioned to be advertised via each CYOA with their upstream providers.
 
 Note that this will by design create asymmetrical routing within the metro, with ingress and egress traffic potentially entering and exiting DZDs.
 
@@ -256,6 +283,8 @@ Note that this will by design create asymmetrical routing within the metro, with
 
 #### Example configuration
 ```
+ip route 148.51.0.0/17 Null0
+
 ip route 148.51.0.0/24 Null0
 
 ip route 148.51.2.0/24 Null0
@@ -264,8 +293,9 @@ route-map RM-CYOA-IN permit 10
   match ip address prefix-list DEFAULT
   set community NO-ADVERTISE
 
-ip prefix-list PL-DZ_LOCAL_SUMMARY seq 10 permit 148.51.0.0/24
-ip prefix-list PL-DZ_LOCAL_SUMMARY seq 20 permit 148.51.2.0/24
+ip prefix-list PL-DZ_LOCAL_SUMMARY seq 10 permit 148.51.0.0/17
+ip prefix-list PL-DZ_LOCAL_SUMMARY seq 20 permit 148.51.0.0/24
+ip prefix-list PL-DZ_LOCAL_SUMMARY seq 30 permit 148.51.2.0/24
 
 route-map RM-CYOA-OUT permit 10 
   match ip address prefix-list PL-DZ_LOCAL_SUMMARY
@@ -276,6 +306,7 @@ router bgp 65342
   neighbor {{ CYOA_POINT_TO_POINT }} route-map RM-CYOA-IN
   neighbor {{ CYOA_POINT_TO_POINT }} route-map RM-CYOA-OUT
 
+  network 148.17.0.0/17
   network 148.51.0.0/24
   network 148.51.2.0/24
 ```

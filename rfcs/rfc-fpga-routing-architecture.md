@@ -21,7 +21,7 @@ DoubleZero's inner ring should be protected using FPGA filtration services, prov
 ## New Terminology
 Edge-Filtration: mode that allows a user to opt-in to FPGA services such as deduplication and signature verification.
 
-FPGA Loopback: Interconnect, typically a cable , that facilitates routing between the edge-filtration VRF and other VRFs on the same DZD, with FPA hardware sitting inline.
+FPGA Loopback: Interconnect, typically a cable , that facilitates routing between the edge-filtration VRF and other VRFs on the same DZD, with FPGA hardware sitting inline.
 
 Inter-VRF Loopback: Interconnect, typically a cable , that facilitates routing between the edge-filtration VRF and other VRFs on the same DZD, bypassing any FPGA hardware.
 

@@ -16,6 +16,7 @@ All notable changes to this project will be documented in this file.
 - Internet Latency Telemetry
   - Fixed a bug that prevented unresponsive ripeatlas probes from being replaced
   - Fixed a bug that caused ripeatlas samples to be dropped when they were delayed to the next collection cycle
+  - Update contributor, device, exchange, link, location, and multicast group commands to ignore case when matching codes
 - Device controller
   - Add histogram metric for GetConfig request duration
   - Add gRPC middleware for prometheus metrics

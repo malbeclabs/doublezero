@@ -107,6 +107,24 @@ impl fmt::Display for MulticastGroup {
     }
 }
 
+impl Default for MulticastGroup {
+    fn default() -> Self {
+        Self {
+            account_type: AccountType::MulticastGroup,
+            owner: Pubkey::default(),
+            index: 0,
+            bump_seed: 0,
+            tenant_pk: Pubkey::default(),
+            multicast_ip: Ipv4Addr::new(0, 0, 0, 0),
+            max_bandwidth: 0,
+            status: MulticastGroupStatus::Pending,
+            code: String::new(),
+            publisher_count: 0,
+            subscriber_count: 0,
+        }
+    }
+}
+
 impl AccountTypeInfo for MulticastGroup {
     fn seed(&self) -> &[u8] {
         SEED_MULTICAST_GROUP

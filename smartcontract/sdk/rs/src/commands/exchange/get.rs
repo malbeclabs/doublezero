@@ -20,7 +20,9 @@ impl GetExchangeCommand {
                 .gets(AccountType::Exchange)?
                 .into_iter()
                 .find(|(_, v)| match v {
-                    AccountData::Exchange(exchange) => exchange.code == self.pubkey_or_code,
+                    AccountData::Exchange(exchange) => {
+                        exchange.code.eq_ignore_ascii_case(&self.pubkey_or_code)
+                    }
                     _ => false,
                 })
                 .map(|(pk, v)| match v {
@@ -100,6 +102,15 @@ mod tests {
         // Search by code
         let res = GetExchangeCommand {
             pubkey_or_code: "exchange_code".to_string(),
+        }
+        .execute(&client);
+
+        assert!(res.is_ok());
+        assert_eq!(res.unwrap().1.code, "exchange_code".to_string());
+
+        // Search by code UPPERCASE
+        let res = GetExchangeCommand {
+            pubkey_or_code: "EXCHANGE_CODE".to_string(),
         }
         .execute(&client);
 

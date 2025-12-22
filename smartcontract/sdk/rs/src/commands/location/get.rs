@@ -20,7 +20,9 @@ impl GetLocationCommand {
                 .gets(AccountType::Location)?
                 .into_iter()
                 .find(|(_, v)| match v {
-                    AccountData::Location(location) => location.code == self.pubkey_or_code,
+                    AccountData::Location(location) => {
+                        location.code.eq_ignore_ascii_case(&self.pubkey_or_code)
+                    }
                     _ => false,
                 })
                 .map(|(pk, v)| match v {
@@ -98,6 +100,15 @@ mod tests {
         // Search by code
         let res = GetLocationCommand {
             pubkey_or_code: "location_code".to_string(),
+        }
+        .execute(&client);
+
+        assert!(res.is_ok());
+        assert_eq!(res.unwrap().1.code, "location_code".to_string());
+
+        // Search by code UPPERCASE
+        let res = GetLocationCommand {
+            pubkey_or_code: "LOCATION_CODE".to_string(),
         }
         .execute(&client);
 

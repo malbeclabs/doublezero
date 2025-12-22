@@ -4,10 +4,6 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
-- RFCs
-  - RFC-11: Onchain Activation ([#2302](https://github.com/malbeclabs/doublezero/pull/2302))
-  - RFC12: Amend device type definition
-
 ### Breaking
 
 ### Changes
@@ -51,6 +47,7 @@ All notable changes to this project will be documented in this file.
   - Cancel existing e2e test runs on the push of new commits
 - RFCs
   - RFC - Network Provisioning
+  - RFC-11: Onchain Activation ([#2302](https://github.com/malbeclabs/doublezero/pull/2302))
 
 ## [v0.8.0](https://github.com/malbeclabs/doublezero/compare/client/v0.7.1...client/v0.8.0) – 2025-12-02
 

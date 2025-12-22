@@ -20,6 +20,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
+func getEnvOrDefault(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
+
 var (
 	// set by LDFLAGS
 	version = "dev"
@@ -58,7 +65,8 @@ func main() {
 		}
 
 		chOpts = append(chOpts, enricher.WithClickhouseAddr(os.Getenv("CLICKHOUSE_ADDR")),
-			enricher.WithClickhouseDB("default"),
+			enricher.WithClickhouseDB(getEnvOrDefault("CLICKHOUSE_DB", "default")),
+			enricher.WithClickhouseTable(getEnvOrDefault("CLICKHOUSE_TABLE", "flows")),
 			enricher.WithClickhouseUser(os.Getenv("CLICKHOUSE_USER")),
 			enricher.WithClickhousePassword(os.Getenv("CLICKHOUSE_PASS")),
 			enricher.WithClickhouseLogger(logger),

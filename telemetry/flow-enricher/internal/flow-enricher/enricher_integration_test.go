@@ -34,6 +34,7 @@ var (
 	chUser     = "enricher"
 	chPassword = "clickhouse"
 	chDbname   = "default"
+	chTable    = "flows_integration"
 
 	rpBroker        string
 	rpUser          = "enricher"
@@ -151,6 +152,7 @@ func TestFlowEnrichment(t *testing.T) {
 		WithClickhouseDB(chDbname),
 		WithClickhouseUser(chUser),
 		WithClickhousePassword(chPassword),
+		WithClickhouseTable("flows_integration"),
 		WithTLSDisabled(true),
 		WithClickhouseLogger(logger),
 		WithClickhouseMetrics(NewClickhouseMetrics(reg)),
@@ -301,11 +303,11 @@ func TestFlowEnrichment(t *testing.T) {
 	var rows []flowRow
 	require.Eventually(t, func() bool {
 		rows = nil // Reset at the start of each attempt
-		dbRows, err := conn.Query(`
+		dbRows, err := conn.Query(fmt.Sprintf(`
 			SELECT src_addr, dst_addr, src_port, dst_port, proto, etype,
 			       src_device_code, dst_device_code, src_location, dst_location, src_exchange, dst_exchange
-			FROM default.flows
-		`)
+			FROM %s.%s
+		`, chDbname, chTable))
 		if err != nil {
 			t.Logf("error querying flows table: %v", err)
 			return false

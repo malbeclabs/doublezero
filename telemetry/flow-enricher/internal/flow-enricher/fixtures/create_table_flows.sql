@@ -1,4 +1,4 @@
-CREATE TABLE default.flows
+CREATE TABLE default.flows_integration
 (
     `as_path` Array(String) CODEC(ZSTD(1)),
     `bgp_communities` Array(String) CODEC(ZSTD(1)),

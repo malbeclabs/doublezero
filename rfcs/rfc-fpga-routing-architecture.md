@@ -19,7 +19,7 @@ Out of scope for this RFC:
 DoubleZero's inner ring should be protected using FPGA filtration services, providing deduplication and signature verification as an opt-in feature for Solana users.  To successfully inspect the packets, the FPGA hardware must have visibility of the traffic flows, including as they ingress from the Internet, and as such must sit inline without explicit modification to the configuration of the user software i.e. the validator configuration file(s).  Additionally, interoperability is required with DZ users that connect in different modes, such as IBRL.
 
 ## New Terminology
-Edge-Filtration: mode the allows a user to opt-in to FPGA services such as deduplication and signature verification.
+Edge-Filtration: mode that allows a user to opt-in to FPGA services such as deduplication and signature verification.
 
 FPGA Loopback: Interconnect, typically a cable , that facilitates routing between the edge-filtration VRF and other VRFs on the same DZD, with FPA hardware sitting inline.
 

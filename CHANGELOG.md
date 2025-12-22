@@ -20,6 +20,30 @@ All notable changes to this project will be documented in this file.
   - Route liveness treats peers that advertise passive mode as selectively passive; does not manage their routes directly.
   - Route liveness runs in passive mode for IBRL with allocated IP, if global passive mode is enabled.
   - Advertise peer client version with route liveness control packets.
+  - Add `doublezero_bgp_routes_installed` gauge metric for number of installed BGP routes
+  - Add route liveness gauges for in-memory maps
+  - Route liveness sets set of routes configured as excluded to `AdminDown`.
+  - Add histogram metric for BGP session establishment duration
+  - For IBRL with allocated IP mode, resolve tunnel source IP from routing table via resolve-route API endpoint instead of using client IP to support clients behind NAT
+- Global monitor
+  - Initial implementation
+- Release
+  - Publish a Docker image for core components.
+- Telemetry
+  - Refactor flow enricher
+  - Add metrics to flow enricher
+  - Add serviceability data fetching to flow enricher
+  - Add flow-ingest service
+  - Add annotation of flow records with serviceability data
+  - Add pcap input and json ouput to flow enricher
+  - Initial state-ingest service with client SDK
+- CI
+  - Cancel existing e2e test runs on the push of new commits
+- RFCs
+  - RFC - Network Provisioning
+  - RFC-11: Onchain Activation ([#2302](https://github.com/malbeclabs/doublezero/pull/2302))
+- Monitor
+  - Add link status to device-telemetry metrics to enable Grafana alerts to filter out links that are not in activated status
 
 ## [v0.8.0](https://github.com/malbeclabs/doublezero/compare/client/v0.7.1...client/v0.8.0) – 2025-12-02
 

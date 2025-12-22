@@ -33,7 +33,7 @@ Provider Independent (PI) Address Space - address space assigned to a customer (
 - N/A
 
 ## Detailed Design
-With IBRL mode, DZ facilitates connectivity between DZ users only, with all traffic flows that terminate at a non-DZ user routed via the Internet.  In EF mode, a user can be reached by any host - DZ connected or not - via the user's `doublezero0` interface.  As such, EF mode will require the use of DZ assigned address space, with routing policies enabled to support access via the DZD CYOA interfaces. For a DZD to supporting EF, it must have at least one CYOA interface of type `gre-over-dia` or `gre-over-public-peering` to facilitate Internet access.
+With IBRL mode, DZ facilitates connectivity between DZ users only, with all traffic flows that terminate at a non-DZ user routed via the Internet.  In EF mode, a user can be reached by any host - DZ connected or not - via the user's `doublezero0` interface.  As such, EF mode will require the use of DZ assigned address space, with routing policies enabled to support access via the DZD CYOA interfaces. For a DZD to support EF mode, it must have at least one CYOA interface of type `gre-over-dia` or `gre-over-public-peering` to facilitate Internet access.
 
 In the existing IBRL and multicast connection modes, user tunnels are terminated in an L3VPN VRF (`VRF1`) and in the `default` VRF respectively.  This facilitates a number of properties of the DZ network, including address reuse and segment routing for IBRL mode, and native IPv4 shortest path routing for multicast mode.  To ensure that packets for EF users traverse the FPGA hardware while supporting IBRL and multicast modes, the DZ network topology will be enhanced by further virtualizing the DZD hardware through the addition of a new VRF lite instance called `vrf1-edge-filtration`, responsible for terminating tunnel overlays for EF users.
 
@@ -291,7 +291,6 @@ ip route 148.51.2.0/24 Null0
 
 route-map RM-CYOA-IN permit 10
   match ip address prefix-list DEFAULT
-  set community NO-ADVERTISE
 
 ip prefix-list PL-DZ_LOCAL_SUMMARY seq 10 permit 148.51.0.0/17
 ip prefix-list PL-DZ_LOCAL_SUMMARY seq 20 permit 148.51.0.0/24

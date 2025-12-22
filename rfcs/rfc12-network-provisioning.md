@@ -14,9 +14,21 @@ The provisioning process for DoubleZero Devices (DZDs) and links currently requi
 
 - **Onboarding** - The process of adding a new device or link to the network, starting with contributor's decision to add a device or link
 - **Offboarding** - The process of removing an existing device or link from the network, starting with the contributor's decision to remove the link or device
-- **Edge device** - A DoubleZero Device (DZD) that terminates user tunnels (max-users > 0). It has at least 1 CYOA interface with DIA. It has at least 1 WAN or DZX link.
-- **Transit device** - A DZD that routes traffic between other DZDs but does not terminate user tunnels. It has at least 1 non-CYOA DIA interface. It has at least 2 WAN and/or DZX links.
-- **Hybrid device** - A DZD that terminates user tunnels and also routes traffic between other DZDs. Has at least 1 CYOA interface with DIA. Has at least 2 WAN or DZX links.
+- **Edge device** - A DoubleZero Device (DZD) that terminates user tunnels (max-users > 0). It has:
+    - 1 or more CYOA interfaces 
+    - Zero WAN links
+    - 1 or more DZX links
+    - 1x out-of-band management with Internet access (can reuse CYOA)
+- **Transit device** - A DZD that routes traffic between other DZDs but does not terminate user tunnels. It has:
+    - Zero CYOA interfaces
+    - 2 or more WAN links (single contributor metro)
+    - 1x WAN link and 1 or more DZX link (multi-contributor metro)
+    - 1x out-of-band management with Internet access
+- **Hybrid device** - A DZD that terminates user tunnels and also routes traffic between other DZDs. It has:
+    - 1 or more CYOA interfaces
+    - 1 or more WAN links (single contributor metro)
+    - 1 or more WAN links and 1 or more DZX links (multi-contributor metro)
+    - 1x out-of-band management with Internet access (can reuse CYOA)
 - **RFS** - Ready For Service criteria are a set of conditions that must be met for a device or link to be considered healthy and therefore ready for service.
 - **Burn-in period** - The amount of time a link or device must pass all its health checks before it can be activated. For links and devices activated for the first time this is 200,000 slots on the [DoubleZero ledger](https://explorer.solana.com/?cluster=custom&customUrl=https%3A%2F%2Fdoublezero-mainnet-beta-local.rpcpool.com%2Fdb336024-e7a8-46b1-80e5-352dd77060ab), which at 370ms per slot is about 20 hours. For links and devices being re-activated after maintenance this is 5000 slots, about 30 minutes.
 

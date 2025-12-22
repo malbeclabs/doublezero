@@ -4,9 +4,6 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
-- RFCs
-  - RFC-11: Onchain Activation ([#2302](https://github.com/malbeclabs/doublezero/pull/2302))
-
 ### Breaking
 
 ### Changes
@@ -50,6 +47,7 @@ All notable changes to this project will be documented in this file.
   - Cancel existing e2e test runs on the push of new commits
 - RFCs
   - RFC - Network Provisioning
+  - RFC-11: Onchain Activation ([#2302](https://github.com/malbeclabs/doublezero/pull/2302))
 - Monitor
   - Add link status to device-telemetry metrics to enable Grafana alerts to filter out links that are not in activated status
 

@@ -21,7 +21,7 @@ impl GetContributorCommand {
                 .into_iter()
                 .find(|(_, v)| match v {
                     AccountData::Contributor(contributor) => {
-                        contributor.code == self.pubkey_or_code
+                        contributor.code.eq_ignore_ascii_case(&self.pubkey_or_code)
                     }
                     _ => false,
                 })
@@ -102,6 +102,17 @@ mod tests {
         // Search by code
         let res = GetContributorCommand {
             pubkey_or_code: "contributor_code".to_string(),
+        }
+        .execute(&client);
+
+        assert!(res.is_ok());
+        let res = res.unwrap();
+        assert_eq!(res.1.code, "contributor_code".to_string());
+        assert_eq!(res.1.ops_manager_pk, ops_manager_pk);
+
+        // Search by code UPPERCASE
+        let res = GetContributorCommand {
+            pubkey_or_code: "CONTRIBUTOR_CODE".to_string(),
         }
         .execute(&client);
 

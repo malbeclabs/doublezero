@@ -176,6 +176,32 @@ impl fmt::Display for Link {
     }
 }
 
+impl Default for Link {
+    fn default() -> Self {
+        Self {
+            account_type: AccountType::Link,
+            owner: Pubkey::default(),
+            index: 0,
+            bump_seed: 0,
+            side_a_pk: Pubkey::default(),
+            side_z_pk: Pubkey::default(),
+            link_type: LinkLinkType::WAN,
+            bandwidth: 0,
+            mtu: 0,
+            delay_ns: 0,
+            jitter_ns: 0,
+            tunnel_id: 0,
+            tunnel_net: NetworkV4::default(),
+            status: LinkStatus::Pending,
+            code: String::new(),
+            contributor_pk: Pubkey::default(),
+            side_a_iface_name: String::new(),
+            side_z_iface_name: String::new(),
+            delay_override_ns: 0,
+        }
+    }
+}
+
 impl AccountTypeInfo for Link {
     fn seed(&self) -> &[u8] {
         SEED_LINK

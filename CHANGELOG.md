@@ -50,6 +50,7 @@ All notable changes to this project will be documented in this file.
 - RFCs
   - RFC - Network Provisioning
   - RFC-11: Onchain Activation ([#2302](https://github.com/malbeclabs/doublezero/pull/2302))
+  - RFC - FPGA Routing Architecture
 - Monitor
   - Add link status to device-telemetry metrics to enable Grafana alerts to filter out links that are not in activated status
 

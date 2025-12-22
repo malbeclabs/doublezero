@@ -2,7 +2,10 @@ use super::helpers::look_for_ip;
 use crate::{
     dzd_latency::best_latency,
     requirements::check_doublezero,
-    servicecontroller::{ProvisioningRequest, ServiceController, ServiceControllerImpl},
+    routes::resolve_route,
+    servicecontroller::{
+        ProvisioningRequest, ResolveRouteRequest, ServiceController, ServiceControllerImpl,
+    },
 };
 use backon::{BlockingRetryable, ExponentialBuilder};
 use clap::{Args, Subcommand, ValueEnum};
@@ -158,7 +161,7 @@ impl ProvisioningCliCommand {
         spinner: &ProgressBar,
     ) -> eyre::Result<()> {
         // Look for user
-        let (user_pubkey, user) = self
+        let (user_pubkey, user, tunnel_src) = self
             .find_or_create_user(client, controller, &client_ip, spinner, user_type)
             .await?;
 
@@ -167,7 +170,14 @@ impl ProvisioningCliCommand {
             UserStatus::Activated => {
                 // User is activated
                 self.user_activated(
-                    client, controller, &user, &client_ip, spinner, user_type, None, None,
+                    client,
+                    controller,
+                    &user,
+                    &tunnel_src,
+                    spinner,
+                    user_type,
+                    None,
+                    None,
                 )
                 .await
             }
@@ -322,7 +332,7 @@ impl ProvisioningCliCommand {
         client_ip: &Ipv4Addr,
         spinner: &ProgressBar,
         user_type: UserType,
-    ) -> eyre::Result<(Pubkey, User)> {
+    ) -> eyre::Result<(Pubkey, User, Ipv4Addr)> {
         spinner.set_message("Searching for user account...");
         spinner.inc(1);
 
@@ -343,6 +353,8 @@ impl ProvisioningCliCommand {
             // invariant, this indicates a bug that should never happen
             panic!("❌ Multiple tunnels found for the same IP address. This should not happen.");
         }
+
+        let mut tunnel_src = *client_ip;
 
         let user_pubkey = match matched_users.first() {
             Some((pubkey, user)) => {
@@ -365,6 +377,16 @@ impl ProvisioningCliCommand {
                     eyre::bail!("User is banned.");
                 }
 
+                let device = devices.get(&user.device_pk).ok_or(eyre::eyre!(
+                    "Device {} not found for user {}",
+                    user.device_pk,
+                    pubkey
+                ))?;
+
+                if user_type == UserType::IBRLWithAllocatedIP {
+                    tunnel_src = resolve_tunnel_src(controller, device).await?;
+                }
+
                 **pubkey
             }
             None => {
@@ -376,6 +398,10 @@ impl ProvisioningCliCommand {
 
                 spinner.println(format!("    Device selected: {} ", device.code));
                 spinner.inc(1);
+
+                if user_type == UserType::IBRLWithAllocatedIP {
+                    tunnel_src = resolve_tunnel_src(controller, &device).await?;
+                }
 
                 let res = client.create_user(CreateUserCommand {
                     user_type,
@@ -401,7 +427,7 @@ impl ProvisioningCliCommand {
 
         let user = self.poll_for_user_activated(client, &user_pubkey, spinner)?;
 
-        Ok((user_pubkey, user))
+        Ok((user_pubkey, user, tunnel_src))
     }
 
     async fn find_or_create_user_and_subscribe<T: ServiceController>(
@@ -559,7 +585,7 @@ impl ProvisioningCliCommand {
         client: &dyn CliCommand,
         controller: &T,
         user: &User,
-        client_ip: &Ipv4Addr,
+        tunnel_src: &Ipv4Addr,
         spinner: &ProgressBar,
         user_type: UserType,
         mcast_pub_groups: Option<Vec<String>>,
@@ -587,7 +613,6 @@ impl ProvisioningCliCommand {
         spinner.inc(1);
 
         // Tunnel provisioning
-        let tunnel_src = user.client_ip.to_string();
         let tunnel_dst = device.public_ip.to_string();
         let tunnel_net = user.tunnel_net.to_string();
         let doublezero_ip = &user.dz_ip;
@@ -597,7 +622,7 @@ impl ProvisioningCliCommand {
         if self.verbose {
             spinner.println(format!(
                 "➤   Provisioning Local Tunnel for IP: {}\n\ttunnel_src: {}\n\ttunnel_dst: {}\n\ttunnel_net: {}\n\tdoublezero_ip: {}\n\tdoublezero_prefixes: {:?}\n\tlocal_asn: {}\n\tremote_asn: {}\n\tmcast_pub_groups: {:?}\n\tmcast_sub_groups: {:?}\n",
-                client_ip,
+                user.client_ip,
                 tunnel_src,
                 tunnel_dst,
                 tunnel_net,
@@ -613,7 +638,7 @@ impl ProvisioningCliCommand {
         spinner.set_message("Provisioning DoubleZero service...");
         match controller
             .provisioning(ProvisioningRequest {
-                tunnel_src,
+                tunnel_src: tunnel_src.to_string(),
                 tunnel_dst,
                 tunnel_net,
                 doublezero_ip: doublezero_ip.to_string(),
@@ -664,10 +689,35 @@ impl ProvisioningCliCommand {
     }
 }
 
+async fn resolve_tunnel_src<T: ServiceController>(
+    controller: &T,
+    device: &Device,
+) -> eyre::Result<Ipv4Addr> {
+    let resolved_route = resolve_route(
+        controller,
+        None,
+        ResolveRouteRequest {
+            dst: device.public_ip,
+        },
+    )
+    .await?;
+    if let Some(src) = resolved_route.src {
+        Ok(src)
+    } else {
+        Err(eyre::eyre!(
+            "Unable to resolve route for device IP: {}",
+            device.code
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::servicecontroller::{LatencyRecord, MockServiceController, ProvisioningResponse};
+    use crate::servicecontroller::{
+        LatencyRecord, MockServiceController, ProvisioningResponse, ResolveRouteRequest,
+        ResolveRouteResponse,
+    };
     use doublezero_cli::{doublezerocommand::MockCliCommand, tests::utils::create_test_client};
     use doublezero_config::Environment;
     use doublezero_sdk::{
@@ -1022,8 +1072,27 @@ mod tests {
             mcast_pub_groups: Option<Vec<String>>,
             mcast_sub_groups: Option<Vec<String>>,
         ) {
+            self.expected_provisioning_request_with_tunnel_src(
+                user_type,
+                client_ip,
+                client_ip,
+                device_ip,
+                mcast_pub_groups,
+                mcast_sub_groups,
+            );
+        }
+
+        pub fn expected_provisioning_request_with_tunnel_src(
+            &mut self,
+            user_type: UserType,
+            client_ip: &str,
+            tunnel_src: &str,
+            device_ip: &str,
+            mcast_pub_groups: Option<Vec<String>>,
+            mcast_sub_groups: Option<Vec<String>>,
+        ) {
             let expected_request = ProvisioningRequest {
-                tunnel_src: client_ip.to_string(),
+                tunnel_src: tunnel_src.to_string(),
                 tunnel_dst: device_ip.to_string(),
                 tunnel_net: "10.1.1.0/31".to_string(),
                 doublezero_ip: client_ip.to_string(),
@@ -1046,6 +1115,34 @@ mod tests {
                         description: None,
                     })
                 });
+        }
+
+        pub fn expect_resolve_route(&mut self, device_ip: Ipv4Addr, resolved_src: Ipv4Addr) {
+            self.controller
+                .expect_resolve_route()
+                .times(1)
+                .withf(move |req: &ResolveRouteRequest| req.dst == device_ip)
+                .returning_st(move |_| {
+                    Ok(ResolveRouteResponse {
+                        src: Some(resolved_src),
+                    })
+                });
+        }
+
+        pub fn expect_resolve_route_failure(&mut self, device_ip: Ipv4Addr) {
+            self.controller
+                .expect_resolve_route()
+                .times(1)
+                .withf(move |req: &ResolveRouteRequest| req.dst == device_ip)
+                .returning_st(move |_| Ok(ResolveRouteResponse { src: None }));
+        }
+
+        pub fn expect_resolve_route_error(&mut self, device_ip: Ipv4Addr) {
+            self.controller
+                .expect_resolve_route()
+                .times(1)
+                .withf(move |req: &ResolveRouteRequest| req.dst == device_ip)
+                .returning_st(move |_| Err(eyre::eyre!("Failed to resolve route")));
         }
     }
 
@@ -1194,9 +1291,14 @@ mod tests {
         let (device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
         let user = fixture.create_user(UserType::IBRLWithAllocatedIP, device1_pk, "1.2.3.4");
         fixture.expect_create_user(Pubkey::new_unique(), &user);
-        fixture.expected_provisioning_request(
+
+        let resolved_src = Ipv4Addr::new(192, 168, 1, 100);
+        fixture.expect_resolve_route(device1.public_ip, resolved_src);
+
+        fixture.expected_provisioning_request_with_tunnel_src(
             UserType::IBRLWithAllocatedIP,
             user.client_ip.to_string().as_str(),
+            resolved_src.to_string().as_str(),
             device1.public_ip.to_string().as_str(),
             None,
             None,
@@ -1227,9 +1329,14 @@ mod tests {
         let (device1_pk, device1) = fixture.add_device(DeviceType::Edge, 100, true);
         let user = fixture.create_user(UserType::IBRLWithAllocatedIP, device1_pk, "1.2.3.4");
         fixture.expect_create_user(Pubkey::new_unique(), &user);
-        fixture.expected_provisioning_request(
+
+        let resolved_src = Ipv4Addr::new(192, 168, 1, 101);
+        fixture.expect_resolve_route(device1.public_ip, resolved_src);
+
+        fixture.expected_provisioning_request_with_tunnel_src(
             UserType::IBRLWithAllocatedIP,
             user.client_ip.to_string().as_str(),
+            resolved_src.to_string().as_str(),
             device1.public_ip.to_string().as_str(),
             None,
             None,
@@ -1726,6 +1833,144 @@ mod tests {
         assert!(
             err_msg.contains("Device not found"),
             "Expected 'Device not found' error for nonexistent device, got: {}",
+            err_msg
+        );
+    }
+
+    #[tokio::test]
+    async fn test_connect_command_ibrl_allocate_resolve_route_failure() {
+        let mut fixture = TestFixture::new();
+
+        let (_device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+
+        fixture.expect_resolve_route_failure(device1.public_ip);
+
+        println!();
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::IBRL {
+                allocate_addr: true,
+            },
+            client_ip: Some("1.2.3.4".to_string()),
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("Unable to resolve route"),
+            "Expected error about unable to resolve route, got: {}",
+            err_msg
+        );
+    }
+
+    #[tokio::test]
+    async fn test_connect_command_ibrl_allocate_resolve_route_error() {
+        let mut fixture = TestFixture::new();
+
+        let (_device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+
+        fixture.expect_resolve_route_error(device1.public_ip);
+
+        println!();
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::IBRL {
+                allocate_addr: true,
+            },
+            client_ip: Some("1.2.3.4".to_string()),
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("Failed to resolve route"),
+            "Expected error about failed to resolve route, got: {}",
+            err_msg
+        );
+    }
+
+    #[tokio::test]
+    async fn test_connect_command_ibrl_allocate_existing_user() {
+        let mut fixture = TestFixture::new();
+
+        let (device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        let mut user = fixture.create_user(UserType::IBRLWithAllocatedIP, device1_pk, "1.2.3.4");
+        user.status = UserStatus::Activated;
+        fixture.add_user(&user);
+
+        let resolved_src = Ipv4Addr::new(192, 168, 1, 102);
+        fixture.expect_resolve_route(device1.public_ip, resolved_src);
+
+        fixture.expected_provisioning_request_with_tunnel_src(
+            UserType::IBRLWithAllocatedIP,
+            user.client_ip.to_string().as_str(),
+            resolved_src.to_string().as_str(),
+            device1.public_ip.to_string().as_str(),
+            None,
+            None,
+        );
+
+        println!();
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::IBRL {
+                allocate_addr: true,
+            },
+            client_ip: Some(user.client_ip.to_string()),
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_connect_command_ibrl_allocate_existing_user_resolve_failure() {
+        let mut fixture = TestFixture::new();
+
+        let (device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        let mut user = fixture.create_user(UserType::IBRLWithAllocatedIP, device1_pk, "1.2.3.4");
+        user.status = UserStatus::Activated;
+        fixture.add_user(&user);
+
+        // Mock resolve_route to return None for existing user
+        fixture.expect_resolve_route_failure(device1.public_ip);
+
+        println!();
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::IBRL {
+                allocate_addr: true,
+            },
+            client_ip: Some(user.client_ip.to_string()),
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("Unable to resolve route"),
+            "Expected error about unable to resolve route, got: {}",
             err_msg
         );
     }

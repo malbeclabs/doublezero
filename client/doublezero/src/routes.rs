@@ -1,4 +1,18 @@
-use crate::servicecontroller::{RouteRecord, ServiceController};
+use crate::servicecontroller::{
+    ResolveRouteRequest, ResolveRouteResponse, RouteRecord, ServiceController,
+};
+
+pub async fn resolve_route<T: ServiceController>(
+    controller: &T,
+    _spinner: Option<&indicatif::ProgressBar>,
+    args: ResolveRouteRequest,
+) -> eyre::Result<ResolveRouteResponse> {
+    let response = controller
+        .resolve_route(args)
+        .await
+        .map_err(|e| eyre::eyre!(e))?;
+    Ok(response)
+}
 
 pub async fn retrieve_routes<T: ServiceController>(
     controller: &T,

@@ -1,4 +1,4 @@
-use super::ResourceExtensionType;
+use super::ResourceType;
 use crate::{
     doublezerocommand::CliCommand,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
@@ -6,7 +6,7 @@ use crate::{
 use clap::Args;
 use doublezero_sdk::{
     commands::{device::get::GetDeviceCommand, resource::create::CreateResourceCommand},
-    ResourceBlockType,
+    ResourceType as SdkResourceType,
 };
 use std::io::Write;
 
@@ -14,7 +14,7 @@ use std::io::Write;
 pub struct CreateResourceCliCommand {
     // Type of resource extension to create
     #[arg(long)]
-    pub resource_extension_type: ResourceExtensionType,
+    pub resource_type: ResourceType,
     // Associated public key (only for DzPrefixBlock)
     #[arg(long)]
     pub associated_pubkey: Option<String>,
@@ -25,15 +25,13 @@ pub struct CreateResourceCliCommand {
 
 impl From<CreateResourceCliCommand> for CreateResourceCommand {
     fn from(cmd: CreateResourceCliCommand) -> Self {
-        let resource_block_type = super::resource_extension_to_resource_block(
-            cmd.resource_extension_type,
+        let resource_type = super::resource_type_from(
+            cmd.resource_type,
             cmd.associated_pubkey.as_ref().and_then(|s| s.parse().ok()),
             cmd.index,
         );
 
-        CreateResourceCommand {
-            resource_block_type,
-        }
+        CreateResourceCommand { resource_type }
     }
 }
 
@@ -44,9 +42,8 @@ impl CreateResourceCliCommand {
 
         let args: CreateResourceCommand = self.into();
 
-        match args.resource_block_type {
-            ResourceBlockType::DzPrefixBlock(pk, index)
-            | ResourceBlockType::TunnelIds(pk, index) => {
+        match args.resource_type {
+            SdkResourceType::DzPrefixBlock(pk, index) | SdkResourceType::TunnelIds(pk, index) => {
                 let get_device_cmd = GetDeviceCommand {
                     pubkey_or_code: pk.to_string(),
                 };
@@ -81,7 +78,7 @@ mod tests {
     fn test_execute_success_dzprefixblock() {
         let mut mock = MockCliCommand::new();
         let device_pk = Pubkey::new_unique();
-        let device_pk_clone = device_pk.clone();
+        let device_pk_clone = device_pk;
         let device = Device {
             dz_prefixes: "1.2.3.0/27".parse().unwrap(),
             ..Device::default()
@@ -92,7 +89,7 @@ mod tests {
             .returning(move |_| Ok((device_pk_clone, device_clone.clone())));
         let device_pk = Pubkey::new_unique();
         let args = CreateResourceCommand {
-            resource_block_type: ResourceBlockType::DzPrefixBlock(device_pk, 0),
+            resource_type: SdkResourceType::DzPrefixBlock(device_pk, 0),
         };
 
         let sig = Signature::new_unique();
@@ -101,7 +98,7 @@ mod tests {
             .returning(move |_| Ok(sig));
 
         let cmd = CreateResourceCliCommand {
-            resource_extension_type: ResourceExtensionType::DzPrefixBlock,
+            resource_type: ResourceType::DzPrefixBlock,
             associated_pubkey: Some(device_pk.to_string()),
             index: Some(0),
         };
@@ -116,7 +113,7 @@ mod tests {
     fn test_execute_failure_dzprefixblock_index() {
         let mut mock = MockCliCommand::new();
         let device_pk = Pubkey::new_unique();
-        let device_pk_clone = device_pk.clone();
+        let device_pk_clone = device_pk;
         let device = Device {
             dz_prefixes: "1.2.3.0/27".parse().unwrap(),
             ..Device::default()
@@ -128,7 +125,7 @@ mod tests {
         let device_pk = Pubkey::new_unique();
 
         let cmd = CreateResourceCliCommand {
-            resource_extension_type: ResourceExtensionType::DzPrefixBlock,
+            resource_type: ResourceType::DzPrefixBlock,
             associated_pubkey: Some(device_pk.to_string()),
             index: Some(1),
         };

@@ -12,7 +12,7 @@ use std::fmt;
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
 pub struct ResourceCreateArgs {
-    pub resource_block_type: crate::resource::ResourceBlockType,
+    pub resource_type: crate::resource::ResourceType,
 }
 
 impl fmt::Debug for ResourceCreateArgs {
@@ -70,7 +70,7 @@ pub fn process_create_resource(
         globalconfig_account,
         payer_account,
         accounts,
-        value.resource_block_type,
+        value.resource_type,
     )?;
 
     Ok(())

@@ -1,5 +1,5 @@
 use clap::ValueEnum;
-use doublezero_sdk::ResourceBlockType;
+use doublezero_sdk::ResourceType as SdkResourceType;
 
 pub mod allocate;
 pub mod create;
@@ -7,7 +7,7 @@ pub mod deallocate;
 pub mod get;
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
-pub enum ResourceExtensionType {
+pub enum ResourceType {
     DeviceTunnelBlock,
     UserTunnelBlock,
     MulticastGroupBlock,
@@ -17,27 +17,27 @@ pub enum ResourceExtensionType {
     SegmentRoutingIds,
 }
 
-pub fn resource_extension_to_resource_block(
-    ext: ResourceExtensionType,
+pub fn resource_type_from(
+    ext: ResourceType,
     associated_pubkey: Option<solana_program::pubkey::Pubkey>,
     index: Option<usize>,
-) -> ResourceBlockType {
+) -> SdkResourceType {
     match ext {
-        ResourceExtensionType::DeviceTunnelBlock => ResourceBlockType::DeviceTunnelBlock,
-        ResourceExtensionType::UserTunnelBlock => ResourceBlockType::UserTunnelBlock,
-        ResourceExtensionType::MulticastGroupBlock => ResourceBlockType::MulticastGroupBlock,
-        ResourceExtensionType::DzPrefixBlock => {
+        ResourceType::DeviceTunnelBlock => SdkResourceType::DeviceTunnelBlock,
+        ResourceType::UserTunnelBlock => SdkResourceType::UserTunnelBlock,
+        ResourceType::MulticastGroupBlock => SdkResourceType::MulticastGroupBlock,
+        ResourceType::DzPrefixBlock => {
             let pk = associated_pubkey.unwrap_or_default();
             let idx = index.unwrap_or(0);
-            ResourceBlockType::DzPrefixBlock(pk, idx)
+            SdkResourceType::DzPrefixBlock(pk, idx)
         }
-        ResourceExtensionType::TunnelIds => {
+        ResourceType::TunnelIds => {
             let pk = associated_pubkey.unwrap_or_default();
             let idx = index.unwrap_or(0);
-            ResourceBlockType::TunnelIds(pk, idx)
+            SdkResourceType::TunnelIds(pk, idx)
         }
-        ResourceExtensionType::LinkIds => ResourceBlockType::LinkIds,
-        ResourceExtensionType::SegmentRoutingIds => ResourceBlockType::SegmentRoutingIds,
+        ResourceType::LinkIds => SdkResourceType::LinkIds,
+        ResourceType::SegmentRoutingIds => SdkResourceType::SegmentRoutingIds,
     }
 }
 
@@ -48,89 +48,59 @@ mod tests {
 
     #[test]
     fn test_device_tunnel_block() {
-        let result = resource_extension_to_resource_block(
-            ResourceExtensionType::DeviceTunnelBlock,
-            None,
-            None,
-        );
-        assert_eq!(result, ResourceBlockType::DeviceTunnelBlock);
+        let result = resource_type_from(ResourceType::DeviceTunnelBlock, None, None);
+        assert_eq!(result, SdkResourceType::DeviceTunnelBlock);
     }
 
     #[test]
     fn test_user_tunnel_block() {
-        let result = resource_extension_to_resource_block(
-            ResourceExtensionType::UserTunnelBlock,
-            None,
-            None,
-        );
-        assert_eq!(result, ResourceBlockType::UserTunnelBlock);
+        let result = resource_type_from(ResourceType::UserTunnelBlock, None, None);
+        assert_eq!(result, SdkResourceType::UserTunnelBlock);
     }
 
     #[test]
     fn test_multicast_group_block() {
-        let result = resource_extension_to_resource_block(
-            ResourceExtensionType::MulticastGroupBlock,
-            None,
-            None,
-        );
-        assert_eq!(result, ResourceBlockType::MulticastGroupBlock);
+        let result = resource_type_from(ResourceType::MulticastGroupBlock, None, None);
+        assert_eq!(result, SdkResourceType::MulticastGroupBlock);
     }
 
     #[test]
     fn test_dz_prefix_block_with_values() {
         let pk = Pubkey::new_unique();
         let idx = 42;
-        let result = resource_extension_to_resource_block(
-            ResourceExtensionType::DzPrefixBlock,
-            Some(pk),
-            Some(idx),
-        );
-        assert_eq!(result, ResourceBlockType::DzPrefixBlock(pk, idx));
+        let result = resource_type_from(ResourceType::DzPrefixBlock, Some(pk), Some(idx));
+        assert_eq!(result, SdkResourceType::DzPrefixBlock(pk, idx));
     }
 
     #[test]
     fn test_dz_prefix_block_defaults() {
-        let result =
-            resource_extension_to_resource_block(ResourceExtensionType::DzPrefixBlock, None, None);
-        assert_eq!(
-            result,
-            ResourceBlockType::DzPrefixBlock(Pubkey::default(), 0)
-        );
+        let result = resource_type_from(ResourceType::DzPrefixBlock, None, None);
+        assert_eq!(result, SdkResourceType::DzPrefixBlock(Pubkey::default(), 0));
     }
 
     #[test]
     fn test_tunnel_ids_with_values() {
         let pk = Pubkey::new_unique();
         let idx = 7;
-        let result = resource_extension_to_resource_block(
-            ResourceExtensionType::TunnelIds,
-            Some(pk),
-            Some(idx),
-        );
-        assert_eq!(result, ResourceBlockType::TunnelIds(pk, idx));
+        let result = resource_type_from(ResourceType::TunnelIds, Some(pk), Some(idx));
+        assert_eq!(result, SdkResourceType::TunnelIds(pk, idx));
     }
 
     #[test]
     fn test_tunnel_ids_defaults() {
-        let result =
-            resource_extension_to_resource_block(ResourceExtensionType::TunnelIds, None, None);
-        assert_eq!(result, ResourceBlockType::TunnelIds(Pubkey::default(), 0));
+        let result = resource_type_from(ResourceType::TunnelIds, None, None);
+        assert_eq!(result, SdkResourceType::TunnelIds(Pubkey::default(), 0));
     }
 
     #[test]
     fn test_link_ids() {
-        let result =
-            resource_extension_to_resource_block(ResourceExtensionType::LinkIds, None, None);
-        assert_eq!(result, ResourceBlockType::LinkIds);
+        let result = resource_type_from(ResourceType::LinkIds, None, None);
+        assert_eq!(result, SdkResourceType::LinkIds);
     }
 
     #[test]
     fn test_segment_routing_ids() {
-        let result = resource_extension_to_resource_block(
-            ResourceExtensionType::SegmentRoutingIds,
-            None,
-            None,
-        );
-        assert_eq!(result, ResourceBlockType::SegmentRoutingIds);
+        let result = resource_type_from(ResourceType::SegmentRoutingIds, None, None);
+        assert_eq!(result, SdkResourceType::SegmentRoutingIds);
     }
 }

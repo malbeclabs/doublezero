@@ -1,4 +1,4 @@
-use super::ResourceExtensionType;
+use super::ResourceType;
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
 use doublezero_sdk::commands::resource::get::GetResourceCommand;
@@ -9,7 +9,7 @@ use tabled::{Table, Tabled};
 pub struct GetResourceCliCommand {
     // Type of resource extension to allocate
     #[arg(long)]
-    pub resource_extension_type: ResourceExtensionType,
+    pub resource_extension_type: ResourceType,
     // Associated public key (only for DzPrefixBlock)
     #[arg(long)]
     pub associated_pubkey: Option<String>,
@@ -20,15 +20,13 @@ pub struct GetResourceCliCommand {
 
 impl From<GetResourceCliCommand> for GetResourceCommand {
     fn from(cmd: GetResourceCliCommand) -> Self {
-        let resource_block_type = super::resource_extension_to_resource_block(
+        let resource_type = super::resource_type_from(
             cmd.resource_extension_type,
             cmd.associated_pubkey.as_ref().and_then(|s| s.parse().ok()),
             cmd.index,
         );
 
-        GetResourceCommand {
-            resource_block_type,
-        }
+        GetResourceCommand { resource_type }
     }
 }
 
@@ -60,10 +58,10 @@ impl GetResourceCliCommand {
 mod tests {
     use super::*;
     use crate::doublezerocommand::MockCliCommand;
-    use doublezero_sdk::{AccountType, ResourceBlockType};
+    use doublezero_sdk::{AccountType, ResourceType as SdkResourceType};
     use doublezero_serviceability::{
         id_allocator::IdAllocator,
-        state::resource_extension::{ResourceExtensionOwned, ResourceExtensionType as REType},
+        state::resource_extension::{Allocator, ResourceExtensionOwned},
     };
     use solana_program::pubkey::Pubkey;
     use std::io::Cursor;
@@ -72,21 +70,18 @@ mod tests {
     fn test_from_cli_to_command() {
         let pk = Pubkey::new_unique();
         let cli_cmd = GetResourceCliCommand {
-            resource_extension_type: ResourceExtensionType::DzPrefixBlock,
+            resource_extension_type: ResourceType::DzPrefixBlock,
             associated_pubkey: Some(pk.to_string()),
             index: Some(1),
         };
         let cmd: GetResourceCommand = cli_cmd.into();
-        assert_eq!(
-            cmd.resource_block_type,
-            ResourceBlockType::DzPrefixBlock(pk, 1)
-        );
+        assert_eq!(cmd.resource_type, SdkResourceType::DzPrefixBlock(pk, 1));
     }
 
     #[test]
     fn test_execute_prints_table() {
         let cli_cmd = GetResourceCliCommand {
-            resource_extension_type: ResourceExtensionType::LinkIds,
+            resource_extension_type: ResourceType::LinkIds,
             associated_pubkey: None,
             index: None,
         };
@@ -96,14 +91,12 @@ mod tests {
             owner: Pubkey::default(),
             bump_seed: 0,
             assocatiated_with: Pubkey::default(),
-            extension_type: REType::Id(IdAllocator::new((0, 16)).unwrap()),
+            allocator: Allocator::Id(IdAllocator::new((0, 16)).unwrap()),
             storage: vec![0xff; 1],
         };
         mock_client
             .expect_get_resource()
-            .withf(move |cmd: &GetResourceCommand| {
-                cmd.resource_block_type == ResourceBlockType::LinkIds
-            })
+            .withf(|cmd: &GetResourceCommand| cmd.resource_type == SdkResourceType::LinkIds)
             .returning(move |_| Ok((Pubkey::default(), resource_ext.clone())));
         let mut output = Cursor::new(Vec::new());
         let result = cli_cmd.execute(&mock_client, &mut output);

@@ -17,7 +17,7 @@ const RESOURCE_EXTENSION_BITMAP_OFFSET: usize =
 #[derive(BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[borsh(use_discriminant = true)]
-pub enum ResourceExtensionType {
+pub enum Allocator {
     Ip(IpAllocator),
     Id(IdAllocator),
 }
@@ -30,24 +30,24 @@ pub enum ResourceExtensionRange {
 #[derive(BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ResourceExtensionOwned {
-    pub account_type: AccountType,             // 1
-    pub owner: Pubkey,                         // 32
-    pub bump_seed: u8,                         // 1
-    pub assocatiated_with: Pubkey,             // 32
-    pub extension_type: ResourceExtensionType, // 9
-    pub storage: Vec<u8>,                      // Variable
+    pub account_type: AccountType, // 1
+    pub owner: Pubkey,             // 32
+    pub bump_seed: u8,             // 1
+    pub assocatiated_with: Pubkey, // 32
+    pub allocator: Allocator,      // 9
+    pub storage: Vec<u8>,          // Variable
 }
 
 impl ResourceExtensionOwned {
     pub fn iter_allocated(&self) -> Vec<IdOrIp> {
-        match &self.extension_type {
-            ResourceExtensionType::Ip(ip_allocator) => ip_allocator
+        match &self.allocator {
+            Allocator::Ip(ip_allocator) => ip_allocator
                 .iter_allocated(&self.storage)
-                .map(|x| IdOrIp::Ip(x))
+                .map(IdOrIp::Ip)
                 .collect(),
-            ResourceExtensionType::Id(id_allocator) => id_allocator
+            Allocator::Id(id_allocator) => id_allocator
                 .iter_allocated(&self.storage)
-                .map(|x| IdOrIp::Id(x))
+                .map(IdOrIp::Id)
                 .collect(),
         }
     }
@@ -63,7 +63,7 @@ impl TryFrom<&[u8]> for ResourceExtensionOwned {
             owner: BorshDeserialize::deserialize(&mut cursor).unwrap_or_default(),
             bump_seed: BorshDeserialize::deserialize(&mut cursor).unwrap_or_default(),
             assocatiated_with: BorshDeserialize::deserialize(&mut cursor).unwrap_or_default(),
-            extension_type: BorshDeserialize::deserialize(&mut cursor).unwrap(),
+            allocator: BorshDeserialize::deserialize(&mut cursor).unwrap(),
             storage: bitmap.to_vec(),
         };
 
@@ -79,12 +79,12 @@ impl fmt::Display for ResourceExtensionOwned {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "ResourceExtensionOwned {{ account_type: {:?}, owner: {}, bump_seed: {}, assocatiated_with: {}, extension_type: {:?} }}",
+            "ResourceExtensionOwned {{ account_type: {:?}, owner: {}, bump_seed: {}, assocatiated_with: {}, allocator: {:?} }}",
             self.account_type,
             self.owner,
             self.bump_seed,
             self.assocatiated_with,
-            self.extension_type,
+            self.allocator,
         )?;
 
         write!(f, ", allocated: [")?;
@@ -104,11 +104,11 @@ impl fmt::Display for ResourceExtensionOwned {
 
 #[derive(Debug, PartialEq)]
 pub struct ResourceExtensionBorrowed<'a> {
-    pub account_type: AccountType,             // 1
-    pub owner: Pubkey,                         // 32
-    pub bump_seed: u8,                         // 1
-    pub assocatiated_with: Pubkey,             // 32
-    pub extension_type: ResourceExtensionType, // Variable
+    pub account_type: AccountType, // 1
+    pub owner: Pubkey,             // 32
+    pub bump_seed: u8,             // 1
+    pub assocatiated_with: Pubkey, // 32
+    pub allocator: Allocator,      // Variable
     pub storage: &'a mut [u8],
 }
 
@@ -116,12 +116,11 @@ impl<'a> ResourceExtensionBorrowed<'a> {
     pub fn size(range: &ResourceExtensionRange) -> usize {
         match range {
             ResourceExtensionRange::IpBlock(base_net, allocation_size) => {
-                RESOURCE_EXTENSION_BITMAP_OFFSET as usize
+                RESOURCE_EXTENSION_BITMAP_OFFSET
                     + IpAllocator::bitmap_required_size(base_net.prefix(), *allocation_size)
             }
             ResourceExtensionRange::IdRange(start, end) => {
-                RESOURCE_EXTENSION_BITMAP_OFFSET as usize
-                    + IdAllocator::bitmap_required_size((*start, *end))
+                RESOURCE_EXTENSION_BITMAP_OFFSET + IdAllocator::bitmap_required_size((*start, *end))
             }
         }
     }
@@ -149,13 +148,11 @@ impl<'a> ResourceExtensionBorrowed<'a> {
             .serialize(&mut cursor)
             .map_err(|_| DoubleZeroError::SerializationFailure)?;
         match range {
-            ResourceExtensionRange::IpBlock(base_net, allocation_size) => {
-                ResourceExtensionType::Ip(
-                    IpAllocator::new(*base_net, *allocation_size)
-                        .map_err(|_| DoubleZeroError::SerializationFailure)?,
-                )
-            }
-            ResourceExtensionRange::IdRange(start, end) => ResourceExtensionType::Id(
+            ResourceExtensionRange::IpBlock(base_net, allocation_size) => Allocator::Ip(
+                IpAllocator::new(*base_net, *allocation_size)
+                    .map_err(|_| DoubleZeroError::SerializationFailure)?,
+            ),
+            ResourceExtensionRange::IdRange(start, end) => Allocator::Id(
                 IdAllocator::new((*start, *end))
                     .map_err(|_| DoubleZeroError::SerializationFailure)?,
             ),
@@ -179,7 +176,7 @@ impl<'a> ResourceExtensionBorrowed<'a> {
             owner: BorshDeserialize::deserialize(&mut cursor).unwrap_or_default(),
             bump_seed: BorshDeserialize::deserialize(&mut cursor).unwrap_or_default(),
             assocatiated_with: BorshDeserialize::deserialize(&mut cursor).unwrap_or_default(),
-            extension_type: BorshDeserialize::deserialize(&mut cursor).unwrap(),
+            allocator: BorshDeserialize::deserialize(&mut cursor).unwrap(),
             storage: bitmap,
         };
 
@@ -191,13 +188,13 @@ impl<'a> ResourceExtensionBorrowed<'a> {
     }
 
     pub fn allocate(&mut self) -> Result<IdOrIp, DoubleZeroError> {
-        match &mut self.extension_type {
-            ResourceExtensionType::Ip(ip_allocator) => Ok(IdOrIp::Ip(
+        match &mut self.allocator {
+            Allocator::Ip(ip_allocator) => Ok(IdOrIp::Ip(
                 ip_allocator
                     .allocate(self.storage)
                     .ok_or(DoubleZeroError::AllocationFailed)?,
             )),
-            ResourceExtensionType::Id(id_allocator) => Ok(IdOrIp::Id(
+            Allocator::Id(id_allocator) => Ok(IdOrIp::Id(
                 id_allocator
                     .allocate(self.storage)
                     .ok_or(DoubleZeroError::AllocationFailed)?,
@@ -206,16 +203,16 @@ impl<'a> ResourceExtensionBorrowed<'a> {
     }
 
     pub fn allocate_specific(&mut self, value: &IdOrIp) -> Result<(), DoubleZeroError> {
-        match &mut self.extension_type {
-            ResourceExtensionType::Ip(ip_allocator) => {
-                let &IdOrIp::Ip(ref ip) = value else {
+        match &mut self.allocator {
+            Allocator::Ip(ip_allocator) => {
+                let IdOrIp::Ip(ip) = value else {
                     return Err(DoubleZeroError::InvalidArgument);
                 };
                 ip_allocator
-                    .allocate_specific(self.storage, &ip)
+                    .allocate_specific(self.storage, ip)
                     .map_err(|_| DoubleZeroError::AllocationFailed)?;
             }
-            ResourceExtensionType::Id(id_allocator) => {
+            Allocator::Id(id_allocator) => {
                 let &IdOrIp::Id(id) = value else {
                     return Err(DoubleZeroError::InvalidArgument);
                 };
@@ -228,14 +225,14 @@ impl<'a> ResourceExtensionBorrowed<'a> {
     }
 
     pub fn deallocate(&mut self, value: &IdOrIp) -> bool {
-        match &mut self.extension_type {
-            ResourceExtensionType::Ip(ip_allocator) => {
-                let &IdOrIp::Ip(ref ip) = value else {
+        match &mut self.allocator {
+            Allocator::Ip(ip_allocator) => {
+                let IdOrIp::Ip(ip) = value else {
                     return false;
                 };
-                ip_allocator.deallocate(self.storage, &ip)
+                ip_allocator.deallocate(self.storage, ip)
             }
-            ResourceExtensionType::Id(id_allocator) => {
+            Allocator::Id(id_allocator) => {
                 let &IdOrIp::Id(id) = value else {
                     return false;
                 };
@@ -249,12 +246,12 @@ impl<'a> fmt::Display for ResourceExtensionBorrowed<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "ResourceExtensionBorrowed {{ account_type: {:?}, owner: {}, bump_seed: {}, assocatiated_with: {}, extension_type: {:?} }}",
+            "ResourceExtensionBorrowed {{ account_type: {:?}, owner: {}, bump_seed: {}, assocatiated_with: {}, allocator: {:?} }}",
             self.account_type,
             self.owner,
             self.bump_seed,
             self.assocatiated_with,
-            self.extension_type,
+            self.allocator,
         )
     }
 }
@@ -288,7 +285,7 @@ mod tests {
 
     #[test]
     fn test_resource_extension_owned_try_from_invalid() {
-        let data = vec![0u8; RESOURCE_EXTENSION_BITMAP_OFFSET + 8];
+        let data = [0u8; RESOURCE_EXTENSION_BITMAP_OFFSET + 8];
         let result = ResourceExtensionOwned::try_from(&data[..]);
         assert!(result == Err(DoubleZeroError::InvalidAccountType));
     }
@@ -303,8 +300,8 @@ mod tests {
         assert_eq!(resext.owner, owner_pk);
         assert_eq!(resext.bump_seed, 1);
         assert_eq!(resext.assocatiated_with, Pubkey::default());
-        match resext.extension_type {
-            ResourceExtensionType::Id(id_allocator) => {
+        match resext.allocator {
+            Allocator::Id(id_allocator) => {
                 assert_eq!(id_allocator.range, (0, 64));
             }
             _ => panic!("Expected IdAllocator"),
@@ -317,7 +314,7 @@ mod tests {
 
     #[test]
     fn test_resource_extension_borrowed_inplace_from_invalid() {
-        let mut data = vec![0u8; RESOURCE_EXTENSION_BITMAP_OFFSET + 8];
+        let mut data = [0u8; RESOURCE_EXTENSION_BITMAP_OFFSET + 8];
         let result = ResourceExtensionBorrowed::inplace_from(&mut data[..]);
         assert!(result.is_ok() || result == Err(DoubleZeroError::InvalidAccountType));
     }
@@ -332,8 +329,8 @@ mod tests {
         assert_eq!(resext.owner, owner_pk);
         assert_eq!(resext.bump_seed, 1);
         assert_eq!(resext.assocatiated_with, Pubkey::default());
-        match resext.extension_type {
-            ResourceExtensionType::Id(id_allocator) => {
+        match resext.allocator {
+            Allocator::Id(id_allocator) => {
                 assert_eq!(id_allocator.range, (0, 64));
             }
             _ => panic!("Expected IdAllocator"),
@@ -367,11 +364,11 @@ mod tests {
             owner: owner_pk,
             bump_seed: 1,
             assocatiated_with: Pubkey::default(),
-            extension_type: ResourceExtensionType::Id(IdAllocator::new((0, 10)).unwrap()),
+            allocator: Allocator::Id(IdAllocator::new((0, 10)).unwrap()),
             storage: vec![],
         };
         let s = format!("{}", ext);
-        assert_eq!(s, "ResourceExtensionOwned { account_type: ResourceExtension, owner: 11111111111111111111111111111111, bump_seed: 1, assocatiated_with: 11111111111111111111111111111111, extension_type: Id(IdAllocator { range: (0, 10) }) }, allocated: []");
+        assert_eq!(s, "ResourceExtensionOwned { account_type: ResourceExtension, owner: 11111111111111111111111111111111, bump_seed: 1, assocatiated_with: 11111111111111111111111111111111, allocator: Id(IdAllocator { range: (0, 10) }) }, allocated: []");
     }
 
     #[test]
@@ -384,10 +381,10 @@ mod tests {
             owner: owner_pk,
             bump_seed: 1,
             assocatiated_with: Pubkey::default(),
-            extension_type: ResourceExtensionType::Id(IdAllocator::new((0, 10)).unwrap()),
+            allocator: Allocator::Id(IdAllocator::new((0, 10)).unwrap()),
             storage: buffer.as_mut_slice(),
         };
         let s = format!("{}", ext);
-        assert_eq!(s, "ResourceExtensionBorrowed { account_type: ResourceExtension, owner: 11111111111111111111111111111111, bump_seed: 1, assocatiated_with: 11111111111111111111111111111111, extension_type: Id(IdAllocator { range: (0, 10) }) }");
+        assert_eq!(s, "ResourceExtensionBorrowed { account_type: ResourceExtension, owner: 11111111111111111111111111111111, bump_seed: 1, assocatiated_with: 11111111111111111111111111111111, allocator: Id(IdAllocator { range: (0, 10) }) }");
     }
 }

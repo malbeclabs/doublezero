@@ -15,7 +15,7 @@ use std::fmt;
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
 pub struct ResourceAllocateArgs {
-    pub resource_block_type: crate::resource::ResourceBlockType,
+    pub resource_type: crate::resource::ResourceType,
     pub requested: Option<IdOrIp>,
 }
 
@@ -62,9 +62,9 @@ pub fn process_allocate_resource(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    match value.resource_block_type {
-        crate::resource::ResourceBlockType::DzPrefixBlock(ref associated_pk, _)
-        | crate::resource::ResourceBlockType::TunnelIds(ref associated_pk, _) => {
+    match value.resource_type {
+        crate::resource::ResourceType::DzPrefixBlock(ref associated_pk, _)
+        | crate::resource::ResourceType::TunnelIds(ref associated_pk, _) => {
             assert_eq!(
                 associated_account.key, associated_pk,
                 "Associated account pubkeys do not match"
@@ -73,8 +73,7 @@ pub fn process_allocate_resource(
         _ => {}
     }
 
-    let (expected_resource_pda, _, _) =
-        get_resource_extension_pda(program_id, value.resource_block_type);
+    let (expected_resource_pda, _, _) = get_resource_extension_pda(program_id, value.resource_type);
     assert_eq!(
         resource_account.key, &expected_resource_pda,
         "Invalid Resource Account PubKey"

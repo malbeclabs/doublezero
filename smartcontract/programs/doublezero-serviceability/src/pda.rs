@@ -91,55 +91,27 @@ pub fn get_accesspass_pda(
     )
 }
 
-pub fn get_device_tunnel_block_pda(program_id: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[SEED_PREFIX, SEED_DEVICE_TUNNEL_BLOCK], program_id)
-}
-
-pub fn get_user_tunnel_block_pda(program_id: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[SEED_PREFIX, SEED_USER_TUNNEL_BLOCK], program_id)
-}
-
-pub fn get_multicast_group_block_pda(program_id: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[SEED_PREFIX, SEED_MULTICASTGROUP_BLOCK], program_id)
-}
-
-pub fn get_dz_prefix_block_pda(
-    program_id: &Pubkey,
-    device_pk: &Pubkey,
-    index: usize,
-) -> (Pubkey, u8) {
-    Pubkey::find_program_address(
-        &[
-            SEED_PREFIX,
-            SEED_DZ_PREFIX_BLOCK,
-            &device_pk.to_bytes(),
-            &index.to_le_bytes(),
-        ],
-        program_id,
-    )
-}
-
 pub fn get_resource_extension_pda(
     program_id: &Pubkey,
-    resource_block_type: crate::resource::ResourceBlockType,
+    resource_type: crate::resource::ResourceType,
 ) -> (Pubkey, u8, &'static [u8]) {
-    match resource_block_type {
-        crate::resource::ResourceBlockType::DeviceTunnelBlock => {
+    match resource_type {
+        crate::resource::ResourceType::DeviceTunnelBlock => {
             let (pda, bump_seed) =
                 Pubkey::find_program_address(&[SEED_PREFIX, SEED_DEVICE_TUNNEL_BLOCK], program_id);
             (pda, bump_seed, SEED_DEVICE_TUNNEL_BLOCK)
         }
-        crate::resource::ResourceBlockType::UserTunnelBlock => {
+        crate::resource::ResourceType::UserTunnelBlock => {
             let (pda, bump_seed) =
                 Pubkey::find_program_address(&[SEED_PREFIX, SEED_USER_TUNNEL_BLOCK], program_id);
             (pda, bump_seed, SEED_USER_TUNNEL_BLOCK)
         }
-        crate::resource::ResourceBlockType::MulticastGroupBlock => {
+        crate::resource::ResourceType::MulticastGroupBlock => {
             let (pda, bump_seed) =
                 Pubkey::find_program_address(&[SEED_PREFIX, SEED_MULTICASTGROUP_BLOCK], program_id);
             (pda, bump_seed, SEED_MULTICASTGROUP_BLOCK)
         }
-        crate::resource::ResourceBlockType::DzPrefixBlock(ref associated_pk, index) => {
+        crate::resource::ResourceType::DzPrefixBlock(ref associated_pk, index) => {
             let (pda, bump_seed) = Pubkey::find_program_address(
                 &[
                     SEED_PREFIX,
@@ -151,7 +123,7 @@ pub fn get_resource_extension_pda(
             );
             (pda, bump_seed, SEED_DZ_PREFIX_BLOCK)
         }
-        crate::resource::ResourceBlockType::TunnelIds(ref associated_pk, index) => {
+        crate::resource::ResourceType::TunnelIds(ref associated_pk, index) => {
             let (pda, bump_seed) = Pubkey::find_program_address(
                 &[
                     SEED_PREFIX,
@@ -163,12 +135,12 @@ pub fn get_resource_extension_pda(
             );
             (pda, bump_seed, SEED_TUNNEL_IDS)
         }
-        crate::resource::ResourceBlockType::LinkIds => {
+        crate::resource::ResourceType::LinkIds => {
             let (pda, bump_seed) =
                 Pubkey::find_program_address(&[SEED_PREFIX, SEED_LINK_IDS], program_id);
             (pda, bump_seed, SEED_LINK_IDS)
         }
-        crate::resource::ResourceBlockType::SegmentRoutingIds => {
+        crate::resource::ResourceType::SegmentRoutingIds => {
             let (pda, bump_seed) =
                 Pubkey::find_program_address(&[SEED_PREFIX, SEED_SEGMENT_ROUTING_IDS], program_id);
             (pda, bump_seed, SEED_SEGMENT_ROUTING_IDS)

@@ -1,6 +1,6 @@
 use crate::{
     pda::{get_globalconfig_pda, get_resource_extension_pda},
-    resource::ResourceBlockType,
+    resource::ResourceType,
     seeds::SEED_PREFIX,
     state::{
         device::Device,
@@ -19,7 +19,7 @@ pub fn get_resource_extension_range(
     program_id: &Pubkey,
     globalconfig: &GlobalConfig,
     associated_account: &AccountInfo,
-    resource_block_type: ResourceBlockType,
+    resource_type: ResourceType,
 ) -> ResourceExtensionRange {
     let mut device = None;
     if associated_account.key != &Pubkey::default() {
@@ -31,32 +31,32 @@ pub fn get_resource_extension_range(
             "Failed to deserialize associated account as Device when getting resource extension IP block",
         ));
     }
-    match resource_block_type {
-        ResourceBlockType::DeviceTunnelBlock => {
+    match resource_type {
+        ResourceType::DeviceTunnelBlock => {
             ResourceExtensionRange::IpBlock(globalconfig.device_tunnel_block, 2)
         }
-        ResourceBlockType::UserTunnelBlock => {
+        ResourceType::UserTunnelBlock => {
             ResourceExtensionRange::IpBlock(globalconfig.user_tunnel_block, 2)
         }
-        ResourceBlockType::MulticastGroupBlock => {
+        ResourceType::MulticastGroupBlock => {
             ResourceExtensionRange::IpBlock(globalconfig.multicastgroup_block, 1)
         }
-        ResourceBlockType::DzPrefixBlock(_, index) => {
+        ResourceType::DzPrefixBlock(_, index) => {
             assert!(
                 device.is_some(),
                 "Associated account must be a device for DzPrefixBlock"
             );
             ResourceExtensionRange::IpBlock(device.unwrap().dz_prefixes[index], 1)
         }
-        ResourceBlockType::TunnelIds(_, _) => {
+        ResourceType::TunnelIds(_, _) => {
             assert!(
                 device.is_some(),
                 "Associated account must be a device for DzPrefixBlock"
             );
             ResourceExtensionRange::IdRange(500, 4596)
         }
-        ResourceBlockType::LinkIds => ResourceExtensionRange::IdRange(0, 65535),
-        ResourceBlockType::SegmentRoutingIds => ResourceExtensionRange::IdRange(1, 65535),
+        ResourceType::LinkIds => ResourceExtensionRange::IdRange(0, 65535),
+        ResourceType::SegmentRoutingIds => ResourceExtensionRange::IdRange(1, 65535),
     }
 }
 
@@ -67,7 +67,7 @@ pub fn create_resource(
     globalconfig_account: &AccountInfo,
     payer_account: &AccountInfo,
     accounts: &[AccountInfo],
-    resource_block_type: ResourceBlockType,
+    resource_type: ResourceType,
 ) -> ProgramResult {
     // Check if the account is writable
     assert!(resource_account.is_writable, "PDA Account is not writable");
@@ -80,13 +80,9 @@ pub fn create_resource(
     );
 
     let (expected_resource_pda, bump_seed, base_seed) =
-        get_resource_extension_pda(program_id, resource_block_type);
-    let resource_range = get_resource_extension_range(
-        program_id,
-        &globalconfig,
-        associated_account,
-        resource_block_type,
-    );
+        get_resource_extension_pda(program_id, resource_type);
+    let resource_range =
+        get_resource_extension_range(program_id, &globalconfig, associated_account, resource_type);
 
     assert_eq!(
         resource_account.key, &expected_resource_pda,
@@ -96,8 +92,8 @@ pub fn create_resource(
     assert!(resource_account.data.borrow().is_empty());
 
     let data_size: usize = ResourceExtensionBorrowed::size(&resource_range);
-    match resource_block_type {
-        ResourceBlockType::DzPrefixBlock(_, index) | ResourceBlockType::TunnelIds(_, index) => {
+    match resource_type {
+        ResourceType::DzPrefixBlock(_, index) | ResourceType::TunnelIds(_, index) => {
             try_create_account(
                 payer_account.key,           // Account paying for the new account
                 resource_account.key,        // Account to be created

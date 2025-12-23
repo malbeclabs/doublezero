@@ -10,7 +10,7 @@ pub struct IdAllocator {
 
 impl IdAllocator {
     pub fn bitmap_required_size(range: (u16, u16)) -> usize {
-        ((range.1 - range.0) as usize + 7) / 8
+        (range.1 - range.0).div_ceil(8) as usize
     }
 
     pub fn new(range: (u16, u16)) -> Result<Self, String> {

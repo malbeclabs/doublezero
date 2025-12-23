@@ -9,7 +9,7 @@ pub use doublezero_serviceability::{
         get_location_pda, get_multicastgroup_pda, get_user_old_pda,
     },
     programversion::ProgramVersion,
-    resource::{IdOrIp, ResourceBlockType},
+    resource::{IdOrIp, ResourceType},
     state::{
         accountdata::AccountData,
         accounttype::AccountType,

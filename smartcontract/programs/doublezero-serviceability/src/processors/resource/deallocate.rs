@@ -2,7 +2,7 @@ use crate::{
     error::DoubleZeroError,
     globalstate::globalstate_get,
     pda::get_resource_extension_pda,
-    resource::{IdOrIp, ResourceBlockType},
+    resource::{IdOrIp, ResourceType},
     state::resource_extension::ResourceExtensionBorrowed,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -17,7 +17,7 @@ use std::fmt;
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct ResourceDeallocateArgs {
-    pub resource_block_type: ResourceBlockType,
+    pub resource_type: ResourceType,
     pub value: IdOrIp,
 }
 
@@ -73,16 +73,15 @@ pub fn process_deallocate_resource(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    let (expected_resource_pda, _, _) =
-        get_resource_extension_pda(program_id, value.resource_block_type);
+    let (expected_resource_pda, _, _) = get_resource_extension_pda(program_id, value.resource_type);
     assert_eq!(
         resource_account.key, &expected_resource_pda,
         "Invalid Resource Account PubKey"
     );
 
-    match value.resource_block_type {
-        ResourceBlockType::DzPrefixBlock(ref associated_pk, _)
-        | ResourceBlockType::TunnelIds(ref associated_pk, _) => {
+    match value.resource_type {
+        ResourceType::DzPrefixBlock(ref associated_pk, _)
+        | ResourceType::TunnelIds(ref associated_pk, _) => {
             assert_eq!(
                 associated_account.key, associated_pk,
                 "Associated account pubkeys do not match"

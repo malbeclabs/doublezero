@@ -3,13 +3,13 @@ use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
     pda::get_resource_extension_pda,
     processors::resource::allocate::ResourceAllocateArgs,
-    resource::{IdOrIp, ResourceBlockType},
+    resource::{IdOrIp, ResourceType},
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct AllocateResourceCommand {
-    pub resource_block_type: ResourceBlockType,
+    pub resource_type: ResourceType,
     pub requested: Option<IdOrIp>,
 }
 
@@ -20,15 +20,15 @@ impl AllocateResourceCommand {
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
         let (resource_pubkey, _, _) =
-            get_resource_extension_pda(&client.get_program_id(), self.resource_block_type);
+            get_resource_extension_pda(&client.get_program_id(), self.resource_type);
 
         let resource_allocate_args = ResourceAllocateArgs {
-            resource_block_type: self.resource_block_type,
+            resource_type: self.resource_type,
             requested: self.requested.clone(),
         };
 
-        let associated_account_pk = match self.resource_block_type {
-            ResourceBlockType::DzPrefixBlock(pk, _) | ResourceBlockType::TunnelIds(pk, _) => pk,
+        let associated_account_pk = match self.resource_type {
+            ResourceType::DzPrefixBlock(pk, _) | ResourceType::TunnelIds(pk, _) => pk,
             _ => Pubkey::default(),
         };
 

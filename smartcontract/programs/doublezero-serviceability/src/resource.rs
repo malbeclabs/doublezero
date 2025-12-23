@@ -4,7 +4,7 @@ use solana_program::pubkey::Pubkey;
 use std::fmt;
 
 #[derive(BorshSerialize, BorshDeserialize, Clone, Copy, Debug, Default, PartialEq)]
-pub enum ResourceBlockType {
+pub enum ResourceType {
     #[default]
     DeviceTunnelBlock,
     UserTunnelBlock,

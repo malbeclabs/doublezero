@@ -1,7 +1,7 @@
 //! Integration tests for Resource Extension (IP Allocation) feature.
 //!
 //! Tests cover:
-//! - Creating resource extensions for all ResourceBlockType variants
+//! - Creating resource extensions for all ResourceType variants
 //! - Allocating IPs (automatic and specific)
 //! - Deallocating IPs
 //! - Authorization (foundation_allowlist enforcement)
@@ -24,7 +24,7 @@ use doublezero_serviceability::{
             deallocate::ResourceDeallocateArgs,
         },
     },
-    resource::{IdOrIp, ResourceBlockType},
+    resource::{IdOrIp, ResourceType},
     state::{accounttype::AccountType, device::DeviceType},
 };
 use solana_program_test::*;
@@ -48,7 +48,7 @@ async fn test_create_device_tunnel_block_resource() {
 
     // Get the expected PDA for DeviceTunnelBlock
     let (resource_pubkey, _, _) =
-        get_resource_extension_pda(&program_id, ResourceBlockType::DeviceTunnelBlock);
+        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
 
     // Create the resource extension
     execute_transaction(
@@ -56,7 +56,7 @@ async fn test_create_device_tunnel_block_resource() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::CreateResource(ResourceCreateArgs {
-            resource_block_type: ResourceBlockType::DeviceTunnelBlock,
+            resource_type: ResourceType::DeviceTunnelBlock,
         }),
         vec![
             AccountMeta::new(resource_pubkey, false),
@@ -90,14 +90,14 @@ async fn test_create_user_tunnel_block_resource() {
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
     let (resource_pubkey, _, _) =
-        get_resource_extension_pda(&program_id, ResourceBlockType::UserTunnelBlock);
+        get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock);
 
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::CreateResource(ResourceCreateArgs {
-            resource_block_type: ResourceBlockType::UserTunnelBlock,
+            resource_type: ResourceType::UserTunnelBlock,
         }),
         vec![
             AccountMeta::new(resource_pubkey, false),
@@ -129,14 +129,14 @@ async fn test_create_multicast_group_block_resource() {
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
     let (resource_pubkey, _, _) =
-        get_resource_extension_pda(&program_id, ResourceBlockType::MulticastGroupBlock);
+        get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock);
 
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::CreateResource(ResourceCreateArgs {
-            resource_block_type: ResourceBlockType::MulticastGroupBlock,
+            resource_type: ResourceType::MulticastGroupBlock,
         }),
         vec![
             AccountMeta::new(resource_pubkey, false),
@@ -168,7 +168,7 @@ async fn test_allocate_from_device_tunnel_block() {
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
     let (resource_pubkey, _, _) =
-        get_resource_extension_pda(&program_id, ResourceBlockType::DeviceTunnelBlock);
+        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
 
     // First create the resource
     execute_transaction(
@@ -176,7 +176,7 @@ async fn test_allocate_from_device_tunnel_block() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::CreateResource(ResourceCreateArgs {
-            resource_block_type: ResourceBlockType::DeviceTunnelBlock,
+            resource_type: ResourceType::DeviceTunnelBlock,
         }),
         vec![
             AccountMeta::new(resource_pubkey, false),
@@ -197,7 +197,7 @@ async fn test_allocate_from_device_tunnel_block() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::AllocateResource(ResourceAllocateArgs {
-            resource_block_type: ResourceBlockType::DeviceTunnelBlock,
+            resource_type: ResourceType::DeviceTunnelBlock,
             requested: None, // Auto-allocate
         }),
         vec![
@@ -228,7 +228,7 @@ async fn test_allocate_from_device_tunnel_block() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::AllocateResource(ResourceAllocateArgs {
-            resource_block_type: ResourceBlockType::DeviceTunnelBlock,
+            resource_type: ResourceType::DeviceTunnelBlock,
             requested: None,
         }),
         vec![
@@ -262,7 +262,7 @@ async fn test_allocate_specific_ip() {
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
     let (resource_pubkey, _, _) =
-        get_resource_extension_pda(&program_id, ResourceBlockType::DeviceTunnelBlock);
+        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
 
     // Create the resource
     execute_transaction(
@@ -270,7 +270,7 @@ async fn test_allocate_specific_ip() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::CreateResource(ResourceCreateArgs {
-            resource_block_type: ResourceBlockType::DeviceTunnelBlock,
+            resource_type: ResourceType::DeviceTunnelBlock,
         }),
         vec![
             AccountMeta::new(resource_pubkey, false),
@@ -289,7 +289,7 @@ async fn test_allocate_specific_ip() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::AllocateResource(ResourceAllocateArgs {
-            resource_block_type: ResourceBlockType::DeviceTunnelBlock,
+            resource_type: ResourceType::DeviceTunnelBlock,
             requested: Some(IdOrIp::Ip(specific_network)),
         }),
         vec![
@@ -322,7 +322,7 @@ async fn test_deallocate_ip() {
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
     let (resource_pubkey, _, _) =
-        get_resource_extension_pda(&program_id, ResourceBlockType::DeviceTunnelBlock);
+        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
 
     // Create and allocate
     execute_transaction(
@@ -330,7 +330,7 @@ async fn test_deallocate_ip() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::CreateResource(ResourceCreateArgs {
-            resource_block_type: ResourceBlockType::DeviceTunnelBlock,
+            resource_type: ResourceType::DeviceTunnelBlock,
         }),
         vec![
             AccountMeta::new(resource_pubkey, false),
@@ -347,7 +347,7 @@ async fn test_deallocate_ip() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::AllocateResource(ResourceAllocateArgs {
-            resource_block_type: ResourceBlockType::DeviceTunnelBlock,
+            resource_type: ResourceType::DeviceTunnelBlock,
             requested: None,
         }),
         vec![
@@ -372,7 +372,7 @@ async fn test_deallocate_ip() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::DeallocateResource(ResourceDeallocateArgs {
-            resource_block_type: ResourceBlockType::DeviceTunnelBlock,
+            resource_type: ResourceType::DeviceTunnelBlock,
             value: IdOrIp::Ip(network_to_deallocate),
         }),
         vec![
@@ -403,7 +403,7 @@ async fn test_full_lifecycle_create_allocate_deallocate() {
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
     let (resource_pubkey, _, _) =
-        get_resource_extension_pda(&program_id, ResourceBlockType::MulticastGroupBlock);
+        get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock);
 
     // 1. Create
     execute_transaction(
@@ -411,7 +411,7 @@ async fn test_full_lifecycle_create_allocate_deallocate() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::CreateResource(ResourceCreateArgs {
-            resource_block_type: ResourceBlockType::MulticastGroupBlock,
+            resource_type: ResourceType::MulticastGroupBlock,
         }),
         vec![
             AccountMeta::new(resource_pubkey, false),
@@ -431,7 +431,7 @@ async fn test_full_lifecycle_create_allocate_deallocate() {
             recent_blockhash,
             program_id,
             DoubleZeroInstruction::AllocateResource(ResourceAllocateArgs {
-                resource_block_type: ResourceBlockType::MulticastGroupBlock,
+                resource_type: ResourceType::MulticastGroupBlock,
                 requested: None,
             }),
             vec![
@@ -457,7 +457,7 @@ async fn test_full_lifecycle_create_allocate_deallocate() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::DeallocateResource(ResourceDeallocateArgs {
-            resource_block_type: ResourceBlockType::MulticastGroupBlock,
+            resource_type: ResourceType::MulticastGroupBlock,
             value: IdOrIp::Ip(network_to_deallocate),
         }),
         vec![
@@ -481,7 +481,7 @@ async fn test_full_lifecycle_create_allocate_deallocate() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::AllocateResource(ResourceAllocateArgs {
-            resource_block_type: ResourceBlockType::MulticastGroupBlock,
+            resource_type: ResourceType::MulticastGroupBlock,
             requested: None,
         }),
         vec![
@@ -518,7 +518,7 @@ async fn test_create_resource_requires_foundation_allowlist() {
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
     let (resource_pubkey, _, _) =
-        get_resource_extension_pda(&program_id, ResourceBlockType::DeviceTunnelBlock);
+        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
 
     // First, verify the authorized payer CAN create (control test)
     execute_transaction(
@@ -526,7 +526,7 @@ async fn test_create_resource_requires_foundation_allowlist() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::CreateResource(ResourceCreateArgs {
-            resource_block_type: ResourceBlockType::DeviceTunnelBlock,
+            resource_type: ResourceType::DeviceTunnelBlock,
         }),
         vec![
             AccountMeta::new(resource_pubkey, false),
@@ -555,7 +555,7 @@ async fn test_allocate_resource_requires_foundation_allowlist() {
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
     let (resource_pubkey, _, _) =
-        get_resource_extension_pda(&program_id, ResourceBlockType::DeviceTunnelBlock);
+        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
 
     // Create resource first
     execute_transaction(
@@ -563,7 +563,7 @@ async fn test_allocate_resource_requires_foundation_allowlist() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::CreateResource(ResourceCreateArgs {
-            resource_block_type: ResourceBlockType::DeviceTunnelBlock,
+            resource_type: ResourceType::DeviceTunnelBlock,
         }),
         vec![
             AccountMeta::new(resource_pubkey, false),
@@ -581,7 +581,7 @@ async fn test_allocate_resource_requires_foundation_allowlist() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::AllocateResource(ResourceAllocateArgs {
-            resource_block_type: ResourceBlockType::DeviceTunnelBlock,
+            resource_type: ResourceType::DeviceTunnelBlock,
             requested: None,
         }),
         vec![
@@ -606,7 +606,7 @@ async fn test_deallocate_resource_requires_foundation_allowlist() {
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
     let (resource_pubkey, _, _) =
-        get_resource_extension_pda(&program_id, ResourceBlockType::DeviceTunnelBlock);
+        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
 
     // Create and allocate
     execute_transaction(
@@ -614,7 +614,7 @@ async fn test_deallocate_resource_requires_foundation_allowlist() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::CreateResource(ResourceCreateArgs {
-            resource_block_type: ResourceBlockType::DeviceTunnelBlock,
+            resource_type: ResourceType::DeviceTunnelBlock,
         }),
         vec![
             AccountMeta::new(resource_pubkey, false),
@@ -631,7 +631,7 @@ async fn test_deallocate_resource_requires_foundation_allowlist() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::AllocateResource(ResourceAllocateArgs {
-            resource_block_type: ResourceBlockType::DeviceTunnelBlock,
+            resource_type: ResourceType::DeviceTunnelBlock,
             requested: None,
         }),
         vec![
@@ -650,7 +650,7 @@ async fn test_deallocate_resource_requires_foundation_allowlist() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::DeallocateResource(ResourceDeallocateArgs {
-            resource_block_type: ResourceBlockType::DeviceTunnelBlock,
+            resource_type: ResourceType::DeviceTunnelBlock,
             value: IdOrIp::Ip(network_to_deallocate),
         }),
         vec![
@@ -679,7 +679,7 @@ async fn test_allocate_specific_already_allocated_fails() {
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
     let (resource_pubkey, _, _) =
-        get_resource_extension_pda(&program_id, ResourceBlockType::DeviceTunnelBlock);
+        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
 
     // Create resource
     execute_transaction(
@@ -687,7 +687,7 @@ async fn test_allocate_specific_already_allocated_fails() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::CreateResource(ResourceCreateArgs {
-            resource_block_type: ResourceBlockType::DeviceTunnelBlock,
+            resource_type: ResourceType::DeviceTunnelBlock,
         }),
         vec![
             AccountMeta::new(resource_pubkey, false),
@@ -709,7 +709,7 @@ async fn test_allocate_specific_already_allocated_fails() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::AllocateResource(ResourceAllocateArgs {
-            resource_block_type: ResourceBlockType::DeviceTunnelBlock,
+            resource_type: ResourceType::DeviceTunnelBlock,
             requested: Some(IdOrIp::Ip(specific_network)),
         }),
         vec![
@@ -730,7 +730,7 @@ async fn test_allocate_specific_already_allocated_fails() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::AllocateResource(ResourceAllocateArgs {
-            resource_block_type: ResourceBlockType::DeviceTunnelBlock,
+            resource_type: ResourceType::DeviceTunnelBlock,
             requested: Some(IdOrIp::Ip(specific_network)),
         }),
         vec![
@@ -757,7 +757,7 @@ async fn test_create_resource_twice_fails() {
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
     let (resource_pubkey, _, _) =
-        get_resource_extension_pda(&program_id, ResourceBlockType::DeviceTunnelBlock);
+        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
 
     // Create resource first time
     execute_transaction(
@@ -765,7 +765,7 @@ async fn test_create_resource_twice_fails() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::CreateResource(ResourceCreateArgs {
-            resource_block_type: ResourceBlockType::DeviceTunnelBlock,
+            resource_type: ResourceType::DeviceTunnelBlock,
         }),
         vec![
             AccountMeta::new(resource_pubkey, false),
@@ -792,7 +792,7 @@ async fn test_create_resource_twice_fails() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::CreateResource(ResourceCreateArgs {
-            resource_block_type: ResourceBlockType::DeviceTunnelBlock,
+            resource_type: ResourceType::DeviceTunnelBlock,
         }),
         vec![
             AccountMeta::new(resource_pubkey, false),
@@ -819,7 +819,7 @@ async fn test_allocate_on_nonexistent_resource_fails() {
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
     let (resource_pubkey, _, _) =
-        get_resource_extension_pda(&program_id, ResourceBlockType::DeviceTunnelBlock);
+        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
 
     // Try to allocate without creating first - should fail
     let result = try_execute_transaction(
@@ -827,7 +827,7 @@ async fn test_allocate_on_nonexistent_resource_fails() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::AllocateResource(ResourceAllocateArgs {
-            resource_block_type: ResourceBlockType::DeviceTunnelBlock,
+            resource_type: ResourceType::DeviceTunnelBlock,
             requested: None,
         }),
         vec![
@@ -983,10 +983,8 @@ async fn test_create_dz_prefix_block_resource() {
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
     // Get PDA for DzPrefixBlock with device pubkey and index 0
-    let (resource_pubkey, _, _) = get_resource_extension_pda(
-        &program_id,
-        ResourceBlockType::DzPrefixBlock(device_pubkey, 0),
-    );
+    let (resource_pubkey, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pubkey, 0));
 
     // Create DzPrefixBlock resource
     execute_transaction(
@@ -994,7 +992,7 @@ async fn test_create_dz_prefix_block_resource() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::CreateResource(ResourceCreateArgs {
-            resource_block_type: ResourceBlockType::DzPrefixBlock(device_pubkey, 0),
+            resource_type: ResourceType::DzPrefixBlock(device_pubkey, 0),
         }),
         vec![
             AccountMeta::new(resource_pubkey, false),
@@ -1035,10 +1033,8 @@ async fn test_allocate_dz_prefix_block_with_device_pubkey() {
 
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
-    let (resource_pubkey, _, _) = get_resource_extension_pda(
-        &program_id,
-        ResourceBlockType::DzPrefixBlock(device_pubkey, 0),
-    );
+    let (resource_pubkey, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pubkey, 0));
 
     // Create resource
     execute_transaction(
@@ -1046,7 +1042,7 @@ async fn test_allocate_dz_prefix_block_with_device_pubkey() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::CreateResource(ResourceCreateArgs {
-            resource_block_type: ResourceBlockType::DzPrefixBlock(device_pubkey, 0),
+            resource_type: ResourceType::DzPrefixBlock(device_pubkey, 0),
         }),
         vec![
             AccountMeta::new(resource_pubkey, false),
@@ -1064,7 +1060,7 @@ async fn test_allocate_dz_prefix_block_with_device_pubkey() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::AllocateResource(ResourceAllocateArgs {
-            resource_block_type: ResourceBlockType::DzPrefixBlock(device_pubkey, 0),
+            resource_type: ResourceType::DzPrefixBlock(device_pubkey, 0),
             requested: None,
         }),
         vec![
@@ -1105,24 +1101,18 @@ async fn test_dz_prefix_block_pda_derivation() {
     .await;
 
     // Verify PDA derivation for different indices
-    let (pda_0, _, _) = get_resource_extension_pda(
-        &program_id,
-        ResourceBlockType::DzPrefixBlock(device_pubkey, 0),
-    );
-    let (pda_1, _, _) = get_resource_extension_pda(
-        &program_id,
-        ResourceBlockType::DzPrefixBlock(device_pubkey, 1),
-    );
+    let (pda_0, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pubkey, 0));
+    let (pda_1, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pubkey, 1));
 
     // PDAs should be different for different indices
     assert_ne!(pda_0, pda_1);
 
     // PDAs should be different for different devices
     let other_device = Pubkey::new_unique();
-    let (pda_other, _, _) = get_resource_extension_pda(
-        &program_id,
-        ResourceBlockType::DzPrefixBlock(other_device, 0),
-    );
+    let (pda_other, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(other_device, 0));
     assert_ne!(pda_0, pda_other);
 
     println!("[PASS] test_dz_prefix_block_pda_derivation");

@@ -13,6 +13,7 @@ service QAAgentService {
   rpc MulticastAllowListAdd(MulticastAllowListAddRequest) returns (Result);
   rpc ConnectMulticast(ConnectMulticastRequest) returns (Result);
   rpc GetStatus(google.protobuf.Empty) returns (StatusResponse);
+  rpc GetLatency(google.protobuf.Empty) returns (LatencyResponse);
   rpc GetPublicIP(google.protobuf.Empty) returns (GetPublicIPResponse);
   rpc GetRoutes(google.protobuf.Empty) returns (GetRoutesResponse);
   rpc Disconnect(google.protobuf.Empty) returns (Result);
@@ -86,6 +87,20 @@ message Status {
 
 message StatusResponse {
   repeated Status status = 1;
+}
+
+message Latency {
+  string device_pk = 1;
+  string device_code = 2;
+  string device_ip = 3;
+  uint64 min_latency_ns = 4;
+  uint64 max_latency_ns = 5;
+  uint64 avg_latency_ns = 6;
+  bool reachable = 7;
+}
+
+message LatencyResponse {
+  repeated Latency latencies = 1;
 }
 
 message GetPublicIPResponse {

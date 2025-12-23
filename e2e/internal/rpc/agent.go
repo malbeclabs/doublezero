@@ -348,6 +348,16 @@ type StatusResponse struct {
 	Network             string `json:"network"`
 }
 
+type LatencyResponse struct {
+	DevicePk     string `json:"device_pk"`
+	DeviceCode   string `json:"device_code"`
+	DeviceIP     string `json:"device_ip"`
+	MinLatencyNs uint64 `json:"min_latency_ns"`
+	MaxLatencyNs uint64 `json:"max_latency_ns"`
+	AvgLatencyNs uint64 `json:"avg_latency_ns"`
+	Reachable    bool   `json:"reachable"`
+}
+
 // GetStatus implements the GetStatus RPC, which retrieves the current status of the configured DoubleZero
 // tunnel. This is equivalent to the `doublezero status` command.
 func (q *QAAgent) GetStatus(ctx context.Context, req *emptypb.Empty) (*pb.StatusResponse, error) {
@@ -370,6 +380,34 @@ func (q *QAAgent) GetStatus(ctx context.Context, req *emptypb.Empty) (*pb.Status
 			CurrentDevice: s.CurrentDevice,
 		}
 		resp.Status = append(resp.Status, r)
+	}
+	return resp, nil
+}
+
+// GetLatency implements the GetLatency RPC, which retrieves latency information for all DoubleZero devices.
+// This is equivalent to the `doublezero latency` command.
+func (q *QAAgent) GetLatency(ctx context.Context, req *emptypb.Empty) (*pb.LatencyResponse, error) {
+	q.log.Info("Received GetLatency request")
+	latencies, err := q.fetchLatency(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(latencies) == 0 {
+		return nil, fmt.Errorf("error fetching latency: no data available")
+	}
+
+	resp := &pb.LatencyResponse{}
+	for _, l := range latencies {
+		r := &pb.Latency{
+			DevicePk:     l.DevicePk,
+			DeviceCode:   l.DeviceCode,
+			DeviceIp:     l.DeviceIP,
+			MinLatencyNs: l.MinLatencyNs,
+			MaxLatencyNs: l.MaxLatencyNs,
+			AvgLatencyNs: l.AvgLatencyNs,
+			Reachable:    l.Reachable,
+		}
+		resp.Latencies = append(resp.Latencies, r)
 	}
 	return resp, nil
 }
@@ -680,4 +718,20 @@ func (q *QAAgent) fetchStatus(ctx context.Context) ([]StatusResponse, error) {
 		return nil, fmt.Errorf("failed to unmarshal status response: error: %w, output: %s", err, string(output))
 	}
 	return status, nil
+}
+
+// fetchLatency retrieves latency information for all DoubleZero devices by executing
+// the `doublezero latency --json` command.
+func (q *QAAgent) fetchLatency(ctx context.Context) ([]LatencyResponse, error) {
+	cmd := exec.CommandContext(ctx, "doublezero", "latency", "--json")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute doublezero latency command: %w, output: %s", err, string(output))
+	}
+
+	var latencies []LatencyResponse
+	if err := json.Unmarshal(output, &latencies); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal latency response: error: %w, output: %s", err, string(output))
+	}
+	return latencies, nil
 }

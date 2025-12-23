@@ -39,6 +39,9 @@ func TestQAAgentConnectivity(t *testing.T) {
 		if r.URL.Path == "/status" {
 			_, _ = w.Write([]byte(`[{"tunnel_name":"dz-1","doublezero_ip":"100.64.0.1","user_type":"ibrl","doublezero_status":{"session_status":"up"}}]`))
 		}
+		if r.URL.Path == "/latency" {
+			_, _ = w.Write([]byte(`[{"device_pk":"8PQkip3CxWhQTdP7doCyhT2kwjSL2csRTdnRg2zbDPs1","device_code":"chi-dn-dzd1","device_ip":"100.0.0.1","min_latency_ns":24989983,"max_latency_ns":25115111,"avg_latency_ns":25063568,"reachable":true}]`))
+		}
 	}))
 	defer mockServer.Close()
 
@@ -125,6 +128,25 @@ func TestQAAgentConnectivity(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, statusResult)
 		require.Equal(t, "up", statusResult.GetStatus()[0].GetSessionStatus())
+	})
+
+	t.Run("GetLatency", func(t *testing.T) {
+		if _, err := exec.LookPath("doublezero"); err != nil {
+			t.Skip("skipping test: doublezero binary not found")
+		}
+
+		latencyResult, err := client.GetLatency(ctx, &emptypb.Empty{})
+		require.NoError(t, err)
+		require.NotNil(t, latencyResult)
+		require.NotEmpty(t, latencyResult.GetLatencies())
+
+		require.NotEmpty(t, latencyResult.GetLatencies()[0].GetDevicePk())
+		require.Equal(t, latencyResult.GetLatencies()[0].GetDeviceIp(), "100.0.0.1")
+		require.Equal(t, latencyResult.GetLatencies()[0].GetDeviceCode(), "chi-dn-dzd1")
+
+		require.Greater(t, latencyResult.GetLatencies()[0].GetMinLatencyNs(), uint64(24989983))
+		require.Greater(t, latencyResult.GetLatencies()[0].GetAvgLatencyNs(), uint64(25063568))
+		require.Greater(t, latencyResult.GetLatencies()[0].GetMaxLatencyNs(), uint64(25115111))
 	})
 
 	t.Run("GetPublicIP", func(t *testing.T) {

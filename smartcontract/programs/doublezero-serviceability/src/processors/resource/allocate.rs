@@ -21,7 +21,11 @@ pub struct ResourceAllocateArgs {
 
 impl fmt::Debug for ResourceAllocateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "ResourceAllocateArgs {{}}",)
+        write!(
+            f,
+            "ResourceAllocateArgs {{ resource_type: {:?}, requested: {:?} }}",
+            self.resource_type, self.requested
+        )
     }
 }
 

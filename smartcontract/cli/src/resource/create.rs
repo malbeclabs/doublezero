@@ -4,10 +4,7 @@ use crate::{
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
 };
 use clap::Args;
-use doublezero_sdk::{
-    commands::{device::get::GetDeviceCommand, resource::create::CreateResourceCommand},
-    ResourceType as SdkResourceType,
-};
+use doublezero_sdk::commands::resource::create::CreateResourceCommand;
 use std::io::Write;
 
 #[derive(Args, Debug)]
@@ -42,21 +39,7 @@ impl CreateResourceCliCommand {
 
         let args: CreateResourceCommand = self.into();
 
-        match args.resource_type {
-            SdkResourceType::DzPrefixBlock(pk, index) | SdkResourceType::TunnelIds(pk, index) => {
-                let get_device_cmd = GetDeviceCommand {
-                    pubkey_or_code: pk.to_string(),
-                };
-                let (_device_pk, device) = client.get_device(get_device_cmd)?;
-                if device.dz_prefixes.len() <= index {
-                    return Err(eyre::eyre!(
-                        "Device does not have a DzPrefixBlock at index {}",
-                        index
-                    ));
-                }
-            }
-            _ => {}
-        }
+        super::check_device_if_needed(&args.resource_type, client)?;
 
         let signature = client.create_resource(args)?;
         writeln!(out, "Signature: {signature}",)?;
@@ -69,7 +52,7 @@ impl CreateResourceCliCommand {
 mod tests {
     use super::*;
     use crate::doublezerocommand::MockCliCommand;
-    use doublezero_sdk::Device;
+    use doublezero_sdk::{Device, ResourceType as SdkResourceType};
     use mockall::predicate::eq;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
     use std::io::Cursor;

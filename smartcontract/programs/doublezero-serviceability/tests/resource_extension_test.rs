@@ -1009,7 +1009,7 @@ async fn test_create_dz_prefix_block_resource() {
         .expect("Resource extension should exist");
 
     assert_eq!(resource.account_type, AccountType::ResourceExtension);
-    assert_eq!(resource.assocatiated_with, device_pubkey);
+    assert_eq!(resource.associated_with, device_pubkey);
     assert!(resource.iter_allocated().is_empty());
 
     println!("[PASS] test_create_dz_prefix_block_resource");

@@ -32,7 +32,11 @@ impl TryFrom<&[u8]> for ResourceDeallocateArgs {
 
 impl fmt::Debug for ResourceDeallocateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "ResourceDeallocateArgs {{}}",)
+        write!(
+            f,
+            "ResourceDeallocateArgs {{ resource_type: {:?}, value: {:?} }}",
+            self.resource_type, self.value
+        )
     }
 }
 

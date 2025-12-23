@@ -5,10 +5,7 @@ use crate::{
 };
 use clap::Args;
 use doublezero_program_common::types::NetworkV4;
-use doublezero_sdk::{
-    commands::{device::get::GetDeviceCommand, resource::deallocate::DeallocateResourceCommand},
-    IdOrIp, ResourceType as SdkResourceType,
-};
+use doublezero_sdk::{commands::resource::deallocate::DeallocateResourceCommand, IdOrIp};
 use std::io::Write;
 
 #[derive(Args, Debug)]
@@ -63,21 +60,7 @@ impl DeallocateResourceCliCommand {
 
         let args: DeallocateResourceCommand = self.into();
 
-        match args.resource_type {
-            SdkResourceType::DzPrefixBlock(pk, index) | SdkResourceType::TunnelIds(pk, index) => {
-                let get_device_cmd = GetDeviceCommand {
-                    pubkey_or_code: pk.to_string(),
-                };
-                let (_device_pk, device) = client.get_device(get_device_cmd)?;
-                if device.dz_prefixes.len() <= index {
-                    return Err(eyre::eyre!(
-                        "Device does not have a DzPrefixBlock at index {}",
-                        index
-                    ));
-                }
-            }
-            _ => {}
-        }
+        super::check_device_if_needed(&args.resource_type, client)?;
 
         let signature = client.deallocate_resource(args)?;
         writeln!(out, "Signature: {signature}",)?;
@@ -90,7 +73,7 @@ impl DeallocateResourceCliCommand {
 mod tests {
     use super::*;
     use crate::doublezerocommand::MockCliCommand;
-    use doublezero_sdk::Device;
+    use doublezero_sdk::{Device, ResourceType as SdkResourceType};
     use mockall::predicate::eq;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
     use std::io::Cursor;

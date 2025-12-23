@@ -1,5 +1,6 @@
+use crate::doublezerocommand::CliCommand;
 use clap::ValueEnum;
-use doublezero_sdk::ResourceType as SdkResourceType;
+use doublezero_sdk::{commands::device::get::GetDeviceCommand, ResourceType as SdkResourceType};
 
 pub mod allocate;
 pub mod create;
@@ -39,6 +40,28 @@ pub fn resource_type_from(
         ResourceType::LinkIds => SdkResourceType::LinkIds,
         ResourceType::SegmentRoutingIds => SdkResourceType::SegmentRoutingIds,
     }
+}
+
+fn check_device_if_needed(
+    resource_type: &SdkResourceType,
+    client: &impl CliCommand,
+) -> eyre::Result<()> {
+    match resource_type {
+        SdkResourceType::DzPrefixBlock(pk, index) | SdkResourceType::TunnelIds(pk, index) => {
+            let get_device_cmd = GetDeviceCommand {
+                pubkey_or_code: pk.to_string(),
+            };
+            let (_device_pk, device) = client.get_device(get_device_cmd)?;
+            if device.dz_prefixes.len() <= *index {
+                return Err(eyre::eyre!(
+                    "Device does not have a DzPrefixBlock at index {}",
+                    index
+                ));
+            }
+        }
+        _ => {}
+    }
+    Ok(())
 }
 
 #[cfg(test)]

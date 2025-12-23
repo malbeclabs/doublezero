@@ -90,7 +90,7 @@ mod tests {
             account_type: AccountType::ResourceExtension,
             owner: Pubkey::default(),
             bump_seed: 0,
-            assocatiated_with: Pubkey::default(),
+            associated_with: Pubkey::default(),
             allocator: Allocator::Id(IdAllocator::new((0, 16)).unwrap()),
             storage: vec![0xff; 1],
         };

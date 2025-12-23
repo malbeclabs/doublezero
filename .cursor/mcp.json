@@ -1,7 +1,7 @@
 {
     "mcpServers": {
         "doublezero": {
-            "url": "http://host.docker.internal:8010/mcp"
+            "url": "http://host.docker.internal:8010"
         }
     }
 }

@@ -108,9 +108,9 @@ func New(cfg Config) (*Server, error) {
 	// Apply authentication middleware to MCP endpoint if tokens are configured
 	if len(cfg.AllowedTokens) > 0 {
 		authHandler := s.authMiddleware(handler)
-		mux.Handle("/mcp", authHandler)
+		mux.Handle("/", authHandler)
 	} else {
-		mux.Handle("/mcp", handler)
+		mux.Handle("/", handler)
 	}
 
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {

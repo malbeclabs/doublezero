@@ -154,7 +154,7 @@ Consider Figure 1 below which will be used as a baseline for describing all unic
 
 BGP will be used to control routing policy between `vrf1-edge-filtration` and both `VRF1` and `default` VRFs. `vrf1-edge-filtration` will be configured using a new ASN based on a newly defined `device.id`.  BGP will be migrated to support BGP dot notation, resulting in eBGP peerings between 65341.device.id and 65341 (used for both `default` and `vrf1`).
 
-To support both `FPGA Loopback` and `Inter-VRF Loopback` path, BGP attributes will be set on the neighbor configuration applied under `vrf1-edge-filtration`.  Local-preference will be increased to support primary egress via the `FPGA Loopback` peering while metric will be increased via the `Inter-VRF Loopback` peering to  support primary ingress via `FPGA Loopback`. 
+To support both `FPGA Loopback` and `Inter-VRF Loopback` paths, BGP attributes will be set on the neighbor configuration applied under `vrf1-edge-filtration`.  Local-preference will be increased to support primary egress via the `FPGA Loopback` peering while metric will be increased via the `Inter-VRF Loopback` peering to  support primary ingress via `FPGA Loopback`. 
 
 In summary, EF BGP policy is:
   - Traffic Flows/Policy (set within `vrf1-edge-filtration` only):
@@ -238,7 +238,7 @@ router bgp 65342
 ```
 
 ### Default Route and iBGP Routing Policy
-The scope of the default route in the network is currently limited to within the `default` VRF of a single DZD i.e. Internet services are not shared between DZDs.  This is controlled through static route configuration or through the use of BGP's well-known community `no-advertise`, applied by contributors outside of the DZ protocol.  With EF, the scope of the default route increases to both the `vrf1-edge-filtration` VRF and via eBGP to `EF` users.  As such, contributors will be required to remove configuration applying `no-advertise`.
+The scope of the default route in the network is currently limited to within the `default` VRF of a single DZD i.e. Internet services are not shared between DZDs.  This is controlled through static route configuration or through the use of BGP's well-known community `no-advertise`, applied by contributors outside of the DZ protocol.  With EF, the scope of the default route increases to both the `vrf1-edge-filtration` VRF and via eBGP to EF users.  As such, contributors will be required to remove configuration applying `no-advertise`.
 
 To maintain the policy of limiting the scope of the default route to a single DZD, routing policy changes will be implemented between iBGP neighbors within the `default` VRF, preventing default route propagation across the DZ network.  The implementation of iBGP filtering has an additional benefit of controlling and explicitly whitelisting from onchain data prefixes that can be propagated between contributors via iBGP, eliminating an existing vulnerability in the network.
 
@@ -375,7 +375,7 @@ router bgp 65341
 
 ### Contributor Impact
 - Migrate CYOA to BGP to support dynamic routing on Internet of EF user address space
-- DZF will need to delegate ASN and DZ PI address space to each contributor
+- DZF will need to delegate ASN and DZ PI address space to each contributor, which will need to be coordinated with upstream providers
 - CYOA capacity usage increase as DZ and non-DZ user traffic flow traverses CYOA
 
 ## Security Considerations

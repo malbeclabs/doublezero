@@ -95,6 +95,17 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     go build -ldflags "${GO_LDFLAGS}" -o ${BIN_DIR}/doublezero-telemetry-state-ingest telemetry/state-ingest/cmd/server/main.go
 
+
+# Build the MCP server (golang)
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go build -ldflags "${GO_LDFLAGS}" -o ${BIN_DIR}/doublezero-mcp tools/mcp/cmd/mcp-server/main.go
+
+# Build the MCP Slack bot (golang)
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go build -ldflags "${GO_LDFLAGS}" -o ${BIN_DIR}/doublezero-mcp-slack-bot tools/mcp/cmd/slack-bot/main.go
+
 # Force COPY in later stages to always copy the binaries, even if they appear to be the same.
 ARG CACHE_BUSTER=1
 RUN echo "$CACHE_BUSTER" > ${BIN_DIR}/.cache-buster && \

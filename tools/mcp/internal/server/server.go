@@ -1,0 +1,168 @@
+package server
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	dzsvc "github.com/malbeclabs/doublezero/tools/mcp/internal/dz/serviceability"
+	dztelem "github.com/malbeclabs/doublezero/tools/mcp/internal/dz/telemetry"
+	"github.com/malbeclabs/doublezero/tools/mcp/internal/sol"
+)
+
+type Server struct {
+	cfg                Config
+	serviceabilityView *dzsvc.View
+	telemetryView      *dztelem.View
+	solanaView         *sol.View
+	mcpServer          *mcp.Server
+	httpServer         *http.Server
+}
+
+func New(cfg Config) (*Server, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+
+	svcView, err := dzsvc.NewView(dzsvc.ViewConfig{
+		Logger:            cfg.Logger,
+		Clock:             cfg.Clock,
+		ServiceabilityRPC: cfg.ServiceabilityRPC,
+		RefreshInterval:   cfg.RefreshInterval,
+		DB:                cfg.DB,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create serviceability view: %w", err)
+	}
+
+	telemView, err := dztelem.NewView(dztelem.ViewConfig{
+		Logger:                 cfg.Logger,
+		Clock:                  cfg.Clock,
+		TelemetryRPC:           cfg.TelemetryRPC,
+		EpochRPC:               cfg.DZEpochRPC,
+		MaxConcurrency:         cfg.MaxConcurrency,
+		InternetLatencyAgentPK: cfg.InternetLatencyAgentPK,
+		InternetDataProviders:  cfg.InternetDataProviders,
+		DB:                     cfg.DB,
+		Serviceability:         svcView,
+		RefreshInterval:        cfg.RefreshInterval,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create telemetry view: %w", err)
+	}
+
+	solanaView, err := sol.NewView(sol.ViewConfig{
+		Logger:          cfg.Logger,
+		Clock:           cfg.Clock,
+		RPC:             cfg.SolanaRPC,
+		DB:              cfg.DB,
+		RefreshInterval: cfg.RefreshInterval,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create solana view: %w", err)
+	}
+
+	mcpServer := mcp.NewServer(&mcp.Implementation{
+		Name:    "DoubleZero MCP Server",
+		Version: cfg.Version,
+	}, nil)
+
+	doublezeroTools := dzsvc.NewTools(cfg.Logger, cfg.DB)
+	if err := doublezeroTools.Register(mcpServer); err != nil {
+		return nil, fmt.Errorf("failed to register doublezero tools: %w", err)
+	}
+
+	doublezeroTelemetryTools := dztelem.NewTools(cfg.Logger, cfg.DB)
+	if err := doublezeroTelemetryTools.Register(mcpServer); err != nil {
+		return nil, fmt.Errorf("failed to register doublezero-telemetry tools: %w", err)
+	}
+
+	solanaTools := sol.NewTools(cfg.Logger, cfg.DB)
+	if err := solanaTools.Register(mcpServer); err != nil {
+		return nil, fmt.Errorf("failed to register solana tools: %w", err)
+	}
+
+	s := &Server{
+		cfg:                cfg,
+		serviceabilityView: svcView,
+		telemetryView:      telemView,
+		solanaView:         solanaView,
+		mcpServer:          mcpServer,
+	}
+
+	mux := http.NewServeMux()
+	handler := mcp.NewStreamableHTTPHandler(func(_ *http.Request) *mcp.Server {
+		return mcpServer
+	}, &mcp.StreamableHTTPOptions{
+		Stateless: true, // Auto-initialize sessions, no manual initialize required
+	})
+	mux.Handle("/mcp", handler)
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ok\n"))
+	})
+	mux.HandleFunc("/readyz", s.readyzHandler)
+
+	s.httpServer = &http.Server{
+		Addr:              cfg.ListenAddr,
+		Handler:           mux,
+		ReadHeaderTimeout: s.cfg.ReadHeaderTimeout,
+	}
+
+	return s, nil
+}
+
+func (s *Server) Run(ctx context.Context) error {
+	s.serviceabilityView.Start(ctx)
+	s.telemetryView.Start(ctx)
+	s.solanaView.Start(ctx)
+
+	serveErrCh := make(chan error, 1)
+	go func() {
+		if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			serveErrCh <- fmt.Errorf("failed to listen and serve: %w", err)
+		}
+	}()
+
+	s.cfg.Logger.Info("server: mcp streamable http listening",
+		"listenAddr", s.cfg.ListenAddr,
+	)
+
+	select {
+	case <-ctx.Done():
+		s.cfg.Logger.Info("server: shutting down")
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), s.cfg.ShutdownTimeout)
+		defer shutdownCancel()
+		if err := s.httpServer.Shutdown(shutdownCtx); err != nil {
+			return fmt.Errorf("failed to shutdown server: %w", err)
+		}
+		return nil
+	case err := <-serveErrCh:
+		return err
+	}
+}
+
+func (s *Server) readyzHandler(w http.ResponseWriter, r *http.Request) {
+	if !s.serviceabilityView.Ready() {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		w.Write([]byte("serviceability view not ready\n"))
+		return
+	}
+
+	if !s.telemetryView.Ready() {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		w.Write([]byte("telemetry view not ready\n"))
+		return
+	}
+
+	if !s.solanaView.Ready() {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		w.Write([]byte("solana view not ready\n"))
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("ok\n"))
+}

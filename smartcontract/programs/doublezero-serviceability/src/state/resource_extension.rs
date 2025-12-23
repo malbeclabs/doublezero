@@ -102,6 +102,7 @@ impl fmt::Display for ResourceExtensionOwned {
     }
 }
 
+#[derive(Debug, PartialEq)]
 pub struct ResourceExtensionBorrowed<'a> {
     pub account_type: AccountType,             // 1
     pub owner: Pubkey,                         // 32
@@ -162,6 +163,11 @@ impl<'a> ResourceExtensionBorrowed<'a> {
         .serialize(&mut cursor)
         .map_err(|_| DoubleZeroError::SerializationFailure)?;
 
+        assert!(
+            cursor.position() as usize <= RESOURCE_EXTENSION_BITMAP_OFFSET,
+            "Cursor advanced more than RESOURCE_EXTENSION_BITMAP_OFFSET bytes"
+        );
+
         Ok(())
     }
 
@@ -208,7 +214,6 @@ impl<'a> ResourceExtensionBorrowed<'a> {
                 ip_allocator
                     .allocate_specific(self.storage, &ip)
                     .map_err(|_| DoubleZeroError::AllocationFailed)?;
-                Ok(())
             }
             ResourceExtensionType::Id(id_allocator) => {
                 let &IdOrIp::Id(id) = value else {
@@ -217,9 +222,9 @@ impl<'a> ResourceExtensionBorrowed<'a> {
                 id_allocator
                     .allocate_specific(self.storage, id)
                     .map_err(|_| DoubleZeroError::AllocationFailed)?;
-                Ok(())
             }
         }
+        Ok(())
     }
 
     pub fn deallocate(&mut self, value: &IdOrIp) -> bool {
@@ -251,5 +256,138 @@ impl<'a> fmt::Display for ResourceExtensionBorrowed<'a> {
             self.assocatiated_with,
             self.extension_type,
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn construct_resource_extension(buffer: &mut [u8]) -> (Pubkey, Pubkey) {
+        let account_pk = Pubkey::new_unique();
+        let owner_pk = Pubkey::new_unique();
+        ResourceExtensionBorrowed::construct_resource(
+            &AccountInfo::new(
+                &account_pk,
+                false,
+                true,
+                &mut 0,
+                buffer,
+                &owner_pk,
+                false,
+                0,
+            ),
+            &owner_pk,
+            1,
+            &Pubkey::default(),
+            &ResourceExtensionRange::IdRange(0, 64),
+        )
+        .unwrap();
+        (account_pk, owner_pk)
+    }
+
+    #[test]
+    fn test_resource_extension_owned_try_from_invalid() {
+        let data = vec![0u8; RESOURCE_EXTENSION_BITMAP_OFFSET + 8];
+        let result = ResourceExtensionOwned::try_from(&data[..]);
+        assert!(result == Err(DoubleZeroError::InvalidAccountType));
+    }
+
+    #[test]
+    fn test_resource_extension_owned_try_from_success() {
+        let mut buffer =
+            vec![0u8; ResourceExtensionBorrowed::size(&ResourceExtensionRange::IdRange(0, 64))];
+        let (_, owner_pk) = construct_resource_extension(&mut buffer[..]);
+        let resext = ResourceExtensionOwned::try_from(&buffer[..]).unwrap();
+        assert_eq!(resext.account_type, AccountType::ResourceExtension);
+        assert_eq!(resext.owner, owner_pk);
+        assert_eq!(resext.bump_seed, 1);
+        assert_eq!(resext.assocatiated_with, Pubkey::default());
+        match resext.extension_type {
+            ResourceExtensionType::Id(id_allocator) => {
+                assert_eq!(id_allocator.range, (0, 64));
+            }
+            _ => panic!("Expected IdAllocator"),
+        }
+        assert_eq!(
+            resext.storage.len(),
+            IdAllocator::bitmap_required_size((0, 64))
+        );
+    }
+
+    #[test]
+    fn test_resource_extension_borrowed_inplace_from_invalid() {
+        let mut data = vec![0u8; RESOURCE_EXTENSION_BITMAP_OFFSET + 8];
+        let result = ResourceExtensionBorrowed::inplace_from(&mut data[..]);
+        assert!(result.is_ok() || result == Err(DoubleZeroError::InvalidAccountType));
+    }
+
+    #[test]
+    fn test_resource_extension_borrowed_inplace_from_success() {
+        let mut buffer =
+            vec![0u8; ResourceExtensionBorrowed::size(&ResourceExtensionRange::IdRange(0, 64))];
+        let (_, owner_pk) = construct_resource_extension(&mut buffer[..]);
+        let resext = ResourceExtensionBorrowed::inplace_from(&mut buffer[..]).unwrap();
+        assert_eq!(resext.account_type, AccountType::ResourceExtension);
+        assert_eq!(resext.owner, owner_pk);
+        assert_eq!(resext.bump_seed, 1);
+        assert_eq!(resext.assocatiated_with, Pubkey::default());
+        match resext.extension_type {
+            ResourceExtensionType::Id(id_allocator) => {
+                assert_eq!(id_allocator.range, (0, 64));
+            }
+            _ => panic!("Expected IdAllocator"),
+        }
+        assert_eq!(
+            resext.storage.len(),
+            IdAllocator::bitmap_required_size((0, 64))
+        );
+    }
+
+    #[test]
+    fn test_allocate_and_deallocate_id_and_iter_allocated() {
+        let mut buffer =
+            vec![0u8; ResourceExtensionBorrowed::size(&ResourceExtensionRange::IdRange(0, 64))];
+        let (_, _) = construct_resource_extension(&mut buffer[..]);
+        let mut resext = ResourceExtensionBorrowed::inplace_from(&mut buffer[..]).unwrap();
+        resext.allocate().unwrap();
+        resext.allocate().unwrap();
+        resext.allocate_specific(&IdOrIp::Id(5)).unwrap();
+        resext.deallocate(&IdOrIp::Id(0));
+        let resext = ResourceExtensionOwned::try_from(&buffer[..]).unwrap();
+        let allocated = resext.iter_allocated();
+        assert_eq!(allocated, vec![IdOrIp::Id(1), IdOrIp::Id(5)]);
+    }
+
+    #[test]
+    fn test_resource_extension_owned_display_trait() {
+        let owner_pk = Pubkey::default();
+        let ext = ResourceExtensionOwned {
+            account_type: AccountType::ResourceExtension,
+            owner: owner_pk,
+            bump_seed: 1,
+            assocatiated_with: Pubkey::default(),
+            extension_type: ResourceExtensionType::Id(IdAllocator::new((0, 10)).unwrap()),
+            storage: vec![],
+        };
+        let s = format!("{}", ext);
+        assert_eq!(s, "ResourceExtensionOwned { account_type: ResourceExtension, owner: 11111111111111111111111111111111, bump_seed: 1, assocatiated_with: 11111111111111111111111111111111, extension_type: Id(IdAllocator { range: (0, 10) }) }, allocated: []");
+    }
+
+    #[test]
+    fn test_resource_extension_borrowed_display_trait() {
+        let mut buffer =
+            vec![0u8; ResourceExtensionBorrowed::size(&ResourceExtensionRange::IdRange(0, 10))];
+        let owner_pk = Pubkey::default();
+        let ext = ResourceExtensionBorrowed {
+            account_type: AccountType::ResourceExtension,
+            owner: owner_pk,
+            bump_seed: 1,
+            assocatiated_with: Pubkey::default(),
+            extension_type: ResourceExtensionType::Id(IdAllocator::new((0, 10)).unwrap()),
+            storage: buffer.as_mut_slice(),
+        };
+        let s = format!("{}", ext);
+        assert_eq!(s, "ResourceExtensionBorrowed { account_type: ResourceExtension, owner: 11111111111111111111111111111111, bump_seed: 1, assocatiated_with: 11111111111111111111111111111111, extension_type: Id(IdAllocator { range: (0, 10) }) }");
     }
 }

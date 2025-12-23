@@ -1,3 +1,4 @@
+use super::ResourceExtensionType;
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
 use doublezero_sdk::commands::resource::get::GetResourceCommand;
@@ -8,7 +9,7 @@ use tabled::{Table, Tabled};
 pub struct GetResourceCliCommand {
     // Type of resource extension to allocate
     #[arg(long)]
-    pub resource_extension_type: super::ResourceExtensionType,
+    pub resource_extension_type: ResourceExtensionType,
     // Associated public key (only for DzPrefixBlock)
     #[arg(long)]
     pub associated_pubkey: Option<String>,
@@ -52,5 +53,85 @@ impl GetResourceCliCommand {
         writeln!(out, "{table}")?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::doublezerocommand::MockCliCommand;
+    use doublezero_sdk::{AccountType, ResourceBlockType};
+    use doublezero_serviceability::{
+        id_allocator::IdAllocator,
+        state::resource_extension::{ResourceExtensionOwned, ResourceExtensionType as REType},
+    };
+    use solana_program::pubkey::Pubkey;
+    use std::io::Cursor;
+
+    #[test]
+    fn test_from_cli_to_command() {
+        let pk = Pubkey::new_unique();
+        let cli_cmd = GetResourceCliCommand {
+            resource_extension_type: ResourceExtensionType::DzPrefixBlock,
+            associated_pubkey: Some(pk.to_string()),
+            index: Some(1),
+        };
+        let cmd: GetResourceCommand = cli_cmd.into();
+        assert_eq!(
+            cmd.resource_block_type,
+            ResourceBlockType::DzPrefixBlock(pk, 1)
+        );
+    }
+
+    #[test]
+    fn test_execute_prints_table() {
+        let cli_cmd = GetResourceCliCommand {
+            resource_extension_type: ResourceExtensionType::LinkIds,
+            associated_pubkey: None,
+            index: None,
+        };
+        let mut mock_client = MockCliCommand::new();
+        let resource_ext = ResourceExtensionOwned {
+            account_type: AccountType::ResourceExtension,
+            owner: Pubkey::default(),
+            bump_seed: 0,
+            assocatiated_with: Pubkey::default(),
+            extension_type: REType::Id(IdAllocator::new((0, 16)).unwrap()),
+            storage: vec![0xff; 1],
+        };
+        mock_client
+            .expect_get_resource()
+            .withf(move |cmd: &GetResourceCommand| {
+                cmd.resource_block_type == ResourceBlockType::LinkIds
+            })
+            .returning(move |_| Ok((Pubkey::default(), resource_ext.clone())));
+        let mut output = Cursor::new(Vec::new());
+        let result = cli_cmd.execute(&mock_client, &mut output);
+        assert!(result.is_ok());
+        let output_str = String::from_utf8(output.into_inner()).unwrap();
+        assert_eq!(
+            output_str,
+            "\
++---------------------+
+| Allocated Resources |
++---------------------+
+| 0                   |
++---------------------+
+| 1                   |
++---------------------+
+| 2                   |
++---------------------+
+| 3                   |
++---------------------+
+| 4                   |
++---------------------+
+| 5                   |
++---------------------+
+| 6                   |
++---------------------+
+| 7                   |
++---------------------+
+"
+        );
     }
 }

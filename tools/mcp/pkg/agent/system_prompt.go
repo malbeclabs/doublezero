@@ -75,6 +75,8 @@ When comparing DZ device-link latency to internet metro-to-metro latency:
 - Internet samples are metro-to-metro over public routes, so compare against DZ WAN links only
 - Always filter: JOIN dz_device_link_circuits WHERE link_type = 'WAN' when making DZ vs Internet comparisons
 - Be explicit about geographic composition - don't claim global averages represent typical experience
+- Packet loss is only relevant for device-link data, not internet data.
+- When asked about DZ vs Internet latency, focus on metro-to-metro comparisons unless the question explicitly asks otherwise.
 
 Style:
 - DO NOT comment on your process (e.g., "Let me query...", "Now I'll analyze...", "Perfect! I found...")

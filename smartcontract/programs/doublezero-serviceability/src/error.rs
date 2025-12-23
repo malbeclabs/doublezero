@@ -131,7 +131,7 @@ pub enum DoubleZeroError {
     InvalidPublicIp, // variant 62
     #[error("Allocation failed, resource exhausted")]
     AllocationFailed, // variant 63
-    #[error("Allocation failed, resource exhausted")]
+    #[error("Serialization failed")]
     SerializationFailure, // variant 64
     #[error("Invalid argument")]
     InvalidArgument, // variant 65

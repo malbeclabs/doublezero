@@ -33,7 +33,7 @@ pub struct ResourceExtensionOwned {
     pub account_type: AccountType, // 1
     pub owner: Pubkey,             // 32
     pub bump_seed: u8,             // 1
-    pub assocatiated_with: Pubkey, // 32
+    pub associated_with: Pubkey,   // 32
     pub allocator: Allocator,      // 9
     pub storage: Vec<u8>,          // Variable
 }
@@ -62,7 +62,7 @@ impl TryFrom<&[u8]> for ResourceExtensionOwned {
             account_type: BorshDeserialize::deserialize(&mut cursor).unwrap_or_default(),
             owner: BorshDeserialize::deserialize(&mut cursor).unwrap_or_default(),
             bump_seed: BorshDeserialize::deserialize(&mut cursor).unwrap_or_default(),
-            assocatiated_with: BorshDeserialize::deserialize(&mut cursor).unwrap_or_default(),
+            associated_with: BorshDeserialize::deserialize(&mut cursor).unwrap_or_default(),
             allocator: BorshDeserialize::deserialize(&mut cursor).unwrap(),
             storage: bitmap.to_vec(),
         };
@@ -79,11 +79,11 @@ impl fmt::Display for ResourceExtensionOwned {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "ResourceExtensionOwned {{ account_type: {:?}, owner: {}, bump_seed: {}, assocatiated_with: {}, allocator: {:?} }}",
+            "ResourceExtensionOwned {{ account_type: {:?}, owner: {}, bump_seed: {}, associated_with: {}, allocator: {:?} }}",
             self.account_type,
             self.owner,
             self.bump_seed,
-            self.assocatiated_with,
+            self.associated_with,
             self.allocator,
         )?;
 
@@ -107,7 +107,7 @@ pub struct ResourceExtensionBorrowed<'a> {
     pub account_type: AccountType, // 1
     pub owner: Pubkey,             // 32
     pub bump_seed: u8,             // 1
-    pub assocatiated_with: Pubkey, // 32
+    pub associated_with: Pubkey,   // 32
     pub allocator: Allocator,      // Variable
     pub storage: &'a mut [u8],
 }
@@ -129,7 +129,7 @@ impl<'a> ResourceExtensionBorrowed<'a> {
         account: &AccountInfo,
         owner: &Pubkey,
         bump_seed: u8,
-        assocatiated_with: &Pubkey,
+        associated_with: &Pubkey,
         range: &ResourceExtensionRange,
     ) -> Result<(), DoubleZeroError> {
         let mut buffer = account.data.borrow_mut();
@@ -144,7 +144,7 @@ impl<'a> ResourceExtensionBorrowed<'a> {
         bump_seed
             .serialize(&mut cursor)
             .map_err(|_| DoubleZeroError::SerializationFailure)?;
-        assocatiated_with
+        associated_with
             .serialize(&mut cursor)
             .map_err(|_| DoubleZeroError::SerializationFailure)?;
         match range {
@@ -175,7 +175,7 @@ impl<'a> ResourceExtensionBorrowed<'a> {
             account_type: BorshDeserialize::deserialize(&mut cursor).unwrap_or_default(),
             owner: BorshDeserialize::deserialize(&mut cursor).unwrap_or_default(),
             bump_seed: BorshDeserialize::deserialize(&mut cursor).unwrap_or_default(),
-            assocatiated_with: BorshDeserialize::deserialize(&mut cursor).unwrap_or_default(),
+            associated_with: BorshDeserialize::deserialize(&mut cursor).unwrap_or_default(),
             allocator: BorshDeserialize::deserialize(&mut cursor).unwrap(),
             storage: bitmap,
         };
@@ -246,11 +246,11 @@ impl<'a> fmt::Display for ResourceExtensionBorrowed<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "ResourceExtensionBorrowed {{ account_type: {:?}, owner: {}, bump_seed: {}, assocatiated_with: {}, allocator: {:?} }}",
+            "ResourceExtensionBorrowed {{ account_type: {:?}, owner: {}, bump_seed: {}, associated_with: {}, allocator: {:?} }}",
             self.account_type,
             self.owner,
             self.bump_seed,
-            self.assocatiated_with,
+            self.associated_with,
             self.allocator,
         )
     }
@@ -299,7 +299,7 @@ mod tests {
         assert_eq!(resext.account_type, AccountType::ResourceExtension);
         assert_eq!(resext.owner, owner_pk);
         assert_eq!(resext.bump_seed, 1);
-        assert_eq!(resext.assocatiated_with, Pubkey::default());
+        assert_eq!(resext.associated_with, Pubkey::default());
         match resext.allocator {
             Allocator::Id(id_allocator) => {
                 assert_eq!(id_allocator.range, (0, 64));
@@ -328,7 +328,7 @@ mod tests {
         assert_eq!(resext.account_type, AccountType::ResourceExtension);
         assert_eq!(resext.owner, owner_pk);
         assert_eq!(resext.bump_seed, 1);
-        assert_eq!(resext.assocatiated_with, Pubkey::default());
+        assert_eq!(resext.associated_with, Pubkey::default());
         match resext.allocator {
             Allocator::Id(id_allocator) => {
                 assert_eq!(id_allocator.range, (0, 64));
@@ -363,12 +363,12 @@ mod tests {
             account_type: AccountType::ResourceExtension,
             owner: owner_pk,
             bump_seed: 1,
-            assocatiated_with: Pubkey::default(),
+            associated_with: Pubkey::default(),
             allocator: Allocator::Id(IdAllocator::new((0, 10)).unwrap()),
             storage: vec![],
         };
         let s = format!("{}", ext);
-        assert_eq!(s, "ResourceExtensionOwned { account_type: ResourceExtension, owner: 11111111111111111111111111111111, bump_seed: 1, assocatiated_with: 11111111111111111111111111111111, allocator: Id(IdAllocator { range: (0, 10) }) }, allocated: []");
+        assert_eq!(s, "ResourceExtensionOwned { account_type: ResourceExtension, owner: 11111111111111111111111111111111, bump_seed: 1, associated_with: 11111111111111111111111111111111, allocator: Id(IdAllocator { range: (0, 10) }) }, allocated: []");
     }
 
     #[test]
@@ -380,11 +380,11 @@ mod tests {
             account_type: AccountType::ResourceExtension,
             owner: owner_pk,
             bump_seed: 1,
-            assocatiated_with: Pubkey::default(),
+            associated_with: Pubkey::default(),
             allocator: Allocator::Id(IdAllocator::new((0, 10)).unwrap()),
             storage: buffer.as_mut_slice(),
         };
         let s = format!("{}", ext);
-        assert_eq!(s, "ResourceExtensionBorrowed { account_type: ResourceExtension, owner: 11111111111111111111111111111111, bump_seed: 1, assocatiated_with: 11111111111111111111111111111111, allocator: Id(IdAllocator { range: (0, 10) }) }");
+        assert_eq!(s, "ResourceExtensionBorrowed { account_type: ResourceExtension, owner: 11111111111111111111111111111111, bump_seed: 1, associated_with: 11111111111111111111111111111111, allocator: Id(IdAllocator { range: (0, 10) }) }");
     }
 }

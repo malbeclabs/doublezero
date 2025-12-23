@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -144,6 +145,28 @@ func run() error {
 	}
 	defer db.Close()
 
+	// Parse allowed tokens from environment variable (comma-separated)
+	// Auth can be explicitly disabled with MCP_AUTH_DISABLED=true
+	var allowedTokens []string
+	authDisabled := os.Getenv("MCP_AUTH_DISABLED") == "true"
+
+	if authDisabled {
+		log.Info("mcp server: authentication explicitly disabled")
+	} else if tokensEnv := os.Getenv("MCP_ALLOWED_TOKENS"); tokensEnv != "" {
+		tokens := strings.Split(tokensEnv, ",")
+		for _, token := range tokens {
+			token = strings.TrimSpace(token)
+			if token != "" {
+				allowedTokens = append(allowedTokens, token)
+			}
+		}
+		if len(allowedTokens) > 0 {
+			log.Info("mcp server: token authentication enabled", "token_count", len(allowedTokens))
+		}
+	} else {
+		log.Info("mcp server: authentication disabled (no tokens configured)")
+	}
+
 	server, err := server.New(server.Config{
 		Version:                version,
 		ListenAddr:             *listenAddrFlag,
@@ -158,6 +181,7 @@ func run() error {
 		MaxConcurrency:         *maxConcurrencyFlag,
 		InternetLatencyAgentPK: networkConfig.InternetLatencyCollectorPK,
 		InternetDataProviders:  telemetryconfig.InternetTelemetryDataProviders,
+		AllowedTokens:          allowedTokens,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create server: %w", err)

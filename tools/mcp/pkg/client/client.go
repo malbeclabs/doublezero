@@ -29,6 +29,7 @@ type Config struct {
 
 	Endpoint       string
 	RequestTimeout time.Duration
+	Token          string // Optional Bearer token for authentication
 }
 
 func (c *Config) Validate() error {
@@ -74,7 +75,23 @@ func New(ctx context.Context, cfg Config) (*Client, error) {
 
 // connect establishes a new connection to the MCP server
 func (c *Client) connect(ctx context.Context) error {
-	httpClient := &http.Client{Timeout: c.cfg.RequestTimeout}
+	// Create HTTP client with optional token authentication
+	var httpClient *http.Client
+	if c.cfg.Token != "" {
+		// Wrap the default transport to add Authorization header
+		baseTransport := http.DefaultTransport
+		transport := &tokenTransport{
+			base:  baseTransport,
+			token: c.cfg.Token,
+		}
+		httpClient = &http.Client{
+			Timeout:   c.cfg.RequestTimeout,
+			Transport: transport,
+		}
+	} else {
+		httpClient = &http.Client{Timeout: c.cfg.RequestTimeout}
+	}
+
 	transport := &mcp.StreamableClientTransport{
 		Endpoint:   c.cfg.Endpoint,
 		HTTPClient: httpClient,
@@ -251,4 +268,16 @@ func (c *Client) Close() error {
 		return c.session.Close()
 	}
 	return nil
+}
+
+// tokenTransport wraps an http.RoundTripper to add Authorization header
+type tokenTransport struct {
+	base  http.RoundTripper
+	token string
+}
+
+func (t *tokenTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	req = req.Clone(req.Context())
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", t.token))
+	return t.base.RoundTrip(req)
 }

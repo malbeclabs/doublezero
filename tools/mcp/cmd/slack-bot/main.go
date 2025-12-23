@@ -108,9 +108,11 @@ func run() error {
 	defer cancel()
 
 	// Set up MCP client
+	mcpToken := os.Getenv("MCP_TOKEN")
 	mcpClient, err := mcpclient.New(ctx, mcpclient.Config{
 		Endpoint: mcpEndpoint,
 		Logger:   log,
+		Token:    mcpToken,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create MCP client: %w", err)

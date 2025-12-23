@@ -36,6 +36,7 @@ type Config struct {
 	MaxConcurrency         int
 	InternetLatencyAgentPK solana.PublicKey
 	InternetDataProviders  []string
+	AllowedTokens          []string // Bearer tokens allowed for MCP endpoint authentication
 }
 
 func (c *Config) Validate() error {

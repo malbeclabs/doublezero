@@ -52,9 +52,11 @@ func run() error {
 	anthropicClient := anthropic.NewClient(option.WithAPIKey(anthropicAPIKey))
 	model := anthropic.ModelClaudeSonnet4_5_20250929
 
+	mcpToken := os.Getenv("MCP_TOKEN")
 	mcpClient, err := mcpclient.New(ctx, mcpclient.Config{
 		Endpoint: mcpURL,
 		Logger:   log,
+		Token:    mcpToken,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create MCP client: %w", err)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -103,7 +104,15 @@ func New(cfg Config) (*Server, error) {
 	}, &mcp.StreamableHTTPOptions{
 		Stateless: true, // Auto-initialize sessions, no manual initialize required
 	})
-	mux.Handle("/mcp", handler)
+
+	// Apply authentication middleware to MCP endpoint if tokens are configured
+	if len(cfg.AllowedTokens) > 0 {
+		authHandler := s.authMiddleware(handler)
+		mux.Handle("/mcp", authHandler)
+	} else {
+		mux.Handle("/mcp", handler)
+	}
+
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("ok\n"))
@@ -170,4 +179,57 @@ func (s *Server) readyzHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("ok\n"))
+}
+
+// authMiddleware wraps an HTTP handler with Bearer token authentication
+func (s *Server) authMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			s.cfg.Logger.Debug("mcp: missing authorization header")
+			w.Header().Set("WWW-Authenticate", `Bearer`)
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte("unauthorized: missing authorization header\n"))
+			return
+		}
+
+		// Extract token from "Bearer <token>" format
+		parts := strings.SplitN(authHeader, " ", 2)
+		if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+			s.cfg.Logger.Debug("mcp: invalid authorization header format")
+			w.Header().Set("WWW-Authenticate", `Bearer`)
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte("unauthorized: invalid authorization header format\n"))
+			return
+		}
+
+		token := strings.TrimSpace(parts[1])
+		if token == "" {
+			s.cfg.Logger.Debug("mcp: empty token")
+			w.Header().Set("WWW-Authenticate", `Bearer`)
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte("unauthorized: empty token\n"))
+			return
+		}
+
+		// Check if token is in the allowed list
+		allowed := false
+		for _, allowedToken := range s.cfg.AllowedTokens {
+			if token == allowedToken {
+				allowed = true
+				break
+			}
+		}
+
+		if !allowed {
+			s.cfg.Logger.Debug("mcp: invalid token")
+			w.Header().Set("WWW-Authenticate", `Bearer`)
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte("unauthorized: invalid token\n"))
+			return
+		}
+
+		// Token is valid, proceed with the request
+		next.ServeHTTP(w, r)
+	})
 }

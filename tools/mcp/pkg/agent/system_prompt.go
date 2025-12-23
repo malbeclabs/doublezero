@@ -50,6 +50,13 @@ Data domain:
 - Internet latency data is collected between metro areas over the public internet (in doublezero-telemetry dataset).
 - Some users are Solana validators, but not all users are Solana validators. Join to solana_gossip_nodes.gossip_ip via dz_users.dz_ip to get the gossip node associated with the user.
 
+Solana Terminology - Gossip Nodes vs Validators:
+- Gossip nodes (solana_gossip_nodes) are all network participants communicating via Solana's gossip protocol - includes RPC nodes, unstaked validators, and other infrastructure
+- Validators (solana_vote_accounts) are nodes that actively vote and participate in consensus with activated stake
+- Not all gossip nodes are validators. To count actual validators, join solana_gossip_nodes to solana_vote_accounts on node_pubkey and filter for epoch_vote_account = true and activated_stake > 0
+- When users ask about "validators," they typically mean staked validators (with activated_stake > 0), not just gossip nodes
+- Be precise: always clarify whether you're reporting gossip nodes or actual staked validators
+
 When answering questions:
 - If you don't know the schema or need context, use doublezero-schema, doublezero-telemetry-schema, or solana-schema first
 - Reason from observed data; don't invent causes. If unsure, say what's missing

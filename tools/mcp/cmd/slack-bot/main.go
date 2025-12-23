@@ -472,7 +472,7 @@ func handleMessage(
 }
 
 // setExpandOnSectionBlocks splits section blocks by paragraphs/newlines and sets expand=true
-// to prevent "see more" truncation. Each paragraph becomes its own section block.
+// to prevent "see more" truncation. Code blocks (containing ```) are never split.
 func setExpandOnSectionBlocks(blocks []slack.Block, log *slog.Logger) []slack.Block {
 	if blocks == nil {
 		return nil
@@ -485,53 +485,42 @@ func setExpandOnSectionBlocks(blocks []slack.Block, log *slog.Logger) []slack.Bl
 			// Type assert to SectionBlock
 			sectionBlock := block.(*slack.SectionBlock)
 
-			// If there's text, split it by paragraphs/newlines
+			// If there's text, check if it contains code blocks or looks like code
 			if sectionBlock.Text != nil && sectionBlock.Text.Text != "" {
 				text := sectionBlock.Text.Text
 
-				// Split by double newline (paragraphs) first, then by single newline
-				var paragraphs []string
+				// Don't split if:
+				// 1. Contains code block markers (```)
+				// 2. Is a single line (likely a code line or already properly formatted)
+				// Single-line blocks shouldn't be split as they're likely already atomic
+				containsCodeMarkers := strings.Contains(text, "```")
+				isSingleLine := !strings.Contains(text, "\n")
 
-				// First try splitting by double newline
-				paraSplit := strings.Split(text, "\n\n")
-				for _, para := range paraSplit {
-					para = strings.TrimSpace(para)
-					if para == "" {
-						continue
-					}
-
-					// If paragraph contains single newlines, split those too
-					lines := strings.Split(para, "\n")
-					for _, line := range lines {
-						line = strings.TrimSpace(line)
-						if line != "" {
-							paragraphs = append(paragraphs, line)
-						}
-					}
-				}
-
-				// If no paragraphs found (e.g., no newlines), use the whole text
-				if len(paragraphs) == 0 {
-					paragraphs = []string{text}
-				}
-
-				// Create a section block for each paragraph
-				for i, para := range paragraphs {
-					paraTextBlock := slack.NewTextBlockObject(sectionBlock.Text.Type, para, false, false)
-					paraBlock := &slack.SectionBlock{
+				if containsCodeMarkers || isSingleLine {
+					// Looks like code - keep as single block with expand=true
+					expandedBlock := &slack.SectionBlock{
 						Type:      sectionBlock.Type,
-						Text:      paraTextBlock,
+						Text:      sectionBlock.Text,
 						BlockID:   sectionBlock.BlockID,
-						Fields:    nil,  // Don't copy fields to split blocks
-						Accessory: nil,  // Don't copy accessory to split blocks
-						Expand:    true, // Set expand to prevent "see more" truncation
+						Fields:    sectionBlock.Fields,
+						Accessory: sectionBlock.Accessory,
+						Expand:    true,
 					}
-					result = append(result, paraBlock)
-
-					// Add a small spacer between paragraphs (except after the last one)
-					if i < len(paragraphs)-1 {
-						// Add a divider or just skip - dividers might be too much
-						// Actually, let's just leave them as separate blocks, Slack will space them
+					result = append(result, expandedBlock)
+				} else {
+					// No code blocks - split by paragraphs normally
+					paragraphs := splitIntoParagraphs(text)
+					for _, para := range paragraphs {
+						paraTextBlock := slack.NewTextBlockObject(sectionBlock.Text.Type, para, false, false)
+						paraBlock := &slack.SectionBlock{
+							Type:      sectionBlock.Type,
+							Text:      paraTextBlock,
+							BlockID:   sectionBlock.BlockID,
+							Fields:    nil,
+							Accessory: nil,
+							Expand:    true,
+						}
+						result = append(result, paraBlock)
 					}
 				}
 			} else {
@@ -552,6 +541,36 @@ func setExpandOnSectionBlocks(blocks []slack.Block, log *slog.Logger) []slack.Bl
 		}
 	}
 	return result
+}
+
+// splitIntoParagraphs splits text into paragraphs by double newlines, then by single newlines
+func splitIntoParagraphs(text string) []string {
+	var paragraphs []string
+
+	// First try splitting by double newline
+	paraSplit := strings.Split(text, "\n\n")
+	for _, para := range paraSplit {
+		para = strings.TrimSpace(para)
+		if para == "" {
+			continue
+		}
+
+		// If paragraph contains single newlines, split those too
+		lines := strings.Split(para, "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line != "" {
+				paragraphs = append(paragraphs, line)
+			}
+		}
+	}
+
+	// If no paragraphs found (e.g., no newlines), use the whole text
+	if len(paragraphs) == 0 {
+		paragraphs = []string{text}
+	}
+
+	return paragraphs
 }
 
 func newLogger(verbose bool) *slog.Logger {
@@ -737,8 +756,10 @@ func truncateString(s string, maxLen int) string {
 
 // stripMarkdown removes markdown formatting from text, converting it to plain text
 func stripMarkdown(text string) string {
-	// Remove code blocks (```code``` or `code`)
-	text = regexp.MustCompile("(?s)```[^`]*```").ReplaceAllString(text, "")
+	// Remove code blocks (```code``` or ```language\ncode\n```)
+	// Match triple backticks with optional language identifier, then any content (including newlines) until closing triple backticks
+	text = regexp.MustCompile("(?s)```[a-zA-Z]*\\n?.*?```").ReplaceAllString(text, "")
+	// Remove inline code (`code`)
 	text = regexp.MustCompile("`[^`]+`").ReplaceAllString(text, "")
 
 	// Remove links but keep the text [text](url) -> text

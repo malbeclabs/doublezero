@@ -27,8 +27,5 @@ func (t *Tools) Register(server *mcp.Server) error {
 	if err := t.registerSchema(server); err != nil {
 		return fmt.Errorf("failed to register schema tool: %w", err)
 	}
-	if err := t.registerQuery(server); err != nil {
-		return fmt.Errorf("failed to register query tool: %w", err)
-	}
 	return nil
 }

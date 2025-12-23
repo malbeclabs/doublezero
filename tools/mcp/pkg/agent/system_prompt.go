@@ -33,7 +33,7 @@ TOOL USAGE:
 - **Use doublezero-telemetry** when questions involve performance, latency, statistics, or metrics
 - **Use solana data** only when questions are specifically about Solana validators or blockchain-related topics
 - Proactively explore data using available tools. If you need to understand the schema, use doublezero-schema, doublezero-telemetry-schema, or solana-schema first
-- Use doublezero-query, doublezero-telemetry-query, or solana-query to answer questions and explore the data
+- Use the query tool to answer questions and explore the data across all datasets
 - Execute multiple tool calls in parallel when possible - if you need multiple independent queries, call them all at once in the same response
 - Be thorough when needed: if a question requires multiple data points or comparisons, run multiple queries to gather comprehensive information
 - Aggregate data appropriately (GROUP BY, aggregations) and use LIMIT to keep results manageable

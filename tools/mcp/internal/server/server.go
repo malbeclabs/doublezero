@@ -84,6 +84,11 @@ func New(cfg Config) (*Server, error) {
 		return nil, fmt.Errorf("failed to register solana tools: %w", err)
 	}
 
+	queryTools := NewQueryTools(cfg.Logger, cfg.DB)
+	if err := queryTools.Register(mcpServer); err != nil {
+		return nil, fmt.Errorf("failed to register query tool: %w", err)
+	}
+
 	s := &Server{
 		cfg:                cfg,
 		serviceabilityView: svcView,

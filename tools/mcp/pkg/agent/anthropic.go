@@ -376,7 +376,7 @@ func truncateToolResult(result string, toolName string, maxLen int) (string, err
 	switch toolName {
 	case "doublezero-schema", "doublezero-telemetry-schema", "solana-schema":
 		return truncateListTables(data, maxLen)
-	case "doublezero-query", "doublezero-telemetry-query", "solana-query":
+	case "query":
 		return truncateQueryResult(data, maxLen)
 	default:
 		return truncateGenericJSON(data, maxLen)

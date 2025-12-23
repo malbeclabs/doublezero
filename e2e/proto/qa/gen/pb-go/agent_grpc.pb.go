@@ -29,6 +29,7 @@ type QAAgentServiceClient interface {
 	MulticastAllowListAdd(ctx context.Context, in *MulticastAllowListAddRequest, opts ...grpc.CallOption) (*Result, error)
 	ConnectMulticast(ctx context.Context, in *ConnectMulticastRequest, opts ...grpc.CallOption) (*Result, error)
 	GetStatus(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*StatusResponse, error)
+	GetLatency(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*LatencyResponse, error)
 	GetPublicIP(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*GetPublicIPResponse, error)
 	GetRoutes(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*GetRoutesResponse, error)
 	Disconnect(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*Result, error)
@@ -97,6 +98,15 @@ func (c *qAAgentServiceClient) ConnectMulticast(ctx context.Context, in *Connect
 func (c *qAAgentServiceClient) GetStatus(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*StatusResponse, error) {
 	out := new(StatusResponse)
 	err := c.cc.Invoke(ctx, "/qa.QAAgentService/GetStatus", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *qAAgentServiceClient) GetLatency(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*LatencyResponse, error) {
+	out := new(LatencyResponse)
+	err := c.cc.Invoke(ctx, "/qa.QAAgentService/GetLatency", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -203,6 +213,7 @@ type QAAgentServiceServer interface {
 	MulticastAllowListAdd(context.Context, *MulticastAllowListAddRequest) (*Result, error)
 	ConnectMulticast(context.Context, *ConnectMulticastRequest) (*Result, error)
 	GetStatus(context.Context, *emptypb.Empty) (*StatusResponse, error)
+	GetLatency(context.Context, *emptypb.Empty) (*LatencyResponse, error)
 	GetPublicIP(context.Context, *emptypb.Empty) (*GetPublicIPResponse, error)
 	GetRoutes(context.Context, *emptypb.Empty) (*GetRoutesResponse, error)
 	Disconnect(context.Context, *emptypb.Empty) (*Result, error)
@@ -236,6 +247,9 @@ func (UnimplementedQAAgentServiceServer) ConnectMulticast(context.Context, *Conn
 }
 func (UnimplementedQAAgentServiceServer) GetStatus(context.Context, *emptypb.Empty) (*StatusResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetStatus not implemented")
+}
+func (UnimplementedQAAgentServiceServer) GetLatency(context.Context, *emptypb.Empty) (*LatencyResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetLatency not implemented")
 }
 func (UnimplementedQAAgentServiceServer) GetPublicIP(context.Context, *emptypb.Empty) (*GetPublicIPResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetPublicIP not implemented")
@@ -383,6 +397,24 @@ func _QAAgentService_GetStatus_Handler(srv interface{}, ctx context.Context, dec
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(QAAgentServiceServer).GetStatus(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _QAAgentService_GetLatency_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QAAgentServiceServer).GetLatency(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/qa.QAAgentService/GetLatency",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QAAgentServiceServer).GetLatency(ctx, req.(*emptypb.Empty))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -597,6 +629,10 @@ var QAAgentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetStatus",
 			Handler:    _QAAgentService_GetStatus_Handler,
+		},
+		{
+			MethodName: "GetLatency",
+			Handler:    _QAAgentService_GetLatency_Handler,
 		},
 		{
 			MethodName: "GetPublicIP",

@@ -55,6 +55,24 @@ func main() {
 	}
 }
 
+// run starts the Slack bot.
+//
+// Required Slack Bot Token Scopes:
+//   - chat:write - Post messages
+//   - reactions:write - Add reactions
+//   - channels:history - Read public channel messages (for channel mentions)
+//   - groups:history - Read private channel messages (for private channel mentions)
+//   - channels:read - View public channel info (optional but recommended)
+//   - groups:read - View private channel info (optional but recommended)
+//   - im:history - Read DM history
+//
+// Required Event Subscriptions (Subscribe to bot events):
+//   - app_mentions - Receive events when bot is mentioned in channels
+//   - message.channels - Receive all messages in public channels (needed for thread replies)
+//   - message.groups - Receive all messages in private channels (needed for thread replies)
+//
+// For DMs, the bot responds to all messages.
+// For channels, the bot only responds when mentioned (@bot) or when replying in a thread where the root message mentioned the bot.
 func run() error {
 	verboseFlag := flag.Bool("verbose", false, "enable verbose (debug) logging")
 	mcpURL := flag.String("mcp", "", "MCP endpoint URL")
@@ -203,6 +221,12 @@ func run() error {
 	var respondedMessagesMu sync.RWMutex
 	const respondedMessagesMaxAge = 1 * time.Hour
 
+	// Track active threads where the bot was mentioned (so it responds to replies even without mention)
+	// Key: channel:thread_timestamp, Value: timestamp when thread was activated
+	activeThreads := make(map[string]time.Time)
+	var activeThreadsMu sync.RWMutex
+	const activeThreadsMaxAge = 24 * time.Hour // Keep threads active for 24 hours
+
 	// Cleanup goroutine for maps
 	go func() {
 		ticker := time.NewTicker(5 * time.Minute)
@@ -231,6 +255,15 @@ func run() error {
 				}
 				respondedMessagesMu.Unlock()
 
+				// Clean up old active threads
+				activeThreadsMu.Lock()
+				for threadKey, timestamp := range activeThreads {
+					if now.Sub(timestamp) > activeThreadsMaxAge {
+						delete(activeThreads, threadKey)
+					}
+				}
+				activeThreadsMu.Unlock()
+
 				// Limit conversation cache size (keep most recent)
 				conversationsMu.Lock()
 				if len(conversations) > maxConversations {
@@ -245,27 +278,166 @@ func run() error {
 
 	// Shared event handler
 	handleEvent := func(e slackevents.EventsAPIEvent, eventID string) {
+		log.Info("event received", "type", e.Type, "inner_event_type", e.InnerEvent.Type)
 		if e.Type != slackevents.CallbackEvent {
+			log.Debug("ignoring non-callback event", "type", e.Type)
 			return
+		}
+
+		// Handle app_mentions event (more reliable for channel mentions)
+		if e.InnerEvent.Type == "app_mention" {
+			if ev, ok := e.InnerEvent.Data.(*slackevents.AppMentionEvent); ok {
+				log.Info("app_mention event received", "user", ev.User, "channel", ev.Channel, "ts", ev.TimeStamp, "thread_ts", ev.ThreadTimeStamp, "text_preview", truncateString(ev.Text, 100))
+
+				// AppMentionEvent is always from a channel (not DM), so determine channel type from channel ID
+				// Private channels typically start with 'G', public channels with 'C', mpim with 'G' or 'D'
+				// For simplicity, if it's an app_mention, it's a channel (not a DM)
+				isChannel := true
+
+				// Mark this thread as active only if it's a top-level message (not a reply in an existing thread)
+				// If ThreadTimeStamp is empty, this is the root message - mark it as active
+				// If ThreadTimeStamp is set, this is a reply - don't mark as active (only root mentions activate threads)
+				if ev.ThreadTimeStamp == "" {
+					// This is a top-level mention - mark this message's timestamp as the active thread root
+					threadKey := ev.TimeStamp
+					activeThreadKey := fmt.Sprintf("%s:%s", ev.Channel, threadKey)
+					activeThreadsMu.Lock()
+					activeThreads[activeThreadKey] = time.Now()
+					activeThreadsMu.Unlock()
+					log.Debug("marked thread as active from app_mention (root message)", "thread_key", activeThreadKey, "message_ts", ev.TimeStamp)
+				} else {
+					log.Debug("app_mention in existing thread, not marking as active (only root mentions activate threads)", "thread_ts", ev.ThreadTimeStamp)
+				}
+
+				// Convert AppMentionEvent to MessageEvent-like structure for processing
+				msgEv := &slackevents.MessageEvent{
+					Type:            "message",
+					User:            ev.User,
+					Text:            ev.Text,
+					TimeStamp:       ev.TimeStamp,
+					ThreadTimeStamp: ev.ThreadTimeStamp,
+					Channel:         ev.Channel,
+					EventTimeStamp:  ev.EventTimeStamp,
+				}
+
+				messageKey := fmt.Sprintf("%s:%s", msgEv.Channel, msgEv.TimeStamp)
+				respondedMessagesMu.RLock()
+				_, alreadyResponded := respondedMessages[messageKey]
+				respondedMessagesMu.RUnlock()
+
+				if alreadyResponded {
+					log.Info("skipping already responded app_mention", "message_ts", msgEv.TimeStamp, "event_id", eventID)
+					return
+				}
+
+				go handleMessage(ctx, msgEv, messageKey, eventID, api, mcpClient, &anthropicClient, log, &conversations, &conversationsMu, &respondedMessages, &respondedMessagesMu, botUserID, isChannel)
+				return
+			}
 		}
 
 		switch ev := e.InnerEvent.Data.(type) {
 		case *slackevents.MessageEvent:
-			if ev.ChannelType != "im" {
-				return
-			} // DMs only
 			if ev.SubType != "" {
+				log.Debug("ignoring message with subtype", "subtype", ev.SubType, "channel", ev.Channel, "channel_type", ev.ChannelType)
 				return
 			} // ignore edits/joins/etc
 			if ev.BotID != "" {
+				log.Debug("ignoring bot message", "bot_id", ev.BotID, "channel", ev.Channel)
 				return
 			} // avoid loops
 			txt := strings.TrimSpace(ev.Text)
 			if txt == "" {
+				log.Debug("ignoring empty message", "channel", ev.Channel, "channel_type", ev.ChannelType)
 				return
 			}
 
-			log.Info("dm recv", "user", ev.User, "channel", ev.Channel, "ts", ev.TimeStamp, "thread_ts", ev.ThreadTimeStamp, "text", txt, "event_id", eventID)
+			isDM := ev.ChannelType == "im"
+			isChannel := ev.ChannelType == "channel" || ev.ChannelType == "group" || ev.ChannelType == "mpim"
+
+			log.Info("message event received", "channel", ev.Channel, "channel_type", ev.ChannelType, "is_dm", isDM, "is_channel", isChannel, "thread_ts", ev.ThreadTimeStamp, "text_preview", truncateString(txt, 100), "bot_user_id", botUserID)
+
+			// For channels, respond if bot is mentioned OR if replying in an active thread (where bot was mentioned in root message)
+			if isChannel {
+				log.Info("processing channel message", "channel", ev.Channel, "thread_ts", ev.ThreadTimeStamp, "is_thread_reply", ev.ThreadTimeStamp != "")
+				// Check if bot is mentioned in the message text
+				// Mentions are in format <@USERID> or <@USERID|username>
+				botMentioned := false
+				if botUserID != "" {
+					// Check for <@USERID> or <@USERID|username> format
+					mentionPattern1 := fmt.Sprintf("<@%s>", botUserID)
+					mentionPattern2 := fmt.Sprintf("<@%s|", botUserID)
+					botMentioned = strings.Contains(ev.Text, mentionPattern1) || strings.Contains(ev.Text, mentionPattern2)
+					log.Debug("checking for bot mention", "pattern1", mentionPattern1, "pattern2", mentionPattern2, "text", ev.Text, "mentioned", botMentioned)
+				} else {
+					log.Warn("bot user ID not set, cannot check for mentions", "channel", ev.Channel)
+				}
+
+				// Check if this is a reply in an active thread (where bot was mentioned in the root message)
+				inActiveThread := false
+				if ev.ThreadTimeStamp != "" {
+					log.Info("checking if message is in active thread", "thread_ts", ev.ThreadTimeStamp, "channel", ev.Channel, "message_ts", ev.TimeStamp)
+					// First check in-memory cache
+					threadKey := fmt.Sprintf("%s:%s", ev.Channel, ev.ThreadTimeStamp)
+					activeThreadsMu.RLock()
+					_, inActiveThread = activeThreads[threadKey]
+					activeThreadsMu.RUnlock()
+
+					if inActiveThread {
+						log.Info("thread found in cache (active)", "thread_ts", ev.ThreadTimeStamp, "channel", ev.Channel)
+					} else {
+						log.Info("thread not in cache, checking root message", "thread_ts", ev.ThreadTimeStamp, "channel", ev.Channel)
+					}
+
+					// If not in cache, check the root message to see if bot was mentioned there
+					if !inActiveThread && botUserID != "" {
+						log.Info("fetching root message to check for bot mention", "thread_ts", ev.ThreadTimeStamp, "bot_user_id", botUserID)
+						rootMentioned, err := checkRootMessageMentioned(ctx, api, ev.Channel, ev.ThreadTimeStamp, botUserID, log)
+						if err != nil {
+							log.Warn("failed to check root message for mention", "thread_ts", ev.ThreadTimeStamp, "error", err)
+						} else if rootMentioned {
+							// Mark as active for future checks
+							activeThreadsMu.Lock()
+							activeThreads[threadKey] = time.Now()
+							activeThreadsMu.Unlock()
+							inActiveThread = true
+							log.Info("root message mentions bot, marking thread as active", "thread_ts", ev.ThreadTimeStamp, "channel", ev.Channel)
+						} else {
+							log.Info("root message does not mention bot", "thread_ts", ev.ThreadTimeStamp, "channel", ev.Channel)
+						}
+					}
+
+					if inActiveThread {
+						log.Info("message in active thread (root was mentioned)", "thread_ts", ev.ThreadTimeStamp, "channel", ev.Channel)
+					}
+				}
+
+				if !botMentioned && !inActiveThread {
+					log.Debug("bot not mentioned and not in active thread, ignoring", "channel", ev.Channel, "channel_type", ev.ChannelType, "thread_ts", ev.ThreadTimeStamp, "text_preview", truncateString(txt, 50))
+					return // Not mentioned and not in active thread, ignore
+				}
+
+				// If bot was mentioned in a top-level message (not a thread reply), mark this thread as active
+				if botMentioned && ev.ThreadTimeStamp == "" {
+					// This is a top-level mention - mark this message's timestamp as the active thread root
+					threadKey := ev.TimeStamp
+					activeThreadKey := fmt.Sprintf("%s:%s", ev.Channel, threadKey)
+					activeThreadsMu.Lock()
+					activeThreads[activeThreadKey] = time.Now()
+					activeThreadsMu.Unlock()
+					log.Debug("marked thread as active (root message mentioned)", "thread_key", activeThreadKey, "message_ts", ev.TimeStamp)
+				}
+
+				if botMentioned {
+					log.Info("channel mention recv", "user", ev.User, "channel", ev.Channel, "channel_type", ev.ChannelType, "ts", ev.TimeStamp, "thread_ts", ev.ThreadTimeStamp, "text", txt, "event_id", eventID)
+				} else {
+					log.Info("channel thread reply recv (root was mentioned)", "user", ev.User, "channel", ev.Channel, "channel_type", ev.ChannelType, "ts", ev.TimeStamp, "thread_ts", ev.ThreadTimeStamp, "text", txt, "event_id", eventID)
+				}
+			} else if isDM {
+				log.Info("dm recv", "user", ev.User, "channel", ev.Channel, "ts", ev.TimeStamp, "thread_ts", ev.ThreadTimeStamp, "text", txt, "event_id", eventID)
+			} else {
+				// Unknown channel type, skip
+				return
+			}
 
 			// Check if we've already responded to this message (prevent duplicate error messages)
 			messageKey := fmt.Sprintf("%s:%s", ev.Channel, ev.TimeStamp)
@@ -279,7 +451,7 @@ func run() error {
 			}
 
 			// Process message in a goroutine to allow concurrent handling of multiple conversations
-			go handleMessage(ctx, ev, messageKey, eventID, api, mcpClient, &anthropicClient, log, &conversations, &conversationsMu, &respondedMessages, &respondedMessagesMu, botUserID)
+			go handleMessage(ctx, ev, messageKey, eventID, api, mcpClient, &anthropicClient, log, &conversations, &conversationsMu, &respondedMessages, &respondedMessagesMu, botUserID, isChannel)
 		}
 	}
 
@@ -289,6 +461,7 @@ func run() error {
 
 		go func() {
 			for evt := range client.Events {
+				log.Info("socketmode: event received", "event_type", evt.Type)
 				switch evt.Type {
 				case socketmode.EventTypeConnecting:
 					log.Info("socketmode: connecting")
@@ -297,10 +470,19 @@ func run() error {
 				case socketmode.EventTypeConnectionError:
 					log.Error("socketmode: connection error", "error", evt.Data)
 				case socketmode.EventTypeEventsAPI:
+					log.Info("socketmode: EventsAPI event received", "inner_event_type", func() string {
+						if e, ok := evt.Data.(slackevents.EventsAPIEvent); ok {
+							return e.InnerEvent.Type
+						}
+						return "unknown"
+					}())
 					e, ok := evt.Data.(slackevents.EventsAPIEvent)
 					if !ok {
+						log.Warn("socketmode: EventsAPI event data is not EventsAPIEvent", "data_type", fmt.Sprintf("%T", evt.Data))
 						continue
 					}
+
+					log.Info("socketmode: processing EventsAPI event", "event_type", e.Type, "inner_event_type", e.InnerEvent.Type)
 
 					// Check if we've already processed this event (deduplication)
 					envelopeID := evt.Request.EnvelopeID
@@ -334,7 +516,7 @@ func run() error {
 			}
 		}()
 
-		log.Info("DM-only bot running in socket mode (thread replies enabled)")
+		log.Info("bot running in socket mode (DMs and channel mentions, thread replies enabled)")
 		if err := client.RunContext(ctx); err != nil {
 			return fmt.Errorf("slack client error: %w", err)
 		}
@@ -357,7 +539,7 @@ func run() error {
 			}
 		}()
 
-		log.Info("DM-only bot running in HTTP mode (thread replies enabled)")
+		log.Info("bot running in HTTP mode (DMs and channel mentions, thread replies enabled)")
 		<-ctx.Done()
 		log.Info("shutting down HTTP server")
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -385,11 +567,34 @@ func handleMessage(
 	respondedMessages *map[string]time.Time,
 	respondedMessagesMu *sync.RWMutex,
 	botUserID string,
+	isChannel bool,
 ) {
 	txt := strings.TrimSpace(ev.Text)
 
-	// Check if user wants thread reply (either already in thread or includes :thread: emoji)
-	wantsThread := ev.ThreadTimeStamp != "" || strings.Contains(txt, ":thread:")
+	// Remove bot mention from text for cleaner processing
+	if isChannel && botUserID != "" {
+		// Remove <@USERID> or <@USERID|username> mentions
+		mentionPattern1 := fmt.Sprintf("<@%s>", botUserID)
+		mentionPattern2 := fmt.Sprintf("<@%s|", botUserID)
+		txt = strings.ReplaceAll(txt, mentionPattern1, "")
+		// Handle <@USERID|username> format - need to remove up to the closing >
+		if strings.Contains(txt, mentionPattern2) {
+			// Use regex to remove <@USERID|username> pattern
+			re := regexp.MustCompile(fmt.Sprintf(`<@%s\|[^>]+>`, regexp.QuoteMeta(botUserID)))
+			txt = re.ReplaceAllString(txt, "")
+		}
+		txt = strings.TrimSpace(txt)
+	}
+
+	// For channels, always thread. For DMs, thread if already in thread or :thread: emoji
+	var wantsThread bool
+	if isChannel {
+		// In channels, always thread responses
+		wantsThread = true
+	} else {
+		// In DMs, thread if already in thread or includes :thread: emoji
+		wantsThread = ev.ThreadTimeStamp != "" || strings.Contains(txt, ":thread:")
+	}
 
 	// Determine thread key: use thread timestamp if in thread, otherwise use message timestamp
 	// For non-thread replies, we still use message timestamp as key for conversation history
@@ -489,10 +694,16 @@ func handleMessage(
 			slack.MsgOptionText(reply, false),
 		}
 		if wantsThread {
-			if ev.ThreadTimeStamp != "" {
-				errorOpts = append(errorOpts, slack.MsgOptionTS(ev.ThreadTimeStamp))
-			} else {
+			if isChannel {
+				// In channels, always thread under the original message
 				errorOpts = append(errorOpts, slack.MsgOptionTS(ev.TimeStamp))
+			} else {
+				// In DMs, use existing thread if available, otherwise create new thread
+				if ev.ThreadTimeStamp != "" {
+					errorOpts = append(errorOpts, slack.MsgOptionTS(ev.ThreadTimeStamp))
+				} else {
+					errorOpts = append(errorOpts, slack.MsgOptionTS(ev.TimeStamp))
+				}
 			}
 		}
 		_, _, _ = api.PostMessageContext(ctx, ev.Channel, errorOpts...)
@@ -534,17 +745,25 @@ func handleMessage(
 	}
 
 	var msgOpts []slack.MsgOption
-	// In DMs: reply outside thread by default, unless user is in a thread or includes :thread: emoji
+	// Threading logic:
+	// - In channels: always thread under the original message
+	// - In DMs: thread if already in thread or :thread: emoji, otherwise reply outside thread
 	if wantsThread {
-		if ev.ThreadTimeStamp != "" {
-			// User is already in a thread, reply in that thread
-			msgOpts = append(msgOpts, slack.MsgOptionTS(ev.ThreadTimeStamp))
-		} else {
-			// User included :thread: emoji, create a new thread
+		if isChannel {
+			// In channels, always thread under the original message
 			msgOpts = append(msgOpts, slack.MsgOptionTS(ev.TimeStamp))
+		} else {
+			// In DMs, use existing thread if available, otherwise create new thread
+			if ev.ThreadTimeStamp != "" {
+				// User is already in a thread, reply in that thread
+				msgOpts = append(msgOpts, slack.MsgOptionTS(ev.ThreadTimeStamp))
+			} else {
+				// User included :thread: emoji, create a new thread
+				msgOpts = append(msgOpts, slack.MsgOptionTS(ev.TimeStamp))
+			}
 		}
 	}
-	// If wantsThread is false, don't add MsgOptionTS, so reply goes outside thread
+	// If wantsThread is false (DM without thread), don't add MsgOptionTS, so reply goes outside thread
 
 	// Reactions are being removed automatically in the goroutine on the same schedule
 	// We just need to clean up writing_hand and any remaining ones after posting
@@ -579,10 +798,16 @@ func handleMessage(
 			slack.MsgOptionText("Sorry, I encountered an error. Please try again.", false),
 		}
 		if wantsThread {
-			if ev.ThreadTimeStamp != "" {
-				errorOpts = append(errorOpts, slack.MsgOptionTS(ev.ThreadTimeStamp))
-			} else {
+			if isChannel {
+				// In channels, always thread under the original message
 				errorOpts = append(errorOpts, slack.MsgOptionTS(ev.TimeStamp))
+			} else {
+				// In DMs, use existing thread if available, otherwise create new thread
+				if ev.ThreadTimeStamp != "" {
+					errorOpts = append(errorOpts, slack.MsgOptionTS(ev.ThreadTimeStamp))
+				} else {
+					errorOpts = append(errorOpts, slack.MsgOptionTS(ev.TimeStamp))
+				}
 			}
 		}
 		_, _, _ = api.PostMessageContext(ctx, ev.Channel, errorOpts...)
@@ -804,6 +1029,40 @@ func filterInternalMarkers(text string) string {
 	return strings.TrimSpace(text)
 }
 
+// checkRootMessageMentioned checks if the root message of a thread mentioned the bot
+func checkRootMessageMentioned(ctx context.Context, api *slack.Client, channelID, threadTS, botUserID string, log *slog.Logger) (bool, error) {
+	log.Info("checkRootMessageMentioned: fetching thread replies", "channel", channelID, "thread_ts", threadTS)
+	// Fetch the thread replies - the first message is the root message
+	params := &slack.GetConversationRepliesParameters{
+		ChannelID: channelID,
+		Timestamp: threadTS,
+		Limit:     1, // Only need the root message
+	}
+
+	msgs, _, _, err := api.GetConversationRepliesContext(ctx, params)
+	if err != nil {
+		log.Error("checkRootMessageMentioned: failed to get thread replies", "error", err, "channel", channelID, "thread_ts", threadTS)
+		return false, fmt.Errorf("failed to get thread replies: %w", err)
+	}
+
+	if len(msgs) == 0 {
+		log.Warn("checkRootMessageMentioned: no messages found in thread", "thread_ts", threadTS)
+		return false, nil
+	}
+
+	// First message is the root message
+	rootMsg := msgs[0]
+	log.Info("checkRootMessageMentioned: got root message", "root_ts", rootMsg.Timestamp, "text_preview", truncateString(rootMsg.Text, 100))
+
+	// Check if bot is mentioned in the root message
+	mentionPattern1 := fmt.Sprintf("<@%s>", botUserID)
+	mentionPattern2 := fmt.Sprintf("<@%s|", botUserID)
+	mentioned := strings.Contains(rootMsg.Text, mentionPattern1) || strings.Contains(rootMsg.Text, mentionPattern2)
+
+	log.Info("checkRootMessageMentioned: result", "thread_ts", threadTS, "root_ts", rootMsg.Timestamp, "mentioned", mentioned, "pattern1", mentionPattern1, "pattern2", mentionPattern2)
+	return mentioned, nil
+}
+
 // fetchThreadHistory fetches conversation history from Slack for a thread
 func fetchThreadHistory(ctx context.Context, api *slack.Client, channelID, threadTS string, log *slog.Logger, botUserID string) ([]agent.Message, error) {
 	params := &slack.GetConversationRepliesParameters{
@@ -990,7 +1249,9 @@ func handleHTTPEvent(
 	processedEventsMu *sync.RWMutex,
 	handleEvent func(slackevents.EventsAPIEvent, string),
 ) {
+	log.Info("HTTP event request received", "method", r.Method, "path", r.URL.Path, "content_type", r.Header.Get("Content-Type"))
 	if r.Method != http.MethodPost {
+		log.Warn("HTTP event: method not allowed", "method", r.Method)
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}

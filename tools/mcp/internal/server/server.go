@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -123,6 +124,12 @@ func New(cfg Config) (*Server, error) {
 		Addr:              cfg.ListenAddr,
 		Handler:           mux,
 		ReadHeaderTimeout: s.cfg.ReadHeaderTimeout,
+		// Add timeouts to prevent connection issues from affecting the server
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  120 * time.Second,
+		// Set MaxHeaderBytes to prevent abuse
+		MaxHeaderBytes: 1 << 20, // 1MB
 	}
 
 	return s, nil
@@ -136,6 +143,8 @@ func (s *Server) Run(ctx context.Context) error {
 	serveErrCh := make(chan error, 1)
 	go func() {
 		if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			// Log the error but don't immediately exit - this could be a transient network issue
+			s.cfg.Logger.Error("server: http server error", "error", err)
 			serveErrCh <- fmt.Errorf("failed to listen and serve: %w", err)
 		}
 	}()

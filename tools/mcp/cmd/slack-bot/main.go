@@ -63,6 +63,7 @@ func main() {
 //   - reactions:write - Add reactions
 //   - channels:history - Read public channel messages (for channel mentions)
 //   - groups:history - Read private channel messages (for private channel mentions)
+//   - mpim:history - Read group DM messages (for group DM mentions and thread replies)
 //   - channels:read - View public channel info (optional but recommended)
 //   - groups:read - View private channel info (optional but recommended)
 //   - im:history - Read DM history
@@ -71,6 +72,7 @@ func main() {
 //   - app_mentions - Receive events when bot is mentioned in channels
 //   - message.channels - Receive all messages in public channels (needed for thread replies)
 //   - message.groups - Receive all messages in private channels (needed for thread replies)
+//   - message.mpim - Receive all messages in group DMs (needed for thread replies)
 //
 // For DMs, the bot responds to all messages.
 // For channels, the bot only responds when mentioned (@bot) or when replying in a thread where the root message mentioned the bot.
@@ -666,7 +668,7 @@ func handleMessage(
 		Client:           *anthropicClient,
 		Model:            anthropic.ModelClaudeSonnet4_5_20250929,
 		MaxTokens:        int64(4000),
-		MaxRounds:        16,
+		MaxRounds:        24,
 		MaxToolResultLen: 10000,
 		Logger:           log,
 		System:           agent.SystemPrompt,

@@ -13,7 +13,10 @@ import (
 	"syscall"
 	"time"
 
+	_ "net/http/pprof"
+
 	_ "github.com/duckdb/duckdb-go/v2"
+
 	"github.com/jonboulle/clockwork"
 	"github.com/lmittmann/tint"
 	"github.com/prometheus/client_golang/prometheus/promhttp"

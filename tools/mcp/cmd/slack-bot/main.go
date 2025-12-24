@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -1247,24 +1248,81 @@ func fetchRecentConversationHistory(ctx context.Context, api *slack.Client, chan
 }
 
 // trimConversationHistory keeps the first message (for context) and last N messages
-// to balance context preservation with token limits
+// to balance context preservation with token limits.
+// It ensures tool_use/tool_result pairs are kept together to avoid API errors.
+// Tool use pattern: assistant message with tool_use blocks, followed by user message with tool_result blocks.
 func trimConversationHistory(msgs []agent.Message, maxMessages int) []agent.Message {
 	if len(msgs) <= maxMessages {
 		return msgs
 	}
+
 	// Keep first message (initial context) + last N-1 messages
 	trimmed := make([]agent.Message, 0, maxMessages)
 	if len(msgs) > 0 {
 		trimmed = append(trimmed, msgs[0]) // Keep first for context
 	}
-	start := len(msgs) - (maxMessages - 1)
-	if start < 1 {
-		start = 1
+
+	// Calculate how many messages we can keep (excluding the first one)
+	remainingSlots := maxMessages - 1
+	if remainingSlots <= 0 {
+		return trimmed
 	}
+
+	// Work backwards from the end, ensuring we don't split assistant/user pairs
+	// When we encounter a user message, we must also keep the previous assistant message
+	// to avoid splitting tool_use/tool_result pairs
+	start := len(msgs)
+	for i := len(msgs) - 1; i >= 1 && remainingSlots > 0; i-- {
+		// Check if this is a user message following an assistant message (tool_result pattern)
+		// Use reflection to safely check the role field
+		if i > 1 {
+			msgParam := msgs[i].ToParam()
+			prevMsgParam := msgs[i-1].ToParam()
+
+			msgRole := getMessageRole(msgParam)
+			prevRole := getMessageRole(prevMsgParam)
+
+			// If current is user and previous is assistant, this might be a tool_result pair
+			if msgRole == "user" && prevRole == "assistant" {
+				// Keep both messages together
+				if remainingSlots >= 2 {
+					start = i - 1
+					remainingSlots -= 2
+					i-- // Skip the assistant message in next iteration
+					continue
+				} else {
+					// Not enough room for the pair, stop here
+					break
+				}
+			}
+		}
+
+		// Regular message - just count it
+		start = i
+		remainingSlots--
+	}
+
 	if start < len(msgs) {
 		trimmed = append(trimmed, msgs[start:]...)
 	}
 	return trimmed
+}
+
+// getMessageRole extracts the role from an Anthropic message parameter using reflection
+func getMessageRole(msgParam any) string {
+	// Use reflection to get the Role field from anthropic.MessageParam
+	v := reflect.ValueOf(msgParam)
+	if v.Kind() == reflect.Ptr {
+		v = v.Elem()
+	}
+	if v.Kind() != reflect.Struct {
+		return ""
+	}
+	roleField := v.FieldByName("Role")
+	if !roleField.IsValid() || roleField.Kind() != reflect.String {
+		return ""
+	}
+	return roleField.String()
 }
 
 // handleHTTPEvent handles incoming HTTP requests from Slack Events API

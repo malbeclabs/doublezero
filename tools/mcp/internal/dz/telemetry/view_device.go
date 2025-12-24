@@ -91,30 +91,24 @@ type DeviceLinkLatencySample struct {
 }
 
 func (v *View) refreshDeviceLinkTelemetrySamples(ctx context.Context, circuits []DeviceLinkCircuit) error {
-	v.log.Debug("telemetry/device-link: starting sample refresh", "circuits", len(circuits))
-
 	// Get current epoch
 	epochInfo, err := v.cfg.EpochRPC.GetEpochInfo(ctx, solanarpc.CommitmentFinalized)
 	if err != nil {
 		return fmt.Errorf("failed to get epoch info: %w", err)
 	}
 	currentEpoch := epochInfo.Epoch
-	v.log.Debug("telemetry/device-link: current epoch", "epoch", currentEpoch)
 
 	// Fetch samples for current epoch and previous epoch
 	epochsToFetch := []uint64{currentEpoch}
 	if currentEpoch > 0 {
 		epochsToFetch = append(epochsToFetch, currentEpoch-1)
 	}
-	v.log.Debug("telemetry/device-link: fetching epochs", "epochs", epochsToFetch, "max_concurrency", v.cfg.MaxConcurrency)
 
 	// Get existing max sample_index for each circuit_code+epoch to determine what's new
 	existingMaxIndices, err := v.store.GetExistingMaxSampleIndices()
 	if err != nil {
 		v.log.Warn("telemetry/device-link: failed to get existing max indices, will insert all samples", "error", err)
 		existingMaxIndices = make(map[string]int) // Empty map means no existing data
-	} else {
-		v.log.Debug("telemetry/device-link: found existing max indices", "count", len(existingMaxIndices))
 	}
 
 	var allSamples []DeviceLinkLatencySample
@@ -129,7 +123,6 @@ func (v *View) refreshDeviceLinkTelemetrySamples(ctx context.Context, circuits [
 		// Check for context cancellation before starting new goroutines
 		select {
 		case <-ctx.Done():
-			v.log.Debug("telemetry/device-link: context cancelled, stopping circuit processing")
 			goto done
 		default:
 		}
@@ -137,17 +130,14 @@ func (v *View) refreshDeviceLinkTelemetrySamples(ctx context.Context, circuits [
 		circuitsProcessed++
 		originPK, err := solana.PublicKeyFromBase58(circuit.OriginDevicePK)
 		if err != nil {
-			v.log.Debug("telemetry/device-link: invalid origin device PK", "circuit", circuit.Code, "error", err)
 			continue
 		}
 		targetPK, err := solana.PublicKeyFromBase58(circuit.TargetDevicePK)
 		if err != nil {
-			v.log.Debug("telemetry/device-link: invalid target device PK", "circuit", circuit.Code, "error", err)
 			continue
 		}
 		linkPK, err := solana.PublicKeyFromBase58(circuit.LinkPK)
 		if err != nil {
-			v.log.Debug("telemetry/device-link: invalid link PK", "circuit", circuit.Code, "error", err)
 			continue
 		}
 
@@ -169,7 +159,6 @@ func (v *View) refreshDeviceLinkTelemetrySamples(ctx context.Context, circuits [
 					// Check for context cancellation before each RPC call
 					select {
 					case <-ctx.Done():
-						v.log.Debug("telemetry/device-link: context cancelled during fetch", "circuit", circuit.Code)
 						return
 					default:
 					}
@@ -180,17 +169,12 @@ func (v *View) refreshDeviceLinkTelemetrySamples(ctx context.Context, circuits [
 							return
 						}
 						if errors.Is(err, telemetry.ErrAccountNotFound) {
-							v.log.Debug("telemetry/device-link: no samples found", "circuit", circuit.Code, "epoch", epoch)
 							continue
 						}
-						v.log.Debug("telemetry/device-link: failed to get latency samples", "circuit", circuit.Code, "epoch", epoch, "error", err)
 						continue
 					}
 
 					circuitHasSamples = true
-					sampleCount := len(samples.Samples)
-					nextSampleIndex := samples.NextSampleIndex
-					v.log.Debug("telemetry/device-link: fetched samples", "circuit", circuit.Code, "epoch", epoch, "samples", sampleCount, "next_sample_index", nextSampleIndex)
 
 					// Check what's already in the database for this circuit+epoch
 					key := fmt.Sprintf("%s:%d", circuit.Code, epoch)
@@ -202,15 +186,10 @@ func (v *View) refreshDeviceLinkTelemetrySamples(ctx context.Context, circuits [
 					// Convert samples to our format - only include new samples (sample_index > existingMaxIdx)
 					// Samples are only appended, so we can use NextSampleIndex to determine what's new
 					converted := convertDeviceLatencySamples(samples, circuit.Code, epoch)
-					newSamples := 0
 					for _, sample := range converted {
 						if sample.SampleIndex > existingMaxIdx {
 							circuitSamples = append(circuitSamples, sample)
-							newSamples++
 						}
-					}
-					if newSamples > 0 {
-						v.log.Debug("telemetry/device-link: found new samples", "circuit", circuit.Code, "epoch", epoch, "existing_max_idx", existingMaxIdx, "new_samples", newSamples, "total_samples", len(converted))
 					}
 				}
 
@@ -233,18 +212,13 @@ func (v *View) refreshDeviceLinkTelemetrySamples(ctx context.Context, circuits [
 done:
 	wg.Wait()
 
-	v.log.Debug("telemetry/device-link: processed circuits", "total", circuitsProcessed, "with_samples", circuitsWithSamples, "total_samples", len(allSamples))
-
 	// Append new samples to table (instead of replacing)
 	if len(allSamples) > 0 {
-		v.log.Debug("telemetry/device-link: appending new latency samples", "new_samples", len(allSamples))
 		if err := v.store.AppendDeviceLinkLatencySamples(ctx, allSamples); err != nil {
 			v.log.Error("telemetry/device-link: failed to append latency samples", "error", err, "total_samples", len(allSamples))
 			return fmt.Errorf("failed to append latency samples: %w", err)
 		}
-		v.log.Debug("telemetry/device-link: sample refresh completed", "samples_inserted", len(allSamples))
-	} else {
-		v.log.Debug("telemetry/device-link: no new samples to insert")
+		v.log.Debug("telemetry/device-link: sample refresh completed", "circuits", circuitsProcessed, "samples", len(allSamples))
 	}
 	return nil
 }

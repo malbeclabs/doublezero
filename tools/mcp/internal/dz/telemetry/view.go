@@ -155,14 +155,12 @@ func (v *View) Refresh(ctx context.Context) error {
 
 	// Wait for serviceability view to be ready (has completed at least one refresh)
 	if !v.cfg.Serviceability.Ready() {
-		v.log.Debug("telemetry: waiting for serviceability view to be ready")
 		waitCtx, cancel := context.WithTimeout(ctx, v.cfg.ServiceabilityReadyTimeout)
 		defer cancel()
 
 		if err := v.cfg.Serviceability.WaitReady(waitCtx); err != nil {
 			return fmt.Errorf("serviceability view not ready: %w", err)
 		}
-		v.log.Debug("telemetry: serviceability view is now ready")
 	}
 
 	// Get devices, links, and contributors from View to compute circuits
@@ -181,9 +179,7 @@ func (v *View) Refresh(ctx context.Context) error {
 	}
 
 	// Compute and refresh circuits from devices and links
-	v.log.Debug("telemetry: computing device-link circuits", "links", len(links))
 	circuits := ComputeDeviceLinkCircuits(devices, links, contributors)
-	v.log.Debug("telemetry: computed device-link circuits", "count", len(circuits))
 	if err := v.store.ReplaceDeviceLinkCircuits(ctx, circuits); err != nil {
 		return fmt.Errorf("failed to refresh device-link circuits: %w", err)
 	}
@@ -206,8 +202,6 @@ func (v *View) Refresh(ctx context.Context) error {
 				// Don't fail the entire refresh if telemetry fails
 			}
 		}
-	} else {
-		v.log.Debug("telemetry: skipping internet-metro samples refresh", "agent_pk_configured", !v.cfg.InternetLatencyAgentPK.IsZero(), "data_providers", len(v.cfg.InternetDataProviders))
 	}
 
 	// Signal readiness once (close channel) - safe to call multiple times

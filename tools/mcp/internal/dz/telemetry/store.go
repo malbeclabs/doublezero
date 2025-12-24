@@ -85,7 +85,6 @@ func (s *Store) CreateTablesIfNotExists() error {
 }
 
 func (s *Store) ReplaceDeviceLinkCircuits(ctx context.Context, circuits []DeviceLinkCircuit) error {
-	s.log.Debug("telemetry/store: replacing device-link circuits", "count", len(circuits))
 	return duck.ReplaceTableViaCSV(ctx, s.log, s.db, "dz_device_link_circuits", len(circuits), func(w *csv.Writer, i int) error {
 		c := circuits[i]
 		return w.Write([]string{

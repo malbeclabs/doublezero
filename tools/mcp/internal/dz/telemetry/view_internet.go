@@ -74,30 +74,24 @@ type InternetMetroLatencySample struct {
 }
 
 func (v *View) refreshInternetMetroLatencySamples(ctx context.Context, circuits []InternetMetroCircuit) error {
-	v.log.Debug("telemetry/internet-metro: starting sample refresh", "circuits", len(circuits), "data_providers", len(v.cfg.InternetDataProviders))
-
 	// Get current epoch
 	epochInfo, err := v.cfg.EpochRPC.GetEpochInfo(ctx, solanarpc.CommitmentFinalized)
 	if err != nil {
 		return fmt.Errorf("failed to get epoch info: %w", err)
 	}
 	currentEpoch := epochInfo.Epoch
-	v.log.Debug("telemetry/internet-metro: current epoch", "epoch", currentEpoch)
 
 	// Fetch samples for current epoch and previous epoch
 	epochsToFetch := []uint64{currentEpoch}
 	if currentEpoch > 0 {
 		epochsToFetch = append(epochsToFetch, currentEpoch-1)
 	}
-	v.log.Debug("telemetry/internet-metro: fetching epochs", "epochs", epochsToFetch, "max_concurrency", v.cfg.MaxConcurrency)
 
 	// Get existing max sample_index for each circuit_code+data_provider+epoch to determine what's new
 	existingMaxIndices, err := v.store.GetExistingInternetMaxSampleIndices()
 	if err != nil {
 		v.log.Warn("telemetry/internet-metro: failed to get existing max indices, will insert all samples", "error", err)
 		existingMaxIndices = make(map[string]int) // Empty map means no existing data
-	} else {
-		v.log.Debug("telemetry/internet-metro: found existing max indices", "count", len(existingMaxIndices))
 	}
 
 	var allSamples []InternetMetroLatencySample
@@ -112,7 +106,6 @@ func (v *View) refreshInternetMetroLatencySamples(ctx context.Context, circuits 
 		// Check for context cancellation before starting new goroutines
 		select {
 		case <-ctx.Done():
-			v.log.Debug("telemetry/internet-metro: context cancelled, stopping circuit processing")
 			goto done
 		default:
 		}
@@ -120,12 +113,10 @@ func (v *View) refreshInternetMetroLatencySamples(ctx context.Context, circuits 
 		circuitsProcessed++
 		originPK, err := solana.PublicKeyFromBase58(circuit.OriginMetroPK)
 		if err != nil {
-			v.log.Debug("telemetry/internet-metro: invalid origin metro PK", "circuit", circuit.Code, "error", err)
 			continue
 		}
 		targetPK, err := solana.PublicKeyFromBase58(circuit.TargetMetroPK)
 		if err != nil {
-			v.log.Debug("telemetry/internet-metro: invalid target metro PK", "circuit", circuit.Code, "error", err)
 			continue
 		}
 
@@ -134,7 +125,6 @@ func (v *View) refreshInternetMetroLatencySamples(ctx context.Context, circuits 
 			// Check for context cancellation before starting new goroutines
 			select {
 			case <-ctx.Done():
-				v.log.Debug("telemetry/internet-metro: context cancelled, stopping data provider processing")
 				goto done
 			default:
 			}
@@ -157,7 +147,6 @@ func (v *View) refreshInternetMetroLatencySamples(ctx context.Context, circuits 
 						// Check for context cancellation before each RPC call
 						select {
 						case <-ctx.Done():
-							v.log.Debug("telemetry/internet-metro: context cancelled during fetch", "circuit", circuit.Code, "data_provider", dataProvider)
 							return
 						default:
 						}
@@ -168,17 +157,12 @@ func (v *View) refreshInternetMetroLatencySamples(ctx context.Context, circuits 
 								return
 							}
 							if errors.Is(err, telemetry.ErrAccountNotFound) {
-								v.log.Debug("telemetry/internet-metro: no samples found", "circuit", circuit.Code, "data_provider", dataProvider, "epoch", epoch)
 								continue
 							}
-							v.log.Debug("telemetry/internet-metro: failed to get latency samples", "circuit", circuit.Code, "data_provider", dataProvider, "epoch", epoch, "error", err)
 							continue
 						}
 
 						circuitHasSamples = true
-						sampleCount := len(samples.Samples)
-						nextSampleIndex := samples.NextSampleIndex
-						v.log.Debug("telemetry/internet-metro: fetched samples", "circuit", circuit.Code, "data_provider", dataProvider, "epoch", epoch, "samples", sampleCount, "next_sample_index", nextSampleIndex)
 
 						// Check what's already in the database for this circuit+data_provider+epoch
 						key := fmt.Sprintf("%s:%s:%d", circuit.Code, dataProvider, epoch)
@@ -189,15 +173,10 @@ func (v *View) refreshInternetMetroLatencySamples(ctx context.Context, circuits 
 
 						// Convert samples to our format - only include new samples (sample_index > existingMaxIdx)
 						converted := convertInternetLatencySamples(samples, circuit.Code, dataProvider, epoch)
-						newSamples := 0
 						for _, sample := range converted {
 							if sample.SampleIndex > existingMaxIdx {
 								circuitSamples = append(circuitSamples, sample)
-								newSamples++
 							}
-						}
-						if newSamples > 0 {
-							v.log.Debug("telemetry/internet-metro: found new samples", "circuit", circuit.Code, "data_provider", dataProvider, "epoch", epoch, "existing_max_idx", existingMaxIdx, "new_samples", newSamples, "total_samples", len(converted))
 						}
 					}
 
@@ -221,18 +200,13 @@ func (v *View) refreshInternetMetroLatencySamples(ctx context.Context, circuits 
 done:
 	wg.Wait()
 
-	v.log.Debug("telemetry/internet-metro: processed circuits", "total", circuitsProcessed, "with_samples", circuitsWithSamples, "total_samples", len(allSamples))
-
 	// Append new samples to table (instead of replacing)
 	if len(allSamples) > 0 {
-		v.log.Debug("telemetry/internet-metro: appending new latency samples", "new_samples", len(allSamples))
 		if err := v.store.AppendInternetMetroLatencySamples(ctx, allSamples); err != nil {
 			v.log.Error("telemetry/internet-metro: failed to append latency samples", "error", err, "total_samples", len(allSamples))
 			return fmt.Errorf("failed to append internet-metro latency samples: %w", err)
 		}
-		v.log.Debug("telemetry/internet-metro: sample refresh completed", "samples_inserted", len(allSamples))
-	} else {
-		v.log.Debug("telemetry/internet-metro: no new samples to insert")
+		v.log.Debug("telemetry/internet-metro: sample refresh completed", "circuits", circuitsProcessed, "samples", len(allSamples))
 	}
 	return nil
 }

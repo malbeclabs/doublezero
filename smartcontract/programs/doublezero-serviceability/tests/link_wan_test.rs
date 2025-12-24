@@ -620,6 +620,7 @@ async fn test_wan_link() {
             jitter_ns: Some(100000),
             delay_override_ns: Some(0),
             status: None,
+            desired_status: None,
         }),
         vec![
             AccountMeta::new(tunnel_pubkey, false),

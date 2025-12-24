@@ -7,7 +7,7 @@ use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
     processors::device::update::DeviceUpdateArgs,
     state::{
-        device::{DeviceStatus, DeviceType},
+        device::{DeviceDesiredStatus, DeviceStatus, DeviceType},
         interface::Interface,
     },
 };
@@ -29,6 +29,7 @@ pub struct UpdateDeviceCommand {
     pub max_users: Option<u16>,
     pub users_count: Option<u16>,
     pub status: Option<DeviceStatus>,
+    pub desired_status: Option<DeviceDesiredStatus>,
 }
 
 impl UpdateDeviceCommand {
@@ -61,6 +62,7 @@ impl UpdateDeviceCommand {
                 max_users: self.max_users,
                 users_count: self.users_count,
                 status: self.status,
+                desired_status: self.desired_status,
             }),
             vec![
                 AccountMeta::new(self.pubkey, false),
@@ -86,7 +88,7 @@ mod tests {
         state::{
             accountdata::AccountData,
             accounttype::AccountType,
-            device::{Device, DeviceHealth, DeviceStatus, DeviceType},
+            device::{Device, DeviceDesiredStatus, DeviceHealth, DeviceStatus, DeviceType},
         },
     };
     use mockall::predicate;
@@ -119,6 +121,7 @@ mod tests {
             max_users: 250,
             users_count: 0,
             device_health: DeviceHealth::ReadyForUsers,
+            desired_status: DeviceDesiredStatus::Activated,
         };
 
         client
@@ -139,6 +142,7 @@ mod tests {
                     max_users: None,
                     users_count: None,
                     status: None,
+                    desired_status: None,
                 })),
                 predicate::always(),
             )
@@ -158,6 +162,7 @@ mod tests {
             max_users: None,
             users_count: None,
             status: None,
+            desired_status: None,
         };
 
         let update_invalid = UpdateDeviceCommand {

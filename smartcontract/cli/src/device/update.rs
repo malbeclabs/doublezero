@@ -12,6 +12,7 @@ use doublezero_sdk::{
     },
     *,
 };
+use doublezero_serviceability::state::device::DeviceDesiredStatus;
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, net::Ipv4Addr, str::FromStr};
 
@@ -49,10 +50,13 @@ pub struct UpdateDeviceCliCommand {
     pub users_count: Option<u16>,
     /// Updated status for the device (optional)
     #[arg(long)]
-    pub status: Option<String>,
+    pub status: Option<DeviceStatus>,
     /// Device type (optional)
     #[arg(long)]
     pub device_type: Option<DeviceType>,
+    /// Desired status for the device (optional)
+    #[arg(long)]
+    pub desired_status: Option<DeviceDesiredStatus>,
     /// Wait for the device to be activated
     #[arg(short, long, default_value_t = false)]
     pub wait: bool,
@@ -148,12 +152,6 @@ impl UpdateDeviceCliCommand {
             None
         };
 
-        let status = self
-            .status
-            .map(|s| s.parse())
-            .transpose()
-            .map_err(|e| eyre::eyre!("Invalid status: {e}"))?;
-
         let signature = client.update_device(UpdateDeviceCommand {
             pubkey,
             code: self.code,
@@ -170,7 +168,8 @@ impl UpdateDeviceCliCommand {
             interfaces: None,
             max_users: self.max_users,
             users_count: self.users_count,
-            status,
+            status: self.status,
+            desired_status: self.desired_status,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -237,6 +236,8 @@ mod tests {
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+            desired_status:
+                doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
         };
         let device2 = Device {
             account_type: AccountType::Device,
@@ -258,6 +259,8 @@ mod tests {
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+            desired_status:
+                doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
         };
         let device3 = Device {
             account_type: AccountType::Device,
@@ -279,6 +282,8 @@ mod tests {
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+            desired_status:
+                doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
         };
         let device_list = HashMap::from([
             (pda_pubkey, device1.clone()),
@@ -323,6 +328,7 @@ mod tests {
                 max_users: Some(1025),
                 users_count: Some(0),
                 status: None,
+                desired_status: None,
             }))
             .times(1)
             .returning(move |_| Ok(signature));
@@ -342,6 +348,7 @@ mod tests {
             max_users: Some(1025),
             users_count: Some(0),
             status: None,
+            desired_status: None,
             wait: false,
         }
         .execute(&client, &mut output);
@@ -382,6 +389,8 @@ mod tests {
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+            desired_status:
+                doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
         };
         let device2 = Device {
             account_type: AccountType::Device,
@@ -403,6 +412,8 @@ mod tests {
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+            desired_status:
+                doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
         };
         let device_list = HashMap::from([(pda_pubkey, device1.clone()), (other_pubkey, device2)]);
 
@@ -437,6 +448,7 @@ mod tests {
             max_users: Some(255),
             users_count: Some(0),
             status: None,
+            desired_status: None,
             wait: false,
         }
         .execute(&client, &mut output);
@@ -477,6 +489,8 @@ mod tests {
             max_users: 1024,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+            desired_status:
+                doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
         };
         let device2 = Device {
             account_type: AccountType::Device,
@@ -498,6 +512,8 @@ mod tests {
             max_users: 1024,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+            desired_status:
+                doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
         };
         let device_list = HashMap::from([(pda_pubkey, device1.clone()), (other_pubkey, device2)]);
 
@@ -531,6 +547,7 @@ mod tests {
             max_users: None,
             users_count: None,
             status: None,
+            desired_status: None,
             wait: false,
         }
         .execute(&client, &mut output);

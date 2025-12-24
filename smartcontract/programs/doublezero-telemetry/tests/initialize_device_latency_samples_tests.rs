@@ -7,7 +7,7 @@ use doublezero_serviceability::{
     },
     state::{
         accounttype::AccountType,
-        device::{Device, DeviceHealth, DeviceStatus, DeviceType},
+        device::{Device, DeviceDesiredStatus, DeviceHealth, DeviceStatus, DeviceType},
         link::{Link, LinkHealth, LinkLinkType, LinkStatus},
     },
 };
@@ -432,6 +432,7 @@ async fn test_initialize_device_latency_samples_fail_origin_device_wrong_owner()
         users_count: 0,
         max_users: 0,
         device_health: DeviceHealth::Pending,
+        desired_status: DeviceDesiredStatus::Pending,
     };
 
     let mut device_data = Vec::new();
@@ -504,6 +505,7 @@ async fn test_initialize_device_latency_samples_fail_target_device_wrong_owner()
         users_count: 0,
         max_users: 0,
         device_health: DeviceHealth::Pending,
+        desired_status: DeviceDesiredStatus::Pending,
     };
 
     let mut data = Vec::new();
@@ -577,6 +579,7 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_owner() {
         side_a_iface_name: "Ethernet0".to_string(),
         side_z_iface_name: "Ethernet1".to_string(),
         link_health: LinkHealth::ReadyForService,
+        desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
     };
 
     let mut data = Vec::new();

@@ -341,6 +341,8 @@ mod tests {
             max_users: 100,
             owner: Pubkey::default(),
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+            desired_status:
+                doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
         };
 
         let mut devices = HashMap::new();

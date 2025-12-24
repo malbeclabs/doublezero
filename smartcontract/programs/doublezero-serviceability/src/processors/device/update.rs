@@ -29,6 +29,7 @@ pub struct DeviceUpdateArgs {
     pub max_users: Option<u16>,
     pub users_count: Option<u16>,
     pub status: Option<DeviceStatus>,
+    pub desired_status: Option<DeviceDesiredStatus>,
 }
 
 impl fmt::Debug for DeviceUpdateArgs {
@@ -62,6 +63,9 @@ impl fmt::Debug for DeviceUpdateArgs {
         }
         if self.status.is_some() {
             write!(f, "status: {:?}, ", self.status)?;
+        }
+        if self.desired_status.is_some() {
+            write!(f, "desired_status: {:?}, ", self.desired_status)?;
         }
         Ok(())
     }

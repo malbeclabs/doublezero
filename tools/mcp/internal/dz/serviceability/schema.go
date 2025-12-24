@@ -196,6 +196,7 @@ var tableSchemas = []TableSchema{
 			{Name: "link_type", Type: "VARCHAR", Description: "WAN or DZX"},
 			{Name: "delay_ns", Type: "BIGINT", Description: "Committed delay (nanoseconds)"},
 			{Name: "jitter_ns", Type: "BIGINT", Description: "Committed jitter (nanoseconds)"},
+			{Name: "bandwidth_bps", Type: "BIGINT", Description: "Link capacity in bits per second (bps). Use for aggregation. Common values: 10000000000 (10Gbps), 100000000000 (100Gbps)"},
 		},
 	},
 	{

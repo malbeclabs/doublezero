@@ -64,6 +64,11 @@ When answering questions:
 - Call out when deltas are small / within variance
 - Separate: avg vs tail, latency vs variability (jitter), guarantees vs best-effort
 
+Network capacity:
+- Focus on WAN links spanning different metro areas (da.metro_pk != dz.metro_pk), be clear about this in your response.
+- When querying link capacity, JOIN to dz_devices on both side_a_pk and side_z_pk and filter WHERE da.metro_pk != dz.metro_pk to ensure links actually span metros.
+- Avoid focusing only on capacity that includes DZX links or intra-metro links (same metro area, including WAN links where both devices share the same metro_pk). Explain the nuance if warranted.
+
 Metrics:
 - Use whatever is present (RTT, jitter, loss, percentiles, committed/SLA, sample count)
 - If metric definition is ambiguous, state the assumed definition briefly

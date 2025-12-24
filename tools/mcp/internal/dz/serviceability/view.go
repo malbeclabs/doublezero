@@ -68,6 +68,7 @@ type Link struct {
 	LinkType       string
 	DelayNs        uint64
 	JitterNs       uint64
+	Bandwidth      uint64
 }
 
 type User struct {
@@ -265,9 +266,9 @@ func (v *View) Refresh(ctx context.Context) error {
 	}
 
 	v.log.Debug("serviceability: refreshing links", "count", len(links))
-	if err := v.refreshTable("dz_links", "DELETE FROM dz_links", "INSERT INTO dz_links (pk, status, code, tunnel_net, contributor_pk, side_a_pk, side_z_pk, side_a_iface_name, side_z_iface_name, link_type, delay_ns, jitter_ns) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", len(links), func(stmt *sql.Stmt, i int) error {
+	if err := v.refreshTable("dz_links", "DELETE FROM dz_links", "INSERT INTO dz_links (pk, status, code, tunnel_net, contributor_pk, side_a_pk, side_z_pk, side_a_iface_name, side_z_iface_name, link_type, delay_ns, jitter_ns, bandwidth_bps) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", len(links), func(stmt *sql.Stmt, i int) error {
 		l := links[i]
-		_, err := stmt.Exec(l.PK, l.Status, l.Code, l.TunnelNet, l.ContributorPK, l.SideAPK, l.SideZPK, l.SideAIfaceName, l.SideZIfaceName, l.LinkType, l.DelayNs, l.JitterNs)
+		_, err := stmt.Exec(l.PK, l.Status, l.Code, l.TunnelNet, l.ContributorPK, l.SideAPK, l.SideZPK, l.SideAIfaceName, l.SideZIfaceName, l.LinkType, l.DelayNs, l.JitterNs, l.Bandwidth)
 		return err
 	}); err != nil {
 		return fmt.Errorf("failed to refresh links: %w", err)
@@ -380,7 +381,8 @@ func (v *View) initDB() error {
 			side_z_iface_name VARCHAR,
 			link_type VARCHAR,
 			delay_ns BIGINT,
-			jitter_ns BIGINT
+			jitter_ns BIGINT,
+			bandwidth_bps BIGINT
 		)`,
 		`CREATE TABLE IF NOT EXISTS dz_users (
 			pk VARCHAR PRIMARY KEY,
@@ -467,6 +469,7 @@ func convertLinks(onchain []serviceability.Link) []Link {
 			LinkType:       link.LinkType.String(),
 			DelayNs:        link.DelayNs,
 			JitterNs:       link.JitterNs,
+			Bandwidth:      link.Bandwidth,
 		}
 	}
 	return result

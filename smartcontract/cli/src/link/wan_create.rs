@@ -18,6 +18,7 @@ use doublezero_sdk::{
     },
     *,
 };
+use doublezero_serviceability::state::link::LinkDesiredStatus;
 use eyre::eyre;
 use std::io::Write;
 
@@ -29,6 +30,9 @@ pub struct CreateWANLinkCliCommand {
     /// Contributor (pubkey or code) associated with the device
     #[arg(long, value_parser = validate_pubkey_or_code)]
     pub contributor: String,
+    /// Update link desired status (e.g. activated, soft-drained, hard-drained)
+    #[arg(long)]
+    pub desired_status: Option<LinkDesiredStatus>,
     /// Device Pubkey or code for side A.
     #[arg(long, value_parser = validate_pubkey_or_code)]
     pub side_a: String,
@@ -151,6 +155,7 @@ impl CreateWANLinkCliCommand {
         let (signature, pubkey) = client.create_link(CreateLinkCommand {
             code: self.code.clone(),
             contributor_pk,
+            desired_status: self.desired_status,
             side_a_pk,
             side_z_pk,
             link_type: LinkLinkType::WAN,
@@ -378,6 +383,7 @@ mod tests {
             .with(predicate::eq(CreateLinkCommand {
                 code: "test".to_string(),
                 contributor_pk,
+                desired_status: None,
                 side_a_pk: device1_pk,
                 side_z_pk: device2_pk,
                 link_type: LinkLinkType::WAN,
@@ -396,6 +402,7 @@ mod tests {
         let res = CreateWANLinkCliCommand {
             code: "test".to_string(),
             contributor: contributor_pk.to_string(),
+            desired_status: None,
             side_a: device1_pk.to_string(),
             side_z: device2_pk.to_string(),
             bandwidth: 1000000000,
@@ -424,6 +431,7 @@ mod tests {
         let res = CreateWANLinkCliCommand {
             code: "test".to_string(),
             contributor: contributor_pk.to_string(),
+            desired_status: None,
             side_a: device2_pk.to_string(),
             side_z: device3_pk.to_string(),
             bandwidth: 1000000000,

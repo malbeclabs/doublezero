@@ -720,7 +720,17 @@ func (d *Devnet) GetOrCreateDeviceOnchain(ctx context.Context, deviceCode string
 				return "", fmt.Errorf("failed to get device agent pubkey onchain for device %s: %w", deviceCode, err)
 			}
 
-			_, err = d.Manager.Exec(ctx, []string{"doublezero", "device", "update", "--pubkey", deviceAddress, "--max-users", "128"})
+			_, err = d.Manager.Exec(ctx, []string{"doublezero", "device", "update", "--pubkey", deviceAddress, "--max-users", "128", "--desired-status", "activated"})
+			if err != nil {
+				return "", fmt.Errorf("failed to update device onchain: %w", err)
+			}
+
+			_, err = d.Manager.Exec(ctx, []string{"doublezero", "device", "set-health", "--pubkey", deviceAddress, "--health", "ready-for-links"})
+			if err != nil {
+				return "", fmt.Errorf("failed to update device onchain: %w", err)
+			}
+
+			_, err = d.Manager.Exec(ctx, []string{"doublezero", "device", "set-health", "--pubkey", deviceAddress, "--health", "ready-for-users"})
 			if err != nil {
 				return "", fmt.Errorf("failed to update device onchain: %w", err)
 			}
@@ -743,7 +753,17 @@ func (d *Devnet) CreateDeviceOnchain(ctx context.Context, deviceCode string, loc
 		return fmt.Errorf("failed to create device onchain: %w", err)
 	}
 
-	_, err = d.Manager.Exec(ctx, []string{"doublezero", "device", "update", "--pubkey", deviceCode, "--max-users", "128"})
+	_, err = d.Manager.Exec(ctx, []string{"doublezero", "device", "update", "--pubkey", deviceCode, "--max-users", "128", "--desired-status", "activated"})
+	if err != nil {
+		return fmt.Errorf("failed to update device onchain: %w", err)
+	}
+
+	_, err = d.Manager.Exec(ctx, []string{"doublezero", "device", "set-health", "--pubkey", deviceCode, "--health", "ready-for-links"})
+	if err != nil {
+		return fmt.Errorf("failed to update device onchain: %w", err)
+	}
+
+	_, err = d.Manager.Exec(ctx, []string{"doublezero", "device", "set-health", "--pubkey", deviceCode, "--health", "ready-for-users"})
 	if err != nil {
 		return fmt.Errorf("failed to update device onchain: %w", err)
 	}

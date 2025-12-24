@@ -193,12 +193,10 @@ pub fn process_create_subscribe_user(
 
     let mut device = Device::try_from(device_account)?;
 
-    if device.status == DeviceStatus::Suspended {
-        if !globalstate.foundation_allowlist.contains(payer_account.key) {
-            msg!("{:?}", device);
-            return Err(DoubleZeroError::InvalidStatus.into());
-        }
-    } else if device.status != DeviceStatus::Activated {
+    // Only activated devices can have users, or if in foundation allowlist
+    if device.status != DeviceStatus::Activated
+        && !globalstate.foundation_allowlist.contains(payer_account.key)
+    {
         msg!("{:?}", device);
         return Err(DoubleZeroError::InvalidStatus.into());
     }

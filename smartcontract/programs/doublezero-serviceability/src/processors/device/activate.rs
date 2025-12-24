@@ -56,7 +56,10 @@ pub fn process_activate_device(program_id: &Pubkey, accounts: &[AccountInfo]) ->
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 
-    device.status = DeviceStatus::Activated;
+    // Start provisioning process for the device: DeviceProvisioning -> LinkProvisioning -> Activated
+    device.status = DeviceStatus::DeviceProvisioning;
+
+    device.check_status_transition();
 
     try_acc_write(&device, device_account, payer_account, accounts)?;
 

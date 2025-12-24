@@ -170,6 +170,7 @@ pub fn process_create_link(
         side_a_iface_name: value.side_a_iface_name.clone(),
         side_z_iface_name,
         delay_override_ns: 0,
+        link_health: LinkHealth::Pending,
     };
 
     account_create(

@@ -190,6 +190,7 @@ mod tests {
             owner: pda_pubkey,
             side_a_iface_name: "eth0".to_string(),
             side_z_iface_name: "eth1".to_string(),
+            link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
         };
 
         let link2 = Link {
@@ -212,6 +213,7 @@ mod tests {
             owner: pda_pubkey,
             side_a_iface_name: "eth2".to_string(),
             side_z_iface_name: "eth3".to_string(),
+            link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
         };
 
         client

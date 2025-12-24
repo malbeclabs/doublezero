@@ -5,5 +5,6 @@ pub mod create;
 pub mod delete;
 pub mod reject;
 pub mod resume;
+pub mod sethealth;
 pub mod suspend;
 pub mod update;

@@ -12,6 +12,7 @@ import (
 	dzsvc "github.com/malbeclabs/doublezero/tools/mcp/internal/dz/serviceability"
 	dztelem "github.com/malbeclabs/doublezero/tools/mcp/internal/dz/telemetry"
 	"github.com/malbeclabs/doublezero/tools/mcp/internal/sol"
+	sqltools "github.com/malbeclabs/doublezero/tools/mcp/internal/tools/sql"
 )
 
 type Server struct {
@@ -71,23 +72,55 @@ func New(cfg Config) (*Server, error) {
 		Version: cfg.Version,
 	}, nil)
 
-	doublezeroTools := dzsvc.NewTools(cfg.Logger, cfg.DB)
-	if err := doublezeroTools.Register(mcpServer); err != nil {
-		return nil, fmt.Errorf("failed to register doublezero tools: %w", err)
+	svcSchemaTool, err := svcView.SchemaTool()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create serviceability schema tool: %w", err)
+	}
+	if err := svcSchemaTool.Register(mcpServer); err != nil {
+		return nil, fmt.Errorf("failed to register serviceability schema tool: %w", err)
 	}
 
-	doublezeroTelemetryTools := dztelem.NewTools(cfg.Logger, cfg.DB)
-	if err := doublezeroTelemetryTools.Register(mcpServer); err != nil {
-		return nil, fmt.Errorf("failed to register doublezero-telemetry tools: %w", err)
+	telemSchemaTool, err := telemView.SchemaTool()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create telemetry schema tool: %w", err)
+	}
+	if err := telemSchemaTool.Register(mcpServer); err != nil {
+		return nil, fmt.Errorf("failed to register telemetry schema tool: %w", err)
 	}
 
-	solanaTools := sol.NewTools(cfg.Logger, cfg.DB)
-	if err := solanaTools.Register(mcpServer); err != nil {
-		return nil, fmt.Errorf("failed to register solana tools: %w", err)
+	solanaSchemaTool, err := solanaView.SchemaTool()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create solana schema tool: %w", err)
+	}
+	if err := solanaSchemaTool.Register(mcpServer); err != nil {
+		return nil, fmt.Errorf("failed to register solana schema tool: %w", err)
 	}
 
-	queryTools := NewQueryTools(cfg.Logger, cfg.DB)
-	if err := queryTools.Register(mcpServer); err != nil {
+	queryTool, err := sqltools.NewQueryTool(sqltools.QueryToolConfig{
+		Logger: cfg.Logger,
+		DB:     cfg.DB,
+		Name:   "query",
+		Description: `
+			Execute SQL queries against the DoubleZero database.
+			This tool can query any table across all datasets (serviceability, telemetry, and Solana).
+			Use the schema tools (doublezero-schema, doublezero-telemetry-schema, solana-schema) to see available tables and their schemas.
+			For network structure questions, query dz_* tables. For performance/latency metrics, query dz_device_link_* and dz_internet_metro_* tables.
+			For Solana validator data, query solana_* tables.
+			Supports SELECT, JOINs, WHERE clauses, GROUP BY, aggregations (COUNT, SUM, AVG, etc.), ORDER BY, and more.
+			IMPORTANT:
+				(1) When performing arithmetic operations (multiplication, squaring, etc.) on BIGINT columns like rtt_us, explicitly cast to BIGINT to avoid INT32 overflow: use CAST(rtt_us AS BIGINT) * CAST(rtt_us AS BIGINT) instead of rtt_us * rtt_us.
+				(2) Always aggregate data and use LIMIT clauses to keep results manageable - avoid returning large numbers of raw rows. Use GROUP BY, aggregations, and LIMIT to summarize data rather than returning individual samples.
+			Examples:
+				SELECT * FROM dz_devices WHERE status = 'activated'
+				SELECT circuit_code, AVG(rtt_us) FROM dz_device_link_latency_samples WHERE rtt_us > 0 GROUP BY circuit_code
+				SELECT * FROM solana_vote_accounts WHERE epoch_vote_account = true
+			For more information about DoubleZero, see https://doublezero.xyz
+		`,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create query tool: %w", err)
+	}
+	if err := queryTool.Register(mcpServer); err != nil {
 		return nil, fmt.Errorf("failed to register query tool: %w", err)
 	}
 

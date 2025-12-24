@@ -340,6 +340,7 @@ mod tests {
             users_count: 0,
             max_users: 100,
             owner: Pubkey::default(),
+            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
         };
 
         let mut devices = HashMap::new();

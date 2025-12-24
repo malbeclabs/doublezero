@@ -141,6 +141,8 @@ mod tests {
                 reference_count: 0,
                 users_count,
                 max_users: 1,
+                device_health:
+                    doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
             },
         )
     }

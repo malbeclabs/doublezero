@@ -236,6 +236,7 @@ mod tests {
             interfaces: vec![],
             max_users: 255,
             users_count: 0,
+            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
         };
         let device2 = Device {
             account_type: AccountType::Device,
@@ -256,6 +257,7 @@ mod tests {
             interfaces: vec![],
             max_users: 255,
             users_count: 0,
+            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
         };
         let device3 = Device {
             account_type: AccountType::Device,
@@ -276,6 +278,7 @@ mod tests {
             interfaces: vec![],
             max_users: 255,
             users_count: 0,
+            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
         };
         let device_list = HashMap::from([
             (pda_pubkey, device1.clone()),
@@ -378,6 +381,7 @@ mod tests {
             interfaces: vec![],
             max_users: 255,
             users_count: 0,
+            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
         };
         let device2 = Device {
             account_type: AccountType::Device,
@@ -398,6 +402,7 @@ mod tests {
             interfaces: vec![],
             max_users: 255,
             users_count: 0,
+            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
         };
         let device_list = HashMap::from([(pda_pubkey, device1.clone()), (other_pubkey, device2)]);
 
@@ -471,6 +476,7 @@ mod tests {
             interfaces: vec![],
             max_users: 1024,
             users_count: 0,
+            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
         };
         let device2 = Device {
             account_type: AccountType::Device,
@@ -491,6 +497,7 @@ mod tests {
             interfaces: vec![],
             max_users: 1024,
             users_count: 0,
+            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
         };
         let device_list = HashMap::from([(pda_pubkey, device1.clone()), (other_pubkey, device2)]);
 

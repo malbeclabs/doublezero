@@ -36,6 +36,7 @@ pub mod utils {
             sentinel_authority_pk: Pubkey::new_unique(),
             contributor_airdrop_lamports: 1_000_000_000,
             user_airdrop_lamports: 40_000,
+            health_oracle_pk: Pubkey::new_unique(),
         };
         client
             .expect_get()

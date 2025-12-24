@@ -118,6 +118,59 @@ impl FromStr for DeviceStatus {
     }
 }
 
+#[repr(u8)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Default)]
+#[borsh(use_discriminant = true)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum DeviceHealth {
+    Unknown = 0,
+    #[default]
+    Pending = 1,
+    ReadyForLinks = 2, // ready to connect links
+    ReadyForUsers = 3, // ready to connect users
+    Impaired = 4,
+}
+
+impl From<u8> for DeviceHealth {
+    fn from(value: u8) -> Self {
+        match value {
+            0 => DeviceHealth::Unknown,
+            1 => DeviceHealth::Pending,
+            2 => DeviceHealth::ReadyForLinks,
+            3 => DeviceHealth::ReadyForUsers,
+            4 => DeviceHealth::Impaired,
+            _ => DeviceHealth::Unknown,
+        }
+    }
+}
+
+impl FromStr for DeviceHealth {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "unknown" => Ok(DeviceHealth::Unknown),
+            "pending" => Ok(DeviceHealth::Pending),
+            "ready-for-links" => Ok(DeviceHealth::ReadyForLinks),
+            "ready-for-users" => Ok(DeviceHealth::ReadyForUsers),
+            "impaired" => Ok(DeviceHealth::Impaired),
+            _ => Err(format!("Invalid DeviceHealth: {s}")),
+        }
+    }
+}
+
+impl fmt::Display for DeviceHealth {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DeviceHealth::Unknown => write!(f, "unknown"),
+            DeviceHealth::Pending => write!(f, "pending"),
+            DeviceHealth::ReadyForLinks => write!(f, "ready-for-links"),
+            DeviceHealth::ReadyForUsers => write!(f, "ready-for-users"),
+            DeviceHealth::Impaired => write!(f, "impaired"),
+        }
+    }
+}
+
 #[derive(BorshSerialize, Debug, PartialEq, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Device {
@@ -174,6 +227,7 @@ pub struct Device {
     pub reference_count: u32,      // 4
     pub users_count: u16,          // 2
     pub max_users: u16,            // 2
+    pub device_health: DeviceHealth, // 1
 }
 
 impl Default for Device {
@@ -197,6 +251,7 @@ impl Default for Device {
             reference_count: 0,
             users_count: 0,
             max_users: 0,
+            device_health: DeviceHealth::Pending,
         }
     }
 }
@@ -230,10 +285,10 @@ impl fmt::Display for Device {
             f,
             "account_type: {}, owner: {}, index: {}, contributor_pk: {}, location_pk: {}, exchange_pk: {}, device_type: {}, \
             public_ip: {}, dz_prefixes: {}, status: {}, code: {}, metrics_publisher_pk: {}, mgmt_vrf: {}, interfaces: {:?}, \
-            reference_count: {}, users_count: {}, max_users: {}",
+            reference_count: {}, users_count: {}, max_users: {}, device_health: {}",
             self.account_type, self.owner, self.index, self.contributor_pk, self.location_pk, self.exchange_pk, self.device_type,
             &self.public_ip, &self.dz_prefixes, self.status, self.code, self.metrics_publisher_pk, self.mgmt_vrf, self.interfaces,
-            self.reference_count, self.users_count, self.max_users
+            self.reference_count, self.users_count, self.max_users, self.device_health
         )
     }
 }
@@ -243,31 +298,29 @@ impl AccountTypeInfo for Device {
         SEED_DEVICE
     }
     fn size(&self) -> usize {
-        1 + 32
-            + 16
-            + 1
-            + 32
-            + 32
-            + 1
-            + 4
-            + 1
-            + 4
-            + self.code.len()
-            + 4
-            + 5 * self.dz_prefixes.len()
-            + 32
-            + 32
-            + 4
-            + self.mgmt_vrf.len()
-            + 4
-            + self
-                .interfaces
-                .iter()
-                .map(|iface| iface.size())
-                .sum::<usize>()
-            + 4
-            + 2
-            + 2
+        1 // account_type 
+        + 32 // owner
+        + 16 // index
+        + 1 // bump_seed
+        + 32 // location_pk
+        + 32 // exchange_pk
+        + 1 // device_type
+        + 4 // public_ip
+        + 1 // status
+        + 4 + self.code.len() // code
+        + 4 + 5 * self.dz_prefixes.len() // dz_prefixes
+        + 32 // metrics_publisher_pk
+        + 32 // contributor_pk
+        + 4 + self.mgmt_vrf.len() // mgmt_vrf
+        + 4  + self
+            .interfaces
+            .iter()
+            .map(|iface| iface.size())
+            .sum::<usize>() // interfaces
+        + 4 // reference_count
+        + 2 // users_count
+        + 2 // max_users
+        + 1 // device_health
     }
     fn bump_seed(&self) -> u8 {
         self.bump_seed
@@ -303,6 +356,7 @@ impl TryFrom<&[u8]> for Device {
             reference_count: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             users_count: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             max_users: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            device_health: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::Device {
@@ -494,6 +548,7 @@ mod tests {
             interfaces: vec![],
             users_count: 1,
             max_users: 2,
+            device_health: DeviceHealth::ReadyForUsers,
         };
         let err = val.validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidAccountType);
@@ -520,6 +575,7 @@ mod tests {
             interfaces: vec![],
             users_count: 1,
             max_users: 2,
+            device_health: DeviceHealth::ReadyForUsers,
         };
         let err = val.validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::CodeTooLong);
@@ -546,6 +602,7 @@ mod tests {
             interfaces: vec![],
             users_count: 1,
             max_users: 2,
+            device_health: DeviceHealth::ReadyForUsers,
         };
         let err = val.validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidLocation);
@@ -572,6 +629,7 @@ mod tests {
             interfaces: vec![],
             users_count: 1,
             max_users: 2,
+            device_health: DeviceHealth::ReadyForUsers,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -599,6 +657,7 @@ mod tests {
             interfaces: vec![],
             users_count: 1,
             max_users: 2,
+            device_health: DeviceHealth::ReadyForUsers,
         };
         let err = val.validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidClientIp);
@@ -625,6 +684,7 @@ mod tests {
             interfaces: vec![],
             users_count: 1,
             max_users: 2,
+            device_health: DeviceHealth::ReadyForUsers,
         };
         let err = val.validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidDzPrefix);
@@ -651,6 +711,7 @@ mod tests {
             interfaces: vec![],
             users_count: 0,
             max_users: 0,
+            device_health: DeviceHealth::ReadyForUsers,
         };
         // max_users == 0 means "locked", so validation should still succeed
         val.validate().unwrap();
@@ -677,6 +738,7 @@ mod tests {
             interfaces: vec![],
             users_count: 6,
             max_users: 5,
+            device_health: DeviceHealth::ReadyForUsers,
         };
 
         let err = val.validate();
@@ -704,6 +766,7 @@ mod tests {
             interfaces: vec![],
             users_count: 1,
             max_users: 2,
+            device_health: DeviceHealth::ReadyForUsers,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -748,6 +811,7 @@ mod tests {
             interfaces: vec![invalid_iface],
             users_count: 1,
             max_users: 2,
+            device_health: DeviceHealth::ReadyForUsers,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -810,6 +874,7 @@ mod tests {
             ],
             users_count: 111,
             max_users: 222,
+            device_health: DeviceHealth::ReadyForUsers,
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -836,6 +901,7 @@ mod tests {
         assert_eq!(val.interfaces, val2.interfaces);
         assert_eq!(val.users_count, val2.users_count);
         assert_eq!(val.max_users, val2.max_users);
+        assert_eq!(val.device_health, val2.device_health);
         assert_eq!(data.len(), val.size(), "Invalid Size");
     }
 
@@ -864,6 +930,7 @@ mod tests {
             interfaces: vec![],
             users_count: 0,
             max_users: 0,
+            device_health: DeviceHealth::Pending,
         };
 
         let oldsize = size_of_pre_dzd_metadata_device(val.code.len(), val.dz_prefixes.len());

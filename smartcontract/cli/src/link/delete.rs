@@ -84,6 +84,7 @@ mod tests {
             interfaces: vec![],
             max_users: 255,
             users_count: 0,
+            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
         };
         let location2_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
         let exchange2_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkce");
@@ -107,6 +108,7 @@ mod tests {
             interfaces: vec![],
             max_users: 255,
             users_count: 0,
+            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
         };
 
         let tunnel = Link {
@@ -129,6 +131,7 @@ mod tests {
             owner: pda_pubkey,
             side_a_iface_name: "eth0".to_string(),
             side_z_iface_name: "eth1".to_string(),
+            link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
         };
 
         client

@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file.
 - CLI
   - IP address lookup responses that do not contain a valid IPv4 address (such as upstream timeout messages) are now treated as retryable errors instead of being parsed as IPs.
   - `doublezero resource` commands added for managing ResourceExtension accounts.
+  - Added health_oracle to the smart contract global configuration to manage and authorize health-related operations.
 - Onchain programs
   - Allow contributor owner to update ops manager key
   - Add new arguments on create interface cli command
@@ -19,6 +20,7 @@ All notable changes to this project will be documented in this file.
   - Enforce best practices for instruction implementation across onchain programs
   - Add missing system program account owner checks in multiple instructions
   - Refactor codebase for improved maintainability and future development
+  - Introduced health management for Devices and Links, adding explicit health states, authorized health updates, and related state, processor, and test enhancements.
 - Internet Latency Telemetry
   - Fixed a bug that prevented unresponsive ripeatlas probes from being replaced
   - Fixed a bug that caused ripeatlas samples to be dropped when they were delayed to the next collection cycle

@@ -45,6 +45,7 @@ fn ip_count(device: &DeviceState) -> (u32, u32) {
 mod tests {
     use super::*;
     use doublezero_sdk::{AccountType, Device, DeviceStatus, DeviceType};
+    use doublezero_serviceability::state::device::DeviceHealth;
     use solana_sdk::pubkey::Pubkey;
 
     #[test]
@@ -68,6 +69,7 @@ mod tests {
             interfaces: vec![],
             max_users: 255,
             users_count: 0,
+            device_health: DeviceHealth::ReadyForUsers,
         };
 
         let mut device = DeviceState::new(&device);

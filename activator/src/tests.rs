@@ -30,6 +30,7 @@ pub mod utils {
             sentinel_authority_pk: payer,
             contributor_airdrop_lamports: 1_000_000_000,
             user_airdrop_lamports: 40_000,
+            health_oracle_pk: payer,
         };
 
         client.expect_get_payer().returning(move || payer);

@@ -8,6 +8,7 @@ use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature}
 pub struct SetAuthorityCommand {
     pub activator_authority_pk: Option<Pubkey>,
     pub sentinel_authority_pk: Option<Pubkey>,
+    pub health_oracle_pk: Option<Pubkey>,
 }
 
 impl SetAuthorityCommand {
@@ -20,6 +21,7 @@ impl SetAuthorityCommand {
             DoubleZeroInstruction::SetAuthority(SetAuthorityArgs {
                 activator_authority_pk: self.activator_authority_pk,
                 sentinel_authority_pk: self.sentinel_authority_pk,
+                health_oracle_pk: self.health_oracle_pk,
             }),
             vec![AccountMeta::new(globalstate_pubkey, false)],
         )
@@ -47,6 +49,7 @@ mod tests {
 
         let activator_authority_pk = Pubkey::new_unique();
         let sentinel_authority_pk = Pubkey::new_unique();
+        let health_oracle_pk = Pubkey::new_unique();
 
         client
             .expect_execute_transaction()
@@ -54,6 +57,7 @@ mod tests {
                 predicate::eq(DoubleZeroInstruction::SetAuthority(SetAuthorityArgs {
                     activator_authority_pk: Some(activator_authority_pk),
                     sentinel_authority_pk: Some(sentinel_authority_pk),
+                    health_oracle_pk: Some(health_oracle_pk),
                 })),
                 predicate::eq(vec![AccountMeta::new(globalstate_pubkey, false)]),
             )
@@ -62,6 +66,7 @@ mod tests {
         let res = SetAuthorityCommand {
             activator_authority_pk: Some(activator_authority_pk),
             sentinel_authority_pk: Some(sentinel_authority_pk),
+            health_oracle_pk: Some(health_oracle_pk),
         }
         .execute(&client);
         assert!(res.is_ok());

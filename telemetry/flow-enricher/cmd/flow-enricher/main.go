@@ -123,15 +123,16 @@ func main() {
 	rpcClient := rpc.NewWithRetries(networkConfig.LedgerPublicRPCURL, nil)
 	serviceabilityClient := serviceability.New(rpcClient, networkConfig.ServiceabilityProgramID)
 
-	enricherOpts := []enricher.EnricherOption{
+	e := enricher.NewEnricher(
 		enricher.WithClickhouseWriter(chWriter),
 		enricher.WithFlowConsumer(flowConsumer),
 		enricher.WithLogger(logger),
 		enricher.WithEnricherMetrics(enricher.NewEnricherMetrics(reg)),
 		enricher.WithServiceabilityFetcher(serviceabilityClient),
-		enricher.WithServiceabilityFetchInterval(10 * time.Second),
-	}
-	enricher := enricher.NewEnricher(enricherOpts...)
+		enricher.WithServiceabilityFetchInterval(10*time.Second),
+	)
+
+	e.AddAnnotator(enricher.NewServiceabilityAnnotator(e.ServiceabilityData))
 
 	// start prometheus
 	go func() {
@@ -141,7 +142,7 @@ func main() {
 	}()
 
 	logger.Info("starting enricher...")
-	if err := enricher.Run(ctx); err != nil {
+	if err := e.Run(ctx); err != nil {
 		logger.Error("error while running enricher", "error", err)
 		os.Exit(1)
 	}

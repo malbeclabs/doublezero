@@ -21,14 +21,14 @@ type ServiceabilityAnnotator struct {
 	mu             sync.RWMutex
 }
 
-func NewServiceabilityAnnotator() *ServiceabilityAnnotator {
+func NewServiceabilityAnnotator(getProgramData func() serviceability.ProgramData) *ServiceabilityAnnotator {
 	return &ServiceabilityAnnotator{
-		name: "serviceability annotator",
+		name:           "serviceability annotator",
+		getProgramData: getProgramData,
 	}
 }
 
-func (s *ServiceabilityAnnotator) Init(ctx context.Context, getProgramData func() serviceability.ProgramData) error {
-	s.getProgramData = getProgramData
+func (s *ServiceabilityAnnotator) Init(ctx context.Context) error {
 	s.updateServiceabilityCache()
 
 	go func() {

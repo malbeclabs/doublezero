@@ -7,7 +7,7 @@ import (
 	"os"
 )
 
-// StdoutWriter implements Clicker for writing FlowSamples as JSON to an io.Writer.
+// StdoutWriter implements FlowWriter for writing FlowSamples as JSON to an io.Writer.
 type StdoutWriter struct {
 	writer  io.Writer
 	encoder *json.Encoder

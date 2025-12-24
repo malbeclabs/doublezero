@@ -58,13 +58,13 @@ func (m *MockFlowConsumer) Close() error {
 	return nil
 }
 
-type MockClicker struct {
+type MockClickhouseWriter struct {
 	mu              sync.Mutex
 	ReceivedSamples []FlowSample
 	InsertError     error
 }
 
-func (m *MockClicker) BatchInsert(ctx context.Context, samples []FlowSample) error {
+func (m *MockClickhouseWriter) BatchInsert(ctx context.Context, samples []FlowSample) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.InsertError != nil {
@@ -123,7 +123,7 @@ func TestEnricher(t *testing.T) {
 	mockConsumer := &MockFlowConsumer{
 		SamplesToReturn: [][]FlowSample{expectedSamples},
 	}
-	mockWriter := &MockClicker{}
+	mockWriter := &MockClickhouseWriter{}
 	mockServiceability := &MockServiceabilityFetcher{
 		programData: &serviceability.ProgramData{},
 	}
@@ -172,7 +172,7 @@ func TestEnricherMetrics(t *testing.T) {
 	tests := []struct {
 		name                    string
 		mockConsumer            *MockFlowConsumer
-		mockWriter              *MockClicker
+		mockWriter              *MockClickhouseWriter
 		expectedFlowsProcessed  float64
 		expectedClickhouseErrs  float64
 		expectedKafkaCommitErrs float64
@@ -182,7 +182,7 @@ func TestEnricherMetrics(t *testing.T) {
 			mockConsumer: &MockFlowConsumer{
 				SamplesToReturn: [][]FlowSample{{{SrcAddress: net.IP("1.1.1.1")}, {SrcAddress: net.IP("2.2.2.2")}}},
 			},
-			mockWriter:             &MockClicker{},
+			mockWriter:             &MockClickhouseWriter{},
 			expectedFlowsProcessed: 2,
 		},
 		{
@@ -190,7 +190,7 @@ func TestEnricherMetrics(t *testing.T) {
 			mockConsumer: &MockFlowConsumer{
 				SamplesToReturn: [][]FlowSample{{{SrcAddress: net.IP("1.1.1.1")}, {SrcAddress: net.IP("2.2.2.2")}}},
 			},
-			mockWriter: &MockClicker{
+			mockWriter: &MockClickhouseWriter{
 				InsertError: errors.New("clickhouse failed"),
 			},
 			expectedClickhouseErrs: 1,
@@ -201,7 +201,7 @@ func TestEnricherMetrics(t *testing.T) {
 				SamplesToReturn: [][]FlowSample{{{SrcAddress: net.IP("1.1.1.1")}, {SrcAddress: net.IP("2.2.2.2")}}},
 				CommitError:     errors.New("kafka commit failed"),
 			},
-			mockWriter:              &MockClicker{},
+			mockWriter:              &MockClickhouseWriter{},
 			expectedKafkaCommitErrs: 1,
 		},
 		{
@@ -209,7 +209,7 @@ func TestEnricherMetrics(t *testing.T) {
 			mockConsumer: &MockFlowConsumer{
 				SamplesToReturn: [][]FlowSample{},
 			},
-			mockWriter: &MockClicker{},
+			mockWriter: &MockClickhouseWriter{},
 		},
 	}
 
@@ -255,7 +255,7 @@ func TestEnricherServiceabilityFetching(t *testing.T) {
 
 	enricher := NewEnricher(
 		WithFlowConsumer(&MockFlowConsumer{}),
-		WithClickhouseWriter(&MockClicker{}),
+		WithClickhouseWriter(&MockClickhouseWriter{}),
 		WithServiceabilityFetcher(mockFetcher),
 		WithEnricherMetrics(metrics),
 		WithLogger(logger),

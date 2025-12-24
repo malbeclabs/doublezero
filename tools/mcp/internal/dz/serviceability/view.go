@@ -2,7 +2,6 @@ package dzsvc
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -116,7 +115,7 @@ func (cfg *ViewConfig) Validate() error {
 type View struct {
 	log       *slog.Logger
 	cfg       ViewConfig
-	db        duck.DB
+	store     *Store
 	refreshMu sync.Mutex // prevents concurrent refreshes
 
 	fetchedAt time.Time
@@ -129,15 +128,23 @@ func NewView(cfg ViewConfig) (*View, error) {
 		return nil, err
 	}
 
+	store, err := NewStore(StoreConfig{
+		Logger: cfg.Logger,
+		DB:     cfg.DB,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create store: %w", err)
+	}
+
 	v := &View{
 		log:     cfg.Logger,
 		cfg:     cfg,
-		db:      cfg.DB,
+		store:   store,
 		readyCh: make(chan struct{}),
 	}
 
-	if err := v.initDB(); err != nil {
-		return nil, fmt.Errorf("failed to initialize database: %w", err)
+	if err := v.store.CreateTablesIfNotExists(); err != nil {
+		return nil, fmt.Errorf("failed to create tables: %w", err)
 	}
 
 	return v, nil
@@ -145,6 +152,10 @@ func NewView(cfg ViewConfig) (*View, error) {
 
 func (v *View) Close() error {
 	return nil
+}
+
+func (v *View) Store() *Store {
+	return v.store
 }
 
 // Ready returns true if the view has completed at least one successful refresh
@@ -229,49 +240,24 @@ func (v *View) Refresh(ctx context.Context) error {
 
 	fetchedAt := time.Now().UTC()
 
-	v.log.Debug("serviceability: refreshing contributors", "count", len(contributors))
-	if err := v.refreshTable("dz_contributors", "DELETE FROM dz_contributors", "INSERT INTO dz_contributors (pk, code, name) VALUES (?, ?, ?)", len(contributors), func(stmt *sql.Stmt, i int) error {
-		c := contributors[i]
-		_, err := stmt.Exec(c.PK, c.Code, c.Name)
-		return err
-	}); err != nil {
-		return fmt.Errorf("failed to refresh contributors: %w", err)
+	if err := v.store.ReplaceContributors(contributors); err != nil {
+		return fmt.Errorf("failed to replace contributors: %w", err)
 	}
 
-	v.log.Debug("serviceability: refreshing devices", "count", len(devices))
-	if err := v.refreshTable("dz_devices", "DELETE FROM dz_devices", "INSERT INTO dz_devices (pk, status, device_type, code, public_ip, contributor_pk, metro_pk) VALUES (?, ?, ?, ?, ?, ?, ?)", len(devices), func(stmt *sql.Stmt, i int) error {
-		d := devices[i]
-		_, err := stmt.Exec(d.PK, d.Status, d.DeviceType, d.Code, d.PublicIP, d.ContributorPK, d.MetroPK)
-		return err
-	}); err != nil {
-		return fmt.Errorf("failed to refresh devices: %w", err)
+	if err := v.store.ReplaceDevices(devices); err != nil {
+		return fmt.Errorf("failed to replace devices: %w", err)
 	}
 
-	v.log.Debug("serviceability: refreshing users", "count", len(users))
-	if err := v.refreshTable("dz_users", "DELETE FROM dz_users", "INSERT INTO dz_users (pk, owner_pk, status, kind, client_ip, dz_ip, device_pk) VALUES (?, ?, ?, ?, ?, ?, ?)", len(users), func(stmt *sql.Stmt, i int) error {
-		u := users[i]
-		_, err := stmt.Exec(u.PK, u.OwnerPK, u.Status, u.Kind, u.ClientIP.String(), u.DZIP.String(), u.DevicePK)
-		return err
-	}); err != nil {
-		return fmt.Errorf("failed to refresh users: %w", err)
+	if err := v.store.ReplaceUsers(users); err != nil {
+		return fmt.Errorf("failed to replace users: %w", err)
 	}
 
-	v.log.Debug("serviceability: refreshing metros", "count", len(metros))
-	if err := v.refreshTable("dz_metros", "DELETE FROM dz_metros", "INSERT INTO dz_metros (pk, code, name, longitude, latitude) VALUES (?, ?, ?, ?, ?)", len(metros), func(stmt *sql.Stmt, i int) error {
-		m := metros[i]
-		_, err := stmt.Exec(m.PK, m.Code, m.Name, m.Longitude, m.Latitude)
-		return err
-	}); err != nil {
-		return fmt.Errorf("failed to refresh metros: %w", err)
+	if err := v.store.ReplaceMetros(metros); err != nil {
+		return fmt.Errorf("failed to replace metros: %w", err)
 	}
 
-	v.log.Debug("serviceability: refreshing links", "count", len(links))
-	if err := v.refreshTable("dz_links", "DELETE FROM dz_links", "INSERT INTO dz_links (pk, status, code, tunnel_net, contributor_pk, side_a_pk, side_z_pk, side_a_iface_name, side_z_iface_name, link_type, delay_ns, jitter_ns, bandwidth_bps) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", len(links), func(stmt *sql.Stmt, i int) error {
-		l := links[i]
-		_, err := stmt.Exec(l.PK, l.Status, l.Code, l.TunnelNet, l.ContributorPK, l.SideAPK, l.SideZPK, l.SideAIfaceName, l.SideZIfaceName, l.LinkType, l.DelayNs, l.JitterNs, l.Bandwidth)
-		return err
-	}); err != nil {
-		return fmt.Errorf("failed to refresh links: %w", err)
+	if err := v.store.ReplaceLinks(links); err != nil {
+		return fmt.Errorf("failed to replace links: %w", err)
 	}
 
 	v.fetchedAt = fetchedAt
@@ -284,126 +270,6 @@ func (v *View) Refresh(ctx context.Context) error {
 	return nil
 }
 
-func (v *View) refreshTable(tableName, deleteSQL, insertSQL string, count int, insertFn func(*sql.Stmt, int) error) error {
-	tableRefreshStart := time.Now()
-	v.log.Info("serviceability: refreshing table started", "table", tableName, "rows", count, "start_time", tableRefreshStart)
-	defer func() {
-		duration := time.Since(tableRefreshStart)
-		v.log.Info("serviceability: refreshing table completed", "table", tableName, "duration", duration.String())
-	}()
-
-	v.log.Debug("serviceability: refreshing table", "table", tableName, "rows", count)
-
-	txStart := time.Now()
-	tx, err := v.db.Begin()
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction for %s: %w", tableName, err)
-	}
-	v.log.Debug("serviceability: transaction begun", "table", tableName, "tx_start_time", txStart)
-	defer tx.Rollback()
-
-	if _, err := tx.Exec(deleteSQL); err != nil {
-		return fmt.Errorf("failed to clear %s: %w", tableName, err)
-	}
-
-	if count == 0 {
-		if err := tx.Commit(); err != nil {
-			return fmt.Errorf("failed to commit transaction for %s: %w", tableName, err)
-		}
-		v.log.Debug("serviceability: table refreshed (empty)", "table", tableName)
-		return nil
-	}
-
-	stmt, err := tx.Prepare(insertSQL)
-	if err != nil {
-		return fmt.Errorf("failed to prepare statement for %s: %w", tableName, err)
-	}
-	defer stmt.Close()
-
-	logInterval := min(max(count/10, 1000), 100000)
-
-	for i := range count {
-		if err := insertFn(stmt, i); err != nil {
-			v.log.Error("failed to insert row", "table", tableName, "row", i, "total", count, "error", err)
-			return fmt.Errorf("failed to insert into %s: %w", tableName, err)
-		}
-		if (i+1)%logInterval == 0 || i == count-1 {
-			v.log.Debug("insert progress", "table", tableName, "inserted", i+1, "total", count, "percent", float64(i+1)*100.0/float64(count))
-		}
-	}
-
-	commitStart := time.Now()
-	v.log.Info("serviceability: committing transaction", "table", tableName, "rows", count, "tx_duration", time.Since(txStart).String(), "commit_start_time", commitStart)
-	if err := tx.Commit(); err != nil {
-		txDuration := time.Since(txStart)
-		v.log.Error("serviceability: transaction commit failed", "table", tableName, "error", err, "tx_duration", txDuration.String())
-		return fmt.Errorf("failed to commit transaction for %s: %w", tableName, err)
-	}
-	commitDuration := time.Since(commitStart)
-	v.log.Info("serviceability: transaction committed", "table", tableName, "commit_duration", commitDuration.String(), "total_tx_duration", time.Since(txStart).String())
-
-	v.log.Debug("serviceability: table refreshed", "table", tableName, "rows", count)
-	return nil
-}
-
-func (v *View) initDB() error {
-	schemas := []string{
-		`CREATE TABLE IF NOT EXISTS dz_contributors (
-			pk VARCHAR PRIMARY KEY,
-			code VARCHAR,
-			name VARCHAR
-		)`,
-		`CREATE TABLE IF NOT EXISTS dz_devices (
-			pk VARCHAR PRIMARY KEY,
-			status VARCHAR,
-			device_type VARCHAR,
-			code VARCHAR,
-			public_ip VARCHAR,
-			contributor_pk VARCHAR,
-			metro_pk VARCHAR
-		)`,
-		`CREATE TABLE IF NOT EXISTS dz_metros (
-			pk VARCHAR PRIMARY KEY,
-			code VARCHAR,
-			name VARCHAR,
-			longitude DOUBLE,
-			latitude DOUBLE
-		)`,
-		`CREATE TABLE IF NOT EXISTS dz_links (
-			pk VARCHAR PRIMARY KEY,
-			status VARCHAR,
-			code VARCHAR,
-			tunnel_net VARCHAR,
-			contributor_pk VARCHAR,
-			side_a_pk VARCHAR,
-			side_z_pk VARCHAR,
-			side_a_iface_name VARCHAR,
-			side_z_iface_name VARCHAR,
-			link_type VARCHAR,
-			delay_ns BIGINT,
-			jitter_ns BIGINT,
-			bandwidth_bps BIGINT
-		)`,
-		`CREATE TABLE IF NOT EXISTS dz_users (
-			pk VARCHAR PRIMARY KEY,
-			owner_pk VARCHAR,
-			status VARCHAR,
-			kind VARCHAR,
-			client_ip VARCHAR,
-			dz_ip VARCHAR,
-			device_pk VARCHAR
-		)`,
-	}
-
-	for _, schema := range schemas {
-		if _, err := v.db.Exec(schema); err != nil {
-			return fmt.Errorf("failed to create table: %w", err)
-		}
-	}
-
-	return nil
-}
-
 func convertContributors(onchain []serviceability.Contributor) []Contributor {
 	result := make([]Contributor, len(onchain))
 	for i, contributor := range onchain {
@@ -411,7 +277,7 @@ func convertContributors(onchain []serviceability.Contributor) []Contributor {
 		result[i] = Contributor{
 			PK:   solana.PublicKeyFromBytes(contributor.PubKey[:]).String(),
 			Code: contributor.Code,
-			Name: name, // Empty string if not in mapping
+			Name: name,
 		}
 	}
 	return result

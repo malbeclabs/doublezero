@@ -2,14 +2,10 @@ package dztelem
 
 import (
 	"context"
-	"database/sql"
-	"encoding/csv"
 	"errors"
 	"fmt"
-	"os"
 	"sort"
 	"sync"
-	"time"
 
 	_ "github.com/duckdb/duckdb-go/v2"
 	"github.com/gagliardetto/solana-go"
@@ -96,7 +92,7 @@ func (v *View) refreshInternetMetroLatencySamples(ctx context.Context, circuits 
 	v.log.Debug("telemetry/internet-metro: fetching epochs", "epochs", epochsToFetch, "max_concurrency", v.cfg.MaxConcurrency)
 
 	// Get existing max sample_index for each circuit_code+data_provider+epoch to determine what's new
-	existingMaxIndices, err := v.getExistingInternetMaxSampleIndices(ctx)
+	existingMaxIndices, err := v.store.GetExistingInternetMaxSampleIndices()
 	if err != nil {
 		v.log.Warn("telemetry/internet-metro: failed to get existing max indices, will insert all samples", "error", err)
 		existingMaxIndices = make(map[string]int) // Empty map means no existing data
@@ -230,7 +226,7 @@ done:
 	// Append new samples to table (instead of replacing)
 	if len(allSamples) > 0 {
 		v.log.Debug("telemetry/internet-metro: appending new latency samples", "new_samples", len(allSamples))
-		if err := v.appendInternetMetroLatencySamplesTable(allSamples); err != nil {
+		if err := v.store.AppendInternetMetroLatencySamples(allSamples); err != nil {
 			v.log.Error("telemetry/internet-metro: failed to append latency samples", "error", err, "total_samples", len(allSamples))
 			return fmt.Errorf("failed to append internet-metro latency samples: %w", err)
 		}
@@ -239,36 +235,6 @@ done:
 		v.log.Debug("telemetry/internet-metro: no new samples to insert")
 	}
 	return nil
-}
-
-// getExistingInternetMaxSampleIndices returns a map of circuit_code:data_provider:epoch -> max sample_index
-func (v *View) getExistingInternetMaxSampleIndices(ctx context.Context) (map[string]int, error) {
-	query := `SELECT circuit_code, data_provider, epoch, MAX(sample_index) as max_idx
-	          FROM dz_internet_metro_latency_samples
-	          GROUP BY circuit_code, data_provider, epoch`
-	rows, err := v.db.Query(query)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query existing max indices: %w", err)
-	}
-	defer rows.Close()
-
-	result := make(map[string]int)
-	for rows.Next() {
-		var circuitCode, dataProvider string
-		var epoch uint64
-		var maxIdx sql.NullInt64
-		if err := rows.Scan(&circuitCode, &dataProvider, &epoch, &maxIdx); err != nil {
-			return nil, fmt.Errorf("failed to scan max index: %w", err)
-		}
-		if maxIdx.Valid {
-			key := fmt.Sprintf("%s:%s:%d", circuitCode, dataProvider, epoch)
-			result[key] = int(maxIdx.Int64)
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating max indices: %w", err)
-	}
-	return result, nil
 }
 
 func convertInternetLatencySamples(samples *telemetry.InternetLatencySamples, circuitCode, dataProvider string, epoch uint64) []InternetMetroLatencySample {
@@ -285,94 +251,4 @@ func convertInternetLatencySamples(samples *telemetry.InternetLatencySamples, ci
 		}
 	}
 	return result
-}
-
-// appendInternetMetroLatencySamplesTable appends new samples to the table (does not delete existing data)
-func (v *View) appendInternetMetroLatencySamplesTable(samples []InternetMetroLatencySample) error {
-	tableRefreshStart := time.Now()
-	v.log.Info("telemetry: appending to table started", "table", "dz_internet_metro_latency_samples", "rows", len(samples), "start_time", tableRefreshStart)
-	defer func() {
-		duration := time.Since(tableRefreshStart)
-		v.log.Info("telemetry: appending to table completed", "table", "dz_internet_metro_latency_samples", "duration", duration.String())
-	}()
-
-	if len(samples) == 0 {
-		return nil
-	}
-
-	v.log.Debug("telemetry/internet-metro: starting bulk append using COPY FROM", "samples", len(samples))
-	startTime := time.Now()
-
-	// Create a temporary CSV file for COPY FROM (much faster than INSERT)
-	tmpFile, err := os.CreateTemp("", "internet_metro_latency_samples_*.csv")
-	if err != nil {
-		return fmt.Errorf("failed to create temp file: %w", err)
-	}
-	defer os.Remove(tmpFile.Name())
-	defer tmpFile.Close()
-
-	// Write CSV data
-	v.log.Debug("telemetry/internet-metro: writing CSV file", "samples", len(samples))
-	csvWriter := csv.NewWriter(tmpFile)
-	csvWriter.Comma = ','
-
-	writeStart := time.Now()
-	for _, s := range samples {
-		record := []string{
-			s.CircuitCode,
-			s.DataProvider,
-			fmt.Sprintf("%d", s.Epoch),
-			fmt.Sprintf("%d", s.SampleIndex),
-			fmt.Sprintf("%d", s.TimestampMicroseconds),
-			fmt.Sprintf("%d", s.RTTMicroseconds),
-		}
-		if err := csvWriter.Write(record); err != nil {
-			return fmt.Errorf("failed to write CSV record: %w", err)
-		}
-	}
-	csvWriter.Flush()
-	if err := csvWriter.Error(); err != nil {
-		return fmt.Errorf("CSV writer error: %w", err)
-	}
-	if err := tmpFile.Sync(); err != nil {
-		return fmt.Errorf("failed to sync temp file: %w", err)
-	}
-	writeDuration := time.Since(writeStart)
-	v.log.Debug("telemetry/internet-metro: CSV file written", "duration_ms", writeDuration.Milliseconds(), "file_size_mb", float64(getFileSize(tmpFile))/1024/1024)
-
-	// Close file before COPY (DuckDB needs to open it)
-	tmpFile.Close()
-
-	// Use COPY FROM for bulk load (much faster than INSERT)
-	txStart := time.Now()
-	tx, err := v.db.Begin()
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	v.log.Debug("telemetry: transaction begun", "table", "dz_internet_metro_latency_samples", "tx_start_time", txStart)
-	defer tx.Rollback()
-
-	// Use COPY FROM CSV to append (no TRUNCATE - we're appending)
-	copyStart := time.Now()
-	copySQL := fmt.Sprintf("COPY dz_internet_metro_latency_samples FROM '%s' (FORMAT CSV, HEADER false)", tmpFile.Name())
-	if _, err := tx.Exec(copySQL); err != nil {
-		return fmt.Errorf("failed to COPY FROM CSV: %w", err)
-	}
-	copyDuration := time.Since(copyStart)
-	v.log.Debug("telemetry/internet-metro: COPY FROM completed", "duration", copyDuration.String())
-
-	commitStart := time.Now()
-	v.log.Info("telemetry: committing transaction", "table", "dz_internet_metro_latency_samples", "rows", len(samples), "tx_duration", time.Since(txStart).String(), "commit_start_time", commitStart)
-	if err := tx.Commit(); err != nil {
-		txDuration := time.Since(txStart)
-		v.log.Error("telemetry: transaction commit failed", "table", "dz_internet_metro_latency_samples", "error", err, "tx_duration", txDuration.String())
-		return fmt.Errorf("failed to commit transaction: %w", err)
-	}
-	commitDuration := time.Since(commitStart)
-	v.log.Info("telemetry: transaction committed", "table", "dz_internet_metro_latency_samples", "commit_duration", commitDuration.String(), "total_tx_duration", time.Since(txStart).String())
-
-	totalDuration := time.Since(startTime)
-	rate := float64(len(samples)) / totalDuration.Seconds()
-	v.log.Debug("telemetry/internet-metro: bulk append completed", "samples", len(samples), "total_duration_ms", totalDuration.Milliseconds(), "rate_rows_per_sec", int(rate))
-	return nil
 }

@@ -582,42 +582,24 @@ func TestMCP_Telemetry_View_Refresh_SavesToDB(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, 2, deviceCount)
 
-		// Set up telemetry view and verify it can read from DB
-		mockTelemetryRPC := &mockTelemetryRPC{}
-		mockEpochRPC := &mockEpochRPC{}
-
-		view, err := NewView(ViewConfig{
-			Logger:                 slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			Clock:                  clockwork.NewFakeClock(),
-			TelemetryRPC:           mockTelemetryRPC,
-			EpochRPC:               mockEpochRPC,
-			MaxConcurrency:         32,
-			InternetLatencyAgentPK: solana.MustPublicKeyFromBase58("So11111111111111111111111111111111111111112"),
-			InternetDataProviders:  []string{"test-provider"},
-			DB:                     db,
-			Serviceability:         svcView,
-			RefreshInterval:        time.Second,
-		})
+		// Verify serviceability store can read devices from DB
+		devicesFromServiceability, err := svcView.Store().GetDevices()
 		require.NoError(t, err)
+		require.Len(t, devicesFromServiceability, 2)
+		require.Equal(t, "DEV1", devicesFromServiceability[0].Code)
+		require.Equal(t, "DEV2", devicesFromServiceability[1].Code)
 
-		// Verify telemetry view can read devices from DB
-		devicesFromTelemetry, err := view.getDevicesFromDB()
+		// Verify telemetry view can read links from DB via serviceability store
+		linksFromServiceability, err := svcView.Store().GetLinks()
 		require.NoError(t, err)
-		require.Len(t, devicesFromTelemetry, 2)
-		require.Equal(t, "DEV1", devicesFromTelemetry[0].Code)
-		require.Equal(t, "DEV2", devicesFromTelemetry[1].Code)
+		require.Len(t, linksFromServiceability, 1)
+		require.Equal(t, "LINK1", linksFromServiceability[0].Code)
 
-		// Verify telemetry view can read links from DB
-		linksFromTelemetry, err := view.getLinksFromDB()
+		// Verify telemetry view can read contributors from DB via serviceability store
+		contributorsFromServiceability, err := svcView.Store().GetContributors()
 		require.NoError(t, err)
-		require.Len(t, linksFromTelemetry, 1)
-		require.Equal(t, "LINK1", linksFromTelemetry[0].Code)
-
-		// Verify telemetry view can read contributors from DB
-		contributorsFromTelemetry, err := view.getContributorsFromDB()
-		require.NoError(t, err)
-		require.Len(t, contributorsFromTelemetry, 1)
-		require.Equal(t, "CONTRIB", contributorsFromTelemetry[0].Code)
+		require.Len(t, contributorsFromServiceability, 1)
+		require.Equal(t, "CONTRIB", contributorsFromServiceability[0].Code)
 	})
 }
 

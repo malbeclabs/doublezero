@@ -2,13 +2,9 @@ package dztelem
 
 import (
 	"context"
-	"database/sql"
-	"encoding/csv"
 	"errors"
 	"fmt"
-	"os"
 	"sync"
-	"time"
 
 	_ "github.com/duckdb/duckdb-go/v2"
 	"github.com/gagliardetto/solana-go"
@@ -94,14 +90,6 @@ type DeviceLinkLatencySample struct {
 	RTTMicroseconds       uint32
 }
 
-func (v *View) refreshDeviceLinkCircuitsTable(circuits []DeviceLinkCircuit) error {
-	return v.refreshTable("dz_device_link_circuits", "DELETE FROM dz_device_link_circuits", "INSERT INTO dz_device_link_circuits (code, origin_device_pk, target_device_pk, link_pk, link_code, link_type, contributor_code, committed_rtt, committed_jitter) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", len(circuits), func(stmt *sql.Stmt, i int) error {
-		c := circuits[i]
-		_, err := stmt.Exec(c.Code, c.OriginDevicePK, c.TargetDevicePK, c.LinkPK, c.LinkCode, c.LinkType, c.ContributorCode, c.CommittedRTT, c.CommittedJitter)
-		return err
-	})
-}
-
 func (v *View) refreshDeviceLinkTelemetrySamples(ctx context.Context, circuits []DeviceLinkCircuit) error {
 	v.log.Debug("telemetry/device-link: starting sample refresh", "circuits", len(circuits))
 
@@ -121,7 +109,7 @@ func (v *View) refreshDeviceLinkTelemetrySamples(ctx context.Context, circuits [
 	v.log.Debug("telemetry/device-link: fetching epochs", "epochs", epochsToFetch, "max_concurrency", v.cfg.MaxConcurrency)
 
 	// Get existing max sample_index for each circuit_code+epoch to determine what's new
-	existingMaxIndices, err := v.getExistingMaxSampleIndices(ctx)
+	existingMaxIndices, err := v.store.GetExistingMaxSampleIndices()
 	if err != nil {
 		v.log.Warn("telemetry/device-link: failed to get existing max indices, will insert all samples", "error", err)
 		existingMaxIndices = make(map[string]int) // Empty map means no existing data
@@ -250,7 +238,7 @@ done:
 	// Append new samples to table (instead of replacing)
 	if len(allSamples) > 0 {
 		v.log.Debug("telemetry/device-link: appending new latency samples", "new_samples", len(allSamples))
-		if err := v.appendDeviceLinkLatencySamplesTable(allSamples); err != nil {
+		if err := v.store.AppendDeviceLinkLatencySamples(allSamples); err != nil {
 			v.log.Error("telemetry/device-link: failed to append latency samples", "error", err, "total_samples", len(allSamples))
 			return fmt.Errorf("failed to append latency samples: %w", err)
 		}
@@ -259,36 +247,6 @@ done:
 		v.log.Debug("telemetry/device-link: no new samples to insert")
 	}
 	return nil
-}
-
-// getExistingMaxSampleIndices returns a map of circuit_code:epoch -> max sample_index
-func (v *View) getExistingMaxSampleIndices(ctx context.Context) (map[string]int, error) {
-	query := `SELECT circuit_code, epoch, MAX(sample_index) as max_idx
-	          FROM dz_device_link_latency_samples
-	          GROUP BY circuit_code, epoch`
-	rows, err := v.db.Query(query)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query existing max indices: %w", err)
-	}
-	defer rows.Close()
-
-	result := make(map[string]int)
-	for rows.Next() {
-		var circuitCode string
-		var epoch uint64
-		var maxIdx sql.NullInt64
-		if err := rows.Scan(&circuitCode, &epoch, &maxIdx); err != nil {
-			return nil, fmt.Errorf("failed to scan max index: %w", err)
-		}
-		if maxIdx.Valid {
-			key := fmt.Sprintf("%s:%d", circuitCode, epoch)
-			result[key] = int(maxIdx.Int64)
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating max indices: %w", err)
-	}
-	return result, nil
 }
 
 func convertDeviceLatencySamples(samples *telemetry.DeviceLatencySamples, circuitCode string, epoch uint64) []DeviceLinkLatencySample {
@@ -304,100 +262,4 @@ func convertDeviceLatencySamples(samples *telemetry.DeviceLatencySamples, circui
 		}
 	}
 	return result
-}
-
-// appendDeviceLinkLatencySamplesTable appends new samples to the table (does not delete existing data)
-func (v *View) appendDeviceLinkLatencySamplesTable(samples []DeviceLinkLatencySample) error {
-	tableRefreshStart := time.Now()
-	v.log.Info("telemetry: appending to table started", "table", "dz_device_link_latency_samples", "rows", len(samples), "start_time", tableRefreshStart)
-	defer func() {
-		duration := time.Since(tableRefreshStart)
-		v.log.Info("telemetry: appending to table completed", "table", "dz_device_link_latency_samples", "duration", duration.String())
-	}()
-
-	if len(samples) == 0 {
-		return nil
-	}
-
-	v.log.Debug("telemetry/device-link: starting bulk append using COPY FROM", "samples", len(samples))
-	startTime := time.Now()
-
-	// Create a temporary CSV file for COPY FROM (much faster than INSERT)
-	tmpFile, err := os.CreateTemp("", "dz_device_link_latency_samples_*.csv")
-	if err != nil {
-		return fmt.Errorf("failed to create temp file: %w", err)
-	}
-	defer os.Remove(tmpFile.Name())
-	defer tmpFile.Close()
-
-	// Write CSV data
-	v.log.Debug("telemetry/device-link: writing CSV file", "samples", len(samples))
-	csvWriter := csv.NewWriter(tmpFile)
-	csvWriter.Comma = ','
-
-	writeStart := time.Now()
-	for _, s := range samples {
-		record := []string{
-			s.CircuitCode,
-			fmt.Sprintf("%d", s.Epoch),
-			fmt.Sprintf("%d", s.SampleIndex),
-			fmt.Sprintf("%d", s.TimestampMicroseconds),
-			fmt.Sprintf("%d", s.RTTMicroseconds),
-		}
-		if err := csvWriter.Write(record); err != nil {
-			return fmt.Errorf("failed to write CSV record: %w", err)
-		}
-	}
-	csvWriter.Flush()
-	if err := csvWriter.Error(); err != nil {
-		return fmt.Errorf("CSV writer error: %w", err)
-	}
-	if err := tmpFile.Sync(); err != nil {
-		return fmt.Errorf("failed to sync temp file: %w", err)
-	}
-	writeDuration := time.Since(writeStart)
-	v.log.Debug("telemetry/device-link: CSV file written", "duration_ms", writeDuration.Milliseconds(), "file_size_mb", float64(getFileSize(tmpFile))/1024/1024)
-
-	// Get file info for COPY
-	fileInfo, err := tmpFile.Stat()
-	if err != nil {
-		return fmt.Errorf("failed to stat temp file: %w", err)
-	}
-	v.log.Debug("telemetry/device-link: file ready for COPY", "size_bytes", fileInfo.Size())
-
-	// Close file before COPY (DuckDB needs to open it)
-	tmpFile.Close()
-
-	// Use COPY FROM for bulk load (much faster than INSERT)
-	txStart := time.Now()
-	tx, err := v.db.Begin()
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	v.log.Debug("telemetry: transaction begun", "table", "dz_device_link_latency_samples", "tx_start_time", txStart)
-	defer tx.Rollback()
-
-	// Use COPY FROM CSV to append (no TRUNCATE - we're appending)
-	copyStart := time.Now()
-	copySQL := fmt.Sprintf("COPY dz_device_link_latency_samples FROM '%s' (FORMAT CSV, HEADER false)", tmpFile.Name())
-	if _, err := tx.Exec(copySQL); err != nil {
-		return fmt.Errorf("failed to COPY FROM CSV: %w", err)
-	}
-	copyDuration := time.Since(copyStart)
-	v.log.Debug("telemetry/device-link: COPY FROM completed", "duration", copyDuration.String())
-
-	commitStart := time.Now()
-	v.log.Info("telemetry: committing transaction", "table", "dz_device_link_latency_samples", "rows", len(samples), "tx_duration", time.Since(txStart).String(), "commit_start_time", commitStart)
-	if err := tx.Commit(); err != nil {
-		txDuration := time.Since(txStart)
-		v.log.Error("telemetry: transaction commit failed", "table", "dz_device_link_latency_samples", "error", err, "tx_duration", txDuration.String())
-		return fmt.Errorf("failed to commit transaction: %w", err)
-	}
-	commitDuration := time.Since(commitStart)
-	v.log.Info("telemetry: transaction committed", "table", "dz_device_link_latency_samples", "commit_duration", commitDuration.String(), "total_tx_duration", time.Since(txStart).String())
-
-	totalDuration := time.Since(startTime)
-	rate := float64(len(samples)) / totalDuration.Seconds()
-	v.log.Debug("telemetry/device-link: bulk append completed", "samples", len(samples), "total_duration_ms", totalDuration.Milliseconds(), "rate_rows_per_sec", int(rate))
-	return nil
 }

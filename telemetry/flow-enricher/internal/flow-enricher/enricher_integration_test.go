@@ -246,6 +246,8 @@ func TestFlowEnrichment(t *testing.T) {
 		WithEnricherMetrics(NewEnricherMetrics(reg)),
 		WithServiceabilityFetcher(mockServiceability),
 	)
+	enricher.AddAnnotator(NewServiceabilityAnnotator(enricher.ServiceabilityData))
+
 	go func() {
 		if err := enricher.Run(ctx); err != nil {
 			logger.Error("error during enrichment", "error", err)

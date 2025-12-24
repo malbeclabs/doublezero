@@ -321,9 +321,13 @@ func run() error {
 				}
 
 				messageKey := fmt.Sprintf("%s:%s", msgEv.Channel, msgEv.TimeStamp)
-				respondedMessagesMu.RLock()
+				respondedMessagesMu.Lock()
 				_, alreadyResponded := respondedMessages[messageKey]
-				respondedMessagesMu.RUnlock()
+				if !alreadyResponded {
+					// Mark as responded BEFORE starting goroutine to prevent race condition with message event
+					respondedMessages[messageKey] = time.Now()
+				}
+				respondedMessagesMu.Unlock()
 
 				if alreadyResponded {
 					log.Info("skipping already responded app_mention", "message_ts", msgEv.TimeStamp, "event_id", eventID)
@@ -358,12 +362,11 @@ func run() error {
 
 			// For channels, respond if bot is mentioned OR if replying in an active thread (where bot was mentioned in root message)
 			if isChannel {
-				log.Info("processing channel message", "channel", ev.Channel, "thread_ts", ev.ThreadTimeStamp, "is_thread_reply", ev.ThreadTimeStamp != "")
 				// Check if bot is mentioned in the message text
-				// Mentions are in format <@USERID> or <@USERID|username>
+				// If mentioned in a top-level message, skip this message event - app_mention event will handle it instead
+				// This prevents duplicate processing when both app_mention and message events are sent
 				botMentioned := false
 				if botUserID != "" {
-					// Check for <@USERID> or <@USERID|username> format
 					mentionPattern1 := fmt.Sprintf("<@%s>", botUserID)
 					mentionPattern2 := fmt.Sprintf("<@%s|", botUserID)
 					botMentioned = strings.Contains(ev.Text, mentionPattern1) || strings.Contains(ev.Text, mentionPattern2)
@@ -371,6 +374,15 @@ func run() error {
 				} else {
 					log.Warn("bot user ID not set, cannot check for mentions", "channel", ev.Channel)
 				}
+
+				// If bot is mentioned in a top-level message, skip - app_mention event handles it
+				// (We still process mentions in thread replies via message events, as app_mention may not always fire for those)
+				if botMentioned && ev.ThreadTimeStamp == "" {
+					log.Debug("skipping message event with bot mention in top-level message (app_mention event will handle it)", "channel", ev.Channel, "message_ts", ev.TimeStamp)
+					return
+				}
+
+				log.Info("processing channel message", "channel", ev.Channel, "thread_ts", ev.ThreadTimeStamp, "is_thread_reply", ev.ThreadTimeStamp != "", "bot_mentioned", botMentioned)
 
 				// Check if this is a reply in an active thread (where bot was mentioned in the root message)
 				inActiveThread := false
@@ -441,9 +453,13 @@ func run() error {
 
 			// Check if we've already responded to this message (prevent duplicate error messages)
 			messageKey := fmt.Sprintf("%s:%s", ev.Channel, ev.TimeStamp)
-			respondedMessagesMu.RLock()
+			respondedMessagesMu.Lock()
 			_, alreadyResponded := respondedMessages[messageKey]
-			respondedMessagesMu.RUnlock()
+			if !alreadyResponded {
+				// Mark as responded BEFORE starting goroutine to prevent race condition
+				respondedMessages[messageKey] = time.Now()
+			}
+			respondedMessagesMu.Unlock()
 
 			if alreadyResponded {
 				log.Info("skipping already responded message", "message_ts", ev.TimeStamp, "event_id", eventID)
@@ -569,6 +585,18 @@ func handleMessage(
 	botUserID string,
 	isChannel bool,
 ) {
+	// Log the message being replied to at the start
+	log.Info("replying to message",
+		"channel", ev.Channel,
+		"user", ev.User,
+		"message_ts", ev.TimeStamp,
+		"thread_ts", ev.ThreadTimeStamp,
+		"text", ev.Text,
+		"message_key", messageKey,
+		"envelope_id", envelopeID,
+		"is_channel", isChannel,
+	)
+
 	txt := strings.TrimSpace(ev.Text)
 
 	// Remove bot mention from text for cleaner processing

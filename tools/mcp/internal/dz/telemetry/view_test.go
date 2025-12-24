@@ -650,3 +650,384 @@ func (m *mockEpochRPCWithEpoch) GetEpochInfo(ctx context.Context, commitment sol
 func key(origin, target, link solana.PublicKey, epoch uint64) string {
 	return fmt.Sprintf("%s:%s:%s:%d", origin.String(), target.String(), link.String(), epoch)
 }
+
+func TestMCP_Telemetry_View_IncrementalAppend(t *testing.T) {
+	t.Parallel()
+
+	t.Run("device-link samples are appended incrementally", func(t *testing.T) {
+		t.Parallel()
+
+		db, err := sql.Open("duckdb", "")
+		require.NoError(t, err)
+		defer db.Close()
+
+		// Set up serviceability view
+		devicePK1 := [32]byte{1, 2, 3, 4}
+		devicePK2 := [32]byte{5, 6, 7, 8}
+		linkPK := [32]byte{9, 10, 11, 12}
+		contributorPK := [32]byte{13, 14, 15, 16}
+		metroPK := [32]byte{17, 18, 19, 20}
+		ownerPK := [32]byte{21, 22, 23, 24}
+		publicIP1 := [4]byte{192, 168, 1, 1}
+		publicIP2 := [4]byte{192, 168, 1, 2}
+		tunnelNet := [5]byte{10, 0, 0, 0, 24}
+
+		svcMockRPC := &MockServiceabilityRPC{
+			getProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+				return &serviceability.ProgramData{
+					Contributors: []serviceability.Contributor{
+						{
+							PubKey: contributorPK,
+							Owner:  ownerPK,
+							Code:   "CONTRIB",
+						},
+					},
+					Devices: []serviceability.Device{
+						{
+							PubKey:            devicePK1,
+							Owner:             ownerPK,
+							Status:            serviceability.DeviceStatusActivated,
+							DeviceType:        serviceability.DeviceDeviceTypeHybrid,
+							Code:              "DEV1",
+							PublicIp:          publicIP1,
+							ContributorPubKey: contributorPK,
+							ExchangePubKey:    metroPK,
+						},
+						{
+							PubKey:            devicePK2,
+							Owner:             ownerPK,
+							Status:            serviceability.DeviceStatusActivated,
+							DeviceType:        serviceability.DeviceDeviceTypeHybrid,
+							Code:              "DEV2",
+							PublicIp:          publicIP2,
+							ContributorPubKey: contributorPK,
+							ExchangePubKey:    metroPK,
+						},
+					},
+					Links: []serviceability.Link{
+						{
+							PubKey:            linkPK,
+							Owner:             ownerPK,
+							Status:            serviceability.LinkStatusActivated,
+							Code:              "LINK1",
+							TunnelNet:         tunnelNet,
+							ContributorPubKey: contributorPK,
+							SideAPubKey:       devicePK1,
+							SideZPubKey:       devicePK2,
+							SideAIfaceName:    "eth0",
+							SideZIfaceName:    "eth1",
+							LinkType:          serviceability.LinkLinkTypeWAN,
+							DelayNs:           1000000,
+							JitterNs:          50000,
+						},
+					},
+				}, nil
+			},
+		}
+
+		svcView, err := dzsvc.NewView(dzsvc.ViewConfig{
+			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Clock:             clockwork.NewFakeClock(),
+			ServiceabilityRPC: svcMockRPC,
+			RefreshInterval:   time.Second,
+			DB:                db,
+		})
+		require.NoError(t, err)
+
+		ctx := context.Background()
+		err = svcView.Refresh(ctx)
+		require.NoError(t, err)
+
+		// Set up telemetry RPC to return samples with NextSampleIndex
+		originPK := solana.PublicKeyFromBytes(devicePK1[:])
+		targetPK := solana.PublicKeyFromBytes(devicePK2[:])
+		linkPKPubKey := solana.PublicKeyFromBytes(linkPK[:])
+
+		// First refresh: samples 0-2 (NextSampleIndex = 3)
+		refreshCount := 0
+		mockTelemetryRPC := &mockTelemetryRPCWithIncrementalSamples{
+			getSamplesFunc: func(originDevicePK, targetDevicePK, linkPK solana.PublicKey, epoch uint64) (*telemetry.DeviceLatencySamples, error) {
+				sampleKey := key(originPK, targetPK, linkPKPubKey, epoch)
+				expectedKey := key(originPK, targetPK, linkPKPubKey, 100)
+				if sampleKey != expectedKey {
+					return nil, telemetry.ErrAccountNotFound
+				}
+
+				refreshCount++
+				if refreshCount == 1 {
+					// First refresh: return samples 0-2
+					return &telemetry.DeviceLatencySamples{
+						DeviceLatencySamplesHeader: telemetry.DeviceLatencySamplesHeader{
+							StartTimestampMicroseconds:   1_600_000_000,
+							SamplingIntervalMicroseconds: 100_000,
+							NextSampleIndex:              3, // 3 samples (indices 0, 1, 2)
+						},
+						Samples: []uint32{5000, 6000, 7000},
+					}, nil
+				} else {
+					// Second refresh: return samples 0-4 (new samples 3-4 added)
+					return &telemetry.DeviceLatencySamples{
+						DeviceLatencySamplesHeader: telemetry.DeviceLatencySamplesHeader{
+							StartTimestampMicroseconds:   1_600_000_000,
+							SamplingIntervalMicroseconds: 100_000,
+							NextSampleIndex:              5, // 5 samples (indices 0-4)
+						},
+						Samples: []uint32{5000, 6000, 7000, 8000, 9000},
+					}, nil
+				}
+			},
+		}
+
+		mockEpochRPC := &mockEpochRPCWithEpoch{epoch: 100}
+
+		view, err := NewView(ViewConfig{
+			Logger:                 slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Clock:                  clockwork.NewFakeClock(),
+			TelemetryRPC:           mockTelemetryRPC,
+			EpochRPC:               mockEpochRPC,
+			MaxConcurrency:         32,
+			InternetLatencyAgentPK: solana.MustPublicKeyFromBase58("So11111111111111111111111111111111111111112"),
+			InternetDataProviders:  []string{"test-provider"},
+			DB:                     db,
+			Serviceability:         svcView,
+			RefreshInterval:        time.Second,
+		})
+		require.NoError(t, err)
+
+		// First refresh: should insert 3 samples
+		err = view.Refresh(ctx)
+		require.NoError(t, err)
+
+		var sampleCount int
+		err = db.QueryRow("SELECT COUNT(*) FROM dz_device_link_latency_samples").Scan(&sampleCount)
+		require.NoError(t, err)
+		require.Equal(t, 3, sampleCount, "first refresh should insert 3 samples")
+
+		// Verify the first 3 samples are correct
+		var maxIdx int64
+		err = db.QueryRow("SELECT MAX(sample_index) FROM dz_device_link_latency_samples").Scan(&maxIdx)
+		require.NoError(t, err)
+		require.Equal(t, int64(2), maxIdx, "max sample_index should be 2 after first refresh")
+
+		// Second refresh: should append only the 2 new samples (indices 3-4)
+		err = view.Refresh(ctx)
+		require.NoError(t, err)
+
+		err = db.QueryRow("SELECT COUNT(*) FROM dz_device_link_latency_samples").Scan(&sampleCount)
+		require.NoError(t, err)
+		require.Equal(t, 5, sampleCount, "second refresh should append 2 more samples, total 5")
+
+		// Verify all samples are present and correct
+		var rttUs int64
+		err = db.QueryRow("SELECT rtt_us FROM dz_device_link_latency_samples WHERE sample_index = 0").Scan(&rttUs)
+		require.NoError(t, err)
+		require.Equal(t, int64(5000), rttUs, "sample 0 should remain unchanged")
+
+		err = db.QueryRow("SELECT rtt_us FROM dz_device_link_latency_samples WHERE sample_index = 2").Scan(&rttUs)
+		require.NoError(t, err)
+		require.Equal(t, int64(7000), rttUs, "sample 2 should remain unchanged")
+
+		err = db.QueryRow("SELECT rtt_us FROM dz_device_link_latency_samples WHERE sample_index = 3").Scan(&rttUs)
+		require.NoError(t, err)
+		require.Equal(t, int64(8000), rttUs, "sample 3 should be newly inserted")
+
+		err = db.QueryRow("SELECT rtt_us FROM dz_device_link_latency_samples WHERE sample_index = 4").Scan(&rttUs)
+		require.NoError(t, err)
+		require.Equal(t, int64(9000), rttUs, "sample 4 should be newly inserted")
+
+		// Verify max index is now 4
+		err = db.QueryRow("SELECT MAX(sample_index) FROM dz_device_link_latency_samples").Scan(&maxIdx)
+		require.NoError(t, err)
+		require.Equal(t, int64(4), maxIdx, "max sample_index should be 4 after second refresh")
+	})
+
+	t.Run("internet-metro samples are appended incrementally", func(t *testing.T) {
+		t.Parallel()
+
+		db, err := sql.Open("duckdb", "")
+		require.NoError(t, err)
+		defer db.Close()
+
+		// Set up serviceability view with metros
+		metroPK1 := [32]byte{1, 2, 3, 4}
+		metroPK2 := [32]byte{5, 6, 7, 8}
+		contributorPK := [32]byte{13, 14, 15, 16}
+		ownerPK := [32]byte{21, 22, 23, 24}
+
+		svcMockRPC := &MockServiceabilityRPC{
+			getProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+				return &serviceability.ProgramData{
+					Contributors: []serviceability.Contributor{
+						{
+							PubKey: contributorPK,
+							Owner:  ownerPK,
+							Code:   "CONTRIB",
+						},
+					},
+					Exchanges: []serviceability.Exchange{
+						{
+							PubKey: metroPK1,
+							Owner:  ownerPK,
+							Code:   "NYC",
+							Name:   "New York",
+							Status: serviceability.ExchangeStatusActivated,
+							Lat:    40.7128,
+							Lng:    -74.0060,
+						},
+						{
+							PubKey: metroPK2,
+							Owner:  ownerPK,
+							Code:   "LAX",
+							Name:   "Los Angeles",
+							Status: serviceability.ExchangeStatusActivated,
+							Lat:    34.0522,
+							Lng:    -118.2437,
+						},
+					},
+				}, nil
+			},
+		}
+
+		svcView, err := dzsvc.NewView(dzsvc.ViewConfig{
+			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Clock:             clockwork.NewFakeClock(),
+			ServiceabilityRPC: svcMockRPC,
+			RefreshInterval:   time.Second,
+			DB:                db,
+		})
+		require.NoError(t, err)
+
+		ctx := context.Background()
+		err = svcView.Refresh(ctx)
+		require.NoError(t, err)
+
+		// Set up telemetry RPC to return internet samples with NextSampleIndex
+		originPK := solana.PublicKeyFromBytes(metroPK1[:])
+		targetPK := solana.PublicKeyFromBytes(metroPK2[:])
+		agentPK := solana.MustPublicKeyFromBase58("So11111111111111111111111111111111111111112")
+
+		refreshCount := 0
+		mockTelemetryRPC := &mockTelemetryRPCWithIncrementalInternetSamples{
+			getSamplesFunc: func(dataProviderName string, originLocationPK, targetLocationPK, agentPK solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error) {
+				if originLocationPK.String() != originPK.String() || targetLocationPK.String() != targetPK.String() || epoch != 100 {
+					return nil, telemetry.ErrAccountNotFound
+				}
+
+				refreshCount++
+				if refreshCount == 1 {
+					// First refresh: return samples 0-1
+					return &telemetry.InternetLatencySamples{
+						InternetLatencySamplesHeader: telemetry.InternetLatencySamplesHeader{
+							StartTimestampMicroseconds:   1_700_000_000,
+							SamplingIntervalMicroseconds: 250_000,
+							NextSampleIndex:              2, // 2 samples (indices 0, 1)
+						},
+						Samples: []uint32{10000, 11000},
+					}, nil
+				} else {
+					// Second refresh: return samples 0-3 (new samples 2-3 added)
+					return &telemetry.InternetLatencySamples{
+						InternetLatencySamplesHeader: telemetry.InternetLatencySamplesHeader{
+							StartTimestampMicroseconds:   1_700_000_000,
+							SamplingIntervalMicroseconds: 250_000,
+							NextSampleIndex:              4, // 4 samples (indices 0-3)
+						},
+						Samples: []uint32{10000, 11000, 12000, 13000},
+					}, nil
+				}
+			},
+		}
+
+		mockEpochRPC := &mockEpochRPCWithEpoch{epoch: 100}
+
+		view, err := NewView(ViewConfig{
+			Logger:                 slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Clock:                  clockwork.NewFakeClock(),
+			TelemetryRPC:           mockTelemetryRPC,
+			EpochRPC:               mockEpochRPC,
+			MaxConcurrency:         32,
+			InternetLatencyAgentPK: agentPK,
+			InternetDataProviders:  []string{"test-provider"},
+			DB:                     db,
+			Serviceability:         svcView,
+			RefreshInterval:        time.Second,
+		})
+		require.NoError(t, err)
+
+		// First refresh: should insert 2 samples
+		err = view.Refresh(ctx)
+		require.NoError(t, err)
+
+		var sampleCount int
+		err = db.QueryRow("SELECT COUNT(*) FROM dz_internet_metro_latency_samples").Scan(&sampleCount)
+		require.NoError(t, err)
+		require.Equal(t, 2, sampleCount, "first refresh should insert 2 samples")
+
+		// Verify the first 2 samples are correct
+		var maxIdx int64
+		err = db.QueryRow("SELECT MAX(sample_index) FROM dz_internet_metro_latency_samples").Scan(&maxIdx)
+		require.NoError(t, err)
+		require.Equal(t, int64(1), maxIdx, "max sample_index should be 1 after first refresh")
+
+		// Second refresh: should append only the 2 new samples (indices 2-3)
+		err = view.Refresh(ctx)
+		require.NoError(t, err)
+
+		err = db.QueryRow("SELECT COUNT(*) FROM dz_internet_metro_latency_samples").Scan(&sampleCount)
+		require.NoError(t, err)
+		require.Equal(t, 4, sampleCount, "second refresh should append 2 more samples, total 4")
+
+		// Verify all samples are present and correct
+		var rttUs int64
+		err = db.QueryRow("SELECT rtt_us FROM dz_internet_metro_latency_samples WHERE sample_index = 0").Scan(&rttUs)
+		require.NoError(t, err)
+		require.Equal(t, int64(10000), rttUs, "sample 0 should remain unchanged")
+
+		err = db.QueryRow("SELECT rtt_us FROM dz_internet_metro_latency_samples WHERE sample_index = 1").Scan(&rttUs)
+		require.NoError(t, err)
+		require.Equal(t, int64(11000), rttUs, "sample 1 should remain unchanged")
+
+		err = db.QueryRow("SELECT rtt_us FROM dz_internet_metro_latency_samples WHERE sample_index = 2").Scan(&rttUs)
+		require.NoError(t, err)
+		require.Equal(t, int64(12000), rttUs, "sample 2 should be newly inserted")
+
+		err = db.QueryRow("SELECT rtt_us FROM dz_internet_metro_latency_samples WHERE sample_index = 3").Scan(&rttUs)
+		require.NoError(t, err)
+		require.Equal(t, int64(13000), rttUs, "sample 3 should be newly inserted")
+
+		// Verify max index is now 3
+		err = db.QueryRow("SELECT MAX(sample_index) FROM dz_internet_metro_latency_samples").Scan(&maxIdx)
+		require.NoError(t, err)
+		require.Equal(t, int64(3), maxIdx, "max sample_index should be 3 after second refresh")
+	})
+}
+
+type mockTelemetryRPCWithIncrementalSamples struct {
+	getSamplesFunc func(originDevicePK, targetDevicePK, linkPK solana.PublicKey, epoch uint64) (*telemetry.DeviceLatencySamples, error)
+}
+
+func (m *mockTelemetryRPCWithIncrementalSamples) GetDeviceLatencySamples(ctx context.Context, originDevicePK, targetDevicePK, linkPK solana.PublicKey, epoch uint64) (*telemetry.DeviceLatencySamples, error) {
+	if m.getSamplesFunc != nil {
+		return m.getSamplesFunc(originDevicePK, targetDevicePK, linkPK, epoch)
+	}
+	return nil, telemetry.ErrAccountNotFound
+}
+
+func (m *mockTelemetryRPCWithIncrementalSamples) GetInternetLatencySamples(ctx context.Context, dataProviderName string, originLocationPK, targetLocationPK, agentPK solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error) {
+	return nil, telemetry.ErrAccountNotFound
+}
+
+type mockTelemetryRPCWithIncrementalInternetSamples struct {
+	getSamplesFunc func(dataProviderName string, originLocationPK, targetLocationPK, agentPK solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error)
+}
+
+func (m *mockTelemetryRPCWithIncrementalInternetSamples) GetDeviceLatencySamples(ctx context.Context, originDevicePK, targetDevicePK, linkPK solana.PublicKey, epoch uint64) (*telemetry.DeviceLatencySamples, error) {
+	return nil, telemetry.ErrAccountNotFound
+}
+
+func (m *mockTelemetryRPCWithIncrementalInternetSamples) GetInternetLatencySamples(ctx context.Context, dataProviderName string, originLocationPK, targetLocationPK, agentPK solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error) {
+	if m.getSamplesFunc != nil {
+		return m.getSamplesFunc(dataProviderName, originLocationPK, targetLocationPK, agentPK, epoch)
+	}
+	return nil, telemetry.ErrAccountNotFound
+}

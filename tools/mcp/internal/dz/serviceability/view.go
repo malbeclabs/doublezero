@@ -20,7 +20,22 @@ import (
 type Contributor struct {
 	PK   string
 	Code string
+	Name string
 }
+
+var (
+	contributorNamesByCode = map[string]string{
+		"jump_":    "Jump Crypto",
+		"dgt":      "Distributed Global",
+		"cherry":   "Cherry Servers",
+		"cdrw":     "CDRW",
+		"glxy":     "Galaxy",
+		"latitude": "Latitude",
+		"rox":      "RockawayX",
+		"s3v":      "S3V",
+		"stakefac": "Staking Facilities",
+	}
+)
 
 type Device struct {
 	PK            string
@@ -214,9 +229,9 @@ func (v *View) Refresh(ctx context.Context) error {
 	fetchedAt := time.Now().UTC()
 
 	v.log.Debug("serviceability: refreshing contributors", "count", len(contributors))
-	if err := v.refreshTable("dz_contributors", "DELETE FROM dz_contributors", "INSERT INTO dz_contributors (pk, code) VALUES (?, ?)", len(contributors), func(stmt *sql.Stmt, i int) error {
+	if err := v.refreshTable("dz_contributors", "DELETE FROM dz_contributors", "INSERT INTO dz_contributors (pk, code, name) VALUES (?, ?, ?)", len(contributors), func(stmt *sql.Stmt, i int) error {
 		c := contributors[i]
-		_, err := stmt.Exec(c.PK, c.Code)
+		_, err := stmt.Exec(c.PK, c.Code, c.Name)
 		return err
 	}); err != nil {
 		return fmt.Errorf("failed to refresh contributors: %w", err)
@@ -334,7 +349,8 @@ func (v *View) initDB() error {
 	schemas := []string{
 		`CREATE TABLE IF NOT EXISTS dz_contributors (
 			pk VARCHAR PRIMARY KEY,
-			code VARCHAR
+			code VARCHAR,
+			name VARCHAR
 		)`,
 		`CREATE TABLE IF NOT EXISTS dz_devices (
 			pk VARCHAR PRIMARY KEY,
@@ -389,9 +405,11 @@ func (v *View) initDB() error {
 func convertContributors(onchain []serviceability.Contributor) []Contributor {
 	result := make([]Contributor, len(onchain))
 	for i, contributor := range onchain {
+		name := contributorNamesByCode[contributor.Code]
 		result[i] = Contributor{
 			PK:   solana.PublicKeyFromBytes(contributor.PubKey[:]).String(),
 			Code: contributor.Code,
+			Name: name, // Empty string if not in mapping
 		}
 	}
 	return result

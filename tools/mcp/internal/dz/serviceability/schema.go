@@ -152,7 +152,8 @@ var tableSchemas = []TableSchema{
 		Description: "Contributors in the DoubleZero network. Each contributor operates one or more devices and links. You can join using contributor code from devices and links.",
 		Columns: []ColumnInfo{
 			{Name: "pk", Type: "VARCHAR", Description: "Primary key. Join target for devices.contributor_pk, links.contributor_pk"},
-			{Name: "code", Type: "VARCHAR", Description: "Contributor code. Human readable identifier for the contributor"},
+			{Name: "code", Type: "VARCHAR", Description: "Contributor code. Short human readable identifier for the contributor."},
+			{Name: "name", Type: "VARCHAR", Description: "Contributor name. Full human readable name for the contributor."},
 		},
 	},
 	{

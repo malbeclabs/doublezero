@@ -73,13 +73,17 @@ All notable changes to this project will be documented in this file.
   - Introduced health management for Devices and Links, adding explicit health states, authorized health updates, and related state, processor, and test enhancements.
   - Require that BanUser can only be executed when the target user's status is PendingBan, enforcing the expected user ban workflow (request-ban -> ban).
   - Introduce desired status to Link and Devices
+  - Introduced health management for Devices and Links, adding explicit health states, authorized health updates, and related state, processor, and test enhancements.
   - Restrict DeleteDeviceInterface to interfaces in Activated or Unlinked status; attempting to delete interfaces in other statuses now fails with InvalidStatus.
   - Updated validation to allow public IP prefixes for CYOA/DIA, removing the restriction imposed by type-based checks.
   - Transit devices can now be provisioned without a public IP, aligning the requirements with their actual networking model and avoiding unnecessary configuration constraints.
   - Enforce that ActivateDeviceInterface only activates interfaces in Pending or Unlinked status, returning InvalidStatus for all other interface states
+  - Introduce desired status to Link and Devices
 - Internet Latency Telemetry
   - Fixed a bug that prevented unresponsive ripeatlas probes from being replaced
   - Fixed a bug that caused ripeatlas samples to be dropped when they were delayed to the next collection cycle
+- Link & device Latency Telemetry 
+  - Telemetry data can now be received while entities are in provisioning and draining states.
 - Device controller
   - Add histogram metric for GetConfig request duration
   - Add gRPC middleware for prometheus metrics

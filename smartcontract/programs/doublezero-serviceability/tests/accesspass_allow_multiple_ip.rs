@@ -183,6 +183,7 @@ async fn test_accesspass_allow_multiple_ip() {
             dz_prefixes: "100.1.0.0/23".parse().unwrap(),
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
+            desired_status: Some(DeviceDesiredStatus::Activated),
         }),
         vec![
             AccountMeta::new(device_pubkey, false),

@@ -103,6 +103,14 @@ func (v *View) refreshInternetMetroLatencySamples(ctx context.Context, circuits 
 	var circuitsWithSamplesMu sync.Mutex
 
 	for _, circuit := range circuits {
+		// Check for context cancellation before starting new goroutines
+		select {
+		case <-ctx.Done():
+			v.log.Debug("telemetry/internet-metro: context cancelled, stopping circuit processing")
+			goto done
+		default:
+		}
+
 		circuitsProcessed++
 		originPK, err := solana.PublicKeyFromBase58(circuit.OriginMetroPK)
 		if err != nil {
@@ -117,51 +125,77 @@ func (v *View) refreshInternetMetroLatencySamples(ctx context.Context, circuits 
 
 		// Fetch samples for each data provider
 		for _, dataProvider := range v.cfg.InternetDataProviders {
+			// Check for context cancellation before starting new goroutines
+			select {
+			case <-ctx.Done():
+				v.log.Debug("telemetry/internet-metro: context cancelled, stopping data provider processing")
+				goto done
+			default:
+			}
+
 			wg.Add(1)
-			sem <- struct{}{} // Acquire semaphore
-			go func(circuit InternetMetroCircuit, originPK, targetPK solana.PublicKey, dataProvider string) {
-				defer wg.Done()
-				defer func() { <-sem }() // Release semaphore
+			// Try to acquire semaphore with context cancellation support
+			select {
+			case <-ctx.Done():
+				wg.Done()
+				goto done
+			case sem <- struct{}{}:
+				go func(circuit InternetMetroCircuit, originPK, targetPK solana.PublicKey, dataProvider string) {
+					defer wg.Done()
+					defer func() { <-sem }() // Release semaphore
 
-				circuitHasSamples := false
-				var circuitSamples []InternetMetroLatencySample
+					circuitHasSamples := false
+					var circuitSamples []InternetMetroLatencySample
 
-				for _, epoch := range epochsToFetch {
-					samples, err := v.cfg.TelemetryRPC.GetInternetLatencySamples(ctx, dataProvider, originPK, targetPK, v.cfg.InternetLatencyAgentPK, epoch)
-					if err != nil {
-						if errors.Is(err, telemetry.ErrAccountNotFound) {
-							v.log.Debug("telemetry/internet-metro: no samples found", "circuit", circuit.Code, "data_provider", dataProvider, "epoch", epoch)
+					for _, epoch := range epochsToFetch {
+						// Check for context cancellation before each RPC call
+						select {
+						case <-ctx.Done():
+							v.log.Debug("telemetry/internet-metro: context cancelled during fetch", "circuit", circuit.Code, "data_provider", dataProvider)
+							return
+						default:
+						}
+
+						samples, err := v.cfg.TelemetryRPC.GetInternetLatencySamples(ctx, dataProvider, originPK, targetPK, v.cfg.InternetLatencyAgentPK, epoch)
+						if err != nil {
+							if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+								return
+							}
+							if errors.Is(err, telemetry.ErrAccountNotFound) {
+								v.log.Debug("telemetry/internet-metro: no samples found", "circuit", circuit.Code, "data_provider", dataProvider, "epoch", epoch)
+								continue
+							}
+							v.log.Debug("telemetry/internet-metro: failed to get latency samples", "circuit", circuit.Code, "data_provider", dataProvider, "epoch", epoch, "error", err)
 							continue
 						}
-						v.log.Debug("telemetry/internet-metro: failed to get latency samples", "circuit", circuit.Code, "data_provider", dataProvider, "epoch", epoch, "error", err)
-						continue
+
+						circuitHasSamples = true
+						sampleCount := len(samples.Samples)
+						v.log.Debug("telemetry/internet-metro: fetched samples", "circuit", circuit.Code, "data_provider", dataProvider, "epoch", epoch, "samples", sampleCount)
+
+						// Convert samples to our format
+						converted := convertInternetLatencySamples(samples, circuit.Code, dataProvider, epoch)
+						circuitSamples = append(circuitSamples, converted...)
 					}
 
-					circuitHasSamples = true
-					sampleCount := len(samples.Samples)
-					v.log.Debug("telemetry/internet-metro: fetched samples", "circuit", circuit.Code, "data_provider", dataProvider, "epoch", epoch, "samples", sampleCount)
+					if circuitHasSamples {
+						circuitsWithSamplesMu.Lock()
+						circuitsWithSamples++
+						circuitsWithSamplesMu.Unlock()
+					}
 
-					// Convert samples to our format
-					converted := convertInternetLatencySamples(samples, circuit.Code, dataProvider, epoch)
-					circuitSamples = append(circuitSamples, converted...)
-				}
-
-				if circuitHasSamples {
-					circuitsWithSamplesMu.Lock()
-					circuitsWithSamples++
-					circuitsWithSamplesMu.Unlock()
-				}
-
-				// Append samples to shared slice
-				if len(circuitSamples) > 0 {
-					samplesMu.Lock()
-					allSamples = append(allSamples, circuitSamples...)
-					samplesMu.Unlock()
-				}
-			}(circuit, originPK, targetPK, dataProvider)
+					// Append samples to shared slice
+					if len(circuitSamples) > 0 {
+						samplesMu.Lock()
+						allSamples = append(allSamples, circuitSamples...)
+						samplesMu.Unlock()
+					}
+				}(circuit, originPK, targetPK, dataProvider)
+			}
 		}
 	}
 
+done:
 	wg.Wait()
 
 	v.log.Debug("telemetry/internet-metro: processed circuits", "total", circuitsProcessed, "with_samples", circuitsWithSamples, "total_samples", len(allSamples))

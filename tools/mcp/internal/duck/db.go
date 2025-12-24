@@ -31,6 +31,13 @@ func NewDB(dbPath string, log *slog.Logger) (*duckDB, error) {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
+	// Configure connection pool for in-memory DuckDB
+	// For in-memory databases, we typically only need 1 connection
+	// but allow a small pool for concurrent reads
+	db.SetMaxOpenConns(10)
+	db.SetMaxIdleConns(2)
+	db.SetConnMaxLifetime(0) // Connections don't expire
+
 	return &duckDB{
 		dbPath: dbPath,
 		log:    log,

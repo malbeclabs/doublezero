@@ -3,14 +3,20 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -30,6 +36,7 @@ import (
 
 const (
 	defaultMetricsAddr = "0.0.0.0:8080"
+	defaultHTTPAddr    = "0.0.0.0:3000"
 	maxHistoryMessages = 20 // Keep last N messages to avoid token limits
 )
 
@@ -53,13 +60,45 @@ func run() error {
 	mcpURL := flag.String("mcp", "", "MCP endpoint URL")
 	enablePprofFlag := flag.Bool("enable-pprof", false, "enable pprof server")
 	metricsAddrFlag := flag.String("metrics-addr", defaultMetricsAddr, "Address to listen on for prometheus metrics")
+	modeFlag := flag.String("mode", "", "Mode: 'socket' (dev) or 'http' (prod). Defaults to 'socket' if SLACK_APP_TOKEN is set, otherwise 'http'")
+	httpAddrFlag := flag.String("http-addr", defaultHTTPAddr, "Address to listen on for HTTP events (production mode)")
 	flag.Parse()
 
 	log := newLogger(*verboseFlag)
 
-	botToken, appToken := os.Getenv("SLACK_BOT_TOKEN"), os.Getenv("SLACK_APP_TOKEN")
-	if botToken == "" || appToken == "" {
-		return fmt.Errorf("set SLACK_BOT_TOKEN and SLACK_APP_TOKEN")
+	botToken := os.Getenv("SLACK_BOT_TOKEN")
+	if botToken == "" {
+		return fmt.Errorf("SLACK_BOT_TOKEN is required")
+	}
+
+	// Determine mode
+	mode := *modeFlag
+	if mode == "" {
+		// Auto-detect: socket mode if app token is set, otherwise HTTP mode
+		if os.Getenv("SLACK_APP_TOKEN") != "" {
+			mode = "socket"
+		} else {
+			mode = "http"
+		}
+	}
+
+	if mode != "socket" && mode != "http" {
+		return fmt.Errorf("mode must be 'socket' or 'http', got: %s", mode)
+	}
+
+	var appToken, signingSecret string
+	if mode == "socket" {
+		appToken = os.Getenv("SLACK_APP_TOKEN")
+		if appToken == "" {
+			return fmt.Errorf("SLACK_APP_TOKEN is required for socket mode")
+		}
+		log.Info("running in socket mode (dev)")
+	} else {
+		signingSecret = os.Getenv("SLACK_SIGNING_SECRET")
+		if signingSecret == "" {
+			return fmt.Errorf("SLACK_SIGNING_SECRET is required for HTTP mode")
+		}
+		log.Info("running in HTTP mode (prod)", "http_addr", *httpAddrFlag)
 	}
 
 	anthropicAPIKey := os.Getenv("ANTHROPIC_API_KEY")
@@ -125,7 +164,13 @@ func run() error {
 	// Haiku is cheaper but less capable for complex analysis
 	// Alternative: anthropic.ModelClaudeHaiku4_5_20251001 // Cheaper but less capable
 
-	api := slack.New(botToken, slack.OptionAppLevelToken(appToken))
+	// Initialize Slack API client
+	var api *slack.Client
+	if mode == "socket" {
+		api = slack.New(botToken, slack.OptionAppLevelToken(appToken))
+	} else {
+		api = slack.New(botToken)
+	}
 
 	// Test auth and verify token works
 	var botUserID string
@@ -136,112 +181,190 @@ func run() error {
 		log.Warn("slack auth test failed", "error", err)
 	}
 
-	// Try to test reaction API directly on startup to verify scope
-	// We'll do a test reaction when we get the first message instead
-
-	client := socketmode.New(api)
-
 	// Cache for conversation history to avoid repeated API calls
 	// Key: thread timestamp (or message timestamp if no thread)
 	// Value: conversation history
+	// Limited to maxHistoryMessages * 10 threads to prevent unbounded growth
 	conversations := make(map[string][]agent.Message)
 	var conversationsMu sync.RWMutex
+	const maxConversations = maxHistoryMessages * 10
 
 	// Track processed events by envelope ID to avoid reprocessing duplicates
 	// Slack Socket Mode can retry events, so we deduplicate by envelope_id
-	processedEvents := make(map[string]bool)
+	// Limited to prevent unbounded growth (events older than 1 hour are cleaned up)
+	processedEvents := make(map[string]time.Time)
 	var processedEventsMu sync.RWMutex
+	const processedEventsMaxAge = 1 * time.Hour
 
 	// Track messages we've already responded to (by message timestamp) to prevent duplicate error messages
 	// This handles cases where the same message might be retried with different envelope_ids
-	respondedMessages := make(map[string]bool)
+	// Limited to prevent unbounded growth (messages older than 1 hour are cleaned up)
+	respondedMessages := make(map[string]time.Time)
 	var respondedMessagesMu sync.RWMutex
+	const respondedMessagesMaxAge = 1 * time.Hour
 
+	// Cleanup goroutine for maps
 	go func() {
-		for evt := range client.Events {
-			switch evt.Type {
-			case socketmode.EventTypeConnecting:
-				log.Info("socketmode: connecting")
-			case socketmode.EventTypeConnected:
-				log.Info("socketmode: connected")
-			case socketmode.EventTypeConnectionError:
-				log.Error("socketmode: connection error", "error", evt.Data)
-			case socketmode.EventTypeEventsAPI:
-				e, ok := evt.Data.(slackevents.EventsAPIEvent)
-				if !ok {
-					continue
-				}
-
-				// Check if we've already processed this event (deduplication)
-				envelopeID := evt.Request.EnvelopeID
-				retryAttempt := evt.Request.RetryAttempt
-				retryReason := evt.Request.RetryReason
-
-				if envelopeID != "" {
-					processedEventsMu.RLock()
-					alreadyProcessed := processedEvents[envelopeID]
-					processedEventsMu.RUnlock()
-
-					if alreadyProcessed {
-						log.Info("skipping duplicate event", "envelope_id", envelopeID, "retry_attempt", retryAttempt, "retry_reason", retryReason)
-						client.Ack(*evt.Request)
-						continue
-					}
-
-					// Mark as processed BEFORE processing to prevent race conditions
-					processedEventsMu.Lock()
-					processedEvents[envelopeID] = true
-					processedEventsMu.Unlock()
-
-					if retryAttempt > 0 {
-						log.Info("processing retried event", "envelope_id", envelopeID, "retry_attempt", retryAttempt, "retry_reason", retryReason)
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				now := time.Now()
+				// Clean up old processed events
+				processedEventsMu.Lock()
+				for id, timestamp := range processedEvents {
+					if now.Sub(timestamp) > processedEventsMaxAge {
+						delete(processedEvents, id)
 					}
 				}
+				processedEventsMu.Unlock()
 
-				client.Ack(*evt.Request)
-				if e.Type != slackevents.CallbackEvent {
-					continue
-				}
-
-				switch ev := e.InnerEvent.Data.(type) {
-				case *slackevents.MessageEvent:
-					if ev.ChannelType != "im" {
-						continue
-					} // DMs only
-					if ev.SubType != "" {
-						continue
-					} // ignore edits/joins/etc
-					if ev.BotID != "" {
-						continue
-					} // avoid loops
-					txt := strings.TrimSpace(ev.Text)
-					if txt == "" {
-						continue
+				// Clean up old responded messages
+				respondedMessagesMu.Lock()
+				for msgKey, timestamp := range respondedMessages {
+					if now.Sub(timestamp) > respondedMessagesMaxAge {
+						delete(respondedMessages, msgKey)
 					}
-
-					log.Info("dm recv", "user", ev.User, "channel", ev.Channel, "ts", ev.TimeStamp, "thread_ts", ev.ThreadTimeStamp, "text", txt, "envelope_id", envelopeID, "retry_attempt", retryAttempt)
-
-					// Check if we've already responded to this message (prevent duplicate error messages)
-					messageKey := fmt.Sprintf("%s:%s", ev.Channel, ev.TimeStamp)
-					respondedMessagesMu.RLock()
-					alreadyResponded := respondedMessages[messageKey]
-					respondedMessagesMu.RUnlock()
-
-					if alreadyResponded {
-						log.Info("skipping already responded message", "message_ts", ev.TimeStamp, "envelope_id", envelopeID)
-						continue
-					}
-
-					// Process message in a goroutine to allow concurrent handling of multiple conversations
-					go handleMessage(ctx, ev, messageKey, envelopeID, api, mcpClient, &anthropicClient, log, &conversations, &conversationsMu, &respondedMessages, &respondedMessagesMu, botUserID)
 				}
+				respondedMessagesMu.Unlock()
+
+				// Limit conversation cache size (keep most recent)
+				conversationsMu.Lock()
+				if len(conversations) > maxConversations {
+					// Simple approach: clear all and let them rebuild (better would be LRU)
+					// For now, just clear if we exceed limit
+					conversations = make(map[string][]agent.Message)
+				}
+				conversationsMu.Unlock()
 			}
 		}
 	}()
 
-	log.Info("DM-only bot running (thread replies enabled)")
-	if err := client.RunContext(ctx); err != nil {
-		return fmt.Errorf("slack client error: %w", err)
+	// Shared event handler
+	handleEvent := func(e slackevents.EventsAPIEvent, eventID string) {
+		if e.Type != slackevents.CallbackEvent {
+			return
+		}
+
+		switch ev := e.InnerEvent.Data.(type) {
+		case *slackevents.MessageEvent:
+			if ev.ChannelType != "im" {
+				return
+			} // DMs only
+			if ev.SubType != "" {
+				return
+			} // ignore edits/joins/etc
+			if ev.BotID != "" {
+				return
+			} // avoid loops
+			txt := strings.TrimSpace(ev.Text)
+			if txt == "" {
+				return
+			}
+
+			log.Info("dm recv", "user", ev.User, "channel", ev.Channel, "ts", ev.TimeStamp, "thread_ts", ev.ThreadTimeStamp, "text", txt, "event_id", eventID)
+
+			// Check if we've already responded to this message (prevent duplicate error messages)
+			messageKey := fmt.Sprintf("%s:%s", ev.Channel, ev.TimeStamp)
+			respondedMessagesMu.RLock()
+			_, alreadyResponded := respondedMessages[messageKey]
+			respondedMessagesMu.RUnlock()
+
+			if alreadyResponded {
+				log.Info("skipping already responded message", "message_ts", ev.TimeStamp, "event_id", eventID)
+				return
+			}
+
+			// Process message in a goroutine to allow concurrent handling of multiple conversations
+			go handleMessage(ctx, ev, messageKey, eventID, api, mcpClient, &anthropicClient, log, &conversations, &conversationsMu, &respondedMessages, &respondedMessagesMu, botUserID)
+		}
+	}
+
+	if mode == "socket" {
+		// Socket mode (dev)
+		client := socketmode.New(api)
+
+		go func() {
+			for evt := range client.Events {
+				switch evt.Type {
+				case socketmode.EventTypeConnecting:
+					log.Info("socketmode: connecting")
+				case socketmode.EventTypeConnected:
+					log.Info("socketmode: connected")
+				case socketmode.EventTypeConnectionError:
+					log.Error("socketmode: connection error", "error", evt.Data)
+				case socketmode.EventTypeEventsAPI:
+					e, ok := evt.Data.(slackevents.EventsAPIEvent)
+					if !ok {
+						continue
+					}
+
+					// Check if we've already processed this event (deduplication)
+					envelopeID := evt.Request.EnvelopeID
+					retryAttempt := evt.Request.RetryAttempt
+					retryReason := evt.Request.RetryReason
+
+					if envelopeID != "" {
+						processedEventsMu.RLock()
+						_, alreadyProcessed := processedEvents[envelopeID]
+						processedEventsMu.RUnlock()
+
+						if alreadyProcessed {
+							log.Info("skipping duplicate event", "envelope_id", envelopeID, "retry_attempt", retryAttempt, "retry_reason", retryReason)
+							client.Ack(*evt.Request)
+							continue
+						}
+
+						// Mark as processed BEFORE processing to prevent race conditions
+						processedEventsMu.Lock()
+						processedEvents[envelopeID] = time.Now()
+						processedEventsMu.Unlock()
+
+						if retryAttempt > 0 {
+							log.Info("processing retried event", "envelope_id", envelopeID, "retry_attempt", retryAttempt, "retry_reason", retryReason)
+						}
+					}
+
+					client.Ack(*evt.Request)
+					handleEvent(e, envelopeID)
+				}
+			}
+		}()
+
+		log.Info("DM-only bot running in socket mode (thread replies enabled)")
+		if err := client.RunContext(ctx); err != nil {
+			return fmt.Errorf("slack client error: %w", err)
+		}
+	} else {
+		// HTTP mode (prod)
+		mux := http.NewServeMux()
+		mux.HandleFunc("/slack/events", func(w http.ResponseWriter, r *http.Request) {
+			handleHTTPEvent(w, r, signingSecret, log, &processedEvents, &processedEventsMu, handleEvent)
+		})
+
+		httpServer := &http.Server{
+			Addr:    *httpAddrFlag,
+			Handler: mux,
+		}
+
+		go func() {
+			log.Info("HTTP server listening for Slack events", "addr", *httpAddrFlag)
+			if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				log.Error("HTTP server error", "error", err)
+			}
+		}()
+
+		log.Info("DM-only bot running in HTTP mode (thread replies enabled)")
+		<-ctx.Done()
+		log.Info("shutting down HTTP server")
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := httpServer.Shutdown(shutdownCtx); err != nil {
+			log.Error("error shutting down HTTP server", "error", err)
+		}
 	}
 
 	return nil
@@ -259,7 +382,7 @@ func handleMessage(
 	log *slog.Logger,
 	conversations *map[string][]agent.Message,
 	conversationsMu *sync.RWMutex,
-	respondedMessages *map[string]bool,
+	respondedMessages *map[string]time.Time,
 	respondedMessagesMu *sync.RWMutex,
 	botUserID string,
 ) {
@@ -355,7 +478,7 @@ func handleMessage(
 
 		// Mark as responded to prevent duplicate error messages
 		respondedMessagesMu.Lock()
-		(*respondedMessages)[messageKey] = true
+		(*respondedMessages)[messageKey] = time.Now()
 		respondedMessagesMu.Unlock()
 
 		// Provide user-friendly error message instead of raw error
@@ -435,7 +558,7 @@ func handleMessage(
 
 	// Mark as responded before posting to prevent race conditions
 	respondedMessagesMu.Lock()
-	(*respondedMessages)[messageKey] = true
+	(*respondedMessages)[messageKey] = time.Now()
 	respondedMessagesMu.Unlock()
 
 	_, respTS, err := api.PostMessageContext(ctx, ev.Channel, msgOpts...)
@@ -855,4 +978,128 @@ func trimConversationHistory(msgs []agent.Message, maxMessages int) []agent.Mess
 		trimmed = append(trimmed, msgs[start:]...)
 	}
 	return trimmed
+}
+
+// handleHTTPEvent handles incoming HTTP requests from Slack Events API
+func handleHTTPEvent(
+	w http.ResponseWriter,
+	r *http.Request,
+	signingSecret string,
+	log *slog.Logger,
+	processedEvents *map[string]time.Time,
+	processedEventsMu *sync.RWMutex,
+	handleEvent func(slackevents.EventsAPIEvent, string),
+) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		log.Error("failed to read request body", "error", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	// Verify request signature
+	if !verifySlackSignature(r, body, signingSecret) {
+		log.Warn("invalid Slack signature")
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	// Handle URL verification challenge
+	var challengeResp struct {
+		Type      string `json:"type"`
+		Token     string `json:"token"`
+		Challenge string `json:"challenge"`
+	}
+	if err := json.Unmarshal(body, &challengeResp); err == nil && challengeResp.Type == "url_verification" {
+		log.Info("responding to URL verification challenge")
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(challengeResp.Challenge))
+		return
+	}
+
+	// Parse event
+	event, err := slackevents.ParseEvent(json.RawMessage(body), slackevents.OptionNoVerifyToken())
+	if err != nil {
+		log.Error("failed to parse event", "error", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	// For HTTP mode, we'll extract event ID from the inner event if it's a message event
+	// Otherwise use a hash of the event data for deduplication
+	var eventID string
+	if event.Type == slackevents.CallbackEvent {
+		if msgEv, ok := event.InnerEvent.Data.(*slackevents.MessageEvent); ok {
+			// Use channel:timestamp as event ID for message events
+			eventID = fmt.Sprintf("%s:%s", msgEv.Channel, msgEv.TimeStamp)
+		} else {
+			// For other events, create a hash from the event data
+			eventData, _ := json.Marshal(event.InnerEvent.Data)
+			eventID = fmt.Sprintf("%x", sha256.Sum256(eventData))
+		}
+	} else {
+		// For non-callback events, use a hash
+		eventData, _ := json.Marshal(event)
+		eventID = fmt.Sprintf("%x", sha256.Sum256(eventData))
+	}
+
+	// Deduplicate events using event ID
+	if eventID != "" {
+		processedEventsMu.RLock()
+		_, alreadyProcessed := (*processedEvents)[eventID]
+		processedEventsMu.RUnlock()
+
+		if alreadyProcessed {
+			log.Info("skipping duplicate event", "event_id", eventID)
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		// Mark as processed BEFORE processing to prevent race conditions
+		processedEventsMu.Lock()
+		(*processedEvents)[eventID] = time.Now()
+		processedEventsMu.Unlock()
+	}
+
+	// Respond quickly to Slack (within 3 seconds)
+	w.WriteHeader(http.StatusOK)
+
+	// Process event asynchronously
+	go handleEvent(event, eventID)
+}
+
+// verifySlackSignature verifies the Slack request signature
+func verifySlackSignature(r *http.Request, body []byte, signingSecret string) bool {
+	timestamp := r.Header.Get("X-Slack-Request-Timestamp")
+	signature := r.Header.Get("X-Slack-Signature")
+
+	if timestamp == "" || signature == "" {
+		return false
+	}
+
+	// Check timestamp to prevent replay attacks (within 5 minutes)
+	ts, err := strconv.ParseInt(timestamp, 10, 64)
+	if err != nil {
+		return false
+	}
+	if time.Now().Unix()-ts > 300 {
+		return false
+	}
+
+	// Create signature base string
+	sigBase := fmt.Sprintf("v0:%s:%s", timestamp, string(body))
+
+	// Compute HMAC
+	mac := hmac.New(sha256.New, []byte(signingSecret))
+	mac.Write([]byte(sigBase))
+	expectedSig := "v0=" + hex.EncodeToString(mac.Sum(nil))
+
+	// Use constant-time comparison
+	return hmac.Equal([]byte(signature), []byte(expectedSig))
 }

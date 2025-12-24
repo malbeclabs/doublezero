@@ -67,6 +67,10 @@ use crate::processors::{
         suspend::MulticastGroupSuspendArgs,
         update::MulticastGroupUpdateArgs,
     },
+    resource::{
+        allocate::ResourceAllocateArgs, create::ResourceCreateArgs,
+        deallocate::ResourceDeallocateArgs,
+    },
     user::{
         activate::UserActivateArgs, ban::UserBanArgs, check_access_pass::CheckUserAccessPassArgs,
         closeaccount::UserCloseAccountArgs, create::UserCreateArgs,
@@ -175,6 +179,10 @@ pub enum DoubleZeroInstruction {
     RejectDeviceInterface(DeviceInterfaceRejectArgs),     // variant 78
 
     SetMinVersion(SetVersionArgs), // variant 79
+
+    AllocateResource(ResourceAllocateArgs),     // variant 80
+    CreateResource(ResourceCreateArgs),         // variant 81
+    DeallocateResource(ResourceDeallocateArgs), // variant 82
 }
 
 impl DoubleZeroInstruction {
@@ -283,6 +291,10 @@ impl DoubleZeroInstruction {
 
             79 => Ok(Self::SetMinVersion(SetVersionArgs::try_from(rest).unwrap())),
 
+            80 => Ok(Self::AllocateResource(ResourceAllocateArgs::try_from(rest).unwrap())),
+            81 => Ok(Self::CreateResource(ResourceCreateArgs::try_from(rest).unwrap())),
+            82 => Ok(Self::DeallocateResource(ResourceDeallocateArgs::try_from(rest).unwrap())),
+
             _ => Err(ProgramError::InvalidInstructionData),
         }
     }
@@ -387,6 +399,10 @@ impl DoubleZeroInstruction {
             Self::RejectDeviceInterface(_) => "RejectDeviceInterface".to_string(),     // variant 78
 
             Self::SetMinVersion(_) => "SetMinVersion".to_string(), // variant 79
+
+            Self::AllocateResource(_) => "AllocateResource".to_string(), // variant 80
+            Self::CreateResource(_) => "CreateResource".to_string(),     // variant 81
+            Self::DeallocateResource(_) => "DeallocateResource".to_string(), // variant 82
         }
     }
 
@@ -484,6 +500,10 @@ impl DoubleZeroInstruction {
             Self::RejectDeviceInterface(args) => format!("{args:?}"),   // variant 78
 
             Self::SetMinVersion(args) => format!("{args:?}"), // variant 79
+
+            Self::AllocateResource(args) => format!("{args:?}"), // variant 80
+            Self::CreateResource(args) => format!("{args:?}"),   // variant 81
+            Self::DeallocateResource(args) => format!("{args:?}"), // variant 82
         }
     }
 }
@@ -1043,5 +1063,6 @@ mod tests {
             }),
             "SetMinVersion",
         );
+        // TODO Test Resource Instructions
     }
 }

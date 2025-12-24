@@ -80,6 +80,10 @@ use crate::{
             suspend::process_suspend_multicastgroup,
             update::process_update_multicastgroup,
         },
+        resource::{
+            allocate::process_allocate_resource, create::process_create_resource,
+            deallocate::process_deallocate_resource,
+        },
         user::{
             activate::process_activate_user, ban::process_ban_user,
             check_access_pass::process_check_access_pass_user,
@@ -342,6 +346,15 @@ pub fn process_instruction(
         }
         DoubleZeroInstruction::SetMinVersion(value) => {
             process_set_version(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::AllocateResource(value) => {
+            process_allocate_resource(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::CreateResource(value) => {
+            process_create_resource(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::DeallocateResource(value) => {
+            process_deallocate_resource(program_id, accounts, &value)?
         }
     };
     Ok(())

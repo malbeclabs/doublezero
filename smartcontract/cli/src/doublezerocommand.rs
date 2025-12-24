@@ -81,6 +81,10 @@ use doublezero_sdk::{
             update::UpdateMulticastGroupCommand,
         },
         programconfig::get::GetProgramConfigCommand,
+        resource::{
+            allocate::AllocateResourceCommand, create::CreateResourceCommand,
+            deallocate::DeallocateResourceCommand, get::GetResourceCommand,
+        },
         user::{
             create::CreateUserCommand, create_subscribe::CreateSubscribeUserCommand,
             delete::DeleteUserCommand, get::GetUserCommand, list::ListUserCommand,
@@ -89,7 +93,7 @@ use doublezero_sdk::{
     },
     telemetry::LinkLatencyStats,
     DZClient, Device, DoubleZeroClient, Exchange, GetGlobalConfigCommand, GetGlobalStateCommand,
-    GlobalConfig, GlobalState, Link, Location, MulticastGroup, User,
+    GlobalConfig, GlobalState, Link, Location, MulticastGroup, ResourceExtensionOwned, User,
 };
 use doublezero_serviceability::state::{
     accesspass::AccessPass, contributor::Contributor, programconfig::ProgramConfig,
@@ -273,6 +277,14 @@ pub trait CliCommand {
         cmd: ListAccessPassCommand,
     ) -> eyre::Result<HashMap<Pubkey, AccessPass>>;
     fn close_accesspass(&self, cmd: CloseAccessPassCommand) -> eyre::Result<Signature>;
+
+    fn allocate_resource(&self, cmd: AllocateResourceCommand) -> eyre::Result<Signature>;
+    fn create_resource(&self, cmd: CreateResourceCommand) -> eyre::Result<Signature>;
+    fn deallocate_resource(&self, cmd: DeallocateResourceCommand) -> eyre::Result<Signature>;
+    fn get_resource(
+        &self,
+        cmd: GetResourceCommand,
+    ) -> eyre::Result<(Pubkey, ResourceExtensionOwned)>;
 }
 
 pub struct CliCommandImpl<'a> {
@@ -641,6 +653,21 @@ impl CliCommand for CliCommandImpl<'_> {
         cmd.execute(self.client)
     }
     fn close_accesspass(&self, cmd: CloseAccessPassCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn allocate_resource(&self, cmd: AllocateResourceCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn create_resource(&self, cmd: CreateResourceCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn deallocate_resource(&self, cmd: DeallocateResourceCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn get_resource(
+        &self,
+        cmd: GetResourceCommand,
+    ) -> eyre::Result<(Pubkey, ResourceExtensionOwned)> {
         cmd.execute(self.client)
     }
 }

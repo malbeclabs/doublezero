@@ -1,7 +1,9 @@
 package sol
 
 import (
+	"context"
 	"database/sql"
+	"encoding/csv"
 	"errors"
 	"log/slog"
 	"os"
@@ -11,6 +13,7 @@ import (
 	_ "github.com/duckdb/duckdb-go/v2"
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
+	"github.com/malbeclabs/doublezero/tools/mcp/internal/duck"
 	"github.com/stretchr/testify/require"
 )
 
@@ -22,11 +25,17 @@ func (f *failingDB) Exec(query string, args ...any) (sql.Result, error) {
 func (f *failingDB) Query(query string, args ...any) (*sql.Rows, error) {
 	return nil, errors.New("database error")
 }
+func (f *failingDB) QueryRow(query string, args ...any) *sql.Row {
+	return &sql.Row{}
+}
 func (f *failingDB) Begin() (*sql.Tx, error) {
 	return nil, errors.New("database error")
 }
 func (f *failingDB) Close() error {
 	return nil
+}
+func (f *failingDB) ReplaceTable(tableName string, count int, writeCSVFn func(*csv.Writer, int) error) error {
+	return errors.New("database error")
 }
 
 func TestMCP_Solana_Store_NewStore(t *testing.T) {
@@ -59,7 +68,7 @@ func TestMCP_Solana_Store_NewStore(t *testing.T) {
 	t.Run("returns store when config is valid", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
+		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -78,7 +87,7 @@ func TestMCP_Solana_Store_CreateTablesIfNotExists(t *testing.T) {
 	t.Run("creates all tables", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
+		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -121,7 +130,7 @@ func TestMCP_Solana_Store_ReplaceLeaderSchedule(t *testing.T) {
 	t.Run("saves leader schedule to database", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
+		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -146,7 +155,7 @@ func TestMCP_Solana_Store_ReplaceLeaderSchedule(t *testing.T) {
 			},
 		}
 
-		err = store.ReplaceLeaderSchedule(entries, fetchedAt, currentEpoch)
+		err = store.ReplaceLeaderSchedule(context.Background(), entries, fetchedAt, currentEpoch)
 		require.NoError(t, err)
 
 		var count int
@@ -177,7 +186,7 @@ func TestMCP_Solana_Store_ReplaceVoteAccounts(t *testing.T) {
 	t.Run("saves vote accounts to database", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
+		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -207,7 +216,7 @@ func TestMCP_Solana_Store_ReplaceVoteAccounts(t *testing.T) {
 			},
 		}
 
-		err = store.ReplaceVoteAccounts(accounts, fetchedAt, currentEpoch)
+		err = store.ReplaceVoteAccounts(context.Background(), accounts, fetchedAt, currentEpoch)
 		require.NoError(t, err)
 
 		var count int
@@ -239,7 +248,7 @@ func TestMCP_Solana_Store_ReplaceGossipNodes(t *testing.T) {
 	t.Run("saves gossip nodes to database", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
+		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -268,7 +277,7 @@ func TestMCP_Solana_Store_ReplaceGossipNodes(t *testing.T) {
 			},
 		}
 
-		err = store.ReplaceGossipNodes(nodes, fetchedAt, currentEpoch)
+		err = store.ReplaceGossipNodes(context.Background(), nodes, fetchedAt, currentEpoch)
 		require.NoError(t, err)
 
 		var count int
@@ -290,4 +299,3 @@ func TestMCP_Solana_Store_ReplaceGossipNodes(t *testing.T) {
 		require.Equal(t, int64(100), currentEpochDB)
 	})
 }
-

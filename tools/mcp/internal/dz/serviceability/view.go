@@ -240,23 +240,23 @@ func (v *View) Refresh(ctx context.Context) error {
 
 	fetchedAt := time.Now().UTC()
 
-	if err := v.store.ReplaceContributors(contributors); err != nil {
+	if err := v.store.ReplaceContributors(ctx, contributors); err != nil {
 		return fmt.Errorf("failed to replace contributors: %w", err)
 	}
 
-	if err := v.store.ReplaceDevices(devices); err != nil {
+	if err := v.store.ReplaceDevices(ctx, devices); err != nil {
 		return fmt.Errorf("failed to replace devices: %w", err)
 	}
 
-	if err := v.store.ReplaceUsers(users); err != nil {
+	if err := v.store.ReplaceUsers(ctx, users); err != nil {
 		return fmt.Errorf("failed to replace users: %w", err)
 	}
 
-	if err := v.store.ReplaceMetros(metros); err != nil {
+	if err := v.store.ReplaceMetros(ctx, metros); err != nil {
 		return fmt.Errorf("failed to replace metros: %w", err)
 	}
 
-	if err := v.store.ReplaceLinks(links); err != nil {
+	if err := v.store.ReplaceLinks(ctx, links); err != nil {
 		return fmt.Errorf("failed to replace links: %w", err)
 	}
 

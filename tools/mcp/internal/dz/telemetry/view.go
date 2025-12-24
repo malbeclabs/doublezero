@@ -184,7 +184,7 @@ func (v *View) Refresh(ctx context.Context) error {
 	v.log.Debug("telemetry: computing device-link circuits", "links", len(links))
 	circuits := ComputeDeviceLinkCircuits(devices, links, contributors)
 	v.log.Debug("telemetry: computed device-link circuits", "count", len(circuits))
-	if err := v.store.ReplaceDeviceLinkCircuits(circuits); err != nil {
+	if err := v.store.ReplaceDeviceLinkCircuits(ctx, circuits); err != nil {
 		return fmt.Errorf("failed to refresh device-link circuits: %w", err)
 	}
 

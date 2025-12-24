@@ -238,7 +238,7 @@ done:
 	// Append new samples to table (instead of replacing)
 	if len(allSamples) > 0 {
 		v.log.Debug("telemetry/device-link: appending new latency samples", "new_samples", len(allSamples))
-		if err := v.store.AppendDeviceLinkLatencySamples(allSamples); err != nil {
+		if err := v.store.AppendDeviceLinkLatencySamples(ctx, allSamples); err != nil {
 			v.log.Error("telemetry/device-link: failed to append latency samples", "error", err, "total_samples", len(allSamples))
 			return fmt.Errorf("failed to append latency samples: %w", err)
 		}

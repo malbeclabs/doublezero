@@ -1,7 +1,6 @@
 package server
 
 import (
-	"database/sql"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +13,7 @@ import (
 	"github.com/jonboulle/clockwork"
 	"github.com/stretchr/testify/require"
 
+	"github.com/malbeclabs/doublezero/tools/mcp/internal/duck"
 	dzsvc "github.com/malbeclabs/doublezero/tools/mcp/internal/dz/serviceability"
 	dztelem "github.com/malbeclabs/doublezero/tools/mcp/internal/dz/telemetry"
 )
@@ -22,7 +22,7 @@ func TestMCP_Server_ReadyzHandler(t *testing.T) {
 	t.Parallel()
 
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	db, err := sql.Open("duckdb", "")
+	db, err := duck.NewDB("", log)
 	require.NoError(t, err)
 	defer db.Close()
 

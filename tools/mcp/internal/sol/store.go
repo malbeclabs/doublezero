@@ -1,7 +1,8 @@
 package sol
 
 import (
-	"database/sql"
+	"context"
+	"encoding/csv"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -93,28 +94,46 @@ type LeaderScheduleEntry struct {
 	Slots      []uint64
 }
 
-func (s *Store) ReplaceLeaderSchedule(entries []LeaderScheduleEntry, fetchedAt time.Time, currentEpoch uint64) error {
+func (s *Store) ReplaceLeaderSchedule(ctx context.Context, entries []LeaderScheduleEntry, fetchedAt time.Time, currentEpoch uint64) error {
 	s.log.Debug("solana/store: replacing leader schedule", "count", len(entries))
-	return s.replaceTable("solana_leader_schedule", "DELETE FROM solana_leader_schedule", "INSERT INTO solana_leader_schedule (snapshot_timestamp, current_epoch, node_pubkey, slots, slot_count) VALUES (?, ?, ?, ?, ?)", len(entries), func(stmt *sql.Stmt, i int) error {
+	return duck.ReplaceTableViaCSV(ctx, s.log, s.db, "solana_leader_schedule", len(entries), func(w *csv.Writer, i int) error {
 		entry := entries[i]
 		slotsStr := formatUint64Array(entry.Slots)
-		_, err := stmt.Exec(fetchedAt, currentEpoch, entry.NodePubkey.String(), slotsStr, len(entry.Slots))
-		return err
+		return w.Write([]string{
+			fetchedAt.Format(time.RFC3339Nano),
+			fmt.Sprintf("%d", currentEpoch),
+			entry.NodePubkey.String(),
+			slotsStr,
+			fmt.Sprintf("%d", len(entry.Slots)),
+		})
 	})
 }
 
-func (s *Store) ReplaceVoteAccounts(accounts []solanarpc.VoteAccountsResult, fetchedAt time.Time, currentEpoch uint64) error {
+func (s *Store) ReplaceVoteAccounts(ctx context.Context, accounts []solanarpc.VoteAccountsResult, fetchedAt time.Time, currentEpoch uint64) error {
 	s.log.Debug("solana/store: replacing vote accounts", "count", len(accounts))
-	return s.replaceTable("solana_vote_accounts", "DELETE FROM solana_vote_accounts", "INSERT INTO solana_vote_accounts (snapshot_timestamp, current_epoch, vote_pubkey, node_pubkey, activated_stake_lamports, epoch_vote_account, commission_percentage, last_vote_slot, root_slot) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", len(accounts), func(stmt *sql.Stmt, i int) error {
+	return duck.ReplaceTableViaCSV(ctx, s.log, s.db, "solana_vote_accounts", len(accounts), func(w *csv.Writer, i int) error {
 		account := accounts[i]
-		_, err := stmt.Exec(fetchedAt, currentEpoch, account.VotePubkey.String(), account.NodePubkey.String(), account.ActivatedStake, account.EpochVoteAccount, account.Commission, account.LastVote, account.RootSlot)
-		return err
+		epochVoteAccountStr := "false"
+		if account.EpochVoteAccount {
+			epochVoteAccountStr = "true"
+		}
+		return w.Write([]string{
+			fetchedAt.Format(time.RFC3339Nano),
+			fmt.Sprintf("%d", currentEpoch),
+			account.VotePubkey.String(),
+			account.NodePubkey.String(),
+			fmt.Sprintf("%d", account.ActivatedStake),
+			epochVoteAccountStr,
+			fmt.Sprintf("%d", account.Commission),
+			fmt.Sprintf("%d", account.LastVote),
+			fmt.Sprintf("%d", account.RootSlot),
+		})
 	})
 }
 
-func (s *Store) ReplaceGossipNodes(nodes []*solanarpc.GetClusterNodesResult, fetchedAt time.Time, currentEpoch uint64) error {
+func (s *Store) ReplaceGossipNodes(ctx context.Context, nodes []*solanarpc.GetClusterNodesResult, fetchedAt time.Time, currentEpoch uint64) error {
 	s.log.Debug("solana/store: replacing gossip nodes", "count", len(nodes))
-	return s.replaceTable("solana_gossip_nodes", "DELETE FROM solana_gossip_nodes", "INSERT INTO solana_gossip_nodes (snapshot_timestamp, current_epoch, pubkey, gossip_ip, gossip_port, tpuquic_ip, tpuquic_port, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", len(nodes), func(stmt *sql.Stmt, i int) error {
+	return duck.ReplaceTableViaCSV(ctx, s.log, s.db, "solana_gossip_nodes", len(nodes), func(w *csv.Writer, i int) error {
 		node := nodes[i]
 		var gossipIP, tpuQUICIP string
 		var gossipPort, tpuQUICPort uint16
@@ -138,71 +157,21 @@ func (s *Store) ReplaceGossipNodes(nodes []*solanarpc.GetClusterNodesResult, fet
 				}
 			}
 		}
-		_, err := stmt.Exec(fetchedAt, currentEpoch, node.Pubkey.String(), gossipIP, gossipPort, tpuQUICIP, tpuQUICPort, node.Version)
-		return err
+		var version string
+		if node.Version != nil {
+			version = *node.Version
+		}
+		return w.Write([]string{
+			fetchedAt.Format(time.RFC3339Nano),
+			fmt.Sprintf("%d", currentEpoch),
+			node.Pubkey.String(),
+			gossipIP,
+			fmt.Sprintf("%d", gossipPort),
+			tpuQUICIP,
+			fmt.Sprintf("%d", tpuQUICPort),
+			version,
+		})
 	})
-}
-
-func (s *Store) replaceTable(tableName, deleteSQL, insertSQL string, count int, insertFn func(*sql.Stmt, int) error) error {
-	tableRefreshStart := time.Now()
-	s.log.Info("solana: refreshing table started", "table", tableName, "rows", count, "start_time", tableRefreshStart)
-	defer func() {
-		duration := time.Since(tableRefreshStart)
-		s.log.Info("solana: refreshing table completed", "table", tableName, "duration", duration.String())
-	}()
-
-	s.log.Debug("solana: refreshing table", "table", tableName, "rows", count)
-
-	txStart := time.Now()
-	tx, err := s.db.Begin()
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction for %s: %w", tableName, err)
-	}
-	s.log.Debug("solana: transaction begun", "table", tableName, "tx_start_time", txStart)
-	defer tx.Rollback()
-
-	if _, err := tx.Exec(deleteSQL); err != nil {
-		return fmt.Errorf("failed to clear %s: %w", tableName, err)
-	}
-
-	if count == 0 {
-		if err := tx.Commit(); err != nil {
-			return fmt.Errorf("failed to commit transaction for %s: %w", tableName, err)
-		}
-		s.log.Debug("solana: table refreshed (empty)", "table", tableName)
-		return nil
-	}
-
-	stmt, err := tx.Prepare(insertSQL)
-	if err != nil {
-		return fmt.Errorf("failed to prepare statement for %s: %w", tableName, err)
-	}
-	defer stmt.Close()
-
-	logInterval := min(max(count/10, 1000), 100000)
-
-	for i := range count {
-		if err := insertFn(stmt, i); err != nil {
-			s.log.Error("failed to insert row", "table", tableName, "row", i, "total", count, "error", err)
-			return fmt.Errorf("failed to insert into %s: %w", tableName, err)
-		}
-		if (i+1)%logInterval == 0 || i == count-1 {
-			s.log.Debug("insert progress", "table", tableName, "inserted", i+1, "total", count, "percent", float64(i+1)*100.0/float64(count))
-		}
-	}
-
-	commitStart := time.Now()
-	s.log.Info("solana: committing transaction", "table", tableName, "rows", count, "tx_duration", time.Since(txStart).String(), "commit_start_time", commitStart)
-	if err := tx.Commit(); err != nil {
-		txDuration := time.Since(txStart)
-		s.log.Error("solana: transaction commit failed", "table", tableName, "error", err, "tx_duration", txDuration.String())
-		return fmt.Errorf("failed to commit transaction for %s: %w", tableName, err)
-	}
-	commitDuration := time.Since(commitStart)
-	s.log.Info("solana: transaction committed", "table", tableName, "commit_duration", commitDuration.String(), "total_tx_duration", time.Since(txStart).String())
-
-	s.log.Debug("solana: table refreshed", "table", tableName, "rows", count)
-	return nil
 }
 
 func formatUint64Array(arr []uint64) string {
@@ -220,4 +189,3 @@ func formatUint64Array(arr []uint64) string {
 	b.WriteString("]")
 	return b.String()
 }
-

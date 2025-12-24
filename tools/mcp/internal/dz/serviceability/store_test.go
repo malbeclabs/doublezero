@@ -1,7 +1,9 @@
 package dzsvc
 
 import (
+	"context"
 	"database/sql"
+	"encoding/csv"
 	"errors"
 	"log/slog"
 	"net"
@@ -10,6 +12,7 @@ import (
 
 	_ "github.com/duckdb/duckdb-go/v2"
 	"github.com/gagliardetto/solana-go"
+	"github.com/malbeclabs/doublezero/tools/mcp/internal/duck"
 	"github.com/stretchr/testify/require"
 )
 
@@ -21,11 +24,18 @@ func (f *failingDB) Exec(query string, args ...any) (sql.Result, error) {
 func (f *failingDB) Query(query string, args ...any) (*sql.Rows, error) {
 	return nil, errors.New("database error")
 }
+func (f *failingDB) QueryRow(query string, args ...any) *sql.Row {
+	// Return a row that will error on Scan
+	return &sql.Row{}
+}
 func (f *failingDB) Begin() (*sql.Tx, error) {
 	return nil, errors.New("database error")
 }
 func (f *failingDB) Close() error {
 	return nil
+}
+func (f *failingDB) ReplaceTable(tableName string, count int, writeCSVFn func(*csv.Writer, int) error) error {
+	return errors.New("database error")
 }
 
 // testPK creates a deterministic public key string from an integer identifier
@@ -67,7 +77,7 @@ func TestMCP_Serviceability_Store_NewStore(t *testing.T) {
 	t.Run("returns store when config is valid", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
+		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -86,7 +96,7 @@ func TestMCP_Serviceability_Store_CreateTablesIfNotExists(t *testing.T) {
 	t.Run("creates all tables", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
+		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -129,7 +139,7 @@ func TestMCP_Serviceability_Store_ReplaceContributors(t *testing.T) {
 	t.Run("saves contributors to database", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
+		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -152,7 +162,7 @@ func TestMCP_Serviceability_Store_ReplaceContributors(t *testing.T) {
 			},
 		}
 
-		err = store.ReplaceContributors(contributors)
+		err = store.ReplaceContributors(context.Background(), contributors)
 		require.NoError(t, err)
 
 		var count int
@@ -171,7 +181,7 @@ func TestMCP_Serviceability_Store_ReplaceContributors(t *testing.T) {
 	t.Run("replaces existing contributors", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
+		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -195,7 +205,7 @@ func TestMCP_Serviceability_Store_ReplaceContributors(t *testing.T) {
 			},
 		}
 
-		err = store.ReplaceContributors(contributors1)
+		err = store.ReplaceContributors(context.Background(), contributors1)
 		require.NoError(t, err)
 
 		var count int
@@ -211,7 +221,7 @@ func TestMCP_Serviceability_Store_ReplaceContributors(t *testing.T) {
 			},
 		}
 
-		err = store.ReplaceContributors(contributors2)
+		err = store.ReplaceContributors(context.Background(), contributors2)
 		require.NoError(t, err)
 
 		err = db.QueryRow("SELECT COUNT(*) FROM dz_contributors").Scan(&count)
@@ -227,7 +237,7 @@ func TestMCP_Serviceability_Store_ReplaceContributors(t *testing.T) {
 	t.Run("handles empty slice", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
+		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -249,11 +259,11 @@ func TestMCP_Serviceability_Store_ReplaceContributors(t *testing.T) {
 				Name: "Test Contributor",
 			},
 		}
-		err = store.ReplaceContributors(contributors)
+		err = store.ReplaceContributors(context.Background(), contributors)
 		require.NoError(t, err)
 
 		// Then replace with empty slice
-		err = store.ReplaceContributors([]Contributor{})
+		err = store.ReplaceContributors(context.Background(), []Contributor{})
 		require.NoError(t, err)
 
 		var count int
@@ -269,7 +279,7 @@ func TestMCP_Serviceability_Store_ReplaceDevices(t *testing.T) {
 	t.Run("saves devices to database", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
+		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -298,7 +308,7 @@ func TestMCP_Serviceability_Store_ReplaceDevices(t *testing.T) {
 			},
 		}
 
-		err = store.ReplaceDevices(devices)
+		err = store.ReplaceDevices(context.Background(), devices)
 		require.NoError(t, err)
 
 		var count int
@@ -325,7 +335,7 @@ func TestMCP_Serviceability_Store_ReplaceUsers(t *testing.T) {
 	t.Run("saves users to database", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
+		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -354,7 +364,7 @@ func TestMCP_Serviceability_Store_ReplaceUsers(t *testing.T) {
 			},
 		}
 
-		err = store.ReplaceUsers(users)
+		err = store.ReplaceUsers(context.Background(), users)
 		require.NoError(t, err)
 
 		var count int
@@ -381,7 +391,7 @@ func TestMCP_Serviceability_Store_ReplaceLinks(t *testing.T) {
 	t.Run("saves links to database", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
+		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -417,7 +427,7 @@ func TestMCP_Serviceability_Store_ReplaceLinks(t *testing.T) {
 			},
 		}
 
-		err = store.ReplaceLinks(links)
+		err = store.ReplaceLinks(context.Background(), links)
 		require.NoError(t, err)
 
 		var count int
@@ -451,7 +461,7 @@ func TestMCP_Serviceability_Store_ReplaceMetros(t *testing.T) {
 	t.Run("saves metros to database", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
+		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -476,7 +486,7 @@ func TestMCP_Serviceability_Store_ReplaceMetros(t *testing.T) {
 			},
 		}
 
-		err = store.ReplaceMetros(metros)
+		err = store.ReplaceMetros(context.Background(), metros)
 		require.NoError(t, err)
 
 		var count int
@@ -502,7 +512,7 @@ func TestMCP_Serviceability_Store_GetDevices(t *testing.T) {
 	t.Run("reads devices from database", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
+		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -544,7 +554,7 @@ func TestMCP_Serviceability_Store_GetLinks(t *testing.T) {
 	t.Run("reads links from database", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
+		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -590,7 +600,7 @@ func TestMCP_Serviceability_Store_GetContributors(t *testing.T) {
 	t.Run("reads contributors from database", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
+		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -629,7 +639,7 @@ func TestMCP_Serviceability_Store_GetMetros(t *testing.T) {
 	t.Run("reads metros from database", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
+		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
 		require.NoError(t, err)
 		defer db.Close()
 

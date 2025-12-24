@@ -2,7 +2,6 @@ package sol
 
 import (
 	"context"
-	"database/sql"
 	"log/slog"
 	"os"
 	"testing"
@@ -11,6 +10,7 @@ import (
 	_ "github.com/duckdb/duckdb-go/v2"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/jonboulle/clockwork"
+	"github.com/malbeclabs/doublezero/tools/mcp/internal/duck"
 	"github.com/stretchr/testify/require"
 )
 
@@ -64,7 +64,7 @@ func TestMCP_Solana_View_Ready(t *testing.T) {
 	t.Run("returns false when not ready", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
+		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -83,7 +83,7 @@ func TestMCP_Solana_View_Ready(t *testing.T) {
 	t.Run("returns true after successful refresh", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
+		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -110,7 +110,7 @@ func TestMCP_Solana_View_WaitReady(t *testing.T) {
 	t.Run("returns immediately when already ready", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
+		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -134,7 +134,7 @@ func TestMCP_Solana_View_WaitReady(t *testing.T) {
 	t.Run("returns error when context is cancelled", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
+		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
 		require.NoError(t, err)
 		defer db.Close()
 

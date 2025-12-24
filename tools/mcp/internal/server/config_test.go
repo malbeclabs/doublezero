@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"database/sql"
+	"encoding/csv"
 	"log/slog"
 	"testing"
 	"time"
@@ -61,6 +62,10 @@ func (m *mockDB) Exec(query string, args ...any) (sql.Result, error) { return ni
 func (m *mockDB) Query(query string, args ...any) (*sql.Rows, error) { return nil, nil }
 func (m *mockDB) Begin() (*sql.Tx, error)                            { return nil, nil }
 func (m *mockDB) Close() error                                       { return nil }
+func (m *mockDB) ReplaceTable(tableName string, count int, writeCSVFn func(*csv.Writer, int) error) error {
+	return nil
+}
+func (m *mockDB) QueryRow(query string, args ...any) *sql.Row { return nil }
 
 func validConfig() Config {
 	return Config{

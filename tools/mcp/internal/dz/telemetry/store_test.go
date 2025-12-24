@@ -1,7 +1,9 @@
 package dztelem
 
 import (
+	"context"
 	"database/sql"
+	"encoding/csv"
 	"errors"
 	"log/slog"
 	"os"
@@ -9,6 +11,7 @@ import (
 
 	_ "github.com/duckdb/duckdb-go/v2"
 	"github.com/gagliardetto/solana-go"
+	"github.com/malbeclabs/doublezero/tools/mcp/internal/duck"
 	"github.com/stretchr/testify/require"
 )
 
@@ -20,11 +23,17 @@ func (f *failingDB) Exec(query string, args ...any) (sql.Result, error) {
 func (f *failingDB) Query(query string, args ...any) (*sql.Rows, error) {
 	return nil, errors.New("database error")
 }
+func (f *failingDB) QueryRow(query string, args ...any) *sql.Row {
+	return &sql.Row{}
+}
 func (f *failingDB) Begin() (*sql.Tx, error) {
 	return nil, errors.New("database error")
 }
 func (f *failingDB) Close() error {
 	return nil
+}
+func (f *failingDB) ReplaceTable(tableName string, count int, writeCSVFn func(*csv.Writer, int) error) error {
+	return errors.New("database error")
 }
 
 // testPK creates a deterministic public key string from an integer identifier
@@ -66,7 +75,7 @@ func TestMCP_Telemetry_Store_NewStore(t *testing.T) {
 	t.Run("returns store when config is valid", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
+		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -85,7 +94,7 @@ func TestMCP_Telemetry_Store_CreateTablesIfNotExists(t *testing.T) {
 	t.Run("creates all tables", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
+		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -128,7 +137,7 @@ func TestMCP_Telemetry_Store_ReplaceDeviceLinkCircuits(t *testing.T) {
 	t.Run("saves circuits to database", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
+		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -155,7 +164,7 @@ func TestMCP_Telemetry_Store_ReplaceDeviceLinkCircuits(t *testing.T) {
 			},
 		}
 
-		err = store.ReplaceDeviceLinkCircuits(circuits)
+		err = store.ReplaceDeviceLinkCircuits(context.Background(), circuits)
 		require.NoError(t, err)
 
 		var count int
@@ -181,7 +190,7 @@ func TestMCP_Telemetry_Store_ReplaceDeviceLinkCircuits(t *testing.T) {
 	t.Run("replaces existing circuits", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
+		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -208,7 +217,7 @@ func TestMCP_Telemetry_Store_ReplaceDeviceLinkCircuits(t *testing.T) {
 			},
 		}
 
-		err = store.ReplaceDeviceLinkCircuits(circuits1)
+		err = store.ReplaceDeviceLinkCircuits(context.Background(), circuits1)
 		require.NoError(t, err)
 
 		var count int
@@ -230,7 +239,7 @@ func TestMCP_Telemetry_Store_ReplaceDeviceLinkCircuits(t *testing.T) {
 			},
 		}
 
-		err = store.ReplaceDeviceLinkCircuits(circuits2)
+		err = store.ReplaceDeviceLinkCircuits(context.Background(), circuits2)
 		require.NoError(t, err)
 
 		err = db.QueryRow("SELECT COUNT(*) FROM dz_device_link_circuits").Scan(&count)
@@ -246,7 +255,7 @@ func TestMCP_Telemetry_Store_ReplaceDeviceLinkCircuits(t *testing.T) {
 	t.Run("handles empty slice", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
+		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -273,11 +282,11 @@ func TestMCP_Telemetry_Store_ReplaceDeviceLinkCircuits(t *testing.T) {
 				CommittedJitter: 50.2,
 			},
 		}
-		err = store.ReplaceDeviceLinkCircuits(circuits)
+		err = store.ReplaceDeviceLinkCircuits(context.Background(), circuits)
 		require.NoError(t, err)
 
 		// Then replace with empty slice
-		err = store.ReplaceDeviceLinkCircuits([]DeviceLinkCircuit{})
+		err = store.ReplaceDeviceLinkCircuits(context.Background(), []DeviceLinkCircuit{})
 		require.NoError(t, err)
 
 		var count int
@@ -293,7 +302,7 @@ func TestMCP_Telemetry_Store_AppendDeviceLinkLatencySamples(t *testing.T) {
 	t.Run("appends samples to database", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
+		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -323,7 +332,7 @@ func TestMCP_Telemetry_Store_AppendDeviceLinkLatencySamples(t *testing.T) {
 			},
 		}
 
-		err = store.AppendDeviceLinkLatencySamples(samples)
+		err = store.AppendDeviceLinkLatencySamples(context.Background(), samples)
 		require.NoError(t, err)
 
 		var count int
@@ -342,7 +351,7 @@ func TestMCP_Telemetry_Store_AppendDeviceLinkLatencySamples(t *testing.T) {
 			},
 		}
 
-		err = store.AppendDeviceLinkLatencySamples(moreSamples)
+		err = store.AppendDeviceLinkLatencySamples(context.Background(), moreSamples)
 		require.NoError(t, err)
 
 		err = db.QueryRow("SELECT COUNT(*) FROM dz_device_link_latency_samples").Scan(&count)
@@ -366,7 +375,7 @@ func TestMCP_Telemetry_Store_AppendDeviceLinkLatencySamples(t *testing.T) {
 	t.Run("handles empty slice", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
+		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -379,7 +388,7 @@ func TestMCP_Telemetry_Store_AppendDeviceLinkLatencySamples(t *testing.T) {
 		err = store.CreateTablesIfNotExists()
 		require.NoError(t, err)
 
-		err = store.AppendDeviceLinkLatencySamples([]DeviceLinkLatencySample{})
+		err = store.AppendDeviceLinkLatencySamples(context.Background(), []DeviceLinkLatencySample{})
 		require.NoError(t, err)
 
 		var count int
@@ -395,7 +404,7 @@ func TestMCP_Telemetry_Store_AppendInternetMetroLatencySamples(t *testing.T) {
 	t.Run("appends samples to database", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
+		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -427,7 +436,7 @@ func TestMCP_Telemetry_Store_AppendInternetMetroLatencySamples(t *testing.T) {
 			},
 		}
 
-		err = store.AppendInternetMetroLatencySamples(samples)
+		err = store.AppendInternetMetroLatencySamples(context.Background(), samples)
 		require.NoError(t, err)
 
 		var count int
@@ -447,7 +456,7 @@ func TestMCP_Telemetry_Store_AppendInternetMetroLatencySamples(t *testing.T) {
 			},
 		}
 
-		err = store.AppendInternetMetroLatencySamples(moreSamples)
+		err = store.AppendInternetMetroLatencySamples(context.Background(), moreSamples)
 		require.NoError(t, err)
 
 		err = db.QueryRow("SELECT COUNT(*) FROM dz_internet_metro_latency_samples").Scan(&count)
@@ -472,7 +481,7 @@ func TestMCP_Telemetry_Store_AppendInternetMetroLatencySamples(t *testing.T) {
 	t.Run("handles empty slice", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
+		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -485,7 +494,7 @@ func TestMCP_Telemetry_Store_AppendInternetMetroLatencySamples(t *testing.T) {
 		err = store.CreateTablesIfNotExists()
 		require.NoError(t, err)
 
-		err = store.AppendInternetMetroLatencySamples([]InternetMetroLatencySample{})
+		err = store.AppendInternetMetroLatencySamples(context.Background(), []InternetMetroLatencySample{})
 		require.NoError(t, err)
 
 		var count int
@@ -501,7 +510,7 @@ func TestMCP_Telemetry_Store_GetExistingMaxSampleIndices(t *testing.T) {
 	t.Run("returns max sample indices for each circuit and epoch", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
+		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -524,7 +533,7 @@ func TestMCP_Telemetry_Store_GetExistingMaxSampleIndices(t *testing.T) {
 			{CircuitCode: "CIRCUIT2", Epoch: 100, SampleIndex: 1, TimestampMicroseconds: 6000000, RTTMicroseconds: 10000},
 		}
 
-		err = store.AppendDeviceLinkLatencySamples(samples)
+		err = store.AppendDeviceLinkLatencySamples(context.Background(), samples)
 		require.NoError(t, err)
 
 		indices, err := store.GetExistingMaxSampleIndices()
@@ -539,7 +548,7 @@ func TestMCP_Telemetry_Store_GetExistingMaxSampleIndices(t *testing.T) {
 	t.Run("returns empty map when no samples exist", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
+		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -564,7 +573,7 @@ func TestMCP_Telemetry_Store_GetExistingInternetMaxSampleIndices(t *testing.T) {
 	t.Run("returns max sample indices for each circuit, data provider, and epoch", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
+		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -587,7 +596,7 @@ func TestMCP_Telemetry_Store_GetExistingInternetMaxSampleIndices(t *testing.T) {
 			{CircuitCode: "NYC → LAX", DataProvider: "provider2", Epoch: 100, SampleIndex: 1, TimestampMicroseconds: 6000000, RTTMicroseconds: 15000},
 		}
 
-		err = store.AppendInternetMetroLatencySamples(samples)
+		err = store.AppendInternetMetroLatencySamples(context.Background(), samples)
 		require.NoError(t, err)
 
 		indices, err := store.GetExistingInternetMaxSampleIndices()
@@ -602,7 +611,7 @@ func TestMCP_Telemetry_Store_GetExistingInternetMaxSampleIndices(t *testing.T) {
 	t.Run("returns empty map when no samples exist", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
+		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
 		require.NoError(t, err)
 		defer db.Close()
 

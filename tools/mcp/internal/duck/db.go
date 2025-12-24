@@ -13,6 +13,7 @@ import (
 type DB interface {
 	Exec(query string, args ...any) (sql.Result, error)
 	Query(query string, args ...any) (*sql.Rows, error)
+	QueryRow(query string, args ...any) *sql.Row
 	Begin() (*sql.Tx, error)
 	Close() error
 }
@@ -113,6 +114,17 @@ func (r *duckDB) Query(query string, args ...any) (*sql.Rows, error) {
 		rows, err = db.Query(query, args...)
 	}
 	return rows, err
+}
+
+func (r *duckDB) QueryRow(query string, args ...any) *sql.Row {
+	r.mu.RLock()
+	db := r.db
+	r.mu.RUnlock()
+
+	row := db.QueryRow(query, args...)
+	// Note: QueryRow doesn't return an error immediately, so we can't check for invalidation here
+	// The error will be returned when Scan is called
+	return row
 }
 
 func (r *duckDB) Begin() (*sql.Tx, error) {

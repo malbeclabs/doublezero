@@ -187,17 +187,17 @@ func (v *View) Refresh(ctx context.Context) error {
 	}
 
 	v.log.Debug("solana: refreshing leader schedule", "count", len(leaderScheduleEntries))
-	if err := v.store.ReplaceLeaderSchedule(leaderScheduleEntries, fetchedAt, currentEpoch); err != nil {
+	if err := v.store.ReplaceLeaderSchedule(ctx, leaderScheduleEntries, fetchedAt, currentEpoch); err != nil {
 		return fmt.Errorf("failed to refresh leader schedule: %w", err)
 	}
 
 	v.log.Debug("solana: refreshing vote accounts", "count", len(voteAccounts.Current))
-	if err := v.store.ReplaceVoteAccounts(voteAccounts.Current, fetchedAt, currentEpoch); err != nil {
+	if err := v.store.ReplaceVoteAccounts(ctx, voteAccounts.Current, fetchedAt, currentEpoch); err != nil {
 		return fmt.Errorf("failed to refresh vote accounts: %w", err)
 	}
 
 	v.log.Debug("solana: refreshing cluster nodes", "count", len(clusterNodes))
-	if err := v.store.ReplaceGossipNodes(clusterNodes, fetchedAt, currentEpoch); err != nil {
+	if err := v.store.ReplaceGossipNodes(ctx, clusterNodes, fetchedAt, currentEpoch); err != nil {
 		return fmt.Errorf("failed to refresh cluster nodes: %w", err)
 	}
 
@@ -210,4 +210,3 @@ func (v *View) Refresh(ctx context.Context) error {
 	v.log.Debug("solana: refresh completed", "fetched_at", fetchedAt)
 	return nil
 }
-

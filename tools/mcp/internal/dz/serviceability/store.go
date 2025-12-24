@@ -1,11 +1,12 @@
 package dzsvc
 
 import (
+	"context"
 	"database/sql"
+	"encoding/csv"
 	"errors"
 	"fmt"
 	"log/slog"
-	"time"
 
 	"github.com/malbeclabs/doublezero/tools/mcp/internal/duck"
 )
@@ -98,111 +99,48 @@ func (s *Store) CreateTablesIfNotExists() error {
 	return nil
 }
 
-func (s *Store) ReplaceContributors(contributors []Contributor) error {
+func (s *Store) ReplaceContributors(ctx context.Context, contributors []Contributor) error {
 	s.log.Debug("serviceability/store: replacing contributors", "count", len(contributors))
-	return s.replaceTable("dz_contributors", "DELETE FROM dz_contributors", "INSERT INTO dz_contributors (pk, code, name) VALUES (?, ?, ?)", len(contributors), func(stmt *sql.Stmt, i int) error {
+	return duck.ReplaceTableViaCSV(ctx, s.log, s.db, "dz_contributors", len(contributors), func(w *csv.Writer, i int) error {
 		c := contributors[i]
-		_, err := stmt.Exec(c.PK, c.Code, c.Name)
-		return err
+		return w.Write([]string{c.PK, c.Code, c.Name})
 	})
 }
 
-func (s *Store) ReplaceDevices(devices []Device) error {
+func (s *Store) ReplaceDevices(ctx context.Context, devices []Device) error {
 	s.log.Debug("serviceability/store: replacing devices", "count", len(devices))
-	return s.replaceTable("dz_devices", "DELETE FROM dz_devices", "INSERT INTO dz_devices (pk, status, device_type, code, public_ip, contributor_pk, metro_pk) VALUES (?, ?, ?, ?, ?, ?, ?)", len(devices), func(stmt *sql.Stmt, i int) error {
+	return duck.ReplaceTableViaCSV(ctx, s.log, s.db, "dz_devices", len(devices), func(w *csv.Writer, i int) error {
 		d := devices[i]
-		_, err := stmt.Exec(d.PK, d.Status, d.DeviceType, d.Code, d.PublicIP, d.ContributorPK, d.MetroPK)
-		return err
+		return w.Write([]string{d.PK, d.Status, d.DeviceType, d.Code, d.PublicIP, d.ContributorPK, d.MetroPK})
 	})
 }
 
-func (s *Store) ReplaceUsers(users []User) error {
+func (s *Store) ReplaceUsers(ctx context.Context, users []User) error {
 	s.log.Debug("serviceability/store: replacing users", "count", len(users))
-	return s.replaceTable("dz_users", "DELETE FROM dz_users", "INSERT INTO dz_users (pk, owner_pk, status, kind, client_ip, dz_ip, device_pk) VALUES (?, ?, ?, ?, ?, ?, ?)", len(users), func(stmt *sql.Stmt, i int) error {
+	return duck.ReplaceTableViaCSV(ctx, s.log, s.db, "dz_users", len(users), func(w *csv.Writer, i int) error {
 		u := users[i]
-		_, err := stmt.Exec(u.PK, u.OwnerPK, u.Status, u.Kind, u.ClientIP.String(), u.DZIP.String(), u.DevicePK)
-		return err
+		return w.Write([]string{u.PK, u.OwnerPK, u.Status, u.Kind, u.ClientIP.String(), u.DZIP.String(), u.DevicePK})
 	})
 }
 
-func (s *Store) ReplaceMetros(metros []Metro) error {
+func (s *Store) ReplaceMetros(ctx context.Context, metros []Metro) error {
 	s.log.Debug("serviceability/store: replacing metros", "count", len(metros))
-	return s.replaceTable("dz_metros", "DELETE FROM dz_metros", "INSERT INTO dz_metros (pk, code, name, longitude, latitude) VALUES (?, ?, ?, ?, ?)", len(metros), func(stmt *sql.Stmt, i int) error {
+	return duck.ReplaceTableViaCSV(ctx, s.log, s.db, "dz_metros", len(metros), func(w *csv.Writer, i int) error {
 		m := metros[i]
-		_, err := stmt.Exec(m.PK, m.Code, m.Name, m.Longitude, m.Latitude)
-		return err
+		return w.Write([]string{m.PK, m.Code, m.Name, fmt.Sprintf("%.6f", m.Longitude), fmt.Sprintf("%.6f", m.Latitude)})
 	})
 }
 
-func (s *Store) ReplaceLinks(links []Link) error {
+func (s *Store) ReplaceLinks(ctx context.Context, links []Link) error {
 	s.log.Debug("serviceability/store: replacing links", "count", len(links))
-	return s.replaceTable("dz_links", "DELETE FROM dz_links", "INSERT INTO dz_links (pk, status, code, tunnel_net, contributor_pk, side_a_pk, side_z_pk, side_a_iface_name, side_z_iface_name, link_type, delay_ns, jitter_ns, bandwidth_bps) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", len(links), func(stmt *sql.Stmt, i int) error {
+	return duck.ReplaceTableViaCSV(ctx, s.log, s.db, "dz_links", len(links), func(w *csv.Writer, i int) error {
 		l := links[i]
-		_, err := stmt.Exec(l.PK, l.Status, l.Code, l.TunnelNet, l.ContributorPK, l.SideAPK, l.SideZPK, l.SideAIfaceName, l.SideZIfaceName, l.LinkType, l.DelayNs, l.JitterNs, l.Bandwidth)
-		return err
+		return w.Write([]string{
+			l.PK, l.Status, l.Code, l.TunnelNet, l.ContributorPK, l.SideAPK, l.SideZPK,
+			l.SideAIfaceName, l.SideZIfaceName, l.LinkType,
+			fmt.Sprintf("%d", l.DelayNs), fmt.Sprintf("%d", l.JitterNs), fmt.Sprintf("%d", l.Bandwidth),
+		})
 	})
-}
-
-func (s *Store) replaceTable(tableName, deleteSQL, insertSQL string, count int, insertFn func(*sql.Stmt, int) error) error {
-	tableRefreshStart := time.Now()
-	s.log.Info("serviceability: refreshing table started", "table", tableName, "rows", count, "start_time", tableRefreshStart)
-	defer func() {
-		duration := time.Since(tableRefreshStart)
-		s.log.Info("serviceability: refreshing table completed", "table", tableName, "duration", duration.String())
-	}()
-
-	s.log.Debug("serviceability: refreshing table", "table", tableName, "rows", count)
-
-	txStart := time.Now()
-	tx, err := s.db.Begin()
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction for %s: %w", tableName, err)
-	}
-	s.log.Debug("serviceability: transaction begun", "table", tableName, "tx_start_time", txStart)
-	defer tx.Rollback()
-
-	if _, err := tx.Exec(deleteSQL); err != nil {
-		return fmt.Errorf("failed to clear %s: %w", tableName, err)
-	}
-
-	if count == 0 {
-		if err := tx.Commit(); err != nil {
-			return fmt.Errorf("failed to commit transaction for %s: %w", tableName, err)
-		}
-		s.log.Debug("serviceability: table refreshed (empty)", "table", tableName)
-		return nil
-	}
-
-	stmt, err := tx.Prepare(insertSQL)
-	if err != nil {
-		return fmt.Errorf("failed to prepare statement for %s: %w", tableName, err)
-	}
-	defer stmt.Close()
-
-	logInterval := min(max(count/10, 1000), 100000)
-
-	for i := range count {
-		if err := insertFn(stmt, i); err != nil {
-			s.log.Error("failed to insert row", "table", tableName, "row", i, "total", count, "error", err)
-			return fmt.Errorf("failed to insert into %s: %w", tableName, err)
-		}
-		if (i+1)%logInterval == 0 || i == count-1 {
-			s.log.Debug("insert progress", "table", tableName, "inserted", i+1, "total", count, "percent", float64(i+1)*100.0/float64(count))
-		}
-	}
-
-	commitStart := time.Now()
-	s.log.Info("serviceability: committing transaction", "table", tableName, "rows", count, "tx_duration", time.Since(txStart).String(), "commit_start_time", commitStart)
-	if err := tx.Commit(); err != nil {
-		txDuration := time.Since(txStart)
-		s.log.Error("serviceability: transaction commit failed", "table", tableName, "error", err, "tx_duration", txDuration.String())
-		return fmt.Errorf("failed to commit transaction for %s: %w", tableName, err)
-	}
-	commitDuration := time.Since(commitStart)
-	s.log.Info("serviceability: transaction committed", "table", tableName, "commit_duration", commitDuration.String(), "total_tx_duration", time.Since(txStart).String())
-
-	s.log.Debug("serviceability: table refreshed", "table", tableName, "rows", count)
-	return nil
 }
 
 func (s *Store) GetDevices() ([]Device, error) {
@@ -264,8 +202,12 @@ func (s *Store) GetContributors() ([]Contributor, error) {
 	var contributors []Contributor
 	for rows.Next() {
 		var c Contributor
-		if err := rows.Scan(&c.PK, &c.Code, &c.Name); err != nil {
+		var name sql.NullString
+		if err := rows.Scan(&c.PK, &c.Code, &name); err != nil {
 			return nil, fmt.Errorf("failed to scan contributor: %w", err)
+		}
+		if name.Valid {
+			c.Name = name.String
 		}
 		contributors = append(contributors, c)
 	}

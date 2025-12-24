@@ -2,10 +2,10 @@ package dztelem
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"log/slog"
 	"os"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -13,6 +13,7 @@ import (
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/jonboulle/clockwork"
+	"github.com/malbeclabs/doublezero/tools/mcp/internal/duck"
 	"github.com/stretchr/testify/require"
 
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
@@ -55,7 +56,7 @@ func TestMCP_Telemetry_View_Ready(t *testing.T) {
 	t.Run("returns false when not ready", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
+		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -92,7 +93,7 @@ func TestMCP_Telemetry_View_WaitReady(t *testing.T) {
 	t.Run("returns error when context is cancelled", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
+		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -231,7 +232,7 @@ func TestMCP_Telemetry_View_Refresh_SavesToDB(t *testing.T) {
 	t.Run("saves device-link circuits to database", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
+		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -356,7 +357,7 @@ func TestMCP_Telemetry_View_Refresh_SavesToDB(t *testing.T) {
 	t.Run("saves device-link latency samples to database", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
+		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -495,7 +496,7 @@ func TestMCP_Telemetry_View_Refresh_SavesToDB(t *testing.T) {
 	t.Run("reads data back from database correctly", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
+		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -639,7 +640,7 @@ func TestMCP_Telemetry_View_IncrementalAppend(t *testing.T) {
 	t.Run("device-link samples are appended incrementally", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
+		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -726,17 +727,17 @@ func TestMCP_Telemetry_View_IncrementalAppend(t *testing.T) {
 		linkPKPubKey := solana.PublicKeyFromBytes(linkPK[:])
 
 		// First refresh: samples 0-2 (NextSampleIndex = 3)
-		refreshCount := 0
+		var refreshCount atomic.Int64
 		mockTelemetryRPC := &mockTelemetryRPCWithIncrementalSamples{
 			getSamplesFunc: func(originDevicePK, targetDevicePK, linkPK solana.PublicKey, epoch uint64) (*telemetry.DeviceLatencySamples, error) {
-				sampleKey := key(originPK, targetPK, linkPKPubKey, epoch)
+				sampleKey := key(originDevicePK, targetDevicePK, linkPK, epoch)
 				expectedKey := key(originPK, targetPK, linkPKPubKey, 100)
 				if sampleKey != expectedKey {
 					return nil, telemetry.ErrAccountNotFound
 				}
 
-				refreshCount++
-				if refreshCount == 1 {
+				count := refreshCount.Add(1)
+				if count == 1 {
 					// First refresh: return samples 0-2
 					return &telemetry.DeviceLatencySamples{
 						DeviceLatencySamplesHeader: telemetry.DeviceLatencySamplesHeader{
@@ -826,7 +827,7 @@ func TestMCP_Telemetry_View_IncrementalAppend(t *testing.T) {
 	t.Run("internet-metro samples are appended incrementally", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
+		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
 		require.NoError(t, err)
 		defer db.Close()
 
@@ -888,15 +889,18 @@ func TestMCP_Telemetry_View_IncrementalAppend(t *testing.T) {
 		targetPK := solana.PublicKeyFromBytes(metroPK2[:])
 		agentPK := solana.MustPublicKeyFromBase58("So11111111111111111111111111111111111111112")
 
-		refreshCount := 0
+		var refreshCount atomic.Int64
 		mockTelemetryRPC := &mockTelemetryRPCWithIncrementalInternetSamples{
 			getSamplesFunc: func(dataProviderName string, originLocationPK, targetLocationPK, agentPK solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error) {
-				if originLocationPK.String() != originPK.String() || targetLocationPK.String() != targetPK.String() || epoch != 100 {
+				// Circuits are sorted alphabetically, so check both orderings
+				matchesForward := originLocationPK.String() == originPK.String() && targetLocationPK.String() == targetPK.String()
+				matchesReverse := originLocationPK.String() == targetPK.String() && targetLocationPK.String() == originPK.String()
+				if (!matchesForward && !matchesReverse) || epoch != 100 {
 					return nil, telemetry.ErrAccountNotFound
 				}
 
-				refreshCount++
-				if refreshCount == 1 {
+				count := refreshCount.Add(1)
+				if count == 1 {
 					// First refresh: return samples 0-1
 					return &telemetry.InternetLatencySamples{
 						InternetLatencySamplesHeader: telemetry.InternetLatencySamplesHeader{

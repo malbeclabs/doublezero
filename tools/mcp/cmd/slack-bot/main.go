@@ -617,16 +617,7 @@ func handleMessage(
 		txt = strings.TrimSpace(txt)
 	}
 
-	// For channels, always thread. For DMs, thread if already in thread or :thread: emoji
-	var wantsThread bool
-	if isChannel {
-		// In channels, always thread responses
-		wantsThread = true
-	} else {
-		// In DMs, thread if already in thread or includes :thread: emoji
-		wantsThread = ev.ThreadTimeStamp != "" || strings.Contains(txt, ":thread:")
-	}
-
+	// Always thread responses (both channels and DMs)
 	// Determine thread key: use thread timestamp if in thread, otherwise use message timestamp
 	// For non-thread replies, we still use message timestamp as key for conversation history
 	threadKey := ev.TimeStamp
@@ -720,22 +711,15 @@ func handleMessage(
 		// Provide user-friendly error message instead of raw error
 		reply := sanitizeErrorMessage(err.Error())
 
-		// Post error response - use same thread logic as successful replies
+		// Post error response - always thread (same logic as successful replies)
 		errorOpts := []slack.MsgOption{
 			slack.MsgOptionText(reply, false),
 		}
-		if wantsThread {
-			if isChannel {
-				// In channels, always thread under the original message
-				errorOpts = append(errorOpts, slack.MsgOptionTS(ev.TimeStamp))
-			} else {
-				// In DMs, use existing thread if available, otherwise create new thread
-				if ev.ThreadTimeStamp != "" {
-					errorOpts = append(errorOpts, slack.MsgOptionTS(ev.ThreadTimeStamp))
-				} else {
-					errorOpts = append(errorOpts, slack.MsgOptionTS(ev.TimeStamp))
-				}
-			}
+		// Always thread: use existing thread if available, otherwise create new thread
+		if ev.ThreadTimeStamp != "" {
+			errorOpts = append(errorOpts, slack.MsgOptionTS(ev.ThreadTimeStamp))
+		} else {
+			errorOpts = append(errorOpts, slack.MsgOptionTS(ev.TimeStamp))
 		}
 		_, _, _ = api.PostMessageContext(ctx, ev.Channel, errorOpts...)
 
@@ -776,25 +760,14 @@ func handleMessage(
 	}
 
 	var msgOpts []slack.MsgOption
-	// Threading logic:
-	// - In channels: always thread under the original message
-	// - In DMs: thread if already in thread or :thread: emoji, otherwise reply outside thread
-	if wantsThread {
-		if isChannel {
-			// In channels, always thread under the original message
-			msgOpts = append(msgOpts, slack.MsgOptionTS(ev.TimeStamp))
-		} else {
-			// In DMs, use existing thread if available, otherwise create new thread
-			if ev.ThreadTimeStamp != "" {
-				// User is already in a thread, reply in that thread
-				msgOpts = append(msgOpts, slack.MsgOptionTS(ev.ThreadTimeStamp))
-			} else {
-				// User included :thread: emoji, create a new thread
-				msgOpts = append(msgOpts, slack.MsgOptionTS(ev.TimeStamp))
-			}
-		}
+	// Always thread responses: use existing thread if available, otherwise create new thread
+	if ev.ThreadTimeStamp != "" {
+		// User is already in a thread, reply in that thread
+		msgOpts = append(msgOpts, slack.MsgOptionTS(ev.ThreadTimeStamp))
+	} else {
+		// Create a new thread under the original message
+		msgOpts = append(msgOpts, slack.MsgOptionTS(ev.TimeStamp))
 	}
-	// If wantsThread is false (DM without thread), don't add MsgOptionTS, so reply goes outside thread
 
 	// Reactions are being removed automatically in the goroutine on the same schedule
 	// We just need to clean up writing_hand and any remaining ones after posting
@@ -828,18 +801,11 @@ func handleMessage(
 		errorOpts := []slack.MsgOption{
 			slack.MsgOptionText("Sorry, I encountered an error. Please try again.", false),
 		}
-		if wantsThread {
-			if isChannel {
-				// In channels, always thread under the original message
-				errorOpts = append(errorOpts, slack.MsgOptionTS(ev.TimeStamp))
-			} else {
-				// In DMs, use existing thread if available, otherwise create new thread
-				if ev.ThreadTimeStamp != "" {
-					errorOpts = append(errorOpts, slack.MsgOptionTS(ev.ThreadTimeStamp))
-				} else {
-					errorOpts = append(errorOpts, slack.MsgOptionTS(ev.TimeStamp))
-				}
-			}
+		// Always thread: use existing thread if available, otherwise create new thread
+		if ev.ThreadTimeStamp != "" {
+			errorOpts = append(errorOpts, slack.MsgOptionTS(ev.ThreadTimeStamp))
+		} else {
+			errorOpts = append(errorOpts, slack.MsgOptionTS(ev.TimeStamp))
 		}
 		_, _, _ = api.PostMessageContext(ctx, ev.Channel, errorOpts...)
 	} else {

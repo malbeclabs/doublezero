@@ -124,7 +124,7 @@ func (a *AnthropicAgent) Run(ctx context.Context, mcpClient *client.Client, init
 	for round := 0; round < a.cfg.MaxRounds; round++ {
 		roundNum := round + 1
 		if a.cfg.Logger != nil {
-			a.cfg.Logger.Info("anthropic: starting round", "round", roundNum, "max_rounds", a.cfg.MaxRounds)
+			a.cfg.Logger.Info("agent: starting round", "round", roundNum, "max_rounds", a.cfg.MaxRounds)
 		}
 
 		params := anthropic.MessageNewParams{
@@ -144,7 +144,7 @@ func (a *AnthropicAgent) Run(ctx context.Context, mcpClient *client.Client, init
 		}
 
 		if a.cfg.Logger != nil {
-			a.cfg.Logger.Debug("anthropic: received response", "round", roundNum, "contentBlocks", len(resp.Content))
+			a.cfg.Logger.Debug("agent: received response", "round", roundNum, "contentBlocks", len(resp.Content))
 		}
 
 		response := anthropicResponse{resp: resp}
@@ -155,7 +155,7 @@ func (a *AnthropicAgent) Run(ctx context.Context, mcpClient *client.Client, init
 		toolUses := extractToolUses(response.Content())
 		if len(toolUses) == 0 {
 			if a.cfg.Logger != nil {
-				a.cfg.Logger.Info("anthropic: no tool calls, returning final response", "round", roundNum)
+				a.cfg.Logger.Info("agent: no tool calls, returning final response", "round", roundNum)
 			}
 
 			if resp.StopReason == "max_tokens" {
@@ -231,12 +231,12 @@ func (a *AnthropicAgent) Run(ctx context.Context, mcpClient *client.Client, init
 
 		if a.cfg.Logger != nil {
 			if len(toolUses) > 1 {
-				a.cfg.Logger.Info("anthropic: found multiple tool calls, executing in parallel", "round", roundNum, "count", len(toolUses))
+				a.cfg.Logger.Info("agent: found multiple tool calls, executing in parallel", "round", roundNum, "count", len(toolUses))
 			} else {
-				a.cfg.Logger.Info("anthropic: found tool call to execute", "round", roundNum, "count", len(toolUses))
+				a.cfg.Logger.Info("agent: found tool call to execute", "round", roundNum, "count", len(toolUses))
 			}
 			for i, tu := range toolUses {
-				a.cfg.Logger.Debug("anthropic: executing tool", "round", roundNum, "index", i+1, "total", len(toolUses), "name", tu.Name)
+				a.cfg.Logger.Debug("agent: executing tool", "round", roundNum, "index", i+1, "total", len(toolUses), "name", tu.Name)
 			}
 		}
 
@@ -250,7 +250,7 @@ func (a *AnthropicAgent) Run(ctx context.Context, mcpClient *client.Client, init
 		}
 
 		if a.cfg.Logger != nil {
-			a.cfg.Logger.Debug("anthropic: sending tool results back to anthropic")
+			a.cfg.Logger.Debug("agent: sending tool results back to anthropic")
 		}
 
 		toolResultMsg := anthropic.NewUserMessage(toolResults...)

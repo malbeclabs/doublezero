@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"flag"
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	anthropic "github.com/anthropics/anthropic-sdk-go"
@@ -35,12 +37,6 @@ func run() error {
 	flag.Parse()
 
 	log := logger.New(*verboseFlag)
-
-	// Get question from positional args, or use default
-	question := "Come up with an interesting question to ask about DoubleZero, and answer it using the tools."
-	if len(flag.Args()) > 0 {
-		question = flag.Arg(0)
-	}
 
 	mcpURL := os.Getenv("MCP_URL")
 	if mcpURL == "" {
@@ -79,17 +75,89 @@ func run() error {
 		System:           agent.SystemPrompt,
 	})
 
-	msgs := []agent.Message{
-		anthropicMessageAdapter{
+	// Initialize conversation history
+	conversationHistory := []agent.Message{}
+
+	// If a question is provided as a positional arg, use it as the first message
+	if len(flag.Args()) > 0 {
+		question := flag.Arg(0)
+		conversationHistory = append(conversationHistory, anthropicMessageAdapter{
 			msg: anthropic.NewUserMessage(anthropic.NewTextBlock(question)),
-		},
+		})
+		result, err := agent.RunAgent(ctx, anthropicAgent, mcpClient, conversationHistory, os.Stdout)
+		if err != nil {
+			return fmt.Errorf("failed to run agent: %w", err)
+		}
+		conversationHistory = result.FullConversation
+		fmt.Println() // Add blank line after response
 	}
 
-	result, err := agent.RunAgent(ctx, anthropicAgent, mcpClient, msgs, os.Stdout)
-	if err != nil {
-		return fmt.Errorf("failed to run agent: %w", err)
-	}
-	_ = result
+	// Interactive loop using channel to handle Ctrl-C
+	inputChan := make(chan string)
+	errChan := make(chan error, 1)
 
-	return nil
+	go func() {
+		scanner := bufio.NewScanner(os.Stdin)
+		for scanner.Scan() {
+			inputChan <- scanner.Text()
+		}
+		if err := scanner.Err(); err != nil {
+			errChan <- err
+		}
+		close(inputChan)
+	}()
+
+	fmt.Print("> ")
+	for {
+		select {
+		case <-ctx.Done():
+			fmt.Println("\nGoodbye!")
+			return nil
+		case err := <-errChan:
+			return fmt.Errorf("error reading input: %w", err)
+		case input, ok := <-inputChan:
+			if !ok {
+				// Channel closed, stdin EOF
+				return nil
+			}
+
+			input = strings.TrimSpace(input)
+			if input == "" {
+				fmt.Print("> ")
+				continue
+			}
+
+			// Check for exit commands
+			if input == "exit" || input == "quit" || input == "q" {
+				fmt.Println("Goodbye!")
+				return nil
+			}
+
+			// Add user message to conversation history
+			userMsg := anthropicMessageAdapter{
+				msg: anthropic.NewUserMessage(anthropic.NewTextBlock(input)),
+			}
+			conversationHistory = append(conversationHistory, userMsg)
+
+			// Run agent with full conversation history
+			result, err := agent.RunAgent(ctx, anthropicAgent, mcpClient, conversationHistory, os.Stdout)
+			if err != nil {
+				// Check if error is due to context cancellation
+				if ctx.Err() != nil {
+					fmt.Println("\nGoodbye!")
+					return nil
+				}
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				// Remove the failed message from history
+				conversationHistory = conversationHistory[:len(conversationHistory)-1]
+				fmt.Print("> ")
+				continue
+			}
+
+			// Update conversation history with full result
+			conversationHistory = result.FullConversation
+			fmt.Println() // Add blank line after response
+			fmt.Print("> ")
+		}
+	}
 }

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -269,8 +268,7 @@ func (c *Client) CallToolText(ctx context.Context, name string, args map[string]
 	isError := result.IsError
 
 	if isError {
-		c.log.Error("mcp/client: failed to call tool", "error", str)
-		fmt.Fprintf(os.Stderr, "mcp/client: failed to call tool: %s\n", str)
+		c.log.Warn("mcp/client: tool returned error result", "error", str)
 	} else {
 		c.log.Debug("mcp/client: called tool", "chars", len(str))
 	}

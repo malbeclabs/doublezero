@@ -1,17 +1,17 @@
 use crate::{
     error::DoubleZeroError,
-    globalstate::globalstate_get,
     pda::get_accesspass_pda,
+    serializer::try_acc_write,
     state::{
         accesspass::{AccessPass, AccessPassStatus},
-        accounttype::AccountTypeInfo,
+        globalstate::GlobalState,
         user::*,
     },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
-use doublezero_program_common::resize_account::resize_account_if_needed;
+
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
@@ -71,7 +71,7 @@ pub fn process_delete_user(
 
     let mut user: User = User::try_from(user_account)?;
 
-    let globalstate = globalstate_get(globalstate_account)?;
+    let globalstate = GlobalState::try_from(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key)
         && user.owner != *payer_account.key
     {
@@ -120,19 +120,13 @@ pub fn process_delete_user(
         if accesspass.connection_count == 0 && accesspass.allow_multiple_ip() {
             accesspass.client_ip = Ipv4Addr::UNSPECIFIED; // reset to allow multiple IPs
         }
-        resize_account_if_needed(
-            accesspass_account,
-            payer_account,
-            accounts,
-            accesspass.size(),
-        )?;
-        accesspass.try_serialize(accesspass_account)?;
+
+        try_acc_write(&accesspass, accesspass_account, payer_account, accounts)?;
     }
 
     user.status = UserStatus::Deleting;
 
-    resize_account_if_needed(user_account, payer_account, accounts, user.size())?;
-    user.try_serialize(user_account)?;
+    try_acc_write(&user, user_account, payer_account, accounts)?;
 
     #[cfg(test)]
     msg!("Deleting: {:?}", user);

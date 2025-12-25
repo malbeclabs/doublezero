@@ -1,8 +1,7 @@
 use crate::{
     error::DoubleZeroError,
-    globalstate::globalstate_get,
-    helper::*,
-    state::{contributor::Contributor, device::Device, link::*},
+    serializer::try_acc_write,
+    state::{contributor::Contributor, device::Device, globalstate::GlobalState, link::*},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -104,7 +103,7 @@ pub fn process_update_link(
     // Check if the account is writable
     assert!(link_account.is_writable, "PDA Account is not writable");
 
-    let globalstate = globalstate_get(globalstate_account)?;
+    let globalstate = GlobalState::try_from(globalstate_account)?;
     let contributor = Contributor::try_from(contributor_account)?;
 
     if contributor.owner != *payer_account.key
@@ -194,7 +193,7 @@ pub fn process_update_link(
         }
     }
 
-    account_write(link_account, &link, payer_account, system_program)?;
+    try_acc_write(&link, link_account, payer_account, accounts)?;
 
     #[cfg(test)]
     msg!("Updated: {:?}", link);

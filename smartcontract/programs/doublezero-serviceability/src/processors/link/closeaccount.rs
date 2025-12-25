@@ -1,8 +1,10 @@
 use crate::{
     error::DoubleZeroError,
-    globalstate::globalstate_get,
-    helper::*,
-    state::{contributor::Contributor, device::*, interface::InterfaceStatus, link::*},
+    serializer::{try_acc_close, try_acc_write},
+    state::{
+        contributor::Contributor, device::*, globalstate::GlobalState, interface::InterfaceStatus,
+        link::*,
+    },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -74,7 +76,7 @@ pub fn process_closeaccount_link(
     // Check if the account is writable
     assert!(link_account.is_writable, "PDA Account is not writable");
 
-    let globalstate = globalstate_get(globalstate_account)?;
+    let globalstate = GlobalState::try_from(globalstate_account)?;
     if globalstate.activator_authority_pk != *payer_account.key {
         return Err(DoubleZeroError::NotAllowed.into());
     }
@@ -111,15 +113,10 @@ pub fn process_closeaccount_link(
     side_a_dev.reference_count = side_a_dev.reference_count.saturating_sub(1);
     side_z_dev.reference_count = side_z_dev.reference_count.saturating_sub(1);
 
-    account_write(
-        contributor_account,
-        &contributor,
-        payer_account,
-        system_program,
-    )?;
-    account_write(side_a_account, &side_a_dev, payer_account, system_program)?;
-    account_write(side_z_account, &side_z_dev, payer_account, system_program)?;
-    account_close(link_account, owner_account)?;
+    try_acc_write(&contributor, contributor_account, payer_account, accounts)?;
+    try_acc_write(&side_a_dev, side_a_account, payer_account, accounts)?;
+    try_acc_write(&side_z_dev, side_z_account, payer_account, accounts)?;
+    try_acc_close(link_account, owner_account)?;
 
     #[cfg(test)]
     msg!("CloseAccount: Link closed");

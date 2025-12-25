@@ -1,8 +1,9 @@
 use crate::{
     error::DoubleZeroError,
-    globalstate::globalstate_get,
-    helper::*,
-    state::{accounttype::AccountType, contributor::Contributor, link::*},
+    serializer::try_acc_write,
+    state::{
+        accounttype::AccountType, contributor::Contributor, globalstate::GlobalState, link::*,
+    },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -60,7 +61,7 @@ pub fn process_delete_link(
         "Invalid System Program Account Owner"
     );
 
-    let globalstate = globalstate_get(globalstate_account)?;
+    let globalstate = GlobalState::try_from(globalstate_account)?;
     assert_eq!(globalstate.account_type, AccountType::GlobalState);
 
     let contributor = Contributor::try_from(contributor_account)?;
@@ -75,7 +76,7 @@ pub fn process_delete_link(
     let mut link: Link = Link::try_from(link_account)?;
     link.status = LinkStatus::Deleting;
 
-    account_write(link_account, &link, payer_account, system_program)?;
+    try_acc_write(&link, link_account, payer_account, accounts)?;
 
     #[cfg(test)]
     msg!("Deleting: {:?}", link);

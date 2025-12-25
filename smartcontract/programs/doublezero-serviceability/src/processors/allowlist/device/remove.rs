@@ -1,12 +1,9 @@
-use core::fmt;
-
 use crate::{
-    error::DoubleZeroError,
-    globalstate::{globalstate_get, globalstate_write_with_realloc},
-    pda::*,
+    error::DoubleZeroError, pda::*, serializer::try_acc_write, state::globalstate::GlobalState,
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
+use core::fmt;
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -33,7 +30,7 @@ pub fn process_remove_device_allowlist_globalconfig(
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
-    let pda_account = next_account_info(accounts_iter)?;
+    let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
@@ -44,36 +41,41 @@ pub fn process_remove_device_allowlist_globalconfig(
     assert!(payer_account.is_signer, "Payer must be a signer");
 
     // Check the owner of the accounts
-    assert_eq!(pda_account.owner, program_id, "Invalid PDA Account Owner");
+    assert_eq!(
+        globalstate_account.owner, program_id,
+        "Invalid PDA Account Owner"
+    );
     assert_eq!(
         *system_program.unsigned_key(),
         solana_program::system_program::id(),
         "Invalid System Program Account Owner"
     );
     // Check if the account is writable
-    assert!(pda_account.is_writable, "PDA Account is not writable");
+    assert!(
+        globalstate_account.is_writable,
+        "PDA Account is not writable"
+    );
 
-    let (expected_pda_account, bump_seed) = get_globalstate_pda(program_id);
+    let (expected_pda_account, _) = get_globalstate_pda(program_id);
     assert_eq!(
-        pda_account.key, &expected_pda_account,
+        globalstate_account.key, &expected_pda_account,
         "Invalid GlobalState PubKey"
+    );
+    assert_eq!(
+        *system_program.unsigned_key(),
+        solana_program::system_program::id(),
+        "Invalid System Program Account Owner"
     );
 
     // Parse the global state account & check if the payer is in the allowlist
-    let mut globalstate = globalstate_get(pda_account)?;
+    let mut globalstate = GlobalState::try_from(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
     globalstate.device_allowlist.retain(|x| x != &value.pubkey);
 
-    globalstate_write_with_realloc(
-        pda_account,
-        &globalstate,
-        payer_account,
-        system_program,
-        bump_seed,
-    );
+    try_acc_write(&globalstate, globalstate_account, payer_account, accounts)?;
 
     #[cfg(test)]
     msg!("Updated: {:?}", globalstate);

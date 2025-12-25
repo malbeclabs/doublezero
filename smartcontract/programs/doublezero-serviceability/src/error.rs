@@ -135,6 +135,8 @@ pub enum DoubleZeroError {
     SerializationFailure, // variant 64
     #[error("Invalid argument")]
     InvalidArgument, // variant 65
+    #[error("Invalid Foundation Allowlist: cannot be empty")]
+    InvalidFoundationAllowlist, // variant 66
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -206,6 +208,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::AllocationFailed => ProgramError::Custom(63),
             DoubleZeroError::SerializationFailure => ProgramError::Custom(64),
             DoubleZeroError::InvalidArgument => ProgramError::Custom(65),
+            DoubleZeroError::InvalidFoundationAllowlist => ProgramError::Custom(66),
         }
     }
 }
@@ -278,6 +281,7 @@ impl From<u32> for DoubleZeroError {
             63 => DoubleZeroError::AllocationFailed,
             64 => DoubleZeroError::SerializationFailure,
             65 => DoubleZeroError::InvalidArgument,
+            66 => DoubleZeroError::InvalidFoundationAllowlist,
             _ => DoubleZeroError::Custom(e),
         }
     }
@@ -370,6 +374,7 @@ mod tests {
             AllocationFailed,
             SerializationFailure,
             InvalidArgument,
+            InvalidFoundationAllowlist,
         ];
         for err in variants {
             let pe: ProgramError = err.clone().into();

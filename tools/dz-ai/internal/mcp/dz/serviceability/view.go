@@ -1,0 +1,364 @@
+package dzsvc
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"net"
+	"sync"
+	"time"
+
+	_ "github.com/duckdb/duckdb-go/v2"
+	"github.com/gagliardetto/solana-go"
+	"github.com/jonboulle/clockwork"
+	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/duck"
+	mcpmetrics "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/metrics"
+)
+
+type Contributor struct {
+	PK   string
+	Code string
+	Name string
+}
+
+var (
+	contributorNamesByCode = map[string]string{
+		"jump_":    "Jump Crypto",
+		"dgt":      "Distributed Global",
+		"cherry":   "Cherry Servers",
+		"cdrw":     "CDRW",
+		"glxy":     "Galaxy",
+		"latitude": "Latitude",
+		"rox":      "RockawayX",
+		"s3v":      "S3V",
+		"stakefac": "Staking Facilities",
+	}
+)
+
+type Device struct {
+	PK            string
+	Status        string
+	DeviceType    string
+	Code          string
+	PublicIP      string
+	ContributorPK string
+	MetroPK       string
+}
+
+type Metro struct {
+	PK        string
+	Code      string
+	Name      string
+	Longitude float64
+	Latitude  float64
+}
+
+type Link struct {
+	PK             string
+	Status         string
+	Code           string
+	TunnelNet      string
+	ContributorPK  string
+	SideAPK        string
+	SideZPK        string
+	SideAIfaceName string
+	SideZIfaceName string
+	LinkType       string
+	DelayNs        uint64
+	JitterNs       uint64
+	Bandwidth      uint64
+}
+
+type User struct {
+	PK       string
+	OwnerPK  string
+	Status   string
+	Kind     string
+	ClientIP net.IP
+	DZIP     net.IP
+	DevicePK string
+}
+
+type ServiceabilityRPC interface {
+	GetProgramData(ctx context.Context) (*serviceability.ProgramData, error)
+}
+
+type ViewConfig struct {
+	Logger            *slog.Logger
+	Clock             clockwork.Clock
+	ServiceabilityRPC ServiceabilityRPC
+	RefreshInterval   time.Duration
+	DB                duck.DB
+}
+
+func (cfg *ViewConfig) Validate() error {
+	if cfg.Logger == nil {
+		return errors.New("logger is required")
+	}
+	if cfg.ServiceabilityRPC == nil {
+		return errors.New("serviceability rpc is required")
+	}
+	if cfg.DB == nil {
+		return errors.New("database is required")
+	}
+	if cfg.RefreshInterval <= 0 {
+		return errors.New("refresh interval must be greater than 0")
+	}
+
+	if cfg.Clock == nil {
+		cfg.Clock = clockwork.NewRealClock()
+	}
+	return nil
+}
+
+type View struct {
+	log       *slog.Logger
+	cfg       ViewConfig
+	store     *Store
+	refreshMu sync.Mutex // prevents concurrent refreshes
+
+	fetchedAt time.Time
+	readyOnce sync.Once
+	readyCh   chan struct{}
+}
+
+func NewView(cfg ViewConfig) (*View, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+
+	store, err := NewStore(StoreConfig{
+		Logger: cfg.Logger,
+		DB:     cfg.DB,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create store: %w", err)
+	}
+
+	v := &View{
+		log:     cfg.Logger,
+		cfg:     cfg,
+		store:   store,
+		readyCh: make(chan struct{}),
+	}
+
+	if err := v.store.CreateTablesIfNotExists(); err != nil {
+		return nil, fmt.Errorf("failed to create tables: %w", err)
+	}
+
+	return v, nil
+}
+
+func (v *View) Close() error {
+	return nil
+}
+
+func (v *View) Store() *Store {
+	return v.store
+}
+
+// Ready returns true if the view has completed at least one successful refresh
+func (v *View) Ready() bool {
+	select {
+	case <-v.readyCh:
+		return true
+	default:
+		return false
+	}
+}
+
+// WaitReady waits for the view to be ready (has completed at least one successful refresh)
+// It returns immediately if already ready, or blocks until ready or context is cancelled.
+func (v *View) WaitReady(ctx context.Context) error {
+	select {
+	case <-v.readyCh:
+		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("context cancelled while waiting for serviceability view: %w", ctx.Err())
+	}
+}
+
+func (v *View) Start(ctx context.Context) {
+	go func() {
+		v.log.Info("serviceability: starting refresh loop", "interval", v.cfg.RefreshInterval)
+
+		if err := v.Refresh(ctx); err != nil {
+			if errors.Is(err, context.Canceled) {
+				return
+			}
+			v.log.Error("serviceability: initial refresh failed", "error", err)
+		}
+		ticker := v.cfg.Clock.NewTicker(v.cfg.RefreshInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.Chan():
+				if err := v.Refresh(ctx); err != nil {
+					if errors.Is(err, context.Canceled) {
+						return
+					}
+					v.log.Error("serviceability: refresh failed", "error", err)
+				}
+			}
+		}
+	}()
+}
+
+func (v *View) Refresh(ctx context.Context) error {
+	v.refreshMu.Lock()
+	defer v.refreshMu.Unlock()
+
+	refreshStart := time.Now()
+	v.log.Info("serviceability: refresh started", "start_time", refreshStart)
+	defer func() {
+		duration := time.Since(refreshStart).Seconds()
+		v.log.Info("serviceability: refresh completed", "duration", duration)
+		mcpmetrics.ViewRefreshDuration.WithLabelValues("serviceability").Observe(duration)
+		if err := recover(); err != nil {
+			mcpmetrics.ViewRefreshTotal.WithLabelValues("serviceability", "error").Inc()
+			panic(err)
+		}
+	}()
+
+	v.log.Debug("serviceability: starting refresh")
+
+	pd, err := v.cfg.ServiceabilityRPC.GetProgramData(ctx)
+	if err != nil {
+		mcpmetrics.ViewRefreshTotal.WithLabelValues("serviceability", "error").Inc()
+		return err
+	}
+
+	v.log.Debug("serviceability: fetched program data",
+		"contributors", len(pd.Contributors),
+		"devices", len(pd.Devices),
+		"users", len(pd.Users),
+		"links", len(pd.Links),
+		"metros", len(pd.Exchanges))
+
+	contributors := convertContributors(pd.Contributors)
+	devices := convertDevices(pd.Devices)
+	users := convertUsers(pd.Users)
+	links := convertLinks(pd.Links)
+	metros := convertMetros(pd.Exchanges)
+
+	fetchedAt := time.Now().UTC()
+
+	if err := v.store.ReplaceContributors(ctx, contributors); err != nil {
+		return fmt.Errorf("failed to replace contributors: %w", err)
+	}
+
+	if err := v.store.ReplaceDevices(ctx, devices); err != nil {
+		return fmt.Errorf("failed to replace devices: %w", err)
+	}
+
+	if err := v.store.ReplaceUsers(ctx, users); err != nil {
+		return fmt.Errorf("failed to replace users: %w", err)
+	}
+
+	if err := v.store.ReplaceMetros(ctx, metros); err != nil {
+		return fmt.Errorf("failed to replace metros: %w", err)
+	}
+
+	if err := v.store.ReplaceLinks(ctx, links); err != nil {
+		return fmt.Errorf("failed to replace links: %w", err)
+	}
+
+	v.fetchedAt = fetchedAt
+	v.readyOnce.Do(func() {
+		close(v.readyCh)
+		v.log.Info("serviceability: view is now ready")
+	})
+
+	v.log.Debug("serviceability: refresh completed", "fetched_at", fetchedAt)
+	mcpmetrics.ViewRefreshTotal.WithLabelValues("serviceability", "success").Inc()
+	return nil
+}
+
+func convertContributors(onchain []serviceability.Contributor) []Contributor {
+	result := make([]Contributor, len(onchain))
+	for i, contributor := range onchain {
+		name := contributorNamesByCode[contributor.Code]
+		result[i] = Contributor{
+			PK:   solana.PublicKeyFromBytes(contributor.PubKey[:]).String(),
+			Code: contributor.Code,
+			Name: name,
+		}
+	}
+	return result
+}
+
+func convertDevices(onchain []serviceability.Device) []Device {
+	result := make([]Device, len(onchain))
+	for i, device := range onchain {
+		result[i] = Device{
+			PK:            solana.PublicKeyFromBytes(device.PubKey[:]).String(),
+			Status:        device.Status.String(),
+			DeviceType:    device.DeviceType.String(),
+			Code:          device.Code,
+			PublicIP:      net.IP(device.PublicIp[:]).String(),
+			ContributorPK: solana.PublicKeyFromBytes(device.ContributorPubKey[:]).String(),
+			MetroPK:       solana.PublicKeyFromBytes(device.ExchangePubKey[:]).String(),
+		}
+	}
+	return result
+}
+
+func convertUsers(onchain []serviceability.User) []User {
+	result := make([]User, len(onchain))
+	for i, user := range onchain {
+		result[i] = User{
+			PK:       solana.PublicKeyFromBytes(user.PubKey[:]).String(),
+			OwnerPK:  solana.PublicKeyFromBytes(user.Owner[:]).String(),
+			Status:   user.Status.String(),
+			Kind:     user.UserType.String(),
+			ClientIP: net.IP(user.ClientIp[:]),
+			DZIP:     net.IP(user.DzIp[:]),
+			DevicePK: solana.PublicKeyFromBytes(user.DevicePubKey[:]).String(),
+		}
+	}
+	return result
+}
+
+func convertLinks(onchain []serviceability.Link) []Link {
+	result := make([]Link, len(onchain))
+	for i, link := range onchain {
+		tunnelNet := net.IPNet{
+			IP:   net.IP(link.TunnelNet[:4]),
+			Mask: net.CIDRMask(int(link.TunnelNet[4]), 32),
+		}
+		result[i] = Link{
+			PK:             solana.PublicKeyFromBytes(link.PubKey[:]).String(),
+			Status:         link.Status.String(),
+			Code:           link.Code,
+			SideAPK:        solana.PublicKeyFromBytes(link.SideAPubKey[:]).String(),
+			SideZPK:        solana.PublicKeyFromBytes(link.SideZPubKey[:]).String(),
+			ContributorPK:  solana.PublicKeyFromBytes(link.ContributorPubKey[:]).String(),
+			SideAIfaceName: link.SideAIfaceName,
+			SideZIfaceName: link.SideZIfaceName,
+			TunnelNet:      tunnelNet.String(),
+			LinkType:       link.LinkType.String(),
+			DelayNs:        link.DelayNs,
+			JitterNs:       link.JitterNs,
+			Bandwidth:      link.Bandwidth,
+		}
+	}
+	return result
+}
+
+func convertMetros(onchain []serviceability.Exchange) []Metro {
+	result := make([]Metro, len(onchain))
+	for i, exchange := range onchain {
+		result[i] = Metro{
+			PK:        solana.PublicKeyFromBytes(exchange.PubKey[:]).String(),
+			Code:      exchange.Code,
+			Name:      exchange.Name,
+			Longitude: float64(exchange.Lng),
+			Latitude:  float64(exchange.Lat),
+		}
+	}
+	return result
+}

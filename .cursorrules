@@ -1,0 +1,9 @@
+# DoubleZero Workspace Rules
+
+## Linting
+- Use `make go-lint` to run Go linters (golangci-lint)
+
+## Code Style
+- Follow the existing code style in each file
+- The project uses golangci-lint with custom rules (see `.golangci.yaml`)
+- Note: golangci-lint has a rewrite rule that converts `interface{}` to `any`

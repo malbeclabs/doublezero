@@ -146,7 +146,7 @@ type Tool struct {
 }
 
 func (c *Client) ListTools(ctx context.Context) ([]Tool, error) {
-	c.log.Info("mcp/client: listing available tools")
+	c.log.Debug("mcp/client: listing available tools")
 
 	c.sessionMu.RLock()
 	session := c.session
@@ -188,15 +188,12 @@ func (c *Client) ListTools(ctx context.Context) ([]Tool, error) {
 		})
 	}
 
-	c.log.Info("mcp/client: found tools", "count", len(tools))
-	for _, tool := range tools {
-		c.log.Info("mcp/client: tool", "name", tool.Name, "description", tool.Description)
-	}
+	c.log.Debug("mcp/client: found tools", "count", len(tools))
 	return tools, nil
 }
 
 func (c *Client) CallToolText(ctx context.Context, name string, args map[string]any) (string, bool, error) {
-	c.log.Info("mcp/client: calling tool", "name", name)
+	c.log.Debug("mcp/client: calling tool", "name", name)
 
 	c.sessionMu.RLock()
 	session := c.session
@@ -256,7 +253,7 @@ func (c *Client) CallToolText(ctx context.Context, name string, args map[string]
 		c.log.Error("mcp/client: failed to call tool", "error", str)
 		fmt.Fprintf(os.Stderr, "mcp/client: failed to call tool: %s\n", str)
 	} else {
-		c.log.Info("mcp/client: called tool", "chars", len(str))
+		c.log.Debug("mcp/client: called tool", "chars", len(str))
 	}
 	return str, isError, nil
 }

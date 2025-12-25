@@ -228,7 +228,6 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
-			s.cfg.Logger.Debug("mcp: missing authorization header")
 			w.Header().Set("WWW-Authenticate", `Bearer`)
 			w.WriteHeader(http.StatusUnauthorized)
 			w.Write([]byte("unauthorized: missing authorization header\n"))
@@ -238,7 +237,6 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 		// Extract token from "Bearer <token>" format
 		parts := strings.SplitN(authHeader, " ", 2)
 		if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
-			s.cfg.Logger.Debug("mcp: invalid authorization header format")
 			w.Header().Set("WWW-Authenticate", `Bearer`)
 			w.WriteHeader(http.StatusUnauthorized)
 			w.Write([]byte("unauthorized: invalid authorization header format\n"))
@@ -247,7 +245,6 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 
 		token := strings.TrimSpace(parts[1])
 		if token == "" {
-			s.cfg.Logger.Debug("mcp: empty token")
 			w.Header().Set("WWW-Authenticate", `Bearer`)
 			w.WriteHeader(http.StatusUnauthorized)
 			w.Write([]byte("unauthorized: empty token\n"))
@@ -264,7 +261,6 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 		}
 
 		if !allowed {
-			s.cfg.Logger.Debug("mcp: invalid token")
 			w.Header().Set("WWW-Authenticate", `Bearer`)
 			w.WriteHeader(http.StatusUnauthorized)
 			w.Write([]byte("unauthorized: invalid token\n"))

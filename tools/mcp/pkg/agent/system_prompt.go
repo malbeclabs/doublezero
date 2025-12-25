@@ -48,20 +48,11 @@ SQL naming (DuckDB):
 - **Never use 'do' or 'dt' as table aliases** - they are SQL reserved keywords. Use 'dev_o' and 'dev_t' instead for device origin/target aliases.
 
 SQL JOIN syntax - CRITICAL:
-- **Primary keys are always named "pk", NOT "{table}_pk"**. For example: dz_metros.pk, dz_contributors.pk, dz_devices.pk - all use "pk", not "metro_pk", "contributor_pk", or "device_pk".
-- **Foreign keys use the pattern "{referenced_table}_pk"**. For example: dz_devices.metro_pk (references dz_metros.pk), dz_devices.contributor_pk (references dz_contributors.pk).
-- **When joining, match foreign key to primary key**: dz_devices.metro_pk = dz_metros.pk (NOT dz_metros.metro_pk).
-- **Common JOIN patterns**:
-  - dz_devices.metro_pk = dz_metros.pk (device to metro)
-  - dz_devices.contributor_pk = dz_contributors.pk (device to contributor)
-  - dz_links.side_a_pk = dz_devices.pk (link to device on side A)
-  - dz_links.side_z_pk = dz_devices.pk (link to device on side Z)
-  - dz_device_link_latency_samples.circuit_code = dz_device_link_circuits.code (NOT dz_device_link_circuits.circuit_code - the circuits table uses 'code', not 'circuit_code')
-  - To get metro info from latency samples: samples.circuit_code = circuits.code, then circuits.origin_device_pk = devices.pk (alias 'dev_o'), then dev_o.metro_pk = metros.pk (alias 'mo'). For target: circuits.target_device_pk = devices.pk (alias 'dev_t'), then dev_t.metro_pk = metros.pk (alias 'mt'). There is NO side_a_metro_pk, side_z_metro_pk, origin_metro_pk, or target_metro_pk column - you must join through circuits → devices → metros.
-  - **To GROUP BY metro codes from latency samples, you must join and reference the joined tables**: JOIN dz_device_link_circuits circ ON samples.circuit_code = circ.code, JOIN dz_devices dev_o ON circ.origin_device_pk = dev_o.pk, JOIN dz_metros mo ON dev_o.metro_pk = mo.pk, JOIN dz_devices dev_t ON circ.target_device_pk = dev_t.pk, JOIN dz_metros mt ON dev_t.metro_pk = mt.pk. Then use mo.code and mt.code (NOT origin_metro_code or target_metro_code - these columns don't exist). Example: GROUP BY mo.code, mt.code or GROUP BY mo.code || ' → ' || mt.code.
-- **Column name mismatches**: Some tables use different column names for the same concept. For example, dz_device_link_latency_samples has 'circuit_code' but dz_device_link_circuits has 'code' (not 'circuit_code'). Always check the exact column names in the schema.
-- **No direct metro columns in telemetry tables**: The telemetry tables (dz_device_link_latency_samples, dz_device_link_circuits) do NOT have metro_pk, side_a_metro_pk, side_z_metro_pk, origin_metro_pk, target_metro_pk, origin_metro_code, or target_metro_code columns. To get metro information, you must join: samples → circuits → devices → metros, then reference mo.code and mt.code from the joined metros tables.
-- **Common mistakes to avoid**: Do not assume columns exist. Common non-existent columns: dz_metros.country, dz_metros.metro_pk, dz_device_link_circuits.circuit_code (it's 'code'), origin_metro_code, target_metro_code. Always check the schema first.
+- **Primary keys are always named "pk", NOT "{table}_pk"**. When joining, the referenced table's primary key is always "pk", not "{table}_pk".
+- **Foreign keys use the pattern "{referenced_table}_pk"**. They reference the primary key "pk" of the referenced table.
+- **When joining, match foreign key to primary key**: table1.foreign_key = table2.pk (NOT table2.foreign_key - primary keys are always "pk").
+- **Column names may differ between related tables** - always check the schema for exact column names. The schema tools show all available columns and JOIN patterns.
+- **Do not assume columns exist** - always verify column names in the schema before using them. The schema descriptions include specific JOIN patterns and common pitfalls for each table.
 
 Data domain:
 - The network is composed of devices connected by links. A device resides in a metro area.

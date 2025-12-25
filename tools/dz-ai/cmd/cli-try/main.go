@@ -73,7 +73,7 @@ func run() error {
 		Client:           anthropicClient,
 		Model:            model,
 		MaxTokens:        int64(2000),
-		MaxRounds:        16,
+		MaxRounds:        24,
 		MaxToolResultLen: 20000,
 		Logger:           log,
 		System:           agent.SystemPrompt,

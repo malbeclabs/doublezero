@@ -436,8 +436,8 @@ func TestAI_MCP_Serviceability_Store_ReplaceLinks(t *testing.T) {
 		require.Equal(t, 1, count)
 
 		var pk, status, code, tunnelNetStr, contributorPKStr, sideAPKStr, sideZPKStr, sideAIfaceName, sideZIfaceName, linkType string
-		var delayNs, jitterNs, bandwidthBps int64
-		err = db.QueryRow("SELECT pk, status, code, tunnel_net, contributor_pk, side_a_pk, side_z_pk, side_a_iface_name, side_z_iface_name, link_type, delay_ns, jitter_ns, bandwidth_bps FROM dz_links LIMIT 1").Scan(&pk, &status, &code, &tunnelNetStr, &contributorPKStr, &sideAPKStr, &sideZPKStr, &sideAIfaceName, &sideZIfaceName, &linkType, &delayNs, &jitterNs, &bandwidthBps)
+		var delayNs, jitterNs, bandwidthBps, delayOverrideNs int64
+		err = db.QueryRow("SELECT pk, status, code, tunnel_net, contributor_pk, side_a_pk, side_z_pk, side_a_iface_name, side_z_iface_name, link_type, delay_ns, jitter_ns, bandwidth_bps, delay_override_ns FROM dz_links LIMIT 1").Scan(&pk, &status, &code, &tunnelNetStr, &contributorPKStr, &sideAPKStr, &sideZPKStr, &sideAIfaceName, &sideZIfaceName, &linkType, &delayNs, &jitterNs, &bandwidthBps, &delayOverrideNs)
 		require.NoError(t, err)
 		require.Equal(t, linkPK, pk)
 		require.Equal(t, "activated", status)
@@ -452,6 +452,7 @@ func TestAI_MCP_Serviceability_Store_ReplaceLinks(t *testing.T) {
 		require.Equal(t, int64(1000000), delayNs)
 		require.Equal(t, int64(50000), jitterNs)
 		require.Equal(t, int64(10000000000), bandwidthBps)
+		require.Equal(t, int64(0), delayOverrideNs)
 	})
 }
 
@@ -572,8 +573,8 @@ func TestAI_MCP_Serviceability_Store_GetLinks(t *testing.T) {
 		sideAPK := testPK(3)
 		sideZPK := testPK(4)
 
-		_, err = db.Exec(`INSERT INTO dz_links (pk, status, code, tunnel_net, contributor_pk, side_a_pk, side_z_pk, side_a_iface_name, side_z_iface_name, link_type, delay_ns, jitter_ns, bandwidth_bps) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			linkPK, "activated", "LINK1", "10.0.0.0/24", contributorPK, sideAPK, sideZPK, "eth0", "eth1", "WAN", 1000000, 50000, 10000000000)
+		_, err = db.Exec(`INSERT INTO dz_links (pk, status, code, tunnel_net, contributor_pk, side_a_pk, side_z_pk, side_a_iface_name, side_z_iface_name, link_type, delay_ns, jitter_ns, bandwidth_bps, delay_override_ns) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			linkPK, "activated", "LINK1", "10.0.0.0/24", contributorPK, sideAPK, sideZPK, "eth0", "eth1", "WAN", 1000000, 50000, 10000000000, 10)
 		require.NoError(t, err)
 
 		links, err := store.GetLinks()
@@ -591,6 +592,7 @@ func TestAI_MCP_Serviceability_Store_GetLinks(t *testing.T) {
 		require.Equal(t, uint64(1000000), links[0].DelayNs)
 		require.Equal(t, uint64(50000), links[0].JitterNs)
 		require.Equal(t, uint64(10000000000), links[0].Bandwidth)
+		require.Equal(t, uint64(10), links[0].DelayOverrideNs)
 	})
 }
 

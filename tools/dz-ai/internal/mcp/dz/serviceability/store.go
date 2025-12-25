@@ -79,7 +79,8 @@ func (s *Store) CreateTablesIfNotExists() error {
 			link_type VARCHAR,
 			delay_ns BIGINT,
 			jitter_ns BIGINT,
-			bandwidth_bps BIGINT
+			bandwidth_bps BIGINT,
+			delay_override_ns BIGINT
 		)`,
 		`CREATE TABLE IF NOT EXISTS dz_users (
 			pk VARCHAR PRIMARY KEY,
@@ -139,6 +140,7 @@ func (s *Store) ReplaceLinks(ctx context.Context, links []Link) error {
 			l.PK, l.Status, l.Code, l.TunnelNet, l.ContributorPK, l.SideAPK, l.SideZPK,
 			l.SideAIfaceName, l.SideZIfaceName, l.LinkType,
 			fmt.Sprintf("%d", l.DelayNs), fmt.Sprintf("%d", l.JitterNs), fmt.Sprintf("%d", l.Bandwidth),
+			fmt.Sprintf("%d", l.DelayOverrideNs),
 		})
 	})
 }
@@ -168,7 +170,7 @@ func (s *Store) GetDevices() ([]Device, error) {
 }
 
 func (s *Store) GetLinks() ([]Link, error) {
-	query := `SELECT pk, status, code, tunnel_net, contributor_pk, side_a_pk, side_z_pk, side_a_iface_name, side_z_iface_name, link_type, delay_ns, jitter_ns, bandwidth_bps FROM dz_links`
+	query := `SELECT pk, status, code, tunnel_net, contributor_pk, side_a_pk, side_z_pk, side_a_iface_name, side_z_iface_name, link_type, delay_ns, jitter_ns, bandwidth_bps, delay_override_ns FROM dz_links`
 	rows, err := s.db.Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query links: %w", err)
@@ -178,7 +180,7 @@ func (s *Store) GetLinks() ([]Link, error) {
 	var links []Link
 	for rows.Next() {
 		var l Link
-		if err := rows.Scan(&l.PK, &l.Status, &l.Code, &l.TunnelNet, &l.ContributorPK, &l.SideAPK, &l.SideZPK, &l.SideAIfaceName, &l.SideZIfaceName, &l.LinkType, &l.DelayNs, &l.JitterNs, &l.Bandwidth); err != nil {
+		if err := rows.Scan(&l.PK, &l.Status, &l.Code, &l.TunnelNet, &l.ContributorPK, &l.SideAPK, &l.SideZPK, &l.SideAIfaceName, &l.SideZIfaceName, &l.LinkType, &l.DelayNs, &l.JitterNs, &l.Bandwidth, &l.DelayOverrideNs); err != nil {
 			return nil, fmt.Errorf("failed to scan link: %w", err)
 		}
 		links = append(links, l)

@@ -70,6 +70,7 @@ Default starting point for questions about the DZ network unless the question is
 				{Name: "delay_ns", Type: "BIGINT", Description: "Committed delay (nanoseconds)"},
 				{Name: "jitter_ns", Type: "BIGINT", Description: "Committed jitter (nanoseconds)"},
 				{Name: "bandwidth_bps", Type: "BIGINT", Description: "Link capacity in bits per second"},
+				{Name: "delay_override_ns", Type: "BIGINT", Description: "IS-IS delay metric override (nanoseconds). Interpretation rule: delay_override_ns = 1000000000 means the link is soft-drained (drain signal)."},
 			},
 		},
 		{

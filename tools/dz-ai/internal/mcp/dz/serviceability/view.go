@@ -56,19 +56,20 @@ type Metro struct {
 }
 
 type Link struct {
-	PK             string
-	Status         string
-	Code           string
-	TunnelNet      string
-	ContributorPK  string
-	SideAPK        string
-	SideZPK        string
-	SideAIfaceName string
-	SideZIfaceName string
-	LinkType       string
-	DelayNs        uint64
-	JitterNs       uint64
-	Bandwidth      uint64
+	PK              string
+	Status          string
+	Code            string
+	TunnelNet       string
+	ContributorPK   string
+	SideAPK         string
+	SideZPK         string
+	SideAIfaceName  string
+	SideZIfaceName  string
+	LinkType        string
+	DelayNs         uint64
+	JitterNs        uint64
+	Bandwidth       uint64
+	DelayOverrideNs uint64
 }
 
 type User struct {
@@ -331,19 +332,20 @@ func convertLinks(onchain []serviceability.Link) []Link {
 			Mask: net.CIDRMask(int(link.TunnelNet[4]), 32),
 		}
 		result[i] = Link{
-			PK:             solana.PublicKeyFromBytes(link.PubKey[:]).String(),
-			Status:         link.Status.String(),
-			Code:           link.Code,
-			SideAPK:        solana.PublicKeyFromBytes(link.SideAPubKey[:]).String(),
-			SideZPK:        solana.PublicKeyFromBytes(link.SideZPubKey[:]).String(),
-			ContributorPK:  solana.PublicKeyFromBytes(link.ContributorPubKey[:]).String(),
-			SideAIfaceName: link.SideAIfaceName,
-			SideZIfaceName: link.SideZIfaceName,
-			TunnelNet:      tunnelNet.String(),
-			LinkType:       link.LinkType.String(),
-			DelayNs:        link.DelayNs,
-			JitterNs:       link.JitterNs,
-			Bandwidth:      link.Bandwidth,
+			PK:              solana.PublicKeyFromBytes(link.PubKey[:]).String(),
+			Status:          link.Status.String(),
+			Code:            link.Code,
+			SideAPK:         solana.PublicKeyFromBytes(link.SideAPubKey[:]).String(),
+			SideZPK:         solana.PublicKeyFromBytes(link.SideZPubKey[:]).String(),
+			ContributorPK:   solana.PublicKeyFromBytes(link.ContributorPubKey[:]).String(),
+			SideAIfaceName:  link.SideAIfaceName,
+			SideZIfaceName:  link.SideZIfaceName,
+			TunnelNet:       tunnelNet.String(),
+			LinkType:        link.LinkType.String(),
+			DelayNs:         link.DelayNs,
+			JitterNs:        link.JitterNs,
+			Bandwidth:       link.Bandwidth,
+			DelayOverrideNs: link.DelayOverrideNs,
 		}
 	}
 	return result

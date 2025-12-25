@@ -271,3 +271,62 @@ func TestAI_MCP_Serviceability_View_ConvertMetros(t *testing.T) {
 		require.Equal(t, 40.7128, result[0].Latitude)
 	})
 }
+
+func TestAI_MCP_Serviceability_View_ConvertLinks(t *testing.T) {
+	t.Parallel()
+
+	t.Run("converts onchain links to domain types", func(t *testing.T) {
+		t.Parallel()
+
+		pk := [32]byte{1, 2, 3, 4}
+		sideAPK := [32]byte{5, 6, 7, 8}
+		sideZPK := [32]byte{9, 10, 11, 12}
+		contributorPK := [32]byte{13, 14, 15, 16}
+		// TunnelNet: [192, 168, 1, 0, 24] = 192.168.1.0/24
+		tunnelNet := [5]uint8{192, 168, 1, 0, 24}
+
+		onchain := []serviceability.Link{
+			{
+				PubKey:            pk,
+				Status:            serviceability.LinkStatusActivated,
+				Code:              "LINK001",
+				TunnelNet:         tunnelNet,
+				SideAPubKey:       sideAPK,
+				SideZPubKey:       sideZPK,
+				ContributorPubKey: contributorPK,
+				SideAIfaceName:    "eth0",
+				SideZIfaceName:    "eth1",
+				LinkType:          serviceability.LinkLinkTypeWAN,
+				DelayNs:           5000000,    // 5ms
+				JitterNs:          1000000,    // 1ms
+				Bandwidth:         1000000000, // 1 Gbps
+				DelayOverrideNs:   0,
+			},
+		}
+
+		result := convertLinks(onchain)
+
+		require.Len(t, result, 1)
+		require.Equal(t, solana.PublicKeyFromBytes(pk[:]).String(), result[0].PK)
+		require.Equal(t, "activated", result[0].Status)
+		require.Equal(t, "LINK001", result[0].Code)
+		require.Equal(t, "192.168.1.0/24", result[0].TunnelNet)
+		require.Equal(t, solana.PublicKeyFromBytes(sideAPK[:]).String(), result[0].SideAPK)
+		require.Equal(t, solana.PublicKeyFromBytes(sideZPK[:]).String(), result[0].SideZPK)
+		require.Equal(t, solana.PublicKeyFromBytes(contributorPK[:]).String(), result[0].ContributorPK)
+		require.Equal(t, "eth0", result[0].SideAIfaceName)
+		require.Equal(t, "eth1", result[0].SideZIfaceName)
+		require.Equal(t, "WAN", result[0].LinkType)
+		require.Equal(t, uint64(5000000), result[0].DelayNs)
+		require.Equal(t, uint64(1000000), result[0].JitterNs)
+		require.Equal(t, uint64(1000000000), result[0].Bandwidth)
+		require.Equal(t, uint64(0), result[0].DelayOverrideNs)
+	})
+
+	t.Run("handles empty slice", func(t *testing.T) {
+		t.Parallel()
+
+		result := convertLinks([]serviceability.Link{})
+		require.Empty(t, result)
+	})
+}

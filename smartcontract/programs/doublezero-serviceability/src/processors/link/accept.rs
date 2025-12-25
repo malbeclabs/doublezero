@@ -1,12 +1,11 @@
-use core::fmt;
-
 use crate::{
     error::DoubleZeroError,
-    helper::*,
+    serializer::try_acc_write,
     state::{contributor::Contributor, device::Device, link::*},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
+use core::fmt;
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -38,7 +37,7 @@ pub fn process_accept_link(
     let side_z_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
-    let system_program = next_account_info(accounts_iter)?;
+    let _system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
     msg!("process_accept_link({:?})", value);
@@ -94,7 +93,7 @@ pub fn process_accept_link(
     link.side_z_iface_name = value.side_z_iface_name.clone();
     link.status = LinkStatus::Pending;
 
-    account_write(link_account, &link, payer_account, system_program)?;
+    try_acc_write(&link, link_account, payer_account, accounts)?;
 
     #[cfg(test)]
     msg!("Accepted: {:?}", link);

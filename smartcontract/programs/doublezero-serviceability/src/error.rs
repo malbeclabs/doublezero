@@ -129,6 +129,8 @@ pub enum DoubleZeroError {
     InvalidUserPubkey, // variant 61
     #[error("Invalid Public IP: IP conflicts with DZ prefix")]
     InvalidPublicIp, // variant 62
+    #[error("Invalid Foundation Allowlist: cannot be empty")]
+    InvalidFoundationAllowlist, // variant 63
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -197,6 +199,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::InvalidActualLocation => ProgramError::Custom(60),
             DoubleZeroError::InvalidUserPubkey => ProgramError::Custom(61),
             DoubleZeroError::InvalidPublicIp => ProgramError::Custom(62),
+            DoubleZeroError::InvalidFoundationAllowlist => ProgramError::Custom(63),
         }
     }
 }
@@ -266,6 +269,7 @@ impl From<u32> for DoubleZeroError {
             60 => DoubleZeroError::InvalidActualLocation,
             61 => DoubleZeroError::InvalidUserPubkey,
             62 => DoubleZeroError::InvalidPublicIp,
+            63 => DoubleZeroError::InvalidFoundationAllowlist,
             _ => DoubleZeroError::Custom(e),
         }
     }
@@ -355,6 +359,7 @@ mod tests {
             InvalidActualLocation,
             InvalidUserPubkey,
             InvalidPublicIp,
+            InvalidFoundationAllowlist,
         ];
         for err in variants {
             let pe: ProgramError = err.clone().into();

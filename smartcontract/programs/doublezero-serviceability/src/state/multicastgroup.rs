@@ -1,7 +1,6 @@
 use crate::{
     error::{DoubleZeroError, Validate},
-    seeds::SEED_MULTICAST_GROUP,
-    state::accounttype::{AccountType, AccountTypeInfo},
+    state::accounttype::AccountType,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError, pubkey::Pubkey};
@@ -122,24 +121,6 @@ impl Default for MulticastGroup {
             publisher_count: 0,
             subscriber_count: 0,
         }
-    }
-}
-
-impl AccountTypeInfo for MulticastGroup {
-    fn seed(&self) -> &[u8] {
-        SEED_MULTICAST_GROUP
-    }
-    fn size(&self) -> usize {
-        1 + 32 + 16 + 1 + 32 + 4 + 8 + 1 + 4 + self.code.len() + 4 + 4
-    }
-    fn index(&self) -> u128 {
-        self.index
-    }
-    fn bump_seed(&self) -> u8 {
-        self.bump_seed
-    }
-    fn owner(&self) -> Pubkey {
-        self.owner
     }
 }
 
@@ -310,7 +291,10 @@ mod tests {
         val.validate().unwrap();
         val2.validate().unwrap();
 
-        assert_eq!(val.size(), val2.size());
+        assert_eq!(
+            borsh::object_length(&val).unwrap(),
+            borsh::object_length(&val2).unwrap()
+        );
         assert_eq!(val.owner, val2.owner);
         assert_eq!(val.code, val2.code);
         assert_eq!(val.index, val2.index);
@@ -327,6 +311,10 @@ mod tests {
             val.account_type as u8, val2.account_type as u8,
             "Invalid Account Type"
         );
-        assert_eq!(data.len(), val.size(), "Invalid Size");
+        assert_eq!(
+            data.len(),
+            borsh::object_length(&val).unwrap(),
+            "Invalid Size"
+        );
     }
 }

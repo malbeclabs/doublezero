@@ -1,18 +1,19 @@
-use core::fmt;
-
 use crate::{
     error::DoubleZeroError,
-    globalstate::{globalconfig_write_with_realloc, globalstate_get_next, globalstate_write},
-    helper::*,
+    helper::assign_bgp_community,
     pda::*,
+    seeds::{SEED_EXCHANGE, SEED_PREFIX},
+    serializer::{try_acc_create, try_acc_write},
     state::{
         accounttype::AccountType,
         exchange::{Exchange, ExchangeStatus},
         globalconfig::GlobalConfig,
+        globalstate::GlobalState,
     },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
+use core::fmt;
 use doublezero_program_common::validate_account_code;
 #[cfg(test)]
 use solana_program::msg;
@@ -81,22 +82,30 @@ pub fn process_create_exchange(
     );
     // Check if the account is writable
     assert!(exchange_account.is_writable, "PDA Account is not writable");
+    assert_eq!(
+        *system_program.unsigned_key(),
+        solana_program::system_program::id(),
+        "Invalid System Program Account Owner"
+    );
+
     // Parse the global state account & check if the payer is in the allowlist
-    let globalstate = globalstate_get_next(globalstate_account)?;
+    let mut globalstate = GlobalState::try_from(globalstate_account)?;
+    globalstate.account_index += 1;
+
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
     // We need to access globalconfig in order to assign BGP community
-    let mut globalconfig = GlobalConfig::try_from(&globalconfig_account.data.borrow()[..])?;
-    let (globalconfig_pda, globalconfig_bump_seed) = get_globalconfig_pda(program_id);
+    let mut globalconfig = GlobalConfig::try_from(globalconfig_account)?;
+    let (globalconfig_pda, _) = get_globalconfig_pda(program_id);
     assert_eq!(
         globalconfig_account.key, &globalconfig_pda,
         "Invalid GlobalConfig PubKey"
     );
 
     // Check if the account is already initialized
-    if !exchange_account.data.borrow().is_empty() {
+    if !exchange_account.data_is_empty() {
         return Err(ProgramError::AccountAlreadyInitialized);
     }
 
@@ -125,21 +134,21 @@ pub fn process_create_exchange(
         status: ExchangeStatus::Activated,
     };
 
-    account_create(
-        exchange_account,
+    try_acc_create(
         &exchange,
+        exchange_account,
         payer_account,
         system_program,
         program_id,
+        &[
+            SEED_PREFIX,
+            SEED_EXCHANGE,
+            &globalstate.account_index.to_le_bytes(),
+            &[bump_seed],
+        ],
     )?;
-    globalstate_write(globalstate_account, &globalstate)?;
-    globalconfig_write_with_realloc(
-        globalconfig_account,
-        &globalconfig,
-        payer_account,
-        system_program,
-        globalconfig_bump_seed,
-    );
+    try_acc_write(&globalstate, globalstate_account, payer_account, accounts)?;
+    try_acc_write(&globalconfig, globalconfig_account, payer_account, accounts)?;
 
     Ok(())
 }

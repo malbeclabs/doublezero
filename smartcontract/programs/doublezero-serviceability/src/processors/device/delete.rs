@@ -1,8 +1,9 @@
 use crate::{
     error::DoubleZeroError,
-    globalstate::globalstate_get,
-    helper::*,
-    state::{accounttype::AccountType, contributor::Contributor, device::*},
+    serializer::try_acc_write,
+    state::{
+        accounttype::AccountType, contributor::Contributor, device::*, globalstate::GlobalState,
+    },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -62,8 +63,13 @@ pub fn process_delete_device(
         "Invalid System Program Account Owner"
     );
     assert!(device_account.is_writable, "PDA Account is not writable");
+    assert_eq!(
+        *system_program.unsigned_key(),
+        solana_program::system_program::id(),
+        "Invalid System Program Account Owner"
+    );
 
-    let globalstate = globalstate_get(globalstate_account)?;
+    let globalstate = GlobalState::try_from(globalstate_account)?;
     assert_eq!(globalstate.account_type, AccountType::GlobalState);
 
     let contributor = Contributor::try_from(contributor_account)?;
@@ -82,7 +88,7 @@ pub fn process_delete_device(
 
     device.status = DeviceStatus::Deleting;
 
-    account_write(device_account, &device, payer_account, system_program)?;
+    try_acc_write(&device, device_account, payer_account, accounts)?;
 
     #[cfg(test)]
     msg!("Deleting: {:?}", device);

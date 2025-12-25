@@ -1,9 +1,12 @@
 use crate::{
     error::DoubleZeroError,
-    globalstate::{globalconfig_write_with_realloc, globalstate_get},
     pda::*,
     seeds::{SEED_CONFIG, SEED_PREFIX},
-    state::{accounttype::AccountType, exchange::BGP_COMMUNITY_MIN, globalconfig::GlobalConfig},
+    serializer::try_acc_write,
+    state::{
+        accounttype::AccountType, exchange::BGP_COMMUNITY_MIN, globalconfig::GlobalConfig,
+        globalstate::GlobalState,
+    },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -52,7 +55,7 @@ pub fn process_set_globalconfig(
     let pda_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
-    let system_program = next_account_info(accounts_iter)?;
+    let _system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
     msg!("process_set_global_config({:?})", value);
@@ -66,7 +69,7 @@ pub fn process_set_globalconfig(
         "Invalid GlobalState Account Owner"
     );
 
-    let globalstate = globalstate_get(globalstate_account)?;
+    let globalstate = GlobalState::try_from(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }
@@ -114,13 +117,7 @@ pub fn process_set_globalconfig(
         let mut account_data = &mut pda_account.data.borrow_mut()[..];
         data.serialize(&mut account_data).unwrap();
     } else {
-        globalconfig_write_with_realloc(
-            pda_account,
-            &data,
-            payer_account,
-            system_program,
-            bump_seed,
-        );
+        try_acc_write(&data, pda_account, payer_account, accounts)?;
     }
 
     #[cfg(test)]

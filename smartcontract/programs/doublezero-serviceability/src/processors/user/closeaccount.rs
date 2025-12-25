@@ -1,8 +1,7 @@
 use crate::{
     error::DoubleZeroError,
-    globalstate::globalstate_get,
-    helper::*,
-    state::{device::Device, user::*},
+    serializer::{try_acc_close, try_acc_write},
+    state::{device::Device, globalstate::GlobalState, user::*},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -62,7 +61,7 @@ pub fn process_closeaccount_user(
     // Check if the account is writable
     assert!(user_account.is_writable, "PDA Account is not writable");
 
-    let globalstate = globalstate_get(globalstate_account)?;
+    let globalstate = GlobalState::try_from(globalstate_account)?;
     if globalstate.activator_authority_pk != *payer_account.key {
         return Err(DoubleZeroError::NotAllowed.into());
     }
@@ -82,8 +81,8 @@ pub fn process_closeaccount_user(
     device.reference_count = device.reference_count.saturating_sub(1);
     device.users_count = device.users_count.saturating_sub(1);
 
-    account_write(device_account, &device, payer_account, system_program)?;
-    account_close(user_account, owner_account)?;
+    try_acc_write(&device, device_account, payer_account, accounts)?;
+    try_acc_close(user_account, owner_account)?;
 
     #[cfg(test)]
     msg!("CloseAccount: User closed");

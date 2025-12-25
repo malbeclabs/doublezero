@@ -1,12 +1,9 @@
-use core::fmt;
-
 use crate::{
-    error::DoubleZeroError,
-    globalstate::{globalstate_get, globalstate_write_with_realloc},
-    pda::*,
+    error::DoubleZeroError, pda::*, serializer::try_acc_write, state::globalstate::GlobalState,
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
+use core::fmt;
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -64,14 +61,14 @@ pub fn process_set_authority(
         "PDA Account is not writable"
     );
 
-    let (expected_pda_account, bump_seed) = get_globalstate_pda(program_id);
+    let (expected_pda_account, _) = get_globalstate_pda(program_id);
     assert_eq!(
         globalstate_account.key, &expected_pda_account,
         "Invalid GlobalState PubKey"
     );
 
     // Parse the global state account & check if the payer is in the allowlist
-    let mut globalstate = globalstate_get(globalstate_account)?;
+    let mut globalstate = GlobalState::try_from(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }
@@ -84,13 +81,8 @@ pub fn process_set_authority(
         globalstate.sentinel_authority_pk = sentinel_authority_pk;
     }
 
-    globalstate_write_with_realloc(
-        globalstate_account,
-        &globalstate,
-        payer_account,
-        system_program,
-        bump_seed,
-    );
+    try_acc_write(&globalstate, globalstate_account, payer_account, accounts)?;
+
     #[cfg(test)]
     msg!("Updated: {:?}", globalstate);
 

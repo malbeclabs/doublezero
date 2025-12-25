@@ -1,13 +1,11 @@
 use crate::{
     error::DoubleZeroError,
-    globalstate::globalstate_get,
-    helper::*,
-    state::{device::Device, exchange::*},
+    serializer::try_acc_write,
+    state::{device::Device, exchange::*, globalstate::GlobalState},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
-
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -79,8 +77,14 @@ pub fn process_setdevice_exchange(
     );
     // Check if the account is writable
     assert!(exchange_account.is_writable, "PDA Account is not writable");
+    assert_eq!(
+        *system_program.unsigned_key(),
+        solana_program::system_program::id(),
+        "Invalid System Program Account Owner"
+    );
+
     // Parse the global state account & check if the payer is in the allowlist
-    let globalstate = globalstate_get(globalstate_account)?;
+    let globalstate = GlobalState::try_from(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }
@@ -124,8 +128,8 @@ pub fn process_setdevice_exchange(
         device.reference_count -= 1;
     }
 
-    account_write(device_account, &device, payer_account, system_program)?;
-    account_write(exchange_account, &exchange, payer_account, system_program)?;
+    try_acc_write(&device, device_account, payer_account, accounts)?;
+    try_acc_write(&exchange, exchange_account, payer_account, accounts)?;
 
     #[cfg(test)]
     msg!("SetDevice: {:?}", exchange);

@@ -1,10 +1,7 @@
-use crate::{
-    error::DoubleZeroError,
-    state::{accounttype::AccountTypeInfo, user::*},
-};
+use crate::{error::DoubleZeroError, serializer::try_acc_write, state::user::*};
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
-use doublezero_program_common::resize_account::resize_account_if_needed;
+
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -58,8 +55,7 @@ pub fn process_suspend_user(
 
     user.status = UserStatus::Suspended;
 
-    resize_account_if_needed(user_account, payer_account, accounts, user.size())?;
-    user.try_serialize(user_account)?;
+    try_acc_write(&user, user_account, payer_account, accounts)?;
 
     #[cfg(test)]
     msg!("Suspended: {:?}", user);

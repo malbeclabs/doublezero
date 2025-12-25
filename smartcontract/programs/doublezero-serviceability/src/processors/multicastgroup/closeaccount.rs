@@ -1,5 +1,7 @@
 use crate::{
-    error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::multicastgroup::*,
+    error::DoubleZeroError,
+    serializer::try_acc_close,
+    state::{globalstate::GlobalState, multicastgroup::*},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -22,7 +24,7 @@ impl fmt::Debug for MulticastGroupDeactivateArgs {
     }
 }
 
-pub fn process_deactivate_multicastgroup(
+pub fn process_closeaccount_multicastgroup(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
     _value: &MulticastGroupDeactivateArgs,
@@ -61,7 +63,7 @@ pub fn process_deactivate_multicastgroup(
         "PDA Account is not writable"
     );
 
-    let globalstate = globalstate_get(globalstate_account)?;
+    let globalstate = GlobalState::try_from(globalstate_account)?;
     if globalstate.activator_authority_pk != *payer_account.key {
         return Err(DoubleZeroError::NotAllowed.into());
     }
@@ -77,7 +79,7 @@ pub fn process_deactivate_multicastgroup(
         return Err(solana_program::program_error::ProgramError::Custom(1));
     }
 
-    account_close(multicastgroup_account, owner_account)?;
+    try_acc_close(multicastgroup_account, owner_account)?;
 
     #[cfg(test)]
     msg!("Deactivated: MulticastGroup closed");

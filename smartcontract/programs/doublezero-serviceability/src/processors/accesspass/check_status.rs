@@ -1,12 +1,12 @@
 use crate::{
     error::DoubleZeroError,
-    globalstate::globalstate_get,
-    state::{accesspass::AccessPass, accounttype::AccountTypeInfo},
+    serializer::try_acc_write,
+    state::{accesspass::AccessPass, globalstate::GlobalState},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
-use doublezero_program_common::resize_account::resize_account_if_needed;
+
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
@@ -64,9 +64,14 @@ pub fn process_check_status_access_pass(
         accesspass_account.is_writable,
         "PDA Account is not writable"
     );
+    assert_eq!(
+        *system_program.unsigned_key(),
+        solana_program::system_program::id(),
+        "Invalid System Program Account Owner"
+    );
 
     // Parse the global state account & check if the payer is in the allowlist
-    let globalstate = globalstate_get(globalstate_account)?;
+    let globalstate = GlobalState::try_from(globalstate_account)?;
     if globalstate.activator_authority_pk != *payer_account.key
         && !globalstate.foundation_allowlist.contains(payer_account.key)
     {
@@ -83,13 +88,7 @@ pub fn process_check_status_access_pass(
     // Update status
     accesspass.update_status()?;
 
-    resize_account_if_needed(
-        accesspass_account,
-        payer_account,
-        accounts,
-        accesspass.size(),
-    )?;
-    accesspass.try_serialize(accesspass_account)?;
+    try_acc_write(&accesspass, accesspass_account, payer_account, accounts)?;
 
     #[cfg(test)]
     msg!("Updated: {:?}", accesspass);

@@ -1,11 +1,11 @@
 use crate::{
     error::DoubleZeroError,
-    globalstate::globalstate_get_next,
-    helper::account_write,
+    serializer::try_acc_write,
     state::{
         accounttype::AccountType,
         contributor::Contributor,
         device::*,
+        globalstate::GlobalState,
         interface::{
             CurrentInterfaceVersion, InterfaceCYOA, InterfaceDIA, InterfaceStatus, InterfaceType,
             LoopbackType, RoutingMode,
@@ -59,7 +59,7 @@ pub fn process_create_device_interface(
     let contributor_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
-    let system_program = next_account_info(accounts_iter)?;
+    let _system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
     msg!("process_create_device_interface({:?})", value);
@@ -80,7 +80,7 @@ pub fn process_create_device_interface(
 
     assert!(device_account.is_writable, "PDA Account is not writable");
 
-    let globalstate = globalstate_get_next(globalstate_account)?;
+    let globalstate = GlobalState::try_from(globalstate_account)?;
     assert_eq!(globalstate.account_type, AccountType::GlobalState);
 
     let contributor = Contributor::try_from(contributor_account)?;
@@ -122,7 +122,7 @@ pub fn process_create_device_interface(
         .to_interface(),
     );
 
-    account_write(device_account, &device, payer_account, system_program)?;
+    try_acc_write(&device, device_account, payer_account, accounts)?;
 
     Ok(())
 }

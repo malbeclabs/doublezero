@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -45,8 +46,9 @@ const (
 	defaultDZEnv           = config.EnvMainnetBeta
 	defaultMetricsAddr     = "0.0.0.0:8080"
 	// defaultDBPath          = ".tmp/mcp.duckdb"
-	defaultDBPath       = ":memory:"
-	defaultDBPathEnvVar = "MCP_DB_PATH"
+	defaultDBPath          = ":memory:"
+	defaultDuckDBSpillPath = ".tmp/duckdb-spill-tmp"
+	defaultDBPathEnvVar    = "MCP_DB_PATH"
 )
 
 func main() {
@@ -66,6 +68,7 @@ func run() error {
 	enablePprofFlag := flag.Bool("enable-pprof", false, "enable pprof server")
 	metricsAddrFlag := flag.String("metrics-addr", defaultMetricsAddr, "Address to listen on for prometheus metrics")
 	dbPathFlag := flag.String("db-path", defaultDBPath, "Path to DuckDB database file (empty for in-memory, or set MCP_DB_PATH env var)")
+	dbSpillDirFlag := flag.String("db-spill-dir", defaultDuckDBSpillPath, "Path to DuckDB temporary spill directory")
 	flag.Parse()
 
 	networkConfig, err := config.NetworkConfigForEnv(*envFlag)
@@ -141,22 +144,12 @@ func run() error {
 		dbPath = defaultDBPath
 	}
 
-	// Create directory for database file if it doesn't exist
-	if dbPath != "" && dbPath != ":memory:" {
-		dbDir := filepath.Dir(dbPath)
-		if err := os.MkdirAll(dbDir, 0755); err != nil {
-			return fmt.Errorf("failed to create database directory: %w", err)
-		}
-		log.Info("using persistent database", "path", dbPath)
-	} else {
-		log.Info("using in-memory database")
-	}
-
-	db, err := duck.NewDB(dbPath, log)
+	// Initialize DuckDB database
+	db, dbCloseFn, err := initializeDuckDB(dbPath, *dbSpillDirFlag, log)
 	if err != nil {
-		return fmt.Errorf("failed to create recoverable database: %w", err)
+		return fmt.Errorf("failed to initialize DuckDB: %w", err)
 	}
-	defer db.Close()
+	defer dbCloseFn()
 
 	// Parse allowed tokens from environment variable (comma-separated)
 	// Auth can be explicitly disabled with MCP_AUTH_DISABLED=true
@@ -219,4 +212,64 @@ func run() error {
 		log.Error("server: metrics server error causing shutdown", "error", err)
 		return err
 	}
+}
+
+func initializeDuckDB(dbPath string, spillDir string, log *slog.Logger) (duck.DB, func() error, error) {
+	if spillDir != "" {
+		// Convert spill directory to absolute path
+		var err error
+		spillDir, err = filepath.Abs(spillDir)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to get absolute path for spill directory: %w", err)
+		}
+
+		// Delete DuckDB spill directory if it exists
+		if _, err := os.Stat(spillDir); err == nil {
+			log.Debug("deleting existing duckdb spill directory", "path", spillDir)
+			if err := os.RemoveAll(spillDir); err != nil {
+				return nil, nil, fmt.Errorf("failed to delete spill directory: %w", err)
+			}
+		}
+
+		// Create DuckDB spill directory if it doesn't exist
+		if err := os.MkdirAll(spillDir, 0755); err != nil {
+			return nil, nil, fmt.Errorf("failed to create spill directory: %w", err)
+		}
+	}
+
+	// Create directory for DuckDB database file if it doesn't exist
+	if dbPath != "" && dbPath != ":memory:" {
+		dbDir := filepath.Dir(dbPath)
+		if err := os.MkdirAll(dbDir, 0755); err != nil {
+			return nil, nil, fmt.Errorf("failed to create database directory: %w", err)
+		}
+		log.Info("using persistent database", "path", dbPath)
+	} else {
+		log.Info("using in-memory database")
+	}
+
+	db, err := duck.NewDB(dbPath, log)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create recoverable database: %w", err)
+	}
+
+	if spillDir != "" {
+		// Set DuckDB spill directory
+		if _, err := db.Exec("PRAGMA temp_directory=?", spillDir); err != nil {
+			return nil, nil, fmt.Errorf("failed to set DuckDB spill directory: %w", err)
+		}
+		log.Debug("configured duckdb spill directory", "path", spillDir)
+	}
+
+	return db, func() error {
+		if err := db.Close(); err != nil {
+			return fmt.Errorf("failed to close database: %w", err)
+		}
+		if spillDir != "" {
+			if err := os.RemoveAll(spillDir); err != nil {
+				return fmt.Errorf("failed to delete spill directory: %w", err)
+			}
+		}
+		return nil
+	}, nil
 }

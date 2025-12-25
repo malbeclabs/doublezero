@@ -3,6 +3,7 @@ package dzsvc
 import (
 	"context"
 	"log/slog"
+	"net"
 	"os"
 	"testing"
 	"time"
@@ -11,6 +12,8 @@ import (
 	"github.com/gagliardetto/solana-go"
 	"github.com/jonboulle/clockwork"
 	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/duck"
+	mcpgeoip "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/geoip"
+	"github.com/malbeclabs/doublezero/tools/maxmind/pkg/geoip"
 	"github.com/stretchr/testify/require"
 
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
@@ -37,12 +40,18 @@ func TestAI_MCP_Serviceability_View_Ready(t *testing.T) {
 		require.NoError(t, err)
 		defer db.Close()
 
+		geoipStore, err := newTestGeoIPStore(t)
+		require.NoError(t, err)
+		defer geoipStore.db.Close()
+
 		view, err := NewView(ViewConfig{
 			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
 			Clock:             clockwork.NewFakeClock(),
 			ServiceabilityRPC: &MockServiceabilityRPC{},
 			RefreshInterval:   time.Second,
 			DB:                db,
+			GeoIPStore:        geoipStore.store,
+			GeoIPResolver:     &mockGeoIPResolver{},
 		})
 		require.NoError(t, err)
 
@@ -56,12 +65,18 @@ func TestAI_MCP_Serviceability_View_Ready(t *testing.T) {
 		require.NoError(t, err)
 		defer db.Close()
 
+		geoipStore, err := newTestGeoIPStore(t)
+		require.NoError(t, err)
+		defer geoipStore.db.Close()
+
 		view, err := NewView(ViewConfig{
 			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
 			Clock:             clockwork.NewFakeClock(),
 			ServiceabilityRPC: &MockServiceabilityRPC{},
 			RefreshInterval:   time.Second,
 			DB:                db,
+			GeoIPStore:        geoipStore.store,
+			GeoIPResolver:     &mockGeoIPResolver{},
 		})
 		require.NoError(t, err)
 
@@ -83,12 +98,18 @@ func TestAI_MCP_Serviceability_View_WaitReady(t *testing.T) {
 		require.NoError(t, err)
 		defer db.Close()
 
+		geoipStore, err := newTestGeoIPStore(t)
+		require.NoError(t, err)
+		defer geoipStore.db.Close()
+
 		view, err := NewView(ViewConfig{
 			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
 			Clock:             clockwork.NewFakeClock(),
 			ServiceabilityRPC: &MockServiceabilityRPC{},
 			RefreshInterval:   time.Second,
 			DB:                db,
+			GeoIPStore:        geoipStore.store,
+			GeoIPResolver:     &mockGeoIPResolver{},
 		})
 		require.NoError(t, err)
 
@@ -107,12 +128,18 @@ func TestAI_MCP_Serviceability_View_WaitReady(t *testing.T) {
 		require.NoError(t, err)
 		defer db.Close()
 
+		geoipStore, err := newTestGeoIPStore(t)
+		require.NoError(t, err)
+		defer geoipStore.db.Close()
+
 		view, err := NewView(ViewConfig{
 			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
 			Clock:             clockwork.NewFakeClock(),
 			ServiceabilityRPC: &MockServiceabilityRPC{},
 			RefreshInterval:   time.Second,
 			DB:                db,
+			GeoIPStore:        geoipStore.store,
+			GeoIPResolver:     &mockGeoIPResolver{},
 		})
 		require.NoError(t, err)
 
@@ -131,12 +158,18 @@ func TestAI_MCP_Serviceability_View_NewServiceabilityView(t *testing.T) {
 	t.Run("returns error when database initialization fails", func(t *testing.T) {
 		t.Parallel()
 
+		geoipStore, err := newTestGeoIPStore(t)
+		require.NoError(t, err)
+		defer geoipStore.db.Close()
+
 		view, err := NewView(ViewConfig{
 			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
 			Clock:             clockwork.NewFakeClock(),
 			ServiceabilityRPC: &MockServiceabilityRPC{},
 			RefreshInterval:   time.Second,
 			DB:                &failingDB{},
+			GeoIPStore:        geoipStore.store,
+			GeoIPResolver:     &mockGeoIPResolver{},
 		})
 		require.Error(t, err)
 		require.Nil(t, view)
@@ -328,5 +361,355 @@ func TestAI_MCP_Serviceability_View_ConvertLinks(t *testing.T) {
 
 		result := convertLinks([]serviceability.Link{})
 		require.Empty(t, result)
+	})
+}
+
+// testPubkey generates a deterministic test public key from a seed byte
+func testPubkey(seed byte) solana.PublicKey {
+	var pk [32]byte
+	for i := range pk {
+		pk[i] = seed
+	}
+	return solana.PublicKeyFromBytes(pk[:])
+}
+
+// testPubkeyBytes generates a deterministic test public key bytes from a seed byte
+func testPubkeyBytes(seed byte) [32]byte {
+	var pk [32]byte
+	for i := range pk {
+		pk[i] = seed
+	}
+	return pk
+}
+
+type mockGeoIPResolver struct {
+	resolveFunc func(net.IP) *geoip.Record
+}
+
+func (m *mockGeoIPResolver) Resolve(ip net.IP) *geoip.Record {
+	if m.resolveFunc != nil {
+		return m.resolveFunc(ip)
+	}
+	return nil
+}
+
+type testGeoIPStore struct {
+	store *mcpgeoip.Store
+	db    duck.DB
+}
+
+func newTestGeoIPStore(t *testing.T) (*testGeoIPStore, error) {
+	t.Helper()
+	db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
+	if err != nil {
+		return nil, err
+	}
+
+	store, err := mcpgeoip.NewStore(mcpgeoip.StoreConfig{
+		Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
+		DB:     db,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if err := store.CreateTablesIfNotExists(); err != nil {
+		return nil, err
+	}
+
+	return &testGeoIPStore{
+		store: store,
+		db:    db,
+	}, nil
+}
+
+func TestAI_MCP_Serviceability_View_Refresh(t *testing.T) {
+	t.Parallel()
+
+	t.Run("stores all data on refresh", func(t *testing.T) {
+		t.Parallel()
+
+		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
+		require.NoError(t, err)
+		defer db.Close()
+
+		geoipStore, err := newTestGeoIPStore(t)
+		require.NoError(t, err)
+		defer geoipStore.db.Close()
+
+		geoipResolver := &mockGeoIPResolver{
+			resolveFunc: func(ip net.IP) *geoip.Record {
+				if ip.String() == "1.1.1.1" {
+					return &geoip.Record{
+						IP:          ip,
+						CountryCode: "US",
+						Country:     "United States",
+						City:        "San Francisco",
+					}
+				}
+				if ip.String() == "8.8.8.8" {
+					return &geoip.Record{
+						IP:          ip,
+						CountryCode: "US",
+						Country:     "United States",
+						City:        "Mountain View",
+					}
+				}
+				return nil
+			},
+		}
+
+		// Create test data
+		contributorPK := testPubkeyBytes(1)
+		metroPK := testPubkeyBytes(2)
+		devicePK := testPubkeyBytes(3)
+		userPK := testPubkeyBytes(4)
+		ownerPK := testPubkeyBytes(5)
+		linkPK := testPubkeyBytes(6)
+		sideAPK := testPubkeyBytes(7)
+		sideZPK := testPubkeyBytes(8)
+
+		rpc := &MockServiceabilityRPC{
+			getProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+				return &serviceability.ProgramData{
+					Contributors: []serviceability.Contributor{
+						{
+							PubKey: contributorPK,
+							Owner:  ownerPK,
+							Status: serviceability.ContributorStatusActivated,
+							Code:   "TEST",
+						},
+					},
+					Devices: []serviceability.Device{
+						{
+							PubKey:            devicePK,
+							Owner:             ownerPK,
+							Status:            serviceability.DeviceStatusActivated,
+							DeviceType:        serviceability.DeviceDeviceTypeHybrid,
+							Code:              "DEV001",
+							PublicIp:          [4]byte{192, 168, 1, 1},
+							ContributorPubKey: contributorPK,
+							ExchangePubKey:    metroPK,
+						},
+					},
+					Users: []serviceability.User{
+						{
+							PubKey:       userPK,
+							Owner:        ownerPK,
+							Status:       serviceability.UserStatusActivated,
+							UserType:     serviceability.UserTypeIBRL,
+							ClientIp:     [4]byte{1, 1, 1, 1},
+							DzIp:         [4]byte{10, 0, 0, 1},
+							DevicePubKey: devicePK,
+						},
+						{
+							PubKey:       testPubkeyBytes(9),
+							Owner:        ownerPK,
+							Status:       serviceability.UserStatusActivated,
+							UserType:     serviceability.UserTypeIBRL,
+							ClientIp:     [4]byte{8, 8, 8, 8},
+							DzIp:         [4]byte{10, 0, 0, 2},
+							DevicePubKey: devicePK,
+						},
+						{
+							PubKey:       testPubkeyBytes(10),
+							Owner:        ownerPK,
+							Status:       serviceability.UserStatusActivated,
+							UserType:     serviceability.UserTypeIBRL,
+							ClientIp:     [4]byte{0, 0, 0, 0}, // No client IP
+							DzIp:         [4]byte{10, 0, 0, 3},
+							DevicePubKey: devicePK,
+						},
+					},
+					Exchanges: []serviceability.Exchange{
+						{
+							PubKey: metroPK,
+							Owner:  ownerPK,
+							Status: serviceability.ExchangeStatusActivated,
+							Code:   "NYC",
+							Name:   "New York",
+							Lat:    40.7128,
+							Lng:    -74.0060,
+						},
+					},
+					Links: []serviceability.Link{
+						{
+							PubKey:            linkPK,
+							Status:            serviceability.LinkStatusActivated,
+							Code:              "LINK001",
+							TunnelNet:         [5]uint8{192, 168, 1, 0, 24},
+							SideAPubKey:       sideAPK,
+							SideZPubKey:       sideZPK,
+							ContributorPubKey: contributorPK,
+							SideAIfaceName:    "eth0",
+							SideZIfaceName:    "eth1",
+							LinkType:          serviceability.LinkLinkTypeWAN,
+							DelayNs:           5000000,
+							JitterNs:          1000000,
+							Bandwidth:         1000000000,
+							DelayOverrideNs:   0,
+						},
+					},
+				}, nil
+			},
+		}
+
+		view, err := NewView(ViewConfig{
+			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Clock:             clockwork.NewFakeClock(),
+			ServiceabilityRPC: rpc,
+			RefreshInterval:   time.Second,
+			DB:                db,
+			GeoIPStore:        geoipStore.store,
+			GeoIPResolver:     geoipResolver,
+		})
+		require.NoError(t, err)
+
+		ctx := context.Background()
+		err = view.Refresh(ctx)
+		require.NoError(t, err)
+
+		// Verify contributors were stored
+		var contributorsCount int
+		err = db.QueryRow("SELECT COUNT(*) FROM dz_contributors").Scan(&contributorsCount)
+		require.NoError(t, err)
+		require.Equal(t, 1, contributorsCount, "should have 1 contributor")
+
+		// Verify devices were stored
+		var devicesCount int
+		err = db.QueryRow("SELECT COUNT(*) FROM dz_devices").Scan(&devicesCount)
+		require.NoError(t, err)
+		require.Equal(t, 1, devicesCount, "should have 1 device")
+
+		// Verify users were stored
+		var usersCount int
+		err = db.QueryRow("SELECT COUNT(*) FROM dz_users").Scan(&usersCount)
+		require.NoError(t, err)
+		require.Equal(t, 3, usersCount, "should have 3 users")
+
+		// Verify metros were stored
+		var metrosCount int
+		err = db.QueryRow("SELECT COUNT(*) FROM dz_metros").Scan(&metrosCount)
+		require.NoError(t, err)
+		require.Equal(t, 1, metrosCount, "should have 1 metro")
+
+		// Verify links were stored
+		var linksCount int
+		err = db.QueryRow("SELECT COUNT(*) FROM dz_links").Scan(&linksCount)
+		require.NoError(t, err)
+		require.Equal(t, 1, linksCount, "should have 1 link")
+
+		// Verify geoip records were upserted (only for users with ClientIP)
+		records, err := geoipStore.store.GetRecords()
+		require.NoError(t, err)
+		require.Len(t, records, 2, "should have 2 resolved geoip records")
+		// Find records by IP
+		var record1, record2 *geoip.Record
+		for _, r := range records {
+			if r.IP.String() == "1.1.1.1" {
+				record1 = r
+			}
+			if r.IP.String() == "8.8.8.8" {
+				record2 = r
+			}
+		}
+		require.NotNil(t, record1, "should have record for 1.1.1.1")
+		require.Equal(t, "San Francisco", record1.City)
+		require.NotNil(t, record2, "should have record for 8.8.8.8")
+		require.Equal(t, "Mountain View", record2.City)
+
+		// Verify specific data in contributors
+		var code string
+		err = db.QueryRow("SELECT code FROM dz_contributors WHERE pk = ?", testPubkey(1).String()).Scan(&code)
+		require.NoError(t, err)
+		require.Equal(t, "TEST", code, "contributor should have correct code")
+
+		// Verify specific data in devices
+		var deviceCode string
+		err = db.QueryRow("SELECT code FROM dz_devices WHERE pk = ?", testPubkey(3).String()).Scan(&deviceCode)
+		require.NoError(t, err)
+		require.Equal(t, "DEV001", deviceCode, "device should have correct code")
+
+		// Verify specific data in metros
+		var metroName string
+		err = db.QueryRow("SELECT name FROM dz_metros WHERE pk = ?", testPubkey(2).String()).Scan(&metroName)
+		require.NoError(t, err)
+		require.Equal(t, "New York", metroName, "metro should have correct name")
+
+		// Verify specific data in links
+		var linkCode string
+		err = db.QueryRow("SELECT code FROM dz_links WHERE pk = ?", testPubkey(6).String()).Scan(&linkCode)
+		require.NoError(t, err)
+		require.Equal(t, "LINK001", linkCode, "link should have correct code")
+	})
+
+	t.Run("handles users without client IPs for geoip", func(t *testing.T) {
+		t.Parallel()
+
+		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
+		require.NoError(t, err)
+		defer db.Close()
+
+		geoipStore, err := newTestGeoIPStore(t)
+		require.NoError(t, err)
+		defer geoipStore.db.Close()
+
+		geoipResolver := &mockGeoIPResolver{
+			resolveFunc: func(ip net.IP) *geoip.Record {
+				// Return nil for zero/unset IPs
+				if ip == nil || ip.IsUnspecified() {
+					return nil
+				}
+				return &geoip.Record{IP: ip}
+			},
+		}
+
+		userPK := testPubkeyBytes(1)
+		ownerPK := testPubkeyBytes(2)
+		devicePK := testPubkeyBytes(3)
+
+		rpc := &MockServiceabilityRPC{
+			getProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+				return &serviceability.ProgramData{
+					Users: []serviceability.User{
+						{
+							PubKey:       userPK,
+							Owner:        ownerPK,
+							Status:       serviceability.UserStatusActivated,
+							UserType:     serviceability.UserTypeIBRL,
+							ClientIp:     [4]byte{0, 0, 0, 0}, // No client IP (zero IP)
+							DzIp:         [4]byte{10, 0, 0, 1},
+							DevicePubKey: devicePK,
+						},
+					},
+				}, nil
+			},
+		}
+
+		view, err := NewView(ViewConfig{
+			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Clock:             clockwork.NewFakeClock(),
+			ServiceabilityRPC: rpc,
+			RefreshInterval:   time.Second,
+			DB:                db,
+			GeoIPStore:        geoipStore.store,
+			GeoIPResolver:     geoipResolver,
+		})
+		require.NoError(t, err)
+
+		ctx := context.Background()
+		err = view.Refresh(ctx)
+		require.NoError(t, err)
+
+		// Verify users are still stored even without geoip
+		var usersCount int
+		err = db.QueryRow("SELECT COUNT(*) FROM dz_users").Scan(&usersCount)
+		require.NoError(t, err)
+		require.Equal(t, 1, usersCount, "should have 1 user even without geoip")
+
+		// Verify no geoip records were upserted
+		records, err := geoipStore.store.GetRecords()
+		require.NoError(t, err)
+		require.Len(t, records, 0, "should have no geoip records when no client IPs")
 	})
 }

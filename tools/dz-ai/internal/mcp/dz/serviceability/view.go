@@ -14,7 +14,9 @@ import (
 	"github.com/jonboulle/clockwork"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/duck"
+	mcpgeoip "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/geoip"
 	mcpmetrics "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/metrics"
+	"github.com/malbeclabs/doublezero/tools/maxmind/pkg/geoip"
 )
 
 type Contributor struct {
@@ -92,6 +94,8 @@ type ViewConfig struct {
 	ServiceabilityRPC ServiceabilityRPC
 	RefreshInterval   time.Duration
 	DB                duck.DB
+	GeoIPStore        *mcpgeoip.Store
+	GeoIPResolver     geoip.Resolver
 }
 
 func (cfg *ViewConfig) Validate() error {
@@ -103,6 +107,12 @@ func (cfg *ViewConfig) Validate() error {
 	}
 	if cfg.DB == nil {
 		return errors.New("database is required")
+	}
+	if cfg.GeoIPStore == nil {
+		return errors.New("geoip store is required")
+	}
+	if cfg.GeoIPResolver == nil {
+		return errors.New("geoip resolver is required")
 	}
 	if cfg.RefreshInterval <= 0 {
 		return errors.New("refresh interval must be greater than 0")
@@ -266,6 +276,22 @@ func (v *View) Refresh(ctx context.Context) error {
 
 	if err := v.store.ReplaceLinks(ctx, links); err != nil {
 		return fmt.Errorf("failed to replace links: %w", err)
+	}
+
+	v.log.Debug("serviceability: updating geoip records for user ips")
+	geoipRecords := make([]*geoip.Record, 0, len(users))
+	for _, user := range users {
+		if user.ClientIP == nil {
+			continue
+		}
+		record := v.cfg.GeoIPResolver.Resolve(user.ClientIP)
+		if record == nil {
+			continue
+		}
+		geoipRecords = append(geoipRecords, record)
+	}
+	if err := v.cfg.GeoIPStore.UpsertRecords(ctx, geoipRecords); err != nil {
+		return fmt.Errorf("failed to update geoip records: %w", err)
 	}
 
 	v.fetchedAt = fetchedAt

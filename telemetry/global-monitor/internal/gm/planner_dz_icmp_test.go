@@ -166,7 +166,7 @@ func TestGlobalMonitor_DoubleZeroUserICMPPlanner_Record_WritesExpectedInfluxPoin
 			Region:      "ON",
 			City:        "Toronto",
 			CityID:      123,
-			Metro:       "YYZ",
+			MetroName:   "Yorkton",
 			ASN:         64500,
 			ASNOrg:      "Example",
 			Latitude:    43.7,

@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/duck"
+	mcpgeoip "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/geoip"
 	dzsvc "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/dz/serviceability"
 	dztelem "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/dz/telemetry"
 )
@@ -26,12 +27,25 @@ func TestAI_MCP_Server_ReadyzHandler(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close()
 
+	geoIPStore, err := mcpgeoip.NewStore(mcpgeoip.StoreConfig{
+		Logger: log,
+		DB:     db,
+	})
+	require.NoError(t, err)
+	if err := geoIPStore.CreateTablesIfNotExists(); err != nil {
+		t.Fatalf("failed to create geoip tables: %v", err)
+	}
+
+	mockGeoIPResolver := &mockGeoIPResolver{}
+
 	svcView, err := dzsvc.NewView(dzsvc.ViewConfig{
 		Logger:            log,
 		Clock:             clockwork.NewFakeClock(),
 		ServiceabilityRPC: &mockServiceabilityRPC{},
 		RefreshInterval:   time.Second,
 		DB:                db,
+		GeoIPStore:        geoIPStore,
+		GeoIPResolver:     mockGeoIPResolver,
 	})
 	require.NoError(t, err)
 

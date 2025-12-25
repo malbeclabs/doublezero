@@ -11,6 +11,7 @@ import (
 
 	dzsvc "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/dz/serviceability"
 	dztelem "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/dz/telemetry"
+	mcpgeoip "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/geoip"
 	mcpmetrics "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/metrics"
 	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/sol"
 	sqltools "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/tools/sql"
@@ -30,12 +31,26 @@ func New(cfg Config) (*Server, error) {
 		return nil, err
 	}
 
+	// Initialize GeoIP store
+	geoIPStore, err := mcpgeoip.NewStore(mcpgeoip.StoreConfig{
+		Logger: cfg.Logger,
+		DB:     cfg.DB,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GeoIP store: %w", err)
+	}
+	if err := geoIPStore.CreateTablesIfNotExists(); err != nil {
+		return nil, fmt.Errorf("failed to create GeoIP tables: %w", err)
+	}
+
 	svcView, err := dzsvc.NewView(dzsvc.ViewConfig{
 		Logger:            cfg.Logger,
 		Clock:             cfg.Clock,
 		ServiceabilityRPC: cfg.ServiceabilityRPC,
 		RefreshInterval:   cfg.RefreshInterval,
 		DB:                cfg.DB,
+		GeoIPStore:        geoIPStore,
+		GeoIPResolver:     cfg.GeoIPResolver,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create serviceability view: %w", err)
@@ -63,6 +78,8 @@ func New(cfg Config) (*Server, error) {
 		RPC:             cfg.SolanaRPC,
 		DB:              cfg.DB,
 		RefreshInterval: cfg.RefreshInterval,
+		GeoIPStore:      *geoIPStore,
+		GeoIPResolver:   cfg.GeoIPResolver,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create solana view: %w", err)
@@ -95,6 +112,14 @@ func New(cfg Config) (*Server, error) {
 	}
 	if err := solanaSchemaTool.Register(mcpServer); err != nil {
 		return nil, fmt.Errorf("failed to register solana schema tool: %w", err)
+	}
+
+	geoipSchemaTool, err := geoIPStore.SchemaTool()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create geoip schema tool: %w", err)
+	}
+	if err := geoipSchemaTool.Register(mcpServer); err != nil {
+		return nil, fmt.Errorf("failed to register geoip schema tool: %w", err)
 	}
 
 	queryTool, err := sqltools.NewQueryTool(sqltools.QueryToolConfig{

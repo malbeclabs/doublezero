@@ -34,9 +34,19 @@ func TestGlobalMonitor_GeoIP_Resolve_WithGeneratedMMDBs(t *testing.T) {
 				"geoname_id": mmdbtype.Uint32(123),
 				"names":      mmdbtype.Map{"en": mmdbtype.String("Ottawa")},
 			},
+			"postal": mmdbtype.Map{
+				"code": mmdbtype.String("K1A 0A6"),
+			},
 			"location": mmdbtype.Map{
-				"latitude":  mmdbtype.Float64(45.4215),
-				"longitude": mmdbtype.Float64(-75.6972),
+				"latitude":        mmdbtype.Float64(45.4215),
+				"longitude":       mmdbtype.Float64(-75.6972),
+				"time_zone":       mmdbtype.String("America/Toronto"),
+				"accuracy_radius": mmdbtype.Uint16(50),
+			},
+			"traits": mmdbtype.Map{
+				"is_anycast":            mmdbtype.Bool(false),
+				"is_anonymous_proxy":    mmdbtype.Bool(false),
+				"is_satellite_provider": mmdbtype.Bool(false),
 			},
 		}
 		require.NoError(t, w.Insert(mustCIDR(t, cidr), rec))
@@ -69,9 +79,15 @@ func TestGlobalMonitor_GeoIP_Resolve_WithGeneratedMMDBs(t *testing.T) {
 	require.Equal(t, 123, got.CityID)
 	require.InDelta(t, 45.4215, got.Latitude, 1e-9)
 	require.InDelta(t, -75.6972, got.Longitude, 1e-9)
+	require.Equal(t, "K1A 0A6", got.PostalCode)
+	require.Equal(t, "America/Toronto", got.TimeZone)
+	require.Equal(t, 50, got.AccuracyRadius)
 	require.Equal(t, uint(64500), got.ASN)
 	require.Equal(t, "ExampleNet", got.ASNOrg)
-	require.Equal(t, "Unknown", got.Metro)
+	require.False(t, got.IsAnycast)
+	require.False(t, got.IsAnonymousProxy)
+	require.False(t, got.IsSatelliteProvider)
+	require.Equal(t, "Unknown", got.MetroName)
 }
 
 func TestGlobalMonitor_GeoIP_Resolve_NilIP(t *testing.T) {
@@ -112,7 +128,7 @@ func TestGlobalMonitor_GeoIP_Resolve_CityOnly(t *testing.T) {
 	require.Equal(t, "CA", got.CountryCode)
 	require.Equal(t, "Canada", got.Country)
 	require.Zero(t, got.ASN)
-	require.Equal(t, "Unknown", got.Metro)
+	require.Equal(t, "Unknown", got.MetroName)
 }
 
 func TestGlobalMonitor_GeoIP_Resolve_ASNOnly(t *testing.T) {
@@ -141,7 +157,7 @@ func TestGlobalMonitor_GeoIP_Resolve_ASNOnly(t *testing.T) {
 	require.Equal(t, uint(64501), got.ASN)
 	require.Equal(t, "OnlyASN", got.ASNOrg)
 	require.Empty(t, got.Country)
-	require.Equal(t, "Unknown", got.Metro)
+	require.Equal(t, "Unknown", got.MetroName)
 }
 
 func TestGlobalMonitor_GeoIP_Resolve_NotFound(t *testing.T) {
@@ -184,6 +200,54 @@ func TestGlobalMonitor_GeoIP_Resolve_NoReaders(t *testing.T) {
 	}
 
 	require.Nil(t, r.Resolve(net.ParseIP("1.1.1.1")))
+}
+
+func TestGlobalMonitor_GeoIP_Resolve_WithTraits(t *testing.T) {
+	t.Parallel()
+
+	const cidr = "2.2.2.0/24"
+	const ipStr = "2.2.2.2"
+
+	cityPath := writeMMDB(t, "city.mmdb", "GeoLite2-City", func(w *mmdbwriter.Tree) {
+		rec := mmdbtype.Map{
+			"country": mmdbtype.Map{
+				"iso_code": mmdbtype.String("US"),
+				"names":    mmdbtype.Map{"en": mmdbtype.String("United States")},
+			},
+			"location": mmdbtype.Map{
+				"latitude":  mmdbtype.Float64(37.7749),
+				"longitude": mmdbtype.Float64(-122.4194),
+			},
+			"traits": mmdbtype.Map{
+				"is_anycast":            mmdbtype.Bool(true),
+				"is_anonymous_proxy":    mmdbtype.Bool(true),
+				"is_satellite_provider": mmdbtype.Bool(true),
+			},
+		}
+		require.NoError(t, w.Insert(mustCIDR(t, cidr), rec))
+	})
+
+	asnPath := writeMMDB(t, "asn.mmdb", "GeoLite2-ASN", func(w *mmdbwriter.Tree) {
+		rec := mmdbtype.Map{
+			"autonomous_system_number":       mmdbtype.Uint32(12345),
+			"autonomous_system_organization": mmdbtype.String("Test ASN Org"),
+		}
+		require.NoError(t, w.Insert(mustCIDR(t, cidr), rec))
+	})
+
+	cityDB := openGeoIP(t, cityPath)
+	asnDB := openGeoIP(t, asnPath)
+
+	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	r, err := NewResolver(log, cityDB, asnDB, &metrodb.MetroDB{})
+	require.NoError(t, err)
+
+	got := r.Resolve(net.ParseIP(ipStr))
+	require.NotNil(t, got)
+
+	require.True(t, got.IsAnycast)
+	require.True(t, got.IsAnonymousProxy)
+	require.True(t, got.IsSatelliteProvider)
 }
 
 func writeMMDB(t *testing.T, filename, dbType string, inserts func(w *mmdbwriter.Tree)) string {

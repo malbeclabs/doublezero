@@ -165,7 +165,7 @@ func TestGlobalMonitor_SolanaValidatorICMPPlanner_Record_WritesExpectedInfluxPoi
 		Region:      "ON",
 		City:        "Toronto",
 		CityID:      123,
-		Metro:       "YYZ",
+		MetroName:   "Yorkton",
 		ASN:         64500,
 		ASNOrg:      "Example",
 		Latitude:    43.7,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"sync/atomic"
 	"testing"
@@ -14,6 +15,8 @@ import (
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/jonboulle/clockwork"
 	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/duck"
+	mcpgeoip "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/geoip"
+	"github.com/malbeclabs/doublezero/tools/maxmind/pkg/geoip"
 	"github.com/stretchr/testify/require"
 
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
@@ -50,6 +53,47 @@ func (m *MockServiceabilityRPC) GetProgramData(ctx context.Context) (*serviceabi
 	return &serviceability.ProgramData{}, nil
 }
 
+type mockGeoIPResolver struct {
+	resolveFunc func(net.IP) *geoip.Record
+}
+
+func (m *mockGeoIPResolver) Resolve(ip net.IP) *geoip.Record {
+	if m.resolveFunc != nil {
+		return m.resolveFunc(ip)
+	}
+	return nil
+}
+
+type mockGeoIPStore struct {
+	store *mcpgeoip.Store
+	db    duck.DB
+}
+
+func newMockGeoIPStore(t *testing.T) (*mockGeoIPStore, error) {
+	t.Helper()
+	db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
+	if err != nil {
+		return nil, err
+	}
+
+	store, err := mcpgeoip.NewStore(mcpgeoip.StoreConfig{
+		Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
+		DB:     db,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if err := store.CreateTablesIfNotExists(); err != nil {
+		return nil, err
+	}
+
+	return &mockGeoIPStore{
+		store: store,
+		db:    db,
+	}, nil
+}
+
 func TestAI_MCP_Telemetry_View_Ready(t *testing.T) {
 	t.Parallel()
 
@@ -60,12 +104,18 @@ func TestAI_MCP_Telemetry_View_Ready(t *testing.T) {
 		require.NoError(t, err)
 		defer db.Close()
 
+		geoipStore, err := newMockGeoIPStore(t)
+		require.NoError(t, err)
+		defer geoipStore.db.Close()
+
 		svcView, err := dzsvc.NewView(dzsvc.ViewConfig{
 			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
 			Clock:             clockwork.NewFakeClock(),
 			ServiceabilityRPC: &MockServiceabilityRPC{},
 			RefreshInterval:   time.Second,
 			DB:                db,
+			GeoIPStore:        geoipStore.store,
+			GeoIPResolver:     &mockGeoIPResolver{},
 		})
 		require.NoError(t, err)
 
@@ -97,12 +147,18 @@ func TestAI_MCP_Telemetry_View_WaitReady(t *testing.T) {
 		require.NoError(t, err)
 		defer db.Close()
 
+		geoipStore, err := newMockGeoIPStore(t)
+		require.NoError(t, err)
+		defer geoipStore.db.Close()
+
 		svcView, err := dzsvc.NewView(dzsvc.ViewConfig{
 			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
 			Clock:             clockwork.NewFakeClock(),
 			ServiceabilityRPC: &MockServiceabilityRPC{},
 			RefreshInterval:   time.Second,
 			DB:                db,
+			GeoIPStore:        geoipStore.store,
+			GeoIPResolver:     &mockGeoIPResolver{},
 		})
 		require.NoError(t, err)
 
@@ -300,12 +356,18 @@ func TestAI_MCP_Telemetry_View_Refresh_SavesToDB(t *testing.T) {
 			},
 		}
 
+		geoipStore, err := newMockGeoIPStore(t)
+		require.NoError(t, err)
+		defer geoipStore.db.Close()
+
 		svcView, err := dzsvc.NewView(dzsvc.ViewConfig{
 			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
 			Clock:             clockwork.NewFakeClock(),
 			ServiceabilityRPC: svcMockRPC,
 			RefreshInterval:   time.Second,
 			DB:                db,
+			GeoIPStore:        geoipStore.store,
+			GeoIPResolver:     &mockGeoIPResolver{},
 		})
 		require.NoError(t, err)
 
@@ -425,12 +487,18 @@ func TestAI_MCP_Telemetry_View_Refresh_SavesToDB(t *testing.T) {
 			},
 		}
 
+		geoipStore, err := newMockGeoIPStore(t)
+		require.NoError(t, err)
+		defer geoipStore.db.Close()
+
 		svcView, err := dzsvc.NewView(dzsvc.ViewConfig{
 			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
 			Clock:             clockwork.NewFakeClock(),
 			ServiceabilityRPC: svcMockRPC,
 			RefreshInterval:   time.Second,
 			DB:                db,
+			GeoIPStore:        geoipStore.store,
+			GeoIPResolver:     &mockGeoIPResolver{},
 		})
 		require.NoError(t, err)
 
@@ -564,12 +632,18 @@ func TestAI_MCP_Telemetry_View_Refresh_SavesToDB(t *testing.T) {
 			},
 		}
 
+		geoipStore, err := newMockGeoIPStore(t)
+		require.NoError(t, err)
+		defer geoipStore.db.Close()
+
 		svcView, err := dzsvc.NewView(dzsvc.ViewConfig{
 			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
 			Clock:             clockwork.NewFakeClock(),
 			ServiceabilityRPC: svcMockRPC,
 			RefreshInterval:   time.Second,
 			DB:                db,
+			GeoIPStore:        geoipStore.store,
+			GeoIPResolver:     &mockGeoIPResolver{},
 		})
 		require.NoError(t, err)
 
@@ -708,12 +782,18 @@ func TestAI_MCP_Telemetry_View_IncrementalAppend(t *testing.T) {
 			},
 		}
 
+		geoipStore, err := newMockGeoIPStore(t)
+		require.NoError(t, err)
+		defer geoipStore.db.Close()
+
 		svcView, err := dzsvc.NewView(dzsvc.ViewConfig{
 			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
 			Clock:             clockwork.NewFakeClock(),
 			ServiceabilityRPC: svcMockRPC,
 			RefreshInterval:   time.Second,
 			DB:                db,
+			GeoIPStore:        geoipStore.store,
+			GeoIPResolver:     &mockGeoIPResolver{},
 		})
 		require.NoError(t, err)
 
@@ -871,12 +951,18 @@ func TestAI_MCP_Telemetry_View_IncrementalAppend(t *testing.T) {
 			},
 		}
 
+		geoipStore, err := newMockGeoIPStore(t)
+		require.NoError(t, err)
+		defer geoipStore.db.Close()
+
 		svcView, err := dzsvc.NewView(dzsvc.ViewConfig{
 			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
 			Clock:             clockwork.NewFakeClock(),
 			ServiceabilityRPC: svcMockRPC,
 			RefreshInterval:   time.Second,
 			DB:                db,
+			GeoIPStore:        geoipStore.store,
+			GeoIPResolver:     &mockGeoIPResolver{},
 		})
 		require.NoError(t, err)
 

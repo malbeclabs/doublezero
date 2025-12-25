@@ -11,6 +11,7 @@ import (
 	dzsvc "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/dz/serviceability"
 	dztelem "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/dz/telemetry"
 	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/sol"
+	"github.com/malbeclabs/doublezero/tools/maxmind/pkg/geoip"
 )
 
 const (
@@ -37,6 +38,8 @@ type Config struct {
 	InternetLatencyAgentPK solana.PublicKey
 	InternetDataProviders  []string
 	AllowedTokens          []string // Bearer tokens allowed for MCP endpoint authentication
+
+	GeoIPResolver geoip.Resolver
 }
 
 func (c *Config) Validate() error {

@@ -11,7 +11,9 @@ import (
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/jonboulle/clockwork"
 	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/duck"
+	mcpgeoip "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/geoip"
 	mcpmetrics "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/metrics"
+	"github.com/malbeclabs/doublezero/tools/maxmind/pkg/geoip"
 )
 
 type SolanaRPC interface {
@@ -22,10 +24,12 @@ type SolanaRPC interface {
 }
 
 type ViewConfig struct {
-	Logger *slog.Logger
-	Clock  clockwork.Clock
-	RPC    SolanaRPC
-	DB     duck.DB
+	Logger        *slog.Logger
+	Clock         clockwork.Clock
+	RPC           SolanaRPC
+	DB            duck.DB
+	GeoIPStore    mcpgeoip.Store
+	GeoIPResolver geoip.Resolver
 
 	RefreshInterval time.Duration
 }
@@ -200,6 +204,22 @@ func (v *View) Refresh(ctx context.Context) error {
 	v.log.Debug("solana: refreshing cluster nodes", "count", len(clusterNodes))
 	if err := v.store.ReplaceGossipNodes(ctx, clusterNodes, fetchedAt, currentEpoch); err != nil {
 		return fmt.Errorf("failed to refresh cluster nodes: %w", err)
+	}
+
+	v.log.Debug("solana: updating geoip records for gossip ips")
+	geoipRecords := make([]*geoip.Record, 0, len(clusterNodes))
+	for _, node := range clusterNodes {
+		if node.Gossip == nil {
+			continue
+		}
+		record := mcpgeoip.MaybeResolveAddr(v.cfg.GeoIPResolver, *node.Gossip)
+		if record == nil {
+			continue
+		}
+		geoipRecords = append(geoipRecords, record)
+	}
+	if err := v.cfg.GeoIPStore.UpsertRecords(ctx, geoipRecords); err != nil {
+		return fmt.Errorf("failed to update geoip records: %w", err)
 	}
 
 	v.fetchedAt = fetchedAt

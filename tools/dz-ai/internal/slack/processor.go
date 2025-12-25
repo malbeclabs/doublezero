@@ -3,7 +3,6 @@ package slack
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
@@ -230,7 +229,6 @@ func (p *Processor) ProcessMessage(
 	reply = normalizeTwoWayArrow(reply)
 
 	p.log.Debug("agent response", "reply", reply)
-	fmt.Println("agent response", reply)
 
 	// Convert to blocks and set expand=true to prevent "see more" truncation
 	blocks := ConvertMarkdownToBlocks(reply, p.log)

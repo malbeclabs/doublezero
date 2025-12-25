@@ -29,7 +29,10 @@ import (
 	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/duck"
 	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/metrics"
 	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/server"
+	"github.com/malbeclabs/doublezero/tools/maxmind/pkg/geoip"
+	"github.com/malbeclabs/doublezero/tools/maxmind/pkg/metrodb"
 	"github.com/malbeclabs/doublezero/tools/solana/pkg/rpc"
+	"github.com/oschwald/geoip2-golang"
 )
 
 var (
@@ -45,10 +48,13 @@ const (
 	defaultMaxConcurrency  = 64
 	defaultDZEnv           = config.EnvMainnetBeta
 	defaultMetricsAddr     = "0.0.0.0:8080"
-	// defaultDBPath          = ".tmp/mcp.duckdb"
 	defaultDBPath          = ":memory:"
 	defaultDuckDBSpillPath = ".tmp/duckdb-spill-tmp"
 	defaultDBPathEnvVar    = "MCP_DB_PATH"
+	defaultGeoipCityDBPath = "/usr/share/GeoIP/GeoLite2-City.mmdb"
+	defaultGeoipASNDBPath  = "/usr/share/GeoIP/GeoLite2-ASN.mmdb"
+	geoipCityDBPathEnvVar  = "MCP_GEOIP_CITY_DB_PATH"
+	geoipASNDBPathEnvVar   = "MCP_GEOIP_ASN_DB_PATH"
 )
 
 func main() {
@@ -69,6 +75,8 @@ func run() error {
 	metricsAddrFlag := flag.String("metrics-addr", defaultMetricsAddr, "Address to listen on for prometheus metrics")
 	dbPathFlag := flag.String("db-path", defaultDBPath, "Path to DuckDB database file (empty for in-memory, or set MCP_DB_PATH env var)")
 	dbSpillDirFlag := flag.String("db-spill-dir", defaultDuckDBSpillPath, "Path to DuckDB temporary spill directory")
+	geoipCityDBPathFlag := flag.String("geoip-city-db-path", defaultGeoipCityDBPath, "Path to MaxMind GeoIP2 City database file (or set MCP_GEOIP_CITY_DB_PATH env var)")
+	geoipASNDBPathFlag := flag.String("geoip-asn-db-path", defaultGeoipASNDBPath, "Path to MaxMind GeoIP2 ASN database file (or set MCP_GEOIP_ASN_DB_PATH env var)")
 	flag.Parse()
 
 	networkConfig, err := config.NetworkConfigForEnv(*envFlag)
@@ -137,8 +145,10 @@ func run() error {
 
 	// Determine database path: flag takes precedence, then env var, then default
 	dbPath := *dbPathFlag
-	if dbPath == "" {
-		dbPath = os.Getenv(defaultDBPathEnvVar)
+	if dbPath == "" || dbPath == defaultDBPath {
+		if envPath := os.Getenv(defaultDBPathEnvVar); envPath != "" {
+			dbPath = envPath
+		}
 	}
 	if dbPath == "" {
 		dbPath = defaultDBPath
@@ -150,6 +160,28 @@ func run() error {
 		return fmt.Errorf("failed to initialize DuckDB: %w", err)
 	}
 	defer dbCloseFn()
+
+	// Determine GeoIP database paths: flag takes precedence, then env var, then default
+	geoipCityDBPath := *geoipCityDBPathFlag
+	if geoipCityDBPath == defaultGeoipCityDBPath {
+		if envPath := os.Getenv(geoipCityDBPathEnvVar); envPath != "" {
+			geoipCityDBPath = envPath
+		}
+	}
+
+	geoipASNDBPath := *geoipASNDBPathFlag
+	if geoipASNDBPath == defaultGeoipASNDBPath {
+		if envPath := os.Getenv(geoipASNDBPathEnvVar); envPath != "" {
+			geoipASNDBPath = envPath
+		}
+	}
+
+	// Initialize GeoIP resolver
+	geoIPResolver, geoIPCloseFn, err := initializeGeoIP(geoipCityDBPath, geoipASNDBPath, log)
+	if err != nil {
+		return fmt.Errorf("failed to initialize GeoIP: %w", err)
+	}
+	defer geoIPCloseFn()
 
 	// Parse allowed tokens from environment variable (comma-separated)
 	// Auth can be explicitly disabled with MCP_AUTH_DISABLED=true
@@ -188,6 +220,7 @@ func run() error {
 		InternetLatencyAgentPK: networkConfig.InternetLatencyCollectorPK,
 		InternetDataProviders:  telemetryconfig.InternetTelemetryDataProviders,
 		AllowedTokens:          allowedTokens,
+		GeoIPResolver:          geoIPResolver,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create server: %w", err)
@@ -269,6 +302,43 @@ func initializeDuckDB(dbPath string, spillDir string, log *slog.Logger) (duck.DB
 			if err := os.RemoveAll(spillDir); err != nil {
 				return fmt.Errorf("failed to delete spill directory: %w", err)
 			}
+		}
+		return nil
+	}, nil
+}
+
+func initializeGeoIP(cityDBPath, asnDBPath string, log *slog.Logger) (geoip.Resolver, func() error, error) {
+	cityDB, err := geoip2.Open(cityDBPath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to open GeoIP city database: %w", err)
+	}
+
+	asnDB, err := geoip2.Open(asnDBPath)
+	if err != nil {
+		cityDB.Close()
+		return nil, nil, fmt.Errorf("failed to open GeoIP ASN database: %w", err)
+	}
+
+	metroDB, err := metrodb.New()
+	if err != nil {
+		cityDB.Close()
+		asnDB.Close()
+		return nil, nil, fmt.Errorf("failed to create metro database: %w", err)
+	}
+
+	resolver, err := geoip.NewResolver(log, cityDB, asnDB, metroDB)
+	if err != nil {
+		cityDB.Close()
+		asnDB.Close()
+		return nil, nil, fmt.Errorf("failed to create GeoIP resolver: %w", err)
+	}
+
+	return resolver, func() error {
+		if err := cityDB.Close(); err != nil {
+			return fmt.Errorf("failed to close city database: %w", err)
+		}
+		if err := asnDB.Close(); err != nil {
+			return fmt.Errorf("failed to close ASN database: %w", err)
 		}
 		return nil
 	}, nil

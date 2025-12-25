@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/csv"
 	"log/slog"
+	"net"
 	"testing"
 	"time"
 
@@ -13,6 +14,8 @@ import (
 	"github.com/jonboulle/clockwork"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
+	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/duck"
+	"github.com/malbeclabs/doublezero/tools/maxmind/pkg/geoip"
 	"github.com/stretchr/testify/require"
 )
 
@@ -67,7 +70,15 @@ func (m *mockDB) ReplaceTable(tableName string, count int, writeCSVFn func(*csv.
 }
 func (m *mockDB) QueryRow(query string, args ...any) *sql.Row { return nil }
 
+type mockGeoIPResolver struct{}
+
+func (m *mockGeoIPResolver) Resolve(ip net.IP) *geoip.Record {
+	return nil
+}
+
 func validConfig() Config {
+	db, _ := duck.NewDB("", slog.Default())
+
 	return Config{
 		Version:                "test",
 		ListenAddr:             "localhost:8080",
@@ -77,11 +88,12 @@ func validConfig() Config {
 		TelemetryRPC:           &mockTelemetryRPC{},
 		DZEpochRPC:             &mockEpochRPC{},
 		SolanaRPC:              &mockSolanaRPC{},
-		DB:                     &mockDB{},
+		DB:                     db,
 		RefreshInterval:        30 * time.Second,
 		MaxConcurrency:         32,
 		InternetLatencyAgentPK: solana.MustPublicKeyFromBase58("So11111111111111111111111111111111111111112"),
 		InternetDataProviders:  []string{"test-provider"},
+		GeoIPResolver:          &mockGeoIPResolver{},
 	}
 }
 

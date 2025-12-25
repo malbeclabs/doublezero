@@ -223,7 +223,7 @@ func (p *DoubleZeroUserICMPPlanner) recordResult(source *Source, user *dz.User, 
 		tags["target_geoip_region"] = geoIP.Region
 		tags["target_geoip_city"] = geoIP.City
 		tags["target_geoip_city_id"] = strconv.Itoa(geoIP.CityID)
-		tags["target_geoip_metro"] = geoIP.Metro
+		tags["target_geoip_metro"] = geoIP.MetroName
 		tags["target_geoip_asn"] = strconv.Itoa(int(geoIP.ASN))
 		tags["target_geoip_asn_org"] = geoIP.ASNOrg
 		fields["target_geoip_latitude"] = geoIP.Latitude

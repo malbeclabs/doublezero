@@ -36,6 +36,12 @@ func run() error {
 
 	log := logger.New(*verboseFlag)
 
+	// Get question from positional args, or use default
+	question := "Come up with an interesting question to ask about DoubleZero, and answer it using the tools."
+	if len(flag.Args()) > 0 {
+		question = flag.Arg(0)
+	}
+
 	mcpURL := os.Getenv("MCP_URL")
 	if mcpURL == "" {
 		return fmt.Errorf("MCP_URL is required")
@@ -75,7 +81,7 @@ func run() error {
 
 	msgs := []agent.Message{
 		anthropicMessageAdapter{
-			msg: anthropic.NewUserMessage(anthropic.NewTextBlock("Come up with an interesting question to ask about DoubleZero, and answer it using the tools.")),
+			msg: anthropic.NewUserMessage(anthropic.NewTextBlock(question)),
 		},
 	}
 

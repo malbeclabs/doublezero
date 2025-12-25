@@ -2,6 +2,7 @@ package dztelem
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -186,7 +187,9 @@ func (v *View) Refresh(ctx context.Context) error {
 
 	// Refresh device-link telemetry samples
 	if err := v.refreshDeviceLinkTelemetrySamples(ctx, circuits); err != nil {
-		v.log.Warn("failed to refresh device-link telemetry samples", "error", err)
+		if !errors.Is(err, context.Canceled) && !errors.Is(err, sql.ErrConnDone) {
+			v.log.Warn("failed to refresh device-link telemetry samples", "error", err)
+		}
 		// Don't fail the entire refresh if telemetry fails
 	}
 
@@ -198,7 +201,9 @@ func (v *View) Refresh(ctx context.Context) error {
 		} else {
 			internetCircuits := ComputeInternetMetroCircuits(metros)
 			if err := v.refreshInternetMetroLatencySamples(ctx, internetCircuits); err != nil {
-				v.log.Warn("failed to refresh internet-metro telemetry samples", "error", err)
+				if !errors.Is(err, context.Canceled) && !errors.Is(err, sql.ErrConnDone) {
+					v.log.Warn("failed to refresh internet-metro telemetry samples", "error", err)
+				}
 				// Don't fail the entire refresh if telemetry fails
 			}
 		}

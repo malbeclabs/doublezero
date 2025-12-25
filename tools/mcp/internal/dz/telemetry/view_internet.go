@@ -203,7 +203,6 @@ done:
 	// Append new samples to table (instead of replacing)
 	if len(allSamples) > 0 {
 		if err := v.store.AppendInternetMetroLatencySamples(ctx, allSamples); err != nil {
-			v.log.Error("telemetry/internet-metro: failed to append latency samples", "error", err, "total_samples", len(allSamples))
 			return fmt.Errorf("failed to append internet-metro latency samples: %w", err)
 		}
 		v.log.Debug("telemetry/internet-metro: sample refresh completed", "circuits", circuitsProcessed, "samples", len(allSamples))

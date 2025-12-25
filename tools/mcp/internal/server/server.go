@@ -101,20 +101,24 @@ func New(cfg Config) (*Server, error) {
 		DB:     cfg.DB,
 		Name:   "query",
 		Description: `
-			Execute SQL queries against the DoubleZero database.
-			This tool can query any table across all datasets (serviceability, telemetry, and Solana).
-			Use the schema tools (doublezero-schema, doublezero-telemetry-schema, solana-schema) to see available tables and their schemas.
-			For network structure questions, query dz_* tables. For performance/latency metrics, query dz_device_link_* and dz_internet_metro_* tables.
-			For Solana validator data, query solana_* tables.
-			Supports SELECT, JOINs, WHERE clauses, GROUP BY, aggregations (COUNT, SUM, AVG, etc.), ORDER BY, and more.
-			IMPORTANT:
-				(1) When performing arithmetic operations (multiplication, squaring, etc.) on BIGINT columns like rtt_us, explicitly cast to BIGINT to avoid INT32 overflow: use CAST(rtt_us AS BIGINT) * CAST(rtt_us AS BIGINT) instead of rtt_us * rtt_us.
-				(2) Always aggregate data and use LIMIT clauses to keep results manageable - avoid returning large numbers of raw rows. Use GROUP BY, aggregations, and LIMIT to summarize data rather than returning individual samples.
-			Examples:
-				SELECT * FROM dz_devices WHERE status = 'activated'
-				SELECT circuit_code, AVG(rtt_us) FROM dz_device_link_latency_samples WHERE rtt_us > 0 GROUP BY circuit_code
-				SELECT * FROM solana_vote_accounts WHERE epoch_vote_account = true
-			For more information about DoubleZero, see https://doublezero.xyz
+			PURPOSE:
+			Execute DuckDB SQL queries across all DoubleZero datasets (serviceability, telemetry, and Solana).
+
+			USAGE RULES:
+			- Consult the appropriate schema tool before writing any SQL. Do not guess column names.
+			- Prefer single, well-constructed queries that return summarized results.
+			- Aggregate data using 'GROUP BY' and apply 'LIMIT' to keep result sets small.
+			- Use multiple queries only when the question requires distinct, independent results.
+
+			SUPPORTED SQL:
+			- 'SELECT', 'JOIN', 'WHERE', 'GROUP BY', aggregations ('COUNT', 'SUM', 'AVG', percentiles), 'ORDER BY', 'LIMIT'
+
+			IMPORTANT CONSTRAINTS:
+			1. When performing arithmetic on 'BIGINT' columns (e.g. 'rtt_us'), explicitly cast operands to 'BIGINT' to avoid overflow:
+				CAST(rtt_usASBIGINT) * CAST(rtt_usASBIGINT)
+			2. Do not return large volumes of raw rows. Summarize whenever possible.
+
+			For general information about DoubleZero, see https://doublezero.xyz/
 		`,
 	})
 	if err != nil {

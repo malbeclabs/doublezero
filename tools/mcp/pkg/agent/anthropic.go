@@ -22,6 +22,10 @@ type AnthropicAgentConfig struct {
 	MaxRounds        int
 	MaxToolResultLen int
 	System           string
+	// KeepToolResultsRounds controls how many rounds of tool results to keep in conversation history.
+	// If 0, all tool results are kept. If > 0, only the last N rounds of tool results are kept.
+	// This helps manage context window size and costs for long conversations.
+	KeepToolResultsRounds int
 }
 
 // AnthropicAgent is an Agent implementation for Anthropic's Claude models.
@@ -125,6 +129,9 @@ func (a *AnthropicAgent) Run(ctx context.Context, mcpClient *client.Client, init
 	}
 
 	tools := toAnthropicTools(mcpTools)
+
+	// Track tool result message indices for trimming
+	toolResultIndices := make([]int, 0)
 
 	for round := 0; round < a.cfg.MaxRounds; round++ {
 		roundNum := round + 1
@@ -261,6 +268,33 @@ func (a *AnthropicAgent) Run(ctx context.Context, mcpClient *client.Client, init
 		toolResultMsg := anthropic.NewUserMessage(toolResults...)
 		msgs = append(msgs, toolResultMsg)
 		fullConversation = append(fullConversation, anthropicMessage{msg: toolResultMsg})
+		toolResultIndices = append(toolResultIndices, len(msgs)-1)
+
+		// Optionally trim old tool results to manage context window size
+		if a.cfg.KeepToolResultsRounds > 0 && len(toolResultIndices) > a.cfg.KeepToolResultsRounds {
+			// Find the cutoff point: keep the last N tool result rounds
+			// Each tool result is preceded by an assistant message, so we need to keep that too
+			cutoffToolResultIndex := toolResultIndices[len(toolResultIndices)-a.cfg.KeepToolResultsRounds]
+			// The assistant message with tool_use comes before the tool_result user message
+			// So we keep from (cutoffToolResultIndex - 1) to preserve the assistant-tool_result pair
+			cutoffIndex := cutoffToolResultIndex - 1
+			if cutoffIndex < 0 {
+				cutoffIndex = 0
+			}
+			// Keep initial messages (before first tool result) + recent messages
+			firstToolResultIndex := toolResultIndices[0]
+			firstAssistantIndex := firstToolResultIndex - 1
+			if firstAssistantIndex < 0 {
+				firstAssistantIndex = 0
+			}
+			msgs = append(msgs[:firstAssistantIndex], msgs[cutoffIndex:]...)
+			// Update indices for remaining tool results
+			removedCount := cutoffIndex - firstAssistantIndex
+			for i := range toolResultIndices {
+				toolResultIndices[i] -= removedCount
+			}
+			toolResultIndices = toolResultIndices[len(toolResultIndices)-a.cfg.KeepToolResultsRounds:]
+		}
 	}
 
 	return nil, fmt.Errorf("exceeded maximum rounds (%d)", a.cfg.MaxRounds)
@@ -323,7 +357,7 @@ func executeAnthropicTools(ctx context.Context, mcpClient *client.Client, toolUs
 
 	// Process results in order and apply truncation
 	toolResults := make([]anthropic.ContentBlockParamUnion, 0, len(toolUses))
-	for _, result := range results {
+	for i, result := range results {
 		out := result.out
 		isErr := result.isErr
 
@@ -332,11 +366,17 @@ func executeAnthropicTools(ctx context.Context, mcpClient *client.Client, toolUs
 			isErr = true
 		}
 
+		// Use index to get tool name directly (results[i] corresponds to toolUses[i])
 		var toolName string
-		for _, tu := range toolUses {
-			if tu.ID == result.id {
-				toolName = tu.Name
-				break
+		if i < len(toolUses) && toolUses[i].ID == result.id {
+			toolName = toolUses[i].Name
+		} else {
+			// Fallback: search by ID if index doesn't match (shouldn't happen, but be safe)
+			for _, tu := range toolUses {
+				if tu.ID == result.id {
+					toolName = tu.Name
+					break
+				}
 			}
 		}
 

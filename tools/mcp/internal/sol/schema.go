@@ -11,8 +11,21 @@ func (v *View) SchemaTool() (*sqltools.SchemaTool, error) {
 }
 
 var SCHEMA = &sqltools.Schema{
-	Name:        "solana",
-	Description: "Solana dataset. Use this dataset for questions about the Solana network, gossip nodes, vote accounts, and leader schedule.",
+	Name: "solana",
+	Description: `
+		Use this dataset **only for Solana-specific questions**:
+		- Gossip nodes
+		- Vote accounts
+		- Leader schedules
+		- Validator participation
+
+		TERMINOLOGY:
+		- Gossip nodes include all Solana network participants.
+		- Validators are nodes with 'activated_stake > 0' and active vote accounts.
+		- To count actual validators, join gossip nodes to vote accounts and filter accordingly.
+
+		Be explicit about whether results refer to gossip nodes or staked validators.
+	`,
 	Tables: []sqltools.TableInfo{
 		{
 			Name:        "solana_gossip_nodes",

@@ -269,7 +269,7 @@ func (a *AnthropicAgent) Run(ctx context.Context, mcpClient *client.Client, init
 				a.cfg.Logger.Info("agent: last round completed with tool calls, adding finalization prompt")
 			}
 
-			finalizationPrompt := `This is your final opportunity to respond. You have run out of rounds/time, but please provide a complete final response now. You can mention that you're out of rounds/time if relevant, but please give a helpful response based on what you've learned so far.`
+			finalizationPrompt := `This is your final response in this turn. You can't run additional data queries right now, so base your answer on what's already known. If any checks couldn't be refreshed, state that clearly and invite a follow-up for the latest data. Keep the response concise, factual, and decision-oriented.`
 
 			finalMsgs := append(msgs, anthropic.NewUserMessage(anthropic.NewTextBlock(finalizationPrompt)))
 			fullConversation = append(fullConversation, anthropicMessage{msg: anthropic.NewUserMessage(anthropic.NewTextBlock(finalizationPrompt))})

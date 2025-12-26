@@ -56,6 +56,12 @@ pub fn process_suspend_user(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
+    if user.status != UserStatus::Activated {
+        #[cfg(test)]
+        msg!("{:?}", user);
+        return Err(DoubleZeroError::InvalidStatus.into());
+    }
+
     user.status = UserStatus::Suspended;
 
     resize_account_if_needed(user_account, payer_account, accounts, user.size())?;

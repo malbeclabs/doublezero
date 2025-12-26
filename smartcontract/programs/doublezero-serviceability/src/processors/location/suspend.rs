@@ -62,6 +62,12 @@ pub fn process_suspend_location(
 
     let mut location: Location = Location::try_from(location_account)?;
 
+    if location.status != LocationStatus::Activated {
+        #[cfg(test)]
+        msg!("{:?}", location);
+        return Err(DoubleZeroError::InvalidStatus.into());
+    }
+
     location.status = LocationStatus::Suspended;
 
     account_write(location_account, &location, payer_account, system_program)?;

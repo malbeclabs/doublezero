@@ -1,158 +1,124 @@
 package duck
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log/slog"
-	"strings"
 	"sync"
 
 	_ "github.com/duckdb/duckdb-go/v2"
 )
 
 type DB interface {
-	Exec(query string, args ...any) (sql.Result, error)
-	Query(query string, args ...any) (*sql.Rows, error)
-	QueryRow(query string, args ...any) *sql.Row
-	Begin() (*sql.Tx, error)
+	Catalog() string
+	Schema() string
+	Close() error
+	Conn(ctx context.Context) (Connection, error)
+}
+
+type Connection interface {
+	DB() DB
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+	BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error)
 	Close() error
 }
 
 type duckDB struct {
 	dbPath  string
-	log     *slog.Logger
-	mu      sync.RWMutex // protects db connection during recovery
-	writeMu sync.Mutex   // serializes all write operations
 	db      *sql.DB
+	catalog string
+	schema  string
 }
 
-func NewDB(dbPath string, log *slog.Logger) (*duckDB, error) {
+type duckDBConn struct {
+	conn    *sql.Conn
+	db      *duckDB
+	writeMu sync.Mutex // serializes all write operations
+}
+
+func (d *duckDB) Conn(ctx context.Context) (Connection, error) {
+	conn, err := d.db.Conn(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open connection: %w", err)
+	}
+
+	if _, err := conn.ExecContext(ctx, "USE "+d.catalog); err != nil {
+		return nil, fmt.Errorf("failed to use database: %w", err)
+	}
+	if _, err := conn.ExecContext(ctx, "SET schema = "+d.schema); err != nil {
+		return nil, fmt.Errorf("failed to set schema: %w", err)
+	}
+
+	return &duckDBConn{
+		conn: conn,
+		db:   d,
+	}, nil
+}
+
+func NewDB(ctx context.Context, dbPath string, log *slog.Logger) (*duckDB, error) {
 	db, err := sql.Open("duckdb", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	// Configure connection pool for in-memory DuckDB
-	// For in-memory databases, we typically only need 1 connection
-	// but allow a small pool for concurrent reads
-	db.SetMaxOpenConns(10)
-	db.SetMaxIdleConns(2)
-	db.SetConnMaxLifetime(0) // Connections don't expire
+	row := db.QueryRowContext(ctx, "SELECT current_database() AS catalog, current_schema() AS schema")
+	var catalog, schema string
+	err = row.Scan(&catalog, &schema)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get current database and schema: %w", err)
+	}
+
+	_, err = db.Exec(fmt.Sprintf("USE %s", catalog))
+	if err != nil {
+		return nil, fmt.Errorf("failed to use database: %w", err)
+	}
 
 	return &duckDB{
-		dbPath: dbPath,
-		log:    log,
-		db:     db,
+		dbPath:  dbPath,
+		db:      db,
+		catalog: catalog,
+		schema:  schema,
 	}, nil
 }
 
-func isInvalidationError(err error) bool {
-	if err == nil {
-		return false
-	}
-	errStr := err.Error()
-	return strings.Contains(errStr, "database has been invalidated") ||
-		strings.Contains(errStr, "FATAL Error") ||
-		strings.Contains(errStr, "must be restarted")
+func (d *duckDB) Catalog() string {
+	return d.catalog
 }
 
-func (r *duckDB) recover() error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	r.log.Warn("recoverable_db: database invalidated, attempting recovery")
-
-	if r.db != nil {
-		r.db.Close()
-		r.db = nil
-	}
-
-	db, err := sql.Open("duckdb", r.dbPath)
-	if err != nil {
-		return fmt.Errorf("failed to reopen database: %w", err)
-	}
-
-	r.db = db
-	r.log.Info("recoverable_db: database connection recovered successfully")
-	return nil
+func (d *duckDB) Schema() string {
+	return d.schema
 }
 
-func (r *duckDB) Exec(query string, args ...any) (sql.Result, error) {
-	r.writeMu.Lock()
-	defer r.writeMu.Unlock()
-
-	r.mu.RLock()
-	db := r.db
-	r.mu.RUnlock()
-
-	result, err := db.Exec(query, args...)
-	if err != nil && isInvalidationError(err) {
-		if recoverErr := r.recover(); recoverErr != nil {
-			return nil, fmt.Errorf("failed to recover database: %w (original error: %w)", recoverErr, err)
-		}
-		r.mu.RLock()
-		db = r.db
-		r.mu.RUnlock()
-		result, err = db.Exec(query, args...)
-	}
-	return result, err
+func (d *duckDB) Close() error {
+	return d.db.Close()
 }
 
-func (r *duckDB) Query(query string, args ...any) (*sql.Rows, error) {
-	r.mu.RLock()
-	db := r.db
-	r.mu.RUnlock()
-
-	rows, err := db.Query(query, args...)
-	if err != nil && isInvalidationError(err) {
-		if recoverErr := r.recover(); recoverErr != nil {
-			return nil, fmt.Errorf("failed to recover database: %w (original error: %w)", recoverErr, err)
-		}
-		r.mu.RLock()
-		db = r.db
-		r.mu.RUnlock()
-		rows, err = db.Query(query, args...)
-	}
-	return rows, err
+func (c *duckDBConn) DB() DB {
+	return c.db
 }
 
-func (r *duckDB) QueryRow(query string, args ...any) *sql.Row {
-	r.mu.RLock()
-	db := r.db
-	r.mu.RUnlock()
+func (c *duckDBConn) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
 
-	row := db.QueryRow(query, args...)
-	// Note: QueryRow doesn't return an error immediately, so we can't check for invalidation here
-	// The error will be returned when Scan is called
-	return row
+	return c.conn.ExecContext(ctx, query, args...)
 }
 
-func (r *duckDB) Begin() (*sql.Tx, error) {
-	r.writeMu.Lock()
-	defer r.writeMu.Unlock()
-
-	r.mu.RLock()
-	db := r.db
-	r.mu.RUnlock()
-
-	tx, err := db.Begin()
-	if err != nil && isInvalidationError(err) {
-		if recoverErr := r.recover(); recoverErr != nil {
-			return nil, fmt.Errorf("failed to recover database: %w (original error: %w)", recoverErr, err)
-		}
-		r.mu.RLock()
-		db = r.db
-		r.mu.RUnlock()
-		tx, err = db.Begin()
-	}
-	return tx, err
+func (c *duckDBConn) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	return c.conn.QueryContext(ctx, query, args...)
 }
 
-func (r *duckDB) Close() error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.db != nil {
-		return r.db.Close()
-	}
-	return nil
+func (c *duckDBConn) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
+	return c.conn.QueryRowContext(ctx, query, args...)
+}
+
+func (c *duckDBConn) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
+	return c.conn.BeginTx(ctx, opts)
+}
+
+func (c *duckDBConn) Close() error {
+	return c.conn.Close()
 }

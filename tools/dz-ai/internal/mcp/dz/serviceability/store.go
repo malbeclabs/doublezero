@@ -44,14 +44,15 @@ func NewStore(cfg StoreConfig) (*Store, error) {
 }
 
 func (s *Store) CreateTablesIfNotExists() error {
+	tablePrefix := s.db.Catalog() + "." + s.db.Schema() + "."
 	sqls := []string{
-		`CREATE TABLE IF NOT EXISTS dz_contributors (
-			pk VARCHAR PRIMARY KEY,
+		`CREATE TABLE IF NOT EXISTS ` + tablePrefix + `dz_contributors (
+			pk VARCHAR,
 			code VARCHAR,
 			name VARCHAR
 		)`,
-		`CREATE TABLE IF NOT EXISTS dz_devices (
-			pk VARCHAR PRIMARY KEY,
+		`CREATE TABLE IF NOT EXISTS ` + tablePrefix + `dz_devices (
+			pk VARCHAR,
 			status VARCHAR,
 			device_type VARCHAR,
 			code VARCHAR,
@@ -59,15 +60,15 @@ func (s *Store) CreateTablesIfNotExists() error {
 			contributor_pk VARCHAR,
 			metro_pk VARCHAR
 		)`,
-		`CREATE TABLE IF NOT EXISTS dz_metros (
-			pk VARCHAR PRIMARY KEY,
+		`CREATE TABLE IF NOT EXISTS ` + tablePrefix + `dz_metros (
+			pk VARCHAR,
 			code VARCHAR,
 			name VARCHAR,
 			longitude DOUBLE,
 			latitude DOUBLE
 		)`,
-		`CREATE TABLE IF NOT EXISTS dz_links (
-			pk VARCHAR PRIMARY KEY,
+		`CREATE TABLE IF NOT EXISTS ` + tablePrefix + `dz_links (
+			pk VARCHAR,
 			status VARCHAR,
 			code VARCHAR,
 			tunnel_net VARCHAR,
@@ -82,8 +83,8 @@ func (s *Store) CreateTablesIfNotExists() error {
 			bandwidth_bps BIGINT,
 			delay_override_ns BIGINT
 		)`,
-		`CREATE TABLE IF NOT EXISTS dz_users (
-			pk VARCHAR PRIMARY KEY,
+		`CREATE TABLE IF NOT EXISTS ` + tablePrefix + `dz_users (
+			pk VARCHAR,
 			owner_pk VARCHAR,
 			status VARCHAR,
 			kind VARCHAR,
@@ -93,8 +94,16 @@ func (s *Store) CreateTablesIfNotExists() error {
 			tunnel_id INTEGER
 		)`,
 	}
+	ctx := context.Background()
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get connection: %w", err)
+	}
+	defer conn.Close()
+	s.log.Debug("serviceability/store: creating tables", "count", len(sqls))
 	for _, sql := range sqls {
-		if _, err := s.db.Exec(sql); err != nil {
+		if _, err := conn.ExecContext(ctx, sql); err != nil {
+			s.log.Error("serviceability/store: failed to create table", "error", err)
 			return fmt.Errorf("failed to create table: %w", err)
 		}
 	}
@@ -103,39 +112,64 @@ func (s *Store) CreateTablesIfNotExists() error {
 
 func (s *Store) ReplaceContributors(ctx context.Context, contributors []Contributor) error {
 	s.log.Debug("serviceability/store: replacing contributors", "count", len(contributors))
-	return duck.ReplaceTableViaCSV(ctx, s.log, s.db, "dz_contributors", len(contributors), func(w *csv.Writer, i int) error {
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get connection: %w", err)
+	}
+	defer conn.Close()
+	return duck.ReplaceTableViaCSV(ctx, s.log, conn, "dz_contributors", len(contributors), func(w *csv.Writer, i int) error {
 		c := contributors[i]
 		return w.Write([]string{c.PK, c.Code, c.Name})
-	})
+	}, []string{"pk"})
 }
 
 func (s *Store) ReplaceDevices(ctx context.Context, devices []Device) error {
 	s.log.Debug("serviceability/store: replacing devices", "count", len(devices))
-	return duck.ReplaceTableViaCSV(ctx, s.log, s.db, "dz_devices", len(devices), func(w *csv.Writer, i int) error {
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get connection: %w", err)
+	}
+	defer conn.Close()
+	return duck.ReplaceTableViaCSV(ctx, s.log, conn, "dz_devices", len(devices), func(w *csv.Writer, i int) error {
 		d := devices[i]
 		return w.Write([]string{d.PK, d.Status, d.DeviceType, d.Code, d.PublicIP, d.ContributorPK, d.MetroPK})
-	})
+	}, []string{"pk"})
 }
 
 func (s *Store) ReplaceUsers(ctx context.Context, users []User) error {
 	s.log.Debug("serviceability/store: replacing users", "count", len(users))
-	return duck.ReplaceTableViaCSV(ctx, s.log, s.db, "dz_users", len(users), func(w *csv.Writer, i int) error {
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get connection: %w", err)
+	}
+	defer conn.Close()
+	return duck.ReplaceTableViaCSV(ctx, s.log, conn, "dz_users", len(users), func(w *csv.Writer, i int) error {
 		u := users[i]
 		return w.Write([]string{u.PK, u.OwnerPK, u.Status, u.Kind, u.ClientIP.String(), u.DZIP.String(), u.DevicePK, fmt.Sprintf("%d", u.TunnelID)})
-	})
+	}, []string{"pk"})
 }
 
 func (s *Store) ReplaceMetros(ctx context.Context, metros []Metro) error {
 	s.log.Debug("serviceability/store: replacing metros", "count", len(metros))
-	return duck.ReplaceTableViaCSV(ctx, s.log, s.db, "dz_metros", len(metros), func(w *csv.Writer, i int) error {
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get connection: %w", err)
+	}
+	defer conn.Close()
+	return duck.ReplaceTableViaCSV(ctx, s.log, conn, "dz_metros", len(metros), func(w *csv.Writer, i int) error {
 		m := metros[i]
 		return w.Write([]string{m.PK, m.Code, m.Name, fmt.Sprintf("%.6f", m.Longitude), fmt.Sprintf("%.6f", m.Latitude)})
-	})
+	}, []string{"pk"})
 }
 
 func (s *Store) ReplaceLinks(ctx context.Context, links []Link) error {
 	s.log.Debug("serviceability/store: replacing links", "count", len(links))
-	return duck.ReplaceTableViaCSV(ctx, s.log, s.db, "dz_links", len(links), func(w *csv.Writer, i int) error {
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get connection: %w", err)
+	}
+	defer conn.Close()
+	return duck.ReplaceTableViaCSV(ctx, s.log, conn, "dz_links", len(links), func(w *csv.Writer, i int) error {
 		l := links[i]
 		return w.Write([]string{
 			l.PK, l.Status, l.Code, l.TunnelNet, l.ContributorPK, l.SideAPK, l.SideZPK,
@@ -143,12 +177,18 @@ func (s *Store) ReplaceLinks(ctx context.Context, links []Link) error {
 			fmt.Sprintf("%d", l.DelayNs), fmt.Sprintf("%d", l.JitterNs), fmt.Sprintf("%d", l.Bandwidth),
 			fmt.Sprintf("%d", l.DelayOverrideNs),
 		})
-	})
+	}, []string{"pk"})
 }
 
 func (s *Store) GetDevices() ([]Device, error) {
-	query := `SELECT pk, status, device_type, code, public_ip, contributor_pk, metro_pk FROM dz_devices`
-	rows, err := s.db.Query(query)
+	ctx := context.Background()
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get connection: %w", err)
+	}
+	defer conn.Close()
+	query := `SELECT pk, status, device_type, code, public_ip, contributor_pk, metro_pk FROM dz_devices ORDER BY code`
+	rows, err := conn.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query devices: %w", err)
 	}
@@ -171,8 +211,14 @@ func (s *Store) GetDevices() ([]Device, error) {
 }
 
 func (s *Store) GetLinks() ([]Link, error) {
-	query := `SELECT pk, status, code, tunnel_net, contributor_pk, side_a_pk, side_z_pk, side_a_iface_name, side_z_iface_name, link_type, delay_ns, jitter_ns, bandwidth_bps, delay_override_ns FROM dz_links`
-	rows, err := s.db.Query(query)
+	ctx := context.Background()
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get connection: %w", err)
+	}
+	defer conn.Close()
+	query := `SELECT pk, status, code, tunnel_net, contributor_pk, side_a_pk, side_z_pk, side_a_iface_name, side_z_iface_name, link_type, delay_ns, jitter_ns, bandwidth_bps, delay_override_ns FROM dz_links ORDER BY code`
+	rows, err := conn.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query links: %w", err)
 	}
@@ -195,8 +241,14 @@ func (s *Store) GetLinks() ([]Link, error) {
 }
 
 func (s *Store) GetContributors() ([]Contributor, error) {
-	query := `SELECT pk, code, name FROM dz_contributors`
-	rows, err := s.db.Query(query)
+	ctx := context.Background()
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get connection: %w", err)
+	}
+	defer conn.Close()
+	query := `SELECT pk, code, name FROM dz_contributors ORDER BY code`
+	rows, err := conn.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query contributors: %w", err)
 	}
@@ -223,8 +275,14 @@ func (s *Store) GetContributors() ([]Contributor, error) {
 }
 
 func (s *Store) GetMetros() ([]Metro, error) {
-	query := `SELECT pk, code, name, longitude, latitude FROM dz_metros`
-	rows, err := s.db.Query(query)
+	ctx := context.Background()
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get connection: %w", err)
+	}
+	defer conn.Close()
+	query := `SELECT pk, code, name, longitude, latitude FROM dz_metros ORDER BY code`
+	rows, err := conn.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query metros: %w", err)
 	}

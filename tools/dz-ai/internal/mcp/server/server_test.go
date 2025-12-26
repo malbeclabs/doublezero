@@ -13,7 +13,6 @@ import (
 	"github.com/jonboulle/clockwork"
 	"github.com/stretchr/testify/require"
 
-	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/duck"
 	dzsvc "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/dz/serviceability"
 	dztelemlatency "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/dz/telemetry/latency"
 	mcpgeoip "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/geoip"
@@ -23,9 +22,7 @@ func TestAI_MCP_Server_ReadyzHandler(t *testing.T) {
 	t.Parallel()
 
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	db, err := duck.NewDB("", log)
-	require.NoError(t, err)
-	defer db.Close()
+	db := testDB(t)
 
 	geoIPStore, err := mcpgeoip.NewStore(mcpgeoip.StoreConfig{
 		Logger: log,

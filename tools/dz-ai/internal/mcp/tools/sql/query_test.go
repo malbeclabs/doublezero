@@ -1,6 +1,7 @@
 package sqltools
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"log/slog"
@@ -8,16 +9,59 @@ import (
 	"testing"
 
 	_ "github.com/duckdb/duckdb-go/v2"
+	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/duck"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
 )
 
 type failingDB struct{}
 
-func (f *failingDB) Query(query string, args ...any) (*sql.Rows, error) {
+func (f *failingDB) Close() error {
+	return nil
+}
+
+func (f *failingDB) Catalog() string {
+	return "main"
+}
+
+func (f *failingDB) Schema() string {
+	return "default"
+}
+
+func (f *failingDB) Conn(ctx context.Context) (duck.Connection, error) {
+	return &failingDBConn{db: f}, nil
+}
+
+type failingDBConn struct {
+	db *failingDB
+}
+
+func (f *failingDBConn) DB() duck.DB {
+	if f.db == nil {
+		return &failingDB{}
+	}
+	return f.db
+}
+
+func (f *failingDBConn) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
 	return nil, errors.New("database error")
 }
 
+func (f *failingDBConn) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	return nil, errors.New("database error")
+}
+
+func (f *failingDBConn) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
+	return &sql.Row{}
+}
+
+func (f *failingDBConn) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
+	return nil, errors.New("database error")
+}
+
+func (f *failingDBConn) Close() error {
+	return nil
+}
 func TestAI_MCP_SQLTools_QueryTool_NewQueryTool(t *testing.T) {
 	t.Parallel()
 
@@ -119,15 +163,16 @@ func TestAI_MCP_SQLTools_QueryTool_HandleQuery(t *testing.T) {
 	t.Run("executes query successfully", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
-		// Create test table and insert data
-		_, err = db.Exec(`CREATE TABLE test_table (id INTEGER, name VARCHAR, value DOUBLE)`)
+		conn, err := db.Conn(t.Context())
+		require.NoError(t, err)
+		defer conn.Close()
+
+		_, err = conn.ExecContext(t.Context(), `CREATE TABLE test_table (id INTEGER, name VARCHAR, value DOUBLE)`)
 		require.NoError(t, err)
 
-		_, err = db.Exec(`INSERT INTO test_table VALUES (1, 'test1', 10.5), (2, 'test2', 20.3)`)
+		_, err = conn.ExecContext(t.Context(), `INSERT INTO test_table VALUES (1, 'test1', 10.5), (2, 'test2', 20.3)`)
 		require.NoError(t, err)
 
 		tool, err := NewQueryTool(QueryToolConfig{
@@ -138,7 +183,7 @@ func TestAI_MCP_SQLTools_QueryTool_HandleQuery(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		result, err := tool.handleQuery(QueryInput{
+		result, err := tool.handleQuery(t.Context(), QueryInput{
 			SQL: "SELECT id, name, value FROM test_table ORDER BY id",
 		})
 		require.NoError(t, err)
@@ -160,11 +205,13 @@ func TestAI_MCP_SQLTools_QueryTool_HandleQuery(t *testing.T) {
 	t.Run("handles empty result set", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
-		_, err = db.Exec(`CREATE TABLE empty_table (id INTEGER)`)
+		conn, err := db.Conn(t.Context())
+		require.NoError(t, err)
+		defer conn.Close()
+
+		_, err = conn.ExecContext(t.Context(), `CREATE TABLE empty_table (id INTEGER)`)
 		require.NoError(t, err)
 
 		tool, err := NewQueryTool(QueryToolConfig{
@@ -175,7 +222,7 @@ func TestAI_MCP_SQLTools_QueryTool_HandleQuery(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		result, err := tool.handleQuery(QueryInput{
+		result, err := tool.handleQuery(t.Context(), QueryInput{
 			SQL: "SELECT id FROM empty_table",
 		})
 		require.NoError(t, err)
@@ -187,14 +234,16 @@ func TestAI_MCP_SQLTools_QueryTool_HandleQuery(t *testing.T) {
 	t.Run("handles NULL values", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
-		_, err = db.Exec(`CREATE TABLE null_table (id INTEGER, name VARCHAR)`)
+		conn, err := db.Conn(t.Context())
+		require.NoError(t, err)
+		defer conn.Close()
+
+		_, err = conn.ExecContext(t.Context(), `CREATE TABLE null_table (id INTEGER, name VARCHAR)`)
 		require.NoError(t, err)
 
-		_, err = db.Exec(`INSERT INTO null_table VALUES (1, NULL), (NULL, 'test')`)
+		_, err = conn.ExecContext(t.Context(), `INSERT INTO null_table VALUES (1, NULL), (NULL, 'test')`)
 		require.NoError(t, err)
 
 		tool, err := NewQueryTool(QueryToolConfig{
@@ -205,7 +254,7 @@ func TestAI_MCP_SQLTools_QueryTool_HandleQuery(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		result, err := tool.handleQuery(QueryInput{
+		result, err := tool.handleQuery(t.Context(), QueryInput{
 			SQL: "SELECT id, name FROM null_table ORDER BY id NULLS LAST",
 		})
 		require.NoError(t, err)
@@ -217,14 +266,16 @@ func TestAI_MCP_SQLTools_QueryTool_HandleQuery(t *testing.T) {
 	t.Run("converts byte arrays to strings", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
-		_, err = db.Exec(`CREATE TABLE byte_table (data VARCHAR)`)
+		conn, err := db.Conn(t.Context())
+		require.NoError(t, err)
+		defer conn.Close()
+
+		_, err = conn.ExecContext(t.Context(), `CREATE TABLE byte_table (data VARCHAR)`)
 		require.NoError(t, err)
 
-		_, err = db.Exec(`INSERT INTO byte_table VALUES ('test data')`)
+		_, err = conn.ExecContext(t.Context(), `INSERT INTO byte_table VALUES ('test data')`)
 		require.NoError(t, err)
 
 		tool, err := NewQueryTool(QueryToolConfig{
@@ -235,7 +286,7 @@ func TestAI_MCP_SQLTools_QueryTool_HandleQuery(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		result, err := tool.handleQuery(QueryInput{
+		result, err := tool.handleQuery(t.Context(), QueryInput{
 			SQL: "SELECT data FROM byte_table",
 		})
 		require.NoError(t, err)
@@ -247,9 +298,7 @@ func TestAI_MCP_SQLTools_QueryTool_HandleQuery(t *testing.T) {
 	t.Run("returns error on invalid SQL", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		tool, err := NewQueryTool(QueryToolConfig{
 			Logger:      slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -259,7 +308,7 @@ func TestAI_MCP_SQLTools_QueryTool_HandleQuery(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		_, err = tool.handleQuery(QueryInput{
+		_, err = tool.handleQuery(t.Context(), QueryInput{
 			SQL: "SELECT * FROM nonexistent_table",
 		})
 		require.Error(t, err)
@@ -277,7 +326,7 @@ func TestAI_MCP_SQLTools_QueryTool_HandleQuery(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		_, err = tool.handleQuery(QueryInput{
+		_, err = tool.handleQuery(t.Context(), QueryInput{
 			SQL: "SELECT 1",
 		})
 		require.Error(t, err)

@@ -43,7 +43,7 @@ type SchemaToolConfig struct {
 	Schema *Schema
 }
 
-func (cfg *SchemaToolConfig) Validate() error {
+func (cfg *SchemaToolConfig) Validate(ctx context.Context) error {
 	if cfg.Logger == nil {
 		return fmt.Errorf("logger is required")
 	}
@@ -53,7 +53,7 @@ func (cfg *SchemaToolConfig) Validate() error {
 	if cfg.Schema == nil {
 		return fmt.Errorf("schema is required")
 	}
-	if err := cfg.validateSchema(); err != nil {
+	if err := cfg.validateSchema(ctx); err != nil {
 		return fmt.Errorf("schema validation failed: %w", err)
 	}
 	return nil
@@ -65,8 +65,8 @@ type SchemaTool struct {
 	db  DB
 }
 
-func NewSchemaTool(cfg SchemaToolConfig) (*SchemaTool, error) {
-	if err := cfg.Validate(); err != nil {
+func NewSchemaTool(ctx context.Context, cfg SchemaToolConfig) (*SchemaTool, error) {
+	if err := cfg.Validate(ctx); err != nil {
 		return nil, fmt.Errorf("failed to validate schema tool config: %w", err)
 	}
 	return &SchemaTool{
@@ -115,7 +115,7 @@ func (t *SchemaTool) Register(server *mcp.Server) error {
 	return nil
 }
 
-func (t *SchemaTool) handleSchema(req SchemaInput) (SchemaOutput, error) {
+func (t *SchemaTool) handleSchema(_ SchemaInput) (SchemaOutput, error) {
 	t.log.Debug("schema: running schema tool")
 
 	return SchemaOutput{
@@ -123,7 +123,7 @@ func (t *SchemaTool) handleSchema(req SchemaInput) (SchemaOutput, error) {
 	}, nil
 }
 
-func (c *SchemaToolConfig) validateSchema() error {
+func (c *SchemaToolConfig) validateSchema(ctx context.Context) error {
 	// Build list of expected table names from in-code schema
 	expectedTables := make([]string, 0, len(c.Schema.Tables))
 	for _, schema := range c.Schema.Tables {
@@ -135,18 +135,25 @@ func (c *SchemaToolConfig) validateSchema() error {
 	for i, name := range expectedTables {
 		tableNames[i] = fmt.Sprintf("'%s'", strings.ReplaceAll(name, "'", "''"))
 	}
+	db := c.DB
 	query := fmt.Sprintf(`
 		SELECT
 			table_name,
 			column_name,
 			data_type
 		FROM information_schema.columns
-		WHERE table_schema = 'main'
+		WHERE table_catalog = '%s' AND table_schema = '%s'
 			AND table_name IN (%s)
 		ORDER BY table_name, ordinal_position
-	`, strings.Join(tableNames, ", "))
+	`, db.Catalog(), db.Schema(), strings.Join(tableNames, ", "))
 
-	rows, err := c.DB.Query(query)
+	conn, err := c.DB.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get connection: %w", err)
+	}
+	defer conn.Close()
+
+	rows, err := conn.QueryContext(ctx, query)
 	if err != nil {
 		return fmt.Errorf("failed to query schema: %w", err)
 	}

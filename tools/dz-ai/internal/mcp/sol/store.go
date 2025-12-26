@@ -49,21 +49,22 @@ func NewStore(cfg StoreConfig) (*Store, error) {
 }
 
 func (s *Store) CreateTablesIfNotExists() error {
+	tablePrefix := s.db.Catalog() + "." + s.db.Schema() + "."
 	schemas := []string{
-		`CREATE TABLE IF NOT EXISTS solana_gossip_nodes (
+		`CREATE TABLE IF NOT EXISTS ` + tablePrefix + `solana_gossip_nodes (
 			snapshot_timestamp TIMESTAMP,
 			current_epoch INTEGER,
-			pubkey VARCHAR PRIMARY KEY,
+			pubkey VARCHAR,
 			gossip_ip VARCHAR,
 			gossip_port INTEGER,
 			tpuquic_ip VARCHAR,
 			tpuquic_port INTEGER,
 			version VARCHAR
 		)`,
-		`CREATE TABLE IF NOT EXISTS solana_vote_accounts (
+		`CREATE TABLE IF NOT EXISTS ` + tablePrefix + `solana_vote_accounts (
 			snapshot_timestamp TIMESTAMP,
 			current_epoch INTEGER,
-			vote_pubkey VARCHAR PRIMARY KEY,
+			vote_pubkey VARCHAR,
 			node_pubkey VARCHAR,
 			activated_stake_lamports BIGINT,
 			epoch_vote_account BOOLEAN,
@@ -71,17 +72,23 @@ func (s *Store) CreateTablesIfNotExists() error {
 			last_vote_slot BIGINT,
 			root_slot BIGINT
 		)`,
-		`CREATE TABLE IF NOT EXISTS solana_leader_schedule (
+		`CREATE TABLE IF NOT EXISTS ` + tablePrefix + `solana_leader_schedule (
 			snapshot_timestamp TIMESTAMP,
 			current_epoch INTEGER,
-			node_pubkey VARCHAR PRIMARY KEY,
+			node_pubkey VARCHAR,
 			slots INTEGER[],
 			slot_count INTEGER
 		)`,
 	}
 
+	ctx := context.Background()
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get connection: %w", err)
+	}
+	defer conn.Close()
 	for _, schema := range schemas {
-		if _, err := s.db.Exec(schema); err != nil {
+		if _, err := conn.ExecContext(ctx, schema); err != nil {
 			return fmt.Errorf("failed to create table: %w", err)
 		}
 	}
@@ -96,7 +103,12 @@ type LeaderScheduleEntry struct {
 
 func (s *Store) ReplaceLeaderSchedule(ctx context.Context, entries []LeaderScheduleEntry, fetchedAt time.Time, currentEpoch uint64) error {
 	s.log.Debug("solana/store: replacing leader schedule", "count", len(entries))
-	return duck.ReplaceTableViaCSV(ctx, s.log, s.db, "solana_leader_schedule", len(entries), func(w *csv.Writer, i int) error {
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get connection: %w", err)
+	}
+	defer conn.Close()
+	return duck.ReplaceTableViaCSV(ctx, s.log, conn, "solana_leader_schedule", len(entries), func(w *csv.Writer, i int) error {
 		entry := entries[i]
 		slotsStr := formatUint64Array(entry.Slots)
 		return w.Write([]string{
@@ -106,12 +118,17 @@ func (s *Store) ReplaceLeaderSchedule(ctx context.Context, entries []LeaderSched
 			slotsStr,
 			fmt.Sprintf("%d", len(entry.Slots)),
 		})
-	})
+	}, []string{"snapshot_timestamp", "current_epoch", "node_pubkey"})
 }
 
 func (s *Store) ReplaceVoteAccounts(ctx context.Context, accounts []solanarpc.VoteAccountsResult, fetchedAt time.Time, currentEpoch uint64) error {
 	s.log.Debug("solana/store: replacing vote accounts", "count", len(accounts))
-	return duck.ReplaceTableViaCSV(ctx, s.log, s.db, "solana_vote_accounts", len(accounts), func(w *csv.Writer, i int) error {
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get connection: %w", err)
+	}
+	defer conn.Close()
+	return duck.ReplaceTableViaCSV(ctx, s.log, conn, "solana_vote_accounts", len(accounts), func(w *csv.Writer, i int) error {
 		account := accounts[i]
 		epochVoteAccountStr := "false"
 		if account.EpochVoteAccount {
@@ -128,12 +145,17 @@ func (s *Store) ReplaceVoteAccounts(ctx context.Context, accounts []solanarpc.Vo
 			fmt.Sprintf("%d", account.LastVote),
 			fmt.Sprintf("%d", account.RootSlot),
 		})
-	})
+	}, []string{"snapshot_timestamp", "current_epoch", "vote_pubkey"})
 }
 
 func (s *Store) ReplaceGossipNodes(ctx context.Context, nodes []*solanarpc.GetClusterNodesResult, fetchedAt time.Time, currentEpoch uint64) error {
 	s.log.Debug("solana/store: replacing gossip nodes", "count", len(nodes))
-	return duck.ReplaceTableViaCSV(ctx, s.log, s.db, "solana_gossip_nodes", len(nodes), func(w *csv.Writer, i int) error {
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get connection: %w", err)
+	}
+	defer conn.Close()
+	return duck.ReplaceTableViaCSV(ctx, s.log, conn, "solana_gossip_nodes", len(nodes), func(w *csv.Writer, i int) error {
 		node := nodes[i]
 		var gossipIP, tpuQUICIP string
 		var gossipPort, tpuQUICPort uint16
@@ -171,7 +193,7 @@ func (s *Store) ReplaceGossipNodes(ctx context.Context, nodes []*solanarpc.GetCl
 			fmt.Sprintf("%d", tpuQUICPort),
 			version,
 		})
-	})
+	}, []string{"snapshot_timestamp", "current_epoch", "pubkey"})
 }
 
 func formatUint64Array(arr []uint64) string {

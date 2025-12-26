@@ -1,9 +1,13 @@
 package geoip
 
-import sqltools "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/tools/sql"
+import (
+	"context"
 
-func (s *Store) SchemaTool() (*sqltools.SchemaTool, error) {
-	return sqltools.NewSchemaTool(sqltools.SchemaToolConfig{
+	sqltools "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/tools/sql"
+)
+
+func (s *Store) SchemaTool(ctx context.Context) (*sqltools.SchemaTool, error) {
+	return sqltools.NewSchemaTool(ctx, sqltools.SchemaToolConfig{
 		Logger: s.log,
 		DB:     s.db,
 		Schema: SCHEMA,

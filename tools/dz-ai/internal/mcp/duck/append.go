@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-func AppendTableViaCSV(ctx context.Context, log *slog.Logger, db DB, tableName string, count int, writeCSVFn func(*csv.Writer, int) error) error {
+func AppendTableViaCSV(ctx context.Context, log *slog.Logger, conn Connection, tableName string, count int, writeCSVFn func(*csv.Writer, int) error) error {
 	tableAppendStart := time.Now()
 	defer func() {
 		duration := time.Since(tableAppendStart)
@@ -80,7 +80,7 @@ func AppendTableViaCSV(ctx context.Context, log *slog.Logger, db DB, tableName s
 	default:
 	}
 
-	tx, err := db.Begin()
+	tx, err := conn.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction for %s: %w", tableName, err)
 	}
@@ -92,7 +92,7 @@ func AppendTableViaCSV(ctx context.Context, log *slog.Logger, db DB, tableName s
 
 	// Use COPY FROM CSV to append (no TRUNCATE - we're appending)
 	copySQL := fmt.Sprintf("COPY %s FROM '%s' (FORMAT CSV, HEADER false)", tableName, tmpFile.Name())
-	if _, err := tx.Exec(copySQL); err != nil {
+	if _, err := tx.ExecContext(ctx, copySQL); err != nil {
 		return fmt.Errorf("failed to COPY FROM CSV for %s: %w", tableName, err)
 	}
 

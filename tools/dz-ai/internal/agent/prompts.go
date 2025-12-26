@@ -41,7 +41,7 @@ ANSWERING RULES:
 DEVICE UTILIZATION METRICS RULES:
 - Interface counters (in/out octets, packets) are cumulative and passively sampled; never sum counters.
 - Compute rates as (last - first) / delta_duration.
-- Report rates by default; report totals only when explicitly requested.
+- Report rates by default; do not report totals unless explicitly requested.
 - Convert octets to Gbps: (octets * 8) / delta_duration / 1e9.
 - Prefer Gbps; use Mbps only when values are < 1 Gbps.
 - Exclude zero or negative deltas.

@@ -3,7 +3,6 @@ package dzsvc
 import (
 	"context"
 	"database/sql"
-	"encoding/csv"
 	"errors"
 	"log/slog"
 	"net"
@@ -11,6 +10,7 @@ import (
 	"testing"
 
 	_ "github.com/duckdb/duckdb-go/v2"
+
 	"github.com/gagliardetto/solana-go"
 	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/duck"
 	"github.com/stretchr/testify/require"
@@ -18,24 +18,51 @@ import (
 
 type failingDB struct{}
 
-func (f *failingDB) Exec(query string, args ...any) (sql.Result, error) {
-	return nil, errors.New("database error")
-}
-func (f *failingDB) Query(query string, args ...any) (*sql.Rows, error) {
-	return nil, errors.New("database error")
-}
-func (f *failingDB) QueryRow(query string, args ...any) *sql.Row {
-	// Return a row that will error on Scan
-	return &sql.Row{}
-}
-func (f *failingDB) Begin() (*sql.Tx, error) {
-	return nil, errors.New("database error")
-}
 func (f *failingDB) Close() error {
 	return nil
 }
-func (f *failingDB) ReplaceTable(tableName string, count int, writeCSVFn func(*csv.Writer, int) error) error {
-	return errors.New("database error")
+
+func (f *failingDB) Catalog() string {
+	return "main"
+}
+
+func (f *failingDB) Schema() string {
+	return "default"
+}
+
+func (f *failingDB) Conn(ctx context.Context) (duck.Connection, error) {
+	return &failingDBConn{db: f}, nil
+}
+
+type failingDBConn struct {
+	db *failingDB
+}
+
+func (f *failingDBConn) DB() duck.DB {
+	if f.db == nil {
+		return &failingDB{}
+	}
+	return f.db
+}
+
+func (f *failingDBConn) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	return nil, errors.New("database error")
+}
+
+func (f *failingDBConn) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	return nil, errors.New("database error")
+}
+
+func (f *failingDBConn) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
+	return &sql.Row{}
+}
+
+func (f *failingDBConn) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
+	return nil, errors.New("database error")
+}
+
+func (f *failingDBConn) Close() error {
+	return nil
 }
 
 // testPK creates a deterministic public key string from an integer identifier
@@ -45,6 +72,15 @@ func testPK(n int) string {
 		bytes[i] = byte(n + i)
 	}
 	return solana.PublicKeyFromBytes(bytes).String()
+}
+
+func testDB(t *testing.T) duck.DB {
+	db, err := duck.NewDB(t.Context(), "", slog.New(slog.NewTextHandler(os.Stderr, nil)))
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		db.Close()
+	})
+	return db
 }
 
 func TestAI_MCP_Serviceability_Store_NewStore(t *testing.T) {
@@ -77,9 +113,7 @@ func TestAI_MCP_Serviceability_Store_NewStore(t *testing.T) {
 	t.Run("returns store when config is valid", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -96,9 +130,7 @@ func TestAI_MCP_Serviceability_Store_CreateTablesIfNotExists(t *testing.T) {
 	t.Run("creates all tables", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -110,10 +142,14 @@ func TestAI_MCP_Serviceability_Store_CreateTablesIfNotExists(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify tables exist by querying them
+		ctx := context.Background()
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
 		tables := []string{"dz_contributors", "dz_devices", "dz_users", "dz_links", "dz_metros"}
 		for _, table := range tables {
 			var count int
-			err = db.QueryRow("SELECT COUNT(*) FROM " + table).Scan(&count)
+			err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+table).Scan(&count)
 			require.NoError(t, err, "table %s should exist", table)
 		}
 	})
@@ -139,9 +175,7 @@ func TestAI_MCP_Serviceability_Store_ReplaceContributors(t *testing.T) {
 	t.Run("saves contributors to database", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -165,13 +199,17 @@ func TestAI_MCP_Serviceability_Store_ReplaceContributors(t *testing.T) {
 		err = store.ReplaceContributors(context.Background(), contributors)
 		require.NoError(t, err)
 
+		ctx := context.Background()
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
 		var count int
-		err = db.QueryRow("SELECT COUNT(*) FROM dz_contributors").Scan(&count)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_contributors").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 1, count)
 
 		var pk, code, name string
-		err = db.QueryRow("SELECT pk, code, name FROM dz_contributors LIMIT 1").Scan(&pk, &code, &name)
+		err = conn.QueryRowContext(ctx, "SELECT pk, code, name FROM dz_contributors LIMIT 1").Scan(&pk, &code, &name)
 		require.NoError(t, err)
 		require.Equal(t, contributorPK, pk)
 		require.Equal(t, "TEST", code)
@@ -181,9 +219,7 @@ func TestAI_MCP_Serviceability_Store_ReplaceContributors(t *testing.T) {
 	t.Run("replaces existing contributors", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -208,8 +244,12 @@ func TestAI_MCP_Serviceability_Store_ReplaceContributors(t *testing.T) {
 		err = store.ReplaceContributors(context.Background(), contributors1)
 		require.NoError(t, err)
 
+		ctx := context.Background()
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
 		var count int
-		err = db.QueryRow("SELECT COUNT(*) FROM dz_contributors").Scan(&count)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_contributors").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 1, count)
 
@@ -224,12 +264,12 @@ func TestAI_MCP_Serviceability_Store_ReplaceContributors(t *testing.T) {
 		err = store.ReplaceContributors(context.Background(), contributors2)
 		require.NoError(t, err)
 
-		err = db.QueryRow("SELECT COUNT(*) FROM dz_contributors").Scan(&count)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_contributors").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 1, count)
 
 		var pk string
-		err = db.QueryRow("SELECT pk FROM dz_contributors LIMIT 1").Scan(&pk)
+		err = conn.QueryRowContext(ctx, "SELECT pk FROM dz_contributors LIMIT 1").Scan(&pk)
 		require.NoError(t, err)
 		require.Equal(t, contributorPK2, pk)
 	})
@@ -237,9 +277,7 @@ func TestAI_MCP_Serviceability_Store_ReplaceContributors(t *testing.T) {
 	t.Run("handles empty slice", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -266,8 +304,12 @@ func TestAI_MCP_Serviceability_Store_ReplaceContributors(t *testing.T) {
 		err = store.ReplaceContributors(context.Background(), []Contributor{})
 		require.NoError(t, err)
 
+		ctx := context.Background()
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
 		var count int
-		err = db.QueryRow("SELECT COUNT(*) FROM dz_contributors").Scan(&count)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_contributors").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 0, count)
 	})
@@ -279,9 +321,7 @@ func TestAI_MCP_Serviceability_Store_ReplaceDevices(t *testing.T) {
 	t.Run("saves devices to database", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -311,13 +351,17 @@ func TestAI_MCP_Serviceability_Store_ReplaceDevices(t *testing.T) {
 		err = store.ReplaceDevices(context.Background(), devices)
 		require.NoError(t, err)
 
+		ctx := context.Background()
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
 		var count int
-		err = db.QueryRow("SELECT COUNT(*) FROM dz_devices").Scan(&count)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_devices").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 1, count)
 
 		var pk, status, deviceType, code, publicIPStr, contributorPKStr, metroPKStr string
-		err = db.QueryRow("SELECT pk, status, device_type, code, public_ip, contributor_pk, metro_pk FROM dz_devices LIMIT 1").Scan(&pk, &status, &deviceType, &code, &publicIPStr, &contributorPKStr, &metroPKStr)
+		err = conn.QueryRowContext(ctx, "SELECT pk, status, device_type, code, public_ip, contributor_pk, metro_pk FROM dz_devices LIMIT 1").Scan(&pk, &status, &deviceType, &code, &publicIPStr, &contributorPKStr, &metroPKStr)
 		require.NoError(t, err)
 		require.Equal(t, devicePK, pk)
 		require.Equal(t, "activated", status)
@@ -335,8 +379,7 @@ func TestAI_MCP_Serviceability_Store_ReplaceUsers(t *testing.T) {
 	t.Run("saves users to database", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
+		db := testDB(t)
 		defer db.Close()
 
 		store, err := NewStore(StoreConfig{
@@ -367,13 +410,17 @@ func TestAI_MCP_Serviceability_Store_ReplaceUsers(t *testing.T) {
 		err = store.ReplaceUsers(context.Background(), users)
 		require.NoError(t, err)
 
+		ctx := context.Background()
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
 		var count int
-		err = db.QueryRow("SELECT COUNT(*) FROM dz_users").Scan(&count)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_users").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 1, count)
 
 		var pk, ownerPKStr, status, kind, clientIPStr, dzIPStr, devicePKStr string
-		err = db.QueryRow("SELECT pk, owner_pk, status, kind, client_ip, dz_ip, device_pk FROM dz_users LIMIT 1").Scan(&pk, &ownerPKStr, &status, &kind, &clientIPStr, &dzIPStr, &devicePKStr)
+		err = conn.QueryRowContext(ctx, "SELECT pk, owner_pk, status, kind, client_ip, dz_ip, device_pk FROM dz_users LIMIT 1").Scan(&pk, &ownerPKStr, &status, &kind, &clientIPStr, &dzIPStr, &devicePKStr)
 		require.NoError(t, err)
 		require.Equal(t, userPK, pk)
 		require.Equal(t, ownerPK, ownerPKStr)
@@ -391,9 +438,7 @@ func TestAI_MCP_Serviceability_Store_ReplaceLinks(t *testing.T) {
 	t.Run("saves links to database", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -430,14 +475,18 @@ func TestAI_MCP_Serviceability_Store_ReplaceLinks(t *testing.T) {
 		err = store.ReplaceLinks(context.Background(), links)
 		require.NoError(t, err)
 
+		ctx := context.Background()
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
 		var count int
-		err = db.QueryRow("SELECT COUNT(*) FROM dz_links").Scan(&count)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_links").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 1, count)
 
 		var pk, status, code, tunnelNetStr, contributorPKStr, sideAPKStr, sideZPKStr, sideAIfaceName, sideZIfaceName, linkType string
 		var delayNs, jitterNs, bandwidthBps, delayOverrideNs int64
-		err = db.QueryRow("SELECT pk, status, code, tunnel_net, contributor_pk, side_a_pk, side_z_pk, side_a_iface_name, side_z_iface_name, link_type, delay_ns, jitter_ns, bandwidth_bps, delay_override_ns FROM dz_links LIMIT 1").Scan(&pk, &status, &code, &tunnelNetStr, &contributorPKStr, &sideAPKStr, &sideZPKStr, &sideAIfaceName, &sideZIfaceName, &linkType, &delayNs, &jitterNs, &bandwidthBps, &delayOverrideNs)
+		err = conn.QueryRowContext(ctx, "SELECT pk, status, code, tunnel_net, contributor_pk, side_a_pk, side_z_pk, side_a_iface_name, side_z_iface_name, link_type, delay_ns, jitter_ns, bandwidth_bps, delay_override_ns FROM dz_links LIMIT 1").Scan(&pk, &status, &code, &tunnelNetStr, &contributorPKStr, &sideAPKStr, &sideZPKStr, &sideAIfaceName, &sideZIfaceName, &linkType, &delayNs, &jitterNs, &bandwidthBps, &delayOverrideNs)
 		require.NoError(t, err)
 		require.Equal(t, linkPK, pk)
 		require.Equal(t, "activated", status)
@@ -462,9 +511,7 @@ func TestAI_MCP_Serviceability_Store_ReplaceMetros(t *testing.T) {
 	t.Run("saves metros to database", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -490,14 +537,18 @@ func TestAI_MCP_Serviceability_Store_ReplaceMetros(t *testing.T) {
 		err = store.ReplaceMetros(context.Background(), metros)
 		require.NoError(t, err)
 
+		ctx := context.Background()
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
 		var count int
-		err = db.QueryRow("SELECT COUNT(*) FROM dz_metros").Scan(&count)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_metros").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 1, count)
 
 		var pk, code, name string
 		var longitude, latitude float64
-		err = db.QueryRow("SELECT pk, code, name, longitude, latitude FROM dz_metros LIMIT 1").Scan(&pk, &code, &name, &longitude, &latitude)
+		err = conn.QueryRowContext(ctx, "SELECT pk, code, name, longitude, latitude FROM dz_metros LIMIT 1").Scan(&pk, &code, &name, &longitude, &latitude)
 		require.NoError(t, err)
 		require.Equal(t, metroPK, pk)
 		require.Equal(t, "NYC", code)
@@ -513,9 +564,7 @@ func TestAI_MCP_Serviceability_Store_GetDevices(t *testing.T) {
 	t.Run("reads devices from database", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -531,7 +580,11 @@ func TestAI_MCP_Serviceability_Store_GetDevices(t *testing.T) {
 		contributorPK := testPK(3)
 		metroPK := testPK(4)
 
-		_, err = db.Exec(`INSERT INTO dz_devices (pk, status, device_type, code, public_ip, contributor_pk, metro_pk) VALUES (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?)`,
+		ctx := context.Background()
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+		_, err = conn.ExecContext(ctx, `INSERT INTO dz_devices (pk, status, device_type, code, public_ip, contributor_pk, metro_pk) VALUES (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?)`,
 			devicePK1, "activated", "hybrid", "DEV1", "192.168.1.1", contributorPK, metroPK,
 			devicePK2, "activated", "hybrid", "DEV2", "192.168.1.2", contributorPK, metroPK)
 		require.NoError(t, err)
@@ -555,9 +608,7 @@ func TestAI_MCP_Serviceability_Store_GetLinks(t *testing.T) {
 	t.Run("reads links from database", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -568,12 +619,16 @@ func TestAI_MCP_Serviceability_Store_GetLinks(t *testing.T) {
 		err = store.CreateTablesIfNotExists()
 		require.NoError(t, err)
 
+		ctx := context.Background()
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
 		linkPK := testPK(1)
 		contributorPK := testPK(2)
 		sideAPK := testPK(3)
 		sideZPK := testPK(4)
 
-		_, err = db.Exec(`INSERT INTO dz_links (pk, status, code, tunnel_net, contributor_pk, side_a_pk, side_z_pk, side_a_iface_name, side_z_iface_name, link_type, delay_ns, jitter_ns, bandwidth_bps, delay_override_ns) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		_, err = conn.ExecContext(ctx, `INSERT INTO dz_links (pk, status, code, tunnel_net, contributor_pk, side_a_pk, side_z_pk, side_a_iface_name, side_z_iface_name, link_type, delay_ns, jitter_ns, bandwidth_bps, delay_override_ns) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			linkPK, "activated", "LINK1", "10.0.0.0/24", contributorPK, sideAPK, sideZPK, "eth0", "eth1", "WAN", 1000000, 50000, 10000000000, 10)
 		require.NoError(t, err)
 
@@ -602,9 +657,7 @@ func TestAI_MCP_Serviceability_Store_GetContributors(t *testing.T) {
 	t.Run("reads contributors from database", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -618,7 +671,11 @@ func TestAI_MCP_Serviceability_Store_GetContributors(t *testing.T) {
 		contributorPK1 := testPK(1)
 		contributorPK2 := testPK(2)
 
-		_, err = db.Exec(`INSERT INTO dz_contributors (pk, code, name) VALUES (?, ?, ?), (?, ?, ?)`,
+		ctx := context.Background()
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+		_, err = conn.ExecContext(ctx, `INSERT INTO dz_contributors (pk, code, name) VALUES (?, ?, ?), (?, ?, ?)`,
 			contributorPK1, "CONTRIB1", "Contributor 1",
 			contributorPK2, "CONTRIB2", "Contributor 2")
 		require.NoError(t, err)
@@ -641,9 +698,7 @@ func TestAI_MCP_Serviceability_Store_GetMetros(t *testing.T) {
 	t.Run("reads metros from database", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -654,10 +709,14 @@ func TestAI_MCP_Serviceability_Store_GetMetros(t *testing.T) {
 		err = store.CreateTablesIfNotExists()
 		require.NoError(t, err)
 
+		ctx := context.Background()
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
 		metroPK1 := testPK(1)
 		metroPK2 := testPK(2)
 
-		_, err = db.Exec(`INSERT INTO dz_metros (pk, code, name, longitude, latitude) VALUES (?, ?, ?, ?, ?), (?, ?, ?, ?, ?)`,
+		_, err = conn.ExecContext(ctx, `INSERT INTO dz_metros (pk, code, name, longitude, latitude) VALUES (?, ?, ?, ?, ?), (?, ?, ?, ?, ?)`,
 			metroPK1, "NYC", "New York", -74.0060, 40.7128,
 			metroPK2, "LAX", "Los Angeles", -118.2437, 34.0522)
 		require.NoError(t, err)
@@ -665,15 +724,16 @@ func TestAI_MCP_Serviceability_Store_GetMetros(t *testing.T) {
 		metros, err := store.GetMetros()
 		require.NoError(t, err)
 		require.Len(t, metros, 2)
-		require.Equal(t, metroPK1, metros[0].PK)
-		require.Equal(t, "NYC", metros[0].Code)
-		require.Equal(t, "New York", metros[0].Name)
-		require.InDelta(t, -74.0060, metros[0].Longitude, 0.0001)
-		require.InDelta(t, 40.7128, metros[0].Latitude, 0.0001)
-		require.Equal(t, metroPK2, metros[1].PK)
-		require.Equal(t, "LAX", metros[1].Code)
-		require.Equal(t, "Los Angeles", metros[1].Name)
-		require.InDelta(t, -118.2437, metros[1].Longitude, 0.0001)
-		require.InDelta(t, 34.0522, metros[1].Latitude, 0.0001)
+		// Order by code: LAX comes before NYC alphabetically
+		require.Equal(t, metroPK2, metros[0].PK)
+		require.Equal(t, "LAX", metros[0].Code)
+		require.Equal(t, "Los Angeles", metros[0].Name)
+		require.InDelta(t, -118.2437, metros[0].Longitude, 0.0001)
+		require.InDelta(t, 34.0522, metros[0].Latitude, 0.0001)
+		require.Equal(t, metroPK1, metros[1].PK)
+		require.Equal(t, "NYC", metros[1].Code)
+		require.Equal(t, "New York", metros[1].Name)
+		require.InDelta(t, -74.0060, metros[1].Longitude, 0.0001)
+		require.InDelta(t, 40.7128, metros[1].Latitude, 0.0001)
 	})
 }

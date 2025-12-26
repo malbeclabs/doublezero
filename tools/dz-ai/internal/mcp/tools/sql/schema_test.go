@@ -1,21 +1,23 @@
 package sqltools
 
 import (
-	"database/sql"
-	"errors"
 	"log/slog"
 	"os"
 	"testing"
 
 	_ "github.com/duckdb/duckdb-go/v2"
+	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/duck"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
 )
 
-type failingSchemaDB struct{}
-
-func (f *failingSchemaDB) Query(query string, args ...any) (*sql.Rows, error) {
-	return nil, errors.New("database error")
+func testDB(t *testing.T) duck.DB {
+	db, err := duck.NewDB(t.Context(), "", slog.New(slog.NewTextHandler(os.Stderr, nil)))
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		db.Close()
+	})
+	return db
 }
 
 func TestAI_MCP_SQLTools_SchemaTool_NewSchemaTool(t *testing.T) {
@@ -26,11 +28,9 @@ func TestAI_MCP_SQLTools_SchemaTool_NewSchemaTool(t *testing.T) {
 
 		t.Run("missing logger", func(t *testing.T) {
 			t.Parallel()
-			db, err := sql.Open("duckdb", "")
-			require.NoError(t, err)
-			defer db.Close()
+			db := testDB(t)
 
-			tool, err := NewSchemaTool(SchemaToolConfig{
+			tool, err := NewSchemaTool(t.Context(), SchemaToolConfig{
 				DB: db,
 				Schema: &Schema{
 					Name:        "test-schema",
@@ -45,7 +45,7 @@ func TestAI_MCP_SQLTools_SchemaTool_NewSchemaTool(t *testing.T) {
 
 		t.Run("missing database", func(t *testing.T) {
 			t.Parallel()
-			tool, err := NewSchemaTool(SchemaToolConfig{
+			tool, err := NewSchemaTool(t.Context(), SchemaToolConfig{
 				Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
 				Schema: &Schema{
 					Name:        "test-schema",
@@ -60,11 +60,9 @@ func TestAI_MCP_SQLTools_SchemaTool_NewSchemaTool(t *testing.T) {
 
 		t.Run("missing schema", func(t *testing.T) {
 			t.Parallel()
-			db, err := sql.Open("duckdb", "")
-			require.NoError(t, err)
-			defer db.Close()
+			db := testDB(t)
 
-			tool, err := NewSchemaTool(SchemaToolConfig{
+			tool, err := NewSchemaTool(t.Context(), SchemaToolConfig{
 				Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
 				DB:     db,
 			})
@@ -75,11 +73,9 @@ func TestAI_MCP_SQLTools_SchemaTool_NewSchemaTool(t *testing.T) {
 
 		t.Run("schema validation fails - table missing from database", func(t *testing.T) {
 			t.Parallel()
-			db, err := sql.Open("duckdb", "")
-			require.NoError(t, err)
-			defer db.Close()
+			db := testDB(t)
 
-			tool, err := NewSchemaTool(SchemaToolConfig{
+			tool, err := NewSchemaTool(t.Context(), SchemaToolConfig{
 				Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
 				DB:     db,
 				Schema: &Schema{
@@ -103,17 +99,19 @@ func TestAI_MCP_SQLTools_SchemaTool_NewSchemaTool(t *testing.T) {
 
 		t.Run("schema validation passes when in-code schema has extra columns", func(t *testing.T) {
 			t.Parallel()
-			db, err := sql.Open("duckdb", "")
-			require.NoError(t, err)
-			defer db.Close()
+			db := testDB(t)
 
-			_, err = db.Exec(`CREATE TABLE test_table (id INTEGER)`)
+			conn, err := db.Conn(t.Context())
+			require.NoError(t, err)
+			defer conn.Close()
+
+			_, err = conn.ExecContext(t.Context(), `CREATE TABLE test_table (id INTEGER)`)
 			require.NoError(t, err)
 
 			// Note: The validation only checks that database columns exist in the in-code schema,
 			// not that in-code schema columns exist in the database. This allows the schema to
 			// document columns that may be added in the future.
-			tool, err := NewSchemaTool(SchemaToolConfig{
+			tool, err := NewSchemaTool(t.Context(), SchemaToolConfig{
 				Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
 				DB:     db,
 				Schema: &Schema{
@@ -136,14 +134,16 @@ func TestAI_MCP_SQLTools_SchemaTool_NewSchemaTool(t *testing.T) {
 
 		t.Run("schema validation fails - column missing description", func(t *testing.T) {
 			t.Parallel()
-			db, err := sql.Open("duckdb", "")
-			require.NoError(t, err)
-			defer db.Close()
+			db := testDB(t)
 
-			_, err = db.Exec(`CREATE TABLE test_table (id INTEGER, name VARCHAR)`)
+			conn, err := db.Conn(t.Context())
+			require.NoError(t, err)
+			defer conn.Close()
+
+			_, err = conn.ExecContext(t.Context(), `CREATE TABLE test_table (id INTEGER, name VARCHAR)`)
 			require.NoError(t, err)
 
-			tool, err := NewSchemaTool(SchemaToolConfig{
+			tool, err := NewSchemaTool(t.Context(), SchemaToolConfig{
 				Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
 				DB:     db,
 				Schema: &Schema{
@@ -170,14 +170,16 @@ func TestAI_MCP_SQLTools_SchemaTool_NewSchemaTool(t *testing.T) {
 	t.Run("creates tool successfully with valid schema", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
-		_, err = db.Exec(`CREATE TABLE test_table (id INTEGER, name VARCHAR)`)
+		conn, err := db.Conn(t.Context())
+		require.NoError(t, err)
+		defer conn.Close()
+
+		_, err = conn.ExecContext(t.Context(), `CREATE TABLE test_table (id INTEGER, name VARCHAR)`)
 		require.NoError(t, err)
 
-		tool, err := NewSchemaTool(SchemaToolConfig{
+		tool, err := NewSchemaTool(t.Context(), SchemaToolConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
 			DB:     db,
 			Schema: &Schema{
@@ -207,14 +209,16 @@ func TestAI_MCP_SQLTools_SchemaTool_Register(t *testing.T) {
 	t.Run("registers tool successfully", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
-		_, err = db.Exec(`CREATE TABLE test_table (id INTEGER, name VARCHAR)`)
+		conn, err := db.Conn(t.Context())
+		require.NoError(t, err)
+		defer conn.Close()
+
+		_, err = conn.ExecContext(t.Context(), `CREATE TABLE test_table (id INTEGER, name VARCHAR)`)
 		require.NoError(t, err)
 
-		tool, err := NewSchemaTool(SchemaToolConfig{
+		tool, err := NewSchemaTool(t.Context(), SchemaToolConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
 			DB:     db,
 			Schema: &Schema{
@@ -249,11 +253,13 @@ func TestAI_MCP_SQLTools_SchemaTool_HandleSchema(t *testing.T) {
 	t.Run("returns schema successfully", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
-		_, err = db.Exec(`CREATE TABLE test_table (id INTEGER, name VARCHAR)`)
+		conn, err := db.Conn(t.Context())
+		require.NoError(t, err)
+		defer conn.Close()
+
+		_, err = conn.ExecContext(t.Context(), `CREATE TABLE test_table (id INTEGER, name VARCHAR)`)
 		require.NoError(t, err)
 
 		schema := &Schema{
@@ -271,7 +277,7 @@ func TestAI_MCP_SQLTools_SchemaTool_HandleSchema(t *testing.T) {
 			},
 		}
 
-		tool, err := NewSchemaTool(SchemaToolConfig{
+		tool, err := NewSchemaTool(t.Context(), SchemaToolConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
 			DB:     db,
 			Schema: schema,
@@ -290,11 +296,13 @@ func TestAI_MCP_SQLTools_SchemaTool_ValidateSchema(t *testing.T) {
 	t.Run("validates schema successfully", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
-		_, err = db.Exec(`CREATE TABLE test_table (id INTEGER, name VARCHAR, value DOUBLE)`)
+		conn, err := db.Conn(t.Context())
+		require.NoError(t, err)
+		defer conn.Close()
+
+		_, err = conn.ExecContext(t.Context(), `CREATE TABLE test_table (id INTEGER, name VARCHAR, value DOUBLE)`)
 		require.NoError(t, err)
 
 		cfg := SchemaToolConfig{
@@ -316,21 +324,23 @@ func TestAI_MCP_SQLTools_SchemaTool_ValidateSchema(t *testing.T) {
 			},
 		}
 
-		err = cfg.validateSchema()
+		err = cfg.validateSchema(t.Context())
 		require.NoError(t, err)
 	})
 
 	t.Run("validates multiple tables", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
-		_, err = db.Exec(`CREATE TABLE table1 (id INTEGER, name VARCHAR)`)
+		conn, err := db.Conn(t.Context())
+		require.NoError(t, err)
+		defer conn.Close()
+
+		_, err = conn.ExecContext(t.Context(), `CREATE TABLE table1 (id INTEGER, name VARCHAR)`)
 		require.NoError(t, err)
 
-		_, err = db.Exec(`CREATE TABLE table2 (id INTEGER, value DOUBLE)`)
+		_, err = conn.ExecContext(t.Context(), `CREATE TABLE table2 (id INTEGER, value DOUBLE)`)
 		require.NoError(t, err)
 
 		cfg := SchemaToolConfig{
@@ -358,20 +368,22 @@ func TestAI_MCP_SQLTools_SchemaTool_ValidateSchema(t *testing.T) {
 			},
 		}
 
-		err = cfg.validateSchema()
+		err = cfg.validateSchema(t.Context())
 		require.NoError(t, err)
 	})
 
 	t.Run("handles table with single quotes in name", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		// DuckDB allows table names with quotes, but we'll test with a normal name
 		// and verify the escaping logic works
-		_, err = db.Exec(`CREATE TABLE "test'table" (id INTEGER)`)
+		conn, err := db.Conn(t.Context())
+		require.NoError(t, err)
+		defer conn.Close()
+
+		_, err = conn.ExecContext(t.Context(), `CREATE TABLE "test'table" (id INTEGER)`)
 		require.NoError(t, err)
 
 		cfg := SchemaToolConfig{
@@ -391,7 +403,7 @@ func TestAI_MCP_SQLTools_SchemaTool_ValidateSchema(t *testing.T) {
 			},
 		}
 
-		err = cfg.validateSchema()
+		err = cfg.validateSchema(t.Context())
 		require.NoError(t, err)
 	})
 
@@ -400,7 +412,7 @@ func TestAI_MCP_SQLTools_SchemaTool_ValidateSchema(t *testing.T) {
 
 		cfg := SchemaToolConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:     &failingSchemaDB{},
+			DB:     &failingDB{},
 			Schema: &Schema{
 				Name:        "test-schema",
 				Description: "test description",
@@ -415,7 +427,7 @@ func TestAI_MCP_SQLTools_SchemaTool_ValidateSchema(t *testing.T) {
 			},
 		}
 
-		err := cfg.validateSchema()
+		err := cfg.validateSchema(t.Context())
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "failed to query schema")
 	})
@@ -427,9 +439,11 @@ func TestAI_MCP_SQLTools_SchemaTool_ValidateSchema_EdgeCases(t *testing.T) {
 	t.Run("handles empty schema", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
+		db := testDB(t)
+
+		conn, err := db.Conn(t.Context())
 		require.NoError(t, err)
-		defer db.Close()
+		defer conn.Close()
 
 		// Empty schema should pass validation (no tables to check)
 		cfg := SchemaToolConfig{
@@ -444,7 +458,7 @@ func TestAI_MCP_SQLTools_SchemaTool_ValidateSchema_EdgeCases(t *testing.T) {
 
 		// Note: The validation query will fail with empty table list (IN ()),
 		// but this is acceptable for an empty schema
-		err = cfg.validateSchema()
+		err = cfg.validateSchema(t.Context())
 		// The validation will fail due to SQL syntax error with empty IN clause,
 		// but this is an edge case that's acceptable
 		if err != nil {
@@ -455,11 +469,13 @@ func TestAI_MCP_SQLTools_SchemaTool_ValidateSchema_EdgeCases(t *testing.T) {
 	t.Run("handles table with only one column", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := sql.Open("duckdb", "")
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
-		_, err = db.Exec(`CREATE TABLE single_column_table (id INTEGER)`)
+		conn, err := db.Conn(t.Context())
+		require.NoError(t, err)
+		defer conn.Close()
+
+		_, err = conn.ExecContext(t.Context(), `CREATE TABLE single_column_table (id INTEGER)`)
 		require.NoError(t, err)
 
 		cfg := SchemaToolConfig{
@@ -479,7 +495,7 @@ func TestAI_MCP_SQLTools_SchemaTool_ValidateSchema_EdgeCases(t *testing.T) {
 			},
 		}
 
-		err = cfg.validateSchema()
+		err = cfg.validateSchema(t.Context())
 		require.NoError(t, err)
 	})
 }

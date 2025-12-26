@@ -15,20 +15,50 @@ import (
 
 type failingDB struct{}
 
-func (f *failingDB) Exec(query string, args ...any) (sql.Result, error) {
+func (f *failingDB) Close() error {
+	return nil
+}
+
+func (f *failingDB) Catalog() string {
+	return "main"
+}
+
+func (f *failingDB) Schema() string {
+	return "default"
+}
+
+func (f *failingDB) Conn(ctx context.Context) (duck.Connection, error) {
+	return &failingDBConn{db: f}, nil
+}
+
+type failingDBConn struct {
+	db *failingDB
+}
+
+func (f *failingDBConn) DB() duck.DB {
+	if f.db == nil {
+		return &failingDB{}
+	}
+	return f.db
+}
+
+func (f *failingDBConn) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
 	return nil, errors.New("database error")
 }
-func (f *failingDB) Query(query string, args ...any) (*sql.Rows, error) {
+
+func (f *failingDBConn) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
 	return nil, errors.New("database error")
 }
-func (f *failingDB) QueryRow(query string, args ...any) *sql.Row {
-	// Return a row that will error on Scan
+
+func (f *failingDBConn) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
 	return &sql.Row{}
 }
-func (f *failingDB) Begin() (*sql.Tx, error) {
+
+func (f *failingDBConn) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
 	return nil, errors.New("database error")
 }
-func (f *failingDB) Close() error {
+
+func (f *failingDBConn) Close() error {
 	return nil
 }
 
@@ -62,9 +92,7 @@ func TestAI_MCP_TelemetryUsage_Store_NewStore(t *testing.T) {
 	t.Run("returns store when config is valid", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -81,9 +109,7 @@ func TestAI_MCP_TelemetryUsage_Store_CreateTablesIfNotExists(t *testing.T) {
 	t.Run("creates table successfully", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -96,7 +122,11 @@ func TestAI_MCP_TelemetryUsage_Store_CreateTablesIfNotExists(t *testing.T) {
 
 		// Verify table exists by querying it
 		var count int
-		err = db.QueryRow("SELECT COUNT(*) FROM dz_device_iface_usage").Scan(&count)
+		ctx := context.Background()
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_device_iface_usage").Scan(&count)
 		require.NoError(t, err, "table dz_device_iface_usage should exist")
 		require.Equal(t, 0, count)
 	})
@@ -122,9 +152,7 @@ func TestAI_MCP_TelemetryUsage_Store_GetMaxTimestamp(t *testing.T) {
 	t.Run("returns nil for empty table", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -143,9 +171,7 @@ func TestAI_MCP_TelemetryUsage_Store_GetMaxTimestamp(t *testing.T) {
 	t.Run("returns max timestamp when table has data", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -191,9 +217,7 @@ func TestAI_MCP_TelemetryUsage_Store_GetMaxTimestamp(t *testing.T) {
 	t.Run("handles context cancellation", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -220,9 +244,7 @@ func TestAI_MCP_TelemetryUsage_Store_UpsertInterfaceUsage(t *testing.T) {
 	t.Run("upserts new rows to empty table", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -266,7 +288,11 @@ func TestAI_MCP_TelemetryUsage_Store_UpsertInterfaceUsage(t *testing.T) {
 
 		// Verify data was inserted
 		var count int
-		err = db.QueryRow("SELECT COUNT(*) FROM dz_device_iface_usage").Scan(&count)
+		ctx := context.Background()
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_device_iface_usage").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 2, count)
 
@@ -275,9 +301,12 @@ func TestAI_MCP_TelemetryUsage_Store_UpsertInterfaceUsage(t *testing.T) {
 		var devicePK, intf, userTunnelID, linkPK, linkSide, modelName, serialNumber sql.NullString
 		var inOctets, outOctets, inPkts, outPkts sql.NullInt64
 		var inOctetsDelta, outOctetsDelta, inPktsDelta, outPktsDelta sql.NullInt64
+		conn, err = db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
 		var deltaDuration sql.NullFloat64
 
-		err = db.QueryRow(`
+		err = conn.QueryRowContext(ctx, `
 			SELECT time, device_pk, intf, user_tunnel_id, link_pk, link_side, model_name, serial_number,
 			       in_octets, out_octets, in_pkts, out_pkts,
 			       in_octets_delta, out_octets_delta, in_pkts_delta, out_pkts_delta,
@@ -329,9 +358,7 @@ func TestAI_MCP_TelemetryUsage_Store_UpsertInterfaceUsage(t *testing.T) {
 	t.Run("updates existing rows", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -371,13 +398,20 @@ func TestAI_MCP_TelemetryUsage_Store_UpsertInterfaceUsage(t *testing.T) {
 
 		// Verify row count is still 1 (not 2)
 		var count int
-		err = db.QueryRow("SELECT COUNT(*) FROM dz_device_iface_usage").Scan(&count)
+		ctx := context.Background()
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_device_iface_usage").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 1, count)
 
 		// Verify row was updated
+		conn, err = db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
 		var inOctets, outOctets sql.NullInt64
-		err = db.QueryRow("SELECT in_octets, out_octets FROM dz_device_iface_usage WHERE device_pk = 'device1' AND intf = 'eth0'").Scan(&inOctets, &outOctets)
+		err = conn.QueryRowContext(ctx, "SELECT in_octets, out_octets FROM dz_device_iface_usage WHERE device_pk = 'device1' AND intf = 'eth0'").Scan(&inOctets, &outOctets)
 		require.NoError(t, err)
 		require.True(t, inOctets.Valid)
 		require.Equal(t, int64(2000), inOctets.Int64)
@@ -388,9 +422,7 @@ func TestAI_MCP_TelemetryUsage_Store_UpsertInterfaceUsage(t *testing.T) {
 	t.Run("handles nullable fields", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -416,16 +448,23 @@ func TestAI_MCP_TelemetryUsage_Store_UpsertInterfaceUsage(t *testing.T) {
 
 		// Verify row was inserted with nulls
 		var count int
-		err = db.QueryRow("SELECT COUNT(*) FROM dz_device_iface_usage").Scan(&count)
+		ctx := context.Background()
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_device_iface_usage").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 1, count)
 
 		// Verify nullable fields are null
+		conn, err = db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
 		var userTunnelID, linkPK, linkSide, modelName sql.NullString
 		var inOctets sql.NullInt64
 		var deltaDuration sql.NullFloat64
 
-		err = db.QueryRow(`
+		err = conn.QueryRowContext(ctx, `
 			SELECT user_tunnel_id, link_pk, link_side, model_name, in_octets, delta_duration
 			FROM dz_device_iface_usage
 			WHERE device_pk = 'device1' AND intf = 'eth0'
@@ -442,9 +481,7 @@ func TestAI_MCP_TelemetryUsage_Store_UpsertInterfaceUsage(t *testing.T) {
 	t.Run("handles empty slice", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -473,7 +510,11 @@ func TestAI_MCP_TelemetryUsage_Store_UpsertInterfaceUsage(t *testing.T) {
 
 		// Verify existing data is still there (not truncated)
 		var count int
-		err = db.QueryRow("SELECT COUNT(*) FROM dz_device_iface_usage").Scan(&count)
+		ctx := context.Background()
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_device_iface_usage").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 1, count)
 	})
@@ -481,9 +522,7 @@ func TestAI_MCP_TelemetryUsage_Store_UpsertInterfaceUsage(t *testing.T) {
 	t.Run("handles all counter fields", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -548,10 +587,14 @@ func TestAI_MCP_TelemetryUsage_Store_UpsertInterfaceUsage(t *testing.T) {
 		var inErrorsDelta, inFCSErrorsDelta, inMulticastPktsDelta sql.NullInt64
 		var inOctetsDelta, inPktsDelta, inUnicastPktsDelta sql.NullInt64
 		var outBroadcastPktsDelta, outDiscardsDelta, outErrorsDelta sql.NullInt64
+		ctx := context.Background()
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
 		var outMulticastPktsDelta, outOctetsDelta, outPktsDelta, outUnicastPktsDelta sql.NullInt64
 		var deltaDuration sql.NullFloat64
 
-		err = db.QueryRow(`
+		err = conn.QueryRowContext(ctx, `
 			SELECT
 				carrier_transitions, in_broadcast_pkts, in_discards, in_errors, in_fcs_errors,
 				in_multicast_pkts, in_octets, in_pkts, in_unicast_pkts,

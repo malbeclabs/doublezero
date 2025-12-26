@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net"
+	"os"
 	"testing"
 	"time"
 
@@ -73,8 +74,17 @@ func (m *mockInfluxDBClient) Close() error {
 	return nil
 }
 
-func validConfig() Config {
-	db, _ := duck.NewDB("", slog.Default())
+func testDB(t *testing.T) duck.DB {
+	db, err := duck.NewDB(t.Context(), "", slog.New(slog.NewTextHandler(os.Stderr, nil)))
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		db.Close()
+	})
+	return db
+}
+
+func validConfig(t *testing.T) Config {
+	db := testDB(t)
 
 	return Config{
 		Version:                "test",
@@ -244,7 +254,7 @@ func TestAI_MCP_Server_Config_Validate(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			cfg := validConfig()
+			cfg := validConfig(t)
 			originalRefreshInterval := cfg.RefreshInterval
 			tt.modify(&cfg)
 			wasRefreshIntervalZero := cfg.DeviceUsageRefreshInterval == 0 && cfg.DeviceUsageInfluxClient != nil

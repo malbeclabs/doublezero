@@ -1,9 +1,13 @@
 package dztelemusage
 
-import sqltools "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/tools/sql"
+import (
+	"context"
 
-func (v *View) SchemaTool() (*sqltools.SchemaTool, error) {
-	return sqltools.NewSchemaTool(sqltools.SchemaToolConfig{
+	sqltools "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/tools/sql"
+)
+
+func (v *View) SchemaTool(ctx context.Context) (*sqltools.SchemaTool, error) {
+	return sqltools.NewSchemaTool(ctx, sqltools.SchemaToolConfig{
 		Logger: v.log,
 		DB:     v.cfg.DB,
 		Schema: SCHEMA,
@@ -22,12 +26,13 @@ Use for DZ interface usage and utilization statistics:
 	Tables: []sqltools.TableInfo{
 		{
 			Name:        "dz_device_iface_usage",
-			Description: "Interface usage and utilization statistics. Contains packet counters, octet counters, errors, and device metadata. Counters are cumulative. Join: dz_device_iface_usage.device_pk = dz_devices.pk.",
+			Description: "Interface usage/utilization (cumulative counters + deltas). Joins: dz_device_iface_usage.device_pk = dz_devices.pk. For per-user attribution, join to users using (device_pk, user_tunnel_id) = (users.device_pk, users.tunnel_id) (do not join on tunnel_id alone).",
 			Columns: []sqltools.ColumnInfo{
 				{Name: "time", Type: "TIMESTAMP", Description: "Timestamp of the measurement"},
 				{Name: "device_pk", Type: "VARCHAR", Description: "Foreign key → dz_devices.pk (DoubleZero device public key)"},
+				{Name: "host", Type: "VARCHAR", Description: "Host identifier (INTERNAL USE ONLY)"},
 				{Name: "intf", Type: "VARCHAR", Description: "Interface name"},
-				{Name: "user_tunnel_id", Type: "BIGINT", Description: "Tunnel ID extracted from interface name (e.g., Tunnel501 -> 501). Only populated for interfaces with 'Tunnel' prefix."},
+				{Name: "user_tunnel_id", Type: "BIGINT", Description: "Tunnel ID extracted from interface name (e.g., Tunnel501 -> 501). Join to users using the composite key (device_pk, user_tunnel_id) = (users.device_pk, users.tunnel_id); tunnel_id alone is not globally unique."},
 				{Name: "link_pk", Type: "VARCHAR", Description: "Foreign key → dz_links.pk. Populated by matching (device_pk, intf) to link side A or Z."},
 				{Name: "link_side", Type: "VARCHAR", Description: "Link side: 'A' or 'Z'. Indicates which side of the link this interface belongs to."},
 				{Name: "model_name", Type: "VARCHAR", Description: "Device model name"},

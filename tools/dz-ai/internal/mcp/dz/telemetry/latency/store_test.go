@@ -17,19 +17,50 @@ import (
 
 type failingDB struct{}
 
-func (f *failingDB) Exec(query string, args ...any) (sql.Result, error) {
+func (f *failingDB) Close() error {
+	return nil
+}
+
+func (f *failingDB) Catalog() string {
+	return "main"
+}
+
+func (f *failingDB) Schema() string {
+	return "default"
+}
+
+func (f *failingDB) Conn(ctx context.Context) (duck.Connection, error) {
+	return &failingDBConn{db: f}, nil
+}
+
+type failingDBConn struct {
+	db *failingDB
+}
+
+func (f *failingDBConn) DB() duck.DB {
+	if f.db == nil {
+		return &failingDB{}
+	}
+	return f.db
+}
+
+func (f *failingDBConn) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
 	return nil, errors.New("database error")
 }
-func (f *failingDB) Query(query string, args ...any) (*sql.Rows, error) {
+
+func (f *failingDBConn) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
 	return nil, errors.New("database error")
 }
-func (f *failingDB) QueryRow(query string, args ...any) *sql.Row {
+
+func (f *failingDBConn) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
 	return &sql.Row{}
 }
-func (f *failingDB) Begin() (*sql.Tx, error) {
+
+func (f *failingDBConn) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
 	return nil, errors.New("database error")
 }
-func (f *failingDB) Close() error {
+
+func (f *failingDBConn) Close() error {
 	return nil
 }
 func (f *failingDB) ReplaceTable(tableName string, count int, writeCSVFn func(*csv.Writer, int) error) error {
@@ -75,9 +106,7 @@ func TestAI_MCP_Telemetry_Store_NewStore(t *testing.T) {
 	t.Run("returns store when config is valid", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -94,9 +123,7 @@ func TestAI_MCP_Telemetry_Store_CreateTablesIfNotExists(t *testing.T) {
 	t.Run("creates all tables", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -111,7 +138,11 @@ func TestAI_MCP_Telemetry_Store_CreateTablesIfNotExists(t *testing.T) {
 		tables := []string{"dz_device_link_circuits", "dz_device_link_latency_samples", "dz_internet_metro_latency_samples"}
 		for _, table := range tables {
 			var count int
-			err = db.QueryRow("SELECT COUNT(*) FROM " + table).Scan(&count)
+			ctx := context.Background()
+			conn, err := db.Conn(ctx)
+			require.NoError(t, err)
+			defer conn.Close()
+			err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+table).Scan(&count)
 			require.NoError(t, err, "table %s should exist", table)
 		}
 	})
@@ -137,9 +168,7 @@ func TestAI_MCP_Telemetry_Store_ReplaceDeviceLinkCircuits(t *testing.T) {
 	t.Run("saves circuits to database", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -167,14 +196,18 @@ func TestAI_MCP_Telemetry_Store_ReplaceDeviceLinkCircuits(t *testing.T) {
 		err = store.ReplaceDeviceLinkCircuits(context.Background(), circuits)
 		require.NoError(t, err)
 
+		ctx := context.Background()
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
 		var count int
-		err = db.QueryRow("SELECT COUNT(*) FROM dz_device_link_circuits").Scan(&count)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_device_link_circuits").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 1, count)
 
 		var code, originDevicePK, targetDevicePK, linkPK, linkCode, linkType, contributorCode string
 		var committedRTT, committedJitter float64
-		err = db.QueryRow("SELECT code, origin_device_pk, target_device_pk, link_pk, link_code, link_type, contributor_code, committed_rtt, committed_jitter FROM dz_device_link_circuits LIMIT 1").Scan(&code, &originDevicePK, &targetDevicePK, &linkPK, &linkCode, &linkType, &contributorCode, &committedRTT, &committedJitter)
+		err = conn.QueryRowContext(ctx, "SELECT code, origin_device_pk, target_device_pk, link_pk, link_code, link_type, contributor_code, committed_rtt, committed_jitter FROM dz_device_link_circuits LIMIT 1").Scan(&code, &originDevicePK, &targetDevicePK, &linkPK, &linkCode, &linkType, &contributorCode, &committedRTT, &committedJitter)
 		require.NoError(t, err)
 		require.Equal(t, "DEV1 → DEV2 (abc1234)", code)
 		require.Equal(t, testPK(1), originDevicePK)
@@ -190,9 +223,7 @@ func TestAI_MCP_Telemetry_Store_ReplaceDeviceLinkCircuits(t *testing.T) {
 	t.Run("replaces existing circuits", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -220,8 +251,12 @@ func TestAI_MCP_Telemetry_Store_ReplaceDeviceLinkCircuits(t *testing.T) {
 		err = store.ReplaceDeviceLinkCircuits(context.Background(), circuits1)
 		require.NoError(t, err)
 
+		ctx := context.Background()
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
 		var count int
-		err = db.QueryRow("SELECT COUNT(*) FROM dz_device_link_circuits").Scan(&count)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_device_link_circuits").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 1, count)
 
@@ -242,12 +277,12 @@ func TestAI_MCP_Telemetry_Store_ReplaceDeviceLinkCircuits(t *testing.T) {
 		err = store.ReplaceDeviceLinkCircuits(context.Background(), circuits2)
 		require.NoError(t, err)
 
-		err = db.QueryRow("SELECT COUNT(*) FROM dz_device_link_circuits").Scan(&count)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_device_link_circuits").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 1, count)
 
 		var code string
-		err = db.QueryRow("SELECT code FROM dz_device_link_circuits LIMIT 1").Scan(&code)
+		err = conn.QueryRowContext(ctx, "SELECT code FROM dz_device_link_circuits LIMIT 1").Scan(&code)
 		require.NoError(t, err)
 		require.Equal(t, "DEV3 → DEV4 (def5678)", code)
 	})
@@ -255,9 +290,7 @@ func TestAI_MCP_Telemetry_Store_ReplaceDeviceLinkCircuits(t *testing.T) {
 	t.Run("handles empty slice", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -289,8 +322,12 @@ func TestAI_MCP_Telemetry_Store_ReplaceDeviceLinkCircuits(t *testing.T) {
 		err = store.ReplaceDeviceLinkCircuits(context.Background(), []DeviceLinkCircuit{})
 		require.NoError(t, err)
 
+		ctx := context.Background()
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
 		var count int
-		err = db.QueryRow("SELECT COUNT(*) FROM dz_device_link_circuits").Scan(&count)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_device_link_circuits").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 0, count)
 	})
@@ -302,9 +339,7 @@ func TestAI_MCP_Telemetry_Store_AppendDeviceLinkLatencySamples(t *testing.T) {
 	t.Run("appends samples to database", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -335,8 +370,12 @@ func TestAI_MCP_Telemetry_Store_AppendDeviceLinkLatencySamples(t *testing.T) {
 		err = store.AppendDeviceLinkLatencySamples(context.Background(), samples)
 		require.NoError(t, err)
 
+		ctx := context.Background()
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
 		var count int
-		err = db.QueryRow("SELECT COUNT(*) FROM dz_device_link_latency_samples").Scan(&count)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_device_link_latency_samples").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 2, count)
 
@@ -354,7 +393,7 @@ func TestAI_MCP_Telemetry_Store_AppendDeviceLinkLatencySamples(t *testing.T) {
 		err = store.AppendDeviceLinkLatencySamples(context.Background(), moreSamples)
 		require.NoError(t, err)
 
-		err = db.QueryRow("SELECT COUNT(*) FROM dz_device_link_latency_samples").Scan(&count)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_device_link_latency_samples").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 3, count)
 
@@ -363,7 +402,7 @@ func TestAI_MCP_Telemetry_Store_AppendDeviceLinkLatencySamples(t *testing.T) {
 		var epoch uint64
 		var sampleIndex int
 		var timestampUs, rttUs uint64
-		err = db.QueryRow("SELECT circuit_code, epoch, sample_index, timestamp_us, rtt_us FROM dz_device_link_latency_samples WHERE sample_index = 2").Scan(&circuitCode, &epoch, &sampleIndex, &timestampUs, &rttUs)
+		err = conn.QueryRowContext(ctx, "SELECT circuit_code, epoch, sample_index, timestamp_us, rtt_us FROM dz_device_link_latency_samples WHERE sample_index = 2").Scan(&circuitCode, &epoch, &sampleIndex, &timestampUs, &rttUs)
 		require.NoError(t, err)
 		require.Equal(t, "CIRCUIT1", circuitCode)
 		require.Equal(t, uint64(100), epoch)
@@ -375,9 +414,7 @@ func TestAI_MCP_Telemetry_Store_AppendDeviceLinkLatencySamples(t *testing.T) {
 	t.Run("handles empty slice", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -391,8 +428,12 @@ func TestAI_MCP_Telemetry_Store_AppendDeviceLinkLatencySamples(t *testing.T) {
 		err = store.AppendDeviceLinkLatencySamples(context.Background(), []DeviceLinkLatencySample{})
 		require.NoError(t, err)
 
+		ctx := context.Background()
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
 		var count int
-		err = db.QueryRow("SELECT COUNT(*) FROM dz_device_link_latency_samples").Scan(&count)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_device_link_latency_samples").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 0, count)
 	})
@@ -404,9 +445,7 @@ func TestAI_MCP_Telemetry_Store_AppendInternetMetroLatencySamples(t *testing.T) 
 	t.Run("appends samples to database", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -439,8 +478,12 @@ func TestAI_MCP_Telemetry_Store_AppendInternetMetroLatencySamples(t *testing.T) 
 		err = store.AppendInternetMetroLatencySamples(context.Background(), samples)
 		require.NoError(t, err)
 
+		ctx := context.Background()
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
 		var count int
-		err = db.QueryRow("SELECT COUNT(*) FROM dz_internet_metro_latency_samples").Scan(&count)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_internet_metro_latency_samples").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 2, count)
 
@@ -459,7 +502,7 @@ func TestAI_MCP_Telemetry_Store_AppendInternetMetroLatencySamples(t *testing.T) 
 		err = store.AppendInternetMetroLatencySamples(context.Background(), moreSamples)
 		require.NoError(t, err)
 
-		err = db.QueryRow("SELECT COUNT(*) FROM dz_internet_metro_latency_samples").Scan(&count)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_internet_metro_latency_samples").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 3, count)
 
@@ -468,7 +511,7 @@ func TestAI_MCP_Telemetry_Store_AppendInternetMetroLatencySamples(t *testing.T) 
 		var epoch uint64
 		var sampleIndex int
 		var timestampUs, rttUs uint64
-		err = db.QueryRow("SELECT circuit_code, data_provider, epoch, sample_index, timestamp_us, rtt_us FROM dz_internet_metro_latency_samples WHERE sample_index = 2").Scan(&circuitCode, &dataProvider, &epoch, &sampleIndex, &timestampUs, &rttUs)
+		err = conn.QueryRowContext(ctx, "SELECT circuit_code, data_provider, epoch, sample_index, timestamp_us, rtt_us FROM dz_internet_metro_latency_samples WHERE sample_index = 2").Scan(&circuitCode, &dataProvider, &epoch, &sampleIndex, &timestampUs, &rttUs)
 		require.NoError(t, err)
 		require.Equal(t, "NYC → LAX", circuitCode)
 		require.Equal(t, "provider1", dataProvider)
@@ -481,9 +524,7 @@ func TestAI_MCP_Telemetry_Store_AppendInternetMetroLatencySamples(t *testing.T) 
 	t.Run("handles empty slice", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -497,8 +538,12 @@ func TestAI_MCP_Telemetry_Store_AppendInternetMetroLatencySamples(t *testing.T) 
 		err = store.AppendInternetMetroLatencySamples(context.Background(), []InternetMetroLatencySample{})
 		require.NoError(t, err)
 
+		ctx := context.Background()
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
 		var count int
-		err = db.QueryRow("SELECT COUNT(*) FROM dz_internet_metro_latency_samples").Scan(&count)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_internet_metro_latency_samples").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 0, count)
 	})
@@ -510,9 +555,7 @@ func TestAI_MCP_Telemetry_Store_GetExistingMaxSampleIndices(t *testing.T) {
 	t.Run("returns max sample indices for each circuit and epoch", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -548,9 +591,7 @@ func TestAI_MCP_Telemetry_Store_GetExistingMaxSampleIndices(t *testing.T) {
 	t.Run("returns empty map when no samples exist", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -573,9 +614,7 @@ func TestAI_MCP_Telemetry_Store_GetExistingInternetMaxSampleIndices(t *testing.T
 	t.Run("returns max sample indices for each circuit, data provider, and epoch", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -611,9 +650,7 @@ func TestAI_MCP_Telemetry_Store_GetExistingInternetMaxSampleIndices(t *testing.T
 	t.Run("returns empty map when no samples exist", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),

@@ -58,15 +58,21 @@ func (m *mockSolanaRPC) GetClusterNodes(ctx context.Context) ([]*solanarpc.GetCl
 	return []*solanarpc.GetClusterNodesResult{}, nil
 }
 
+func testDB(t *testing.T) duck.DB {
+	db, err := duck.NewDB(t.Context(), "", slog.New(slog.NewTextHandler(os.Stderr, nil)))
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		db.Close()
+	})
+	return db
+}
 func TestAI_MCP_Solana_View_Ready(t *testing.T) {
 	t.Parallel()
 
 	t.Run("returns false when not ready", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		geoipStore, err := newTestGeoIPStore(t)
 		require.NoError(t, err)
@@ -89,9 +95,7 @@ func TestAI_MCP_Solana_View_Ready(t *testing.T) {
 	t.Run("returns true after successful refresh", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		geoipStore, err := newTestGeoIPStore(t)
 		require.NoError(t, err)
@@ -122,9 +126,7 @@ func TestAI_MCP_Solana_View_WaitReady(t *testing.T) {
 	t.Run("returns immediately when already ready", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		geoipStore, err := newTestGeoIPStore(t)
 		require.NoError(t, err)
@@ -152,9 +154,7 @@ func TestAI_MCP_Solana_View_WaitReady(t *testing.T) {
 	t.Run("returns error when context is cancelled", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		geoipStore, err := newTestGeoIPStore(t)
 		require.NoError(t, err)
@@ -198,10 +198,7 @@ type testGeoIPStore struct {
 
 func newTestGeoIPStore(t *testing.T) (*testGeoIPStore, error) {
 	t.Helper()
-	db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-	if err != nil {
-		return nil, err
-	}
+	db := testDB(t)
 
 	store, err := mcpgeoip.NewStore(mcpgeoip.StoreConfig{
 		Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -227,9 +224,7 @@ func TestAI_MCP_Solana_View_Refresh(t *testing.T) {
 	t.Run("stores all data on refresh", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		geoipStore, err := newTestGeoIPStore(t)
 		require.NoError(t, err)
@@ -335,19 +330,28 @@ func TestAI_MCP_Solana_View_Refresh(t *testing.T) {
 
 		// Verify leader schedule was stored
 		var leaderScheduleCount int
-		err = db.QueryRow("SELECT COUNT(*) FROM solana_leader_schedule").Scan(&leaderScheduleCount)
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM solana_leader_schedule").Scan(&leaderScheduleCount)
 		require.NoError(t, err)
 		require.Equal(t, 2, leaderScheduleCount, "should have 2 leader schedule entries")
 
 		// Verify vote accounts were stored
 		var voteAccountsCount int
-		err = db.QueryRow("SELECT COUNT(*) FROM solana_vote_accounts").Scan(&voteAccountsCount)
+		conn, err = db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM solana_vote_accounts").Scan(&voteAccountsCount)
 		require.NoError(t, err)
 		require.Equal(t, 2, voteAccountsCount, "should have 2 vote accounts")
 
 		// Verify gossip nodes were stored
 		var gossipNodesCount int
-		err = db.QueryRow("SELECT COUNT(*) FROM solana_gossip_nodes").Scan(&gossipNodesCount)
+		conn, err = db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM solana_gossip_nodes").Scan(&gossipNodesCount)
 		require.NoError(t, err)
 		require.Equal(t, 3, gossipNodesCount, "should have 3 gossip nodes")
 
@@ -372,19 +376,28 @@ func TestAI_MCP_Solana_View_Refresh(t *testing.T) {
 
 		// Verify specific data in leader schedule
 		var slotCount int
-		err = db.QueryRow("SELECT slot_count FROM solana_leader_schedule WHERE node_pubkey = ?", leaderPK1.String()).Scan(&slotCount)
+		conn, err = db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+		err = conn.QueryRowContext(ctx, "SELECT slot_count FROM solana_leader_schedule WHERE node_pubkey = ?", leaderPK1.String()).Scan(&slotCount)
 		require.NoError(t, err)
 		require.Equal(t, 3, slotCount, "leaderPK1 should have 3 slots")
 
 		// Verify specific data in vote accounts
 		var activatedStake int64
-		err = db.QueryRow("SELECT activated_stake_lamports FROM solana_vote_accounts WHERE vote_pubkey = ?", votePK1.String()).Scan(&activatedStake)
+		conn, err = db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+		err = conn.QueryRowContext(ctx, "SELECT activated_stake_lamports FROM solana_vote_accounts WHERE vote_pubkey = ?", votePK1.String()).Scan(&activatedStake)
 		require.NoError(t, err)
 		require.Equal(t, int64(1000000), activatedStake, "votePK1 should have correct stake")
 
 		// Verify specific data in gossip nodes
 		var gossipIP string
-		err = db.QueryRow("SELECT gossip_ip FROM solana_gossip_nodes WHERE pubkey = ?", pk1.String()).Scan(&gossipIP)
+		conn, err = db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+		err = conn.QueryRowContext(ctx, "SELECT gossip_ip FROM solana_gossip_nodes WHERE pubkey = ?", pk1.String()).Scan(&gossipIP)
 		require.NoError(t, err)
 		require.Equal(t, "1.1.1.1", gossipIP, "pk1 should have correct gossip IP")
 	})
@@ -393,9 +406,7 @@ func TestAI_MCP_Solana_View_Refresh(t *testing.T) {
 
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		geoipStore, err := newTestGeoIPStore(t)
 		require.NoError(t, err)
@@ -441,7 +452,10 @@ func TestAI_MCP_Solana_View_Refresh(t *testing.T) {
 
 		// Verify gossip nodes are still stored even without geoip
 		var gossipNodesCount int
-		err = db.QueryRow("SELECT COUNT(*) FROM solana_gossip_nodes").Scan(&gossipNodesCount)
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM solana_gossip_nodes").Scan(&gossipNodesCount)
 		require.NoError(t, err)
 		require.Equal(t, 2, gossipNodesCount, "should have 2 gossip nodes even without geoip")
 

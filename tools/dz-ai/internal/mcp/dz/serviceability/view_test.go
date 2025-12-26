@@ -36,9 +36,7 @@ func TestAI_MCP_Serviceability_View_Ready(t *testing.T) {
 	t.Run("returns false when not ready", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		geoipStore, err := newTestGeoIPStore(t)
 		require.NoError(t, err)
@@ -61,9 +59,7 @@ func TestAI_MCP_Serviceability_View_Ready(t *testing.T) {
 	t.Run("returns true after successful refresh", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		geoipStore, err := newTestGeoIPStore(t)
 		require.NoError(t, err)
@@ -94,9 +90,7 @@ func TestAI_MCP_Serviceability_View_WaitReady(t *testing.T) {
 	t.Run("returns immediately when already ready", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		geoipStore, err := newTestGeoIPStore(t)
 		require.NoError(t, err)
@@ -124,9 +118,7 @@ func TestAI_MCP_Serviceability_View_WaitReady(t *testing.T) {
 	t.Run("returns error when context is cancelled", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		geoipStore, err := newTestGeoIPStore(t)
 		require.NoError(t, err)
@@ -400,10 +392,7 @@ type testGeoIPStore struct {
 
 func newTestGeoIPStore(t *testing.T) (*testGeoIPStore, error) {
 	t.Helper()
-	db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-	if err != nil {
-		return nil, err
-	}
+	db := testDB(t)
 
 	store, err := mcpgeoip.NewStore(mcpgeoip.StoreConfig{
 		Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -429,9 +418,7 @@ func TestAI_MCP_Serviceability_View_Refresh(t *testing.T) {
 	t.Run("stores all data on refresh", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		geoipStore, err := newTestGeoIPStore(t)
 		require.NoError(t, err)
@@ -570,32 +557,35 @@ func TestAI_MCP_Serviceability_View_Refresh(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify contributors were stored
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
 		var contributorsCount int
-		err = db.QueryRow("SELECT COUNT(*) FROM dz_contributors").Scan(&contributorsCount)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_contributors").Scan(&contributorsCount)
 		require.NoError(t, err)
 		require.Equal(t, 1, contributorsCount, "should have 1 contributor")
 
 		// Verify devices were stored
 		var devicesCount int
-		err = db.QueryRow("SELECT COUNT(*) FROM dz_devices").Scan(&devicesCount)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_devices").Scan(&devicesCount)
 		require.NoError(t, err)
 		require.Equal(t, 1, devicesCount, "should have 1 device")
 
 		// Verify users were stored
 		var usersCount int
-		err = db.QueryRow("SELECT COUNT(*) FROM dz_users").Scan(&usersCount)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_users").Scan(&usersCount)
 		require.NoError(t, err)
 		require.Equal(t, 3, usersCount, "should have 3 users")
 
 		// Verify metros were stored
 		var metrosCount int
-		err = db.QueryRow("SELECT COUNT(*) FROM dz_metros").Scan(&metrosCount)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_metros").Scan(&metrosCount)
 		require.NoError(t, err)
 		require.Equal(t, 1, metrosCount, "should have 1 metro")
 
 		// Verify links were stored
 		var linksCount int
-		err = db.QueryRow("SELECT COUNT(*) FROM dz_links").Scan(&linksCount)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_links").Scan(&linksCount)
 		require.NoError(t, err)
 		require.Equal(t, 1, linksCount, "should have 1 link")
 
@@ -620,25 +610,37 @@ func TestAI_MCP_Serviceability_View_Refresh(t *testing.T) {
 
 		// Verify specific data in contributors
 		var code string
-		err = db.QueryRow("SELECT code FROM dz_contributors WHERE pk = ?", testPubkey(1).String()).Scan(&code)
+		conn, err = db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+		err = conn.QueryRowContext(ctx, "SELECT code FROM dz_contributors WHERE pk = ?", testPubkey(1).String()).Scan(&code)
 		require.NoError(t, err)
 		require.Equal(t, "TEST", code, "contributor should have correct code")
 
 		// Verify specific data in devices
 		var deviceCode string
-		err = db.QueryRow("SELECT code FROM dz_devices WHERE pk = ?", testPubkey(3).String()).Scan(&deviceCode)
+		conn, err = db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+		err = conn.QueryRowContext(ctx, "SELECT code FROM dz_devices WHERE pk = ?", testPubkey(3).String()).Scan(&deviceCode)
 		require.NoError(t, err)
 		require.Equal(t, "DEV001", deviceCode, "device should have correct code")
 
 		// Verify specific data in metros
 		var metroName string
-		err = db.QueryRow("SELECT name FROM dz_metros WHERE pk = ?", testPubkey(2).String()).Scan(&metroName)
+		conn, err = db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+		err = conn.QueryRowContext(ctx, "SELECT name FROM dz_metros WHERE pk = ?", testPubkey(2).String()).Scan(&metroName)
 		require.NoError(t, err)
 		require.Equal(t, "New York", metroName, "metro should have correct name")
 
 		// Verify specific data in links
 		var linkCode string
-		err = db.QueryRow("SELECT code FROM dz_links WHERE pk = ?", testPubkey(6).String()).Scan(&linkCode)
+		conn, err = db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+		err = conn.QueryRowContext(ctx, "SELECT code FROM dz_links WHERE pk = ?", testPubkey(6).String()).Scan(&linkCode)
 		require.NoError(t, err)
 		require.Equal(t, "LINK001", linkCode, "link should have correct code")
 	})
@@ -646,9 +648,7 @@ func TestAI_MCP_Serviceability_View_Refresh(t *testing.T) {
 	t.Run("handles users without client IPs for geoip", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		geoipStore, err := newTestGeoIPStore(t)
 		require.NoError(t, err)
@@ -702,8 +702,11 @@ func TestAI_MCP_Serviceability_View_Refresh(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify users are still stored even without geoip
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
 		var usersCount int
-		err = db.QueryRow("SELECT COUNT(*) FROM dz_users").Scan(&usersCount)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_users").Scan(&usersCount)
 		require.NoError(t, err)
 		require.Equal(t, 1, usersCount, "should have 1 user even without geoip")
 

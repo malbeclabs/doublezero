@@ -83,7 +83,7 @@ func (t *QueryTool) Register(server *mcp.Server) error {
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, req QueryInput) (*mcp.CallToolResult, QueryOutput, error) {
 		startTime := time.Now()
 		toolName := t.cfg.Name
-		res, err := t.handleQuery(req)
+		res, err := t.handleQuery(ctx, req)
 		duration := time.Since(startTime).Seconds()
 
 		if err != nil {
@@ -98,10 +98,16 @@ func (t *QueryTool) Register(server *mcp.Server) error {
 	return nil
 }
 
-func (t *QueryTool) handleQuery(req QueryInput) (QueryOutput, error) {
+func (t *QueryTool) handleQuery(ctx context.Context, req QueryInput) (QueryOutput, error) {
 	t.log.Debug("query: running query tool")
 
-	rows, err := t.db.Query(req.SQL)
+	conn, err := t.db.Conn(ctx)
+	if err != nil {
+		return QueryOutput{}, fmt.Errorf("failed to get connection: %w", err)
+	}
+	defer conn.Close()
+
+	rows, err := conn.QueryContext(ctx, req.SQL)
 	if err != nil {
 		return QueryOutput{}, fmt.Errorf("failed to execute query: %w", err)
 	}

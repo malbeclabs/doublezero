@@ -16,26 +16,61 @@ import (
 
 type failingDB struct{}
 
-func (f *failingDB) Exec(query string, args ...any) (sql.Result, error) {
-	return nil, errors.New("database error")
-}
-
-func (f *failingDB) Query(query string, args ...any) (*sql.Rows, error) {
-	return nil, errors.New("database error")
-}
-
-func (f *failingDB) QueryRow(query string, args ...any) *sql.Row {
-	return &sql.Row{}
-}
-
-func (f *failingDB) Begin() (*sql.Tx, error) {
-	return nil, errors.New("database error")
-}
-
 func (f *failingDB) Close() error {
 	return nil
 }
 
+func (f *failingDB) Catalog() string {
+	return "main"
+}
+
+func (f *failingDB) Schema() string {
+	return "default"
+}
+
+func (f *failingDB) Conn(ctx context.Context) (duck.Connection, error) {
+	return &failingDBConn{db: f}, nil
+}
+
+type failingDBConn struct {
+	db *failingDB
+}
+
+func (f *failingDBConn) DB() duck.DB {
+	if f.db == nil {
+		return &failingDB{}
+	}
+	return f.db
+}
+
+func (f *failingDBConn) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	return nil, errors.New("database error")
+}
+
+func (f *failingDBConn) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	return nil, errors.New("database error")
+}
+
+func (f *failingDBConn) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
+	return &sql.Row{}
+}
+
+func (f *failingDBConn) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
+	return nil, errors.New("database error")
+}
+
+func (f *failingDBConn) Close() error {
+	return nil
+}
+
+func testDB(t *testing.T) duck.DB {
+	db, err := duck.NewDB(t.Context(), "", slog.New(slog.NewTextHandler(os.Stderr, nil)))
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		db.Close()
+	})
+	return db
+}
 func TestAI_MCP_GeoIP_Store_NewStore(t *testing.T) {
 	t.Parallel()
 
@@ -66,9 +101,7 @@ func TestAI_MCP_GeoIP_Store_NewStore(t *testing.T) {
 	t.Run("returns store when config is valid", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -85,9 +118,7 @@ func TestAI_MCP_GeoIP_Store_CreateTablesIfNotExists(t *testing.T) {
 	t.Run("creates table", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -100,7 +131,11 @@ func TestAI_MCP_GeoIP_Store_CreateTablesIfNotExists(t *testing.T) {
 
 		// Verify table exists by querying it
 		var count int
-		err = db.QueryRow("SELECT COUNT(*) FROM geoip_records").Scan(&count)
+		ctx := context.Background()
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM geoip_records").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 0, count)
 	})
@@ -126,9 +161,7 @@ func TestAI_MCP_GeoIP_Store_UpsertRecords(t *testing.T) {
 	t.Run("upserts records successfully", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -185,7 +218,11 @@ func TestAI_MCP_GeoIP_Store_UpsertRecords(t *testing.T) {
 
 		// Verify records were inserted
 		var count int
-		err = db.QueryRow("SELECT COUNT(*) FROM geoip_records").Scan(&count)
+		ctx := context.Background()
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM geoip_records").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 2, count)
 	})
@@ -193,9 +230,7 @@ func TestAI_MCP_GeoIP_Store_UpsertRecords(t *testing.T) {
 	t.Run("updates existing records", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -229,7 +264,11 @@ func TestAI_MCP_GeoIP_Store_UpsertRecords(t *testing.T) {
 
 		// Verify only one record exists
 		var count int
-		err = db.QueryRow("SELECT COUNT(*) FROM geoip_records").Scan(&count)
+		ctx := context.Background()
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM geoip_records").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 1, count)
 
@@ -244,9 +283,7 @@ func TestAI_MCP_GeoIP_Store_UpsertRecords(t *testing.T) {
 	t.Run("handles empty records", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -264,9 +301,7 @@ func TestAI_MCP_GeoIP_Store_UpsertRecords(t *testing.T) {
 	t.Run("handles nil record", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -285,9 +320,7 @@ func TestAI_MCP_GeoIP_Store_UpsertRecords(t *testing.T) {
 	t.Run("handles context cancellation", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -310,7 +343,7 @@ func TestAI_MCP_GeoIP_Store_UpsertRecords(t *testing.T) {
 
 		err = store.UpsertRecords(ctx, records)
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "context cancelled")
+		require.Contains(t, err.Error(), "context canceled")
 	})
 }
 
@@ -320,9 +353,7 @@ func TestAI_MCP_GeoIP_Store_GetRecord(t *testing.T) {
 	t.Run("returns record when found", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -381,9 +412,7 @@ func TestAI_MCP_GeoIP_Store_GetRecord(t *testing.T) {
 	t.Run("returns nil when not found", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -402,9 +431,7 @@ func TestAI_MCP_GeoIP_Store_GetRecord(t *testing.T) {
 	t.Run("returns error when ip is nil", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -421,9 +448,7 @@ func TestAI_MCP_GeoIP_Store_GetRecord(t *testing.T) {
 	t.Run("handles nullable fields", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -463,9 +488,7 @@ func TestAI_MCP_GeoIP_Store_GetRecords(t *testing.T) {
 	t.Run("returns all records", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -518,9 +541,7 @@ func TestAI_MCP_GeoIP_Store_GetRecords(t *testing.T) {
 	t.Run("returns empty slice when no records", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -559,9 +580,7 @@ func TestAI_MCP_GeoIP_Store_IPv6(t *testing.T) {
 	t.Run("handles IPv6 addresses", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),

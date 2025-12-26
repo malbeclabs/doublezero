@@ -1,9 +1,13 @@
 package dzsvc
 
-import sqltools "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/tools/sql"
+import (
+	"context"
 
-func (v *View) SchemaTool() (*sqltools.SchemaTool, error) {
-	return sqltools.NewSchemaTool(sqltools.SchemaToolConfig{
+	sqltools "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/tools/sql"
+)
+
+func (v *View) SchemaTool(ctx context.Context) (*sqltools.SchemaTool, error) {
+	return sqltools.NewSchemaTool(ctx, sqltools.SchemaToolConfig{
 		Logger: v.log,
 		DB:     v.cfg.DB,
 		Schema: SCHEMA,

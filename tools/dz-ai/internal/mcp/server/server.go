@@ -28,7 +28,7 @@ type Server struct {
 	httpServer         *http.Server
 }
 
-func New(cfg Config) (*Server, error) {
+func New(ctx context.Context, cfg Config) (*Server, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -109,7 +109,7 @@ func New(cfg Config) (*Server, error) {
 		Version: cfg.Version,
 	}, nil)
 
-	svcSchemaTool, err := svcView.SchemaTool()
+	svcSchemaTool, err := svcView.SchemaTool(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create serviceability schema tool: %w", err)
 	}
@@ -117,7 +117,7 @@ func New(cfg Config) (*Server, error) {
 		return nil, fmt.Errorf("failed to register serviceability schema tool: %w", err)
 	}
 
-	telemSchemaTool, err := telemView.SchemaTool()
+	telemSchemaTool, err := telemView.SchemaTool(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create telemetry schema tool: %w", err)
 	}
@@ -125,7 +125,7 @@ func New(cfg Config) (*Server, error) {
 		return nil, fmt.Errorf("failed to register telemetry schema tool: %w", err)
 	}
 
-	solanaSchemaTool, err := solanaView.SchemaTool()
+	solanaSchemaTool, err := solanaView.SchemaTool(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create solana schema tool: %w", err)
 	}
@@ -133,7 +133,7 @@ func New(cfg Config) (*Server, error) {
 		return nil, fmt.Errorf("failed to register solana schema tool: %w", err)
 	}
 
-	geoipSchemaTool, err := geoIPStore.SchemaTool()
+	geoipSchemaTool, err := geoIPStore.SchemaTool(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create geoip schema tool: %w", err)
 	}
@@ -142,7 +142,7 @@ func New(cfg Config) (*Server, error) {
 	}
 
 	if telemetryUsageView != nil {
-		telemetryUsageSchemaTool, err := telemetryUsageView.SchemaTool()
+		telemetryUsageSchemaTool, err := telemetryUsageView.SchemaTool(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create telemetry usage schema tool: %w", err)
 		}

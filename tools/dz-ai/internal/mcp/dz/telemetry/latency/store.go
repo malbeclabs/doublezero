@@ -44,9 +44,10 @@ func NewStore(cfg StoreConfig) (*Store, error) {
 }
 
 func (s *Store) CreateTablesIfNotExists() error {
+	tablePrefix := s.db.Catalog() + "." + s.db.Schema() + "."
 	schemas := []string{
-		`CREATE TABLE IF NOT EXISTS dz_device_link_circuits (
-			code VARCHAR PRIMARY KEY,
+		`CREATE TABLE IF NOT EXISTS ` + tablePrefix + `dz_device_link_circuits (
+			code VARCHAR,
 			origin_device_pk VARCHAR,
 			target_device_pk VARCHAR,
 			link_pk VARCHAR,
@@ -56,27 +57,31 @@ func (s *Store) CreateTablesIfNotExists() error {
 			committed_rtt DOUBLE,
 			committed_jitter DOUBLE
 		)`,
-		`CREATE TABLE IF NOT EXISTS dz_device_link_latency_samples (
+		`CREATE TABLE IF NOT EXISTS ` + tablePrefix + `dz_device_link_latency_samples (
 			circuit_code VARCHAR,
 			epoch BIGINT,
 			sample_index INTEGER,
 			timestamp_us BIGINT,
-			rtt_us BIGINT,
-			PRIMARY KEY (circuit_code, epoch, sample_index)
+			rtt_us BIGINT
 		)`,
-		`CREATE TABLE IF NOT EXISTS dz_internet_metro_latency_samples (
+		`CREATE TABLE IF NOT EXISTS ` + tablePrefix + `dz_internet_metro_latency_samples (
 			circuit_code VARCHAR,
 			data_provider VARCHAR,
 			epoch BIGINT,
 			sample_index INTEGER,
 			timestamp_us BIGINT,
-			rtt_us BIGINT,
-			PRIMARY KEY (circuit_code, data_provider, epoch, sample_index)
+			rtt_us BIGINT
 		)`,
 	}
 
+	ctx := context.Background()
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get connection: %w", err)
+	}
+	defer conn.Close()
 	for _, schema := range schemas {
-		if _, err := s.db.Exec(schema); err != nil {
+		if _, err := conn.ExecContext(ctx, schema); err != nil {
 			return fmt.Errorf("failed to create table: %w", err)
 		}
 	}
@@ -85,20 +90,30 @@ func (s *Store) CreateTablesIfNotExists() error {
 }
 
 func (s *Store) ReplaceDeviceLinkCircuits(ctx context.Context, circuits []DeviceLinkCircuit) error {
-	return duck.ReplaceTableViaCSV(ctx, s.log, s.db, "dz_device_link_circuits", len(circuits), func(w *csv.Writer, i int) error {
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get connection: %w", err)
+	}
+	defer conn.Close()
+	return duck.ReplaceTableViaCSV(ctx, s.log, conn, "dz_device_link_circuits", len(circuits), func(w *csv.Writer, i int) error {
 		c := circuits[i]
 		return w.Write([]string{
 			c.Code, c.OriginDevicePK, c.TargetDevicePK, c.LinkPK, c.LinkCode, c.LinkType, c.ContributorCode,
 			fmt.Sprintf("%.6f", c.CommittedRTT), fmt.Sprintf("%.6f", c.CommittedJitter),
 		})
-	})
+	}, []string{"code"})
 }
 
 func (s *Store) AppendDeviceLinkLatencySamples(ctx context.Context, samples []DeviceLinkLatencySample) error {
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get connection: %w", err)
+	}
+	defer conn.Close()
 	return duck.AppendTableViaCSV(
 		ctx,
 		s.log,
-		s.db,
+		conn,
 		"dz_device_link_latency_samples",
 		len(samples),
 		func(w *csv.Writer, i int) error {
@@ -115,10 +130,15 @@ func (s *Store) AppendDeviceLinkLatencySamples(ctx context.Context, samples []De
 }
 
 func (s *Store) AppendInternetMetroLatencySamples(ctx context.Context, samples []InternetMetroLatencySample) error {
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get connection: %w", err)
+	}
+	defer conn.Close()
 	return duck.AppendTableViaCSV(
 		ctx,
 		s.log,
-		s.db,
+		conn,
 		"dz_internet_metro_latency_samples",
 		len(samples),
 		func(w *csv.Writer, i int) error {
@@ -136,10 +156,16 @@ func (s *Store) AppendInternetMetroLatencySamples(ctx context.Context, samples [
 }
 
 func (s *Store) GetExistingMaxSampleIndices() (map[string]int, error) {
+	ctx := context.Background()
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get connection: %w", err)
+	}
+	defer conn.Close()
 	query := `SELECT circuit_code, epoch, MAX(sample_index) as max_idx
 	          FROM dz_device_link_latency_samples
 	          GROUP BY circuit_code, epoch`
-	rows, err := s.db.Query(query)
+	rows, err := conn.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query existing max indices: %w", err)
 	}
@@ -165,10 +191,16 @@ func (s *Store) GetExistingMaxSampleIndices() (map[string]int, error) {
 }
 
 func (s *Store) GetExistingInternetMaxSampleIndices() (map[string]int, error) {
+	ctx := context.Background()
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get connection: %w", err)
+	}
+	defer conn.Close()
 	query := `SELECT circuit_code, data_provider, epoch, MAX(sample_index) as max_idx
 	          FROM dz_internet_metro_latency_samples
 	          GROUP BY circuit_code, data_provider, epoch`
-	rows, err := s.db.Query(query)
+	rows, err := conn.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query existing max indices: %w", err)
 	}

@@ -1,7 +1,13 @@
 package sqltools
 
-import "database/sql"
+import (
+	"context"
+
+	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/duck"
+)
 
 type DB interface {
-	Query(query string, args ...any) (*sql.Rows, error)
+	Catalog() string
+	Schema() string
+	Conn(ctx context.Context) (duck.Connection, error)
 }

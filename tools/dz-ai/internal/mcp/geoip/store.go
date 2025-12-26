@@ -46,9 +46,10 @@ func NewStore(cfg StoreConfig) (*Store, error) {
 }
 
 func (s *Store) CreateTablesIfNotExists() error {
+	tablePrefix := s.db.Catalog() + "." + s.db.Schema() + "."
 	sqls := []string{
-		`CREATE TABLE IF NOT EXISTS geoip_records (
-			ip VARCHAR PRIMARY KEY,
+		`CREATE TABLE IF NOT EXISTS ` + tablePrefix + `geoip_records (
+			ip VARCHAR,
 			country_code VARCHAR,
 			country VARCHAR,
 			region VARCHAR,
@@ -67,8 +68,14 @@ func (s *Store) CreateTablesIfNotExists() error {
 			is_satellite_provider BOOLEAN
 		)`,
 	}
+	ctx := context.Background()
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get connection: %w", err)
+	}
+	defer conn.Close()
 	for _, sql := range sqls {
-		if _, err := s.db.Exec(sql); err != nil {
+		if _, err := conn.ExecContext(ctx, sql); err != nil {
 			return fmt.Errorf("failed to create table: %w", err)
 		}
 	}
@@ -77,7 +84,12 @@ func (s *Store) CreateTablesIfNotExists() error {
 
 func (s *Store) UpsertRecords(ctx context.Context, records []*geoip.Record) error {
 	s.log.Debug("geoip/store: upserting records", "count", len(records))
-	return duck.UpsertTableViaCSV(ctx, s.log, s.db, "geoip_records", len(records), func(w *csv.Writer, i int) error {
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get connection: %w", err)
+	}
+	defer conn.Close()
+	return duck.UpsertTableViaCSV(ctx, s.log, conn, "geoip_records", len(records), func(w *csv.Writer, i int) error {
 		r := records[i]
 		if r == nil {
 			return fmt.Errorf("record at index %d is nil", i)
@@ -105,7 +117,7 @@ func (s *Store) UpsertRecords(ctx context.Context, records []*geoip.Record) erro
 			fmt.Sprintf("%t", r.IsAnonymousProxy),
 			fmt.Sprintf("%t", r.IsSatelliteProvider),
 		})
-	})
+	}, []string{"ip"})
 }
 
 func (s *Store) GetRecord(ip net.IP) (*geoip.Record, error) {
@@ -114,11 +126,17 @@ func (s *Store) GetRecord(ip net.IP) (*geoip.Record, error) {
 	}
 	ipStr := ip.String()
 
+	ctx := context.Background()
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get connection: %w", err)
+	}
+	defer conn.Close()
 	query := `SELECT ip, country_code, country, region, city, city_id, metro_name, latitude, longitude,
 	          postal_code, time_zone, accuracy_radius, asn, asn_org,
 	          is_anycast, is_anonymous_proxy, is_satellite_provider
 	          FROM geoip_records WHERE ip = ?`
-	row := s.db.QueryRow(query, ipStr)
+	row := conn.QueryRowContext(ctx, query, ipStr)
 
 	var record geoip.Record
 	var ipStrFromDB string
@@ -137,7 +155,7 @@ func (s *Store) GetRecord(ip net.IP) (*geoip.Record, error) {
 	var isAnonymousProxy sql.NullBool
 	var isSatelliteProvider sql.NullBool
 
-	err := row.Scan(
+	err = row.Scan(
 		&ipStrFromDB,
 		&countryCode,
 		&country,
@@ -211,11 +229,17 @@ func (s *Store) GetRecord(ip net.IP) (*geoip.Record, error) {
 }
 
 func (s *Store) GetRecords() ([]*geoip.Record, error) {
+	ctx := context.Background()
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get connection: %w", err)
+	}
+	defer conn.Close()
 	query := `SELECT ip, country_code, country, region, city, city_id, metro_name, latitude, longitude,
 	          postal_code, time_zone, accuracy_radius, asn, asn_org,
 	          is_anycast, is_anonymous_proxy, is_satellite_provider
 	          FROM geoip_records`
-	rows, err := s.db.Query(query)
+	rows, err := conn.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query records: %w", err)
 	}

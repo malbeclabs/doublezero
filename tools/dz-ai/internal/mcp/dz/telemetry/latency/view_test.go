@@ -71,10 +71,7 @@ type mockGeoIPStore struct {
 
 func newMockGeoIPStore(t *testing.T) (*mockGeoIPStore, error) {
 	t.Helper()
-	db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-	if err != nil {
-		return nil, err
-	}
+	db := testDB(t)
 
 	store, err := mcpgeoip.NewStore(mcpgeoip.StoreConfig{
 		Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -94,15 +91,22 @@ func newMockGeoIPStore(t *testing.T) (*mockGeoIPStore, error) {
 	}, nil
 }
 
+func testDB(t *testing.T) duck.DB {
+	db, err := duck.NewDB(t.Context(), "", slog.New(slog.NewTextHandler(os.Stderr, nil)))
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		db.Close()
+	})
+	return db
+}
+
 func TestAI_MCP_Telemetry_View_Ready(t *testing.T) {
 	t.Parallel()
 
 	t.Run("returns false when not ready", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		geoipStore, err := newMockGeoIPStore(t)
 		require.NoError(t, err)
@@ -143,9 +147,7 @@ func TestAI_MCP_Telemetry_View_WaitReady(t *testing.T) {
 	t.Run("returns error when context is cancelled", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		geoipStore, err := newMockGeoIPStore(t)
 		require.NoError(t, err)
@@ -240,9 +242,7 @@ func TestAI_MCP_Telemetry_View_Refresh_SavesToDB(t *testing.T) {
 	t.Run("saves device-link circuits to database", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		// First, set up serviceability view with devices and links
 		devicePK1 := [32]byte{1, 2, 3, 4}
@@ -350,13 +350,16 @@ func TestAI_MCP_Telemetry_View_Refresh_SavesToDB(t *testing.T) {
 
 		// Verify circuits were saved
 		var circuitCount int
-		err = db.QueryRow("SELECT COUNT(*) FROM dz_device_link_circuits").Scan(&circuitCount)
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_device_link_circuits").Scan(&circuitCount)
 		require.NoError(t, err)
 		require.Equal(t, 2, circuitCount) // Forward and reverse circuits
 
 		var code, originDevicePK, targetDevicePK, linkPKStr, linkCode, linkType, contributorCode string
 		var committedRTT, committedJitter float64
-		err = db.QueryRow("SELECT code, origin_device_pk, target_device_pk, link_pk, link_code, link_type, contributor_code, committed_rtt, committed_jitter FROM dz_device_link_circuits LIMIT 1").Scan(&code, &originDevicePK, &targetDevicePK, &linkPKStr, &linkCode, &linkType, &contributorCode, &committedRTT, &committedJitter)
+		err = conn.QueryRowContext(ctx, "SELECT code, origin_device_pk, target_device_pk, link_pk, link_code, link_type, contributor_code, committed_rtt, committed_jitter FROM dz_device_link_circuits LIMIT 1").Scan(&code, &originDevicePK, &targetDevicePK, &linkPKStr, &linkCode, &linkType, &contributorCode, &committedRTT, &committedJitter)
 		require.NoError(t, err)
 		require.Contains(t, code, "DEV1")
 		require.Contains(t, code, "DEV2")
@@ -371,9 +374,7 @@ func TestAI_MCP_Telemetry_View_Refresh_SavesToDB(t *testing.T) {
 	t.Run("saves device-link latency samples to database", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		// Set up serviceability view
 		devicePK1 := [32]byte{1, 2, 3, 4}
@@ -496,14 +497,17 @@ func TestAI_MCP_Telemetry_View_Refresh_SavesToDB(t *testing.T) {
 
 		// Verify samples were saved
 		var sampleCount int
-		err = db.QueryRow("SELECT COUNT(*) FROM dz_device_link_latency_samples").Scan(&sampleCount)
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_device_link_latency_samples").Scan(&sampleCount)
 		require.NoError(t, err)
 		require.Equal(t, 3, sampleCount)
 
 		var circuitCode string
 		var epoch, sampleIndex int64
 		var timestampUs, rttUs int64
-		err = db.QueryRow("SELECT circuit_code, epoch, sample_index, timestamp_us, rtt_us FROM dz_device_link_latency_samples ORDER BY sample_index LIMIT 1").Scan(&circuitCode, &epoch, &sampleIndex, &timestampUs, &rttUs)
+		err = conn.QueryRowContext(ctx, "SELECT circuit_code, epoch, sample_index, timestamp_us, rtt_us FROM dz_device_link_latency_samples ORDER BY sample_index LIMIT 1").Scan(&circuitCode, &epoch, &sampleIndex, &timestampUs, &rttUs)
 		require.NoError(t, err)
 		require.Contains(t, circuitCode, "DEV1")
 		require.Contains(t, circuitCode, "DEV2")
@@ -516,9 +520,7 @@ func TestAI_MCP_Telemetry_View_Refresh_SavesToDB(t *testing.T) {
 	t.Run("reads data back from database correctly", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		// Set up serviceability view
 		devicePK1 := [32]byte{1, 2, 3, 4}
@@ -605,7 +607,10 @@ func TestAI_MCP_Telemetry_View_Refresh_SavesToDB(t *testing.T) {
 
 		// Verify we can read devices back by querying the database directly
 		var deviceCount int
-		err = db.QueryRow("SELECT COUNT(*) FROM dz_devices").Scan(&deviceCount)
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_devices").Scan(&deviceCount)
 		require.NoError(t, err)
 		require.Equal(t, 2, deviceCount)
 
@@ -666,9 +671,7 @@ func TestAI_MCP_Telemetry_View_IncrementalAppend(t *testing.T) {
 	t.Run("device-link samples are appended incrementally", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		// Set up serviceability view
 		devicePK1 := [32]byte{1, 2, 3, 4}
@@ -824,13 +827,16 @@ func TestAI_MCP_Telemetry_View_IncrementalAppend(t *testing.T) {
 		require.NoError(t, err)
 
 		var sampleCount int
-		err = db.QueryRow("SELECT COUNT(*) FROM dz_device_link_latency_samples").Scan(&sampleCount)
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_device_link_latency_samples").Scan(&sampleCount)
 		require.NoError(t, err)
 		require.Equal(t, 3, sampleCount, "first refresh should insert 3 samples")
 
 		// Verify the first 3 samples are correct
 		var maxIdx int64
-		err = db.QueryRow("SELECT MAX(sample_index) FROM dz_device_link_latency_samples").Scan(&maxIdx)
+		err = conn.QueryRowContext(ctx, "SELECT MAX(sample_index) FROM dz_device_link_latency_samples").Scan(&maxIdx)
 		require.NoError(t, err)
 		require.Equal(t, int64(2), maxIdx, "max sample_index should be 2 after first refresh")
 
@@ -838,30 +844,33 @@ func TestAI_MCP_Telemetry_View_IncrementalAppend(t *testing.T) {
 		err = view.Refresh(ctx)
 		require.NoError(t, err)
 
-		err = db.QueryRow("SELECT COUNT(*) FROM dz_device_link_latency_samples").Scan(&sampleCount)
+		conn, err = db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_device_link_latency_samples").Scan(&sampleCount)
 		require.NoError(t, err)
 		require.Equal(t, 5, sampleCount, "second refresh should append 2 more samples, total 5")
 
 		// Verify all samples are present and correct
 		var rttUs int64
-		err = db.QueryRow("SELECT rtt_us FROM dz_device_link_latency_samples WHERE sample_index = 0").Scan(&rttUs)
+		err = conn.QueryRowContext(ctx, "SELECT rtt_us FROM dz_device_link_latency_samples WHERE sample_index = 0").Scan(&rttUs)
 		require.NoError(t, err)
 		require.Equal(t, int64(5000), rttUs, "sample 0 should remain unchanged")
 
-		err = db.QueryRow("SELECT rtt_us FROM dz_device_link_latency_samples WHERE sample_index = 2").Scan(&rttUs)
+		err = conn.QueryRowContext(ctx, "SELECT rtt_us FROM dz_device_link_latency_samples WHERE sample_index = 2").Scan(&rttUs)
 		require.NoError(t, err)
 		require.Equal(t, int64(7000), rttUs, "sample 2 should remain unchanged")
 
-		err = db.QueryRow("SELECT rtt_us FROM dz_device_link_latency_samples WHERE sample_index = 3").Scan(&rttUs)
+		err = conn.QueryRowContext(ctx, "SELECT rtt_us FROM dz_device_link_latency_samples WHERE sample_index = 3").Scan(&rttUs)
 		require.NoError(t, err)
 		require.Equal(t, int64(8000), rttUs, "sample 3 should be newly inserted")
 
-		err = db.QueryRow("SELECT rtt_us FROM dz_device_link_latency_samples WHERE sample_index = 4").Scan(&rttUs)
+		err = conn.QueryRowContext(ctx, "SELECT rtt_us FROM dz_device_link_latency_samples WHERE sample_index = 4").Scan(&rttUs)
 		require.NoError(t, err)
 		require.Equal(t, int64(9000), rttUs, "sample 4 should be newly inserted")
 
 		// Verify max index is now 4
-		err = db.QueryRow("SELECT MAX(sample_index) FROM dz_device_link_latency_samples").Scan(&maxIdx)
+		err = conn.QueryRowContext(ctx, "SELECT MAX(sample_index) FROM dz_device_link_latency_samples").Scan(&maxIdx)
 		require.NoError(t, err)
 		require.Equal(t, int64(4), maxIdx, "max sample_index should be 4 after second refresh")
 	})
@@ -869,9 +878,7 @@ func TestAI_MCP_Telemetry_View_IncrementalAppend(t *testing.T) {
 	t.Run("internet-metro samples are appended incrementally", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		// Set up serviceability view with metros
 		metroPK1 := [32]byte{1, 2, 3, 4}
@@ -993,13 +1000,16 @@ func TestAI_MCP_Telemetry_View_IncrementalAppend(t *testing.T) {
 		require.NoError(t, err)
 
 		var sampleCount int
-		err = db.QueryRow("SELECT COUNT(*) FROM dz_internet_metro_latency_samples").Scan(&sampleCount)
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_internet_metro_latency_samples").Scan(&sampleCount)
 		require.NoError(t, err)
 		require.Equal(t, 2, sampleCount, "first refresh should insert 2 samples")
 
 		// Verify the first 2 samples are correct
 		var maxIdx int64
-		err = db.QueryRow("SELECT MAX(sample_index) FROM dz_internet_metro_latency_samples").Scan(&maxIdx)
+		err = conn.QueryRowContext(ctx, "SELECT MAX(sample_index) FROM dz_internet_metro_latency_samples").Scan(&maxIdx)
 		require.NoError(t, err)
 		require.Equal(t, int64(1), maxIdx, "max sample_index should be 1 after first refresh")
 
@@ -1007,30 +1017,33 @@ func TestAI_MCP_Telemetry_View_IncrementalAppend(t *testing.T) {
 		err = view.Refresh(ctx)
 		require.NoError(t, err)
 
-		err = db.QueryRow("SELECT COUNT(*) FROM dz_internet_metro_latency_samples").Scan(&sampleCount)
+		conn, err = db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_internet_metro_latency_samples").Scan(&sampleCount)
 		require.NoError(t, err)
 		require.Equal(t, 4, sampleCount, "second refresh should append 2 more samples, total 4")
 
 		// Verify all samples are present and correct
 		var rttUs int64
-		err = db.QueryRow("SELECT rtt_us FROM dz_internet_metro_latency_samples WHERE sample_index = 0").Scan(&rttUs)
+		err = conn.QueryRowContext(ctx, "SELECT rtt_us FROM dz_internet_metro_latency_samples WHERE sample_index = 0").Scan(&rttUs)
 		require.NoError(t, err)
 		require.Equal(t, int64(10000), rttUs, "sample 0 should remain unchanged")
 
-		err = db.QueryRow("SELECT rtt_us FROM dz_internet_metro_latency_samples WHERE sample_index = 1").Scan(&rttUs)
+		err = conn.QueryRowContext(ctx, "SELECT rtt_us FROM dz_internet_metro_latency_samples WHERE sample_index = 1").Scan(&rttUs)
 		require.NoError(t, err)
 		require.Equal(t, int64(11000), rttUs, "sample 1 should remain unchanged")
 
-		err = db.QueryRow("SELECT rtt_us FROM dz_internet_metro_latency_samples WHERE sample_index = 2").Scan(&rttUs)
+		err = conn.QueryRowContext(ctx, "SELECT rtt_us FROM dz_internet_metro_latency_samples WHERE sample_index = 2").Scan(&rttUs)
 		require.NoError(t, err)
 		require.Equal(t, int64(12000), rttUs, "sample 2 should be newly inserted")
 
-		err = db.QueryRow("SELECT rtt_us FROM dz_internet_metro_latency_samples WHERE sample_index = 3").Scan(&rttUs)
+		err = conn.QueryRowContext(ctx, "SELECT rtt_us FROM dz_internet_metro_latency_samples WHERE sample_index = 3").Scan(&rttUs)
 		require.NoError(t, err)
 		require.Equal(t, int64(13000), rttUs, "sample 3 should be newly inserted")
 
 		// Verify max index is now 3
-		err = db.QueryRow("SELECT MAX(sample_index) FROM dz_internet_metro_latency_samples").Scan(&maxIdx)
+		err = conn.QueryRowContext(ctx, "SELECT MAX(sample_index) FROM dz_internet_metro_latency_samples").Scan(&maxIdx)
 		require.NoError(t, err)
 		require.Equal(t, int64(3), maxIdx, "max sample_index should be 3 after second refresh")
 	})

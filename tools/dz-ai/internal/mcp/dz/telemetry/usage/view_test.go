@@ -31,14 +31,21 @@ func (m *mockInfluxDBClient) Close() error {
 	return nil
 }
 
+func testDB(t *testing.T) duck.DB {
+	db, err := duck.NewDB(t.Context(), "", slog.New(slog.NewTextHandler(os.Stderr, nil)))
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		db.Close()
+	})
+	return db
+}
+
 func TestAI_MCP_TelemetryUsage_View_ViewConfig_Validate(t *testing.T) {
 	t.Parallel()
 
 	t.Run("returns error when logger is missing", func(t *testing.T) {
 		t.Parallel()
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		cfg := ViewConfig{
 			DB:              db,
@@ -46,7 +53,7 @@ func TestAI_MCP_TelemetryUsage_View_ViewConfig_Validate(t *testing.T) {
 			Bucket:          "test-bucket",
 			RefreshInterval: time.Second,
 		}
-		err = cfg.Validate()
+		err := cfg.Validate()
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "logger is required")
 	})
@@ -67,9 +74,7 @@ func TestAI_MCP_TelemetryUsage_View_ViewConfig_Validate(t *testing.T) {
 
 	t.Run("returns error when influxdb client is missing", func(t *testing.T) {
 		t.Parallel()
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		cfg := ViewConfig{
 			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -77,16 +82,14 @@ func TestAI_MCP_TelemetryUsage_View_ViewConfig_Validate(t *testing.T) {
 			Bucket:          "test-bucket",
 			RefreshInterval: time.Second,
 		}
-		err = cfg.Validate()
+		err := cfg.Validate()
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "influxdb client is required")
 	})
 
 	t.Run("returns error when bucket is empty", func(t *testing.T) {
 		t.Parallel()
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		cfg := ViewConfig{
 			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -94,16 +97,14 @@ func TestAI_MCP_TelemetryUsage_View_ViewConfig_Validate(t *testing.T) {
 			InfluxDB:        &mockInfluxDBClient{},
 			RefreshInterval: time.Second,
 		}
-		err = cfg.Validate()
+		err := cfg.Validate()
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "influxdb bucket is required")
 	})
 
 	t.Run("returns error when refresh interval is zero", func(t *testing.T) {
 		t.Parallel()
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		cfg := ViewConfig{
 			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -112,16 +113,14 @@ func TestAI_MCP_TelemetryUsage_View_ViewConfig_Validate(t *testing.T) {
 			Bucket:          "test-bucket",
 			RefreshInterval: 0,
 		}
-		err = cfg.Validate()
+		err := cfg.Validate()
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "refresh interval must be greater than 0")
 	})
 
 	t.Run("sets default query window when zero", func(t *testing.T) {
 		t.Parallel()
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		cfg := ViewConfig{
 			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -131,16 +130,14 @@ func TestAI_MCP_TelemetryUsage_View_ViewConfig_Validate(t *testing.T) {
 			RefreshInterval: time.Second,
 			QueryWindow:     0,
 		}
-		err = cfg.Validate()
+		err := cfg.Validate()
 		require.NoError(t, err)
 		require.Equal(t, 1*time.Hour, cfg.QueryWindow)
 	})
 
 	t.Run("sets default clock when nil", func(t *testing.T) {
 		t.Parallel()
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		cfg := ViewConfig{
 			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -150,16 +147,14 @@ func TestAI_MCP_TelemetryUsage_View_ViewConfig_Validate(t *testing.T) {
 			RefreshInterval: time.Second,
 			Clock:           nil,
 		}
-		err = cfg.Validate()
+		err := cfg.Validate()
 		require.NoError(t, err)
 		require.NotNil(t, cfg.Clock)
 	})
 
 	t.Run("validates successfully with all required fields", func(t *testing.T) {
 		t.Parallel()
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		cfg := ViewConfig{
 			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -169,7 +164,7 @@ func TestAI_MCP_TelemetryUsage_View_ViewConfig_Validate(t *testing.T) {
 			RefreshInterval: time.Second,
 			QueryWindow:     2 * time.Hour,
 		}
-		err = cfg.Validate()
+		err := cfg.Validate()
 		require.NoError(t, err)
 	})
 }
@@ -186,9 +181,7 @@ func TestAI_MCP_TelemetryUsage_View_NewView(t *testing.T) {
 
 	t.Run("creates view successfully", func(t *testing.T) {
 		t.Parallel()
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		view, err := NewView(ViewConfig{
 			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -268,14 +261,16 @@ func TestAI_MCP_TelemetryUsage_View_buildLinkLookup(t *testing.T) {
 
 	t.Run("builds link lookup map successfully", func(t *testing.T) {
 		t.Parallel()
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
+		db := testDB(t)
+
+		conn, err := db.Conn(t.Context())
 		require.NoError(t, err)
-		defer db.Close()
+		defer conn.Close()
 
 		// Create links table
-		_, err = db.Exec(`
+		_, err = conn.ExecContext(t.Context(), `
 			CREATE TABLE dz_links (
-				pk VARCHAR PRIMARY KEY,
+				pk VARCHAR,
 				side_a_pk VARCHAR,
 				side_a_iface_name VARCHAR,
 				side_z_pk VARCHAR,
@@ -285,7 +280,7 @@ func TestAI_MCP_TelemetryUsage_View_buildLinkLookup(t *testing.T) {
 		require.NoError(t, err)
 
 		// Insert test links
-		_, err = db.Exec(`
+		_, err = conn.ExecContext(t.Context(), `
 			INSERT INTO dz_links (pk, side_a_pk, side_a_iface_name, side_z_pk, side_z_iface_name)
 			VALUES
 				('link1', 'device1', 'eth0', 'device2', 'eth1'),
@@ -332,14 +327,15 @@ func TestAI_MCP_TelemetryUsage_View_buildLinkLookup(t *testing.T) {
 
 	t.Run("handles empty links table", func(t *testing.T) {
 		t.Parallel()
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		// Create empty links table
-		_, err = db.Exec(`
+		conn, err := db.Conn(t.Context())
+		require.NoError(t, err)
+		defer conn.Close()
+		_, err = conn.ExecContext(t.Context(), `
 			CREATE TABLE dz_links (
-				pk VARCHAR PRIMARY KEY,
+				pk VARCHAR,
 				side_a_pk VARCHAR,
 				side_a_iface_name VARCHAR,
 				side_z_pk VARCHAR,
@@ -370,9 +366,7 @@ func TestAI_MCP_TelemetryUsage_View_Ready(t *testing.T) {
 
 	t.Run("returns false when not ready", func(t *testing.T) {
 		t.Parallel()
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		view, err := NewView(ViewConfig{
 			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -389,14 +383,15 @@ func TestAI_MCP_TelemetryUsage_View_Ready(t *testing.T) {
 
 	t.Run("returns true after successful refresh", func(t *testing.T) {
 		t.Parallel()
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		// Create links table for buildLinkLookup
-		_, err = db.Exec(`
+		conn, err := db.Conn(t.Context())
+		require.NoError(t, err)
+		defer conn.Close()
+		_, err = conn.ExecContext(t.Context(), `
 			CREATE TABLE dz_links (
-				pk VARCHAR PRIMARY KEY,
+				pk VARCHAR,
 				side_a_pk VARCHAR,
 				side_a_iface_name VARCHAR,
 				side_z_pk VARCHAR,
@@ -427,8 +422,7 @@ func TestAI_MCP_TelemetryUsage_View_Ready(t *testing.T) {
 
 		require.False(t, view.Ready())
 
-		ctx := context.Background()
-		err = view.Refresh(ctx)
+		err = view.Refresh(t.Context())
 		require.NoError(t, err)
 
 		require.True(t, view.Ready())
@@ -440,14 +434,15 @@ func TestAI_MCP_TelemetryUsage_View_WaitReady(t *testing.T) {
 
 	t.Run("returns immediately when already ready", func(t *testing.T) {
 		t.Parallel()
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		// Create links table
-		_, err = db.Exec(`
+		conn, err := db.Conn(t.Context())
+		require.NoError(t, err)
+		defer conn.Close()
+		_, err = conn.ExecContext(t.Context(), `
 			CREATE TABLE dz_links (
-				pk VARCHAR PRIMARY KEY,
+				pk VARCHAR,
 				side_a_pk VARCHAR,
 				side_a_iface_name VARCHAR,
 				side_z_pk VARCHAR,
@@ -474,25 +469,25 @@ func TestAI_MCP_TelemetryUsage_View_WaitReady(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		ctx := context.Background()
-		err = view.Refresh(ctx)
+		err = view.Refresh(t.Context())
 		require.NoError(t, err)
 
 		// Should return immediately
-		err = view.WaitReady(ctx)
+		err = view.WaitReady(t.Context())
 		require.NoError(t, err)
 	})
 
 	t.Run("handles context cancellation", func(t *testing.T) {
 		t.Parallel()
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		// Create links table
-		_, err = db.Exec(`
+		conn, err := db.Conn(t.Context())
+		require.NoError(t, err)
+		defer conn.Close()
+		_, err = conn.ExecContext(t.Context(), `
 			CREATE TABLE dz_links (
-				pk VARCHAR PRIMARY KEY,
+				pk VARCHAR,
 				side_a_pk VARCHAR,
 				side_a_iface_name VARCHAR,
 				side_z_pk VARCHAR,
@@ -511,7 +506,7 @@ func TestAI_MCP_TelemetryUsage_View_WaitReady(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(t.Context())
 		cancel() // Cancel immediately
 
 		err = view.WaitReady(ctx)
@@ -525,9 +520,7 @@ func TestAI_MCP_TelemetryUsage_View_Store(t *testing.T) {
 
 	t.Run("returns the underlying store", func(t *testing.T) {
 		t.Parallel()
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		view, err := NewView(ViewConfig{
 			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -549,9 +542,7 @@ func TestAI_MCP_TelemetryUsage_View_Close(t *testing.T) {
 
 	t.Run("closes InfluxDB client successfully", func(t *testing.T) {
 		t.Parallel()
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		closed := false
 		mockInflux := &mockInfluxDBClient{
@@ -578,9 +569,7 @@ func TestAI_MCP_TelemetryUsage_View_Close(t *testing.T) {
 
 	t.Run("handles nil InfluxDB client", func(t *testing.T) {
 		t.Parallel()
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		view, err := NewView(ViewConfig{
 			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -605,9 +594,7 @@ func TestAI_MCP_TelemetryUsage_View_convertRowsToUsage(t *testing.T) {
 
 	t.Run("converts rows with tunnel ID extraction", func(t *testing.T) {
 		t.Parallel()
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		view, err := NewView(ViewConfig{
 			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -664,9 +651,7 @@ func TestAI_MCP_TelemetryUsage_View_convertRowsToUsage(t *testing.T) {
 
 	t.Run("handles first row as baseline for non-sparse counters", func(t *testing.T) {
 		t.Parallel()
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		view, err := NewView(ViewConfig{
 			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -712,9 +697,7 @@ func TestAI_MCP_TelemetryUsage_View_convertRowsToUsage(t *testing.T) {
 
 	t.Run("computes delta duration", func(t *testing.T) {
 		t.Parallel()
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		view, err := NewView(ViewConfig{
 			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),

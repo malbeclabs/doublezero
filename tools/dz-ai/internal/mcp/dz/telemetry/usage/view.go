@@ -200,36 +200,70 @@ func (v *View) Refresh(ctx context.Context) error {
 		v.log.Debug("telemetry/usage: no existing data, performing initial refresh")
 	}
 
-	// Determine query start time: use max timestamp if available, otherwise use QueryWindow
+	// Determine query start time
 	now := v.cfg.Clock.Now()
+	queryWindowStart := now.Add(-v.cfg.QueryWindow)
 	var queryStart time.Time
+
 	if maxTime != nil {
-		// Query from the latest timestamp we have (incremental update)
-		// Include a small overlap (5 minutes) to catch late-arriving data with past timestamps
-		// Upsert will handle any duplicates
-		overlap := 5 * time.Minute
-		queryStart = maxTime.Add(-overlap)
-		newDataWindow := now.Sub(*maxTime)
-		totalQueryWindow := now.Sub(queryStart)
-		v.log.Debug("telemetry/usage: incremental refresh",
-			"maxTime", maxTime.UTC(),
-			"queryStart", queryStart.UTC(),
-			"now", now.UTC(),
-			"newDataWindow", newDataWindow,
-			"totalQueryWindow", totalQueryWindow,
-			"overlap", overlap)
+		// Check if maxTime is within the query window
+		if maxTime.After(queryWindowStart) {
+			// DuckDB has data within the query window, do incremental refresh
+			// Include a small overlap (5 minutes) to catch late-arriving data with past timestamps
+			// Upsert will handle any duplicates
+			overlap := 5 * time.Minute
+			queryStart = maxTime.Add(-overlap)
+			newDataWindow := now.Sub(*maxTime)
+			totalQueryWindow := now.Sub(queryStart)
+			v.log.Debug("telemetry/usage: incremental refresh (data within query window)",
+				"maxTime", maxTime.UTC(),
+				"queryStart", queryStart.UTC(),
+				"now", now.UTC(),
+				"newDataWindow", newDataWindow,
+				"totalQueryWindow", totalQueryWindow,
+				"overlap", overlap)
+		} else {
+			// DuckDB has data but it's older than the query window
+			// Start from the query window to avoid querying too much old data
+			queryStart = queryWindowStart
+			age := now.Sub(*maxTime)
+			v.log.Debug("telemetry/usage: data exists but too old, starting from query window",
+				"maxTime", maxTime.UTC(),
+				"queryStart", queryStart.UTC(),
+				"now", now.UTC(),
+				"dataAge", age)
+		}
 	} else {
-		// First refresh: query the full window
-		queryStart = now.Add(-v.cfg.QueryWindow)
+		// No data in DuckDB, query the full window
+		queryStart = queryWindowStart
 		v.log.Debug("telemetry/usage: initial full refresh", "from", queryStart, "to", now)
 	}
 
 	// Query for baseline counter values before the window
-	// For first refresh, query InfluxDB. For incremental refreshes, use DuckDB only.
+	// Always try DuckDB first; only query InfluxDB if DuckDB returns 0 baselines
 	var baselines *CounterBaselines
-	if maxTime == nil {
-		// First refresh: query InfluxDB for baselines
-		v.log.Debug("telemetry/usage: querying baselines from influxdb (first refresh)")
+	v.log.Debug("telemetry/usage: querying baselines from duckdb")
+	duckStart := time.Now()
+	duckBaselines, err := v.queryBaselineCountersFromDuckDB(queryStart)
+	duckDuration := time.Since(duckStart)
+	if err != nil {
+		v.log.Warn("telemetry/usage: failed to query baseline counters from duckdb", "error", err, "duration", duckDuration.String())
+		return fmt.Errorf("failed to query baseline counters from duckdb: %w", err)
+	} else {
+		totalKeys := v.countUniqueBaselineKeys(duckBaselines)
+		if totalKeys > 0 {
+			// DuckDB has baseline data, use it
+			v.log.Info("telemetry/usage: queried baselines from duckdb", "unique_keys", totalKeys, "duration", duckDuration.String())
+			baselines = duckBaselines
+		} else {
+			// DuckDB query succeeded but returned 0 baselines, will query InfluxDB
+			v.log.Debug("telemetry/usage: no baseline data in duckdb (0 rows), will query influxdb", "duration", duckDuration.String())
+		}
+	}
+
+	// Query InfluxDB only if DuckDB returned 0 baselines
+	if baselines == nil {
+		v.log.Debug("telemetry/usage: querying baselines from influxdb (duckdb returned 0 baselines)")
 		baselineCtx, baselineCancel := context.WithTimeout(ctx, 120*time.Second)
 		defer baselineCancel()
 
@@ -256,25 +290,16 @@ func (v *View) Refresh(ctx context.Context) error {
 			totalKeys := v.countUniqueBaselineKeys(baselines)
 			v.log.Info("telemetry/usage: queried baselines from influxdb", "unique_keys", totalKeys, "duration", influxDuration.String())
 		}
-	} else {
-		// Incremental refresh: query DuckDB only
-		v.log.Debug("telemetry/usage: querying baselines from duckdb")
-		duckStart := time.Now()
-		duckBaselines, err := v.queryBaselineCountersFromDuckDB(queryStart)
-		duckDuration := time.Since(duckStart)
-		if err != nil {
-			v.log.Warn("telemetry/usage: failed to query baseline counters from duckdb, proceeding without baselines", "error", err, "duration", duckDuration.String())
-			baselines = &CounterBaselines{
-				InDiscards:  make(map[string]*int64),
-				InErrors:    make(map[string]*int64),
-				InFCSErrors: make(map[string]*int64),
-				OutDiscards: make(map[string]*int64),
-				OutErrors:   make(map[string]*int64),
-			}
-		} else {
-			totalKeys := v.countUniqueBaselineKeys(duckBaselines)
-			v.log.Info("telemetry/usage: queried baselines from duckdb", "unique_keys", totalKeys, "duration", duckDuration.String())
-			baselines = duckBaselines
+	}
+
+	// Ensure baselines is initialized even if all queries failed
+	if baselines == nil {
+		baselines = &CounterBaselines{
+			InDiscards:  make(map[string]*int64),
+			InErrors:    make(map[string]*int64),
+			InFCSErrors: make(map[string]*int64),
+			OutDiscards: make(map[string]*int64),
+			OutErrors:   make(map[string]*int64),
 		}
 	}
 
@@ -349,6 +374,7 @@ func (v *View) queryInfluxDB(ctx context.Context, startTime, endTime time.Time, 
 		SELECT
 			time,
 			dzd_pubkey,
+			host,
 			intf,
 			model_name,
 			serial_number,
@@ -431,8 +457,14 @@ func (v *View) queryInfluxDB(ctx context.Context, startTime, endTime time.Time, 
 func (v *View) buildLinkLookup() (map[string]LinkInfo, error) {
 	lookup := make(map[string]LinkInfo)
 
+	ctx := context.Background()
+	conn, err := v.cfg.DB.Conn(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get connection: %w", err)
+	}
+	defer conn.Close()
 	query := `SELECT pk, side_a_pk, side_a_iface_name, side_z_pk, side_z_iface_name FROM dz_links`
-	rows, err := v.cfg.DB.Query(query)
+	rows, err := conn.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query links: %w", err)
 	}
@@ -534,6 +566,7 @@ func (v *View) convertRowsToUsage(rows []map[string]any, baselines *CounterBasel
 
 		// Extract string fields
 		u.DevicePK = extractStringFromRow(row, "dzd_pubkey")
+		u.Host = extractStringFromRow(row, "host")
 		u.Intf = extractStringFromRow(row, "intf")
 		u.ModelName = extractStringFromRow(row, "model_name")
 		u.SerialNumber = extractStringFromRow(row, "serial_number")
@@ -742,7 +775,13 @@ func (v *View) queryBaselineCountersFromDuckDB(windowStart time.Time) (*CounterB
 			WHERE rn = 1
 		`, cf.field, cf.field, lookbackStart.Format(time.RFC3339Nano), windowStart.Format(time.RFC3339Nano), cf.field)
 
-		rows, err := v.cfg.DB.Query(sqlQuery)
+		ctx := context.Background()
+		conn, err := v.cfg.DB.Conn(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get connection: %w", err)
+		}
+		defer conn.Close()
+		rows, err := conn.QueryContext(ctx, sqlQuery)
 		if err != nil {
 			v.log.Warn("telemetry/usage: failed to query baseline for counter from duckdb", "counter", cf.field, "error", err)
 			continue

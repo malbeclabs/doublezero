@@ -19,19 +19,50 @@ import (
 
 type failingDB struct{}
 
-func (f *failingDB) Exec(query string, args ...any) (sql.Result, error) {
+func (f *failingDB) Close() error {
+	return nil
+}
+
+func (f *failingDB) Catalog() string {
+	return "main"
+}
+
+func (f *failingDB) Schema() string {
+	return "default"
+}
+
+func (f *failingDB) Conn(ctx context.Context) (duck.Connection, error) {
+	return &failingDBConn{db: f}, nil
+}
+
+type failingDBConn struct {
+	db *failingDB
+}
+
+func (f *failingDBConn) DB() duck.DB {
+	if f.db == nil {
+		return &failingDB{}
+	}
+	return f.db
+}
+
+func (f *failingDBConn) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
 	return nil, errors.New("database error")
 }
-func (f *failingDB) Query(query string, args ...any) (*sql.Rows, error) {
+
+func (f *failingDBConn) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
 	return nil, errors.New("database error")
 }
-func (f *failingDB) QueryRow(query string, args ...any) *sql.Row {
+
+func (f *failingDBConn) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
 	return &sql.Row{}
 }
-func (f *failingDB) Begin() (*sql.Tx, error) {
+
+func (f *failingDBConn) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
 	return nil, errors.New("database error")
 }
-func (f *failingDB) Close() error {
+
+func (f *failingDBConn) Close() error {
 	return nil
 }
 func (f *failingDB) ReplaceTable(tableName string, count int, writeCSVFn func(*csv.Writer, int) error) error {
@@ -68,9 +99,7 @@ func TestAI_MCP_Solana_Store_NewStore(t *testing.T) {
 	t.Run("returns store when config is valid", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -87,9 +116,7 @@ func TestAI_MCP_Solana_Store_CreateTablesIfNotExists(t *testing.T) {
 	t.Run("creates all tables", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -104,7 +131,11 @@ func TestAI_MCP_Solana_Store_CreateTablesIfNotExists(t *testing.T) {
 		tables := []string{"solana_gossip_nodes", "solana_vote_accounts", "solana_leader_schedule"}
 		for _, table := range tables {
 			var count int
-			err = db.QueryRow("SELECT COUNT(*) FROM " + table).Scan(&count)
+			ctx := context.Background()
+			conn, err := db.Conn(ctx)
+			require.NoError(t, err)
+			defer conn.Close()
+			err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+table).Scan(&count)
 			require.NoError(t, err, "table %s should exist", table)
 		}
 	})
@@ -130,9 +161,7 @@ func TestAI_MCP_Solana_Store_ReplaceLeaderSchedule(t *testing.T) {
 	t.Run("saves leader schedule to database", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -158,8 +187,12 @@ func TestAI_MCP_Solana_Store_ReplaceLeaderSchedule(t *testing.T) {
 		err = store.ReplaceLeaderSchedule(context.Background(), entries, fetchedAt, currentEpoch)
 		require.NoError(t, err)
 
+		ctx := context.Background()
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
 		var count int
-		err = db.QueryRow("SELECT COUNT(*) FROM solana_leader_schedule").Scan(&count)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM solana_leader_schedule").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 1, count)
 
@@ -167,7 +200,7 @@ func TestAI_MCP_Solana_Store_ReplaceLeaderSchedule(t *testing.T) {
 		var slotCount int
 		var slotsArray []any
 		var currentEpochDB int64
-		err = db.QueryRow("SELECT node_pubkey, slots, slot_count, current_epoch FROM solana_leader_schedule LIMIT 1").Scan(&nodePubkey, &slotsArray, &slotCount, &currentEpochDB)
+		err = conn.QueryRowContext(ctx, "SELECT node_pubkey, slots, slot_count, current_epoch FROM solana_leader_schedule LIMIT 1").Scan(&nodePubkey, &slotsArray, &slotCount, &currentEpochDB)
 		require.NoError(t, err)
 		require.Equal(t, nodePK.String(), nodePubkey)
 		require.Equal(t, 3, slotCount)
@@ -186,9 +219,7 @@ func TestAI_MCP_Solana_Store_ReplaceVoteAccounts(t *testing.T) {
 	t.Run("saves vote accounts to database", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -219,8 +250,12 @@ func TestAI_MCP_Solana_Store_ReplaceVoteAccounts(t *testing.T) {
 		err = store.ReplaceVoteAccounts(context.Background(), accounts, fetchedAt, currentEpoch)
 		require.NoError(t, err)
 
+		ctx := context.Background()
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
 		var count int
-		err = db.QueryRow("SELECT COUNT(*) FROM solana_vote_accounts").Scan(&count)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM solana_vote_accounts").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 1, count)
 
@@ -229,7 +264,7 @@ func TestAI_MCP_Solana_Store_ReplaceVoteAccounts(t *testing.T) {
 		var epochVoteAccount bool
 		var commission int
 		var currentEpochDB int64
-		err = db.QueryRow("SELECT vote_pubkey, node_pubkey, activated_stake_lamports, epoch_vote_account, commission_percentage, last_vote_slot, root_slot, current_epoch FROM solana_vote_accounts LIMIT 1").Scan(&votePubkey, &nodePubkey, &activatedStake, &epochVoteAccount, &commission, &lastVoteSlot, &rootSlot, &currentEpochDB)
+		err = conn.QueryRowContext(ctx, "SELECT vote_pubkey, node_pubkey, activated_stake_lamports, epoch_vote_account, commission_percentage, last_vote_slot, root_slot, current_epoch FROM solana_vote_accounts LIMIT 1").Scan(&votePubkey, &nodePubkey, &activatedStake, &epochVoteAccount, &commission, &lastVoteSlot, &rootSlot, &currentEpochDB)
 		require.NoError(t, err)
 		require.Equal(t, votePK.String(), votePubkey)
 		require.Equal(t, nodePK.String(), nodePubkey)
@@ -248,9 +283,7 @@ func TestAI_MCP_Solana_Store_ReplaceGossipNodes(t *testing.T) {
 	t.Run("saves gossip nodes to database", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := duck.NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
-		require.NoError(t, err)
-		defer db.Close()
+		db := testDB(t)
 
 		store, err := NewStore(StoreConfig{
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -280,15 +313,19 @@ func TestAI_MCP_Solana_Store_ReplaceGossipNodes(t *testing.T) {
 		err = store.ReplaceGossipNodes(context.Background(), nodes, fetchedAt, currentEpoch)
 		require.NoError(t, err)
 
+		ctx := context.Background()
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
 		var count int
-		err = db.QueryRow("SELECT COUNT(*) FROM solana_gossip_nodes").Scan(&count)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM solana_gossip_nodes").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 1, count)
 
 		var pubkey, gossipIP, tpuQUICIP, version string
 		var gossipPort, tpuQUICPort int
 		var currentEpochDB int64
-		err = db.QueryRow("SELECT pubkey, gossip_ip, gossip_port, tpuquic_ip, tpuquic_port, version, current_epoch FROM solana_gossip_nodes LIMIT 1").Scan(&pubkey, &gossipIP, &gossipPort, &tpuQUICIP, &tpuQUICPort, &version, &currentEpochDB)
+		err = conn.QueryRowContext(ctx, "SELECT pubkey, gossip_ip, gossip_port, tpuquic_ip, tpuquic_port, version, current_epoch FROM solana_gossip_nodes LIMIT 1").Scan(&pubkey, &gossipIP, &gossipPort, &tpuQUICIP, &tpuQUICPort, &version, &currentEpochDB)
 		require.NoError(t, err)
 		require.Equal(t, nodePK.String(), pubkey)
 		require.Equal(t, "192.168.1.1", gossipIP)

@@ -14,18 +14,30 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func testDBWithConn(t *testing.T) (*duckDB, Connection, error) {
+	db, err := NewDB(t.Context(), "", slog.New(slog.NewTextHandler(os.Stderr, nil)))
+	if err != nil {
+		return nil, nil, err
+	}
+	conn, err := db.Conn(context.Background())
+	if err != nil {
+		return nil, nil, err
+	}
+	return db, conn, nil
+}
+
 func TestAI_MCP_Duck_AppendTableViaCSV(t *testing.T) {
 	t.Parallel()
 
 	t.Run("appends rows to empty table", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
+		db, conn, err := testDBWithConn(t)
 		require.NoError(t, err)
 		defer db.Close()
 
 		// Create test table
-		_, err = db.Exec(`CREATE TABLE test_append (id INTEGER, name VARCHAR)`)
+		_, err = conn.ExecContext(context.Background(), `CREATE TABLE test_append (id INTEGER, name VARCHAR)`)
 		require.NoError(t, err)
 
 		log := slog.New(slog.NewTextHandler(os.Stderr, nil))
@@ -41,7 +53,7 @@ func TestAI_MCP_Duck_AppendTableViaCSV(t *testing.T) {
 		err = AppendTableViaCSV(
 			context.Background(),
 			log,
-			db,
+			conn,
 			"test_append",
 			len(data),
 			func(w *csv.Writer, i int) error {
@@ -55,13 +67,13 @@ func TestAI_MCP_Duck_AppendTableViaCSV(t *testing.T) {
 
 		// Verify data was inserted
 		var count int
-		err = db.QueryRow("SELECT COUNT(*) FROM test_append").Scan(&count)
+		err = conn.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM test_append").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 3, count)
 
 		// Verify specific row
 		var name string
-		err = db.QueryRow("SELECT name FROM test_append WHERE id = 1").Scan(&name)
+		err = conn.QueryRowContext(context.Background(), "SELECT name FROM test_append WHERE id = 1").Scan(&name)
 		require.NoError(t, err)
 		require.Equal(t, "Alice", name)
 	})
@@ -69,14 +81,14 @@ func TestAI_MCP_Duck_AppendTableViaCSV(t *testing.T) {
 	t.Run("appends rows to existing table", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
+		db, conn, err := testDBWithConn(t)
 		require.NoError(t, err)
 		defer db.Close()
 
 		// Create test table and insert initial data
-		_, err = db.Exec(`CREATE TABLE test_append2 (id INTEGER, name VARCHAR)`)
+		_, err = conn.ExecContext(context.Background(), `CREATE TABLE test_append2 (id INTEGER, name VARCHAR)`)
 		require.NoError(t, err)
-		_, err = db.Exec(`INSERT INTO test_append2 VALUES (1, 'Initial')`)
+		_, err = conn.ExecContext(context.Background(), `INSERT INTO test_append2 VALUES (1, 'Initial')`)
 		require.NoError(t, err)
 
 		log := slog.New(slog.NewTextHandler(os.Stderr, nil))
@@ -85,7 +97,7 @@ func TestAI_MCP_Duck_AppendTableViaCSV(t *testing.T) {
 		err = AppendTableViaCSV(
 			context.Background(),
 			log,
-			db,
+			conn,
 			"test_append2",
 			len(data),
 			func(w *csv.Writer, i int) error {
@@ -99,7 +111,7 @@ func TestAI_MCP_Duck_AppendTableViaCSV(t *testing.T) {
 
 		// Verify all rows are present
 		var count int
-		err = db.QueryRow("SELECT COUNT(*) FROM test_append2").Scan(&count)
+		err = conn.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM test_append2").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 3, count)
 	})
@@ -107,12 +119,12 @@ func TestAI_MCP_Duck_AppendTableViaCSV(t *testing.T) {
 	t.Run("handles empty slice", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
+		db, conn, err := testDBWithConn(t)
 		require.NoError(t, err)
 		defer db.Close()
 
 		// Create test table
-		_, err = db.Exec(`CREATE TABLE test_append_empty (id INTEGER, name VARCHAR)`)
+		_, err = conn.ExecContext(context.Background(), `CREATE TABLE test_append_empty (id INTEGER, name VARCHAR)`)
 		require.NoError(t, err)
 
 		log := slog.New(slog.NewTextHandler(os.Stderr, nil))
@@ -120,7 +132,7 @@ func TestAI_MCP_Duck_AppendTableViaCSV(t *testing.T) {
 		err = AppendTableViaCSV(
 			context.Background(),
 			log,
-			db,
+			conn,
 			"test_append_empty",
 			0,
 			func(w *csv.Writer, i int) error {
@@ -131,7 +143,7 @@ func TestAI_MCP_Duck_AppendTableViaCSV(t *testing.T) {
 
 		// Verify no rows were inserted
 		var count int
-		err = db.QueryRow("SELECT COUNT(*) FROM test_append_empty").Scan(&count)
+		err = conn.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM test_append_empty").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 0, count)
 	})
@@ -139,11 +151,11 @@ func TestAI_MCP_Duck_AppendTableViaCSV(t *testing.T) {
 	t.Run("handles context cancellation during CSV write", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
+		db, conn, err := testDBWithConn(t)
 		require.NoError(t, err)
 		defer db.Close()
 
-		_, err = db.Exec(`CREATE TABLE test_append_cancel (id INTEGER, name VARCHAR)`)
+		_, err = conn.ExecContext(context.Background(), `CREATE TABLE test_append_cancel (id INTEGER, name VARCHAR)`)
 		require.NoError(t, err)
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -154,7 +166,7 @@ func TestAI_MCP_Duck_AppendTableViaCSV(t *testing.T) {
 		err = AppendTableViaCSV(
 			ctx,
 			log,
-			db,
+			conn,
 			"test_append_cancel",
 			5,
 			func(w *csv.Writer, i int) error {
@@ -168,11 +180,11 @@ func TestAI_MCP_Duck_AppendTableViaCSV(t *testing.T) {
 	t.Run("handles context cancellation before transaction", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
+		db, conn, err := testDBWithConn(t)
 		require.NoError(t, err)
 		defer db.Close()
 
-		_, err = db.Exec(`CREATE TABLE test_append_cancel2 (id INTEGER, name VARCHAR)`)
+		_, err = conn.ExecContext(context.Background(), `CREATE TABLE test_append_cancel2 (id INTEGER, name VARCHAR)`)
 		require.NoError(t, err)
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -188,7 +200,7 @@ func TestAI_MCP_Duck_AppendTableViaCSV(t *testing.T) {
 		err = AppendTableViaCSV(
 			ctx,
 			log,
-			db,
+			conn,
 			"test_append_cancel2",
 			100, // Large enough to take some time
 			func(w *csv.Writer, i int) error {
@@ -203,11 +215,11 @@ func TestAI_MCP_Duck_AppendTableViaCSV(t *testing.T) {
 	t.Run("handles CSV write error", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
+		db, conn, err := testDBWithConn(t)
 		require.NoError(t, err)
 		defer db.Close()
 
-		_, err = db.Exec(`CREATE TABLE test_append_error (id INTEGER, name VARCHAR)`)
+		_, err = conn.ExecContext(context.Background(), `CREATE TABLE test_append_error (id INTEGER, name VARCHAR)`)
 		require.NoError(t, err)
 
 		log := slog.New(slog.NewTextHandler(os.Stderr, nil))
@@ -215,7 +227,7 @@ func TestAI_MCP_Duck_AppendTableViaCSV(t *testing.T) {
 		err = AppendTableViaCSV(
 			context.Background(),
 			log,
-			db,
+			conn,
 			"test_append_error",
 			2,
 			func(w *csv.Writer, i int) error {
@@ -232,13 +244,13 @@ func TestAI_MCP_Duck_AppendTableViaCSV(t *testing.T) {
 	t.Run("handles database transaction error", func(t *testing.T) {
 		t.Parallel()
 
-		db := &failingDB{}
+		conn := &failingDBConn{}
 		log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
 		err := AppendTableViaCSV(
 			context.Background(),
 			log,
-			db,
+			conn,
 			"test_table",
 			1,
 			func(w *csv.Writer, i int) error {
@@ -252,12 +264,12 @@ func TestAI_MCP_Duck_AppendTableViaCSV(t *testing.T) {
 	t.Run("handles COPY FROM error", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
+		db, conn, err := testDBWithConn(t)
 		require.NoError(t, err)
 		defer db.Close()
 
 		// Create table with different schema to cause COPY error
-		_, err = db.Exec(`CREATE TABLE test_append_copy_error (id INTEGER)`)
+		_, err = conn.ExecContext(context.Background(), `CREATE TABLE test_append_copy_error (id INTEGER)`)
 		require.NoError(t, err)
 
 		log := slog.New(slog.NewTextHandler(os.Stderr, nil))
@@ -265,7 +277,7 @@ func TestAI_MCP_Duck_AppendTableViaCSV(t *testing.T) {
 		err = AppendTableViaCSV(
 			context.Background(),
 			log,
-			db,
+			conn,
 			"test_append_copy_error",
 			1,
 			func(w *csv.Writer, i int) error {
@@ -280,11 +292,11 @@ func TestAI_MCP_Duck_AppendTableViaCSV(t *testing.T) {
 	t.Run("handles large dataset", func(t *testing.T) {
 		t.Parallel()
 
-		db, err := NewDB("", slog.New(slog.NewTextHandler(os.Stderr, nil)))
+		db, conn, err := testDBWithConn(t)
 		require.NoError(t, err)
 		defer db.Close()
 
-		_, err = db.Exec(`CREATE TABLE test_append_large (id INTEGER, name VARCHAR)`)
+		_, err = conn.ExecContext(context.Background(), `CREATE TABLE test_append_large (id INTEGER, name VARCHAR)`)
 		require.NoError(t, err)
 
 		log := slog.New(slog.NewTextHandler(os.Stderr, nil))
@@ -293,7 +305,7 @@ func TestAI_MCP_Duck_AppendTableViaCSV(t *testing.T) {
 		err = AppendTableViaCSV(
 			context.Background(),
 			log,
-			db,
+			conn,
 			"test_append_large",
 			count,
 			func(w *csv.Writer, i int) error {
@@ -307,7 +319,7 @@ func TestAI_MCP_Duck_AppendTableViaCSV(t *testing.T) {
 
 		// Verify all rows were inserted
 		var actualCount int
-		err = db.QueryRow("SELECT COUNT(*) FROM test_append_large").Scan(&actualCount)
+		err = conn.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM test_append_large").Scan(&actualCount)
 		require.NoError(t, err)
 		require.Equal(t, count, actualCount)
 	})
@@ -315,22 +327,49 @@ func TestAI_MCP_Duck_AppendTableViaCSV(t *testing.T) {
 
 type failingDB struct{}
 
-func (f *failingDB) Exec(query string, args ...any) (sql.Result, error) {
-	return nil, errors.New("database error")
-}
-
-func (f *failingDB) Query(query string, args ...any) (*sql.Rows, error) {
-	return nil, errors.New("database error")
-}
-
-func (f *failingDB) QueryRow(query string, args ...any) *sql.Row {
-	return &sql.Row{}
-}
-
-func (f *failingDB) Begin() (*sql.Tx, error) {
-	return nil, errors.New("database error")
+func (f *failingDB) Catalog() string {
+	return "main"
 }
 
 func (f *failingDB) Close() error {
+	return nil
+}
+
+func (f *failingDB) Schema() string {
+	return "default"
+}
+
+func (f *failingDB) Conn(ctx context.Context) (Connection, error) {
+	return &failingDBConn{db: f}, nil
+}
+
+type failingDBConn struct {
+	db *failingDB
+}
+
+func (f *failingDBConn) DB() DB {
+	if f.db == nil {
+		return &failingDB{}
+	}
+	return f.db
+}
+
+func (f *failingDBConn) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	return nil, errors.New("database error")
+}
+
+func (f *failingDBConn) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	return nil, errors.New("database error")
+}
+
+func (f *failingDBConn) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
+	return &sql.Row{}
+}
+
+func (f *failingDBConn) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
+	return nil, errors.New("database error")
+}
+
+func (f *failingDBConn) Close() error {
 	return nil
 }

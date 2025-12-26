@@ -45,9 +45,11 @@ func NewStore(cfg StoreConfig) (*Store, error) {
 }
 
 func (s *Store) CreateTablesIfNotExists() error {
-	schema := `CREATE TABLE IF NOT EXISTS dz_device_iface_usage (
+	tablePrefix := s.db.Catalog() + "." + s.db.Schema() + "."
+	schema := `CREATE TABLE IF NOT EXISTS ` + tablePrefix + `dz_device_iface_usage (
 		time TIMESTAMP NOT NULL,
 		device_pk VARCHAR,
+		host VARCHAR,
 		intf VARCHAR,
 		user_tunnel_id BIGINT,
 		link_pk VARCHAR,
@@ -86,11 +88,16 @@ func (s *Store) CreateTablesIfNotExists() error {
 		out_octets_delta BIGINT,
 		out_pkts_delta BIGINT,
 		out_unicast_pkts_delta BIGINT,
-		delta_duration DOUBLE,
-		PRIMARY KEY (time, device_pk, intf)
+		delta_duration DOUBLE
 	)`
 
-	if _, err := s.db.Exec(schema); err != nil {
+	ctx := context.Background()
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get connection: %w", err)
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, schema); err != nil {
 		return fmt.Errorf("failed to create table: %w", err)
 	}
 
@@ -101,6 +108,7 @@ func (s *Store) CreateTablesIfNotExists() error {
 type InterfaceUsage struct {
 	Time               time.Time
 	DevicePK           *string
+	Host               *string
 	Intf               *string
 	UserTunnelID       *int64
 	LinkPK             *string
@@ -153,8 +161,13 @@ func (s *Store) GetMaxTimestamp(ctx context.Context) (*time.Time, error) {
 	default:
 	}
 
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get connection: %w", err)
+	}
+	defer conn.Close()
 	var maxTime sql.NullTime
-	err := s.db.QueryRow("SELECT MAX(time) FROM dz_device_iface_usage").Scan(&maxTime)
+	err = conn.QueryRowContext(ctx, "SELECT MAX(time) FROM dz_device_iface_usage").Scan(&maxTime)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -168,61 +181,67 @@ func (s *Store) GetMaxTimestamp(ctx context.Context) (*time.Time, error) {
 }
 
 func (s *Store) UpsertInterfaceUsage(ctx context.Context, usage []InterfaceUsage) error {
-	return duck.UpsertTableViaCSV(ctx, s.log, s.db, "dz_device_iface_usage", len(usage), func(w *csv.Writer, i int) error {
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get connection: %w", err)
+	}
+	defer conn.Close()
+	return duck.UpsertTableViaCSV(ctx, s.log, conn, "dz_device_iface_usage", len(usage), func(w *csv.Writer, i int) error {
 		u := usage[i]
-		record := make([]string, 41)
+		record := make([]string, 42)
 
 		// Time (required)
 		record[0] = u.Time.Format(time.RFC3339Nano)
 
 		// String fields (nullable)
 		record[1] = formatNullableString(u.DevicePK)
-		record[2] = formatNullableString(u.Intf)
-		record[3] = formatNullableInt64(u.UserTunnelID)
-		record[4] = formatNullableString(u.LinkPK)
-		record[5] = formatNullableString(u.LinkSide)
-		record[6] = formatNullableString(u.ModelName)
-		record[7] = formatNullableString(u.SerialNumber)
+		record[2] = formatNullableString(u.Host)
+		record[3] = formatNullableString(u.Intf)
+		record[4] = formatNullableInt64(u.UserTunnelID)
+		record[5] = formatNullableString(u.LinkPK)
+		record[6] = formatNullableString(u.LinkSide)
+		record[7] = formatNullableString(u.ModelName)
+		record[8] = formatNullableString(u.SerialNumber)
 
 		// Numeric fields (nullable) - raw values
-		record[8] = formatNullableInt64(u.CarrierTransitions)
-		record[9] = formatNullableInt64(u.InBroadcastPkts)
-		record[10] = formatNullableInt64(u.InDiscards)
-		record[11] = formatNullableInt64(u.InErrors)
-		record[12] = formatNullableInt64(u.InFCSErrors)
-		record[13] = formatNullableInt64(u.InMulticastPkts)
-		record[14] = formatNullableInt64(u.InOctets)
-		record[15] = formatNullableInt64(u.InPkts)
-		record[16] = formatNullableInt64(u.InUnicastPkts)
-		record[17] = formatNullableInt64(u.OutBroadcastPkts)
-		record[18] = formatNullableInt64(u.OutDiscards)
-		record[19] = formatNullableInt64(u.OutErrors)
-		record[20] = formatNullableInt64(u.OutMulticastPkts)
-		record[21] = formatNullableInt64(u.OutOctets)
-		record[22] = formatNullableInt64(u.OutPkts)
-		record[23] = formatNullableInt64(u.OutUnicastPkts)
+		record[9] = formatNullableInt64(u.CarrierTransitions)
+		record[10] = formatNullableInt64(u.InBroadcastPkts)
+		record[11] = formatNullableInt64(u.InDiscards)
+		record[12] = formatNullableInt64(u.InErrors)
+		record[13] = formatNullableInt64(u.InFCSErrors)
+		record[14] = formatNullableInt64(u.InMulticastPkts)
+		record[15] = formatNullableInt64(u.InOctets)
+		record[16] = formatNullableInt64(u.InPkts)
+		record[17] = formatNullableInt64(u.InUnicastPkts)
+		record[18] = formatNullableInt64(u.OutBroadcastPkts)
+		record[19] = formatNullableInt64(u.OutDiscards)
+		record[20] = formatNullableInt64(u.OutErrors)
+		record[21] = formatNullableInt64(u.OutMulticastPkts)
+		record[22] = formatNullableInt64(u.OutOctets)
+		record[23] = formatNullableInt64(u.OutPkts)
+		record[24] = formatNullableInt64(u.OutUnicastPkts)
 
 		// Delta fields (nullable)
-		record[24] = formatNullableInt64(u.CarrierTransitionsDelta)
-		record[25] = formatNullableInt64(u.InBroadcastPktsDelta)
-		record[26] = formatNullableInt64(u.InDiscardsDelta)
-		record[27] = formatNullableInt64(u.InErrorsDelta)
-		record[28] = formatNullableInt64(u.InFCSErrorsDelta)
-		record[29] = formatNullableInt64(u.InMulticastPktsDelta)
-		record[30] = formatNullableInt64(u.InOctetsDelta)
-		record[31] = formatNullableInt64(u.InPktsDelta)
-		record[32] = formatNullableInt64(u.InUnicastPktsDelta)
-		record[33] = formatNullableInt64(u.OutBroadcastPktsDelta)
-		record[34] = formatNullableInt64(u.OutDiscardsDelta)
-		record[35] = formatNullableInt64(u.OutErrorsDelta)
-		record[36] = formatNullableInt64(u.OutMulticastPktsDelta)
-		record[37] = formatNullableInt64(u.OutOctetsDelta)
-		record[38] = formatNullableInt64(u.OutPktsDelta)
-		record[39] = formatNullableInt64(u.OutUnicastPktsDelta)
-		record[40] = formatNullableFloat64(u.DeltaDuration)
+		record[25] = formatNullableInt64(u.CarrierTransitionsDelta)
+		record[26] = formatNullableInt64(u.InBroadcastPktsDelta)
+		record[27] = formatNullableInt64(u.InDiscardsDelta)
+		record[28] = formatNullableInt64(u.InErrorsDelta)
+		record[29] = formatNullableInt64(u.InFCSErrorsDelta)
+		record[30] = formatNullableInt64(u.InMulticastPktsDelta)
+		record[31] = formatNullableInt64(u.InOctetsDelta)
+		record[32] = formatNullableInt64(u.InPktsDelta)
+		record[33] = formatNullableInt64(u.InUnicastPktsDelta)
+		record[34] = formatNullableInt64(u.OutBroadcastPktsDelta)
+		record[35] = formatNullableInt64(u.OutDiscardsDelta)
+		record[36] = formatNullableInt64(u.OutErrorsDelta)
+		record[37] = formatNullableInt64(u.OutMulticastPktsDelta)
+		record[38] = formatNullableInt64(u.OutOctetsDelta)
+		record[39] = formatNullableInt64(u.OutPktsDelta)
+		record[40] = formatNullableInt64(u.OutUnicastPktsDelta)
+		record[41] = formatNullableFloat64(u.DeltaDuration)
 
 		return w.Write(record)
-	})
+	}, []string{"time", "device_pk", "intf"})
 }
 
 func formatNullableFloat64(f *float64) string {

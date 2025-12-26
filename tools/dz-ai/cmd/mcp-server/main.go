@@ -49,9 +49,9 @@ const (
 	defaultMaxConcurrency               = 64
 	defaultDZEnv                        = config.EnvMainnetBeta
 	defaultMetricsAddr                  = "0.0.0.0:8080"
-	defaultDBPath                       = ":memory:"
-	defaultDuckDBSpillPath              = ".tmp/duckdb-spill-tmp"
-	defaultDBPathEnvVar                 = "MCP_DB_PATH"
+	defaultEmbeddedDBPath               = ":memory:"
+	defaultEmbeddedDBSpillDir           = ".tmp/embedded-duckdb-spill-tmp"
+	defaultEmbeddedDBPathEnvVar         = "MCP_EMBEDDED_DB_PATH"
 	defaultGeoipCityDBPath              = "/usr/share/GeoIP/GeoLite2-City.mmdb"
 	defaultGeoipASNDBPath               = "/usr/share/GeoIP/GeoLite2-ASN.mmdb"
 	defaultDeviceUsageInfluxQueryWindow = 1 * time.Hour
@@ -77,12 +77,18 @@ func run() error {
 	maxConcurrencyFlag := flag.Int("max-concurrency", defaultMaxConcurrency, "maximum number of concurrent operations")
 	enablePprofFlag := flag.Bool("enable-pprof", false, "enable pprof server")
 	metricsAddrFlag := flag.String("metrics-addr", defaultMetricsAddr, "Address to listen on for prometheus metrics")
-	dbPathFlag := flag.String("db-path", defaultDBPath, "Path to DuckDB database file (empty for in-memory, or set MCP_DB_PATH env var)")
-	dbSpillDirFlag := flag.String("db-spill-dir", defaultDuckDBSpillPath, "Path to DuckDB temporary spill directory")
 	geoipCityDBPathFlag := flag.String("geoip-city-db-path", defaultGeoipCityDBPath, "Path to MaxMind GeoIP2 City database file (or set MCP_GEOIP_CITY_DB_PATH env var)")
 	geoipASNDBPathFlag := flag.String("geoip-asn-db-path", defaultGeoipASNDBPath, "Path to MaxMind GeoIP2 ASN database file (or set MCP_GEOIP_ASN_DB_PATH env var)")
 	deviceUsageQueryWindowFlag := flag.Duration("device-usage-query-window", defaultDeviceUsageInfluxQueryWindow, "Query window for device usage (default: 1 hour)")
 	deviceUsageRefreshIntervalFlag := flag.Duration("device-usage-refresh-interval", defaultDeviceUsageRefreshInterval, "Refresh interval for device usage (default: 5 minutes)")
+
+	// Database configuration.
+	lakeDBCatalogNameFlag := flag.String("lake-db-catalog-name", "dzlake", "Name of the DuckLake catalog")
+	lakeDBLocalDirFlag := flag.String("lake-db-local-dir", ".tmp/lake", "Path to the local DuckLake directory")
+	embeddedDBEnabledFlag := flag.Bool("embedded-db-enable", false, "Enable embedded DuckDB database")
+	embeddedDBPathFlag := flag.String("embedded-db-path", defaultEmbeddedDBPath, "Path to embedded DuckDB database file (empty for in-memory, or set MCP_EMBEDDED_DB_PATH env var)")
+	embeddedDBSpillDirFlag := flag.String("embedded-db-spill-dir", defaultEmbeddedDBSpillDir, "Path to embedded DuckDB temporary spill directory")
+
 	flag.Parse()
 
 	networkConfig, err := config.NetworkConfigForEnv(*envFlag)
@@ -149,27 +155,43 @@ func run() error {
 	solanaRPC := rpc.NewWithRetries(solanaNetworkConfig.RPCURL, nil)
 	defer solanaRPC.Close()
 
-	// Determine database path: flag takes precedence, then env var, then default
-	dbPath := *dbPathFlag
-	if dbPath == "" || dbPath == defaultDBPath {
-		if envPath := os.Getenv(defaultDBPathEnvVar); envPath != "" {
-			dbPath = envPath
+	// Initialize database
+	var db duck.DB
+	if !*embeddedDBEnabledFlag {
+		log.Info("using DuckLake database", "path", *lakeDBLocalDirFlag)
+		lakeDB, dbCloseFn, err := initializeEmbeddedDuckLake(ctx, log, *lakeDBCatalogNameFlag, *lakeDBLocalDirFlag)
+		if err != nil {
+			return fmt.Errorf("failed to initialize DuckLake: %w", err)
 		}
-	}
-	if dbPath == "" {
-		dbPath = defaultDBPath
-	}
+		defer func() {
+			if err := dbCloseFn(); err != nil {
+				log.Error("failed to close DuckLake", "error", err)
+			}
+		}()
+		db = lakeDB
+	} else {
+		dbPath := *embeddedDBPathFlag
+		if dbPath == "" || dbPath == defaultEmbeddedDBPath {
+			if envPath := os.Getenv(defaultEmbeddedDBPathEnvVar); envPath != "" {
+				dbPath = envPath
+			}
+		}
+		if dbPath == "" {
+			dbPath = defaultEmbeddedDBPath
+		}
 
-	// Initialize DuckDB database
-	db, dbCloseFn, err := initializeDuckDB(dbPath, *dbSpillDirFlag, log)
-	if err != nil {
-		return fmt.Errorf("failed to initialize DuckDB: %w", err)
-	}
-	defer func() {
-		if err := dbCloseFn(); err != nil {
-			log.Error("failed to close database", "error", err)
+		log.Info("using embedded DuckDB database", "path", dbPath)
+		duckDB, dbCloseFn, err := initializeDuckDB(ctx, dbPath, *embeddedDBSpillDirFlag, log)
+		if err != nil {
+			return fmt.Errorf("failed to initialize DuckDB: %w", err)
 		}
-	}()
+		defer func() {
+			if err := dbCloseFn(); err != nil {
+				log.Error("failed to close DuckDB", "error", err)
+			}
+		}()
+		db = duckDB
+	}
 
 	// Determine GeoIP database paths: flag takes precedence, then env var, then default
 	geoipCityDBPath := *geoipCityDBPathFlag
@@ -248,7 +270,7 @@ func run() error {
 	}
 
 	// Initialize MCP server
-	server, err := server.New(server.Config{
+	server, err := server.New(ctx, server.Config{
 		Version:                      version,
 		ListenAddr:                   *listenAddrFlag,
 		Logger:                       log,
@@ -294,7 +316,44 @@ func run() error {
 	}
 }
 
-func initializeDuckDB(dbPath string, spillDir string, log *slog.Logger) (duck.DB, func() error, error) {
+func initializeEmbeddedDuckLake(ctx context.Context, log *slog.Logger, name, dbDir string) (duck.DB, func() error, error) {
+	if dbDir == "" {
+		return nil, nil, fmt.Errorf("database directory is required")
+	}
+
+	// Convert directories to absolute paths
+	var err error
+	dbDir, err = filepath.Abs(dbDir)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get absolute path for database directory: %w", err)
+	}
+
+	// Create catalog and data directories if they don't exist
+	if err := os.MkdirAll(dbDir, 0755); err != nil {
+		return nil, nil, fmt.Errorf("failed to create database directory: %w", err)
+	}
+
+	// Construct catalog path and data directory
+	catalogPath := filepath.Join(dbDir, "catalog.sqlite")
+	dataDir := filepath.Join(dbDir, "data")
+
+	// Create data directory if it doesn't exist
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		return nil, nil, fmt.Errorf("failed to create data directory: %w", err)
+	}
+
+	// Initialize DuckLake catalog database
+	db, err := duck.NewLocalLake(ctx, log, name, catalogPath, dataDir)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create local lake: %w", err)
+	}
+
+	return db, func() error {
+		return db.Close()
+	}, nil
+}
+
+func initializeDuckDB(ctx context.Context, dbPath string, spillDir string, log *slog.Logger) (duck.DB, func() error, error) {
 	if spillDir != "" {
 		// Convert spill directory to absolute path
 		var err error
@@ -328,14 +387,19 @@ func initializeDuckDB(dbPath string, spillDir string, log *slog.Logger) (duck.DB
 		log.Info("using in-memory database")
 	}
 
-	db, err := duck.NewDB(dbPath, log)
+	db, err := duck.NewDB(ctx, dbPath, log)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create recoverable database: %w", err)
 	}
 
 	if spillDir != "" {
 		// Set DuckDB spill directory
-		if _, err := db.Exec("PRAGMA temp_directory=?", spillDir); err != nil {
+		conn, err := db.Conn(ctx)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to get connection: %w", err)
+		}
+		defer conn.Close()
+		if _, err := conn.ExecContext(ctx, "PRAGMA temp_directory=?", spillDir); err != nil {
 			return nil, nil, fmt.Errorf("failed to set DuckDB spill directory: %w", err)
 		}
 		log.Debug("configured duckdb spill directory", "path", spillDir)

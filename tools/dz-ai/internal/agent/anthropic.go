@@ -270,7 +270,6 @@ func (a *AnthropicAgent) Run(ctx context.Context, mcpClient *client.Client, init
 			}
 
 			finalMsgs := append(msgs, anthropic.NewUserMessage(anthropic.NewTextBlock(FinalizationPrompt)))
-			fullConversation = append(fullConversation, anthropicMessage{msg: anthropic.NewUserMessage(anthropic.NewTextBlock(FinalizationPrompt))})
 
 			finalParams := anthropic.MessageNewParams{
 				Model:     a.cfg.Model,

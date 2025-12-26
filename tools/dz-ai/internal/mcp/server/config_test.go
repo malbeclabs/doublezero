@@ -2,8 +2,6 @@ package server
 
 import (
 	"context"
-	"database/sql"
-	"encoding/csv"
 	"log/slog"
 	"net"
 	"testing"
@@ -59,20 +57,19 @@ func (m *mockSolanaRPC) GetVoteAccounts(ctx context.Context, opts *solanarpc.Get
 	return nil, nil
 }
 
-type mockDB struct{}
-
-func (m *mockDB) Exec(query string, args ...any) (sql.Result, error) { return nil, nil }
-func (m *mockDB) Query(query string, args ...any) (*sql.Rows, error) { return nil, nil }
-func (m *mockDB) Begin() (*sql.Tx, error)                            { return nil, nil }
-func (m *mockDB) Close() error                                       { return nil }
-func (m *mockDB) ReplaceTable(tableName string, count int, writeCSVFn func(*csv.Writer, int) error) error {
-	return nil
-}
-func (m *mockDB) QueryRow(query string, args ...any) *sql.Row { return nil }
-
 type mockGeoIPResolver struct{}
 
 func (m *mockGeoIPResolver) Resolve(ip net.IP) *geoip.Record {
+	return nil
+}
+
+type mockInfluxDBClient struct{}
+
+func (m *mockInfluxDBClient) QuerySQL(ctx context.Context, sqlQuery string) ([]map[string]any, error) {
+	return nil, nil
+}
+
+func (m *mockInfluxDBClient) Close() error {
 	return nil
 }
 
@@ -94,6 +91,7 @@ func validConfig() Config {
 		InternetLatencyAgentPK: solana.MustPublicKeyFromBase58("So11111111111111111111111111111111111111112"),
 		InternetDataProviders:  []string{"test-provider"},
 		GeoIPResolver:          &mockGeoIPResolver{},
+		// DeviceUsageInfluxClient is optional - not set by default
 	}
 }
 

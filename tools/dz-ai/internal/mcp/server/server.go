@@ -10,7 +10,8 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	dzsvc "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/dz/serviceability"
-	dztelem "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/dz/telemetry"
+	dztelemlatency "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/dz/telemetry/latency"
+	dztelemusage "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/dz/telemetry/usage"
 	mcpgeoip "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/geoip"
 	mcpmetrics "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/metrics"
 	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/sol"
@@ -20,7 +21,8 @@ import (
 type Server struct {
 	cfg                Config
 	serviceabilityView *dzsvc.View
-	telemetryView      *dztelem.View
+	telemetryView      *dztelemlatency.View
+	telemetryUsageView *dztelemusage.View
 	solanaView         *sol.View
 	mcpServer          *mcp.Server
 	httpServer         *http.Server
@@ -56,7 +58,7 @@ func New(cfg Config) (*Server, error) {
 		return nil, fmt.Errorf("failed to create serviceability view: %w", err)
 	}
 
-	telemView, err := dztelem.NewView(dztelem.ViewConfig{
+	telemView, err := dztelemlatency.NewView(dztelemlatency.ViewConfig{
 		Logger:                 cfg.Logger,
 		Clock:                  cfg.Clock,
 		TelemetryRPC:           cfg.TelemetryRPC,
@@ -83,6 +85,23 @@ func New(cfg Config) (*Server, error) {
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create solana view: %w", err)
+	}
+
+	// Initialize telemetry usage view if InfluxDB client is configured
+	var telemetryUsageView *dztelemusage.View
+	if cfg.DeviceUsageInfluxClient != nil {
+		telemetryUsageView, err = dztelemusage.NewView(dztelemusage.ViewConfig{
+			Logger:          cfg.Logger,
+			Clock:           cfg.Clock,
+			DB:              cfg.DB,
+			RefreshInterval: cfg.DeviceUsageRefreshInterval,
+			InfluxDB:        cfg.DeviceUsageInfluxClient,
+			Bucket:          cfg.DeviceUsageInfluxBucket,
+			QueryWindow:     cfg.DeviceUsageInfluxQueryWindow,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create telemetry usage view: %w", err)
+		}
 	}
 
 	mcpServer := mcp.NewServer(&mcp.Implementation{
@@ -122,13 +141,23 @@ func New(cfg Config) (*Server, error) {
 		return nil, fmt.Errorf("failed to register geoip schema tool: %w", err)
 	}
 
+	if telemetryUsageView != nil {
+		telemetryUsageSchemaTool, err := telemetryUsageView.SchemaTool()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create telemetry usage schema tool: %w", err)
+		}
+		if err := telemetryUsageSchemaTool.Register(mcpServer); err != nil {
+			return nil, fmt.Errorf("failed to register telemetry usage schema tool: %w", err)
+		}
+	}
+
 	queryTool, err := sqltools.NewQueryTool(sqltools.QueryToolConfig{
 		Logger: cfg.Logger,
 		DB:     cfg.DB,
 		Name:   "query",
 		Description: `
 			PURPOSE:
-			Execute DuckDB SQL queries across all DoubleZero datasets (serviceability, telemetry, and Solana).
+			Execute DuckDB SQL queries across all DoubleZero datasets (serviceability, telemetry latency, telemetry usage, and Solana).
 
 			USAGE RULES:
 			- Consult the appropriate schema tool before writing any SQL. Do not guess column names.
@@ -158,6 +187,7 @@ func New(cfg Config) (*Server, error) {
 		cfg:                cfg,
 		serviceabilityView: svcView,
 		telemetryView:      telemView,
+		telemetryUsageView: telemetryUsageView,
 		solanaView:         solanaView,
 		mcpServer:          mcpServer,
 	}
@@ -206,6 +236,9 @@ func (s *Server) Run(ctx context.Context) error {
 	s.serviceabilityView.Start(ctx)
 	s.telemetryView.Start(ctx)
 	s.solanaView.Start(ctx)
+	if s.telemetryUsageView != nil {
+		s.telemetryUsageView.Start(ctx)
+	}
 
 	serveErrCh := make(chan error, 1)
 	go func() {
@@ -230,6 +263,11 @@ func (s *Server) Run(ctx context.Context) error {
 		defer shutdownCancel()
 		if err := s.httpServer.Shutdown(shutdownCtx); err != nil {
 			return fmt.Errorf("failed to shutdown server: %w", err)
+		}
+		if s.telemetryUsageView != nil {
+			if err := s.telemetryUsageView.Close(); err != nil {
+				s.cfg.Logger.Warn("failed to close telemetry usage view", "error", err)
+			}
 		}
 		s.cfg.Logger.Info("server: HTTP server shutdown complete")
 		return nil
@@ -269,6 +307,8 @@ func (s *Server) readyzHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+
+	// NOTE: We do NOT wait for device usage to be ready, since it can take longer to process.
 
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write([]byte("ok\n")); err != nil {

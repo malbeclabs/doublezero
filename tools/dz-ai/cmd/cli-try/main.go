@@ -34,6 +34,7 @@ func (a anthropicMessageAdapter) ToParam() any {
 
 func run() error {
 	verboseFlag := flag.Bool("verbose", false, "enable verbose (debug) logging")
+	maxRoundsFlag := flag.Int("max-rounds", 8, "Maximum number of rounds for the AI agent in normal mode")
 	flag.Parse()
 
 	log := logger.New(*verboseFlag)
@@ -66,13 +67,14 @@ func run() error {
 	defer mcpClient.Close()
 
 	anthropicAgent := agent.NewAnthropicAgent(&agent.AnthropicAgentConfig{
-		Client:           anthropicClient,
-		Model:            model,
-		MaxTokens:        int64(2000),
-		MaxRounds:        24,
-		MaxToolResultLen: 20000,
-		Logger:           log,
-		System:           agent.SystemPrompt,
+		Client:                anthropicClient,
+		Model:                 model,
+		MaxTokens:             int64(2000),
+		MaxRounds:             *maxRoundsFlag,
+		MaxToolResultLen:      20000,
+		Logger:                log,
+		System:                agent.SystemPrompt,
+		KeepToolResultsRounds: 3,
 	})
 
 	// Initialize conversation history

@@ -14,9 +14,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/duck"
-	mcpgeoip "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/geoip"
 	dzsvc "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/dz/serviceability"
-	dztelem "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/dz/telemetry"
+	dztelemlatency "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/dz/telemetry/latency"
+	mcpgeoip "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/geoip"
 )
 
 func TestAI_MCP_Server_ReadyzHandler(t *testing.T) {
@@ -49,7 +49,7 @@ func TestAI_MCP_Server_ReadyzHandler(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	telemView, err := dztelem.NewView(dztelem.ViewConfig{
+	telemView, err := dztelemlatency.NewView(dztelemlatency.ViewConfig{
 		Logger:                 log,
 		Clock:                  clockwork.NewFakeClock(),
 		TelemetryRPC:           &mockTelemetryRPC{},

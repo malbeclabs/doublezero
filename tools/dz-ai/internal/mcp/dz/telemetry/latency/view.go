@@ -1,4 +1,4 @@
-package dztelem
+package dztelemlatency
 
 import (
 	"context"
@@ -118,13 +118,13 @@ func NewView(cfg ViewConfig) (*View, error) {
 
 func (v *View) Start(ctx context.Context) {
 	go func() {
-		v.log.Info("telemetry: starting refresh loop", "interval", v.cfg.RefreshInterval)
+		v.log.Info("telemetry/latency: starting refresh loop", "interval", v.cfg.RefreshInterval)
 
 		if err := v.Refresh(ctx); err != nil {
 			if errors.Is(err, context.Canceled) {
 				return
 			}
-			v.log.Error("telemetry: initial refresh failed", "error", err)
+			v.log.Error("telemetry/latency: initial refresh failed", "error", err)
 		}
 		ticker := v.cfg.Clock.NewTicker(v.cfg.RefreshInterval)
 		defer ticker.Stop()
@@ -137,7 +137,7 @@ func (v *View) Start(ctx context.Context) {
 					if errors.Is(err, context.Canceled) {
 						return
 					}
-					v.log.Error("telemetry: refresh failed", "error", err)
+					v.log.Error("telemetry/latency: refresh failed", "error", err)
 				}
 			}
 		}
@@ -149,11 +149,11 @@ func (v *View) Refresh(ctx context.Context) error {
 	defer v.refreshMu.Unlock()
 
 	refreshStart := time.Now()
-	v.log.Info("telemetry: refresh started", "start_time", refreshStart)
+	v.log.Debug("telemetry/latency: refresh started", "start_time", refreshStart)
 	defer func() {
-		duration := time.Since(refreshStart).Seconds()
-		v.log.Info("telemetry: refresh completed", "duration", duration)
-		mcpmetrics.ViewRefreshDuration.WithLabelValues("telemetry").Observe(duration)
+		duration := time.Since(refreshStart)
+		v.log.Info("telemetry/latency: refresh completed", "duration", duration.String())
+		mcpmetrics.ViewRefreshDuration.WithLabelValues("telemetry").Observe(duration.Seconds())
 		if err := recover(); err != nil {
 			mcpmetrics.ViewRefreshTotal.WithLabelValues("telemetry", "error").Inc()
 			panic(err)
@@ -199,7 +199,7 @@ func (v *View) Refresh(ctx context.Context) error {
 	// Refresh device-link telemetry samples
 	if err := v.refreshDeviceLinkTelemetrySamples(ctx, circuits); err != nil {
 		if !errors.Is(err, context.Canceled) && !errors.Is(err, sql.ErrConnDone) {
-			v.log.Warn("failed to refresh device-link telemetry samples", "error", err)
+			v.log.Warn("telemetry/latency: failed to refresh device-link telemetry samples", "error", err)
 		}
 		// Don't fail the entire refresh if telemetry fails
 	}
@@ -208,12 +208,15 @@ func (v *View) Refresh(ctx context.Context) error {
 	if !v.cfg.InternetLatencyAgentPK.IsZero() && len(v.cfg.InternetDataProviders) > 0 {
 		metros, err := svcStore.GetMetros()
 		if err != nil {
-			v.log.Warn("failed to get metros for internet-metro samples", "error", err)
+			if errors.Is(err, context.Canceled) {
+				return err
+			}
+			v.log.Warn("telemetry/latency: failed to get metros for internet-metro samples", "error", err)
 		} else {
 			internetCircuits := ComputeInternetMetroCircuits(metros)
 			if err := v.refreshInternetMetroLatencySamples(ctx, internetCircuits); err != nil {
 				if !errors.Is(err, context.Canceled) && !errors.Is(err, sql.ErrConnDone) {
-					v.log.Warn("failed to refresh internet-metro telemetry samples", "error", err)
+					v.log.Warn("telemetry/latency: failed to refresh internet-metro telemetry samples", "error", err)
 				}
 				// Don't fail the entire refresh if telemetry fails
 			}
@@ -223,7 +226,7 @@ func (v *View) Refresh(ctx context.Context) error {
 	// Signal readiness once (close channel) - safe to call multiple times
 	v.readyOnce.Do(func() {
 		close(v.readyCh)
-		v.log.Info("telemetry: view is now ready")
+		v.log.Info("telemetry/latency: view is now ready")
 	})
 
 	mcpmetrics.ViewRefreshTotal.WithLabelValues("telemetry", "success").Inc()

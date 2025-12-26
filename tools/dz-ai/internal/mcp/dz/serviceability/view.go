@@ -82,6 +82,7 @@ type User struct {
 	ClientIP net.IP
 	DZIP     net.IP
 	DevicePK string
+	TunnelID uint16
 }
 
 type ServiceabilityRPC interface {
@@ -224,11 +225,11 @@ func (v *View) Refresh(ctx context.Context) error {
 	defer v.refreshMu.Unlock()
 
 	refreshStart := time.Now()
-	v.log.Info("serviceability: refresh started", "start_time", refreshStart)
+	v.log.Debug("serviceability: refresh started", "start_time", refreshStart)
 	defer func() {
-		duration := time.Since(refreshStart).Seconds()
-		v.log.Info("serviceability: refresh completed", "duration", duration)
-		mcpmetrics.ViewRefreshDuration.WithLabelValues("serviceability").Observe(duration)
+		duration := time.Since(refreshStart)
+		v.log.Info("serviceability: refresh completed", "duration", duration.String())
+		mcpmetrics.ViewRefreshDuration.WithLabelValues("serviceability").Observe(duration.Seconds())
 		if err := recover(); err != nil {
 			mcpmetrics.ViewRefreshTotal.WithLabelValues("serviceability", "error").Inc()
 			panic(err)
@@ -345,6 +346,7 @@ func convertUsers(onchain []serviceability.User) []User {
 			ClientIP: net.IP(user.ClientIp[:]),
 			DZIP:     net.IP(user.DzIp[:]),
 			DevicePK: solana.PublicKeyFromBytes(user.DevicePubKey[:]).String(),
+			TunnelID: user.TunnelId,
 		}
 	}
 	return result

@@ -1,0 +1,72 @@
+package dztelemusage
+
+import sqltools "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/tools/sql"
+
+func (v *View) SchemaTool() (*sqltools.SchemaTool, error) {
+	return sqltools.NewSchemaTool(sqltools.SchemaToolConfig{
+		Logger: v.log,
+		DB:     v.cfg.DB,
+		Schema: SCHEMA,
+	})
+}
+
+var SCHEMA = &sqltools.Schema{
+	Name: "doublezero-telemetry-usage",
+	Description: `
+Use for DZ interface usage and utilization statistics:
+- Interface packet and octet counters (in/out)
+- Error and discard statistics
+- Device metadata (interface, model, serial)
+- Time-series interface statistics
+`,
+	Tables: []sqltools.TableInfo{
+		{
+			Name:        "dz_device_iface_usage",
+			Description: "Interface usage and utilization statistics. Contains packet counters, octet counters, errors, and device metadata. Counters are cumulative. Join: dz_device_iface_usage.device_pk = dz_devices.pk.",
+			Columns: []sqltools.ColumnInfo{
+				{Name: "time", Type: "TIMESTAMP", Description: "Timestamp of the measurement"},
+				{Name: "device_pk", Type: "VARCHAR", Description: "Foreign key → dz_devices.pk (DoubleZero device public key)"},
+				{Name: "intf", Type: "VARCHAR", Description: "Interface name"},
+				{Name: "user_tunnel_id", Type: "BIGINT", Description: "Tunnel ID extracted from interface name (e.g., Tunnel501 -> 501). Only populated for interfaces with 'Tunnel' prefix."},
+				{Name: "link_pk", Type: "VARCHAR", Description: "Foreign key → dz_links.pk. Populated by matching (device_pk, intf) to link side A or Z."},
+				{Name: "link_side", Type: "VARCHAR", Description: "Link side: 'A' or 'Z'. Indicates which side of the link this interface belongs to."},
+				{Name: "model_name", Type: "VARCHAR", Description: "Device model name"},
+				{Name: "serial_number", Type: "VARCHAR", Description: "Device serial number"},
+				{Name: "carrier_transitions", Type: "BIGINT", Description: "Number of carrier transitions"},
+				{Name: "in_broadcast_pkts", Type: "BIGINT", Description: "Incoming broadcast packets"},
+				{Name: "in_discards", Type: "BIGINT", Description: "Incoming discarded packets"},
+				{Name: "in_errors", Type: "BIGINT", Description: "Incoming error packets"},
+				{Name: "in_fcs_errors", Type: "BIGINT", Description: "Incoming FCS error packets"},
+				{Name: "in_multicast_pkts", Type: "BIGINT", Description: "Incoming multicast packets"},
+				{Name: "in_octets", Type: "BIGINT", Description: "Incoming octets (bytes)"},
+				{Name: "in_pkts", Type: "BIGINT", Description: "Incoming packets"},
+				{Name: "in_unicast_pkts", Type: "BIGINT", Description: "Incoming unicast packets"},
+				{Name: "out_broadcast_pkts", Type: "BIGINT", Description: "Outgoing broadcast packets"},
+				{Name: "out_discards", Type: "BIGINT", Description: "Outgoing discarded packets"},
+				{Name: "out_errors", Type: "BIGINT", Description: "Outgoing error packets"},
+				{Name: "out_multicast_pkts", Type: "BIGINT", Description: "Outgoing multicast packets"},
+				{Name: "out_octets", Type: "BIGINT", Description: "Outgoing octets (bytes)"},
+				{Name: "out_pkts", Type: "BIGINT", Description: "Outgoing packets"},
+				{Name: "out_unicast_pkts", Type: "BIGINT", Description: "Outgoing unicast packets"},
+				// Delta fields (change from previous value)
+				{Name: "carrier_transitions_delta", Type: "BIGINT", Description: "Change in carrier transitions from previous measurement"},
+				{Name: "in_broadcast_pkts_delta", Type: "BIGINT", Description: "Change in incoming broadcast packets from previous measurement"},
+				{Name: "in_discards_delta", Type: "BIGINT", Description: "Change in incoming discarded packets from previous measurement"},
+				{Name: "in_errors_delta", Type: "BIGINT", Description: "Change in incoming error packets from previous measurement"},
+				{Name: "in_fcs_errors_delta", Type: "BIGINT", Description: "Change in incoming FCS error packets from previous measurement"},
+				{Name: "in_multicast_pkts_delta", Type: "BIGINT", Description: "Change in incoming multicast packets from previous measurement"},
+				{Name: "in_octets_delta", Type: "BIGINT", Description: "Change in incoming octets from previous measurement"},
+				{Name: "in_pkts_delta", Type: "BIGINT", Description: "Change in incoming packets from previous measurement"},
+				{Name: "in_unicast_pkts_delta", Type: "BIGINT", Description: "Change in incoming unicast packets from previous measurement"},
+				{Name: "out_broadcast_pkts_delta", Type: "BIGINT", Description: "Change in outgoing broadcast packets from previous measurement"},
+				{Name: "out_discards_delta", Type: "BIGINT", Description: "Change in outgoing discarded packets from previous measurement"},
+				{Name: "out_errors_delta", Type: "BIGINT", Description: "Change in outgoing error packets from previous measurement"},
+				{Name: "out_multicast_pkts_delta", Type: "BIGINT", Description: "Change in outgoing multicast packets from previous measurement"},
+				{Name: "out_octets_delta", Type: "BIGINT", Description: "Change in outgoing octets from previous measurement"},
+				{Name: "out_pkts_delta", Type: "BIGINT", Description: "Change in outgoing packets from previous measurement"},
+				{Name: "out_unicast_pkts_delta", Type: "BIGINT", Description: "Change in outgoing unicast packets from previous measurement"},
+				{Name: "delta_duration", Type: "DOUBLE", Description: "Time difference in seconds between this measurement and the previous one for the same device/interface"},
+			},
+		},
+	},
+}

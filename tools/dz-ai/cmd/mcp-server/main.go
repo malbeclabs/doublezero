@@ -27,6 +27,7 @@ import (
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/logger"
 	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/duck"
+	dztelemusage "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/dz/telemetry/usage"
 	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/metrics"
 	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/server"
 	"github.com/malbeclabs/doublezero/tools/maxmind/pkg/geoip"
@@ -43,18 +44,21 @@ var (
 )
 
 const (
-	defaultListenAddr      = "0.0.0.0:8010"
-	defaultRefreshInterval = 60 * time.Second
-	defaultMaxConcurrency  = 64
-	defaultDZEnv           = config.EnvMainnetBeta
-	defaultMetricsAddr     = "0.0.0.0:8080"
-	defaultDBPath          = ":memory:"
-	defaultDuckDBSpillPath = ".tmp/duckdb-spill-tmp"
-	defaultDBPathEnvVar    = "MCP_DB_PATH"
-	defaultGeoipCityDBPath = "/usr/share/GeoIP/GeoLite2-City.mmdb"
-	defaultGeoipASNDBPath  = "/usr/share/GeoIP/GeoLite2-ASN.mmdb"
-	geoipCityDBPathEnvVar  = "MCP_GEOIP_CITY_DB_PATH"
-	geoipASNDBPathEnvVar   = "MCP_GEOIP_ASN_DB_PATH"
+	defaultListenAddr                   = "0.0.0.0:8010"
+	defaultRefreshInterval              = 60 * time.Second
+	defaultMaxConcurrency               = 64
+	defaultDZEnv                        = config.EnvMainnetBeta
+	defaultMetricsAddr                  = "0.0.0.0:8080"
+	defaultDBPath                       = ":memory:"
+	defaultDuckDBSpillPath              = ".tmp/duckdb-spill-tmp"
+	defaultDBPathEnvVar                 = "MCP_DB_PATH"
+	defaultGeoipCityDBPath              = "/usr/share/GeoIP/GeoLite2-City.mmdb"
+	defaultGeoipASNDBPath               = "/usr/share/GeoIP/GeoLite2-ASN.mmdb"
+	defaultDeviceUsageInfluxQueryWindow = 1 * time.Hour
+	defaultDeviceUsageRefreshInterval   = 5 * time.Minute
+
+	geoipCityDBPathEnvVar = "MCP_GEOIP_CITY_DB_PATH"
+	geoipASNDBPathEnvVar  = "MCP_GEOIP_ASN_DB_PATH"
 )
 
 func main() {
@@ -77,6 +81,8 @@ func run() error {
 	dbSpillDirFlag := flag.String("db-spill-dir", defaultDuckDBSpillPath, "Path to DuckDB temporary spill directory")
 	geoipCityDBPathFlag := flag.String("geoip-city-db-path", defaultGeoipCityDBPath, "Path to MaxMind GeoIP2 City database file (or set MCP_GEOIP_CITY_DB_PATH env var)")
 	geoipASNDBPathFlag := flag.String("geoip-asn-db-path", defaultGeoipASNDBPath, "Path to MaxMind GeoIP2 ASN database file (or set MCP_GEOIP_ASN_DB_PATH env var)")
+	deviceUsageQueryWindowFlag := flag.Duration("device-usage-query-window", defaultDeviceUsageInfluxQueryWindow, "Query window for device usage (default: 1 hour)")
+	deviceUsageRefreshIntervalFlag := flag.Duration("device-usage-refresh-interval", defaultDeviceUsageRefreshInterval, "Refresh interval for device usage (default: 5 minutes)")
 	flag.Parse()
 
 	networkConfig, err := config.NetworkConfigForEnv(*envFlag)
@@ -159,7 +165,11 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("failed to initialize DuckDB: %w", err)
 	}
-	defer dbCloseFn()
+	defer func() {
+		if err := dbCloseFn(); err != nil {
+			log.Error("failed to close database", "error", err)
+		}
+	}()
 
 	// Determine GeoIP database paths: flag takes precedence, then env var, then default
 	geoipCityDBPath := *geoipCityDBPathFlag
@@ -181,7 +191,11 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("failed to initialize GeoIP: %w", err)
 	}
-	defer geoIPCloseFn()
+	defer func() {
+		if err := geoIPCloseFn(); err != nil {
+			log.Error("failed to close GeoIP resolver", "error", err)
+		}
+	}()
 
 	// Parse allowed tokens from environment variable (comma-separated)
 	// Auth can be explicitly disabled with MCP_AUTH_DISABLED=true
@@ -205,22 +219,55 @@ func run() error {
 		log.Info("mcp server: authentication disabled (no tokens configured)")
 	}
 
+	// Initialize InfluxDB client from environment variables (optional)
+	var influxDBClient dztelemusage.InfluxDBClient
+	influxURL := os.Getenv("INFLUX_URL")
+	influxToken := os.Getenv("INFLUX_TOKEN")
+	influxBucket := os.Getenv("INFLUX_BUCKET")
+	var deviceUsageQueryWindow time.Duration
+	if *deviceUsageQueryWindowFlag == 0 {
+		deviceUsageQueryWindow = defaultDeviceUsageInfluxQueryWindow
+	} else {
+		deviceUsageQueryWindow = *deviceUsageQueryWindowFlag
+	}
+	if influxURL != "" && influxToken != "" && influxBucket != "" {
+		influxDBClient, err = dztelemusage.NewSDKInfluxDBClient(influxURL, influxToken, influxBucket)
+		if err != nil {
+			return fmt.Errorf("failed to create InfluxDB client: %w", err)
+		}
+		defer func() {
+			if influxDBClient != nil {
+				if closeErr := influxDBClient.Close(); closeErr != nil {
+					log.Warn("failed to close InfluxDB client", "error", closeErr)
+				}
+			}
+		}()
+		log.Info("device usage (InfluxDB) client initialized")
+	} else {
+		log.Info("device usage (InfluxDB) environment variables not set, telemetry usage view will be disabled")
+	}
+
+	// Initialize MCP server
 	server, err := server.New(server.Config{
-		Version:                version,
-		ListenAddr:             *listenAddrFlag,
-		Logger:                 log,
-		Clock:                  clockwork.NewRealClock(),
-		ServiceabilityRPC:      serviceabilityClient,
-		TelemetryRPC:           telemetryClient,
-		DZEpochRPC:             dzRPCClient,
-		SolanaRPC:              solanaRPC,
-		DB:                     db,
-		RefreshInterval:        *refreshIntervalFlag,
-		MaxConcurrency:         *maxConcurrencyFlag,
-		InternetLatencyAgentPK: networkConfig.InternetLatencyCollectorPK,
-		InternetDataProviders:  telemetryconfig.InternetTelemetryDataProviders,
-		AllowedTokens:          allowedTokens,
-		GeoIPResolver:          geoIPResolver,
+		Version:                      version,
+		ListenAddr:                   *listenAddrFlag,
+		Logger:                       log,
+		Clock:                        clockwork.NewRealClock(),
+		ServiceabilityRPC:            serviceabilityClient,
+		TelemetryRPC:                 telemetryClient,
+		DZEpochRPC:                   dzRPCClient,
+		SolanaRPC:                    solanaRPC,
+		DB:                           db,
+		RefreshInterval:              *refreshIntervalFlag,
+		MaxConcurrency:               *maxConcurrencyFlag,
+		InternetLatencyAgentPK:       networkConfig.InternetLatencyCollectorPK,
+		InternetDataProviders:        telemetryconfig.InternetTelemetryDataProviders,
+		AllowedTokens:                allowedTokens,
+		GeoIPResolver:                geoIPResolver,
+		DeviceUsageInfluxClient:      influxDBClient,
+		DeviceUsageInfluxBucket:      influxBucket,
+		DeviceUsageInfluxQueryWindow: deviceUsageQueryWindow,
+		DeviceUsageRefreshInterval:   *deviceUsageRefreshIntervalFlag,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create server: %w", err)

@@ -70,6 +70,8 @@ func run() error {
 	metricsAddrFlag := flag.String("metrics-addr", defaultMetricsAddr, "Address to listen on for prometheus metrics")
 	modeFlag := flag.String("mode", "", "Mode: 'socket' (dev) or 'http' (prod). Defaults to 'socket' if SLACK_APP_TOKEN is set, otherwise 'http'")
 	httpAddrFlag := flag.String("http-addr", defaultHTTPAddr, "Address to listen on for HTTP events (production mode)")
+	maxRoundsFlag := flag.Int("max-rounds", 8, "Maximum number of rounds for the AI agent in normal mode")
+	brainModeMaxRoundsFlag := flag.Int("brain-mode-max-rounds", 24, "Maximum number of rounds for the AI agent in brain mode (e.g. when the user asks for a detailed analysis)")
 	flag.Parse()
 
 	log := logger.New(*verboseFlag)
@@ -152,6 +154,8 @@ func run() error {
 		&anthropicClient,
 		convManager,
 		log,
+		*maxRoundsFlag,
+		*brainModeMaxRoundsFlag,
 	)
 	msgProcessor.StartCleanup(ctx)
 

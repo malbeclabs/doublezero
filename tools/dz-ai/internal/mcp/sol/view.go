@@ -145,11 +145,11 @@ func (v *View) Start(ctx context.Context) {
 
 func (v *View) Refresh(ctx context.Context) error {
 	refreshStart := time.Now()
-	v.log.Info("solana: refresh started", "start_time", refreshStart)
+	v.log.Debug("solana: refresh started", "start_time", refreshStart)
 	defer func() {
-		duration := time.Since(refreshStart).Seconds()
-		v.log.Info("solana: refresh completed", "duration", duration)
-		mcpmetrics.ViewRefreshDuration.WithLabelValues("solana").Observe(duration)
+		duration := time.Since(refreshStart)
+		v.log.Info("solana: refresh completed", "duration", duration.String())
+		mcpmetrics.ViewRefreshDuration.WithLabelValues("solana").Observe(duration.Seconds())
 		if err := recover(); err != nil {
 			mcpmetrics.ViewRefreshTotal.WithLabelValues("solana", "error").Inc()
 			panic(err)

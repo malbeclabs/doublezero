@@ -45,12 +45,22 @@ var (
 		[]string{"reason"},
 	)
 
-	MessageProcessingDuration = promauto.NewHistogram(
+	MessageProcessingDuration = promauto.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "doublezero_ai_slack_message_processing_duration_seconds",
 			Help:    "Duration of message processing",
 			Buckets: prometheus.ExponentialBuckets(0.1, 2, 12), // 0.1s to ~205s (~3.4 minutes)
 		},
+		[]string{"effort_mode"},
+	)
+
+	AgentRounds = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "doublezero_ai_slack_agent_rounds",
+			Help:    "Number of rounds taken to generate a response",
+			Buckets: []float64{1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30, 40, 50},
+		},
+		[]string{"effort_mode"},
 	)
 
 	MessagesPostedTotal = promauto.NewCounterVec(
@@ -58,7 +68,7 @@ var (
 			Name: "doublezero_ai_slack_messages_posted_total",
 			Help: "Total number of messages posted to Slack",
 		},
-		[]string{"status"},
+		[]string{"status", "effort_mode"},
 	)
 
 	AgentErrorsTotal = promauto.NewCounterVec(
@@ -66,7 +76,7 @@ var (
 			Name: "doublezero_ai_slack_agent_errors_total",
 			Help: "Total number of agent errors",
 		},
-		[]string{"error_type"},
+		[]string{"error_type", "effort_mode"},
 	)
 
 	SlackAPIErrorsTotal = promauto.NewCounterVec(

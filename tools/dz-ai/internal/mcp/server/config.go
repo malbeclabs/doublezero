@@ -9,7 +9,8 @@ import (
 	"github.com/jonboulle/clockwork"
 	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/duck"
 	dzsvc "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/dz/serviceability"
-	dztelem "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/dz/telemetry"
+	dztelemlatency "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/dz/telemetry/latency"
+	dztelemusage "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/dz/telemetry/usage"
 	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/sol"
 	"github.com/malbeclabs/doublezero/tools/maxmind/pkg/geoip"
 )
@@ -28,8 +29,8 @@ type Config struct {
 	Logger            *slog.Logger
 	Clock             clockwork.Clock
 	ServiceabilityRPC dzsvc.ServiceabilityRPC
-	TelemetryRPC      dztelem.TelemetryRPC
-	DZEpochRPC        dztelem.EpochRPC
+	TelemetryRPC      dztelemlatency.TelemetryRPC
+	DZEpochRPC        dztelemlatency.EpochRPC
 	SolanaRPC         sol.SolanaRPC
 	DB                duck.DB
 
@@ -40,6 +41,11 @@ type Config struct {
 	AllowedTokens          []string // Bearer tokens allowed for MCP endpoint authentication
 
 	GeoIPResolver geoip.Resolver
+
+	DeviceUsageRefreshInterval   time.Duration
+	DeviceUsageInfluxClient      dztelemusage.InfluxDBClient
+	DeviceUsageInfluxBucket      string
+	DeviceUsageInfluxQueryWindow time.Duration
 }
 
 func (c *Config) Validate() error {
@@ -72,6 +78,18 @@ func (c *Config) Validate() error {
 	}
 	if len(c.InternetDataProviders) == 0 {
 		return fmt.Errorf("internet data providers are required")
+	}
+	// Device usage InfluxDB fields are optional - if client is provided, all fields must be set
+	if c.DeviceUsageInfluxClient != nil {
+		if c.DeviceUsageInfluxBucket == "" {
+			return fmt.Errorf("device usage influx bucket is required when influx client is provided")
+		}
+		if c.DeviceUsageInfluxQueryWindow <= 0 {
+			return fmt.Errorf("device usage influx query window must be greater than 0 when influx client is provided")
+		}
+		if c.DeviceUsageRefreshInterval <= 0 {
+			c.DeviceUsageRefreshInterval = c.RefreshInterval
+		}
 	}
 
 	if c.Clock == nil {

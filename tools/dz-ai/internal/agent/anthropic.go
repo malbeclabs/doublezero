@@ -262,6 +262,61 @@ func (a *AnthropicAgent) Run(ctx context.Context, mcpClient *client.Client, init
 		if a.cfg.KeepToolResultsRounds > 0 && len(toolResultIndices) > a.cfg.KeepToolResultsRounds {
 			msgs, toolResultIndices = trimOldToolResults(msgs, toolResultIndices, a.cfg.KeepToolResultsRounds)
 		}
+
+		// If this was the last round and we executed tools, add a finalization prompt
+		if round == a.cfg.MaxRounds-1 {
+			if a.cfg.Logger != nil {
+				a.cfg.Logger.Info("agent: last round completed with tool calls, adding finalization prompt")
+			}
+
+			finalizationPrompt := `This is your final opportunity to respond. You have run out of rounds/time, but please provide a complete final response now. You can mention that you're out of rounds/time if relevant, but please give a helpful response based on what you've learned so far.`
+
+			finalMsgs := append(msgs, anthropic.NewUserMessage(anthropic.NewTextBlock(finalizationPrompt)))
+			fullConversation = append(fullConversation, anthropicMessage{msg: anthropic.NewUserMessage(anthropic.NewTextBlock(finalizationPrompt))})
+
+			finalParams := anthropic.MessageNewParams{
+				Model:     a.cfg.Model,
+				MaxTokens: a.cfg.MaxTokens,
+				Messages:  finalMsgs,
+				Tools:     tools,
+			}
+			if a.cfg.System != "" {
+				finalParams.System = []anthropic.TextBlockParam{
+					{Text: a.cfg.System},
+				}
+			}
+
+			finalResp, err := a.cfg.Client.Messages.New(ctx, finalParams)
+			if err != nil {
+				if a.cfg.Logger != nil {
+					a.cfg.Logger.Warn("failed to get final response after finalization prompt", "error", err)
+				}
+				return nil, fmt.Errorf("exceeded maximum rounds (%d) and final response request failed: %w", a.cfg.MaxRounds, err)
+			}
+
+			finalResponse := anthropicResponse{resp: finalResp}
+			finalMsg := finalResponse.ToMessage()
+			fullConversation = append(fullConversation, finalMsg)
+
+			var finalText string
+			for _, blk := range finalResponse.Content() {
+				text, ok := blk.AsText()
+				if ok && text != "" {
+					finalText += text
+					if output != nil {
+						fmt.Fprint(output, text)
+					}
+				}
+			}
+			if output != nil {
+				fmt.Fprintln(output)
+			}
+
+			return &RunResult{
+				FinalText:        strings.TrimSpace(finalText),
+				FullConversation: fullConversation,
+			}, nil
+		}
 	}
 
 	return nil, fmt.Errorf("exceeded maximum rounds (%d)", a.cfg.MaxRounds)

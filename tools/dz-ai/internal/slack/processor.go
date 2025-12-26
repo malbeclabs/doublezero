@@ -20,11 +20,13 @@ const (
 
 // Processor processes Slack messages and generates responses
 type Processor struct {
-	slackClient     *Client
-	mcpClient       *mcpclient.Client
-	anthropicClient *anthropic.Client
-	convManager     *Manager
-	log             *slog.Logger
+	slackClient        *Client
+	mcpClient          *mcpclient.Client
+	anthropicClient    *anthropic.Client
+	convManager        *Manager
+	log                *slog.Logger
+	maxRounds          int
+	brainModeMaxRounds int
 
 	// Track messages we've already responded to (by message timestamp) to prevent duplicate error messages
 	respondedMessages   map[string]time.Time
@@ -38,14 +40,21 @@ func NewProcessor(
 	anthropicClient *anthropic.Client,
 	convManager *Manager,
 	log *slog.Logger,
+	maxRounds int,
+	brainModeMaxRounds int,
 ) *Processor {
+	if brainModeMaxRounds < maxRounds {
+		brainModeMaxRounds = maxRounds
+	}
 	return &Processor{
-		slackClient:       slackClient,
-		mcpClient:         mcpClient,
-		anthropicClient:   anthropicClient,
-		convManager:       convManager,
-		log:               log,
-		respondedMessages: make(map[string]time.Time),
+		slackClient:        slackClient,
+		mcpClient:          mcpClient,
+		anthropicClient:    anthropicClient,
+		convManager:        convManager,
+		log:                log,
+		respondedMessages:  make(map[string]time.Time),
+		maxRounds:          maxRounds,
+		brainModeMaxRounds: brainModeMaxRounds,
 	}
 }
 
@@ -91,6 +100,32 @@ func (p *Processor) MarkResponded(messageKey string) {
 	p.respondedMessagesMu.Unlock()
 }
 
+// countRounds counts the number of rounds (assistant messages) in the conversation.
+// Each round adds one assistant message to the conversation.
+func countRounds(conversation []agent.Message) int {
+	count := 0
+	for _, msg := range conversation {
+		// Check if this is an assistant message by type asserting to anthropic.MessageParam
+		if param := msg.ToParam(); param != nil {
+			if msgParam, ok := param.(anthropic.MessageParam); ok {
+				// MessageParamRole is a string type, so we can compare directly
+				if string(msgParam.Role) == "assistant" {
+					count++
+				}
+			}
+		}
+	}
+	return count
+}
+
+// effortModeLabel returns "normal" or "brain" as a string for the effort_mode label.
+func effortModeLabel(isBrainMode bool) string {
+	if isBrainMode {
+		return "brain"
+	}
+	return "normal"
+}
+
 // ProcessMessage processes a single Slack message
 func (p *Processor) ProcessMessage(
 	ctx context.Context,
@@ -100,9 +135,6 @@ func (p *Processor) ProcessMessage(
 	isChannel bool,
 ) {
 	startTime := time.Now()
-	defer func() {
-		MessageProcessingDuration.Observe(time.Since(startTime).Seconds())
-	}()
 
 	p.log.Info("replying to message",
 		"channel", ev.Channel,
@@ -121,6 +153,19 @@ func (p *Processor) ProcessMessage(
 	if isChannel {
 		txt = p.slackClient.RemoveBotMention(txt)
 	}
+
+	// Check for brain mode (:brain: emoji)
+	isBrainMode := strings.Contains(ev.Text, ":brain:")
+	maxRounds := p.maxRounds
+	if isBrainMode {
+		maxRounds = p.brainModeMaxRounds
+		p.log.Info("brain mode activated", "max_rounds", maxRounds)
+	}
+
+	effortModeLabel := effortModeLabel(isBrainMode)
+	defer func() {
+		MessageProcessingDuration.WithLabelValues(effortModeLabel).Observe(time.Since(startTime).Seconds())
+	}()
 
 	// Always thread responses (both channels and DMs)
 	// Determine thread key: use thread timestamp if in thread, otherwise use message timestamp
@@ -160,7 +205,7 @@ func (p *Processor) ProcessMessage(
 		Client:                *p.anthropicClient,
 		Model:                 anthropic.ModelClaudeSonnet4_5_20250929,
 		MaxTokens:             int64(4000),
-		MaxRounds:             24,
+		MaxRounds:             maxRounds,
 		MaxToolResultLen:      10000,
 		Logger:                p.log,
 		System:                agent.SystemPrompt,
@@ -187,7 +232,7 @@ func (p *Processor) ProcessMessage(
 			errorType = "mcp_client"
 			MCPClientErrorsTotal.WithLabelValues("run_agent").Inc()
 		}
-		AgentErrorsTotal.WithLabelValues(errorType).Inc()
+		AgentErrorsTotal.WithLabelValues(errorType, effortModeLabel).Inc()
 		p.log.Error("agent error", "error", err, "message_ts", ev.TimeStamp, "envelope_id", eventID)
 
 		// Mark as responded to prevent duplicate error messages
@@ -206,7 +251,7 @@ func (p *Processor) ProcessMessage(
 		if postErr != nil {
 			SlackAPIErrorsTotal.WithLabelValues("post_message").Inc()
 		} else {
-			MessagesPostedTotal.WithLabelValues("error").Inc()
+			MessagesPostedTotal.WithLabelValues("error", effortModeLabel).Inc()
 		}
 
 		// Remove speech_balloon reaction after posting error
@@ -255,13 +300,17 @@ func (p *Processor) ProcessMessage(
 
 	if err != nil {
 		SlackAPIErrorsTotal.WithLabelValues("post_message").Inc()
-		MessagesPostedTotal.WithLabelValues("error").Inc()
+		MessagesPostedTotal.WithLabelValues("error", effortModeLabel).Inc()
 		errorReply := "Sorry, I encountered an error. Please try again."
 		errorReply = normalizeTwoWayArrow(errorReply)
 		_, _ = p.slackClient.PostMessage(ctx, ev.Channel, errorReply, nil, threadTS)
 	} else {
-		MessagesPostedTotal.WithLabelValues("success").Inc()
+		MessagesPostedTotal.WithLabelValues("success", effortModeLabel).Inc()
 		p.log.Info("reply posted successfully", "channel", ev.Channel, "thread_ts", threadKey, "reply_ts", respTS)
+
+		// Count rounds and record metric
+		rounds := countRounds(result.FullConversation)
+		AgentRounds.WithLabelValues(effortModeLabel).Observe(float64(rounds))
 
 		// Update conversation history cache with FULL conversation including tool calls/results
 		p.convManager.UpdateConversationHistory(threadKey, result.FullConversation)

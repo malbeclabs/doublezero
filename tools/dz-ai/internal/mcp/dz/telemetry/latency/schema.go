@@ -1,4 +1,4 @@
-package dztelem
+package dztelemlatency
 
 import sqltools "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/tools/sql"
 

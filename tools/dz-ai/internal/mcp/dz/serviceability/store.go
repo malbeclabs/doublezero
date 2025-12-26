@@ -89,7 +89,8 @@ func (s *Store) CreateTablesIfNotExists() error {
 			kind VARCHAR,
 			client_ip VARCHAR,
 			dz_ip VARCHAR,
-			device_pk VARCHAR
+			device_pk VARCHAR,
+			tunnel_id INTEGER
 		)`,
 	}
 	for _, sql := range sqls {
@@ -120,7 +121,7 @@ func (s *Store) ReplaceUsers(ctx context.Context, users []User) error {
 	s.log.Debug("serviceability/store: replacing users", "count", len(users))
 	return duck.ReplaceTableViaCSV(ctx, s.log, s.db, "dz_users", len(users), func(w *csv.Writer, i int) error {
 		u := users[i]
-		return w.Write([]string{u.PK, u.OwnerPK, u.Status, u.Kind, u.ClientIP.String(), u.DZIP.String(), u.DevicePK})
+		return w.Write([]string{u.PK, u.OwnerPK, u.Status, u.Kind, u.ClientIP.String(), u.DZIP.String(), u.DevicePK, fmt.Sprintf("%d", u.TunnelID)})
 	})
 }
 

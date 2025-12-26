@@ -1,4 +1,4 @@
-package dztelem
+package dztelemlatency
 
 import (
 	"context"

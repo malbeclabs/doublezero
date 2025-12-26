@@ -1,18 +1,18 @@
 use crate::{
     error::DoubleZeroError,
-    globalstate::globalstate_get,
     pda::get_accesspass_pda,
     seeds::{SEED_ACCESS_PASS, SEED_PREFIX},
+    serializer::{try_acc_create, try_acc_write},
     state::{
         accesspass::{AccessPass, AccessPassStatus, AccessPassType},
-        accounttype::{AccountType, AccountTypeInfo},
+        accounttype::AccountType,
+        globalstate::GlobalState,
         multicastgroup::MulticastGroup,
     },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
-use doublezero_program_common::{resize_account::resize_account_if_needed, try_create_account};
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -73,7 +73,7 @@ pub fn process_add_multicastgroup_pub_allowlist(
 
     // Parse the global state account
     let mgroup = MulticastGroup::try_from(mgroup_account)?;
-    let globalstate = globalstate_get(globalstate_account)?;
+    let globalstate = GlobalState::try_from(globalstate_account)?;
 
     // Check whether mgroup is authorized
     let is_authorized = (mgroup.owner == *payer_account.key)
@@ -104,13 +104,12 @@ pub fn process_add_multicastgroup_pub_allowlist(
             flags: 0,
         };
 
-        try_create_account(
-            payer_account.key,             // Account paying for the new account
-            accesspass_account.key,        // Account to be created
-            accesspass_account.lamports(), // Current amount of lamports on the new account
-            accesspass.size(),             // Size in bytes to allocate for the data field
-            program_id,                    // Set program owner to our program
-            accounts,
+        try_acc_create(
+            &accesspass,
+            accesspass_account,
+            payer_account,
+            system_program,
+            program_id,
             &[
                 SEED_PREFIX,
                 SEED_ACCESS_PASS,
@@ -119,7 +118,6 @@ pub fn process_add_multicastgroup_pub_allowlist(
                 &[bump_seed],
             ],
         )?;
-        accesspass.try_serialize(accesspass_account)?;
     } else {
         assert_eq!(
             accesspass_account.owner, program_id,
@@ -140,13 +138,7 @@ pub fn process_add_multicastgroup_pub_allowlist(
             accesspass.mgroup_pub_allowlist.push(*mgroup_account.key);
         }
 
-        resize_account_if_needed(
-            accesspass_account,
-            payer_account,
-            accounts,
-            accesspass.size(),
-        )?;
-        accesspass.try_serialize(accesspass_account)?;
+        try_acc_write(&accesspass, accesspass_account, payer_account, accounts)?;
     }
 
     #[cfg(test)]

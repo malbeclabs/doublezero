@@ -1,6 +1,5 @@
 use crate::{
     error::{DoubleZeroError, Validate},
-    seeds::SEED_LOCATION,
     state::accounttype::*,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -70,37 +69,6 @@ impl fmt::Display for Location {
             "account_type: {}, owner: {}, index: {}, bump_seed:{}, code: {}, name: {}, country: {} lat: {}, lng: {}, loc_id: {}, status: {}",
             self.account_type, self.owner, self.index, self.bump_seed, self.code, self.name, self.country, self.lat, self.lng, self.loc_id, self.status,
         )
-    }
-}
-
-impl AccountTypeInfo for Location {
-    fn seed(&self) -> &[u8] {
-        SEED_LOCATION
-    }
-    fn size(&self) -> usize {
-        1 + 32
-            + 16
-            + 1
-            + 8
-            + 8
-            + 4
-            + 1
-            + 4
-            + self.code.len()
-            + 4
-            + self.name.len()
-            + 4
-            + self.country.len()
-            + 4 // reference_count
-    }
-    fn index(&self) -> u128 {
-        self.index
-    }
-    fn bump_seed(&self) -> u8 {
-        self.bump_seed
-    }
-    fn owner(&self) -> Pubkey {
-        self.owner
     }
 }
 
@@ -232,12 +200,19 @@ mod tests {
         val.validate().unwrap();
         val2.validate().unwrap();
 
-        assert_eq!(val.size(), val2.size());
+        assert_eq!(
+            borsh::object_length(&val).unwrap(),
+            borsh::object_length(&val2).unwrap()
+        );
         assert_eq!(val.owner, val2.owner);
         assert_eq!(val.code, val2.code);
         assert_eq!(val.lat, val2.lat);
         assert_eq!(val.lng, val2.lng);
-        assert_eq!(data.len(), val.size(), "Invalid Size");
+        assert_eq!(
+            data.len(),
+            borsh::object_length(&val).unwrap(),
+            "Invalid Size"
+        );
     }
 
     #[test]

@@ -122,7 +122,7 @@ async fn test_user_migration() {
     .await;
 
     /***********************************************************************************************************************************/
-    println!("🟢 5. Create Contributor...");
+    println!("🟢 4. Create Contributor...");
     let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     assert_eq!(globalstate_account.account_index, 2);
@@ -158,7 +158,7 @@ async fn test_user_migration() {
     println!("✅ Contributor initialized successfully",);
     /***********************************************************************************************************************************/
     // Device _la
-    println!("🟢 4. Testing Device initialization...");
+    println!("🟢 5. Testing Device initialization...");
 
     let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
 
@@ -227,7 +227,7 @@ async fn test_user_migration() {
 
     println!("✅ Device initialized successfully",);
     /*****************************************************************************************************************************************************/
-    println!("🟢 5. Testing Activate Device...");
+    println!("🟢 6. Testing Activate Device...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -251,7 +251,7 @@ async fn test_user_migration() {
 
     println!("✅ Device activated successfully");
     /***********************************************************************************************************************************/
-    println!("🟢 6. Testing Access Pass creation...");
+    println!("🟢 7. Testing Access Pass creation...");
 
     let user_ip = [100, 0, 0, 1].into();
     let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &user_ip, &payer.pubkey());
@@ -286,7 +286,7 @@ async fn test_user_migration() {
     assert_eq!(user1.status, AccessPassStatus::Requested);
     /***********************************************************************************************************************************/
     // Device _la
-    println!("🟢 7. Testing User creation...");
+    println!("🟢 8. Testing User creation...");
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     assert_eq!(globalstate_account.account_index, 4);
 
@@ -324,7 +324,7 @@ async fn test_user_migration() {
     println!("✅ User created successfully",);
     /***********************************************************************************************************************************/
     // Device _la
-    println!("🟢 8. Testing User migration...");
+    println!("🟢 9. Testing User migration...");
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     assert_eq!(globalstate_account.account_index, 5);
 

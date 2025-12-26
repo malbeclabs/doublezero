@@ -1,4 +1,8 @@
-use crate::{error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::link::*};
+use crate::{
+    error::DoubleZeroError,
+    serializer::try_acc_write,
+    state::{globalstate::GlobalState, link::*},
+};
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 use doublezero_program_common::types::NetworkV4;
@@ -52,7 +56,7 @@ pub fn process_reject_link(
     );
     assert!(link_account.is_writable, "PDA Account is not writable");
 
-    let globalstate = globalstate_get(globalstate_account)?;
+    let globalstate = GlobalState::try_from(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }
@@ -68,7 +72,7 @@ pub fn process_reject_link(
     link.status = LinkStatus::Rejected;
     msg!("Reason: {:?}", value.reason);
 
-    account_write(link_account, &link, payer_account, system_program)?;
+    try_acc_write(&link, link_account, payer_account, accounts)?;
 
     #[cfg(test)]
     msg!("Rejectd: {:?}", link);

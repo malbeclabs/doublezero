@@ -1,6 +1,9 @@
+use crate::{
+    error::DoubleZeroError,
+    serializer::try_acc_write,
+    state::{device::*, globalstate::GlobalState},
+};
 use core::fmt;
-
-use crate::{error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::device::*};
 
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -55,8 +58,13 @@ pub fn process_reject_device(
         "Invalid System Program Account Owner"
     );
     assert!(device_account.is_writable, "PDA Account is not writable");
+    assert_eq!(
+        *system_program.unsigned_key(),
+        solana_program::system_program::id(),
+        "Invalid System Program Account Owner"
+    );
 
-    let globalstate = globalstate_get(globalstate_account)?;
+    let globalstate = GlobalState::try_from(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }
@@ -70,7 +78,7 @@ pub fn process_reject_device(
     device.status = DeviceStatus::Rejected;
     msg!("Reason: {:?}", value.reason);
 
-    account_write(device_account, &device, payer_account, system_program)?;
+    try_acc_write(&device, device_account, payer_account, accounts)?;
 
     #[cfg(test)]
     msg!("Rejectd: {:?}", device);

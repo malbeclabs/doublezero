@@ -1,10 +1,12 @@
-use core::fmt;
-
 use crate::{
-    error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::contributor::*,
+    error::DoubleZeroError,
+    serializer::try_acc_write,
+    state::{contributor::*, globalstate::GlobalState},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
+use core::fmt;
+
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -57,9 +59,14 @@ pub fn process_resume_contributor(
         contributor_account.is_writable,
         "PDA Account is not writable"
     );
+    assert_eq!(
+        *system_program.unsigned_key(),
+        solana_program::system_program::id(),
+        "Invalid System Program Account Owner"
+    );
 
     // Parse the global state account & check if the payer is in the allowlist
-    let globalstate = globalstate_get(globalstate_account)?;
+    let globalstate = GlobalState::try_from(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }
@@ -67,12 +74,7 @@ pub fn process_resume_contributor(
     let mut contributor: Contributor = Contributor::try_from(contributor_account)?;
     contributor.status = ContributorStatus::Activated;
 
-    account_write(
-        contributor_account,
-        &contributor,
-        payer_account,
-        system_program,
-    )?;
+    try_acc_write(&contributor, contributor_account, payer_account, accounts)?;
 
     #[cfg(test)]
     msg!("Resumed: {:?}", contributor);

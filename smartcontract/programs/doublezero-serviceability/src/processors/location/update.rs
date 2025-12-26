@@ -1,4 +1,8 @@
-use crate::{error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::location::*};
+use crate::{
+    error::DoubleZeroError,
+    serializer::try_acc_write,
+    state::{globalstate::GlobalState, location::*},
+};
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 use doublezero_program_common::validate_account_code;
@@ -64,7 +68,7 @@ pub fn process_update_location(
     );
     assert!(location_account.is_writable, "PDA Account is not writable");
     // Parse the global state account & check if the payer is in the allowlist
-    let globalstate = globalstate_get(globalstate_account)?;
+    let globalstate = GlobalState::try_from(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }
@@ -92,7 +96,7 @@ pub fn process_update_location(
         location.loc_id = loc_id;
     }
 
-    account_write(location_account, &location, payer_account, system_program)?;
+    try_acc_write(&location, location_account, payer_account, accounts)?;
 
     #[cfg(test)]
     msg!("Updated: {:?}", location);

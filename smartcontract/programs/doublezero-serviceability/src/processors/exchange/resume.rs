@@ -1,13 +1,14 @@
-use core::fmt;
-
 use crate::{
     error::DoubleZeroError,
-    globalstate::globalstate_get,
-    helper::account_write,
-    state::exchange::{Exchange, ExchangeStatus},
+    serializer::try_acc_write,
+    state::{
+        exchange::{Exchange, ExchangeStatus},
+        globalstate::GlobalState,
+    },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
+use core::fmt;
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -59,9 +60,14 @@ pub fn process_resume_exchange(
     );
     // Check if the account is writable
     assert!(exchange_account.is_writable, "PDA Account is not writable");
+    assert_eq!(
+        *system_program.unsigned_key(),
+        solana_program::system_program::id(),
+        "Invalid System Program Account Owner"
+    );
 
     // Parse accounts
-    let globalstate = globalstate_get(globalstate_account)?;
+    let globalstate = GlobalState::try_from(globalstate_account)?;
     let mut exchange: Exchange = Exchange::try_from(exchange_account)?;
 
     // Authorization:
@@ -72,7 +78,7 @@ pub fn process_resume_exchange(
 
     exchange.status = ExchangeStatus::Activated;
 
-    account_write(exchange_account, &exchange, payer_account, system_program)?;
+    try_acc_write(&exchange, exchange_account, payer_account, accounts)?;
 
     #[cfg(test)]
     msg!("Resumed: {:?}", exchange);

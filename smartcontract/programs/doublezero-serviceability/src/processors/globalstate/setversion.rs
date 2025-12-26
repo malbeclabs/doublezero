@@ -1,12 +1,13 @@
-use core::fmt;
-
 use crate::{
-    accounts::AccountSize, error::DoubleZeroError, globalstate::globalstate_get, pda::*,
-    programversion::ProgramVersion, state::programconfig::ProgramConfig,
+    error::DoubleZeroError,
+    pda::*,
+    programversion::ProgramVersion,
+    serializer::try_acc_write,
+    state::{globalstate::GlobalState, programconfig::ProgramConfig},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
-use doublezero_program_common::resize_account::resize_account_if_needed;
+use core::fmt;
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -75,7 +76,7 @@ pub fn process_set_version(
     );
 
     // Parse the global state account & check if the payer is in the allowlist
-    let globalstate = globalstate_get(globalstate_account)?;
+    let globalstate = GlobalState::try_from(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }
@@ -88,13 +89,12 @@ pub fn process_set_version(
 
     program_config.min_compatible_version = value.min_compatible_version.clone();
 
-    resize_account_if_needed(
+    try_acc_write(
+        &program_config,
         program_config_account,
         payer_account,
         accounts,
-        program_config.size(),
     )?;
-    program_config.try_serialize(program_config_account)?;
 
     #[cfg(test)]
     msg!("Updated: {:?}", globalstate);

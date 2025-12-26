@@ -1,12 +1,12 @@
 use crate::{
     error::DoubleZeroError,
-    globalstate::globalstate_get,
-    state::{accounttype::AccountTypeInfo, user::*},
+    serializer::try_acc_write,
+    state::{globalstate::GlobalState, user::*},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
-use doublezero_program_common::resize_account::resize_account_if_needed;
+
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -56,7 +56,7 @@ pub fn process_request_ban_user(
     // Check if the account is writable
     assert!(user_account.is_writable, "PDA Account is not writable");
 
-    let globalstate = globalstate_get(globalstate_account)?;
+    let globalstate = GlobalState::try_from(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }
@@ -64,8 +64,7 @@ pub fn process_request_ban_user(
     let mut user: User = User::try_from(user_account)?;
     user.status = UserStatus::PendingBan;
 
-    resize_account_if_needed(user_account, payer_account, accounts, user.size())?;
-    user.try_serialize(user_account)?;
+    try_acc_write(&user, user_account, payer_account, accounts)?;
 
     #[cfg(test)]
     msg!("Deleting: {:?}", user);

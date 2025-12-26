@@ -1,17 +1,17 @@
 use crate::{
     error::DoubleZeroError,
-    globalstate::globalstate_get,
     pda::get_accesspass_pda,
+    serializer::try_acc_write,
     state::{
         accesspass::{AccessPass, AccessPassStatus},
-        accounttype::AccountTypeInfo,
+        globalstate::GlobalState,
         user::{User, UserStatus},
     },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
-use doublezero_program_common::resize_account::resize_account_if_needed;
+
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
@@ -69,7 +69,7 @@ pub fn process_check_access_pass_user(
     // Check if the account is writable
     assert!(user_account.is_writable, "PDA Account is not writable");
 
-    let globalstate = globalstate_get(globalstate_account)?;
+    let globalstate = GlobalState::try_from(globalstate_account)?;
     if globalstate.activator_authority_pk != *payer_account.key {
         return Err(DoubleZeroError::NotAllowed.into());
     }
@@ -102,15 +102,8 @@ pub fn process_check_access_pass_user(
         UserStatus::Activated
     };
 
-    resize_account_if_needed(user_account, payer_account, accounts, user.size())?;
-    user.try_serialize(user_account)?;
-    resize_account_if_needed(
-        accesspass_account,
-        payer_account,
-        accounts,
-        accesspass.size(),
-    )?;
-    accesspass.try_serialize(accesspass_account)?;
+    try_acc_write(&user, user_account, payer_account, accounts)?;
+    try_acc_write(&accesspass, accesspass_account, payer_account, accounts)?;
 
     #[cfg(test)]
     msg!("OutOfCredits: {:?}", user);

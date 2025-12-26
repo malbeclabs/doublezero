@@ -1,11 +1,11 @@
 use crate::{
     error::DoubleZeroError,
-    globalstate::{globalstate_get_next, globalstate_write},
-    helper::{account_create, account_write},
     pda::get_device_pda,
+    seeds::{SEED_DEVICE, SEED_PREFIX},
+    serializer::{try_acc_create, try_acc_write},
     state::{
         accounttype::AccountType, contributor::Contributor, device::*, exchange::Exchange,
-        location::Location,
+        globalstate::GlobalState, location::Location,
     },
 };
 use borsh::BorshSerialize;
@@ -89,11 +89,18 @@ pub fn process_create_device(
         globalstate_account.owner, program_id,
         "Invalid GlobalState Account Owner"
     );
+    assert_eq!(
+        *system_program.unsigned_key(),
+        solana_program::system_program::id(),
+        "Invalid System Program Account Owner"
+    );
 
-    if !device_account.data.borrow().is_empty() {
+    if !device_account.data_is_empty() {
         return Err(ProgramError::AccountAlreadyInitialized);
     }
-    let globalstate = globalstate_get_next(globalstate_account)?;
+    let mut globalstate = GlobalState::try_from(globalstate_account)?;
+    globalstate.account_index += 1;
+
     assert_eq!(globalstate.account_type, AccountType::GlobalState);
 
     let mut contributor = Contributor::try_from(contributor_account)?;
@@ -150,22 +157,24 @@ pub fn process_create_device(
         max_users: 0, // Initially, the Device is locked and must be activated by modifying the maximum number of users.
     };
 
-    account_create(
-        device_account,
+    try_acc_create(
         &device,
+        device_account,
         payer_account,
         system_program,
         program_id,
+        &[
+            SEED_PREFIX,
+            SEED_DEVICE,
+            &globalstate.account_index.to_le_bytes(),
+            &[bump_seed],
+        ],
     )?;
-    account_write(
-        contributor_account,
-        &contributor,
-        payer_account,
-        system_program,
-    )?;
-    account_write(location_account, &location, payer_account, system_program)?;
-    account_write(exchange_account, &exchange, payer_account, system_program)?;
-    globalstate_write(globalstate_account, &globalstate)?;
+
+    try_acc_write(&contributor, contributor_account, payer_account, accounts)?;
+    try_acc_write(&location, location_account, payer_account, accounts)?;
+    try_acc_write(&exchange, exchange_account, payer_account, accounts)?;
+    try_acc_write(&globalstate, globalstate_account, payer_account, accounts)?;
 
     Ok(())
 }

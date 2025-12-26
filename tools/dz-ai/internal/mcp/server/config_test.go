@@ -25,8 +25,8 @@ func (m *mockServiceabilityRPC) GetProgramData(ctx context.Context) (*serviceabi
 
 type mockTelemetryRPC struct{}
 
-func (m *mockTelemetryRPC) GetDeviceLatencySamples(ctx context.Context, originDevicePK, targetDevicePK, linkPK solana.PublicKey, epoch uint64) (*telemetry.DeviceLatencySamples, error) {
-	return nil, nil
+func (m *mockTelemetryRPC) GetDeviceLatencySamplesTail(ctx context.Context, originDevicePK, targetDevicePK, linkPK solana.PublicKey, epoch uint64, existingMaxIdx int) (*telemetry.DeviceLatencySamplesHeader, int, []uint32, error) {
+	return nil, 0, nil, telemetry.ErrAccountNotFound
 }
 
 func (m *mockTelemetryRPC) GetInternetLatencySamples(ctx context.Context, dataProviderName string, originLocationPK, targetLocationPK, agentPK solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error) {
@@ -192,6 +192,51 @@ func TestAI_MCP_Server_Config_Validate(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name: "valid config with influxdb client",
+			modify: func(c *Config) {
+				c.DeviceUsageInfluxClient = &mockInfluxDBClient{}
+				c.DeviceUsageInfluxBucket = "test-bucket"
+				c.DeviceUsageInfluxQueryWindow = 1 * time.Hour
+			},
+			wantErr: false,
+		},
+		{
+			name: "influxdb client provided but bucket missing",
+			modify: func(c *Config) {
+				c.DeviceUsageInfluxClient = &mockInfluxDBClient{}
+				c.DeviceUsageInfluxQueryWindow = 1 * time.Hour
+			},
+			wantErr: true,
+		},
+		{
+			name: "influxdb client provided but query window zero",
+			modify: func(c *Config) {
+				c.DeviceUsageInfluxClient = &mockInfluxDBClient{}
+				c.DeviceUsageInfluxBucket = "test-bucket"
+				c.DeviceUsageInfluxQueryWindow = 0
+			},
+			wantErr: true,
+		},
+		{
+			name: "influxdb client provided but query window negative",
+			modify: func(c *Config) {
+				c.DeviceUsageInfluxClient = &mockInfluxDBClient{}
+				c.DeviceUsageInfluxBucket = "test-bucket"
+				c.DeviceUsageInfluxQueryWindow = -1 * time.Hour
+			},
+			wantErr: true,
+		},
+		{
+			name: "influxdb client provided with zero refresh interval defaults to refresh interval",
+			modify: func(c *Config) {
+				c.DeviceUsageInfluxClient = &mockInfluxDBClient{}
+				c.DeviceUsageInfluxBucket = "test-bucket"
+				c.DeviceUsageInfluxQueryWindow = 1 * time.Hour
+				c.DeviceUsageRefreshInterval = 0
+			},
+			wantErr: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -200,7 +245,9 @@ func TestAI_MCP_Server_Config_Validate(t *testing.T) {
 			t.Parallel()
 
 			cfg := validConfig()
+			originalRefreshInterval := cfg.RefreshInterval
 			tt.modify(&cfg)
+			wasRefreshIntervalZero := cfg.DeviceUsageRefreshInterval == 0 && cfg.DeviceUsageInfluxClient != nil
 			err := cfg.Validate()
 			if tt.wantErr {
 				require.Error(t, err)
@@ -209,6 +256,10 @@ func TestAI_MCP_Server_Config_Validate(t *testing.T) {
 				require.NotNil(t, cfg.Clock, "Config.Validate() should set default clock")
 				require.NotZero(t, cfg.ReadHeaderTimeout, "Config.Validate() should set default read header timeout")
 				require.NotZero(t, cfg.ShutdownTimeout, "Config.Validate() should set default shutdown timeout")
+				// If InfluxDB client is provided and refresh interval was zero, it should default to RefreshInterval
+				if wasRefreshIntervalZero {
+					require.Equal(t, originalRefreshInterval, cfg.DeviceUsageRefreshInterval, "DeviceUsageRefreshInterval should default to RefreshInterval when zero")
+				}
 			}
 		})
 	}

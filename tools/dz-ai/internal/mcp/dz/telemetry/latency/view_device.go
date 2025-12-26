@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"sync"
 
 	_ "github.com/duckdb/duckdb-go/v2"
@@ -116,8 +117,6 @@ func (v *View) refreshDeviceLinkTelemetrySamples(ctx context.Context, circuits [
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, v.cfg.MaxConcurrency)
 	circuitsProcessed := 0
-	circuitsWithSamples := 0
-	var circuitsWithSamplesMu sync.Mutex
 
 	for _, circuit := range circuits {
 		// Check for context cancellation before starting new goroutines
@@ -152,8 +151,7 @@ func (v *View) refreshDeviceLinkTelemetrySamples(ctx context.Context, circuits [
 				defer wg.Done()
 				defer func() { <-sem }() // Release semaphore
 
-				circuitHasSamples := false
-				var circuitSamples []DeviceLinkLatencySample
+				circuitSamples := make([]DeviceLinkLatencySample, 0, 128)
 
 				for _, epoch := range epochsToFetch {
 					// Check for context cancellation before each RPC call
@@ -163,7 +161,14 @@ func (v *View) refreshDeviceLinkTelemetrySamples(ctx context.Context, circuits [
 					default:
 					}
 
-					samples, err := v.cfg.TelemetryRPC.GetDeviceLatencySamples(ctx, originPK, targetPK, linkPK, epoch)
+					// Check what's already in the database for this circuit+epoch
+					key := circuit.Code + ":" + strconv.FormatUint(epoch, 10)
+					existingMaxIdx := -1
+					if maxIdx, ok := existingMaxIndices[key]; ok {
+						existingMaxIdx = maxIdx
+					}
+
+					hdr, startIdx, tail, err := v.cfg.TelemetryRPC.GetDeviceLatencySamplesTail(ctx, originPK, targetPK, linkPK, epoch, existingMaxIdx)
 					if err != nil {
 						if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 							return
@@ -173,30 +178,25 @@ func (v *View) refreshDeviceLinkTelemetrySamples(ctx context.Context, circuits [
 						}
 						continue
 					}
-
-					circuitHasSamples = true
-
-					// Check what's already in the database for this circuit+epoch
-					key := fmt.Sprintf("%s:%d", circuit.Code, epoch)
-					existingMaxIdx := -1
-					if maxIdx, ok := existingMaxIndices[key]; ok {
-						existingMaxIdx = maxIdx
+					if hdr == nil {
+						continue
 					}
 
-					// Convert samples to our format - only include new samples (sample_index > existingMaxIdx)
-					// Samples are only appended, so we can use NextSampleIndex to determine what's new
-					converted := convertDeviceLatencySamples(samples, circuit.Code, epoch)
-					for _, sample := range converted {
-						if sample.SampleIndex > existingMaxIdx {
-							circuitSamples = append(circuitSamples, sample)
+					if len(tail) > 0 {
+						step := hdr.SamplingIntervalMicroseconds
+						baseTs := hdr.StartTimestampMicroseconds + uint64(startIdx)*step
+						for j, rtt := range tail {
+							i := startIdx + j
+							ts := baseTs + uint64(j)*step
+							circuitSamples = append(circuitSamples, DeviceLinkLatencySample{
+								CircuitCode:           circuit.Code,
+								Epoch:                 epoch,
+								SampleIndex:           i,
+								TimestampMicroseconds: ts,
+								RTTMicroseconds:       rtt,
+							})
 						}
 					}
-				}
-
-				if circuitHasSamples {
-					circuitsWithSamplesMu.Lock()
-					circuitsWithSamples++
-					circuitsWithSamplesMu.Unlock()
 				}
 
 				// Append samples to shared slice
@@ -220,19 +220,4 @@ done:
 		v.log.Debug("telemetry/device-link: sample refresh completed", "circuits", circuitsProcessed, "samples", len(allSamples))
 	}
 	return nil
-}
-
-func convertDeviceLatencySamples(samples *telemetry.DeviceLatencySamples, circuitCode string, epoch uint64) []DeviceLinkLatencySample {
-	result := make([]DeviceLinkLatencySample, len(samples.Samples))
-	for i, rtt := range samples.Samples {
-		timestamp := samples.StartTimestampMicroseconds + uint64(i)*samples.SamplingIntervalMicroseconds
-		result[i] = DeviceLinkLatencySample{
-			CircuitCode:           circuitCode,
-			Epoch:                 epoch,
-			SampleIndex:           i,
-			TimestampMicroseconds: timestamp,
-			RTTMicroseconds:       rtt,
-		}
-	}
-	return result
 }

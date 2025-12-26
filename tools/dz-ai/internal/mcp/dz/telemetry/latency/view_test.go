@@ -26,8 +26,8 @@ import (
 
 type mockTelemetryRPC struct{}
 
-func (m *mockTelemetryRPC) GetDeviceLatencySamples(ctx context.Context, originDevicePK, targetDevicePK, linkPK solana.PublicKey, epoch uint64) (*telemetry.DeviceLatencySamples, error) {
-	return nil, telemetry.ErrAccountNotFound
+func (m *mockTelemetryRPC) GetDeviceLatencySamplesTail(ctx context.Context, originDevicePK, targetDevicePK, linkPK solana.PublicKey, epoch uint64, existingMaxIdx int) (*telemetry.DeviceLatencySamplesHeader, int, []uint32, error) {
+	return nil, 0, nil, telemetry.ErrAccountNotFound
 }
 
 func (m *mockTelemetryRPC) GetInternetLatencySamples(ctx context.Context, dataProviderName string, originLocationPK, targetLocationPK, agentPK solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error) {
@@ -182,54 +182,6 @@ func TestAI_MCP_Telemetry_View_WaitReady(t *testing.T) {
 		err = view.WaitReady(ctx)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "context cancelled")
-	})
-}
-
-func TestAI_MCP_Telemetry_View_ConvertDeviceLatencySamples(t *testing.T) {
-	t.Parallel()
-
-	t.Run("converts onchain device latency samples to domain types", func(t *testing.T) {
-		t.Parallel()
-
-		samples := &telemetry.DeviceLatencySamples{
-			DeviceLatencySamplesHeader: telemetry.DeviceLatencySamplesHeader{
-				StartTimestampMicroseconds:   1_600_000_000,
-				SamplingIntervalMicroseconds: 100_000,
-			},
-			Samples: []uint32{5000, 6000, 7000},
-		}
-
-		result := convertDeviceLatencySamples(samples, "DEV001 → DEV002", 123)
-
-		require.Len(t, result, 3)
-		require.Equal(t, "DEV001 → DEV002", result[0].CircuitCode)
-		require.Equal(t, uint64(123), result[0].Epoch)
-		require.Equal(t, 0, result[0].SampleIndex)
-		require.Equal(t, uint64(1_600_000_000), result[0].TimestampMicroseconds)
-		require.Equal(t, uint32(5000), result[0].RTTMicroseconds)
-
-		require.Equal(t, 1, result[1].SampleIndex)
-		require.Equal(t, uint64(1_600_000_000+100_000), result[1].TimestampMicroseconds)
-		require.Equal(t, uint32(6000), result[1].RTTMicroseconds)
-
-		require.Equal(t, 2, result[2].SampleIndex)
-		require.Equal(t, uint64(1_600_000_000+200_000), result[2].TimestampMicroseconds)
-		require.Equal(t, uint32(7000), result[2].RTTMicroseconds)
-	})
-
-	t.Run("handles empty samples", func(t *testing.T) {
-		t.Parallel()
-
-		samples := &telemetry.DeviceLatencySamples{
-			DeviceLatencySamplesHeader: telemetry.DeviceLatencySamplesHeader{
-				StartTimestampMicroseconds:   1_600_000_000,
-				SamplingIntervalMicroseconds: 100_000,
-			},
-			Samples: []uint32{},
-		}
-
-		result := convertDeviceLatencySamples(samples, "TEST", 0)
-		require.Empty(t, result)
 	})
 }
 
@@ -682,12 +634,12 @@ type mockTelemetryRPCWithSamples struct {
 	samples map[string]*telemetry.DeviceLatencySamples
 }
 
-func (m *mockTelemetryRPCWithSamples) GetDeviceLatencySamples(ctx context.Context, originDevicePK, targetDevicePK, linkPK solana.PublicKey, epoch uint64) (*telemetry.DeviceLatencySamples, error) {
+func (m *mockTelemetryRPCWithSamples) GetDeviceLatencySamplesTail(ctx context.Context, originDevicePK, targetDevicePK, linkPK solana.PublicKey, epoch uint64, existingMaxIdx int) (*telemetry.DeviceLatencySamplesHeader, int, []uint32, error) {
 	key := key(originDevicePK, targetDevicePK, linkPK, epoch)
 	if samples, ok := m.samples[key]; ok {
-		return samples, nil
+		return &samples.DeviceLatencySamplesHeader, 0, samples.Samples, nil
 	}
-	return nil, telemetry.ErrAccountNotFound
+	return nil, 0, nil, telemetry.ErrAccountNotFound
 }
 
 func (m *mockTelemetryRPCWithSamples) GetInternetLatencySamples(ctx context.Context, dataProviderName string, originLocationPK, targetLocationPK, agentPK solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error) {
@@ -806,37 +758,47 @@ func TestAI_MCP_Telemetry_View_IncrementalAppend(t *testing.T) {
 		targetPK := solana.PublicKeyFromBytes(devicePK2[:])
 		linkPKPubKey := solana.PublicKeyFromBytes(linkPK[:])
 
-		// First refresh: samples 0-2 (NextSampleIndex = 3)
-		var refreshCount atomic.Int64
+		// Mock that simulates incremental samples: data source grows from 3 to 5 samples
+		// First refresh: data source has 3 samples (0-2), existingMaxIdx=-1, return all 3
+		// Second refresh: data source has 5 samples (0-4), existingMaxIdx=2, return tail (3-4)
 		mockTelemetryRPC := &mockTelemetryRPCWithIncrementalSamples{
-			getSamplesFunc: func(originDevicePK, targetDevicePK, linkPK solana.PublicKey, epoch uint64) (*telemetry.DeviceLatencySamples, error) {
+			getSamplesFunc: func(originDevicePK, targetDevicePK, linkPK solana.PublicKey, epoch uint64, existingMaxIdx int) (*telemetry.DeviceLatencySamplesHeader, int, []uint32, error) {
 				sampleKey := key(originDevicePK, targetDevicePK, linkPK, epoch)
 				expectedKey := key(originPK, targetPK, linkPKPubKey, 100)
 				if sampleKey != expectedKey {
-					return nil, telemetry.ErrAccountNotFound
+					return nil, 0, nil, telemetry.ErrAccountNotFound
 				}
 
-				count := refreshCount.Add(1)
-				if count == 1 {
-					// First refresh: return samples 0-2
-					return &telemetry.DeviceLatencySamples{
-						DeviceLatencySamplesHeader: telemetry.DeviceLatencySamplesHeader{
-							StartTimestampMicroseconds:   1_600_000_000,
-							SamplingIntervalMicroseconds: 100_000,
-							NextSampleIndex:              3, // 3 samples (indices 0, 1, 2)
-						},
-						Samples: []uint32{5000, 6000, 7000},
-					}, nil
+				// Simulate data source that grows: initially 3 samples, then 5 samples
+				firstBatch := []uint32{5000, 6000, 7000}             // indices 0-2
+				allSamples := []uint32{5000, 6000, 7000, 8000, 9000} // indices 0-4
+
+				if existingMaxIdx < 0 {
+					// First refresh: no existing data, data source has 3 samples
+					return &telemetry.DeviceLatencySamplesHeader{
+						StartTimestampMicroseconds:   1_600_000_000,
+						SamplingIntervalMicroseconds: 100_000,
+						NextSampleIndex:              3, // 3 samples (indices 0, 1, 2)
+					}, 0, firstBatch, nil
 				} else {
-					// Second refresh: return samples 0-4 (new samples 3-4 added)
-					return &telemetry.DeviceLatencySamples{
-						DeviceLatencySamplesHeader: telemetry.DeviceLatencySamplesHeader{
+					// Subsequent refresh: data source has grown to 5 samples
+					// Return only the tail (samples after existingMaxIdx)
+					startIdx := existingMaxIdx + 1
+					if startIdx >= len(allSamples) {
+						// No new samples
+						return &telemetry.DeviceLatencySamplesHeader{
 							StartTimestampMicroseconds:   1_600_000_000,
 							SamplingIntervalMicroseconds: 100_000,
-							NextSampleIndex:              5, // 5 samples (indices 0-4)
-						},
-						Samples: []uint32{5000, 6000, 7000, 8000, 9000},
-					}, nil
+							NextSampleIndex:              uint32(len(allSamples)),
+						}, startIdx, nil, nil
+					}
+
+					tail := allSamples[startIdx:]
+					return &telemetry.DeviceLatencySamplesHeader{
+						StartTimestampMicroseconds:   1_600_000_000,
+						SamplingIntervalMicroseconds: 100_000,
+						NextSampleIndex:              5, // 5 samples (indices 0-4)
+					}, startIdx, tail, nil
 				}
 			},
 		}
@@ -1075,14 +1037,14 @@ func TestAI_MCP_Telemetry_View_IncrementalAppend(t *testing.T) {
 }
 
 type mockTelemetryRPCWithIncrementalSamples struct {
-	getSamplesFunc func(originDevicePK, targetDevicePK, linkPK solana.PublicKey, epoch uint64) (*telemetry.DeviceLatencySamples, error)
+	getSamplesFunc func(originDevicePK, targetDevicePK, linkPK solana.PublicKey, epoch uint64, existingMaxIdx int) (*telemetry.DeviceLatencySamplesHeader, int, []uint32, error)
 }
 
-func (m *mockTelemetryRPCWithIncrementalSamples) GetDeviceLatencySamples(ctx context.Context, originDevicePK, targetDevicePK, linkPK solana.PublicKey, epoch uint64) (*telemetry.DeviceLatencySamples, error) {
+func (m *mockTelemetryRPCWithIncrementalSamples) GetDeviceLatencySamplesTail(ctx context.Context, originDevicePK, targetDevicePK, linkPK solana.PublicKey, epoch uint64, existingMaxIdx int) (*telemetry.DeviceLatencySamplesHeader, int, []uint32, error) {
 	if m.getSamplesFunc != nil {
-		return m.getSamplesFunc(originDevicePK, targetDevicePK, linkPK, epoch)
+		return m.getSamplesFunc(originDevicePK, targetDevicePK, linkPK, epoch, existingMaxIdx)
 	}
-	return nil, telemetry.ErrAccountNotFound
+	return nil, 0, nil, telemetry.ErrAccountNotFound
 }
 
 func (m *mockTelemetryRPCWithIncrementalSamples) GetInternetLatencySamples(ctx context.Context, dataProviderName string, originLocationPK, targetLocationPK, agentPK solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error) {
@@ -1093,8 +1055,8 @@ type mockTelemetryRPCWithIncrementalInternetSamples struct {
 	getSamplesFunc func(dataProviderName string, originLocationPK, targetLocationPK, agentPK solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error)
 }
 
-func (m *mockTelemetryRPCWithIncrementalInternetSamples) GetDeviceLatencySamples(ctx context.Context, originDevicePK, targetDevicePK, linkPK solana.PublicKey, epoch uint64) (*telemetry.DeviceLatencySamples, error) {
-	return nil, telemetry.ErrAccountNotFound
+func (m *mockTelemetryRPCWithIncrementalInternetSamples) GetDeviceLatencySamplesTail(ctx context.Context, originDevicePK, targetDevicePK, linkPK solana.PublicKey, epoch uint64, existingMaxIdx int) (*telemetry.DeviceLatencySamplesHeader, int, []uint32, error) {
+	return nil, 0, nil, telemetry.ErrAccountNotFound
 }
 
 func (m *mockTelemetryRPCWithIncrementalInternetSamples) GetInternetLatencySamples(ctx context.Context, dataProviderName string, originLocationPK, targetLocationPK, agentPK solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error) {

@@ -221,8 +221,6 @@ func (p *Processor) ProcessMessage(
 	var output bytes.Buffer
 	result, err := agent.RunAgent(ctx, requestAgent, p.mcpClient, msgs, &output)
 	if err != nil {
-		// If we get an error about invalid tool_use/tool_result pairs, clear the cache
-		// This can happen if the cached conversation was corrupted
 		errorType := "unknown"
 		if strings.Contains(err.Error(), "tool_use_id") || strings.Contains(err.Error(), "tool_result") {
 			errorType = "tool_use_pair"
@@ -235,14 +233,11 @@ func (p *Processor) ProcessMessage(
 		AgentErrorsTotal.WithLabelValues(errorType, effortModeLabel).Inc()
 		p.log.Error("agent error", "error", err, "message_ts", ev.TimeStamp, "envelope_id", eventID)
 
-		// Mark as responded to prevent duplicate error messages
 		p.MarkResponded(messageKey)
 
-		// Provide user-friendly error message instead of raw error
 		reply := SanitizeErrorMessage(err.Error())
 		reply = normalizeTwoWayArrow(reply)
 
-		// Post error response - always thread
 		threadTS := ev.ThreadTimeStamp
 		if threadTS == "" {
 			threadTS = ev.TimeStamp
@@ -254,7 +249,6 @@ func (p *Processor) ProcessMessage(
 			MessagesPostedTotal.WithLabelValues("error", effortModeLabel).Inc()
 		}
 
-		// Remove speech_balloon reaction after posting error
 		time.Sleep(300 * time.Millisecond)
 		if err := p.slackClient.RemoveProcessingReaction(ctx, ev.Channel, ev.TimeStamp); err != nil {
 			SlackAPIErrorsTotal.WithLabelValues("remove_reaction").Inc()
@@ -262,35 +256,25 @@ func (p *Processor) ProcessMessage(
 		return
 	}
 
-	// Only use FinalText - this is the clean, user-facing response
 	reply := strings.TrimSpace(result.FinalText)
-
-	// Fallback if still empty
 	if reply == "" {
 		reply = "I didn't get a response. Please try again."
 	}
-
-	// Normalize two-way arrows before rendering
 	reply = normalizeTwoWayArrow(reply)
 
 	p.log.Debug("agent response", "reply", reply)
 
-	// Convert to blocks and set expand=true to prevent "see more" truncation
 	blocks := ConvertMarkdownToBlocks(reply, p.log)
 
-	// Determine thread timestamp for reply
 	threadTS := ev.ThreadTimeStamp
 	if threadTS == "" {
 		threadTS = ev.TimeStamp
 	}
 
-	// Mark as responded before posting to prevent race conditions
 	p.MarkResponded(messageKey)
 
-	// Post message
 	respTS, err := p.slackClient.PostMessage(ctx, ev.Channel, reply, blocks, threadTS)
 
-	// Remove speech_balloon reaction after response is posted
 	if err == nil {
 		time.Sleep(300 * time.Millisecond)
 		if err := p.slackClient.RemoveProcessingReaction(ctx, ev.Channel, ev.TimeStamp); err != nil {

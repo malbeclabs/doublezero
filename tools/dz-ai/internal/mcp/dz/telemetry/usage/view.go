@@ -563,6 +563,24 @@ func (v *View) convertRowsToUsage(rows []map[string]any, baselines *CounterBasel
 		// Initialize last known values map for this key if needed
 		if key != "" && lastKnownValues[key] == nil {
 			lastKnownValues[key] = make(map[string]*int64)
+			// Pre-populate sparse counter baselines for forward-filling
+			if baselines != nil {
+				if val := baselines.InDiscards[key]; val != nil {
+					lastKnownValues[key]["in-discards"] = val
+				}
+				if val := baselines.InErrors[key]; val != nil {
+					lastKnownValues[key]["in-errors"] = val
+				}
+				if val := baselines.InFCSErrors[key]; val != nil {
+					lastKnownValues[key]["in-fcs-errors"] = val
+				}
+				if val := baselines.OutDiscards[key]; val != nil {
+					lastKnownValues[key]["out-discards"] = val
+				}
+				if val := baselines.OutErrors[key]; val != nil {
+					lastKnownValues[key]["out-errors"] = val
+				}
+			}
 		}
 
 		// Check if this is the first row for this device/interface
@@ -612,21 +630,17 @@ func (v *View) convertRowsToUsage(rows []map[string]any, baselines *CounterBasel
 			}
 
 			if hasNonSparseValues {
-				// Extract all non-sparse counter values and store them as baselines for the next row
+				// Extract all non-sparse counter values and store as baselines
 				for _, cf := range allCounterFields {
 					if !cf.isSparse {
 						value := extractInt64FromRow(row, cf.field)
 						if value != nil && key != "" {
-							// Store as baseline for next row (which will be the first stored for non-sparse)
 							lastKnownValues[key][cf.field] = value
 						}
 					}
 				}
-				// Store the time so we can compute delta_duration for the next row
 				lastTime[key] = t
-				// Mark that we've seen the first row
 				firstRowSeen[key] = true
-				// Skip storing this row entirely - it's used as baseline for the next row
 				continue
 			}
 			// If no non-sparse values, continue processing normally (sparse counters will be stored)
@@ -635,49 +649,31 @@ func (v *View) convertRowsToUsage(rows []map[string]any, baselines *CounterBasel
 
 		// Process all counters
 		for _, cf := range allCounterFields {
-			// Get current value from row, or forward-fill
 			var currentValue *int64
 			value := extractInt64FromRow(row, cf.field)
 			if value != nil {
-				// We have a value from the row
 				currentValue = value
-			} else {
-				// No value, try last known first, then baseline (if available)
-				if key != "" {
-					if lastKnown, ok := lastKnownValues[key][cf.field]; ok && lastKnown != nil {
-						currentValue = lastKnown
-					} else if cf.baseline != nil {
-						if baseline, ok := cf.baseline[key]; ok && baseline != nil {
-							currentValue = baseline
-						}
-					}
+			} else if key != "" {
+				// Forward-fill with last known value (includes pre-populated baselines)
+				if lastKnown, ok := lastKnownValues[key][cf.field]; ok && lastKnown != nil {
+					currentValue = lastKnown
 				}
 			}
 
-			// Set the current value
 			*cf.dest = currentValue
 
-			// Compute delta: current - previous
-			// Previous value is either lastKnownValues (before update) or baseline
+			// Compute delta against last-known value
 			if currentValue != nil && key != "" {
 				var previousValue *int64
-				// Get previous value from lastKnownValues (before we update it)
 				if lastKnown, ok := lastKnownValues[key][cf.field]; ok && lastKnown != nil {
 					previousValue = lastKnown
-				} else if cf.baseline != nil {
-					// No lastKnown value, use baseline if available
-					if baseline, ok := cf.baseline[key]; ok && baseline != nil {
-						previousValue = baseline
-					}
 				}
 
-				// Compute delta if we have both current and previous values
 				if previousValue != nil {
 					delta := *currentValue - *previousValue
 					*cf.deltaDest = &delta
 				}
 
-				// Update last known value for next iteration
 				lastKnownValues[key][cf.field] = currentValue
 			}
 		}

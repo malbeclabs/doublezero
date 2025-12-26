@@ -276,30 +276,16 @@ func (f *DefaultFetcher) FetchThreadHistory(ctx context.Context, api *slack.Clie
 
 // stripMarkdown removes markdown formatting from text, converting it to plain text
 func stripMarkdown(text string) string {
-	// Remove code blocks (```code``` or ```language\ncode\n```)
-	// Match triple backticks with optional language identifier, then any content (including newlines) until closing triple backticks
 	text = regexp.MustCompile("(?s)```[a-zA-Z]*\\n?.*?```").ReplaceAllString(text, "")
-	// Remove inline code (`code`)
 	text = regexp.MustCompile("`[^`]+`").ReplaceAllString(text, "")
-
-	// Remove links but keep the text [text](url) -> text
 	text = regexp.MustCompile(`\[([^\]]+)\]\([^\)]+\)`).ReplaceAllString(text, "$1")
-
-	// Remove bold/italic markers (**text** or *text* or __text__ or _text_)
 	text = regexp.MustCompile(`\*\*([^\*]+)\*\*`).ReplaceAllString(text, "$1")
 	text = regexp.MustCompile(`\*([^\*]+)\*`).ReplaceAllString(text, "$1")
 	text = regexp.MustCompile(`__([^_]+)__`).ReplaceAllString(text, "$1")
 	text = regexp.MustCompile(`_([^_]+)_`).ReplaceAllString(text, "$1")
-
-	// Remove headers (# Header -> Header)
 	text = regexp.MustCompile(`^#{1,6}\s+`).ReplaceAllString(text, "")
-
-	// Remove strikethrough (~~text~~ -> text)
 	text = regexp.MustCompile(`~~([^~]+)~~`).ReplaceAllString(text, "$1")
-
-	// Clean up extra whitespace
 	text = regexp.MustCompile(`\n\s*\n\s*\n`).ReplaceAllString(text, "\n\n")
 	text = strings.TrimSpace(text)
-
 	return text
 }

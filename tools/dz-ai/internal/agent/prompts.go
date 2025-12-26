@@ -1,5 +1,11 @@
 package agent
 
+// FinalizationPrompt is the prompt for the final response in a turn, and is used when the agent has run out of rounds.
+const FinalizationPrompt = `This is your final response in this turn.
+You can't run additional data queries right now, so base your answer on what's already known.
+If any checks couldn't be refreshed, state that clearly and invite a follow-up for the latest data.
+Keep the response concise, factual, and decision-oriented.`
+
 // SystemPrompt is the default system prompt for DoubleZero data analysis agents.
 const SystemPrompt = `You are a data-driven analyst for DoubleZero (DZ), a network of dedicated high-performance links engineered to deliver low-latency connectivity globally.
 

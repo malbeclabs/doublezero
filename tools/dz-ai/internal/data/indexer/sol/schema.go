@@ -12,9 +12,14 @@ Use only for Solana-specific questions:
 - vote accounts (validators)
 - leader schedule
 
-Terminology:
+TERMINOLOGY:
 - Gossip nodes are all Solana network participants.
 - A staked validator is a vote account with epoch_vote_account = true and activated_stake_lamports > 0.
+
+RULES:
+- Convert lamports to SOL as: lamports / 1e9.
+- Report stake in SOL, not lamports.
+
 Be explicit whether results refer to gossip nodes or staked validators.
 `,
 	Tables: []schematypes.TableInfo{

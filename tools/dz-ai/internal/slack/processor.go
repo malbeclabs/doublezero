@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"log/slog"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -126,6 +127,27 @@ func effortModeLabel(isBrainMode bool) string {
 	return "normal"
 }
 
+// containsNonBotMention checks if the message text contains a user mention that is not the bot
+func containsNonBotMention(text, botUserID string) bool {
+	if botUserID == "" {
+		return false
+	}
+	// Match mention patterns: <@USERID> or <@USERID|username>
+	mentionRegex := regexp.MustCompile(`<@([A-Z0-9]+)(?:\|[^>]+)?>`)
+	matches := mentionRegex.FindAllStringSubmatch(text, -1)
+	for _, match := range matches {
+		if len(match) < 2 {
+			continue
+		}
+		mentionedUserID := match[1]
+		// Check if this mention is NOT the bot
+		if mentionedUserID != botUserID {
+			return true
+		}
+	}
+	return false
+}
+
 // ProcessMessage processes a single Slack message
 func (p *Processor) ProcessMessage(
 	ctx context.Context,
@@ -146,6 +168,32 @@ func (p *Processor) ProcessMessage(
 		"envelope_id", eventID,
 		"is_channel", isChannel,
 	)
+
+	// Skip processing if in a thread and message contains another user being mentioned
+	if ev.ThreadTimeStamp != "" && containsNonBotMention(ev.Text, p.slackClient.BotUserID()) {
+		p.log.Info("skipping message in thread that contains non-bot mention",
+			"channel", ev.Channel,
+			"user", ev.User,
+			"message_ts", ev.TimeStamp,
+			"thread_ts", ev.ThreadTimeStamp,
+			"text_preview", TruncateString(ev.Text, 100),
+		)
+		MessagesIgnoredTotal.WithLabelValues("thread_non_bot_mention").Inc()
+		return
+	}
+
+	// Skip processing if message contains :mute: emoji
+	if strings.Contains(ev.Text, ":mute:") {
+		p.log.Info("skipping message with :mute: emoji",
+			"channel", ev.Channel,
+			"user", ev.User,
+			"message_ts", ev.TimeStamp,
+			"thread_ts", ev.ThreadTimeStamp,
+			"text_preview", TruncateString(ev.Text, 100),
+		)
+		MessagesIgnoredTotal.WithLabelValues("mute_emoji").Inc()
+		return
+	}
 
 	txt := strings.TrimSpace(ev.Text)
 

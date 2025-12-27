@@ -84,7 +84,7 @@ Default starting point for questions about the DZ network unless the question is
 				{Name: "pk", Type: "VARCHAR", Description: "Primary key"},
 				{Name: "owner_pk", Type: "VARCHAR", Description: "Owner public key"},
 				{Name: "status", Type: "VARCHAR", Description: "pending, activated, suspended, deleted, rejected, pending_ban, banned, updating"},
-				{Name: "kind", Type: "VARCHAR", Description: "Connection type (IBRL, IBRL-with-allocated-IP, Edge Filtering, Multicast)"},
+				{Name: "kind", Type: "VARCHAR", Description: "Connection type: ibrl (IBRL), ibrl_with_allocated_ip (IBRL with allocated IP), edge_filtering (Edge Filtering), multicast (Multicast)"},
 				{Name: "client_ip", Type: "VARCHAR", Description: "Client IP address"},
 				{Name: "dz_ip", Type: "VARCHAR", Description: "DoubleZero IP address"},
 				{Name: "device_pk", Type: "VARCHAR", Description: "Foreign key → dz_devices.pk"},

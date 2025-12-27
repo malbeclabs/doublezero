@@ -25,11 +25,13 @@ import (
 	telemetryconfig "github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/config"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
+	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/data/duck"
+	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/data/indexer"
+	dztelemusage "github.com/malbeclabs/doublezero/tools/dz-ai/internal/data/indexer/dz/telemetry/usage"
+	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/data/querier"
 	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/logger"
-	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/duck"
-	dztelemusage "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/dz/telemetry/usage"
-	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/metrics"
 	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/server"
+	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/server/metrics"
 	"github.com/malbeclabs/doublezero/tools/maxmind/pkg/geoip"
 	"github.com/malbeclabs/doublezero/tools/maxmind/pkg/metrodb"
 	"github.com/malbeclabs/doublezero/tools/solana/pkg/rpc"
@@ -57,8 +59,8 @@ const (
 	defaultDeviceUsageInfluxQueryWindow = 1 * time.Hour
 	defaultDeviceUsageRefreshInterval   = 5 * time.Minute
 
-	geoipCityDBPathEnvVar = "MCP_GEOIP_CITY_DB_PATH"
-	geoipASNDBPathEnvVar  = "MCP_GEOIP_ASN_DB_PATH"
+	geoipCityDBPathEnvVar = "GEOIP_CITY_DB_PATH"
+	geoipASNDBPathEnvVar  = "GEOIP_ASN_DB_PATH"
 )
 
 func main() {
@@ -70,28 +72,35 @@ func main() {
 
 func run() error {
 	verboseFlag := flag.Bool("verbose", false, "enable verbose (debug) logging")
-	envFlag := flag.String("env", defaultDZEnv, "doublezero environment (devnet, testnet, mainnet-beta)")
-	solanaEnvFlag := flag.String("solana-env", config.SolanaEnvMainnetBeta, "solana environment (devnet, testnet, mainnet-beta)")
-	listenAddrFlag := flag.String("listen-addr", defaultListenAddr, "HTTP server listen address")
-	refreshIntervalFlag := flag.Duration("cache-ttl", defaultRefreshInterval, "cache TTL duration")
-	maxConcurrencyFlag := flag.Int("max-concurrency", defaultMaxConcurrency, "maximum number of concurrent operations")
 	enablePprofFlag := flag.Bool("enable-pprof", false, "enable pprof server")
 	metricsAddrFlag := flag.String("metrics-addr", defaultMetricsAddr, "Address to listen on for prometheus metrics")
+	listenAddrFlag := flag.String("listen-addr", defaultListenAddr, "HTTP server listen address")
+
+	// DuckDB configuration
+	duckDBPathFlag := flag.String("duckdb-database-path", defaultEmbeddedDBPath, "Path to DuckDB database file (empty for in-memory, or set MCP_EMBEDDED_DB_PATH env var)")
+	duckDBSpillDirFlag := flag.String("duckdb-spill-dir", defaultEmbeddedDBSpillDir, "Path to DuckDB temporary spill directory")
+
+	// DuckLake configuration
+	duckLakeCatalogNameFlag := flag.String("ducklake-catalog-name", "dzlake", "Name of the DuckLake catalog")
+	duckLakeCatalogURIFlag := flag.String("ducklake-catalog-uri", "file://.tmp/lake/catalog.sqlite", "URI to the DuckLake catalog")
+	duckLakeStorageURIFlag := flag.String("ducklake-storage-uri", "file://.tmp/lake/data", "URI to the DuckLake storage directory")
+
+	// GeoIP configuration
 	geoipCityDBPathFlag := flag.String("geoip-city-db-path", defaultGeoipCityDBPath, "Path to MaxMind GeoIP2 City database file (or set MCP_GEOIP_CITY_DB_PATH env var)")
 	geoipASNDBPathFlag := flag.String("geoip-asn-db-path", defaultGeoipASNDBPath, "Path to MaxMind GeoIP2 ASN database file (or set MCP_GEOIP_ASN_DB_PATH env var)")
+
+	// Indexer configuration
+	indexerEnableFlag := flag.Bool("indexer-enable", false, "Enable in-process indexer with embedded database")
+	dzEnvFlag := flag.String("env", defaultDZEnv, "doublezero environment (devnet, testnet, mainnet-beta)")
+	solanaEnvFlag := flag.String("solana-env", config.SolanaEnvMainnetBeta, "solana environment (devnet, testnet, mainnet-beta)")
+	refreshIntervalFlag := flag.Duration("cache-ttl", defaultRefreshInterval, "cache TTL duration")
+	maxConcurrencyFlag := flag.Int("max-concurrency", defaultMaxConcurrency, "maximum number of concurrent operations")
 	deviceUsageQueryWindowFlag := flag.Duration("device-usage-query-window", defaultDeviceUsageInfluxQueryWindow, "Query window for device usage (default: 1 hour)")
 	deviceUsageRefreshIntervalFlag := flag.Duration("device-usage-refresh-interval", defaultDeviceUsageRefreshInterval, "Refresh interval for device usage (default: 5 minutes)")
 
-	// Database configuration.
-	lakeDBCatalogNameFlag := flag.String("lake-db-catalog-name", "dzlake", "Name of the DuckLake catalog")
-	lakeDBLocalDirFlag := flag.String("lake-db-local-dir", ".tmp/lake", "Path to the local DuckLake directory")
-	embeddedDBEnabledFlag := flag.Bool("embedded-db-enable", false, "Enable embedded DuckDB database")
-	embeddedDBPathFlag := flag.String("embedded-db-path", defaultEmbeddedDBPath, "Path to embedded DuckDB database file (empty for in-memory, or set MCP_EMBEDDED_DB_PATH env var)")
-	embeddedDBSpillDirFlag := flag.String("embedded-db-spill-dir", defaultEmbeddedDBSpillDir, "Path to embedded DuckDB temporary spill directory")
-
 	flag.Parse()
 
-	networkConfig, err := config.NetworkConfigForEnv(*envFlag)
+	networkConfig, err := config.NetworkConfigForEnv(*dzEnvFlag)
 	if err != nil {
 		return fmt.Errorf("failed to get network config: %w", err)
 	}
@@ -147,78 +156,6 @@ func run() error {
 		}()
 	}
 
-	dzRPCClient := rpc.NewWithRetries(networkConfig.LedgerPublicRPCURL, nil)
-	defer dzRPCClient.Close()
-	serviceabilityClient := serviceability.New(dzRPCClient, networkConfig.ServiceabilityProgramID)
-	telemetryClient := telemetry.New(log, dzRPCClient, nil, networkConfig.TelemetryProgramID)
-
-	solanaRPC := rpc.NewWithRetries(solanaNetworkConfig.RPCURL, nil)
-	defer solanaRPC.Close()
-
-	// Initialize database
-	var db duck.DB
-	if !*embeddedDBEnabledFlag {
-		log.Info("using DuckLake database", "path", *lakeDBLocalDirFlag)
-		lakeDB, dbCloseFn, err := initializeEmbeddedDuckLake(ctx, log, *lakeDBCatalogNameFlag, *lakeDBLocalDirFlag)
-		if err != nil {
-			return fmt.Errorf("failed to initialize DuckLake: %w", err)
-		}
-		defer func() {
-			if err := dbCloseFn(); err != nil {
-				log.Error("failed to close DuckLake", "error", err)
-			}
-		}()
-		db = lakeDB
-	} else {
-		dbPath := *embeddedDBPathFlag
-		if dbPath == "" || dbPath == defaultEmbeddedDBPath {
-			if envPath := os.Getenv(defaultEmbeddedDBPathEnvVar); envPath != "" {
-				dbPath = envPath
-			}
-		}
-		if dbPath == "" {
-			dbPath = defaultEmbeddedDBPath
-		}
-
-		log.Info("using embedded DuckDB database", "path", dbPath)
-		duckDB, dbCloseFn, err := initializeDuckDB(ctx, dbPath, *embeddedDBSpillDirFlag, log)
-		if err != nil {
-			return fmt.Errorf("failed to initialize DuckDB: %w", err)
-		}
-		defer func() {
-			if err := dbCloseFn(); err != nil {
-				log.Error("failed to close DuckDB", "error", err)
-			}
-		}()
-		db = duckDB
-	}
-
-	// Determine GeoIP database paths: flag takes precedence, then env var, then default
-	geoipCityDBPath := *geoipCityDBPathFlag
-	if geoipCityDBPath == defaultGeoipCityDBPath {
-		if envPath := os.Getenv(geoipCityDBPathEnvVar); envPath != "" {
-			geoipCityDBPath = envPath
-		}
-	}
-
-	geoipASNDBPath := *geoipASNDBPathFlag
-	if geoipASNDBPath == defaultGeoipASNDBPath {
-		if envPath := os.Getenv(geoipASNDBPathEnvVar); envPath != "" {
-			geoipASNDBPath = envPath
-		}
-	}
-
-	// Initialize GeoIP resolver
-	geoIPResolver, geoIPCloseFn, err := initializeGeoIP(geoipCityDBPath, geoipASNDBPath, log)
-	if err != nil {
-		return fmt.Errorf("failed to initialize GeoIP: %w", err)
-	}
-	defer func() {
-		if err := geoIPCloseFn(); err != nil {
-			log.Error("failed to close GeoIP resolver", "error", err)
-		}
-	}()
-
 	// Parse allowed tokens from environment variable (comma-separated)
 	// Auth can be explicitly disabled with MCP_AUTH_DISABLED=true
 	var allowedTokens []string
@@ -227,8 +164,7 @@ func run() error {
 	if authDisabled {
 		log.Info("mcp server: authentication explicitly disabled")
 	} else if tokensEnv := os.Getenv("MCP_ALLOWED_TOKENS"); tokensEnv != "" {
-		tokens := strings.Split(tokensEnv, ",")
-		for _, token := range tokens {
+		for token := range strings.SplitSeq(tokensEnv, ",") {
 			token = strings.TrimSpace(token)
 			if token != "" {
 				allowedTokens = append(allowedTokens, token)
@@ -241,55 +177,174 @@ func run() error {
 		log.Info("mcp server: authentication disabled (no tokens configured)")
 	}
 
-	// Initialize InfluxDB client from environment variables (optional)
-	var influxDBClient dztelemusage.InfluxDBClient
-	influxURL := os.Getenv("INFLUX_URL")
-	influxToken := os.Getenv("INFLUX_TOKEN")
-	influxBucket := os.Getenv("INFLUX_BUCKET")
-	var deviceUsageQueryWindow time.Duration
-	if *deviceUsageQueryWindowFlag == 0 {
-		deviceUsageQueryWindow = defaultDeviceUsageInfluxQueryWindow
-	} else {
-		deviceUsageQueryWindow = *deviceUsageQueryWindowFlag
-	}
-	if influxURL != "" && influxToken != "" && influxBucket != "" {
-		influxDBClient, err = dztelemusage.NewSDKInfluxDBClient(influxURL, influxToken, influxBucket)
+	var serverQuerier *querier.Querier
+	var serverIndexer *indexer.Indexer
+	if *indexerEnableFlag {
+		dzRPCClient := rpc.NewWithRetries(networkConfig.LedgerPublicRPCURL, nil)
+		defer dzRPCClient.Close()
+		serviceabilityClient := serviceability.New(dzRPCClient, networkConfig.ServiceabilityProgramID)
+		telemetryClient := telemetry.New(log, dzRPCClient, nil, networkConfig.TelemetryProgramID)
+
+		solanaRPC := rpc.NewWithRetries(solanaNetworkConfig.RPCURL, nil)
+		defer solanaRPC.Close()
+
+		// Initialize database
+		dbPath := *duckDBPathFlag
+		if dbPath == "" || dbPath == defaultEmbeddedDBPath {
+			if envPath := os.Getenv(defaultEmbeddedDBPathEnvVar); envPath != "" {
+				dbPath = envPath
+			}
+		}
+		if dbPath == "" {
+			dbPath = defaultEmbeddedDBPath
+		}
+
+		log.Info("using embedded DuckDB database", "path", dbPath)
+		db, dbCloseFn, err := initializeDuckDB(ctx, dbPath, *duckDBSpillDirFlag, log)
 		if err != nil {
-			return fmt.Errorf("failed to create InfluxDB client: %w", err)
+			return fmt.Errorf("failed to initialize DuckDB: %w", err)
 		}
 		defer func() {
-			if influxDBClient != nil {
-				if closeErr := influxDBClient.Close(); closeErr != nil {
-					log.Warn("failed to close InfluxDB client", "error", closeErr)
-				}
+			if err := dbCloseFn(); err != nil {
+				log.Error("failed to close DuckDB", "error", err)
 			}
 		}()
-		log.Info("device usage (InfluxDB) client initialized")
+
+		// Determine GeoIP database paths: flag takes precedence, then env var, then default
+		geoipCityDBPath := *geoipCityDBPathFlag
+		if geoipCityDBPath == defaultGeoipCityDBPath {
+			if envPath := os.Getenv(geoipCityDBPathEnvVar); envPath != "" {
+				geoipCityDBPath = envPath
+			}
+		}
+
+		geoipASNDBPath := *geoipASNDBPathFlag
+		if geoipASNDBPath == defaultGeoipASNDBPath {
+			if envPath := os.Getenv(geoipASNDBPathEnvVar); envPath != "" {
+				geoipASNDBPath = envPath
+			}
+		}
+
+		// Initialize GeoIP resolver
+		geoIPResolver, geoIPCloseFn, err := initializeGeoIP(geoipCityDBPath, geoipASNDBPath, log)
+		if err != nil {
+			return fmt.Errorf("failed to initialize GeoIP: %w", err)
+		}
+		defer func() {
+			if err := geoIPCloseFn(); err != nil {
+				log.Error("failed to close GeoIP resolver", "error", err)
+			}
+		}()
+
+		// Initialize InfluxDB client from environment variables (optional)
+		var influxDBClient dztelemusage.InfluxDBClient
+		influxURL := os.Getenv("INFLUX_URL")
+		influxToken := os.Getenv("INFLUX_TOKEN")
+		influxBucket := os.Getenv("INFLUX_BUCKET")
+		var deviceUsageQueryWindow time.Duration
+		if *deviceUsageQueryWindowFlag == 0 {
+			deviceUsageQueryWindow = defaultDeviceUsageInfluxQueryWindow
+		} else {
+			deviceUsageQueryWindow = *deviceUsageQueryWindowFlag
+		}
+		if influxURL != "" && influxToken != "" && influxBucket != "" {
+			influxDBClient, err = dztelemusage.NewSDKInfluxDBClient(influxURL, influxToken, influxBucket)
+			if err != nil {
+				return fmt.Errorf("failed to create InfluxDB client: %w", err)
+			}
+			defer func() {
+				if influxDBClient != nil {
+					if closeErr := influxDBClient.Close(); closeErr != nil {
+						log.Warn("failed to close InfluxDB client", "error", closeErr)
+					}
+				}
+			}()
+			log.Info("device usage (InfluxDB) client initialized")
+		} else {
+			log.Info("device usage (InfluxDB) environment variables not set, telemetry usage view will be disabled")
+		}
+
+		// Initialize indexer
+		indexer, err := indexer.New(ctx, indexer.Config{
+			Logger: log,
+			Clock:  clockwork.NewRealClock(),
+			DB:     db,
+
+			RefreshInterval: *refreshIntervalFlag,
+			MaxConcurrency:  *maxConcurrencyFlag,
+
+			// GeoIP configuration
+			GeoIPResolver: geoIPResolver,
+
+			// Serviceability configuration
+			ServiceabilityRPC: serviceabilityClient,
+
+			// Telemetry configuration
+			TelemetryRPC:           telemetryClient,
+			DZEpochRPC:             dzRPCClient,
+			InternetLatencyAgentPK: networkConfig.InternetLatencyCollectorPK,
+			InternetDataProviders:  telemetryconfig.InternetTelemetryDataProviders,
+
+			// Device usage configuration
+			DeviceUsageInfluxClient:      influxDBClient,
+			DeviceUsageInfluxBucket:      influxBucket,
+			DeviceUsageInfluxQueryWindow: deviceUsageQueryWindow,
+			DeviceUsageRefreshInterval:   *deviceUsageRefreshIntervalFlag,
+
+			// Solana configuration
+			SolanaRPC: solanaRPC,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to create indexer: %w", err)
+		}
+
+		// Initialize querier
+		querier, err := querier.New(querier.Config{
+			Logger:  log,
+			DB:      db,
+			Schemas: indexer.Schemas(),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to create querier: %w", err)
+		}
+		serverIndexer = indexer
+		serverQuerier = querier
+
+		log.Info("using embedded DuckDB database with internal indexer", "dbPath", dbPath, "dbSpillDir", *duckDBSpillDirFlag)
 	} else {
-		log.Info("device usage (InfluxDB) environment variables not set, telemetry usage view will be disabled")
+		// Initialize DuckLake catalog database
+		db, err := duck.NewLocalLake(ctx, log, *duckLakeCatalogNameFlag, *duckLakeCatalogURIFlag, *duckLakeStorageURIFlag)
+		if err != nil {
+			return fmt.Errorf("failed to create local lake: %w", err)
+		}
+		defer func() {
+			if err := db.Close(); err != nil {
+				log.Error("failed to close DuckLake", "error", err)
+			}
+		}()
+
+		// Initialize querier with remote database
+		querier, err := querier.New(querier.Config{
+			Logger:  log,
+			DB:      db,
+			Schemas: indexer.Schemas,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to create querier: %w", err)
+		}
+		serverQuerier = querier
+
+		log.Info("using ducklake database", "dbCatalogName", *duckLakeCatalogNameFlag, "dbCatalogURI", *duckLakeCatalogURIFlag, "dbStorageURI", *duckLakeStorageURIFlag)
 	}
 
 	// Initialize MCP server
 	server, err := server.New(ctx, server.Config{
-		Version:                      version,
-		ListenAddr:                   *listenAddrFlag,
-		Logger:                       log,
-		Clock:                        clockwork.NewRealClock(),
-		ServiceabilityRPC:            serviceabilityClient,
-		TelemetryRPC:                 telemetryClient,
-		DZEpochRPC:                   dzRPCClient,
-		SolanaRPC:                    solanaRPC,
-		DB:                           db,
-		RefreshInterval:              *refreshIntervalFlag,
-		MaxConcurrency:               *maxConcurrencyFlag,
-		InternetLatencyAgentPK:       networkConfig.InternetLatencyCollectorPK,
-		InternetDataProviders:        telemetryconfig.InternetTelemetryDataProviders,
-		AllowedTokens:                allowedTokens,
-		GeoIPResolver:                geoIPResolver,
-		DeviceUsageInfluxClient:      influxDBClient,
-		DeviceUsageInfluxBucket:      influxBucket,
-		DeviceUsageInfluxQueryWindow: deviceUsageQueryWindow,
-		DeviceUsageRefreshInterval:   *deviceUsageRefreshIntervalFlag,
+		Version:       version,
+		ListenAddr:    *listenAddrFlag,
+		Logger:        log,
+		Querier:       serverQuerier,
+		Indexer:       serverIndexer,
+		AllowedTokens: allowedTokens,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create server: %w", err)
@@ -314,43 +369,6 @@ func run() error {
 		log.Error("server: metrics server error causing shutdown", "error", err)
 		return err
 	}
-}
-
-func initializeEmbeddedDuckLake(ctx context.Context, log *slog.Logger, name, dbDir string) (duck.DB, func() error, error) {
-	if dbDir == "" {
-		return nil, nil, fmt.Errorf("database directory is required")
-	}
-
-	// Convert directories to absolute paths
-	var err error
-	dbDir, err = filepath.Abs(dbDir)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get absolute path for database directory: %w", err)
-	}
-
-	// Create catalog and data directories if they don't exist
-	if err := os.MkdirAll(dbDir, 0755); err != nil {
-		return nil, nil, fmt.Errorf("failed to create database directory: %w", err)
-	}
-
-	// Construct catalog path and data directory
-	catalogPath := filepath.Join(dbDir, "catalog.sqlite")
-	dataDir := filepath.Join(dbDir, "data")
-
-	// Create data directory if it doesn't exist
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
-		return nil, nil, fmt.Errorf("failed to create data directory: %w", err)
-	}
-
-	// Initialize DuckLake catalog database
-	db, err := duck.NewLocalLake(ctx, log, name, catalogPath, dataDir)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create local lake: %w", err)
-	}
-
-	return db, func() error {
-		return db.Close()
-	}, nil
 }
 
 func initializeDuckDB(ctx context.Context, dbPath string, spillDir string, log *slog.Logger) (duck.DB, func() error, error) {

@@ -4,6 +4,7 @@ go 1.25
 
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.40.3
+	github.com/InfluxCommunity/influxdb3-go/v2 v2.11.0
 	github.com/alitto/pond/v2 v2.6.0
 	github.com/anthropics/anthropic-sdk-go v1.19.0
 	github.com/aristanetworks/goeapi v1.0.1-0.20250411124937-7090068b8735
@@ -71,7 +72,6 @@ require (
 	filippo.io/edwards25519 v1.0.0-rc.1 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
 	github.com/ClickHouse/ch-go v0.68.0 // indirect
-	github.com/InfluxCommunity/influxdb3-go/v2 v2.11.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/andres-erbsen/clock v0.0.0-20160526145045-9e14626cd129 // indirect
 	github.com/andybalholm/brotli v1.2.0 // indirect

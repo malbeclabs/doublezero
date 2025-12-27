@@ -34,7 +34,7 @@ func (a anthropicMessageAdapter) ToParam() any {
 
 func run() error {
 	verboseFlag := flag.Bool("verbose", false, "enable verbose (debug) logging")
-	maxRoundsFlag := flag.Int("max-rounds", 8, "Maximum number of rounds for the AI agent in normal mode")
+	maxRoundsFlag := flag.Int("max-rounds", 12, "Maximum number of rounds for the AI agent in normal mode")
 	flag.Parse()
 
 	log := logger.New(*verboseFlag)

@@ -13,7 +13,9 @@ import (
 	"github.com/jonboulle/clockwork"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
-	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/duck"
+	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/data/duck"
+	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/data/indexer"
+	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/data/querier"
 	"github.com/malbeclabs/doublezero/tools/maxmind/pkg/geoip"
 	"github.com/stretchr/testify/require"
 )
@@ -74,6 +76,10 @@ func (m *mockInfluxDBClient) Close() error {
 	return nil
 }
 
+func testLogger(t *testing.T) *slog.Logger {
+	return slog.New(slog.NewTextHandler(os.Stderr, nil))
+}
+
 func testDB(t *testing.T) duck.DB {
 	db, err := duck.NewDB(t.Context(), "", slog.New(slog.NewTextHandler(os.Stderr, nil)))
 	require.NoError(t, err)
@@ -83,25 +89,45 @@ func testDB(t *testing.T) duck.DB {
 	return db
 }
 
-func validConfig(t *testing.T) Config {
-	db := testDB(t)
+func testIndexer(t *testing.T) *indexer.Indexer {
+	indexer, err := indexer.New(t.Context(), indexer.Config{
+		Logger:                       slog.Default(),
+		Clock:                        clockwork.NewFakeClock(),
+		DB:                           testDB(t),
+		RefreshInterval:              30 * time.Second,
+		MaxConcurrency:               32,
+		ServiceabilityRPC:            &mockServiceabilityRPC{},
+		TelemetryRPC:                 &mockTelemetryRPC{},
+		DZEpochRPC:                   &mockEpochRPC{},
+		SolanaRPC:                    &mockSolanaRPC{},
+		InternetLatencyAgentPK:       solana.MustPublicKeyFromBase58("So11111111111111111111111111111111111111112"),
+		InternetDataProviders:        []string{"test-provider"},
+		GeoIPResolver:                &mockGeoIPResolver{},
+		DeviceUsageInfluxClient:      &mockInfluxDBClient{},
+		DeviceUsageInfluxBucket:      "test-bucket",
+		DeviceUsageInfluxQueryWindow: 1 * time.Hour,
+		ReadyIncludesDeviceUsage:     false,
+	})
+	require.NoError(t, err)
+	return indexer
+}
 
+func testQuerier(t *testing.T) *querier.Querier {
+	querier, err := querier.New(querier.Config{
+		Logger: testLogger(t),
+		DB:     testDB(t),
+	})
+	require.NoError(t, err)
+	return querier
+}
+
+func validConfig(t *testing.T) Config {
 	return Config{
-		Version:                "test",
-		ListenAddr:             "localhost:8080",
-		Logger:                 slog.Default(),
-		Clock:                  clockwork.NewFakeClock(),
-		ServiceabilityRPC:      &mockServiceabilityRPC{},
-		TelemetryRPC:           &mockTelemetryRPC{},
-		DZEpochRPC:             &mockEpochRPC{},
-		SolanaRPC:              &mockSolanaRPC{},
-		DB:                     db,
-		RefreshInterval:        30 * time.Second,
-		MaxConcurrency:         32,
-		InternetLatencyAgentPK: solana.MustPublicKeyFromBase58("So11111111111111111111111111111111111111112"),
-		InternetDataProviders:  []string{"test-provider"},
-		GeoIPResolver:          &mockGeoIPResolver{},
-		// DeviceUsageInfluxClient is optional - not set by default
+		Version:    "test",
+		ListenAddr: "localhost:8080",
+		Logger:     slog.Default(),
+		Indexer:    testIndexer(t),
+		Querier:    testQuerier(t),
 	}
 }
 
@@ -126,67 +152,11 @@ func TestAI_MCP_Server_Config_Validate(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "missing serviceability rpc",
+			name: "missing querier",
 			modify: func(c *Config) {
-				c.ServiceabilityRPC = nil
+				c.Querier = nil
 			},
 			wantErr: true,
-		},
-		{
-			name: "missing telemetry rpc",
-			modify: func(c *Config) {
-				c.TelemetryRPC = nil
-			},
-			wantErr: true,
-		},
-		{
-			name: "missing epoch rpc",
-			modify: func(c *Config) {
-				c.DZEpochRPC = nil
-			},
-			wantErr: true,
-		},
-		{
-			name: "missing db",
-			modify: func(c *Config) {
-				c.DB = nil
-			},
-			wantErr: true,
-		},
-		{
-			name: "invalid max concurrency",
-			modify: func(c *Config) {
-				c.MaxConcurrency = 0
-			},
-			wantErr: true,
-		},
-		{
-			name: "invalid refresh interval",
-			modify: func(c *Config) {
-				c.RefreshInterval = 0
-			},
-			wantErr: true,
-		},
-		{
-			name: "zero internet latency agent pk",
-			modify: func(c *Config) {
-				c.InternetLatencyAgentPK = solana.PublicKey{}
-			},
-			wantErr: true,
-		},
-		{
-			name: "empty internet data providers",
-			modify: func(c *Config) {
-				c.InternetDataProviders = nil
-			},
-			wantErr: true,
-		},
-		{
-			name: "sets default clock",
-			modify: func(c *Config) {
-				c.Clock = nil
-			},
-			wantErr: false,
 		},
 		{
 			name: "sets default read header timeout",
@@ -202,51 +172,6 @@ func TestAI_MCP_Server_Config_Validate(t *testing.T) {
 			},
 			wantErr: false,
 		},
-		{
-			name: "valid config with influxdb client",
-			modify: func(c *Config) {
-				c.DeviceUsageInfluxClient = &mockInfluxDBClient{}
-				c.DeviceUsageInfluxBucket = "test-bucket"
-				c.DeviceUsageInfluxQueryWindow = 1 * time.Hour
-			},
-			wantErr: false,
-		},
-		{
-			name: "influxdb client provided but bucket missing",
-			modify: func(c *Config) {
-				c.DeviceUsageInfluxClient = &mockInfluxDBClient{}
-				c.DeviceUsageInfluxQueryWindow = 1 * time.Hour
-			},
-			wantErr: true,
-		},
-		{
-			name: "influxdb client provided but query window zero",
-			modify: func(c *Config) {
-				c.DeviceUsageInfluxClient = &mockInfluxDBClient{}
-				c.DeviceUsageInfluxBucket = "test-bucket"
-				c.DeviceUsageInfluxQueryWindow = 0
-			},
-			wantErr: true,
-		},
-		{
-			name: "influxdb client provided but query window negative",
-			modify: func(c *Config) {
-				c.DeviceUsageInfluxClient = &mockInfluxDBClient{}
-				c.DeviceUsageInfluxBucket = "test-bucket"
-				c.DeviceUsageInfluxQueryWindow = -1 * time.Hour
-			},
-			wantErr: true,
-		},
-		{
-			name: "influxdb client provided with zero refresh interval defaults to refresh interval",
-			modify: func(c *Config) {
-				c.DeviceUsageInfluxClient = &mockInfluxDBClient{}
-				c.DeviceUsageInfluxBucket = "test-bucket"
-				c.DeviceUsageInfluxQueryWindow = 1 * time.Hour
-				c.DeviceUsageRefreshInterval = 0
-			},
-			wantErr: false,
-		},
 	}
 
 	for _, tt := range tests {
@@ -255,21 +180,14 @@ func TestAI_MCP_Server_Config_Validate(t *testing.T) {
 			t.Parallel()
 
 			cfg := validConfig(t)
-			originalRefreshInterval := cfg.RefreshInterval
 			tt.modify(&cfg)
-			wasRefreshIntervalZero := cfg.DeviceUsageRefreshInterval == 0 && cfg.DeviceUsageInfluxClient != nil
 			err := cfg.Validate()
 			if tt.wantErr {
 				require.Error(t, err)
 			} else {
 				require.NoError(t, err)
-				require.NotNil(t, cfg.Clock, "Config.Validate() should set default clock")
 				require.NotZero(t, cfg.ReadHeaderTimeout, "Config.Validate() should set default read header timeout")
 				require.NotZero(t, cfg.ShutdownTimeout, "Config.Validate() should set default shutdown timeout")
-				// If InfluxDB client is provided and refresh interval was zero, it should default to RefreshInterval
-				if wasRefreshIntervalZero {
-					require.Equal(t, originalRefreshInterval, cfg.DeviceUsageRefreshInterval, "DeviceUsageRefreshInterval should default to RefreshInterval when zero")
-				}
 			}
 		})
 	}

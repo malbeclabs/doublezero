@@ -3,29 +3,26 @@ package server
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	dzsvc "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/dz/serviceability"
-	dztelemlatency "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/dz/telemetry/latency"
-	dztelemusage "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/dz/telemetry/usage"
-	mcpgeoip "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/geoip"
-	mcpmetrics "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/metrics"
-	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/sol"
-	sqltools "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/tools/sql"
+	schematypes "github.com/malbeclabs/doublezero/tools/dz-ai/internal/data/indexer/schema"
+	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/server/metrics"
 )
 
 type Server struct {
-	cfg                Config
-	serviceabilityView *dzsvc.View
-	telemetryView      *dztelemlatency.View
-	telemetryUsageView *dztelemusage.View
-	solanaView         *sol.View
-	mcpServer          *mcp.Server
-	httpServer         *http.Server
+	log  *slog.Logger
+	cfg  Config
+	mcp  *mcp.Server
+	http *http.Server
+
+	registeredSchemas   map[string]struct{}
+	registeredSchemasMu sync.Mutex
 }
 
 func New(ctx context.Context, cfg Config) (*Server, error) {
@@ -33,129 +30,20 @@ func New(ctx context.Context, cfg Config) (*Server, error) {
 		return nil, err
 	}
 
-	// Initialize GeoIP store
-	geoIPStore, err := mcpgeoip.NewStore(mcpgeoip.StoreConfig{
-		Logger: cfg.Logger,
-		DB:     cfg.DB,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create GeoIP store: %w", err)
-	}
-	if err := geoIPStore.CreateTablesIfNotExists(); err != nil {
-		return nil, fmt.Errorf("failed to create GeoIP tables: %w", err)
-	}
-
-	svcView, err := dzsvc.NewView(dzsvc.ViewConfig{
-		Logger:            cfg.Logger,
-		Clock:             cfg.Clock,
-		ServiceabilityRPC: cfg.ServiceabilityRPC,
-		RefreshInterval:   cfg.RefreshInterval,
-		DB:                cfg.DB,
-		GeoIPStore:        geoIPStore,
-		GeoIPResolver:     cfg.GeoIPResolver,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create serviceability view: %w", err)
-	}
-
-	telemView, err := dztelemlatency.NewView(dztelemlatency.ViewConfig{
-		Logger:                 cfg.Logger,
-		Clock:                  cfg.Clock,
-		TelemetryRPC:           cfg.TelemetryRPC,
-		EpochRPC:               cfg.DZEpochRPC,
-		MaxConcurrency:         cfg.MaxConcurrency,
-		InternetLatencyAgentPK: cfg.InternetLatencyAgentPK,
-		InternetDataProviders:  cfg.InternetDataProviders,
-		DB:                     cfg.DB,
-		Serviceability:         svcView,
-		RefreshInterval:        cfg.RefreshInterval,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create telemetry view: %w", err)
-	}
-
-	solanaView, err := sol.NewView(sol.ViewConfig{
-		Logger:          cfg.Logger,
-		Clock:           cfg.Clock,
-		RPC:             cfg.SolanaRPC,
-		DB:              cfg.DB,
-		RefreshInterval: cfg.RefreshInterval,
-		GeoIPStore:      *geoIPStore,
-		GeoIPResolver:   cfg.GeoIPResolver,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create solana view: %w", err)
-	}
-
-	// Initialize telemetry usage view if InfluxDB client is configured
-	var telemetryUsageView *dztelemusage.View
-	if cfg.DeviceUsageInfluxClient != nil {
-		telemetryUsageView, err = dztelemusage.NewView(dztelemusage.ViewConfig{
-			Logger:          cfg.Logger,
-			Clock:           cfg.Clock,
-			DB:              cfg.DB,
-			RefreshInterval: cfg.DeviceUsageRefreshInterval,
-			InfluxDB:        cfg.DeviceUsageInfluxClient,
-			Bucket:          cfg.DeviceUsageInfluxBucket,
-			QueryWindow:     cfg.DeviceUsageInfluxQueryWindow,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to create telemetry usage view: %w", err)
-		}
-	}
-
 	mcpServer := mcp.NewServer(&mcp.Implementation{
 		Name:    "DoubleZero MCP Server",
 		Version: cfg.Version,
 	}, nil)
 
-	svcSchemaTool, err := svcView.SchemaTool(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create serviceability schema tool: %w", err)
-	}
-	if err := svcSchemaTool.Register(mcpServer); err != nil {
-		return nil, fmt.Errorf("failed to register serviceability schema tool: %w", err)
+	s := &Server{
+		log: cfg.Logger,
+		cfg: cfg,
+		mcp: mcpServer,
+
+		registeredSchemas: make(map[string]struct{}),
 	}
 
-	telemSchemaTool, err := telemView.SchemaTool(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create telemetry schema tool: %w", err)
-	}
-	if err := telemSchemaTool.Register(mcpServer); err != nil {
-		return nil, fmt.Errorf("failed to register telemetry schema tool: %w", err)
-	}
-
-	solanaSchemaTool, err := solanaView.SchemaTool(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create solana schema tool: %w", err)
-	}
-	if err := solanaSchemaTool.Register(mcpServer); err != nil {
-		return nil, fmt.Errorf("failed to register solana schema tool: %w", err)
-	}
-
-	geoipSchemaTool, err := geoIPStore.SchemaTool(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create geoip schema tool: %w", err)
-	}
-	if err := geoipSchemaTool.Register(mcpServer); err != nil {
-		return nil, fmt.Errorf("failed to register geoip schema tool: %w", err)
-	}
-
-	if telemetryUsageView != nil {
-		telemetryUsageSchemaTool, err := telemetryUsageView.SchemaTool(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create telemetry usage schema tool: %w", err)
-		}
-		if err := telemetryUsageSchemaTool.Register(mcpServer); err != nil {
-			return nil, fmt.Errorf("failed to register telemetry usage schema tool: %w", err)
-		}
-	}
-
-	queryTool, err := sqltools.NewQueryTool(sqltools.QueryToolConfig{
-		Logger: cfg.Logger,
-		DB:     cfg.DB,
-		Name:   "query",
-		Description: `
+	err := RegisterQueryTool(s.log, mcpServer, cfg.Querier, "query", `
 			PURPOSE:
 			Execute DuckDB SQL queries across all DoubleZero datasets (serviceability, telemetry latency, telemetry usage, and Solana).
 
@@ -175,26 +63,14 @@ func New(ctx context.Context, cfg Config) (*Server, error) {
 
 			For general information about DoubleZero, see https://doublezero.xyz/
 		`,
-	})
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create query tool: %w", err)
-	}
-	if err := queryTool.Register(mcpServer); err != nil {
-		return nil, fmt.Errorf("failed to register query tool: %w", err)
-	}
-
-	s := &Server{
-		cfg:                cfg,
-		serviceabilityView: svcView,
-		telemetryView:      telemView,
-		telemetryUsageView: telemetryUsageView,
-		solanaView:         solanaView,
-		mcpServer:          mcpServer,
 	}
 
 	mux := http.NewServeMux()
 	handler := mcp.NewStreamableHTTPHandler(func(_ *http.Request) *mcp.Server {
-		return mcpServer
+		return s.mcp
 	}, &mcp.StreamableHTTPOptions{
 		Stateless: true, // Auto-initialize sessions, no manual initialize required
 	})
@@ -211,12 +87,12 @@ func New(ctx context.Context, cfg Config) (*Server, error) {
 	mux.Handle("/healthz", s.metricsMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		if _, err := w.Write([]byte("ok\n")); err != nil {
-			s.cfg.Logger.Error("failed to write healthz response", "error", err)
+			s.log.Error("failed to write healthz response", "error", err)
 		}
 	})))
 	mux.Handle("/readyz", s.metricsMiddleware(http.HandlerFunc(s.readyzHandler)))
 
-	s.httpServer = &http.Server{
+	s.http = &http.Server{
 		Addr:              cfg.ListenAddr,
 		Handler:           mux,
 		ReadHeaderTimeout: s.cfg.ReadHeaderTimeout,
@@ -233,46 +109,58 @@ func New(ctx context.Context, cfg Config) (*Server, error) {
 }
 
 func (s *Server) Run(ctx context.Context) error {
-	s.serviceabilityView.Start(ctx)
-	s.telemetryView.Start(ctx)
-	s.solanaView.Start(ctx)
-	if s.telemetryUsageView != nil {
-		s.telemetryUsageView.Start(ctx)
+	if s.cfg.Indexer != nil {
+		s.cfg.Indexer.Start(ctx)
 	}
+
+	if err := s.registerSchemas(ctx); err != nil {
+		s.log.Error("failed to register schemas", "error", err)
+	}
+
+	// Peirodically check if the schemas are enabled and register the tools if they are.
+	go func() {
+		ticker := time.NewTicker(1 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if err := s.registerSchemas(ctx); err != nil {
+					s.log.Error("failed to register schemas", "error", err)
+				}
+			}
+		}
+	}()
 
 	serveErrCh := make(chan error, 1)
 	go func() {
-		if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := s.http.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			// Log the error but don't immediately exit - this could be a transient network issue
-			s.cfg.Logger.Error("server: http server error", "error", err)
+			s.log.Error("server: http server error", "error", err)
 			serveErrCh <- fmt.Errorf("failed to listen and serve: %w", err)
 		}
 	}()
 
-	s.cfg.Logger.Info("server: mcp streamable http listening",
+	s.log.Info("server: mcp streamable http listening",
 		"listenAddr", s.cfg.ListenAddr,
 	)
 
 	select {
 	case <-ctx.Done():
-		s.cfg.Logger.Info("server: Run() context cancelled",
+		s.log.Info("server: stopping",
 			"reason", ctx.Err(),
 			"listenAddr", s.cfg.ListenAddr,
 		)
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), s.cfg.ShutdownTimeout)
 		defer shutdownCancel()
-		if err := s.httpServer.Shutdown(shutdownCtx); err != nil {
+		if err := s.http.Shutdown(shutdownCtx); err != nil {
 			return fmt.Errorf("failed to shutdown server: %w", err)
 		}
-		if s.telemetryUsageView != nil {
-			if err := s.telemetryUsageView.Close(); err != nil {
-				s.cfg.Logger.Warn("failed to close telemetry usage view", "error", err)
-			}
-		}
-		s.cfg.Logger.Info("server: HTTP server shutdown complete")
+		s.log.Info("server: HTTP server shutdown complete")
 		return nil
 	case err := <-serveErrCh:
-		s.cfg.Logger.Error("server: http server error causing shutdown",
+		s.log.Error("server: http server error causing shutdown",
 			"error", err,
 			"listenAddr", s.cfg.ListenAddr,
 		)
@@ -280,39 +168,63 @@ func (s *Server) Run(ctx context.Context) error {
 	}
 }
 
+func (s *Server) registerSchemas(ctx context.Context) error {
+	candidateSchemas := map[string]*schematypes.Schema{}
+	for _, schema := range s.cfg.Querier.CandidateSchemas(ctx) {
+		candidateSchemas[schema.Name] = schema
+	}
+
+	schemas, err := s.cfg.Querier.EnabledSchemas(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get enabled schemas: %w", err)
+	}
+	enabledSchemas := map[string]*schematypes.Schema{}
+	for _, schema := range schemas {
+		enabledSchemas[schema.Name] = schema
+	}
+
+	s.registeredSchemasMu.Lock()
+	defer s.registeredSchemasMu.Unlock()
+
+	// Register the tools for the enabled schemas.
+	for _, schema := range enabledSchemas {
+		if _, ok := s.registeredSchemas[schema.Name]; ok {
+			continue
+		}
+		s.log.Info("mcp/server: registering schema tool", "schema", schema.Name)
+		if err := RegisterSchemaTool(s.log, s.mcp, schema); err != nil {
+			s.log.Error("failed to register schema", "error", err)
+		}
+		s.registeredSchemas[schema.Name] = struct{}{}
+	}
+
+	// Unregister the tools for the disabled schemas.
+	for _, schema := range candidateSchemas {
+		if _, ok := s.registeredSchemas[schema.Name]; !ok {
+			continue
+		}
+		if _, ok := enabledSchemas[schema.Name]; !ok {
+			s.log.Info("mcp/server: unregistering schema tool", "schema", schema.Name)
+			s.mcp.RemoveTools(schema.Name)
+			delete(s.registeredSchemas, schema.Name)
+		}
+	}
+	return nil
+}
+
 func (s *Server) readyzHandler(w http.ResponseWriter, r *http.Request) {
-	if !s.serviceabilityView.Ready() {
-		s.cfg.Logger.Debug("readyz: serviceability view not ready")
+	if s.cfg.Indexer != nil && !s.cfg.Indexer.Ready() {
+		s.log.Debug("readyz: indexer not ready")
 		w.WriteHeader(http.StatusServiceUnavailable)
-		if _, err := w.Write([]byte("serviceability view not ready\n")); err != nil {
-			s.cfg.Logger.Error("failed to write readyz response", "error", err)
+		if _, err := w.Write([]byte("indexer not ready\n")); err != nil {
+			s.log.Error("failed to write readyz response", "error", err)
 		}
 		return
 	}
-
-	if !s.telemetryView.Ready() {
-		s.cfg.Logger.Debug("readyz: telemetry view not ready")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		if _, err := w.Write([]byte("telemetry view not ready\n")); err != nil {
-			s.cfg.Logger.Error("failed to write readyz response", "error", err)
-		}
-		return
-	}
-
-	if !s.solanaView.Ready() {
-		s.cfg.Logger.Debug("readyz: solana view not ready")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		if _, err := w.Write([]byte("solana view not ready\n")); err != nil {
-			s.cfg.Logger.Error("failed to write readyz response", "error", err)
-		}
-		return
-	}
-
-	// NOTE: We do NOT wait for device usage to be ready, since it can take longer to process.
 
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write([]byte("ok\n")); err != nil {
-		s.cfg.Logger.Error("failed to write readyz response", "error", err)
+		s.log.Error("failed to write readyz response", "error", err)
 	}
 }
 
@@ -321,11 +233,11 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
-			mcpmetrics.AuthFailuresTotal.WithLabelValues("missing_header").Inc()
+			metrics.AuthFailuresTotal.WithLabelValues("missing_header").Inc()
 			w.Header().Set("WWW-Authenticate", `Bearer`)
 			w.WriteHeader(http.StatusUnauthorized)
 			if _, err := w.Write([]byte("unauthorized: missing authorization header\n")); err != nil {
-				s.cfg.Logger.Error("failed to write auth error response", "error", err)
+				s.log.Error("failed to write auth error response", "error", err)
 			}
 			return
 		}
@@ -333,22 +245,22 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 		// Extract token from "Bearer <token>" format
 		parts := strings.SplitN(authHeader, " ", 2)
 		if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
-			mcpmetrics.AuthFailuresTotal.WithLabelValues("invalid_format").Inc()
+			metrics.AuthFailuresTotal.WithLabelValues("invalid_format").Inc()
 			w.Header().Set("WWW-Authenticate", `Bearer`)
 			w.WriteHeader(http.StatusUnauthorized)
 			if _, err := w.Write([]byte("unauthorized: invalid authorization header format\n")); err != nil {
-				s.cfg.Logger.Error("failed to write auth error response", "error", err)
+				s.log.Error("failed to write auth error response", "error", err)
 			}
 			return
 		}
 
 		token := strings.TrimSpace(parts[1])
 		if token == "" {
-			mcpmetrics.AuthFailuresTotal.WithLabelValues("empty_token").Inc()
+			metrics.AuthFailuresTotal.WithLabelValues("empty_token").Inc()
 			w.Header().Set("WWW-Authenticate", `Bearer`)
 			w.WriteHeader(http.StatusUnauthorized)
 			if _, err := w.Write([]byte("unauthorized: empty token\n")); err != nil {
-				s.cfg.Logger.Error("failed to write auth error response", "error", err)
+				s.log.Error("failed to write auth error response", "error", err)
 			}
 			return
 		}
@@ -363,11 +275,11 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 		}
 
 		if !allowed {
-			mcpmetrics.AuthFailuresTotal.WithLabelValues("invalid_token").Inc()
+			metrics.AuthFailuresTotal.WithLabelValues("invalid_token").Inc()
 			w.Header().Set("WWW-Authenticate", `Bearer`)
 			w.WriteHeader(http.StatusUnauthorized)
 			if _, err := w.Write([]byte("unauthorized: invalid token\n")); err != nil {
-				s.cfg.Logger.Error("failed to write auth error response", "error", err)
+				s.log.Error("failed to write auth error response", "error", err)
 			}
 			return
 		}
@@ -392,8 +304,8 @@ func (s *Server) metricsMiddleware(next http.Handler) http.Handler {
 		duration := time.Since(startTime).Seconds()
 		status := fmt.Sprintf("%d", wrapped.statusCode)
 
-		mcpmetrics.HTTPRequestsTotal.WithLabelValues(method, endpoint, status).Inc()
-		mcpmetrics.HTTPRequestDuration.Observe(duration)
+		metrics.HTTPRequestsTotal.WithLabelValues(method, endpoint, status).Inc()
+		metrics.HTTPRequestDuration.Observe(duration)
 	})
 }
 

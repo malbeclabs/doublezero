@@ -81,9 +81,9 @@ func run() error {
 	duckDBSpillDirFlag := flag.String("duckdb-spill-dir", defaultEmbeddedDBSpillDir, "Path to DuckDB temporary spill directory")
 
 	// DuckLake configuration
-	duckLakeCatalogNameFlag := flag.String("ducklake-catalog-name", "dzlake", "Name of the DuckLake catalog")
-	duckLakeCatalogURIFlag := flag.String("ducklake-catalog-uri", "file://.tmp/lake/catalog.sqlite", "URI to the DuckLake catalog")
-	duckLakeStorageURIFlag := flag.String("ducklake-storage-uri", "file://.tmp/lake/data", "URI to the DuckLake storage directory")
+	duckLakeCatalogNameFlag := flag.String("ducklake-catalog-name", "dzlake", "Name of the DuckLake catalog (or set DUCKLAKE_CATALOG_NAME env var)")
+	duckLakeCatalogURIFlag := flag.String("ducklake-catalog-uri", "file://.tmp/lake/catalog.sqlite", "URI to the DuckLake catalog (or set DUCKLAKE_CATALOG_URI env var)")
+	duckLakeStorageURIFlag := flag.String("ducklake-storage-uri", "file://.tmp/lake/data", "URI to the DuckLake storage directory (or set DUCKLAKE_STORAGE_URI env var)")
 
 	// GeoIP configuration
 	geoipCityDBPathFlag := flag.String("geoip-city-db-path", defaultGeoipCityDBPath, "Path to MaxMind GeoIP2 City database file (or set MCP_GEOIP_CITY_DB_PATH env var)")
@@ -99,6 +99,17 @@ func run() error {
 	deviceUsageRefreshIntervalFlag := flag.Duration("device-usage-refresh-interval", defaultDeviceUsageRefreshInterval, "Refresh interval for device usage (default: 5 minutes)")
 
 	flag.Parse()
+
+	// Override flags with environment variables if set
+	if envCatalogURI := os.Getenv("DUCKLAKE_CATALOG_URI"); envCatalogURI != "" {
+		*duckLakeCatalogURIFlag = envCatalogURI
+	}
+	if envStorageURI := os.Getenv("DUCKLAKE_STORAGE_URI"); envStorageURI != "" {
+		*duckLakeStorageURIFlag = envStorageURI
+	}
+	if envCatalogName := os.Getenv("DUCKLAKE_CATALOG_NAME"); envCatalogName != "" {
+		*duckLakeCatalogNameFlag = envCatalogName
+	}
 
 	networkConfig, err := config.NetworkConfigForEnv(*dzEnvFlag)
 	if err != nil {
@@ -313,7 +324,11 @@ func run() error {
 		log.Info("using embedded DuckDB database with internal indexer", "dbPath", dbPath, "dbSpillDir", *duckDBSpillDirFlag)
 	} else {
 		// Initialize DuckLake catalog database
-		db, err := duck.NewLocalLake(ctx, log, *duckLakeCatalogNameFlag, *duckLakeCatalogURIFlag, *duckLakeStorageURIFlag)
+		s3Config, err := duck.PrepareS3ConfigForStorageURI(ctx, log, *duckLakeStorageURIFlag)
+		if err != nil {
+			return err
+		}
+		db, err := duck.NewLake(ctx, log, *duckLakeCatalogNameFlag, *duckLakeCatalogURIFlag, *duckLakeStorageURIFlag, s3Config)
 		if err != nil {
 			return fmt.Errorf("failed to create local lake: %w", err)
 		}

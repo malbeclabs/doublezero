@@ -6,8 +6,10 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -71,9 +73,9 @@ func run() error {
 	listenAddrFlag := flag.String("listen-addr", defaultListenAddr, "HTTP server listen address")
 
 	// Database configuration
-	duckLakeCatalogNameFlag := flag.String("ducklake-catalog-name", "dzlake", "Name of the DuckLake catalog")
-	duckLakeCatalogURIFlag := flag.String("ducklake-catalog-uri", "file://.tmp/lake/catalog.sqlite", "URI to the DuckLake catalog")
-	duckLakeStorageURIFlag := flag.String("ducklake-storage-uri", "file://.tmp/lake/data", "URI to the DuckLake storage directory")
+	duckLakeCatalogNameFlag := flag.String("ducklake-catalog-name", "dzlake", "Name of the DuckLake catalog (or set DUCKLAKE_CATALOG_NAME env var)")
+	duckLakeCatalogURIFlag := flag.String("ducklake-catalog-uri", "file://.tmp/lake/catalog.sqlite", "URI to the DuckLake catalog (or set DUCKLAKE_CATALOG_URI env var)")
+	duckLakeStorageURIFlag := flag.String("ducklake-storage-uri", "file://.tmp/lake/data", "URI to the DuckLake storage directory (or set DUCKLAKE_STORAGE_URI env var)")
 
 	// GeoIP configuration
 	geoipCityDBPathFlag := flag.String("geoip-city-db-path", defaultGeoipCityDBPath, "Path to MaxMind GeoIP2 City database file (or set MCP_GEOIP_CITY_DB_PATH env var)")
@@ -88,6 +90,17 @@ func run() error {
 	deviceUsageRefreshIntervalFlag := flag.Duration("device-usage-refresh-interval", defaultDeviceUsageRefreshInterval, "Refresh interval for device usage (default: 5 minutes)")
 
 	flag.Parse()
+
+	// Override flags with environment variables if set
+	if envCatalogURI := os.Getenv("DUCKLAKE_CATALOG_URI"); envCatalogURI != "" {
+		*duckLakeCatalogURIFlag = envCatalogURI
+	}
+	if envStorageURI := os.Getenv("DUCKLAKE_STORAGE_URI"); envStorageURI != "" {
+		*duckLakeStorageURIFlag = envStorageURI
+	}
+	if envCatalogName := os.Getenv("DUCKLAKE_CATALOG_NAME"); envCatalogName != "" {
+		*duckLakeCatalogNameFlag = envCatalogName
+	}
 
 	networkConfig, err := config.NetworkConfigForEnv(*dzEnvFlag)
 	if err != nil {
@@ -154,8 +167,12 @@ func run() error {
 	defer solanaRPC.Close()
 
 	// Initialize DuckLake database
-	log.Info("initializing ducklake database", "path", *duckLakeStorageURIFlag, "catalog", *duckLakeCatalogNameFlag)
-	db, err := duck.NewLocalLake(ctx, log, *duckLakeCatalogNameFlag, *duckLakeCatalogURIFlag, *duckLakeStorageURIFlag)
+	s3Config, err := duck.PrepareS3ConfigForStorageURI(ctx, log, *duckLakeStorageURIFlag)
+	if err != nil {
+		return err
+	}
+	log.Info("initializing ducklake database", "catalog", *duckLakeCatalogNameFlag, "catalogURI", redactedCatalogURI(*duckLakeCatalogURIFlag), "storageURI", redactedStorageURI(*duckLakeStorageURIFlag))
+	db, err := duck.NewLake(ctx, log, *duckLakeCatalogNameFlag, *duckLakeCatalogURIFlag, *duckLakeStorageURIFlag, s3Config)
 	if err != nil {
 		return fmt.Errorf("failed to create DuckLake database: %w", err)
 	}
@@ -314,4 +331,82 @@ func initializeGeoIP(cityDBPath, asnDBPath string, log *slog.Logger) (geoip.Reso
 		}
 		return nil
 	}, nil
+}
+
+// redactedCatalogURI redacts sensitive information from catalog URIs for logging.
+// It redacts passwords from postgres:// URIs and libpq connection strings.
+func redactedCatalogURI(uri string) string {
+	if uri == "" {
+		return uri
+	}
+
+	// Handle postgres:// or postgresql:// URIs
+	if strings.HasPrefix(uri, "postgres://") || strings.HasPrefix(uri, "postgresql://") {
+		parsed, err := url.Parse(uri)
+		if err != nil {
+			return "[REDACTED: invalid URI]"
+		}
+		if parsed.User != nil {
+			if _, hasPassword := parsed.User.Password(); hasPassword {
+				// Replace password with REDACTED but keep username
+				username := parsed.User.Username()
+				parsed.User = url.UserPassword(username, "REDACTED")
+			}
+		}
+		return parsed.String()
+	}
+
+	// Handle libpq format (key=value pairs, e.g., "host=localhost password=secret dbname=test")
+	if strings.Contains(uri, "password=") {
+		parts := strings.Fields(uri)
+		var redactedParts []string
+		for _, part := range parts {
+			if strings.HasPrefix(part, "password=") {
+				redactedParts = append(redactedParts, "password=REDACTED")
+			} else {
+				redactedParts = append(redactedParts, part)
+			}
+		}
+		return strings.Join(redactedParts, " ")
+	}
+
+	// For file:// URIs, return as-is (no sensitive info typically)
+	return uri
+}
+
+// redactedStorageURI redacts sensitive information from storage URIs for logging.
+// Storage URIs are typically file:// or s3:// and don't contain passwords,
+// but we redact any potential sensitive query parameters.
+func redactedStorageURI(uri string) string {
+	if uri == "" {
+		return uri
+	}
+
+	// Handle s3:// URIs - check for any credentials in query params
+	if strings.HasPrefix(uri, "s3://") {
+		parsed, err := url.Parse(uri)
+		if err != nil {
+			return "[REDACTED: invalid URI]"
+		}
+		// Redact any sensitive query parameters
+		if parsed.RawQuery != "" {
+			query, err := url.ParseQuery(parsed.RawQuery)
+			if err == nil {
+				sensitiveKeys := []string{"accesskey", "secretkey", "password", "token", "credential"}
+				for key := range query {
+					keyLower := strings.ToLower(key)
+					for _, sensitive := range sensitiveKeys {
+						if strings.Contains(keyLower, sensitive) {
+							query[key] = []string{"REDACTED"}
+						}
+					}
+				}
+				parsed.RawQuery = query.Encode()
+			}
+		}
+		return parsed.String()
+	}
+
+	// For file:// URIs, return as-is (no sensitive info typically)
+	return uri
 }

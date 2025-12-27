@@ -12,6 +12,27 @@ Use for DZ interface usage and utilization statistics:
 - Error and discard statistics
 - Device metadata (interface, model, serial)
 - Time-series interface statistics
+
+DEVICE UTILIZATION METRICS RULES:
+- Utilization is defined by throughput rate, not total transferred volume.
+- Total bytes/GB are contextual only and must not be used to characterize load or saturation.
+- Report and reason in Gbps/Mbps by default; include totals only when explicitly requested or when explaining rate derivation.
+- Interface counters (in/out octets, packets) are cumulative and passively sampled; never sum counters.
+- Compute rates as (last - first) / delta_duration.
+- Report rates by default; do not report totals unless explicitly requested.
+- Convert octets to Gbps: (octets * 8) / delta_duration / 1e9.
+- Prefer Gbps; use Mbps only when values are < 1 Gbps.
+- Exclude zero or negative deltas.
+- Counter deltas indicate traffic occurred during the measurement interval; they do not imply continuous, instantaneous, or “active” transmission.
+- Do not aggregate in/out directions together; account for in/out duplication across devices.
+
+DEVICE UTILIZATION AGGREGATION RULES:
+- Interface counters are per-interface; summing deltas within the same timestamp represents aggregate device load.
+- To show device load from user traffic, sum interface deltas across all user tunnels per device per timestamp, then compute rates.
+- Do NOT average per-user samples to infer device throughput; this obscures true load.
+- For device-level reporting, compute average, p95, and peak rates from the per-timestamp summed totals.
+- For per-user analysis, compute rates per user first, then aggregate statistics across users separately.
+- Call out anomalies or outliers when present.
 `,
 	Tables: []schematypes.TableInfo{
 		{

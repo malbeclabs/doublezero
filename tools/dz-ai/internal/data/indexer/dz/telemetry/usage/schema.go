@@ -13,7 +13,12 @@ Use for DZ interface usage and utilization statistics:
 - Device metadata (interface, model, serial)
 - Time-series interface statistics
 
-DEVICE UTILIZATION METRICS RULES:
+ANSWERING RULES:
+- Interface errors or discards are first-order health signals; always surface them in summaries, even when counts are small, and provide brief, data-grounded context.
+- When summarizing network health, interface errors or discards must appear in the initial health summary alongside loss and drain signals, not only in follow-up sections.
+- Interface error reporting must include the specific devices and interfaces involved; if many are affected, list the most impacted and summarize the rest.
+
+METRICS RULES:
 - Utilization is defined by throughput rate, not total transferred volume.
 - Total bytes/GB are contextual only and must not be used to characterize load or saturation unless explicitly requested.
 - Interface counters (in/out octets, packets) are cumulative and passively sampled; never sum raw counters.
@@ -24,7 +29,7 @@ DEVICE UTILIZATION METRICS RULES:
 - Counter deltas indicate traffic occurred during the interval; they do not imply continuous or instantaneous transmission.
 - Do not aggregate in/out directions together; account for duplication across devices.
 
-DEVICE UTILIZATION AGGREGATION RULES:
+AGGREGATION RULES:
 - Interface counters are per-interface; summing deltas at the same observation time represents aggregate device load.
 - To compute device load from user traffic, sum interface deltas across all user tunnels per device per observation, then compute rates.
 - Do not average per-user rates to infer device throughput.

@@ -148,8 +148,8 @@ func (i *Indexer) Ready() bool {
 	svcReady := i.svc.Ready()
 	telemLatencyReady := i.telemLatency.Ready()
 	solReady := i.sol.Ready()
-	telemUsageReady := i.telemUsage == nil || i.telemUsage.Ready()
-	return svcReady && telemLatencyReady && solReady && telemUsageReady
+	// NOTE: Don't wait for telemUsage to be ready, it takes too long to refresh from scratch.
+	return svcReady && telemLatencyReady && solReady
 }
 
 func (i *Indexer) Start(ctx context.Context) {

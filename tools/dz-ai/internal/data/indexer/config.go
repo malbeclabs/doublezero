@@ -45,6 +45,12 @@ type Config struct {
 
 	// Solana configuration.
 	SolanaRPC sol.SolanaRPC
+
+	// Maintenance configuration.
+	// If set to 0, the maintenance task is disabled.
+	MaintenanceIntervalShort time.Duration // Interval for short maintenance tasks: flush_inlined_data, merge_adjacent_files (default: 30 minutes)
+	MaintenanceIntervalLong  time.Duration // Interval for long maintenance tasks: rewrite_data_files, merge_adjacent_files, expire_snapshots, cleanup_old_files, delete_orphaned_files (default: 3 hours)
+	ExpireSnapshotsOlderThan time.Duration // Age threshold for expiring snapshots (default: 1 day)
 }
 
 func (c *Config) Validate() error {

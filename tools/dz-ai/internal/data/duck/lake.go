@@ -15,40 +15,40 @@ import (
 	_ "github.com/duckdb/duckdb-go/v2"
 )
 
-type LocalLake struct {
+type Lake struct {
 	log     *slog.Logger
 	db      *sql.DB
 	catalog string
 	schema  string
 }
 
-type LocalLakeConnection struct {
+type LakeConnection struct {
 	conn *sql.Conn
-	db   *LocalLake
+	db   *Lake
 	mu   sync.Mutex
 }
 
-func (c *LocalLakeConnection) DB() DB {
+func (c *LakeConnection) DB() DB {
 	return c.db
 }
 
-func (c *LocalLakeConnection) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+func (c *LakeConnection) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
 	return c.conn.ExecContext(ctx, query, args...)
 }
 
-func (c *LocalLakeConnection) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+func (c *LakeConnection) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
 	return c.conn.QueryContext(ctx, query, args...)
 }
 
-func (c *LocalLakeConnection) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
+func (c *LakeConnection) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
 	return c.conn.QueryRowContext(ctx, query, args...)
 }
 
-func (c *LocalLakeConnection) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
+func (c *LakeConnection) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
 	return c.conn.BeginTx(ctx, opts)
 }
 
-func (c *LocalLakeConnection) Close() error {
+func (c *LakeConnection) Close() error {
 	return c.conn.Close()
 }
 
@@ -88,7 +88,7 @@ type S3Config struct {
 //   - Endpoint: "" (empty, uses default AWS endpoints)
 //   - UseSSL: true
 //   - URLStyle: "virtual" (or empty, defaults to virtual)
-func NewLake(ctx context.Context, log *slog.Logger, catalogName, catalogURI, storageURI string, s3Config ...*S3Config) (*LocalLake, error) {
+func NewLake(ctx context.Context, log *slog.Logger, catalogName, catalogURI, storageURI string, s3Config ...*S3Config) (*Lake, error) {
 	if err := validateCatalogURI(catalogURI); err != nil {
 		return nil, err
 	}
@@ -178,8 +178,17 @@ func NewLake(ctx context.Context, log *slog.Logger, catalogName, catalogURI, sto
 		return nil, fmt.Errorf("storage URI must be file:// or s3://")
 	}
 
+	// Install DuckLake extension first, from nightly
+	if _, err := db.Exec("FORCE INSTALL ducklake FROM core_nightly"); err != nil {
+		return nil, fmt.Errorf("failed to install ducklake from nightly: %w", err)
+	}
+	// LOAD the extension after installing
+	if _, err := db.Exec("LOAD ducklake"); err != nil {
+		return nil, fmt.Errorf("failed to load ducklake: %w", err)
+	}
+
 	// Install required extensions
-	extensions := []string{"ducklake"}
+	extensions := []string{}
 	if strings.HasPrefix(catalogURI, "postgres://") || strings.HasPrefix(catalogURI, "postgresql://") || strings.Contains(catalogURI, "host=") {
 		extensions = append(extensions, "postgres")
 	} else {
@@ -304,7 +313,7 @@ func NewLake(ctx context.Context, log *slog.Logger, catalogName, catalogURI, sto
 		return nil, fmt.Errorf("failed to get current database and schema: %w", err)
 	}
 
-	return &LocalLake{
+	return &Lake{
 		log:     log,
 		db:      db,
 		catalog: catalogName,
@@ -312,19 +321,19 @@ func NewLake(ctx context.Context, log *slog.Logger, catalogName, catalogURI, sto
 	}, nil
 }
 
-func (l *LocalLake) Catalog() string {
+func (l *Lake) Catalog() string {
 	return l.catalog
 }
 
-func (l *LocalLake) Schema() string {
+func (l *Lake) Schema() string {
 	return l.schema
 }
 
-func (l *LocalLake) Close() error {
+func (l *Lake) Close() error {
 	return l.db.Close()
 }
 
-func (l *LocalLake) Conn(ctx context.Context) (Connection, error) {
+func (l *Lake) Conn(ctx context.Context) (Connection, error) {
 	conn, err := l.db.Conn(ctx)
 	if err != nil {
 		return nil, err
@@ -335,7 +344,7 @@ func (l *LocalLake) Conn(ctx context.Context) (Connection, error) {
 	if _, err := conn.ExecContext(ctx, "SET schema = "+l.schema); err != nil {
 		return nil, fmt.Errorf("SET schema failed: %w", err)
 	}
-	return &LocalLakeConnection{
+	return &LakeConnection{
 		conn: conn,
 		db:   l,
 	}, nil
@@ -399,4 +408,82 @@ func validateStorageURI(uri string) error {
 	}
 
 	return fmt.Errorf("storage URI must start with file:// or s3:// (got: %q)", uri)
+}
+
+// RedactedCatalogURI redacts sensitive information from catalog URIs for logging.
+// It redacts passwords from postgres:// URIs and libpq connection strings.
+func RedactedCatalogURI(uri string) string {
+	if uri == "" {
+		return uri
+	}
+
+	// Handle postgres:// or postgresql:// URIs
+	if strings.HasPrefix(uri, "postgres://") || strings.HasPrefix(uri, "postgresql://") {
+		parsed, err := url.Parse(uri)
+		if err != nil {
+			return "[REDACTED: invalid URI]"
+		}
+		if parsed.User != nil {
+			if _, hasPassword := parsed.User.Password(); hasPassword {
+				// Replace password with REDACTED but keep username
+				username := parsed.User.Username()
+				parsed.User = url.UserPassword(username, "REDACTED")
+			}
+		}
+		return parsed.String()
+	}
+
+	// Handle libpq format (key=value pairs, e.g., "host=localhost password=secret dbname=test")
+	if strings.Contains(uri, "password=") {
+		parts := strings.Fields(uri)
+		var redactedParts []string
+		for _, part := range parts {
+			if strings.HasPrefix(part, "password=") {
+				redactedParts = append(redactedParts, "password=REDACTED")
+			} else {
+				redactedParts = append(redactedParts, part)
+			}
+		}
+		return strings.Join(redactedParts, " ")
+	}
+
+	// For file:// URIs, return as-is (no sensitive info typically)
+	return uri
+}
+
+// RedactedStorageURI redacts sensitive information from storage URIs for logging.
+// Storage URIs are typically file:// or s3:// and don't contain passwords,
+// but we redact any potential sensitive query parameters.
+func RedactedStorageURI(uri string) string {
+	if uri == "" {
+		return uri
+	}
+
+	// Handle s3:// URIs - check for any credentials in query params
+	if strings.HasPrefix(uri, "s3://") {
+		parsed, err := url.Parse(uri)
+		if err != nil {
+			return "[REDACTED: invalid URI]"
+		}
+		// Redact any sensitive query parameters
+		if parsed.RawQuery != "" {
+			query, err := url.ParseQuery(parsed.RawQuery)
+			if err == nil {
+				sensitiveKeys := []string{"accesskey", "secretkey", "password", "token", "credential"}
+				for key := range query {
+					keyLower := strings.ToLower(key)
+					for _, sensitive := range sensitiveKeys {
+						if strings.Contains(keyLower, sensitive) {
+							query[key] = []string{"REDACTED"}
+						}
+					}
+				}
+				parsed.RawQuery = query.Encode()
+			}
+		}
+		return parsed.String()
+	}
+
+	// For file:// URIs, return as-is (no sensitive info typically)
+	return uri
 }

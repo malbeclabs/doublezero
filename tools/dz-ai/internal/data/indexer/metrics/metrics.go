@@ -48,4 +48,29 @@ var (
 			Buckets: prometheus.ExponentialBuckets(0.001, 2, 12), // 0.001s to ~4.1s
 		},
 	)
+
+	MaintenanceOperationTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "doublezero_data_indexer_maintenance_operation_total",
+			Help: "Total number of maintenance operations",
+		},
+		[]string{"operation_type", "status"},
+	)
+
+	MaintenanceOperationDuration = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "doublezero_data_indexer_maintenance_operation_duration_seconds",
+			Help:    "Duration of maintenance operations",
+			Buckets: prometheus.ExponentialBuckets(1, 2, 12), // 1s to ~2048s (~34 minutes)
+		},
+		[]string{"operation_type"},
+	)
+
+	MaintenanceTablesProcessed = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "doublezero_data_indexer_maintenance_tables_processed_total",
+			Help: "Total number of tables processed during maintenance operations",
+		},
+		[]string{"operation_type", "status"},
+	)
 )

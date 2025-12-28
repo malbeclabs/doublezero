@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/data/duck"
 	dzsvc "github.com/malbeclabs/doublezero/tools/dz-ai/internal/data/indexer/dz/serviceability"
 	dztelemlatency "github.com/malbeclabs/doublezero/tools/dz-ai/internal/data/indexer/dz/telemetry/latency"
 	dztelemusage "github.com/malbeclabs/doublezero/tools/dz-ai/internal/data/indexer/dz/telemetry/usage"
@@ -159,6 +160,13 @@ func (i *Indexer) Start(ctx context.Context) {
 	i.sol.Start(ctx)
 	if i.telemUsage != nil {
 		i.telemUsage.Start(ctx)
+	}
+
+	// Start maintenance tasks if enabled and DB is DuckLake (not plain DuckDB)
+	if _, ok := i.cfg.DB.(*duck.Lake); ok {
+		if i.cfg.MaintenanceIntervalShort > 0 || i.cfg.MaintenanceIntervalLong > 0 {
+			i.startMaintenanceTasks(ctx)
+		}
 	}
 }
 

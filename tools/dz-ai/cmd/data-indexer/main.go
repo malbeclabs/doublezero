@@ -6,10 +6,8 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -54,6 +52,9 @@ const (
 	defaultGeoipASNDBPath               = "/usr/share/GeoIP/GeoLite2-ASN.mmdb"
 	defaultDeviceUsageInfluxQueryWindow = 1 * time.Hour
 	defaultDeviceUsageRefreshInterval   = 5 * time.Minute
+	defaultMaintenanceIntervalShort     = 30 * time.Minute
+	defaultMaintenanceIntervalLong      = 24 * time.Hour
+	defaultMaintenanceExpireOlderThan   = 24 * time.Hour
 
 	geoipCityDBPathEnvVar = "GEOIP_CITY_DB_PATH"
 	geoipASNDBPathEnvVar  = "GEOIP_ASN_DB_PATH"
@@ -88,6 +89,11 @@ func run() error {
 	maxConcurrencyFlag := flag.Int("max-concurrency", defaultMaxConcurrency, "maximum number of concurrent operations")
 	deviceUsageQueryWindowFlag := flag.Duration("device-usage-query-window", defaultDeviceUsageInfluxQueryWindow, "Query window for device usage (default: 1 hour)")
 	deviceUsageRefreshIntervalFlag := flag.Duration("device-usage-refresh-interval", defaultDeviceUsageRefreshInterval, "Refresh interval for device usage (default: 5 minutes)")
+
+	// Maintenance configuration
+	maintenanceIntervalShortFlag := flag.Duration("maintenance-interval-short", defaultMaintenanceIntervalShort, "Interval for short maintenance tasks: flush_inlined_data, merge_adjacent_files (default: 30 minutes, set to 0 to disable)")
+	maintenanceIntervalLongFlag := flag.Duration("maintenance-interval-long", defaultMaintenanceIntervalLong, "Interval for long maintenance tasks: rewrite_data_files, merge_adjacent_files, expire_snapshots, cleanup_old_files, delete_orphaned_files (default: 3 hours, set to 0 to disable)")
+	maintenanceExpireOlderThanFlag := flag.Duration("maintenance-expire-older-than", defaultMaintenanceExpireOlderThan, "Age threshold for expiring snapshots (default: 7 days, set to 0 to disable)")
 
 	flag.Parse()
 
@@ -171,7 +177,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	log.Info("initializing ducklake database", "catalog", *duckLakeCatalogNameFlag, "catalogURI", redactedCatalogURI(*duckLakeCatalogURIFlag), "storageURI", redactedStorageURI(*duckLakeStorageURIFlag))
+	log.Info("initializing ducklake database", "catalog", *duckLakeCatalogNameFlag, "catalogURI", duck.RedactedCatalogURI(*duckLakeCatalogURIFlag), "storageURI", duck.RedactedStorageURI(*duckLakeStorageURIFlag))
 	db, err := duck.NewLake(ctx, log, *duckLakeCatalogNameFlag, *duckLakeCatalogURIFlag, *duckLakeStorageURIFlag, s3Config)
 	if err != nil {
 		return fmt.Errorf("failed to create DuckLake database: %w", err)
@@ -269,6 +275,11 @@ func run() error {
 
 			// Solana configuration
 			SolanaRPC: solanaRPC,
+
+			// Maintenance configuration
+			MaintenanceIntervalShort: *maintenanceIntervalShortFlag,
+			MaintenanceIntervalLong:  *maintenanceIntervalLongFlag,
+			ExpireSnapshotsOlderThan: *maintenanceExpireOlderThanFlag,
 		},
 	})
 	if err != nil {
@@ -331,82 +342,4 @@ func initializeGeoIP(cityDBPath, asnDBPath string, log *slog.Logger) (geoip.Reso
 		}
 		return nil
 	}, nil
-}
-
-// redactedCatalogURI redacts sensitive information from catalog URIs for logging.
-// It redacts passwords from postgres:// URIs and libpq connection strings.
-func redactedCatalogURI(uri string) string {
-	if uri == "" {
-		return uri
-	}
-
-	// Handle postgres:// or postgresql:// URIs
-	if strings.HasPrefix(uri, "postgres://") || strings.HasPrefix(uri, "postgresql://") {
-		parsed, err := url.Parse(uri)
-		if err != nil {
-			return "[REDACTED: invalid URI]"
-		}
-		if parsed.User != nil {
-			if _, hasPassword := parsed.User.Password(); hasPassword {
-				// Replace password with REDACTED but keep username
-				username := parsed.User.Username()
-				parsed.User = url.UserPassword(username, "REDACTED")
-			}
-		}
-		return parsed.String()
-	}
-
-	// Handle libpq format (key=value pairs, e.g., "host=localhost password=secret dbname=test")
-	if strings.Contains(uri, "password=") {
-		parts := strings.Fields(uri)
-		var redactedParts []string
-		for _, part := range parts {
-			if strings.HasPrefix(part, "password=") {
-				redactedParts = append(redactedParts, "password=REDACTED")
-			} else {
-				redactedParts = append(redactedParts, part)
-			}
-		}
-		return strings.Join(redactedParts, " ")
-	}
-
-	// For file:// URIs, return as-is (no sensitive info typically)
-	return uri
-}
-
-// redactedStorageURI redacts sensitive information from storage URIs for logging.
-// Storage URIs are typically file:// or s3:// and don't contain passwords,
-// but we redact any potential sensitive query parameters.
-func redactedStorageURI(uri string) string {
-	if uri == "" {
-		return uri
-	}
-
-	// Handle s3:// URIs - check for any credentials in query params
-	if strings.HasPrefix(uri, "s3://") {
-		parsed, err := url.Parse(uri)
-		if err != nil {
-			return "[REDACTED: invalid URI]"
-		}
-		// Redact any sensitive query parameters
-		if parsed.RawQuery != "" {
-			query, err := url.ParseQuery(parsed.RawQuery)
-			if err == nil {
-				sensitiveKeys := []string{"accesskey", "secretkey", "password", "token", "credential"}
-				for key := range query {
-					keyLower := strings.ToLower(key)
-					for _, sensitive := range sensitiveKeys {
-						if strings.Contains(keyLower, sensitive) {
-							query[key] = []string{"REDACTED"}
-						}
-					}
-				}
-				parsed.RawQuery = query.Encode()
-			}
-		}
-		return parsed.String()
-	}
-
-	// For file:// URIs, return as-is (no sensitive info typically)
-	return uri
 }

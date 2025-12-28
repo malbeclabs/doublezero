@@ -22,7 +22,9 @@ func AppendTableViaCSV(ctx context.Context, log *slog.Logger, conn Connection, t
 		return nil
 	}
 
-	// Create a temporary CSV file for COPY FROM (much faster than INSERT)
+	// Create CSV file once before retry loop - this ensures idempotency:
+	// - Same data is used on each retry attempt
+	// - File is only deleted after all retries complete (via defer)
 	tmpFile, err := os.CreateTemp("", fmt.Sprintf("%s_*.csv", tableName))
 	if err != nil {
 		return fmt.Errorf("failed to create temp file: %w", err)
@@ -72,33 +74,43 @@ func AppendTableViaCSV(ctx context.Context, log *slog.Logger, conn Connection, t
 	// Close file before COPY (DuckDB needs to open it)
 	tmpFile.Close()
 
-	// Use COPY FROM for bulk load (much faster than INSERT)
-	// Check for context cancellation before starting transaction
-	select {
-	case <-ctx.Done():
-		return fmt.Errorf("context cancelled before transaction for %s: %w", tableName, ctx.Err())
-	default:
+	// Verify file still exists before retry (should always be true, but defensive)
+	if _, err := os.Stat(tmpFile.Name()); err != nil {
+		return fmt.Errorf("CSV file no longer exists for %s: %w", tableName, err)
 	}
 
-	tx, err := conn.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction for %s: %w", tableName, err)
-	}
-	defer func() {
-		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
-			log.Error("failed to rollback transaction", "table", tableName, "error", err)
+	// Retry the transaction with the same CSV file - operations are idempotent:
+	// - COPY operations append data, but if the transaction fails and retries,
+	//   the rollback undoes the append, so retrying is safe
+	// - TEMP tables are transaction-scoped (cleaned up on rollback)
+	return retryWithBackoff(ctx, log, fmt.Sprintf("append table %s", tableName), func() error {
+		// Check for context cancellation before starting transaction
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("context cancelled before transaction for %s: %w", tableName, ctx.Err())
+		default:
 		}
-	}()
 
-	// Use COPY FROM CSV to append (no TRUNCATE - we're appending)
-	copySQL := fmt.Sprintf("COPY %s FROM '%s' (FORMAT CSV, HEADER false)", tableName, tmpFile.Name())
-	if _, err := tx.ExecContext(ctx, copySQL); err != nil {
-		return fmt.Errorf("failed to COPY FROM CSV for %s: %w", tableName, err)
-	}
+		tx, err := conn.BeginTx(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("failed to begin transaction for %s: %w", tableName, err)
+		}
+		defer func() {
+			if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+				log.Error("failed to rollback transaction", "table", tableName, "error", err)
+			}
+		}()
 
-	if err := tx.Commit(); err != nil {
-		log.Error("transaction commit failed", "table", tableName, "error", err)
-		return fmt.Errorf("failed to commit transaction for %s: %w", tableName, err)
-	}
-	return nil
+		// Use COPY FROM CSV to append (no TRUNCATE - we're appending)
+		copySQL := fmt.Sprintf("COPY %s FROM '%s' (FORMAT CSV, HEADER false)", tableName, tmpFile.Name())
+		if _, err := tx.ExecContext(ctx, copySQL); err != nil {
+			return fmt.Errorf("failed to COPY FROM CSV for %s: %w", tableName, err)
+		}
+
+		if err := tx.Commit(); err != nil {
+			log.Error("transaction commit failed", "table", tableName, "error", err)
+			return fmt.Errorf("failed to commit transaction for %s: %w", tableName, err)
+		}
+		return nil
+	})
 }

@@ -244,7 +244,7 @@ func (a *AnthropicAgent) Run(ctx context.Context, mcpClient *client.Client, init
 		if maxToolResultLen == 0 {
 			maxToolResultLen = defaultMaxToolResultLen
 		}
-		toolResults, err := executeAnthropicTools(ctx, mcpClient, toolUses, maxToolResultLen, a.cfg.Logger)
+		toolResults, sqlErrorIndices, err := executeAnthropicTools(ctx, mcpClient, toolUses, maxToolResultLen, a.cfg.Logger)
 		if err != nil {
 			return nil, fmt.Errorf("failed to execute tools: %w", err)
 		}
@@ -253,9 +253,23 @@ func (a *AnthropicAgent) Run(ctx context.Context, mcpClient *client.Client, init
 			a.cfg.Logger.Debug("agent: sending tool results back to anthropic")
 		}
 
-		toolResultMsg := anthropic.NewUserMessage(toolResults...)
+		// Always add full tool results (including SQL errors) to fullConversation for history
+		fullToolResultMsg := anthropic.NewUserMessage(toolResults...)
+		fullConversation = append(fullConversation, anthropicMessage{msg: fullToolResultMsg})
+
+		// For msgs, filter out SQL errors if this is the last round
+		var toolResultMsg anthropic.MessageParam
+		if round == a.cfg.MaxRounds-1 && len(sqlErrorIndices) > 0 {
+			if a.cfg.Logger != nil {
+				a.cfg.Logger.Info("agent: filtering SQL errors from last round tool results", "sql_error_count", len(sqlErrorIndices))
+			}
+			filteredToolResults := filterSQLErrorsFromToolResults(toolResults, sqlErrorIndices)
+			toolResultMsg = anthropic.NewUserMessage(filteredToolResults...)
+		} else {
+			toolResultMsg = fullToolResultMsg
+		}
+
 		msgs = append(msgs, toolResultMsg)
-		fullConversation = append(fullConversation, anthropicMessage{msg: toolResultMsg})
 		toolResultIndices = append(toolResultIndices, len(msgs)-1)
 
 		// Optionally trim old tool results to manage context window size
@@ -340,9 +354,10 @@ func toAnthropicTools(tools []client.Tool) []anthropic.ToolUnionParam {
 }
 
 // executeAnthropicTools executes MCP tools in parallel and returns Anthropic tool result blocks.
-func executeAnthropicTools(ctx context.Context, mcpClient *client.Client, toolUses []ToolUse, maxLen int, logger *slog.Logger) ([]anthropic.ContentBlockParamUnion, error) {
+// It also returns a set of indices that correspond to SQL errors (from the "query" tool).
+func executeAnthropicTools(ctx context.Context, mcpClient *client.Client, toolUses []ToolUse, maxLen int, logger *slog.Logger) ([]anthropic.ContentBlockParamUnion, map[int]bool, error) {
 	if len(toolUses) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	// Execute tools in parallel for better performance
@@ -376,6 +391,7 @@ func executeAnthropicTools(ctx context.Context, mcpClient *client.Client, toolUs
 
 	// Process results in order and apply truncation
 	toolResults := make([]anthropic.ContentBlockParamUnion, 0, len(toolUses))
+	sqlErrorIndices := make(map[int]bool)
 	for i, result := range results {
 		out := result.out
 		isErr := result.isErr
@@ -397,6 +413,11 @@ func executeAnthropicTools(ctx context.Context, mcpClient *client.Client, toolUs
 					break
 				}
 			}
+		}
+
+		// Track SQL errors from the "query" tool
+		if toolName == "query" && isErr {
+			sqlErrorIndices[i] = true
 		}
 
 		effectiveMaxLen := maxLen
@@ -423,7 +444,7 @@ func executeAnthropicTools(ctx context.Context, mcpClient *client.Client, toolUs
 
 		toolResults = append(toolResults, anthropic.NewToolResultBlock(result.id, out, isErr))
 	}
-	return toolResults, nil
+	return toolResults, sqlErrorIndices, nil
 }
 
 func truncateToolResult(result string, toolName string, maxLen int) (string, error) {
@@ -681,6 +702,20 @@ func isSchemaTool(toolName string) bool {
 // formatTruncationNotice creates a truncation notice message.
 func formatTruncationNotice(itemType string, shown, total int) string {
 	return fmt.Sprintf("\n\n[Result truncated: showing %d of %d %s to avoid token limits]", shown, total, itemType)
+}
+
+// filterSQLErrorsFromToolResults filters out tool result blocks at the specified indices.
+func filterSQLErrorsFromToolResults(toolResults []anthropic.ContentBlockParamUnion, sqlErrorIndices map[int]bool) []anthropic.ContentBlockParamUnion {
+	if len(sqlErrorIndices) == 0 {
+		return toolResults
+	}
+	filtered := make([]anthropic.ContentBlockParamUnion, 0, len(toolResults)-len(sqlErrorIndices))
+	for i, result := range toolResults {
+		if !sqlErrorIndices[i] {
+			filtered = append(filtered, result)
+		}
+	}
+	return filtered
 }
 
 // trimOldToolResults trims old tool result rounds from the message history.

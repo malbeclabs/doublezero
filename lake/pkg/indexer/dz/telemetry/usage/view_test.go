@@ -269,7 +269,7 @@ func TestLake_TelemetryUsage_View_buildLinkLookup(t *testing.T) {
 
 		// Create links table
 		_, err = conn.ExecContext(t.Context(), `
-			CREATE TABLE dz_links (
+			CREATE TABLE dz_links_current (
 				pk VARCHAR,
 				side_a_pk VARCHAR,
 				side_a_iface_name VARCHAR,
@@ -281,7 +281,7 @@ func TestLake_TelemetryUsage_View_buildLinkLookup(t *testing.T) {
 
 		// Insert test links
 		_, err = conn.ExecContext(t.Context(), `
-			INSERT INTO dz_links (pk, side_a_pk, side_a_iface_name, side_z_pk, side_z_iface_name)
+			INSERT INTO dz_links_current (pk, side_a_pk, side_a_iface_name, side_z_pk, side_z_iface_name)
 			VALUES
 				('link1', 'device1', 'eth0', 'device2', 'eth1'),
 				('link2', 'device3', 'eth0', 'device4', 'eth0')
@@ -334,7 +334,7 @@ func TestLake_TelemetryUsage_View_buildLinkLookup(t *testing.T) {
 		require.NoError(t, err)
 		defer conn.Close()
 		_, err = conn.ExecContext(t.Context(), `
-			CREATE TABLE dz_links (
+			CREATE TABLE dz_links_current (
 				pk VARCHAR,
 				side_a_pk VARCHAR,
 				side_a_iface_name VARCHAR,
@@ -390,7 +390,7 @@ func TestLake_TelemetryUsage_View_Ready(t *testing.T) {
 		require.NoError(t, err)
 		defer conn.Close()
 		_, err = conn.ExecContext(t.Context(), `
-			CREATE TABLE dz_links (
+			CREATE TABLE dz_links_current (
 				pk VARCHAR,
 				side_a_pk VARCHAR,
 				side_a_iface_name VARCHAR,
@@ -441,7 +441,7 @@ func TestLake_TelemetryUsage_View_WaitReady(t *testing.T) {
 		require.NoError(t, err)
 		defer conn.Close()
 		_, err = conn.ExecContext(t.Context(), `
-			CREATE TABLE dz_links (
+			CREATE TABLE dz_links_current (
 				pk VARCHAR,
 				side_a_pk VARCHAR,
 				side_a_iface_name VARCHAR,
@@ -486,7 +486,7 @@ func TestLake_TelemetryUsage_View_WaitReady(t *testing.T) {
 		require.NoError(t, err)
 		defer conn.Close()
 		_, err = conn.ExecContext(t.Context(), `
-			CREATE TABLE dz_links (
+			CREATE TABLE dz_links_current (
 				pk VARCHAR,
 				side_a_pk VARCHAR,
 				side_a_iface_name VARCHAR,

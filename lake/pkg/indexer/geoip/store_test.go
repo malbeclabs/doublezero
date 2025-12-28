@@ -112,49 +112,6 @@ func TestLake_GeoIP_Store_NewStore(t *testing.T) {
 	})
 }
 
-func TestLake_GeoIP_Store_CreateTablesIfNotExists(t *testing.T) {
-	t.Parallel()
-
-	t.Run("creates table", func(t *testing.T) {
-		t.Parallel()
-
-		db := testDB(t)
-
-		store, err := NewStore(StoreConfig{
-			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:     db,
-		})
-		require.NoError(t, err)
-
-		err = store.CreateTablesIfNotExists()
-		require.NoError(t, err)
-
-		// Verify table exists by querying it
-		var count int
-		ctx := context.Background()
-		conn, err := db.Conn(ctx)
-		require.NoError(t, err)
-		defer conn.Close()
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM geoip_records").Scan(&count)
-		require.NoError(t, err)
-		require.Equal(t, 0, count)
-	})
-
-	t.Run("handles database error", func(t *testing.T) {
-		t.Parallel()
-
-		store, err := NewStore(StoreConfig{
-			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:     &failingDB{},
-		})
-		require.NoError(t, err)
-
-		err = store.CreateTablesIfNotExists()
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "failed to create table")
-	})
-}
-
 func TestLake_GeoIP_Store_UpsertRecords(t *testing.T) {
 	t.Parallel()
 
@@ -167,9 +124,6 @@ func TestLake_GeoIP_Store_UpsertRecords(t *testing.T) {
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
 			DB:     db,
 		})
-		require.NoError(t, err)
-
-		err = store.CreateTablesIfNotExists()
 		require.NoError(t, err)
 
 		records := []*geoip.Record{
@@ -222,7 +176,7 @@ func TestLake_GeoIP_Store_UpsertRecords(t *testing.T) {
 		conn, err := db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM geoip_records").Scan(&count)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM geoip_records_current").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 2, count)
 	})
@@ -236,9 +190,6 @@ func TestLake_GeoIP_Store_UpsertRecords(t *testing.T) {
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
 			DB:     db,
 		})
-		require.NoError(t, err)
-
-		err = store.CreateTablesIfNotExists()
 		require.NoError(t, err)
 
 		// Insert initial record
@@ -268,7 +219,7 @@ func TestLake_GeoIP_Store_UpsertRecords(t *testing.T) {
 		conn, err := db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM geoip_records").Scan(&count)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM geoip_records_current").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 1, count)
 
@@ -291,9 +242,6 @@ func TestLake_GeoIP_Store_UpsertRecords(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		err = store.CreateTablesIfNotExists()
-		require.NoError(t, err)
-
 		err = store.UpsertRecords(context.Background(), []*geoip.Record{})
 		require.NoError(t, err)
 	})
@@ -307,9 +255,6 @@ func TestLake_GeoIP_Store_UpsertRecords(t *testing.T) {
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
 			DB:     db,
 		})
-		require.NoError(t, err)
-
-		err = store.CreateTablesIfNotExists()
 		require.NoError(t, err)
 
 		err = store.UpsertRecords(context.Background(), []*geoip.Record{nil})
@@ -326,9 +271,6 @@ func TestLake_GeoIP_Store_UpsertRecords(t *testing.T) {
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
 			DB:     db,
 		})
-		require.NoError(t, err)
-
-		err = store.CreateTablesIfNotExists()
 		require.NoError(t, err)
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -359,9 +301,6 @@ func TestLake_GeoIP_Store_GetRecord(t *testing.T) {
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
 			DB:     db,
 		})
-		require.NoError(t, err)
-
-		err = store.CreateTablesIfNotExists()
 		require.NoError(t, err)
 
 		expectedRecord := &geoip.Record{
@@ -420,7 +359,8 @@ func TestLake_GeoIP_Store_GetRecord(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		err = store.CreateTablesIfNotExists()
+		// Create tables by calling UpsertRecords with empty slice
+		err = store.UpsertRecords(context.Background(), []*geoip.Record{})
 		require.NoError(t, err)
 
 		record, err := store.GetRecord(net.ParseIP("1.1.1.1"))
@@ -454,9 +394,6 @@ func TestLake_GeoIP_Store_GetRecord(t *testing.T) {
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
 			DB:     db,
 		})
-		require.NoError(t, err)
-
-		err = store.CreateTablesIfNotExists()
 		require.NoError(t, err)
 
 		// Insert record with minimal fields (nullable fields will be NULL)
@@ -494,9 +431,6 @@ func TestLake_GeoIP_Store_GetRecords(t *testing.T) {
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
 			DB:     db,
 		})
-		require.NoError(t, err)
-
-		err = store.CreateTablesIfNotExists()
 		require.NoError(t, err)
 
 		records := []*geoip.Record{
@@ -549,7 +483,8 @@ func TestLake_GeoIP_Store_GetRecords(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		err = store.CreateTablesIfNotExists()
+		// Create tables by calling UpsertRecords with empty slice
+		err = store.UpsertRecords(context.Background(), []*geoip.Record{})
 		require.NoError(t, err)
 
 		records, err := store.GetRecords()
@@ -586,9 +521,6 @@ func TestLake_GeoIP_Store_IPv6(t *testing.T) {
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
 			DB:     db,
 		})
-		require.NoError(t, err)
-
-		err = store.CreateTablesIfNotExists()
 		require.NoError(t, err)
 
 		record := &geoip.Record{

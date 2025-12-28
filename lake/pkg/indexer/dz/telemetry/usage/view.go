@@ -223,7 +223,7 @@ func (v *View) Refresh(ctx context.Context) error {
 		if maxTime.After(queryWindowStart) {
 			// DuckDB has data within the query window, do incremental refresh
 			// Include a small overlap (5 minutes) to catch late-arriving data with past timestamps
-			// Upsert will handle any duplicates
+			// Insert will append all rows (fact table is append-only)
 			overlap := 5 * time.Minute
 			queryStart = maxTime.Add(-overlap)
 			newDataWindow := now.Sub(*maxTime)
@@ -342,14 +342,14 @@ func (v *View) Refresh(ctx context.Context) error {
 		return nil
 	}
 
-	// Upsert data in DuckDB (incremental update)
-	upsertStart := time.Now()
-	if err := v.store.UpsertInterfaceUsage(ctx, usage); err != nil {
+	// Insert data into DuckDB (append-only fact table)
+	insertStart := time.Now()
+	if err := v.store.InsertInterfaceUsage(ctx, usage); err != nil {
 		metrics.ViewRefreshTotal.WithLabelValues("telemetry-usage", "error").Inc()
-		return fmt.Errorf("failed to upsert interface usage data to duckdb: %w", err)
+		return fmt.Errorf("failed to insert interface usage data to duckdb: %w", err)
 	}
-	upsertDuration := time.Since(upsertStart)
-	v.log.Info("telemetry/usage: upserted data to duckdb", "rows", len(usage), "duration", upsertDuration.String())
+	insertDuration := time.Since(insertStart)
+	v.log.Info("telemetry/usage: inserted data to duckdb", "rows", len(usage), "duration", insertDuration.String())
 
 	// Signal readiness once (close channel) - safe to call multiple times
 	v.readyOnce.Do(func() {
@@ -444,7 +444,7 @@ func (v *View) queryInfluxDB(ctx context.Context, startTime, endTime time.Time, 
 	sortDuration := time.Since(sortStart)
 	v.log.Debug("telemetry/usage: sorted rows", "rows", len(rows), "duration", sortDuration.String())
 
-	// Build link lookup map from dz_links table
+	// Build link lookup map from dz_links_current table
 	linkLookup, err := v.buildLinkLookup()
 	if err != nil {
 		v.log.Warn("telemetry/usage: failed to build link lookup map, proceeding without link information", "error", err)
@@ -466,7 +466,7 @@ func (v *View) queryInfluxDB(ctx context.Context, startTime, endTime time.Time, 
 	return usage, nil
 }
 
-// buildLinkLookup builds a map from "device_pk:intf" to LinkInfo by querying the dz_links table
+// buildLinkLookup builds a map from "device_pk:intf" to LinkInfo by querying the dz_links_current table
 func (v *View) buildLinkLookup() (map[string]LinkInfo, error) {
 	lookup := make(map[string]LinkInfo)
 
@@ -476,7 +476,7 @@ func (v *View) buildLinkLookup() (map[string]LinkInfo, error) {
 		return nil, fmt.Errorf("failed to get connection: %w", err)
 	}
 	defer conn.Close()
-	query := `SELECT pk, side_a_pk, side_a_iface_name, side_z_pk, side_z_iface_name FROM dz_links`
+	query := `SELECT pk, side_a_pk, side_a_iface_name, side_z_pk, side_z_iface_name FROM dz_links_current`
 	rows, err := conn.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query links: %w", err)
@@ -782,7 +782,7 @@ func (v *View) queryBaselineCountersFromDuckDB(windowStart time.Time) (*CounterB
 					intf,
 					%s,
 					ROW_NUMBER() OVER (PARTITION BY device_pk, intf ORDER BY time DESC) as rn
-				FROM dz_device_iface_usage
+				FROM dz_device_iface_usage_raw
 				WHERE time >= '%s' AND time < '%s' AND %s IS NOT NULL
 			) ranked
 			WHERE rn = 1

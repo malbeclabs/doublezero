@@ -124,51 +124,6 @@ func TestLake_Serviceability_Store_NewStore(t *testing.T) {
 	})
 }
 
-func TestLake_Serviceability_Store_CreateTablesIfNotExists(t *testing.T) {
-	t.Parallel()
-
-	t.Run("creates all tables", func(t *testing.T) {
-		t.Parallel()
-
-		db := testDB(t)
-
-		store, err := NewStore(StoreConfig{
-			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:     db,
-		})
-		require.NoError(t, err)
-
-		err = store.CreateTablesIfNotExists()
-		require.NoError(t, err)
-
-		// Verify tables exist by querying them
-		ctx := context.Background()
-		conn, err := db.Conn(ctx)
-		require.NoError(t, err)
-		defer conn.Close()
-		tables := []string{"dz_contributors", "dz_devices", "dz_users", "dz_links", "dz_metros"}
-		for _, table := range tables {
-			var count int
-			err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+table).Scan(&count)
-			require.NoError(t, err, "table %s should exist", table)
-		}
-	})
-
-	t.Run("returns error when database fails", func(t *testing.T) {
-		t.Parallel()
-
-		store, err := NewStore(StoreConfig{
-			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:     &failingDB{},
-		})
-		require.NoError(t, err)
-
-		err = store.CreateTablesIfNotExists()
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "failed to create table")
-	})
-}
-
 func TestLake_Serviceability_Store_ReplaceContributors(t *testing.T) {
 	t.Parallel()
 
@@ -181,9 +136,6 @@ func TestLake_Serviceability_Store_ReplaceContributors(t *testing.T) {
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
 			DB:     db,
 		})
-		require.NoError(t, err)
-
-		err = store.CreateTablesIfNotExists()
 		require.NoError(t, err)
 
 		contributorPK := testPK(1)
@@ -204,12 +156,12 @@ func TestLake_Serviceability_Store_ReplaceContributors(t *testing.T) {
 		require.NoError(t, err)
 		defer conn.Close()
 		var count int
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_contributors").Scan(&count)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_contributors_current").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 1, count)
 
 		var pk, code, name string
-		err = conn.QueryRowContext(ctx, "SELECT pk, code, name FROM dz_contributors LIMIT 1").Scan(&pk, &code, &name)
+		err = conn.QueryRowContext(ctx, "SELECT pk, code, name FROM dz_contributors_current LIMIT 1").Scan(&pk, &code, &name)
 		require.NoError(t, err)
 		require.Equal(t, contributorPK, pk)
 		require.Equal(t, "TEST", code)
@@ -225,9 +177,6 @@ func TestLake_Serviceability_Store_ReplaceContributors(t *testing.T) {
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
 			DB:     db,
 		})
-		require.NoError(t, err)
-
-		err = store.CreateTablesIfNotExists()
 		require.NoError(t, err)
 
 		contributorPK1 := testPK(1)
@@ -249,7 +198,7 @@ func TestLake_Serviceability_Store_ReplaceContributors(t *testing.T) {
 		require.NoError(t, err)
 		defer conn.Close()
 		var count int
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_contributors").Scan(&count)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_contributors_current").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 1, count)
 
@@ -264,12 +213,12 @@ func TestLake_Serviceability_Store_ReplaceContributors(t *testing.T) {
 		err = store.ReplaceContributors(context.Background(), contributors2)
 		require.NoError(t, err)
 
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_contributors").Scan(&count)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_contributors_current").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 1, count)
 
 		var pk string
-		err = conn.QueryRowContext(ctx, "SELECT pk FROM dz_contributors LIMIT 1").Scan(&pk)
+		err = conn.QueryRowContext(ctx, "SELECT pk FROM dz_contributors_current LIMIT 1").Scan(&pk)
 		require.NoError(t, err)
 		require.Equal(t, contributorPK2, pk)
 	})
@@ -283,9 +232,6 @@ func TestLake_Serviceability_Store_ReplaceContributors(t *testing.T) {
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
 			DB:     db,
 		})
-		require.NoError(t, err)
-
-		err = store.CreateTablesIfNotExists()
 		require.NoError(t, err)
 
 		// First insert some data
@@ -309,7 +255,7 @@ func TestLake_Serviceability_Store_ReplaceContributors(t *testing.T) {
 		require.NoError(t, err)
 		defer conn.Close()
 		var count int
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_contributors").Scan(&count)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_contributors_current").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 0, count)
 	})
@@ -327,9 +273,6 @@ func TestLake_Serviceability_Store_ReplaceDevices(t *testing.T) {
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
 			DB:     db,
 		})
-		require.NoError(t, err)
-
-		err = store.CreateTablesIfNotExists()
 		require.NoError(t, err)
 
 		devicePK := testPK(1)
@@ -356,12 +299,12 @@ func TestLake_Serviceability_Store_ReplaceDevices(t *testing.T) {
 		require.NoError(t, err)
 		defer conn.Close()
 		var count int
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_devices").Scan(&count)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_devices_current").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 1, count)
 
 		var pk, status, deviceType, code, publicIPStr, contributorPKStr, metroPKStr string
-		err = conn.QueryRowContext(ctx, "SELECT pk, status, device_type, code, public_ip, contributor_pk, metro_pk FROM dz_devices LIMIT 1").Scan(&pk, &status, &deviceType, &code, &publicIPStr, &contributorPKStr, &metroPKStr)
+		err = conn.QueryRowContext(ctx, "SELECT pk, status, device_type, code, public_ip, contributor_pk, metro_pk FROM dz_devices_current LIMIT 1").Scan(&pk, &status, &deviceType, &code, &publicIPStr, &contributorPKStr, &metroPKStr)
 		require.NoError(t, err)
 		require.Equal(t, devicePK, pk)
 		require.Equal(t, "activated", status)
@@ -388,9 +331,6 @@ func TestLake_Serviceability_Store_ReplaceUsers(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		err = store.CreateTablesIfNotExists()
-		require.NoError(t, err)
-
 		userPK := testPK(1)
 		ownerPK := testPK(2)
 		devicePK := testPK(3)
@@ -415,12 +355,12 @@ func TestLake_Serviceability_Store_ReplaceUsers(t *testing.T) {
 		require.NoError(t, err)
 		defer conn.Close()
 		var count int
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_users").Scan(&count)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_users_current").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 1, count)
 
 		var pk, ownerPKStr, status, kind, clientIPStr, dzIPStr, devicePKStr string
-		err = conn.QueryRowContext(ctx, "SELECT pk, owner_pk, status, kind, client_ip, dz_ip, device_pk FROM dz_users LIMIT 1").Scan(&pk, &ownerPKStr, &status, &kind, &clientIPStr, &dzIPStr, &devicePKStr)
+		err = conn.QueryRowContext(ctx, "SELECT pk, owner_pk, status, kind, client_ip, dz_ip, device_pk FROM dz_users_current LIMIT 1").Scan(&pk, &ownerPKStr, &status, &kind, &clientIPStr, &dzIPStr, &devicePKStr)
 		require.NoError(t, err)
 		require.Equal(t, userPK, pk)
 		require.Equal(t, ownerPK, ownerPKStr)
@@ -444,9 +384,6 @@ func TestLake_Serviceability_Store_ReplaceLinks(t *testing.T) {
 			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
 			DB:     db,
 		})
-		require.NoError(t, err)
-
-		err = store.CreateTablesIfNotExists()
 		require.NoError(t, err)
 
 		linkPK := testPK(1)
@@ -480,13 +417,13 @@ func TestLake_Serviceability_Store_ReplaceLinks(t *testing.T) {
 		require.NoError(t, err)
 		defer conn.Close()
 		var count int
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_links").Scan(&count)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_links_current").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 1, count)
 
 		var pk, status, code, tunnelNetStr, contributorPKStr, sideAPKStr, sideZPKStr, sideAIfaceName, sideZIfaceName, linkType string
 		var delayNs, jitterNs, bandwidthBps, delayOverrideNs int64
-		err = conn.QueryRowContext(ctx, "SELECT pk, status, code, tunnel_net, contributor_pk, side_a_pk, side_z_pk, side_a_iface_name, side_z_iface_name, link_type, committed_rtt_ns, committed_jitter_ns, bandwidth_bps, isis_delay_override_ns FROM dz_links LIMIT 1").Scan(&pk, &status, &code, &tunnelNetStr, &contributorPKStr, &sideAPKStr, &sideZPKStr, &sideAIfaceName, &sideZIfaceName, &linkType, &delayNs, &jitterNs, &bandwidthBps, &delayOverrideNs)
+		err = conn.QueryRowContext(ctx, "SELECT pk, status, code, tunnel_net, contributor_pk, side_a_pk, side_z_pk, side_a_iface_name, side_z_iface_name, link_type, committed_rtt_ns, committed_jitter_ns, bandwidth_bps, isis_delay_override_ns FROM dz_links_current LIMIT 1").Scan(&pk, &status, &code, &tunnelNetStr, &contributorPKStr, &sideAPKStr, &sideZPKStr, &sideAIfaceName, &sideZIfaceName, &linkType, &delayNs, &jitterNs, &bandwidthBps, &delayOverrideNs)
 		require.NoError(t, err)
 		require.Equal(t, linkPK, pk)
 		require.Equal(t, "activated", status)
@@ -519,9 +456,6 @@ func TestLake_Serviceability_Store_ReplaceMetros(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		err = store.CreateTablesIfNotExists()
-		require.NoError(t, err)
-
 		metroPK := testPK(1)
 
 		metros := []Metro{
@@ -542,13 +476,13 @@ func TestLake_Serviceability_Store_ReplaceMetros(t *testing.T) {
 		require.NoError(t, err)
 		defer conn.Close()
 		var count int
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_metros").Scan(&count)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_metros_current").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 1, count)
 
 		var pk, code, name string
 		var longitude, latitude float64
-		err = conn.QueryRowContext(ctx, "SELECT pk, code, name, longitude, latitude FROM dz_metros LIMIT 1").Scan(&pk, &code, &name, &longitude, &latitude)
+		err = conn.QueryRowContext(ctx, "SELECT pk, code, name, longitude, latitude FROM dz_metros_current LIMIT 1").Scan(&pk, &code, &name, &longitude, &latitude)
 		require.NoError(t, err)
 		require.Equal(t, metroPK, pk)
 		require.Equal(t, "NYC", code)
@@ -572,9 +506,6 @@ func TestLake_Serviceability_Store_GetDevices(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		err = store.CreateTablesIfNotExists()
-		require.NoError(t, err)
-
 		devicePK1 := testPK(1)
 		devicePK2 := testPK(2)
 		contributorPK := testPK(3)
@@ -584,7 +515,24 @@ func TestLake_Serviceability_Store_GetDevices(t *testing.T) {
 		conn, err := db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
-		_, err = conn.ExecContext(ctx, `INSERT INTO dz_devices (pk, status, device_type, code, public_ip, contributor_pk, metro_pk) VALUES (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?)`,
+
+		// Create table manually for test (normally created by SCDTableViaCSV)
+		_, err = conn.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS dz_devices_current (
+			pk VARCHAR,
+			status VARCHAR,
+			device_type VARCHAR,
+			code VARCHAR,
+			public_ip VARCHAR,
+			contributor_pk VARCHAR,
+			metro_pk VARCHAR,
+			as_of_ts TIMESTAMP NOT NULL,
+			row_hash VARCHAR NOT NULL
+		)`)
+		require.NoError(t, err)
+
+		// Insert with required SCD2 columns (as_of_ts, row_hash)
+		// For tests, we use a simple hash value
+		_, err = conn.ExecContext(ctx, `INSERT INTO dz_devices_current (pk, status, device_type, code, public_ip, contributor_pk, metro_pk, as_of_ts, row_hash) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 'test_hash1'), (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 'test_hash2')`,
 			devicePK1, "activated", "hybrid", "DEV1", "192.168.1.1", contributorPK, metroPK,
 			devicePK2, "activated", "hybrid", "DEV2", "192.168.1.2", contributorPK, metroPK)
 		require.NoError(t, err)
@@ -616,19 +564,39 @@ func TestLake_Serviceability_Store_GetLinks(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		err = store.CreateTablesIfNotExists()
-		require.NoError(t, err)
-
 		ctx := context.Background()
 		conn, err := db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
+
+		// Create table manually for test (normally created by SCDTableViaCSV)
+		_, err = conn.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS dz_links_current (
+			pk VARCHAR,
+			status VARCHAR,
+			code VARCHAR,
+			tunnel_net VARCHAR,
+			contributor_pk VARCHAR,
+			side_a_pk VARCHAR,
+			side_z_pk VARCHAR,
+			side_a_iface_name VARCHAR,
+			side_z_iface_name VARCHAR,
+			link_type VARCHAR,
+			committed_rtt_ns VARCHAR,
+			committed_jitter_ns VARCHAR,
+			bandwidth_bps VARCHAR,
+			isis_delay_override_ns VARCHAR,
+			as_of_ts TIMESTAMP NOT NULL,
+			row_hash VARCHAR NOT NULL
+		)`)
+		require.NoError(t, err)
+
 		linkPK := testPK(1)
 		contributorPK := testPK(2)
 		sideAPK := testPK(3)
 		sideZPK := testPK(4)
 
-		_, err = conn.ExecContext(ctx, `INSERT INTO dz_links (pk, status, code, tunnel_net, contributor_pk, side_a_pk, side_z_pk, side_a_iface_name, side_z_iface_name, link_type, committed_rtt_ns, committed_jitter_ns, bandwidth_bps, isis_delay_override_ns) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		// Insert with required SCD2 columns (as_of_ts, row_hash)
+		_, err = conn.ExecContext(ctx, `INSERT INTO dz_links_current (pk, status, code, tunnel_net, contributor_pk, side_a_pk, side_z_pk, side_a_iface_name, side_z_iface_name, link_type, committed_rtt_ns, committed_jitter_ns, bandwidth_bps, isis_delay_override_ns, as_of_ts, row_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 'test_hash')`,
 			linkPK, "activated", "LINK1", "10.0.0.0/24", contributorPK, sideAPK, sideZPK, "eth0", "eth1", "WAN", 1000000, 50000, 10000000000, 10)
 		require.NoError(t, err)
 
@@ -665,9 +633,6 @@ func TestLake_Serviceability_Store_GetContributors(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		err = store.CreateTablesIfNotExists()
-		require.NoError(t, err)
-
 		contributorPK1 := testPK(1)
 		contributorPK2 := testPK(2)
 
@@ -675,7 +640,19 @@ func TestLake_Serviceability_Store_GetContributors(t *testing.T) {
 		conn, err := db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
-		_, err = conn.ExecContext(ctx, `INSERT INTO dz_contributors (pk, code, name) VALUES (?, ?, ?), (?, ?, ?)`,
+
+		// Create table manually for test (normally created by SCDTableViaCSV)
+		_, err = conn.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS dz_contributors_current (
+			pk VARCHAR,
+			code VARCHAR,
+			name VARCHAR,
+			as_of_ts TIMESTAMP NOT NULL,
+			row_hash VARCHAR NOT NULL
+		)`)
+		require.NoError(t, err)
+
+		// Insert with required SCD2 columns (as_of_ts, row_hash)
+		_, err = conn.ExecContext(ctx, `INSERT INTO dz_contributors_current (pk, code, name, as_of_ts, row_hash) VALUES (?, ?, ?, CURRENT_TIMESTAMP, 'test_hash1'), (?, ?, ?, CURRENT_TIMESTAMP, 'test_hash2')`,
 			contributorPK1, "CONTRIB1", "Contributor 1",
 			contributorPK2, "CONTRIB2", "Contributor 2")
 		require.NoError(t, err)
@@ -706,17 +683,28 @@ func TestLake_Serviceability_Store_GetMetros(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		err = store.CreateTablesIfNotExists()
-		require.NoError(t, err)
-
 		ctx := context.Background()
 		conn, err := db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
+
+		// Create table manually for test (normally created by SCDTableViaCSV)
+		_, err = conn.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS dz_metros_current (
+			pk VARCHAR,
+			code VARCHAR,
+			name VARCHAR,
+			longitude VARCHAR,
+			latitude VARCHAR,
+			as_of_ts TIMESTAMP NOT NULL,
+			row_hash VARCHAR NOT NULL
+		)`)
+		require.NoError(t, err)
+
 		metroPK1 := testPK(1)
 		metroPK2 := testPK(2)
 
-		_, err = conn.ExecContext(ctx, `INSERT INTO dz_metros (pk, code, name, longitude, latitude) VALUES (?, ?, ?, ?, ?), (?, ?, ?, ?, ?)`,
+		// Insert with required SCD2 columns (as_of_ts, row_hash)
+		_, err = conn.ExecContext(ctx, `INSERT INTO dz_metros_current (pk, code, name, longitude, latitude, as_of_ts, row_hash) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 'test_hash1'), (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 'test_hash2')`,
 			metroPK1, "NYC", "New York", -74.0060, 40.7128,
 			metroPK2, "LAX", "Los Angeles", -118.2437, 34.0522)
 		require.NoError(t, err)

@@ -53,9 +53,6 @@ func New(ctx context.Context, cfg Config) (*Indexer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GeoIP store: %w", err)
 	}
-	if err := geoIPStore.CreateTablesIfNotExists(); err != nil {
-		return nil, fmt.Errorf("failed to create GeoIP tables: %w", err)
-	}
 
 	// Initialize serviceability view
 	svcView, err := dzsvc.NewView(dzsvc.ViewConfig{
@@ -128,6 +125,12 @@ func New(ctx context.Context, cfg Config) (*Indexer, error) {
 		telemUsage:   telemetryUsageView,
 		sol:          solanaView,
 	}
+
+	// Create all SCD2 tables before validation (schema migration)
+	if err := i.createAllSCD2Tables(ctx); err != nil {
+		return nil, fmt.Errorf("failed to create SCD2 tables: %w", err)
+	}
+
 	if err := i.validateSchemas(ctx); err != nil {
 		return nil, fmt.Errorf("failed to validate schemas: %w", err)
 	}

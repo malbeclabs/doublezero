@@ -244,25 +244,32 @@ func NewLake(ctx context.Context, log *slog.Logger, catalogName, catalogURI, sto
 		if cfg.Region != "" {
 			secretSQL += fmt.Sprintf(", REGION '%s'", cfg.Region)
 		}
-		urlStyle := "path"
-		secretSQL += fmt.Sprintf(", URL_STYLE '%s'", urlStyle)
+		// Determine if this is MinIO (non-AWS endpoint)
+		isMinIO := cfg.Endpoint != "" && !strings.Contains(cfg.Endpoint, "amazonaws.com")
+
+		urlStyle := cfg.URLStyle
+		if urlStyle == "" {
+			// Default to path style for both MinIO and AWS
+			urlStyle = "path"
+		}
 		useSSL := cfg.UseSSL
-		if cfg.Endpoint != "" && !strings.Contains(cfg.Endpoint, "amazonaws.com") {
-			// Default to false for non-AWS endpoints (like MinIO)
+		if isMinIO {
+			// Default to false for MinIO
 			useSSL = false
 		} else if cfg.Endpoint == "" {
 			// AWS S3 default
 			useSSL = true
 		}
+
+		// Create secret for both AWS and MinIO
+		secretSQL += fmt.Sprintf(", URL_STYLE '%s'", urlStyle)
 		secretSQL += fmt.Sprintf(", USE_SSL %t", useSSL)
 		secretSQL += ")"
 
 		if _, err := db.Exec(secretSQL); err != nil {
 			return nil, fmt.Errorf("failed to create S3 secret: %w", err)
 		}
-		// DuckDB's ducklake extension should automatically use the s3_secret for S3 operations
-		// when the storage path is s3://. No need to reference it in the URI.
-		// For IRSA, the secret (without KEY_ID/SECRET) will use the default AWS credentials chain
+
 		log.Info("configured S3 storage", "endpoint", cfg.Endpoint, "region", cfg.Region)
 	}
 

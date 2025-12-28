@@ -300,8 +300,18 @@ func TestLake_Duck_NewLake_FileCatalogS3Storage(t *testing.T) {
 		}
 	}()
 
-	endpoint, err := minioContainer.ConnectionString(ctx)
+	// Get host and port separately to ensure DuckDB can access MinIO
+	// ConnectionString() may return localhost which doesn't work in all network contexts
+	// Use 127.0.0.1 instead of localhost to avoid DNS resolution issues
+	host, err := minioContainer.Host(ctx)
 	require.NoError(t, err)
+	// Replace localhost with 127.0.0.1 for better compatibility
+	if host == "localhost" {
+		host = "127.0.0.1"
+	}
+	port, err := minioContainer.MappedPort(ctx, "9000")
+	require.NoError(t, err)
+	endpoint := fmt.Sprintf("%s:%s", host, port.Port())
 
 	// Create S3 client to create the bucket
 	creds := credentials.NewStaticCredentialsProvider(
@@ -315,11 +325,8 @@ func TestLake_Duck_NewLake_FileCatalogS3Storage(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	// Ensure endpoint has protocol
-	endpointURL := endpoint
-	if !strings.HasPrefix(endpointURL, "http://") && !strings.HasPrefix(endpointURL, "https://") {
-		endpointURL = "http://" + endpointURL
-	}
+	// Ensure endpoint has protocol for AWS SDK
+	endpointURL := "http://" + endpoint
 	s3Client := s3.NewFromConfig(awsCfg, func(o *s3.Options) {
 		o.BaseEndpoint = &endpointURL
 		o.UsePathStyle = true // Required for MinIO
@@ -419,8 +426,18 @@ func TestLake_Duck_NewLake_PostgresCatalogS3Storage(t *testing.T) {
 		}
 	}()
 
-	endpoint, err := minioContainer.ConnectionString(ctx)
+	// Get host and port separately to ensure DuckDB can access MinIO
+	// ConnectionString() may return localhost which doesn't work in all network contexts
+	// Use 127.0.0.1 instead of localhost to avoid DNS resolution issues
+	minioHost, err := minioContainer.Host(ctx)
 	require.NoError(t, err)
+	// Replace localhost with 127.0.0.1 for better compatibility
+	if minioHost == "localhost" {
+		minioHost = "127.0.0.1"
+	}
+	minioPort, err := minioContainer.MappedPort(ctx, "9000")
+	require.NoError(t, err)
+	endpoint := fmt.Sprintf("%s:%s", minioHost, minioPort.Port())
 
 	// Create S3 client to create the bucket
 	creds := credentials.NewStaticCredentialsProvider(
@@ -434,11 +451,8 @@ func TestLake_Duck_NewLake_PostgresCatalogS3Storage(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	// Ensure endpoint has protocol
-	endpointURL := endpoint
-	if !strings.HasPrefix(endpointURL, "http://") && !strings.HasPrefix(endpointURL, "https://") {
-		endpointURL = "http://" + endpointURL
-	}
+	// Ensure endpoint has protocol for AWS SDK
+	endpointURL := "http://" + endpoint
 	s3Client := s3.NewFromConfig(awsCfg, func(o *s3.Options) {
 		o.BaseEndpoint = &endpointURL
 		o.UsePathStyle = true // Required for MinIO

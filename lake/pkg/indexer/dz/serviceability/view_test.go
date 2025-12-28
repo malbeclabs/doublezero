@@ -147,13 +147,15 @@ func TestLake_Serviceability_View_WaitReady(t *testing.T) {
 func TestLake_Serviceability_View_NewServiceabilityView(t *testing.T) {
 	t.Parallel()
 
-	t.Run("returns error when database initialization fails", func(t *testing.T) {
+	t.Run("succeeds (tables are now created automatically by SCD2)", func(t *testing.T) {
 		t.Parallel()
 
 		geoipStore, err := newTestGeoIPStore(t)
 		require.NoError(t, err)
 		defer geoipStore.db.Close()
 
+		// View creation should succeed (tables are created automatically by SCDTableViaCSV)
+		// The failure will happen later when trying to use the database
 		view, err := NewView(ViewConfig{
 			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
 			Clock:             clockwork.NewFakeClock(),
@@ -163,9 +165,8 @@ func TestLake_Serviceability_View_NewServiceabilityView(t *testing.T) {
 			GeoIPStore:        geoipStore.store,
 			GeoIPResolver:     &mockGeoIPResolver{},
 		})
-		require.Error(t, err)
-		require.Nil(t, view)
-		require.Contains(t, err.Error(), "failed to create tables")
+		require.NoError(t, err)
+		require.NotNil(t, view)
 	})
 }
 
@@ -322,10 +323,10 @@ func TestLake_Serviceability_View_ConvertLinks(t *testing.T) {
 				SideAIfaceName:    "eth0",
 				SideZIfaceName:    "eth1",
 				LinkType:          serviceability.LinkLinkTypeWAN,
-			DelayNs:           5000000,    // 5ms (onchain field name)
-			JitterNs:          1000000,    // 1ms (onchain field name)
-			Bandwidth:         1000000000, // 1 Gbps
-			DelayOverrideNs:   0,           // onchain field name
+				DelayNs:           5000000,    // 5ms (onchain field name)
+				JitterNs:          1000000,    // 1ms (onchain field name)
+				Bandwidth:         1000000000, // 1 Gbps
+				DelayOverrideNs:   0,          // onchain field name
 			},
 		}
 
@@ -399,10 +400,6 @@ func newTestGeoIPStore(t *testing.T) (*testGeoIPStore, error) {
 		DB:     db,
 	})
 	if err != nil {
-		return nil, err
-	}
-
-	if err := store.CreateTablesIfNotExists(); err != nil {
 		return nil, err
 	}
 
@@ -531,10 +528,10 @@ func TestLake_Serviceability_View_Refresh(t *testing.T) {
 							SideAIfaceName:    "eth0",
 							SideZIfaceName:    "eth1",
 							LinkType:          serviceability.LinkLinkTypeWAN,
-						DelayNs:           5000000,    // onchain field name
-						JitterNs:          1000000,    // onchain field name
-						Bandwidth:         1000000000,
-						DelayOverrideNs:   0,           // onchain field name
+							DelayNs:           5000000, // onchain field name
+							JitterNs:          1000000, // onchain field name
+							Bandwidth:         1000000000,
+							DelayOverrideNs:   0, // onchain field name
 						},
 					},
 				}, nil
@@ -561,31 +558,31 @@ func TestLake_Serviceability_View_Refresh(t *testing.T) {
 		require.NoError(t, err)
 		defer conn.Close()
 		var contributorsCount int
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_contributors").Scan(&contributorsCount)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_contributors_current").Scan(&contributorsCount)
 		require.NoError(t, err)
 		require.Equal(t, 1, contributorsCount, "should have 1 contributor")
 
 		// Verify devices were stored
 		var devicesCount int
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_devices").Scan(&devicesCount)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_devices_current").Scan(&devicesCount)
 		require.NoError(t, err)
 		require.Equal(t, 1, devicesCount, "should have 1 device")
 
 		// Verify users were stored
 		var usersCount int
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_users").Scan(&usersCount)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_users_current").Scan(&usersCount)
 		require.NoError(t, err)
 		require.Equal(t, 3, usersCount, "should have 3 users")
 
 		// Verify metros were stored
 		var metrosCount int
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_metros").Scan(&metrosCount)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_metros_current").Scan(&metrosCount)
 		require.NoError(t, err)
 		require.Equal(t, 1, metrosCount, "should have 1 metro")
 
 		// Verify links were stored
 		var linksCount int
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_links").Scan(&linksCount)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_links_current").Scan(&linksCount)
 		require.NoError(t, err)
 		require.Equal(t, 1, linksCount, "should have 1 link")
 
@@ -613,7 +610,7 @@ func TestLake_Serviceability_View_Refresh(t *testing.T) {
 		conn, err = db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
-		err = conn.QueryRowContext(ctx, "SELECT code FROM dz_contributors WHERE pk = ?", testPubkey(1).String()).Scan(&code)
+		err = conn.QueryRowContext(ctx, "SELECT code FROM dz_contributors_current WHERE pk = ?", testPubkey(1).String()).Scan(&code)
 		require.NoError(t, err)
 		require.Equal(t, "TEST", code, "contributor should have correct code")
 
@@ -622,7 +619,7 @@ func TestLake_Serviceability_View_Refresh(t *testing.T) {
 		conn, err = db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
-		err = conn.QueryRowContext(ctx, "SELECT code FROM dz_devices WHERE pk = ?", testPubkey(3).String()).Scan(&deviceCode)
+		err = conn.QueryRowContext(ctx, "SELECT code FROM dz_devices_current WHERE pk = ?", testPubkey(3).String()).Scan(&deviceCode)
 		require.NoError(t, err)
 		require.Equal(t, "DEV001", deviceCode, "device should have correct code")
 
@@ -631,7 +628,7 @@ func TestLake_Serviceability_View_Refresh(t *testing.T) {
 		conn, err = db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
-		err = conn.QueryRowContext(ctx, "SELECT name FROM dz_metros WHERE pk = ?", testPubkey(2).String()).Scan(&metroName)
+		err = conn.QueryRowContext(ctx, "SELECT name FROM dz_metros_current WHERE pk = ?", testPubkey(2).String()).Scan(&metroName)
 		require.NoError(t, err)
 		require.Equal(t, "New York", metroName, "metro should have correct name")
 
@@ -640,7 +637,7 @@ func TestLake_Serviceability_View_Refresh(t *testing.T) {
 		conn, err = db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
-		err = conn.QueryRowContext(ctx, "SELECT code FROM dz_links WHERE pk = ?", testPubkey(6).String()).Scan(&linkCode)
+		err = conn.QueryRowContext(ctx, "SELECT code FROM dz_links_current WHERE pk = ?", testPubkey(6).String()).Scan(&linkCode)
 		require.NoError(t, err)
 		require.Equal(t, "LINK001", linkCode, "link should have correct code")
 	})
@@ -706,7 +703,7 @@ func TestLake_Serviceability_View_Refresh(t *testing.T) {
 		require.NoError(t, err)
 		defer conn.Close()
 		var usersCount int
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_users").Scan(&usersCount)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_users_current").Scan(&usersCount)
 		require.NoError(t, err)
 		require.Equal(t, 1, usersCount, "should have 1 user even without geoip")
 

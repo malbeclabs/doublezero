@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"time"
 
 	"github.com/malbeclabs/doublezero/lake/pkg/duck"
 	"github.com/malbeclabs/doublezero/tools/maxmind/pkg/geoip"
@@ -45,41 +46,15 @@ func NewStore(cfg StoreConfig) (*Store, error) {
 	}, nil
 }
 
-func (s *Store) CreateTablesIfNotExists() error {
-	tablePrefix := s.db.Catalog() + "." + s.db.Schema() + "."
-	sqls := []string{
-		`CREATE TABLE IF NOT EXISTS ` + tablePrefix + `geoip_records (
-			ip VARCHAR,
-			country_code VARCHAR,
-			country VARCHAR,
-			region VARCHAR,
-			city VARCHAR,
-			city_id INTEGER,
-			metro_name VARCHAR,
-			latitude DOUBLE,
-			longitude DOUBLE,
-			postal_code VARCHAR,
-			time_zone VARCHAR,
-			accuracy_radius INTEGER,
-			asn BIGINT,
-			asn_org VARCHAR,
-			is_anycast BOOLEAN,
-			is_anonymous_proxy BOOLEAN,
-			is_satellite_provider BOOLEAN
-		)`,
+// SCD2ConfigGeoIPRecords returns the base SCD2 config for geoip records table
+func SCD2ConfigGeoIPRecords() duck.SCDTableConfig {
+	return duck.SCDTableConfig{
+		TableBaseName:       "geoip_records",
+		PrimaryKeyColumns:   []string{"ip"},
+		PayloadColumns:      []string{"country_code", "country", "region", "city", "city_id", "metro_name", "latitude", "longitude", "postal_code", "time_zone", "accuracy_radius", "asn", "asn_org", "is_anycast", "is_anonymous_proxy", "is_satellite_provider"},
+		MissingMeansDeleted: false,
+		TrackIngestRuns:     true,
 	}
-	ctx := context.Background()
-	conn, err := s.db.Conn(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get connection: %w", err)
-	}
-	defer conn.Close()
-	for _, sql := range sqls {
-		if _, err := conn.ExecContext(ctx, sql); err != nil {
-			return fmt.Errorf("failed to create table: %w", err)
-		}
-	}
-	return nil
 }
 
 func (s *Store) UpsertRecords(ctx context.Context, records []*geoip.Record) error {
@@ -89,7 +64,13 @@ func (s *Store) UpsertRecords(ctx context.Context, records []*geoip.Record) erro
 		return fmt.Errorf("failed to get connection: %w", err)
 	}
 	defer conn.Close()
-	return duck.UpsertTableViaCSV(ctx, s.log, conn, "geoip_records", len(records), func(w *csv.Writer, i int) error {
+
+	fetchedAt := time.Now().UTC()
+	cfg := SCD2ConfigGeoIPRecords()
+	cfg.SnapshotTS = fetchedAt
+	cfg.RunID = fmt.Sprintf("geoip_%d", fetchedAt.Unix())
+
+	return duck.SCDTableViaCSV(ctx, s.log, conn, cfg, len(records), func(w *csv.Writer, i int) error {
 		r := records[i]
 		if r == nil {
 			return fmt.Errorf("record at index %d is nil", i)
@@ -117,7 +98,7 @@ func (s *Store) UpsertRecords(ctx context.Context, records []*geoip.Record) erro
 			fmt.Sprintf("%t", r.IsAnonymousProxy),
 			fmt.Sprintf("%t", r.IsSatelliteProvider),
 		})
-	}, []string{"ip"})
+	})
 }
 
 func (s *Store) GetRecord(ip net.IP) (*geoip.Record, error) {
@@ -135,7 +116,7 @@ func (s *Store) GetRecord(ip net.IP) (*geoip.Record, error) {
 	query := `SELECT ip, country_code, country, region, city, city_id, metro_name, latitude, longitude,
 	          postal_code, time_zone, accuracy_radius, asn, asn_org,
 	          is_anycast, is_anonymous_proxy, is_satellite_provider
-	          FROM geoip_records WHERE ip = ?`
+	          FROM geoip_records_current WHERE ip = ?`
 	row := conn.QueryRowContext(ctx, query, ipStr)
 
 	var record geoip.Record
@@ -238,7 +219,7 @@ func (s *Store) GetRecords() ([]*geoip.Record, error) {
 	query := `SELECT ip, country_code, country, region, city, city_id, metro_name, latitude, longitude,
 	          postal_code, time_zone, accuracy_radius, asn, asn_org,
 	          is_anycast, is_anonymous_proxy, is_satellite_provider
-	          FROM geoip_records`
+	          FROM geoip_records_current`
 	rows, err := conn.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query records: %w", err)

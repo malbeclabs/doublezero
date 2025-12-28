@@ -48,57 +48,20 @@ func NewStore(cfg StoreConfig) (*Store, error) {
 	}, nil
 }
 
-func (s *Store) CreateTablesIfNotExists() error {
-	tablePrefix := s.db.Catalog() + "." + s.db.Schema() + "."
-	schemas := []string{
-		`CREATE TABLE IF NOT EXISTS ` + tablePrefix + `solana_gossip_nodes (
-			snapshot_timestamp TIMESTAMP,
-			current_epoch INTEGER,
-			pubkey VARCHAR,
-			gossip_ip VARCHAR,
-			gossip_port INTEGER,
-			tpuquic_ip VARCHAR,
-			tpuquic_port INTEGER,
-			version VARCHAR
-		)`,
-		`CREATE TABLE IF NOT EXISTS ` + tablePrefix + `solana_vote_accounts (
-			snapshot_timestamp TIMESTAMP,
-			current_epoch INTEGER,
-			vote_pubkey VARCHAR,
-			node_pubkey VARCHAR,
-			activated_stake_lamports BIGINT,
-			epoch_vote_account BOOLEAN,
-			commission_percentage INTEGER,
-			last_vote_slot BIGINT,
-			root_slot BIGINT
-		)`,
-		`CREATE TABLE IF NOT EXISTS ` + tablePrefix + `solana_leader_schedule (
-			snapshot_timestamp TIMESTAMP,
-			current_epoch INTEGER,
-			node_pubkey VARCHAR,
-			slots INTEGER[],
-			slot_count INTEGER
-		)`,
-	}
-
-	ctx := context.Background()
-	conn, err := s.db.Conn(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get connection: %w", err)
-	}
-	defer conn.Close()
-	for _, schema := range schemas {
-		if _, err := conn.ExecContext(ctx, schema); err != nil {
-			return fmt.Errorf("failed to create table: %w", err)
-		}
-	}
-
-	return nil
-}
-
 type LeaderScheduleEntry struct {
 	NodePubkey solana.PublicKey
 	Slots      []uint64
+}
+
+// SCD2ConfigLeaderSchedule returns the base SCD2 config for leader schedule table
+func SCD2ConfigLeaderSchedule() duck.SCDTableConfig {
+	return duck.SCDTableConfig{
+		TableBaseName:       "solana_leader_schedule",
+		PrimaryKeyColumns:   []string{"node_pubkey"},
+		PayloadColumns:      []string{"epoch", "slots", "slot_count"},
+		MissingMeansDeleted: true,
+		TrackIngestRuns:     true,
+	}
 }
 
 func (s *Store) ReplaceLeaderSchedule(ctx context.Context, entries []LeaderScheduleEntry, fetchedAt time.Time, currentEpoch uint64) error {
@@ -108,17 +71,32 @@ func (s *Store) ReplaceLeaderSchedule(ctx context.Context, entries []LeaderSched
 		return fmt.Errorf("failed to get connection: %w", err)
 	}
 	defer conn.Close()
-	return duck.ReplaceTableViaCSV(ctx, s.log, conn, "solana_leader_schedule", len(entries), func(w *csv.Writer, i int) error {
+
+	cfg := SCD2ConfigLeaderSchedule()
+	cfg.SnapshotTS = fetchedAt
+	cfg.RunID = fmt.Sprintf("leader_schedule_%d_%d", currentEpoch, fetchedAt.Unix())
+
+	return duck.SCDTableViaCSV(ctx, s.log, conn, cfg, len(entries), func(w *csv.Writer, i int) error {
 		entry := entries[i]
 		slotsStr := formatUint64Array(entry.Slots)
 		return w.Write([]string{
-			fetchedAt.Format(time.RFC3339Nano),
-			fmt.Sprintf("%d", currentEpoch),
 			entry.NodePubkey.String(),
+			fmt.Sprintf("%d", currentEpoch),
 			slotsStr,
 			fmt.Sprintf("%d", len(entry.Slots)),
 		})
-	}, []string{"snapshot_timestamp", "current_epoch", "node_pubkey"})
+	})
+}
+
+// SCD2ConfigVoteAccounts returns the base SCD2 config for vote accounts table
+func SCD2ConfigVoteAccounts() duck.SCDTableConfig {
+	return duck.SCDTableConfig{
+		TableBaseName:       "solana_vote_accounts",
+		PrimaryKeyColumns:   []string{"vote_pubkey"},
+		PayloadColumns:      []string{"epoch", "node_pubkey", "activated_stake_lamports", "epoch_vote_account", "commission_percentage", "last_vote_slot", "root_slot"},
+		MissingMeansDeleted: true,
+		TrackIngestRuns:     true,
+	}
 }
 
 func (s *Store) ReplaceVoteAccounts(ctx context.Context, accounts []solanarpc.VoteAccountsResult, fetchedAt time.Time, currentEpoch uint64) error {
@@ -128,16 +106,20 @@ func (s *Store) ReplaceVoteAccounts(ctx context.Context, accounts []solanarpc.Vo
 		return fmt.Errorf("failed to get connection: %w", err)
 	}
 	defer conn.Close()
-	return duck.ReplaceTableViaCSV(ctx, s.log, conn, "solana_vote_accounts", len(accounts), func(w *csv.Writer, i int) error {
+
+	cfg := SCD2ConfigVoteAccounts()
+	cfg.SnapshotTS = fetchedAt
+	cfg.RunID = fmt.Sprintf("vote_accounts_%d_%d", currentEpoch, fetchedAt.Unix())
+
+	return duck.SCDTableViaCSV(ctx, s.log, conn, cfg, len(accounts), func(w *csv.Writer, i int) error {
 		account := accounts[i]
 		epochVoteAccountStr := "false"
 		if account.EpochVoteAccount {
 			epochVoteAccountStr = "true"
 		}
 		return w.Write([]string{
-			fetchedAt.Format(time.RFC3339Nano),
-			fmt.Sprintf("%d", currentEpoch),
 			account.VotePubkey.String(),
+			fmt.Sprintf("%d", currentEpoch),
 			account.NodePubkey.String(),
 			fmt.Sprintf("%d", account.ActivatedStake),
 			epochVoteAccountStr,
@@ -145,7 +127,18 @@ func (s *Store) ReplaceVoteAccounts(ctx context.Context, accounts []solanarpc.Vo
 			fmt.Sprintf("%d", account.LastVote),
 			fmt.Sprintf("%d", account.RootSlot),
 		})
-	}, []string{"snapshot_timestamp", "current_epoch", "vote_pubkey"})
+	})
+}
+
+// SCD2ConfigGossipNodes returns the base SCD2 config for gossip nodes table
+func SCD2ConfigGossipNodes() duck.SCDTableConfig {
+	return duck.SCDTableConfig{
+		TableBaseName:       "solana_gossip_nodes",
+		PrimaryKeyColumns:   []string{"pubkey"},
+		PayloadColumns:      []string{"epoch", "gossip_ip", "gossip_port", "tpuquic_ip", "tpuquic_port", "version"},
+		MissingMeansDeleted: true,
+		TrackIngestRuns:     true,
+	}
 }
 
 func (s *Store) ReplaceGossipNodes(ctx context.Context, nodes []*solanarpc.GetClusterNodesResult, fetchedAt time.Time, currentEpoch uint64) error {
@@ -155,7 +148,12 @@ func (s *Store) ReplaceGossipNodes(ctx context.Context, nodes []*solanarpc.GetCl
 		return fmt.Errorf("failed to get connection: %w", err)
 	}
 	defer conn.Close()
-	return duck.ReplaceTableViaCSV(ctx, s.log, conn, "solana_gossip_nodes", len(nodes), func(w *csv.Writer, i int) error {
+
+	cfg := SCD2ConfigGossipNodes()
+	cfg.SnapshotTS = fetchedAt
+	cfg.RunID = fmt.Sprintf("gossip_nodes_%d_%d", currentEpoch, fetchedAt.Unix())
+
+	return duck.SCDTableViaCSV(ctx, s.log, conn, cfg, len(nodes), func(w *csv.Writer, i int) error {
 		node := nodes[i]
 		var gossipIP, tpuQUICIP string
 		var gossipPort, tpuQUICPort uint16
@@ -184,16 +182,15 @@ func (s *Store) ReplaceGossipNodes(ctx context.Context, nodes []*solanarpc.GetCl
 			version = *node.Version
 		}
 		return w.Write([]string{
-			fetchedAt.Format(time.RFC3339Nano),
-			fmt.Sprintf("%d", currentEpoch),
 			node.Pubkey.String(),
+			fmt.Sprintf("%d", currentEpoch),
 			gossipIP,
 			fmt.Sprintf("%d", gossipPort),
 			tpuQUICIP,
 			fmt.Sprintf("%d", tpuQUICPort),
 			version,
 		})
-	}, []string{"snapshot_timestamp", "current_epoch", "pubkey"})
+	})
 }
 
 func formatUint64Array(arr []uint64) string {

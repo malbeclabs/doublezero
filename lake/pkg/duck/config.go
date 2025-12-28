@@ -84,14 +84,13 @@ func LoadS3ConfigFromEnv() (*S3Config, error) {
 	var useSSL bool
 	var urlStyle string
 
+	urlStyle = "path"
 	if isMinIO {
 		// MinIO defaults
 		useSSL = false
-		urlStyle = "path"
 	} else {
 		// AWS S3 defaults
 		useSSL = true
-		urlStyle = "virtual"
 	}
 
 	// Override with explicit env vars if set
@@ -217,8 +216,8 @@ func PrepareS3ConfigForStorageURI(ctx context.Context, log *slog.Logger, storage
 			SecretAccessKey: "", // Empty for IRSA
 			Endpoint:        "", // AWS S3
 			Region:          region,
-			UseSSL:          true,      // AWS S3 default
-			URLStyle:        "virtual", // AWS S3 default
+			UseSSL:          true,   // AWS S3 default
+			URLStyle:        "path", // AWS S3 default
 		}
 	}
 

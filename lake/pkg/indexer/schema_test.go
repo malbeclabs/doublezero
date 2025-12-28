@@ -222,14 +222,9 @@ func TestLake_Querier_ValidateSchema_EdgeCases(t *testing.T) {
 			Tables:      []schematypes.TableInfo{},
 		}
 
-		// Note: The validation query will fail with empty table list (IN ()),
-		// but this is acceptable for an empty schema
+		// Empty schema should return early without querying the database
 		err = ValidateSchema(t.Context(), db, schema)
-		// The validation will fail due to SQL syntax error with empty IN clause,
-		// but this is an edge case that's acceptable
-		if err != nil {
-			require.Contains(t, err.Error(), "failed to query schema")
-		}
+		require.NoError(t, err)
 	})
 
 	t.Run("handles table with only one column", func(t *testing.T) {
@@ -259,5 +254,104 @@ func TestLake_Querier_ValidateSchema_EdgeCases(t *testing.T) {
 
 		err = ValidateSchema(t.Context(), db, schema)
 		require.NoError(t, err)
+	})
+
+	t.Run("validates SCD2 tables using _current suffix", func(t *testing.T) {
+		t.Parallel()
+
+		db := testDB(t)
+
+		conn, err := db.Conn(t.Context())
+		require.NoError(t, err)
+		defer conn.Close()
+
+		// Create _current table (SCD2 pattern)
+		_, err = conn.ExecContext(t.Context(), `
+			CREATE TABLE test_scd2_current (
+				as_of_ts TIMESTAMP,
+				row_hash VARCHAR,
+				id VARCHAR,
+				name VARCHAR
+			)
+		`)
+		require.NoError(t, err)
+
+		// Schema defines base table name with (SCD2) in description
+		schema := &schematypes.Schema{
+			Name:        "test-schema",
+			Description: "test description",
+			Tables: []schematypes.TableInfo{
+				{
+					Name:        "test_scd2",
+					Description: "Test SCD2 table (SCD2)",
+					Columns: []schematypes.ColumnInfo{
+						{Name: "as_of_ts", Type: "TIMESTAMP", Description: "Timestamp of the snapshot that produced this row (SCD2, in _current table only)"},
+						{Name: "row_hash", Type: "VARCHAR", Description: "Hash of payload columns for change detection (SCD2, in _current table only)"},
+						{Name: "id", Type: "VARCHAR", Description: "Primary key"},
+						{Name: "name", Type: "VARCHAR", Description: "Name column"},
+					},
+				},
+			},
+		}
+
+		err = ValidateSchema(t.Context(), db, schema)
+		require.NoError(t, err)
+	})
+
+	t.Run("allows missing SCD2 tables (created on first use)", func(t *testing.T) {
+		t.Parallel()
+
+		db := testDB(t)
+
+		// Don't create the table - it should be OK for SCD2 tables
+		// Schema defines base table name with (SCD2) in description
+		schema := &schematypes.Schema{
+			Name:        "test-schema",
+			Description: "test description",
+			Tables: []schematypes.TableInfo{
+				{
+					Name:        "test_scd2_missing",
+					Description: "Test SCD2 table that doesn't exist yet (SCD2)",
+					Columns: []schematypes.ColumnInfo{
+						{Name: "as_of_ts", Type: "TIMESTAMP", Description: "Timestamp of the snapshot that produced this row (SCD2, in _current table only)"},
+						{Name: "row_hash", Type: "VARCHAR", Description: "Hash of payload columns for change detection (SCD2, in _current table only)"},
+						{Name: "id", Type: "VARCHAR", Description: "Primary key"},
+						{Name: "name", Type: "VARCHAR", Description: "Name column"},
+					},
+				},
+			},
+		}
+
+		// Should not error - SCD2 tables are created on first use
+		err := ValidateSchema(t.Context(), db, schema)
+		require.NoError(t, err)
+	})
+
+	t.Run("still errors for missing non-SCD2 tables", func(t *testing.T) {
+		t.Parallel()
+
+		db := testDB(t)
+
+		// Schema defines a non-SCD2 table that doesn't exist
+		schema := &schematypes.Schema{
+			Name:        "test-schema",
+			Description: "test description",
+			Tables: []schematypes.TableInfo{
+				{
+					Name:        "test_non_scd2_missing",
+					Description: "Test non-SCD2 table that doesn't exist",
+					Columns: []schematypes.ColumnInfo{
+						{Name: "id", Type: "VARCHAR", Description: "Primary key"},
+						{Name: "name", Type: "VARCHAR", Description: "Name column"},
+					},
+				},
+			},
+		}
+
+		// Should error - non-SCD2 tables must exist
+		err := ValidateSchema(t.Context(), db, schema)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "test_non_scd2_missing")
+		require.Contains(t, err.Error(), "in-code schema but not in database")
 	})
 }

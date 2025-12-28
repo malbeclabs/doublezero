@@ -44,72 +44,70 @@ func NewStore(cfg StoreConfig) (*Store, error) {
 	}, nil
 }
 
-func (s *Store) CreateTablesIfNotExists() error {
-	tablePrefix := s.db.Catalog() + "." + s.db.Schema() + "."
-	tableName := tablePrefix + "dz_device_iface_usage"
-
-	// Check if we're using Duck Lake (which supports partitioning)
-	_, isDuckLake := s.db.(*duck.Lake)
-
-	schema := `
-	CREATE TABLE IF NOT EXISTS ` + tableName + ` (
-		time TIMESTAMP NOT NULL,
-		device_pk VARCHAR,
-		host VARCHAR,
-		intf VARCHAR,
-		user_tunnel_id BIGINT,
-		link_pk VARCHAR,
-		link_side VARCHAR,
-		model_name VARCHAR,
-		serial_number VARCHAR,
-		carrier_transitions BIGINT,
-		in_broadcast_pkts BIGINT,
-		in_discards BIGINT,
-		in_errors BIGINT,
-		in_fcs_errors BIGINT,
-		in_multicast_pkts BIGINT,
-		in_octets BIGINT,
-		in_pkts BIGINT,
-		in_unicast_pkts BIGINT,
-		out_broadcast_pkts BIGINT,
-		out_discards BIGINT,
-		out_errors BIGINT,
-		out_multicast_pkts BIGINT,
-		out_octets BIGINT,
-		out_pkts BIGINT,
-		out_unicast_pkts BIGINT,
-		carrier_transitions_delta BIGINT,
-		in_broadcast_pkts_delta BIGINT,
-		in_discards_delta BIGINT,
-		in_errors_delta BIGINT,
-		in_fcs_errors_delta BIGINT,
-		in_multicast_pkts_delta BIGINT,
-		in_octets_delta BIGINT,
-		in_pkts_delta BIGINT,
-		in_unicast_pkts_delta BIGINT,
-		out_broadcast_pkts_delta BIGINT,
-		out_discards_delta BIGINT,
-		out_errors_delta BIGINT,
-		out_multicast_pkts_delta BIGINT,
-		out_octets_delta BIGINT,
-		out_pkts_delta BIGINT,
-		out_unicast_pkts_delta BIGINT,
-		delta_duration DOUBLE
-	)`
-	if isDuckLake {
-		schema += `;
-	ALTER TABLE ` + tableName + ` SET PARTITIONED BY (year(time), month(time), day(time));`
+// FactTableConfigDeviceIfaceUsage returns the fact table config for device interface usage
+func FactTableConfigDeviceIfaceUsage() duck.FactTableConfig {
+	return duck.FactTableConfig{
+		TableName:       "dz_device_iface_usage_raw",
+		PartitionByTime: true,
+		TimeColumn:      "time",
+		Columns: []string{
+			"time:TIMESTAMP",
+			"device_pk:VARCHAR",
+			"host:VARCHAR",
+			"intf:VARCHAR",
+			"user_tunnel_id:BIGINT",
+			"link_pk:VARCHAR",
+			"link_side:VARCHAR",
+			"model_name:VARCHAR",
+			"serial_number:VARCHAR",
+			"carrier_transitions:BIGINT",
+			"in_broadcast_pkts:BIGINT",
+			"in_discards:BIGINT",
+			"in_errors:BIGINT",
+			"in_fcs_errors:BIGINT",
+			"in_multicast_pkts:BIGINT",
+			"in_octets:BIGINT",
+			"in_pkts:BIGINT",
+			"in_unicast_pkts:BIGINT",
+			"out_broadcast_pkts:BIGINT",
+			"out_discards:BIGINT",
+			"out_errors:BIGINT",
+			"out_multicast_pkts:BIGINT",
+			"out_octets:BIGINT",
+			"out_pkts:BIGINT",
+			"out_unicast_pkts:BIGINT",
+			"carrier_transitions_delta:BIGINT",
+			"in_broadcast_pkts_delta:BIGINT",
+			"in_discards_delta:BIGINT",
+			"in_errors_delta:BIGINT",
+			"in_fcs_errors_delta:BIGINT",
+			"in_multicast_pkts_delta:BIGINT",
+			"in_octets_delta:BIGINT",
+			"in_pkts_delta:BIGINT",
+			"in_unicast_pkts_delta:BIGINT",
+			"out_broadcast_pkts_delta:BIGINT",
+			"out_discards_delta:BIGINT",
+			"out_errors_delta:BIGINT",
+			"out_multicast_pkts_delta:BIGINT",
+			"out_octets_delta:BIGINT",
+			"out_pkts_delta:BIGINT",
+			"out_unicast_pkts_delta:BIGINT",
+			"delta_duration:DOUBLE",
+		},
 	}
-	schema += "\n\t"
+}
 
+func (s *Store) CreateTablesIfNotExists() error {
 	ctx := context.Background()
 	conn, err := s.db.Conn(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get connection: %w", err)
 	}
 	defer conn.Close()
-	if _, err := conn.ExecContext(ctx, schema); err != nil {
-		return fmt.Errorf("failed to create table: %w", err)
+
+	cfg := FactTableConfigDeviceIfaceUsage()
+	if err := duck.CreateFactTable(ctx, s.log, conn, cfg); err != nil {
+		return fmt.Errorf("failed to create device interface usage table: %w", err)
 	}
 
 	return nil
@@ -178,7 +176,7 @@ func (s *Store) GetMaxTimestamp(ctx context.Context) (*time.Time, error) {
 	}
 	defer conn.Close()
 	var maxTime sql.NullTime
-	err = conn.QueryRowContext(ctx, "SELECT MAX(time) FROM dz_device_iface_usage").Scan(&maxTime)
+	err = conn.QueryRowContext(ctx, "SELECT MAX(time) FROM dz_device_iface_usage_raw").Scan(&maxTime)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -191,13 +189,15 @@ func (s *Store) GetMaxTimestamp(ctx context.Context) (*time.Time, error) {
 	return &maxTime.Time, nil
 }
 
-func (s *Store) UpsertInterfaceUsage(ctx context.Context, usage []InterfaceUsage) error {
+func (s *Store) InsertInterfaceUsage(ctx context.Context, usage []InterfaceUsage) error {
 	conn, err := s.db.Conn(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get connection: %w", err)
 	}
 	defer conn.Close()
-	return duck.UpsertTableViaCSV(ctx, s.log, conn, "dz_device_iface_usage", len(usage), func(w *csv.Writer, i int) error {
+
+	cfg := FactTableConfigDeviceIfaceUsage()
+	return duck.InsertFactsViaCSV(ctx, s.log, conn, cfg, len(usage), func(w *csv.Writer, i int) error {
 		u := usage[i]
 		record := make([]string, 42)
 
@@ -252,7 +252,7 @@ func (s *Store) UpsertInterfaceUsage(ctx context.Context, usage []InterfaceUsage
 		record[41] = formatNullableFloat64(u.DeltaDuration)
 
 		return w.Write(record)
-	}, []string{"time", "device_pk", "intf"})
+	})
 }
 
 func formatNullableFloat64(f *float64) string {

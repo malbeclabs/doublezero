@@ -126,8 +126,8 @@ func TestLake_TelemetryUsage_Store_CreateTablesIfNotExists(t *testing.T) {
 		conn, err := db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_device_iface_usage").Scan(&count)
-		require.NoError(t, err, "table dz_device_iface_usage should exist")
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_device_iface_usage_raw").Scan(&count)
+		require.NoError(t, err, "table dz_device_iface_usage_raw should exist")
 		require.Equal(t, 0, count)
 	})
 
@@ -142,7 +142,7 @@ func TestLake_TelemetryUsage_Store_CreateTablesIfNotExists(t *testing.T) {
 
 		err = store.CreateTablesIfNotExists()
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "failed to create table")
+		require.Contains(t, err.Error(), "failed to create")
 	})
 }
 
@@ -205,7 +205,7 @@ func TestLake_TelemetryUsage_Store_GetMaxTimestamp(t *testing.T) {
 			},
 		}
 
-		err = store.UpsertInterfaceUsage(context.Background(), usage)
+		err = store.InsertInterfaceUsage(context.Background(), usage)
 		require.NoError(t, err)
 
 		maxTime, err := store.GetMaxTimestamp(context.Background())
@@ -238,10 +238,10 @@ func TestLake_TelemetryUsage_Store_GetMaxTimestamp(t *testing.T) {
 	})
 }
 
-func TestLake_TelemetryUsage_Store_UpsertInterfaceUsage(t *testing.T) {
+func TestLake_TelemetryUsage_Store_InsertInterfaceUsage(t *testing.T) {
 	t.Parallel()
 
-	t.Run("upserts new rows to empty table", func(t *testing.T) {
+	t.Run("inserts new rows to empty table", func(t *testing.T) {
 		t.Parallel()
 
 		db := testDB(t)
@@ -283,7 +283,7 @@ func TestLake_TelemetryUsage_Store_UpsertInterfaceUsage(t *testing.T) {
 			},
 		}
 
-		err = store.UpsertInterfaceUsage(context.Background(), usage)
+		err = store.InsertInterfaceUsage(context.Background(), usage)
 		require.NoError(t, err)
 
 		// Verify data was inserted
@@ -292,7 +292,7 @@ func TestLake_TelemetryUsage_Store_UpsertInterfaceUsage(t *testing.T) {
 		conn, err := db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_device_iface_usage").Scan(&count)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_device_iface_usage_raw").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 2, count)
 
@@ -311,7 +311,7 @@ func TestLake_TelemetryUsage_Store_UpsertInterfaceUsage(t *testing.T) {
 			       in_octets, out_octets, in_pkts, out_pkts,
 			       in_octets_delta, out_octets_delta, in_pkts_delta, out_pkts_delta,
 			       delta_duration
-			FROM dz_device_iface_usage
+			FROM dz_device_iface_usage_raw
 			WHERE device_pk = 'device1' AND intf = 'eth0'
 		`).Scan(
 			&timeVal, &devicePK, &intf, &userTunnelID, &linkPK, &linkSide, &modelName, &serialNumber,
@@ -355,7 +355,7 @@ func TestLake_TelemetryUsage_Store_UpsertInterfaceUsage(t *testing.T) {
 		require.InDelta(t, 60.0, deltaDuration.Float64, 0.01)
 	})
 
-	t.Run("updates existing rows", func(t *testing.T) {
+	t.Run("appends rows (fact table is append-only)", func(t *testing.T) {
 		t.Parallel()
 
 		db := testDB(t)
@@ -379,10 +379,10 @@ func TestLake_TelemetryUsage_Store_UpsertInterfaceUsage(t *testing.T) {
 			},
 		}
 
-		err = store.UpsertInterfaceUsage(context.Background(), usage1)
+		err = store.InsertInterfaceUsage(context.Background(), usage1)
 		require.NoError(t, err)
 
-		// Update with new values
+		// Append with same key (fact tables are append-only, so this creates a new row)
 		usage2 := []InterfaceUsage{
 			{
 				Time:      now,
@@ -393,30 +393,38 @@ func TestLake_TelemetryUsage_Store_UpsertInterfaceUsage(t *testing.T) {
 			},
 		}
 
-		err = store.UpsertInterfaceUsage(context.Background(), usage2)
+		err = store.InsertInterfaceUsage(context.Background(), usage2)
 		require.NoError(t, err)
 
-		// Verify row count is still 1 (not 2)
+		// Verify row count is 2 (both rows appended, fact tables are append-only)
 		var count int
 		ctx := context.Background()
 		conn, err := db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_device_iface_usage").Scan(&count)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_device_iface_usage_raw").Scan(&count)
 		require.NoError(t, err)
-		require.Equal(t, 1, count)
+		require.Equal(t, 2, count)
 
-		// Verify row was updated
-		conn, err = db.Conn(ctx)
+		// Verify both rows exist with their original values
+		var inOctets1, inOctets2, outOctets2 sql.NullInt64
+		err = conn.QueryRowContext(ctx, `
+			SELECT in_octets FROM dz_device_iface_usage_raw
+			WHERE device_pk = 'device1' AND intf = 'eth0' AND in_octets = 1000
+		`).Scan(&inOctets1)
 		require.NoError(t, err)
-		defer conn.Close()
-		var inOctets, outOctets sql.NullInt64
-		err = conn.QueryRowContext(ctx, "SELECT in_octets, out_octets FROM dz_device_iface_usage WHERE device_pk = 'device1' AND intf = 'eth0'").Scan(&inOctets, &outOctets)
+		require.True(t, inOctets1.Valid)
+		require.Equal(t, int64(1000), inOctets1.Int64)
+
+		err = conn.QueryRowContext(ctx, `
+			SELECT in_octets, out_octets FROM dz_device_iface_usage_raw
+			WHERE device_pk = 'device1' AND intf = 'eth0' AND in_octets = 2000
+		`).Scan(&inOctets2, &outOctets2)
 		require.NoError(t, err)
-		require.True(t, inOctets.Valid)
-		require.Equal(t, int64(2000), inOctets.Int64)
-		require.True(t, outOctets.Valid)
-		require.Equal(t, int64(3000), outOctets.Int64)
+		require.True(t, inOctets2.Valid)
+		require.Equal(t, int64(2000), inOctets2.Int64)
+		require.True(t, outOctets2.Valid)
+		require.Equal(t, int64(3000), outOctets2.Int64)
 	})
 
 	t.Run("handles nullable fields", func(t *testing.T) {
@@ -443,7 +451,7 @@ func TestLake_TelemetryUsage_Store_UpsertInterfaceUsage(t *testing.T) {
 			},
 		}
 
-		err = store.UpsertInterfaceUsage(context.Background(), usage)
+		err = store.InsertInterfaceUsage(context.Background(), usage)
 		require.NoError(t, err)
 
 		// Verify row was inserted with nulls
@@ -452,7 +460,7 @@ func TestLake_TelemetryUsage_Store_UpsertInterfaceUsage(t *testing.T) {
 		conn, err := db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_device_iface_usage").Scan(&count)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_device_iface_usage_raw").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 1, count)
 
@@ -466,7 +474,7 @@ func TestLake_TelemetryUsage_Store_UpsertInterfaceUsage(t *testing.T) {
 
 		err = conn.QueryRowContext(ctx, `
 			SELECT user_tunnel_id, link_pk, link_side, model_name, in_octets, delta_duration
-			FROM dz_device_iface_usage
+			FROM dz_device_iface_usage_raw
 			WHERE device_pk = 'device1' AND intf = 'eth0'
 		`).Scan(&userTunnelID, &linkPK, &linkSide, &modelName, &inOctets, &deltaDuration)
 		require.NoError(t, err)
@@ -501,11 +509,11 @@ func TestLake_TelemetryUsage_Store_UpsertInterfaceUsage(t *testing.T) {
 				Intf:     stringPtr("eth0"),
 			},
 		}
-		err = store.UpsertInterfaceUsage(context.Background(), usage1)
+		err = store.InsertInterfaceUsage(context.Background(), usage1)
 		require.NoError(t, err)
 
-		// Then upsert empty slice
-		err = store.UpsertInterfaceUsage(context.Background(), []InterfaceUsage{})
+		// Then insert empty slice
+		err = store.InsertInterfaceUsage(context.Background(), []InterfaceUsage{})
 		require.NoError(t, err)
 
 		// Verify existing data is still there (not truncated)
@@ -514,7 +522,7 @@ func TestLake_TelemetryUsage_Store_UpsertInterfaceUsage(t *testing.T) {
 		conn, err := db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_device_iface_usage").Scan(&count)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_device_iface_usage_raw").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 1, count)
 	})
@@ -575,7 +583,7 @@ func TestLake_TelemetryUsage_Store_UpsertInterfaceUsage(t *testing.T) {
 			},
 		}
 
-		err = store.UpsertInterfaceUsage(context.Background(), usage)
+		err = store.InsertInterfaceUsage(context.Background(), usage)
 		require.NoError(t, err)
 
 		// Verify all fields were stored
@@ -606,7 +614,7 @@ func TestLake_TelemetryUsage_Store_UpsertInterfaceUsage(t *testing.T) {
 				out_broadcast_pkts_delta, out_discards_delta, out_errors_delta,
 				out_multicast_pkts_delta, out_octets_delta, out_pkts_delta, out_unicast_pkts_delta,
 				delta_duration
-			FROM dz_device_iface_usage
+			FROM dz_device_iface_usage_raw
 			WHERE device_pk = 'device1' AND intf = 'eth0'
 		`).Scan(
 			&carrierTransitions, &inBroadcastPkts, &inDiscards, &inErrors, &inFCSErrors,

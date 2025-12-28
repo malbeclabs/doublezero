@@ -137,7 +137,7 @@ func TestLake_TelemetryLatency_Store_CreateTablesIfNotExists(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify tables exist by querying them
-		tables := []string{"dz_device_link_latency_samples", "dz_internet_metro_latency_samples"}
+		tables := []string{"dz_device_link_latency_samples_raw", "dz_internet_metro_latency_samples_raw"}
 		for _, table := range tables {
 			var count int
 			ctx := context.Background()
@@ -160,7 +160,7 @@ func TestLake_TelemetryLatency_Store_CreateTablesIfNotExists(t *testing.T) {
 
 		err = store.CreateTablesIfNotExists()
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "failed to create table")
+		require.Contains(t, err.Error(), "failed to create")
 	})
 }
 
@@ -211,7 +211,7 @@ func TestLake_TelemetryLatency_Store_AppendDeviceLinkLatencySamples(t *testing.T
 		require.NoError(t, err)
 		defer conn.Close()
 		var count int
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_device_link_latency_samples").Scan(&count)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_device_link_latency_samples_raw").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 2, count)
 
@@ -231,7 +231,7 @@ func TestLake_TelemetryLatency_Store_AppendDeviceLinkLatencySamples(t *testing.T
 		err = store.AppendDeviceLinkLatencySamples(context.Background(), moreSamples)
 		require.NoError(t, err)
 
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_device_link_latency_samples").Scan(&count)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_device_link_latency_samples_raw").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 3, count)
 
@@ -241,7 +241,7 @@ func TestLake_TelemetryLatency_Store_AppendDeviceLinkLatencySamples(t *testing.T
 		var sampleIndex int
 		var sampleTime time.Time
 		var rttUs uint64
-		err = conn.QueryRowContext(ctx, "SELECT origin_device_pk, target_device_pk, link_pk, epoch, sample_index, time, rtt_us FROM dz_device_link_latency_samples WHERE sample_index = 2").Scan(&originDevicePK, &targetDevicePK, &linkPK, &epoch, &sampleIndex, &sampleTime, &rttUs)
+		err = conn.QueryRowContext(ctx, "SELECT origin_device_pk, target_device_pk, link_pk, epoch, sample_index, time, rtt_us FROM dz_device_link_latency_samples_raw WHERE sample_index = 2").Scan(&originDevicePK, &targetDevicePK, &linkPK, &epoch, &sampleIndex, &sampleTime, &rttUs)
 		require.NoError(t, err)
 		require.Equal(t, testPK(1), originDevicePK)
 		require.Equal(t, testPK(2), targetDevicePK)
@@ -274,7 +274,7 @@ func TestLake_TelemetryLatency_Store_AppendDeviceLinkLatencySamples(t *testing.T
 		require.NoError(t, err)
 		defer conn.Close()
 		var count int
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_device_link_latency_samples").Scan(&count)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_device_link_latency_samples_raw").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 0, count)
 	})
@@ -326,7 +326,7 @@ func TestLake_TelemetryLatency_Store_AppendInternetMetroLatencySamples(t *testin
 		require.NoError(t, err)
 		defer conn.Close()
 		var count int
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_internet_metro_latency_samples").Scan(&count)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_internet_metro_latency_samples_raw").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 2, count)
 
@@ -346,7 +346,7 @@ func TestLake_TelemetryLatency_Store_AppendInternetMetroLatencySamples(t *testin
 		err = store.AppendInternetMetroLatencySamples(context.Background(), moreSamples)
 		require.NoError(t, err)
 
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_internet_metro_latency_samples").Scan(&count)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_internet_metro_latency_samples_raw").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 3, count)
 
@@ -356,7 +356,7 @@ func TestLake_TelemetryLatency_Store_AppendInternetMetroLatencySamples(t *testin
 		var sampleIndex int
 		var sampleTime time.Time
 		var rttUs uint64
-		err = conn.QueryRowContext(ctx, "SELECT origin_metro_pk, target_metro_pk, data_provider, epoch, sample_index, time, rtt_us FROM dz_internet_metro_latency_samples WHERE sample_index = 2").Scan(&originMetroPK, &targetMetroPK, &dataProvider, &epoch, &sampleIndex, &sampleTime, &rttUs)
+		err = conn.QueryRowContext(ctx, "SELECT origin_metro_pk, target_metro_pk, data_provider, epoch, sample_index, time, rtt_us FROM dz_internet_metro_latency_samples_raw WHERE sample_index = 2").Scan(&originMetroPK, &targetMetroPK, &dataProvider, &epoch, &sampleIndex, &sampleTime, &rttUs)
 		require.NoError(t, err)
 		require.Equal(t, testPK(1), originMetroPK)
 		require.Equal(t, testPK(2), targetMetroPK)
@@ -389,7 +389,7 @@ func TestLake_TelemetryLatency_Store_AppendInternetMetroLatencySamples(t *testin
 		require.NoError(t, err)
 		defer conn.Close()
 		var count int
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_internet_metro_latency_samples").Scan(&count)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_internet_metro_latency_samples_raw").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 0, count)
 	})

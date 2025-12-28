@@ -44,56 +44,61 @@ func NewStore(cfg StoreConfig) (*Store, error) {
 	}, nil
 }
 
+// FactTableConfigDeviceLinkLatencySamples returns the fact table config for device link latency samples
+func FactTableConfigDeviceLinkLatencySamples() duck.FactTableConfig {
+	return duck.FactTableConfig{
+		TableName:       "dz_device_link_latency_samples_raw",
+		PartitionByTime: true,
+		TimeColumn:      "time",
+		Columns: []string{
+			"time:TIMESTAMP",
+			"epoch:BIGINT",
+			"sample_index:INTEGER",
+			"origin_device_pk:VARCHAR",
+			"target_device_pk:VARCHAR",
+			"link_pk:VARCHAR",
+			"rtt_us:BIGINT",
+			"loss:BOOLEAN",
+		},
+	}
+}
+
+// FactTableConfigInternetMetroLatencySamples returns the fact table config for internet metro latency samples
+func FactTableConfigInternetMetroLatencySamples() duck.FactTableConfig {
+	return duck.FactTableConfig{
+		TableName:       "dz_internet_metro_latency_samples_raw",
+		PartitionByTime: true,
+		TimeColumn:      "time",
+		Columns: []string{
+			"time:TIMESTAMP",
+			"epoch:BIGINT",
+			"sample_index:INTEGER",
+			"origin_metro_pk:VARCHAR",
+			"target_metro_pk:VARCHAR",
+			"data_provider:VARCHAR",
+			"rtt_us:BIGINT",
+		},
+	}
+}
+
 func (s *Store) CreateTablesIfNotExists() error {
-	tablePrefix := s.db.Catalog() + "." + s.db.Schema() + "."
-	deviceLinkLatencySamplesTableName := tablePrefix + "dz_device_link_latency_samples"
-	internetMetroLatencySamplesTableName := tablePrefix + "dz_internet_metro_latency_samples"
-
-	// Check if we're using Duck Lake (which supports partitioning)
-	_, isDuckLake := s.db.(*duck.Lake)
-
-	deviceLinkTableSQL := `
-		CREATE TABLE IF NOT EXISTS ` + deviceLinkLatencySamplesTableName + ` (
-			time TIMESTAMP NOT NULL,
-			epoch BIGINT,
-			sample_index INTEGER,
-			origin_device_pk VARCHAR,
-			target_device_pk VARCHAR,
-			link_pk VARCHAR,
-			rtt_us BIGINT,
-			loss BOOLEAN
-		)`
-	if isDuckLake {
-		deviceLinkTableSQL += `;
-		ALTER TABLE ` + deviceLinkLatencySamplesTableName + ` SET PARTITIONED BY (year(time), month(time), day(time));`
-	}
-
-	internetMetroTableSQL := `CREATE TABLE IF NOT EXISTS ` + internetMetroLatencySamplesTableName + ` (
-			time TIMESTAMP NOT NULL,
-			epoch BIGINT,
-			sample_index INTEGER,
-			origin_metro_pk VARCHAR,
-			target_metro_pk VARCHAR,
-			data_provider VARCHAR,
-			rtt_us BIGINT
-		)`
-	if isDuckLake {
-		internetMetroTableSQL += `;
-		ALTER TABLE ` + internetMetroLatencySamplesTableName + ` SET PARTITIONED BY (year(time), month(time), day(time));`
-	}
-
-	schemas := []string{deviceLinkTableSQL, internetMetroTableSQL}
-
 	ctx := context.Background()
 	conn, err := s.db.Conn(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get connection: %w", err)
 	}
 	defer conn.Close()
-	for _, schema := range schemas {
-		if _, err := conn.ExecContext(ctx, schema); err != nil {
-			return fmt.Errorf("failed to create table: %w", err)
-		}
+
+	// Create device link latency samples table
+	deviceLinkCfg := FactTableConfigDeviceLinkLatencySamples()
+	if err := duck.CreateFactTable(ctx, s.log, conn, deviceLinkCfg); err != nil {
+		return fmt.Errorf("failed to create device link latency samples table: %w", err)
+	}
+
+	// Create internet metro latency samples table
+	internetMetroCfg := FactTableConfigInternetMetroLatencySamples()
+	if err := duck.CreateFactTable(ctx, s.log, conn, internetMetroCfg); err != nil {
+		return fmt.Errorf("failed to create internet metro latency samples table: %w", err)
 	}
 
 	return nil
@@ -105,11 +110,13 @@ func (s *Store) AppendDeviceLinkLatencySamples(ctx context.Context, samples []De
 		return fmt.Errorf("failed to get connection: %w", err)
 	}
 	defer conn.Close()
-	return duck.AppendTableViaCSV(
+
+	cfg := FactTableConfigDeviceLinkLatencySamples()
+	return duck.InsertFactsViaCSV(
 		ctx,
 		s.log,
 		conn,
-		"dz_device_link_latency_samples",
+		cfg,
 		len(samples),
 		func(w *csv.Writer, i int) error {
 			sample := samples[i]
@@ -137,11 +144,13 @@ func (s *Store) AppendInternetMetroLatencySamples(ctx context.Context, samples [
 		return fmt.Errorf("failed to get connection: %w", err)
 	}
 	defer conn.Close()
-	return duck.AppendTableViaCSV(
+
+	cfg := FactTableConfigInternetMetroLatencySamples()
+	return duck.InsertFactsViaCSV(
 		ctx,
 		s.log,
 		conn,
-		"dz_internet_metro_latency_samples",
+		cfg,
 		len(samples),
 		func(w *csv.Writer, i int) error {
 			sample := samples[i]
@@ -166,7 +175,7 @@ func (s *Store) GetExistingMaxSampleIndices() (map[string]int, error) {
 	}
 	defer conn.Close()
 	query := `SELECT origin_device_pk, target_device_pk, link_pk, epoch, MAX(sample_index) as max_idx
-	          FROM dz_device_link_latency_samples
+	          FROM dz_device_link_latency_samples_raw
 	          GROUP BY origin_device_pk, target_device_pk, link_pk, epoch`
 	rows, err := conn.QueryContext(ctx, query)
 	if err != nil {
@@ -201,7 +210,7 @@ func (s *Store) GetExistingInternetMaxSampleIndices() (map[string]int, error) {
 	}
 	defer conn.Close()
 	query := `SELECT origin_metro_pk, target_metro_pk, data_provider, epoch, MAX(sample_index) as max_idx
-	          FROM dz_internet_metro_latency_samples
+	          FROM dz_internet_metro_latency_samples_raw
 	          GROUP BY origin_metro_pk, target_metro_pk, data_provider, epoch`
 	rows, err := conn.QueryContext(ctx, query)
 	if err != nil {

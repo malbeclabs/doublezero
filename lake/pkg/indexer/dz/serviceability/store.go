@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/malbeclabs/doublezero/lake/pkg/duck"
 )
@@ -43,71 +44,15 @@ func NewStore(cfg StoreConfig) (*Store, error) {
 	}, nil
 }
 
-func (s *Store) CreateTablesIfNotExists() error {
-	tablePrefix := s.db.Catalog() + "." + s.db.Schema() + "."
-	sqls := []string{
-		`CREATE TABLE IF NOT EXISTS ` + tablePrefix + `dz_contributors (
-			pk VARCHAR,
-			code VARCHAR,
-			name VARCHAR
-		)`,
-		`CREATE TABLE IF NOT EXISTS ` + tablePrefix + `dz_devices (
-			pk VARCHAR,
-			status VARCHAR,
-			device_type VARCHAR,
-			code VARCHAR,
-			public_ip VARCHAR,
-			contributor_pk VARCHAR,
-			metro_pk VARCHAR
-		)`,
-		`CREATE TABLE IF NOT EXISTS ` + tablePrefix + `dz_metros (
-			pk VARCHAR,
-			code VARCHAR,
-			name VARCHAR,
-			longitude DOUBLE,
-			latitude DOUBLE
-		)`,
-		`CREATE TABLE IF NOT EXISTS ` + tablePrefix + `dz_links (
-			pk VARCHAR,
-			status VARCHAR,
-			code VARCHAR,
-			tunnel_net VARCHAR,
-			contributor_pk VARCHAR,
-			side_a_pk VARCHAR,
-			side_z_pk VARCHAR,
-			side_a_iface_name VARCHAR,
-			side_z_iface_name VARCHAR,
-			link_type VARCHAR,
-			committed_rtt_ns BIGINT,
-			committed_jitter_ns BIGINT,
-			bandwidth_bps BIGINT,
-			isis_delay_override_ns BIGINT
-		)`,
-		`CREATE TABLE IF NOT EXISTS ` + tablePrefix + `dz_users (
-			pk VARCHAR,
-			owner_pk VARCHAR,
-			status VARCHAR,
-			kind VARCHAR,
-			client_ip VARCHAR,
-			dz_ip VARCHAR,
-			device_pk VARCHAR,
-			tunnel_id INTEGER
-		)`,
+// SCD2ConfigContributors returns the base SCD2 config for contributors table
+func SCD2ConfigContributors() duck.SCDTableConfig {
+	return duck.SCDTableConfig{
+		TableBaseName:       "dz_contributors",
+		PrimaryKeyColumns:   []string{"pk"},
+		PayloadColumns:      []string{"code", "name"},
+		MissingMeansDeleted: true,
+		TrackIngestRuns:     true,
 	}
-	ctx := context.Background()
-	conn, err := s.db.Conn(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get connection: %w", err)
-	}
-	defer conn.Close()
-	s.log.Debug("serviceability/store: creating tables", "count", len(sqls))
-	for _, sql := range sqls {
-		if _, err := conn.ExecContext(ctx, sql); err != nil {
-			s.log.Error("serviceability/store: failed to create table", "error", err)
-			return fmt.Errorf("failed to create table: %w", err)
-		}
-	}
-	return nil
 }
 
 func (s *Store) ReplaceContributors(ctx context.Context, contributors []Contributor) error {
@@ -117,10 +62,27 @@ func (s *Store) ReplaceContributors(ctx context.Context, contributors []Contribu
 		return fmt.Errorf("failed to get connection: %w", err)
 	}
 	defer conn.Close()
-	return duck.ReplaceTableViaCSV(ctx, s.log, conn, "dz_contributors", len(contributors), func(w *csv.Writer, i int) error {
+
+	fetchedAt := time.Now().UTC()
+	cfg := SCD2ConfigContributors()
+	cfg.SnapshotTS = fetchedAt
+	cfg.RunID = fmt.Sprintf("contributors_%d", fetchedAt.Unix())
+
+	return duck.SCDTableViaCSV(ctx, s.log, conn, cfg, len(contributors), func(w *csv.Writer, i int) error {
 		c := contributors[i]
 		return w.Write([]string{c.PK, c.Code, c.Name})
-	}, []string{"pk"})
+	})
+}
+
+// SCD2ConfigDevices returns the base SCD2 config for devices table
+func SCD2ConfigDevices() duck.SCDTableConfig {
+	return duck.SCDTableConfig{
+		TableBaseName:       "dz_devices",
+		PrimaryKeyColumns:   []string{"pk"},
+		PayloadColumns:      []string{"status", "device_type", "code", "public_ip", "contributor_pk", "metro_pk"},
+		MissingMeansDeleted: true,
+		TrackIngestRuns:     true,
+	}
 }
 
 func (s *Store) ReplaceDevices(ctx context.Context, devices []Device) error {
@@ -130,10 +92,27 @@ func (s *Store) ReplaceDevices(ctx context.Context, devices []Device) error {
 		return fmt.Errorf("failed to get connection: %w", err)
 	}
 	defer conn.Close()
-	return duck.ReplaceTableViaCSV(ctx, s.log, conn, "dz_devices", len(devices), func(w *csv.Writer, i int) error {
+
+	fetchedAt := time.Now().UTC()
+	cfg := SCD2ConfigDevices()
+	cfg.SnapshotTS = fetchedAt
+	cfg.RunID = fmt.Sprintf("devices_%d", fetchedAt.Unix())
+
+	return duck.SCDTableViaCSV(ctx, s.log, conn, cfg, len(devices), func(w *csv.Writer, i int) error {
 		d := devices[i]
 		return w.Write([]string{d.PK, d.Status, d.DeviceType, d.Code, d.PublicIP, d.ContributorPK, d.MetroPK})
-	}, []string{"pk"})
+	})
+}
+
+// SCD2ConfigUsers returns the base SCD2 config for users table
+func SCD2ConfigUsers() duck.SCDTableConfig {
+	return duck.SCDTableConfig{
+		TableBaseName:       "dz_users",
+		PrimaryKeyColumns:   []string{"pk"},
+		PayloadColumns:      []string{"owner_pk", "status", "kind", "client_ip", "dz_ip", "device_pk", "tunnel_id"},
+		MissingMeansDeleted: true,
+		TrackIngestRuns:     true,
+	}
 }
 
 func (s *Store) ReplaceUsers(ctx context.Context, users []User) error {
@@ -143,10 +122,27 @@ func (s *Store) ReplaceUsers(ctx context.Context, users []User) error {
 		return fmt.Errorf("failed to get connection: %w", err)
 	}
 	defer conn.Close()
-	return duck.ReplaceTableViaCSV(ctx, s.log, conn, "dz_users", len(users), func(w *csv.Writer, i int) error {
+
+	fetchedAt := time.Now().UTC()
+	cfg := SCD2ConfigUsers()
+	cfg.SnapshotTS = fetchedAt
+	cfg.RunID = fmt.Sprintf("users_%d", fetchedAt.Unix())
+
+	return duck.SCDTableViaCSV(ctx, s.log, conn, cfg, len(users), func(w *csv.Writer, i int) error {
 		u := users[i]
 		return w.Write([]string{u.PK, u.OwnerPK, u.Status, u.Kind, u.ClientIP.String(), u.DZIP.String(), u.DevicePK, fmt.Sprintf("%d", u.TunnelID)})
-	}, []string{"pk"})
+	})
+}
+
+// SCD2ConfigMetros returns the base SCD2 config for metros table
+func SCD2ConfigMetros() duck.SCDTableConfig {
+	return duck.SCDTableConfig{
+		TableBaseName:       "dz_metros",
+		PrimaryKeyColumns:   []string{"pk"},
+		PayloadColumns:      []string{"code", "name", "longitude", "latitude"},
+		MissingMeansDeleted: true,
+		TrackIngestRuns:     true,
+	}
 }
 
 func (s *Store) ReplaceMetros(ctx context.Context, metros []Metro) error {
@@ -156,10 +152,27 @@ func (s *Store) ReplaceMetros(ctx context.Context, metros []Metro) error {
 		return fmt.Errorf("failed to get connection: %w", err)
 	}
 	defer conn.Close()
-	return duck.ReplaceTableViaCSV(ctx, s.log, conn, "dz_metros", len(metros), func(w *csv.Writer, i int) error {
+
+	fetchedAt := time.Now().UTC()
+	cfg := SCD2ConfigMetros()
+	cfg.SnapshotTS = fetchedAt
+	cfg.RunID = fmt.Sprintf("metros_%d", fetchedAt.Unix())
+
+	return duck.SCDTableViaCSV(ctx, s.log, conn, cfg, len(metros), func(w *csv.Writer, i int) error {
 		m := metros[i]
 		return w.Write([]string{m.PK, m.Code, m.Name, fmt.Sprintf("%.6f", m.Longitude), fmt.Sprintf("%.6f", m.Latitude)})
-	}, []string{"pk"})
+	})
+}
+
+// SCD2ConfigLinks returns the base SCD2 config for links table
+func SCD2ConfigLinks() duck.SCDTableConfig {
+	return duck.SCDTableConfig{
+		TableBaseName:       "dz_links",
+		PrimaryKeyColumns:   []string{"pk"},
+		PayloadColumns:      []string{"status", "code", "tunnel_net", "contributor_pk", "side_a_pk", "side_z_pk", "side_a_iface_name", "side_z_iface_name", "link_type", "committed_rtt_ns", "committed_jitter_ns", "bandwidth_bps", "isis_delay_override_ns"},
+		MissingMeansDeleted: true,
+		TrackIngestRuns:     true,
+	}
 }
 
 func (s *Store) ReplaceLinks(ctx context.Context, links []Link) error {
@@ -169,7 +182,13 @@ func (s *Store) ReplaceLinks(ctx context.Context, links []Link) error {
 		return fmt.Errorf("failed to get connection: %w", err)
 	}
 	defer conn.Close()
-	return duck.ReplaceTableViaCSV(ctx, s.log, conn, "dz_links", len(links), func(w *csv.Writer, i int) error {
+
+	fetchedAt := time.Now().UTC()
+	cfg := SCD2ConfigLinks()
+	cfg.SnapshotTS = fetchedAt
+	cfg.RunID = fmt.Sprintf("links_%d", fetchedAt.Unix())
+
+	return duck.SCDTableViaCSV(ctx, s.log, conn, cfg, len(links), func(w *csv.Writer, i int) error {
 		l := links[i]
 		return w.Write([]string{
 			l.PK, l.Status, l.Code, l.TunnelNet, l.ContributorPK, l.SideAPK, l.SideZPK,
@@ -177,7 +196,7 @@ func (s *Store) ReplaceLinks(ctx context.Context, links []Link) error {
 			fmt.Sprintf("%d", l.CommittedRTTNs), fmt.Sprintf("%d", l.CommittedJitterNs), fmt.Sprintf("%d", l.Bandwidth),
 			fmt.Sprintf("%d", l.ISISDelayOverrideNs),
 		})
-	}, []string{"pk"})
+	})
 }
 
 func (s *Store) GetDevices() ([]Device, error) {
@@ -187,7 +206,7 @@ func (s *Store) GetDevices() ([]Device, error) {
 		return nil, fmt.Errorf("failed to get connection: %w", err)
 	}
 	defer conn.Close()
-	query := `SELECT pk, status, device_type, code, public_ip, contributor_pk, metro_pk FROM dz_devices ORDER BY code`
+	query := `SELECT pk, status, device_type, code, public_ip, contributor_pk, metro_pk FROM dz_devices_current ORDER BY code`
 	rows, err := conn.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query devices: %w", err)
@@ -217,7 +236,7 @@ func (s *Store) GetLinks() ([]Link, error) {
 		return nil, fmt.Errorf("failed to get connection: %w", err)
 	}
 	defer conn.Close()
-	query := `SELECT pk, status, code, tunnel_net, contributor_pk, side_a_pk, side_z_pk, side_a_iface_name, side_z_iface_name, link_type, committed_rtt_ns, committed_jitter_ns, bandwidth_bps, isis_delay_override_ns FROM dz_links ORDER BY code`
+	query := `SELECT pk, status, code, tunnel_net, contributor_pk, side_a_pk, side_z_pk, side_a_iface_name, side_z_iface_name, link_type, committed_rtt_ns, committed_jitter_ns, bandwidth_bps, isis_delay_override_ns FROM dz_links_current ORDER BY code`
 	rows, err := conn.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query links: %w", err)
@@ -247,7 +266,7 @@ func (s *Store) GetContributors() ([]Contributor, error) {
 		return nil, fmt.Errorf("failed to get connection: %w", err)
 	}
 	defer conn.Close()
-	query := `SELECT pk, code, name FROM dz_contributors ORDER BY code`
+	query := `SELECT pk, code, name FROM dz_contributors_current ORDER BY code`
 	rows, err := conn.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query contributors: %w", err)
@@ -281,7 +300,7 @@ func (s *Store) GetMetros() ([]Metro, error) {
 		return nil, fmt.Errorf("failed to get connection: %w", err)
 	}
 	defer conn.Close()
-	query := `SELECT pk, code, name, longitude, latitude FROM dz_metros ORDER BY code`
+	query := `SELECT pk, code, name, longitude, latitude FROM dz_metros_current ORDER BY code`
 	rows, err := conn.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query metros: %w", err)

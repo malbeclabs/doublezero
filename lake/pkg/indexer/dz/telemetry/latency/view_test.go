@@ -81,10 +81,6 @@ func newMockGeoIPStore(t *testing.T) (*mockGeoIPStore, error) {
 		return nil, err
 	}
 
-	if err := store.CreateTablesIfNotExists(); err != nil {
-		return nil, err
-	}
-
 	return &mockGeoIPStore{
 		store: store,
 		db:    db,
@@ -484,7 +480,7 @@ func TestLake_TelemetryLatency_View_Refresh_SavesToDB(t *testing.T) {
 		conn, err := db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_device_link_latency_samples").Scan(&sampleCount)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_device_link_latency_samples_raw").Scan(&sampleCount)
 		require.NoError(t, err)
 		require.Equal(t, 3, sampleCount)
 
@@ -492,7 +488,7 @@ func TestLake_TelemetryLatency_View_Refresh_SavesToDB(t *testing.T) {
 		var epoch, sampleIndex int64
 		var sampleTime time.Time
 		var rttUs int64
-		err = conn.QueryRowContext(ctx, "SELECT origin_device_pk, target_device_pk, link_pk, epoch, sample_index, time, rtt_us FROM dz_device_link_latency_samples ORDER BY sample_index LIMIT 1").Scan(&originDevicePK, &targetDevicePK, &linkPKStr, &epoch, &sampleIndex, &sampleTime, &rttUs)
+		err = conn.QueryRowContext(ctx, "SELECT origin_device_pk, target_device_pk, link_pk, epoch, sample_index, time, rtt_us FROM dz_device_link_latency_samples_raw ORDER BY sample_index LIMIT 1").Scan(&originDevicePK, &targetDevicePK, &linkPKStr, &epoch, &sampleIndex, &sampleTime, &rttUs)
 		require.NoError(t, err)
 		require.Equal(t, solana.PublicKeyFromBytes(devicePK1[:]).String(), originDevicePK)
 		require.Equal(t, solana.PublicKeyFromBytes(devicePK2[:]).String(), targetDevicePK)
@@ -596,7 +592,7 @@ func TestLake_TelemetryLatency_View_Refresh_SavesToDB(t *testing.T) {
 		conn, err := db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_devices").Scan(&deviceCount)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_devices_current").Scan(&deviceCount)
 		require.NoError(t, err)
 		require.Equal(t, 2, deviceCount)
 
@@ -816,13 +812,13 @@ func TestLake_TelemetryLatency_View_IncrementalAppend(t *testing.T) {
 		conn, err := db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_device_link_latency_samples").Scan(&sampleCount)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_device_link_latency_samples_raw").Scan(&sampleCount)
 		require.NoError(t, err)
 		require.Equal(t, 3, sampleCount, "first refresh should insert 3 samples")
 
 		// Verify the first 3 samples are correct
 		var maxIdx int64
-		err = conn.QueryRowContext(ctx, "SELECT MAX(sample_index) FROM dz_device_link_latency_samples").Scan(&maxIdx)
+		err = conn.QueryRowContext(ctx, "SELECT MAX(sample_index) FROM dz_device_link_latency_samples_raw").Scan(&maxIdx)
 		require.NoError(t, err)
 		require.Equal(t, int64(2), maxIdx, "max sample_index should be 2 after first refresh")
 
@@ -833,30 +829,30 @@ func TestLake_TelemetryLatency_View_IncrementalAppend(t *testing.T) {
 		conn, err = db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_device_link_latency_samples").Scan(&sampleCount)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_device_link_latency_samples_raw").Scan(&sampleCount)
 		require.NoError(t, err)
 		require.Equal(t, 5, sampleCount, "second refresh should append 2 more samples, total 5")
 
 		// Verify all samples are present and correct
 		var rttUs int64
-		err = conn.QueryRowContext(ctx, "SELECT rtt_us FROM dz_device_link_latency_samples WHERE sample_index = 0").Scan(&rttUs)
+		err = conn.QueryRowContext(ctx, "SELECT rtt_us FROM dz_device_link_latency_samples_raw WHERE sample_index = 0").Scan(&rttUs)
 		require.NoError(t, err)
 		require.Equal(t, int64(5000), rttUs, "sample 0 should remain unchanged")
 
-		err = conn.QueryRowContext(ctx, "SELECT rtt_us FROM dz_device_link_latency_samples WHERE sample_index = 2").Scan(&rttUs)
+		err = conn.QueryRowContext(ctx, "SELECT rtt_us FROM dz_device_link_latency_samples_raw WHERE sample_index = 2").Scan(&rttUs)
 		require.NoError(t, err)
 		require.Equal(t, int64(7000), rttUs, "sample 2 should remain unchanged")
 
-		err = conn.QueryRowContext(ctx, "SELECT rtt_us FROM dz_device_link_latency_samples WHERE sample_index = 3").Scan(&rttUs)
+		err = conn.QueryRowContext(ctx, "SELECT rtt_us FROM dz_device_link_latency_samples_raw WHERE sample_index = 3").Scan(&rttUs)
 		require.NoError(t, err)
 		require.Equal(t, int64(8000), rttUs, "sample 3 should be newly inserted")
 
-		err = conn.QueryRowContext(ctx, "SELECT rtt_us FROM dz_device_link_latency_samples WHERE sample_index = 4").Scan(&rttUs)
+		err = conn.QueryRowContext(ctx, "SELECT rtt_us FROM dz_device_link_latency_samples_raw WHERE sample_index = 4").Scan(&rttUs)
 		require.NoError(t, err)
 		require.Equal(t, int64(9000), rttUs, "sample 4 should be newly inserted")
 
 		// Verify max index is now 4
-		err = conn.QueryRowContext(ctx, "SELECT MAX(sample_index) FROM dz_device_link_latency_samples").Scan(&maxIdx)
+		err = conn.QueryRowContext(ctx, "SELECT MAX(sample_index) FROM dz_device_link_latency_samples_raw").Scan(&maxIdx)
 		require.NoError(t, err)
 		require.Equal(t, int64(4), maxIdx, "max sample_index should be 4 after second refresh")
 	})
@@ -989,13 +985,13 @@ func TestLake_TelemetryLatency_View_IncrementalAppend(t *testing.T) {
 		conn, err := db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_internet_metro_latency_samples").Scan(&sampleCount)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_internet_metro_latency_samples_raw").Scan(&sampleCount)
 		require.NoError(t, err)
 		require.Equal(t, 2, sampleCount, "first refresh should insert 2 samples")
 
 		// Verify the first 2 samples are correct
 		var maxIdx int64
-		err = conn.QueryRowContext(ctx, "SELECT MAX(sample_index) FROM dz_internet_metro_latency_samples").Scan(&maxIdx)
+		err = conn.QueryRowContext(ctx, "SELECT MAX(sample_index) FROM dz_internet_metro_latency_samples_raw").Scan(&maxIdx)
 		require.NoError(t, err)
 		require.Equal(t, int64(1), maxIdx, "max sample_index should be 1 after first refresh")
 
@@ -1006,30 +1002,30 @@ func TestLake_TelemetryLatency_View_IncrementalAppend(t *testing.T) {
 		conn, err = db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_internet_metro_latency_samples").Scan(&sampleCount)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_internet_metro_latency_samples_raw").Scan(&sampleCount)
 		require.NoError(t, err)
 		require.Equal(t, 4, sampleCount, "second refresh should append 2 more samples, total 4")
 
 		// Verify all samples are present and correct
 		var rttUs int64
-		err = conn.QueryRowContext(ctx, "SELECT rtt_us FROM dz_internet_metro_latency_samples WHERE sample_index = 0").Scan(&rttUs)
+		err = conn.QueryRowContext(ctx, "SELECT rtt_us FROM dz_internet_metro_latency_samples_raw WHERE sample_index = 0").Scan(&rttUs)
 		require.NoError(t, err)
 		require.Equal(t, int64(10000), rttUs, "sample 0 should remain unchanged")
 
-		err = conn.QueryRowContext(ctx, "SELECT rtt_us FROM dz_internet_metro_latency_samples WHERE sample_index = 1").Scan(&rttUs)
+		err = conn.QueryRowContext(ctx, "SELECT rtt_us FROM dz_internet_metro_latency_samples_raw WHERE sample_index = 1").Scan(&rttUs)
 		require.NoError(t, err)
 		require.Equal(t, int64(11000), rttUs, "sample 1 should remain unchanged")
 
-		err = conn.QueryRowContext(ctx, "SELECT rtt_us FROM dz_internet_metro_latency_samples WHERE sample_index = 2").Scan(&rttUs)
+		err = conn.QueryRowContext(ctx, "SELECT rtt_us FROM dz_internet_metro_latency_samples_raw WHERE sample_index = 2").Scan(&rttUs)
 		require.NoError(t, err)
 		require.Equal(t, int64(12000), rttUs, "sample 2 should be newly inserted")
 
-		err = conn.QueryRowContext(ctx, "SELECT rtt_us FROM dz_internet_metro_latency_samples WHERE sample_index = 3").Scan(&rttUs)
+		err = conn.QueryRowContext(ctx, "SELECT rtt_us FROM dz_internet_metro_latency_samples_raw WHERE sample_index = 3").Scan(&rttUs)
 		require.NoError(t, err)
 		require.Equal(t, int64(13000), rttUs, "sample 3 should be newly inserted")
 
 		// Verify max index is now 3
-		err = conn.QueryRowContext(ctx, "SELECT MAX(sample_index) FROM dz_internet_metro_latency_samples").Scan(&maxIdx)
+		err = conn.QueryRowContext(ctx, "SELECT MAX(sample_index) FROM dz_internet_metro_latency_samples_raw").Scan(&maxIdx)
 		require.NoError(t, err)
 		require.Equal(t, int64(3), maxIdx, "max sample_index should be 3 after second refresh")
 	})

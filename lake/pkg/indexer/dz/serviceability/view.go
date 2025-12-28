@@ -156,10 +156,7 @@ func NewView(cfg ViewConfig) (*View, error) {
 		readyCh: make(chan struct{}),
 	}
 
-	if err := v.store.CreateTablesIfNotExists(); err != nil {
-		return nil, fmt.Errorf("failed to create tables: %w", err)
-	}
-
+	// Tables are created automatically by SCDTableViaCSV on first refresh
 	return v, nil
 }
 

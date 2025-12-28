@@ -39,15 +39,15 @@ AGGREGATION RULES:
 `,
 	Tables: []schematypes.TableInfo{
 		{
-			Name:        "dz_device_iface_usage",
-			Description: "Interface usage/utilization (cumulative counters + deltas). Joins: dz_device_iface_usage.device_pk = dz_devices.pk. For per-user attribution, join to users using (device_pk, user_tunnel_id) = (users.device_pk, users.tunnel_id) (do not join on tunnel_id alone).",
+			Name:        "dz_device_iface_usage_raw",
+			Description: "Raw interface usage/utilization (cumulative counters + deltas). This is the append-only fact table. Rollup tables (e.g., _rollup_1m) may exist for aggregated views. Joins: dz_device_iface_usage_raw.device_pk = dz_devices_current.pk. For per-user attribution, join to users using (device_pk, user_tunnel_id) = (dz_users_current.device_pk, dz_users_current.tunnel_id) (do not join on tunnel_id alone).",
 			Columns: []schematypes.ColumnInfo{
 				{Name: "time", Type: "TIMESTAMP", Description: "Timestamp of the measurement"},
-				{Name: "device_pk", Type: "VARCHAR", Description: "Foreign key → dz_devices.pk (DoubleZero device public key)"},
+				{Name: "device_pk", Type: "VARCHAR", Description: "Foreign key → dz_devices_current.pk (DoubleZero device public key)"},
 				{Name: "host", Type: "VARCHAR", Description: "Host identifier (INTERNAL USE ONLY)"},
 				{Name: "intf", Type: "VARCHAR", Description: "Interface name"},
 				{Name: "user_tunnel_id", Type: "BIGINT", Description: "Tunnel ID extracted from interface name (e.g., Tunnel501 -> 501). Join to users using the composite key (device_pk, user_tunnel_id) = (users.device_pk, users.tunnel_id); tunnel_id alone is not globally unique."},
-				{Name: "link_pk", Type: "VARCHAR", Description: "Foreign key → dz_links.pk. Populated by matching (device_pk, intf) to link side A or Z."},
+				{Name: "link_pk", Type: "VARCHAR", Description: "Foreign key → dz_links_current.pk. Populated by matching (device_pk, intf) to link side A or Z."},
 				{Name: "link_side", Type: "VARCHAR", Description: "Link side: 'A' or 'Z'. Indicates which side of the link this interface belongs to."},
 				{Name: "model_name", Type: "VARCHAR", Description: "Device model name"},
 				{Name: "serial_number", Type: "VARCHAR", Description: "Device serial number"},

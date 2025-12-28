@@ -110,50 +110,6 @@ func TestLake_Solana_Store_NewStore(t *testing.T) {
 	})
 }
 
-func TestLake_Solana_Store_CreateTablesIfNotExists(t *testing.T) {
-	t.Parallel()
-
-	t.Run("creates all tables", func(t *testing.T) {
-		t.Parallel()
-
-		db := testDB(t)
-
-		store, err := NewStore(StoreConfig{
-			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:     db,
-		})
-		require.NoError(t, err)
-
-		err = store.CreateTablesIfNotExists()
-		require.NoError(t, err)
-
-		// Verify tables exist by querying them
-		tables := []string{"solana_gossip_nodes", "solana_vote_accounts", "solana_leader_schedule"}
-		for _, table := range tables {
-			var count int
-			ctx := context.Background()
-			conn, err := db.Conn(ctx)
-			require.NoError(t, err)
-			defer conn.Close()
-			err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+table).Scan(&count)
-			require.NoError(t, err, "table %s should exist", table)
-		}
-	})
-
-	t.Run("returns error when database fails", func(t *testing.T) {
-		t.Parallel()
-
-		store, err := NewStore(StoreConfig{
-			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			DB:     &failingDB{},
-		})
-		require.NoError(t, err)
-
-		err = store.CreateTablesIfNotExists()
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "failed to create table")
-	})
-}
 
 func TestLake_Solana_Store_ReplaceLeaderSchedule(t *testing.T) {
 	t.Parallel()
@@ -169,8 +125,6 @@ func TestLake_Solana_Store_ReplaceLeaderSchedule(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		err = store.CreateTablesIfNotExists()
-		require.NoError(t, err)
 
 		nodePK := solana.MustPublicKeyFromBase58("So11111111111111111111111111111111111111112")
 		slots := []uint64{100, 200, 300}
@@ -192,24 +146,21 @@ func TestLake_Solana_Store_ReplaceLeaderSchedule(t *testing.T) {
 		require.NoError(t, err)
 		defer conn.Close()
 		var count int
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM solana_leader_schedule").Scan(&count)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM solana_leader_schedule_current").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 1, count)
 
 		var nodePubkey string
 		var slotCount int
-		var slotsArray []any
+		var slotsStr string
 		var currentEpochDB int64
-		err = conn.QueryRowContext(ctx, "SELECT node_pubkey, slots, slot_count, current_epoch FROM solana_leader_schedule LIMIT 1").Scan(&nodePubkey, &slotsArray, &slotCount, &currentEpochDB)
+		err = conn.QueryRowContext(ctx, "SELECT node_pubkey, slots, slot_count, epoch FROM solana_leader_schedule_current LIMIT 1").Scan(&nodePubkey, &slotsStr, &slotCount, &currentEpochDB)
 		require.NoError(t, err)
 		require.Equal(t, nodePK.String(), nodePubkey)
 		require.Equal(t, 3, slotCount)
 		require.Equal(t, int64(100), currentEpochDB)
-		require.Len(t, slotsArray, 3)
-		// DuckDB returns integers in arrays as int32
-		require.Equal(t, int32(100), slotsArray[0])
-		require.Equal(t, int32(200), slotsArray[1])
-		require.Equal(t, int32(300), slotsArray[2])
+		// Slots are stored as VARCHAR in SCD2 format: "[100,200,300]"
+		require.Equal(t, "[100,200,300]", slotsStr)
 	})
 }
 
@@ -227,8 +178,6 @@ func TestLake_Solana_Store_ReplaceVoteAccounts(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		err = store.CreateTablesIfNotExists()
-		require.NoError(t, err)
 
 		votePK := solana.MustPublicKeyFromBase58("Vote111111111111111111111111111111111111111")
 		nodePK := solana.MustPublicKeyFromBase58("So11111111111111111111111111111111111111112")
@@ -255,7 +204,7 @@ func TestLake_Solana_Store_ReplaceVoteAccounts(t *testing.T) {
 		require.NoError(t, err)
 		defer conn.Close()
 		var count int
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM solana_vote_accounts").Scan(&count)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM solana_vote_accounts_current").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 1, count)
 
@@ -264,7 +213,7 @@ func TestLake_Solana_Store_ReplaceVoteAccounts(t *testing.T) {
 		var epochVoteAccount bool
 		var commission int
 		var currentEpochDB int64
-		err = conn.QueryRowContext(ctx, "SELECT vote_pubkey, node_pubkey, activated_stake_lamports, epoch_vote_account, commission_percentage, last_vote_slot, root_slot, current_epoch FROM solana_vote_accounts LIMIT 1").Scan(&votePubkey, &nodePubkey, &activatedStake, &epochVoteAccount, &commission, &lastVoteSlot, &rootSlot, &currentEpochDB)
+		err = conn.QueryRowContext(ctx, "SELECT vote_pubkey, node_pubkey, activated_stake_lamports, epoch_vote_account, commission_percentage, last_vote_slot, root_slot, epoch FROM solana_vote_accounts_current LIMIT 1").Scan(&votePubkey, &nodePubkey, &activatedStake, &epochVoteAccount, &commission, &lastVoteSlot, &rootSlot, &currentEpochDB)
 		require.NoError(t, err)
 		require.Equal(t, votePK.String(), votePubkey)
 		require.Equal(t, nodePK.String(), nodePubkey)
@@ -291,8 +240,6 @@ func TestLake_Solana_Store_ReplaceGossipNodes(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		err = store.CreateTablesIfNotExists()
-		require.NoError(t, err)
 
 		nodePK := solana.MustPublicKeyFromBase58("So11111111111111111111111111111111111111112")
 		gossipAddr := "192.168.1.1:8001"
@@ -318,14 +265,14 @@ func TestLake_Solana_Store_ReplaceGossipNodes(t *testing.T) {
 		require.NoError(t, err)
 		defer conn.Close()
 		var count int
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM solana_gossip_nodes").Scan(&count)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM solana_gossip_nodes_current").Scan(&count)
 		require.NoError(t, err)
 		require.Equal(t, 1, count)
 
 		var pubkey, gossipIP, tpuQUICIP, version string
 		var gossipPort, tpuQUICPort int
 		var currentEpochDB int64
-		err = conn.QueryRowContext(ctx, "SELECT pubkey, gossip_ip, gossip_port, tpuquic_ip, tpuquic_port, version, current_epoch FROM solana_gossip_nodes LIMIT 1").Scan(&pubkey, &gossipIP, &gossipPort, &tpuQUICIP, &tpuQUICPort, &version, &currentEpochDB)
+		err = conn.QueryRowContext(ctx, "SELECT pubkey, gossip_ip, gossip_port, tpuquic_ip, tpuquic_port, version, epoch FROM solana_gossip_nodes_current LIMIT 1").Scan(&pubkey, &gossipIP, &gossipPort, &tpuQUICIP, &tpuQUICPort, &version, &currentEpochDB)
 		require.NoError(t, err)
 		require.Equal(t, nodePK.String(), pubkey)
 		require.Equal(t, "192.168.1.1", gossipIP)

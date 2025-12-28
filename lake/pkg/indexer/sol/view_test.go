@@ -208,10 +208,6 @@ func newTestGeoIPStore(t *testing.T) (*testGeoIPStore, error) {
 		return nil, err
 	}
 
-	if err := store.CreateTablesIfNotExists(); err != nil {
-		return nil, err
-	}
-
 	return &testGeoIPStore{
 		store: store,
 		db:    db,
@@ -333,7 +329,7 @@ func TestLake_Solana_View_Refresh(t *testing.T) {
 		conn, err := db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM solana_leader_schedule").Scan(&leaderScheduleCount)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM solana_leader_schedule_current").Scan(&leaderScheduleCount)
 		require.NoError(t, err)
 		require.Equal(t, 2, leaderScheduleCount, "should have 2 leader schedule entries")
 
@@ -342,7 +338,7 @@ func TestLake_Solana_View_Refresh(t *testing.T) {
 		conn, err = db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM solana_vote_accounts").Scan(&voteAccountsCount)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM solana_vote_accounts_current").Scan(&voteAccountsCount)
 		require.NoError(t, err)
 		require.Equal(t, 2, voteAccountsCount, "should have 2 vote accounts")
 
@@ -351,7 +347,7 @@ func TestLake_Solana_View_Refresh(t *testing.T) {
 		conn, err = db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM solana_gossip_nodes").Scan(&gossipNodesCount)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM solana_gossip_nodes_current").Scan(&gossipNodesCount)
 		require.NoError(t, err)
 		require.Equal(t, 3, gossipNodesCount, "should have 3 gossip nodes")
 
@@ -379,7 +375,7 @@ func TestLake_Solana_View_Refresh(t *testing.T) {
 		conn, err = db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
-		err = conn.QueryRowContext(ctx, "SELECT slot_count FROM solana_leader_schedule WHERE node_pubkey = ?", leaderPK1.String()).Scan(&slotCount)
+		err = conn.QueryRowContext(ctx, "SELECT slot_count FROM solana_leader_schedule_current WHERE node_pubkey = ?", leaderPK1.String()).Scan(&slotCount)
 		require.NoError(t, err)
 		require.Equal(t, 3, slotCount, "leaderPK1 should have 3 slots")
 
@@ -388,7 +384,7 @@ func TestLake_Solana_View_Refresh(t *testing.T) {
 		conn, err = db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
-		err = conn.QueryRowContext(ctx, "SELECT activated_stake_lamports FROM solana_vote_accounts WHERE vote_pubkey = ?", votePK1.String()).Scan(&activatedStake)
+		err = conn.QueryRowContext(ctx, "SELECT activated_stake_lamports FROM solana_vote_accounts_current WHERE vote_pubkey = ?", votePK1.String()).Scan(&activatedStake)
 		require.NoError(t, err)
 		require.Equal(t, int64(1000000), activatedStake, "votePK1 should have correct stake")
 
@@ -397,7 +393,7 @@ func TestLake_Solana_View_Refresh(t *testing.T) {
 		conn, err = db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
-		err = conn.QueryRowContext(ctx, "SELECT gossip_ip FROM solana_gossip_nodes WHERE pubkey = ?", pk1.String()).Scan(&gossipIP)
+		err = conn.QueryRowContext(ctx, "SELECT gossip_ip FROM solana_gossip_nodes_current WHERE pubkey = ?", pk1.String()).Scan(&gossipIP)
 		require.NoError(t, err)
 		require.Equal(t, "1.1.1.1", gossipIP, "pk1 should have correct gossip IP")
 	})
@@ -455,7 +451,7 @@ func TestLake_Solana_View_Refresh(t *testing.T) {
 		conn, err := db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
-		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM solana_gossip_nodes").Scan(&gossipNodesCount)
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM solana_gossip_nodes_current").Scan(&gossipNodesCount)
 		require.NoError(t, err)
 		require.Equal(t, 2, gossipNodesCount, "should have 2 gossip nodes even without geoip")
 

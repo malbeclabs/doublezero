@@ -171,7 +171,7 @@ func (v *View) Refresh(ctx context.Context) error {
 		}
 	}
 
-	// Get devices, links, and contributors from View to compute circuits
+	// Get devices and links from View
 	svcStore := v.cfg.Serviceability.Store()
 	devices, err := svcStore.GetDevices()
 	if err != nil {
@@ -183,21 +183,9 @@ func (v *View) Refresh(ctx context.Context) error {
 		metrics.ViewRefreshTotal.WithLabelValues("telemetry", "error").Inc()
 		return fmt.Errorf("failed to get links: %w", err)
 	}
-	contributors, err := svcStore.GetContributors()
-	if err != nil {
-		metrics.ViewRefreshTotal.WithLabelValues("telemetry", "error").Inc()
-		return fmt.Errorf("failed to get contributors: %w", err)
-	}
-
-	// Compute and refresh circuits from devices and links
-	circuits := ComputeDeviceLinkCircuits(devices, links, contributors)
-	if err := v.store.ReplaceDeviceLinkCircuits(ctx, circuits); err != nil {
-		metrics.ViewRefreshTotal.WithLabelValues("telemetry", "error").Inc()
-		return fmt.Errorf("failed to refresh device-link circuits: %w", err)
-	}
 
 	// Refresh device-link telemetry samples
-	if err := v.refreshDeviceLinkTelemetrySamples(ctx, circuits); err != nil {
+	if err := v.refreshDeviceLinkTelemetrySamples(ctx, devices, links); err != nil {
 		if !errors.Is(err, context.Canceled) && !errors.Is(err, sql.ErrConnDone) {
 			v.log.Warn("telemetry/latency: failed to refresh device-link telemetry samples", "error", err)
 		}
@@ -213,8 +201,7 @@ func (v *View) Refresh(ctx context.Context) error {
 			}
 			v.log.Warn("telemetry/latency: failed to get metros for internet-metro samples", "error", err)
 		} else {
-			internetCircuits := ComputeInternetMetroCircuits(metros)
-			if err := v.refreshInternetMetroLatencySamples(ctx, internetCircuits); err != nil {
+			if err := v.refreshInternetMetroLatencySamples(ctx, metros); err != nil {
 				if !errors.Is(err, context.Canceled) && !errors.Is(err, sql.ErrConnDone) {
 					v.log.Warn("telemetry/latency: failed to refresh internet-metro telemetry samples", "error", err)
 				}

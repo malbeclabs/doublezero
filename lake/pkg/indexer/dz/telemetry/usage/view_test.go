@@ -40,7 +40,7 @@ func testDB(t *testing.T) duck.DB {
 	return db
 }
 
-func TestAI_MCP_TelemetryUsage_View_ViewConfig_Validate(t *testing.T) {
+func TestLake_TelemetryUsage_View_ViewConfig_Validate(t *testing.T) {
 	t.Parallel()
 
 	t.Run("returns error when logger is missing", func(t *testing.T) {
@@ -169,7 +169,7 @@ func TestAI_MCP_TelemetryUsage_View_ViewConfig_Validate(t *testing.T) {
 	})
 }
 
-func TestAI_MCP_TelemetryUsage_View_NewView(t *testing.T) {
+func TestLake_TelemetryUsage_View_NewView(t *testing.T) {
 	t.Parallel()
 
 	t.Run("returns error when config validation fails", func(t *testing.T) {
@@ -197,7 +197,7 @@ func TestAI_MCP_TelemetryUsage_View_NewView(t *testing.T) {
 	})
 }
 
-func TestAI_MCP_TelemetryUsage_View_extractTunnelIDFromInterface(t *testing.T) {
+func TestLake_TelemetryUsage_View_extractTunnelIDFromInterface(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -256,7 +256,7 @@ func TestAI_MCP_TelemetryUsage_View_extractTunnelIDFromInterface(t *testing.T) {
 	}
 }
 
-func TestAI_MCP_TelemetryUsage_View_buildLinkLookup(t *testing.T) {
+func TestLake_TelemetryUsage_View_buildLinkLookup(t *testing.T) {
 	t.Parallel()
 
 	t.Run("builds link lookup map successfully", func(t *testing.T) {
@@ -361,7 +361,7 @@ func TestAI_MCP_TelemetryUsage_View_buildLinkLookup(t *testing.T) {
 	})
 }
 
-func TestAI_MCP_TelemetryUsage_View_Ready(t *testing.T) {
+func TestLake_TelemetryUsage_View_Ready(t *testing.T) {
 	t.Parallel()
 
 	t.Run("returns false when not ready", func(t *testing.T) {
@@ -429,7 +429,7 @@ func TestAI_MCP_TelemetryUsage_View_Ready(t *testing.T) {
 	})
 }
 
-func TestAI_MCP_TelemetryUsage_View_WaitReady(t *testing.T) {
+func TestLake_TelemetryUsage_View_WaitReady(t *testing.T) {
 	t.Parallel()
 
 	t.Run("returns immediately when already ready", func(t *testing.T) {
@@ -515,7 +515,7 @@ func TestAI_MCP_TelemetryUsage_View_WaitReady(t *testing.T) {
 	})
 }
 
-func TestAI_MCP_TelemetryUsage_View_Store(t *testing.T) {
+func TestLake_TelemetryUsage_View_Store(t *testing.T) {
 	t.Parallel()
 
 	t.Run("returns the underlying store", func(t *testing.T) {
@@ -537,7 +537,7 @@ func TestAI_MCP_TelemetryUsage_View_Store(t *testing.T) {
 	})
 }
 
-func TestAI_MCP_TelemetryUsage_View_convertRowsToUsage(t *testing.T) {
+func TestLake_TelemetryUsage_View_convertRowsToUsage(t *testing.T) {
 	t.Parallel()
 
 	t.Run("converts rows with tunnel ID extraction", func(t *testing.T) {

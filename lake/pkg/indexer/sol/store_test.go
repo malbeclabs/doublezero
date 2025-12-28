@@ -69,7 +69,7 @@ func (f *failingDB) ReplaceTable(tableName string, count int, writeCSVFn func(*c
 	return errors.New("database error")
 }
 
-func TestAI_MCP_Solana_Store_NewStore(t *testing.T) {
+func TestLake_Solana_Store_NewStore(t *testing.T) {
 	t.Parallel()
 
 	t.Run("returns error when config validation fails", func(t *testing.T) {
@@ -110,7 +110,7 @@ func TestAI_MCP_Solana_Store_NewStore(t *testing.T) {
 	})
 }
 
-func TestAI_MCP_Solana_Store_CreateTablesIfNotExists(t *testing.T) {
+func TestLake_Solana_Store_CreateTablesIfNotExists(t *testing.T) {
 	t.Parallel()
 
 	t.Run("creates all tables", func(t *testing.T) {
@@ -155,7 +155,7 @@ func TestAI_MCP_Solana_Store_CreateTablesIfNotExists(t *testing.T) {
 	})
 }
 
-func TestAI_MCP_Solana_Store_ReplaceLeaderSchedule(t *testing.T) {
+func TestLake_Solana_Store_ReplaceLeaderSchedule(t *testing.T) {
 	t.Parallel()
 
 	t.Run("saves leader schedule to database", func(t *testing.T) {
@@ -213,7 +213,7 @@ func TestAI_MCP_Solana_Store_ReplaceLeaderSchedule(t *testing.T) {
 	})
 }
 
-func TestAI_MCP_Solana_Store_ReplaceVoteAccounts(t *testing.T) {
+func TestLake_Solana_Store_ReplaceVoteAccounts(t *testing.T) {
 	t.Parallel()
 
 	t.Run("saves vote accounts to database", func(t *testing.T) {
@@ -277,7 +277,7 @@ func TestAI_MCP_Solana_Store_ReplaceVoteAccounts(t *testing.T) {
 	})
 }
 
-func TestAI_MCP_Solana_Store_ReplaceGossipNodes(t *testing.T) {
+func TestLake_Solana_Store_ReplaceGossipNodes(t *testing.T) {
 	t.Parallel()
 
 	t.Run("saves gossip nodes to database", func(t *testing.T) {

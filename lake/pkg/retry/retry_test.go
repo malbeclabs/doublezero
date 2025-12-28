@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func TestAI_Retry_DefaultConfig(t *testing.T) {
+func TestLake_Retry_DefaultConfig(t *testing.T) {
 	t.Parallel()
 	cfg := DefaultConfig()
 	if cfg.MaxAttempts != 3 {
@@ -23,7 +23,7 @@ func TestAI_Retry_DefaultConfig(t *testing.T) {
 	}
 }
 
-func TestAI_Retry_Do_SuccessOnFirstAttempt(t *testing.T) {
+func TestLake_Retry_Do_SuccessOnFirstAttempt(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	cfg := DefaultConfig()
@@ -42,7 +42,7 @@ func TestAI_Retry_Do_SuccessOnFirstAttempt(t *testing.T) {
 	}
 }
 
-func TestAI_Retry_Do_SuccessAfterRetries(t *testing.T) {
+func TestLake_Retry_Do_SuccessAfterRetries(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	cfg := Config{
@@ -68,7 +68,7 @@ func TestAI_Retry_Do_SuccessAfterRetries(t *testing.T) {
 	}
 }
 
-func TestAI_Retry_Do_ExhaustsAllAttempts(t *testing.T) {
+func TestLake_Retry_Do_ExhaustsAllAttempts(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	cfg := Config{
@@ -95,7 +95,7 @@ func TestAI_Retry_Do_ExhaustsAllAttempts(t *testing.T) {
 	}
 }
 
-func TestAI_Retry_Do_NonRetryableError(t *testing.T) {
+func TestLake_Retry_Do_NonRetryableError(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	cfg := Config{
@@ -122,7 +122,7 @@ func TestAI_Retry_Do_NonRetryableError(t *testing.T) {
 	}
 }
 
-func TestAI_Retry_Do_ContextCancellation(t *testing.T) {
+func TestLake_Retry_Do_ContextCancellation(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	cfg := Config{
@@ -151,7 +151,7 @@ func TestAI_Retry_Do_ContextCancellation(t *testing.T) {
 	}
 }
 
-func TestAI_Retry_Do_ContextTimeout(t *testing.T) {
+func TestLake_Retry_Do_ContextTimeout(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
@@ -177,7 +177,7 @@ func TestAI_Retry_Do_ContextTimeout(t *testing.T) {
 	}
 }
 
-func TestAI_Retry_IsRetryable_NetworkErrors(t *testing.T) {
+func TestLake_Retry_IsRetryable_NetworkErrors(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -252,7 +252,7 @@ func TestAI_Retry_IsRetryable_NetworkErrors(t *testing.T) {
 	}
 }
 
-func TestAI_Retry_IsRetryable_HTTPStatusCodes(t *testing.T) {
+func TestLake_Retry_IsRetryable_HTTPStatusCodes(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -312,7 +312,7 @@ func TestAI_Retry_IsRetryable_HTTPStatusCodes(t *testing.T) {
 	}
 }
 
-func TestAI_Retry_IsRetryable_ContextErrors(t *testing.T) {
+func TestLake_Retry_IsRetryable_ContextErrors(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -342,14 +342,14 @@ func TestAI_Retry_IsRetryable_ContextErrors(t *testing.T) {
 	}
 }
 
-func TestAI_Retry_IsRetryable_NilError(t *testing.T) {
+func TestLake_Retry_IsRetryable_NilError(t *testing.T) {
 	t.Parallel()
 	if IsRetryable(nil) {
 		t.Error("IsRetryable(nil) should return false")
 	}
 }
 
-func TestAI_Retry_CalculateBackoff(t *testing.T) {
+func TestLake_Retry_CalculateBackoff(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name     string
@@ -406,7 +406,7 @@ func TestAI_Retry_CalculateBackoff(t *testing.T) {
 	}
 }
 
-func TestAI_Retry_Do_BackoffTiming(t *testing.T) {
+func TestLake_Retry_Do_BackoffTiming(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	cfg := Config{

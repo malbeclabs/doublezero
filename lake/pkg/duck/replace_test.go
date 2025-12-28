@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestAI_MCP_Duck_ReplaceTableViaCSV(t *testing.T) {
+func TestLake_Duck_ReplaceTableViaCSV(t *testing.T) {
 	t.Parallel()
 
 	t.Run("replaces table with new data", func(t *testing.T) {

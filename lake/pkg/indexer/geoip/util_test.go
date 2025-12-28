@@ -33,7 +33,7 @@ func (m *mockResolver) MaybeResolveAddr(addr string) *geoip.Record {
 	return m.Resolve(ip)
 }
 
-func TestAI_MCP_GeoIP_MaybeResolveAddr(t *testing.T) {
+func TestLake_GeoIP_MaybeResolveAddr(t *testing.T) {
 	t.Parallel()
 
 	t.Run("resolves valid IPv4 address with port", func(t *testing.T) {

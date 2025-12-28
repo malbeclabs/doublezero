@@ -68,10 +68,10 @@ PRIMARY KEY SEMANTICS (CRITICAL):
 				{Name: "side_a_iface_name", Type: "VARCHAR", Description: "Interface name on side A"},
 				{Name: "side_z_iface_name", Type: "VARCHAR", Description: "Interface name on side Z"},
 				{Name: "link_type", Type: "VARCHAR", Description: "WAN or DZX"},
-				{Name: "delay_ns", Type: "BIGINT", Description: "Committed delay (nanoseconds)"},
-				{Name: "jitter_ns", Type: "BIGINT", Description: "Committed jitter (nanoseconds)"},
+				{Name: "committed_rtt_ns", Type: "BIGINT", Description: "Committed RTT (nanoseconds)"},
+				{Name: "committed_jitter_ns", Type: "BIGINT", Description: "Committed jitter (nanoseconds)"},
 				{Name: "bandwidth_bps", Type: "BIGINT", Description: "Link capacity in bits per second"},
-				{Name: "delay_override_ns", Type: "BIGINT", Description: "IS-IS delay metric override (nanoseconds). Interpretation rule: delay_override_ns = 1000000000 means the link is soft-drained (drain signal)."},
+				{Name: "isis_delay_override_ns", Type: "BIGINT", Description: "IS-IS delay metric override (nanoseconds). Interpretation rule: isis_delay_override_ns = 1000000000 means the link is soft-drained (drain signal)."},
 			},
 		},
 		{

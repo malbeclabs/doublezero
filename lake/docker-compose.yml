@@ -6,9 +6,9 @@ services:
     container_name: postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: app
-      POSTGRES_PASSWORD: app
-      POSTGRES_DB: app
+      POSTGRES_USER: dzlakedev
+      POSTGRES_PASSWORD: dzlakedev
+      POSTGRES_DB: dzlakedev
     ports:
       - "5432:5432"
     volumes:

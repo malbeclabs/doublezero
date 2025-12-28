@@ -17,7 +17,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 )
 
-func TestAI_Data_Duck_ValidateCatalogURI(t *testing.T) {
+func TestLake_Duck_ValidateCatalogURI(t *testing.T) {
 	tests := []struct {
 		name    string
 		uri     string
@@ -92,7 +92,7 @@ func TestAI_Data_Duck_ValidateCatalogURI(t *testing.T) {
 	}
 }
 
-func TestAI_Data_Duck_ValidateStorageURI(t *testing.T) {
+func TestLake_Duck_ValidateStorageURI(t *testing.T) {
 	tests := []struct {
 		name    string
 		uri     string
@@ -162,7 +162,7 @@ func TestAI_Data_Duck_ValidateStorageURI(t *testing.T) {
 	}
 }
 
-func TestAI_Data_Duck_NewLake_FileCatalogFileStorage(t *testing.T) {
+func TestLake_Duck_NewLake_FileCatalogFileStorage(t *testing.T) {
 	ctx := context.Background()
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 
@@ -211,7 +211,7 @@ func TestAI_Data_Duck_NewLake_FileCatalogFileStorage(t *testing.T) {
 	require.Equal(t, 42, value)
 }
 
-func TestAI_Data_Duck_NewLake_PostgresCatalogFileStorage(t *testing.T) {
+func TestLake_Duck_NewLake_PostgresCatalogFileStorage(t *testing.T) {
 	ctx := context.Background()
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 
@@ -284,7 +284,7 @@ func TestAI_Data_Duck_NewLake_PostgresCatalogFileStorage(t *testing.T) {
 	require.Equal(t, 42, value)
 }
 
-func TestAI_Data_Duck_NewLake_FileCatalogS3Storage(t *testing.T) {
+func TestLake_Duck_NewLake_FileCatalogS3Storage(t *testing.T) {
 	ctx := context.Background()
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 
@@ -390,7 +390,7 @@ func TestAI_Data_Duck_NewLake_FileCatalogS3Storage(t *testing.T) {
 	require.Equal(t, 42, value)
 }
 
-func TestAI_Data_Duck_NewLake_PostgresCatalogS3Storage(t *testing.T) {
+func TestLake_Duck_NewLake_PostgresCatalogS3Storage(t *testing.T) {
 	ctx := context.Background()
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 
@@ -513,7 +513,7 @@ func TestAI_Data_Duck_NewLake_PostgresCatalogS3Storage(t *testing.T) {
 	require.Equal(t, 42, value)
 }
 
-func TestAI_Data_Duck_NewLake_S3ConfigRequired(t *testing.T) {
+func TestLake_Duck_NewLake_S3ConfigRequired(t *testing.T) {
 	ctx := context.Background()
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 

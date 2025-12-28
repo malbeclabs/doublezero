@@ -71,7 +71,7 @@ func testDB(t *testing.T) duck.DB {
 	})
 	return db
 }
-func TestAI_MCP_GeoIP_Store_NewStore(t *testing.T) {
+func TestLake_GeoIP_Store_NewStore(t *testing.T) {
 	t.Parallel()
 
 	t.Run("returns error when config validation fails", func(t *testing.T) {
@@ -112,7 +112,7 @@ func TestAI_MCP_GeoIP_Store_NewStore(t *testing.T) {
 	})
 }
 
-func TestAI_MCP_GeoIP_Store_CreateTablesIfNotExists(t *testing.T) {
+func TestLake_GeoIP_Store_CreateTablesIfNotExists(t *testing.T) {
 	t.Parallel()
 
 	t.Run("creates table", func(t *testing.T) {
@@ -155,7 +155,7 @@ func TestAI_MCP_GeoIP_Store_CreateTablesIfNotExists(t *testing.T) {
 	})
 }
 
-func TestAI_MCP_GeoIP_Store_UpsertRecords(t *testing.T) {
+func TestLake_GeoIP_Store_UpsertRecords(t *testing.T) {
 	t.Parallel()
 
 	t.Run("upserts records successfully", func(t *testing.T) {
@@ -347,7 +347,7 @@ func TestAI_MCP_GeoIP_Store_UpsertRecords(t *testing.T) {
 	})
 }
 
-func TestAI_MCP_GeoIP_Store_GetRecord(t *testing.T) {
+func TestLake_GeoIP_Store_GetRecord(t *testing.T) {
 	t.Parallel()
 
 	t.Run("returns record when found", func(t *testing.T) {
@@ -482,7 +482,7 @@ func TestAI_MCP_GeoIP_Store_GetRecord(t *testing.T) {
 	})
 }
 
-func TestAI_MCP_GeoIP_Store_GetRecords(t *testing.T) {
+func TestLake_GeoIP_Store_GetRecords(t *testing.T) {
 	t.Parallel()
 
 	t.Run("returns all records", func(t *testing.T) {
@@ -574,7 +574,7 @@ func TestAI_MCP_GeoIP_Store_GetRecords(t *testing.T) {
 	})
 }
 
-func TestAI_MCP_GeoIP_Store_IPv6(t *testing.T) {
+func TestLake_GeoIP_Store_IPv6(t *testing.T) {
 	t.Parallel()
 
 	t.Run("handles IPv6 addresses", func(t *testing.T) {

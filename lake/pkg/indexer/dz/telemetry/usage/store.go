@@ -46,7 +46,13 @@ func NewStore(cfg StoreConfig) (*Store, error) {
 
 func (s *Store) CreateTablesIfNotExists() error {
 	tablePrefix := s.db.Catalog() + "." + s.db.Schema() + "."
-	schema := `CREATE TABLE IF NOT EXISTS ` + tablePrefix + `dz_device_iface_usage (
+	tableName := tablePrefix + "dz_device_iface_usage"
+
+	// Check if we're using Duck Lake (which supports partitioning)
+	_, isDuckLake := s.db.(*duck.Lake)
+
+	schema := `
+	CREATE TABLE IF NOT EXISTS ` + tableName + ` (
 		time TIMESTAMP NOT NULL,
 		device_pk VARCHAR,
 		host VARCHAR,
@@ -90,6 +96,11 @@ func (s *Store) CreateTablesIfNotExists() error {
 		out_unicast_pkts_delta BIGINT,
 		delta_duration DOUBLE
 	)`
+	if isDuckLake {
+		schema += `;
+	ALTER TABLE ` + tableName + ` SET PARTITIONED BY (year(time), month(time), day(time));`
+	}
+	schema += "\n\t"
 
 	ctx := context.Background()
 	conn, err := s.db.Conn(ctx)

@@ -78,10 +78,10 @@ func (s *Store) CreateTablesIfNotExists() error {
 			side_a_iface_name VARCHAR,
 			side_z_iface_name VARCHAR,
 			link_type VARCHAR,
-			delay_ns BIGINT,
-			jitter_ns BIGINT,
+			committed_rtt_ns BIGINT,
+			committed_jitter_ns BIGINT,
 			bandwidth_bps BIGINT,
-			delay_override_ns BIGINT
+			isis_delay_override_ns BIGINT
 		)`,
 		`CREATE TABLE IF NOT EXISTS ` + tablePrefix + `dz_users (
 			pk VARCHAR,
@@ -174,8 +174,8 @@ func (s *Store) ReplaceLinks(ctx context.Context, links []Link) error {
 		return w.Write([]string{
 			l.PK, l.Status, l.Code, l.TunnelNet, l.ContributorPK, l.SideAPK, l.SideZPK,
 			l.SideAIfaceName, l.SideZIfaceName, l.LinkType,
-			fmt.Sprintf("%d", l.DelayNs), fmt.Sprintf("%d", l.JitterNs), fmt.Sprintf("%d", l.Bandwidth),
-			fmt.Sprintf("%d", l.DelayOverrideNs),
+			fmt.Sprintf("%d", l.CommittedRTTNs), fmt.Sprintf("%d", l.CommittedJitterNs), fmt.Sprintf("%d", l.Bandwidth),
+			fmt.Sprintf("%d", l.ISISDelayOverrideNs),
 		})
 	}, []string{"pk"})
 }
@@ -217,7 +217,7 @@ func (s *Store) GetLinks() ([]Link, error) {
 		return nil, fmt.Errorf("failed to get connection: %w", err)
 	}
 	defer conn.Close()
-	query := `SELECT pk, status, code, tunnel_net, contributor_pk, side_a_pk, side_z_pk, side_a_iface_name, side_z_iface_name, link_type, delay_ns, jitter_ns, bandwidth_bps, delay_override_ns FROM dz_links ORDER BY code`
+	query := `SELECT pk, status, code, tunnel_net, contributor_pk, side_a_pk, side_z_pk, side_a_iface_name, side_z_iface_name, link_type, committed_rtt_ns, committed_jitter_ns, bandwidth_bps, isis_delay_override_ns FROM dz_links ORDER BY code`
 	rows, err := conn.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query links: %w", err)
@@ -227,7 +227,7 @@ func (s *Store) GetLinks() ([]Link, error) {
 	var links []Link
 	for rows.Next() {
 		var l Link
-		if err := rows.Scan(&l.PK, &l.Status, &l.Code, &l.TunnelNet, &l.ContributorPK, &l.SideAPK, &l.SideZPK, &l.SideAIfaceName, &l.SideZIfaceName, &l.LinkType, &l.DelayNs, &l.JitterNs, &l.Bandwidth, &l.DelayOverrideNs); err != nil {
+		if err := rows.Scan(&l.PK, &l.Status, &l.Code, &l.TunnelNet, &l.ContributorPK, &l.SideAPK, &l.SideZPK, &l.SideAIfaceName, &l.SideZIfaceName, &l.LinkType, &l.CommittedRTTNs, &l.CommittedJitterNs, &l.Bandwidth, &l.ISISDelayOverrideNs); err != nil {
 			return nil, fmt.Errorf("failed to scan link: %w", err)
 		}
 		links = append(links, l)

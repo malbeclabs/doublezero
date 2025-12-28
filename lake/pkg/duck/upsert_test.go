@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestAI_MCP_Duck_UpsertTableViaCSV(t *testing.T) {
+func TestLake_Duck_UpsertTableViaCSV(t *testing.T) {
 	t.Parallel()
 
 	t.Run("upserts new rows to empty table", func(t *testing.T) {

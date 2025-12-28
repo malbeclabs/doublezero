@@ -83,7 +83,7 @@ func testDB(t *testing.T) duck.DB {
 	return db
 }
 
-func TestAI_MCP_Serviceability_Store_NewStore(t *testing.T) {
+func TestLake_Serviceability_Store_NewStore(t *testing.T) {
 	t.Parallel()
 
 	t.Run("returns error when config validation fails", func(t *testing.T) {
@@ -124,7 +124,7 @@ func TestAI_MCP_Serviceability_Store_NewStore(t *testing.T) {
 	})
 }
 
-func TestAI_MCP_Serviceability_Store_CreateTablesIfNotExists(t *testing.T) {
+func TestLake_Serviceability_Store_CreateTablesIfNotExists(t *testing.T) {
 	t.Parallel()
 
 	t.Run("creates all tables", func(t *testing.T) {
@@ -169,7 +169,7 @@ func TestAI_MCP_Serviceability_Store_CreateTablesIfNotExists(t *testing.T) {
 	})
 }
 
-func TestAI_MCP_Serviceability_Store_ReplaceContributors(t *testing.T) {
+func TestLake_Serviceability_Store_ReplaceContributors(t *testing.T) {
 	t.Parallel()
 
 	t.Run("saves contributors to database", func(t *testing.T) {
@@ -315,7 +315,7 @@ func TestAI_MCP_Serviceability_Store_ReplaceContributors(t *testing.T) {
 	})
 }
 
-func TestAI_MCP_Serviceability_Store_ReplaceDevices(t *testing.T) {
+func TestLake_Serviceability_Store_ReplaceDevices(t *testing.T) {
 	t.Parallel()
 
 	t.Run("saves devices to database", func(t *testing.T) {
@@ -373,7 +373,7 @@ func TestAI_MCP_Serviceability_Store_ReplaceDevices(t *testing.T) {
 	})
 }
 
-func TestAI_MCP_Serviceability_Store_ReplaceUsers(t *testing.T) {
+func TestLake_Serviceability_Store_ReplaceUsers(t *testing.T) {
 	t.Parallel()
 
 	t.Run("saves users to database", func(t *testing.T) {
@@ -432,7 +432,7 @@ func TestAI_MCP_Serviceability_Store_ReplaceUsers(t *testing.T) {
 	})
 }
 
-func TestAI_MCP_Serviceability_Store_ReplaceLinks(t *testing.T) {
+func TestLake_Serviceability_Store_ReplaceLinks(t *testing.T) {
 	t.Parallel()
 
 	t.Run("saves links to database", func(t *testing.T) {
@@ -456,19 +456,19 @@ func TestAI_MCP_Serviceability_Store_ReplaceLinks(t *testing.T) {
 
 		links := []Link{
 			{
-				PK:             linkPK,
-				Status:         "activated",
-				Code:           "LINK001",
-				TunnelNet:      "10.0.0.0/24",
-				ContributorPK:  contributorPK,
-				SideAPK:        sideAPK,
-				SideZPK:        sideZPK,
-				SideAIfaceName: "eth0",
-				SideZIfaceName: "eth1",
-				LinkType:       "WAN",
-				DelayNs:        1000000,
-				JitterNs:       50000,
-				Bandwidth:      10000000000, // 10Gbps
+				PK:                linkPK,
+				Status:            "activated",
+				Code:              "LINK001",
+				TunnelNet:         "10.0.0.0/24",
+				ContributorPK:     contributorPK,
+				SideAPK:           sideAPK,
+				SideZPK:           sideZPK,
+				SideAIfaceName:    "eth0",
+				SideZIfaceName:    "eth1",
+				LinkType:          "WAN",
+				CommittedRTTNs:    1000000,
+				CommittedJitterNs: 50000,
+				Bandwidth:         10000000000, // 10Gbps
 			},
 		}
 
@@ -486,7 +486,7 @@ func TestAI_MCP_Serviceability_Store_ReplaceLinks(t *testing.T) {
 
 		var pk, status, code, tunnelNetStr, contributorPKStr, sideAPKStr, sideZPKStr, sideAIfaceName, sideZIfaceName, linkType string
 		var delayNs, jitterNs, bandwidthBps, delayOverrideNs int64
-		err = conn.QueryRowContext(ctx, "SELECT pk, status, code, tunnel_net, contributor_pk, side_a_pk, side_z_pk, side_a_iface_name, side_z_iface_name, link_type, delay_ns, jitter_ns, bandwidth_bps, delay_override_ns FROM dz_links LIMIT 1").Scan(&pk, &status, &code, &tunnelNetStr, &contributorPKStr, &sideAPKStr, &sideZPKStr, &sideAIfaceName, &sideZIfaceName, &linkType, &delayNs, &jitterNs, &bandwidthBps, &delayOverrideNs)
+		err = conn.QueryRowContext(ctx, "SELECT pk, status, code, tunnel_net, contributor_pk, side_a_pk, side_z_pk, side_a_iface_name, side_z_iface_name, link_type, committed_rtt_ns, committed_jitter_ns, bandwidth_bps, isis_delay_override_ns FROM dz_links LIMIT 1").Scan(&pk, &status, &code, &tunnelNetStr, &contributorPKStr, &sideAPKStr, &sideZPKStr, &sideAIfaceName, &sideZIfaceName, &linkType, &delayNs, &jitterNs, &bandwidthBps, &delayOverrideNs)
 		require.NoError(t, err)
 		require.Equal(t, linkPK, pk)
 		require.Equal(t, "activated", status)
@@ -505,7 +505,7 @@ func TestAI_MCP_Serviceability_Store_ReplaceLinks(t *testing.T) {
 	})
 }
 
-func TestAI_MCP_Serviceability_Store_ReplaceMetros(t *testing.T) {
+func TestLake_Serviceability_Store_ReplaceMetros(t *testing.T) {
 	t.Parallel()
 
 	t.Run("saves metros to database", func(t *testing.T) {
@@ -558,7 +558,7 @@ func TestAI_MCP_Serviceability_Store_ReplaceMetros(t *testing.T) {
 	})
 }
 
-func TestAI_MCP_Serviceability_Store_GetDevices(t *testing.T) {
+func TestLake_Serviceability_Store_GetDevices(t *testing.T) {
 	t.Parallel()
 
 	t.Run("reads devices from database", func(t *testing.T) {
@@ -602,7 +602,7 @@ func TestAI_MCP_Serviceability_Store_GetDevices(t *testing.T) {
 	})
 }
 
-func TestAI_MCP_Serviceability_Store_GetLinks(t *testing.T) {
+func TestLake_Serviceability_Store_GetLinks(t *testing.T) {
 	t.Parallel()
 
 	t.Run("reads links from database", func(t *testing.T) {
@@ -628,7 +628,7 @@ func TestAI_MCP_Serviceability_Store_GetLinks(t *testing.T) {
 		sideAPK := testPK(3)
 		sideZPK := testPK(4)
 
-		_, err = conn.ExecContext(ctx, `INSERT INTO dz_links (pk, status, code, tunnel_net, contributor_pk, side_a_pk, side_z_pk, side_a_iface_name, side_z_iface_name, link_type, delay_ns, jitter_ns, bandwidth_bps, delay_override_ns) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		_, err = conn.ExecContext(ctx, `INSERT INTO dz_links (pk, status, code, tunnel_net, contributor_pk, side_a_pk, side_z_pk, side_a_iface_name, side_z_iface_name, link_type, committed_rtt_ns, committed_jitter_ns, bandwidth_bps, isis_delay_override_ns) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			linkPK, "activated", "LINK1", "10.0.0.0/24", contributorPK, sideAPK, sideZPK, "eth0", "eth1", "WAN", 1000000, 50000, 10000000000, 10)
 		require.NoError(t, err)
 
@@ -644,14 +644,14 @@ func TestAI_MCP_Serviceability_Store_GetLinks(t *testing.T) {
 		require.Equal(t, "eth0", links[0].SideAIfaceName)
 		require.Equal(t, "eth1", links[0].SideZIfaceName)
 		require.Equal(t, "WAN", links[0].LinkType)
-		require.Equal(t, uint64(1000000), links[0].DelayNs)
-		require.Equal(t, uint64(50000), links[0].JitterNs)
+		require.Equal(t, uint64(1000000), links[0].CommittedRTTNs)
+		require.Equal(t, uint64(50000), links[0].CommittedJitterNs)
 		require.Equal(t, uint64(10000000000), links[0].Bandwidth)
-		require.Equal(t, uint64(10), links[0].DelayOverrideNs)
+		require.Equal(t, uint64(10), links[0].ISISDelayOverrideNs)
 	})
 }
 
-func TestAI_MCP_Serviceability_Store_GetContributors(t *testing.T) {
+func TestLake_Serviceability_Store_GetContributors(t *testing.T) {
 	t.Parallel()
 
 	t.Run("reads contributors from database", func(t *testing.T) {
@@ -692,7 +692,7 @@ func TestAI_MCP_Serviceability_Store_GetContributors(t *testing.T) {
 	})
 }
 
-func TestAI_MCP_Serviceability_Store_GetMetros(t *testing.T) {
+func TestLake_Serviceability_Store_GetMetros(t *testing.T) {
 	t.Parallel()
 
 	t.Run("reads metros from database", func(t *testing.T) {

@@ -76,7 +76,7 @@ func testDB(t *testing.T) duck.DB {
 	return db
 }
 
-func TestAI_Querier_ValidateSchema(t *testing.T) {
+func TestLake_Querier_ValidateSchema(t *testing.T) {
 	t.Parallel()
 
 	t.Run("validates schema successfully", func(t *testing.T) {
@@ -203,7 +203,7 @@ func TestAI_Querier_ValidateSchema(t *testing.T) {
 	})
 }
 
-func TestAI_Querier_ValidateSchema_EdgeCases(t *testing.T) {
+func TestLake_Querier_ValidateSchema_EdgeCases(t *testing.T) {
 	t.Parallel()
 
 	t.Run("handles empty schema", func(t *testing.T) {

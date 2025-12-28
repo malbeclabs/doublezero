@@ -26,7 +26,7 @@ func testDBWithConn(t *testing.T) (*duckDB, Connection, error) {
 	return db, conn, nil
 }
 
-func TestAI_MCP_Duck_AppendTableViaCSV(t *testing.T) {
+func TestLake_Duck_AppendTableViaCSV(t *testing.T) {
 	t.Parallel()
 
 	t.Run("appends rows to empty table", func(t *testing.T) {

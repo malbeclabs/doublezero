@@ -62,7 +62,7 @@ func (f *failingDBConn) Close() error {
 	return nil
 }
 
-func TestAI_MCP_TelemetryUsage_Store_NewStore(t *testing.T) {
+func TestLake_TelemetryUsage_Store_NewStore(t *testing.T) {
 	t.Parallel()
 
 	t.Run("returns error when config validation fails", func(t *testing.T) {
@@ -103,7 +103,7 @@ func TestAI_MCP_TelemetryUsage_Store_NewStore(t *testing.T) {
 	})
 }
 
-func TestAI_MCP_TelemetryUsage_Store_CreateTablesIfNotExists(t *testing.T) {
+func TestLake_TelemetryUsage_Store_CreateTablesIfNotExists(t *testing.T) {
 	t.Parallel()
 
 	t.Run("creates table successfully", func(t *testing.T) {
@@ -146,7 +146,7 @@ func TestAI_MCP_TelemetryUsage_Store_CreateTablesIfNotExists(t *testing.T) {
 	})
 }
 
-func TestAI_MCP_TelemetryUsage_Store_GetMaxTimestamp(t *testing.T) {
+func TestLake_TelemetryUsage_Store_GetMaxTimestamp(t *testing.T) {
 	t.Parallel()
 
 	t.Run("returns nil for empty table", func(t *testing.T) {
@@ -238,7 +238,7 @@ func TestAI_MCP_TelemetryUsage_Store_GetMaxTimestamp(t *testing.T) {
 	})
 }
 
-func TestAI_MCP_TelemetryUsage_Store_UpsertInterfaceUsage(t *testing.T) {
+func TestLake_TelemetryUsage_Store_UpsertInterfaceUsage(t *testing.T) {
 	t.Parallel()
 
 	t.Run("upserts new rows to empty table", func(t *testing.T) {

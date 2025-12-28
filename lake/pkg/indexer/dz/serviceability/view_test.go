@@ -30,7 +30,7 @@ func (m *MockServiceabilityRPC) GetProgramData(ctx context.Context) (*serviceabi
 	return &serviceability.ProgramData{}, nil
 }
 
-func TestAI_MCP_Serviceability_View_Ready(t *testing.T) {
+func TestLake_Serviceability_View_Ready(t *testing.T) {
 	t.Parallel()
 
 	t.Run("returns false when not ready", func(t *testing.T) {
@@ -84,7 +84,7 @@ func TestAI_MCP_Serviceability_View_Ready(t *testing.T) {
 	})
 }
 
-func TestAI_MCP_Serviceability_View_WaitReady(t *testing.T) {
+func TestLake_Serviceability_View_WaitReady(t *testing.T) {
 	t.Parallel()
 
 	t.Run("returns immediately when already ready", func(t *testing.T) {
@@ -144,7 +144,7 @@ func TestAI_MCP_Serviceability_View_WaitReady(t *testing.T) {
 	})
 }
 
-func TestAI_MCP_Serviceability_View_NewServiceabilityView(t *testing.T) {
+func TestLake_Serviceability_View_NewServiceabilityView(t *testing.T) {
 	t.Parallel()
 
 	t.Run("returns error when database initialization fails", func(t *testing.T) {
@@ -169,7 +169,7 @@ func TestAI_MCP_Serviceability_View_NewServiceabilityView(t *testing.T) {
 	})
 }
 
-func TestAI_MCP_Serviceability_View_ConvertContributors(t *testing.T) {
+func TestLake_Serviceability_View_ConvertContributors(t *testing.T) {
 	t.Parallel()
 
 	t.Run("converts onchain contributors to domain types", func(t *testing.T) {
@@ -202,7 +202,7 @@ func TestAI_MCP_Serviceability_View_ConvertContributors(t *testing.T) {
 	})
 }
 
-func TestAI_MCP_Serviceability_View_ConvertDevices(t *testing.T) {
+func TestLake_Serviceability_View_ConvertDevices(t *testing.T) {
 	t.Parallel()
 
 	t.Run("converts onchain devices to domain types", func(t *testing.T) {
@@ -238,7 +238,7 @@ func TestAI_MCP_Serviceability_View_ConvertDevices(t *testing.T) {
 	})
 }
 
-func TestAI_MCP_Serviceability_View_ConvertUsers(t *testing.T) {
+func TestLake_Serviceability_View_ConvertUsers(t *testing.T) {
 	t.Parallel()
 
 	t.Run("converts onchain users to domain types", func(t *testing.T) {
@@ -265,7 +265,7 @@ func TestAI_MCP_Serviceability_View_ConvertUsers(t *testing.T) {
 	})
 }
 
-func TestAI_MCP_Serviceability_View_ConvertMetros(t *testing.T) {
+func TestLake_Serviceability_View_ConvertMetros(t *testing.T) {
 	t.Parallel()
 
 	t.Run("converts onchain exchanges to domain metros", func(t *testing.T) {
@@ -297,7 +297,7 @@ func TestAI_MCP_Serviceability_View_ConvertMetros(t *testing.T) {
 	})
 }
 
-func TestAI_MCP_Serviceability_View_ConvertLinks(t *testing.T) {
+func TestLake_Serviceability_View_ConvertLinks(t *testing.T) {
 	t.Parallel()
 
 	t.Run("converts onchain links to domain types", func(t *testing.T) {
@@ -322,10 +322,10 @@ func TestAI_MCP_Serviceability_View_ConvertLinks(t *testing.T) {
 				SideAIfaceName:    "eth0",
 				SideZIfaceName:    "eth1",
 				LinkType:          serviceability.LinkLinkTypeWAN,
-				DelayNs:           5000000,    // 5ms
-				JitterNs:          1000000,    // 1ms
-				Bandwidth:         1000000000, // 1 Gbps
-				DelayOverrideNs:   0,
+			DelayNs:           5000000,    // 5ms (onchain field name)
+			JitterNs:          1000000,    // 1ms (onchain field name)
+			Bandwidth:         1000000000, // 1 Gbps
+			DelayOverrideNs:   0,           // onchain field name
 			},
 		}
 
@@ -342,10 +342,10 @@ func TestAI_MCP_Serviceability_View_ConvertLinks(t *testing.T) {
 		require.Equal(t, "eth0", result[0].SideAIfaceName)
 		require.Equal(t, "eth1", result[0].SideZIfaceName)
 		require.Equal(t, "WAN", result[0].LinkType)
-		require.Equal(t, uint64(5000000), result[0].DelayNs)
-		require.Equal(t, uint64(1000000), result[0].JitterNs)
+		require.Equal(t, uint64(5000000), result[0].CommittedRTTNs)
+		require.Equal(t, uint64(1000000), result[0].CommittedJitterNs)
 		require.Equal(t, uint64(1000000000), result[0].Bandwidth)
-		require.Equal(t, uint64(0), result[0].DelayOverrideNs)
+		require.Equal(t, uint64(0), result[0].ISISDelayOverrideNs)
 	})
 
 	t.Run("handles empty slice", func(t *testing.T) {
@@ -412,7 +412,7 @@ func newTestGeoIPStore(t *testing.T) (*testGeoIPStore, error) {
 	}, nil
 }
 
-func TestAI_MCP_Serviceability_View_Refresh(t *testing.T) {
+func TestLake_Serviceability_View_Refresh(t *testing.T) {
 	t.Parallel()
 
 	t.Run("stores all data on refresh", func(t *testing.T) {
@@ -531,10 +531,10 @@ func TestAI_MCP_Serviceability_View_Refresh(t *testing.T) {
 							SideAIfaceName:    "eth0",
 							SideZIfaceName:    "eth1",
 							LinkType:          serviceability.LinkLinkTypeWAN,
-							DelayNs:           5000000,
-							JitterNs:          1000000,
-							Bandwidth:         1000000000,
-							DelayOverrideNs:   0,
+						DelayNs:           5000000,    // onchain field name
+						JitterNs:          1000000,    // onchain field name
+						Bandwidth:         1000000000,
+						DelayOverrideNs:   0,           // onchain field name
 						},
 					},
 				}, nil

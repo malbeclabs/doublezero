@@ -66,7 +66,7 @@ func testDB(t *testing.T) duck.DB {
 	})
 	return db
 }
-func TestAI_MCP_Solana_View_Ready(t *testing.T) {
+func TestLake_Solana_View_Ready(t *testing.T) {
 	t.Parallel()
 
 	t.Run("returns false when not ready", func(t *testing.T) {
@@ -120,7 +120,7 @@ func TestAI_MCP_Solana_View_Ready(t *testing.T) {
 	})
 }
 
-func TestAI_MCP_Solana_View_WaitReady(t *testing.T) {
+func TestLake_Solana_View_WaitReady(t *testing.T) {
 	t.Parallel()
 
 	t.Run("returns immediately when already ready", func(t *testing.T) {
@@ -218,7 +218,7 @@ func newTestGeoIPStore(t *testing.T) (*testGeoIPStore, error) {
 	}, nil
 }
 
-func TestAI_MCP_Solana_View_Refresh(t *testing.T) {
+func TestLake_Solana_View_Refresh(t *testing.T) {
 	t.Parallel()
 
 	t.Run("stores all data on refresh", func(t *testing.T) {

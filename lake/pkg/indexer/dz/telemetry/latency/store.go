@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/malbeclabs/doublezero/lake/pkg/duck"
 )
@@ -45,34 +46,43 @@ func NewStore(cfg StoreConfig) (*Store, error) {
 
 func (s *Store) CreateTablesIfNotExists() error {
 	tablePrefix := s.db.Catalog() + "." + s.db.Schema() + "."
-	schemas := []string{
-		`CREATE TABLE IF NOT EXISTS ` + tablePrefix + `dz_device_link_circuits (
-			code VARCHAR,
+	deviceLinkLatencySamplesTableName := tablePrefix + "dz_device_link_latency_samples"
+	internetMetroLatencySamplesTableName := tablePrefix + "dz_internet_metro_latency_samples"
+
+	// Check if we're using Duck Lake (which supports partitioning)
+	_, isDuckLake := s.db.(*duck.Lake)
+
+	deviceLinkTableSQL := `
+		CREATE TABLE IF NOT EXISTS ` + deviceLinkLatencySamplesTableName + ` (
+			time TIMESTAMP NOT NULL,
+			epoch BIGINT,
+			sample_index INTEGER,
 			origin_device_pk VARCHAR,
 			target_device_pk VARCHAR,
 			link_pk VARCHAR,
-			link_code VARCHAR,
-			link_type VARCHAR,
-			contributor_code VARCHAR,
-			committed_rtt DOUBLE,
-			committed_jitter DOUBLE
-		)`,
-		`CREATE TABLE IF NOT EXISTS ` + tablePrefix + `dz_device_link_latency_samples (
-			circuit_code VARCHAR,
-			epoch BIGINT,
-			sample_index INTEGER,
-			timestamp_us BIGINT,
-			rtt_us BIGINT
-		)`,
-		`CREATE TABLE IF NOT EXISTS ` + tablePrefix + `dz_internet_metro_latency_samples (
-			circuit_code VARCHAR,
-			data_provider VARCHAR,
-			epoch BIGINT,
-			sample_index INTEGER,
-			timestamp_us BIGINT,
-			rtt_us BIGINT
-		)`,
+			rtt_us BIGINT,
+			loss BOOLEAN
+		)`
+	if isDuckLake {
+		deviceLinkTableSQL += `;
+		ALTER TABLE ` + deviceLinkLatencySamplesTableName + ` SET PARTITIONED BY (year(time), month(time), day(time));`
 	}
+
+	internetMetroTableSQL := `CREATE TABLE IF NOT EXISTS ` + internetMetroLatencySamplesTableName + ` (
+			time TIMESTAMP NOT NULL,
+			epoch BIGINT,
+			sample_index INTEGER,
+			origin_metro_pk VARCHAR,
+			target_metro_pk VARCHAR,
+			data_provider VARCHAR,
+			rtt_us BIGINT
+		)`
+	if isDuckLake {
+		internetMetroTableSQL += `;
+		ALTER TABLE ` + internetMetroLatencySamplesTableName + ` SET PARTITIONED BY (year(time), month(time), day(time));`
+	}
+
+	schemas := []string{deviceLinkTableSQL, internetMetroTableSQL}
 
 	ctx := context.Background()
 	conn, err := s.db.Conn(ctx)
@@ -89,21 +99,6 @@ func (s *Store) CreateTablesIfNotExists() error {
 	return nil
 }
 
-func (s *Store) ReplaceDeviceLinkCircuits(ctx context.Context, circuits []DeviceLinkCircuit) error {
-	conn, err := s.db.Conn(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get connection: %w", err)
-	}
-	defer conn.Close()
-	return duck.ReplaceTableViaCSV(ctx, s.log, conn, "dz_device_link_circuits", len(circuits), func(w *csv.Writer, i int) error {
-		c := circuits[i]
-		return w.Write([]string{
-			c.Code, c.OriginDevicePK, c.TargetDevicePK, c.LinkPK, c.LinkCode, c.LinkType, c.ContributorCode,
-			fmt.Sprintf("%.6f", c.CommittedRTT), fmt.Sprintf("%.6f", c.CommittedJitter),
-		})
-	}, []string{"code"})
-}
-
 func (s *Store) AppendDeviceLinkLatencySamples(ctx context.Context, samples []DeviceLinkLatencySample) error {
 	conn, err := s.db.Conn(ctx)
 	if err != nil {
@@ -118,12 +113,19 @@ func (s *Store) AppendDeviceLinkLatencySamples(ctx context.Context, samples []De
 		len(samples),
 		func(w *csv.Writer, i int) error {
 			sample := samples[i]
+			loss := "false"
+			if sample.RTTMicroseconds == 0 {
+				loss = "true"
+			}
 			return w.Write([]string{
-				sample.CircuitCode,
+				sample.Time.UTC().Format(time.RFC3339Nano),
 				fmt.Sprintf("%d", sample.Epoch),
 				fmt.Sprintf("%d", sample.SampleIndex),
-				fmt.Sprintf("%d", sample.TimestampMicroseconds),
+				sample.OriginDevicePK,
+				sample.TargetDevicePK,
+				sample.LinkPK,
 				fmt.Sprintf("%d", sample.RTTMicroseconds),
+				loss,
 			})
 		},
 	)
@@ -144,11 +146,12 @@ func (s *Store) AppendInternetMetroLatencySamples(ctx context.Context, samples [
 		func(w *csv.Writer, i int) error {
 			sample := samples[i]
 			return w.Write([]string{
-				sample.CircuitCode,
-				sample.DataProvider,
+				sample.Time.UTC().Format(time.RFC3339Nano),
 				fmt.Sprintf("%d", sample.Epoch),
 				fmt.Sprintf("%d", sample.SampleIndex),
-				fmt.Sprintf("%d", sample.TimestampMicroseconds),
+				sample.OriginMetroPK,
+				sample.TargetMetroPK,
+				sample.DataProvider,
 				fmt.Sprintf("%d", sample.RTTMicroseconds),
 			})
 		},
@@ -162,9 +165,9 @@ func (s *Store) GetExistingMaxSampleIndices() (map[string]int, error) {
 		return nil, fmt.Errorf("failed to get connection: %w", err)
 	}
 	defer conn.Close()
-	query := `SELECT circuit_code, epoch, MAX(sample_index) as max_idx
+	query := `SELECT origin_device_pk, target_device_pk, link_pk, epoch, MAX(sample_index) as max_idx
 	          FROM dz_device_link_latency_samples
-	          GROUP BY circuit_code, epoch`
+	          GROUP BY origin_device_pk, target_device_pk, link_pk, epoch`
 	rows, err := conn.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query existing max indices: %w", err)
@@ -173,14 +176,14 @@ func (s *Store) GetExistingMaxSampleIndices() (map[string]int, error) {
 
 	result := make(map[string]int)
 	for rows.Next() {
-		var circuitCode string
+		var originDevicePK, targetDevicePK, linkPK string
 		var epoch uint64
 		var maxIdx sql.NullInt64
-		if err := rows.Scan(&circuitCode, &epoch, &maxIdx); err != nil {
+		if err := rows.Scan(&originDevicePK, &targetDevicePK, &linkPK, &epoch, &maxIdx); err != nil {
 			return nil, fmt.Errorf("failed to scan max index: %w", err)
 		}
 		if maxIdx.Valid {
-			key := fmt.Sprintf("%s:%d", circuitCode, epoch)
+			key := fmt.Sprintf("%s:%s:%s:%d", originDevicePK, targetDevicePK, linkPK, epoch)
 			result[key] = int(maxIdx.Int64)
 		}
 	}
@@ -197,9 +200,9 @@ func (s *Store) GetExistingInternetMaxSampleIndices() (map[string]int, error) {
 		return nil, fmt.Errorf("failed to get connection: %w", err)
 	}
 	defer conn.Close()
-	query := `SELECT circuit_code, data_provider, epoch, MAX(sample_index) as max_idx
+	query := `SELECT origin_metro_pk, target_metro_pk, data_provider, epoch, MAX(sample_index) as max_idx
 	          FROM dz_internet_metro_latency_samples
-	          GROUP BY circuit_code, data_provider, epoch`
+	          GROUP BY origin_metro_pk, target_metro_pk, data_provider, epoch`
 	rows, err := conn.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query existing max indices: %w", err)
@@ -208,14 +211,14 @@ func (s *Store) GetExistingInternetMaxSampleIndices() (map[string]int, error) {
 
 	result := make(map[string]int)
 	for rows.Next() {
-		var circuitCode, dataProvider string
+		var originMetroPK, targetMetroPK, dataProvider string
 		var epoch uint64
 		var maxIdx sql.NullInt64
-		if err := rows.Scan(&circuitCode, &dataProvider, &epoch, &maxIdx); err != nil {
+		if err := rows.Scan(&originMetroPK, &targetMetroPK, &dataProvider, &epoch, &maxIdx); err != nil {
 			return nil, fmt.Errorf("failed to scan max index: %w", err)
 		}
 		if maxIdx.Valid {
-			key := fmt.Sprintf("%s:%s:%d", circuitCode, dataProvider, epoch)
+			key := fmt.Sprintf("%s:%s:%s:%d", originMetroPK, targetMetroPK, dataProvider, epoch)
 			result[key] = int(maxIdx.Int64)
 		}
 	}

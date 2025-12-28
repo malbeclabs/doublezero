@@ -28,7 +28,7 @@ Be explicit whether results refer to gossip nodes or staked validators.
 			Description: "Solana gossip participants (includes validators and non-validators). Join to vote accounts: solana_gossip_nodes.pubkey = solana_vote_accounts.node_pubkey. Can map to DZ users via solana_gossip_nodes.gossip_ip = dz_users.dz_ip.",
 			Columns: []schematypes.ColumnInfo{
 				{Name: "snapshot_timestamp", Type: "TIMESTAMP", Description: "Snapshot timestamp"},
-				{Name: "current_epoch", Type: "INTEGER", Description: "Epoch at snapshot time"},
+				{Name: "current_epoch", Type: "INTEGER", Description: "Solana blockchain epoch at snapshot time"},
 				{Name: "pubkey", Type: "VARCHAR", Description: "Node public key"},
 				{Name: "gossip_ip", Type: "VARCHAR", Description: "Gossip IP address"},
 				{Name: "gossip_port", Type: "INTEGER", Description: "Gossip port"},
@@ -42,7 +42,7 @@ Be explicit whether results refer to gossip nodes or staked validators.
 			Description: "Solana vote accounts (validators). Join: solana_vote_accounts.node_pubkey = solana_gossip_nodes.pubkey. Filter for staked validators using epoch_vote_account = true AND activated_stake_lamports > 0.",
 			Columns: []schematypes.ColumnInfo{
 				{Name: "snapshot_timestamp", Type: "TIMESTAMP", Description: "Snapshot timestamp"},
-				{Name: "current_epoch", Type: "INTEGER", Description: "Epoch at snapshot time"},
+				{Name: "current_epoch", Type: "INTEGER", Description: "Solana blockchain epoch at snapshot time"},
 				{Name: "vote_pubkey", Type: "VARCHAR", Description: "Vote account public key"},
 				{Name: "node_pubkey", Type: "VARCHAR", Description: "Node public key"},
 				{Name: "activated_stake_lamports", Type: "BIGINT", Description: "Activated stake (lamports)"},
@@ -57,7 +57,7 @@ Be explicit whether results refer to gossip nodes or staked validators.
 			Description: "Leader schedule for an epoch. Join: solana_leader_schedule.node_pubkey = solana_vote_accounts.node_pubkey.",
 			Columns: []schematypes.ColumnInfo{
 				{Name: "snapshot_timestamp", Type: "TIMESTAMP", Description: "Snapshot timestamp"},
-				{Name: "current_epoch", Type: "INTEGER", Description: "Epoch at snapshot time"},
+				{Name: "current_epoch", Type: "INTEGER", Description: "Solana blockchain epoch at snapshot time"},
 				{Name: "node_pubkey", Type: "VARCHAR", Description: "Node public key"},
 				{Name: "slots", Type: "INTEGER[]", Description: "Slots where the node is leader"},
 				{Name: "slot_count", Type: "INTEGER", Description: "Number of leader slots"},

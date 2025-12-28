@@ -12,11 +12,11 @@ Use for DZ performance measurements:
 - metro↔metro Internet RTT samples
 - time-series and epoch-based analysis
 
-Comparison rule (DZ vs Internet):
+COMPARISON RULE (DZ vs Internet):
 - Only compare DZ WAN links (link_type = 'WAN') to Internet metro pairs.
 - Do not compare DZX (intra-metro) links to Internet paths.
 
-Loss scope:
+LOSS SCOPE:
 - Device-link telemetry uses rtt_us = 0 to indicate loss.
 - Internet metro telemetry has no loss signal.
 `,
@@ -41,7 +41,7 @@ Loss scope:
 			Description: "RTT samples for device↔device circuits (probes). Join: circuit_code = dz_device_link_circuits.code. Loss convention: rtt_us = 0 indicates loss; use WHERE rtt_us > 0 for latency stats.",
 			Columns: []schematypes.ColumnInfo{
 				{Name: "circuit_code", Type: "VARCHAR", Description: "Foreign key → dz_device_link_circuits.code"},
-				{Name: "epoch", Type: "BIGINT", Description: "Solana epoch"},
+				{Name: "epoch", Type: "BIGINT", Description: "DZ ledger blockchain epoch, not unix timestamp "},
 				{Name: "sample_index", Type: "INTEGER", Description: "Sample index within epoch (0-based)"},
 				{Name: "timestamp_us", Type: "BIGINT", Description: "Timestamp (microseconds since UNIX epoch)"},
 				{Name: "rtt_us", Type: "BIGINT", Description: "RTT in microseconds; rtt_us = 0 indicates loss"},
@@ -53,7 +53,7 @@ Loss scope:
 			Columns: []schematypes.ColumnInfo{
 				{Name: "circuit_code", Type: "VARCHAR", Description: "Metro pair code"},
 				{Name: "data_provider", Type: "VARCHAR", Description: "Data provider"},
-				{Name: "epoch", Type: "BIGINT", Description: "Solana epoch"},
+				{Name: "epoch", Type: "BIGINT", Description: "DZ ledger blockchain epoch, not unix timestamp "},
 				{Name: "sample_index", Type: "INTEGER", Description: "Sample index within epoch (0-based)"},
 				{Name: "timestamp_us", Type: "BIGINT", Description: "Timestamp (microseconds since UNIX epoch)"},
 				{Name: "rtt_us", Type: "BIGINT", Description: "RTT in microseconds"},

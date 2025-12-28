@@ -112,22 +112,24 @@ func testIndexer(t *testing.T) *indexer.Indexer {
 	return indexer
 }
 
-func testQuerier(t *testing.T) *querier.Querier {
+func testQuerier(t *testing.T, idx *indexer.Indexer) *querier.Querier {
 	querier, err := querier.New(querier.Config{
-		Logger: testLogger(t),
-		DB:     testDB(t),
+		Logger:  testLogger(t),
+		DB:      testDB(t),
+		Schemas: idx.Schemas(),
 	})
 	require.NoError(t, err)
 	return querier
 }
 
 func validConfig(t *testing.T) Config {
+	idx := testIndexer(t)
 	return Config{
 		Version:    "test",
 		ListenAddr: "localhost:8080",
 		Logger:     slog.Default(),
-		Indexer:    testIndexer(t),
-		Querier:    testQuerier(t),
+		Indexer:    idx,
+		Querier:    testQuerier(t, idx),
 	}
 }
 

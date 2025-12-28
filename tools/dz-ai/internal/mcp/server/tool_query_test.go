@@ -70,10 +70,11 @@ func TestAI_MCP_Server_ToolQuery_Register(t *testing.T) {
 	t.Run("registers tool successfully", func(t *testing.T) {
 		t.Parallel()
 
+		idx := testIndexer(t)
 		err := RegisterQueryTool(slog.New(slog.NewTextHandler(os.Stderr, nil)), mcp.NewServer(&mcp.Implementation{
 			Name:    "Test Server",
 			Version: "1.0.0",
-		}, nil), testQuerier(t), "test-query", "test description")
+		}, nil), testQuerier(t, idx), "test-query", "test description")
 		require.NoError(t, err)
 	})
 }
@@ -97,9 +98,11 @@ func TestAI_MCP_Server_ToolQuery_HandleQuery(t *testing.T) {
 		require.NoError(t, err)
 
 		logger := testLogger(t)
+		idx := testIndexer(t)
 		q, err := querier.New(querier.Config{
-			Logger: logger,
-			DB:     db,
+			Logger:  logger,
+			DB:      db,
+			Schemas: idx.Schemas(),
 		})
 		require.NoError(t, err)
 
@@ -135,9 +138,11 @@ func TestAI_MCP_Server_ToolQuery_HandleQuery(t *testing.T) {
 		require.NoError(t, err)
 
 		logger := testLogger(t)
+		idx := testIndexer(t)
 		q, err := querier.New(querier.Config{
-			Logger: logger,
-			DB:     db,
+			Logger:  logger,
+			DB:      db,
+			Schemas: idx.Schemas(),
 		})
 		require.NoError(t, err)
 
@@ -166,9 +171,11 @@ func TestAI_MCP_Server_ToolQuery_HandleQuery(t *testing.T) {
 		require.NoError(t, err)
 
 		logger := testLogger(t)
+		idx := testIndexer(t)
 		q, err := querier.New(querier.Config{
-			Logger: logger,
-			DB:     db,
+			Logger:  logger,
+			DB:      db,
+			Schemas: idx.Schemas(),
 		})
 		require.NoError(t, err)
 
@@ -197,9 +204,11 @@ func TestAI_MCP_Server_ToolQuery_HandleQuery(t *testing.T) {
 		require.NoError(t, err)
 
 		logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+		idx := testIndexer(t)
 		q, err := querier.New(querier.Config{
-			Logger: logger,
-			DB:     db,
+			Logger:  logger,
+			DB:      db,
+			Schemas: idx.Schemas(),
 		})
 		require.NoError(t, err)
 
@@ -218,9 +227,11 @@ func TestAI_MCP_Server_ToolQuery_HandleQuery(t *testing.T) {
 		db := testDB(t)
 
 		logger := testLogger(t)
+		idx := testIndexer(t)
 		q, err := querier.New(querier.Config{
-			Logger: logger,
-			DB:     db,
+			Logger:  logger,
+			DB:      db,
+			Schemas: idx.Schemas(),
 		})
 		require.NoError(t, err)
 
@@ -235,9 +246,11 @@ func TestAI_MCP_Server_ToolQuery_HandleQuery(t *testing.T) {
 		t.Parallel()
 
 		logger := testLogger(t)
+		idx := testIndexer(t)
 		q, err := querier.New(querier.Config{
-			Logger: logger,
-			DB:     &failingDB{},
+			Logger:  logger,
+			DB:      &failingDB{},
+			Schemas: idx.Schemas(),
 		})
 		require.NoError(t, err)
 

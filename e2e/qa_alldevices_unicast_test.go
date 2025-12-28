@@ -27,6 +27,8 @@ var (
 
 const latencyThresholdMs = 50
 
+type DeviceAssignments map[string][]*qa.Device
+type HostLatencies map[string]map[string]float64
 type deviceTestResult struct {
 	DeviceCode      string
 	Host            string
@@ -47,6 +49,8 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 	clients := test.Clients()
 	require.GreaterOrEqual(t, len(clients), 2, "At least 2 clients are required for connectivity testing")
 
+	// Filter devices to only include those with sufficient capacity and skip test devices, and
+	// shuffle them to avoid always testing connectivity via the same devices.
 	devices := test.ValidDevices(2)
 	if len(devices) == 0 {
 		t.Skip("No valid devices found with sufficient capacity")
@@ -67,7 +71,7 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 	// Gather latency data from each client.
 	// hostLatencies: host -> deviceCode -> latencyMs
 	log.Info("Collecting host-to-device latencies")
-	hostLatencies := make(map[string]map[string]float64)
+	hostLatencies := make(HostLatencies)
 	for _, client := range clients {
 		latencies, err := client.GetLatency(ctx)
 		require.NoError(t, err, "failed to get latency from host %s", client.Host)
@@ -218,8 +222,8 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 // assignDevicesToHosts assigns each device to a host based on latency.
 // If multiple hosts have <50ms latency, the device goes to the host with fewest devices.
 // Otherwise, the device goes to the host with the best latency.
-func assignDevicesToHosts(devices []*qa.Device, clients []*qa.Client, hostLatencies map[string]map[string]float64) map[string][]*qa.Device {
-	deviceAssignments := make(map[string][]*qa.Device)
+func assignDevicesToHosts(devices []*qa.Device, clients []*qa.Client, hostLatencies HostLatencies) DeviceAssignments {
+	deviceAssignments := make(DeviceAssignments)
 
 	for _, device := range devices {
 		var lowLatencyHosts []string
@@ -265,7 +269,7 @@ func assignDevicesToHosts(devices []*qa.Device, clients []*qa.Client, hostLatenc
 	return deviceAssignments
 }
 
-func printTestReportTable(log *slog.Logger, deviceAssignments map[string][]*qa.Device, hostLatencies map[string]map[string]float64, results map[string]*deviceTestResult) {
+func printTestReportTable(log *slog.Logger, deviceAssignments DeviceAssignments, hostLatencies HostLatencies, results map[string]*deviceTestResult) {
 	hosts := slices.Sorted(maps.Keys(deviceAssignments))
 	maxDevices := 0
 	colWidths := make(map[string]int)

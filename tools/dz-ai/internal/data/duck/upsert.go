@@ -220,7 +220,6 @@ func UpsertTableViaCSV(ctx context.Context, log *slog.Logger, conn Connection, t
 		}
 
 		if err := tx.Commit(); err != nil {
-			log.Error("transaction commit failed", "table", tableName, "error", err)
 			return fmt.Errorf("failed to commit transaction for %s: %w", tableName, err)
 		}
 		return nil

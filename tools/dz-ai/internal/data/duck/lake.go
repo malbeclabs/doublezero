@@ -232,8 +232,6 @@ func NewLake(ctx context.Context, log *slog.Logger, catalogName, catalogURI, sto
 			// For IRSA, use PROVIDER credential_chain with VALIDATION 'none' to skip validation
 			// CHAIN specifies the order: STS (for IRSA), env vars, EC2 instance metadata, config files
 			secretSQL += ", PROVIDER credential_chain"
-			secretSQL += ", CHAIN 'env;instance;config'"
-			secretSQL += ", VALIDATION 'none'"
 		}
 		if cfg.Endpoint != "" {
 			// DuckDB's S3 secret ENDPOINT expects just host:port, not a full URL
@@ -246,15 +244,7 @@ func NewLake(ctx context.Context, log *slog.Logger, catalogName, catalogURI, sto
 		if cfg.Region != "" {
 			secretSQL += fmt.Sprintf(", REGION '%s'", cfg.Region)
 		}
-		urlStyle := cfg.URLStyle
-		if urlStyle == "" {
-			// Default based on whether it's AWS S3 or MinIO
-			if cfg.Endpoint == "" || strings.Contains(cfg.Endpoint, "amazonaws.com") {
-				urlStyle = "virtual" // AWS S3 default
-			} else {
-				urlStyle = "path" // MinIO default
-			}
-		}
+		urlStyle := "path"
 		secretSQL += fmt.Sprintf(", URL_STYLE '%s'", urlStyle)
 		useSSL := cfg.UseSSL
 		if cfg.Endpoint != "" && !strings.Contains(cfg.Endpoint, "amazonaws.com") {

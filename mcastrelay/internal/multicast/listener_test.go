@@ -2,6 +2,7 @@ package multicast
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net"
 	"sync"
@@ -348,7 +349,7 @@ func (tl *TestableListener) Run(ctx context.Context) error {
 			if isTimeout(err) {
 				continue
 			}
-			if err == net.ErrClosed {
+			if errors.Is(err, net.ErrClosed) {
 				return nil
 			}
 			continue

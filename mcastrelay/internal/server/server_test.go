@@ -39,7 +39,6 @@ func TestNew_ValidConfig(t *testing.T) {
 	cfg := &Config{
 		Logger:        slog.Default(),
 		Listener:      createTestMulticastListener(t),
-		GRPCListener:  grpcLis,
 		ChannelBuffer: 256,
 	}
 
@@ -61,7 +60,6 @@ func TestServer_Subscribe_ReceivesPackets(t *testing.T) {
 	cfg := &Config{
 		Logger:        slog.Default(),
 		Listener:      mcastListener,
-		GRPCListener:  grpcLis,
 		ChannelBuffer: 256,
 	}
 
@@ -133,7 +131,6 @@ func TestServer_Subscribe_MultipleClients(t *testing.T) {
 	cfg := &Config{
 		Logger:        slog.Default(),
 		Listener:      mcastListener,
-		GRPCListener:  grpcLis,
 		ChannelBuffer: 256,
 	}
 
@@ -204,7 +201,6 @@ func TestServer_SubscriberCount(t *testing.T) {
 	cfg := &Config{
 		Logger:        slog.Default(),
 		Listener:      mcastListener,
-		GRPCListener:  grpcLis,
 		ChannelBuffer: 256,
 	}
 
@@ -251,7 +247,6 @@ func TestServer_GracefulStop(t *testing.T) {
 	cfg := &Config{
 		Logger:        slog.Default(),
 		Listener:      mcastListener,
-		GRPCListener:  grpcLis,
 		ChannelBuffer: 256,
 	}
 
@@ -333,7 +328,7 @@ func TestIntegration_UDPToGRPC(t *testing.T) {
 			default:
 			}
 
-			receiver.SetReadDeadline(time.Now().Add(50 * time.Millisecond))
+			_ = receiver.SetReadDeadline(time.Now().Add(50 * time.Millisecond))
 			n, _, err := receiver.ReadFromUDP(buf)
 			if err != nil {
 				continue
@@ -360,7 +355,6 @@ func TestIntegration_UDPToGRPC(t *testing.T) {
 	cfg := &Config{
 		Logger:        slog.Default(),
 		Listener:      mcastListener,
-		GRPCListener:  grpcLis,
 		ChannelBuffer: 256,
 	}
 
@@ -457,7 +451,6 @@ func TestServer_Subscribe_StreamsData(t *testing.T) {
 	cfg := &Config{
 		Logger:        slog.Default(),
 		Listener:      mcastListener,
-		GRPCListener:  grpcLis,
 		ChannelBuffer: 256,
 	}
 

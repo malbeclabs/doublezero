@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-	"sync"
 	"sync/atomic"
 
 	"github.com/malbeclabs/doublezero/mcastrelay/internal/multicast"
@@ -18,20 +17,18 @@ import (
 type Server struct {
 	pb.UnimplementedRelayServiceServer
 
-	log      *slog.Logger
-	listener *multicast.Listener
-	grpc     *grpc.Server
-	addr     net.Addr
+	log           *slog.Logger
+	listener      *multicast.Listener
+	grpc          *grpc.Server
+	channelBuffer int
 
 	subscriberCount atomic.Int64
-	mu              sync.RWMutex
 }
 
 // Config holds configuration for the gRPC server.
 type Config struct {
 	Logger        *slog.Logger
 	Listener      *multicast.Listener
-	GRPCListener  net.Listener
 	ChannelBuffer int // Buffer size for per-subscriber channels
 }
 
@@ -54,18 +51,15 @@ func New(cfg *Config) (*Server, error) {
 	if cfg.Listener == nil {
 		return nil, fmt.Errorf("multicast listener is required")
 	}
-	if cfg.GRPCListener == nil {
-		return nil, fmt.Errorf("gRPC listener is required")
-	}
 	if cfg.ChannelBuffer <= 0 {
 		cfg.ChannelBuffer = 256
 	}
 
 	s := &Server{
-		log:      cfg.Logger,
-		listener: cfg.Listener,
-		grpc:     grpc.NewServer(),
-		addr:     cfg.GRPCListener.Addr(),
+		log:           cfg.Logger,
+		listener:      cfg.Listener,
+		grpc:          grpc.NewServer(),
+		channelBuffer: cfg.ChannelBuffer,
 	}
 
 	pb.RegisterRelayServiceServer(s.grpc, s)
@@ -97,7 +91,7 @@ func (s *Server) Subscribe(req *pb.SubscribeRequest, stream pb.RelayService_Subs
 	ctx := stream.Context()
 
 	// Create a buffered channel for this subscriber
-	packets := make(chan multicast.Packet, 256)
+	packets := make(chan multicast.Packet, s.channelBuffer)
 
 	// Subscribe to the multicast listener
 	unsubscribe := s.listener.Subscribe(packets)

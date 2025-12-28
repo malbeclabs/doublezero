@@ -22,13 +22,14 @@ type Packet struct {
 
 // Listener listens for UDP multicast packets and broadcasts them to subscribers.
 type Listener struct {
-	log              *slog.Logger
-	multicastIP      net.IP
-	port             int
-	interfaceName    string
-	bufferSize       int // per-packet read buffer
-	socketBufferSize int // OS socket receive buffer (SO_RCVBUF)
-	readTimeout      time.Duration
+	log               *slog.Logger
+	multicastIP       net.IP
+	port              int
+	interfaceName     string
+	bufferSize        int // per-packet read buffer
+	socketBufferSize  int // OS socket receive buffer (SO_RCVBUF)
+	readTimeout       time.Duration
+	multicastLoopback bool
 
 	mu          sync.RWMutex
 	subscribers map[chan<- Packet]struct{}
@@ -36,13 +37,14 @@ type Listener struct {
 
 // Config holds configuration for the multicast listener.
 type Config struct {
-	Logger           *slog.Logger
-	MulticastIP      string // e.g., "239.0.0.1"
-	Port             int
-	InterfaceName    string // optional, e.g., "eth0"
-	BufferSize       int    // per-packet read buffer size, default 65535
-	SocketBufferSize int    // OS socket receive buffer (SO_RCVBUF), default 8MB for high throughput
-	ReadTimeout      time.Duration
+	Logger            *slog.Logger
+	MulticastIP       string // e.g., "239.0.0.1"
+	Port              int
+	InterfaceName     string // optional, e.g., "eth0"
+	BufferSize        int    // per-packet read buffer size, default 65535
+	SocketBufferSize  int    // OS socket receive buffer (SO_RCVBUF), default 8MB for high throughput
+	ReadTimeout       time.Duration
+	MulticastLoopback bool // Enable receiving own multicast packets (useful for testing)
 }
 
 const (
@@ -96,14 +98,15 @@ func NewListener(cfg *Config) (*Listener, error) {
 	}
 
 	return &Listener{
-		log:              cfg.Logger,
-		multicastIP:      ip,
-		port:             cfg.Port,
-		interfaceName:    cfg.InterfaceName,
-		bufferSize:       bufferSize,
-		socketBufferSize: socketBufferSize,
-		readTimeout:      readTimeout,
-		subscribers:      make(map[chan<- Packet]struct{}),
+		log:               cfg.Logger,
+		multicastIP:       ip,
+		port:              cfg.Port,
+		interfaceName:     cfg.InterfaceName,
+		bufferSize:        bufferSize,
+		socketBufferSize:  socketBufferSize,
+		readTimeout:       readTimeout,
+		multicastLoopback: cfg.MulticastLoopback,
+		subscribers:       make(map[chan<- Packet]struct{}),
 	}, nil
 }
 
@@ -229,6 +232,15 @@ func (l *Listener) createConnection() (*net.UDPConn, error) {
 	if err := p.JoinGroup(ifi, &net.UDPAddr{IP: l.multicastIP}); err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("failed to join multicast group: %w", err)
+	}
+
+	// Enable multicast loopback if configured (allows receiving own packets, useful for testing)
+	if l.multicastLoopback {
+		if err := p.SetMulticastLoopback(true); err != nil {
+			l.log.Warn("failed to enable multicast loopback", "error", err)
+		} else {
+			l.log.Debug("multicast loopback enabled")
+		}
 	}
 
 	// Enable receiving multicast packets

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -77,7 +78,6 @@ func run() error {
 	srvCfg := &server.Config{
 		Logger:        log.With("component", "grpc"),
 		Listener:      mcastListener,
-		GRPCListener:  grpcLis,
 		ChannelBuffer: 256,
 	}
 
@@ -96,7 +96,7 @@ func run() error {
 
 	// Start multicast listener
 	go func() {
-		if err := mcastListener.Run(ctx); err != nil && err != context.Canceled {
+		if err := mcastListener.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			log.Error("multicast listener error", "error", err)
 			cancel()
 		}

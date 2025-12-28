@@ -16,7 +16,7 @@ import (
 
 	anthropic "github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
-	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/logger"
+	"github.com/malbeclabs/doublezero/lake/pkg/logger"
 	mcpclient "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/client"
 	slackbot "github.com/malbeclabs/doublezero/tools/dz-ai/internal/slack"
 	"github.com/prometheus/client_golang/prometheus/promhttp"

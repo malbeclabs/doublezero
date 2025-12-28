@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/google/jsonschema-go/jsonschema"
-	schematypes "github.com/malbeclabs/doublezero/tools/dz-ai/internal/data/indexer/schema"
+	schematypes "github.com/malbeclabs/doublezero/lake/pkg/indexer/schema"
 	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/server/metrics"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )

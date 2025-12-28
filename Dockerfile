@@ -108,7 +108,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # Build lake-indexer (golang)
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=1 go build -ldflags "${GO_LDFLAGS}" -o ${BIN_DIR}/doublezero-lake-indexer tools/dz-ai/cmd/data-indexer/main.go
+    CGO_ENABLED=1 go build -ldflags "${GO_LDFLAGS}" -o ${BIN_DIR}/doublezero-lake-indexer lake/cmd/indexer/main.go
 
 
 # Force COPY in later stages to always copy the binaries, even if they appear to be the same.

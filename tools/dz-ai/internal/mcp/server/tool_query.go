@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/google/jsonschema-go/jsonschema"
-	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/data/querier"
+	"github.com/malbeclabs/doublezero/lake/pkg/querier"
 	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/server/metrics"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )

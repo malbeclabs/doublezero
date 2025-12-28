@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/data/indexer"
-	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/data/querier"
+	"github.com/malbeclabs/doublezero/lake/pkg/indexer"
+	"github.com/malbeclabs/doublezero/lake/pkg/querier"
 )
 
 const (

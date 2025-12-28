@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	_ "github.com/duckdb/duckdb-go/v2"
-	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/data/duck"
-	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/data/querier"
+	"github.com/malbeclabs/doublezero/lake/pkg/duck"
+	"github.com/malbeclabs/doublezero/lake/pkg/querier"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
 )

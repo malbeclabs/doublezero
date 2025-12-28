@@ -10,8 +10,8 @@ import (
 	"time"
 
 	anthropic "github.com/anthropics/anthropic-sdk-go"
+	"github.com/malbeclabs/doublezero/lake/pkg/retry"
 	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/agent"
-	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/retry"
 	"github.com/slack-go/slack"
 )
 

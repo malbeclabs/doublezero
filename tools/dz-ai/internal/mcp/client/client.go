@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/retry"
+	"github.com/malbeclabs/doublezero/lake/pkg/retry"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

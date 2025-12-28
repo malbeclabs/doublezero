@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/retry"
+	"github.com/malbeclabs/doublezero/lake/pkg/retry"
 	"github.com/slack-go/slack"
 )
 

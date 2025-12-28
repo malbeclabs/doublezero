@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	_ "github.com/duckdb/duckdb-go/v2"
-	schematypes "github.com/malbeclabs/doublezero/tools/dz-ai/internal/data/indexer/schema"
+	schematypes "github.com/malbeclabs/doublezero/lake/pkg/indexer/schema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
 )

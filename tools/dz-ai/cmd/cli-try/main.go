@@ -12,8 +12,8 @@ import (
 
 	anthropic "github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
+	"github.com/malbeclabs/doublezero/lake/pkg/logger"
 	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/agent"
-	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/logger"
 	mcpclient "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/client"
 )
 

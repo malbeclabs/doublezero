@@ -13,11 +13,11 @@ import (
 )
 
 // LoadS3ConfigFromEnv loads S3 configuration from environment variables.
-// Supports both AWS S3 and MinIO configurations.
+// Supports both AWS S3 and MinIO configurations, including IRSA (IAM Roles for Service Accounts).
 //
 // Environment variables:
-//   - S3_ACCESS_KEY_ID or AWS_ACCESS_KEY_ID (required)
-//   - S3_SECRET_ACCESS_KEY or AWS_SECRET_ACCESS_KEY (required)
+//   - S3_ACCESS_KEY_ID or AWS_ACCESS_KEY_ID (optional, for IRSA leave unset to use IAM role)
+//   - S3_SECRET_ACCESS_KEY or AWS_SECRET_ACCESS_KEY (optional, for IRSA leave unset to use IAM role)
 //   - S3_ENDPOINT (optional, for MinIO: "http://localhost:9000")
 //   - S3_REGION or AWS_REGION (optional, defaults to "us-east-1")
 //   - S3_USE_SSL (optional, "true"/"false", auto-detected if S3_ENDPOINT is set)
@@ -30,14 +30,14 @@ import (
 // Otherwise, assumes AWS S3 and sets:
 //   - UseSSL: true
 //   - URLStyle: "virtual"
+//
+// For IRSA (IAM Roles for Service Accounts) in AWS EKS, leave both access key and secret
+// unset to use the IAM role credentials automatically.
 func LoadS3ConfigFromEnv() (*S3Config, error) {
 	// Get access key (try S3_ prefix first, then AWS_ prefix)
 	accessKeyID := os.Getenv("S3_ACCESS_KEY_ID")
 	if accessKeyID == "" {
 		accessKeyID = os.Getenv("AWS_ACCESS_KEY_ID")
-	}
-	if accessKeyID == "" {
-		return nil, nil // Not an error, just not configured
 	}
 
 	// Get secret key (try S3_ prefix first, then AWS_ prefix)
@@ -45,8 +45,21 @@ func LoadS3ConfigFromEnv() (*S3Config, error) {
 	if secretAccessKey == "" {
 		secretAccessKey = os.Getenv("AWS_SECRET_ACCESS_KEY")
 	}
-	if secretAccessKey == "" {
-		return nil, fmt.Errorf("S3_ACCESS_KEY_ID or AWS_ACCESS_KEY_ID is set but S3_SECRET_ACCESS_KEY or AWS_SECRET_ACCESS_KEY is missing")
+
+	// If neither access key nor secret is set, return nil (not configured, will use IRSA/default credentials)
+	if accessKeyID == "" && secretAccessKey == "" {
+		return nil, nil // Not an error, just not configured - will use default AWS credentials chain (IRSA)
+	}
+
+	// If only secret is set without access key, that's an error
+	if accessKeyID == "" && secretAccessKey != "" {
+		return nil, fmt.Errorf("S3_SECRET_ACCESS_KEY or AWS_SECRET_ACCESS_KEY is set but S3_ACCESS_KEY_ID or AWS_ACCESS_KEY_ID is missing")
+	}
+
+	// If only access key is set without secret, that's also an error (inconsistent state)
+	// For IRSA, both should be unset to use IAM role credentials
+	if accessKeyID != "" && secretAccessKey == "" {
+		return nil, fmt.Errorf("S3_ACCESS_KEY_ID or AWS_ACCESS_KEY_ID is set but S3_SECRET_ACCESS_KEY or AWS_SECRET_ACCESS_KEY is missing (for IRSA, leave both unset)")
 	}
 
 	// Get endpoint (optional, for MinIO)
@@ -127,6 +140,10 @@ func EnsureMinIOBucket(ctx context.Context, log *slog.Logger, storageURI string,
 	}
 
 	// Create S3 client
+	// MinIO always requires explicit credentials
+	if s3Config.AccessKeyID == "" || s3Config.SecretAccessKey == "" {
+		return fmt.Errorf("MinIO requires both S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY to be set")
+	}
 	creds := credentials.NewStaticCredentialsProvider(
 		s3Config.AccessKeyID,
 		s3Config.SecretAccessKey,
@@ -181,12 +198,28 @@ func PrepareS3ConfigForStorageURI(ctx context.Context, log *slog.Logger, storage
 	}
 
 	// Load S3 config from environment variables
+	// If nil, that's OK - will use default AWS credentials chain (IRSA)
 	s3Config, err := LoadS3ConfigFromEnv()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load S3 configuration: %w", err)
 	}
+	// If s3Config is nil, create a minimal config with just region for IRSA
 	if s3Config == nil {
-		return nil, fmt.Errorf("S3 storage URI specified but S3 configuration not found in environment variables (S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY required)")
+		region := os.Getenv("S3_REGION")
+		if region == "" {
+			region = os.Getenv("AWS_REGION")
+		}
+		if region == "" {
+			region = "us-east-1" // Default region
+		}
+		s3Config = &S3Config{
+			AccessKeyID:     "", // Empty for IRSA
+			SecretAccessKey: "", // Empty for IRSA
+			Endpoint:        "", // AWS S3
+			Region:          region,
+			UseSSL:          true,      // AWS S3 default
+			URLStyle:        "virtual", // AWS S3 default
+		}
 	}
 
 	// If using localhost MinIO, ensure the bucket exists

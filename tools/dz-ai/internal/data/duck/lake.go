@@ -171,7 +171,8 @@ func NewLake(ctx context.Context, log *slog.Logger, catalogName, catalogURI, sto
 			return nil, fmt.Errorf("failed to create storage directory: %w", err)
 		}
 	} else if strings.HasPrefix(storageURI, "s3://") {
-		// For S3 paths, we'll append the secret reference after creating the secret
+		// For S3 paths, we'll reference the secret after creating it
+		// The secret will be referenced in the DATA_PATH
 		storagePath = storageURI
 		useS3 = true
 	} else {
@@ -196,6 +197,7 @@ func NewLake(ctx context.Context, log *slog.Logger, catalogName, catalogURI, sto
 	}
 	if useS3 {
 		extensions = append(extensions, "httpfs")
+		extensions = append(extensions, "aws")
 	}
 
 	for _, ext := range extensions {
@@ -219,12 +221,19 @@ func NewLake(ctx context.Context, log *slog.Logger, catalogName, catalogURI, sto
 		}
 
 		// Create S3 secret
+		// For IRSA (no explicit credentials), use PROVIDER credential_chain to use the
+		// default AWS credentials chain (IAM roles, environment variables, etc.)
 		secretSQL := "CREATE SECRET IF NOT EXISTS s3_secret (TYPE s3"
-		if cfg.AccessKeyID != "" {
+		if cfg.AccessKeyID != "" && cfg.SecretAccessKey != "" {
+			// Use explicit credentials
 			secretSQL += fmt.Sprintf(", KEY_ID '%s'", strings.ReplaceAll(cfg.AccessKeyID, "'", "''"))
-		}
-		if cfg.SecretAccessKey != "" {
 			secretSQL += fmt.Sprintf(", SECRET '%s'", strings.ReplaceAll(cfg.SecretAccessKey, "'", "''"))
+		} else {
+			// For IRSA, use PROVIDER credential_chain with VALIDATION 'none' to skip validation
+			// CHAIN specifies the order: STS (for IRSA), env vars, EC2 instance metadata, config files
+			secretSQL += ", PROVIDER credential_chain"
+			secretSQL += ", CHAIN 'env;instance;config'"
+			secretSQL += ", VALIDATION 'none'"
 		}
 		if cfg.Endpoint != "" {
 			// DuckDB's S3 secret ENDPOINT expects just host:port, not a full URL
@@ -239,13 +248,21 @@ func NewLake(ctx context.Context, log *slog.Logger, catalogName, catalogURI, sto
 		}
 		urlStyle := cfg.URLStyle
 		if urlStyle == "" {
-			urlStyle = "path" // Default to path style for MinIO compatibility
+			// Default based on whether it's AWS S3 or MinIO
+			if cfg.Endpoint == "" || strings.Contains(cfg.Endpoint, "amazonaws.com") {
+				urlStyle = "virtual" // AWS S3 default
+			} else {
+				urlStyle = "path" // MinIO default
+			}
 		}
 		secretSQL += fmt.Sprintf(", URL_STYLE '%s'", urlStyle)
 		useSSL := cfg.UseSSL
 		if cfg.Endpoint != "" && !strings.Contains(cfg.Endpoint, "amazonaws.com") {
 			// Default to false for non-AWS endpoints (like MinIO)
 			useSSL = false
+		} else if cfg.Endpoint == "" {
+			// AWS S3 default
+			useSSL = true
 		}
 		secretSQL += fmt.Sprintf(", USE_SSL %t", useSSL)
 		secretSQL += ")"
@@ -253,8 +270,9 @@ func NewLake(ctx context.Context, log *slog.Logger, catalogName, catalogURI, sto
 		if _, err := db.Exec(secretSQL); err != nil {
 			return nil, fmt.Errorf("failed to create S3 secret: %w", err)
 		}
-		// Note: The S3 secret is created and should be used automatically by ducklake
-		// for S3 operations. The storagePath is passed as-is to DATA_PATH.
+		// DuckDB's ducklake extension should automatically use the s3_secret for S3 operations
+		// when the storage path is s3://. No need to reference it in the URI.
+		// For IRSA, the secret (without KEY_ID/SECRET) will use the default AWS credentials chain
 		log.Info("configured S3 storage", "endpoint", cfg.Endpoint, "region", cfg.Region)
 	}
 
@@ -280,7 +298,9 @@ func NewLake(ctx context.Context, log *slog.Logger, catalogName, catalogURI, sto
 				break
 			}
 			if i < maxRetries-1 {
-				log.Debug("postgres not ready, retrying attach", "attempt", i+1, "error", attachErr)
+				// Sanitize error message to prevent password leakage
+				errorMsg := sanitizeErrorForLogging(attachErr.Error())
+				log.Debug("postgres not ready, retrying attach", "attempt", i+1, "error", errorMsg)
 				// Use context-aware sleep to respect cancellation
 				timer := time.NewTimer(retryDelay)
 				select {
@@ -408,6 +428,74 @@ func validateStorageURI(uri string) error {
 	}
 
 	return fmt.Errorf("storage URI must start with file:// or s3:// (got: %q)", uri)
+}
+
+// sanitizeErrorForLogging redacts passwords and other sensitive information from error messages.
+func sanitizeErrorForLogging(errMsg string) string {
+	// Redact libpq format passwords (password=secret)
+	if strings.Contains(errMsg, "password=") {
+		// Handle patterns like "password=secret" or "password='secret'" in space-separated or quoted strings
+		parts := strings.Fields(errMsg)
+		var sanitizedParts []string
+		for _, part := range parts {
+			if strings.HasPrefix(part, "password=") {
+				// Extract the password value and redact it
+				if idx := strings.Index(part, "="); idx != -1 {
+					value := part[idx+1:]
+					// Remove quotes if present
+					value = strings.Trim(value, "'\"")
+					if value != "" {
+						sanitizedParts = append(sanitizedParts, "password=REDACTED")
+					} else {
+						sanitizedParts = append(sanitizedParts, part)
+					}
+				} else {
+					sanitizedParts = append(sanitizedParts, part)
+				}
+			} else {
+				sanitizedParts = append(sanitizedParts, part)
+			}
+		}
+		return strings.Join(sanitizedParts, " ")
+	}
+	// Redact postgres:// URIs with passwords
+	// Try to find postgres URIs and redact them using the existing function
+	if strings.Contains(errMsg, "postgres://") || strings.Contains(errMsg, "postgresql://") {
+		// For postgres URIs, try to extract and redact them
+		// Look for patterns like "postgres://user:pass@host" or "postgresql://user:pass@host"
+		// This is a simple heuristic - if we find @ after the scheme, there's likely a password
+		if strings.Contains(errMsg, "@") {
+			// Try to find the URI boundaries and redact
+			// Simple approach: redact anything between :// and @ that contains :
+			// This handles "postgres://user:password@host" -> "postgres://user:REDACTED@host"
+			// Use a more careful approach with the existing RedactedCatalogURI if possible
+			// For now, use a simple pattern replacement
+			replaced := errMsg
+			// Find and replace postgres://user:pass@ patterns
+			for _, scheme := range []string{"postgres://", "postgresql://"} {
+				if idx := strings.Index(replaced, scheme); idx != -1 {
+					// Find the @ after the scheme
+					afterScheme := replaced[idx+len(scheme):]
+					if atIdx := strings.Index(afterScheme, "@"); atIdx != -1 {
+						// Check if there's a : before @ (indicating password)
+						credentials := afterScheme[:atIdx]
+						if strings.Contains(credentials, ":") {
+							// Split on : and redact the password part
+							credParts := strings.SplitN(credentials, ":", 2)
+							if len(credParts) == 2 {
+								redactedCreds := credParts[0] + ":REDACTED"
+								replaced = replaced[:idx+len(scheme)] + redactedCreds + afterScheme[atIdx:]
+								errMsg = replaced
+								break // Only process first occurrence
+							}
+						}
+					}
+				}
+			}
+			return replaced
+		}
+	}
+	return errMsg
 }
 
 // RedactedCatalogURI redacts sensitive information from catalog URIs for logging.

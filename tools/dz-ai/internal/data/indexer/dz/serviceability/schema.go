@@ -12,6 +12,13 @@ Use for DZ network structure and state:
 - topology, ownership, and operational status
 
 Default starting point for questions about the DZ network unless the question is explicitly about performance metrics.
+
+PRIMARY KEY SEMANTICS (CRITICAL):
+- pk = primary key (always).
+- Stores a public key value, but its semantics are relational.
+- Use pk for uniqueness, identity, and joins.
+- Only {table}_pk → table.pk defines valid joins.
+- Other *_pk (e.g. owner_pk) are public keys, non-unique, and not primary keys unless explicitly stated.
 `,
 	Tables: []schematypes.TableInfo{
 		{

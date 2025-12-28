@@ -25,13 +25,14 @@ var (
 )
 
 type config struct {
-	MulticastIP      string
-	MulticastPort    int
-	SocketBufferSize int
-	GRPCAddr         string
-	Interface        string
-	Verbose          bool
-	ShowVersion      bool
+	MulticastIP       string
+	MulticastPort     int
+	SocketBufferSize  int
+	GRPCAddr          string
+	Interface         string
+	MulticastLoopback bool
+	Verbose           bool
+	ShowVersion       bool
 }
 
 func main() {
@@ -53,13 +54,14 @@ func run() error {
 
 	// Create multicast listener
 	mcastCfg := &multicast.Config{
-		Logger:           log.With("component", "multicast"),
-		MulticastIP:      cfg.MulticastIP,
-		Port:             cfg.MulticastPort,
-		InterfaceName:    cfg.Interface,
-		BufferSize:       65535,
-		SocketBufferSize: cfg.SocketBufferSize,
-		ReadTimeout:      250 * time.Millisecond,
+		Logger:            log.With("component", "multicast"),
+		MulticastIP:       cfg.MulticastIP,
+		Port:              cfg.MulticastPort,
+		InterfaceName:     cfg.Interface,
+		BufferSize:        65535,
+		SocketBufferSize:  cfg.SocketBufferSize,
+		ReadTimeout:       250 * time.Millisecond,
+		MulticastLoopback: cfg.MulticastLoopback,
 	}
 
 	mcastListener, err := multicast.NewListener(mcastCfg)
@@ -138,6 +140,7 @@ func parseFlags() *config {
 		"UDP socket receive buffer size (SO_RCVBUF) for high-throughput streams")
 	flag.StringVar(&cfg.GRPCAddr, "grpc-addr", ":50051", "gRPC server address")
 	flag.StringVar(&cfg.Interface, "interface", "", "Network interface for multicast (optional)")
+	flag.BoolVar(&cfg.MulticastLoopback, "loopback", false, "Enable multicast loopback (receive own packets, for testing)")
 	flag.BoolVarP(&cfg.Verbose, "verbose", "v", false, "Enable verbose logging")
 	flag.BoolVar(&cfg.ShowVersion, "version", false, "Show version and exit")
 

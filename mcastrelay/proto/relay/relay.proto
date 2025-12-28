@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package relay;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/malbeclabs/doublezero/mcastrelay/proto/relay";
+
+// RelayService streams UDP multicast payloads to subscribed clients.
+service RelayService {
+    // Subscribe to receive UDP multicast payloads as a server-side stream.
+    // The stream continues until the client disconnects or the server shuts down.
+    rpc Subscribe(SubscribeRequest) returns (stream PayloadMessage) {}
+}
+
+// SubscribeRequest is sent by clients to initiate a subscription.
+// Currently empty; may be extended in the future for filtering options.
+message SubscribeRequest {}
+
+// PayloadMessage contains a UDP payload and the timestamp when it was received.
+message PayloadMessage {
+    // The raw UDP payload bytes received from the multicast stream.
+    bytes payload = 1;
+    // The timestamp when the UDP packet was received by the server.
+    google.protobuf.Timestamp received_at = 2;
+}

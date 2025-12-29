@@ -30,6 +30,7 @@ type Config struct {
 	Endpoint       string
 	RequestTimeout time.Duration
 	Token          string // Optional Bearer token for authentication
+	Stateless      bool   // If true, create a new session for each request (enables load balancing)
 }
 
 func (c *Config) Validate() error {
@@ -66,15 +67,18 @@ func New(ctx context.Context, cfg Config) (*Client, error) {
 		mcpClient: mcp.NewClient(mcpClientImplementation, nil),
 	}
 
-	if err := client.connect(ctx); err != nil {
-		return nil, err
+	// Only establish persistent connection if not in stateless mode
+	if !cfg.Stateless {
+		if err := client.connect(ctx); err != nil {
+			return nil, err
+		}
 	}
 
 	return client, nil
 }
 
-// connect establishes a new connection to the MCP server
-func (c *Client) connect(ctx context.Context) error {
+// createSession creates a new session for a single request (used in stateless mode)
+func (c *Client) createSession(ctx context.Context) (*mcp.ClientSession, error) {
 	// Create HTTP client with optional token authentication
 	var httpClient *http.Client
 	if c.cfg.Token != "" {
@@ -99,7 +103,17 @@ func (c *Client) connect(ctx context.Context) error {
 
 	session, err := c.mcpClient.Connect(ctx, transport, nil)
 	if err != nil {
-		return fmt.Errorf("failed to connect to MCP server: %w", err)
+		return nil, fmt.Errorf("failed to connect to MCP server: %w", err)
+	}
+
+	return session, nil
+}
+
+// connect establishes a new connection to the MCP server (for persistent mode)
+func (c *Client) connect(ctx context.Context) error {
+	session, err := c.createSession(ctx)
+	if err != nil {
+		return err
 	}
 
 	c.sessionMu.Lock()
@@ -148,17 +162,30 @@ type Tool struct {
 func (c *Client) ListTools(ctx context.Context) ([]Tool, error) {
 	c.log.Debug("mcp/client: listing available tools")
 
-	c.sessionMu.RLock()
-	session := c.session
-	c.sessionMu.RUnlock()
+	var session *mcp.ClientSession
+	var err error
 
-	if session == nil {
-		return nil, fmt.Errorf("session not connected")
+	if c.cfg.Stateless {
+		// Create a new session for this request
+		session, err = c.createSession(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create session: %w", err)
+		}
+		defer session.Close()
+	} else {
+		// Use persistent session
+		c.sessionMu.RLock()
+		session = c.session
+		c.sessionMu.RUnlock()
+
+		if session == nil {
+			return nil, fmt.Errorf("session not connected")
+		}
 	}
 
 	result, err := session.ListTools(ctx, &mcp.ListToolsParams{})
 	if err != nil {
-		if isConnectionError(err) {
+		if !c.cfg.Stateless && isConnectionError(err) {
 			c.log.Warn("mcp/client: connection error, attempting reconnect", "error", err)
 			if reconnectErr := c.reconnect(ctx); reconnectErr != nil {
 				return nil, fmt.Errorf("failed to reconnect: %w (original error: %w)", reconnectErr, err)
@@ -200,20 +227,33 @@ func (c *Client) CallToolText(ctx context.Context, name string, args map[string]
 
 	retryCfg := retry.DefaultConfig()
 	err = retry.Do(ctx, retryCfg, func() error {
-		c.sessionMu.RLock()
-		session := c.session
-		c.sessionMu.RUnlock()
+		var session *mcp.ClientSession
+		var sessionErr error
 
-		if session == nil {
-			// Try to reconnect if session is nil
-			if reconnectErr := c.reconnect(ctx); reconnectErr != nil {
-				return fmt.Errorf("session not connected and reconnect failed: %w", reconnectErr)
+		if c.cfg.Stateless {
+			// Create a new session for this request
+			session, sessionErr = c.createSession(ctx)
+			if sessionErr != nil {
+				return fmt.Errorf("failed to create session: %w", sessionErr)
 			}
+			defer session.Close()
+		} else {
+			// Use persistent session
 			c.sessionMu.RLock()
 			session = c.session
 			c.sessionMu.RUnlock()
+
 			if session == nil {
-				return fmt.Errorf("session still not connected after reconnect")
+				// Try to reconnect if session is nil
+				if reconnectErr := c.reconnect(ctx); reconnectErr != nil {
+					return fmt.Errorf("session not connected and reconnect failed: %w", reconnectErr)
+				}
+				c.sessionMu.RLock()
+				session = c.session
+				c.sessionMu.RUnlock()
+				if session == nil {
+					return fmt.Errorf("session still not connected after reconnect")
+				}
 			}
 		}
 
@@ -222,8 +262,8 @@ func (c *Client) CallToolText(ctx context.Context, name string, args map[string]
 			Arguments: args,
 		})
 		if err != nil {
-			// If it's a connection error, try to reconnect before retrying
-			if isConnectionError(err) {
+			// If it's a connection error and not stateless, try to reconnect before retrying
+			if !c.cfg.Stateless && isConnectionError(err) {
 				c.log.Warn("mcp/client: connection error, attempting reconnect", "error", err)
 				if reconnectErr := c.reconnect(ctx); reconnectErr != nil {
 					return fmt.Errorf("failed to reconnect: %w (original error: %w)", reconnectErr, err)

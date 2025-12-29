@@ -34,7 +34,7 @@ const (
 	defaultPostgresListenAddr = "0.0.0.0:5432"
 	defaultReadHeaderTimeout  = 30 * time.Second
 	defaultShutdownTimeout    = 10 * time.Second
-	defaultMetricsAddr        = "0.0.0.0:8080"
+	defaultMetricsAddr        = "0.0.0.0:0"
 )
 
 func main() {

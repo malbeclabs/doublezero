@@ -32,7 +32,7 @@ var (
 )
 
 const (
-	defaultMetricsAddr = "0.0.0.0:8080"
+	defaultMetricsAddr = "0.0.0.0:0"
 	defaultHTTPAddr    = "0.0.0.0:3000"
 )
 
@@ -72,6 +72,7 @@ func run() error {
 	httpAddrFlag := flag.String("http-addr", defaultHTTPAddr, "Address to listen on for HTTP events (production mode)")
 	maxRoundsFlag := flag.Int("max-rounds", 16, "Maximum number of rounds for the AI agent in normal mode")
 	brainModeMaxRoundsFlag := flag.Int("brain-mode-max-rounds", 32, "Maximum number of rounds for the AI agent in brain mode (e.g. when the user asks for a detailed analysis)")
+	statelessDisableFlag := flag.Bool("stateless-disable", false, "disable stateless mode (use persistent connection to MCP server)")
 	flag.Parse()
 
 	log := logger.New(*verboseFlag)
@@ -119,10 +120,14 @@ func run() error {
 	defer cancel()
 
 	// Set up MCP client
+	// Stateless mode (default: true) enables load balancing by creating a new session per request
+	// Use --stateless-disable to disable stateless mode and use persistent connections
+	stateless := !*statelessDisableFlag // Default to stateless mode (true), disable with flag
 	mcpClient, err := mcpclient.New(ctx, mcpclient.Config{
-		Endpoint: cfg.MCPEndpoint,
-		Logger:   log,
-		Token:    cfg.MCPToken,
+		Endpoint:  cfg.MCPEndpoint,
+		Logger:    log,
+		Token:     cfg.MCPToken,
+		Stateless: stateless,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create MCP client: %w", err)

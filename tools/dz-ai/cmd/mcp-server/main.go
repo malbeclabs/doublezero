@@ -51,7 +51,7 @@ const (
 	defaultRefreshInterval              = 60 * time.Second
 	defaultMaxConcurrency               = 64
 	defaultDZEnv                        = config.EnvMainnetBeta
-	defaultMetricsAddr                  = "0.0.0.0:8080"
+	defaultMetricsAddr                  = "0.0.0.0:0"
 	defaultEmbeddedDBPath               = ":memory:"
 	defaultEmbeddedDBSpillDir           = ".tmp/embedded-duckdb-spill-tmp"
 	defaultEmbeddedDBPathEnvVar         = "MCP_EMBEDDED_DB_PATH"

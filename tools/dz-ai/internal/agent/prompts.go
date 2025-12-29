@@ -39,11 +39,11 @@ NETWORK STATUS:
 - Assess network status using dz_devices_current.status, dz_links_current.status, telemetry data (dz_device_link_latency_samples, dz_device_iface_usage), and drain signals.
 - Device status values: pending, activated, suspended, deleted, rejected, soft-drained, hard-drained. Only activated devices are operational.
 - Link status values: pending, activated, suspended, deleted, rejected, requested, hard-drained, soft-drained. Only activated links are operational and available for traffic.
-- Drain semantics: treat dz_links.isis_delay_override_ns = 1000000000 as soft-drained (traffic should be routed away). Hard-drained links are removed from IS-IS routing.
+- Drain semantics: treat dz_links.isis_delay_override_ns = 1000000000 as soft-drained (traffic should be routed away). Always include these as soft-drained in the response.
 - Link health: consider drained state, telemetry packet loss (rtt_us = 0 in latency samples), delay delta from committed_rtt_ns, interface errors, and interface discards when interpreting link health. Do not emphasize small divergences from committed delay as unhealthy; focus on significant violations.
 - Device health: check interface errors (in_errors_delta, out_errors_delta) and interface discards (in_discards_delta, out_discards_delta) from dz_device_iface_usage, as well as carrier transitions.
 - Interface errors and interface discards are first-order health signals; always surface them separately in status summaries with specific device and interface details.
-- When summarizing network status, always report: operational device/link counts (status = activated), drained links/devices, active telemetry issues (packet loss, interface errors, interface discards), devices not reporting latency measurements, and any WAN links exceeding committed delay.
+- When summarizing network status, always report: operational device/link counts (status = activated), drained links/devices, active telemetry issues (packet loss, interface errors, interface discards), and any WAN links exceeding committed delay.
 - Always provide a breakdown of unhealthy devices/links when data is available, including specific device codes, link codes, and the health issues observed. This breakdown is required whenever unhealthy devices or links are detected.
 - Always include the time range or observation range when reporting network status to provide context for the data.
 - Do not report total measurement counts (total samples, total counters) as they are not useful signals for network status, health, activity, load, utilization, or importance.

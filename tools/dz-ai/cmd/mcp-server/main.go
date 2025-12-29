@@ -23,6 +23,7 @@ import (
 
 	"github.com/malbeclabs/doublezero/config"
 	telemetryconfig "github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/config"
+
 	"github.com/malbeclabs/doublezero/lake/pkg/duck"
 	"github.com/malbeclabs/doublezero/lake/pkg/indexer"
 	dztelemusage "github.com/malbeclabs/doublezero/lake/pkg/indexer/dz/telemetry/usage"
@@ -80,10 +81,8 @@ func run() error {
 	duckDBPathFlag := flag.String("duckdb-database-path", defaultEmbeddedDBPath, "Path to DuckDB database file (empty for in-memory, or set MCP_EMBEDDED_DB_PATH env var)")
 	duckDBSpillDirFlag := flag.String("duckdb-spill-dir", defaultEmbeddedDBSpillDir, "Path to DuckDB temporary spill directory")
 
-	// DuckLake configuration
-	duckLakeCatalogNameFlag := flag.String("ducklake-catalog-name", "dzlake", "Name of the DuckLake catalog (or set DUCKLAKE_CATALOG_NAME env var)")
-	duckLakeCatalogURIFlag := flag.String("ducklake-catalog-uri", "file://.tmp/lake/catalog.sqlite", "URI to the DuckLake catalog (or set DUCKLAKE_CATALOG_URI env var)")
-	duckLakeStorageURIFlag := flag.String("ducklake-storage-uri", "file://.tmp/lake/data", "URI to the DuckLake storage directory (or set DUCKLAKE_STORAGE_URI env var)")
+	// PostgreSQL connection configuration
+	postgresURIFlag := flag.String("postgres-uri", "", "PostgreSQL connection URI (or set MCP_POSTGRES_URI env var). Format: postgres://user:password@host:port/database?sslmode=disable")
 
 	// GeoIP configuration
 	geoipCityDBPathFlag := flag.String("geoip-city-db-path", defaultGeoipCityDBPath, "Path to MaxMind GeoIP2 City database file (or set MCP_GEOIP_CITY_DB_PATH env var)")
@@ -101,14 +100,8 @@ func run() error {
 	flag.Parse()
 
 	// Override flags with environment variables if set
-	if envCatalogURI := os.Getenv("DUCKLAKE_CATALOG_URI"); envCatalogURI != "" {
-		*duckLakeCatalogURIFlag = envCatalogURI
-	}
-	if envStorageURI := os.Getenv("DUCKLAKE_STORAGE_URI"); envStorageURI != "" {
-		*duckLakeStorageURIFlag = envStorageURI
-	}
-	if envCatalogName := os.Getenv("DUCKLAKE_CATALOG_NAME"); envCatalogName != "" {
-		*duckLakeCatalogNameFlag = envCatalogName
+	if envURI := os.Getenv("MCP_POSTGRES_URI"); envURI != "" {
+		*postgresURIFlag = envURI
 	}
 
 	networkConfig, err := config.NetworkConfigForEnv(*dzEnvFlag)
@@ -323,33 +316,33 @@ func run() error {
 
 		log.Info("using embedded DuckDB database with internal indexer", "dbPath", dbPath, "dbSpillDir", *duckDBSpillDirFlag)
 	} else {
-		// Initialize DuckLake catalog database
-		s3Config, err := duck.PrepareS3ConfigForStorageURI(ctx, log, *duckLakeStorageURIFlag)
-		if err != nil {
-			return err
+		// Connect to querier server via PostgreSQL
+		if *postgresURIFlag == "" {
+			return fmt.Errorf("postgres URI is required when indexer is disabled (set --postgres-uri or MCP_POSTGRES_URI env var)")
 		}
-		db, err := duck.NewLake(ctx, log, *duckLakeCatalogNameFlag, *duckLakeCatalogURIFlag, *duckLakeStorageURIFlag, s3Config)
+
+		// Create a PostgreSQL-backed duck.DB implementation
+		db, err := server.NewPostgresDBForQuerier(ctx, *postgresURIFlag, log)
 		if err != nil {
-			return fmt.Errorf("failed to create local lake: %w", err)
+			return fmt.Errorf("failed to connect to querier server: %w", err)
 		}
 		defer func() {
 			if err := db.Close(); err != nil {
-				log.Error("failed to close DuckLake", "error", err)
+				log.Error("failed to close postgres connection", "error", err)
 			}
 		}()
 
-		// Initialize querier with remote database
+		// Initialize querier with PostgreSQL connection to querier server
 		querier, err := querier.New(querier.Config{
 			Logger: log,
 			DB:     db,
-			// Schemas: indexer.Schemas,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to create querier: %w", err)
 		}
 		serverQuerier = querier
 
-		log.Info("using ducklake database", "dbCatalogName", *duckLakeCatalogNameFlag, "dbCatalogURI", *duckLakeCatalogURIFlag, "dbStorageURI", *duckLakeStorageURIFlag)
+		log.Info("using querier server via PostgreSQL", "uri", redactPostgresURI(*postgresURIFlag))
 	}
 
 	// Initialize MCP server
@@ -384,6 +377,25 @@ func run() error {
 		log.Error("server: metrics server error causing shutdown", "error", err)
 		return err
 	}
+}
+
+// redactPostgresURI redacts the password from a PostgreSQL URI for logging
+func redactPostgresURI(uri string) string {
+	// Simple redaction: replace password in postgres://user:password@host format
+	if strings.Contains(uri, "@") {
+		parts := strings.Split(uri, "@")
+		if len(parts) == 2 {
+			authPart := parts[0]
+			if strings.Contains(authPart, ":") {
+				authParts := strings.SplitN(authPart, ":", 3) // postgres://, user, password
+				if len(authParts) >= 3 {
+					authParts[2] = "REDACTED"
+					return strings.Join(authParts, ":") + "@" + parts[1]
+				}
+			}
+		}
+	}
+	return uri
 }
 
 func initializeDuckDB(ctx context.Context, dbPath string, spillDir string, log *slog.Logger) (duck.DB, func() error, error) {

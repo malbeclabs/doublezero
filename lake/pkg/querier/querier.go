@@ -24,12 +24,24 @@ func New(cfg Config) (*Querier, error) {
 }
 
 type QueryResponse struct {
-	Columns []string   `json:"columns"`
-	Rows    []QueryRow `json:"rows"`
-	Count   int        `json:"count"`
+	Columns     []string     `json:"columns"`
+	ColumnTypes []ColumnType `json:"column_types"`
+	Rows        []QueryRow   `json:"rows"`
+	Count       int          `json:"count"`
+}
+
+type ColumnType struct {
+	Name             string
+	DatabaseTypeName string
+	ScanType         string
 }
 
 type QueryRow map[string]any
+
+func (q *Querier) Ready() bool {
+	// Querier is ready if the database is available
+	return q.cfg.DB != nil
+}
 
 func (q *Querier) Datasets() []schematypes.Dataset {
 	return Datasets
@@ -51,6 +63,25 @@ func (q *Querier) Query(ctx context.Context, sql string) (QueryResponse, error) 
 	columns, err := rows.Columns()
 	if err != nil {
 		return QueryResponse{}, fmt.Errorf("failed to get columns: %w", err)
+	}
+
+	// Get column types
+	columnTypes, err := rows.ColumnTypes()
+	if err != nil {
+		return QueryResponse{}, fmt.Errorf("failed to get column types: %w", err)
+	}
+
+	// Build column type information
+	colTypeInfo := make([]ColumnType, len(columns))
+	for i, colType := range columnTypes {
+		colTypeInfo[i] = ColumnType{
+			Name:             colType.Name(),
+			DatabaseTypeName: colType.DatabaseTypeName(),
+			ScanType:         "",
+		}
+		if colType.ScanType() != nil {
+			colTypeInfo[i].ScanType = colType.ScanType().String()
+		}
 	}
 
 	var resultRows []QueryRow
@@ -87,8 +118,9 @@ func (q *Querier) Query(ctx context.Context, sql string) (QueryResponse, error) 
 	}
 
 	return QueryResponse{
-		Columns: columns,
-		Rows:    resultRows,
-		Count:   len(resultRows),
+		Columns:     columns,
+		ColumnTypes: colTypeInfo,
+		Rows:        resultRows,
+		Count:       len(resultRows),
 	}, nil
 }

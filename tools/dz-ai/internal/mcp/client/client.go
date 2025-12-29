@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	defaultRequestTimeout = 60 * time.Second
+	defaultRequestTimeout = 120 * time.Second
 )
 
 var (

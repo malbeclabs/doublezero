@@ -22,8 +22,10 @@ type SCDTableConfig struct {
 	// SnapshotTS is the timestamp for this snapshot (same for all rows in the run)
 	SnapshotTS time.Time
 	// PrimaryKeyColumns are the columns that form the primary key
+	// Each column is a name:type pair, e.g., "pk:VARCHAR", "id:BIGINT"
 	PrimaryKeyColumns []string
 	// PayloadColumns are all columns except primary keys (used for row_hash computation)
+	// Each column is a name:type pair, e.g., "code:VARCHAR", "longitude:DOUBLE"
 	PayloadColumns []string
 	// MissingMeansDeleted if true, treats rows in current but not in stage as deletes
 	MissingMeansDeleted bool
@@ -31,6 +33,28 @@ type SCDTableConfig struct {
 	TrackIngestRuns bool
 	// RunID is an optional identifier for this ingestion run (used in _ingest_runs)
 	RunID string
+}
+
+// extractColumnName extracts the column name from a "name:type" format string
+func extractColumnName(colDef string) (string, error) {
+	parts := strings.SplitN(colDef, ":", 2)
+	if len(parts) != 2 {
+		return "", fmt.Errorf("invalid column definition %q: expected format 'name:type'", colDef)
+	}
+	return strings.TrimSpace(parts[0]), nil
+}
+
+// extractColumnNames extracts column names from a slice of "name:type" format strings
+func extractColumnNames(colDefs []string) ([]string, error) {
+	names := make([]string, 0, len(colDefs))
+	for _, colDef := range colDefs {
+		name, err := extractColumnName(colDef)
+		if err != nil {
+			return nil, err
+		}
+		names = append(names, name)
+	}
+	return names, nil
 }
 
 // SCDTableViaCSV performs a full-snapshot ingestion using SCD2 pattern:
@@ -229,19 +253,26 @@ func createSCDTables(
 ) error {
 	db := conn.DB()
 
-	// Build column definitions for current table
-	// We need to query the actual table schema or use a different approach
-	// For now, assume we can infer types from an existing table or use VARCHAR for all
-	// In practice, you'd want to query information_schema or have type info
-
-	// Create _current table: PK columns + payload columns + as_of_ts + row_hash
-	pkColsDef := make([]string, len(cfg.PrimaryKeyColumns))
-	for i, pk := range cfg.PrimaryKeyColumns {
-		pkColsDef[i] = fmt.Sprintf("%s VARCHAR", pk)
+	// Parse columns into name:type pairs for current table
+	pkColsDef := make([]string, 0, len(cfg.PrimaryKeyColumns))
+	for _, pk := range cfg.PrimaryKeyColumns {
+		parts := strings.SplitN(pk, ":", 2)
+		if len(parts) != 2 {
+			return fmt.Errorf("invalid primary key column definition %q: expected format 'name:type'", pk)
+		}
+		colName := strings.TrimSpace(parts[0])
+		colType := strings.TrimSpace(parts[1])
+		pkColsDef = append(pkColsDef, fmt.Sprintf("%s %s", colName, colType))
 	}
-	payloadColsDef := make([]string, len(cfg.PayloadColumns))
-	for i, col := range cfg.PayloadColumns {
-		payloadColsDef[i] = fmt.Sprintf("%s VARCHAR", col)
+	payloadColsDef := make([]string, 0, len(cfg.PayloadColumns))
+	for _, col := range cfg.PayloadColumns {
+		parts := strings.SplitN(col, ":", 2)
+		if len(parts) != 2 {
+			return fmt.Errorf("invalid payload column definition %q: expected format 'name:type'", col)
+		}
+		colName := strings.TrimSpace(parts[0])
+		colType := strings.TrimSpace(parts[1])
+		payloadColsDef = append(payloadColsDef, fmt.Sprintf("%s %s", colName, colType))
 	}
 
 	currentSQL := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s.%s.%s (
@@ -307,13 +338,25 @@ func loadStageTable(
 	stageTableName, csvFilePath, catalog, schema string,
 ) error {
 	// Create stage table with same structure as base table + snapshot_ts + row_hash
-	pkColsDef := make([]string, len(cfg.PrimaryKeyColumns))
-	for i, pk := range cfg.PrimaryKeyColumns {
-		pkColsDef[i] = fmt.Sprintf("%s VARCHAR", pk)
+	// For staging, use VARCHAR for all columns to simplify CSV loading
+	// DuckDB will handle type conversion on INSERT
+	pkColsDef := make([]string, 0, len(cfg.PrimaryKeyColumns))
+	for _, pk := range cfg.PrimaryKeyColumns {
+		parts := strings.SplitN(pk, ":", 2)
+		if len(parts) != 2 {
+			return fmt.Errorf("invalid primary key column definition %q: expected format 'name:type'", pk)
+		}
+		colName := strings.TrimSpace(parts[0])
+		pkColsDef = append(pkColsDef, fmt.Sprintf("%s VARCHAR", colName))
 	}
-	payloadColsDef := make([]string, len(cfg.PayloadColumns))
-	for i, col := range cfg.PayloadColumns {
-		payloadColsDef[i] = fmt.Sprintf("%s VARCHAR", col)
+	payloadColsDef := make([]string, 0, len(cfg.PayloadColumns))
+	for _, col := range cfg.PayloadColumns {
+		parts := strings.SplitN(col, ":", 2)
+		if len(parts) != 2 {
+			return fmt.Errorf("invalid payload column definition %q: expected format 'name:type'", col)
+		}
+		colName := strings.TrimSpace(parts[0])
+		payloadColsDef = append(payloadColsDef, fmt.Sprintf("%s VARCHAR", colName))
 	}
 
 	createStageSQL := fmt.Sprintf(`CREATE TEMP TABLE %s (
@@ -332,7 +375,15 @@ func loadStageTable(
 
 	// Copy CSV into stage (without snapshot_ts and row_hash initially)
 	// We'll add those in a separate step
-	allColumns := append(cfg.PrimaryKeyColumns, cfg.PayloadColumns...)
+	pkColNames, err := extractColumnNames(cfg.PrimaryKeyColumns)
+	if err != nil {
+		return err
+	}
+	payloadColNames, err := extractColumnNames(cfg.PayloadColumns)
+	if err != nil {
+		return err
+	}
+	allColumns := append(pkColNames, payloadColNames...)
 	colList := strings.Join(allColumns, ", ")
 
 	// Create a temp table for the raw CSV data
@@ -355,8 +406,8 @@ func loadStageTable(
 	// Compute row_hash and insert into final stage table
 	// DuckDB's md5() function can hash multiple columns
 	// We'll concatenate payload columns for hashing
-	payloadConcat := make([]string, len(cfg.PayloadColumns))
-	for i, col := range cfg.PayloadColumns {
+	payloadConcat := make([]string, len(payloadColNames))
+	for i, col := range payloadColNames {
 		// Handle NULL values
 		payloadConcat[i] = fmt.Sprintf("COALESCE(CAST(%s AS VARCHAR), '')", col)
 	}
@@ -393,9 +444,14 @@ func computeDeltas(
 	cfg SCDTableConfig,
 	stageTableName, currentTableName string,
 ) (inserts, updates, deletes int, err error) {
+	// Extract column names
+	pkColNames, err := extractColumnNames(cfg.PrimaryKeyColumns)
+	if err != nil {
+		return 0, 0, 0, err
+	}
 	// Build ON conditions for PK join
-	onConditions := make([]string, len(cfg.PrimaryKeyColumns))
-	for i, pkCol := range cfg.PrimaryKeyColumns {
+	onConditions := make([]string, len(pkColNames))
+	for i, pkCol := range pkColNames {
 		onConditions[i] = fmt.Sprintf("s.%s = c.%s", pkCol, pkCol)
 	}
 	onClause := fmt.Sprintf("(%s)", strings.Join(onConditions, " AND "))
@@ -449,9 +505,18 @@ func updateHistory(
 	stageTableName, historyTableName, currentTableName string,
 	inserts, updates, deletes int,
 ) error {
+	// Extract column names
+	pkColNames, err := extractColumnNames(cfg.PrimaryKeyColumns)
+	if err != nil {
+		return err
+	}
+	payloadColNames, err := extractColumnNames(cfg.PayloadColumns)
+	if err != nil {
+		return err
+	}
 	// Build ON conditions for PK join
-	onConditions := make([]string, len(cfg.PrimaryKeyColumns))
-	for i, pkCol := range cfg.PrimaryKeyColumns {
+	onConditions := make([]string, len(pkColNames))
+	for i, pkCol := range pkColNames {
 		onConditions[i] = fmt.Sprintf("h.%s = s.%s", pkCol, pkCol)
 	}
 	onClause := fmt.Sprintf("(%s)", strings.Join(onConditions, " AND "))
@@ -468,9 +533,9 @@ func updateHistory(
 			// Both updates and deletes: PKs that are updated OR deleted
 			// Updated: stage PK in current with different hash
 			// Deleted: current PK not in stage
-			pkColsQualified1 := make([]string, len(cfg.PrimaryKeyColumns))
-			pkColsQualified2 := make([]string, len(cfg.PrimaryKeyColumns))
-			for i, pkCol := range cfg.PrimaryKeyColumns {
+			pkColsQualified1 := make([]string, len(pkColNames))
+			pkColsQualified2 := make([]string, len(pkColNames))
+			for i, pkCol := range pkColNames {
 				pkColsQualified1[i] = fmt.Sprintf("s.%s", pkCol)
 				pkColsQualified2[i] = fmt.Sprintf("c.%s", pkCol)
 			}
@@ -484,7 +549,7 @@ func updateHistory(
 					WHERE NOT EXISTS (SELECT 1 FROM %s s2 WHERE %s)
 				)`,
 				pkTempTable,
-				strings.Join(cfg.PrimaryKeyColumns, ", "),
+				strings.Join(pkColNames, ", "),
 				strings.Join(pkColsQualified1, ", "),
 				stageTableName,
 				currentTableName,
@@ -495,8 +560,8 @@ func updateHistory(
 				strings.Replace(strings.Replace(onClause, "h.", "c.", -1), "s.", "s2.", -1))
 		} else if updates > 0 {
 			// Only updates: PKs in stage that have different hash in current
-			pkColsQualified := make([]string, len(cfg.PrimaryKeyColumns))
-			for i, pkCol := range cfg.PrimaryKeyColumns {
+			pkColsQualified := make([]string, len(pkColNames))
+			for i, pkCol := range pkColNames {
 				pkColsQualified[i] = fmt.Sprintf("s.%s", pkCol)
 			}
 			pkSelectSQL = fmt.Sprintf(`CREATE TEMP TABLE %s AS
@@ -510,8 +575,8 @@ func updateHistory(
 				strings.Replace(onClause, "h.", "c.", -1))
 		} else {
 			// Only deletes: PKs in current that are not in stage
-			pkColsQualified := make([]string, len(cfg.PrimaryKeyColumns))
-			for i, pkCol := range cfg.PrimaryKeyColumns {
+			pkColsQualified := make([]string, len(pkColNames))
+			for i, pkCol := range pkColNames {
 				pkColsQualified[i] = fmt.Sprintf("c.%s", pkCol)
 			}
 			pkSelectSQL = fmt.Sprintf(`CREATE TEMP TABLE %s AS
@@ -529,8 +594,8 @@ func updateHistory(
 		}
 
 		// Build join conditions for UPDATE
-		updateJoinConditions := make([]string, len(cfg.PrimaryKeyColumns))
-		for i, pkCol := range cfg.PrimaryKeyColumns {
+		updateJoinConditions := make([]string, len(pkColNames))
+		for i, pkCol := range pkColNames {
 			updateJoinConditions[i] = fmt.Sprintf("h.%s = p.%s", pkCol, pkCol)
 		}
 		updateJoinClause := strings.Join(updateJoinConditions, " AND ")
@@ -555,7 +620,7 @@ func updateHistory(
 	}
 
 	// Append new versions for inserts and updates
-	allColumns := append(cfg.PrimaryKeyColumns, cfg.PayloadColumns...)
+	allColumns := append(pkColNames, payloadColNames...)
 	colList := strings.Join(allColumns, ", ")
 
 	// Insert new history rows for inserts and updates
@@ -603,8 +668,8 @@ func updateHistory(
 	if deletes > 0 {
 		// Get deleted PKs from current that aren't in stage
 		// Build join conditions for current -> stage
-		deleteJoinConditions := make([]string, len(cfg.PrimaryKeyColumns))
-		for i, pkCol := range cfg.PrimaryKeyColumns {
+		deleteJoinConditions := make([]string, len(pkColNames))
+		for i, pkCol := range pkColNames {
 			deleteJoinConditions[i] = fmt.Sprintf("c.%s = s.%s", pkCol, pkCol)
 		}
 		deleteJoinClause := fmt.Sprintf("(%s)", strings.Join(deleteJoinConditions, " AND "))
@@ -651,14 +716,23 @@ func refreshCurrent(
 	cfg SCDTableConfig,
 	stageTableName, currentTableName string,
 ) error {
+	// Extract column names
+	pkColNames, err := extractColumnNames(cfg.PrimaryKeyColumns)
+	if err != nil {
+		return err
+	}
+	payloadColNames, err := extractColumnNames(cfg.PayloadColumns)
+	if err != nil {
+		return err
+	}
 	// Build ON conditions for PK join
-	onConditions := make([]string, len(cfg.PrimaryKeyColumns))
-	for i, pkCol := range cfg.PrimaryKeyColumns {
+	onConditions := make([]string, len(pkColNames))
+	for i, pkCol := range pkColNames {
 		onConditions[i] = fmt.Sprintf("t.%s = s.%s", pkCol, pkCol)
 	}
 	onClause := fmt.Sprintf("(%s)", strings.Join(onConditions, " AND "))
 
-	allColumns := append(cfg.PrimaryKeyColumns, cfg.PayloadColumns...)
+	allColumns := append(pkColNames, payloadColNames...)
 	colList := strings.Join(allColumns, ", ")
 
 	// Deduplicate stage table by primary key (in case of duplicates)
@@ -671,11 +745,11 @@ func refreshCurrent(
 			FROM %s
 		) s
 		WHERE rn = 1
-	)`, colList, colList, strings.Join(cfg.PrimaryKeyColumns, ", "), stageTableName)
+	)`, colList, colList, strings.Join(pkColNames, ", "), stageTableName)
 
 	// Update existing rows using MERGE (consistent with other functions)
 	updateSetParts := make([]string, 0)
-	for _, col := range cfg.PayloadColumns {
+	for _, col := range payloadColNames {
 		updateSetParts = append(updateSetParts, fmt.Sprintf("%s = s.%s", col, col))
 	}
 	updateSetParts = append(updateSetParts, "as_of_ts = s.snapshot_ts", "row_hash = s.row_hash")
@@ -816,7 +890,15 @@ func processEmptySnapshot(
 			}
 
 			// Insert delete tombstones for all current rows
-			allColumns := append(cfg.PrimaryKeyColumns, cfg.PayloadColumns...)
+			pkColNames, err := extractColumnNames(cfg.PrimaryKeyColumns)
+			if err != nil {
+				return err
+			}
+			payloadColNames, err := extractColumnNames(cfg.PayloadColumns)
+			if err != nil {
+				return err
+			}
+			allColumns := append(pkColNames, payloadColNames...)
 			colList := strings.Join(allColumns, ", ")
 
 			runID := cfg.RunID

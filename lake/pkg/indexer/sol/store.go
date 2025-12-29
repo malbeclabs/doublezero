@@ -57,8 +57,8 @@ type LeaderScheduleEntry struct {
 func SCD2ConfigLeaderSchedule() duck.SCDTableConfig {
 	return duck.SCDTableConfig{
 		TableBaseName:       "solana_leader_schedule",
-		PrimaryKeyColumns:   []string{"node_pubkey"},
-		PayloadColumns:      []string{"epoch", "slots", "slot_count"},
+		PrimaryKeyColumns:   []string{"node_pubkey:VARCHAR"},
+		PayloadColumns:      []string{"epoch:BIGINT", "slots:VARCHAR", "slot_count:BIGINT"},
 		MissingMeansDeleted: true,
 		TrackIngestRuns:     true,
 	}
@@ -92,8 +92,8 @@ func (s *Store) ReplaceLeaderSchedule(ctx context.Context, entries []LeaderSched
 func SCD2ConfigVoteAccounts() duck.SCDTableConfig {
 	return duck.SCDTableConfig{
 		TableBaseName:       "solana_vote_accounts",
-		PrimaryKeyColumns:   []string{"vote_pubkey"},
-		PayloadColumns:      []string{"epoch", "node_pubkey", "activated_stake_lamports", "epoch_vote_account", "commission_percentage", "last_vote_slot", "root_slot"},
+		PrimaryKeyColumns:   []string{"vote_pubkey:VARCHAR"},
+		PayloadColumns:      []string{"epoch:BIGINT", "node_pubkey:VARCHAR", "activated_stake_lamports:BIGINT", "epoch_vote_account:VARCHAR", "commission_percentage:BIGINT", "last_vote_slot:BIGINT", "root_slot:BIGINT"},
 		MissingMeansDeleted: true,
 		TrackIngestRuns:     true,
 	}
@@ -134,8 +134,8 @@ func (s *Store) ReplaceVoteAccounts(ctx context.Context, accounts []solanarpc.Vo
 func SCD2ConfigGossipNodes() duck.SCDTableConfig {
 	return duck.SCDTableConfig{
 		TableBaseName:       "solana_gossip_nodes",
-		PrimaryKeyColumns:   []string{"pubkey"},
-		PayloadColumns:      []string{"epoch", "gossip_ip", "gossip_port", "tpuquic_ip", "tpuquic_port", "version"},
+		PrimaryKeyColumns:   []string{"pubkey:VARCHAR"},
+		PayloadColumns:      []string{"epoch:BIGINT", "gossip_ip:VARCHAR", "gossip_port:INTEGER", "tpuquic_ip:VARCHAR", "tpuquic_port:INTEGER", "version:VARCHAR"},
 		MissingMeansDeleted: true,
 		TrackIngestRuns:     true,
 	}

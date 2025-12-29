@@ -48,8 +48,8 @@ func NewStore(cfg StoreConfig) (*Store, error) {
 func SCD2ConfigContributors() duck.SCDTableConfig {
 	return duck.SCDTableConfig{
 		TableBaseName:       "dz_contributors",
-		PrimaryKeyColumns:   []string{"pk"},
-		PayloadColumns:      []string{"code", "name"},
+		PrimaryKeyColumns:   []string{"pk:VARCHAR"},
+		PayloadColumns:      []string{"code:VARCHAR", "name:VARCHAR"},
 		MissingMeansDeleted: true,
 		TrackIngestRuns:     true,
 	}
@@ -78,8 +78,8 @@ func (s *Store) ReplaceContributors(ctx context.Context, contributors []Contribu
 func SCD2ConfigDevices() duck.SCDTableConfig {
 	return duck.SCDTableConfig{
 		TableBaseName:       "dz_devices",
-		PrimaryKeyColumns:   []string{"pk"},
-		PayloadColumns:      []string{"status", "device_type", "code", "public_ip", "contributor_pk", "metro_pk"},
+		PrimaryKeyColumns:   []string{"pk:VARCHAR"},
+		PayloadColumns:      []string{"status:VARCHAR", "device_type:VARCHAR", "code:VARCHAR", "public_ip:VARCHAR", "contributor_pk:VARCHAR", "metro_pk:VARCHAR"},
 		MissingMeansDeleted: true,
 		TrackIngestRuns:     true,
 	}
@@ -108,8 +108,8 @@ func (s *Store) ReplaceDevices(ctx context.Context, devices []Device) error {
 func SCD2ConfigUsers() duck.SCDTableConfig {
 	return duck.SCDTableConfig{
 		TableBaseName:       "dz_users",
-		PrimaryKeyColumns:   []string{"pk"},
-		PayloadColumns:      []string{"owner_pk", "status", "kind", "client_ip", "dz_ip", "device_pk", "tunnel_id"},
+		PrimaryKeyColumns:   []string{"pk:VARCHAR"},
+		PayloadColumns:      []string{"owner_pk:VARCHAR", "status:VARCHAR", "kind:VARCHAR", "client_ip:VARCHAR", "dz_ip:VARCHAR", "device_pk:VARCHAR", "tunnel_id:INTEGER"},
 		MissingMeansDeleted: true,
 		TrackIngestRuns:     true,
 	}
@@ -138,8 +138,8 @@ func (s *Store) ReplaceUsers(ctx context.Context, users []User) error {
 func SCD2ConfigMetros() duck.SCDTableConfig {
 	return duck.SCDTableConfig{
 		TableBaseName:       "dz_metros",
-		PrimaryKeyColumns:   []string{"pk"},
-		PayloadColumns:      []string{"code", "name", "longitude", "latitude"},
+		PrimaryKeyColumns:   []string{"pk:VARCHAR"},
+		PayloadColumns:      []string{"code:VARCHAR", "name:VARCHAR", "longitude:DOUBLE", "latitude:DOUBLE"},
 		MissingMeansDeleted: true,
 		TrackIngestRuns:     true,
 	}
@@ -168,8 +168,8 @@ func (s *Store) ReplaceMetros(ctx context.Context, metros []Metro) error {
 func SCD2ConfigLinks() duck.SCDTableConfig {
 	return duck.SCDTableConfig{
 		TableBaseName:       "dz_links",
-		PrimaryKeyColumns:   []string{"pk"},
-		PayloadColumns:      []string{"status", "code", "tunnel_net", "contributor_pk", "side_a_pk", "side_z_pk", "side_a_iface_name", "side_z_iface_name", "link_type", "committed_rtt_ns", "committed_jitter_ns", "bandwidth_bps", "isis_delay_override_ns"},
+		PrimaryKeyColumns:   []string{"pk:VARCHAR"},
+		PayloadColumns:      []string{"status:VARCHAR", "code:VARCHAR", "tunnel_net:VARCHAR", "contributor_pk:VARCHAR", "side_a_pk:VARCHAR", "side_z_pk:VARCHAR", "side_a_iface_name:VARCHAR", "side_z_iface_name:VARCHAR", "link_type:VARCHAR", "committed_rtt_ns:BIGINT", "committed_jitter_ns:BIGINT", "bandwidth_bps:BIGINT", "isis_delay_override_ns:BIGINT"},
 		MissingMeansDeleted: true,
 		TrackIngestRuns:     true,
 	}

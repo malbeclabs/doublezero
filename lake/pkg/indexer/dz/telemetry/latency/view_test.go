@@ -1060,3 +1060,295 @@ func (m *mockTelemetryRPCWithIncrementalInternetSamples) GetInternetLatencySampl
 	}
 	return nil, telemetry.ErrAccountNotFound
 }
+
+func TestLake_TelemetryLatency_View_Refresh_ErrorHandling(t *testing.T) {
+	t.Parallel()
+
+	t.Run("device-link refresh returns error when GetExistingMaxSampleIndices fails", func(t *testing.T) {
+		t.Parallel()
+
+		db := testDB(t)
+
+		// Set up serviceability view
+		devicePK1 := [32]byte{1, 2, 3, 4}
+		devicePK2 := [32]byte{5, 6, 7, 8}
+		linkPK := [32]byte{9, 10, 11, 12}
+		contributorPK := [32]byte{13, 14, 15, 16}
+		metroPK := [32]byte{17, 18, 19, 20}
+		ownerPK := [32]byte{21, 22, 23, 24}
+		publicIP1 := [4]byte{192, 168, 1, 1}
+		publicIP2 := [4]byte{192, 168, 1, 2}
+		tunnelNet := [5]byte{10, 0, 0, 0, 24}
+
+		svcMockRPC := &MockServiceabilityRPC{
+			getProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+				return &serviceability.ProgramData{
+					Contributors: []serviceability.Contributor{
+						{
+							PubKey: contributorPK,
+							Owner:  ownerPK,
+							Code:   "CONTRIB",
+						},
+					},
+					Devices: []serviceability.Device{
+						{
+							PubKey:            devicePK1,
+							Owner:             ownerPK,
+							Status:            serviceability.DeviceStatusActivated,
+							DeviceType:        serviceability.DeviceDeviceTypeHybrid,
+							Code:              "DEV1",
+							PublicIp:          publicIP1,
+							ContributorPubKey: contributorPK,
+							ExchangePubKey:    metroPK,
+						},
+						{
+							PubKey:            devicePK2,
+							Owner:             ownerPK,
+							Status:            serviceability.DeviceStatusActivated,
+							DeviceType:        serviceability.DeviceDeviceTypeHybrid,
+							Code:              "DEV2",
+							PublicIp:          publicIP2,
+							ContributorPubKey: contributorPK,
+							ExchangePubKey:    metroPK,
+						},
+					},
+					Links: []serviceability.Link{
+						{
+							PubKey:            linkPK,
+							Owner:             ownerPK,
+							Status:            serviceability.LinkStatusActivated,
+							Code:              "LINK1",
+							TunnelNet:         tunnelNet,
+							ContributorPubKey: contributorPK,
+							SideAPubKey:       devicePK1,
+							SideZPubKey:       devicePK2,
+							SideAIfaceName:    "eth0",
+							SideZIfaceName:    "eth1",
+							LinkType:          serviceability.LinkLinkTypeWAN,
+							DelayNs:           1000000,
+							JitterNs:          50000,
+						},
+					},
+				}, nil
+			},
+		}
+
+		geoipStore, err := newMockGeoIPStore(t)
+		require.NoError(t, err)
+		defer geoipStore.db.Close()
+
+		svcView, err := dzsvc.NewView(dzsvc.ViewConfig{
+			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Clock:             clockwork.NewFakeClock(),
+			ServiceabilityRPC: svcMockRPC,
+			RefreshInterval:   time.Second,
+			DB:                db,
+			GeoIPStore:        geoipStore.store,
+			GeoIPResolver:     &mockGeoIPResolver{},
+		})
+		require.NoError(t, err)
+
+		ctx := context.Background()
+		err = svcView.Refresh(ctx)
+		require.NoError(t, err)
+
+		// Set up telemetry RPC to return samples
+		originPK := solana.PublicKeyFromBytes(devicePK1[:])
+		targetPK := solana.PublicKeyFromBytes(devicePK2[:])
+		linkPKPubKey := solana.PublicKeyFromBytes(linkPK[:])
+
+		mockTelemetryRPC := &mockTelemetryRPCWithSamples{
+			samples: map[string]*telemetry.DeviceLatencySamples{
+				key(originPK, targetPK, linkPKPubKey, 100): {
+					DeviceLatencySamplesHeader: telemetry.DeviceLatencySamplesHeader{
+						StartTimestampMicroseconds:   1_600_000_000_000_000,
+						SamplingIntervalMicroseconds: 100_000,
+					},
+					Samples: []uint32{5000, 6000, 7000},
+				},
+			},
+		}
+
+		mockEpochRPC := &mockEpochRPCWithEpoch{epoch: 100}
+
+		view, err := NewView(ViewConfig{
+			Logger:                 slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Clock:                  clockwork.NewFakeClock(),
+			TelemetryRPC:           mockTelemetryRPC,
+			EpochRPC:               mockEpochRPC,
+			MaxConcurrency:         32,
+			InternetLatencyAgentPK: solana.MustPublicKeyFromBase58("So11111111111111111111111111111111111111112"),
+			InternetDataProviders:  []string{"test-provider"},
+			DB:                     db,
+			Serviceability:         svcView,
+			RefreshInterval:        time.Second,
+		})
+		require.NoError(t, err)
+
+		// First refresh should succeed and insert samples
+		err = view.Refresh(ctx)
+		require.NoError(t, err)
+
+		// Verify samples were inserted
+		var sampleCount int
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_device_link_latency_samples_raw").Scan(&sampleCount)
+		require.NoError(t, err)
+		require.Equal(t, 3, sampleCount, "first refresh should insert 3 samples")
+
+		// Drop the table to cause GetExistingMaxSampleIndices to fail
+		_, err = conn.ExecContext(ctx, "DROP TABLE dz_device_link_latency_samples_raw")
+		require.NoError(t, err)
+
+		// Second refresh should complete but log an error (Refresh catches and logs errors)
+		// The key behavior is that it should NOT insert all samples when GetExistingMaxSampleIndices fails
+		err = view.Refresh(ctx)
+		// Refresh returns nil even when refresh methods fail (it logs warnings)
+		require.NoError(t, err)
+
+		// Verify the table still doesn't exist (wasn't recreated) and no samples were inserted
+		// This confirms that when GetExistingMaxSampleIndices fails, we don't proceed with insertion
+		var count int
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_device_link_latency_samples_raw").Scan(&count)
+		require.Error(t, err, "table should not exist after being dropped")
+		require.Contains(t, err.Error(), "does not exist")
+	})
+
+	t.Run("internet-metro refresh returns error when GetExistingInternetMaxSampleIndices fails", func(t *testing.T) {
+		t.Parallel()
+
+		db := testDB(t)
+
+		// Set up serviceability view with metros
+		metroPK1 := [32]byte{1, 2, 3, 4}
+		metroPK2 := [32]byte{5, 6, 7, 8}
+		contributorPK := [32]byte{13, 14, 15, 16}
+		ownerPK := [32]byte{21, 22, 23, 24}
+
+		svcMockRPC := &MockServiceabilityRPC{
+			getProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+				return &serviceability.ProgramData{
+					Contributors: []serviceability.Contributor{
+						{
+							PubKey: contributorPK,
+							Owner:  ownerPK,
+							Code:   "CONTRIB",
+						},
+					},
+					Exchanges: []serviceability.Exchange{
+						{
+							PubKey: metroPK1,
+							Owner:  ownerPK,
+							Code:   "NYC",
+							Name:   "New York",
+							Status: serviceability.ExchangeStatusActivated,
+							Lat:    40.7128,
+							Lng:    -74.0060,
+						},
+						{
+							PubKey: metroPK2,
+							Owner:  ownerPK,
+							Code:   "LAX",
+							Name:   "Los Angeles",
+							Status: serviceability.ExchangeStatusActivated,
+							Lat:    34.0522,
+							Lng:    -118.2437,
+						},
+					},
+				}, nil
+			},
+		}
+
+		geoipStore, err := newMockGeoIPStore(t)
+		require.NoError(t, err)
+		defer geoipStore.db.Close()
+
+		svcView, err := dzsvc.NewView(dzsvc.ViewConfig{
+			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Clock:             clockwork.NewFakeClock(),
+			ServiceabilityRPC: svcMockRPC,
+			RefreshInterval:   time.Second,
+			DB:                db,
+			GeoIPStore:        geoipStore.store,
+			GeoIPResolver:     &mockGeoIPResolver{},
+		})
+		require.NoError(t, err)
+
+		ctx := context.Background()
+		err = svcView.Refresh(ctx)
+		require.NoError(t, err)
+
+		// Set up telemetry RPC to return internet samples
+		originPK := solana.PublicKeyFromBytes(metroPK1[:])
+		targetPK := solana.PublicKeyFromBytes(metroPK2[:])
+		agentPK := solana.MustPublicKeyFromBase58("So11111111111111111111111111111111111111112")
+
+		mockTelemetryRPC := &mockTelemetryRPCWithIncrementalInternetSamples{
+			getSamplesFunc: func(dataProviderName string, originLocationPK, targetLocationPK, agentPK solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error) {
+				// Metro pairs can be in either direction, so check both orderings
+				matchesForward := originLocationPK.String() == originPK.String() && targetLocationPK.String() == targetPK.String()
+				matchesReverse := originLocationPK.String() == targetPK.String() && targetLocationPK.String() == originPK.String()
+				if (!matchesForward && !matchesReverse) || epoch != 100 {
+					return nil, telemetry.ErrAccountNotFound
+				}
+
+				return &telemetry.InternetLatencySamples{
+					InternetLatencySamplesHeader: telemetry.InternetLatencySamplesHeader{
+						StartTimestampMicroseconds:   1_700_000_000,
+						SamplingIntervalMicroseconds: 250_000,
+						NextSampleIndex:              2,
+					},
+					Samples: []uint32{10000, 11000},
+				}, nil
+			},
+		}
+
+		mockEpochRPC := &mockEpochRPCWithEpoch{epoch: 100}
+
+		view, err := NewView(ViewConfig{
+			Logger:                 slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Clock:                  clockwork.NewFakeClock(),
+			TelemetryRPC:           mockTelemetryRPC,
+			EpochRPC:               mockEpochRPC,
+			MaxConcurrency:         32,
+			InternetLatencyAgentPK: agentPK,
+			InternetDataProviders:  []string{"test-provider"},
+			DB:                     db,
+			Serviceability:         svcView,
+			RefreshInterval:        time.Second,
+		})
+		require.NoError(t, err)
+
+		// First refresh should succeed and insert samples
+		err = view.Refresh(ctx)
+		require.NoError(t, err)
+
+		// Verify samples were inserted
+		var sampleCount int
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_internet_metro_latency_samples_raw").Scan(&sampleCount)
+		require.NoError(t, err)
+		require.Equal(t, 2, sampleCount, "first refresh should insert 2 samples")
+
+		// Drop the table to cause GetExistingInternetMaxSampleIndices to fail
+		_, err = conn.ExecContext(ctx, "DROP TABLE dz_internet_metro_latency_samples_raw")
+		require.NoError(t, err)
+
+		// Second refresh should complete but log an error (Refresh catches and logs errors)
+		// The key behavior is that it should NOT insert all samples when GetExistingInternetMaxSampleIndices fails
+		err = view.Refresh(ctx)
+		// Refresh returns nil even when refresh methods fail (it logs warnings)
+		require.NoError(t, err)
+
+		// Verify the table still doesn't exist (wasn't recreated) and no samples were inserted
+		// This confirms that when GetExistingInternetMaxSampleIndices fails, we don't proceed with insertion
+		var count int
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM dz_internet_metro_latency_samples_raw").Scan(&count)
+		require.Error(t, err, "table should not exist after being dropped")
+		require.Contains(t, err.Error(), "does not exist")
+	})
+}

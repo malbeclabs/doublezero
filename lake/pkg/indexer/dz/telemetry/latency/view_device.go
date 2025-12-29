@@ -47,8 +47,7 @@ func (v *View) refreshDeviceLinkTelemetrySamples(ctx context.Context, devices []
 	// Get existing max sample_index for each origin_device_pk+target_device_pk+link_pk+epoch to determine what's new
 	existingMaxIndices, err := v.store.GetExistingMaxSampleIndices()
 	if err != nil {
-		v.log.Warn("telemetry/device-link: failed to get existing max indices, will insert all samples", "error", err)
-		existingMaxIndices = make(map[string]int) // Empty map means no existing data
+		return fmt.Errorf("failed to get existing max indices: %w", err)
 	}
 
 	var allSamples []DeviceLinkLatencySample

@@ -39,8 +39,8 @@ func TestSCDTableViaCSV(t *testing.T) {
 		cfg := SCDTableConfig{
 			TableBaseName:       "test_scd2",
 			SnapshotTS:          snapshotTS,
-			PrimaryKeyColumns:   []string{"id"},
-			PayloadColumns:      []string{"name", "age"},
+		PrimaryKeyColumns:   []string{"id:VARCHAR"},
+		PayloadColumns:      []string{"name:VARCHAR", "age:INTEGER"},
 			MissingMeansDeleted: false,
 			TrackIngestRuns:     false,
 		}
@@ -107,8 +107,8 @@ func TestSCDTableViaCSV(t *testing.T) {
 		cfg := SCDTableConfig{
 			TableBaseName:       "test_scd2_update",
 			SnapshotTS:          snapshotTS1,
-			PrimaryKeyColumns:   []string{"id"},
-			PayloadColumns:      []string{"name", "age"},
+		PrimaryKeyColumns:   []string{"id:VARCHAR"},
+		PayloadColumns:      []string{"name:VARCHAR", "age:INTEGER"},
 			MissingMeansDeleted: false,
 			TrackIngestRuns:     false,
 		}
@@ -211,8 +211,8 @@ func TestSCDTableViaCSV(t *testing.T) {
 		cfg := SCDTableConfig{
 			TableBaseName:       "test_scd2_delete",
 			SnapshotTS:          snapshotTS1,
-			PrimaryKeyColumns:   []string{"id"},
-			PayloadColumns:      []string{"name"},
+		PrimaryKeyColumns:   []string{"id:VARCHAR"},
+		PayloadColumns:      []string{"name:VARCHAR"},
 			MissingMeansDeleted: true, // Enable delete tracking
 			TrackIngestRuns:     false,
 		}
@@ -299,8 +299,8 @@ func TestSCDTableViaCSV(t *testing.T) {
 		cfg := SCDTableConfig{
 			TableBaseName:       "test_scd2_runs",
 			SnapshotTS:          snapshotTS,
-			PrimaryKeyColumns:   []string{"id"},
-			PayloadColumns:      []string{"name"},
+		PrimaryKeyColumns:   []string{"id:VARCHAR"},
+		PayloadColumns:      []string{"name:VARCHAR"},
 			MissingMeansDeleted: false,
 			TrackIngestRuns:     true,
 			RunID:               runID,
@@ -356,8 +356,8 @@ func TestSCDTableViaCSV(t *testing.T) {
 		cfg := SCDTableConfig{
 			TableBaseName:       "test_scd2_empty",
 			SnapshotTS:          snapshotTS1,
-			PrimaryKeyColumns:   []string{"id"},
-			PayloadColumns:      []string{"name"},
+		PrimaryKeyColumns:   []string{"id:VARCHAR"},
+		PayloadColumns:      []string{"name:VARCHAR"},
 			MissingMeansDeleted: true,
 			TrackIngestRuns:     false,
 		}
@@ -425,8 +425,8 @@ func TestSCDTableViaCSV(t *testing.T) {
 		cfg := SCDTableConfig{
 			TableBaseName:       "test_scd2_empty_no_delete",
 			SnapshotTS:          snapshotTS1,
-			PrimaryKeyColumns:   []string{"id"},
-			PayloadColumns:      []string{"name"},
+		PrimaryKeyColumns:   []string{"id:VARCHAR"},
+		PayloadColumns:      []string{"name:VARCHAR"},
 			MissingMeansDeleted: false, // Don't delete on empty
 			TrackIngestRuns:     false,
 		}
@@ -485,8 +485,8 @@ func TestSCDTableViaCSV(t *testing.T) {
 		cfg := SCDTableConfig{
 			TableBaseName:       "test_scd2_hash",
 			SnapshotTS:          snapshotTS,
-			PrimaryKeyColumns:   []string{"id"},
-			PayloadColumns:      []string{"name", "age"},
+		PrimaryKeyColumns:   []string{"id:VARCHAR"},
+		PayloadColumns:      []string{"name:VARCHAR", "age:INTEGER"},
 			MissingMeansDeleted: false,
 			TrackIngestRuns:     false,
 		}
@@ -545,8 +545,8 @@ func TestSCDTableViaCSV(t *testing.T) {
 
 		cfg := SCDTableConfig{
 			TableBaseName:       "test_scd2_multiple",
-			PrimaryKeyColumns:   []string{"id"},
-			PayloadColumns:      []string{"name"},
+		PrimaryKeyColumns:   []string{"id:VARCHAR"},
+		PayloadColumns:      []string{"name:VARCHAR"},
 			MissingMeansDeleted: false,
 			TrackIngestRuns:     false,
 		}
@@ -637,8 +637,8 @@ func TestSCDTableViaCSV(t *testing.T) {
 		cfg := SCDTableConfig{
 			TableBaseName:       "test_scd2_cancel",
 			SnapshotTS:          time.Now(),
-			PrimaryKeyColumns:   []string{"id"},
-			PayloadColumns:      []string{"name"},
+		PrimaryKeyColumns:   []string{"id:VARCHAR"},
+		PayloadColumns:      []string{"name:VARCHAR"},
 			MissingMeansDeleted: false,
 			TrackIngestRuns:     false,
 		}
@@ -672,8 +672,8 @@ func TestSCDTableViaCSV(t *testing.T) {
 		cfg := SCDTableConfig{
 			TableBaseName:       "test_scd2_error",
 			SnapshotTS:          time.Now(),
-			PrimaryKeyColumns:   []string{"id"},
-			PayloadColumns:      []string{"name"},
+		PrimaryKeyColumns:   []string{"id:VARCHAR"},
+		PayloadColumns:      []string{"name:VARCHAR"},
 			MissingMeansDeleted: false,
 			TrackIngestRuns:     false,
 		}
@@ -704,8 +704,8 @@ func TestSCDTableViaCSV(t *testing.T) {
 		cfg := SCDTableConfig{
 			TableBaseName:       "test_scd2_db_error",
 			SnapshotTS:          time.Now(),
-			PrimaryKeyColumns:   []string{"id"},
-			PayloadColumns:      []string{"name"},
+		PrimaryKeyColumns:   []string{"id:VARCHAR"},
+		PayloadColumns:      []string{"name:VARCHAR"},
 			MissingMeansDeleted: false,
 			TrackIngestRuns:     false,
 		}
@@ -738,8 +738,8 @@ func TestSCDTableViaCSV(t *testing.T) {
 		cfg := SCDTableConfig{
 			TableBaseName:       "test_scd2_validate",
 			SnapshotTS:          time.Now(),
-			PrimaryKeyColumns:   []string{}, // Empty
-			PayloadColumns:      []string{"name"},
+		PrimaryKeyColumns:   []string{}, // Empty
+		PayloadColumns:      []string{"name:VARCHAR"},
 			MissingMeansDeleted: false,
 			TrackIngestRuns:     false,
 		}
@@ -770,8 +770,8 @@ func TestSCDTableViaCSV(t *testing.T) {
 		cfg := SCDTableConfig{
 			TableBaseName:       "test_scd2_validate2",
 			SnapshotTS:          time.Now(),
-			PrimaryKeyColumns:   []string{"id"},
-			PayloadColumns:      []string{}, // Empty
+		PrimaryKeyColumns:   []string{"id:VARCHAR"},
+		PayloadColumns:      []string{}, // Empty
 			MissingMeansDeleted: false,
 			TrackIngestRuns:     false,
 		}

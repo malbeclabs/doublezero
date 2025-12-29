@@ -50,8 +50,8 @@ func NewStore(cfg StoreConfig) (*Store, error) {
 func SCD2ConfigGeoIPRecords() duck.SCDTableConfig {
 	return duck.SCDTableConfig{
 		TableBaseName:       "geoip_records",
-		PrimaryKeyColumns:   []string{"ip"},
-		PayloadColumns:      []string{"country_code", "country", "region", "city", "city_id", "metro_name", "latitude", "longitude", "postal_code", "time_zone", "accuracy_radius", "asn", "asn_org", "is_anycast", "is_anonymous_proxy", "is_satellite_provider"},
+		PrimaryKeyColumns:   []string{"ip:VARCHAR"},
+		PayloadColumns:      []string{"country_code:VARCHAR", "country:VARCHAR", "region:VARCHAR", "city:VARCHAR", "city_id:INTEGER", "metro_name:VARCHAR", "latitude:DOUBLE", "longitude:DOUBLE", "postal_code:VARCHAR", "time_zone:VARCHAR", "accuracy_radius:INTEGER", "asn:BIGINT", "asn_org:VARCHAR", "is_anycast:BOOLEAN", "is_anonymous_proxy:BOOLEAN", "is_satellite_provider:BOOLEAN"},
 		MissingMeansDeleted: false,
 		TrackIngestRuns:     true,
 	}

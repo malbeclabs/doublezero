@@ -42,8 +42,7 @@ func (v *View) refreshInternetMetroLatencySamples(ctx context.Context, metros []
 	// Get existing max sample_index for each origin_metro_pk+target_metro_pk+data_provider+epoch to determine what's new
 	existingMaxIndices, err := v.store.GetExistingInternetMaxSampleIndices()
 	if err != nil {
-		v.log.Warn("telemetry/internet-metro: failed to get existing max indices, will insert all samples", "error", err)
-		existingMaxIndices = make(map[string]int) // Empty map means no existing data
+		return fmt.Errorf("failed to get existing max indices: %w", err)
 	}
 
 	var allSamples []InternetMetroLatencySample

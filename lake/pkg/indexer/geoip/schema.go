@@ -16,7 +16,6 @@ var Datasets = []schematypes.Dataset{
 		USAGE:
 		- This dataset contains geoip-derived data from MaxMind GeoIP2 databases. Users should be informed that this is geoip-derived data and may have accuracy limitations.
 		- Always query using time filter.
-		- Cast all columns to their specified types when querying the underlying tables with SQL.
 		- Joins:
 			- geoip_records_current.ip = solana_gossip_nodes_current.gossip_ip
 			- geoip_records_current.ip = dz_users_current.client_ip

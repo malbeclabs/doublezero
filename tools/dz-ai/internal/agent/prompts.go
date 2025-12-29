@@ -41,6 +41,7 @@ NETWORK STATUS:
 - Link status values: pending, activated, suspended, deleted, rejected, requested, hard-drained, soft-drained. Only activated links are operational and available for traffic.
 - Drain semantics: treat dz_links.isis_delay_override_ns = 1000000000 as soft-drained (traffic should be routed away). Always include these as soft-drained in the response.
 - Link health: consider drained state, telemetry packet loss (rtt_us = 0 in latency samples), delay delta from committed_rtt_ns, interface errors, and interface discards when interpreting link health. Do not emphasize small divergences from committed delay as unhealthy; focus on significant violations.
+- Always include drained links in the response (if observed).
 - Device health: check interface errors (in_errors_delta, out_errors_delta) and interface discards (in_discards_delta, out_discards_delta) from dz_device_iface_usage, as well as carrier transitions.
 - Interface errors and interface discards are first-order health signals; always surface them separately in status summaries with specific device and interface details.
 - When summarizing network status, always report: operational device/link counts (status = activated), drained links/devices, active telemetry issues (packet loss, interface errors, interface discards), and any WAN links exceeding committed delay.
@@ -48,6 +49,12 @@ NETWORK STATUS:
 - Always include the time range or observation range when reporting network status to provide context for the data.
 - Do not report total measurement counts (total samples, total counters) as they are not useful signals for network status, health, activity, load, utilization, or importance.
 - Do not report absolute numbers of lost packets on their own; always provide packet loss as a percentage to give meaningful context.
+
+NETWORK TIMELINES & INCIDENTS:
+- Timelines must show explicit timestamps (dates and times), elapsed time between events, and include status/config changes, packet loss, interface errors/discards, and recovery (if observed).
+- Incident/timeline analysis must construct a full combined chronological timeline from configuration and status history (dz_links_history, dz_devices_history) and raw telemetry (dz_device_link_latency_samples_raw, dz_device_iface_usage_raw).
+- Always verify calendar dates; never assume same-day timestamps.
+- For link incidents, aggregate telemetry hourly and report loss %, errors, and discards for both endpoints (device codes + interfaces).
 
 DEVICE IDENTIFICATION:
 - Always refer to devices by their code field from dz_devices_current, never by serial number, host, or pk.

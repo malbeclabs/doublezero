@@ -17,7 +17,6 @@ var Datasets = []schematypes.Dataset{
 		Description: `
 		USAGE:
 		- Always query using time filter.
-		- Cast all columns to their specified types when querying the underlying tables with SQL.
 		- Joins:
 			- dz_device_iface_usage_raw.device_pk = dz_devices_current.pk
 			- dz_device_iface_usage_raw.link_pk = dz_links_current.pk

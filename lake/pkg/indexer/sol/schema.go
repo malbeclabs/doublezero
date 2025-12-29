@@ -17,7 +17,6 @@ var Datasets = []schematypes.Dataset{
 		Description: `
 		USAGE:
 		- Always query solana_gossip_nodes_current for current state.
-		- Cast all columns to their specified types when querying the underlying tables with SQL.
 		- Joins:
 			- solana_gossip_nodes_current.pubkey = solana_vote_accounts_current.node_pubkey
 			- solana_gossip_nodes_current.gossip_ip = geoip_records_current.ip
@@ -60,7 +59,6 @@ var Datasets = []schematypes.Dataset{
 		Description: `
 		USAGE:
 		- Always query solana_vote_accounts_current for current state.
-		- Cast all columns to their specified types when querying the underlying tables with SQL.
 		- Joins:
 			- solana_vote_accounts_current.node_pubkey = solana_gossip_nodes_current.pubkey
 		- Filter for staked validators using epoch_vote_account = true AND activated_stake_lamports > 0.
@@ -108,7 +106,6 @@ var Datasets = []schematypes.Dataset{
 		Description: `
 		USAGE:
 		- Always query using time filter.
-		- Cast all columns to their specified types when querying the underlying tables with SQL.
 		- Joins:
 			- solana_leader_schedule_current.node_pubkey = solana_vote_accounts_current.node_pubkey
 

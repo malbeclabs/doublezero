@@ -17,7 +17,6 @@ var Datasets = []schematypes.Dataset{
 		Description: `
 		USAGE:
 		- Always query using time filter ("time" column).
-		- Cast all columns to their specified types when querying the underlying tables with SQL.
 		- Joins:
 			- dz_device_link_latency_samples_raw.origin_device_pk = dz_devices_current.pk
 			- dz_device_link_latency_samples_raw.target_device_pk = dz_devices_current.pk
@@ -63,7 +62,6 @@ var Datasets = []schematypes.Dataset{
 		Description: `
 		USAGE:
 		- Always query using time filter ("time" column).
-		- Cast all columns to their specified types when querying the underlying tables with SQL.
 		- Joins:
 			- dz_internet_metro_latency_samples_raw.origin_metro_pk = dz_metros_current.pk
 			- dz_internet_metro_latency_samples_raw.target_metro_pk = dz_metros_current.pk

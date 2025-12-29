@@ -15,7 +15,6 @@ var Datasets = []schematypes.Dataset{
 		Description: `
 		USAGE:
 		- Always query dz_contributors_current for current state.
-		- Cast all columns to their specified types when querying the underlying tables with SQL.
 		- Joins:
 			- dz_devices_current.contributor_pk = dz_contributors_current.pk
 			- dz_links_current.contributor_pk = dz_contributors_current.pk
@@ -50,7 +49,6 @@ var Datasets = []schematypes.Dataset{
 		Description: `
 		USAGE:
 		- Always query dz_devices_current for current state.
-		- Cast all columns to their specified types when querying the underlying tables with SQL.
 		- Query status to filter by device operational state (pending, activated, suspended, deleted, rejected, soft-drained, hard-drained).
 		- Joins:
 			- dz_devices_current.metro_pk = dz_metros_current.pk
@@ -92,7 +90,6 @@ var Datasets = []schematypes.Dataset{
 		Description: `
 		USAGE:
 		- Always query dz_metros_current for current state.
-		- Cast all columns to their specified types when querying the underlying tables with SQL.
 		- Joins:
 			- dz_devices_current.metro_pk = dz_metros_current.pk
 
@@ -128,7 +125,6 @@ var Datasets = []schematypes.Dataset{
 		Description: `
 		USAGE:
 		- Always query dz_links_current for current state.
-		- Cast all columns to their specified types when querying the underlying tables with SQL.
 		- Joins:
 			- dz_links_current.side_a_pk = dz_devices_current.pk
 			- dz_links_current.side_z_pk = dz_devices_current.pk
@@ -179,7 +175,6 @@ var Datasets = []schematypes.Dataset{
 		Description: `
 		USAGE:
 		- Always query dz_users_current for current state.
-		- Cast all columns to their specified types when querying the underlying tables with SQL.
 		- Joins:
 			- dz_users_current.device_pk = dz_devices_current.pk
 			- dz_users_current.dz_ip = solana_gossip_nodes_current.gossip_ip

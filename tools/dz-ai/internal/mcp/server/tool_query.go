@@ -19,7 +19,6 @@ Execute DuckDB SQL queries across all DoubleZero datasets (serviceability, telem
 USAGE RULES:
 - Always use list-datasets to discover available datasets and their underlying tables and columns before writing SQL.
 - Do not guess column names. Execute DESCRIBE TABLE <table_name> to get column details before writing SQL.
-- Cast all columns to their specified types when querying the underlying tables with SQL.
 - Prefer aggregated, well-constructed queries that return summarized results.
 - Aggregate data using 'GROUP BY' and apply 'LIMIT' to keep result sets small.
 

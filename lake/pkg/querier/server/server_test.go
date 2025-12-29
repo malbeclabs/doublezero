@@ -545,8 +545,11 @@ func TestLake_Querier_Server_PostgreSQL_WireProtocol(t *testing.T) {
 		require.Equal(t, int64(9223372036854775807), bigID)
 		require.True(t, isActive)
 		require.InDelta(t, 99.99, price, 0.01)
-		// Timestamp might be returned in different format, just check it's a valid time
+		// Verify timestamp includes both date and time (not just time)
 		require.False(t, createdAt.IsZero())
+		require.Equal(t, 2024, createdAt.Year(), "timestamp should include date (year)")
+		require.Equal(t, time.January, createdAt.Month(), "timestamp should include date (month)")
+		require.Equal(t, 15, createdAt.Day(), "timestamp should include date (day)")
 		require.True(t, birthDate.Valid)
 		require.Equal(t, "binary data", string(data))
 		require.True(t, metadata.Valid)
@@ -573,6 +576,123 @@ func TestLake_Querier_Server_PostgreSQL_WireProtocol(t *testing.T) {
 
 		// Give server a moment to process connection closure
 		time.Sleep(100 * time.Millisecond)
+
+		// Shutdown server
+		serverCancel()
+		select {
+		case err := <-serverErrCh:
+			require.NoError(t, err)
+		case <-time.After(5 * time.Second):
+			t.Fatal("server did not shutdown in time")
+		}
+	})
+
+	t.Run("timestamp includes date and time", func(t *testing.T) {
+		t.Parallel()
+		ctx := context.Background()
+		db := testDB(t)
+
+		// Set up test data with TIMESTAMP column
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+
+		_, err = conn.ExecContext(ctx, `CREATE TABLE timestamp_test (
+			id INTEGER,
+			ts TIMESTAMP,
+			ts_tz TIMESTAMPTZ
+		)`)
+		require.NoError(t, err)
+
+		// Insert a timestamp with both date and time
+		testTimeStr := "2024-01-15 10:30:45"
+		_, err = conn.ExecContext(ctx, fmt.Sprintf(`INSERT INTO timestamp_test VALUES
+			(1, TIMESTAMP '%s', TIMESTAMP '%s')`,
+			testTimeStr, testTimeStr))
+		require.NoError(t, err)
+
+		// Create server with PostgreSQL wire protocol
+		httpListener := getFreeListener(t)
+		postgresListener := getFreeListener(t)
+
+		cfg := Config{
+			HTTPListener:      httpListener,
+			PostgresListener:  postgresListener,
+			ReadHeaderTimeout: 30 * time.Second,
+			ShutdownTimeout:   10 * time.Second,
+			QuerierConfig: querier.Config{
+				Logger: testLogger(t),
+				DB:     db,
+			},
+		}
+
+		srv, err := New(ctx, cfg)
+		require.NoError(t, err)
+
+		// Start server
+		serverCtx, serverCancel := context.WithCancel(ctx)
+		defer serverCancel()
+
+		serverErrCh := make(chan error, 1)
+		go func() {
+			serverErrCh <- srv.Run(serverCtx)
+		}()
+
+		// Wait for server to be ready
+		postgresAddr := postgresListener.Addr().String()
+		waitForServerReady(t, ctx, postgresAddr, 10)
+
+		// Connect as PostgreSQL client
+		pgConn, err := pgx.Connect(ctx, fmt.Sprintf("postgres://user:password@%s/postgres?sslmode=disable", postgresAddr))
+		require.NoError(t, err)
+		defer pgConn.Close(ctx)
+
+		// Query timestamp as time.Time
+		rows, err := pgConn.Query(ctx, "SELECT id, ts, ts_tz FROM timestamp_test ORDER BY id")
+		require.NoError(t, err)
+		defer rows.Close()
+
+		require.True(t, rows.Next())
+		var id int32
+		var ts time.Time
+		var tsTz time.Time
+		err = rows.Scan(&id, &ts, &tsTz)
+		require.NoError(t, err)
+		require.Equal(t, int32(1), id)
+
+		// Verify timestamp includes date (not just time)
+		// The timestamp should have a date component (year, month, day)
+		require.Equal(t, 2024, ts.Year())
+		require.Equal(t, time.January, ts.Month())
+		require.Equal(t, 15, ts.Day())
+		require.Equal(t, 10, ts.Hour())
+		require.Equal(t, 30, ts.Minute())
+		require.Equal(t, 45, ts.Second())
+
+		// Verify TIMESTAMPTZ also includes date
+		require.Equal(t, 2024, tsTz.Year())
+		require.Equal(t, time.January, tsTz.Month())
+		require.Equal(t, 15, tsTz.Day())
+
+		// Query timestamp as string to verify string representation includes date
+		var tsStr string
+		var tsTzStr string
+		err = pgConn.QueryRow(ctx, "SELECT ts::text, ts_tz::text FROM timestamp_test WHERE id = 1").Scan(&tsStr, &tsTzStr)
+		require.NoError(t, err)
+
+		// String representation should include date (YYYY-MM-DD or similar)
+		// It should NOT be just time (HH:MM:SS)
+		require.Contains(t, tsStr, "2024", "timestamp string should include year")
+		require.Contains(t, tsStr, "01", "timestamp string should include month")
+		require.Contains(t, tsStr, "15", "timestamp string should include day")
+		require.NotRegexp(t, `^\d{2}:\d{2}:\d{2}`, tsStr, "timestamp should not be just time without date")
+
+		require.Contains(t, tsTzStr, "2024", "timestamptz string should include year")
+		require.NotRegexp(t, `^\d{2}:\d{2}:\d{2}`, tsTzStr, "timestamptz should not be just time without date")
+
+		// No more rows
+		require.False(t, rows.Next())
+		require.NoError(t, rows.Err())
 
 		// Shutdown server
 		serverCancel()

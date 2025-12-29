@@ -196,12 +196,12 @@ func mapDuckDBTypeToPostgreSQLOID(dbTypeName string) oid.Oid {
 		return pgtype.TextOID
 	case strings.HasPrefix(dbTypeName, "DATE"):
 		return pgtype.DateOID
-	case strings.HasPrefix(dbTypeName, "TIME"):
-		return pgtype.TimeOID
-	case strings.HasPrefix(dbTypeName, "TIMESTAMP") || strings.HasPrefix(dbTypeName, "DATETIME"):
-		return pgtype.TimestampOID
 	case strings.HasPrefix(dbTypeName, "TIMESTAMPTZ") || strings.HasPrefix(dbTypeName, "TIMESTAMP WITH TIME ZONE"):
 		return pgtype.TimestamptzOID
+	case strings.HasPrefix(dbTypeName, "TIMESTAMP") || strings.HasPrefix(dbTypeName, "DATETIME"):
+		return pgtype.TimestampOID
+	case strings.HasPrefix(dbTypeName, "TIME"):
+		return pgtype.TimeOID
 	case strings.HasPrefix(dbTypeName, "BLOB") || strings.HasPrefix(dbTypeName, "BYTEA") || strings.HasPrefix(dbTypeName, "BINARY"):
 		return pgtype.ByteaOID
 	case strings.HasPrefix(dbTypeName, "UUID"):

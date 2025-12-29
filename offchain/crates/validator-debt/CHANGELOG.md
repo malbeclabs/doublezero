@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- fix local uncollectible debt tracking for write-off logic ([#240](https://github.com/doublezerofoundation/doublezero-offchain/pull/240))
 - enable debt write-off at activation ([#237](https://github.com/doublezerofoundation/doublezero-offchain/pull/237))
 - add `try_fetch_debt_records_and_distributions` ([#231](https://github.com/doublezerofoundation/doublezero-offchain/pull/231))
 - track eligibility by vote account instead of identity ([#230](https://github.com/doublezerofoundation/doublezero-offchain/pull/230))

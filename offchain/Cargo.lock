@@ -2772,6 +2772,8 @@ dependencies = [
  "solana-sdk",
  "spl-token-interface",
  "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

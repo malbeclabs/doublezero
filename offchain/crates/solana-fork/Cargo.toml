@@ -23,6 +23,8 @@ solana-client.workspace = true
 solana-sdk.workspace = true
 spl-token-interface.workspace = true
 tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
 
 [[bin]]
 name = "doublezero-solana-fork"

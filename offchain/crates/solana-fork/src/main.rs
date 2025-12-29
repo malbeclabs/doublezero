@@ -25,6 +25,7 @@ use solana_account_decoder_client_types::UiAccountEncoding;
 use solana_client::rpc_config::{RpcAccountInfoConfig, RpcProgramAccountsConfig};
 use solana_sdk::{account::Account, program_pack::Pack, pubkey::Pubkey, signer::Signer};
 use spl_token_interface::state::Mint;
+use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 const ACCOUNTS_PATH: &str = "forked-accounts";
 const TMP_ACCOUNTS_PATH: &str = "forked-accounts.tmp";
@@ -65,18 +66,41 @@ struct Args {
     #[arg(long, hide = true)]
     god_mode: bool,
 
+    /// Override the next completed DZ epoch to the specified epoch. This option
+    /// can only be used in combination with --god-mode and can only be less
+    /// than the forked next completed DZ epoch found in the Revenue
+    /// Distribution config account.
+    #[arg(long, value_name = "EPOCH")]
+    next_completed_dz_epoch_override: Option<u64>,
+
     #[command(flatten)]
     solana_connection_options: SolanaConnectionOptions,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    tracing_subscriber::registry()
+        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_target(false)
+                .with_thread_ids(false)
+                .with_thread_names(false),
+        )
+        .init();
+
     let Args {
         upgrade_authority: upgrade_authority_key,
         reset: should_reset,
         god_mode: should_god_mode,
+        next_completed_dz_epoch_override,
         solana_connection_options,
     } = Args::parse();
+
+    ensure!(
+        next_completed_dz_epoch_override.is_none() || should_god_mode,
+        "--next-completed-dz-epoch-override can only be used in combination with --god-mode"
+    );
 
     let connection = SolanaConnection::from(solana_connection_options);
     let network_env = connection.try_network_environment().await?;
@@ -92,8 +116,8 @@ async fn main() -> Result<()> {
 
     // Warn if god mode is enabled but reset is not.
     if should_god_mode && !should_reset {
-        eprintln!(
-            "Warning: --god-mode was passed but --reset was not. God mode will not apply without resetting accounts"
+        tracing::warn!(
+            "--god-mode was passed but --reset was not. God mode will not apply without resetting accounts"
         );
     }
 
@@ -115,6 +139,7 @@ async fn main() -> Result<()> {
             network_env,
             upgrade_authority_key,
             should_god_mode,
+            next_completed_dz_epoch_override,
         )
         .await
         {
@@ -185,6 +210,7 @@ async fn try_fetch_and_write_accounts(
     network_env: NetworkEnvironment,
     upgrade_authority_key: Pubkey,
     should_god_mode: bool,
+    next_completed_dz_epoch_override: Option<u64>,
 ) -> Result<()> {
     // Fetch 2Z mint account.
 
@@ -192,7 +218,7 @@ async fn try_fetch_and_write_accounts(
 
     let mint_account = connection.get_account(&token_2z_mint_key).await?;
     try_write_account_to_file(&token_2z_mint_key, &mint_account, TMP_ACCOUNTS_PATH)?;
-    println!("Wrote 2Z mint account to {TMP_ACCOUNTS_PATH}/");
+    tracing::info!("Wrote 2Z SPL mint account to {TMP_ACCOUNTS_PATH}/");
 
     // Fetch program accounts.
 
@@ -258,12 +284,17 @@ async fn try_fetch_and_write_accounts(
     )?;
 
     if should_god_mode {
-        eprintln!("God mode enabled");
+        tracing::info!("God mode enabled");
 
-        try_modify_zero_copy_account::<RevenueDistributionProgramConfig>(
+        let forked_next_completed_dz_epoch = try_modify_zero_copy_account::<
+            RevenueDistributionProgramConfig,
+            _,
+        >(
             &RevenueDistributionProgramConfig::find_address().0,
             TMP_ACCOUNTS_PATH,
             |config| {
+                let forked_next_completed_dz_epoch = config.next_completed_dz_epoch.value();
+
                 config.admin_key = upgrade_authority_key;
                 config.debt_accountant_key = upgrade_authority_key;
                 config.rewards_accountant_key = upgrade_authority_key;
@@ -273,11 +304,38 @@ async fn try_fetch_and_write_accounts(
                 let distribution_params = &mut config.distribution_parameters;
                 distribution_params.calculation_grace_period_minutes = 1;
                 distribution_params.initialization_grace_period_minutes = 1;
+
+                if let Some(dz_epoch) = next_completed_dz_epoch_override {
+                    if dz_epoch > forked_next_completed_dz_epoch {
+                        tracing::warn!(
+                            "DZ epoch {dz_epoch} override is greater than forked DZ epoch {forked_next_completed_dz_epoch}. Ignoring --next-completed-dz-epoch-override"
+                        );
+                    } else {
+                        tracing::info!("Overriding next completed DZ epoch to {dz_epoch}");
+                        config.next_completed_dz_epoch = DoubleZeroEpoch::new(dz_epoch);
+                    }
+                }
+
+                forked_next_completed_dz_epoch
             },
         )?;
-        eprintln!("Updated Revenue Distribution config authorities");
+        tracing::info!("Updated Revenue Distribution config authorities");
 
-        try_modify_zero_copy_account::<PassportProgramConfig>(
+        if let Some(next_completed_dz_epoch_override) = next_completed_dz_epoch_override {
+            for dz_epoch in next_completed_dz_epoch_override..forked_next_completed_dz_epoch {
+                let (distribution_key, _) =
+                    Distribution::find_address(DoubleZeroEpoch::new(dz_epoch));
+
+                // Remove the file representing this distribution key.
+                let path = format!("{TMP_ACCOUNTS_PATH}/{distribution_key}.json");
+                if fs::metadata(&path).is_ok() {
+                    fs::remove_file(&path)?;
+                    tracing::info!("Removed distribution account for epoch {dz_epoch}");
+                }
+            }
+        }
+
+        try_modify_zero_copy_account::<PassportProgramConfig, _>(
             &PassportProgramConfig::find_address().0,
             TMP_ACCOUNTS_PATH,
             |config| {
@@ -285,7 +343,7 @@ async fn try_fetch_and_write_accounts(
                 config.sentinel_key = upgrade_authority_key;
             },
         )?;
-        eprintln!("Updated Passport config authorities");
+        tracing::info!("Updated Passport config authorities");
 
         try_modify_borsh_account::<SolConversionProgramState>(
             &SolConversionProgramState::find_address().0,
@@ -296,7 +354,7 @@ async fn try_fetch_and_write_accounts(
                 config.deny_list_authority = upgrade_authority_key;
             },
         )?;
-        eprintln!("Updated SOL Conversion config authorities");
+        tracing::info!("Updated SOL Conversion config authorities");
 
         // Override mint authority.
 
@@ -338,7 +396,12 @@ async fn try_fetch_and_write_accounts(
             TMP_ACCOUNTS_PATH,
         )?;
 
-    for epoch in 0..revenue_distribution_config.next_completed_dz_epoch.value() {
+    let forked_next_completed_dz_epoch =
+        revenue_distribution_config.next_completed_dz_epoch.value();
+    let next_completed_dz_epoch = next_completed_dz_epoch_override
+        .unwrap_or(forked_next_completed_dz_epoch)
+        .min(forked_next_completed_dz_epoch);
+    for epoch in 0..next_completed_dz_epoch {
         let (distribution_key, _) = Distribution::find_address(DoubleZeroEpoch::new(epoch));
         token_pda_keys
             .push(revenue_distribution::state::find_2z_token_pda_address(&distribution_key).0);
@@ -357,9 +420,11 @@ async fn try_fetch_and_write_accounts(
         }
     }
 
-    println!(
-        "Wrote {} 2Z token PDA accounts to {TMP_ACCOUNTS_PATH}/",
-        token_pda_keys.len()
+    let token_pda_keys_len = token_pda_keys.len();
+    tracing::info!(
+        "Wrote {} 2Z token PDA account{} to {TMP_ACCOUNTS_PATH}/",
+        token_pda_keys_len,
+        if token_pda_keys_len == 1 { "" } else { "s" }
     );
 
     Ok(())
@@ -377,26 +442,25 @@ where
     let wrapper = serde_json::from_str::<WrittenAccount>(&json)?;
     let data = BASE64.decode(&wrapper.account.data.0)?;
 
-    let (mucked_data, remaining_data) =
-        zero_copy::checked_from_bytes_with_discriminator::<T>(&data)
-            .map(|data| (Box::new(*data.0), data.1))
-            .unwrap();
+    let (mucked_data, remaining_data) = zero_copy::checked_from_bytes_with_discriminator(&data)
+        .map(|data| (Box::new(*data.0), data.1))
+        .unwrap();
 
     Ok((wrapper, mucked_data, remaining_data.to_vec()))
 }
 
-fn try_modify_zero_copy_account<T>(
+fn try_modify_zero_copy_account<T, U>(
     account_key: &Pubkey,
     accounts_dir: &str,
-    modify_fn: impl FnOnce(&mut T),
-) -> Result<()>
+    modify_fn: impl FnOnce(&mut T) -> U,
+) -> Result<U>
 where
     T: PrecomputedDiscriminator + bytemuck::Pod,
 {
     let (wrapper, mut mucked_data, remaining_data) =
         try_read_zero_copy_account::<T>(account_key, accounts_dir)?;
 
-    modify_fn(&mut mucked_data);
+    let out = modify_fn(&mut mucked_data);
 
     let mut modified_data = Vec::with_capacity(zero_copy::data_end::<T>() + remaining_data.len());
     modified_data.extend_from_slice(T::discriminator_slice());
@@ -411,7 +475,9 @@ where
         rent_epoch: wrapper.account.rent_epoch,
     };
 
-    try_write_account_to_file(account_key, &modified_account, accounts_dir)
+    try_write_account_to_file(account_key, &modified_account, accounts_dir)?;
+
+    Ok(out)
 }
 
 fn try_read_borsh_account<T>(
@@ -509,14 +575,14 @@ async fn try_fetch_and_write_program_accounts(
         try_write_account_to_file(key, account, accounts_dir)?;
     }
 
-    println!(
-        "Wrote {} {} accounts to {}/",
-        accounts.len(),
-        program_name,
-        accounts_dir
+    let accounts_len = accounts.len();
+    tracing::info!(
+        "Wrote {} {program_name} account{} to {accounts_dir}/",
+        accounts_len,
+        if accounts_len == 1 { "" } else { "s" },
     );
 
-    Ok(accounts.len())
+    Ok(accounts_len)
 }
 
 fn try_dump_program(
@@ -525,7 +591,7 @@ fn try_dump_program(
     program_name: &str,
     output_path: &str,
 ) -> Result<()> {
-    println!("Dumping {} program to {}...", program_name, output_path);
+    tracing::info!("Dumping {} program to {}...", program_name, output_path);
 
     let dump_status = Command::new("solana")
         .arg("program")
@@ -542,6 +608,6 @@ fn try_dump_program(
         dump_status
     );
 
-    println!("{} program dumped successfully", program_name);
+    tracing::info!("{} program dumped successfully", program_name);
     Ok(())
 }

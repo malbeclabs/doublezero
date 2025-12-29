@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DoubleZero Flow Analytics</title>
+    
+    <!-- htmx -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    
+    <!-- ECharts -->
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    
+    <!-- Flatpickr for datetime -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <h1>
+                <img src="/static/logoDark.svg" alt="DoubleZero" class="header-logo">
+                <span>Flow Analytics</span>
+            </h1>
+            <span class="table-badge">{{.TableName}}</span>
+        </header>
+
+        <main class="main-content" id="main-content">
+            <!-- Query Builder Panel -->
+            <section class="query-builder">
+                <!-- Panel Header with Toggle -->
+                <div class="panel-header">
+                    <h2>Query Builder</h2>
+                    <button class="panel-toggle" id="panel-toggle" onclick="togglePanel()" title="Toggle panel" aria-label="Toggle query builder panel">
+                        ◀
+                    </button>
+                </div>
+
+                <!-- Time Range Section -->
+                <div class="section">
+                    <div class="section-header">
+                        <h2>Time Range</h2>
+                        <div class="time-presets">
+                            <button class="preset-btn" onclick="setTimePreset(15)">15m</button>
+                            <button class="preset-btn" onclick="setTimePreset(60)">1h</button>
+                            <button class="preset-btn active" onclick="setTimePreset(360)">6h</button>
+                            <button class="preset-btn" onclick="setTimePreset(1440)">24h</button>
+                            <button class="preset-btn" onclick="setTimePreset(10080)">7d</button>
+                        </div>
+                    </div>
+                    <div class="time-inputs">
+                        <div class="input-group">
+                            <label for="start-time">Start</label>
+                            <input type="text" id="start-time" class="datetime-input" placeholder="Start time">
+                        </div>
+                        <span class="time-separator">→</span>
+                        <div class="input-group">
+                            <label for="end-time">End</label>
+                            <input type="text" id="end-time" class="datetime-input" placeholder="End time">
+                        </div>
+                    </div>
+                    <div class="interval-row">
+                        <label for="interval">Interval</label>
+                        <select id="interval" class="select-input">
+                            <option value="">Auto</option>
+                            <option value="1 minute">1 minute</option>
+                            <option value="5 minute">5 minutes</option>
+                            <option value="15 minute">15 minutes</option>
+                            <option value="1 hour">1 hour</option>
+                            <option value="6 hour">6 hours</option>
+                            <option value="1 day">1 day</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Filters Section -->
+                <div class="section">
+                    <div class="section-header">
+                        <h2>Filters</h2>
+                        <div class="section-actions">
+                            <button class="clear-all-btn" onclick="clearAllFilters()" title="Clear all filters" aria-label="Clear all filters">
+                                Clear All
+                            </button>
+                            <button class="add-btn" id="add-filter-btn"
+                                    hx-get="/api/filter/add"
+                                    hx-target="#filters-container"
+                                    hx-swap="beforeend"
+                                    hx-vals="js:{index: document.querySelectorAll('.filter-row').length}">
+                                + Add Filter
+                            </button>
+                        </div>
+                    </div>
+                    <div id="filters-container" class="filters-container">
+                        <!-- Filter rows will be added here dynamically -->
+                    </div>
+                </div>
+
+                <!-- Group By Section -->
+                <div class="section">
+                    <div class="section-header">
+                        <h2>Group By</h2>
+                        <div class="section-actions">
+                            <button class="clear-all-btn" onclick="clearAllGroupBys()" title="Clear all group-bys" aria-label="Clear all group-bys">
+                                Clear All
+                            </button>
+                            <button class="add-btn" id="add-groupby-btn"
+                                    hx-get="/api/groupby/add"
+                                    hx-target="#groupby-container"
+                                    hx-swap="beforeend"
+                                    hx-vals="js:{index: document.querySelectorAll('.groupby-row').length}">
+                                + Add Group By
+                            </button>
+                        </div>
+                    </div>
+                    <div id="groupby-container" class="groupby-container">
+                        <!-- Group by rows will be added here dynamically -->
+                    </div>
+                </div>
+
+                <!-- Query History -->
+                <div class="section" id="query-history-section" style="display: none;">
+                    <div class="section-header">
+                        <h2>Recent Queries</h2>
+                        <button class="clear-all-btn" onclick="clearQueryHistory()" title="Clear history" aria-label="Clear query history">
+                            Clear
+                        </button>
+                    </div>
+                    <div id="query-history-container" class="query-history-container">
+                        <!-- Query history items will be added here -->
+                    </div>
+                </div>
+
+                <!-- Execute Button -->
+                <div class="execute-section">
+                    <button class="execute-btn" onclick="executeQuery()">
+                        <span class="btn-icon">🔍</span>
+                        Execute Query
+                    </button>
+                    <div id="query-status" class="query-status"></div>
+                </div>
+            </section>
+
+            <!-- Results Panel -->
+            <section class="results-panel">
+                <!-- Chart Container -->
+                <div class="chart-section">
+                    <div class="chart-header">
+                        <div class="chart-controls">
+                            <label for="chart-type" style="font-size: 0.8125rem; color: var(--text-secondary);">Chart Type:</label>
+                            <select id="chart-type" class="chart-type-select" onchange="onChartTypeChange()">
+                                <option value="line">Line</option>
+                                <option value="area">Area</option>
+                                <option value="stacked-area">Stacked Area</option>
+                                <option value="stacked-bar">Stacked Bar</option>
+                                <option value="sankey">Sankey</option>
+                            </select>
+                            <button class="download-btn" onclick="downloadChart()" title="Download chart as PNG" aria-label="Download chart as PNG">
+                                Download PNG
+                            </button>
+                        </div>
+                    </div>
+                    <div class="chart-wrapper">
+                        <div id="chart-container" class="chart-container">
+                            <div class="chart-placeholder">
+                                <span>Configure your query and click "Execute Query" to view results</span>
+                            </div>
+                        </div>
+                        <div id="chart-legend-container" class="chart-legend-container" style="display: none;">
+                            <div id="chart-legend-grid" class="chart-legend-grid"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Generated Query -->
+                <div class="query-section">
+                    <div class="query-header">
+                        <h3>Generated Query</h3>
+                        <button class="copy-btn" onclick="copyQuery()">📋 Copy</button>
+                    </div>
+                    <pre id="generated-query" class="query-display">
+-- Query will appear here after execution
+                    </pre>
+                </div>
+
+                <!-- Stats -->
+                <div id="query-stats" class="query-stats"></div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Column data for JavaScript -->
+    <script>
+        const COLUMNS = [
+            {{range .Columns}}
+            {name: "{{.Name}}", type: "{{.Type}}", category: "{{.Category}}", uiCategory: "{{.UICategory}}", description: "{{.Description}}"},
+            {{end}}
+        ];
+
+        const COLUMN_GROUPS = [
+            {{range .ColumnGroups}}
+            {
+                name: "{{.Name}}",
+                displayName: "{{.DisplayName}}",
+                columns: [
+                    {{range .Columns}}
+                    {name: "{{.Name}}", type: "{{.Type}}", category: "{{.Category}}", uiCategory: "{{.UICategory}}", description: "{{.Description}}"},
+                    {{end}}
+                ]
+            },
+            {{end}}
+        ];
+    </script>
+    
+    <script src="/static/app.js"></script>
+</body>
+</html>

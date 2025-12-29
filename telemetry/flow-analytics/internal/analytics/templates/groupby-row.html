@@ -1,0 +1,17 @@
+<div class="groupby-row" id="groupby-row-{{.Index}}" data-index="{{.Index}}">
+    <div class="groupby-column">
+        <div class="typeahead-container">
+            <input type="text" 
+                   class="text-input typeahead-input column-typeahead"
+                   placeholder="Search columns..."
+                   autocomplete="off"
+                   data-groupby-index="{{.Index}}"
+                   oninput="onColumnTypeaheadInput(this)"
+                   onfocus="onColumnTypeaheadFocus(this)"
+                   onblur="onColumnTypeaheadBlur(this)">
+            <div class="typeahead-dropdown column-dropdown"></div>
+        </div>
+    </div>
+    
+    <button class="remove-btn" onclick="removeGroupByRow({{.Index}})">×</button>
+</div>

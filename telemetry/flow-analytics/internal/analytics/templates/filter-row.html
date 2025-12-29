@@ -1,0 +1,45 @@
+<div class="filter-row" id="filter-row-{{.Index}}" data-index="{{.Index}}">
+    <div class="filter-column">
+        <div class="typeahead-container">
+            <input type="text"
+                   class="text-input typeahead-input column-typeahead-input"
+                   placeholder="Search columns..."
+                   autocomplete="off"
+                   data-filter-index="{{.Index}}"
+                   oninput="onFilterColumnSearch(this)"
+                   onfocus="onFilterColumnFocus(this)"
+                   onblur="onFilterColumnBlur(this)">
+            <input type="hidden" class="selected-column-value" value="">
+            <div class="typeahead-dropdown column-dropdown"></div>
+        </div>
+    </div>
+
+    <div class="filter-operator">
+        <select class="select-input operator-select" onchange="onOperatorChange(this)">
+            <option value="=">=</option>
+            <option value="!=">≠</option>
+            <option value="IN">IN</option>
+            <option value="NOT IN">NOT IN</option>
+            <option value="LIKE">LIKE</option>
+            <option value="IS EMPTY">Is Empty</option>
+            <option value="IS NOT EMPTY">Is Not Empty</option>
+        </select>
+    </div>
+
+    <div class="filter-value">
+        <div class="typeahead-container">
+            <input type="text"
+                   class="text-input typeahead-input"
+                   placeholder="Type to search..."
+                   autocomplete="off"
+                   data-filter-index="{{.Index}}"
+                   oninput="onTypeaheadInput(this)"
+                   onfocus="onTypeaheadFocus(this)"
+                   onblur="onTypeaheadBlur(this)">
+            <div class="typeahead-dropdown"></div>
+        </div>
+        <div class="selected-values"></div>
+    </div>
+
+    <button class="remove-btn" onclick="removeFilterRow({{.Index}})" aria-label="Remove filter">×</button>
+</div>

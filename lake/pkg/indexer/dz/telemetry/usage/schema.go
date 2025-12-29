@@ -16,7 +16,7 @@ var Datasets = []schematypes.Dataset{
 		Tables: []string{"dz_device_iface_usage_raw"},
 		Description: `
 		USAGE:
-		- Always query using time filter.
+		- Always query using time filter ("time" column). Never run unscoped queries without a time filter.
 		- Joins:
 			- dz_device_iface_usage_raw.device_pk = dz_devices_current.pk
 			- dz_device_iface_usage_raw.link_pk = dz_links_current.pk

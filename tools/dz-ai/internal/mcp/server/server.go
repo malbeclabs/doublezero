@@ -46,7 +46,7 @@ func New(ctx context.Context, cfg Config) (*Server, error) {
 		return nil, fmt.Errorf("failed to register describe-datasets tool: %w", err)
 	}
 
-	err := RegisterQueryTool(s.log, mcpServer, cfg.Querier)
+	err := RegisterQueryTool(s.log, mcpServer, cfg.Querier, cfg.QueryTimeout)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create query tool: %w", err)
 	}
@@ -80,9 +80,9 @@ func New(ctx context.Context, cfg Config) (*Server, error) {
 		Handler:           mux,
 		ReadHeaderTimeout: s.cfg.ReadHeaderTimeout,
 		// Add timeouts to prevent connection issues from affecting the server
-		// Increased from 30s to 60s to avoid readiness probe timeouts
+		// WriteTimeout increased to 150s to exceed MCP client's 120s timeout and allow for query execution
 		ReadTimeout:  60 * time.Second,
-		WriteTimeout: 60 * time.Second,
+		WriteTimeout: 150 * time.Second,
 		IdleTimeout:  120 * time.Second,
 		// Set MaxHeaderBytes to prevent abuse
 		MaxHeaderBytes: 1 << 20, // 1MB

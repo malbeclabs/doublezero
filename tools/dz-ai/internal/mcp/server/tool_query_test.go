@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"testing"
+	"time"
 
 	_ "github.com/duckdb/duckdb-go/v2"
 	"github.com/malbeclabs/doublezero/lake/pkg/duck"
@@ -74,7 +75,7 @@ func TestAI_MCP_Server_ToolQuery_Register(t *testing.T) {
 		err := RegisterQueryTool(slog.New(slog.NewTextHandler(os.Stderr, nil)), mcp.NewServer(&mcp.Implementation{
 			Name:    "Test Server",
 			Version: "1.0.0",
-		}, nil), testQuerier(t, idx))
+		}, nil), testQuerier(t, idx), 30*time.Second)
 		require.NoError(t, err)
 	})
 }
@@ -106,7 +107,7 @@ func TestAI_MCP_Server_ToolQuery_HandleQuery(t *testing.T) {
 
 		result, err := handleQuery(t.Context(), logger, q, QueryInput{
 			SQL: "SELECT id, name, value FROM test_table ORDER BY id",
-		})
+		}, 30*time.Second)
 		require.NoError(t, err)
 		require.Equal(t, []string{"id", "name", "value"}, result.Columns)
 		require.Len(t, result.Rows, 2)
@@ -144,7 +145,7 @@ func TestAI_MCP_Server_ToolQuery_HandleQuery(t *testing.T) {
 
 		result, err := handleQuery(t.Context(), logger, q, QueryInput{
 			SQL: "SELECT id FROM empty_table",
-		})
+		}, 30*time.Second)
 		require.NoError(t, err)
 		require.Equal(t, []string{"id"}, result.Columns)
 		require.Len(t, result.Rows, 0)
@@ -175,7 +176,7 @@ func TestAI_MCP_Server_ToolQuery_HandleQuery(t *testing.T) {
 
 		result, err := handleQuery(t.Context(), logger, q, QueryInput{
 			SQL: "SELECT id, name FROM null_table ORDER BY id NULLS LAST",
-		})
+		}, 30*time.Second)
 		require.NoError(t, err)
 		require.Len(t, result.Rows, 2)
 		require.Nil(t, result.Rows[0]["name"])
@@ -206,7 +207,7 @@ func TestAI_MCP_Server_ToolQuery_HandleQuery(t *testing.T) {
 
 		result, err := handleQuery(t.Context(), logger, q, QueryInput{
 			SQL: "SELECT data FROM byte_table",
-		})
+		}, 30*time.Second)
 		require.NoError(t, err)
 		require.Len(t, result.Rows, 1)
 		require.IsType(t, "", result.Rows[0]["data"])
@@ -227,7 +228,7 @@ func TestAI_MCP_Server_ToolQuery_HandleQuery(t *testing.T) {
 
 		_, err = handleQuery(t.Context(), logger, q, QueryInput{
 			SQL: "SELECT * FROM nonexistent_table",
-		})
+		}, 30*time.Second)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "failed to execute query")
 	})
@@ -244,7 +245,7 @@ func TestAI_MCP_Server_ToolQuery_HandleQuery(t *testing.T) {
 
 		_, err = handleQuery(t.Context(), logger, q, QueryInput{
 			SQL: "SELECT 1",
-		})
+		}, 30*time.Second)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "failed to execute query")
 	})

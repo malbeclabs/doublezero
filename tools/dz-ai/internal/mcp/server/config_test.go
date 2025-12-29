@@ -173,6 +173,13 @@ func TestAI_MCP_Server_Config_Validate(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name: "sets default query timeout",
+			modify: func(c *Config) {
+				c.QueryTimeout = 0
+			},
+			wantErr: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -189,6 +196,9 @@ func TestAI_MCP_Server_Config_Validate(t *testing.T) {
 				require.NoError(t, err)
 				require.NotZero(t, cfg.ReadHeaderTimeout, "Config.Validate() should set default read header timeout")
 				require.NotZero(t, cfg.ShutdownTimeout, "Config.Validate() should set default shutdown timeout")
+				if tt.name == "sets default query timeout" {
+					require.NotZero(t, cfg.QueryTimeout, "Config.Validate() should set default query timeout")
+				}
 			}
 		})
 	}

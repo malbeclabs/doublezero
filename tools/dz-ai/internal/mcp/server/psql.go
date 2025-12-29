@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
@@ -81,6 +82,13 @@ func NewPostgresDBForQuerier(ctx context.Context, dsn string, log *slog.Logger) 
 	if err != nil {
 		return nil, fmt.Errorf("failed to open postgres connection: %w", err)
 	}
+
+	// Configure connection pool settings to prevent hanging connections
+	// Set reasonable timeouts to avoid long delays
+	db.SetMaxOpenConns(25)                 // Maximum number of open connections
+	db.SetMaxIdleConns(5)                  // Maximum number of idle connections
+	db.SetConnMaxLifetime(5 * time.Minute) // Maximum connection lifetime
+	db.SetConnMaxIdleTime(1 * time.Minute) // Maximum idle time before closing
 
 	// Test the connection with SELECT 1
 	var result int

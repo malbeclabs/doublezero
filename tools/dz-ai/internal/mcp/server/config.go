@@ -12,6 +12,7 @@ import (
 const (
 	defaultReadHeaderTimeout = 5 * time.Second
 	defaultShutdownTimeout   = 5 * time.Second
+	defaultQueryTimeout      = 90 * time.Second // Query timeout should be less than WriteTimeout
 )
 
 type Config struct {
@@ -25,7 +26,8 @@ type Config struct {
 	ListenAddr         string
 	ReadHeaderTimeout  time.Duration
 	ShutdownTimeout    time.Duration
-	AllowedTokens      []string // Bearer tokens allowed for MCP endpoint authentication
+	QueryTimeout       time.Duration // Timeout for individual queries
+	AllowedTokens      []string      // Bearer tokens allowed for MCP endpoint authentication
 }
 
 func (c *Config) Validate() error {
@@ -40,6 +42,9 @@ func (c *Config) Validate() error {
 	}
 	if c.ShutdownTimeout == 0 {
 		c.ShutdownTimeout = defaultShutdownTimeout
+	}
+	if c.QueryTimeout == 0 {
+		c.QueryTimeout = defaultQueryTimeout
 	}
 	return nil
 }

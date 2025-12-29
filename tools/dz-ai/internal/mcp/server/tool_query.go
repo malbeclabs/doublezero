@@ -61,7 +61,7 @@ type QueryOutput struct {
 
 type QueryRow map[string]any
 
-func RegisterQueryTool(log *slog.Logger, server *mcp.Server, querier *querier.Querier) error {
+func RegisterQueryTool(log *slog.Logger, server *mcp.Server, querier *querier.Querier, queryTimeout time.Duration) error {
 	req, err := jsonschema.For[QueryInput](nil)
 	if err != nil {
 		return fmt.Errorf("failed to create query input schema: %w", err)
@@ -80,7 +80,7 @@ func RegisterQueryTool(log *slog.Logger, server *mcp.Server, querier *querier.Qu
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, req QueryInput) (*mcp.CallToolResult, QueryOutput, error) {
 		startTime := time.Now()
 		toolName := queryToolName
-		res, err := handleQuery(ctx, log, querier, req)
+		res, err := handleQuery(ctx, log, querier, req, queryTimeout)
 		duration := time.Since(startTime).Seconds()
 
 		log.Debug("mcp/tool: handling query", "sql", req.SQL)
@@ -97,8 +97,12 @@ func RegisterQueryTool(log *slog.Logger, server *mcp.Server, querier *querier.Qu
 	return nil
 }
 
-func handleQuery(ctx context.Context, log *slog.Logger, querier *querier.Querier, req QueryInput) (QueryOutput, error) {
-	resp, err := querier.Query(ctx, req.SQL)
+func handleQuery(ctx context.Context, log *slog.Logger, querier *querier.Querier, req QueryInput, queryTimeout time.Duration) (QueryOutput, error) {
+	// Create a context with timeout for the query execution
+	queryCtx, cancel := context.WithTimeout(ctx, queryTimeout)
+	defer cancel()
+
+	resp, err := querier.Query(queryCtx, req.SQL)
 	if err != nil {
 		return QueryOutput{}, fmt.Errorf("failed to execute query: %w", err)
 	}

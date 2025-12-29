@@ -16,7 +16,7 @@ var Datasets = []schematypes.Dataset{
 		Tables: []string{"dz_device_link_latency_samples_raw"},
 		Description: `
 		USAGE:
-		- Always query using time filter ("time" column).
+		- Always query using time filter ("time" column). Never run unscoped queries without a time filter.
 		- Joins:
 			- dz_device_link_latency_samples_raw.origin_device_pk = dz_devices_current.pk
 			- dz_device_link_latency_samples_raw.target_device_pk = dz_devices_current.pk
@@ -61,7 +61,7 @@ var Datasets = []schematypes.Dataset{
 		Tables: []string{"dz_internet_metro_latency_samples_raw"},
 		Description: `
 		USAGE:
-		- Always query using time filter ("time" column).
+		- Always query using time filter ("time" column). Never run unscoped queries without a time filter.
 		- Joins:
 			- dz_internet_metro_latency_samples_raw.origin_metro_pk = dz_metros_current.pk
 			- dz_internet_metro_latency_samples_raw.target_metro_pk = dz_metros_current.pk

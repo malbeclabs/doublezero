@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -209,6 +210,92 @@ func TestLake_Querier_Server_PostgreSQL_WireProtocol(t *testing.T) {
 
 		// Close rows and connection before shutting down server
 		rows.Close()
+		pgConn.Close(ctx)
+
+		// Give server a moment to process connection closure
+		time.Sleep(100 * time.Millisecond)
+
+		// Shutdown server
+		serverCancel()
+		select {
+		case err := <-serverErrCh:
+			require.NoError(t, err)
+		case <-time.After(5 * time.Second):
+			t.Fatal("server did not shutdown in time")
+		}
+	})
+
+	t.Run("handles -- ping query", func(t *testing.T) {
+		ctx := context.Background()
+		db := testDB(t)
+
+		// Create server with PostgreSQL wire protocol
+		httpListener := getFreeListener(t)
+		postgresListener := getFreeListener(t)
+
+		cfg := Config{
+			HTTPListener:      httpListener,
+			PostgresListener:  postgresListener,
+			ReadHeaderTimeout: 30 * time.Second,
+			ShutdownTimeout:   10 * time.Second,
+			QuerierConfig: querier.Config{
+				Logger: testLogger(t),
+				DB:     db,
+			},
+		}
+
+		srv, err := New(ctx, cfg)
+		require.NoError(t, err)
+
+		// Start server
+		serverCtx, serverCancel := context.WithCancel(ctx)
+		defer serverCancel()
+
+		serverErrCh := make(chan error, 1)
+		go func() {
+			serverErrCh <- srv.Run(serverCtx)
+		}()
+
+		// Wait for server to be ready by checking if we can connect
+		postgresAddr := postgresListener.Addr().String()
+		waitForServerReady(t, ctx, postgresAddr, 10)
+
+		// Connect as PostgreSQL client
+		pgConn, err := pgx.Connect(ctx, fmt.Sprintf("postgres://user:password@%s/postgres?sslmode=disable", postgresAddr))
+		require.NoError(t, err)
+
+		// Execute -- ping query (test various case and whitespace variations)
+		testCases := []string{
+			"-- ping",
+			"-- PING",
+			"--  ping  ",
+			"-- Ping",
+		}
+
+		for _, query := range testCases {
+			rows, err := pgConn.Query(ctx, query)
+			require.NoError(t, err, "query: %q", query)
+
+			// Should have one row with column "pong" and value "pong"
+			require.True(t, rows.Next(), "query: %q", query)
+			var pong string
+			err = rows.Scan(&pong)
+			require.NoError(t, err, "query: %q", query)
+			require.Equal(t, "pong", pong, "query: %q", query)
+
+			// Verify column name
+			columns := rows.FieldDescriptions()
+			require.Len(t, columns, 1, "query: %q", query)
+			require.Equal(t, "pong", columns[0].Name, "query: %q", query)
+
+			// No more rows
+			require.False(t, rows.Next(), "query: %q", query)
+			require.NoError(t, rows.Err(), "query: %q", query)
+
+			rows.Close()
+		}
+
+		// Close connection before shutting down server
 		pgConn.Close(ctx)
 
 		// Give server a moment to process connection closure
@@ -947,5 +1034,421 @@ func TestLake_Querier_Config_LoadFromEnv(t *testing.T) {
 		require.Equal(t, 2, len(cfg.PostgresAccounts))
 		require.Equal(t, "pass1", cfg.PostgresAccounts["user1"])
 		require.Equal(t, "pass2", cfg.PostgresAccounts["user2"])
+	})
+}
+
+func TestLake_Querier_Server_QueryRewriting(t *testing.T) {
+	t.Run("detects and rewrites PostgreSQL table listing query", func(t *testing.T) {
+		postgresQuery := `SELECT
+  CASE
+    WHEN quote_ident(table_schema) IN (
+      SELECT
+        CASE
+          WHEN trim(s[i]) = '"$user"' THEN user
+          ELSE trim(s[i])
+        END
+      FROM
+        generate_series(
+          array_lower(string_to_array(current_setting('search_path'), ','), 1),
+          array_upper(string_to_array(current_setting('search_path'), ','), 1)
+        ) AS i,
+        string_to_array(current_setting('search_path'), ',') s
+    )
+    THEN quote_ident(table_name)
+    ELSE quote_ident(table_schema) || '.' || quote_ident(table_name)
+  END AS "table"
+FROM information_schema.tables
+WHERE quote_ident(table_schema) NOT IN (
+  'information_schema',
+  'pg_catalog',
+  '_timescaledb_cache',
+  '_timescaledb_catalog',
+  '_timescaledb_internal',
+  '_timescaledb_config',
+  'timescaledb_information',
+  'timescaledb_experimental'
+)
+ORDER BY
+  CASE
+    WHEN quote_ident(table_schema) IN (
+      SELECT
+        CASE
+          WHEN trim(s[i]) = '"$user"' THEN user
+          ELSE trim(s[i])
+        END
+      FROM
+        generate_series(
+          array_lower(string_to_array(current_setting('search_path'), ','), 1),
+          array_upper(string_to_array(current_setting('search_path'), ','), 1)
+        ) AS i,
+        string_to_array(current_setting('search_path'), ',') s
+    )
+    THEN 0
+    ELSE 1
+  END,
+  1;`
+
+		rewritten := rewriteQueryForDuckDB(postgresQuery)
+		require.NotEqual(t, postgresQuery, rewritten, "query should be rewritten")
+		require.Contains(t, rewritten, "information_schema.tables", "rewritten query should still query information_schema.tables")
+		require.Contains(t, rewritten, `"table"`, "rewritten query should have table column")
+		require.Contains(t, rewritten, "current_schema()", "rewritten query should use current_schema()")
+		require.NotContains(t, strings.ToLower(rewritten), "search_path", "rewritten query should not contain search_path")
+	})
+
+	t.Run("does not rewrite regular queries", func(t *testing.T) {
+		regularQueries := []string{
+			"SELECT * FROM test_table",
+			"SELECT id, name FROM users WHERE id = 1",
+			"SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'",
+		}
+
+		for _, query := range regularQueries {
+			rewritten := rewriteQueryForDuckDB(query)
+			require.Equal(t, query, rewritten, "regular query should not be rewritten: %q", query)
+		}
+	})
+
+	t.Run("handles queries with different whitespace", func(t *testing.T) {
+		// Query with extra whitespace and newlines
+		postgresQuery := `SELECT   CASE
+    WHEN quote_ident(table_schema) IN (
+      SELECT CASE WHEN trim(s[i]) = '"$user"' THEN user ELSE trim(s[i]) END
+      FROM generate_series(
+          array_lower(string_to_array(current_setting('search_path'), ','), 1),
+          array_upper(string_to_array(current_setting('search_path'), ','), 1)
+        ) AS i,
+        string_to_array(current_setting('search_path'), ',') s
+    )
+    THEN quote_ident(table_name)
+    ELSE quote_ident(table_schema) || '.' || quote_ident(table_name)
+  END AS "table"
+FROM information_schema.tables
+WHERE quote_ident(table_schema) NOT IN ('information_schema', 'pg_catalog', '_timescaledb_cache')`
+
+		rewritten := rewriteQueryForDuckDB(postgresQuery)
+		require.NotEqual(t, postgresQuery, rewritten, "query with different whitespace should still be rewritten")
+		require.Contains(t, rewritten, "information_schema.tables", "rewritten query should still query information_schema.tables")
+	})
+
+	t.Run("rewrites PostgreSQL table listing query to DuckDB", func(t *testing.T) {
+		ctx := context.Background()
+		db := testDB(t)
+
+		// Set up test data - create some tables
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+
+		_, err = conn.ExecContext(ctx, `CREATE TABLE test_table1 (id INTEGER, name VARCHAR)`)
+		require.NoError(t, err)
+
+		_, err = conn.ExecContext(ctx, `CREATE TABLE test_table2 (id INTEGER, value DOUBLE)`)
+		require.NoError(t, err)
+
+		_, err = conn.ExecContext(ctx, `CREATE TABLE another_table (id INTEGER)`)
+		require.NoError(t, err)
+
+		// Create server with PostgreSQL wire protocol
+		httpListener := getFreeListener(t)
+		postgresListener := getFreeListener(t)
+
+		cfg := Config{
+			HTTPListener:      httpListener,
+			PostgresListener:  postgresListener,
+			ReadHeaderTimeout: 30 * time.Second,
+			ShutdownTimeout:   10 * time.Second,
+			QuerierConfig: querier.Config{
+				Logger: testLogger(t),
+				DB:     db,
+			},
+		}
+
+		srv, err := New(ctx, cfg)
+		require.NoError(t, err)
+
+		// Start server
+		serverCtx, serverCancel := context.WithCancel(ctx)
+		defer serverCancel()
+
+		serverErrCh := make(chan error, 1)
+		go func() {
+			serverErrCh <- srv.Run(serverCtx)
+		}()
+
+		// Wait for server to be ready
+		postgresAddr := postgresListener.Addr().String()
+		waitForServerReady(t, ctx, postgresAddr, 10)
+
+		// Connect as PostgreSQL client
+		pgConn, err := pgx.Connect(ctx, fmt.Sprintf("postgres://user:password@%s/postgres?sslmode=disable", postgresAddr))
+		require.NoError(t, err)
+
+		// Execute the PostgreSQL table listing query (the one that should be rewritten)
+		postgresTableQuery := `SELECT
+  CASE
+    WHEN quote_ident(table_schema) IN (
+      SELECT
+        CASE
+          WHEN trim(s[i]) = '"$user"' THEN user
+          ELSE trim(s[i])
+        END
+      FROM
+        generate_series(
+          array_lower(string_to_array(current_setting('search_path'), ','), 1),
+          array_upper(string_to_array(current_setting('search_path'), ','), 1)
+        ) AS i,
+        string_to_array(current_setting('search_path'), ',') s
+    )
+    THEN quote_ident(table_name)
+    ELSE quote_ident(table_schema) || '.' || quote_ident(table_name)
+  END AS "table"
+FROM information_schema.tables
+WHERE quote_ident(table_schema) NOT IN (
+  'information_schema',
+  'pg_catalog',
+  '_timescaledb_cache',
+  '_timescaledb_catalog',
+  '_timescaledb_internal',
+  '_timescaledb_config',
+  'timescaledb_information',
+  'timescaledb_experimental'
+)
+ORDER BY
+  CASE
+    WHEN quote_ident(table_schema) IN (
+      SELECT
+        CASE
+          WHEN trim(s[i]) = '"$user"' THEN user
+          ELSE trim(s[i])
+        END
+      FROM
+        generate_series(
+          array_lower(string_to_array(current_setting('search_path'), ','), 1),
+          array_upper(string_to_array(current_setting('search_path'), ','), 1)
+        ) AS i,
+        string_to_array(current_setting('search_path'), ',') s
+    )
+    THEN 0
+    ELSE 1
+  END,
+  1;`
+
+		rows, err := pgConn.Query(ctx, postgresTableQuery)
+		require.NoError(t, err)
+
+		// Collect all table names
+		var tableNames []string
+		for rows.Next() {
+			var tableName string
+			err = rows.Scan(&tableName)
+			require.NoError(t, err)
+			tableNames = append(tableNames, tableName)
+		}
+		require.NoError(t, rows.Err())
+		rows.Close()
+
+		// Verify we got the expected tables (should include our test tables)
+		// The exact list may vary, but should include our test tables
+		require.GreaterOrEqual(t, len(tableNames), 3, "should have at least 3 tables")
+
+		// Verify our test tables are in the results
+		tableMap := make(map[string]bool)
+		for _, name := range tableNames {
+			tableMap[name] = true
+		}
+
+		// Check that our test tables are present
+		// They might be returned as just the table name or schema.table
+		foundTable1 := tableMap["test_table1"] || tableMap[fmt.Sprintf("%s.test_table1", db.Schema())]
+		foundTable2 := tableMap["test_table2"] || tableMap[fmt.Sprintf("%s.test_table2", db.Schema())]
+		foundAnother := tableMap["another_table"] || tableMap[fmt.Sprintf("%s.another_table", db.Schema())]
+
+		require.True(t, foundTable1, "test_table1 should be in results: %v", tableNames)
+		require.True(t, foundTable2, "test_table2 should be in results: %v", tableNames)
+		require.True(t, foundAnother, "another_table should be in results: %v", tableNames)
+
+		// Verify column name is "table"
+		rows, err = pgConn.Query(ctx, postgresTableQuery)
+		require.NoError(t, err)
+		columns := rows.FieldDescriptions()
+		require.Len(t, columns, 1)
+		require.Equal(t, "table", columns[0].Name)
+		rows.Close()
+
+		// Close connection before shutting down server
+		pgConn.Close(ctx)
+
+		// Give server a moment to process connection closure
+		time.Sleep(100 * time.Millisecond)
+
+		// Shutdown server
+		serverCancel()
+		select {
+		case err := <-serverErrCh:
+			require.NoError(t, err)
+		case <-time.After(5 * time.Second):
+			t.Fatal("server did not shutdown in time")
+		}
+	})
+
+	t.Run("detects and rewrites PostgreSQL column listing query", func(t *testing.T) {
+		postgresQuery := `SELECT
+  quote_ident(column_name) AS "column",
+  data_type AS "type"
+FROM information_schema.columns
+WHERE
+  CASE
+    WHEN array_length(parse_ident('dz_contributors_current'), 1) = 2
+    THEN
+      quote_ident(table_schema) = (parse_ident('dz_contributors_current'))[1]
+      AND quote_ident(table_name) = (parse_ident('dz_contributors_current'))[2]
+    ELSE
+      quote_ident(table_name) = 'dz_contributors_current'
+      AND quote_ident(table_schema) IN (
+        SELECT
+          CASE
+            WHEN trim(s[i]) = '"$user"' THEN user
+            ELSE trim(s[i])
+          END
+        FROM
+          generate_series(
+            array_lower(string_to_array(current_setting('search_path'), ','), 1),
+            array_upper(string_to_array(current_setting('search_path'), ','), 1)
+          ) AS i,
+          string_to_array(current_setting('search_path'), ',') s
+      )
+  END;`
+
+		rewritten := rewriteQueryForDuckDB(postgresQuery)
+		require.NotEqual(t, postgresQuery, rewritten, "query should be rewritten")
+		require.Contains(t, rewritten, "information_schema.columns", "rewritten query should still query information_schema.columns")
+		require.Contains(t, rewritten, `"column"`, "rewritten query should have column column")
+		require.Contains(t, rewritten, `"type"`, "rewritten query should have type column")
+		require.Contains(t, rewritten, "dz_contributors_current", "rewritten query should filter by table name")
+		require.NotContains(t, strings.ToLower(rewritten), "search_path", "rewritten query should not contain search_path")
+		require.NotContains(t, strings.ToLower(rewritten), "parse_ident", "rewritten query should not contain parse_ident")
+	})
+
+	t.Run("rewrites PostgreSQL column listing query to DuckDB", func(t *testing.T) {
+		ctx := context.Background()
+		db := testDB(t)
+
+		// Set up test data - create a table with columns
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+
+		_, err = conn.ExecContext(ctx, `CREATE TABLE test_columns_table (id INTEGER, name VARCHAR, value DOUBLE)`)
+		require.NoError(t, err)
+
+		// Create server with PostgreSQL wire protocol
+		httpListener := getFreeListener(t)
+		postgresListener := getFreeListener(t)
+
+		cfg := Config{
+			HTTPListener:      httpListener,
+			PostgresListener:  postgresListener,
+			ReadHeaderTimeout: 30 * time.Second,
+			ShutdownTimeout:   10 * time.Second,
+			QuerierConfig: querier.Config{
+				Logger: testLogger(t),
+				DB:     db,
+			},
+		}
+
+		srv, err := New(ctx, cfg)
+		require.NoError(t, err)
+
+		// Start server
+		serverCtx, serverCancel := context.WithCancel(ctx)
+		defer serverCancel()
+
+		serverErrCh := make(chan error, 1)
+		go func() {
+			serverErrCh <- srv.Run(serverCtx)
+		}()
+
+		// Wait for server to be ready
+		postgresAddr := postgresListener.Addr().String()
+		waitForServerReady(t, ctx, postgresAddr, 10)
+
+		// Connect as PostgreSQL client
+		pgConn, err := pgx.Connect(ctx, fmt.Sprintf("postgres://user:password@%s/postgres?sslmode=disable", postgresAddr))
+		require.NoError(t, err)
+
+		// Execute the PostgreSQL column listing query
+		postgresColumnQuery := `SELECT
+  quote_ident(column_name) AS "column",
+  data_type AS "type"
+FROM information_schema.columns
+WHERE
+  CASE
+    WHEN array_length(parse_ident('test_columns_table'), 1) = 2
+    THEN
+      quote_ident(table_schema) = (parse_ident('test_columns_table'))[1]
+      AND quote_ident(table_name) = (parse_ident('test_columns_table'))[2]
+    ELSE
+      quote_ident(table_name) = 'test_columns_table'
+      AND quote_ident(table_schema) IN (
+        SELECT
+          CASE
+            WHEN trim(s[i]) = '"$user"' THEN user
+            ELSE trim(s[i])
+          END
+        FROM
+          generate_series(
+            array_lower(string_to_array(current_setting('search_path'), ','), 1),
+            array_upper(string_to_array(current_setting('search_path'), ','), 1)
+          ) AS i,
+          string_to_array(current_setting('search_path'), ',') s
+      )
+  END;`
+
+		rows, err := pgConn.Query(ctx, postgresColumnQuery)
+		require.NoError(t, err)
+
+		// Collect all column names
+		var columnNames []string
+		var columnTypes []string
+		for rows.Next() {
+			var colName, colType string
+			err = rows.Scan(&colName, &colType)
+			require.NoError(t, err)
+			columnNames = append(columnNames, colName)
+			columnTypes = append(columnTypes, colType)
+		}
+		require.NoError(t, rows.Err())
+		rows.Close()
+
+		// Verify we got the expected columns
+		require.GreaterOrEqual(t, len(columnNames), 3, "should have at least 3 columns")
+		require.Contains(t, columnNames, "id", "should have id column")
+		require.Contains(t, columnNames, "name", "should have name column")
+		require.Contains(t, columnNames, "value", "should have value column")
+
+		// Verify column names
+		rows, err = pgConn.Query(ctx, postgresColumnQuery)
+		require.NoError(t, err)
+		columns := rows.FieldDescriptions()
+		require.Len(t, columns, 2)
+		require.Equal(t, "column", columns[0].Name)
+		require.Equal(t, "type", columns[1].Name)
+		rows.Close()
+
+		// Close connection before shutting down server
+		pgConn.Close(ctx)
+
+		// Give server a moment to process connection closure
+		time.Sleep(100 * time.Millisecond)
+
+		// Shutdown server
+		serverCancel()
+		select {
+		case err := <-serverErrCh:
+			require.NoError(t, err)
+		case <-time.After(5 * time.Second):
+			t.Fatal("server did not shutdown in time")
+		}
 	})
 }

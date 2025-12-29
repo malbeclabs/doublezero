@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -82,6 +83,36 @@ func createAuthStrategy(log *slog.Logger, accounts map[string]string) wire.AuthS
 
 // queryHandler handles PostgreSQL wire protocol queries
 func (s *Server) queryHandler(ctx context.Context, query string) (wire.PreparedStatements, error) {
+	s.log.Debug("incoming query", "query", query)
+
+	// Handle special ping query
+	// Normalize whitespace to handle variations like "-- ping", "--  ping  ", etc.
+	normalizedPing := strings.ToLower(strings.Join(strings.Fields(query), " "))
+	if normalizedPing == "-- ping" {
+		columns := wire.Columns{
+			wire.Column{
+				Name: "pong",
+				Oid:  pgtype.TextOID,
+			},
+		}
+		return wire.Prepared(wire.NewStatement(
+			func(ctx context.Context, writer wire.DataWriter, parameters []wire.Parameter) error {
+				if err := writer.Row([]any{"pong"}); err != nil {
+					return err
+				}
+				return writer.Complete("SELECT")
+			},
+			wire.WithColumns(columns),
+		)), nil
+	}
+
+	// Rewrite PostgreSQL-specific queries to DuckDB-compatible ones
+	rewrittenQuery := rewriteQueryForDuckDB(query)
+	if rewrittenQuery != query {
+		s.log.Debug("rewrote query for DuckDB", "original", query, "rewritten", rewrittenQuery)
+		query = rewrittenQuery
+	}
+
 	// Execute the query to get results and column information
 	// We need to do this here because we need column info to create the prepared statement
 	resp, err := s.querier.Query(ctx, query)
@@ -256,4 +287,129 @@ func encodeValueForPostgreSQL(val any, oidType oid.Oid) (any, error) {
 		// Default: convert to string
 		return fmt.Sprintf("%v", val), nil
 	}
+}
+
+// rewriteQueryForDuckDB rewrites PostgreSQL-specific queries to DuckDB-compatible ones
+func rewriteQueryForDuckDB(query string) string {
+	// Normalize whitespace for pattern matching
+	normalized := strings.ToLower(strings.Join(strings.Fields(query), " "))
+
+	// Detect PostgreSQL table listing query pattern
+	// This pattern matches queries that:
+	// 1. Select from information_schema.tables
+	// 2. Have CASE statements with search_path logic
+	// 3. Exclude system schemas
+	if isPostgreSQLTableListingQuery(normalized) {
+		return rewriteTableListingQuery()
+	}
+
+	// Detect PostgreSQL column listing query pattern
+	// This pattern matches queries that:
+	// 1. Select from information_schema.columns
+	// 2. Have parse_ident and search_path logic
+	// 3. Filter by table name
+	if isPostgreSQLColumnListingQuery(normalized) {
+		if tableName := extractTableNameFromColumnQuery(query); tableName != "" {
+			return rewriteColumnListingQuery(tableName)
+		}
+	}
+
+	return query
+}
+
+// isPostgreSQLTableListingQuery detects if a query is the PostgreSQL table listing query
+func isPostgreSQLTableListingQuery(normalizedQuery string) bool {
+	// Check for key indicators:
+	// 1. Contains "from information_schema.tables"
+	// 2. Contains "case" and "search_path" (indicating the complex PostgreSQL query)
+	// 3. Contains exclusions for system schemas
+	hasInfoSchema := strings.Contains(normalizedQuery, "from information_schema.tables")
+	hasSearchPath := strings.Contains(normalizedQuery, "search_path")
+	hasCase := strings.Contains(normalizedQuery, "case")
+	hasSystemSchemaExclusions := strings.Contains(normalizedQuery, "pg_catalog") ||
+		strings.Contains(normalizedQuery, "information_schema") ||
+		strings.Contains(normalizedQuery, "timescaledb")
+
+	return hasInfoSchema && hasSearchPath && hasCase && hasSystemSchemaExclusions
+}
+
+// rewriteTableListingQuery rewrites the PostgreSQL table listing query to DuckDB-compatible SQL
+func rewriteTableListingQuery() string {
+	// DuckDB-compatible query that returns table names in a similar format
+	// Returns just table_name as "table" since DuckDB doesn't have the same search_path concept
+	// We include only the main schema
+	return `SELECT
+  CASE
+    WHEN table_schema = current_schema() THEN table_name
+    ELSE table_schema || '.' || table_name
+  END AS "table"
+FROM information_schema.tables
+WHERE table_schema = 'main'
+ORDER BY
+  CASE
+    WHEN table_schema = current_schema() THEN 0
+    ELSE 1
+  END,
+  "table"`
+}
+
+// isPostgreSQLColumnListingQuery detects if a query is the PostgreSQL column listing query
+func isPostgreSQLColumnListingQuery(normalizedQuery string) bool {
+	// Check for key indicators:
+	// 1. Contains "from information_schema.columns"
+	// 2. Contains "parse_ident" (indicating table name parsing)
+	// 3. Contains "search_path" (indicating the complex PostgreSQL query)
+	hasInfoSchema := strings.Contains(normalizedQuery, "from information_schema.columns")
+	hasParseIdent := strings.Contains(normalizedQuery, "parse_ident")
+	hasSearchPath := strings.Contains(normalizedQuery, "search_path")
+	hasColumnAndType := strings.Contains(normalizedQuery, `"column"`) && strings.Contains(normalizedQuery, `"type"`)
+
+	return hasInfoSchema && hasParseIdent && hasSearchPath && hasColumnAndType
+}
+
+// extractTableNameFromColumnQuery extracts the table name from the PostgreSQL column listing query
+func extractTableNameFromColumnQuery(query string) string {
+	// Pattern 1: parse_ident('table_name') or parse_ident('schema.table_name')
+	// This is the primary pattern used in the query
+	parseIdentPattern := regexp.MustCompile(`parse_ident\s*\(\s*'([^']+)'`)
+	matches := parseIdentPattern.FindStringSubmatch(query)
+	if len(matches) > 1 {
+		// Return the full spec (could be 'table' or 'schema.table')
+		// The rewrite function will handle splitting it
+		return matches[1]
+	}
+
+	// Pattern 2: quote_ident(table_name) = 'table_name'
+	// Look for patterns like: quote_ident(table_name) = 'table_name'
+	tableNamePattern := regexp.MustCompile(`quote_ident\(table_name\)\s*=\s*'([^']+)'`)
+	matches = tableNamePattern.FindStringSubmatch(strings.ToLower(query))
+	if len(matches) > 1 {
+		return matches[1]
+	}
+
+	return ""
+}
+
+// rewriteColumnListingQuery rewrites the PostgreSQL column listing query to DuckDB-compatible SQL
+func rewriteColumnListingQuery(tableName string) string {
+	// DuckDB-compatible query that returns column information
+	// Handles both schema.table and just table name formats
+	tableParts := strings.Split(tableName, ".")
+	var whereClause string
+	if len(tableParts) == 2 {
+		// Schema-qualified table name
+		schemaName := tableParts[0]
+		actualTableName := tableParts[1]
+		whereClause = fmt.Sprintf("table_schema = '%s' AND table_name = '%s'", schemaName, actualTableName)
+	} else {
+		// Just table name, use current schema
+		whereClause = fmt.Sprintf("table_name = '%s' AND table_schema = current_schema()", tableName)
+	}
+
+	return fmt.Sprintf(`SELECT
+  column_name AS "column",
+  data_type AS "type"
+FROM information_schema.columns
+WHERE %s
+ORDER BY ordinal_position`, whereClause)
 }

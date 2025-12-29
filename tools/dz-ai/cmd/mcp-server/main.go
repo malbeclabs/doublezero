@@ -311,9 +311,9 @@ func run() error {
 
 		// Initialize querier
 		querier, err := querier.New(querier.Config{
-			Logger:  log,
-			DB:      db,
-			Schemas: indexer.Schemas(),
+			Logger: log,
+			DB:     db,
+			// Schemas: indexer.Schemas(),
 		})
 		if err != nil {
 			return fmt.Errorf("failed to create querier: %w", err)
@@ -340,9 +340,9 @@ func run() error {
 
 		// Initialize querier with remote database
 		querier, err := querier.New(querier.Config{
-			Logger:  log,
-			DB:      db,
-			Schemas: indexer.Schemas,
+			Logger: log,
+			DB:     db,
+			// Schemas: indexer.Schemas,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to create querier: %w", err)

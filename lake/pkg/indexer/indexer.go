@@ -12,18 +12,7 @@ import (
 	dztelemlatency "github.com/malbeclabs/doublezero/lake/pkg/indexer/dz/telemetry/latency"
 	dztelemusage "github.com/malbeclabs/doublezero/lake/pkg/indexer/dz/telemetry/usage"
 	mcpgeoip "github.com/malbeclabs/doublezero/lake/pkg/indexer/geoip"
-	"github.com/malbeclabs/doublezero/lake/pkg/indexer/schema"
 	"github.com/malbeclabs/doublezero/lake/pkg/indexer/sol"
-)
-
-var (
-	Schemas = []*schema.Schema{
-		mcpgeoip.Schema,
-		dzsvc.Schema,
-		dztelemlatency.Schema,
-		dztelemusage.Schema,
-		sol.Schema,
-	}
 )
 
 type Indexer struct {
@@ -131,21 +120,7 @@ func New(ctx context.Context, cfg Config) (*Indexer, error) {
 		return nil, fmt.Errorf("failed to create SCD2 tables: %w", err)
 	}
 
-	if err := i.validateSchemas(ctx); err != nil {
-		return nil, fmt.Errorf("failed to validate schemas: %w", err)
-	}
 	return i, nil
-}
-
-func (i *Indexer) Schemas() []*schema.Schema {
-	schemas := make([]*schema.Schema, 0, len(Schemas))
-	for _, schema := range Schemas {
-		if schema == dztelemusage.Schema && i.telemUsage == nil {
-			continue
-		}
-		schemas = append(schemas, schema)
-	}
-	return schemas
 }
 
 func (i *Indexer) Ready() bool {

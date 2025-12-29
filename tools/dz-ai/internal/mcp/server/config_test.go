@@ -114,9 +114,8 @@ func testIndexer(t *testing.T) *indexer.Indexer {
 
 func testQuerier(t *testing.T, idx *indexer.Indexer) *querier.Querier {
 	querier, err := querier.New(querier.Config{
-		Logger:  testLogger(t),
-		DB:      testDB(t),
-		Schemas: idx.Schemas(),
+		Logger: testLogger(t),
+		DB:     testDB(t),
 	})
 	require.NoError(t, err)
 	return querier

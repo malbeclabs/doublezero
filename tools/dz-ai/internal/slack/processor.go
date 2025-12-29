@@ -249,9 +249,14 @@ func (p *Processor) ProcessMessage(
 	// trimming in a way that preserves tool_use/tool_result pairs. Pre-trimming here
 	// can break those pairs and cause API errors.
 
+	model := anthropic.ModelClaudeHaiku4_5_20251001
+	if isBrainMode {
+		model = anthropic.ModelClaudeSonnet4_5_20250929
+	}
+
 	requestAgent := agent.NewAnthropicAgent(&agent.AnthropicAgentConfig{
 		Client:                *p.anthropicClient,
-		Model:                 anthropic.ModelClaudeSonnet4_5_20250929,
+		Model:                 model,
 		MaxTokens:             int64(4000),
 		MaxRounds:             maxRounds,
 		MaxToolResultLen:      10000,

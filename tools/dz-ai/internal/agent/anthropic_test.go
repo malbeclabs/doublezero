@@ -16,9 +16,8 @@ func TestAI_Agent_Anthropic_IsSchemaTool(t *testing.T) {
 		toolName string
 		expected bool
 	}{
-		{"doublezero-schema", "doublezero-schema", true},
-		{"doublezero-telemetry-schema", "doublezero-telemetry-schema", true},
-		{"solana-schema", "solana-schema", true},
+		{"list-tables", "list-tables", true},
+		{"get-table-schema", "get-table-schema", true},
 		{"query", "query", false},
 		{"unknown", "unknown-tool", false},
 		{"empty", "", false},
@@ -299,7 +298,7 @@ func TestAI_Agent_Anthropic_TruncateToolResult(t *testing.T) {
 		{
 			name:     "schema tool with valid JSON",
 			result:   `{"tables": [{"name": "table1"}]}`,
-			toolName: "doublezero-schema",
+			toolName: "list-tables",
 			maxLen:   1000,
 			checkLen: true,
 		},

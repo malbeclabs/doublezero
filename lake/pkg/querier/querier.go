@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/malbeclabs/doublezero/lake/pkg/indexer/schema"
+	schematypes "github.com/malbeclabs/doublezero/lake/pkg/indexer/schema"
 )
 
 type Querier struct {
@@ -31,44 +31,8 @@ type QueryResponse struct {
 
 type QueryRow map[string]any
 
-func (q *Querier) CandidateSchemas(_ context.Context) []*schema.Schema {
-	return q.cfg.Schemas
-}
-
-func (q *Querier) EnabledSchemas(ctx context.Context) ([]*schema.Schema, error) {
-	sql := fmt.Sprintf(`SELECT table_name FROM duckdb_tables() WHERE schema_name = '%s'`, q.cfg.DB.Schema())
-
-	conn, err := q.cfg.DB.Conn(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get connection: %w", err)
-	}
-	defer conn.Close()
-
-	rows, err := conn.QueryContext(ctx, sql)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query schema: %w", err)
-	}
-	defer rows.Close()
-
-	tables := make(map[string]bool)
-	for rows.Next() {
-		var tableName string
-		if err := rows.Scan(&tableName); err != nil {
-			return nil, fmt.Errorf("failed to scan schema row: %w", err)
-		}
-		tables[tableName] = true
-	}
-
-	schemas := make([]*schema.Schema, 0, len(q.cfg.Schemas))
-	for _, schema := range q.cfg.Schemas {
-		for _, table := range schema.Tables {
-			if _, ok := tables[table.Name]; ok {
-				schemas = append(schemas, schema)
-				break
-			}
-		}
-	}
-	return schemas, nil
+func (q *Querier) Datasets() []schematypes.Dataset {
+	return Datasets
 }
 
 func (q *Querier) Query(ctx context.Context, sql string) (QueryResponse, error) {

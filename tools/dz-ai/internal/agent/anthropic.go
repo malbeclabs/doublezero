@@ -26,9 +26,12 @@ const (
 	minAvailableLen          = 100
 
 	// Schema tool names that get 2x truncation limit
-	schemaToolDoublezero          = "doublezero-schema"
-	schemaToolDoublezeroTelemetry = "doublezero-telemetry-schema"
-	schemaToolSolana              = "solana-schema"
+	schemaToolListTables     = "list-tables"
+	schemaToolGetTableSchema = "get-table-schema"
+
+	// Tool names that should never be truncated
+	noTruncateToolDescribeDatasets = "describe-datasets"
+	noTruncateToolListDatasets     = "list-datasets"
 )
 
 type AnthropicAgentConfig struct {
@@ -420,6 +423,12 @@ func executeAnthropicTools(ctx context.Context, mcpClient *client.Client, toolUs
 			sqlErrorIndices[i] = true
 		}
 
+		// Skip truncation for tools that should never be truncated
+		if isNoTruncateTool(toolName) {
+			toolResults = append(toolResults, anthropic.NewToolResultBlock(result.id, out, isErr))
+			continue
+		}
+
 		effectiveMaxLen := maxLen
 		if isSchemaTool(toolName) && maxLen > 0 {
 			effectiveMaxLen = maxLen * 2
@@ -694,9 +703,14 @@ func (a *AnthropicAgent) listToolsWithRetry(ctx context.Context, mcpClient *clie
 
 // isSchemaTool returns true if the tool name is a schema tool that gets 2x truncation limit.
 func isSchemaTool(toolName string) bool {
-	return toolName == schemaToolDoublezero ||
-		toolName == schemaToolDoublezeroTelemetry ||
-		toolName == schemaToolSolana
+	return toolName == schemaToolListTables ||
+		toolName == schemaToolGetTableSchema
+}
+
+// isNoTruncateTool returns true if the tool name should never be truncated.
+func isNoTruncateTool(toolName string) bool {
+	return toolName == noTruncateToolDescribeDatasets ||
+		toolName == noTruncateToolListDatasets
 }
 
 // formatTruncationNotice creates a truncation notice message.

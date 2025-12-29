@@ -6,12 +6,10 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	schematypes "github.com/malbeclabs/doublezero/lake/pkg/indexer/schema"
 	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/server/metrics"
 )
 
@@ -20,9 +18,6 @@ type Server struct {
 	cfg  Config
 	mcp  *mcp.Server
 	http *http.Server
-
-	registeredSchemas   map[string]struct{}
-	registeredSchemasMu sync.Mutex
 }
 
 func New(ctx context.Context, cfg Config) (*Server, error) {
@@ -39,31 +34,19 @@ func New(ctx context.Context, cfg Config) (*Server, error) {
 		log: cfg.Logger,
 		cfg: cfg,
 		mcp: mcpServer,
-
-		registeredSchemas: make(map[string]struct{}),
 	}
 
-	err := RegisterQueryTool(s.log, mcpServer, cfg.Querier, "query", `
-			PURPOSE:
-			Execute DuckDB SQL queries across all DoubleZero datasets (serviceability, telemetry latency, telemetry usage, and Solana).
+	// Register the new schema tools (list-tables and get-table-schema)
+	// These are always available and don't depend on which schemas are enabled
+	if err := RegisterListDatasetsTool(s.log, mcpServer, cfg.Querier); err != nil {
+		return nil, fmt.Errorf("failed to register list-datasets tool: %w", err)
+	}
 
-			USAGE RULES:
-			- Consult the appropriate schema tool before writing any SQL. Do not guess column names.
-			- Prefer single, well-constructed queries that return summarized results.
-			- Aggregate data using 'GROUP BY' and apply 'LIMIT' to keep result sets small.
-			- Use multiple queries only when the question requires distinct, independent results.
+	if err := RegisterDescribeDatasetsTool(s.log, mcpServer, cfg.Querier); err != nil {
+		return nil, fmt.Errorf("failed to register describe-datasets tool: %w", err)
+	}
 
-			SUPPORTED SQL:
-			- 'SELECT', 'JOIN', 'WHERE', 'GROUP BY', aggregations ('COUNT', 'SUM', 'AVG', percentiles), 'ORDER BY', 'LIMIT'
-
-			IMPORTANT CONSTRAINTS:
-			1. When performing arithmetic on 'BIGINT' columns (e.g. 'rtt_us'), explicitly cast operands to 'BIGINT' to avoid overflow:
-				CAST(rtt_usASBIGINT) * CAST(rtt_usASBIGINT)
-			2. Do not return large volumes of raw rows. Summarize whenever possible.
-
-			For general information about DoubleZero, see https://doublezero.xyz/
-		`,
-	)
+	err := RegisterQueryTool(s.log, mcpServer, cfg.Querier)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create query tool: %w", err)
 	}
@@ -113,26 +96,6 @@ func (s *Server) Run(ctx context.Context) error {
 		s.cfg.Indexer.Start(ctx)
 	}
 
-	if err := s.registerSchemas(ctx); err != nil {
-		s.log.Error("failed to register schemas", "error", err)
-	}
-
-	// Peirodically check if the schemas are enabled and register the tools if they are.
-	go func() {
-		ticker := time.NewTicker(1 * time.Minute)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				if err := s.registerSchemas(ctx); err != nil {
-					s.log.Error("failed to register schemas", "error", err)
-				}
-			}
-		}
-	}()
-
 	serveErrCh := make(chan error, 1)
 	go func() {
 		if err := s.http.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -166,50 +129,6 @@ func (s *Server) Run(ctx context.Context) error {
 		)
 		return err
 	}
-}
-
-func (s *Server) registerSchemas(ctx context.Context) error {
-	candidateSchemas := map[string]*schematypes.Schema{}
-	for _, schema := range s.cfg.Querier.CandidateSchemas(ctx) {
-		candidateSchemas[schema.Name] = schema
-	}
-
-	schemas, err := s.cfg.Querier.EnabledSchemas(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get enabled schemas: %w", err)
-	}
-	enabledSchemas := map[string]*schematypes.Schema{}
-	for _, schema := range schemas {
-		enabledSchemas[schema.Name] = schema
-	}
-
-	s.registeredSchemasMu.Lock()
-	defer s.registeredSchemasMu.Unlock()
-
-	// Register the tools for the enabled schemas.
-	for _, schema := range enabledSchemas {
-		if _, ok := s.registeredSchemas[schema.Name]; ok {
-			continue
-		}
-		s.log.Info("mcp/server: registering schema tool", "schema", schema.Name)
-		if err := RegisterSchemaTool(s.log, s.mcp, schema); err != nil {
-			s.log.Error("failed to register schema", "error", err)
-		}
-		s.registeredSchemas[schema.Name] = struct{}{}
-	}
-
-	// Unregister the tools for the disabled schemas.
-	for _, schema := range candidateSchemas {
-		if _, ok := s.registeredSchemas[schema.Name]; !ok {
-			continue
-		}
-		if _, ok := enabledSchemas[schema.Name]; !ok {
-			s.log.Info("mcp/server: unregistering schema tool", "schema", schema.Name)
-			s.mcp.RemoveTools(schema.Name)
-			delete(s.registeredSchemas, schema.Name)
-		}
-	}
-	return nil
 }
 
 func (s *Server) readyzHandler(w http.ResponseWriter, r *http.Request) {

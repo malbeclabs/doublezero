@@ -270,6 +270,40 @@ func NewLake(ctx context.Context, log *slog.Logger, catalogName, catalogURI, sto
 			return nil, fmt.Errorf("failed to create S3 secret: %w", err)
 		}
 
+		// Configure httpfs extension settings for MinIO access
+		// httpfs needs explicit settings for MinIO, while AWS S3 can use the credential chain
+		if isMinIO {
+			if cfg.AccessKeyID != "" && cfg.SecretAccessKey != "" {
+				if _, err := db.Exec(fmt.Sprintf("SET s3_access_key_id = '%s'", strings.ReplaceAll(cfg.AccessKeyID, "'", "''"))); err != nil {
+					return nil, fmt.Errorf("failed to set s3_access_key_id: %w", err)
+				}
+				if _, err := db.Exec(fmt.Sprintf("SET s3_secret_access_key = '%s'", strings.ReplaceAll(cfg.SecretAccessKey, "'", "''"))); err != nil {
+					return nil, fmt.Errorf("failed to set s3_secret_access_key: %w", err)
+				}
+			}
+			if cfg.Endpoint != "" {
+				// httpfs expects endpoint without protocol
+				endpoint := cfg.Endpoint
+				endpoint = strings.TrimPrefix(endpoint, "http://")
+				endpoint = strings.TrimPrefix(endpoint, "https://")
+				if _, err := db.Exec(fmt.Sprintf("SET s3_endpoint = '%s'", endpoint)); err != nil {
+					return nil, fmt.Errorf("failed to set s3_endpoint: %w", err)
+				}
+			}
+			if cfg.Region != "" {
+				if _, err := db.Exec(fmt.Sprintf("SET s3_region = '%s'", cfg.Region)); err != nil {
+					return nil, fmt.Errorf("failed to set s3_region: %w", err)
+				}
+			}
+			// Set URL style and SSL settings for MinIO
+			if _, err := db.Exec(fmt.Sprintf("SET s3_url_style = '%s'", urlStyle)); err != nil {
+				return nil, fmt.Errorf("failed to set s3_url_style: %w", err)
+			}
+			if _, err := db.Exec(fmt.Sprintf("SET s3_use_ssl = %t", useSSL)); err != nil {
+				return nil, fmt.Errorf("failed to set s3_use_ssl: %w", err)
+			}
+		}
+
 		log.Info("configured S3 storage", "endpoint", cfg.Endpoint, "region", cfg.Region)
 	}
 

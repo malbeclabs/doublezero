@@ -221,6 +221,15 @@ func PrepareS3ConfigForStorageURI(ctx context.Context, log *slog.Logger, storage
 		}
 	}
 
+	// Validate MinIO credentials: MinIO (any endpoint, not just localhost) requires explicit credentials
+	// Check if this is MinIO (non-AWS endpoint)
+	isMinIO := s3Config.Endpoint != "" && !strings.Contains(s3Config.Endpoint, "amazonaws.com")
+	if isMinIO {
+		if s3Config.AccessKeyID == "" || s3Config.SecretAccessKey == "" {
+			return nil, fmt.Errorf("MinIO requires both S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY to be set (endpoint: %s)", s3Config.Endpoint)
+		}
+	}
+
 	// If using localhost MinIO, ensure the bucket exists
 	if err := EnsureMinIOBucket(ctx, log, storageURI, s3Config); err != nil {
 		return nil, fmt.Errorf("failed to ensure MinIO bucket exists: %w", err)

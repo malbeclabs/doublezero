@@ -34,7 +34,7 @@ func (a anthropicMessageAdapter) ToParam() any {
 
 func run() error {
 	verboseFlag := flag.Bool("verbose", false, "enable verbose (debug) logging")
-	maxRoundsFlag := flag.Int("max-rounds", 12, "Maximum number of rounds for the AI agent in normal mode")
+	maxRoundsFlag := flag.Int("max-rounds", 16, "Maximum number of rounds for the AI agent in normal mode")
 	flag.Parse()
 
 	log := logger.New(*verboseFlag)
@@ -53,7 +53,8 @@ func run() error {
 	defer cancel()
 
 	anthropicClient := anthropic.NewClient(option.WithAPIKey(anthropicAPIKey))
-	model := anthropic.ModelClaudeSonnet4_5_20250929
+	// model := anthropic.ModelClaudeSonnet4_5_20250929
+	model := anthropic.ModelClaudeHaiku4_5_20251001
 
 	mcpToken := os.Getenv("MCP_TOKEN")
 	mcpClient, err := mcpclient.New(ctx, mcpclient.Config{

@@ -1,19 +1,17 @@
 package schema
 
-type Schema struct {
-	Name        string      `json:"name"`
-	Description string      `json:"description,omitempty"`
-	Tables      []TableInfo `json:"tables"`
-}
+type DatasetType string
 
-type TableInfo struct {
-	Name        string       `json:"name"`
-	Description string       `json:"description,omitempty"`
-	Columns     []ColumnInfo `json:"columns"`
-}
+const (
+	DatasetTypeRegular DatasetType = "regular"
+	DatasetTypeSCD2    DatasetType = "scd2"
+	DatasetTypeFact    DatasetType = "fact"
+)
 
-type ColumnInfo struct {
-	Name        string `json:"name"`
-	Type        string `json:"type"`
-	Description string `json:"description,omitempty"`
+type Dataset struct {
+	Name        string
+	Purpose     string
+	DatasetType DatasetType
+	Description string
+	Tables      []string
 }

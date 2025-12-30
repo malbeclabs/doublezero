@@ -66,9 +66,8 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 		})
 	}
 
-	// Gather latency data from each client.
+	log.Info("Step 1. Collect `doublezero latency` for each client")
 	// clientLatencies: clientName -> deviceCode -> latencyMs
-	log.Info("Collecting client-to-device latencies")
 	clientLatencies := make(ClientLatencies)
 	for _, client := range clients {
 		latencies, err := client.GetLatency(ctx)
@@ -82,43 +81,41 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 		}
 	}
 
-	// Assign devices to clients based on latency.
+	log.Info("Step 2. Create a list of devices for each client.")
+	log.Info(fmt.Sprintf("    1. If there are multiple clients with <%dms latency for that device, assign the device to the client with the fewest devices", latencyThresholdMs))
+	log.Info("    2. Otherwise, associate each device with the client with the lowest latency")
+
 	log.Info("Assigning devices to clients based on latency")
-	deviceAssignments := assignDevicesToClients(devices, clients, clientLatencies)
+	deviceAssignments := assignDevicesToClientsByLatency(devices, clients, clientLatencies)
 
 	// Randomize the order in which each client connects to its assigned devices
 	for clientName := range deviceAssignments {
-		test.ShuffleDevices(deviceAssignments[host])
+		test.ShuffleDevices(deviceAssignments[clientName])
 	}
 
 	log.Info("Client device assignments:")
 	printTestReportTable(log, deviceAssignments, clientLatencies, nil)
 
-	// Calculate the number of batches needed (max devices per client).
-	maxBatches := 0
+	// Determine how many test batches are needed (the max number of devices assigned to any client)
+	batchCount := 0
 	for _, assigned := range deviceAssignments {
-		if len(assigned) > maxBatches {
-			maxBatches = len(assigned)
+		if len(assigned) > batchCount {
+			batchCount = len(assigned)
 		}
 	}
 
-	if maxBatches == 0 {
+	if batchCount == 0 {
 		t.Skip("No devices assigned to any client")
 	}
 
 	log.Info("Planning to test",
 		"deviceCount", len(devices),
 		"clientCount", len(clients),
-		"totalBatches", maxBatches,
+		"totalBatches", batchCount,
 	)
 
-	// Track active clients and their current device index.
-	activeClients := slices.Clone(clients)
-	clientDeviceIndex := make(map[string]int)
-	clientLastDevice := make(map[string]*qa.Device)
-
 	// Track test results for final report.
-	// Pre-record all devices with zero packets (will be updated when tests run).
+	// Pre-record all devices with zero packets (to be updated as tests run).
 	results := make(map[string]*deviceTestResult)
 	var resultsMu sync.Mutex
 	for clientName, assigned := range deviceAssignments {
@@ -132,8 +129,19 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 		}
 	}
 
-	for batchNum := 0; batchNum < maxBatches; batchNum++ {
-		// Determine what each client tests this batch.
+	log.Info("Step 3. Loop through n batches, where n is the largest number of devices associated with a client")
+	log.Info("    1. For each client")
+	log.Info("        1. If there are >= 2 clients, and the current client has 0 devices left to test, remove the current client from testing")
+	log.Info("        2. If there are 2 clients, and the current client has 0 devices left to test, test the previously tested device again")
+	log.Info("    2. Test all clients in current batch")
+
+	// Track active clients and their current device index.
+	activeClients := slices.Clone(clients)
+	clientDeviceIndex := make(map[string]int)
+	clientLastDevice := make(map[string]*qa.Device)
+
+	for batchNum := 0; batchNum < batchCount; batchNum++ {
+		// Map of clients to devices for the current batch.
 		clientToDevice := make(map[*qa.Client]*qa.Device)
 
 		// Track clients to remove after this batch because they have no more devices to test.
@@ -142,7 +150,6 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 		for _, client := range activeClients {
 			idx := clientDeviceIndex[client.Host]
 			assigned := deviceAssignments[client.Host]
-
 			if idx < len(assigned) {
 				// Has devices left - test next one.
 				clientToDevice[client] = assigned[idx]
@@ -159,7 +166,7 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 
 		// Remove clients that have no more devices (if >=3 clients remained).
 		for _, client := range clientsToRemove {
-			log.Info("Removing client from testing (no more devices)", "client", client.Host)
+			log.Info("Removing client from testing (no more devices to test)", "client", client.Host)
 			err := client.DisconnectUser(ctx, true, true)
 			if err != nil {
 				log.Warn("Failed to disconnect removed client", "client", client.Host, "error", err)
@@ -216,15 +223,14 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 	log.Info("Test summary", "packetsReceived", totalReceived, "packetsSent", totalSent, "devicesWithLoss", devicesWithLoss, "totalDevices", len(results))
 }
 
-// assignDevicesToClients assigns each device to a client based on latency.
-// If multiple clients have <50ms latency, the device goes to the client with fewest devices.
-// Otherwise, the device goes to the client with the best latency.
-func assignDevicesToClients(devices []*qa.Device, clients []*qa.Client, clientLatencies ClientLatencies) DeviceAssignments {
+// If multiple clients have < latencyThresholdMs latency, the device goes to the client with fewest devices.
+// Otherwise, the device goes to the client with the lowest latency.
+func assignDevicesToClientsByLatency(devices []*qa.Device, clients []*qa.Client, clientLatencies ClientLatencies) DeviceAssignments {
 	deviceAssignments := make(DeviceAssignments)
 
 	for _, device := range devices {
 		var lowLatencyClients []string
-		var bestClient string
+		var bestClientHostname string
 		bestLatency := math.MaxFloat64
 
 		for _, client := range clients {
@@ -239,34 +245,34 @@ func assignDevicesToClients(devices []*qa.Device, clients []*qa.Client, clientLa
 
 			if latencyMs < bestLatency {
 				bestLatency = latencyMs
-				bestClient = client.Host
+				bestClientHostname = client.Host
 			}
 		}
 
-		var assignedClient string
+		var assignedClientHostname string
 		if len(lowLatencyClients) > 1 {
 			// Multiple clients qualify - assign to client with fewest devices.
-			assignedClient = lowLatencyClients[0]
-			minDevices := len(deviceAssignments[assignedClient])
+			assignedClientHostname = lowLatencyClients[0]
+			minDevices := len(deviceAssignments[assignedClientHostname])
 			for _, clientName := range lowLatencyClients[1:] {
 				if len(deviceAssignments[clientName]) < minDevices {
-					assignedClient = clientName
+					assignedClientHostname = clientName
 					minDevices = len(deviceAssignments[clientName])
 				}
 			}
-		} else if bestClient != "" {
-			assignedClient = bestClient
+		} else if bestClientHostname != "" {
+			assignedClientHostname = bestClientHostname
 		}
 
-		if assignedClient != "" {
-			deviceAssignments[assignedClient] = append(deviceAssignments[assignedClient], device)
+		if assignedClientHostname != "" {
+			deviceAssignments[assignedClientHostname] = append(deviceAssignments[assignedClientHostname], device)
 		}
 	}
 
 	return deviceAssignments
 }
 
-// printTestReportTable prints a table of device assignments and latencies, plus test results if provided.
+// Print a table of each client's device assignments and latencies, plus test results if provided.
 func printTestReportTable(log *slog.Logger, deviceAssignments DeviceAssignments, clientLatencies ClientLatencies, results map[string]*deviceTestResult) {
 	clientNames := slices.Sorted(maps.Keys(deviceAssignments))
 	maxDevices := 0
@@ -330,29 +336,29 @@ func printTestReportTable(log *slog.Logger, deviceAssignments DeviceAssignments,
 		sb.WriteString("\n")
 	}
 
-	fmt.Print(sb.String())
+	log.Info(sb.String())
 }
 
 func connectClientsAndWaitForRoutes(
 	t *testing.T,
 	ctx context.Context,
 	log *slog.Logger,
-	activeClients []*qa.Client,
+	clients []*qa.Client,
 	clientToDevice map[*qa.Client]*qa.Device,
 ) {
-	for _, c := range activeClients {
+	for _, c := range clients {
 		targetDevice := clientToDevice[c]
 		err := c.ConnectUserUnicast_NoWait(ctx, targetDevice.Code)
 		require.NoError(t, err, "failed to connect user %s to device %s", c.Host, targetDevice.Code)
 	}
 
-	for _, c := range activeClients {
+	for _, c := range clients {
 		err := c.WaitForStatusUp(ctx)
 		require.NoError(t, err, "failed to wait for status for client %s", c.Host)
 	}
 
-	for _, c := range activeClients {
-		err := c.WaitForRoutes(ctx, qa.MapFilter(activeClients, func(other *qa.Client) (net.IP, bool) {
+	for _, c := range clients {
+		err := c.WaitForRoutes(ctx, qa.MapFilter(clients, func(other *qa.Client) (net.IP, bool) {
 			if other.Host == c.Host || clientToDevice[other].ExchangeCode == clientToDevice[c].ExchangeCode {
 				return nil, false
 			}
@@ -365,12 +371,12 @@ func connectClientsAndWaitForRoutes(
 func runConnectivitySubtests(
 	t *testing.T,
 	outerLog *slog.Logger,
-	activeClients []*qa.Client,
+	clients []*qa.Client,
 	clientToDevice map[*qa.Client]*qa.Device,
 	results map[string]*deviceTestResult,
 	resultsMu *sync.Mutex,
 ) {
-	for _, client := range activeClients {
+	for _, client := range clients {
 		device := clientToDevice[client]
 		srcClient := client
 
@@ -399,7 +405,7 @@ func runConnectivitySubtests(
 			var totalSent, totalReceived uint32
 			var wg sync.WaitGroup
 			var mu sync.Mutex
-			for _, target := range activeClients {
+			for _, target := range clients {
 				if target.Host == srcClient.Host {
 					continue
 				}

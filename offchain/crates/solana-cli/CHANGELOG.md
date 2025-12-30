@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- uptick version to 0.3.2 ([#241](https://github.com/doublezerofoundation/doublezero-offchain/pull/241))
 - handle missing fee fields for `harvest-2z` Jupiter quotes ([#239](https://github.com/doublezerofoundation/doublezero-offchain/pull/239))
 
 ## [0.3.1](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-solana/v0.3.1) - 2025-12-18

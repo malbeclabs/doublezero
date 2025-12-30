@@ -88,17 +88,17 @@ type S3Config struct {
 //   - Endpoint: "" (empty, uses default AWS endpoints)
 //   - UseSSL: true
 //   - URLStyle: "virtual" (or empty, defaults to virtual)
-func NewLake(ctx context.Context, log *slog.Logger, catalogName, catalogURI, storageURI string, s3Config ...*S3Config) (*Lake, error) {
+func NewLake(ctx context.Context, log *slog.Logger, catalogName, catalogURI, storageURI string, readOnly bool, s3Config ...*S3Config) (*Lake, error) {
+	db, err := sql.Open("duckdb", "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to open database: %w", err)
+	}
+
 	if err := validateCatalogURI(catalogURI); err != nil {
 		return nil, err
 	}
 	if err := validateStorageURI(storageURI); err != nil {
 		return nil, err
-	}
-
-	db, err := sql.Open("duckdb", "")
-	if err != nil {
-		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
 	// Determine catalog type and prepare catalog connection string
@@ -179,9 +179,11 @@ func NewLake(ctx context.Context, log *slog.Logger, catalogName, catalogURI, sto
 		return nil, fmt.Errorf("storage URI must be file:// or s3://")
 	}
 
-	// Install DuckLake extension first, from nightly
-	if _, err := db.Exec("FORCE INSTALL ducklake FROM core_nightly"); err != nil {
-		return nil, fmt.Errorf("failed to install ducklake from nightly: %w", err)
+	if !readOnly {
+		// Install DuckLake extension first, from nightly
+		if _, err := db.Exec("FORCE INSTALL ducklake FROM core_nightly"); err != nil {
+			return nil, fmt.Errorf("failed to install ducklake from nightly: %w", err)
+		}
 	}
 	// LOAD the extension after installing
 	if _, err := db.Exec("LOAD ducklake"); err != nil {
@@ -201,8 +203,10 @@ func NewLake(ctx context.Context, log *slog.Logger, catalogName, catalogURI, sto
 	}
 
 	for _, ext := range extensions {
-		if _, err := db.Exec(fmt.Sprintf("INSTALL '%s'", ext)); err != nil {
-			return nil, fmt.Errorf("failed to install extension %s: %w", ext, err)
+		if !readOnly {
+			if _, err := db.Exec(fmt.Sprintf("INSTALL '%s'", ext)); err != nil {
+				return nil, fmt.Errorf("failed to install extension %s: %w", ext, err)
+			}
 		}
 		// LOAD the extension after installing
 		if _, err := db.Exec(fmt.Sprintf("LOAD '%s'", ext)); err != nil {
@@ -266,8 +270,11 @@ func NewLake(ctx context.Context, log *slog.Logger, catalogName, catalogURI, sto
 		secretSQL += fmt.Sprintf(", USE_SSL %t", useSSL)
 		secretSQL += ")"
 
-		if _, err := db.Exec(secretSQL); err != nil {
-			return nil, fmt.Errorf("failed to create S3 secret: %w", err)
+		// If isMinIO we assume it's a local MinIO instance and we need to create the secret, even in read-only mode.
+		if !readOnly || isMinIO {
+			if _, err := db.Exec(secretSQL); err != nil {
+				return nil, fmt.Errorf("failed to create S3 secret: %w", err)
+			}
 		}
 
 		// Configure httpfs extension settings for MinIO access
@@ -389,11 +396,16 @@ func (l *Lake) Conn(ctx context.Context) (Connection, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := conn.ExecContext(ctx, "USE "+l.catalog); err != nil {
-		return nil, fmt.Errorf("USE failed: %w", err)
+	// Only set catalog and schema if they are non-empty (catalog may be empty in read-only mode)
+	if l.catalog != "" {
+		if _, err := conn.ExecContext(ctx, "USE "+l.catalog); err != nil {
+			return nil, fmt.Errorf("USE failed: %w", err)
+		}
 	}
-	if _, err := conn.ExecContext(ctx, "SET schema = "+l.schema); err != nil {
-		return nil, fmt.Errorf("SET schema failed: %w", err)
+	if l.schema != "" {
+		if _, err := conn.ExecContext(ctx, "SET schema = "+l.schema); err != nil {
+			return nil, fmt.Errorf("SET schema failed: %w", err)
+		}
 	}
 	return &LakeConnection{
 		conn: conn,

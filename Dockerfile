@@ -128,6 +128,24 @@ RUN echo "$CACHE_BUSTER" > ${BIN_DIR}/.cache-buster && \
 
 
 # ----------------------------------------------------------------------------
+# DuckDB extensions stage
+# ----------------------------------------------------------------------------
+FROM debian:bookworm-slim AS duckdb_ext
+ARG DUCKDB_VERSION=1.4.3
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+# DuckDB CLI release is a zip for linux-amd64
+RUN curl -L -o /tmp/duckdb.zip https://github.com/duckdb/duckdb/releases/download/v${DUCKDB_VERSION}/duckdb_cli-linux-amd64.zip \
+    && unzip -q /tmp/duckdb.zip -d /usr/local/bin \
+    && rm /tmp/duckdb.zip \
+    && chmod +x /usr/local/bin/duckdb
+
+RUN mkdir -p /root/.duckdb \
+    && /usr/local/bin/duckdb -c "INSTALL httpfs; INSTALL aws; INSTALL postgres; INSTALL ducklake;"
+
+
+# ----------------------------------------------------------------------------
 # Main stage with only the binaries.
 # ----------------------------------------------------------------------------
 FROM ubuntu:24.04
@@ -145,5 +163,8 @@ ENV PATH="/doublezero/bin:${PATH}"
 
 # Copy binaries from the builder stage.
 COPY --from=builder-go /doublezero/bin/. /doublezero/bin/.
+
+# Copy DuckDB extensions into the runtime home dir
+COPY --from=duckdb_ext /root/.duckdb/extensions /root/.duckdb/extensions
 
 CMD ["/bin/bash"]

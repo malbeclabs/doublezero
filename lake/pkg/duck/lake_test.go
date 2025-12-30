@@ -173,7 +173,7 @@ func TestLake_Duck_NewLake_FileCatalogFileStorage(t *testing.T) {
 	catalogURI := "file://" + catalogPath
 	storageURI := "file://" + storagePath
 
-	lake, err := NewLake(ctx, log, "test_catalog", catalogURI, storageURI)
+	lake, err := NewLake(ctx, log, "test_catalog", catalogURI, storageURI, false)
 	require.NoError(t, err)
 	require.NotNil(t, lake)
 	defer lake.Close()
@@ -240,7 +240,7 @@ func TestLake_Duck_NewLake_PostgresCatalogFileStorage(t *testing.T) {
 	// Build postgres:// URI directly instead of using libpq format
 	catalogURI := fmt.Sprintf("postgres://testuser:testpass@%s:%s/testdb?sslmode=disable", host, port.Port())
 
-	lake, err := NewLake(ctx, log, "test_catalog", catalogURI, storageURI)
+	lake, err := NewLake(ctx, log, "test_catalog", catalogURI, storageURI, false)
 	require.NoError(t, err)
 	require.NotNil(t, lake)
 	defer lake.Close()
@@ -353,7 +353,7 @@ func TestLake_Duck_NewLake_FileCatalogS3Storage(t *testing.T) {
 		URLStyle:        "path",
 	}
 
-	lake, err := NewLake(ctx, log, "test_catalog", catalogURI, storageURI, s3Config)
+	lake, err := NewLake(ctx, log, "test_catalog", catalogURI, storageURI, false, s3Config)
 	require.NoError(t, err)
 	require.NotNil(t, lake)
 	defer lake.Close()
@@ -483,7 +483,7 @@ func TestLake_Duck_NewLake_PostgresCatalogS3Storage(t *testing.T) {
 		URLStyle:        "path",
 	}
 
-	lake, err := NewLake(ctx, log, "test_catalog", catalogURI, storageURI, s3Config)
+	lake, err := NewLake(ctx, log, "test_catalog", catalogURI, storageURI, false, s3Config)
 	require.NoError(t, err)
 	require.NotNil(t, lake)
 	defer lake.Close()
@@ -537,7 +537,7 @@ func TestLake_Duck_NewLake_S3ConfigRequired(t *testing.T) {
 	storageURI := "s3://test-bucket/data"
 
 	// Test without S3 config
-	_, err := NewLake(ctx, log, "test_catalog", catalogURI, storageURI)
+	_, err := NewLake(ctx, log, "test_catalog", catalogURI, storageURI, false)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "S3 configuration is required when using s3:// storage URI")
 }

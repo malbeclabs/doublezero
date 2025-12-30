@@ -111,7 +111,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("failed to prepare S3 config: %w", err)
 	}
-	db, err := duck.NewLake(ctx, log, *duckLakeCatalogNameFlag, *duckLakeCatalogURIFlag, *duckLakeStorageURIFlag, s3Config)
+	db, err := duck.NewLake(ctx, log, *duckLakeCatalogNameFlag, *duckLakeCatalogURIFlag, *duckLakeStorageURIFlag, true, s3Config)
 	if err != nil {
 		return fmt.Errorf("failed to create DuckLake: %w", err)
 	}

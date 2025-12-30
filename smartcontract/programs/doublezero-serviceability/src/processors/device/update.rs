@@ -27,6 +27,7 @@ pub struct DeviceUpdateArgs {
     pub max_users: Option<u16>,
     pub users_count: Option<u16>,
     pub status: Option<DeviceStatus>,
+    pub desired_status: Option<DeviceDesiredStatus>,
 }
 
 impl fmt::Debug for DeviceUpdateArgs {
@@ -60,6 +61,9 @@ impl fmt::Debug for DeviceUpdateArgs {
         }
         if self.status.is_some() {
             write!(f, "status: {:?}, ", self.status)?;
+        }
+        if self.desired_status.is_some() {
+            write!(f, "desired_status: {:?}, ", self.desired_status)?;
         }
         Ok(())
     }
@@ -219,6 +223,12 @@ pub fn process_update_device(
             }
         }
     }
+
+    if let Some(desired_status) = value.desired_status {
+        device.desired_status = desired_status;
+    }
+
+    device.check_status_transition();
 
     account_write(device_account, &device, payer_account, system_program)?;
 

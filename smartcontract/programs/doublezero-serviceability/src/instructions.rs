@@ -621,6 +621,7 @@ mod tests {
                 max_users: None,
                 users_count: None,
                 status: None,
+                desired_status: None,
             }),
             "UpdateDevice",
         );
@@ -667,6 +668,7 @@ mod tests {
                 jitter_ns: Some(100),
                 delay_override_ns: Some(0),
                 status: None,
+                desired_status: None,
             }),
             "UpdateLink",
         );

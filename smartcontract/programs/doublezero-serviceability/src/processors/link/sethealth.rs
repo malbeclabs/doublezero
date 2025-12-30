@@ -62,6 +62,8 @@ pub fn process_set_health_link(
 
     link.link_health = value.health;
 
+    link.check_status_transition();
+
     account_write(link_account, &link, payer_account, system_program)?;
 
     msg!("Set Health: {:?}", link);

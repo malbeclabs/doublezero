@@ -171,6 +171,55 @@ impl fmt::Display for DeviceHealth {
     }
 }
 
+#[repr(u8)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Default)]
+#[borsh(use_discriminant = true)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum DeviceDesiredStatus {
+    #[default]
+    Pending = 0,
+    Activated = 1,
+    HardDrained = 6,
+    SoftDrained = 7,
+}
+
+impl From<u8> for DeviceDesiredStatus {
+    fn from(value: u8) -> Self {
+        match value {
+            0 => DeviceDesiredStatus::Pending,
+            1 => DeviceDesiredStatus::Activated,
+            6 => DeviceDesiredStatus::HardDrained,
+            7 => DeviceDesiredStatus::SoftDrained,
+            _ => DeviceDesiredStatus::Pending,
+        }
+    }
+}
+
+impl FromStr for DeviceDesiredStatus {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "pending" => Ok(DeviceDesiredStatus::Pending),
+            "activated" => Ok(DeviceDesiredStatus::Activated),
+            "hard-drained" => Ok(DeviceDesiredStatus::HardDrained),
+            "soft-drained" => Ok(DeviceDesiredStatus::SoftDrained),
+            _ => Err(format!("Invalid DeviceDesiredStatus: {s}")),
+        }
+    }
+}
+
+impl fmt::Display for DeviceDesiredStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DeviceDesiredStatus::Pending => write!(f, "pending"),
+            DeviceDesiredStatus::Activated => write!(f, "activated"),
+            DeviceDesiredStatus::HardDrained => write!(f, "hard-drained"),
+            DeviceDesiredStatus::SoftDrained => write!(f, "soft-drained"),
+        }
+    }
+}
+
 #[derive(BorshSerialize, Debug, PartialEq, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Device {
@@ -228,6 +277,7 @@ pub struct Device {
     pub users_count: u16,          // 2
     pub max_users: u16,            // 2
     pub device_health: DeviceHealth, // 1
+    pub desired_status: DeviceDesiredStatus, // 1
 }
 
 impl Default for Device {
@@ -252,6 +302,7 @@ impl Default for Device {
             users_count: 0,
             max_users: 0,
             device_health: DeviceHealth::Pending,
+            desired_status: DeviceDesiredStatus::Pending,
         }
     }
 }
@@ -277,6 +328,11 @@ impl Device {
             && (self.device_type == DeviceType::Edge || self.device_type == DeviceType::Hybrid)
             && (self.max_users > 0 && self.users_count < self.max_users)
     }
+
+    pub fn check_status_transition(&self) {
+        // Implement any necessary status transition checks here
+        // this will be added in future iterations
+    }
 }
 
 impl fmt::Display for Device {
@@ -285,10 +341,10 @@ impl fmt::Display for Device {
             f,
             "account_type: {}, owner: {}, index: {}, contributor_pk: {}, location_pk: {}, exchange_pk: {}, device_type: {}, \
             public_ip: {}, dz_prefixes: {}, status: {}, code: {}, metrics_publisher_pk: {}, mgmt_vrf: {}, interfaces: {:?}, \
-            reference_count: {}, users_count: {}, max_users: {}, device_health: {}",
+            reference_count: {}, users_count: {}, max_users: {}, device_health: {}, desired_status: {}",
             self.account_type, self.owner, self.index, self.contributor_pk, self.location_pk, self.exchange_pk, self.device_type,
             &self.public_ip, &self.dz_prefixes, self.status, self.code, self.metrics_publisher_pk, self.mgmt_vrf, self.interfaces,
-            self.reference_count, self.users_count, self.max_users, self.device_health
+            self.reference_count, self.users_count, self.max_users, self.device_health, self.desired_status
         )
     }
 }
@@ -321,6 +377,7 @@ impl AccountTypeInfo for Device {
         + 2 // users_count
         + 2 // max_users
         + 1 // device_health
+        + 1 // desired_status
     }
     fn bump_seed(&self) -> u8 {
         self.bump_seed
@@ -357,6 +414,7 @@ impl TryFrom<&[u8]> for Device {
             users_count: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             max_users: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             device_health: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            desired_status: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::Device {
@@ -549,6 +607,7 @@ mod tests {
             users_count: 1,
             max_users: 2,
             device_health: DeviceHealth::ReadyForUsers,
+            desired_status: DeviceDesiredStatus::Pending,
         };
         let err = val.validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidAccountType);
@@ -576,6 +635,7 @@ mod tests {
             users_count: 1,
             max_users: 2,
             device_health: DeviceHealth::ReadyForUsers,
+            desired_status: DeviceDesiredStatus::Pending,
         };
         let err = val.validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::CodeTooLong);
@@ -603,6 +663,7 @@ mod tests {
             users_count: 1,
             max_users: 2,
             device_health: DeviceHealth::ReadyForUsers,
+            desired_status: DeviceDesiredStatus::Pending,
         };
         let err = val.validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidLocation);
@@ -630,6 +691,7 @@ mod tests {
             users_count: 1,
             max_users: 2,
             device_health: DeviceHealth::ReadyForUsers,
+            desired_status: DeviceDesiredStatus::Pending,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -658,6 +720,7 @@ mod tests {
             users_count: 1,
             max_users: 2,
             device_health: DeviceHealth::ReadyForUsers,
+            desired_status: DeviceDesiredStatus::Pending,
         };
         let err = val.validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidClientIp);
@@ -685,6 +748,7 @@ mod tests {
             users_count: 1,
             max_users: 2,
             device_health: DeviceHealth::ReadyForUsers,
+            desired_status: DeviceDesiredStatus::Pending,
         };
         let err = val.validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidDzPrefix);
@@ -712,6 +776,7 @@ mod tests {
             users_count: 0,
             max_users: 0,
             device_health: DeviceHealth::ReadyForUsers,
+            desired_status: DeviceDesiredStatus::Pending,
         };
         // max_users == 0 means "locked", so validation should still succeed
         val.validate().unwrap();
@@ -739,6 +804,7 @@ mod tests {
             users_count: 6,
             max_users: 5,
             device_health: DeviceHealth::ReadyForUsers,
+            desired_status: DeviceDesiredStatus::Pending,
         };
 
         let err = val.validate();
@@ -767,6 +833,7 @@ mod tests {
             users_count: 1,
             max_users: 2,
             device_health: DeviceHealth::ReadyForUsers,
+            desired_status: DeviceDesiredStatus::Pending,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -812,6 +879,7 @@ mod tests {
             users_count: 1,
             max_users: 2,
             device_health: DeviceHealth::ReadyForUsers,
+            desired_status: DeviceDesiredStatus::Pending,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -875,6 +943,7 @@ mod tests {
             users_count: 111,
             max_users: 222,
             device_health: DeviceHealth::ReadyForUsers,
+            desired_status: DeviceDesiredStatus::Pending,
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -931,6 +1000,7 @@ mod tests {
             users_count: 0,
             max_users: 0,
             device_health: DeviceHealth::Pending,
+            desired_status: DeviceDesiredStatus::Pending,
         };
 
         let oldsize = size_of_pre_dzd_metadata_device(val.code.len(), val.dz_prefixes.len());

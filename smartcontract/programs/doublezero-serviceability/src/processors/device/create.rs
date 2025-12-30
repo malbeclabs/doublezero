@@ -149,6 +149,7 @@ pub fn process_create_device(
         users_count: 0,
         max_users: 0, // Initially, the Device is locked and must be activated by modifying the maximum number of users.
         device_health: DeviceHealth::Pending,
+        desired_status: DeviceDesiredStatus::Pending,
     };
 
     account_create(

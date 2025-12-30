@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- handle missing fee fields for `harvest-2z` Jupiter quotes ([#239](https://github.com/doublezerofoundation/doublezero-offchain/pull/239))
+
+## [0.3.1](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-solana/v0.3.1) - 2025-12-18
+
 - uptick version to 0.3.1 ([#233](https://github.com/doublezerofoundation/doublezero-offchain/pull/233))
 - add memos to `relay distribute-rewards` and `validator-deposit` commands ([#232](https://github.com/doublezerofoundation/doublezero-offchain/pull/232))
 - add `--fund-outstanding-debt` to `revenue-distribution validator-deposit` ([#231](https://github.com/doublezerofoundation/doublezero-offchain/pull/231))
@@ -28,7 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.1](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-solana/v0.2.1) - 2025-11-11
 
 - add `revenue-distribution fetch distribution --view` argument ([#182](https://github.com/doublezerofoundation/doublezero-offchain/pull/182))
-- add `revenue-distribution harvest-2` command ([#180](hhttps://github.com/doublezerofoundation/doublezero-offchain/pull/180))
+- add `revenue-distribution harvest-2z` command ([#180](hhttps://github.com/doublezerofoundation/doublezero-offchain/pull/180))
 - add `revenue-distribution relay distribute-rewards` command ([#173](https://github.com/doublezerofoundation/doublezero-offchain/pull/173))
 - move binary from /usr/local/bin/ to /usr/bin to comply with package management standards ([#187](https://github.com/doublezerofoundation/doublezero-offchain/pull/187))
 

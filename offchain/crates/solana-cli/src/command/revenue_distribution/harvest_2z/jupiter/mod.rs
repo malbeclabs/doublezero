@@ -21,6 +21,8 @@ pub struct JupiterSwapInfo {
     pub output_mint: String,
     pub in_amount: String,
     pub out_amount: String,
-    pub fee_amount: String,
-    pub fee_mint: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fee_amount: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fee_mint: Option<String>,
 }

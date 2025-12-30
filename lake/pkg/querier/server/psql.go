@@ -85,6 +85,21 @@ func createAuthStrategy(log *slog.Logger, accounts map[string]string) wire.AuthS
 func (s *Server) queryHandler(ctx context.Context, query string) (wire.PreparedStatements, error) {
 	s.log.Debug("incoming query", "query", query)
 
+	// Handle empty queries (whitespace-only queries or just semicolons)
+	// PostgreSQL clients often send empty queries or just ";" to test the connection
+	normalizedQuery := strings.TrimSpace(query)
+	if normalizedQuery == "" || normalizedQuery == ";" {
+		// Return an empty result set with no columns - this is what PostgreSQL does for empty queries
+		// The wire protocol will send CommandComplete with no rows
+		return wire.Prepared(wire.NewStatement(
+			func(ctx context.Context, writer wire.DataWriter, parameters []wire.Parameter) error {
+				// Complete immediately with no rows - this is the correct response for an empty query
+				return writer.Complete("")
+			},
+			wire.WithColumns(wire.Columns{}),
+		)), nil
+	}
+
 	// Handle special ping query
 	// Normalize whitespace to handle variations like "-- ping", "--  ping  ", etc.
 	normalizedPing := strings.ToLower(strings.Join(strings.Fields(query), " "))

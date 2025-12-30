@@ -586,7 +586,7 @@ func updateHistory(
 				strings.Join(pkColsQualified, ", "),
 				currentTableName,
 				stageTableName,
-				strings.Replace(onClause, "h.", "s.", -1))
+				strings.Replace(onClause, "h.", "c.", -1))
 		}
 
 		if _, err := tx.ExecContext(ctx, pkSelectSQL); err != nil {
@@ -674,6 +674,21 @@ func updateHistory(
 		}
 		deleteJoinClause := fmt.Sprintf("(%s)", strings.Join(deleteJoinConditions, " AND "))
 
+		// Build join conditions for history -> current
+		historyJoinConditions := make([]string, len(pkColNames))
+		for i, pkCol := range pkColNames {
+			historyJoinConditions[i] = fmt.Sprintf("h.%s = c.%s", pkCol, pkCol)
+		}
+		historyJoinClause := fmt.Sprintf("(%s)", strings.Join(historyJoinConditions, " AND "))
+
+		// Select from the history version we just closed (where valid_to = snapshot_ts)
+		// This ensures we get the correct payload values that were active before deletion
+		historyColList := make([]string, len(allColumns))
+		for i, col := range allColumns {
+			historyColList[i] = fmt.Sprintf("h.%s", col)
+		}
+		historyColListStr := strings.Join(historyColList, ", ")
+
 		deleteHistorySQL := fmt.Sprintf(`INSERT INTO %s (
 			%s,
 			valid_from,
@@ -686,21 +701,24 @@ func updateHistory(
 			%s,
 			? AS valid_from,
 			NULL AS valid_to,
-			row_hash,
+			h.row_hash,
 			'D' AS op,
 			? AS run_id
 		FROM %s c
+		INNER JOIN %s h ON %s AND h.valid_to = ?
 		WHERE NOT EXISTS (
 			SELECT 1 FROM %s s WHERE %s
 		)`,
 			historyTableName,
 			colList,
-			colList,
+			historyColListStr,
 			currentTableName,
+			historyTableName,
+			historyJoinClause,
 			stageTableName,
 			deleteJoinClause)
 
-		if _, err := tx.ExecContext(ctx, deleteHistorySQL, cfg.SnapshotTS, runID); err != nil {
+		if _, err := tx.ExecContext(ctx, deleteHistorySQL, cfg.SnapshotTS, runID, cfg.SnapshotTS); err != nil {
 			return fmt.Errorf("failed to insert delete tombstone rows: %w", err)
 		}
 	}
@@ -943,4 +961,124 @@ func processEmptySnapshot(
 		}
 		return nil
 	})
+}
+
+// BackfillValidToOnDeletes fixes rows where valid_to wasn't set when a delete occurred.
+// This is a one-time backfill function to fix data affected by the bug where valid_to
+// wasn't being set on delete.
+//
+// Algorithm:
+//  1. Find all delete tombstones (op = 'D') in the history table
+//  2. For each delete tombstone with valid_from = X, find previous open versions
+//     (valid_to IS NULL) for the same PK where valid_from < X
+//  3. Set valid_to = X for those previous open versions
+//
+// The delete tombstone's valid_from timestamp tells us exactly when the deletion
+// occurred, so we can reliably backfill the valid_to field.
+func BackfillValidToOnDeletes(
+	ctx context.Context,
+	log *slog.Logger,
+	conn Connection,
+	cfg SCDTableConfig,
+	dryRun bool,
+) (fixedCount int, err error) {
+	historyTableName := cfg.TableBaseName + "_history"
+
+	// Extract primary key column names
+	pkColNames, err := extractColumnNames(cfg.PrimaryKeyColumns)
+	if err != nil {
+		return 0, fmt.Errorf("failed to extract primary key column names: %w", err)
+	}
+
+	// Build PK equality conditions for joining
+	pkConditions := make([]string, len(pkColNames))
+	for i, pkCol := range pkColNames {
+		pkConditions[i] = fmt.Sprintf("h1.%s = h2.%s", pkCol, pkCol)
+	}
+	pkJoinClause := strings.Join(pkConditions, " AND ")
+
+	if dryRun {
+		// Count how many rows would be fixed
+		countSQL := fmt.Sprintf(`SELECT COUNT(*)
+			FROM %s h1
+			INNER JOIN %s h2 ON %s
+			WHERE h1.op = 'D'
+			AND h2.valid_to IS NULL
+			AND h2.valid_from < h1.valid_from`,
+			historyTableName, historyTableName, pkJoinClause)
+
+		if err := conn.QueryRowContext(ctx, countSQL).Scan(&fixedCount); err != nil {
+			return 0, fmt.Errorf("failed to count rows to fix: %w", err)
+		}
+
+		log.Info("backfill valid_to on deletes (dry run)",
+			"table", cfg.TableBaseName,
+			"rows_to_fix", fixedCount)
+		return fixedCount, nil
+	}
+
+	// Update previous open versions to set valid_to = delete tombstone's valid_from
+	// We use a subquery to find the earliest delete tombstone after each open version
+	updateSQL := fmt.Sprintf(`UPDATE %s h2
+		SET valid_to = (
+			SELECT h1.valid_from
+			FROM %s h1
+			WHERE %s
+			AND h1.op = 'D'
+			AND h1.valid_from > h2.valid_from
+			ORDER BY h1.valid_from ASC
+			LIMIT 1
+		)
+		WHERE h2.valid_to IS NULL
+		AND EXISTS (
+			SELECT 1
+			FROM %s h1
+			WHERE %s
+			AND h1.op = 'D'
+			AND h1.valid_from > h2.valid_from
+		)`,
+		historyTableName,
+		historyTableName,
+		pkJoinClause,
+		historyTableName,
+		pkJoinClause)
+
+	result, err := conn.ExecContext(ctx, updateSQL)
+	if err != nil {
+		return 0, fmt.Errorf("failed to backfill valid_to on deletes: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		// Some drivers don't support RowsAffected, so we'll query for the count
+		var count int
+		countSQL := fmt.Sprintf(`SELECT COUNT(*)
+			FROM %s
+			WHERE valid_to IS NOT NULL
+			AND EXISTS (
+				SELECT 1
+				FROM %s h1
+				WHERE %s
+				AND h1.op = 'D'
+				AND h1.valid_from = %s.valid_to
+			)`,
+			historyTableName,
+			historyTableName,
+			pkJoinClause,
+			historyTableName)
+		if err := conn.QueryRowContext(ctx, countSQL).Scan(&count); err != nil {
+			log.Warn("failed to count fixed rows, using RowsAffected", "error", err)
+			fixedCount = int(rowsAffected)
+		} else {
+			fixedCount = count
+		}
+	} else {
+		fixedCount = int(rowsAffected)
+	}
+
+	log.Info("backfilled valid_to on deletes",
+		"table", cfg.TableBaseName,
+		"rows_fixed", fixedCount)
+
+	return fixedCount, nil
 }

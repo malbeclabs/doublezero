@@ -39,8 +39,8 @@ func TestSCDTableViaCSV(t *testing.T) {
 		cfg := SCDTableConfig{
 			TableBaseName:       "test_scd2",
 			SnapshotTS:          snapshotTS,
-		PrimaryKeyColumns:   []string{"id:VARCHAR"},
-		PayloadColumns:      []string{"name:VARCHAR", "age:INTEGER"},
+			PrimaryKeyColumns:   []string{"id:VARCHAR"},
+			PayloadColumns:      []string{"name:VARCHAR", "age:INTEGER"},
 			MissingMeansDeleted: false,
 			TrackIngestRuns:     false,
 		}
@@ -107,8 +107,8 @@ func TestSCDTableViaCSV(t *testing.T) {
 		cfg := SCDTableConfig{
 			TableBaseName:       "test_scd2_update",
 			SnapshotTS:          snapshotTS1,
-		PrimaryKeyColumns:   []string{"id:VARCHAR"},
-		PayloadColumns:      []string{"name:VARCHAR", "age:INTEGER"},
+			PrimaryKeyColumns:   []string{"id:VARCHAR"},
+			PayloadColumns:      []string{"name:VARCHAR", "age:INTEGER"},
 			MissingMeansDeleted: false,
 			TrackIngestRuns:     false,
 		}
@@ -211,8 +211,8 @@ func TestSCDTableViaCSV(t *testing.T) {
 		cfg := SCDTableConfig{
 			TableBaseName:       "test_scd2_delete",
 			SnapshotTS:          snapshotTS1,
-		PrimaryKeyColumns:   []string{"id:VARCHAR"},
-		PayloadColumns:      []string{"name:VARCHAR"},
+			PrimaryKeyColumns:   []string{"id:VARCHAR"},
+			PayloadColumns:      []string{"name:VARCHAR"},
 			MissingMeansDeleted: true, // Enable delete tracking
 			TrackIngestRuns:     false,
 		}
@@ -269,6 +269,29 @@ func TestSCDTableViaCSV(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, 0, charlieCount)
 
+		// Verify the previous open version was closed (valid_to should be set to snapshotTS2)
+		// First, check all history rows for id='3' to debug
+		rows, err := conn.QueryContext(context.Background(),
+			"SELECT valid_from, valid_to, op, name FROM test_scd2_delete_history WHERE id = '3' ORDER BY valid_from")
+		require.NoError(t, err)
+		defer rows.Close()
+
+		var foundInsert bool
+		for rows.Next() {
+			var vf, vt interface{}
+			var op, name string
+			err := rows.Scan(&vf, &vt, &op, &name)
+			require.NoError(t, err)
+			if op == "I" {
+				foundInsert = true
+				require.NotNil(t, vt, "insert version should have valid_to set after delete (got NULL)")
+				vtTime, ok := vt.(time.Time)
+				require.True(t, ok, "valid_to should be a time.Time")
+				require.Equal(t, snapshotTS2, vtTime, "insert version should be closed with valid_to = deletion snapshot timestamp")
+			}
+		}
+		require.True(t, foundInsert, "should find the insert version for deleted row")
+
 		// Verify delete tombstone in history
 		var deleteCount int
 		err = conn.QueryRowContext(context.Background(),
@@ -278,11 +301,106 @@ func TestSCDTableViaCSV(t *testing.T) {
 
 		var deleteOp string
 		var deleteValidFrom time.Time
+		var deleteValidTo interface{}
+		var deleteName string
 		err = conn.QueryRowContext(context.Background(),
-			"SELECT op, valid_from FROM test_scd2_delete_history WHERE id = '3' AND op = 'D'").Scan(&deleteOp, &deleteValidFrom)
+			"SELECT op, valid_from, valid_to, name FROM test_scd2_delete_history WHERE id = '3' AND op = 'D'").Scan(&deleteOp, &deleteValidFrom, &deleteValidTo, &deleteName)
 		require.NoError(t, err)
 		require.Equal(t, "D", deleteOp)
 		require.Equal(t, snapshotTS2, deleteValidFrom)
+		require.Nil(t, deleteValidTo, "delete tombstone should have valid_to = NULL (open)")
+		require.Equal(t, "Charlie", deleteName, "delete tombstone should have correct payload from closed version")
+	})
+
+	t.Run("sets valid_to correctly when deleting updated row", func(t *testing.T) {
+		t.Parallel()
+
+		db, conn, err := testDBWithConn(t)
+		require.NoError(t, err)
+		defer db.Close()
+
+		log := slog.New(slog.NewTextHandler(os.Stderr, nil))
+		snapshotTS1 := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+		snapshotTS2 := time.Date(2024, 1, 1, 13, 0, 0, 0, time.UTC)
+		snapshotTS3 := time.Date(2024, 1, 1, 14, 0, 0, 0, time.UTC)
+
+		cfg := SCDTableConfig{
+			TableBaseName:       "test_scd2_delete_updated",
+			SnapshotTS:          snapshotTS1,
+			PrimaryKeyColumns:   []string{"id:VARCHAR"},
+			PayloadColumns:      []string{"name:VARCHAR", "status:VARCHAR"},
+			MissingMeansDeleted: true,
+			TrackIngestRuns:     false,
+		}
+
+		// First snapshot: insert
+		err = SCDTableViaCSV(
+			context.Background(),
+			log,
+			conn,
+			cfg,
+			1,
+			func(w *csv.Writer, i int) error {
+				return w.Write([]string{"1", "Alice", "active"})
+			},
+		)
+		require.NoError(t, err)
+
+		// Second snapshot: update
+		cfg.SnapshotTS = snapshotTS2
+		err = SCDTableViaCSV(
+			context.Background(),
+			log,
+			conn,
+			cfg,
+			1,
+			func(w *csv.Writer, i int) error {
+				return w.Write([]string{"1", "Alice Updated", "inactive"})
+			},
+		)
+		require.NoError(t, err)
+
+		// Verify update closed the first version
+		var firstValidTo interface{}
+		err = conn.QueryRowContext(context.Background(),
+			"SELECT valid_to FROM test_scd2_delete_updated_history WHERE id = '1' AND valid_from = ?", snapshotTS1).Scan(&firstValidTo)
+		require.NoError(t, err)
+		require.NotNil(t, firstValidTo, "first version should have valid_to set after update")
+		require.Equal(t, snapshotTS2, firstValidTo)
+
+		// Third snapshot: delete
+		cfg.SnapshotTS = snapshotTS3
+		err = SCDTableViaCSV(
+			context.Background(),
+			log,
+			conn,
+			cfg,
+			0,
+			func(w *csv.Writer, i int) error {
+				return w.Write([]string{"1", "test"})
+			},
+		)
+		require.NoError(t, err)
+
+		// Verify the updated version (second snapshot) was closed with valid_to = snapshotTS3
+		var secondValidTo interface{}
+		err = conn.QueryRowContext(context.Background(),
+			"SELECT valid_to FROM test_scd2_delete_updated_history WHERE id = '1' AND valid_from = ?", snapshotTS2).Scan(&secondValidTo)
+		require.NoError(t, err)
+		require.NotNil(t, secondValidTo, "updated version should have valid_to set")
+		require.Equal(t, snapshotTS3, secondValidTo, "updated version should be closed with valid_to = deletion snapshot timestamp")
+
+		// Verify delete tombstone has correct payload from the closed updated version
+		var deleteName, deleteStatus string
+		var deleteValidFrom time.Time
+		var deleteValidTo interface{}
+		err = conn.QueryRowContext(context.Background(),
+			"SELECT name, status, valid_from, valid_to FROM test_scd2_delete_updated_history WHERE id = '1' AND op = 'D'").Scan(&deleteName, &deleteStatus, &deleteValidFrom, &deleteValidTo)
+		require.NoError(t, err)
+		require.Equal(t, "Alice Updated", deleteName, "delete tombstone should have name from updated version")
+		require.Equal(t, "inactive", deleteStatus, "delete tombstone should have status from updated version")
+		require.Equal(t, snapshotTS3, deleteValidFrom)
+		require.Nil(t, deleteValidTo, "delete tombstone should have valid_to = NULL")
 	})
 
 	t.Run("tracks ingest runs when enabled", func(t *testing.T) {
@@ -299,8 +417,8 @@ func TestSCDTableViaCSV(t *testing.T) {
 		cfg := SCDTableConfig{
 			TableBaseName:       "test_scd2_runs",
 			SnapshotTS:          snapshotTS,
-		PrimaryKeyColumns:   []string{"id:VARCHAR"},
-		PayloadColumns:      []string{"name:VARCHAR"},
+			PrimaryKeyColumns:   []string{"id:VARCHAR"},
+			PayloadColumns:      []string{"name:VARCHAR"},
 			MissingMeansDeleted: false,
 			TrackIngestRuns:     true,
 			RunID:               runID,
@@ -356,8 +474,8 @@ func TestSCDTableViaCSV(t *testing.T) {
 		cfg := SCDTableConfig{
 			TableBaseName:       "test_scd2_empty",
 			SnapshotTS:          snapshotTS1,
-		PrimaryKeyColumns:   []string{"id:VARCHAR"},
-		PayloadColumns:      []string{"name:VARCHAR"},
+			PrimaryKeyColumns:   []string{"id:VARCHAR"},
+			PayloadColumns:      []string{"name:VARCHAR"},
 			MissingMeansDeleted: true,
 			TrackIngestRuns:     false,
 		}
@@ -425,8 +543,8 @@ func TestSCDTableViaCSV(t *testing.T) {
 		cfg := SCDTableConfig{
 			TableBaseName:       "test_scd2_empty_no_delete",
 			SnapshotTS:          snapshotTS1,
-		PrimaryKeyColumns:   []string{"id:VARCHAR"},
-		PayloadColumns:      []string{"name:VARCHAR"},
+			PrimaryKeyColumns:   []string{"id:VARCHAR"},
+			PayloadColumns:      []string{"name:VARCHAR"},
 			MissingMeansDeleted: false, // Don't delete on empty
 			TrackIngestRuns:     false,
 		}
@@ -485,8 +603,8 @@ func TestSCDTableViaCSV(t *testing.T) {
 		cfg := SCDTableConfig{
 			TableBaseName:       "test_scd2_hash",
 			SnapshotTS:          snapshotTS,
-		PrimaryKeyColumns:   []string{"id:VARCHAR"},
-		PayloadColumns:      []string{"name:VARCHAR", "age:INTEGER"},
+			PrimaryKeyColumns:   []string{"id:VARCHAR"},
+			PayloadColumns:      []string{"name:VARCHAR", "age:INTEGER"},
 			MissingMeansDeleted: false,
 			TrackIngestRuns:     false,
 		}
@@ -545,8 +663,8 @@ func TestSCDTableViaCSV(t *testing.T) {
 
 		cfg := SCDTableConfig{
 			TableBaseName:       "test_scd2_multiple",
-		PrimaryKeyColumns:   []string{"id:VARCHAR"},
-		PayloadColumns:      []string{"name:VARCHAR"},
+			PrimaryKeyColumns:   []string{"id:VARCHAR"},
+			PayloadColumns:      []string{"name:VARCHAR"},
 			MissingMeansDeleted: false,
 			TrackIngestRuns:     false,
 		}
@@ -637,8 +755,8 @@ func TestSCDTableViaCSV(t *testing.T) {
 		cfg := SCDTableConfig{
 			TableBaseName:       "test_scd2_cancel",
 			SnapshotTS:          time.Now(),
-		PrimaryKeyColumns:   []string{"id:VARCHAR"},
-		PayloadColumns:      []string{"name:VARCHAR"},
+			PrimaryKeyColumns:   []string{"id:VARCHAR"},
+			PayloadColumns:      []string{"name:VARCHAR"},
 			MissingMeansDeleted: false,
 			TrackIngestRuns:     false,
 		}
@@ -672,8 +790,8 @@ func TestSCDTableViaCSV(t *testing.T) {
 		cfg := SCDTableConfig{
 			TableBaseName:       "test_scd2_error",
 			SnapshotTS:          time.Now(),
-		PrimaryKeyColumns:   []string{"id:VARCHAR"},
-		PayloadColumns:      []string{"name:VARCHAR"},
+			PrimaryKeyColumns:   []string{"id:VARCHAR"},
+			PayloadColumns:      []string{"name:VARCHAR"},
 			MissingMeansDeleted: false,
 			TrackIngestRuns:     false,
 		}
@@ -704,8 +822,8 @@ func TestSCDTableViaCSV(t *testing.T) {
 		cfg := SCDTableConfig{
 			TableBaseName:       "test_scd2_db_error",
 			SnapshotTS:          time.Now(),
-		PrimaryKeyColumns:   []string{"id:VARCHAR"},
-		PayloadColumns:      []string{"name:VARCHAR"},
+			PrimaryKeyColumns:   []string{"id:VARCHAR"},
+			PayloadColumns:      []string{"name:VARCHAR"},
 			MissingMeansDeleted: false,
 			TrackIngestRuns:     false,
 		}
@@ -738,8 +856,8 @@ func TestSCDTableViaCSV(t *testing.T) {
 		cfg := SCDTableConfig{
 			TableBaseName:       "test_scd2_validate",
 			SnapshotTS:          time.Now(),
-		PrimaryKeyColumns:   []string{}, // Empty
-		PayloadColumns:      []string{"name:VARCHAR"},
+			PrimaryKeyColumns:   []string{}, // Empty
+			PayloadColumns:      []string{"name:VARCHAR"},
 			MissingMeansDeleted: false,
 			TrackIngestRuns:     false,
 		}
@@ -770,8 +888,8 @@ func TestSCDTableViaCSV(t *testing.T) {
 		cfg := SCDTableConfig{
 			TableBaseName:       "test_scd2_validate2",
 			SnapshotTS:          time.Now(),
-		PrimaryKeyColumns:   []string{"id:VARCHAR"},
-		PayloadColumns:      []string{}, // Empty
+			PrimaryKeyColumns:   []string{"id:VARCHAR"},
+			PayloadColumns:      []string{}, // Empty
 			MissingMeansDeleted: false,
 			TrackIngestRuns:     false,
 		}
@@ -788,5 +906,73 @@ func TestSCDTableViaCSV(t *testing.T) {
 		)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "payload columns cannot be empty")
+	})
+
+	t.Run("backfill valid_to on deletes fixes missing valid_to", func(t *testing.T) {
+		t.Parallel()
+
+		db, conn, err := testDBWithConn(t)
+		require.NoError(t, err)
+		defer db.Close()
+
+		log := slog.New(slog.NewTextHandler(os.Stderr, nil))
+		snapshotTS1 := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+		snapshotTS2 := time.Date(2024, 1, 1, 13, 0, 0, 0, time.UTC)
+
+		cfg := SCDTableConfig{
+			TableBaseName:       "test_scd2_backfill",
+			SnapshotTS:          snapshotTS1,
+			PrimaryKeyColumns:   []string{"id:VARCHAR"},
+			PayloadColumns:      []string{"name:VARCHAR"},
+			MissingMeansDeleted: true,
+			TrackIngestRuns:     false,
+		}
+
+		// First snapshot: insert a row
+		err = SCDTableViaCSV(
+			context.Background(),
+			log,
+			conn,
+			cfg,
+			1,
+			func(w *csv.Writer, i int) error {
+				return w.Write([]string{"1", "Alice"})
+			},
+		)
+		require.NoError(t, err)
+
+		// Manually insert a delete tombstone without closing the previous version
+		// This simulates the bug where valid_to wasn't set
+		_, err = conn.ExecContext(context.Background(), `
+			INSERT INTO test_scd2_backfill_history (id, name, valid_from, valid_to, row_hash, op, run_id)
+			SELECT id, name, ? AS valid_from, NULL AS valid_to, row_hash, 'D' AS op, 'manual_delete' AS run_id
+			FROM test_scd2_backfill_history
+			WHERE id = '1' AND op = 'I'
+		`, snapshotTS2)
+		require.NoError(t, err)
+
+		// Verify the insert version still has valid_to = NULL (the bug)
+		var validTo interface{}
+		err = conn.QueryRowContext(context.Background(),
+			"SELECT valid_to FROM test_scd2_backfill_history WHERE id = '1' AND op = 'I'").Scan(&validTo)
+		require.NoError(t, err)
+		require.Nil(t, validTo, "insert version should still have NULL valid_to before backfill")
+
+		// Run backfill in dry-run mode first
+		fixedCount, err := BackfillValidToOnDeletes(context.Background(), log, conn, cfg, true)
+		require.NoError(t, err)
+		require.Equal(t, 1, fixedCount, "should find 1 row to fix in dry run")
+
+		// Run actual backfill
+		fixedCount, err = BackfillValidToOnDeletes(context.Background(), log, conn, cfg, false)
+		require.NoError(t, err)
+		require.Equal(t, 1, fixedCount, "should fix 1 row")
+
+		// Verify the insert version now has valid_to set to the delete timestamp
+		err = conn.QueryRowContext(context.Background(),
+			"SELECT valid_to FROM test_scd2_backfill_history WHERE id = '1' AND op = 'I'").Scan(&validTo)
+		require.NoError(t, err)
+		require.NotNil(t, validTo, "insert version should have valid_to set after backfill")
+		require.Equal(t, snapshotTS2, validTo, "valid_to should be set to delete tombstone's valid_from")
 	})
 }

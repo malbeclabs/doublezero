@@ -64,6 +64,8 @@ var Datasets = []schematypes.Dataset{
 		- public_ip (VARCHAR): Public IP address
 		- contributor_pk (VARCHAR): Foreign key → dz_contributors_current.pk
 		- metro_pk (VARCHAR): Foreign key → dz_metros_current.pk
+		- max_users (INTEGER): Maximum number of users allowed on the device
+		- users_count (INTEGER): Current number of users on the device
 
 		SCD2 DATA STRUCTURE:
 		- {table}_current: Current state of the dataset. One row per dataset entity.

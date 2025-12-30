@@ -11,6 +11,9 @@ import (
 	flag "github.com/spf13/pflag"
 
 	"github.com/malbeclabs/doublezero/lake/pkg/duck"
+	dzsvc "github.com/malbeclabs/doublezero/lake/pkg/indexer/dz/serviceability"
+	mcpgeoip "github.com/malbeclabs/doublezero/lake/pkg/indexer/geoip"
+	"github.com/malbeclabs/doublezero/lake/pkg/indexer/sol"
 	"github.com/malbeclabs/doublezero/lake/pkg/logger"
 )
 
@@ -43,6 +46,7 @@ func run() error {
 	setExpireOlderThanFlag := flag.String("set-expire-older-than", "", "Set ducklake option expire_older_than (e.g., '30d', '7 days', '1 week')")
 	execSQLFlag := flag.String("exec-sql", "", "Execute arbitrary SQL query (use --exec-sql-file for file input)")
 	execSQLFileFlag := flag.String("exec-sql-file", "", "Execute SQL from file")
+	backfillValidToOnDeletesFlag := flag.Bool("backfill-valid-to-on-deletes", false, "Backfill valid_to field for SCD2 history rows where it wasn't set on delete")
 
 	allFlag := flag.Bool("all", false, "Apply to all items (for use with --cleanup-old-files or --delete-orphaned-files)")
 	olderThanFlag := flag.String("older-than", "", "Older than this interval (e.g., '7 days', '1 week', '30 days', for use with --cleanup-old-files, --delete-orphaned-files, or --expire-snapshots)")
@@ -64,8 +68,8 @@ func run() error {
 	log := logger.New(*verboseFlag)
 
 	// Check that at least one command is specified
-	if !*mergeFilesFlag && !*rewriteFilesFlag && !*cleanupOldFilesFlag && !*deleteOrphanedFilesFlag && !*expireSnapshotsFlag && !*flushInlinedDataFlag && !*checkpointFlag && *setExpireOlderThanFlag == "" && *execSQLFlag == "" && *execSQLFileFlag == "" {
-		return fmt.Errorf("must specify at least one command: --merge-adjacent-files, --rewrite-data-files, --cleanup-old-files, --delete-orphaned-files, --expire-snapshots, --flush-inlined-data, --checkpoint, --set-expire-older-than, --exec-sql, or --exec-sql-file")
+	if !*mergeFilesFlag && !*rewriteFilesFlag && !*cleanupOldFilesFlag && !*deleteOrphanedFilesFlag && !*expireSnapshotsFlag && !*flushInlinedDataFlag && !*checkpointFlag && *setExpireOlderThanFlag == "" && *execSQLFlag == "" && *execSQLFileFlag == "" && !*backfillValidToOnDeletesFlag {
+		return fmt.Errorf("must specify at least one command: --merge-adjacent-files, --rewrite-data-files, --cleanup-old-files, --delete-orphaned-files, --expire-snapshots, --flush-inlined-data, --checkpoint, --set-expire-older-than, --exec-sql, --exec-sql-file, or --backfill-valid-to-on-deletes")
 	}
 
 	// Validate SQL execution flags
@@ -355,7 +359,66 @@ func run() error {
 		}
 	}
 
+	if *backfillValidToOnDeletesFlag {
+		// Get all SCD table configs
+		configs := getAllSCDTableConfigs()
+
+		if *dryRunFlag {
+			log.Info("running backfill valid_to on deletes in dry-run mode - no changes will be made")
+		}
+
+		totalFixed := 0
+		for _, cfg := range configs {
+			log.Info("processing table for backfill", "table", cfg.TableBaseName, "dry_run", *dryRunFlag)
+
+			fixedCount, err := duck.BackfillValidToOnDeletes(ctx, log, conn, cfg, *dryRunFlag)
+			if err != nil {
+				return fmt.Errorf("failed to backfill table %s: %w", cfg.TableBaseName, err)
+			}
+
+			if *dryRunFlag {
+				log.Info("dry run completed for table",
+					"table", cfg.TableBaseName,
+					"rows_to_fix", fixedCount)
+			} else {
+				log.Info("backfill completed for table",
+					"table", cfg.TableBaseName,
+					"rows_fixed", fixedCount)
+			}
+
+			totalFixed += fixedCount
+		}
+
+		if *dryRunFlag {
+			log.Info("dry run completed for all tables", "total_rows_to_fix", totalFixed)
+			fmt.Printf("\nDry run completed. Total rows that would be fixed: %d\n", totalFixed)
+			fmt.Println("Run without --dry-run to apply the changes.")
+		} else {
+			log.Info("backfill completed for all tables", "total_rows_fixed", totalFixed)
+			fmt.Printf("\nBackfill completed. Total rows fixed: %d\n", totalFixed)
+		}
+	}
+
 	return nil
+}
+
+// getAllSCDTableConfigs returns all SCD table configurations
+// This matches the tables defined in lake/pkg/indexer/scd2_migrations.go
+func getAllSCDTableConfigs() []duck.SCDTableConfig {
+	return []duck.SCDTableConfig{
+		// GeoIP
+		mcpgeoip.SCD2ConfigGeoIPRecords(),
+		// Solana
+		sol.SCD2ConfigLeaderSchedule(),
+		sol.SCD2ConfigVoteAccounts(),
+		sol.SCD2ConfigGossipNodes(),
+		// Serviceability
+		dzsvc.SCD2ConfigContributors(),
+		dzsvc.SCD2ConfigDevices(),
+		dzsvc.SCD2ConfigUsers(),
+		dzsvc.SCD2ConfigMetros(),
+		dzsvc.SCD2ConfigLinks(),
+	}
 }
 
 // parseIntervalToDuration parses a SQL interval string (e.g., "7 days", "1 week", "30 days") into a time.Duration

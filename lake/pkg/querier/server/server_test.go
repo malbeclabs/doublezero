@@ -674,6 +674,11 @@ func TestLake_Querier_Server_PostgreSQL_WireProtocol(t *testing.T) {
 		require.Equal(t, time.January, tsTz.Month())
 		require.Equal(t, 15, tsTz.Day())
 
+		// No more rows
+		require.False(t, rows.Next())
+		require.NoError(t, rows.Err())
+		rows.Close() // Close rows before making another query
+
 		// Query timestamp as string to verify string representation includes date
 		var tsStr string
 		var tsTzStr string
@@ -689,10 +694,6 @@ func TestLake_Querier_Server_PostgreSQL_WireProtocol(t *testing.T) {
 
 		require.Contains(t, tsTzStr, "2024", "timestamptz string should include year")
 		require.NotRegexp(t, `^\d{2}:\d{2}:\d{2}`, tsTzStr, "timestamptz should not be just time without date")
-
-		// No more rows
-		require.False(t, rows.Next())
-		require.NoError(t, rows.Err())
 
 		// Shutdown server
 		serverCancel()

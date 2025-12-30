@@ -9,7 +9,6 @@ import (
 	"log/slog"
 	"maps"
 	"math"
-	"math/rand/v2"
 	"net"
 	"slices"
 	"strings"
@@ -28,10 +27,10 @@ var (
 const latencyThresholdMs = 50
 
 type DeviceAssignments map[string][]*qa.Device
-type HostLatencies map[string]map[string]float64
+type ClientLatencies map[string]map[string]float64
 type deviceTestResult struct {
 	DeviceCode      string
-	Host            string
+	Client          string
 	PacketsSent     uint32
 	PacketsReceived uint32
 }
@@ -49,8 +48,7 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 	clients := test.Clients()
 	require.GreaterOrEqual(t, len(clients), 2, "At least 2 clients are required for connectivity testing")
 
-	// Filter devices to only include those with sufficient capacity and skip test devices, and
-	// shuffle them to avoid always testing connectivity via the same devices.
+	// Filter devices to only include those with sufficient capacity and skip test devices
 	devices := test.ValidDevices(2)
 	if len(devices) == 0 {
 		t.Skip("No valid devices found with sufficient capacity")
@@ -69,35 +67,34 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 	}
 
 	// Gather latency data from each client.
-	// hostLatencies: host -> deviceCode -> latencyMs
-	log.Info("Collecting host-to-device latencies")
-	hostLatencies := make(HostLatencies)
+	// clientLatencies: clientName -> deviceCode -> latencyMs
+	log.Info("Collecting client-to-device latencies")
+	clientLatencies := make(ClientLatencies)
 	for _, client := range clients {
 		latencies, err := client.GetLatency(ctx)
-		require.NoError(t, err, "failed to get latency from host %s", client.Host)
+		require.NoError(t, err, "failed to get latency from client %s", client.Host)
 
-		hostLatencies[client.Host] = make(map[string]float64)
+		clientLatencies[client.Host] = make(map[string]float64)
 		for _, l := range latencies {
 			if l.Reachable {
-				hostLatencies[client.Host][l.DeviceCode] = float64(l.AvgLatencyNs) / 1_000_000.0 // ns -> ms
+				clientLatencies[client.Host][l.DeviceCode] = float64(l.AvgLatencyNs) / 1_000_000.0 // ns -> ms
 			}
 		}
 	}
 
-	// Assign devices to hosts based on latency.
-	log.Info("Assigning devices to hosts based on latency")
-	deviceAssignments := assignDevicesToHosts(devices, clients, hostLatencies)
+	// Assign devices to clients based on latency.
+	log.Info("Assigning devices to clients based on latency")
+	deviceAssignments := assignDevicesToClients(devices, clients, clientLatencies)
 
-	// Shuffle each host's device list for randomized test order.
-	for host := range deviceAssignments {
-		rand.Shuffle(len(deviceAssignments[host]), func(i, j int) {
-			deviceAssignments[host][i], deviceAssignments[host][j] = deviceAssignments[host][j], deviceAssignments[host][i]
-		})
+	// Randomize the order in which each client connects to its assigned devices
+	for clientName := range deviceAssignments {
+		test.ShuffleDevices(deviceAssignments[host])
 	}
 
-	printTestReportTable(log, deviceAssignments, hostLatencies, nil)
+	log.Info("Client device assignments:")
+	printTestReportTable(log, deviceAssignments, clientLatencies, nil)
 
-	// Calculate the number of batches needed (max devices per host).
+	// Calculate the number of batches needed (max devices per client).
 	maxBatches := 0
 	for _, assigned := range deviceAssignments {
 		if len(assigned) > maxBatches {
@@ -106,7 +103,7 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 	}
 
 	if maxBatches == 0 {
-		t.Skip("No devices assigned to any host")
+		t.Skip("No devices assigned to any client")
 	}
 
 	log.Info("Planning to test",
@@ -115,20 +112,20 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 		"totalBatches", maxBatches,
 	)
 
-	// Track active hosts and their current device index.
+	// Track active clients and their current device index.
 	activeClients := slices.Clone(clients)
-	hostDeviceIndex := make(map[string]int)
-	hostLastDevice := make(map[string]*qa.Device)
+	clientDeviceIndex := make(map[string]int)
+	clientLastDevice := make(map[string]*qa.Device)
 
 	// Track test results for final report.
 	// Pre-record all devices with zero packets (will be updated when tests run).
 	results := make(map[string]*deviceTestResult)
 	var resultsMu sync.Mutex
-	for host, assigned := range deviceAssignments {
+	for clientName, assigned := range deviceAssignments {
 		for _, device := range assigned {
 			results[device.Code] = &deviceTestResult{
 				DeviceCode:      device.Code,
-				Host:            host,
+				Client:          clientName,
 				PacketsSent:     0,
 				PacketsReceived: 0,
 			}
@@ -136,36 +133,36 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 	}
 
 	for batchNum := 0; batchNum < maxBatches; batchNum++ {
-		// Determine what each host tests this batch.
+		// Determine what each client tests this batch.
 		clientToDevice := make(map[*qa.Client]*qa.Device)
 
-		// Track hosts to remove after this batch because they have no more devices to test
-		var hostsToRemove []*qa.Client
+		// Track clients to remove after this batch because they have no more devices to test.
+		var clientsToRemove []*qa.Client
 
 		for _, client := range activeClients {
-			idx := hostDeviceIndex[client.Host]
+			idx := clientDeviceIndex[client.Host]
 			assigned := deviceAssignments[client.Host]
 
 			if idx < len(assigned) {
 				// Has devices left - test next one.
 				clientToDevice[client] = assigned[idx]
-				hostDeviceIndex[client.Host]++
-				hostLastDevice[client.Host] = assigned[idx]
+				clientDeviceIndex[client.Host]++
+				clientLastDevice[client.Host] = assigned[idx]
 			} else if len(activeClients) > 2 {
-				// No devices left, >=3 hosts remain - mark for removal.
-				hostsToRemove = append(hostsToRemove, client)
+				// No devices left, >=3 clients remain - mark for removal.
+				clientsToRemove = append(clientsToRemove, client)
 			} else {
-				// No devices left, exactly 2 hosts - keep this host connected to its last device so we can test the remaining devices on the other host
-				clientToDevice[client] = hostLastDevice[client.Host]
+				// No devices left, exactly 2 clients - keep connected to last device so we can test the remaining devices on the other client.
+				clientToDevice[client] = clientLastDevice[client.Host]
 			}
 		}
 
-		// Remove hosts that have no more devices (if >=3 hosts remained).
-		for _, client := range hostsToRemove {
-			log.Info("Removing host from testing (no more devices)", "host", client.Host)
+		// Remove clients that have no more devices (if >=3 clients remained).
+		for _, client := range clientsToRemove {
+			log.Info("Removing client from testing (no more devices)", "client", client.Host)
 			err := client.DisconnectUser(ctx, true, true)
 			if err != nil {
-				log.Warn("Failed to disconnect removed host", "host", client.Host, "error", err)
+				log.Warn("Failed to disconnect removed client", "client", client.Host, "error", err)
 			}
 			activeClients = slices.DeleteFunc(activeClients, func(c *qa.Client) bool {
 				return c.Host == client.Host
@@ -174,7 +171,7 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 		}
 
 		if len(activeClients) < 2 {
-			log.Info("Fewer than 2 active hosts remain, ending test")
+			log.Info("Fewer than 2 active clients remain, ending test")
 			break
 		}
 
@@ -204,8 +201,8 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 		})
 	}
 
-	// Print final test report.
-	printTestReportTable(log, deviceAssignments, hostLatencies, results)
+	log.Info("Test results:")
+	printTestReportTable(log, deviceAssignments, clientLatencies, results)
 
 	var totalSent, totalReceived uint32
 	var devicesWithLoss int
@@ -219,71 +216,72 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 	log.Info("Test summary", "packetsReceived", totalReceived, "packetsSent", totalSent, "devicesWithLoss", devicesWithLoss, "totalDevices", len(results))
 }
 
-// assignDevicesToHosts assigns each device to a host based on latency.
-// If multiple hosts have <50ms latency, the device goes to the host with fewest devices.
-// Otherwise, the device goes to the host with the best latency.
-func assignDevicesToHosts(devices []*qa.Device, clients []*qa.Client, hostLatencies HostLatencies) DeviceAssignments {
+// assignDevicesToClients assigns each device to a client based on latency.
+// If multiple clients have <50ms latency, the device goes to the client with fewest devices.
+// Otherwise, the device goes to the client with the best latency.
+func assignDevicesToClients(devices []*qa.Device, clients []*qa.Client, clientLatencies ClientLatencies) DeviceAssignments {
 	deviceAssignments := make(DeviceAssignments)
 
 	for _, device := range devices {
-		var lowLatencyHosts []string
-		var bestHost string
+		var lowLatencyClients []string
+		var bestClient string
 		bestLatency := math.MaxFloat64
 
 		for _, client := range clients {
-			latencyMs, ok := hostLatencies[client.Host][device.Code]
+			latencyMs, ok := clientLatencies[client.Host][device.Code]
 			if !ok {
 				continue
 			}
 
 			if latencyMs < latencyThresholdMs {
-				lowLatencyHosts = append(lowLatencyHosts, client.Host)
+				lowLatencyClients = append(lowLatencyClients, client.Host)
 			}
 
 			if latencyMs < bestLatency {
 				bestLatency = latencyMs
-				bestHost = client.Host
+				bestClient = client.Host
 			}
 		}
 
-		var assignedHost string
-		if len(lowLatencyHosts) > 1 {
-			// Multiple hosts qualify - assign to host with fewest devices.
-			assignedHost = lowLatencyHosts[0]
-			minDevices := len(deviceAssignments[assignedHost])
-			for _, host := range lowLatencyHosts[1:] {
-				if len(deviceAssignments[host]) < minDevices {
-					assignedHost = host
-					minDevices = len(deviceAssignments[host])
+		var assignedClient string
+		if len(lowLatencyClients) > 1 {
+			// Multiple clients qualify - assign to client with fewest devices.
+			assignedClient = lowLatencyClients[0]
+			minDevices := len(deviceAssignments[assignedClient])
+			for _, clientName := range lowLatencyClients[1:] {
+				if len(deviceAssignments[clientName]) < minDevices {
+					assignedClient = clientName
+					minDevices = len(deviceAssignments[clientName])
 				}
 			}
-		} else if bestHost != "" {
-			assignedHost = bestHost
+		} else if bestClient != "" {
+			assignedClient = bestClient
 		}
 
-		if assignedHost != "" {
-			deviceAssignments[assignedHost] = append(deviceAssignments[assignedHost], device)
+		if assignedClient != "" {
+			deviceAssignments[assignedClient] = append(deviceAssignments[assignedClient], device)
 		}
 	}
 
 	return deviceAssignments
 }
 
-func printTestReportTable(log *slog.Logger, deviceAssignments DeviceAssignments, hostLatencies HostLatencies, results map[string]*deviceTestResult) {
-	hosts := slices.Sorted(maps.Keys(deviceAssignments))
+// printTestReportTable prints a table of device assignments and latencies, plus test results if provided.
+func printTestReportTable(log *slog.Logger, deviceAssignments DeviceAssignments, clientLatencies ClientLatencies, results map[string]*deviceTestResult) {
+	clientNames := slices.Sorted(maps.Keys(deviceAssignments))
 	maxDevices := 0
 	colWidths := make(map[string]int)
-	for _, host := range hosts {
-		colWidths[host] = len(host)
-		maxDevices = max(maxDevices, len(deviceAssignments[host]))
-		for _, d := range deviceAssignments[host] {
-			latencyMs := hostLatencies[host][d.Code]
+	for _, clientName := range clientNames {
+		colWidths[clientName] = len(clientName)
+		maxDevices = max(maxDevices, len(deviceAssignments[clientName]))
+		for _, d := range deviceAssignments[clientName] {
+			latencyMs := clientLatencies[clientName][d.Code]
 			cell := fmt.Sprintf("%s (%.1fms)", d.Code, latencyMs)
 			if results != nil {
 				// Add space for " 25/25" suffix (max reasonable packet count display)
 				cell += " 25/25"
 			}
-			colWidths[host] = max(colWidths[host], len(cell))
+			colWidths[clientName] = max(colWidths[clientName], len(cell))
 		}
 	}
 
@@ -295,8 +293,8 @@ func printTestReportTable(log *slog.Logger, deviceAssignments DeviceAssignments,
 
 	// Header row
 	sb.WriteString(fmt.Sprintf("| %-*s |", batchColWidth, ""))
-	for _, host := range hosts {
-		sb.WriteString(fmt.Sprintf(" %-*s |", colWidths[host], host))
+	for _, clientName := range clientNames {
+		sb.WriteString(fmt.Sprintf(" %-*s |", colWidths[clientName], clientName))
 	}
 	sb.WriteString("\n")
 
@@ -304,8 +302,8 @@ func printTestReportTable(log *slog.Logger, deviceAssignments DeviceAssignments,
 	sb.WriteString("|")
 	sb.WriteString(strings.Repeat("-", batchColWidth+2))
 	sb.WriteString("|")
-	for _, host := range hosts {
-		sb.WriteString(strings.Repeat("-", colWidths[host]+2))
+	for _, clientName := range clientNames {
+		sb.WriteString(strings.Repeat("-", colWidths[clientName]+2))
 		sb.WriteString("|")
 	}
 	sb.WriteString("\n")
@@ -313,11 +311,11 @@ func printTestReportTable(log *slog.Logger, deviceAssignments DeviceAssignments,
 	// Data rows
 	for i := 0; i < maxDevices; i++ {
 		sb.WriteString(fmt.Sprintf("| Batch %-*d |", batchColWidth-6, i+1))
-		for _, host := range hosts {
-			assigned := deviceAssignments[host]
+		for _, clientName := range clientNames {
+			assigned := deviceAssignments[clientName]
 			cell := ""
 			if i < len(assigned) {
-				latencyMs := hostLatencies[host][assigned[i].Code]
+				latencyMs := clientLatencies[clientName][assigned[i].Code]
 				cell = fmt.Sprintf("%s (%.1fms)", assigned[i].Code, latencyMs)
 				if results != nil {
 					if r, ok := results[assigned[i].Code]; ok {
@@ -327,16 +325,11 @@ func printTestReportTable(log *slog.Logger, deviceAssignments DeviceAssignments,
 					}
 				}
 			}
-			sb.WriteString(fmt.Sprintf(" %-*s |", colWidths[host], cell))
+			sb.WriteString(fmt.Sprintf(" %-*s |", colWidths[clientName], cell))
 		}
 		sb.WriteString("\n")
 	}
 
-	if results == nil {
-		log.Info("Host device assignments:")
-	} else {
-		log.Info("Test Report:")
-	}
 	fmt.Print(sb.String())
 }
 
@@ -386,7 +379,7 @@ func runConnectivitySubtests(
 		if _, exists := results[device.Code]; !exists {
 			results[device.Code] = &deviceTestResult{
 				DeviceCode:      device.Code,
-				Host:            srcClient.Host,
+				Client:          srcClient.Host,
 				PacketsSent:     0,
 				PacketsReceived: 0,
 			}

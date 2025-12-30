@@ -3,7 +3,7 @@ use doublezero_program_common::validate_account_code;
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
     processors::link::update::LinkUpdateArgs,
-    state::link::{LinkLinkType, LinkStatus},
+    state::link::{LinkDesiredStatus, LinkLinkType, LinkStatus},
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
@@ -19,6 +19,7 @@ pub struct UpdateLinkCommand {
     pub jitter_ns: Option<u64>,
     pub delay_override_ns: Option<u64>,
     pub status: Option<LinkStatus>,
+    pub desired_status: Option<LinkDesiredStatus>,
 }
 
 impl UpdateLinkCommand {
@@ -51,6 +52,7 @@ impl UpdateLinkCommand {
                 jitter_ns: self.jitter_ns,
                 delay_override_ns: self.delay_override_ns,
                 status: self.status,
+                desired_status: self.desired_status,
             }),
             vec![
                 AccountMeta::new(self.pubkey, false),

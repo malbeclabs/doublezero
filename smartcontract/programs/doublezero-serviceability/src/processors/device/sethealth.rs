@@ -69,6 +69,7 @@ pub fn process_set_health_device(
 
     let mut device: Device = Device::try_from(device_account)?;
     device.device_health = value.health;
+    device.check_status_transition();
 
     account_write(device_account, &device, payer_account, system_program)?;
 

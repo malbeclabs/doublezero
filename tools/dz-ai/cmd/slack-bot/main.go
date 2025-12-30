@@ -64,15 +64,16 @@ func main() {
 // For DMs, the bot responds to all messages.
 // For channels, the bot only responds when mentioned (@bot) or when replying in a thread where the root message mentioned the bot.
 func run() error {
-	verboseFlag := flag.Bool("verbose", false, "enable verbose (debug) logging")
+	verboseFlag := flag.Bool("verbose", false, "Enable verbose (debug) logging")
 	mcpURL := flag.String("mcp", "", "MCP endpoint URL")
-	enablePprofFlag := flag.Bool("enable-pprof", false, "enable pprof server")
+	enablePprofFlag := flag.Bool("enable-pprof", false, "Enable pprof server")
 	metricsAddrFlag := flag.String("metrics-addr", defaultMetricsAddr, "Address to listen on for prometheus metrics")
 	modeFlag := flag.String("mode", "", "Mode: 'socket' (dev) or 'http' (prod). Defaults to 'socket' if SLACK_APP_TOKEN is set, otherwise 'http'")
 	httpAddrFlag := flag.String("http-addr", defaultHTTPAddr, "Address to listen on for HTTP events (production mode)")
 	maxRoundsFlag := flag.Int("max-rounds", 16, "Maximum number of rounds for the AI agent in normal mode")
 	brainModeMaxRoundsFlag := flag.Int("brain-mode-max-rounds", 32, "Maximum number of rounds for the AI agent in brain mode (e.g. when the user asks for a detailed analysis)")
-	statelessDisableFlag := flag.Bool("stateless-disable", false, "disable stateless mode (use persistent connection to MCP server)")
+	statelessDisableFlag := flag.Bool("stateless-disable", false, "Disable stateless mode (use persistent connection to MCP server)")
+	shutdownTimeoutFlag := flag.Duration("shutdown-timeout", 60*time.Second, "Maximum time to wait for in-flight operations to complete during graceful shutdown")
 	flag.Parse()
 
 	log := logger.New(*verboseFlag)
@@ -181,7 +182,25 @@ func run() error {
 	} else {
 		err = runHTTPMode(ctx, cfg.HTTPAddr, cfg.SigningSecret, eventHandler, log)
 	}
-	if errors.Is(err, context.Canceled) {
+
+	// If shutdown was initiated, wait for in-flight operations
+	if errors.Is(err, context.Canceled) || ctx.Err() != nil {
+		log.Info("shutdown signal received, stopping new events and waiting for in-flight operations", "timeout", *shutdownTimeoutFlag)
+		shutdownComplete := eventHandler.StopAcceptingNew()
+
+		// Wait for in-flight operations with timeout
+		waitDone := make(chan struct{})
+		go func() {
+			shutdownComplete()
+			close(waitDone)
+		}()
+
+		select {
+		case <-waitDone:
+			log.Info("all in-flight operations completed")
+		case <-time.After(*shutdownTimeoutFlag):
+			log.Warn("timeout waiting for in-flight operations, proceeding with shutdown", "timeout", *shutdownTimeoutFlag)
+		}
 		log.Info("slack bot shutting down", "reason", err)
 		return nil
 	}
@@ -204,6 +223,7 @@ func runSocketMode(
 		}
 	}()
 
+	// Handle events - this will return when ctx is cancelled
 	return eventHandler.HandleSocketMode(ctx, client)
 }
 
@@ -240,12 +260,19 @@ func runHTTPMode(
 
 	log.Info("bot running in HTTP mode (DMs and channel mentions, thread replies enabled)")
 	<-ctx.Done()
-	log.Info("shutting down HTTP server")
+	log.Info("shutdown signal received, stopping HTTP server from accepting new connections")
+
+	// Stop accepting new events first
+	eventHandler.StopAcceptingNew()
+
+	// Shutdown HTTP server (stops accepting new connections)
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		log.Error("error shutting down HTTP server", "error", err)
+	} else {
+		log.Info("HTTP server stopped accepting new connections")
 	}
 
-	return nil
+	return ctx.Err()
 }

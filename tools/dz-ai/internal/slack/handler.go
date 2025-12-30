@@ -30,6 +30,11 @@ type EventHandler struct {
 	// Track processed events by envelope ID to avoid reprocessing duplicates
 	processedEvents   map[string]time.Time
 	processedEventsMu sync.RWMutex
+
+	// Graceful shutdown coordination
+	inFlightOps  sync.WaitGroup // Tracks in-flight message processing operations
+	shuttingDown sync.RWMutex   // Protects shutdown flag
+	acceptingNew bool           // Whether we're still accepting new events
 }
 
 // NewEventHandler creates a new event handler
@@ -49,6 +54,7 @@ func NewEventHandler(
 		botUserID:       botUserID,
 		shutdownCtx:     shutdownCtx,
 		processedEvents: make(map[string]time.Time),
+		acceptingNew:    true,
 	}
 }
 
@@ -66,6 +72,22 @@ func (h *EventHandler) StartCleanup(ctx context.Context) {
 			}
 		}
 	}()
+}
+
+// StopAcceptingNew stops accepting new events and returns a function to wait for in-flight operations
+func (h *EventHandler) StopAcceptingNew() func() {
+	h.shuttingDown.Lock()
+	h.acceptingNew = false
+	h.shuttingDown.Unlock()
+	h.log.Info("stopped accepting new events, waiting for in-flight operations to complete")
+	return h.inFlightOps.Wait
+}
+
+// isAcceptingNew checks if we're still accepting new events
+func (h *EventHandler) isAcceptingNew() bool {
+	h.shuttingDown.RLock()
+	defer h.shuttingDown.RUnlock()
+	return h.acceptingNew
 }
 
 func (h *EventHandler) cleanup() {
@@ -143,7 +165,15 @@ func (h *EventHandler) handleAppMention(ctx context.Context, ev *slackevents.App
 	// Track metrics
 	MessagesProcessedTotal.WithLabelValues("channel", "false", "true").Inc()
 
-	go h.processor.ProcessMessage(ctx, msgEv, messageKey, eventID, isChannel)
+	// Track in-flight operation for graceful shutdown
+	// Always use background context for message processing to allow operations to complete
+	// during graceful shutdown. The WaitGroup handles shutdown coordination.
+	h.inFlightOps.Add(1)
+	go func() {
+		defer h.inFlightOps.Done()
+		// Use background context so shutdown cancellation doesn't interrupt in-flight operations
+		h.processor.ProcessMessage(context.Background(), msgEv, messageKey, eventID, isChannel)
+	}()
 }
 
 // handleMessageEvent handles message events
@@ -259,8 +289,15 @@ func (h *EventHandler) handleMessageEvent(ctx context.Context, ev *slackevents.M
 	}
 	MessagesProcessedTotal.WithLabelValues(channelType, fmt.Sprintf("%v", isDM), fmt.Sprintf("%v", isChannel)).Inc()
 
-	// Process message in a goroutine to allow concurrent handling of multiple conversations
-	go h.processor.ProcessMessage(ctx, ev, messageKey, eventID, isChannel)
+	// Track in-flight operation for graceful shutdown
+	// Always use background context for message processing to allow operations to complete
+	// during graceful shutdown. The WaitGroup handles shutdown coordination.
+	h.inFlightOps.Add(1)
+	go func() {
+		defer h.inFlightOps.Done()
+		// Use background context so shutdown cancellation doesn't interrupt in-flight operations
+		h.processor.ProcessMessage(context.Background(), ev, messageKey, eventID, isChannel)
+	}()
 }
 
 // HandleSocketMode handles events from Socket Mode
@@ -276,6 +313,11 @@ func (h *EventHandler) HandleSocketMode(ctx context.Context, client *socketmode.
 			if !ok {
 				h.log.Info("socket mode client events channel closed")
 				return nil
+			}
+			// Check if we're still accepting new events
+			if !h.isAcceptingNew() {
+				h.log.Info("not accepting new events, shutting down")
+				return ctx.Err()
 			}
 			h.log.Info("socketmode: event received", "event_type", evt.Type)
 			switch evt.Type {
@@ -328,7 +370,9 @@ func (h *EventHandler) HandleSocketMode(ctx context.Context, client *socketmode.
 				}
 
 				client.Ack(*evt.Request)
-				h.HandleEvent(ctx, e, envelopeID)
+				// Use background context so shutdown cancellation doesn't interrupt in-flight operations
+				// The WaitGroup handles graceful shutdown coordination
+				h.HandleEvent(context.Background(), e, envelopeID)
 			}
 		}
 	}
@@ -418,14 +462,21 @@ func (h *EventHandler) HandleHTTP(w http.ResponseWriter, r *http.Request, signin
 		h.processedEventsMu.Unlock()
 	}
 
+	// Check if we're still accepting new events
+	if !h.isAcceptingNew() {
+		h.log.Info("not accepting new events, returning 503")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		if _, err := w.Write([]byte("Service is shutting down")); err != nil {
+			h.log.Error("failed to write shutdown response", "error", err)
+		}
+		return
+	}
+
 	// Respond quickly to Slack (within 3 seconds)
 	w.WriteHeader(http.StatusOK)
 
 	// Process event asynchronously
-	// Use shutdown context if available, otherwise background (for graceful shutdown)
-	ctx := context.Background()
-	if h.shutdownCtx != nil {
-		ctx = h.shutdownCtx
-	}
-	go h.HandleEvent(ctx, event, eventID)
+	// Always use background context so shutdown cancellation doesn't interrupt in-flight operations
+	// The WaitGroup handles graceful shutdown coordination
+	go h.HandleEvent(context.Background(), event, eventID)
 }

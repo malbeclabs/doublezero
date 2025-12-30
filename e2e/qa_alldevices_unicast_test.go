@@ -6,7 +6,11 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log/slog"
+	"maps"
+	"math"
 	"net"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -19,6 +23,17 @@ import (
 var (
 	devicesFlag = flag.String("devices", "", "comma separated list of devices to run tests against")
 )
+
+const latencyThresholdMs = 50
+
+type DeviceAssignments map[string][]*qa.Device
+type ClientLatencies map[string]map[string]float64
+type deviceTestResult struct {
+	DeviceCode      string
+	Client          string
+	PacketsSent     uint32
+	PacketsReceived uint32
+}
 
 func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 	if testing.Short() {
@@ -33,60 +48,148 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 	clients := test.Clients()
 	require.GreaterOrEqual(t, len(clients), 2, "At least 2 clients are required for connectivity testing")
 
-	// Filter devices to only include those with sufficient capacity and skip test devices, and
-	// shuffle them to avoid always testing connectivity via the same devices.
-	devices := test.ShuffledValidDevices(2)
+	// Filter devices to only include those with sufficient capacity and skip test devices
+	devices := test.ValidDevices(2)
 	if len(devices) == 0 {
 		t.Skip("No valid devices found with sufficient capacity")
 	}
 
 	// If devices flag is provided, filter devices to only include those in the list.
 	if *devicesFlag != "" {
-		deviceCodes := make(map[string]struct{}, len(devices))
-		for deviceCode := range strings.SplitSeq(strings.TrimSpace(*devicesFlag), ",") {
-			deviceCodes[deviceCode] = struct{}{}
+		deviceCodes := make(map[string]struct{})
+		for _, code := range strings.Split(*devicesFlag, ",") {
+			deviceCodes[strings.TrimSpace(code)] = struct{}{}
 		}
-		filteredDevices := make([]*qa.Device, 0, len(devices))
-		for _, device := range devices {
-			if _, ok := deviceCodes[device.Code]; ok {
-				filteredDevices = append(filteredDevices, device)
-			}
-		}
-		devices = filteredDevices
+		devices = slices.DeleteFunc(devices, func(d *qa.Device) bool {
+			_, ok := deviceCodes[d.Code]
+			return !ok
+		})
 	}
 
-	// Batch size is number of clients, but we never reuse devices within a batch.
-	batchSize := min(len(clients), len(devices))
+	log.Info("Step 1. Collect `doublezero latency` for each client")
+	// clientLatencies: clientName -> deviceCode -> latencyMs
+	clientLatencies := make(ClientLatencies)
+	for _, client := range clients {
+		latencies, err := client.GetLatency(ctx)
+		require.NoError(t, err, "failed to get latency from client %s", client.Host)
 
-	deviceCodes := qa.Map(devices, func(d *qa.Device) string { return d.Code })
+		clientLatencies[client.Host] = make(map[string]float64)
+		for _, l := range latencies {
+			if l.Reachable {
+				clientLatencies[client.Host][l.DeviceCode] = float64(l.AvgLatencyNs) / 1_000_000.0 // ns -> ms
+			}
+		}
+	}
+
+	log.Info("Step 2. Create a list of devices for each client.")
+	log.Info(fmt.Sprintf("    1. If there are multiple clients with <%dms latency for that device, assign the device to the client with the fewest devices", latencyThresholdMs))
+	log.Info("    2. Otherwise, associate each device with the client with the lowest latency")
+
+	log.Info("Assigning devices to clients based on latency")
+	deviceAssignments := assignDevicesToClientsByLatency(devices, clients, clientLatencies)
+
+	// Randomize the order in which each client connects to its assigned devices
+	for clientName := range deviceAssignments {
+		test.ShuffleDevices(deviceAssignments[clientName])
+	}
+
+	log.Info("Client device assignments:")
+	printTestReportTable(log, deviceAssignments, clientLatencies, nil)
+
+	// Determine how many test batches are needed (the max number of devices assigned to any client)
+	batchCount := 0
+	for _, assigned := range deviceAssignments {
+		if len(assigned) > batchCount {
+			batchCount = len(assigned)
+		}
+	}
+
+	if batchCount == 0 {
+		t.Skip("No devices assigned to any client")
+	}
+
 	log.Info("Planning to test",
-		"devices", strings.Join(deviceCodes, ","),
 		"deviceCount", len(devices),
 		"clientCount", len(clients),
-		"batchSize", batchSize,
-		"totalBatches", len(devices)/batchSize,
+		"totalBatches", batchCount,
 	)
 
-	for start := 0; start < len(devices); start += batchSize {
-		end := min(start+batchSize, len(devices))
-		batch := devices[start:end]
-
-		activeClients := clients[:len(batch)]
-
-		batchNumber := (start / batchSize) + 1
-		t.Run(fmt.Sprintf("batch_%d", batchNumber), func(t *testing.T) {
-			log.Info("Testing batch", "batch", batchNumber, "devices", strings.Join(qa.Map(batch, func(d *qa.Device) string { return d.Code }), ","))
-
-			// Build 1:1 assignments: client -> device, and inverse device -> client.
-			clientToDevice := make(map[*qa.Client]*qa.Device, len(batch))
-			deviceToClient := make(map[*qa.Device]*qa.Client, len(batch))
-			for i, c := range activeClients {
-				d := batch[i]
-				clientToDevice[c] = d
-				deviceToClient[d] = c
+	// Track test results for final report.
+	// Pre-record all devices with zero packets (to be updated as tests run).
+	results := make(map[string]*deviceTestResult)
+	var resultsMu sync.Mutex
+	for clientName, assigned := range deviceAssignments {
+		for _, device := range assigned {
+			results[device.Code] = &deviceTestResult{
+				DeviceCode:      device.Code,
+				Client:          clientName,
+				PacketsSent:     0,
+				PacketsReceived: 0,
 			}
+		}
+	}
 
-			// Disconnect clients on cleanup.
+	log.Info("Step 3. Loop through n batches, where n is the largest number of devices associated with a client")
+	log.Info("    1. For each client")
+	log.Info("        1. If there are >= 2 clients, and the current client has 0 devices left to test, remove the current client from testing")
+	log.Info("        2. If there are 2 clients, and the current client has 0 devices left to test, test the previously tested device again")
+	log.Info("    2. Test all clients in current batch")
+
+	// Track active clients and their current device index.
+	activeClients := slices.Clone(clients)
+	clientDeviceIndex := make(map[string]int)
+	clientLastDevice := make(map[string]*qa.Device)
+
+	for batchNum := 0; batchNum < batchCount; batchNum++ {
+		// Map of clients to devices for the current batch.
+		clientToDevice := make(map[*qa.Client]*qa.Device)
+
+		// Track clients to remove after this batch because they have no more devices to test.
+		var clientsToRemove []*qa.Client
+
+		for _, client := range activeClients {
+			idx := clientDeviceIndex[client.Host]
+			assigned := deviceAssignments[client.Host]
+			if idx < len(assigned) {
+				// Has devices left - test next one.
+				clientToDevice[client] = assigned[idx]
+				clientDeviceIndex[client.Host]++
+				clientLastDevice[client.Host] = assigned[idx]
+			} else if len(activeClients) > 2 {
+				// No devices left, >=3 clients remain - mark for removal.
+				clientsToRemove = append(clientsToRemove, client)
+			} else {
+				// No devices left, exactly 2 clients - keep connected to last device so we can test the remaining devices on the other client.
+				clientToDevice[client] = clientLastDevice[client.Host]
+			}
+		}
+
+		// Remove clients that have no more devices (if >=3 clients remained).
+		for _, client := range clientsToRemove {
+			log.Info("Removing client from testing (no more devices to test)", "client", client.Host)
+			err := client.DisconnectUser(ctx, true, true)
+			if err != nil {
+				log.Warn("Failed to disconnect removed client", "client", client.Host, "error", err)
+			}
+			activeClients = slices.DeleteFunc(activeClients, func(c *qa.Client) bool {
+				return c.Host == client.Host
+			})
+			delete(clientToDevice, client)
+		}
+
+		if len(activeClients) < 2 {
+			log.Info("Fewer than 2 active clients remain, ending test")
+			break
+		}
+
+		batchDeviceCodes := make([]string, 0, len(clientToDevice))
+		for _, d := range clientToDevice {
+			batchDeviceCodes = append(batchDeviceCodes, d.Code)
+		}
+
+		t.Run(fmt.Sprintf("batch_%d", batchNum+1), func(t *testing.T) {
+			log.Info("Testing batch", "batch", batchNum+1, "devices", strings.Join(batchDeviceCodes, ","))
+
 			t.Cleanup(func() {
 				var wg sync.WaitGroup
 				for _, client := range activeClients {
@@ -100,69 +203,234 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 				wg.Wait()
 			})
 
-			// Connect clients to their assigned devices sequentially
-			// to avoid ledger race conditions.
-			for _, c := range activeClients {
-				d := clientToDevice[c]
-				err := c.ConnectUserUnicast_NoWait(ctx, d.Code)
-				require.NoError(t, err, "failed to connect user %s to device %s", c.Host, d.Code)
+			connectClientsAndWaitForRoutes(t, ctx, log, activeClients, clientToDevice)
+			runConnectivitySubtests(t, log, activeClients, clientToDevice, results, &resultsMu)
+		})
+	}
+
+	log.Info("Test results:")
+	printTestReportTable(log, deviceAssignments, clientLatencies, results)
+
+	var totalSent, totalReceived uint32
+	var devicesWithLoss int
+	for _, r := range results {
+		totalSent += r.PacketsSent
+		totalReceived += r.PacketsReceived
+		if r.PacketsReceived < r.PacketsSent {
+			devicesWithLoss++
+		}
+	}
+	log.Info("Test summary", "packetsReceived", totalReceived, "packetsSent", totalSent, "devicesWithLoss", devicesWithLoss, "totalDevices", len(results))
+}
+
+// If multiple clients have < latencyThresholdMs latency, the device goes to the client with fewest devices.
+// Otherwise, the device goes to the client with the lowest latency.
+func assignDevicesToClientsByLatency(devices []*qa.Device, clients []*qa.Client, clientLatencies ClientLatencies) DeviceAssignments {
+	deviceAssignments := make(DeviceAssignments)
+
+	for _, device := range devices {
+		var lowLatencyClients []string
+		var bestClientHostname string
+		bestLatency := math.MaxFloat64
+
+		for _, client := range clients {
+			latencyMs, ok := clientLatencies[client.Host][device.Code]
+			if !ok {
+				continue
 			}
 
-			// Wait for clients to be up.
-			for _, c := range activeClients {
-				err := c.WaitForStatusUp(ctx)
-				require.NoError(t, err, "failed to wait for status for client %s", c.Host)
+			if latencyMs < latencyThresholdMs {
+				lowLatencyClients = append(lowLatencyClients, client.Host)
 			}
 
-			// Wait for routes between clients.
-			for _, c := range activeClients {
-				err := c.WaitForRoutes(ctx, qa.MapFilter(activeClients, func(other *qa.Client) (net.IP, bool) {
-					if other.Host == c.Host || clientToDevice[other].ExchangeCode == clientToDevice[c].ExchangeCode {
-						return nil, false
+			if latencyMs < bestLatency {
+				bestLatency = latencyMs
+				bestClientHostname = client.Host
+			}
+		}
+
+		var assignedClientHostname string
+		if len(lowLatencyClients) > 1 {
+			// Multiple clients qualify - assign to client with fewest devices.
+			assignedClientHostname = lowLatencyClients[0]
+			minDevices := len(deviceAssignments[assignedClientHostname])
+			for _, clientName := range lowLatencyClients[1:] {
+				if len(deviceAssignments[clientName]) < minDevices {
+					assignedClientHostname = clientName
+					minDevices = len(deviceAssignments[clientName])
+				}
+			}
+		} else if bestClientHostname != "" {
+			assignedClientHostname = bestClientHostname
+		}
+
+		if assignedClientHostname != "" {
+			deviceAssignments[assignedClientHostname] = append(deviceAssignments[assignedClientHostname], device)
+		}
+	}
+
+	return deviceAssignments
+}
+
+// Print a table of each client's device assignments and latencies, plus test results if provided.
+func printTestReportTable(log *slog.Logger, deviceAssignments DeviceAssignments, clientLatencies ClientLatencies, results map[string]*deviceTestResult) {
+	clientNames := slices.Sorted(maps.Keys(deviceAssignments))
+	maxDevices := 0
+	colWidths := make(map[string]int)
+	for _, clientName := range clientNames {
+		colWidths[clientName] = len(clientName)
+		maxDevices = max(maxDevices, len(deviceAssignments[clientName]))
+		for _, d := range deviceAssignments[clientName] {
+			latencyMs := clientLatencies[clientName][d.Code]
+			cell := fmt.Sprintf("%s (%.1fms)", d.Code, latencyMs)
+			if results != nil {
+				// Add space for " 25/25" suffix (max reasonable packet count display)
+				cell += " 25/25"
+			}
+			colWidths[clientName] = max(colWidths[clientName], len(cell))
+		}
+	}
+
+	// Calculate batch column width based on max batch number.
+	batchColWidth := len(fmt.Sprintf("Batch %d", maxDevices))
+
+	var sb strings.Builder
+	sb.WriteString("\n")
+
+	// Header row
+	sb.WriteString(fmt.Sprintf("| %-*s |", batchColWidth, ""))
+	for _, clientName := range clientNames {
+		sb.WriteString(fmt.Sprintf(" %-*s |", colWidths[clientName], clientName))
+	}
+	sb.WriteString("\n")
+
+	// Separator row
+	sb.WriteString("|")
+	sb.WriteString(strings.Repeat("-", batchColWidth+2))
+	sb.WriteString("|")
+	for _, clientName := range clientNames {
+		sb.WriteString(strings.Repeat("-", colWidths[clientName]+2))
+		sb.WriteString("|")
+	}
+	sb.WriteString("\n")
+
+	// Data rows
+	for i := 0; i < maxDevices; i++ {
+		sb.WriteString(fmt.Sprintf("| Batch %-*d |", batchColWidth-6, i+1))
+		for _, clientName := range clientNames {
+			assigned := deviceAssignments[clientName]
+			cell := ""
+			if i < len(assigned) {
+				latencyMs := clientLatencies[clientName][assigned[i].Code]
+				cell = fmt.Sprintf("%s (%.1fms)", assigned[i].Code, latencyMs)
+				if results != nil {
+					if r, ok := results[assigned[i].Code]; ok {
+						cell += fmt.Sprintf(" %d/%d", r.PacketsReceived, r.PacketsSent)
+					} else {
+						cell += " -/-"
 					}
-					return other.PublicIP(), true
-				}))
-				require.NoError(t, err, "failed to wait for routes on client %s", c.Host)
+				}
 			}
+			sb.WriteString(fmt.Sprintf(" %-*s |", colWidths[clientName], cell))
+		}
+		sb.WriteString("\n")
+	}
 
-			// Now run per-device subtests for this batch.
-			// Each subtest:
-			//   - Uses the client assigned to that device as the source
-			//   - Tests connectivity from that client to all other clients
-			for _, device := range batch {
-				srcClient := deviceToClient[device]
-				require.NotNil(t, srcClient, "no client assigned to device %s in batch", device.Code)
+	log.Info(sb.String())
+}
 
-				t.Run(fmt.Sprintf("device_%s__from_%s", device.Code, srcClient.Host), func(t *testing.T) {
-					t.Parallel()
+func connectClientsAndWaitForRoutes(
+	t *testing.T,
+	ctx context.Context,
+	log *slog.Logger,
+	clients []*qa.Client,
+	clientToDevice map[*qa.Client]*qa.Device,
+) {
+	for _, c := range clients {
+		targetDevice := clientToDevice[c]
+		err := c.ConnectUserUnicast_NoWait(ctx, targetDevice.Code)
+		require.NoError(t, err, "failed to connect user %s to device %s", c.Host, targetDevice.Code)
+	}
 
-					outerLog := log
-					log := newTestLogger(t)
-					srcClient.SetLogger(log)
-					t.Cleanup(func() {
-						srcClient.SetLogger(outerLog)
-					})
-					subCtx := t.Context()
+	for _, c := range clients {
+		err := c.WaitForStatusUp(ctx)
+		require.NoError(t, err, "failed to wait for status for client %s", c.Host)
+	}
 
-					var wg sync.WaitGroup
-					for _, target := range activeClients {
-						if target.Host == srcClient.Host {
-							continue
-						}
+	for _, c := range clients {
+		err := c.WaitForRoutes(ctx, qa.MapFilter(clients, func(other *qa.Client) (net.IP, bool) {
+			if other.Host == c.Host || clientToDevice[other].ExchangeCode == clientToDevice[c].ExchangeCode {
+				return nil, false
+			}
+			return other.PublicIP(), true
+		}))
+		require.NoError(t, err, "failed to wait for routes on client %s", c.Host)
+	}
+}
 
-						wg.Add(1)
-						go func(src, target *qa.Client) {
-							defer wg.Done()
-							_, err := src.TestUnicastConnectivity(t, subCtx, target)
-							if err != nil {
-								log.Error("Connectivity test failed", "error", err, "source", src.Host, "target", target.Host, "sourceDevice", clientToDevice[src].Code, "targetDevice", clientToDevice[target].Code)
-								require.NoError(t, err, "failed to test connectivity")
-							}
-						}(srcClient, target)
+func runConnectivitySubtests(
+	t *testing.T,
+	outerLog *slog.Logger,
+	clients []*qa.Client,
+	clientToDevice map[*qa.Client]*qa.Device,
+	results map[string]*deviceTestResult,
+	resultsMu *sync.Mutex,
+) {
+	for _, client := range clients {
+		device := clientToDevice[client]
+		srcClient := client
+
+		// Record the test attempt if not already recorded.
+		resultsMu.Lock()
+		if _, exists := results[device.Code]; !exists {
+			results[device.Code] = &deviceTestResult{
+				DeviceCode:      device.Code,
+				Client:          srcClient.Host,
+				PacketsSent:     0,
+				PacketsReceived: 0,
+			}
+		}
+		resultsMu.Unlock()
+
+		t.Run(fmt.Sprintf("device_%s__from_%s", device.Code, srcClient.Host), func(t *testing.T) {
+			t.Parallel()
+
+			log := newTestLogger(t)
+			srcClient.SetLogger(log)
+			t.Cleanup(func() {
+				srcClient.SetLogger(outerLog)
+			})
+			subCtx := t.Context()
+
+			var totalSent, totalReceived uint32
+			var wg sync.WaitGroup
+			var mu sync.Mutex
+			for _, target := range clients {
+				if target.Host == srcClient.Host {
+					continue
+				}
+
+				wg.Add(1)
+				go func(src, target *qa.Client) {
+					defer wg.Done()
+					result, err := src.TestUnicastConnectivity(t, subCtx, target)
+					if err != nil {
+						log.Error("Connectivity test failed", "error", err, "source", src.Host, "target", target.Host, "sourceDevice", clientToDevice[src].Code, "targetDevice", clientToDevice[target].Code)
+						assert.NoError(t, err, "failed to test connectivity")
+						return
 					}
-					wg.Wait()
-				})
+					mu.Lock()
+					totalSent += result.PacketsSent
+					totalReceived += result.PacketsReceived
+					mu.Unlock()
+				}(srcClient, target)
 			}
+			wg.Wait()
+
+			resultsMu.Lock()
+			results[device.Code].PacketsSent += totalSent
+			results[device.Code].PacketsReceived += totalReceived
+			resultsMu.Unlock()
 		})
 	}
 }

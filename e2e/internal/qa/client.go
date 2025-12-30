@@ -211,6 +211,14 @@ func (c *Client) GetInstalledRoutes(ctx context.Context) ([]*pb.Route, error) {
 	return resp.InstalledRoutes, nil
 }
 
+func (c *Client) GetLatency(ctx context.Context) ([]*pb.Latency, error) {
+	resp, err := c.grpcClient.GetLatency(ctx, &emptypb.Empty{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get latency on host %s: %w", c.Host, err)
+	}
+	return resp.Latencies, nil
+}
+
 func (c *Client) WaitForStatusUp(ctx context.Context) error {
 	c.log.Debug("Waiting for status to be up", "host", c.Host)
 	err := c.waitForStatus(ctx, UserStatusUp, waitForStatusUpTimeout, waitInterval)

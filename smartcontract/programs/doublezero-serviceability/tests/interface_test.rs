@@ -533,6 +533,25 @@ async fn test_device_interfaces() {
     )
     .await;
 
+    let res = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::RejectDeviceInterface(DeviceInterfaceRejectArgs {
+            name: "loopback1".to_string(),
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+    assert!(res
+        .unwrap_err()
+        .to_string()
+        .contains("custom program error: 0x7")); // DoubleZeroError::InvalidStatus == 0x7
+
     let device = get_account_data(&mut banks_client, device_pubkey)
         .await
         .expect("Unable to get Account")

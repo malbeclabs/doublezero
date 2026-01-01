@@ -138,6 +138,15 @@ func SanitizeErrorMessage(errMsg string) string {
 		return "I'm having trouble connecting to the data service. Please try again in a moment."
 	}
 
+	// SQL-related errors (should be handled by agent, but fallback here)
+	if strings.Contains(errMsg, "SQL validation failed") ||
+		strings.Contains(errMsg, "query execution failed") ||
+		strings.Contains(errMsg, "SQLSTATE") ||
+		strings.Contains(errMsg, "Binder Error") ||
+		strings.Contains(errMsg, "unknown statement") {
+		return "I encountered an issue processing your query. Please try rephrasing your question or providing more specific details."
+	}
+
 	// Generic API errors
 	if strings.Contains(errMsg, "failed to get response") || strings.Contains(errMsg, "POST") {
 		return "I encountered an error processing your request. Please try again."

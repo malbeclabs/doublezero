@@ -85,6 +85,9 @@ pub fn process_closeaccount_link(
     let mut side_a_dev = Device::try_from(side_a_account)?;
     let mut side_z_dev = Device::try_from(side_z_account)?;
     let link: Link = Link::try_from(link_account)?;
+    if link.contributor_pk != *contributor_account.key {
+        return Err(DoubleZeroError::NotAllowed.into());
+    }
 
     if link.owner != *owner_account.key {
         return Err(ProgramError::InvalidAccountData);

@@ -266,19 +266,6 @@ func (a *AnthropicAgent) Run(ctx context.Context, mcpClient *client.Client, init
 			if a.cfg.Logger != nil {
 				a.cfg.Logger.Info("agent: filtering SQL errors from last round tool results", "sql_error_count", len(sqlErrorIndices))
 			}
-			// Collect tool_use IDs that correspond to SQL errors
-			sqlErrorToolUseIDs := make(map[string]bool)
-			for i := range toolUses {
-				if sqlErrorIndices[i] {
-					sqlErrorToolUseIDs[toolUses[i].ID] = true
-				}
-			}
-			// Filter tool_use blocks from the assistant message
-			filteredContent := filterToolUseBlocksFromContent(resp.Content, sqlErrorToolUseIDs)
-			// Replace the assistant message in msgs with filtered content
-			assistantMsgIndex := len(msgs) - 1
-			msgs[assistantMsgIndex] = anthropic.NewAssistantMessage(filteredContent...)
-			// Filter tool results
 			filteredToolResults := filterSQLErrorsFromToolResults(toolResults, sqlErrorIndices)
 			toolResultMsg = anthropic.NewUserMessage(filteredToolResults...)
 		} else {
@@ -740,33 +727,6 @@ func filterSQLErrorsFromToolResults(toolResults []anthropic.ContentBlockParamUni
 	for i, result := range toolResults {
 		if !sqlErrorIndices[i] {
 			filtered = append(filtered, result)
-		}
-	}
-	return filtered
-}
-
-// filterToolUseBlocksFromContent filters out tool_use blocks with IDs in the provided set.
-// It preserves all other content blocks (text blocks, etc.).
-func filterToolUseBlocksFromContent(content []anthropic.ContentBlockUnion, toolUseIDsToFilter map[string]bool) []anthropic.ContentBlockParamUnion {
-	if len(toolUseIDsToFilter) == 0 {
-		// Convert ContentBlockUnion to ContentBlockParamUnion
-		result := make([]anthropic.ContentBlockParamUnion, 0, len(content))
-		for _, blk := range content {
-			result = append(result, blk.ToParam())
-		}
-		return result
-	}
-	filtered := make([]anthropic.ContentBlockParamUnion, 0, len(content))
-	for _, blk := range content {
-		tu := blk.AsToolUse()
-		if tu.ID != "" {
-			// This is a tool_use block - filter it if its ID is in the set
-			if !toolUseIDsToFilter[tu.ID] {
-				filtered = append(filtered, blk.ToParam())
-			}
-		} else {
-			// This is not a tool_use block (e.g., text block) - keep it
-			filtered = append(filtered, blk.ToParam())
 		}
 	}
 	return filtered

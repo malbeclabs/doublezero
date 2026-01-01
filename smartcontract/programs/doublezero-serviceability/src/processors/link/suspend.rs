@@ -63,13 +63,16 @@ pub fn process_suspend_link(
     let globalstate = globalstate_get(globalstate_account)?;
     let contributor = Contributor::try_from(contributor_account)?;
 
-    if contributor.owner != *payer_account.key
-        && !globalstate.foundation_allowlist.contains(payer_account.key)
-    {
+    let payer_in_foundation = globalstate.foundation_allowlist.contains(payer_account.key);
+
+    if contributor.owner != *payer_account.key && !payer_in_foundation {
         return Err(DoubleZeroError::InvalidOwnerPubkey.into());
     }
 
     let mut link: Link = Link::try_from(link_account)?;
+    if !payer_in_foundation && link.contributor_pk != *contributor_account.key {
+        return Err(DoubleZeroError::NotAllowed.into());
+    }
 
     if link.status != LinkStatus::Activated {
         #[cfg(test)]

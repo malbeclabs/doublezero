@@ -521,15 +521,107 @@ func updateHistory(
 	}
 	onClause := fmt.Sprintf("(%s)", strings.Join(onConditions, " AND "))
 
-	// For updates and deletes: close previous open versions (set valid_to = snapshot_ts)
-	// where valid_to IS NULL for those PKs
-	if updates > 0 || deletes > 0 {
+	// For inserts, updates, and deletes: close previous open versions (set valid_to = snapshot_ts)
+	// where valid_to IS NULL for those PKs. This includes closing delete tombstones when entities are re-inserted.
+	if inserts > 0 || updates > 0 || deletes > 0 {
 		// Build a temp table with PKs that need to be closed
 		// This is more reliable than using WHERE EXISTS in UPDATE
 		pkTempTable := historyTableName + "_pks_to_close"
 
 		var pkSelectSQL string
-		if updates > 0 && deletes > 0 {
+		if inserts > 0 && updates > 0 && deletes > 0 {
+			// All three: PKs that are inserted, updated, OR deleted
+			// Inserted: stage PK not in current
+			// Updated: stage PK in current with different hash
+			// Deleted: current PK not in stage
+			pkColsQualified1 := make([]string, len(pkColNames))
+			pkColsQualified2 := make([]string, len(pkColNames))
+			pkColsQualified3 := make([]string, len(pkColNames))
+			for i, pkCol := range pkColNames {
+				pkColsQualified1[i] = fmt.Sprintf("s.%s", pkCol)
+				pkColsQualified2[i] = fmt.Sprintf("s2.%s", pkCol)
+				pkColsQualified3[i] = fmt.Sprintf("c.%s", pkCol)
+			}
+			pkSelectSQL = fmt.Sprintf(`CREATE TEMP TABLE %s AS
+				SELECT DISTINCT %s FROM (
+					SELECT %s FROM %s s
+					WHERE NOT EXISTS (SELECT 1 FROM %s c WHERE %s)
+					UNION
+					SELECT %s FROM %s s2
+					INNER JOIN %s c ON %s
+					WHERE s2.row_hash != c.row_hash
+					UNION
+					SELECT %s FROM %s c
+					WHERE NOT EXISTS (SELECT 1 FROM %s s3 WHERE %s)
+				)`,
+				pkTempTable,
+				strings.Join(pkColNames, ", "),
+				strings.Join(pkColsQualified1, ", "),
+				stageTableName,
+				currentTableName,
+				strings.Replace(onClause, "h.", "c.", -1),
+				strings.Join(pkColsQualified2, ", "),
+				stageTableName,
+				currentTableName,
+				strings.Replace(strings.Replace(onClause, "h.", "c.", -1), "s.", "s2.", -1),
+				strings.Join(pkColsQualified3, ", "),
+				currentTableName,
+				stageTableName,
+				strings.Replace(strings.Replace(onClause, "h.", "c.", -1), "s.", "s3.", -1))
+		} else if inserts > 0 && updates > 0 {
+			// Inserts and updates: PKs that are inserted OR updated
+			pkColsQualified1 := make([]string, len(pkColNames))
+			pkColsQualified2 := make([]string, len(pkColNames))
+			for i, pkCol := range pkColNames {
+				pkColsQualified1[i] = fmt.Sprintf("s.%s", pkCol)
+				pkColsQualified2[i] = fmt.Sprintf("s2.%s", pkCol)
+			}
+			pkSelectSQL = fmt.Sprintf(`CREATE TEMP TABLE %s AS
+				SELECT DISTINCT %s FROM (
+					SELECT %s FROM %s s
+					WHERE NOT EXISTS (SELECT 1 FROM %s c WHERE %s)
+					UNION
+					SELECT %s FROM %s s2
+					INNER JOIN %s c ON %s
+					WHERE s2.row_hash != c.row_hash
+				)`,
+				pkTempTable,
+				strings.Join(pkColNames, ", "),
+				strings.Join(pkColsQualified1, ", "),
+				stageTableName,
+				currentTableName,
+				strings.Replace(onClause, "h.", "c.", -1),
+				strings.Join(pkColsQualified2, ", "),
+				stageTableName,
+				currentTableName,
+				strings.Replace(strings.Replace(onClause, "h.", "c.", -1), "s.", "s2.", -1))
+		} else if inserts > 0 && deletes > 0 {
+			// Inserts and deletes: PKs that are inserted OR deleted
+			pkColsQualified1 := make([]string, len(pkColNames))
+			pkColsQualified2 := make([]string, len(pkColNames))
+			for i, pkCol := range pkColNames {
+				pkColsQualified1[i] = fmt.Sprintf("s.%s", pkCol)
+				pkColsQualified2[i] = fmt.Sprintf("c.%s", pkCol)
+			}
+			pkSelectSQL = fmt.Sprintf(`CREATE TEMP TABLE %s AS
+				SELECT DISTINCT %s FROM (
+					SELECT %s FROM %s s
+					WHERE NOT EXISTS (SELECT 1 FROM %s c WHERE %s)
+					UNION
+					SELECT %s FROM %s c
+					WHERE NOT EXISTS (SELECT 1 FROM %s s2 WHERE %s)
+				)`,
+				pkTempTable,
+				strings.Join(pkColNames, ", "),
+				strings.Join(pkColsQualified1, ", "),
+				stageTableName,
+				currentTableName,
+				strings.Replace(onClause, "h.", "c.", -1),
+				strings.Join(pkColsQualified2, ", "),
+				currentTableName,
+				stageTableName,
+				strings.Replace(strings.Replace(onClause, "h.", "c.", -1), "s.", "s2.", -1))
+		} else if updates > 0 && deletes > 0 {
 			// Both updates and deletes: PKs that are updated OR deleted
 			// Updated: stage PK in current with different hash
 			// Deleted: current PK not in stage
@@ -558,6 +650,20 @@ func updateHistory(
 				currentTableName,
 				stageTableName,
 				strings.Replace(strings.Replace(onClause, "h.", "c.", -1), "s.", "s2.", -1))
+		} else if inserts > 0 {
+			// Only inserts: PKs in stage that are not in current (may have delete tombstones to close)
+			pkColsQualified := make([]string, len(pkColNames))
+			for i, pkCol := range pkColNames {
+				pkColsQualified[i] = fmt.Sprintf("s.%s", pkCol)
+			}
+			pkSelectSQL = fmt.Sprintf(`CREATE TEMP TABLE %s AS
+				SELECT DISTINCT %s FROM %s s
+				WHERE NOT EXISTS (SELECT 1 FROM %s c WHERE %s)`,
+				pkTempTable,
+				strings.Join(pkColsQualified, ", "),
+				stageTableName,
+				currentTableName,
+				strings.Replace(onClause, "h.", "c.", -1))
 		} else if updates > 0 {
 			// Only updates: PKs in stage that have different hash in current
 			pkColsQualified := make([]string, len(pkColNames))
@@ -623,45 +729,55 @@ func updateHistory(
 	allColumns := append(pkColNames, payloadColNames...)
 	colList := strings.Join(allColumns, ", ")
 
-	// Insert new history rows for inserts and updates
-	insertHistorySQL := fmt.Sprintf(`INSERT INTO %s (
-		%s,
-		valid_from,
-		valid_to,
-		row_hash,
-		op,
-		run_id
-	)
-	SELECT
-		%s,
-		? AS valid_from,
-		NULL AS valid_to,
-		row_hash,
-		CASE
-			WHEN EXISTS (SELECT 1 FROM %s c WHERE %s) THEN 'U'
-			ELSE 'I'
-		END AS op,
-		? AS run_id
-	FROM %s s
-	WHERE NOT EXISTS (
-		SELECT 1 FROM %s c WHERE %s AND c.row_hash = s.row_hash
-	)`,
-		historyTableName,
-		colList,
-		colList,
-		currentTableName,
-		strings.Replace(onClause, "h.", "c.", -1),
-		stageTableName,
-		currentTableName,
-		strings.Replace(onClause, "h.", "c.", -1))
-
 	runID := cfg.RunID
 	if runID == "" {
 		runID = fmt.Sprintf("run_%d", cfg.SnapshotTS.Unix())
 	}
 
-	if _, err := tx.ExecContext(ctx, insertHistorySQL, cfg.SnapshotTS, runID); err != nil {
-		return fmt.Errorf("failed to insert new history rows: %w", err)
+	// Insert new history rows for inserts and updates
+	// Only insert if there are actual changes (inserts or updates)
+	// AND the row_hash differs from current (actual change), OR it's a new insert
+	// AND there's no existing history row with the same PK and row_hash for this snapshot
+	if inserts > 0 || updates > 0 {
+		insertHistorySQL := fmt.Sprintf(`INSERT INTO %s (
+			%s,
+			valid_from,
+			valid_to,
+			row_hash,
+			op,
+			run_id
+		)
+		SELECT
+			%s,
+			? AS valid_from,
+			NULL AS valid_to,
+			row_hash,
+			CASE
+				WHEN EXISTS (SELECT 1 FROM %s c WHERE %s) THEN 'U'
+				ELSE 'I'
+			END AS op,
+			? AS run_id
+		FROM %s s
+		WHERE NOT EXISTS (
+			SELECT 1 FROM %s c WHERE %s AND c.row_hash = s.row_hash
+		)
+		AND NOT EXISTS (
+			SELECT 1 FROM %s h WHERE %s AND h.row_hash = s.row_hash AND h.valid_from = ?
+		)`,
+			historyTableName,
+			colList,
+			colList,
+			currentTableName,
+			strings.Replace(onClause, "h.", "c.", -1),
+			stageTableName,
+			currentTableName,
+			strings.Replace(onClause, "h.", "c.", -1),
+			historyTableName,
+			onClause)
+
+		if _, err := tx.ExecContext(ctx, insertHistorySQL, cfg.SnapshotTS, runID, cfg.SnapshotTS); err != nil {
+			return fmt.Errorf("failed to insert new history rows: %w", err)
+		}
 	}
 
 	// For deletes: optionally insert tombstone rows (op='D')
@@ -683,11 +799,30 @@ func updateHistory(
 
 		// Select from the history version we just closed (where valid_to = snapshot_ts)
 		// This ensures we get the correct payload values that were active before deletion
+		// We use a subquery to get the most recent version (MAX valid_from) to handle edge cases
+		// where multiple versions might have the same valid_to timestamp
 		historyColList := make([]string, len(allColumns))
 		for i, col := range allColumns {
 			historyColList[i] = fmt.Sprintf("h.%s", col)
 		}
 		historyColListStr := strings.Join(historyColList, ", ")
+
+		// Build correlated subquery to get the most recent closed version for each PK
+		// This ensures we get the correct version even if multiple rows have valid_to = snapshot_ts
+		// The subquery correlates on PK from the outer query (c table)
+		pkJoinForSubquery := make([]string, len(pkColNames))
+		for i, pkCol := range pkColNames {
+			pkJoinForSubquery[i] = fmt.Sprintf("h2.%s = c.%s", pkCol, pkCol)
+		}
+		pkJoinForSubqueryClause := strings.Join(pkJoinForSubquery, " AND ")
+		maxValidFromSubquery := fmt.Sprintf(`(
+			SELECT MAX(h2.valid_from)
+			FROM %s h2
+			WHERE %s
+			AND h2.valid_to = ?
+		)`,
+			historyTableName,
+			pkJoinForSubqueryClause)
 
 		deleteHistorySQL := fmt.Sprintf(`INSERT INTO %s (
 			%s,
@@ -705,7 +840,7 @@ func updateHistory(
 			'D' AS op,
 			? AS run_id
 		FROM %s c
-		INNER JOIN %s h ON %s AND h.valid_to = ?
+		INNER JOIN %s h ON %s AND h.valid_to = ? AND h.valid_from = %s
 		WHERE NOT EXISTS (
 			SELECT 1 FROM %s s WHERE %s
 		)`,
@@ -715,10 +850,11 @@ func updateHistory(
 			currentTableName,
 			historyTableName,
 			historyJoinClause,
+			maxValidFromSubquery,
 			stageTableName,
 			deleteJoinClause)
 
-		if _, err := tx.ExecContext(ctx, deleteHistorySQL, cfg.SnapshotTS, runID, cfg.SnapshotTS); err != nil {
+		if _, err := tx.ExecContext(ctx, deleteHistorySQL, cfg.SnapshotTS, runID, cfg.SnapshotTS, cfg.SnapshotTS); err != nil {
 			return fmt.Errorf("failed to insert delete tombstone rows: %w", err)
 		}
 	}
@@ -1077,6 +1213,133 @@ func BackfillValidToOnDeletes(
 	}
 
 	log.Info("backfilled valid_to on deletes",
+		"table", cfg.TableBaseName,
+		"rows_fixed", fixedCount)
+
+	return fixedCount, nil
+}
+
+// BackfillValidToOnReinserts fixes delete tombstones where valid_to wasn't set when an entity was re-inserted.
+// This is a one-time backfill function to fix data affected by the bug where delete tombstones
+// weren't being closed when entities were re-inserted.
+//
+// Algorithm:
+//  1. Find all delete tombstones (op = 'D') with valid_to IS NULL
+//  2. For each delete tombstone with valid_from = X, find subsequent insert/update versions
+//     (op IN ('I', 'U')) for the same PK where valid_from > X
+//  3. Set valid_to = earliest_insert_timestamp for the delete tombstone
+//
+// The re-insert's valid_from timestamp tells us exactly when the deletion period ended,
+// so we can reliably backfill the valid_to field on the delete tombstone.
+func BackfillValidToOnReinserts(
+	ctx context.Context,
+	log *slog.Logger,
+	conn Connection,
+	cfg SCDTableConfig,
+	dryRun bool,
+) (fixedCount int, err error) {
+	historyTableName := cfg.TableBaseName + "_history"
+
+	// Extract primary key column names
+	pkColNames, err := extractColumnNames(cfg.PrimaryKeyColumns)
+	if err != nil {
+		return 0, fmt.Errorf("failed to extract primary key column names: %w", err)
+	}
+
+	// Build PK equality conditions for joining
+	pkConditions := make([]string, len(pkColNames))
+	for i, pkCol := range pkColNames {
+		pkConditions[i] = fmt.Sprintf("h1.%s = h2.%s", pkCol, pkCol)
+	}
+	pkJoinClause := strings.Join(pkConditions, " AND ")
+
+	if dryRun {
+		// Count how many delete tombstones would be fixed
+		countSQL := fmt.Sprintf(`SELECT COUNT(*)
+			FROM %s h1
+			WHERE h1.op = 'D'
+			AND h1.valid_to IS NULL
+			AND EXISTS (
+				SELECT 1
+				FROM %s h2
+				WHERE %s
+				AND h2.op IN ('I', 'U')
+				AND h2.valid_from > h1.valid_from
+			)`,
+			historyTableName,
+			historyTableName,
+			pkJoinClause)
+
+		if err := conn.QueryRowContext(ctx, countSQL).Scan(&fixedCount); err != nil {
+			return 0, fmt.Errorf("failed to count rows to fix: %w", err)
+		}
+
+		log.Info("backfill valid_to on re-inserts (dry run)",
+			"table", cfg.TableBaseName,
+			"rows_to_fix", fixedCount)
+		return fixedCount, nil
+	}
+
+	// Update delete tombstones to set valid_to = earliest re-insert timestamp
+	// We use a subquery to find the earliest insert/update after each delete tombstone
+	updateSQL := fmt.Sprintf(`UPDATE %s h1
+		SET valid_to = (
+			SELECT MIN(h2.valid_from)
+			FROM %s h2
+			WHERE %s
+			AND h2.op IN ('I', 'U')
+			AND h2.valid_from > h1.valid_from
+		)
+		WHERE h1.op = 'D'
+		AND h1.valid_to IS NULL
+		AND EXISTS (
+			SELECT 1
+			FROM %s h2
+			WHERE %s
+			AND h2.op IN ('I', 'U')
+			AND h2.valid_from > h1.valid_from
+		)`,
+		historyTableName,
+		historyTableName,
+		pkJoinClause,
+		historyTableName,
+		pkJoinClause)
+
+	result, err := conn.ExecContext(ctx, updateSQL)
+	if err != nil {
+		return 0, fmt.Errorf("failed to backfill valid_to on re-inserts: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		// Some drivers don't support RowsAffected, so we'll query for the count
+		var count int
+		countSQL := fmt.Sprintf(`SELECT COUNT(*)
+			FROM %s
+			WHERE op = 'D'
+			AND valid_to IS NOT NULL
+			AND EXISTS (
+				SELECT 1
+				FROM %s h2
+				WHERE %s
+				AND h2.op IN ('I', 'U')
+				AND h2.valid_from = %s.valid_to
+			)`,
+			historyTableName,
+			historyTableName,
+			pkJoinClause,
+			historyTableName)
+		if err := conn.QueryRowContext(ctx, countSQL).Scan(&count); err != nil {
+			log.Warn("failed to count fixed rows, using RowsAffected", "error", err)
+			fixedCount = int(rowsAffected)
+		} else {
+			fixedCount = count
+		}
+	} else {
+		fixedCount = int(rowsAffected)
+	}
+
+	log.Info("backfilled valid_to on re-inserts",
 		"table", cfg.TableBaseName,
 		"rows_fixed", fixedCount)
 

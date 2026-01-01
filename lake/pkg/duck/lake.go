@@ -94,6 +94,15 @@ func NewLake(ctx context.Context, log *slog.Logger, catalogName, catalogURI, sto
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
+	// Configure connection pool settings to prevent connection exhaustion
+	// When using PostgreSQL as catalog backend, DuckDB creates its own internal
+	// connection pool. Limiting the DuckDB connection pool helps prevent the
+	// internal PostgreSQL pool from exceeding its limits.
+	db.SetMaxOpenConns(32)                  // Maximum number of open connections
+	db.SetMaxIdleConns(8)                   // Maximum number of idle connections
+	db.SetConnMaxLifetime(10 * time.Minute) // Maximum connection lifetime
+	db.SetConnMaxIdleTime(2 * time.Minute)  // Maximum idle time before closing
+
 	if err := validateCatalogURI(catalogURI); err != nil {
 		return nil, err
 	}

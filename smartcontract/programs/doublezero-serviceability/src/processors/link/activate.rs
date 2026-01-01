@@ -118,7 +118,7 @@ pub fn process_activate_link(
 
     link.tunnel_id = value.tunnel_id;
     link.tunnel_net = value.tunnel_net;
-    link.status = LinkStatus::Activated;
+    link.status = LinkStatus::ReadyForService;
 
     account_write(
         side_a_device_account,

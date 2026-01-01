@@ -5,7 +5,9 @@ use doublezero_serviceability::{
     pda::*,
     processors::{
         contributor::create::ContributorCreateArgs,
-        device::{closeaccount::*, create::*, delete::*, resume::*, suspend::*, update::*},
+        device::{
+            closeaccount::*, create::*, delete::*, sethealth::DeviceSetHealthArgs, update::*,
+        },
         *,
     },
     state::{accounttype::AccountType, contributor::ContributorStatus, device::*},
@@ -269,61 +271,11 @@ async fn test_device() {
         .unwrap();
     assert_eq!(device.account_type, AccountType::Device);
     assert_eq!(device.code, "la".to_string());
-    assert_eq!(device.status, DeviceStatus::Activated);
+    assert_eq!(device.status, DeviceStatus::DeviceProvisioning);
 
     println!("✅ Device activated");
     /*****************************************************************************************************************************************************/
-    println!("🟢 8. Suspend Device...");
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::SuspendDevice(DeviceSuspendArgs {}),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(contributor_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let device_la = get_account_data(&mut banks_client, device_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_device()
-        .unwrap();
-    assert_eq!(device_la.account_type, AccountType::Device);
-    assert_eq!(device_la.status, DeviceStatus::Suspended);
-
-    println!("✅ Device suspended");
-    /*****************************************************************************************************************************************************/
-    println!("🟢 9. Resume Device...");
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ResumeDevice(DeviceResumeArgs {}),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(contributor_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let device = get_account_data(&mut banks_client, device_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_device()
-        .unwrap();
-    assert_eq!(device.account_type, AccountType::Device);
-    assert_eq!(device.status, DeviceStatus::Activated);
-
-    println!("✅ Device resumed");
-    /*****************************************************************************************************************************************************/
-    println!("🟢 10. Update Device...");
+    println!("🟢 8. Update Device...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -339,7 +291,7 @@ async fn test_device() {
             max_users: None,
             users_count: None,
             status: None,
-            desired_status: None,
+            desired_status: Some(DeviceDesiredStatus::Activated),
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -360,9 +312,67 @@ async fn test_device() {
     assert_eq!(device_la.account_type, AccountType::Device);
     assert_eq!(device_la.code, "la2".to_string());
     assert_eq!(device_la.public_ip.to_string(), "8.8.8.8");
-    assert_eq!(device_la.status, DeviceStatus::Activated);
+    assert_eq!(device_la.device_health, DeviceHealth::Pending);
+    assert_eq!(device_la.desired_status, DeviceDesiredStatus::Activated);
+    assert_eq!(device_la.status, DeviceStatus::DeviceProvisioning);
 
     println!("✅ Device updated");
+    /*****************************************************************************************************************************************************/
+    println!("🟢 9. Set Health Device...");
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetDeviceHealth(DeviceSetHealthArgs {
+            health: DeviceHealth::ReadyForLinks,
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let device_la = get_account_data(&mut banks_client, device_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_device()
+        .unwrap();
+    assert_eq!(device_la.desired_status, DeviceDesiredStatus::Activated);
+    assert_eq!(device_la.device_health, DeviceHealth::ReadyForLinks);
+    assert_eq!(device_la.status, DeviceStatus::LinkProvisioning);
+
+    println!("✅ Device LinkProvisioning");
+    /*****************************************************************************************************************************************************/
+    println!("🟢 10. Set Health Device...");
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetDeviceHealth(DeviceSetHealthArgs {
+            health: DeviceHealth::ReadyForUsers,
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let device_la = get_account_data(&mut banks_client, device_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_device()
+        .unwrap();
+    assert_eq!(device_la.desired_status, DeviceDesiredStatus::Activated);
+    assert_eq!(device_la.device_health, DeviceHealth::ReadyForUsers);
+    assert_eq!(device_la.status, DeviceStatus::Activated);
+
+    println!("✅ Device activated");
     /*****************************************************************************************************************************************************/
     println!("🟢 11. Update Device - SoftDrained...");
     execute_transaction(
@@ -370,7 +380,7 @@ async fn test_device() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
-            status: Some(DeviceStatus::SoftDrained),
+            desired_status: Some(DeviceDesiredStatus::SoftDrained),
             ..DeviceUpdateArgs::default()
         }),
         vec![
@@ -387,6 +397,9 @@ async fn test_device() {
         .expect("Unable to get Account")
         .get_device()
         .unwrap();
+
+    assert_eq!(device_la.desired_status, DeviceDesiredStatus::SoftDrained);
+    assert_eq!(device_la.device_health, DeviceHealth::ReadyForUsers);
     assert_eq!(device_la.status, DeviceStatus::SoftDrained);
 
     println!("✅ Device updated to SoftDrained");
@@ -397,7 +410,7 @@ async fn test_device() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
-            status: Some(DeviceStatus::HardDrained),
+            desired_status: Some(DeviceDesiredStatus::HardDrained),
             ..DeviceUpdateArgs::default()
         }),
         vec![
@@ -414,6 +427,9 @@ async fn test_device() {
         .expect("Unable to get Account")
         .get_device()
         .unwrap();
+
+    assert_eq!(device_la.desired_status, DeviceDesiredStatus::HardDrained);
+    assert_eq!(device_la.device_health, DeviceHealth::ReadyForUsers);
     assert_eq!(device_la.status, DeviceStatus::HardDrained);
 
     println!("✅ Device updated to HardDrained");
@@ -424,7 +440,7 @@ async fn test_device() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
-            status: Some(DeviceStatus::SoftDrained),
+            desired_status: Some(DeviceDesiredStatus::SoftDrained),
             ..DeviceUpdateArgs::default()
         }),
         vec![
@@ -441,6 +457,9 @@ async fn test_device() {
         .expect("Unable to get Account")
         .get_device()
         .unwrap();
+
+    assert_eq!(device_la.desired_status, DeviceDesiredStatus::SoftDrained);
+    assert_eq!(device_la.device_health, DeviceHealth::ReadyForUsers);
     assert_eq!(device_la.status, DeviceStatus::SoftDrained);
 
     println!("✅ Device updated to SoftDrained");
@@ -451,7 +470,7 @@ async fn test_device() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
-            status: Some(DeviceStatus::Activated),
+            desired_status: Some(DeviceDesiredStatus::Activated),
             ..DeviceUpdateArgs::default()
         }),
         vec![
@@ -468,6 +487,9 @@ async fn test_device() {
         .expect("Unable to get Account")
         .get_device()
         .unwrap();
+
+    assert_eq!(device_la.desired_status, DeviceDesiredStatus::Activated);
+    assert_eq!(device_la.device_health, DeviceHealth::ReadyForUsers);
     assert_eq!(device_la.status, DeviceStatus::Activated);
 
     println!("✅ Device updated to Activated");

@@ -93,9 +93,7 @@ pub fn process_initialize_device_latency_samples(
 
     // Deserialize and validate device status.
     let origin_device = Device::try_from(origin_device_account)?;
-    if origin_device.status != DeviceStatus::Activated
-        && origin_device.status != DeviceStatus::Suspended
-    {
+    if origin_device.status != DeviceStatus::Activated {
         msg!("Origin device is not activate or suspended");
         return Err(TelemetryError::DeviceNotActiveOrSuspended.into());
     }
@@ -112,16 +110,14 @@ pub fn process_initialize_device_latency_samples(
 
     // Deserialize and validate target device status.
     let target_device = Device::try_from(target_device_account)?;
-    if target_device.status != DeviceStatus::Activated
-        && target_device.status != DeviceStatus::Suspended
-    {
+    if target_device.status != DeviceStatus::Activated {
         msg!("Target device is not activate or suspended");
         return Err(TelemetryError::DeviceNotActiveOrSuspended.into());
     }
 
     // Deserialize and validate link status.
     let link = Link::try_from(link_account)?;
-    if link.status != LinkStatus::Activated && link.status != LinkStatus::Suspended {
+    if link.status != LinkStatus::Activated {
         msg!("Link is not activate or suspended");
         return Err(TelemetryError::LinkNotActiveOrSuspended.into());
     }

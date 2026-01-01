@@ -149,7 +149,7 @@ async fn test_initialize_device_latency_samples_success_suspended_origin_device(
     // Suspend the origin device.
     ledger
         .serviceability
-        .suspend_device(contributor_pk, origin_device_pk)
+        .softdrained_device(contributor_pk, origin_device_pk)
         .await
         .unwrap();
 
@@ -162,7 +162,7 @@ async fn test_initialize_device_latency_samples_success_suspended_origin_device(
         .get_device(origin_device_pk)
         .await
         .unwrap();
-    assert_eq!(device.status, DeviceStatus::Suspended);
+    assert_eq!(device.status, DeviceStatus::SoftDrained);
 
     // Execute initialize latency samples transaction.
     let latency_samples_pda = ledger
@@ -209,7 +209,7 @@ async fn test_initialize_device_latency_samples_success_suspended_target_device(
     // Suspend the target device.
     ledger
         .serviceability
-        .suspend_device(contributor_pk, target_device_pk)
+        .softdrained_device(contributor_pk, target_device_pk)
         .await
         .unwrap();
 
@@ -222,7 +222,7 @@ async fn test_initialize_device_latency_samples_success_suspended_target_device(
         .get_device(target_device_pk)
         .await
         .unwrap();
-    assert_eq!(device.status, DeviceStatus::Suspended);
+    assert_eq!(device.status, DeviceStatus::SoftDrained);
 
     // Execute initialize latency samples transaction.
     let latency_samples_pda = ledger
@@ -269,7 +269,7 @@ async fn test_initialize_device_latency_samples_success_suspended_link() {
     // Suspend the link.
     ledger
         .serviceability
-        .suspend_link(contributor_pk, link_pk)
+        .soft_drain_link(contributor_pk, link_pk)
         .await
         .unwrap();
 
@@ -278,7 +278,7 @@ async fn test_initialize_device_latency_samples_success_suspended_link() {
 
     // Check that the link is suspended.
     let link = ledger.serviceability.get_link(link_pk).await.unwrap();
-    assert_eq!(link.status, LinkStatus::Suspended);
+    assert_eq!(link.status, LinkStatus::SoftDrained);
 
     // Execute initialize latency samples transaction.
     let latency_samples_pda = ledger

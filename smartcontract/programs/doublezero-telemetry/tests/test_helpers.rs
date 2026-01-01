@@ -12,19 +12,19 @@ use doublezero_serviceability::{
             activate::DeviceActivateArgs,
             create::DeviceCreateArgs,
             interface::{create::DeviceInterfaceCreateArgs, unlink::DeviceInterfaceUnlinkArgs},
-            suspend::DeviceSuspendArgs,
+            update::DeviceUpdateArgs,
         },
         exchange::{create::ExchangeCreateArgs, suspend::ExchangeSuspendArgs},
         globalconfig::set::SetGlobalConfigArgs,
-        link::{activate::LinkActivateArgs, create::LinkCreateArgs, suspend::LinkSuspendArgs},
+        link::{activate::LinkActivateArgs, create::LinkCreateArgs, update::LinkUpdateArgs},
         location::{create::LocationCreateArgs, suspend::LocationSuspendArgs},
     },
     state::{
-        device::{Device, DeviceType},
+        device::{Device, DeviceDesiredStatus, DeviceType},
         exchange::Exchange,
         globalstate::GlobalState,
         interface::{InterfaceCYOA, InterfaceDIA, LoopbackType, RoutingMode},
-        link::{Link, LinkLinkType},
+        link::{Link, LinkDesiredStatus, LinkLinkType},
         location::Location,
     },
 };
@@ -944,13 +944,16 @@ impl ServiceabilityProgramHelper {
         Ok(Device::try_from(&device.data[..]).unwrap())
     }
 
-    pub async fn suspend_device(
+    pub async fn softdrained_device(
         &mut self,
         contributor_pk: Pubkey,
         pubkey: Pubkey,
     ) -> Result<(), BanksClientError> {
         self.execute_transaction(
-            DoubleZeroInstruction::SuspendDevice(DeviceSuspendArgs {}),
+            DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
+                desired_status: Some(DeviceDesiredStatus::SoftDrained),
+                ..Default::default()
+            }),
             vec![
                 AccountMeta::new(pubkey, false),
                 AccountMeta::new(contributor_pk, false),
@@ -1116,13 +1119,16 @@ impl ServiceabilityProgramHelper {
         Ok(Link::try_from(&link.data[..]).unwrap())
     }
 
-    pub async fn suspend_link(
+    pub async fn soft_drain_link(
         &mut self,
         contributor_pk: Pubkey,
         pubkey: Pubkey,
     ) -> Result<(), BanksClientError> {
         self.execute_transaction(
-            DoubleZeroInstruction::SuspendLink(LinkSuspendArgs {}),
+            DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
+                desired_status: Some(LinkDesiredStatus::SoftDrained),
+                ..Default::default()
+            }),
             vec![
                 AccountMeta::new(pubkey, false),
                 AccountMeta::new(contributor_pk, false),

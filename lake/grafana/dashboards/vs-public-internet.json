@@ -1,0 +1,1179 @@
+{
+    "annotations": {
+        "list": [
+            {
+                "builtIn": 1,
+                "datasource": {
+                    "type": "grafana",
+                    "uid": "doublezero-lake"
+                },
+                "enable": true,
+                "hide": true,
+                "iconColor": "rgba(0, 211, 255, 1)",
+                "name": "Annotations & Alerts",
+                "type": "dashboard"
+            }
+        ]
+    },
+    "editable": true,
+    "fiscalYearStartMonth": 0,
+    "graphTooltip": 0,
+    "id": null,
+    "links": [],
+    "liveNow": false,
+    "panels": [
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "gridPos": {
+                "h": 2,
+                "w": 24,
+                "x": 0,
+                "y": 0
+            },
+            "id": 1,
+            "options": {
+                "code": {
+                    "language": "markdown",
+                    "showLineNumbers": false,
+                    "showMiniMap": false
+                },
+                "content": "[📊 Overview](/d/doublezero-lake-overview) | [📱 Devices](/d/doublezero-devices-overview) | [👥 Users](/d/doublezero-users-overview)"
+            },
+            "pluginVersion": "10.0.0",
+            "title": "",
+            "type": "text"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            }
+                        ]
+                    },
+                    "unit": "percent"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 4,
+                "w": 6,
+                "x": 0,
+                "y": 2
+            },
+            "id": 2,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "textMode": "auto"
+            },
+            "pluginVersion": "10.0.0",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "SELECT\n  date_trunc('hour', time) as time,\n  AVG(improvement_pct) as \"Average Improvement %\"\nFROM (\n  SELECT\n    dz.time,\n    dz.metro_pair,\n    dz.avg_rtt_ms as dz_rtt,\n    internet.avg_rtt_ms as internet_rtt,\n    CASE\n      WHEN internet.avg_rtt_ms > 0 THEN ((internet.avg_rtt_ms - dz.avg_rtt_ms) / internet.avg_rtt_ms) * 100.0\n      ELSE 0\n    END as improvement_pct\n  FROM (\n    SELECT\n      date_trunc('hour', l.time) as time,\n      CONCAT(mo.code, ' → ', mt.code) as metro_pair,\n      AVG(l.rtt_us / 1000.0) as avg_rtt_ms\n    FROM dz_device_link_latency_samples_raw l\n    JOIN dz_devices_current dev_o ON l.origin_device_pk = dev_o.pk\n    JOIN dz_devices_current dev_t ON l.target_device_pk = dev_t.pk\n    JOIN dz_metros_current mo ON dev_o.metro_pk = mo.pk\n    JOIN dz_metros_current mt ON dev_t.metro_pk = mt.pk\n    JOIN dz_links_current link ON l.link_pk = link.pk\n    WHERE\n      l.time >= $__timeFrom()\n      AND l.time <= $__timeTo()\n      AND l.rtt_us IS NOT NULL\n      AND l.rtt_us > 0\n      AND link.link_type = 'WAN'\n      AND mo.code < mt.code\n      AND ('${metro_circuit:raw}' = '$__all' OR '${metro_circuit:raw}' = '' OR CONCAT(mo.code, ' → ', mt.code) IN (SELECT unnest(string_to_array('${metro_circuit:raw}', ','))))\n      AND ('${metro:raw}' = '$__all' OR mo.code IN (SELECT unnest(string_to_array('${metro:raw}', ','))) OR mt.code IN (SELECT unnest(string_to_array('${metro:raw}', ','))))\n    GROUP BY date_trunc('hour', l.time), mo.code, mt.code\n  ) dz\n  JOIN (\n    SELECT\n      time,\n      metro_pair,\n      AVG(avg_rtt_ms) as avg_rtt_ms\n    FROM (\n      SELECT\n        date_trunc('hour', i.time) as time,\n        CONCAT(mo.code, ' → ', mt.code) as metro_pair,\n        i.data_provider,\n        AVG(i.rtt_us / 1000.0) as avg_rtt_ms\n      FROM dz_internet_metro_latency_samples_raw i\n      JOIN dz_metros_current mo ON i.origin_metro_pk = mo.pk\n      JOIN dz_metros_current mt ON i.target_metro_pk = mt.pk\n      WHERE\n        i.time >= $__timeFrom()\n        AND i.time <= $__timeTo()\n        AND i.rtt_us IS NOT NULL\n        AND i.rtt_us > 0\n        AND mo.code < mt.code\n        AND ('${metro_circuit:raw}' = '$__all' OR '${metro_circuit:raw}' = '' OR CONCAT(mo.code, ' → ', mt.code) IN (SELECT unnest(string_to_array('${metro_circuit:raw}', ','))))\n        AND ('${data_provider:raw}' = '$__all' OR i.data_provider IN (SELECT unnest(string_to_array('${data_provider:raw}', ','))))\n        AND ('${metro:raw}' = '$__all' OR mo.code IN (SELECT unnest(string_to_array('${metro:raw}', ','))) OR mt.code IN (SELECT unnest(string_to_array('${metro:raw}', ','))))\n      GROUP BY date_trunc('hour', i.time), mo.code, mt.code, i.data_provider\n    ) provider_avg\n    GROUP BY time, metro_pair\n  ) internet ON dz.time = internet.time AND dz.metro_pair = internet.metro_pair\n) improvement\nGROUP BY date_trunc('hour', time)\nORDER BY time",
+                    "refId": "A"
+                }
+            ],
+            "title": "Average Improvement %",
+            "type": "stat"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            }
+                        ]
+                    },
+                    "unit": "ms"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 4,
+                "w": 6,
+                "x": 6,
+                "y": 2
+            },
+            "id": 3,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "textMode": "auto"
+            },
+            "pluginVersion": "10.0.0",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "SELECT\n  date_trunc('hour', time) as time,\n  AVG(improvement_ms) as \"Average Improvement (ms)\"\nFROM (\n  SELECT\n    dz.time,\n    dz.metro_pair,\n    dz.avg_rtt_ms as dz_rtt,\n    internet.avg_rtt_ms as internet_rtt,\n    internet.avg_rtt_ms - dz.avg_rtt_ms as improvement_ms\n  FROM (\n    SELECT\n      date_trunc('hour', l.time) as time,\n      CONCAT(mo.code, ' → ', mt.code) as metro_pair,\n      AVG(l.rtt_us / 1000.0) as avg_rtt_ms\n    FROM dz_device_link_latency_samples_raw l\n    JOIN dz_devices_current dev_o ON l.origin_device_pk = dev_o.pk\n    JOIN dz_devices_current dev_t ON l.target_device_pk = dev_t.pk\n    JOIN dz_metros_current mo ON dev_o.metro_pk = mo.pk\n    JOIN dz_metros_current mt ON dev_t.metro_pk = mt.pk\n    JOIN dz_links_current link ON l.link_pk = link.pk\n    WHERE\n      l.time >= $__timeFrom()\n      AND l.time <= $__timeTo()\n      AND l.rtt_us IS NOT NULL\n      AND l.rtt_us > 0\n      AND link.link_type = 'WAN'\n      AND mo.code < mt.code\n      AND ('${metro_circuit:raw}' = '$__all' OR '${metro_circuit:raw}' = '' OR CONCAT(mo.code, ' → ', mt.code) IN (SELECT unnest(string_to_array('${metro_circuit:raw}', ','))))\n      AND ('${metro:raw}' = '$__all' OR mo.code IN (SELECT unnest(string_to_array('${metro:raw}', ','))) OR mt.code IN (SELECT unnest(string_to_array('${metro:raw}', ','))))\n    GROUP BY date_trunc('hour', l.time), mo.code, mt.code\n  ) dz\n  JOIN (\n    SELECT\n      time,\n      metro_pair,\n      AVG(avg_rtt_ms) as avg_rtt_ms\n    FROM (\n      SELECT\n        date_trunc('hour', i.time) as time,\n        CONCAT(mo.code, ' → ', mt.code) as metro_pair,\n        i.data_provider,\n        AVG(i.rtt_us / 1000.0) as avg_rtt_ms\n      FROM dz_internet_metro_latency_samples_raw i\n      JOIN dz_metros_current mo ON i.origin_metro_pk = mo.pk\n      JOIN dz_metros_current mt ON i.target_metro_pk = mt.pk\n      WHERE\n        i.time >= $__timeFrom()\n        AND i.time <= $__timeTo()\n        AND i.rtt_us IS NOT NULL\n        AND i.rtt_us > 0\n        AND mo.code < mt.code\n        AND ('${metro_circuit:raw}' = '$__all' OR '${metro_circuit:raw}' = '' OR CONCAT(mo.code, ' → ', mt.code) IN (SELECT unnest(string_to_array('${metro_circuit:raw}', ','))))\n        AND ('${data_provider:raw}' = '$__all' OR i.data_provider IN (SELECT unnest(string_to_array('${data_provider:raw}', ','))))\n        AND ('${metro:raw}' = '$__all' OR mo.code IN (SELECT unnest(string_to_array('${metro:raw}', ','))) OR mt.code IN (SELECT unnest(string_to_array('${metro:raw}', ','))))\n      GROUP BY date_trunc('hour', i.time), mo.code, mt.code, i.data_provider\n    ) provider_avg\n    GROUP BY time, metro_pair\n  ) internet ON dz.time = internet.time AND dz.metro_pair = internet.metro_pair\n) improvement\nGROUP BY date_trunc('hour', time)\nORDER BY time",
+                    "refId": "A"
+                }
+            ],
+            "title": "Average Improvement (ms)",
+            "type": "stat"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            }
+                        ]
+                    },
+                    "unit": "short"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 4,
+                "w": 6,
+                "x": 12,
+                "y": 2
+            },
+            "id": 4,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "textMode": "auto"
+            },
+            "pluginVersion": "10.0.0",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "SELECT\n  date_trunc('hour', time) as time,\n  COUNT(DISTINCT metro_pair) as \"Active Metro Pairs\"\nFROM (\n  SELECT\n    date_trunc('hour', l.time) as time,\n    CONCAT(mo.code, ' → ', mt.code) as metro_pair\n  FROM dz_device_link_latency_samples_raw l\n  JOIN dz_devices_current dev_o ON l.origin_device_pk = dev_o.pk\n  JOIN dz_devices_current dev_t ON l.target_device_pk = dev_t.pk\n  JOIN dz_metros_current mo ON dev_o.metro_pk = mo.pk\n  JOIN dz_metros_current mt ON dev_t.metro_pk = mt.pk\n  JOIN dz_links_current link ON l.link_pk = link.pk\n  WHERE\n    l.time >= $__timeFrom()\n    AND l.time <= $__timeTo()\n    AND l.rtt_us IS NOT NULL\n    AND l.rtt_us > 0\n    AND link.link_type = 'WAN'\n    AND mo.code < mt.code\n    AND ('${metro_circuit:raw}' = '$__all' OR CONCAT(mo.code, ' → ', mt.code) IN (SELECT unnest(string_to_array('${metro_circuit:raw}', ','))))\n    AND ('${metro:raw}' = '$__all' OR mo.code IN (SELECT unnest(string_to_array('${metro:raw}', ','))) OR mt.code IN (SELECT unnest(string_to_array('${metro:raw}', ','))))\n  GROUP BY date_trunc('hour', l.time), mo.code, mt.code\n) pairs\nGROUP BY date_trunc('hour', time)\nORDER BY time",
+                    "refId": "A"
+                }
+            ],
+            "title": "Active Metro Pairs",
+            "type": "stat"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            }
+                        ]
+                    },
+                    "unit": "ms"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 4,
+                "w": 6,
+                "x": 18,
+                "y": 2
+            },
+            "id": 5,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "textMode": "auto"
+            },
+            "pluginVersion": "10.0.0",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "SELECT\n  date_trunc('hour', time) as time,\n  AVG(dz_rtt) as \"DZ Network Avg RTT (ms)\"\nFROM (\n  SELECT\n    date_trunc('hour', l.time) as time,\n    CONCAT(mo.code, ' → ', mt.code) as metro_pair,\n    AVG(l.rtt_us / 1000.0) as dz_rtt\n  FROM dz_device_link_latency_samples_raw l\n  JOIN dz_devices_current dev_o ON l.origin_device_pk = dev_o.pk\n  JOIN dz_devices_current dev_t ON l.target_device_pk = dev_t.pk\n  JOIN dz_metros_current mo ON dev_o.metro_pk = mo.pk\n  JOIN dz_metros_current mt ON dev_t.metro_pk = mt.pk\n  JOIN dz_links_current link ON l.link_pk = link.pk\n  WHERE\n    l.time >= $__timeFrom()\n    AND l.time <= $__timeTo()\n    AND l.rtt_us IS NOT NULL\n    AND l.rtt_us > 0\n    AND link.link_type = 'WAN'\n    AND mo.code < mt.code\n    AND ('${metro_circuit:raw}' = '$__all' OR CONCAT(mo.code, ' → ', mt.code) IN (SELECT unnest(string_to_array('${metro_circuit:raw}', ','))))\n    AND ('${metro:raw}' = '$__all' OR mo.code IN (SELECT unnest(string_to_array('${metro:raw}', ','))) OR mt.code IN (SELECT unnest(string_to_array('${metro:raw}', ','))))\n  GROUP BY date_trunc('hour', l.time), mo.code, mt.code\n) dz\nGROUP BY date_trunc('hour', time)\nORDER BY time",
+                    "refId": "A"
+                }
+            ],
+            "title": "DZ Network Avg RTT",
+            "type": "stat"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "drawStyle": "line",
+                        "fillOpacity": 0,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                            "tooltip": false,
+                            "viz": false,
+                            "legend": false
+                        },
+                        "lineInterpolation": "linear",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                            "type": "linear"
+                        },
+                        "showPoints": "never",
+                        "spanNulls": false,
+                        "stacking": {
+                            "group": "A",
+                            "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                            "mode": "off"
+                        }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            }
+                        ]
+                    },
+                    "unit": "ms"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 6
+            },
+            "id": 6,
+            "options": {
+                "legend": {
+                    "calcs": [
+                        "mean",
+                        "lastNotNull"
+                    ],
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "mode": "multi",
+                    "sort": "none"
+                }
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "SELECT\n  date_trunc('minute', l.time) as time,\n  CONCAT(mo.code, ' → ', mt.code) as \"Metro Pair\",\n  AVG(l.rtt_us / 1000.0) as \"DZ Network RTT (ms)\"\nFROM dz_device_link_latency_samples_raw l\nJOIN dz_devices_current dev_o ON l.origin_device_pk = dev_o.pk\nJOIN dz_devices_current dev_t ON l.target_device_pk = dev_t.pk\nJOIN dz_metros_current mo ON dev_o.metro_pk = mo.pk\nJOIN dz_metros_current mt ON dev_t.metro_pk = mt.pk\nJOIN dz_links_current link ON l.link_pk = link.pk\nWHERE\n  l.time >= $__timeFrom()\n  AND l.time <= $__timeTo()\n  AND l.rtt_us IS NOT NULL\n  AND l.rtt_us > 0\n  AND link.link_type = 'WAN'\n  AND mo.code < mt.code\n  AND ('${metro_circuit:raw}' = '$__all' OR '${metro_circuit:raw}' = '' OR CONCAT(mo.code, ' → ', mt.code) IN (SELECT unnest(string_to_array('${metro_circuit:raw}', ','))))\n  AND ('${metro:raw}' = '$__all' OR mo.code IN (SELECT unnest(string_to_array('${metro:raw}', ','))) OR mt.code IN (SELECT unnest(string_to_array('${metro:raw}', ','))))\nGROUP BY date_trunc('minute', l.time), mo.code, mt.code\nORDER BY time, \"Metro Pair\"",
+                    "refId": "A"
+                }
+            ],
+            "title": "DZ Network RTT by Metro Pair",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "drawStyle": "line",
+                        "fillOpacity": 0,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                            "tooltip": false,
+                            "viz": false,
+                            "legend": false
+                        },
+                        "lineInterpolation": "smooth",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                            "type": "linear"
+                        },
+                        "showPoints": "never",
+                        "spanNulls": true,
+                        "stacking": {
+                            "group": "A",
+                            "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                            "mode": "off"
+                        }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            }
+                        ]
+                    },
+                    "unit": "ms"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 6
+            },
+            "id": 10,
+            "options": {
+                "legend": {
+                    "calcs": [
+                        "mean",
+                        "lastNotNull"
+                    ],
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "mode": "multi",
+                    "sort": "none"
+                }
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "SELECT\n  time,\n  metro_pair as \"Metro Pair\",\n  AVG(avg_rtt_ms) as \"Internet RTT (ms)\"\nFROM (\n  SELECT\n    date_trunc('hour', i.time) + (EXTRACT(EPOCH FROM (i.time - date_trunc('hour', i.time)))::int / 1800) * interval '30 minutes' as time,\n    CONCAT(mo.code, ' → ', mt.code) as metro_pair,\n    i.data_provider,\n    AVG(i.rtt_us / 1000.0) as avg_rtt_ms\n  FROM dz_internet_metro_latency_samples_raw i\n  JOIN dz_metros_current mo ON i.origin_metro_pk = mo.pk\n  JOIN dz_metros_current mt ON i.target_metro_pk = mt.pk\n  WHERE\n    i.time >= $__timeFrom()\n    AND i.time <= $__timeTo()\n    AND i.rtt_us IS NOT NULL\n    AND i.rtt_us > 0\n    AND mo.code < mt.code\n    AND ('${metro_circuit:raw}' = '$__all' OR CONCAT(mo.code, ' → ', mt.code) IN (SELECT unnest(string_to_array('${metro_circuit:raw}', ','))))\n    AND ('${data_provider:raw}' = '$__all' OR i.data_provider IN (SELECT unnest(string_to_array('${data_provider:raw}', ','))))\n    AND ('${metro:raw}' = '$__all' OR mo.code IN (SELECT unnest(string_to_array('${metro:raw}', ','))) OR mt.code IN (SELECT unnest(string_to_array('${metro:raw}', ','))))\n  GROUP BY date_trunc('hour', i.time) + (EXTRACT(EPOCH FROM (i.time - date_trunc('hour', i.time)))::int / 1800) * interval '30 minutes', mo.code, mt.code, i.data_provider\n) provider_avg\nGROUP BY time, metro_pair\nORDER BY time, \"Metro Pair\"",
+                    "refId": "A"
+                }
+            ],
+            "title": "Internet RTT by Metro Pair",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "drawStyle": "line",
+                        "fillOpacity": 0,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                            "tooltip": false,
+                            "viz": false,
+                            "legend": false
+                        },
+                        "lineInterpolation": "linear",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                            "type": "linear"
+                        },
+                        "showPoints": "never",
+                        "spanNulls": false,
+                        "stacking": {
+                            "group": "A",
+                            "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                            "mode": "off"
+                        }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            }
+                        ]
+                    },
+                    "unit": "ms"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 14
+            },
+            "id": 11,
+            "options": {
+                "legend": {
+                    "calcs": [
+                        "mean",
+                        "lastNotNull"
+                    ],
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "mode": "multi",
+                    "sort": "none"
+                }
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "WITH ordered_samples AS (\n  SELECT\n    l.time,\n    l.rtt_us / 1000.0 as rtt_ms,\n    CONCAT(mo.code, ' → ', mt.code) as metro_pair,\n    mo.code as origin_code,\n    mt.code as target_code,\n    LAG(l.rtt_us / 1000.0) OVER (PARTITION BY l.origin_device_pk, l.target_device_pk, l.link_pk ORDER BY l.time) as prev_rtt_ms\n  FROM dz_device_link_latency_samples_raw l\n  JOIN dz_devices_current dev_o ON l.origin_device_pk = dev_o.pk\n  JOIN dz_devices_current dev_t ON l.target_device_pk = dev_t.pk\n  JOIN dz_metros_current mo ON dev_o.metro_pk = mo.pk\n  JOIN dz_metros_current mt ON dev_t.metro_pk = mt.pk\n  JOIN dz_links_current link ON l.link_pk = link.pk\n  WHERE\n    l.time >= $__timeFrom()\n    AND l.time <= $__timeTo()\n    AND l.rtt_us IS NOT NULL\n    AND l.rtt_us > 0\n    AND link.link_type = 'WAN'\n    AND mo.code < mt.code\n    AND ('${metro_circuit:raw}' = '$__all' OR CONCAT(mo.code, ' → ', mt.code) IN (SELECT unnest(string_to_array('${metro_circuit:raw}', ','))))\n    AND ('${metro:raw}' = '$__all' OR mo.code IN (SELECT unnest(string_to_array('${metro:raw}', ','))) OR mt.code IN (SELECT unnest(string_to_array('${metro:raw}', ','))))\n)\nSELECT\n  date_trunc('minute', time) as time,\n  metro_pair as \"Metro Pair\",\n  AVG(ABS(rtt_ms - prev_rtt_ms)) as \"DZ Network Jitter (ms)\"\nFROM ordered_samples\nWHERE prev_rtt_ms IS NOT NULL\nGROUP BY date_trunc('minute', time), metro_pair, origin_code, target_code\nORDER BY time, \"Metro Pair\"",
+                    "refId": "A"
+                }
+            ],
+            "title": "DZ Network Jitter by Metro Pair",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "drawStyle": "line",
+                        "fillOpacity": 0,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                            "tooltip": false,
+                            "viz": false,
+                            "legend": false
+                        },
+                        "lineInterpolation": "smooth",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                            "type": "linear"
+                        },
+                        "showPoints": "never",
+                        "spanNulls": true,
+                        "stacking": {
+                            "group": "A",
+                            "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                            "mode": "off"
+                        }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            }
+                        ]
+                    },
+                    "unit": "ms"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 14
+            },
+            "id": 12,
+            "options": {
+                "legend": {
+                    "calcs": [
+                        "mean",
+                        "lastNotNull"
+                    ],
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "mode": "multi",
+                    "sort": "none"
+                }
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "WITH ordered_samples AS (\n  SELECT\n    i.time,\n    i.rtt_us / 1000.0 as rtt_ms,\n    CONCAT(mo.code, ' → ', mt.code) as metro_pair,\n    mo.code as origin_code,\n    mt.code as target_code,\n    i.data_provider,\n    LAG(i.rtt_us / 1000.0) OVER (PARTITION BY i.data_provider, mo.code, mt.code ORDER BY i.time) as prev_rtt_ms,\n    LAG(i.time) OVER (PARTITION BY i.data_provider, mo.code, mt.code ORDER BY i.time) as prev_time\n  FROM dz_internet_metro_latency_samples_raw i\n  JOIN dz_metros_current mo ON i.origin_metro_pk = mo.pk\n  JOIN dz_metros_current mt ON i.target_metro_pk = mt.pk\n  WHERE\n    i.time >= $__timeFrom()\n    AND i.time <= $__timeTo()\n    AND i.rtt_us IS NOT NULL\n    AND i.rtt_us > 0\n    AND mo.code < mt.code\n    AND ('${metro_circuit:raw}' = '$__all' OR '${metro_circuit:raw}' = '' OR CONCAT(mo.code, ' → ', mt.code) IN (SELECT unnest(string_to_array('${metro_circuit:raw}', ','))))\n    AND ('${data_provider:raw}' = '$__all' OR i.data_provider IN (SELECT unnest(string_to_array('${data_provider:raw}', ','))))\n    AND ('${metro:raw}' = '$__all' OR mo.code IN (SELECT unnest(string_to_array('${metro:raw}', ','))) OR mt.code IN (SELECT unnest(string_to_array('${metro:raw}', ','))))\n),\nprovider_jitter AS (\n  SELECT\n    date_trunc('hour', time) + (EXTRACT(EPOCH FROM (time - date_trunc('hour', time)))::int / 900) * interval '15 minutes' as time,\n    metro_pair,\n    data_provider,\n    AVG(ABS(rtt_ms - prev_rtt_ms)) as avg_jitter_ms\n  FROM ordered_samples\n  WHERE prev_rtt_ms IS NOT NULL\n    AND prev_time IS NOT NULL\n    AND EXTRACT(EPOCH FROM (time - prev_time)) <= 7200\n  GROUP BY date_trunc('hour', time) + (EXTRACT(EPOCH FROM (time - date_trunc('hour', time)))::int / 900) * interval '15 minutes', metro_pair, data_provider\n)\nSELECT\n  time,\n  metro_pair as \"Metro Pair\",\n  AVG(avg_jitter_ms) as \"Internet Jitter (ms)\"\nFROM provider_jitter\nGROUP BY time, metro_pair\nORDER BY time, \"Metro Pair\"",
+                    "refId": "A"
+                }
+            ],
+            "title": "Internet Jitter by Metro Pair",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "custom": {
+                        "align": "auto",
+                        "cellOptions": {
+                            "type": "auto"
+                        },
+                        "inspect": false
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            }
+                        ]
+                    }
+                },
+                "overrides": [
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "RTT Improvement %"
+                        },
+                        "properties": [
+                            {
+                                "id": "unit",
+                                "value": "percent"
+                            },
+                            {
+                                "id": "custom.cellOptions",
+                                "value": {
+                                    "type": "color-background"
+                                }
+                            },
+                            {
+                                "id": "thresholds",
+                                "value": {
+                                    "mode": "absolute",
+                                    "steps": [
+                                        {
+                                            "color": "red",
+                                            "value": null
+                                        },
+                                        {
+                                            "color": "yellow",
+                                            "value": 0
+                                        },
+                                        {
+                                            "color": "green",
+                                            "value": 10
+                                        }
+                                    ]
+                                }
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "RTT Improvement (ms)"
+                        },
+                        "properties": [
+                            {
+                                "id": "unit",
+                                "value": "ms"
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "DZ Network RTT (ms)"
+                        },
+                        "properties": [
+                            {
+                                "id": "unit",
+                                "value": "ms"
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Internet RTT (ms)"
+                        },
+                        "properties": [
+                            {
+                                "id": "unit",
+                                "value": "ms"
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "DZ Network Jitter (ms)"
+                        },
+                        "properties": [
+                            {
+                                "id": "unit",
+                                "value": "ms"
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Internet Jitter (ms)"
+                        },
+                        "properties": [
+                            {
+                                "id": "unit",
+                                "value": "ms"
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Jitter Improvement (ms)"
+                        },
+                        "properties": [
+                            {
+                                "id": "unit",
+                                "value": "ms"
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Jitter Improvement %"
+                        },
+                        "properties": [
+                            {
+                                "id": "unit",
+                                "value": "percent"
+                            },
+                            {
+                                "id": "custom.cellOptions",
+                                "value": {
+                                    "type": "color-background"
+                                }
+                            },
+                            {
+                                "id": "thresholds",
+                                "value": {
+                                    "mode": "absolute",
+                                    "steps": [
+                                        {
+                                            "color": "red",
+                                            "value": null
+                                        },
+                                        {
+                                            "color": "yellow",
+                                            "value": 0
+                                        },
+                                        {
+                                            "color": "green",
+                                            "value": 10
+                                        }
+                                    ]
+                                }
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Metro Pair"
+                        },
+                        "properties": [
+                            {
+                                "id": "links",
+                                "value": [
+                                    {
+                                        "title": "Filter by Metro Circuit",
+                                        "url": "",
+                                        "onClick": "setVariable",
+                                        "internal": {
+                                            "query": {
+                                                "metro_circuit": "${__value.text}"
+                                            },
+                                            "datasourceUid": "doublezero-lake",
+                                            "datasourceName": "doublezero-lake"
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            },
+            "gridPos": {
+                "h": 60,
+                "w": 24,
+                "x": 0,
+                "y": 22
+            },
+            "id": 7,
+            "options": {
+                "cellHeight": "sm",
+                "footer": {
+                    "countRows": false,
+                    "fields": "",
+                    "reducer": [
+                        "sum"
+                    ],
+                    "show": false
+                },
+                "showHeader": true
+            },
+            "pluginVersion": "10.0.0",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "WITH dz_samples AS (\n  SELECT\n    l.time,\n    l.rtt_us / 1000.0 as rtt_ms,\n    CONCAT(mo.code, ' → ', mt.code) as metro_pair,\n    LAG(l.rtt_us / 1000.0) OVER (PARTITION BY l.origin_device_pk, l.target_device_pk, l.link_pk ORDER BY l.time) as prev_rtt_ms\n  FROM dz_device_link_latency_samples_raw l\n  JOIN dz_devices_current dev_o ON l.origin_device_pk = dev_o.pk\n  JOIN dz_devices_current dev_t ON l.target_device_pk = dev_t.pk\n  JOIN dz_metros_current mo ON dev_o.metro_pk = mo.pk\n  JOIN dz_metros_current mt ON dev_t.metro_pk = mt.pk\n  JOIN dz_links_current link ON l.link_pk = link.pk\n  WHERE\n    l.time >= $__timeFrom()\n    AND l.time <= $__timeTo()\n    AND l.rtt_us IS NOT NULL\n    AND l.rtt_us > 0\n    AND link.link_type = 'WAN'\n    AND mo.code < mt.code\n    AND ('${metro_circuit:raw}' = '$__all' OR CONCAT(mo.code, ' → ', mt.code) IN (SELECT unnest(string_to_array('${metro_circuit:raw}', ','))))\n    AND ('${metro:raw}' = '$__all' OR mo.code IN (SELECT unnest(string_to_array('${metro:raw}', ','))) OR mt.code IN (SELECT unnest(string_to_array('${metro:raw}', ','))))\n),\ndz_with_jitter AS (\n  SELECT\n    date_trunc('hour', time) as time,\n    metro_pair,\n    AVG(rtt_ms) as avg_rtt_ms,\n    AVG(ABS(rtt_ms - prev_rtt_ms)) as avg_jitter_ms\n  FROM dz_samples\n  WHERE prev_rtt_ms IS NOT NULL\n  GROUP BY date_trunc('hour', time), metro_pair\n),\ninternet_samples AS (\n  SELECT\n    i.time,\n    i.rtt_us / 1000.0 as rtt_ms,\n    CONCAT(mo.code, ' → ', mt.code) as metro_pair,\n    i.data_provider,\n    LAG(i.rtt_us / 1000.0) OVER (PARTITION BY i.data_provider, mo.code, mt.code ORDER BY i.time) as prev_rtt_ms,\n    LAG(i.time) OVER (PARTITION BY i.data_provider, mo.code, mt.code ORDER BY i.time) as prev_time\n  FROM dz_internet_metro_latency_samples_raw i\n  JOIN dz_metros_current mo ON i.origin_metro_pk = mo.pk\n  JOIN dz_metros_current mt ON i.target_metro_pk = mt.pk\n  WHERE\n    i.time >= $__timeFrom()\n    AND i.time <= $__timeTo()\n    AND i.rtt_us IS NOT NULL\n    AND i.rtt_us > 0\n    AND mo.code < mt.code\n    AND ('${metro_circuit:raw}' = '$__all' OR '${metro_circuit:raw}' = '' OR CONCAT(mo.code, ' → ', mt.code) IN (SELECT unnest(string_to_array('${metro_circuit:raw}', ','))))\n    AND ('${data_provider:raw}' = '$__all' OR i.data_provider IN (SELECT unnest(string_to_array('${data_provider:raw}', ','))))\n    AND ('${metro:raw}' = '$__all' OR mo.code IN (SELECT unnest(string_to_array('${metro:raw}', ','))) OR mt.code IN (SELECT unnest(string_to_array('${metro:raw}', ','))))\n),\ninternet_provider_avg AS (\n  SELECT\n    date_trunc('hour', time) as time,\n    metro_pair,\n    data_provider,\n    AVG(rtt_ms) as avg_rtt_ms,\n    AVG(ABS(rtt_ms - prev_rtt_ms)) as avg_jitter_ms\n  FROM internet_samples\n  WHERE prev_rtt_ms IS NOT NULL\n    AND prev_time IS NOT NULL\n    AND EXTRACT(EPOCH FROM (time - prev_time)) <= 7200\n  GROUP BY date_trunc('hour', time), metro_pair, data_provider\n),\ninternet_with_jitter AS (\n  SELECT\n    time,\n    metro_pair,\n    AVG(avg_rtt_ms) as avg_rtt_ms,\n    AVG(avg_jitter_ms) as avg_jitter_ms\n  FROM internet_provider_avg\n  GROUP BY time, metro_pair\n)\nSELECT\n  dz.metro_pair as \"Metro Pair\",\n  AVG(dz.avg_rtt_ms) as \"DZ Network RTT (ms)\",\n  AVG(internet.avg_rtt_ms) as \"Internet RTT (ms)\",\n  AVG(internet.avg_rtt_ms - dz.avg_rtt_ms) as \"RTT Improvement (ms)\",\n  AVG(CASE\n    WHEN internet.avg_rtt_ms > 0 THEN ((internet.avg_rtt_ms - dz.avg_rtt_ms) / internet.avg_rtt_ms) * 100.0\n    ELSE 0\n  END) as \"RTT Improvement %\",\n  AVG(dz.avg_jitter_ms) as \"DZ Network Jitter (ms)\",\n  AVG(internet.avg_jitter_ms) as \"Internet Jitter (ms)\",\n  AVG(internet.avg_jitter_ms - dz.avg_jitter_ms) as \"Jitter Improvement (ms)\",\n  AVG(CASE\n    WHEN internet.avg_jitter_ms > 0 THEN ((internet.avg_jitter_ms - dz.avg_jitter_ms) / internet.avg_jitter_ms) * 100.0\n    ELSE 0\n  END) as \"Jitter Improvement %\"\nFROM dz_with_jitter dz\nJOIN internet_with_jitter internet ON dz.time = internet.time AND dz.metro_pair = internet.metro_pair\nGROUP BY dz.metro_pair\nORDER BY \"RTT Improvement %\" DESC",
+                    "refId": "A"
+                }
+            ],
+            "title": "Metro Pair Performance Summary",
+            "type": "table"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "custom": {
+                        "align": "auto",
+                        "cellOptions": {
+                            "type": "auto"
+                        },
+                        "inspect": false
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            }
+                        ]
+                    }
+                },
+                "overrides": [
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "DZ RTT (ms)"
+                        },
+                        "properties": [
+                            {
+                                "id": "unit",
+                                "value": "ms"
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "DZ IPDV (ms)"
+                        },
+                        "properties": [
+                            {
+                                "id": "unit",
+                                "value": "ms"
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Internet RTT (ms)"
+                        },
+                        "properties": [
+                            {
+                                "id": "unit",
+                                "value": "ms"
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Internet IPDV (ms)"
+                        },
+                        "properties": [
+                            {
+                                "id": "unit",
+                                "value": "ms"
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "DZ Better"
+                        },
+                        "properties": [
+                            {
+                                "id": "custom.cellOptions",
+                                "value": {
+                                    "type": "color-background"
+                                }
+                            },
+                            {
+                                "id": "thresholds",
+                                "value": {
+                                    "mode": "absolute",
+                                    "steps": [
+                                        {
+                                            "color": "red",
+                                            "value": null
+                                        },
+                                        {
+                                            "color": "red",
+                                            "value": 0
+                                        },
+                                        {
+                                            "color": "green",
+                                            "value": 1
+                                        }
+                                    ]
+                                }
+                            },
+                            {
+                                "id": "mappings",
+                                "value": [
+                                    {
+                                        "options": {
+                                            "0": {
+                                                "color": "red",
+                                                "index": 0,
+                                                "text": ""
+                                            },
+                                            "1": {
+                                                "color": "green",
+                                                "index": 1,
+                                                "text": "✓"
+                                            }
+                                        },
+                                        "type": "value"
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            },
+            "gridPos": {
+                "h": 20,
+                "w": 24,
+                "x": 0,
+                "y": 82
+            },
+            "id": 13,
+            "options": {
+                "cellHeight": "sm",
+                "footer": {
+                    "countRows": false,
+                    "fields": "",
+                    "reducer": [
+                        "sum"
+                    ],
+                    "show": false
+                },
+                "showHeader": true
+            },
+            "pluginVersion": "10.0.0",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "WITH dz_samples AS (\n  SELECT\n    l.time,\n    l.rtt_us / 1000.0 as rtt_ms,\n    LAG(l.rtt_us / 1000.0) OVER (PARTITION BY l.origin_device_pk, l.target_device_pk, l.link_pk ORDER BY l.time) as prev_rtt_ms\n  FROM dz_device_link_latency_samples_raw l\n  JOIN dz_devices_current dev_o ON l.origin_device_pk = dev_o.pk\n  JOIN dz_devices_current dev_t ON l.target_device_pk = dev_t.pk\n  JOIN dz_metros_current mo ON dev_o.metro_pk = mo.pk\n  JOIN dz_metros_current mt ON dev_t.metro_pk = mt.pk\n  JOIN dz_links_current link ON l.link_pk = link.pk\n  WHERE\n    l.time >= $__timeFrom()\n    AND l.time <= $__timeTo()\n    AND l.rtt_us IS NOT NULL\n    AND l.rtt_us > 0\n    AND link.link_type = 'WAN'\n    AND ('${metro_circuit:raw}' = '$__all' OR CONCAT(mo.code, ' → ', mt.code) IN (SELECT unnest(string_to_array('${metro_circuit:raw}', ','))))\n    AND ('${metro:raw}' = '$__all' OR mo.code IN (SELECT unnest(string_to_array('${metro:raw}', ','))) OR mt.code IN (SELECT unnest(string_to_array('${metro:raw}', ','))))\n),\ninternet_samples AS (\n  SELECT\n    i.time,\n    i.rtt_us / 1000.0 as rtt_ms,\n    i.data_provider,\n    LAG(i.rtt_us / 1000.0) OVER (PARTITION BY i.data_provider, mo.code, mt.code ORDER BY i.time) as prev_rtt_ms,\n    LAG(i.time) OVER (PARTITION BY i.data_provider, mo.code, mt.code ORDER BY i.time) as prev_time\n  FROM dz_internet_metro_latency_samples_raw i\n  JOIN dz_metros_current mo ON i.origin_metro_pk = mo.pk\n  JOIN dz_metros_current mt ON i.target_metro_pk = mt.pk\n  WHERE\n    i.time >= $__timeFrom()\n    AND i.time <= $__timeTo()\n    AND i.rtt_us IS NOT NULL\n    AND i.rtt_us > 0\n    AND ('${metro_circuit:raw}' = '$__all' OR '${metro_circuit:raw}' = '' OR CONCAT(mo.code, ' → ', mt.code) IN (SELECT unnest(string_to_array('${metro_circuit:raw}', ','))))\n    AND ('${data_provider:raw}' = '$__all' OR i.data_provider IN (SELECT unnest(string_to_array('${data_provider:raw}', ','))))\n),\ndz_agg AS (\n  SELECT\n    to_timestamp(floor(EXTRACT(EPOCH FROM time) / 1800) * 1800) as time_bucket,\n    AVG(rtt_ms) as dz_rtt_ms,\n    AVG(CASE WHEN prev_rtt_ms IS NOT NULL THEN ABS(rtt_ms - prev_rtt_ms) ELSE NULL END) as dz_ipdv_ms\n  FROM dz_samples\n  GROUP BY to_timestamp(floor(EXTRACT(EPOCH FROM time) / 1800) * 1800)\n),\ninternet_agg AS (\n  SELECT\n    to_timestamp(floor(EXTRACT(EPOCH FROM time) / 1800) * 1800) as time_bucket,\n    AVG(rtt_ms) as internet_rtt_ms,\n    AVG(CASE WHEN prev_rtt_ms IS NOT NULL AND prev_time IS NOT NULL AND EXTRACT(EPOCH FROM (time - prev_time)) <= 7200 THEN ABS(rtt_ms - prev_rtt_ms) ELSE NULL END) as internet_ipdv_ms\n  FROM internet_samples\n  GROUP BY to_timestamp(floor(EXTRACT(EPOCH FROM time) / 1800) * 1800)\n)\nSELECT\n  COALESCE(dz_agg.time_bucket, internet_agg.time_bucket)::timestamp as \"Time\",\n  dz_agg.dz_rtt_ms as \"DZ RTT (ms)\",\n  dz_agg.dz_ipdv_ms as \"DZ IPDV (ms)\",\n  internet_agg.internet_rtt_ms as \"Internet RTT (ms)\",\n  internet_agg.internet_ipdv_ms as \"Internet IPDV (ms)\",\n  CASE\n    WHEN dz_agg.dz_ipdv_ms IS NOT NULL AND internet_agg.internet_ipdv_ms IS NOT NULL AND dz_agg.dz_ipdv_ms > 0 AND internet_agg.internet_ipdv_ms > 0 AND (dz_agg.dz_ipdv_ms::numeric < internet_agg.internet_ipdv_ms::numeric) THEN 1\n    ELSE 0\n  END as \"DZ Better\"\nFROM dz_agg\nFULL OUTER JOIN internet_agg ON dz_agg.time_bucket = internet_agg.time_bucket\nWHERE COALESCE(dz_agg.time_bucket, internet_agg.time_bucket) IS NOT NULL\nORDER BY \"Time\"\nLIMIT 1000",
+                    "refId": "A"
+                }
+            ],
+            "title": "Raw Samples: ${metro_circuit:text}",
+            "type": "table"
+        }
+    ],
+    "refresh": "30s",
+    "schemaVersion": 38,
+    "style": "dark",
+    "tags": [
+        "doublezero",
+        "lake",
+        "latency",
+        "comparison"
+    ],
+    "templating": {
+        "list": [
+            {
+                "allValue": null,
+                "current": {
+                    "selected": true,
+                    "text": "All",
+                    "value": "$__all"
+                },
+                "datasource": {
+                    "type": "postgres",
+                    "uid": "doublezero-lake"
+                },
+                "definition": "SELECT DISTINCT data_provider FROM dz_internet_metro_latency_samples_raw WHERE data_provider IS NOT NULL ORDER BY data_provider",
+                "description": "Filter by data provider",
+                "error": null,
+                "hide": 0,
+                "includeAll": true,
+                "label": "Data Provider",
+                "multi": true,
+                "name": "data_provider",
+                "options": [],
+                "query": "SELECT DISTINCT data_provider FROM dz_internet_metro_latency_samples_raw WHERE data_provider IS NOT NULL ORDER BY data_provider",
+                "refresh": 1,
+                "regex": "",
+                "skipUrlSync": false,
+                "sort": 1,
+                "type": "query"
+            },
+            {
+                "allValue": null,
+                "current": {
+                    "selected": true,
+                    "text": "All",
+                    "value": "$__all"
+                },
+                "datasource": {
+                    "type": "postgres",
+                    "uid": "doublezero-lake"
+                },
+                "definition": "SELECT code FROM dz_metros_current ORDER BY code",
+                "description": "Filter by metro (origin or target)",
+                "error": null,
+                "hide": 0,
+                "includeAll": true,
+                "label": "Metro",
+                "multi": true,
+                "name": "metro",
+                "options": [],
+                "query": "SELECT code FROM dz_metros_current ORDER BY code",
+                "refresh": 1,
+                "regex": "",
+                "skipUrlSync": false,
+                "sort": 1,
+                "type": "query"
+            },
+            {
+                "allValue": null,
+                "current": {
+                    "selected": true,
+                    "text": "All",
+                    "value": "$__all"
+                },
+                "datasource": {
+                    "type": "postgres",
+                    "uid": "doublezero-lake"
+                },
+                "definition": "SELECT DISTINCT CONCAT(mo.code, ' → ', mt.code) as metro_pair FROM dz_device_link_latency_samples_raw l JOIN dz_devices_current dev_o ON l.origin_device_pk = dev_o.pk JOIN dz_devices_current dev_t ON l.target_device_pk = dev_t.pk JOIN dz_metros_current mo ON dev_o.metro_pk = mo.pk JOIN dz_metros_current mt ON dev_t.metro_pk = mt.pk JOIN dz_links_current link ON l.link_pk = link.pk WHERE link.link_type = 'WAN' AND mo.code < mt.code UNION SELECT DISTINCT CONCAT(mo.code, ' → ', mt.code) as metro_pair FROM dz_internet_metro_latency_samples_raw i JOIN dz_metros_current mo ON i.origin_metro_pk = mo.pk JOIN dz_metros_current mt ON i.target_metro_pk = mt.pk WHERE mo.code < mt.code ORDER BY metro_pair",
+                "description": "Filter by metro circuit (metro pair)",
+                "error": null,
+                "hide": 0,
+                "includeAll": true,
+                "label": "Metro Circuit",
+                "multi": true,
+                "name": "metro_circuit",
+                "options": [],
+                "query": "SELECT DISTINCT CONCAT(mo.code, ' → ', mt.code) as metro_pair FROM dz_device_link_latency_samples_raw l JOIN dz_devices_current dev_o ON l.origin_device_pk = dev_o.pk JOIN dz_devices_current dev_t ON l.target_device_pk = dev_t.pk JOIN dz_metros_current mo ON dev_o.metro_pk = mo.pk JOIN dz_metros_current mt ON dev_t.metro_pk = mt.pk JOIN dz_links_current link ON l.link_pk = link.pk WHERE link.link_type = 'WAN' AND mo.code < mt.code UNION SELECT DISTINCT CONCAT(mo.code, ' → ', mt.code) as metro_pair FROM dz_internet_metro_latency_samples_raw i JOIN dz_metros_current mo ON i.origin_metro_pk = mo.pk JOIN dz_metros_current mt ON i.target_metro_pk = mt.pk WHERE mo.code < mt.code ORDER BY metro_pair",
+                "refresh": 1,
+                "regex": "",
+                "skipUrlSync": false,
+                "sort": 1,
+                "type": "query"
+            }
+        ]
+    },
+    "time": {
+        "from": "now-24h",
+        "to": "now"
+    },
+    "timepicker": {},
+    "timezone": "",
+    "title": "DoubleZero vs Public Internet",
+    "uid": "doublezero-vs-public-internet",
+    "version": 0,
+    "weekStart": ""
+}

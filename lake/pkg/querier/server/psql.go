@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -197,6 +198,10 @@ func mapDuckDBTypeToPostgreSQLOID(dbTypeName string) oid.Oid {
 		return pgtype.Int2OID // Use INT2 for TINYINT
 	case strings.HasPrefix(dbTypeName, "SMALLINT") || strings.HasPrefix(dbTypeName, "INT2"):
 		return pgtype.Int2OID
+	case strings.HasPrefix(dbTypeName, "INTERVAL"):
+		// INTERVAL must be checked before INT to avoid matching "INT" prefix
+		// Convert intervals to text format for PostgreSQL compatibility
+		return pgtype.TextOID
 	case strings.HasPrefix(dbTypeName, "INTEGER") || strings.HasPrefix(dbTypeName, "INT") || strings.HasPrefix(dbTypeName, "INT4"):
 		return pgtype.Int4OID
 	case strings.HasPrefix(dbTypeName, "BIGINT") || strings.HasPrefix(dbTypeName, "INT8"):
@@ -227,6 +232,113 @@ func mapDuckDBTypeToPostgreSQLOID(dbTypeName string) oid.Oid {
 		// Default to TEXT for unknown types
 		return pgtype.TextOID
 	}
+}
+
+// formatDuckDBInterval formats a DuckDB interval value as a PostgreSQL interval string
+// Returns empty string if the value is not a DuckDB interval
+func formatDuckDBInterval(val any) string {
+	if val == nil {
+		return ""
+	}
+
+	// Use reflection to detect DuckDB interval struct
+	rv := reflect.ValueOf(val)
+	if rv.Kind() == reflect.Ptr {
+		if rv.IsNil() {
+			return ""
+		}
+		rv = rv.Elem()
+	}
+
+	if rv.Kind() != reflect.Struct {
+		return ""
+	}
+
+	// Check if it looks like a DuckDB interval (has Days, Months, Micros fields)
+	rt := rv.Type()
+	hasDays := false
+	hasMonths := false
+	hasMicros := false
+	var daysVal, monthsVal, microsVal int64
+
+	for i := 0; i < rt.NumField(); i++ {
+		field := rt.Field(i)
+		fieldName := field.Name
+		fieldValue := rv.Field(i)
+
+		switch fieldName {
+		case "Days":
+			hasDays = true
+			if fieldValue.CanInt() {
+				daysVal = fieldValue.Int()
+			}
+		case "Months":
+			hasMonths = true
+			if fieldValue.CanInt() {
+				monthsVal = fieldValue.Int()
+			}
+		case "Micros":
+			hasMicros = true
+			if fieldValue.CanInt() {
+				microsVal = fieldValue.Int()
+			}
+		}
+	}
+
+	// If it has all three fields, it's likely a DuckDB interval
+	if hasDays && hasMonths && hasMicros {
+		// Convert to PostgreSQL interval format
+		// PostgreSQL intervals are in the format: 'X days Y hours Z minutes W seconds'
+		var parts []string
+
+		// Handle months (convert to days approximation: 1 month ≈ 30 days)
+		totalDays := daysVal + monthsVal*30
+
+		// Convert microseconds to duration components
+		micros := time.Duration(microsVal) * time.Microsecond
+		totalSeconds := int64(micros.Seconds())
+		hours := totalSeconds / 3600
+		minutes := (totalSeconds % 3600) / 60
+		seconds := totalSeconds % 60
+
+		// Add days
+		if totalDays > 0 {
+			parts = append(parts, fmt.Sprintf("%d day", totalDays))
+			if totalDays > 1 {
+				parts[len(parts)-1] += "s"
+			}
+		}
+
+		// Add hours
+		if hours > 0 {
+			parts = append(parts, fmt.Sprintf("%d hour", hours))
+			if hours > 1 {
+				parts[len(parts)-1] += "s"
+			}
+		}
+
+		// Add minutes
+		if minutes > 0 {
+			parts = append(parts, fmt.Sprintf("%d minute", minutes))
+			if minutes > 1 {
+				parts[len(parts)-1] += "s"
+			}
+		}
+
+		// Add seconds (always include if no other parts, or if > 0)
+		if seconds > 0 || len(parts) == 0 {
+			parts = append(parts, fmt.Sprintf("%d second", seconds))
+			if seconds != 1 {
+				parts[len(parts)-1] += "s"
+			}
+		}
+
+		if len(parts) > 0 {
+			return strings.Join(parts, " ")
+		}
+	}
+
+	return ""
 }
 
 // encodeValueForPostgreSQL encodes a value for PostgreSQL based on its type
@@ -260,6 +372,10 @@ func encodeValueForPostgreSQL(val any, oidType oid.Oid) (any, error) {
 		return fmt.Sprintf("%v", val), nil
 	case pgtype.TextOID, pgtype.VarcharOID:
 		// Convert to string
+		// Handle DuckDB intervals specially to format them as PostgreSQL interval strings
+		if intervalStr := formatDuckDBInterval(val); intervalStr != "" {
+			return intervalStr, nil
+		}
 		return fmt.Sprintf("%v", val), nil
 	case pgtype.DateOID, pgtype.TimeOID, pgtype.TimestampOID, pgtype.TimestamptzOID:
 		// Return time.Time as-is, or convert string to time.Time

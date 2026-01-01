@@ -82,7 +82,7 @@ func run() error {
 	duckDBSpillDirFlag := flag.String("duckdb-spill-dir", defaultEmbeddedDBSpillDir, "Path to DuckDB temporary spill directory")
 
 	// PostgreSQL connection configuration
-	postgresURIFlag := flag.String("postgres-uri", "", "PostgreSQL connection URI (or set MCP_POSTGRES_URI env var). Format: postgres://user:password@host:port/database?sslmode=disable")
+	postgresURIFlag := flag.String("postgres-uri", "", "PostgreSQL connection URI (or set LAKE_QUERY_URI env var). Format: postgres://user:password@host:port/database?sslmode=disable")
 
 	// GeoIP configuration
 	geoipCityDBPathFlag := flag.String("geoip-city-db-path", defaultGeoipCityDBPath, "Path to MaxMind GeoIP2 City database file (or set MCP_GEOIP_CITY_DB_PATH env var)")
@@ -100,7 +100,7 @@ func run() error {
 	flag.Parse()
 
 	// Override flags with environment variables if set
-	if envURI := os.Getenv("MCP_POSTGRES_URI"); envURI != "" {
+	if envURI := os.Getenv("LAKE_QUERY_URI"); envURI != "" {
 		*postgresURIFlag = envURI
 	}
 
@@ -318,7 +318,7 @@ func run() error {
 	} else {
 		// Connect to querier server via PostgreSQL
 		if *postgresURIFlag == "" {
-			return fmt.Errorf("postgres URI is required when indexer is disabled (set --postgres-uri or MCP_POSTGRES_URI env var)")
+			return fmt.Errorf("postgres URI is required when indexer is disabled (set --postgres-uri or LAKE_QUERY_URI env var)")
 		}
 
 		// Create a PostgreSQL-backed duck.DB implementation

@@ -34,8 +34,6 @@ use doublezero_sdk::{
             },
             list::ListDeviceCommand,
             reject::RejectDeviceCommand,
-            resume::ResumeDeviceCommand,
-            suspend::SuspendDeviceCommand,
             update::UpdateDeviceCommand,
         },
         exchange::{
@@ -165,8 +163,6 @@ pub trait CliCommand {
     fn create_device(&self, cmd: CreateDeviceCommand) -> eyre::Result<(Signature, Pubkey)>;
     fn get_device(&self, cmd: GetDeviceCommand) -> eyre::Result<(Pubkey, Device)>;
     fn list_device(&self, cmd: ListDeviceCommand) -> eyre::Result<HashMap<Pubkey, Device>>;
-    fn suspend_device(&self, cmd: SuspendDeviceCommand) -> eyre::Result<Signature>;
-    fn resume_device(&self, cmd: ResumeDeviceCommand) -> eyre::Result<Signature>;
     fn update_device(&self, cmd: UpdateDeviceCommand) -> eyre::Result<Signature>;
     fn delete_device(&self, cmd: DeleteDeviceCommand) -> eyre::Result<Signature>;
 
@@ -446,12 +442,6 @@ impl CliCommand for CliCommandImpl<'_> {
         cmd.execute(self.client)
     }
     fn reject_device(&self, cmd: RejectDeviceCommand) -> eyre::Result<Signature> {
-        cmd.execute(self.client)
-    }
-    fn suspend_device(&self, cmd: SuspendDeviceCommand) -> eyre::Result<Signature> {
-        cmd.execute(self.client)
-    }
-    fn resume_device(&self, cmd: ResumeDeviceCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
     fn closeaccount_device(&self, cmd: CloseAccountDeviceCommand) -> eyre::Result<Signature> {

@@ -24,8 +24,7 @@ use crate::processors::{
             update::DeviceInterfaceUpdateArgs,
         },
         reject::DeviceRejectArgs,
-        resume::DeviceResumeArgs,
-        suspend::DeviceSuspendArgs,
+        sethealth::DeviceSetHealthArgs,
         update::DeviceUpdateArgs,
     },
     exchange::{
@@ -39,7 +38,7 @@ use crate::processors::{
     link::{
         accept::LinkAcceptArgs, activate::LinkActivateArgs, closeaccount::LinkCloseAccountArgs,
         create::LinkCreateArgs, delete::LinkDeleteArgs, reject::LinkRejectArgs,
-        resume::LinkResumeArgs, suspend::LinkSuspendArgs, update::LinkUpdateArgs,
+        sethealth::LinkSetHealthArgs, update::LinkUpdateArgs,
     },
     location::{
         create::LocationCreateArgs, delete::LocationDeleteArgs, resume::LocationResumeArgs,
@@ -114,8 +113,8 @@ pub enum DoubleZeroInstruction {
     ActivateDevice(DeviceActivateArgs),         // variant 21
     RejectDevice(DeviceRejectArgs),             // variant 22
     UpdateDevice(DeviceUpdateArgs),             // variant 23
-    SuspendDevice(DeviceSuspendArgs),           // variant 24
-    ResumeDevice(DeviceResumeArgs),             // variant 25
+    SuspendDevice(),                            // variant 24
+    ResumeDevice(),                             // variant 25
     DeleteDevice(DeviceDeleteArgs),             // variant 26
     CloseAccountDevice(DeviceCloseAccountArgs), // variant 27
 
@@ -123,8 +122,8 @@ pub enum DoubleZeroInstruction {
     ActivateLink(LinkActivateArgs),         // variant 29
     RejectLink(LinkRejectArgs),             // variant 30
     UpdateLink(LinkUpdateArgs),             // variant 31
-    SuspendLink(LinkSuspendArgs),           // variant 32
-    ResumeLink(LinkResumeArgs),             // variant 33
+    SuspendLink(),                          // variant 32
+    ResumeLink(),                           // variant 33
     DeleteLink(LinkDeleteArgs),             // variant 34
     CloseAccountLink(LinkCloseAccountArgs), // variant 35
 
@@ -224,8 +223,8 @@ impl DoubleZeroInstruction {
             21 => Ok(Self::ActivateDevice(DeviceActivateArgs::try_from(rest).unwrap())),
             22 => Ok(Self::RejectDevice(DeviceRejectArgs::try_from(rest).unwrap())),
             23 => Ok(Self::UpdateDevice(DeviceUpdateArgs::try_from(rest).unwrap())),
-            24 => Ok(Self::SuspendDevice(DeviceSuspendArgs::try_from(rest).unwrap())),
-            25 => Ok(Self::ResumeDevice(DeviceResumeArgs::try_from(rest).unwrap())),
+            24 => Ok(Self::SuspendDevice()),
+            25 => Ok(Self::ResumeDevice()),
             26 => Ok(Self::DeleteDevice(DeviceDeleteArgs::try_from(rest).unwrap())),
             27 => Ok(Self::CloseAccountDevice(DeviceCloseAccountArgs::try_from(rest).unwrap())),
 
@@ -233,8 +232,8 @@ impl DoubleZeroInstruction {
             29 => Ok(Self::ActivateLink(LinkActivateArgs::try_from(rest).unwrap())),
             30 => Ok(Self::RejectLink(LinkRejectArgs::try_from(rest).unwrap())),
             31 => Ok(Self::UpdateLink(LinkUpdateArgs::try_from(rest).unwrap())),
-            32 => Ok(Self::SuspendLink(LinkSuspendArgs::try_from(rest).unwrap())),
-            33 => Ok(Self::ResumeLink(LinkResumeArgs::try_from(rest).unwrap())),
+            32 => Ok(Self::SuspendLink()),
+            33 => Ok(Self::ResumeLink()),
             34 => Ok(Self::DeleteLink(LinkDeleteArgs::try_from(rest).unwrap())),
             35 => Ok(Self::CloseAccountLink(LinkCloseAccountArgs::try_from(rest).unwrap())),
 
@@ -290,6 +289,8 @@ impl DoubleZeroInstruction {
             78 => Ok(Self::RejectDeviceInterface(DeviceInterfaceRejectArgs::try_from(rest).unwrap())),
 
             79 => Ok(Self::SetMinVersion(SetVersionArgs::try_from(rest).unwrap())),
+            80 => Ok(Self::SetDeviceHealth(DeviceSetHealthArgs::try_from(rest).unwrap())),
+            81 => Ok(Self::SetLinkHealth(LinkSetHealthArgs::try_from(rest).unwrap())),
 
             80 => Ok(Self::AllocateResource(ResourceAllocateArgs::try_from(rest).unwrap())),
             81 => Ok(Self::CreateResource(ResourceCreateArgs::try_from(rest).unwrap())),
@@ -329,8 +330,8 @@ impl DoubleZeroInstruction {
             Self::ActivateDevice(_) => "ActivateDevice".to_string(), // variant 21
             Self::RejectDevice(_) => "RejectDevice".to_string(), // variant 22
             Self::UpdateDevice(_) => "UpdateDevice".to_string(), // variant 23
-            Self::SuspendDevice(_) => "SuspendDevice".to_string(), // variant 24
-            Self::ResumeDevice(_) => "ResumeDevice".to_string(), // variant 25
+            Self::SuspendDevice() => "SuspendDevice".to_string(), // variant 24
+            Self::ResumeDevice() => "ResumeDevice".to_string(),  // variant 25
             Self::DeleteDevice(_) => "DeleteDevice".to_string(), // variant 26
             Self::CloseAccountDevice(_) => "CloseAccountDevice".to_string(), // variant 27
 
@@ -338,8 +339,8 @@ impl DoubleZeroInstruction {
             Self::ActivateLink(_) => "ActivateLink".to_string(), // variant 29
             Self::RejectLink(_) => "RejectLink".to_string(), // variant 30
             Self::UpdateLink(_) => "UpdateLink".to_string(), // variant 31
-            Self::SuspendLink(_) => "SuspendLink".to_string(), // variant 32
-            Self::ResumeLink(_) => "ResumeLink".to_string(), // variant 33
+            Self::SuspendLink() => "SuspendLink".to_string(), // variant 32
+            Self::ResumeLink() => "ResumeLink".to_string(),  // variant 33
             Self::DeleteLink(_) => "DeleteLink".to_string(), // variant 34
             Self::CloseAccountLink(_) => "CloseAccountLink".to_string(), // variant 35
 
@@ -436,8 +437,8 @@ impl DoubleZeroInstruction {
             Self::ActivateDevice(args) => format!("{args:?}"), // variant 21
             Self::RejectDevice(args) => format!("{args:?}"), // variant 22
             Self::UpdateDevice(args) => format!("{args:?}"), // variant 23
-            Self::SuspendDevice(args) => format!("{args:?}"), // variant 24
-            Self::ResumeDevice(args) => format!("{args:?}"), // variant 25
+            Self::SuspendDevice() => "".to_string(),         // variant 24
+            Self::ResumeDevice() => "".to_string(),          // variant 25
             Self::DeleteDevice(args) => format!("{args:?}"), // variant 26
             Self::CloseAccountDevice(args) => format!("{args:?}"), // variant 27
 
@@ -445,8 +446,8 @@ impl DoubleZeroInstruction {
             Self::ActivateLink(args) => format!("{args:?}"), // variant 29
             Self::RejectLink(args) => format!("{args:?}"), // variant 30
             Self::UpdateLink(args) => format!("{args:?}"), // variant 31
-            Self::SuspendLink(args) => format!("{args:?}"), // variant 32
-            Self::ResumeLink(args) => format!("{args:?}"), // variant 33
+            Self::SuspendLink() => "".to_string(),         // variant 32
+            Self::ResumeLink() => "".to_string(),          // variant 33
             Self::DeleteLink(args) => format!("{args:?}"), // variant 34
             Self::CloseAccountLink(args) => format!("{args:?}"), // variant 35
 
@@ -645,14 +646,8 @@ mod tests {
             }),
             "UpdateDevice",
         );
-        test_instruction(
-            DoubleZeroInstruction::SuspendDevice(DeviceSuspendArgs {}),
-            "SuspendDevice",
-        );
-        test_instruction(
-            DoubleZeroInstruction::ResumeDevice(DeviceResumeArgs {}),
-            "ResumeDevice",
-        );
+        test_instruction(DoubleZeroInstruction::SuspendDevice(), "SuspendDevice");
+        test_instruction(DoubleZeroInstruction::ResumeDevice(), "ResumeDevice");
         test_instruction(
             DoubleZeroInstruction::DeleteDevice(DeviceDeleteArgs {}),
             "DeleteDevice",
@@ -692,14 +687,8 @@ mod tests {
             }),
             "UpdateLink",
         );
-        test_instruction(
-            DoubleZeroInstruction::SuspendLink(LinkSuspendArgs {}),
-            "SuspendLink",
-        );
-        test_instruction(
-            DoubleZeroInstruction::ResumeLink(LinkResumeArgs {}),
-            "ResumeLink",
-        );
+        test_instruction(DoubleZeroInstruction::SuspendLink(), "SuspendLink");
+        test_instruction(DoubleZeroInstruction::ResumeLink(), "ResumeLink");
         test_instruction(
             DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {}),
             "DeleteLink",

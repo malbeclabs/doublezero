@@ -6,6 +6,7 @@ import (
 	"encoding/csv"
 	"errors"
 	"log/slog"
+	"net"
 	"os"
 	"testing"
 	"time"
@@ -281,5 +282,175 @@ func TestLake_Solana_Store_ReplaceGossipNodes(t *testing.T) {
 		require.Equal(t, 8002, tpuQUICPort)
 		require.Equal(t, "1.0.0", version)
 		require.Equal(t, int64(100), currentEpochDB)
+	})
+}
+
+func TestLake_Solana_Store_GetGossipIPs(t *testing.T) {
+	t.Parallel()
+
+	t.Run("reads gossip IPs from database", func(t *testing.T) {
+		t.Parallel()
+
+		db := testDB(t)
+
+		store, err := NewStore(StoreConfig{
+			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			DB:     db,
+		})
+		require.NoError(t, err)
+
+		nodePK1 := solana.MustPublicKeyFromBase58("So11111111111111111111111111111111111111112")
+		nodePK2 := solana.MustPublicKeyFromBase58("SysvarRent111111111111111111111111111111111")
+		gossipAddr1 := "192.168.1.1:8001"
+		gossipAddr2 := "192.168.1.2:8001"
+		fetchedAt := time.Now().UTC()
+		currentEpoch := uint64(100)
+
+		nodeVersion := "1.0.0"
+		nodes := []*solanarpc.GetClusterNodesResult{
+			{
+				Pubkey:  nodePK1,
+				Gossip:  &gossipAddr1,
+				Version: &nodeVersion,
+			},
+			{
+				Pubkey:  nodePK2,
+				Gossip:  &gossipAddr2,
+				Version: &nodeVersion,
+			},
+		}
+
+		err = store.ReplaceGossipNodes(context.Background(), nodes, fetchedAt, currentEpoch)
+		require.NoError(t, err)
+
+		ctx := context.Background()
+		ips, err := store.GetGossipIPs(ctx)
+		require.NoError(t, err)
+		require.Len(t, ips, 2)
+
+		// Check that IPs are parsed correctly
+		ipStrings := make([]string, len(ips))
+		for i, ip := range ips {
+			ipStrings[i] = ip.String()
+		}
+		require.Contains(t, ipStrings, "192.168.1.1")
+		require.Contains(t, ipStrings, "192.168.1.2")
+	})
+
+	t.Run("returns distinct IPs only", func(t *testing.T) {
+		t.Parallel()
+
+		db := testDB(t)
+
+		store, err := NewStore(StoreConfig{
+			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			DB:     db,
+		})
+		require.NoError(t, err)
+
+		nodePK1 := solana.MustPublicKeyFromBase58("So11111111111111111111111111111111111111112")
+		nodePK2 := solana.MustPublicKeyFromBase58("SysvarRent111111111111111111111111111111111")
+		gossipAddr := "192.168.1.1:8001"
+		fetchedAt := time.Now().UTC()
+		currentEpoch := uint64(100)
+
+		nodeVersion := "1.0.0"
+		nodes := []*solanarpc.GetClusterNodesResult{
+			{
+				Pubkey:  nodePK1,
+				Gossip:  &gossipAddr,
+				Version: &nodeVersion,
+			},
+			{
+				Pubkey:  nodePK2,
+				Gossip:  &gossipAddr, // Same IP
+				Version: &nodeVersion,
+			},
+		}
+
+		err = store.ReplaceGossipNodes(context.Background(), nodes, fetchedAt, currentEpoch)
+		require.NoError(t, err)
+
+		ctx := context.Background()
+		ips, err := store.GetGossipIPs(ctx)
+		require.NoError(t, err)
+		require.Len(t, ips, 1) // Should be deduplicated
+		require.Equal(t, net.ParseIP("192.168.1.1"), ips[0])
+	})
+
+	t.Run("filters out NULL and empty gossip IPs", func(t *testing.T) {
+		t.Parallel()
+
+		db := testDB(t)
+
+		store, err := NewStore(StoreConfig{
+			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			DB:     db,
+		})
+		require.NoError(t, err)
+
+		nodePK1 := solana.MustPublicKeyFromBase58("So11111111111111111111111111111111111111112")
+		nodePK2 := solana.MustPublicKeyFromBase58("SysvarRent111111111111111111111111111111111")
+		gossipAddr1 := "192.168.1.1:8001"
+		fetchedAt := time.Now().UTC()
+		currentEpoch := uint64(100)
+
+		nodeVersion := "1.0.0"
+		nodes := []*solanarpc.GetClusterNodesResult{
+			{
+				Pubkey:  nodePK1,
+				Gossip:  &gossipAddr1,
+				Version: &nodeVersion,
+			},
+			{
+				Pubkey:  nodePK2,
+				Gossip:  nil, // No gossip address
+				Version: &nodeVersion,
+			},
+		}
+
+		err = store.ReplaceGossipNodes(context.Background(), nodes, fetchedAt, currentEpoch)
+		require.NoError(t, err)
+
+		ctx := context.Background()
+		ips, err := store.GetGossipIPs(ctx)
+		require.NoError(t, err)
+		require.Len(t, ips, 1) // Only the node with gossip IP
+		require.Equal(t, net.ParseIP("192.168.1.1"), ips[0])
+	})
+
+	t.Run("returns empty slice when no gossip IPs", func(t *testing.T) {
+		t.Parallel()
+
+		db := testDB(t)
+
+		store, err := NewStore(StoreConfig{
+			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			DB:     db,
+		})
+		require.NoError(t, err)
+
+		// Create empty table so query doesn't fail
+		ctx := context.Background()
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+
+		_, err = conn.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS solana_gossip_nodes_current (
+			pubkey VARCHAR,
+			epoch BIGINT,
+			gossip_ip VARCHAR,
+			gossip_port INTEGER,
+			tpuquic_ip VARCHAR,
+			tpuquic_port INTEGER,
+			version VARCHAR,
+			as_of_ts TIMESTAMP NOT NULL,
+			row_hash VARCHAR NOT NULL
+		)`)
+		require.NoError(t, err)
+
+		ips, err := store.GetGossipIPs(ctx)
+		require.NoError(t, err)
+		require.Empty(t, ips)
 	})
 }

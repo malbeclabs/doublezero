@@ -23,6 +23,7 @@ type Indexer struct {
 	telemLatency *dztelemlatency.View
 	telemUsage   *dztelemusage.View
 	sol          *sol.View
+	geoip        *mcpgeoip.View
 
 	startedAt time.Time
 	readyOnce sync.Once
@@ -50,8 +51,6 @@ func New(ctx context.Context, cfg Config) (*Indexer, error) {
 		ServiceabilityRPC: cfg.ServiceabilityRPC,
 		RefreshInterval:   cfg.RefreshInterval,
 		DB:                cfg.DB,
-		GeoIPStore:        geoIPStore,
-		GeoIPResolver:     cfg.GeoIPResolver,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create serviceability view: %w", err)
@@ -81,11 +80,24 @@ func New(ctx context.Context, cfg Config) (*Indexer, error) {
 		RPC:             cfg.SolanaRPC,
 		DB:              cfg.DB,
 		RefreshInterval: cfg.RefreshInterval,
-		GeoIPStore:      *geoIPStore,
-		GeoIPResolver:   cfg.GeoIPResolver,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create solana view: %w", err)
+	}
+
+	// Initialize geoip view
+	geoipView, err := mcpgeoip.NewView(mcpgeoip.ViewConfig{
+		Logger:            cfg.Logger,
+		Clock:             cfg.Clock,
+		DB:                 cfg.DB,
+		GeoIPStore:         geoIPStore,
+		GeoIPResolver:      cfg.GeoIPResolver,
+		ServiceabilityStore: svcView.Store(),
+		SolanaStore:        solanaView.Store(),
+		RefreshInterval:    cfg.RefreshInterval,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create geoip view: %w", err)
 	}
 
 	// Initialize telemetry usage view if influx client is configured
@@ -113,6 +125,7 @@ func New(ctx context.Context, cfg Config) (*Indexer, error) {
 		telemLatency: telemView,
 		telemUsage:   telemetryUsageView,
 		sol:          solanaView,
+		geoip:        geoipView,
 	}
 
 	// Create all SCD2 tables before validation (schema migration)
@@ -127,8 +140,9 @@ func (i *Indexer) Ready() bool {
 	svcReady := i.svc.Ready()
 	telemLatencyReady := i.telemLatency.Ready()
 	solReady := i.sol.Ready()
+	geoipReady := i.geoip.Ready()
 	// NOTE: Don't wait for telemUsage to be ready, it takes too long to refresh from scratch.
-	return svcReady && telemLatencyReady && solReady
+	return svcReady && telemLatencyReady && solReady && geoipReady
 }
 
 func (i *Indexer) Start(ctx context.Context) {
@@ -136,6 +150,7 @@ func (i *Indexer) Start(ctx context.Context) {
 	i.svc.Start(ctx)
 	i.telemLatency.Start(ctx)
 	i.sol.Start(ctx)
+	i.geoip.Start(ctx)
 	if i.telemUsage != nil {
 		i.telemUsage.Start(ctx)
 	}

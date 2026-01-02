@@ -193,6 +193,38 @@ func (s *Store) ReplaceGossipNodes(ctx context.Context, nodes []*solanarpc.GetCl
 	})
 }
 
+func (s *Store) GetGossipIPs(ctx context.Context) ([]net.IP, error) {
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get connection: %w", err)
+	}
+	defer conn.Close()
+	query := `SELECT DISTINCT gossip_ip FROM solana_gossip_nodes_current WHERE gossip_ip IS NOT NULL AND gossip_ip != ''`
+	rows, err := conn.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query gossip IPs: %w", err)
+	}
+	defer rows.Close()
+
+	var ips []net.IP
+	for rows.Next() {
+		var ipStr string
+		if err := rows.Scan(&ipStr); err != nil {
+			return nil, fmt.Errorf("failed to scan gossip IP: %w", err)
+		}
+		ip := net.ParseIP(ipStr)
+		if ip != nil {
+			ips = append(ips, ip)
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating gossip IPs: %w", err)
+	}
+
+	return ips, nil
+}
+
 func formatUint64Array(arr []uint64) string {
 	if len(arr) == 0 {
 		return "[]"

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"time"
 
 	"github.com/malbeclabs/doublezero/lake/pkg/duck"
@@ -321,4 +322,40 @@ func (s *Store) GetMetros() ([]Metro, error) {
 	}
 
 	return metros, nil
+}
+
+func (s *Store) GetUsers(ctx context.Context) ([]User, error) {
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get connection: %w", err)
+	}
+	defer conn.Close()
+	query := `SELECT pk, owner_pk, status, kind, client_ip, dz_ip, device_pk, tunnel_id FROM dz_users_current`
+	rows, err := conn.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query users: %w", err)
+	}
+	defer rows.Close()
+
+	var users []User
+	for rows.Next() {
+		var u User
+		var clientIPStr, dzIPStr string
+		if err := rows.Scan(&u.PK, &u.OwnerPK, &u.Status, &u.Kind, &clientIPStr, &dzIPStr, &u.DevicePK, &u.TunnelID); err != nil {
+			return nil, fmt.Errorf("failed to scan user: %w", err)
+		}
+		if clientIPStr != "" {
+			u.ClientIP = net.ParseIP(clientIPStr)
+		}
+		if dzIPStr != "" {
+			u.DZIP = net.ParseIP(dzIPStr)
+		}
+		users = append(users, u)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating users: %w", err)
+	}
+
+	return users, nil
 }

@@ -3,7 +3,6 @@ package sol
 import (
 	"context"
 	"log/slog"
-	"net"
 	"os"
 	"testing"
 	"time"
@@ -13,8 +12,6 @@ import (
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/jonboulle/clockwork"
 	"github.com/malbeclabs/doublezero/lake/pkg/duck"
-	mcpgeoip "github.com/malbeclabs/doublezero/lake/pkg/indexer/geoip"
-	"github.com/malbeclabs/doublezero/tools/maxmind/pkg/geoip"
 	"github.com/stretchr/testify/require"
 )
 
@@ -74,18 +71,12 @@ func TestLake_Solana_View_Ready(t *testing.T) {
 
 		db := testDB(t)
 
-		geoipStore, err := newTestGeoIPStore(t)
-		require.NoError(t, err)
-		defer geoipStore.db.Close()
-
 		view, err := NewView(ViewConfig{
 			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
 			Clock:           clockwork.NewFakeClock(),
 			RPC:             &mockSolanaRPC{},
 			RefreshInterval: time.Second,
 			DB:              db,
-			GeoIPStore:      *geoipStore.store,
-			GeoIPResolver:   &mockGeoIPResolver{},
 		})
 		require.NoError(t, err)
 
@@ -97,18 +88,12 @@ func TestLake_Solana_View_Ready(t *testing.T) {
 
 		db := testDB(t)
 
-		geoipStore, err := newTestGeoIPStore(t)
-		require.NoError(t, err)
-		defer geoipStore.db.Close()
-
 		view, err := NewView(ViewConfig{
 			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
 			Clock:           clockwork.NewFakeClock(),
 			RPC:             &mockSolanaRPC{},
 			RefreshInterval: time.Second,
 			DB:              db,
-			GeoIPStore:      *geoipStore.store,
-			GeoIPResolver:   &mockGeoIPResolver{},
 		})
 		require.NoError(t, err)
 
@@ -128,18 +113,12 @@ func TestLake_Solana_View_WaitReady(t *testing.T) {
 
 		db := testDB(t)
 
-		geoipStore, err := newTestGeoIPStore(t)
-		require.NoError(t, err)
-		defer geoipStore.db.Close()
-
 		view, err := NewView(ViewConfig{
 			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
 			Clock:           clockwork.NewFakeClock(),
 			RPC:             &mockSolanaRPC{},
 			RefreshInterval: time.Second,
 			DB:              db,
-			GeoIPStore:      *geoipStore.store,
-			GeoIPResolver:   &mockGeoIPResolver{},
 		})
 		require.NoError(t, err)
 
@@ -156,18 +135,12 @@ func TestLake_Solana_View_WaitReady(t *testing.T) {
 
 		db := testDB(t)
 
-		geoipStore, err := newTestGeoIPStore(t)
-		require.NoError(t, err)
-		defer geoipStore.db.Close()
-
 		view, err := NewView(ViewConfig{
 			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
 			Clock:           clockwork.NewFakeClock(),
 			RPC:             &mockSolanaRPC{},
 			RefreshInterval: time.Second,
 			DB:              db,
-			GeoIPStore:      *geoipStore.store,
-			GeoIPResolver:   &mockGeoIPResolver{},
 		})
 		require.NoError(t, err)
 
@@ -180,39 +153,6 @@ func TestLake_Solana_View_WaitReady(t *testing.T) {
 	})
 }
 
-type mockGeoIPResolver struct {
-	resolveFunc func(net.IP) *geoip.Record
-}
-
-func (m *mockGeoIPResolver) Resolve(ip net.IP) *geoip.Record {
-	if m.resolveFunc != nil {
-		return m.resolveFunc(ip)
-	}
-	return nil
-}
-
-type testGeoIPStore struct {
-	store *mcpgeoip.Store
-	db    duck.DB
-}
-
-func newTestGeoIPStore(t *testing.T) (*testGeoIPStore, error) {
-	t.Helper()
-	db := testDB(t)
-
-	store, err := mcpgeoip.NewStore(mcpgeoip.StoreConfig{
-		Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-		DB:     db,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return &testGeoIPStore{
-		store: store,
-		db:    db,
-	}, nil
-}
 
 func TestLake_Solana_View_Refresh(t *testing.T) {
 	t.Parallel()
@@ -222,31 +162,6 @@ func TestLake_Solana_View_Refresh(t *testing.T) {
 
 		db := testDB(t)
 
-		geoipStore, err := newTestGeoIPStore(t)
-		require.NoError(t, err)
-		defer geoipStore.db.Close()
-
-		geoipResolver := &mockGeoIPResolver{
-			resolveFunc: func(ip net.IP) *geoip.Record {
-				if ip.String() == "1.1.1.1" {
-					return &geoip.Record{
-						IP:          ip,
-						CountryCode: "US",
-						Country:     "United States",
-						City:        "San Francisco",
-					}
-				}
-				if ip.String() == "8.8.8.8" {
-					return &geoip.Record{
-						IP:          ip,
-						CountryCode: "US",
-						Country:     "United States",
-						City:        "Mountain View",
-					}
-				}
-				return nil
-			},
-		}
 
 		pk1 := solana.MustPublicKeyFromBase58("11111111111111111111111111111112")
 		pk2 := solana.MustPublicKeyFromBase58("SysvarRent111111111111111111111111111111111")
@@ -276,8 +191,6 @@ func TestLake_Solana_View_Refresh(t *testing.T) {
 			RPC:             rpc,
 			RefreshInterval: time.Second,
 			DB:              db,
-			GeoIPStore:      *geoipStore.store,
-			GeoIPResolver:   geoipResolver,
 		})
 		require.NoError(t, err)
 
@@ -351,24 +264,7 @@ func TestLake_Solana_View_Refresh(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, 3, gossipNodesCount, "should have 3 gossip nodes")
 
-		// Verify geoip records were upserted
-		records, err := geoipStore.store.GetRecords()
-		require.NoError(t, err)
-		require.Len(t, records, 2, "should have 2 resolved geoip records")
-		// Find records by IP
-		var record1, record2 *geoip.Record
-		for _, r := range records {
-			if r.IP.String() == "1.1.1.1" {
-				record1 = r
-			}
-			if r.IP.String() == "8.8.8.8" {
-				record2 = r
-			}
-		}
-		require.NotNil(t, record1, "should have record for 1.1.1.1")
-		require.Equal(t, "San Francisco", record1.City)
-		require.NotNil(t, record2, "should have record for 8.8.8.8")
-		require.Equal(t, "Mountain View", record2.City)
+		// Note: GeoIP records are now handled by the geoip view, not the solana view
 
 		// Verify specific data in leader schedule
 		var slotCount int
@@ -398,21 +294,12 @@ func TestLake_Solana_View_Refresh(t *testing.T) {
 		require.Equal(t, "1.1.1.1", gossipIP, "pk1 should have correct gossip IP")
 	})
 
-	t.Run("handles nodes without gossip addresses for geoip", func(t *testing.T) {
+	t.Run("handles nodes without gossip addresses", func(t *testing.T) {
 
 		t.Parallel()
 
 		db := testDB(t)
 
-		geoipStore, err := newTestGeoIPStore(t)
-		require.NoError(t, err)
-		defer geoipStore.db.Close()
-
-		geoipResolver := &mockGeoIPResolver{
-			resolveFunc: func(ip net.IP) *geoip.Record {
-				return &geoip.Record{IP: ip}
-			},
-		}
 
 		pk1 := solana.MustPublicKeyFromBase58("11111111111111111111111111111112")
 		pk2 := solana.MustPublicKeyFromBase58("SysvarRent111111111111111111111111111111111")
@@ -437,8 +324,6 @@ func TestLake_Solana_View_Refresh(t *testing.T) {
 			RPC:             rpc,
 			RefreshInterval: time.Second,
 			DB:              db,
-			GeoIPStore:      *geoipStore.store,
-			GeoIPResolver:   geoipResolver,
 		})
 		require.NoError(t, err)
 
@@ -446,19 +331,15 @@ func TestLake_Solana_View_Refresh(t *testing.T) {
 		err = view.Refresh(ctx)
 		require.NoError(t, err)
 
-		// Verify gossip nodes are still stored even without geoip
+		// Verify gossip nodes are still stored
 		var gossipNodesCount int
 		conn, err := db.Conn(ctx)
 		require.NoError(t, err)
 		defer conn.Close()
 		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM solana_gossip_nodes_current").Scan(&gossipNodesCount)
 		require.NoError(t, err)
-		require.Equal(t, 2, gossipNodesCount, "should have 2 gossip nodes even without geoip")
-
-		// Verify no geoip records were upserted
-		records, err := geoipStore.store.GetRecords()
-		require.NoError(t, err)
-		require.Len(t, records, 0, "should have no geoip records when no gossip addresses")
+		require.Equal(t, 2, gossipNodesCount, "should have 2 gossip nodes")
+		// Note: GeoIP records are now handled by the geoip view, not the solana view
 	})
 }
 

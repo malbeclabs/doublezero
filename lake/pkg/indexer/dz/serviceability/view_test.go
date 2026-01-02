@@ -3,7 +3,6 @@ package dzsvc
 import (
 	"context"
 	"log/slog"
-	"net"
 	"os"
 	"testing"
 	"time"
@@ -11,9 +10,6 @@ import (
 	_ "github.com/duckdb/duckdb-go/v2"
 	"github.com/gagliardetto/solana-go"
 	"github.com/jonboulle/clockwork"
-	"github.com/malbeclabs/doublezero/lake/pkg/duck"
-	mcpgeoip "github.com/malbeclabs/doublezero/lake/pkg/indexer/geoip"
-	"github.com/malbeclabs/doublezero/tools/maxmind/pkg/geoip"
 	"github.com/stretchr/testify/require"
 
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
@@ -38,18 +34,12 @@ func TestLake_Serviceability_View_Ready(t *testing.T) {
 
 		db := testDB(t)
 
-		geoipStore, err := newTestGeoIPStore(t)
-		require.NoError(t, err)
-		defer geoipStore.db.Close()
-
 		view, err := NewView(ViewConfig{
 			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
 			Clock:             clockwork.NewFakeClock(),
 			ServiceabilityRPC: &MockServiceabilityRPC{},
 			RefreshInterval:   time.Second,
 			DB:                db,
-			GeoIPStore:        geoipStore.store,
-			GeoIPResolver:     &mockGeoIPResolver{},
 		})
 		require.NoError(t, err)
 
@@ -61,18 +51,12 @@ func TestLake_Serviceability_View_Ready(t *testing.T) {
 
 		db := testDB(t)
 
-		geoipStore, err := newTestGeoIPStore(t)
-		require.NoError(t, err)
-		defer geoipStore.db.Close()
-
 		view, err := NewView(ViewConfig{
 			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
 			Clock:             clockwork.NewFakeClock(),
 			ServiceabilityRPC: &MockServiceabilityRPC{},
 			RefreshInterval:   time.Second,
 			DB:                db,
-			GeoIPStore:        geoipStore.store,
-			GeoIPResolver:     &mockGeoIPResolver{},
 		})
 		require.NoError(t, err)
 
@@ -92,18 +76,12 @@ func TestLake_Serviceability_View_WaitReady(t *testing.T) {
 
 		db := testDB(t)
 
-		geoipStore, err := newTestGeoIPStore(t)
-		require.NoError(t, err)
-		defer geoipStore.db.Close()
-
 		view, err := NewView(ViewConfig{
 			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
 			Clock:             clockwork.NewFakeClock(),
 			ServiceabilityRPC: &MockServiceabilityRPC{},
 			RefreshInterval:   time.Second,
 			DB:                db,
-			GeoIPStore:        geoipStore.store,
-			GeoIPResolver:     &mockGeoIPResolver{},
 		})
 		require.NoError(t, err)
 
@@ -120,18 +98,12 @@ func TestLake_Serviceability_View_WaitReady(t *testing.T) {
 
 		db := testDB(t)
 
-		geoipStore, err := newTestGeoIPStore(t)
-		require.NoError(t, err)
-		defer geoipStore.db.Close()
-
 		view, err := NewView(ViewConfig{
 			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
 			Clock:             clockwork.NewFakeClock(),
 			ServiceabilityRPC: &MockServiceabilityRPC{},
 			RefreshInterval:   time.Second,
 			DB:                db,
-			GeoIPStore:        geoipStore.store,
-			GeoIPResolver:     &mockGeoIPResolver{},
 		})
 		require.NoError(t, err)
 
@@ -150,10 +122,6 @@ func TestLake_Serviceability_View_NewServiceabilityView(t *testing.T) {
 	t.Run("succeeds (tables are now created automatically by SCD2)", func(t *testing.T) {
 		t.Parallel()
 
-		geoipStore, err := newTestGeoIPStore(t)
-		require.NoError(t, err)
-		defer geoipStore.db.Close()
-
 		// View creation should succeed (tables are created automatically by SCDTableViaCSV)
 		// The failure will happen later when trying to use the database
 		view, err := NewView(ViewConfig{
@@ -162,8 +130,6 @@ func TestLake_Serviceability_View_NewServiceabilityView(t *testing.T) {
 			ServiceabilityRPC: &MockServiceabilityRPC{},
 			RefreshInterval:   time.Second,
 			DB:                &failingDB{},
-			GeoIPStore:        geoipStore.store,
-			GeoIPResolver:     &mockGeoIPResolver{},
 		})
 		require.NoError(t, err)
 		require.NotNil(t, view)
@@ -375,39 +341,6 @@ func testPubkeyBytes(seed byte) [32]byte {
 	return pk
 }
 
-type mockGeoIPResolver struct {
-	resolveFunc func(net.IP) *geoip.Record
-}
-
-func (m *mockGeoIPResolver) Resolve(ip net.IP) *geoip.Record {
-	if m.resolveFunc != nil {
-		return m.resolveFunc(ip)
-	}
-	return nil
-}
-
-type testGeoIPStore struct {
-	store *mcpgeoip.Store
-	db    duck.DB
-}
-
-func newTestGeoIPStore(t *testing.T) (*testGeoIPStore, error) {
-	t.Helper()
-	db := testDB(t)
-
-	store, err := mcpgeoip.NewStore(mcpgeoip.StoreConfig{
-		Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
-		DB:     db,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return &testGeoIPStore{
-		store: store,
-		db:    db,
-	}, nil
-}
 
 func TestLake_Serviceability_View_Refresh(t *testing.T) {
 	t.Parallel()
@@ -416,32 +349,6 @@ func TestLake_Serviceability_View_Refresh(t *testing.T) {
 		t.Parallel()
 
 		db := testDB(t)
-
-		geoipStore, err := newTestGeoIPStore(t)
-		require.NoError(t, err)
-		defer geoipStore.db.Close()
-
-		geoipResolver := &mockGeoIPResolver{
-			resolveFunc: func(ip net.IP) *geoip.Record {
-				if ip.String() == "1.1.1.1" {
-					return &geoip.Record{
-						IP:          ip,
-						CountryCode: "US",
-						Country:     "United States",
-						City:        "San Francisco",
-					}
-				}
-				if ip.String() == "8.8.8.8" {
-					return &geoip.Record{
-						IP:          ip,
-						CountryCode: "US",
-						Country:     "United States",
-						City:        "Mountain View",
-					}
-				}
-				return nil
-			},
-		}
 
 		// Create test data
 		contributorPK := testPubkeyBytes(1)
@@ -544,8 +451,6 @@ func TestLake_Serviceability_View_Refresh(t *testing.T) {
 			ServiceabilityRPC: rpc,
 			RefreshInterval:   time.Second,
 			DB:                db,
-			GeoIPStore:        geoipStore.store,
-			GeoIPResolver:     geoipResolver,
 		})
 		require.NoError(t, err)
 
@@ -586,24 +491,7 @@ func TestLake_Serviceability_View_Refresh(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, 1, linksCount, "should have 1 link")
 
-		// Verify geoip records were upserted (only for users with ClientIP)
-		records, err := geoipStore.store.GetRecords()
-		require.NoError(t, err)
-		require.Len(t, records, 2, "should have 2 resolved geoip records")
-		// Find records by IP
-		var record1, record2 *geoip.Record
-		for _, r := range records {
-			if r.IP.String() == "1.1.1.1" {
-				record1 = r
-			}
-			if r.IP.String() == "8.8.8.8" {
-				record2 = r
-			}
-		}
-		require.NotNil(t, record1, "should have record for 1.1.1.1")
-		require.Equal(t, "San Francisco", record1.City)
-		require.NotNil(t, record2, "should have record for 8.8.8.8")
-		require.Equal(t, "Mountain View", record2.City)
+		// Note: GeoIP records are now handled by the geoip view, not the serviceability view
 
 		// Verify specific data in contributors
 		var code string
@@ -642,24 +530,10 @@ func TestLake_Serviceability_View_Refresh(t *testing.T) {
 		require.Equal(t, "LINK001", linkCode, "link should have correct code")
 	})
 
-	t.Run("handles users without client IPs for geoip", func(t *testing.T) {
+	t.Run("handles users without client IPs", func(t *testing.T) {
 		t.Parallel()
 
 		db := testDB(t)
-
-		geoipStore, err := newTestGeoIPStore(t)
-		require.NoError(t, err)
-		defer geoipStore.db.Close()
-
-		geoipResolver := &mockGeoIPResolver{
-			resolveFunc: func(ip net.IP) *geoip.Record {
-				// Return nil for zero/unset IPs
-				if ip == nil || ip.IsUnspecified() {
-					return nil
-				}
-				return &geoip.Record{IP: ip}
-			},
-		}
 
 		userPK := testPubkeyBytes(1)
 		ownerPK := testPubkeyBytes(2)
@@ -689,8 +563,6 @@ func TestLake_Serviceability_View_Refresh(t *testing.T) {
 			ServiceabilityRPC: rpc,
 			RefreshInterval:   time.Second,
 			DB:                db,
-			GeoIPStore:        geoipStore.store,
-			GeoIPResolver:     geoipResolver,
 		})
 		require.NoError(t, err)
 
@@ -707,9 +579,6 @@ func TestLake_Serviceability_View_Refresh(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, 1, usersCount, "should have 1 user even without geoip")
 
-		// Verify no geoip records were upserted
-		records, err := geoipStore.store.GetRecords()
-		require.NoError(t, err)
-		require.Len(t, records, 0, "should have no geoip records when no client IPs")
+		// Note: GeoIP records are now handled by the geoip view, not the serviceability view
 	})
 }

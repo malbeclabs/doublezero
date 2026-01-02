@@ -114,8 +114,6 @@ func TestLake_TelemetryLatency_View_Ready(t *testing.T) {
 			ServiceabilityRPC: &MockServiceabilityRPC{},
 			RefreshInterval:   time.Second,
 			DB:                db,
-			GeoIPStore:        geoipStore.store,
-			GeoIPResolver:     &mockGeoIPResolver{},
 		})
 		require.NoError(t, err)
 
@@ -155,8 +153,6 @@ func TestLake_TelemetryLatency_View_WaitReady(t *testing.T) {
 			ServiceabilityRPC: &MockServiceabilityRPC{},
 			RefreshInterval:   time.Second,
 			DB:                db,
-			GeoIPStore:        geoipStore.store,
-			GeoIPResolver:     &mockGeoIPResolver{},
 		})
 		require.NoError(t, err)
 
@@ -315,8 +311,6 @@ func TestLake_TelemetryLatency_View_Refresh_SavesToDB(t *testing.T) {
 			ServiceabilityRPC: svcMockRPC,
 			RefreshInterval:   time.Second,
 			DB:                db,
-			GeoIPStore:        geoipStore.store,
-			GeoIPResolver:     &mockGeoIPResolver{},
 		})
 		require.NoError(t, err)
 
@@ -430,8 +424,6 @@ func TestLake_TelemetryLatency_View_Refresh_SavesToDB(t *testing.T) {
 			ServiceabilityRPC: svcMockRPC,
 			RefreshInterval:   time.Second,
 			DB:                db,
-			GeoIPStore:        geoipStore.store,
-			GeoIPResolver:     &mockGeoIPResolver{},
 		})
 		require.NoError(t, err)
 
@@ -578,8 +570,6 @@ func TestLake_TelemetryLatency_View_Refresh_SavesToDB(t *testing.T) {
 			ServiceabilityRPC: svcMockRPC,
 			RefreshInterval:   time.Second,
 			DB:                db,
-			GeoIPStore:        geoipStore.store,
-			GeoIPResolver:     &mockGeoIPResolver{},
 		})
 		require.NoError(t, err)
 
@@ -729,8 +719,6 @@ func TestLake_TelemetryLatency_View_IncrementalAppend(t *testing.T) {
 			ServiceabilityRPC: svcMockRPC,
 			RefreshInterval:   time.Second,
 			DB:                db,
-			GeoIPStore:        geoipStore.store,
-			GeoIPResolver:     &mockGeoIPResolver{},
 		})
 		require.NoError(t, err)
 
@@ -912,8 +900,6 @@ func TestLake_TelemetryLatency_View_IncrementalAppend(t *testing.T) {
 			ServiceabilityRPC: svcMockRPC,
 			RefreshInterval:   time.Second,
 			DB:                db,
-			GeoIPStore:        geoipStore.store,
-			GeoIPResolver:     &mockGeoIPResolver{},
 		})
 		require.NoError(t, err)
 
@@ -1143,8 +1129,6 @@ func TestLake_TelemetryLatency_View_Refresh_ErrorHandling(t *testing.T) {
 			ServiceabilityRPC: svcMockRPC,
 			RefreshInterval:   time.Second,
 			DB:                db,
-			GeoIPStore:        geoipStore.store,
-			GeoIPResolver:     &mockGeoIPResolver{},
 		})
 		require.NoError(t, err)
 
@@ -1271,8 +1255,6 @@ func TestLake_TelemetryLatency_View_Refresh_ErrorHandling(t *testing.T) {
 			ServiceabilityRPC: svcMockRPC,
 			RefreshInterval:   time.Second,
 			DB:                db,
-			GeoIPStore:        geoipStore.store,
-			GeoIPResolver:     &mockGeoIPResolver{},
 		})
 		require.NoError(t, err)
 

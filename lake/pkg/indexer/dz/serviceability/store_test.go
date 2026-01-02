@@ -726,3 +726,153 @@ func TestLake_Serviceability_Store_GetMetros(t *testing.T) {
 		require.InDelta(t, 40.7128, metros[1].Latitude, 0.0001)
 	})
 }
+
+func TestLake_Serviceability_Store_GetUsers(t *testing.T) {
+	t.Parallel()
+
+	t.Run("reads users from database", func(t *testing.T) {
+		t.Parallel()
+
+		db := testDB(t)
+
+		store, err := NewStore(StoreConfig{
+			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			DB:     db,
+		})
+		require.NoError(t, err)
+
+		userPK1 := testPK(1)
+		userPK2 := testPK(2)
+		ownerPK := testPK(3)
+		devicePK := testPK(4)
+
+		ctx := context.Background()
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+
+		// Create table manually for test (normally created by SCDTableViaCSV)
+		_, err = conn.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS dz_users_current (
+			pk VARCHAR,
+			owner_pk VARCHAR,
+			status VARCHAR,
+			kind VARCHAR,
+			client_ip VARCHAR,
+			dz_ip VARCHAR,
+			device_pk VARCHAR,
+			tunnel_id INTEGER,
+			as_of_ts TIMESTAMP NOT NULL,
+			row_hash VARCHAR NOT NULL
+		)`)
+		require.NoError(t, err)
+
+		// Insert with required SCD2 columns (as_of_ts, row_hash)
+		_, err = conn.ExecContext(ctx, `INSERT INTO dz_users_current (pk, owner_pk, status, kind, client_ip, dz_ip, device_pk, tunnel_id, as_of_ts, row_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 'test_hash1'), (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 'test_hash2')`,
+			userPK1, ownerPK, "activated", "IBRL", "1.1.1.1", "10.0.0.1", devicePK, 1,
+			userPK2, ownerPK, "activated", "IBRL", "8.8.8.8", "10.0.0.2", devicePK, 2)
+		require.NoError(t, err)
+
+		users, err := store.GetUsers(ctx)
+		require.NoError(t, err)
+		require.Len(t, users, 2)
+
+		// Check first user
+		require.Equal(t, userPK1, users[0].PK)
+		require.Equal(t, ownerPK, users[0].OwnerPK)
+		require.Equal(t, "activated", users[0].Status)
+		require.Equal(t, "IBRL", users[0].Kind)
+		require.Equal(t, net.ParseIP("1.1.1.1"), users[0].ClientIP)
+		require.Equal(t, net.ParseIP("10.0.0.1"), users[0].DZIP)
+		require.Equal(t, devicePK, users[0].DevicePK)
+		require.Equal(t, uint16(1), users[0].TunnelID)
+
+		// Check second user
+		require.Equal(t, userPK2, users[1].PK)
+		require.Equal(t, net.ParseIP("8.8.8.8"), users[1].ClientIP)
+		require.Equal(t, net.ParseIP("10.0.0.2"), users[1].DZIP)
+		require.Equal(t, uint16(2), users[1].TunnelID)
+	})
+
+	t.Run("handles users with empty client_ip", func(t *testing.T) {
+		t.Parallel()
+
+		db := testDB(t)
+
+		store, err := NewStore(StoreConfig{
+			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			DB:     db,
+		})
+		require.NoError(t, err)
+
+		userPK := testPK(1)
+		ownerPK := testPK(2)
+		devicePK := testPK(3)
+
+		ctx := context.Background()
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+
+		// Create table manually for test
+		_, err = conn.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS dz_users_current (
+			pk VARCHAR,
+			owner_pk VARCHAR,
+			status VARCHAR,
+			kind VARCHAR,
+			client_ip VARCHAR,
+			dz_ip VARCHAR,
+			device_pk VARCHAR,
+			tunnel_id INTEGER,
+			as_of_ts TIMESTAMP NOT NULL,
+			row_hash VARCHAR NOT NULL
+		)`)
+		require.NoError(t, err)
+
+		// Insert user with empty client_ip
+		_, err = conn.ExecContext(ctx, `INSERT INTO dz_users_current (pk, owner_pk, status, kind, client_ip, dz_ip, device_pk, tunnel_id, as_of_ts, row_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 'test_hash')`,
+			userPK, ownerPK, "activated", "IBRL", "", "10.0.0.1", devicePK, 1)
+		require.NoError(t, err)
+
+		users, err := store.GetUsers(ctx)
+		require.NoError(t, err)
+		require.Len(t, users, 1)
+		require.Nil(t, users[0].ClientIP)
+		require.Equal(t, net.ParseIP("10.0.0.1"), users[0].DZIP)
+	})
+
+	t.Run("returns empty slice when no users", func(t *testing.T) {
+		t.Parallel()
+
+		db := testDB(t)
+
+		store, err := NewStore(StoreConfig{
+			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			DB:     db,
+		})
+		require.NoError(t, err)
+
+		// Create empty table so query doesn't fail
+		ctx := context.Background()
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+
+		_, err = conn.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS dz_users_current (
+			pk VARCHAR,
+			owner_pk VARCHAR,
+			status VARCHAR,
+			kind VARCHAR,
+			client_ip VARCHAR,
+			dz_ip VARCHAR,
+			device_pk VARCHAR,
+			tunnel_id INTEGER,
+			as_of_ts TIMESTAMP NOT NULL,
+			row_hash VARCHAR NOT NULL
+		)`)
+		require.NoError(t, err)
+
+		users, err := store.GetUsers(ctx)
+		require.NoError(t, err)
+		require.Empty(t, users)
+	})
+}

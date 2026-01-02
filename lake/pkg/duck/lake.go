@@ -28,6 +28,29 @@ type LakeConfig struct {
 	// MemoryLimit sets the memory_limit configuration for each connection.
 	// Example: "22GB", "16GB", "8GB"
 	MemoryLimit string
+	// TempDirectory sets the temp_directory configuration for each connection.
+	// Example: "/tmp/duckdb_tmp"
+	TempDirectory string
+	// MaxTempDirectorySize sets the max_temp_directory_size configuration for each connection.
+	// Example: "200GB", "100GB"
+	MaxTempDirectorySize string
+	// Threads sets the threads configuration for each connection.
+	// Example: "1", "4", "8"
+	Threads string
+	// MaxOpenConns sets the maximum number of open connections in the pool.
+	// Default: 32
+	MaxOpenConns *int
+	// MaxIdleConns sets the maximum number of idle connections in the pool.
+	// Default: 8
+	MaxIdleConns *int
+	// ConnMaxLifetime sets the maximum amount of time a connection may be reused.
+	// Parsed as a duration string (e.g., "10m", "1h", "30s").
+	// Default: 10 minutes
+	ConnMaxLifetime *time.Duration
+	// ConnMaxIdleTime sets the maximum amount of time a connection may be idle.
+	// Parsed as a duration string (e.g., "2m", "30s", "1h").
+	// Default: 2 minutes
+	ConnMaxIdleTime *time.Duration
 }
 
 type LakeConnection struct {
@@ -114,10 +137,28 @@ func NewLakeWithConfig(ctx context.Context, log *slog.Logger, catalogName, catal
 	// When using PostgreSQL as catalog backend, DuckDB creates its own internal
 	// connection pool. Limiting the DuckDB connection pool helps prevent the
 	// internal PostgreSQL pool from exceeding its limits.
-	db.SetMaxOpenConns(32)                  // Maximum number of open connections
-	db.SetMaxIdleConns(8)                   // Maximum number of idle connections
-	db.SetConnMaxLifetime(10 * time.Minute) // Maximum connection lifetime
-	db.SetConnMaxIdleTime(2 * time.Minute)  // Maximum idle time before closing
+	maxOpenConns := 32
+	maxIdleConns := 8
+	connMaxLifetime := 10 * time.Minute
+	connMaxIdleTime := 2 * time.Minute
+	if config != nil {
+		if config.MaxOpenConns != nil {
+			maxOpenConns = *config.MaxOpenConns
+		}
+		if config.MaxIdleConns != nil {
+			maxIdleConns = *config.MaxIdleConns
+		}
+		if config.ConnMaxLifetime != nil {
+			connMaxLifetime = *config.ConnMaxLifetime
+		}
+		if config.ConnMaxIdleTime != nil {
+			connMaxIdleTime = *config.ConnMaxIdleTime
+		}
+	}
+	db.SetMaxOpenConns(maxOpenConns)       // Maximum number of open connections
+	db.SetMaxIdleConns(maxIdleConns)       // Maximum number of idle connections
+	db.SetConnMaxLifetime(connMaxLifetime) // Maximum connection lifetime
+	db.SetConnMaxIdleTime(connMaxIdleTime) // Maximum idle time before closing
 
 	if err := validateCatalogURI(catalogURI); err != nil {
 		return nil, err
@@ -427,9 +468,26 @@ func (l *Lake) Conn(ctx context.Context) (Connection, error) {
 		return nil, fmt.Errorf("failed to set preserve_insertion_order: %w", err)
 	}
 	// Apply connection-level configuration if set
-	if l.config != nil && l.config.MemoryLimit != "" {
-		if _, err := conn.ExecContext(ctx, fmt.Sprintf("SET memory_limit = '%s'", strings.ReplaceAll(l.config.MemoryLimit, "'", "''"))); err != nil {
-			return nil, fmt.Errorf("failed to set memory_limit: %w", err)
+	if l.config != nil {
+		if l.config.MemoryLimit != "" {
+			if _, err := conn.ExecContext(ctx, fmt.Sprintf("SET memory_limit = '%s'", strings.ReplaceAll(l.config.MemoryLimit, "'", "''"))); err != nil {
+				return nil, fmt.Errorf("failed to set memory_limit: %w", err)
+			}
+		}
+		if l.config.TempDirectory != "" {
+			if _, err := conn.ExecContext(ctx, fmt.Sprintf("SET temp_directory = '%s'", strings.ReplaceAll(l.config.TempDirectory, "'", "''"))); err != nil {
+				return nil, fmt.Errorf("failed to set temp_directory: %w", err)
+			}
+		}
+		if l.config.MaxTempDirectorySize != "" {
+			if _, err := conn.ExecContext(ctx, fmt.Sprintf("SET max_temp_directory_size = '%s'", strings.ReplaceAll(l.config.MaxTempDirectorySize, "'", "''"))); err != nil {
+				return nil, fmt.Errorf("failed to set max_temp_directory_size: %w", err)
+			}
+		}
+		if l.config.Threads != "" {
+			if _, err := conn.ExecContext(ctx, fmt.Sprintf("SET threads = %s", l.config.Threads)); err != nil {
+				return nil, fmt.Errorf("failed to set threads: %w", err)
+			}
 		}
 	}
 	// Only set catalog and schema if they are non-empty (catalog may be empty in read-only mode)

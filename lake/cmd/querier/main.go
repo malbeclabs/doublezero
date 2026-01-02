@@ -57,6 +57,13 @@ func run() error {
 	duckLakeCatalogURIFlag := flag.String("lake-catalog-uri", "file://.tmp/lake/catalog.sqlite", "URI to the DuckLake catalog (or set LAKE_CATALOG_URI env var)")
 	duckLakeStorageURIFlag := flag.String("ducklake-storage-uri", "file://.tmp/lake/data", "URI to the DuckLake storage directory (or set LAKE_STORAGE_URI env var)")
 	duckLakeMemoryLimitFlag := flag.String("lake-memory-limit", "", "Memory limit for DuckDB connections (e.g., '22GB', '16GB'). If not set, uses DuckDB default (or set LAKE_MEMORY_LIMIT env var)")
+	duckLakeTempDirectoryFlag := flag.String("lake-temp-dir", "", "Temp directory for DuckDB connections (e.g., '/tmp/duckdb_tmp'). If not set, uses DuckDB default (or set LAKE_TEMP_DIR env var)")
+	duckLakeMaxTempDirectorySizeFlag := flag.String("lake-max-temp-dir-size", "", "Max temp directory size for DuckDB connections (e.g., '200GB', '100GB'). If not set, uses DuckDB default (or set LAKE_MAX_TEMP_DIR_SIZE env var)")
+	duckLakeThreadsFlag := flag.String("lake-threads", "", "Number of threads for DuckDB connections (e.g., '1', '4', '8'). If not set, uses DuckDB default (or set LAKE_THREADS env var)")
+	duckLakeMaxOpenConnsFlag := flag.Int("lake-max-open-conns", 0, "Maximum number of open connections in the pool (default: 32, or set LAKE_MAX_OPEN_CONNS env var)")
+	duckLakeMaxIdleConnsFlag := flag.Int("lake-max-idle-conns", 0, "Maximum number of idle connections in the pool (default: 8, or set LAKE_MAX_IDLE_CONNS env var)")
+	duckLakeConnMaxLifetimeFlag := flag.String("lake-conn-max-lifetime", "", "Maximum amount of time a connection may be reused (e.g., '10m', '1h'). Default: 10m (or set LAKE_CONN_MAX_LIFETIME env var)")
+	duckLakeConnMaxIdleTimeFlag := flag.String("lake-conn-max-idle-time", "", "Maximum amount of time a connection may be idle (e.g., '2m', '30s'). Default: 2m (or set LAKE_CONN_MAX_IDLE_TIME env var)")
 
 	flag.Parse()
 
@@ -72,6 +79,33 @@ func run() error {
 	}
 	if envMemoryLimit := os.Getenv("LAKE_MEMORY_LIMIT"); envMemoryLimit != "" {
 		*duckLakeMemoryLimitFlag = envMemoryLimit
+	}
+	if envTempDirectory := os.Getenv("LAKE_TEMP_DIR"); envTempDirectory != "" {
+		*duckLakeTempDirectoryFlag = envTempDirectory
+	}
+	if envMaxTempDirectorySize := os.Getenv("LAKE_MAX_TEMP_DIR_SIZE"); envMaxTempDirectorySize != "" {
+		*duckLakeMaxTempDirectorySizeFlag = envMaxTempDirectorySize
+	}
+	if envThreads := os.Getenv("LAKE_THREADS"); envThreads != "" {
+		*duckLakeThreadsFlag = envThreads
+	}
+	if envMaxOpenConns := os.Getenv("LAKE_MAX_OPEN_CONNS"); envMaxOpenConns != "" {
+		var val int
+		if _, err := fmt.Sscanf(envMaxOpenConns, "%d", &val); err == nil {
+			*duckLakeMaxOpenConnsFlag = val
+		}
+	}
+	if envMaxIdleConns := os.Getenv("LAKE_MAX_IDLE_CONNS"); envMaxIdleConns != "" {
+		var val int
+		if _, err := fmt.Sscanf(envMaxIdleConns, "%d", &val); err == nil {
+			*duckLakeMaxIdleConnsFlag = val
+		}
+	}
+	if envConnMaxLifetime := os.Getenv("LAKE_CONN_MAX_LIFETIME"); envConnMaxLifetime != "" {
+		*duckLakeConnMaxLifetimeFlag = envConnMaxLifetime
+	}
+	if envConnMaxIdleTime := os.Getenv("LAKE_CONN_MAX_IDLE_TIME"); envConnMaxIdleTime != "" {
+		*duckLakeConnMaxIdleTimeFlag = envConnMaxIdleTime
 	}
 
 	log := logger.New(*verboseFlag)
@@ -116,9 +150,42 @@ func run() error {
 		return fmt.Errorf("failed to prepare S3 config: %w", err)
 	}
 	var lakeConfig *duck.LakeConfig
-	if *duckLakeMemoryLimitFlag != "" {
-		lakeConfig = &duck.LakeConfig{
-			MemoryLimit: *duckLakeMemoryLimitFlag,
+	if *duckLakeMemoryLimitFlag != "" || *duckLakeTempDirectoryFlag != "" || *duckLakeMaxTempDirectorySizeFlag != "" || *duckLakeThreadsFlag != "" ||
+		*duckLakeMaxOpenConnsFlag > 0 || *duckLakeMaxIdleConnsFlag > 0 || *duckLakeConnMaxLifetimeFlag != "" || *duckLakeConnMaxIdleTimeFlag != "" {
+		lakeConfig = &duck.LakeConfig{}
+		if *duckLakeMemoryLimitFlag != "" {
+			lakeConfig.MemoryLimit = *duckLakeMemoryLimitFlag
+		}
+		if *duckLakeTempDirectoryFlag != "" {
+			lakeConfig.TempDirectory = *duckLakeTempDirectoryFlag
+		}
+		if *duckLakeMaxTempDirectorySizeFlag != "" {
+			lakeConfig.MaxTempDirectorySize = *duckLakeMaxTempDirectorySizeFlag
+		}
+		if *duckLakeThreadsFlag != "" {
+			lakeConfig.Threads = *duckLakeThreadsFlag
+		}
+		if *duckLakeMaxOpenConnsFlag > 0 {
+			val := *duckLakeMaxOpenConnsFlag
+			lakeConfig.MaxOpenConns = &val
+		}
+		if *duckLakeMaxIdleConnsFlag > 0 {
+			val := *duckLakeMaxIdleConnsFlag
+			lakeConfig.MaxIdleConns = &val
+		}
+		if *duckLakeConnMaxLifetimeFlag != "" {
+			if d, err := time.ParseDuration(*duckLakeConnMaxLifetimeFlag); err == nil {
+				lakeConfig.ConnMaxLifetime = &d
+			} else {
+				return fmt.Errorf("invalid duration for --lake-conn-max-lifetime: %w", err)
+			}
+		}
+		if *duckLakeConnMaxIdleTimeFlag != "" {
+			if d, err := time.ParseDuration(*duckLakeConnMaxIdleTimeFlag); err == nil {
+				lakeConfig.ConnMaxIdleTime = &d
+			} else {
+				return fmt.Errorf("invalid duration for --lake-conn-max-idle-time: %w", err)
+			}
 		}
 	}
 	var db duck.DB
@@ -135,7 +202,7 @@ func run() error {
 			log.Error("failed to close DuckLake", "error", err)
 		}
 	}()
-	log.Info("using DuckLake database", "catalogName", *duckLakeCatalogNameFlag, "catalogURI", duck.RedactedCatalogURI(*duckLakeCatalogURIFlag), "storageURI", duck.RedactedStorageURI(*duckLakeStorageURIFlag), "memoryLimit", *duckLakeMemoryLimitFlag)
+	log.Info("using DuckLake database", "catalogName", *duckLakeCatalogNameFlag, "catalogURI", duck.RedactedCatalogURI(*duckLakeCatalogURIFlag), "storageURI", duck.RedactedStorageURI(*duckLakeStorageURIFlag), "memoryLimit", *duckLakeMemoryLimitFlag, "tempDirectory", *duckLakeTempDirectoryFlag, "maxTempDirectorySize", *duckLakeMaxTempDirectorySizeFlag, "threads", *duckLakeThreadsFlag)
 
 	// Create HTTP listener
 	httpListener, err := net.Listen("tcp", *httpListenAddrFlag)

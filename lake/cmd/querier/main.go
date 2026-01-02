@@ -56,6 +56,7 @@ func run() error {
 	duckLakeCatalogNameFlag := flag.String("lake-catalog-name", "dzlake", "Name of the DuckLake catalog (or set DUCKLAKE_CATALOG_NAME env var)")
 	duckLakeCatalogURIFlag := flag.String("lake-catalog-uri", "file://.tmp/lake/catalog.sqlite", "URI to the DuckLake catalog (or set LAKE_CATALOG_URI env var)")
 	duckLakeStorageURIFlag := flag.String("ducklake-storage-uri", "file://.tmp/lake/data", "URI to the DuckLake storage directory (or set LAKE_STORAGE_URI env var)")
+	duckLakeMemoryLimitFlag := flag.String("lake-memory-limit", "", "Memory limit for DuckDB connections (e.g., '22GB', '16GB'). If not set, uses DuckDB default (or set LAKE_MEMORY_LIMIT env var)")
 
 	flag.Parse()
 
@@ -68,6 +69,9 @@ func run() error {
 	}
 	if envCatalogName := os.Getenv("DUCKLAKE_CATALOG_NAME"); envCatalogName != "" {
 		*duckLakeCatalogNameFlag = envCatalogName
+	}
+	if envMemoryLimit := os.Getenv("LAKE_MEMORY_LIMIT"); envMemoryLimit != "" {
+		*duckLakeMemoryLimitFlag = envMemoryLimit
 	}
 
 	log := logger.New(*verboseFlag)
@@ -111,7 +115,18 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("failed to prepare S3 config: %w", err)
 	}
-	db, err := duck.NewLake(ctx, log, *duckLakeCatalogNameFlag, *duckLakeCatalogURIFlag, *duckLakeStorageURIFlag, true, s3Config)
+	var lakeConfig *duck.LakeConfig
+	if *duckLakeMemoryLimitFlag != "" {
+		lakeConfig = &duck.LakeConfig{
+			MemoryLimit: *duckLakeMemoryLimitFlag,
+		}
+	}
+	var db duck.DB
+	if lakeConfig != nil {
+		db, err = duck.NewLakeWithConfig(ctx, log, *duckLakeCatalogNameFlag, *duckLakeCatalogURIFlag, *duckLakeStorageURIFlag, true, lakeConfig, s3Config)
+	} else {
+		db, err = duck.NewLake(ctx, log, *duckLakeCatalogNameFlag, *duckLakeCatalogURIFlag, *duckLakeStorageURIFlag, true, s3Config)
+	}
 	if err != nil {
 		return fmt.Errorf("failed to create DuckLake: %w", err)
 	}
@@ -120,7 +135,7 @@ func run() error {
 			log.Error("failed to close DuckLake", "error", err)
 		}
 	}()
-	log.Info("using DuckLake database", "catalogName", *duckLakeCatalogNameFlag, "catalogURI", duck.RedactedCatalogURI(*duckLakeCatalogURIFlag), "storageURI", duck.RedactedStorageURI(*duckLakeStorageURIFlag))
+	log.Info("using DuckLake database", "catalogName", *duckLakeCatalogNameFlag, "catalogURI", duck.RedactedCatalogURI(*duckLakeCatalogURIFlag), "storageURI", duck.RedactedStorageURI(*duckLakeStorageURIFlag), "memoryLimit", *duckLakeMemoryLimitFlag)
 
 	// Create HTTP listener
 	httpListener, err := net.Listen("tcp", *httpListenAddrFlag)

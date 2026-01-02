@@ -51,7 +51,7 @@ func SCD2ConfigContributors() duck.SCDTableConfig {
 		PrimaryKeyColumns:   []string{"pk:VARCHAR"},
 		PayloadColumns:      []string{"code:VARCHAR", "name:VARCHAR"},
 		MissingMeansDeleted: true,
-		TrackIngestRuns:     true,
+		TrackIngestRuns:     false,
 	}
 }
 
@@ -81,7 +81,7 @@ func SCD2ConfigDevices() duck.SCDTableConfig {
 		PrimaryKeyColumns:   []string{"pk:VARCHAR"},
 		PayloadColumns:      []string{"status:VARCHAR", "device_type:VARCHAR", "code:VARCHAR", "public_ip:VARCHAR", "contributor_pk:VARCHAR", "metro_pk:VARCHAR", "max_users:INTEGER", "users_count:INTEGER"},
 		MissingMeansDeleted: true,
-		TrackIngestRuns:     true,
+		TrackIngestRuns:     false,
 	}
 }
 
@@ -111,7 +111,7 @@ func SCD2ConfigUsers() duck.SCDTableConfig {
 		PrimaryKeyColumns:   []string{"pk:VARCHAR"},
 		PayloadColumns:      []string{"owner_pk:VARCHAR", "status:VARCHAR", "kind:VARCHAR", "client_ip:VARCHAR", "dz_ip:VARCHAR", "device_pk:VARCHAR", "tunnel_id:INTEGER"},
 		MissingMeansDeleted: true,
-		TrackIngestRuns:     true,
+		TrackIngestRuns:     false,
 	}
 }
 
@@ -141,7 +141,7 @@ func SCD2ConfigMetros() duck.SCDTableConfig {
 		PrimaryKeyColumns:   []string{"pk:VARCHAR"},
 		PayloadColumns:      []string{"code:VARCHAR", "name:VARCHAR", "longitude:DOUBLE", "latitude:DOUBLE"},
 		MissingMeansDeleted: true,
-		TrackIngestRuns:     true,
+		TrackIngestRuns:     false,
 	}
 }
 
@@ -171,7 +171,7 @@ func SCD2ConfigLinks() duck.SCDTableConfig {
 		PrimaryKeyColumns:   []string{"pk:VARCHAR"},
 		PayloadColumns:      []string{"status:VARCHAR", "code:VARCHAR", "tunnel_net:VARCHAR", "contributor_pk:VARCHAR", "side_a_pk:VARCHAR", "side_z_pk:VARCHAR", "side_a_iface_name:VARCHAR", "side_z_iface_name:VARCHAR", "link_type:VARCHAR", "committed_rtt_ns:BIGINT", "committed_jitter_ns:BIGINT", "bandwidth_bps:BIGINT", "isis_delay_override_ns:BIGINT"},
 		MissingMeansDeleted: true,
-		TrackIngestRuns:     true,
+		TrackIngestRuns:     false,
 	}
 }
 

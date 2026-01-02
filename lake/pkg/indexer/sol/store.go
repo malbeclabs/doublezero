@@ -60,7 +60,7 @@ func SCD2ConfigLeaderSchedule() duck.SCDTableConfig {
 		PrimaryKeyColumns:   []string{"node_pubkey:VARCHAR"},
 		PayloadColumns:      []string{"epoch:BIGINT", "slots:VARCHAR", "slot_count:BIGINT"},
 		MissingMeansDeleted: true,
-		TrackIngestRuns:     true,
+		TrackIngestRuns:     false,
 	}
 }
 
@@ -95,7 +95,7 @@ func SCD2ConfigVoteAccounts() duck.SCDTableConfig {
 		PrimaryKeyColumns:   []string{"vote_pubkey:VARCHAR"},
 		PayloadColumns:      []string{"epoch:BIGINT", "node_pubkey:VARCHAR", "activated_stake_lamports:BIGINT", "epoch_vote_account:VARCHAR", "commission_percentage:BIGINT", "last_vote_slot:BIGINT", "root_slot:BIGINT"},
 		MissingMeansDeleted: true,
-		TrackIngestRuns:     true,
+		TrackIngestRuns:     false,
 	}
 }
 
@@ -137,7 +137,7 @@ func SCD2ConfigGossipNodes() duck.SCDTableConfig {
 		PrimaryKeyColumns:   []string{"pubkey:VARCHAR"},
 		PayloadColumns:      []string{"epoch:BIGINT", "gossip_ip:VARCHAR", "gossip_port:INTEGER", "tpuquic_ip:VARCHAR", "tpuquic_port:INTEGER", "version:VARCHAR"},
 		MissingMeansDeleted: true,
-		TrackIngestRuns:     true,
+		TrackIngestRuns:     false,
 	}
 }
 

@@ -17,11 +17,6 @@ func (i *Indexer) startMaintenanceTasks(ctx context.Context) {
 			ticker := time.NewTicker(i.cfg.MaintenanceIntervalShort)
 			defer ticker.Stop()
 
-			// Run immediately on startup
-			if err := i.runShortMaintenance(ctx); err != nil {
-				i.log.Error("failed to run short maintenance on startup", "error", err)
-			}
-
 			for {
 				select {
 				case <-ctx.Done():

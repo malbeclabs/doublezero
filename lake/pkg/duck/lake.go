@@ -20,6 +20,14 @@ type Lake struct {
 	db      *sql.DB
 	catalog string
 	schema  string
+	config  *LakeConfig
+}
+
+// LakeConfig holds configuration options for Lake connections.
+type LakeConfig struct {
+	// MemoryLimit sets the memory_limit configuration for each connection.
+	// Example: "22GB", "16GB", "8GB"
+	MemoryLimit string
 }
 
 type LakeConnection struct {
@@ -88,7 +96,15 @@ type S3Config struct {
 //   - Endpoint: "" (empty, uses default AWS endpoints)
 //   - UseSSL: true
 //   - URLStyle: "virtual" (or empty, defaults to virtual)
+//
+// LakeConfig is optional and allows setting connection-level options like memory_limit.
+// Example: &LakeConfig{MemoryLimit: "22GB"}
 func NewLake(ctx context.Context, log *slog.Logger, catalogName, catalogURI, storageURI string, readOnly bool, s3Config ...*S3Config) (*Lake, error) {
+	return NewLakeWithConfig(ctx, log, catalogName, catalogURI, storageURI, readOnly, nil, s3Config...)
+}
+
+// NewLakeWithConfig creates a new DuckLake instance with the specified catalog, storage, and configuration.
+func NewLakeWithConfig(ctx context.Context, log *slog.Logger, catalogName, catalogURI, storageURI string, readOnly bool, config *LakeConfig, s3Config ...*S3Config) (*Lake, error) {
 	db, err := sql.Open("duckdb", "")
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
@@ -385,6 +401,7 @@ func NewLake(ctx context.Context, log *slog.Logger, catalogName, catalogURI, sto
 		db:      db,
 		catalog: catalogName,
 		schema:  schema,
+		config:  config,
 	}, nil
 }
 
@@ -404,6 +421,16 @@ func (l *Lake) Conn(ctx context.Context) (Connection, error) {
 	conn, err := l.db.Conn(ctx)
 	if err != nil {
 		return nil, err
+	}
+	// Set preserve_insertion_order=false on every connection by default
+	if _, err := conn.ExecContext(ctx, "SET preserve_insertion_order = false"); err != nil {
+		return nil, fmt.Errorf("failed to set preserve_insertion_order: %w", err)
+	}
+	// Apply connection-level configuration if set
+	if l.config != nil && l.config.MemoryLimit != "" {
+		if _, err := conn.ExecContext(ctx, fmt.Sprintf("SET memory_limit = '%s'", strings.ReplaceAll(l.config.MemoryLimit, "'", "''"))); err != nil {
+			return nil, fmt.Errorf("failed to set memory_limit: %w", err)
+		}
 	}
 	// Only set catalog and schema if they are non-empty (catalog may be empty in read-only mode)
 	if l.catalog != "" {

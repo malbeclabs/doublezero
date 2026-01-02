@@ -77,6 +77,7 @@ func run() error {
 	duckLakeCatalogNameFlag := flag.String("lake-catalog-name", "dzlake", "Name of the DuckLake catalog (or set DUCKLAKE_CATALOG_NAME env var)")
 	duckLakeCatalogURIFlag := flag.String("lake-catalog-uri", "file://.tmp/lake/catalog.sqlite", "URI to the DuckLake catalog (or set LAKE_CATALOG_URI env var)")
 	duckLakeStorageURIFlag := flag.String("ducklake-storage-uri", "file://.tmp/lake/data", "URI to the DuckLake storage directory (or set LAKE_STORAGE_URI env var)")
+	duckLakeMemoryLimitFlag := flag.String("lake-memory-limit", "", "Memory limit for DuckDB connections (e.g., '22GB', '16GB'). If not set, uses DuckDB default (or set LAKE_MEMORY_LIMIT env var)")
 
 	// GeoIP configuration
 	geoipCityDBPathFlag := flag.String("geoip-city-db-path", defaultGeoipCityDBPath, "Path to MaxMind GeoIP2 City database file (or set MCP_GEOIP_CITY_DB_PATH env var)")
@@ -106,6 +107,9 @@ func run() error {
 	}
 	if envCatalogName := os.Getenv("DUCKLAKE_CATALOG_NAME"); envCatalogName != "" {
 		*duckLakeCatalogNameFlag = envCatalogName
+	}
+	if envMemoryLimit := os.Getenv("LAKE_MEMORY_LIMIT"); envMemoryLimit != "" {
+		*duckLakeMemoryLimitFlag = envMemoryLimit
 	}
 
 	networkConfig, err := config.NetworkConfigForEnv(*dzEnvFlag)
@@ -177,8 +181,19 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	log.Info("initializing ducklake database", "catalog", *duckLakeCatalogNameFlag, "catalogURI", duck.RedactedCatalogURI(*duckLakeCatalogURIFlag), "storageURI", duck.RedactedStorageURI(*duckLakeStorageURIFlag))
-	db, err := duck.NewLake(ctx, log, *duckLakeCatalogNameFlag, *duckLakeCatalogURIFlag, *duckLakeStorageURIFlag, false, s3Config)
+	var lakeConfig *duck.LakeConfig
+	if *duckLakeMemoryLimitFlag != "" {
+		lakeConfig = &duck.LakeConfig{
+			MemoryLimit: *duckLakeMemoryLimitFlag,
+		}
+	}
+	log.Info("initializing ducklake database", "catalog", *duckLakeCatalogNameFlag, "catalogURI", duck.RedactedCatalogURI(*duckLakeCatalogURIFlag), "storageURI", duck.RedactedStorageURI(*duckLakeStorageURIFlag), "memoryLimit", *duckLakeMemoryLimitFlag)
+	var db duck.DB
+	if lakeConfig != nil {
+		db, err = duck.NewLakeWithConfig(ctx, log, *duckLakeCatalogNameFlag, *duckLakeCatalogURIFlag, *duckLakeStorageURIFlag, false, lakeConfig, s3Config)
+	} else {
+		db, err = duck.NewLake(ctx, log, *duckLakeCatalogNameFlag, *duckLakeCatalogURIFlag, *duckLakeStorageURIFlag, false, s3Config)
+	}
 	if err != nil {
 		return fmt.Errorf("failed to create DuckLake database: %w", err)
 	}

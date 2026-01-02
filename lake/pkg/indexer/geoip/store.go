@@ -53,7 +53,7 @@ func SCD2ConfigGeoIPRecords() duck.SCDTableConfig {
 		PrimaryKeyColumns:   []string{"ip:VARCHAR"},
 		PayloadColumns:      []string{"country_code:VARCHAR", "country:VARCHAR", "region:VARCHAR", "city:VARCHAR", "city_id:INTEGER", "metro_name:VARCHAR", "latitude:DOUBLE", "longitude:DOUBLE", "postal_code:VARCHAR", "time_zone:VARCHAR", "accuracy_radius:INTEGER", "asn:BIGINT", "asn_org:VARCHAR", "is_anycast:BOOLEAN", "is_anonymous_proxy:BOOLEAN", "is_satellite_provider:BOOLEAN"},
 		MissingMeansDeleted: false,
-		TrackIngestRuns:     true,
+		TrackIngestRuns:     false,
 	}
 }
 

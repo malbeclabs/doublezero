@@ -21,6 +21,7 @@ type SolanaRPC interface {
 	GetClusterNodes(ctx context.Context) ([]*solanarpc.GetClusterNodesResult, error)
 	GetVoteAccounts(ctx context.Context, opts *solanarpc.GetVoteAccountsOpts) (*solanarpc.GetVoteAccountsResult, error)
 	GetSlot(ctx context.Context, commitment solanarpc.CommitmentType) (uint64, error)
+	GetBlockProduction(ctx context.Context) (*solanarpc.GetBlockProductionResult, error)
 }
 
 type ViewConfig struct {
@@ -111,6 +112,7 @@ func (v *View) WaitReady(ctx context.Context) error {
 }
 
 func (v *View) Start(ctx context.Context) {
+	// Main refresh loop
 	go func() {
 		v.log.Info("solana: starting refresh loop", "interval", v.cfg.RefreshInterval)
 
@@ -132,6 +134,36 @@ func (v *View) Start(ctx context.Context) {
 						return
 					}
 					v.log.Error("solana: refresh failed", "error", err)
+				}
+			}
+		}
+	}()
+
+	// Hourly block production collection
+	go func() {
+		v.log.Info("solana: starting hourly block production collection")
+
+		// Run immediately on start
+		if err := v.RefreshBlockProduction(ctx); err != nil {
+			if errors.Is(err, context.Canceled) {
+				return
+			}
+			v.log.Error("solana: initial block production refresh failed", "error", err)
+		}
+
+		// Then run every hour
+		hourlyTicker := v.cfg.Clock.NewTicker(1 * time.Hour)
+		defer hourlyTicker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-hourlyTicker.Chan():
+				if err := v.RefreshBlockProduction(ctx); err != nil {
+					if errors.Is(err, context.Canceled) {
+						return
+					}
+					v.log.Error("solana: block production refresh failed", "error", err)
 				}
 			}
 		}
@@ -313,6 +345,72 @@ func (v *View) RefreshVoteAccountActivity(ctx context.Context) error {
 			return fmt.Errorf("failed to insert vote account activity: %w", err)
 		}
 		v.log.Debug("solana: inserted vote account activity", "count", len(entries))
+	}
+
+	return nil
+}
+
+// RefreshBlockProduction collects and inserts block production data
+// This should be called every hour to sample block production
+func (v *View) RefreshBlockProduction(ctx context.Context) error {
+	refreshStart := time.Now()
+	v.log.Debug("solana: block production refresh started", "start_time", refreshStart)
+	defer func() {
+		duration := time.Since(refreshStart)
+		v.log.Info("solana: block production refresh completed", "duration", duration.String())
+	}()
+
+	collectionTime := time.Now().UTC()
+
+	// Get current epoch
+	epochInfo, err := v.cfg.RPC.GetEpochInfo(ctx, solanarpc.CommitmentFinalized)
+	if err != nil {
+		return fmt.Errorf("failed to get epoch info: %w", err)
+	}
+	currentEpoch := int(epochInfo.Epoch)
+
+	// Get block production for the current epoch
+	// getBlockProduction returns data for the current or previous epoch
+	blockProduction, err := v.cfg.RPC.GetBlockProduction(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get block production: %w", err)
+	}
+
+	if blockProduction == nil {
+		return fmt.Errorf("block production response is nil")
+	}
+
+	if blockProduction.Value.ByIdentity == nil {
+		v.log.Debug("solana: block production has no identity data")
+		return nil
+	}
+
+	entries := make([]BlockProductionEntry, 0, len(blockProduction.Value.ByIdentity))
+	for identity, production := range blockProduction.Value.ByIdentity {
+		if len(production) < 2 {
+			v.log.Warn("solana: invalid block production data", "identity", identity, "production", production)
+			continue
+		}
+
+		leaderSlotsAssigned := uint64(production[0])
+		blocksProduced := uint64(production[1])
+
+		entry := BlockProductionEntry{
+			Epoch:                  currentEpoch,
+			Time:                   collectionTime,
+			LeaderIdentityPubkey:   identity.String(),
+			LeaderSlotsAssignedCum: leaderSlotsAssigned,
+			BlocksProducedCum:      blocksProduced,
+		}
+
+		entries = append(entries, entry)
+	}
+
+	if len(entries) > 0 {
+		if err := v.store.InsertBlockProduction(ctx, entries); err != nil {
+			return fmt.Errorf("failed to insert block production: %w", err)
+		}
+		v.log.Debug("solana: inserted block production", "count", len(entries), "epoch", currentEpoch)
 	}
 
 	return nil

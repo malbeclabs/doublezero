@@ -2,6 +2,7 @@ package sol
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"testing"
@@ -16,11 +17,12 @@ import (
 )
 
 type mockSolanaRPC struct {
-	getEpochInfoFunc      func(context.Context, solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error)
-	getLeaderScheduleFunc func(context.Context) (solanarpc.GetLeaderScheduleResult, error)
-	getVoteAccountsFunc   func(context.Context, *solanarpc.GetVoteAccountsOpts) (*solanarpc.GetVoteAccountsResult, error)
-	getClusterNodesFunc   func(context.Context) ([]*solanarpc.GetClusterNodesResult, error)
-	getSlotFunc           func(context.Context, solanarpc.CommitmentType) (uint64, error)
+	getEpochInfoFunc       func(context.Context, solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error)
+	getLeaderScheduleFunc  func(context.Context) (solanarpc.GetLeaderScheduleResult, error)
+	getVoteAccountsFunc    func(context.Context, *solanarpc.GetVoteAccountsOpts) (*solanarpc.GetVoteAccountsResult, error)
+	getClusterNodesFunc    func(context.Context) ([]*solanarpc.GetClusterNodesResult, error)
+	getSlotFunc            func(context.Context, solanarpc.CommitmentType) (uint64, error)
+	getBlockProductionFunc func(context.Context) (*solanarpc.GetBlockProductionResult, error)
 }
 
 func (m *mockSolanaRPC) GetEpochInfo(ctx context.Context, commitment solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
@@ -61,6 +63,17 @@ func (m *mockSolanaRPC) GetSlot(ctx context.Context, commitment solanarpc.Commit
 		return m.getSlotFunc(ctx, commitment)
 	}
 	return 1000, nil
+}
+
+func (m *mockSolanaRPC) GetBlockProduction(ctx context.Context) (*solanarpc.GetBlockProductionResult, error) {
+	if m.getBlockProductionFunc != nil {
+		return m.getBlockProductionFunc(ctx)
+	}
+	return &solanarpc.GetBlockProductionResult{
+		Value: solanarpc.BlockProductionResult{
+			ByIdentity: make(solanarpc.IdentityToSlotsBlocks),
+		},
+	}, nil
 }
 
 func testDB(t *testing.T) duck.DB {
@@ -161,7 +174,6 @@ func TestLake_Solana_View_WaitReady(t *testing.T) {
 	})
 }
 
-
 func TestLake_Solana_View_Refresh(t *testing.T) {
 	t.Parallel()
 
@@ -169,7 +181,6 @@ func TestLake_Solana_View_Refresh(t *testing.T) {
 		t.Parallel()
 
 		db := testDB(t)
-
 
 		pk1 := solana.MustPublicKeyFromBase58("11111111111111111111111111111112")
 		pk2 := solana.MustPublicKeyFromBase58("SysvarRent111111111111111111111111111111111")
@@ -308,7 +319,6 @@ func TestLake_Solana_View_Refresh(t *testing.T) {
 
 		db := testDB(t)
 
-
 		pk1 := solana.MustPublicKeyFromBase58("11111111111111111111111111111112")
 		pk2 := solana.MustPublicKeyFromBase58("SysvarRent111111111111111111111111111111111")
 		rpc := &mockSolanaRPC{
@@ -353,4 +363,206 @@ func TestLake_Solana_View_Refresh(t *testing.T) {
 
 func stringPtr(s string) *string {
 	return &s
+}
+
+func TestLake_Solana_View_RefreshBlockProduction(t *testing.T) {
+	t.Parallel()
+
+	t.Run("stores block production data", func(t *testing.T) {
+		t.Parallel()
+
+		db := testDB(t)
+
+		leaderPK1 := solana.MustPublicKeyFromBase58("11111111111111111111111111111112")
+		leaderPK2 := solana.MustPublicKeyFromBase58("SysvarRent111111111111111111111111111111111")
+
+		rpc := &mockSolanaRPC{
+			getEpochInfoFunc: func(ctx context.Context, commitment solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
+				return &solanarpc.GetEpochInfoResult{
+					Epoch: 100,
+				}, nil
+			},
+			getBlockProductionFunc: func(ctx context.Context) (*solanarpc.GetBlockProductionResult, error) {
+				return &solanarpc.GetBlockProductionResult{
+					Value: solanarpc.BlockProductionResult{
+						ByIdentity: solanarpc.IdentityToSlotsBlocks{
+							leaderPK1: {100, 95},  // 100 slots assigned, 95 blocks produced
+							leaderPK2: {200, 198}, // 200 slots assigned, 198 blocks produced
+						},
+					},
+				}, nil
+			},
+		}
+
+		view, err := NewView(ViewConfig{
+			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Clock:           clockwork.NewFakeClock(),
+			RPC:             rpc,
+			RefreshInterval: time.Second,
+			DB:              db,
+		})
+		require.NoError(t, err)
+
+		ctx := context.Background()
+		err = view.RefreshBlockProduction(ctx)
+		require.NoError(t, err)
+
+		// Verify block production was stored
+		var count int
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+		err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM solana_block_production_raw").Scan(&count)
+		require.NoError(t, err)
+		require.Equal(t, 2, count, "should have 2 block production entries")
+
+		// Verify specific data
+		var epoch int
+		var leaderIdentityPubkey string
+		var leaderSlotsAssigned, blocksProduced int64
+		err = conn.QueryRowContext(ctx, "SELECT epoch, leader_identity_pubkey, leader_slots_assigned_cum, blocks_produced_cum FROM solana_block_production_raw WHERE leader_identity_pubkey = ?", leaderPK1.String()).Scan(&epoch, &leaderIdentityPubkey, &leaderSlotsAssigned, &blocksProduced)
+		require.NoError(t, err)
+		require.Equal(t, 100, epoch)
+		require.Equal(t, leaderPK1.String(), leaderIdentityPubkey)
+		require.Equal(t, int64(100), leaderSlotsAssigned)
+		require.Equal(t, int64(95), blocksProduced)
+	})
+
+	t.Run("handles empty block production response", func(t *testing.T) {
+		t.Parallel()
+
+		db := testDB(t)
+
+		rpc := &mockSolanaRPC{
+			getEpochInfoFunc: func(ctx context.Context, commitment solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
+				return &solanarpc.GetEpochInfoResult{
+					Epoch: 100,
+				}, nil
+			},
+			getBlockProductionFunc: func(ctx context.Context) (*solanarpc.GetBlockProductionResult, error) {
+				return &solanarpc.GetBlockProductionResult{
+					Value: solanarpc.BlockProductionResult{
+						ByIdentity: nil,
+					},
+				}, nil
+			},
+		}
+
+		view, err := NewView(ViewConfig{
+			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Clock:           clockwork.NewFakeClock(),
+			RPC:             rpc,
+			RefreshInterval: time.Second,
+			DB:              db,
+		})
+		require.NoError(t, err)
+
+		ctx := context.Background()
+		err = view.RefreshBlockProduction(ctx)
+		require.NoError(t, err)
+
+		// Verify no data was stored (table may not exist if no data was inserted)
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+
+		// Check if table exists before querying
+		var tableExists bool
+		err = conn.QueryRowContext(ctx, `
+			SELECT EXISTS (
+				SELECT 1 FROM information_schema.tables
+				WHERE table_name = 'solana_block_production_raw'
+			)
+		`).Scan(&tableExists)
+		if err == nil && tableExists {
+			var count int
+			err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM solana_block_production_raw").Scan(&count)
+			require.NoError(t, err)
+			require.Equal(t, 0, count, "should have no block production entries")
+		}
+		// If table doesn't exist, that's also fine - no data means no table creation
+	})
+
+	t.Run("handles invalid production data", func(t *testing.T) {
+		t.Parallel()
+
+		db := testDB(t)
+
+		rpc := &mockSolanaRPC{
+			getEpochInfoFunc: func(ctx context.Context, commitment solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
+				return &solanarpc.GetEpochInfoResult{
+					Epoch: 100,
+				}, nil
+			},
+			getBlockProductionFunc: func(ctx context.Context) (*solanarpc.GetBlockProductionResult, error) {
+				// Create a map with no data (empty map)
+				// This will result in no entries being inserted
+				return &solanarpc.GetBlockProductionResult{
+					Value: solanarpc.BlockProductionResult{
+						ByIdentity: make(solanarpc.IdentityToSlotsBlocks),
+					},
+				}, nil
+			},
+		}
+
+		view, err := NewView(ViewConfig{
+			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Clock:           clockwork.NewFakeClock(),
+			RPC:             rpc,
+			RefreshInterval: time.Second,
+			DB:              db,
+		})
+		require.NoError(t, err)
+
+		ctx := context.Background()
+		err = view.RefreshBlockProduction(ctx)
+		require.NoError(t, err)
+
+		// Verify no data was stored (table may not exist if no data was inserted)
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+
+		// Check if table exists before querying
+		var tableExists bool
+		err = conn.QueryRowContext(ctx, `
+			SELECT EXISTS (
+				SELECT 1 FROM information_schema.tables
+				WHERE table_name = 'solana_block_production_raw'
+			)
+		`).Scan(&tableExists)
+		if err == nil && tableExists {
+			var count int
+			err = conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM solana_block_production_raw").Scan(&count)
+			require.NoError(t, err)
+			require.Equal(t, 0, count, "should have no block production entries")
+		}
+		// If table doesn't exist, that's also fine - no data means no table creation
+	})
+
+	t.Run("handles RPC errors", func(t *testing.T) {
+		t.Parallel()
+
+		db := testDB(t)
+
+		rpc := &mockSolanaRPC{
+			getEpochInfoFunc: func(ctx context.Context, commitment solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
+				return nil, fmt.Errorf("RPC error")
+			},
+		}
+
+		view, err := NewView(ViewConfig{
+			Logger:          slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Clock:           clockwork.NewFakeClock(),
+			RPC:             rpc,
+			RefreshInterval: time.Second,
+			DB:              db,
+		})
+		require.NoError(t, err)
+
+		ctx := context.Background()
+		err = view.RefreshBlockProduction(ctx)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "failed to get epoch info")
+	})
 }

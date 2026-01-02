@@ -184,4 +184,56 @@ var Datasets = []schematypes.Dataset{
 		- Grain: One row per (time, vote_account_pubkey)
 		`,
 	},
+	{
+		Name:        "solana_block_production",
+		DatasetType: schematypes.DatasetTypeFact,
+		Purpose: `
+			Hourly snapshots of cumulative leader slot assignment vs blocks produced from getBlockProduction, so you can compute skip rates during an epoch and also recover final per-epoch totals.
+		`,
+		Tables: []string{"solana_block_production_raw"},
+		Description: `
+		USAGE:
+		- Append-only fact table with one row per (epoch, time, leader_identity_pubkey) combination.
+		- Sampled hourly from getBlockProduction RPC calls.
+		- Partitioned by date(time), ordered by (leader_identity_pubkey, time) within partitions.
+		- Joins:
+			- solana_block_production_raw.leader_identity_pubkey = solana_gossip_nodes_current.pubkey
+			- solana_block_production_raw.leader_identity_pubkey = solana_vote_accounts_current.node_pubkey
+
+		TERMINOLOGY:
+		- Block production: Time-series measurements of leader slot assignments and blocks produced per validator.
+
+		DERIVED METRICS (query-time):
+		- slots_skipped_cum = leader_slots_assigned_cum - blocks_produced_cum
+		- produce_rate_cum = blocks_produced_cum / NULLIF(leader_slots_assigned_cum, 0)
+		- Hourly deltas (window functions, per (epoch, leader_identity_pubkey)):
+			* leader_slots_assigned_delta = leader_slots_assigned_cum - LAG(leader_slots_assigned_cum) OVER (PARTITION BY epoch, leader_identity_pubkey ORDER BY time)
+			* blocks_produced_delta = blocks_produced_cum - LAG(blocks_produced_cum) OVER (PARTITION BY epoch, leader_identity_pubkey ORDER BY time)
+			* slots_skipped_delta = slots_skipped_cum - LAG(slots_skipped_cum) OVER (PARTITION BY epoch, leader_identity_pubkey ORDER BY time)
+
+		CONSTRAINTS:
+		- blocks_produced_cum <= leader_slots_assigned_cum
+		- leader_slots_assigned_cum >= 0
+		- blocks_produced_cum >= 0
+
+		COLUMNS:
+		- epoch (INTEGER): Solana blockchain epoch
+		- time (TIMESTAMP): Collection time (UTC, hourly cadence)
+		- leader_identity_pubkey (VARCHAR): Validator identity (leader) public key
+		- leader_slots_assigned_cum (BIGINT): Cumulative leader slots assigned within epoch
+		- blocks_produced_cum (BIGINT): Cumulative blocks produced within epoch
+
+		FACT TABLE STRUCTURE:
+		- Append-only: No updates or deletes, only inserts
+		- Partitioned by: date(time) (year, month, day)
+		- Ordered within partitions: (leader_identity_pubkey, time)
+		- Grain: One row per (epoch, time, leader_identity_pubkey)
+
+		USE CASES:
+		- Live-ish skip monitoring during the current epoch
+		- Identifying leaders with spiking skips hour-over-hour
+		- Producing final epoch totals by taking the latest row per (epoch, leader_identity_pubkey)
+		- Correlating production drops with vote lag/delinquency (join to vote activity) and gossip presence/version (join to gossip SCD)
+		`,
+	},
 }

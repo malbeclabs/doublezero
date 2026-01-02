@@ -755,6 +755,927 @@
             "title": "Vote Account Summary",
             "transformations": [],
             "type": "table"
+        },
+        {
+            "datasource": {
+                "type": "grafana",
+                "uid": "doublezero-lake"
+            },
+            "gridPos": {
+                "h": 2,
+                "w": 24,
+                "x": 0,
+                "y": 32
+            },
+            "id": 11,
+            "options": {
+                "code": {
+                    "language": "markdown",
+                    "showLineNumbers": false,
+                    "showMiniMap": false
+                },
+                "content": "## Production (Hourly / Cumulative)"
+            },
+            "pluginVersion": "10.0.0",
+            "title": "",
+            "type": "text"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "red",
+                                "value": null
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 0.95
+                            },
+                            {
+                                "color": "green",
+                                "value": 0.99
+                            }
+                        ]
+                    },
+                    "unit": "percentunit",
+                    "decimals": 3
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 34
+            },
+            "id": 12,
+            "options": {
+                "legend": {
+                    "calcs": [
+                        "mean",
+                        "min",
+                        "lastNotNull"
+                    ],
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "mode": "multi",
+                    "sort": "none"
+                }
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "SELECT\n  time,\n  leader_identity_pubkey as metric,\n  CAST(produce_rate_cum AS DOUBLE) as \"Produce Rate\"\nFROM solana_block_production_delta\nWHERE time >= $__timeFrom()\n  AND time <= $__timeTo()\n  AND produce_rate_cum IS NOT NULL\nORDER BY produce_rate_cum ASC\nLIMIT 20",
+                    "refId": "A"
+                }
+            ],
+            "title": "Current-Epoch Produce Rate (Top 20 Worst)",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 10
+                            },
+                            {
+                                "color": "red",
+                                "value": 50
+                            }
+                        ]
+                    },
+                    "unit": "short"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 34
+            },
+            "id": 13,
+            "options": {
+                "legend": {
+                    "calcs": [
+                        "sum",
+                        "mean",
+                        "max"
+                    ],
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "mode": "multi",
+                    "sort": "none"
+                }
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "SELECT\n  time,\n  leader_identity_pubkey as metric,\n  CAST(COALESCE(slots_skipped_delta, 0) AS DOUBLE) as \"Skipped Slots (Hourly Delta)\"\nFROM solana_block_production_delta\nWHERE time >= $__timeFrom()\n  AND time <= $__timeTo()\n  AND slots_skipped_delta IS NOT NULL\n  AND slots_skipped_delta > 0\nORDER BY slots_skipped_delta DESC\nLIMIT 20",
+                    "refId": "A"
+                }
+            ],
+            "title": "Hourly Skipped Slots Delta (Top 20)",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 0
+                            },
+                            {
+                                "color": "red",
+                                "value": 10
+                            }
+                        ]
+                    },
+                    "unit": "short"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 24,
+                "x": 0,
+                "y": 42
+            },
+            "id": 14,
+            "options": {
+                "legend": {
+                    "calcs": [
+                        "mean",
+                        "max",
+                        "lastNotNull"
+                    ],
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "mode": "multi",
+                    "sort": "none"
+                }
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "WITH recent_skips AS (\n  SELECT\n    leader_identity_pubkey,\n    time,\n    slots_skipped_delta,\n    LAG(slots_skipped_delta) OVER (PARTITION BY leader_identity_pubkey ORDER BY time) as prev_skipped_delta\n  FROM solana_block_production_delta\n  WHERE time >= $__timeFrom()\n    AND time <= $__timeTo()\n    AND slots_skipped_delta IS NOT NULL\n)\nSELECT\n  time,\n  leader_identity_pubkey as metric,\n  CAST(slots_skipped_delta - COALESCE(prev_skipped_delta, 0) AS DOUBLE) as \"Rising Skip Rate Trend\"\nFROM recent_skips\nWHERE slots_skipped_delta > COALESCE(prev_skipped_delta, 0)\nORDER BY (slots_skipped_delta - COALESCE(prev_skipped_delta, 0)) DESC\nLIMIT 20",
+                    "refId": "A"
+                }
+            ],
+            "title": "Leaders with Rising Skip Rate (Last 6h)",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "grafana",
+                "uid": "doublezero-lake"
+            },
+            "gridPos": {
+                "h": 2,
+                "w": 24,
+                "x": 0,
+                "y": 50
+            },
+            "id": 15,
+            "options": {
+                "code": {
+                    "language": "markdown",
+                    "showLineNumbers": false,
+                    "showMiniMap": false
+                },
+                "content": "## Validator Health (Vote Activity + Block Production)"
+            },
+            "pluginVersion": "10.0.0",
+            "title": "",
+            "type": "text"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 100
+                            },
+                            {
+                                "color": "red",
+                                "value": 500
+                            }
+                        ]
+                    },
+                    "unit": "short"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 52
+            },
+            "id": 16,
+            "options": {
+                "legend": {
+                    "calcs": [
+                        "mean",
+                        "max",
+                        "lastNotNull"
+                    ],
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "mode": "multi",
+                    "sort": "none"
+                }
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "SELECT\n  time,\n  node_identity_pubkey as metric,\n  CAST(COALESCE(slots_skipped_delta, 0) AS DOUBLE) as \"Skipped Slots (Hourly)\",\n  CAST(COALESCE(vote_lag_slots_avg, 0) AS DOUBLE) as \"Avg Vote Lag (slots)\"\nFROM solana_validator_health_hourly\nWHERE time >= $__timeFrom()\n  AND time <= $__timeTo()\n  AND slots_skipped_delta IS NOT NULL\n  AND slots_skipped_delta > 10\n  AND vote_lag_slots_avg IS NOT NULL\n  AND vote_lag_slots_avg < 100\nORDER BY slots_skipped_delta DESC\nLIMIT 20",
+                    "refId": "A"
+                }
+            ],
+            "title": "High Skipped Slots but Low Vote Lag (TPU/Packet Loss Issues)",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 100
+                            },
+                            {
+                                "color": "red",
+                                "value": 500
+                            }
+                        ]
+                    },
+                    "unit": "short"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 52
+            },
+            "id": 17,
+            "options": {
+                "legend": {
+                    "calcs": [
+                        "mean",
+                        "max",
+                        "lastNotNull"
+                    ],
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "mode": "multi",
+                    "sort": "none"
+                }
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "SELECT\n  time,\n  node_identity_pubkey as metric,\n  CAST(COALESCE(vote_lag_slots_avg, 0) AS DOUBLE) as \"Avg Vote Lag (slots)\",\n  CAST(COALESCE(delinquent_samples, 0) AS DOUBLE) as \"Delinquent Samples\",\n  CAST(COALESCE(blocks_produced_delta, 0) AS DOUBLE) as \"Blocks Produced (Hourly)\"\nFROM solana_validator_health_hourly\nWHERE time >= $__timeFrom()\n  AND time <= $__timeTo()\n  AND vote_lag_slots_avg IS NOT NULL\n  AND vote_lag_slots_avg > 500\n  AND delinquent_samples > 30\n  AND blocks_produced_delta IS NOT NULL\n  AND blocks_produced_delta < 10\nORDER BY vote_lag_slots_avg DESC\nLIMIT 20",
+                    "refId": "A"
+                }
+            ],
+            "title": "High Vote Lag + High Delinquency + Low Production (Node Unhealthy)",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            }
+                        ]
+                    },
+                    "unit": "short"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 24,
+                "x": 0,
+                "y": 60
+            },
+            "id": 18,
+            "options": {
+                "legend": {
+                    "calcs": [
+                        "mean",
+                        "max",
+                        "lastNotNull"
+                    ],
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "mode": "multi",
+                    "sort": "none"
+                }
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "SELECT\n  time,\n  node_identity_pubkey as metric,\n  CAST(COALESCE(credits_delta_sum, 0) AS DOUBLE) as \"Credits Delta Sum\",\n  CAST(COALESCE(vote_lag_slots_avg, 0) AS DOUBLE) as \"Avg Vote Lag (slots)\",\n  CAST(COALESCE(blocks_produced_delta, 0) AS DOUBLE) as \"Blocks Produced (Hourly)\"\nFROM solana_validator_health_hourly\nWHERE time >= $__timeFrom()\n  AND time <= $__timeTo()\n  AND credits_delta_sum IS NOT NULL\n  AND credits_delta_sum > 0\n  AND vote_lag_slots_avg IS NOT NULL\n  AND vote_lag_slots_avg < 100\n  AND blocks_produced_delta IS NOT NULL\n  AND blocks_produced_delta < 5\nORDER BY credits_delta_sum DESC\nLIMIT 20",
+                    "refId": "A"
+                }
+            ],
+            "title": "Good Voting but Poor Production (Leadership Path Issue)",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "grafana",
+                "uid": "doublezero-lake"
+            },
+            "gridPos": {
+                "h": 2,
+                "w": 24,
+                "x": 0,
+                "y": 68
+            },
+            "id": 19,
+            "options": {
+                "code": {
+                    "language": "markdown",
+                    "showLineNumbers": false,
+                    "showMiniMap": false
+                },
+                "content": "## Version & Presence Context"
+            },
+            "pluginVersion": "10.0.0",
+            "title": "",
+            "type": "text"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            }
+                        ]
+                    },
+                    "unit": "short"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 70
+            },
+            "id": 20,
+            "options": {
+                "legend": {
+                    "calcs": [
+                        "sum",
+                        "mean",
+                        "lastNotNull"
+                    ],
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "mode": "multi",
+                    "sort": "none"
+                }
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "SELECT\n  bp.time,\n  COALESCE(gn.version, 'unknown') as metric,\n  CAST(SUM(bp.slots_skipped_delta) AS DOUBLE) as \"Total Skipped Slots\"\nFROM solana_block_production_delta bp\nLEFT JOIN solana_gossip_nodes_current gn ON bp.leader_identity_pubkey = gn.pubkey\nWHERE bp.time >= $__timeFrom()\n  AND bp.time <= $__timeTo()\n  AND bp.slots_skipped_delta IS NOT NULL\n  AND bp.slots_skipped_delta > 0\nGROUP BY bp.time, COALESCE(gn.version, 'unknown')\nORDER BY SUM(bp.slots_skipped_delta) DESC",
+                    "refId": "A"
+                }
+            ],
+            "title": "Production Drops by Version",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 100
+                            },
+                            {
+                                "color": "red",
+                                "value": 500
+                            }
+                        ]
+                    },
+                    "unit": "short"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 70
+            },
+            "id": 21,
+            "options": {
+                "legend": {
+                    "calcs": [
+                        "mean",
+                        "max",
+                        "lastNotNull"
+                    ],
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "mode": "multi",
+                    "sort": "none"
+                }
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "SELECT\n  DATE_TRUNC('hour', va.time) as time,\n  COALESCE(gn.version, 'unknown') as metric,\n  CAST(AVG(va.cluster_slot - va.last_vote_slot) AS DOUBLE) as \"Avg Vote Lag (slots)\"\nFROM solana_vote_account_activity_raw va\nLEFT JOIN solana_gossip_nodes_current gn ON va.node_identity_pubkey = gn.pubkey\nWHERE va.time >= $__timeFrom()\n  AND va.time <= $__timeTo()\nGROUP BY DATE_TRUNC('hour', va.time), COALESCE(gn.version, 'unknown')\nORDER BY AVG(va.cluster_slot - va.last_vote_slot) DESC",
+                    "refId": "A"
+                }
+            ],
+            "title": "Vote Lag by Version",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 1
+                            },
+                            {
+                                "color": "red",
+                                "value": 5
+                            }
+                        ]
+                    },
+                    "unit": "short"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 24,
+                "x": 0,
+                "y": 78
+            },
+            "id": 22,
+            "options": {
+                "legend": {
+                    "calcs": [
+                        "sum",
+                        "mean",
+                        "lastNotNull"
+                    ],
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "mode": "multi",
+                    "sort": "none"
+                }
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "WITH bad_producers AS (\n  SELECT DISTINCT leader_identity_pubkey\n  FROM solana_block_production_delta\n  WHERE time >= NOW() - INTERVAL '1 hour'\n    AND slots_skipped_delta IS NOT NULL\n    AND slots_skipped_delta > 10\n)\nSELECT\n  bp.time,\n  bp.leader_identity_pubkey as metric,\n  CASE WHEN gn.pubkey IS NULL THEN 1 ELSE 0 END as \"Not Present in Gossip\"\nFROM solana_block_production_delta bp\nINNER JOIN bad_producers bp2 ON bp.leader_identity_pubkey = bp2.leader_identity_pubkey\nLEFT JOIN solana_gossip_nodes_current gn ON bp.leader_identity_pubkey = gn.pubkey\nWHERE bp.time >= $__timeFrom()\n  AND bp.time <= $__timeTo()\n  AND gn.pubkey IS NULL\nORDER BY bp.time DESC",
+                    "refId": "A"
+                }
+            ],
+            "title": "Not Present in Gossip (Last 1h) for Leaders with Bad Production",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "grafana",
+                "uid": "doublezero-lake"
+            },
+            "gridPos": {
+                "h": 2,
+                "w": 24,
+                "x": 0,
+                "y": 86
+            },
+            "id": 23,
+            "options": {
+                "code": {
+                    "language": "markdown",
+                    "showLineNumbers": false,
+                    "showMiniMap": false
+                },
+                "content": "## Stake-Weighted Attribution"
+            },
+            "pluginVersion": "10.0.0",
+            "title": "",
+            "type": "text"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            }
+                        ]
+                    },
+                    "unit": "short"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 88
+            },
+            "id": 24,
+            "options": {
+                "legend": {
+                    "calcs": [
+                        "sum",
+                        "mean",
+                        "lastNotNull"
+                    ],
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "mode": "multi",
+                    "sort": "none"
+                }
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "WITH latest_stake AS (\n  SELECT DISTINCT\n    va.node_identity_pubkey,\n    va.activated_stake_sol\n  FROM (\n    SELECT\n      node_identity_pubkey,\n      activated_stake_sol,\n      ROW_NUMBER() OVER (PARTITION BY node_identity_pubkey ORDER BY time DESC) AS rn\n    FROM solana_vote_account_activity_raw\n    WHERE activated_stake_sol IS NOT NULL\n      AND time >= $__timeFrom()\n  ) va\n  WHERE va.rn = 1\n)\nSELECT\n  bp.time,\n  bp.leader_identity_pubkey as metric,\n  CAST(COALESCE(bp.slots_skipped_delta, 0) * COALESCE(ls.activated_stake_sol, 0) AS DOUBLE) as \"Skipped Slots Weighted by Stake\"\nFROM solana_block_production_delta bp\nLEFT JOIN latest_stake ls ON bp.leader_identity_pubkey = ls.node_identity_pubkey\nWHERE bp.time >= $__timeFrom()\n  AND bp.time <= $__timeTo()\n  AND bp.slots_skipped_delta IS NOT NULL\n  AND bp.slots_skipped_delta > 0\n  AND ls.activated_stake_sol IS NOT NULL\nORDER BY (COALESCE(bp.slots_skipped_delta, 0) * COALESCE(ls.activated_stake_sol, 0)) DESC\nLIMIT 20",
+                    "refId": "A"
+                }
+            },
+            "title": "Skipped Slots Weighted by Stake (Top 20)",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            }
+                        ]
+                    },
+                    "unit": "short"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 88
+            },
+            "id": 25,
+            "options": {
+                "legend": {
+                    "calcs": [
+                        "sum",
+                        "mean",
+                        "lastNotNull"
+                    ],
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "mode": "multi",
+                    "sort": "none"
+                }
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "WITH latest_stake AS (\n  SELECT DISTINCT\n    va.node_identity_pubkey,\n    va.activated_stake_sol\n  FROM (\n    SELECT\n      node_identity_pubkey,\n      activated_stake_sol,\n      ROW_NUMBER() OVER (PARTITION BY node_identity_pubkey ORDER BY time DESC) AS rn\n    FROM solana_vote_account_activity_raw\n    WHERE activated_stake_sol IS NOT NULL\n      AND time >= $__timeFrom()\n  ) va\n  WHERE va.rn = 1\n),\ntop_stake_validators AS (\n  SELECT node_identity_pubkey\n  FROM latest_stake\n  ORDER BY activated_stake_sol DESC\n  LIMIT 50\n)\nSELECT\n  bp.time,\n  bp.leader_identity_pubkey as metric,\n  CAST(COALESCE(bp.slots_skipped_delta, 0) AS DOUBLE) as \"Skipped Slots (Hourly)\",\n  CAST(COALESCE(ls.activated_stake_sol, 0) AS DOUBLE) as \"Activated Stake (SOL)\"\nFROM solana_block_production_delta bp\nINNER JOIN top_stake_validators ts ON bp.leader_identity_pubkey = ts.node_identity_pubkey\nLEFT JOIN latest_stake ls ON bp.leader_identity_pubkey = ls.node_identity_pubkey\nWHERE bp.time >= $__timeFrom()\n  AND bp.time <= $__timeTo()\n  AND bp.slots_skipped_delta IS NOT NULL\n  AND bp.slots_skipped_delta > 0\nORDER BY bp.slots_skipped_delta DESC",
+                    "refId": "A"
+                }
+            },
+            "title": "Worst Producers Among Top 50 Stake Validators",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "custom": {
+                        "align": "auto",
+                        "cellOptions": {
+                            "type": "auto"
+                        },
+                        "inspect": false
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            }
+                        ]
+                    },
+                    "unit": "short"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 10,
+                "w": 24,
+                "x": 0,
+                "y": 96
+            },
+            "id": 26,
+            "options": {
+                "cellHeight": "sm",
+                "enablePagination": true,
+                "footer": {
+                    "countRows": false,
+                    "fields": "",
+                    "reducer": [
+                        "sum"
+                    ],
+                    "show": false
+                },
+                "showHeader": true,
+                "sortBy": [
+                    {
+                        "desc": true,
+                        "displayName": "Contribution to Network Skip Count"
+                    }
+                ]
+            },
+            "pluginVersion": "10.0.0",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "WITH latest_stake AS (\n  SELECT DISTINCT\n    va.node_identity_pubkey,\n    va.activated_stake_sol\n  FROM (\n    SELECT\n      node_identity_pubkey,\n      activated_stake_sol,\n      ROW_NUMBER() OVER (PARTITION BY node_identity_pubkey ORDER BY time DESC) AS rn\n    FROM solana_vote_account_activity_raw\n    WHERE activated_stake_sol IS NOT NULL\n      AND time >= $__timeFrom()\n  ) va\n  WHERE va.rn = 1\n),\nnetwork_skips AS (\n  SELECT\n    SUM(COALESCE(bp.slots_skipped_delta, 0)) as total_network_skips\n  FROM solana_block_production_delta bp\n  WHERE bp.time >= $__timeFrom()\n    AND bp.time <= $__timeTo()\n    AND bp.slots_skipped_delta IS NOT NULL\n)\nSELECT\n  bp.leader_identity_pubkey as \"Leader Identity\",\n  CAST(COALESCE(ls.activated_stake_sol, 0) AS DOUBLE) as \"Activated Stake (SOL)\",\n  CAST(SUM(COALESCE(bp.slots_skipped_delta, 0)) AS DOUBLE) as \"Total Skipped Slots\",\n  CAST(SUM(COALESCE(bp.slots_skipped_delta, 0)) * COALESCE(ls.activated_stake_sol, 0) AS DOUBLE) as \"Contribution to Network Skip Count\",\n  CASE\n    WHEN ns.total_network_skips > 0 THEN CAST((SUM(COALESCE(bp.slots_skipped_delta, 0)) / ns.total_network_skips * 100.0) AS DOUBLE)\n    ELSE NULL\n  END as \"% of Network Skips\"\nFROM solana_block_production_delta bp\nCROSS JOIN network_skips ns\nLEFT JOIN latest_stake ls ON bp.leader_identity_pubkey = ls.node_identity_pubkey\nWHERE bp.time >= $__timeFrom()\n  AND bp.time <= $__timeTo()\n  AND bp.slots_skipped_delta IS NOT NULL\n  AND bp.slots_skipped_delta > 0\nGROUP BY bp.leader_identity_pubkey, ls.activated_stake_sol, ns.total_network_skips\nORDER BY \"Contribution to Network Skip Count\" DESC\nLIMIT 50",
+                    "refId": "A"
+                }
+            ],
+            "title": "Contribution to Network Skip Count by Validator (Top 50)",
+            "transformations": [],
+            "type": "table"
         }
     ],
     "refresh": "30s",

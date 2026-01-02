@@ -493,3 +493,57 @@ func (s *Store) InsertVoteAccountActivity(ctx context.Context, entries []VoteAcc
 		return w.Write(record)
 	})
 }
+
+// FactTableConfigBlockProduction returns the fact table config for block production
+func FactTableConfigBlockProduction() duck.FactTableConfig {
+	return duck.FactTableConfig{
+		TableName:       "solana_block_production_raw",
+		PartitionByTime: true,
+		TimeColumn:      "time",
+		Columns: []string{
+			"epoch:INTEGER",
+			"time:TIMESTAMP",
+			"leader_identity_pubkey:VARCHAR",
+			"leader_slots_assigned_cum:BIGINT",
+			"blocks_produced_cum:BIGINT",
+		},
+	}
+}
+
+type BlockProductionEntry struct {
+	Epoch                  int
+	Time                   time.Time
+	LeaderIdentityPubkey   string
+	LeaderSlotsAssignedCum uint64
+	BlocksProducedCum      uint64
+}
+
+func (s *Store) InsertBlockProduction(ctx context.Context, entries []BlockProductionEntry) error {
+	if len(entries) == 0 {
+		return nil
+	}
+
+	s.log.Debug("solana/store: inserting block production", "count", len(entries))
+
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get connection: %w", err)
+	}
+	defer conn.Close()
+
+	cfg := FactTableConfigBlockProduction()
+	if err := duck.CreateFactTable(ctx, s.log, conn, cfg); err != nil {
+		return fmt.Errorf("failed to create fact table: %w", err)
+	}
+
+	return duck.InsertFactsViaCSV(ctx, s.log, conn, cfg, len(entries), func(w *csv.Writer, i int) error {
+		entry := entries[i]
+		return w.Write([]string{
+			fmt.Sprintf("%d", entry.Epoch),
+			entry.Time.UTC().Format(time.RFC3339Nano),
+			entry.LeaderIdentityPubkey,
+			fmt.Sprintf("%d", entry.LeaderSlotsAssignedCum),
+			fmt.Sprintf("%d", entry.BlocksProducedCum),
+		})
+	})
+}

@@ -2,6 +2,7 @@ package sol
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -19,6 +20,7 @@ type SolanaRPC interface {
 	GetLeaderSchedule(ctx context.Context) (solanarpc.GetLeaderScheduleResult, error)
 	GetClusterNodes(ctx context.Context) ([]*solanarpc.GetClusterNodesResult, error)
 	GetVoteAccounts(ctx context.Context, opts *solanarpc.GetVoteAccountsOpts) (*solanarpc.GetVoteAccountsResult, error)
+	GetSlot(ctx context.Context, commitment solanarpc.CommitmentType) (uint64, error)
 }
 
 type ViewConfig struct {
@@ -199,6 +201,12 @@ func (v *View) Refresh(ctx context.Context) error {
 		return fmt.Errorf("failed to refresh cluster nodes: %w", err)
 	}
 
+	// Refresh vote account activity (sampled every minute)
+	if err := v.RefreshVoteAccountActivity(ctx); err != nil {
+		v.log.Error("solana: failed to refresh vote account activity", "error", err)
+		// Don't fail the entire refresh if vote account activity fails
+	}
+
 	v.fetchedAt = fetchedAt
 	v.readyOnce.Do(func() {
 		close(v.readyCh)
@@ -207,5 +215,105 @@ func (v *View) Refresh(ctx context.Context) error {
 
 	v.log.Debug("solana: refresh completed", "fetched_at", fetchedAt)
 	metrics.ViewRefreshTotal.WithLabelValues("solana", "success").Inc()
+	return nil
+}
+
+// RefreshVoteAccountActivity collects and inserts vote account activity data
+// This should be called every minute to sample vote account activity
+func (v *View) RefreshVoteAccountActivity(ctx context.Context) error {
+	refreshStart := time.Now()
+	v.log.Debug("solana: vote account activity refresh started", "start_time", refreshStart)
+	defer func() {
+		duration := time.Since(refreshStart)
+		v.log.Info("solana: vote account activity refresh completed", "duration", duration.String())
+	}()
+
+	collectionTime := time.Now().UTC()
+	runID := fmt.Sprintf("vote_account_activity_%d", collectionTime.Unix())
+
+	// Get cluster slot
+	clusterSlot, err := v.cfg.RPC.GetSlot(ctx, solanarpc.CommitmentFinalized)
+	if err != nil {
+		return fmt.Errorf("failed to get cluster slot: %w", err)
+	}
+
+	// Get vote accounts
+	voteAccounts, err := v.cfg.RPC.GetVoteAccounts(ctx, &solanarpc.GetVoteAccountsOpts{
+		Commitment: solanarpc.CommitmentFinalized,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to get vote accounts: %w", err)
+	}
+
+	// Create a map to track delinquent accounts
+	delinquentMap := make(map[string]bool)
+	for _, acc := range voteAccounts.Delinquent {
+		delinquentMap[acc.VotePubkey.String()] = true
+	}
+
+	// Process all vote accounts (both current and delinquent)
+	allAccounts := make([]solanarpc.VoteAccountsResult, 0, len(voteAccounts.Current)+len(voteAccounts.Delinquent))
+	allAccounts = append(allAccounts, voteAccounts.Current...)
+	allAccounts = append(allAccounts, voteAccounts.Delinquent...)
+
+	entries := make([]VoteAccountActivityEntry, 0, len(allAccounts))
+	for _, account := range allAccounts {
+		votePubkey := account.VotePubkey.String()
+		isDelinquent := delinquentMap[votePubkey]
+
+		// Extract epochCredits
+		epochCreditsJSON := ""
+		creditsEpoch := 0
+		creditsEpochCredits := uint64(0)
+
+		if len(account.EpochCredits) > 0 {
+			// EpochCredits is [][]int64 where each entry is [epoch, credits]
+			// Convert to JSON string
+			epochCreditsBytes, err := json.Marshal(account.EpochCredits)
+			if err == nil {
+				epochCreditsJSON = string(epochCreditsBytes)
+				// Get the last entry (most recent)
+				lastEntry := account.EpochCredits[len(account.EpochCredits)-1]
+				if len(lastEntry) >= 2 {
+					creditsEpoch = int(lastEntry[0])
+					creditsEpochCredits = uint64(lastEntry[1])
+				}
+			}
+		}
+
+		// Calculate activated_stake_sol if activated_stake_lamports is available
+		var activatedStakeSol *float64
+		if account.ActivatedStake > 0 {
+			sol := float64(account.ActivatedStake) / 1e9
+			activatedStakeSol = &sol
+		}
+
+		entry := VoteAccountActivityEntry{
+			Time:                   collectionTime,
+			VoteAccountPubkey:      votePubkey,
+			NodeIdentityPubkey:     account.NodePubkey.String(),
+			RootSlot:               account.RootSlot,
+			LastVoteSlot:           account.LastVote,
+			ClusterSlot:            clusterSlot,
+			IsDelinquent:           isDelinquent,
+			EpochCreditsJSON:       epochCreditsJSON,
+			CreditsEpoch:           creditsEpoch,
+			CreditsEpochCredits:    creditsEpochCredits,
+			ActivatedStakeLamports: &account.ActivatedStake,
+			ActivatedStakeSol:      activatedStakeSol,
+			Commission:             &account.Commission,
+			CollectorRunID:         runID,
+		}
+
+		entries = append(entries, entry)
+	}
+
+	if len(entries) > 0 {
+		if err := v.store.InsertVoteAccountActivity(ctx, entries); err != nil {
+			return fmt.Errorf("failed to insert vote account activity: %w", err)
+		}
+		v.log.Debug("solana: inserted vote account activity", "count", len(entries))
+	}
+
 	return nil
 }

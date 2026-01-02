@@ -20,6 +20,7 @@ type mockSolanaRPC struct {
 	getLeaderScheduleFunc func(context.Context) (solanarpc.GetLeaderScheduleResult, error)
 	getVoteAccountsFunc   func(context.Context, *solanarpc.GetVoteAccountsOpts) (*solanarpc.GetVoteAccountsResult, error)
 	getClusterNodesFunc   func(context.Context) ([]*solanarpc.GetClusterNodesResult, error)
+	getSlotFunc           func(context.Context, solanarpc.CommitmentType) (uint64, error)
 }
 
 func (m *mockSolanaRPC) GetEpochInfo(ctx context.Context, commitment solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
@@ -53,6 +54,13 @@ func (m *mockSolanaRPC) GetClusterNodes(ctx context.Context) ([]*solanarpc.GetCl
 		return m.getClusterNodesFunc(ctx)
 	}
 	return []*solanarpc.GetClusterNodesResult{}, nil
+}
+
+func (m *mockSolanaRPC) GetSlot(ctx context.Context, commitment solanarpc.CommitmentType) (uint64, error) {
+	if m.getSlotFunc != nil {
+		return m.getSlotFunc(ctx, commitment)
+	}
+	return 1000, nil
 }
 
 func testDB(t *testing.T) duck.DB {

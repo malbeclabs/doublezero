@@ -126,4 +126,62 @@ var Datasets = []schematypes.Dataset{
 		- {table}_history.run_id is the identifier of the ingestion run that produced this row.
 		`,
 	},
+	{
+		Name:        "solana_vote_account_activity",
+		DatasetType: schematypes.DatasetTypeFact,
+		Purpose: `
+			Append-only time series of Solana vote account activity sampled every minute from getVoteAccounts, with a network reference slot from getSlot. Used to measure voting health, finality lag, and credit accrual.
+		`,
+		Tables: []string{"solana_vote_account_activity_raw"},
+		Description: `
+		USAGE:
+		- Append-only fact table with one row per (time, vote_account_pubkey) combination.
+		- Sampled every minute from getVoteAccounts and getSlot RPC calls.
+		- Partitioned by date(time), ordered by (vote_account_pubkey, time) within partitions.
+		- Joins:
+			- solana_vote_account_activity_raw.vote_account_pubkey = solana_vote_accounts_current.vote_pubkey
+			- solana_vote_account_activity_raw.node_identity_pubkey = solana_gossip_nodes_current.pubkey
+
+		TERMINOLOGY:
+		- Vote account activity: Time-series measurements of vote account state including voting slots, credits, and health metrics.
+
+		DERIVED METRICS (query-time):
+		- vote_lag_slots = cluster_slot - last_vote_slot
+		- root_lag_slots = cluster_slot - root_slot
+		- vote_root_gap = last_vote_slot - root_slot
+
+		CONSTRAINTS:
+		- root_slot <= last_vote_slot <= cluster_slot
+		- credits_epoch_credits >= 0
+		- commission in [0, 100] (if present)
+		- activated_stake_lamports >= 0 (if present)
+
+		COLUMNS:
+		- time (TIMESTAMP): Collection time (UTC, minute cadence)
+		- vote_account_pubkey (VARCHAR): Vote account address
+		- node_identity_pubkey (VARCHAR): Validator identity stamped at collection time
+		- root_slot (BIGINT): Latest finalized slot for the vote account
+		- last_vote_slot (BIGINT): Most recent (highest) voted slot
+		- cluster_slot (BIGINT): Network reference slot from getSlot
+		- is_delinquent (BOOLEAN): From getVoteAccounts delinquent list
+		- epoch_credits_json (VARCHAR): Raw epochCredits array from RPC (JSON string)
+		- credits_epoch (INTEGER): Epoch of the latest epochCredits entry
+		- credits_epoch_credits (BIGINT): Credits accrued so far in credits_epoch
+		- credits_delta (BIGINT, nullable): Minute-over-minute credits delta (epoch-aware)
+			* First observation: NULL
+			* Same epoch (E == E_prev): max(C - C_prev, 0)
+			* Epoch rollover (E == E_prev + 1): credits_delta = C
+			* Any other jump/gap: NULL
+		- activated_stake_lamports (BIGINT, nullable): Activated stake in lamports
+		- activated_stake_sol (DOUBLE, nullable): Activated stake in SOL (lamports / 1e9)
+		- commission (INTEGER, nullable): Commission percentage [0, 100]
+		- collector_run_id (VARCHAR, nullable): Identifier for the data collection run
+
+		FACT TABLE STRUCTURE:
+		- Append-only: No updates or deletes, only inserts
+		- Partitioned by: date(time) (year, month, day)
+		- Ordered within partitions: (vote_account_pubkey, time)
+		- Grain: One row per (time, vote_account_pubkey)
+		`,
+	},
 }

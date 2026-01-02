@@ -1,0 +1,828 @@
+{
+    "annotations": {
+        "list": [
+            {
+                "builtIn": 1,
+                "datasource": {
+                    "type": "grafana",
+                    "uid": "doublezero-lake"
+                },
+                "enable": true,
+                "hide": true,
+                "iconColor": "rgba(0, 211, 255, 1)",
+                "name": "Annotations & Alerts",
+                "type": "dashboard"
+            }
+        ]
+    },
+    "editable": true,
+    "fiscalYearStartMonth": 0,
+    "graphTooltip": 0,
+    "id": null,
+    "links": [],
+    "liveNow": false,
+    "panels": [
+        {
+            "datasource": {
+                "type": "grafana",
+                "uid": "doublezero-lake"
+            },
+            "gridPos": {
+                "h": 2,
+                "w": 24,
+                "x": 0,
+                "y": 0
+            },
+            "id": 1,
+            "options": {
+                "code": {
+                    "language": "markdown",
+                    "showLineNumbers": false,
+                    "showMiniMap": false
+                },
+                "content": "[← Back to Overview](/d/doublezero-lake-overview) | [Clear All Filters](/d/doublezero-solana?var-vote_account=$__all&var-is_delinquent=$__all)"
+            },
+            "pluginVersion": "10.0.0",
+            "title": "",
+            "type": "text"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            }
+                        ]
+                    },
+                    "unit": "short"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 4,
+                "w": 6,
+                "x": 0,
+                "y": 2
+            },
+            "id": 2,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "textMode": "auto"
+            },
+            "pluginVersion": "10.0.0",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "SELECT COALESCE(COUNT(DISTINCT vote_account_pubkey), 0) as value\nFROM solana_vote_account_activity_raw\nWHERE time >= $__timeFrom()\n  AND time <= $__timeTo()\n  AND ('${vote_account:raw}' = '$__all' OR vote_account_pubkey IN (SELECT unnest(string_to_array('${vote_account:raw}', ','))))\n  AND ('${is_delinquent:raw}' = '$__all' OR is_delinquent::text IN (SELECT unnest(string_to_array('${is_delinquent:raw}', ','))))",
+                    "refId": "A"
+                }
+            ],
+            "title": "Total Vote Accounts",
+            "type": "stat"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "red",
+                                "value": null
+                            }
+                        ]
+                    },
+                    "unit": "short"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 4,
+                "w": 6,
+                "x": 6,
+                "y": 2
+            },
+            "id": 3,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "textMode": "auto"
+            },
+            "pluginVersion": "10.0.0",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "SELECT COALESCE(COUNT(DISTINCT vote_account_pubkey), 0) as value\nFROM solana_vote_account_activity_raw\nWHERE time >= $__timeFrom()\n  AND time <= $__timeTo()\n  AND is_delinquent = true\n  AND (CASE WHEN '${vote_account:raw}' = '$__all' THEN true ELSE vote_account_pubkey IN (SELECT unnest(string_to_array('${vote_account:raw}', ','))) END)",
+                    "refId": "A"
+                }
+            ],
+            "title": "Delinquent Vote Accounts",
+            "type": "stat"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            }
+                        ]
+                    },
+                    "unit": "short"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 4,
+                "w": 6,
+                "x": 12,
+                "y": 2
+            },
+            "id": 4,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "textMode": "auto"
+            },
+            "pluginVersion": "10.0.0",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "SELECT CAST(COALESCE(SUM(activated_stake_sol), 0) AS DOUBLE) as value\nFROM (\n  SELECT vote_account_pubkey, activated_stake_sol\n  FROM (\n    SELECT vote_account_pubkey, activated_stake_sol,\n      ROW_NUMBER() OVER (PARTITION BY vote_account_pubkey ORDER BY time DESC) AS rn\n    FROM solana_vote_account_activity_raw\n    WHERE time >= $__timeFrom()\n      AND time <= $__timeTo()\n      AND (CASE WHEN '${vote_account:raw}' = '$__all' THEN true ELSE vote_account_pubkey IN (SELECT unnest(string_to_array('${vote_account:raw}', ','))) END)\n      AND (CASE WHEN '${is_delinquent:raw}' = '$__all' THEN true ELSE is_delinquent = ('${is_delinquent:raw}' = 'true') END)\n      AND activated_stake_sol IS NOT NULL\n  ) ranked\n  WHERE rn = 1\n) latest",
+                    "refId": "A"
+                }
+            ],
+            "title": "Total Activated Stake (SOL)",
+            "type": "stat"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "decimals": 0,
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            }
+                        ]
+                    },
+                    "unit": "locale"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 4,
+                "w": 6,
+                "x": 18,
+                "y": 2
+            },
+            "id": 5,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "textMode": "auto"
+            },
+            "pluginVersion": "10.0.0",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "SELECT CAST(MAX(cluster_slot) AS DOUBLE) as value\nFROM solana_vote_account_activity_raw\nWHERE time >= $__timeFrom()\n  AND time <= $__timeTo()",
+                    "refId": "A"
+                }
+            ],
+            "title": "Latest Cluster Slot",
+            "type": "stat"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                            "tooltip": false,
+                            "viz": false,
+                            "legend": false
+                        },
+                        "lineInterpolation": "linear",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                            "type": "linear"
+                        },
+                        "showPoints": "never",
+                        "spanNulls": false,
+                        "stacking": {
+                            "group": "A",
+                            "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                            "mode": "off"
+                        }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            }
+                        ]
+                    },
+                    "unit": "short"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 6
+            },
+            "id": 6,
+            "options": {
+                "legend": {
+                    "calcs": [
+                        "mean",
+                        "max",
+                        "lastNotNull"
+                    ],
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "mode": "multi",
+                    "sort": "none"
+                }
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "SELECT\n  time,\n  CAST(AVG(cluster_slot - last_vote_slot) AS DOUBLE) as \"Avg Vote Lag (slots)\",\n  CAST(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY cluster_slot - last_vote_slot) AS DOUBLE) as \"Median Vote Lag (slots)\",\n  CAST(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY cluster_slot - last_vote_slot) AS DOUBLE) as \"P95 Vote Lag (slots)\",\n  CAST(PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY cluster_slot - last_vote_slot) AS DOUBLE) as \"P99 Vote Lag (slots)\",\n  CAST(MAX(CASE WHEN NOT is_delinquent THEN cluster_slot - last_vote_slot ELSE NULL END) AS DOUBLE) as \"Max Vote Lag (non-delinquent)\"\nFROM solana_vote_account_activity_raw\nWHERE time >= $__timeFrom()\n  AND time <= $__timeTo()\n  AND (CASE WHEN '${vote_account:raw}' = '$__all' THEN true ELSE vote_account_pubkey IN (SELECT unnest(string_to_array('${vote_account:raw}', ','))) END)\n  AND ('${is_delinquent:raw}' = '$__all' OR is_delinquent::text IN (SELECT unnest(string_to_array('${is_delinquent:raw}', ','))))\n  AND cluster_slot >= last_vote_slot\nGROUP BY time\nORDER BY time",
+                    "refId": "A"
+                }
+            ],
+            "title": "Vote Lag Over Time",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                            "tooltip": false,
+                            "viz": false,
+                            "legend": false
+                        },
+                        "lineInterpolation": "linear",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                            "type": "linear"
+                        },
+                        "showPoints": "never",
+                        "spanNulls": false,
+                        "stacking": {
+                            "group": "A",
+                            "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                            "mode": "off"
+                        }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            }
+                        ]
+                    },
+                    "unit": "short"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 6
+            },
+            "id": 7,
+            "options": {
+                "legend": {
+                    "calcs": [
+                        "mean",
+                        "max",
+                        "lastNotNull"
+                    ],
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "mode": "multi",
+                    "sort": "none"
+                }
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "SELECT\n  time,\n  CAST(AVG(cluster_slot - root_slot) AS DOUBLE) as \"Avg Root Lag (slots)\",\n  CAST(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY cluster_slot - root_slot) AS DOUBLE) as \"Median Root Lag (slots)\",\n  CAST(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY cluster_slot - root_slot) AS DOUBLE) as \"P95 Root Lag (slots)\",\n  CAST(MAX(cluster_slot - root_slot) AS DOUBLE) as \"Max Root Lag (slots)\"\nFROM solana_vote_account_activity_raw\nWHERE time >= $__timeFrom()\n  AND time <= $__timeTo()\n  AND (CASE WHEN '${vote_account:raw}' = '$__all' THEN true ELSE vote_account_pubkey IN (SELECT unnest(string_to_array('${vote_account:raw}', ','))) END)\n  AND ('${is_delinquent:raw}' = '$__all' OR is_delinquent::text IN (SELECT unnest(string_to_array('${is_delinquent:raw}', ','))))\n  AND cluster_slot >= root_slot\nGROUP BY time\nORDER BY time",
+                    "refId": "A"
+                }
+            ],
+            "title": "Root Lag Over Time",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                            "tooltip": false,
+                            "viz": false,
+                            "legend": false
+                        },
+                        "lineInterpolation": "linear",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                            "type": "linear"
+                        },
+                        "showPoints": "never",
+                        "spanNulls": false,
+                        "stacking": {
+                            "group": "A",
+                            "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                            "mode": "off"
+                        }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            }
+                        ]
+                    },
+                    "unit": "short"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 14
+            },
+            "id": 8,
+            "options": {
+                "legend": {
+                    "calcs": [
+                        "sum",
+                        "lastNotNull"
+                    ],
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "mode": "single",
+                    "sort": "none"
+                }
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "SELECT\n  time,\n  vote_account_pubkey as metric,\n  CAST(SUM(credits_delta) AS DOUBLE) as \"Credits Accrued\"\nFROM solana_vote_account_activity_raw\nWHERE time >= $__timeFrom()\n  AND time <= $__timeTo()\n  AND credits_delta IS NOT NULL\n  AND (CASE WHEN '${vote_account:raw}' = '$__all' THEN true ELSE vote_account_pubkey IN (SELECT unnest(string_to_array('${vote_account:raw}', ','))) END)\n  AND ('${is_delinquent:raw}' = '$__all' OR is_delinquent::text IN (SELECT unnest(string_to_array('${is_delinquent:raw}', ','))))\nGROUP BY time, vote_account_pubkey\nORDER BY time, vote_account_pubkey",
+                    "refId": "A"
+                }
+            ],
+            "title": "Credits Accrual Over Time",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                            "tooltip": false,
+                            "viz": false,
+                            "legend": false
+                        },
+                        "lineInterpolation": "linear",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                            "type": "linear"
+                        },
+                        "showPoints": "never",
+                        "spanNulls": false,
+                        "stacking": {
+                            "group": "A",
+                            "mode": "stack"
+                        },
+                        "thresholdsStyle": {
+                            "mode": "off"
+                        }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            }
+                        ]
+                    },
+                    "unit": "short"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 14
+            },
+            "id": 9,
+            "options": {
+                "legend": {
+                    "calcs": [
+                        "sum",
+                        "lastNotNull"
+                    ],
+                    "displayMode": "table",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "mode": "multi",
+                    "sort": "none"
+                }
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "SELECT\n  time,\n  CASE WHEN is_delinquent THEN 'Delinquent' ELSE 'Active' END as metric,\n  CAST(COUNT(DISTINCT vote_account_pubkey) AS DOUBLE) as \"Vote Accounts\"\nFROM solana_vote_account_activity_raw\nWHERE time >= $__timeFrom()\n  AND time <= $__timeTo()\n  AND (CASE WHEN '${vote_account:raw}' = '$__all' THEN true ELSE vote_account_pubkey IN (SELECT unnest(string_to_array('${vote_account:raw}', ','))) END)\nGROUP BY time, is_delinquent\nORDER BY time, is_delinquent",
+                    "refId": "A"
+                }
+            ],
+            "title": "Delinquency Status Over Time",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "custom": {
+                        "align": "auto",
+                        "cellOptions": {
+                            "type": "auto"
+                        },
+                        "inspect": false
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            }
+                        ]
+                    }
+                },
+                "overrides": [
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Earned Credits %"
+                        },
+                        "properties": [
+                            {
+                                "id": "decimals",
+                                "value": 4
+                            },
+                            {
+                                "id": "unit",
+                                "value": "percent"
+                            }
+                        ]
+                    }
+                ]
+            },
+            "gridPos": {
+                "h": 10,
+                "w": 24,
+                "x": 0,
+                "y": 22
+            },
+            "id": 10,
+            "options": {
+                "cellHeight": "sm",
+                "enablePagination": true,
+                "footer": {
+                    "countRows": false,
+                    "fields": "",
+                    "reducer": [
+                        "sum"
+                    ],
+                    "show": false
+                },
+                "showHeader": true,
+                "sortBy": [
+                    {
+                        "desc": true,
+                        "displayName": "Activated Stake (SOL)"
+                    }
+                ]
+            },
+            "pluginVersion": "10.0.0",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "WITH period_stats AS (\n  SELECT\n    MAX(cluster_slot) - MIN(cluster_slot) as slot_range,\n    COUNT(DISTINCT time) as sample_count\n  FROM solana_vote_account_activity_raw\n  WHERE time >= $__timeFrom()\n    AND time <= $__timeTo()\n),\nvalidator_credits AS (\n  SELECT\n    va.vote_account_pubkey,\n    va.node_identity_pubkey,\n    va.activated_stake_sol,\n    va.commission,\n    va.is_delinquent,\n    CAST(AVG(va.cluster_slot - va.last_vote_slot) AS DOUBLE) as avg_vote_lag,\n    CAST(MAX(va.cluster_slot - va.last_vote_slot) AS DOUBLE) as max_vote_lag,\n    CAST(AVG(va.cluster_slot - va.root_slot) AS DOUBLE) as avg_root_lag,\n    CAST(MAX(va.cluster_slot - va.root_slot) AS DOUBLE) as max_root_lag,\n    CAST(SUM(va.credits_delta) AS DOUBLE) as total_credits_accrued,\n    CAST(MAX(va.credits_epoch_credits) AS DOUBLE) as current_epoch_credits,\n    COUNT(va.credits_delta) as non_null_delta_count,\n    MIN(va.time) as first_seen,\n    MAX(va.time) as last_seen\n  FROM solana_vote_account_activity_raw va\n  WHERE va.time >= $__timeFrom()\n    AND va.time <= $__timeTo()\n    AND ('${vote_account:raw}' = '$__all' OR va.vote_account_pubkey IN (SELECT unnest(string_to_array('${vote_account:raw}', ','))))\n    AND ('${is_delinquent:raw}' = '$__all' OR va.is_delinquent = ('${is_delinquent:raw}' = 'true'))\n  GROUP BY va.vote_account_pubkey, va.node_identity_pubkey, va.activated_stake_sol, va.commission, va.is_delinquent\n),\nmax_credits AS (\n  SELECT MAX(total_credits_accrued) as max_credits_earned\n  FROM validator_credits\n)\nSELECT\n  vc.vote_account_pubkey as \"Vote Account\",\n  vc.node_identity_pubkey as \"Node Identity\",\n  CAST(COALESCE(vc.activated_stake_sol, 0) AS DOUBLE) as \"Activated Stake (SOL)\",\n  CAST(COALESCE(vc.commission, 0) AS DOUBLE) as \"Commission %\",\n  CASE\n    WHEN mc.max_credits_earned > 0 AND vc.non_null_delta_count > 0 THEN CAST((vc.total_credits_accrued / mc.max_credits_earned * 100.0) AS DOUBLE)\n    ELSE NULL\n  END as \"Earned Credits %\",\n  vc.is_delinquent as \"Delinquent\",\n  vc.avg_vote_lag as \"Avg Vote Lag (slots)\",\n  vc.max_vote_lag as \"Max Vote Lag (slots)\",\n  vc.avg_root_lag as \"Avg Root Lag (slots)\",\n  vc.max_root_lag as \"Max Root Lag (slots)\",\n  vc.total_credits_accrued as \"Total Credits Accrued\",\n  vc.current_epoch_credits as \"Current Epoch Credits\"\nFROM validator_credits vc\nCROSS JOIN max_credits mc\nCROSS JOIN period_stats ps\nWHERE vc.non_null_delta_count > 0\nORDER BY \"Activated Stake (SOL)\" DESC\nLIMIT 100",
+                    "refId": "A"
+                }
+            ],
+            "title": "Vote Account Summary",
+            "transformations": [],
+            "type": "table"
+        }
+    ],
+    "refresh": "30s",
+    "schemaVersion": 38,
+    "style": "dark",
+    "tags": [
+        "solana"
+    ],
+    "templating": {
+        "list": [
+            {
+                "allValue": null,
+                "current": {
+                    "selected": true,
+                    "text": "All",
+                    "value": "$__all"
+                },
+                "datasource": {
+                    "type": "postgres",
+                    "uid": "doublezero-lake"
+                },
+                "hide": 0,
+                "includeAll": true,
+                "label": "Vote Account",
+                "multi": true,
+                "name": "vote_account",
+                "options": [],
+                "query": "SELECT DISTINCT vote_account_pubkey FROM solana_vote_account_activity_raw ORDER BY vote_account_pubkey",
+                "refresh": 1,
+                "regex": "",
+                "skipUrlSync": false,
+                "sort": 1,
+                "type": "query"
+            },
+            {
+                "allValue": null,
+                "current": {
+                    "selected": true,
+                    "text": "All",
+                    "value": "$__all"
+                },
+                "datasource": {
+                    "type": "postgres",
+                    "uid": "doublezero-lake"
+                },
+                "hide": 0,
+                "includeAll": true,
+                "label": "Delinquent Status",
+                "multi": true,
+                "name": "is_delinquent",
+                "options": [],
+                "query": "SELECT DISTINCT is_delinquent::text FROM solana_vote_account_activity_raw ORDER BY is_delinquent",
+                "refresh": 1,
+                "regex": "",
+                "skipUrlSync": false,
+                "sort": 1,
+                "type": "query"
+            }
+        ]
+    },
+    "time": {
+        "from": "now-6h",
+        "to": "now"
+    },
+    "timepicker": {},
+    "timezone": "",
+    "title": "Solana Vote Account Activity",
+    "uid": "doublezero-solana",
+    "version": 0,
+    "weekStart": ""
+}

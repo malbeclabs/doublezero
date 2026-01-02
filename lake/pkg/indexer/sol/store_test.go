@@ -210,19 +210,17 @@ func TestLake_Solana_Store_ReplaceVoteAccounts(t *testing.T) {
 		require.Equal(t, 1, count)
 
 		var votePubkey, nodePubkey string
-		var activatedStake, lastVoteSlot, rootSlot int64
+		var activatedStake int64
 		var epochVoteAccount bool
 		var commission int
 		var currentEpochDB int64
-		err = conn.QueryRowContext(ctx, "SELECT vote_pubkey, node_pubkey, activated_stake_lamports, epoch_vote_account, commission_percentage, last_vote_slot, root_slot, epoch FROM solana_vote_accounts_current LIMIT 1").Scan(&votePubkey, &nodePubkey, &activatedStake, &epochVoteAccount, &commission, &lastVoteSlot, &rootSlot, &currentEpochDB)
+		err = conn.QueryRowContext(ctx, "SELECT vote_pubkey, node_pubkey, activated_stake_lamports, epoch_vote_account, commission_percentage, epoch FROM solana_vote_accounts_current LIMIT 1").Scan(&votePubkey, &nodePubkey, &activatedStake, &epochVoteAccount, &commission, &currentEpochDB)
 		require.NoError(t, err)
 		require.Equal(t, votePK.String(), votePubkey)
 		require.Equal(t, nodePK.String(), nodePubkey)
 		require.Equal(t, int64(1000000000), activatedStake)
 		require.True(t, epochVoteAccount)
 		require.Equal(t, 5, commission)
-		require.Equal(t, int64(5000), lastVoteSlot)
-		require.Equal(t, int64(4500), rootSlot)
 		require.Equal(t, int64(100), currentEpochDB)
 	})
 }

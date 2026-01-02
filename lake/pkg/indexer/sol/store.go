@@ -93,7 +93,7 @@ func SCD2ConfigVoteAccounts() duck.SCDTableConfig {
 	return duck.SCDTableConfig{
 		TableBaseName:       "solana_vote_accounts",
 		PrimaryKeyColumns:   []string{"vote_pubkey:VARCHAR"},
-		PayloadColumns:      []string{"epoch:BIGINT", "node_pubkey:VARCHAR", "activated_stake_lamports:BIGINT", "epoch_vote_account:VARCHAR", "commission_percentage:BIGINT", "last_vote_slot:BIGINT", "root_slot:BIGINT"},
+		PayloadColumns:      []string{"epoch:BIGINT", "node_pubkey:VARCHAR", "activated_stake_lamports:BIGINT", "epoch_vote_account:VARCHAR", "commission_percentage:BIGINT"},
 		MissingMeansDeleted: true,
 		TrackIngestRuns:     false,
 	}
@@ -124,8 +124,6 @@ func (s *Store) ReplaceVoteAccounts(ctx context.Context, accounts []solanarpc.Vo
 			fmt.Sprintf("%d", account.ActivatedStake),
 			epochVoteAccountStr,
 			fmt.Sprintf("%d", account.Commission),
-			fmt.Sprintf("%d", account.LastVote),
-			fmt.Sprintf("%d", account.RootSlot),
 		})
 	})
 }

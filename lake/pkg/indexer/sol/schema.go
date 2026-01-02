@@ -78,8 +78,6 @@ var Datasets = []schematypes.Dataset{
 		- activated_stake_lamports (BIGINT): Activated stake (lamports)
 		- epoch_vote_account (BOOLEAN): Vote account active for this epoch
 		- commission_percentage (INTEGER): Commission percentage
-		- last_vote_slot (BIGINT): Slot of last vote
-		- root_slot (BIGINT): Last rooted slot
 
 		SCD2 DATA STRUCTURE:
 		- {table}_current: Current state of the dataset. One row per dataset entity.

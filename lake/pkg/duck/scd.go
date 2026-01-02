@@ -210,7 +210,7 @@ func SCDTableViaCSV(
 
 		// Step 4: Track ingest run (optional)
 		if cfg.TrackIngestRuns {
-			if err := trackIngestRun(ctx, tx, log, cfg, ingestRunsTableName, count, inserts, updates, deletes); err != nil {
+			if err := trackIngestRun(ctx, tx, log, cfg, ingestRunsTableName, ingestStart, count, inserts, updates, deletes); err != nil {
 				return fmt.Errorf("failed to track ingest run: %w", err)
 			}
 		}
@@ -323,6 +323,35 @@ func createSCDTables(
 	for _, sql := range queries {
 		if _, err := conn.ExecContext(ctx, sql); err != nil {
 			return fmt.Errorf("failed to create table: %w", err)
+		}
+	}
+
+	// Add partitioning to history and ingest_runs tables if this is DuckLake
+	if _, ok := db.(*Lake); ok {
+		// Partition history table on valid_from
+		partitionSQL := fmt.Sprintf(`ALTER TABLE %s.%s.%s SET PARTITIONED BY (year(valid_from), month(valid_from), day(valid_from))`,
+			db.Catalog(), db.Schema(), historyTableName)
+		if _, err := conn.ExecContext(ctx, partitionSQL); err != nil {
+			// Partitioning may fail if:
+			// - Table is already partitioned with a different scheme (error)
+			// - Other constraints prevent partitioning (error)
+			// If already partitioned with the same scheme, it typically succeeds (no-op or update)
+			// Log but don't fail - this is idempotent for the common case
+			log.Warn("failed to set partitioning (may already be partitioned)", "table", historyTableName, "error", err)
+		}
+
+		// Partition ingest_runs table on started_at if it exists
+		if cfg.TrackIngestRuns {
+			partitionSQL := fmt.Sprintf(`ALTER TABLE %s.%s.%s SET PARTITIONED BY (year(started_at), month(started_at), day(started_at))`,
+				db.Catalog(), db.Schema(), ingestRunsTableName)
+			if _, err := conn.ExecContext(ctx, partitionSQL); err != nil {
+				// Partitioning may fail if:
+				// - Table is already partitioned with a different scheme (error)
+				// - Other constraints prevent partitioning (error)
+				// If already partitioned with the same scheme, it typically succeeds (no-op or update)
+				// Log but don't fail - this is idempotent for the common case
+				log.Warn("failed to set partitioning (may already be partitioned)", "table", ingestRunsTableName, "error", err)
+			}
 		}
 	}
 
@@ -967,6 +996,7 @@ func trackIngestRun(
 	log *slog.Logger,
 	cfg SCDTableConfig,
 	ingestRunsTableName string,
+	startedAt time.Time,
 	totalRows, inserts, updates, deletes int,
 ) error {
 	runID := cfg.RunID
@@ -974,14 +1004,13 @@ func trackIngestRun(
 		runID = fmt.Sprintf("run_%d", cfg.SnapshotTS.Unix())
 	}
 
-	startedAt := time.Now()
-
 	// Upsert run record using MERGE (DuckDB doesn't support ON CONFLICT)
 	upsertSQL := fmt.Sprintf(`MERGE INTO %s t USING (
 		SELECT ? AS run_id, ? AS snapshot_ts, ? AS started_at, ? AS finished_at,
 			? AS rows_in_snapshot, ? AS inserts, ? AS updates, ? AS deletes
 	) s ON t.run_id = s.run_id
 	WHEN MATCHED THEN UPDATE SET
+		started_at = s.started_at,
 		finished_at = s.finished_at,
 		rows_in_snapshot = s.rows_in_snapshot,
 		inserts = s.inserts,

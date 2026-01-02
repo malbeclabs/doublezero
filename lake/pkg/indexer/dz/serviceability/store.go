@@ -79,7 +79,7 @@ func SCD2ConfigDevices() duck.SCDTableConfig {
 	return duck.SCDTableConfig{
 		TableBaseName:       "dz_devices",
 		PrimaryKeyColumns:   []string{"pk:VARCHAR"},
-		PayloadColumns:      []string{"status:VARCHAR", "device_type:VARCHAR", "code:VARCHAR", "public_ip:VARCHAR", "contributor_pk:VARCHAR", "metro_pk:VARCHAR", "max_users:INTEGER", "users_count:INTEGER"},
+		PayloadColumns:      []string{"status:VARCHAR", "device_type:VARCHAR", "code:VARCHAR", "public_ip:VARCHAR", "contributor_pk:VARCHAR", "metro_pk:VARCHAR", "max_users:INTEGER"},
 		MissingMeansDeleted: true,
 		TrackIngestRuns:     false,
 	}
@@ -100,7 +100,7 @@ func (s *Store) ReplaceDevices(ctx context.Context, devices []Device) error {
 
 	return duck.SCDTableViaCSV(ctx, s.log, conn, cfg, len(devices), func(w *csv.Writer, i int) error {
 		d := devices[i]
-		return w.Write([]string{d.PK, d.Status, d.DeviceType, d.Code, d.PublicIP, d.ContributorPK, d.MetroPK, fmt.Sprintf("%d", d.MaxUsers), fmt.Sprintf("%d", d.UsersCount)})
+		return w.Write([]string{d.PK, d.Status, d.DeviceType, d.Code, d.PublicIP, d.ContributorPK, d.MetroPK, fmt.Sprintf("%d", d.MaxUsers)})
 	})
 }
 
@@ -206,7 +206,7 @@ func (s *Store) GetDevices() ([]Device, error) {
 		return nil, fmt.Errorf("failed to get connection: %w", err)
 	}
 	defer conn.Close()
-	query := `SELECT pk, status, device_type, code, public_ip, contributor_pk, metro_pk, max_users, users_count FROM dz_devices_current ORDER BY code`
+	query := `SELECT pk, status, device_type, code, public_ip, contributor_pk, metro_pk, max_users FROM dz_devices_current ORDER BY code`
 	rows, err := conn.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query devices: %w", err)
@@ -216,7 +216,7 @@ func (s *Store) GetDevices() ([]Device, error) {
 	var devices []Device
 	for rows.Next() {
 		var d Device
-		if err := rows.Scan(&d.PK, &d.Status, &d.DeviceType, &d.Code, &d.PublicIP, &d.ContributorPK, &d.MetroPK, &d.MaxUsers, &d.UsersCount); err != nil {
+		if err := rows.Scan(&d.PK, &d.Status, &d.DeviceType, &d.Code, &d.PublicIP, &d.ContributorPK, &d.MetroPK, &d.MaxUsers); err != nil {
 			return nil, fmt.Errorf("failed to scan device: %w", err)
 		}
 		devices = append(devices, d)

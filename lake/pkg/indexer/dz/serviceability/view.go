@@ -48,7 +48,6 @@ type Device struct {
 	ContributorPK string
 	MetroPK       string
 	MaxUsers      uint16
-	UsersCount    uint16
 }
 
 type Metro struct {
@@ -326,7 +325,6 @@ func convertDevices(onchain []serviceability.Device) []Device {
 			ContributorPK: solana.PublicKeyFromBytes(device.ContributorPubKey[:]).String(),
 			MetroPK:       solana.PublicKeyFromBytes(device.ExchangePubKey[:]).String(),
 			MaxUsers:      device.MaxUsers,
-			UsersCount:    device.UsersCount,
 		}
 	}
 	return result

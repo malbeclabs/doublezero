@@ -526,7 +526,6 @@ func TestLake_Serviceability_Store_GetDevices(t *testing.T) {
 			contributor_pk VARCHAR,
 			metro_pk VARCHAR,
 			max_users INTEGER,
-			users_count INTEGER,
 			as_of_ts TIMESTAMP NOT NULL,
 			row_hash VARCHAR NOT NULL
 		)`)
@@ -534,9 +533,9 @@ func TestLake_Serviceability_Store_GetDevices(t *testing.T) {
 
 		// Insert with required SCD2 columns (as_of_ts, row_hash)
 		// For tests, we use a simple hash value
-		_, err = conn.ExecContext(ctx, `INSERT INTO dz_devices_current (pk, status, device_type, code, public_ip, contributor_pk, metro_pk, max_users, users_count, as_of_ts, row_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 'test_hash1'), (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 'test_hash2')`,
-			devicePK1, "activated", "hybrid", "DEV1", "192.168.1.1", contributorPK, metroPK, 0, 0,
-			devicePK2, "activated", "hybrid", "DEV2", "192.168.1.2", contributorPK, metroPK, 0, 0)
+		_, err = conn.ExecContext(ctx, `INSERT INTO dz_devices_current (pk, status, device_type, code, public_ip, contributor_pk, metro_pk, max_users, as_of_ts, row_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 'test_hash1'), (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 'test_hash2')`,
+			devicePK1, "activated", "hybrid", "DEV1", "192.168.1.1", contributorPK, metroPK, 0,
+			devicePK2, "activated", "hybrid", "DEV2", "192.168.1.2", contributorPK, metroPK, 0)
 		require.NoError(t, err)
 
 		devices, err := store.GetDevices()

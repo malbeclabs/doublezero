@@ -13,6 +13,7 @@ All notable changes to this project will be documented in this file.
 - Onchain programs
   - Allow contributor owner to update ops manager key
   - Add new arguments on create interface cli command
+  - Serviceability: require device interfaces to be in `Activated` status before processing `UnlinkDeviceInterface`, returning `InvalidStatus` otherwise
 - Internet Latency Telemetry
   - Fixed a bug that prevented unresponsive ripeatlas probes from being replaced
   - Fixed a bug that caused ripeatlas samples to be dropped when they were delayed to the next collection cycle

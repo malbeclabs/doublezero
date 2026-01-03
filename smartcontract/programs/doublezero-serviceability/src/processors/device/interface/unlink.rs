@@ -65,7 +65,7 @@ pub fn process_unlink_device_interface(
         .find_interface(&value.name)
         .map_err(|_| DoubleZeroError::InterfaceNotFound)?;
 
-    if iface.status == InterfaceStatus::Deleting {
+    if iface.status != InterfaceStatus::Activated {
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 

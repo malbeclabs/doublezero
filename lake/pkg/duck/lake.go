@@ -28,10 +28,10 @@ type LakeConfig struct {
 	// MemoryLimit sets the memory_limit configuration for each connection.
 	// Example: "22GB", "16GB", "8GB"
 	MemoryLimit string
-	// TempDirectory sets the temp_directory configuration for each connection.
+	// TempDirectory sets the temp_directory configuration on database creation.
 	// Example: "/tmp/duckdb_tmp"
 	TempDirectory string
-	// MaxTempDirectorySize sets the max_temp_directory_size configuration for each connection.
+	// MaxTempDirectorySize sets the max_temp_directory_size configuration on database creation.
 	// Example: "200GB", "100GB"
 	MaxTempDirectorySize string
 	// Threads sets the threads configuration for each connection.
@@ -159,6 +159,20 @@ func NewLakeWithConfig(ctx context.Context, log *slog.Logger, catalogName, catal
 	db.SetMaxIdleConns(maxIdleConns)       // Maximum number of idle connections
 	db.SetConnMaxLifetime(connMaxLifetime) // Maximum connection lifetime
 	db.SetConnMaxIdleTime(connMaxIdleTime) // Maximum idle time before closing
+
+	// Set database-level configuration (temp directory settings) only on database creation
+	if config != nil {
+		if config.TempDirectory != "" {
+			if _, err := db.Exec(fmt.Sprintf("SET temp_directory = '%s'", strings.ReplaceAll(config.TempDirectory, "'", "''"))); err != nil {
+				return nil, fmt.Errorf("failed to set temp_directory: %w", err)
+			}
+		}
+		if config.MaxTempDirectorySize != "" {
+			if _, err := db.Exec(fmt.Sprintf("SET max_temp_directory_size = '%s'", strings.ReplaceAll(config.MaxTempDirectorySize, "'", "''"))); err != nil {
+				return nil, fmt.Errorf("failed to set max_temp_directory_size: %w", err)
+			}
+		}
+	}
 
 	if err := validateCatalogURI(catalogURI); err != nil {
 		return nil, err
@@ -472,16 +486,6 @@ func (l *Lake) Conn(ctx context.Context) (Connection, error) {
 		if l.config.MemoryLimit != "" {
 			if _, err := conn.ExecContext(ctx, fmt.Sprintf("SET memory_limit = '%s'", strings.ReplaceAll(l.config.MemoryLimit, "'", "''"))); err != nil {
 				return nil, fmt.Errorf("failed to set memory_limit: %w", err)
-			}
-		}
-		if l.config.TempDirectory != "" {
-			if _, err := conn.ExecContext(ctx, fmt.Sprintf("SET temp_directory = '%s'", strings.ReplaceAll(l.config.TempDirectory, "'", "''"))); err != nil {
-				return nil, fmt.Errorf("failed to set temp_directory: %w", err)
-			}
-		}
-		if l.config.MaxTempDirectorySize != "" {
-			if _, err := conn.ExecContext(ctx, fmt.Sprintf("SET max_temp_directory_size = '%s'", strings.ReplaceAll(l.config.MaxTempDirectorySize, "'", "''"))); err != nil {
-				return nil, fmt.Errorf("failed to set max_temp_directory_size: %w", err)
 			}
 		}
 		if l.config.Threads != "" {

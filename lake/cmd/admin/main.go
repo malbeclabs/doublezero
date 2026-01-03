@@ -18,6 +18,7 @@ import (
 
 	"github.com/malbeclabs/doublezero/lake/pkg/duck"
 	dzsvc "github.com/malbeclabs/doublezero/lake/pkg/indexer/dz/serviceability"
+	dztelemlatency "github.com/malbeclabs/doublezero/lake/pkg/indexer/dz/telemetry/latency"
 	mcpgeoip "github.com/malbeclabs/doublezero/lake/pkg/indexer/geoip"
 	"github.com/malbeclabs/doublezero/lake/pkg/indexer/sol"
 	"github.com/malbeclabs/doublezero/lake/pkg/logger"
@@ -54,6 +55,7 @@ func run() error {
 	execSQLFileFlag := flag.String("sql-file", "", "Execute SQL from file")
 	backfillValidToOnDeletesFlag := flag.Bool("backfill-valid-to-on-deletes", false, "Backfill valid_to field for SCD2 history rows where it wasn't set on delete")
 	backfillValidToOnReinsertsFlag := flag.Bool("backfill-valid-to-on-reinserts", false, "Backfill valid_to field for SCD2 delete tombstones where it wasn't set on re-insert")
+	backfillIPDVFlag := flag.Bool("backfill-ipdv", false, "Backfill ipdv_us (IPDV/jitter) column for telemetry latency fact tables")
 	dumpSchemaFlag := flag.String("dump-schema", "", "Dump CREATE TABLE statements to file (e.g., 'schema/db_schema.sql')")
 
 	allFlag := flag.Bool("all", false, "Apply to all items (for use with --cleanup-old-files or --delete-orphaned-files)")
@@ -97,8 +99,8 @@ func run() error {
 	}
 
 	// Check that at least one command is specified
-	if !*mergeFilesFlag && !*rewriteFilesFlag && !*cleanupOldFilesFlag && !*deleteOrphanedFilesFlag && !*expireSnapshotsFlag && !*flushInlinedDataFlag && !*checkpointFlag && *setExpireOlderThanFlag == "" && !execSQLFlagSet && *execSQLFileFlag == "" && !*backfillValidToOnDeletesFlag && !*backfillValidToOnReinsertsFlag && *dumpSchemaFlag == "" {
-		return fmt.Errorf("must specify at least one command: --merge-adjacent-files, --rewrite-data-files, --cleanup-old-files, --delete-orphaned-files, --expire-snapshots, --flush-inlined-data, --checkpoint, --set-expire-older-than, --sql, --sql-file, --backfill-valid-to-on-deletes, --backfill-valid-to-on-reinserts, or --dump-schema")
+	if !*mergeFilesFlag && !*rewriteFilesFlag && !*cleanupOldFilesFlag && !*deleteOrphanedFilesFlag && !*expireSnapshotsFlag && !*flushInlinedDataFlag && !*checkpointFlag && *setExpireOlderThanFlag == "" && !execSQLFlagSet && *execSQLFileFlag == "" && !*backfillValidToOnDeletesFlag && !*backfillValidToOnReinsertsFlag && !*backfillIPDVFlag && *dumpSchemaFlag == "" {
+		return fmt.Errorf("must specify at least one command: --merge-adjacent-files, --rewrite-data-files, --cleanup-old-files, --delete-orphaned-files, --expire-snapshots, --flush-inlined-data, --checkpoint, --set-expire-older-than, --sql, --sql-file, --backfill-valid-to-on-deletes, --backfill-valid-to-on-reinserts, --backfill-ipdv, or --dump-schema")
 	}
 
 	// Validate SQL execution flags
@@ -440,6 +442,47 @@ func run() error {
 		}
 	}
 
+	if *backfillIPDVFlag {
+		if *dryRunFlag {
+			log.Info("running backfill IPDV in dry-run mode - no changes will be made")
+		}
+
+		// Backfill device link latency samples
+		log.Info("processing device link latency samples for IPDV backfill", "dry_run", *dryRunFlag)
+		deviceLinkCount, err := dztelemlatency.BackfillIPDVDeviceLink(ctx, log, conn, *dryRunFlag)
+		if err != nil {
+			return fmt.Errorf("failed to backfill IPDV for device link latency samples: %w", err)
+		}
+
+		// Backfill internet metro latency samples
+		log.Info("processing internet metro latency samples for IPDV backfill", "dry_run", *dryRunFlag)
+		internetMetroCount, err := dztelemlatency.BackfillIPDVInternetMetro(ctx, log, conn, *dryRunFlag)
+		if err != nil {
+			return fmt.Errorf("failed to backfill IPDV for internet metro latency samples: %w", err)
+		}
+
+		totalFixed := deviceLinkCount + internetMetroCount
+
+		if *dryRunFlag {
+			log.Info("dry run completed for IPDV backfill",
+				"device_link_rows_to_update", deviceLinkCount,
+				"internet_metro_rows_to_update", internetMetroCount,
+				"total_rows_to_update", totalFixed)
+			fmt.Printf("\nDry run completed. Total rows that would be updated: %d\n", totalFixed)
+			fmt.Printf("  Device link latency samples: %d\n", deviceLinkCount)
+			fmt.Printf("  Internet metro latency samples: %d\n", internetMetroCount)
+			fmt.Println("Run without --dry-run to apply the changes.")
+		} else {
+			log.Info("backfill completed for IPDV",
+				"device_link_rows_updated", deviceLinkCount,
+				"internet_metro_rows_updated", internetMetroCount,
+				"total_rows_updated", totalFixed)
+			fmt.Printf("\nBackfill completed. Total rows updated: %d\n", totalFixed)
+			fmt.Printf("  Device link latency samples: %d\n", deviceLinkCount)
+			fmt.Printf("  Internet metro latency samples: %d\n", internetMetroCount)
+		}
+	}
+
 	return nil
 }
 
@@ -579,7 +622,7 @@ func executeSQL(ctx context.Context, conn duck.Connection, log *slog.Logger, sql
 
 	// Try to determine if it's a query (SELECT) or exec (INSERT/UPDATE/DELETE/CALL/etc)
 	sqlUpper := strings.ToUpper(strings.TrimSpace(sql))
-	isQuery := strings.HasPrefix(sqlUpper, "SELECT") || strings.HasPrefix(sqlUpper, "WITH") || strings.HasPrefix(sqlUpper, "SHOW") || strings.HasPrefix(sqlUpper, "DESCRIBE") || strings.HasPrefix(sqlUpper, "DESC")
+	isQuery := strings.HasPrefix(sqlUpper, "SELECT") || strings.HasPrefix(sqlUpper, "WITH") || strings.HasPrefix(sqlUpper, "SHOW") || strings.HasPrefix(sqlUpper, "DESCRIBE") || strings.HasPrefix(sqlUpper, "DESC") || strings.HasPrefix(sqlUpper, "EXPLAIN")
 
 	if isQuery {
 		rows, err := conn.QueryContext(ctx, sql)

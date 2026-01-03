@@ -111,7 +111,6 @@ func TestLake_Solana_Store_NewStore(t *testing.T) {
 	})
 }
 
-
 func TestLake_Solana_Store_ReplaceLeaderSchedule(t *testing.T) {
 	t.Parallel()
 
@@ -125,7 +124,6 @@ func TestLake_Solana_Store_ReplaceLeaderSchedule(t *testing.T) {
 			DB:     db,
 		})
 		require.NoError(t, err)
-
 
 		nodePK := solana.MustPublicKeyFromBase58("So11111111111111111111111111111111111111112")
 		slots := []uint64{100, 200, 300}
@@ -178,7 +176,6 @@ func TestLake_Solana_Store_ReplaceVoteAccounts(t *testing.T) {
 			DB:     db,
 		})
 		require.NoError(t, err)
-
 
 		votePK := solana.MustPublicKeyFromBase58("Vote111111111111111111111111111111111111111")
 		nodePK := solana.MustPublicKeyFromBase58("So11111111111111111111111111111111111111112")
@@ -238,7 +235,6 @@ func TestLake_Solana_Store_ReplaceGossipNodes(t *testing.T) {
 			DB:     db,
 		})
 		require.NoError(t, err)
-
 
 		nodePK := solana.MustPublicKeyFromBase58("So11111111111111111111111111111111111111112")
 		gossipAddr := "192.168.1.1:8001"
@@ -450,5 +446,315 @@ func TestLake_Solana_Store_GetGossipIPs(t *testing.T) {
 		ips, err := store.GetGossipIPs(ctx)
 		require.NoError(t, err)
 		require.Empty(t, ips)
+	})
+}
+
+func TestLake_Solana_Store_InsertVoteAccountActivity_CreditsDelta(t *testing.T) {
+	t.Parallel()
+
+	t.Run("first observation has NULL credits_delta", func(t *testing.T) {
+		t.Parallel()
+
+		db := testDB(t)
+		store, err := NewStore(StoreConfig{
+			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			DB:     db,
+		})
+		require.NoError(t, err)
+
+		ctx := context.Background()
+		entries := []VoteAccountActivityEntry{
+			{
+				Time:                time.Now().UTC(),
+				VoteAccountPubkey:   "Vote111111111111111111111111111111111111111",
+				NodeIdentityPubkey:  "So11111111111111111111111111111111111111112",
+				RootSlot:            1000,
+				LastVoteSlot:        1100,
+				ClusterSlot:         1200,
+				IsDelinquent:        false,
+				EpochCreditsJSON:    "[[100,5000,4000]]",
+				CreditsEpoch:        100,
+				CreditsEpochCredits: 5000,
+				CollectorRunID:      "test-run-1",
+			},
+		}
+
+		err = store.InsertVoteAccountActivity(ctx, entries)
+		require.NoError(t, err)
+
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+
+		var creditsDelta sql.NullInt64
+		err = conn.QueryRowContext(ctx,
+			"SELECT credits_delta FROM solana_vote_account_activity_raw LIMIT 1").
+			Scan(&creditsDelta)
+		require.NoError(t, err)
+		require.False(t, creditsDelta.Valid, "credits_delta should be NULL for first observation")
+	})
+
+	t.Run("same epoch with increased credits calculates delta correctly", func(t *testing.T) {
+		t.Parallel()
+
+		db := testDB(t)
+		store, err := NewStore(StoreConfig{
+			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			DB:     db,
+		})
+		require.NoError(t, err)
+
+		ctx := context.Background()
+		voteAccountPubkey := "Vote111111111111111111111111111111111111111"
+		now := time.Now().UTC()
+
+		// First entry
+		entries1 := []VoteAccountActivityEntry{
+			{
+				Time:                now,
+				VoteAccountPubkey:   voteAccountPubkey,
+				NodeIdentityPubkey:  "So11111111111111111111111111111111111111112",
+				RootSlot:            1000,
+				LastVoteSlot:        1100,
+				ClusterSlot:         1200,
+				IsDelinquent:        false,
+				EpochCreditsJSON:    "[[100,5000,4000]]",
+				CreditsEpoch:        100,
+				CreditsEpochCredits: 5000,
+				CollectorRunID:      "test-run-1",
+			},
+		}
+		err = store.InsertVoteAccountActivity(ctx, entries1)
+		require.NoError(t, err)
+
+		// Second entry in same epoch with increased credits
+		entries2 := []VoteAccountActivityEntry{
+			{
+				Time:                now.Add(1 * time.Minute),
+				VoteAccountPubkey:   voteAccountPubkey,
+				NodeIdentityPubkey:  "So11111111111111111111111111111111111111112",
+				RootSlot:            2000,
+				LastVoteSlot:        2100,
+				ClusterSlot:         2200,
+				IsDelinquent:        false,
+				EpochCreditsJSON:    "[[100,5200,4000]]",
+				CreditsEpoch:        100,
+				CreditsEpochCredits: 5200, // Increased by 200
+				CollectorRunID:      "test-run-2",
+			},
+		}
+		err = store.InsertVoteAccountActivity(ctx, entries2)
+		require.NoError(t, err)
+
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+
+		var creditsDelta sql.NullInt64
+		err = conn.QueryRowContext(ctx,
+			"SELECT credits_delta FROM solana_vote_account_activity_raw WHERE vote_account_pubkey = ? ORDER BY time DESC LIMIT 1",
+			voteAccountPubkey).
+			Scan(&creditsDelta)
+		require.NoError(t, err)
+		require.True(t, creditsDelta.Valid, "credits_delta should be set")
+		require.Equal(t, int64(200), creditsDelta.Int64, "credits_delta should be 200 (5200 - 5000)")
+	})
+
+	t.Run("same epoch with decreased credits sets delta to 0", func(t *testing.T) {
+		t.Parallel()
+
+		db := testDB(t)
+		store, err := NewStore(StoreConfig{
+			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			DB:     db,
+		})
+		require.NoError(t, err)
+
+		ctx := context.Background()
+		voteAccountPubkey := "Vote111111111111111111111111111111111111111"
+		now := time.Now().UTC()
+
+		// First entry
+		entries1 := []VoteAccountActivityEntry{
+			{
+				Time:                now,
+				VoteAccountPubkey:   voteAccountPubkey,
+				NodeIdentityPubkey:  "So11111111111111111111111111111111111111112",
+				RootSlot:            1000,
+				LastVoteSlot:        1100,
+				ClusterSlot:         1200,
+				IsDelinquent:        false,
+				EpochCreditsJSON:    "[[100,5000,4000]]",
+				CreditsEpoch:        100,
+				CreditsEpochCredits: 5000,
+				CollectorRunID:      "test-run-1",
+			},
+		}
+		err = store.InsertVoteAccountActivity(ctx, entries1)
+		require.NoError(t, err)
+
+		// Second entry in same epoch with decreased credits (shouldn't happen but handle gracefully)
+		entries2 := []VoteAccountActivityEntry{
+			{
+				Time:                now.Add(1 * time.Minute),
+				VoteAccountPubkey:   voteAccountPubkey,
+				NodeIdentityPubkey:  "So11111111111111111111111111111111111111112",
+				RootSlot:            2000,
+				LastVoteSlot:        2100,
+				ClusterSlot:         2200,
+				IsDelinquent:        false,
+				EpochCreditsJSON:    "[[100,4800,4000]]",
+				CreditsEpoch:        100,
+				CreditsEpochCredits: 4800, // Decreased by 200
+				CollectorRunID:      "test-run-2",
+			},
+		}
+		err = store.InsertVoteAccountActivity(ctx, entries2)
+		require.NoError(t, err)
+
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+
+		var creditsDelta sql.NullInt64
+		err = conn.QueryRowContext(ctx,
+			"SELECT credits_delta FROM solana_vote_account_activity_raw WHERE vote_account_pubkey = ? ORDER BY time DESC LIMIT 1",
+			voteAccountPubkey).
+			Scan(&creditsDelta)
+		require.NoError(t, err)
+		require.True(t, creditsDelta.Valid, "credits_delta should be set")
+		require.Equal(t, int64(0), creditsDelta.Int64, "credits_delta should be 0 when credits decrease")
+	})
+
+	t.Run("epoch rollover sets credits_delta to NULL", func(t *testing.T) {
+		t.Parallel()
+
+		db := testDB(t)
+		store, err := NewStore(StoreConfig{
+			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			DB:     db,
+		})
+		require.NoError(t, err)
+
+		ctx := context.Background()
+		voteAccountPubkey := "Vote111111111111111111111111111111111111111"
+		now := time.Now().UTC()
+
+		// First entry in epoch 100
+		entries1 := []VoteAccountActivityEntry{
+			{
+				Time:                now,
+				VoteAccountPubkey:   voteAccountPubkey,
+				NodeIdentityPubkey:  "So11111111111111111111111111111111111111112",
+				RootSlot:            1000,
+				LastVoteSlot:        1100,
+				ClusterSlot:         1200,
+				IsDelinquent:        false,
+				EpochCreditsJSON:    "[[100,5000,4000]]",
+				CreditsEpoch:        100,
+				CreditsEpochCredits: 5000,
+				CollectorRunID:      "test-run-1",
+			},
+		}
+		err = store.InsertVoteAccountActivity(ctx, entries1)
+		require.NoError(t, err)
+
+		// Second entry in epoch 101 (rollover)
+		entries2 := []VoteAccountActivityEntry{
+			{
+				Time:                now.Add(1 * time.Minute),
+				VoteAccountPubkey:   voteAccountPubkey,
+				NodeIdentityPubkey:  "So11111111111111111111111111111111111111112",
+				RootSlot:            2000,
+				LastVoteSlot:        2100,
+				ClusterSlot:         2200,
+				IsDelinquent:        false,
+				EpochCreditsJSON:    "[[101,1000,0]]",
+				CreditsEpoch:        101,
+				CreditsEpochCredits: 1000, // New epoch, credits reset
+				CollectorRunID:      "test-run-2",
+			},
+		}
+		err = store.InsertVoteAccountActivity(ctx, entries2)
+		require.NoError(t, err)
+
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+
+		var creditsDelta sql.NullInt64
+		var creditsEpochCredits int64
+		err = conn.QueryRowContext(ctx,
+			"SELECT credits_delta, credits_epoch_credits FROM solana_vote_account_activity_raw WHERE vote_account_pubkey = ? ORDER BY time DESC LIMIT 1",
+			voteAccountPubkey).
+			Scan(&creditsDelta, &creditsEpochCredits)
+		require.NoError(t, err)
+		require.False(t, creditsDelta.Valid, "credits_delta should be NULL on epoch rollover")
+		require.Equal(t, int64(1000), creditsEpochCredits, "credits_epoch_credits should still be set")
+	})
+
+	t.Run("epoch gap greater than 1 sets credits_delta to NULL", func(t *testing.T) {
+		t.Parallel()
+
+		db := testDB(t)
+		store, err := NewStore(StoreConfig{
+			Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			DB:     db,
+		})
+		require.NoError(t, err)
+
+		ctx := context.Background()
+		voteAccountPubkey := "Vote111111111111111111111111111111111111111"
+		now := time.Now().UTC()
+
+		// First entry in epoch 100
+		entries1 := []VoteAccountActivityEntry{
+			{
+				Time:                now,
+				VoteAccountPubkey:   voteAccountPubkey,
+				NodeIdentityPubkey:  "So11111111111111111111111111111111111111112",
+				RootSlot:            1000,
+				LastVoteSlot:        1100,
+				ClusterSlot:         1200,
+				IsDelinquent:        false,
+				EpochCreditsJSON:    "[[100,5000,4000]]",
+				CreditsEpoch:        100,
+				CreditsEpochCredits: 5000,
+				CollectorRunID:      "test-run-1",
+			},
+		}
+		err = store.InsertVoteAccountActivity(ctx, entries1)
+		require.NoError(t, err)
+
+		// Second entry in epoch 103 (gap of 2 epochs)
+		entries2 := []VoteAccountActivityEntry{
+			{
+				Time:                now.Add(1 * time.Minute),
+				VoteAccountPubkey:   voteAccountPubkey,
+				NodeIdentityPubkey:  "So11111111111111111111111111111111111111112",
+				RootSlot:            2000,
+				LastVoteSlot:        2100,
+				ClusterSlot:         2200,
+				IsDelinquent:        false,
+				EpochCreditsJSON:    "[[103,2000,0]]",
+				CreditsEpoch:        103,
+				CreditsEpochCredits: 2000,
+				CollectorRunID:      "test-run-2",
+			},
+		}
+		err = store.InsertVoteAccountActivity(ctx, entries2)
+		require.NoError(t, err)
+
+		conn, err := db.Conn(ctx)
+		require.NoError(t, err)
+		defer conn.Close()
+
+		var creditsDelta sql.NullInt64
+		err = conn.QueryRowContext(ctx,
+			"SELECT credits_delta FROM solana_vote_account_activity_raw WHERE vote_account_pubkey = ? ORDER BY time DESC LIMIT 1",
+			voteAccountPubkey).
+			Scan(&creditsDelta)
+		require.NoError(t, err)
+		require.False(t, creditsDelta.Valid, "credits_delta should be NULL when epoch gap > 1")
 	})
 }

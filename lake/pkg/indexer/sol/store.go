@@ -371,9 +371,8 @@ func calculateCreditsDelta(currentEpoch int, currentCredits uint64, prev *previo
 	}
 
 	if currentEpoch == prev.Epoch+1 {
-		// Epoch rollover: credits_delta = C
-		delta := int64(currentCredits)
-		return &delta
+		// Epoch rollover: cannot calculate meaningful delta across epochs
+		return nil
 	}
 
 	// Any other jump/gap: NULL

@@ -170,7 +170,7 @@ var Datasets = []schematypes.Dataset{
 		- credits_delta (BIGINT, nullable): Minute-over-minute credits delta (epoch-aware)
 			* First observation: NULL
 			* Same epoch (E == E_prev): max(C - C_prev, 0)
-			* Epoch rollover (E == E_prev + 1): credits_delta = C
+			* Epoch rollover (E == E_prev + 1): NULL (cannot calculate meaningful delta across epochs)
 			* Any other jump/gap: NULL
 		- activated_stake_lamports (BIGINT, nullable): Activated stake in lamports
 		- activated_stake_sol (DOUBLE, nullable): Activated stake in SOL (lamports / 1e9)

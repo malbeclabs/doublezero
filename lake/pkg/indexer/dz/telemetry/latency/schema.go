@@ -48,6 +48,7 @@ var Datasets = []schematypes.Dataset{
 		- link_pk (VARCHAR): Foreign key → dz_links_current.pk. Part of circuit key (origin_device_pk, target_device_pk, link_pk). Join to get committed_rtt_ns for comparison.
 		- rtt_us (BIGINT): RTT in microseconds; rtt_us = 0 indicates loss
 		- loss (BOOLEAN): True if packet loss detected (rtt_us = 0)
+		- ipdv_us (BIGINT): IPDV (Inter-Packet Delay Variation) / jitter in microseconds. Absolute difference between current and previous RTT. NULL for first sample in a circuit or when either RTT indicates loss.
 		`,
 	},
 	{
@@ -88,6 +89,7 @@ var Datasets = []schematypes.Dataset{
 		- target_metro_pk (VARCHAR): Foreign key → dz_metros_current.pk (target). Part of circuit key (origin_metro_pk, target_metro_pk).
 		- data_provider (VARCHAR): Data provider
 		- rtt_us (BIGINT): RTT in microseconds
+		- ipdv_us (BIGINT): IPDV (Inter-Packet Delay Variation) / jitter in microseconds. Absolute difference between current and previous RTT. NULL for first sample in a circuit or when RTT indicates loss.
 		`,
 	},
 }

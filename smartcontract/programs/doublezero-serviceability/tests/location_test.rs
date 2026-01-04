@@ -202,8 +202,7 @@ async fn test_location_delete_from_suspended() {
     // Create location
     let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (location_pubkey, _) =
-        get_location_pda(&program_id, globalstate_account.account_index + 1);
+    let (location_pubkey, _) = get_location_pda(&program_id, globalstate_account.account_index + 1);
 
     execute_transaction(
         &mut banks_client,

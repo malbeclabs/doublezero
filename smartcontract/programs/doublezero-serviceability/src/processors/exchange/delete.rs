@@ -1,8 +1,6 @@
 use core::fmt;
 
-use crate::{
-    error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::exchange::*,
-};
+use crate::{error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::exchange::*};
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 #[cfg(test)]
@@ -64,8 +62,7 @@ pub fn process_delete_exchange(
 
     let exchange = Exchange::try_from(exchange_account)?;
 
-    if exchange.status != ExchangeStatus::Activated
-        && exchange.status != ExchangeStatus::Suspended
+    if exchange.status != ExchangeStatus::Activated && exchange.status != ExchangeStatus::Suspended
     {
         return Err(DoubleZeroError::InvalidStatus.into());
     }

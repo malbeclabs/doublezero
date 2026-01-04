@@ -249,8 +249,7 @@ async fn test_exchange_delete_from_suspended() {
     .await;
 
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (exchange_pubkey, _) =
-        get_exchange_pda(&program_id, globalstate_account.account_index + 1);
+    let (exchange_pubkey, _) = get_exchange_pda(&program_id, globalstate_account.account_index + 1);
 
     execute_transaction(
         &mut banks_client,

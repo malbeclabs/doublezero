@@ -587,8 +587,7 @@ async fn test_device_delete_from_suspended() {
 
     // Create minimal location, exchange, contributor, device
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (location_pubkey, _) =
-        get_location_pda(&program_id, globalstate_account.account_index + 1);
+    let (location_pubkey, _) = get_location_pda(&program_id, globalstate_account.account_index + 1);
 
     execute_transaction(
         &mut banks_client,
@@ -611,8 +610,7 @@ async fn test_device_delete_from_suspended() {
     .await;
 
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (exchange_pubkey, _) =
-        get_exchange_pda(&program_id, globalstate_account.account_index + 1);
+    let (exchange_pubkey, _) = get_exchange_pda(&program_id, globalstate_account.account_index + 1);
 
     execute_transaction(
         &mut banks_client,
@@ -657,8 +655,7 @@ async fn test_device_delete_from_suspended() {
 
     let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (device_pubkey, _) =
-        get_device_pda(&program_id, globalstate_account.account_index + 1);
+    let (device_pubkey, _) = get_device_pda(&program_id, globalstate_account.account_index + 1);
 
     execute_transaction(
         &mut banks_client,

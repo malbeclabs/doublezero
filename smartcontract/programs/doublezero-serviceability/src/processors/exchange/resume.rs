@@ -70,6 +70,11 @@ pub fn process_resume_exchange(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
+    // Only resume exchanges that are currently Suspended
+    if exchange.status != ExchangeStatus::Suspended {
+        return Err(DoubleZeroError::InvalidStatus.into());
+    }
+
     exchange.status = ExchangeStatus::Activated;
 
     account_write(exchange_account, &exchange, payer_account, system_program)?;

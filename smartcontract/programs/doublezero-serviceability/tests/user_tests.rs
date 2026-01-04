@@ -404,6 +404,27 @@ async fn test_user() {
     assert_eq!(user.status, UserStatus::Activated);
 
     println!("✅ User resumed");
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ResumeUser(UserResumeArgs {}),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    assert!(result.is_err());
+    let error = result.unwrap_err();
+    let error_string = format!("{:?}", error);
+    assert!(
+        error_string.contains("Custom(7)"),
+        "Expected error to contain 'Custom(7)' (InvalidStatus), but got: {}",
+        error_string
+    );
     /*****************************************************************************************************************************************************/
     println!("🟢 11a. Testing User update...");
     execute_transaction(

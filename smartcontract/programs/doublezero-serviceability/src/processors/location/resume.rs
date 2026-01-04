@@ -60,6 +60,12 @@ pub fn process_resume_location(
     }
 
     let mut location: Location = Location::try_from(location_account)?;
+
+    // Only resume locations that are currently Suspended
+    if location.status != LocationStatus::Suspended {
+        return Err(DoubleZeroError::InvalidStatus.into());
+    }
+
     location.status = LocationStatus::Activated;
 
     account_write(location_account, &location, payer_account, system_program)?;

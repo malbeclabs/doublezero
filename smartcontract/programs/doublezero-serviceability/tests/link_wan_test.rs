@@ -604,6 +604,28 @@ async fn test_wan_link() {
     assert_eq!(link.status, LinkStatus::Activated);
 
     println!("✅ Link resumed");
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ResumeLink(LinkResumeArgs {}),
+        vec![
+            AccountMeta::new(tunnel_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    assert!(result.is_err());
+    let error = result.unwrap_err();
+    let error_string = format!("{:?}", error);
+    assert!(
+        error_string.contains("Custom(7)"),
+        "Expected error to contain 'Custom(7)' (InvalidStatus), but got: {}",
+        error_string
+    );
     /*****************************************************************************************************************************************************/
     println!("🟢 11. Update Link...");
     execute_transaction(

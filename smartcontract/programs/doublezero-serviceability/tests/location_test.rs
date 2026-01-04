@@ -123,6 +123,27 @@ async fn test_location() {
     assert_eq!(location.status, LocationStatus::Activated);
 
     println!("✅ Location resumed");
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ResumeLocation(LocationResumeArgs {}),
+        vec![
+            AccountMeta::new(location_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    assert!(result.is_err());
+    let error = result.unwrap_err();
+    let error_string = format!("{:?}", error);
+    assert!(
+        error_string.contains("Custom(7)"),
+        "Expected error to contain 'Custom(7)' (InvalidStatus), but got: {}",
+        error_string
+    );
     /*****************************************************************************************************************************************************/
     println!("Testing Location update...");
     execute_transaction(

@@ -129,6 +129,10 @@ pub fn process_delete_user(
         accesspass.try_serialize(accesspass_account)?;
     }
 
+    if user.status != UserStatus::Activated && user.status != UserStatus::Suspended {
+        return Err(DoubleZeroError::InvalidStatus.into());
+    }
+
     user.status = UserStatus::Deleting;
 
     resize_account_if_needed(user_account, payer_account, accounts, user.size())?;

@@ -71,8 +71,11 @@ pub fn process_delete_link(
         return Err(DoubleZeroError::InvalidOwnerPubkey.into());
     }
 
-    // Any link can be deleted by its contributor or foundation allowlist on any status
+    // Any link can be deleted by its contributor or foundation allowlist when Activated or Suspended
     let mut link: Link = Link::try_from(link_account)?;
+    if link.status != LinkStatus::Activated && link.status != LinkStatus::Suspended {
+        return Err(DoubleZeroError::InvalidStatus.into());
+    }
     link.status = LinkStatus::Deleting;
 
     account_write(link_account, &link, payer_account, system_program)?;

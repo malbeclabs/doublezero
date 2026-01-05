@@ -87,14 +87,6 @@ var (
 		[]string{"operation"},
 	)
 
-	MCPClientErrorsTotal = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "doublezero_ai_slack_mcp_client_errors_total",
-			Help: "Total number of MCP client errors",
-		},
-		[]string{"operation"},
-	)
-
 	ConversationHistoryErrorsTotal = promauto.NewCounter(
 		prometheus.CounterOpts{
 			Name: "doublezero_ai_slack_conversation_history_errors_total",

@@ -12,7 +12,7 @@ import (
 func TestAI_Slack_Processor_HasResponded(t *testing.T) {
 	t.Parallel()
 
-	p := NewProcessor(nil, nil, nil, nil, slog.Default(), 24, 48)
+	p := NewProcessor(nil, nil, nil, nil, slog.Default())
 	messageKey := "C123:1234567890.123456"
 
 	require.False(t, p.HasResponded(messageKey))
@@ -24,7 +24,7 @@ func TestAI_Slack_Processor_HasResponded(t *testing.T) {
 func TestAI_Slack_Processor_MarkResponded(t *testing.T) {
 	t.Parallel()
 
-	p := NewProcessor(nil, nil, nil, nil, slog.Default(), 24, 48)
+	p := NewProcessor(nil, nil, nil, nil, slog.Default())
 	messageKey := "C123:1234567890.123456"
 
 	p.MarkResponded(messageKey)
@@ -34,7 +34,7 @@ func TestAI_Slack_Processor_MarkResponded(t *testing.T) {
 func TestAI_Slack_Processor_StartCleanup(t *testing.T) {
 	t.Parallel()
 
-	p := NewProcessor(nil, nil, nil, nil, slog.Default(), 24, 48)
+	p := NewProcessor(nil, nil, nil, nil, slog.Default())
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -54,7 +54,7 @@ func TestAI_Slack_Processor_StartCleanup(t *testing.T) {
 func TestAI_Slack_Processor_NewProcessor(t *testing.T) {
 	t.Parallel()
 
-	p := NewProcessor(nil, nil, nil, nil, slog.Default(), 24, 48)
+	p := NewProcessor(nil, nil, nil, nil, slog.Default())
 	require.NotNil(t, p)
 	require.IsType(t, &Processor{}, p)
 }

@@ -3311,7 +3311,7 @@
     }
   ],
   "preload": false,
-  "refresh": "5m",
+  "refresh": "30m",
   "schemaVersion": 42,
   "tags": [
     "doublezero",

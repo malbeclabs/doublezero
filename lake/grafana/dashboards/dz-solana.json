@@ -1,0 +1,2186 @@
+{
+    "annotations": {
+        "list": [
+            {
+                "builtIn": 1,
+                "datasource": {
+                    "type": "grafana",
+                    "uid": "doublezero-lake"
+                },
+                "enable": true,
+                "hide": true,
+                "iconColor": "rgba(0, 211, 255, 1)",
+                "name": "Annotations & Alerts",
+                "type": "dashboard"
+            }
+        ]
+    },
+    "editable": true,
+    "fiscalYearStartMonth": 0,
+    "graphTooltip": 0,
+    "id": 10,
+    "links": [],
+    "panels": [
+        {
+            "fieldConfig": {
+                "defaults": {},
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 2,
+                "w": 24,
+                "x": 0,
+                "y": 0
+            },
+            "id": 1,
+            "options": {
+                "code": {
+                    "language": "markdown",
+                    "showLineNumbers": false,
+                    "showMiniMap": false
+                },
+                "content": "[← Back to Overview](/d/doublezero-lake-overview) | [Solana Dashboard](/d/doublezero-solana) | [Clear All Filters](/d/dz-solana?var-node_pubkey=__ALL__&var-vote_account=__ALL__)",
+                "mode": "markdown"
+            },
+            "pluginVersion": "12.3.1",
+            "title": "",
+            "type": "text"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            }
+                        ]
+                    },
+                    "unit": "short"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 4,
+                "w": 4,
+                "x": 0,
+                "y": 2
+            },
+            "id": 2,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "auto",
+                "wideLayout": true
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "WITH connected_users AS (\n  SELECT u.pk AS dz_user_pk, u.dz_ip, u.device_pk\n  FROM dz_users_history u\n  WHERE u.op != 'D'\n    AND u.status = 'activated'\n    AND u.valid_from <= CURRENT_TIMESTAMP\n    AND (u.valid_to IS NULL OR u.valid_to > CURRENT_TIMESTAMP)\n    AND u.dz_ip IS NOT NULL\n    AND u.owner_pk NOT IN (SELECT owner_pk FROM dz_owners_internal)\n)\nSELECT COUNT(DISTINCT gn.node_pubkey) as value\nFROM connected_users u\nJOIN solana_gossip_at_ip_now gn ON u.dz_ip = gn.gossip_ip\nLEFT JOIN solana_vote_accounts_history va ON gn.node_pubkey = va.node_pubkey\n  AND va.epoch_vote_account = true\n  AND va.activated_stake_lamports > 0\n  AND va.valid_from <= CURRENT_TIMESTAMP\n  AND (va.valid_to IS NULL OR va.valid_to > CURRENT_TIMESTAMP)\nWHERE va.vote_pubkey IS NULL",
+                    "refId": "A"
+                }
+            ],
+            "title": "Gossip-Only Nodes Connected",
+            "type": "stat"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            }
+                        ]
+                    },
+                    "unit": "short"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 4,
+                "w": 4,
+                "x": 4,
+                "y": 2
+            },
+            "id": 3,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "auto",
+                "wideLayout": true
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "SELECT COUNT(*) as value\nFROM solana_validators_connected_now",
+                    "refId": "A"
+                }
+            ],
+            "title": "Validators Connected",
+            "type": "stat"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            }
+                        ]
+                    },
+                    "unit": "short"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 4,
+                "w": 4,
+                "x": 8,
+                "y": 2
+            },
+            "id": 4,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "auto",
+                "wideLayout": true
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "SELECT CAST(total_stake_sol AS DOUBLE) as value\nFROM solana_connected_stake_now_summary",
+                    "refId": "A"
+                }
+            ],
+            "title": "Total Validator Stake (SOL)",
+            "type": "stat"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "decimals": 2,
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            }
+                        ]
+                    },
+                    "unit": "percentunit"
+                },
+                "overrides": [
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Change %"
+                        },
+                        "properties": [
+                            {
+                                "id": "unit",
+                                "value": "percent"
+                            },
+                            {
+                                "id": "thresholds",
+                                "value": {
+                                    "mode": "absolute",
+                                    "steps": [
+                                        {
+                                            "color": "red",
+                                            "value": 0
+                                        },
+                                        {
+                                            "color": "green",
+                                            "value": 0
+                                        }
+                                    ]
+                                }
+                            },
+                            {
+                                "id": "color",
+                                "value": {
+                                    "mode": "thresholds"
+                                }
+                            }
+                        ]
+                    }
+                ]
+            },
+            "gridPos": {
+                "h": 4,
+                "w": 6,
+                "x": 12,
+                "y": 2
+            },
+            "id": 6,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value_and_name",
+                "wideLayout": true
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "WITH time_range AS (\n  SELECT\n    CAST($__timeTo() AS TIMESTAMP) AS current_time,\n    CAST($__timeFrom() AS TIMESTAMP) AS current_start,\n    CAST($__timeFrom() AS TIMESTAMP) - (CAST($__timeTo() AS TIMESTAMP) - CAST($__timeFrom() AS TIMESTAMP)) AS previous_start,\n    CAST($__timeFrom() AS TIMESTAMP) AS previous_end\n),\ncurrent_dz_stake AS (\n  SELECT CAST(SUM(va.activated_stake_lamports) / 1000000000.0 AS DOUBLE) as dz_stake\n  FROM solana_validator_dz_overlaps_windowed o\n  JOIN solana_vote_accounts_history va\n    ON va.vote_pubkey = o.vote_pubkey\n   AND va.epoch_vote_account = true\n   AND va.activated_stake_lamports > 0\n  CROSS JOIN time_range tr\n  WHERE tr.current_time >= o.overlap_start\n    AND tr.current_time < o.overlap_end\n    AND va.valid_from <= tr.current_time\n    AND (va.valid_to IS NULL OR va.valid_to > tr.current_time)\n),\ncurrent_network_stake AS (\n  SELECT CAST(SUM(activated_stake_lamports) / 1000000000.0 AS DOUBLE) as network_stake\n  FROM solana_vote_accounts_history va\n  CROSS JOIN time_range tr\n  WHERE va.epoch_vote_account = true\n    AND va.activated_stake_lamports > 0\n    AND va.valid_from <= tr.current_time\n    AND (va.valid_to IS NULL OR va.valid_to > tr.current_time)\n),\nprevious_dz_stake AS (\n  SELECT CAST(SUM(va.activated_stake_lamports) / 1000000000.0 AS DOUBLE) as dz_stake\n  FROM solana_validator_dz_overlaps_windowed o\n  JOIN solana_vote_accounts_history va\n    ON va.vote_pubkey = o.vote_pubkey\n   AND va.epoch_vote_account = true\n   AND va.activated_stake_lamports > 0\n  CROSS JOIN time_range tr\n  WHERE tr.previous_end >= o.overlap_start\n    AND tr.previous_end < o.overlap_end\n    AND va.valid_from <= tr.previous_end\n    AND (va.valid_to IS NULL OR va.valid_to > tr.previous_end)\n),\nprevious_network_stake AS (\n  SELECT CAST(SUM(activated_stake_lamports) / 1000000000.0 AS DOUBLE) as network_stake\n  FROM solana_vote_accounts_history va\n  CROSS JOIN time_range tr\n  WHERE va.epoch_vote_account = true\n    AND va.activated_stake_lamports > 0\n    AND va.valid_from <= tr.previous_end\n    AND (va.valid_to IS NULL OR va.valid_to > tr.previous_end)\n),\ncurrent_share AS (\n  SELECT\n    CASE\n      WHEN cns.network_stake > 0 THEN CAST(cds.dz_stake / cns.network_stake AS DOUBLE)\n      ELSE NULL\n    END as value\n  FROM current_dz_stake cds\n  CROSS JOIN current_network_stake cns\n),\nprevious_share AS (\n  SELECT\n    CASE\n      WHEN pns.network_stake > 0 THEN CAST(pds.dz_stake / pns.network_stake AS DOUBLE)\n      ELSE NULL\n    END as value\n  FROM previous_dz_stake pds\n  CROSS JOIN previous_network_stake pns\n)\nSELECT\n  cs.value as \"Current\",\n  ps.value as \"Previous\",\n  CASE\n    WHEN ps.value IS NOT NULL AND ps.value > 0 THEN\n      CAST((cs.value - ps.value) / ps.value * 100.0 AS DOUBLE)\n    ELSE NULL\n  END as \"Change %\"\nFROM current_share cs\nCROSS JOIN previous_share ps",
+                    "refId": "A"
+                }
+            ],
+            "title": "Stake Share of Network",
+            "type": "stat"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            }
+                        ]
+                    },
+                    "unit": "short"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 4,
+                "w": 3,
+                "x": 18,
+                "y": 2
+            },
+            "id": 5,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "auto",
+                "wideLayout": true
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "WITH connected_users AS (\n  SELECT u.pk AS dz_user_pk, u.dz_ip, u.device_pk\n  FROM dz_users_history u\n  WHERE u.op != 'D'\n    AND u.status = 'activated'\n    AND u.valid_from <= CURRENT_TIMESTAMP\n    AND (u.valid_to IS NULL OR u.valid_to > CURRENT_TIMESTAMP)\n    AND u.dz_ip IS NOT NULL\n    AND u.owner_pk NOT IN (SELECT owner_pk FROM dz_owners_internal)\n)\nSELECT COUNT(DISTINCT device_pk) as value\nFROM connected_users u\nJOIN solana_gossip_at_ip_now gn ON u.dz_ip = gn.gossip_ip",
+                    "refId": "A"
+                }
+            ],
+            "title": "DZ Devices",
+            "type": "stat"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            }
+                        ]
+                    },
+                    "unit": "short"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 4,
+                "w": 3,
+                "x": 21,
+                "y": 2
+            },
+            "id": 24,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "auto",
+                "wideLayout": true
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "WITH connected_users AS (\n  SELECT u.pk AS dz_user_pk, u.dz_ip, u.device_pk\n  FROM dz_users_history u\n  WHERE u.op != 'D'\n    AND u.status = 'activated'\n    AND u.valid_from <= CURRENT_TIMESTAMP\n    AND (u.valid_to IS NULL OR u.valid_to > CURRENT_TIMESTAMP)\n    AND u.dz_ip IS NOT NULL\n    AND u.owner_pk NOT IN (SELECT owner_pk FROM dz_owners_internal)\n)\nSELECT COUNT(DISTINCT d.metro_pk) as value\nFROM connected_users u\nJOIN solana_gossip_at_ip_now gn ON u.dz_ip = gn.gossip_ip\nJOIN dz_devices_current d ON u.device_pk = d.pk\nWHERE d.metro_pk IS NOT NULL",
+                    "refId": "A"
+                }
+            ],
+            "title": "DZ Metros",
+            "type": "stat"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            }
+                        ]
+                    },
+                    "unit": "Bps"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 4,
+                "w": 6,
+                "x": 0,
+                "y": 6
+            },
+            "id": 19,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value_and_name",
+                "wideLayout": true
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "WITH connected_users AS (\n  SELECT u.pk AS dz_user_pk, u.dz_ip\n  FROM dz_users_history u\n  WHERE u.op != 'D'\n    AND u.status = 'activated'\n    AND u.valid_from <= CURRENT_TIMESTAMP\n    AND (u.valid_to IS NULL OR u.valid_to > CURRENT_TIMESTAMP)\n    AND u.dz_ip IS NOT NULL\n    AND u.owner_pk NOT IN (SELECT owner_pk FROM dz_owners_internal)\n),\nvalidator_users AS (\n  SELECT DISTINCT u.dz_user_pk\n  FROM connected_users u\n  JOIN solana_gossip_at_ip_now gn ON u.dz_ip = gn.gossip_ip\n  JOIN solana_vote_accounts_history va ON gn.node_pubkey = va.node_pubkey\n    AND va.epoch_vote_account = true\n    AND va.activated_stake_lamports > 0\n    AND va.valid_from <= CURRENT_TIMESTAMP\n    AND (va.valid_to IS NULL OR va.valid_to > CURRENT_TIMESTAMP)\n)\nSELECT\n  CAST(AVG(t.throughput_bps) AS DOUBLE) as \"Avg\",\n  CAST(MAX(t.throughput_bps) AS DOUBLE) as \"Peak\"\nFROM dz_user_device_traffic t\nJOIN validator_users vu ON t.user_pk = vu.dz_user_pk\nWHERE t.time >= $__timeFrom()\n  AND t.time <= $__timeTo()\n  AND t.throughput_bps IS NOT NULL",
+                    "refId": "A"
+                }
+            ],
+            "title": "Throughput - Validators",
+            "type": "stat"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            }
+                        ]
+                    },
+                    "unit": "Bps"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 4,
+                "w": 6,
+                "x": 6,
+                "y": 6
+            },
+            "id": 21,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value_and_name",
+                "wideLayout": true
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "WITH connected_users AS (\n  SELECT u.pk AS dz_user_pk, u.dz_ip\n  FROM dz_users_history u\n  WHERE u.op != 'D'\n    AND u.status = 'activated'\n    AND u.valid_from <= CURRENT_TIMESTAMP\n    AND (u.valid_to IS NULL OR u.valid_to > CURRENT_TIMESTAMP)\n    AND u.dz_ip IS NOT NULL\n    AND u.owner_pk NOT IN (SELECT owner_pk FROM dz_owners_internal)\n),\ngossip_only_users AS (\n  SELECT DISTINCT u.dz_user_pk\n  FROM connected_users u\n  JOIN solana_gossip_at_ip_now gn ON u.dz_ip = gn.gossip_ip\n  LEFT JOIN solana_vote_accounts_history va ON gn.node_pubkey = va.node_pubkey\n    AND va.epoch_vote_account = true\n    AND va.activated_stake_lamports > 0\n    AND va.valid_from <= CURRENT_TIMESTAMP\n    AND (va.valid_to IS NULL OR va.valid_to > CURRENT_TIMESTAMP)\n  WHERE va.vote_pubkey IS NULL\n)\nSELECT\n  CAST(AVG(t.throughput_bps) AS DOUBLE) as \"Avg\",\n  CAST(MAX(t.throughput_bps) AS DOUBLE) as \"Peak\"\nFROM dz_user_device_traffic t\nJOIN gossip_only_users gou ON t.user_pk = gou.dz_user_pk\nWHERE t.time >= $__timeFrom()\n  AND t.time <= $__timeTo()\n  AND t.throughput_bps IS NOT NULL",
+                    "refId": "A"
+                }
+            ],
+            "title": "Throughput - Gossip-Only",
+            "type": "stat"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "decimals": 4,
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            }
+                        ]
+                    },
+                    "unit": "percentunit"
+                },
+                "overrides": [
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "metric"
+                        },
+                        "properties": []
+                    }
+                ]
+            },
+            "gridPos": {
+                "h": 4,
+                "w": 4,
+                "x": 12,
+                "y": 6
+            },
+            "id": 23,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value_and_name",
+                "wideLayout": true
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "WITH on_dz AS (\n  SELECT\n    SUM(COALESCE(p.slots_skipped_delta, 0)) as total_skipped,\n    SUM(COALESCE(p.leader_slots_assigned_delta, 0)) as total_assigned\n  FROM solana_block_production_delta p\n  WHERE p.time >= $__timeFrom()\n    AND p.time <= $__timeTo()\n    AND p.slots_skipped_delta IS NOT NULL\n    AND p.leader_slots_assigned_delta IS NOT NULL\n    AND p.leader_slots_assigned_delta > 0\n    AND EXISTS (\n      SELECT 1\n      FROM solana_validator_dz_overlaps_windowed o\n      WHERE o.node_pubkey = p.leader_identity_pubkey\n        AND p.time >= o.overlap_start\n        AND p.time < o.overlap_end\n    )\n),\noff_dz AS (\n  SELECT\n    SUM(COALESCE(p.slots_skipped_delta, 0)) as total_skipped,\n    SUM(COALESCE(p.leader_slots_assigned_delta, 0)) as total_assigned\n  FROM solana_block_production_delta p\n  WHERE p.time >= $__timeFrom()\n    AND p.time <= $__timeTo()\n    AND p.slots_skipped_delta IS NOT NULL\n    AND p.leader_slots_assigned_delta IS NOT NULL\n    AND p.leader_slots_assigned_delta > 0\n    AND NOT EXISTS (\n      SELECT 1\n      FROM solana_validator_dz_overlaps_windowed o\n      WHERE o.node_pubkey = p.leader_identity_pubkey\n        AND p.time >= o.overlap_start\n        AND p.time < o.overlap_end\n    )\n)\nSELECT\n  CASE\n    WHEN on_dz.total_assigned > 0 THEN CAST(on_dz.total_skipped::DOUBLE / on_dz.total_assigned AS DOUBLE)\n    ELSE NULL\n  END as \"On DZ\",\n  CASE\n    WHEN off_dz.total_assigned > 0 THEN CAST(off_dz.total_skipped::DOUBLE / off_dz.total_assigned AS DOUBLE)\n    ELSE NULL\n  END as \"Off DZ\"\nFROM on_dz\nCROSS JOIN off_dz",
+                    "refId": "A"
+                }
+            ],
+            "title": "Skip Rate",
+            "type": "stat"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "decimals": 4,
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            }
+                        ]
+                    },
+                    "unit": "percentunit"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 4,
+                "w": 4,
+                "x": 16,
+                "y": 6
+            },
+            "id": 30,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value_and_name",
+                "wideLayout": true
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "WITH on_dz AS (\n  SELECT\n    SUM(COALESCE(p.blocks_produced_delta, 0)) as total_produced,\n    SUM(COALESCE(p.leader_slots_assigned_delta, 0)) as total_assigned\n  FROM solana_block_production_delta p\n  WHERE p.time >= $__timeFrom()\n    AND p.time <= $__timeTo()\n    AND p.blocks_produced_delta IS NOT NULL\n    AND p.leader_slots_assigned_delta IS NOT NULL\n    AND p.leader_slots_assigned_delta > 0\n    AND EXISTS (\n      SELECT 1\n      FROM solana_validator_dz_overlaps_windowed o\n      WHERE o.node_pubkey = p.leader_identity_pubkey\n        AND p.time >= o.overlap_start\n        AND p.time < o.overlap_end\n    )\n),\noff_dz AS (\n  SELECT\n    SUM(COALESCE(p.blocks_produced_delta, 0)) as total_produced,\n    SUM(COALESCE(p.leader_slots_assigned_delta, 0)) as total_assigned\n  FROM solana_block_production_delta p\n  WHERE p.time >= $__timeFrom()\n    AND p.time <= $__timeTo()\n    AND p.blocks_produced_delta IS NOT NULL\n    AND p.leader_slots_assigned_delta IS NOT NULL\n    AND p.leader_slots_assigned_delta > 0\n    AND NOT EXISTS (\n      SELECT 1\n      FROM solana_validator_dz_overlaps_windowed o\n      WHERE o.node_pubkey = p.leader_identity_pubkey\n        AND p.time >= o.overlap_start\n        AND p.time < o.overlap_end\n    )\n)\nSELECT\n  CASE\n    WHEN on_dz.total_assigned > 0 THEN CAST(on_dz.total_produced::DOUBLE / on_dz.total_assigned AS DOUBLE)\n    ELSE NULL\n  END as \"On DZ\",\n  CASE\n    WHEN off_dz.total_assigned > 0 THEN CAST(off_dz.total_produced::DOUBLE / off_dz.total_assigned AS DOUBLE)\n    ELSE NULL\n  END as \"Off DZ\"\nFROM on_dz\nCROSS JOIN off_dz",
+                    "refId": "A"
+                }
+            ],
+            "title": "Block Produce Rate",
+            "type": "stat"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "decimals": 2,
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            }
+                        ]
+                    },
+                    "unit": "short"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 4,
+                "w": 4,
+                "x": 20,
+                "y": 6
+            },
+            "id": 27,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "value_and_name",
+                "wideLayout": true
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "WITH on_dz AS (\n  SELECT CAST(AVG(a.cluster_slot - a.last_vote_slot) AS DOUBLE) as value\n  FROM solana_vote_account_activity_raw a\n  JOIN solana_validator_dz_overlaps_windowed o\n    ON o.vote_pubkey = a.vote_account_pubkey\n   AND a.time >= o.overlap_start\n   AND a.time < o.overlap_end\n  WHERE a.time >= $__timeFrom()\n    AND a.time <= $__timeTo()\n    AND a.cluster_slot IS NOT NULL\n    AND a.last_vote_slot IS NOT NULL\n    AND a.cluster_slot >= a.last_vote_slot\n    AND NOT a.is_delinquent\n),\noff_dz AS (\n  SELECT CAST(AVG(a.cluster_slot - a.last_vote_slot) AS DOUBLE) as value\n  FROM solana_vote_account_activity_raw a\n  LEFT JOIN solana_validator_dz_overlaps_windowed o\n    ON o.vote_pubkey = a.vote_account_pubkey\n   AND a.time >= o.overlap_start\n   AND a.time < o.overlap_end\n  WHERE a.time >= $__timeFrom()\n    AND a.time <= $__timeTo()\n    AND a.cluster_slot IS NOT NULL\n    AND a.last_vote_slot IS NOT NULL\n    AND a.cluster_slot >= a.last_vote_slot\n    AND NOT a.is_delinquent\n    AND o.vote_pubkey IS NULL\n)\nSELECT\n  on_dz.value as \"On DZ\",\n  off_dz.value as \"Off DZ\"\nFROM on_dz\nCROSS JOIN off_dz",
+                    "refId": "A"
+                }
+            ],
+            "title": "Avg Vote Latency",
+            "type": "stat"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "axisBorderShow": false,
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "barWidthFactor": 0.6,
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                            "legend": false,
+                            "tooltip": false,
+                            "viz": false
+                        },
+                        "insertNulls": false,
+                        "lineInterpolation": "linear",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                            "type": "linear"
+                        },
+                        "showPoints": "never",
+                        "showValues": false,
+                        "spanNulls": false,
+                        "stacking": {
+                            "group": "A",
+                            "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                            "mode": "off"
+                        }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            }
+                        ]
+                    },
+                    "unit": "short"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 10
+            },
+            "id": 7,
+            "options": {
+                "legend": {
+                    "calcs": [],
+                    "displayMode": "list",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "hideZeros": false,
+                    "mode": "multi",
+                    "sort": "none"
+                }
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "WITH time_buckets AS (\n  SELECT date_trunc(CASE WHEN '${aggregation_interval}' LIKE '%minute%' THEN 'minute' WHEN '${aggregation_interval}' LIKE '%hour%' THEN 'hour' ELSE 'hour' END, generate_series) AS time\n  FROM generate_series(CAST($__timeFrom() AS TIMESTAMP), CAST($__timeTo() AS TIMESTAMP) + INTERVAL '${aggregation_interval}', INTERVAL '${aggregation_interval}')\n),\ngossip_overlaps AS (\n  SELECT\n    gn.pubkey AS node_pubkey,\n    greatest(u.valid_from, gn.valid_from) AS overlap_start,\n    least(\n      coalesce(u.valid_to, TIMESTAMP '9999-12-31'),\n      coalesce(gn.valid_to, TIMESTAMP '9999-12-31')\n    ) AS overlap_end\n  FROM dz_users_history u\n  JOIN solana_gossip_nodes_history gn\n    ON u.dz_ip = gn.gossip_ip\n  WHERE u.op != 'D'\n    AND u.status = 'activated'\n    AND u.dz_ip IS NOT NULL\n    AND greatest(u.valid_from, gn.valid_from) < least(\n      coalesce(u.valid_to, TIMESTAMP '9999-12-31'),\n      coalesce(gn.valid_to, TIMESTAMP '9999-12-31')\n    )\n    AND greatest(u.valid_from, gn.valid_from) <= CAST($__timeTo() AS TIMESTAMP)\n    AND least(\n      coalesce(u.valid_to, TIMESTAMP '9999-12-31'),\n      coalesce(gn.valid_to, TIMESTAMP '9999-12-31')\n    ) >= CAST($__timeFrom() AS TIMESTAMP)\n),\nvalidator_nodes AS (\n  SELECT DISTINCT node_pubkey\n  FROM solana_validator_dz_overlaps_windowed\n),\nvalidators AS (\n  SELECT\n    tb.time,\n    'Validators' AS metric,\n    CAST(COUNT(DISTINCT v.vote_pubkey) AS DOUBLE) as \"Count\"\n  FROM time_buckets tb\n  LEFT JOIN solana_validator_dz_overlaps_windowed v\n    ON tb.time >= v.overlap_start\n    AND tb.time < v.overlap_end\n  GROUP BY tb.time\n),\ngossip_only AS (\n  SELECT\n    tb.time,\n    'Gossip-Only Nodes' AS metric,\n    CAST(COUNT(DISTINCT go.node_pubkey) AS DOUBLE) as \"Count\"\n  FROM time_buckets tb\n  LEFT JOIN gossip_overlaps go\n    ON tb.time >= go.overlap_start\n    AND tb.time < go.overlap_end\n    AND go.node_pubkey NOT IN (SELECT node_pubkey FROM validator_nodes)\n  GROUP BY tb.time\n)\nSELECT time, metric, \"Count\"\nFROM validators\nUNION ALL\nSELECT time, metric, \"Count\"\nFROM gossip_only\nORDER BY time ASC",
+                    "refId": "A"
+                }
+            ],
+            "title": "Validators vs Gossip-Only Nodes Over Time",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "axisBorderShow": false,
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "barWidthFactor": 0.6,
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                            "legend": false,
+                            "tooltip": false,
+                            "viz": false
+                        },
+                        "insertNulls": false,
+                        "lineInterpolation": "linear",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                            "type": "linear"
+                        },
+                        "showPoints": "never",
+                        "showValues": false,
+                        "spanNulls": false,
+                        "stacking": {
+                            "group": "A",
+                            "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                            "mode": "off"
+                        }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            }
+                        ]
+                    },
+                    "unit": "short"
+                },
+                "overrides": [
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Stake Share"
+                        },
+                        "properties": [
+                            {
+                                "id": "unit",
+                                "value": "percentunit"
+                            },
+                            {
+                                "id": "decimals",
+                                "value": 2
+                            },
+                            {
+                                "id": "custom.axisPlacement",
+                                "value": "right"
+                            }
+                        ]
+                    }
+                ]
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 10
+            },
+            "id": 8,
+            "options": {
+                "legend": {
+                    "calcs": [],
+                    "displayMode": "list",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "hideZeros": false,
+                    "mode": "multi",
+                    "sort": "none"
+                }
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "WITH time_buckets AS (\n  SELECT date_trunc(CASE WHEN '${aggregation_interval}' LIKE '%minute%' THEN 'minute' WHEN '${aggregation_interval}' LIKE '%hour%' THEN 'hour' ELSE 'hour' END, generate_series) AS time\n  FROM generate_series(CAST($__timeFrom() AS TIMESTAMP), CAST($__timeTo() AS TIMESTAMP) + INTERVAL '${aggregation_interval}', INTERVAL '${aggregation_interval}')\n),\nvalidator_stake_at_time AS (\n  SELECT DISTINCT\n    tb.time,\n    v.vote_pubkey,\n    v.activated_stake_sol\n  FROM time_buckets tb\n  JOIN solana_validator_dz_overlaps_windowed v\n    ON tb.time >= v.overlap_start\n    AND tb.time < v.overlap_end\n  WHERE ('${vote_account:raw}' = '__ALL__' OR v.vote_pubkey IN (SELECT unnest(string_to_array('${vote_account:raw}', ','))))\n),\ndz_stake_by_time AS (\n  SELECT\n    time,\n    CAST(SUM(activated_stake_sol) AS DOUBLE) as dz_stake_sol\n  FROM validator_stake_at_time\n  GROUP BY time\n),\nnetwork_stake_at_time AS (\n  SELECT DISTINCT\n    tb.time,\n    va.vote_pubkey,\n    CAST(va.activated_stake_lamports / 1000000000.0 AS DOUBLE) as activated_stake_sol\n  FROM time_buckets tb\n  JOIN solana_vote_accounts_history va\n    ON tb.time >= va.valid_from\n    AND (va.valid_to IS NULL OR tb.time < va.valid_to)\n  WHERE va.epoch_vote_account = true\n    AND va.activated_stake_lamports > 0\n),\nnetwork_stake_by_time AS (\n  SELECT\n    time,\n    CAST(SUM(activated_stake_sol) AS DOUBLE) as network_stake_sol\n  FROM network_stake_at_time\n  GROUP BY time\n)\nSELECT\n  dz.time,\n  'Total Stake' AS metric,\n  dz.dz_stake_sol as \"Total Stake (SOL)\"\nFROM dz_stake_by_time dz\nUNION ALL\nSELECT\n  dz.time,\n  'Stake Share' AS metric,\n  CASE\n    WHEN ns.network_stake_sol > 0 THEN CAST(dz.dz_stake_sol / ns.network_stake_sol AS DOUBLE)\n    ELSE NULL\n  END as \"Stake Share (%)\"\nFROM dz_stake_by_time dz\nJOIN network_stake_by_time ns ON dz.time = ns.time\nORDER BY time ASC",
+                    "refId": "A"
+                }
+            ],
+            "title": "Total Validator Stake Over Time",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "custom": {
+                        "align": "auto",
+                        "cellOptions": {
+                            "type": "auto"
+                        },
+                        "footer": {
+                            "reducers": []
+                        },
+                        "inspect": false
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            }
+                        ]
+                    }
+                },
+                "overrides": [
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Avg In (bps)"
+                        },
+                        "properties": [
+                            {
+                                "id": "unit",
+                                "value": "Bps"
+                            },
+                            {
+                                "id": "decimals",
+                                "value": 2
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Avg Out (bps)"
+                        },
+                        "properties": [
+                            {
+                                "id": "unit",
+                                "value": "Bps"
+                            },
+                            {
+                                "id": "decimals",
+                                "value": 2
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Peak In (bps)"
+                        },
+                        "properties": [
+                            {
+                                "id": "unit",
+                                "value": "Bps"
+                            },
+                            {
+                                "id": "decimals",
+                                "value": 2
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Peak Out (bps)"
+                        },
+                        "properties": [
+                            {
+                                "id": "unit",
+                                "value": "Bps"
+                            },
+                            {
+                                "id": "decimals",
+                                "value": 2
+                            }
+                        ]
+                    }
+                ]
+            },
+            "gridPos": {
+                "h": 10,
+                "w": 12,
+                "x": 0,
+                "y": 18
+            },
+            "id": 9,
+            "options": {
+                "cellHeight": "sm",
+                "enablePagination": true,
+                "showHeader": true,
+                "sortBy": [
+                    {
+                        "desc": false,
+                        "displayName": "Node Pubkey"
+                    }
+                ]
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "WITH connected_users AS (\n  SELECT u.pk AS dz_user_pk, u.dz_ip, u.device_pk\n  FROM dz_users_history u\n  WHERE u.op != 'D'\n    AND u.status = 'activated'\n    AND u.valid_from <= CURRENT_TIMESTAMP\n    AND (u.valid_to IS NULL OR u.valid_to > CURRENT_TIMESTAMP)\n    AND u.dz_ip IS NOT NULL\n    AND u.owner_pk NOT IN (SELECT owner_pk FROM dz_owners_internal)\n),\nnode_traffic AS (\n  SELECT\n    gn.node_pubkey,\n    AVG(t.in_throughput_bps) as avg_in_throughput_bps,\n    AVG(t.out_throughput_bps) as avg_out_throughput_bps,\n    MAX(t.in_throughput_bps) as peak_in_throughput_bps,\n    MAX(t.out_throughput_bps) as peak_out_throughput_bps\n  FROM connected_users u\n  JOIN solana_gossip_at_ip_now gn ON u.dz_ip = gn.gossip_ip\n  LEFT JOIN solana_vote_accounts_history va ON gn.node_pubkey = va.node_pubkey\n    AND va.epoch_vote_account = true\n    AND va.activated_stake_lamports > 0\n    AND va.valid_from <= CURRENT_TIMESTAMP\n    AND (va.valid_to IS NULL OR va.valid_to > CURRENT_TIMESTAMP)\n  JOIN dz_user_device_traffic t ON u.dz_user_pk = t.user_pk\n  WHERE va.vote_pubkey IS NULL\n    AND t.time >= $__timeFrom()\n    AND t.time <= $__timeTo()\n  GROUP BY gn.node_pubkey\n)\nSELECT DISTINCT\n  gn.node_pubkey as \"Node Pubkey\",\n  gn.gossip_ip as \"Gossip IP\",\n  gn.version as \"Version\",\n  gn.epoch as \"Epoch\",\n  d.code as \"Device Code\",\n  m.name as \"Metro\",\n  COUNT(DISTINCT u.dz_user_pk) as \"DZ Connections\",\n  CAST(COALESCE(nt.avg_in_throughput_bps, 0) AS DOUBLE) as \"Avg In (bps)\",\n  CAST(COALESCE(nt.avg_out_throughput_bps, 0) AS DOUBLE) as \"Avg Out (bps)\",\n  CAST(COALESCE(nt.peak_in_throughput_bps, 0) AS DOUBLE) as \"Peak In (bps)\",\n  CAST(COALESCE(nt.peak_out_throughput_bps, 0) AS DOUBLE) as \"Peak Out (bps)\"\nFROM connected_users u\nJOIN solana_gossip_at_ip_now gn ON u.dz_ip = gn.gossip_ip\nLEFT JOIN solana_vote_accounts_history va ON gn.node_pubkey = va.node_pubkey\n  AND va.epoch_vote_account = true\n  AND va.activated_stake_lamports > 0\n  AND va.valid_from <= CURRENT_TIMESTAMP\n  AND (va.valid_to IS NULL OR va.valid_to > CURRENT_TIMESTAMP)\nJOIN dz_devices_current d ON u.device_pk = d.pk\nLEFT JOIN dz_metros_current m ON d.metro_pk = m.pk\nLEFT JOIN node_traffic nt ON gn.node_pubkey = nt.node_pubkey\nWHERE ('${node_pubkey:raw}' = '__ALL__' OR gn.node_pubkey IN (SELECT unnest(string_to_array('${node_pubkey:raw}', ','))))\n  AND va.vote_pubkey IS NULL\nGROUP BY gn.node_pubkey, gn.gossip_ip, gn.version, gn.epoch, d.code, m.name, nt.avg_in_throughput_bps, nt.avg_out_throughput_bps, nt.peak_in_throughput_bps, nt.peak_out_throughput_bps\nORDER BY gn.node_pubkey",
+                    "refId": "A"
+                }
+            ],
+            "title": "Gossip-Only Nodes Connected Through DZ",
+            "type": "table"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "custom": {
+                        "align": "auto",
+                        "cellOptions": {
+                            "type": "auto"
+                        },
+                        "footer": {
+                            "reducers": []
+                        },
+                        "inspect": false
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            }
+                        ]
+                    }
+                },
+                "overrides": [
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Activated Stake (SOL)"
+                        },
+                        "properties": [
+                            {
+                                "id": "unit",
+                                "value": "short"
+                            },
+                            {
+                                "id": "decimals",
+                                "value": 2
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Avg In (bps)"
+                        },
+                        "properties": [
+                            {
+                                "id": "unit",
+                                "value": "Bps"
+                            },
+                            {
+                                "id": "decimals",
+                                "value": 2
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Avg Out (bps)"
+                        },
+                        "properties": [
+                            {
+                                "id": "unit",
+                                "value": "Bps"
+                            },
+                            {
+                                "id": "decimals",
+                                "value": 2
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Peak In (bps)"
+                        },
+                        "properties": [
+                            {
+                                "id": "unit",
+                                "value": "Bps"
+                            },
+                            {
+                                "id": "decimals",
+                                "value": 2
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Peak Out (bps)"
+                        },
+                        "properties": [
+                            {
+                                "id": "unit",
+                                "value": "Bps"
+                            },
+                            {
+                                "id": "decimals",
+                                "value": 2
+                            }
+                        ]
+                    }
+                ]
+            },
+            "gridPos": {
+                "h": 10,
+                "w": 12,
+                "x": 12,
+                "y": 18
+            },
+            "id": 10,
+            "options": {
+                "cellHeight": "sm",
+                "enablePagination": true,
+                "showHeader": true,
+                "sortBy": [
+                    {
+                        "desc": true,
+                        "displayName": "Activated Stake (SOL)"
+                    }
+                ]
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "WITH validator_traffic AS (\n  SELECT\n    vc.vote_pubkey,\n    AVG(t.in_throughput_bps) as avg_in_throughput_bps,\n    AVG(t.out_throughput_bps) as avg_out_throughput_bps,\n    MAX(t.in_throughput_bps) as peak_in_throughput_bps,\n    MAX(t.out_throughput_bps) as peak_out_throughput_bps\n  FROM solana_validators_connected_now_connections vc\n  JOIN dz_user_device_traffic t ON vc.dz_user_pk = t.user_pk\n  WHERE t.time >= $__timeFrom()\n    AND t.time <= $__timeTo()\n  GROUP BY vc.vote_pubkey\n)\nSELECT\n  vc.vote_pubkey as \"Vote Account\",\n  vc.node_pubkey as \"Node Pubkey\",\n  CAST(vc.activated_stake_sol AS DOUBLE) as \"Activated Stake (SOL)\",\n  vc.commission_percentage as \"Commission %\",\n  vc.epoch as \"Epoch\",\n  d.code as \"Device Code\",\n  m.name as \"Metro\",\n  COUNT(DISTINCT vc.dz_user_pk) as \"DZ Connections\",\n  CAST(COALESCE(vt.avg_in_throughput_bps, 0) AS DOUBLE) as \"Avg In (bps)\",\n  CAST(COALESCE(vt.avg_out_throughput_bps, 0) AS DOUBLE) as \"Avg Out (bps)\",\n  CAST(COALESCE(vt.peak_in_throughput_bps, 0) AS DOUBLE) as \"Peak In (bps)\",\n  CAST(COALESCE(vt.peak_out_throughput_bps, 0) AS DOUBLE) as \"Peak Out (bps)\"\nFROM solana_validators_connected_now_connections vc\nJOIN dz_users_connected_now u ON vc.dz_user_pk = u.dz_user_pk\nJOIN dz_devices_current d ON u.device_pk = d.pk\nLEFT JOIN dz_metros_current m ON d.metro_pk = m.pk\nLEFT JOIN validator_traffic vt ON vc.vote_pubkey = vt.vote_pubkey\nWHERE ('${vote_account:raw}' = '__ALL__' OR vc.vote_pubkey IN (SELECT unnest(string_to_array('${vote_account:raw}', ','))))\nGROUP BY vc.vote_pubkey, vc.node_pubkey, vc.activated_stake_sol, vc.commission_percentage, vc.epoch, d.code, m.name, vt.avg_in_throughput_bps, vt.avg_out_throughput_bps, vt.peak_in_throughput_bps, vt.peak_out_throughput_bps\nORDER BY vc.activated_stake_sol DESC",
+                    "refId": "A"
+                }
+            ],
+            "title": "Validators Connected Through DZ",
+            "type": "table"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "axisBorderShow": false,
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "barWidthFactor": 0.6,
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                            "legend": false,
+                            "tooltip": false,
+                            "viz": false
+                        },
+                        "insertNulls": false,
+                        "lineInterpolation": "linear",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                            "type": "linear"
+                        },
+                        "showPoints": "never",
+                        "showValues": false,
+                        "spanNulls": false,
+                        "stacking": {
+                            "group": "A",
+                            "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                            "mode": "off"
+                        }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            }
+                        ]
+                    },
+                    "unit": "short"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 28
+            },
+            "id": 11,
+            "options": {
+                "legend": {
+                    "calcs": [],
+                    "displayMode": "list",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "hideZeros": false,
+                    "mode": "single",
+                    "sort": "none"
+                }
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "SELECT\n  date_trunc(CASE WHEN '${aggregation_interval}' LIKE '%minute%' THEN 'minute' WHEN '${aggregation_interval}' LIKE '%hour%' THEN 'hour' ELSE 'hour' END, a.time) AS time,\n  a.vote_account_pubkey as metric,\n  CAST(AVG(a.cluster_slot - a.last_vote_slot) AS DOUBLE) as \"Avg Vote Lag (slots)\"\nFROM solana_vote_account_activity_raw a\nJOIN solana_validator_dz_overlaps_windowed o\n  ON o.vote_pubkey = a.vote_account_pubkey\n AND a.time >= o.overlap_start\n AND a.time < o.overlap_end\nWHERE a.time >= $__timeFrom()\n  AND a.time <= $__timeTo()\n  AND a.cluster_slot IS NOT NULL\n  AND a.last_vote_slot IS NOT NULL\n  AND ('${vote_account:raw}' = '__ALL__' OR a.vote_account_pubkey IN (SELECT unnest(string_to_array('${vote_account:raw}', ','))))\nGROUP BY date_trunc(CASE WHEN '${aggregation_interval}' LIKE '%minute%' THEN 'minute' WHEN '${aggregation_interval}' LIKE '%hour%' THEN 'hour' ELSE 'hour' END, a.time), a.vote_account_pubkey\nORDER BY time ASC",
+                    "refId": "A"
+                }
+            ],
+            "title": "Vote Lag by Validator",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "axisBorderShow": false,
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "barWidthFactor": 0.6,
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                            "legend": false,
+                            "tooltip": false,
+                            "viz": false
+                        },
+                        "insertNulls": false,
+                        "lineInterpolation": "linear",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                            "type": "linear"
+                        },
+                        "showPoints": "never",
+                        "showValues": false,
+                        "spanNulls": false,
+                        "stacking": {
+                            "group": "A",
+                            "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                            "mode": "off"
+                        }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": 0
+                            }
+                        ]
+                    },
+                    "unit": "short"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 28
+            },
+            "id": 12,
+            "options": {
+                "legend": {
+                    "calcs": [],
+                    "displayMode": "list",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "hideZeros": false,
+                    "mode": "single",
+                    "sort": "none"
+                }
+            },
+            "pluginVersion": "12.3.1",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "SELECT\n  date_trunc(CASE WHEN '${aggregation_interval}' LIKE '%minute%' THEN 'minute' WHEN '${aggregation_interval}' LIKE '%hour%' THEN 'hour' ELSE 'hour' END, p.time) AS time,\n  p.leader_identity_pubkey as metric,\n  CAST(SUM(p.blocks_produced_delta) AS DOUBLE) as \"Blocks Produced\"\nFROM solana_block_production_delta p\nJOIN solana_validator_dz_overlaps_windowed o\n  ON o.node_pubkey = p.leader_identity_pubkey\n AND p.time >= o.overlap_start\n AND p.time < o.overlap_end\nWHERE p.time >= $__timeFrom()\n  AND p.time <= $__timeTo()\nGROUP BY date_trunc(CASE WHEN '${aggregation_interval}' LIKE '%minute%' THEN 'minute' WHEN '${aggregation_interval}' LIKE '%hour%' THEN 'hour' ELSE 'hour' END, p.time), p.leader_identity_pubkey\nORDER BY time ASC",
+                    "refId": "A"
+                }
+            ],
+            "title": "Blocks Produced by DZ Validators",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                            "legend": false,
+                            "tooltip": false,
+                            "viz": false
+                        },
+                        "lineInterpolation": "linear",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                            "type": "linear"
+                        },
+                        "showPoints": "never",
+                        "spanNulls": false,
+                        "stacking": {
+                            "group": "A",
+                            "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                            "mode": "off"
+                        }
+                    },
+                    "decimals": 2,
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green"
+                            }
+                        ]
+                    },
+                    "unit": "percentunit"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 36
+            },
+            "id": 13,
+            "options": {
+                "legend": {
+                    "calcs": [],
+                    "displayMode": "list",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "mode": "multi",
+                    "sort": "none"
+                }
+            },
+            "pluginVersion": "10.0.0",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "WITH production_data AS (\n  SELECT\n    p.time,\n    p.slots_skipped_delta,\n    p.leader_slots_assigned_delta,\n    CASE\n      WHEN EXISTS (\n        SELECT 1\n        FROM solana_validator_dz_overlaps_windowed o\n        WHERE o.node_pubkey = p.leader_identity_pubkey\n          AND p.time >= o.overlap_start\n          AND p.time < o.overlap_end\n      ) THEN 'On DZ'\n      ELSE 'Off DZ'\n    END as metric\n  FROM solana_block_production_delta p\n  WHERE p.time >= $__timeFrom()\n    AND p.time <= $__timeTo()\n    AND p.slots_skipped_delta IS NOT NULL\n    AND p.leader_slots_assigned_delta IS NOT NULL\n    AND p.leader_slots_assigned_delta > 0\n)\nSELECT\n  date_trunc(CASE WHEN '${aggregation_interval}' LIKE '%minute%' THEN 'minute' WHEN '${aggregation_interval}' LIKE '%hour%' THEN 'hour' ELSE 'hour' END, time) AS time,\n  metric,\n  CASE\n    WHEN SUM(leader_slots_assigned_delta) > 0 THEN\n      CAST(SUM(slots_skipped_delta) / SUM(leader_slots_assigned_delta) AS DOUBLE)\n    ELSE NULL\n  END as \"Skip Rate\"\nFROM production_data\nGROUP BY date_trunc(CASE WHEN '${aggregation_interval}' LIKE '%minute%' THEN 'minute' WHEN '${aggregation_interval}' LIKE '%hour%' THEN 'hour' ELSE 'hour' END, time), metric\nORDER BY time ASC",
+                    "refId": "A"
+                }
+            ],
+            "title": "Skip Rate: DZ vs Non-DZ Validators",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "custom": {
+                        "align": "auto",
+                        "cellOptions": {
+                            "type": "auto"
+                        },
+                        "inspect": false
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green"
+                            }
+                        ]
+                    }
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 36
+            },
+            "id": 14,
+            "options": {
+                "cellHeight": "sm",
+                "enablePagination": true,
+                "footer": {
+                    "countRows": false,
+                    "fields": "",
+                    "reducer": [
+                        "sum"
+                    ],
+                    "show": false
+                },
+                "showHeader": true,
+                "sortBy": [
+                    {
+                        "desc": true,
+                        "displayName": "Blocks Produced"
+                    }
+                ]
+            },
+            "pluginVersion": "10.0.0",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "SELECT\n  p.leader_identity_pubkey as \"Leader Identity\",\n  CAST(SUM(p.leader_slots_assigned_delta) AS DOUBLE) as \"Slots Assigned\",\n  CAST(SUM(p.blocks_produced_delta) AS DOUBLE) as \"Blocks Produced\",\n  CAST(SUM(p.slots_skipped_delta) AS DOUBLE) as \"Slots Skipped\",\n  CASE\n    WHEN SUM(p.leader_slots_assigned_delta) > 0 THEN\n      CAST(SUM(p.blocks_produced_delta) / SUM(p.leader_slots_assigned_delta) AS DOUBLE)\n    ELSE NULL\n  END as \"Produce Rate\",\n  CASE\n    WHEN SUM(p.leader_slots_assigned_delta) > 0 THEN\n      CAST(SUM(p.slots_skipped_delta) / SUM(p.leader_slots_assigned_delta) AS DOUBLE)\n    ELSE NULL\n  END as \"Skip Rate\"\nFROM solana_block_production_delta p\nJOIN solana_validator_dz_overlaps_windowed o\n  ON o.node_pubkey = p.leader_identity_pubkey\n AND p.time >= o.overlap_start\n AND p.time < o.overlap_end\nWHERE p.time >= $__timeFrom()\n  AND p.time <= $__timeTo()\nGROUP BY p.leader_identity_pubkey\nORDER BY SUM(p.blocks_produced_delta) DESC",
+                    "refId": "A"
+                }
+            ],
+            "title": "Block Production by DZ Validator",
+            "type": "table"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                            "legend": false,
+                            "tooltip": false,
+                            "viz": false
+                        },
+                        "lineInterpolation": "linear",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                            "type": "linear"
+                        },
+                        "showPoints": "never",
+                        "spanNulls": false,
+                        "stacking": {
+                            "group": "A",
+                            "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                            "mode": "off"
+                        }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green"
+                            }
+                        ]
+                    },
+                    "unit": "Bps"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 44
+            },
+            "id": 16,
+            "options": {
+                "legend": {
+                    "calcs": [],
+                    "displayMode": "list",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "mode": "single",
+                    "sort": "none"
+                }
+            },
+            "pluginVersion": "10.0.0",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "WITH connected_users AS (\n  SELECT u.pk AS dz_user_pk, u.dz_ip\n  FROM dz_users_history u\n  WHERE u.op != 'D'\n    AND u.status = 'activated'\n    AND u.valid_from <= CURRENT_TIMESTAMP\n    AND (u.valid_to IS NULL OR u.valid_to > CURRENT_TIMESTAMP)\n    AND u.dz_ip IS NOT NULL\n    AND u.owner_pk NOT IN (SELECT owner_pk FROM dz_owners_internal)\n),\nvalidator_users AS (\n  SELECT DISTINCT u.dz_user_pk\n  FROM connected_users u\n  JOIN solana_gossip_at_ip_now gn ON u.dz_ip = gn.gossip_ip\n  JOIN solana_vote_accounts_history va ON gn.node_pubkey = va.node_pubkey\n    AND va.epoch_vote_account = true\n    AND va.activated_stake_lamports > 0\n    AND va.valid_from <= CURRENT_TIMESTAMP\n    AND (va.valid_to IS NULL OR va.valid_to > CURRENT_TIMESTAMP)\n),\ngossip_only_users AS (\n  SELECT DISTINCT u.dz_user_pk\n  FROM connected_users u\n  JOIN solana_gossip_at_ip_now gn ON u.dz_ip = gn.gossip_ip\n  LEFT JOIN solana_vote_accounts_history va ON gn.node_pubkey = va.node_pubkey\n    AND va.epoch_vote_account = true\n    AND va.activated_stake_lamports > 0\n    AND va.valid_from <= CURRENT_TIMESTAMP\n    AND (va.valid_to IS NULL OR va.valid_to > CURRENT_TIMESTAMP)\n  WHERE va.vote_pubkey IS NULL\n)\nSELECT\n  date_trunc(CASE WHEN '${aggregation_interval}' LIKE '%minute%' THEN 'minute' WHEN '${aggregation_interval}' LIKE '%hour%' THEN 'hour' ELSE 'hour' END, t.time) AS time,\n  'Validators (In)' AS metric,\n  CAST(SUM(t.in_throughput_bps) AS DOUBLE) as \"Total Throughput (bps)\"\nFROM dz_user_device_traffic t\nJOIN validator_users vu ON t.user_pk = vu.dz_user_pk\nWHERE t.time >= $__timeFrom()\n  AND t.time <= $__timeTo()\n  AND t.in_throughput_bps IS NOT NULL\nGROUP BY date_trunc(CASE WHEN '${aggregation_interval}' LIKE '%minute%' THEN 'minute' WHEN '${aggregation_interval}' LIKE '%hour%' THEN 'hour' ELSE 'hour' END, t.time)\nUNION ALL\nSELECT\n  date_trunc(CASE WHEN '${aggregation_interval}' LIKE '%minute%' THEN 'minute' WHEN '${aggregation_interval}' LIKE '%hour%' THEN 'hour' ELSE 'hour' END, t.time) AS time,\n  'Validators (Out)' AS metric,\n  CAST(SUM(t.out_throughput_bps) AS DOUBLE) as \"Total Throughput (bps)\"\nFROM dz_user_device_traffic t\nJOIN validator_users vu ON t.user_pk = vu.dz_user_pk\nWHERE t.time >= $__timeFrom()\n  AND t.time <= $__timeTo()\n  AND t.out_throughput_bps IS NOT NULL\nGROUP BY date_trunc(CASE WHEN '${aggregation_interval}' LIKE '%minute%' THEN 'minute' WHEN '${aggregation_interval}' LIKE '%hour%' THEN 'hour' ELSE 'hour' END, t.time)\nUNION ALL\nSELECT\n  date_trunc(CASE WHEN '${aggregation_interval}' LIKE '%minute%' THEN 'minute' WHEN '${aggregation_interval}' LIKE '%hour%' THEN 'hour' ELSE 'hour' END, t.time) AS time,\n  'Gossip-Only Nodes (In)' AS metric,\n  CAST(SUM(t.in_throughput_bps) AS DOUBLE) as \"Total Throughput (bps)\"\nFROM dz_user_device_traffic t\nJOIN gossip_only_users gou ON t.user_pk = gou.dz_user_pk\nWHERE t.time >= $__timeFrom()\n  AND t.time <= $__timeTo()\n  AND t.in_throughput_bps IS NOT NULL\nGROUP BY date_trunc(CASE WHEN '${aggregation_interval}' LIKE '%minute%' THEN 'minute' WHEN '${aggregation_interval}' LIKE '%hour%' THEN 'hour' ELSE 'hour' END, t.time)\nUNION ALL\nSELECT\n  date_trunc(CASE WHEN '${aggregation_interval}' LIKE '%minute%' THEN 'minute' WHEN '${aggregation_interval}' LIKE '%hour%' THEN 'hour' ELSE 'hour' END, t.time) AS time,\n  'Gossip-Only Nodes (Out)' AS metric,\n  CAST(SUM(t.out_throughput_bps) AS DOUBLE) as \"Total Throughput (bps)\"\nFROM dz_user_device_traffic t\nJOIN gossip_only_users gou ON t.user_pk = gou.dz_user_pk\nWHERE t.time >= $__timeFrom()\n  AND t.time <= $__timeTo()\n  AND t.out_throughput_bps IS NOT NULL\nGROUP BY date_trunc(CASE WHEN '${aggregation_interval}' LIKE '%minute%' THEN 'minute' WHEN '${aggregation_interval}' LIKE '%hour%' THEN 'hour' ELSE 'hour' END, t.time)\nORDER BY time ASC",
+                    "refId": "A"
+                }
+            ],
+            "title": "Total Throughput: Validators vs Gossip-Only Nodes",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                            "legend": false,
+                            "tooltip": false,
+                            "viz": false
+                        },
+                        "lineInterpolation": "linear",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                            "type": "linear"
+                        },
+                        "showPoints": "never",
+                        "spanNulls": false,
+                        "stacking": {
+                            "group": "A",
+                            "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                            "mode": "off"
+                        }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green"
+                            }
+                        ]
+                    },
+                    "unit": "Bps"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 44
+            },
+            "id": 17,
+            "options": {
+                "legend": {
+                    "calcs": [],
+                    "displayMode": "list",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "mode": "single",
+                    "sort": "none"
+                }
+            },
+            "pluginVersion": "10.0.0",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "time_series",
+                    "rawQuery": true,
+                    "rawSql": "WITH connected_users AS (\n  SELECT u.pk AS dz_user_pk, u.dz_ip\n  FROM dz_users_history u\n  WHERE u.op != 'D'\n    AND u.status = 'activated'\n    AND u.valid_from <= CURRENT_TIMESTAMP\n    AND (u.valid_to IS NULL OR u.valid_to > CURRENT_TIMESTAMP)\n    AND u.dz_ip IS NOT NULL\n    AND u.owner_pk NOT IN (SELECT owner_pk FROM dz_owners_internal)\n),\nvalidator_users AS (\n  SELECT DISTINCT u.dz_user_pk\n  FROM connected_users u\n  JOIN solana_gossip_at_ip_now gn ON u.dz_ip = gn.gossip_ip\n  JOIN solana_vote_accounts_history va ON gn.node_pubkey = va.node_pubkey\n    AND va.epoch_vote_account = true\n    AND va.activated_stake_lamports > 0\n    AND va.valid_from <= CURRENT_TIMESTAMP\n    AND (va.valid_to IS NULL OR va.valid_to > CURRENT_TIMESTAMP)\n),\ngossip_only_users AS (\n  SELECT DISTINCT u.dz_user_pk\n  FROM connected_users u\n  JOIN solana_gossip_at_ip_now gn ON u.dz_ip = gn.gossip_ip\n  LEFT JOIN solana_vote_accounts_history va ON gn.node_pubkey = va.node_pubkey\n    AND va.epoch_vote_account = true\n    AND va.activated_stake_lamports > 0\n    AND va.valid_from <= CURRENT_TIMESTAMP\n    AND (va.valid_to IS NULL OR va.valid_to > CURRENT_TIMESTAMP)\n  WHERE va.vote_pubkey IS NULL\n)\nSELECT\n  date_trunc(CASE WHEN '${aggregation_interval}' LIKE '%minute%' THEN 'minute' WHEN '${aggregation_interval}' LIKE '%hour%' THEN 'hour' ELSE 'hour' END, t.time) AS time,\n  'Validators (In)' AS metric,\n  CAST(SUM(t.in_throughput_bps) AS DOUBLE) as \"Total Throughput (bps)\"\nFROM dz_user_device_traffic t\nJOIN validator_users vu ON t.user_pk = vu.dz_user_pk\nWHERE t.time >= $__timeFrom()\n  AND t.time <= $__timeTo()\n  AND t.in_throughput_bps IS NOT NULL\nGROUP BY date_trunc(CASE WHEN '${aggregation_interval}' LIKE '%minute%' THEN 'minute' WHEN '${aggregation_interval}' LIKE '%hour%' THEN 'hour' ELSE 'hour' END, t.time)\nUNION ALL\nSELECT\n  date_trunc(CASE WHEN '${aggregation_interval}' LIKE '%minute%' THEN 'minute' WHEN '${aggregation_interval}' LIKE '%hour%' THEN 'hour' ELSE 'hour' END, t.time) AS time,\n  'Validators (Out)' AS metric,\n  CAST(SUM(t.out_throughput_bps) AS DOUBLE) as \"Total Throughput (bps)\"\nFROM dz_user_device_traffic t\nJOIN validator_users vu ON t.user_pk = vu.dz_user_pk\nWHERE t.time >= $__timeFrom()\n  AND t.time <= $__timeTo()\n  AND t.out_throughput_bps IS NOT NULL\nGROUP BY date_trunc(CASE WHEN '${aggregation_interval}' LIKE '%minute%' THEN 'minute' WHEN '${aggregation_interval}' LIKE '%hour%' THEN 'hour' ELSE 'hour' END, t.time)\nUNION ALL\nSELECT\n  date_trunc(CASE WHEN '${aggregation_interval}' LIKE '%minute%' THEN 'minute' WHEN '${aggregation_interval}' LIKE '%hour%' THEN 'hour' ELSE 'hour' END, t.time) AS time,\n  'Gossip-Only Nodes (In)' AS metric,\n  CAST(SUM(t.in_throughput_bps) AS DOUBLE) as \"Total Throughput (bps)\"\nFROM dz_user_device_traffic t\nJOIN gossip_only_users gou ON t.user_pk = gou.dz_user_pk\nWHERE t.time >= $__timeFrom()\n  AND t.time <= $__timeTo()\n  AND t.in_throughput_bps IS NOT NULL\nGROUP BY date_trunc(CASE WHEN '${aggregation_interval}' LIKE '%minute%' THEN 'minute' WHEN '${aggregation_interval}' LIKE '%hour%' THEN 'hour' ELSE 'hour' END, t.time)\nUNION ALL\nSELECT\n  date_trunc(CASE WHEN '${aggregation_interval}' LIKE '%minute%' THEN 'minute' WHEN '${aggregation_interval}' LIKE '%hour%' THEN 'hour' ELSE 'hour' END, t.time) AS time,\n  'Gossip-Only Nodes (Out)' AS metric,\n  CAST(SUM(t.out_throughput_bps) AS DOUBLE) as \"Total Throughput (bps)\"\nFROM dz_user_device_traffic t\nJOIN gossip_only_users gou ON t.user_pk = gou.dz_user_pk\nWHERE t.time >= $__timeFrom()\n  AND t.time <= $__timeTo()\n  AND t.out_throughput_bps IS NOT NULL\nGROUP BY date_trunc(CASE WHEN '${aggregation_interval}' LIKE '%minute%' THEN 'minute' WHEN '${aggregation_interval}' LIKE '%hour%' THEN 'hour' ELSE 'hour' END, t.time)\nORDER BY time ASC",
+                    "refId": "A"
+                }
+            ],
+            "title": "Total Throughput: Validators vs Gossip-Only Nodes",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "custom": {
+                        "align": "auto",
+                        "cellOptions": {
+                            "type": "auto"
+                        },
+                        "inspect": false
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green"
+                            }
+                        ]
+                    }
+                },
+                "overrides": [
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Stake (SOL)"
+                        },
+                        "properties": [
+                            {
+                                "id": "unit",
+                                "value": "short"
+                            },
+                            {
+                                "id": "decimals",
+                                "value": 2
+                            }
+                        ]
+                    }
+                ]
+            },
+            "gridPos": {
+                "h": 10,
+                "w": 12,
+                "x": 0,
+                "y": 52
+            },
+            "id": 29,
+            "options": {
+                "cellHeight": "sm",
+                "enablePagination": true,
+                "footer": {
+                    "countRows": false,
+                    "fields": "",
+                    "reducer": [
+                        "sum"
+                    ],
+                    "show": false
+                },
+                "showHeader": true,
+                "sortBy": [
+                    {
+                        "desc": true,
+                        "displayName": "Connected At"
+                    }
+                ]
+            },
+            "pluginVersion": "10.0.0",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "SELECT\n  v.vote_pubkey as \"Vote Account\",\n  v.node_pubkey as \"Node Pubkey\",\n  d.code as \"Device Code\",\n  m.name as \"Metro\",\n  v.overlap_start as \"Connected At\",\n  CASE\n    WHEN v.overlap_end < TIMESTAMP '9999-12-31' THEN v.overlap_end\n    ELSE NULL\n  END as \"Disconnected At\",\n  CAST(v.activated_stake_sol AS DOUBLE) as \"Stake (SOL)\",\n  v.commission_percentage as \"Commission %\",\n  v.epoch as \"Epoch\"\nFROM solana_validator_dz_overlaps_windowed v\nJOIN dz_users_history u ON v.dz_user_pk = u.pk\n  AND u.op != 'D'\n  AND u.status = 'activated'\n  AND u.valid_from <= CURRENT_TIMESTAMP\n  AND (u.valid_to IS NULL OR u.valid_to > CURRENT_TIMESTAMP)\n  AND u.dz_ip IS NOT NULL\n  AND u.owner_pk NOT IN (SELECT owner_pk FROM dz_owners_internal)\nJOIN dz_devices_current d ON u.device_pk = d.pk\nLEFT JOIN dz_metros_current m ON d.metro_pk = m.pk\nWHERE v.overlap_start >= CAST($__timeFrom() AS TIMESTAMP)\n  AND v.overlap_start <= CAST($__timeTo() AS TIMESTAMP)\n  AND ('${vote_account:raw}' = '__ALL__' OR v.vote_pubkey IN (SELECT unnest(string_to_array('${vote_account:raw}', ','))))\nORDER BY v.overlap_start DESC",
+                    "refId": "A"
+                }
+            ],
+            "title": "Validators Connected (${__from:date:YYYY-MM-DD HH:mm} - ${__to:date:YYYY-MM-DD HH:mm})",
+            "type": "table"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "custom": {
+                        "align": "auto",
+                        "cellOptions": {
+                            "type": "auto"
+                        },
+                        "inspect": false
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green"
+                            }
+                        ]
+                    }
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 10,
+                "w": 12,
+                "x": 12,
+                "y": 52
+            },
+            "id": 28,
+            "options": {
+                "cellHeight": "sm",
+                "enablePagination": true,
+                "footer": {
+                    "countRows": false,
+                    "fields": "",
+                    "reducer": [
+                        "sum"
+                    ],
+                    "show": false
+                },
+                "showHeader": true,
+                "sortBy": [
+                    {
+                        "desc": true,
+                        "displayName": "Version"
+                    }
+                ]
+            },
+            "pluginVersion": "10.0.0",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "WITH connected_users AS (\n  SELECT u.pk AS dz_user_pk, u.dz_ip\n  FROM dz_users_history u\n  WHERE u.op != 'D'\n    AND u.status = 'activated'\n    AND u.valid_from <= CURRENT_TIMESTAMP\n    AND (u.valid_to IS NULL OR u.valid_to > CURRENT_TIMESTAMP)\n    AND u.dz_ip IS NOT NULL\n    AND u.owner_pk NOT IN (SELECT owner_pk FROM dz_owners_internal)\n)\nSELECT\n  gn.version as \"Version\",\n  COUNT(DISTINCT gn.node_pubkey) as \"Gossip Nodes\",\n  COUNT(DISTINCT va.vote_pubkey) as \"Validators\",\n  CAST(SUM(COALESCE(va.activated_stake_lamports / 1000000000.0, 0)) AS DOUBLE) as \"Total Stake (SOL)\"\nFROM connected_users u\nJOIN solana_gossip_at_ip_now gn ON u.dz_ip = gn.gossip_ip\nLEFT JOIN solana_vote_accounts_history va\n  ON gn.node_pubkey = va.node_pubkey\n  AND va.epoch_vote_account = true\n  AND va.activated_stake_lamports > 0\n  AND va.valid_from <= CURRENT_TIMESTAMP\n  AND (va.valid_to IS NULL OR va.valid_to > CURRENT_TIMESTAMP)\nWHERE ('${node_pubkey:raw}' = '__ALL__' OR gn.node_pubkey IN (SELECT unnest(string_to_array('${node_pubkey:raw}', ','))))\nGROUP BY gn.version\nORDER BY COUNT(DISTINCT gn.node_pubkey) DESC",
+                    "refId": "A"
+                }
+            ],
+            "title": "Solana Client Versions",
+            "type": "table"
+        },
+        {
+            "datasource": {
+                "type": "postgres",
+                "uid": "doublezero-lake"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "custom": {
+                        "align": "auto",
+                        "cellOptions": {
+                            "type": "auto"
+                        },
+                        "inspect": false
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green"
+                            }
+                        ]
+                    }
+                },
+                "overrides": [
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Stake (SOL)"
+                        },
+                        "properties": [
+                            {
+                                "id": "unit",
+                                "value": "short"
+                            },
+                            {
+                                "id": "decimals",
+                                "value": 2
+                            }
+                        ]
+                    }
+                ]
+            },
+            "gridPos": {
+                "h": 10,
+                "w": 12,
+                "x": 12,
+                "y": 62
+            },
+            "id": 18,
+            "options": {
+                "cellHeight": "sm",
+                "enablePagination": true,
+                "footer": {
+                    "countRows": false,
+                    "fields": "",
+                    "reducer": [
+                        "sum"
+                    ],
+                    "show": false
+                },
+                "showHeader": true,
+                "sortBy": [
+                    {
+                        "desc": true,
+                        "displayName": "Disconnected At"
+                    }
+                ]
+            },
+            "pluginVersion": "10.0.0",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "postgres",
+                        "uid": "doublezero-lake"
+                    },
+                    "editorMode": "code",
+                    "format": "table",
+                    "rawQuery": true,
+                    "rawSql": "WITH disconnected AS (\n  SELECT\n    v.vote_pubkey,\n    v.node_pubkey,\n    v.dz_user_pk,\n    v.overlap_start,\n    v.overlap_end,\n    v.activated_stake_sol,\n    v.commission_percentage,\n    v.epoch\n  FROM solana_validator_dz_overlaps_windowed v\n  WHERE v.overlap_end >= CAST($__timeFrom() AS TIMESTAMP)\n    AND v.overlap_end <= CAST($__timeTo() AS TIMESTAMP)\n    AND v.overlap_end < TIMESTAMP '9999-12-31'\n    AND ('${vote_account:raw}' = '__ALL__' OR v.vote_pubkey IN (SELECT unnest(string_to_array('${vote_account:raw}', ','))))\n),\nreconnected AS (\n  SELECT DISTINCT d.vote_pubkey, d.node_pubkey\n  FROM disconnected d\n  JOIN solana_validator_dz_overlaps_windowed v2\n    ON d.vote_pubkey = v2.vote_pubkey\n    AND d.node_pubkey = v2.node_pubkey\n    AND v2.overlap_start > d.overlap_end\n)\nSELECT\n  d.vote_pubkey as \"Vote Account\",\n  d.node_pubkey as \"Node Pubkey\",\n  dev.code as \"Device Code\",\n  m.name as \"Metro\",\n  d.overlap_start as \"Connected At\",\n  d.overlap_end as \"Disconnected At\",\n  CAST(d.activated_stake_sol AS DOUBLE) as \"Stake (SOL)\",\n  d.commission_percentage as \"Commission %\",\n  d.epoch as \"Epoch\"\nFROM disconnected d\nLEFT JOIN reconnected r ON d.vote_pubkey = r.vote_pubkey AND d.node_pubkey = r.node_pubkey\nJOIN dz_users_history u ON d.dz_user_pk = u.pk\n  AND d.overlap_end >= u.valid_from\n  AND (u.valid_to IS NULL OR d.overlap_end <= u.valid_to)\nJOIN dz_devices_current dev ON u.device_pk = dev.pk\nLEFT JOIN dz_metros_current m ON dev.metro_pk = m.pk\nWHERE r.vote_pubkey IS NULL\nORDER BY d.overlap_end DESC",
+                    "refId": "A"
+                }
+            ],
+            "title": "Validators Disconnected (No Reconnect) (${__from:date:YYYY-MM-DD HH:mm} - ${__to:date:YYYY-MM-DD HH:mm})",
+            "type": "table"
+        }
+    ],
+    "preload": false,
+    "refresh": "30m",
+    "schemaVersion": 42,
+    "tags": [
+        "solana",
+        "dz",
+        "gossip",
+        "validators"
+    ],
+    "templating": {
+        "list": [
+            {
+                "allValue": "__ALL__",
+                "current": {
+                    "text": "All",
+                    "value": "$__all"
+                },
+                "datasource": {
+                    "type": "postgres",
+                    "uid": "doublezero-lake"
+                },
+                "includeAll": true,
+                "label": "Node Pubkey",
+                "multi": true,
+                "name": "node_pubkey",
+                "options": [],
+                "query": "WITH connected_users AS (\n  SELECT u.pk AS dz_user_pk, u.dz_ip\n  FROM dz_users_history u\n  WHERE u.op != 'D'\n    AND u.status = 'activated'\n    AND u.valid_from <= CURRENT_TIMESTAMP\n    AND (u.valid_to IS NULL OR u.valid_to > CURRENT_TIMESTAMP)\n    AND u.dz_ip IS NOT NULL\n    AND u.owner_pk NOT IN (SELECT owner_pk FROM dz_owners_internal)\n)\nSELECT DISTINCT gn.node_pubkey FROM connected_users u JOIN solana_gossip_at_ip_now gn ON u.dz_ip = gn.gossip_ip ORDER BY gn.node_pubkey",
+                "refresh": 1,
+                "regex": "",
+                "sort": 1,
+                "type": "query"
+            },
+            {
+                "allValue": "__ALL__",
+                "current": {
+                    "text": "All",
+                    "value": "$__all"
+                },
+                "datasource": {
+                    "type": "postgres",
+                    "uid": "doublezero-lake"
+                },
+                "includeAll": true,
+                "label": "Vote Account",
+                "multi": true,
+                "name": "vote_account",
+                "options": [],
+                "query": "SELECT DISTINCT vote_pubkey FROM solana_validators_connected_now ORDER BY vote_pubkey",
+                "refresh": 1,
+                "regex": "",
+                "sort": 1,
+                "type": "query"
+            },
+            {
+                "current": {
+                    "text": "15 minutes",
+                    "value": "15 minutes"
+                },
+                "label": "Aggregation Interval",
+                "name": "aggregation_interval",
+                "options": [
+                    {
+                        "selected": false,
+                        "text": "1 minute",
+                        "value": "1 minute"
+                    },
+                    {
+                        "selected": false,
+                        "text": "5 minutes",
+                        "value": "5 minutes"
+                    },
+                    {
+                        "selected": true,
+                        "text": "15 minutes",
+                        "value": "15 minutes"
+                    },
+                    {
+                        "selected": false,
+                        "text": "30 minutes",
+                        "value": "30 minutes"
+                    },
+                    {
+                        "selected": false,
+                        "text": "1 hour",
+                        "value": "1 hour"
+                    }
+                ],
+                "query": "1 minute,5 minutes,15 minutes,30 minutes,1 hour",
+                "type": "custom"
+            }
+        ]
+    },
+    "time": {
+        "from": "now-6h",
+        "to": "now"
+    },
+    "timepicker": {},
+    "timezone": "",
+    "title": "Solana Nodes on DZ",
+    "uid": "dz-solana",
+    "version": 82
+}

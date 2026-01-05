@@ -10,8 +10,8 @@ import (
 	"time"
 
 	anthropic "github.com/anthropics/anthropic-sdk-go"
-	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/agent"
-	mcpclient "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/client"
+	"github.com/malbeclabs/doublezero/lake/pkg/agent"
+	"github.com/malbeclabs/doublezero/lake/pkg/agent/react"
 	"github.com/slack-go/slack/slackevents"
 )
 
@@ -21,13 +21,11 @@ const (
 
 // Processor processes Slack messages and generates responses
 type Processor struct {
-	slackClient        *Client
-	mcpClient          *mcpclient.Client
-	anthropicClient    *anthropic.Client
-	convManager        *Manager
-	log                *slog.Logger
-	maxRounds          int
-	brainModeMaxRounds int
+	slackClient *Client
+	agent       *agent.Agent
+	brainAgent  *agent.Agent
+	convManager *Manager
+	log         *slog.Logger
 
 	// Track messages we've already responded to (by message timestamp) to prevent duplicate error messages
 	respondedMessages   map[string]time.Time
@@ -37,25 +35,18 @@ type Processor struct {
 // NewProcessor creates a new message processor
 func NewProcessor(
 	slackClient *Client,
-	mcpClient *mcpclient.Client,
-	anthropicClient *anthropic.Client,
+	agent *agent.Agent,
+	brainAgent *agent.Agent,
 	convManager *Manager,
 	log *slog.Logger,
-	maxRounds int,
-	brainModeMaxRounds int,
 ) *Processor {
-	if brainModeMaxRounds < maxRounds {
-		brainModeMaxRounds = maxRounds
-	}
 	return &Processor{
-		slackClient:        slackClient,
-		mcpClient:          mcpClient,
-		anthropicClient:    anthropicClient,
-		convManager:        convManager,
-		log:                log,
-		respondedMessages:  make(map[string]time.Time),
-		maxRounds:          maxRounds,
-		brainModeMaxRounds: brainModeMaxRounds,
+		slackClient:       slackClient,
+		agent:             agent,
+		brainAgent:        brainAgent,
+		convManager:       convManager,
+		log:               log,
+		respondedMessages: make(map[string]time.Time),
 	}
 }
 
@@ -103,7 +94,7 @@ func (p *Processor) MarkResponded(messageKey string) {
 
 // countRounds counts the number of rounds (assistant messages) in the conversation.
 // Each round adds one assistant message to the conversation.
-func countRounds(conversation []agent.Message) int {
+func countRounds(conversation []react.Message) int {
 	count := 0
 	for _, msg := range conversation {
 		// Check if this is an assistant message by type asserting to anthropic.MessageParam
@@ -204,10 +195,8 @@ func (p *Processor) ProcessMessage(
 
 	// Check for brain mode (:brain: emoji)
 	isBrainMode := strings.Contains(ev.Text, ":brain:")
-	maxRounds := p.maxRounds
 	if isBrainMode {
-		maxRounds = p.brainModeMaxRounds
-		p.log.Info("brain mode activated", "max_rounds", maxRounds)
+		p.log.Info("brain mode activated")
 	}
 
 	effortModeLabel := effortModeLabel(isBrainMode)
@@ -236,34 +225,20 @@ func (p *Processor) ProcessMessage(
 	if err != nil {
 		p.log.Warn("failed to get conversation history", "error", err)
 		ConversationHistoryErrorsTotal.Inc()
-		msgs = []agent.Message{}
+		msgs = []react.Message{}
 	}
 
 	// Add user's current message to history
-	userMsg := anthropicMessageAdapter{
-		msg: anthropic.NewUserMessage(anthropic.NewTextBlock(txt)),
+	userMsg := react.AnthropicMessage{
+		Msg: anthropic.NewUserMessage(anthropic.NewTextBlock(txt)),
 	}
 	msgs = append(msgs, userMsg)
 
-	// Don't trim here - the agent's internal trimming (KeepToolResultsRounds) handles
-	// trimming in a way that preserves tool_use/tool_result pairs. Pre-trimming here
-	// can break those pairs and cause API errors.
-
-	model := anthropic.ModelClaudeHaiku4_5_20251001
+	// Select agent based on brain mode
+	selectedAgent := p.agent
 	if isBrainMode {
-		model = anthropic.ModelClaudeSonnet4_5_20250929
+		selectedAgent = p.brainAgent
 	}
-
-	requestAgent := agent.NewAnthropicAgent(&agent.AnthropicAgentConfig{
-		Client:                *p.anthropicClient,
-		Model:                 model,
-		MaxTokens:             int64(4000),
-		MaxRounds:             maxRounds,
-		MaxToolResultLen:      10000,
-		Logger:                p.log,
-		System:                agent.SystemPrompt,
-		KeepToolResultsRounds: 3, // Keep last 3 rounds of tool results during execution
-	})
 
 	// Add processing reaction to indicate thinking/typing
 	if err := p.slackClient.AddProcessingReaction(ctx, ev.Channel, ev.TimeStamp); err != nil {
@@ -272,16 +247,14 @@ func (p *Processor) ProcessMessage(
 	}
 
 	var output bytes.Buffer
-	result, err := agent.RunAgent(ctx, requestAgent, p.mcpClient, msgs, &output)
+	// Use agent with conversation history
+	result, err := selectedAgent.RunWithMessages(ctx, msgs, &output)
 	if err != nil {
 		errorType := "unknown"
 		if strings.Contains(err.Error(), "tool_use_id") || strings.Contains(err.Error(), "tool_result") {
 			errorType = "tool_use_pair"
 			p.log.Warn("detected tool_use/tool_result pair error, clearing conversation cache", "thread_key", threadKey, "error", err)
 			p.convManager.ClearConversation(threadKey)
-		} else if strings.Contains(err.Error(), "mcp") || strings.Contains(err.Error(), "MCP") {
-			errorType = "mcp_client"
-			MCPClientErrorsTotal.WithLabelValues("run_agent").Inc()
 		}
 		AgentErrorsTotal.WithLabelValues(errorType, effortModeLabel).Inc()
 		p.log.Error("agent error", "error", err, "message_ts", ev.TimeStamp, "envelope_id", eventID)

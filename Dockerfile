@@ -95,11 +95,6 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     go build -ldflags "${GO_LDFLAGS}" -o ${BIN_DIR}/doublezero-telemetry-state-ingest telemetry/state-ingest/cmd/server/main.go
 
-# Build the DZ-AI MCP server (golang)
-RUN --mount=type=cache,target=/go/pkg/mod \
-    --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=1 go build -ldflags "${GO_LDFLAGS}" -o ${BIN_DIR}/doublezero-ai-mcp-server tools/dz-ai/cmd/mcp-server/main.go
-
 # Build the DZ-AI Slack bot (golang)
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \

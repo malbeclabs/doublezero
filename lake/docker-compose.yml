@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   postgres:
     image: postgres:16
@@ -49,7 +47,28 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      "ollama serve &
+      sleep 10 &&
+      ollama pull llama3.1:8b &&
+      tail -f /dev/null"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   pgdata:
   miniodata:
   grafana-data:
+  ollama-data:

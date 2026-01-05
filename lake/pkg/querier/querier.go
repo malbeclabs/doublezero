@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-
-	schematypes "github.com/malbeclabs/doublezero/lake/pkg/indexer/schema"
 )
 
 type Querier struct {
@@ -41,10 +39,6 @@ type QueryRow map[string]any
 func (q *Querier) Ready() bool {
 	// Querier is ready if the database is available
 	return q.cfg.DB != nil
-}
-
-func (q *Querier) Datasets() []schematypes.Dataset {
-	return Datasets
 }
 
 func (q *Querier) Query(ctx context.Context, sql string) (QueryResponse, error) {

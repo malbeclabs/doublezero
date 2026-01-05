@@ -15,8 +15,7 @@ func TestAI_Slack_LoadFromEnv(t *testing.T) {
 		"SLACK_APP_TOKEN",
 		"SLACK_SIGNING_SECRET",
 		"ANTHROPIC_API_KEY",
-		"MCP_URL",
-		"MCP_TOKEN",
+		"LAKE_QUERIER_URI",
 	}
 
 	for _, key := range envVars {
@@ -53,7 +52,7 @@ func TestAI_Slack_LoadFromEnv(t *testing.T) {
 				os.Setenv("SLACK_BOT_TOKEN", "xoxb-test")
 				os.Setenv("SLACK_APP_TOKEN", "xapp-test")
 				os.Setenv("ANTHROPIC_API_KEY", "sk-test")
-				os.Setenv("MCP_URL", "http://localhost:8080")
+				os.Setenv("LAKE_QUERIER_URI", "postgres://user:pass@localhost:5432/dbname")
 			},
 			modeFlag: "socket",
 			checkConfig: func(t *testing.T, cfg *Config) {
@@ -61,7 +60,7 @@ func TestAI_Slack_LoadFromEnv(t *testing.T) {
 				require.Equal(t, "xoxb-test", cfg.BotToken)
 				require.Equal(t, "xapp-test", cfg.AppToken)
 				require.Equal(t, "sk-test", cfg.AnthropicAPIKey)
-				require.Equal(t, "http://localhost:8080", cfg.MCPEndpoint)
+				require.Equal(t, "postgres://user:pass@localhost:5432/dbname", cfg.LakeQuerierURI)
 			},
 		},
 		{
@@ -70,7 +69,7 @@ func TestAI_Slack_LoadFromEnv(t *testing.T) {
 				os.Setenv("SLACK_BOT_TOKEN", "xoxb-test")
 				os.Setenv("SLACK_SIGNING_SECRET", "secret")
 				os.Setenv("ANTHROPIC_API_KEY", "sk-test")
-				os.Setenv("MCP_URL", "http://localhost:8080")
+				os.Setenv("LAKE_QUERIER_URI", "postgres://user:pass@localhost:5432/dbname")
 			},
 			modeFlag: "http",
 			checkConfig: func(t *testing.T, cfg *Config) {
@@ -84,7 +83,7 @@ func TestAI_Slack_LoadFromEnv(t *testing.T) {
 				os.Setenv("SLACK_BOT_TOKEN", "xoxb-test")
 				os.Setenv("SLACK_APP_TOKEN", "xapp-test")
 				os.Setenv("ANTHROPIC_API_KEY", "sk-test")
-				os.Setenv("MCP_URL", "http://localhost:8080")
+				os.Setenv("LAKE_QUERIER_URI", "postgres://user:pass@localhost:5432/dbname")
 			},
 			modeFlag: "",
 			checkConfig: func(t *testing.T, cfg *Config) {
@@ -97,7 +96,7 @@ func TestAI_Slack_LoadFromEnv(t *testing.T) {
 				os.Setenv("SLACK_BOT_TOKEN", "xoxb-test")
 				os.Setenv("SLACK_SIGNING_SECRET", "secret")
 				os.Setenv("ANTHROPIC_API_KEY", "sk-test")
-				os.Setenv("MCP_URL", "http://localhost:8080")
+				os.Setenv("LAKE_QUERIER_URI", "postgres://user:pass@localhost:5432/dbname")
 			},
 			modeFlag: "",
 			checkConfig: func(t *testing.T, cfg *Config) {
@@ -108,7 +107,7 @@ func TestAI_Slack_LoadFromEnv(t *testing.T) {
 			name: "missing bot token",
 			setupEnv: func() {
 				os.Setenv("ANTHROPIC_API_KEY", "sk-test")
-				os.Setenv("MCP_URL", "http://localhost:8080")
+				os.Setenv("LAKE_QUERIER_URI", "postgres://user:pass@localhost:5432/dbname")
 			},
 			modeFlag:    "socket",
 			wantErr:     true,
@@ -119,7 +118,7 @@ func TestAI_Slack_LoadFromEnv(t *testing.T) {
 			setupEnv: func() {
 				os.Setenv("SLACK_BOT_TOKEN", "xoxb-test")
 				os.Setenv("ANTHROPIC_API_KEY", "sk-test")
-				os.Setenv("MCP_URL", "http://localhost:8080")
+				os.Setenv("LAKE_QUERIER_URI", "postgres://user:pass@localhost:5432/dbname")
 			},
 			modeFlag:    "socket",
 			wantErr:     true,
@@ -130,7 +129,7 @@ func TestAI_Slack_LoadFromEnv(t *testing.T) {
 			setupEnv: func() {
 				os.Setenv("SLACK_BOT_TOKEN", "xoxb-test")
 				os.Setenv("ANTHROPIC_API_KEY", "sk-test")
-				os.Setenv("MCP_URL", "http://localhost:8080")
+				os.Setenv("LAKE_QUERIER_URI", "postgres://user:pass@localhost:5432/dbname")
 			},
 			modeFlag:    "http",
 			wantErr:     true,
@@ -141,23 +140,23 @@ func TestAI_Slack_LoadFromEnv(t *testing.T) {
 			setupEnv: func() {
 				os.Setenv("SLACK_BOT_TOKEN", "xoxb-test")
 				os.Setenv("SLACK_APP_TOKEN", "xapp-test")
-				os.Setenv("MCP_URL", "http://localhost:8080")
+				os.Setenv("LAKE_QUERIER_URI", "postgres://user:pass@localhost:5432/dbname")
 			},
 			modeFlag:    "socket",
 			wantErr:     true,
 			errContains: "ANTHROPIC_API_KEY is required",
 		},
 		{
-			name: "missing MCP endpoint",
+			name: "missing lake querier URI",
 			setupEnv: func() {
 				os.Setenv("SLACK_BOT_TOKEN", "xoxb-test")
 				os.Setenv("SLACK_APP_TOKEN", "xapp-test")
 				os.Setenv("ANTHROPIC_API_KEY", "sk-test")
-				os.Unsetenv("MCP_URL") // Ensure it's unset
+				os.Unsetenv("LAKE_QUERIER_URI") // Ensure it's unset
 			},
 			modeFlag:    "socket",
 			wantErr:     true,
-			errContains: "MCP endpoint is required",
+			errContains: "lake querier URI is required",
 		},
 		{
 			name: "invalid mode",
@@ -165,7 +164,7 @@ func TestAI_Slack_LoadFromEnv(t *testing.T) {
 				os.Setenv("SLACK_BOT_TOKEN", "xoxb-test")
 				os.Setenv("SLACK_APP_TOKEN", "xapp-test")
 				os.Setenv("ANTHROPIC_API_KEY", "sk-test")
-				os.Setenv("MCP_URL", "http://localhost:8080")
+				os.Setenv("LAKE_QUERIER_URI", "postgres://user:pass@localhost:5432/dbname")
 			},
 			modeFlag:    "invalid",
 			wantErr:     true,
@@ -177,7 +176,7 @@ func TestAI_Slack_LoadFromEnv(t *testing.T) {
 				os.Setenv("SLACK_BOT_TOKEN", "xoxb-test")
 				os.Setenv("SLACK_APP_TOKEN", "xapp-test")
 				os.Setenv("ANTHROPIC_API_KEY", "sk-test")
-				os.Setenv("MCP_URL", "http://localhost:8080")
+				os.Setenv("LAKE_QUERIER_URI", "postgres://user:pass@localhost:5432/dbname")
 			},
 			modeFlag:        "socket",
 			httpAddrFlag:    "0.0.0.0:3000",

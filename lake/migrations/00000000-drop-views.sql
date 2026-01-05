@@ -46,6 +46,7 @@ DROP VIEW IF EXISTS "main"."solana_leader_schedule_epoch";
 DROP VIEW IF EXISTS "main"."solana_leader_schedule_vs_production_current";
 DROP VIEW IF EXISTS "main"."solana_staked_vote_accounts_now";
 DROP VIEW IF EXISTS "main"."solana_validator_dz_connection_events";
+DROP VIEW IF EXISTS "main"."solana_validator_dz_first_connection_events";
 DROP VIEW IF EXISTS "main"."solana_validator_dz_overlaps_strict";
 DROP VIEW IF EXISTS "main"."solana_validator_dz_overlaps_windowed";
 DROP VIEW IF EXISTS "main"."solana_validator_health";

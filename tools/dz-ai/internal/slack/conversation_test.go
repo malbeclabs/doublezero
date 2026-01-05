@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/malbeclabs/doublezero/tools/dz-ai/internal/agent"
+	"github.com/malbeclabs/doublezero/lake/pkg/agent/react"
 	"github.com/stretchr/testify/require"
 )
 
@@ -43,7 +43,7 @@ func TestAI_Slack_Manager_UpdateConversationHistory(t *testing.T) {
 	threadKey := "1234567890.123456"
 
 	// Create empty messages list
-	msgs := []agent.Message{}
+	msgs := []react.Message{}
 
 	m.UpdateConversationHistory(threadKey, msgs)
 

@@ -14,10 +14,17 @@ import (
 	"syscall"
 	"time"
 
+	"database/sql"
+
 	anthropic "github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
+	_ "github.com/lib/pq" // PostgreSQL driver
+	"github.com/malbeclabs/doublezero/lake/pkg/agent"
+	"github.com/malbeclabs/doublezero/lake/pkg/agent/prompts"
+	"github.com/malbeclabs/doublezero/lake/pkg/agent/react"
+	"github.com/malbeclabs/doublezero/lake/pkg/agent/tools"
 	"github.com/malbeclabs/doublezero/lake/pkg/logger"
-	mcpclient "github.com/malbeclabs/doublezero/tools/dz-ai/internal/mcp/client"
+	"github.com/malbeclabs/doublezero/lake/pkg/querier"
 	slackbot "github.com/malbeclabs/doublezero/tools/dz-ai/internal/slack"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/slack-go/slack"
@@ -65,23 +72,26 @@ func main() {
 // For channels, the bot only responds when mentioned (@bot) or when replying in a thread where the root message mentioned the bot.
 func run() error {
 	verboseFlag := flag.Bool("verbose", false, "Enable verbose (debug) logging")
-	mcpURL := flag.String("mcp", "", "MCP endpoint URL")
+	lakeQuerierURIFlag := flag.String("lake-querier-uri", "", "Lake querier URI (PostgreSQL connection string to querier service)")
 	enablePprofFlag := flag.Bool("enable-pprof", false, "Enable pprof server")
 	metricsAddrFlag := flag.String("metrics-addr", defaultMetricsAddr, "Address to listen on for prometheus metrics")
 	modeFlag := flag.String("mode", "", "Mode: 'socket' (dev) or 'http' (prod). Defaults to 'socket' if SLACK_APP_TOKEN is set, otherwise 'http'")
 	httpAddrFlag := flag.String("http-addr", defaultHTTPAddr, "Address to listen on for HTTP events (production mode)")
 	maxRoundsFlag := flag.Int("max-rounds", 16, "Maximum number of rounds for the AI agent in normal mode")
 	brainModeMaxRoundsFlag := flag.Int("brain-mode-max-rounds", 32, "Maximum number of rounds for the AI agent in brain mode (e.g. when the user asks for a detailed analysis)")
-	statelessDisableFlag := flag.Bool("stateless-disable", false, "Disable stateless mode (use persistent connection to MCP server)")
+	maxContextTokensFlag := flag.Int("max-context-tokens", 20000, "Maximum number of tokens for the AI agent context before compacting the conversation history")
 	shutdownTimeoutFlag := flag.Duration("shutdown-timeout", 60*time.Second, "Maximum time to wait for in-flight operations to complete during graceful shutdown")
 	flag.Parse()
 
 	log := logger.New(*verboseFlag)
 
-	// Handle MCP URL flag override
-	mcpEndpoint := *mcpURL
-	if mcpEndpoint != "" {
-		os.Setenv("MCP_URL", mcpEndpoint)
+	// Handle lake querier URI flag override
+	lakeQuerierURI := *lakeQuerierURIFlag
+	if lakeQuerierURI == "" {
+		lakeQuerierURI = os.Getenv("LAKE_QUERIER_URI")
+	}
+	if lakeQuerierURI != "" {
+		os.Setenv("LAKE_QUERIER_URI", lakeQuerierURI)
 	}
 
 	// Load configuration
@@ -120,26 +130,64 @@ func run() error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	// Set up MCP client
-	// Stateless mode (default: true) enables load balancing by creating a new session per request
-	// Use --stateless-disable to disable stateless mode and use persistent connections
-	stateless := !*statelessDisableFlag // Default to stateless mode (true), disable with flag
-	mcpClient, err := mcpclient.New(ctx, mcpclient.Config{
-		Endpoint:  cfg.MCPEndpoint,
-		Logger:    log,
-		Token:     cfg.MCPToken,
-		Stateless: stateless,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to create MCP client: %w", err)
-	}
-	defer mcpClient.Close()
-
 	// Set up Anthropic client
 	anthropicClient := anthropic.NewClient(option.WithAPIKey(cfg.AnthropicAPIKey))
 	// Using Claude Sonnet 4.5 for better reasoning and proactive exploration
 	// Haiku is cheaper but less capable for complex analysis
 	// Alternative: anthropic.ModelClaudeHaiku4_5_20251001 // Cheaper but less capable
+
+	// Load prompts and build system prompt with Slack-specific guidelines
+	prompts, err := prompts.Load()
+	if err != nil {
+		return fmt.Errorf("failed to load prompts: %w", err)
+	}
+	systemPrompt := prompts.BuildSlackSystemPrompt()
+
+	// Set up tool client using QuerierToolClient
+	// Create querier from lake querier URI (PostgreSQL connection string to querier service)
+	pgQuerier, err := newPostgresQuerier(ctx, cfg.LakeQuerierURI, log)
+	if err != nil {
+		return fmt.Errorf("failed to create querier: %w", err)
+	}
+	defer pgQuerier.Close()
+
+	toolClient := tools.NewQuerierToolClient(pgQuerier)
+
+	// Create normal agent (Haiku model, normal maxRounds)
+	normalModel := anthropic.ModelClaudeHaiku4_5
+	normalLLMClient := react.NewAnthropicAgent(anthropicClient, normalModel, int64(4000), systemPrompt)
+	normalReactAgent, err := react.NewAgent(&react.Config{
+		Logger:             log,
+		LLM:                normalLLMClient,
+		ToolClient:         toolClient,
+		MaxRounds:          *maxRoundsFlag,
+		MaxContextTokens:   *maxContextTokensFlag,
+		FinalizationPrompt: prompts.Finalization,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create normal react agent: %w", err)
+	}
+	normalAgent := agent.NewAgent(&agent.AgentConfig{
+		ReactAgent: normalReactAgent,
+	})
+
+	// Create brain mode agent (Sonnet model, brainModeMaxRounds)
+	brainModel := anthropic.ModelClaudeSonnet4_5
+	brainLLMClient := react.NewAnthropicAgent(anthropicClient, brainModel, int64(4000), systemPrompt)
+	brainReactAgent, err := react.NewAgent(&react.Config{
+		Logger:             log,
+		LLM:                brainLLMClient,
+		ToolClient:         toolClient,
+		MaxRounds:          *brainModeMaxRoundsFlag,
+		MaxContextTokens:   *maxContextTokensFlag,
+		FinalizationPrompt: prompts.Finalization,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create brain react agent: %w", err)
+	}
+	brainAgent := agent.NewAgent(&agent.AgentConfig{
+		ReactAgent: brainReactAgent,
+	})
 
 	// Initialize Slack client
 	slackClient := slackbot.NewClient(cfg.BotToken, cfg.AppToken, log)
@@ -156,12 +204,10 @@ func run() error {
 	// Set up message processor
 	msgProcessor := slackbot.NewProcessor(
 		slackClient,
-		mcpClient,
-		&anthropicClient,
+		normalAgent,
+		brainAgent,
 		convManager,
 		log,
-		*maxRoundsFlag,
-		*brainModeMaxRoundsFlag,
 	)
 	msgProcessor.StartCleanup(ctx)
 
@@ -275,4 +321,105 @@ func runHTTPMode(
 	}
 
 	return ctx.Err()
+}
+
+// postgresQuerier implements tools.Querier by connecting to a querier service via PostgreSQL wire protocol.
+type postgresQuerier struct {
+	db  *sql.DB
+	log *slog.Logger
+}
+
+// newPostgresQuerier creates a new PostgreSQL querier that connects to the querier service.
+func newPostgresQuerier(ctx context.Context, connStr string, log *slog.Logger) (*postgresQuerier, error) {
+	db, err := sql.Open("postgres", connStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open database connection: %w", err)
+	}
+
+	// Test the connection
+	if err := db.PingContext(ctx); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to ping database: %w", err)
+	}
+
+	return &postgresQuerier{
+		db:  db,
+		log: log,
+	}, nil
+}
+
+func (p *postgresQuerier) Close() error {
+	return p.db.Close()
+}
+
+func (p *postgresQuerier) Query(ctx context.Context, sqlQuery string) (querier.QueryResponse, error) {
+	rows, err := p.db.QueryContext(ctx, sqlQuery)
+	if err != nil {
+		return querier.QueryResponse{}, fmt.Errorf("failed to execute query: %w", err)
+	}
+	defer rows.Close()
+
+	columns, err := rows.Columns()
+	if err != nil {
+		return querier.QueryResponse{}, fmt.Errorf("failed to get columns: %w", err)
+	}
+
+	// Get column types
+	columnTypes, err := rows.ColumnTypes()
+	if err != nil {
+		return querier.QueryResponse{}, fmt.Errorf("failed to get column types: %w", err)
+	}
+
+	// Build column type information
+	colTypeInfo := make([]querier.ColumnType, len(columns))
+	for i, colType := range columnTypes {
+		colTypeInfo[i] = querier.ColumnType{
+			Name:             colType.Name(),
+			DatabaseTypeName: colType.DatabaseTypeName(),
+			ScanType:         "",
+		}
+		if colType.ScanType() != nil {
+			colTypeInfo[i].ScanType = colType.ScanType().String()
+		}
+	}
+
+	var resultRows []querier.QueryRow
+	for rows.Next() {
+		values := make([]any, len(columns))
+		valuePtrs := make([]any, len(columns))
+		for i := range values {
+			valuePtrs[i] = &values[i]
+		}
+
+		if err := rows.Scan(valuePtrs...); err != nil {
+			return querier.QueryResponse{}, fmt.Errorf("failed to scan row: %w", err)
+		}
+
+		row := make(querier.QueryRow)
+		for i, col := range columns {
+			val := values[i]
+			if val == nil {
+				row[col] = nil
+			} else {
+				switch v := val.(type) {
+				case []byte:
+					row[col] = string(v)
+				default:
+					row[col] = val
+				}
+			}
+		}
+		resultRows = append(resultRows, row)
+	}
+
+	if err := rows.Err(); err != nil {
+		return querier.QueryResponse{}, fmt.Errorf("error iterating rows: %w", err)
+	}
+
+	return querier.QueryResponse{
+		Columns:     columns,
+		ColumnTypes: colTypeInfo,
+		Rows:        resultRows,
+		Count:       len(resultRows),
+	}, nil
 }

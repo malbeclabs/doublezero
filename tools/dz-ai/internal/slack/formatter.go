@@ -28,12 +28,14 @@ func SetExpandOnSectionBlocks(blocks []slack.Block, log *slog.Logger) []slack.Bl
 				// Don't split if:
 				// 1. Contains code block markers (```)
 				// 2. Is a single line (likely a code line or already properly formatted)
+				// 3. Contains list items (lists should be kept together)
 				// Single-line blocks shouldn't be split as they're likely already atomic
 				containsCodeMarkers := strings.Contains(text, "```")
 				isSingleLine := !strings.Contains(text, "\n")
+				containsList := containsListItems(text)
 
-				if containsCodeMarkers || isSingleLine {
-					// Looks like code - keep as single block with expand=true
+				if containsCodeMarkers || isSingleLine || containsList {
+					// Looks like code or contains lists - keep as single block with expand=true
 					expandedBlock := &slack.SectionBlock{
 						Type:      sectionBlock.Type,
 						Text:      sectionBlock.Text,
@@ -44,7 +46,7 @@ func SetExpandOnSectionBlocks(blocks []slack.Block, log *slog.Logger) []slack.Bl
 					}
 					result = append(result, expandedBlock)
 				} else {
-					// No code blocks - split by paragraphs normally
+					// No code blocks or lists - split by paragraphs normally
 					paragraphs := splitIntoParagraphs(text)
 					for _, para := range paragraphs {
 						paraTextBlock := slack.NewTextBlockObject(sectionBlock.Text.Type, para, false, false)
@@ -79,7 +81,46 @@ func SetExpandOnSectionBlocks(blocks []slack.Block, log *slog.Logger) []slack.Bl
 	return result
 }
 
-// splitIntoParagraphs splits text into paragraphs by double newlines, then by single newlines
+// containsListItems checks if text contains any list items
+func containsListItems(text string) bool {
+	lines := strings.Split(text, "\n")
+	for _, line := range lines {
+		if isListItem(line) {
+			return true
+		}
+	}
+	return false
+}
+
+// isListItem checks if a line is a list item (bullet or numbered)
+func isListItem(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	// Check for bullet lists: - or * at start (after whitespace)
+	if len(trimmed) > 0 && (trimmed[0] == '-' || trimmed[0] == '*') {
+		// Make sure it's not just a dash in text - should have space after
+		if len(trimmed) > 1 && (trimmed[1] == ' ' || trimmed[1] == '\t') {
+			return true
+		}
+	}
+	// Check for numbered lists: digit(s) followed by . or )
+	if len(trimmed) > 0 && trimmed[0] >= '0' && trimmed[0] <= '9' {
+		// Look for . or ) after digits
+		for i := 1; i < len(trimmed) && i < 10; i++ {
+			if trimmed[i] == '.' || trimmed[i] == ')' {
+				// Should have space after
+				if i+1 < len(trimmed) && (trimmed[i+1] == ' ' || trimmed[i+1] == '\t') {
+					return true
+				}
+			}
+			if trimmed[i] < '0' || trimmed[i] > '9' {
+				break
+			}
+		}
+	}
+	return false
+}
+
+// splitIntoParagraphs splits text into paragraphs by double newlines, preserving list structures
 func splitIntoParagraphs(text string) []string {
 	var paragraphs []string
 
@@ -91,13 +132,58 @@ func splitIntoParagraphs(text string) []string {
 			continue
 		}
 
-		// If paragraph contains single newlines, split those too
+		// Check if this paragraph contains a list
 		lines := strings.Split(para, "\n")
+		inList := false
+		var currentList []string
+		var currentParagraph strings.Builder
+
 		for _, line := range lines {
-			line = strings.TrimSpace(line)
-			if line != "" {
-				paragraphs = append(paragraphs, line)
+			lineTrimmed := strings.TrimSpace(line)
+			if lineTrimmed == "" {
+				// Empty line - if we're in a list, end it; otherwise continue
+				if inList && len(currentList) > 0 {
+					paragraphs = append(paragraphs, strings.Join(currentList, "\n"))
+					currentList = nil
+					inList = false
+				}
+				continue
 			}
+
+			// Check if this line is a list item
+			if isListItem(line) {
+				// If we were building a regular paragraph, save it first
+				if !inList && currentParagraph.Len() > 0 {
+					paragraphs = append(paragraphs, strings.TrimSpace(currentParagraph.String()))
+					currentParagraph.Reset()
+				}
+				inList = true
+				currentList = append(currentList, line)
+			} else {
+				// Not a list item
+				if inList {
+					// We were in a list, but this line isn't a list item
+					// Check if it's a continuation (indented line that's part of the list)
+					// For now, we'll end the list when we hit a non-list item
+					if len(currentList) > 0 {
+						paragraphs = append(paragraphs, strings.Join(currentList, "\n"))
+						currentList = nil
+					}
+					inList = false
+				}
+				// Add to current paragraph
+				if currentParagraph.Len() > 0 {
+					currentParagraph.WriteString("\n")
+				}
+				currentParagraph.WriteString(line)
+			}
+		}
+
+		// Flush any remaining content
+		if inList && len(currentList) > 0 {
+			paragraphs = append(paragraphs, strings.Join(currentList, "\n"))
+		} else if currentParagraph.Len() > 0 {
+			paragraphs = append(paragraphs, strings.TrimSpace(currentParagraph.String()))
 		}
 	}
 

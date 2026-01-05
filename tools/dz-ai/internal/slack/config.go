@@ -25,9 +25,8 @@ type Config struct {
 	// Anthropic configuration
 	AnthropicAPIKey string
 
-	// MCP configuration
-	MCPEndpoint string
-	MCPToken    string
+	// Lake querier configuration
+	LakeQuerierURI string
 
 	// Server configuration
 	HTTPAddr    string
@@ -87,12 +86,11 @@ func LoadFromEnv(modeFlag, httpAddrFlag, metricsAddrFlag string, verbose, enable
 		return nil, fmt.Errorf("ANTHROPIC_API_KEY is required")
 	}
 
-	// Load MCP configuration
-	cfg.MCPEndpoint = os.Getenv("MCP_URL")
-	if cfg.MCPEndpoint == "" {
-		return nil, fmt.Errorf("MCP endpoint is required (use -mcp flag or MCP_URL env var)")
+	// Load lake querier URI
+	cfg.LakeQuerierURI = os.Getenv("LAKE_QUERIER_URI")
+	if cfg.LakeQuerierURI == "" {
+		return nil, fmt.Errorf("lake querier URI is required (use --lake-querier-uri flag or LAKE_QUERIER_URI env var)")
 	}
-	cfg.MCPToken = os.Getenv("MCP_TOKEN")
 
 	return cfg, nil
 }

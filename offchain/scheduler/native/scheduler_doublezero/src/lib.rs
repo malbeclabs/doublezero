@@ -55,7 +55,29 @@ pub fn post_debt_summary(
     Runtime::new()
         .map_err(display_to_nif_error)?
         .block_on(async {
-            async_post_debt_summary(insufficient_funds_count, total_debt, total_paid).await
+            let client = reqwest::Client::new();
+
+            let header = "Total Debt Collection";
+            let table_header = vec![
+                "Total Paid".to_string(),
+                "Total Debt".to_string(),
+                "Total Insufficient Funds Count".to_string(),
+            ];
+            let table_values = vec![
+                total_paid.to_string(),
+                total_debt.to_string(),
+                insufficient_funds_count.to_string(),
+            ];
+            slack_notifier::validator_debt::post_to_slack(
+                None,
+                &client,
+                header,
+                table_header,
+                table_values,
+            )
+            .await?;
+
+            Ok::<(), anyhow::Error>(())
         })
         .map_err(display_to_nif_error)?;
 
@@ -71,7 +93,18 @@ pub fn pay_debt(
     // Block the current thread and wait for the async operation to complete.
     let tx_results = Runtime::new()
         .map_err(display_to_nif_error)?
-        .block_on(async { async_pay_debt(dz_epoch, ledger_rpc, solana_rpc).await })
+        .block_on(async {
+            let ledger_rpc_client = DoubleZeroLedgerConnection::new(ledger_rpc);
+
+            let wallet = try_initialize_wallet(solana_rpc)?;
+
+            let tx_results =
+                worker::pay_solana_validator_debt(wallet, ledger_rpc_client, dz_epoch).await?;
+
+            worker::post_debt_collection_to_slack(tx_results.clone(), false, None).await?;
+
+            Ok::<DebtCollectionResults, anyhow::Error>(tx_results)
+        })
         .map_err(display_to_nif_error)?;
 
     let total_validators = tx_results.collection_results.len();
@@ -106,14 +139,7 @@ pub fn initialize_distribution(solana_rpc: String) -> Result<(), NifError> {
     Runtime::new()
         .map_err(display_to_nif_error)?
         .block_on(async {
-            let wallet = Wallet {
-                connection: SolanaConnection::new(solana_rpc),
-                signer: try_load_keypair(None)?,
-                compute_unit_price_ix: None,
-                verbose: false,
-                fee_payer: None,
-                dry_run: false,
-            };
+            let wallet = try_initialize_wallet(solana_rpc)?;
 
             worker::try_initialize_distribution(
                 wallet, //
@@ -132,7 +158,12 @@ pub fn initialize_distribution(solana_rpc: String) -> Result<(), NifError> {
 pub fn current_dz_epoch(ledger_rpc: String) -> Result<u64, NifError> {
     let dz_epoch = Runtime::new()
         .map_err(display_to_nif_error)?
-        .block_on(async { async_current_dz_epoch(ledger_rpc).await })
+        .block_on(async {
+            let ledger_rpc_client = DoubleZeroLedgerConnection::new(ledger_rpc);
+            let dz_epoch_info = ledger_rpc_client.get_epoch_info().await?;
+
+            Ok::<u64, anyhow::Error>(dz_epoch_info.epoch)
+        })
         .map_err(display_to_nif_error)?;
 
     Ok(dz_epoch)
@@ -145,13 +176,41 @@ pub fn calculate_distribution(
     solana_rpc: String,
     post_to_slack: bool,
 ) -> Result<(), NifError> {
-    let rt = tokio::runtime::Runtime::new().map_err(display_to_nif_error)?;
+    Runtime::new()
+        .map_err(display_to_nif_error)?
+        .block_on(async {
+            let connection_options = SolanaValidatorDebtConnectionOptions {
+                solana_url_or_moniker: Some(solana_rpc),
+                dz_ledger_url: ledger_rpc,
+            };
+            let solana_debt_calculator: SolanaDebtCalculator =
+                SolanaDebtCalculator::try_from(connection_options)?;
 
-    // Block the current thread and wait for the async operation to complete.
-    rt.block_on(async {
-        async_calculate_distribution(dz_epoch, ledger_rpc, solana_rpc, post_to_slack).await
-    })
-    .map_err(display_to_nif_error)?;
+            let transaction = Transaction::new(try_load_keypair(None)?, false, false);
+
+            let write_summary = worker::calculate_distribution(
+                &solana_debt_calculator,
+                transaction,
+                dz_epoch,
+                false,
+            )
+            .await?;
+            if post_to_slack {
+                slack_notifier::validator_debt::post_distribution_to_slack(
+                    None,
+                    write_summary.solana_epoch,
+                    write_summary.dz_epoch,
+                    false,
+                    write_summary.total_debt,
+                    write_summary.total_validators,
+                    write_summary.transaction_id,
+                )
+                .await?;
+            }
+
+            Ok::<(), anyhow::Error>(())
+        })
+        .map_err(display_to_nif_error)?;
 
     Ok(())
 }
@@ -162,129 +221,40 @@ pub fn finalize_distribution(
     ledger_rpc: String,
     solana_rpc: String,
 ) -> Result<(), NifError> {
-    let rt = tokio::runtime::Runtime::new().map_err(display_to_nif_error)?;
+    Runtime::new()
+        .map_err(display_to_nif_error)?
+        .block_on(async {
+            let connection_options = SolanaValidatorDebtConnectionOptions {
+                solana_url_or_moniker: Some(solana_rpc),
+                dz_ledger_url: ledger_rpc,
+            };
+            let solana_debt_calculator: SolanaDebtCalculator =
+                SolanaDebtCalculator::try_from(connection_options)?;
 
-    // Block the current thread and wait for the async operation to complete.
-    rt.block_on(async { async_finalize_distribution(dz_epoch, ledger_rpc, solana_rpc).await })
+            let transaction = Transaction::new(try_load_keypair(None)?, false, false);
+
+            worker::finalize_distribution(&solana_debt_calculator, transaction, dz_epoch).await?;
+
+            Ok::<(), anyhow::Error>(())
+        })
         .map_err(display_to_nif_error)?;
 
     Ok(())
 }
-async fn async_post_debt_summary(
-    insufficient_funds_count: usize,
-    total_debt: u64,
-    total_paid: u64,
-) -> Result<()> {
-    let client = reqwest::Client::new();
 
-    let header = "Total Debt Collection";
-    let table_header = vec![
-        "Total Paid".to_string(),
-        "Total Debt".to_string(),
-        "Total Insufficient Funds Count".to_string(),
-    ];
-    let table_values = vec![
-        total_paid.to_string(),
-        total_debt.to_string(),
-        insufficient_funds_count.to_string(),
-    ];
-    slack_notifier::validator_debt::post_to_slack(
-        None,
-        &client,
-        header,
-        table_header,
-        table_values,
-    )
-    .await?;
-    Ok(())
+fn display_to_nif_error(e: impl std::fmt::Display) -> NifError {
+    NifError::Term(Box::new(e.to_string()))
 }
 
-async fn async_pay_debt(
-    dz_epoch: u64,
-    ledger_rpc: String,
-    solana_rpc: String,
-) -> Result<DebtCollectionResults> {
-    let sc = SolanaConnection::new(solana_rpc);
-
-    let ledger_rpc_client = DoubleZeroLedgerConnection::new(ledger_rpc);
-
-    let wallet = Wallet {
-        connection: sc,
+fn try_initialize_wallet(solana_rpc: String) -> Result<Wallet> {
+    Ok(Wallet {
+        connection: SolanaConnection::new(solana_rpc),
         signer: try_load_keypair(None)?,
         compute_unit_price_ix: None,
         verbose: false,
         fee_payer: None,
         dry_run: false,
-    };
-
-    let tx_results = worker::pay_solana_validator_debt(wallet, ledger_rpc_client, dz_epoch).await?;
-
-    worker::post_debt_collection_to_slack(tx_results.clone(), false, None).await?;
-
-    Ok(tx_results)
-}
-
-async fn async_calculate_distribution(
-    dz_epoch: u64,
-    ledger_rpc: String,
-    solana_rpc: String,
-    post_to_slack: bool,
-) -> Result<()> {
-    let connection_options = SolanaValidatorDebtConnectionOptions {
-        solana_url_or_moniker: Some(solana_rpc),
-        dz_ledger_url: ledger_rpc,
-    };
-    let solana_debt_calculator: SolanaDebtCalculator =
-        SolanaDebtCalculator::try_from(connection_options)?;
-
-    let transaction = Transaction::new(try_load_keypair(None)?, false, false);
-
-    let write_summary =
-        worker::calculate_distribution(&solana_debt_calculator, transaction, dz_epoch, false)
-            .await?;
-
-    if post_to_slack {
-        slack_notifier::validator_debt::post_distribution_to_slack(
-            None,
-            write_summary.solana_epoch,
-            write_summary.dz_epoch,
-            false,
-            write_summary.total_debt,
-            write_summary.total_validators,
-            write_summary.transaction_id,
-        )
-        .await?;
-    }
-
-    Ok(())
-}
-
-async fn async_finalize_distribution(
-    dz_epoch: u64,
-    ledger_rpc: String,
-    solana_rpc: String,
-) -> Result<()> {
-    let connection_options = SolanaValidatorDebtConnectionOptions {
-        solana_url_or_moniker: Some(solana_rpc),
-        dz_ledger_url: ledger_rpc,
-    };
-    let solana_debt_calculator: SolanaDebtCalculator =
-        SolanaDebtCalculator::try_from(connection_options)?;
-
-    let transaction = Transaction::new(try_load_keypair(None)?, false, false);
-
-    worker::finalize_distribution(&solana_debt_calculator, transaction, dz_epoch).await?;
-    Ok(())
-}
-
-async fn async_current_dz_epoch(ledger_rpc: String) -> Result<u64> {
-    let ledger_rpc_client = DoubleZeroLedgerConnection::new(ledger_rpc);
-    let dz_epoch_info = ledger_rpc_client.get_epoch_info().await?;
-    Ok(dz_epoch_info.epoch)
-}
-
-fn display_to_nif_error(e: impl std::fmt::Display) -> NifError {
-    NifError::Term(Box::new(e.to_string()))
+    })
 }
 
 rustler::init!("Elixir.Scheduler.DoubleZero");

@@ -33,6 +33,7 @@ All notable changes to this project will be documented in this file.
   - Route liveness sets set of routes configured as excluded to `AdminDown`.
   - Add histogram metric for BGP session establishment duration
   - For IBRL with allocated IP mode, resolve tunnel source IP from routing table via resolve-route API endpoint instead of using client IP to support clients behind NAT
+  - Configure MTU down to 1476 on client tunnel in case path MTU discovery is not working
 - Global monitor
   - Initial implementation
 - Release

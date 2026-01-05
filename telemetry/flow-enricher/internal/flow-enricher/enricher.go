@@ -3,8 +3,8 @@
 // records in protobuf format, enriches the flow with additional information from
 // each annotator, and writes the flows as a batch to clickhouse.
 //
-// Annotators must be registered in the RegisterAnnotators method of the enricher
-// and must implement the Annotator interface.
+// Annotators are added via the AddAnnotator method and
+// must implement the Annotator interface.
 package enricher
 
 import (
@@ -106,6 +106,11 @@ func NewEnricher(opts ...EnricherOption) *Enricher {
 	return e
 }
 
+// AddAnnotator adds an annotator to the enricher after construction.
+func (e *Enricher) AddAnnotator(a Annotator) {
+	e.annotators = append(e.annotators, a)
+}
+
 // Run starts the enricher instance and begins processing flow records.
 func (e *Enricher) Run(ctx context.Context) error {
 	if e.flowConsumer == nil {
@@ -128,8 +133,8 @@ func (e *Enricher) Run(ctx context.Context) error {
 
 	go e.fetchServiceabilityData(ctx)
 
-	// some annotators depends on serviceability data, so we need to register them after
-	if err := e.RegisterAnnotators(ctx); err != nil {
+	// initialize annotators before starting enrichment
+	if err := e.initAnnotators(ctx); err != nil {
 		return fmt.Errorf("error while initializing annotators: %v", err)
 	}
 
@@ -202,7 +207,9 @@ func (e *Enricher) fetchServiceabilityData(ctx context.Context) {
 	}
 }
 
-func (e *Enricher) serviceabilityData() serviceability.ProgramData {
+// ServiceabilityData returns a copy of the current serviceability program data.
+// This method is safe for concurrent use.
+func (e *Enricher) ServiceabilityData() serviceability.ProgramData {
 	e.programDataMutex.Lock()
 	defer e.programDataMutex.Unlock()
 	if e.programData == nil {
@@ -211,21 +218,19 @@ func (e *Enricher) serviceabilityData() serviceability.ProgramData {
 	return *e.programData
 }
 
+// Annotator defines the interface for flow enrichment annotators.
+// Dependencies should be passed via the annotator's constructor.
 type Annotator interface {
-	Init(context.Context, func() serviceability.ProgramData) error
+	// Init initializes the annotator. Called once before any Annotate calls.
+	Init(context.Context) error
 	Annotate(*FlowSample) error
 	String() string
 }
 
-// RegisterAnnotators initializes a set of annotators for use during enrichment.
-// Annotators must implement the Annotator interface.
-func (e *Enricher) RegisterAnnotators(ctx context.Context) error {
-	e.annotators = []Annotator{
-		NewServiceabilityAnnotator(),
-	}
-
+// initAnnotators initializes all registered annotators.
+func (e *Enricher) initAnnotators(ctx context.Context) error {
 	for _, a := range e.annotators {
-		if err := a.Init(ctx, e.serviceabilityData); err != nil {
+		if err := a.Init(ctx); err != nil {
 			return fmt.Errorf("error initializing annotator %s: %v", a.String(), err)
 		}
 	}

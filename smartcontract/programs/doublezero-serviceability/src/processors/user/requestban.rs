@@ -62,6 +62,9 @@ pub fn process_request_ban_user(
     }
 
     let mut user: User = User::try_from(user_account)?;
+    if !can_request_ban(user.status) {
+        return Err(DoubleZeroError::InvalidStatus.into());
+    }
     user.status = UserStatus::PendingBan;
 
     resize_account_if_needed(user_account, payer_account, accounts, user.size())?;
@@ -71,4 +74,30 @@ pub fn process_request_ban_user(
     msg!("Deleting: {:?}", user);
 
     Ok(())
+}
+
+fn can_request_ban(status: UserStatus) -> bool {
+    status == UserStatus::Activated || status == UserStatus::Suspended
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn request_ban_allowed_statuses() {
+        assert!(can_request_ban(UserStatus::Activated));
+        assert!(can_request_ban(UserStatus::Suspended));
+    }
+
+    #[test]
+    fn request_ban_disallowed_statuses() {
+        assert!(!can_request_ban(UserStatus::Pending));
+        assert!(!can_request_ban(UserStatus::Deleting));
+        assert!(!can_request_ban(UserStatus::Rejected));
+        assert!(!can_request_ban(UserStatus::PendingBan));
+        assert!(!can_request_ban(UserStatus::Banned));
+        assert!(!can_request_ban(UserStatus::Updating));
+        assert!(!can_request_ban(UserStatus::OutOfCredits));
+    }
 }

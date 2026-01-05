@@ -252,9 +252,15 @@ func printTestReportTable(log *slog.Logger, batchData BatchData, clientLatencies
 		for _, batchNum := range batchNums {
 			if assignment, ok := batchData[batchNum][clientName]; ok {
 				latencyMs := clientLatencies[clientName][assignment.Device.Code]
-				cell := fmt.Sprintf("%s (%.1fms)", assignment.Device.Code, latencyMs)
+				var cell string
 				if showResults {
-					cell += " 100/100 ✅  "
+					if assignment.PacketsSent > 0 && assignment.PacketsReceived == assignment.PacketsSent {
+						cell = fmt.Sprintf("%s %d/%d ✅", assignment.Device.Code, assignment.PacketsReceived, assignment.PacketsSent)
+					} else {
+						cell = fmt.Sprintf("%s %d/%d ❌", assignment.Device.Code, assignment.PacketsReceived, assignment.PacketsSent)
+					}
+				} else {
+					cell = fmt.Sprintf("%s (%.1fms) ⏳", assignment.Device.Code, latencyMs)
 				}
 				colWidths[clientName] = max(colWidths[clientName], len(cell))
 			}
@@ -292,16 +298,17 @@ func printTestReportTable(log *slog.Logger, batchData BatchData, clientLatencies
 			cell := ""
 			if assignment, ok := batchData[batchNum][clientName]; ok {
 				latencyMs := clientLatencies[clientName][assignment.Device.Code]
-				cell = fmt.Sprintf("%s (%.1fms)", assignment.Device.Code, latencyMs)
 				if showResults {
 					if assignment.PacketsSent > 0 && assignment.PacketsReceived == assignment.PacketsSent {
-						cell += fmt.Sprintf(" %d/%d ✅  ", assignment.PacketsReceived, assignment.PacketsSent)
+						cell = fmt.Sprintf("%s %d/%d ✅", assignment.Device.Code, assignment.PacketsReceived, assignment.PacketsSent)
 					} else {
-						cell += fmt.Sprintf(" %d/%d ❌  ", assignment.PacketsReceived, assignment.PacketsSent)
+						cell = fmt.Sprintf("%s %d/%d ❌", assignment.Device.Code, assignment.PacketsReceived, assignment.PacketsSent)
 					}
+				} else {
+					cell = fmt.Sprintf("%s (%.1fms) 🕒", assignment.Device.Code, latencyMs)
 				}
 			}
-			sb.WriteString(fmt.Sprintf(" %-*s |", colWidths[clientName], cell))
+			sb.WriteString(fmt.Sprintf(" %-*s |", colWidths[clientName]-1, cell))
 		}
 		sb.WriteString("\n")
 	}

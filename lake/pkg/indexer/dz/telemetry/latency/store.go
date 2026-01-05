@@ -442,8 +442,11 @@ func (s *Store) GetExistingMaxSampleIndices() (map[string]int, error) {
 		return nil, fmt.Errorf("failed to get connection: %w", err)
 	}
 	defer conn.Close()
+	// Filter to last 4 days to enable partition pruning - we only need current and previous epoch
+	// Solana epochs are ~2-3 days, so 4 days covers both epochs we fetch
 	query := `SELECT origin_device_pk, target_device_pk, link_pk, epoch, MAX(sample_index) as max_idx
 	          FROM dz_device_link_latency_samples_raw
+	          WHERE time >= CURRENT_DATE - INTERVAL '4 days'
 	          GROUP BY origin_device_pk, target_device_pk, link_pk, epoch`
 	rows, err := conn.QueryContext(ctx, query)
 	if err != nil {
@@ -477,8 +480,11 @@ func (s *Store) GetExistingInternetMaxSampleIndices() (map[string]int, error) {
 		return nil, fmt.Errorf("failed to get connection: %w", err)
 	}
 	defer conn.Close()
+	// Filter to last 4 days to enable partition pruning - we only need current and previous epoch
+	// Solana epochs are ~2-3 days, so 4 days covers both epochs we fetch
 	query := `SELECT origin_metro_pk, target_metro_pk, data_provider, epoch, MAX(sample_index) as max_idx
 	          FROM dz_internet_metro_latency_samples_raw
+	          WHERE time >= CURRENT_DATE - INTERVAL '4 days'
 	          GROUP BY origin_metro_pk, target_metro_pk, data_provider, epoch`
 	rows, err := conn.QueryContext(ctx, query)
 	if err != nil {

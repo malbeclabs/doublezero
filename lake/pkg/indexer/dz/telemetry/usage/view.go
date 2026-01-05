@@ -743,11 +743,10 @@ func (v *View) convertRowsToUsage(rows []map[string]any, baselines *CounterBasel
 // queryBaselineCountersFromDuckDB queries DuckDB for the last non-null counter values before the window start
 // for each device/interface combination. Returns error if DuckDB doesn't have data or query fails.
 func (v *View) queryBaselineCountersFromDuckDB(windowStart time.Time) (*CounterBaselines, error) {
-	// Query all data before the window start to find the last non-null values
-	// We filter for non-null values and use ROW_NUMBER() to get only the last value per device/interface,
-	// so this should be efficient even with a large time range
-	// Use a very old timestamp to query all available data (e.g., 10 years ago)
-	lookbackStart := windowStart.Add(-10 * 365 * 24 * time.Hour)
+	// Query recent data before the window start to find the last non-null values
+	// Limit to 90 days lookback to enable partition pruning - baselines don't need to go back years
+	// Use DISTINCT ON for more efficient query execution
+	lookbackStart := windowStart.Add(-90 * 24 * time.Hour)
 
 	baselines := &CounterBaselines{
 		InDiscards:  make(map[string]*int64),
@@ -771,22 +770,17 @@ func (v *View) queryBaselineCountersFromDuckDB(windowStart time.Time) (*CounterB
 	}
 
 	for _, cf := range counterFields {
+		// Use DISTINCT ON for more efficient query - gets the latest row per device/interface
+		// This is more efficient than ROW_NUMBER() window function
 		sqlQuery := fmt.Sprintf(`
-			SELECT
+			SELECT DISTINCT ON (device_pk, intf)
 				device_pk,
 				intf,
 				%s as value
-			FROM (
-				SELECT
-					device_pk,
-					intf,
-					%s,
-					ROW_NUMBER() OVER (PARTITION BY device_pk, intf ORDER BY time DESC) as rn
-				FROM dz_device_iface_usage_raw
-				WHERE time >= '%s' AND time < '%s' AND %s IS NOT NULL
-			) ranked
-			WHERE rn = 1
-		`, cf.field, cf.field, lookbackStart.Format(time.RFC3339Nano), windowStart.Format(time.RFC3339Nano), cf.field)
+			FROM dz_device_iface_usage_raw
+			WHERE time >= '%s' AND time < '%s' AND %s IS NOT NULL
+			ORDER BY device_pk, intf, time DESC
+		`, cf.field, lookbackStart.Format(time.RFC3339Nano), windowStart.Format(time.RFC3339Nano), cf.field)
 
 		ctx := context.Background()
 		conn, err := v.cfg.DB.Conn(ctx)

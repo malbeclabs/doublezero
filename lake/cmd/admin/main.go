@@ -55,6 +55,7 @@ func run() error {
 	execSQLFileFlag := flag.String("sql-file", "", "Execute SQL from file")
 	backfillValidToOnDeletesFlag := flag.Bool("backfill-valid-to-on-deletes", false, "Backfill valid_to field for SCD2 history rows where it wasn't set on delete")
 	backfillValidToOnReinsertsFlag := flag.Bool("backfill-valid-to-on-reinserts", false, "Backfill valid_to field for SCD2 delete tombstones where it wasn't set on re-insert")
+	deduplicateCurrentTableFlag := flag.Bool("deduplicate-current-table", false, "Remove duplicate rows from SCD2 current tables, keeping only the most recent row per primary key")
 	backfillIPDVFlag := flag.Bool("backfill-ipdv", false, "Backfill ipdv_us (IPDV/jitter) column for telemetry latency fact tables")
 	dumpSchemaFlag := flag.String("dump-schema", "", "Dump CREATE TABLE statements to file (e.g., 'schema/db_schema.sql')")
 
@@ -99,8 +100,8 @@ func run() error {
 	}
 
 	// Check that at least one command is specified
-	if !*mergeFilesFlag && !*rewriteFilesFlag && !*cleanupOldFilesFlag && !*deleteOrphanedFilesFlag && !*expireSnapshotsFlag && !*flushInlinedDataFlag && !*checkpointFlag && *setExpireOlderThanFlag == "" && !execSQLFlagSet && *execSQLFileFlag == "" && !*backfillValidToOnDeletesFlag && !*backfillValidToOnReinsertsFlag && !*backfillIPDVFlag && *dumpSchemaFlag == "" {
-		return fmt.Errorf("must specify at least one command: --merge-adjacent-files, --rewrite-data-files, --cleanup-old-files, --delete-orphaned-files, --expire-snapshots, --flush-inlined-data, --checkpoint, --set-expire-older-than, --sql, --sql-file, --backfill-valid-to-on-deletes, --backfill-valid-to-on-reinserts, --backfill-ipdv, or --dump-schema")
+	if !*mergeFilesFlag && !*rewriteFilesFlag && !*cleanupOldFilesFlag && !*deleteOrphanedFilesFlag && !*expireSnapshotsFlag && !*flushInlinedDataFlag && !*checkpointFlag && *setExpireOlderThanFlag == "" && !execSQLFlagSet && *execSQLFileFlag == "" && !*backfillValidToOnDeletesFlag && !*backfillValidToOnReinsertsFlag && !*deduplicateCurrentTableFlag && !*backfillIPDVFlag && *dumpSchemaFlag == "" {
+		return fmt.Errorf("must specify at least one command: --merge-adjacent-files, --rewrite-data-files, --cleanup-old-files, --delete-orphaned-files, --expire-snapshots, --flush-inlined-data, --checkpoint, --set-expire-older-than, --sql, --sql-file, --backfill-valid-to-on-deletes, --backfill-valid-to-on-reinserts, --deduplicate-current-table, --backfill-ipdv, or --dump-schema")
 	}
 
 	// Validate SQL execution flags
@@ -439,6 +440,46 @@ func run() error {
 		} else {
 			log.Info("backfill completed for all tables", "total_rows_fixed", totalFixed)
 			fmt.Printf("\nBackfill completed. Total rows fixed: %d\n", totalFixed)
+		}
+	}
+
+	if *deduplicateCurrentTableFlag {
+		// Get all SCD table configs
+		configs := getAllSCDTableConfigs()
+
+		if *dryRunFlag {
+			log.Info("running deduplicate current table in dry-run mode - no changes will be made")
+		}
+
+		totalDeleted := 0
+		for _, cfg := range configs {
+			log.Info("processing table for deduplication", "table", cfg.TableBaseName, "dry_run", *dryRunFlag)
+
+			deletedCount, err := duck.DeduplicateCurrentTable(ctx, log, conn, cfg, *dryRunFlag)
+			if err != nil {
+				return fmt.Errorf("failed to deduplicate table %s: %w", cfg.TableBaseName, err)
+			}
+
+			if *dryRunFlag {
+				log.Info("dry run completed for table",
+					"table", cfg.TableBaseName,
+					"rows_to_delete", deletedCount)
+			} else {
+				log.Info("deduplication completed for table",
+					"table", cfg.TableBaseName,
+					"rows_deleted", deletedCount)
+			}
+
+			totalDeleted += deletedCount
+		}
+
+		if *dryRunFlag {
+			log.Info("dry run completed for all tables", "total_rows_to_delete", totalDeleted)
+			fmt.Printf("\nDry run completed. Total rows that would be deleted: %d\n", totalDeleted)
+			fmt.Println("Run without --dry-run to apply the changes.")
+		} else {
+			log.Info("deduplication completed for all tables", "total_rows_deleted", totalDeleted)
+			fmt.Printf("\nDeduplication completed. Total rows deleted: %d\n", totalDeleted)
 		}
 	}
 

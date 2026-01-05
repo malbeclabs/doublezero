@@ -479,9 +479,11 @@ func computeDeltas(
 		return 0, 0, 0, err
 	}
 	// Build ON conditions for PK join
+	// Use IS NOT DISTINCT FROM to handle NULL values correctly
+	// (NULL = NULL evaluates to NULL in SQL, but IS NOT DISTINCT FROM treats NULL = NULL as true)
 	onConditions := make([]string, len(pkColNames))
 	for i, pkCol := range pkColNames {
-		onConditions[i] = fmt.Sprintf("s.%s = c.%s", pkCol, pkCol)
+		onConditions[i] = fmt.Sprintf("s.%s IS NOT DISTINCT FROM c.%s", pkCol, pkCol)
 	}
 	onClause := fmt.Sprintf("(%s)", strings.Join(onConditions, " AND "))
 
@@ -516,6 +518,36 @@ func computeDeltas(
 		}
 	}
 
+	// Diagnostic: check actual row counts to detect join issues
+	var stageCount, currentCount int
+	if err := tx.QueryRowContext(ctx, fmt.Sprintf("SELECT COUNT(*) FROM %s", stageTableName)).Scan(&stageCount); err == nil {
+		if err := tx.QueryRowContext(ctx, fmt.Sprintf("SELECT COUNT(*) FROM %s", currentTableName)).Scan(&currentCount); err == nil {
+			log.Debug("computed deltas with diagnostics",
+				"table", cfg.TableBaseName,
+				"stage_count", stageCount,
+				"current_count", currentCount,
+				"inserts", inserts,
+				"updates", updates,
+				"deletes", deletes)
+
+			// Sanity check: deletes should never exceed current_count
+			if deletes > currentCount {
+				log.Error("computed deltas: delete count exceeds current table count - join condition may be broken",
+					"table", cfg.TableBaseName,
+					"deletes", deletes,
+					"current_count", currentCount,
+					"stage_count", stageCount)
+			}
+
+			// Check if stage is empty but we're reporting inserts
+			if stageCount == 0 && inserts > 0 {
+				log.Error("computed deltas: stage table is empty but inserts > 0",
+					"table", cfg.TableBaseName,
+					"inserts", inserts)
+			}
+		}
+	}
+
 	log.Debug("computed deltas",
 		"table", cfg.TableBaseName,
 		"inserts", inserts,
@@ -544,9 +576,10 @@ func updateHistory(
 		return err
 	}
 	// Build ON conditions for PK join
+	// Use IS NOT DISTINCT FROM to handle NULL values correctly
 	onConditions := make([]string, len(pkColNames))
 	for i, pkCol := range pkColNames {
-		onConditions[i] = fmt.Sprintf("h.%s = s.%s", pkCol, pkCol)
+		onConditions[i] = fmt.Sprintf("h.%s IS NOT DISTINCT FROM s.%s", pkCol, pkCol)
 	}
 	onClause := fmt.Sprintf("(%s)", strings.Join(onConditions, " AND "))
 
@@ -729,9 +762,10 @@ func updateHistory(
 		}
 
 		// Build join conditions for UPDATE
+		// Use IS NOT DISTINCT FROM to handle NULL values correctly
 		updateJoinConditions := make([]string, len(pkColNames))
 		for i, pkCol := range pkColNames {
-			updateJoinConditions[i] = fmt.Sprintf("h.%s = p.%s", pkCol, pkCol)
+			updateJoinConditions[i] = fmt.Sprintf("h.%s IS NOT DISTINCT FROM p.%s", pkCol, pkCol)
 		}
 		updateJoinClause := strings.Join(updateJoinConditions, " AND ")
 
@@ -813,16 +847,18 @@ func updateHistory(
 	if deletes > 0 {
 		// Get deleted PKs from current that aren't in stage
 		// Build join conditions for current -> stage
+		// Use IS NOT DISTINCT FROM to handle NULL values correctly
 		deleteJoinConditions := make([]string, len(pkColNames))
 		for i, pkCol := range pkColNames {
-			deleteJoinConditions[i] = fmt.Sprintf("c.%s = s.%s", pkCol, pkCol)
+			deleteJoinConditions[i] = fmt.Sprintf("c.%s IS NOT DISTINCT FROM s.%s", pkCol, pkCol)
 		}
 		deleteJoinClause := fmt.Sprintf("(%s)", strings.Join(deleteJoinConditions, " AND "))
 
 		// Build join conditions for history -> current
+		// Use IS NOT DISTINCT FROM to handle NULL values correctly
 		historyJoinConditions := make([]string, len(pkColNames))
 		for i, pkCol := range pkColNames {
-			historyJoinConditions[i] = fmt.Sprintf("h.%s = c.%s", pkCol, pkCol)
+			historyJoinConditions[i] = fmt.Sprintf("h.%s IS NOT DISTINCT FROM c.%s", pkCol, pkCol)
 		}
 		historyJoinClause := fmt.Sprintf("(%s)", strings.Join(historyJoinConditions, " AND "))
 
@@ -839,9 +875,10 @@ func updateHistory(
 		// Build correlated subquery to get the most recent closed version for each PK
 		// This ensures we get the correct version even if multiple rows have valid_to = snapshot_ts
 		// The subquery correlates on PK from the outer query (c table)
+		// Use IS NOT DISTINCT FROM to handle NULL values correctly
 		pkJoinForSubquery := make([]string, len(pkColNames))
 		for i, pkCol := range pkColNames {
-			pkJoinForSubquery[i] = fmt.Sprintf("h2.%s = c.%s", pkCol, pkCol)
+			pkJoinForSubquery[i] = fmt.Sprintf("h2.%s IS NOT DISTINCT FROM c.%s", pkCol, pkCol)
 		}
 		pkJoinForSubqueryClause := strings.Join(pkJoinForSubquery, " AND ")
 		maxValidFromSubquery := fmt.Sprintf(`(
@@ -909,9 +946,10 @@ func refreshCurrent(
 		return err
 	}
 	// Build ON conditions for PK join
+	// Use IS NOT DISTINCT FROM to handle NULL values correctly
 	onConditions := make([]string, len(pkColNames))
 	for i, pkCol := range pkColNames {
-		onConditions[i] = fmt.Sprintf("t.%s = s.%s", pkCol, pkCol)
+		onConditions[i] = fmt.Sprintf("t.%s IS NOT DISTINCT FROM s.%s", pkCol, pkCol)
 	}
 	onClause := fmt.Sprintf("(%s)", strings.Join(onConditions, " AND "))
 
@@ -1156,9 +1194,10 @@ func BackfillValidToOnDeletes(
 	}
 
 	// Build PK equality conditions for joining
+	// Use IS NOT DISTINCT FROM to handle NULL values correctly
 	pkConditions := make([]string, len(pkColNames))
 	for i, pkCol := range pkColNames {
-		pkConditions[i] = fmt.Sprintf("h1.%s = h2.%s", pkCol, pkCol)
+		pkConditions[i] = fmt.Sprintf("h1.%s IS NOT DISTINCT FROM h2.%s", pkCol, pkCol)
 	}
 	pkJoinClause := strings.Join(pkConditions, " AND ")
 
@@ -1276,9 +1315,10 @@ func BackfillValidToOnReinserts(
 	}
 
 	// Build PK equality conditions for joining
+	// Use IS NOT DISTINCT FROM to handle NULL values correctly
 	pkConditions := make([]string, len(pkColNames))
 	for i, pkCol := range pkColNames {
-		pkConditions[i] = fmt.Sprintf("h1.%s = h2.%s", pkCol, pkCol)
+		pkConditions[i] = fmt.Sprintf("h1.%s IS NOT DISTINCT FROM h2.%s", pkCol, pkCol)
 	}
 	pkJoinClause := strings.Join(pkConditions, " AND ")
 
@@ -1373,4 +1413,143 @@ func BackfillValidToOnReinserts(
 		"rows_fixed", fixedCount)
 
 	return fixedCount, nil
+}
+
+// DeduplicateCurrentTable removes duplicate rows from SCD2 current tables, keeping only the most recent row per primary key.
+// This fixes corruption from the broken join bug that created duplicates.
+//
+// Algorithm:
+//  1. For each primary key, keep only the row with the latest as_of_ts
+//  2. If multiple rows have the same as_of_ts, keep the one with the lexicographically largest row_hash
+//  3. Delete all other duplicate rows
+func DeduplicateCurrentTable(
+	ctx context.Context,
+	log *slog.Logger,
+	conn Connection,
+	cfg SCDTableConfig,
+	dryRun bool,
+) (deletedCount int, err error) {
+	currentTableName := cfg.TableBaseName + "_current"
+
+	// Extract primary key column names
+	pkColNames, err := extractColumnNames(cfg.PrimaryKeyColumns)
+	if err != nil {
+		return 0, fmt.Errorf("failed to extract primary key column names: %w", err)
+	}
+
+	// Build ORDER BY clause for tiebreaking (as_of_ts DESC, then row_hash DESC)
+	pkOrderBy := strings.Join(pkColNames, ", ")
+
+	if dryRun {
+		// Count how many rows would be deleted
+		// Use ROW_NUMBER to identify duplicates - keep row_number = 1, delete the rest
+		countSQL := fmt.Sprintf(`SELECT COUNT(*) FROM (
+			SELECT %s,
+				ROW_NUMBER() OVER (PARTITION BY %s ORDER BY as_of_ts DESC, row_hash DESC) AS rn
+			FROM %s
+		) t
+		WHERE rn > 1`,
+			strings.Join(pkColNames, ", "),
+			pkOrderBy,
+			currentTableName)
+
+		if err := conn.QueryRowContext(ctx, countSQL).Scan(&deletedCount); err != nil {
+			return 0, fmt.Errorf("failed to count rows to delete: %w", err)
+		}
+
+		log.Info("deduplicate current table (dry run)",
+			"table", cfg.TableBaseName,
+			"rows_to_delete", deletedCount)
+		return deletedCount, nil
+	}
+
+	// Delete all but the most recent row per primary key
+	// Strategy: Extract unique rows (one per primary key, keeping the latest),
+	// delete all rows, then reinsert the unique rows. This is simpler and handles
+	// the edge case of identical rows perfectly - we just keep one arbitrarily.
+	payloadColNames, err := extractColumnNames(cfg.PayloadColumns)
+	if err != nil {
+		return 0, fmt.Errorf("failed to extract payload column names: %w", err)
+	}
+
+	// Build column lists
+	allCols := append(pkColNames, payloadColNames...)
+	allCols = append(allCols, "as_of_ts", "row_hash")
+	allColsSelect := strings.Join(allCols, ", ")
+	colList := strings.Join(allCols, ", ")
+
+	// Use a transaction to ensure atomicity
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+			log.Error("failed to rollback transaction", "table", cfg.TableBaseName, "error", err)
+		}
+	}()
+
+	// Step 1: Count total rows (for reporting)
+	var totalRows int
+	if err := tx.QueryRowContext(ctx, fmt.Sprintf("SELECT COUNT(*) FROM %s", currentTableName)).Scan(&totalRows); err != nil {
+		return 0, fmt.Errorf("failed to count total rows: %w", err)
+	}
+
+	// Step 2: Create temp table with unique rows (one per primary key, keeping the latest)
+	tempTableName := currentTableName + "_dedupe_temp"
+	createTempSQL := fmt.Sprintf(`CREATE TEMP TABLE %s AS
+		SELECT %s
+		FROM (
+			SELECT %s,
+				ROW_NUMBER() OVER (PARTITION BY %s ORDER BY as_of_ts DESC, row_hash DESC) AS rn
+			FROM %s
+		) ranked
+		WHERE rn = 1`,
+		tempTableName,
+		colList,
+		allColsSelect,
+		pkOrderBy,
+		currentTableName)
+	if _, err := tx.ExecContext(ctx, createTempSQL); err != nil {
+		return 0, fmt.Errorf("failed to create temp table with unique rows: %w", err)
+	}
+
+	// Step 3: Count unique rows (for reporting)
+	var uniqueRows int
+	if err := tx.QueryRowContext(ctx, fmt.Sprintf("SELECT COUNT(*) FROM %s", tempTableName)).Scan(&uniqueRows); err != nil {
+		return 0, fmt.Errorf("failed to count unique rows: %w", err)
+	}
+	deletedCount = totalRows - uniqueRows
+
+	// Step 4: Delete all rows from the original table
+	if _, err := tx.ExecContext(ctx, fmt.Sprintf("DELETE FROM %s", currentTableName)); err != nil {
+		return 0, fmt.Errorf("failed to delete all rows: %w", err)
+	}
+
+	// Step 5: Reinsert unique rows from temp table
+	insertSQL := fmt.Sprintf(`INSERT INTO %s (%s)
+		SELECT %s FROM %s`,
+		currentTableName,
+		colList,
+		colList,
+		tempTableName)
+	if _, err := tx.ExecContext(ctx, insertSQL); err != nil {
+		return 0, fmt.Errorf("failed to reinsert unique rows: %w", err)
+	}
+
+	// Step 6: Clean up temp table
+	if _, err := tx.ExecContext(ctx, fmt.Sprintf("DROP TABLE IF EXISTS %s", tempTableName)); err != nil {
+		log.Warn("failed to drop temp table", "table", tempTableName, "error", err)
+	}
+
+	// Commit transaction
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	log.Info("deduplicated current table",
+		"table", cfg.TableBaseName,
+		"rows_deleted", deletedCount)
+
+	return deletedCount, nil
 }

@@ -142,18 +142,51 @@ func SCD2ConfigGossipNodes() duck.SCDTableConfig {
 
 func (s *Store) ReplaceGossipNodes(ctx context.Context, nodes []*solanarpc.GetClusterNodesResult, fetchedAt time.Time, currentEpoch uint64) error {
 	s.log.Debug("solana/store: replacing gossip nodes", "count", len(nodes))
+
+	// Check current table count for diagnostics
 	conn, err := s.db.Conn(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get connection: %w", err)
 	}
 	defer conn.Close()
 
+	var currentCount int
+	if err := conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM solana_gossip_nodes_current").Scan(&currentCount); err == nil {
+		s.log.Info("solana/store: gossip nodes snapshot comparison",
+			"rpc_node_count", len(nodes),
+			"current_table_count", currentCount,
+			"expected_deletes_if_all_missing", currentCount-len(nodes))
+	}
+
+	// Filter out nodes with invalid/zero pubkeys to prevent NULL/empty primary keys
+	validNodes := make([]*solanarpc.GetClusterNodesResult, 0, len(nodes))
+	for i, node := range nodes {
+		if node.Pubkey.IsZero() {
+			s.log.Warn("solana/store: skipping node with zero pubkey", "index", i)
+			continue
+		}
+		pubkeyStr := node.Pubkey.String()
+		if pubkeyStr == "" {
+			s.log.Warn("solana/store: skipping node with empty pubkey string", "index", i)
+			continue
+		}
+		validNodes = append(validNodes, node)
+	}
+
+	if len(validNodes) != len(nodes) {
+		s.log.Warn("solana/store: filtered out invalid nodes",
+			"original_count", len(nodes),
+			"valid_count", len(validNodes),
+			"filtered_count", len(nodes)-len(validNodes))
+	}
+
 	cfg := SCD2ConfigGossipNodes()
 	cfg.SnapshotTS = fetchedAt
 	cfg.RunID = fmt.Sprintf("gossip_nodes_%d_%d", currentEpoch, fetchedAt.Unix())
 
-	return duck.SCDTableViaCSV(ctx, s.log, conn, cfg, len(nodes), func(w *csv.Writer, i int) error {
-		node := nodes[i]
+	return duck.SCDTableViaCSV(ctx, s.log, conn, cfg, len(validNodes), func(w *csv.Writer, i int) error {
+		node := validNodes[i]
+
 		var gossipIP, tpuQUICIP string
 		var gossipPort, tpuQUICPort uint16
 		if node.Gossip != nil {

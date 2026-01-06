@@ -72,6 +72,9 @@ pub struct MulticastGroup {
     pub code: String,              // 4 + len
     pub publisher_count: u32,      // 4
     pub subscriber_count: u32,     // 4
+    /// Slot index in ResourceExtension bitmap for deallocation.
+    /// u32::MAX indicates legacy/unallocated (multicast_ip was provided directly).
+    pub multicast_slot: u32, // 4
 }
 
 impl fmt::Display for MulticastGroup {
@@ -89,7 +92,8 @@ impl fmt::Display for MulticastGroup {
                 status: {}, \
                 code: \"{}\", \
                 publisher_count: {}, \
-                subscriber_count: {} \
+                subscriber_count: {}, \
+                multicast_slot: {} \
             }}",
             self.account_type,
             self.owner,
@@ -101,7 +105,8 @@ impl fmt::Display for MulticastGroup {
             self.status,
             self.code,
             self.publisher_count,
-            self.subscriber_count
+            self.subscriber_count,
+            self.multicast_slot
         )
     }
 }
@@ -120,6 +125,7 @@ impl Default for MulticastGroup {
             code: String::new(),
             publisher_count: 0,
             subscriber_count: 0,
+            multicast_slot: u32::MAX,
         }
     }
 }
@@ -140,6 +146,8 @@ impl TryFrom<&[u8]> for MulticastGroup {
             code: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             publisher_count: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             subscriber_count: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            // Default to u32::MAX for backward compatibility with legacy accounts
+            multicast_slot: BorshDeserialize::deserialize(&mut data).unwrap_or(u32::MAX),
         };
 
         if out.account_type != AccountType::MulticastGroup {
@@ -226,6 +234,7 @@ mod tests {
         assert_eq!(val.code, String::new());
         assert_eq!(val.publisher_count, 0);
         assert_eq!(val.subscriber_count, 0);
+        assert_eq!(val.multicast_slot, u32::MAX); // Default for legacy accounts
     }
 
     #[test]
@@ -243,6 +252,7 @@ mod tests {
             code: "test".to_string(),
             publisher_count: 0,
             subscriber_count: 0,
+            multicast_slot: u32::MAX,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -263,6 +273,7 @@ mod tests {
             code: "test".to_string(),
             publisher_count: 0,
             subscriber_count: 0,
+            multicast_slot: u32::MAX,
         };
 
         // For Rejected status, multicast_ip is not validated and should succeed
@@ -283,6 +294,7 @@ mod tests {
             code: "test".to_string(),
             publisher_count: 5,
             subscriber_count: 10,
+            multicast_slot: 42,
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -306,6 +318,7 @@ mod tests {
         assert_eq!(val.max_bandwidth, val2.max_bandwidth);
         assert_eq!(val.publisher_count, val2.publisher_count);
         assert_eq!(val.subscriber_count, val2.subscriber_count);
+        assert_eq!(val.multicast_slot, val2.multicast_slot);
         assert_eq!(val.account_type as u8, data[0], "Invalid Account Type");
         assert_eq!(
             val.account_type as u8, val2.account_type as u8,
@@ -316,5 +329,38 @@ mod tests {
             borsh::object_length(&val).unwrap(),
             "Invalid Size"
         );
+    }
+
+    #[test]
+    fn test_state_multicastgroup_slot_values() {
+        // Test with allocated slot
+        let val = MulticastGroup {
+            account_type: AccountType::MulticastGroup,
+            owner: Pubkey::new_unique(),
+            index: 1,
+            bump_seed: 1,
+            tenant_pk: Pubkey::new_unique(),
+            multicast_ip: [239, 1, 1, 1].into(),
+            max_bandwidth: 1000,
+            status: MulticastGroupStatus::Activated,
+            code: "test".to_string(),
+            publisher_count: 0,
+            subscriber_count: 0,
+            multicast_slot: 5,
+        };
+
+        let data = borsh::to_vec(&val).unwrap();
+        let val2 = MulticastGroup::try_from(&data[..]).unwrap();
+        assert_eq!(val2.multicast_slot, 5);
+
+        // Test with legacy sentinel value
+        let val_legacy = MulticastGroup {
+            multicast_slot: u32::MAX,
+            ..val
+        };
+
+        let data_legacy = borsh::to_vec(&val_legacy).unwrap();
+        let val_legacy2 = MulticastGroup::try_from(&data_legacy[..]).unwrap();
+        assert_eq!(val_legacy2.multicast_slot, u32::MAX);
     }
 }

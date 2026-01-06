@@ -288,6 +288,7 @@ mod tests {
             owner: mgroup_pubkey,
             publisher_count: 5,
             subscriber_count: 10,
+            multicast_slot: u32::MAX,
         };
 
         client.expect_list_user().returning(move |_| {

@@ -968,6 +968,7 @@ mod tests {
                 code: code.to_string(),
                 publisher_count: 0,
                 subscriber_count: 0,
+                multicast_slot: u32::MAX,
             };
             mcast_groups.insert(pk, group.clone());
             (pk, group)

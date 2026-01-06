@@ -107,6 +107,7 @@ mod tests {
             status: doublezero_sdk::MulticastGroupStatus::Activated,
             publisher_count: 5,
             subscriber_count: 10,
+            multicast_slot: u32::MAX,
         };
 
         let accesspass1_pk = Pubkey::from_str_const("1111111ogCyDbaRMvkdsHB3qfdyFYaG1WtRUAfdh");

@@ -163,6 +163,7 @@ mod tests {
             owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9"),
             publisher_count: 5,
             subscriber_count: 10,
+            multicast_slot: u32::MAX,
         };
 
         client.expect_list_multicastgroup().returning(move |_| {

@@ -104,6 +104,7 @@ mod tests {
             owner: pda_pubkey,
             publisher_count: 5,
             subscriber_count: 10,
+            multicast_slot: u32::MAX,
         };
 
         client

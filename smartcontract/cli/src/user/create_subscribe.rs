@@ -150,6 +150,7 @@ mod tests {
             owner: mgroup_pubkey,
             publisher_count: 0,
             subscriber_count: 0,
+            multicast_slot: u32::MAX,
         };
 
         let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");

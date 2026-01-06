@@ -40,6 +40,7 @@ pub fn process_multicastgroup_event(
                     let res = ActivateMulticastGroupCommand {
                         mgroup_pubkey: *pubkey,
                         multicast_ip,
+                        resource_extension_pubkey: None,
                     }
                     .execute(client);
 
@@ -136,7 +137,7 @@ mod tests {
 
             let (_, bump_seed) = get_multicastgroup_pda(&client.get_program_id(), 1);
             client
-                .expect_execute_transaction()
+                .expect_execute_transaction_with_extra_accounts()
                 .with(
                     predicate::eq(DoubleZeroInstruction::ActivateMulticastGroup(
                         MulticastGroupActivateArgs {
@@ -144,8 +145,9 @@ mod tests {
                         },
                     )),
                     predicate::always(),
+                    predicate::eq(vec![]), // No extra accounts (legacy path)
                 )
-                .returning(|_, _| Ok(Signature::new_unique()));
+                .returning(|_, _, _| Ok(Signature::new_unique()));
 
             let mut multicastgroups = HashMap::new();
             let pubkey = Pubkey::new_unique();
@@ -161,6 +163,7 @@ mod tests {
                 tenant_pk: Pubkey::default(),
                 publisher_count: 0,
                 subscriber_count: 0,
+                multicast_slot: u32::MAX,
             };
 
             let mgroup = multicastgroup.clone();
@@ -170,7 +173,7 @@ mod tests {
                 .returning(move |_| Ok(AccountData::MulticastGroup(mgroup.clone())));
 
             client
-                .expect_execute_transaction()
+                .expect_execute_transaction_with_extra_accounts()
                 .with(
                     predicate::eq(DoubleZeroInstruction::ActivateMulticastGroup(
                         MulticastGroupActivateArgs {
@@ -178,8 +181,9 @@ mod tests {
                         },
                     )),
                     predicate::always(),
+                    predicate::eq(vec![]), // No extra accounts (legacy path)
                 )
-                .returning(|_, _| Ok(Signature::new_unique()));
+                .returning(|_, _, _| Ok(Signature::new_unique()));
 
             let mut multicastgroup_tunnel_ips =
                 IPBlockAllocator::new("224.0.0.0/4".parse().unwrap());

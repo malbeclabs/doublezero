@@ -114,6 +114,7 @@ mod tests {
             multicast_ip: "100.0.0.1".parse().unwrap(),
             publisher_count: 0,
             subscriber_count: 1,
+            multicast_slot: u32::MAX,
         };
 
         let user = User {

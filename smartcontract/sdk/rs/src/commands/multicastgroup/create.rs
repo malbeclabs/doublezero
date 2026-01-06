@@ -23,13 +23,11 @@ impl CreateMulticastGroupCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (pda_pubkey, bump_seed) =
+        let (pda_pubkey, _) =
             get_multicastgroup_pda(&client.get_program_id(), globalstate.account_index + 1);
         client
             .execute_transaction(
                 DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
-                    index: globalstate.account_index + 1,
-                    bump_seed,
                     code,
                     max_bandwidth: self.max_bandwidth,
                     owner: self.owner,
@@ -62,15 +60,13 @@ mod tests {
         let mut client = create_test_client();
 
         let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
-        let (pda_pubkey, bump_seed) = get_multicastgroup_pda(&client.get_program_id(), 1);
+        let (pda_pubkey, _) = get_multicastgroup_pda(&client.get_program_id(), 1);
 
         client
             .expect_execute_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CreateMulticastGroup(
                     MulticastGroupCreateArgs {
-                        index: 1,
-                        bump_seed,
                         code: "test_group".to_string(),
                         max_bandwidth: 1000,
                         owner: globalstate_pubkey,

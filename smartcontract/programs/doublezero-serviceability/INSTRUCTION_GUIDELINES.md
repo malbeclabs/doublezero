@@ -12,7 +12,7 @@ This document describes the required steps and best practices for implementing a
   - **Signer:** Verify that required accounts (e.g., payer) are signers.
   - **Writable:** Ensure accounts that will be mutated are marked as writable.
   - **System Program:** If the system program is required, check its address matches `solana_program::system_program::id()`.
-  - **PDA Validation:** If the instruction involves a PDA, derive the expected PDA and bump seed, and check both against the provided account and arguments.
+  - **PDA Validation:** If the instruction involves a PDA, derive the expected PDA and bump seed from internal state (e.g., GlobalState.account_index), then verify the provided account matches.
 
 **Example:**
 ```rust
@@ -26,9 +26,9 @@ assert_eq!(globalstate_account.owner, program_id, "Invalid GlobalState Account O
 assert_eq!(*system_program.unsigned_key(), solana_program::system_program::id(), "Invalid System Program Account Owner");
 assert!(mgroup_account.is_writable, "PDA Account is not writable");
 
-let (expected_pda_account, bump_seed) = get_multicastgroup_pda(program_id, value.index);
+let mut globalstate = GlobalState::try_from(globalstate_account)?;
+let (expected_pda_account, bump_seed) = get_multicastgroup_pda(program_id, globalstate.account_index + 1);
 assert_eq!(mgroup_account.key, &expected_pda_account, "Invalid MulticastGroup Pubkey");
-assert_eq!(bump_seed, value.bump_seed, "Invalid MulticastGroup Bump Seed");
 ```
 
 ---
@@ -43,7 +43,6 @@ assert_eq!(bump_seed, value.bump_seed, "Invalid MulticastGroup Bump Seed");
 **Example:**
 ```rust
 let code = validate_account_code(&value.code).map_err(|_| DoubleZeroError::InvalidAccountCode)?;
-let mut globalstate = GlobalState::try_from(globalstate_account)?;
 globalstate.account_index += 1;
 
 if !globalstate.foundation_allowlist.contains(payer_account.key) {

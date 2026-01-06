@@ -50,11 +50,15 @@ func (c *Client) ConnectUserUnicast(ctx context.Context, deviceCode string, wait
 		return fmt.Errorf("failed to ensure disconnected on host %s: %w", c.Host, err)
 	}
 
-	c.log.Info("Connecting unicast user", "host", c.Host, "device", deviceCode)
+	c.log.Info("Connecting unicast user", "host", c.Host, "device", deviceCode, "allocateAddr", c.AllocateAddr)
 	ctx, cancel := context.WithTimeout(ctx, connectUnicastTimeout)
 	defer cancel()
+	mode := pb.ConnectUnicastRequest_IBRL
+	if c.AllocateAddr {
+		mode = pb.ConnectUnicastRequest_ALLOCATE_ADDR
+	}
 	resp, err := c.grpcClient.ConnectUnicast(ctx, &pb.ConnectUnicastRequest{
-		Mode:       pb.ConnectUnicastRequest_IBRL,
+		Mode:       mode,
 		DeviceCode: deviceCode,
 	})
 	if err != nil {
@@ -81,8 +85,8 @@ type UnicastTestConnectivityResult struct {
 }
 
 func (c *Client) TestUnicastConnectivity(t *testing.T, ctx context.Context, targetClient *Client) (*UnicastTestConnectivityResult, error) {
-	sourceIP := c.publicIP.To4().String()
-	targetIP := targetClient.publicIP.To4().String()
+	sourceIP := c.DoublezeroOrPublicIP().To4().String()
+	targetIP := targetClient.DoublezeroOrPublicIP().To4().String()
 
 	clientDevice, err := c.getConnectedDevice(ctx)
 	if err != nil {

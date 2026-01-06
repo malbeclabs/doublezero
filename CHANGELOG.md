@@ -35,6 +35,7 @@ All notable changes to this project will be documented in this file.
   - Route liveness sets set of routes configured as excluded to `AdminDown`.
   - Add histogram metric for BGP session establishment duration
   - For IBRL with allocated IP mode, resolve tunnel source IP from routing table via resolve-route API endpoint instead of using client IP to support clients behind NAT
+  - Configure MTU down to 1476 on client tunnel in case path MTU discovery is not working
 - Global monitor
   - Initial implementation
 - Release
@@ -56,6 +57,7 @@ All notable changes to this project will be documented in this file.
   - Add link status to device-telemetry metrics to enable Grafana alerts to filter out links that are not in activated status
 - E2E tests
   - Add GetLatency call to qaagent
+  - The QA alldevices test now considers device location and connects hosts to nearby devices
 
 ## [v0.8.0](https://github.com/malbeclabs/doublezero/compare/client/v0.7.1...client/v0.8.0) – 2025-12-02
 

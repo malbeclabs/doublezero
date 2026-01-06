@@ -295,6 +295,7 @@ func TestNetlinkManager_HttpEndpoints(t *testing.T) {
 				RemoteUnderlay: net.IPv4(2, 2, 2, 2),
 				LocalOverlay:   net.IPv4(10, 1, 1, 1),
 				RemoteOverlay:  net.IPv4(10, 1, 1, 0),
+				MTU:            routing.GREMTU,
 			},
 			AddrsAdded: []string{"10.1.1.1/31", "10.0.0.0/32"},
 			RulesAdded: []*routing.IPRule{

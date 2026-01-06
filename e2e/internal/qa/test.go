@@ -104,12 +104,10 @@ func (t *Test) ValidDevices(minCapacity int) []*Device {
 	return devices
 }
 
-func (c *Test) ShuffledValidDevices(minCapacity int) []*Device {
-	devices := c.ValidDevices(minCapacity)
-	c.rand.Shuffle(len(devices), func(i, j int) {
+func (t *Test) ShuffleDevices(devices []*Device) {
+	t.rand.Shuffle(len(devices), func(i, j int) {
 		devices[i], devices[j] = devices[j], devices[i]
 	})
-	return devices
 }
 
 func (c *Test) Close() error {

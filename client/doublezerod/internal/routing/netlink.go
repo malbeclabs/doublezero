@@ -28,6 +28,7 @@ func (n Netlink) TunnelAdd(t *Tunnel) error {
 	gre := &nl.Gretun{
 		LinkAttrs: nl.LinkAttrs{
 			Name:      t.Name,
+			MTU:       t.MTU,
 			EncapType: string(t.EncapType),
 		},
 		Local:  t.LocalUnderlay,

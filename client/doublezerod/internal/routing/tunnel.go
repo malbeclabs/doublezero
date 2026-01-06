@@ -9,6 +9,8 @@ type EncapType string
 
 const (
 	GRE EncapType = "gre"
+
+	GREMTU = 1476
 )
 
 type Tunnel struct {
@@ -18,6 +20,7 @@ type Tunnel struct {
 	RemoteUnderlay net.IP
 	LocalOverlay   net.IP
 	RemoteOverlay  net.IP
+	MTU            int
 }
 
 func NewTunnel(tunnelName string, local, remote net.IP, overlayNet string) (*Tunnel, error) {
@@ -26,6 +29,7 @@ func NewTunnel(tunnelName string, local, remote net.IP, overlayNet string) (*Tun
 		EncapType:      GRE,
 		LocalUnderlay:  local,
 		RemoteUnderlay: remote,
+		MTU:            GREMTU,
 	}
 
 	tunIp, tunNet, err := net.ParseCIDR(overlayNet)

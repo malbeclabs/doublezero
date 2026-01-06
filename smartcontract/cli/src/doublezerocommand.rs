@@ -76,8 +76,9 @@ use doublezero_sdk::{
         },
         programconfig::get::GetProgramConfigCommand,
         resource::{
-            allocate::AllocateResourceCommand, create::CreateResourceCommand,
-            deallocate::DeallocateResourceCommand, get::GetResourceCommand,
+            allocate::AllocateResourceCommand, closeaccount::CloseResourceCommand,
+            create::CreateResourceCommand, deallocate::DeallocateResourceCommand,
+            get::GetResourceCommand,
         },
         user::{
             create::CreateUserCommand, create_subscribe::CreateSubscribeUserCommand,
@@ -275,6 +276,7 @@ pub trait CliCommand {
         &self,
         cmd: GetResourceCommand,
     ) -> eyre::Result<(Pubkey, ResourceExtensionOwned)>;
+    fn close_resource(&self, cmd: CloseResourceCommand) -> eyre::Result<Signature>;
 }
 
 pub struct CliCommandImpl<'a> {
@@ -646,6 +648,9 @@ impl CliCommand for CliCommandImpl<'_> {
         &self,
         cmd: GetResourceCommand,
     ) -> eyre::Result<(Pubkey, ResourceExtensionOwned)> {
+        cmd.execute(self.client)
+    }
+    fn close_resource(&self, cmd: CloseResourceCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
 }

@@ -1,11 +1,16 @@
 use crate::{
-    commands::{device::get::GetDeviceCommand, globalstate::get::GetGlobalStateCommand},
+    commands::{
+        device::get::GetDeviceCommand, globalconfig::get::GetGlobalConfigCommand,
+        globalstate::get::GetGlobalStateCommand,
+    },
     DoubleZeroClient,
 };
 use doublezero_program_common::{types::NetworkV4List, validate_account_code};
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
+    pda::get_resource_extension_pda,
     processors::device::update::DeviceUpdateArgs,
+    resource::ResourceType,
     state::{
         device::{DeviceDesiredStatus, DeviceStatus, DeviceType},
         interface::Interface,
@@ -44,11 +49,31 @@ impl UpdateDeviceCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (_, device) = GetDeviceCommand {
+        let (globalconfig_pubkey, _globalconfig) = GetGlobalConfigCommand
+            .execute(client)
+            .map_err(|_err| eyre::eyre!("Globalconfig not initialized"))?;
+
+        let (device_pubkey, device) = GetDeviceCommand {
             pubkey_or_code: self.pubkey.to_string(),
         }
         .execute(client)
         .map_err(|_err| eyre::eyre!("Device not found"))?;
+
+        let mut extra_accounts = vec![];
+        let mut resource_count = 0;
+        if let Some(dz_prefixes) = &self.dz_prefixes {
+            extra_accounts.push(AccountMeta::new(globalconfig_pubkey, false));
+            for idx in 0..dz_prefixes.len() + 1 {
+                let resource_type = match idx {
+                    0 => ResourceType::TunnelIds(device_pubkey, 0),
+                    _ => ResourceType::DzPrefixBlock(device_pubkey, idx - 1),
+                };
+                let (pda, _, _) =
+                    get_resource_extension_pda(&client.get_program_id(), resource_type);
+                extra_accounts.push(AccountMeta::new(pda, false));
+            }
+            resource_count += dz_prefixes.len() + 1;
+        }
 
         client.execute_transaction(
             DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
@@ -63,14 +88,19 @@ impl UpdateDeviceCommand {
                 users_count: self.users_count,
                 status: self.status,
                 desired_status: self.desired_status,
+                resource_count,
             }),
-            vec![
-                AccountMeta::new(self.pubkey, false),
-                AccountMeta::new(device.contributor_pk, false),
-                AccountMeta::new(device.location_pk, false),
-                AccountMeta::new(self.location_pk.unwrap_or(device.location_pk), false),
-                AccountMeta::new(globalstate_pubkey, false),
-            ],
+            [
+                vec![
+                    AccountMeta::new(self.pubkey, false),
+                    AccountMeta::new(device.contributor_pk, false),
+                    AccountMeta::new(device.location_pk, false),
+                    AccountMeta::new(self.location_pk.unwrap_or(device.location_pk), false),
+                    AccountMeta::new(globalstate_pubkey, false),
+                ],
+                extra_accounts,
+            ]
+            .concat(),
         )
     }
 }
@@ -83,12 +113,13 @@ mod tests {
     };
     use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
-        pda::get_contributor_pda,
+        pda::{get_contributor_pda, get_globalconfig_pda},
         processors::device::update::DeviceUpdateArgs,
         state::{
             accountdata::AccountData,
             accounttype::AccountType,
             device::{Device, DeviceDesiredStatus, DeviceHealth, DeviceStatus, DeviceType},
+            globalconfig::GlobalConfig,
         },
     };
     use mockall::predicate;
@@ -99,6 +130,7 @@ mod tests {
         let mut client = create_test_client();
 
         let (pda_pubkey, _) = get_contributor_pda(&client.get_program_id(), 1);
+        let (globalconfig_pubkey, _) = get_globalconfig_pda(&client.get_program_id());
 
         let device_pubkey = Pubkey::new_unique();
         let device = Device {
@@ -126,6 +158,23 @@ mod tests {
 
         client
             .expect_get()
+            .with(predicate::eq(globalconfig_pubkey))
+            .returning(move |_| {
+                Ok(AccountData::GlobalConfig(GlobalConfig {
+                    account_type: AccountType::GlobalConfig,
+                    owner: Pubkey::default(),
+                    bump_seed: 0,
+                    local_asn: 0,
+                    remote_asn: 0,
+                    device_tunnel_block: "1.0.0.0/24".parse().unwrap(),
+                    user_tunnel_block: "2.0.0.0/24".parse().unwrap(),
+                    multicastgroup_block: "224.0.0.0/24".parse().unwrap(),
+                    next_bgp_community: 0,
+                }))
+            });
+
+        client
+            .expect_get()
             .with(predicate::eq(device_pubkey))
             .returning(move |_| Ok(AccountData::Device(device.clone())));
         client
@@ -143,6 +192,7 @@ mod tests {
                     users_count: None,
                     status: None,
                     desired_status: None,
+                    resource_count: 2,
                 })),
                 predicate::always(),
             )

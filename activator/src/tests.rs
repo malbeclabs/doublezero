@@ -2,8 +2,11 @@
 pub mod utils {
     use doublezero_sdk::{AccountData, AccountType, DoubleZeroClient, MockDoubleZeroClient};
     use doublezero_serviceability::{
-        pda::{get_device_pda, get_globalstate_pda, get_link_pda, get_user_old_pda},
-        state::globalstate::GlobalState,
+        pda::{
+            get_device_pda, get_globalconfig_pda, get_globalstate_pda, get_link_pda,
+            get_user_old_pda,
+        },
+        state::{globalconfig::GlobalConfig, globalstate::GlobalState},
     };
     use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
@@ -33,12 +36,30 @@ pub mod utils {
             health_oracle_pk: payer,
         };
 
+        let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);
+        let globalconfig = GlobalConfig {
+            account_type: AccountType::GlobalConfig,
+            owner: payer,
+            bump_seed: 0,
+            local_asn: 0,
+            remote_asn: 0,
+            device_tunnel_block: "1.0.0.0/24".parse().unwrap(),
+            user_tunnel_block: "2.0.0.0/24".parse().unwrap(),
+            multicastgroup_block: "224.0.0.0/24".parse().unwrap(),
+            next_bgp_community: 0,
+        };
+
         client.expect_get_payer().returning(move || payer);
 
         client
             .expect_get()
             .with(predicate::eq(globalstate_pubkey))
             .returning(move |_| Ok(AccountData::GlobalState(globalstate.clone())));
+
+        client
+            .expect_get()
+            .with(predicate::eq(globalconfig_pubkey))
+            .returning(move |_| Ok(AccountData::GlobalConfig(globalconfig.clone())));
 
         client
     }

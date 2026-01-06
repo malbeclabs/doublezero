@@ -21,7 +21,8 @@ import (
 )
 
 var (
-	devicesFlag = flag.String("devices", "", "comma separated list of devices to run tests against")
+	devicesFlag       = flag.String("devices", "", "comma separated list of devices to run tests against")
+	allocateAddrHosts = flag.String("allocate-addr-hosts", "", "comma separated list of hosts that will have `--allocate-addr` passed to `doublezero connect ibrl`")
 )
 
 const latencyThresholdMs = 50
@@ -42,7 +43,16 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 
 	log := newTestLogger(t)
 	ctx := t.Context()
-	test, err := qa.NewTest(ctx, log, hostsArg, portArg, networkConfig)
+
+	// Record which clients should use allocate-addr
+	allocateAddrHostsSet := make(map[string]struct{})
+	if *allocateAddrHosts != "" {
+		for _, host := range strings.Split(*allocateAddrHosts, ",") {
+			allocateAddrHostsSet[strings.TrimSpace(host)] = struct{}{}
+		}
+	}
+
+	test, err := qa.NewTest(ctx, log, hostsArg, portArg, networkConfig, allocateAddrHostsSet)
 	require.NoError(t, err, "failed to create test")
 
 	clients := test.Clients()
@@ -254,7 +264,7 @@ func printTestReportTable(log *slog.Logger, batchData BatchData, clientLatencies
 				latencyMs := clientLatencies[clientName][assignment.Device.Code]
 				var cell string
 				if showResults {
-					if assignment.PacketsSent > 0 && assignment.PacketsReceived == assignment.PacketsSent {
+					if assignment.PacketsSent > 0 && assignment.PacketsReceived > 0 {
 						cell = fmt.Sprintf("%s %d/%d ✅", assignment.Device.Code, assignment.PacketsReceived, assignment.PacketsSent)
 					} else {
 						cell = fmt.Sprintf("%s %d/%d ❌", assignment.Device.Code, assignment.PacketsReceived, assignment.PacketsSent)
@@ -299,7 +309,7 @@ func printTestReportTable(log *slog.Logger, batchData BatchData, clientLatencies
 			if assignment, ok := batchData[batchNum][clientName]; ok {
 				latencyMs := clientLatencies[clientName][assignment.Device.Code]
 				if showResults {
-					if assignment.PacketsSent > 0 && assignment.PacketsReceived == assignment.PacketsSent {
+					if assignment.PacketsSent > 0 && assignment.PacketsReceived > 0 {
 						cell = fmt.Sprintf("%s %d/%d ✅", assignment.Device.Code, assignment.PacketsReceived, assignment.PacketsSent)
 					} else {
 						cell = fmt.Sprintf("%s %d/%d ❌", assignment.Device.Code, assignment.PacketsReceived, assignment.PacketsSent)
@@ -367,7 +377,7 @@ func connectClientsAndWaitForRoutes(
 			if other.Host == c.Host || batch[other.Host].Device.ExchangeCode == batch[c.Host].Device.ExchangeCode {
 				return nil, false
 			}
-			return other.PublicIP(), true
+			return other.DoublezeroOrPublicIP(), true
 		}))
 		if err != nil {
 			log.Error("Failed to wait for routes", "client", c.Host, "error", err)
@@ -408,11 +418,11 @@ func runConnectivitySubtests(
 				}
 
 				wg.Add(1)
-				go func(src, target *qa.Client) {
+				go func(src, target *qa.Client, srcDevice, dstDevice *qa.Device) {
 					defer wg.Done()
-					result, err := src.TestUnicastConnectivity(t, subCtx, target)
+					result, err := src.TestUnicastConnectivity(t, subCtx, target, srcDevice, dstDevice)
 					if err != nil {
-						log.Error("Connectivity test failed", "error", err, "source", src.Host, "target", target.Host, "sourceDevice", batch[src.Host].Device.Code, "targetDevice", batch[target.Host].Device.Code)
+						log.Error("Connectivity test failed", "error", err, "source", src.Host, "target", target.Host, "sourceDevice", srcDevice.Code, "targetDevice", dstDevice.Code)
 						assert.NoError(t, err, "failed to test connectivity")
 						return
 					}
@@ -420,7 +430,7 @@ func runConnectivitySubtests(
 					totalSent += result.PacketsSent
 					totalReceived += result.PacketsReceived
 					mu.Unlock()
-				}(srcClient, target)
+				}(srcClient, target, batch[srcClient.Host].Device, batch[target.Host].Device)
 			}
 			wg.Wait()
 

@@ -24,7 +24,7 @@ var (
 func TestQA_MulticastConnectivity(t *testing.T) {
 	log := newTestLogger(t)
 	ctx := t.Context()
-	test, err := qa.NewTest(ctx, log, hostsArg, portArg, networkConfig)
+	test, err := qa.NewTest(ctx, log, hostsArg, portArg, networkConfig, nil)
 	require.NoError(t, err, "failed to create test")
 	clients := test.Clients()
 

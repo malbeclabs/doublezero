@@ -65,6 +65,7 @@ All notable changes to this project will be documented in this file.
 - E2E tests
   - Add GetLatency call to qaagent
   - The QA alldevices test now considers device location and connects hosts to nearby devices
+  - QA agent and tests now support doublezero connect ibrl's --allocate-addr flag
 - Onchain programs
   - Fix CreateMulticastGroup to use incremented globalstate.account_index for PDA derivation instead of client-provided index, to ensure the contract is the authoritative source for account indices
 

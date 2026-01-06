@@ -100,9 +100,9 @@ func TestInsertFactsViaCSV(t *testing.T) {
 		}
 
 		cfg := FactTableConfig{
-			TableName:      "test_facts_partitioned",
+			TableName:       "test_facts_partitioned",
 			PartitionByTime: true,
-			TimeColumn:     "time",
+			TimeColumn:      "time",
 			Columns: []string{
 				"time:TIMESTAMP",
 				"device_pk:VARCHAR",
@@ -198,7 +198,7 @@ func TestInsertFactsViaCSV(t *testing.T) {
 		defer db.Close()
 
 		cfg := FactTableConfig{
-			TableName:      "test_facts_no_time",
+			TableName:       "test_facts_no_time",
 			PartitionByTime: true,
 			// TimeColumn missing
 			Columns: []string{
@@ -239,4 +239,3 @@ func TestInsertFactsViaCSV(t *testing.T) {
 		require.Contains(t, err.Error(), "context canceled")
 	})
 }
-

@@ -77,4 +77,3 @@ func retryWithBackoff(ctx context.Context, log *slog.Logger, operation string, f
 
 	return fmt.Errorf("operation failed after %d retries: %w", maxRetries, lastErr)
 }
-

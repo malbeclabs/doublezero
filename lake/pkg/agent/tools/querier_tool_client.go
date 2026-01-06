@@ -59,4 +59,3 @@ func (q *QuerierToolClient) CallToolText(ctx context.Context, name string, args 
 	}
 	return jsonStr, false, nil
 }
-

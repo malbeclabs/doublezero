@@ -77,4 +77,3 @@ func (f *failingDB) Close() error {
 func (f *failingDB) Conn(ctx context.Context) (Connection, error) {
 	return &failingDBConn{}, nil
 }
-

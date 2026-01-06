@@ -1,0 +1,142 @@
+# ISIS Network - {{ .Timestamp }}
+
+## Network Summary
+
+**Topology**
+- Total Routers: {{ .Stats.TotalRouters }}
+- Total Links: {{ .Stats.TotalLinks }} (bidirectional count: {{ .Stats.BidirectionalLinkCount }})
+- Average neighbors per router: {{ printf "%.1f" .Stats.AvgNeighbors }}
+
+**Health**
+- Healthy routers: {{ .Stats.HealthyRouters }} ({{ printf "%.0f" .Stats.HealthyPercent }}%)
+- Overloaded routers: {{ .Stats.OverloadedRouters }}
+- Isolated routers (0 neighbors): {{ .Stats.IsolatedRouters }}
+
+**Segment Routing**
+- SR-enabled routers: {{ .Stats.SREnabledRouters }} ({{ printf "%.0f" .Stats.SRPercent }}%)
+{{- if gt .Stats.SREnabledRouters 0 }}
+- SID range in use: {{ .Stats.MinSID }}-{{ .Stats.MaxSID }}
+{{- else }}
+- SID range in use: N/A
+{{- end }}
+{{- if .Stats.SRGBConsistent }}
+- SRGB: {{ .Stats.SRGBStart }}-{{ .Stats.SRGBEnd }} (consistent across network: yes)
+{{- else if .Stats.HasSRGB }}
+- SRGB: {{ .Stats.SRGBStart }}-{{ .Stats.SRGBEnd }} (consistent across network: no, {{ .Stats.SRGBVariants }} variants)
+{{- else }}
+- SRGB: N/A
+{{- end }}
+
+**Link Metrics**
+{{- if gt .Stats.MetricCount 0 }}
+{{- with .Stats.MinMetricLink }}
+- Lowest: {{ .Metric }} ({{ .Source }} <-> {{ .Dest }})
+{{- end }}
+{{- with .Stats.MaxMetricLink }}
+- Highest: {{ .Metric }} ({{ .Source }} <-> {{ .Dest }})
+{{- end }}
+- Average: {{ formatNumber .Stats.AvgMetric }}
+{{- else }}
+- No link metrics available
+{{- end }}
+
+## Quick Reference
+
+### All Routers (alphabetical)
+{{ join .SortedHostnames ", " }}
+
+### Routers by Neighbor Count
+{{- range .NeighborBuckets }}
+- **{{ .Label }}**: {{ .Routers }}
+{{- end }}
+
+### High-Cost Links (metric > 50000)
+{{- if .Stats.HighCostLinks }}
+{{- range .Stats.HighCostLinks }}
+- {{ .Source }} <-> {{ .Dest }}: {{ formatNumber .Metric }}
+{{- end }}
+{{- else }}
+- None
+{{- end }}
+
+### Routers by Location (inferred from hostname)
+{{- range .LocationBuckets }}
+- **{{ .Location }}** ({{ .Description }}): {{ .Routers }}
+{{- end }}
+
+## Adjacency List
+
+{{- range .SortedHostnames }}
+{{- $router := index $.Routers . }}
+{{- if $router.Neighbors }}
+- **{{ . }}** -> {{ neighborList $router.Neighbors }}
+{{- else }}
+- **{{ . }}** -> (no neighbors)
+{{- end }}
+{{- end }}
+
+## Router Details
+
+{{- range .SortedHostnames }}
+{{- $router := index $.Routers . }}
+
+### {{ . }}
+
+**Identity**
+- Hostname: {{ . }}
+- Router ID: {{ $router.RouterID }}
+- System ID: {{ $router.SystemID }}
+- Type: {{ $router.RouterType }} ({{ routerTypeDesc $router.RouterType }})
+- Area: {{ $router.Area }}
+- Location: {{ $router.Location }}
+
+**Status**
+- Health: {{ if $router.IsOverloaded }}OVERLOADED [WARNING]{{ else }}HEALTHY{{ end }}
+- Overloaded: {{ if $router.IsOverloaded }}Yes{{ else }}No{{ end }}
+- LSP Sequence: {{ $router.Sequence }}
+
+**Interfaces** ({{ len $router.Interfaces }} addresses)
+{{ if $router.Interfaces }}{{ join $router.Interfaces ", " }}{{ else }}None{{ end }}
+
+**Neighbors** ({{ len $router.Neighbors }} adjacencies)
+{{- if $router.Neighbors }}
+{{- range sortNeighbors $router.Neighbors }}
+- -> {{ .Hostname }} [metric={{ formatNumber .Metric }}, IP={{ .NeighborAddr }}]{{ if gt .Metric 50000 }} [WARNING: HIGH COST]{{ end }}
+{{- end }}
+{{- else }}
+- None (isolated router)
+{{- end }}
+
+**Segment Routing**
+{{- if $router.NodeSID }}
+- Node SID: {{ $router.NodeSID }} (prefix: {{ $router.NodeSIDPrefix }})
+{{- else }}
+- Node SID: Not configured
+{{- end }}
+{{- if $router.SRGBBase }}
+- SRGB: {{ $router.SRGBBase }}-{{ $router.SRGBEnd }} (range: {{ $router.SRGBRange }})
+{{- else }}
+- SRGB: Not configured
+{{- end }}
+{{- if $router.SRLBBase }}
+- SRLB: {{ $router.SRLBBase }}-{{ $router.SRLBEnd }} (range: {{ $router.SRLBRange }})
+{{- else }}
+- SRLB: Not configured
+{{- end }}
+{{- if $router.MSD }}
+- MSD (Base MPLS Imposition): {{ $router.MSD }}
+{{- else }}
+- MSD: Not configured
+{{- end }}
+
+**Prefixes Advertised** ({{ len $router.Reachabilities }} routes)
+{{- if $router.Reachabilities }}
+{{- range sortReachabilities $router.Reachabilities }}
+- {{ .Prefix }} (metric={{ formatNumber .Metric }}{{ srInfo . }})
+{{- end }}
+{{- else }}
+- None
+{{- end }}
+
+---
+{{- end }}

@@ -72,4 +72,3 @@ type ToolResult struct {
 	Content string
 	IsError bool
 }
-

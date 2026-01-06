@@ -10,8 +10,8 @@ import (
 
 	_ "github.com/duckdb/duckdb-go/v2"
 	"github.com/gagliardetto/solana-go"
-	"github.com/jonboulle/clockwork"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
+	"github.com/jonboulle/clockwork"
 	dzsvc "github.com/malbeclabs/doublezero/lake/pkg/indexer/dz/serviceability"
 	"github.com/malbeclabs/doublezero/lake/pkg/indexer/sol"
 	"github.com/malbeclabs/doublezero/tools/maxmind/pkg/geoip"
@@ -70,12 +70,12 @@ func TestLake_GeoIP_View_NewView(t *testing.T) {
 		t.Run("missing logger", func(t *testing.T) {
 			t.Parallel()
 			view, err := NewView(ViewConfig{
-				DB:                db,
-				GeoIPStore:        geoipStore,
-				GeoIPResolver:     &mockGeoIPResolver{},
+				DB:                  db,
+				GeoIPStore:          geoipStore,
+				GeoIPResolver:       &mockGeoIPResolver{},
 				ServiceabilityStore: svcStore,
-				SolanaStore:       solStore,
-				RefreshInterval:   time.Second,
+				SolanaStore:         solStore,
+				RefreshInterval:     time.Second,
 			})
 			require.Error(t, err)
 			require.Nil(t, view)
@@ -100,12 +100,12 @@ func TestLake_GeoIP_View_NewView(t *testing.T) {
 		t.Run("missing solana store", func(t *testing.T) {
 			t.Parallel()
 			view, err := NewView(ViewConfig{
-				Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
-				DB:                db,
-				GeoIPStore:        geoipStore,
-				GeoIPResolver:     &mockGeoIPResolver{},
+				Logger:              slog.New(slog.NewTextHandler(os.Stderr, nil)),
+				DB:                  db,
+				GeoIPStore:          geoipStore,
+				GeoIPResolver:       &mockGeoIPResolver{},
 				ServiceabilityStore: svcStore,
-				RefreshInterval:   time.Second,
+				RefreshInterval:     time.Second,
 			})
 			require.Error(t, err)
 			require.Nil(t, view)
@@ -136,14 +136,14 @@ func TestLake_GeoIP_View_NewView(t *testing.T) {
 		require.NoError(t, err)
 
 		view, err := NewView(ViewConfig{
-			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			Clock:             clockwork.NewFakeClock(),
-			DB:                 db,
-			GeoIPStore:         geoipStore,
-			GeoIPResolver:      &mockGeoIPResolver{},
+			Logger:              slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Clock:               clockwork.NewFakeClock(),
+			DB:                  db,
+			GeoIPStore:          geoipStore,
+			GeoIPResolver:       &mockGeoIPResolver{},
 			ServiceabilityStore: svcStore,
-			SolanaStore:        solStore,
-			RefreshInterval:    time.Second,
+			SolanaStore:         solStore,
+			RefreshInterval:     time.Second,
 		})
 		require.NoError(t, err)
 		require.NotNil(t, view)
@@ -176,14 +176,14 @@ func TestLake_GeoIP_View_Ready(t *testing.T) {
 		require.NoError(t, err)
 
 		view, err := NewView(ViewConfig{
-			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			Clock:             clockwork.NewFakeClock(),
-			DB:                 db,
-			GeoIPStore:         geoipStore,
-			GeoIPResolver:      &mockGeoIPResolver{},
+			Logger:              slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Clock:               clockwork.NewFakeClock(),
+			DB:                  db,
+			GeoIPStore:          geoipStore,
+			GeoIPResolver:       &mockGeoIPResolver{},
 			ServiceabilityStore: svcStore,
-			SolanaStore:        solStore,
-			RefreshInterval:    time.Second,
+			SolanaStore:         solStore,
+			RefreshInterval:     time.Second,
 		})
 		require.NoError(t, err)
 
@@ -285,14 +285,14 @@ func TestLake_GeoIP_View_Refresh(t *testing.T) {
 		}
 
 		view, err := NewView(ViewConfig{
-			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			Clock:             clockwork.NewFakeClock(),
-			DB:                 db,
-			GeoIPStore:         geoipStore,
-			GeoIPResolver:      resolver,
+			Logger:              slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Clock:               clockwork.NewFakeClock(),
+			DB:                  db,
+			GeoIPStore:          geoipStore,
+			GeoIPResolver:       resolver,
 			ServiceabilityStore: svcStore,
-			SolanaStore:        solStore,
-			RefreshInterval:    time.Second,
+			SolanaStore:         solStore,
+			RefreshInterval:     time.Second,
 		})
 		require.NoError(t, err)
 
@@ -376,14 +376,14 @@ func TestLake_GeoIP_View_Refresh(t *testing.T) {
 		require.NoError(t, err)
 
 		view, err := NewView(ViewConfig{
-			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			Clock:             clockwork.NewFakeClock(),
-			DB:                 db,
-			GeoIPStore:         geoipStore,
-			GeoIPResolver:      &mockGeoIPResolver{},
+			Logger:              slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Clock:               clockwork.NewFakeClock(),
+			DB:                  db,
+			GeoIPStore:          geoipStore,
+			GeoIPResolver:       &mockGeoIPResolver{},
 			ServiceabilityStore: svcStore,
-			SolanaStore:        solStore,
-			RefreshInterval:    time.Second,
+			SolanaStore:         solStore,
+			RefreshInterval:     time.Second,
 		})
 		require.NoError(t, err)
 
@@ -472,14 +472,14 @@ func TestLake_GeoIP_View_Refresh(t *testing.T) {
 		}
 
 		view, err := NewView(ViewConfig{
-			Logger:            slog.New(slog.NewTextHandler(os.Stderr, nil)),
-			Clock:             clockwork.NewFakeClock(),
-			DB:                 db,
-			GeoIPStore:         geoipStore,
-			GeoIPResolver:      resolver,
+			Logger:              slog.New(slog.NewTextHandler(os.Stderr, nil)),
+			Clock:               clockwork.NewFakeClock(),
+			DB:                  db,
+			GeoIPStore:          geoipStore,
+			GeoIPResolver:       resolver,
 			ServiceabilityStore: svcStore,
-			SolanaStore:        solStore,
-			RefreshInterval:    time.Second,
+			SolanaStore:         solStore,
+			RefreshInterval:     time.Second,
 		})
 		require.NoError(t, err)
 
@@ -493,4 +493,3 @@ func TestLake_GeoIP_View_Refresh(t *testing.T) {
 		require.Equal(t, net.ParseIP("1.1.1.1"), records[0].IP)
 	})
 }
-

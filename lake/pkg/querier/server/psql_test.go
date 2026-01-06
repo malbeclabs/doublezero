@@ -105,13 +105,13 @@ func Test_formatDuckDBInterval(t *testing.T) {
 		expected string
 	}{
 		{
-			name: "nil value",
-			val:  nil,
+			name:     "nil value",
+			val:      nil,
 			expected: "",
 		},
 		{
-			name: "non-struct value",
-			val:  "not a struct",
+			name:     "non-struct value",
+			val:      "not a struct",
 			expected: "",
 		},
 		{
@@ -264,8 +264,8 @@ func Test_formatDuckDBInterval(t *testing.T) {
 			expected: "1 day",
 		},
 		{
-			name: "nil pointer",
-			val:  (*duckDBInterval)(nil),
+			name:     "nil pointer",
+			val:      (*duckDBInterval)(nil),
 			expected: "",
 		},
 	}
@@ -539,8 +539,8 @@ func Test_extractTableNameFromColumnQuery(t *testing.T) {
 
 func Test_rewriteColumnListingQuery(t *testing.T) {
 	tests := []struct {
-		name     string
-		tableName string
+		name             string
+		tableName        string
 		expectedContains []string
 	}{
 		{
@@ -712,4 +712,3 @@ func Test_encodeValueForPostgreSQL_IntervalHandling(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "1 day 1 hour", result)
 }
-

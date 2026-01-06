@@ -1931,7 +1931,7 @@ func TestSCDTableViaCSV_NoDuplicateHistoryOnNoChanges(t *testing.T) {
 			age  string
 		}{
 			{"1", "Alice Updated", "31"}, // Changed
-			{"2", "Bob", "25"},            // Unchanged
+			{"2", "Bob", "25"},           // Unchanged
 		}
 
 		err = SCDTableViaCSV(

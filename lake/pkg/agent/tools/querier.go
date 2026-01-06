@@ -25,4 +25,3 @@ func (r *QueryResponse) ToJSON() (string, error) {
 	}
 	return string(bytes), nil
 }
-

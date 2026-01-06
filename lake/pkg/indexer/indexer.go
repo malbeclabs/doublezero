@@ -87,14 +87,14 @@ func New(ctx context.Context, cfg Config) (*Indexer, error) {
 
 	// Initialize geoip view
 	geoipView, err := mcpgeoip.NewView(mcpgeoip.ViewConfig{
-		Logger:            cfg.Logger,
-		Clock:             cfg.Clock,
-		DB:                 cfg.DB,
-		GeoIPStore:         geoIPStore,
-		GeoIPResolver:      cfg.GeoIPResolver,
+		Logger:              cfg.Logger,
+		Clock:               cfg.Clock,
+		DB:                  cfg.DB,
+		GeoIPStore:          geoIPStore,
+		GeoIPResolver:       cfg.GeoIPResolver,
 		ServiceabilityStore: svcView.Store(),
-		SolanaStore:        solanaView.Store(),
-		RefreshInterval:    cfg.RefreshInterval,
+		SolanaStore:         solanaView.Store(),
+		RefreshInterval:     cfg.RefreshInterval,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create geoip view: %w", err)

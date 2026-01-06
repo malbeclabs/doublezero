@@ -1,0 +1,158 @@
+# Location inference patterns for ISIS router hostnames
+# Order matters: more specific patterns should come before generic ones
+
+patterns:
+  # NYC / New Jersey / New York area
+  - pattern: "(?i)(ny[0-9]|njwb|nyc|ny5t|ny7)"
+    location: "NYC"
+    description: "New York / New Jersey"
+
+  # London
+  - pattern: "(?i)(ld[0-9]|lon|ths)"
+    location: "London"
+    description: "London, UK"
+
+  # Frankfurt
+  - pattern: "(?i)(fr[0-9a-z]|fra)"
+    location: "Frankfurt"
+    description: "Frankfurt, Germany"
+
+  # Amsterdam
+  - pattern: "(?i)(ams|am[0-9]|amsterdam)"
+    location: "Amsterdam"
+    description: "Amsterdam, Netherlands"
+
+  # Chicago
+  - pattern: "(?i)(ch[0-9]|chi)"
+    location: "Chicago"
+    description: "Chicago, IL"
+
+  # Los Angeles
+  - pattern: "(?i)(la[0-9]|lax)"
+    location: "Los Angeles"
+    description: "Los Angeles, CA"
+
+  # Dallas
+  - pattern: "(?i)(dal|da[0-9])"
+    location: "Dallas"
+    description: "Dallas, TX"
+
+  # Seattle
+  - pattern: "(?i)(sea)"
+    location: "Seattle"
+    description: "Seattle, WA"
+
+  # Toronto
+  - pattern: "(?i)(tor)"
+    location: "Toronto"
+    description: "Toronto, Canada"
+
+  # Montreal
+  - pattern: "(?i)(mtl)"
+    location: "Montreal"
+    description: "Montreal, Canada"
+
+  # Singapore
+  - pattern: "(?i)(sg[0-9]|sin)"
+    location: "Singapore"
+    description: "Singapore"
+
+  # Tokyo
+  - pattern: "(?i)(ty[0-9]|tyo|tok)"
+    location: "Tokyo"
+    description: "Tokyo, Japan"
+
+  # Hong Kong
+  - pattern: "(?i)(hk[0-9])"
+    location: "Hong Kong"
+    description: "Hong Kong"
+
+  # Dublin
+  - pattern: "(?i)(dub)"
+    location: "Dublin"
+    description: "Dublin, Ireland"
+
+  # Marseille
+  - pattern: "(?i)(mrs|marseille)"
+    location: "Marseille"
+    description: "Marseille, France"
+
+  # Sydney / Australia
+  - pattern: "(?i)(syd|au[0-9]|nswp)"
+    location: "Sydney"
+    description: "Sydney, Australia"
+
+  # Salt Lake City
+  - pattern: "(?i)(slc)"
+    location: "Salt Lake City"
+    description: "Salt Lake City, UT"
+
+  # Ashburn / DC
+  - pattern: "(?i)(ash|dc[0-9])"
+    location: "Ashburn"
+    description: "Ashburn, VA (DC area)"
+
+  # Sao Paulo
+  - pattern: "(?i)(sp[0-9])"
+    location: "Sao Paulo"
+    description: "Sao Paulo, Brazil"
+
+  # Silicon Valley
+  - pattern: "(?i)(sv[0-9])"
+    location: "Silicon Valley"
+    description: "Silicon Valley, CA"
+
+  # Prague
+  - pattern: "(?i)(prg)"
+    location: "Prague"
+    description: "Prague, Czech Republic"
+
+  # Oslo
+  - pattern: "(?i)(osl)"
+    location: "Oslo"
+    description: "Oslo, Norway"
+
+  # Munich
+  - pattern: "(?i)munich"
+    location: "Munich"
+    description: "Munich, Germany"
+
+  # Madrid
+  - pattern: "(?i)madrid"
+    location: "Madrid"
+    description: "Madrid, Spain"
+
+  # Warsaw
+  - pattern: "(?i)warsaw"
+    location: "Warsaw"
+    description: "Warsaw, Poland"
+
+  # Strasbourg
+  - pattern: "(?i)strasbourg"
+    location: "Strasbourg"
+    description: "Strasbourg, France"
+
+  # Caribbean
+  - pattern: "(?i)^car-"
+    location: "Caribbean"
+    description: "Caribbean"
+
+  # CC1T prefix
+  - pattern: "(?i)^cc1t"
+    location: "CC1T"
+    description: "CC1T"
+
+  # DC15T prefix
+  - pattern: "(?i)^dc15t"
+    location: "DC15T"
+    description: "DC15T"
+
+  # FPI prefix
+  - pattern: "(?i)^fpi"
+    location: "FPI"
+    description: "FPI"
+
+  # MUX prefix
+  - pattern: "(?i)^mux"
+    location: "MUX"
+    description: "MUX"

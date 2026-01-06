@@ -341,7 +341,6 @@ func testPubkeyBytes(seed byte) [32]byte {
 	return pk
 }
 
-
 func TestLake_Serviceability_View_Refresh(t *testing.T) {
 	t.Parallel()
 

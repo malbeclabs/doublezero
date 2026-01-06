@@ -164,7 +164,6 @@ func TestLake_TelemetryLatency_Store_CreateTablesIfNotExists(t *testing.T) {
 	})
 }
 
-
 func TestLake_TelemetryLatency_Store_AppendDeviceLinkLatencySamples(t *testing.T) {
 	t.Parallel()
 

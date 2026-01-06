@@ -418,11 +418,11 @@ func runConnectivitySubtests(
 				}
 
 				wg.Add(1)
-				go func(src, target *qa.Client) {
+				go func(src, target *qa.Client, srcDevice, dstDevice *qa.Device) {
 					defer wg.Done()
-					result, err := src.TestUnicastConnectivity(t, subCtx, target)
+					result, err := src.TestUnicastConnectivity(t, subCtx, target, srcDevice, dstDevice)
 					if err != nil {
-						log.Error("Connectivity test failed", "error", err, "source", src.Host, "target", target.Host, "sourceDevice", batch[src.Host].Device.Code, "targetDevice", batch[target.Host].Device.Code)
+						log.Error("Connectivity test failed", "error", err, "source", src.Host, "target", target.Host, "sourceDevice", srcDevice.Code, "targetDevice", dstDevice.Code)
 						assert.NoError(t, err, "failed to test connectivity")
 						return
 					}
@@ -430,7 +430,7 @@ func runConnectivitySubtests(
 					totalSent += result.PacketsSent
 					totalReceived += result.PacketsReceived
 					mu.Unlock()
-				}(srcClient, target)
+				}(srcClient, target, batch[srcClient.Host].Device, batch[target.Host].Device)
 			}
 			wg.Wait()
 

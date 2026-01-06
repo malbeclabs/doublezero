@@ -84,18 +84,27 @@ type UnicastTestConnectivityResult struct {
 	PacketsReceived uint32
 }
 
-func (c *Client) TestUnicastConnectivity(t *testing.T, ctx context.Context, targetClient *Client) (*UnicastTestConnectivityResult, error) {
+func (c *Client) TestUnicastConnectivity(t *testing.T, ctx context.Context, targetClient *Client, srcDevice, dstDevice *Device) (*UnicastTestConnectivityResult, error) {
 	sourceIP := c.DoublezeroOrPublicIP().To4().String()
 	targetIP := targetClient.DoublezeroOrPublicIP().To4().String()
 
-	clientDevice, err := c.getConnectedDevice(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get connected device: %w", err)
+	// If devices not provided, try to get them from status
+	clientDevice := srcDevice
+	if clientDevice == nil {
+		var err error
+		clientDevice, err = c.getConnectedDevice(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get connected device: %w", err)
+		}
 	}
 
-	otherClientDevice, err := targetClient.getConnectedDevice(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get connected device: %w", err)
+	otherClientDevice := dstDevice
+	if otherClientDevice == nil {
+		var err error
+		otherClientDevice, err = targetClient.getConnectedDevice(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get connected device: %w", err)
+		}
 	}
 
 	var iface string

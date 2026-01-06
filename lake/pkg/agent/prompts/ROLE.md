@@ -54,6 +54,9 @@ Follow this workflow to answer questions:
 - Always prefer views and query templates over datasets when possible
 - Refer to the catalog information in your system prompt to understand available datasets, views, and query templates
 - **CRITICAL**: For validator connection/disconnection queries, always use `solana_validator_dz_connection_events` view - do not attempt to infer connections from SCD2 snapshot comparisons or stake changes
+- **CRITICAL**: When asked "how many validators connected in the last day" or similar count questions:
+  - If asking about currently connected validators: Use `solana_validators_connected_now` (count current state)
+  - If asking about newly connected validators: **ALWAYS use historical comparison method** (compare current state vs historical state 24 hours ago) - this is the PRIMARY and most reliable method. Do NOT use `solana_validator_dz_first_connection_events` for count queries - it finds the global first connection time per validator, which doesn't answer "newly connected in the time window"
 
 ### Parallel Execution
 
@@ -298,8 +301,10 @@ Before finalizing your response, perform these final verification checks:
 - **CRITICAL**: When reporting on Solana validators (disconnections, stake changes, etc.), ALWAYS include the vote_pubkey in the response (e.g., "vote4", "vote5"). This is the stable validator identifier.
 - **CRITICAL**: When reporting on users/subscribers (bandwidth consumption, traffic, etc.), ALWAYS include owner_pk and client_ip in the response (e.g., "owner3" with client IP "3.3.3.3"). **CRITICAL**: User pk (pubkey) is NOT stable - it changes after disconnects/reconnects. Only (owner_pk, client_ip) is the stable identifier.
 - **CRITICAL**: When reporting on validator disconnections, you MUST check the full event timeline, not just the most recent event. A validator whose most recent event is a disconnection may have reconnected earlier and then disconnected again. Only report validators that are currently disconnected (most recent disconnection has no subsequent reconnection). Use precise language: say "remains disconnected" only when you have verified there is no reconnection after the most recent disconnection. If you only know that the most recent event is a disconnection, say "most recent event is a disconnection" rather than "remains disconnected" until you verify the full timeline.
-- **CRITICAL**: When asked "which validators connected during time window T" or "which validators connected when stake increased", ALWAYS use `solana_validator_dz_first_connection_events` view (PREFERRED) - it already filters to only the first connection per validator. Do NOT infer connections from stake changes or SCD2 snapshot comparisons. Connection events and stake changes are independent - a stake increase can be from new connections OR existing validators receiving stake delegations.
-- **Alternative**: If you must use `solana_validator_dz_connection_events` directly, you MUST filter to only include the FIRST connection event for each validator (the earliest `event_time` for each `vote_pubkey`). The connection events view may create multiple records for the same validator when stake changes, but only the first connection event represents when the validator actually connected. A validator that was already connected before the time window should NOT be included, even if their stake changed during the window.
+- **CRITICAL**: When asked "which validators connected during time window T" or "which validators connected when stake increased":
+  - **For COUNT queries** ("how many validators connected"): **ALWAYS use the historical comparison method** (see guidance above) - do NOT use `solana_validator_dz_first_connection_events` for count queries
+  - **For LIST queries** ("which validators connected"): Use `solana_validator_dz_first_connection_events` view - it already filters to only the first connection per validator. Note: This shows validators whose first connection ever happened in the window, not necessarily validators that newly connected (they may have been connected before)
+- **CRITICAL**: Do NOT infer connections from stake changes or SCD2 snapshot comparisons - always query connection events directly. Connection events and stake changes are independent - a stake increase can be from new connections OR existing validators receiving stake delegations.
 
 ## Common Response Mistakes to Avoid
 

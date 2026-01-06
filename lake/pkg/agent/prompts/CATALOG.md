@@ -223,6 +223,28 @@ Append-only time-series data:
 - **CRITICAL**: "on dz" means currently connected (exists in `dz_users_current` with matching `dz_ip`), not historical connections
 - Do NOT count all nodes from `solana_gossip_nodes_current` or `solana_vote_accounts_current` - these include nodes not on DZ
 
+**Interpreting "how many validators connected in the last day" questions:**
+- **CRITICAL**: For count queries asking "how many validators newly connected", **ALWAYS use historical comparison method** - do NOT use `solana_validator_dz_first_connection_events`. The `first_connection_events` view finds the global minimum connection time per validator, which doesn't answer "newly connected in the last day". Query pattern:
+```sql
+-- Validators currently connected
+WITH current_validators AS (
+  SELECT DISTINCT vote_pubkey
+  FROM solana_validators_connected_now
+),
+-- Validators that were connected 24 hours ago
+validators_24h_ago AS (
+  SELECT DISTINCT vote_pubkey
+  FROM solana_validator_dz_overlaps_windowed
+  WHERE overlap_start <= CURRENT_TIMESTAMP - INTERVAL '24 hours'
+    AND overlap_end >= CURRENT_TIMESTAMP - INTERVAL '24 hours'
+)
+-- Newly connected = currently connected but NOT connected 24 hours ago
+SELECT COUNT(DISTINCT cv.vote_pubkey) AS newly_connected_count
+FROM current_validators cv
+LEFT JOIN validators_24h_ago v24h ON cv.vote_pubkey = v24h.vote_pubkey
+WHERE v24h.vote_pubkey IS NULL
+```
+
 **solana_validator_dz_connection_events**: Validator connection/disconnection event log
 - Type: view (event log)
 - Grain: 1 row per connection or disconnection event
@@ -234,7 +256,7 @@ Append-only time-series data:
 - Type: view (event log, deduplicated)
 - Grain: 1 row per validator's first connection event only
 - Fields: Same as `solana_validator_dz_connection_events`
-- **PREFERRED**: Use this view when querying for "which validators connected during time window T" - it already filters to only the first connection event per validator, eliminating the need for complex CTEs. This view shows only the actual first connection time for each validator, not spurious connection events created when stake changes.
+- **CRITICAL**: For count queries ("how many validators connected"), use the historical comparison method instead (see "Interpreting 'how many validators connected in the last day' questions" above). This view finds the global minimum connection time per validator, which doesn't answer "newly connected in a time window".
 - Query pattern:
 ```sql
 SELECT vote_pubkey, node_pubkey, dz_ip, event_time, activated_stake_sol, owner_pk, client_ip
@@ -319,7 +341,8 @@ To compare DZ WAN links to Internet:
 ### Validator Connection Event Queries
 
 **When asked "which validators connected during time window T" or "which validators connected when stake increased":**
-- **PREFERRED**: Use `solana_validator_dz_first_connection_events` view - it already filters to only the first connection per validator, making queries simple and correct
+- **For COUNT queries** ("how many validators connected"): **ALWAYS use the historical comparison method** (see "Interpreting 'how many validators connected in the last day' questions" above). Do NOT use `solana_validator_dz_first_connection_events` for count queries - it finds the global first connection time per validator, which doesn't answer "newly connected in the time window".
+- **For LIST queries** ("which validators connected"): Use `solana_validator_dz_first_connection_events` view - it already filters to only the first connection per validator. Note that this shows validators whose first connection ever happened in the window, not necessarily validators that newly connected (they may have been connected before).
 - **CRITICAL**: Do NOT infer connections from stake changes or SCD2 snapshot comparisons - always query connection events directly
 - **CRITICAL**: Connection events and stake changes are independent - a stake increase can be from new connections OR existing validators receiving stake delegations
 - Query pattern (using the preferred view):

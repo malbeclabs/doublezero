@@ -238,9 +238,34 @@ Respond with only "YES" or "NO" followed by a brief explanation.`, question, res
 
 	// Parse evaluation result
 	evalText := strings.ToUpper(strings.TrimSpace(ollamaResp.Response))
+	originalResponse := strings.TrimSpace(ollamaResp.Response)
+
+	// Helper function to extract and log explanation
+	extractAndLogExplanation := func(prefix string, verdict string) string {
+		explanation := originalResponse
+		prefixUpper := strings.ToUpper(prefix)
+		if strings.HasPrefix(strings.ToUpper(explanation), prefixUpper) {
+			prefixIdx := len(prefix)
+			if len(explanation) > prefixIdx {
+				explanation = strings.TrimSpace(explanation[prefixIdx:])
+				// Remove common separators like ":" or "-" after prefix
+				explanation = strings.TrimLeft(explanation, ":-\t ")
+			}
+		}
+		if explanation != "" {
+			t.Logf("Ollama evaluation explanation (%s): %s", verdict, explanation)
+		} else {
+			// If no explanation found, log the full response for debugging
+			t.Logf("Ollama evaluation said %s but no explanation found. Full response: %s", verdict, originalResponse)
+		}
+		return explanation
+	}
+
 	if strings.HasPrefix(evalText, "YES") {
+		extractAndLogExplanation("YES", "YES")
 		return true, nil
 	} else if strings.HasPrefix(evalText, "NO") {
+		extractAndLogExplanation("NO", "NO")
 		return false, nil
 	}
 

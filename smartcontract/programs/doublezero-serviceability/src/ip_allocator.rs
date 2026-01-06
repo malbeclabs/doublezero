@@ -11,6 +11,7 @@ pub struct IpAllocator {
     /// The number of **individual addresses** in one allocation block.
     /// E.g., 1 for /32, 2 for /31, 8 for /29.
     pub allocation_size: u32,
+    pub first_free_index: usize,
 }
 
 impl IpAllocator {
@@ -43,6 +44,7 @@ impl IpAllocator {
         Ok(IpAllocator {
             base_net,
             allocation_size,
+            first_free_index: 0,
         })
     }
 
@@ -56,7 +58,11 @@ impl IpAllocator {
         // Convert bitmap to &[u64] for efficient processing
         let u64_bitmap = cast_slice_mut::<u8, u64>(bitmap);
 
-        for (u64_index, entry) in u64_bitmap.iter_mut().enumerate() {
+        for (u64_index, entry) in u64_bitmap
+            .iter_mut()
+            .enumerate()
+            .skip(self.first_free_index)
+        {
             if entry == &u64::MAX {
                 continue; // All bits are allocated in this u64
             }
@@ -74,6 +80,14 @@ impl IpAllocator {
 
                     let allocated_net = NetworkV4::new(allocated_ip, allocation_prefix_len)
                         .expect("Valid IP and prefix length");
+
+                    if entry != &u64::MAX {
+                        self.first_free_index = u64_index;
+                    } else {
+                        // TODO: This could be optimized further by searching for the next free
+                        // index
+                        self.first_free_index = 0;
+                    }
 
                     return Some(allocated_net);
                 }
@@ -121,6 +135,11 @@ impl IpAllocator {
 
         bitmap[byte_index] |= mask;
 
+        if bitmap[byte_index] == 0xFF {
+            // TODO optimize to find next free index
+            self.first_free_index = 0;
+        }
+
         Ok(())
     }
 
@@ -163,6 +182,10 @@ impl IpAllocator {
         // Clear the bit (set to 0)
         bitmap[byte_index] &= !mask;
 
+        if was_set {
+            self.first_free_index = byte_index / 8;
+        }
+
         was_set
     }
 
@@ -186,9 +209,11 @@ impl IpAllocator {
     pub fn try_from(mut data: &[u8]) -> Result<Self, String> {
         let base_net = BorshDeserialize::deserialize(&mut data).unwrap_or_default();
         let allocation_size = BorshDeserialize::deserialize(&mut data).unwrap_or_default();
+        let first_free_index = BorshDeserialize::deserialize(&mut data).unwrap_or_default();
         Ok(Self {
             base_net,
             allocation_size,
+            first_free_index,
         })
     }
 }

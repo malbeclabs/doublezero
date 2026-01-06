@@ -63,7 +63,7 @@ impl VerifyValidatorDebtCommand {
         let solana_debt_calculator: SolanaDebtCalculator =
             SolanaDebtCalculator::try_from(connection_options)?;
         let signer = try_load_keypair(None).expect("failed to load keypair");
-        let transaction = Transaction::new(signer, true, false);
+        let transaction = Transaction::new(signer.into(), true, false);
         crate::worker::verify_validator_debt(
             &solana_debt_calculator,
             transaction,

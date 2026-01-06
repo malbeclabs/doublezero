@@ -114,6 +114,68 @@ pub async fn upload_file(filepath: String, channel_id: String) -> anyhow::Result
     Ok(permalink)
 }
 
+pub fn build_multi_row_table(
+    header: String,
+    table_headers: Vec<String>,
+    table_values: Vec<Vec<String>>,
+) -> Result<SlackMessage> {
+    let mut body: Vec<Block> = Vec::new();
+
+    let header = Block {
+        column_settings: None,
+        block_type: "header".to_string(),
+        fields: None,
+        rows: None,
+        text: Some(Text {
+            text_type: "plain_text".to_string(),
+            text: Some(header),
+            emoji: Some(true),
+        }),
+    };
+
+    body.push(header);
+
+    let mut rows: Vec<Vec<Text>> = Vec::with_capacity(table_values.len() + 1);
+
+    let header_row: Vec<Text> = table_headers
+        .into_iter()
+        .map(|th| Text {
+            text_type: "raw_text".to_string(),
+            text: Some(th),
+            emoji: None,
+        })
+        .collect();
+
+    rows.push(header_row);
+
+    for row_values in table_values {
+        let row: Vec<Text> = row_values
+            .into_iter()
+            .map(|tv| Text {
+                text_type: "raw_text".to_string(),
+                text: Some(tv),
+                emoji: None,
+            })
+            .collect();
+        rows.push(row);
+    }
+
+    let table = Block {
+        column_settings: Some(vec![ColumnSetting {
+            is_wrapped: true,
+            align: "left".to_string(),
+        }]),
+        rows: Some(rows),
+        block_type: "table".to_string(),
+        fields: None,
+        text: None,
+    };
+
+    body.push(table);
+
+    Ok(SlackMessage { blocks: body })
+}
+
 pub fn build_table(
     header: String,
     table_headers: Vec<String>,
@@ -157,7 +219,7 @@ pub fn build_table(
     let table = Block {
         column_settings: Some(vec![ColumnSetting {
             is_wrapped: true,
-            align: "right".to_string(),
+            align: "left".to_string(),
         }]),
         rows: Some(vec![table_header, table_rows]),
         block_type: "table".to_string(),

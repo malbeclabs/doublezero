@@ -6,11 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- update return value from pay_debt command, add pay_debt_for_all_epochs, use :normal exit for GenServer ([#228](https://github.com/doublezerofoundation/doublezero-offchain/pull/228))
 - remove unnecessary private functions in lib.rs ([#238](https://github.com/doublezerofoundation/doublezero-offchain/pull/238))
 - update `initialize_distribution` call ([#237](https://github.com/doublezerofoundation/doublezero-offchain/pull/237))
 
 ## [v0.1.4](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/offchain-scheduler/v0.1.4)
-
 - inline initialize distribution call and remove ledger RPC argument ([#225](https://github.com/doublezerofoundation/doublezero-offchain/pull/225))
 - add prom metrics collector and instrument a few critical functions as well as add a `health_check` endpoint ([#207](https://github.com/doublezerofoundation/doublezero-offchain/pull/207))
 - summarize debt for each epoch and then for all epochs ([#218](https://github.com/doublezerofoundation/doublezero-offchain/pull/218))

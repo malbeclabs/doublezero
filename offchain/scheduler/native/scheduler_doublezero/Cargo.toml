@@ -11,6 +11,7 @@ crate-type = ["cdylib"]
 [dependencies]
 anyhow.workspace = true
 doublezero-solana-client-tools.workspace = true
+doublezero-solana-sdk.workspace = true
 doublezero-solana-validator-debt.workspace = true
 reqwest.workspace = true
 rustler = "0.37.0"

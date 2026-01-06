@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-
+- parallelize debt collection and reduce collection_results being sent around, ignore overlapping dz epochs in report ([#228](https://github.com/doublezerofoundation/doublezero-offchain/pull/228))
 - fix local uncollectible debt tracking for write-off logic ([#240](https://github.com/doublezerofoundation/doublezero-offchain/pull/240))
 - enable debt write-off at activation ([#237](https://github.com/doublezerofoundation/doublezero-offchain/pull/237))
 - add `try_fetch_debt_records_and_distributions` ([#231](https://github.com/doublezerofoundation/doublezero-offchain/pull/231))

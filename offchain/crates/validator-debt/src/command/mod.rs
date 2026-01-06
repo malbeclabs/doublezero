@@ -83,7 +83,7 @@ async fn execute_finalize_transaction(
     let solana_debt_calculator: SolanaDebtCalculator =
         SolanaDebtCalculator::try_from(solana_connection_options)?;
     let signer = try_load_keypair(None)?;
-    let transaction = Transaction::new(signer, dry_run, force);
+    let transaction = Transaction::new(signer.into(), dry_run, force);
     worker::finalize_distribution(&solana_debt_calculator, transaction, epoch).await?;
     Ok(())
 }

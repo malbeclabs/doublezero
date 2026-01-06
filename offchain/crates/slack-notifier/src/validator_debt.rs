@@ -65,6 +65,22 @@ pub async fn post_finalized_distribution_to_slack(
     Ok(())
 }
 
+pub async fn post_debt_collections_to_slack(
+    client: &Client,
+    header: &str,
+    table_header: Vec<String>,
+    table_values: Vec<Vec<String>>,
+) -> Result<()> {
+    let table = slack::build_multi_row_table(header.to_string(), table_header, table_values)?;
+
+    let payload = serde_json::to_string(&table)?;
+    let body = Body::from(payload);
+    let request = slack::build_message_request(client, body, slack_webhook()?)?;
+    let _resp = request.send().await?;
+
+    Ok(())
+}
+
 pub async fn post_to_slack(
     filepath: Option<String>,
     client: &Client,

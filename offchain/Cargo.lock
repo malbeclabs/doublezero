@@ -6544,6 +6544,7 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "doublezero-solana-client-tools",
+ "doublezero-solana-sdk",
  "doublezero-solana-validator-debt",
  "reqwest",
  "rustler",

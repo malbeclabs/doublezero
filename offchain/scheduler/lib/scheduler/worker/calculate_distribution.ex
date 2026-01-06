@@ -80,7 +80,7 @@ defmodule Scheduler.Worker.CalculateDistribution do
         )
     end
 
-    {:stop, :shutdown, state}
+    {:stop, :normal, state}
   end
 
   def handle_info(msg, state) do

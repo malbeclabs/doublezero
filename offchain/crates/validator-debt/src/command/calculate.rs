@@ -78,8 +78,11 @@ impl CalculateValidatorDebtCommand {
         let solana_debt_calculator: SolanaDebtCalculator =
             SolanaDebtCalculator::try_from(connection_options)?;
         let signer = try_load_keypair(None).expect("failed to load keypair");
-        let transaction =
-            Transaction::new(signer, solana_payer_options.signer_options.dry_run, force);
+        let transaction = Transaction::new(
+            signer.into(),
+            solana_payer_options.signer_options.dry_run,
+            force,
+        );
         let dry_run = transaction.dry_run;
         let write_summary = crate::worker::calculate_distribution(
             &solana_debt_calculator,

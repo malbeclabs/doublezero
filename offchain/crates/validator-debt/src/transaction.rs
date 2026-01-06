@@ -1,8 +1,10 @@
-use std::fs::File;
+use std::{fs::File, sync::Arc};
 
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Result, anyhow};
 use doublezero_sdk::record::pubkey;
-use doublezero_solana_client_tools::rpc::DoubleZeroLedgerConnection;
+use doublezero_solana_client_tools::{
+    account::zero_copy::ZeroCopyAccountOwnedData, rpc::DoubleZeroLedgerConnection,
+};
 use doublezero_solana_sdk::{
     merkle::MerkleProof,
     revenue_distribution::{
@@ -15,10 +17,12 @@ use doublezero_solana_sdk::{
             },
         },
         state::Distribution,
+        try_is_processed_leaf,
         types::{DoubleZeroEpoch, SolanaValidatorDebt},
     },
     try_build_instruction, zero_copy,
 };
+use futures::stream::{self, StreamExt};
 use serde::Serialize;
 use solana_client::{
     client_error::{ClientError, ClientErrorKind},
@@ -34,23 +38,33 @@ use solana_sdk::{
     signer::Signer,
     transaction::{TransactionError, VersionedTransaction},
 };
+use tokio::sync::Semaphore;
 
-use crate::{ledger, validator_debt::ComputedSolanaValidatorDebts};
+use crate::{
+    ledger,
+    validator_debt::{ComputedSolanaValidatorDebt, ComputedSolanaValidatorDebts},
+};
+
+const MAX_CONCURRENT_CONNECTIONS: usize = 10;
 
 #[derive(Debug)]
 pub struct Transaction {
-    pub signer: Keypair,
+    pub signer: Arc<Keypair>,
     pub dry_run: bool,
     pub force: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]
 pub struct DebtCollectionResults {
-    pub dz_epoch: u64,
     pub collection_results: Vec<DebtCollectionResult>,
-    pub insufficient_funds: Vec<DebtCollectionResult>,
-    pub already_paid: Vec<DebtCollectionResult>,
-    pub successful_transactions: Vec<DebtCollectionResult>,
+    pub dz_epoch: u64,
+    pub successful_transactions_count: usize,
+    pub insufficient_funds_count: usize,
+    pub already_paid_count: usize,
+    pub total_debt: u64,
+    pub total_paid: u64,
+    pub already_paid: u64,
+    pub total_validators: usize,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -62,7 +76,7 @@ pub struct DebtCollectionResult {
 }
 
 impl Transaction {
-    pub fn new(signer: Keypair, dry_run: bool, force: bool) -> Transaction {
+    pub fn new(signer: Arc<Keypair>, dry_run: bool, force: bool) -> Transaction {
         Transaction {
             signer,
             dry_run,
@@ -247,7 +261,6 @@ impl Transaction {
             .await?;
 
         tracing::info!("{:#?}", tx);
-
         Ok(())
     }
 
@@ -256,12 +269,9 @@ impl Transaction {
         solana_rpc_client: &RpcClient,
         debt: ComputedSolanaValidatorDebts,
         dz_epoch: u64,
+        distribution: &ZeroCopyAccountOwnedData<Distribution>,
     ) -> Result<DebtCollectionResults> {
-        let mut debt_collection_result: Vec<DebtCollectionResult> =
-            Vec::with_capacity(debt.debts.len());
-
         let mut overrides = Vec::new();
-
         // TODO: This is a temporary fix to exclude a couple of validators
         // the longer term fix will be using data on-chain as it's more transparent, less error-prone
         if let Ok(file) = File::open("/opt/doublezero-offchain-scheduler/overrides.csv") {
@@ -276,92 +286,76 @@ impl Transaction {
                     }),
             );
         }
+        let debts_to_process: Vec<ComputedSolanaValidatorDebt> = debt.debts.iter().filter(|debt| {
+          let node_id_str = debt.node_id.to_string();
+          let excluded = overrides.iter().any(|(key, epoch)| key == &node_id_str && *epoch == dz_epoch);
+      if excluded {
+          tracing::info!(
+                            "Validator {node_id_str} for epoch #{dz_epoch} excluded from debt collection"
+                        );
 
-        let debt_clone = debt.clone();
-        for d in debt.debts {
-            let node_id_str = d.node_id.to_string();
-            if overrides
-                .iter()
-                .any(|(key, epoch)| key == &node_id_str && *epoch == dz_epoch)
-            {
-                tracing::info!(
-                    "Validator {node_id_str} for epoch #{dz_epoch} excluded from debt collection"
-                );
-                continue;
-            }
-            let debt_proof = debt_clone.find_debt_proof(&d.node_id).unwrap();
-            let (_, proof) = debt_proof;
-            let instruction = try_build_instruction(
-                &ID,
-                PaySolanaValidatorDebtAccounts::new(DoubleZeroEpoch::new(dz_epoch), &d.node_id),
-                &RevenueDistributionInstructionData::PaySolanaValidatorDebt {
-                    amount: d.amount,
-                    proof,
-                },
-            )
-            .unwrap();
+      }
+      !excluded
 
-            let recent_blockhash = solana_rpc_client.get_latest_blockhash().await?;
-            let message =
-                Message::try_compile(&self.signer.pubkey(), &[instruction], &[], recent_blockhash)
-                    .unwrap();
+        }).cloned().collect();
 
-            let versioned_transaction =
-                VersionedTransaction::try_new(VersionedMessage::V0(message), &[&self.signer])
-                    .unwrap();
+        let start_index = distribution.processed_solana_validator_debt_start_index as usize;
+        let end_index = distribution.processed_solana_validator_debt_end_index as usize;
+        let processed_leaf_data = &distribution.remaining_data[start_index..end_index];
 
-            let result = self
-                .send_or_simulate_transaction(solana_rpc_client, &versioned_transaction)
-                .await;
+        let semaphore = Arc::new(Semaphore::new(MAX_CONCURRENT_CONNECTIONS));
+        let debt_clone = Arc::new(debt);
 
-            match result {
-                Ok(success) => {
-                    let payment_result = parse_program_logs(d.amount, d.node_id, success);
-                    tracing::info!(
-                        "{}: {:#?}",
-                        payment_result.validator_id,
-                        payment_result.result
-                    );
-                    debt_collection_result.push(payment_result);
-                }
-                Err(err) => {
-                    if let Some(client_error) = err.downcast_ref::<ClientError>() {
-                        match &client_error.kind {
-                            ClientErrorKind::RpcError(RpcError::RpcResponseError {
-                                data:
-                                    RpcResponseErrorData::SendTransactionPreflightFailure(sim_result),
-                                ..
-                            }) => {
-                                if let Some(TransactionError::InstructionError(
-                                    _instruction_code,
-                                    _instruction_error,
-                                )) = &sim_result.err
-                                {
-                                    let payment_result = DebtCollectionResult {
-                                        amount: d.amount,
-                                        validator_id: d.node_id.to_string(),
-                                        result: if let Some(logs) = sim_result.logs.clone() {
-                                            logs.get(4).cloned()
-                                        } else {
-                                            None
-                                        },
-                                        success: false,
-                                    };
-                                    tracing::info!(
-                                        "{}: {:#?}",
-                                        payment_result.validator_id,
-                                        payment_result.result
-                                    );
-                                    debt_collection_result.push(payment_result);
-                                }
-                            }
-                            _ => {
-                                let counter = metrics::counter!("doublezero_validator_debt_pay_debt_transaction_failed", "client_error" => client_error.to_string());
-                                counter.increment(1);
-                                bail!("Unhandled Solana RPC error: {}", client_error);
-                            }
+        let debt_collection_results: Vec<Result<DebtCollectionResult>> =
+            stream::iter(debts_to_process)
+                .map(|debt| {
+                    let semaphore = semaphore.clone();
+                    let debt_clone = debt_clone.clone();
+
+                    let debt_proof = debt_clone.find_debt_proof(&debt.node_id).unwrap();
+                    let (_, proof) = debt_proof;
+                    let leaf_index = proof.leaf_index.unwrap() as usize;
+
+                    async move {
+                        let _permit = semaphore
+                            .acquire()
+                            .await
+                            .map_err(|e| anyhow!("Semaphore error: {}", e))?;
+
+                        if try_is_processed_leaf(processed_leaf_data, leaf_index).unwrap() {
+                            Ok(DebtCollectionResult {
+                                validator_id: debt.node_id.to_string(),
+                                amount: debt.amount,
+                                result: Some("Merkle leaf".to_string()),
+                                success: false,
+                            })
+                        } else {
+                            Self::process_single_debt_payment(
+                                self,
+                                solana_rpc_client,
+                                &debt,
+                                proof,
+                                dz_epoch,
+                            )
+                            .await
                         }
                     }
+                })
+                .buffer_unordered(20)
+                .collect()
+                .await;
+
+        let mut debt_collection_result: Vec<DebtCollectionResult> =
+            Vec::with_capacity(debt_collection_results.len());
+
+        for result in debt_collection_results {
+            match result {
+                Ok(payment_result) => {
+                    debt_collection_result.push(payment_result);
+                }
+
+                Err(err) => {
+                    eprintln!("Error processing debt payment: {}", err);
                 }
             }
         }
@@ -378,14 +372,112 @@ impl Transaction {
         let insufficient_funds =
             count_failed_debt_collection("Insufficient funds", debt_collection_result.clone());
 
+        let total_validators = debt_collection_result.len();
+
+        let total_debt: u64 = debt_collection_result.iter().map(|tx| tx.amount).sum();
+
+        let insufficient_funds_count = insufficient_funds.len();
+        let already_paid_count: usize = already_paid.len();
+        let already_paid: u64 = already_paid.iter().map(|tx| tx.amount).sum();
+        let successful_transactions_amount: u64 =
+            successful_transactions.iter().map(|tx| tx.amount).sum();
+        let total_paid = already_paid + successful_transactions_amount;
+
         let debt_collection_results = DebtCollectionResults {
-            dz_epoch,
-            successful_transactions,
             collection_results: debt_collection_result,
-            insufficient_funds,
+            dz_epoch,
+            successful_transactions_count: successful_transactions.len(),
+            insufficient_funds_count,
+            already_paid_count,
             already_paid,
+            total_debt,
+            total_paid,
+            total_validators,
         };
         Ok(debt_collection_results)
+    }
+
+    async fn process_single_debt_payment(
+        transaction: &Transaction,
+        solana_rpc_client: &RpcClient,
+        debt: &ComputedSolanaValidatorDebt,
+        proof: MerkleProof,
+        dz_epoch: u64,
+    ) -> Result<DebtCollectionResult> {
+        let instruction = try_build_instruction(
+            &ID,
+            PaySolanaValidatorDebtAccounts::new(DoubleZeroEpoch::new(dz_epoch), &debt.node_id),
+            &RevenueDistributionInstructionData::PaySolanaValidatorDebt {
+                amount: debt.amount,
+                proof,
+            },
+        )
+        .unwrap();
+
+        let recent_blockhash = solana_rpc_client.get_latest_blockhash().await?;
+
+        let message = Message::try_compile(
+            &transaction.signer.pubkey(),
+            &[instruction],
+            &[],
+            recent_blockhash,
+        )
+        .unwrap();
+
+        let versioned_transaction =
+            VersionedTransaction::try_new(VersionedMessage::V0(message), &[&transaction.signer])
+                .unwrap();
+
+        let result = Self::send_or_simulate_transaction(
+            transaction,
+            solana_rpc_client,
+            &versioned_transaction,
+        )
+        .await;
+
+        match result {
+            Ok(success) => {
+                let payment_result = parse_program_logs(debt.amount, debt.node_id, success);
+                Ok(payment_result)
+            }
+            Err(err) => {
+                if let Some(client_error) = err.downcast_ref::<ClientError>() {
+                    match &client_error.kind {
+                        ClientErrorKind::RpcError(RpcError::RpcResponseError {
+                            data: RpcResponseErrorData::SendTransactionPreflightFailure(sim_result),
+                            ..
+                        }) => {
+                            if let Some(TransactionError::InstructionError(
+                                _instruction_code,
+                                _instruction_error,
+                            )) = &sim_result.err
+                            {
+                                let payment_result = DebtCollectionResult {
+                                    amount: debt.amount,
+                                    validator_id: debt.node_id.to_string(),
+                                    result: if let Some(logs) = sim_result.logs.clone() {
+                                        logs.get(4).cloned()
+                                    } else {
+                                        None
+                                    },
+                                    success: false,
+                                };
+                                Ok(payment_result)
+                            } else {
+                                Err(err)
+                            }
+                        }
+                        _ => {
+                            let counter = metrics::counter!("doublezero_validator_debt_pay_debt_transaction_failed", "client_error" => client_error.to_string());
+                            counter.increment(1);
+                            Err(err)
+                        }
+                    }
+                } else {
+                    Err(err)
+                }
+            }
+        }
     }
 
     // TODO: Get rid of this because only one thing calls it.

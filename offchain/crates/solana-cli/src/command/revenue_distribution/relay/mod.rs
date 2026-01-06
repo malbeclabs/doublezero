@@ -12,6 +12,7 @@ use doublezero_solana_client_tools::{
     payer::{SolanaPayerOptions, Wallet},
     rpc::DoubleZeroLedgerConnection,
 };
+use doublezero_solana_sdk::revenue_distribution::fetch::try_fetch_config;
 use doublezero_solana_validator_debt::worker;
 
 #[derive(Debug, Clone, ValueEnum)]
@@ -74,7 +75,10 @@ async fn execute_pay_solana_validator_debt(
     let dz_connection = DoubleZeroLedgerConnection::from(dz_env);
 
     let dry_run = wallet.dry_run;
-    let tx_results = worker::pay_solana_validator_debt(wallet, dz_connection, epoch).await?;
+    let (_, config) = try_fetch_config(&wallet.connection).await?;
+
+    let tx_results =
+        worker::pay_solana_validator_debt(&wallet, &dz_connection, epoch, &config).await?;
 
     let mut filename: Option<String> = None;
 

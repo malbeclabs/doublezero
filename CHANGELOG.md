@@ -61,6 +61,7 @@ All notable changes to this project will be documented in this file.
   - RFC-11: Onchain Activation ([#2302](https://github.com/malbeclabs/doublezero/pull/2302))
 - Monitor
   - Add link status to device-telemetry metrics to enable Grafana alerts to filter out links that are not in activated status
+  - Add validation for 2Z oracle swapRate to ensure it is an unsigned integer, with warning logs and metrics for malformed values
 - E2E tests
   - Add GetLatency call to qaagent
   - The QA alldevices test now considers device location and connects hosts to nearby devices

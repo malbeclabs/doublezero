@@ -348,6 +348,12 @@ pub fn process_instruction(
         DoubleZeroInstruction::DeallocateResource(value) => {
             process_deallocate_resource(program_id, accounts, &value)?
         }
+        DoubleZeroInstruction::SetDeviceHealth(value) => {
+            process_set_health_device(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::SetLinkHealth(value) => {
+            process_set_health_link(program_id, accounts, &value)?
+        }
     };
     Ok(())
 }

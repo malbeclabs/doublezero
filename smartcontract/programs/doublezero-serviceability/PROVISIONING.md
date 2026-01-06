@@ -11,7 +11,6 @@ Device provisioning is a multi-stage process, with explicit states to represent 
 pub enum DeviceStatus {
 	Pending = 0,                // 1. assign resources and change to DeviceProvisioning
 	Activated = 1,              // 4. device and link health checks have passed and device is ready to connect users
-	Suspended = 2,
 	Deleting = 3,
 	Rejected = 4,
 	Drained = 5,

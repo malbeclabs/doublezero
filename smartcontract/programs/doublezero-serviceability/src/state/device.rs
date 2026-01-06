@@ -1050,3 +1050,75 @@ mod tests {
         assert_eq!(val, val2);
     }
 }
+
+#[cfg(test)]
+mod test_status_transition {
+    use super::*;
+
+    #[test]
+    fn test_check_status_transition_activation() {
+        let mut device = Device {
+            status: DeviceStatus::DeviceProvisioning,
+            desired_status: DeviceDesiredStatus::Activated,
+            device_health: DeviceHealth::ReadyForUsers,
+            ..Device::default()
+        };
+        device.check_status_transition();
+        assert_eq!(device.status, DeviceStatus::Activated);
+    }
+
+    #[test]
+    fn test_check_status_transition_link_provisioning() {
+        let mut device = Device {
+            status: DeviceStatus::DeviceProvisioning,
+            desired_status: DeviceDesiredStatus::Pending,
+            device_health: DeviceHealth::ReadyForLinks,
+            ..Device::default()
+        };
+        device.check_status_transition();
+        assert_eq!(device.status, DeviceStatus::LinkProvisioning);
+    }
+
+    #[test]
+    fn test_check_status_transition_soft_drained() {
+        let mut device = Device {
+            status: DeviceStatus::Activated,
+            desired_status: DeviceDesiredStatus::SoftDrained,
+            ..Device::default()
+        };
+        device.check_status_transition();
+        assert_eq!(device.status, DeviceStatus::SoftDrained);
+    }
+
+    #[test]
+    fn test_check_status_transition_hard_drained() {
+        let mut device = Device {
+            status: DeviceStatus::Activated,
+            desired_status: DeviceDesiredStatus::HardDrained,
+            ..Device::default()
+        };
+        device.check_status_transition();
+        assert_eq!(device.status, DeviceStatus::HardDrained);
+    }
+
+    #[test]
+    fn test_check_status_transition_recovery_from_drains() {
+        let mut device = Device {
+            status: DeviceStatus::SoftDrained,
+            desired_status: DeviceDesiredStatus::Activated,
+            device_health: DeviceHealth::ReadyForUsers,
+            ..Device::default()
+        };
+        device.check_status_transition();
+        assert_eq!(device.status, DeviceStatus::Activated);
+
+        let mut device = Device {
+            status: DeviceStatus::HardDrained,
+            desired_status: DeviceDesiredStatus::Activated,
+            device_health: DeviceHealth::ReadyForUsers,
+            ..Device::default()
+        };
+        device.check_status_transition();
+        assert_eq!(device.status, DeviceStatus::Activated);
+    }
+}

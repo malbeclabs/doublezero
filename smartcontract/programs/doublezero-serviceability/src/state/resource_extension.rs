@@ -12,6 +12,7 @@ const _RESOURCE_EXTENSION_HEADER_SIZE_ID_ALLOCATOR: usize = 83;
 const RESOURCE_EXTENSION_HEADER_SIZE_IP_ALLOCATOR: usize = 88;
 const RESOURCE_EXTENSION_HEADER_SIZE: usize = RESOURCE_EXTENSION_HEADER_SIZE_IP_ALLOCATOR;
 const RESOURCE_EXTENSION_BITMAP_OFFSET: usize = RESOURCE_EXTENSION_HEADER_SIZE.div_ceil(8) * 8; // Align to 8 bytes
+
 #[repr(u8)]
 #[derive(BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

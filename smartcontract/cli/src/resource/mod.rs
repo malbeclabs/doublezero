@@ -3,6 +3,7 @@ use clap::ValueEnum;
 use doublezero_sdk::{commands::device::get::GetDeviceCommand, ResourceType as SdkResourceType};
 
 pub mod allocate;
+pub mod close;
 pub mod create;
 pub mod deallocate;
 pub mod get;

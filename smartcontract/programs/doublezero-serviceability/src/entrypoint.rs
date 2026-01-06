@@ -74,7 +74,8 @@ use crate::{
             update::process_update_multicastgroup,
         },
         resource::{
-            allocate::process_allocate_resource, create::process_create_resource,
+            allocate::process_allocate_resource,
+            closeaccount::process_closeaccount_resource_extension, create::process_create_resource,
             deallocate::process_deallocate_resource,
         },
         user::{
@@ -137,7 +138,9 @@ pub fn process_instruction(
         DoubleZeroInstruction::ActivateLink(value) => {
             process_activate_link(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::ActivateDevice(_) => process_activate_device(program_id, accounts)?,
+        DoubleZeroInstruction::ActivateDevice(value) => {
+            process_activate_device(program_id, accounts, &value)?
+        }
         DoubleZeroInstruction::ActivateUser(value) => {
             process_activate_user(program_id, accounts, &value)?
         }
@@ -339,6 +342,9 @@ pub fn process_instruction(
         }
         DoubleZeroInstruction::DeallocateResource(value) => {
             process_deallocate_resource(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::CloseResource(value) => {
+            process_closeaccount_resource_extension(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::SetDeviceHealth(value) => {
             process_set_health_device(program_id, accounts, &value)?

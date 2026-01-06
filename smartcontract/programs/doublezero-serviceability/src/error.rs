@@ -139,6 +139,8 @@ pub enum DoubleZeroError {
     InvalidFoundationAllowlist, // variant 66
     #[error("Deprecated error")]
     Deprecated, // variant 67
+    #[error("Immutable Field")]
+    ImmutableField, // variant 68
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -146,11 +148,11 @@ impl From<DoubleZeroError> for ProgramError {
         match e {
             DoubleZeroError::Custom(e) => ProgramError::Custom(e),
             DoubleZeroError::InvalidOwnerPubkey => ProgramError::Custom(1),
-            DoubleZeroError::InvalidLocationPubkey => ProgramError::Custom(2),
-            DoubleZeroError::InvalidExchangePubkey => ProgramError::Custom(3),
-            DoubleZeroError::InvalidDeviceAPubkey => ProgramError::Custom(4),
-            DoubleZeroError::InvalidDeviceZPubkey => ProgramError::Custom(5),
-            DoubleZeroError::InvalidDevicePubkey => ProgramError::Custom(6),
+            DoubleZeroError::InvalidExchangePubkey => ProgramError::Custom(2),
+            DoubleZeroError::InvalidDevicePubkey => ProgramError::Custom(3),
+            DoubleZeroError::InvalidLocationPubkey => ProgramError::Custom(4),
+            DoubleZeroError::InvalidDeviceAPubkey => ProgramError::Custom(5),
+            DoubleZeroError::InvalidDeviceZPubkey => ProgramError::Custom(6),
             DoubleZeroError::InvalidStatus => ProgramError::Custom(7),
             DoubleZeroError::NotAllowed => ProgramError::Custom(8),
             DoubleZeroError::InvalidAccountType => ProgramError::Custom(9),
@@ -212,6 +214,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::InvalidArgument => ProgramError::Custom(65),
             DoubleZeroError::InvalidFoundationAllowlist => ProgramError::Custom(66),
             DoubleZeroError::Deprecated => ProgramError::Custom(67),
+            DoubleZeroError::ImmutableField => ProgramError::Custom(68),
         }
     }
 }
@@ -220,11 +223,11 @@ impl From<u32> for DoubleZeroError {
     fn from(e: u32) -> Self {
         match e {
             1 => DoubleZeroError::InvalidOwnerPubkey,
-            2 => DoubleZeroError::InvalidLocationPubkey,
-            3 => DoubleZeroError::InvalidExchangePubkey,
-            4 => DoubleZeroError::InvalidDeviceAPubkey,
-            5 => DoubleZeroError::InvalidDeviceZPubkey,
-            6 => DoubleZeroError::InvalidDevicePubkey,
+            2 => DoubleZeroError::InvalidExchangePubkey,
+            3 => DoubleZeroError::InvalidDevicePubkey,
+            4 => DoubleZeroError::InvalidLocationPubkey,
+            5 => DoubleZeroError::InvalidDeviceAPubkey,
+            6 => DoubleZeroError::InvalidDeviceZPubkey,
             7 => DoubleZeroError::InvalidStatus,
             8 => DoubleZeroError::NotAllowed,
             9 => DoubleZeroError::InvalidAccountType,
@@ -286,6 +289,7 @@ impl From<u32> for DoubleZeroError {
             65 => DoubleZeroError::InvalidArgument,
             66 => DoubleZeroError::InvalidFoundationAllowlist,
             67 => DoubleZeroError::Deprecated,
+            68 => DoubleZeroError::ImmutableField,
             _ => DoubleZeroError::Custom(e),
         }
     }
@@ -380,6 +384,7 @@ mod tests {
             InvalidArgument,
             InvalidFoundationAllowlist,
             Deprecated,
+            ImmutableField,
         ];
         for err in variants {
             let pe: ProgramError = err.clone().into();

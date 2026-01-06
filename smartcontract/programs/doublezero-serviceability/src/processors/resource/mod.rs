@@ -89,7 +89,7 @@ pub fn create_resource(
         "Invalid Resource Account PubKey"
     );
 
-    assert!(resource_account.data.borrow().is_empty());
+    assert!(resource_account.data_is_empty());
 
     let data_size: usize = ResourceExtensionBorrowed::size(&resource_range);
     match resource_type {

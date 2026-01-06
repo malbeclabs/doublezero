@@ -59,8 +59,6 @@ pub fn process_create_resource(
         solana_program::system_program::id(),
         "Invalid System Program Account Owner"
     );
-    // Check if the account is writable
-    assert!(resource_account.is_writable, "PDA Account is not writable");
 
     let globalstate = globalstate_get(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {

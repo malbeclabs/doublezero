@@ -50,6 +50,10 @@ pub fn process_allocate_resource(
 
     // Check the owner of the accounts
     assert_eq!(
+        resource_account.owner, program_id,
+        "Invalid Resource Account Owner"
+    );
+    assert_eq!(
         globalstate_account.owner, program_id,
         "Invalid GlobalState Account Owner"
     );
@@ -83,7 +87,7 @@ pub fn process_allocate_resource(
         "Invalid Resource Account PubKey"
     );
 
-    assert!(!resource_account.data.borrow().is_empty());
+    assert!(!resource_account.data_is_empty());
     assert_eq!(
         resource_account.owner, program_id,
         "Invalid Resource Account Owner"

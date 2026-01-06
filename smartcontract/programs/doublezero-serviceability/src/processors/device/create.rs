@@ -155,6 +155,7 @@ pub fn process_create_device(
         interfaces: vec![],
         users_count: 0,
         max_users: 0, // Initially, the Device is locked and must be activated by modifying the maximum number of users.
+        device_health: DeviceHealth::Pending,
     };
 
     try_acc_create(

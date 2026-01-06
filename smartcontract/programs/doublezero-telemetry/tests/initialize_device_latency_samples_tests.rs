@@ -7,8 +7,8 @@ use doublezero_serviceability::{
     },
     state::{
         accounttype::AccountType,
-        device::{Device, DeviceStatus, DeviceType},
-        link::{Link, LinkLinkType, LinkStatus},
+        device::{Device, DeviceHealth, DeviceStatus, DeviceType},
+        link::{Link, LinkHealth, LinkLinkType, LinkStatus},
     },
 };
 use doublezero_telemetry::{
@@ -431,6 +431,7 @@ async fn test_initialize_device_latency_samples_fail_origin_device_wrong_owner()
         interfaces: vec![],
         users_count: 0,
         max_users: 0,
+        device_health: DeviceHealth::Pending,
     };
 
     let mut device_data = Vec::new();
@@ -502,6 +503,7 @@ async fn test_initialize_device_latency_samples_fail_target_device_wrong_owner()
         interfaces: vec![],
         users_count: 0,
         max_users: 0,
+        device_health: DeviceHealth::Pending,
     };
 
     let mut data = Vec::new();
@@ -574,6 +576,7 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_owner() {
         tunnel_net: NetworkV4::default(),
         side_a_iface_name: "Ethernet0".to_string(),
         side_z_iface_name: "Ethernet1".to_string(),
+        link_health: LinkHealth::ReadyForService,
     };
 
     let mut data = Vec::new();

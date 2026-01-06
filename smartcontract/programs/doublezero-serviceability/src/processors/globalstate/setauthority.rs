@@ -16,6 +16,7 @@ use solana_program::{
 pub struct SetAuthorityArgs {
     pub activator_authority_pk: Option<Pubkey>,
     pub sentinel_authority_pk: Option<Pubkey>,
+    pub health_oracle_pk: Option<Pubkey>,
 }
 
 impl fmt::Debug for SetAuthorityArgs {
@@ -79,6 +80,9 @@ pub fn process_set_authority(
 
     if let Some(sentinel_authority_pk) = value.sentinel_authority_pk {
         globalstate.sentinel_authority_pk = sentinel_authority_pk;
+    }
+    if let Some(health_oracle_pk) = value.health_oracle_pk {
+        globalstate.health_oracle_pk = health_oracle_pk;
     }
 
     try_acc_write(&globalstate, globalstate_account, payer_account, accounts)?;

@@ -211,6 +211,7 @@ mod tests {
             .to_interface()],
             max_users: 255,
             users_count: 0,
+            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
         };
         let location2_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
         let exchange2_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkce");
@@ -245,6 +246,7 @@ mod tests {
             .to_interface()],
             max_users: 255,
             users_count: 0,
+            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
         };
         let location3_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquCkcx");
         let exchange3_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquCkce");
@@ -279,6 +281,7 @@ mod tests {
             .to_interface()],
             max_users: 255,
             users_count: 0,
+            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
         };
         let link = Link {
             account_type: AccountType::Link,
@@ -300,6 +303,7 @@ mod tests {
             contributor_pk,
             side_a_iface_name: "Ethernet1/1".to_string(),
             side_z_iface_name: "Ethernet1/2".to_string(),
+            link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
         };
 
         client

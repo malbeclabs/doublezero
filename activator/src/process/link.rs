@@ -190,6 +190,7 @@ mod tests {
                 code: "TestLink".to_string(),
                 side_a_iface_name: "Ethernet0".to_string(),
                 side_z_iface_name: "Ethernet1".to_string(),
+                link_health: doublezero_serviceability::state::link::LinkHealth::Pending,
             };
 
             let tunnel_cloned = tunnel.clone();
@@ -311,6 +312,7 @@ mod tests {
             code: "TestLink".to_string(),
             side_a_iface_name: "Ethernet0".to_string(),
             side_z_iface_name: "Ethernet1".to_string(),
+            link_health: doublezero_serviceability::state::link::LinkHealth::Pending,
         };
 
         let link_cloned = link.clone();
@@ -367,6 +369,7 @@ mod tests {
                 code: "TestLink".to_string(),
                 side_a_iface_name: "Ethernet0".to_string(),
                 side_z_iface_name: "Ethernet1".to_string(),
+                link_health: doublezero_serviceability::state::link::LinkHealth::Pending,
             };
 
             let _ = link_ips.next_available_block(0, 2);

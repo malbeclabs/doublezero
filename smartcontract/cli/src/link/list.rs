@@ -12,6 +12,7 @@ use doublezero_sdk::{
     },
     Link, LinkLinkType, LinkStatus,
 };
+use doublezero_serviceability::state::link::LinkHealth;
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
@@ -67,6 +68,7 @@ pub struct LinkDisplay {
     pub tunnel_id: u16,
     pub tunnel_net: NetworkV4,
     pub status: LinkStatus,
+    pub health: LinkHealth,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub owner: Pubkey,
 }
@@ -136,6 +138,7 @@ impl ListLinkCliCommand {
                     tunnel_id: link.tunnel_id,
                     tunnel_net: link.tunnel_net,
                     status: link.status,
+                    health: link.link_health,
                     owner: link.owner,
                 }
             })
@@ -224,6 +227,7 @@ mod tests {
             interfaces: vec![],
             max_users: 255,
             users_count: 0,
+            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
         };
         let device2_pubkey = Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9");
         let device2 = Device {
@@ -245,6 +249,7 @@ mod tests {
             interfaces: vec![],
             max_users: 255,
             users_count: 0,
+            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
         };
 
         client.expect_list_device().returning(move |_| {
@@ -275,6 +280,7 @@ mod tests {
             owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9"),
             side_a_iface_name: "eth0".to_string(),
             side_z_iface_name: "eth1".to_string(),
+            link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
         };
 
         client.expect_list_link().returning(move |_| {
@@ -295,7 +301,7 @@ mod tests {
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | code        | contributor       | side_a_name  | side_a_iface_name | side_z_name  | side_z_iface_name | link_type | bandwidth | mtu  | delay_ms | jitter_ms | delay_override_ms | tunnel_id | tunnel_net | status    | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR | tunnel_code | contributor1_code | device2_code | eth0              | device2_code | eth1              | WAN       | 10Gbps    | 4500 | 0.02ms   | 0.00ms    | 0.00ms            | 1234      | 1.2.3.4/32 | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 \n");
+        assert_eq!(output_str, " account                                   | code        | contributor       | side_a_name  | side_a_iface_name | side_z_name  | side_z_iface_name | link_type | bandwidth | mtu  | delay_ms | jitter_ms | delay_override_ms | tunnel_id | tunnel_net | status    | health            | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR | tunnel_code | contributor1_code | device2_code | eth0              | device2_code | eth1              | WAN       | 10Gbps    | 4500 | 0.02ms   | 0.00ms    | 0.00ms            | 1234      | 1.2.3.4/32 | activated | ready-for-service | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 \n");
 
         let mut output = Vec::new();
         let res = ListLinkCliCommand {
@@ -309,7 +315,7 @@ mod tests {
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"code\":\"tunnel_code\",\"contributor_code\":\"contributor1_code\",\"side_a_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"side_a_name\":\"device2_code\",\"side_a_iface_name\":\"eth0\",\"side_z_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"side_z_name\":\"device2_code\",\"side_z_iface_name\":\"eth1\",\"link_type\":\"WAN\",\"bandwidth\":\"10Gbps\",\"mtu\":4500,\"delay_ns\":20000,\"jitter_ns\":1121,\"delay_override_ns\":0,\"tunnel_id\":1234,\"tunnel_net\":\"1.2.3.4/32\",\"status\":\"Activated\",\"owner\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\"}]\n");
+        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"code\":\"tunnel_code\",\"contributor_code\":\"contributor1_code\",\"side_a_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"side_a_name\":\"device2_code\",\"side_a_iface_name\":\"eth0\",\"side_z_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"side_z_name\":\"device2_code\",\"side_z_iface_name\":\"eth1\",\"link_type\":\"WAN\",\"bandwidth\":\"10Gbps\",\"mtu\":4500,\"delay_ns\":20000,\"jitter_ns\":1121,\"delay_override_ns\":0,\"tunnel_id\":1234,\"tunnel_net\":\"1.2.3.4/32\",\"status\":\"Activated\",\"health\":\"ReadyForService\",\"owner\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\"}]\n");
     }
 
     #[test]
@@ -382,6 +388,7 @@ mod tests {
             interfaces: vec![],
             max_users: 255,
             users_count: 0,
+            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
         };
         let device2_pubkey = Pubkey::new_unique();
         let device2 = Device {
@@ -403,6 +410,7 @@ mod tests {
             interfaces: vec![],
             max_users: 255,
             users_count: 0,
+            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
         };
 
         client.expect_list_device().returning(move |_| {
@@ -433,6 +441,7 @@ mod tests {
             owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9"),
             side_a_iface_name: "eth0".to_string(),
             side_z_iface_name: "eth1".to_string(),
+            link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
         };
         let tunnel2_pubkey = Pubkey::new_unique();
         let tunnel2 = Link {
@@ -455,6 +464,7 @@ mod tests {
             owner: Pubkey::new_unique(),
             side_a_iface_name: "eth2".to_string(),
             side_z_iface_name: "eth3".to_string(),
+            link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
         };
 
         client.expect_list_link().returning(move |_| {

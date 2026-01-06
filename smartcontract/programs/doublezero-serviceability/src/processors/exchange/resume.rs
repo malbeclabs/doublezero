@@ -89,24 +89,13 @@ pub fn process_resume_exchange(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::{accounttype::AccountType, globalstate::GlobalState};
+    use crate::state::globalstate::GlobalState;
 
     #[test]
     fn payer_not_in_foundation_allowlist_cannot_resume() {
         let payer = Pubkey::new_unique();
 
-        let globalstate = GlobalState {
-            account_type: AccountType::GlobalState,
-            bump_seed: 0,
-            account_index: 0,
-            foundation_allowlist: vec![],
-            device_allowlist: vec![],
-            user_allowlist: vec![],
-            activator_authority_pk: Pubkey::default(),
-            sentinel_authority_pk: Pubkey::default(),
-            contributor_airdrop_lamports: 0,
-            user_airdrop_lamports: 0,
-        };
+        let globalstate = GlobalState::default();
 
         let is_foundation = globalstate.foundation_allowlist.contains(&payer);
         assert!(!is_foundation);
@@ -116,18 +105,7 @@ mod tests {
     fn payer_in_foundation_allowlist_can_resume() {
         let payer = Pubkey::new_unique();
 
-        let mut globalstate = GlobalState {
-            account_type: AccountType::GlobalState,
-            bump_seed: 0,
-            account_index: 0,
-            foundation_allowlist: vec![],
-            device_allowlist: vec![],
-            user_allowlist: vec![],
-            activator_authority_pk: Pubkey::default(),
-            sentinel_authority_pk: Pubkey::default(),
-            contributor_airdrop_lamports: 0,
-            user_airdrop_lamports: 0,
-        };
+        let mut globalstate = GlobalState::default();
 
         // Not in allowlist: should fail auth condition
         let is_foundation = globalstate.foundation_allowlist.contains(&payer);

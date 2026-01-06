@@ -113,6 +113,55 @@ impl fmt::Display for LinkStatus {
     }
 }
 
+#[repr(u8)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Default)]
+#[borsh(use_discriminant = true)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum LinkHealth {
+    Unknown = 0,
+    #[default]
+    Pending = 1, // this link has never met all RFS criteria
+    ReadyForService = 2, // this link has met all RFS criteria
+    Impaired = 3, // this link has failed one or more RFS criterion after previously reaching ReadyForService
+}
+
+impl From<u8> for LinkHealth {
+    fn from(value: u8) -> Self {
+        match value {
+            0 => LinkHealth::Unknown,
+            1 => LinkHealth::Pending,
+            2 => LinkHealth::ReadyForService,
+            3 => LinkHealth::Impaired,
+            _ => LinkHealth::Unknown,
+        }
+    }
+}
+
+impl FromStr for LinkHealth {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "unknown" => Ok(LinkHealth::Unknown),
+            "pending" => Ok(LinkHealth::Pending),
+            "ready-for-service" => Ok(LinkHealth::ReadyForService),
+            "impaired" => Ok(LinkHealth::Impaired),
+            _ => Err(format!("Invalid LinkHealth: {s}")),
+        }
+    }
+}
+
+impl fmt::Display for LinkHealth {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            LinkHealth::Unknown => write!(f, "unknown"),
+            LinkHealth::Pending => write!(f, "pending"),
+            LinkHealth::ReadyForService => write!(f, "ready-for-service"),
+            LinkHealth::Impaired => write!(f, "impaired"),
+        }
+    }
+}
+
 #[derive(BorshSerialize, Debug, PartialEq, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Link {
@@ -163,14 +212,15 @@ pub struct Link {
     pub side_a_iface_name: String, // 4 + len
     pub side_z_iface_name: String, // 4 + len
     pub delay_override_ns: u64,    // 8
+    pub link_health: LinkHealth,   // 1
 }
 
 impl fmt::Display for Link {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, owner: {}, index: {}, side_a_pk: {}, side_z_pk: {}, tunnel_type: {}, bandwidth: {}, mtu: {}, delay_ns: {}, jitter_ns: {}, tunnel_id: {}, tunnel_net: {}, status: {}, code: {}, contributor_pk: {}",
-            self.account_type, self.owner, self.index, self.side_a_pk, self.side_z_pk, self.link_type, self.bandwidth, self.mtu, self.delay_ns, self.jitter_ns, self.tunnel_id, &self.tunnel_net, self.status, self.code, self.contributor_pk
+            "account_type: {}, owner: {}, index: {}, side_a_pk: {}, side_z_pk: {}, tunnel_type: {}, bandwidth: {}, mtu: {}, delay_ns: {}, jitter_ns: {}, tunnel_id: {}, tunnel_net: {}, status: {}, code: {}, contributor_pk: {}, link_health: {}",
+            self.account_type, self.owner, self.index, self.side_a_pk, self.side_z_pk, self.link_type, self.bandwidth, self.mtu, self.delay_ns, self.jitter_ns, self.tunnel_id, &self.tunnel_net, self.status, self.code, self.contributor_pk, self.link_health
         )
     }
 }
@@ -197,6 +247,7 @@ impl Default for Link {
             side_a_iface_name: String::new(),
             side_z_iface_name: String::new(),
             delay_override_ns: 0,
+            link_health: LinkHealth::Pending,
         }
     }
 }
@@ -225,6 +276,7 @@ impl TryFrom<&[u8]> for Link {
             side_a_iface_name: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             side_z_iface_name: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             delay_override_ns: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            link_health: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::Link {
@@ -362,6 +414,7 @@ mod tests {
             side_a_iface_name: "eth0".to_string(),
             side_z_iface_name: "eth1".to_string(),
             delay_override_ns: 0,
+            link_health: LinkHealth::ReadyForService,
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -413,6 +466,7 @@ mod tests {
             side_a_iface_name: "eth0".to_string(),
             side_z_iface_name: "eth1".to_string(),
             delay_override_ns: 0,
+            link_health: LinkHealth::ReadyForService,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -441,6 +495,7 @@ mod tests {
             side_a_iface_name: "eth0".to_string(),
             side_z_iface_name: "eth1".to_string(),
             delay_override_ns: 0,
+            link_health: LinkHealth::ReadyForService,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -469,6 +524,7 @@ mod tests {
             side_a_iface_name: "eth0".to_string(),
             side_z_iface_name: "eth1".to_string(),
             delay_override_ns: 0,
+            link_health: LinkHealth::ReadyForService,
         };
 
         // For Rejected status, tunnel_net is not validated and should succeed
@@ -497,6 +553,7 @@ mod tests {
             side_a_iface_name: "eth0".to_string(),
             side_z_iface_name: "eth1".to_string(),
             delay_override_ns: 0,
+            link_health: LinkHealth::ReadyForService,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -525,6 +582,7 @@ mod tests {
             side_a_iface_name: "eth0".to_string(),
             side_z_iface_name: "eth1".to_string(),
             delay_override_ns: 0,
+            link_health: LinkHealth::ReadyForService,
         };
         let err_low = val_low.validate();
         assert!(err_low.is_err());
@@ -561,6 +619,7 @@ mod tests {
             status: LinkStatus::Activated,
             side_a_iface_name: "eth0".to_string(),
             side_z_iface_name: "eth1".to_string(),
+            link_health: LinkHealth::ReadyForService,
         };
         let err_low = val_low.validate();
         assert!(err_low.is_err());
@@ -598,6 +657,7 @@ mod tests {
             side_a_iface_name: "eth0".to_string(),
             side_z_iface_name: "eth1".to_string(),
             delay_override_ns: 0,
+            link_health: LinkHealth::ReadyForService,
         };
 
         let err = val.validate();
@@ -627,6 +687,7 @@ mod tests {
             status: LinkStatus::Activated,
             side_a_iface_name: "eth0".to_string(),
             side_z_iface_name: "eth1".to_string(),
+            link_health: LinkHealth::ReadyForService,
         };
         let err_low = val_low.validate();
         assert!(err_low.is_err());
@@ -663,6 +724,7 @@ mod tests {
             status: LinkStatus::Activated,
             side_a_iface_name: "eth0".to_string(),
             side_z_iface_name: "eth1".to_string(),
+            link_health: LinkHealth::ReadyForService,
         };
         let err_low = val_low.validate();
         assert!(err_low.is_err());

@@ -71,7 +71,7 @@ use crate::{
                     remove::process_remove_multicast_sub_allowlist,
                 },
             },
-            closeaccount::process_deactivate_multicastgroup,
+            closeaccount::process_closeaccount_multicastgroup,
             create::process_create_multicastgroup,
             delete::process_delete_multicastgroup,
             reactivate::process_reactivate_multicastgroup,
@@ -270,7 +270,7 @@ pub fn process_instruction(
             process_update_multicastgroup(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::DeactivateMulticastGroup(value) => {
-            process_deactivate_multicastgroup(program_id, accounts, &value)?
+            process_closeaccount_multicastgroup(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::AddMulticastGroupPubAllowlist(value) => {
             process_add_multicastgroup_pub_allowlist(program_id, accounts, &value)?

@@ -1,8 +1,7 @@
 use crate::{
     error::DoubleZeroError,
-    globalstate::globalstate_get,
-    helper::*,
-    state::{contributor::Contributor, link::*},
+    serializer::try_acc_write,
+    state::{contributor::Contributor, globalstate::GlobalState, link::*},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -60,7 +59,7 @@ pub fn process_resume_link(
         "Invalid System Program Account Owner"
     );
 
-    let globalstate = globalstate_get(globalstate_account)?;
+    let globalstate = GlobalState::try_from(globalstate_account)?;
     let contributor = Contributor::try_from(contributor_account)?;
 
     if contributor.owner != *payer_account.key
@@ -77,7 +76,7 @@ pub fn process_resume_link(
 
     link.status = LinkStatus::Activated;
 
-    account_write(link_account, &link, payer_account, system_program)?;
+    try_acc_write(&link, link_account, payer_account, accounts)?;
 
     #[cfg(test)]
     msg!("Resumed: {:?}", link);

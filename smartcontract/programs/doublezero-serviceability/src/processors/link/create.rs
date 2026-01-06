@@ -1,9 +1,12 @@
 use crate::{
     error::DoubleZeroError,
-    globalstate::{globalstate_get_next, globalstate_write},
-    helper::*,
     pda::get_link_pda,
-    state::{accounttype::AccountType, contributor::Contributor, device::Device, link::*},
+    seeds::{SEED_LINK, SEED_PREFIX},
+    serializer::{try_acc_create, try_acc_write},
+    state::{
+        accounttype::AccountType, contributor::Contributor, device::Device,
+        globalstate::GlobalState, link::*,
+    },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -81,12 +84,19 @@ pub fn process_create_link(
         globalstate_account.owner, program_id,
         "Invalid GlobalState Account Owner"
     );
+    assert_eq!(
+        *system_program.unsigned_key(),
+        solana_program::system_program::id(),
+        "Invalid System Program Account Owner"
+    );
 
-    if !link_account.data.borrow().is_empty() {
+    if !link_account.data_is_empty() {
         return Err(ProgramError::AccountAlreadyInitialized);
     }
 
-    let globalstate = globalstate_get_next(globalstate_account)?;
+    let mut globalstate = GlobalState::try_from(globalstate_account)?;
+    globalstate.account_index += 1;
+
     let mut contributor = Contributor::try_from(contributor_account)?;
 
     if contributor.owner != *payer_account.key
@@ -172,22 +182,23 @@ pub fn process_create_link(
         delay_override_ns: 0,
     };
 
-    account_create(
-        link_account,
+    try_acc_create(
         &tunnel,
+        link_account,
         payer_account,
         system_program,
         program_id,
+        &[
+            SEED_PREFIX,
+            SEED_LINK,
+            &globalstate.account_index.to_le_bytes(),
+            &[bump_seed],
+        ],
     )?;
-    account_write(
-        contributor_account,
-        &contributor,
-        payer_account,
-        system_program,
-    )?;
-    account_write(side_a_account, &side_a_dev, payer_account, system_program)?;
-    account_write(side_z_account, &side_z_dev, payer_account, system_program)?;
-    globalstate_write(globalstate_account, &globalstate)?;
+    try_acc_write(&contributor, contributor_account, payer_account, accounts)?;
+    try_acc_write(&side_a_dev, side_a_account, payer_account, accounts)?;
+    try_acc_write(&side_z_dev, side_z_account, payer_account, accounts)?;
+    try_acc_write(&globalstate, globalstate_account, payer_account, accounts)?;
 
     Ok(())
 }

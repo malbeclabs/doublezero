@@ -1,20 +1,20 @@
 use crate::{
     error::DoubleZeroError,
-    globalstate::{globalstate_get_next, globalstate_write},
-    helper::*,
     pda::{get_accesspass_pda, get_user_old_pda, get_user_pda},
     seeds::{SEED_PREFIX, SEED_USER},
+    serializer::{try_acc_create, try_acc_write},
     state::{
         accesspass::{AccessPass, AccessPassStatus, AccessPassType},
-        accounttype::{AccountType, AccountTypeInfo},
+        accounttype::AccountType,
         device::{Device, DeviceStatus},
+        globalstate::GlobalState,
         user::*,
     },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
-use doublezero_program_common::{resize_account::resize_account_if_needed, types::NetworkV4};
+use doublezero_program_common::types::NetworkV4;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     clock::Clock,
@@ -69,7 +69,7 @@ pub fn process_create_user(
     // Check if the payer is a signer
     assert!(payer_account.is_signer, "Payer must be a signer");
 
-    if !user_account.data.borrow().is_empty() {
+    if !user_account.data_is_empty() {
         return Err(ProgramError::AccountAlreadyInitialized);
     }
     if accesspass_account.data_is_empty() {
@@ -80,7 +80,8 @@ pub fn process_create_user(
         "Invalid AccessPass Account Owner"
     );
 
-    let globalstate = globalstate_get_next(globalstate_account)?;
+    let mut globalstate = GlobalState::try_from(globalstate_account)?;
+    globalstate.account_index += 1;
 
     let (expected_old_pda_account, bump_old_seed) =
         get_user_old_pda(program_id, globalstate.account_index);
@@ -212,9 +213,9 @@ pub fn process_create_user(
     };
 
     if pda_ver == PDAVersion::V1 {
-        account_create_with_seed(
-            user_account,
+        try_acc_create(
             &user,
+            user_account,
             payer_account,
             system_program,
             program_id,
@@ -225,11 +226,11 @@ pub fn process_create_user(
                 &[bump_old_seed],
             ],
         )?;
-        globalstate_write(globalstate_account, &globalstate)?;
+        try_acc_write(&globalstate, globalstate_account, payer_account, accounts)?;
     } else {
-        account_create_with_seed(
-            user_account,
+        try_acc_create(
             &user,
+            user_account,
             payer_account,
             system_program,
             program_id,
@@ -243,14 +244,8 @@ pub fn process_create_user(
         )?
     }
 
-    account_write(device_account, &device, payer_account, system_program)?;
-    resize_account_if_needed(
-        accesspass_account,
-        payer_account,
-        accounts,
-        accesspass.size(),
-    )?;
-    accesspass.try_serialize(accesspass_account)?;
+    try_acc_write(&device, device_account, payer_account, accounts)?;
+    try_acc_write(&accesspass, accesspass_account, payer_account, accounts)?;
 
     Ok(())
 }

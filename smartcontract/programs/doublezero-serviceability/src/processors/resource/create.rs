@@ -1,4 +1,4 @@
-use crate::{error::DoubleZeroError, globalstate::globalstate_get};
+use crate::{error::DoubleZeroError, state::globalstate::GlobalState};
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 #[cfg(test)]
@@ -60,7 +60,7 @@ pub fn process_create_resource(
         "Invalid System Program Account Owner"
     );
 
-    let globalstate = globalstate_get(globalstate_account)?;
+    let globalstate = GlobalState::try_from(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }

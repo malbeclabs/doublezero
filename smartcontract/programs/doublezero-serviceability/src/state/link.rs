@@ -1,7 +1,6 @@
 use crate::{
     error::{DoubleZeroError, Validate},
-    seeds::SEED_LINK,
-    state::accounttype::{AccountType, AccountTypeInfo},
+    state::accounttype::AccountType,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use doublezero_program_common::types::NetworkV4;
@@ -202,44 +201,6 @@ impl Default for Link {
     }
 }
 
-impl AccountTypeInfo for Link {
-    fn seed(&self) -> &[u8] {
-        SEED_LINK
-    }
-    fn size(&self) -> usize {
-        1 + 32
-            + 16
-            + 1
-            + 32
-            + 32
-            + 1
-            + 8
-            + 4
-            + 8
-            + 8
-            + 2
-            + 5
-            + 1
-            + 4
-            + self.code.len()
-            + 32
-            + 4
-            + self.side_a_iface_name.len()
-            + 4
-            + self.side_z_iface_name.len()
-            + 8
-    }
-    fn index(&self) -> u128 {
-        self.index
-    }
-    fn bump_seed(&self) -> u8 {
-        self.bump_seed
-    }
-    fn owner(&self) -> Pubkey {
-        self.owner
-    }
-}
-
 impl TryFrom<&[u8]> for Link {
     type Error = ProgramError;
 
@@ -409,7 +370,10 @@ mod tests {
         val.validate().unwrap();
         val2.validate().unwrap();
 
-        assert_eq!(val.size(), val2.size());
+        assert_eq!(
+            borsh::object_length(&val).unwrap(),
+            borsh::object_length(&val2).unwrap()
+        );
         assert_eq!(val.owner, val2.owner);
         assert_eq!(val.contributor_pk, val2.contributor_pk);
         assert_eq!(val.side_a_pk, val2.side_a_pk);
@@ -420,7 +384,11 @@ mod tests {
         assert_eq!(val.code, val2.code);
         assert_eq!(val.side_a_iface_name, val2.side_a_iface_name);
         assert_eq!(val.side_z_iface_name, val2.side_z_iface_name);
-        assert_eq!(data.len(), val.size(), "Invalid Size");
+        assert_eq!(
+            data.len(),
+            borsh::object_length(&val).unwrap(),
+            "Invalid Size"
+        );
     }
 
     #[test]

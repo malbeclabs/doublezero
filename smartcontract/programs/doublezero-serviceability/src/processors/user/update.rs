@@ -1,13 +1,13 @@
 use crate::{
     error::DoubleZeroError,
     format_option,
-    globalstate::globalstate_get,
-    helper::*,
-    state::{accounttype::AccountTypeInfo, user::*},
+    helper::format_option_displayable,
+    serializer::try_acc_write,
+    state::{globalstate::GlobalState, user::*},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
-use doublezero_program_common::{resize_account::resize_account_if_needed, types::NetworkV4};
+use doublezero_program_common::types::NetworkV4;
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -73,7 +73,7 @@ pub fn process_update_user(
     // Check if the account is writable
     assert!(user_account.is_writable, "PDA Account is not writable");
 
-    let globalstate = globalstate_get(globalstate_account)?;
+    let globalstate = GlobalState::try_from(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }
@@ -99,8 +99,8 @@ pub fn process_update_user(
         user.validator_pubkey = value;
     }
 
-    resize_account_if_needed(user_account, payer_account, accounts, user.size())?;
-    user.try_serialize(user_account)?;
+    try_acc_write(&user, user_account, payer_account, accounts)?;
+
     #[cfg(test)]
     msg!("Updated: {:?}", user);
 

@@ -1,9 +1,8 @@
 use crate::{
     error::{DoubleZeroError, Validate},
     helper::is_global,
-    seeds::SEED_DEVICE,
     state::{
-        accounttype::{AccountType, AccountTypeInfo},
+        accounttype::AccountType,
         interface::{CurrentInterfaceVersion, Interface},
     },
 };
@@ -235,48 +234,6 @@ impl fmt::Display for Device {
             &self.public_ip, &self.dz_prefixes, self.status, self.code, self.metrics_publisher_pk, self.mgmt_vrf, self.interfaces,
             self.reference_count, self.users_count, self.max_users
         )
-    }
-}
-
-impl AccountTypeInfo for Device {
-    fn seed(&self) -> &[u8] {
-        SEED_DEVICE
-    }
-    fn size(&self) -> usize {
-        1 + 32
-            + 16
-            + 1
-            + 32
-            + 32
-            + 1
-            + 4
-            + 1
-            + 4
-            + self.code.len()
-            + 4
-            + 5 * self.dz_prefixes.len()
-            + 32
-            + 32
-            + 4
-            + self.mgmt_vrf.len()
-            + 4
-            + self
-                .interfaces
-                .iter()
-                .map(|iface| iface.size())
-                .sum::<usize>()
-            + 4
-            + 2
-            + 2
-    }
-    fn bump_seed(&self) -> u8 {
-        self.bump_seed
-    }
-    fn index(&self) -> u128 {
-        self.index
-    }
-    fn owner(&self) -> Pubkey {
-        self.owner
     }
 }
 
@@ -818,7 +775,10 @@ mod tests {
         val.validate().unwrap();
         val2.validate().unwrap();
 
-        assert_eq!(val.size(), val2.size());
+        assert_eq!(
+            borsh::object_length(&val).unwrap(),
+            borsh::object_length(&val2).unwrap()
+        );
         assert_eq!(val.owner, val2.owner);
         assert_eq!(val.code, val2.code);
         assert_eq!(val.index, val2.index);
@@ -836,7 +796,11 @@ mod tests {
         assert_eq!(val.interfaces, val2.interfaces);
         assert_eq!(val.users_count, val2.users_count);
         assert_eq!(val.max_users, val2.max_users);
-        assert_eq!(data.len(), val.size(), "Invalid Size");
+        assert_eq!(
+            data.len(),
+            borsh::object_length(&val).unwrap(),
+            "Invalid Size"
+        );
     }
 
     fn size_of_pre_dzd_metadata_device(code_len: usize, dz_prefixes_len: usize) -> usize {
@@ -872,7 +836,10 @@ mod tests {
         // trim data to oldsize
         let val2 = Device::try_from(&data[..oldsize]).unwrap();
 
-        assert_eq!(val.size(), val2.size());
+        assert_eq!(
+            borsh::object_length(&val).unwrap(),
+            borsh::object_length(&val2).unwrap()
+        );
         assert_eq!(val, val2);
     }
 }

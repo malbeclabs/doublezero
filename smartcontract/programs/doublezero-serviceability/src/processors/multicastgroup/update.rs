@@ -1,5 +1,7 @@
 use crate::{
-    error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::multicastgroup::*,
+    error::DoubleZeroError,
+    serializer::try_acc_write,
+    state::{globalstate::GlobalState, multicastgroup::*},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -68,7 +70,7 @@ pub fn process_update_multicastgroup(
         "PDA Account is not writable"
     );
     // Parse the global state account & check if the payer is in the allowlist
-    let globalstate = globalstate_get(globalstate_account)?;
+    let globalstate = GlobalState::try_from(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }
@@ -93,11 +95,11 @@ pub fn process_update_multicastgroup(
         multicastgroup.subscriber_count = *subscriber_count;
     }
 
-    account_write(
-        multicastgroup_account,
+    try_acc_write(
         &multicastgroup,
+        multicastgroup_account,
         payer_account,
-        system_program,
+        accounts,
     )?;
 
     msg!("Updated: {:?}", multicastgroup);

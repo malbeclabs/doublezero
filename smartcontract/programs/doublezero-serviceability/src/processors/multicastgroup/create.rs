@@ -1,9 +1,9 @@
 use crate::{
     error::DoubleZeroError,
-    globalstate::{globalstate_get_next, globalstate_write},
-    helper::*,
     pda::get_multicastgroup_pda,
-    state::{accounttype::AccountType, multicastgroup::*},
+    seeds::{SEED_MULTICAST_GROUP, SEED_PREFIX},
+    serializer::{try_acc_create, try_acc_write},
+    state::{accounttype::AccountType, globalstate::GlobalState, multicastgroup::*},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -83,13 +83,15 @@ pub fn process_create_multicastgroup(
         "Invalid MulticastGroup Bump Seed"
     );
     // Parse the global state account & check if the payer is in the allowlist
-    let globalstate = globalstate_get_next(globalstate_account)?;
+    let mut globalstate = GlobalState::try_from(globalstate_account)?;
+    globalstate.account_index += 1;
+
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
     // Check if the account is already initialized
-    if !mgroup_account.data.borrow().is_empty() {
+    if !mgroup_account.data_is_empty() {
         return Err(ProgramError::AccountAlreadyInitialized);
     }
 
@@ -107,14 +109,20 @@ pub fn process_create_multicastgroup(
         subscriber_count: 0,
     };
 
-    account_create(
-        mgroup_account,
+    try_acc_create(
         &multicastgroup,
+        mgroup_account,
         payer_account,
         system_program,
         program_id,
+        &[
+            SEED_PREFIX,
+            SEED_MULTICAST_GROUP,
+            &globalstate.account_index.to_le_bytes(),
+            &[bump_seed],
+        ],
     )?;
-    globalstate_write(globalstate_account, &globalstate)?;
+    try_acc_write(&globalstate, globalstate_account, payer_account, accounts)?;
 
     Ok(())
 }

@@ -48,23 +48,6 @@ user_airdrop_lamports: {}",
     }
 }
 
-impl GlobalState {
-    pub fn size(&self) -> usize {
-        1 + 1
-            + 16
-            + 4
-            + (self.foundation_allowlist.len() * 32)
-            + 4
-            + (self.device_allowlist.len() * 32)
-            + 4
-            + (self.user_allowlist.len() * 32)
-            + 32
-            + 32
-            + 8
-            + 8
-    }
-}
-
 impl TryFrom<&[u8]> for GlobalState {
     type Error = ProgramError;
 
@@ -113,6 +96,12 @@ impl Validate for GlobalState {
             msg!("Invalid account type: {}", self.account_type);
             return Err(DoubleZeroError::InvalidAccountType);
         }
+
+        if self.foundation_allowlist.is_empty() {
+            msg!("Foundation allowlist cannot be empty");
+            return Err(DoubleZeroError::InvalidFoundationAllowlist);
+        }
+
         Ok(())
     }
 }
@@ -170,14 +159,21 @@ mod tests {
         val.validate().unwrap();
         val2.validate().unwrap();
 
-        assert_eq!(val.size(), val2.size());
+        assert_eq!(
+            borsh::object_length(&val).unwrap(),
+            borsh::object_length(&val2).unwrap()
+        );
         assert_eq!(val.account_index, val2.account_index);
         assert_eq!(val.foundation_allowlist, val2.foundation_allowlist);
         assert_eq!(val.device_allowlist, val2.device_allowlist);
         assert_eq!(val.user_allowlist, val2.user_allowlist);
         assert_eq!(val.activator_authority_pk, val2.activator_authority_pk);
         assert_eq!(val.sentinel_authority_pk, val2.sentinel_authority_pk);
-        assert_eq!(data.len(), val.size(), "Invalid Size");
+        assert_eq!(
+            data.len(),
+            borsh::object_length(&val).unwrap(),
+            "Invalid Size"
+        );
         assert_eq!(
             val.contributor_airdrop_lamports,
             val2.contributor_airdrop_lamports

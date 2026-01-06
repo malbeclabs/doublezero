@@ -36,7 +36,7 @@ pub fn process_device_event(
 
             match res {
                 Ok(signature) => {
-                    write!(&mut log_msg, " Activated {signature}").unwrap();
+                    write!(&mut log_msg, " DeviceProvisioning {signature}").unwrap();
 
                     devices.insert(*pubkey, DeviceState::new(device));
                     metrics::counter!(
@@ -49,6 +49,21 @@ pub fn process_device_event(
                 Err(e) => write!(&mut log_msg, " Error {e}").unwrap(),
             }
             info!("{log_msg}");
+        }
+        DeviceStatus::DeviceProvisioning | DeviceStatus::LinkProvisioning => {
+            let mut mgr = InterfaceMgr::new(client, Some(segment_routing_ids), link_ips);
+            mgr.process_device_interfaces(pubkey, device);
+
+            match devices.entry(*pubkey) {
+                Entry::Occupied(mut entry) => entry.get_mut().update(device),
+                Entry::Vacant(entry) => {
+                    info!(
+                        "Add Device: {} public_ip: {} dz_prefixes: {} ",
+                        device.code, &device.public_ip, &device.dz_prefixes,
+                    );
+                    entry.insert(DeviceState::new(device));
+                }
+            }
         }
         DeviceStatus::Activated => {
             let mut mgr = InterfaceMgr::new(client, Some(segment_routing_ids), link_ips);

@@ -353,12 +353,15 @@ impl Device {
     pub fn check_status_transition(&mut self) {
         match (self.status, self.desired_status, self.device_health) {
             // Activation transition
+            (DeviceStatus::DeviceProvisioning, _, DeviceHealth::ReadyForLinks) => {
+                self.status = DeviceStatus::LinkProvisioning;
+            }
             (
                 DeviceStatus::DeviceProvisioning,
                 DeviceDesiredStatus::Activated,
-                DeviceHealth::ReadyForLinks,
+                DeviceHealth::ReadyForUsers,
             ) => {
-                self.status = DeviceStatus::LinkProvisioning;
+                self.status = DeviceStatus::Activated;
             }
             (
                 DeviceStatus::LinkProvisioning,

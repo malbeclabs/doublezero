@@ -229,17 +229,35 @@ func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 
 		echo "==> Populate link information onchain"
 		doublezero link create wan --code "la2-dz01:ny5-dz01" --contributor co01 --side-a la2-dz01 --side-a-interface Ethernet2 --side-z ny5-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3 -w
+		doublezero link set-health --pubkey "la2-dz01:ny5-dz01" --health ready-for-service
+		doublezero link update --pubkey "la2-dz01:ny5-dz01" --desired-status activated
 		doublezero link create wan --code "ny5-dz01:ld4-dz01" --contributor co01 --side-a ny5-dz01 --side-a-interface Vlan4001 --side-z ld4-dz01 --side-z-interface Vlan4001 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3
+		doublezero link set-health --pubkey "ny5-dz01:ld4-dz01" --health ready-for-service
+		doublezero link update --pubkey "ny5-dz01:ld4-dz01" --desired-status activated
 		doublezero link create wan --code "ld4-dz01:frk-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet3 --side-z frk-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 25 --jitter-ms 10
+		doublezero link set-health --pubkey "ld4-dz01:frk-dz01" --health ready-for-service
+		doublezero link update --pubkey "ld4-dz01:frk-dz01" --desired-status activated
 		doublezero link create wan --code "ld4-dz01:sg1-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet4 --side-z sg1-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 120 --jitter-ms 9
+		doublezero link set-health --pubkey "ld4-dz01:sg1-dz01" --health ready-for-service
+		doublezero link update --pubkey "ld4-dz01:sg1-dz01" --desired-status activated
 		doublezero link create wan --code "sg1-dz01:ty2-dz01" --contributor co01 --side-a sg1-dz01 --side-a-interface Ethernet3 --side-z ty2-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 7
+		doublezero link set-health --pubkey "sg1-dz01:ty2-dz01" --health ready-for-service
+		doublezero link update --pubkey "sg1-dz01:ty2-dz01" --desired-status activated
 		doublezero link create wan --code "ty2-dz01:la2-dz01" --contributor co01 --side-a ty2-dz01 --side-a-interface Ethernet3 --side-z la2-dz01 --side-z-interface Ethernet3 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 10
+		doublezero link set-health --pubkey "ty2-dz01:la2-dz01" --health ready-for-service
+		doublezero link update --pubkey "ty2-dz01:la2-dz01" --desired-status activated
 		# For testing link.delay_override_ms:
 		doublezero link create wan --code "ny5-dz01:la2-dz01" --contributor co01 --side-a ny5-dz01 --side-a-interface Ethernet4 --side-z la2-dz01 --side-z-interface Ethernet4 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3
+		doublezero link set-health --pubkey "ny5-dz01:la2-dz01" --health ready-for-service
+		doublezero link update --pubkey "ny5-dz01:la2-dz01" --desired-status activated
 		# For testing link.status=soft-drained:
 		doublezero link create wan --code "ny5-dz01_e5:la2-dz01_e5" --contributor co01 --side-a ny5-dz01 --side-a-interface Ethernet5 --side-z la2-dz01 --side-z-interface Ethernet5 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3
+		doublezero link set-health --pubkey "ny5-dz01_e5:la2-dz01_e5" --health ready-for-service
+		doublezero link update --pubkey "ny5-dz01_e5:la2-dz01_e5" --desired-status activated
 		# For testing link.status=hard-drained:
 		doublezero link create wan --code "ny5-dz01_e6:la2-dz01_e6" --contributor co01 --side-a ny5-dz01 --side-a-interface Ethernet6 --side-z la2-dz01 --side-z-interface Ethernet6 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 8 --jitter-ms 3
+		doublezero link set-health --pubkey "ny5-dz01_e6:la2-dz01_e6" --health ready-for-service
+		doublezero link update --pubkey "ny5-dz01_e6:la2-dz01_e6" --desired-status activated
 
 		echo "===> Set delay override for ny5-dz01:la2-dz01 link"
 		doublezero link update --pubkey HjiDwnhwzZFwm9yBmPsBThEah7w6kJDuutjCktoF7m1 --delay-override-ms 500

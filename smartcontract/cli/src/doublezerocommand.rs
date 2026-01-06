@@ -34,6 +34,7 @@ use doublezero_sdk::{
             },
             list::ListDeviceCommand,
             reject::RejectDeviceCommand,
+            sethealth::SetDeviceHealthCommand,
             update::UpdateDeviceCommand,
         },
         exchange::{
@@ -50,7 +51,8 @@ use doublezero_sdk::{
             accept::AcceptLinkCommand, activate::ActivateLinkCommand,
             closeaccount::CloseAccountLinkCommand, create::CreateLinkCommand,
             delete::DeleteLinkCommand, get::GetLinkCommand, latency::LatencyLinkCommand,
-            list::ListLinkCommand, reject::RejectLinkCommand, update::UpdateLinkCommand,
+            list::ListLinkCommand, reject::RejectLinkCommand, sethealth::SetLinkHealthCommand,
+            update::UpdateLinkCommand,
         },
         location::{
             create::CreateLocationCommand, delete::DeleteLocationCommand, get::GetLocationCommand,
@@ -165,6 +167,7 @@ pub trait CliCommand {
     fn list_device(&self, cmd: ListDeviceCommand) -> eyre::Result<HashMap<Pubkey, Device>>;
     fn update_device(&self, cmd: UpdateDeviceCommand) -> eyre::Result<Signature>;
     fn delete_device(&self, cmd: DeleteDeviceCommand) -> eyre::Result<Signature>;
+    fn set_device_health(&self, cmd: SetDeviceHealthCommand) -> eyre::Result<Signature>;
 
     fn activate_device(&self, cmd: ActivateDeviceCommand) -> eyre::Result<Signature>;
     fn reject_device(&self, cmd: RejectDeviceCommand) -> eyre::Result<Signature>;
@@ -195,6 +198,7 @@ pub trait CliCommand {
     fn latency_link(&self, cmd: LatencyLinkCommand) -> eyre::Result<Vec<LinkLatencyStats>>;
     fn reject_link(&self, cmd: RejectLinkCommand) -> eyre::Result<Signature>;
     fn closeaccount_link(&self, cmd: CloseAccountLinkCommand) -> eyre::Result<Signature>;
+    fn set_link_health(&self, cmd: SetLinkHealthCommand) -> eyre::Result<Signature>;
 
     fn create_user(&self, cmd: CreateUserCommand) -> eyre::Result<(Signature, Pubkey)>;
     fn create_subscribe_user(
@@ -438,6 +442,9 @@ impl CliCommand for CliCommandImpl<'_> {
     fn delete_device(&self, cmd: DeleteDeviceCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
+    fn set_device_health(&self, cmd: SetDeviceHealthCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
     fn activate_device(&self, cmd: ActivateDeviceCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
@@ -502,6 +509,9 @@ impl CliCommand for CliCommandImpl<'_> {
         cmd.execute(self.client)
     }
     fn reject_link(&self, cmd: RejectLinkCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn set_link_health(&self, cmd: SetLinkHealthCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
     fn closeaccount_link(&self, cmd: CloseAccountLinkCommand) -> eyre::Result<Signature> {

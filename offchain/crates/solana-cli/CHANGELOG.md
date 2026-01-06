@@ -7,8 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- migrate `harvest-2z` Jupiter integration to authenticated `api.jup.ag` with optional `--jupiter-api-key` (falls back to `lite-api.jup.ag` without a key) ([#242](https://github.com/doublezerofoundation/doublezero-offchain/pull/242))
 - update return value from pay_debt command ([#228](https://github.com/doublezerofoundation/doublezero-offchain/pull/228))
-
 - uptick version to 0.3.2 ([#241](https://github.com/doublezerofoundation/doublezero-offchain/pull/241))
 - handle missing fee fields for `harvest-2z` Jupiter quotes ([#239](https://github.com/doublezerofoundation/doublezero-offchain/pull/239))
 

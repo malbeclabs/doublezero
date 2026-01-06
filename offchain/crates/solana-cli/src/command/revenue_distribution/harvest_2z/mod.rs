@@ -7,7 +7,7 @@ use doublezero_solana_client_tools::{
     payer::{SolanaPayerOptions, TransactionOutcome, Wallet},
 };
 use doublezero_solana_sdk::revenue_distribution::env::mainnet::DOUBLEZERO_MINT_KEY;
-use jupiter::quote::JupiterLegacyQuoteResponse;
+use jupiter::{JupiterClient, quote::JupiterLegacyQuoteResponse};
 use solana_client::rpc_config::{
     RpcSimulateTransactionAccountsConfig, RpcSimulateTransactionConfig,
 };
@@ -25,10 +25,15 @@ const TOKEN_ACCOUNT_RENT_EXEMPTION_LAMPORTS: u64 = 2_039_280;
 
 #[derive(Debug, Args, Clone)]
 pub struct Harvest2zCommand {
-    /// See https://lite-api.jup.ag/swap/v1/program-id-to-label for available
+    /// See https://dev.jup.ag/api-reference/swap/program-id-to-label for available
     /// program ID labels.
     #[arg(long, value_name = "JUPITER_LABEL")]
     specific_dex: Option<String>,
+
+    /// Jupiter API key for authenticated access. If not provided, falls back
+    /// to the legacy lite-api.jup.ag endpoint (deprecated Jan 31 2026).
+    #[arg(long, value_name = "API_KEY")]
+    jupiter_api_key: Option<String>,
 
     #[command(flatten)]
     solana_payer_options: SolanaPayerOptions,
@@ -38,8 +43,11 @@ impl Harvest2zCommand {
     pub async fn try_into_execute(self) -> Result<()> {
         let Self {
             specific_dex,
+            jupiter_api_key,
             solana_payer_options,
         } = self;
+
+        let jupiter_client = JupiterClient::new(jupiter_api_key.as_deref())?;
 
         let wallet = Wallet::try_from(solana_payer_options)?;
         ensure!(
@@ -83,6 +91,7 @@ impl Harvest2zCommand {
         };
 
         let mut quote_response = try_quote_sol_to_2z(
+            &jupiter_client,
             input_sol_amount,
             convert_2z_context.discount_params.max_discount,
             specific_dex,
@@ -110,7 +119,7 @@ impl Harvest2zCommand {
             cleanup_instruction: jupiter_cleanup_instruction,
             other_instructions: jupiter_other_instructions,
             address_lookup_table_addresses,
-        } = swap_request.try_execute().await?;
+        } = swap_request.try_execute(&jupiter_client).await?;
 
         let mut instructions = Vec::new();
         for jup_ix in jupiter_setup_instructions {
@@ -221,6 +230,7 @@ impl Harvest2zCommand {
 }
 
 async fn try_quote_sol_to_2z(
+    jupiter_client: &JupiterClient,
     amount: u64,
     max_discount_rate: u64,
     specific_dex: Option<String>,
@@ -238,9 +248,8 @@ async fn try_quote_sol_to_2z(
         ..Default::default()
     };
 
-    // Only attempt 5 times, which should take about 2 seconds.
     for _ in 0..5 {
-        let response = quote_request.try_execute().await?;
+        let response = quote_request.try_execute(jupiter_client).await?;
 
         // Any route plans that involve more intermediate steps will not fit in
         // the transaction.

@@ -1,7 +1,9 @@
-use anyhow::{Context, Result, ensure};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
-const JUPITER_LEGACY_QUOTE_ENDPOINT: &str = "https://lite-api.jup.ag/swap/v1/quote";
+use super::JupiterClient;
+
+const JUPITER_QUOTE_PATH: &str = "/swap/v1/quote";
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub enum JupiterSwapMode {
@@ -48,24 +50,8 @@ pub struct JupiterLegacyQuoteRequest {
 }
 
 impl JupiterLegacyQuoteRequest {
-    pub async fn try_execute(&self) -> Result<JupiterLegacyQuoteResponse> {
-        let client = reqwest::Client::new();
-
-        let request = client
-            .get(JUPITER_LEGACY_QUOTE_ENDPOINT)
-            .query(self)
-            .build()?;
-
-        let response = client.execute(request).await?;
-        ensure!(
-            response.status().is_success(),
-            "Jupiter legacy quote request failed"
-        );
-
-        response
-            .json()
-            .await
-            .context("Malformed Jupiter legacy quote response")
+    pub async fn try_execute(&self, client: &JupiterClient) -> Result<JupiterLegacyQuoteResponse> {
+        client.get(JUPITER_QUOTE_PATH, self).await
     }
 }
 

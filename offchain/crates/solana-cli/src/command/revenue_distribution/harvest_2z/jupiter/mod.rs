@@ -1,8 +1,10 @@
+pub mod client;
 pub mod quote;
 pub mod swap_instructions;
 
 //
 
+pub use client::JupiterClient;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]

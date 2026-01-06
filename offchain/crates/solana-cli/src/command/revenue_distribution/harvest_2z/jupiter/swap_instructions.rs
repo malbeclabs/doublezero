@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, ensure};
+use anyhow::Result;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 use solana_sdk::{
@@ -6,8 +6,9 @@ use solana_sdk::{
     pubkey::Pubkey,
 };
 
-const JUPITER_LEGACY_SWAP_INSTRUCTIONS_ENDPOINT: &str =
-    "https://lite-api.jup.ag/swap/v1/swap-instructions";
+use super::JupiterClient;
+
+const JUPITER_SWAP_INSTRUCTIONS_PATH: &str = "/swap/v1/swap-instructions";
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -116,22 +117,10 @@ pub struct JupiterLegacySwapInstructionsRequest {
 }
 
 impl JupiterLegacySwapInstructionsRequest {
-    pub async fn try_execute(&self) -> Result<JupiterLegacySwapInstructionsResponse> {
-        let client = reqwest::Client::new();
-
-        let response = client
-            .post(JUPITER_LEGACY_SWAP_INSTRUCTIONS_ENDPOINT)
-            .json(self)
-            .send()
-            .await?;
-        ensure!(
-            response.status().is_success(),
-            "Jupiter legacy swap instructions request failed"
-        );
-
-        response
-            .json()
-            .await
-            .context("Malformed Jupiter legacy swap instructions response")
+    pub async fn try_execute(
+        &self,
+        client: &JupiterClient,
+    ) -> Result<JupiterLegacySwapInstructionsResponse> {
+        client.post(JUPITER_SWAP_INSTRUCTIONS_PATH, self).await
     }
 }

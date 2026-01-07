@@ -24,6 +24,9 @@ var (
 		"snmp-mib-ifmib-ifindex": "show snmp mib ifmib ifindex",
 		"isis-database-detail":   "show isis database detail",
 	}
+	defaultStateToCollectCustom = []string{
+		"bgp-sockets",
+	}
 )
 
 type PresignClient interface {
@@ -48,6 +51,7 @@ type Config struct {
 	ShutdownTimeout               time.Duration
 	MaxBodySize                   int64
 	StateToCollectShowCommands    map[string]string
+	StateToCollectCustom          []string
 }
 
 func (c *Config) Validate() error {
@@ -82,6 +86,9 @@ func (c *Config) Validate() error {
 	}
 	if c.StateToCollectShowCommands == nil {
 		c.StateToCollectShowCommands = defaultStateToCollectShowCommands
+	}
+	if c.StateToCollectCustom == nil {
+		c.StateToCollectCustom = defaultStateToCollectCustom
 	}
 	return nil
 }

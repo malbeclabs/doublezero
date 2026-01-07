@@ -29,7 +29,9 @@ require (
 	github.com/jwhited/corebgp v0.8.5
 	github.com/klauspost/compress v1.18.2
 	github.com/lmittmann/tint v1.1.2
+	github.com/m-lab/tcp-info v1.9.0
 	github.com/maxmind/mmdbwriter v1.1.0
+	github.com/mdlayher/netlink v1.8.0
 	github.com/minio/minio-go v6.0.14+incompatible
 	github.com/mr-tron/base58 v1.2.0
 	github.com/near/borsh-go v0.3.1
@@ -115,10 +117,12 @@ require (
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/logrusorgru/aurora v2.0.3+incompatible // indirect
 	github.com/lufia/plan9stats v0.0.0-20250317134145-8bc96cf8fc35 // indirect
+	github.com/m-lab/go v0.1.66 // indirect
 	github.com/magiconair/properties v1.8.10 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-runewidth v0.0.16 // indirect
+	github.com/mdlayher/socket v0.5.1 // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/mitchellh/go-testing-interface v1.14.1 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect

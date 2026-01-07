@@ -66,6 +66,7 @@ var (
 	senderTTL               = flag.Duration("sender-ttl", defaultSenderTTL, "The time to live for a sender instance until it's recreated.")
 	submitterMaxConcurrency = flag.Int("submitter-max-concurrency", defaultSubmitterMaxConcurrency, "The maximum number of concurrent submissions.")
 	managementNamespace     = flag.String("management-namespace", "", "The name of the management namespace to use for communication over the internet. If not provided, the default namespace will be used. (default: '')")
+	bgpNamespace            = flag.String("bgp-namespace", "ns-vrf1", "The name of the ns-vrf1 namespace to use for BGP state collection. (default: 'ns-vrf1')")
 	stateCollectEnable      = flag.Bool("state-collect-enable", false, "Enable state collection (unstable)")
 	stateCollectInterval    = flag.Duration("state-collect-interval", defaultStateCollectInterval, "The interval to collect and submit state snapshots.")
 	stateIngestURL          = flag.String("state-ingest-url", "", "The URL of the state ingest server.")
@@ -309,7 +310,7 @@ func main() {
 	// Run state collector if enabled.
 	var stateCollectorErrCh <-chan error
 	if *stateCollectEnable {
-		stateCollectorErrCh = startStateCollector(ctx, cancel, log, keypair, localDevicePK)
+		stateCollectorErrCh = startStateCollector(ctx, cancel, log, keypair, localDevicePK, *bgpNamespace)
 	}
 
 	// Wait for the context to be done or an error to be returned.
@@ -327,7 +328,7 @@ func main() {
 	}
 }
 
-func startStateCollector(ctx context.Context, cancel context.CancelFunc, log *slog.Logger, keypair solana.PrivateKey, localDevicePK solana.PublicKey) <-chan error {
+func startStateCollector(ctx context.Context, cancel context.CancelFunc, log *slog.Logger, keypair solana.PrivateKey, localDevicePK solana.PublicKey, bgpNamespace string) <-chan error {
 	// Build state ingest HTTP client.
 	var stateIngestHTTPClient *http.Client
 	if *managementNamespace != "" {
@@ -346,7 +347,7 @@ func startStateCollector(ctx context.Context, cancel context.CancelFunc, log *sl
 
 	// Initialize state ingest client.
 	signer := state.NewKeypairSigner(keypair)
-	stateIngestClientRaw, err := stateingest.NewClient(
+	stateIngestClient, err := stateingest.NewClient(
 		*stateIngestURL,
 		localDevicePK,
 		signer,
@@ -356,7 +357,6 @@ func startStateCollector(ctx context.Context, cancel context.CancelFunc, log *sl
 		log.Error("failed to create state ingest client", "error", err)
 		os.Exit(1)
 	}
-	stateIngestClient := state.NewClientAdapter(stateIngestClientRaw)
 
 	// Build EAPI client.
 	var clientConn *grpc.ClientConn
@@ -383,11 +383,12 @@ func startStateCollector(ctx context.Context, cancel context.CancelFunc, log *sl
 		os.Exit(1)
 	}
 	stateCollector, err := state.NewCollector(&state.CollectorConfig{
-		Logger:      log,
-		StateIngest: stateIngestClient,
-		Interval:    *stateCollectInterval,
-		DevicePK:    localDevicePK,
-		EAPI:        eapiMgrServiceClient,
+		Logger:       log,
+		StateIngest:  stateIngestClient,
+		Interval:     *stateCollectInterval,
+		DevicePK:     localDevicePK,
+		EAPI:         eapiMgrServiceClient,
+		BGPNamespace: bgpNamespace,
 	})
 	if err != nil {
 		log.Error("failed to create state collector", "error", err)

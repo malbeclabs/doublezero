@@ -73,12 +73,12 @@ func runTest_UnrelatedQuestionNoData(t *testing.T) {
 
 	// Evaluate with Ollama (optional for this test since validation already confirms correct behavior)
 	// The agent correctly states it doesn't have access to unrelated data, which is the expected response
-	isCorrect, err := ollamaEvaluateResponse(t, ctx, question, response)
+	isCorrect, reason, err := ollamaEvaluateResponse(t, ctx, question, response)
 	if err == nil {
 		// If Ollama is available, check the evaluation, but don't fail if it's incorrect
 		// since the validation already confirmed the response is correct
 		if !isCorrect {
-			t.Logf("Note: Ollama evaluation marked response as incorrect, but validation confirms the response correctly states no data is available for unrelated questions")
+			t.Logf("Note: Ollama evaluation marked response as incorrect, but validation confirms the response correctly states no data is available for unrelated questions. Ollama reason: %s", reason)
 		}
 	}
 }

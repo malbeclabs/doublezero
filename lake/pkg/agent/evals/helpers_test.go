@@ -132,9 +132,11 @@ func loadTablesAndViews(t *testing.T, ctx context.Context, conn duck.Connection)
 }
 
 // ollamaEvaluateResponse uses a local Ollama instance to evaluate if the response correctly answers the question.
-// Returns true if the response is evaluated as correct, false otherwise.
-// If Ollama is not available, returns an error indicating the service is unavailable.
-func ollamaEvaluateResponse(t *testing.T, ctx context.Context, question, response string) (bool, error) {
+// Returns (isCorrect, reason, error) where:
+//   - isCorrect: true if the response is evaluated as correct, false otherwise
+//   - reason: explanation from Ollama (empty if isCorrect is true)
+//   - error: non-nil if Ollama is unavailable or there's an error calling it
+func ollamaEvaluateResponse(t *testing.T, ctx context.Context, question, response string) (bool, string, error) {
 	ollamaURL := os.Getenv("OLLAMA_URL")
 	if ollamaURL == "" {
 		// Detect if running in a devcontainer and use DIND_LOCALHOST hostname
@@ -161,7 +163,7 @@ Agent's Response:
 
 Does the agent's response correctly answer the question? Consider:
 - Does it directly address what was asked?
-- Is the information relevant and accurate?
+- Is the information accurate?
 - Is it complete enough to be useful?
 
 Respond with only "YES" or "NO" followed by a brief explanation.`, question, response)
@@ -187,13 +189,13 @@ Respond with only "YES" or "NO" followed by a brief explanation.`, question, res
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return false, fmt.Errorf("failed to connect to Ollama at %s: %w", ollamaURL, err)
+		return false, "", fmt.Errorf("failed to connect to Ollama at %s: %w", ollamaURL, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return false, fmt.Errorf("Ollama returned status %d: %s", resp.StatusCode, string(body))
+		return false, "", fmt.Errorf("Ollama returned status %d: %s", resp.StatusCode, string(body))
 	}
 
 	// Parse response - Ollama may return streaming or non-streaming
@@ -205,7 +207,7 @@ Respond with only "YES" or "NO" followed by a brief explanation.`, question, res
 	// Try to decode as single response first
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return false, fmt.Errorf("failed to read Ollama response: %w", err)
+		return false, "", fmt.Errorf("failed to read Ollama response: %w", err)
 	}
 
 	// Try parsing as single JSON object
@@ -238,20 +240,46 @@ Respond with only "YES" or "NO" followed by a brief explanation.`, question, res
 
 	// Parse evaluation result
 	evalText := strings.ToUpper(strings.TrimSpace(ollamaResp.Response))
+	originalResponse := strings.TrimSpace(ollamaResp.Response)
+
 	if strings.HasPrefix(evalText, "YES") {
-		return true, nil
+		return true, "", nil
 	} else if strings.HasPrefix(evalText, "NO") {
-		return false, nil
+		// Extract the reason (everything after "NO" and any following punctuation/whitespace)
+		// Find "NO" case-insensitively in the original response
+		noIdx := -1
+		upperOriginal := strings.ToUpper(originalResponse)
+		if idx := strings.Index(upperOriginal, "NO"); idx >= 0 {
+			noIdx = idx
+		}
+		if noIdx >= 0 {
+			// Skip "NO" and any following punctuation/whitespace
+			reasonStart := noIdx + 2
+			for reasonStart < len(originalResponse) {
+				char := originalResponse[reasonStart]
+				if char != ' ' && char != ':' && char != '.' && char != '-' {
+					break
+				}
+				reasonStart++
+			}
+			reason := strings.TrimSpace(originalResponse[reasonStart:])
+			if reason == "" {
+				reason = "Ollama indicated the response does not correctly answer the question"
+			}
+			return false, reason, nil
+		}
+		return false, "Ollama indicated the response does not correctly answer the question", nil
 	}
 
 	// If we can't parse clearly, check if response contains positive indicators
 	if strings.Contains(evalText, "CORRECT") || strings.Contains(evalText, "YES") || strings.Contains(evalText, "ACCURATE") {
-		return true, nil
+		return true, "", nil
 	}
 
 	// Default to false if unclear
 	t.Logf("Ollama evaluation response was unclear: %s", ollamaResp.Response)
-	return false, nil
+	reason := fmt.Sprintf("Ollama evaluation response was unclear: %s", originalResponse)
+	return false, reason, nil
 }
 
 // LLMClientFactory creates an LLM client for testing

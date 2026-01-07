@@ -151,6 +151,8 @@ User abc123 used the most bandwidth yesterday with 500GB of traffic.
 
 ### 📊 Top Bandwidth (Past 24h)
 
+**`owner3abc...xyz` at `3.3.3.3` consumes the most bandwidth** with 847 GB (78 Mbps average).
+
 ```text
 OWNER_PK            CLIENT_IP       TOTAL       AVG RATE
 owner3abc...xyz     3.3.3.3         847 GB      78 Mbps

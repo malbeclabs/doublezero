@@ -30,6 +30,7 @@ Rules are tiered by severity. Higher tiers override lower tiers when in conflict
 - Use `solana_validator_dz_first_connection_events` view for connection queries
 - Never infer connections from stake changes or SCD2 snapshot comparisons
 - Connection events and stake changes are independent
+- **For "recently" questions about stake share decreases**: ALWAYS query disconnections in the past 24 hours FIRST. Do not analyze historical trends—focus on recent disconnections as the primary cause.
 
 ### Link Comparisons
 

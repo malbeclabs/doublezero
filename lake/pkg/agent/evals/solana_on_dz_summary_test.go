@@ -87,9 +87,9 @@ func runTest_SolanaValidatorsGossipNodesOnDZSummary(t *testing.T) {
 	validateSolanaValidatorsGossipNodesOnDZSummaryResponse(t, response)
 
 	// Evaluate with Ollama
-	isCorrect, err := ollamaEvaluateResponse(t, ctx, question, response)
+	isCorrect, reason, err := ollamaEvaluateResponse(t, ctx, question, response)
 	require.NoError(t, err, "Ollama evaluation must be available")
-	require.True(t, isCorrect, "Ollama evaluation indicates the response does not correctly answer the question")
+	require.True(t, isCorrect, "Ollama evaluation indicates the response does not correctly answer the question. Reason: %s", reason)
 }
 
 // validateSolanaValidatorsGossipNodesOnDZSummaryResponse validates the response for TestLake_Agent_Evals_SolanaValidatorsGossipNodesOnDZSummary

@@ -106,6 +106,11 @@ Never use `date_trunc()` in WHERE (prevents partition pruning).
   - `out_*` = out of device
 - User tunnel: `user_tunnel_id` extracted from interface name
 - Multicast on tunnels: Use `in_pkts_delta`/`out_pkts_delta` (multicast-specific fields unreliable)
+- **Multicast traffic on tunnel interfaces (CRITICAL)**:
+  - **`in_multicast_pkts_delta` and `out_multicast_pkts_delta` are NOT reliable on tunnel interfaces** - these fields will be empty/NULL in practice for tunnel interfaces
+  - **For multicast traffic on tunnel interfaces, you MUST use `in_pkts_delta` and `out_pkts_delta` instead** - there is no way to get multicast-only usage metrics on tunnel interfaces
+  - **Multicast subscribers**: Users/subscribers consuming multicast traffic on tunnel interfaces are identified by filtering for tunnel interfaces (where `user_tunnel_id IS NOT NULL`) and aggregating `out_octets_delta` and `out_pkts_delta` by user (via `user_tunnel_id` join to `dz_users_current`)
+  - **Note**: On physical interfaces (non-tunnel), `in_multicast_pkts_delta` and `out_multicast_pkts_delta` may be available, but for tunnel interfaces (which is where users connect), these fields are unreliable and should not be used
 
 ---
 
@@ -425,6 +430,17 @@ ORDER BY event_time
 - Connection events ≠ stake changes (independent)
 - Never infer connections from stake snapshots
 - For disconnections, verify full event timeline (check for subsequent reconnection)
+- **If connection events view is empty but disconnections are expected**: Check `dz_users_history` for users with `valid_to` in the past 24 hours, then join to `solana_gossip_nodes_history` and `solana_vote_accounts_history` to identify disconnected validators
+- **For Solana validators: ALWAYS include vote_pubkey AND IP address** when reporting on validators (e.g., "vote4" with gossip_ip "10.0.0.1" or dz_ip "10.0.0.1"). This is the stable validator identity. The association from DZ to Solana validators is via dz client_ip to gossip_ip. Note that validators can change their gossip_ip associated with their node_pubkey over time, so always report the IP that was associated at the time of the event (disconnection, connection, etc.).
+- **For users/subscribers: ALWAYS include owner_pk and client_ip** when reporting on users (e.g., "owner3" with client IP "3.3.3.3").
+- **CRITICAL**: User pk (pubkey) is NOT stable - it changes after disconnects/reconnects. Only (owner_pk, client_ip) is the stable identifier.
+- **Solana stake terminology**: When users ask about "total connected stake", "connected stake", "stake on DZ", or "DZ stake share", they are referring to the total Solana stake (in SOL) of validators currently connected to DZ. Calculate this by summing `activated_stake_lamports` from `solana_validators_connected_now` and converting to SOL (divide by 1e9). Stake share is this value as a percentage of total network stake.
+- For Solana: use vote_pubkey for validator identity, aggregate stake at vote_pubkey grain
+- **CRITICAL**: When reporting on Solana validators (disconnections, stake changes, etc.), ALWAYS include the vote_pubkey in the response (e.g., "vote4", "vote5"). This is the stable validator identifier.
+- **CRITICAL**: When reporting on users/subscribers (bandwidth consumption, traffic, etc.), ALWAYS include owner_pk and client_ip in the response (e.g., "owner3" with client IP "3.3.3.3"). **CRITICAL**: User pk (pubkey) is NOT stable - it changes after disconnects/reconnects. Only (owner_pk, client_ip) is the stable identifier.
+- **CRITICAL**: When reporting on validator disconnections, you MUST check the full event timeline, not just the most recent event. A validator whose most recent event is a disconnection may have reconnected earlier and then disconnected again. Only report validators that are currently disconnected (most recent disconnection has no subsequent reconnection). Use precise language: say "remains disconnected" only when you have verified there is no reconnection after the most recent disconnection. If you only know that the most recent event is a disconnection, say "most recent event is a disconnection" rather than "remains disconnected" until you verify the full timeline.
+- **CRITICAL**: When asked "which validators connected during time window T" or "which validators connected when stake increased", ALWAYS use `solana_validator_dz_first_connection_events` view (PREFERRED) - it already filters to only the first connection per validator. Do NOT infer connections from stake changes or SCD2 snapshot comparisons. Connection events and stake changes are independent - a stake increase can be from new connections OR existing validators receiving stake delegations.
+- **Alternative**: If you must use `solana_validator_dz_connection_events` directly, you MUST filter to only include the FIRST connection event for each validator (the earliest `event_time` for each `vote_pubkey`). The connection events view may create multiple records for the same validator when stake changes, but only the first connection event represents when the validator actually connected. A validator that was already connected before the time window should NOT be included, even if their stake changed during the window.
 
 ### Validator Performance Comparison (On-DZ vs Off-DZ)
 
@@ -435,6 +451,23 @@ Use `solana_validator_dz_overlaps_windowed` to classify, then:
 | Skip Rate    | `SUM(slots_skipped_delta) / SUM(leader_slots_assigned_delta)`   | `solana_block_production_delta`    |
 | Vote Lag     | `AVG(cluster_slot - last_vote_slot)`                            | `solana_vote_account_activity_raw` |
 | Produce Rate | `SUM(blocks_produced_delta) / SUM(leader_slots_assigned_delta)` | `solana_block_production_delta`    |
+
+### Solana Validator Performance Comparison (On DZ vs Off DZ)
+
+**When asked to "compare solana validators on dz vs off dz" or similar:**
+- Use `solana_validator_dz_overlaps_windowed` to determine which validators are on DZ vs off DZ
+- Compare the following key performance metrics:
+  1. **Skip Rate**: Calculate as `SUM(slots_skipped_delta) / SUM(leader_slots_assigned_delta)` from `solana_block_production_delta` for on-DZ vs off-DZ validators
+  2. **Vote Latency (Vote Lag)**: Calculate as `AVG(cluster_slot - last_vote_slot)` from `solana_vote_account_activity_raw` for on-DZ vs off-DZ validators (reported in slots)
+  3. **Block Produce Rate**: Calculate as `SUM(blocks_produced_delta) / SUM(leader_slots_assigned_delta)` from `solana_block_production_delta` for on-DZ vs off-DZ validators
+
+**Critical:**
+- Always use explicit time calculations (`CURRENT_TIMESTAMP - INTERVAL '24 hours'`) rather than `$__timeFrom()`/`$__timeTo()` which may not be set
+- The `solana_block_production_delta` view uses LAG to calculate deltas, so the first row per validator has NULL deltas. Always filter for `leader_slots_assigned_delta IS NOT NULL AND leader_slots_assigned_delta > 0` to get actual delta values
+- The `solana_validator_dz_overlaps_windowed` view only includes validators that are on DZ. To compare on-DZ vs off-DZ, start from `solana_vote_accounts_current` and LEFT JOIN with the overlaps view. Validators with a match are on-DZ, those without are off-DZ
+- If you get no results from `solana_block_production_delta`, check if `solana_block_production_raw` has data in the time range (the delta view requires at least 2 rows per validator to calculate deltas)
+- Report specific numeric values for each metric (skip rate as percentage, vote lag in slots, produce rate as percentage)
+- Include specific vote_pubkeys or node_pubkeys in the comparison when relevant
 
 ---
 
@@ -447,3 +480,4 @@ Use `solana_validator_dz_overlaps_windowed` to classify, then:
 | Users      | `dz_users_current`             | `(owner_pk, client_ip)` | `owner_pk` + `client_ip` |
 | Validators | `solana_vote_accounts_current` | `vote_pubkey`           | `vote_pubkey` + IP       |
 | Gossip     | `solana_gossip_nodes_current`  | `node_pubkey`           | —                        |
+

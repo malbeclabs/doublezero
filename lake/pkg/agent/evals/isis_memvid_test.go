@@ -117,9 +117,9 @@ func runTest_ISISNetworkSummary(t *testing.T) {
 	validateISISNetworkSummaryResponse(t, response)
 
 	// Evaluate with Ollama
-	isCorrect, err := ollamaEvaluateResponse(t, ctx, question, response)
+	isCorrect, reason, err := ollamaEvaluateResponse(t, ctx, question, response)
 	require.NoError(t, err)
-	require.True(t, isCorrect, "Ollama evaluation indicates incorrect response")
+	require.True(t, isCorrect, "Ollama evaluation indicates incorrect response. Reason: %s", reason)
 }
 
 func runTest_ISISRouterQuery(t *testing.T) {
@@ -149,9 +149,9 @@ func runTest_ISISRouterQuery(t *testing.T) {
 
 	validateISISRouterQueryResponse(t, response)
 
-	isCorrect, err := ollamaEvaluateResponse(t, ctx, question, response)
+	isCorrect, reason, err := ollamaEvaluateResponse(t, ctx, question, response)
 	require.NoError(t, err)
-	require.True(t, isCorrect, "Ollama evaluation indicates incorrect response")
+	require.True(t, isCorrect, "Ollama evaluation indicates incorrect response. Reason: %s", reason)
 }
 
 func runTest_ISISLocationFilter(t *testing.T) {
@@ -181,9 +181,9 @@ func runTest_ISISLocationFilter(t *testing.T) {
 
 	validateISISLocationFilterResponse(t, response)
 
-	isCorrect, err := ollamaEvaluateResponse(t, ctx, question, response)
+	isCorrect, reason, err := ollamaEvaluateResponse(t, ctx, question, response)
 	require.NoError(t, err)
-	require.True(t, isCorrect, "Ollama evaluation indicates incorrect response")
+	require.True(t, isCorrect, "Ollama evaluation indicates incorrect response. Reason: %s", reason)
 }
 
 func runTest_ISISAdjacencies(t *testing.T) {
@@ -213,9 +213,9 @@ func runTest_ISISAdjacencies(t *testing.T) {
 
 	validateISISAdjacenciesResponse(t, response)
 
-	isCorrect, err := ollamaEvaluateResponse(t, ctx, question, response)
+	isCorrect, reason, err := ollamaEvaluateResponse(t, ctx, question, response)
 	require.NoError(t, err)
-	require.True(t, isCorrect, "Ollama evaluation indicates incorrect response")
+	require.True(t, isCorrect, "Ollama evaluation indicates incorrect response. Reason: %s", reason)
 }
 
 // runTest_ISISMemvidFullWorkflow tests the complete flow:
@@ -254,9 +254,9 @@ func runTest_ISISMemvidFullWorkflow(t *testing.T) {
 	// Validate the workflow
 	validateISISMemvidWorkflowResponse(t, response, memvidMock)
 
-	isCorrect, err := ollamaEvaluateResponse(t, ctx, question, response)
+	isCorrect, reason, err := ollamaEvaluateResponse(t, ctx, question, response)
 	require.NoError(t, err)
-	require.True(t, isCorrect, "Ollama evaluation indicates incorrect response")
+	require.True(t, isCorrect, "Ollama evaluation indicates incorrect response. Reason: %s", reason)
 }
 
 // runTest_ISISMemvidStoreAndRetrieve tests:
@@ -293,9 +293,9 @@ func runTest_ISISMemvidStoreAndRetrieve(t *testing.T) {
 	// Validate retrieval
 	validateISISMemvidRetrievalResponse(t, response, memvidMock)
 
-	isCorrect, err := ollamaEvaluateResponse(t, ctx, question, response)
+	isCorrect, reason, err := ollamaEvaluateResponse(t, ctx, question, response)
 	require.NoError(t, err)
-	require.True(t, isCorrect, "Ollama evaluation indicates incorrect response")
+	require.True(t, isCorrect, "Ollama evaluation indicates incorrect response. Reason: %s", reason)
 }
 
 // =============================================================================

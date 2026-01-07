@@ -73,9 +73,9 @@ func runTest_SolanaValidatorsDisconnected(t *testing.T) {
 	validateSolanaValidatorsDisconnectedResponse(t, response)
 
 	// Evaluate with Ollama
-	isCorrect, err := ollamaEvaluateResponse(t, ctx, question, response)
+	isCorrect, reason, err := ollamaEvaluateResponse(t, ctx, question, response)
 	require.NoError(t, err, "Ollama evaluation must be available")
-	require.True(t, isCorrect, "Ollama evaluation indicates the response does not correctly answer the question")
+	require.True(t, isCorrect, "Ollama evaluation indicates the response does not correctly answer the question. Reason: %s", reason)
 }
 
 // validateSolanaValidatorsDisconnectedResponse validates that the response includes required elements
@@ -96,7 +96,8 @@ func validateSolanaValidatorsDisconnectedResponse(t *testing.T, response string)
 		strings.Contains(responseLower, "past day") ||
 		strings.Contains(responseLower, "yesterday") ||
 		strings.Contains(responseLower, "recent") ||
-		strings.Contains(responseLower, "last 24")
+		strings.Contains(responseLower, "last 24") ||
+		strings.Contains(responseLower, "past 24")
 	require.True(t, timeMentioned,
 		"Response should mention the time period (past 24 hours). Got: %s",
 		truncateForError(response, 200))

@@ -73,9 +73,9 @@ func runTest_DZVsPublicInternet(t *testing.T) {
 	validateDZVsPublicInternetResponse(t, response)
 
 	// Evaluate with Ollama
-	isCorrect, err := ollamaEvaluateResponse(t, ctx, question, response)
+	isCorrect, reason, err := ollamaEvaluateResponse(t, ctx, question, response)
 	require.NoError(t, err, "Ollama evaluation must be available")
-	require.True(t, isCorrect, "Ollama evaluation indicates the response does not correctly answer the question")
+	require.True(t, isCorrect, "Ollama evaluation indicates the response does not correctly answer the question. Reason: %s", reason)
 }
 
 // validateDZVsPublicInternetResponse validates that the response includes required elements

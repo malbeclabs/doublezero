@@ -245,10 +245,10 @@ func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 		doublezero link update --pubkey HjiDwnhwzZFwm9yBmPsBThEah7w6kJDuutjCktoF7m1 --delay-override-ms 500
 
 		echo "===> Set link status=soft-drained for ny5-dz01_e5:la2-dz01_e5 link"
-		doublezero link update --pubkey 87xRjay41FiEzQX8mCWxY36fwkqumGbYaxHiymrUKNrB --status=soft-drained
+		doublezero link update --pubkey 3ag6VgtT5UHNyDQZeKGyK8jK9fMLDu9PRLNqSW5GByuF --status=soft-drained
 
 		echo "===> Set link status=hard-drained for ny5-dz01_e6:la2-dz01_e6 link"
-		doublezero link update --pubkey 3ag6VgtT5UHNyDQZeKGyK8jK9fMLDu9PRLNqSW5GByuF --status=hard-drained
+		doublezero link update --pubkey 87xRjay41FiEzQX8mCWxY36fwkqumGbYaxHiymrUKNrB --status=hard-drained
 
 		echo "--> Tunnel information onchain:"
 		doublezero link list

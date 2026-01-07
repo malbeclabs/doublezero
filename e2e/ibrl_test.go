@@ -49,6 +49,12 @@ func TestE2E_IBRL(t *testing.T) {
 	}) {
 		t.Fail()
 	}
+
+	if !t.Run("drain_device", func(t *testing.T) {
+		checkDeviceDrain(t, dn, device)
+	}) {
+		t.Fail()
+	}
 }
 
 func checkIbgpMsdpPeerRemoved(t *testing.T, dn *TestDevnet, device *devnet.Device) {
@@ -70,6 +76,33 @@ func checkIbgpMsdpPeerRemoved(t *testing.T, dn *TestDevnet, device *devnet.Devic
 	}
 
 	dn.log.Info("--> IBRL iBGP/MSDP peer removal requirements checked")
+}
+
+func checkDeviceDrain(t *testing.T, dn *TestDevnet, device *devnet.Device) {
+	dn.log.Info("==> Checking that device is drained")
+
+	if !t.Run("set_device_status_to_drained", func(t *testing.T) {
+		_, err := dn.Manager.Exec(t.Context(), []string{"doublezero", "device", "update", "--pubkey", device.Spec.Code, "--status", "hard-drained"})
+		require.NoError(t, err)
+	}) {
+		t.Fail()
+		return
+	}
+
+	if !t.Run("wait_for_drained_config", func(t *testing.T) {
+		config, err := fixtures.Render("fixtures/ibrl/doublezero_agent_config_drained.tmpl", map[string]any{
+			"DeviceIP":    device.CYOANetworkIP,
+			"StartTunnel": controllerconfig.StartUserTunnelNum,
+			"EndTunnel":   controllerconfig.StartUserTunnelNum + controllerconfig.MaxUserTunnelSlots - 1,
+		})
+		require.NoError(t, err, "error reading drained config fixture")
+		err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))
+		require.NoError(t, err, "error waiting for drained config")
+	}) {
+		t.Fail()
+	}
+
+	dn.log.Info("--> Device drain requirements checked")
 }
 
 // checkIBRLPostConnect checks requirements after connecting a user tunnel.

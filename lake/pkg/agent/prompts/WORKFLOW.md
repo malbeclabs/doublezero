@@ -31,7 +31,12 @@ PLAN → EXECUTE → VERIFY → RESPOND
 
 ### 4. Respond
 
-- Generate final answer only after verification passes
+- **MANDATORY**: Output a `<thinking>` block before your final response
+- Inside `<thinking>`:
+  1. Write the SQL query you executed (if any)
+  2. Verify time filters are present for fact tables
+  3. Check formatting for metrics and tables
+- Generate user-facing response ONLY after closing `</thinking>`
 - Follow formatting rules from FORMATTING.md
 
 ---
@@ -71,8 +76,7 @@ Use `solana_validator_dz_first_connection_events`:
 ```sql
 SELECT vote_pubkey, node_pubkey, dz_ip, event_time, activated_stake_sol, owner_pk, client_ip
 FROM solana_validator_dz_first_connection_events
-WHERE event_time >= $__timeFrom()
-  AND event_time <= $__timeTo()
+WHERE event_time >= now() - INTERVAL '24 HOURS'
 ORDER BY event_time
 ```
 

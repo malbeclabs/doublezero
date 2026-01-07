@@ -6,13 +6,7 @@ use doublezero_serviceability::{
         contributor::create::ContributorCreateArgs,
         device::update::DeviceUpdateArgs,
         user::{
-            activate::*,
-            ban::*,
-            create::*,
-            delete::*,
-            requestban::*,
-            resume::*,
-            suspend::*,
+            activate::*, ban::*, create::*, delete::*, requestban::*, resume::*, suspend::*,
             update::*,
         },
         *,
@@ -580,8 +574,7 @@ async fn test_user_ban_requires_pendingban() {
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     assert_eq!(globalstate_account.account_index, 0);
 
-    let (location_pubkey, _) =
-        get_location_pda(&program_id, globalstate_account.account_index + 1);
+    let (location_pubkey, _) = get_location_pda(&program_id, globalstate_account.account_index + 1);
 
     execute_transaction(
         &mut banks_client,
@@ -604,8 +597,7 @@ async fn test_user_ban_requires_pendingban() {
     .await;
 
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (exchange_pubkey, _) =
-        get_exchange_pda(&program_id, globalstate_account.account_index + 1);
+    let (exchange_pubkey, _) = get_exchange_pda(&program_id, globalstate_account.account_index + 1);
 
     execute_transaction(
         &mut banks_client,
@@ -648,8 +640,7 @@ async fn test_user_ban_requires_pendingban() {
     .await;
 
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (device_pubkey, _) =
-        get_device_pda(&program_id, globalstate_account.account_index + 1);
+    let (device_pubkey, _) = get_device_pda(&program_id, globalstate_account.account_index + 1);
 
     execute_transaction(
         &mut banks_client,

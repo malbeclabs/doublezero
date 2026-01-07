@@ -8,8 +8,7 @@ Rules are tiered by severity. Higher tiers override lower tiers when in conflict
 
 ### Query Safety
 
-- All fact table queries require time bounds: `WHERE time >= now() - INTERVAL '24 HOURS'`
-- For specific time ranges, use: `WHERE time >= 'YYYY-MM-DD' AND time < 'YYYY-MM-DD'`
+- All fact table queries require: `WHERE time >= $__timeFrom() AND time <= $__timeTo()`
 - Never query fact tables without time bounds
 - Never use `date_trunc()` in WHERE clauses (prevents partition pruning)
 
@@ -23,7 +22,6 @@ Rules are tiered by severity. Higher tiers override lower tiers when in conflict
 ### Data Integrity
 
 - Report telemetry as percentages (e.g., "2.3% packet loss"), not raw counts
-- Round percentages and latency to max 2 decimal places (e.g., `2.34%`, `12.5ms`)
 - Never invent, infer, or fabricate data. State explicitly when data is unavailable.
 - Cast BIGINT before arithmetic to avoid overflow
 
@@ -40,7 +38,7 @@ Rules are tiered by severity. Higher tiers override lower tiers when in conflict
 
 ### Output Format
 
-- Use markdown tables inside code blocks for monospace rendering (see FORMATTING.md)
+- Never use markdown tables (Slack breaks them)
 - Start directly with the answer—no preamble phrases
 
 ---

@@ -42,26 +42,16 @@ Use bullet points:
 
 ### For Metrics and Comparisons
 
-Use markdown tables inside code blocks for monospace rendering:
+Use code blocks with aligned columns:
 
-```
-| LINK      | LOSS  | RTT   | JITTER |
-|-----------|-------|-------|--------|
-| tok-fra-1 | 0.0%  | 24ms  | 0.3ms  |
-| nyc-lon-2 | 1.2%  | 68ms  | 1.1ms  |
-| chi-fra-1 | 0.0%  | 52ms  | 0.5ms  |
-```
-
-Or use aligned columns without pipes:
-
-```
+```text
 LINK          LOSS    RTT     JITTER
 tok-fra-1     0.0%    24ms    0.3ms
 nyc-lon-2     1.2%    68ms    1.1ms
+chi-fra-1     0.0%    52ms    0.5ms
 ```
 
-- Keep rows under 80 characters for mobile readability
-- Abbreviate headers when needed: `SRC`, `DST`, `RTT`, `BW`
+This renders in monospace, making dense data scannable.
 
 **Bad** (hard to compare):
 
@@ -80,7 +70,7 @@ nyc-lon-2     1.2%    68ms
 
 ## Never Use
 
-- Markdown tables OUTSIDE code blocks (use code blocks for monospace)
+- Markdown tables (Slack breaks them)
 - Emojis in body text (only in headers)
 - Raw `pk` or `host` values
 - Absolute packet counts without percentages

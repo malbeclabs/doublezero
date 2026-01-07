@@ -136,6 +136,11 @@ func (d DeviceStatus) String() string {
 	}[d]
 }
 
+// IsDrained returns true if the device status is drained
+func (d DeviceStatus) IsDrained() bool {
+	return d == DeviceStatusDrained
+}
+
 func (d DeviceStatus) MarshalJSON() ([]byte, error) {
 	return json.Marshal(d.String())
 }
@@ -459,8 +464,8 @@ const (
 	LinkStatusDeleted
 	LinkStatusRejected
 	LinkStatusRequested
-	LinkStatusHardDrained
 	LinkStatusSoftDrained
+	LinkStatusHardDrained
 	LinkStatusProvisioning
 )
 
@@ -472,10 +477,15 @@ func (l LinkStatus) String() string {
 		"deleted",
 		"rejected",
 		"requested",
-		"hard-drained",
 		"soft-drained",
+		"hard-drained",
 		"provisioning",
 	}[l]
+}
+
+// IsHardDrained returns true if the link status is hard-drained
+func (l LinkStatus) IsHardDrained() bool {
+	return l == LinkStatusHardDrained
 }
 
 func (l LinkStatus) MarshalJSON() ([]byte, error) {

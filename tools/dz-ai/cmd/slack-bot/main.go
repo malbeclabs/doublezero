@@ -528,12 +528,12 @@ func syncISISTopology(ctx context.Context, fetcher *isis.S3Fetcher, enricher *is
 
 	now := time.Now().UTC()
 	title := fmt.Sprintf("ISIS Network Topology %s", now.Format(time.RFC3339))
-	snapshotTag := fmt.Sprintf("snapshot:%s", now.Format("2006-01-02"))
+	snapshotTag := fmt.Sprintf("snapshot=%s", now.Format("2026-01-02"))
 
 	output, isErr, err := memvid.CallToolText(ctx, "memory_save", map[string]any{
 		"content": result.Markdown,
 		"title":   title,
-		"tags":    []any{"isis", "topology", snapshotTag},
+		"tags":    []any{"source=isis", "type=topology", snapshotTag},
 	})
 	if err != nil {
 		return fmt.Errorf("memvid call: %w", err)

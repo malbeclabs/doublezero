@@ -341,7 +341,9 @@ fn log_error_ignore_invalid_status(log_msg: &mut String, e: eyre::ErrReport) {
     // Ignore DoubleZeroError::InvalidStatus errors since this only happens when the user is already activated
     if let Some(dz_err) = e.downcast_ref::<DoubleZeroError>() {
         if matches!(dz_err, DoubleZeroError::InvalidStatus) {
-            // Do nothing
+            write!(log_msg, " [already activated]").unwrap();
+            metrics::counter!("doublezero_activator_invalid_status_encountered", "entity_type" => "user")
+                .increment(1);
         } else {
             write!(log_msg, "Error: {e}").unwrap();
         }

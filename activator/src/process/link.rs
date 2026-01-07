@@ -7,6 +7,7 @@ use doublezero_sdk::{
     },
     DoubleZeroClient, Link, LinkStatus,
 };
+use doublezero_serviceability::error::DoubleZeroError;
 use log::info;
 use solana_sdk::pubkey::Pubkey;
 use std::fmt::Write;
@@ -70,7 +71,19 @@ pub fn process_link_event(
                             )
                             .increment(1);
                         }
-                        Err(e) => write!(&mut log_msg, " Error {e}").unwrap(),
+                        Err(e) => {
+                            if let Some(dz_err) = e.downcast_ref::<DoubleZeroError>() {
+                                if matches!(dz_err, DoubleZeroError::InvalidStatus) {
+                                    write!(&mut log_msg, " [already activated]").unwrap();
+                                    metrics::counter!("doublezero_activator_invalid_status_encountered", "entity_type" => "link")
+                                        .increment(1);
+                                } else {
+                                    write!(&mut log_msg, " Error {e}").unwrap();
+                                }
+                            } else {
+                                write!(&mut log_msg, " Error {e}").unwrap();
+                            }
+                        }
                     }
                 }
                 None => {

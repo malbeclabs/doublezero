@@ -23,6 +23,7 @@ import (
 	"github.com/malbeclabs/doublezero/lake/pkg/agent/prompts"
 	"github.com/malbeclabs/doublezero/lake/pkg/agent/react"
 	"github.com/malbeclabs/doublezero/lake/pkg/agent/tools"
+	"github.com/malbeclabs/doublezero/lake/pkg/isis"
 	"github.com/malbeclabs/doublezero/lake/pkg/logger"
 	"github.com/malbeclabs/doublezero/lake/pkg/querier"
 	slackbot "github.com/malbeclabs/doublezero/tools/dz-ai/internal/slack"
@@ -178,6 +179,11 @@ func run() error {
 		}
 		log.Warn("memvid disabled: MEMVID_BRAIN_PATH not set")
 		log.Info("tool client initialized", "tools", "query, isis")
+	}
+
+	// Start ISIS syncer goroutine if memvid is enabled
+	if cfg.MemvidBrainPath != "" {
+		go runISISSyncer(ctx, cfg.MemvidBrainPath, log)
 	}
 
 	// Create normal agent (Haiku model, normal maxRounds)
@@ -449,4 +455,96 @@ func (p *postgresQuerier) Query(ctx context.Context, sqlQuery string) (querier.Q
 		Rows:        resultRows,
 		Count:       len(resultRows),
 	}, nil
+}
+
+// runISISSyncer periodically syncs ISIS topology from S3 to memvid.
+// Runs every ISIS_SYNC_INTERVAL (default: 5h).
+func runISISSyncer(ctx context.Context, brainPath string, log *slog.Logger) {
+	// Panic isolation - don't crash the bot
+	defer func() {
+		if r := recover(); r != nil {
+			log.Error("isis syncer panic recovered", "error", r, "component", "isis_syncer")
+		}
+	}()
+
+	syncLog := log.With("component", "isis_syncer")
+
+	syncInterval := 5 * time.Hour
+	if s := os.Getenv("ISIS_SYNC_INTERVAL"); s != "" {
+		if d, err := time.ParseDuration(s); err == nil && d > 0 {
+			syncInterval = d
+		}
+	}
+
+	fetcher := isis.NewS3Fetcher(isis.S3FetcherConfig{})
+	enricher, err := isis.NewEnricher(isis.EnricherConfig{Level: 2})
+	if err != nil {
+		syncLog.Error("failed to create enricher", "error", err)
+		return
+	}
+
+	memvid := tools.NewMemvidToolClient(tools.MemvidConfig{
+		BinaryPath: "memvid",
+		BrainPath:  brainPath,
+		Timeout:    2 * time.Minute,
+	})
+
+	// Initial sync
+	syncLog.Info("performing initial ISIS sync")
+	if err := syncISISTopology(ctx, fetcher, enricher, memvid, syncLog); err != nil {
+		syncLog.Error("initial sync failed", "error", err)
+	}
+
+	// Periodic sync
+	ticker := time.NewTicker(syncInterval)
+	defer ticker.Stop()
+
+	syncLog.Info("ISIS syncer started", "interval", syncInterval)
+
+	for {
+		select {
+		case <-ctx.Done():
+			syncLog.Info("ISIS syncer stopped")
+			return
+		case <-ticker.C:
+			if err := syncISISTopology(ctx, fetcher, enricher, memvid, syncLog); err != nil {
+				syncLog.Error("scheduled sync failed", "error", err)
+			}
+		}
+	}
+}
+
+func syncISISTopology(ctx context.Context, fetcher *isis.S3Fetcher, enricher *isis.Enricher, memvid *tools.MemvidToolClient, log *slog.Logger) error {
+	fetchResult, err := fetcher.FetchLatest(ctx)
+	if err != nil {
+		return fmt.Errorf("fetch from S3: %w", err)
+	}
+	defer fetchResult.Body.Close()
+
+	result, err := enricher.EnrichFromReader(ctx, fetchResult.Body, fetchResult.Timestamp)
+	if err != nil {
+		return fmt.Errorf("enrich: %w", err)
+	}
+
+	now := time.Now().UTC()
+	title := fmt.Sprintf("ISIS Network Topology %s", now.Format(time.RFC3339))
+	snapshotTag := fmt.Sprintf("snapshot:%s", now.Format("2006-01-02"))
+
+	output, isErr, err := memvid.CallToolText(ctx, "memory_save", map[string]any{
+		"content": result.Markdown,
+		"title":   title,
+		"tags":    []any{"isis", "topology", snapshotTag},
+	})
+	if err != nil {
+		return fmt.Errorf("memvid call: %w", err)
+	}
+	if isErr {
+		return fmt.Errorf("memvid error: %s", output)
+	}
+
+	log.Info("ISIS sync completed",
+		"routers", result.Stats.TotalRouters,
+		"links", result.Stats.TotalLinks,
+	)
+	return nil
 }

@@ -292,13 +292,14 @@ impl DoubleZeroInstruction {
             78 => Ok(Self::RejectDeviceInterface(DeviceInterfaceRejectArgs::try_from(rest).unwrap())),
 
             79 => Ok(Self::SetMinVersion(SetVersionArgs::try_from(rest).unwrap())),
-            80 => Ok(Self::SetDeviceHealth(DeviceSetHealthArgs::try_from(rest).unwrap())),
-            81 => Ok(Self::SetLinkHealth(LinkSetHealthArgs::try_from(rest).unwrap())),
 
-            82 => Ok(Self::AllocateResource(ResourceAllocateArgs::try_from(rest).unwrap())),
-            83 => Ok(Self::CreateResource(ResourceCreateArgs::try_from(rest).unwrap())),
-            84 => Ok(Self::DeallocateResource(ResourceDeallocateArgs::try_from(rest).unwrap())),
+            80 => Ok(Self::AllocateResource(ResourceAllocateArgs::try_from(rest).unwrap())),
+            81 => Ok(Self::CreateResource(ResourceCreateArgs::try_from(rest).unwrap())),
+            82 => Ok(Self::DeallocateResource(ResourceDeallocateArgs::try_from(rest).unwrap())),
 
+            83 => Ok(Self::SetDeviceHealth(DeviceSetHealthArgs::try_from(rest).unwrap())),
+            84 => Ok(Self::SetLinkHealth(LinkSetHealthArgs::try_from(rest).unwrap())),
+            
             _ => Err(ProgramError::InvalidInstructionData),
         }
     }

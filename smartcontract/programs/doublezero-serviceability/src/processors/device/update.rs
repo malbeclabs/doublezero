@@ -208,6 +208,11 @@ pub fn process_update_device(
             return Err(DoubleZeroError::NotAllowed.into());
         }
     }
+    if let Some(desired_status) = value.desired_status {
+        device.desired_status = desired_status;
+    }
+
+    device.check_status_transition();
 
     try_acc_write(&device, device_account, payer_account, accounts)?;
 

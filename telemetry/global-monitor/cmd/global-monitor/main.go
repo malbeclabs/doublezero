@@ -55,15 +55,22 @@ const (
 
 var (
 	sourceMetroNames = map[string]string{
+		"auh": "Abu Dhabi",
 		"ams": "Amsterdam",
 		"atl": "Atlanta",
 		"blr": "Bangalore",
+		"bom": "Mumbai",
+		"cpt": "Cape Town",
 		"fra": "Frankfurt",
+		"hkg": "Hong Kong",
 		"lon": "London",
 		"nyc": "New York",
+		"sao": "São Paulo",
 		"sfo": "San Francisco",
 		"sgp": "Singapore",
 		"syd": "Sydney",
+		"tpe": "Taipei",
+		"tyo": "Tokyo",
 		"tor": "Toronto",
 	}
 )

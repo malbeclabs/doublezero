@@ -397,6 +397,8 @@ mod tests {
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+            desired_status:
+                doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
         };
         let device2_pubkey = Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo8");
         let device2 = Device {
@@ -419,6 +421,8 @@ mod tests {
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+            desired_status:
+                doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
         };
         let mgroup1_pubkey = Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo8");
         let mgroup1 = MulticastGroup {

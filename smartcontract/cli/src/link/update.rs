@@ -13,6 +13,7 @@ use doublezero_sdk::commands::{
     contributor::get::GetContributorCommand,
     link::{get::GetLinkCommand, update::UpdateLinkCommand},
 };
+use doublezero_serviceability::state::link::LinkDesiredStatus;
 use eyre::eyre;
 use std::io::Write;
 
@@ -48,6 +49,9 @@ pub struct UpdateLinkCliCommand {
     /// Update link status (e.g. activated, soft-drained, hard-drained)
     #[arg(long)]
     pub status: Option<String>,
+    /// Update link desired status (e.g. activated, soft-drained, hard-drained)
+    #[arg(long)]
+    pub desired_status: Option<LinkDesiredStatus>,
     /// Wait for the device to be activated
     #[arg(short, long, default_value_t = false)]
     pub wait: bool,
@@ -113,6 +117,7 @@ impl UpdateLinkCliCommand {
                 .delay_override_ms
                 .map(|delay_override_ms| (delay_override_ms * 1000000.0) as u64),
             status,
+            desired_status: self.desired_status,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -191,6 +196,7 @@ mod tests {
             side_a_iface_name: "eth0".to_string(),
             side_z_iface_name: "eth1".to_string(),
             link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
+            desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
         };
 
         let link2 = Link {
@@ -214,6 +220,7 @@ mod tests {
             side_a_iface_name: "eth2".to_string(),
             side_z_iface_name: "eth3".to_string(),
             link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
+            desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
         };
 
         client
@@ -257,6 +264,7 @@ mod tests {
                 jitter_ns: Some(5000000),
                 delay_override_ns: None,
                 status: None,
+                desired_status: None,
             }))
             .returning(move |_| Ok(signature));
 
@@ -272,8 +280,9 @@ mod tests {
             delay_ms: Some(10.0),
             jitter_ms: Some(5.0),
             delay_override_ms: None,
-            wait: false,
             status: None,
+            desired_status: None,
+            wait: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());
@@ -294,8 +303,9 @@ mod tests {
             delay_ms: Some(10.0),
             jitter_ms: Some(5.0),
             delay_override_ms: None,
-            wait: false,
             status: None,
+            desired_status: None,
+            wait: false,
         }
         .execute(&client, &mut output);
         assert_eq!(

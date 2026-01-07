@@ -644,6 +644,7 @@ async fn test_dzx_link() {
             jitter_ns: Some(100000),
             delay_override_ns: Some(0),
             status: None,
+            desired_status: None,
         }),
         vec![
             AccountMeta::new(link_dzx_pubkey, false),

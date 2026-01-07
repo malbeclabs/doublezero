@@ -299,7 +299,6 @@ impl DoubleZeroInstruction {
 
             83 => Ok(Self::SetDeviceHealth(DeviceSetHealthArgs::try_from(rest).unwrap())),
             84 => Ok(Self::SetLinkHealth(LinkSetHealthArgs::try_from(rest).unwrap())),
-            
             _ => Err(ProgramError::InvalidInstructionData),
         }
     }

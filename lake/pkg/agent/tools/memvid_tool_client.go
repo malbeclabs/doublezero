@@ -96,7 +96,7 @@ func (m *MemvidToolClient) ListTools(_ context.Context) ([]react.Tool, error) {
 		},
 		{
 			Name:        "memory_search",
-			Description: "Search memory for relevant content. Returns matching entries based on the query.",
+			Description: "Search historical network topology snapshots stored in memory. Use for questions about past network state or comparing current vs historical topology. Cross-reference with live isis_* tools for change detection.",
 			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{

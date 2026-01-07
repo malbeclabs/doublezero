@@ -3,6 +3,7 @@ package slack
 import (
 	"log/slog"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/slack-go/slack"
@@ -283,4 +284,31 @@ func normalizeTwoWayArrow(s string) string {
 		}
 	}
 	return b.String()
+}
+
+// UsedISISTools checks if any ISIS tools were used in the tool list.
+func UsedISISTools(toolsUsed []string) bool {
+	for _, tool := range toolsUsed {
+		if strings.HasPrefix(tool, "isis_") {
+			return true
+		}
+	}
+	return false
+}
+
+// AppendISISCitation appends an ISIS verification context block to the given blocks.
+// If blocks is nil or empty, it creates a new slice with just the context block.
+func AppendISISCitation(blocks []slack.Block) []slack.Block {
+	timestamp := time.Now().UTC().Format("2006-01-02 15:04 UTC")
+	contextText := ":mag: _Verified against ISIS topology (refreshed: " + timestamp + ")_"
+
+	contextBlock := slack.NewContextBlock(
+		"",
+		slack.NewTextBlockObject(slack.MarkdownType, contextText, false, false),
+	)
+
+	if blocks == nil {
+		return []slack.Block{contextBlock}
+	}
+	return append(blocks, contextBlock)
 }

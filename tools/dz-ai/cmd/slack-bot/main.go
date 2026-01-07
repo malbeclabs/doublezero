@@ -143,7 +143,7 @@ func run() error {
 	}
 	systemPrompt := prompts.BuildSlackSystemPrompt()
 
-	// Set up tool client using QuerierToolClient
+	// Set up tool client using MultiToolClient
 	// Create querier from lake querier URI (PostgreSQL connection string to querier service)
 	pgQuerier, err := newPostgresQuerier(ctx, cfg.LakeQuerierURI, log)
 	if err != nil {
@@ -151,7 +151,34 @@ func run() error {
 	}
 	defer pgQuerier.Close()
 
-	toolClient := tools.NewQuerierToolClient(pgQuerier)
+	querierClient := tools.NewQuerierToolClient(pgQuerier)
+
+	// Create ISIS tool client
+	isisClient, err := tools.NewISISToolClient(tools.ISISToolClientConfig{})
+	if err != nil {
+		return fmt.Errorf("failed to create ISIS tool client: %w", err)
+	}
+
+	// Build multi-tool client with optional memvid
+	var toolClient react.ToolClient
+	if cfg.MemvidBrainPath != "" {
+		memvidClient := tools.NewMemvidToolClient(tools.MemvidConfig{
+			BinaryPath: "memvid",
+			BrainPath:  cfg.MemvidBrainPath,
+		})
+		toolClient, err = tools.NewMultiToolClient(querierClient, isisClient, memvidClient)
+		if err != nil {
+			return fmt.Errorf("failed to create multi-tool client: %w", err)
+		}
+		log.Info("tool client initialized", "tools", "query, isis, memvid")
+	} else {
+		toolClient, err = tools.NewMultiToolClient(querierClient, isisClient)
+		if err != nil {
+			return fmt.Errorf("failed to create multi-tool client: %w", err)
+		}
+		log.Warn("memvid disabled: MEMVID_BRAIN_PATH not set")
+		log.Info("tool client initialized", "tools", "query, isis")
+	}
 
 	// Create normal agent (Haiku model, normal maxRounds)
 	normalModel := anthropic.ModelClaudeHaiku4_5

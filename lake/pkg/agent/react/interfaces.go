@@ -39,6 +39,8 @@ type RunResult struct {
 	FinalText string
 	// FullConversation is the complete conversation history including tool calls and results.
 	FullConversation []Message
+	// ToolsUsed is a list of unique tool names that were invoked during the agent run.
+	ToolsUsed []string
 }
 
 // ToolClient is an interface for calling tools.

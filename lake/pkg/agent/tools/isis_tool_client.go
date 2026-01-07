@@ -100,7 +100,7 @@ func (c *ISISToolClient) ListTools(_ context.Context) ([]react.Tool, error) {
 		},
 		{
 			Name:        "isis_list_routers",
-			Description: "List all routers with basic info (index for follow-up queries). Use after isis_refresh to explore the network topology.",
+			Description: "List all ISIS routers with basic info (hostname, location, router type). Use to identify device IDs before querying telemetry or to filter by location. Essential for device identity verification (DZD, router names).",
 			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -127,7 +127,7 @@ func (c *ISISToolClient) ListTools(_ context.Context) ([]react.Tool, error) {
 		},
 		{
 			Name:        "isis_get_adjacencies",
-			Description: "Get adjacency list (who connects to whom). Returns list of {source, dest, metric} tuples.",
+			Description: "Get network adjacency graph showing router connections and link metrics. Use this BEFORE querying telemetry to understand which links connect which routers. Essential for path analysis (e.g., 'path from X to Y'). Returns list of {source, dest, metric} tuples.",
 			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{

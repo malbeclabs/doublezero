@@ -78,6 +78,9 @@ func (a *Agent) Run(ctx context.Context, initialMessages []Message, output io.Wr
 	fullConversation := make([]Message, len(initialMessages))
 	copy(fullConversation, initialMessages)
 
+	// Track unique tools used during this run
+	toolsUsedSet := make(map[string]struct{})
+
 	// Get available tools
 	tools, err := a.cfg.ToolClient.ListTools(ctx)
 	if err != nil {
@@ -237,7 +240,13 @@ func (a *Agent) Run(ctx context.Context, initialMessages []Message, output io.Wr
 			return &RunResult{
 				FinalText:        strings.TrimSpace(finalText),
 				FullConversation: fullConversation,
+				ToolsUsed:        setToSlice(toolsUsedSet),
 			}, nil
+		}
+
+		// Track tools used (before potentially returning early on last round)
+		for _, tu := range toolUses {
+			toolsUsedSet[tu.Name] = struct{}{}
 		}
 
 		// If this is the last round, return the response even if there are tool calls
@@ -263,6 +272,7 @@ func (a *Agent) Run(ctx context.Context, initialMessages []Message, output io.Wr
 			return &RunResult{
 				FinalText:        strings.TrimSpace(finalText),
 				FullConversation: fullConversation,
+				ToolsUsed:        setToSlice(toolsUsedSet),
 			}, nil
 		}
 
@@ -498,4 +508,24 @@ Provide a clear, concise summary that preserves the essential information needed
 	}
 
 	return compacted, nil
+}
+
+// setToSlice converts a set (map[string]struct{}) to a sorted slice of strings.
+func setToSlice(set map[string]struct{}) []string {
+	if len(set) == 0 {
+		return nil
+	}
+	result := make([]string, 0, len(set))
+	for k := range set {
+		result = append(result, k)
+	}
+	// Sort for deterministic output
+	for i := 0; i < len(result)-1; i++ {
+		for j := i + 1; j < len(result); j++ {
+			if result[i] > result[j] {
+				result[i], result[j] = result[j], result[i]
+			}
+		}
+	}
+	return result
 }

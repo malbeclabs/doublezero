@@ -292,6 +292,11 @@ func (p *Processor) ProcessMessage(
 
 	blocks := ConvertMarkdownToBlocks(reply, p.log)
 
+	// Append ISIS citation if ISIS tools were used
+	if UsedISISTools(result.ToolsUsed) {
+		blocks = AppendISISCitation(blocks)
+	}
+
 	threadTS := ev.ThreadTimeStamp
 	if threadTS == "" {
 		threadTS = ev.TimeStamp

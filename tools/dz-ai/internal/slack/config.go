@@ -28,6 +28,9 @@ type Config struct {
 	// Lake querier configuration
 	LakeQuerierURI string
 
+	// Tool configuration
+	MemvidBrainPath string // Optional: path to .mv2 memory file
+
 	// Server configuration
 	HTTPAddr    string
 	MetricsAddr string
@@ -91,6 +94,9 @@ func LoadFromEnv(modeFlag, httpAddrFlag, metricsAddrFlag string, verbose, enable
 	if cfg.LakeQuerierURI == "" {
 		return nil, fmt.Errorf("lake querier URI is required (use --lake-querier-uri flag or LAKE_QUERIER_URI env var)")
 	}
+
+	// Load optional memvid brain path
+	cfg.MemvidBrainPath = os.Getenv("MEMVID_BRAIN_PATH")
 
 	return cfg, nil
 }

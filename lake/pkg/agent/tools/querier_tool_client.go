@@ -24,7 +24,7 @@ func (q *QuerierToolClient) ListTools(ctx context.Context) ([]react.Tool, error)
 	return []react.Tool{
 		{
 			Name:        "query",
-			Description: "Execute a SQL query against the DoubleZero database. Returns results as JSON with columns, column types, and rows.",
+			Description: "Query telemetry and serviceability data from PostgreSQL. For network performance analysis, cross-reference results with isis_get_adjacencies to understand topology impact. For device-specific queries, use isis_list_routers first to get correct device IDs. Returns results as JSON with columns, column types, and rows.",
 			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{

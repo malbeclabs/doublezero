@@ -23,6 +23,47 @@ PLAN → EXECUTE → VERIFY → RESPOND
 - Execute independent queries in parallel
 - If results are insufficient, plan and execute additional queries
 
+### Query Strategy
+
+- For validator connections/disconnections: Use `solana_validator_dz_connection_events` view
+- For stake share analysis: Query both current validators AND connection events
+- For bandwidth: Use `dz_device_iface_usage_raw` with byte-to-GB conversion
+- For skip rate: Use `solana_block_production_delta` view
+
+### When Data Seems Missing
+
+1. Try alternative views (history tables, event tables)
+2. Check if time range is too narrow
+3. Query schema to verify column names (see below)
+4. ONLY after exhausting options: state data is unavailable with reason
+
+### Schema Verification
+
+**Before writing complex queries**, verify column names exist:
+
+```sql
+-- List columns for a table/view
+SELECT column_name, data_type
+FROM information_schema.columns
+WHERE table_name = 'table_name_here';
+
+-- Quick describe
+DESCRIBE table_name_here;
+```
+
+**If you get a Binder Error** (column not found), ALWAYS query the schema before retrying:
+
+```sql
+-- Check what columns actually exist
+SELECT column_name FROM information_schema.columns WHERE table_name = 'the_table';
+```
+
+**Common column name mistakes to avoid:**
+- `solana_gossip_nodes_current` has `gossip_ip`, NOT `dz_ip`
+- `dz_device_iface_usage_raw` has NO `owner_pk` - join via `user_tunnel_id` to `dz_users`
+- History tables have `valid_from`/`valid_to`, current tables have `as_of_ts`
+- Vote accounts use `vote_pubkey`, gossip nodes use `pubkey`
+
 ### 3. Verify
 
 - Confirm query results support your conclusions

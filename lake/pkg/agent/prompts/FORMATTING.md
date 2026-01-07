@@ -130,3 +130,33 @@ nyc-lon-2     1.2%    68ms
 Explicit statement:
 
 > No latency samples found for `tok-fra-1` in the past 24 hours.
+
+### Validator Comparison (On-DZ vs Off-DZ)
+
+- Classification (on-dz, off-dz)
+- Validator count per group
+- Total stake per group
+- Skip rate (calculated: slots_skipped / leader_slots_assigned)
+- Vote lag (avg and/or p95)
+- Block production rate
+
+### Traffic/Bandwidth Report
+
+- Owner identifier (owner_pk)
+- Client IP or DZ IP
+- Total bandwidth in GB (convert bytes: `bytes / 1e9`)
+- Average rate in Mbps or Gbps
+- Time period covered
+
+### Network Health (extended)
+
+- Jitter (when available)
+- Carrier transitions for incident analysis
+- In/out errors and discards
+
+### Timeline/Incident Report
+
+- Chronological event list with timestamps
+- Status changes (activated → drained → activated)
+- Metric changes at each point (errors, loss, latency)
+- Recovery indicators

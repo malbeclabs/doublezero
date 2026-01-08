@@ -45,6 +45,8 @@ func (c *Client) ConnectUserUnicast_NoWait(ctx context.Context, deviceCode strin
 }
 
 func (c *Client) ConnectUserUnicast(ctx context.Context, deviceCode string, waitForStatus bool) error {
+	c.doubleZeroIP = nil // Clear stale IP before connecting
+
 	err := c.DisconnectUser(ctx, true, true)
 	if err != nil {
 		return fmt.Errorf("failed to ensure disconnected on host %s: %w", c.Host, err)

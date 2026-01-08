@@ -132,11 +132,17 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 		var clientsToConnect []*qa.Client
 		for _, client := range clients {
 			if assignment, ok := batch[client.Host]; ok {
-				// Only connect if device changed from previous batch
+				// Connect if: first batch, device changed, or client is not currently up
 				if batchNum == 0 {
 					clientsToConnect = append(clientsToConnect, client)
 				} else if prev, ok := batchData[batchNum-1][client.Host]; !ok || prev.Device.Code != assignment.Device.Code {
 					clientsToConnect = append(clientsToConnect, client)
+				} else {
+					// Same device as previous batch - check if client is still connected
+					status, err := client.GetUserStatus(ctx)
+					if err != nil || status.SessionStatus != qa.UserStatusUp {
+						clientsToConnect = append(clientsToConnect, client)
+					}
 				}
 			}
 		}

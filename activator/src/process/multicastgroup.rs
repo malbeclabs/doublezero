@@ -163,7 +163,6 @@ mod tests {
                 tenant_pk: Pubkey::default(),
                 publisher_count: 0,
                 subscriber_count: 0,
-                multicast_slot: u32::MAX,
             };
 
             let mgroup = multicastgroup.clone();

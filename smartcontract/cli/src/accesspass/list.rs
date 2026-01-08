@@ -183,7 +183,6 @@ mod tests {
             code: "test".to_string(),
             publisher_count: 5,
             subscriber_count: 10,
-            multicast_slot: u32::MAX,
         };
 
         let access1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");

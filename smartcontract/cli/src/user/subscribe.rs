@@ -142,7 +142,6 @@ mod tests {
             owner: mgroup_pubkey,
             publisher_count: 0,
             subscriber_count: 0,
-            multicast_slot: u32::MAX,
         };
 
         client

@@ -103,7 +103,6 @@ pub fn process_create_multicastgroup(
         status: MulticastGroupStatus::Pending,
         publisher_count: 0,
         subscriber_count: 0,
-        multicast_slot: u32::MAX, // Unallocated until ActivateMulticastGroup
     };
 
     try_acc_create(

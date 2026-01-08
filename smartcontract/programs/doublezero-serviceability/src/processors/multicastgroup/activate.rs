@@ -4,9 +4,7 @@ use crate::{
     resource::{IdOrIp, ResourceType},
     serializer::try_acc_write,
     state::{
-        globalstate::GlobalState,
-        multicastgroup::*,
-        resource_extension::{Allocator, ResourceExtensionBorrowed},
+        globalstate::GlobalState, multicastgroup::*, resource_extension::ResourceExtensionBorrowed,
     },
 };
 use borsh::BorshSerialize;
@@ -114,8 +112,6 @@ pub fn process_activate_multicastgroup(
         match allocated {
             IdOrIp::Ip(network) => {
                 multicastgroup.multicast_ip = network.ip();
-                // Calculate slot index from allocated IP for later deallocation
-                multicastgroup.multicast_slot = calculate_multicast_slot(&resource, &network)?;
             }
             IdOrIp::Id(_) => {
                 return Err(DoubleZeroError::InvalidArgument.into());
@@ -124,7 +120,6 @@ pub fn process_activate_multicastgroup(
     } else {
         // Legacy behavior: use provided multicast_ip
         multicastgroup.multicast_ip = value.multicast_ip;
-        multicastgroup.multicast_slot = u32::MAX;
     }
 
     multicastgroup.status = MulticastGroupStatus::Activated;
@@ -139,22 +134,4 @@ pub fn process_activate_multicastgroup(
     msg!("Activated: {:?}", multicastgroup);
 
     Ok(())
-}
-
-/// Calculate the slot index from an allocated IP for later deallocation.
-fn calculate_multicast_slot(
-    resource: &ResourceExtensionBorrowed,
-    allocated: &doublezero_program_common::types::NetworkV4,
-) -> Result<u32, DoubleZeroError> {
-    match &resource.allocator {
-        Allocator::Ip(ip_allocator) => {
-            let base_ip_int = u32::from_be_bytes(ip_allocator.base_net.ip().octets());
-            let allocated_ip_int = u32::from_be_bytes(allocated.ip().octets());
-            let offset = allocated_ip_int
-                .checked_sub(base_ip_int)
-                .ok_or(DoubleZeroError::AllocationFailed)?;
-            Ok(offset / ip_allocator.allocation_size)
-        }
-        Allocator::Id(_) => Err(DoubleZeroError::InvalidArgument),
-    }
 }

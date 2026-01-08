@@ -69,7 +69,6 @@ mod tests {
             owner: Pubkey::default(),
             publisher_count: 1,
             subscriber_count: 0,
-            multicast_slot: u32::MAX,
         };
 
         let mgroup_cloned = mgroup.clone();

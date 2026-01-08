@@ -120,7 +120,6 @@ mod tests {
             multicast_ip: "223.0.0.1".parse().unwrap(),
             publisher_count: 0,
             subscriber_count: 0,
-            multicast_slot: u32::MAX,
         };
 
         client

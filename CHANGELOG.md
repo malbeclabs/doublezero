@@ -16,6 +16,7 @@ All notable changes to this project will be documented in this file.
   - Allow contributor owner to update ops manager key
   - Add new arguments on create interface cli command
   - Add ResourceExtension to track IP/ID allocations. Foundation instructions added to create/allocate/deallocate.
+  - ResourceExtension optimization using first_free_index for searching bitmaps
   - Added the **INSTRUCTION_GUIDELINES** document defining the standard for instruction creation.
   - Enforce best practices for instruction implementation across onchain programs
   - Add missing system program account owner checks in multiple instructions

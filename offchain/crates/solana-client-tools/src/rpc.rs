@@ -102,7 +102,7 @@ impl FromStr for NetworkEnvironment {
     }
 }
 
-#[derive(Debug, Args, Clone)]
+#[derive(Debug, Args, Clone, Default)]
 pub struct SolanaConnectionOptions {
     /// URL for Solana's JSON RPC or moniker (or their first letter):
     /// [mainnet-beta, testnet, localhost].

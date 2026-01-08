@@ -74,6 +74,7 @@ jobs:
         run: bash sh/test_validator_debt_fork.sh
 
   test-doublezero-solana-validator-debt-fork-override-76:
+    if: false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

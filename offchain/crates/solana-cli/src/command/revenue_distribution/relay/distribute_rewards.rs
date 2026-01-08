@@ -11,10 +11,10 @@ use doublezero_solana_sdk::{
     build_memo_instruction, environment_2z_token_mint_key,
     revenue_distribution::{
         ID,
-        fetch::try_fetch_config,
+        fetch::{try_fetch_config, try_fetch_distribution},
         instruction::{RevenueDistributionInstructionData, account::DistributeRewardsAccounts},
         state::{ContributorRewards, Distribution, ProgramConfig},
-        types::{DoubleZeroEpoch, RewardShare, UnitShare32},
+        types::{RewardShare, UnitShare32},
     },
     try_build_instruction,
 };
@@ -29,7 +29,7 @@ use crate::command::revenue_distribution::{
         finalize_distribution_rewards::FinalizeDistributionRewardsContext,
         sweep_distribution_tokens::SweepDistributionTokensContext,
     },
-    try_distribution_rewards_iter, try_fetch_distribution, try_fetch_shapley_record,
+    try_distribution_rewards_iter, try_fetch_shapley_record,
 };
 
 const RELAY_MEMO_CU: u32 = 5_000;
@@ -76,24 +76,23 @@ impl Schedulable for DistributeRewards {
 
         let (_, config) = try_fetch_config(&wallet.connection).await?;
 
-        let dz_epoch = match dz_epoch {
-            Some(dz_epoch) => DoubleZeroEpoch::new(*dz_epoch),
+        let dz_epoch_value = match dz_epoch {
+            Some(dz_epoch) => *dz_epoch,
             None => {
                 let deferral_period = config
                     .checked_minimum_epoch_duration_to_finalize_rewards()
                     .context("Minimum epoch duration to finalize rewards not set")?;
-                let allowed_dz_epoch = config
+                config
                     .next_completed_dz_epoch
                     .value()
-                    .saturating_sub(deferral_period.into());
-
-                DoubleZeroEpoch::new(allowed_dz_epoch)
+                    .saturating_sub(deferral_period.into())
             }
         };
 
         // Make sure the distribution's rewards calculation is finalized and
         // that 2Z tokens have been swept.
-        let distribution = try_prepare_distribution_rewards(&wallet, &config, dz_epoch).await?;
+        let distribution =
+            try_prepare_distribution_rewards(&wallet, &config, dz_epoch_value).await?;
 
         let network_env = wallet.connection.try_network_environment().await?;
         let dz_mint_key = environment_2z_token_mint_key(network_env);
@@ -104,7 +103,7 @@ impl Schedulable for DistributeRewards {
         let shapley_output = try_fetch_shapley_record(
             &dz_connection,
             &rewards_accountant_key.unwrap_or(config.rewards_accountant_key),
-            dz_epoch,
+            dz_epoch_value,
         )
         .await?;
 
@@ -112,7 +111,7 @@ impl Schedulable for DistributeRewards {
             try_distribution_rewards_iter(&distribution, &shapley_output)?
         {
             tracing::info!(
-                "Processing epoch {dz_epoch} merkle leaf index {leaf_index}, contributor: {}, share: {:.9}",
+                "Processing epoch {dz_epoch_value} merkle leaf index {leaf_index}, contributor: {}, share: {:.9}",
                 reward_share.contributor_key,
                 reward_share.unit_share as f64 / u32::from(UnitShare32::MAX) as f64
             );
@@ -145,18 +144,18 @@ impl Schedulable for DistributeRewards {
 async fn try_prepare_distribution_rewards(
     wallet: &Wallet,
     config: &ProgramConfig,
-    dz_epoch: DoubleZeroEpoch,
+    dz_epoch_value: u64,
 ) -> Result<ZeroCopyAccountOwnedData<Distribution>> {
     // Fetch distribution. If we had to finalize rewards, we will need to fetch
     // again at the end.
-    let (_, distribution) = try_fetch_distribution(&wallet.connection, dz_epoch).await?;
+    let (_, distribution) = try_fetch_distribution(&wallet.connection, dz_epoch_value).await?;
 
     let mut instructions = Vec::new();
     let mut compute_unit_limit = 5_000;
 
     if !distribution.is_rewards_calculation_finalized() {
         let finalize_distribution_tokens_context =
-            FinalizeDistributionRewardsContext::try_prepare(wallet, distribution.dz_epoch)?;
+            FinalizeDistributionRewardsContext::try_prepare(wallet, dz_epoch_value)?;
 
         instructions.push(finalize_distribution_tokens_context.instruction);
         compute_unit_limit += FinalizeDistributionRewardsContext::COMPUTE_UNIT_LIMIT;
@@ -172,7 +171,9 @@ async fn try_prepare_distribution_rewards(
     };
 
     if instructions.is_empty() {
-        tracing::info!("No instructions to prepare distribution rewards for epoch {dz_epoch}");
+        tracing::info!(
+            "No instructions to prepare distribution rewards for epoch {dz_epoch_value}"
+        );
 
         return Ok(distribution);
     }
@@ -193,14 +194,13 @@ async fn try_prepare_distribution_rewards(
     let tx_outcome = wallet.send_or_simulate_transaction(&transaction).await?;
 
     if let TransactionOutcome::Executed(tx_sig) = tx_outcome {
-        tracing::info!("Prepare distribution rewards for epoch {dz_epoch}: {tx_sig}");
+        tracing::info!("Prepare distribution rewards for epoch {dz_epoch_value}: {tx_sig}");
 
         wallet.print_verbose_output(&[tx_sig]).await?;
     }
 
     // Fetch the distribution again to get the remaining data.
-    let (_, distribution) =
-        try_fetch_distribution(&wallet.connection, distribution.dz_epoch).await?;
+    let (_, distribution) = try_fetch_distribution(&wallet.connection, dz_epoch_value).await?;
 
     Ok(distribution)
 }

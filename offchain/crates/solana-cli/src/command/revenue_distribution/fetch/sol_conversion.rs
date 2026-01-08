@@ -1,11 +1,11 @@
 use anyhow::{Context, Result};
 use clap::Args;
 use doublezero_solana_client_tools::rpc::{SolanaConnection, SolanaConnectionOptions};
-use doublezero_solana_sdk::sol_conversion::oracle::DiscountParameters;
-
-use crate::command::revenue_distribution::{
-    SolConversionState, try_request_oracle_conversion_price,
+use doublezero_solana_sdk::{
+    revenue_distribution::fetch::SolConversionState, sol_conversion::oracle::DiscountParameters,
 };
+
+use crate::command::revenue_distribution::try_request_oracle_conversion_price;
 
 #[derive(Debug, Args)]
 pub struct SolConversionCommand {

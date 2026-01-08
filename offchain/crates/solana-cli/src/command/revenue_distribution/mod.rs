@@ -8,7 +8,6 @@ mod validator_deposit;
 //
 
 use anyhow::{Context, Result, ensure};
-use borsh::BorshDeserialize;
 use clap::{Args, Subcommand};
 use doublezero_contributor_rewards::calculator::proof::ShapleyOutputStorage;
 use doublezero_solana_client_tools::{
@@ -17,22 +16,15 @@ use doublezero_solana_client_tools::{
 };
 use doublezero_solana_sdk::{
     revenue_distribution::{
-        state::{Distribution, Journal, SolanaValidatorDeposit},
+        state::{Distribution, SolanaValidatorDeposit},
         try_is_processed_leaf,
-        types::{DoubleZeroEpoch, RewardShare},
+        types::RewardShare,
     },
-    sol_conversion::{
-        oracle::OraclePriceData,
-        state::{
-            ConfigurationRegistry as SolConversionConfigurationRegistry,
-            ProgramState as SolConversionProgramState,
-        },
-    },
+    sol_conversion::oracle::OraclePriceData,
 };
 use doublezero_solana_validator_debt::validator_debt::{
     ComputedSolanaValidatorDebt, ComputedSolanaValidatorDebts,
 };
-use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::{pubkey::Pubkey, rent::Rent};
 
 // TODO: Add testnet?
@@ -132,62 +124,6 @@ async fn try_fetch_solana_validator_deposit(
     }
 }
 
-async fn try_fetch_distribution(
-    connection: &SolanaConnection,
-    dz_epoch: DoubleZeroEpoch,
-) -> Result<(Pubkey, ZeroCopyAccountOwnedData<Distribution>)> {
-    let (distribution_key, _) = Distribution::find_address(dz_epoch);
-
-    let distribution = connection
-        .try_fetch_zero_copy_data::<Distribution>(&distribution_key)
-        .await
-        .with_context(|| format!("Distribution not found for epoch {dz_epoch}"))?;
-    Ok((distribution_key, distribution))
-}
-
-pub struct SolConversionState {
-    pub program_state: (Pubkey, Box<SolConversionProgramState>),
-    pub configuration_registry: (Pubkey, Box<SolConversionConfigurationRegistry>),
-    pub journal: (Pubkey, ZeroCopyAccountOwnedData<Journal>),
-    pub fixed_fill_quantity: u64,
-}
-
-impl SolConversionState {
-    pub async fn try_fetch(rpc_client: &RpcClient) -> Result<Self> {
-        const FAILED_FETCH_ERROR: &str = "SOL Conversion program not initialized";
-
-        let (program_state_key, _) = SolConversionProgramState::find_address();
-        let (configuration_registry_key, _) = SolConversionConfigurationRegistry::find_address();
-        let (journal_key, _) = Journal::find_address();
-
-        let account_infos = rpc_client
-            .get_multiple_accounts(&[program_state_key, configuration_registry_key, journal_key])
-            .await
-            .context(FAILED_FETCH_ERROR)?
-            .into_iter()
-            .flatten()
-            .collect::<Vec<_>>();
-        ensure!(account_infos.len() == 3, FAILED_FETCH_ERROR);
-
-        let program_state_data = Box::<_>::deserialize(&mut &account_infos[0].data[8..])?;
-        let configuration_registry_data = Box::<SolConversionConfigurationRegistry>::deserialize(
-            &mut &account_infos[1].data[8..],
-        )?;
-
-        let journal_data = ZeroCopyAccountOwnedData::from_account(&account_infos[2])
-            .context("Revenue Distribution program not initialized")?;
-
-        let fixed_fill_quantity = configuration_registry_data.fixed_fill_quantity;
-
-        Ok(Self {
-            program_state: (program_state_key, program_state_data),
-            configuration_registry: (configuration_registry_key, configuration_registry_data),
-            journal: (journal_key, journal_data),
-            fixed_fill_quantity,
-        })
-    }
-}
-
 async fn try_request_oracle_conversion_price() -> Result<OraclePriceData> {
     reqwest::Client::new()
         .get(SOL_2Z_ORACLE_ENDPOINT)
@@ -203,7 +139,7 @@ async fn try_request_oracle_conversion_price() -> Result<OraclePriceData> {
 async fn try_fetch_shapley_record(
     dz_connection: &DoubleZeroLedgerConnection,
     rewards_accountant_key: &Pubkey,
-    dz_epoch: DoubleZeroEpoch,
+    dz_epoch_value: u64,
 ) -> Result<ShapleyOutputStorage> {
     const DEFAULT_SHAPLEY_OUTPUT_STORAGE_PREFIX: &[u8] = b"dz_contributor_rewards";
 
@@ -211,7 +147,7 @@ async fn try_fetch_shapley_record(
         dz_connection,
         DEFAULT_SHAPLEY_OUTPUT_STORAGE_PREFIX,
         rewards_accountant_key,
-        dz_epoch.value(),
+        dz_epoch_value,
     )
     .await
 }

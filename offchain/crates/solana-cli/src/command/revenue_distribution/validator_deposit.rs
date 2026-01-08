@@ -9,6 +9,7 @@ use doublezero_solana_sdk::{
     NetworkEnvironment, build_memo_instruction,
     revenue_distribution::{
         ID,
+        fetch::SolConversionState,
         instruction::{
             RevenueDistributionInstructionData, account::InitializeSolanaValidatorDepositAccounts,
         },
@@ -21,8 +22,7 @@ use doublezero_solana_validator_debt::rpc::try_fetch_debt_records_and_distributi
 use solana_sdk::{compute_budget::ComputeBudgetInstruction, pubkey::Pubkey};
 
 use crate::command::{
-    revenue_distribution::{SolConversionState, convert_2z::Convert2zContext},
-    try_prompt_proceed_confirmation,
+    revenue_distribution::convert_2z::Convert2zContext, try_prompt_proceed_confirmation,
 };
 
 #[derive(Debug, Args)]

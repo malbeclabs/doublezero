@@ -12,9 +12,9 @@ use doublezero_solana_client_tools::{
 use doublezero_solana_sdk::{
     DOUBLEZERO_MINT_DECIMALS,
     revenue_distribution::{
-        fetch::try_fetch_config,
+        fetch::{try_fetch_config, try_fetch_distribution},
         state::{Distribution, SolanaValidatorDeposit},
-        types::{DoubleZeroEpoch, UnitShare32},
+        types::UnitShare32,
     },
 };
 use solana_client::{
@@ -27,7 +27,7 @@ use tabled::Tabled;
 use crate::command::revenue_distribution::{
     fetch::{TableOptions, print_table},
     try_distribution_rewards_iter, try_distribution_solana_validator_debt_iter,
-    try_fetch_distribution, try_fetch_shapley_record,
+    try_fetch_shapley_record,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, ValueEnum)]
@@ -109,15 +109,15 @@ impl DistributionCommand {
 
         let (_, config) = try_fetch_config(&solana_connection).await?;
 
-        let epoch = match dz_epoch {
-            Some(epoch) => DoubleZeroEpoch::new(epoch),
-            None => DoubleZeroEpoch::new(config.next_completed_dz_epoch.value().saturating_sub(1)),
+        let epoch_value = match dz_epoch {
+            Some(epoch) => epoch,
+            None => config.next_completed_dz_epoch.value().saturating_sub(1),
         };
 
         let debt_accountant_key = debt_accountant_key.unwrap_or(config.debt_accountant_key);
 
         let (distribution_key, distribution) =
-            try_fetch_distribution(&solana_connection, epoch).await?;
+            try_fetch_distribution(&solana_connection, epoch_value).await?;
 
         match view_mode {
             DistributionViewMode::Summary => {
@@ -580,7 +580,7 @@ async fn try_print_distribution_rewards_table(
         .collect::<Result<HashMap<_, _>>>()?;
 
     let shapley_record =
-        try_fetch_shapley_record(dz_connection, rewards_accountant_key, dz_epoch).await?;
+        try_fetch_shapley_record(dz_connection, rewards_accountant_key, dz_epoch.value()).await?;
 
     // TODO: Revisit when economic burn rate is introduced.
     let collected_rewards = distribution.total_collected_2z_tokens();

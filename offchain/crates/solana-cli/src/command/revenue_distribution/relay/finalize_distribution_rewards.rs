@@ -5,7 +5,7 @@ use doublezero_solana_client_tools::payer::{SolanaPayerOptions, TransactionOutco
 use doublezero_solana_sdk::{
     revenue_distribution::{
         ID,
-        fetch::try_fetch_config,
+        fetch::{try_fetch_config, try_fetch_distribution},
         instruction::{
             RevenueDistributionInstructionData, account::FinalizeDistributionRewardsAccounts,
         },
@@ -14,8 +14,6 @@ use doublezero_solana_sdk::{
     try_build_instruction,
 };
 use solana_sdk::{compute_budget::ComputeBudgetInstruction, instruction::Instruction};
-
-use crate::command::revenue_distribution::try_fetch_distribution;
 
 #[derive(Debug, Args, Clone)]
 pub struct FinalizeDistributionRewards {
@@ -49,8 +47,8 @@ impl Schedulable for FinalizeDistributionRewards {
 
         let wallet = Wallet::try_from(solana_payer_options.clone())?;
 
-        let dz_epoch = match dz_epoch {
-            Some(dz_epoch) => DoubleZeroEpoch::new(*dz_epoch),
+        let dz_epoch_value = match dz_epoch {
+            Some(dz_epoch) => *dz_epoch,
             None => {
                 let (_, program_config) = try_fetch_config(&wallet.connection).await?;
                 let deferral_period = program_config
@@ -58,29 +56,27 @@ impl Schedulable for FinalizeDistributionRewards {
                     .ok_or(anyhow!(
                         "Minimum epoch duration to finalize rewards not set"
                     ))?;
-                let allowed_dz_epoch = program_config
+                program_config
                     .next_completed_dz_epoch
                     .value()
-                    .saturating_sub(deferral_period.into());
-
-                DoubleZeroEpoch::new(allowed_dz_epoch)
+                    .saturating_sub(deferral_period.into())
             }
         };
 
-        let (_, distribution) = try_fetch_distribution(&wallet.connection, dz_epoch).await?;
+        let (_, distribution) = try_fetch_distribution(&wallet.connection, dz_epoch_value).await?;
 
         if distribution.is_rewards_calculation_finalized() {
             if schedule.is_scheduled() {
-                tracing::warn!("Rewards calculation already finalized for epoch {dz_epoch}");
+                tracing::warn!("Rewards calculation already finalized for epoch {dz_epoch_value}");
 
                 return Ok(());
             } else {
-                bail!("Rewards calculation already finalized for epoch {dz_epoch}");
+                bail!("Rewards calculation already finalized for epoch {dz_epoch_value}");
             }
         }
 
         let finalize_distribution_tokens_context =
-            FinalizeDistributionRewardsContext::try_prepare(&wallet, dz_epoch)?;
+            FinalizeDistributionRewardsContext::try_prepare(&wallet, dz_epoch_value)?;
 
         let mut instructions = vec![
             finalize_distribution_tokens_context.instruction,
@@ -97,7 +93,7 @@ impl Schedulable for FinalizeDistributionRewards {
         let tx_sig = wallet.send_or_simulate_transaction(&transaction).await?;
 
         if let TransactionOutcome::Executed(tx_sig) = tx_sig {
-            tracing::info!("Finalize distribution rewards for epoch {dz_epoch}: {tx_sig}");
+            tracing::info!("Finalize distribution rewards for epoch {dz_epoch_value}: {tx_sig}");
 
             wallet.print_verbose_output(&[tx_sig]).await?;
         }
@@ -113,10 +109,13 @@ pub struct FinalizeDistributionRewardsContext {
 impl FinalizeDistributionRewardsContext {
     pub const COMPUTE_UNIT_LIMIT: u32 = 7_500;
 
-    pub fn try_prepare(wallet: &Wallet, dz_epoch: DoubleZeroEpoch) -> Result<Self> {
+    pub fn try_prepare(wallet: &Wallet, dz_epoch_value: u64) -> Result<Self> {
         let instruction = try_build_instruction(
             &ID,
-            FinalizeDistributionRewardsAccounts::new(&wallet.pubkey(), dz_epoch),
+            FinalizeDistributionRewardsAccounts::new(
+                &wallet.pubkey(),
+                DoubleZeroEpoch::new(dz_epoch_value),
+            ),
             &RevenueDistributionInstructionData::FinalizeDistributionRewards,
         )?;
 

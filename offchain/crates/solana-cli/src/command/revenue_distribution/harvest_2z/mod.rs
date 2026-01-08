@@ -6,7 +6,9 @@ use doublezero_solana_client_tools::{
     instruction::take_instruction,
     payer::{SolanaPayerOptions, TransactionOutcome, Wallet},
 };
-use doublezero_solana_sdk::revenue_distribution::env::mainnet::DOUBLEZERO_MINT_KEY;
+use doublezero_solana_sdk::revenue_distribution::{
+    env::mainnet::DOUBLEZERO_MINT_KEY, fetch::SolConversionState,
+};
 use jupiter::{JupiterClient, quote::JupiterLegacyQuoteResponse};
 use solana_client::rpc_config::{
     RpcSimulateTransactionAccountsConfig, RpcSimulateTransactionConfig,
@@ -16,7 +18,7 @@ use solana_sdk::{
     pubkey::Pubkey,
 };
 
-use crate::command::revenue_distribution::{SolConversionState, convert_2z::Convert2zContext};
+use crate::command::revenue_distribution::convert_2z::Convert2zContext;
 
 const DEFAULT_BUY_SOL_ADDRESS_LOOKUP_TABLE_KEY: Pubkey =
     solana_sdk::pubkey!("GnwZZZVudHSqChJiAh1RULWJe2itLHSZ9HCNXrbBQKPs");

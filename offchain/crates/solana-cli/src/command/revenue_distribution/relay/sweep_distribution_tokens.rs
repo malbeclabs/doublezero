@@ -5,7 +5,7 @@ use doublezero_solana_client_tools::payer::{SolanaPayerOptions, TransactionOutco
 use doublezero_solana_sdk::{
     revenue_distribution::{
         ID,
-        fetch::try_fetch_config,
+        fetch::{SolConversionState, try_fetch_config, try_fetch_distribution},
         instruction::{
             RevenueDistributionInstructionData, account::SweepDistributionTokensAccounts,
         },
@@ -16,8 +16,6 @@ use doublezero_solana_sdk::{
     try_build_instruction,
 };
 use solana_sdk::{compute_budget::ComputeBudgetInstruction, instruction::Instruction};
-
-use crate::command::revenue_distribution::{SolConversionState, try_fetch_distribution};
 
 #[derive(Debug, Args, Clone)]
 pub struct SweepDistributionTokens {
@@ -133,7 +131,7 @@ impl SweepDistributionTokensContext {
             }
             None => {
                 let (_, distribution_data) =
-                    try_fetch_distribution(&wallet.connection, expected_dz_epoch).await?;
+                    try_fetch_distribution(&wallet.connection, expected_dz_epoch.value()).await?;
                 *distribution_data.mucked_data
             }
         };

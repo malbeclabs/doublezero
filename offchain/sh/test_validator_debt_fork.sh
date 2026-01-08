@@ -45,13 +45,14 @@ echo "doublezero-solana-validator-debt initialize-distribution -h"
 $CLI_BIN initialize-distribution -h
 echo
 
-echo "doublezero-solana-validator-debt initialize-distribution -v -ul --dz-env mainnet-beta --bypass-dz-epoch-check --record-debt-accountant ${MAINNET_BETA_DEBT_ACCOUNTANT_KEY}"
+echo "doublezero-solana-validator-debt initialize-distribution -v -ul --dz-env mainnet-beta --bypass-dz-epoch-check --record-debt-accountant ${MAINNET_BETA_DEBT_ACCOUNTANT_KEY} --with-compute-unit-price 1000"
 $CLI_BIN initialize-distribution \
     -v \
     -ul \
     --dz-env mainnet-beta \
     --bypass-dz-epoch-check \
-    --record-debt-accountant $MAINNET_BETA_DEBT_ACCOUNTANT_KEY
+    --record-debt-accountant $MAINNET_BETA_DEBT_ACCOUNTANT_KEY \
+    --with-compute-unit-price 1000
 echo
 
 ### In --god-mode, the time to wait for a new initialized distribution is one
@@ -59,11 +60,12 @@ echo
 echo "sleep 60"
 sleep 60
 
-echo "doublezero-solana-validator-debt initialize-distribution -v -ul --dz-env mainnet-beta --bypass-dz-epoch-check --record-debt-accountant ${MAINNET_BETA_DEBT_ACCOUNTANT_KEY}"
+echo "doublezero-solana-validator-debt initialize-distribution -v -ul --dz-env mainnet-beta --bypass-dz-epoch-check --record-debt-accountant ${MAINNET_BETA_DEBT_ACCOUNTANT_KEY} --with-compute-unit-price 1000"
 $CLI_BIN initialize-distribution \
     -v \
     -ul \
     --dz-env mainnet-beta \
     --bypass-dz-epoch-check \
-    --record-debt-accountant $MAINNET_BETA_DEBT_ACCOUNTANT_KEY
+    --record-debt-accountant $MAINNET_BETA_DEBT_ACCOUNTANT_KEY \
+    --with-compute-unit-price 1000
 echo

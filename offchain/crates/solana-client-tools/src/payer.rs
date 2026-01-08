@@ -26,7 +26,7 @@ use crate::{
     transaction::try_new_transaction,
 };
 
-#[derive(Debug, Args, Clone)]
+#[derive(Debug, Args, Clone, Default)]
 pub struct SolanaPayerOptions {
     #[command(flatten)]
     pub connection_options: SolanaConnectionOptions,
@@ -35,7 +35,7 @@ pub struct SolanaPayerOptions {
     pub signer_options: SolanaSignerOptions,
 }
 
-#[derive(Debug, Args, Clone)]
+#[derive(Debug, Args, Clone, Default)]
 pub struct SolanaSignerOptions {
     /// Filepath or URL to a keypair.
     #[arg(long = "keypair", short = 'k', value_name = "KEYPAIR")]

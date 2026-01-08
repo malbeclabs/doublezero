@@ -6,7 +6,7 @@ use doublezero_solana_client_tools::{
     rpc::SolanaConnection,
 };
 use doublezero_solana_sdk::{
-    revenue_distribution::env::mainnet::DOUBLEZERO_MINT_KEY,
+    revenue_distribution::{env::mainnet::DOUBLEZERO_MINT_KEY, fetch::SolConversionState},
     sol_conversion::{
         ID,
         instruction::{SolConversionInstructionData, account::BuySolAccounts},
@@ -20,8 +20,7 @@ use solana_sdk::{
 };
 
 use crate::command::{
-    revenue_distribution::{SolConversionState, try_request_oracle_conversion_price},
-    try_prompt_proceed_confirmation,
+    revenue_distribution::try_request_oracle_conversion_price, try_prompt_proceed_confirmation,
 };
 
 #[derive(Debug, Args, Clone)]

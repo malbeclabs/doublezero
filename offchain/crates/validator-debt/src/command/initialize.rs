@@ -35,7 +35,7 @@ impl InitializeDistributionCommand {
         let wallet = Wallet::try_from(solana_payer_options)?;
 
         worker::try_initialize_distribution(
-            wallet,
+            &wallet,
             dz_env.dz_env,
             bypass_dz_epoch_check,
             record_accountant_key,

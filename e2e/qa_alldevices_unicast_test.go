@@ -96,7 +96,7 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 	log.Info("    Otherwise, associate each device with the client with the lowest latency)")
 
 	log.Info("Assign devices to clients based on latency")
-	batchData := assignDevicesToClients(devices, clients, clientLatencies, test.ShuffleDevices)
+	batchData := assignDevicesToClients(devices, clients, clientLatencies, allocateAddrHostsSet, test.ShuffleDevices)
 
 	batchCount := len(batchData)
 	if batchCount == 0 {
@@ -179,9 +179,13 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 // assignDevicesToClients() considers latency between each client and device to assign devices to clients:
 // If multiple clients have < latencyThresholdMs latency, the device goes to the client with fewest devices.
 // Otherwise, the device goes to the client with the lowest latency.
+// Allocate-addr clients have no intra-exchange routing, so they must not share exchanges with any other client.
 // After assignment, shuffles each client's list, then pads all lists to match the longest so every client has an entry for every batch.
-func assignDevicesToClients(devices []*qa.Device, clients []*qa.Client, clientLatencies ClientLatencies, shuffle func([]*qa.Device)) BatchData {
+func assignDevicesToClients(devices []*qa.Device, clients []*qa.Client, clientLatencies ClientLatencies, allocateAddrHosts map[string]struct{}, shuffle func([]*qa.Device)) BatchData {
 	clientDevices := make(map[string][]*qa.Device)
+	// Track exchange usage to enforce allocate-addr isolation
+	allocateAddrExchanges := make(map[string]string)    // exchange -> allocate-addr client hostname
+	nonAllocateAddrExchanges := make(map[string]string) // exchange -> non-allocate-addr client hostname
 
 	for _, device := range devices {
 		var lowLatencyClients []string
@@ -189,6 +193,24 @@ func assignDevicesToClients(devices []*qa.Device, clients []*qa.Client, clientLa
 		bestLatency := math.MaxFloat64
 
 		for _, client := range clients {
+			_, isAllocateAddr := allocateAddrHosts[client.Host]
+
+			// Enforce device.exchange isolation for allocate-addr clients
+			if isAllocateAddr {
+				// Don't connect an allocate-addr client to an exchange already used by another client
+				if existingClient, exists := allocateAddrExchanges[device.ExchangeCode]; exists && existingClient != client.Host {
+					continue
+				}
+				if _, exists := nonAllocateAddrExchanges[device.ExchangeCode]; exists {
+					continue
+				}
+			} else {
+				// Don't connect a non-allocate-addr client to an exchange already used by another client
+				if _, exists := allocateAddrExchanges[device.ExchangeCode]; exists {
+					continue
+				}
+			}
+
 			latencyMs, ok := clientLatencies[client.Host][device.Code]
 			if !ok {
 				continue
@@ -221,6 +243,12 @@ func assignDevicesToClients(devices []*qa.Device, clients []*qa.Client, clientLa
 
 		if assignedClientHostname != "" {
 			clientDevices[assignedClientHostname] = append(clientDevices[assignedClientHostname], device)
+			// Track exchange usage
+			if _, isAllocateAddr := allocateAddrHosts[assignedClientHostname]; isAllocateAddr {
+				allocateAddrExchanges[device.ExchangeCode] = assignedClientHostname
+			} else {
+				nonAllocateAddrExchanges[device.ExchangeCode] = assignedClientHostname
+			}
 		}
 	}
 

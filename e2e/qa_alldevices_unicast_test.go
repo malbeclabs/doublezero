@@ -424,12 +424,13 @@ func runConnectivitySubtests(
 					if err != nil {
 						log.Error("Connectivity test failed", "error", err, "source", src.Host, "target", target.Host, "sourceDevice", srcDevice.Code, "targetDevice", dstDevice.Code)
 						assert.NoError(t, err, "failed to test connectivity")
-						return
 					}
-					mu.Lock()
-					totalSent += result.PacketsSent
-					totalReceived += result.PacketsReceived
-					mu.Unlock()
+					if result != nil {
+						mu.Lock()
+						totalSent += result.PacketsSent
+						totalReceived += result.PacketsReceived
+						mu.Unlock()
+					}
 				}(srcClient, target, batch[srcClient.Host].Device, batch[target.Host].Device)
 			}
 			wg.Wait()

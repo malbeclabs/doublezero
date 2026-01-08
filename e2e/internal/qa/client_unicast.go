@@ -199,7 +199,15 @@ func (c *Client) TestUnicastConnectivity(t *testing.T, ctx context.Context, targ
 		c.log.Error("Routes disappeared while pinging, failed to ping after all retries", attrs...)
 	}
 
-	return nil, fmt.Errorf("failed to ping after %d retries: %w", unicastPingMaxRetries, lastErr)
+	// Return the last result even on failure so the caller can see what happened
+	var result *UnicastTestConnectivityResult
+	if lastResp != nil {
+		result = &UnicastTestConnectivityResult{
+			PacketsSent:     lastResp.PacketsSent,
+			PacketsReceived: lastResp.PacketsReceived,
+		}
+	}
+	return result, fmt.Errorf("failed to ping after %d retries: %w", unicastPingMaxRetries, lastErr)
 }
 
 func (c *Client) pingOnce(ctx context.Context, targetIP string, sourceIP string, iface string) (*pb.PingResult, error) {

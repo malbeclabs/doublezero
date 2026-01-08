@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
   - IP address lookup responses that do not contain a valid IPv4 address (such as upstream timeout messages) are now treated as retryable errors instead of being parsed as IPs.
   - `doublezero resource` commands added for managing ResourceExtension accounts.
   - Added health_oracle to the smart contract global configuration to manage and authorize health-related operations.
+  - Added --ip-net support to create to match the existing behavior in update.
 - Onchain programs
   - Allow contributor owner to update ops manager key
   - Add new arguments on create interface cli command
@@ -23,6 +24,7 @@ All notable changes to this project will be documented in this file.
   - Refactor codebase for improved maintainability and future development
   - Introduced health management for Devices and Links, adding explicit health states, authorized health updates, and related state, processor, and test enhancements.
   - Introduce desired status to Link and Devices
+  - Updated validation to allow public IP prefixes for CYOA/DIA, removing the restriction imposed by type-based checks.
 - Internet Latency Telemetry
   - Fixed a bug that prevented unresponsive ripeatlas probes from being replaced
   - Fixed a bug that caused ripeatlas samples to be dropped when they were delayed to the next collection cycle

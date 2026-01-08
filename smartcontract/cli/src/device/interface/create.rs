@@ -6,7 +6,7 @@ use crate::{
     validators::{validate_parse_bandwidth, validate_pubkey_or_code},
 };
 use clap::Args;
-use doublezero_program_common::validate_iface;
+use doublezero_program_common::{types::network_v4::NetworkV4, validate_iface};
 use doublezero_sdk::commands::device::{
     get::GetDeviceCommand, interface::create::CreateDeviceInterfaceCommand,
 };
@@ -29,6 +29,9 @@ pub struct CreateDeviceInterfaceCliCommand {
     /// DIA Port (for DIA interfaces)
     #[arg(long)]
     pub interface_dia: Option<types::InterfaceDIA>,
+    /// IP Network
+    #[arg(long)]
+    pub ip_net: Option<NetworkV4>,
     /// Bandwidth in Mbps
     #[arg(long, value_parser = validate_parse_bandwidth, default_value = "0")]
     pub bandwidth: u64,
@@ -77,6 +80,7 @@ impl CreateDeviceInterfaceCliCommand {
         let (signature, _) = client.create_device_interface(CreateDeviceInterfaceCommand {
             pubkey: device_pk,
             name: self.name.clone(),
+            ip_net: self.ip_net,
             loopback_type: self.loopback_type.map(|lt| lt.into()).unwrap_or_default(),
             interface_cyoa: self.interface_cyoa.map(|ic| ic.into()).unwrap_or_default(),
             interface_dia: self.interface_dia.map(|id| id.into()).unwrap_or_default(),
@@ -178,6 +182,7 @@ mod tests {
                 loopback_type: LoopbackType::Ipv4,
                 interface_cyoa: InterfaceCYOA::GREOverDIA,
                 interface_dia: InterfaceDIA::DIA,
+                ip_net: None,
                 bandwidth: 0,
                 cir: 0,
                 mtu: 1500,
@@ -195,6 +200,7 @@ mod tests {
             loopback_type: Some(types::LoopbackType::Ipv4),
             interface_cyoa: Some(types::InterfaceCYOA::GREOverDIA),
             interface_dia: Some(types::InterfaceDIA::DIA),
+            ip_net: None,
             bandwidth: 0,
             cir: 0,
             mtu: 1500,

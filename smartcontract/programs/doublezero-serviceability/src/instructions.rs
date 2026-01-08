@@ -1010,6 +1010,7 @@ mod tests {
                 mtu: 1500,
                 routing_mode: RoutingMode::Static,
                 loopback_type: LoopbackType::None,
+                ip_net: None,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
             }),

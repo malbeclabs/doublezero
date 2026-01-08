@@ -434,6 +434,8 @@ impl Validate for Interface {
         }
         // IP net must be valid
         if interface.ip_net != NetworkV4::default()
+            && interface.interface_cyoa == InterfaceCYOA::None
+            && interface.interface_dia == InterfaceDIA::None
             && !interface.ip_net.ip().is_private()
             && !interface.ip_net.ip().is_link_local()
         {
@@ -513,4 +515,59 @@ fn test_interface_version() {
     assert_eq!(iface_v2.ip_net, "10.0.0.0/24".parse().unwrap());
     assert_eq!(iface_v2.node_segment_idx, 200);
     assert!(iface_v2.user_tunnel_endpoint);
+}
+
+#[cfg(test)]
+mod test_interface_validate {
+    use super::*;
+    use doublezero_program_common::types::NetworkV4;
+
+    fn base_interface() -> InterfaceV2 {
+        InterfaceV2 {
+            status: InterfaceStatus::Activated,
+            name: "Ethernet1".to_string(),
+            interface_type: InterfaceType::Physical,
+            interface_cyoa: InterfaceCYOA::None,
+            interface_dia: InterfaceDIA::None,
+            loopback_type: LoopbackType::None,
+            bandwidth: 1000,
+            cir: 1000,
+            mtu: 1500,
+            routing_mode: RoutingMode::Static,
+            vlan_id: 1,
+            ip_net: NetworkV4::default(),
+            node_segment_idx: 0,
+            user_tunnel_endpoint: false,
+        }
+    }
+
+    #[test]
+    fn test_valid_interface() {
+        let iface = base_interface();
+        assert!(Interface::V2(iface).validate().is_ok());
+    }
+
+    #[test]
+    fn test_invalid_name() {
+        let mut iface = base_interface();
+        iface.name = "".to_string();
+        let err = Interface::V2(iface).validate();
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidInterfaceName);
+    }
+
+    #[test]
+    fn test_invalid_vlan_id() {
+        let mut iface = base_interface();
+        iface.vlan_id = 5000;
+        let err = Interface::V2(iface).validate();
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidVlanId);
+    }
+
+    #[test]
+    fn test_invalid_ip() {
+        let mut iface = base_interface();
+        iface.ip_net = "8.8.8.8/24".parse().unwrap();
+        let err = Interface::V2(iface).validate();
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidInterfaceIp);
+    }
 }

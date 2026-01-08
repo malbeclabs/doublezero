@@ -512,12 +512,14 @@ pub async fn post_debt_collection_summary_to_slack(
         "Total Paid".to_string(),
         "Total Debt".to_string(),
         "Total Outstanding".to_string(),
+        "Total Percentage Paid".to_string(),
         "Total Insufficient Funds Count".to_string(),
     ];
     let table_values = vec![
         format!("{:.9} SOL", total_paid as f64 * 1e-9),
         format!("{:.9} SOL", total_debt as f64 * 1e-9),
         format!("{:.9} SOL", (total_debt - total_paid) as f64 * 1e-9),
+        format!("{:.2}%", (total_paid as f64 / total_debt as f64) * 100.0),
         insufficient_funds_count.to_string(),
     ];
     slack_notifier::validator_debt::post_to_slack(None, client, header, table_header, table_values)
@@ -558,6 +560,7 @@ pub async fn post_debt_collections_to_slack(
             continue;
         };
         let successful_transactions_count: u64 = dcr.successful_transactions_count as u64;
+
         let already_paid_count: u64 = dcr.already_paid_count as u64;
 
         let percentage_paid = (already_paid_count + successful_transactions_count) as f64
@@ -578,14 +581,15 @@ pub async fn post_debt_collections_to_slack(
         table_values.push(row_values);
     }
 
-    slack_notifier::validator_debt::post_debt_collections_to_slack(
-        client,
-        header,
-        table_header,
-        table_values,
-    )
-    .await?;
-
+    if !table_values.is_empty() {
+        slack_notifier::validator_debt::post_debt_collections_to_slack(
+            client,
+            header,
+            table_header,
+            table_values,
+        )
+        .await?;
+    };
     Ok(())
 }
 
@@ -614,6 +618,11 @@ pub async fn post_debt_collection_to_slack(
     ];
 
     let total_attempted_transactions_count: u64 = debt_collection_results.total_validators as u64;
+
+    if total_attempted_transactions_count == 0 {
+        return Ok(());
+    };
+
     let successful_transactions_count: u64 =
         debt_collection_results.successful_transactions_count as u64;
     let already_paid_count: u64 = debt_collection_results.already_paid_count as u64;

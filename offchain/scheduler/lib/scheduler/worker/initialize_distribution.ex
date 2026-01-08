@@ -19,12 +19,12 @@ defmodule Scheduler.Worker.InitializeDistribution do
     case Scheduler.DoubleZero.initialize_distribution(solana_rpc()) do
       {:error, error} ->
         Logger.error("initialize_distribution: received error: #{inspect(error)}")
+        {:stop, :shutdown, state}
 
       {} ->
         Logger.info("initialize_distribution: completed")
+        {:stop, :normal, state}
     end
-
-    {:stop, :shutdown, state}
   end
 
   def handle_info(msg, state) do

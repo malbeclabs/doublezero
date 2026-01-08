@@ -360,33 +360,35 @@ impl Transaction {
             }
         }
 
-        let successful_transactions: Vec<DebtCollectionResult> = debt_collection_result
-            .clone()
-            .into_iter()
-            .filter(|pr| pr.success)
-            .collect();
+        let mut successful_transactions_count = 0;
+        let mut successful_transactions_amount = 0;
+        let mut already_paid_count = 0;
+        let mut already_paid = 0;
+        let mut insufficient_funds_count = 0;
+        let mut total_debt: u64 = 0;
 
-        let already_paid =
-            count_failed_debt_collection("Merkle leaf", debt_collection_result.clone());
-
-        let insufficient_funds =
-            count_failed_debt_collection("Insufficient funds", debt_collection_result.clone());
-
+        for dcr in &debt_collection_result {
+            total_debt += dcr.amount;
+            if dcr.success {
+                successful_transactions_count += 1;
+                successful_transactions_amount += dcr.amount;
+            } else if let Some(result_str) = &dcr.result {
+                if result_str.contains("Merkle leaf") {
+                    // already paid
+                    already_paid_count += 1;
+                    already_paid += dcr.amount;
+                } else if result_str.contains("Insufficient funds") {
+                    insufficient_funds_count += 1;
+                }
+            }
+        }
         let total_validators = debt_collection_result.len();
-
-        let total_debt: u64 = debt_collection_result.iter().map(|tx| tx.amount).sum();
-
-        let insufficient_funds_count = insufficient_funds.len();
-        let already_paid_count: usize = already_paid.len();
-        let already_paid: u64 = already_paid.iter().map(|tx| tx.amount).sum();
-        let successful_transactions_amount: u64 =
-            successful_transactions.iter().map(|tx| tx.amount).sum();
         let total_paid = already_paid + successful_transactions_amount;
 
         let debt_collection_results = DebtCollectionResults {
             collection_results: debt_collection_result,
             dz_epoch,
-            successful_transactions_count: successful_transactions.len(),
+            successful_transactions_count,
             insufficient_funds_count,
             already_paid_count,
             already_paid,
@@ -497,19 +499,6 @@ impl Transaction {
 
         Ok(*distribution_state)
     }
-}
-
-fn count_failed_debt_collection(
-    error_type: &str,
-    dcr: Vec<DebtCollectionResult>,
-) -> Vec<DebtCollectionResult> {
-    dcr.into_iter()
-        .filter(|pr| {
-            pr.result
-                .as_ref()
-                .is_some_and(|res| res.contains(error_type))
-        })
-        .collect()
 }
 
 fn parse_program_logs(

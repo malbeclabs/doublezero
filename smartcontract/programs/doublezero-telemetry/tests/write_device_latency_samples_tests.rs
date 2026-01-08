@@ -30,17 +30,25 @@ use test_helpers::*;
 #[tokio::test]
 async fn test_write_device_latency_samples_success() {
     let mut ledger = LedgerHelper::new().await.unwrap();
-        
-        let payer_pubkey = ledger.context.lock().unwrap().payer.insecure_clone().pubkey();
-        let contributor_pk = ledger
-            .serviceability
-            .create_contributor("CONTRIB".to_string(), payer_pubkey)
-            .await
-            .unwrap();
+
+    let payer_pubkey = ledger
+        .context
+        .lock()
+        .unwrap()
+        .payer
+        .insecure_clone()
+        .pubkey();
+    let contributor_pk = ledger
+        .serviceability
+        .create_contributor("CONTRIB".to_string(), payer_pubkey)
+        .await
+        .unwrap();
 
     // Seed ledger with two linked devices, and a funded origin device agent.
-    let (origin_device_agent, origin_device_pk, target_device_pk, link_pk) =
-        ledger.seed_with_two_linked_devices(contributor_pk).await.unwrap();
+    let (origin_device_agent, origin_device_pk, target_device_pk, link_pk) = ledger
+        .seed_with_two_linked_devices(contributor_pk)
+        .await
+        .unwrap();
 
     // Wait for a new blockhash before moving on.
     ledger.wait_for_new_blockhash().await.unwrap();
@@ -139,17 +147,25 @@ async fn test_write_device_latency_samples_success() {
 #[tokio::test]
 async fn test_write_device_latency_samples_fail_unauthorized_agent() {
     let mut ledger = LedgerHelper::new().await.unwrap();
-        
-        let payer_pubkey = ledger.context.lock().unwrap().payer.insecure_clone().pubkey();
-        let contributor_pk = ledger
-            .serviceability
-            .create_contributor("CONTRIB".to_string(), payer_pubkey)
-            .await
-            .unwrap();
+
+    let payer_pubkey = ledger
+        .context
+        .lock()
+        .unwrap()
+        .payer
+        .insecure_clone()
+        .pubkey();
+    let contributor_pk = ledger
+        .serviceability
+        .create_contributor("CONTRIB".to_string(), payer_pubkey)
+        .await
+        .unwrap();
 
     // Set up a valid latency samples account with a specific agent
-    let (authorized_agent, origin_device_pk, target_device_pk, link_pk) =
-        ledger.seed_with_two_linked_devices(contributor_pk).await.unwrap();
+    let (authorized_agent, origin_device_pk, target_device_pk, link_pk) = ledger
+        .seed_with_two_linked_devices(contributor_pk)
+        .await
+        .unwrap();
 
     ledger.wait_for_new_blockhash().await.unwrap();
 
@@ -199,17 +215,25 @@ async fn test_write_device_latency_samples_fail_unauthorized_agent() {
 #[tokio::test]
 async fn test_write_device_latency_samples_fail_account_full() {
     let mut ledger = LedgerHelper::new().await.unwrap();
-        
-        let payer_pubkey = ledger.context.lock().unwrap().payer.insecure_clone().pubkey();
-        let contributor_pk = ledger
-            .serviceability
-            .create_contributor("CONTRIB".to_string(), payer_pubkey)
-            .await
-            .unwrap();
+
+    let payer_pubkey = ledger
+        .context
+        .lock()
+        .unwrap()
+        .payer
+        .insecure_clone()
+        .pubkey();
+    let contributor_pk = ledger
+        .serviceability
+        .create_contributor("CONTRIB".to_string(), payer_pubkey)
+        .await
+        .unwrap();
 
     // Set up a latency samples account with a funded agent
-    let (agent, origin_device_pk, target_device_pk, link_pk) =
-        ledger.seed_with_two_linked_devices(contributor_pk).await.unwrap();
+    let (agent, origin_device_pk, target_device_pk, link_pk) = ledger
+        .seed_with_two_linked_devices(contributor_pk)
+        .await
+        .unwrap();
 
     ledger.wait_for_new_blockhash().await.unwrap();
 
@@ -264,16 +288,24 @@ async fn test_write_device_latency_samples_fail_account_full() {
 #[tokio::test]
 async fn test_write_device_latency_samples_preserves_start_timestamp() {
     let mut ledger = LedgerHelper::new().await.unwrap();
-        
-        let payer_pubkey = ledger.context.lock().unwrap().payer.insecure_clone().pubkey();
-        let contributor_pk = ledger
-            .serviceability
-            .create_contributor("CONTRIB".to_string(), payer_pubkey)
-            .await
-            .unwrap();
 
-    let (agent, origin_device_pk, target_device_pk, link_pk) =
-        ledger.seed_with_two_linked_devices(contributor_pk).await.unwrap();
+    let payer_pubkey = ledger
+        .context
+        .lock()
+        .unwrap()
+        .payer
+        .insecure_clone()
+        .pubkey();
+    let contributor_pk = ledger
+        .serviceability
+        .create_contributor("CONTRIB".to_string(), payer_pubkey)
+        .await
+        .unwrap();
+
+    let (agent, origin_device_pk, target_device_pk, link_pk) = ledger
+        .seed_with_two_linked_devices(contributor_pk)
+        .await
+        .unwrap();
 
     ledger.wait_for_new_blockhash().await.unwrap();
 
@@ -327,16 +359,24 @@ async fn test_write_device_latency_samples_preserves_start_timestamp() {
 #[tokio::test]
 async fn test_write_device_latency_samples_fail_agent_not_signer() {
     let mut ledger = LedgerHelper::new().await.unwrap();
-        
-        let payer_pubkey = ledger.context.lock().unwrap().payer.insecure_clone().pubkey();
-        let contributor_pk = ledger
-            .serviceability
-            .create_contributor("CONTRIB".to_string(), payer_pubkey)
-            .await
-            .unwrap();
 
-    let (agent, origin_device_pk, target_device_pk, link_pk) =
-        ledger.seed_with_two_linked_devices(contributor_pk).await.unwrap();
+    let payer_pubkey = ledger
+        .context
+        .lock()
+        .unwrap()
+        .payer
+        .insecure_clone()
+        .pubkey();
+    let contributor_pk = ledger
+        .serviceability
+        .create_contributor("CONTRIB".to_string(), payer_pubkey)
+        .await
+        .unwrap();
+
+    let (agent, origin_device_pk, target_device_pk, link_pk) = ledger
+        .seed_with_two_linked_devices(contributor_pk)
+        .await
+        .unwrap();
     ledger.wait_for_new_blockhash().await.unwrap();
 
     let latency_samples_pda = ledger
@@ -402,16 +442,24 @@ async fn test_write_device_latency_samples_fail_agent_not_signer() {
 #[tokio::test]
 async fn test_write_device_latency_samples_fail_on_empty_samples() {
     let mut ledger = LedgerHelper::new().await.unwrap();
-        
-        let payer_pubkey = ledger.context.lock().unwrap().payer.insecure_clone().pubkey();
-        let contributor_pk = ledger
-            .serviceability
-            .create_contributor("CONTRIB".to_string(), payer_pubkey)
-            .await
-            .unwrap();
 
-    let (agent, origin_device_pk, target_device_pk, link_pk) =
-        ledger.seed_with_two_linked_devices(contributor_pk).await.unwrap();
+    let payer_pubkey = ledger
+        .context
+        .lock()
+        .unwrap()
+        .payer
+        .insecure_clone()
+        .pubkey();
+    let contributor_pk = ledger
+        .serviceability
+        .create_contributor("CONTRIB".to_string(), payer_pubkey)
+        .await
+        .unwrap();
+
+    let (agent, origin_device_pk, target_device_pk, link_pk) = ledger
+        .seed_with_two_linked_devices(contributor_pk)
+        .await
+        .unwrap();
     ledger.wait_for_new_blockhash().await.unwrap();
 
     let latency_samples_pda = ledger
@@ -536,17 +584,25 @@ async fn test_write_device_latency_samples_fail_account_does_not_exist() {
 #[tokio::test]
 async fn test_write_device_latency_samples_next_sample_index_correct() {
     let mut ledger = LedgerHelper::new().await.unwrap();
-        
-        let payer_pubkey = ledger.context.lock().unwrap().payer.insecure_clone().pubkey();
 
-        let contributor_pk = ledger
-            .serviceability
-            .create_contributor("CONTRIB".to_string(), payer_pubkey)
-            .await
-            .unwrap();
+    let payer_pubkey = ledger
+        .context
+        .lock()
+        .unwrap()
+        .payer
+        .insecure_clone()
+        .pubkey();
 
-    let (agent, origin_device_pk, target_device_pk, link_pk) =
-        ledger.seed_with_two_linked_devices(contributor_pk).await.unwrap();
+    let contributor_pk = ledger
+        .serviceability
+        .create_contributor("CONTRIB".to_string(), payer_pubkey)
+        .await
+        .unwrap();
+
+    let (agent, origin_device_pk, target_device_pk, link_pk) = ledger
+        .seed_with_two_linked_devices(contributor_pk)
+        .await
+        .unwrap();
     ledger.wait_for_new_blockhash().await.unwrap();
 
     let pda = ledger
@@ -585,17 +641,25 @@ async fn test_write_device_latency_samples_next_sample_index_correct() {
 #[tokio::test]
 async fn test_write_device_latency_samples_fail_wrong_agent_but_valid_signer() {
     let mut ledger = LedgerHelper::new().await.unwrap();
-        
-        let payer_pubkey = ledger.context.lock().unwrap().payer.insecure_clone().pubkey();
-        let contributor_pk = ledger
-            .serviceability
-            .create_contributor("CONTRIB".to_string(), payer_pubkey)
-            .await
-            .unwrap();
+
+    let payer_pubkey = ledger
+        .context
+        .lock()
+        .unwrap()
+        .payer
+        .insecure_clone()
+        .pubkey();
+    let contributor_pk = ledger
+        .serviceability
+        .create_contributor("CONTRIB".to_string(), payer_pubkey)
+        .await
+        .unwrap();
 
     // Seed the latency samples with a known authorized agent
-    let (authorized_agent, origin_device_pk, target_device_pk, link_pk) =
-        ledger.seed_with_two_linked_devices(contributor_pk).await.unwrap();
+    let (authorized_agent, origin_device_pk, target_device_pk, link_pk) = ledger
+        .seed_with_two_linked_devices(contributor_pk)
+        .await
+        .unwrap();
 
     ledger.wait_for_new_blockhash().await.unwrap();
 
@@ -645,16 +709,24 @@ async fn test_write_device_latency_samples_fail_wrong_agent_but_valid_signer() {
 #[tokio::test]
 async fn test_write_device_latency_samples_to_max_samples() {
     let mut ledger = LedgerHelper::new().await.unwrap();
-        
-        let payer_pubkey = ledger.context.lock().unwrap().payer.insecure_clone().pubkey();
-        let contributor_pk = ledger
-                .serviceability
-            .create_contributor("CONTRIB".to_string(), payer_pubkey)
-            .await
-            .unwrap();
 
-    let (agent, origin_device_pk, target_device_pk, link_pk) =
-        ledger.seed_with_two_linked_devices(contributor_pk).await.unwrap();
+    let payer_pubkey = ledger
+        .context
+        .lock()
+        .unwrap()
+        .payer
+        .insecure_clone()
+        .pubkey();
+    let contributor_pk = ledger
+        .serviceability
+        .create_contributor("CONTRIB".to_string(), payer_pubkey)
+        .await
+        .unwrap();
+
+    let (agent, origin_device_pk, target_device_pk, link_pk) = ledger
+        .seed_with_two_linked_devices(contributor_pk)
+        .await
+        .unwrap();
     ledger.wait_for_new_blockhash().await.unwrap();
 
     let latency_samples_pk = ledger
@@ -721,17 +793,25 @@ async fn test_write_device_latency_samples_to_max_samples() {
 #[tokio::test]
 async fn test_write_device_latency_samples_fail_samples_batch_too_large() {
     let mut ledger = LedgerHelper::new().await.unwrap();
-        
-        let payer_pubkey = ledger.context.lock().unwrap().payer.insecure_clone().pubkey();
-        let contributor_pk = ledger
-            .serviceability
-            .create_contributor("CONTRIB".to_string(), payer_pubkey)
-            .await
-            .unwrap();
+
+    let payer_pubkey = ledger
+        .context
+        .lock()
+        .unwrap()
+        .payer
+        .insecure_clone()
+        .pubkey();
+    let contributor_pk = ledger
+        .serviceability
+        .create_contributor("CONTRIB".to_string(), payer_pubkey)
+        .await
+        .unwrap();
 
     // Seed ledger with two linked devices, and a funded origin device agent.
-    let (origin_device_agent, origin_device_pk, target_device_pk, link_pk) =
-        ledger.seed_with_two_linked_devices(contributor_pk).await.unwrap();
+    let (origin_device_agent, origin_device_pk, target_device_pk, link_pk) = ledger
+        .seed_with_two_linked_devices(contributor_pk)
+        .await
+        .unwrap();
 
     // Wait for a new blockhash before moving on.
     ledger.wait_for_new_blockhash().await.unwrap();

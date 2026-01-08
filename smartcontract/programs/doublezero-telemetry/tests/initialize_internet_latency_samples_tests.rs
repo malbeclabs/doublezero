@@ -151,7 +151,6 @@ async fn test_initialize_internet_latency_samples_already_with_lamports() {
     assert_eq!(account.lamports, EXPECTED_LAMPORTS_FOR_ACCOUNT_CREATION);
 }
 
-
 #[tokio::test]
 async fn test_initialize_internet_latency_samples_fail_agent_not_signer() {
     let mut ledger = LedgerHelper::new().await.unwrap();

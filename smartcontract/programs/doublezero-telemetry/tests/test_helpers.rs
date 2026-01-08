@@ -922,7 +922,11 @@ impl ServiceabilityProgramHelper {
         Ok(device_pk)
     }
 
-    pub async fn activate_device(&mut self, device_pk: Pubkey, contributor_pk: Pubkey) -> Result<(), BanksClientError> {
+    pub async fn activate_device(
+        &mut self,
+        device_pk: Pubkey,
+        contributor_pk: Pubkey,
+    ) -> Result<(), BanksClientError> {
         self.execute_transaction(
             DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs {}),
             vec![
@@ -1197,8 +1201,15 @@ impl ServiceabilityProgramHelper {
         let link_pk = self
             .create_link(link, contributor_pk, side_a_pk, side_z_pk)
             .await?;
-        self.activate_link(link_pk, contributor_pk, side_a_pk, side_z_pk, tunnel_id, tunnel_net)
-            .await?;
+        self.activate_link(
+            link_pk,
+            contributor_pk,
+            side_a_pk,
+            side_z_pk,
+            tunnel_id,
+            tunnel_net,
+        )
+        .await?;
         Ok(link_pk)
     }
 
@@ -1209,10 +1220,7 @@ impl ServiceabilityProgramHelper {
     ) -> Result<(), BanksClientError> {
         let (mut banks_client, payer) = {
             let context = self.context.lock().unwrap();
-            (
-                context.banks_client.clone(),
-                context.payer.insecure_clone(),
-            )
+            (context.banks_client.clone(), context.payer.insecure_clone())
         };
 
         let latest_blockhash = banks_client.get_latest_blockhash().await?;

@@ -432,7 +432,7 @@ impl Validate for Interface {
             msg!("Invalid VLAN ID: {}", interface.vlan_id);
             return Err(DoubleZeroError::InvalidVlanId);
         }
-        // IP net must be valid
+        // Only allow private and link-local IPs for non-CYOA and non-DIA interfaces.
         if interface.ip_net != NetworkV4::default()
             && interface.interface_cyoa == InterfaceCYOA::None
             && interface.interface_dia == InterfaceDIA::None

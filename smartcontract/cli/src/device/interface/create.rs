@@ -48,8 +48,8 @@ pub struct CreateDeviceInterfaceCliCommand {
     #[arg(long, default_value = "0")]
     pub vlan_id: u16,
     /// Can terminate a user tunnel?
-    #[arg(long, default_value = "false")]
-    pub user_tunnel_endpoint: bool,
+    #[arg(long)]
+    pub user_tunnel_endpoint: Option<bool>,
     /// Wait for the device to be activated
     #[arg(short, long, default_value_t = false)]
     pub wait: bool,
@@ -89,7 +89,7 @@ impl CreateDeviceInterfaceCliCommand {
             mtu: self.mtu,
             routing_mode: self.routing_mode.into(),
             vlan_id: self.vlan_id,
-            user_tunnel_endpoint: self.user_tunnel_endpoint,
+            user_tunnel_endpoint: self.user_tunnel_endpoint.unwrap_or(false),
         })?;
         writeln!(out, "Signature: {signature}")?;
 
@@ -206,7 +206,7 @@ mod tests {
             mtu: 1500,
             routing_mode: types::RoutingMode::Static,
             vlan_id: 20,
-            user_tunnel_endpoint: false,
+            user_tunnel_endpoint: None,
             wait: false,
         }
         .execute(&client, &mut output);

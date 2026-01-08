@@ -619,7 +619,8 @@ async fn test_device_interfaces() {
     )
     .await;
 
-    execute_transaction(
+    // Deleting an interface in Rejected status should now fail with InvalidStatus (0x7)
+    let res = try_execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -634,6 +635,10 @@ async fn test_device_interfaces() {
         &payer,
     )
     .await;
+    assert!(res
+        .unwrap_err()
+        .to_string()
+        .contains("custom program error: 0x7")); // DoubleZeroError::InvalidStatus == 0x7
 
     let device = get_account_data(&mut banks_client, device_pubkey)
         .await
@@ -650,7 +655,7 @@ async fn test_device_interfaces() {
     let iface2 = device.find_interface("Loopback0").unwrap().1;
     assert_eq!(iface2.status, InterfaceStatus::Deleting);
     let iface3 = device.find_interface("Loopback1").unwrap().1;
-    assert_eq!(iface3.status, InterfaceStatus::Deleting);
+    assert_eq!(iface3.status, InterfaceStatus::Rejected);
 
     println!("✅ Device interfaces deleted");
     /*****************************************************************************************************************************************************/
@@ -715,7 +720,9 @@ async fn test_device_interfaces() {
     )
     .await;
 
-    execute_transaction(
+    // Removing an interface that failed deletion (still in Rejected status) should now fail
+    // with InvalidStatus (0x7) instead of silently succeeding.
+    let res = try_execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -729,6 +736,10 @@ async fn test_device_interfaces() {
         &payer,
     )
     .await;
+    assert!(res
+        .unwrap_err()
+        .to_string()
+        .contains("custom program error: 0x7")); // DoubleZeroError::InvalidStatus == 0x7
 
     let device = get_account_data(&mut banks_client, device_pubkey)
         .await
@@ -740,8 +751,8 @@ async fn test_device_interfaces() {
     assert!(device.find_interface("Ethernet2/1").is_err());
     assert!(device.find_interface("Ethernet3/1").is_err());
     assert!(device.find_interface("Loopback0").is_err());
-    assert!(device.find_interface("Loopback1").is_err());
-    assert_eq!(device.interfaces.len(), 0);
+    let loopback1 = device.find_interface("Loopback1").unwrap().1;
+    assert_eq!(loopback1.status, InterfaceStatus::Rejected);
 
     println!("✅ Device interfaces removed");
     println!("🟢🟢🟢  End test_device_interfaces  🟢🟢🟢");

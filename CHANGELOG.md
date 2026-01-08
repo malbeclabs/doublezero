@@ -14,6 +14,7 @@ All notable changes to this project will be documented in this file.
   - Added health_oracle to the smart contract global configuration to manage and authorize health-related operations.
   - Added --ip-net support to create to match the existing behavior in update.
 - Onchain programs
+  - Add on-chain validation to reject CloseAccountDevice when device has active references (reference_count > 0)
   - Allow contributor owner to update ops manager key
   - Add new arguments on create interface cli command
   - Add ResourceExtension to track IP/ID allocations. Foundation instructions added to create/allocate/deallocate.

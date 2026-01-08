@@ -1,15 +1,11 @@
 use crate::{
-    accounts::{AccountSeed, AccountSize},
     error::{DoubleZeroError, Validate},
     programversion::ProgramVersion,
-    seeds::{SEED_PREFIX, SEED_PROGRAM_CONFIG},
     state::accounttype::AccountType,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
-use solana_program::{
-    account_info::AccountInfo, entrypoint::ProgramResult, msg, program_error::ProgramError,
-};
+use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError};
 
 #[derive(BorshSerialize, Debug, PartialEq, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -27,23 +23,6 @@ impl fmt::Display for ProgramConfig {
             "account_type: {}, bump_seed: {}, version: {}",
             self.account_type, self.bump_seed, self.version,
         )
-    }
-}
-
-impl AccountSeed for ProgramConfig {
-    fn seed(&self, seed: &mut Vec<u8>) {
-        seed.extend_from_slice(SEED_PREFIX);
-        seed.extend_from_slice(SEED_PROGRAM_CONFIG);
-        seed.extend_from_slice(&[self.bump_seed]);
-    }
-}
-
-impl AccountSize for ProgramConfig {
-    fn size(&self) -> usize {
-        1 // account_type
-            + 1 // bump_seed
-            + 12 // version (major + minor + patch)
-            + 12 // min_compatible_version (major + minor + patch)
     }
 }
 
@@ -87,14 +66,6 @@ impl TryFrom<&AccountInfo<'_>> for ProgramConfig {
             );
         }
         res
-    }
-}
-impl ProgramConfig {
-    pub fn try_serialize(&self, account: &AccountInfo) -> ProgramResult {
-        let mut data = &mut account.data.borrow_mut()[..];
-        self.serialize(&mut data)?;
-
-        Ok(())
     }
 }
 
@@ -158,11 +129,18 @@ mod tests {
         val.validate().unwrap();
         val2.validate().unwrap();
 
-        assert_eq!(val.size(), val2.size());
+        assert_eq!(
+            borsh::object_length(&val).unwrap(),
+            borsh::object_length(&val2).unwrap()
+        );
         assert_eq!(val.version.major, val2.version.major);
         assert_eq!(val.version.minor, val2.version.minor);
         assert_eq!(val.version.patch, val2.version.patch);
-        assert_eq!(data.len(), val.size(), "Invalid Size");
+        assert_eq!(
+            data.len(),
+            borsh::object_length(&val).unwrap(),
+            "Invalid Size"
+        );
     }
 
     #[test]

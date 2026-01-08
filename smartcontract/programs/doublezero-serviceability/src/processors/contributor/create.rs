@@ -1,9 +1,9 @@
 use crate::{
     error::DoubleZeroError,
-    globalstate::{globalstate_get_next, globalstate_write},
-    helper::*,
     pda::*,
-    state::{accounttype::AccountType, contributor::*},
+    seeds::{SEED_CONTRIBUTOR, SEED_PREFIX},
+    serializer::{try_acc_create, try_acc_write},
+    state::{accounttype::AccountType, contributor::*, globalstate::GlobalState},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -72,8 +72,16 @@ pub fn process_create_contributor(
         contributor_account.is_writable,
         "PDA Account is not writable"
     );
+    assert_eq!(
+        *system_program.unsigned_key(),
+        solana_program::system_program::id(),
+        "Invalid System Program Account Owner"
+    );
+
     // Parse the global state account & check if the payer is in the allowlist
-    let globalstate = globalstate_get_next(globalstate_account)?;
+    let mut globalstate = GlobalState::try_from(globalstate_account)?;
+    globalstate.account_index += 1;
+
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }
@@ -86,7 +94,7 @@ pub fn process_create_contributor(
     );
 
     // Check if the account is already initialized
-    if !contributor_account.data.borrow().is_empty() {
+    if !contributor_account.data_is_empty() {
         return Err(ProgramError::AccountAlreadyInitialized);
     }
 
@@ -116,14 +124,20 @@ pub fn process_create_contributor(
         &[],
     )?;
 
-    account_create(
-        contributor_account,
+    try_acc_create(
         &contributor,
+        contributor_account,
         payer_account,
         system_program,
         program_id,
+        &[
+            SEED_PREFIX,
+            SEED_CONTRIBUTOR,
+            &globalstate.account_index.to_le_bytes(),
+            &[bump_seed],
+        ],
     )?;
-    globalstate_write(globalstate_account, &globalstate)?;
+    try_acc_write(&globalstate, globalstate_account, payer_account, accounts)?;
 
     Ok(())
 }

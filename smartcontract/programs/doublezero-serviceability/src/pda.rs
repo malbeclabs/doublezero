@@ -4,9 +4,11 @@ use solana_program::pubkey::Pubkey;
 
 use crate::{
     seeds::{
-        SEED_ACCESS_PASS, SEED_CONFIG, SEED_CONTRIBUTOR, SEED_DEVICE, SEED_EXCHANGE,
-        SEED_GLOBALSTATE, SEED_LINK, SEED_LOCATION, SEED_MULTICAST_GROUP, SEED_PREFIX,
-        SEED_PROGRAM_CONFIG, SEED_USER,
+        SEED_ACCESS_PASS, SEED_CONFIG, SEED_CONTRIBUTOR, SEED_DEVICE, SEED_DEVICE_TUNNEL_BLOCK,
+        SEED_DZ_PREFIX_BLOCK, SEED_EXCHANGE, SEED_GLOBALSTATE, SEED_LINK, SEED_LINK_IDS,
+        SEED_LOCATION, SEED_MULTICASTGROUP_BLOCK, SEED_MULTICAST_GROUP, SEED_PREFIX,
+        SEED_PROGRAM_CONFIG, SEED_SEGMENT_ROUTING_IDS, SEED_TUNNEL_IDS, SEED_USER,
+        SEED_USER_TUNNEL_BLOCK,
     },
     state::user::UserType,
 };
@@ -87,4 +89,61 @@ pub fn get_accesspass_pda(
         ],
         program_id,
     )
+}
+
+pub fn get_resource_extension_pda(
+    program_id: &Pubkey,
+    resource_type: crate::resource::ResourceType,
+) -> (Pubkey, u8, &'static [u8]) {
+    match resource_type {
+        crate::resource::ResourceType::DeviceTunnelBlock => {
+            let (pda, bump_seed) =
+                Pubkey::find_program_address(&[SEED_PREFIX, SEED_DEVICE_TUNNEL_BLOCK], program_id);
+            (pda, bump_seed, SEED_DEVICE_TUNNEL_BLOCK)
+        }
+        crate::resource::ResourceType::UserTunnelBlock => {
+            let (pda, bump_seed) =
+                Pubkey::find_program_address(&[SEED_PREFIX, SEED_USER_TUNNEL_BLOCK], program_id);
+            (pda, bump_seed, SEED_USER_TUNNEL_BLOCK)
+        }
+        crate::resource::ResourceType::MulticastGroupBlock => {
+            let (pda, bump_seed) =
+                Pubkey::find_program_address(&[SEED_PREFIX, SEED_MULTICASTGROUP_BLOCK], program_id);
+            (pda, bump_seed, SEED_MULTICASTGROUP_BLOCK)
+        }
+        crate::resource::ResourceType::DzPrefixBlock(ref associated_pk, index) => {
+            let (pda, bump_seed) = Pubkey::find_program_address(
+                &[
+                    SEED_PREFIX,
+                    SEED_DZ_PREFIX_BLOCK,
+                    &associated_pk.to_bytes(),
+                    &index.to_le_bytes(),
+                ],
+                program_id,
+            );
+            (pda, bump_seed, SEED_DZ_PREFIX_BLOCK)
+        }
+        crate::resource::ResourceType::TunnelIds(ref associated_pk, index) => {
+            let (pda, bump_seed) = Pubkey::find_program_address(
+                &[
+                    SEED_PREFIX,
+                    SEED_TUNNEL_IDS,
+                    &associated_pk.to_bytes(),
+                    &index.to_le_bytes(),
+                ],
+                program_id,
+            );
+            (pda, bump_seed, SEED_TUNNEL_IDS)
+        }
+        crate::resource::ResourceType::LinkIds => {
+            let (pda, bump_seed) =
+                Pubkey::find_program_address(&[SEED_PREFIX, SEED_LINK_IDS], program_id);
+            (pda, bump_seed, SEED_LINK_IDS)
+        }
+        crate::resource::ResourceType::SegmentRoutingIds => {
+            let (pda, bump_seed) =
+                Pubkey::find_program_address(&[SEED_PREFIX, SEED_SEGMENT_ROUTING_IDS], program_id);
+            (pda, bump_seed, SEED_SEGMENT_ROUTING_IDS)
+        }
+    }
 }

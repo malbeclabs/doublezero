@@ -180,6 +180,10 @@ mod tests {
                 reference_count: 0,
                 users_count: 64,
                 max_users: 128,
+                device_health:
+                    doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+                desired_status:
+                    doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
             },
         );
 
@@ -205,6 +209,10 @@ mod tests {
                 reference_count: 0,
                 users_count: 64,
                 max_users: 128,
+                device_health:
+                    doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+                desired_status:
+                    doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
             },
         );
 
@@ -367,6 +375,10 @@ mod tests {
                 reference_count: 0,
                 users_count: 64,
                 max_users: 128,
+                device_health:
+                    doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+                desired_status:
+                    doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
             },
         );
 
@@ -392,6 +404,10 @@ mod tests {
                 reference_count: 0,
                 users_count: 64,
                 max_users: 128,
+                device_health:
+                    doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+                desired_status:
+                    doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
             },
         );
 

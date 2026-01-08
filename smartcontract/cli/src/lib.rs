@@ -23,6 +23,7 @@ pub mod migrate;
 pub mod multicastgroup;
 pub mod poll_for_activation;
 pub mod requirements;
+pub mod resource;
 pub mod subscribe;
 pub mod tests;
 pub mod user;

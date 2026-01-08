@@ -17,7 +17,7 @@ import (
 func TestQA_UnicastConnectivity(t *testing.T) {
 	log := newTestLogger(t)
 	ctx := t.Context()
-	test, err := qa.NewTest(ctx, log, hostsArg, portArg, networkConfig)
+	test, err := qa.NewTest(ctx, log, hostsArg, portArg, networkConfig, nil)
 	require.NoError(t, err, "failed to create test")
 	clients := test.Clients()
 
@@ -82,7 +82,7 @@ func TestQA_UnicastConnectivity(t *testing.T) {
 				})
 				subCtx := t.Context()
 
-				_, err := srcClient.TestUnicastConnectivity(t, subCtx, dstClient)
+				_, err := srcClient.TestUnicastConnectivity(t, subCtx, dstClient, nil, nil)
 				if err != nil {
 					log.Error("Connectivity test failed", "error", err, "source", srcClient.Host, "target", dstClient.Host)
 					require.NoError(t, err, "failed to test connectivity")

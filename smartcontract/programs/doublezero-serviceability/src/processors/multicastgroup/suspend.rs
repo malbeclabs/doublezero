@@ -1,10 +1,11 @@
-use core::fmt;
-
 use crate::{
-    error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::multicastgroup::*,
+    error::DoubleZeroError,
+    serializer::try_acc_write,
+    state::{globalstate::GlobalState, multicastgroup::*},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
+use core::fmt;
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -60,7 +61,7 @@ pub fn process_suspend_multicastgroup(
     );
 
     // Parse the global state account & check if the payer is in the allowlist
-    let globalstate = globalstate_get(globalstate_account)?;
+    let globalstate = GlobalState::try_from(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }
@@ -68,11 +69,11 @@ pub fn process_suspend_multicastgroup(
     let mut multicastgroup: MulticastGroup = MulticastGroup::try_from(multicastgroup_account)?;
     multicastgroup.status = MulticastGroupStatus::Suspended;
 
-    account_write(
-        multicastgroup_account,
+    try_acc_write(
         &multicastgroup,
+        multicastgroup_account,
         payer_account,
-        system_program,
+        accounts,
     )?;
 
     #[cfg(test)]

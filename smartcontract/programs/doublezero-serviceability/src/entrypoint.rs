@@ -71,7 +71,7 @@ use crate::{
                     remove::process_remove_multicast_sub_allowlist,
                 },
             },
-            closeaccount::process_deactivate_multicastgroup,
+            closeaccount::process_closeaccount_multicastgroup,
             create::process_create_multicastgroup,
             delete::process_delete_multicastgroup,
             reactivate::process_reactivate_multicastgroup,
@@ -79,6 +79,10 @@ use crate::{
             subscribe::process_subscribe_multicastgroup,
             suspend::process_suspend_multicastgroup,
             update::process_update_multicastgroup,
+        },
+        resource::{
+            allocate::process_allocate_resource, create::process_create_resource,
+            deallocate::process_deallocate_resource,
         },
         user::{
             activate::process_activate_user, ban::process_ban_user,
@@ -266,7 +270,7 @@ pub fn process_instruction(
             process_update_multicastgroup(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::DeactivateMulticastGroup(value) => {
-            process_deactivate_multicastgroup(program_id, accounts, &value)?
+            process_closeaccount_multicastgroup(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::AddMulticastGroupPubAllowlist(value) => {
             process_add_multicastgroup_pub_allowlist(program_id, accounts, &value)?
@@ -342,6 +346,15 @@ pub fn process_instruction(
         }
         DoubleZeroInstruction::SetMinVersion(value) => {
             process_set_version(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::AllocateResource(value) => {
+            process_allocate_resource(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::CreateResource(value) => {
+            process_create_resource(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::DeallocateResource(value) => {
+            process_deallocate_resource(program_id, accounts, &value)?
         }
     };
     Ok(())

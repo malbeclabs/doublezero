@@ -1,19 +1,16 @@
-use std::str::FromStr;
-
+use doublezero_serviceability::{
+    instructions::DoubleZeroInstruction,
+    pda::{get_globalstate_pda, get_program_config_pda},
+    programversion::ProgramVersion,
+    state::{accounttype::AccountType, globalstate::GlobalState, programconfig::ProgramConfig},
+};
 use solana_program::{rent::Rent, system_program};
 use solana_program_test::*;
 use solana_sdk::{
     account::Account as SolanaAccount, instruction::AccountMeta, pubkey::Pubkey, signature::Signer,
     transaction::Transaction,
 };
-
-use doublezero_serviceability::{
-    accounts::AccountSize,
-    instructions::DoubleZeroInstruction,
-    pda::{get_globalstate_pda, get_program_config_pda},
-    programversion::ProgramVersion,
-    state::{accounttype::AccountType, globalstate::GlobalState, programconfig::ProgramConfig},
-};
+use std::str::FromStr;
 
 #[tokio::test]
 async fn test_initialize_global_state_resizes_programconfig_and_tops_up_rent() {
@@ -28,7 +25,7 @@ async fn test_initialize_global_state_resizes_programconfig_and_tops_up_rent() {
         min_compatible_version: ProgramVersion::from_str("1.0.0").unwrap(),
     };
 
-    let required_space = new_program_config.size();
+    let required_space = borsh::object_length(&new_program_config).unwrap();
     let smaller_space = required_space / 2;
 
     let rent = Rent::default();

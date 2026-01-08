@@ -339,6 +339,7 @@ async fn test_device() {
             max_users: None,
             users_count: None,
             status: None,
+            desired_status: None,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -637,6 +638,7 @@ async fn test_device_update_metrics_publisher_by_foundation_allowlist_account() 
             max_users: None,
             users_count: None,
             status: None,
+            desired_status: None,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),

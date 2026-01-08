@@ -14,8 +14,7 @@ use doublezero_cli::{
             update::UpdateDeviceInterfaceCliCommand,
         },
         list::ListDeviceCliCommand,
-        resume::ResumeDeviceCliCommand,
-        suspend::SuspendDeviceCliCommand,
+        sethealth::SetDeviceHealthCliCommand,
         update::UpdateDeviceCliCommand,
     },
 };
@@ -65,12 +64,6 @@ pub enum DeviceCommands {
     /// Get details for a specific device
     #[clap()]
     Get(GetDeviceCliCommand),
-    /// Suspend a device
-    #[clap()]
-    Suspend(SuspendDeviceCliCommand),
-    /// Resume a suspended device
-    #[clap()]
-    Resume(ResumeDeviceCliCommand),
     /// Delete a device
     #[clap()]
     Delete(DeleteDeviceCliCommand),
@@ -80,6 +73,10 @@ pub enum DeviceCommands {
     /// Interface commands
     #[clap()]
     Interface(InterfaceCliCommand),
+    /// Set the health status of a device interface
+    // Hidden because this is an internal/testing command and not part of the public CLI surface.
+    #[clap(hide = true)]
+    SetHealth(SetDeviceHealthCliCommand),
 }
 
 #[derive(Args, Debug)]

@@ -169,9 +169,8 @@ async fn main() -> eyre::Result<()> {
             DeviceCommands::Update(args) => args.execute(&client, &mut handle),
             DeviceCommands::List(args) => args.execute(&client, &mut handle),
             DeviceCommands::Get(args) => args.execute(&client, &mut handle),
-            DeviceCommands::Suspend(args) => args.execute(&client, &mut handle),
-            DeviceCommands::Resume(args) => args.execute(&client, &mut handle),
             DeviceCommands::Delete(args) => args.execute(&client, &mut handle),
+
             DeviceCommands::Allowlist(command) => match command.command {
                 DeviceAllowlistCommands::List(args) => args.execute(&client, &mut handle),
                 DeviceAllowlistCommands::Add(args) => args.execute(&client, &mut handle),
@@ -184,6 +183,7 @@ async fn main() -> eyre::Result<()> {
                 InterfaceCommands::Get(args) => args.execute(&client, &mut handle),
                 InterfaceCommands::Delete(args) => args.execute(&client, &mut handle),
             },
+            DeviceCommands::SetHealth(args) => args.execute(&client, &mut handle),
         },
         Command::Link(command) => match command.command {
             LinkCommands::Create(args) => match args.command {
@@ -196,6 +196,7 @@ async fn main() -> eyre::Result<()> {
             LinkCommands::Get(args) => args.execute(&client, &mut handle),
             LinkCommands::Latency(args) => args.execute(&client, &mut handle),
             LinkCommands::Delete(args) => args.execute(&client, &mut handle),
+            LinkCommands::SetHealth(args) => args.execute(&client, &mut handle),
         },
         Command::AccessPass(command) => match command.command {
             cli::accesspass::AccessPassCommands::Set(args) => args.execute(&client, &mut handle),

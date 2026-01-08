@@ -316,7 +316,7 @@ async fn device_update_location_test() {
         .unwrap();
     assert_eq!(device.account_type, AccountType::Device);
     assert_eq!(device.code, "la".to_string());
-    assert_eq!(device.status, DeviceStatus::Activated);
+    assert_eq!(device.status, DeviceStatus::DeviceProvisioning);
 
     println!("✅ Device updated");
     /*****************************************************************************************************************************************************/
@@ -357,7 +357,7 @@ async fn device_update_location_test() {
     assert_eq!(device_la.account_type, AccountType::Device);
     assert_eq!(device_la.code, "la".to_string());
     assert_eq!(device_la.location_pk, location_ny_pubkey);
-    assert_eq!(device_la.status, DeviceStatus::Activated);
+    assert_eq!(device_la.status, DeviceStatus::DeviceProvisioning);
 
     println!("✅ Device updated");
     /*****************************************************************************************************************************************************/

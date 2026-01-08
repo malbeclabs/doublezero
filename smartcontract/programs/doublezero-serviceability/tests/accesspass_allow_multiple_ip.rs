@@ -250,7 +250,7 @@ async fn test_accesspass_allow_multiple_ip() {
         .get_device()
         .unwrap();
     assert_eq!(device_la.account_type, AccountType::Device);
-    assert_eq!(device_la.status, DeviceStatus::Activated);
+    assert_eq!(device_la.status, DeviceStatus::DeviceProvisioning);
 
     println!("✅ Device activated successfully");
     /***********************************************************************************************************************************/

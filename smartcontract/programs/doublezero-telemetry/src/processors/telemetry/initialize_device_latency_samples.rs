@@ -11,10 +11,7 @@ use crate::{
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 use doublezero_program_common::create_account::try_create_account;
-use doublezero_serviceability::state::{
-    device::{Device, DeviceStatus},
-    link::{Link, LinkStatus},
-};
+use doublezero_serviceability::state::{device::Device, link::Link};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
@@ -41,12 +38,12 @@ pub struct InitializeDeviceLatencySamplesArgs {
 ///
 /// This function verifies ownership of all participating device and link
 /// accounts via the `serviceability_program`, ensures all components are
-/// `Activated` or `Suspended`, and checks that the link connects the specified
+/// `Activated`, and checks that the link connects the specified
 /// devices in either direction.
 ///
 /// Errors:
 /// - `InvalidSamplingInterval`: zero interval
-/// - `DeviceNotActiveOrSuspended`, `LinkNotActiveOrSuspended`: inactive or suspended device or link
+/// - `DeviceNotActivated`, `LinkNotActivated`: inactive device or link
 /// - `UnauthorizedAgent`: agent not authorized for origin device
 /// - `InvalidPDA`, `AccountAlreadyExists`
 pub fn process_initialize_device_latency_samples(
@@ -93,11 +90,9 @@ pub fn process_initialize_device_latency_samples(
 
     // Deserialize and validate device status.
     let origin_device = Device::try_from(origin_device_account)?;
-    if origin_device.status != DeviceStatus::Activated
-        && origin_device.status != DeviceStatus::Suspended
-    {
-        msg!("Origin device is not activate or suspended");
-        return Err(TelemetryError::DeviceNotActiveOrSuspended.into());
+    if !origin_device.allow_latency() {
+        msg!("Origin device is not activated");
+        return Err(TelemetryError::DeviceNotActivated.into());
     }
 
     // Confirm the agent is authorized to publish for the origin device.
@@ -112,18 +107,16 @@ pub fn process_initialize_device_latency_samples(
 
     // Deserialize and validate target device status.
     let target_device = Device::try_from(target_device_account)?;
-    if target_device.status != DeviceStatus::Activated
-        && target_device.status != DeviceStatus::Suspended
-    {
-        msg!("Target device is not activate or suspended");
-        return Err(TelemetryError::DeviceNotActiveOrSuspended.into());
+    if !target_device.allow_latency() {
+        msg!("Target device is not activated");
+        return Err(TelemetryError::DeviceNotActivated.into());
     }
 
     // Deserialize and validate link status.
     let link = Link::try_from(link_account)?;
-    if link.status != LinkStatus::Activated && link.status != LinkStatus::Suspended {
-        msg!("Link is not activate or suspended");
-        return Err(TelemetryError::LinkNotActiveOrSuspended.into());
+    if !link.allow_latency() {
+        msg!("Link is not activated");
+        return Err(TelemetryError::LinkNotActivated.into());
     }
 
     // Ensure the link connects the two specified devices.

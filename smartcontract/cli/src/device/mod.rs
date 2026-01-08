@@ -3,6 +3,5 @@ pub mod delete;
 pub mod get;
 pub mod interface;
 pub mod list;
-pub mod resume;
-pub mod suspend;
+pub mod sethealth;
 pub mod update;

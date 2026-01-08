@@ -267,7 +267,7 @@ async fn exchange_setdevice() {
         .unwrap();
     assert_eq!(device.account_type, AccountType::Device);
     assert_eq!(device.code, "la".to_string());
-    assert_eq!(device.status, DeviceStatus::Activated);
+    assert_eq!(device.status, DeviceStatus::DeviceProvisioning);
 
     /*****************************************************************************************************************************************************/
     println!("🟢 8. SetDevice on Echange...");

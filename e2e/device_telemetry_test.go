@@ -216,21 +216,25 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", `
 			set -euo pipefail
 
-			doublezero link create wan --code "la2-dz01:ny5-dz01" --contributor co01 --side-a la2-dz01 --side-a-interface Ethernet2 --side-z ny5-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3
+			doublezero link create wan --code   "la2-dz01:ny5-dz01" --contributor co01 --side-a la2-dz01 --side-a-interface Ethernet2 --side-z ny5-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3
 			doublezero link set-health --pubkey "la2-dz01:ny5-dz01" --health ready-for-service
-			doublezero link update --pubkey "la2-dz01:ny5-dz01" --desired-status activated
-			doublezero link create wan --code "ny5-dz01:ld4-dz01" --contributor co01 --side-a ny5-dz01 --side-a-interface Ethernet3 --side-z ld4-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3
+			doublezero link update --pubkey     "la2-dz01:ny5-dz01" --desired-status activated
+			
+			doublezero link create wan --code   "ny5-dz01:ld4-dz01" --contributor co01 --side-a ny5-dz01 --side-a-interface Ethernet3 --side-z ld4-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3
 			doublezero link set-health --pubkey "ny5-dz01:ld4-dz01" --health ready-for-service
-			doublezero link update --pubkey "ny5-dz01:ld4-dz01" --desired-status activated
-			doublezero link create wan --code "ld4-dz01:frk-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet3 --side-z frk-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 25 --jitter-ms 10
+			doublezero link update --pubkey     "ny5-dz01:ld4-dz01" --desired-status activated
+			
+			doublezero link create wan --code   "ld4-dz01:frk-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet3 --side-z frk-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 25 --jitter-ms 10
 			doublezero link set-health --pubkey "ld4-dz01:frk-dz01" --health ready-for-service
-			doublezero link update --pubkey "ld4-dz01:frk-dz01" --desired-status activated
-			doublezero link create wan --code "ld4-dz01:sg1-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet4 --side-z sg1-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 120 --jitter-ms 9
-			doublezero link set-health --pubkey "ld4-dz01:sg1-dz01" --health ready-for-service
-			doublezero link update --pubkey "ld4-dz01:sg1-dz01" --desired-status activated
-			doublezero link create wan --code "sg1-dz01:ty2-dz01" --contributor co01 --side-a sg1-dz01 --side-a-interface Ethernet3 --side-z ty2-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 7
+			doublezero link update --pubkey     "ld4-dz01:frk-dz01" --desired-status activated
+			
+			doublezero link create wan --code   "ld4-dz01:frk-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet4 --side-z sg1-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 120 --jitter-ms 9
+			doublezero link set-health --pubkey "ld4-dz01:frk-dz01" --health ready-for-service
+			doublezero link update --pubkey     "ld4-dz01:sg1-dz01" --desired-status activated
+			
+			doublezero link create wan --code   "sg1-dz01:ty2-dz01" --contributor co01 --side-a sg1-dz01 --side-a-interface Ethernet3 --side-z ty2-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 7
 			doublezero link set-health --pubkey "sg1-dz01:ty2-dz01" --health ready-for-service
-			doublezero link update --pubkey "sg1-dz01:ty2-dz01" --desired-status activated
+			doublezero link update --pubkey     "sg1-dz01:ty2-dz01" --desired-status activated
 		`})
 	require.NoError(t, err)
 

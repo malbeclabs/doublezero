@@ -5,9 +5,7 @@ use crate::{
     seeds::{SEED_CONFIG, SEED_PREFIX},
     serializer::try_acc_write,
     state::{
-        accounttype::AccountType,
-        exchange::BGP_COMMUNITY_MIN,
-        globalconfig::GlobalConfig,
+        accounttype::AccountType, exchange::BGP_COMMUNITY_MIN, globalconfig::GlobalConfig,
         globalstate::GlobalState,
     },
 };

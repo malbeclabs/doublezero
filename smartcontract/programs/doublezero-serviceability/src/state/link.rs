@@ -523,6 +523,16 @@ impl Link {
             _ => {}
         }
     }
+
+    pub fn allow_latency(&self) -> bool {
+        matches!(
+            self.status,
+            LinkStatus::Activated
+                | LinkStatus::SoftDrained
+                | LinkStatus::HardDrained
+                | LinkStatus::ReadyForService
+        )
+    }
 }
 
 #[cfg(test)]

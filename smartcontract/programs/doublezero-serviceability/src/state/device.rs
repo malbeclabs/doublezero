@@ -402,6 +402,17 @@ impl Device {
             _ => {}
         }
     }
+
+    pub fn allow_latency(&self) -> bool {
+        matches!(
+            self.status,
+            DeviceStatus::Activated
+                | DeviceStatus::LinkProvisioning
+                | DeviceStatus::DeviceProvisioning
+                | DeviceStatus::SoftDrained
+                | DeviceStatus::HardDrained
+        )
+    }
 }
 
 impl fmt::Display for Device {

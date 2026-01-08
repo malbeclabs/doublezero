@@ -152,6 +152,118 @@ async fn test_initialize_internet_latency_samples_already_with_lamports() {
 }
 
 #[tokio::test]
+async fn test_initialize_internet_latency_samples_success_suspended_origin_exchange() {
+    let mut ledger = LedgerHelper::new().await.unwrap();
+
+    // Seed ledger with two exchanges, and a funded agent.
+    let (oracle_agent, origin_exchange_pk, target_exchange_pk) =
+        ledger.seed_with_two_exchanges().await.unwrap();
+
+    // Drain the origin device.
+    ledger
+        .serviceability
+        .suspend_exchange(origin_exchange_pk)
+        .await
+        .unwrap();
+
+    // Wait for a new blockhash before moving on.
+    ledger.wait_for_new_blockhash().await.unwrap();
+
+    // Check that the origin exchange is suspended.
+    let exchange = ledger
+        .serviceability
+        .get_exchange(origin_exchange_pk)
+        .await
+        .unwrap();
+    assert_eq!(exchange.status, ExchangeStatus::Suspended);
+
+    let provider_name = "RIPE Atlas".to_string();
+
+    // Execute initialize latency samples transaction.
+    let latency_samples_pda = ledger
+        .telemetry
+        .initialize_internet_latency_samples(
+            &oracle_agent,
+            provider_name.clone(),
+            origin_exchange_pk,
+            target_exchange_pk,
+            1u64,
+            60_000_000,
+        )
+        .await
+        .unwrap();
+
+    // Verify account creation and data
+    let account = ledger
+        .get_account(latency_samples_pda)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(account.owner, ledger.telemetry.program_id);
+    assert_eq!(
+        account.data.len(),
+        INTERNET_LATENCY_SAMPLES_MAX_HEADER_SIZE - 32 + provider_name.len(),
+    );
+    assert_eq!(account.lamports, EXPECTED_LAMPORTS_FOR_ACCOUNT_CREATION);
+}
+
+#[tokio::test]
+async fn test_initialize_internet_latency_samples_success_suspended_target_exchange() {
+    let mut ledger = LedgerHelper::new().await.unwrap();
+
+    // Seed ledger with two exchanges, and a funded agent.
+    let (oracle_agent, origin_exchange_pk, target_exchange_pk) =
+        ledger.seed_with_two_exchanges().await.unwrap();
+
+    // Drain the origin device.
+    ledger
+        .serviceability
+        .suspend_exchange(target_exchange_pk)
+        .await
+        .unwrap();
+
+    // Wait for a new blockhash before moving on.
+    ledger.wait_for_new_blockhash().await.unwrap();
+
+    // Check that the origin exchange is suspended.
+    let exchange = ledger
+        .serviceability
+        .get_exchange(target_exchange_pk)
+        .await
+        .unwrap();
+    assert_eq!(exchange.status, ExchangeStatus::Suspended);
+
+    let provider_name = "RIPE Atlas".to_string();
+
+    // Execute initialize latency samples transaction.
+    let latency_samples_pda = ledger
+        .telemetry
+        .initialize_internet_latency_samples(
+            &oracle_agent,
+            provider_name.clone(),
+            origin_exchange_pk,
+            target_exchange_pk,
+            1u64,
+            60_000_000,
+        )
+        .await
+        .unwrap();
+
+    // Verify account creation and data
+    let account = ledger
+        .get_account(latency_samples_pda)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(account.owner, ledger.telemetry.program_id);
+    assert_eq!(
+        account.data.len(),
+        INTERNET_LATENCY_SAMPLES_MAX_HEADER_SIZE - 32 + provider_name.len(),
+    );
+    assert_eq!(account.lamports, EXPECTED_LAMPORTS_FOR_ACCOUNT_CREATION);
+}
+
+#[tokio::test]
 async fn test_initialize_internet_latency_samples_fail_agent_not_signer() {
     let mut ledger = LedgerHelper::new().await.unwrap();
 

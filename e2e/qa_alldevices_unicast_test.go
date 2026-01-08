@@ -33,6 +33,7 @@ type BatchAssignment struct {
 	Device          *qa.Device
 	PacketsSent     uint32
 	PacketsReceived uint32
+	FailedTests     uint32
 }
 type BatchData map[int]map[string]*BatchAssignment
 
@@ -270,7 +271,7 @@ func printTestReportTable(log *slog.Logger, batchData BatchData, clientLatencies
 				latencyMs := clientLatencies[clientName][assignment.Device.Code]
 				var cell string
 				if showResults {
-					if assignment.PacketsSent > 0 && assignment.PacketsReceived > 0 {
+					if assignment.FailedTests == 0 && assignment.PacketsSent > 0 && assignment.PacketsReceived > 0 {
 						cell = fmt.Sprintf("%s %d/%d ✅", assignment.Device.Code, assignment.PacketsReceived, assignment.PacketsSent)
 					} else {
 						cell = fmt.Sprintf("%s %d/%d ❌", assignment.Device.Code, assignment.PacketsReceived, assignment.PacketsSent)
@@ -315,7 +316,7 @@ func printTestReportTable(log *slog.Logger, batchData BatchData, clientLatencies
 			if assignment, ok := batchData[batchNum][clientName]; ok {
 				latencyMs := clientLatencies[clientName][assignment.Device.Code]
 				if showResults {
-					if assignment.PacketsSent > 0 && assignment.PacketsReceived > 0 {
+					if assignment.FailedTests == 0 && assignment.PacketsSent > 0 && assignment.PacketsReceived > 0 {
 						cell = fmt.Sprintf("%s %d/%d ✅", assignment.Device.Code, assignment.PacketsReceived, assignment.PacketsSent)
 					} else {
 						cell = fmt.Sprintf("%s %d/%d ❌", assignment.Device.Code, assignment.PacketsReceived, assignment.PacketsSent)
@@ -415,7 +416,7 @@ func runConnectivitySubtests(
 			})
 			subCtx := t.Context()
 
-			var totalSent, totalReceived uint32
+			var totalSent, totalReceived, failedTests uint32
 			var wg sync.WaitGroup
 			var mu sync.Mutex
 			for _, target := range clients {
@@ -430,6 +431,9 @@ func runConnectivitySubtests(
 					if err != nil {
 						log.Error("Connectivity test failed", "error", err, "source", src.Host, "target", target.Host, "sourceDevice", srcDevice.Code, "targetDevice", dstDevice.Code)
 						assert.NoError(t, err, "failed to test connectivity")
+						mu.Lock()
+						failedTests++
+						mu.Unlock()
 					}
 					if result != nil {
 						mu.Lock()
@@ -444,6 +448,7 @@ func runConnectivitySubtests(
 			resultsMu.Lock()
 			batch[srcClient.Host].PacketsSent += totalSent
 			batch[srcClient.Host].PacketsReceived += totalReceived
+			batch[srcClient.Host].FailedTests += failedTests
 			resultsMu.Unlock()
 		})
 	}

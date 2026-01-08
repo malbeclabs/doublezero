@@ -57,6 +57,7 @@ All notable changes to this project will be documented in this file.
   - Add annotation of flow records with serviceability data
   - Add pcap input and json ouput to flow enricher
   - Initial state-ingest service with client SDK
+  - Collect BGP socket state from devices
 - CI
   - Cancel existing e2e test runs on the push of new commits
 - RFCs

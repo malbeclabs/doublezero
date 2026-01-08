@@ -794,16 +794,23 @@ func TestTelemetry_StateIngest_Handler_StateToCollect_MethodNotAllowed(t *testin
 	require.Contains(t, er.Error, "method not allowed")
 }
 
-func TestTelemetry_StateIngest_Handler_StateToCollect_Success_ReturnsShowCommands(t *testing.T) {
+func TestTelemetry_StateIngest_Handler_StateToCollect_Success_ReturnsShowCommandsAndCustom(t *testing.T) {
 	t.Parallel()
 
 	showCommandsMap := map[string]string{
 		"snmp-mib-ifmib-ifindex": "show snmp mib ifmib ifindex",
 		"isis-database-detail":   "show isis database detail",
-		"custom-kind":            "show custom command",
+		"other-kind":             "show other command",
 	}
 
-	cfg := Config{StateToCollectShowCommands: showCommandsMap}
+	customKinds := []string{
+		"custom-kind",
+	}
+
+	cfg := Config{
+		StateToCollectShowCommands: showCommandsMap,
+		StateToCollectCustom:       customKinds,
+	}
 	_ = cfg.Validate()
 
 	h := &Handler{cfg: cfg}
@@ -818,6 +825,7 @@ func TestTelemetry_StateIngest_Handler_StateToCollect_Success_ReturnsShowCommand
 	var resp types.StateToCollectResponse
 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
 	require.Len(t, resp.ShowCommands, len(showCommandsMap))
+	require.Len(t, resp.Custom, len(customKinds))
 
 	// Convert response to map for easier comparison
 	respMap := make(map[string]string)
@@ -825,9 +833,10 @@ func TestTelemetry_StateIngest_Handler_StateToCollect_Success_ReturnsShowCommand
 		respMap[sc.Kind] = sc.Command
 	}
 	require.Equal(t, showCommandsMap, respMap)
+	require.Equal(t, customKinds, resp.Custom)
 }
 
-func TestTelemetry_StateIngest_Handler_StateToCollect_UsesDefaultShowCommands(t *testing.T) {
+func TestTelemetry_StateIngest_Handler_StateToCollect_UsesDefaultShowCommandsAndCustom(t *testing.T) {
 	t.Parallel()
 
 	cfg := Config{
@@ -852,14 +861,11 @@ func TestTelemetry_StateIngest_Handler_StateToCollect_UsesDefaultShowCommands(t 
 	var resp types.StateToCollectResponse
 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
 	require.Len(t, resp.ShowCommands, 2)
+	require.Len(t, resp.Custom, 1)
 
-	// Convert response to map for easier comparison
-	respMap := make(map[string]string)
-	for _, sc := range resp.ShowCommands {
-		respMap[sc.Kind] = sc.Command
-	}
-	require.Equal(t, map[string]string{
-		"snmp-mib-ifmib-ifindex": "show snmp mib ifmib ifindex",
-		"isis-database-detail":   "show isis database detail",
-	}, respMap)
+	require.Equal(t, []types.ShowCommand{
+		{Kind: "snmp-mib-ifmib-ifindex", Command: "show snmp mib ifmib ifindex"},
+		{Kind: "isis-database-detail", Command: "show isis database detail"},
+	}, resp.ShowCommands)
+	require.Equal(t, []string{"bgp-sockets"}, resp.Custom)
 }

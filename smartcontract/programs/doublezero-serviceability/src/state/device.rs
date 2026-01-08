@@ -419,7 +419,7 @@ impl Validate for Device {
             return Err(DoubleZeroError::InvalidExchange);
         }
         // Public IP must be a global address
-        if !is_global(self.public_ip) {
+        if self.device_type != DeviceType::Transit && !is_global(self.public_ip) {
             msg!("Invalid public IP: {}", self.public_ip);
             return Err(DoubleZeroError::InvalidClientIp);
         }
@@ -978,5 +978,151 @@ mod tests {
             borsh::object_length(&val2).unwrap()
         );
         assert_eq!(val, val2);
+    }
+}
+
+#[cfg(test)]
+mod test_device_validate {
+    use super::*;
+
+    #[test]
+    fn test_device_validate_ok() {
+        let device = Device {
+            account_type: AccountType::Device,
+            owner: Pubkey::new_unique(),
+            index: 1,
+            bump_seed: 1,
+            location_pk: Pubkey::new_unique(),
+            exchange_pk: Pubkey::new_unique(),
+            device_type: DeviceType::default(),
+            public_ip: "200.100.50.25".parse().unwrap(),
+            status: DeviceStatus::Activated,
+            code: "test-device".to_string(),
+            dz_prefixes: NetworkV4List::from_str("8.8.8.0/24").unwrap(),
+            metrics_publisher_pk: Pubkey::new_unique(),
+            contributor_pk: Pubkey::new_unique(),
+            mgmt_vrf: "vrf1".to_string(),
+            interfaces: vec![],
+            reference_count: 0,
+            users_count: 0,
+            max_users: 10,
+            device_health: DeviceHealth::ReadyForUsers,
+            desired_status: DeviceDesiredStatus::Activated,
+        };
+        assert!(device.validate().is_ok());
+    }
+}
+
+#[cfg(test)]
+mod test_device_validate_errors {
+    use super::*;
+
+    fn base_device() -> Device {
+        Device {
+            account_type: AccountType::Device,
+            owner: Pubkey::new_unique(),
+            index: 1,
+            bump_seed: 1,
+            location_pk: Pubkey::new_unique(),
+            exchange_pk: Pubkey::new_unique(),
+            device_type: DeviceType::Hybrid,
+            public_ip: "200.100.50.25".parse().unwrap(),
+            status: DeviceStatus::Activated,
+            code: "test-device".to_string(),
+            dz_prefixes: NetworkV4List::from_str("8.8.8.0/24").unwrap(),
+            metrics_publisher_pk: Pubkey::new_unique(),
+            contributor_pk: Pubkey::new_unique(),
+            mgmt_vrf: "vrf1".to_string(),
+            interfaces: vec![],
+            reference_count: 0,
+            users_count: 0,
+            max_users: 10,
+            device_health: DeviceHealth::ReadyForUsers,
+            desired_status: DeviceDesiredStatus::Activated,
+        }
+    }
+
+    #[test]
+    fn test_invalid_account_type() {
+        let mut device = base_device();
+        device.account_type = AccountType::User;
+        let err = device.validate();
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidAccountType);
+    }
+
+    #[test]
+    fn test_code_too_long() {
+        let mut device = base_device();
+        device.code = "a".repeat(33);
+        let err = device.validate();
+        assert_eq!(err.unwrap_err(), DoubleZeroError::CodeTooLong);
+    }
+
+    #[test]
+    fn test_invalid_location() {
+        let mut device = base_device();
+        device.location_pk = Pubkey::default();
+        let err = device.validate();
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidLocation);
+    }
+
+    #[test]
+    fn test_invalid_exchange() {
+        let mut device = base_device();
+        device.exchange_pk = Pubkey::default();
+        let err = device.validate();
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidExchange);
+    }
+
+    #[test]
+    fn test_invalid_public_ip_edge() {
+        let mut device = base_device();
+        device.device_type = DeviceType::Edge;
+        device.public_ip = "192.168.0.1".parse().unwrap();
+        let err = device.validate();
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidClientIp);
+    }
+
+    #[test]
+    fn test_invalid_public_ip_hybrid() {
+        let mut device = base_device();
+        device.device_type = DeviceType::Hybrid;
+        device.public_ip = "192.168.0.1".parse().unwrap();
+        let err = device.validate();
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidClientIp);
+    }
+
+    #[test]
+    fn test_valid_public_ip_transit() {
+        let mut device = base_device();
+        device.device_type = DeviceType::Transit;
+        device.public_ip = "10.0.0.1".parse().unwrap();
+        let err = device.validate();
+        assert!(err.is_ok());
+    }
+
+    #[test]
+    fn test_no_dz_prefixes() {
+        let mut device = base_device();
+        device.dz_prefixes = NetworkV4List::default();
+        let err = device.validate();
+        assert_eq!(err.unwrap_err(), DoubleZeroError::NoDzPrefixes);
+    }
+
+    #[test]
+    fn test_invalid_dz_prefix() {
+        let mut device = base_device();
+        device.dz_prefixes = NetworkV4List::from_str("192.168.0.0/24").unwrap();
+        let err = device.validate();
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidDzPrefix);
+    }
+
+    #[test]
+    fn test_max_users_exceeded() {
+        let mut device = base_device();
+        device.users_count = 11;
+        device.max_users = 10;
+        let err = device.validate();
+        assert_eq!(err.unwrap_err(), DoubleZeroError::MaxUsersExceeded);
     }
 }

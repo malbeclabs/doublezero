@@ -241,7 +241,7 @@ impl<'a> ResourceExtensionBorrowed<'a> {
     }
 }
 
-impl<'a> fmt::Display for ResourceExtensionBorrowed<'a> {
+impl fmt::Display for ResourceExtensionBorrowed<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,

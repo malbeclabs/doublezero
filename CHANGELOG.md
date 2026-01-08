@@ -25,6 +25,7 @@ All notable changes to this project will be documented in this file.
   - Introduced health management for Devices and Links, adding explicit health states, authorized health updates, and related state, processor, and test enhancements.
   - Introduce desired status to Link and Devices
   - Updated validation to allow public IP prefixes for CYOA/DIA, removing the restriction imposed by type-based checks.
+  - Transit devices can now be provisioned without a public IP, aligning the requirements with their actual networking model and avoiding unnecessary configuration constraints.
 - Internet Latency Telemetry
   - Fixed a bug that prevented unresponsive ripeatlas probes from being replaced
   - Fixed a bug that caused ripeatlas samples to be dropped when they were delayed to the next collection cycle

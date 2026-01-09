@@ -11,20 +11,16 @@ import (
 	"github.com/gagliardetto/solana-go"
 	"github.com/jonboulle/clockwork"
 	aristapb "github.com/malbeclabs/doublezero/controlplane/proto/arista/gen/pb-go/arista/EosSdkRpc"
+	"github.com/malbeclabs/doublezero/telemetry/state-ingest/pkg/types"
 )
 
 var (
 	defaultConcurrency = 16
 )
 
-type ShowCommand struct {
-	Kind    string
-	Command string
-}
-
 type StateIngestClient interface {
 	UploadSnapshot(ctx context.Context, kind string, timestamp time.Time, data []byte) (string, error)
-	GetStateToCollect(ctx context.Context) ([]ShowCommand, error)
+	GetStateToCollect(ctx context.Context) (*types.StateToCollectResponse, error)
 }
 
 type CollectorConfig struct {
@@ -34,8 +30,9 @@ type CollectorConfig struct {
 	EAPI        aristapb.EapiMgrServiceClient
 	StateIngest StateIngestClient
 
-	Interval time.Duration
-	DevicePK solana.PublicKey
+	Interval     time.Duration
+	DevicePK     solana.PublicKey
+	BGPNamespace string
 
 	Concurrency int
 }
@@ -58,6 +55,9 @@ func (c *CollectorConfig) Validate() error {
 	}
 	if c.DevicePK.IsZero() {
 		return fmt.Errorf("device pk is required")
+	}
+	if c.BGPNamespace == "" {
+		return fmt.Errorf("bgp namespace is required")
 	}
 	if c.Concurrency <= 0 {
 		c.Concurrency = defaultConcurrency
@@ -100,6 +100,7 @@ func (c *Collector) Run(ctx context.Context) error {
 		"concurrency", c.cfg.Concurrency,
 		"interval", c.cfg.Interval,
 		"device", c.cfg.DevicePK.String(),
+		"bgpNamespace", c.cfg.BGPNamespace,
 	)
 
 	ticker := c.cfg.Clock.NewTicker(c.cfg.Interval)
@@ -122,23 +123,23 @@ func (c *Collector) Run(ctx context.Context) error {
 }
 
 func (c *Collector) tick(ctx context.Context) error {
-	showCommands, err := c.cfg.StateIngest.GetStateToCollect(ctx)
+	state, err := c.cfg.StateIngest.GetStateToCollect(ctx)
 	if err != nil {
 		c.log.Warn("state: failed to fetch commands from server, skipping collection", "error", err)
 		return nil
 	}
 
-	if len(showCommands) == 0 {
+	if len(state.ShowCommands) == 0 && len(state.Custom) == 0 {
 		c.log.Debug("state: no commands to collect from server")
 		return nil
 	}
 
-	c.log.Debug("state: fetched commands from server", "count", len(showCommands))
+	c.log.Debug("state: fetched state to collect from server", "showCommands", len(state.ShowCommands), "custom", len(state.Custom))
 
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, c.cfg.Concurrency)
 
-	for _, sc := range showCommands {
+	for _, sc := range state.ShowCommands {
 		wg.Add(1)
 		go func(kind, command string) {
 			defer wg.Done()
@@ -150,9 +151,30 @@ func (c *Collector) tick(ctx context.Context) error {
 		}(sc.Kind, sc.Command)
 	}
 
+	for _, custom := range state.Custom {
+		wg.Add(1)
+		go func(custom string) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			if err := c.collectCustomStateSnapshot(ctx, custom); err != nil {
+				c.log.Error("state: failed to collect custom state snapshot", "custom", custom, "error", err)
+			}
+		}(custom)
+	}
+
 	wg.Wait()
 
 	return nil
+}
+
+func (c *Collector) collectCustomStateSnapshot(ctx context.Context, custom string) error {
+	switch custom {
+	case kindBGPSockets:
+		return c.collectBGPStateSnapshot(ctx)
+	default:
+		return fmt.Errorf("unknown custom state to collect: %s", custom)
+	}
 }
 
 func (c *Collector) collectStateSnapshot(ctx context.Context, kind, command string) error {

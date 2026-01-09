@@ -46,7 +46,7 @@ mod tests {
         state::{
             accountdata::AccountData,
             accounttype::AccountType,
-            device::{Device, DeviceStatus, DeviceType},
+            device::{Device, DeviceDesiredStatus, DeviceHealth, DeviceStatus, DeviceType},
         },
     };
     use mockall::predicate;
@@ -78,6 +78,8 @@ mod tests {
             interfaces: vec![],
             max_users: 255,
             users_count: 0,
+            device_health: DeviceHealth::ReadyForUsers,
+            desired_status: DeviceDesiredStatus::Activated,
         };
 
         let contributor_pk = device.contributor_pk;

@@ -21,6 +21,9 @@ const (
 	defaultMinTxFloor = 50 * time.Millisecond
 	defaultMaxTxCeil  = 1 * time.Second
 
+	// Default max backoff for exponential backoff.
+	defaultBackoffMax = 1 * time.Minute
+
 	defaultMaxEvents = 10240
 )
 
@@ -131,7 +134,7 @@ func (c *ManagerConfig) Validate() error {
 		return errors.New("maxTxCeil must be greater than minTxFloor")
 	}
 	if c.BackoffMax == 0 {
-		c.BackoffMax = c.MaxTxCeil
+		c.BackoffMax = defaultBackoffMax
 	}
 	if c.BackoffMax < 0 {
 		return errors.New("backoffMax must be greater than 0")

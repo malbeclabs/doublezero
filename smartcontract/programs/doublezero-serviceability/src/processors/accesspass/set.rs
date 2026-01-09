@@ -1,19 +1,17 @@
-use core::fmt;
-use std::net::Ipv4Addr;
-
 use crate::{
     error::DoubleZeroError,
-    globalstate::globalstate_get,
     pda::*,
     seeds::{SEED_ACCESS_PASS, SEED_PREFIX},
+    serializer::{try_acc_create, try_acc_write},
     state::{
         accesspass::{AccessPass, AccessPassStatus, AccessPassType, ALLOW_MULTIPLE_IP, IS_DYNAMIC},
-        accounttype::{AccountType, AccountTypeInfo},
+        accounttype::AccountType,
+        globalstate::GlobalState,
     },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
-use doublezero_program_common::{resize_account::resize_account_if_needed, try_create_account};
+use core::fmt;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     clock::Clock,
@@ -25,6 +23,7 @@ use solana_program::{
     system_instruction,
     sysvar::Sysvar,
 };
+use std::net::Ipv4Addr;
 
 // Value to rent exempt two `User` accounts + configurable amount for connect/disconnect txns
 // `User` account size assumes a single publisher and subscriber pubkey registered
@@ -91,9 +90,14 @@ pub fn process_set_access_pass(
         accesspass_account.key, &expected_pda_account,
         "Invalid AccessPass PubKey"
     );
+    assert_eq!(
+        *system_program.unsigned_key(),
+        solana_program::system_program::id(),
+        "Invalid System Program Account Owner"
+    );
 
     // Parse the global state account & check if the payer is in the allowlist
-    let globalstate = globalstate_get(globalstate_account)?;
+    let globalstate = GlobalState::try_from(globalstate_account)?;
     if globalstate.sentinel_authority_pk != *payer_account.key
         && !globalstate.foundation_allowlist.contains(payer_account.key)
     {
@@ -129,6 +133,7 @@ pub fn process_set_access_pass(
         flags |= ALLOW_MULTIPLE_IP;
     }
 
+    // If account does not exist, create it
     if *accesspass_account.owner == solana_program::system_program::id() {
         let accesspass = AccessPass {
             account_type: AccountType::AccessPass,
@@ -145,13 +150,12 @@ pub fn process_set_access_pass(
             flags,
         };
 
-        try_create_account(
-            payer_account.key,             // Account paying for the new account
-            accesspass_account.key,        // Account to be created
-            accesspass_account.lamports(), // Current amount of lamports on the new account
-            accesspass.size(),             // Size in bytes to allocate for the data field
-            program_id,                    // Set program owner to our program
-            accounts,
+        try_acc_create(
+            &accesspass,
+            accesspass_account,
+            payer_account,
+            system_program,
+            program_id,
             &[
                 SEED_PREFIX,
                 SEED_ACCESS_PASS,
@@ -160,11 +164,12 @@ pub fn process_set_access_pass(
                 &[bump_seed],
             ],
         )?;
-        accesspass.try_serialize(accesspass_account)?;
 
         #[cfg(test)]
         msg!("Created: {:?}", accesspass);
     } else {
+        // Read or create Access Pass
+        // Old bug where close accounts were not fully zeroed out instead of being closed
         let mut accesspass = if !accesspass_account.data_is_empty() {
             assert_eq!(
                 accesspass_account.owner, program_id,
@@ -189,22 +194,19 @@ pub fn process_set_access_pass(
             }
         };
 
+        // Update fields
         accesspass.accesspass_type = value.accesspass_type;
         accesspass.last_access_epoch = value.last_access_epoch;
         accesspass.flags = flags;
 
-        resize_account_if_needed(
-            accesspass_account,
-            payer_account,
-            accounts,
-            accesspass.size(),
-        )?;
-        accesspass.try_serialize(accesspass_account)?;
+        // Write back updated Access Pass
+        try_acc_write(&accesspass, accesspass_account, payer_account, accounts)?;
 
         #[cfg(test)]
         msg!("Updated: {:?}", accesspass);
     }
 
+    // Airdrop rent exempt + configured lamports to user_payer account
     let deposit = Rent::get()
         .unwrap()
         .minimum_balance(AIRDROP_USER_RENT_LAMPORTS_BYTES)

@@ -24,7 +24,7 @@ type Test struct {
 	rand           *rand.Rand
 }
 
-func NewTest(ctx context.Context, log *slog.Logger, hosts []string, port int, networkConfig *config.NetworkConfig) (*Test, error) {
+func NewTest(ctx context.Context, log *slog.Logger, hosts []string, port int, networkConfig *config.NetworkConfig, allocateAddrHosts map[string]struct{}) (*Test, error) {
 	serviceabilityClient := serviceability.New(rpc.New(networkConfig.LedgerPublicRPCURL), networkConfig.ServiceabilityProgramID)
 
 	devices, err := getDevices(context.Background(), serviceabilityClient)
@@ -34,7 +34,8 @@ func NewTest(ctx context.Context, log *slog.Logger, hosts []string, port int, ne
 
 	clients := make(map[string]*Client)
 	for _, host := range hosts {
-		client, err := NewClient(ctx, log, host, port, networkConfig, devices)
+		_, allocateAddr := allocateAddrHosts[host]
+		client, err := NewClient(ctx, log, host, port, networkConfig, devices, allocateAddr)
 		if err != nil {
 			return nil, err
 		}
@@ -104,12 +105,10 @@ func (t *Test) ValidDevices(minCapacity int) []*Device {
 	return devices
 }
 
-func (c *Test) ShuffledValidDevices(minCapacity int) []*Device {
-	devices := c.ValidDevices(minCapacity)
-	c.rand.Shuffle(len(devices), func(i, j int) {
+func (t *Test) ShuffleDevices(devices []*Device) {
+	t.rand.Shuffle(len(devices), func(i, j int) {
 		devices[i], devices[j] = devices[j], devices[i]
 	})
-	return devices
 }
 
 func (c *Test) Close() error {

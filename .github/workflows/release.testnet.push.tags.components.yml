@@ -24,7 +24,6 @@ jobs:
           - device-telemetry-agent
           - funder
           - monitor
-          - global-monitor
     with:
       version: ${{ github.event.inputs.version }}
       component: ${{ matrix.component }}

@@ -14,6 +14,14 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+// kafkaClient is an interface for the subset of kgo.Client methods we use.
+// This allows for mocking in tests.
+type kafkaClient interface {
+	PollFetches(ctx context.Context) kgo.Fetches
+	CommitUncommittedOffsets(ctx context.Context) error
+	Close()
+}
+
 type KafkaFlowConsumer struct {
 	broker     []string
 	user       string
@@ -22,7 +30,7 @@ type KafkaFlowConsumer struct {
 	group      string
 	authType   KafkaAuthType
 	disableTLS bool
-	client     *kgo.Client
+	client     kafkaClient
 	logger     *slog.Logger
 	metrics    *FlowConsumerMetrics
 }
@@ -90,6 +98,13 @@ func WithFlowConsumerMetrics(metrics *FlowConsumerMetrics) KafkaOption {
 	}
 }
 
+// withKafkaClient is used for testing to inject a mock client.
+func withKafkaClient(client kafkaClient) KafkaOption {
+	return func(kfc *KafkaFlowConsumer) {
+		kfc.client = client
+	}
+}
+
 func NewKafkaFlowConsumer(opts ...KafkaOption) (*KafkaFlowConsumer, error) {
 	kfc := &KafkaFlowConsumer{}
 	for _, opt := range opts {
@@ -98,6 +113,12 @@ func NewKafkaFlowConsumer(opts ...KafkaOption) (*KafkaFlowConsumer, error) {
 	if kfc.logger == nil {
 		kfc.logger = slog.New(slog.NewTextHandler(os.Stderr, nil))
 	}
+
+	// If a client was injected (for testing), skip creating a real one
+	if kfc.client != nil {
+		return kfc, nil
+	}
+
 	kOpts := []kgo.Opt{}
 	if kfc.authType == KafkaAuthTypeSCRAM {
 		kOpts = append(kOpts,
@@ -159,7 +180,6 @@ func (kfc *KafkaFlowConsumer) ConsumeFlowRecords(ctx context.Context) ([]FlowSam
 		kfc.logger.Error("error during fetching", "topic", topic, "partition", partition, "error", err)
 	})
 	samples := []FlowSample{}
-	var err error
 	fetches.EachRecord(func(rec *kgo.Record) {
 		var sample flow.FlowSample
 		if err := proto.Unmarshal(rec.Value, &sample); err != nil {
@@ -167,12 +187,13 @@ func (kfc *KafkaFlowConsumer) ConsumeFlowRecords(ctx context.Context) ([]FlowSam
 			kfc.metrics.FlowUnmarshalErrors.Inc()
 			return
 		}
-		samples, err = DecodeSFlow(&sample)
+		decoded, err := DecodeSFlow(&sample)
 		if err != nil {
 			kfc.logger.Error("error decoding sFlow", "error", err)
 			kfc.metrics.FlowDecodeErrors.Inc()
 			return
 		}
+		samples = append(samples, decoded...)
 	})
 	kfc.metrics.FlowsDecodedTotal.Add(float64(len(samples)))
 	return samples, nil

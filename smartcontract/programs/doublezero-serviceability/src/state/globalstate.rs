@@ -20,6 +20,25 @@ pub struct GlobalState {
     pub sentinel_authority_pk: Pubkey,     // 32
     pub contributor_airdrop_lamports: u64, // 8
     pub user_airdrop_lamports: u64,        // 8
+    pub health_oracle_pk: Pubkey,          // 32
+}
+
+impl Default for GlobalState {
+    fn default() -> Self {
+        Self {
+            account_type: AccountType::GlobalState,
+            bump_seed: 0,
+            account_index: 0,
+            foundation_allowlist: Vec::new(),
+            device_allowlist: Vec::new(),
+            user_allowlist: Vec::new(),
+            activator_authority_pk: Pubkey::default(),
+            sentinel_authority_pk: Pubkey::default(),
+            contributor_airdrop_lamports: 0,
+            user_airdrop_lamports: 0,
+            health_oracle_pk: Pubkey::default(),
+        }
+    }
 }
 
 impl fmt::Display for GlobalState {
@@ -34,7 +53,8 @@ user_allowlist: {:?}, \
 activator_authority_pk: {:?}, \
 sentinel_authority_pk: {:?}, \
 contributor_airdrop_lamports: {}, \
-user_airdrop_lamports: {}",
+user_airdrop_lamports: {},
+health_oracle_pk: {:?}",
             self.account_type,
             self.account_index,
             self.foundation_allowlist,
@@ -44,24 +64,8 @@ user_airdrop_lamports: {}",
             self.sentinel_authority_pk,
             self.contributor_airdrop_lamports,
             self.user_airdrop_lamports,
+            self.health_oracle_pk,
         )
-    }
-}
-
-impl GlobalState {
-    pub fn size(&self) -> usize {
-        1 + 1
-            + 16
-            + 4
-            + (self.foundation_allowlist.len() * 32)
-            + 4
-            + (self.device_allowlist.len() * 32)
-            + 4
-            + (self.user_allowlist.len() * 32)
-            + 32
-            + 32
-            + 8
-            + 8
     }
 }
 
@@ -81,6 +85,7 @@ impl TryFrom<&[u8]> for GlobalState {
             contributor_airdrop_lamports: BorshDeserialize::deserialize(&mut data)
                 .unwrap_or_default(),
             user_airdrop_lamports: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            health_oracle_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::GlobalState {
@@ -113,6 +118,12 @@ impl Validate for GlobalState {
             msg!("Invalid account type: {}", self.account_type);
             return Err(DoubleZeroError::InvalidAccountType);
         }
+
+        if self.foundation_allowlist.is_empty() {
+            msg!("Foundation allowlist cannot be empty");
+            return Err(DoubleZeroError::InvalidFoundationAllowlist);
+        }
+
         Ok(())
     }
 }
@@ -162,6 +173,7 @@ mod tests {
             sentinel_authority_pk: Pubkey::new_unique(),
             contributor_airdrop_lamports: 1_000_000_000,
             user_airdrop_lamports: 40_000,
+            health_oracle_pk: Pubkey::new_unique(),
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -170,14 +182,21 @@ mod tests {
         val.validate().unwrap();
         val2.validate().unwrap();
 
-        assert_eq!(val.size(), val2.size());
+        assert_eq!(
+            borsh::object_length(&val).unwrap(),
+            borsh::object_length(&val2).unwrap()
+        );
         assert_eq!(val.account_index, val2.account_index);
         assert_eq!(val.foundation_allowlist, val2.foundation_allowlist);
         assert_eq!(val.device_allowlist, val2.device_allowlist);
         assert_eq!(val.user_allowlist, val2.user_allowlist);
         assert_eq!(val.activator_authority_pk, val2.activator_authority_pk);
         assert_eq!(val.sentinel_authority_pk, val2.sentinel_authority_pk);
-        assert_eq!(data.len(), val.size(), "Invalid Size");
+        assert_eq!(
+            data.len(),
+            borsh::object_length(&val).unwrap(),
+            "Invalid Size"
+        );
         assert_eq!(
             val.contributor_airdrop_lamports,
             val2.contributor_airdrop_lamports
@@ -198,6 +217,7 @@ mod tests {
             sentinel_authority_pk: Pubkey::new_unique(),
             contributor_airdrop_lamports: 1_000_000_000,
             user_airdrop_lamports: 40_000,
+            health_oracle_pk: Pubkey::new_unique(),
         };
         let err = val.validate();
         assert!(err.is_err());

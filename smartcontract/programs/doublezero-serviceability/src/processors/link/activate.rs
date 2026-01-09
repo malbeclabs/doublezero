@@ -1,8 +1,7 @@
 use crate::{
     error::DoubleZeroError,
-    globalstate::globalstate_get,
-    helper::*,
-    state::{device::*, interface::InterfaceStatus, link::*},
+    serializer::try_acc_write,
+    state::{device::*, globalstate::GlobalState, interface::InterfaceStatus, link::*},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -44,7 +43,7 @@ pub fn process_activate_link(
     let side_z_device_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
-    let system_program = next_account_info(accounts_iter)?;
+    let _system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
     msg!("process_activate_link({:?})", value);
@@ -77,7 +76,7 @@ pub fn process_activate_link(
         "Side Z PDA Account is not writable"
     );
 
-    let globalstate = globalstate_get(globalstate_account)?;
+    let globalstate = GlobalState::try_from(globalstate_account)?;
     if globalstate.activator_authority_pk != *payer_account.key {
         return Err(DoubleZeroError::NotAllowed.into());
     }
@@ -120,19 +119,9 @@ pub fn process_activate_link(
     link.tunnel_net = value.tunnel_net;
     link.status = LinkStatus::Activated;
 
-    account_write(
-        side_a_device_account,
-        &side_a_dev,
-        payer_account,
-        system_program,
-    )?;
-    account_write(
-        side_z_device_account,
-        &side_z_dev,
-        payer_account,
-        system_program,
-    )?;
-    account_write(link_account, &link, payer_account, system_program)?;
+    try_acc_write(&side_a_dev, side_a_device_account, payer_account, accounts)?;
+    try_acc_write(&side_z_dev, side_z_device_account, payer_account, accounts)?;
+    try_acc_write(&link, link_account, payer_account, accounts)?;
 
     #[cfg(test)]
     msg!("Activated: {:?}", link);

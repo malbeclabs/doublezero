@@ -153,7 +153,10 @@ mod tests {
         val.validate().unwrap();
         val2.validate().unwrap();
 
-        assert_eq!(val.size(), val2.size());
+        assert_eq!(
+            borsh::object_length(&val).unwrap(),
+            borsh::object_length(&val2).unwrap()
+        );
         assert_eq!(val.owner, val2.owner);
         assert_eq!(val.local_asn, val2.local_asn);
         assert_eq!(val.remote_asn, val2.remote_asn);
@@ -161,7 +164,11 @@ mod tests {
         assert_eq!(val.user_tunnel_block, val2.user_tunnel_block);
         assert_eq!(val.multicastgroup_block, val2.multicastgroup_block);
         assert_eq!(val.next_bgp_community, val2.next_bgp_community);
-        assert_eq!(data.len(), val.size(), "Invalid Size");
+        assert_eq!(
+            data.len(),
+            borsh::object_length(&val).unwrap(),
+            "Invalid Size"
+        );
     }
 
     #[test]

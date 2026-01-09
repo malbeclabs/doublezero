@@ -20,10 +20,11 @@ import (
 )
 
 type Handler struct {
-	log      *slog.Logger
-	cfg      Config
-	auth     *Authenticator
-	svcReady func() bool
+	log          *slog.Logger
+	cfg          Config
+	auth         *Authenticator
+	svcReady     func() bool
+	allowedKinds map[string]struct{}
 }
 
 func (h *Handler) writeJSON(w http.ResponseWriter, status int, v any) {
@@ -58,11 +59,20 @@ func NewHandler(log *slog.Logger, cfg Config, svc *ServiceabilityView) (*Handler
 		return nil, fmt.Errorf("authenticator validation failed: %w", err)
 	}
 
+	allowedKinds := make(map[string]struct{}, len(cfg.StateToCollectShowCommands)+len(cfg.StateToCollectCustom))
+	for kind := range cfg.StateToCollectShowCommands {
+		allowedKinds[kind] = struct{}{}
+	}
+	for _, kind := range cfg.StateToCollectCustom {
+		allowedKinds[kind] = struct{}{}
+	}
+
 	return &Handler{
-		log:      log,
-		cfg:      cfg,
-		auth:     auth,
-		svcReady: svc.Ready,
+		log:          log,
+		cfg:          cfg,
+		auth:         auth,
+		svcReady:     svc.Ready,
+		allowedKinds: allowedKinds,
 	}, nil
 }
 
@@ -135,7 +145,7 @@ func (h *Handler) uploadURLHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, ok := h.cfg.StateToCollectShowCommands[req.Kind]; !ok {
+	if _, ok := h.allowedKinds[req.Kind]; !ok {
 		h.writeJSONError(w, http.StatusBadRequest, "invalid kind")
 		UploadRequestErrorsTotal.WithLabelValues("invalid_kind", authed.DevicePK, "unknown").Inc()
 		return
@@ -230,6 +240,11 @@ func (h *Handler) stateToCollectHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	custom := make([]string, 0, len(h.cfg.StateToCollectCustom))
+	for _, cmd := range h.cfg.StateToCollectCustom {
+		custom = append(custom, cmd)
+	}
+
 	showCommands := make([]types.ShowCommand, 0, len(h.cfg.StateToCollectShowCommands))
 	for kind, cmd := range h.cfg.StateToCollectShowCommands {
 		showCommands = append(showCommands, types.ShowCommand{
@@ -240,6 +255,7 @@ func (h *Handler) stateToCollectHandler(w http.ResponseWriter, r *http.Request) 
 
 	resp := types.StateToCollectResponse{
 		ShowCommands: showCommands,
+		Custom:       custom,
 	}
 
 	h.writeJSON(w, http.StatusOK, resp)

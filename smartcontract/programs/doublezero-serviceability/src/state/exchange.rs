@@ -1,8 +1,5 @@
-use super::accounttype::{AccountType, AccountTypeInfo};
-use crate::{
-    error::{DoubleZeroError, Validate},
-    seeds::SEED_EXCHANGE,
-};
+use super::accounttype::AccountType;
+use crate::error::{DoubleZeroError, Validate};
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError, pubkey::Pubkey};
 use std::fmt;
@@ -89,24 +86,6 @@ impl fmt::Display for Exchange {
             "account_type: {}, owner: {}, index: {}, bump_seed: {}, code: {}, name: {}, lat: {}, lng: {}, bgp_community: {}, status: {}, reference_count: {}, switcha_pk: {}, switchb_pk: {}",
             self.account_type, self.owner, self.index, self.bump_seed, self.code, self.name, self.lat, self.lng, self.bgp_community, self.status, self.reference_count, self.device1_pk, self.device2_pk
         )
-    }
-}
-
-impl AccountTypeInfo for Exchange {
-    fn seed(&self) -> &[u8] {
-        SEED_EXCHANGE
-    }
-    fn size(&self) -> usize {
-        1 + 32 + 16 + 1 + 8 + 8 + 4 + 1 + 4 + self.code.len() + 4 + self.name.len() + 4 + 32 + 32
-    }
-    fn index(&self) -> u128 {
-        self.index
-    }
-    fn bump_seed(&self) -> u8 {
-        self.bump_seed
-    }
-    fn owner(&self) -> Pubkey {
-        self.owner
     }
 }
 
@@ -253,7 +232,10 @@ mod tests {
         val.validate().unwrap();
         val2.validate().unwrap();
 
-        assert_eq!(val.size(), val2.size());
+        assert_eq!(
+            borsh::object_length(&val).unwrap(),
+            borsh::object_length(&val2).unwrap()
+        );
         assert_eq!(val.owner, val2.owner);
         assert_eq!(val.code, val2.code);
         assert_eq!(val.name, val2.name);
@@ -261,7 +243,11 @@ mod tests {
         assert_eq!(val.lng, val2.lng);
         assert_eq!(val.device1_pk, val2.device1_pk);
         assert_eq!(val.device2_pk, val2.device2_pk);
-        assert_eq!(data.len(), val.size(), "Invalid Size");
+        assert_eq!(
+            data.len(),
+            borsh::object_length(&val).unwrap(),
+            "Invalid Size"
+        );
     }
 
     #[test]

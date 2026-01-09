@@ -1,9 +1,9 @@
 use crate::{
     error::DoubleZeroError,
-    globalstate::{globalstate_get_next, globalstate_write},
-    helper::*,
     pda::*,
-    state::{accounttype::AccountType, location::*},
+    seeds::{SEED_LOCATION, SEED_PREFIX},
+    serializer::{try_acc_create, try_acc_write},
+    state::{accounttype::AccountType, globalstate::GlobalState, location::*},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -84,7 +84,9 @@ pub fn process_create_location(
     assert!(location_account.is_writable, "PDA Account is not writable");
 
     // Parse the global state account & check if the payer is in the allowlist
-    let globalstate = globalstate_get_next(globalstate_account)?;
+    let mut globalstate = GlobalState::try_from(globalstate_account)?;
+    globalstate.account_index += 1;
+
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }
@@ -96,7 +98,7 @@ pub fn process_create_location(
     );
 
     // Check if the account is already initialized
-    if !location_account.data.borrow().is_empty() {
+    if !location_account.data_is_empty() {
         return Err(ProgramError::AccountAlreadyInitialized);
     }
 
@@ -115,14 +117,20 @@ pub fn process_create_location(
         status: LocationStatus::Activated,
     };
 
-    account_create(
-        location_account,
+    try_acc_create(
         &location,
+        location_account,
         payer_account,
         system_program,
         program_id,
+        &[
+            SEED_PREFIX,
+            SEED_LOCATION,
+            &globalstate.account_index.to_le_bytes(),
+            &[bump_seed],
+        ],
     )?;
-    globalstate_write(globalstate_account, &globalstate)?;
+    try_acc_write(&globalstate, globalstate_account, payer_account, accounts)?;
 
     Ok(())
 }

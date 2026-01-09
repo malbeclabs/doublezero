@@ -1,5 +1,7 @@
 use crate::{
-    error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::contributor::*,
+    error::DoubleZeroError,
+    serializer::try_acc_write,
+    state::{contributor::*, globalstate::GlobalState},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -65,9 +67,14 @@ pub fn process_update_contributor(
         contributor_account.is_writable,
         "PDA Account is not writable"
     );
+    assert_eq!(
+        *system_program.unsigned_key(),
+        solana_program::system_program::id(),
+        "Invalid System Program Account Owner"
+    );
 
     let mut contributor = Contributor::try_from(contributor_account)?;
-    let globalstate = globalstate_get(globalstate_account)?;
+    let globalstate = GlobalState::try_from(globalstate_account)?;
 
     let only_ops_manager_update =
         value.code.is_none() && value.owner.is_none() && value.ops_manager_pk.is_some();
@@ -95,12 +102,7 @@ pub fn process_update_contributor(
     if let Some(ref ops_manager_pk) = value.ops_manager_pk {
         contributor.ops_manager_pk = *ops_manager_pk;
     }
-    account_write(
-        contributor_account,
-        &contributor,
-        payer_account,
-        system_program,
-    )?;
+    try_acc_write(&contributor, contributor_account, payer_account, accounts)?;
 
     #[cfg(test)]
     msg!("Updated: {:?}", contributor);

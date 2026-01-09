@@ -1,8 +1,7 @@
 use crate::{
     error::DoubleZeroError,
-    globalstate::globalstate_get,
-    helper::*,
-    state::{contributor::Contributor, device::Device, link::*},
+    serializer::try_acc_write,
+    state::{contributor::Contributor, device::Device, globalstate::GlobalState, link::*},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -26,6 +25,7 @@ pub struct LinkUpdateArgs {
     pub jitter_ns: Option<u64>,
     pub status: Option<LinkStatus>,
     pub delay_override_ns: Option<u64>,
+    pub desired_status: Option<LinkDesiredStatus>,
 }
 
 impl fmt::Debug for LinkUpdateArgs {
@@ -57,6 +57,9 @@ impl fmt::Debug for LinkUpdateArgs {
         }
         if let Some(delay_override_ns) = self.delay_override_ns {
             parts.push(format!("delay_override_ns: {:?}", delay_override_ns));
+        }
+        if let Some(ref desired_status) = self.desired_status {
+            parts.push(format!("desired_status: {:?}", desired_status));
         }
         write!(f, "{}", parts.join(", "))
     }
@@ -104,7 +107,7 @@ pub fn process_update_link(
     // Check if the account is writable
     assert!(link_account.is_writable, "PDA Account is not writable");
 
-    let globalstate = globalstate_get(globalstate_account)?;
+    let globalstate = GlobalState::try_from(globalstate_account)?;
     let contributor = Contributor::try_from(contributor_account)?;
 
     if contributor.owner != *payer_account.key
@@ -193,8 +196,13 @@ pub fn process_update_link(
             }
         }
     }
+    if let Some(desired_status) = value.desired_status {
+        link.desired_status = desired_status;
+    }
 
-    account_write(link_account, &link, payer_account, system_program)?;
+    link.check_status_transition();
+
+    try_acc_write(&link, link_account, payer_account, accounts)?;
 
     #[cfg(test)]
     msg!("Updated: {:?}", link);
@@ -243,6 +251,7 @@ mod tests {
             jitter_ns: Some(100_000),
             status: Some(LinkStatus::Activated),
             delay_override_ns: None,
+            desired_status: None,
         };
 
         let serialized = borsh::to_vec(&args_before).unwrap();

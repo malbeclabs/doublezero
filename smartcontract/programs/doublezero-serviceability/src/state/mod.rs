@@ -11,4 +11,5 @@ pub mod link;
 pub mod location;
 pub mod multicastgroup;
 pub mod programconfig;
+pub mod resource_extension;
 pub mod user;

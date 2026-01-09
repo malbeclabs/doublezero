@@ -377,13 +377,13 @@ async fn test_device() {
 
     println!("✅ Device updated");
     /*****************************************************************************************************************************************************/
-    println!("🟢 11. Update Device - SoftDrained...");
+    println!("🟢 11. Update Device - Drained...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
-            status: Some(DeviceStatus::SoftDrained),
+            status: Some(DeviceStatus::Drained),
             ..DeviceUpdateArgs::default()
         }),
         vec![
@@ -400,65 +400,11 @@ async fn test_device() {
         .expect("Unable to get Account")
         .get_device()
         .unwrap();
-    assert_eq!(device_la.status, DeviceStatus::SoftDrained);
+    assert_eq!(device_la.status, DeviceStatus::Drained);
 
-    println!("✅ Device updated to SoftDrained");
+    println!("✅ Device updated to Drained");
     /*****************************************************************************************************************************************************/
-    println!("🟢 12. Update Device - HardDrained...");
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
-            status: Some(DeviceStatus::HardDrained),
-            ..DeviceUpdateArgs::default()
-        }),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(contributor_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let device_la = get_account_data(&mut banks_client, device_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_device()
-        .unwrap();
-    assert_eq!(device_la.status, DeviceStatus::HardDrained);
-
-    println!("✅ Device updated to HardDrained");
-    /*****************************************************************************************************************************************************/
-    println!("🟢 13. Update Device - SoftDrained...");
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
-            status: Some(DeviceStatus::SoftDrained),
-            ..DeviceUpdateArgs::default()
-        }),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(contributor_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let device_la = get_account_data(&mut banks_client, device_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_device()
-        .unwrap();
-    assert_eq!(device_la.status, DeviceStatus::SoftDrained);
-
-    println!("✅ Device updated to SoftDrained");
-    /*****************************************************************************************************************************************************/
-    println!("🟢 14. Update Device - Activated...");
+    println!("🟢 12. Update Device - Activated...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -485,7 +431,7 @@ async fn test_device() {
 
     println!("✅ Device updated to Activated");
     /*****************************************************************************************************************************************************/
-    println!("🟢 15. Deleting Device...");
+    println!("🟢 13. Deleting Device...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -511,7 +457,7 @@ async fn test_device() {
     assert_eq!(device_la.status, DeviceStatus::Deleting);
 
     /*****************************************************************************************************************************************************/
-    println!("🟢 16. CloseAccount Device...");
+    println!("🟢 14. CloseAccount Device...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,

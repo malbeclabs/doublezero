@@ -67,8 +67,7 @@ pub enum DeviceStatus {
     Suspended = 2,
     Deleting = 3,
     Rejected = 4,
-    SoftDrained = 5,
-    HardDrained = 6,
+    Drained = 5,
 }
 
 impl From<u8> for DeviceStatus {
@@ -79,8 +78,7 @@ impl From<u8> for DeviceStatus {
             2 => DeviceStatus::Suspended,
             3 => DeviceStatus::Deleting,
             4 => DeviceStatus::Rejected,
-            5 => DeviceStatus::SoftDrained,
-            6 => DeviceStatus::HardDrained,
+            5 => DeviceStatus::Drained,
             _ => DeviceStatus::Pending,
         }
     }
@@ -94,8 +92,7 @@ impl fmt::Display for DeviceStatus {
             DeviceStatus::Suspended => write!(f, "suspended"),
             DeviceStatus::Deleting => write!(f, "deleting"),
             DeviceStatus::Rejected => write!(f, "rejected"),
-            DeviceStatus::SoftDrained => write!(f, "soft-drained"),
-            DeviceStatus::HardDrained => write!(f, "hard-drained"),
+            DeviceStatus::Drained => write!(f, "drained"),
         }
     }
 }
@@ -110,8 +107,7 @@ impl FromStr for DeviceStatus {
             "suspended" => Ok(DeviceStatus::Suspended),
             "deleting" => Ok(DeviceStatus::Deleting),
             "rejected" => Ok(DeviceStatus::Rejected),
-            "hard-drained" => Ok(DeviceStatus::HardDrained),
-            "soft-drained" => Ok(DeviceStatus::SoftDrained),
+            "drained" => Ok(DeviceStatus::Drained),
             _ => Err(format!("Invalid DeviceStatus: {s}")),
         }
     }
@@ -178,8 +174,7 @@ pub enum DeviceDesiredStatus {
     #[default]
     Pending = 0,
     Activated = 1,
-    HardDrained = 6,
-    SoftDrained = 7,
+    Drained = 6,
 }
 
 impl From<u8> for DeviceDesiredStatus {
@@ -187,8 +182,7 @@ impl From<u8> for DeviceDesiredStatus {
         match value {
             0 => DeviceDesiredStatus::Pending,
             1 => DeviceDesiredStatus::Activated,
-            6 => DeviceDesiredStatus::HardDrained,
-            7 => DeviceDesiredStatus::SoftDrained,
+            6 => DeviceDesiredStatus::Drained,
             _ => DeviceDesiredStatus::Pending,
         }
     }
@@ -201,8 +195,7 @@ impl FromStr for DeviceDesiredStatus {
         match s.to_lowercase().as_str() {
             "pending" => Ok(DeviceDesiredStatus::Pending),
             "activated" => Ok(DeviceDesiredStatus::Activated),
-            "hard-drained" => Ok(DeviceDesiredStatus::HardDrained),
-            "soft-drained" => Ok(DeviceDesiredStatus::SoftDrained),
+            "drained" => Ok(DeviceDesiredStatus::Drained),
             _ => Err(format!("Invalid DeviceDesiredStatus: {s}")),
         }
     }
@@ -213,8 +206,7 @@ impl fmt::Display for DeviceDesiredStatus {
         match self {
             DeviceDesiredStatus::Pending => write!(f, "pending"),
             DeviceDesiredStatus::Activated => write!(f, "activated"),
-            DeviceDesiredStatus::HardDrained => write!(f, "hard-drained"),
-            DeviceDesiredStatus::SoftDrained => write!(f, "soft-drained"),
+            DeviceDesiredStatus::Drained => write!(f, "drained"),
         }
     }
 }

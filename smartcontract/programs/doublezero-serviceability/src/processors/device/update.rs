@@ -209,11 +209,8 @@ pub fn process_update_device(
             // but note: transitioning from HardDrained to Activated requires first moving to SoftDrained,
             // to allow for maintenance draining of links and to verify establishment of connections.
             match (device.status, status) {
-                (DeviceStatus::Activated, DeviceStatus::HardDrained)
-                | (DeviceStatus::Activated, DeviceStatus::SoftDrained)
-                | (DeviceStatus::HardDrained, DeviceStatus::SoftDrained)
-                | (DeviceStatus::SoftDrained, DeviceStatus::HardDrained)
-                | (DeviceStatus::SoftDrained, DeviceStatus::Activated) => {
+                (DeviceStatus::Activated, DeviceStatus::Drained)
+                | (DeviceStatus::Drained, DeviceStatus::Activated) => {
                     device.status = status;
                 }
                 _ => return Err(DoubleZeroError::NotAllowed.into()),

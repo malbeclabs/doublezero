@@ -36,7 +36,7 @@ require (
 	github.com/minio/minio-go v6.0.14+incompatible
 	github.com/mr-tron/base58 v1.2.0
 	github.com/near/borsh-go v0.3.1
-	github.com/netsampler/goflow2/v2 v2.2.3
+	github.com/netsampler/goflow2/v2 v2.2.6
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/oschwald/geoip2-golang v1.13.0
 	github.com/osrg/gobgp v2.0.0+incompatible
@@ -59,7 +59,7 @@ require (
 	golang.org/x/net v0.47.0
 	golang.org/x/sys v0.38.0
 	google.golang.org/grpc v1.77.0
-	google.golang.org/protobuf v1.36.10
+	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v3 v3.0.1
 )
 

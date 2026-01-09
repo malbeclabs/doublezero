@@ -53,6 +53,12 @@ pub fn process_suspend_user(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
+    if user.status != UserStatus::Activated {
+        #[cfg(test)]
+        msg!("{:?}", user);
+        return Err(DoubleZeroError::InvalidStatus.into());
+    }
+
     user.status = UserStatus::Suspended;
 
     try_acc_write(&user, user_account, payer_account, accounts)?;

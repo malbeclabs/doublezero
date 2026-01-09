@@ -80,6 +80,11 @@ pub fn process_closeaccount_device(
         msg!("{:?}", device);
         return Err(solana_program::program_error::ProgramError::Custom(1));
     }
+    // This catches edge cases where reference_count could be incremented
+    // after DeleteDevice but before CloseAccountDevice
+    if device.reference_count > 0 {
+        return Err(DoubleZeroError::ReferenceCountNotZero.into());
+    }
     if device.location_pk != *location_account.key {
         return Err(DoubleZeroError::InvalidLocationPubkey.into());
     }

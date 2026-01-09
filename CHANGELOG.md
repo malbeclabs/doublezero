@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.
   - Added --ip-net support to create to match the existing behavior in update.
   - Use DZ IP for user lookup during status command instead of client IP
 - Onchain programs
+  - Add on-chain validation to reject CloseAccountDevice when device has active references (reference_count > 0)
   - Allow contributor owner to update ops manager key
   - Add new arguments on create interface cli command
   - Add ResourceExtension to track IP/ID allocations. Foundation instructions added to create/allocate/deallocate.

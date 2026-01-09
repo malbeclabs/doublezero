@@ -14,8 +14,6 @@ use solana_program::{
 use crate::{
     error::DoubleZeroError,
     serializer::try_acc_close,
-    globalstate::globalstate_get,
-    helper::*,
     state::{
         exchange::{Exchange, *},
         globalstate::GlobalState,

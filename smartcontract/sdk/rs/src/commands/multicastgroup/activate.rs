@@ -1,6 +1,6 @@
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction,
-    processors::multicastgroup::activate::MulticastGroupActivateArgs,
+    instructions::DoubleZeroInstruction, pda::get_resource_extension_pda,
+    processors::multicastgroup::activate::MulticastGroupActivateArgs, resource::ResourceType,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 use std::net::Ipv4Addr;
@@ -11,9 +11,9 @@ use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient}
 pub struct ActivateMulticastGroupCommand {
     pub mgroup_pubkey: Pubkey,
     pub multicast_ip: Ipv4Addr,
-    /// Optional ResourceExtension pubkey for on-chain IP allocation.
-    /// When provided, multicast_ip is ignored and an IP is allocated from the ResourceExtension bitmap.
-    pub resource_extension_pubkey: Option<Pubkey>,
+    /// When true, SDK computes ResourceExtension PDA and includes it for on-chain allocation.
+    /// When false, uses legacy behavior with caller-provided multicast_ip.
+    pub use_onchain_allocation: bool,
 }
 
 impl ActivateMulticastGroupCommand {
@@ -29,8 +29,12 @@ impl ActivateMulticastGroupCommand {
             AccountMeta::new(globalstate_pubkey, false),
         ];
 
-        if let Some(pubkey) = self.resource_extension_pubkey {
-            accounts.push(AccountMeta::new(pubkey, false));
+        if self.use_onchain_allocation {
+            let (resource_ext_pubkey, _, _) = get_resource_extension_pda(
+                &client.get_program_id(),
+                ResourceType::MulticastGroupBlock,
+            );
+            accounts.push(AccountMeta::new(resource_ext_pubkey, false));
         }
 
         client.execute_transaction(
@@ -83,7 +87,7 @@ mod tests {
         let res = ActivateMulticastGroupCommand {
             mgroup_pubkey,
             multicast_ip: [1, 2, 3, 4].into(),
-            resource_extension_pubkey: None,
+            use_onchain_allocation: false,
         }
         .execute(&client);
 
@@ -91,7 +95,7 @@ mod tests {
     }
 
     #[test]
-    fn test_commands_multicastgroup_activate_with_resource_extension() {
+    fn test_commands_multicastgroup_activate_with_onchain_allocation() {
         let mut client = create_test_client();
 
         let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
@@ -118,7 +122,7 @@ mod tests {
         let res = ActivateMulticastGroupCommand {
             mgroup_pubkey,
             multicast_ip: Ipv4Addr::UNSPECIFIED,
-            resource_extension_pubkey: Some(resource_ext_pubkey),
+            use_onchain_allocation: true,
         }
         .execute(&client);
 

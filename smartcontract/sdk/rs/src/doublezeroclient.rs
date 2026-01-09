@@ -39,15 +39,6 @@ pub trait DoubleZeroClient {
         accounts: Vec<AccountMeta>,
     ) -> eyre::Result<Signature>;
 
-    /// Execute a transaction with optional extra accounts appended after payer and system_program.
-    /// This is needed for instructions that have optional accounts at the end (like ResourceExtension).
-    fn execute_transaction_with_extra_accounts(
-        &self,
-        instruction: DoubleZeroInstruction,
-        accounts: Vec<AccountMeta>,
-        extra_accounts: Vec<AccountMeta>,
-    ) -> eyre::Result<Signature>;
-
     fn get_transactions(&self, pubkey: Pubkey) -> eyre::Result<Vec<DZTransaction>>;
 }
 

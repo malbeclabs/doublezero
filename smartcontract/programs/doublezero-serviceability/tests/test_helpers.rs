@@ -262,36 +262,6 @@ pub fn create_transaction_with_extra_accounts(
     )
 }
 
-/// Execute a transaction with optional extra accounts appended after payer and system_program.
-#[allow(dead_code)]
-pub async fn execute_transaction_with_extra_accounts(
-    banks_client: &mut BanksClient,
-    _recent_blockhash: solana_program::hash::Hash,
-    program_id: Pubkey,
-    instruction: DoubleZeroInstruction,
-    accounts: Vec<AccountMeta>,
-    payer: &Keypair,
-    extra_accounts: Vec<AccountMeta>,
-) {
-    print!("➡️  Transaction {instruction:?} (with extra accounts) ");
-
-    let recent_blockhash = banks_client
-        .get_latest_blockhash()
-        .await
-        .expect("Failed to get latest blockhash");
-    let mut transaction = create_transaction_with_extra_accounts(
-        program_id,
-        &instruction,
-        &accounts,
-        payer,
-        &extra_accounts,
-    );
-    transaction.try_sign(&[&payer], recent_blockhash).unwrap();
-    banks_client.process_transaction(transaction).await.unwrap();
-
-    println!("✅")
-}
-
 #[allow(dead_code)]
 pub async fn get_resource_extension_data(
     banks_client: &mut BanksClient,

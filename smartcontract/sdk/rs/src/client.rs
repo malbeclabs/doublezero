@@ -286,15 +286,6 @@ impl DoubleZeroClient for DZClient {
         instruction: DoubleZeroInstruction,
         accounts: Vec<AccountMeta>,
     ) -> eyre::Result<Signature> {
-        self.execute_transaction_with_extra_accounts(instruction, accounts, vec![])
-    }
-
-    fn execute_transaction_with_extra_accounts(
-        &self,
-        instruction: DoubleZeroInstruction,
-        accounts: Vec<AccountMeta>,
-        extra_accounts: Vec<AccountMeta>,
-    ) -> eyre::Result<Signature> {
         let payer = self
             .payer
             .as_ref()
@@ -311,7 +302,6 @@ impl DoubleZeroClient for DZClient {
                         AccountMeta::new(payer.pubkey(), true),
                         AccountMeta::new(program::id(), false),
                     ],
-                    extra_accounts,
                 ]
                 .concat(),
             )],

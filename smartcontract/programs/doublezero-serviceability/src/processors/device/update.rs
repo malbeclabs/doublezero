@@ -205,9 +205,8 @@ pub fn process_update_device(
         if globalstate.foundation_allowlist.contains(payer_account.key) {
             device.status = status;
         } else {
-            // Contributors can only transition between Activated <-> Drained states & Drained <-> Drained states,
-            // but note: transitioning from HardDrained to Activated requires first moving to SoftDrained,
-            // to allow for maintenance draining of links and to verify establishment of connections.
+            // Contributors can only transition between Activated <-> Drained states,
+            // This enforces a maintenance step before reactivation.
             match (device.status, status) {
                 (DeviceStatus::Activated, DeviceStatus::Drained)
                 | (DeviceStatus::Drained, DeviceStatus::Activated) => {

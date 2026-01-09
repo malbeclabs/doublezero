@@ -119,23 +119,19 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 	for batchNum := 0; batchNum < batchCount; batchNum++ {
 		batch := batchData[batchNum]
 
-		var clientsToConnect []*qa.Client
-		for _, client := range clients {
-			if assignment, ok := batch[client.Host]; ok {
-				// Connect if: first batch, device changed, or client is not currently up
-				if batchNum == 0 {
-					clientsToConnect = append(clientsToConnect, client)
-				} else if prev, ok := batchData[batchNum-1][client.Host]; !ok || prev.Device.Code != assignment.Device.Code {
-					clientsToConnect = append(clientsToConnect, client)
-				} else {
-					// Same device as previous batch - check if client is still connected
-					status, err := client.GetUserStatus(ctx)
-					if err != nil || status.SessionStatus != qa.UserStatusUp {
-						clientsToConnect = append(clientsToConnect, client)
+		getStatus := func(hostname string) (string, error) {
+			for _, c := range clients {
+				if c.Host == hostname {
+					status, err := c.GetUserStatus(ctx)
+					if err != nil {
+						return "", err
 					}
+					return status.SessionStatus, nil
 				}
 			}
+			return "", fmt.Errorf("client %s not found", hostname)
 		}
+		clientsToConnect := qa.DetermineClientsToConnect(batchNum, batchData, clients, getStatus)
 
 		t.Run(fmt.Sprintf("batch_%d", batchNum+1), func(t *testing.T) {
 			connectedClients := connectClientsAndWaitForRoutes(t, ctx, log, clientsToConnect, clients, batch)

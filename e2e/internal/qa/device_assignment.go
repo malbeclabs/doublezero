@@ -21,6 +21,51 @@ func (b *BatchAssignment) Success() bool {
 
 type BatchData map[int]map[string]*BatchAssignment
 
+// ClientStatusGetter returns the session status for a client hostname.
+// Used to check if a client needs reconnection.
+type ClientStatusGetter func(hostname string) (sessionStatus string, err error)
+
+// DetermineClientsToConnect decides which clients need to connect for a given batch.
+// A client needs to connect if:
+// 1. It's the first batch (batchNum == 0)
+// 2. The device changed from the previous batch
+// 3. The device is the same but the client is not currently "up"
+func DetermineClientsToConnect(
+	batchNum int,
+	batchData BatchData,
+	clients []*Client,
+	getStatus ClientStatusGetter,
+) []*Client {
+	batch := batchData[batchNum]
+	var clientsToConnect []*Client
+
+	for _, client := range clients {
+		assignment, inBatch := batch[client.Host]
+		if !inBatch {
+			continue
+		}
+
+		if batchNum == 0 {
+			clientsToConnect = append(clientsToConnect, client)
+			continue
+		}
+
+		prev, hadPrev := batchData[batchNum-1][client.Host]
+		if !hadPrev || prev.Device.Code != assignment.Device.Code {
+			clientsToConnect = append(clientsToConnect, client)
+			continue
+		}
+
+		// Same device as previous batch - check if client is still connected
+		status, err := getStatus(client.Host)
+		if err != nil || status != UserStatusUp {
+			clientsToConnect = append(clientsToConnect, client)
+		}
+	}
+
+	return clientsToConnect
+}
+
 // AssignDevicesToClients considers latency between each client and device to assign devices to clients:
 // If multiple clients have < LatencyThresholdMs latency, the device goes to the client with fewest devices.
 // Otherwise, the device goes to the client with the lowest latency.

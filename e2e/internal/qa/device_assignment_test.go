@@ -1,6 +1,7 @@
 package qa
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -163,6 +164,145 @@ func TestAssignDevicesToClients(t *testing.T) {
 			if client2Exchanges[ex] {
 				t.Errorf("exchange %s shared between two allocate-addr clients", ex)
 			}
+		}
+	})
+}
+
+func TestDetermineClientsToConnect(t *testing.T) {
+	dev1 := &Device{Code: "dev1", ExchangeCode: "ex1"}
+	dev2 := &Device{Code: "dev2", ExchangeCode: "ex2"}
+	client1 := &Client{Host: "client1"}
+	client2 := &Client{Host: "client2"}
+	clients := []*Client{client1, client2}
+
+	t.Run("first batch connects all clients in batch", func(t *testing.T) {
+		batchData := BatchData{
+			0: {"client1": {Device: dev1}, "client2": {Device: dev2}},
+		}
+		getStatus := func(hostname string) (string, error) {
+			return UserStatusUp, nil
+		}
+
+		result := DetermineClientsToConnect(0, batchData, clients, getStatus)
+
+		if len(result) != 2 {
+			t.Errorf("expected 2 clients, got %d", len(result))
+		}
+	})
+
+	t.Run("device change triggers reconnect", func(t *testing.T) {
+		batchData := BatchData{
+			0: {"client1": {Device: dev1}, "client2": {Device: dev2}},
+			1: {"client1": {Device: dev2}, "client2": {Device: dev2}}, // client1 changed device
+		}
+		getStatus := func(hostname string) (string, error) {
+			return UserStatusUp, nil
+		}
+
+		result := DetermineClientsToConnect(1, batchData, clients, getStatus)
+
+		if len(result) != 1 {
+			t.Fatalf("expected 1 client, got %d", len(result))
+		}
+		if result[0].Host != "client1" {
+			t.Errorf("expected client1 to reconnect, got %s", result[0].Host)
+		}
+	})
+
+	t.Run("same device but not up triggers reconnect", func(t *testing.T) {
+		batchData := BatchData{
+			0: {"client1": {Device: dev1}, "client2": {Device: dev2}},
+			1: {"client1": {Device: dev1}, "client2": {Device: dev2}}, // same devices
+		}
+		getStatus := func(hostname string) (string, error) {
+			if hostname == "client1" {
+				return "disconnected", nil // client1 is not up
+			}
+			return UserStatusUp, nil
+		}
+
+		result := DetermineClientsToConnect(1, batchData, clients, getStatus)
+
+		if len(result) != 1 {
+			t.Fatalf("expected 1 client, got %d", len(result))
+		}
+		if result[0].Host != "client1" {
+			t.Errorf("expected client1 to reconnect, got %s", result[0].Host)
+		}
+	})
+
+	t.Run("status error triggers reconnect", func(t *testing.T) {
+		batchData := BatchData{
+			0: {"client1": {Device: dev1}, "client2": {Device: dev2}},
+			1: {"client1": {Device: dev1}, "client2": {Device: dev2}},
+		}
+		getStatus := func(hostname string) (string, error) {
+			if hostname == "client2" {
+				return "", fmt.Errorf("connection refused")
+			}
+			return UserStatusUp, nil
+		}
+
+		result := DetermineClientsToConnect(1, batchData, clients, getStatus)
+
+		if len(result) != 1 {
+			t.Fatalf("expected 1 client, got %d", len(result))
+		}
+		if result[0].Host != "client2" {
+			t.Errorf("expected client2 to reconnect, got %s", result[0].Host)
+		}
+	})
+
+	t.Run("client not in batch is skipped", func(t *testing.T) {
+		batchData := BatchData{
+			0: {"client1": {Device: dev1}}, // client2 not in batch
+		}
+		getStatus := func(hostname string) (string, error) {
+			return UserStatusUp, nil
+		}
+
+		result := DetermineClientsToConnect(0, batchData, clients, getStatus)
+
+		if len(result) != 1 {
+			t.Fatalf("expected 1 client, got %d", len(result))
+		}
+		if result[0].Host != "client1" {
+			t.Errorf("expected client1, got %s", result[0].Host)
+		}
+	})
+
+	t.Run("client not in previous batch triggers reconnect", func(t *testing.T) {
+		batchData := BatchData{
+			0: {"client1": {Device: dev1}},                            // only client1
+			1: {"client1": {Device: dev1}, "client2": {Device: dev2}}, // client2 added
+		}
+		getStatus := func(hostname string) (string, error) {
+			return UserStatusUp, nil
+		}
+
+		result := DetermineClientsToConnect(1, batchData, clients, getStatus)
+
+		if len(result) != 1 {
+			t.Fatalf("expected 1 client, got %d", len(result))
+		}
+		if result[0].Host != "client2" {
+			t.Errorf("expected client2 to connect, got %s", result[0].Host)
+		}
+	})
+
+	t.Run("same device and up does not reconnect", func(t *testing.T) {
+		batchData := BatchData{
+			0: {"client1": {Device: dev1}, "client2": {Device: dev2}},
+			1: {"client1": {Device: dev1}, "client2": {Device: dev2}},
+		}
+		getStatus := func(hostname string) (string, error) {
+			return UserStatusUp, nil
+		}
+
+		result := DetermineClientsToConnect(1, batchData, clients, getStatus)
+
+		if len(result) != 0 {
+			t.Errorf("expected 0 clients to reconnect, got %d", len(result))
 		}
 	})
 }

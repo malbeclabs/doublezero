@@ -38,10 +38,14 @@ pub fn process_activate_multicastgroup(
 
     let multicastgroup_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
+    // Optional: ResourceExtension account for on-chain IP allocation (before payer)
+    let resource_extension_account = if accounts.len() == 5 {
+        Some(next_account_info(accounts_iter)?)
+    } else {
+        None
+    };
     let payer_account = next_account_info(accounts_iter)?;
     let _system_program = next_account_info(accounts_iter)?;
-    // Optional: ResourceExtension account for on-chain IP allocation
-    let resource_extension_account = accounts_iter.next();
 
     #[cfg(test)]
     msg!("process_activate_multicastgroup({:?})", value);

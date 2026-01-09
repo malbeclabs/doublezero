@@ -22,22 +22,22 @@ impl ActivateMulticastGroupCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let accounts = vec![
+        // Build accounts list with optional ResourceExtension before payer
+        // (payer and system_program are appended by execute_transaction)
+        let mut accounts = vec![
             AccountMeta::new(self.mgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
         ];
 
-        let extra_accounts = match self.resource_extension_pubkey {
-            Some(pubkey) => vec![AccountMeta::new(pubkey, false)],
-            None => vec![],
-        };
+        if let Some(pubkey) = self.resource_extension_pubkey {
+            accounts.push(AccountMeta::new(pubkey, false));
+        }
 
-        client.execute_transaction_with_extra_accounts(
+        client.execute_transaction(
             DoubleZeroInstruction::ActivateMulticastGroup(MulticastGroupActivateArgs {
                 multicast_ip: self.multicast_ip,
             }),
             accounts,
-            extra_accounts,
         )
     }
 }
@@ -66,7 +66,7 @@ mod tests {
         let (mgroup_pubkey, _) = get_multicastgroup_pda(&client.get_program_id(), 1);
 
         client
-            .expect_execute_transaction_with_extra_accounts()
+            .expect_execute_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::ActivateMulticastGroup(
                     MulticastGroupActivateArgs {
@@ -77,9 +77,8 @@ mod tests {
                     AccountMeta::new(mgroup_pubkey, false),
                     AccountMeta::new(globalstate_pubkey, false),
                 ]),
-                predicate::eq(vec![]), // No extra accounts
             )
-            .returning(|_, _, _| Ok(Signature::new_unique()));
+            .returning(|_, _| Ok(Signature::new_unique()));
 
         let res = ActivateMulticastGroupCommand {
             mgroup_pubkey,
@@ -101,7 +100,7 @@ mod tests {
             get_resource_extension_pda(&client.get_program_id(), ResourceType::MulticastGroupBlock);
 
         client
-            .expect_execute_transaction_with_extra_accounts()
+            .expect_execute_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::ActivateMulticastGroup(
                     MulticastGroupActivateArgs {
@@ -111,10 +110,10 @@ mod tests {
                 predicate::eq(vec![
                     AccountMeta::new(mgroup_pubkey, false),
                     AccountMeta::new(globalstate_pubkey, false),
+                    AccountMeta::new(resource_ext_pubkey, false),
                 ]),
-                predicate::eq(vec![AccountMeta::new(resource_ext_pubkey, false)]),
             )
-            .returning(|_, _, _| Ok(Signature::new_unique()));
+            .returning(|_, _| Ok(Signature::new_unique()));
 
         let res = ActivateMulticastGroupCommand {
             mgroup_pubkey,

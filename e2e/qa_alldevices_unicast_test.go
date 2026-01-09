@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/malbeclabs/doublezero/e2e/internal/qa"
 	"github.com/stretchr/testify/assert"
@@ -29,19 +30,25 @@ const latencyThresholdMs = 50
 
 type ClientLatencies map[string]map[string]float64
 
-type BatchAssignment struct {
+type BatchResult struct {
 	Device          *qa.Device
 	PacketsSent     uint32
 	PacketsReceived uint32
 	FailedTests     uint32
 }
-type BatchData map[int]map[string]*BatchAssignment
+
+func (b *BatchResult) Success() bool {
+	return b.FailedTests == 0 && b.PacketsSent > 0 && b.PacketsReceived > 0
+}
+
+type BatchData map[int]map[string]*BatchResult
 
 func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping all-devices test in short mode")
 	}
 
+	startTime := time.Now()
 	log := newTestLogger(t)
 	ctx := t.Context()
 
@@ -164,6 +171,7 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 
 	var totalSent, totalReceived uint32
 	batchesWithLoss := 0
+	deviceResults := make(map[string]*qa.DeviceTestResult)
 	for _, batch := range batchData {
 		for _, assignment := range batch {
 			totalSent += assignment.PacketsSent
@@ -171,9 +179,28 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 			if assignment.PacketsReceived < assignment.PacketsSent {
 				batchesWithLoss++
 			}
+
+			if _, seen := deviceResults[assignment.Device.Code]; !seen {
+				deviceResults[assignment.Device.Code] = &qa.DeviceTestResult{
+					DeviceCode:   assignment.Device.Code,
+					DevicePubkey: assignment.Device.PubKey,
+					Success:      true,
+				}
+			}
+			if !assignment.Success() {
+				deviceResults[assignment.Device.Code].Success = false
+			}
 		}
 	}
 	log.Info("Test summary", "packetsReceived", totalReceived, "packetsSent", totalSent, "batchesWithLoss", batchesWithLoss, "totalBatches", batchCount)
+
+	results := make([]qa.DeviceTestResult, 0, len(deviceResults))
+	for _, result := range deviceResults {
+		results = append(results, *result)
+	}
+	if err := qa.PublishMetrics(ctx, log, qa.MetricsConfigFromEnv(), envArg, results, time.Since(startTime)); err != nil {
+		log.Error("Failed to publish metrics", "error", err)
+	}
 }
 
 // assignDevicesToClients() considers latency between each client and device to assign devices to clients:
@@ -275,9 +302,9 @@ func assignDevicesToClients(devices []*qa.Device, clients []*qa.Client, clientLa
 	// Convert to BatchData
 	batchData := make(BatchData)
 	for batchNum := 0; batchNum < maxBatches; batchNum++ {
-		batchData[batchNum] = make(map[string]*BatchAssignment)
+		batchData[batchNum] = make(map[string]*BatchResult)
 		for clientHost, devices := range clientDevices {
-			batchData[batchNum][clientHost] = &BatchAssignment{Device: devices[batchNum]}
+			batchData[batchNum][clientHost] = &BatchResult{Device: devices[batchNum]}
 		}
 	}
 	return batchData
@@ -299,7 +326,7 @@ func printTestReportTable(log *slog.Logger, batchData BatchData, clientLatencies
 				latencyMs := clientLatencies[clientName][assignment.Device.Code]
 				var cell string
 				if showResults {
-					if assignment.FailedTests == 0 && assignment.PacketsSent > 0 && assignment.PacketsReceived > 0 {
+					if assignment.Success() {
 						cell = fmt.Sprintf("%s %d/%d ✅", assignment.Device.Code, assignment.PacketsReceived, assignment.PacketsSent)
 					} else {
 						cell = fmt.Sprintf("%s %d/%d ❌", assignment.Device.Code, assignment.PacketsReceived, assignment.PacketsSent)
@@ -344,7 +371,7 @@ func printTestReportTable(log *slog.Logger, batchData BatchData, clientLatencies
 			if assignment, ok := batchData[batchNum][clientName]; ok {
 				latencyMs := clientLatencies[clientName][assignment.Device.Code]
 				if showResults {
-					if assignment.FailedTests == 0 && assignment.PacketsSent > 0 && assignment.PacketsReceived > 0 {
+					if assignment.Success() {
 						cell = fmt.Sprintf("%s %d/%d ✅", assignment.Device.Code, assignment.PacketsReceived, assignment.PacketsSent)
 					} else {
 						cell = fmt.Sprintf("%s %d/%d ❌", assignment.Device.Code, assignment.PacketsReceived, assignment.PacketsSent)
@@ -367,7 +394,7 @@ func connectClientsAndWaitForRoutes(
 	log *slog.Logger,
 	clientsToConnect []*qa.Client,
 	allClients []*qa.Client,
-	batch map[string]*BatchAssignment,
+	batch map[string]*BatchResult,
 ) []*qa.Client {
 	// Connect only clients whose device changed from previous batch
 	for _, c := range clientsToConnect {
@@ -427,7 +454,7 @@ func runConnectivitySubtests(
 	t *testing.T,
 	outerLog *slog.Logger,
 	clients []*qa.Client,
-	batch map[string]*BatchAssignment,
+	batch map[string]*BatchResult,
 	resultsMu *sync.Mutex,
 ) {
 	for _, client := range clients {

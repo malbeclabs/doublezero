@@ -143,6 +143,8 @@ mod tests {
                 max_users: 1,
                 device_health:
                     doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+                desired_status:
+                    doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
             },
         )
     }

@@ -641,6 +641,7 @@ mod tests {
                 max_users: None,
                 users_count: None,
                 status: None,
+                desired_status: None,
             }),
             "UpdateDevice",
         );
@@ -687,6 +688,7 @@ mod tests {
                 jitter_ns: Some(100),
                 delay_override_ns: Some(0),
                 status: None,
+                desired_status: None,
             }),
             "UpdateLink",
         );
@@ -1008,6 +1010,7 @@ mod tests {
                 mtu: 1500,
                 routing_mode: RoutingMode::Static,
                 loopback_type: LoopbackType::None,
+                ip_net: None,
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
             }),

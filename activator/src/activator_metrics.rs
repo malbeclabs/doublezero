@@ -70,6 +70,8 @@ mod tests {
             max_users: 255,
             users_count: 0,
             device_health: DeviceHealth::ReadyForUsers,
+            desired_status:
+                doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
         };
 
         let mut device = DeviceState::new(&device);

@@ -181,6 +181,7 @@ pub fn process_create_link(
         side_z_iface_name,
         delay_override_ns: 0,
         link_health: LinkHealth::Pending,
+        desired_status: LinkDesiredStatus::Pending,
     };
 
     try_acc_create(

@@ -6,6 +6,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 pub struct IdAllocator {
     /// The range to allocate from [x, y)
     pub range: (u16, u16),
+    pub first_free_index: usize,
 }
 
 impl IdAllocator {
@@ -17,7 +18,10 @@ impl IdAllocator {
         if range.0 >= range.1 {
             return Err("Invalid range: start must be less than end".to_string());
         }
-        Ok(IdAllocator { range })
+        Ok(IdAllocator {
+            range,
+            first_free_index: 0,
+        })
     }
 
     pub fn allocate(&mut self, bitmap: &mut [u8]) -> Option<u16> {
@@ -28,7 +32,11 @@ impl IdAllocator {
         // Convert bitmap to &[u64] for efficient processing
         let u64_bitmap = cast_slice_mut::<u8, u64>(bitmap);
 
-        for (u64_index, entry) in u64_bitmap.iter_mut().enumerate() {
+        for (u64_index, entry) in u64_bitmap
+            .iter_mut()
+            .enumerate()
+            .skip(self.first_free_index)
+        {
             if entry == &u64::MAX {
                 continue; // All bits are allocated in this u64
             }
@@ -41,6 +49,13 @@ impl IdAllocator {
                     *entry |= 1 << bit;
 
                     let allocated_id = self.range.0 + (block_index as u16);
+
+                    if entry != &u64::MAX {
+                        self.first_free_index = u64_index;
+                    } else {
+                        // TODO optimize to find next free index
+                        self.first_free_index = 0;
+                    }
 
                     return Some(allocated_id);
                 }
@@ -67,6 +82,11 @@ impl IdAllocator {
 
         bitmap[byte_index] |= mask;
 
+        if bitmap[byte_index] == 0xFF {
+            // TODO optimize to find next free index
+            self.first_free_index = 0;
+        }
+
         Ok(())
     }
 
@@ -86,6 +106,10 @@ impl IdAllocator {
         // Clear the bit (set to 0)
         bitmap[byte_index] &= !mask;
 
+        if was_set {
+            self.first_free_index = byte_index / 8;
+        }
+
         was_set
     }
 
@@ -104,7 +128,11 @@ impl IdAllocator {
 
     pub fn try_from(mut data: &[u8]) -> Result<Self, String> {
         let range: (u16, u16) = BorshDeserialize::deserialize(&mut data).unwrap_or_default();
-        Ok(Self { range })
+        let first_free_index: usize = BorshDeserialize::deserialize(&mut data).unwrap_or_default();
+        Ok(Self {
+            range,
+            first_free_index,
+        })
     }
 }
 

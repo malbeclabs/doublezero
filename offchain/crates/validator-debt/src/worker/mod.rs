@@ -561,6 +561,11 @@ pub async fn post_debt_collections_to_slack(
         };
         let successful_transactions_count: u64 = dcr.successful_transactions_count as u64;
 
+        // if we don't collect debt then skip this record
+        if successful_transactions_count == 0 {
+            continue;
+        }
+
         let already_paid_count: u64 = dcr.already_paid_count as u64;
 
         let percentage_paid = (already_paid_count + successful_transactions_count) as f64

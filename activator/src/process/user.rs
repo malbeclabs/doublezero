@@ -452,6 +452,10 @@ mod tests {
                 interfaces: vec![],
                 max_users: 255,
                 users_count: 0,
+                device_health:
+                    doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+                desired_status:
+                    doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
             };
 
             let user_pubkey = Pubkey::new_unique();
@@ -642,6 +646,10 @@ mod tests {
                 interfaces: vec![],
                 max_users: 255,
                 users_count: 0,
+                device_health:
+                    doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+                desired_status:
+                    doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
             };
 
             let user_pubkey = Pubkey::new_unique();
@@ -887,6 +895,10 @@ mod tests {
                 interfaces: vec![],
                 max_users: 255,
                 users_count: 0,
+                device_health:
+                    doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+                desired_status:
+                    doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
             };
 
             let user_pubkey = Pubkey::new_unique();
@@ -993,6 +1005,10 @@ mod tests {
                 interfaces: vec![],
                 max_users: 255,
                 users_count: 0,
+                device_health:
+                    doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+                desired_status:
+                    doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
             };
 
             let user_pubkey = Pubkey::new_unique();
@@ -1124,6 +1140,10 @@ mod tests {
                 interfaces: vec![],
                 max_users: 255,
                 users_count: 0,
+                device_health:
+                    doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+                desired_status:
+                    doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
             };
 
             devices.insert(device_pubkey, DeviceState::new(&device));

@@ -1,5 +1,7 @@
 use crate::{
-    error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::multicastgroup::*,
+    error::DoubleZeroError,
+    serializer::try_acc_write,
+    state::{globalstate::GlobalState, multicastgroup::*},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -33,7 +35,7 @@ pub fn process_activate_multicastgroup(
     let multicastgroup_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
-    let system_program = next_account_info(accounts_iter)?;
+    let _system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
     msg!("process_activate_multicastgroup({:?})", value);
@@ -56,7 +58,7 @@ pub fn process_activate_multicastgroup(
         "PDA Account is not writable"
     );
 
-    let globalstate = globalstate_get(globalstate_account)?;
+    let globalstate = GlobalState::try_from(globalstate_account)?;
     if globalstate.activator_authority_pk != *payer_account.key {
         return Err(DoubleZeroError::NotAllowed.into());
     }
@@ -70,11 +72,11 @@ pub fn process_activate_multicastgroup(
     multicastgroup.multicast_ip = value.multicast_ip;
     multicastgroup.status = MulticastGroupStatus::Activated;
 
-    account_write(
-        multicastgroup_account,
+    try_acc_write(
         &multicastgroup,
+        multicastgroup_account,
         payer_account,
-        system_program,
+        accounts,
     )?;
 
     msg!("Activated: {:?}", multicastgroup);

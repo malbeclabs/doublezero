@@ -1,9 +1,9 @@
 use crate::{
     error::DoubleZeroError,
-    globalstate::{globalstate_get_next, globalstate_write},
-    helper::*,
     pda::get_multicastgroup_pda,
-    state::{accounttype::AccountType, multicastgroup::*},
+    seeds::{SEED_MULTICAST_GROUP, SEED_PREFIX},
+    serializer::{try_acc_create, try_acc_write},
+    state::{accounttype::AccountType, globalstate::GlobalState, multicastgroup::*},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -21,8 +21,6 @@ use solana_program::msg;
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
 pub struct MulticastGroupCreateArgs {
-    pub index: u128,
-    pub bump_seed: u8,
     pub code: String,
     pub max_bandwidth: u64,
     pub owner: Pubkey,
@@ -72,24 +70,24 @@ pub fn process_create_multicastgroup(
     );
     // Check if the account is writable
     assert!(mgroup_account.is_writable, "PDA Account is not writable");
-    // get the PDA pubkey and bump seed for the account multicastgroup & check if it matches the account
-    let (expected_pda_account, bump_seed) = get_multicastgroup_pda(program_id, value.index);
+
+    // Parse the global state account & check if the payer is in the allowlist
+    let mut globalstate = GlobalState::try_from(globalstate_account)?;
+    globalstate.account_index += 1;
+
+    // Get the PDA pubkey and bump seed for the account multicastgroup & check if it matches the account
+    let (expected_pda_account, bump_seed) =
+        get_multicastgroup_pda(program_id, globalstate.account_index);
     assert_eq!(
         mgroup_account.key, &expected_pda_account,
         "Invalid MulticastGroup Pubkey"
     );
-    assert_eq!(
-        bump_seed, value.bump_seed,
-        "Invalid MulticastGroup Bump Seed"
-    );
-    // Parse the global state account & check if the payer is in the allowlist
-    let globalstate = globalstate_get_next(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
     // Check if the account is already initialized
-    if !mgroup_account.data.borrow().is_empty() {
+    if !mgroup_account.data_is_empty() {
         return Err(ProgramError::AccountAlreadyInitialized);
     }
 
@@ -107,14 +105,20 @@ pub fn process_create_multicastgroup(
         subscriber_count: 0,
     };
 
-    account_create(
-        mgroup_account,
+    try_acc_create(
         &multicastgroup,
+        mgroup_account,
         payer_account,
         system_program,
         program_id,
+        &[
+            SEED_PREFIX,
+            SEED_MULTICAST_GROUP,
+            &globalstate.account_index.to_le_bytes(),
+            &[bump_seed],
+        ],
     )?;
-    globalstate_write(globalstate_account, &globalstate)?;
+    try_acc_write(&globalstate, globalstate_account, payer_account, accounts)?;
 
     Ok(())
 }

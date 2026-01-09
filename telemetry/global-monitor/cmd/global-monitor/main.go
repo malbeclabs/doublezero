@@ -55,15 +55,22 @@ const (
 
 var (
 	sourceMetroNames = map[string]string{
+		"auh": "Abu Dhabi",
 		"ams": "Amsterdam",
 		"atl": "Atlanta",
 		"blr": "Bangalore",
+		"bom": "Mumbai",
+		"cpt": "Cape Town",
 		"fra": "Frankfurt",
+		"hkg": "Hong Kong",
 		"lon": "London",
 		"nyc": "New York",
+		"sao": "São Paulo",
 		"sfo": "San Francisco",
 		"sgp": "Singapore",
 		"syd": "Sydney",
+		"tpe": "Taipei",
+		"tyo": "Tokyo",
 		"tor": "Toronto",
 	}
 )
@@ -93,6 +100,7 @@ func run() error {
 
 	// Source configuration.
 	publicIfaceFlag := flag.String("public-iface", "", "public internet interface to monitor solana (default: auto-detected)")
+	publicIPFlag := flag.String("public-ip", "", "public internet ip to monitor solana (default: auto-detected)")
 	dzIfaceFlag := flag.String("dz-iface", "", "doublezero interface to monitor solana (default: auto-detected)")
 	sourceMetroFlag := flag.String("source-metro", "", "source metro to monitor solana (required)")
 
@@ -145,6 +153,15 @@ func run() error {
 		}
 		publicIface = defaultInterface.Name
 		log.Info("using default interface as public internet interface", "interface", *publicIfaceFlag)
+	}
+
+	var publicIP net.IP
+	if *publicIPFlag != "" {
+		publicIP = net.ParseIP(*publicIPFlag)
+		if publicIP == nil {
+			log.Error("failed to parse public ip", "ip", *publicIPFlag)
+			return fmt.Errorf("failed to parse public ip: %s", *publicIPFlag)
+		}
 	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -245,6 +262,7 @@ func run() error {
 			Serviceability: serviceabilityView,
 			DZNetworkEnv:   *dzEnvFlag,
 			PublicIface:    publicIface,
+			PublicIP:       publicIP,
 			DZIface:        *dzIfaceFlag,
 			Metro:          *sourceMetroFlag,
 			MetroNames:     sourceMetroNames,

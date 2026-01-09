@@ -1,10 +1,10 @@
 use crate::{
     error::DoubleZeroError,
-    globalstate::globalstate_get,
-    helper::*,
+    serializer::try_acc_write,
     state::{
         accounttype::AccountType,
         device::*,
+        globalstate::GlobalState,
         interface::{InterfaceCYOA, InterfaceDIA, InterfaceStatus, LoopbackType, RoutingMode},
     },
 };
@@ -96,8 +96,13 @@ pub fn process_update_device_interface(
     );
     // Check if the account is writable
     assert!(device_account.is_writable, "PDA Account is not writable");
+    assert_eq!(
+        *system_program.unsigned_key(),
+        solana_program::system_program::id(),
+        "Invalid System Program Account Owner"
+    );
 
-    let globalstate = globalstate_get(globalstate_account)?;
+    let globalstate = GlobalState::try_from(globalstate_account)?;
     assert_eq!(globalstate.account_type, AccountType::GlobalState);
 
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
@@ -153,7 +158,7 @@ pub fn process_update_device_interface(
     // until we have release V2 version for interfaces, always convert to v1
     device.interfaces[idx] = iface.to_interface();
 
-    account_write(device_account, &device, payer_account, system_program)?;
+    try_acc_write(&device, device_account, payer_account, accounts)?;
 
     #[cfg(test)]
     msg!("Updated: {:?}", device);

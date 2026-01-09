@@ -271,6 +271,10 @@ mod tests {
         );
         assert_eq!(header.next_sample_index, header2.next_sample_index);
         assert_eq!(val.samples, val2.samples);
-        assert_eq!(data.len(), val.size(), "Invalid Size");
+        assert_eq!(
+            data.len(),
+            borsh::object_length(&val).unwrap(),
+            "Invalid Size"
+        );
     }
 }

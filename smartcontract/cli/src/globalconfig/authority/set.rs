@@ -16,6 +16,10 @@ pub struct SetAuthorityCliCommand {
     /// New sentinel authority public key
     #[arg(long)]
     pub sentinel_authority: Option<String>,
+
+    /// New health oracle public key
+    #[arg(long)]
+    pub health_oracle: Option<String>,
 }
 
 impl SetAuthorityCliCommand {
@@ -45,10 +49,22 @@ impl SetAuthorityCliCommand {
                 None
             }
         };
+        let health_oracle_pk = {
+            if let Some(health_oracle) = &self.health_oracle {
+                if health_oracle.eq_ignore_ascii_case("me") {
+                    Some(client.get_payer())
+                } else {
+                    Some(Pubkey::from_str(health_oracle)?)
+                }
+            } else {
+                None
+            }
+        };
 
         let signature = client.set_authority(SetAuthorityCommand {
             activator_authority_pk,
             sentinel_authority_pk,
+            health_oracle_pk,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -80,6 +96,7 @@ mod tests {
 
         let activator_authority_pk = Pubkey::new_unique();
         let sentinel_authority_pk = Pubkey::new_unique();
+        let health_oracle_pk = Pubkey::new_unique();
 
         client
             .expect_check_requirements()
@@ -90,6 +107,7 @@ mod tests {
             .with(predicate::eq(SetAuthorityCommand {
                 activator_authority_pk: Some(activator_authority_pk),
                 sentinel_authority_pk: Some(sentinel_authority_pk),
+                health_oracle_pk: Some(health_oracle_pk),
             }))
             .returning(move |_| Ok(signature));
 
@@ -99,6 +117,7 @@ mod tests {
         let res = SetAuthorityCliCommand {
             activator_authority: Some(activator_authority_pk.to_string()),
             sentinel_authority: Some(sentinel_authority_pk.to_string()),
+            health_oracle: Some(health_oracle_pk.to_string()),
         }
         .execute(&client, &mut output1);
         assert!(res.is_ok());

@@ -1,8 +1,10 @@
 use crate::{
     error::DoubleZeroError,
-    globalstate::globalstate_get,
-    helper::*,
-    state::{contributor::Contributor, device::*, exchange::Exchange, location::Location},
+    serializer::{try_acc_close, try_acc_write},
+    state::{
+        contributor::Contributor, device::*, exchange::Exchange, globalstate::GlobalState,
+        location::Location,
+    },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -38,7 +40,7 @@ pub fn process_closeaccount_device(
     let exchange_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
-    let system_program = next_account_info(accounts_iter)?;
+    let _system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
     msg!("process_closeaccount_device({:?})", _value);
@@ -66,7 +68,7 @@ pub fn process_closeaccount_device(
 
     assert!(device_account.is_writable, "PDA Account is not writable");
 
-    let globalstate = globalstate_get(globalstate_account)?;
+    let globalstate = GlobalState::try_from(globalstate_account)?;
     if globalstate.activator_authority_pk != *payer_account.key {
         return Err(DoubleZeroError::NotAllowed.into());
     }
@@ -77,6 +79,11 @@ pub fn process_closeaccount_device(
         #[cfg(test)]
         msg!("{:?}", device);
         return Err(solana_program::program_error::ProgramError::Custom(1));
+    }
+    // This catches edge cases where reference_count could be incremented
+    // after DeleteDevice but before CloseAccountDevice
+    if device.reference_count > 0 {
+        return Err(DoubleZeroError::ReferenceCountNotZero.into());
     }
     if device.location_pk != *location_account.key {
         return Err(DoubleZeroError::InvalidLocationPubkey.into());
@@ -95,15 +102,10 @@ pub fn process_closeaccount_device(
     location.reference_count = location.reference_count.saturating_sub(1);
     exchange.reference_count = exchange.reference_count.saturating_sub(1);
 
-    account_write(
-        contributor_account,
-        &contributor,
-        payer_account,
-        system_program,
-    )?;
-    account_write(location_account, &location, payer_account, system_program)?;
-    account_write(exchange_account, &exchange, payer_account, system_program)?;
-    account_close(device_account, owner_account)?;
+    try_acc_write(&contributor, contributor_account, payer_account, accounts)?;
+    try_acc_write(&location, location_account, payer_account, accounts)?;
+    try_acc_write(&exchange, exchange_account, payer_account, accounts)?;
+    try_acc_close(device_account, owner_account)?;
 
     #[cfg(test)]
     msg!("CloseAccount: Device closed");

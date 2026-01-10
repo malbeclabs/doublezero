@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/malbeclabs/doublezero/lake/pkg/clickhouse"
@@ -96,21 +97,21 @@ func RemoveIsDeletedFromViews(log *slog.Logger, addr, database, username, passwo
 	// Recreate each view without is_deleted
 	fmt.Println("Recreating views without is_deleted...")
 	for _, v := range views {
-		// Modify the CREATE query to remove is_deleted from SELECT
-		// The pattern is "is_deleted,\n    " or just "is_deleted," in the SELECT list
-		newQuery := v.createQuery
+		newQuery := removeIsDeletedFromViewDefinition(v.createQuery)
 
-		// Remove "is_deleted,\n    " pattern (with newline and indentation)
-		newQuery = strings.Replace(newQuery, "is_deleted,\n    ", "", 1)
-		// Also try without newline (in case of different formatting)
-		newQuery = strings.Replace(newQuery, "is_deleted, ", "", 1)
-		newQuery = strings.Replace(newQuery, "is_deleted,", "", 1)
+		// Check if we actually made a change
+		if newQuery == v.createQuery {
+			fmt.Printf("  ⚠ Could not find is_deleted in view definition for %s\n", v.name)
+			fmt.Printf("    Original query:\n%s\n", v.createQuery)
+			continue
+		}
 
 		// Replace CREATE VIEW with CREATE OR REPLACE VIEW
 		newQuery = strings.Replace(newQuery, "CREATE VIEW", "CREATE OR REPLACE VIEW", 1)
 
+		fmt.Printf("  Recreating %s...\n", v.name)
 		if err := conn.Exec(ctx, newQuery); err != nil {
-			return fmt.Errorf("failed to recreate view %s: %w", v.name, err)
+			return fmt.Errorf("failed to recreate view %s: %w\n    Query: %s", v.name, err, newQuery)
 		}
 		fmt.Printf("  ✓ Recreated %s without is_deleted\n", v.name)
 	}
@@ -119,3 +120,51 @@ func RemoveIsDeletedFromViews(log *slog.Logger, addr, database, username, passwo
 	return nil
 }
 
+// removeIsDeletedFromViewDefinition removes is_deleted from the view's column definition.
+// ClickHouse stores views with explicit column definitions like:
+// CREATE VIEW xxx (`col1` Type, `is_deleted` UInt8, `col2` Type) AS SELECT ...
+// We need to remove `is_deleted` UInt8 from this definition.
+func removeIsDeletedFromViewDefinition(query string) string {
+	// Pattern: find the column definition list after CREATE VIEW name
+	// Format: CREATE VIEW db.name (`col1` Type, `is_deleted` UInt8, `col2` Type) AS ...
+
+	// Find the column definition section (between first ( and ) AS)
+	viewDefPattern := regexp.MustCompile(`(?s)(CREATE VIEW [^\(]+\()(.+?)(\) AS )`)
+	match := viewDefPattern.FindStringSubmatchIndex(query)
+	if match == nil {
+		return query
+	}
+
+	// Extract the column definition portion (group 2)
+	colDefStart := match[4]
+	colDefEnd := match[5]
+	colDef := query[colDefStart:colDefEnd]
+
+	// Check if is_deleted is in the column definition
+	if !strings.Contains(colDef, "`is_deleted`") {
+		return query
+	}
+
+	// Remove `is_deleted` UInt8 from the column definition
+	// Pattern 1: `, `is_deleted` UInt8` (middle or end of list)
+	// Pattern 2: `is_deleted` UInt8, ` (beginning of list - unlikely but handle it)
+	newColDef := colDef
+
+	// Try removing ", `is_deleted` UInt8" (comma before)
+	pattern1 := regexp.MustCompile(", `is_deleted` UInt8")
+	if pattern1.MatchString(newColDef) {
+		newColDef = pattern1.ReplaceAllString(newColDef, "")
+	} else {
+		// Try removing "`is_deleted` UInt8, " (comma after)
+		pattern2 := regexp.MustCompile("`is_deleted` UInt8, ")
+		newColDef = pattern2.ReplaceAllString(newColDef, "")
+	}
+
+	// If nothing changed, return original
+	if newColDef == colDef {
+		return query
+	}
+
+	// Reconstruct the query
+	return query[:colDefStart] + newColDef + query[colDefEnd:]
+}

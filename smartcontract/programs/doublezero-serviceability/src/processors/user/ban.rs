@@ -61,6 +61,9 @@ pub fn process_ban_user(
     }
 
     let mut user: User = User::try_from(user_account)?;
+    if user.status != UserStatus::PendingBan {
+        return Err(DoubleZeroError::NotAllowed.into());
+    }
     user.status = UserStatus::Banned;
 
     try_acc_write(&user, user_account, payer_account, accounts)?;

@@ -25,6 +25,7 @@ All notable changes to this project will be documented in this file.
   - Add missing system program account owner checks in multiple instructions
   - Refactor codebase for improved maintainability and future development
   - Introduced health management for Devices and Links, adding explicit health states, authorized health updates, and related state, processor, and test enhancements.
+  - Require that BanUser can only be executed when the target user's status is PendingBan, enforcing the expected user ban workflow (request-ban -> ban).
   - Introduce desired status to Link and Devices
   - Updated validation to allow public IP prefixes for CYOA/DIA, removing the restriction imposed by type-based checks.
   - Transit devices can now be provisioned without a public IP, aligning the requirements with their actual networking model and avoiding unnecessary configuration constraints.

@@ -181,8 +181,10 @@ router bgp 65342
    neighbor {{ .PeerIP }} description {{ .PeerName }}-ipv4
    neighbor {{ .PeerIP }} timers 3 9
    neighbor {{ .PeerIP }} send-community
-   {{- if eq $.Device.Status.String "hard-drained" }}
+   {{- if eq $.Device.Status.String "drained" }}
    neighbor {{ .PeerIP }} shutdown
+   {{- else }}
+   no neighbor {{ .PeerIP }} shutdown
    {{- end }}
    {{- end }}
    {{- end }}
@@ -195,8 +197,10 @@ router bgp 65342
    neighbor {{ .PeerIP }} description {{ .PeerName }}-vpnv4
    neighbor {{ .PeerIP }} timers 3 9
    neighbor {{ .PeerIP }} send-community
-   {{- if eq $.Device.Status.String "hard-drained" }}
+   {{- if eq $.Device.Status.String "drained" }}
    neighbor {{ .PeerIP }} shutdown
+   {{- else }}
+   no neighbor {{ .PeerIP }} shutdown
    {{- end }}
    {{- end }}
    {{- end }}
@@ -211,8 +215,10 @@ router bgp 65342
    neighbor {{ .OverlayDstIP }} route-map RM-USER-{{ .Id }}-OUT out
    neighbor {{ .OverlayDstIP }} maximum-routes 1
    neighbor {{ .OverlayDstIP }} maximum-accepted-routes 1
-   {{- if eq $.Device.Status.String "hard-drained" }}
+   {{- if eq $.Device.Status.String "drained" }}
    neighbor {{ .OverlayDstIP }} shutdown
+   {{- else }}
+   no neighbor {{ .OverlayDstIP }} shutdown
    {{- end }}
    {{- end }}
    {{- end }}
@@ -263,8 +269,10 @@ router bgp 65342
       neighbor {{ .OverlayDstIP }} route-map RM-USER-{{ .Id }}-OUT out
       neighbor {{ .OverlayDstIP }} maximum-routes 1
       neighbor {{ .OverlayDstIP }} maximum-accepted-routes 1
-      {{- if eq $.Device.Status.String "hard-drained" }}
+      {{- if eq $.Device.Status.String "drained" }}
       neighbor {{ .OverlayDstIP }} shutdown
+      {{- else }}
+      no neighbor {{ .OverlayDstIP }} shutdown
       {{- end }}
       {{- end }}
       {{- end }}
@@ -282,8 +290,10 @@ router isis 1
    !
    segment-routing mpls
       no shutdown
-{{ if eq $.Device.Status.String "hard-drained" }}   set-overload-bit
-{{ end }}!
+{{- if eq $.Device.Status.String "drained" }}
+   set-overload-bit
+{{- end }}
+!
 ip community-list COMM-ALL_USERS permit 21682:1200
 ip community-list COMM-ALL_MCAST_USERS permit 21682:1300
 ip community-list COMM-{{ .Strings.ToUpper .Device.ExchangeCode }}_USERS permit 21682:{{ .Device.BgpCommunity }}
@@ -376,8 +386,10 @@ router msdp
       mesh-group DZ-1
       local-interface {{ $.Device.Ipv4LoopbackIntfName }}
       description {{ .PeerName }}
-      {{- if eq $.Device.Status.String "hard-drained" }}
+      {{- if eq $.Device.Status.String "drained" }}
       shutdown
+      {{- else }}
+      no shutdown
       {{- end }}
    {{- end }}
    {{- end }}

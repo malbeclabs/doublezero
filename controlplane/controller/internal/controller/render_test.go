@@ -563,7 +563,7 @@ func TestRenderConfig(t *testing.T) {
 					Ipv4LoopbackIP:  net.IP{13, 13, 13, 13},
 					ExchangeCode:    "tst",
 					BgpCommunity:    10050,
-					Status:          serviceability.DeviceStatusHardDrained,
+					Status:          serviceability.DeviceStatusDrained,
 					Interfaces: []Interface{
 						{
 							Name:           "Loopback255",

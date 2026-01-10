@@ -171,6 +171,7 @@ router bgp 65342
    neighbor 169.254.0.3 route-map RM-USER-501-OUT out
    neighbor 169.254.0.3 maximum-routes 1
    neighbor 169.254.0.3 maximum-accepted-routes 1
+   no neighbor 169.254.0.3 shutdown
    address-family ipv4
       neighbor 169.254.0.3 activate
    !
@@ -190,6 +191,7 @@ router bgp 65342
       neighbor 169.254.0.1 route-map RM-USER-500-OUT out
       neighbor 169.254.0.1 maximum-routes 1
       neighbor 169.254.0.1 maximum-accepted-routes 1
+      no neighbor 169.254.0.1 shutdown
 !
 router isis 1
    net 49.0000.0e0e.0e0e.0000.00

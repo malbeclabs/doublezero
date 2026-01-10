@@ -122,8 +122,7 @@ const (
 	DeviceStatusSuspended
 	DeviceStatusDeleted
 	DeviceStatusRejected
-	DeviceStatusSoftDrained
-	DeviceStatusHardDrained
+	DeviceStatusDrained
 )
 
 func (d DeviceStatus) String() string {
@@ -133,8 +132,7 @@ func (d DeviceStatus) String() string {
 		"suspended",
 		"deleted",
 		"rejected",
-		"soft-drained",
-		"hard-drained",
+		"drained",
 	}[d]
 }
 

@@ -258,7 +258,7 @@ func seedNetworkLinkIncidentTimelineData(t *testing.T, ctx context.Context, conn
 	require.NoError(t, err)
 
 	// Seed interface usage with errors and carrier transitions
-	ifaceUsageDS, err := dztelemusage.NewDeviceIfaceUsageDataset(log)
+	ifaceUsageDS, err := dztelemusage.NewDeviceInterfaceCountersDataset(log)
 	require.NoError(t, err)
 	ifaceUsageEntries := []struct {
 		time                    time.Time

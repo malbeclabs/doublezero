@@ -775,7 +775,7 @@ func (v *View) queryBaselineCountersFromClickHouse(ctx context.Context, windowSt
 				device_pk,
 				intf,
 				argMax(%s, (event_ts)) as value
-			FROM fact_dz_device_iface_usage
+			FROM fact_dz_device_interface_counters
 			WHERE event_ts >= ? AND event_ts < ? AND %s IS NOT NULL
 			GROUP BY device_pk, intf
 		`, cf.field, cf.field)

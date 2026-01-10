@@ -261,7 +261,7 @@ SELECT
   SUM(COALESCE(iface.in_octets_delta, 0) + COALESCE(iface.out_octets_delta, 0)) AS total_bytes,
   SUM(COALESCE(iface.in_octets_delta, 0) + COALESCE(iface.out_octets_delta, 0)) / 1e9 AS total_gb
 FROM dz_users_current u
-JOIN fact_dz_device_iface_usage iface
+JOIN fact_dz_device_interface_counters iface
   ON u.device_pk = iface.device_pk
   AND iface.user_tunnel_id = u.tunnel_id
   AND iface.intf LIKE 'tunnel%'
@@ -338,7 +338,7 @@ SELECT
   SUM(COALESCE(iface.in_discards_delta, 0)) AS in_discards,
   SUM(COALESCE(iface.out_discards_delta, 0)) AS out_discards,
   SUM(COALESCE(iface.carrier_transitions_delta, 0)) AS carrier_transitions
-FROM fact_dz_device_iface_usage iface
+FROM fact_dz_device_interface_counters iface
 JOIN dz_devices_current d ON iface.device_pk = d.pk
 JOIN dz_links_current l ON iface.link_pk = l.pk
 WHERE iface.event_ts >= now() - INTERVAL 24 HOUR
@@ -355,7 +355,7 @@ SELECT
   l.bandwidth_bps,
   AVG((COALESCE(iface.in_octets_delta, 0) + COALESCE(iface.out_octets_delta, 0)) * 8.0 / NULLIF(iface.delta_duration, 0)) AS avg_throughput_bps,
   100.0 * AVG((COALESCE(iface.in_octets_delta, 0) + COALESCE(iface.out_octets_delta, 0)) * 8.0 / NULLIF(iface.delta_duration, 0)) / NULLIF(l.bandwidth_bps, 0) AS avg_utilization_pct
-FROM fact_dz_device_iface_usage iface
+FROM fact_dz_device_interface_counters iface
 JOIN dz_links_current l ON iface.link_pk = l.pk
 WHERE iface.event_ts >= now() - INTERVAL 24 HOUR
   AND l.link_type = 'WAN'
@@ -436,7 +436,7 @@ ORDER BY rtt_improvement_ms DESC
 When asked about a link timeline or incident, always gather:
 1. **Status/config changes** from `dim_dz_links_history`
 2. **Packet loss** from `fact_dz_device_link_latency`
-3. **Interface errors, discards, carrier transitions** from `fact_dz_device_iface_usage`
+3. **Interface errors, discards, carrier transitions** from `fact_dz_device_interface_counters`
 
 ### Link Status History
 
@@ -482,7 +482,7 @@ SELECT
   COALESCE(in_discards_delta, 0) AS in_discards,
   COALESCE(out_discards_delta, 0) AS out_discards,
   COALESCE(carrier_transitions_delta, 0) AS carrier_transitions
-FROM fact_dz_device_iface_usage iface
+FROM fact_dz_device_interface_counters iface
 JOIN dz_links_current l ON iface.link_pk = l.pk
 JOIN dz_devices_current d ON iface.device_pk = d.pk
 WHERE l.code = '{link_code}'

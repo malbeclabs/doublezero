@@ -100,7 +100,7 @@ SELECT
   coalesce(in_discards_delta, 0) AS in_discards,
   coalesce(out_discards_delta, 0) AS out_discards,
   coalesce(carrier_transitions_delta, 0) AS carrier_transitions
-FROM dz_device_iface_usage_raw;
+FROM dz_device_interface_counters_raw;
 ```
 
 ### dz_link_traffic
@@ -135,7 +135,7 @@ SELECT
     END
   ) AS out_throughput_bps,
   SUM(COALESCE(u.in_pkts_delta, 0) + COALESCE(u.out_pkts_delta, 0)) AS total_pkts_delta
-FROM dz_device_iface_usage_raw u
+FROM dz_device_interface_counters_raw u
 INNER JOIN dz_links_current l ON l.pk = u.link_pk
 WHERE u.link_pk IS NOT NULL
   AND u.delta_duration > 0
@@ -174,7 +174,7 @@ SELECT
     END
   ) AS out_throughput_bps,
   SUM(COALESCE(u.in_pkts_delta, 0) + COALESCE(u.out_pkts_delta, 0)) AS total_pkts_delta
-FROM dz_device_iface_usage_raw u
+FROM dz_device_interface_counters_raw u
 INNER JOIN dz_devices_current d ON d.pk = u.device_pk
 WHERE u.delta_duration > 0
   AND u.in_octets_delta >= 0
@@ -196,7 +196,7 @@ WITH traffic AS (
     u.in_pkts_delta,
     u.out_pkts_delta,
     u.delta_duration
-  FROM dz_device_iface_usage_raw u
+  FROM dz_device_interface_counters_raw u
   INNER JOIN dz_devices_current d ON d.pk = u.device_pk
   WHERE u.user_tunnel_id IS NOT NULL
     AND u.delta_duration > 0

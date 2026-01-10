@@ -43,7 +43,7 @@ func run() error {
 	// Backfill commands
 	backfillDeviceLinkLatencyFlag := flag.Bool("backfill-device-link-latency", false, "Backfill device link latency fact table from on-chain data")
 	backfillInternetMetroLatencyFlag := flag.Bool("backfill-internet-metro-latency", false, "Backfill internet metro latency fact table from on-chain data")
-	backfillDeviceIfaceUsageFlag := flag.Bool("backfill-device-iface-usage", false, "Backfill device interface usage fact table from InfluxDB")
+	backfillDeviceInterfaceCountersFlag := flag.Bool("backfill-device-interface-counters", false, "Backfill device interface counters fact table from InfluxDB")
 
 	// Backfill options (latency - epoch-based)
 	dzEnvFlag := flag.String("env", config.EnvMainnetBeta, "DoubleZero environment (devnet, testnet, mainnet-beta)")
@@ -141,18 +141,18 @@ func run() error {
 		)
 	}
 
-	if *backfillDeviceIfaceUsageFlag {
+	if *backfillDeviceInterfaceCountersFlag {
 		if *clickhouseAddrFlag == "" {
-			return fmt.Errorf("--clickhouse-addr is required for --backfill-device-iface-usage")
+			return fmt.Errorf("--clickhouse-addr is required for --backfill-device-interface-counters")
 		}
 		if *influxDBHostFlag == "" {
-			return fmt.Errorf("--influxdb-host is required for --backfill-device-iface-usage")
+			return fmt.Errorf("--influxdb-host is required for --backfill-device-interface-counters")
 		}
 		if *influxDBTokenFlag == "" {
-			return fmt.Errorf("--influxdb-token is required for --backfill-device-iface-usage")
+			return fmt.Errorf("--influxdb-token is required for --backfill-device-interface-counters")
 		}
 		if *influxDBBucketFlag == "" {
-			return fmt.Errorf("--influxdb-bucket is required for --backfill-device-iface-usage")
+			return fmt.Errorf("--influxdb-bucket is required for --backfill-device-interface-counters")
 		}
 
 		var startTime, endTime time.Time
@@ -171,11 +171,11 @@ func run() error {
 			}
 		}
 
-		return admin.BackfillDeviceIfaceUsage(
+		return admin.BackfillDeviceInterfaceCounters(
 			log,
 			*clickhouseAddrFlag, *clickhouseDatabaseFlag, *clickhouseUsernameFlag, *clickhousePasswordFlag,
 			*influxDBHostFlag, *influxDBTokenFlag, *influxDBBucketFlag,
-			admin.BackfillDeviceIfaceUsageConfig{
+			admin.BackfillDeviceInterfaceCountersConfig{
 				StartTime:     startTime,
 				EndTime:       endTime,
 				ChunkInterval: *chunkIntervalFlag,

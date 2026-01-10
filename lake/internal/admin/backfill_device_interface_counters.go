@@ -15,20 +15,20 @@ const (
 	defaultUsageBackfillInterval = 1 * time.Hour // Process in 1-hour chunks
 )
 
-// BackfillDeviceIfaceUsageConfig holds the configuration for the backfill command
-type BackfillDeviceIfaceUsageConfig struct {
+// BackfillDeviceInterfaceCountersConfig holds the configuration for the backfill command
+type BackfillDeviceInterfaceCountersConfig struct {
 	StartTime     time.Time // Zero means auto-calculate from EndTime
 	EndTime       time.Time // Zero means use now
 	ChunkInterval time.Duration
 	DryRun        bool
 }
 
-// BackfillDeviceIfaceUsage backfills device interface usage data for a time range
-func BackfillDeviceIfaceUsage(
+// BackfillDeviceInterfaceCounters backfills device interface counters data for a time range
+func BackfillDeviceInterfaceCounters(
 	log *slog.Logger,
 	clickhouseAddr, clickhouseDatabase, clickhouseUsername, clickhousePassword string,
 	influxDBHost, influxDBToken, influxDBBucket string,
-	cfg BackfillDeviceIfaceUsageConfig,
+	cfg BackfillDeviceInterfaceCountersConfig,
 ) error {
 	ctx := context.Background()
 
@@ -66,7 +66,7 @@ func BackfillDeviceIfaceUsage(
 		chunkInterval = defaultUsageBackfillInterval
 	}
 
-	fmt.Printf("Backfill Device Interface Usage\n")
+	fmt.Printf("Backfill Device Interface Counters\n")
 	fmt.Printf("  Time range:      %s - %s\n", startTime.Format(time.RFC3339), endTime.Format(time.RFC3339))
 	fmt.Printf("  Duration:        %s\n", endTime.Sub(startTime))
 	fmt.Printf("  Chunk interval:  %s\n", chunkInterval)

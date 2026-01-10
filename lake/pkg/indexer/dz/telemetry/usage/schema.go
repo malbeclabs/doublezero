@@ -7,17 +7,17 @@ import (
 	"github.com/malbeclabs/doublezero/lake/pkg/clickhouse/dataset"
 )
 
-type DeviceIfaceUsageSchema struct{}
+type DeviceInterfaceCountersSchema struct{}
 
-func (s *DeviceIfaceUsageSchema) Name() string {
-	return "dz_device_iface_usage"
+func (s *DeviceInterfaceCountersSchema) Name() string {
+	return "dz_device_interface_counters"
 }
 
-func (s *DeviceIfaceUsageSchema) UniqueKeyColumns() []string {
+func (s *DeviceInterfaceCountersSchema) UniqueKeyColumns() []string {
 	return []string{"event_ts", "device_pk", "intf"}
 }
 
-func (s *DeviceIfaceUsageSchema) Columns() []string {
+func (s *DeviceInterfaceCountersSchema) Columns() []string {
 	return []string{
 		"ingested_at:TIMESTAMP",
 		"device_pk:VARCHAR",
@@ -64,23 +64,23 @@ func (s *DeviceIfaceUsageSchema) Columns() []string {
 	}
 }
 
-func (s *DeviceIfaceUsageSchema) TimeColumn() string {
+func (s *DeviceInterfaceCountersSchema) TimeColumn() string {
 	return "event_ts"
 }
 
-func (s *DeviceIfaceUsageSchema) PartitionByTime() bool {
+func (s *DeviceInterfaceCountersSchema) PartitionByTime() bool {
 	return true
 }
 
-func (s *DeviceIfaceUsageSchema) DedupMode() dataset.DedupMode {
+func (s *DeviceInterfaceCountersSchema) DedupMode() dataset.DedupMode {
 	return dataset.DedupReplacing
 }
 
-func (s *DeviceIfaceUsageSchema) DedupVersionColumn() string {
+func (s *DeviceInterfaceCountersSchema) DedupVersionColumn() string {
 	return "ingested_at"
 }
 
-func (s *DeviceIfaceUsageSchema) ToRow(usage InterfaceUsage, ingestedAt time.Time) []interface{} {
+func (s *DeviceInterfaceCountersSchema) ToRow(usage InterfaceUsage, ingestedAt time.Time) []any {
 	// Order matches table schema: event_ts first, then all columns from Columns()
 	return []interface{}{
 		usage.Time.UTC(),              // event_ts
@@ -129,8 +129,8 @@ func (s *DeviceIfaceUsageSchema) ToRow(usage InterfaceUsage, ingestedAt time.Tim
 	}
 }
 
-var deviceIfaceUsageSchema = &DeviceIfaceUsageSchema{}
+var deviceInterfaceCountersSchema = &DeviceInterfaceCountersSchema{}
 
-func NewDeviceIfaceUsageDataset(log *slog.Logger) (*dataset.FactDataset, error) {
-	return dataset.NewFactDataset(log, deviceIfaceUsageSchema)
+func NewDeviceInterfaceCountersDataset(log *slog.Logger) (*dataset.FactDataset, error) {
+	return dataset.NewFactDataset(log, deviceInterfaceCountersSchema)
 }

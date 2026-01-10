@@ -210,7 +210,7 @@ func seedNetworkHealthSummaryData(t *testing.T, ctx context.Context, conn clickh
 
 	// Seed interface usage - mix of link interfaces and non-link interfaces
 	// Include errors, discards, and carrier transitions
-	ifaceUsageDS, err := dztelemusage.NewDeviceIfaceUsageDataset(log)
+	ifaceUsageDS, err := dztelemusage.NewDeviceInterfaceCountersDataset(log)
 	require.NoError(t, err)
 	ifaceUsageEntries := []struct {
 		time                    time.Time

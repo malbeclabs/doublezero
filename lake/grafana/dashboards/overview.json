@@ -668,7 +668,7 @@
                     "editorMode": "code",
                     "format": "table",
                     "rawQuery": true,
-                    "rawSql": "SELECT\n  CAST(COALESCE(SUM(l.bandwidth_bps), 0) AS DOUBLE) as \"Total Capacity (bps)\",\n  CASE\n    WHEN SUM(l.bandwidth_bps) > 0 THEN CAST((COALESCE(MAX(peak_throughput.peak_throughput), 0) / SUM(l.bandwidth_bps) * 100.0) AS DOUBLE)\n    ELSE 0.0\n  END as \"Utilization %\"\nFROM dz_links_current l\nJOIN dz_devices_current da ON l.side_a_pk = da.pk\nJOIN dz_devices_current dz ON l.side_z_pk = dz.pk\nLEFT JOIN dz_metros_current ma ON da.metro_pk = ma.pk\nLEFT JOIN dz_metros_current mz ON dz.metro_pk = mz.pk\nLEFT JOIN (\n  SELECT\n    u.link_pk,\n    MAX((u.in_octets_delta + u.out_octets_delta) * 8.0 / NULLIF(u.delta_duration, 0)) as peak_throughput\n  FROM dz_device_iface_usage_raw u\n  WHERE\n    u.time >= $__timeFrom()\n    AND u.time <= $__timeTo()\n    AND u.delta_duration > 0\n    AND u.in_octets_delta >= 0\n    AND u.out_octets_delta >= 0\n    AND u.link_pk IS NOT NULL\n  GROUP BY u.link_pk\n) peak_throughput ON peak_throughput.link_pk = l.pk\nWHERE\n  l.link_type = 'WAN'\n  AND ma.pk != mz.pk",
+                    "rawSql": "SELECT\n  CAST(COALESCE(SUM(l.bandwidth_bps), 0) AS DOUBLE) as \"Total Capacity (bps)\",\n  CASE\n    WHEN SUM(l.bandwidth_bps) > 0 THEN CAST((COALESCE(MAX(peak_throughput.peak_throughput), 0) / SUM(l.bandwidth_bps) * 100.0) AS DOUBLE)\n    ELSE 0.0\n  END as \"Utilization %\"\nFROM dz_links_current l\nJOIN dz_devices_current da ON l.side_a_pk = da.pk\nJOIN dz_devices_current dz ON l.side_z_pk = dz.pk\nLEFT JOIN dz_metros_current ma ON da.metro_pk = ma.pk\nLEFT JOIN dz_metros_current mz ON dz.metro_pk = mz.pk\nLEFT JOIN (\n  SELECT\n    u.link_pk,\n    MAX((u.in_octets_delta + u.out_octets_delta) * 8.0 / NULLIF(u.delta_duration, 0)) as peak_throughput\n  FROM dz_device_interface_counters_raw u\n  WHERE\n    u.time >= $__timeFrom()\n    AND u.time <= $__timeTo()\n    AND u.delta_duration > 0\n    AND u.in_octets_delta >= 0\n    AND u.out_octets_delta >= 0\n    AND u.link_pk IS NOT NULL\n  GROUP BY u.link_pk\n) peak_throughput ON peak_throughput.link_pk = l.pk\nWHERE\n  l.link_type = 'WAN'\n  AND ma.pk != mz.pk",
                     "refId": "A"
                 }
             ],
@@ -744,7 +744,7 @@
                     "editorMode": "code",
                     "format": "table",
                     "rawQuery": true,
-                    "rawSql": "SELECT CAST(COALESCE(AVG((u.in_octets_delta + u.out_octets_delta) * 8.0 / NULLIF(u.delta_duration, 0)), 0) AS DOUBLE) as value FROM dz_device_iface_usage_raw u WHERE u.time >= $__timeFrom() AND u.time <= $__timeTo() AND u.delta_duration > 0 AND u.in_octets_delta >= 0 AND u.out_octets_delta >= 0",
+                    "rawSql": "SELECT CAST(COALESCE(AVG((u.in_octets_delta + u.out_octets_delta) * 8.0 / NULLIF(u.delta_duration, 0)), 0) AS DOUBLE) as value FROM dz_device_interface_counters_raw u WHERE u.time >= $__timeFrom() AND u.time <= $__timeTo() AND u.delta_duration > 0 AND u.in_octets_delta >= 0 AND u.out_octets_delta >= 0",
                     "refId": "A"
                 }
             ],
@@ -806,7 +806,7 @@
                     "editorMode": "code",
                     "format": "table",
                     "rawQuery": true,
-                    "rawSql": "SELECT CAST(COALESCE(MAX((u.in_octets_delta + u.out_octets_delta) * 8.0 / NULLIF(u.delta_duration, 0)), 0) AS DOUBLE) as value FROM dz_device_iface_usage_raw u WHERE u.time >= $__timeFrom() AND u.time <= $__timeTo() AND u.delta_duration > 0 AND u.in_octets_delta >= 0 AND u.out_octets_delta >= 0",
+                    "rawSql": "SELECT CAST(COALESCE(MAX((u.in_octets_delta + u.out_octets_delta) * 8.0 / NULLIF(u.delta_duration, 0)), 0) AS DOUBLE) as value FROM dz_device_interface_counters_raw u WHERE u.time >= $__timeFrom() AND u.time <= $__timeTo() AND u.delta_duration > 0 AND u.in_octets_delta >= 0 AND u.out_octets_delta >= 0",
                     "refId": "A"
                 }
             ],
@@ -977,7 +977,7 @@
                     "editorMode": "code",
                     "format": "time_series",
                     "rawQuery": true,
-                    "rawSql": "SELECT\n  date_trunc('minute', time_bucket) as time,\n  AVG(total_throughput) as \"Total Throughput (bps)\"\nFROM (\n  SELECT\n    time as time_bucket,\n    SUM((in_octets_delta + out_octets_delta) * 8.0 / NULLIF(delta_duration, 0)) as total_throughput\n  FROM dz_device_iface_usage_raw\n  WHERE\n    time >= $__timeFrom()\n    AND time <= $__timeTo()\n    AND delta_duration > 0\n    AND in_octets_delta >= 0\n    AND out_octets_delta >= 0\n  GROUP BY time\n) subq\nGROUP BY date_trunc('minute', time_bucket)\nORDER BY time",
+                    "rawSql": "SELECT\n  date_trunc('minute', time_bucket) as time,\n  AVG(total_throughput) as \"Total Throughput (bps)\"\nFROM (\n  SELECT\n    time as time_bucket,\n    SUM((in_octets_delta + out_octets_delta) * 8.0 / NULLIF(delta_duration, 0)) as total_throughput\n  FROM dz_device_interface_counters_raw\n  WHERE\n    time >= $__timeFrom()\n    AND time <= $__timeTo()\n    AND delta_duration > 0\n    AND in_octets_delta >= 0\n    AND out_octets_delta >= 0\n  GROUP BY time\n) subq\nGROUP BY date_trunc('minute', time_bucket)\nORDER BY time",
                     "refId": "A",
                     "sql": {
                         "columns": [
@@ -1087,7 +1087,7 @@
                     "editorMode": "code",
                     "format": "table",
                     "rawQuery": true,
-                    "rawSql": "SELECT\n  CAST(COALESCE((\n    SELECT SUM(GREATEST(COALESCE(in_errors_delta, 0), 0) + GREATEST(COALESCE(out_errors_delta, 0), 0))\n    FROM dz_device_iface_usage_raw\n    WHERE time >= $__timeFrom() AND time <= $__timeTo() AND delta_duration > 0\n  ), 0) AS BIGINT) as \"Interface Errors\",\n  CAST(COALESCE((\n    SELECT SUM(GREATEST(COALESCE(in_discards_delta, 0), 0) + GREATEST(COALESCE(out_discards_delta, 0), 0))\n    FROM dz_device_iface_usage_raw\n    WHERE time >= $__timeFrom() AND time <= $__timeTo() AND delta_duration > 0\n  ), 0) AS BIGINT) as \"Interface Discards\"",
+                    "rawSql": "SELECT\n  CAST(COALESCE((\n    SELECT SUM(GREATEST(COALESCE(in_errors_delta, 0), 0) + GREATEST(COALESCE(out_errors_delta, 0), 0))\n    FROM dz_device_interface_counters_raw\n    WHERE time >= $__timeFrom() AND time <= $__timeTo() AND delta_duration > 0\n  ), 0) AS BIGINT) as \"Interface Errors\",\n  CAST(COALESCE((\n    SELECT SUM(GREATEST(COALESCE(in_discards_delta, 0), 0) + GREATEST(COALESCE(out_discards_delta, 0), 0))\n    FROM dz_device_interface_counters_raw\n    WHERE time >= $__timeFrom() AND time <= $__timeTo() AND delta_duration > 0\n  ), 0) AS BIGINT) as \"Interface Discards\"",
                     "refId": "A",
                     "sql": {
                         "columns": [
@@ -1347,7 +1347,7 @@
                     "editorMode": "code",
                     "format": "table",
                     "rawQuery": true,
-                    "rawSql": "SELECT\n  d.code as \"Device\",\n  m.code as \"Metro\",\n  SUM(GREATEST(COALESCE(u.in_errors_delta, 0), 0) + GREATEST(COALESCE(u.out_errors_delta, 0), 0)) as \"Total Errors\",\n  SUM(GREATEST(COALESCE(u.in_discards_delta, 0), 0) + GREATEST(COALESCE(u.out_discards_delta, 0), 0)) as \"Total Discards\"\nFROM dz_device_iface_usage_raw u\nJOIN dz_devices_current d ON u.device_pk = d.pk\nJOIN dz_metros_current m ON d.metro_pk = m.pk\nWHERE\n  u.time >= $__timeFrom()\n  AND u.time <= $__timeTo()\n  AND u.delta_duration > 0\nGROUP BY d.code, m.code\nHAVING SUM(GREATEST(COALESCE(u.in_errors_delta, 0), 0) + GREATEST(COALESCE(u.out_errors_delta, 0), 0)) > 0\nORDER BY \"Total Errors\" DESC\nLIMIT 10",
+                    "rawSql": "SELECT\n  d.code as \"Device\",\n  m.code as \"Metro\",\n  SUM(GREATEST(COALESCE(u.in_errors_delta, 0), 0) + GREATEST(COALESCE(u.out_errors_delta, 0), 0)) as \"Total Errors\",\n  SUM(GREATEST(COALESCE(u.in_discards_delta, 0), 0) + GREATEST(COALESCE(u.out_discards_delta, 0), 0)) as \"Total Discards\"\nFROM dz_device_interface_counters_raw u\nJOIN dz_devices_current d ON u.device_pk = d.pk\nJOIN dz_metros_current m ON d.metro_pk = m.pk\nWHERE\n  u.time >= $__timeFrom()\n  AND u.time <= $__timeTo()\n  AND u.delta_duration > 0\nGROUP BY d.code, m.code\nHAVING SUM(GREATEST(COALESCE(u.in_errors_delta, 0), 0) + GREATEST(COALESCE(u.out_errors_delta, 0), 0)) > 0\nORDER BY \"Total Errors\" DESC\nLIMIT 10",
                     "refId": "A"
                 }
             ],
@@ -1439,7 +1439,7 @@
                     "editorMode": "code",
                     "format": "time_series",
                     "rawQuery": true,
-                    "rawSql": "SELECT\n  date_trunc('minute', time_bucket) as time,\n  link_type as \"Link Type\",\n  AVG(total_throughput) as \"Throughput (bps)\"\nFROM (\n  SELECT\n    u.time as time_bucket,\n    l.link_type,\n    SUM((u.in_octets_delta + u.out_octets_delta) * 8.0 / NULLIF(u.delta_duration, 0)) as total_throughput\n  FROM dz_device_iface_usage_raw u\n  JOIN dz_links_current l ON u.link_pk = l.pk\n  WHERE\n    u.time >= $__timeFrom()\n    AND u.time <= $__timeTo()\n    AND u.delta_duration > 0\n    AND u.in_octets_delta >= 0\n    AND u.out_octets_delta >= 0\n    AND l.link_type IS NOT NULL\n  GROUP BY u.time, l.link_type\n) subq\nGROUP BY date_trunc('minute', time_bucket), link_type\nORDER BY time, \"Link Type\"",
+                    "rawSql": "SELECT\n  date_trunc('minute', time_bucket) as time,\n  link_type as \"Link Type\",\n  AVG(total_throughput) as \"Throughput (bps)\"\nFROM (\n  SELECT\n    u.time as time_bucket,\n    l.link_type,\n    SUM((u.in_octets_delta + u.out_octets_delta) * 8.0 / NULLIF(u.delta_duration, 0)) as total_throughput\n  FROM dz_device_interface_counters_raw u\n  JOIN dz_links_current l ON u.link_pk = l.pk\n  WHERE\n    u.time >= $__timeFrom()\n    AND u.time <= $__timeTo()\n    AND u.delta_duration > 0\n    AND u.in_octets_delta >= 0\n    AND u.out_octets_delta >= 0\n    AND l.link_type IS NOT NULL\n  GROUP BY u.time, l.link_type\n) subq\nGROUP BY date_trunc('minute', time_bucket), link_type\nORDER BY time, \"Link Type\"",
                     "refId": "A"
                 }
             ],

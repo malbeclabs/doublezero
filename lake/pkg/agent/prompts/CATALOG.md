@@ -92,8 +92,8 @@ Public Internet baseline for comparison.
 - **No loss signal** in Internet metro telemetry
 - ⚠️ **Compare only against DZ WAN links** (exclude DZX)
 
-### fact_dz_device_iface_usage
-Interface utilization counters.
+### fact_dz_device_interface_counters
+Interface counters.
 - **Type**: Fact | **Time column**: `event_ts`
 - **Grain**: 1 sample per interface × timestamp
 - **Key fields**: `device_pk`, `intf`, `link_pk`, `user_tunnel_id`, `delta_duration`

@@ -12,7 +12,7 @@ type DimensionSchema interface {
 
 // FactSchema defines the structure of a fact dataset for ClickHouse
 type FactSchema interface {
-	// Name returns the dataset name (e.g., "dz_device_iface_usage")
+	// Name returns the dataset name (e.g., "dz_device_interface_counters")
 	Name() string
 	// UniqueKeyColumns returns the column definitions for unique key fields
 	UniqueKeyColumns() []string

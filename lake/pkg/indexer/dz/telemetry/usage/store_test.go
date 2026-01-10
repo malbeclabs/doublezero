@@ -190,7 +190,7 @@ func TestLake_TelemetryUsage_Store_InsertInterfaceUsage(t *testing.T) {
 		// Verify data was inserted by querying the database
 		conn, err := db.Conn(context.Background())
 		require.NoError(t, err)
-		rows, err := conn.Query(context.Background(), "SELECT count() FROM fact_dz_device_iface_usage WHERE device_pk = ? AND intf = ?", *usage[0].DevicePK, *usage[0].Intf)
+		rows, err := conn.Query(context.Background(), "SELECT count() FROM fact_dz_device_interface_counters WHERE device_pk = ? AND intf = ?", *usage[0].DevicePK, *usage[0].Intf)
 		require.NoError(t, err)
 		require.True(t, rows.Next())
 		var count uint64
@@ -273,7 +273,7 @@ func TestLake_TelemetryUsage_Store_InsertInterfaceUsage(t *testing.T) {
 		// Verify data was inserted by querying the database
 		conn, err := db.Conn(context.Background())
 		require.NoError(t, err)
-		rows, err := conn.Query(context.Background(), "SELECT count() FROM fact_dz_device_iface_usage WHERE device_pk = ? AND intf = ?", *usage[0].DevicePK, *usage[0].Intf)
+		rows, err := conn.Query(context.Background(), "SELECT count() FROM fact_dz_device_interface_counters WHERE device_pk = ? AND intf = ?", *usage[0].DevicePK, *usage[0].Intf)
 		require.NoError(t, err)
 		require.True(t, rows.Next())
 		var count uint64
@@ -380,7 +380,7 @@ func TestLake_TelemetryUsage_Store_InsertInterfaceUsage(t *testing.T) {
 		// Verify data was inserted by querying the database
 		conn, err := db.Conn(context.Background())
 		require.NoError(t, err)
-		rows, err := conn.Query(context.Background(), "SELECT count() FROM fact_dz_device_iface_usage WHERE device_pk = ? AND intf = ?", *usage[0].DevicePK, *usage[0].Intf)
+		rows, err := conn.Query(context.Background(), "SELECT count() FROM fact_dz_device_interface_counters WHERE device_pk = ? AND intf = ?", *usage[0].DevicePK, *usage[0].Intf)
 		require.NoError(t, err)
 		require.True(t, rows.Next())
 		var count uint64

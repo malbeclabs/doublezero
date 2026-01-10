@@ -103,7 +103,7 @@ func (s *Store) GetMaxTimestamp(ctx context.Context) (*time.Time, error) {
 		return nil, fmt.Errorf("failed to get ClickHouse connection: %w", err)
 	}
 
-	rows, err := conn.Query(ctx, "SELECT max(event_ts) FROM fact_dz_device_iface_usage")
+	rows, err := conn.Query(ctx, "SELECT max(event_ts) FROM fact_dz_device_interface_counters")
 	if err != nil {
 		return nil, fmt.Errorf("failed to query max timestamp: %w", err)
 	}
@@ -126,7 +126,7 @@ func (s *Store) GetMaxTimestamp(ctx context.Context) (*time.Time, error) {
 }
 
 func (s *Store) InsertInterfaceUsage(ctx context.Context, usage []InterfaceUsage) error {
-	ds, err := NewDeviceIfaceUsageDataset(s.log)
+	ds, err := NewDeviceInterfaceCountersDataset(s.log)
 	if err != nil {
 		return fmt.Errorf("failed to create dataset: %w", err)
 	}
@@ -139,7 +139,7 @@ func (s *Store) InsertInterfaceUsage(ctx context.Context, usage []InterfaceUsage
 	// Write to ClickHouse
 	ingestedAt := time.Now().UTC()
 	if err := ds.WriteBatch(ctx, conn, len(usage), func(i int) ([]any, error) {
-		return deviceIfaceUsageSchema.ToRow(usage[i], ingestedAt), nil
+		return deviceInterfaceCountersSchema.ToRow(usage[i], ingestedAt), nil
 	}); err != nil {
 		return fmt.Errorf("failed to write interface usage to ClickHouse: %w", err)
 	}

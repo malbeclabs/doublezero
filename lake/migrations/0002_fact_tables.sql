@@ -2,8 +2,8 @@
 -- Naming: fact_<domain>_<metric>
 -- These are append-only time-series tables
 
--- Device interface usage
-CREATE TABLE IF NOT EXISTS fact_dz_device_iface_usage (
+-- Device interface counters
+CREATE TABLE IF NOT EXISTS fact_dz_device_interface_counters (
     event_ts DateTime64(3),
     ingested_at DateTime64(3),
     device_pk String,

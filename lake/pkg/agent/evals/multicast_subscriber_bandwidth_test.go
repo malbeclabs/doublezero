@@ -180,7 +180,7 @@ func seedMulticastSubscriberBandwidthData(t *testing.T, ctx context.Context, con
 	// user1 (tunnel 501): 5,000,000,000 bytes (5 GB) - low bandwidth
 	// user2 (tunnel 502): 10,000,000,000 bytes (10 GB) - medium bandwidth
 	// user3 (tunnel 503): 15,000,000,000 bytes (15 GB) - high bandwidth (most)
-	ifaceUsageDS, err := dztelemusage.NewDeviceIfaceUsageDataset(log)
+	ifaceUsageDS, err := dztelemusage.NewDeviceInterfaceCountersDataset(log)
 	require.NoError(t, err)
 	ingestedAt := now
 	err = ifaceUsageDS.WriteBatch(ctx, conn, 6, func(i int) ([]any, error) {
@@ -283,7 +283,7 @@ SELECT
   u.tunnel_id,
   SUM(COALESCE(iface.in_octets_delta, 0) + COALESCE(iface.out_octets_delta, 0)) AS total_bytes
 FROM dz_users_current u
-JOIN fact_dz_device_iface_usage iface ON u.device_pk = iface.device_pk
+JOIN fact_dz_device_interface_counters iface ON u.device_pk = iface.device_pk
   AND iface.user_tunnel_id = u.tunnel_id
   AND iface.intf LIKE 'tunnel%'
 WHERE u.status = 'activated'

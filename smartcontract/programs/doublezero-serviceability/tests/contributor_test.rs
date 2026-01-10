@@ -376,3 +376,81 @@ async fn test_contributor() {
     println!("✅ Contributor deleted successfully");
     println!("🟢  End test_contributor");
 }
+
+#[tokio::test]
+async fn test_contributor_delete_from_suspended() {
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+
+    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
+    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::InitGlobalState(),
+        vec![
+            AccountMeta::new(program_config_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (contributor_pubkey, _) =
+        get_contributor_pda(&program_id, globalstate_account.account_index + 1);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
+            code: "la".to_string(),
+        }),
+        vec![
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(payer.pubkey(), false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SuspendContributor(ContributorSuspendArgs {}),
+        vec![
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let contributor_la = get_account_data(&mut banks_client, contributor_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_contributor()
+        .unwrap();
+    assert_eq!(contributor_la.status, ContributorStatus::Suspended);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::DeleteContributor(ContributorDeleteArgs {}),
+        vec![
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let contributor_la = get_account_data(&mut banks_client, contributor_pubkey).await;
+    assert_eq!(contributor_la, None);
+}

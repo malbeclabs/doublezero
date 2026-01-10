@@ -18,6 +18,7 @@ All notable changes to this project will be documented in this file.
   - Add on-chain validation to reject CloseAccountDevice when device has active references (reference_count > 0)
   - Allow contributor owner to update ops manager key
   - Add new arguments on create interface cli command
+  - Restrict serviceability Delete* instructions (Location, Exchange, Contributor, Device, Link, User, MulticastGroup) to accounts in Activated or Suspended status
   - Add ResourceExtension to track IP/ID allocations. Foundation instructions added to create/allocate/deallocate.
   - ResourceExtension optimization using first_free_index for searching bitmaps
   - Added the **INSTRUCTION_GUIDELINES** document defining the standard for instruction creation.

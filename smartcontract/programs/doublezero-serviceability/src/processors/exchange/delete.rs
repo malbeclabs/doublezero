@@ -1,17 +1,23 @@
-use crate::{
-    error::DoubleZeroError,
-    serializer::try_acc_close,
-    state::{exchange::Exchange, globalstate::GlobalState},
-};
+use core::fmt;
+
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
-use core::fmt;
+
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
     pubkey::Pubkey,
+};
+
+use crate::{
+    error::DoubleZeroError,
+    serializer::try_acc_close,
+    state::{
+        exchange::{Exchange, *},
+        globalstate::GlobalState,
+    },
 };
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
@@ -69,6 +75,11 @@ pub fn process_delete_exchange(
     }
 
     let exchange = Exchange::try_from(exchange_account)?;
+
+    if exchange.status != ExchangeStatus::Activated && exchange.status != ExchangeStatus::Suspended
+    {
+        return Err(DoubleZeroError::InvalidStatus.into());
+    }
 
     if exchange.reference_count > 0 {
         return Err(DoubleZeroError::ReferenceCountNotZero.into());

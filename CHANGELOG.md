@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 ### Changes
 
 - CLI
+  - ActivateMulticastGroup now supports on-chain IP allocation from ResourceExtension bitmap (RFC 11).
   - IP address lookup responses that do not contain a valid IPv4 address (such as upstream timeout messages) are now treated as retryable errors instead of being parsed as IPs.
   - `doublezero resource` commands added for managing ResourceExtension accounts.
   - Added health_oracle to the smart contract global configuration to manage and authorize health-related operations.
@@ -28,6 +29,7 @@ All notable changes to this project will be documented in this file.
   - Introduce desired status to Link and Devices
   - Updated validation to allow public IP prefixes for CYOA/DIA, removing the restriction imposed by type-based checks.
   - Transit devices can now be provisioned without a public IP, aligning the requirements with their actual networking model and avoiding unnecessary configuration constraints.
+  - Enforce that `CloseAccessPass` only closes AccessPass accounts when `connection_count == 0`, preventing closure while active connections are present.
 - Internet Latency Telemetry
   - Fixed a bug that prevented unresponsive ripeatlas probes from being replaced
   - Fixed a bug that caused ripeatlas samples to be dropped when they were delayed to the next collection cycle

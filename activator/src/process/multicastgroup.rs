@@ -20,6 +20,7 @@ pub fn process_multicastgroup_event(
     multicastgroup: &MulticastGroup,
     multicastgroups: &mut HashMap<Pubkey, MulticastGroup>,
     multicastgroup_tunnel_ips: &mut IPBlockAllocator,
+    use_onchain_allocation: bool,
 ) -> eyre::Result<()> {
     match multicastgroup.status {
         MulticastGroupStatus::Pending => {
@@ -31,32 +32,42 @@ pub fn process_multicastgroup_event(
             )
             .unwrap();
 
-            let res = multicastgroup_tunnel_ips.next_available_block(0, 1);
-            match res {
-                Some(multicast_group) => {
-                    let multicast_ip = multicast_group.ip();
-                    write!(&mut log_msg, "multicast_ip: {multicast_ip} ",).unwrap();
-
-                    let res = ActivateMulticastGroupCommand {
-                        mgroup_pubkey: *pubkey,
-                        multicast_ip,
+            let multicast_ip = if use_onchain_allocation {
+                // On-chain allocation: pass UNSPECIFIED, program allocates
+                write!(&mut log_msg, "using on-chain allocation ").unwrap();
+                std::net::Ipv4Addr::UNSPECIFIED
+            } else {
+                // Legacy: allocate locally
+                match multicastgroup_tunnel_ips.next_available_block(0, 1) {
+                    Some(block) => {
+                        let ip = block.ip();
+                        write!(&mut log_msg, "multicast_ip: {ip} ").unwrap();
+                        ip
                     }
-                    .execute(client);
-
-                    match res {
-                        Ok(signature) => {
-                            write!(&mut log_msg, "Activated: {signature} ",).unwrap();
-
-                            multicastgroups.insert(*pubkey, multicastgroup.clone());
-                            metrics::counter!("doublezero_activator_state_transition", "state_transition" => "multicastgroup-pending-to-activated").increment(1);
-                        }
-                        Err(e) => {
-                            write!(&mut log_msg, "Error: {e} ",).unwrap();
-                        }
+                    None => {
+                        write!(&mut log_msg, "Error: No available multicast block").unwrap();
+                        info!("{log_msg}");
+                        return Ok(());
                     }
                 }
-                None => {
-                    write!(&mut log_msg, "Error: No available multicast block",).unwrap();
+            };
+
+            let res = ActivateMulticastGroupCommand {
+                mgroup_pubkey: *pubkey,
+                multicast_ip,
+                use_onchain_allocation,
+            }
+            .execute(client);
+
+            match res {
+                Ok(signature) => {
+                    write!(&mut log_msg, "Activated: {signature} ").unwrap();
+
+                    multicastgroups.insert(*pubkey, multicastgroup.clone());
+                    metrics::counter!("doublezero_activator_state_transition", "state_transition" => "multicastgroup-pending-to-activated").increment(1);
+                }
+                Err(e) => {
+                    write!(&mut log_msg, "Error: {e} ").unwrap();
                 }
             }
             info!("{log_msg}");
@@ -190,6 +201,7 @@ mod tests {
                 &multicastgroup,
                 &mut multicastgroups,
                 &mut multicastgroup_tunnel_ips,
+                false, // legacy allocation mode for this test
             )
             .expect("Failed to process multicastgroup event");
 

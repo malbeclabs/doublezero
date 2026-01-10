@@ -46,12 +46,14 @@ pub struct Processor<T: DoubleZeroClient> {
     locations: LocationMap,
     exchanges: ExchangeMap,
     multicastgroups: MulticastGroupMap,
+    use_onchain_allocation: bool,
 }
 
 impl<T: DoubleZeroClient> Processor<T> {
     pub fn new(
         rx: mpsc::Receiver<(Box<Pubkey>, Box<AccountData>)>,
         client: Arc<T>,
+        use_onchain_allocation: bool,
     ) -> eyre::Result<Self> {
         let builder = ExponentialBuilder::new()
             .with_max_times(5)
@@ -143,6 +145,7 @@ impl<T: DoubleZeroClient> Processor<T> {
             locations,
             exchanges,
             multicastgroups: HashMap::new(),
+            use_onchain_allocation,
         })
     }
 
@@ -204,6 +207,7 @@ impl<T: DoubleZeroClient> Processor<T> {
                     multicastgroup,
                     &mut self.multicastgroups,
                     &mut self.multicastgroup_tunnel_ips,
+                    self.use_onchain_allocation,
                 )
                 .inspect_err(|e| {
                     error!("Error processing multicast group event: {e}");

@@ -137,6 +137,7 @@ router bgp 65342
       neighbor 169.254.0.1 route-map RM-USER-500-OUT out
       neighbor 169.254.0.1 maximum-routes 1
       neighbor 169.254.0.1 maximum-accepted-routes 1
+      no neighbor 169.254.0.1 shutdown
       no neighbor 169.254.0.3
       neighbor 169.254.0.3 remote-as 65000
       neighbor 169.254.0.3 local-as 65342 no-prepend replace-as
@@ -146,6 +147,7 @@ router bgp 65342
       neighbor 169.254.0.3 route-map RM-USER-501-OUT out
       neighbor 169.254.0.3 maximum-routes 1
       neighbor 169.254.0.3 maximum-accepted-routes 1
+      no neighbor 169.254.0.3 shutdown
       no neighbor 169.254.0.5
       neighbor 169.254.0.5 remote-as 65000
       neighbor 169.254.0.5 local-as 65342 no-prepend replace-as
@@ -155,6 +157,7 @@ router bgp 65342
       neighbor 169.254.0.5 route-map RM-USER-502-OUT out
       neighbor 169.254.0.5 maximum-routes 1
       neighbor 169.254.0.5 maximum-accepted-routes 1
+      no neighbor 169.254.0.5 shutdown
 !
 router isis 1
    net 49.0000.0e0e.0e0e.0000.00

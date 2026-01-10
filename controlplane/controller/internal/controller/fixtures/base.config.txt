@@ -108,6 +108,7 @@ router bgp 65342
    neighbor 12.12.12.12 description remote-dzd-ipv4
    neighbor 12.12.12.12 timers 3 9
    neighbor 12.12.12.12 send-community
+   no neighbor 12.12.12.12 shutdown
    no neighbor 15.15.15.15
    neighbor 15.15.15.15 remote-as 65342
    neighbor 15.15.15.15 next-hop-self
@@ -115,6 +116,7 @@ router bgp 65342
    neighbor 15.15.15.15 description remote-dzd-vpnv4
    neighbor 15.15.15.15 timers 3 9
    neighbor 15.15.15.15 send-community
+   no neighbor 15.15.15.15 shutdown
    address-family ipv4
       neighbor 12.12.12.12 activate
       no neighbor 15.15.15.15 activate
@@ -165,3 +167,4 @@ router msdp
       mesh-group DZ-1
       local-interface Loopback256
       description remote-dzd
+      no shutdown

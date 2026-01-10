@@ -128,6 +128,7 @@ router bgp 65342
    neighbor 169.254.0.3 route-map RM-USER-501-OUT out
    neighbor 169.254.0.3 maximum-routes 1
    neighbor 169.254.0.3 maximum-accepted-routes 1
+   no neighbor 169.254.0.3 shutdown
    address-family ipv4
       neighbor 169.254.0.3 activate
       no neighbor 172.16.0.1
@@ -151,6 +152,7 @@ router bgp 65342
       neighbor 169.254.0.1 route-map RM-USER-500-OUT out
       neighbor 169.254.0.1 maximum-routes 1
       neighbor 169.254.0.1 maximum-accepted-routes 1
+      no neighbor 169.254.0.1 shutdown
       no neighbor 172.16.0.1
       no neighbor 169.254.0.7
 !

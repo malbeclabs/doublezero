@@ -122,6 +122,7 @@ const (
 	DeviceStatusSuspended
 	DeviceStatusDeleted
 	DeviceStatusRejected
+	DeviceStatusDrained
 )
 
 func (d DeviceStatus) String() string {
@@ -131,6 +132,7 @@ func (d DeviceStatus) String() string {
 		"suspended",
 		"deleted",
 		"rejected",
+		"drained",
 	}[d]
 }
 
@@ -404,8 +406,8 @@ const (
 	LinkStatusDeleted
 	LinkStatusRejected
 	LinkStatusRequested
-	LinkStatusHardDrained
 	LinkStatusSoftDrained
+	LinkStatusHardDrained
 )
 
 func (l LinkStatus) String() string {
@@ -416,8 +418,8 @@ func (l LinkStatus) String() string {
 		"deleted",
 		"rejected",
 		"requested",
-		"hard-drained",
 		"soft-drained",
+		"hard-drained",
 	}[l]
 }
 

@@ -938,6 +938,274 @@ func TestLake_TelemetryLatency_Store_GetExistingMaxSampleIndices(t *testing.T) {
 	})
 }
 
+func TestLake_TelemetryLatency_Store_AppendDeviceLinkLatencySamples_Idempotency(t *testing.T) {
+	t.Parallel()
+
+	t.Run("inserting same data twice is idempotent", func(t *testing.T) {
+		t.Parallel()
+
+		db := laketesting.NewDB(t)
+
+		store, err := NewStore(StoreConfig{
+			Logger:     laketesting.NewLogger(t),
+			ClickHouse: db,
+		})
+		require.NoError(t, err)
+
+		originPK := testPK(100)
+		targetPK := testPK(101)
+		linkPK := testPK(102)
+
+		samples := []DeviceLinkLatencySample{
+			{
+				OriginDevicePK:  originPK,
+				TargetDevicePK:  targetPK,
+				LinkPK:          linkPK,
+				Epoch:           100,
+				SampleIndex:     0,
+				Time:            time.Unix(1000, 0),
+				RTTMicroseconds: 5000,
+			},
+			{
+				OriginDevicePK:  originPK,
+				TargetDevicePK:  targetPK,
+				LinkPK:          linkPK,
+				Epoch:           100,
+				SampleIndex:     1,
+				Time:            time.Unix(1001, 0),
+				RTTMicroseconds: 6000,
+			},
+		}
+
+		// Insert first time
+		err = store.AppendDeviceLinkLatencySamples(context.Background(), samples)
+		require.NoError(t, err)
+
+		// Insert second time (same data)
+		err = store.AppendDeviceLinkLatencySamples(context.Background(), samples)
+		require.NoError(t, err)
+
+		// Force merge to deduplicate
+		conn, err := db.Conn(context.Background())
+		require.NoError(t, err)
+		err = conn.Exec(context.Background(), "OPTIMIZE TABLE fact_dz_device_link_latency FINAL")
+		require.NoError(t, err)
+
+		// Count should be 2 (not 4) due to ReplacingMergeTree deduplication
+		rows, err := conn.Query(context.Background(),
+			"SELECT count() FROM fact_dz_device_link_latency WHERE origin_device_pk = ? AND target_device_pk = ? AND link_pk = ?",
+			originPK, targetPK, linkPK)
+		require.NoError(t, err)
+		require.True(t, rows.Next())
+		var count uint64
+		require.NoError(t, rows.Scan(&count))
+		rows.Close()
+		require.Equal(t, uint64(2), count, "should have exactly 2 samples after deduplication, not 4")
+		conn.Close()
+	})
+
+	t.Run("inserting same data with different ingested_at keeps latest version", func(t *testing.T) {
+		t.Parallel()
+
+		db := laketesting.NewDB(t)
+
+		store, err := NewStore(StoreConfig{
+			Logger:     laketesting.NewLogger(t),
+			ClickHouse: db,
+		})
+		require.NoError(t, err)
+
+		originPK := testPK(110)
+		targetPK := testPK(111)
+		linkPK := testPK(112)
+
+		// First insert with RTT 5000
+		samples1 := []DeviceLinkLatencySample{
+			{
+				OriginDevicePK:  originPK,
+				TargetDevicePK:  targetPK,
+				LinkPK:          linkPK,
+				Epoch:           100,
+				SampleIndex:     0,
+				Time:            time.Unix(1000, 0),
+				RTTMicroseconds: 5000,
+			},
+		}
+		err = store.AppendDeviceLinkLatencySamples(context.Background(), samples1)
+		require.NoError(t, err)
+
+		// Wait a moment to ensure different ingested_at
+		time.Sleep(10 * time.Millisecond)
+
+		// Second insert with same key but different RTT (simulating re-ingestion with updated value)
+		samples2 := []DeviceLinkLatencySample{
+			{
+				OriginDevicePK:  originPK,
+				TargetDevicePK:  targetPK,
+				LinkPK:          linkPK,
+				Epoch:           100,
+				SampleIndex:     0,
+				Time:            time.Unix(1000, 0),
+				RTTMicroseconds: 5500, // Different value
+			},
+		}
+		err = store.AppendDeviceLinkLatencySamples(context.Background(), samples2)
+		require.NoError(t, err)
+
+		// Force merge to deduplicate
+		conn, err := db.Conn(context.Background())
+		require.NoError(t, err)
+		err = conn.Exec(context.Background(), "OPTIMIZE TABLE fact_dz_device_link_latency FINAL")
+		require.NoError(t, err)
+
+		// Should have exactly 1 row with the latest RTT value
+		rows, err := conn.Query(context.Background(),
+			"SELECT rtt_us FROM fact_dz_device_link_latency WHERE origin_device_pk = ? AND target_device_pk = ? AND link_pk = ? AND sample_index = 0",
+			originPK, targetPK, linkPK)
+		require.NoError(t, err)
+		require.True(t, rows.Next())
+		var rtt int64
+		require.NoError(t, rows.Scan(&rtt))
+		rows.Close()
+		require.Equal(t, int64(5500), rtt, "should have the latest RTT value after deduplication")
+		conn.Close()
+	})
+}
+
+func TestLake_TelemetryLatency_Store_AppendInternetMetroLatencySamples_Idempotency(t *testing.T) {
+	t.Parallel()
+
+	t.Run("inserting same data twice is idempotent", func(t *testing.T) {
+		t.Parallel()
+
+		db := laketesting.NewDB(t)
+
+		store, err := NewStore(StoreConfig{
+			Logger:     laketesting.NewLogger(t),
+			ClickHouse: db,
+		})
+		require.NoError(t, err)
+
+		originPK := testPK(200)
+		targetPK := testPK(201)
+		dataProvider := "test-provider"
+
+		samples := []InternetMetroLatencySample{
+			{
+				OriginMetroPK:   originPK,
+				TargetMetroPK:   targetPK,
+				DataProvider:    dataProvider,
+				Epoch:           100,
+				SampleIndex:     0,
+				Time:            time.Unix(1000, 0),
+				RTTMicroseconds: 10000,
+			},
+			{
+				OriginMetroPK:   originPK,
+				TargetMetroPK:   targetPK,
+				DataProvider:    dataProvider,
+				Epoch:           100,
+				SampleIndex:     1,
+				Time:            time.Unix(1001, 0),
+				RTTMicroseconds: 11000,
+			},
+		}
+
+		// Insert first time
+		err = store.AppendInternetMetroLatencySamples(context.Background(), samples)
+		require.NoError(t, err)
+
+		// Insert second time (same data)
+		err = store.AppendInternetMetroLatencySamples(context.Background(), samples)
+		require.NoError(t, err)
+
+		// Force merge to deduplicate
+		conn, err := db.Conn(context.Background())
+		require.NoError(t, err)
+		err = conn.Exec(context.Background(), "OPTIMIZE TABLE fact_dz_internet_metro_latency FINAL")
+		require.NoError(t, err)
+
+		// Count should be 2 (not 4) due to ReplacingMergeTree deduplication
+		rows, err := conn.Query(context.Background(),
+			"SELECT count() FROM fact_dz_internet_metro_latency WHERE origin_metro_pk = ? AND target_metro_pk = ? AND data_provider = ?",
+			originPK, targetPK, dataProvider)
+		require.NoError(t, err)
+		require.True(t, rows.Next())
+		var count uint64
+		require.NoError(t, rows.Scan(&count))
+		rows.Close()
+		require.Equal(t, uint64(2), count, "should have exactly 2 samples after deduplication, not 4")
+		conn.Close()
+	})
+
+	t.Run("inserting same data with different ingested_at keeps latest version", func(t *testing.T) {
+		t.Parallel()
+
+		db := laketesting.NewDB(t)
+
+		store, err := NewStore(StoreConfig{
+			Logger:     laketesting.NewLogger(t),
+			ClickHouse: db,
+		})
+		require.NoError(t, err)
+
+		originPK := testPK(210)
+		targetPK := testPK(211)
+		dataProvider := "test-provider-2"
+
+		// First insert with RTT 10000
+		samples1 := []InternetMetroLatencySample{
+			{
+				OriginMetroPK:   originPK,
+				TargetMetroPK:   targetPK,
+				DataProvider:    dataProvider,
+				Epoch:           100,
+				SampleIndex:     0,
+				Time:            time.Unix(1000, 0),
+				RTTMicroseconds: 10000,
+			},
+		}
+		err = store.AppendInternetMetroLatencySamples(context.Background(), samples1)
+		require.NoError(t, err)
+
+		// Wait a moment to ensure different ingested_at
+		time.Sleep(10 * time.Millisecond)
+
+		// Second insert with same key but different RTT (simulating re-ingestion with updated value)
+		samples2 := []InternetMetroLatencySample{
+			{
+				OriginMetroPK:   originPK,
+				TargetMetroPK:   targetPK,
+				DataProvider:    dataProvider,
+				Epoch:           100,
+				SampleIndex:     0,
+				Time:            time.Unix(1000, 0),
+				RTTMicroseconds: 10500, // Different value
+			},
+		}
+		err = store.AppendInternetMetroLatencySamples(context.Background(), samples2)
+		require.NoError(t, err)
+
+		// Force merge to deduplicate
+		conn, err := db.Conn(context.Background())
+		require.NoError(t, err)
+		err = conn.Exec(context.Background(), "OPTIMIZE TABLE fact_dz_internet_metro_latency FINAL")
+		require.NoError(t, err)
+
+		// Should have exactly 1 row with the latest RTT value
+		rows, err := conn.Query(context.Background(),
+			"SELECT rtt_us FROM fact_dz_internet_metro_latency WHERE origin_metro_pk = ? AND target_metro_pk = ? AND data_provider = ? AND sample_index = 0",
+			originPK, targetPK, dataProvider)
+		require.NoError(t, err)
+		require.True(t, rows.Next())
+		var rtt int64
+		require.NoError(t, rows.Scan(&rtt))
+		rows.Close()
+		require.Equal(t, int64(10500), rtt, "should have the latest RTT value after deduplication")
+		conn.Close()
+	})
+}
+
 func TestLake_TelemetryLatency_Store_GetExistingInternetMaxSampleIndices(t *testing.T) {
 	t.Parallel()
 

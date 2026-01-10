@@ -6,6 +6,7 @@ import (
 
 	flag "github.com/spf13/pflag"
 
+	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/lake/internal/admin"
 	"github.com/malbeclabs/doublezero/lake/pkg/logger"
 )
@@ -32,6 +33,16 @@ func run() error {
 	removeIsDeletedFromViewsFlag := flag.Bool("remove-is-deleted-from-views", false, "Remove is_deleted column from all *_current views")
 	dryRunFlag := flag.Bool("dry-run", false, "Dry run mode - show what would be done without actually executing")
 	yesFlag := flag.Bool("yes", false, "Skip confirmation prompt (use with caution)")
+
+	// Backfill commands
+	backfillDeviceLinkLatencyFlag := flag.Bool("backfill-device-link-latency", false, "Backfill device link latency fact table from on-chain data")
+	backfillInternetMetroLatencyFlag := flag.Bool("backfill-internet-metro-latency", false, "Backfill internet metro latency fact table from on-chain data")
+
+	// Backfill options
+	dzEnvFlag := flag.String("env", config.EnvMainnetBeta, "DoubleZero environment (devnet, testnet, mainnet-beta)")
+	startEpochFlag := flag.Int64("start-epoch", -1, "Start epoch for backfill (-1 = auto-calculate: end-epoch - 9)")
+	endEpochFlag := flag.Int64("end-epoch", -1, "End epoch for backfill (-1 = current epoch - 1)")
+	maxConcurrencyFlag := flag.Int("max-concurrency", 32, "Maximum concurrent RPC requests during backfill")
 
 	flag.Parse()
 
@@ -71,6 +82,40 @@ func run() error {
 			return fmt.Errorf("--clickhouse-addr is required for --remove-is-deleted-from-views")
 		}
 		return admin.RemoveIsDeletedFromViews(log, *clickhouseAddrFlag, *clickhouseDatabaseFlag, *clickhouseUsernameFlag, *clickhousePasswordFlag, *dryRunFlag, *yesFlag)
+	}
+
+	if *backfillDeviceLinkLatencyFlag {
+		if *clickhouseAddrFlag == "" {
+			return fmt.Errorf("--clickhouse-addr is required for --backfill-device-link-latency")
+		}
+		return admin.BackfillDeviceLinkLatency(
+			log,
+			*clickhouseAddrFlag, *clickhouseDatabaseFlag, *clickhouseUsernameFlag, *clickhousePasswordFlag,
+			*dzEnvFlag,
+			admin.BackfillDeviceLinkLatencyConfig{
+				StartEpoch:     *startEpochFlag,
+				EndEpoch:       *endEpochFlag,
+				MaxConcurrency: *maxConcurrencyFlag,
+				DryRun:         *dryRunFlag,
+			},
+		)
+	}
+
+	if *backfillInternetMetroLatencyFlag {
+		if *clickhouseAddrFlag == "" {
+			return fmt.Errorf("--clickhouse-addr is required for --backfill-internet-metro-latency")
+		}
+		return admin.BackfillInternetMetroLatency(
+			log,
+			*clickhouseAddrFlag, *clickhouseDatabaseFlag, *clickhouseUsernameFlag, *clickhousePasswordFlag,
+			*dzEnvFlag,
+			admin.BackfillInternetMetroLatencyConfig{
+				StartEpoch:     *startEpochFlag,
+				EndEpoch:       *endEpochFlag,
+				MaxConcurrency: *maxConcurrencyFlag,
+				DryRun:         *dryRunFlag,
+			},
+		)
 	}
 
 	return nil

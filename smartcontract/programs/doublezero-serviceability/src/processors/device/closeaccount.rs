@@ -91,6 +91,9 @@ pub fn process_closeaccount_device(
     if device.exchange_pk != *exchange_account.key {
         return Err(DoubleZeroError::InvalidExchangePubkey.into());
     }
+    if device.contributor_pk != *contributor_account.key {
+        return Err(DoubleZeroError::InvalidContributorPubkey.into());
+    }
     let mut contributor = Contributor::try_from(contributor_account)?;
     let mut location = Location::try_from(location_account)?;
     let mut exchange = Exchange::try_from(exchange_account)?;
